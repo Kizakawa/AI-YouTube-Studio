@@ -1,51 +1,90 @@
-# ==========================================
-# CẤU HÌNH QUẢN LÝ ĐA KÊNH & CỤM TÀI KHOẢN GOOGLE ULTRA
-# ==========================================
-# Mỗi kênh được phân bổ vào một Tài khoản Google Ultra riêng biệt:
-# 1. Hạn ngạch YouTube API độc lập (10,000 units/ngày/kênh).
-# 2. Sử dụng 2TB Google Drive của chính tài khoản đó để lưu trữ video.
-# 3. Phân lập rủi ro bản quyền giữa các kênh.
+# ==============================================================================
+# CẤU HÌNH MẠNG LƯỚI ĐA KÊNH & CỤM TÀI KHOẢN GOOGLE ULTRA (MULTI-BRAND NETWORK)
+# ==============================================================================
+# Mỗi Tài khoản Google Ultra (Tài khoản mẹ) sở hữu 2TB Drive, Quota riêng và quản lý
+# nhiều Kênh Thương Hiệu (Brand Channels) con với các chủ đề khác nhau.
 
+google_accounts:
+  - id: "account_1"
+    email_label: "ultra_media_hub_1@gmail.com"
+    drive_storage: "2 TB Google One"
+    youtube_quota_daily: 10000
+    credentials:
+      client_secret: "credentials/accounts/account_1/client_secret.json"
+      youtube_token: "credentials/accounts/account_1/youtube_token.json"
+      drive_token: "credentials/accounts/account_1/drive_token.json"
+    brand_channels:
+      - id: "ch_dark_psychology"
+        name: "Dark Psychology & Mind Hacks"
+        niche: "psychology"
+        language: "en"
+        visual_mode: "imagen_ai" # Dùng AI Imagen 3 của Google Ultra
+        preferred_voice: "en-US-ChristopherNeural"
+        schedule:
+          publish_hour_utc: 12
+          days: ["monday", "wednesday", "friday", "sunday"]
+
+      - id: "ch_stoic_wisdom"
+        name: "Daily Stoic & Ancient Wisdom"
+        niche: "philosophy"
+        language: "en"
+        visual_mode: "imagen_ai"
+        preferred_voice: "en-US-GuyNeural"
+        schedule:
+          publish_hour_utc: 14
+          days: ["tuesday", "thursday", "saturday"]
+
+  - id: "account_2"
+    email_label: "ultra_media_hub_2@gmail.com"
+    drive_storage: "2 TB Google One"
+    youtube_quota_daily: 10000
+    credentials:
+      client_secret: "credentials/accounts/account_2/client_secret.json"
+      youtube_token: "credentials/accounts/account_2/youtube_token.json"
+      drive_token: "credentials/accounts/account_2/drive_token.json"
+    brand_channels:
+      - id: "ch_space_cosmos"
+        name: "Cosmic Odyssey & Space Secrets"
+        niche: "space_science"
+        language: "en"
+        visual_mode: "imagen_ai"
+        preferred_voice: "en-US-EricNeural"
+        schedule:
+          publish_hour_utc: 13
+          days: ["monday", "thursday", "saturday"]
+
+      - id: "ch_unsolved_mysteries"
+        name: "History's Greatest Unsolved Mysteries"
+        niche: "history_mystery"
+        language: "en"
+        visual_mode: "pexels_stock"
+        preferred_voice: "en-US-ChristopherNeural"
+        schedule:
+          publish_hour_utc: 15
+          days: ["wednesday", "sunday"]
+
+# Khả năng tương thích ngược (Flat channels list)
 channels:
   - id: "channel_psychology"
     name: "Dark Psychology & Mind Hacks"
     niche: "psychology"
     language: "en"
-    google_account: "account_1" # Tài khoản Google Ultra 1
-    credentials:
-      client_secret: "credentials/accounts/account_1/client_secret.json"
-      youtube_token: "credentials/accounts/account_1/youtube_token.json"
-      drive_token: "credentials/accounts/account_1/drive_token.json"
-    drive_folder_id: "optional_google_drive_folder_id_here"
-    default_tags:
-      - "psychology facts"
-      - "mindset"
-      - "human behavior"
-      - "dark psychology"
-      - "shorts"
+    google_account: "account_1"
+    visual_mode: "imagen_ai"
     preferred_voice: "en-US-ChristopherNeural"
-    schedule:
-      publish_hour_utc: 12 # 12:00 UTC = 19:00 Giờ Việt Nam
-      days: ["monday", "wednesday", "friday", "sunday"]
 
   - id: "channel_stoic"
     name: "Daily Stoic & Wisdom"
     niche: "philosophy"
     language: "en"
-    google_account: "account_2" # Tài khoản Google Ultra 2
-    credentials:
-      client_secret: "credentials/accounts/account_2/client_secret.json"
-      youtube_token: "credentials/accounts/account_2/youtube_token.json"
-      drive_token: "credentials/accounts/account_2/drive_token.json"
-    drive_folder_id: "optional_google_drive_folder_id_here"
-    default_tags:
-      - "stoicism"
-      - "marcus aurelius"
-      - "philosophy"
-      - "life wisdom"
-      - "discipline"
-      - "shorts"
+    google_account: "account_1"
+    visual_mode: "imagen_ai"
     preferred_voice: "en-US-GuyNeural"
-    schedule:
-      publish_hour_utc: 14 # 14:00 UTC = 21:00 Giờ Việt Nam
-      days: ["tuesday", "thursday", "saturday"]
+
+  - id: "channel_cosmos"
+    name: "Cosmic Odyssey & Space Secrets"
+    niche: "space_science"
+    language: "en"
+    google_account: "account_2"
+    visual_mode: "imagen_ai"
+    preferred_voice: "en-US-EricNeural"

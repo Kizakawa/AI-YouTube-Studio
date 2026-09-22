@@ -4,19 +4,20 @@
 > **Dự án:** AI YouTube Multi-Channel Studio & Automation Hub  
 > **Người sáng lập:** `@Giangvv1n` & **Cộng sự**  
 > **Kho mã nguồn GitHub:** [https://github.com/Giangvv1n/AI-youtube](https://github.com/Giangvv1n/AI-youtube)  
-> **Phiên bản tài liệu:** v1.0 - Bản chuẩn dành cho cộng tác viên và đối tác phát triển.
+> **Phiên bản tài liệu:** v2.0 - Tích hợp AI Video/Hình ảnh Google Ultra (Veo & Imagen 3) và Mạng lưới Kênh đa chủ đề.
 
 ---
 
 ## 🧭 MỤC LỤC
 1. [Tại sao dự án này ra đời? (Tầm nhìn & Cơ hội kinh doanh)](#1-tại-sao-dự-án-này-ra-đời-tầm-nhìn--cơ-hội-kinh-doanh)
 2. [Cơ chế "Zero-Burn Laptop" (Làm việc thông minh, không treo máy)](#2-cơ-chế-zero-burn-laptop-làm-việc-thông-minh-không-treo-máy)
-3. [Vũ khí bí mật: Tối ưu cụm tài khoản Google Ultra (Google One AI Premium)](#3-vũ-khí-bí-mật-tối-ưu-cụm-tài-khoản-google-ultra)
-4. [Giao diện kép: Telegram Group Chat & Web Dashboard thời gian thực](#4-giao-diện-kép-telegram-group-chat--web-dashboard-thời-gian-thực)
-5. [Cơ chế mở rộng: Thêm bớt thành viên & Kênh YouTube cực kỳ dễ dàng](#5-cơ-chế-mở-rộng-thêm-bớt-thành-viên--kênh-youtube-cực-kỳ-dễ-dàng)
-6. [Pipeline sản xuất video tự động từ A - Z](#6-pipeline-sản-xuất-video-tự-động-từ-a---z)
-7. [Bản đồ lộ trình 5 giai đoạn & Phân chia công việc cho nhóm](#7-bản-đồ-lộ-trình-5-giai-đoạn--phân-chia-công-việc-cho-nhóm)
-8. [Hướng dẫn cài đặt nhanh chỉ với 1 dòng lệnh](#8-hướng-dẫn-cài-đặt-nhanh-chỉ-với-1-dòng-lệnh)
+3. [Vũ khí tối thượng: Khai thác AI Sẵn Có & Cụm Tài Khoản Google Ultra](#3-vũ-khí-tối-thượng-khai-thác-ai-sẵn-có--cụm-tài-khoản-google-ultra)
+4. [Mạng lưới Kênh thương hiệu đa chủ đề (Multi-Brand Channel Network)](#4-mạng-lưới-kênh-thương-hiệu-đa-chủ-đề-multi-brand-channel-network)
+5. [Giao diện kép: Telegram Group Chat & Web Dashboard thời gian thực](#5-giao-diện-kép-telegram-group-chat--web-dashboard-thời-gian-thực)
+6. [Cơ chế mở rộng: Thêm bớt thành viên & Kênh YouTube cực kỳ dễ dàng](#6-cơ-chế-mở-rộng-thêm-bớt-thành-viên--kênh-youtube-cực-kỳ-dễ-dàng)
+7. [Pipeline sản xuất video tự động từ A - Z](#7-pipeline-sản-xuất-video-tự-động-từ-a---z)
+8. [Bản đồ lộ trình 5 giai đoạn & Phân chia công việc cho nhóm](#8-bản-đồ-lộ-trình-5-giai-đoạn--phân-chia-công-việc-cho-nhóm)
+9. [Hướng dẫn cài đặt nhanh chỉ với 1 dòng lệnh](#9-hướng-dẫn-cài-đặt-nhanh-chỉ-với-1-dòng-lệnh)
 
 ---
 
@@ -25,14 +26,15 @@
 ### 1.1. Thị trường ngách quốc tế (Global / US Market)
 Thay vì làm video cho thị trường Việt Nam với doanh thu thấp, hệ thống tập trung sản xuất nội dung **Shorts tiếng Anh** nhắm vào thị trường **Mỹ, Anh, Canada, Úc**:
 * **Chênh lệch doanh thu RPM:** 1 triệu view Shorts tại Mỹ mang về **80$ – 250$** (gấp 5 – 10 lần so với mức 10$ – 30$ ở Việt Nam).
-* **Nội dung không lộ mặt (Faceless Content):** Tập trung vào 2 ngách có tỷ lệ giữ chân (retention) và RPM cao nhất:
+* **Nội dung không lộ mặt (Faceless Content):** Tập trung vào các ngách có tỷ lệ giữ chân (retention) và RPM cao nhất:
   1. *Tâm lý học hành vi (Dark Psychology & Mind Hacks)*
   2. *Triết lý sống & Động lực (Daily Stoic & Wisdom)*
+  3. *Khoa học & Vũ trụ bí ẩn (Cosmic Odyssey & Space Secrets)*
 
-### 1.2. Giải pháp khắc phục sai lầm của 90% người làm video AI
-Đa số thất bại vì làm video "rác", spam nội dung vô nghĩa khiến YouTube bóp tương tác. Hệ thống này giải quyết bằng:
-* **Hook 3 giây đầu giữ chân người xem:** AI được huấn luyện bằng prompt chuyên sâu để tạo tiêu đề và câu mở đầu giật tít, khơi gợi tò mò.
-* **Nghe nhìn chuẩn chất lượng cao:** Giọng đọc AI bản xứ của Microsoft Edge (ngữ điệu tự nhiên 99%), video footage tỷ lệ dọc 9:16 chất lượng cao từ Pexels, phụ đề động nhảy từng chữ phong cách Alex Hormozi.
+### 1.2. Thoát khỏi cạm bẫy "Video AI rác"
+Đa số người làm tự động hóa thất bại vì lấy stock video đại trà ghép lại, bị YouTube đánh gậy "Nội dung tái sử dụng" (Reused Content). Hệ thống này giải quyết bằng:
+* **Hình ảnh & Video AI Độc Bản 100%:** Sử dụng mô hình **Google Imagen 3** và **Google Veo** sẵn có trong gói Ultra để vẽ các phân cảnh độc nhất vô nhị.
+* **Hook 3 giây đầu:** Kịch bản giữ chân người xem bằng các câu hỏi mở đầu gây sốc hoặc bí ẩn.
 
 ---
 
@@ -61,48 +63,78 @@ sequenceDiagram
 
 ---
 
-## 3. VŨ KHÍ BÍ MẬT: TỐI ƯU CỤM TÀI KHOẢN GOOGLE ULTRA
+## 3. VŨ KHÍ TỐI THƯỢNG: KHAI THÁC AI SẴN CÓ & CỤM TÀI KHOẢN GOOGLE ULTRA
 
-Dự án được tối ưu hóa đặc biệt cho người sở hữu nhiều tài khoản **Google Ultra (Google One AI Premium)** nhằm giải quyết 3 bài toán lớn nhất:
+Mỗi tài khoản **Google Ultra (Google One AI Premium)** của bạn thực chất là một **"Trạm tài nguyên điện toán đám mây & AI cao cấp"**:
 
 ```mermaid
 graph TD
-    subgraph "Cụm Tài Khoản Google Ultra Của Nhóm"
-        ACC1[Google Ultra 1\nKênh Tâm Lý]
-        ACC2[Google Ultra 2\nKênh Triết Lý]
-        ACC3[Google Ultra 3\nKênh Khoa Học]
+    subgraph "Cụm Tài Khoản Google Ultra Của Bạn"
+        ACC1[Google Ultra 1\nCụm Giáo Dục & Tâm Lý]
+        ACC2[Google Ultra 2\nCụm Vũ Trụ & Khoa Học]
+        ACC3[Google Ultra 3\nCụm Tài Chính & Tech]
     end
 
-    subgraph "Giá Trị Khai Thác Vượt Trội"
-        DRIVE[Kho 6TB - 10TB Google Drive\n- Tự động dọn dẹp ổ cứng máy\n- Cả nhóm cùng truy cập link tải]
-        QUOTA[Nhân Hạn Ngạch YouTube API\n- 10,000 units/ngày x 3 tài khoản\n- Thoải mái up 20-30 video/ngày]
-        ROTATOR[Bộ Xoay Vòng Gemini API Pool\n- Tự động nhảy key khi chạm Rate Limit\n- Tốc độ sinh kịch bản vô hạn]
-        RISK[Phân Lập Rủi Ro Kênh (Risk Isolation)\n- Mỗi kênh 1 tài khoản riêng biệt\n- Kênh này lỗi không ảnh hưởng kênh khác]
+    subgraph "Giá Trị Khai Thác Độc Quyền"
+        AI_MEDIA["1. Google Imagen 3 & Veo AI Media\nSinh ảnh/video 9:16 điện ảnh bám sát kịch bản\nĐộc bản 100% - Không lo bản quyền!"]
+        COLAB["2. Google Colab Cloud GPU\nNông trại render video trên đám mây\nLaptop của bạn không tốn 1% CPU!"]
+        DRIVE["3. Kho 6TB - 10TB Google Drive\nTự động dọn dẹp ổ cứng máy tính\nChia sẻ link video cho cả nhóm tải"]
+        QUOTA["4. Nhân Hạn Ngạch YouTube API\n10,000 units/ngày x 3 tài khoản\nThoải mái đăng 20-30 video/ngày"]
+        ROTATOR["5. Gemini API Key Rotation Pool\nTự động đổi key khi chạm Rate Limit\nTốc độ sinh kịch bản vô hạn"]
+        RISK["6. Phân Lập Rủi Ro Kênh (Risk Isolation)\nMỗi kênh 1 tài khoản riêng biệt\nKênh này lỗi không ảnh hưởng kênh khác"]
     end
 
+    ACC1 --> AI_MEDIA
+    ACC1 --> COLAB
     ACC1 --> DRIVE
     ACC1 --> QUOTA
     ACC1 --> ROTATOR
     ACC1 --> RISK
 
+    ACC2 --> AI_MEDIA
+    ACC2 --> COLAB
     ACC2 --> DRIVE
     ACC2 --> QUOTA
     ACC2 --> ROTATOR
     ACC2 --> RISK
 
+    ACC3 --> AI_MEDIA
+    ACC3 --> COLAB
     ACC3 --> DRIVE
     ACC3 --> QUOTA
     ACC3 --> ROTATOR
     ACC3 --> RISK
 ```
 
+### 3.1. Khai Thác AI Tạo Video & Ảnh Của Google Ultra (Imagen 3 & Veo)
+* **Vấn đề của stock video:** Dễ bị trùng lặp, không tìm được cảnh đúng ý (ví dụ: *"Marcus Aurelius đứng suy tư trong mưa tuyết"*).
+* **Giải pháp với Google Ultra:** Module `ImageAgent` sẽ gọi trực tiếp mô hình **Google Imagen 3 (`imagen-3.0-generate-002`)** để vẽ chính xác cảnh đó theo tỷ lệ dọc 9:16 với độ phân giải siêu cao và ánh sáng điện ảnh (Cinematic Lighting).
+* Sau đó, FFmpeg tự động áp dụng hiệu ứng chuyển động **Ken Burns (Pan & Zoom)** để biến bức ảnh thành một đoạn video chuyển động sống động, ma mị!
+
 ---
 
-## 4. GIAO DIỆN KÉP: TELEGRAM GROUP CHAT & WEB DASHBOARD THỜI GIAN THỰC
+## 4. MẠNG LƯỚI KÊNH THƯƠNG HIỆU ĐA CHỦ ĐỀ (MULTI-BRAND CHANNEL NETWORK)
+
+Một tài khoản Google có thể tạo tối đa **50 Kênh thương hiệu (Brand Channels)**. Do đó, cụm tài khoản Ultra sẽ được tổ chức thành một **Mạng lưới truyền thông đa ngách**:
+
+* **Tài khoản Ultra 1 (Chuyên Cụm Tâm Lý & Phát Triển Bản Thân):**
+  * *Kênh 1.1:* Dark Psychology & Mind Hacks (Tâm lý học hành vi)
+  * *Kênh 1.2:* Daily Stoic & Ancient Wisdom (Triết lý sống khắc kỷ)
+  * *Kênh 1.3:* Book Insights (Tóm tắt sách 60s)
+* **Tài khoản Ultra 2 (Chuyên Cụm Khoa Học & Bí Ẩn):**
+  * *Kênh 2.1:* Cosmic Odyssey (Vũ trụ & Thiên văn học)
+  * *Kênh 2.2:* Unsolved Mysteries (Bí ẩn lịch sử chưa có lời giải)
+* **Tài khoản Ultra 3 (Chuyên Cụm Tài Chính & Công Nghệ):**
+  * *Kênh 3.1:* AI Tools & Future Tech (Công nghệ tương lai)
+  * *Kênh 3.2:* Wealth & Money Mindset (Tư duy tài chính)
+
+---
+
+## 5. GIAO DIỆN KÉP: TELEGRAM GROUP CHAT & WEB DASHBOARD THỜI GIAN THỰC
 
 Hệ thống cung cấp **2 cổng giao tiếp bổ trợ cho nhau hoàn hảo**:
 
-### 4.1. Telegram Group Chat (Điều khiển di động & Thảo luận tức thì)
+### 5.1. Telegram Group Chat (Điều khiển di động & Thảo luận tức thì)
 * Thay vì chat riêng lẻ, Bot được add vào một **Nhóm chat Telegram chung** của nhóm bạn.
 * **Quy trình tương tác:**
   1. Thành viên A gõ: `/idea 3 sự thật đen tối về tâm lý học`.
@@ -110,7 +142,7 @@ Hệ thống cung cấp **2 cổng giao tiếp bổ trợ cho nhau hoàn hảo**
   3. Cả nhóm cùng phản biện, chỉnh sửa.
   4. Bất kỳ ai cũng có thể bấm nút tương tác dưới tin nhắn: `[🚀 Duyệt & Dựng Video]`, `[⏰ Lên Lịch]`, `[❌ Hủy]`.
 
-### 4.2. Web Dashboard Thời Gian Thực (`http://localhost:8000`)
+### 5.2. Web Dashboard Thời Gian Thực (`http://localhost:8000`)
 Giao diện Web Dark Mode sang trọng, chia thành 4 phân khu chuyên biệt:
 1. **Live Activity Feed:** Xem dòng thời gian ai vừa gõ lệnh gì trên Telegram (`@Ban vừa tạo kịch bản...`, `@Giang vừa đổi kênh...`).
 2. **Team Leaderboard:** Bảng xếp hạng thành viên, ghi nhận chính xác số lượng video mỗi Admin/Creator đã đóng góp.
@@ -120,54 +152,54 @@ Giao diện Web Dark Mode sang trọng, chia thành 4 phân khu chuyên biệt:
   ```bash
   cloudflared tunnel --url http://localhost:8000
   ```
-  *(Cung cấp ngay link HTTPS công khai để bạn bè ở bất cứ đâu cũng vào Dashboard được)*.
 
 ---
 
-## 5. CƠ CHẾ MỞ RỘNG: THÊM BỚT THÀNH VIÊN & KÊNH YOUTUBE CỰC KỲ DỄ DÀNG
+## 6. CƠ CHẾ MỞ RỘNG: THÊM BỚT THÀNH VIÊN & KÊNH YOUTUBE CỰC KỲ DỄ DÀNG
 
-Hệ thống được thiết kế theo tư duy **"Không đụng vào code khi mở rộng"**:
-
-### 5.1. Thêm / Bớt Thành Viên (Admin/Creator):
+### 6.1. Thêm / Bớt Thành Viên (Admin/Creator):
 * **Cực kỳ đơn giản:** Bạn chỉ cần thêm bạn bè vào **Group chat Telegram** là họ có quyền sử dụng bot và được hệ thống tự động ghi nhận vào Dashboard.
 * Khi muốn gỡ ai ra, chỉ cần xóa họ khỏi nhóm Telegram!
 
-### 5.2. Thêm / Bớt Kênh YouTube:
+### 6.2. Thêm / Bớt Kênh YouTube:
 * Mọi kênh được cấu hình trong file `config/channels.yaml`.
 * Muốn thêm kênh mới, chỉ cần copy 5 dòng mẫu (đổi tên kênh, ngách, tài khoản Google Ultra tương ứng).
 * Telegram Bot và Web Dashboard sẽ **tự động cập nhật nút bấm của kênh mới** mà không cần lập trình lại!
 
 ---
 
-## 6. PIPELINE SẢN XUẤT VIDEO TỰ ĐỘNG TỪ A - Z
+## 7. PIPELINE SẢN XUẤT VIDEO TỰ ĐỘNG TỪ A - Z
 
 ```mermaid
 graph TD
     A[Lệnh /idea trên Telegram] --> B[ContentAgent: Gemini Flash API]
     B -->|Xuất JSON kịch bản + Hook 3s + Phân cảnh| C[VoiceAgent: Edge-TTS]
-    C -->|Tạo file âm thanh MP3 bản xứ| D[MediaAgent: Pexels API]
-    D -->|Tải stock footage dọc 9:16 theo từ khóa| E[VideoAgent: FFmpeg / MoviePy]
-    E -->|Ghép video + Phụ đề động + Nhạc BGM| F[File video .mp4 hoàn chỉnh]
-    F --> G[DriveAgent: Lưu vào Drive 2TB & Tạo Share Link]
-    G --> H[PublisherAgent: Upload & Đặt Lịch YouTube Data API v3]
-    H --> I[Gửi thông báo thành công vào Telegram Group & Web Dashboard]
+    C -->|Tạo file âm thanh MP3 bản xứ| D{Lựa chọn nguồn Media}
+    D -->|Chế độ AI Độc Bản| E1[ImageAgent: Google Imagen 3]
+    D -->|Chế độ Thực Tế Nhanh| E2[MediaAgent: Pexels API]
+    E1 --> F[VideoAgent: FFmpeg Pan & Zoom + Phụ đề động + Nhạc BGM]
+    E2 --> F
+    F --> G[File video .mp4 hoàn chỉnh 9:16]
+    G --> H[DriveAgent: Lưu vào Drive 2TB & Tạo Share Link]
+    H --> I[PublisherAgent: Upload & Đặt Lịch YouTube Data API v3]
+    I --> J[Gửi thông báo thành công vào Telegram Group & Web Dashboard]
 ```
 
 ---
 
-## 7. BẢN ĐỒ LỘ TRÌNH 5 GIAI ĐOẠN & PHÂN CHIA CÔNG VIỆC CHO NHÓM
+## 8. BẢN ĐỒ LỘ TRÌNH 5 GIAI ĐOẠN & PHÂN CHIA CÔNG VIỆC CHO NHÓM
 
 | Giai đoạn | Nội dung công việc | Trạng thái | Phụ trách |
 | :--- | :--- | :---: | :---: |
-| **Giai đoạn 1** | Khởi tạo khung dự án, cấu hình Git, Web Dashboard FastAPI, Telegram Bot Nhóm, Cơ chế ghi log hoạt động | **HOÀN THÀNH** | `@Giangvv1n` |
-| **Giai đoạn 2** | Hoàn thiện prompt Gemini chuẩn CTR cho ngách Tâm lý/Stoic, Edge-TTS tạo file mp3, tính năng gửi file nghe thử qua Telegram | **Đang thực hiện** | `@...` |
-| **Giai đoạn 3** | Ghép footage Pexels, tạo phụ đề động nhảy từng chữ bằng `whisper-timestamped`, xử lý âm lượng nhạc nền (Audio Ducking) | **Chờ triển khai** | `@...` |
-| **Giai đoạn 4** | Xác thực OAuth2 đa kênh, upload video kèm lịch phát sóng `publishAt`, tạo link chia sẻ Google Drive 2TB | **Chờ triển khai** | `@...` |
-| **Giai đoạn 5** | Tự động quét tin tức trend từ Reddit/X đề xuất ý tưởng mỗi sáng, tự tạo Thumbnail bằng Pillow, tự động đăng chéo lên TikTok | **Mở rộng** | `@...` |
+| **Giai đoạn 1** | Khởi tạo khung dự án, Web Dashboard FastAPI, Telegram Bot Nhóm, Cụm KeyRotator, ActivityLog | **HOÀN THÀNH** | `@Giangvv1n` |
+| **Giai đoạn 2** | Hoàn thiện prompt Gemini, ImageAgent kết nối Google Imagen 3 của Ultra, VoiceAgent Edge-TTS | **Đang thực hiện** | `@...` |
+| **Giai đoạn 3** | Ghép footage AI/Pexels, tạo phụ đề động nhảy từng chữ bằng `whisper-timestamped`, xử lý nhạc nền | **Chờ triển khai** | `@...` |
+| **Giai đoạn 4** | Xác thực OAuth2 đa kênh, upload video kèm lịch phát sóng `publishAt`, link Google Drive 2TB | **Chờ triển khai** | `@...` |
+| **Giai đoạn 5** | Tích hợp Google Colab Cloud GPU render, tự động xuất Google Sheets Calendar, đăng chéo TikTok | **Mở rộng** | `@...` |
 
 ---
 
-## 8. HƯỚNG DẪN CÀI ĐẶT NHANH CHỈ VỚI 1 DÒNG LỆNH
+## 9. HƯỚNG DẪN CÀI ĐẶT NHANH CHỈ VỚI 1 DÒNG LỆNH
 
 ### Bước 1: Kéo mã nguồn về máy
 ```bash
