@@ -4,25 +4,44 @@ from telegram.ext import ContextTypes
 from config.settings import settings
 from app.bot.keyboards import get_channel_selection_keyboard, get_video_review_keyboard
 from app.database.models import SessionLocal, User, VideoJob
+from app.agents.content_agent import ContentAgent
 
 logger = logging.getLogger(__name__)
+content_agent = ContentAgent()
 
-def is_authorized(user_id: int) -> bool:
-    """Kiểm tra xem user_id có nằm trong danh sách được cấp quyền không"""
+def is_authorized(update: Update) -> bool:
+    """
+    Kiểm tra quyền truy cập:
+    - Nếu tin nhắn đến từ Nhóm Chat nằm trong ALLOWED_TELEGRAM_GROUPS: Cho phép tất cả thành viên trong nhóm!
+    - Nếu tin nhắn riêng tư (Direct Message): Kiểm tra xem user_id có nằm trong ALLOWED_TELEGRAM_USERS không.
+    """
+    chat = update.effective_chat
+    user = update.effective_user
+    
+    # 1. Kiểm tra nhóm chat
+    allowed_groups = settings.get_allowed_group_ids()
+    if chat and chat.type in ["group", "supergroup"]:
+        if not allowed_groups:
+            return True # Chưa cấu hình thì cho phép để test
+        return chat.id in allowed_groups
+
+    # 2. Kiểm tra user cá nhân
     allowed_users = settings.get_allowed_users()
     if not allowed_users:
-        # Nếu chưa cấu hình danh sách thì tạm thời cho phép để test
         return True
-    return user_id in allowed_users
+    return user.id in allowed_users
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Xử lý lệnh /start"""
-    user = update.effective_user
-    if not is_authorized(user.id):
-        await update.message.reply_text("⛔ Bạn không có quyền truy cập hệ thống bot này.")
+    """Xử lý lệnh /start (hỗ trợ cả Chat riêng và Nhóm chung)"""
+    if not is_authorized(update):
+        await update.message.reply_text("⛔ Nhóm hoặc tài khoản này chưa được cấp quyền sử dụng bot.")
         return
 
-    # Lưu hoặc cập nhật user vào database
+    user = update.effective_user
+    chat = update.effective_chat
+    is_group = chat.type in ["group", "supergroup"]
+
+    # Đăng ký user vào database
     db = SessionLocal()
     db_user = db.query(User).filter(User.telegram_id == user.id).first()
     if not db_user:
@@ -37,69 +56,133 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.commit()
     db.close()
 
+    scope_text = f"nhóm **{chat.title}**" if is_group else f"bạn **{user.first_name}**"
+
     welcome_text = (
-        f"👋 Xin chào **{user.first_name}**!\n\n"
-        f"Chào mừng bạn đến với **AI YouTube Multi-Channel Studio**.\n\n"
-        f"📌 **Các lệnh cơ bản:**\n"
-        f"• `/channels` - Xem và chuyển đổi kênh YouTube muốn làm việc\n"
-        f"• `/idea <chủ đề>` - Lên kịch bản và chuẩn bị sản xuất video\n"
-        f"• `/status` - Xem tiến độ công việc và hạn ngạch API\n\n"
-        f"👉 Bấm `/channels` để chọn kênh bắt đầu!"
+        f"🎬 **AI YouTube Multi-Channel Studio đã sẵn sàng cho {scope_text}!**\n\n"
+        f"👥 **Cơ chế làm việc nhóm (Team Collaboration):**\n"
+        f"• Mọi thành viên trong nhóm đều có thể ra lệnh và góp ý kịch bản.\n"
+        f"• Tận dụng cụm tài khoản **Google Ultra (Drive 2TB + YouTube Quota x3)**.\n\n"
+        f"📌 **Các lệnh chính:**\n"
+        f"• `/channels` - Xem và chuyển đổi kênh YouTube muốn sản xuất\n"
+        f"• `/idea <chủ đề>` - Lên kịch bản AI, chia phân cảnh và từ khóa Pexels\n"
+        f"• `/status` - Báo cáo số lượng video và trạng thái hệ thống\n\n"
+        f"👉 Hãy gõ `/channels` để chọn kênh bắt đầu!"
     )
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
 async def channels_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Hiển thị danh sách kênh để người dùng chọn"""
-    user = update.effective_user
-    if not is_authorized(user.id):
+    """Hiển thị danh sách kênh cho cả nhóm cùng chọn"""
+    if not is_authorized(update):
         return
 
     reply_markup = get_channel_selection_keyboard()
     await update.message.reply_text(
-        "📺 **Chọn kênh YouTube bạn muốn làm nội dung:**",
+        "📺 **Chọn kênh YouTube mục tiêu cho dự án tiếp theo:**",
         reply_markup=reply_markup,
         parse_mode="Markdown"
     )
 
 async def channel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Xử lý khi người dùng bấm chọn kênh từ nút bấm"""
+    """Xử lý khi một thành viên bấm nút chọn kênh"""
     query = update.callback_query
     await query.answer()
 
     data = query.data
     if data.startswith("select_channel:"):
         channel_id = data.split(":")[1]
-        user_id = query.from_user.id
+        user = query.from_user
         
         db = SessionLocal()
-        user = db.query(User).filter(User.telegram_id == user_id).first()
-        if user:
-            user.active_channel_id = channel_id
+        db_user = db.query(User).filter(User.telegram_id == user.id).first()
+        if db_user:
+            db_user.active_channel_id = channel_id
             db.commit()
         db.close()
 
-        await query.edit_message_text(
-            f"✅ Đã chuyển sang kênh mục tiêu: **{channel_id}**\n"
-            f"Bây giờ bạn có thể gõ: `/idea <chủ đề>` để bắt đầu tạo video cho kênh này!",
+        await query.message.reply_text(
+            f"✅ **{user.first_name}** đã chọn kênh: **{channel_id}**\n"
+            f"Bây giờ cả nhóm có thể gõ: `/idea <chủ đề>` để bắt đầu tạo video cho kênh này!",
             parse_mode="Markdown"
         )
 
-async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Kiểm tra trạng thái hệ thống"""
+async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lệnh sinh kịch bản AI và gửi vào nhóm cho mọi người cùng duyệt"""
+    if not is_authorized(update):
+        return
+
+    if not context.args:
+        await update.message.reply_text("💡 Cú pháp: `/idea <chủ đề video>`\nVí dụ: `/idea 3 bí ẩn dưới đáy biển sâu`", parse_mode="Markdown")
+        return
+
+    topic = " ".join(context.args)
     user = update.effective_user
-    if not is_authorized(user.id):
+    
+    # Lấy kênh đang hoạt động
+    db = SessionLocal()
+    db_user = db.query(User).filter(User.telegram_id == user.id).first()
+    channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_psychology"
+    db.close()
+
+    status_msg = await update.message.reply_text(
+        f"🤖 **{user.first_name}** vừa yêu cầu lên ý tưởng: *\"{topic}\"*\n"
+        f"Đang kích hoạt Gemini AI (Key Rotation Pool) để tạo kịch bản...",
+        parse_mode="Markdown"
+    )
+
+    try:
+        script_data = content_agent.generate_script(topic=topic, channel_niche="general", language="en")
+        
+        # Lưu vào Database
+        db = SessionLocal()
+        job = VideoJob(
+            user_id=user.id,
+            target_channel_id=channel_id,
+            topic=topic,
+            title=script_data.get("title"),
+            script=script_data.get("full_narration"),
+            tags=",".join(script_data.get("tags", [])),
+            status="SCRIPT_READY"
+        )
+        db.add(job)
+        db.commit()
+        job_id = job.id
+        db.close()
+
+        # Soạn nội dung thông báo cho nhóm
+        scenes_preview = "\n".join([f"• Cảnh {s.get('scene_id')}: {s.get('narration')} _(Tìm: {s.get('visual_keyword')})_" for s in script_data.get("scenes", [])[:3]])
+
+        reply_content = (
+            f"🎬 **KỊCH BẢN ĐÃ HOÀN THÀNH (Task #{job_id})**\n\n"
+            f"📌 **Tiêu đề đề xuất:** {script_data.get('title')}\n"
+            f"🔥 **Hook 3 giây đầu:** \"{script_data.get('hook')}\"\n\n"
+            f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
+            f"🗣️ **Người tạo:** {user.first_name} | 📺 **Kênh:** `{channel_id}`\n\n"
+            f"👉 Cả nhóm hãy góp ý hoặc bấm nút bên dưới để tiến hành sản xuất video!"
+        )
+
+        review_markup = get_video_review_keyboard(job_id)
+        await status_msg.edit_text(reply_content, reply_markup=review_markup, parse_mode="Markdown")
+
+    except Exception as e:
+        logger.error(f"Lỗi khi tạo kịch bản: {e}")
+        await status_msg.edit_text(f"❌ Có lỗi xảy ra khi tạo kịch bản: `{e}`", parse_mode="Markdown")
+
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Báo cáo tổng hợp số lượng video và tài nguyên"""
+    if not is_authorized(update):
         return
 
     db = SessionLocal()
     total_jobs = db.query(VideoJob).count()
-    my_jobs = db.query(VideoJob).filter(VideoJob.user_id == user.id).count()
+    ready_jobs = db.query(VideoJob).filter(VideoJob.status == "SCRIPT_READY").count()
     db.close()
 
     text = (
-        f"📊 **Báo Cáo Trạng Thái Hệ Thống**\n\n"
-        f"• Người dùng: `{user.username or user.first_name}`\n"
-        f"• Tổng số video đã tạo trong hệ thống: `{total_jobs}`\n"
-        f"• Video do bạn tạo: `{my_jobs}`\n"
-        f"• Trạng thái API: Sẵn sàng 🟢"
+        f"📊 **BÁO CÁO NHÓM LÀM VIỆC (AI STUDIO)**\n\n"
+        f"• Tổng số video trong hệ thống: `{total_jobs}`\n"
+        f"• Kịch bản đang chờ duyệt/render: `{ready_jobs}`\n"
+        f"• Kho Google Drive 2TB: Sẵn sàng 🟢\n"
+        f"• Cụm Google Ultra Quota: Đang hoạt động 🟢"
     )
     await update.message.reply_text(text, parse_mode="Markdown")

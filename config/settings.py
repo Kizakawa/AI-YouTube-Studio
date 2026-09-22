@@ -14,9 +14,11 @@ class Settings:
     # Telegram
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     ALLOWED_USERS_RAW: str = os.getenv("ALLOWED_TELEGRAM_USERS", "")
+    ALLOWED_GROUP_IDS_RAW: str = os.getenv("ALLOWED_TELEGRAM_GROUPS", "")
     
-    # AI Services
-    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    # AI Services (Hỗ trợ cụm tài khoản Google Ultra xoay vòng API Keys)
+    GEMINI_API_KEYS_RAW: str = os.getenv("GEMINI_API_KEYS", "")
+    GEMINI_API_KEY_SINGLE: str = os.getenv("GEMINI_API_KEY", "")
     PEXELS_API_KEY: str = os.getenv("PEXELS_API_KEY", "")
     
     # Defaults
@@ -28,6 +30,7 @@ class Settings:
     TEMP_DIR: Path = BASE_DIR / "storage" / "temp"
     OUTPUT_DIR: Path = BASE_DIR / "storage" / "outputs"
     CREDENTIALS_DIR: Path = BASE_DIR / "credentials"
+    ACCOUNTS_DIR: Path = BASE_DIR / "credentials" / "accounts"
     CHANNELS_CONFIG_FILE: Path = BASE_DIR / "config" / "channels.yaml"
 
     @classmethod
@@ -44,6 +47,31 @@ class Settings:
             elif len(parts) == 1 and parts[0].isdigit():
                 users[int(parts[0])] = "creator"
         return users
+
+    @classmethod
+    def get_allowed_group_ids(cls) -> List[int]:
+        """Lấy danh sách ID nhóm chat Telegram được phép gọi bot"""
+        if not cls.ALLOWED_GROUP_IDS_RAW:
+            return []
+        groups = []
+        for g in cls.ALLOWED_GROUP_IDS_RAW.split(","):
+            g_clean = g.strip()
+            if g_clean.lstrip("-").isdigit():
+                groups.append(int(g_clean))
+        return groups
+
+    @classmethod
+    def get_gemini_keys_pool(cls) -> List[str]:
+        """Lấy danh sách các Gemini API Keys từ cụm tài khoản Google Ultra để xoay vòng"""
+        keys = []
+        if cls.GEMINI_API_KEYS_RAW:
+            for k in cls.GEMINI_API_KEYS_RAW.split(","):
+                k_clean = k.strip()
+                if k_clean:
+                    keys.append(k_clean)
+        elif cls.GEMINI_API_KEY_SINGLE:
+            keys.append(cls.GEMINI_API_KEY_SINGLE.strip())
+        return keys
 
     @classmethod
     def get_channels_config(cls) -> List[Dict]:

@@ -1,82 +1,145 @@
-# 🗺️ LỘ TRÌNH PHÁT TRIỂN & Ý TƯỞNG DỰ ÁN (PROJECT ROADMAP)
-
-> **Dành cho:** Nhóm phát triển dự án AI-YouTube (`@Giangvv1n` & Cộng sự).  
-> **Mục tiêu:** Xây dựng hệ thống tự động hóa từ khâu lên ý tưởng bằng Telegram đến lúc video công chiếu trên nhiều kênh YouTube.
-
----
-
-## 👥 Ma Trận Phân Chia Công Việc (Task Checklist)
-
-Đánh dấu `[x]` khi hoàn thành và gán tag tên người phụ trách (`@Giang` hoặc `@Ban`):
-
-### Giai Đoạn 1: Nền Tảng & Điều Khiển Đa Người Dùng Qua Telegram
-- [x] Khởi tạo khung dự án & Git repository (`https://github.com/Giangvv1n/AI-youtube.git`)
-- [x] Thiết lập cấu hình đa kênh (`config/channels.yaml`) và quản lý môi trường (`.env`)
-- [ ] **Task 1.1:** Hoàn thiện Bot Telegram nhận lệnh `/idea <chủ đề>` và lưu vào SQLite Database. *(Phụ trách: `@...`)*
-- [ ] **Task 1.2:** Thiết lập logic phân quyền đa người dùng (`admin` vs `creator`) và chuyển đổi kênh hoạt động bằng lệnh `/channels`. *(Phụ trách: `@...`)*
-- [ ] **Task 1.3:** Thêm tính năng chat tự do với Bot để Brainstorm ý tưởng (Bot đóng vai trò trợ lý nội dung). *(Phụ trách: `@...`)*
-
-### Giai Đoạn 2: Pipeline Sáng Tạo Nội Dung & Giọng Đọc AI
-- [ ] **Task 2.1:** Kết nối Google Gemini API để tạo kịch bản Shorts 30-50s chuẩn cấu trúc Hook 3s + JSON phân cảnh. *(Phụ trách: `@...`)*
-- [ ] **Task 2.2:** Tích hợp `edge-tts` tạo file âm thanh MP3 tự động theo giọng đọc từng kênh (`en-US-ChristopherNeural`, `vi-VN-HoaiMyNeural`...). *(Phụ trách: `@...`)*
-- [ ] **Task 2.3:** Tạo tính năng gửi bản ghi âm giọng đọc thử (Voice sample) qua tin nhắn thoại Telegram để nghe trước. *(Phụ trách: `@...`)*
-
-### Giai Đoạn 3: Tự Động Hóa Dựng Video (Media & Subtitles)
-- [ ] **Task 3.1:** Kết nối Pexels API tải video nền chất lượng cao tỷ lệ 9:16 tương ứng với từ khóa từng phân cảnh. *(Phụ trách: `@...`)*
-- [ ] **Task 3.2:** Dùng MoviePy / FFmpeg ghép video nền nối tiếp nhau khớp với độ dài giọng đọc. *(Phụ trách: `@...`)*
-- [ ] **Task 3.3:** Tự động tạo phụ đề động nhảy từng chữ (Phong cách Alex Hormozi) bằng `whisper-timestamped`. *(Phụ trách: `@...`)*
-- [ ] **Task 3.4:** Thêm kho nhạc nền (BGM) lofi/kịch tính và xử lý tự động giảm âm lượng nhạc khi có tiếng nói (Audio Ducking). *(Phụ trách: `@...`)*
-- [ ] **Task 3.5:** Gửi file video `.mp4` hoàn chỉnh kèm nút bấm duyệt (`[Đăng Ngay]`, `[Lên Lịch]`, `[Làm Lại]`) vào Telegram. *(Phụ trách: `@...`)*
-
-### Giai Đoạn 4: Quản Lý Đa Kênh YouTube & Đặt Lịch
-- [ ] **Task 4.1:** Thiết lập luồng Google OAuth2 cho từng kênh YouTube và lưu token riêng (`credentials/tokens/channel_{id}.json`). *(Phụ trách: `@...`)*
-- [ ] **Task 4.2:** Viết hàm tải video lên YouTube với trạng thái `private` hoặc `scheduled` (tham số `publishAt`). *(Phụ trách: `@...`)*
-- [ ] **Task 4.3:** Tự động sinh thẻ Tags, mô tả và gắn link affiliate vào phần mô tả. *(Phụ trách: `@...`)*
-- [ ] **Task 4.4:** Cơ chế tự động tính toán giờ vàng đăng bài (Khung giờ Mỹ: 18h - 21h theo giờ Việt Nam). *(Phụ trách: `@...`)*
-
-### Giai Đoạn 5: Tính Năng Nâng Cao & Tự Động Hoá 100%
-- [ ] **Task 5.1:** Tự động cào tin tức nóng từ các nguồn RSS / X / Reddit để tự đề xuất ý tưởng mỗi sáng cho bạn duyệt.
-- [ ] **Task 5.2:** Tự động tạo Thumbnail bắt mắt bằng Pillow (chữ to, nền ấn tượng).
-- [ ] **Task 5.3:** Báo cáo phân tích (Analytics): Bot tự báo cáo số view, sub tăng của từng kênh mỗi tối.
+# 🗺️ BẢN ĐỒ LỘ TRÌNH & Ý TƯỞNG DỰ ÁN (PROJECT ROADMAP)
+> **Dự án:** AI YouTube Multi-Channel Studio & Automation Hub  
+> **Người sáng lập:** `@Giangvv1n` & **Cộng sự (Bạn cùng nhóm)**  
+> **Kho mã nguồn:** [https://github.com/Giangvv1n/AI-youtube](https://github.com/Giangvv1n/AI-youtube)
 
 ---
 
-## 💡 Ý Tưởng Nội Dung Triển Khai Ban Đầu (Content Niches)
+## 🎯 1. TỔNG QUAN TẦM NHÌN DỰ ÁN
 
-Nhóm có thể bắt đầu với 2 ngách có RPM cao nhất tại thị trường Mỹ:
-
-### 1. Kênh: Dark Psychology & Human Behavior (Tâm lý học hành vi)
-* **Phong cách:** Bí ẩn, giật gân, khơi gợi sự tò mò.
-* **Hình ảnh:** Tông màu tối, điện ảnh, các cảnh quay thành phố đêm, khuôn mặt mờ ảo.
-* **Nhạc nền:** Trầm, căng thẳng, kịch tính.
-* **Mẫu tiêu đề:** *"3 Psychological Signs Someone Is Secretly Jealous of You"*, *"The Dark Mirror Effect You Need to Know"*.
-
-### 2. Kênh: Daily Stoic & Wisdom (Triết lý sống & Động lực)
-* **Phong cách:** Điềm đạm, sâu sắc, truyền cảm hứng mạnh mẽ.
-* **Hình ảnh:** Tượng điêu khắc La Mã/Hy Lạp cổ đại, thiên nhiên hùng vĩ, núi non.
-* **Nhạc nền:** Nhạc piano sâu lắng hoặc cinematic epic.
-* **Mẫu tiêu đề:** *"Marcus Aurelius on How to Deal with Fake Friends"*, *"Why Discipline Will Always Beat Motivation"*.
+Mục tiêu của dự án là xây dựng một **"Cỗ máy sản xuất nội dung tự động"** nhắm vào thị trường **Mỹ và Quốc tế (Tiếng Anh)** với doanh thu quảng cáo (RPM) cao gấp 5–10 lần so với thị trường nội địa:
+* **Không cần lộ mặt (Faceless Channels):** Dùng AI viết kịch bản, giọng đọc bản xứ và footage bản quyền miễn phí.
+* **Cộng tác nhóm qua Telegram Group:** Mọi thành viên cùng thảo luận kịch bản, xem trước video và bấm nút duyệt công khai trong nhóm chat.
+* **Tự động đăng & Đặt lịch:** Tận dụng tính năng `publishAt` của YouTube để lên lịch phát sóng cả tuần mà không cần bật máy tính 24/24.
 
 ---
 
-## 🛠️ Quy Trình Làm Việc Nhóm Với Git
+## ⚡ 2. CHIẾN LƯỢC TỐI ƯU CỤM TÀI KHOẢN GOOGLE ULTRA
 
-1. **Clone dự án về máy:**
-   ```bash
-   git clone https://github.com/Giangvv1n/AI-youtube.git
-   ```
-2. **Tạo nhánh (Branch) mới khi làm tính năng:**
-   ```bash
-   # Ví dụ làm phần voice agent:
-   git checkout -b feature/voice-agent
-   ```
-3. **Commit rõ ràng:**
-   ```bash
-   git add .
-   git commit -m "feat: tich hop edge-tts tao giong doc tieng anh"
-   ```
-4. **Push lên GitHub và tạo Pull Request (PR):**
-   ```bash
-   git push origin feature/voice-agent
-   ```
-5. **LƯU Ý BẢO MẬT:** Tuyệt đối không commit file `.env`, file `client_secret.json` hoặc thư mục `credentials/tokens/` lên GitHub! (Đã được cấu hình trong `.gitignore`).
+Hệ thống được thiết kế độc quyền để tận dụng tối đa lợi thế của các tài khoản **Google Ultra (Google One AI Premium)** mà nhóm đang sở hữu:
+
+```mermaid
+graph TD
+    subgraph "Cụm Tài Khoản Google Ultra"
+        ACC1[Tài khoản Ultra 1\nKênh Tâm Lý Học]
+        ACC2[Tài khoản Ultra 2\nKênh Triết Lý & Stoic]
+        ACC3[Tài khoản Ultra 3\nKênh Khoa Học / Tech]
+    end
+
+    subgraph "Tài Nguyên Tối Ưu Hóa"
+        D1[(Google Drive 2TB #1)]
+        D2[(Google Drive 2TB #2)]
+        D3[(Google Drive 2TB #3)]
+        
+        Q1[YouTube Quota: 10,000/ngày]
+        Q2[YouTube Quota: 10,000/ngày]
+        Q3[YouTube Quota: 10,000/ngày]
+
+        POOL[Gemini API Key Rotation Pool\n(Tự động đổi key khi hết lượt)]
+    end
+
+    ACC1 --> D1
+    ACC1 --> Q1
+    ACC1 --> POOL
+
+    ACC2 --> D2
+    ACC2 --> Q2
+    ACC2 --> POOL
+
+    ACC3 --> D3
+    ACC3 --> Q3
+    ACC3 --> POOL
+```
+
+1. **Kho Lưu Trữ 6TB – 10TB (Multi-Drive Pool):**
+   * Mỗi kênh YouTube gắn liền với 1 Drive 2TB riêng. Video render xong tự động đẩy lên Drive và xóa file tạm trên máy tính.
+   * Thư mục Drive được **Share cho cả nhóm**, bất kỳ ai cũng có thể tải video về để đăng chéo lên TikTok / Facebook Reels.
+2. **Nhân Gấp Nhiều Lần Hạn Ngạch YouTube API (Quota Multiplication):**
+   * Mỗi tài khoản Ultra sở hữu riêng 10,000 units/ngày $\to$ Nhóm có tổng cộng **30,000 – 50,000 units/ngày** (thoải mái đăng 20–30 video/ngày).
+3. **Bộ Xoay Vòng Gemini API (KeyRotator):**
+   * Tất cả API Keys của các tài khoản được gộp thành 1 Pool (`GEMINI_API_KEYS`).
+   * Bot tự động đổi key nếu gặp giới hạn tốc độ (Rate Limit), đảm bảo không bao giờ bị nghẽn lệnh.
+4. **Phân Lập Rủi Ro (Risk Isolation):**
+   * Mỗi kênh nằm trên một tài khoản Google độc lập. Nếu 1 kênh gặp sự cố bản quyền thì các kênh khác hoàn toàn an toàn!
+
+---
+
+## 👥 3. MÔ HÌNH LÀM VIỆC NHÓM TRÊN TELEGRAM GROUP
+
+* **Không cần sửa code để thêm/bớt người:** Bạn chỉ cần thêm bạn của bạn vào Nhóm chat Telegram (Group Chat) là bạn ấy có thể gõ lệnh và duyệt video ngay.
+* **Quy trình phối hợp:**
+  1. Thành viên A gõ: `/idea 3 thói quen hủy hoại sự tự tin`.
+  2. Bot Gemini phản hồi kịch bản chi tiết ngay **giữa nhóm chat**.
+  3. Cả nhóm cùng đọc. Nếu cần sửa, chỉ cần reply tin nhắn của bot để góp ý.
+  4. Thành viên B bấm nút: `[🚀 Duyệt & Tạo Video]`.
+  5. Bot render xong $\to$ gửi file video `.mp4` và link xem Google Drive vào nhóm.
+  6. Bất kỳ ai cũng có thể bấm nút: `[⏰ Đặt Lịch 19:00]`.
+
+---
+
+## 📋 4. MA TRẬN PHÂN CHIA CÔNG VIỆC (TASK CHECKLIST)
+
+Hai bạn hãy thảo luận và điền tên người phụ trách vào chỗ `Phụ trách: @...`:
+
+### 🟢 Giai Đoạn 1: Cấu Trúc Nền Tảng & Telegram Workspace
+- [x] Khởi tạo mã nguồn, Git và liên kết GitHub Repository.
+- [x] Thiết lập cấu hình đa kênh (`config/channels.yaml`) và cụm Google Ultra.
+- [x] Tạo `KeyRotator` xoay vòng API Keys tự động cho Gemini.
+- [x] Xây dựng Telegram Bot hỗ trợ cả tin nhắn riêng và **Nhóm chat chung (Group)**.
+- [ ] **Task 1.1:** Tạo group Telegram của nhóm, add bot vào và test lệnh `/start`, `/channels`. *(Phụ trách: `@...`)*
+- [ ] **Task 1.2:** Lấy Telegram Group ID và cấu hình vào `ALLOWED_TELEGRAM_GROUPS`. *(Phụ trách: `@...`)*
+
+### 🔵 Giai Đoạn 2: Trí Tuệ Kịch Bản (Gemini) & Giọng Đọc (Edge-TTS)
+- [x] Viết `ContentAgent` sinh kịch bản chuẩn SEO + Hook 3 giây + phân cảnh JSON.
+- [x] Viết `VoiceAgent` tạo giọng đọc AI tiếng Anh bản xứ miễn phí bằng Edge-TTS.
+- [ ] **Task 2.1:** Thêm tính năng bot gửi file ghi âm mẫu giọng đọc (`.mp3`) vào Telegram để cả nhóm nghe thử trước khi dựng video. *(Phụ trách: `@...`)*
+- [ ] **Task 2.2:** Tinh chỉnh prompt của Gemini để kịch bản bám sát ngách Tâm lý học và Triết lý khắc kỷ (Stoicism). *(Phụ trách: `@...`)*
+
+### 🟡 Giai Đoạn 3: Dựng Video Tự Động & Phụ Đề Nổi Bật (FFmpeg & Pexels)
+- [x] Viết `MediaAgent` tự động tìm kiếm video dọc 9:16 từ Pexels API theo từ khóa cảnh.
+- [ ] **Task 3.1:** Cài đặt FFmpeg trên máy tính và kiểm tra kết nối qua `ffmpeg_helper.py`. *(Phụ trách: `@...`)*
+- [ ] **Task 3.2:** Hoàn thiện `video_agent.py`: Ghép các video nền Pexels khớp với thời lượng giọng đọc MP3. *(Phụ trách: `@...`)*
+- [ ] **Task 3.3:** Tự động tạo phụ đề chữ to nhảy từng từ (Phong cách Alex Hormozi) bằng `whisper-timestamped`. *(Phụ trách: `@...`)*
+- [ ] **Task 3.4:** Tự động lồng nhạc nền (BGM) kịch tính và giảm âm lượng khi có giọng nói (Audio Ducking). *(Phụ trách: `@...`)*
+
+### 🟣 Giai Đoạn 4: Lưu Trữ Google Drive 2TB & Đăng Tải Đa Kênh YouTube
+- [x] Viết khung `DriveAgent` tải video lên đúng Drive của tài khoản Google Ultra tương ứng.
+- [ ] **Task 4.1:** Tải file `client_secret.json` cho từng tài khoản Google Ultra đặt vào thư mục `credentials/accounts/account_X/`. *(Phụ trách: `@...`)*
+- [ ] **Task 4.2:** Viết hàm xác thực OAuth2 cho từng kênh YouTube và lưu token riêng biệt. *(Phụ trách: `@...`)*
+- [ ] **Task 4.3:** Hoàn thiện hàm upload video lên YouTube với trạng thái lên lịch (`publishAt`) theo khung giờ vàng của Mỹ (18h - 21h giờ VN). *(Phụ trách: `@...`)*
+- [ ] **Task 4.4:** Bot tự động gửi link chia sẻ Google Drive của video hoàn chỉnh vào group chat. *(Phụ trách: `@...`)*
+
+### 🔴 Giai Đoạn 5: Tự Động Hóa 100% & Mở Rộng
+- [ ] **Task 5.1:** Tự động quét tin tức trend từ Reddit/X mỗi sáng và gợi ý 3 chủ đề cho nhóm duyệt. *(Phụ trách: `@...`)*
+- [ ] **Task 5.2:** Tự động tạo ảnh bìa Thumbnail nổi bật bằng thư viện Pillow. *(Phụ trách: `@...`)*
+- [ ] **Task 5.3:** Đăng đồng thời video lên TikTok qua TikTok API hoặc Webhook. *(Phụ trách: `@...`)*
+
+---
+
+## 💡 5. KHU VỰC ĐỂ CỘNG SỰ / BẠN CỦA BẠN GHI THÊM Ý TƯỞNG
+
+> ✍️ **Dành cho bạn của Giang:** Bạn hãy mở file này trên máy tính của mình, viết thêm các ý tưởng hoặc đề xuất tính năng bạn muốn có vào bên dưới, sau đó `git commit` và `git push` lên GitHub nhé!
+
+### Ý Tưởng Mới Đề Xuất:
+1. *[Ý tưởng 1]: (Ví dụ: Thêm tính năng bot gửi thông báo khi một video trên kênh đạt mốc 10.000 views...)*
+2. *[Ý tưởng 2]: (Ví dụ: Tạo hiệu ứng âm thanh Sound Effects - SFX như tiếng "woosh", tiếng gõ chuông khi chuyển cảnh...)*
+3. *[Ý tưởng 3]: (Viết ý tưởng của bạn vào đây)*
+
+---
+
+## 🛠️ 6. HƯỚNG DẪN CỘNG TÁC QUA GIT CHO NHÓM
+
+```bash
+# 1. Kéo code mới nhất từ GitHub về máy
+git pull origin main
+
+# 2. Tạo nhánh riêng để làm tính năng (tránh đụng độ code)
+git checkout -b feature/ten-tinh-nang
+
+# 3. Làm xong thì lưu lại
+git add .
+git commit -m "feat: mo ta ngan gon tinh nang da lam"
+
+# 4. Đẩy lên GitHub
+git push origin feature/ten-tinh-nang
+```

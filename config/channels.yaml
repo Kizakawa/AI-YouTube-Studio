@@ -1,37 +1,51 @@
 # ==========================================
-# CẤU HÌNH QUẢN LÝ ĐA KÊNH YOUTUBE (MULTI-CHANNEL)
+# CẤU HÌNH QUẢN LÝ ĐA KÊNH & CỤM TÀI KHOẢN GOOGLE ULTRA
 # ==========================================
-# Mỗi kênh đại diện cho một thương hiệu hoặc một ngách (niche) riêng biệt.
-# Token xác thực OAuth2 của từng kênh sẽ được lưu độc lập trong credentials/tokens/
+# Mỗi kênh được phân bổ vào một Tài khoản Google Ultra riêng biệt:
+# 1. Hạn ngạch YouTube API độc lập (10,000 units/ngày/kênh).
+# 2. Sử dụng 2TB Google Drive của chính tài khoản đó để lưu trữ video.
+# 3. Phân lập rủi ro bản quyền giữa các kênh.
 
 channels:
   - id: "channel_psychology"
     name: "Dark Psychology & Mind Hacks"
     niche: "psychology"
     language: "en"
-    token_file: "credentials/tokens/channel_psychology.json"
+    google_account: "account_1" # Tài khoản Google Ultra 1
+    credentials:
+      client_secret: "credentials/accounts/account_1/client_secret.json"
+      youtube_token: "credentials/accounts/account_1/youtube_token.json"
+      drive_token: "credentials/accounts/account_1/drive_token.json"
+    drive_folder_id: "optional_google_drive_folder_id_here"
     default_tags:
       - "psychology facts"
       - "mindset"
       - "human behavior"
+      - "dark psychology"
       - "shorts"
     preferred_voice: "en-US-ChristopherNeural"
     schedule:
-      publish_hour_utc: 12 # 12:00 UTC = 19:00 Giờ Việt Nam (Giờ vàng Mỹ thức dậy)
+      publish_hour_utc: 12 # 12:00 UTC = 19:00 Giờ Việt Nam
       days: ["monday", "wednesday", "friday", "sunday"]
 
   - id: "channel_stoic"
     name: "Daily Stoic & Wisdom"
     niche: "philosophy"
     language: "en"
-    token_file: "credentials/tokens/channel_stoic.json"
+    google_account: "account_2" # Tài khoản Google Ultra 2
+    credentials:
+      client_secret: "credentials/accounts/account_2/client_secret.json"
+      youtube_token: "credentials/accounts/account_2/youtube_token.json"
+      drive_token: "credentials/accounts/account_2/drive_token.json"
+    drive_folder_id: "optional_google_drive_folder_id_here"
     default_tags:
       - "stoicism"
       - "marcus aurelius"
       - "philosophy"
       - "life wisdom"
+      - "discipline"
       - "shorts"
     preferred_voice: "en-US-GuyNeural"
     schedule:
-      publish_hour_utc: 14 # 21:00 Giờ Việt Nam
+      publish_hour_utc: 14 # 14:00 UTC = 21:00 Giờ Việt Nam
       days: ["tuesday", "thursday", "saturday"]

@@ -3,34 +3,34 @@ import logging
 from typing import Dict, Any, Optional
 import google.generativeai as genai
 from config.settings import settings
+from app.utils.key_rotator import KeyRotator
 
 logger = logging.getLogger(__name__)
 
 class ContentAgent:
-    """Agent chịu trách nhiệm lên ý tưởng, viết kịch bản giật gân (hook), phân cảnh và metadata SEO."""
+    """Agent chịu trách nhiệm lên ý tưởng, viết kịch bản giật gân (hook), phân cảnh và metadata SEO.
+    Đã tích hợp KeyRotator để xoay vòng API Keys qua nhiều tài khoản Google Ultra.
+    """
 
-    def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or settings.GEMINI_API_KEY
-        if self.api_key:
-            genai.configure(api_key=self.api_key)
+    def __init__(self):
+        keys = settings.get_gemini_keys_pool()
+        self.rotator = KeyRotator(keys)
+        self._configure_current_key()
+
+    def _configure_current_key(self):
+        current_key = self.rotator.get_key()
+        if current_key:
+            genai.configure(api_key=current_key)
             self.model = genai.GenerativeModel("gemini-1.5-flash")
         else:
             self.model = None
-            logger.warning("GEMINI_API_KEY chưa được cấu hình!")
+            logger.warning("Chưa có GEMINI_API_KEY nào được cấu hình trong pool!")
 
-    def generate_script(self, topic: str, channel_niche: str = "general", language: str = "en") -> Dict[str, Any]:
+    def generate_script(self, topic: str, channel_niche: str = "general", language: str = "en", max_retries: int = 3) -> Dict[str, Any]:
         """
-        Sinh kịch bản video Shorts (30-50 giây) có cấu trúc:
-        - title: Tiêu đề giật tít CTR cao
-        - hook: Câu mở đầu giữ chân 3s
-        - full_narration: Toàn bộ văn bản để đọc TTS
-        - scenes: Danh sách cảnh [ { text, visual_keyword, duration_seconds } ]
-        - tags: Bộ thẻ tags
-        - description: Mô tả video chuẩn SEO
+        Sinh kịch bản video Shorts (30-50 giây) có cấu trúc.
+        Tự động xoay sang key Google Ultra tiếp theo nếu gặp lỗi Rate Limit hoặc Quota.
         """
-        if not self.model:
-            raise ValueError("Chưa thiết lập GEMINI_API_KEY trong .env")
-
         prompt = f"""
 You are an elite YouTube Shorts scriptwriter specializing in viral content for the niche: '{channel_niche}'.
 Write a highly engaging 40-50 second script on the topic: '{topic}'.
@@ -57,8 +57,23 @@ Strict requirements:
   "description": "Engaging description with hashtags"
 }}
 """
-        response = self.model.generate_content(
-            prompt,
-            generation_config={"response_mime_type": "application/json"}
-        )
-        return json.loads(response.text)
+        for attempt in range(max_retries):
+            if not self.model:
+                raise ValueError("Không có API Key nào hoạt động trong pool!")
+
+            try:
+                response = self.model.generate_content(
+                    prompt,
+                    generation_config={"response_mime_type": "application/json"}
+                )
+                return json.loads(response.text)
+            except Exception as e:
+                logger.warning(f"Lỗi khi gọi Gemini API (lần {attempt + 1}): {e}")
+                # Xoay sang key tiếp theo trong pool của tài khoản Google Ultra khác
+                new_key = self.rotator.rotate_key()
+                if new_key:
+                    self._configure_current_key()
+                else:
+                    break
+
+        raise RuntimeError("Đã thử tất cả các API Key trong pool nhưng đều thất bại.")
