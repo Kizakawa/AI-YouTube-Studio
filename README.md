@@ -1,5 +1,9 @@
 # 🎬 AI-YouTube: Multi-Agent Video, Telegram Bot & Web Dashboard Studio
 
+> 📖 **DÀNH CHO NGƯỜI MỚI THAM GIA DỰ ÁN:**  
+> Toàn bộ ý tưởng kinh doanh, tầm nhìn và kiến trúc kỹ thuật chi tiết của hệ thống đã được đóng gói đầy đủ tại:  
+> 👉 **[Tài Liệu Toàn Tập: Đặc Tả Ý Tưởng & Kiến Trúc Hệ Thống (PROJECT_WHITEPAPER.md)](PROJECT_WHITEPAPER.md)**
+
 Hệ thống tự động hóa sản xuất video ngắn (Shorts) và quản lý đa kênh YouTube thông qua giao diện kép: **Telegram Bot (Điều khiển di động)** và **Web Dashboard (Giám sát thời gian thực)**, hỗ trợ tối ưu hóa cụm tài khoản **Google Ultra (Google One AI Premium)**.
 
 ---
@@ -23,7 +27,8 @@ Hệ thống tự động hóa sản xuất video ngắn (Shorts) và quản lý
 
 ```text
 Youtube/
-├── README.md                      # Tài liệu tổng quan & hướng dẫn cài đặt
+├── PROJECT_WHITEPAPER.md          # TÀI LIỆU ĐẶC TẢ TOÀN BỘ Ý TƯỞNG & KIẾN TRÚC DỰ ÁN
+├── README.md                      # Tài liệu tổng quan & hướng dẫn cài đặt nhanh
 ├── ROADMAP.md                     # Bản đồ lộ trình & Phân chia công việc cho team
 ├── requirements.txt               # Danh sách thư viện Python
 ├── .env.example                   # File mẫu cấu hình biến môi trường
