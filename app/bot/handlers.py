@@ -1,9 +1,10 @@
 import logging
+from datetime import datetime
 from telegram import Update
 from telegram.ext import ContextTypes
 from config.settings import settings
 from app.bot.keyboards import get_channel_selection_keyboard, get_video_review_keyboard
-from app.database.models import SessionLocal, User, VideoJob
+from app.database.models import SessionLocal, User, VideoJob, log_activity
 from app.agents.content_agent import ContentAgent
 
 logger = logging.getLogger(__name__)
@@ -12,7 +13,7 @@ content_agent = ContentAgent()
 def is_authorized(update: Update) -> bool:
     """
     Kiểm tra quyền truy cập:
-    - Nếu tin nhắn đến từ Nhóm Chat nằm trong ALLOWED_TELEGRAM_GROUPS: Cho phép tất cả thành viên trong nhóm!
+    - Nếu tin nhắn đến từ Nhóm Chat nằm trong ALLOWED_TELEGRAM_GROUPS: Cho phép tất cả thành viên trong nhóm.
     - Nếu tin nhắn riêng tư (Direct Message): Kiểm tra xem user_id có nằm trong ALLOWED_TELEGRAM_USERS không.
     """
     chat = update.effective_chat
@@ -22,7 +23,7 @@ def is_authorized(update: Update) -> bool:
     allowed_groups = settings.get_allowed_group_ids()
     if chat and chat.type in ["group", "supergroup"]:
         if not allowed_groups:
-            return True # Chưa cấu hình thì cho phép để test
+            return True
         return chat.id in allowed_groups
 
     # 2. Kiểm tra user cá nhân
@@ -32,7 +33,7 @@ def is_authorized(update: Update) -> bool:
     return user.id in allowed_users
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Xử lý lệnh /start (hỗ trợ cả Chat riêng và Nhóm chung)"""
+    """Xử lý lệnh /start"""
     if not is_authorized(update):
         await update.message.reply_text("⛔ Nhóm hoặc tài khoản này chưa được cấp quyền sử dụng bot.")
         return
@@ -41,7 +42,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     is_group = chat.type in ["group", "supergroup"]
 
-    # Đăng ký user vào database
     db = SessionLocal()
     db_user = db.query(User).filter(User.telegram_id == user.id).first()
     if not db_user:
@@ -50,19 +50,26 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             telegram_id=user.id,
             username=user.username,
             full_name=user.full_name,
-            role=role
+            role=role,
+            last_active=datetime.utcnow()
         )
         db.add(db_user)
         db.commit()
+    else:
+        db_user.last_active = datetime.utcnow()
+        db.commit()
+
+    # Ghi log hoạt động
+    log_activity(db, user.id, user.username, "START_BOT", f"Khởi động bot từ {chat.type} '{chat.title or user.first_name}'")
     db.close()
 
     scope_text = f"nhóm **{chat.title}**" if is_group else f"bạn **{user.first_name}**"
 
     welcome_text = (
         f"🎬 **AI YouTube Multi-Channel Studio đã sẵn sàng cho {scope_text}!**\n\n"
-        f"👥 **Cơ chế làm việc nhóm (Team Collaboration):**\n"
-        f"• Mọi thành viên trong nhóm đều có thể ra lệnh và góp ý kịch bản.\n"
-        f"• Tận dụng cụm tài khoản **Google Ultra (Drive 2TB + YouTube Quota x3)**.\n\n"
+        f"👥 **Cơ chế làm việc nhóm & Web Dashboard:**\n"
+        f"• Mọi thành viên cùng ra lệnh, kịch bản hiển thị công khai trong nhóm.\n"
+        f"• Theo dõi toàn bộ hoạt động của admin qua Web Dashboard thời gian thực!\n\n"
         f"📌 **Các lệnh chính:**\n"
         f"• `/channels` - Xem và chuyển đổi kênh YouTube muốn sản xuất\n"
         f"• `/idea <chủ đề>` - Lên kịch bản AI, chia phân cảnh và từ khóa Pexels\n"
@@ -97,7 +104,10 @@ async def channel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db_user = db.query(User).filter(User.telegram_id == user.id).first()
         if db_user:
             db_user.active_channel_id = channel_id
+            db_user.last_active = datetime.utcnow()
             db.commit()
+
+        log_activity(db, user.id, user.username, "CHANGE_CHANNEL", f"Chuyển kênh làm việc sang '{channel_id}'", channel_id=channel_id)
         db.close()
 
         await query.message.reply_text(
@@ -122,11 +132,17 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = SessionLocal()
     db_user = db.query(User).filter(User.telegram_id == user.id).first()
     channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_psychology"
+    if db_user:
+        db_user.last_active = datetime.utcnow()
+        db.commit()
+
+    # Ghi log hoạt động
+    log_activity(db, user.id, user.username, "CMD_IDEA", f"Yêu cầu lên ý tưởng video: '{topic}'", channel_id=channel_id)
     db.close()
 
     status_msg = await update.message.reply_text(
         f"🤖 **{user.first_name}** vừa yêu cầu lên ý tưởng: *\"{topic}\"*\n"
-        f"Đang kích hoạt Gemini AI (Key Rotation Pool) để tạo kịch bản...",
+        f"Đang kích hoạt Gemini AI (Key Rotation Pool) để tạo kịch bản cho kênh `{channel_id}`...",
         parse_mode="Markdown"
     )
 
@@ -147,6 +163,8 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.add(job)
         db.commit()
         job_id = job.id
+
+        log_activity(db, user.id, user.username, "SCRIPT_CREATED", f"Kịch bản #{job_id} đã hoàn thành: '{script_data.get('title')}'", channel_id=channel_id)
         db.close()
 
         # Soạn nội dung thông báo cho nhóm
@@ -183,6 +201,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• Tổng số video trong hệ thống: `{total_jobs}`\n"
         f"• Kịch bản đang chờ duyệt/render: `{ready_jobs}`\n"
         f"• Kho Google Drive 2TB: Sẵn sàng 🟢\n"
-        f"• Cụm Google Ultra Quota: Đang hoạt động 🟢"
+        f"• Cụm Google Ultra Quota: Đang hoạt động 🟢\n"
+        f"• Web Dashboard: Đang trực tuyến tại cổng `http://localhost:8000` 🌐"
     )
     await update.message.reply_text(text, parse_mode="Markdown")

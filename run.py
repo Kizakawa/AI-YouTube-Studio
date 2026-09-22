@@ -1,4 +1,5 @@
 import sys
+import threading
 import logging
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler
 from config.settings import settings
@@ -13,47 +14,68 @@ logging.basicConfig(
 )
 logger = logging.getLogger("AI-YouTube")
 
+def run_fastapi_server():
+    """Khởi động Web Dashboard bằng Uvicorn trong background thread"""
+    try:
+        import uvicorn
+        print("🌐 [Web Dashboard] Đang chạy tại địa chỉ: http://127.0.0.1:8000")
+        uvicorn.run("app.web.server:app", host="0.0.0.0", port=8000, log_level="warning")
+    except ImportError:
+        print("⚠️ [Web Dashboard] Chưa cài đặt uvicorn. Hãy chạy 'pip install uvicorn fastapi' để bật Dashboard.")
+    except Exception as e:
+        print(f"❌ [Web Dashboard] Lỗi khi chạy web server: {e}")
+
 def main():
-    print("=" * 65)
-    print("🚀 KHỞI ĐỘNG HỆ THỐNG AI YOUTUBE MULTI-CHANNEL & TEAM COLLABORATION")
-    print("=" * 65)
+    print("=" * 70)
+    print("🚀 KHỞI ĐỘNG HỆ THỐNG AI YOUTUBE STUDIO: TELEGRAM BOT & WEB DASHBOARD")
+    print("=" * 70)
 
     # 1. Khởi tạo Database
     print("[1/4] Đang khởi tạo SQLite Database...")
     init_db()
     print("   -> Database đã sẵn sàng!")
 
-    # 2. Kiểm tra FFmpeg
-    print("[2/4] Kiểm tra công cụ FFmpeg...")
+    # 2. Khởi động Web Dashboard song song
+    print("[2/4] Khởi động Web Dashboard Server...")
+    web_thread = threading.Thread(target=run_fastapi_server, daemon=True)
+    web_thread.start()
+
+    # 3. Kiểm tra FFmpeg & API Keys
+    print("[3/4] Kiểm tra công cụ & Tài nguyên...")
     if is_ffmpeg_installed():
         print(f"   -> FFmpeg OK: {get_ffmpeg_version()}")
     else:
-        print("   -> [CẢNH BÁO] Chưa tìm thấy FFmpeg trong PATH. Cần cài đặt để render video.")
+        print("   -> [CẢNH BÁO] Chưa tìm thấy FFmpeg trong PATH.")
 
-    # 3. Kiểm tra cụm API Keys
-    print("[3/4] Kiểm tra tài khoản Google Ultra & API Pool...")
     keys = settings.get_gemini_keys_pool()
-    print(f"   -> Đã nạp {len(keys)} Gemini API Key(s) vào bộ xoay vòng (KeyRotator).")
+    print(f"   -> Cụm Google Ultra: Đã nạp {len(keys)} Gemini API Key(s) vào pool.")
 
     # 4. Kiểm tra cấu hình Telegram Bot
     print("[4/4] Khởi động Telegram Bot Workspace...")
     if not settings.TELEGRAM_BOT_TOKEN:
-        print("   -> [LỖI] TELEGRAM_BOT_TOKEN chưa được thiết lập trong file .env!")
-        print("   -> Hãy copy file .env.example thành .env và điền Token của bạn.")
-        print("=" * 65)
+        print("   -> [LƯU Ý] TELEGRAM_BOT_TOKEN chưa có trong file .env!")
+        print("   -> Web Dashboard vẫn hoạt động bình thường tại http://127.0.0.1:8000")
+        print("   -> Điền Token vào file .env để kích hoạt thêm Telegram Bot.")
+        print("=" * 70)
+        # Giữ process sống để Web Dashboard tiếp tục chạy
+        try:
+            web_thread.join()
+        except KeyboardInterrupt:
+            print("\n👋 Đã dừng Web Dashboard.")
         return
 
     app = ApplicationBuilder().token(settings.TELEGRAM_BOT_TOKEN).build()
 
-    # Đăng ký các lệnh
+    # Đăng ký các lệnh Telegram
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("channels", channels_command))
     app.add_handler(CommandHandler("idea", idea_command))
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CallbackQueryHandler(channel_callback, pattern=r"^select_channel:"))
 
-    print("🤖 Bot đang chạy chế độ Polling (hỗ trợ cả Chat riêng & Nhóm Telegram)...")
-    print("=" * 65)
+    print("🤖 Bot đang chạy Polling... Cả nhóm có thể ra lệnh từ Telegram hoặc xem Web!")
+    print("👉 Mở trình duyệt xem Dashboard: http://127.0.0.1:8000")
+    print("=" * 70)
     app.run_polling()
 
 if __name__ == "__main__":

@@ -8,8 +8,9 @@
 ## 🎯 1. TỔNG QUAN TẦM NHÌN DỰ ÁN
 
 Mục tiêu của dự án là xây dựng một **"Cỗ máy sản xuất nội dung tự động"** nhắm vào thị trường **Mỹ và Quốc tế (Tiếng Anh)** với doanh thu quảng cáo (RPM) cao gấp 5–10 lần so với thị trường nội địa:
+* **Giao diện kép (Dual Interface):** Điều khiển di động tức thì qua **Telegram Bot Nhóm** + Giám sát trực quan thời gian thực qua **Web Dashboard** (`http://localhost:8000`).
+* **Theo dõi đóng góp của từng thành viên:** Web Dashboard ghi lại toàn bộ lịch sử ai vừa ra lệnh gì trên Telegram, xếp hạng ai tạo nhiều kịch bản nhất.
 * **Không cần lộ mặt (Faceless Channels):** Dùng AI viết kịch bản, giọng đọc bản xứ và footage bản quyền miễn phí.
-* **Cộng tác nhóm qua Telegram Group:** Mọi thành viên cùng thảo luận kịch bản, xem trước video và bấm nút duyệt công khai trong nhóm chat.
 * **Tự động đăng & Đặt lịch:** Tận dụng tính năng `publishAt` của YouTube để lên lịch phát sóng cả tuần mà không cần bật máy tính 24/24.
 
 ---
@@ -20,6 +21,15 @@ Hệ thống được thiết kế độc quyền để tận dụng tối đa l
 
 ```mermaid
 graph TD
+    subgraph "Hai Cổng Điều Khiển & Giám Sát"
+        TG[Telegram Bot Nhóm\nRa lệnh /idea, /channels, duyệt bài]
+        WEB[FastAPI Web Dashboard\nTheo dõi thành viên, kênh & tiến độ]
+    end
+
+    subgraph "Cơ Sở Dữ Liệu Trung Tâm"
+        DB[(SQLite Database\nLưu Users, VideoJobs, ActivityLogs)]
+    end
+
     subgraph "Cụm Tài Khoản Google Ultra"
         ACC1[Tài khoản Ultra 1\nKênh Tâm Lý Học]
         ACC2[Tài khoản Ultra 2\nKênh Triết Lý & Stoic]
@@ -37,6 +47,9 @@ graph TD
 
         POOL[Gemini API Key Rotation Pool\n(Tự động đổi key khi hết lượt)]
     end
+
+    TG <--> DB
+    WEB <--> DB
 
     ACC1 --> D1
     ACC1 --> Q1
@@ -64,16 +77,15 @@ graph TD
 
 ---
 
-## 👥 3. MÔ HÌNH LÀM VIỆC NHÓM TRÊN TELEGRAM GROUP
+## 👥 3. MÔ HÌNH LÀM VIỆC NHÓM TRÊN TELEGRAM & WEB DASHBOARD
 
 * **Không cần sửa code để thêm/bớt người:** Bạn chỉ cần thêm bạn của bạn vào Nhóm chat Telegram (Group Chat) là bạn ấy có thể gõ lệnh và duyệt video ngay.
-* **Quy trình phối hợp:**
-  1. Thành viên A gõ: `/idea 3 thói quen hủy hoại sự tự tin`.
-  2. Bot Gemini phản hồi kịch bản chi tiết ngay **giữa nhóm chat**.
-  3. Cả nhóm cùng đọc. Nếu cần sửa, chỉ cần reply tin nhắn của bot để góp ý.
-  4. Thành viên B bấm nút: `[🚀 Duyệt & Tạo Video]`.
-  5. Bot render xong $\to$ gửi file video `.mp4` và link xem Google Drive vào nhóm.
-  6. Bất kỳ ai cũng có thể bấm nút: `[⏰ Đặt Lịch 19:00]`.
+* **Theo dõi trên Web Dashboard (`http://localhost:8000`):**
+  * **Tab 1 - Nhật ký hoạt động:** Cập nhật thời gian thực từng câu lệnh của các thành viên.
+  * **Tab 2 - Bảng đóng góp (Leaderboard):** Thống kê ai là người tích cực nhất nhóm.
+  * **Tab 3 - Ma trận Kênh & Ultra:** Trực quan hóa kênh nào thuộc tài khoản nào, tình trạng Drive 2TB.
+  * **Tab 4 - Video Pipeline:** Xem kịch bản, link Drive và trạng thái xuất bản.
+* **Chia sẻ từ xa cho nhóm:** Dùng lệnh `cloudflared tunnel --url http://localhost:8000` để chia sẻ link web bảo mật cho bạn bè vào xem.
 
 ---
 
@@ -81,13 +93,16 @@ graph TD
 
 Hai bạn hãy thảo luận và điền tên người phụ trách vào chỗ `Phụ trách: @...`:
 
-### 🟢 Giai Đoạn 1: Cấu Trúc Nền Tảng & Telegram Workspace
+### 🟢 Giai Đoạn 1: Nền Tảng, Telegram Group & Web Dashboard
 - [x] Khởi tạo mã nguồn, Git và liên kết GitHub Repository.
 - [x] Thiết lập cấu hình đa kênh (`config/channels.yaml`) và cụm Google Ultra.
 - [x] Tạo `KeyRotator` xoay vòng API Keys tự động cho Gemini.
 - [x] Xây dựng Telegram Bot hỗ trợ cả tin nhắn riêng và **Nhóm chat chung (Group)**.
-- [ ] **Task 1.1:** Tạo group Telegram của nhóm, add bot vào và test lệnh `/start`, `/channels`. *(Phụ trách: `@...`)*
+- [x] **Xây dựng Web Dashboard thời gian thực (FastAPI + Vanilla CSS Dark Mode).**
+- [x] Bảng lưu vết nhật ký (`ActivityLog`) ghi lại từng hành động của thành viên.
+- [ ] **Task 1.1:** Tạo group Telegram của nhóm, add bot vào và test lệnh `/start`, `/channels`, `/idea`. *(Phụ trách: `@...`)*
 - [ ] **Task 1.2:** Lấy Telegram Group ID và cấu hình vào `ALLOWED_TELEGRAM_GROUPS`. *(Phụ trách: `@...`)*
+- [ ] **Task 1.3:** Chạy `python run.py`, mở trình duyệt `http://localhost:8000` kiểm tra Dashboard. *(Phụ trách: `@...`)*
 
 ### 🔵 Giai Đoạn 2: Trí Tuệ Kịch Bản (Gemini) & Giọng Đọc (Edge-TTS)
 - [x] Viết `ContentAgent` sinh kịch bản chuẩn SEO + Hook 3 giây + phân cảnh JSON.
@@ -107,7 +122,7 @@ Hai bạn hãy thảo luận và điền tên người phụ trách vào chỗ `
 - [ ] **Task 4.1:** Tải file `client_secret.json` cho từng tài khoản Google Ultra đặt vào thư mục `credentials/accounts/account_X/`. *(Phụ trách: `@...`)*
 - [ ] **Task 4.2:** Viết hàm xác thực OAuth2 cho từng kênh YouTube và lưu token riêng biệt. *(Phụ trách: `@...`)*
 - [ ] **Task 4.3:** Hoàn thiện hàm upload video lên YouTube với trạng thái lên lịch (`publishAt`) theo khung giờ vàng của Mỹ (18h - 21h giờ VN). *(Phụ trách: `@...`)*
-- [ ] **Task 4.4:** Bot tự động gửi link chia sẻ Google Drive của video hoàn chỉnh vào group chat. *(Phụ trách: `@...`)*
+- [ ] **Task 4.4:** Bot tự động gửi link chia sẻ Google Drive của video hoàn chỉnh vào group chat và cập nhật lên Dashboard. *(Phụ trách: `@...`)*
 
 ### 🔴 Giai Đoạn 5: Tự Động Hóa 100% & Mở Rộng
 - [ ] **Task 5.1:** Tự động quét tin tức trend từ Reddit/X mỗi sáng và gợi ý 3 chủ đề cho nhóm duyệt. *(Phụ trách: `@...`)*

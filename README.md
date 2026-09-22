@@ -1,18 +1,21 @@
-# 🎬 AI-YouTube: Multi-Agent Video & Channel Automation
+# 🎬 AI-YouTube: Multi-Agent Video, Telegram Bot & Web Dashboard Studio
 
-Hệ thống tự động hóa sản xuất video ngắn (Shorts) và quản lý đa kênh YouTube thông qua giao diện điều khiển từ xa bằng **Telegram Bot**, hỗ trợ **nhiều tài khoản cộng tác** và **nhiều kênh YouTube mục tiêu**.
+Hệ thống tự động hóa sản xuất video ngắn (Shorts) và quản lý đa kênh YouTube thông qua giao diện kép: **Telegram Bot (Điều khiển di động)** và **Web Dashboard (Giám sát thời gian thực)**, hỗ trợ tối ưu hóa cụm tài khoản **Google Ultra (Google One AI Premium)**.
 
 ---
 
 ## 🌟 Tính Năng Nổi Bật
 
-* **📱 Điều Khiển Từ Xa Bằng Telegram:** Ra lệnh kịch bản, xem trước video và duyệt đăng bài ngay trên điện thoại di động.
-* **👥 Hỗ Trợ Đa Người Dùng (Multi-User):** Bạn và cộng sự có thể cùng đăng nhập bot với quyền `admin` hoặc `creator`, mỗi người có phiên làm việc riêng.
-* **📺 Quản Lý Đa Kênh YouTube (Multi-Channel):** Đăng tải và lên lịch video vào nhiều kênh khác nhau từ cùng một hệ sinh thái (quản lý token độc lập).
+* **🌐 Web Dashboard Quản Trị Trực Quan (FastAPI + Vanilla CSS):**
+  * **Nhật ký thời gian thực (Live Activity Feed):** Theo dõi tức thì ai vừa gõ lệnh gì trên Telegram.
+  * **Bảng xếp hạng đóng góp (Team Leaderboard):** Thống kê số lượng kịch bản/video từng Admin và Creator đã tạo.
+  * **Ma trận Cụm Google Ultra & Kênh YouTube:** Kiểm tra trạng thái token, kho Drive 2TB và hạn ngạch API.
+  * **Tiến độ sản xuất (Pipeline Manager):** Theo dõi từng video từ bản nháp đến lúc công chiếu.
+* **📱 Không Gian Làm Việc Nhóm Telegram (Group Workspace):** Mọi thành viên cùng ra lệnh bằng `/idea`, cùng đọc kịch bản và cùng bấm nút duyệt video.
+* **⚡ Cụm Tài Khoản Google Ultra:** Tự động xoay vòng API Keys (`KeyRotator`), khai thác kho lưu trữ 6TB–10TB Google Drive (`DriveAgent`) và nhân hạn ngạch YouTube API (30,000–50,000 units/ngày).
 * **🧠 Kịch Bản AI Chuẩn CTR (Gemini API):** Tự động tạo kịch bản 30-50s với câu Hook 3 giây đầu giữ chân người xem.
-* **🗣️ Giọng Đọc Tự Nhiên (Edge-TTS):** Giọng đọc bản xứ tiếng Anh (hoặc tiếng Việt) mượt mà, hoàn toàn miễn phí.
-* **🎞️ Tự Động Ghép Media & Phụ Đề (Pexels & FFmpeg):** Tự động tải cảnh quay minh họa, lồng tiếng, chèn phụ đề động và nhạc nền.
-* **⏰ Đặt Lịch Tự Động (YouTube Data API v3):** Sử dụng tính năng `publishAt` của YouTube để đặt lịch phát sóng cả tuần mà không cần treo máy.
+* **🗣️ Giọng Đọc Bản Xứ (Edge-TTS):** Giọng đọc AI tiếng Anh/tiếng Việt tự nhiên, hoàn toàn miễn phí.
+* **⏰ Đặt Lịch Tự Động (YouTube Data API v3):** Sử dụng tính năng `publishAt` của YouTube để đặt lịch phát sóng cả tuần mà không cần bật máy tính 24/24.
 
 ---
 
@@ -20,37 +23,40 @@ Hệ thống tự động hóa sản xuất video ngắn (Shorts) và quản lý
 
 ```text
 Youtube/
-├── .gitignore                     # Bỏ qua venv, file tạm, credentials, token
 ├── README.md                      # Tài liệu tổng quan & hướng dẫn cài đặt
-├── ROADMAP.md                     # Kế hoạch tính năng & Phân chia công việc cho team
+├── ROADMAP.md                     # Bản đồ lộ trình & Phân chia công việc cho team
 ├── requirements.txt               # Danh sách thư viện Python
-├── .env.example                   # File mẫu biến môi trường
-├── run.py                         # Điểm khởi chạy ứng dụng
+├── .env.example                   # File mẫu cấu hình biến môi trường
+├── run.py                         # Khởi chạy song song Telegram Bot & Web Dashboard
 │
 ├── config/                        # Cấu hình hệ thống
-│   ├── settings.py                # Quản lý cấu hình & phân quyền
-│   └── channels.yaml              # Cấu hình danh sách các kênh YouTube
+│   ├── settings.py                # Quản lý cấu hình, nạp pool API keys
+│   └── channels.yaml              # Cấu hình cụm kênh và tài khoản Google Ultra
 │
-├── credentials/                   # Thư mục chứa khóa bảo mật (Không push lên Git)
-│   ├── client_secret.json         # File OAuth 2.0 từ Google Cloud Console
-│   └── tokens/                    # Token đăng nhập của từng kênh
+├── credentials/                   # Thư mục chứa khóa bảo mật (Không push Git)
+│   └── accounts/                  # Thư mục token riêng của từng tài khoản Ultra
 │
 ├── app/                           # Mã nguồn chính
 │   ├── agents/                    # Các AI Agent chuyên môn
-│   │   ├── content_agent.py       # Viết kịch bản & SEO (Gemini)
+│   │   ├── content_agent.py       # Viết kịch bản & SEO (Gemini KeyRotator)
 │   │   ├── voice_agent.py         # Giọng đọc AI (Edge-TTS)
 │   │   ├── media_agent.py         # Tải video/ảnh nền (Pexels API)
 │   │   ├── video_agent.py         # Dựng video & phụ đề (FFmpeg/MoviePy)
+│   │   ├── drive_agent.py         # Quản lý kho Google Drive 2TB
 │   │   └── publisher_agent.py     # Upload & Đặt lịch (YouTube API)
 │   │
-│   ├── bot/                       # Giao diện Telegram Bot
-│   │   ├── handlers.py            # Xử lý lệnh (/start, /channels, /idea...)
+│   ├── bot/                       # Giao diện Telegram Bot Nhóm
+│   │   ├── handlers.py            # Xử lý lệnh (/start, /channels, /idea...) & ghi ActivityLog
 │   │   └── keyboards.py           # Nút bấm tương tác trên Telegram
 │   │
 │   ├── database/                  # Quản lý cơ sở dữ liệu SQLite
-│   │   └── models.py              # Bảng Users, VideoJobs...
+│   │   └── models.py              # Bảng Users, VideoJobs, ActivityLogs
 │   │
-│   └── utils/                     # Công cụ hỗ trợ (FFmpeg helper...)
+│   ├── web/                       # Giao diện Web Dashboard thời gian thực
+│   │   ├── server.py              # FastAPI Backend REST APIs
+│   │   └── static/                # Giao diện Dark Mode (HTML, CSS, JS)
+│   │
+│   └── utils/                     # Công cụ hỗ trợ (KeyRotator, FFmpeg...)
 │
 ├── assets/                        # Tài nguyên dùng chung (Fonts, Audio BGM)
 └── storage/                       # Lưu trữ file tạm và video thành phẩm
@@ -58,7 +64,7 @@ Youtube/
 
 ---
 
-## 🚀 Hướng Dẫn Cài Đặt Cho Nhóm
+## 🚀 Hướng Dẫn Cài Đặt & Khởi Động
 
 ### Bước 1: Clone Repository
 ```bash
@@ -66,9 +72,8 @@ git clone https://github.com/Giangvv1n/AI-youtube.git
 cd AI-youtube
 ```
 
-### Bước 2: Tạo Môi Trường Ảo & Cài Đặt Thư Viện
+### Bước 2: Tạo Môi Trường Ảo & Cài Thư Viện
 ```bash
-# Tạo môi trường ảo
 python -m venv venv
 
 # Kích hoạt trên Windows:
@@ -78,24 +83,32 @@ python -m venv venv
 pip install -r requirements.txt
 ```
 
-### Bước 3: Cài Đặt FFmpeg
-1. Tải bản build FFmpeg cho Windows tại [gyan.dev](https://www.gyan.dev/ffmpeg/builds/).
-2. Giải nén và thêm thư mục `bin` vào biến môi trường `PATH` của Windows.
-3. Kiểm tra bằng lệnh: `ffmpeg -version`.
-
-### Bước 4: Thiết Lập Biến Môi Trường (.env)
+### Bước 3: Cấu Hình File .env
 Sao chép `.env.example` thành `.env`:
 ```bash
 copy .env.example .env
 ```
 Điền các thông tin:
-* `TELEGRAM_BOT_TOKEN`: Lấy từ bot `@BotFather` trên Telegram.
-* `ALLOWED_TELEGRAM_USERS`: Danh sách Telegram User ID của bạn và bạn của bạn (ví dụ: `123456789:admin,987654321:creator`). Lấy ID bằng cách chat với bot `@userinfobot`.
-* `GEMINI_API_KEY`: Lấy tại [aistudio.google.com](https://aistudio.google.com).
-* `PEXELS_API_KEY`: Lấy tại [pexels.com/api](https://www.pexels.com/api/).
+* `TELEGRAM_BOT_TOKEN`: Token bot từ `@BotFather`.
+* `ALLOWED_TELEGRAM_GROUPS`: ID nhóm chat Telegram của bạn và nhóm bạn.
+* `GEMINI_API_KEYS`: Danh sách các API Key từ cụm tài khoản Google Ultra, phân cách bởi dấu phẩy.
+* `PEXELS_API_KEY`: Lấy miễn phí tại [pexels.com/api](https://www.pexels.com/api/).
 
-### Bước 5: Chạy Ứng Dụng
+### Bước 4: Chạy Hệ Thống
 ```bash
 python run.py
 ```
-Sau khi chạy, hãy mở Telegram và gửi `/start` cho con bot của bạn để bắt đầu!
+* **Web Dashboard:** Mở trình duyệt truy cập: `http://localhost:8000`
+* **Telegram Bot:** Mở Telegram và gửi `/start` hoặc `/idea` trong nhóm chat của bạn!
+
+---
+
+### 🌐 Cách Chia Sẻ Web Dashboard Cho Bạn Bè Xem Từ Xa (Miễn Phí 100%)
+
+Nếu bạn muốn bạn bè ở nơi khác cùng xem Dashboard mà không cần ngồi chung mạng Wi-Fi:
+1. Tải công cụ **Cloudflare Tunnel (`cloudflared`)** miễn phí.
+2. Chạy lệnh:
+   ```bash
+   cloudflared tunnel --url http://localhost:8000
+   ```
+3. Cloudflare sẽ cấp ngay một đường link HTTPS công khai (ví dụ: `https://something.trycloudflare.com`) để bạn gửi cho bạn bè truy cập tức thì!

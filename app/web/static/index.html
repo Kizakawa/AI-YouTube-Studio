@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI YouTube Studio - Dashboard Quản Lý & Giám Sát Nhóm</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <!-- CSS -->
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+        <div class="brand-container">
+            <div class="brand-icon">🎬</div>
+            <div class="brand-text">
+                <h1>AI YOUTUBE</h1>
+                <span>STUDIO HUB</span>
+            </div>
+        </div>
+
+        <ul class="nav-menu">
+            <li class="nav-item active" data-tab="activity" id="nav-activity">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                <span>Hoạt Động & Lệnh Bot</span>
+            </li>
+            <li class="nav-item" data-tab="members" id="nav-members">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                <span>Đóng Góp Thành Viên</span>
+            </li>
+            <li class="nav-item" data-tab="channels" id="nav-channels">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                <span>Cụm Kênh & Google Ultra</span>
+            </li>
+            <li class="nav-item" data-tab="pipeline" id="nav-pipeline">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                <span>Tiến Độ Kịch Bản & Video</span>
+            </li>
+        </ul>
+
+        <div class="sidebar-footer">
+            <div class="system-status-badge">
+                <div class="status-dot"></div>
+                <span>Hệ Thống Trực Tuyến 24/7</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- MAIN WRAPPER -->
+    <main class="main-wrapper">
+        <!-- TOP HEADER -->
+        <header class="top-header">
+            <div class="header-title">
+                <h2>Trung Tâm Giám Sát & Điều Khiển</h2>
+                <p>Theo dõi hoạt động của các thành viên qua Telegram và cụm tài khoản Google Ultra</p>
+            </div>
+            <div class="header-actions">
+                <span id="last-sync-time" style="font-size: 12px; color: var(--text-muted);">Đồng bộ: Đang tải...</span>
+                <button class="btn-refresh" id="btn-refresh">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    Làm Mới
+                </button>
+            </div>
+        </header>
+
+        <!-- CONTENT BODY -->
+        <div class="content-body">
+            <!-- STATS CARDS -->
+            <section class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-label">Tổng Số Video</span>
+                        <div class="stat-icon icon-blue">🎬</div>
+                    </div>
+                    <div class="stat-value" id="stat-total-videos">-</div>
+                    <div class="stat-subtext">Đã xuất bản: <span id="stat-published" style="color: var(--accent-green); font-weight: 600;">-</span></div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-label">Kênh YouTube Đang Chạy</span>
+                        <div class="stat-icon icon-purple">📺</div>
+                    </div>
+                    <div class="stat-value" id="stat-channels">-</div>
+                    <div class="stat-subtext">Cụm Ultra: <span id="stat-gemini-keys" style="color: var(--accent-purple);">-</span></div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-label">Thành Viên Hoạt Động</span>
+                        <div class="stat-icon icon-green">👥</div>
+                    </div>
+                    <div class="stat-value" id="stat-members">-</div>
+                    <div class="stat-subtext">Admin & Creator Telegram</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-label">Kho Google Drive 2TB</span>
+                        <div class="stat-icon icon-amber">☁️</div>
+                    </div>
+                    <div class="stat-value" id="stat-drive-storage" style="font-size: 26px;">-</div>
+                    <div class="stat-subtext">Tự động đồng bộ & dọn dẹp</div>
+                </div>
+            </section>
+
+            <!-- TAB 1: HOẠT ĐỘNG & LỆNH BOT -->
+            <section class="tab-content active" id="tab-activity">
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h3>⚡ Nhật Ký Lệnh Telegram Thời Gian Thực</h3>
+                        <span class="badge badge-blue">Live Feed</span>
+                    </div>
+                    <div class="activity-feed" id="activity-feed-container">
+                        <!-- Tự động đổ dữ liệu bằng JS -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 2: ĐÓNG GÓP THÀNH VIÊN -->
+            <section class="tab-content" id="tab-members">
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h3>🏆 Bảng Đóng Góp Thành Viên (Admin & Creator)</h3>
+                        <span class="badge badge-purple">Team Leaderboard</span>
+                    </div>
+                    <table class="custom-table">
+                        <thead>
+                            <tr>
+                                <th>Hạng</th>
+                                <th>Thành Viên</th>
+                                <th>Vai Trò</th>
+                                <th>Kênh Đang Chọn</th>
+                                <th>Video Đã Tạo</th>
+                                <th>Hoạt Động Gần Nhất</th>
+                            </tr>
+                        </thead>
+                        <tbody id="members-table-body">
+                            <!-- Tự động đổ dữ liệu bằng JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- TAB 3: CỤM KÊNH & GOOGLE ULTRA -->
+            <section class="tab-content" id="tab-channels">
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h3>📺 Ma Trận Quản Lý Đa Kênh & Cụm Tài Khoản Google Ultra</h3>
+                        <span class="badge badge-green">Multi-Account Pool</span>
+                    </div>
+                    <div class="channel-grid" id="channels-container">
+                        <!-- Tự động đổ dữ liệu bằng JS -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 4: TIẾN ĐỘ VIDEO & KỊCH BẢN -->
+            <section class="tab-content" id="tab-pipeline">
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h3>🎞️ Danh Sách Video & Kịch Bản Trong Hệ Thống</h3>
+                        <span class="badge badge-amber">Pipeline Status</span>
+                    </div>
+                    <table class="custom-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Tiêu Đề / Chủ Đề</th>
+                                <th>Kênh Mục Tiêu</th>
+                                <th>Người Tạo</th>
+                                <th>Trạng Thái</th>
+                                <th>Ngày Tạo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="videos-table-body">
+                            <!-- Tự động đổ dữ liệu bằng JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- SCRIPTS -->
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
