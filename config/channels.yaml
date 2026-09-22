@@ -1,0 +1,37 @@
+# ==========================================
+# CẤU HÌNH QUẢN LÝ ĐA KÊNH YOUTUBE (MULTI-CHANNEL)
+# ==========================================
+# Mỗi kênh đại diện cho một thương hiệu hoặc một ngách (niche) riêng biệt.
+# Token xác thực OAuth2 của từng kênh sẽ được lưu độc lập trong credentials/tokens/
+
+channels:
+  - id: "channel_psychology"
+    name: "Dark Psychology & Mind Hacks"
+    niche: "psychology"
+    language: "en"
+    token_file: "credentials/tokens/channel_psychology.json"
+    default_tags:
+      - "psychology facts"
+      - "mindset"
+      - "human behavior"
+      - "shorts"
+    preferred_voice: "en-US-ChristopherNeural"
+    schedule:
+      publish_hour_utc: 12 # 12:00 UTC = 19:00 Giờ Việt Nam (Giờ vàng Mỹ thức dậy)
+      days: ["monday", "wednesday", "friday", "sunday"]
+
+  - id: "channel_stoic"
+    name: "Daily Stoic & Wisdom"
+    niche: "philosophy"
+    language: "en"
+    token_file: "credentials/tokens/channel_stoic.json"
+    default_tags:
+      - "stoicism"
+      - "marcus aurelius"
+      - "philosophy"
+      - "life wisdom"
+      - "shorts"
+    preferred_voice: "en-US-GuyNeural"
+    schedule:
+      publish_hour_utc: 14 # 21:00 Giờ Việt Nam
+      days: ["tuesday", "thursday", "saturday"]

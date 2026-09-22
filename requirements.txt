@@ -1,0 +1,27 @@
+# Telegram Bot Framework (Async)
+python-telegram-bot>=21.0
+
+# AI & LLM (Gemini API)
+google-generativeai>=0.8.0
+
+# Text-To-Speech (Edge-TTS)
+edge-tts>=6.1.10
+
+# Video & Media Processing
+moviepy>=1.0.3
+pillow>=10.0.0
+requests>=2.31.0
+
+# YouTube Data API v3 & Google OAuth
+google-api-python-client>=2.100.0
+google-auth-httplib2>=0.2.0
+google-auth-oauthlib>=1.2.0
+
+# Configuration & Data Validation
+python-dotenv>=1.0.0
+pyyaml>=6.0.1
+pydantic>=2.0.0
+
+# Database & Scheduler
+sqlalchemy>=2.0.0
+apscheduler>=3.10.0

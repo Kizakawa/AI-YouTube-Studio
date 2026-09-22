@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Secrets & Environment variables (CRITICAL: NEVER COMMIT)
+.env
+*.env
+credentials/client_secret.json
+credentials/tokens/
+tokens/
+*.pem
+*.key
+
+# Database
+*.sqlite3
+*.db
+
+# Storage & Temporary Files
+storage/temp/*
+storage/outputs/*
+!storage/temp/.gitkeep
+!storage/outputs/.gitkeep
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
