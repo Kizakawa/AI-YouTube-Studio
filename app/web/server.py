@@ -42,15 +42,23 @@ async def get_overview_stats() -> Dict[str, Any]:
     channels = settings.get_channels_config()
     gemini_keys = settings.get_gemini_keys_pool()
 
+    # Đếm số lượng kênh thực tế đã đăng nhập Google OAuth
+    auth_count = 0
+    for ch in channels:
+        token_rel = ch.get("credentials", {}).get("youtube_token")
+        if token_rel and (BASE_DIR / token_rel).is_file():
+            auth_count += 1
+
     return {
         "total_videos": total_videos,
         "script_ready": script_ready,
         "published": published,
         "total_members": total_users,
         "total_channels": len(channels),
+        "auth_channels": auth_count,
         "gemini_keys_count": len(gemini_keys),
         "total_activities": total_activities,
-        "storage_drive_total": f"{len(channels) * 2} TB (Cụm Ultra)"
+        "storage_drive_total": f"{auth_count * 2} TB" if auth_count > 0 else "Chưa kết nối OAuth"
     }
 
 @app.get("/api/activities")
@@ -107,9 +115,10 @@ async def get_channels_matrix() -> List[Dict[str, Any]]:
         video_count = db.query(VideoJob).filter(VideoJob.target_channel_id == ch_id).count()
         published_count = db.query(VideoJob).filter(VideoJob.target_channel_id == ch_id, VideoJob.status == "PUBLISHED").count()
         
-        # Kiểm tra token
-        token_path = BASE_DIR / ch.get("credentials", {}).get("youtube_token", "")
-        token_exists = token_path.exists()
+        # Kiểm tra token xác thực Google OAuth thực tế
+        token_rel = ch.get("credentials", {}).get("youtube_token")
+        token_path = (BASE_DIR / token_rel) if token_rel else None
+        token_exists = bool(token_path and token_path.is_file())
 
         result.append({
             "id": ch_id,
@@ -117,7 +126,8 @@ async def get_channels_matrix() -> List[Dict[str, Any]]:
             "niche": ch.get("niche"),
             "language": ch.get("language", "en"),
             "google_account": ch.get("google_account", "account_1"),
-            "token_status": "Đã kết nối 🟢" if token_exists else "Chờ cấp quyền 🟡",
+            "token_status": "🟢 Đã kết nối" if token_exists else "🔴 Chưa kết nối Google",
+            "is_authenticated": token_exists,
             "preferred_voice": ch.get("preferred_voice"),
             "schedule": ch.get("schedule", {}),
             "video_count": video_count,

@@ -65,8 +65,14 @@ async function fetchStats() {
     document.getElementById('stat-published').textContent = data.published || 0;
     document.getElementById('stat-members').textContent = data.total_members || 0;
     document.getElementById('stat-channels').textContent = data.total_channels || 0;
-    document.getElementById('stat-drive-storage').textContent = data.storage_drive_total || '0 TB';
-    document.getElementById('stat-gemini-keys').textContent = `${data.gemini_keys_count} Keys (Pool)`;
+    
+    const authEl = document.getElementById('stat-auth-channels');
+    if (authEl) {
+        authEl.textContent = `${data.auth_channels || 0}/${data.total_channels || 0} kênh`;
+        authEl.style.color = (data.auth_channels > 0) ? 'var(--accent-green)' : 'var(--accent-rose)';
+    }
+
+    document.getElementById('stat-drive-storage').textContent = data.storage_drive_total || 'Chưa kết nối';
 }
 
 async function fetchActivities() {
@@ -175,7 +181,7 @@ async function fetchChannels() {
                         <h4>📺 ${escapeHtml(ch.name)}</h4>
                         <span>Ngách: <strong>${escapeHtml(ch.niche)}</strong> | Ngôn ngữ: ${ch.language.toUpperCase()}</span>
                     </div>
-                    <span class="badge badge-green">${ch.token_status}</span>
+                    <span class="badge ${ch.is_authenticated ? 'badge-green' : 'badge-amber'}" style="${ch.is_authenticated ? '' : 'background: rgba(239, 68, 68, 0.15); color: #f87171;'}">${ch.token_status}</span>
                 </div>
                 <div class="channel-metrics">
                     <div class="metric-item">
