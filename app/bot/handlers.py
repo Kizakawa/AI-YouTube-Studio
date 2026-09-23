@@ -16,9 +16,18 @@ content_agent = ContentAgent()
 
 async def safe_reply(update: Update, text: str, reply_markup=None, parse_mode="Markdown"):
     """
-    Gửi tin nhắn an toàn: Nếu Markdown bị lỗi parse ký tự lạ (như _, *, [, ]),
-    tự động fallback sang Plain Text để bot KHÔNG BAO GIỜ bị im lặng!
+    Gửi tin nhắn an toàn:
+    - Cắt gọn nếu vượt quá giới hạn 4096 ký tự của Telegram.
+    - Tự động fallback sang Plain Text nếu lỗi Markdown parse.
+    - Không bao giờ để văng exception làm chết bot.
     """
+    if not text:
+        return None
+
+    # Telegram giới hạn 4096 ký tự
+    if len(text) > 4000:
+        text = text[:3980] + "\n\n...(nội dung còn tiếp)"
+
     try:
         if update.message:
             return await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
@@ -26,21 +35,45 @@ async def safe_reply(update: Update, text: str, reply_markup=None, parse_mode="M
             return await update.callback_query.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
     except Exception as e:
         logger.warning(f"Lỗi gửi tin nhắn parse_mode={parse_mode} ({e}), fallback sang Plain Text...")
-        plain = re.sub(r'[*_`\[\]()]', '', text)
-        if update.message:
-            return await update.message.reply_text(plain, reply_markup=reply_markup)
-        elif update.callback_query and update.callback_query.message:
-            return await update.callback_query.message.reply_text(plain, reply_markup=reply_markup)
+        try:
+            # Fallback: Plain text không định dạng
+            plain = re.sub(r'[*_`\[\]()<>]', '', text)
+            if update.message:
+                return await update.message.reply_text(plain, reply_markup=reply_markup)
+            elif update.callback_query and update.callback_query.message:
+                return await update.callback_query.message.reply_text(plain, reply_markup=reply_markup)
+        except Exception as e2:
+            logger.error(f"Fallback gửi tin nhắn thất bại: {e2}")
+            return None
 
 
 async def safe_edit_text(message, text: str, reply_markup=None, parse_mode="Markdown"):
-    """Edit tin nhắn an toàn với fallback"""
+    """Edit tin nhắn an toàn với fallback toàn diện"""
+    if not message or not text:
+        return None
+
+    if len(text) > 4000:
+        text = text[:3980] + "\n\n...(nội dung còn tiếp)"
+
     try:
         return await message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
     except Exception as e:
+        err_str = str(e)
+        if "Message is not modified" in err_str:
+            return message
+
         logger.warning(f"Lỗi edit_text parse_mode={parse_mode} ({e}), fallback sang Plain Text...")
-        plain = re.sub(r'[*_`\[\]()]', '', text)
-        return await message.edit_text(plain, reply_markup=reply_markup)
+        try:
+            plain = re.sub(r'[*_`\[\]()<>]', '', text)
+            return await message.edit_text(plain, reply_markup=reply_markup)
+        except Exception as e2:
+            if "Message is not modified" in str(e2):
+                return message
+            logger.error(f"Fallback edit_text thất bại ({e2}), gửi tin nhắn mới thay thế...")
+            try:
+                return await message.reply_text(plain, reply_markup=reply_markup)
+            except Exception:
+                return None
 
 
 def is_authorized(update: Update) -> bool:
