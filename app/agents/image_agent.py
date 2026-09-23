@@ -37,23 +37,34 @@ class ImageAgent:
             f"masterpiece, highly detailed: {prompt}"
         )
 
-        # ── 1. Thử nghiệm qua Google Imagen 3 nếu có key ──
+        # ── 1. Thử nghiệm qua Google GenAI (Gemini Image Models / Imagen 3) ──
         current_key = self.rotator.get_key()
         if current_key:
             try:
-                import google.generativeai as genai
-                genai.configure(api_key=current_key)
-                # Thử nghiệm Imagen 3 model
-                logger.info(f"Đang thử sinh ảnh qua Google Imagen 3: '{prompt[:40]}...'")
-                model = genai.ImageGenerationModel("imagen-3.0-generate-002")
-                result = model.generate_images(prompt=enhanced_prompt, aspect_ratio="9:16", number_of_images=1)
-                if result and result.images:
-                    result.images[0].save(output_path)
-                    if Path(output_path).exists() and Path(output_path).stat().st_size > 1000:
-                        logger.info(f"✅ Đã sinh ảnh thành công bằng Google Imagen 3 → {output_path}")
-                        return output_path
+                from google import genai
+                client = genai.Client(api_key=current_key)
+                
+                # Thử các mô hình hình ảnh chính thức của Google
+                for model_name in ["gemini-2.5-flash-image", "gemini-3.1-flash-image", "imagen-3.0-generate-002"]:
+                    try:
+                        logger.info(f"Đang gọi mô hình Google AI '{model_name}': '{prompt[:40]}...'")
+                        response = client.models.generate_content(
+                            model=model_name,
+                            contents=f"Generate a vertical 9:16 cinematic photorealistic shot, 8k: {enhanced_prompt}",
+                        )
+                        if response and response.candidates:
+                            for part in response.candidates[0].content.parts:
+                                if hasattr(part, "inline_data") and part.inline_data and part.inline_data.data:
+                                    with open(output_path, "wb") as f:
+                                        f.write(part.inline_data.data)
+                                    if Path(output_path).exists() and Path(output_path).stat().st_size > 1000:
+                                        logger.info(f"✅ Đã tạo ảnh thành công bằng Google AI ({model_name}) → {output_path}")
+                                        return output_path
+                    except Exception as model_err:
+                        # Log nhẹ để không làm tắc luồng
+                        logger.debug(f"Mô hình {model_name} chưa hỗ trợ trên key này: {model_err}")
             except Exception as e:
-                logger.info(f"Google Imagen 3 không khả dụng (Lỗi: {e}). Chuyển sang AI Portrait Engine...")
+                logger.info(f"Bộ công cụ Google AI Image không khả dụng trên key hiện tại ({e}). Tự động chuyển sang AI Portrait Engine...")
 
         # ── 2. Fallback sang AI Portrait Engine (Pollinations 9:16) ──
         try:
