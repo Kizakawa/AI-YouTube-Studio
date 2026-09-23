@@ -9,7 +9,7 @@ Mỗi bước ghi checkpoint vào DB. Nếu crash → resume từ checkpoint cu�
 import logging
 import shutil
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Callable, Awaitable
 
 from app.schemas.contracts import (
     JobStatus, ScriptContract, SceneContract, RenderJobContract
@@ -17,6 +17,8 @@ from app.schemas.contracts import (
 from app.database.models import get_db, VideoJob
 from app.agents.voice_agent import VoiceAgent
 from app.agents.media_agent import MediaAgent
+from app.agents.image_agent import ImageAgent
+from app.utils.subtitle_helper import SubtitleHelper
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -27,17 +29,32 @@ class VideoPipeline:
     Orchestrator cho 1 VideoJob.
 
     Usage:
-        pipeline = VideoPipeline(job_id=42)
+        pipeline = VideoPipeline(job_id=42, progress_callback=my_async_callback)
         result = await pipeline.execute()
     """
 
-    def __init__(self, job_id: int):
+    def __init__(
+        self,
+        job_id: int,
+        progress_callback: Optional[Callable[[str, str], Awaitable[None]]] = None
+    ):
         self.job_id = job_id
+        self.progress_callback = progress_callback
         self.work_dir: Optional[Path] = None
 
         # Agents (lazy init)
         self._voice_agent = VoiceAgent()
         self._media_agent = MediaAgent()
+        self._image_agent = ImageAgent()
+
+    async def _report_progress(self, stage: str, message: str):
+        """Báo cáo tiến độ thời gian thực về Telegram/Web Dashboard."""
+        logger.info(f"[Job {self.job_id}] [{stage}] {message}")
+        if self.progress_callback:
+            try:
+                await self.progress_callback(stage, message)
+            except Exception as ex:
+                logger.warning(f"Error in progress_callback: {ex}")
 
     # ──────────────────────────────────────────
     # MAIN ENTRY POINT
@@ -56,22 +73,33 @@ class VideoPipeline:
 
             # ── Step A: Load script từ DB ──
             script = self._load_script_from_db()
-            logger.info(f"[Job {self.job_id}] Step A: Script loaded — {len(script.scenes)} scenes")
+            await self._report_progress(
+                "SCRIPT",
+                f"Đã nạp kịch bản: \"{script.title}\" ({len(script.scenes)} cảnh)"
+            )
 
-            # ── Step B: Generate per-scene audio ──
-            self._update_status(JobStatus.AUDIO_READY, "Đang tạo giọng đọc...")
+            # ── Step B: Generate per-scene audio & sync subtitles ──
+            self._update_status(JobStatus.AUDIO_READY, "Đang tạo giọng đọc Edge-TTS...")
+            await self._report_progress("AUDIO", "🎙️ Đang tạo giọng đọc AI Edge-TTS và đồng bộ phụ đề...")
             enriched_scenes = await self._step_audio(script)
             full_audio_path, total_duration = await self._step_concat_audio(enriched_scenes)
+
+            # Tạo file phụ đề SRT đồng bộ chính xác
+            subtitle_path = str(self.work_dir / "subtitles.srt")
+            SubtitleHelper.save_srt_file(enriched_scenes, subtitle_path)
+
             self._save_audio_metadata(full_audio_path, total_duration, enriched_scenes)
             logger.info(f"[Job {self.job_id}] Step B: Audio done — {total_duration}ms total")
 
             # ── Step C: Fetch per-scene media ──
             self._update_status(JobStatus.MEDIA_READY, "Đang tải media cho từng cảnh...")
+            await self._report_progress("MEDIA", "🖼️ Đang tìm kiếm và chuẩn bị hình ảnh/video 9:16 cho từng cảnh...")
             media_scenes = await self._step_media(enriched_scenes)
             logger.info(f"[Job {self.job_id}] Step C: Media done — {len(media_scenes)} scenes")
 
             # ── Step D: Render final MP4 ──
             self._update_status(JobStatus.RENDERING, "Đang render video...")
+            await self._report_progress("RENDER", "🎬 Đang dựng video 9:16 Ken Burns, ghép âm thanh & burn phụ đề hardsub...")
             output_path = str(Path(settings.OUTPUT_DIR) / f"video_{self.job_id}.mp4")
             Path(settings.OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 
@@ -81,6 +109,7 @@ class VideoPipeline:
                 scenes=media_scenes,
                 full_audio_path=full_audio_path,
                 total_audio_duration_ms=total_duration,
+                subtitle_path=subtitle_path,
                 bgm_path=self._find_bgm(),
                 output_path=output_path,
             )
@@ -89,16 +118,19 @@ class VideoPipeline:
             await self._step_render(render_job)
 
             # Step D QA: Validate output bằng ffprobe
+            await self._report_progress("QA", "🔍 Đang kiểm định chất lượng video bằng ffprobe...")
             self._step_qa(output_path)
 
             self._update_status(JobStatus.RENDERED)
             self._save_render_manifest(render_job)
+            await self._report_progress("COMPLETED", f"🎉 Video #{self.job_id} đã hoàn tất và sẵn sàng phát hành!")
             logger.info(f"[Job {self.job_id}] Pipeline complete → {output_path}")
             return render_job
 
         except Exception as e:
             logger.error(f"[Job {self.job_id}] Pipeline FAILED: {e}", exc_info=True)
             self._update_status(JobStatus.FAILED, error_msg=str(e))
+            await self._report_progress("ERROR", f"❌ Quá trình dựng video thất bại: {e}")
             raise
 
     # ──────────────────────────────────────────
@@ -151,29 +183,62 @@ class VideoPipeline:
         return result
 
     async def _fetch_scene_media(self, scene: SceneContract, media_dir: str) -> str:
-        """Tải 1 video Pexels phù hợp cho 1 scene."""
-        videos = self._media_agent.search_videos(scene.visual_keyword, per_page=1)
+        """
+        Tìm nạp media cho 1 scene với 4 tầng fallback an toàn:
+          Tầng 1: Pexels Video portrait 9:16
+          Tầng 2: Pexels Photo portrait 9:16 (dùng cho Ken Burns)
+          Tầng 3: Google Imagen 3 / Gemini Image Generation
+          Tầng 4: Dynamic Aesthetic Graphic (ảnh gradient điện ảnh chuẩn 1080x1920)
+        """
+        # --- Tầng 1: Pexels Video ---
+        try:
+            videos = self._media_agent.search_videos(scene.visual_keyword, per_page=2)
+            if videos:
+                for video_data in videos:
+                    video_files = video_data.get("video_files", [])
+                    best = next(
+                        (f for f in video_files
+                         if f.get("height", 0) >= 720
+                         and f.get("width", 0) <= f.get("height", 0)),
+                        None
+                    )
+                    if best and best.get("link"):
+                        output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}.mp4")
+                        self._media_agent.download_file(best["link"], output)
+                        logger.info(f"Scene {scene.scene_id}: Tải thành công Pexels Video")
+                        return output
+        except Exception as e:
+            logger.warning(f"Scene {scene.scene_id}: Lỗi tìm Pexels Video: {e}")
 
-        if videos:
-            # Lấy video file có chất lượng cao nhất dạng portrait
-            video_data = videos[0]
-            video_files = video_data.get("video_files", [])
-            # Ưu tiên HD portrait
-            best = next(
-                (f for f in video_files
-                 if f.get("height", 0) >= 1080
-                 and f.get("width", 0) <= f.get("height", 0)),
-                video_files[0] if video_files else None
-            )
-            if best:
-                output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}.mp4")
-                self._media_agent.download_file(best["link"], output)
-                return output
+        # --- Tầng 2: Pexels Photo (Ken Burns) ---
+        try:
+            photos = self._media_agent.search_photos(scene.visual_keyword, per_page=2)
+            if photos:
+                photo = photos[0]
+                src = photo.get("src", {})
+                img_url = src.get("large2x") or src.get("portrait") or src.get("original") or src.get("large")
+                if img_url:
+                    img_output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}.jpg")
+                    self._media_agent.download_file(img_url, img_output)
+                    logger.info(f"Scene {scene.scene_id}: Tải thành công Pexels Photo cho Ken Burns")
+                    return img_output
+        except Exception as e:
+            logger.warning(f"Scene {scene.scene_id}: Lỗi tìm Pexels Photo: {e}")
 
-        # Fallback: placeholder image (sẽ dùng Ken Burns effect)
-        logger.warning(f"Scene {scene.scene_id}: Không tìm thấy video Pexels cho '{scene.visual_keyword}'")
-        placeholder = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_placeholder.png")
-        self._create_placeholder_image(placeholder, scene.visual_keyword)
+        # --- Tầng 3: Google Imagen 3 ---
+        try:
+            ai_img_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_ai.png")
+            res_img = self._image_agent.generate_scene_image(scene.visual_keyword, ai_img_path)
+            if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 0:
+                logger.info(f"Scene {scene.scene_id}: Sinh thành công ảnh qua Imagen 3")
+                return res_img
+        except Exception as e:
+            logger.warning(f"Scene {scene.scene_id}: Lỗi sinh ảnh Imagen 3: {e}")
+
+        # --- Tầng 4: Dynamic Aesthetic Graphic (Pillow) ---
+        logger.info(f"Scene {scene.scene_id}: Dùng ảnh đồ họa cinematic gradient cho Ken Burns")
+        placeholder = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_graphic.png")
+        self._create_placeholder_image(placeholder, scene.visual_keyword, scene_id=scene.scene_id)
         return placeholder
 
     async def _step_render(self, render_job: RenderJobContract):
@@ -256,18 +321,44 @@ class VideoPipeline:
         return None
 
     @staticmethod
-    def _create_placeholder_image(path: str, text: str):
-        """Tạo ảnh placeholder 1080x1920 khi không tìm được media."""
+    def _create_placeholder_image(path: str, text: str, scene_id: int = 1):
+        """Tạo ảnh đồ họa 1080x1920 nền gradient điện ảnh cho Ken Burns effect."""
         try:
             from PIL import Image, ImageDraw
-            img = Image.new("RGB", (1080, 1920), color=(20, 20, 30))
-            draw = ImageDraw.Draw(img)
-            # Vẽ text ở giữa
-            draw.text((540, 960), text[:40], fill=(100, 100, 120), anchor="mm")
-            img.save(path)
-        except ImportError:
-            # Nếu không có Pillow, tạo file trống
-            Path(path).touch()
+            width, height = 1080, 1920
+            # Tạo vertical gradient từ xanh đêm huyền bí sang tím điện ảnh
+            base = Image.new("RGB", (width, height))
+            draw = ImageDraw.Draw(base)
+
+            top_color = (12, 17, 30)
+            bottom_color = (30, 27, 75)
+
+            for y in range(0, height, 2):
+                ratio = y / height
+                r = int(top_color[0] + (bottom_color[0] - top_color[0]) * ratio)
+                g = int(top_color[1] + (bottom_color[1] - top_color[1]) * ratio)
+                b = int(top_color[2] + (bottom_color[2] - top_color[2]) * ratio)
+                draw.line([(0, y), (width, y)], fill=(r, g, b), width=2)
+
+            # Viền subtle border
+            draw.rectangle([(40, 60), (width - 40, height - 60)], outline=(60, 70, 110), width=2)
+
+            # Badge Scene ở đỉnh
+            badge_text = f"SCENE #{scene_id:02d}"
+            draw.rectangle([(width // 2 - 120, 240), (width // 2 + 120, 300)], fill=(40, 50, 80))
+            draw.text((width // 2, 270), badge_text, fill=(200, 220, 255), anchor="mm")
+
+            # Keyword ở giữa
+            display_text = text[:80]
+            draw.text((width // 2, height // 2 - 50), display_text, fill=(240, 240, 255), anchor="mm")
+
+            base.save(path)
+        except Exception:
+            try:
+                from PIL import Image
+                Image.new("RGB", (1080, 1920), color=(15, 20, 35)).save(path)
+            except Exception:
+                Path(path).touch()
 
     def cleanup_temp(self):
         """Xóa thư mục tạm sau khi pipeline hoàn tất."""

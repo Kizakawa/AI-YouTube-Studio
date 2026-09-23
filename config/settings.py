@@ -11,6 +11,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 class Settings:
+    BASE_DIR: Path = BASE_DIR
+
     # Telegram
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     ALLOWED_USERS_RAW: str = os.getenv("ALLOWED_TELEGRAM_USERS", "")

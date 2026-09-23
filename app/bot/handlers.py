@@ -1,6 +1,8 @@
 import logging
+import asyncio
 import re
 import html
+from pathlib import Path
 from datetime import datetime
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -273,9 +275,114 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await safe_reply(update, err_text)
 
 
+async def _execute_render_task(update: Update, context: ContextTypes.DEFAULT_TYPE, job_id: int, user_name: str):
+    """Tiến trình render video chạy ngầm không chặn luồng polling của bot"""
+    chat_id = update.effective_chat.id if update.effective_chat else None
+
+    status_msg = await safe_reply(
+        update,
+        f"🚀 **{user_name}** đã kích hoạt sản xuất Video #{job_id}!\n"
+        f"⏳ Đang xếp hàng vào pipeline render 9:16 Shorts (Audio + Media + Subtitles)..."
+    )
+
+    async def progress_cb(stage: str, msg: str):
+        if status_msg:
+            icons = {
+                "SCRIPT": "📝",
+                "AUDIO": "🎙️",
+                "MEDIA": "🖼️",
+                "RENDER": "🎬",
+                "QA": "🔍",
+                "COMPLETED": "🎉",
+                "ERROR": "❌"
+            }
+            icon = icons.get(stage, "⏳")
+            display_text = f"🎬 **TIẾN TRÌNH RENDER (Task #{job_id})**\n\n{icon} {msg}"
+            await safe_edit_text(status_msg, display_text)
+
+    try:
+        from app.services.pipeline import VideoPipeline
+        pipeline = VideoPipeline(job_id=job_id, progress_callback=progress_cb)
+        render_job = await pipeline.execute()
+
+        # Kiểm tra file MP4 hoàn chỉnh
+        out_path = Path(render_job.output_path)
+        if out_path.exists() and chat_id:
+            size_mb = out_path.stat().st_size / (1024 * 1024)
+            # Telegram Bot API cho phép upload video tối đa 50MB
+            if size_mb <= 49.0:
+                caption = (
+                    f"🎉 **VIDEO ĐÃ DỰNG THÀNH CÔNG! (Task #{job_id})**\n\n"
+                    f"📌 **Tiêu đề:** {render_job.title}\n"
+                    f"⏱️ **Thời lượng:** {render_job.total_audio_duration_ms / 1000:.1f}s\n"
+                    f"📦 **Dung lượng:** {size_mb:.1f} MB\n"
+                    f"🎬 **Chuẩn:** 1080x1920 (9:16 Shorts) kèm phụ đề hardsub"
+                )
+                try:
+                    with open(out_path, "rb") as vf:
+                        await context.bot.send_video(
+                            chat_id=chat_id,
+                            video=vf,
+                            caption=caption,
+                            supports_streaming=True
+                        )
+                except Exception as ex_upload:
+                    logger.warning(f"Không thể gửi file video trực tiếp qua Telegram: {ex_upload}")
+                    await safe_reply(
+                        update,
+                        f"🎉 **Video #{job_id} đã hoàn tất!**\n"
+                        f"📂 File đã lưu tại: `{render_job.output_path}` ({size_mb:.1f} MB)"
+                    )
+            else:
+                await safe_reply(
+                    update,
+                    f"🎉 **Video #{job_id} đã hoàn tất!**\n"
+                    f"📦 Dung lượng ({size_mb:.1f} MB) vượt quá giới hạn 50MB của Telegram.\n"
+                    f"📂 File đã lưu sẵn tại:\n`{render_job.output_path}`"
+                )
+
+        with get_db() as db:
+            log_activity(db, 0, user_name, "RENDER_COMPLETE",
+                         f"Hoàn tất render video #{job_id}: {render_job.output_path}")
+
+    except Exception as e:
+        logger.error(f"Lỗi khi render video #{job_id}: {e}", exc_info=True)
+        if status_msg:
+            await safe_edit_text(
+                status_msg,
+                f"❌ **Render video #{job_id} thất bại:**\n`{str(e)}`"
+            )
+        else:
+            await safe_reply(update, f"❌ **Render video #{job_id} thất bại:**\n`{str(e)}`")
+
+
+async def render_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lệnh kích hoạt render thủ công: /render <job_id>"""
+    if not is_authorized(update):
+        return
+
+    if not context.args or not context.args[0].isdigit():
+        await safe_reply(update, "💡 Cú pháp: `/render <job_id>`\nVí dụ: `/render 1`")
+        return
+
+    job_id = int(context.args[0])
+    with get_db() as db:
+        job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+        if not job:
+            await safe_reply(update, f"❌ Không tìm thấy VideoJob #{job_id}")
+            return
+        if not job.scenes_json:
+            await safe_reply(update, f"❌ VideoJob #{job_id} chưa có kịch bản phân cảnh.")
+            return
+
+    user = update.effective_user
+    user_name = user.first_name if user else "Creator"
+    asyncio.create_task(_execute_render_task(update, context, job_id, user_name))
+
+
 async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    [NEW] Xử lý khi thành viên bấm nút: Đăng Ngay / Lên Lịch / Tạo Lại / Hủy
+    Xử lý khi thành viên bấm nút: Đăng Ngay / Lên Lịch / Tạo Lại / Hủy
     """
     query = update.callback_query
     await query.answer()
@@ -284,12 +391,8 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("publish_now:"):
         job_id = int(data.split(":")[1])
-        # TODO Phase 2: Gọi pipeline.execute() → PublisherAgent
-        await safe_reply(
-            update,
-            f"🚀 **{user.first_name}** yêu cầu đăng video #{job_id} ngay!\n"
-            f"⏳ Đang xếp hàng vào pipeline render..."
-        )
+        # Kích hoạt pipeline render thực tế trong task ngầm
+        asyncio.create_task(_execute_render_task(update, context, job_id, user.first_name))
 
     elif data.startswith("schedule:"):
         job_id = int(data.split(":")[1])
