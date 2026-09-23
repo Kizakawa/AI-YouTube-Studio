@@ -43,27 +43,21 @@ class Settings:
         for item in cls.ALLOWED_USERS_RAW.split(","):
             parts = item.strip().split(":")
             if len(parts) == 2 and parts[0].isdigit():
-                uid = int(parts[0])
-                if uid not in [123456789, 987654321]:
-                    users[uid] = parts[1].strip().lower()
+                users[int(parts[0])] = parts[1].strip().lower()
             elif len(parts) == 1 and parts[0].isdigit():
-                uid = int(parts[0])
-                if uid not in [123456789, 987654321]:
-                    users[uid] = "creator"
+                users[int(parts[0])] = "creator"
         return users
 
     @classmethod
     def get_allowed_group_ids(cls) -> List[int]:
-        """Lấy danh sách ID nhóm chat Telegram được phép gọi bot (tự động bỏ qua ID mẫu)"""
+        """Lấy danh sách ID nhóm chat Telegram được phép gọi bot"""
         if not cls.ALLOWED_GROUP_IDS_RAW:
             return []
         groups = []
         for g in cls.ALLOWED_GROUP_IDS_RAW.split(","):
             g_clean = g.strip()
             if g_clean.lstrip("-").isdigit():
-                gid = int(g_clean)
-                if gid != -1001234567890:
-                    groups.append(gid)
+                groups.append(int(g_clean))
         return groups
 
     @classmethod

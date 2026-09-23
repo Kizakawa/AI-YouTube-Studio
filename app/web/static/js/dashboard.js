@@ -4,7 +4,6 @@
 
 document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
-    checkAuthAlerts();
     fetchAllData();
     
     // Tự động làm mới dữ liệu sau mỗi 10 giây
@@ -21,31 +20,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
-
-function checkAuthAlerts() {
-    const params = new URLSearchParams(window.location.search);
-    const container = document.getElementById('auth-alert-container');
-    if (!container) return;
-
-    if (params.get('auth_success')) {
-        const ch = params.get('channel') || '';
-        container.innerHTML = `
-            <div class="auth-alert auth-alert-success">
-                <span>🎉 <strong>Thành công!</strong> Đã xác thực Google OAuth2 thành công cho kênh: <strong>${escapeHtml(ch)}</strong>. Hệ thống đã có thể tự động upload và đặt lịch!</span>
-                <button onclick="this.parentElement.remove()" style="background:none; border:none; color:inherit; cursor:pointer;">&times;</button>
-            </div>
-        `;
-        window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (params.get('auth_error')) {
-        container.innerHTML = `
-            <div class="auth-alert auth-alert-error">
-                <span>❌ <strong>Lỗi kết nối:</strong> ${escapeHtml(params.get('auth_error'))}</span>
-                <button onclick="this.parentElement.remove()" style="background:none; border:none; color:inherit; cursor:pointer;">&times;</button>
-            </div>
-        `;
-        window.history.replaceState({}, document.title, window.location.pathname);
-    }
-}
 
 function initNavigation() {
     const navItems = document.querySelectorAll('.nav-item');
@@ -128,14 +102,6 @@ async function fetchActivities() {
             icon = '🎬';
             actionBadge = 'KỊCH BẢN XONG';
             badgeClass = 'badge-green';
-        } else if (item.action_type === 'ADD_CHANNEL') {
-            icon = '➕';
-            actionBadge = 'THÊM KÊNH MỚI';
-            badgeClass = 'badge-blue';
-        } else if (item.action_type === 'AUTH_SUCCESS') {
-            icon = '🔗';
-            actionBadge = 'KẾT NỐI OAUTH';
-            badgeClass = 'badge-green';
         }
 
         return `
@@ -170,7 +136,7 @@ async function fetchMembers() {
     }
 
     tbody.innerHTML = members.map((m, index) => {
-        const roleBadge = m.role === 'admin' ? '<span class="badge" style="background: rgba(251,113,133,0.15); color: var(--accent-rose);">Admin</span>' : '<span class="badge badge-blue">Creator</span>';
+        const roleBadge = m.role === 'admin' ? '<span class="badge badge-rose" style="background: rgba(251,113,133,0.15); color: var(--accent-rose);">Admin</span>' : '<span class="badge badge-blue">Creator</span>';
         const initial = (m.username || 'U')[0].toUpperCase();
         
         return `
@@ -201,68 +167,33 @@ async function fetchChannels() {
     const container = document.getElementById('channels-container');
     if (!container) return;
 
-    if (channels.length === 0) {
-        container.innerHTML = `
-            <div style="padding: 30px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">
-                Chưa có kênh nào. Bấm nút <strong>"➕ Thêm Kênh Mới"</strong> ở góc phải để tạo kênh đầu tiên!
-            </div>
-        `;
-        return;
-    }
-
     container.innerHTML = channels.map(ch => {
-        const isAuth = ch.is_authenticated;
-        const statusBadge = isAuth 
-            ? `<span class="badge badge-green">✓ Đã Kết Nối Google OAuth</span>`
-            : `<span class="badge badge-amber">🔴 Chưa Kết Nối Token</span>`;
-
-        const authAction = isAuth
-            ? `<div style="display: flex; gap: 8px; align-items: center; margin-top: 12px;">
-                 <span style="font-size: 12px; color: var(--accent-green); font-weight: 600;">🟢 Sẵn sàng đăng video</span>
-                 <a href="/auth/youtube/${ch.id}" style="font-size: 11px; color: var(--text-muted); text-decoration: underline;">Đăng nhập lại</a>
-               </div>`
-            : `<a href="/auth/youtube/${ch.id}" class="btn-auth">🔗 Đăng Nhập & Cấp Quyền YouTube</a>`;
-
-        const avatarImg = ch.avatar_url 
-            ? `<img src="${ch.avatar_url}" style="width: 42px; height: 42px; border-radius: 50%; object-fit: cover; border: 2px solid var(--accent-blue);">`
-            : `<div style="width: 42px; height: 42px; border-radius: 50%; background: var(--gradient-brand); display: flex; align-items: center; justify-content: center; font-size: 20px;">📺</div>`;
-
         return `
             <div class="channel-card">
                 <div class="channel-header">
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        ${avatarImg}
-                        <div class="channel-title">
-                            <h4>${escapeHtml(ch.name)}</h4>
-                            <span>ID: <code>${ch.id}</code> | Ngách: <strong>${escapeHtml(ch.niche)}</strong></span>
-                            ${ch.real_title ? `<div style="font-size: 11.5px; color: var(--accent-blue);">YouTube: ${escapeHtml(ch.real_title)} (${ch.subscribers} subs)</div>` : ''}
-                        </div>
+                    <div class="channel-title">
+                        <h4>📺 ${escapeHtml(ch.name)}</h4>
+                        <span>Ngách: <strong>${escapeHtml(ch.niche)}</strong> | Ngôn ngữ: ${ch.language.toUpperCase()}</span>
                     </div>
-                    <div>${statusBadge}</div>
+                    <span class="badge badge-green">${ch.token_status}</span>
                 </div>
-
                 <div class="channel-metrics">
                     <div class="metric-item">
-                        <span>Tài Khoản Ultra</span>
-                        <strong>${(ch.google_account || 'account_1').toUpperCase()}</strong>
+                        <span>Tài Khoản Google Ultra</span>
+                        <strong>${ch.google_account.toUpperCase()}</strong>
                     </div>
                     <div class="metric-item">
-                        <span>Chế Độ Ảnh</span>
-                        <strong>${ch.visual_mode === 'imagen_ai' ? 'Google Imagen 3 ✨' : 'Pexels Stock'}</strong>
+                        <span>Kho Drive 2TB</span>
+                        <strong style="color: var(--accent-blue);">${ch.drive_quota}</strong>
                     </div>
                     <div class="metric-item">
-                        <span>Subscribers Thật</span>
-                        <strong style="color: var(--accent-green);">${ch.subscribers || 0}</strong>
+                        <span>Video Đã Sản Xuất</span>
+                        <strong>${ch.video_count} video</strong>
                     </div>
                     <div class="metric-item">
-                        <span>Video Đã Có</span>
-                        <strong>${ch.video_count || 0}</strong>
+                        <span>Giọng Đọc AI (TTS)</span>
+                        <strong style="font-size: 12px;">${ch.preferred_voice.split('-')[2] || ch.preferred_voice}</strong>
                     </div>
-                </div>
-
-                <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border-color); padding-top: 12px;">
-                    <div>${authAction}</div>
-                    <button onclick="deleteChannel('${ch.id}')" class="btn-delete" title="Xóa kênh khỏi hệ thống">🗑️ Xóa</button>
                 </div>
             </div>
         `;
@@ -303,96 +234,6 @@ async function fetchVideos() {
             </tr>
         `;
     }).join('');
-}
-
-// Modal Control
-function openModal(id) {
-    const modal = document.getElementById(id);
-    if (modal) modal.classList.add('active');
-}
-
-function closeModal(id) {
-    const modal = document.getElementById(id);
-    if (modal) modal.classList.remove('active');
-}
-
-// Thêm kênh mới
-async function submitAddChannel(e) {
-    e.preventDefault();
-    const payload = {
-        id: document.getElementById('new-ch-id').value.trim(),
-        name: document.getElementById('new-ch-name').value.trim(),
-        niche: document.getElementById('new-ch-niche').value,
-        google_account: document.getElementById('new-ch-account').value,
-        visual_mode: document.getElementById('new-ch-visual').value,
-        preferred_voice: document.getElementById('new-ch-voice').value,
-        language: 'en'
-    };
-
-    try {
-        const res = await fetch('/api/channels/add', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        if (!res.ok) {
-            alert('Lỗi: ' + (data.detail || 'Không thể tạo kênh'));
-            return;
-        }
-
-        closeModal('modal-add-channel');
-        document.getElementById('form-add-channel').reset();
-        await fetchChannels();
-        await fetchStats();
-        alert(`✅ Đã thêm kênh '${payload.name}' thành công! Bây giờ bạn có thể bấm Kết nối Google OAuth.`);
-    } catch (err) {
-        alert('Lỗi khi gửi yêu cầu: ' + err);
-    }
-}
-
-// Xóa kênh
-async function deleteChannel(channelId) {
-    if (!confirm(`Bạn có chắc chắn muốn xóa kênh '${channelId}' khỏi hệ thống không?`)) {
-        return;
-    }
-    try {
-        const res = await fetch(`/api/channels/${channelId}`, { method: 'DELETE' });
-        if (res.ok) {
-            await fetchChannels();
-            await fetchStats();
-        } else {
-            alert('Không thể xóa kênh.');
-        }
-    } catch (err) {
-        alert('Lỗi khi xóa: ' + err);
-    }
-}
-
-// Upload client_secret.json
-async function submitUploadSecret(e) {
-    e.preventDefault();
-    const fileInput = document.getElementById('input-client-secret');
-    if (!fileInput.files.length) return;
-
-    const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
-
-    try {
-        const res = await fetch('/api/credentials/upload_secret', {
-            method: 'POST',
-            body: formData
-        });
-        const data = await res.json();
-        if (res.ok) {
-            closeModal('modal-upload-secret');
-            alert('✅ Đã lưu file client_secret.json thành công! Bạn đã có thể bấm Kết Nối Google OAuth cho các kênh.');
-        } else {
-            alert('Lỗi: ' + data.detail);
-        }
-    } catch (err) {
-        alert('Lỗi khi tải file: ' + err);
-    }
 }
 
 function updateLastSyncTime() {
