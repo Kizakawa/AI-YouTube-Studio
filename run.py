@@ -65,7 +65,18 @@ def main():
     keys = settings.get_gemini_keys_pool()
     print(f"   -> Cụm Google Ultra: Đã nạp {len(keys)} Gemini API Key(s) vào pool.")
 
-    # 4. Kiểm tra cấu hình Telegram Bot
+    # 4. Kiểm tra chế độ chạy
+    if "--web-only" in sys.argv or "--web" in sys.argv or os.getenv("WEB_ONLY"):
+        print("[4/4] 🌐 [CHẾ ĐỘ WEB-ONLY] Chỉ khởi động Web Dashboard, KHÔNG chạy Telegram Bot!")
+        print("👉 Thoải mái chỉnh sửa UI và xem thay đổi tại: http://127.0.0.1:8000")
+        print("🔒 Không bị xung đột hay chập bot với máy bạn Giang / Render.")
+        print("=" * 70)
+        try:
+            web_thread.join()
+        except KeyboardInterrupt:
+            print("\n👋 Đã dừng Web Dashboard.")
+        return
+
     print("[4/4] Khởi động Telegram Bot Workspace...")
     if not settings.TELEGRAM_BOT_TOKEN:
         print("   -> [LƯU Ý] TELEGRAM_BOT_TOKEN chưa có trong file .env!")
