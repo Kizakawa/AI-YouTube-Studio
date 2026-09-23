@@ -5,7 +5,7 @@ from datetime import datetime
 from telegram import Update
 from telegram.ext import ContextTypes
 from config.settings import settings
-from app.bot.keyboards import get_channel_selection_keyboard, get_video_review_keyboard
+from app.bot.keyboards import get_channel_selection_keyboard, get_video_review_keyboard, get_chat_brainstorm_keyboard
 from app.database.models import get_db, User, VideoJob, log_activity
 from app.agents.content_agent import ContentAgent
 from app.schemas.contracts import ScriptContract
@@ -104,10 +104,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• Mọi thành viên cùng ra lệnh, kịch bản hiển thị công khai trong nhóm.\n"
         f"• Theo dõi toàn bộ hoạt động của admin qua Web Dashboard thời gian thực!\n\n"
         f"📌 **Các lệnh chính:**\n"
+        f"• `/chat <nội dung>` - Thảo luận, phản biện và đồng sáng tạo kịch bản với Đạo diễn AI\n"
         f"• `/channels` - Xem và chuyển đổi kênh YouTube muốn sản xuất\n"
-        f"• `/idea <chủ đề>` - Lên kịch bản AI, chia phân cảnh và từ khóa Pexels\n"
+        f"• `/idea <chủ đề>` - Lên kịch bản AI ngay tức thì cho kênh đang chọn\n"
         f"• `/status` - Báo cáo số lượng video và trạng thái hệ thống\n\n"
-        f"👉 Hãy gõ `/channels` để chọn kênh bắt đầu!"
+        f"👉 Gõ `/chat` hoặc `/idea` để bắt đầu sáng tạo video cùng nhóm!"
     )
     await safe_reply(update, welcome_text)
 
@@ -312,3 +313,237 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• Web Dashboard: Đang trực tuyến tại cổng `http://localhost:8000` 🌐"
     )
     await safe_reply(update, text)
+
+
+async def chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Thảo luận kịch bản với Đạo diễn AI: /chat <câu hỏi hoặc ý tưởng>
+    """
+    if not is_authorized(update):
+        return
+
+    if not context.args:
+        help_text = (
+            "💡 **CÁCH THẢO LUẬN & LÊN KỊCH BẢN VỚI AI DIRECTOR:**\n\n"
+            "• Gõ `/chat <câu hỏi hoặc ý tưởng>` để bắt đầu thảo luận.\n"
+            "• **Ví dụ:**\n"
+            "  - `/chat Cho mình 3 ý tưởng Shorts thật sốc về tâm lý học hành vi`\n"
+            "  - `/chat Ý tưởng 'Thao túng bằng ánh mắt' thì 3 giây đầu nên nói câu gì giật gân?`\n\n"
+            "👉 Trong nhóm, bạn cũng có thể **Tag @VV1n_mybot** hoặc **Reply vào tin nhắn của bot** để chat tự nhiên!"
+        )
+        await safe_reply(update, help_text)
+        return
+
+    user = update.effective_user
+    chat = update.effective_chat
+    prompt = " ".join(context.args)
+
+    with get_db() as db:
+        db_user = db.query(User).filter(User.telegram_id == user.id).first()
+        channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_psychology"
+        if db_user:
+            db_user.last_active = datetime.utcnow()
+        log_activity(db, user.id, user.username, "CHAT_BRAINSTORM", f"Thảo luận kịch bản: '{prompt[:50]}...'", channel_id=channel_id)
+
+    # Lấy thông tin ngách kênh
+    channel_niche = "psychology"
+    channels = settings.get_channels_config()
+    for ch in channels:
+        if ch.get("id") == channel_id:
+            channel_niche = ch.get("niche", "general")
+            break
+
+    session_id = str(chat.id)
+    status_msg = await safe_reply(update, f"🧠 **{user.first_name}**: *\"{prompt}\"*\n\n⏳ *Đạo diễn AI đang tư duy và phân tích góc nhìn...*")
+
+    ai_reply = content_agent.chat_brainstorm(
+        session_id=session_id,
+        user_message=prompt,
+        channel_niche=channel_niche,
+        language="vi"
+    )
+
+    markup = get_chat_brainstorm_keyboard(session_id)
+    formatted_reply = f"🎬 **ĐẠO DIỄN SHORTS AI:**\n\n{ai_reply}\n\n💡 *Ưng ý ý tưởng nào? Hãy bấm nút bên dưới để chốt thành kịch bản sản xuất video!*"
+
+    if status_msg:
+        await safe_edit_text(status_msg, formatted_reply, reply_markup=markup)
+    else:
+        await safe_reply(update, formatted_reply, reply_markup=markup)
+
+
+async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Xử lý khi người dùng nhắn tin trực tiếp (DM) hoặc Reply / Tag bot trong nhóm
+    """
+    if not update.message or not update.message.text:
+        return
+    if not is_authorized(update):
+        return
+
+    text = update.message.text.strip()
+    if text.startswith("/"):
+        return  # Bỏ qua các câu lệnh khác
+
+    chat = update.effective_chat
+    user = update.effective_user
+    is_group = chat.type in ["group", "supergroup"]
+
+    bot_username = context.bot.username or "VV1n_mybot"
+    is_reply_to_bot = (
+        update.message.reply_to_message and
+        update.message.reply_to_message.from_user and
+        update.message.reply_to_message.from_user.is_bot
+    )
+    is_mentioned = f"@{bot_username.lower()}" in text.lower()
+
+    # Trong nhóm: Chỉ trả lời nếu được tag hoặc reply
+    if is_group and not (is_reply_to_bot or is_mentioned):
+        return
+
+    # Lọc bỏ username khỏi nội dung
+    clean_text = re.sub(rf"@{bot_username}\b", "", text, flags=re.IGNORECASE).strip()
+    if not clean_text:
+        await safe_reply(update, f"👋 Chào {user.first_name}! Bạn muốn cùng AI lên ý tưởng video gì hôm nay?")
+        return
+
+    with get_db() as db:
+        db_user = db.query(User).filter(User.telegram_id == user.id).first()
+        channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_psychology"
+        if db_user:
+            db_user.last_active = datetime.utcnow()
+        log_activity(db, user.id, user.username, "CHAT_REPLY", f"Trao đổi tự nhiên: '{clean_text[:50]}...'", channel_id=channel_id)
+
+    channel_niche = "psychology"
+    channels = settings.get_channels_config()
+    for ch in channels:
+        if ch.get("id") == channel_id:
+            channel_niche = ch.get("niche", "general")
+            break
+
+    session_id = str(chat.id)
+    status_msg = await safe_reply(update, "⏳ *Đạo diễn AI đang trả lời...*")
+
+    ai_reply = content_agent.chat_brainstorm(
+        session_id=session_id,
+        user_message=clean_text,
+        channel_niche=channel_niche,
+        language="vi"
+    )
+
+    markup = get_chat_brainstorm_keyboard(session_id)
+    formatted_reply = f"🎬 **ĐẠO DIỄN SHORTS AI:**\n\n{ai_reply}"
+
+    if status_msg:
+        await safe_edit_text(status_msg, formatted_reply, reply_markup=markup)
+    else:
+        await safe_reply(update, formatted_reply, reply_markup=markup)
+
+
+async def chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Xử lý nút bấm: Chốt kịch bản từ đoạn chat / Gợi ý thêm góc nhìn / Đổi hook
+    """
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    user = query.from_user
+
+    if data.startswith("convert_chat:"):
+        session_id = data.split(":")[1]
+        
+        with get_db() as db:
+            db_user = db.query(User).filter(User.telegram_id == user.id).first()
+            channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_psychology"
+
+        channel_niche = "psychology"
+        channel_lang = "en"
+        channels = settings.get_channels_config()
+        for ch in channels:
+            if ch.get("id") == channel_id:
+                channel_niche = ch.get("niche", "general")
+                channel_lang = ch.get("language", "en")
+                break
+
+        wait_msg = await safe_reply(
+            update,
+            f"🎬 **{user.first_name}** vừa bấm **Chốt Kịch Bản**!\n"
+            f"⏳ Gemini AI đang tổng hợp toàn bộ thảo luận thành kịch bản phân cảnh chuẩn cho kênh `{channel_id}`..."
+        )
+
+        try:
+            script: ScriptContract = content_agent.convert_discussion_to_script(
+                session_id=session_id,
+                channel_niche=channel_niche,
+                language=channel_lang
+            )
+
+            with get_db() as db:
+                job = VideoJob(
+                    user_id=user.id,
+                    target_channel_id=channel_id,
+                    topic=script.title,
+                    title=script.title,
+                    script=script.full_narration,
+                    description=script.description,
+                    tags=",".join(script.tags),
+                    scenes_json=script.to_json_str(),
+                    status="SCRIPT_READY"
+                )
+                db.add(job)
+                db.flush()
+                job_id = job.id
+
+                log_activity(db, user.id, user.username, "CONVERT_CHAT_SCRIPT",
+                             f"Kịch bản #{job_id} được chốt từ thảo luận: '{script.title}'",
+                             channel_id=channel_id)
+
+            scenes_preview = "\n".join([
+                f"• Cảnh {s.scene_id}: {s.narration[:60]}... _(Tìm: {s.visual_keyword})_"
+                for s in script.scenes[:3]
+            ])
+
+            reply_content = (
+                f"🎉 **ĐÃ TỔNG HỢP XONG KỊCH BẢN SẢN XUẤT (Task #{job_id})**\n\n"
+                f"📌 **Tiêu đề:** {script.title}\n"
+                f"🔥 **Hook 3 giây đầu:** \"{script.hook}\"\n\n"
+                f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
+                f"⏱️ **Ước lượng:** ~{script.total_estimated_duration:.0f}s | {len(script.scenes)} cảnh\n"
+                f"📺 **Kênh:** `{channel_id}` | 🗣️ **Người chốt:** {user.first_name}\n\n"
+                f"👉 Bấm nút bên dưới để tiến hành đưa vào hàng chờ render video!"
+            )
+
+            review_markup = get_video_review_keyboard(job_id)
+            if wait_msg:
+                await safe_edit_text(wait_msg, reply_content, reply_markup=review_markup)
+            else:
+                await safe_reply(update, reply_content, reply_markup=review_markup)
+
+        except Exception as e:
+            logger.error(f"Lỗi khi convert chat thành script: {e}", exc_info=True)
+            err_text = f"❌ Không thể tổng hợp kịch bản: `{e}`"
+            if wait_msg:
+                await safe_edit_text(wait_msg, err_text)
+            else:
+                await safe_reply(update, err_text)
+
+    elif data.startswith("suggest_more:"):
+        session_id = data.split(":")[1]
+        msg = content_agent.chat_brainstorm(
+            session_id=session_id,
+            user_message="Hãy cho mình thêm 3 góc nhìn khác thật độc lạ, gây tò mò cực độ cho chủ đề này!",
+            language="vi"
+        )
+        markup = get_chat_brainstorm_keyboard(session_id)
+        await safe_reply(update, f"💡 **3 GÓC NHÌN MỚI TỪ ĐẠO DIỄN:**\n\n{msg}", reply_markup=markup)
+
+    elif data.startswith("change_hooks:"):
+        session_id = data.split(":")[1]
+        msg = content_agent.chat_brainstorm(
+            session_id=session_id,
+            user_message="Hãy viết cho mình 3 câu Hook 3 giây đầu hoàn toàn mới: 1 câu gây sốc, 1 câu tâm lý tò mò, 1 câu đánh trúng nỗi sợ của người xem!",
+            language="vi"
+        )
+        markup = get_chat_brainstorm_keyboard(session_id)
+        await safe_reply(update, f"🔥 **3 CÂU HOOK MỚI:**\n\n{msg}", reply_markup=markup)
+

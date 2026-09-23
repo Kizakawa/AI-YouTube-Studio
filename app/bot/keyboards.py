@@ -23,3 +23,17 @@ def get_video_review_keyboard(job_id: int) -> InlineKeyboardMarkup:
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
+
+def get_chat_brainstorm_keyboard(session_id: str) -> InlineKeyboardMarkup:
+    """Tạo bàn phím nút bấm thao tác khi đang thảo luận kịch bản với AI"""
+    keyboard = [
+        [
+            InlineKeyboardButton("🎬 Chốt Kịch Bản Này & Sản Xuất", callback_data=f"convert_chat:{session_id}"),
+        ],
+        [
+            InlineKeyboardButton("💡 Gợi Ý 3 Góc Nhìn Khác", callback_data=f"suggest_more:{session_id}"),
+            InlineKeyboardButton("🔥 Đổi 3 Câu Hook Mới", callback_data=f"change_hooks:{session_id}"),
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+

@@ -1,10 +1,13 @@
 import sys
 import threading
 import logging
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 from config.settings import settings
 from app.database import init_db
-from app.bot.handlers import start_command, channels_command, status_command, idea_command, channel_callback, video_callback
+from app.bot.handlers import (
+    start_command, channels_command, status_command, idea_command,
+    chat_command, text_message_handler, channel_callback, video_callback, chat_callback
+)
 from app.utils.ffmpeg_helper import is_ffmpeg_installed, get_ffmpeg_version
 
 # Đảm bảo in tiếng Việt và emoji không bị lỗi trên Windows console
@@ -77,10 +80,13 @@ def main():
     # Đăng ký các lệnh Telegram
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("channels", channels_command))
+    app.add_handler(CommandHandler(["chat", "ai"], chat_command))
     app.add_handler(CommandHandler("idea", idea_command))
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CallbackQueryHandler(channel_callback, pattern=r"^select_channel:"))
     app.add_handler(CallbackQueryHandler(video_callback, pattern=r"^(publish_now|schedule|regenerate|cancel):"))
+    app.add_handler(CallbackQueryHandler(chat_callback, pattern=r"^(convert_chat|suggest_more|change_hooks):"))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
 
     async def error_handler(update, context):
         logger.error(f"⚠️ Lỗi Telegram xảy ra: {context.error}", exc_info=context.error)

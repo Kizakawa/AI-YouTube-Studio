@@ -134,13 +134,21 @@ Một tài khoản Google có thể tạo tối đa **50 Kênh thương hiệu (
 
 Hệ thống cung cấp **2 cổng giao tiếp bổ trợ cho nhau hoàn hảo**:
 
-### 5.1. Telegram Group Chat (Điều khiển di động & Thảo luận tức thì)
-* Thay vì chat riêng lẻ, Bot được add vào một **Nhóm chat Telegram chung** của nhóm bạn.
-* **Quy trình tương tác:**
-  1. Thành viên A gõ: `/idea 3 sự thật đen tối về tâm lý học`.
-  2. Bot phản hồi kịch bản chi tiết **ngay giữa nhóm chat** cho tất cả mọi người cùng đọc.
-  3. Cả nhóm cùng phản biện, chỉnh sửa.
-  4. Bất kỳ ai cũng có thể bấm nút tương tác dưới tin nhắn: `[🚀 Duyệt & Dựng Video]`, `[⏰ Lên Lịch]`, `[❌ Hủy]`.
+### 5.1. Telegram Group Chat: Đồng Sáng Tạo Kịch Bản & Điều Khiển Di Động
+Bot được add vào một **Nhóm chat Telegram chung** của nhóm bạn, đóng vai trò như một **Đạo diễn & Biên kịch triệu view** cùng làm việc với các thành viên:
+
+* **1. Thảo luận & Phản biện ý tưởng 2 chiều (`/chat` hoặc Reply):**
+  * Gõ `/chat <ý tưởng>` hoặc **Tag `@VV1n_mybot` / Bấm Reply** vào tin nhắn bot.
+  * *Ví dụ:* *"Mình muốn làm video về 3 dấu hiệu của người có EQ cực cao, cho mình góc nhìn bất ngờ và 3 câu Hook 3 giây."*
+  * AI Director sẽ phân tích tâm lý người xem, đề xuất 3 góc nhìn phản trực giác và 3 câu Hook giữ chân khán giả.
+* **2. Nút tương tác nhanh dưới mỗi câu trả lời:**
+  * `[🎬 Chốt Kịch Bản Này & Sản Xuất]`: Gemini AI sẽ tự động gom toàn bộ tinh hoa của đoạn chat vừa thảo luận, phân chia từng cảnh, câu thoại, từ khóa tìm video/ảnh và lưu thành một Task sản xuất chính thức!
+  * `[💡 Gợi Ý 3 Góc Nhìn Khác]`: Yêu cầu AI khai phá thêm các khía cạnh độc lạ hơn.
+  * `[🔥 Đổi 3 Câu Hook Mới]`: Sinh thêm các câu mở đầu giật gân, đánh trúng tâm lý tò mò.
+* **3. Lệnh sinh kịch bản tức thì (`/idea <chủ đề>`):**
+  * Dành cho lúc cần sản xuất nhanh theo lô hàng loạt không cần thảo luận qua lại.
+* **4. Bảng duyệt kịch bản công khai trong nhóm:**
+  * Bất kỳ thành viên nào cũng có thể bấm: `[🚀 Đăng Ngay]`, `[⏰ Lên Lịch]`, `[🔄 Tạo Lại]`, `[❌ Hủy]`.
 
 ### 5.2. Web Dashboard Thời Gian Thực (`http://localhost:8000`)
 Giao diện Web Dark Mode sang trọng, chia thành 4 phân khu chuyên biệt:
