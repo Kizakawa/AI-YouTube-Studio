@@ -81,6 +81,72 @@ Strict requirements:
 
         raise RuntimeError("Đã thử tất cả các API Key trong pool nhưng đều thất bại.")
 
+    def refine_script(
+        self,
+        current_script: ScriptContract,
+        feedback: str,
+        channel_niche: str = "general",
+        language: str = "en",
+        max_retries: int = 3
+    ) -> ScriptContract:
+        """
+        Tiếp thu góp ý của người dùng/nhóm để tinh chỉnh kịch bản hiện tại.
+        Tự động xoay sang key tiếp theo nếu gặp rate limit/quota.
+        """
+        prompt = f"""
+You are an elite YouTube Shorts scriptwriter specializing in viral content for the niche: '{channel_niche}'.
+We have an existing script, but the creator and team gave the following specific feedback/revisions:
+
+USER FEEDBACK:
+"{feedback}"
+
+CURRENT SCRIPT:
+{current_script.model_dump_json(indent=2)}
+
+Please refine and rewrite the script strictly adhering to the user's feedback while maintaining high retention and viral potential.
+Language: {language}
+
+Strict requirements:
+1. Revise the narration, hook, or visual keywords according to the feedback.
+2. Fast-paced, punchy, concise sentences (30-50 seconds total).
+3. Return ONLY valid JSON matching this schema:
+{{
+  "title": "Viral YouTube Shorts Title with Emojis",
+  "hook": "The opening 3-second hook sentence",
+  "full_narration": "The full spoken text without any stage directions",
+  "scenes": [
+    {{
+      "scene_id": 1,
+      "narration": "Text spoken in this scene",
+      "visual_keyword": "search keyword for stock video e.g. dark aesthetic city street",
+      "estimated_seconds": 4
+    }}
+  ],
+  "tags": ["tag1", "tag2", "shorts"],
+  "description": "Engaging description with hashtags"
+}}
+"""
+        for attempt in range(max_retries):
+            if not self.model:
+                raise ValueError("Không có API Key nào hoạt động trong pool!")
+
+            try:
+                response = self.model.generate_content(
+                    prompt,
+                    generation_config={"response_mime_type": "application/json"}
+                )
+                raw = json.loads(response.text)
+                return ScriptContract(**raw)
+            except Exception as e:
+                logger.warning(f"Lỗi khi refine script với Gemini API (lần {attempt + 1}): {e}")
+                new_key = self.rotator.rotate_key()
+                if new_key:
+                    self._configure_current_key()
+                else:
+                    break
+
+        raise RuntimeError("Đã thử tất cả các API Key trong pool nhưng không thể cập nhật kịch bản.")
+
     def chat_brainstorm(self, session_id: str, user_message: str, channel_niche: str = "general", language: str = "vi", max_retries: int = 3) -> str:
         """
         Thảo luận, phản biện và đồng sáng tạo ý tưởng Shorts với người dùng.

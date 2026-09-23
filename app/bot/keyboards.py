@@ -10,16 +10,38 @@ def get_channel_selection_keyboard() -> InlineKeyboardMarkup:
         keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"select_channel:{ch.get('id')}")])
     return InlineKeyboardMarkup(keyboard)
 
-def get_video_review_keyboard(job_id: int) -> InlineKeyboardMarkup:
-    """Tạo bàn phím nút bấm duyệt video khi render xong"""
+def get_script_review_keyboard(job_id: int) -> InlineKeyboardMarkup:
+    """Bàn phím Bước 1: Khi kịch bản vừa tạo xong, nhóm duyệt kịch bản trước khi render"""
     keyboard = [
         [
-            InlineKeyboardButton("🚀 Đăng Ngay", callback_data=f"publish_now:{job_id}"),
-            InlineKeyboardButton("⏰ Lên Lịch Tự Động", callback_data=f"schedule:{job_id}"),
+            InlineKeyboardButton("🎬 Duyệt Kịch Bản & Dựng Video", callback_data=f"render_video:{job_id}"),
         ],
         [
-            InlineKeyboardButton("🔄 Tạo Lại Kịch Bản", callback_data=f"regenerate:{job_id}"),
+            InlineKeyboardButton("✍️ Góp Ý Sửa Kịch Bản", callback_data=f"edit_script:{job_id}"),
+            InlineKeyboardButton("🔄 Tạo Lại", callback_data=f"regenerate:{job_id}"),
+        ],
+        [
             InlineKeyboardButton("❌ Hủy Bỏ", callback_data=f"cancel:{job_id}"),
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+# Backward-compatible alias
+get_video_review_keyboard = get_script_review_keyboard
+
+
+def get_video_post_render_keyboard(job_id: int) -> InlineKeyboardMarkup:
+    """Bàn phím Bước 2: Khi video đã render xong và gửi vào nhóm, chọn Đăng luôn hoặc Góp ý sửa lại"""
+    keyboard = [
+        [
+            InlineKeyboardButton("🚀 Đăng Lên YouTube Ngay", callback_data=f"publish_youtube:{job_id}"),
+        ],
+        [
+            InlineKeyboardButton("✍️ Góp Ý Chỉnh Sửa & Dựng Lại", callback_data=f"feedback_video:{job_id}"),
+            InlineKeyboardButton("⏰ Lên Lịch Tự Động", callback_data=f"schedule_youtube:{job_id}"),
+        ],
+        [
+            InlineKeyboardButton("❌ Hủy Video", callback_data=f"cancel:{job_id}"),
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
