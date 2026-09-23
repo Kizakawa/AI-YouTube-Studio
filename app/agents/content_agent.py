@@ -4,6 +4,7 @@ from typing import Dict, Any, Optional
 import google.generativeai as genai
 from config.settings import settings
 from app.utils.key_rotator import KeyRotator
+from app.schemas.contracts import ScriptContract
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ class ContentAgent:
             self.model = None
             logger.warning("Chưa có GEMINI_API_KEY nào được cấu hình trong pool!")
 
-    def generate_script(self, topic: str, channel_niche: str = "general", language: str = "en", max_retries: int = 3) -> Dict[str, Any]:
+    def generate_script(self, topic: str, channel_niche: str = "general", language: str = "en", max_retries: int = 3) -> ScriptContract:
         """
         Sinh kịch bản video Shorts (30-50 giây) có cấu trúc.
         Tự động xoay sang key Google Ultra tiếp theo nếu gặp lỗi Rate Limit hoặc Quota.
@@ -66,7 +67,8 @@ Strict requirements:
                     prompt,
                     generation_config={"response_mime_type": "application/json"}
                 )
-                return json.loads(response.text)
+                raw = json.loads(response.text)
+                return ScriptContract(**raw)  # Validate qua Pydantic
             except Exception as e:
                 logger.warning(f"Lỗi khi gọi Gemini API (lần {attempt + 1}): {e}")
                 # Xoay sang key tiếp theo trong pool của tài khoản Google Ultra khác
