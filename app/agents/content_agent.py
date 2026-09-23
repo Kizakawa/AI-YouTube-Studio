@@ -30,32 +30,48 @@ class ContentAgent:
 
     def generate_script(self, topic: str, channel_niche: str = "general", language: str = "en", max_retries: int = 3) -> ScriptContract:
         """
-        Sinh kịch bản video Shorts (30-50 giây) có cấu trúc.
+        Sinh kịch bản video Shorts (30-50 giây) giật gân, nhịp điệu nhanh, cuốn hút triệu view.
         Tự động xoay sang key Google Ultra tiếp theo nếu gặp lỗi Rate Limit hoặc Quota.
         """
         prompt = f"""
-You are an elite YouTube Shorts scriptwriter specializing in viral content for the niche: '{channel_niche}'.
-Write a highly engaging 40-50 second script on the topic: '{topic}'.
+You are a world-class YouTube Shorts director and scriptwriter producing multi-million view videos for the niche: '{channel_niche}'.
+Create a breathtaking, high-retention 40-50 second viral script on the topic: '{topic}'.
 Language: {language}
 
-Strict requirements:
-1. The first 3 seconds must have an irresistible HOOK.
-2. Fast-paced, punchy, concise sentences.
-3. Provide visual keywords for each scene to search on stock footage sites (Pexels).
-4. Return ONLY valid JSON matching this schema:
+STRICT RETENTION & STORYTELLING FORMULA:
+1. 💥 THE 3-SECOND PATTERN INTERRUPT HOOK:
+   - Start immediately with an irresistible curiosity gap, shocking counter-intuitive fact, or high-stakes dilemma.
+   - Absolutely NO greetings, NO "Did you know?", NO boring intros. Start with immediate impact.
+2. ⚡ VISCERAL, HIGH-SPEED PACING:
+   - Punchy, concise sentences (6 to 12 words per sentence).
+   - High emotional resonance (mystery, awe, suspense, fascination). Zero fluff or filler words.
+3. 🌀 ESCALATION & MINDBLOWING CLIMAX:
+   - Each scene must build tension or reveal a surprising layer of truth.
+   - Deliver a powerful climax or unexpected twist at the 30-40 second mark.
+4. 🔁 SEAMLESS REWATCH LOOP:
+   - Craft the ending to either loop seamlessly back into the opening sentence or deliver a punchy takeaway.
+5. 🎬 CINEMATIC VISUAL KEYWORDS (CRITICAL):
+   - For EACH scene, provide a highly specific, evocative English search keyword tailored for cinematic stock footage & AI image rendering.
+   - Examples of GREAT visual keywords:
+     - "bioluminescent glowing abyssal creature deep dark ocean 4k"
+     - "ancient forbidden tomb golden relic volumetric dust rays"
+     - "futuristic quantum supercomputer glowing blue holographic core"
+   - NEVER use lazy generic words like "ocean", "computer", "city".
+
+Return ONLY valid JSON matching this exact schema:
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
   "hook": "The opening 3-second hook sentence",
-  "full_narration": "The full spoken text without any stage directions",
+  "full_narration": "The complete spoken text without any stage directions",
   "scenes": [
     {{
       "scene_id": 1,
-      "narration": "Text spoken in this scene",
-      "visual_keyword": "search keyword for stock video e.g. dark aesthetic city street",
+      "narration": "First spoken scene sentence",
+      "visual_keyword": "cinematic descriptive English keyword for stock/AI e.g. dark stormy ocean abyss lightning dramatic",
       "estimated_seconds": 4
     }}
   ],
-  "tags": ["tag1", "tag2", "shorts"],
+  "tags": ["shorts", "viral", "niche_tags"],
   "description": "Engaging description with hashtags"
 }}
 """
@@ -90,12 +106,12 @@ Strict requirements:
         max_retries: int = 3
     ) -> ScriptContract:
         """
-        Tiếp thu góp ý của người dùng/nhóm để tinh chỉnh kịch bản hiện tại.
+        Tiếp thu góp ý của người dùng/nhóm để tinh chỉnh kịch bản hiện tại chuẩn viral.
         Tự động xoay sang key tiếp theo nếu gặp rate limit/quota.
         """
         prompt = f"""
-You are an elite YouTube Shorts scriptwriter specializing in viral content for the niche: '{channel_niche}'.
-We have an existing script, but the creator and team gave the following specific feedback/revisions:
+You are an elite viral YouTube Shorts director.
+We have an existing script, but the creator and team provided specific feedback/revisions:
 
 USER FEEDBACK:
 "{feedback}"
@@ -103,13 +119,14 @@ USER FEEDBACK:
 CURRENT SCRIPT:
 {current_script.model_dump_json(indent=2)}
 
-Please refine and rewrite the script strictly adhering to the user's feedback while maintaining high retention and viral potential.
+Please refine and rewrite the script strictly adhering to the user's feedback while maintaining top-tier viewer retention, fast pacing, and cinematic visual keywords.
 Language: {language}
 
 Strict requirements:
 1. Revise the narration, hook, or visual keywords according to the feedback.
-2. Fast-paced, punchy, concise sentences (30-50 seconds total).
-3. Return ONLY valid JSON matching this schema:
+2. Fast-paced, punchy, concise sentences (35-50 seconds total).
+3. Highly descriptive, cinematic English visual keywords for each scene.
+4. Return ONLY valid JSON matching this schema:
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
   "hook": "The opening 3-second hook sentence",
@@ -118,7 +135,7 @@ Strict requirements:
     {{
       "scene_id": 1,
       "narration": "Text spoken in this scene",
-      "visual_keyword": "search keyword for stock video e.g. dark aesthetic city street",
+      "visual_keyword": "cinematic descriptive English keyword for stock/AI",
       "estimated_seconds": 4
     }}
   ],
