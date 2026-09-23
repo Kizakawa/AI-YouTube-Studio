@@ -80,25 +80,10 @@ async def safe_edit_text(message, text: str, reply_markup=None, parse_mode="Mark
 
 def is_authorized(update: Update) -> bool:
     """
-    Kiểm tra quyền truy cập:
-    - Nếu tin nhắn đến từ Nhóm Chat nằm trong ALLOWED_TELEGRAM_GROUPS: Cho phép tất cả thành viên trong nhóm.
-    - Nếu tin nhắn riêng tư (Direct Message): Kiểm tra xem user_id có nằm trong ALLOWED_TELEGRAM_USERS không.
+    Tất cả thành viên trong nhóm Telegram hoặc chat trực tiếp đều có toàn quyền sử dụng bot.
+    Không bắt buộc cấu hình ALLOWED_TELEGRAM_USERS để tránh phiền toái cho người dùng.
     """
-    chat = update.effective_chat
-    user = update.effective_user
-
-    # 1. Kiểm tra nhóm chat
-    allowed_groups = settings.get_allowed_group_ids()
-    if chat and chat.type in ["group", "supergroup"]:
-        if not allowed_groups:
-            return True
-        return chat.id in allowed_groups
-
-    # 2. Kiểm tra user cá nhân
-    allowed_users = settings.get_allowed_users()
-    if not allowed_users:
-        return True
-    return user.id in allowed_users
+    return True
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
