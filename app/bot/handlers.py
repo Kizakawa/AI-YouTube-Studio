@@ -1,4 +1,6 @@
 import logging
+import re
+import html
 from datetime import datetime
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -10,6 +12,35 @@ from app.schemas.contracts import ScriptContract
 
 logger = logging.getLogger(__name__)
 content_agent = ContentAgent()
+
+
+async def safe_reply(update: Update, text: str, reply_markup=None, parse_mode="Markdown"):
+    """
+    Gửi tin nhắn an toàn: Nếu Markdown bị lỗi parse ký tự lạ (như _, *, [, ]),
+    tự động fallback sang Plain Text để bot KHÔNG BAO GIỜ bị im lặng!
+    """
+    try:
+        if update.message:
+            return await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+        elif update.callback_query and update.callback_query.message:
+            return await update.callback_query.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+    except Exception as e:
+        logger.warning(f"Lỗi gửi tin nhắn parse_mode={parse_mode} ({e}), fallback sang Plain Text...")
+        plain = re.sub(r'[*_`\[\]()]', '', text)
+        if update.message:
+            return await update.message.reply_text(plain, reply_markup=reply_markup)
+        elif update.callback_query and update.callback_query.message:
+            return await update.callback_query.message.reply_text(plain, reply_markup=reply_markup)
+
+
+async def safe_edit_text(message, text: str, reply_markup=None, parse_mode="Markdown"):
+    """Edit tin nhắn an toàn với fallback"""
+    try:
+        return await message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+    except Exception as e:
+        logger.warning(f"Lỗi edit_text parse_mode={parse_mode} ({e}), fallback sang Plain Text...")
+        plain = re.sub(r'[*_`\[\]()]', '', text)
+        return await message.edit_text(plain, reply_markup=reply_markup)
 
 
 def is_authorized(update: Update) -> bool:
@@ -38,7 +69,7 @@ def is_authorized(update: Update) -> bool:
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Xử lý lệnh /start"""
     if not is_authorized(update):
-        await update.message.reply_text("⛔ Nhóm hoặc tài khoản này chưa được cấp quyền sử dụng bot.")
+        await safe_reply(update, "⛔ Nhóm hoặc tài khoản này chưa được cấp quyền sử dụng bot.")
         return
 
     user = update.effective_user
@@ -78,7 +109,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• `/status` - Báo cáo số lượng video và trạng thái hệ thống\n\n"
         f"👉 Hãy gõ `/channels` để chọn kênh bắt đầu!"
     )
-    await update.message.reply_text(welcome_text, parse_mode="Markdown")
+    await safe_reply(update, welcome_text)
 
 
 async def channels_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -87,10 +118,10 @@ async def channels_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     reply_markup = get_channel_selection_keyboard()
-    await update.message.reply_text(
+    await safe_reply(
+        update,
         "📺 **Chọn kênh YouTube mục tiêu cho dự án tiếp theo:**",
-        reply_markup=reply_markup,
-        parse_mode="Markdown"
+        reply_markup=reply_markup
     )
 
 
@@ -113,10 +144,10 @@ async def channel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             log_activity(db, user.id, user.username, "CHANGE_CHANNEL",
                          f"Chuyển kênh làm việc sang '{channel_id}'", channel_id=channel_id)
 
-        await query.message.reply_text(
+        await safe_reply(
+            update,
             f"✅ **{user.first_name}** đã chọn kênh: **{channel_id}**\n"
-            f"Bây giờ cả nhóm có thể gõ: `/idea <chủ đề>` để bắt đầu tạo video cho kênh này!",
-            parse_mode="Markdown"
+            f"Bây giờ cả nhóm có thể gõ: `/idea <chủ đề>` để bắt đầu tạo video cho kênh này!"
         )
 
 
@@ -126,9 +157,9 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not context.args:
-        await update.message.reply_text(
-            "💡 Cú pháp: `/idea <chủ đề video>`\nVí dụ: `/idea 3 bí ẩn dưới đáy biển sâu`",
-            parse_mode="Markdown")
+        await safe_reply(
+            update,
+            "💡 Cú pháp: `/idea <chủ đề video>`\nVí dụ: `/idea 3 bí ẩn dưới đáy biển sâu`")
         return
 
     topic = " ".join(context.args)
@@ -144,10 +175,10 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log_activity(db, user.id, user.username, "CMD_IDEA",
                      f"Yêu cầu lên ý tưởng video: '{topic}'", channel_id=channel_id)
 
-    status_msg = await update.message.reply_text(
+    status_msg = await safe_reply(
+        update,
         f"🤖 **{user.first_name}** vừa yêu cầu lên ý tưởng: *\"{topic}\"*\n"
-        f"Đang kích hoạt Gemini AI (Key Rotation Pool) để tạo kịch bản cho kênh `{channel_id}`...",
-        parse_mode="Markdown"
+        f"Đang kích hoạt Gemini AI (Key Rotation Pool) để tạo kịch bản cho kênh `{channel_id}`..."
     )
 
     try:
@@ -194,11 +225,18 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         review_markup = get_video_review_keyboard(job_id)
-        await status_msg.edit_text(reply_content, reply_markup=review_markup, parse_mode="Markdown")
+        if status_msg:
+            await safe_edit_text(status_msg, reply_content, reply_markup=review_markup)
+        else:
+            await safe_reply(update, reply_content, reply_markup=review_markup)
 
     except Exception as e:
         logger.error(f"Lỗi khi tạo kịch bản: {e}", exc_info=True)
-        await status_msg.edit_text(f"❌ Có lỗi xảy ra khi tạo kịch bản: `{e}`", parse_mode="Markdown")
+        err_text = f"❌ Có lỗi xảy ra khi tạo kịch bản: `{e}`"
+        if status_msg:
+            await safe_edit_text(status_msg, err_text)
+        else:
+            await safe_reply(update, err_text)
 
 
 async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -213,18 +251,18 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("publish_now:"):
         job_id = int(data.split(":")[1])
         # TODO Phase 2: Gọi pipeline.execute() → PublisherAgent
-        await query.message.reply_text(
+        await safe_reply(
+            update,
             f"🚀 **{user.first_name}** yêu cầu đăng video #{job_id} ngay!\n"
-            f"⏳ Đang xếp hàng vào pipeline render...",
-            parse_mode="Markdown"
+            f"⏳ Đang xếp hàng vào pipeline render..."
         )
 
     elif data.startswith("schedule:"):
         job_id = int(data.split(":")[1])
-        await query.message.reply_text(
+        await safe_reply(
+            update,
             f"⏰ **{user.first_name}** yêu cầu lên lịch video #{job_id}!\n"
-            f"⏳ Chức năng đặt lịch sẽ hoạt động sau khi render xong.",
-            parse_mode="Markdown"
+            f"⏳ Chức năng đặt lịch sẽ hoạt động sau khi render xong."
         )
 
     elif data.startswith("regenerate:"):
@@ -235,10 +273,10 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 job.status = "DRAFT"
                 log_activity(db, user.id, user.username, "REGENERATE",
                              f"Yêu cầu tạo lại kịch bản #{job_id}")
-        await query.message.reply_text(
+        await safe_reply(
+            update,
             f"🔄 **{user.first_name}** yêu cầu tạo lại kịch bản #{job_id}.\n"
-            f"Hãy gõ `/idea <chủ đề mới>` để tạo kịch bản thay thế.",
-            parse_mode="Markdown"
+            f"Hãy gõ `/idea <chủ đề mới>` để tạo kịch bản thay thế."
         )
 
     elif data.startswith("cancel:"):
@@ -250,9 +288,9 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 job.error_message = f"Hủy bởi {user.first_name}"
                 log_activity(db, user.id, user.username, "CANCEL_JOB",
                              f"Đã hủy video #{job_id}")
-        await query.message.reply_text(
-            f"❌ **{user.first_name}** đã hủy video #{job_id}.",
-            parse_mode="Markdown"
+        await safe_reply(
+            update,
+            f"❌ **{user.first_name}** đã hủy video #{job_id}."
         )
 
 
@@ -273,4 +311,4 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• Cụm Google Ultra Quota: Đang hoạt động 🟢\n"
         f"• Web Dashboard: Đang trực tuyến tại cổng `http://localhost:8000` 🌐"
     )
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await safe_reply(update, text)

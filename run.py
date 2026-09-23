@@ -7,6 +7,14 @@ from app.database import init_db
 from app.bot.handlers import start_command, channels_command, status_command, idea_command, channel_callback, video_callback
 from app.utils.ffmpeg_helper import is_ffmpeg_installed, get_ffmpeg_version
 
+# Đảm bảo in tiếng Việt và emoji không bị lỗi trên Windows console
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 # Cấu hình logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -73,6 +81,16 @@ def main():
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CallbackQueryHandler(channel_callback, pattern=r"^select_channel:"))
     app.add_handler(CallbackQueryHandler(video_callback, pattern=r"^(publish_now|schedule|regenerate|cancel):"))
+
+    async def error_handler(update, context):
+        logger.error(f"⚠️ Lỗi Telegram xảy ra: {context.error}", exc_info=context.error)
+        if update and update.effective_message:
+            try:
+                await update.effective_message.reply_text(f"⚠️ Đã có lỗi xảy ra: {context.error}")
+            except Exception:
+                pass
+
+    app.add_error_handler(error_handler)
 
     print("🤖 Bot đang chạy Polling... Cả nhóm có thể ra lệnh từ Telegram hoặc xem Web!")
     print("👉 Mở trình duyệt xem Dashboard: http://127.0.0.1:8000")
