@@ -86,6 +86,16 @@ def main():
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CallbackQueryHandler(channel_callback, pattern=r"^(select_channel:|refresh_channels)"))
 
+    async def error_handler(update, context):
+        logger.error(f"⚠️ Lỗi Telegram xảy ra: {context.error}", exc_info=context.error)
+        if update and update.effective_message:
+            try:
+                await update.effective_message.reply_text(f"⚠️ Đã có lỗi xảy ra: {context.error}")
+            except Exception:
+                pass
+
+    app.add_error_handler(error_handler)
+
     print("🤖 Bot đang chạy Polling... Cả nhóm có thể ra lệnh từ Telegram hoặc xem Web!")
     print("👉 Mở trình duyệt xem Dashboard: http://127.0.0.1:8000")
     print("=" * 70)

@@ -1,4 +1,6 @@
 import logging
+import re
+import html
 from datetime import datetime
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -6,16 +8,31 @@ from config.settings import settings
 from app.bot.keyboards import get_channel_selection_keyboard, get_video_review_keyboard
 from app.database.models import SessionLocal, User, VideoJob, log_activity
 from app.agents.content_agent import ContentAgent
+from app.services.channel_manager import channel_manager
 
 logger = logging.getLogger(__name__)
 content_agent = ContentAgent()
 
+async def safe_reply(update: Update, text_html: str, reply_markup=None):
+    """
+    Hàm gửi tin nhắn an toàn: Ưu tiên parse HTML.
+    Nếu gặp lỗi parse (do ký tự lạ), tự động fallback sang gửi Plain Text để không bao giờ bị im lặng!
+    """
+    try:
+        if update.message:
+            return await update.message.reply_html(text_html, reply_markup=reply_markup, disable_web_page_preview=True)
+        elif update.callback_query and update.callback_query.message:
+            return await update.callback_query.message.reply_html(text_html, reply_markup=reply_markup, disable_web_page_preview=True)
+    except Exception as e:
+        logger.warning(f"Lỗi gửi HTML ({e}), tự động chuyển sang Plain Text...")
+        plain_text = re.sub(r'<[^>]+>', '', text_html)
+        if update.message:
+            return await update.message.reply_text(plain_text, reply_markup=reply_markup, disable_web_page_preview=True)
+        elif update.callback_query and update.callback_query.message:
+            return await update.callback_query.message.reply_text(plain_text, reply_markup=reply_markup, disable_web_page_preview=True)
+
 def is_authorized(update: Update) -> bool:
-    """
-    Kiểm tra quyền truy cập:
-    - Nếu tin nhắn đến từ Nhóm Chat nằm trong ALLOWED_TELEGRAM_GROUPS: Cho phép tất cả thành viên trong nhóm.
-    - Nếu tin nhắn riêng tư (Direct Message): Kiểm tra xem user_id có nằm trong ALLOWED_TELEGRAM_USERS không.
-    """
+    """Kiểm tra quyền truy cập"""
     chat = update.effective_chat
     user = update.effective_user
     
@@ -59,27 +76,26 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db_user.last_active = datetime.utcnow()
         db.commit()
 
-    # Ghi log hoạt động
     log_activity(db, user.id, user.username, "START_BOT", f"Khởi động bot từ {chat.type} '{chat.title or user.first_name}'")
     db.close()
 
-    scope_text = f"nhóm **{chat.title}**" if is_group else f"bạn **{user.first_name}**"
-    group_info = f"\n\n🔑 **ID Nhóm này:** `{chat.id}` *(bạn có thể lưu vào `ALLOWED_TELEGRAM_GROUPS` trong `.env`)*" if is_group else ""
+    scope_name = html.escape(chat.title) if is_group else html.escape(user.first_name)
+    group_info = f"\n\n🔑 <b>ID Nhóm này:</b> <code>{chat.id}</code> <i>(bạn có thể lưu vào ALLOWED_TELEGRAM_GROUPS trong .env)</i>" if is_group else ""
 
     welcome_text = (
-        f"🎬 **AI YouTube Multi-Channel Studio đã sẵn sàng cho {scope_text}!**\n\n"
-        f"👥 **Cơ chế làm việc nhóm & Web Dashboard:**\n"
+        f"🎬 <b>AI YouTube Multi-Channel Studio đã sẵn sàng cho {scope_name}!</b>\n\n"
+        f"👥 <b>Cơ chế làm việc nhóm & Web Dashboard:</b>\n"
         f"• Mọi thành viên cùng ra lệnh, kịch bản hiển thị công khai trong nhóm.\n"
         f"• Theo dõi toàn bộ hoạt động của admin qua Web Dashboard thời gian thực!\n\n"
-        f"📌 **Các lệnh chính:**\n"
-        f"• `/channels` - Xem và chuyển đổi kênh YouTube muốn sản xuất\n"
-        f"• `/idea <chủ đề>` - Lên kịch bản AI, chia phân cảnh và từ khóa Pexels\n"
-        f"• `/status` - Báo cáo số lượng video và trạng thái hệ thống\n\n"
-        f"👉 Hãy gõ `/channels` để chọn kênh bắt đầu!{group_info}"
+        f"📌 <b>Các lệnh chính:</b>\n"
+        f"• <code>/channels</code> - Xem danh sách kênh & trạng thái kết nối YouTube\n"
+        f"• <code>/addchannel &lt;id&gt; &lt;tên&gt; &lt;ngách&gt;</code> - Thêm kênh mới tức thì\n"
+        f"• <code>/auth &lt;id_kênh&gt;</code> - Lấy link đăng nhập Google OAuth cấp quyền\n"
+        f"• <code>/idea &lt;chủ đề&gt;</code> - Lên kịch bản AI, chia phân cảnh\n"
+        f"• <code>/status</code> - Báo cáo số lượng video và hệ thống\n\n"
+        f"👉 Hãy gõ <code>/channels</code> để chọn kênh bắt đầu!{group_info}"
     )
-    await update.message.reply_text(welcome_text, parse_mode="Markdown")
-
-from app.services.channel_manager import channel_manager
+    await safe_reply(update, welcome_text)
 
 async def channels_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Hiển thị danh sách kênh chi tiết và trạng thái kết nối cho cả nhóm"""
@@ -88,25 +104,31 @@ async def channels_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     channels = channel_manager.list_channels()
     
-    text_lines = ["📺 **DANH SÁCH KÊNH YOUTUBE TRONG HỆ THỐNG:**\n"]
+    text_lines = ["📺 <b>DANH SÁCH KÊNH YOUTUBE TRONG HỆ THỐNG:</b>\n"]
     if not channels:
-        text_lines.append("_Chưa có kênh nào. Dùng `/addchannel <id> <tên> <ngách>` để thêm mới!_")
+        text_lines.append("<i>Chưa có kênh nào. Dùng /addchannel &lt;id&gt; &lt;tên&gt; &lt;ngách&gt; để thêm mới!</i>")
     else:
         for idx, ch in enumerate(channels, 1):
             status = "🟢 Đã kết nối OAuth" if ch.get("is_authenticated") else "🔴 Chưa kết nối Google OAuth"
             subs_text = f" ({ch.get('subscribers')} subs)" if ch.get("is_authenticated") else ""
-            real_name = f" - YouTube: `{ch.get('real_title')}`" if ch.get("real_title") else ""
+            real_name = f" - YouTube: <b>{html.escape(ch.get('real_title'))}</b>" if ch.get("real_title") else ""
+            
+            ch_name = html.escape(str(ch.get("name", "")))
+            ch_id = html.escape(str(ch.get("id", "")))
+            ch_niche = html.escape(str(ch.get("niche", "")))
+            acc_id = html.escape(str(ch.get("google_account", "")))
+
             text_lines.append(
-                f"**{idx}. {ch.get('name')}** (`{ch.get('id')}`)\n"
+                f"<b>{idx}. {ch_name}</b> (<code>{ch_id}</code>)\n"
                 f"   • Trạng thái: {status}{subs_text}{real_name}\n"
-                f"   • Ngách: `{ch.get('niche')}` | Ultra: `{ch.get('google_account')}`\n"
+                f"   • Ngách: <code>{ch_niche}</code> | Ultra: <code>{acc_id}</code>\n"
             )
 
-    text_lines.append("\n👉 **Bấm nút bên dưới để chọn kênh làm việc hoặc kết nối:**")
-    text_lines.append("💡 _Để kết nối Google OAuth: gõ `/auth <id_kênh>` hoặc bấm vào Web Dashboard._")
+    text_lines.append("\n👉 <b>Bấm nút bên dưới để chọn kênh làm việc:</b>")
+    text_lines.append("💡 <i>Để kết nối Google OAuth: gõ /auth &lt;id_kênh&gt; hoặc bấm vào Web Dashboard.</i>")
 
     reply_markup = get_channel_selection_keyboard()
-    await update.message.reply_text("\n".join(text_lines), reply_markup=reply_markup, parse_mode="Markdown")
+    await safe_reply(update, "\n".join(text_lines), reply_markup=reply_markup)
 
 async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Lệnh thêm kênh mới trực tiếp từ Telegram: /addchannel <id> <tên kênh> <ngách>"""
@@ -115,14 +137,14 @@ async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if len(context.args) < 3:
         help_text = (
-            "📌 **Cú pháp thêm kênh mới:**\n"
-            "`/addchannel <id_kênh> <tên_kênh> <ngách>`\n\n"
-            "Ví dụ:\n"
-            "`/addchannel ch_history Bí Ẩn Lịch Sử history`\n"
-            "`/addchannel ch_finance Tư Duy Tiền Tệ finance`\n\n"
-            "Các ngách gợi ý: `psychology`, `philosophy`, `space`, `history`, `finance`."
+            "📌 <b>Cú pháp thêm kênh mới:</b>\n"
+            "<code>/addchannel &lt;id_kênh&gt; &lt;tên_kênh&gt; &lt;ngách&gt;</code>\n\n"
+            "<b>Ví dụ:</b>\n"
+            "<code>/addchannel ch_history Bí Ẩn Lịch Sử history</code>\n"
+            "<code>/addchannel ch_finance Tư Duy Tiền Tệ finance</code>\n\n"
+            "Các ngách gợi ý: <code>psychology</code>, <code>philosophy</code>, <code>space</code>, <code>history</code>, <code>finance</code>."
         )
-        await update.message.reply_text(help_text, parse_mode="Markdown")
+        await safe_reply(update, help_text)
         return
 
     ch_id = context.args[0].lower().replace(" ", "_")
@@ -142,15 +164,15 @@ async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         db.close()
 
         success_text = (
-            f"✅ **Đã thêm kênh mới thành công!**\n\n"
-            f"• Tên kênh: **{name}**\n"
-            f"• Mã ID: `{ch_id}`\n"
-            f"• Ngách: `{niche}`\n\n"
-            f"👉 Bây giờ bạn có thể gõ `/auth {ch_id}` để lấy link kết nối Google OAuth cho kênh này!"
+            f"✅ <b>Đã thêm kênh mới thành công!</b>\n\n"
+            f"• Tên kênh: <b>{html.escape(name)}</b>\n"
+            f"• Mã ID: <code>{ch_id}</code>\n"
+            f"• Ngách: <code>{niche}</code>\n\n"
+            f"👉 Bây giờ bạn có thể gõ <code>/auth {ch_id}</code> để lấy link kết nối Google OAuth cho kênh này!"
         )
-        await update.message.reply_text(success_text, parse_mode="Markdown")
+        await safe_reply(update, success_text)
     except Exception as e:
-        await update.message.reply_text(f"❌ Không thể thêm kênh: {e}")
+        await safe_reply(update, f"❌ Không thể thêm kênh: {html.escape(str(e))}")
 
 async def auth_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Lệnh lấy link xác thực Google OAuth2 cho một kênh: /auth <id_kênh>"""
@@ -158,21 +180,20 @@ async def auth_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not context.args:
-        await update.message.reply_text("💡 Cú pháp: `/auth <id_kênh>`\nVí dụ: `/auth channel_psychology`\n(Dùng `/channels` để xem danh sách ID)", parse_mode="Markdown")
+        await safe_reply(update, "💡 Cú pháp: <code>/auth &lt;id_kênh&gt;</code>\nVí dụ: <code>/auth channel_psychology</code>\n<i>(Dùng /channels để xem danh sách ID)</i>")
         return
 
     ch_id = context.args[0].lower().strip()
-    # Đường dẫn Web Dashboard cục bộ
     auth_web_link = f"http://localhost:8000/auth/youtube/{ch_id}"
     
     text = (
-        f"🔗 **KẾT NỐI GOOGLE OAUTH2 CHO KÊNH: `{ch_id}`**\n\n"
+        f"🔗 <b>KẾT NỐI GOOGLE OAUTH2 CHO KÊNH:</b> <code>{ch_id}</code>\n\n"
         f"1. Nhấp vào đường link bên dưới để mở trang đăng nhập Google cấp quyền:\n"
-        f"👉 [Bấm Vào Đây Để Kết Nối Kênh]({auth_web_link})\n\n"
-        f"2. Đăng nhập đúng tài khoản Google quản lý kênh này và bấm **Cho phép (Allow)**.\n"
+        f"👉 <a href=\"{auth_web_link}\">BẤM VÀO ĐÂY ĐỂ ĐĂNG NHẬP GOOGLE</a>\n\n"
+        f"2. Đăng nhập đúng tài khoản Google quản lý kênh và bấm <b>Cho phép (Allow)</b>.\n"
         f"3. Hệ thống sẽ tự động lưu token và kích hoạt trạng thái 🟢 Đã kết nối!"
     )
-    await update.message.reply_text(text, parse_mode="Markdown", disable_web_page_preview=True)
+    await safe_reply(update, text)
 
 async def channel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Xử lý khi một thành viên bấm nút chọn kênh hoặc làm mới"""
@@ -200,14 +221,14 @@ async def channel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.close()
 
         status_info = channel_manager.get_channel_live_status(channel_id)
-        auth_msg = "🟢 Kênh đã kết nối YouTube" if status_info.get("is_authenticated") else "🔴 Kênh CHƯA kết nối Google OAuth (gõ `/auth " + channel_id + "` để kết nối)"
+        auth_msg = "🟢 Kênh đã kết nối YouTube" if status_info.get("is_authenticated") else f"🔴 Kênh CHƯA kết nối Google OAuth (gõ <code>/auth {channel_id}</code> để kết nối)"
 
-        await query.message.reply_text(
-            f"✅ **{user.first_name}** đã chọn kênh: **{channel_id}**\n"
+        msg = (
+            f"✅ <b>{html.escape(user.first_name)}</b> đã chọn kênh: <code>{channel_id}</code>\n"
             f"• Trạng thái: {auth_msg}\n\n"
-            f"👉 Bây giờ cả nhóm có thể gõ: `/idea <chủ đề>` để tạo kịch bản cho kênh này!",
-            parse_mode="Markdown"
+            f"👉 Bây giờ cả nhóm có thể gõ: <code>/idea &lt;chủ đề&gt;</code> để tạo kịch bản cho kênh này!"
         )
+        await safe_reply(update, msg)
 
 async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Lệnh sinh kịch bản AI và gửi vào nhóm cho mọi người cùng duyệt"""
@@ -215,13 +236,12 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not context.args:
-        await update.message.reply_text("💡 Cú pháp: `/idea <chủ đề video>`\nVí dụ: `/idea 3 bí ẩn dưới đáy biển sâu`", parse_mode="Markdown")
+        await safe_reply(update, "💡 Cú pháp: <code>/idea &lt;chủ đề video&gt;</code>\nVí dụ: <code>/idea 3 bí ẩn dưới đáy biển sâu</code>")
         return
 
     topic = " ".join(context.args)
     user = update.effective_user
     
-    # Lấy kênh đang hoạt động
     db = SessionLocal()
     db_user = db.query(User).filter(User.telegram_id == user.id).first()
     channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_psychology"
@@ -229,20 +249,18 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db_user.last_active = datetime.utcnow()
         db.commit()
 
-    # Ghi log hoạt động
     log_activity(db, user.id, user.username, "CMD_IDEA", f"Yêu cầu lên ý tưởng video: '{topic}'", channel_id=channel_id)
     db.close()
 
-    status_msg = await update.message.reply_text(
-        f"🤖 **{user.first_name}** vừa yêu cầu lên ý tưởng: *\"{topic}\"*\n"
-        f"Đang kích hoạt Gemini AI (Key Rotation Pool) để tạo kịch bản cho kênh `{channel_id}`...",
-        parse_mode="Markdown"
+    status_msg = await safe_reply(
+        update,
+        f"🤖 <b>{html.escape(user.first_name)}</b> vừa yêu cầu lên ý tưởng: <i>\"{html.escape(topic)}\"</i>\n"
+        f"Đang kích hoạt Gemini AI (Key Rotation Pool) để tạo kịch bản cho kênh <code>{channel_id}</code>..."
     )
 
     try:
         script_data = content_agent.generate_script(topic=topic, channel_niche="general", language="en")
         
-        # Lưu vào Database
         db = SessionLocal()
         job = VideoJob(
             user_id=user.id,
@@ -260,24 +278,30 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log_activity(db, user.id, user.username, "SCRIPT_CREATED", f"Kịch bản #{job_id} đã hoàn thành: '{script_data.get('title')}'", channel_id=channel_id)
         db.close()
 
-        # Soạn nội dung thông báo cho nhóm
-        scenes_preview = "\n".join([f"• Cảnh {s.get('scene_id')}: {s.get('narration')} _(Tìm: {s.get('visual_keyword')})_" for s in script_data.get("scenes", [])[:3]])
+        scenes_preview = "\n".join([f"• Cảnh {s.get('scene_id')}: {html.escape(str(s.get('narration')))} <i>(Tìm: {html.escape(str(s.get('visual_keyword')))})</i>" for s in script_data.get("scenes", [])[:3]])
 
         reply_content = (
-            f"🎬 **KỊCH BẢN ĐÃ HOÀN THÀNH (Task #{job_id})**\n\n"
-            f"📌 **Tiêu đề đề xuất:** {script_data.get('title')}\n"
-            f"🔥 **Hook 3 giây đầu:** \"{script_data.get('hook')}\"\n\n"
-            f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
-            f"🗣️ **Người tạo:** {user.first_name} | 📺 **Kênh:** `{channel_id}`\n\n"
+            f"🎬 <b>KỊCH BẢN ĐÃ HOÀN THÀNH (Task #{job_id})</b>\n\n"
+            f"📌 <b>Tiêu đề đề xuất:</b> {html.escape(str(script_data.get('title')))}\n"
+            f"🔥 <b>Hook 3 giây đầu:</b> \"{html.escape(str(script_data.get('hook')))}\"\n\n"
+            f"📝 <b>Phân cảnh tiêu biểu:</b>\n{scenes_preview}\n\n"
+            f"🗣️ <b>Người tạo:</b> {html.escape(user.first_name)} | 📺 <b>Kênh:</b> <code>{channel_id}</code>\n\n"
             f"👉 Cả nhóm hãy góp ý hoặc bấm nút bên dưới để tiến hành sản xuất video!"
         )
 
         review_markup = get_video_review_keyboard(job_id)
-        await status_msg.edit_text(reply_content, reply_markup=review_markup, parse_mode="Markdown")
+        if status_msg:
+            await status_msg.edit_text(reply_content, reply_markup=review_markup, parse_mode="HTML")
+        else:
+            await safe_reply(update, reply_content, reply_markup=review_markup)
 
     except Exception as e:
         logger.error(f"Lỗi khi tạo kịch bản: {e}")
-        await status_msg.edit_text(f"❌ Có lỗi xảy ra khi tạo kịch bản: `{e}`", parse_mode="Markdown")
+        err_msg = f"❌ Có lỗi xảy ra khi tạo kịch bản: <code>{html.escape(str(e))}</code>"
+        if status_msg:
+            await status_msg.edit_text(err_msg, parse_mode="HTML")
+        else:
+            await safe_reply(update, err_msg)
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Báo cáo tổng hợp số lượng video và tài nguyên"""
@@ -290,11 +314,11 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.close()
 
     text = (
-        f"📊 **BÁO CÁO NHÓM LÀM VIỆC (AI STUDIO)**\n\n"
-        f"• Tổng số video trong hệ thống: `{total_jobs}`\n"
-        f"• Kịch bản đang chờ duyệt/render: `{ready_jobs}`\n"
+        f"📊 <b>BÁO CÁO NHÓM LÀM VIỆC (AI STUDIO)</b>\n\n"
+        f"• Tổng số video trong hệ thống: <code>{total_jobs}</code>\n"
+        f"• Kịch bản đang chờ duyệt/render: <code>{ready_jobs}</code>\n"
         f"• Kho Google Drive 2TB: Sẵn sàng 🟢\n"
         f"• Cụm Google Ultra Quota: Đang hoạt động 🟢\n"
-        f"• Web Dashboard: Đang trực tuyến tại cổng `http://localhost:8000` 🌐"
+        f"• Web Dashboard: Đang trực tuyến tại cổng <code>http://localhost:8000</code> 🌐"
     )
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await safe_reply(update, text)
