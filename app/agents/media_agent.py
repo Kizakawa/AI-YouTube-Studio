@@ -22,6 +22,10 @@ class MediaAgent:
         self.base_url = "https://api.pexels.com/videos/search"
         self.photo_url = "https://api.pexels.com/v1/search"
 
+    @property
+    def api_key(self) -> Optional[str]:
+        return self.keys[0] if self.keys else None
+
     def _get_active_key(self) -> Optional[str]:
         if self._key_cycle:
             return next(self._key_cycle)

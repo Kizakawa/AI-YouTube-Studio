@@ -438,6 +438,189 @@ async def cancel_queue_command(update: Update, context: ContextTypes.DEFAULT_TYP
             f"Video có thể đang render hoặc không có trong hàng đợi."
         )
 
+
+async def media_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Lệnh gắn media từ URL web cho phân cảnh:
+    Cú pháp: /media <số_cảnh> <url>
+    Hoặc: /media <job_id> <số_cảnh> <url>
+    """
+    if not is_authorized(update):
+        return
+
+    args = context.args or []
+    if len(args) < 2:
+        await safe_reply(
+            update,
+            "💡 **Cú pháp gắn media từ URL:**\n"
+            "`/media <số phân cảnh> <link_ảnh_hoặc_video>`\n"
+            "Hoặc: `/media <job_id> <số phân cảnh> <link_ảnh_hoặc_video>`\n\n"
+            "Ví dụ:\n`/media 1 https://example.com/deep_sea.jpg`"
+        )
+        return
+
+    import requests
+
+    job_id = None
+    scene_id = None
+    url = None
+
+    if len(args) >= 3 and args[0].isdigit() and args[1].isdigit():
+        job_id = int(args[0])
+        scene_id = int(args[1])
+        url = args[2]
+    elif args[0].isdigit():
+        scene_id = int(args[0])
+        url = args[1]
+        with get_db() as db:
+            latest = db.query(VideoJob).order_by(VideoJob.created_at.desc()).first()
+            if latest:
+                job_id = latest.id
+
+    if not job_id or not scene_id or not url:
+        await safe_reply(update, "⚠️ Tham số không hợp lệ. Vui lòng thử lại: `/media <số cảnh> <url>`")
+        return
+
+    wait_msg = await safe_reply(update, f"⏳ Đang tải media từ URL cho Phân cảnh #{scene_id} (Video #{job_id})...")
+    try:
+        ext = ".jpg"
+        url_lower = url.lower()
+        if ".mp4" in url_lower:
+            ext = ".mp4"
+        elif ".png" in url_lower:
+            ext = ".png"
+        elif ".webp" in url_lower:
+            ext = ".webp"
+
+        dest_dir = Path("storage") / "jobs" / str(job_id) / "custom_media"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest_path = dest_dir / f"scene_{scene_id:03d}{ext}"
+
+        res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
+        res.raise_for_status()
+        with open(dest_path, "wb") as f:
+            f.write(res.content)
+
+        await safe_edit_text(
+            wait_msg,
+            f"✅ **ĐÃ TẢI VÀ GÁN MEDIA TỪ WEB THÀNH CÔNG!**\n\n"
+            f"📸 **Phân cảnh:** #{scene_id}\n"
+            f"🎬 **Video Task:** #{job_id}\n"
+            f"📁 **Dung lượng:** {dest_path.stat().st_size / 1024:.1f} KB\n\n"
+            f"👉 Hệ thống sẽ ưu tiên sử dụng media này cho cảnh #{scene_id} khi render!"
+        )
+    except Exception as e:
+        logger.error(f"Lỗi tải media từ URL: {e}", exc_info=True)
+        await safe_edit_text(wait_msg, f"❌ Không thể tải media từ URL: `{e}`")
+
+
+async def media_upload_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Xử lý khi người dùng gửi ảnh/video/document vào nhóm hoặc DM:
+    - Bắt caption ví dụ: '/scene 1', '/scene 105 2', '#1', 'cảnh 1'.
+    - Hoặc nhận diện khi reply vào tin nhắn kịch bản Task #...
+    - Lưu file vào storage/jobs/{job_id}/custom_media/scene_{scene_id:03d}.{ext}.
+    """
+    if not is_authorized(update):
+        return
+
+    message = update.effective_message
+    if not message:
+        return
+
+    caption = (message.caption or "").strip()
+    user = update.effective_user
+
+    scene_id = None
+    job_id = None
+
+    # Check pattern /scene <job_id> <scene_id>
+    m1 = re.search(r"/scene\s+(\d+)\s+(\d+)", caption, re.IGNORECASE)
+    if m1:
+        job_id = int(m1.group(1))
+        scene_id = int(m1.group(2))
+    else:
+        # Check pattern /scene <scene_id> or #<scene_id> or cảnh <scene_id>
+        m2 = re.search(r"(?:/scene|#|c[aả]nh)\s*(\d+)", caption, re.IGNORECASE)
+        if m2:
+            scene_id = int(m2.group(1))
+
+    # Nếu reply tin nhắn, kiểm tra Task #<id> trong tin nhắn gốc
+    if message.reply_to_message:
+        replied_text = message.reply_to_message.text or message.reply_to_message.caption or ""
+        m_task = re.search(r"Task\s*#(\d+)", replied_text, re.IGNORECASE)
+        if m_task and not job_id:
+            job_id = int(m_task.group(1))
+        
+        # Nếu caption chỉ là số đơn thuần, ví dụ "1" hoặc "2"
+        if not scene_id and caption.isdigit():
+            scene_id = int(caption)
+
+    # Nếu chưa có job_id, tìm job gần nhất trong database
+    if not job_id:
+        with get_db() as db:
+            latest_job = db.query(VideoJob).order_by(VideoJob.created_at.desc()).first()
+            if latest_job:
+                job_id = latest_job.id
+
+    if not scene_id:
+        # Gửi hướng dẫn nếu người dùng chưa chỉ định phân cảnh
+        await safe_reply(
+            update,
+            "💡 **Để gắn ảnh/video này vào phân cảnh cụ thể:**\n"
+            "Vui lòng ghi chú thích (caption) kèm theo theo cú pháp: `/scene <số phân cảnh>` (ví dụ: `/scene 1` hoặc `/scene 2`)."
+        )
+        return
+
+    # Xác định file Telegram
+    file_obj = None
+    ext = ".jpg"
+    if message.photo:
+        file_obj = message.photo[-1]
+        ext = ".jpg"
+    elif message.video:
+        file_obj = message.video
+        ext = ".mp4"
+    elif message.document:
+        mime = message.document.mime_type or ""
+        file_name = message.document.file_name or ""
+        if mime.startswith("video/") or file_name.endswith((".mp4", ".mov", ".mkv")):
+            file_obj = message.document
+            ext = ".mp4"
+        elif mime.startswith("image/") or file_name.endswith((".jpg", ".jpeg", ".png", ".webp")):
+            file_obj = message.document
+            ext = Path(file_name).suffix.lower() if Path(file_name).suffix else ".jpg"
+
+    if not file_obj:
+        return
+
+    status_wait = await safe_reply(
+        update,
+        f"⏳ Đang tải và gán media tùy biến cho **Phân cảnh #{scene_id}** (Video #{job_id})..."
+    )
+
+    try:
+        tg_file = await file_obj.get_file()
+        dest_dir = Path("storage") / "jobs" / str(job_id) / "custom_media"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest_path = dest_dir / f"scene_{scene_id:03d}{ext}"
+
+        await tg_file.download_to_drive(custom_path=str(dest_path))
+
+        await safe_edit_text(
+            status_wait,
+            f"✅ **ĐÃ GÁN MEDIA TÙY BIẾN THÀNH CÔNG!**\n\n"
+            f"📸 **Phân cảnh:** #{scene_id}\n"
+            f"🎬 **Video Task:** #{job_id}\n"
+            f"📁 **File:** `{dest_path.name}` ({dest_path.stat().st_size / 1024:.1f} KB)\n"
+            f"👤 **Người gửi:** {user.first_name}\n\n"
+            f"👉 Khi dựng video (render), hệ thống sẽ ưu tiên dùng chính xác media này cho cảnh #{scene_id}!"
+        )
+    except Exception as e:
+        logger.error(f"Lỗi khi tải custom media: {e}", exc_info=True)
+        await safe_edit_text(status_wait, f"❌ Lỗi khi tải file media: `{e}`")
+
+
 async def _handle_script_revision(update: Update, context: ContextTypes.DEFAULT_TYPE, job_id: int, feedback: str):
     """Xử lý tiếp thu góp ý và tinh chỉnh kịch bản theo yêu cầu của nhóm"""
     user = update.effective_user
