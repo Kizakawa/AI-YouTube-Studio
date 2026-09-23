@@ -1,6 +1,6 @@
 """
-Script xác thực Google OAuth2 1-click cho YouTube Data API v3 và Google Drive 2TB
-Tự động mở trình duyệt để người dùng đăng nhập và sinh ra token vĩnh viễn.
+Script xác thực Google OAuth2 riêng biệt cho YouTube Data API và Google Drive 2TB
+Tách riêng từng quyền để tránh lỗi xung đột Scopes của Google (Lỗi 400: invalid_request)
 """
 import os
 import sys
@@ -8,73 +8,82 @@ import base64
 import json
 from pathlib import Path
 from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
 
-# Scopes yêu cầu cho YouTube Studio và Google Drive
-SCOPES = [
+# Tách riêng Scope để Google không báo lỗi "scopes that cannot be requested together"
+YOUTUBE_SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
-    "https://www.googleapis.com/auth/youtube",
+]
+
+DRIVE_SCOPES = [
     "https://www.googleapis.com/auth/drive.file",
 ]
 
-def main(account_id="account_1"):
+def authenticate(service_name: str, scopes: list, token_filename: str, account_id: str = "account_1"):
     base_dir = Path(__file__).resolve().parent
     account_dir = base_dir / "credentials" / "accounts" / account_id
     account_dir.mkdir(parents=True, exist_ok=True)
-    
+
     client_secret_file = account_dir / "client_secret.json"
     if not client_secret_file.exists():
         print(f"❌ Không tìm thấy file: {client_secret_file}")
-        print("Hãy chắc chắn bạn đã tải file client_secret.json vào thư mục credentials/accounts/account_1/")
-        return
-
-    print("=" * 65)
-    print(f"🔐 BẮT ĐẦU XÁC THỰC GOOGLE OAUTH2 CHO [{account_id}]")
-    print("=" * 65)
-    print("👉 Trình duyệt web sẽ tự động mở ra ngay bây giờ.")
-    print("👉 Hãy chọn tài khoản Google của bạn và bấm 'Cho phép' (Allow).")
-    print("💡 Lưu ý: Nếu thấy cảnh báo 'Google chưa xác minh ứng dụng này', hãy bấm:")
-    print("   'Nâng cao' (Advanced) -> 'Đi tới AI Studio (không an toàn)' -> Tiếp tục.")
-    print("=" * 65)
-
-    flow = InstalledAppFlow.from_client_secrets_file(
-        str(client_secret_file),
-        scopes=SCOPES
-    )
-    
-    # Chạy local server trên cổng ngẫu nhiên để hứng callback
-    creds = flow.run_local_server(port=0, prompt="consent", access_type="offline")
-
-    token_data = creds.to_json()
-
-    # Lưu token cho YouTube và Drive
-    youtube_token_file = account_dir / "youtube_token.json"
-    drive_token_file = account_dir / "drive_token.json"
-    
-    with open(youtube_token_file, "w", encoding="utf-8") as f:
-        f.write(token_data)
-        
-    with open(drive_token_file, "w", encoding="utf-8") as f:
-        f.write(token_data)
+        return False
 
     print("\n" + "=" * 65)
-    print("🎉 XÁC THỰC THÀNH CÔNG RỰC RỠ!")
+    print(f"🔐 ĐANG KẾT NỐI: [{service_name.upper()}] CHO TÀI KHOẢN [{account_id}]")
     print("=" * 65)
-    print(f"✅ Đã lưu YouTube token: {youtube_token_file}")
-    print(f"✅ Đã lưu Google Drive token: {drive_token_file}")
+    print(f"👉 Trình duyệt web sẽ mở ra để cấp quyền cho {service_name}.")
+    print("👉 Hãy chọn Gmail của bạn và bấm 'Cho phép' (Allow).")
+    print("💡 Nếu có cảnh báo 'Chưa xác minh': Bấm Nâng cao -> Đi tới AI Studio.")
+    print("=" * 65)
+
+    try:
+        flow = InstalledAppFlow.from_client_secrets_file(
+            str(client_secret_file),
+            scopes=scopes
+        )
+        creds = flow.run_local_server(port=0, prompt="consent", access_type="offline")
+        token_data = creds.to_json()
+
+        token_file = account_dir / token_filename
+        with open(token_file, "w", encoding="utf-8") as f:
+            f.write(token_data)
+
+        # Lưu thêm file Base64 cho Render
+        b64_str = base64.b64encode(token_data.encode("utf-8")).decode("utf-8")
+        b64_file = account_dir / f"{Path(token_filename).stem}_base64.txt"
+        with open(b64_file, "w", encoding="utf-8") as f:
+            f.write(b64_str)
+
+        print(f"✅ ĐÃ KẾT NỐI {service_name.upper()} THÀNH CÔNG!")
+        print(f"   -> Đã lưu token: {token_file}")
+        print(f"   -> Đã tạo file Base64 cho Render: {b64_file}")
+        return True
+    except Exception as e:
+        print(f"❌ Lỗi khi xác thực {service_name}: {e}")
+        return False
+
+def main():
+    account_id = "account_1"
     
-    # Mã hóa Base64 để người dùng copy lên Render nếu cần
-    token_b64 = base64.b64encode(token_data.encode("utf-8")).decode("utf-8")
-    
-    # Lưu file base64 token để dễ copy lên Render
-    b64_file = account_dir / "token_base64.txt"
-    with open(b64_file, "w", encoding="utf-8") as f:
-        f.write(token_b64)
-        
-    print(f"✅ Đã tạo file token Base64 cho Render: {b64_file}")
+    # Lựa chọn dịch vụ muốn xác thực
+    mode = sys.argv[1].lower() if len(sys.argv) > 1 else "all"
+
+    if mode in ["youtube", "yt"]:
+        authenticate("YouTube Studio", YOUTUBE_SCOPES, "youtube_token.json", account_id)
+    elif mode in ["drive"]:
+        authenticate("Google Drive 2TB", DRIVE_SCOPES, "drive_token.json", account_id)
+    else:
+        # Chạy YouTube trước
+        print("📌 [BƯỚC 1/2] Kết nối Kênh YouTube để đăng và lên lịch video...")
+        yt_success = authenticate("YouTube Studio", YOUTUBE_SCOPES, "youtube_token.json", account_id)
+
+        if yt_success:
+            print("\n📌 [BƯỚC 2/2] Kết nối Google Drive 2TB để lưu trữ video thành phẩm...")
+            authenticate("Google Drive 2TB", DRIVE_SCOPES, "drive_token.json", account_id)
+
+    print("\n" + "=" * 65)
+    print("🎉 HOÀN TẤT TOÀN BỘ TIẾN TRÌNH XÁC THỰC GOOGLE!")
     print("=" * 65)
 
 if __name__ == "__main__":
-    acc = sys.argv[1] if len(sys.argv) > 1 else "account_1"
-    main(acc)
+    main()
