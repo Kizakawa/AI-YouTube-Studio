@@ -9,6 +9,14 @@ import json
 from pathlib import Path
 from google_auth_oauthlib.flow import InstalledAppFlow
 
+# Đảm bảo in tiếng Việt và emoji không bị lỗi trên Windows console (cp1258)
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 # Tách riêng Scope để Google không báo lỗi "scopes that cannot be requested together"
 YOUTUBE_SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
@@ -41,7 +49,14 @@ def authenticate(service_name: str, scopes: list, token_filename: str, account_i
             str(client_secret_file),
             scopes=scopes
         )
-        creds = flow.run_local_server(port=0, prompt="consent", access_type="offline")
+        print("🌐 Đang khởi động máy chủ xác thực cục bộ...", flush=True)
+        creds = flow.run_local_server(
+            port=0,
+            prompt="consent",
+            access_type="offline",
+            authorization_prompt_message="👉 Vui lòng mở đường link sau trên trình duyệt:\n{url}\n",
+            success_message="Xac thuc thanh cong! Ban co the dong tab trinh duyet nay."
+        )
         token_data = creds.to_json()
 
         token_file = account_dir / token_filename

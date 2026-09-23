@@ -216,7 +216,12 @@ class VideoPipeline:
           Tầng 3: Web Image Search (Tìm kiếm ảnh chất lượng cao trên Wikimedia Commons)
           Tầng 4: AI Image Generation (Google Imagen 3 / Pollinations 9:16 Cinematic AI)
           Tầng 5: Dynamic Aesthetic Graphic (Fallback cuối cùng khi offline)
+
+        [FIX #3] Tất cả blocking HTTP calls được bọc trong asyncio.to_thread()
+        để tránh chặn event loop.
         """
+        import asyncio
+
         # ── Tầng 0: User Custom Media (Người dùng gửi qua Telegram) ──
         custom_dir = Path("storage") / "jobs" / str(self.job_id) / "custom_media"
         if custom_dir.exists():
@@ -234,7 +239,9 @@ class VideoPipeline:
         # ── Tầng 1: Pexels Video (nếu có key) ──
         if self._media_agent.api_key:
             try:
-                videos = self._media_agent.search_videos(scene.visual_keyword, per_page=2)
+                videos = await asyncio.to_thread(
+                    self._media_agent.search_videos, scene.visual_keyword, 2
+                )
                 if videos:
                     for video_data in videos:
                         video_files = video_data.get("video_files", [])
@@ -246,7 +253,9 @@ class VideoPipeline:
                         )
                         if best and best.get("link"):
                             output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}.mp4")
-                            self._media_agent.download_file(best["link"], output)
+                            await asyncio.to_thread(
+                                self._media_agent.download_file, best["link"], output
+                            )
                             logger.info(f"Scene {scene.scene_id}: Tải thành công Pexels Video")
                             return output
             except Exception as e:
@@ -255,14 +264,18 @@ class VideoPipeline:
         # ── Tầng 2: Pexels Photo (nếu có key, dùng cho Ken Burns) ──
         if self._media_agent.api_key:
             try:
-                photos = self._media_agent.search_photos(scene.visual_keyword, per_page=2)
+                photos = await asyncio.to_thread(
+                    self._media_agent.search_photos, scene.visual_keyword, 2
+                )
                 if photos:
                     photo = photos[0]
                     src = photo.get("src", {})
                     img_url = src.get("large2x") or src.get("portrait") or src.get("original") or src.get("large")
                     if img_url:
                         img_output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}.jpg")
-                        self._media_agent.download_file(img_url, img_output)
+                        await asyncio.to_thread(
+                            self._media_agent.download_file, img_url, img_output
+                        )
                         logger.info(f"Scene {scene.scene_id}: Tải thành công Pexels Photo cho Ken Burns")
                         return img_output
             except Exception as e:
@@ -270,14 +283,18 @@ class VideoPipeline:
 
         # ── Tầng 3: Web Image Search (Wikimedia Commons) ──
         try:
-            web_photos = self._media_agent.search_web_photos(scene.visual_keyword, per_page=2)
+            web_photos = await asyncio.to_thread(
+                self._media_agent.search_web_photos, scene.visual_keyword, 2
+            )
             if web_photos:
                 web_photo = web_photos[0]
                 web_url = web_photo.get("url")
                 if web_url:
                     web_ext = ".jpg" if "jpg" in web_url.lower() or "jpeg" in web_url.lower() else ".png"
                     web_output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_web{web_ext}")
-                    self._media_agent.download_file(web_url, web_output)
+                    await asyncio.to_thread(
+                        self._media_agent.download_file, web_url, web_output
+                    )
                     logger.info(f"Scene {scene.scene_id}: Tải thành công ảnh Web ({web_photo.get('title')[:30]})")
                     return web_output
         except Exception as e:
@@ -286,7 +303,9 @@ class VideoPipeline:
         # ── Tầng 4: AI Image Generation (Google Imagen 3 / Pollinations 9:16) ──
         try:
             ai_img_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_ai.jpg")
-            res_img = self._image_agent.generate_scene_image(scene.visual_keyword, ai_img_path)
+            res_img = await asyncio.to_thread(
+                self._image_agent.generate_scene_image, scene.visual_keyword, ai_img_path
+            )
             if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 1000:
                 logger.info(f"Scene {scene.scene_id}: Sinh thành công ảnh AI điện ảnh 9:16")
                 return res_img
@@ -334,6 +353,9 @@ class VideoPipeline:
                 job.status = status.value
                 if error_msg:
                     job.error_message = error_msg
+                elif status in (JobStatus.RENDERED, JobStatus.PUBLISHED):
+                    # Clear error_message khi hoàn thành thành công
+                    job.error_message = None
 
     def _save_audio_metadata(self, audio_path: str, duration_ms: int, scenes: List[SceneContract]):
         """Lưu metadata audio vào DB sau Step B."""

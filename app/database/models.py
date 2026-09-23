@@ -126,7 +126,9 @@ class ActivityLog(Base):
 
 
 def log_activity(db, telegram_id: int, username: str, action_type: str, details: str, channel_id: str = None):
-    """Hàm tiện ích ghi lại vết hành động của thành viên để theo dõi trên Web Dashboard"""
+    """Hàm tiện ích ghi lại vết hành động của thành viên để theo dõi trên Web Dashboard.
+    LƯU Ý: Không gọi db.commit() ở đây — get_db() context manager đã auto-commit.
+    """
     try:
         activity = ActivityLog(
             telegram_id=telegram_id,
@@ -137,9 +139,10 @@ def log_activity(db, telegram_id: int, username: str, action_type: str, details:
             created_at=datetime.utcnow()
         )
         db.add(activity)
-        db.commit()
+        # Không commit ở đây — get_db() context manager sẽ auto-commit
+        # Tránh double commit gây SQLite busy khi multi-thread
     except Exception as e:
-        db.rollback()
+        logging.getLogger(__name__).warning(f"Lỗi ghi activity log: {e}")
 
 
 def init_db():

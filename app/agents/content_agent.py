@@ -28,18 +28,40 @@ class ContentAgent:
         self.rotator = KeyRotator(keys)
         self.conversations: Dict[str, List[Dict[str, str]]] = {}
 
-    def _call_api(self, prompt: str, json_mode: bool = False, timeout: int = 15) -> str:
+    def _call_api(self, prompt: str, json_mode: bool = False, timeout: int = 15, max_total_seconds: int = 60) -> str:
         """
         Gọi trực tiếp Gemini REST API với timeout nghiêm ngặt.
         Tự động xoay key và model ngay lập tức nếu gặp 429 (quota), 503 (quá tải) hoặc timeout.
+        [FIX #2] Thêm tổng timeout max_total_seconds (mặc định 60s) để tránh kẹt quá lâu.
         """
+        import time
+        start_time = time.monotonic()
         total_keys = max(len(self.rotator.keys), 1)
-        for attempt in range(total_keys * 2):
+        attempts = 0
+        max_attempts = total_keys + 1  # Giảm từ total_keys * 2
+
+        for attempt in range(max_attempts):
+            # [FIX #2] Kiểm tra tổng thời gian đã chạy
+            elapsed = time.monotonic() - start_time
+            if elapsed >= max_total_seconds:
+                raise RuntimeError(
+                    f"Gemini API: Vượt tổng timeout {max_total_seconds}s "
+                    f"(đã thử {attempts} requests trong {elapsed:.1f}s)"
+                )
+
             key = self.rotator.get_key()
             if not key:
                 raise ValueError("Không có API Key nào hoạt động trong pool!")
 
             for model in AVAILABLE_MODELS:
+                # Kiểm tra timeout tổng trước mỗi request
+                elapsed = time.monotonic() - start_time
+                if elapsed >= max_total_seconds:
+                    raise RuntimeError(
+                        f"Gemini API: Vượt tổng timeout {max_total_seconds}s "
+                        f"(đã thử {attempts} requests trong {elapsed:.1f}s)"
+                    )
+
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
                 payload = {
                     "contents": [{"parts": [{"text": prompt}]}]
@@ -48,6 +70,7 @@ class ContentAgent:
                     payload["generationConfig"] = {"responseMimeType": "application/json"}
 
                 try:
+                    attempts += 1
                     r = requests.post(url, json=payload, timeout=timeout)
                     if r.status_code == 200:
                         data = r.json()
@@ -73,7 +96,10 @@ class ContentAgent:
             if not new_key:
                 break
 
-        raise RuntimeError("Đã thử tất cả các Gemini API Keys và Models trong pool nhưng không nhận được phản hồi.")
+        raise RuntimeError(
+            f"Đã thử tất cả {attempts} requests qua {total_keys} keys và "
+            f"{len(AVAILABLE_MODELS)} models trong {time.monotonic() - start_time:.1f}s — không nhận được phản hồi."
+        )
 
     def _parse_json_script(self, raw_text: str) -> ScriptContract:
         """Helper làm sạch markdown và parse JSON thành ScriptContract"""

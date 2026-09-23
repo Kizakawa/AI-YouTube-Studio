@@ -94,37 +94,41 @@
         <section class="tab-content active" id="tab-overview">
             <!-- Stats Grid -->
             <div class="stats-grid">
-                <div class="stat-card">
+                <div class="stat-card stat-card-clickable" onclick="navigateToVideos('all')" title="Xem tất cả video trong Pipeline">
                     <div class="stat-header">
                         <span class="stat-label">Tổng Số Video</span>
                         <div class="stat-icon icon-blue">🎬</div>
                     </div>
                     <div class="stat-value" id="stat-total-videos">—</div>
                     <div class="stat-subtext">Đã xuất bản: <span id="stat-published" class="highlight-green">—</span> &nbsp;|&nbsp; Thất bại: <span id="stat-failed" class="highlight-rose">—</span></div>
+                    <div class="stat-link-hint">Xem Pipeline →</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card stat-card-clickable" onclick="navigateToVideos('SCRIPT_READY')" title="Xem kịch bản đang chờ render">
                     <div class="stat-header">
                         <span class="stat-label">Kịch Bản Chờ Render</span>
                         <div class="stat-icon icon-purple">📝</div>
                     </div>
                     <div class="stat-value" id="stat-script-ready">—</div>
                     <div class="stat-subtext">Đang render: <span id="stat-rendering" class="highlight-amber">—</span> &nbsp;|&nbsp; Xong: <span id="stat-rendered" class="highlight-green">—</span></div>
+                    <div class="stat-link-hint">Lọc SCRIPT_READY →</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card stat-card-clickable" onclick="switchTab('channels')" title="Xem danh sách kênh YouTube">
                     <div class="stat-header">
                         <span class="stat-label">Kênh Hoạt Động</span>
                         <div class="stat-icon icon-green">📺</div>
                     </div>
                     <div class="stat-value" id="stat-channels">—</div>
                     <div class="stat-subtext">OAuth: <span id="stat-auth-channels" class="highlight-amber">0</span> &nbsp;|&nbsp; Gemini Keys: <span id="stat-gemini-keys" class="highlight-blue">—</span></div>
+                    <div class="stat-link-hint">Quản lý Kênh →</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card stat-card-clickable" onclick="switchTab('members')" title="Xem danh sách thành viên">
                     <div class="stat-header">
                         <span class="stat-label">Thành Viên & Hoạt Động</span>
                         <div class="stat-icon icon-amber">👥</div>
                     </div>
                     <div class="stat-value" id="stat-members">—</div>
                     <div class="stat-subtext">Tổng lệnh Telegram: <span id="stat-activities" class="highlight-purple">—</span></div>
+                    <div class="stat-link-hint">Bảng Thành Viên →</div>
                 </div>
             </div>
 
@@ -156,11 +160,76 @@
                             <span>Đang kiểm tra...</span>
                         </div>
                     </div>
+                    <div class="health-item" id="health-drive">
+                        <div class="health-dot dot-loading"></div>
+                        <div class="health-info">
+                            <strong>Google Drive 20TB</strong>
+                            <span>Đang kiểm tra...</span>
+                        </div>
+                    </div>
                     <div class="health-item" id="health-db">
                         <div class="health-dot dot-ok"></div>
                         <div class="health-info">
                             <strong>SQLite WAL</strong>
                             <span>Database online</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Token Health Monitor (Part 4) -->
+            <div class="panel-card">
+                <div class="panel-header">
+                    <h3>🔑 Giám Sát API Token</h3>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <span class="badge badge-blue">API Health Monitor</span>
+                        <button class="btn btn-secondary btn-sm" id="btn-check-tokens" onclick="checkTokenHealth()">
+                            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                            Kiểm Tra
+                        </button>
+                    </div>
+                </div>
+                <div class="token-monitor-grid" id="token-monitor-grid">
+                    <div class="token-service-card" id="token-gemini-card">
+                        <div class="token-gauge-container">
+                            <svg class="radial-gauge" viewBox="0 0 120 120">
+                                <circle class="gauge-bg" cx="60" cy="60" r="52" />
+                                <circle class="gauge-fill gauge-fill-gemini" id="gauge-gemini" cx="60" cy="60" r="52" />
+                            </svg>
+                            <div class="gauge-label">
+                                <span class="gauge-percent" id="gauge-gemini-pct">—</span>
+                                <span class="gauge-sub">Gemini</span>
+                            </div>
+                        </div>
+                        <div class="token-details" id="token-gemini-details">
+                            <div class="token-detail-header">
+                                <strong>🤖 Gemini API Pool</strong>
+                                <span class="badge badge-blue" id="gemini-count-badge">0 keys</span>
+                            </div>
+                            <div class="token-keys-list" id="gemini-keys-list">
+                                <div style="color:var(--text-muted);font-size:12px;">Chưa kiểm tra. Bấm "Kiểm Tra" →</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="token-service-card" id="token-pexels-card">
+                        <div class="token-gauge-container">
+                            <svg class="radial-gauge" viewBox="0 0 120 120">
+                                <circle class="gauge-bg" cx="60" cy="60" r="52" />
+                                <circle class="gauge-fill gauge-fill-pexels" id="gauge-pexels" cx="60" cy="60" r="52" />
+                            </svg>
+                            <div class="gauge-label">
+                                <span class="gauge-percent" id="gauge-pexels-pct">—</span>
+                                <span class="gauge-sub">Pexels</span>
+                            </div>
+                        </div>
+                        <div class="token-details" id="token-pexels-details">
+                            <div class="token-detail-header">
+                                <strong>🖼️ Pexels API Pool</strong>
+                                <span class="badge badge-purple" id="pexels-count-badge">0 keys</span>
+                            </div>
+                            <div class="token-keys-list" id="pexels-keys-list">
+                                <div style="color:var(--text-muted);font-size:12px;">Chưa kiểm tra. Bấm "Kiểm Tra" →</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -278,7 +347,7 @@
                                 <th>ID</th>
                                 <th>Tiêu Đề / Chủ Đề</th>
                                 <th>Kênh</th>
-                                <th>Người Tạo</th>
+                                <th>Nguồn</th>
                                 <th>Scenes / Thời Lượng</th>
                                 <th>Trạng Thái</th>
                                 <th>Ngày Tạo</th>

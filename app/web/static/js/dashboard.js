@@ -68,6 +68,11 @@ function switchTab(tabId) {
     document.getElementById('page-subtitle').textContent = meta.sub || '';
 }
 
+function navigateToVideos(statusFilter) {
+    switchTab('pipeline');
+    filterPipeline(statusFilter);
+}
+
 /* ═══════════════════════════════════════════════════════
    FETCH ALL
 ══════════════════════════════════════════════════════════ */
@@ -81,6 +86,12 @@ async function fetchAllData() {
         fetchHealth(),
     ]);
     updateSyncTime();
+
+    // Auto-check token health on first load only
+    if (!window._tokenHealthLoaded) {
+        window._tokenHealthLoaded = true;
+        checkTokenHealth();
+    }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -124,11 +135,29 @@ async function fetchHealth() {
         return;
     }
 
-    if (badge) { badge.classList.remove('offline'); badge.querySelector('span').textContent = 'Hệ thống trực tuyến'; }
+    if (badge) {
+        badge.classList.remove('offline');
+        if (data.web_only) {
+            badge.querySelector('span').textContent = '⚠️ Chỉ Web — Bot Tele tắt';
+            badge.style.background = 'rgba(251,191,36,0.08)';
+            badge.style.borderColor = 'rgba(251,191,36,0.2)';
+            badge.style.color = 'var(--accent-amber)';
+            const dot = badge.querySelector('.status-dot');
+            if (dot) { dot.style.background = 'var(--accent-amber)'; dot.style.boxShadow = '0 0 8px var(--accent-amber)'; }
+        } else {
+            badge.querySelector('span').textContent = 'Hệ thống trực tuyến';
+        }
+    }
 
     setHealth('health-ffmpeg',   data.ffmpeg !== 'not installed', data.ffmpeg !== 'not installed' ? data.ffmpeg : 'Chưa cài đặt');
     setHealth('health-gemini',   data.gemini_keys > 0, `${data.gemini_keys} API key(s) trong pool`);
-    setHealth('health-telegram', data.telegram_token, data.telegram_token ? 'Token đã cấu hình' : 'Chưa có BOT TOKEN trong .env');
+    setHealth('health-telegram', data.telegram_token && !data.web_only, 
+        data.web_only ? '⚠️ Web-Only mode — Bot polling tắt' : 
+        (data.telegram_token ? 'Token đã cấu hình' : 'Chưa có BOT TOKEN trong .env'));
+    setHealth('health-drive', data.drive_connected,
+        data.drive_connected
+            ? (data.drive_quota_label || '20 TB Google One (Đã kết nối ✓)')
+            : 'Chưa xác thực — Chạy: py auth_google.py drive');
 }
 
 function setHealth(id, ok, msg) {
@@ -139,6 +168,107 @@ function setHealth(id, ok, msg) {
     dot.className = 'health-dot ' + (ok ? 'dot-ok' : 'dot-warn');
     span.textContent = msg;
     span.style.color = ok ? 'var(--accent-green)' : 'var(--accent-amber)';
+}
+
+/* ═══════════════════════════════════════════════════════
+   TOKEN HEALTH MONITOR (Part 4)
+══════════════════════════════════════════════════════════ */
+async function checkTokenHealth() {
+    const btn = document.getElementById('btn-check-tokens');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="loading-spinner"></span> Đang kiểm tra...`;
+    }
+
+    // Show loading state in key lists
+    ['gemini-keys-list', 'pexels-keys-list'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = `<div class="token-checking"><span class="loading-spinner"></span> Đang kiểm tra keys...</div>`;
+    });
+
+    try {
+        const data = await apiGet('/api/token-health');
+        if (data) {
+            renderTokenHealth(data);
+        }
+    } catch (e) {
+        showToast('Lỗi kiểm tra token: ' + e.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> Kiểm Tra`;
+        }
+    }
+}
+
+function renderTokenHealth(data) {
+    const CIRCUMFERENCE = 2 * Math.PI * 52; // ~326.73
+
+    function updateGauge(gaugeId, pctId, percent, serviceName) {
+        const gauge = document.getElementById(gaugeId);
+        const pctEl = document.getElementById(pctId);
+        if (!gauge || !pctEl) return;
+
+        const offset = CIRCUMFERENCE - (percent / 100) * CIRCUMFERENCE;
+        gauge.style.strokeDashoffset = offset;
+
+        // Color coding
+        gauge.classList.remove('gauge-warn', 'gauge-danger');
+        if (percent <= 30) gauge.classList.add('gauge-danger');
+        else if (percent <= 70) gauge.classList.add('gauge-warn');
+
+        pctEl.textContent = percent > 0 ? `${percent}%` : '0%';
+    }
+
+    function renderKeysList(containerId, keys, type) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        if (!keys || keys.length === 0) {
+            container.innerHTML = `<div style="color:var(--text-muted);font-size:12px;">Chưa cấu hình key nào trong .env</div>`;
+            return;
+        }
+
+        container.innerHTML = keys.map(k => {
+            const isOk = k.status === 'ok';
+            const isWarn = k.status === 'quota_exceeded' || k.status === 'timeout';
+            const statusClass = isOk ? 'key-ok' : (isWarn ? 'key-warn' : 'key-error');
+            const icon = isOk ? '✅' : (isWarn ? '⚠️' : '❌');
+
+            let infoText = '';
+            let infoClass = '';
+            if (isOk) {
+                if (type === 'gemini') {
+                    infoText = `${k.models_count || '?'} models`;
+                } else {
+                    infoText = k.remaining !== undefined ? `${k.remaining}/${k.limit} còn lại` : 'OK';
+                }
+                infoClass = 'key-info-ok';
+            } else {
+                infoText = k.error || k.status;
+                infoClass = isWarn ? 'key-info-warn' : 'key-info-error';
+            }
+
+            return `
+                <div class="key-status-item ${statusClass}">
+                    <span class="key-status-icon">${icon}</span>
+                    <span class="key-prefix">${esc(k.prefix)}</span>
+                    <span class="key-info ${infoClass}">${esc(infoText)}</span>
+                </div>`;
+        }).join('');
+    }
+
+    // Gemini
+    const gd = data.gemini || {};
+    updateGauge('gauge-gemini', 'gauge-gemini-pct', gd.percent || 0, 'Gemini');
+    setText('gemini-count-badge', `${gd.valid || 0}/${gd.total || 0} hoạt động`);
+    renderKeysList('gemini-keys-list', gd.keys, 'gemini');
+
+    // Pexels
+    const pd = data.pexels || {};
+    updateGauge('gauge-pexels', 'gauge-pexels-pct', pd.percent || 0, 'Pexels');
+    setText('pexels-count-badge', `${pd.valid || 0}/${pd.total || 0} hoạt động`);
+    renderKeysList('pexels-keys-list', pd.keys, 'pexels');
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -318,6 +448,22 @@ function renderPipelineTable(videos) {
                 </div>`;
         }
 
+        // Source badge: Telegram vs Web
+        const isWeb = v.source === 'web';
+        const sourceBadge = isWeb 
+            ? `<span class="badge badge-blue" style="font-size:11px;">🌐 Web</span>`
+            : `<span class="badge badge-purple" style="font-size:11px;">📱 Telegram</span>`;
+        const creatorLine = isWeb ? '' : `<div style="font-size:10.5px;color:var(--text-muted);margin-top:2px;">@${esc(v.creator)}</div>`;
+
+        // Action buttons
+        let actionButtons = `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết">🔍</button>`;
+        if (v.status === 'SCRIPT_READY') {
+            actionButtons += `<button class="btn btn-primary btn-sm" onclick="triggerWebRender(${v.id})" title="Xuất Video" style="font-size:11px;">🚀 Render</button>`;
+        } else if (v.status === 'RENDERED') {
+            actionButtons += `<button class="btn btn-primary btn-sm" onclick="openVideoDetail(${v.id})" title="Xem & Xuất bản" style="font-size:11px;">📤 Xuất</button>`;
+        }
+        actionButtons += `<button class="btn btn-danger btn-sm" onclick="deleteJob(${v.id})" title="Xoá">🗑</button>`;
+
         return `
         <tr>
             <td><code>#${v.id}</code></td>
@@ -327,18 +473,15 @@ function renderPipelineTable(videos) {
             </td>
             <td><code>${esc(v.channel_id)}</code></td>
             <td>
-                <div class="user-cell">
-                    <div class="user-avatar">${(v.creator || 'W')[0].toUpperCase()}</div>
-                    <span>${v.creator === 'User_0' ? '🌐 Web' : '@' + esc(v.creator)}</span>
-                </div>
+                ${sourceBadge}
+                ${creatorLine}
             </td>
             <td style="font-size:12px;color:var(--text-muted);">${scenes} / ${dur}</td>
             <td>${statusBadge}</td>
             <td style="font-size:12px;color:var(--text-muted);">${v.created_at}</td>
             <td>
                 <div class="table-actions">
-                    <button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết">🔍</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteJob(${v.id})" title="Xoá">🗑</button>
+                    ${actionButtons}
                 </div>
             </td>
         </tr>`;
@@ -470,10 +613,23 @@ async function openVideoDetail(jobId) {
             <div class="detail-label">Tiêu Đề</div>
             <div class="detail-value" style="font-weight:600;font-size:16px;">${esc(data.title) || '—'}</div>
         </div>
-        ${data.error_message ? `
+        ${data.error_message && data.status === 'FAILED' ? `
         <div class="detail-row">
             <div class="detail-label" style="color:var(--accent-rose);">Lỗi</div>
             <div class="detail-value script-box" style="color:var(--accent-rose);">${esc(data.error_message)}</div>
+        </div>` : ''}
+        ${data.status === 'RENDERED' && data.video_path ? `
+        <div class="detail-row" style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.25);border-radius:8px;padding:14px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                <span style="font-size:20px;">🎬</span>
+                <div>
+                    <div style="font-weight:700;color:var(--accent-green);font-size:13px;">Video Đã Sẵn Sàng!</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">📂 ${esc(data.video_path)}</div>
+                </div>
+            </div>
+            <a href="/api/videos/${data.id}/download" target="_blank" class="btn btn-primary btn-sm" style="width:100%;justify-content:center;">
+                📥 Tải Video Về Máy
+            </a>
         </div>` : ''}
         <div class="detail-row">
             <div class="detail-label">Nội Dung Lời Thoại</div>
@@ -485,8 +641,13 @@ async function openVideoDetail(jobId) {
             <div class="scenes-list" style="margin-top:8px;">${scenesHTML}</div>
         </div>` : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+            ${data.status === 'RENDERED' && data.video_path ? `<a href="/api/videos/${data.id}/download" target="_blank" class="btn btn-primary btn-sm">📥 Tải Video</a>` : ''}
+            ${(data.status === 'RENDERED' || data.status === 'PUBLISHED') ? `
+            <button class="btn btn-secondary btn-sm" id="btn-upload-drive-${data.id}" onclick="uploadToDrive(${data.id})" style="background:linear-gradient(135deg,rgba(66,133,244,0.18),rgba(52,168,83,0.12));border-color:rgba(66,133,244,0.3);">
+                ☁️ ${data.drive_link ? 'Cập nhật Drive' : 'Tải lên Drive 20TB'}
+            </button>` : ''}
             ${data.youtube_id ? `<a href="https://youtube.com/shorts/${data.youtube_id}" target="_blank" class="btn btn-secondary btn-sm">▶ Xem trên YouTube</a>` : ''}
-            ${data.drive_link ? `<a href="${data.drive_link}" target="_blank" class="btn btn-secondary btn-sm">☁️ Google Drive</a>` : ''}
+            ${data.drive_link ? `<a href="${data.drive_link}" target="_blank" class="btn btn-secondary btn-sm" style="color:var(--accent-green);">📂 Mở Link Drive</a>` : ''}
             <button class="btn btn-danger btn-sm" onclick="deleteJob(${data.id}); closeModal();">🗑 Xoá Job</button>
         </div>`;
 }
@@ -512,6 +673,58 @@ async function deleteJob(id) {
         }
     } catch (e) {
         showToast('Lỗi kết nối khi xoá.', 'error');
+    }
+}
+
+
+/* ===============================================================
+   UPLOAD TO GOOGLE DRIVE 20TB
+================================================================ */
+async function uploadToDrive(jobId) {
+    const btn = document.getElementById(`btn-upload-drive-${jobId}`);
+    const originalHTML = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="loading-spinner"></span> Đang tải lên Drive...`;
+    }
+    try {
+        const res = await fetch(`/api/videos/${jobId}/upload-drive`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            showToast(`☁️ ${data.message}`, 'success');
+            if (data.drive_link && btn) {
+                const linkEl = document.createElement('a');
+                linkEl.href = data.drive_link;
+                linkEl.target = '_blank';
+                linkEl.className = 'btn btn-secondary btn-sm';
+                linkEl.style.color = 'var(--accent-green)';
+                linkEl.innerHTML = '📂 Mở Link Drive';
+                btn.replaceWith(linkEl);
+            }
+            fetchVideos();
+        } else {
+            const msg = data.detail || data.message || 'Upload Drive thất bại';
+            showToast('❌ ' + msg, 'error');
+            if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; }
+        }
+    } catch (e) {
+        showToast('Lỗi kết nối: ' + e.message, 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; }
+    }
+}
+
+async function triggerWebRender(jobId) {
+    if (!confirm(`🚀 Bạn muốn bắt đầu render Video #${jobId} từ Web?\n\nVideo sẽ được đưa vào hàng đợi render.`)) return;
+    try {
+        const res = await apiPost(`/api/videos/${jobId}/render`, {});
+        if (res && res.success) {
+            showToast(`🚀 Video #${jobId} đã được đưa vào hàng đợi render!`, 'success');
+            fetchVideos();
+        } else {
+            showToast(res?.message || `Không thể render Video #${jobId}`, 'error');
+        }
+    } catch (e) {
+        showToast(`Lỗi khi gửi yêu cầu render: ${e.message}`, 'error');
     }
 }
 

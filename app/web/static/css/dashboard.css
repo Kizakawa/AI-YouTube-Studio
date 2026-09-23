@@ -279,6 +279,8 @@ header.top-header {
   flex-direction: column;
   gap: 24px;
   flex: 1;
+  min-width: 0; /* Fix flex item overflow */
+  overflow-x: hidden;
 }
 
 /* ==========================================================================
@@ -422,6 +424,41 @@ header.top-header {
 .highlight-blue { color: var(--accent-blue); font-weight: 600; }
 .highlight-purple { color: var(--accent-purple); font-weight: 600; }
 
+/* Clickable Stat Cards */
+.stat-card-clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.stat-card-clickable:hover {
+  transform: translateY(-4px);
+  border-color: rgba(56,189,248,0.35);
+  box-shadow: var(--shadow-md), var(--shadow-glow-blue);
+}
+
+.stat-card-clickable:active {
+  transform: translateY(-1px);
+}
+
+.stat-link-hint {
+  font-size: 11px;
+  color: transparent;
+  font-weight: 600;
+  margin-top: 2px;
+  transition: var(--transition);
+  background: var(--gradient-brand);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.stat-card-clickable:hover .stat-link-hint {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 /* ==========================================================================
    PANELS & TABS
    ========================================================================== */
@@ -444,6 +481,7 @@ header.top-header {
   gap: 20px;
   backdrop-filter: blur(20px);
   background-image: var(--gradient-card);
+  overflow: hidden; /* Ngăn table/content tràn ra ngoài card */
 }
 
 .panel-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
@@ -683,7 +721,12 @@ select.form-input option { background: #0d1120; }
   color: var(--accent-blue);
 }
 
-.custom-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+#pipeline-table-container {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.custom-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; min-width: 800px; }
 
 .custom-table th {
   padding: 11px 14px;
@@ -996,4 +1039,207 @@ code {
   .stats-grid { grid-template-columns: 1fr; }
   .quick-actions { grid-template-columns: 1fr 1fr; }
   .form-row { flex-direction: column; }
+  .token-monitor-grid { grid-template-columns: 1fr; }
+}
+
+/* ==========================================================================
+   TOKEN MONITOR — RADIAL GAUGE & KEY STATUS (Part 4)
+   ========================================================================== */
+
+.token-monitor-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.token-service-card {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  padding: 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  transition: var(--transition);
+}
+
+.token-service-card:hover {
+  border-color: var(--border-accent);
+  box-shadow: var(--shadow-glow-blue);
+}
+
+/* Radial Gauge */
+.token-gauge-container {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  flex-shrink: 0;
+}
+
+.radial-gauge {
+  width: 100px;
+  height: 100px;
+  transform: rotate(-90deg);
+}
+
+.gauge-bg {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.06);
+  stroke-width: 8;
+}
+
+.gauge-fill {
+  fill: none;
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-dasharray: 326.73;  /* 2 * PI * 52 */
+  stroke-dashoffset: 326.73; /* Start at 0% */
+  transition: stroke-dashoffset 1s cubic-bezier(0.16, 1, 0.3, 1),
+              stroke 0.5s ease;
+}
+
+.gauge-fill-gemini {
+  stroke: var(--accent-blue);
+}
+
+.gauge-fill-pexels {
+  stroke: var(--accent-purple);
+}
+
+.gauge-fill.gauge-warn {
+  stroke: var(--accent-amber);
+}
+
+.gauge-fill.gauge-danger {
+  stroke: var(--accent-rose);
+}
+
+.gauge-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gauge-percent {
+  font-family: 'Outfit', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.gauge-sub {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+
+/* Token Details */
+.token-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.token-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.token-detail-header strong {
+  color: var(--text-primary);
+}
+
+.token-keys-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.key-status-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.025);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  border-left: 3px solid transparent;
+  transition: var(--transition);
+}
+
+.key-status-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.key-status-item.key-ok {
+  border-left-color: var(--accent-green);
+}
+
+.key-status-item.key-warn {
+  border-left-color: var(--accent-amber);
+}
+
+.key-status-item.key-error {
+  border-left-color: var(--accent-rose);
+}
+
+.key-status-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.key-prefix {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.key-info {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.key-info.key-info-ok { color: var(--accent-green); }
+.key-info.key-info-warn { color: var(--accent-amber); }
+.key-info.key-info-error { color: var(--accent-rose); }
+
+/* Loading spinner for token check */
+.token-checking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 8px 0;
+}
+
+.token-checking .loading-spinner {
+  width: 14px;
+  height: 14px;
+}
+
+@media (max-width: 900px) {
+  .token-service-card {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .token-detail-header {
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
 }

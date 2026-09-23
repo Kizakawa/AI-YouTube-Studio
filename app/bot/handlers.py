@@ -1001,11 +1001,15 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         port = os.getenv("PORT", "8000")
         dashboard_url = f"http://localhost:{port}"
 
+    # Kiểm tra Drive token thật sự
+    drive_token_path = os.path.join(os.path.dirname(__file__), "..", "..", "credentials", "accounts", "account_1", "drive_token.json")
+    drive_status = "Sẵn sàng 🟢 (20TB)" if os.path.exists(drive_token_path) else "Chưa xác thực ⚠️ (chạy py auth_google.py drive)"
+
     text = (
         f"📊 **BÁO CÁO NHÓM LÀM VIỆC (AI STUDIO)**\n\n"
         f"• Tổng số video trong hệ thống: `{total_jobs}`\n"
         f"• Kịch bản đang chờ duyệt/render: `{ready_jobs}`\n"
-        f"• Kho Google Drive 2TB: Sẵn sàng 🟢\n"
+        f"• Kho Google Drive: {drive_status}\n"
         f"• Cụm Google Ultra Quota: Đang hoạt động 🟢\n"
         f"• Web Dashboard: {dashboard_url} 🌐"
     )
