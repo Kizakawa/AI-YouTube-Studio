@@ -12,6 +12,7 @@ Render Checkpoints:
 import shutil
 import subprocess
 import json
+import os
 import logging
 from pathlib import Path
 from typing import Optional, Dict, List
@@ -22,8 +23,26 @@ FFMPEG_TIMEOUT = 300   # 5 phút max cho render
 FFPROBE_TIMEOUT = 10   # 10 giây max cho probe
 
 
+def _ensure_ffmpeg_in_path():
+    """Tự động bổ sung PATH từ Windows Environment nếu tiến trình hiện tại chưa nhận."""
+    if shutil.which("ffmpeg") is None and os.name == "nt":
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment") as key:
+                user_path, _ = winreg.QueryValueEx(key, "Path")
+                for p in user_path.split(";"):
+                    if p.strip() and p.strip() not in os.environ.get("PATH", ""):
+                        os.environ["PATH"] = p.strip() + os.pathsep + os.environ.get("PATH", "")
+        except Exception:
+            pass
+
+
+_ensure_ffmpeg_in_path()
+
+
 def is_ffmpeg_installed() -> bool:
     """Kiểm tra xem ffmpeg đã có trong PATH hệ thống hay chưa"""
+    _ensure_ffmpeg_in_path()
     return shutil.which("ffmpeg") is not None
 
 
