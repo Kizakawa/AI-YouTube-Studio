@@ -51,7 +51,7 @@ class VideoAgent:
             # ── Step 2: Concat tất cả scenes → 1 video silent ──
             logger.info(f"[VideoAgent] Job {job.job_id}: Ghép {len(scene_clips)} clips...")
             silent_video = str(work_dir / "concat_silent.mp4")
-            concat_videos(scene_clips, silent_video)
+            concat_videos(scene_clips, silent_video, fps=job.fps)
 
             # ── Step 3: Mux audio (voice + optional BGM) ──
             logger.info(f"[VideoAgent] Job {job.job_id}: Ghép audio narration + BGM...")
@@ -121,6 +121,7 @@ class VideoAgent:
                     output_path=clip_path,
                     width=job.resolution_w,
                     height=job.resolution_h,
+                    fps=job.fps,
                 )
             else:
                 raise ValueError(

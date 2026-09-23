@@ -85,20 +85,17 @@ class VoiceAgent:
                 safe_path = scene.audio_path.replace("'", "'\\''")
                 f.write(f"file '{safe_path}'\n")
 
-        # FFmpeg concat demuxer
-        cmd = [
-            "ffmpeg", "-y",
+        # FFmpeg concat demuxer an toàn qua run_ffmpeg
+        from app.utils.ffmpeg_helper import run_ffmpeg, get_duration_ms
+        run_ffmpeg([
             "-f", "concat",
             "-safe", "0",
             "-i", list_file,
             "-c", "copy",
             output_path
-        ]
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        if proc.returncode != 0:
-            raise RuntimeError(f"FFmpeg concat audio failed: {proc.stderr}")
+        ])
 
-        total_ms = self._get_audio_duration_ms(output_path)
+        total_ms = get_duration_ms(output_path)
         logger.info(f"Full narration audio: {total_ms}ms ({total_ms/1000:.1f}s)")
         return total_ms
 
@@ -124,18 +121,5 @@ class VoiceAgent:
     @staticmethod
     def _get_audio_duration_ms(file_path: str) -> int:
         """Đo chính xác duration bằng ffprobe (ms). Fallback = 0."""
-        try:
-            cmd = [
-                "ffprobe",
-                "-v", "quiet",
-                "-show_entries", "format=duration",
-                "-of", "json",
-                file_path
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            data = json.loads(result.stdout)
-            duration_sec = float(data["format"]["duration"])
-            return int(duration_sec * 1000)
-        except Exception as e:
-            logger.warning(f"Không thể đo duration cho {file_path}: {e}")
-            return 0
+        from app.utils.ffmpeg_helper import get_duration_ms
+        return get_duration_ms(file_path)

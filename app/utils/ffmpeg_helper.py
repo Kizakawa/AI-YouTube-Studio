@@ -160,12 +160,15 @@ def image_to_video(
         zoompan = (
             f"zoompan=z='min(zoom+0.0005,1.15)':"
             f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-            f"d={int(duration_seconds * fps)}:s={width}x{height}:fps={fps}"
+            f"d={int(duration_seconds * fps)}:s={width}x{height}:fps={fps},"
+            f"setsar=1"
         )
     else:
         zoompan = (
             f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
-            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
+            f"setsar=1,"
+            f"fps={fps}"
         )
 
     args = [
@@ -174,8 +177,10 @@ def image_to_video(
         "-vf", zoompan,
         "-t", str(duration_seconds),
         "-c:v", "libx264",
+        "-preset", "veryfast",
         "-pix_fmt", "yuv420p",
         "-r", str(fps),
+        "-an",
         output_path
     ]
     run_ffmpeg(args)
@@ -192,20 +197,27 @@ def trim_video(
     output_path: str,
     width: int = 1080,
     height: int = 1920,
+    fps: int = 30,
 ) -> str:
     """
-    Cắt video Pexels về đúng duration cần thiết + scale/crop 9:16.
+    Cắt video Pexels về đúng duration cần thiết + scale/crop 9:16 + chuẩn hóa fps 30.
+    Tự động lặp lại (stream_loop) nếu video stock ngắn hơn thời lượng lời thoại.
     Bỏ audio gốc của stock video.
     """
     args = [
+        "-stream_loop", "-1",
         "-i", input_path,
         "-t", str(duration_seconds),
         "-vf", (
             f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-            f"crop={width}:{height}"
+            f"crop={width}:{height},"
+            f"setsar=1,"
+            f"fps={fps}"
         ),
         "-c:v", "libx264",
+        "-preset", "veryfast",
         "-pix_fmt", "yuv420p",
+        "-r", str(fps),
         "-an",  # Bỏ audio gốc của stock video
         output_path
     ]
@@ -216,22 +228,29 @@ def trim_video(
 def concat_videos(
     video_paths: List[str],
     output_path: str,
+    fps: int = 30,
 ) -> str:
     """
     Ghép N video clips đã chuẩn hóa thành 1 file liên tục.
-    Yêu cầu: tất cả input phải cùng codec, resolution, fps.
+    Tái tạo timeline chuẩn xác, chống đứng hình / lệch timebase giữa các stock clips.
     """
     list_file = str(Path(output_path).parent / "video_concat_list.txt")
     with open(list_file, "w", encoding="utf-8") as f:
         for vp in video_paths:
-            safe = vp.replace("'", "'\\''")
+            abs_path = Path(vp).resolve().as_posix()
+            safe = abs_path.replace("'", "'\\''")
             f.write(f"file '{safe}'\n")
 
     args = [
         "-f", "concat",
         "-safe", "0",
         "-i", list_file,
-        "-c", "copy",
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-pix_fmt", "yuv420p",
+        "-r", str(fps),
+        "-fps_mode", "cfr",
+        "-an",
         output_path
     ]
     run_ffmpeg(args)
