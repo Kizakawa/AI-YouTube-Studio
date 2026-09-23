@@ -91,6 +91,8 @@ class VideoJob(Base):
     # Trạng thái — Mở rộng với thêm trạng thái trung gian
     # DRAFT -> SCRIPT_READY -> AUDIO_READY -> MEDIA_READY -> RENDERING -> RENDERED -> SCHEDULED -> PUBLISHED -> FAILED
     status = Column(String(50), default="DRAFT")
+    progress_percent = Column(Integer, default=0)         # [NEW] Phần trăm tiến độ 0-100%
+    progress_message = Column(String(255), nullable=True) # [NEW] Chi tiết bước đang thực hiện
     error_message = Column(Text, nullable=True)    # [NEW] Lưu traceback khi FAILED
 
     # Đường dẫn file & lưu trữ
@@ -157,7 +159,9 @@ def init_db():
                 "render_manifest": "TEXT",
                 "error_message": "TEXT",
                 "subtitle_path": "VARCHAR(255)",
-                "updated_at": "DATETIME"
+                "updated_at": "DATETIME",
+                "progress_percent": "INTEGER DEFAULT 0",
+                "progress_message": "VARCHAR(255)",
             }
             for col_name, col_type in columns_to_add.items():
                 if col_name not in existing_columns:

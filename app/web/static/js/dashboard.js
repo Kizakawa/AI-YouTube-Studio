@@ -18,17 +18,30 @@ const PAGE_META = {
 };
 
 /* ═══════════════════════════════════════════════════════
-   INIT
+   INIT & SMART POLLING
 ══════════════════════════════════════════════════════════ */
+let pollTimeout = null;
+
+function scheduleNextFetch(delay = 10000) {
+    if (pollTimeout) clearTimeout(pollTimeout);
+    pollTimeout = setTimeout(async () => {
+        await fetchAllData();
+        const hasRendering = (allVideos || []).some(v => v.status === 'RENDERING');
+        scheduleNextFetch(hasRendering ? 3000 : 10000);
+    }, delay);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
-    fetchAllData();
-    setInterval(fetchAllData, 10000);
+    fetchAllData().then(() => scheduleNextFetch(10000));
 
     document.getElementById('btn-refresh').addEventListener('click', () => {
         const btn = document.getElementById('btn-refresh');
         btn.disabled = true;
-        fetchAllData().finally(() => { btn.disabled = false; });
+        fetchAllData().finally(() => { 
+            btn.disabled = false;
+            scheduleNextFetch(10000);
+        });
     });
 });
 
@@ -298,7 +311,24 @@ function renderPipelineTable(videos) {
     tbody.innerHTML = videos.map(v => {
         const dur = v.audio_duration_ms > 0 ? `${(v.audio_duration_ms / 1000).toFixed(1)}s` : '—';
         const scenes = v.scene_count > 0 ? `${v.scene_count} cảnh` : '—';
-        const statusBadge = statusMap[v.status] || `<span class="badge">${esc(v.status)}</span>`;
+        let statusBadge = statusMap[v.status] || `<span class="badge">${esc(v.status)}</span>`;
+
+        if (v.status === 'RENDERING') {
+            const pct = Math.max(0, Math.min(100, v.progress_percent || 0));
+            statusBadge = `
+                <div style="min-width:140px;">
+                    <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:3px;color:var(--accent-amber);">
+                        <span>🎬 Đang dựng video</span>
+                        <span>${pct}%</span>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.1);height:6px;border-radius:3px;overflow:hidden;">
+                        <div style="background:linear-gradient(90deg,#f59e0b,#10b981);height:100%;width:${pct}%;transition:width 0.4s ease;"></div>
+                    </div>
+                    <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;" title="${esc(v.progress_message || '')}">
+                        ${esc(v.progress_message || 'Đang xử lý...')}
+                    </div>
+                </div>`;
+        }
 
         return `
         <tr>
@@ -437,6 +467,17 @@ async function openVideoDetail(jobId) {
                 <div class="detail-value">${statusMap[data.status] || `<span class="badge">${data.status}</span>`}</div>
             </div>
         </div>
+        ${data.status === 'RENDERING' ? `
+        <div class="detail-row" style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:12px;margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;color:var(--accent-amber);margin-bottom:6px;">
+                <span>🎬 Tiến Độ Dựng Video Trực Tiếp</span>
+                <span>${data.progress_percent || 0}%</span>
+            </div>
+            <div style="background:rgba(255,255,255,0.1);height:8px;border-radius:4px;overflow:hidden;margin-bottom:6px;">
+                <div style="background:linear-gradient(90deg,#f59e0b,#10b981);height:100%;width:${data.progress_percent || 0}%;transition:width 0.4s ease;"></div>
+            </div>
+            <div style="font-size:12px;color:var(--text-primary);">${esc(data.progress_message || 'Đang dựng video...')}</div>
+        </div>` : ''}
         <div class="detail-row">
             <div class="detail-label">Tiêu Đề</div>
             <div class="detail-value" style="font-weight:600;font-size:16px;">${esc(data.title) || '—'}</div>

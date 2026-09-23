@@ -50,6 +50,17 @@ class VideoPipeline:
     async def _report_progress(self, stage: str, message: str, percent: int = 0):
         """Báo cáo tiến độ thời gian thực về Telegram/Web Dashboard kèm phần trăm %."""
         logger.info(f"[Job {self.job_id}] [{stage}] [{percent}%] {message}")
+
+        # Đồng bộ tiến độ vào Database để Web Dashboard hiển thị thanh % thời gian thực
+        try:
+            with get_db() as db:
+                job = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
+                if job:
+                    job.progress_percent = percent
+                    job.progress_message = message
+        except Exception as ex:
+            logger.debug(f"Không thể ghi nhận progress vào DB: {ex}")
+
         if self.progress_callback:
             try:
                 import inspect
