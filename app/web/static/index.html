@@ -68,6 +68,9 @@
 
         <!-- CONTENT BODY -->
         <div class="content-body">
+            <!-- NOTIFICATION BANNER -->
+            <div id="auth-alert-container"></div>
+
             <!-- STATS CARDS -->
             <section class="stats-grid">
                 <div class="stat-card">
@@ -149,8 +152,18 @@
             <section class="tab-content" id="tab-channels">
                 <div class="panel-card">
                     <div class="panel-header">
-                        <h3>📺 Ma Trận Quản Lý Đa Kênh & Cụm Tài Khoản Google Ultra</h3>
-                        <span class="badge badge-green">Multi-Account Pool</span>
+                        <div>
+                            <h3>📺 Ma Trận Quản Lý Đa Kênh & Cụm Tài Khoản Google Ultra</h3>
+                            <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Thêm mới, theo dõi trạng thái subscribers thật và kết nối Google OAuth2 cho từng kênh</p>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn-primary" onclick="openModal('modal-add-channel')">
+                                ➕ Thêm Kênh Mới
+                            </button>
+                            <button class="btn-secondary" onclick="openModal('modal-upload-secret')">
+                                🔑 Cài Đặt client_secret.json
+                            </button>
+                        </div>
                     </div>
                     <div class="channel-grid" id="channels-container">
                         <!-- Tự động đổ dữ liệu bằng JS -->
@@ -184,6 +197,89 @@
             </section>
         </div>
     </main>
+
+    <!-- MODAL 1: THÊM KÊNH YOUTUBE MỚI -->
+    <div class="modal-backdrop" id="modal-add-channel">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>➕ Thêm Kênh YouTube Mới Vào Hệ Thống</h3>
+                <button class="modal-close" onclick="closeModal('modal-add-channel')">&times;</button>
+            </div>
+            <form id="form-add-channel" onsubmit="submitAddChannel(event)">
+                <div class="form-group">
+                    <label>Mã Kênh (ID duy nhất, viết liền không dấu):</label>
+                    <input type="text" id="new-ch-id" required placeholder="ví dụ: ch_crypto_daily" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Tên Kênh Hiển Thị:</label>
+                    <input type="text" id="new-ch-name" required placeholder="ví dụ: Crypto Secrets & Wealth" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Ngách Nội Dung (Niche):</label>
+                    <select id="new-ch-niche" class="form-control">
+                        <option value="psychology">Tâm lý học hành vi (Psychology)</option>
+                        <option value="philosophy">Triết lý sống / Stoic</option>
+                        <option value="space_science">Vũ trụ & Khoa học (Space)</option>
+                        <option value="history_mystery">Bí ẩn lịch sử (Mysteries)</option>
+                        <option value="finance">Tài chính & Tiền tệ (Finance)</option>
+                        <option value="tech_ai">Công nghệ & AI (Tech)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Thuộc Tài Khoản Google Ultra:</label>
+                    <select id="new-ch-account" class="form-control">
+                        <option value="account_1">Tài khoản Ultra 1 (Drive 2TB #1)</option>
+                        <option value="account_2">Tài khoản Ultra 2 (Drive 2TB #2)</option>
+                        <option value="account_3">Tài khoản Ultra 3 (Drive 2TB #3)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Chế Độ Hình Ảnh Minh Họa:</label>
+                    <select id="new-ch-visual" class="form-control">
+                        <option value="imagen_ai">Google Imagen 3 AI (Độc bản 100% - Khuyên dùng)</option>
+                        <option value="pexels_stock">Pexels Stock Video (Thực tế)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Giọng Đọc AI (TTS):</label>
+                    <select id="new-ch-voice" class="form-control">
+                        <option value="en-US-ChristopherNeural">Tiếng Anh Nam trầm (Christopher)</option>
+                        <option value="en-US-GuyNeural">Tiếng Anh Nam truyền cảm (Guy)</option>
+                        <option value="en-US-AriaNeural">Tiếng Anh Nữ tự tin (Aria)</option>
+                        <option value="vi-VN-HoaiMyNeural">Tiếng Việt Nữ chuẩn (Hoài My)</option>
+                        <option value="vi-VN-NamMinhNeural">Tiếng Việt Nam chuẩn (Nam Minh)</option>
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="closeModal('modal-add-channel')">Hủy</button>
+                    <button type="submit" class="btn-primary">Lưu Kênh Mới</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 2: TẢI FILE CLIENT_SECRET.JSON -->
+    <div class="modal-backdrop" id="modal-upload-secret">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🔑 Cài Đặt File Google OAuth (client_secret.json)</h3>
+                <button class="modal-close" onclick="closeModal('modal-upload-secret')">&times;</button>
+            </div>
+            <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 16px;">
+                Để kết nối YouTube và tự động tải video, bạn cần tải file <code>client_secret.json</code> từ <strong>Google Cloud Console</strong> (OAuth 2.0 Client ID dạng Desktop Application).
+            </div>
+            <form id="form-upload-secret" onsubmit="submitUploadSecret(event)">
+                <div class="form-group">
+                    <label>Chọn file client_secret.json từ máy tính:</label>
+                    <input type="file" id="input-client-secret" accept=".json" required class="form-control">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="closeModal('modal-upload-secret')">Hủy</button>
+                    <button type="submit" class="btn-primary">Tải Lên Hệ Thống</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <!-- SCRIPTS -->
     <script src="/static/js/dashboard.js"></script>

@@ -64,6 +64,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.close()
 
     scope_text = f"nhóm **{chat.title}**" if is_group else f"bạn **{user.first_name}**"
+    group_info = f"\n\n🔑 **ID Nhóm này:** `{chat.id}` *(bạn có thể lưu vào `ALLOWED_TELEGRAM_GROUPS` trong `.env`)*" if is_group else ""
 
     welcome_text = (
         f"🎬 **AI YouTube Multi-Channel Studio đã sẵn sàng cho {scope_text}!**\n\n"
@@ -74,28 +75,116 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• `/channels` - Xem và chuyển đổi kênh YouTube muốn sản xuất\n"
         f"• `/idea <chủ đề>` - Lên kịch bản AI, chia phân cảnh và từ khóa Pexels\n"
         f"• `/status` - Báo cáo số lượng video và trạng thái hệ thống\n\n"
-        f"👉 Hãy gõ `/channels` để chọn kênh bắt đầu!"
+        f"👉 Hãy gõ `/channels` để chọn kênh bắt đầu!{group_info}"
     )
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
+from app.services.channel_manager import channel_manager
+
 async def channels_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Hiển thị danh sách kênh cho cả nhóm cùng chọn"""
+    """Hiển thị danh sách kênh chi tiết và trạng thái kết nối cho cả nhóm"""
     if not is_authorized(update):
         return
 
+    channels = channel_manager.list_channels()
+    
+    text_lines = ["📺 **DANH SÁCH KÊNH YOUTUBE TRONG HỆ THỐNG:**\n"]
+    if not channels:
+        text_lines.append("_Chưa có kênh nào. Dùng `/addchannel <id> <tên> <ngách>` để thêm mới!_")
+    else:
+        for idx, ch in enumerate(channels, 1):
+            status = "🟢 Đã kết nối OAuth" if ch.get("is_authenticated") else "🔴 Chưa kết nối Google OAuth"
+            subs_text = f" ({ch.get('subscribers')} subs)" if ch.get("is_authenticated") else ""
+            real_name = f" - YouTube: `{ch.get('real_title')}`" if ch.get("real_title") else ""
+            text_lines.append(
+                f"**{idx}. {ch.get('name')}** (`{ch.get('id')}`)\n"
+                f"   • Trạng thái: {status}{subs_text}{real_name}\n"
+                f"   • Ngách: `{ch.get('niche')}` | Ultra: `{ch.get('google_account')}`\n"
+            )
+
+    text_lines.append("\n👉 **Bấm nút bên dưới để chọn kênh làm việc hoặc kết nối:**")
+    text_lines.append("💡 _Để kết nối Google OAuth: gõ `/auth <id_kênh>` hoặc bấm vào Web Dashboard._")
+
     reply_markup = get_channel_selection_keyboard()
-    await update.message.reply_text(
-        "📺 **Chọn kênh YouTube mục tiêu cho dự án tiếp theo:**",
-        reply_markup=reply_markup,
-        parse_mode="Markdown"
+    await update.message.reply_text("\n".join(text_lines), reply_markup=reply_markup, parse_mode="Markdown")
+
+async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lệnh thêm kênh mới trực tiếp từ Telegram: /addchannel <id> <tên kênh> <ngách>"""
+    if not is_authorized(update):
+        return
+
+    if len(context.args) < 3:
+        help_text = (
+            "📌 **Cú pháp thêm kênh mới:**\n"
+            "`/addchannel <id_kênh> <tên_kênh> <ngách>`\n\n"
+            "Ví dụ:\n"
+            "`/addchannel ch_history Bí Ẩn Lịch Sử history`\n"
+            "`/addchannel ch_finance Tư Duy Tiền Tệ finance`\n\n"
+            "Các ngách gợi ý: `psychology`, `philosophy`, `space`, `history`, `finance`."
+        )
+        await update.message.reply_text(help_text, parse_mode="Markdown")
+        return
+
+    ch_id = context.args[0].lower().replace(" ", "_")
+    niche = context.args[-1].lower()
+    name = " ".join(context.args[1:-1])
+
+    try:
+        new_ch = channel_manager.add_channel(
+            channel_id=ch_id,
+            name=name,
+            niche=niche,
+            google_account="account_1"
+        )
+        user = update.effective_user
+        db = SessionLocal()
+        log_activity(db, user.id, user.username, "ADD_CHANNEL", f"Thêm kênh mới qua Telegram: '{name}' ({ch_id})", channel_id=ch_id)
+        db.close()
+
+        success_text = (
+            f"✅ **Đã thêm kênh mới thành công!**\n\n"
+            f"• Tên kênh: **{name}**\n"
+            f"• Mã ID: `{ch_id}`\n"
+            f"• Ngách: `{niche}`\n\n"
+            f"👉 Bây giờ bạn có thể gõ `/auth {ch_id}` để lấy link kết nối Google OAuth cho kênh này!"
+        )
+        await update.message.reply_text(success_text, parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Không thể thêm kênh: {e}")
+
+async def auth_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lệnh lấy link xác thực Google OAuth2 cho một kênh: /auth <id_kênh>"""
+    if not is_authorized(update):
+        return
+
+    if not context.args:
+        await update.message.reply_text("💡 Cú pháp: `/auth <id_kênh>`\nVí dụ: `/auth channel_psychology`\n(Dùng `/channels` để xem danh sách ID)", parse_mode="Markdown")
+        return
+
+    ch_id = context.args[0].lower().strip()
+    # Đường dẫn Web Dashboard cục bộ
+    auth_web_link = f"http://localhost:8000/auth/youtube/{ch_id}"
+    
+    text = (
+        f"🔗 **KẾT NỐI GOOGLE OAUTH2 CHO KÊNH: `{ch_id}`**\n\n"
+        f"1. Nhấp vào đường link bên dưới để mở trang đăng nhập Google cấp quyền:\n"
+        f"👉 [Bấm Vào Đây Để Kết Nối Kênh]({auth_web_link})\n\n"
+        f"2. Đăng nhập đúng tài khoản Google quản lý kênh này và bấm **Cho phép (Allow)**.\n"
+        f"3. Hệ thống sẽ tự động lưu token và kích hoạt trạng thái 🟢 Đã kết nối!"
     )
+    await update.message.reply_text(text, parse_mode="Markdown", disable_web_page_preview=True)
 
 async def channel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Xử lý khi một thành viên bấm nút chọn kênh"""
+    """Xử lý khi một thành viên bấm nút chọn kênh hoặc làm mới"""
     query = update.callback_query
     await query.answer()
 
     data = query.data
+    if data == "refresh_channels":
+        reply_markup = get_channel_selection_keyboard()
+        await query.edit_message_reply_markup(reply_markup=reply_markup)
+        return
+
     if data.startswith("select_channel:"):
         channel_id = data.split(":")[1]
         user = query.from_user
@@ -110,9 +199,13 @@ async def channel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log_activity(db, user.id, user.username, "CHANGE_CHANNEL", f"Chuyển kênh làm việc sang '{channel_id}'", channel_id=channel_id)
         db.close()
 
+        status_info = channel_manager.get_channel_live_status(channel_id)
+        auth_msg = "🟢 Kênh đã kết nối YouTube" if status_info.get("is_authenticated") else "🔴 Kênh CHƯA kết nối Google OAuth (gõ `/auth " + channel_id + "` để kết nối)"
+
         await query.message.reply_text(
             f"✅ **{user.first_name}** đã chọn kênh: **{channel_id}**\n"
-            f"Bây giờ cả nhóm có thể gõ: `/idea <chủ đề>` để bắt đầu tạo video cho kênh này!",
+            f"• Trạng thái: {auth_msg}\n\n"
+            f"👉 Bây giờ cả nhóm có thể gõ: `/idea <chủ đề>` để tạo kịch bản cho kênh này!",
             parse_mode="Markdown"
         )
 

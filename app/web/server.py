@@ -1,24 +1,35 @@
 import os
+import shutil
 from pathlib import Path
-from typing import Dict, List, Any
-from fastapi import FastAPI, HTTPException
+from typing import Dict, List, Any, Optional
+from fastapi import FastAPI, HTTPException, Request, Form, UploadFile, File
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
+from pydantic import BaseModel
 from sqlalchemy import func
-from config.settings import settings
-from app.database.models import SessionLocal, User, VideoJob, ActivityLog
+from config.settings import settings, BASE_DIR
+from app.database.models import SessionLocal, User, VideoJob, ActivityLog, log_activity
+from app.services.channel_manager import channel_manager
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app = FastAPI(
     title="AI YouTube Multi-Channel Studio Dashboard",
     description="Trung tâm điều khiển và giám sát hoạt động sáng tạo nội dung YouTube tự động đa tài khoản",
-    version="1.0.0"
+    version="1.1.0"
 )
 
 # Mount thư mục tĩnh
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+class ChannelCreateSchema(BaseModel):
+    id: str
+    name: str
+    niche: str
+    google_account: str = "account_1"
+    language: str = "en"
+    visual_mode: str = "imagen_ai"
+    preferred_voice: str = "en-US-ChristopherNeural"
 
 @app.get("/")
 async def serve_dashboard():
@@ -39,7 +50,7 @@ async def get_overview_stats() -> Dict[str, Any]:
     total_activities = db.query(ActivityLog).count()
     db.close()
 
-    channels = settings.get_channels_config()
+    channels = channel_manager.list_channels()
     gemini_keys = settings.get_gemini_keys_pool()
 
     return {
@@ -50,7 +61,7 @@ async def get_overview_stats() -> Dict[str, Any]:
         "total_channels": len(channels),
         "gemini_keys_count": len(gemini_keys),
         "total_activities": total_activities,
-        "storage_drive_total": f"{len(channels) * 2} TB (Cụm Ultra)"
+        "storage_drive_total": f"{max(1, len(channels)) * 2} TB (Cụm Ultra)"
     }
 
 @app.get("/api/activities")
@@ -92,40 +103,98 @@ async def get_team_members() -> List[Dict[str, Any]]:
             "last_active": u.last_active.strftime("%Y-%m-%d %H:%M:%S") if u.last_active else "N/A"
         })
     db.close()
-    # Sắp xếp theo mức độ đóng góp (số video và hoạt động)
     members.sort(key=lambda x: (x["total_jobs"], x["total_activities"]), reverse=True)
     return members
 
+# ==============================================================================
+# QUẢN LÝ KÊNH YOUTUBE & XÁC THỰC GOOGLE OAUTH2
+# ==============================================================================
+
 @app.get("/api/channels")
 async def get_channels_matrix() -> List[Dict[str, Any]]:
-    """Ma trận các kênh YouTube và tài khoản Google Ultra tương ứng"""
-    channels = settings.get_channels_config()
-    db = SessionLocal()
-    result = []
-    for ch in channels:
-        ch_id = ch.get("id")
-        video_count = db.query(VideoJob).filter(VideoJob.target_channel_id == ch_id).count()
-        published_count = db.query(VideoJob).filter(VideoJob.target_channel_id == ch_id, VideoJob.status == "PUBLISHED").count()
-        
-        # Kiểm tra token
-        token_path = BASE_DIR / ch.get("credentials", {}).get("youtube_token", "")
-        token_exists = token_path.exists()
+    """Lấy danh sách các kênh YouTube kèm trạng thái Live thật từ YouTube API"""
+    return channel_manager.list_channels()
 
-        result.append({
-            "id": ch_id,
-            "name": ch.get("name"),
-            "niche": ch.get("niche"),
-            "language": ch.get("language", "en"),
-            "google_account": ch.get("google_account", "account_1"),
-            "token_status": "Đã kết nối 🟢" if token_exists else "Chờ cấp quyền 🟡",
-            "preferred_voice": ch.get("preferred_voice"),
-            "schedule": ch.get("schedule", {}),
-            "video_count": video_count,
-            "published_count": published_count,
-            "drive_quota": "2 TB Google One"
-        })
+@app.post("/api/channels/add")
+async def add_new_channel(data: ChannelCreateSchema):
+    """Thêm một kênh YouTube mới vào hệ thống qua Web Dashboard"""
+    try:
+        new_ch = channel_manager.add_channel(
+            channel_id=data.id,
+            name=data.name,
+            niche=data.niche,
+            google_account=data.google_account,
+            language=data.language,
+            visual_mode=data.visual_mode,
+            preferred_voice=data.preferred_voice
+        )
+        
+        # Ghi log hoạt động
+        db = SessionLocal()
+        log_activity(db, 0, "WebAdmin", "ADD_CHANNEL", f"Thêm kênh mới: '{data.name}' ({data.id})", channel_id=data.id)
+        db.close()
+
+        return {"status": "success", "channel": new_ch}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.delete("/api/channels/{channel_id}")
+async def delete_channel(channel_id: str):
+    """Xóa kênh YouTube khỏi hệ thống"""
+    success = channel_manager.delete_channel(channel_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Không tìm thấy kênh để xóa.")
+    
+    db = SessionLocal()
+    log_activity(db, 0, "WebAdmin", "DELETE_CHANNEL", f"Đã xóa kênh '{channel_id}'", channel_id=channel_id)
     db.close()
-    return result
+
+    return {"status": "success", "deleted_channel": channel_id}
+
+@app.get("/auth/youtube/{channel_id}")
+async def start_youtube_auth(channel_id: str, request: Request):
+    """Bắt đầu luồng Google OAuth2 cho kênh được chọn"""
+    # Xây dựng redirect_uri dựa trên host hiện tại
+    base_url = str(request.base_url).rstrip("/")
+    redirect_uri = f"{base_url}/oauth2callback"
+    
+    try:
+        auth_url = channel_manager.start_oauth_flow(channel_id, redirect_uri)
+        return RedirectResponse(auth_url)
+    except FileNotFoundError as e:
+        return RedirectResponse(f"/?auth_error={str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi khởi tạo OAuth2: {e}")
+
+@app.get("/oauth2callback")
+async def oauth2_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+    """Xử lý phản hồi từ Google sau khi người dùng đăng nhập cấp quyền cho kênh"""
+    if error or not code:
+        return RedirectResponse(f"/?auth_error={error or 'Khong_co_code'}")
+
+    channel_id = state or "channel_default"
+    base_url = str(request.base_url).rstrip("/")
+    redirect_uri = f"{base_url}/oauth2callback"
+
+    try:
+        status_info = channel_manager.finish_oauth_flow(channel_id, code, redirect_uri)
+        
+        db = SessionLocal()
+        log_activity(db, 0, "GoogleOAuth", "AUTH_SUCCESS", f"Kết nối thành công kênh YouTube: '{status_info.get('real_title') or channel_id}'", channel_id=channel_id)
+        db.close()
+
+        return RedirectResponse(f"/?auth_success=1&channel={channel_id}")
+    except Exception as e:
+        return RedirectResponse(f"/?auth_error={str(e)}")
+
+@app.post("/api/credentials/upload_secret")
+async def upload_client_secret(file: UploadFile = File(...)):
+    """Tải lên file client_secret.json từ Google Cloud Console trực tiếp trên web"""
+    dest_path = BASE_DIR / "credentials" / "client_secret.json"
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(dest_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    return {"status": "success", "message": "Đã lưu file client_secret.json thành công!"}
 
 @app.get("/api/videos")
 async def get_video_pipeline(limit: int = 50) -> List[Dict[str, Any]]:

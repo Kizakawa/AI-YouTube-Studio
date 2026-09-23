@@ -4,8 +4,19 @@ import logging
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler
 from config.settings import settings
 from app.database import init_db
-from app.bot.handlers import start_command, channels_command, status_command, idea_command, channel_callback
+from app.bot.handlers import (
+    start_command, channels_command, status_command, idea_command,
+    addchannel_command, auth_command, channel_callback
+)
 from app.utils.ffmpeg_helper import is_ffmpeg_installed, get_ffmpeg_version
+
+# Đảm bảo in tiếng Việt và emoji không bị lỗi trên Windows console
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
 # Cấu hình logging
 logging.basicConfig(
@@ -69,9 +80,11 @@ def main():
     # Đăng ký các lệnh Telegram
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("channels", channels_command))
+    app.add_handler(CommandHandler("addchannel", addchannel_command))
+    app.add_handler(CommandHandler("auth", auth_command))
     app.add_handler(CommandHandler("idea", idea_command))
     app.add_handler(CommandHandler("status", status_command))
-    app.add_handler(CallbackQueryHandler(channel_callback, pattern=r"^select_channel:"))
+    app.add_handler(CallbackQueryHandler(channel_callback, pattern=r"^(select_channel:|refresh_channels)"))
 
     print("🤖 Bot đang chạy Polling... Cả nhóm có thể ra lệnh từ Telegram hoặc xem Web!")
     print("👉 Mở trình duyệt xem Dashboard: http://127.0.0.1:8000")
