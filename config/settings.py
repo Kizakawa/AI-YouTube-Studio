@@ -32,9 +32,22 @@ class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/storage/ai_youtube.db")
     TEMP_DIR: Path = BASE_DIR / "storage" / "temp"
     OUTPUT_DIR: Path = BASE_DIR / "storage" / "outputs"
+    JOBS_DIR: Path = BASE_DIR / "storage" / "jobs"
     CREDENTIALS_DIR: Path = BASE_DIR / "credentials"
     ACCOUNTS_DIR: Path = BASE_DIR / "credentials" / "accounts"
     CHANNELS_CONFIG_FILE: Path = BASE_DIR / "config" / "channels.yaml"
+
+    @classmethod
+    def ensure_storage_dirs(cls):
+        """Tự động đảm bảo tất cả thư mục lưu trữ và SQLite database luôn tồn tại"""
+        cls.TEMP_DIR.mkdir(parents=True, exist_ok=True)
+        cls.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        cls.JOBS_DIR.mkdir(parents=True, exist_ok=True)
+        cls.ACCOUNTS_DIR.mkdir(parents=True, exist_ok=True)
+        if "sqlite" in cls.DATABASE_URL:
+            db_clean_path = cls.DATABASE_URL.split("sqlite:///")[-1]
+            if db_clean_path:
+                Path(db_clean_path).resolve().parent.mkdir(parents=True, exist_ok=True)
 
     @classmethod
     def get_allowed_users(cls) -> Dict[int, str]:
@@ -99,3 +112,4 @@ class Settings:
             return data.get("channels", [])
 
 settings = Settings()
+settings.ensure_storage_dirs()

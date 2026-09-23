@@ -18,6 +18,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Tạo sẵn toàn bộ cây thư mục lưu trữ cần thiết
+RUN mkdir -p /app/storage/temp /app/storage/outputs /app/storage/jobs /app/credentials/accounts
+
 # Cài đặt thư viện Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

@@ -1,8 +1,15 @@
+from pathlib import Path
 from datetime import datetime
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, event
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from contextlib import contextmanager
 from config.settings import settings
+
+# Đảm bảo thư mục cha của SQLite database luôn tồn tại trước khi khởi tạo engine!
+if "sqlite" in settings.DATABASE_URL:
+    db_clean_path = settings.DATABASE_URL.split("sqlite:///")[-1]
+    if db_clean_path:
+        Path(db_clean_path).resolve().parent.mkdir(parents=True, exist_ok=True)
 
 Base = declarative_base()
 engine = create_engine(
