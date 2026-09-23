@@ -36,6 +36,8 @@ tokens/
 # Database
 *.sqlite3
 *.db
+*.db-shm
+*.db-wal
 
 # Storage & Temporary Files
 storage/temp/*

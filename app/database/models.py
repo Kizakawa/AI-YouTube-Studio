@@ -135,3 +135,26 @@ def log_activity(db, telegram_id: int, username: str, action_type: str, details:
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    
+    # Tự động bổ sung các cột mới cho SQLite nếu bảng đã tồn tại từ phiên bản trước
+    with engine.connect() as conn:
+        try:
+            from sqlalchemy import text
+            result = conn.execute(text("PRAGMA table_info(video_jobs)")).fetchall()
+            existing_columns = {row[1] for row in result}
+            
+            columns_to_add = {
+                "description": "TEXT",
+                "scenes_json": "TEXT",
+                "audio_duration_ms": "INTEGER",
+                "render_manifest": "TEXT",
+                "error_message": "TEXT",
+                "subtitle_path": "VARCHAR(255)",
+                "updated_at": "DATETIME"
+            }
+            for col_name, col_type in columns_to_add.items():
+                if col_name not in existing_columns:
+                    conn.execute(text(f"ALTER TABLE video_jobs ADD COLUMN {col_name} {col_type}"))
+            conn.commit()
+        except Exception:
+            pass
