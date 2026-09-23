@@ -1,37 +1,93 @@
 import json
 import logging
-from typing import Dict, Any, Optional
-import google.generativeai as genai
+import requests
+from typing import Dict, List, Any, Optional
 from config.settings import settings
 from app.utils.key_rotator import KeyRotator
 from app.schemas.contracts import ScriptContract
 
 logger = logging.getLogger(__name__)
 
+AVAILABLE_MODELS = [
+    "gemini-3-flash-preview",
+    "gemini-3.5-flash-lite",
+    "gemini-flash-lite-latest",
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+    "gemma-4-26b-a4b-it",
+]
+
 class ContentAgent:
     """Agent chịu trách nhiệm lên ý tưởng, viết kịch bản giật gân (hook), phân cảnh và metadata SEO.
-    Đã tích hợp KeyRotator để xoay vòng API Keys qua nhiều tài khoản Google Ultra.
+    Đã tích hợp KeyRotator để xoay vòng API Keys qua nhiều tài khoản Google Ultra bằng direct HTTP REST
+    nhằm đảm bảo tốc độ cao, không chặn event loop và không bị kẹt retry gRPC.
     """
 
     def __init__(self):
         keys = settings.get_gemini_keys_pool()
         self.rotator = KeyRotator(keys)
         self.conversations: Dict[str, List[Dict[str, str]]] = {}
-        self._configure_current_key()
 
-    def _configure_current_key(self):
-        current_key = self.rotator.get_key()
-        if current_key:
-            genai.configure(api_key=current_key)
-            self.model = genai.GenerativeModel("models/gemini-3.6-flash")
-        else:
-            self.model = None
-            logger.warning("Chưa có GEMINI_API_KEY nào được cấu hình trong pool!")
+    def _call_api(self, prompt: str, json_mode: bool = False, timeout: int = 15) -> str:
+        """
+        Gọi trực tiếp Gemini REST API với timeout nghiêm ngặt.
+        Tự động xoay key và model ngay lập tức nếu gặp 429 (quota), 503 (quá tải) hoặc timeout.
+        """
+        total_keys = max(len(self.rotator.keys), 1)
+        for attempt in range(total_keys * 2):
+            key = self.rotator.get_key()
+            if not key:
+                raise ValueError("Không có API Key nào hoạt động trong pool!")
 
-    def generate_script(self, topic: str, channel_niche: str = "general", language: str = "en", max_retries: int = 3) -> ScriptContract:
+            for model in AVAILABLE_MODELS:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}]
+                }
+                if json_mode:
+                    payload["generationConfig"] = {"responseMimeType": "application/json"}
+
+                try:
+                    r = requests.post(url, json=payload, timeout=timeout)
+                    if r.status_code == 200:
+                        data = r.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            if parts and "text" in parts[0]:
+                                return parts[0]["text"].strip()
+                    else:
+                        err_msg = ""
+                        try:
+                            err_msg = r.json().get("error", {}).get("message", "")[:80]
+                        except Exception:
+                            err_msg = r.text[:80]
+                        logger.warning(f"Gemini API ({model}) trả lỗi {r.status_code} với key {key[:8]}...: {err_msg}")
+                        continue
+                except Exception as e:
+                    logger.warning(f"Lỗi kết nối Gemini API ({model}) với key {key[:8]}...: {e}")
+                    continue
+
+            # Xoay sang key tiếp theo trong pool
+            new_key = self.rotator.rotate_key()
+            if not new_key:
+                break
+
+        raise RuntimeError("Đã thử tất cả các Gemini API Keys và Models trong pool nhưng không nhận được phản hồi.")
+
+    def _parse_json_script(self, raw_text: str) -> ScriptContract:
+        """Helper làm sạch markdown và parse JSON thành ScriptContract"""
+        text = raw_text.strip()
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            text = text[start:end+1]
+        raw_data = json.loads(text)
+        return ScriptContract(**raw_data)
+
+    def generate_script(self, topic: str, channel_niche: str = "general", language: str = "en") -> ScriptContract:
         """
         Sinh kịch bản video Shorts (30-50 giây) giật gân, nhịp điệu nhanh, cuốn hút triệu view.
-        Tự động xoay sang key Google Ultra tiếp theo nếu gặp lỗi Rate Limit hoặc Quota.
         """
         prompt = f"""
 You are a world-class YouTube Shorts director and scriptwriter producing multi-million view videos for the niche: '{channel_niche}'.
@@ -75,39 +131,18 @@ Return ONLY valid JSON matching this exact schema:
   "description": "Engaging description with hashtags"
 }}
 """
-        for attempt in range(max_retries):
-            if not self.model:
-                raise ValueError("Không có API Key nào hoạt động trong pool!")
-
-            try:
-                response = self.model.generate_content(
-                    prompt,
-                    generation_config={"response_mime_type": "application/json"}
-                )
-                raw = json.loads(response.text)
-                return ScriptContract(**raw)  # Validate qua Pydantic
-            except Exception as e:
-                logger.warning(f"Lỗi khi gọi Gemini API (lần {attempt + 1}): {e}")
-                # Xoay sang key tiếp theo trong pool của tài khoản Google Ultra khác
-                new_key = self.rotator.rotate_key()
-                if new_key:
-                    self._configure_current_key()
-                else:
-                    break
-
-        raise RuntimeError("Đã thử tất cả các API Key trong pool nhưng đều thất bại.")
+        raw_text = self._call_api(prompt, json_mode=True, timeout=30)
+        return self._parse_json_script(raw_text)
 
     def refine_script(
         self,
         current_script: ScriptContract,
         feedback: str,
         channel_niche: str = "general",
-        language: str = "en",
-        max_retries: int = 3
+        language: str = "en"
     ) -> ScriptContract:
         """
         Tiếp thu góp ý của người dùng/nhóm để tinh chỉnh kịch bản hiện tại chuẩn viral.
-        Tự động xoay sang key tiếp theo nếu gặp rate limit/quota.
         """
         prompt = f"""
 You are an elite viral YouTube Shorts director.
@@ -143,28 +178,16 @@ Strict requirements:
   "description": "Engaging description with hashtags"
 }}
 """
-        for attempt in range(max_retries):
-            if not self.model:
-                raise ValueError("Không có API Key nào hoạt động trong pool!")
+        raw_text = self._call_api(prompt, json_mode=True, timeout=30)
+        return self._parse_json_script(raw_text)
 
-            try:
-                response = self.model.generate_content(
-                    prompt,
-                    generation_config={"response_mime_type": "application/json"}
-                )
-                raw = json.loads(response.text)
-                return ScriptContract(**raw)
-            except Exception as e:
-                logger.warning(f"Lỗi khi refine script với Gemini API (lần {attempt + 1}): {e}")
-                new_key = self.rotator.rotate_key()
-                if new_key:
-                    self._configure_current_key()
-                else:
-                    break
-
-        raise RuntimeError("Đã thử tất cả các API Key trong pool nhưng không thể cập nhật kịch bản.")
-
-    def chat_brainstorm(self, session_id: str, user_message: str, channel_niche: str = "general", language: str = "vi", max_retries: int = 3) -> str:
+    def chat_brainstorm(
+        self,
+        session_id: str,
+        user_message: str,
+        channel_niche: str = "general",
+        language: str = "vi"
+    ) -> str:
         """
         Thảo luận, phản biện và đồng sáng tạo ý tưởng Shorts với người dùng.
         Lưu lịch sử hội thoại cho session_id và tự động xoay key nếu quá tải.
@@ -190,7 +213,6 @@ Phong cách làm việc:
    - Đề xuất cốt truyện 30-45 giây súc tích.
 4. Trả lời dưới dạng định dạng text rõ ràng, có emoji sinh động, không quá dài dòng (dưới 350 từ để đọc dễ trên Telegram).
 """
-        # Xây dựng prompt chứa lịch sử hội thoại gần nhất (tối đa 10 lượt)
         recent_history = history[-10:]
         formatted_dialogue = []
         for turn in recent_history:
@@ -200,33 +222,23 @@ Phong cách làm việc:
 
         full_prompt = f"{system_instruction}\n\nLỊCH SỬ THẢO LUẬN:\n" + "\n".join(formatted_dialogue) + "\n\nDirector:"
 
-        for attempt in range(max_retries):
-            if not self.model:
-                raise ValueError("Không có API Key nào hoạt động trong pool!")
+        try:
+            reply_text = self._call_api(full_prompt, json_mode=False, timeout=20)
+            history.append({"role": "user", "content": user_message})
+            history.append({"role": "model", "content": reply_text})
+            if len(history) > 20:
+                self.conversations[session_id] = history[-20:]
+            return reply_text
+        except Exception as e:
+            logger.warning(f"Lỗi khi chat Gemini: {e}")
+            return "⚠️ Hiện tại các Gemini API Key trong pool đều đang bận hoặc quá hạn mức. Vui lòng thử lại sau vài giây!"
 
-            try:
-                response = self.model.generate_content(full_prompt)
-                reply_text = response.text.strip()
-
-                # Lưu vào lịch sử phiên làm việc
-                history.append({"role": "user", "content": user_message})
-                history.append({"role": "model", "content": reply_text})
-                # Giới hạn bộ nhớ tối đa 20 lượt
-                if len(history) > 20:
-                    self.conversations[session_id] = history[-20:]
-
-                return reply_text
-            except Exception as e:
-                logger.warning(f"Lỗi khi chat Gemini (lần {attempt + 1}): {e}")
-                new_key = self.rotator.rotate_key()
-                if new_key:
-                    self._configure_current_key()
-                else:
-                    break
-
-        return "⚠️ Hiện tại tất cả Gemini API Key trong pool đều đang bận hoặc quá hạn mức. Vui lòng thử lại sau vài giây!"
-
-    def convert_discussion_to_script(self, session_id: str, channel_niche: str = "general", language: str = "en", max_retries: int = 3) -> ScriptContract:
+    def convert_discussion_to_script(
+        self,
+        session_id: str,
+        channel_niche: str = "general",
+        language: str = "en"
+    ) -> ScriptContract:
         """
         Chuyển đổi toàn bộ tinh hoa từ đoạn chat thảo luận thành một kịch bản phân cảnh chuẩn ScriptContract.
         """
@@ -268,23 +280,5 @@ Strict requirements:
   "description": "Engaging description with hashtags"
 }}
 """
-        for attempt in range(max_retries):
-            if not self.model:
-                raise ValueError("Không có API Key nào hoạt động trong pool!")
-
-            try:
-                response = self.model.generate_content(
-                    prompt,
-                    generation_config={"response_mime_type": "application/json"}
-                )
-                raw = json.loads(response.text)
-                return ScriptContract(**raw)
-            except Exception as e:
-                logger.warning(f"Lỗi khi convert script từ discussion (lần {attempt + 1}): {e}")
-                new_key = self.rotator.rotate_key()
-                if new_key:
-                    self._configure_current_key()
-                else:
-                    break
-
-        raise RuntimeError("Không thể tổng hợp kịch bản từ đoạn chat thảo luận qua Gemini API.")
+        raw_text = self._call_api(prompt, json_mode=True, timeout=30)
+        return self._parse_json_script(raw_text)
