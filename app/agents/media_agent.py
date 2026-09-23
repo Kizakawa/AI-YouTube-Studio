@@ -14,6 +14,7 @@ class MediaAgent:
             self.keys = settings.get_pexels_keys_pool()
         self._key_cycle = itertools.cycle(self.keys) if self.keys else None
         self.base_url = "https://api.pexels.com/videos/search"
+        self.photo_url = "https://api.pexels.com/v1/search"
 
     def _get_active_key(self) -> Optional[str]:
         if self._key_cycle:
@@ -26,15 +27,38 @@ class MediaAgent:
         if not key:
             return []
 
-        headers = {"Authorization": key}
-        params = {
-            "query": query,
-            "per_page": per_page,
-            "orientation": orientation
-        }
-        res = requests.get(self.base_url, headers=headers, params=params, timeout=10)
-        if res.status_code == 200:
-            return res.json().get("videos", [])
+        try:
+            headers = {"Authorization": key}
+            params = {
+                "query": query,
+                "per_page": per_page,
+                "orientation": orientation
+            }
+            res = requests.get(self.base_url, headers=headers, params=params, timeout=10)
+            if res.status_code == 200:
+                return res.json().get("videos", [])
+        except Exception:
+            pass
+        return []
+
+    def search_photos(self, query: str, per_page: int = 3, orientation: str = "portrait") -> List[Dict]:
+        """Tìm kiếm ảnh tĩnh trên Pexels theo từ khóa với tỷ lệ dọc (portrait 9:16) cho Ken Burns."""
+        key = self._get_active_key()
+        if not key:
+            return []
+
+        try:
+            headers = {"Authorization": key}
+            params = {
+                "query": query,
+                "per_page": per_page,
+                "orientation": orientation
+            }
+            res = requests.get(self.photo_url, headers=headers, params=params, timeout=10)
+            if res.status_code == 200:
+                return res.json().get("photos", [])
+        except Exception:
+            pass
         return []
 
     def download_file(self, url: str, output_path: str) -> str:

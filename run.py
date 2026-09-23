@@ -6,7 +6,7 @@ from config.settings import settings
 from app.database import init_db
 from app.bot.handlers import (
     start_command, channels_command, status_command, idea_command,
-    chat_command, text_message_handler, channel_callback, video_callback, chat_callback
+    chat_command, render_command, edit_command, text_message_handler, channel_callback, video_callback, chat_callback
 )
 from app.utils.ffmpeg_helper import is_ffmpeg_installed, get_ffmpeg_version
 
@@ -82,9 +82,11 @@ def main():
     app.add_handler(CommandHandler("channels", channels_command))
     app.add_handler(CommandHandler(["chat", "ai"], chat_command))
     app.add_handler(CommandHandler("idea", idea_command))
+    app.add_handler(CommandHandler("edit", edit_command))
+    app.add_handler(CommandHandler("render", render_command))
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CallbackQueryHandler(channel_callback, pattern=r"^select_channel:"))
-    app.add_handler(CallbackQueryHandler(video_callback, pattern=r"^(publish_now|schedule|regenerate|cancel):"))
+    app.add_handler(CallbackQueryHandler(video_callback, pattern=r"^(render_video|publish_now|publish_youtube|feedback_video|edit_script|schedule|schedule_youtube|regenerate|cancel):"))
     app.add_handler(CallbackQueryHandler(chat_callback, pattern=r"^(convert_chat|suggest_more|change_hooks):"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
 

@@ -1,11 +1,19 @@
 import logging
+import asyncio
 import re
 import html
+from pathlib import Path
 from datetime import datetime
 from telegram import Update
 from telegram.ext import ContextTypes
 from config.settings import settings
-from app.bot.keyboards import get_channel_selection_keyboard, get_video_review_keyboard, get_chat_brainstorm_keyboard
+from app.bot.keyboards import (
+    get_channel_selection_keyboard,
+    get_script_review_keyboard,
+    get_video_post_render_keyboard,
+    get_video_review_keyboard,
+    get_chat_brainstorm_keyboard,
+)
 from app.database.models import get_db, User, VideoJob, log_activity
 from app.agents.content_agent import ContentAgent
 from app.schemas.contracts import ScriptContract
@@ -78,25 +86,10 @@ async def safe_edit_text(message, text: str, reply_markup=None, parse_mode="Mark
 
 def is_authorized(update: Update) -> bool:
     """
-    Kiểm tra quyền truy cập:
-    - Nếu tin nhắn đến từ Nhóm Chat nằm trong ALLOWED_TELEGRAM_GROUPS: Cho phép tất cả thành viên trong nhóm.
-    - Nếu tin nhắn riêng tư (Direct Message): Kiểm tra xem user_id có nằm trong ALLOWED_TELEGRAM_USERS không.
+    Tất cả thành viên trong nhóm Telegram hoặc chat trực tiếp đều có toàn quyền sử dụng bot.
+    Không bắt buộc cấu hình ALLOWED_TELEGRAM_USERS để tránh phiền toái cho người dùng.
     """
-    chat = update.effective_chat
-    user = update.effective_user
-
-    # 1. Kiểm tra nhóm chat
-    allowed_groups = settings.get_allowed_group_ids()
-    if chat and chat.type in ["group", "supergroup"]:
-        if not allowed_groups:
-            return True
-        return chat.id in allowed_groups
-
-    # 2. Kiểm tra user cá nhân
-    allowed_users = settings.get_allowed_users()
-    if not allowed_users:
-        return True
-    return user.id in allowed_users
+    return True
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -258,7 +251,7 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👉 Cả nhóm hãy góp ý hoặc bấm nút bên dưới để tiến hành sản xuất video!"
         )
 
-        review_markup = get_video_review_keyboard(job_id)
+        review_markup = get_script_review_keyboard(job_id)
         if status_msg:
             await safe_edit_text(status_msg, reply_content, reply_markup=review_markup)
         else:
@@ -273,32 +266,271 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await safe_reply(update, err_text)
 
 
+async def _execute_render_task(update: Update, context: ContextTypes.DEFAULT_TYPE, job_id: int, user_name: str):
+    """Tiến trình render video chạy ngầm không chặn luồng polling của bot"""
+    chat_id = update.effective_chat.id if update.effective_chat else None
+
+    status_msg = await safe_reply(
+        update,
+        f"🚀 **{user_name}** đã kích hoạt sản xuất Video #{job_id}!\n"
+        f"⏳ Đang xếp hàng vào pipeline render 9:16 Shorts (Audio + Media + Subtitles)..."
+    )
+
+    async def progress_cb(stage: str, msg: str):
+        if status_msg:
+            icons = {
+                "SCRIPT": "📝",
+                "AUDIO": "🎙️",
+                "MEDIA": "🖼️",
+                "RENDER": "🎬",
+                "QA": "🔍",
+                "COMPLETED": "🎉",
+                "ERROR": "❌"
+            }
+            icon = icons.get(stage, "⏳")
+            display_text = f"🎬 **TIẾN TRÌNH RENDER (Task #{job_id})**\n\n{icon} {msg}"
+            await safe_edit_text(status_msg, display_text)
+
+    try:
+        from app.services.pipeline import VideoPipeline
+        pipeline = VideoPipeline(job_id=job_id, progress_callback=progress_cb)
+        render_job = await pipeline.execute()
+
+        # Kiểm tra file MP4 hoàn chỉnh
+        out_path = Path(render_job.output_path)
+        if out_path.exists() and chat_id:
+            size_mb = out_path.stat().st_size / (1024 * 1024)
+            post_render_markup = get_video_post_render_keyboard(job_id)
+
+            # Telegram Bot API cho phép upload video tối đa 50MB
+            if size_mb <= 49.0:
+                caption = (
+                    f"🎉 **VIDEO ĐÃ DỰNG THÀNH CÔNG! (Task #{job_id})**\n\n"
+                    f"📌 **Tiêu đề:** {render_job.title}\n"
+                    f"⏱️ **Thời lượng:** {render_job.total_audio_duration_ms / 1000:.1f}s\n"
+                    f"📦 **Dung lượng:** {size_mb:.1f} MB\n"
+                    f"🎬 **Chuẩn:** 1080x1920 (9:16 Shorts) kèm phụ đề hardsub\n\n"
+                    f"👉 Cả nhóm hãy xem thử video! Chọn **Đăng Ngay** hoặc **Góp Ý Sửa Lại** bên dưới:"
+                )
+                try:
+                    with open(out_path, "rb") as vf:
+                        await context.bot.send_video(
+                            chat_id=chat_id,
+                            video=vf,
+                            caption=caption,
+                            reply_markup=post_render_markup,
+                            supports_streaming=True
+                        )
+                except Exception as ex_upload:
+                    logger.warning(f"Không thể gửi file video trực tiếp qua Telegram: {ex_upload}")
+                    await safe_reply(
+                        update,
+                        f"🎉 **Video #{job_id} đã hoàn tất!**\n"
+                        f"📂 File đã lưu tại: `{render_job.output_path}` ({size_mb:.1f} MB)\n\n"
+                        f"👉 Cả nhóm chọn thao tác tiếp theo:",
+                        reply_markup=post_render_markup
+                    )
+            else:
+                await safe_reply(
+                    update,
+                    f"🎉 **Video #{job_id} đã hoàn tất!**\n"
+                    f"📦 Dung lượng ({size_mb:.1f} MB) vượt quá giới hạn 50MB của Telegram.\n"
+                    f"📂 File đã lưu sẵn tại:\n`{render_job.output_path}`\n\n"
+                    f"👉 Cả nhóm chọn thao tác tiếp theo:",
+                    reply_markup=post_render_markup
+                )
+
+        with get_db() as db:
+            log_activity(db, 0, user_name, "RENDER_COMPLETE",
+                         f"Hoàn tất render video #{job_id}: {render_job.output_path}")
+
+    except Exception as e:
+        logger.error(f"Lỗi khi render video #{job_id}: {e}", exc_info=True)
+        if status_msg:
+            await safe_edit_text(
+                status_msg,
+                f"❌ **Render video #{job_id} thất bại:**\n`{str(e)}`"
+            )
+        else:
+            await safe_reply(update, f"❌ **Render video #{job_id} thất bại:**\n`{str(e)}`")
+
+
+async def _handle_script_revision(update: Update, context: ContextTypes.DEFAULT_TYPE, job_id: int, feedback: str):
+    """Xử lý tiếp thu góp ý và tinh chỉnh kịch bản theo yêu cầu của nhóm"""
+    user = update.effective_user
+    wait_msg = await safe_reply(
+        update,
+        f"🤖 **Đạo diễn AI** đang tiếp thu góp ý của **{user.first_name}**:\n"
+        f"_\"{feedback}\"_\n\n"
+        f"⏳ Đang viết lại kịch bản tối ưu cho Task #{job_id}..."
+    )
+
+    try:
+        with get_db() as db:
+            job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if not job:
+                await safe_reply(update, f"❌ Không tìm thấy Task #{job_id}")
+                return
+            if not job.scenes_json:
+                await safe_reply(update, f"❌ Task #{job_id} chưa có dữ liệu kịch bản.")
+                return
+
+            current_script = ScriptContract.from_json_str(job.scenes_json)
+            channel_id = job.target_channel_id
+
+        # Tìm niche và language của channel
+        channels = settings.get_channels_config()
+        ch_cfg = next((c for c in channels if c.get("id") == channel_id), {})
+        niche = ch_cfg.get("niche", "general")
+        lang = ch_cfg.get("language", "en")
+
+        revised_script: ScriptContract = content_agent.refine_script(
+            current_script=current_script,
+            feedback=feedback,
+            channel_niche=niche,
+            language=lang
+        )
+
+        with get_db() as db:
+            db_job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if db_job:
+                db_job.title = revised_script.title
+                db_job.script = revised_script.full_narration
+                db_job.description = revised_script.description
+                db_job.tags = ",".join(revised_script.tags)
+                db_job.scenes_json = revised_script.to_json_str()
+                db_job.status = "SCRIPT_READY"
+                log_activity(db, user.id, user.username, "REFINE_SCRIPT",
+                             f"Sửa kịch bản #{job_id} theo góp ý: '{feedback}'")
+
+        scenes_preview = "\n".join([
+            f"• Cảnh {s.scene_id}: {s.narration[:60]}... _(Tìm: {s.visual_keyword})_"
+            for s in revised_script.scenes[:3]
+        ])
+
+        reply_content = (
+            f"✨ **KỊCH BẢN ĐÃ ĐƯỢC CHỈNH SỬA (Task #{job_id})**\n\n"
+            f"📌 **Tiêu đề mới:** {revised_script.title}\n"
+            f"🔥 **Hook mới:** \"{revised_script.hook}\"\n\n"
+            f"📝 **Phân cảnh cập nhật:**\n{scenes_preview}\n\n"
+            f"⏱️ **Ước lượng:** ~{revised_script.total_estimated_duration:.0f}s | {len(revised_script.scenes)} cảnh\n"
+            f"🗣️ **Người góp ý:** {user.first_name}\n\n"
+            f"👉 Cả nhóm xem qua, nếu đã ưng ý hãy bấm **Duyệt Kịch Bản & Dựng Video** bên dưới!"
+        )
+
+        markup = get_script_review_keyboard(job_id)
+        if wait_msg:
+            await safe_edit_text(wait_msg, reply_content, reply_markup=markup)
+        else:
+            await safe_reply(update, reply_content, reply_markup=markup)
+
+    except Exception as e:
+        logger.error(f"Lỗi khi sửa kịch bản: {e}", exc_info=True)
+        err_text = f"❌ Không thể chỉnh sửa kịch bản: `{e}`"
+        if wait_msg:
+            await safe_edit_text(wait_msg, err_text)
+        else:
+            await safe_reply(update, err_text)
+
+
+async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lệnh góp ý và chỉnh sửa kịch bản: /edit <job_id> <góp ý>"""
+    if not is_authorized(update):
+        return
+
+    if not context.args or len(context.args) < 2 or not context.args[0].isdigit():
+        await safe_reply(
+            update,
+            "💡 **Cú pháp góp ý chỉnh sửa:**\n"
+            "`/edit <mã_job> <nội dung muốn sửa>`\n\n"
+            "Ví dụ:\n`/edit 2 Đổi câu hook đầu thành câu hỏi giật gân hơn`"
+        )
+        return
+
+    job_id = int(context.args[0])
+    feedback = " ".join(context.args[1:])
+    await _handle_script_revision(update, context, job_id, feedback)
+
+
+async def render_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lệnh kích hoạt render thủ công: /render <job_id>"""
+    if not is_authorized(update):
+        return
+
+    if not context.args or not context.args[0].isdigit():
+        await safe_reply(update, "💡 Cú pháp: `/render <job_id>`\nVí dụ: `/render 1`")
+        return
+
+    job_id = int(context.args[0])
+    with get_db() as db:
+        job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+        if not job:
+            await safe_reply(update, f"❌ Không tìm thấy VideoJob #{job_id}")
+            return
+        if not job.scenes_json:
+            await safe_reply(update, f"❌ VideoJob #{job_id} chưa có kịch bản phân cảnh.")
+            return
+
+    user = update.effective_user
+    user_name = user.first_name if user else "Creator"
+    asyncio.create_task(_execute_render_task(update, context, job_id, user_name))
+
+
 async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    [NEW] Xử lý khi thành viên bấm nút: Đăng Ngay / Lên Lịch / Tạo Lại / Hủy
+    Xử lý nút bấm trên kịch bản & video: Duyệt Dựng / Đăng YouTube / Góp Ý Sửa / Lên Lịch / Tạo Lại / Hủy
     """
     query = update.callback_query
     await query.answer()
     data = query.data
     user = query.from_user
 
-    if data.startswith("publish_now:"):
+    # 1. Duyệt kịch bản & Dựng video (Bước 1 -> Bước 2)
+    if data.startswith("render_video:") or data.startswith("publish_now:"):
         job_id = int(data.split(":")[1])
-        # TODO Phase 2: Gọi pipeline.execute() → PublisherAgent
+        asyncio.create_task(_execute_render_task(update, context, job_id, user.first_name))
+
+    # 2. Đăng lên YouTube sau khi xem video
+    elif data.startswith("publish_youtube:"):
+        job_id = int(data.split(":")[1])
+        with get_db() as db:
+            job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            channel_id = job.target_channel_id if job else "default"
+            video_path = job.video_path if job else ""
+
         await safe_reply(
             update,
-            f"🚀 **{user.first_name}** yêu cầu đăng video #{job_id} ngay!\n"
-            f"⏳ Đang xếp hàng vào pipeline render..."
+            f"🚀 **YÊU CẦU ĐĂNG VIDEO #{job_id} LÊN YOUTUBE!**\n\n"
+            f"📺 **Kênh đích:** `{channel_id}`\n"
+            f"⚠️ **Thông báo:** Kênh này chưa kết nối OAuth token (`credentials/accounts/.../youtube_token.json`).\n"
+            f"📂 Video 1080x1920 hiện đã lưu sẵn an toàn tại:\n`{video_path}`\n\n"
+            f"👉 Bạn có thể tải file từ Telegram về để đăng ngay, hoặc kết nối Google OAuth để bot tự động xuất bản một chạm!"
         )
 
-    elif data.startswith("schedule:"):
+    # 3. Góp ý chỉnh sửa kịch bản hoặc video
+    elif data.startswith("feedback_video:") or data.startswith("edit_script:"):
         job_id = int(data.split(":")[1])
         await safe_reply(
             update,
-            f"⏰ **{user.first_name}** yêu cầu lên lịch video #{job_id}!\n"
-            f"⏳ Chức năng đặt lịch sẽ hoạt động sau khi render xong."
+            f"✍️ **GÓP Ý & SỬA ĐỔI VIDEO #{job_id}**\n\n"
+            f"Bạn muốn thay đổi điểm gì? Hãy **Reply (Trả lời)** tin nhắn này hoặc gõ lệnh:\n"
+            f"`/edit {job_id} <nội dung muốn sửa>`\n\n"
+            f"💡 **Ví dụ:**\n"
+            f"• `/edit {job_id} Đổi câu hook đầu thành câu hỏi giật gân hơn`\n"
+            f"• `/edit {job_id} Viết ngắn lại khoảng 30s, nhịp điệu nhanh hơn`\n"
+            f"• `/edit {job_id} Cảnh 2 và 3 đổi sang hình ảnh huyền bí`"
         )
 
+    # 4. Lên lịch tự động
+    elif data.startswith("schedule_youtube:") or data.startswith("schedule:"):
+        job_id = int(data.split(":")[1])
+        await safe_reply(
+            update,
+            f"⏰ **Lên lịch đăng Video #{job_id}**\n\n"
+            f"Chức năng lên lịch tự động theo khung giờ vàng trong `channels.yaml` sẽ hoạt động sau khi kênh được kết nối OAuth."
+        )
+
+    # 5. Tạo lại kịch bản từ đầu
     elif data.startswith("regenerate:"):
         job_id = int(data.split(":")[1])
         with get_db() as db:
@@ -313,6 +545,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Hãy gõ `/idea <chủ đề mới>` để tạo kịch bản thay thế."
         )
 
+    # 6. Hủy bỏ
     elif data.startswith("cancel:"):
         job_id = int(data.split(":")[1])
         with get_db() as db:
@@ -440,6 +673,15 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await safe_reply(update, f"👋 Chào {user.first_name}! Bạn muốn cùng AI lên ý tưởng video gì hôm nay?")
         return
 
+    # Tự động phát hiện nếu người dùng Reply vào tin nhắn kịch bản/video để góp ý sửa
+    if is_reply_to_bot and update.message.reply_to_message:
+        replied_text = update.message.reply_to_message.text or update.message.reply_to_message.caption or ""
+        match = re.search(r"(?:Task|Video)\s*#(\d+)", replied_text, re.IGNORECASE)
+        if match:
+            job_id = int(match.group(1))
+            await _handle_script_revision(update, context, job_id, clean_text)
+            return
+
     with get_db() as db:
         db_user = db.query(User).filter(User.telegram_id == user.id).first()
         channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_psychology"
@@ -546,7 +788,7 @@ async def chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"👉 Bấm nút bên dưới để tiến hành đưa vào hàng chờ render video!"
             )
 
-            review_markup = get_video_review_keyboard(job_id)
+            review_markup = get_script_review_keyboard(job_id)
             if wait_msg:
                 await safe_edit_text(wait_msg, reply_content, reply_markup=review_markup)
             else:

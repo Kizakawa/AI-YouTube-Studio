@@ -22,6 +22,45 @@ FFMPEG_TIMEOUT = 300   # 5 phút max cho render
 FFPROBE_TIMEOUT = 10   # 10 giây max cho probe
 
 
+def _ensure_ffmpeg_in_path():
+    """Tự động bổ sung PATH từ WinGet, Windows Environment & các thư mục thường dùng nếu tiến trình hiện tại chưa nhận."""
+    if os.name == "nt":
+        import glob
+        candidate_dirs = []
+
+        # 1. Quét WinGet Packages (ví dụ: Gyan.FFmpeg.Essentials)
+        winget_pattern = os.path.expanduser("~\\AppData\\Local\\Microsoft\\WinGet\\Packages\\*FFmpeg*\\*\\bin")
+        candidate_dirs.extend(glob.glob(winget_pattern))
+
+        # 2. Các thư mục thông dụng khác
+        for fixed in [
+            r"C:\App proteus\BIN",
+            r"C:\ffmpeg\bin",
+            r"D:\ffmpeg\bin",
+            r"C:\ProgramData\chocolatey\bin",
+        ]:
+            if os.path.exists(fixed):
+                candidate_dirs.append(fixed)
+
+        # 3. Lấy PATH từ Registry Current User
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment") as key:
+                user_path, _ = winreg.QueryValueEx(key, "Path")
+                for p in user_path.split(";"):
+                    if p.strip() and os.path.isdir(p.strip()):
+                        candidate_dirs.append(p.strip())
+        except Exception:
+            pass
+
+        # Bổ sung vào PATH nếu chưa có
+        current_path = os.environ.get("PATH", "")
+        for cdir in candidate_dirs:
+            if cdir not in current_path and os.path.isdir(cdir):
+                os.environ["PATH"] = cdir + os.pathsep + os.environ.get("PATH", "")
+
+
+_ensure_ffmpeg_in_path()
 def is_ffmpeg_installed() -> bool:
     """Kiểm tra xem ffmpeg đã có trong PATH hệ thống hay chưa"""
     return shutil.which("ffmpeg") is not None
@@ -253,30 +292,39 @@ def burn_subtitles(
     video_path: str,
     srt_path: str,
     output_path: str,
-    font_size: int = 24,
-    font_color: str = "&HFFFFFF",
-    outline_color: str = "&H000000",
+    font_name: str = "Arial",
+    font_size: int = 22,
+    font_color: str = "&H0000FFFF",  # Vàng tươi chuẩn phong cách Shorts viral
+    outline_color: str = "&H00000000", # Viền đen tuyền
+    outline_width: int = 3,
+    shadow: int = 1,
+    margin_v: int = 180,              # Cách đáy 180px tránh bị UI YouTube che
     bold: bool = True,
 ) -> str:
     """
-    Burn-in subtitle SRT vào video (hardcode).
-    Phong cách: chữ trắng, viền đen, bottom-center.
+    Burn-in subtitle SRT vào video (hardcode hardsub).
+    Phong cách YouTube Shorts: chữ vàng viền đen, font Arial/Segoe UI, cách đáy an toàn.
     """
     style = (
+        f"Fontname={font_name},"
         f"FontSize={font_size},"
         f"PrimaryColour={font_color},"
         f"OutlineColour={outline_color},"
+        f"Outline={outline_width},"
+        f"Shadow={shadow},"
         f"Bold={'1' if bold else '0'},"
         f"Alignment=2,"      # Bottom center
-        f"MarginV=60"        # Margin từ đáy
+        f"MarginV={margin_v}" # Margin an toàn từ đáy tránh UI Shorts
     )
-    # Escape path cho Windows (ffmpeg subtitles filter cần forward slashes)
+    # Escape path cho Windows (ffmpeg subtitles filter cần forward slashes và escape colon)
     srt_escaped = srt_path.replace("\\", "/").replace(":", "\\:")
 
     args = [
         "-i", video_path,
         "-vf", f"subtitles='{srt_escaped}':force_style='{style}'",
         "-c:v", "libx264",
+        "-preset", "fast",
+        "-crf", "20",
         "-c:a", "copy",
         output_path
     ]
