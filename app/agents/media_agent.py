@@ -1,21 +1,32 @@
+import itertools
 import requests
 from pathlib import Path
 from typing import List, Dict, Optional
 from config.settings import settings
 
 class MediaAgent:
-    """Agent chịu trách nhiệm tìm kiếm và tải video/hình ảnh nền từ Pexels API."""
+    """Agent chịu trách nhiệm tìm kiếm và tải video/hình ảnh nền từ Pexels API (hỗ trợ xoay vòng nhiều key)."""
 
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or settings.PEXELS_API_KEY
+        if api_key:
+            self.keys = [api_key]
+        else:
+            self.keys = settings.get_pexels_keys_pool()
+        self._key_cycle = itertools.cycle(self.keys) if self.keys else None
         self.base_url = "https://api.pexels.com/videos/search"
+
+    def _get_active_key(self) -> Optional[str]:
+        if self._key_cycle:
+            return next(self._key_cycle)
+        return None
 
     def search_videos(self, query: str, per_page: int = 3, orientation: str = "portrait") -> List[Dict]:
         """Tìm kiếm video trên Pexels theo từ khóa với tỷ lệ dọc (portrait 9:16)."""
-        if not self.api_key:
+        key = self._get_active_key()
+        if not key:
             return []
 
-        headers = {"Authorization": self.api_key}
+        headers = {"Authorization": key}
         params = {
             "query": query,
             "per_page": per_page,

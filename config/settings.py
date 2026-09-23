@@ -19,6 +19,7 @@ class Settings:
     # AI Services (Hỗ trợ cụm tài khoản Google Ultra xoay vòng API Keys)
     GEMINI_API_KEYS_RAW: str = os.getenv("GEMINI_API_KEYS", "")
     GEMINI_API_KEY_SINGLE: str = os.getenv("GEMINI_API_KEY", "")
+    PEXELS_API_KEYS_RAW: str = os.getenv("PEXELS_API_KEYS", "")
     PEXELS_API_KEY: str = os.getenv("PEXELS_API_KEY", "")
     
     # Defaults
@@ -71,6 +72,19 @@ class Settings:
                     keys.append(k_clean)
         elif cls.GEMINI_API_KEY_SINGLE:
             keys.append(cls.GEMINI_API_KEY_SINGLE.strip())
+        return keys
+
+    @classmethod
+    def get_pexels_keys_pool(cls) -> List[str]:
+        """Lấy danh sách các Pexels API Keys để xoay vòng"""
+        keys = []
+        if cls.PEXELS_API_KEYS_RAW:
+            for k in cls.PEXELS_API_KEYS_RAW.split(","):
+                k_clean = k.strip()
+                if k_clean:
+                    keys.append(k_clean)
+        elif cls.PEXELS_API_KEY:
+            keys.append(cls.PEXELS_API_KEY.strip())
         return keys
 
     @classmethod
