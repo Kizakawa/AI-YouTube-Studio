@@ -467,6 +467,51 @@ async def cancel_queue_command(update: Update, context: ContextTypes.DEFAULT_TYP
         )
 
 
+async def pending_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lệnh /pending hoặc /resume — Quét và xử lý toàn bộ các tác vụ chưa hoàn thành"""
+    if not is_authorized(update):
+        return
+
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    with get_db() as db:
+        pending_jobs = db.query(VideoJob).filter(
+            VideoJob.status.in_(["SCRIPT_READY", "RENDERING", "DRAFT"])
+        ).order_by(VideoJob.id.asc()).all()
+
+    if not pending_jobs:
+        await safe_reply(
+            update,
+            "✅ **TẤT CẢ CÁC TÁC VỤ ĐÃ ĐƯỢC XỬ LÝ HOÀN TẤT!**\n\n"
+            "Hiện tại không còn kịch bản nào tồn đọng trong hệ thống.\n"
+            "Gõ `/idea <chủ đề>` để tạo video mới!"
+        )
+        return
+
+    lines = []
+    ready_count = 0
+    for j in pending_jobs:
+        icon = "📝" if j.status == "SCRIPT_READY" else ("⏳" if j.status == "RENDERING" else "📄")
+        if j.status == "SCRIPT_READY":
+            ready_count += 1
+        title = j.title or j.topic
+        lines.append(f"{icon} **Task #{j.id}**: {title[:40]}... (`{j.status}`)")
+
+    text = (
+        f"📋 **DANH SÁCH TÁC VỤ CHƯA XỬ LÝ ({len(pending_jobs)} video):**\n\n"
+        + "\n".join(lines) + "\n\n"
+        f"💡 Có `{ready_count}` kịch bản đã sẵn sàng render.\n"
+        "👉 Bấm nút bên dưới để tự động đưa toàn bộ vào hàng đợi render tuần tự:"
+    )
+
+    keyboard = []
+    if ready_count > 0:
+        keyboard.append([InlineKeyboardButton(f"🚀 Render Toàn Bộ Đang Chờ ({ready_count})", callback_data="process_all_pending")])
+    keyboard.append([InlineKeyboardButton("🔄 Làm Mới Danh Sách", callback_data="refresh_pending")])
+
+    await safe_reply(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
 async def media_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Lệnh gắn media từ URL web cho phân cảnh:
@@ -785,22 +830,79 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         job_id = int(data.split(":")[1])
         await _enqueue_render(update, context, job_id, user.first_name)
 
-    # 2. Đăng lên YouTube sau khi xem video
+    # 2. Đăng lên YouTube & Google Drive sau khi xem video
     elif data.startswith("publish_youtube:"):
         job_id = int(data.split(":")[1])
         with get_db() as db:
             job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
-            channel_id = job.target_channel_id if job else "default"
-            video_path = job.video_path if job else ""
+            if not job or not job.video_path or not os.path.exists(job.video_path):
+                await safe_reply(update, f"❌ File video #{job_id} chưa sẵn sàng để xuất bản.")
+                return
+            channel_id = job.target_channel_id or "default"
+            video_path = job.video_path
+            video_title = job.title or job.topic
+            video_desc = job.description or ""
+            video_tags = [t.strip() for t in (job.tags or "").split(",") if t.strip()]
 
-        await safe_reply(
+        status_wait = await safe_reply(
             update,
-            f"🚀 **YÊU CẦU ĐĂNG VIDEO #{job_id} LÊN YOUTUBE!**\n\n"
-            f"📺 **Kênh đích:** `{channel_id}`\n"
-            f"⚠️ **Thông báo:** Kênh này chưa kết nối OAuth token (`credentials/accounts/.../youtube_token.json`).\n"
-            f"📂 Video 1080x1920 hiện đã lưu sẵn an toàn tại:\n`{video_path}`\n\n"
-            f"👉 Bạn có thể tải file từ Telegram về để đăng ngay, hoặc kết nối Google OAuth để bot tự động xuất bản một chạm!"
+            f"🚀 **ĐANG ĐĂNG VIDEO #{job_id} LÊN YOUTUBE & GOOGLE DRIVE...**\n\n"
+            f"📺 **Kênh:** `{channel_id}`\n"
+            f"📌 **Tiêu đề:** {video_title}\n"
+            f"⏳ Đang sao lưu Google Drive 2TB và upload YouTube..."
         )
+
+        from app.agents.publisher_agent import PublisherAgent
+        from app.agents.drive_agent import DriveAgent
+
+        channels = settings.get_channels_config()
+        ch_cfg = next((c for c in channels if c.get("id") == channel_id), {"id": channel_id, "name": channel_id})
+
+        pub_agent = PublisherAgent(channel_config=ch_cfg)
+        drive_agent = DriveAgent(account_name="account_1")
+
+        # 1. Tải lên Google Drive 2TB
+        drive_res = await asyncio.to_thread(drive_agent.upload_video, video_path, video_title)
+        drive_link = drive_res.get("drive_link")
+
+        # 2. Đăng tải lên YouTube
+        pub_res = await asyncio.to_thread(
+            pub_agent.upload_video,
+            video_path=video_path,
+            title=video_title,
+            description=video_desc,
+            tags=video_tags,
+            privacy_status="private"
+        )
+
+        if pub_res.get("status") == "success":
+            yt_url = pub_res.get("youtube_url")
+            yt_id = pub_res.get("video_id")
+            with get_db() as db:
+                db_job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                if db_job:
+                    db_job.status = "PUBLISHED"
+                    db_job.youtube_video_id = yt_id
+                    if drive_link:
+                        db_job.drive_link = drive_link
+                    log_activity(db, user.id, user.username, "PUBLISH_YOUTUBE",
+                                 f"Đã đăng Video #{job_id} lên YouTube ({yt_url})",
+                                 channel_id=channel_id)
+
+            success_text = (
+                f"🎉 **ĐĂNG TẢI VIDEO #{job_id} THÀNH CÔNG!**\n\n"
+                f"🎬 **Link xem YouTube (Chế độ Private):**\n👉 {yt_url}\n\n"
+            )
+            if drive_link:
+                success_text += f"💾 **Link lưu trữ Google Drive 2TB:**\n👉 {drive_link}\n\n"
+            success_text += "💡 Video đang ở chế độ Riêng tư (Private) để bạn kiểm duyệt trước khi công khai!"
+            await safe_edit_text(status_wait, success_text)
+        else:
+            err = pub_res.get("error", "Lỗi không xác định")
+            fail_text = f"❌ **Đăng YouTube thất bại:** `{err}`"
+            if drive_link:
+                fail_text += f"\n\n💾 Tuy nhiên video đã được sao lưu an toàn lên Drive:\n👉 {drive_link}"
+            await safe_edit_text(status_wait, fail_text)
 
     # 3. Góp ý chỉnh sửa kịch bản hoặc video
     elif data.startswith("feedback_video:") or data.startswith("edit_script:"):
@@ -854,6 +956,34 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             update,
             f"❌ **{user.first_name}** đã hủy video #{job_id}."
         )
+
+    # 7. Xử lý toàn bộ các kịch bản đang chờ (Render Queue Batch)
+    elif data == "process_all_pending":
+        with get_db() as db:
+            pending_jobs = db.query(VideoJob).filter(
+                VideoJob.status == "SCRIPT_READY"
+            ).order_by(VideoJob.id.asc()).all()
+
+        if not pending_jobs:
+            await safe_reply(update, "⚠️ Không còn kịch bản nào đang ở trạng thái chờ render.")
+            return
+
+        user_name = user.first_name if user else "Creator"
+        enqueued_count = 0
+        for j in pending_jobs:
+            await _enqueue_render(update, context, j.id, user_name)
+            enqueued_count += 1
+
+        await safe_reply(
+            update,
+            f"🚀 **ĐÃ ĐƯA {enqueued_count} VIDEO VÀO HÀNG ĐỢI RENDER!**\n\n"
+            f"Các video sẽ được hệ thống dựng tuần tự (1 video tại một thời điểm để bảo vệ phần cứng máy).\n"
+            f"Gõ `/queue` để theo dõi tiến trình!"
+        )
+
+    # 8. Làm mới danh sách tác vụ chờ
+    elif data == "refresh_pending":
+        await pending_command(update, context)
 
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
