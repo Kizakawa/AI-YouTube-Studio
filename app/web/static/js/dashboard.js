@@ -258,18 +258,6 @@ async function fetchChannels() {
         </div>
     `).join('');
 }
-                <span class="badge ${ch.token_status.includes('🟢') ? 'badge-green' : 'badge-amber'}">${ch.token_status}</span>
-            </div>
-            <div class="channel-metrics">
-                <div class="metric-item"><span>Google Account</span><strong>${esc(ch.google_account).toUpperCase()}</strong></div>
-                <div class="metric-item"><span>Drive Quota</span><strong style="color:var(--accent-blue)">${ch.drive_quota}</strong></div>
-                <div class="metric-item"><span>Tổng Video</span><strong>${ch.video_count}</strong></div>
-                <div class="metric-item"><span>Đã Đăng</span><strong style="color:var(--accent-green)">${ch.published_count}</strong></div>
-            </div>
-            <div style="font-size:11.5px;color:var(--text-muted);">🎙 Voice: <code>${ch.preferred_voice}</code></div>
-        </div>
-    `).join('');
-}
 
 /* ═══════════════════════════════════════════════════════
    PIPELINE / VIDEOS
