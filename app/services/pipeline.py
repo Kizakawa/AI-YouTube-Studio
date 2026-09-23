@@ -184,58 +184,91 @@ class VideoPipeline:
 
     async def _fetch_scene_media(self, scene: SceneContract, media_dir: str) -> str:
         """
-        Tìm nạp media cho 1 scene với 4 tầng fallback an toàn:
-          Tầng 1: Pexels Video portrait 9:16
-          Tầng 2: Pexels Photo portrait 9:16 (dùng cho Ken Burns)
-          Tầng 3: Google Imagen 3 / Gemini Image Generation
-          Tầng 4: Dynamic Aesthetic Graphic (ảnh gradient điện ảnh chuẩn 1080x1920)
+        Tìm nạp media cho 1 scene với hệ thống phân cấp 5 tầng thông minh:
+          Tầng 0: User Custom Media (Ảnh/Video do người dùng gửi trực tiếp qua Telegram)
+          Tầng 1: Pexels Video portrait 9:16 (nếu có key Pexels)
+          Tầng 2: Pexels Photo portrait 9:16 (nếu có key Pexels, dùng cho Ken Burns)
+          Tầng 3: Web Image Search (Tìm kiếm ảnh chất lượng cao trên Wikimedia Commons)
+          Tầng 4: AI Image Generation (Google Imagen 3 / Pollinations 9:16 Cinematic AI)
+          Tầng 5: Dynamic Aesthetic Graphic (Fallback cuối cùng khi offline)
         """
-        # --- Tầng 1: Pexels Video ---
-        try:
-            videos = self._media_agent.search_videos(scene.visual_keyword, per_page=2)
-            if videos:
-                for video_data in videos:
-                    video_files = video_data.get("video_files", [])
-                    best = next(
-                        (f for f in video_files
-                         if f.get("height", 0) >= 720
-                         and f.get("width", 0) <= f.get("height", 0)),
-                        None
-                    )
-                    if best and best.get("link"):
-                        output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}.mp4")
-                        self._media_agent.download_file(best["link"], output)
-                        logger.info(f"Scene {scene.scene_id}: Tải thành công Pexels Video")
-                        return output
-        except Exception as e:
-            logger.warning(f"Scene {scene.scene_id}: Lỗi tìm Pexels Video: {e}")
+        # ── Tầng 0: User Custom Media (Người dùng gửi qua Telegram) ──
+        custom_dir = Path("storage") / "jobs" / str(self.job_id) / "custom_media"
+        if custom_dir.exists():
+            for ext in [".mp4", ".mov", ".jpg", ".jpeg", ".png", ".webp"]:
+                candidate1 = custom_dir / f"scene_{scene.scene_id:03d}{ext}"
+                candidate2 = custom_dir / f"scene_{scene.scene_id}{ext}"
+                for cand in [candidate1, candidate2]:
+                    if cand.exists() and cand.stat().st_size > 0:
+                        dest = Path(media_dir) / f"scene_{scene.scene_id:03d}{ext}"
+                        import shutil
+                        shutil.copy2(str(cand), str(dest))
+                        logger.info(f"Scene {scene.scene_id}: Dùng media tùy biến của người dùng ({cand.name})")
+                        return str(dest)
 
-        # --- Tầng 2: Pexels Photo (Ken Burns) ---
-        try:
-            photos = self._media_agent.search_photos(scene.visual_keyword, per_page=2)
-            if photos:
-                photo = photos[0]
-                src = photo.get("src", {})
-                img_url = src.get("large2x") or src.get("portrait") or src.get("original") or src.get("large")
-                if img_url:
-                    img_output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}.jpg")
-                    self._media_agent.download_file(img_url, img_output)
-                    logger.info(f"Scene {scene.scene_id}: Tải thành công Pexels Photo cho Ken Burns")
-                    return img_output
-        except Exception as e:
-            logger.warning(f"Scene {scene.scene_id}: Lỗi tìm Pexels Photo: {e}")
+        # ── Tầng 1: Pexels Video (nếu có key) ──
+        if self._media_agent.api_key:
+            try:
+                videos = self._media_agent.search_videos(scene.visual_keyword, per_page=2)
+                if videos:
+                    for video_data in videos:
+                        video_files = video_data.get("video_files", [])
+                        best = next(
+                            (f for f in video_files
+                             if f.get("height", 0) >= 720
+                             and f.get("width", 0) <= f.get("height", 0)),
+                            None
+                        )
+                        if best and best.get("link"):
+                            output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}.mp4")
+                            self._media_agent.download_file(best["link"], output)
+                            logger.info(f"Scene {scene.scene_id}: Tải thành công Pexels Video")
+                            return output
+            except Exception as e:
+                logger.warning(f"Scene {scene.scene_id}: Lỗi tìm Pexels Video: {e}")
 
-        # --- Tầng 3: Google Imagen 3 ---
+        # ── Tầng 2: Pexels Photo (nếu có key, dùng cho Ken Burns) ──
+        if self._media_agent.api_key:
+            try:
+                photos = self._media_agent.search_photos(scene.visual_keyword, per_page=2)
+                if photos:
+                    photo = photos[0]
+                    src = photo.get("src", {})
+                    img_url = src.get("large2x") or src.get("portrait") or src.get("original") or src.get("large")
+                    if img_url:
+                        img_output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}.jpg")
+                        self._media_agent.download_file(img_url, img_output)
+                        logger.info(f"Scene {scene.scene_id}: Tải thành công Pexels Photo cho Ken Burns")
+                        return img_output
+            except Exception as e:
+                logger.warning(f"Scene {scene.scene_id}: Lỗi tìm Pexels Photo: {e}")
+
+        # ── Tầng 3: Web Image Search (Wikimedia Commons) ──
         try:
-            ai_img_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_ai.png")
+            web_photos = self._media_agent.search_web_photos(scene.visual_keyword, per_page=2)
+            if web_photos:
+                web_photo = web_photos[0]
+                web_url = web_photo.get("url")
+                if web_url:
+                    web_ext = ".jpg" if "jpg" in web_url.lower() or "jpeg" in web_url.lower() else ".png"
+                    web_output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_web{web_ext}")
+                    self._media_agent.download_file(web_url, web_output)
+                    logger.info(f"Scene {scene.scene_id}: Tải thành công ảnh Web ({web_photo.get('title')[:30]})")
+                    return web_output
+        except Exception as e:
+            logger.warning(f"Scene {scene.scene_id}: Lỗi tìm ảnh Web: {e}")
+
+        # ── Tầng 4: AI Image Generation (Google Imagen 3 / Pollinations 9:16) ──
+        try:
+            ai_img_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_ai.jpg")
             res_img = self._image_agent.generate_scene_image(scene.visual_keyword, ai_img_path)
-            if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 0:
-                logger.info(f"Scene {scene.scene_id}: Sinh thành công ảnh qua Imagen 3")
+            if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 1000:
+                logger.info(f"Scene {scene.scene_id}: Sinh thành công ảnh AI điện ảnh 9:16")
                 return res_img
         except Exception as e:
-            logger.warning(f"Scene {scene.scene_id}: Lỗi sinh ảnh Imagen 3: {e}")
+            logger.warning(f"Scene {scene.scene_id}: Lỗi sinh ảnh AI: {e}")
 
-        # --- Tầng 4: Dynamic Aesthetic Graphic (Pillow) ---
+        # ── Tầng 5: Dynamic Aesthetic Graphic (Pillow) ──
         logger.info(f"Scene {scene.scene_id}: Dùng ảnh đồ họa cinematic gradient cho Ken Burns")
         placeholder = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_graphic.png")
         self._create_placeholder_image(placeholder, scene.visual_keyword, scene_id=scene.scene_id)
