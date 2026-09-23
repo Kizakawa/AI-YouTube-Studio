@@ -29,7 +29,10 @@ wheels/
 *.env
 credentials/client_secret.json
 credentials/tokens/
+credentials/accounts/*
+!credentials/accounts/.gitkeep
 tokens/
+*.token.json
 *.pem
 *.key
 
