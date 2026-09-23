@@ -82,6 +82,32 @@ Người C: /render 3  →  ⏳ Xếp hàng #2
 
 ---
 
+### 7. 🌟 TÍNH NĂNG MỚI BẠN GIANG VỪA BỔ SUNG (ĐÃ GỘP THÀNH CÔNG)
+**File thay đổi:** `app/agents/content_agent.py`, `app/agents/image_agent.py`, `app/agents/media_agent.py`, `app/services/pipeline.py`, `app/bot/handlers.py`
+
+#### A. Tùy biến Media trực tiếp qua Telegram (Custom Media Upload):
+- **Gửi ảnh/video vào chat:** Kèm caption `/scene <số_cảnh>` (ví dụ: `/scene 1` hoặc `#1`) để gán chính xác ảnh/video đó cho phân cảnh bạn muốn.
+- **Lệnh URL:** `/media <số_cảnh> <link_ảnh_hoặc_video>` để tải ảnh/video từ link web về gán cho cảnh.
+- File được lưu vào `storage/jobs/{job_id}/custom_media/scene_{scene_id}.{ext}` và được ưu tiên cao nhất khi dựng video!
+
+#### B. Tìm kiếm ảnh Web miễn phí (Wikimedia Commons):
+- Bổ sung hàm `search_web_photos()` trong `MediaAgent`.
+- 100% miễn phí, không cần API Key, tự động chạy khi không có key Pexels hoặc Pexels hết hạn.
+
+#### C. Hệ thống phân cấp Media 5 tầng thông minh trong Pipeline:
+1. **Tầng 0:** User Custom Media (Ảnh/Video người dùng gửi qua Telegram hoặc URL)
+2. **Tầng 1:** Pexels Video 9:16 portrait
+3. **Tầng 2:** Pexels Photo (cho hiệu ứng Ken Burns)
+4. **Tầng 3:** Web Image Search (Wikimedia Commons)
+5. **Tầng 4:** AI Image Generation (Google Imagen 3 / Gemini Flash Image)
+6. **Tầng 5:** Dynamic Aesthetic Graphic (ảnh gradient điện ảnh offline)
+
+#### D. Nâng cấp AI Image & Kịch bản Viral:
+- Tích hợp Imagen 3 / Gemini Flash Image với cơ chế fallback thông minh.
+- Tối ưu hóa prompt kịch bản Viral Shorts trong `ContentAgent`.
+
+---
+
 ## 📁 DANH SÁCH FILE THAY ĐỔI
 
 ```
