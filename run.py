@@ -77,7 +77,14 @@ def main():
             print("\n👋 Đã dừng Web Dashboard.")
         return
 
-    app = ApplicationBuilder().token(settings.TELEGRAM_BOT_TOKEN).build()
+    app = (
+        ApplicationBuilder()
+        .token(settings.TELEGRAM_BOT_TOKEN)
+        .read_timeout(120)
+        .write_timeout(120)
+        .connect_timeout(60)
+        .build()
+    )
 
     # Đăng ký các lệnh Telegram
     app.add_handler(CommandHandler("start", start_command))
@@ -97,6 +104,12 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
 
     async def error_handler(update, context):
+        err_msg = str(context.error) if context.error else ""
+        # Bỏ qua các cảnh báo mạng vô hại của Telegram (bấm nút trễ, query quá hạn, text không đổi)
+        if any(ign in err_msg for ign in ["Query is too old", "query id is invalid", "Message is not modified"]):
+            logger.debug(f"Bỏ qua cảnh báo vô hại của Telegram: {err_msg}")
+            return
+
         logger.error(f"⚠️ Lỗi Telegram xảy ra: {context.error}", exc_info=context.error)
         if update and update.effective_message:
             try:

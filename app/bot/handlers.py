@@ -85,6 +85,19 @@ async def safe_edit_text(message, text: str, reply_markup=None, parse_mode="Mark
                 return None
 
 
+async def safe_query_answer(query, text: str = None, show_alert: bool = False):
+    """
+    Trả lời CallbackQuery an toàn, miễn nhiễm với lỗi 'Query is too old'
+    khi người dùng bấm nút nhiều lần hoặc tiến trình chạy nền mất hơn 30s.
+    """
+    if not query:
+        return
+    try:
+        await query.answer(text=text, show_alert=show_alert)
+    except Exception as e:
+        logger.debug(f"Bỏ qua lỗi timeout query.answer: {e}")
+
+
 def is_authorized(update: Update) -> bool:
     """
     Tất cả thành viên trong nhóm Telegram hoặc chat trực tiếp đều có toàn quyền sử dụng bot.
@@ -159,7 +172,7 @@ async def channels_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def channel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Xử lý khi một thành viên bấm nút chọn kênh"""
     query = update.callback_query
-    await query.answer()
+    await safe_query_answer(query)
 
     data = query.data
     if data.startswith("select_channel:"):
@@ -324,7 +337,9 @@ async def _execute_render_task(update: Update, context: ContextTypes.DEFAULT_TYP
                             video=vf,
                             caption=caption,
                             reply_markup=post_render_markup,
-                            supports_streaming=True
+                            supports_streaming=True,
+                            read_timeout=120,
+                            write_timeout=120
                         )
                 except Exception as ex_upload:
                     logger.warning(f"Không thể gửi file video trực tiếp qua Telegram: {ex_upload}")
@@ -929,7 +944,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Xử lý nút bấm trên kịch bản & video: Duyệt Dựng / Đăng YouTube / Góp Ý Sửa / Lên Lịch / Tạo Lại / Hủy
     """
     query = update.callback_query
-    await query.answer()
+    await safe_query_answer(query)
     data = query.data
     user = query.from_user
 
@@ -1168,7 +1183,7 @@ async def chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Xử lý nút bấm: Chốt kịch bản từ đoạn chat / Gợi ý thêm góc nhìn / Đổi hook
     """
     query = update.callback_query
-    await query.answer()
+    await safe_query_answer(query)
     data = query.data
     user = query.from_user
 
