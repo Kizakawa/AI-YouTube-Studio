@@ -35,7 +35,7 @@ class VideoAgent:
         await agent.render(render_job)
     """
 
-    async def render(self, job: RenderJobContract) -> str:
+    async def render(self, job: RenderJobContract, progress_callback=None) -> str:
         """
         Render video MP4 hoàn chỉnh theo RenderJobContract.
         Trả về đường dẫn file output.
@@ -43,18 +43,28 @@ class VideoAgent:
         work_dir = Path(job.output_path).parent / f"render_tmp_{job.job_id}"
         work_dir.mkdir(parents=True, exist_ok=True)
 
+        async def report(msg: str, pct: int):
+            if progress_callback:
+                try:
+                    await progress_callback(msg, pct)
+                except Exception:
+                    pass
+
         try:
             # ── Step 1: Chuẩn bị scene clips ──
             logger.info(f"[VideoAgent] Job {job.job_id}: Chuẩn bị {len(job.scenes)} scene clips...")
+            await report(f"🎬 Đang chuẩn bị {len(job.scenes)} phân cảnh video 9:16...", 65)
             scene_clips = self._prepare_scene_clips(job.scenes, str(work_dir), job)
 
             # ── Step 2: Concat tất cả scenes → 1 video silent ──
             logger.info(f"[VideoAgent] Job {job.job_id}: Ghép {len(scene_clips)} clips...")
+            await report(f"🎬 Đang ghép nối các phân cảnh thành timeline video liên tục...", 75)
             silent_video = str(work_dir / "concat_silent.mp4")
             concat_videos(scene_clips, silent_video, fps=job.fps)
 
             # ── Step 3: Mux audio (voice + optional BGM) ──
             logger.info(f"[VideoAgent] Job {job.job_id}: Ghép audio narration + BGM...")
+            await report(f"🎵 Đang hòa âm giọng đọc AI và nhạc nền...", 83)
             if job.subtitle_path and Path(job.subtitle_path).exists():
                 # Nếu có subtitle, mux audio trước rồi burn subtitle sau
                 muxed_video = str(work_dir / "muxed_no_sub.mp4")
@@ -72,6 +82,7 @@ class VideoAgent:
             # ── Step 4: Burn subtitles (nếu có) ──
             if job.subtitle_path and Path(job.subtitle_path).exists():
                 logger.info(f"[VideoAgent] Job {job.job_id}: Burn-in subtitles...")
+                await report(f"✍️ Đang ép phụ đề hardsub chuẩn YouTube 1080p...", 90)
                 burn_subtitles(
                     video_path=muxed_video,
                     srt_path=job.subtitle_path,

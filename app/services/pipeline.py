@@ -47,12 +47,17 @@ class VideoPipeline:
         self._media_agent = MediaAgent()
         self._image_agent = ImageAgent()
 
-    async def _report_progress(self, stage: str, message: str):
-        """Báo cáo tiến độ thời gian thực về Telegram/Web Dashboard."""
-        logger.info(f"[Job {self.job_id}] [{stage}] {message}")
+    async def _report_progress(self, stage: str, message: str, percent: int = 0):
+        """Báo cáo tiến độ thời gian thực về Telegram/Web Dashboard kèm phần trăm %."""
+        logger.info(f"[Job {self.job_id}] [{stage}] [{percent}%] {message}")
         if self.progress_callback:
             try:
-                await self.progress_callback(stage, message)
+                import inspect
+                sig = inspect.signature(self.progress_callback)
+                if len(sig.parameters) >= 3:
+                    await self.progress_callback(stage, message, percent)
+                else:
+                    await self.progress_callback(stage, message)
             except Exception as ex:
                 logger.warning(f"Error in progress_callback: {ex}")
 
@@ -75,12 +80,13 @@ class VideoPipeline:
             script = self._load_script_from_db()
             await self._report_progress(
                 "SCRIPT",
-                f"Đã nạp kịch bản: \"{script.title}\" ({len(script.scenes)} cảnh)"
+                f"Đã nạp kịch bản: \"{script.title}\" ({len(script.scenes)} cảnh)",
+                percent=5
             )
 
             # ── Step B: Generate per-scene audio & sync subtitles ──
             self._update_status(JobStatus.AUDIO_READY, "Đang tạo giọng đọc Edge-TTS...")
-            await self._report_progress("AUDIO", "🎙️ Đang tạo giọng đọc AI Edge-TTS và đồng bộ phụ đề...")
+            await self._report_progress("AUDIO", "🎙️ Đang tạo giọng đọc AI Edge-TTS và đồng bộ phụ đề...", percent=15)
             enriched_scenes = await self._step_audio(script)
             full_audio_path, total_duration = await self._step_concat_audio(enriched_scenes)
 
@@ -93,13 +99,13 @@ class VideoPipeline:
 
             # ── Step C: Fetch per-scene media ──
             self._update_status(JobStatus.MEDIA_READY, "Đang tải media cho từng cảnh...")
-            await self._report_progress("MEDIA", "🖼️ Đang tìm kiếm và chuẩn bị hình ảnh/video 9:16 cho từng cảnh...")
+            await self._report_progress("MEDIA", "🖼️ Đang tìm kiếm và chuẩn bị hình ảnh/video 9:16 cho từng cảnh...", percent=25)
             media_scenes = await self._step_media(enriched_scenes)
             logger.info(f"[Job {self.job_id}] Step C: Media done — {len(media_scenes)} scenes")
 
             # ── Step D: Render final MP4 ──
             self._update_status(JobStatus.RENDERING, "Đang render video...")
-            await self._report_progress("RENDER", "🎬 Đang dựng video 9:16 Ken Burns, ghép âm thanh & burn phụ đề hardsub...")
+            await self._report_progress("RENDER", "🎬 Đang dựng video 9:16 Ken Burns, ghép âm thanh & burn phụ đề hardsub...", percent=65)
             output_path = str(Path(settings.OUTPUT_DIR) / f"video_{self.job_id}.mp4")
             Path(settings.OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 
@@ -118,12 +124,12 @@ class VideoPipeline:
             await self._step_render(render_job)
 
             # Step D QA: Validate output bằng ffprobe
-            await self._report_progress("QA", "🔍 Đang kiểm định chất lượng video bằng ffprobe...")
+            await self._report_progress("QA", "🔍 Đang kiểm định chất lượng video bằng ffprobe...", percent=95)
             self._step_qa(output_path)
 
             self._update_status(JobStatus.RENDERED)
             self._save_render_manifest(render_job)
-            await self._report_progress("COMPLETED", f"🎉 Video #{self.job_id} đã hoàn tất và sẵn sàng phát hành!")
+            await self._report_progress("COMPLETED", f"🎉 Video #{self.job_id} đã hoàn tất và sẵn sàng phát hành!", percent=100)
             logger.info(f"[Job {self.job_id}] Pipeline complete → {output_path}")
             return render_job
 
@@ -168,12 +174,20 @@ class VideoPipeline:
         return full_audio_path, total_ms
 
     async def _step_media(self, scenes: List[SceneContract]) -> List[SceneContract]:
-        """Step C: Tải video/ảnh nền Pexels cho từng scene."""
+        """Step C: Tải video/ảnh nền Pexels cho từng scene kèm báo cáo tiến độ %."""
         media_dir = str(self.work_dir / "media")
         Path(media_dir).mkdir(exist_ok=True)
 
+        total_scenes = len(scenes)
         result = []
-        for scene in scenes:
+        for idx, scene in enumerate(scenes):
+            pct = 25 + int(((idx + 1) / total_scenes) * 35)
+            kw = scene.visual_keyword or "Stock 4K"
+            await self._report_progress(
+                "MEDIA",
+                f"🖼️ Chuẩn bị media cảnh {idx+1}/{total_scenes} ({kw})...",
+                percent=pct
+            )
             media_path = await self._fetch_scene_media(scene, media_dir)
             enriched = scene.model_copy(update={
                 "media_path": media_path,
@@ -275,10 +289,14 @@ class VideoPipeline:
         return placeholder
 
     async def _step_render(self, render_job: RenderJobContract):
-        """Step D: Gọi VideoAgent để render final MP4."""
+        """Step D: Gọi VideoAgent để render final MP4 kèm cập nhật %."""
         from app.agents.video_agent import VideoAgent
         agent = VideoAgent()
-        await agent.render(render_job)
+
+        async def on_render_progress(msg: str, pct: int):
+            await self._report_progress("RENDER", msg, percent=pct)
+
+        await agent.render(render_job, progress_callback=on_render_progress)
 
     def _step_qa(self, output_path: str):
         """Step D QA: Validate output bằng ffprobe."""
