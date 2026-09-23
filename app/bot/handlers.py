@@ -295,7 +295,13 @@ async def _execute_render_task(update: Update, context: ContextTypes.DEFAULT_TYP
         f"⏳ Đang xếp hàng vào pipeline render 9:16 Shorts (Audio + Media + Subtitles)..."
     )
 
-    async def progress_cb(stage: str, msg: str):
+    def render_progress_bar(percent: int) -> str:
+        percent = max(0, min(100, percent))
+        filled = int(percent / 10)
+        bar = "▰" * filled + "▱" * (10 - filled)
+        return f"[{bar}] {percent}%"
+
+    async def progress_cb(stage: str, msg: str, percent: int = 0):
         if status_msg:
             icons = {
                 "SCRIPT": "📝",
@@ -307,7 +313,12 @@ async def _execute_render_task(update: Update, context: ContextTypes.DEFAULT_TYP
                 "ERROR": "❌"
             }
             icon = icons.get(stage, "⏳")
-            display_text = f"🎬 **TIẾN TRÌNH RENDER (Task #{job_id})**\n\n{icon} {msg}"
+            p_bar = render_progress_bar(percent) if percent > 0 else "[▱▱▱▱▱▱▱▱▱▱] 0%"
+            display_text = (
+                f"🎬 **TIẾN TRÌNH RENDER (Task #{job_id})**\n\n"
+                f"📊 **Tiến độ:** `{p_bar}`\n\n"
+                f"{icon} {msg}"
+            )
             await safe_edit_text(status_msg, display_text)
 
     try:
