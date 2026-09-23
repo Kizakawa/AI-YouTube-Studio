@@ -56,6 +56,11 @@ async def serve_dashboard():
         raise HTTPException(status_code=404, detail="index.html chưa tồn tại")
     return FileResponse(index_path)
 
+@app.get("/health")
+async def health_check():
+    """Endpoint kiểm tra sức khỏe hệ thống (cho Render, UptimeRobot, Docker)"""
+    return {"status": "ok", "app": "AI YouTube Multi-Channel Studio"}
+
 # ─── Stats ────────────────────────────────────────────────────────────────────
 
 @app.get("/api/stats")

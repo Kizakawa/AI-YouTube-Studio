@@ -1,3 +1,4 @@
+import os
 import sys
 import threading
 import logging
@@ -31,8 +32,9 @@ def run_fastapi_server():
     """Khởi động Web Dashboard bằng Uvicorn trong background thread"""
     try:
         import uvicorn
-        print("🌐 [Web Dashboard] Đang chạy tại địa chỉ: http://127.0.0.1:8000")
-        uvicorn.run("app.web.server:app", host="0.0.0.0", port=8000, log_level="warning")
+        port = int(os.getenv("PORT", 8000))
+        print(f"🌐 [Web Dashboard] Đang chạy tại địa chỉ: http://0.0.0.0:{port}")
+        uvicorn.run("app.web.server:app", host="0.0.0.0", port=port, log_level="warning")
     except ImportError:
         print("⚠️ [Web Dashboard] Chưa cài đặt uvicorn. Hãy chạy 'pip install uvicorn fastapi' để bật Dashboard.")
     except Exception as e:

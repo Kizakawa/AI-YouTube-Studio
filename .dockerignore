@@ -1,0 +1,17 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.git
+.gitignore
+.env
+storage/
+temp/
+tests/
+venv/
+.venv
+*.mp4
+*.mp3
+*.jpg
+*.png
+credentials/accounts/

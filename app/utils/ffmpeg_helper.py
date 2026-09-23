@@ -117,9 +117,15 @@ def run_ffmpeg(args: List[str], timeout: int = FFMPEG_TIMEOUT) -> subprocess.Com
     """
     Wrapper an toàn cho ffmpeg subprocess.
     - Luôn có timeout (tránh zombie process)
+    - Tự động áp dụng giới hạn luồng (-threads) nếu có biến FFMPEG_THREADS để tránh tràn RAM (OOM) trên Cloud
     - Raise RuntimeError nếu returncode != 0
     """
-    cmd = ["ffmpeg", "-y"] + args
+    thread_args = []
+    max_threads = os.getenv("FFMPEG_THREADS")
+    if max_threads and "-threads" not in args:
+        thread_args = ["-threads", str(max_threads)]
+
+    cmd = ["ffmpeg", "-y"] + thread_args + args
     logger.info(f"FFmpeg command: {' '.join(cmd)}")
 
     result = subprocess.run(
