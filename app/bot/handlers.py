@@ -17,6 +17,7 @@ from app.bot.keyboards import (
 from app.database.models import get_db, User, VideoJob, log_activity
 from app.agents.content_agent import ContentAgent
 from app.schemas.contracts import ScriptContract
+from app.services.render_queue import get_render_queue
 
 logger = logging.getLogger(__name__)
 content_agent = ContentAgent()
@@ -133,6 +134,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• `/chat <nội dung>` - Thảo luận, phản biện và đồng sáng tạo kịch bản với Đạo diễn AI\n"
         f"• `/channels` - Xem và chuyển đổi kênh YouTube muốn sản xuất\n"
         f"• `/idea <chủ đề>` - Lên kịch bản AI ngay tức thì cho kênh đang chọn\n"
+        f"• `/render <job_id>` - Dựng video từ kịch bản đã duyệt\n"
+        f"• `/queue` - Xem trạng thái hàng đợi render (FIFO)\n"
+        f"• `/cancel <job_id>` - Hủy video đang chờ trong hàng đợi\n"
         f"• `/status` - Báo cáo số lượng video và trạng thái hệ thống\n\n"
         f"👉 Gõ `/chat` hoặc `/idea` để bắt đầu sáng tạo video cùng nhóm!"
     )
@@ -355,6 +359,84 @@ async def _execute_render_task(update: Update, context: ContextTypes.DEFAULT_TYP
             await safe_reply(update, f"❌ **Render video #{job_id} thất bại:**\n`{str(e)}`")
 
 
+async def _enqueue_render(update: Update, context: ContextTypes.DEFAULT_TYPE, job_id: int, user_name: str):
+    """
+    Đưa yêu cầu render vào hàng đợi FIFO thay vì chạy trực tiếp.
+    Nếu máy đang rảnh → render ngay. Nếu đang bận → xếp hàng chờ.
+    """
+    rq = get_render_queue()
+    chat_id = update.effective_chat.id if update.effective_chat else None
+
+    # Tạo render function (closure bind sẵn tham số)
+    async def do_render():
+        await _execute_render_task(update, context, job_id, user_name)
+
+    # Thêm vào queue
+    queue_item = await rq.enqueue(
+        job_id=job_id,
+        user_name=user_name,
+        chat_id=chat_id,
+        render_func=do_render,
+    )
+
+    # Thông báo trạng thái hàng đợi
+    if rq.queue_size == 0 and rq.is_busy:
+        # Item vừa thêm đã được worker pick lên ngay
+        await safe_reply(
+            update,
+            f"🚀 Video #{job_id} đang được render ngay!\n"
+            f"🏭 Máy render: Đang xử lý"
+        )
+    elif rq.queue_size > 0:
+        # Có video đang chờ
+        current = rq.current_job
+        current_info = f"Video #{current.job_id}" if current else "Không rõ"
+        await safe_reply(
+            update,
+            f"📥 **Video #{job_id} đã vào hàng đợi!**\n\n"
+            f"🔴 Đang render: {current_info}\n"
+            f"⏳ Vị trí của bạn: **#{rq.queue_size}** trong hàng chờ\n"
+            f"📋 Tổng đang chờ: {rq.queue_size} video\n\n"
+            f"💡 Gõ `/queue` để xem trạng thái hàng đợi"
+        )
+
+
+async def queue_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lệnh /queue — Xem trạng thái hàng đợi render hiện tại"""
+    if not is_authorized(update):
+        return
+
+    rq = get_render_queue()
+    await safe_reply(update, rq.get_status_text())
+
+
+async def cancel_queue_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lệnh /cancel <job_id> — Hủy video đang chờ trong hàng đợi"""
+    if not is_authorized(update):
+        return
+
+    if not context.args or not context.args[0].isdigit():
+        await safe_reply(
+            update,
+            "💡 Cú pháp: `/cancel <job_id>`\n"
+            "Ví dụ: `/cancel 5`\n\n"
+            "⚠️ Chỉ hủy được video đang **chờ** trong hàng đợi, không hủy được video đang render."
+        )
+        return
+
+    job_id = int(context.args[0])
+    rq = get_render_queue()
+    success = await rq.cancel_job(job_id)
+
+    if success:
+        await safe_reply(update, f"✅ Đã hủy Video #{job_id} khỏi hàng đợi render.")
+    else:
+        await safe_reply(
+            update,
+            f"❌ Không thể hủy Video #{job_id}.\n"
+            f"Video có thể đang render hoặc không có trong hàng đợi."
+        )
+
 async def _handle_script_revision(update: Update, context: ContextTypes.DEFAULT_TYPE, job_id: int, feedback: str):
     """Xử lý tiếp thu góp ý và tinh chỉnh kịch bản theo yêu cầu của nhóm"""
     user = update.effective_user
@@ -473,7 +555,7 @@ async def render_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
     user_name = user.first_name if user else "Creator"
-    asyncio.create_task(_execute_render_task(update, context, job_id, user_name))
+    await _enqueue_render(update, context, job_id, user_name)
 
 
 async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -488,7 +570,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 1. Duyệt kịch bản & Dựng video (Bước 1 -> Bước 2)
     if data.startswith("render_video:") or data.startswith("publish_now:"):
         job_id = int(data.split(":")[1])
-        asyncio.create_task(_execute_render_task(update, context, job_id, user.first_name))
+        await _enqueue_render(update, context, job_id, user.first_name)
 
     # 2. Đăng lên YouTube sau khi xem video
     elif data.startswith("publish_youtube:"):

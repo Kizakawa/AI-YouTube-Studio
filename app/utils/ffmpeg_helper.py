@@ -9,6 +9,7 @@ Render Checkpoints:
      burn_subtitles()     — Burn-in SRT phụ đề
   D: validate_output()    — QA tự động bằng ffprobe
 """
+import os
 import shutil
 import subprocess
 import json

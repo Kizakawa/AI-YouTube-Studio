@@ -6,7 +6,9 @@ from config.settings import settings
 from app.database import init_db
 from app.bot.handlers import (
     start_command, channels_command, status_command, idea_command,
-    chat_command, render_command, edit_command, text_message_handler, channel_callback, video_callback, chat_callback
+    chat_command, render_command, edit_command, text_message_handler,
+    channel_callback, video_callback, chat_callback,
+    queue_command, cancel_queue_command
 )
 from app.utils.ffmpeg_helper import is_ffmpeg_installed, get_ffmpeg_version
 
@@ -84,6 +86,8 @@ def main():
     app.add_handler(CommandHandler("idea", idea_command))
     app.add_handler(CommandHandler("edit", edit_command))
     app.add_handler(CommandHandler("render", render_command))
+    app.add_handler(CommandHandler("queue", queue_command))
+    app.add_handler(CommandHandler("cancel", cancel_queue_command))
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CallbackQueryHandler(channel_callback, pattern=r"^select_channel:"))
     app.add_handler(CallbackQueryHandler(video_callback, pattern=r"^(render_video|publish_now|publish_youtube|feedback_video|edit_script|schedule|schedule_youtube|regenerate|cancel):"))
