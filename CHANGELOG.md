@@ -108,6 +108,38 @@ Người C: /render 3  →  ⏳ Xếp hàng #2
 
 ---
 
+### 8. 🚀 ĐỢT CẬP NHẬT MỚI: CLOUD DEPLOYMENT, AUTH GOOGLE & FIX RENDER
+**Commits:** `156a441`, `cf134ae`, `1e52b59`, `6845c57`, `72888ea`, `8778cb6`, `ecc9ffe`
+**File mới:** `Dockerfile`, `.dockerignore`, `auth_google.py`
+**File thay đổi:** `run.py`, `app/web/server.py`, `config/settings.py`, `app/utils/ffmpeg_helper.py`, `app/bot/handlers.py`, `app/database/models.py`
+
+#### A. Triển khai Cloud & Docker:
+- Thêm `Dockerfile` chuẩn hóa chạy song song Telegram Bot + Web FastAPI trên nền Python 3.11-slim + FFmpeg + fonts.
+- Hỗ trợ biến môi trường `PORT` động cho Render.com, VPS, Cloud Docker.
+- Endpoint `/health` mới cho Render Uptime và Health Checks.
+- Tự động lấy URL công khai qua `RENDER_EXTERNAL_URL` trong lệnh Telegram `/status`.
+
+#### B. Xác thực Google OAuth 1-Click (`auth_google.py`):
+- Tách riêng quyền YouTube (`youtube.upload`) và Google Drive 2TB (`drive.file`) để giải quyết lỗi Google Error 400: `scopes that cannot be requested together`.
+- Tự động sinh file mã hóa Base64 cho biến môi trường trên Render/Cloud.
+
+#### C. Khắc phục lỗi FFmpeg Render & Đứng hình (Freeze frames):
+- Chuẩn hóa video fps 30 CFR (`-fps_mode cfr`), preset `veryfast`.
+- Thêm `-stream_loop -1` cho video ngắn hơn âm thanh để lặp mượt mà.
+- Re-encode concat thay vì `-c copy` để chống lệch timebase giữa các stock clips.
+- Bổ sung tham số `-threads` (qua biến `FFMPEG_THREADS=2`) chống tràn RAM (OOM) trên Cloud.
+
+#### D. Tối ưu hóa Web Dashboard & In-Memory Caching (Khắc phục giật lag):
+- Cache `is_ffmpeg_installed()` và `get_ffmpeg_version()` vào bộ nhớ RAM (không gọi `subprocess.run` lặp đi lặp lại mỗi lần web polling).
+- Cache danh sách `channels.yaml` theo file mtime để không parse đĩa liên tục.
+- Bổ sung `safe_query_answer` chống timeout Telegram `Query is too old`.
+
+#### ⚠️ LÝ DO WEB TRÊN RENDER BỊ "ĐƠ / LOAD KHÁ LÂU":
+1. **Cold Start (Ngủ đông) của Render Free:** Render tự động tắt máy ảo sau 15 phút không có người dùng. Lần đầu mở lại web, Render mất từ **50s - 2 phút** để khởi động lại container Docker.
+2. **Cấu hình 0.1 CPU / 512MB RAM của gói Free:** Quá ít tài nguyên khi chạy cùng lúc cả Bot polling + Web Uvicorn + SQLite. Cần dùng UptimeRobot ping URL `/health` mỗi 5-10 phút để giữ server không ngủ đông.
+
+---
+
 ## 📁 DANH SÁCH FILE THAY ĐỔI
 
 ```

@@ -102,14 +102,25 @@ class Settings:
             keys.append(cls.PEXELS_API_KEY.strip())
         return keys
 
+    _cached_channels: Optional[List[Dict]] = None
+    _channels_mtime: float = 0.0
+
     @classmethod
     def get_channels_config(cls) -> List[Dict]:
-        """Tải cấu hình các kênh YouTube từ file YAML"""
+        """Tải cấu hình các kênh YouTube từ file YAML (kết quả được lưu cache in-memory)"""
         if not cls.CHANNELS_CONFIG_FILE.exists():
             return []
-        with open(cls.CHANNELS_CONFIG_FILE, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-            return data.get("channels", [])
+        try:
+            mtime = cls.CHANNELS_CONFIG_FILE.stat().st_mtime
+            if cls._cached_channels is not None and mtime == cls._channels_mtime:
+                return cls._cached_channels
+            with open(cls.CHANNELS_CONFIG_FILE, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+                cls._cached_channels = data.get("channels", []) if data else []
+                cls._channels_mtime = mtime
+                return cls._cached_channels
+        except Exception:
+            return cls._cached_channels or []
 
 settings = Settings()
 settings.ensure_storage_dirs()

@@ -62,22 +62,34 @@ def _ensure_ffmpeg_in_path():
 
 
 _ensure_ffmpeg_in_path()
+_cached_ffmpeg_installed: Optional[bool] = None
+_cached_ffmpeg_version: Optional[str] = None
+
+
 def is_ffmpeg_installed() -> bool:
-    """Kiểm tra xem ffmpeg đã có trong PATH hệ thống hay chưa"""
-    return shutil.which("ffmpeg") is not None
+    """Kiểm tra xem ffmpeg đã có trong PATH hệ thống hay chưa (kết quả được lưu cache)"""
+    global _cached_ffmpeg_installed
+    if _cached_ffmpeg_installed is None:
+        _cached_ffmpeg_installed = shutil.which("ffmpeg") is not None
+    return _cached_ffmpeg_installed
 
 
 def get_ffmpeg_version() -> str:
-    """Lấy thông tin phiên bản ffmpeg nếu có"""
+    """Lấy thông tin phiên bản ffmpeg (kết quả được lưu cache in-memory)"""
+    global _cached_ffmpeg_version
+    if _cached_ffmpeg_version is not None:
+        return _cached_ffmpeg_version
     if not is_ffmpeg_installed():
-        return "Not installed"
+        _cached_ffmpeg_version = "Not installed"
+        return _cached_ffmpeg_version
     try:
         res = subprocess.run(
             ["ffmpeg", "-version"],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, timeout=FFPROBE_TIMEOUT
         )
-        return res.stdout.split("\n")[0]
+        _cached_ffmpeg_version = res.stdout.split("\n")[0]
+        return _cached_ffmpeg_version
     except Exception as e:
         return f"Error: {e}"
 
