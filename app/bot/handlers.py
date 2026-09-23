@@ -1,3 +1,4 @@
+import os
 import logging
 import asyncio
 import re
@@ -1033,13 +1034,19 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         total_jobs = db.query(VideoJob).count()
         ready_jobs = db.query(VideoJob).filter(VideoJob.status == "SCRIPT_READY").count()
 
+    # Tự động lấy URL công khai nếu đang chạy trên Cloud (Render, Fly, VPS...)
+    dashboard_url = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("WEB_DASHBOARD_URL")
+    if not dashboard_url:
+        port = os.getenv("PORT", "8000")
+        dashboard_url = f"http://localhost:{port}"
+
     text = (
         f"📊 **BÁO CÁO NHÓM LÀM VIỆC (AI STUDIO)**\n\n"
         f"• Tổng số video trong hệ thống: `{total_jobs}`\n"
         f"• Kịch bản đang chờ duyệt/render: `{ready_jobs}`\n"
         f"• Kho Google Drive 2TB: Sẵn sàng 🟢\n"
         f"• Cụm Google Ultra Quota: Đang hoạt động 🟢\n"
-        f"• Web Dashboard: Đang trực tuyến tại cổng `http://localhost:8000` 🌐"
+        f"• Web Dashboard: {dashboard_url} 🌐"
     )
     await safe_reply(update, text)
 
