@@ -615,6 +615,50 @@ class MediaAgent:
         return []
 
     # ──────────────────────────────────────────────────────────────────────────
+    # TẦNG C2: OPENVERSE (800+ triệu ảnh Creative Commons, bảo tàng, lưu trữ mở)
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def search_openverse(self, query: str, per_page: int = 5) -> List[Dict]:
+        """
+        Tìm kiếm hình ảnh mở tự do trên Openverse API (Creative Commons, bảo tàng, thư viện quốc tế).
+        Miễn phí 100%, không cần API key, cực kỳ giàu ảnh lịch sử và tư liệu chân thật.
+        """
+        headers = {"User-Agent": "AIYouTubeStudioBot/2.0 (https://github.com/Giangvv1n/AI-youtube)"}
+        params = {
+            "q": query,
+            "page_size": min(per_page * 2, 20),
+        }
+        try:
+            res = requests.get(
+                "https://api.openverse.org/v1/images/",
+                params=params, headers=headers, timeout=10
+            )
+            if res.status_code == 200:
+                data = res.json()
+                results = data.get("results", [])
+                photos = []
+                for item in results:
+                    url = item.get("url", "")
+                    if not self._is_valid_image_url(url):
+                        continue
+                    w = item.get("width") or 1080
+                    h = item.get("height") or 1920
+                    photos.append({
+                        "url": url,
+                        "title": item.get("title", query),
+                        "width": w,
+                        "height": h,
+                        "source": "openverse",
+                        "thumbnail": item.get("thumbnail") or url,
+                    })
+                    if len(photos) >= per_page:
+                        break
+                return photos
+        except Exception as e:
+            logger.debug(f"Openverse search error for '{query}': {e}")
+        return []
+
+    # ──────────────────────────────────────────────────────────────────────────
     # TẦNG D: PEXELS VIDEO & PHOTO (Stock footage)
     # ──────────────────────────────────────────────────────────────────────────
 
@@ -640,6 +684,35 @@ class MediaAgent:
             logger.warning(f"Lỗi khi tìm kiếm Pexels video: {e}")
         return []
 
+    def search_best_video_clip(self, query: str) -> Optional[Dict]:
+        """
+        Tìm kiếm 1 video clip dọc (9:16 portrait) chất lượng cao nhất từ Pexels.
+        Trả về dictionary gồm link tải MP4 1080p và metadata.
+        """
+        videos = self.search_videos(query, per_page=6, orientation="portrait")
+        for v in videos:
+            v_files = v.get("video_files", [])
+            # Lọc các file MP4 tỉ lệ dọc (w <= h)
+            portrait_files = [
+                vf for vf in v_files
+                if vf.get("width", 0) <= vf.get("height", 0) and (vf.get("link", "").endswith(".mp4") or "mp4" in vf.get("file_type", ""))
+            ]
+            if portrait_files:
+                # Ưu tiên độ phân giải cao nhất (>= 1080p hoặc 720p)
+                hd_files = sorted(portrait_files, key=lambda x: x.get("height", 0), reverse=True)
+                best = hd_files[0]
+                return {
+                    "url": best.get("link"),
+                    "title": f"Pexels Video: {query}",
+                    "width": best.get("width", 1080),
+                    "height": best.get("height", 1920),
+                    "duration": v.get("duration", 0),
+                    "media_type": "video",
+                    "source": "pexels_video",
+                    "thumbnail": v.get("image", ""),
+                }
+        return None
+
     def search_photos(self, query: str, per_page: int = 3, orientation: str = "portrait") -> List[Dict]:
         """Tìm kiếm ảnh tĩnh trên Pexels theo từ khóa với tỷ lệ dọc (portrait 9:16) cho Ken Burns."""
         key = self._get_active_key()
@@ -661,6 +734,62 @@ class MediaAgent:
         except Exception as e:
             logger.warning(f"Lỗi khi tìm kiếm Pexels photo: {e}")
         return []
+
+    def search_multi_source_images(self, query: str, per_page: int = 6) -> List[Dict]:
+        """
+        Tìm kiếm tổng hợp đa nguồn từ các thư viện ảnh hàng đầu:
+        Wikipedia / Wikimedia Commons + Openverse (800M+ ảnh) + Google Search + Pexels Photos.
+        Tự động khử trùng lặp và phân loại nguồn.
+        """
+        combined = []
+        seen_urls = set()
+
+        def add_item(item):
+            if not item:
+                return
+            u = item.get("url")
+            if u and u not in seen_urls and self._is_valid_image_url(u):
+                seen_urls.add(u)
+                combined.append(item)
+
+        # 1. Wikipedia Ảnh chính thức
+        wiki_img = self.search_wikipedia_entity_image(query)
+        if wiki_img:
+            add_item(wiki_img)
+
+        # 2. Wikimedia Commons
+        commons = self.search_web_photos(query, per_page=per_page)
+        for c in commons:
+            add_item(c)
+
+        # 3. Openverse
+        openverse_items = self.search_openverse(query, per_page=per_page)
+        for o in openverse_items:
+            add_item(o)
+
+        # 4. Google Custom Search (nếu có key)
+        if self._google_search_key and self._google_cx:
+            g_items = self.search_google_images(query, per_page=per_page)
+            for g in g_items:
+                add_item(g)
+
+        # 5. Pexels Photos
+        if self.api_key:
+            px_items = self.search_photos(query, per_page=per_page)
+            for p in px_items:
+                src = p.get("src", {})
+                url = src.get("large2x") or src.get("portrait") or src.get("original")
+                if url:
+                    add_item({
+                        "url": url,
+                        "title": p.get("alt", query),
+                        "width": p.get("width", 0),
+                        "height": p.get("height", 0),
+                        "source": "pexels",
+                        "thumbnail": src.get("medium", url),
+                    })
+
+        return combined[:per_page]
 
     # ──────────────────────────────────────────────────────────────────────────
     # TẦNG E: AI ENTITY DETECTION (Dùng Gemini để nhận diện)
@@ -762,13 +891,25 @@ If no real entities found, return empty array: []"""
                 if len(pool) >= count:
                     break
 
-        # 3. Google Custom Search (nếu có key)
+        # 3. Mở rộng từ Openverse (kho lưu trữ ảnh mở, bảo tàng)
+        if len(pool) < count:
+            ov_queries = [entity_name, f"{entity_name} {entity_type}"]
+            for oq in ov_queries:
+                if len(pool) >= count:
+                    break
+                ov_results = self.search_openverse(oq, per_page=min(count - len(pool), 6))
+                for item in ov_results:
+                    add_unique(item)
+                    if len(pool) >= count:
+                        break
+
+        # 4. Google Custom Search (nếu có key)
         if len(pool) < count and self._google_search_key and self._google_cx:
             g_results = self.search_google_images(f"{entity_name} photo portrait", per_page=min(count - len(pool), 5))
             for item in g_results:
                 add_unique(item)
 
-        logger.info(f"📸 Đã thu thập được {len(pool)} ảnh tài liệu thực tế cho '{entity_name}'")
+        logger.info(f"📸 Đã thu thập được {len(pool)} ảnh tài liệu thực tế cho '{entity_name}' (Wikimedia + Openverse)")
         return pool
 
     # ──────────────────────────────────────────────────────────────────────────

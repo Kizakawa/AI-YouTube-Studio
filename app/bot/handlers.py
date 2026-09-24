@@ -1677,6 +1677,262 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "refresh_pending":
         await pending_command(update, context)
 
+    # 9. Gán media trực tiếp từ kết quả tìm kiếm vào phân cảnh
+    elif data.startswith("apply_media:"):
+        parts = data.split(":")
+        job_id = int(parts[1])
+        scene_id = int(parts[2])
+        cache_key = parts[3]
+
+        item = _SEARCH_CACHE.get(cache_key)
+        if not item:
+            await safe_query_answer(query, "⚠️ Phiên tìm kiếm đã hết hạn, vui lòng tìm lại bằng /search_image.", show_alert=True)
+            return
+
+        await safe_query_answer(query, f"Đang gán vào Cảnh {scene_id}...", show_alert=False)
+        m_url = item["url"]
+        m_type = item.get("media_type", "image")
+
+        status_msg = await safe_reply(
+            update,
+            f"⏳ **Đang tải tư liệu và cập nhật Cảnh {scene_id} (Video #{job_id})...**"
+        )
+
+        from app.agents.media_agent import MediaAgent
+        from app.graph.runner import GraphRunner
+        from app.graph.state import EditRequest
+
+        media_agent = MediaAgent()
+        work_dir = Path(settings.TEMP_DIR) / f"job_{job_id}" / "media"
+        work_dir.mkdir(parents=True, exist_ok=True)
+        ext = ".mp4" if m_type == "video" else (".png" if "png" in m_url.lower() else ".jpg")
+        local_path = str(work_dir / f"scene_{scene_id:03d}_applied{ext}")
+
+        await asyncio.to_thread(media_agent.download_file, m_url, local_path)
+
+        runner = GraphRunner(job_id=job_id)
+        edit_req = EditRequest(
+            action_type="replace_media",
+            scene_id=scene_id,
+            new_media_path=local_path
+        )
+        final_state = await runner.execute_edit(edit_req)
+        video_out = final_state.get("rendered_video_path")
+
+        success_text = (
+            f"✅ **ĐÃ CẬP NHẬT CẢNH {scene_id} THÀNH CÔNG!**\n\n"
+            f"🎬 **Tư liệu mới:** {item.get('title')}\n"
+            f"📊 **Loại:** {m_type.upper()} ({item.get('source')})\n\n"
+            f"✨ Video #{job_id} đã được dựng hoàn chỉnh lại với tư liệu mới!"
+        )
+        if status_msg:
+            await safe_edit_text(status_msg, success_text)
+        else:
+            await safe_reply(update, success_text)
+
+        if video_out and Path(video_out).exists():
+            try:
+                with open(video_out, "rb") as vf:
+                    await update.effective_chat.send_video(
+                        video=vf,
+                        caption=f"🎥 **Video #{job_id} sau khi cập nhật Cảnh {scene_id}:**",
+                        supports_streaming=True
+                    )
+            except Exception as ex:
+                logger.error(f"Gửi video sau khi apply media thất bại: {ex}")
+
+
+# Cache tạm cho kết quả tìm kiếm hình ảnh & video trên Telegram
+_SEARCH_CACHE: Dict[str, Dict[str, Any]] = {}
+
+
+async def search_image_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Tìm kiếm hình ảnh mở & tư liệu từ nhiều nguồn: /search_image <từ khóa>
+    Cho phép chọn nhanh cảnh để gán vào video đang chọn.
+    """
+    if not is_authorized(update):
+        return
+
+    if not context.args:
+        await safe_reply(
+            update,
+            "🔍 **CÁCH TÌM KIẾM HÌNH ẢNH ĐA NGUỒN TỰ ĐỘNG:**\n\n"
+            "• Gõ `/search_image <tên nhân vật / sự kiện / từ khóa>`\n"
+            "• **Ví dụ:**\n"
+            "  - `/search_image John D. Rockefeller portrait`\n"
+            "  - `/search_image Nikola Tesla laboratory`\n"
+            "  - `/search_image ancient Rome colosseum historical`\n\n"
+            "👉 Hệ thống tìm kiếm đồng thời từ **Wikipedia**, **Wikimedia Commons**, **Openverse (800M+ ảnh)** và **Pexels**, hiển thị nút bấm để gán ngay vào video!"
+        )
+        return
+
+    query = " ".join(context.args)
+    user = update.effective_user
+
+    # Tìm job gần nhất của user
+    with get_db() as db:
+        recent_job = db.query(VideoJob).filter(VideoJob.user_id == user.id).order_by(VideoJob.id.desc()).first()
+        if not recent_job:
+            recent_job = db.query(VideoJob).order_by(VideoJob.id.desc()).first()
+        job_id = recent_job.id if recent_job else None
+
+    wait_msg = await safe_reply(update, f"🔎 Đang tìm kiếm ảnh khắp Internet cho: *\"{query}\"*...")
+
+    from app.agents.media_agent import MediaAgent
+    media_agent = MediaAgent()
+    photos = await asyncio.to_thread(media_agent.search_multi_source_images, query, per_page=4)
+
+    if not photos:
+        await safe_edit_text(wait_msg, f"⚠️ Không tìm thấy ảnh phù hợp cho: *\"{query}\"*. Bạn hãy thử lại với từ khóa khác (ưu tiên tiếng Anh hoặc tên đầy đủ).")
+        return
+
+    await safe_edit_text(wait_msg, f"🎉 Tìm thấy {len(photos)} ảnh chất lượng cao cho: *\"{query}\"*\n👇 Chọn cảnh bên dưới mỗi ảnh để gán trực tiếp vào Video #{job_id or 'mới nhất'}:")
+
+    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+    import hashlib
+
+    for idx, photo in enumerate(photos, 1):
+        url = photo.get("url")
+        src = photo.get("source", "web").upper()
+        title = photo.get("title", query)[:60]
+        
+        # Tạo short hash key để lưu cache URL
+        cache_key = hashlib.md5(url.encode()).hexdigest()[:10]
+        _SEARCH_CACHE[cache_key] = {
+            "url": url,
+            "media_type": "image",
+            "title": title,
+            "source": src
+        }
+
+        # Tạo bàn phím 6 cảnh
+        buttons = []
+        if job_id:
+            row1 = [
+                InlineKeyboardButton(f"🎬 Cảnh 1", callback_data=f"apply_media:{job_id}:1:{cache_key}"),
+                InlineKeyboardButton(f"🎬 Cảnh 2", callback_data=f"apply_media:{job_id}:2:{cache_key}"),
+                InlineKeyboardButton(f"🎬 Cảnh 3", callback_data=f"apply_media:{job_id}:3:{cache_key}"),
+            ]
+            row2 = [
+                InlineKeyboardButton(f"🎬 Cảnh 4", callback_data=f"apply_media:{job_id}:4:{cache_key}"),
+                InlineKeyboardButton(f"🎬 Cảnh 5", callback_data=f"apply_media:{job_id}:5:{cache_key}"),
+                InlineKeyboardButton(f"🎬 Cảnh 6", callback_data=f"apply_media:{job_id}:6:{cache_key}"),
+            ]
+            buttons = [row1, row2]
+
+        caption = f"📸 **[Ảnh #{idx} - {src}]** {title}"
+        try:
+            await update.effective_chat.send_photo(
+                photo=url,
+                caption=caption,
+                reply_markup=InlineKeyboardMarkup(buttons) if buttons else None
+            )
+        except Exception:
+            # Fallback nếu Telegram không load được URL trực tiếp
+            try:
+                await update.effective_chat.send_message(
+                    text=f"{caption}\n🔗 [Xem ảnh gốc]({url})",
+                    reply_markup=InlineKeyboardMarkup(buttons) if buttons else None,
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
+
+
+async def search_video_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Tìm kiếm video clip dọc 9:16 chất lượng cao từ Pexels: /search_video <từ khóa>
+    """
+    if not is_authorized(update):
+        return
+
+    if not context.args:
+        await safe_reply(
+            update,
+            "🎥 **CÁCH TÌM KIẾM VIDEO DỌC 9:16:**\n\n"
+            "• Gõ `/search_video <từ khóa mô tả hành động / bối cảnh>`\n"
+            "• **Ví dụ:**\n"
+            "  - `/search_video counting dollar cash money`\n"
+            "  - `/search_video rain dark cinematic street`\n"
+            "  - `/search_video typing code computer screen`\n\n"
+            "👉 Hệ thống sẽ tìm video dọc Full HD và hiển thị nút để bạn gán vào phân cảnh của Video!"
+        )
+        return
+
+    query = " ".join(context.args)
+    user = update.effective_user
+
+    with get_db() as db:
+        recent_job = db.query(VideoJob).filter(VideoJob.user_id == user.id).order_by(VideoJob.id.desc()).first()
+        if not recent_job:
+            recent_job = db.query(VideoJob).order_by(VideoJob.id.desc()).first()
+        job_id = recent_job.id if recent_job else None
+
+    wait_msg = await safe_reply(update, f"🎬 Đang tìm video dọc 9:16 cho: *\"{query}\"*...")
+
+    from app.agents.media_agent import MediaAgent
+    media_agent = MediaAgent()
+    videos = await asyncio.to_thread(media_agent.search_videos, query, per_page=4, orientation="portrait")
+
+    if not videos:
+        await safe_edit_text(wait_msg, f"⚠️ Không tìm thấy video dọc phù hợp cho: *\"{query}\"*. Hãy thử với từ khóa tiếng Anh đơn giản hơn.")
+        return
+
+    await safe_edit_text(wait_msg, f"🎉 Tìm thấy {len(videos)} video clip dọc 9:16 cho: *\"{query}\"*\n👇 Chọn cảnh bên dưới để gán trực tiếp vào Video #{job_id or 'mới nhất'}:")
+
+    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+    import hashlib
+
+    for idx, v in enumerate(videos, 1):
+        v_files = v.get("video_files", [])
+        portrait_files = [vf for vf in v_files if vf.get("width", 0) <= vf.get("height", 0) and vf.get("link")]
+        if not portrait_files:
+            continue
+        best_f = sorted(portrait_files, key=lambda x: x.get("height", 0), reverse=True)[0]
+        v_url = best_f.get("link")
+        dur = v.get("duration", 0)
+        thumb = v.get("image", "")
+
+        cache_key = hashlib.md5(v_url.encode()).hexdigest()[:10]
+        _SEARCH_CACHE[cache_key] = {
+            "url": v_url,
+            "media_type": "video",
+            "title": f"Pexels Video {query} ({dur}s)",
+            "source": "PEXELS_VIDEO"
+        }
+
+        buttons = []
+        if job_id:
+            row1 = [
+                InlineKeyboardButton(f"🎬 Cảnh 1", callback_data=f"apply_media:{job_id}:1:{cache_key}"),
+                InlineKeyboardButton(f"🎬 Cảnh 2", callback_data=f"apply_media:{job_id}:2:{cache_key}"),
+                InlineKeyboardButton(f"🎬 Cảnh 3", callback_data=f"apply_media:{job_id}:3:{cache_key}"),
+            ]
+            row2 = [
+                InlineKeyboardButton(f"🎬 Cảnh 4", callback_data=f"apply_media:{job_id}:4:{cache_key}"),
+                InlineKeyboardButton(f"🎬 Cảnh 5", callback_data=f"apply_media:{job_id}:5:{cache_key}"),
+                InlineKeyboardButton(f"🎬 Cảnh 6", callback_data=f"apply_media:{job_id}:6:{cache_key}"),
+            ]
+            buttons = [row1, row2]
+
+        caption = f"🎥 **[Video #{idx} - PEXELS 9:16]** Thời lượng: {dur}s | {best_f.get('width')}x{best_f.get('height')}"
+        try:
+            if thumb:
+                await update.effective_chat.send_photo(
+                    photo=thumb,
+                    caption=caption,
+                    reply_markup=InlineKeyboardMarkup(buttons) if buttons else None
+                )
+            else:
+                await update.effective_chat.send_message(
+                    text=f"{caption}\n🔗 [Xem Video]({v_url})",
+                    reply_markup=InlineKeyboardMarkup(buttons) if buttons else None,
+                    parse_mode="Markdown"
+                )
+        except Exception:
+            pass
+
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Báo cáo tổng hợp số lượng video và tài nguyên"""

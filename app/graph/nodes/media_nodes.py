@@ -70,6 +70,19 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             except Exception:
                 pass
 
+        # Tầng 2.5: Pexels Vertical HD Video Clip (Tạo sự sống động điện ảnh cho phân cảnh)
+        if not media_path and media_agent.api_key:
+            try:
+                best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, scene.visual_keyword)
+                if best_vid and best_vid.get("url"):
+                    out_v = str(media_dir / f"scene_{scene.scene_id:03d}_pexels.mp4")
+                    await asyncio.to_thread(media_agent.download_file, best_vid["url"], out_v)
+                    if Path(out_v).exists() and Path(out_v).stat().st_size > 10000:
+                        media_path = out_v
+                        media_type = "video"
+            except Exception as e:
+                logger.debug(f"Scene {scene.scene_id}: Video clip search error: {e}")
+
         # Tầng 3: AI Image Generation gắn với nhân vật lịch sử
         if not media_path:
             try:
@@ -84,24 +97,20 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             except Exception as e:
                 logger.warning(f"Scene {scene.scene_id}: AI Image error: {e}")
 
-        # Tầng 4: Pexels Video/Photo (CHỈ DÙNG CHO CHỦ ĐỀ CHUNG / TRỪU TƯỢNG)
-        if not media_path and not primary_entity and media_agent.api_key:
+        # Tầng 4: Openverse Free Archival Search (Dự phòng ảnh lưu trữ tự do)
+        if not media_path:
             try:
-                videos = await asyncio.to_thread(media_agent.search_videos, scene.visual_keyword, 2)
-                if videos:
-                    for v in videos:
-                        for vf in v.get("video_files", []):
-                            if vf.get("width", 0) <= 1080 and vf.get("link"):
-                                out_v = str(media_dir / f"scene_{scene.scene_id:03d}_pexels.mp4")
-                                await asyncio.to_thread(media_agent.download_file, vf["link"], out_v)
-                                if Path(out_v).exists() and Path(out_v).stat().st_size > 10000:
-                                    media_path = out_v
-                                    media_type = "video"
-                                    break
-                        if media_path:
-                            break
-            except Exception:
-                pass
+                ov_items = await asyncio.to_thread(media_agent.search_openverse, scene.visual_keyword, 2)
+                if ov_items:
+                    ov_url = ov_items[0].get("url")
+                    ext = ".jpg" if "jpg" in ov_url.lower() else ".png"
+                    out_ov = str(media_dir / f"scene_{scene.scene_id:03d}_openverse{ext}")
+                    await asyncio.to_thread(media_agent.download_file, ov_url, out_ov)
+                    if Path(out_ov).exists() and Path(out_ov).stat().st_size > 3000:
+                        media_path = out_ov
+                        media_type = "image"
+            except Exception as e:
+                logger.debug(f"Scene {scene.scene_id}: Openverse fallback error: {e}")
 
         # Fallback an toàn: Gradient graphic
         if not media_path:
