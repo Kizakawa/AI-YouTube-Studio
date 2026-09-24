@@ -225,6 +225,19 @@ def image_to_video(
     Biến 1 ảnh tĩnh → video MP4 với Ken Burns (pan & zoom) effect.
     Codec: H.264 + yuv420p (YouTube compatible).
     """
+    # ── Kiểm tra và chuẩn hóa ảnh bằng Pillow trước khi đưa vào FFmpeg ──
+    try:
+        from PIL import Image
+        with Image.open(image_path) as im:
+            # Nếu mode không phải RGB (ví dụ RGBA, Palette, CMYK, P, L...), convert sang RGB
+            if im.mode not in ("RGB",):
+                rgb_im = im.convert("RGB")
+                norm_path = str(Path(image_path).with_suffix(".norm.jpg"))
+                rgb_im.save(norm_path, "JPEG", quality=95)
+                image_path = norm_path
+    except Exception as e:
+        raise ValueError(f"File ảnh không hợp lệ hoặc không thể đọc '{image_path}': {e}")
+
     if zoom_effect:
         # Ken Burns: Slow zoom in từ 1.0x → 1.15x
         zoompan = (

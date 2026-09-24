@@ -271,7 +271,7 @@ class VideoPipeline:
                     ext = ".jpg" if any(x in url.lower() for x in ["jpg", "jpeg"]) else ".png"
                     output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_wiki{ext}")
                     await asyncio.to_thread(self._media_agent.download_file, url, output)
-                    if Path(output).exists() and Path(output).stat().st_size > 5000:
+                    if Path(output).exists() and Path(output).stat().st_size > 3000 and self._is_valid_image_file(output):
                         logger.info(
                             f"Scene {scene.scene_id}: ✅ Tải thành công ảnh WIKIPEDIA chính thức "
                             f"({entity_name}): {wiki_img.get('title', '')[:50]}"
@@ -298,7 +298,7 @@ class VideoPipeline:
                             ext = ".jpg" if any(x in web_url.lower() for x in ["jpg", "jpeg"]) else ".png"
                             output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_real{ext}")
                             await asyncio.to_thread(self._media_agent.download_file, web_url, output)
-                            if Path(output).exists() and Path(output).stat().st_size > 5000:
+                            if Path(output).exists() and Path(output).stat().st_size > 3000 and self._is_valid_image_file(output):
                                 logger.info(
                                     f"Scene {scene.scene_id}: ✅ Tải thành công ảnh Wikimedia Commons "
                                     f"({entity_name}): {web_photo.get('title', '')[:50]}"
@@ -320,7 +320,7 @@ class VideoPipeline:
                         ext = ".jpg"
                         output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_google{ext}")
                         await asyncio.to_thread(self._media_agent.download_file, g_url, output)
-                        if Path(output).exists() and Path(output).stat().st_size > 3000:
+                        if Path(output).exists() and Path(output).stat().st_size > 3000 and self._is_valid_image_file(output):
                             logger.info(
                                 f"Scene {scene.scene_id}: ✅ Tải ảnh Google Search ({entity_name})"
                             )
@@ -368,8 +368,9 @@ class VideoPipeline:
                         await asyncio.to_thread(
                             self._media_agent.download_file, img_url, img_output
                         )
-                        logger.info(f"Scene {scene.scene_id}: Tải thành công Pexels Photo cho Ken Burns")
-                        return img_output
+                        if self._is_valid_image_file(img_output):
+                            logger.info(f"Scene {scene.scene_id}: Tải thành công Pexels Photo cho Ken Burns")
+                            return img_output
             except Exception as e:
                 logger.warning(f"Scene {scene.scene_id}: Lỗi tìm Pexels Photo: {e}")
 
@@ -387,8 +388,9 @@ class VideoPipeline:
                     await asyncio.to_thread(
                         self._media_agent.download_file, web_url, web_output
                     )
-                    logger.info(f"Scene {scene.scene_id}: Tải thành công ảnh Web ({web_photo.get('title', '')[:30]})")
-                    return web_output
+                    if self._is_valid_image_file(web_output):
+                        logger.info(f"Scene {scene.scene_id}: Tải thành công ảnh Web ({web_photo.get('title', '')[:30]})")
+                        return web_output
         except Exception as e:
             logger.warning(f"Scene {scene.scene_id}: Lỗi tìm ảnh Web: {e}")
 
@@ -398,7 +400,7 @@ class VideoPipeline:
             res_img = await asyncio.to_thread(
                 self._image_agent.generate_scene_image, scene.visual_keyword, ai_img_path
             )
-            if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 1000:
+            if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 1000 and self._is_valid_image_file(res_img):
                 logger.info(f"Scene {scene.scene_id}: Sinh thành công ảnh AI điện ảnh 9:16")
                 return res_img
         except Exception as e:
@@ -496,6 +498,26 @@ class VideoPipeline:
                 if files:
                     return str(files[0])
         return None
+
+    @staticmethod
+    def _is_valid_image_file(path_str: str) -> bool:
+        """Kiểm tra file có tồn tại, kích thước hợp lệ và Pillow mở được định dạng raster (không phải SVG/hỏng)"""
+        if not path_str:
+            return False
+        p = Path(path_str)
+        if not p.exists() or p.stat().st_size < 1000:
+            return False
+        try:
+            from PIL import Image
+            with Image.open(path_str) as im:
+                im.verify()
+            return True
+        except Exception:
+            try:
+                p.unlink(missing_ok=True)
+            except Exception:
+                pass
+            return False
 
     @staticmethod
     def _create_placeholder_image(path: str, text: str, scene_id: int = 1):
