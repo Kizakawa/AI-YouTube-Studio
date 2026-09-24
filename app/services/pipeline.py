@@ -16,57 +16,12 @@ from app.schemas.contracts import (
 )
 from app.database.models import get_db, VideoJob
 from app.agents.voice_agent import VoiceAgent
-from app.agents.media_agent import MediaAgent
+from app.agents.media_agent import MediaAgent, detect_real_entity
 from app.agents.image_agent import ImageAgent
 from app.utils.subtitle_helper import SubtitleHelper
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
-
-
-def _is_real_entity_context(keyword: str, script_context: str = "") -> Tuple[bool, Optional[str]]:
-    """
-    Phát hiện xem cảnh hoặc chủ đề có nhắc tới nhân vật lịch sử, chính trị gia,
-    người nổi tiếng hoặc sự kiện/địa danh có thật hay không.
-    Trả về (is_entity: bool, entity_name: Optional[str]).
-    """
-    text = f"{keyword} {script_context}".lower()
-    famous_entities = [
-        ("vladimir putin", "Vladimir Putin"),
-        ("putin", "Vladimir Putin"),
-        ("donald trump", "Donald Trump"),
-        ("trump", "Donald Trump"),
-        ("joe biden", "Joe Biden"),
-        ("biden", "Joe Biden"),
-        ("barack obama", "Barack Obama"),
-        ("obama", "Barack Obama"),
-        ("elon musk", "Elon Musk"),
-        ("bill gates", "Bill Gates"),
-        ("steve jobs", "Steve Jobs"),
-        ("mark zuckerberg", "Mark Zuckerberg"),
-        ("albert einstein", "Albert Einstein"),
-        ("einstein", "Albert Einstein"),
-        ("nikola tesla", "Nikola Tesla"),
-        ("tesla", "Nikola Tesla"),
-        ("adolf hitler", "Adolf Hitler"),
-        ("hitler", "Adolf Hitler"),
-        ("joseph stalin", "Joseph Stalin"),
-        ("stalin", "Joseph Stalin"),
-        ("winston churchill", "Winston Churchill"),
-        ("churchill", "Winston Churchill"),
-        ("napoleon", "Napoleon Bonaparte"),
-        ("julius caesar", "Julius Caesar"),
-        ("alexander the great", "Alexander the Great"),
-        ("cleopatra", "Cleopatra"),
-        ("kremlin", "Moscow Kremlin"),
-        ("white house", "White House"),
-        ("pentagon", "The Pentagon"),
-        ("nasa", "NASA"),
-    ]
-    for pattern, official_name in famous_entities:
-        if pattern in text:
-            return True, official_name
-    return False, None
 
 
 class VideoPipeline:
@@ -254,17 +209,17 @@ class VideoPipeline:
 
     async def _fetch_scene_media(self, scene: SceneContract, media_dir: str) -> str:
         """
-        Tìm nạp media cho 1 scene với hệ thống phân cấp 5 tầng thông minh:
+        Tìm nạp media cho 1 scene với hệ thống phân cấp 7 tầng thông minh:
           Tầng 0: User Custom Media (Ảnh/Video do người dùng gửi trực tiếp qua Telegram)
-          Tầng 0.5: Real-World Entity Search (Wikimedia Commons — ƯU TIÊN khi nói về nhân vật/sự kiện thực tế)
-          Tầng 1: Pexels Video portrait 9:16 (nếu có key Pexels)
-          Tầng 2: Pexels Photo portrait 9:16 (nếu có key Pexels, dùng cho Ken Burns)
-          Tầng 3: Web Image Search (Tìm kiếm ảnh chất lượng cao trên Wikimedia Commons)
-          Tầng 4: AI Image Generation (Google Imagen 3 / Pollinations 9:16 Cinematic AI)
-          Tầng 5: Dynamic Aesthetic Graphic (Fallback cuối cùng khi offline)
+          Tầng 1: Smart Entity Search (Wikipedia + Wikimedia + Google — ƯU TIÊN cho nhân vật/sự kiện thật)
+          Tầng 2: Pexels Video portrait 9:16 (nếu có key Pexels)
+          Tầng 3: Pexels Photo portrait 9:16 (nếu có key Pexels, dùng cho Ken Burns)
+          Tầng 4: Web Image Search (Wikimedia Commons search nâng cao)
+          Tầng 5: AI Image Generation (Google Imagen 3 / Pollinations 9:16 Cinematic AI)
+          Tầng 6: Dynamic Aesthetic Graphic (Fallback cuối cùng khi offline)
 
+        [v2.0] Tích hợp smart_search_media() với AI entity detection + Wikipedia API
         [FIX #3] Tất cả blocking HTTP calls được bọc trong asyncio.to_thread()
-        để tránh chặn event loop.
         """
         import asyncio
 
@@ -274,6 +229,13 @@ class VideoPipeline:
             if candidate.exists() and candidate.stat().st_size > 10240:
                 logger.info(f"Scene {scene.scene_id}: Tái sử dụng media từ checkpoint ({candidate.name})")
                 return str(candidate)
+        # Cũng check các file _real, _web, _wiki, _ai
+        for suffix in ["_real", "_web", "_wiki", "_google"]:
+            for ext in [".jpg", ".jpeg", ".png", ".webp"]:
+                candidate = Path(media_dir) / f"scene_{scene.scene_id:03d}{suffix}{ext}"
+                if candidate.exists() and candidate.stat().st_size > 10240:
+                    logger.info(f"Scene {scene.scene_id}: Tái sử dụng media từ checkpoint ({candidate.name})")
+                    return str(candidate)
 
         # ── Tầng 0: User Custom Media (Người dùng gửi qua Telegram) ──
         custom_dir = Path("storage") / "jobs" / str(self.job_id) / "custom_media"
@@ -289,29 +251,84 @@ class VideoPipeline:
                         logger.info(f"Scene {scene.scene_id}: Dùng media tùy biến của người dùng ({cand.name})")
                         return str(dest)
 
-        # ── Tầng 0.5: Real-World Entity Search (Wikimedia Commons) ──
-        # Nếu cảnh hoặc kịch bản nhắc tới nhân vật lịch sử, chính trị gia hoặc sự kiện thực tế:
-        # ƯU TIÊN tìm ảnh tài liệu thật trên Web trước khi tìm stock diễn viên của Pexels!
-        is_entity, entity_name = _is_real_entity_context(scene.visual_keyword, scene.narration)
+        # ── Tầng 1: Smart Entity Search (Wikipedia + Wikimedia + Google) ──
+        # Phát hiện entity thông minh bằng heuristic + AI
+        is_entity, entity_name, entity_type = detect_real_entity(
+            scene.visual_keyword, scene.narration
+        )
         if is_entity and entity_name:
+            logger.info(
+                f"Scene {scene.scene_id}: 🔎 Phát hiện thực thể '{entity_name}' "
+                f"(type={entity_type}) — Bắt đầu tìm ảnh tài liệu thật..."
+            )
             try:
-                search_query = f"{entity_name} portrait" if "portrait" not in scene.visual_keyword.lower() else scene.visual_keyword
-                web_photos = await asyncio.to_thread(self._media_agent.search_web_photos, search_query, 3)
-                if not web_photos:
-                    web_photos = await asyncio.to_thread(self._media_agent.search_web_photos, entity_name, 3)
-                if web_photos:
-                    web_photo = web_photos[0]
-                    web_url = web_photo.get("url")
-                    if web_url:
-                        ext = ".jpg" if ("jpg" in web_url.lower() or "jpeg" in web_url.lower()) else ".png"
-                        output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_real{ext}")
-                        await asyncio.to_thread(self._media_agent.download_file, web_url, output)
-                        logger.info(f"Scene {scene.scene_id}: Tải thành công ảnh TÀI LIỆU THẬT ({entity_name}) từ Web: {web_photo.get('title')}")
+                # A. Wikipedia — Ảnh chân dung chính thức
+                wiki_img = await asyncio.to_thread(
+                    self._media_agent.search_wikipedia_entity_image, entity_name
+                )
+                if wiki_img and wiki_img.get("url"):
+                    url = wiki_img["url"]
+                    ext = ".jpg" if any(x in url.lower() for x in ["jpg", "jpeg"]) else ".png"
+                    output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_wiki{ext}")
+                    await asyncio.to_thread(self._media_agent.download_file, url, output)
+                    if Path(output).exists() and Path(output).stat().st_size > 5000:
+                        logger.info(
+                            f"Scene {scene.scene_id}: ✅ Tải thành công ảnh WIKIPEDIA chính thức "
+                            f"({entity_name}): {wiki_img.get('title', '')[:50]}"
+                        )
                         return output
             except Exception as ex:
-                logger.warning(f"Scene {scene.scene_id}: Lỗi khi ưu tiên tìm ảnh Web cho {entity_name}: {ex}")
+                logger.warning(f"Scene {scene.scene_id}: Wikipedia search error for {entity_name}: {ex}")
 
-        # ── Tầng 1: Pexels Video (nếu có key) ──
+            try:
+                # B. Wikimedia Commons — Ảnh tài liệu lịch sử
+                search_terms = [
+                    f"{entity_name} official portrait" if entity_type == "person" else entity_name,
+                    f"{entity_name} photograph",
+                    entity_name,
+                ]
+                for term in search_terms:
+                    web_photos = await asyncio.to_thread(
+                        self._media_agent.search_web_photos, term, 3
+                    )
+                    if web_photos:
+                        web_photo = web_photos[0]
+                        web_url = web_photo.get("url")
+                        if web_url:
+                            ext = ".jpg" if any(x in web_url.lower() for x in ["jpg", "jpeg"]) else ".png"
+                            output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_real{ext}")
+                            await asyncio.to_thread(self._media_agent.download_file, web_url, output)
+                            if Path(output).exists() and Path(output).stat().st_size > 5000:
+                                logger.info(
+                                    f"Scene {scene.scene_id}: ✅ Tải thành công ảnh Wikimedia Commons "
+                                    f"({entity_name}): {web_photo.get('title', '')[:50]}"
+                                )
+                                return output
+                            break
+            except Exception as ex:
+                logger.warning(f"Scene {scene.scene_id}: Wikimedia search error for {entity_name}: {ex}")
+
+            try:
+                # C. Google Custom Search (nếu có key)
+                google_results = await asyncio.to_thread(
+                    self._media_agent.search_google_images, f"{entity_name} photo", 2
+                )
+                if google_results:
+                    g_photo = google_results[0]
+                    g_url = g_photo.get("url")
+                    if g_url:
+                        ext = ".jpg"
+                        output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_google{ext}")
+                        await asyncio.to_thread(self._media_agent.download_file, g_url, output)
+                        if Path(output).exists() and Path(output).stat().st_size > 3000:
+                            logger.info(
+                                f"Scene {scene.scene_id}: ✅ Tải ảnh Google Search ({entity_name})"
+                            )
+                            return output
+            except Exception as ex:
+                logger.debug(f"Scene {scene.scene_id}: Google search not available: {ex}")
+
+        # ── Tầng 2: Pexels Video (nếu có key) ──
         if self._media_agent.api_key:
             try:
                 videos = await asyncio.to_thread(
@@ -336,7 +353,7 @@ class VideoPipeline:
             except Exception as e:
                 logger.warning(f"Scene {scene.scene_id}: Lỗi tìm Pexels Video: {e}")
 
-        # ── Tầng 2: Pexels Photo (nếu có key, dùng cho Ken Burns) ──
+        # ── Tầng 3: Pexels Photo (nếu có key, dùng cho Ken Burns) ──
         if self._media_agent.api_key:
             try:
                 photos = await asyncio.to_thread(
@@ -356,7 +373,7 @@ class VideoPipeline:
             except Exception as e:
                 logger.warning(f"Scene {scene.scene_id}: Lỗi tìm Pexels Photo: {e}")
 
-        # ── Tầng 3: Web Image Search (Wikimedia Commons) ──
+        # ── Tầng 4: Web Image Search (Wikimedia Commons — cho cảnh generic) ──
         try:
             web_photos = await asyncio.to_thread(
                 self._media_agent.search_web_photos, scene.visual_keyword, 2
@@ -370,12 +387,12 @@ class VideoPipeline:
                     await asyncio.to_thread(
                         self._media_agent.download_file, web_url, web_output
                     )
-                    logger.info(f"Scene {scene.scene_id}: Tải thành công ảnh Web ({web_photo.get('title')[:30]})")
+                    logger.info(f"Scene {scene.scene_id}: Tải thành công ảnh Web ({web_photo.get('title', '')[:30]})")
                     return web_output
         except Exception as e:
             logger.warning(f"Scene {scene.scene_id}: Lỗi tìm ảnh Web: {e}")
 
-        # ── Tầng 4: AI Image Generation (Google Imagen 3 / Pollinations 9:16) ──
+        # ── Tầng 5: AI Image Generation (Google Imagen 3 / Pollinations 9:16) ──
         try:
             ai_img_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_ai.jpg")
             res_img = await asyncio.to_thread(
@@ -387,11 +404,12 @@ class VideoPipeline:
         except Exception as e:
             logger.warning(f"Scene {scene.scene_id}: Lỗi sinh ảnh AI: {e}")
 
-        # ── Tầng 5: Dynamic Aesthetic Graphic (Pillow) ──
+        # ── Tầng 6: Dynamic Aesthetic Graphic (Pillow) ──
         logger.info(f"Scene {scene.scene_id}: Dùng ảnh đồ họa cinematic gradient cho Ken Burns")
         placeholder = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_graphic.png")
         self._create_placeholder_image(placeholder, scene.visual_keyword, scene_id=scene.scene_id)
         return placeholder
+
 
     async def _step_render(self, render_job: RenderJobContract):
         """Step D: Gọi VideoAgent để render final MP4 kèm cập nhật %."""

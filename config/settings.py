@@ -24,6 +24,10 @@ class Settings:
     PEXELS_API_KEYS_RAW: str = os.getenv("PEXELS_API_KEYS", "")
     PEXELS_API_KEY: str = os.getenv("PEXELS_API_KEY", "")
     
+    # Google Custom Search (Tùy chọn — Tìm ảnh nhân vật thực, miễn phí 100 queries/ngày)
+    GOOGLE_SEARCH_API_KEY: str = os.getenv("GOOGLE_SEARCH_API_KEY", "")
+    GOOGLE_SEARCH_CX: str = os.getenv("GOOGLE_SEARCH_CX", "")
+    
     # Defaults
     DEFAULT_TARGET_LANGUAGE: str = os.getenv("DEFAULT_TARGET_LANGUAGE", "en")
     DEFAULT_TTS_VOICE: str = os.getenv("DEFAULT_TTS_VOICE", "en-US-ChristopherNeural")
