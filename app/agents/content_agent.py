@@ -146,7 +146,7 @@ class ContentAgent:
         """
         Sinh kịch bản video Shorts (30-50 giây) giật gân, nhịp điệu nhanh, cuốn hút triệu view.
         """
-        prompt = f"""You are a world-class YouTube Shorts director creating high-retention viral videos in '{channel_niche}'.
+        prompt = f"""You are a world-class YouTube Shorts director and cinematographer creating high-retention viral videos in '{channel_niche}'.
 Topic: '{topic}'
 Language: {language}
 
@@ -154,9 +154,16 @@ STRICT RETENTION & STORYTELLING FORMULA:
 1. 3-Second Pattern Interrupt Hook: Shocking statement, dilemma, or curiosity gap. No boring intros.
 2. High-Speed Visceral Pacing: 6-12 words per sentence, high emotion, zero fluff.
 3. Escalation & Climax: Build tension each scene, climax at 30-40 seconds, ending loops seamlessly.
-4. Cinematic Visual Keywords & Real-World Accuracy:
-   - For real historical figures or places: EVERY scene's visual_keyword MUST name the figure and authentic historical era/action (e.g. '1911 historic ship port', 'archival portrait'). Do NOT use generic terms.
-   - For abstract topics: Highly specific evocative 4K cinematic English keywords.
+4. CINEMATIC VISUAL SCENE DESCRIPTION (CRITICAL RULES):
+   - Each visual_keyword MUST describe a SPECIFIC, CONCRETE, PHOTOREALISTIC scene a camera could actually capture.
+   - Format: "[Subject doing specific action], [lighting type], [camera angle], [environment detail]"
+   - Examples of GOOD descriptions:
+     * "A lone astronaut floating in dark space, dramatic backlit silhouette, wide-angle shot, Earth reflection in visor"
+     * "Close-up of aged weathered hands gripping a ship's wheel, golden hour rim light, 1912 period-accurate uniform"
+     * "Massive black hole surrounded by glowing accretion disk, deep space environment, nebula in background, photorealistic"
+   - FORBIDDEN: Abstract nouns alone (e.g. 'spaghettification', 'visual representation', 'concept of', 'abstract idea')
+   - FORBIDDEN: Cartoon/anime/2D art style references
+   - For real historical figures: name them explicitly + era + specific physical action
    - Identify the main real-world entity in 'primary_entity' (or null if abstract).
 
 Return ONLY a valid JSON object matching this schema:
@@ -169,7 +176,7 @@ Return ONLY a valid JSON object matching this schema:
     {{
       "scene_id": 1,
       "narration": "Spoken sentence for this scene",
-      "visual_keyword": "cinematic descriptive English keyword with person name and era context",
+      "visual_keyword": "Specific cinematic scene description: subject + action + lighting + camera angle + environment",
       "estimated_seconds": 4
     }}
   ],
@@ -192,7 +199,7 @@ Do not write any text or markdown outside the JSON block.
         Tiếp thu góp ý của người dùng/nhóm để tinh chỉnh kịch bản hiện tại chuẩn viral.
         """
         prompt = f"""
-You are an elite viral YouTube Shorts director.
+You are an elite viral YouTube Shorts director and cinematographer.
 We have an existing script, but the creator and team provided specific feedback/revisions:
 
 USER FEEDBACK:
@@ -201,13 +208,16 @@ USER FEEDBACK:
 CURRENT SCRIPT:
 {current_script.model_dump_json(indent=2)}
 
-Please refine and rewrite the script strictly adhering to the user's feedback while maintaining top-tier viewer retention, fast pacing, and cinematic visual keywords.
+Please refine and rewrite the script strictly adhering to the user's feedback.
 Language: {language}
 
 Strict requirements:
 1. Revise the narration, hook, or visual keywords according to the feedback.
 2. Fast-paced, punchy, concise sentences (35-50 seconds total).
-3. Highly descriptive, cinematic English visual keywords for each scene.
+3. CINEMATIC SCENE DESCRIPTIONS (not abstract keywords):
+   - Each visual_keyword describes: [Subject + specific action], [lighting], [camera angle], [environment]
+   - Example: "A scientist in 1960s NASA control room hunched over screens, cold fluorescent overhead light, medium close-up, banks of blinking computer panels"
+   - FORBIDDEN: Abstract/conceptual terms, cartoon references, watermark-prone generic art styles.
 4. Return ONLY valid JSON matching this schema:
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
@@ -217,7 +227,7 @@ Strict requirements:
     {{
       "scene_id": 1,
       "narration": "Text spoken in this scene",
-      "visual_keyword": "cinematic descriptive English keyword for stock/AI",
+      "visual_keyword": "Specific cinematic scene: subject + action + lighting + camera angle + setting",
       "estimated_seconds": 4
     }}
   ],
@@ -296,7 +306,7 @@ Phong cách làm việc:
         dialogue_text = "\n".join([f"{h['role']}: {h['content']}" for h in history[-8:]])
 
         prompt = f"""
-You are an expert YouTube Shorts producer.
+You are an expert YouTube Shorts producer and cinematographer.
 Based on the following brainstorm discussion between a creator and director:
 ---
 {dialogue_text}
@@ -309,7 +319,11 @@ Script Language (narration & title): {language}
 Strict requirements:
 1. Choose the absolute BEST hook from the discussion for the first 3 seconds.
 2. Fast-paced, punchy, concise sentences.
-3. Provide visual keywords for each scene to search on stock footage sites (Pexels).
+3. CINEMATIC SCENE DESCRIPTIONS for AI image generation (not stock search terms):
+   - Each visual_keyword must describe a specific, camera-capturable, photorealistic scene.
+   - Format: "[Subject + specific action], [lighting type], [camera angle], [environment details]"
+   - Example: "Close-up of cracked dry earth in scorching desert, harsh midday overhead sun, extreme macro, heat shimmer waves rising"
+   - FORBIDDEN: Abstract nouns, cartoon references, 'spaghettification', 'visual representation', etc.
 4. Return ONLY valid JSON matching this schema:
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
@@ -319,7 +333,7 @@ Strict requirements:
     {{
       "scene_id": 1,
       "narration": "Spoken text in this scene",
-      "visual_keyword": "search keyword for stock video e.g. dark aesthetic city street",
+      "visual_keyword": "Specific cinematic scene: subject + action + lighting + camera angle + environment",
       "estimated_seconds": 4
     }}
   ],

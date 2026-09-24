@@ -142,9 +142,9 @@ class VideoPipeline:
             enriched_scenes = await self._step_audio(script)
             full_audio_path, total_duration = await self._step_concat_audio(enriched_scenes)
 
-            # Tạo file phụ đề SRT đồng bộ chính xác
-            subtitle_path = str(self.work_dir / "subtitles.srt")
-            SubtitleHelper.save_srt_file(enriched_scenes, subtitle_path)
+            # Tạo file phụ đề ASS Karaoke (word-level highlight)
+            subtitle_path = str(self.work_dir / "subtitles.ass")
+            SubtitleHelper.save_ass_file(enriched_scenes, subtitle_path)
 
             self._save_audio_metadata(full_audio_path, total_duration, enriched_scenes)
             logger.info(f"[Job {self.job_id}] Step B: Audio done — {total_duration}ms total")
@@ -169,6 +169,7 @@ class VideoPipeline:
                 total_audio_duration_ms=total_duration,
                 subtitle_path=subtitle_path,
                 bgm_path=self._find_bgm(),
+                sfx_dir="assets/sfx",  # Thư mục SFX cho chuyển cảnh (whoosh, hit...)
                 output_path=output_path,
             )
 

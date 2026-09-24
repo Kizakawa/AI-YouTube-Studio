@@ -220,38 +220,105 @@ def image_to_video(
     height: int = 1920,
     fps: int = 30,
     zoom_effect: bool = True,
+    camera_motion: str = "zoom_in",
 ) -> str:
     """
-    Biến 1 ảnh tĩnh → video MP4 với Ken Burns (pan & zoom) effect.
+    Biến 1 ảnh tĩnh → video MP4 với Ken Burns cinematic effect.
+    
+    Hỗ trợ 6 loại chuyển động:
+      - zoom_in:   Zoom dần vào tâm ảnh (mặc định, cảm giác áp lực/sức mạnh)
+      - zoom_out:  Zoom ra xa (cảm giác khám phá/vĩ đại)
+      - pan_left:  Lướt từ phải sang trái (cinematic reveal)
+      - pan_right: Lướt từ trái sang phải
+      - pan_up:    Kéo từ dưới lên (climax/rising)
+      - pan_down:  Kéo từ trên xuống (tụt xuống/ominous)
+    
     Codec: H.264 + yuv420p (YouTube compatible).
     """
-    # ── Kiểm tra và chuẩn hóa ảnh bằng Pillow trước khi đưa vào FFmpeg ──
+    # ── Chuẩn hóa ảnh bằng Pillow: chuyển sang RGB, scale về đúng tỷ lệ ──
     try:
         from PIL import Image
         with Image.open(image_path) as im:
-            # Nếu mode không phải RGB (ví dụ RGBA, Palette, CMYK, P, L...), convert sang RGB
             if im.mode not in ("RGB",):
-                rgb_im = im.convert("RGB")
-                norm_path = str(Path(image_path).with_suffix(".norm.jpg"))
-                rgb_im.save(norm_path, "JPEG", quality=95)
-                image_path = norm_path
+                im = im.convert("RGB")
+            # Scale ảnh lên lớn hơn target (1.2x) để có "khoảng trống" pan/zoom
+            # FFmpeg zoompan cần ảnh đầu vào ĐỦ LỚN để không bị artifact đen
+            scale_w = int(width * 1.25)
+            scale_h = int(height * 1.25)
+            im_resized = im.resize((scale_w, scale_h), Image.LANCZOS)
+            norm_path = str(Path(image_path).with_suffix(".norm.jpg"))
+            im_resized.save(norm_path, "JPEG", quality=95)
+            image_path = norm_path
     except Exception as e:
         raise ValueError(f"File ảnh không hợp lệ hoặc không thể đọc '{image_path}': {e}")
 
-    if zoom_effect:
-        # Ken Burns: Slow zoom in từ 1.0x → 1.15x
-        zoompan = (
-            f"zoompan=z='min(zoom+0.0005,1.15)':"
-            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-            f"d={int(duration_seconds * fps)}:s={width}x{height}:fps={fps},"
-            f"setsar=1"
-        )
-    else:
+    d = int(duration_seconds * fps)  # Tổng số frames
+    z_start = 1.0
+    z_end   = 1.25  # Zoom đủ rõ để Ken Burns trông sống động trên màn hình nhỏ
+    z_step  = (z_end - z_start) / max(d, 1)
+
+    if not zoom_effect:
         zoompan = (
             f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
             f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
             f"setsar=1,"
             f"fps={fps}"
+        )
+    elif camera_motion == "zoom_in":
+        # Slow zoom vào tâm ảnh với easing (bắt đầu nhanh, kết thúc mượt)
+        zoompan = (
+            f"zoompan=z='min(zoom+{z_step:.6f},{z_end})':"
+            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+            f"d={d}:s={width}x{height}:fps={fps},"
+            f"setsar=1"
+        )
+    elif camera_motion == "zoom_out":
+        # Bắt đầu ở z_end rồi thu nhỏ về z_start (khám phá/vĩ đại)
+        zoompan = (
+            f"zoompan=z='max(zoom-{z_step:.6f},{z_start})':"
+            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+            f"d={d}:s={width}x{height}:fps={fps},"
+            f"setsar=1"
+        )
+    elif camera_motion == "pan_left":
+        # Pan ngang từ phải sang trái (x đi từ 0 dần về phải cuối)
+        zoompan = (
+            f"zoompan=z=1.1:"
+            f"x='iw*0.1*(1-on/{d})':y='ih/2-(ih/zoom/2)':"
+            f"d={d}:s={width}x{height}:fps={fps},"
+            f"setsar=1"
+        )
+    elif camera_motion == "pan_right":
+        # Pan từ trái sang phải
+        zoompan = (
+            f"zoompan=z=1.1:"
+            f"x='iw*0.1*(on/{d})':y='ih/2-(ih/zoom/2)':"
+            f"d={d}:s={width}x{height}:fps={fps},"
+            f"setsar=1"
+        )
+    elif camera_motion == "pan_up":
+        # Pan từ dưới lên (y dịch từ dưới lên trên)
+        zoompan = (
+            f"zoompan=z=1.1:"
+            f"x='iw/2-(iw/zoom/2)':y='ih*0.1*(1-on/{d})':"
+            f"d={d}:s={width}x{height}:fps={fps},"
+            f"setsar=1"
+        )
+    elif camera_motion == "pan_down":
+        # Pan từ trên xuống dưới
+        zoompan = (
+            f"zoompan=z=1.1:"
+            f"x='iw/2-(iw/zoom/2)':y='ih*0.1*(on/{d})':"
+            f"d={d}:s={width}x{height}:fps={fps},"
+            f"setsar=1"
+        )
+    else:
+        # Fallback: zoom_in
+        zoompan = (
+            f"zoompan=z='min(zoom+{z_step:.6f},{z_end})':"
+            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+            f"d={d}:s={width}x{height}:fps={fps},"
+            f"setsar=1"
         )
 
     args = [
@@ -268,6 +335,7 @@ def image_to_video(
     ]
     run_ffmpeg(args)
     return output_path
+
 
 
 # ──────────────────────────────────────────────
@@ -343,6 +411,108 @@ def concat_videos(
     return output_path
 
 
+def concat_videos_with_xfade(
+    video_paths: List[str],
+    output_path: str,
+    fps: int = 30,
+    transition: str = "fade",
+    transition_duration: float = 0.25,
+    scene_durations_seconds: Optional[List[float]] = None,
+) -> str:
+    """
+    Ghép N video clips với hiệu ứng chuyển cảnh xfade mượt mà giữa các scenes.
+
+    Args:
+        video_paths:             Danh sách clip MP4 đã chuẩn hóa (FPS, độ phân giải khớp nhau)
+        output_path:             File MP4 output
+        fps:                     FPS chuẩn (phải khớp với clips)
+        transition:              Loại xfade: 'fade', 'zoomin', 'wipeleft', 'slideright', 'dissolve'
+        transition_duration:     Thời lượng transition (giây), khuyến nghị 0.2-0.4s
+        scene_durations_seconds: Thời lượng từng clip (giây) — cần để tính offset xfade.
+                                 Nếu None, hàm tự probe bằng ffprobe.
+
+    Returns:
+        output_path
+
+    Note:
+        xfade chỉ hoạt động đúng khi tất cả clips có cùng FPS và resolution.
+        Fallback về concat_videos nếu chỉ có 1 clip.
+    """
+    if len(video_paths) == 1:
+        # Chỉ 1 clip → không cần xfade
+        import shutil
+        shutil.copy2(video_paths[0], output_path)
+        return output_path
+
+    if len(video_paths) == 0:
+        raise ValueError("concat_videos_with_xfade: video_paths rỗng")
+
+    # Lấy thời lượng từng clip nếu chưa cung cấp
+    durations = []
+    if scene_durations_seconds and len(scene_durations_seconds) == len(video_paths):
+        durations = list(scene_durations_seconds)
+    else:
+        for vp in video_paths:
+            dur_ms = get_duration_ms(vp)
+            dur_s = dur_ms / 1000.0 if dur_ms > 0 else 4.0
+            durations.append(dur_s)
+
+    td = transition_duration  # shorthand
+
+    # ── Xây filter_complex xfade chain ──
+    # Mỗi clip [i] được label [vi], rồi xfade chaining:
+    # [v0][v1] xfade=... [vt01]; [vt01][v2] xfade=... [vt012]; ...
+    n = len(video_paths)
+    input_args = []
+    for vp in video_paths:
+        input_args += ["-i", vp]
+
+    # Label inputs
+    filter_parts = []
+    # Trim mỗi clip để xfade không bị lag cuối clip
+    for i in range(n):
+        filter_parts.append(f"[{i}:v]settb=AVTB,fps={fps}[v{i}]")
+
+    # Xfade chaining: xfade offset = cumulative duration của các clips trước - transition
+    current_label = "v0"
+    cumulative = 0.0
+    for i in range(1, n):
+        prev_dur = durations[i - 1]
+        # offset = thời điểm bắt đầu transition (giây từ đầu video đã ghép)
+        offset = max(cumulative + prev_dur - td, 0.0)
+        cumulative += prev_dur - td
+        next_label = f"vx{i}"
+        filter_parts.append(
+            f"[{current_label}][v{i}]xfade="
+            f"transition={transition}:"
+            f"duration={td:.3f}:"
+            f"offset={offset:.3f}"
+            f"[{next_label}]"
+        )
+        current_label = next_label
+
+    filter_complex = ";".join(filter_parts)
+
+    args = input_args + [
+        "-filter_complex", filter_complex,
+        "-map", f"[{current_label}]",
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-pix_fmt", "yuv420p",
+        "-r", str(fps),
+        "-an",
+        output_path,
+    ]
+
+    try:
+        run_ffmpeg(args, timeout=FFMPEG_TIMEOUT)
+        logger.info(f"[xfade] ✅ Ghép {n} clips với xfade={transition} → {output_path}")
+        return output_path
+    except RuntimeError as e:
+        logger.warning(f"[xfade] xfade thất bại, fallback về concat thường: {e}")
+        return concat_videos(video_paths, output_path, fps=fps)
+
+
 # ──────────────────────────────────────────────
 # CHECKPOINT C: Audio mux + Subtitle burn-in
 # ──────────────────────────────────────────────
@@ -353,22 +523,43 @@ def mux_audio_video(
     output_path: str,
     bgm_path: str = None,
     bgm_volume: float = 0.08,
+    use_ducking: bool = True,
 ) -> str:
     """
-    Ghép audio narration + video + optional BGM.
-    Audio ducking: BGM ở volume thấp, narration ở volume đầy đủ.
+    Ghép audio narration + video + optional BGM với Audio Ducking thông minh.
+
+    Audio Ducking (use_ducking=True, chỉ khi có BGM):
+      - Khi voice đang nói: BGM tự động giảm xuống ~15% volume
+      - Khi voice im lặng: BGM tăng lại tự nhiên
+      - Dùng sidechaincompress filter của FFmpeg (chuyên nghiệp, không hardcode)
+
+    Fallback: Nếu BGM ngắn hơn voice, tự động loop lại (aloop).
     """
     if bgm_path and Path(bgm_path).exists():
-        # Complex filter: mix narration (loud) + BGM (quiet)
+        if use_ducking:
+            # ── Real Audio Ducking via sidechaincompress ──
+            # [1:a] = voice narration (sidechain trigger)
+            # [2:a] = BGM (bị duck khi voice nói)
+            # threshold=0.02: bắt đầu duck khi voice > -34dB
+            # ratio=4: giảm BGM còn ~25%
+            # attack=5ms, release=200ms: duck nhanh, recover chậm (tự nhiên)
+            filter_complex = (
+                f"[2:a]aloop=loop=-1:size=2e+09,volume={bgm_volume}[bgm_looped];"
+                f"[bgm_looped][1:a]sidechaincompress="
+                f"threshold=0.02:ratio=4:attack=5:release=200:makeup=1[bgm_ducked];"
+                f"[1:a][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=2:weights='1 1'[aout]"
+            )
+        else:
+            # Simple mix: BGM ở volume cố định, không ducking
+            filter_complex = (
+                f"[2:a]volume={bgm_volume},aloop=loop=-1:size=2e+09[bgm];"
+                f"[1:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+            )
         args = [
             "-i", video_path,
             "-i", audio_path,
             "-i", bgm_path,
-            "-filter_complex",
-            (
-                f"[2:a]volume={bgm_volume},aloop=loop=-1:size=2e+09[bgm];"
-                f"[1:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
-            ),
+            "-filter_complex", filter_complex,
             "-map", "0:v",
             "-map", "[aout]",
             "-c:v", "copy",
@@ -392,6 +583,126 @@ def mux_audio_video(
 
     run_ffmpeg(args)
     return output_path
+
+
+def _find_sfx_file(sfx_dir_path: Path, name: str) -> Optional[str]:
+    """Tìm file SFX theo tên (thử .mp3, .wav, .ogg). Trả None nếu không có."""
+    for ext in [".mp3", ".wav", ".ogg"]:
+        candidate = sfx_dir_path / f"{name}{ext}"
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+def mix_sfx_transitions(
+    video_path: str,
+    output_path: str,
+    scene_timestamps_seconds: List[float],
+    sfx_dir: str,
+    default_sfx: str = "whoosh",
+    sfx_cues: Optional[List[Optional[str]]] = None,
+    sfx_volume: float = 0.4,
+    hit_sfx: str = "hit",
+    hit_volume: float = 0.5,
+) -> str:
+    """
+    Chèn file SFX vào video:
+      - hit.mp3 (hoặc hit_sfx) tại giây 0 (mở đầu video — tạo impact ngay lập tức)
+      - whoosh.mp3 (hoặc default_sfx) tại mỗi mốc chuyển cảnh (scene_timestamps[1:])
+
+    Args:
+        video_path:              File MP4 đã có audio (sau mux_audio_video)
+        output_path:             File MP4 output sau khi mix SFX
+        scene_timestamps_seconds: Danh sách thời điểm bắt đầu từng scene (giây)
+                                  Ví dụ: [0.0, 3.5, 7.2, 12.0]
+        sfx_dir:                 Thư mục chứa file .mp3/.wav SFX
+        default_sfx:             Tên SFX mặc định cho chuyển cảnh (không có extension)
+        sfx_cues:                Danh sách SFX tùy chỉnh cho từng transition (optional)
+        sfx_volume:              Volume SFX chuyển cảnh (0.0–1.0)
+        hit_sfx:                 Tên SFX impact ở giây đầu tiên
+        hit_volume:              Volume SFX hit đầu video
+
+    Returns:
+        output_path nếu thành công, video_path gốc nếu không có SFX nào tồn tại.
+    """
+    sfx_dir_path = Path(sfx_dir)
+    if not sfx_dir_path.exists():
+        logger.info(f"[SFX] Thư mục SFX không tồn tại: {sfx_dir} — bỏ qua.")
+        return video_path
+
+    sfx_entries: List[tuple] = []  # List of (timestamp_seconds, sfx_file, volume)
+
+    # ── 1. Hit SFX tại giây đầu tiên (t=0) ──────────────────────────────────
+    hit_file = _find_sfx_file(sfx_dir_path, hit_sfx)
+    if hit_file:
+        sfx_entries.append((0.0, hit_file, hit_volume))
+        logger.info(f"[SFX] 💥 Hit SFX tại t=0.0s → {hit_file}")
+    else:
+        logger.debug(f"[SFX] Không tìm thấy hit SFX '{hit_sfx}' — bỏ qua.")
+
+    # ── 2. Transition SFX tại mỗi mốc chuyển cảnh (bỏ t=0) ─────────────────
+    transitions = scene_timestamps_seconds[1:]  # Bỏ giây đầu, đã xử lý bởi hit
+    for i, ts in enumerate(transitions):
+        cue_name = (
+            sfx_cues[i]
+            if sfx_cues and i < len(sfx_cues) and sfx_cues[i]
+            else default_sfx
+        )
+        sfx_file = _find_sfx_file(sfx_dir_path, cue_name)
+        if sfx_file:
+            sfx_entries.append((ts, sfx_file, sfx_volume))
+            logger.info(f"[SFX] 🎵 Chuyển cảnh {ts:.2f}s → {sfx_file}")
+        else:
+            logger.debug(f"[SFX] Không tìm thấy SFX '{cue_name}' — bỏ qua t={ts:.2f}s")
+
+    if not sfx_entries:
+        logger.info("[SFX] Không có SFX file nào khả dụng — bỏ qua bước mix SFX.")
+        return video_path
+
+    # ── Xây FFmpeg filter_complex ────────────────────────────────────────────
+    # Input 0: video gốc (audio narration+BGM)
+    # Input 1..N: file SFX
+    input_args = ["-i", video_path]
+    for _, sfx_file, _ in sfx_entries:
+        input_args += ["-i", sfx_file]
+
+    filter_parts = []
+    sfx_labels = []
+    for idx, (ts, _, vol) in enumerate(sfx_entries):
+        delay_ms = int(ts * 1000)
+        label = f"[sfx{idx}]"
+        filter_parts.append(
+            f"[{idx+1}:a]volume={vol},adelay={delay_ms}|{delay_ms},apad{label}"
+        )
+        sfx_labels.append(label)
+
+    # Gộp audio gốc + tất cả SFX labels
+    all_inputs = "[0:a]" + "".join(sfx_labels)
+    n_inputs = 1 + len(sfx_labels)
+    filter_parts.append(
+        f"{all_inputs}amix=inputs={n_inputs}:duration=first:dropout_transition=0[aout]"
+    )
+    filter_complex = ";".join(filter_parts)
+
+    args = input_args + [
+        "-filter_complex", filter_complex,
+        "-map", "0:v",
+        "-map", "[aout]",
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-shortest",
+        output_path
+    ]
+
+    try:
+        run_ffmpeg(args)
+        logger.info(f"[SFX] ✅ Đã mix {len(sfx_entries)} SFX vào video → {output_path}")
+        return output_path
+    except RuntimeError as e:
+        logger.warning(f"[SFX] Mix SFX thất bại, giữ nguyên video gốc: {e}")
+        return video_path
+
 
 
 def burn_subtitles(
@@ -424,10 +735,18 @@ def burn_subtitles(
     )
     # Escape path cho Windows (ffmpeg subtitles filter cần forward slashes và escape colon)
     srt_escaped = srt_path.replace("\\", "/").replace(":", "\\:")
+    is_ass = srt_path.lower().endswith(".ass")
+
+    # Với ASS: giữ nguyên styling nội tại (karaoke, fonts, margins) trong file
+    # Với SRT: áp dụng force_style vì SRT thuần không có styling
+    if is_ass:
+        vf_filter = f"subtitles='{srt_escaped}'"
+    else:
+        vf_filter = f"subtitles='{srt_escaped}':force_style='{style}'"
 
     args = [
         "-i", video_path,
-        "-vf", f"subtitles='{srt_escaped}':force_style='{style}'",
+        "-vf", vf_filter,
         "-c:v", "libx264",
         "-preset", "fast",
         "-crf", "20",

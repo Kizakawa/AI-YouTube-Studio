@@ -48,6 +48,21 @@ class SceneContract(BaseModel):
     media_path: Optional[str] = Field(default=None, description="Đường dẫn file ảnh/video nền cho scene")
     media_type: Optional[str] = Field(default=None, pattern=r"^(image|video)$")
 
+    # ── Cinematic Enhancement Fields (Optional — sinh bởi ContentAgent hoặc để mặc định) ──
+    camera_motion: Optional[str] = Field(
+        default=None,
+        description="Loại chuyển động camera Ken Burns: 'zoom_in', 'zoom_out', 'pan_left', 'pan_right', 'pan_up', 'pan_down'. None = tự động xoay vòng.",
+        pattern=r"^(zoom_in|zoom_out|pan_left|pan_right|pan_up|pan_down)$"
+    )
+    sfx_cue: Optional[str] = Field(
+        default=None,
+        description="Tên file SFX (không có extension) trong assets/sfx/. Ví dụ: 'whoosh', 'hit', 'transition_swoosh'. None = không có SFX."
+    )
+    cinematic_prompt: Optional[str] = Field(
+        default=None,
+        description="Prompt chi tiết cho AI image generation theo phong cách dark cinematic (dùng thay visual_keyword khi cần ảnh AI). Ví dụ: 'dramatic dark cinematic portrait Vladimir Putin 1990s cold war era, volumetric fog, film grain'."
+    )
+
     @field_validator("narration")
     @classmethod
     def narration_must_not_be_stage_direction(cls, v: str) -> str:
@@ -62,6 +77,18 @@ class SceneContract(BaseModel):
         if self.audio_duration_ms is not None:
             return self.audio_duration_ms / 1000.0
         return self.estimated_seconds
+
+    @property
+    def resolved_camera_motion(self) -> str:
+        """
+        Trả về camera_motion thực tế.
+        Nếu không set, tự động chọn theo scene_id (xoay vòng 6 loại để đa dạng).
+        """
+        if self.camera_motion:
+            return self.camera_motion
+        motions = ["zoom_in", "zoom_out", "pan_left", "pan_right", "pan_up", "pan_down"]
+        return motions[(self.scene_id - 1) % len(motions)]
+
 
 
 class ScriptContract(BaseModel):
@@ -120,8 +147,9 @@ class RenderJobContract(BaseModel):
     # Paths
     full_audio_path: str = Field(description="MP3 concat toàn bộ narration")
     total_audio_duration_ms: int = Field(ge=0)
-    subtitle_path: Optional[str] = Field(default=None, description="SRT file path")
+    subtitle_path: Optional[str] = Field(default=None, description="ASS/SRT subtitle file path")
     bgm_path: Optional[str] = Field(default=None, description="Background music MP3")
+    sfx_dir: Optional[str] = Field(default=None, description="Thư mục chứa file SFX (whoosh, hit...). None = bỏ qua SFX.")
     output_path: str = Field(description="Đường dẫn MP4 đầu ra")
 
     # Render settings

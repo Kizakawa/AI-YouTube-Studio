@@ -39,17 +39,17 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
         for s in scenes_objs
     ]
 
-    # Ghép toàn bộ audio và lưu SRT
+    # Ghép toàn bộ audio và lưu phụ đề ASS Karaoke
     full_audio_path = str(work_dir / "full_voiceover.mp3")
-    subtitle_path = str(work_dir / "subtitles.srt")
-    
+    subtitle_path = str(work_dir / "subtitles.ass")   # ASS karaoke thay SRT thông thường
+
     total_duration_ms = await voice_agent.concat_scene_audio(
         scenes=scenes_objs,
         output_path=full_audio_path
     )
-    
-    # Tạo phụ đề SRT chuẩn Shorts
-    SubtitleHelper.save_srt_file(scenes_objs, subtitle_path)
+
+    # Tạo phụ đề ASS chuẩn Shorts với word-level karaoke highlight
+    SubtitleHelper.save_ass_file(scenes_objs, subtitle_path)
 
     return {
         "scenes_audio": enriched_scenes,
@@ -58,7 +58,7 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
         "subtitle_path": subtitle_path,
         "current_step": "AUDIO_READY",
         "progress_percent": 45,
-        "progress_message": f"Đã tạo giọng đọc Edge-TTS ({total_duration_ms/1000:.1f}s)",
+        "progress_message": f"Đã tạo giọng đọc Edge-TTS ({total_duration_ms/1000:.1f}s) + phụ đề ASS Karaoke",
     }
 
 
