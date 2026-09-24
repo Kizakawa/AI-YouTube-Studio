@@ -3,6 +3,7 @@ import logging
 import asyncio
 import re
 import html
+from typing import Optional, List, Dict, Any, Union, Tuple
 from pathlib import Path
 from datetime import datetime
 from telegram import Update
