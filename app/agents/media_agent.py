@@ -9,6 +9,9 @@ from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
+# User-Agent tuân thủ chuẩn Wikimedia API & Commons CDN (tránh lỗi 429)
+WIKIMEDIA_USER_AGENT = "AIYouTubeStudioBot/2.0 (https://github.com/Giangvv1n/AI-youtube; contact: creator@studio.ai)"
+
 # ──────────────────────────────────────────────────────────────────────────────
 # ENTITY DETECTION — Thay thế danh sách hardcode bằng AI + heuristics thông minh
 # ──────────────────────────────────────────────────────────────────────────────
@@ -152,6 +155,111 @@ def detect_real_entity(visual_keyword: str, narration: str = "") -> Tuple[bool, 
     return False, None, ""
 
 
+_TITLE_COMMON_WORDS = {
+    "dark", "psychology", "mind", "power", "history", "secrets", "secret", "tricks",
+    "hacks", "truth", "facts", "rules", "habits", "ways", "things", "signs", "clues",
+    "liar", "rich", "richest", "man", "men", "world", "ghost", "brain", "absolute",
+    "cold", "terrifying", "lurking", "deep", "mystery", "mysteries", "the", "of",
+    "and", "to", "in", "about", "what", "how", "why", "who", "for", "with", "a", "an",
+    "viral", "shorts", "youtube", "best", "top", "great", "ultimate", "spot"
+}
+
+_KNOWN_FIGURES = {
+    "putin": "Vladimir Putin",
+    "vladimir putin": "Vladimir Putin",
+    "rockefeller": "John D. Rockefeller",
+    "john d rockefeller": "John D. Rockefeller",
+    "john d. rockefeller": "John D. Rockefeller",
+    "einstein": "Albert Einstein",
+    "albert einstein": "Albert Einstein",
+    "napoleon": "Napoleon Bonaparte",
+    "napoleon bonaparte": "Napoleon Bonaparte",
+    "tesla": "Nikola Tesla",
+    "nikola tesla": "Nikola Tesla",
+    "musk": "Elon Musk",
+    "elon musk": "Elon Musk",
+    "trump": "Donald Trump",
+    "donald trump": "Donald Trump",
+    "caesar": "Julius Caesar",
+    "julius caesar": "Julius Caesar",
+    "hitler": "Adolf Hitler",
+    "adolf hitler": "Adolf Hitler",
+    "stalin": "Joseph Stalin",
+    "joseph stalin": "Joseph Stalin",
+    "churchill": "Winston Churchill",
+    "winston churchill": "Winston Churchill",
+    "lincoln": "Abraham Lincoln",
+    "abraham lincoln": "Abraham Lincoln",
+    "washington": "George Washington",
+    "george washington": "George Washington",
+    "jobs": "Steve Jobs",
+    "steve jobs": "Steve Jobs",
+    "gates": "Bill Gates",
+    "bill gates": "Bill Gates",
+    "newton": "Isaac Newton",
+    "isaac newton": "Isaac Newton",
+    "darwin": "Charles Darwin",
+    "charles darwin": "Charles Darwin",
+    "da vinci": "Leonardo da Vinci",
+    "leonardo da vinci": "Leonardo da Vinci",
+}
+
+
+def detect_video_primary_entity(
+    topic: str = "",
+    title: str = "",
+    narration: str = "",
+    tags: List[str] = None
+) -> Tuple[Optional[str], str]:
+    """
+    Xác định thực thể/nhân vật chính xuyên suốt toàn bộ video.
+    Giúp pipeline tự động chuyển sang chế độ tài liệu điện ảnh (Documentary Mode),
+    thu thập trọn bộ ảnh thật từ Wikipedia/Wikimedia Commons cho tất cả các phân cảnh.
+    """
+    tags = tags or []
+    full_text = f"{topic} {title}".strip()
+    full_text_lower = full_text.lower()
+
+    # 1. Tra cứu trực tiếp trong danh sách nhân vật đã biết
+    for fig_key, fig_full in _KNOWN_FIGURES.items():
+        if re.search(rf"\b{re.escape(fig_key)}\b", full_text_lower):
+            return fig_full, "person"
+
+    # 2. Kiểm tra trong tags
+    for tag in tags:
+        t_clean = re.sub(r'[^\w\s]', '', tag).strip().lower()
+        if t_clean in _KNOWN_FIGURES:
+            return _KNOWN_FIGURES[t_clean], "person"
+
+    # 3. Kiểm tra Known Events
+    for regex, ev_title in _EVENT_REGEXES:
+        if regex.search(full_text_lower):
+            return ev_title, "event"
+
+    # 4. Kiểm tra trong narration
+    if narration:
+        for fig_key, fig_full in _KNOWN_FIGURES.items():
+            if re.search(rf"\b{re.escape(fig_key)}\b", narration.lower()):
+                return fig_full, "person"
+
+        narr_names = _extract_proper_nouns(narration, is_narration=True)
+        valid_names = [n for n in narr_names if not any(w.lower() in _TITLE_COMMON_WORDS for w in n.split())]
+        if valid_names:
+            counts = {}
+            for n in valid_names:
+                counts[n] = counts.get(n, 0) + 1
+            most_common = max(counts.items(), key=lambda x: x[1])[0]
+            return most_common, "person"
+
+    # 5. Lọc proper nouns từ topic nếu không phải title common words
+    topic_names = _extract_proper_nouns(topic, is_narration=False)
+    filtered = [n for n in topic_names if not any(w.lower() in _TITLE_COMMON_WORDS for w in n.split())]
+    if filtered:
+        return max(filtered, key=len), "person"
+
+    return None, ""
+
+
 class MediaAgent:
     """
     Agent tìm kiếm và tải media thông minh đa tầng cho video YouTube Shorts.
@@ -203,7 +311,7 @@ class MediaAgent:
         2. Lấy ảnh chính (pageimage / thumbnail) của bài viết
         3. Nếu không có, lấy ảnh từ phần images của bài viết
         """
-        headers = {"User-Agent": "AI-YouTube-Studio/2.0 (Educational Project)"}
+        headers = {"User-Agent": WIKIMEDIA_USER_AGENT}
         
         # ── Bước 1: Tìm bài Wikipedia chính xác ──
         search_params = {
@@ -243,16 +351,15 @@ class MediaAgent:
                 chosen_url = None
                 chosen_w, chosen_h = 0, 0
 
-                # Ưu tiên original nếu là ảnh bitmap hợp lệ (.jpg, .png, .webp)
-                if orig_url and self._is_valid_image_url(orig_url):
+                # Ưu tiên thumbnail (1200px chuẩn HD, cache trên CDN Varnish toàn cầu, tránh 429 và file gốc quá nặng)
+                if thumb_url and self._is_valid_image_url(thumb_url):
+                    chosen_url = thumb_url
+                    chosen_w = thumbnail.get("width", 1200)
+                    chosen_h = thumbnail.get("height", 1600)
+                elif orig_url and self._is_valid_image_url(orig_url):
                     chosen_url = orig_url
                     chosen_w = original.get("width", 0)
                     chosen_h = original.get("height", 0)
-                # Nếu original là SVG hoặc không hợp lệ, kiểm tra thumbnail (thường là .png render sẵn)
-                elif thumb_url and self._is_valid_image_url(thumb_url):
-                    chosen_url = thumb_url
-                    chosen_w = thumbnail.get("width", 0)
-                    chosen_h = thumbnail.get("height", 0)
 
                 if chosen_url:
                     return {
@@ -285,7 +392,7 @@ class MediaAgent:
 
     def _wikipedia_fuzzy_search(self, entity_name: str) -> Optional[Dict]:
         """Tìm kiếm mờ qua Wikipedia Search API khi tên chính xác không khớp."""
-        headers = {"User-Agent": "AI-YouTube-Studio/2.0 (Educational Project)"}
+        headers = {"User-Agent": WIKIMEDIA_USER_AGENT}
         params = {
             "action": "query",
             "format": "json",
@@ -311,14 +418,15 @@ class MediaAgent:
         return None
 
     def _get_wikimedia_file_url(self, file_title: str) -> Optional[Dict]:
-        """Lấy URL ảnh gốc từ Wikimedia Commons theo tên file."""
-        headers = {"User-Agent": "AI-YouTube-Studio/2.0 (Educational Project)"}
+        """Lấy URL ảnh gốc từ Wikimedia Commons theo tên file (ưu tiên thumbnail 1280px từ CDN)."""
+        headers = {"User-Agent": WIKIMEDIA_USER_AGENT}
         params = {
             "action": "query",
             "format": "json",
             "titles": file_title,
             "prop": "imageinfo",
             "iiprop": "url|size|mime",
+            "iiurlwidth": 1280,
         }
         try:
             res = requests.get(
@@ -330,9 +438,10 @@ class MediaAgent:
                 for _, page in pages.items():
                     ii = page.get("imageinfo", [])
                     if ii:
-                        url = ii[0].get("url", "")
+                        url = ii[0].get("thumburl") or ii[0].get("url", "")
                         mime = ii[0].get("mime", "")
-                        w = ii[0].get("width", 0)
+                        w = ii[0].get("thumbwidth") or ii[0].get("width", 0)
+                        h = ii[0].get("thumbheight") or ii[0].get("height", 0)
                         if url and mime.startswith("image/") and "svg" not in mime and w >= 300:
                             if self._is_valid_image_url(url):
                                 return {
@@ -340,7 +449,7 @@ class MediaAgent:
                                     "title": file_title,
                                     "source": "wikimedia",
                                     "width": w,
-                                    "height": ii[0].get("height", 0),
+                                    "height": h,
                                 }
         except Exception:
             pass
@@ -375,9 +484,9 @@ class MediaAgent:
     def search_web_photos(self, query: str, per_page: int = 3) -> List[Dict]:
         """
         Tìm kiếm hình ảnh chất lượng cao trên Wikimedia Commons API.
-        Cải thiện: Thử nhiều biến thể query, lọc chất lượng cao, ưu tiên ảnh photograph.
+        Cải thiện: Dùng thumbnail 1280px từ CDN Varnish để tránh lỗi 429 và tải nhanh.
         """
-        headers = {"User-Agent": "AI-YouTube-Studio/2.0 (Educational Project)"}
+        headers = {"User-Agent": WIKIMEDIA_USER_AGENT}
         
         # Chiến lược tìm kiếm: thử query gốc, sau đó tinh chỉnh
         queries_to_try = [query]
@@ -395,6 +504,7 @@ class MediaAgent:
                 "gsrlimit": per_page * 5,  # Lấy nhiều hơn để lọc
                 "prop": "imageinfo",
                 "iiprop": "url|mime|size|extmetadata",
+                "iiurlwidth": 1280,
                 "iiextmetadatafilter": "ImageDescription|ObjectName",
                 "format": "json",
             }
@@ -412,9 +522,9 @@ class MediaAgent:
                             continue
                         info = ii[0]
                         mime = info.get("mime", "")
-                        url = info.get("url", "")
-                        w = info.get("width", 0)
-                        h = info.get("height", 0)
+                        url = info.get("thumburl") or info.get("url", "")
+                        w = info.get("thumbwidth") or info.get("width", 0)
+                        h = info.get("thumbheight") or info.get("height", 0)
                         
                         # Chỉ lấy ảnh bitmap, kích thước đủ lớn
                         if (mime.startswith("image/") 
@@ -606,6 +716,61 @@ If no real entities found, return empty array: []"""
         
         return []
 
+    def fetch_entity_media_pool(
+        self,
+        entity_name: str,
+        entity_type: str = "person",
+        count: int = 15
+    ) -> List[Dict]:
+        """
+        Thu thập bộ sưu tập ảnh tài liệu thực tế chất lượng cao đa dạng cho thực thể chính.
+        Đảm bảo video có đủ ảnh khác nhau cho từng phân cảnh, không bị trùng lặp.
+        """
+        pool = []
+        seen_urls = set()
+
+        def add_unique(item: Optional[Dict]):
+            if not item:
+                return
+            u = item.get("url")
+            if u and u not in seen_urls and self._is_valid_image_url(u):
+                seen_urls.add(u)
+                pool.append(item)
+
+        # 1. Ảnh chân dung chính thức từ bài Wikipedia
+        wiki_portrait = self.search_wikipedia_entity_image(entity_name)
+        add_unique(wiki_portrait)
+
+        # 2. Tìm kiếm nhiều góc ảnh từ Wikimedia Commons
+        search_queries = [
+            entity_name,
+            f"{entity_name} portrait",
+            f"{entity_name} photograph",
+        ]
+        if entity_type == "person":
+            search_queries.extend([
+                f"{entity_name} official",
+                f"{entity_name} vintage",
+            ])
+
+        for q in search_queries:
+            if len(pool) >= count:
+                break
+            results = self.search_web_photos(q, per_page=min(count, 8))
+            for item in results:
+                add_unique(item)
+                if len(pool) >= count:
+                    break
+
+        # 3. Google Custom Search (nếu có key)
+        if len(pool) < count and self._google_search_key and self._google_cx:
+            g_results = self.search_google_images(f"{entity_name} photo portrait", per_page=min(count - len(pool), 5))
+            for item in g_results:
+                add_unique(item)
+
+        logger.info(f"📸 Đã thu thập được {len(pool)} ảnh tài liệu thực tế cho '{entity_name}'")
+        return pool
+
     # ──────────────────────────────────────────────────────────────────────────
     # SMART SEARCH ORCHESTRATOR — Tìm kiếm tổng hợp thông minh
     # ──────────────────────────────────────────────────────────────────────────
@@ -694,14 +859,37 @@ If no real entities found, return empty array: []"""
     # DOWNLOAD HELPER
     # ──────────────────────────────────────────────────────────────────────────
 
-    def download_file(self, url: str, output_path: str) -> str:
-        """Tải file media về máy tính với stream, timeout an toàn và kiểm định bitmap raster bằng Pillow"""
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AI-Shorts-Bot/2.0"}
-        res = requests.get(url, headers=headers, stream=True, timeout=30)
-        res.raise_for_status()
-        with open(output_path, "wb") as f:
-            for chunk in res.iter_content(chunk_size=8192):
-                f.write(chunk)
+    def download_file(self, url: str, output_path: str, max_retries: int = 3) -> str:
+        """Tải file media về máy tính với stream, timeout an toàn, retry backoff chống 429 và kiểm định bitmap raster bằng Pillow"""
+        import time
+        headers = {
+            "User-Agent": (
+                WIKIMEDIA_USER_AGENT
+                if any(domain in url for domain in ["wikimedia.org", "wikipedia.org"])
+                else "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            )
+        }
+        
+        last_err = None
+        for attempt in range(max_retries):
+            try:
+                res = requests.get(url, headers=headers, stream=True, timeout=25)
+                if res.status_code == 429:
+                    sleep_time = 1.5 * (attempt + 1)
+                    logger.warning(f"Rate limited (429) khi tải {url[:60]}... Đợi {sleep_time}s rồi thử lại")
+                    time.sleep(sleep_time)
+                    continue
+                res.raise_for_status()
+                with open(output_path, "wb") as f:
+                    for chunk in res.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                break
+            except Exception as e:
+                last_err = e
+                if attempt < max_retries - 1:
+                    time.sleep(1.0)
+                else:
+                    raise last_err
 
         # Kiểm tra tính toàn vẹn nếu là file ảnh (.jpg, .jpeg, .png, .webp)
         ext = Path(output_path).suffix.lower()

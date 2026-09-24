@@ -75,6 +75,7 @@ class ScriptContract(BaseModel):
     scenes: List[SceneContract] = Field(min_length=1, max_length=15)
     tags: List[str] = Field(min_length=1, max_length=30)
     description: str = Field(min_length=10)
+    primary_entity: Optional[str] = Field(default=None, description="Tên thực thể/nhân vật chính nếu có")
 
     @field_validator("scenes")
     @classmethod

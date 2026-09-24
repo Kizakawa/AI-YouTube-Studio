@@ -6,17 +6,18 @@ Luồng chính:
 
 Mỗi bước ghi checkpoint vào DB. Nếu crash → resume từ checkpoint cuối.
 """
+import asyncio
 import logging
 import shutil
 from pathlib import Path
-from typing import Optional, List, Tuple, Callable, Awaitable
+from typing import Optional, List, Tuple, Callable, Awaitable, Dict, Set
 
 from app.schemas.contracts import (
     JobStatus, ScriptContract, SceneContract, RenderJobContract
 )
 from app.database.models import get_db, VideoJob
 from app.agents.voice_agent import VoiceAgent
-from app.agents.media_agent import MediaAgent, detect_real_entity
+from app.agents.media_agent import MediaAgent, detect_real_entity, detect_video_primary_entity
 from app.agents.image_agent import ImageAgent
 from app.utils.subtitle_helper import SubtitleHelper
 from config.settings import settings
@@ -40,7 +41,7 @@ class VideoPipeline:
     ):
         self.job_id = job_id
         self.progress_callback = progress_callback
-        self.work_dir: Optional[Path] = None
+        self.work_dir: Path = Path(settings.TEMP_DIR) / f"job_{self.job_id}"
 
         # Agents (lazy init)
         self._voice_agent = VoiceAgent()
@@ -185,21 +186,87 @@ class VideoPipeline:
         return full_audio_path, total_ms
 
     async def _step_media(self, scenes: List[SceneContract]) -> List[SceneContract]:
-        """Step C: Tải video/ảnh nền Pexels cho từng scene kèm báo cáo tiến độ %."""
+        """Step C: Tải video/ảnh nền cho từng scene kèm báo cáo tiến độ %."""
+        import json
         media_dir = str(self.work_dir / "media")
         Path(media_dir).mkdir(exist_ok=True)
+
+        # ── PHÁT HIỆN THỰC THỂ CHÍNH CỦA TOÀN BỘ VIDEO (DOCUMENTARY MODE) ──
+        primary_entity = None
+        entity_type = "person"
+        entity_media_pool = []
+        used_pool_urls = set()
+
+        try:
+            with get_db() as db:
+                job = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
+                if job:
+                    script_obj = None
+                    if job.scenes_json:
+                        try:
+                            script_obj = ScriptContract.from_json_str(job.scenes_json)
+                            if getattr(script_obj, 'primary_entity', None):
+                                primary_entity = script_obj.primary_entity
+                        except Exception:
+                            pass
+
+                    if not primary_entity:
+                        tags_list = []
+                        if job.tags:
+                            try:
+                                tags_list = json.loads(job.tags) if job.tags.startswith("[") else [t.strip() for t in job.tags.split(",")]
+                            except Exception:
+                                tags_list = [t.strip() for t in job.tags.split(",")]
+
+                        full_narr = script_obj.full_narration if script_obj else (job.script or "")
+                        ent_name, ent_type = detect_video_primary_entity(
+                            topic=job.topic or "",
+                            title=job.title or "",
+                            narration=full_narr,
+                            tags=tags_list
+                        )
+                        if ent_name:
+                            primary_entity = ent_name
+                            entity_type = ent_type
+        except Exception as e:
+            logger.warning(f"[Job {self.job_id}] Lỗi khi nhận diện primary_entity: {e}")
+
+        if primary_entity:
+            logger.info(
+                f"[Job {self.job_id}] 🌟 KÍCH HOẠT CHẾ ĐỘ PHIM TÀI LIỆU (DOCUMENTARY MODE) CHO: '{primary_entity}' ({entity_type})"
+            )
+            await self._report_progress(
+                "MEDIA",
+                f"🏛️ Đang thu thập trọn bộ ảnh tài liệu chuẩn HD cho {primary_entity}...",
+                percent=26
+            )
+            entity_media_pool = await asyncio.to_thread(
+                self._media_agent.fetch_entity_media_pool,
+                primary_entity,
+                entity_type,
+                max(15, len(scenes) * 2)
+            )
+            logger.info(f"[Job {self.job_id}] Đã lấy được {len(entity_media_pool)} ảnh tài liệu cho '{primary_entity}'")
 
         total_scenes = len(scenes)
         result = []
         for idx, scene in enumerate(scenes):
             pct = 25 + int(((idx + 1) / total_scenes) * 35)
             kw = scene.visual_keyword or "Stock 4K"
+            label = f"{primary_entity} - {kw[:20]}" if primary_entity else kw[:25]
             await self._report_progress(
                 "MEDIA",
-                f"🖼️ Chuẩn bị media cảnh {idx+1}/{total_scenes} ({kw})...",
+                f"🖼️ Chuẩn bị media cảnh {idx+1}/{total_scenes} ({label})...",
                 percent=pct
             )
-            media_path = await self._fetch_scene_media(scene, media_dir)
+            media_path = await self._fetch_scene_media(
+                scene=scene,
+                media_dir=media_dir,
+                primary_entity=primary_entity,
+                entity_type=entity_type,
+                entity_media_pool=entity_media_pool,
+                used_pool_urls=used_pool_urls
+            )
             enriched = scene.model_copy(update={
                 "media_path": media_path,
                 "media_type": "video" if media_path.endswith(".mp4") else "image",
@@ -207,34 +274,42 @@ class VideoPipeline:
             result.append(enriched)
         return result
 
-    async def _fetch_scene_media(self, scene: SceneContract, media_dir: str) -> str:
+    async def _fetch_scene_media(
+        self,
+        scene: SceneContract,
+        media_dir: str,
+        primary_entity: Optional[str] = None,
+        entity_type: str = "person",
+        entity_media_pool: Optional[List[Dict]] = None,
+        used_pool_urls: Optional[set] = None,
+    ) -> str:
         """
         Tìm nạp media cho 1 scene với hệ thống phân cấp 7 tầng thông minh:
           Tầng 0: User Custom Media (Ảnh/Video do người dùng gửi trực tiếp qua Telegram)
-          Tầng 1: Smart Entity Search (Wikipedia + Wikimedia + Google — ƯU TIÊN cho nhân vật/sự kiện thật)
-          Tầng 2: Pexels Video portrait 9:16 (nếu có key Pexels)
-          Tầng 3: Pexels Photo portrait 9:16 (nếu có key Pexels, dùng cho Ken Burns)
-          Tầng 4: Web Image Search (Wikimedia Commons search nâng cao)
-          Tầng 5: AI Image Generation (Google Imagen 3 / Pollinations 9:16 Cinematic AI)
-          Tầng 6: Dynamic Aesthetic Graphic (Fallback cuối cùng khi offline)
-
-        [v2.0] Tích hợp smart_search_media() với AI entity detection + Wikipedia API
-        [FIX #3] Tất cả blocking HTTP calls được bọc trong asyncio.to_thread()
+          Tầng 1: Documentary Entity Pool (Wikipedia + Wikimedia Commons — ƯU TIÊN cho nhân vật thực tế)
+          Tầng 2: Smart Entity Search cụ thể cho phân cảnh
+          Tầng 3: AI Image Generation (Google Imagen 3 / Pollinations 9:16 gắn ngữ cảnh nhân vật)
+          Tầng 4: Pexels Video/Photo portrait 9:16 (Chỉ dùng cho chủ đề trừu tượng / b-roll)
+          Tầng 5: Web Image Search tổng quát
+          Tầng 6: Dynamic Aesthetic Graphic (Fallback an toàn tuyệt đối)
         """
         import asyncio
 
-        # ── Checkpoint: Tái sử dụng media hợp lệ đã tải từ lần chạy trước (> 10KB) ──
-        for ext in [".mp4", ".mov", ".jpg", ".jpeg", ".png", ".webp"]:
-            candidate = Path(media_dir) / f"scene_{scene.scene_id:03d}{ext}"
-            if candidate.exists() and candidate.stat().st_size > 10240:
-                logger.info(f"Scene {scene.scene_id}: Tái sử dụng media từ checkpoint ({candidate.name})")
-                return str(candidate)
-        # Cũng check các file _real, _web, _wiki, _ai
-        for suffix in ["_real", "_web", "_wiki", "_google"]:
-            for ext in [".jpg", ".jpeg", ".png", ".webp"]:
-                candidate = Path(media_dir) / f"scene_{scene.scene_id:03d}{suffix}{ext}"
+        # ── Checkpoint: Tái sử dụng media hợp lệ đã tải từ lần chạy trước ──
+        # NẾU ĐANG Ở DOCUMENTARY MODE: Tuyệt đối không tái sử dụng video stock cũ (.mp4 từ Pexels) vì đó là diễn viên hiện đại!
+        if not primary_entity:
+            for ext in [".mp4", ".mov", ".jpg", ".jpeg", ".png", ".webp"]:
+                candidate = Path(media_dir) / f"scene_{scene.scene_id:03d}{ext}"
                 if candidate.exists() and candidate.stat().st_size > 10240:
                     logger.info(f"Scene {scene.scene_id}: Tái sử dụng media từ checkpoint ({candidate.name})")
+                    return str(candidate)
+
+        # Kiểm tra checkpoint các file ảnh tài liệu hợp lệ
+        for suffix in ["_doc", "_wiki", "_real", "_web", "_google", "_ai"]:
+            for ext in [".jpg", ".jpeg", ".png", ".webp"]:
+                candidate = Path(media_dir) / f"scene_{scene.scene_id:03d}{suffix}{ext}"
+                if candidate.exists() and candidate.stat().st_size > 3000 and self._is_valid_image_file(str(candidate)):
+                    logger.info(f"Scene {scene.scene_id}: Tái sử dụng ảnh tài liệu từ checkpoint ({candidate.name})")
                     return str(candidate)
 
         # ── Tầng 0: User Custom Media (Người dùng gửi qua Telegram) ──
@@ -251,85 +326,123 @@ class VideoPipeline:
                         logger.info(f"Scene {scene.scene_id}: Dùng media tùy biến của người dùng ({cand.name})")
                         return str(dest)
 
-        # ── Tầng 1: Smart Entity Search (Wikipedia + Wikimedia + Google) ──
-        # Phát hiện entity thông minh bằng heuristic + AI
-        is_entity, entity_name, entity_type = detect_real_entity(
-            scene.visual_keyword, scene.narration
-        )
-        if is_entity and entity_name:
-            logger.info(
-                f"Scene {scene.scene_id}: 🔎 Phát hiện thực thể '{entity_name}' "
-                f"(type={entity_type}) — Bắt đầu tìm ảnh tài liệu thật..."
-            )
+        # ── TẦNG 1: DOCUMENTARY MODE (Ưu tiên ảnh tài liệu thật cho nhân vật) ──
+        if primary_entity and entity_media_pool:
+            for cand_photo in entity_media_pool:
+                cand_url = cand_photo.get("url")
+                if not cand_url or cand_url in (used_pool_urls or set()):
+                    continue
+                try:
+                    ext = ".jpg" if any(x in cand_url.lower() for x in ["jpg", "jpeg"]) else ".png"
+                    output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_doc{ext}")
+                    await asyncio.to_thread(self._media_agent.download_file, cand_url, output)
+                    if Path(output).exists() and Path(output).stat().st_size > 3000 and self._is_valid_image_file(output):
+                        if used_pool_urls is not None:
+                            used_pool_urls.add(cand_url)
+                        logger.info(
+                            f"Scene {scene.scene_id}: ✅ Tải thành công ảnh TÀI LIỆU THẬT cho '{primary_entity}': "
+                            f"{cand_photo.get('title', '')[:50]}"
+                        )
+                        return output
+                except Exception as ex:
+                    logger.warning(f"Scene {scene.scene_id}: Lỗi tải ảnh tài liệu pool ({cand_url[:40]}): {ex}")
+
+        # ── Tầng 2: Cảnh cụ thể có thực thể riêng (hoặc fallback cho primary_entity) ──
+        is_entity, entity_name, ent_type = detect_real_entity(scene.visual_keyword, scene.narration)
+        target_entity = entity_name or primary_entity
+        if target_entity:
             try:
                 # A. Wikipedia — Ảnh chân dung chính thức
                 wiki_img = await asyncio.to_thread(
-                    self._media_agent.search_wikipedia_entity_image, entity_name
+                    self._media_agent.search_wikipedia_entity_image, target_entity
                 )
                 if wiki_img and wiki_img.get("url"):
                     url = wiki_img["url"]
-                    ext = ".jpg" if any(x in url.lower() for x in ["jpg", "jpeg"]) else ".png"
-                    output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_wiki{ext}")
-                    await asyncio.to_thread(self._media_agent.download_file, url, output)
-                    if Path(output).exists() and Path(output).stat().st_size > 3000 and self._is_valid_image_file(output):
-                        logger.info(
-                            f"Scene {scene.scene_id}: ✅ Tải thành công ảnh WIKIPEDIA chính thức "
-                            f"({entity_name}): {wiki_img.get('title', '')[:50]}"
-                        )
-                        return output
+                    if not used_pool_urls or url not in used_pool_urls:
+                        ext = ".jpg" if any(x in url.lower() for x in ["jpg", "jpeg"]) else ".png"
+                        output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_wiki{ext}")
+                        await asyncio.to_thread(self._media_agent.download_file, url, output)
+                        if Path(output).exists() and Path(output).stat().st_size > 3000 and self._is_valid_image_file(output):
+                            if used_pool_urls is not None:
+                                used_pool_urls.add(url)
+                            logger.info(
+                                f"Scene {scene.scene_id}: ✅ Tải thành công ảnh WIKIPEDIA chính thức "
+                                f"({target_entity}): {wiki_img.get('title', '')[:50]}"
+                            )
+                            return output
             except Exception as ex:
-                logger.warning(f"Scene {scene.scene_id}: Wikipedia search error for {entity_name}: {ex}")
+                logger.warning(f"Scene {scene.scene_id}: Wikipedia search error for {target_entity}: {ex}")
 
             try:
                 # B. Wikimedia Commons — Ảnh tài liệu lịch sử
                 search_terms = [
-                    f"{entity_name} official portrait" if entity_type == "person" else entity_name,
-                    f"{entity_name} photograph",
-                    entity_name,
+                    f"{target_entity} official portrait" if ent_type == "person" else target_entity,
+                    f"{target_entity} photograph",
+                    f"{target_entity} vintage",
+                    target_entity,
                 ]
                 for term in search_terms:
                     web_photos = await asyncio.to_thread(
-                        self._media_agent.search_web_photos, term, 3
+                        self._media_agent.search_web_photos, term, 4
                     )
-                    if web_photos:
-                        web_photo = web_photos[0]
+                    for web_photo in web_photos:
                         web_url = web_photo.get("url")
-                        if web_url:
+                        if web_url and (not used_pool_urls or web_url not in used_pool_urls):
                             ext = ".jpg" if any(x in web_url.lower() for x in ["jpg", "jpeg"]) else ".png"
                             output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_real{ext}")
                             await asyncio.to_thread(self._media_agent.download_file, web_url, output)
                             if Path(output).exists() and Path(output).stat().st_size > 3000 and self._is_valid_image_file(output):
+                                if used_pool_urls is not None:
+                                    used_pool_urls.add(web_url)
                                 logger.info(
                                     f"Scene {scene.scene_id}: ✅ Tải thành công ảnh Wikimedia Commons "
-                                    f"({entity_name}): {web_photo.get('title', '')[:50]}"
+                                    f"({target_entity}): {web_photo.get('title', '')[:50]}"
                                 )
                                 return output
-                            break
             except Exception as ex:
-                logger.warning(f"Scene {scene.scene_id}: Wikimedia search error for {entity_name}: {ex}")
+                logger.warning(f"Scene {scene.scene_id}: Wikimedia search error for {target_entity}: {ex}")
 
             try:
                 # C. Google Custom Search (nếu có key)
                 google_results = await asyncio.to_thread(
-                    self._media_agent.search_google_images, f"{entity_name} photo", 2
+                    self._media_agent.search_google_images, f"{target_entity} photo portrait", 2
                 )
                 if google_results:
-                    g_photo = google_results[0]
-                    g_url = g_photo.get("url")
-                    if g_url:
-                        ext = ".jpg"
-                        output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_google{ext}")
-                        await asyncio.to_thread(self._media_agent.download_file, g_url, output)
-                        if Path(output).exists() and Path(output).stat().st_size > 3000 and self._is_valid_image_file(output):
-                            logger.info(
-                                f"Scene {scene.scene_id}: ✅ Tải ảnh Google Search ({entity_name})"
-                            )
-                            return output
+                    for g_photo in google_results:
+                        g_url = g_photo.get("url")
+                        if g_url and (not used_pool_urls or g_url not in used_pool_urls):
+                            ext = ".jpg"
+                            output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_google{ext}")
+                            await asyncio.to_thread(self._media_agent.download_file, g_url, output)
+                            if Path(output).exists() and Path(output).stat().st_size > 3000 and self._is_valid_image_file(output):
+                                if used_pool_urls is not None:
+                                    used_pool_urls.add(g_url)
+                                logger.info(
+                                    f"Scene {scene.scene_id}: ✅ Tải ảnh Google Search ({target_entity})"
+                                )
+                                return output
             except Exception as ex:
                 logger.debug(f"Scene {scene.scene_id}: Google search not available: {ex}")
 
-        # ── Tầng 2: Pexels Video (nếu có key) ──
-        if self._media_agent.api_key:
+        # ── Tầng 3: AI Image Generation (Có gắn tên thực thể nếu có) ──
+        # Luôn đảm bảo nhân vật chính được thể hiện chân thực theo bối cảnh
+        try:
+            ai_img_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_ai.jpg")
+            ai_prompt = scene.visual_keyword
+            if primary_entity:
+                ai_prompt = f"Historical authentic photorealistic shot of {primary_entity}, {scene.visual_keyword}, period accurate, dramatic volumetric lighting, 8k"
+            res_img = await asyncio.to_thread(
+                self._image_agent.generate_scene_image, ai_prompt, ai_img_path
+            )
+            if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 1000 and self._is_valid_image_file(res_img):
+                logger.info(f"Scene {scene.scene_id}: Sinh thành công ảnh AI điện ảnh ({primary_entity or 'generic'})")
+                return res_img
+        except Exception as e:
+            logger.warning(f"Scene {scene.scene_id}: Lỗi sinh ảnh AI: {e}")
+
+        # ── Tầng 4: Pexels Video/Photo (CHỈ DÙNG CHO CHỦ ĐỀ CHUNG / TRỪU TƯỢNG) ──
+        # TUYỆT ĐỐI KHÔNG dùng stock video của diễn viên hiện đại khi làm video về nhân vật lịch sử
+        if not primary_entity and self._media_agent.api_key:
             try:
                 videos = await asyncio.to_thread(
                     self._media_agent.search_videos, scene.visual_keyword, 2
@@ -353,8 +466,6 @@ class VideoPipeline:
             except Exception as e:
                 logger.warning(f"Scene {scene.scene_id}: Lỗi tìm Pexels Video: {e}")
 
-        # ── Tầng 3: Pexels Photo (nếu có key, dùng cho Ken Burns) ──
-        if self._media_agent.api_key:
             try:
                 photos = await asyncio.to_thread(
                     self._media_agent.search_photos, scene.visual_keyword, 2
@@ -374,7 +485,7 @@ class VideoPipeline:
             except Exception as e:
                 logger.warning(f"Scene {scene.scene_id}: Lỗi tìm Pexels Photo: {e}")
 
-        # ── Tầng 4: Web Image Search (Wikimedia Commons — cho cảnh generic) ──
+        # ── Tầng 5: Web Image Search (Wikimedia Commons — cho cảnh generic) ──
         try:
             web_photos = await asyncio.to_thread(
                 self._media_agent.search_web_photos, scene.visual_keyword, 2
@@ -383,7 +494,7 @@ class VideoPipeline:
                 web_photo = web_photos[0]
                 web_url = web_photo.get("url")
                 if web_url:
-                    web_ext = ".jpg" if "jpg" in web_url.lower() or "jpeg" in web_url.lower() else ".png"
+                    web_ext = ".jpg" if any(x in web_url.lower() for x in ["jpg", "jpeg"]) else ".png"
                     web_output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_web{web_ext}")
                     await asyncio.to_thread(
                         self._media_agent.download_file, web_url, web_output
@@ -393,18 +504,6 @@ class VideoPipeline:
                         return web_output
         except Exception as e:
             logger.warning(f"Scene {scene.scene_id}: Lỗi tìm ảnh Web: {e}")
-
-        # ── Tầng 5: AI Image Generation (Google Imagen 3 / Pollinations 9:16) ──
-        try:
-            ai_img_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_ai.jpg")
-            res_img = await asyncio.to_thread(
-                self._image_agent.generate_scene_image, scene.visual_keyword, ai_img_path
-            )
-            if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 1000 and self._is_valid_image_file(res_img):
-                logger.info(f"Scene {scene.scene_id}: Sinh thành công ảnh AI điện ảnh 9:16")
-                return res_img
-        except Exception as e:
-            logger.warning(f"Scene {scene.scene_id}: Lỗi sinh ảnh AI: {e}")
 
         # ── Tầng 6: Dynamic Aesthetic Graphic (Pillow) ──
         logger.info(f"Scene {scene.scene_id}: Dùng ảnh đồ họa cinematic gradient cho Ken Burns")

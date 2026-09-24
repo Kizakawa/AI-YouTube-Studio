@@ -140,20 +140,22 @@ STRICT RETENTION & STORYTELLING FORMULA:
      - "futuristic quantum supercomputer glowing blue holographic core"
    - NEVER use lazy generic words like "ocean", "computer", "city".
 6. 🎯 REAL-WORLD ENTITIES & HISTORICAL ACCURACY (VITAL):
-   - If the topic or script involves REAL-WORLD people, leaders, celebrities, or historical figures/places (e.g. Vladimir Putin, Donald Trump, Elon Musk, Nikola Tesla, Julius Caesar, Kremlin, White House, NASA):
-   - For scenes discussing that person, you MUST explicitly include their exact name/title in visual_keyword (e.g. "Vladimir Putin official portrait", "Vladimir Putin Kremlin address", "Vladimir Putin intense cold stare").
-   - NEVER use generic descriptions like "powerful man in boardroom" or "serious politician" when talking about a specific real person! Specifying their real name allows the system to fetch authentic documentary photographs from Web archives.
+   - If the topic or script involves REAL-WORLD people, leaders, celebrities, or historical figures/places (e.g. Vladimir Putin, John D. Rockefeller, Donald Trump, Elon Musk, Nikola Tesla, Julius Caesar, Kremlin, White House, NASA):
+   - Identify the MAIN real-world entity and fill "primary_entity" with their full official name (e.g. "John D. Rockefeller", "Vladimir Putin").
+   - VISUAL CONSISTENCY ACROSS ALL SCENES: For videos about a real figure, EVERY scene's visual_keyword MUST reflect that person, their historical era, or their actions (e.g. "John D. Rockefeller vintage portrait 1890", "Standard Oil monopoly archival refinery 19th century", "John D. Rockefeller calculated cold stare").
+   - NEVER use lazy generic descriptions like "powerful man in modern boardroom", "serious businessman", "man thinking", or "chess player" when discussing a real figure! This destroys immersion. Always anchor scenes to the real person's name and authentic context so the system can pull real documentary photographs.
 
 Return ONLY valid JSON matching this exact schema:
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
+  "primary_entity": "Full name of main real-world person/figure (e.g. 'John D. Rockefeller', 'Vladimir Putin') or null if abstract topic",
   "hook": "The opening 3-second hook sentence",
   "full_narration": "The complete spoken text without any stage directions",
   "scenes": [
     {{
       "scene_id": 1,
       "narration": "First spoken scene sentence",
-      "visual_keyword": "cinematic descriptive English keyword for stock/AI e.g. dark stormy ocean abyss lightning dramatic",
+      "visual_keyword": "cinematic descriptive English keyword (if real person: include their name & era context e.g. John D. Rockefeller vintage photograph)",
       "estimated_seconds": 4
     }}
   ],
