@@ -236,17 +236,19 @@ def image_to_video(
     Codec: H.264 + yuv420p (YouTube compatible).
     """
     # ── Chuẩn hóa ảnh bằng Pillow: chuyển sang RGB, scale về đúng tỷ lệ ──
+    # Dùng unique suffix theo output_path để tránh race condition khi nhiều job chạy song song
+    import uuid as _uuid
+    _uid = _uuid.uuid4().hex[:8]
+    norm_path = str(Path(output_path).parent / f"_norm_{_uid}.jpg")
     try:
         from PIL import Image
         with Image.open(image_path) as im:
             if im.mode not in ("RGB",):
                 im = im.convert("RGB")
-            # Scale ảnh lên lớn hơn target (1.2x) để có "khoảng trống" pan/zoom
-            # FFmpeg zoompan cần ảnh đầu vào ĐỦ LỚN để không bị artifact đen
-            scale_w = int(width * 1.25)
-            scale_h = int(height * 1.25)
+            # Scale ảnh lên lớn hơn target (1.3x) để có "đệm" pan/zoom, tránh artifact đen góc
+            scale_w = int(width * 1.30)
+            scale_h = int(height * 1.30)
             im_resized = im.resize((scale_w, scale_h), Image.LANCZOS)
-            norm_path = str(Path(image_path).with_suffix(".norm.jpg"))
             im_resized.save(norm_path, "JPEG", quality=95)
             image_path = norm_path
     except Exception as e:
@@ -322,7 +324,8 @@ def image_to_video(
         )
 
     # Vignette filter — góc tối kiểu cinema, tạo chiều sâu, ảnh không bị "phẳng"
-    vignette_filter = "vignette=PI/4.5"
+    # 0.698 rad ≈ PI/4.5 — giá trị số thay vì PI (tránh lỗi trên một số phiên bản FFmpeg)
+    vignette_filter = "vignette=0.698"
     vf_chain = f"{zoompan},{vignette_filter}"
 
     args = [
@@ -332,12 +335,20 @@ def image_to_video(
         "-t", str(duration_seconds),
         "-c:v", "libx264",
         "-preset", "veryfast",
+        "-tune", "stillimage",   # Optimize encoder cho ảnh tĩnh (tăng tốc 20-40%)
         "-pix_fmt", "yuv420p",
         "-r", str(fps),
         "-an",
         output_path
     ]
-    run_ffmpeg(args)
+    try:
+        run_ffmpeg(args)
+    finally:
+        # Xóa file tạm sau khi render xong (tránh rác file)
+        try:
+            Path(norm_path).unlink(missing_ok=True)
+        except Exception:
+            pass
     return output_path
 
 
@@ -473,9 +484,9 @@ def concat_videos_with_xfade(
 
     # Label inputs
     filter_parts = []
-    # Trim mỗi clip để xfade không bị lag cuối clip
+    # settb + fps + setpts: reset PTS về 0 để tránh desync xfade
     for i in range(n):
-        filter_parts.append(f"[{i}:v]settb=AVTB,fps={fps}[v{i}]")
+        filter_parts.append(f"[{i}:v]settb=AVTB,setpts=PTS-STARTPTS,fps={fps}[v{i}]")
 
     # Xfade chaining: xfade offset = cumulative duration của các clips trước - transition
     current_label = "v0"
@@ -548,7 +559,7 @@ def mux_audio_video(
             # ratio=4: giảm BGM còn ~25%
             # attack=5ms, release=200ms: duck nhanh, recover chậm (tự nhiên)
             filter_complex = (
-                f"[2:a]aloop=loop=-1:size=2e+09,volume={bgm_volume}[bgm_looped];"
+                f"[2:a]aloop=loop=-1:size=2000000000,volume={bgm_volume}[bgm_looped];"
                 f"[bgm_looped][1:a]sidechaincompress="
                 f"threshold=0.02:ratio=4:attack=5:release=200:makeup=1[bgm_ducked];"
                 f"[1:a][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=2:weights='1 1'[aout]"
@@ -556,7 +567,7 @@ def mux_audio_video(
         else:
             # Simple mix: BGM ở volume cố định, không ducking
             filter_complex = (
-                f"[2:a]volume={bgm_volume},aloop=loop=-1:size=2e+09[bgm];"
+                f"[2:a]volume={bgm_volume},aloop=loop=-1:size=2000000000[bgm];"
                 f"[1:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
             )
         args = [
@@ -569,6 +580,7 @@ def mux_audio_video(
             "-c:v", "copy",
             "-c:a", "aac",
             "-b:a", "192k",
+            "-movflags", "+faststart",
             "-shortest",
             output_path
         ]
@@ -581,6 +593,7 @@ def mux_audio_video(
             "-c:v", "copy",
             "-c:a", "aac",
             "-b:a", "192k",
+            "-movflags", "+faststart",
             "-shortest",
             output_path
         ]

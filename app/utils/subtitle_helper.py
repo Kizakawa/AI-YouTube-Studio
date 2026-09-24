@@ -85,6 +85,9 @@ class SubtitleHelper:
         chuẩn phong cách phụ đề Shorts cuốn hút, không bị tràn màn hình.
         """
         text = text.strip()
+        # Normalize whitespace: collapse \n, \t, multiple spaces thành space đơn
+        import re as _re
+        text = _re.sub(r'\s+', ' ', text).strip()
         if not text:
             return []
 
@@ -178,10 +181,10 @@ class SubtitleHelper:
                 dur = int(scene_duration_ms * ratio)
                 chunk_durations_ms.append(max(dur, 600))
 
-            # Cân chỉnh lại tổng duration
+            # Cân chỉnh lại tổng duration — giữ last chunk >= 300ms (tránh âm)
             diff = scene_duration_ms - sum(chunk_durations_ms)
             if chunk_durations_ms:
-                chunk_durations_ms[-1] += diff
+                chunk_durations_ms[-1] = max(chunk_durations_ms[-1] + diff, 300)
 
             chunk_start_ms = current_offset_ms
             for chunk, chunk_dur_ms in zip(chunks, chunk_durations_ms):
@@ -264,9 +267,10 @@ class SubtitleHelper:
                 dur = int(scene_duration_ms * ratio)
                 chunk_durations.append(max(dur, 600))
 
+            # Cân chỉnh tổng duration — giữ last chunk >= 300ms (tránh âm)
             diff = scene_duration_ms - sum(chunk_durations)
             if chunk_durations:
-                chunk_durations[-1] += diff
+                chunk_durations[-1] = max(chunk_durations[-1] + diff, 300)
 
             chunk_start = current_offset_ms
             for i, chunk in enumerate(chunks):

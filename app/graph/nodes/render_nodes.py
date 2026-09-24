@@ -36,11 +36,15 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             "scene_id": sc_id,
             "narration": m.get("narration") or a_info.get("narration") or "",
             "visual_keyword": m.get("visual_keyword", ""),
-            "estimated_seconds": float(m.get("estimated_seconds") or 3.0),
+            "visual_prompt": m.get("visual_prompt"),   # ← Cần cho AI image context
+            "estimated_seconds": max(float(m.get("estimated_seconds") or 3.0), 1.0),
             "audio_duration_ms": a_info.get("audio_duration_ms") or a_info.get("duration_ms"),
             "audio_path": a_info.get("audio_path", ""),
             "media_path": m.get("media_path", ""),
             "media_type": m.get("media_type", "image"),
+            # Cinematic enhancement fields — cần cho Ken Burns & SFX
+            "camera_motion": m.get("camera_motion"),   # ← Thiếu field này → motion mặc định
+            "sfx_cue": m.get("sfx_cue"),               # ← Thiếu field này → không có SFX
         }
         enriched_scenes.append(SceneContract(**sc_dict))
 

@@ -161,15 +161,37 @@ class VideoAgent:
         - Nếu media_type == "image" → Ken Burns effect với camera_motion từ SceneContract
           (zoom_in, zoom_out, pan_left, pan_right, pan_up, pan_down xoay vòng tự động)
         - Nếu media_type == "video" → Trim + scale 9:16 (trim_video)
+
+        Chạy SONG SONG với ThreadPoolExecutor để giảm thời gian render từ O(N) xuống ~O(1).
         """
-        clips = []
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        for scene in scenes:
+        def _render_one(scene: SceneContract) -> tuple[int, str]:
+            """Render 1 scene clip, trả về (scene_id, clip_path)."""
             clip_path = str(Path(work_dir) / f"clip_{scene.scene_id:03d}.mp4")
-            duration = scene.actual_duration_seconds
-            motion = scene.resolved_camera_motion  # Tự động nếu không set
+            duration = max(scene.actual_duration_seconds, 1.0)  # Tối thiểu 1 giây
+            motion = scene.resolved_camera_motion
 
-            if scene.media_type == "image":
+            # Kiểm tra media_path tồn tại trước khi render
+            media_ok = scene.media_path and Path(scene.media_path).exists()
+            if not media_ok:
+                logger.warning(
+                    f"  Scene {scene.scene_id}: media_path không tồn tại "
+                    f"('{scene.media_path}') → dùng placeholder gradient"
+                )
+                # Tạo placeholder gradient thay vì crash
+                from app.services.pipeline import VideoPipeline
+                placeholder = str(Path(work_dir) / f"placeholder_{scene.scene_id:03d}.png")
+                VideoPipeline._create_placeholder_image(
+                    placeholder,
+                    scene.visual_keyword or f"Scene {scene.scene_id}",
+                    scene_id=scene.scene_id
+                )
+                scene = scene.model_copy(update={"media_path": placeholder, "media_type": "image"})
+
+            effective_type = scene.media_type or "image"
+
+            if effective_type == "image":
                 logger.info(
                     f"  Scene {scene.scene_id}: image → Ken Burns [{motion}] {duration:.1f}s"
                 )
@@ -183,7 +205,7 @@ class VideoAgent:
                     zoom_effect=True,
                     camera_motion=motion,
                 )
-            elif scene.media_type == "video":
+            elif effective_type == "video":
                 logger.info(
                     f"  Scene {scene.scene_id}: video → trim {duration:.1f}s"
                 )
@@ -196,13 +218,42 @@ class VideoAgent:
                     fps=job.fps,
                 )
             else:
-                raise ValueError(
-                    f"Scene {scene.scene_id}: media_type không hợp lệ: {scene.media_type}"
+                # Fallback graceful: log warning, render như image
+                logger.warning(
+                    f"  Scene {scene.scene_id}: media_type không hợp lệ '{effective_type}' → fallback image mode"
+                )
+                image_to_video(
+                    image_path=scene.media_path,
+                    duration_seconds=duration,
+                    output_path=clip_path,
+                    width=job.resolution_w,
+                    height=job.resolution_h,
+                    fps=job.fps,
+                    zoom_effect=True,
+                    camera_motion=motion,
                 )
 
-            clips.append(clip_path)
+            return scene.scene_id, clip_path
 
-        return clips
+        # ── Chạy song song với ThreadPoolExecutor ──
+        # FFmpeg mỗi process dùng 1 core — safe cho multi-thread
+        max_workers = min(len(scenes), 4)  # Tối đa 4 worker để tránh OOM
+        results: dict[int, str] = {}
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_map = {executor.submit(_render_one, s): s.scene_id for s in scenes}
+            for future in as_completed(future_map):
+                scene_id = future_map[future]
+                try:
+                    sid, clip_path = future.result()
+                    results[sid] = clip_path
+                    logger.info(f"  ✅ Scene {sid}: clip sẵn sàng → {clip_path}")
+                except Exception as exc:
+                    logger.error(f"  ❌ Scene {scene_id}: Lỗi render clip: {exc}")
+                    raise  # Re-raise để pipeline biết có lỗi
+
+        # Sắp xếp lại theo scene_id (as_completed không giữ thứ tự)
+        return [results[s.scene_id] for s in scenes]
 
     @staticmethod
     def _compute_scene_timestamps(scenes: List[SceneContract]) -> List[float]:
