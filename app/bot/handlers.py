@@ -876,7 +876,7 @@ async def auto_resume_pending_jobs(application):
     - Gửi thông báo đến nhóm Telegram và tự động đưa vào hàng đợi render.
     """
     from app.database.models import get_db, VideoJob
-    from app.services.queue import get_render_queue
+    from app.services.render_queue import get_render_queue
     from config.settings import settings
 
     try:
