@@ -720,15 +720,40 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await safe_reply(update, err_text)
 
 
-async def _execute_render_task(update: Update, context: ContextTypes.DEFAULT_TYPE, job_id: int, user_name: str):
-    """Tiến trình render video chạy ngầm không chặn luồng polling của bot"""
-    chat_id = update.effective_chat.id if update.effective_chat else None
-
-    status_msg = await safe_reply(
-        update,
+async def start_render_pipeline(
+    bot,
+    chat_id: Optional[int],
+    job_id: int,
+    user_name: str = "System",
+    update: Optional[Update] = None,
+    is_auto_resume: bool = False
+):
+    """
+    Tiến trình thực thi pipeline render và gửi cập nhật tiến độ / video hoàn thành lên Telegram.
+    Hỗ trợ cả:
+    1. Khi người dùng bấm duyệt trên Telegram (truyền update).
+    2. Khi bot tự động khôi phục (Auto-Resume) khi khởi động lại (dùng bot + chat_id).
+    """
+    status_text = (
+        f"🔄 **[TỰ ĐỘNG LÀM TIẾP]** Bot đang tiếp tục dựng Video #{job_id} chưa hoàn thành!\n"
+        f"⏳ Đang nạp pipeline render 9:16 Shorts (Audio + Media + Subtitles)..."
+        if is_auto_resume else
         f"🚀 **{user_name}** đã kích hoạt sản xuất Video #{job_id}!\n"
         f"⏳ Đang xếp hàng vào pipeline render 9:16 Shorts (Audio + Media + Subtitles)..."
     )
+
+    status_msg = None
+    if update:
+        status_msg = await safe_reply(update, status_text)
+    elif chat_id and bot:
+        try:
+            status_msg = await bot.send_message(chat_id=chat_id, text=status_text, parse_mode="Markdown")
+        except Exception:
+            try:
+                plain_status = re.sub(r'[*_`\[\]()<>]', '', status_text)
+                status_msg = await bot.send_message(chat_id=chat_id, text=plain_status)
+            except Exception:
+                pass
 
     def render_progress_bar(percent: int) -> str:
         percent = max(0, min(100, percent))
@@ -749,8 +774,9 @@ async def _execute_render_task(update: Update, context: ContextTypes.DEFAULT_TYP
             }
             icon = icons.get(stage, "⏳")
             p_bar = render_progress_bar(percent) if percent > 0 else "[▱▱▱▱▱▱▱▱▱▱] 0%"
+            prefix = "🔄 [TỰ ĐỘNG TIẾP TỤC] " if is_auto_resume else ""
             display_text = (
-                f"🎬 **TIẾN TRÌNH RENDER (Task #{job_id})**\n\n"
+                f"🎬 **{prefix}TIẾN TRÌNH RENDER (Task #{job_id})**\n\n"
                 f"📊 **Tiến độ:** `{p_bar}`\n\n"
                 f"{icon} {msg}"
             )
@@ -763,14 +789,20 @@ async def _execute_render_task(update: Update, context: ContextTypes.DEFAULT_TYP
 
         # Kiểm tra file MP4 hoàn chỉnh
         out_path = Path(render_job.output_path)
-        if out_path.exists() and chat_id:
+        if out_path.exists() and chat_id and bot:
             size_mb = out_path.stat().st_size / (1024 * 1024)
             post_render_markup = get_video_post_render_keyboard(job_id)
+
+            prefix_title = (
+                f"🎉 **VIDEO ĐÃ DỰNG THÀNH CÔNG (TỰ ĐỘNG TIẾP TỤC)! (Task #{job_id})**"
+                if is_auto_resume else
+                f"🎉 **VIDEO ĐÃ DỰNG THÀNH CÔNG! (Task #{job_id})**"
+            )
 
             # Telegram Bot API cho phép upload video tối đa 50MB
             if size_mb <= 49.0:
                 caption = (
-                    f"🎉 **VIDEO ĐÃ DỰNG THÀNH CÔNG! (Task #{job_id})**\n\n"
+                    f"{prefix_title}\n\n"
                     f"📌 **Tiêu đề:** {render_job.title}\n"
                     f"⏱️ **Thời lượng:** {render_job.total_audio_duration_ms / 1000:.1f}s\n"
                     f"📦 **Dung lượng:** {size_mb:.1f} MB\n"
@@ -779,7 +811,7 @@ async def _execute_render_task(update: Update, context: ContextTypes.DEFAULT_TYP
                 )
                 try:
                     with open(out_path, "rb") as vf:
-                        await context.bot.send_video(
+                        await bot.send_video(
                             chat_id=chat_id,
                             video=vf,
                             caption=caption,
@@ -790,22 +822,26 @@ async def _execute_render_task(update: Update, context: ContextTypes.DEFAULT_TYP
                         )
                 except Exception as ex_upload:
                     logger.warning(f"Không thể gửi file video trực tiếp qua Telegram: {ex_upload}")
-                    await safe_reply(
-                        update,
+                    fallback_msg = (
                         f"🎉 **Video #{job_id} đã hoàn tất!**\n"
                         f"📂 File đã lưu tại: `{render_job.output_path}` ({size_mb:.1f} MB)\n\n"
-                        f"👉 Cả nhóm chọn thao tác tiếp theo:",
-                        reply_markup=post_render_markup
+                        f"👉 Cả nhóm chọn thao tác tiếp theo:"
                     )
+                    if update:
+                        await safe_reply(update, fallback_msg, reply_markup=post_render_markup)
+                    else:
+                        await bot.send_message(chat_id=chat_id, text=fallback_msg, reply_markup=post_render_markup)
             else:
-                await safe_reply(
-                    update,
+                large_msg = (
                     f"🎉 **Video #{job_id} đã hoàn tất!**\n"
                     f"📦 Dung lượng ({size_mb:.1f} MB) vượt quá giới hạn 50MB của Telegram.\n"
                     f"📂 File đã lưu sẵn tại:\n`{render_job.output_path}`\n\n"
-                    f"👉 Cả nhóm chọn thao tác tiếp theo:",
-                    reply_markup=post_render_markup
+                    f"👉 Cả nhóm chọn thao tác tiếp theo:"
                 )
+                if update:
+                    await safe_reply(update, large_msg, reply_markup=post_render_markup)
+                else:
+                    await bot.send_message(chat_id=chat_id, text=large_msg, reply_markup=post_render_markup)
 
         with get_db() as db:
             log_activity(db, 0, user_name, "RENDER_COMPLETE",
@@ -813,13 +849,93 @@ async def _execute_render_task(update: Update, context: ContextTypes.DEFAULT_TYP
 
     except Exception as e:
         logger.error(f"Lỗi khi render video #{job_id}: {e}", exc_info=True)
+        err_msg = f"❌ **Render video #{job_id} thất bại:**\n`{str(e)}`"
         if status_msg:
-            await safe_edit_text(
-                status_msg,
-                f"❌ **Render video #{job_id} thất bại:**\n`{str(e)}`"
+            await safe_edit_text(status_msg, err_msg)
+        elif update:
+            await safe_reply(update, err_msg)
+        elif chat_id and bot:
+            try:
+                await bot.send_message(chat_id=chat_id, text=err_msg, parse_mode="Markdown")
+            except Exception:
+                pass
+
+
+async def _execute_render_task(update: Update, context: ContextTypes.DEFAULT_TYPE, job_id: int, user_name: str):
+    """Tiến trình render video chạy ngầm khi người dùng bấm nút trên Telegram"""
+    chat_id = update.effective_chat.id if update.effective_chat else None
+    await start_render_pipeline(context.bot, chat_id, job_id, user_name, update=update, is_auto_resume=False)
+
+
+async def auto_resume_pending_jobs(application):
+    """
+    Tự động kiểm tra và làm tiếp các video đang làm dở khi bot khởi động lại.
+    - Tìm các video có status 'RENDERING' (bị ngắt giữa chừng khi tắt bot)
+      hoặc 'SCRIPT_READY' đang chờ dựng.
+    - Gửi thông báo đến nhóm Telegram và tự động đưa vào hàng đợi render.
+    """
+    from app.database.models import get_db, VideoJob
+    from app.services.queue import get_render_queue
+    from config.settings import settings
+
+    try:
+        allowed_groups = settings.get_allowed_group_ids()
+        default_chat_id = allowed_groups[0] if allowed_groups else None
+
+        unfinished_jobs = []
+        with get_db() as db:
+            # 1. Tìm job bị gián đoạn ở RENDERING hoặc SCRIPT_READY
+            stuck_rendering = db.query(VideoJob).filter(VideoJob.status == "RENDERING").order_by(VideoJob.id.asc()).all()
+            stuck_ready = db.query(VideoJob).filter(VideoJob.status == "SCRIPT_READY").order_by(VideoJob.id.asc()).all()
+
+            for j in stuck_rendering + stuck_ready:
+                unfinished_jobs.append({
+                    "id": j.id,
+                    "title": j.title or j.topic or f"Video #{j.id}",
+                    "user_id": j.user_id,
+                    "status": j.status
+                })
+
+        if not unfinished_jobs:
+            logger.info("Auto-Resume: Không có video nào làm dở cần tiếp tục.")
+            return
+
+        logger.info(f"Auto-Resume: Phát hiện {len(unfinished_jobs)} video làm dở — Bắt đầu tự động dựng tiếp!")
+        rq = get_render_queue()
+
+        for j_info in unfinished_jobs:
+            job_id = j_info["id"]
+            job_title = j_info["title"]
+            target_chat = default_chat_id or (j_info["user_id"] if j_info["user_id"] and j_info["user_id"] != 0 else None)
+
+            if target_chat:
+                try:
+                    await application.bot.send_message(
+                        chat_id=target_chat,
+                        text=(
+                            f"🔄 **[TỰ ĐỘNG PHỤC HỒI TÁC VỤ]**\n\n"
+                            f"Phát hiện video đang làm dở trước khi hệ thống khởi động lại:\n"
+                            f"🎬 **Task #{job_id}: {job_title}**\n\n"
+                            f"🤖 **Chatbot đang tự động tiếp tục hoàn thiện nốt video cho bạn...**"
+                        ),
+                        parse_mode="Markdown"
+                    )
+                except Exception as ex_notify:
+                    logger.warning(f"Không thể gửi thông báo auto-resume tới chat {target_chat}: {ex_notify}")
+
+            # Đưa vào hàng đợi render tự động
+            async def make_task(jid=job_id, t_chat=target_chat):
+                await start_render_pipeline(application.bot, t_chat, jid, user_name="Auto-Resume System", is_auto_resume=True)
+
+            await rq.enqueue(
+                job_id=job_id,
+                user_name="Auto-Resume",
+                chat_id=target_chat,
+                render_func=make_task
             )
-        else:
-            await safe_reply(update, f"❌ **Render video #{job_id} thất bại:**\n`{str(e)}`")
+
+    except Exception as e:
+        logger.error(f"Lỗi trong auto_resume_pending_jobs: {e}", exc_info=True)
 
 
 async def _enqueue_render(update: Update, context: ContextTypes.DEFAULT_TYPE, job_id: int, user_name: str):

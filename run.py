@@ -10,7 +10,8 @@ from app.bot.handlers import (
     chat_command, render_command, edit_command, media_command,
     media_upload_handler, text_message_handler, channel_callback,
     video_callback, chat_callback, queue_command, cancel_queue_command,
-    pending_command, addchannel_command, editchannel_command, delchannel_command
+    pending_command, addchannel_command, editchannel_command, delchannel_command,
+    auto_resume_pending_jobs
 )
 from app.utils.ffmpeg_helper import is_ffmpeg_installed, get_ffmpeg_version
 
@@ -121,6 +122,7 @@ def main():
     app = (
         ApplicationBuilder()
         .token(settings.TELEGRAM_BOT_TOKEN)
+        .post_init(auto_resume_pending_jobs)
         .read_timeout(120)
         .write_timeout(120)
         .connect_timeout(60)
