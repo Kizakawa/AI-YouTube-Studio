@@ -1,8 +1,10 @@
 # Telegram Bot Framework (Async)
 python-telegram-bot>=21.0
 
-# AI & LLM (Gemini API)
+# AI & LLM (Gemini API & LangGraph Multi-Agent)
 google-generativeai>=0.8.0
+langgraph>=0.2.0
+langchain-core>=0.3.0
 
 # Text-To-Speech (Edge-TTS)
 edge-tts>=6.1.10

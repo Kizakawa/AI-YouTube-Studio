@@ -38,7 +38,7 @@ class SceneContract(BaseModel):
     scene_id: int = Field(ge=1)
     narration: str = Field(min_length=1, description="Lời thoại của cảnh này")
     visual_keyword: str = Field(min_length=1, description="Từ khóa tìm media trên Pexels/Imagen")
-    estimated_seconds: float = Field(gt=0, le=20, description="Ước lượng thô từ Gemini (tham khảo)")
+    estimated_seconds: float = Field(default=3.0, gt=0, le=30, description="Ước lượng thô từ Gemini (tham khảo)")
 
     # --- Populated bởi VoiceAgent (Step B) ---
     audio_path: Optional[str] = Field(default=None, description="Đường dẫn file MP3 của riêng scene này")

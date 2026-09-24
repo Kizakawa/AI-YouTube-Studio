@@ -88,6 +88,46 @@ class VideoPipeline:
             self.work_dir = Path(settings.TEMP_DIR) / f"job_{self.job_id}"
             self.work_dir.mkdir(parents=True, exist_ok=True)
 
+            # ── [NEW] Ưu tiên điều phối qua LangGraph Multi-Agent Engine với 4 Bộ Graders ──
+            if getattr(settings, 'USE_LANGGRAPH', True):
+                try:
+                    from app.graph.runner import GraphRunner
+                    logger.info(f"[Job {self.job_id}] 🌟 Kích hoạt LangGraph Multi-Agent Engine với 4 Bộ Graders & Self-Correction...")
+                    runner = GraphRunner(job_id=self.job_id, progress_callback=self._report_progress)
+                    state = await runner.run()
+
+                    script_dict = state.get("script_data", {})
+                    title = script_dict.get("title", f"Video #{self.job_id}")
+                    video_p = state.get("rendered_video_path", "")
+                    audio_p = state.get("full_audio_path", "")
+                    dur_ms = state.get("total_audio_duration_ms", 0)
+                    sub_p = state.get("subtitle_path", "")
+
+                    scenes_list = []
+                    for s in state.get("scenes_media", []):
+                        scenes_list.append(SceneContract(
+                            scene_id=s["scene_id"],
+                            narration=s.get("narration", ""),
+                            visual_keyword=s.get("visual_keyword", ""),
+                            media_path=s.get("media_path", ""),
+                            media_type=s.get("media_type", "image"),
+                        ))
+
+                    render_job = RenderJobContract(
+                        job_id=self.job_id,
+                        title=title,
+                        scenes=scenes_list,
+                        full_audio_path=audio_p,
+                        total_duration_ms=dur_ms,
+                        subtitle_path=sub_p,
+                        output_path=video_p,
+                    )
+                    self._save_render_manifest(render_job)
+                    self._update_status(JobStatus.RENDERED)
+                    return render_job
+                except Exception as e:
+                    logger.warning(f"[Job {self.job_id}] LangGraph engine gặp sự cố ({e}), chuyển sang pipeline tuyến tính dự phòng...")
+
             # ── Step A: Load script từ DB ──
             script = self._load_script_from_db()
             await self._report_progress(

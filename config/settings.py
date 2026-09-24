@@ -31,6 +31,7 @@ class Settings:
     # Defaults
     DEFAULT_TARGET_LANGUAGE: str = os.getenv("DEFAULT_TARGET_LANGUAGE", "en")
     DEFAULT_TTS_VOICE: str = os.getenv("DEFAULT_TTS_VOICE", "en-US-ChristopherNeural")
+    USE_LANGGRAPH: bool = os.getenv("USE_LANGGRAPH", "true").lower() in ("true", "1", "yes")
     
     # Storage Paths
     DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/storage/ai_youtube.db")

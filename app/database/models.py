@@ -87,6 +87,7 @@ class VideoJob(Base):
     scenes_json = Column(Text, nullable=True)      # ScriptContract.to_json_str()
     audio_duration_ms = Column(Integer, nullable=True)
     render_manifest = Column(Text, nullable=True)  # RenderJobContract JSON snapshot
+    quality_scores = Column(Text, nullable=True)   # JSON lưu kết quả chấm điểm từ 4 Graders (LangGraph)
 
     # Trạng thái — Mở rộng với thêm trạng thái trung gian
     # DRAFT -> SCRIPT_READY -> AUDIO_READY -> MEDIA_READY -> RENDERING -> RENDERED -> SCHEDULED -> PUBLISHED -> FAILED
@@ -165,6 +166,7 @@ def init_db():
                 "updated_at": "DATETIME",
                 "progress_percent": "INTEGER DEFAULT 0",
                 "progress_message": "VARCHAR(255)",
+                "quality_scores": "TEXT",
             }
             for col_name, col_type in columns_to_add.items():
                 if col_name not in existing_columns:

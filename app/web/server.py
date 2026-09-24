@@ -251,6 +251,7 @@ async def get_video_pipeline(limit: int = 50) -> List[Dict[str, Any]]:
                 "drive_link": j.drive_link or "",
                 "youtube_id": j.youtube_video_id or "",
                 "video_path": j.video_path or "",
+                "quality_scores": j.quality_scores or "",
                 "created_at": j.created_at.strftime("%Y-%m-%d %H:%M") if j.created_at else "",
                 "scheduled_time": j.scheduled_time.strftime("%Y-%m-%d %H:%M") if j.scheduled_time else "",
             })
@@ -281,6 +282,7 @@ async def get_video_detail(job_id: int) -> Dict[str, Any]:
             "progress_percent": getattr(job, "progress_percent", 0) or 0,
             "progress_message": getattr(job, "progress_message", "") or "",
             "error_message": job.error_message or "",
+            "quality_scores": job.quality_scores or "",
             "scenes": scenes,
             "audio_duration_ms": job.audio_duration_ms or 0,
             "video_path": job.video_path or "",
@@ -288,6 +290,28 @@ async def get_video_detail(job_id: int) -> Dict[str, Any]:
             "youtube_id": job.youtube_video_id or "",
             "created_at": job.created_at.strftime("%Y-%m-%d %H:%M") if job.created_at else "",
         }
+
+class EditVideoPayload(BaseModel):
+    action_type: str  # "replace_media", "edit_text", "change_voice", "remix_bgm"
+    scene_id: Optional[int] = None
+    new_text: Optional[str] = None
+    new_media_query: Optional[str] = None
+    new_voice_id: Optional[str] = None
+
+@app.post("/api/videos/{job_id}/edit")
+async def edit_video_endpoint(job_id: int, payload: EditVideoPayload, background_tasks: BackgroundTasks):
+    """Endpoint chỉnh sửa vi mô cho video qua LangGraph."""
+    from app.graph import GraphRunner, EditRequest
+    req = EditRequest(
+        action_type=payload.action_type,
+        scene_id=payload.scene_id,
+        new_text=payload.new_text,
+        new_media_query=payload.new_media_query,
+        new_voice_id=payload.new_voice_id
+    )
+    runner = GraphRunner(job_id=job_id)
+    background_tasks.add_task(runner.execute_edit, req)
+    return {"status": "ok", "message": f"Đang thực hiện chỉnh sửa '{payload.action_type}' cho Video #{job_id}"}
 
 # ─── Delete Job ───────────────────────────────────────────────────────────────
 

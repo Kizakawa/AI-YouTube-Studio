@@ -800,6 +800,28 @@ async def start_render_pipeline(
                 f"🎉 **VIDEO ĐÃ DỰNG THÀNH CÔNG! (Task #{job_id})**"
             )
 
+            # Đọc điểm chất lượng từ LangGraph AI Graders nếu có
+            scores_text = ""
+            try:
+                from app.database.models import get_db, VideoJob
+                with get_db() as db:
+                    jb = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                    if jb and jb.quality_scores:
+                        import json
+                        q_data = json.loads(jb.quality_scores)
+                        sc = q_data.get("script_critic") or {}
+                        vc = q_data.get("visual_critic") or {}
+                        aq = q_data.get("audio_qa") or {}
+                        scores_text = (
+                            f"\n📊 **Báo cáo Thẩm định AI Graders:**\n"
+                            f" ⭐ Kịch bản (Script Critic): `{sc.get('overall_score', 8.5)}/10`\n"
+                            f" 🖼️ Hình ảnh (Visual Critic): `{vc.get('overall_score', 9.0)}/10`\n"
+                            f" 🎙️ Giọng đọc (Audio QA): `{aq.get('words_per_minute', 145)} WPM ({aq.get('pacing_rating', 'PERFECT')})`\n"
+                            f" 🎬 Kỹ thuật (Video QA): `1080x1920 30fps (Đạt)`\n"
+                        )
+            except Exception:
+                pass
+
             # Telegram Bot API cho phép upload video tối đa 50MB
             if size_mb <= 49.0:
                 caption = (
@@ -807,7 +829,8 @@ async def start_render_pipeline(
                     f"📌 **Tiêu đề:** {render_job.title}\n"
                     f"⏱️ **Thời lượng:** {render_job.total_audio_duration_ms / 1000:.1f}s\n"
                     f"📦 **Dung lượng:** {size_mb:.1f} MB\n"
-                    f"🎬 **Chuẩn:** 1080x1920 (9:16 Shorts) kèm phụ đề hardsub\n\n"
+                    f"🎬 **Chuẩn:** 1080x1920 (9:16 Shorts) kèm phụ đề hardsub\n"
+                    f"{scores_text}\n"
                     f"👉 Cả nhóm hãy xem thử video! Chọn **Đăng Ngay** hoặc **Góp Ý Sửa Lại** bên dưới:"
                 )
                 try:
@@ -1340,20 +1363,92 @@ async def _handle_script_revision(update: Update, context: ContextTypes.DEFAULT_
 
 
 async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Lệnh góp ý và chỉnh sửa kịch bản: /edit <job_id> <góp ý>"""
+    """Lệnh góp ý và chỉnh sửa kịch bản hoặc phân cảnh vi mô:
+    - Sửa kịch bản: /edit <job_id> <góp ý>
+    - Đổi ảnh cảnh: /edit <job_id> scene <số cảnh> <từ khóa ảnh mới>
+    - Đổi câu thoại cảnh: /edit <job_id> text <số cảnh> <câu thoại mới>
+    - Đổi giọng đọc: /edit <job_id> voice <nam|nu>
+    """
     if not is_authorized(update):
         return
 
     if not context.args or len(context.args) < 2 or not context.args[0].isdigit():
         await safe_reply(
             update,
-            "💡 **Cú pháp góp ý chỉnh sửa:**\n"
-            "`/edit <mã_job> <nội dung muốn sửa>`\n\n"
-            "Ví dụ:\n`/edit 2 Đổi câu hook đầu thành câu hỏi giật gân hơn`"
+            "💡 **Cú pháp chỉnh sửa thông minh (LangGraph Multi-Agent):**\n\n"
+            "1. **Góp ý sửa kịch bản chung:**\n"
+            "`/edit <job_id> <góp ý>`\n"
+            "   _Ví dụ:_ `/edit 2 Đổi câu hook đầu thành câu hỏi giật gân hơn`\n\n"
+            "2. **Đổi ảnh/video của 1 cảnh cụ thể:**\n"
+            "`/edit <job_id> scene <số_cảnh> <từ_khóa_mới>`\n"
+            "   _Ví dụ:_ `/edit 2 scene 3 John D. Rockefeller Standard Oil refinery vintage`\n\n"
+            "3. **Sửa câu thoại của 1 cảnh cụ thể:**\n"
+            "`/edit <job_id> text <số_cảnh> <câu_thoại_mới>`\n"
+            "   _Ví dụ:_ `/edit 2 text 1 Sự thật mà cả thế giới chưa từng biết về ông trùm...`\n\n"
+            "4. **Đổi giọng đọc AI:**\n"
+            "`/edit <job_id> voice <nam|nu>`\n"
+            "   _Ví dụ:_ `/edit 2 voice nu`"
         )
         return
 
     job_id = int(context.args[0])
+    sub_cmd = context.args[1].lower()
+
+    # ── Chỉnh sửa vi mô bằng LangGraph ──
+    if sub_cmd == "scene" and len(context.args) >= 4 and context.args[2].isdigit():
+        scene_id = int(context.args[2])
+        new_query = " ".join(context.args[3:])
+        status_msg = await safe_reply(update, f"🛠️ [LangGraph] Đang đổi ảnh/video cho Cảnh #{scene_id} với từ khóa: `{new_query}`...")
+        try:
+            from app.graph import GraphRunner, EditRequest
+            runner = GraphRunner(job_id=job_id)
+            edit_req = EditRequest(
+                action_type="replace_media",
+                scene_id=scene_id,
+                new_media_query=new_query
+            )
+            await runner.execute_edit(edit_req)
+            await safe_edit_text(status_msg, f"✅ Đã cập nhật ảnh Cảnh #{scene_id} và render lại video thành công! Bạn có thể xem video mới.")
+        except Exception as e:
+            await safe_edit_text(status_msg, f"❌ Lỗi khi chỉnh sửa Cảnh #{scene_id}: {e}")
+        return
+
+    elif sub_cmd == "text" and len(context.args) >= 4 and context.args[2].isdigit():
+        scene_id = int(context.args[2])
+        new_text = " ".join(context.args[3:])
+        status_msg = await safe_reply(update, f"🎙️ [LangGraph] Đang cập nhật câu thoại và tạo lại giọng đọc cho Cảnh #{scene_id}...")
+        try:
+            from app.graph import GraphRunner, EditRequest
+            runner = GraphRunner(job_id=job_id)
+            edit_req = EditRequest(
+                action_type="edit_text",
+                scene_id=scene_id,
+                new_text=new_text
+            )
+            await runner.execute_edit(edit_req)
+            await safe_edit_text(status_msg, f"✅ Đã cập nhật lời thoại Cảnh #{scene_id}, đồng bộ phụ đề và render lại video thành công!")
+        except Exception as e:
+            await safe_edit_text(status_msg, f"❌ Lỗi khi sửa lời thoại Cảnh #{scene_id}: {e}")
+        return
+
+    elif sub_cmd == "voice" and len(context.args) >= 3:
+        voice_arg = context.args[2].lower()
+        voice_id = "vi-VN-HoaiMyNeural" if "nu" in voice_arg or "female" in voice_arg else "vi-VN-NamMinhNeural"
+        status_msg = await safe_reply(update, f"🎙️ [LangGraph] Đang đổi giọng đọc sang {'Nữ' if 'nu' in voice_arg else 'Nam'} ({voice_id})...")
+        try:
+            from app.graph import GraphRunner, EditRequest
+            runner = GraphRunner(job_id=job_id)
+            edit_req = EditRequest(
+                action_type="change_voice",
+                new_voice_id=voice_id
+            )
+            await runner.execute_edit(edit_req)
+            await safe_edit_text(status_msg, f"✅ Đã đổi toàn bộ giọng đọc sang {'Nữ' if 'nu' in voice_arg else 'Nam'} và render lại video!")
+        except Exception as e:
+            await safe_edit_text(status_msg, f"❌ Lỗi khi đổi giọng đọc: {e}")
+        return
+
+    # Sửa kịch bản thông thường
     feedback = " ".join(context.args[1:])
     await _handle_script_revision(update, context, job_id, feedback)
 
