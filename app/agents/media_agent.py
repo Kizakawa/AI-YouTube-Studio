@@ -78,15 +78,15 @@ class MediaAgent:
     def search_web_photos(self, query: str, per_page: int = 3) -> List[Dict]:
         """
         Tìm kiếm hình ảnh mở chất lượng cao trên Web (Wikimedia Commons API).
-        Miễn phí 100%, không cần API Key, hoạt động ổn định khi không có Pexels.
+        Miễn phí 100%, không cần API Key, tối ưu cho tài liệu / nhân vật lịch sử / tin tức thực tế.
         """
-        headers = {"User-Agent": "YouTubeShortsBot/1.0 (contact@example.com)"}
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AI-Shorts-Studio/2.0"}
         params = {
             "action": "query",
             "generator": "search",
             "gsrsearch": query,
             "gsrnamespace": 6,  # 6 = File namespace
-            "gsrlimit": per_page * 2,
+            "gsrlimit": per_page * 3,
             "prop": "imageinfo",
             "iiprop": "url|mime|size",
             "format": "json"
@@ -101,15 +101,25 @@ class MediaAgent:
                     if ii:
                         mime = ii[0].get("mime", "")
                         url = ii[0].get("url", "")
-                        # Chỉ lấy ảnh bitmap thực tế (jpg, png, webp), loại trừ SVG/PDF
-                        if mime.startswith("image/") and not mime.endswith("svg+xml") and url:
+                        w = ii[0].get("width", 0)
+                        h = ii[0].get("height", 0)
+                        # Chỉ lấy ảnh bitmap thực tế (jpg, png, webp) độ phân giải tốt (w >= 400), loại trừ SVG/PDF
+                        if mime.startswith("image/") and not mime.endswith("svg+xml") and url and w >= 400:
                             photos.append({
                                 "url": url,
                                 "title": v.get("title", ""),
-                                "width": ii[0].get("width", 0),
-                                "height": ii[0].get("height", 0)
+                                "width": w,
+                                "height": h
                             })
-                return photos[:per_page]
+                if photos:
+                    return photos[:per_page]
+
+            # Nếu tìm kiếm cụm từ dài không có, tự động rút gọn về 2-3 từ đầu (chủ thể chính/tên riêng)
+            words = query.strip().split()
+            if len(words) > 2:
+                simplified = " ".join(words[:2])
+                logger.info(f"Wikimedia: Không thấy ảnh cho '{query}', tự động thử lại với '{simplified}'...")
+                return self.search_web_photos(simplified, per_page)
         except Exception as e:
             logger.warning(f"Lỗi khi tìm kiếm ảnh web (Wikimedia): {e}")
         return []

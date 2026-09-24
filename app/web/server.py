@@ -1,4 +1,8 @@
 import os
+import json
+import yaml
+import base64
+import threading
 import logging
 import requests as http_requests
 from pathlib import Path
@@ -11,7 +15,7 @@ from pydantic import BaseModel
 from contextlib import contextmanager
 from sqlalchemy import func
 from config.settings import settings
-from app.database.models import init_db, get_db, User, VideoJob, ActivityLog
+from app.database.models import init_db, get_db, User, VideoJob, ActivityLog, log_activity
 
 logger = logging.getLogger(__name__)
 
@@ -469,6 +473,7 @@ async def trigger_render_from_web(job_id: int, background_tasks: BackgroundTasks
         job.status = "RENDERING"
         job.progress_percent = 0
         job.progress_message = "Đang khởi tạo pipeline render từ Web..."
+        job.error_message = None
 
     background_tasks.add_task(_run_web_render, job_id)
 
@@ -476,6 +481,29 @@ async def trigger_render_from_web(job_id: int, background_tasks: BackgroundTasks
         "success": True,
         "message": f"Video #{job_id} đã được đưa vào hàng đợi render",
         "job_id": job_id
+    }
+
+
+@app.post("/api/videos/recover-failed")
+async def recover_all_failed_jobs() -> Dict[str, Any]:
+    """
+    Tự động khôi phục tất cả các video bị lỗi (FAILED) về trạng thái SCRIPT_READY,
+    làm sạch thông báo lỗi và chuẩn bị sẵn sàng cho lượt render tiếp theo.
+    """
+    with get_db() as db:
+        failed_jobs = db.query(VideoJob).filter(VideoJob.status == "FAILED").all()
+        count = len(failed_jobs)
+        for j in failed_jobs:
+            j.status = "SCRIPT_READY"
+            j.error_message = None
+            j.progress_percent = 0
+            j.progress_message = "Đã khôi phục về hàng đợi sẵn sàng render lại"
+            log_activity(db, 0, "Web Studio", "RECOVER_FAILED", f"Khôi phục Video #{j.id} về SCRIPT_READY")
+
+    return {
+        "success": True,
+        "recovered_count": count,
+        "message": f"Đã khôi phục thành công {count} video bị lỗi về trạng thái sẵn sàng!"
     }
 
 # ─── Health Check ─────────────────────────────────────────────────────────────
@@ -686,4 +714,432 @@ async def get_token_health() -> Dict[str, Any]:
             "percent": round(pexels_valid / pexels_total * 100) if pexels_results else 0,
             "keys": pexels_results,
         },
+    }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# ─── GOOGLE ACCOUNTS & MULTI-CHANNEL STUDIO API ──────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
+
+_oauth_sessions: Dict[str, Dict[str, Any]] = {}
+
+def _read_channels_yaml() -> Dict[str, Any]:
+    yaml_path = settings.CHANNELS_CONFIG_FILE
+    if not yaml_path.exists():
+        return {"google_accounts": [], "channels": []}
+    try:
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception as e:
+        logger.error(f"Lỗi đọc channels.yaml: {e}")
+        return {"google_accounts": [], "channels": []}
+
+def _write_channels_yaml(data: Dict[str, Any]) -> bool:
+    yaml_path = settings.CHANNELS_CONFIG_FILE
+    try:
+        with open(yaml_path, "w", encoding="utf-8") as f:
+            yaml.dump(data, f, allow_unicode=True, sort_keys=False, indent=2)
+        settings._cached_channels = None  # Reset in-memory cache
+        return True
+    except Exception as e:
+        logger.error(f"Lỗi ghi channels.yaml: {e}")
+        return False
+
+def _check_account_tokens(account_id: str) -> Dict[str, Any]:
+    base_dir = Path(settings.BASE_DIR)
+    acc_dir = base_dir / "credentials" / "accounts" / account_id
+
+    client_secret_path = acc_dir / "client_secret.json"
+    has_client_secret = client_secret_path.exists() and client_secret_path.stat().st_size > 10
+
+    # Fallback nếu account_1 có secret thì các account khác có thể dùng chung
+    if not has_client_secret:
+        fallback = base_dir / "credentials" / "accounts" / "account_1" / "client_secret.json"
+        if fallback.exists() and fallback.stat().st_size > 10:
+            has_client_secret = True
+
+    yt_token_path = acc_dir / "youtube_token.json"
+    youtube_connected = False
+    if yt_token_path.exists():
+        try:
+            with open(yt_token_path, "r", encoding="utf-8") as f:
+                tok = json.load(f)
+                if tok.get("token") or tok.get("refresh_token"):
+                    youtube_connected = True
+        except Exception:
+            pass
+
+    drive_token_path = acc_dir / "drive_token.json"
+    drive_connected = False
+    if drive_token_path.exists():
+        try:
+            with open(drive_token_path, "r", encoding="utf-8") as f:
+                tok = json.load(f)
+                if tok.get("token") or tok.get("refresh_token"):
+                    drive_connected = True
+        except Exception:
+            pass
+
+    return {
+        "has_client_secret": has_client_secret,
+        "youtube_connected": youtube_connected,
+        "drive_connected": drive_connected
+    }
+
+class AccountCreateRequest(BaseModel):
+    id: str
+    email_label: str
+    drive_storage: Optional[str] = "2 TB Google One"
+    youtube_quota_daily: Optional[int] = 10000
+
+class ChannelCreateRequest(BaseModel):
+    id: str
+    name: str
+    niche: Optional[str] = "general"
+    language: Optional[str] = "en"
+    preferred_voice: Optional[str] = "en-US-ChristopherNeural"
+    visual_mode: Optional[str] = "imagen_ai"
+    publish_hour_utc: Optional[int] = 12
+    days: Optional[List[str]] = ["monday", "wednesday", "friday", "sunday"]
+
+class AuthStartRequest(BaseModel):
+    service: str = "youtube"  # "youtube" hoặc "drive"
+
+class UploadSecretRequest(BaseModel):
+    content: str
+
+@app.get("/api/accounts")
+async def get_accounts_and_channels() -> Dict[str, Any]:
+    """Lấy danh sách tất cả tài khoản Google và các kênh YouTube con kèm trạng thái token."""
+    cfg = _read_channels_yaml()
+    raw_accounts = cfg.get("google_accounts", [])
+
+    enriched_accounts = []
+    for acc in raw_accounts:
+        acc_id = acc.get("id", "")
+        token_status = _check_account_tokens(acc_id)
+        brand_channels = acc.get("brand_channels", [])
+
+        enriched_accounts.append({
+            "id": acc_id,
+            "email_label": acc.get("email_label", ""),
+            "drive_storage": acc.get("drive_storage", "2 TB Google One"),
+            "youtube_quota_daily": acc.get("youtube_quota_daily", 10000),
+            "has_client_secret": token_status["has_client_secret"],
+            "youtube_connected": token_status["youtube_connected"],
+            "drive_connected": token_status["drive_connected"],
+            "brand_channels": brand_channels,
+            "channels_count": len(brand_channels)
+        })
+
+    return {
+        "accounts": enriched_accounts,
+        "total_accounts": len(enriched_accounts),
+        "total_channels": sum(a["channels_count"] for a in enriched_accounts)
+    }
+
+@app.post("/api/accounts")
+async def create_google_account(req: AccountCreateRequest) -> Dict[str, Any]:
+    """Tạo một tài khoản Google mới trong hệ thống."""
+    clean_id = req.id.strip().lower().replace(" ", "_")
+    if not clean_id:
+        raise HTTPException(status_code=400, detail="Mã tài khoản không hợp lệ")
+
+    cfg = _read_channels_yaml()
+    accounts = cfg.setdefault("google_accounts", [])
+
+    if any(a.get("id") == clean_id for a in accounts):
+        raise HTTPException(status_code=400, detail=f"Tài khoản '{clean_id}' đã tồn tại!")
+
+    acc_dir = Path(settings.BASE_DIR) / "credentials" / "accounts" / clean_id
+    acc_dir.mkdir(parents=True, exist_ok=True)
+
+    new_account = {
+        "id": clean_id,
+        "email_label": req.email_label.strip(),
+        "drive_storage": req.drive_storage or "2 TB Google One",
+        "youtube_quota_daily": req.youtube_quota_daily or 10000,
+        "credentials": {
+            "client_secret": f"credentials/accounts/{clean_id}/client_secret.json",
+            "youtube_token": f"credentials/accounts/{clean_id}/youtube_token.json",
+            "drive_token": f"credentials/accounts/{clean_id}/drive_token.json"
+        },
+        "brand_channels": []
+    }
+
+    accounts.append(new_account)
+    _write_channels_yaml(cfg)
+
+    return {
+        "success": True,
+        "message": f"Đã tạo tài khoản Google '{clean_id}' thành công!",
+        "account": new_account
+    }
+
+@app.delete("/api/accounts/{account_id}")
+async def delete_google_account(account_id: str) -> Dict[str, Any]:
+    """Xóa tài khoản Google khỏi hệ thống."""
+    cfg = _read_channels_yaml()
+    accounts = cfg.get("google_accounts", [])
+
+    target = next((a for a in accounts if a.get("id") == account_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản")
+
+    cfg["google_accounts"] = [a for a in accounts if a.get("id") != account_id]
+    flat_channels = cfg.get("channels", [])
+    cfg["channels"] = [c for c in flat_channels if c.get("google_account") != account_id]
+
+    _write_channels_yaml(cfg)
+    return {
+        "success": True,
+        "message": f"Đã xóa tài khoản '{account_id}' khỏi hệ thống"
+    }
+
+@app.post("/api/accounts/{account_id}/disconnect")
+async def disconnect_account_service(account_id: str, req: AuthStartRequest) -> Dict[str, Any]:
+    """Ngắt kết nối YouTube hoặc Drive token của tài khoản."""
+    base_dir = Path(settings.BASE_DIR)
+    acc_dir = base_dir / "credentials" / "accounts" / account_id
+
+    service = req.service.lower()
+    files_to_remove = []
+    if service in ("youtube", "all"):
+        files_to_remove.extend([acc_dir / "youtube_token.json", acc_dir / "youtube_token_base64.txt"])
+    if service in ("drive", "all"):
+        files_to_remove.extend([acc_dir / "drive_token.json", acc_dir / "drive_token_base64.txt"])
+
+    for f in files_to_remove:
+        if f.exists():
+            try:
+                f.unlink()
+            except Exception as ex:
+                logger.warning(f"Không thể xóa file {f}: {ex}")
+
+    return {
+        "success": True,
+        "message": f"Đã ngắt kết nối {service.upper()} cho tài khoản '{account_id}'"
+    }
+
+@app.post("/api/accounts/{account_id}/upload-secret")
+async def upload_client_secret(account_id: str, req: UploadSecretRequest) -> Dict[str, Any]:
+    """Nạp file client_secret.json cho tài khoản."""
+    try:
+        secret_data = json.loads(req.content)
+        if "installed" not in secret_data and "web" not in secret_data:
+            raise ValueError("File client_secret.json không đúng định dạng của Google")
+    except Exception as ex:
+        raise HTTPException(status_code=400, detail=f"Nội dung file JSON không hợp lệ: {ex}")
+
+    acc_dir = Path(settings.BASE_DIR) / "credentials" / "accounts" / account_id.strip()
+    acc_dir.mkdir(parents=True, exist_ok=True)
+    secret_path = acc_dir / "client_secret.json"
+
+    with open(secret_path, "w", encoding="utf-8") as f:
+        json.dump(secret_data, f, indent=2)
+
+    return {
+        "success": True,
+        "message": f"Đã lưu file client_secret.json cho tài khoản '{account_id}' thành công!"
+    }
+
+@app.post("/api/accounts/{account_id}/auth-start")
+async def start_google_oauth(account_id: str, req: AuthStartRequest) -> Dict[str, Any]:
+    """Khởi chạy luồng xác thực Google OAuth trong luồng nền và tự động mở trình duyệt."""
+    service = req.service.lower()
+    session_key = f"{account_id}:{service}"
+
+    _oauth_sessions[session_key] = {
+        "status": "in_progress",
+        "account_id": account_id,
+        "service": service,
+        "message": f"Đang mở trình duyệt để xác thực {service.upper()} cho {account_id}...",
+        "error": None
+    }
+
+    def _oauth_worker():
+        try:
+            from google_auth_oauthlib.flow import InstalledAppFlow
+            scopes = ["https://www.googleapis.com/auth/youtube.upload"] if service == "youtube" else ["https://www.googleapis.com/auth/drive.file"]
+            token_filename = "youtube_token.json" if service == "youtube" else "drive_token.json"
+
+            base_dir = Path(settings.BASE_DIR)
+            acc_dir = base_dir / "credentials" / "accounts" / account_id
+            acc_dir.mkdir(parents=True, exist_ok=True)
+
+            secret_file = acc_dir / "client_secret.json"
+            if not secret_file.exists():
+                fallback = base_dir / "credentials" / "accounts" / "account_1" / "client_secret.json"
+                if fallback.exists():
+                    secret_file = fallback
+                else:
+                    _oauth_sessions[session_key] = {
+                        "status": "error",
+                        "error": "Chưa có file client_secret.json! Vui lòng nạp file trước."
+                    }
+                    return
+
+            flow = InstalledAppFlow.from_client_secrets_file(str(secret_file), scopes=scopes)
+            creds = flow.run_local_server(
+                port=0,
+                prompt="consent",
+                access_type="offline",
+                authorization_prompt_message="👉 Vui lòng đăng nhập Google trên trình duyệt...",
+                success_message="Xác thực Google thành công! Bạn có thể đóng tab này và quay lại Web Studio.",
+                open_browser=True
+            )
+
+            token_data = creds.to_json()
+            token_file = acc_dir / token_filename
+            with open(token_file, "w", encoding="utf-8") as f:
+                f.write(token_data)
+
+            b64_str = base64.b64encode(token_data.encode("utf-8")).decode("utf-8")
+            b64_file = acc_dir / f"{Path(token_filename).stem}_base64.txt"
+            with open(b64_file, "w", encoding="utf-8") as f:
+                f.write(b64_str)
+
+            _oauth_sessions[session_key] = {
+                "status": "success",
+                "account_id": account_id,
+                "service": service,
+                "message": f"Đã kết nối {service.upper()} thành công!"
+            }
+        except Exception as ex:
+            logger.error(f"OAuth Worker Error: {ex}")
+            _oauth_sessions[session_key] = {
+                "status": "error",
+                "error": str(ex)
+            }
+
+    t = threading.Thread(target=_oauth_worker, daemon=True)
+    t.start()
+
+    return {
+        "success": True,
+        "session_key": session_key,
+        "status": "in_progress",
+        "message": "Trình duyệt Google đang được mở để cấp quyền. Hãy bấm 'Cho Phép' trên trình duyệt."
+    }
+
+@app.get("/api/accounts/{account_id}/auth-status")
+async def get_google_oauth_status(account_id: str, service: str = "youtube") -> Dict[str, Any]:
+    """Kiểm tra tiến độ xác thực Google OAuth."""
+    session_key = f"{account_id}:{service.lower()}"
+    status_info = _oauth_sessions.get(session_key, {"status": "idle", "message": "Chưa có phiên xác thực nào"})
+    return status_info
+
+# ─── Brand Channels CRUD Endpoints ───────────────────────────────────────────
+
+@app.post("/api/accounts/{account_id}/channels")
+async def add_brand_channel(account_id: str, req: ChannelCreateRequest) -> Dict[str, Any]:
+    """Thêm một kênh thương hiệu mới trực thuộc tài khoản Google."""
+    clean_id = req.id.strip().lower().replace(" ", "_")
+    if not clean_id:
+        raise HTTPException(status_code=400, detail="Mã kênh không hợp lệ")
+
+    cfg = _read_channels_yaml()
+    accounts = cfg.get("google_accounts", [])
+    account = next((a for a in accounts if a.get("id") == account_id), None)
+    if not account:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản mẹ")
+
+    brand_channels = account.setdefault("brand_channels", [])
+    if any(c.get("id") == clean_id for c in brand_channels):
+        raise HTTPException(status_code=400, detail=f"Kênh '{clean_id}' đã tồn tại trong tài khoản này!")
+
+    new_channel = {
+        "id": clean_id,
+        "name": req.name.strip(),
+        "niche": req.niche.strip(),
+        "language": req.language.strip(),
+        "visual_mode": req.visual_mode or "imagen_ai",
+        "preferred_voice": req.preferred_voice or "en-US-ChristopherNeural",
+        "schedule": {
+            "publish_hour_utc": req.publish_hour_utc or 12,
+            "days": req.days or ["monday", "wednesday", "friday", "sunday"]
+        }
+    }
+
+    brand_channels.append(new_channel)
+
+    flat_channels = cfg.setdefault("channels", [])
+    flat_entry = next((c for c in flat_channels if c.get("id") == clean_id), None)
+    if not flat_entry:
+        flat_channels.append({
+            "id": clean_id,
+            "name": new_channel["name"],
+            "niche": new_channel["niche"],
+            "language": new_channel["language"],
+            "google_account": account_id,
+            "visual_mode": new_channel["visual_mode"],
+            "preferred_voice": new_channel["preferred_voice"]
+        })
+
+    _write_channels_yaml(cfg)
+
+    return {
+        "success": True,
+        "message": f"Đã thêm kênh '{new_channel['name']}' thành công!",
+        "channel": new_channel
+    }
+
+@app.put("/api/accounts/{account_id}/channels/{channel_id}")
+async def update_brand_channel(account_id: str, channel_id: str, req: ChannelCreateRequest) -> Dict[str, Any]:
+    """Chỉnh sửa thông tin kênh thương hiệu."""
+    cfg = _read_channels_yaml()
+    accounts = cfg.get("google_accounts", [])
+    account = next((a for a in accounts if a.get("id") == account_id), None)
+    if not account:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản mẹ")
+
+    brand_channels = account.get("brand_channels", [])
+    channel = next((c for c in brand_channels if c.get("id") == channel_id), None)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Không tìm thấy kênh cần sửa")
+
+    channel["name"] = req.name.strip()
+    channel["niche"] = req.niche.strip()
+    channel["language"] = req.language.strip()
+    channel["visual_mode"] = req.visual_mode or channel.get("visual_mode", "imagen_ai")
+    channel["preferred_voice"] = req.preferred_voice or channel.get("preferred_voice", "en-US-ChristopherNeural")
+    channel["schedule"] = {
+        "publish_hour_utc": req.publish_hour_utc or 12,
+        "days": req.days or ["monday", "wednesday", "friday", "sunday"]
+    }
+
+    flat_channels = cfg.get("channels", [])
+    for fc in flat_channels:
+        if fc.get("id") == channel_id:
+            fc["name"] = channel["name"]
+            fc["niche"] = channel["niche"]
+            fc["language"] = channel["language"]
+            fc["preferred_voice"] = channel["preferred_voice"]
+            fc["visual_mode"] = channel["visual_mode"]
+
+    _write_channels_yaml(cfg)
+
+    return {
+        "success": True,
+        "message": f"Đã cập nhật kênh '{channel['name']}' thành công!",
+        "channel": channel
+    }
+
+@app.delete("/api/accounts/{account_id}/channels/{channel_id}")
+async def delete_brand_channel(account_id: str, channel_id: str) -> Dict[str, Any]:
+    """Xóa một kênh khỏi tài khoản."""
+    cfg = _read_channels_yaml()
+    accounts = cfg.get("google_accounts", [])
+    account = next((a for a in accounts if a.get("id") == account_id), None)
+    if not account:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản")
+
+    account["brand_channels"] = [c for c in account.get("brand_channels", []) if c.get("id") != channel_id]
+    cfg["channels"] = [c for c in cfg.get("channels", []) if c.get("id") != channel_id]
+
+    _write_channels_yaml(cfg)
+    return {
+        "success": True,
+        "message": f"Đã xóa kênh '{channel_id}' thành công!"
     }

@@ -10,23 +10,33 @@ from app.bot.handlers import (
     chat_command, render_command, edit_command, media_command,
     media_upload_handler, text_message_handler, channel_callback,
     video_callback, chat_callback, queue_command, cancel_queue_command,
-    pending_command
+    pending_command, addchannel_command, editchannel_command, delchannel_command
 )
 from app.utils.ffmpeg_helper import is_ffmpeg_installed, get_ffmpeg_version
 
 def recover_stuck_jobs():
-    """Tự động khôi phục các video bị gián đoạn do tắt bot đột ngột khi đang render"""
+    """Tự động khôi phục các video bị gián đoạn do tắt bot đột ngột khi đang render và cảnh báo các job lỗi tồn đọng"""
     try:
         from app.database.models import get_db, VideoJob, log_activity
         with get_db() as db:
+            # 1. Khôi phục các job bị kẹt ở RENDERING
             stuck_jobs = db.query(VideoJob).filter(VideoJob.status == "RENDERING").all()
             for j in stuck_jobs:
                 j.status = "SCRIPT_READY"
                 j.progress_percent = 0
-                j.progress_message = "Đã khôi phục sau khi bot khởi động lại"
+                j.progress_message = "Đã khôi phục sau khi hệ thống khởi động lại"
                 log_activity(db, 0, "System", "RECOVER_JOB", f"Khôi phục Video #{j.id} về SCRIPT_READY")
             if stuck_jobs:
                 print(f"   -> [Khôi phục] Đã tự động khôi phục {len(stuck_jobs)} video bị gián đoạn về trạng thái sẵn sàng.")
+
+            # 2. Cảnh báo các job FAILED tồn đọng (để người dùng dễ dàng khôi phục trên Web hoặc Telegram)
+            failed_jobs = db.query(VideoJob).filter(VideoJob.status == "FAILED").all()
+            if failed_jobs:
+                print(f"   -> [Tồn đọng] Phát hiện {len(failed_jobs)} video bị lỗi (FAILED) trong hàng đợi:")
+                for fj in failed_jobs:
+                    err_preview = fj.error_message.replace("\n", " ")[:50] if fj.error_message else "N/A"
+                    print(f"      * Job #{fj.id}: {fj.title[:30] if fj.title else fj.topic} -> Lỗi: {err_preview}...")
+                print("   -> [Khuyên dùng] Trên Web Dashboard: bấm nút '🔄 Khôi phục Job Lỗi', hoặc trên Telegram: gõ /pending để render lại!")
     except Exception as e:
         print(f"   -> ⚠️ Lỗi khôi phục jobs: {e}")
 
@@ -120,6 +130,9 @@ def main():
     # Đăng ký các lệnh Telegram
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("channels", channels_command))
+    app.add_handler(CommandHandler("addchannel", addchannel_command))
+    app.add_handler(CommandHandler(["editchannel", "managechannel"], editchannel_command))
+    app.add_handler(CommandHandler(["delchannel", "removechannel"], delchannel_command))
     app.add_handler(CommandHandler(["chat", "ai"], chat_command))
     app.add_handler(CommandHandler("idea", idea_command))
     app.add_handler(CommandHandler("edit", edit_command))
@@ -129,8 +142,8 @@ def main():
     app.add_handler(CommandHandler("cancel", cancel_queue_command))
     app.add_handler(CommandHandler(["pending", "resume"], pending_command))
     app.add_handler(CommandHandler("status", status_command))
-    app.add_handler(CallbackQueryHandler(channel_callback, pattern=r"^select_channel:"))
-    app.add_handler(CallbackQueryHandler(video_callback, pattern=r"^(render_video|publish_now|publish_youtube|feedback_video|edit_script|schedule|schedule_youtube|regenerate|cancel|process_all_pending|refresh_pending)"))
+    app.add_handler(CallbackQueryHandler(channel_callback, pattern=r"^(select_channel|manage_channel|pick_niche|set_niche|prompt_rename|add_tpl|prompt_custom_channel|pick_voice|set_voice|pick_lang|set_lang|pick_visual|set_visual|confirm_del_channel|do_del_channel|prompt_add_channel|back_channels|refresh_channels)"))
+    app.add_handler(CallbackQueryHandler(video_callback, pattern=r"^(render_video|publish_now|publish_youtube|feedback_video|edit_script|schedule|schedule_youtube|regenerate|cancel|process_all_pending|refresh_pending|retry_all_failed)"))
     app.add_handler(CallbackQueryHandler(chat_callback, pattern=r"^(convert_chat|suggest_more|change_hooks):"))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.Document.ALL, media_upload_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))

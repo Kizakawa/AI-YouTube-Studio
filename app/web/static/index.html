@@ -325,6 +325,9 @@
                 <div class="panel-header">
                     <h3>🎞️ Pipeline Sản Xuất Video</h3>
                     <div style="display:flex; gap:8px; align-items:center;">
+                        <button class="btn btn-primary btn-sm" id="btn-recover-failed" onclick="recoverAllFailedJobs()" title="Tự động khôi phục và đưa các video lỗi vào hàng đợi render" style="display:none;background:var(--accent-amber);border-color:var(--accent-amber);font-size:11.5px;">
+                            🔄 Khôi phục Job Lỗi (<span id="failed-count-badge">0</span>)
+                        </button>
                         <span class="badge badge-amber">Production Queue</span>
                         <button class="btn btn-secondary btn-sm" id="btn-refresh-pipeline" onclick="fetchVideos()">
                             <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
@@ -377,10 +380,23 @@
         <section class="tab-content" id="tab-channels">
             <div class="panel-card">
                 <div class="panel-header">
-                    <h3>📺 Ma Trận Kênh & Tài Khoản Google Ultra</h3>
-                    <span class="badge badge-green">Multi-Account Pool</span>
+                    <div>
+                        <h3>📺 Ma Trận Tài Khoản Google & Kênh YouTube</h3>
+                        <p style="font-size:12px; color:var(--text-muted); margin-top:2px;">Quản lý đăng nhập Google OAuth, phân chia kênh thương hiệu, và cấu hình tự động hoá</p>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <button class="btn btn-primary btn-sm" onclick="openAddAccountModal()">
+                            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                            + Thêm Tài Khoản Google
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="fetchAccounts()">
+                            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                            Làm Mới
+                        </button>
+                    </div>
                 </div>
-                <div class="channel-grid" id="channels-container">
+                <div id="accounts-container" class="accounts-list">
+                    <div style="text-align:center; padding:30px; color:var(--text-muted);">Đang tải dữ liệu tài khoản và kênh...</div>
                 </div>
             </div>
         </section>
@@ -422,6 +438,157 @@
         </div>
         <div class="modal-body" id="modal-body">
             <!-- filled by JS -->
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: GOOGLE ACCOUNT -->
+<div class="modal-overlay" id="modal-account" onclick="closeAccountModal()">
+    <div class="modal-card" onclick="event.stopPropagation()" style="max-width:500px;">
+        <div class="modal-header">
+            <h3 id="modal-account-title">Thêm Tài Khoản Google Mới</h3>
+            <button class="modal-close" onclick="closeAccountModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group" style="margin-bottom:14px;">
+                <label class="form-label" for="acc-input-id">Mã định danh tài khoản <span class="required">*</span></label>
+                <input type="text" id="acc-input-id" class="form-input" placeholder="Ví dụ: account_3, account_main..." autocomplete="off">
+                <small style="color:var(--text-muted);font-size:11px;">Chỉ gồm chữ cái thường, số và dấu gạch dưới (viết liền)</small>
+            </div>
+            <div class="form-group" style="margin-bottom:14px;">
+                <label class="form-label" for="acc-input-email">Email Google / Ghi chú <span class="required">*</span></label>
+                <input type="email" id="acc-input-email" class="form-input" placeholder="Ví dụ: mychannel.media@gmail.com" autocomplete="off">
+            </div>
+            <div class="form-group" style="margin-bottom:14px;">
+                <label class="form-label" for="acc-input-drive">Dung lượng Google Drive</label>
+                <input type="text" id="acc-input-drive" class="form-input" value="2 TB Google One" placeholder="2 TB Google One, 15 GB Free...">
+            </div>
+            <div class="form-group" style="margin-bottom:14px;">
+                <label class="form-label" for="acc-input-quota">YouTube Daily Quota (units)</label>
+                <input type="number" id="acc-input-quota" class="form-input" value="10000" placeholder="10000">
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+                <button class="btn btn-secondary" onclick="closeAccountModal()">Hủy</button>
+                <button class="btn btn-primary" onclick="submitAccountForm()">Lưu Tài Khoản</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: BRAND CHANNEL (ADD / EDIT) -->
+<div class="modal-overlay" id="modal-channel" onclick="closeChannelModal()">
+    <div class="modal-card" onclick="event.stopPropagation()" style="max-width:560px;">
+        <div class="modal-header">
+            <h3 id="modal-channel-title">Thêm Kênh YouTube Mới</h3>
+            <button class="modal-close" onclick="closeChannelModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="channel-mode" value="add">
+            <div class="form-row">
+                <div class="form-group" style="flex:1; margin-bottom:12px;">
+                    <label class="form-label" for="channel-parent-acc">Tài khoản Google Mẹ <span class="required">*</span></label>
+                    <select id="channel-parent-acc" class="form-input"></select>
+                </div>
+                <div class="form-group" style="flex:1; margin-bottom:12px;">
+                    <label class="form-label" for="channel-input-id">Mã Kênh (ID) <span class="required">*</span></label>
+                    <input type="text" id="channel-input-id" class="form-input" placeholder="Ví dụ: channel_ai_tech" autocomplete="off">
+                </div>
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+                <label class="form-label" for="channel-input-name">Tên Kênh YouTube <span class="required">*</span></label>
+                <input type="text" id="channel-input-name" class="form-input" placeholder="Ví dụ: AI & Future Technology" autocomplete="off">
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="flex:1; margin-bottom:12px;">
+                    <label class="form-label" for="channel-input-niche">Chủ đề / Niche</label>
+                    <input type="text" id="channel-input-niche" class="form-input" placeholder="Ví dụ: technology, psychology...">
+                </div>
+                <div class="form-group" style="flex:1; margin-bottom:12px;">
+                    <label class="form-label" for="channel-input-lang">Ngôn ngữ</label>
+                    <select id="channel-input-lang" class="form-input">
+                        <option value="en">🇺🇸 English</option>
+                        <option value="vi">🇻🇳 Tiếng Việt</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="flex:1; margin-bottom:12px;">
+                    <label class="form-label" for="channel-input-voice">Giọng đọc AI (Edge-TTS)</label>
+                    <select id="channel-input-voice" class="form-input">
+                        <option value="en-US-ChristopherNeural">🇺🇸 Christopher (Nam - Trầm, cuốn hút)</option>
+                        <option value="en-US-GuyNeural">🇺🇸 Guy (Nam - Sâu sắc, tự tin)</option>
+                        <option value="en-US-EricNeural">🇺🇸 Eric (Nam - Khoa học, thời sự)</option>
+                        <option value="en-US-JennyNeural">🇺🇸 Jenny (Nữ - Truyền cảm hứng)</option>
+                        <option value="vi-VN-NamMinhNeural">🇻🇳 Nam Minh (Nam - Giọng chuẩn truyền thông)</option>
+                        <option value="vi-VN-HoaiMyNeural">🇻🇳 Hoài My (Nữ - Ngọt ngào, kịch tính)</option>
+                    </select>
+                </div>
+                <div class="form-group" style="flex:1; margin-bottom:12px;">
+                    <label class="form-label" for="channel-input-visual">Phong cách hình ảnh</label>
+                    <select id="channel-input-visual" class="form-input">
+                        <option value="imagen_ai">✨ Google Imagen 3 (Điện ảnh, ấn tượng)</option>
+                        <option value="pexels_stock">🎞️ Pexels HD B-Roll (Thực tế, phong cảnh)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="flex:1; margin-bottom:12px;">
+                    <label class="form-label" for="channel-input-hour">Giờ đăng tự động (UTC)</label>
+                    <input type="number" id="channel-input-hour" class="form-input" min="0" max="23" value="12">
+                </div>
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+                <button class="btn btn-secondary" onclick="closeChannelModal()">Hủy</button>
+                <button class="btn btn-primary" onclick="submitChannelForm()">Lưu Kênh</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: UPLOAD CLIENT SECRET -->
+<div class="modal-overlay" id="modal-secret" onclick="closeSecretModal()">
+    <div class="modal-card" onclick="event.stopPropagation()" style="max-width:520px;">
+        <div class="modal-header">
+            <h3 id="modal-secret-title">Nạp File client_secret.json</h3>
+            <button class="modal-close" onclick="closeSecretModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="secret-target-account" value="">
+            <p style="font-size:12.5px; color:var(--text-muted); margin-bottom:14px;">
+                File này lấy từ <strong>Google Cloud Console → Credentials → OAuth 2.0 Client IDs (Desktop App)</strong>.
+            </p>
+            <div class="form-group" style="margin-bottom:14px;">
+                <label class="form-label">Chọn file JSON từ máy tính:</label>
+                <input type="file" id="secret-file-input" accept=".json" class="form-input" style="padding:8px;" onchange="handleSecretFileSelect(event)">
+            </div>
+            <div class="form-group" style="margin-bottom:14px;">
+                <label class="form-label" for="secret-json-textarea">Hoặc dán nội dung client_secret.json:</label>
+                <textarea id="secret-json-textarea" class="form-input" style="height:120px; font-family:monospace; font-size:11px;" placeholder='{"installed": {"client_id": "...", "client_secret": "..."}}'></textarea>
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:8px;">
+                <button class="btn btn-secondary" onclick="closeSecretModal()">Hủy</button>
+                <button class="btn btn-primary" onclick="submitSecretUpload()">Lưu Client Secret</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: OAUTH IN PROGRESS -->
+<div class="modal-overlay" id="modal-oauth" onclick="event.stopPropagation()">
+    <div class="modal-card" style="max-width:480px; text-align:center;">
+        <div class="modal-header" style="justify-content:center;">
+            <h3 id="modal-oauth-title">Đang Xác Thực Google OAuth</h3>
+        </div>
+        <div class="modal-body" style="padding:24px 16px;">
+            <div class="oauth-spinner" id="oauth-spinner" style="margin:0 auto 16px auto;">
+                <div class="spinner-ring"></div>
+            </div>
+            <h4 id="oauth-status-heading" style="margin-bottom:8px; color:var(--text-primary);">Đang mở trình duyệt Google...</h4>
+            <p id="oauth-status-desc" style="font-size:13px; color:var(--text-secondary); line-height:1.5; margin-bottom:20px;">
+                Cửa sổ trình duyệt đã được mở. Vui lòng đăng nhập đúng tài khoản Google của bạn và bấm <strong>"Cho phép / Allow"</strong> để hoàn tất ủy quyền.
+            </p>
+            <div id="oauth-result-box" style="display:none; padding:12px; border-radius:8px; margin-bottom:16px;"></div>
+            <button class="btn btn-secondary" id="oauth-cancel-btn" onclick="closeOAuthModal()">Đóng cửa sổ này</button>
         </div>
     </div>
 </div>

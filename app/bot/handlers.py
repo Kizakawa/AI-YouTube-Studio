@@ -10,6 +10,12 @@ from telegram.ext import ContextTypes
 from config.settings import settings
 from app.bot.keyboards import (
     get_channel_selection_keyboard,
+    get_channel_manage_keyboard,
+    get_niche_selection_keyboard,
+    get_add_channel_templates_keyboard,
+    get_voice_selection_keyboard,
+    get_lang_selection_keyboard,
+    get_visual_selection_keyboard,
     get_script_review_keyboard,
     get_video_post_render_keyboard,
     get_video_review_keyboard,
@@ -19,6 +25,7 @@ from app.database.models import get_db, User, VideoJob, log_activity
 from app.agents.content_agent import ContentAgent
 from app.schemas.contracts import ScriptContract
 from app.services.render_queue import get_render_queue
+from app.services import channel_manager
 
 logger = logging.getLogger(__name__)
 content_agent = ContentAgent()
@@ -157,28 +164,62 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await safe_reply(update, welcome_text)
 
 
-async def channels_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Hiển thị danh sách kênh cho cả nhóm cùng chọn"""
-    if not is_authorized(update):
-        return
+def _format_channel_info_text(ch: dict) -> str:
+    name = ch.get("name", ch.get("id"))
+    ch_id = ch.get("id")
+    niche = ch.get("niche", "general")
+    lang = ch.get("language", "en").upper()
+    voice = ch.get("preferred_voice", "Default")
+    visual = "✨ Google Imagen 3 (Điện ảnh)" if ch.get("visual_mode") == "imagen_ai" else "🎞️ Pexels HD B-Roll"
+    sched = ch.get("schedule", {})
+    hour = sched.get("publish_hour_utc", 12)
 
-    reply_markup = get_channel_selection_keyboard()
-    await safe_reply(
-        update,
-        "📺 **Chọn kênh YouTube mục tiêu cho dự án tiếp theo:**",
-        reply_markup=reply_markup
+    return (
+        f"⚙️ **CẤU HÌNH KÊNH: {name}**\n\n"
+        f"• **Mã kênh (ID):** `{ch_id}`\n"
+        f"• **Chủ đề / Niche:** {niche}\n"
+        f"• **Ngôn ngữ:** {lang}\n"
+        f"• **Giọng đọc AI:** `{voice}`\n"
+        f"• **Phong cách:** {visual}\n"
+        f"• **Lịch tự động đăng:** {hour}:00 UTC hàng tuần\n\n"
+        f"👉 Bấm nút bên dưới để đổi giọng, đổi ngôn ngữ, đổi visual hoặc xóa kênh:"
     )
 
 
+async def channels_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Hiển thị danh sách kênh cho cả nhóm cùng chọn và quản lý"""
+    if not is_authorized(update):
+        return
+
+    user = update.effective_user
+    active_channel_id = None
+    with get_db() as db:
+        db_user = db.query(User).filter(User.telegram_id == user.id).first()
+        if db_user:
+            active_channel_id = db_user.active_channel_id
+
+    reply_markup = get_channel_selection_keyboard(active_channel_id)
+    text = (
+        "📺 **MA TRẬN KÊNH YOUTUBE & TÀI KHOẢN GOOGLE**\n\n"
+        f"📌 Kênh bạn đang chọn: `{active_channel_id or 'Chưa chọn'}`\n\n"
+        "• Bấm vào **Tên Kênh** để chọn làm việc.\n"
+        "• Bấm **⚙️ Sửa** để xem chi tiết / chỉnh sửa cấu hình kênh.\n"
+        "• Bấm **➕ Thêm Kênh Mới** (hoặc gõ `/addchannel`) để tạo kênh mới!"
+    )
+    await safe_reply(update, text, reply_markup=reply_markup)
+
+
 async def channel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Xử lý khi một thành viên bấm nút chọn kênh"""
+    """Xử lý tất cả các thao tác tương tác liên quan đến kênh qua nút bấm"""
     query = update.callback_query
     await safe_query_answer(query)
 
     data = query.data
+    user = query.from_user
+
+    # 1. Chọn kênh làm việc
     if data.startswith("select_channel:"):
         channel_id = data.split(":")[1]
-        user = query.from_user
 
         with get_db() as db:
             db_user = db.query(User).filter(User.telegram_id == user.id).first()
@@ -189,11 +230,404 @@ async def channel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             log_activity(db, user.id, user.username, "CHANGE_CHANNEL",
                          f"Chuyển kênh làm việc sang '{channel_id}'", channel_id=channel_id)
 
+        # Cập nhật bàn phím với dấu tích ✓ mới
+        new_markup = get_channel_selection_keyboard(channel_id)
+        try:
+            await query.message.edit_reply_markup(reply_markup=new_markup)
+        except Exception:
+            pass
+
         await safe_reply(
             update,
             f"✅ **{user.first_name}** đã chọn kênh: **{channel_id}**\n"
             f"Bây giờ cả nhóm có thể gõ: `/idea <chủ đề>` để bắt đầu tạo video cho kênh này!"
         )
+
+    # 2. Xem chi tiết / Quản lý kênh
+    elif data.startswith("manage_channel:"):
+        channel_id = data.split(":")[1]
+        ch = channel_manager.get_channel(channel_id)
+        if not ch:
+            await safe_reply(update, f"❌ Không tìm thấy thông tin kênh `{channel_id}`.")
+            return
+
+        active_id = None
+        with get_db() as db:
+            db_user = db.query(User).filter(User.telegram_id == user.id).first()
+            if db_user:
+                active_id = db_user.active_channel_id
+
+        text = _format_channel_info_text(ch)
+        markup = get_channel_manage_keyboard(channel_id, is_active=(channel_id == active_id))
+        await safe_edit_text(query.message, text, reply_markup=markup)
+
+    # 2.5 Chọn đổi tên kênh
+    elif data.startswith("prompt_rename:"):
+        channel_id = data.split(":")[1]
+        context.user_data["awaiting_rename"] = channel_id
+        await safe_reply(
+            update,
+            f"✏️ **Đổi tên cho kênh `{channel_id}`:**\n\n"
+            f"👉 Hãy gửi tin nhắn Tên Mới bạn muốn đặt (ví dụ: `Bí Ẩn Vũ Trụ & Khoa Học`):"
+        )
+
+    # 2.6 Chọn chủ đề (Niche)
+    elif data.startswith("pick_niche:"):
+        channel_id = data.split(":")[1]
+        markup = get_niche_selection_keyboard(channel_id)
+        await safe_edit_text(query.message, f"🎯 **Chọn chủ đề (Niche) mới cho kênh `{channel_id}`:**", reply_markup=markup)
+
+    elif data.startswith("set_niche:"):
+        parts = data.split(":")
+        channel_id, niche_val = parts[1], parts[2]
+        ok, msg, updated = channel_manager.update_channel(channel_id, niche=niche_val)
+        if ok:
+            text = f"✅ Đã đổi chủ đề thành `{niche_val}`!\n\n" + _format_channel_info_text(updated)
+            markup = get_channel_manage_keyboard(channel_id)
+            await safe_edit_text(query.message, text, reply_markup=markup)
+        else:
+            await safe_reply(update, f"❌ Lỗi: {msg}")
+
+    # 3. Chọn giọng đọc
+    elif data.startswith("pick_voice:"):
+        channel_id = data.split(":")[1]
+        markup = get_voice_selection_keyboard(channel_id)
+        await safe_edit_text(query.message, f"🎙️ **Chọn giọng đọc AI cho kênh `{channel_id}`:**", reply_markup=markup)
+
+    elif data.startswith("set_voice:"):
+        parts = data.split(":")
+        channel_id, voice_key = parts[1], parts[2]
+        ok, msg, updated = channel_manager.update_channel(channel_id, preferred_voice=voice_key)
+        if ok:
+            text = f"✅ Đã đổi giọng đọc thành `{voice_key}`!\n\n" + _format_channel_info_text(updated)
+            markup = get_channel_manage_keyboard(channel_id)
+            await safe_edit_text(query.message, text, reply_markup=markup)
+        else:
+            await safe_reply(update, f"❌ Lỗi: {msg}")
+
+    # 4. Chọn ngôn ngữ
+    elif data.startswith("pick_lang:"):
+        channel_id = data.split(":")[1]
+        markup = get_lang_selection_keyboard(channel_id)
+        await safe_edit_text(query.message, f"🌐 **Chọn ngôn ngữ cho kênh `{channel_id}`:**", reply_markup=markup)
+
+    elif data.startswith("set_lang:"):
+        parts = data.split(":")
+        channel_id, lang_code = parts[1], parts[2]
+        ok, msg, updated = channel_manager.update_channel(channel_id, language=lang_code)
+        if ok:
+            text = f"✅ Đã đổi ngôn ngữ sang `{lang_code.upper()}`!\n\n" + _format_channel_info_text(updated)
+            markup = get_channel_manage_keyboard(channel_id)
+            await safe_edit_text(query.message, text, reply_markup=markup)
+        else:
+            await safe_reply(update, f"❌ Lỗi: {msg}")
+
+    # 5. Chọn Visual Mode (Imagen / Pexels)
+    elif data.startswith("pick_visual:"):
+        channel_id = data.split(":")[1]
+        markup = get_visual_selection_keyboard(channel_id)
+        await safe_edit_text(query.message, f"🎨 **Chọn phong cách hình ảnh cho kênh `{channel_id}`:**", reply_markup=markup)
+
+    elif data.startswith("set_visual:"):
+        parts = data.split(":")
+        channel_id, visual_key = parts[1], parts[2]
+        ok, msg, updated = channel_manager.update_channel(channel_id, visual_mode=visual_key)
+        if ok:
+            text = f"✅ Đã đổi phong cách hình ảnh sang `{visual_key}`!\n\n" + _format_channel_info_text(updated)
+            markup = get_channel_manage_keyboard(channel_id)
+            await safe_edit_text(query.message, text, reply_markup=markup)
+        else:
+            await safe_reply(update, f"❌ Lỗi: {msg}")
+
+    # 6. Xác nhận & Xóa kênh
+    elif data.startswith("confirm_del_channel:"):
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        channel_id = data.split(":")[1]
+        confirm_markup = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🗑️ Có, Xóa Kênh", callback_data=f"do_del_channel:{channel_id}"),
+                InlineKeyboardButton("❌ Hủy Bỏ", callback_data=f"manage_channel:{channel_id}")
+            ]
+        ])
+        await safe_edit_text(
+            query.message,
+            f"⚠️ **CẢNH BÁO:** Bạn có chắc chắn muốn xóa kênh `{channel_id}` khỏi hệ thống không?\n"
+            f"Thao tác này sẽ xóa kênh khỏi cả cấu hình Telegram và Web Dashboard.",
+            reply_markup=confirm_markup
+        )
+
+    elif data.startswith("do_del_channel:"):
+        channel_id = data.split(":")[1]
+        ok, msg = channel_manager.delete_channel(channel_id)
+        if ok:
+            await safe_reply(update, f"🗑️ Đã xóa kênh `{channel_id}` thành công!")
+            # Trở lại danh sách kênh
+            channels = channel_manager.get_flat_channels()
+            active_id = channels[0]["id"] if channels else None
+            markup = get_channel_selection_keyboard(active_id)
+            await safe_edit_text(query.message, "📺 **MA TRẬN KÊNH YOUTUBE ĐÃ ĐƯỢC CẬP NHẬT:**", reply_markup=markup)
+        else:
+            await safe_reply(update, f"❌ Không thể xóa kênh: {msg}")
+
+    # 7. Menu Thêm Kênh Nhanh (Option Template hoặc Gõ tên)
+    elif data == "prompt_add_channel":
+        text = (
+            "➕ **THÊM KÊNH YOUTUBE MỚI 1-CLICK:**\n\n"
+            "Chọn ngay một kênh mẫu tối ưu sẵn bên dưới, hoặc bấm **Tự Nhập Tên Kênh** để đặt tên theo ý bạn:"
+        )
+        markup = get_add_channel_templates_keyboard()
+        await safe_edit_text(query.message, text, reply_markup=markup)
+
+    # 7.1 Thêm nhanh từ Template
+    elif data.startswith("add_tpl:"):
+        tpl_key = data.split(":")[1]
+        templates = {
+            "tech_vi": {
+                "name": "Công Nghệ & AI Đỉnh Cao",
+                "niche": "technology",
+                "language": "vi",
+                "voice": "vi-VN-NamMinhNeural",
+                "visual": "imagen_ai"
+            },
+            "finance_vi": {
+                "name": "Bí Mật Tài Chính & Tiền Tệ",
+                "niche": "finance",
+                "language": "vi",
+                "voice": "vi-VN-NamMinhNeural",
+                "visual": "imagen_ai"
+            },
+            "psychology_en": {
+                "name": "Dark Psychology & Mind Hacks",
+                "niche": "psychology",
+                "language": "en",
+                "voice": "en-US-ChristopherNeural",
+                "visual": "imagen_ai"
+            },
+            "space_vi": {
+                "name": "Khám Phá Vũ Trụ Huyền Bí",
+                "niche": "space_science",
+                "language": "vi",
+                "voice": "vi-VN-NamMinhNeural",
+                "visual": "imagen_ai"
+            }
+        }
+        tpl = templates.get(tpl_key)
+        if not tpl:
+            await safe_reply(update, "❌ Mẫu kênh không tồn tại.")
+            return
+
+        import time
+        unique_suffix = int(time.time()) % 10000
+        new_id = f"ch_{tpl_key}_{unique_suffix}"
+
+        accounts = channel_manager.get_accounts_enriched()
+        target_acc = accounts[0]["id"] if accounts else "account_1"
+
+        ok, msg, new_ch = channel_manager.add_channel(
+            account_id=target_acc,
+            channel_id=new_id,
+            name=tpl["name"],
+            niche=tpl["niche"],
+            language=tpl["language"],
+            visual_mode=tpl["visual"],
+            preferred_voice=tpl["voice"]
+        )
+
+        if ok:
+            with get_db() as db:
+                db_user = db.query(User).filter(User.telegram_id == user.id).first()
+                if db_user:
+                    db_user.active_channel_id = new_id
+                log_activity(db, user.id, user.username, "ADD_CHANNEL_TPL", f"Tạo nhanh kênh '{tpl['name']}' ({new_id})", channel_id=new_id)
+
+            res_text = (
+                f"🎉 **ĐÃ TẠO NHANH KÊNH MỚI THÀNH CÔNG!**\n\n"
+                f"📺 **Tên kênh:** {tpl['name']}\n"
+                f"🔑 **Mã kênh:** `{new_id}`\n"
+                f"🎯 **Chủ đề:** {tpl['niche']}\n"
+                f"🌐 **Ngôn ngữ:** {tpl['language'].upper()}\n"
+                f"🎙️ **Giọng đọc:** `{tpl['voice']}`\n\n"
+                f"👉 Đã tự động đặt làm **kênh đang chọn** của bạn!\n"
+                f"Gõ `/idea <chủ đề>` để bắt đầu tạo video ngay!"
+            )
+            markup = get_channel_manage_keyboard(new_id, is_active=True)
+            await safe_edit_text(query.message, res_text, reply_markup=markup)
+        else:
+            await safe_reply(update, f"❌ Không thể tạo kênh: {msg}")
+
+    # 7.2 Nhập tên kênh tùy chọn
+    elif data == "prompt_custom_channel":
+        context.user_data["awaiting_new_channel_name"] = True
+        await safe_reply(
+            update,
+            "✍️ **Tạo Kênh Mới:**\n\n"
+            "Hãy gửi tin nhắn Tên Kênh bạn muốn tạo (ví dụ: `Bí Ẩn Thế Giới`, `Đầu Tư Thông Minh`...):\n"
+            "AI sẽ tự động khởi tạo mọi cấu hình tối ưu nhất cho bạn!"
+        )
+
+    # 8. Quay lại hoặc làm mới danh sách kênh
+    elif data in ["back_channels", "refresh_channels"]:
+        active_id = None
+        with get_db() as db:
+            db_user = db.query(User).filter(User.telegram_id == user.id).first()
+            if db_user:
+                active_id = db_user.active_channel_id
+
+        markup = get_channel_selection_keyboard(active_id)
+        text = (
+            "📺 **MA TRẬN KÊNH YOUTUBE & TÀI KHOẢN GOOGLE**\n\n"
+            f"📌 Kênh bạn đang chọn: `{active_id or 'Chưa chọn'}`\n\n"
+            "• Bấm vào **Tên Kênh** để chọn làm việc.\n"
+            "• Bấm **⚙️ Sửa** để tùy chỉnh giọng đọc, ngôn ngữ, hình ảnh hoặc xóa kênh.\n"
+            "• Bấm **➕ Thêm Kênh Mới** để tạo kênh con mới!"
+        )
+        await safe_edit_text(query.message, text, reply_markup=markup)
+
+
+async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lệnh thêm kênh YouTube mới trực tiếp từ Telegram"""
+    if not is_authorized(update):
+        return
+
+    user = update.effective_user
+    args = context.args
+
+    if not args:
+        guide = (
+            "➕ **HƯỚNG DẪN THÊM KÊNH YOUTUBE MỚI:**\n\n"
+            "Cú pháp: `/addchannel <mã_kênh> | <tên_kênh> | <chủ_đề> | <ngôn_ngữ>`\n\n"
+            "Ví dụ:\n"
+            "• `/addchannel ch_tech | AI & Future Tech | technology | en`\n"
+            "• `/addchannel ch_tamly | Tâm Lý Học Đen | psychology | vi`\n\n"
+            "💡 Sau khi thêm, kênh sẽ tự động được đồng bộ lên **Web Dashboard** và sẵn sàng tạo video ngay bằng `/idea`!"
+        )
+        await safe_reply(update, guide)
+        return
+
+    full_text = " ".join(args)
+    if "|" in full_text:
+        parts = [p.strip() for p in full_text.split("|")]
+        ch_id = parts[0].lower().replace(" ", "_")
+        ch_name = parts[1] if len(parts) > 1 and parts[1] else ch_id
+        ch_niche = parts[2] if len(parts) > 2 and parts[2] else "general"
+        ch_lang = parts[3].lower() if len(parts) > 3 and parts[3] in ["vi", "en"] else "en"
+    else:
+        ch_id = args[0].lower().replace(" ", "_")
+        ch_name = " ".join(args[1:]) if len(args) > 1 else ch_id
+        ch_niche = "general"
+        ch_lang = "en"
+
+    # Lấy tài khoản Google đầu tiên để gán
+    accounts = channel_manager.get_accounts_enriched()
+    target_acc = accounts[0]["id"] if accounts else "account_1"
+
+    ok, msg, new_ch = channel_manager.add_channel(
+        account_id=target_acc,
+        channel_id=ch_id,
+        name=ch_name,
+        niche=ch_niche,
+        language=ch_lang,
+        visual_mode="imagen_ai",
+        preferred_voice="vi-VN-NamMinhNeural" if ch_lang == "vi" else "en-US-ChristopherNeural"
+    )
+
+    if ok:
+        with get_db() as db:
+            db_user = db.query(User).filter(User.telegram_id == user.id).first()
+            if db_user:
+                db_user.active_channel_id = ch_id
+            log_activity(db, user.id, user.username, "ADD_CHANNEL", f"Thêm kênh mới '{ch_name}' ({ch_id})", channel_id=ch_id)
+
+        res_text = (
+            f"🎉 **ĐÃ THÊM KÊNH YOUTUBE MỚI THÀNH CÔNG!**\n\n"
+            f"📺 **Tên kênh:** {ch_name}\n"
+            f"🔑 **Mã kênh:** `{ch_id}`\n"
+            f"🎯 **Chủ đề:** {ch_niche}\n"
+            f"🌐 **Ngôn ngữ:** {ch_lang.upper()}\n"
+            f"☁️ **Tài khoản Google:** `{target_acc}`\n\n"
+            f"👉 Kênh đã được đặt làm **kênh đang chọn** của bạn!\n"
+            f"Gõ `/idea <chủ đề>` để bắt đầu sản xuất video ngay!"
+        )
+        await safe_reply(update, res_text)
+    else:
+        await safe_reply(update, f"❌ Không thể thêm kênh: {msg}")
+
+
+async def editchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lệnh chỉnh sửa thông tin kênh YouTube"""
+    if not is_authorized(update):
+        return
+
+    args = context.args
+    if not args:
+        guide = (
+            "⚙️ **HƯỚNG DẪN CHỈNH SỬA KÊNH:**\n\n"
+            "Cú pháp 1: `/editchannel <mã_kênh>` — Mở bảng nút bấm trực quan\n\n"
+            "Cú pháp 2 (Sửa nhanh): `/editchannel <mã_kênh> <thuộc_tính> <giá_trị>`\n"
+            "Các thuộc tính hỗ trợ:\n"
+            "• `name`: Đổi tên kênh (vd: `/editchannel channel_psychology name Dark Psychology Pro`)\n"
+            "• `niche`: Đổi chủ đề (vd: `/editchannel channel_psychology niche philosophy`)\n"
+            "• `voice`: Đổi giọng đọc (vd: `/editchannel channel_psychology voice vi-VN-NamMinhNeural`)\n"
+            "• `lang`: Đổi ngôn ngữ (vd: `/editchannel channel_psychology lang vi`)\n"
+            "• `visual`: Đổi phong cách (vd: `/editchannel channel_psychology visual imagen_ai` hoặc `pexels_stock`)"
+        )
+        await safe_reply(update, guide)
+        return
+
+    ch_id = args[0].strip()
+    channel = channel_manager.get_channel(ch_id)
+    if not channel:
+        await safe_reply(update, f"❌ Không tìm thấy kênh `{ch_id}` trong hệ thống. Gõ `/channels` để xem danh sách.")
+        return
+
+    # Nếu chỉ gõ /editchannel <id> -> mở menu tương tác
+    if len(args) == 1:
+        text = _format_channel_info_text(channel)
+        markup = get_channel_manage_keyboard(ch_id)
+        await safe_reply(update, text, reply_markup=markup)
+        return
+
+    # Sửa nhanh theo thuộc tính
+    field = args[1].lower().strip()
+    val = " ".join(args[2:]).strip()
+
+    updates = {}
+    if field in ["name", "title", "ten"]:
+        updates["name"] = val
+    elif field in ["niche", "topic", "chude"]:
+        updates["niche"] = val
+    elif field in ["voice", "giong"]:
+        updates["preferred_voice"] = val
+    elif field in ["lang", "language", "ngonngu"]:
+        updates["language"] = val.lower()
+    elif field in ["visual", "mode", "style"]:
+        updates["visual_mode"] = val.lower()
+    else:
+        await safe_reply(update, f"⚠️ Thuộc tính `{field}` không hợp lệ. Chỉ hỗ trợ: `name`, `niche`, `voice`, `lang`, `visual`.")
+        return
+
+    ok, msg, updated = channel_manager.update_channel(ch_id, **updates)
+    if ok:
+        await safe_reply(update, f"✅ **Đã cập nhật kênh `{ch_id}` thành công!**\n\n{_format_channel_info_text(updated)}")
+    else:
+        await safe_reply(update, f"❌ Lỗi cập nhật: {msg}")
+
+
+async def delchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lệnh xóa kênh khỏi hệ thống"""
+    if not is_authorized(update):
+        return
+
+    if not context.args:
+        await safe_reply(update, "🗑️ Cú pháp xóa kênh: `/delchannel <mã_kênh>`\nVí dụ: `/delchannel channel_test`")
+        return
+
+    ch_id = context.args[0].strip()
+    ok, msg = channel_manager.delete_channel(ch_id)
+    if ok:
+        await safe_reply(update, f"✅ Đã xóa kênh `{ch_id}` khỏi hệ thống thành công!\nCác thay đổi đã được đồng bộ lên Web Dashboard.")
+    else:
+        await safe_reply(update, f"❌ Không thể xóa: {msg}")
 
 
 async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -476,37 +910,52 @@ async def pending_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     with get_db() as db:
         pending_jobs = db.query(VideoJob).filter(
-            VideoJob.status.in_(["SCRIPT_READY", "RENDERING", "DRAFT"])
+            VideoJob.status.in_(["SCRIPT_READY", "RENDERING", "DRAFT", "FAILED"])
         ).order_by(VideoJob.id.asc()).all()
 
     if not pending_jobs:
         await safe_reply(
             update,
             "✅ **TẤT CẢ CÁC TÁC VỤ ĐÃ ĐƯỢC XỬ LÝ HOÀN TẤT!**\n\n"
-            "Hiện tại không còn kịch bản nào tồn đọng trong hệ thống.\n"
+            "Hiện tại không còn kịch bản nào tồn đọng hoặc bị lỗi trong hệ thống.\n"
             "Gõ `/idea <chủ đề>` để tạo video mới!"
         )
         return
 
     lines = []
     ready_count = 0
+    failed_count = 0
     for j in pending_jobs:
-        icon = "📝" if j.status == "SCRIPT_READY" else ("⏳" if j.status == "RENDERING" else "📄")
         if j.status == "SCRIPT_READY":
+            icon = "📝"
             ready_count += 1
+            extra = ""
+        elif j.status == "RENDERING":
+            icon = "⏳"
+            extra = ""
+        elif j.status == "FAILED":
+            icon = "❌"
+            failed_count += 1
+            err_short = j.error_message.replace("\n", " ")[:35] if j.error_message else "Lỗi không xác định"
+            extra = f"\n   ↳ _Lỗi: {err_short}..._"
+        else:
+            icon = "📄"
+            extra = ""
         title = j.title or j.topic
-        lines.append(f"{icon} **Task #{j.id}**: {title[:40]}... (`{j.status}`)")
+        lines.append(f"{icon} **Task #{j.id}**: {title[:40]}... (`{j.status}`){extra}")
 
     text = (
-        f"📋 **DANH SÁCH TÁC VỤ CHƯA XỬ LÝ ({len(pending_jobs)} video):**\n\n"
+        f"📋 **DANH SÁCH TÁC VỤ TỒN ĐỌNG ({len(pending_jobs)} video):**\n\n"
         + "\n".join(lines) + "\n\n"
-        f"💡 Có `{ready_count}` kịch bản đã sẵn sàng render.\n"
-        "👉 Bấm nút bên dưới để tự động đưa toàn bộ vào hàng đợi render tuần tự:"
+        f"💡 Sẵn sàng: `{ready_count}` | Bị lỗi cần khắc phục: `{failed_count}`\n"
+        "👉 Bấm nút bên dưới để tự động đưa vào hàng đợi render tuần tự:"
     )
 
     keyboard = []
     if ready_count > 0:
         keyboard.append([InlineKeyboardButton(f"🚀 Render Toàn Bộ Đang Chờ ({ready_count})", callback_data="process_all_pending")])
+    if failed_count > 0:
+        keyboard.append([InlineKeyboardButton(f"🔄 Khôi Phục & Render {failed_count} Job Lỗi", callback_data="retry_all_failed")])
     keyboard.append([InlineKeyboardButton("🔄 Làm Mới Danh Sách", callback_data="refresh_pending")])
 
     await safe_reply(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
@@ -981,6 +1430,37 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Gõ `/queue` để theo dõi tiến trình!"
         )
 
+    # 7.5 Khôi phục và đưa toàn bộ video bị lỗi FAILED vào hàng đợi render lại
+    elif data == "retry_all_failed":
+        with get_db() as db:
+            failed_jobs = db.query(VideoJob).filter(
+                VideoJob.status == "FAILED"
+            ).order_by(VideoJob.id.asc()).all()
+
+            if not failed_jobs:
+                await safe_reply(update, "⚠️ Không còn video nào ở trạng thái lỗi.")
+                return
+
+            recovered_ids = []
+            for j in failed_jobs:
+                j.status = "SCRIPT_READY"
+                j.error_message = None
+                j.progress_percent = 0
+                j.progress_message = "Đã khôi phục từ lệnh retry và chuẩn bị render lại"
+                log_activity(db, user.id, user.username, "RETRY_FAILED_JOB", f"Khôi phục Video #{j.id} về SCRIPT_READY")
+                recovered_ids.append(j.id)
+
+        user_name = user.first_name if user else "Creator"
+        for j_id in recovered_ids:
+            await _enqueue_render(update, context, j_id, user_name)
+
+        await safe_reply(
+            update,
+            f"🔄 **ĐÃ KHÔI PHỤC VÀ ĐƯA {len(recovered_ids)} VIDEO LỖI VÀO HÀNG ĐỢI RENDER!**\n\n"
+            f"⚡ Hệ thống tự động tái sử dụng phân cảnh và giọng đọc đã có từ trước để render cực nhanh.\n"
+            f"Gõ `/queue` để theo dõi tiến trình!"
+        )
+
     # 8. Làm mới danh sách tác vụ chờ
     elif data == "refresh_pending":
         await pending_command(update, context)
@@ -1107,6 +1587,61 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     clean_text = re.sub(rf"@{bot_username}\b", "", text, flags=re.IGNORECASE).strip()
     if not clean_text:
         await safe_reply(update, f"👋 Chào {user.first_name}! Bạn muốn cùng AI lên ý tưởng video gì hôm nay?")
+        return
+
+    # Xử lý nhập liệu tương tác cho kênh (đổi tên hoặc tạo kênh mới)
+    if context.user_data.get("awaiting_rename"):
+        target_ch_id = context.user_data.pop("awaiting_rename")
+        ok, msg, updated = channel_manager.update_channel(target_ch_id, name=clean_text)
+        if ok:
+            text = f"✅ **Đã đổi tên kênh thành:** {clean_text}\n\n" + _format_channel_info_text(updated)
+            markup = get_channel_manage_keyboard(target_ch_id, is_active=True)
+            await safe_reply(update, text, reply_markup=markup)
+        else:
+            await safe_reply(update, f"❌ Lỗi đổi tên: {msg}")
+        return
+
+    if context.user_data.get("awaiting_new_channel_name"):
+        context.user_data.pop("awaiting_new_channel_name")
+        import unicodedata
+        normalized = unicodedata.normalize('NFKD', clean_text).encode('ASCII', 'ignore').decode('utf-8')
+        raw_id = re.sub(r'[^a-zA-Z0-9]+', '_', normalized).strip('_').lower()
+        new_id = f"ch_{raw_id}" if not raw_id.startswith("ch_") else raw_id
+        if len(new_id) > 28:
+            new_id = new_id[:28]
+
+        accounts = channel_manager.get_accounts_enriched()
+        target_acc = accounts[0]["id"] if accounts else "account_1"
+
+        ok, msg, new_ch = channel_manager.add_channel(
+            account_id=target_acc,
+            channel_id=new_id,
+            name=clean_text,
+            niche="general",
+            language="vi",
+            visual_mode="imagen_ai",
+            preferred_voice="vi-VN-NamMinhNeural"
+        )
+        if ok:
+            with get_db() as db:
+                db_user = db.query(User).filter(User.telegram_id == user.id).first()
+                if db_user:
+                    db_user.active_channel_id = new_id
+                log_activity(db, user.id, user.username, "ADD_CHANNEL", f"Tạo kênh '{clean_text}' ({new_id})", channel_id=new_id)
+
+            text = (
+                f"🎉 **ĐÃ TẠO KÊNH THÀNH CÔNG!**\n\n"
+                f"📺 **Tên kênh:** {clean_text}\n"
+                f"🔑 **Mã kênh:** `{new_id}`\n"
+                f"🎯 **Chủ đề:** Mặc định\n"
+                f"🌐 **Ngôn ngữ:** Tiếng Việt (vi)\n\n"
+                f"👉 Đã tự động đặt làm **kênh đang chọn** của bạn!\n"
+                f"Bấm các nút bên dưới để tùy chỉnh tiếp (Đổi chủ đề, giọng đọc...) hoặc gõ `/idea <chủ đề>` để tạo video ngay!"
+            )
+            markup = get_channel_manage_keyboard(new_id, is_active=True)
+            await safe_reply(update, text, reply_markup=markup)
+        else:
+            await safe_reply(update, f"❌ Không thể tạo kênh: {msg}")
         return
 
     # Tự động phát hiện nếu người dùng Reply vào tin nhắn kịch bản/video để góp ý sửa

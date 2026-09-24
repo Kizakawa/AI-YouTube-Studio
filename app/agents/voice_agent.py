@@ -45,6 +45,18 @@ class VoiceAgent:
         for scene in scenes:
             scene_audio_path = str(Path(output_dir) / f"scene_{scene.scene_id:03d}.mp3")
 
+            # Checkpoint: Tái sử dụng audio đã tạo từ trước nếu hợp lệ (> 1KB)
+            if Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024:
+                duration_ms = self._get_audio_duration_ms(scene_audio_path)
+                if duration_ms > 0:
+                    logger.info(f"Scene {scene.scene_id}: Tái sử dụng audio từ checkpoint ({duration_ms}ms)")
+                    enriched = scene.model_copy(update={
+                        "audio_path": scene_audio_path,
+                        "audio_duration_ms": duration_ms,
+                    })
+                    enriched_scenes.append(enriched)
+                    continue
+
             # Sinh audio cho 1 scene
             communicate = edge_tts.Communicate(scene.narration, selected_voice)
             await communicate.save(scene_audio_path)

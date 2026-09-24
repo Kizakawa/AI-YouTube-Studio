@@ -139,6 +139,10 @@ STRICT RETENTION & STORYTELLING FORMULA:
      - "ancient forbidden tomb golden relic volumetric dust rays"
      - "futuristic quantum supercomputer glowing blue holographic core"
    - NEVER use lazy generic words like "ocean", "computer", "city".
+6. 🎯 REAL-WORLD ENTITIES & HISTORICAL ACCURACY (VITAL):
+   - If the topic or script involves REAL-WORLD people, leaders, celebrities, or historical figures/places (e.g. Vladimir Putin, Donald Trump, Elon Musk, Nikola Tesla, Julius Caesar, Kremlin, White House, NASA):
+   - For scenes discussing that person, you MUST explicitly include their exact name/title in visual_keyword (e.g. "Vladimir Putin official portrait", "Vladimir Putin Kremlin address", "Vladimir Putin intense cold stare").
+   - NEVER use generic descriptions like "powerful man in boardroom" or "serious politician" when talking about a specific real person! Specifying their real name allows the system to fetch authentic documentary photographs from Web archives.
 
 Return ONLY valid JSON matching this exact schema:
 {{

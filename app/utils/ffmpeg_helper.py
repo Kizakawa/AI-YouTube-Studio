@@ -24,46 +24,78 @@ FFPROBE_TIMEOUT = 10   # 10 giây max cho probe
 
 
 def _ensure_ffmpeg_in_path():
-    """Tự động bổ sung PATH từ WinGet, Windows Environment & các thư mục thường dùng nếu tiến trình hiện tại chưa nhận."""
+    """
+    Tự động bổ sung PATH từ WinGet, Windows Environment & các thư mục thường dùng nếu tiến trình hiện tại chưa nhận.
+    ƯU TIÊN TUYỆT ĐỐI các bản FFmpeg hiện đại (WinGet Gyan.dev, C:\\ffmpeg\\bin) và LOẠI BỎ triệt để
+    bản FFmpeg 4.0 cổ lỗ sĩ đi kèm phần mềm thứ ba (ví dụ Proteus 2018 gây lỗi -fps_mode).
+    """
     if os.name == "nt":
         import glob
-        candidate_dirs = []
-
-        # 1. Quét WinGet Packages (ví dụ: Gyan.FFmpeg.Essentials)
+        
+        # 1. Quét WinGet Packages hiện đại (ví dụ: Gyan.FFmpeg.Essentials)
         winget_pattern = os.path.expanduser("~\\AppData\\Local\\Microsoft\\WinGet\\Packages\\*FFmpeg*\\*\\bin")
-        candidate_dirs.extend(glob.glob(winget_pattern))
+        winget_dirs = [d for d in glob.glob(winget_pattern) if os.path.isdir(d)]
 
-        # 2. Các thư mục thông dụng khác
-        for fixed in [
-            r"C:\App proteus\BIN",
+        # 2. Thư mục cài đặt chuẩn phổ biến
+        standard_dirs = [
             r"C:\ffmpeg\bin",
             r"D:\ffmpeg\bin",
             r"C:\ProgramData\chocolatey\bin",
-        ]:
-            if os.path.exists(fixed):
-                candidate_dirs.append(fixed)
+        ]
+        standard_dirs = [d for d in standard_dirs if os.path.isdir(d)]
 
         # 3. Lấy PATH từ Registry Current User
+        registry_dirs = []
         try:
             import winreg
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment") as key:
                 user_path, _ = winreg.QueryValueEx(key, "Path")
                 for p in user_path.split(";"):
-                    if p.strip() and os.path.isdir(p.strip()):
-                        candidate_dirs.append(p.strip())
+                    clean_p = p.strip()
+                    if clean_p and os.path.isdir(clean_p) and "proteus" not in clean_p.lower():
+                        registry_dirs.append(clean_p)
         except Exception:
             pass
 
-        # Bổ sung vào PATH nếu chưa có
-        current_path = os.environ.get("PATH", "")
-        for cdir in candidate_dirs:
-            if cdir not in current_path and os.path.isdir(cdir):
-                os.environ["PATH"] = cdir + os.pathsep + os.environ.get("PATH", "")
+        # Tập hợp các thư mục ưu tiên hàng đầu (WinGet đứng đầu)
+        priority_dirs = [d for d in (winget_dirs + standard_dirs) if "proteus" not in d.lower()]
+
+        # Lọc bỏ Proteus khỏi PATH hiện tại
+        current_paths = [
+            p for p in os.environ.get("PATH", "").split(os.pathsep)
+            if p.strip() and "proteus" not in p.lower()
+        ]
+
+        # Ghép lại PATH: priority_dirs ĐỨNG ĐẦU TIÊN để luôn gọi FFmpeg mới nhất
+        merged_dirs = []
+        for d in priority_dirs + registry_dirs + current_paths:
+            if d not in merged_dirs:
+                merged_dirs.append(d)
+
+        os.environ["PATH"] = os.pathsep.join(merged_dirs)
 
 
 _ensure_ffmpeg_in_path()
 _cached_ffmpeg_installed: Optional[bool] = None
 _cached_ffmpeg_version: Optional[str] = None
+_cached_supports_fps_mode: Optional[bool] = None
+
+
+def _supports_fps_mode() -> bool:
+    """Kiểm tra xem phiên bản FFmpeg hiện tại có hỗ trợ flag -fps_mode hay không (FFmpeg >= 5.1)"""
+    global _cached_supports_fps_mode
+    if _cached_supports_fps_mode is not None:
+        return _cached_supports_fps_mode
+    try:
+        r = subprocess.run(
+            ["ffmpeg", "-f", "lavfi", "-i", "nullsrc=s=10x10:d=0.01", "-fps_mode", "cfr", "-f", "null", "-"],
+            capture_output=True,
+            timeout=3
+        )
+        _cached_supports_fps_mode = (r.returncode == 0)
+    except Exception:
+        _cached_supports_fps_mode = False
+    return _cached_supports_fps_mode
 
 
 def is_ffmpeg_installed() -> bool:
@@ -259,6 +291,9 @@ def concat_videos(
             safe = abs_path.replace("'", "'\\''")
             f.write(f"file '{safe}'\n")
 
+    # Thích ứng tự động: FFmpeg >= 5.1 dùng -fps_mode cfr, FFmpeg cũ dùng -vsync cfr
+    fps_flag = ["-fps_mode", "cfr"] if _supports_fps_mode() else ["-vsync", "cfr"]
+
     args = [
         "-f", "concat",
         "-safe", "0",
@@ -267,7 +302,7 @@ def concat_videos(
         "-preset", "veryfast",
         "-pix_fmt", "yuv420p",
         "-r", str(fps),
-        "-fps_mode", "cfr",
+    ] + fps_flag + [
         "-an",
         output_path
     ]

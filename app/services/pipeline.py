@@ -207,10 +207,56 @@ class VideoPipeline:
             result.append(enriched)
         return result
 
+def _is_real_entity_context(keyword: str, script_context: str = "") -> Tuple[bool, Optional[str]]:
+    """
+    Phát hiện xem cảnh hoặc chủ đề có nhắc tới nhân vật lịch sử, chính trị gia,
+    người nổi tiếng hoặc sự kiện/địa danh có thật hay không.
+    Trả về (is_entity: bool, entity_name: Optional[str]).
+    """
+    text = f"{keyword} {script_context}".lower()
+    famous_entities = [
+        ("vladimir putin", "Vladimir Putin"),
+        ("putin", "Vladimir Putin"),
+        ("donald trump", "Donald Trump"),
+        ("trump", "Donald Trump"),
+        ("joe biden", "Joe Biden"),
+        ("biden", "Joe Biden"),
+        ("barack obama", "Barack Obama"),
+        ("obama", "Barack Obama"),
+        ("elon musk", "Elon Musk"),
+        ("bill gates", "Bill Gates"),
+        ("steve jobs", "Steve Jobs"),
+        ("mark zuckerberg", "Mark Zuckerberg"),
+        ("albert einstein", "Albert Einstein"),
+        ("einstein", "Albert Einstein"),
+        ("nikola tesla", "Nikola Tesla"),
+        ("tesla", "Nikola Tesla"),
+        ("adolf hitler", "Adolf Hitler"),
+        ("hitler", "Adolf Hitler"),
+        ("joseph stalin", "Joseph Stalin"),
+        ("stalin", "Joseph Stalin"),
+        ("winston churchill", "Winston Churchill"),
+        ("churchill", "Winston Churchill"),
+        ("napoleon", "Napoleon Bonaparte"),
+        ("julius caesar", "Julius Caesar"),
+        ("alexander the great", "Alexander the Great"),
+        ("cleopatra", "Cleopatra"),
+        ("kremlin", "Moscow Kremlin"),
+        ("white house", "White House"),
+        ("pentagon", "The Pentagon"),
+        ("nasa", "NASA"),
+    ]
+    for pattern, official_name in famous_entities:
+        if pattern in text:
+            return True, official_name
+    return False, None
+
+
     async def _fetch_scene_media(self, scene: SceneContract, media_dir: str) -> str:
         """
         Tìm nạp media cho 1 scene với hệ thống phân cấp 5 tầng thông minh:
           Tầng 0: User Custom Media (Ảnh/Video do người dùng gửi trực tiếp qua Telegram)
+          Tầng 0.5: Real-World Entity Search (Wikimedia Commons — ƯU TIÊN khi nói về nhân vật/sự kiện thực tế)
           Tầng 1: Pexels Video portrait 9:16 (nếu có key Pexels)
           Tầng 2: Pexels Photo portrait 9:16 (nếu có key Pexels, dùng cho Ken Burns)
           Tầng 3: Web Image Search (Tìm kiếm ảnh chất lượng cao trên Wikimedia Commons)
@@ -221,6 +267,13 @@ class VideoPipeline:
         để tránh chặn event loop.
         """
         import asyncio
+
+        # ── Checkpoint: Tái sử dụng media hợp lệ đã tải từ lần chạy trước (> 10KB) ──
+        for ext in [".mp4", ".mov", ".jpg", ".jpeg", ".png", ".webp"]:
+            candidate = Path(media_dir) / f"scene_{scene.scene_id:03d}{ext}"
+            if candidate.exists() and candidate.stat().st_size > 10240:
+                logger.info(f"Scene {scene.scene_id}: Tái sử dụng media từ checkpoint ({candidate.name})")
+                return str(candidate)
 
         # ── Tầng 0: User Custom Media (Người dùng gửi qua Telegram) ──
         custom_dir = Path("storage") / "jobs" / str(self.job_id) / "custom_media"
@@ -235,6 +288,28 @@ class VideoPipeline:
                         shutil.copy2(str(cand), str(dest))
                         logger.info(f"Scene {scene.scene_id}: Dùng media tùy biến của người dùng ({cand.name})")
                         return str(dest)
+
+        # ── Tầng 0.5: Real-World Entity Search (Wikimedia Commons) ──
+        # Nếu cảnh hoặc kịch bản nhắc tới nhân vật lịch sử, chính trị gia hoặc sự kiện thực tế:
+        # ƯU TIÊN tìm ảnh tài liệu thật trên Web trước khi tìm stock diễn viên của Pexels!
+        is_entity, entity_name = _is_real_entity_context(scene.visual_keyword, scene.narration)
+        if is_entity and entity_name:
+            try:
+                search_query = f"{entity_name} portrait" if "portrait" not in scene.visual_keyword.lower() else scene.visual_keyword
+                web_photos = await asyncio.to_thread(self._media_agent.search_web_photos, search_query, 3)
+                if not web_photos:
+                    web_photos = await asyncio.to_thread(self._media_agent.search_web_photos, entity_name, 3)
+                if web_photos:
+                    web_photo = web_photos[0]
+                    web_url = web_photo.get("url")
+                    if web_url:
+                        ext = ".jpg" if ("jpg" in web_url.lower() or "jpeg" in web_url.lower()) else ".png"
+                        output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_real{ext}")
+                        await asyncio.to_thread(self._media_agent.download_file, web_url, output)
+                        logger.info(f"Scene {scene.scene_id}: Tải thành công ảnh TÀI LIỆU THẬT ({entity_name}) từ Web: {web_photo.get('title')}")
+                        return output
+            except Exception as ex:
+                logger.warning(f"Scene {scene.scene_id}: Lỗi khi ưu tiên tìm ảnh Web cho {entity_name}: {ex}")
 
         # ── Tầng 1: Pexels Video (nếu có key) ──
         if self._media_agent.api_key:

@@ -66,6 +66,10 @@ function switchTab(tabId) {
     const meta = PAGE_META[tabId] || {};
     document.getElementById('page-title').textContent = meta.title || tabId;
     document.getElementById('page-subtitle').textContent = meta.sub || '';
+
+    if (tabId === 'channels') {
+        fetchAccounts();
+    }
 }
 
 function navigateToVideos(statusFilter) {
@@ -410,6 +414,19 @@ function renderPipelineTable(videos) {
     const tbody = document.getElementById('videos-table-body');
     if (!tbody) return;
 
+    // Cập nhật nút Khôi phục Job Lỗi nếu có video FAILED
+    const recoverBtn = document.getElementById('btn-recover-failed');
+    const failedBadge = document.getElementById('failed-count-badge');
+    const totalFailed = (allVideos || []).filter(v => v.status === 'FAILED').length;
+    if (recoverBtn && failedBadge) {
+        if (totalFailed > 0) {
+            failedBadge.textContent = totalFailed;
+            recoverBtn.style.display = 'inline-flex';
+        } else {
+            recoverBtn.style.display = 'none';
+        }
+    }
+
     if (!videos || videos.length === 0) {
         tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">🎞️</div><p>Không có video nào. Hãy tạo kịch bản mới!</p></div></td></tr>`;
         return;
@@ -459,6 +476,8 @@ function renderPipelineTable(videos) {
         let actionButtons = `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết">🔍</button>`;
         if (v.status === 'SCRIPT_READY') {
             actionButtons += `<button class="btn btn-primary btn-sm" onclick="triggerWebRender(${v.id})" title="Xuất Video" style="font-size:11px;">🚀 Render</button>`;
+        } else if (v.status === 'FAILED') {
+            actionButtons += `<button class="btn btn-primary btn-sm" onclick="triggerWebRender(${v.id})" title="Thử render lại" style="font-size:11px;background:var(--accent-amber);border-color:var(--accent-amber);">🔄 Thử lại</button>`;
         } else if (v.status === 'RENDERED') {
             actionButtons += `<button class="btn btn-primary btn-sm" onclick="openVideoDetail(${v.id})" title="Xem & Xuất bản" style="font-size:11px;">📤 Xuất</button>`;
         }
@@ -641,6 +660,7 @@ async function openVideoDetail(jobId) {
             <div class="scenes-list" style="margin-top:8px;">${scenesHTML}</div>
         </div>` : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+            ${(data.status === 'SCRIPT_READY' || data.status === 'FAILED') ? `<button class="btn btn-primary btn-sm" onclick="closeModal(); triggerWebRender(${data.id});">🚀 ${data.status === 'FAILED' ? 'Thử Render Lại' : 'Bắt Đầu Render'}</button>` : ''}
             ${data.status === 'RENDERED' && data.video_path ? `<a href="/api/videos/${data.id}/download" target="_blank" class="btn btn-primary btn-sm">📥 Tải Video</a>` : ''}
             ${(data.status === 'RENDERED' || data.status === 'PUBLISHED') ? `
             <button class="btn btn-secondary btn-sm" id="btn-upload-drive-${data.id}" onclick="uploadToDrive(${data.id})" style="background:linear-gradient(135deg,rgba(66,133,244,0.18),rgba(52,168,83,0.12));border-color:rgba(66,133,244,0.3);">
@@ -741,6 +761,21 @@ function showToast(msg, type = 'info') {
     setTimeout(() => { toast.style.opacity = '0'; toast.style.transform = 'translateY(8px)'; toast.style.transition = '0.3s'; setTimeout(() => toast.remove(), 300); }, 3500);
 }
 
+async function recoverAllFailedJobs() {
+    if (!confirm('🔄 Bạn có chắc muốn khôi phục tất cả các video bị lỗi về hàng đợi để render lại?')) return;
+    try {
+        const res = await apiPost('/api/videos/recover-failed', {});
+        if (res?.success) {
+            showToast(res.message || 'Đã khôi phục các job lỗi về trạng thái sẵn sàng!', 'success');
+            await fetchVideos();
+        } else {
+            showToast(res?.detail || 'Không thể khôi phục các job lỗi', 'error');
+        }
+    } catch (e) {
+        showToast(`Lỗi khôi phục: ${e.message}`, 'error');
+    }
+}
+
 /* ═══════════════════════════════════════════════════════
    HELPERS
 ══════════════════════════════════════════════════════════ */
@@ -785,4 +820,556 @@ function esc(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+/* ═══════════════════════════════════════════════════════
+   ACCOUNTS & CHANNELS MANAGEMENT
+══════════════════════════════════════════════════════════ */
+let allAccounts = [];
+let allChannels = [];
+let oauthPollTimer = null;
+
+async function fetchChannels() {
+    try {
+        const data = await apiGet('/api/channels');
+        if (data) {
+            allChannels = Array.isArray(data) ? data : (data.channels || []);
+            updateChannelDropdowns(allChannels);
+        }
+    } catch (e) {
+        console.error('Lỗi fetch channels:', e);
+    }
+    // Also fetch accounts
+    await fetchAccounts();
+}
+
+function updateChannelDropdowns(channels) {
+    const sel = document.getElementById('input-channel');
+    if (!sel) return;
+    const currentVal = sel.value;
+    sel.innerHTML = '';
+    channels.forEach(ch => {
+        const opt = document.createElement('option');
+        opt.value = ch.id;
+        opt.textContent = `📺 ${ch.name} (${ch.niche || 'general'})`;
+        sel.appendChild(opt);
+    });
+    if (currentVal && channels.some(c => c.id === currentVal)) {
+        sel.value = currentVal;
+    }
+}
+
+async function fetchAccounts() {
+    const container = document.getElementById('accounts-container');
+    if (!container) return;
+
+    try {
+        const data = await apiGet('/api/accounts');
+        if (!data || !data.accounts) {
+            container.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted);">Không thể tải danh sách tài khoản.</div>`;
+            return;
+        }
+
+        allAccounts = data.accounts;
+        renderAccounts(allAccounts);
+    } catch (e) {
+        container.innerHTML = `<div style="text-align:center; padding:30px; color:var(--accent-rose);">Lỗi kết nối API: ${esc(e.message)}</div>`;
+    }
+}
+
+function renderAccounts(accounts) {
+    const container = document.getElementById('accounts-container');
+    if (!container) return;
+
+    if (!accounts || accounts.length === 0) {
+        container.innerHTML = `
+            <div style="text-align:center; padding:40px; color:var(--text-muted); background:rgba(255,255,255,0.02); border-radius:12px; border:1px dashed rgba(255,255,255,0.1);">
+                <div style="font-size:36px; margin-bottom:12px;">📂</div>
+                <h4 style="color:var(--text-primary); margin-bottom:6px;">Chưa có tài khoản Google nào</h4>
+                <p style="font-size:13px; margin-bottom:16px;">Thêm tài khoản Google mẹ để bắt đầu quản lý kênh YouTube và bộ nhớ Google Drive.</p>
+                <button class="btn btn-primary" onclick="openAddAccountModal()">+ Thêm Tài Khoản Đầu Tiên</button>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = accounts.map(acc => {
+        const brandChannels = acc.brand_channels || [];
+        return `
+            <div class="account-card" id="card-${esc(acc.id)}">
+                <div class="account-header">
+                    <div class="account-identity">
+                        <div class="account-icon">🌐</div>
+                        <div class="account-title-wrap">
+                            <h4>
+                                ${esc(acc.id)}
+                                <span class="badge badge-blue">${brandChannels.length} Kênh</span>
+                            </h4>
+                            <div class="account-email">${esc(acc.email_label)}</div>
+                        </div>
+                    </div>
+                    <div class="account-badges-group">
+                        <span class="badge badge-purple">☁️ ${esc(acc.drive_storage)}</span>
+                        <span class="badge badge-green">⚡ ${Number(acc.youtube_quota_daily).toLocaleString()} Quota/ngày</span>
+                        <button class="btn btn-secondary btn-sm" onclick="openSecretModal('${esc(acc.id)}')" title="Cài đặt Client Secret">
+                            📁 Secret
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteAccount('${esc(acc.id)}')" title="Xóa tài khoản này">
+                            🗑️
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Services Grid (YouTube & Drive OAuth) -->
+                <div class="services-grid">
+                    <!-- YouTube Service -->
+                    <div class="service-card">
+                        <div class="service-card-top">
+                            <div class="service-title">
+                                <span style="font-size:16px;">🎬</span>
+                                <span>YouTube Studio API</span>
+                            </div>
+                            <span class="service-status-pill ${acc.youtube_connected ? 'connected' : 'disconnected'}">
+                                ${acc.youtube_connected ? '✓ Đã kết nối' : '⚠️ Chưa kết nối'}
+                            </span>
+                        </div>
+                        <div class="service-actions">
+                            ${acc.youtube_connected ? `
+                                <button class="btn btn-secondary btn-sm" style="color:var(--accent-rose); width:100%; justify-content:center;" onclick="disconnectService('${esc(acc.id)}', 'youtube')">
+                                    Ngắt Kết Nối
+                                </button>
+                            ` : `
+                                <button class="btn btn-primary btn-sm" style="width:100%; justify-content:center;" onclick="startGoogleAuth('${esc(acc.id)}', 'youtube')">
+                                    🔑 Đăng Nhập Google (YouTube)
+                                </button>
+                            `}
+                        </div>
+                    </div>
+
+                    <!-- Drive Service -->
+                    <div class="service-card">
+                        <div class="service-card-top">
+                            <div class="service-title">
+                                <span style="font-size:16px;">☁️</span>
+                                <span>Google Drive Storage</span>
+                            </div>
+                            <span class="service-status-pill ${acc.drive_connected ? 'connected' : 'disconnected'}">
+                                ${acc.drive_connected ? '✓ Đã kết nối' : '⚠️ Chưa kết nối'}
+                            </span>
+                        </div>
+                        <div class="service-actions">
+                            ${acc.drive_connected ? `
+                                <button class="btn btn-secondary btn-sm" style="color:var(--accent-rose); width:100%; justify-content:center;" onclick="disconnectService('${esc(acc.id)}', 'drive')">
+                                    Ngắt Kết Nối
+                                </button>
+                            ` : `
+                                <button class="btn btn-primary btn-sm" style="width:100%; justify-content:center; background:linear-gradient(135deg,rgba(66,133,244,0.3),rgba(52,168,83,0.3)); border-color:rgba(66,133,244,0.4);" onclick="startGoogleAuth('${esc(acc.id)}', 'drive')">
+                                    ☁️ Kết Nối Google Drive
+                                </button>
+                            `}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Channels List under this Account -->
+                <div class="account-channels-wrap">
+                    <div class="channels-header">
+                        <h5>📺 Danh Sách Kênh Thương Hiệu (${brandChannels.length})</h5>
+                        <button class="btn btn-secondary btn-sm" onclick="openAddChannelModal('${esc(acc.id)}')">
+                            + Thêm Kênh Mới
+                        </button>
+                    </div>
+
+                    <div class="channels-items-list">
+                        ${brandChannels.length === 0 ? `
+                            <div style="text-align:center; padding:18px; color:var(--text-muted); font-size:12.5px;">
+                                Chưa có kênh nào thuộc tài khoản này. Bấm <strong>"+ Thêm Kênh Mới"</strong> để gán kênh.
+                            </div>
+                        ` : brandChannels.map(ch => `
+                            <div class="channel-row-item">
+                                <div class="channel-row-main">
+                                    <div class="channel-row-title">
+                                        <span>${esc(ch.name)}</span>
+                                        <span class="badge badge-blue" style="font-size:10px;">ID: ${esc(ch.id)}</span>
+                                    </div>
+                                    <div class="channel-row-meta">
+                                        <span>🎯 <strong>Chủ đề:</strong> ${esc(ch.niche || 'general')}</span>
+                                        <span>🌐 <strong>Ngôn ngữ:</strong> ${esc(ch.language || 'en').toUpperCase()}</span>
+                                        <span>🎙️ <strong>Giọng:</strong> ${esc(ch.preferred_voice || 'Default')}</span>
+                                        <span>🖼️ <strong>Visual:</strong> ${ch.visual_mode === 'imagen_ai' ? '✨ Imagen 3' : '🎞️ Pexels'}</span>
+                                        <span>⏰ <strong>Đăng:</strong> ${ch.schedule?.publish_hour_utc ?? 12}:00 UTC</span>
+                                    </div>
+                                </div>
+                                <div class="channel-row-actions">
+                                    <button class="btn btn-secondary btn-sm" onclick="useChannelForScript('${esc(ch.id)}')" title="Tạo kịch bản cho kênh này">
+                                        🚀 Tạo Video
+                                    </button>
+                                    <button class="btn btn-secondary btn-sm" onclick="openEditChannelModal('${esc(acc.id)}', '${esc(ch.id)}')" title="Sửa thông tin kênh">
+                                        ✏️ Sửa
+                                    </button>
+                                    <button class="btn btn-danger btn-sm" onclick="deleteChannel('${esc(acc.id)}', '${esc(ch.id)}')" title="Xóa kênh">
+                                        🗑️
+                                    </button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+/* ═══════════════════════════════════════════════════════
+   ACCOUNT MODALS & CRUD
+══════════════════════════════════════════════════════════ */
+function openAddAccountModal() {
+    document.getElementById('acc-input-id').value = '';
+    document.getElementById('acc-input-email').value = '';
+    document.getElementById('acc-input-drive').value = '2 TB Google One';
+    document.getElementById('acc-input-quota').value = '10000';
+    document.getElementById('modal-account').classList.add('visible');
+}
+
+function closeAccountModal() {
+    document.getElementById('modal-account').classList.remove('visible');
+}
+
+async function submitAccountForm() {
+    const id = document.getElementById('acc-input-id').value.trim();
+    const email = document.getElementById('acc-input-email').value.trim();
+    const drive = document.getElementById('acc-input-drive').value.trim();
+    const quota = parseInt(document.getElementById('acc-input-quota').value.trim()) || 10000;
+
+    if (!id) {
+        showToast('Vui lòng nhập Mã tài khoản', 'error');
+        return;
+    }
+    if (!email) {
+        showToast('Vui lòng nhập Email / Ghi chú', 'error');
+        return;
+    }
+
+    try {
+        const res = await apiPost('/api/accounts', {
+            id: id,
+            email_label: email,
+            drive_storage: drive,
+            youtube_quota_daily: quota
+        });
+        if (res && res.success) {
+            showToast(res.message || 'Đã tạo tài khoản Google thành công!', 'success');
+            closeAccountModal();
+            await fetchAccounts();
+            await fetchStats();
+        } else {
+            showToast(res?.detail || 'Không thể tạo tài khoản', 'error');
+        }
+    } catch (e) {
+        showToast(`Lỗi tạo tài khoản: ${e.message}`, 'error');
+    }
+}
+
+async function deleteAccount(accountId) {
+    if (!confirm(`⚠️ Bạn có chắc muốn xóa tài khoản '${accountId}'?\nTất cả các kênh liên kết cũng sẽ bị xóa khỏi cấu hình.`)) return;
+
+    try {
+        const res = await fetch(`/api/accounts/${accountId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            showToast(data.message || `Đã xóa tài khoản ${accountId}`, 'success');
+            await fetchAccounts();
+            await fetchStats();
+        } else {
+            showToast(data.detail || 'Không thể xóa tài khoản', 'error');
+        }
+    } catch (e) {
+        showToast(`Lỗi xóa tài khoản: ${e.message}`, 'error');
+    }
+}
+
+/* ═══════════════════════════════════════════════════════
+   CHANNEL MODALS & CRUD
+══════════════════════════════════════════════════════════ */
+function populateParentAccountSelect(selectedAccId) {
+    const sel = document.getElementById('channel-parent-acc');
+    if (!sel) return;
+    sel.innerHTML = '';
+    allAccounts.forEach(acc => {
+        const opt = document.createElement('option');
+        opt.value = acc.id;
+        opt.textContent = `${acc.id} (${acc.email_label})`;
+        if (acc.id === selectedAccId) opt.selected = true;
+        sel.appendChild(opt);
+    });
+}
+
+function openAddChannelModal(accountId) {
+    populateParentAccountSelect(accountId);
+    document.getElementById('channel-mode').value = 'add';
+    document.getElementById('modal-channel-title').textContent = 'Thêm Kênh YouTube Mới';
+    document.getElementById('channel-input-id').value = '';
+    document.getElementById('channel-input-id').disabled = false;
+    document.getElementById('channel-input-name').value = '';
+    document.getElementById('channel-input-niche').value = '';
+    document.getElementById('channel-input-lang').value = 'en';
+    document.getElementById('channel-input-voice').value = 'en-US-ChristopherNeural';
+    document.getElementById('channel-input-visual').value = 'imagen_ai';
+    document.getElementById('channel-input-hour').value = '12';
+    document.getElementById('modal-channel').classList.add('visible');
+}
+
+function openEditChannelModal(accountId, channelId) {
+    populateParentAccountSelect(accountId);
+    const acc = allAccounts.find(a => a.id === accountId);
+    const ch = acc?.brand_channels?.find(c => c.id === channelId);
+    if (!ch) {
+        showToast('Không tìm thấy thông tin kênh', 'error');
+        return;
+    }
+
+    document.getElementById('channel-mode').value = 'edit';
+    document.getElementById('modal-channel-title').textContent = `Chỉnh Sửa Kênh: ${ch.name}`;
+    document.getElementById('channel-input-id').value = ch.id;
+    document.getElementById('channel-input-id').disabled = true; // Không cho đổi ID khi sửa
+    document.getElementById('channel-input-name').value = ch.name || '';
+    document.getElementById('channel-input-niche').value = ch.niche || '';
+    document.getElementById('channel-input-lang').value = ch.language || 'en';
+    document.getElementById('channel-input-voice').value = ch.preferred_voice || 'en-US-ChristopherNeural';
+    document.getElementById('channel-input-visual').value = ch.visual_mode || 'imagen_ai';
+    document.getElementById('channel-input-hour').value = ch.schedule?.publish_hour_utc ?? 12;
+    document.getElementById('modal-channel').classList.add('visible');
+}
+
+function closeChannelModal() {
+    document.getElementById('modal-channel').classList.remove('visible');
+}
+
+async function submitChannelForm() {
+    const mode = document.getElementById('channel-mode').value;
+    const accountId = document.getElementById('channel-parent-acc').value;
+    const id = document.getElementById('channel-input-id').value.trim();
+    const name = document.getElementById('channel-input-name').value.trim();
+    const niche = document.getElementById('channel-input-niche').value.trim() || 'general';
+    const lang = document.getElementById('channel-input-lang').value;
+    const voice = document.getElementById('channel-input-voice').value;
+    const visual = document.getElementById('channel-input-visual').value;
+    const hour = parseInt(document.getElementById('channel-input-hour').value) || 12;
+
+    if (!id) {
+        showToast('Vui lòng nhập Mã Kênh', 'error');
+        return;
+    }
+    if (!name) {
+        showToast('Vui lòng nhập Tên Kênh', 'error');
+        return;
+    }
+
+    const payload = {
+        id: id,
+        name: name,
+        niche: niche,
+        language: lang,
+        preferred_voice: voice,
+        visual_mode: visual,
+        publish_hour_utc: hour,
+        days: ["monday", "wednesday", "friday", "sunday"]
+    };
+
+    try {
+        let res;
+        if (mode === 'add') {
+            res = await apiPost(`/api/accounts/${accountId}/channels`, payload);
+        } else {
+            const response = await fetch(`/api/accounts/${accountId}/channels/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            res = await response.json();
+        }
+
+        if (res && res.success) {
+            showToast(res.message || 'Thành công!', 'success');
+            closeChannelModal();
+            await fetchChannels();
+            await fetchAccounts();
+        } else {
+            showToast(res?.detail || res?.message || 'Có lỗi xảy ra', 'error');
+        }
+    } catch (e) {
+        showToast(`Lỗi: ${e.message}`, 'error');
+    }
+}
+
+async function deleteChannel(accountId, channelId) {
+    if (!confirm(`⚠️ Bạn có chắc muốn xóa kênh '${channelId}'?`)) return;
+
+    try {
+        const res = await fetch(`/api/accounts/${accountId}/channels/${channelId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            showToast(data.message || `Đã xóa kênh ${channelId}`, 'success');
+            await fetchChannels();
+            await fetchAccounts();
+        } else {
+            showToast(data.detail || 'Không thể xóa kênh', 'error');
+        }
+    } catch (e) {
+        showToast(`Lỗi xóa kênh: ${e.message}`, 'error');
+    }
+}
+
+function useChannelForScript(channelId) {
+    switchTab('create');
+    const sel = document.getElementById('input-channel');
+    if (sel) {
+        sel.value = channelId;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════
+   GOOGLE OAUTH AUTHENTICATION
+══════════════════════════════════════════════════════════ */
+async function startGoogleAuth(accountId, service) {
+    try {
+        const res = await apiPost(`/api/accounts/${accountId}/auth-start`, { service: service });
+        if (!res || !res.success) {
+            showToast(res?.detail || 'Không thể khởi chạy phiên đăng nhập Google', 'error');
+            return;
+        }
+
+        const modal = document.getElementById('modal-oauth');
+        const heading = document.getElementById('oauth-status-heading');
+        const desc = document.getElementById('oauth-status-desc');
+        const resultBox = document.getElementById('oauth-result-box');
+
+        modal.classList.add('visible');
+        heading.textContent = `Đang mở trình duyệt xác thực ${service.toUpperCase()}...`;
+        desc.textContent = `Hệ thống đang mở trình duyệt đăng nhập Google cho tài khoản '${accountId}'. Hãy bấm 'Cho Phép' trên trang Google.`;
+        resultBox.style.display = 'none';
+
+        if (oauthPollTimer) clearInterval(oauthPollTimer);
+
+        // Start polling status every 2 seconds
+        oauthPollTimer = setInterval(async () => {
+            try {
+                const statusData = await apiGet(`/api/accounts/${accountId}/auth-status?service=${service}`);
+                if (statusData) {
+                    if (statusData.status === 'success') {
+                        clearInterval(oauthPollTimer);
+                        heading.textContent = '🎉 Xác Thực Thành Công!';
+                        desc.textContent = statusData.message || 'Đã lưu token đăng nhập thành công.';
+                        resultBox.style.display = 'block';
+                        resultBox.style.background = 'rgba(52,211,153,0.15)';
+                        resultBox.style.color = 'var(--accent-green)';
+                        resultBox.textContent = '✓ Token đã được đồng bộ vào hệ thống.';
+                        showToast(`Đã kết nối ${service.toUpperCase()} thành công!`, 'success');
+                        setTimeout(() => {
+                            closeOAuthModal();
+                            fetchAccounts();
+                            fetchStats();
+                        }, 1800);
+                    } else if (statusData.status === 'error') {
+                        clearInterval(oauthPollTimer);
+                        heading.textContent = '❌ Lỗi Xác Thực';
+                        desc.textContent = statusData.error || 'Quá trình xác thực bị hủy hoặc xảy ra lỗi.';
+                        resultBox.style.display = 'block';
+                        resultBox.style.background = 'rgba(251,113,133,0.15)';
+                        resultBox.style.color = 'var(--accent-rose)';
+                        resultBox.textContent = statusData.error || 'Lỗi không xác định.';
+                    }
+                }
+            } catch (err) {
+                console.warn('Polling OAuth error:', err);
+            }
+        }, 2000);
+
+    } catch (e) {
+        showToast(`Lỗi khởi động OAuth: ${e.message}`, 'error');
+    }
+}
+
+function closeOAuthModal() {
+    if (oauthPollTimer) {
+        clearInterval(oauthPollTimer);
+        oauthPollTimer = null;
+    }
+    document.getElementById('modal-oauth').classList.remove('visible');
+}
+
+async function disconnectService(accountId, service) {
+    if (!confirm(`Bạn có chắc muốn ngắt kết nối ${service.toUpperCase()} của tài khoản '${accountId}'?`)) return;
+
+    try {
+        const res = await apiPost(`/api/accounts/${accountId}/disconnect`, { service: service });
+        if (res && res.success) {
+            showToast(res.message || `Đã ngắt kết nối ${service}`, 'success');
+            await fetchAccounts();
+            await fetchStats();
+        } else {
+            showToast(res?.detail || 'Không thể ngắt kết nối', 'error');
+        }
+    } catch (e) {
+        showToast(`Lỗi: ${e.message}`, 'error');
+    }
+}
+
+/* ═══════════════════════════════════════════════════════
+   CLIENT SECRET UPLOAD
+══════════════════════════════════════════════════════════ */
+function openSecretModal(accountId) {
+    document.getElementById('secret-target-account').value = accountId;
+    document.getElementById('modal-secret-title').textContent = `Nạp client_secret.json (${accountId})`;
+    document.getElementById('secret-json-textarea').value = '';
+    document.getElementById('secret-file-input').value = '';
+    document.getElementById('modal-secret').classList.add('visible');
+}
+
+function closeSecretModal() {
+    document.getElementById('modal-secret').classList.remove('visible');
+}
+
+function handleSecretFileSelect(evt) {
+    const file = evt.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        document.getElementById('secret-json-textarea').value = e.target.result;
+    };
+    reader.readAsText(file);
+}
+
+async function submitSecretUpload() {
+    const accountId = document.getElementById('secret-target-account').value;
+    const jsonContent = document.getElementById('secret-json-textarea').value.trim();
+
+    if (!accountId) {
+        showToast('Thiếu mã tài khoản', 'error');
+        return;
+    }
+    if (!jsonContent) {
+        showToast('Vui lòng chọn file hoặc dán nội dung JSON', 'error');
+        return;
+    }
+
+    try {
+        JSON.parse(jsonContent); // Quick validate syntax
+    } catch (err) {
+        showToast('Nội dung không phải JSON hợp lệ', 'error');
+        return;
+    }
+
+    try {
+        const res = await apiPost(`/api/accounts/${accountId}/upload-secret`, { content: jsonContent });
+        if (res && res.success) {
+            showToast(res.message || 'Đã nạp file client_secret thành công!', 'success');
+            closeSecretModal();
+            await fetchAccounts();
+        } else {
+            showToast(res?.detail || 'Không thể lưu client_secret.json', 'error');
+        }
+    } catch (e) {
+        showToast(`Lỗi nạp secret: ${e.message}`, 'error');
+    }
 }
