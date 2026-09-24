@@ -40,6 +40,16 @@ class PublisherAgent:
                 creds = Credentials.from_authorized_user_info(token_data)
 
             if creds:
+                # Tự động refresh token nếu hết hạn
+                if creds.expired and creds.refresh_token:
+                    from google.auth.transport.requests import Request
+                    creds.refresh(Request())
+                    # Lưu lại token đã refresh
+                    if os.path.exists(self.token_file):
+                        with open(self.token_file, "w", encoding="utf-8") as f:
+                            f.write(creds.to_json())
+                        logger.info(f"Đã tự động refresh YouTube token cho '{self.channel_name}'")
+
                 self.service = build("youtube", "v3", credentials=creds)
                 logger.info(f"YouTube Data API v3 đã kết nối thành công cho '{self.channel_name}'")
             else:
@@ -54,7 +64,7 @@ class PublisherAgent:
         description: str,
         tags: Optional[List[str]] = None,
         schedule_time_iso: Optional[str] = None,
-        privacy_status: str = "private"
+        privacy_status: str = "public"
     ) -> Dict:
         """
         Upload video lên YouTube qua YouTube Data API v3.

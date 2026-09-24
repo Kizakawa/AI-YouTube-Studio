@@ -1533,7 +1533,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             title=video_title,
             description=video_desc,
             tags=video_tags,
-            privacy_status="private"
+            privacy_status="public"
         )
 
         if pub_res.get("status") == "success":
@@ -1552,11 +1552,11 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             success_text = (
                 f"🎉 **ĐĂNG TẢI VIDEO #{job_id} THÀNH CÔNG!**\n\n"
-                f"🎬 **Link xem YouTube (Chế độ Private):**\n👉 {yt_url}\n\n"
+                f"🎬 **Link xem YouTube (Chế độ Công khai):**\n👉 {yt_url}\n\n"
             )
             if drive_link:
                 success_text += f"💾 **Link lưu trữ Google Drive 2TB:**\n👉 {drive_link}\n\n"
-            success_text += "💡 Video đang ở chế độ Riêng tư (Private) để bạn kiểm duyệt trước khi công khai!"
+            success_text += "💡 Video đã được đăng ở chế độ Công khai (Public) cho mọi người cùng xem!"
             await safe_edit_text(status_wait, success_text)
         else:
             err = pub_res.get("error", "Lỗi không xác định")

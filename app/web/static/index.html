@@ -575,7 +575,7 @@
 
 <!-- MODAL: OAUTH IN PROGRESS -->
 <div class="modal-overlay" id="modal-oauth" onclick="event.stopPropagation()">
-    <div class="modal-card" style="max-width:480px; text-align:center;">
+    <div class="modal-card" style="max-width:520px; text-align:center;">
         <div class="modal-header" style="justify-content:center;">
             <h3 id="modal-oauth-title">Đang Xác Thực Google OAuth</h3>
         </div>
@@ -584,9 +584,18 @@
                 <div class="spinner-ring"></div>
             </div>
             <h4 id="oauth-status-heading" style="margin-bottom:8px; color:var(--text-primary);">Đang mở trình duyệt Google...</h4>
-            <p id="oauth-status-desc" style="font-size:13px; color:var(--text-secondary); line-height:1.5; margin-bottom:20px;">
+            <p id="oauth-status-desc" style="font-size:13px; color:var(--text-secondary); line-height:1.5; margin-bottom:16px;">
                 Cửa sổ trình duyệt đã được mở. Vui lòng đăng nhập đúng tài khoản Google của bạn và bấm <strong>"Cho phép / Allow"</strong> để hoàn tất ủy quyền.
             </p>
+            <!-- Link xác thực thủ công (hiện khi có auth_url) -->
+            <div id="oauth-link-box" style="display:none; padding:14px; border-radius:10px; background:rgba(66,133,244,0.08); border:1px solid rgba(66,133,244,0.2); margin-bottom:16px; text-align:left;">
+                <p style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">⚠️ Nếu trình duyệt không tự mở, hãy bấm link bên dưới:</p>
+                <a id="oauth-auth-link" href="#" target="_blank" rel="noopener"
+                   style="display:block; padding:10px 14px; background:linear-gradient(135deg,rgba(66,133,244,0.2),rgba(52,168,83,0.15)); border:1px solid rgba(66,133,244,0.3); border-radius:8px; color:#8ab4f8; font-size:13px; font-weight:600; text-decoration:none; text-align:center; transition:all 0.2s ease;">
+                    🔗 Mở trang đăng nhập Google
+                </a>
+                <p id="oauth-timer-text" style="font-size:11px; color:var(--text-muted); margin-top:8px; text-align:center;">⏳ Thời gian còn lại: 3:00</p>
+            </div>
             <div id="oauth-result-box" style="display:none; padding:12px; border-radius:8px; margin-bottom:16px;"></div>
             <button class="btn btn-secondary" id="oauth-cancel-btn" onclick="closeOAuthModal()">Đóng cửa sổ này</button>
         </div>

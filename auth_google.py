@@ -17,9 +17,12 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+# Cho phép OAuth trên localhost (http)
+os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+
 # Tách riêng Scope để Google không báo lỗi "scopes that cannot be requested together"
 YOUTUBE_SCOPES = [
-    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube",
 ]
 
 DRIVE_SCOPES = [

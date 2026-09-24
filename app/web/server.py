@@ -612,6 +612,72 @@ async def upload_to_drive(job_id: int, background_tasks: BackgroundTasks) -> Dic
         logger.error(f"Lỗi upload Drive job #{job_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+# ─── Publish to YouTube ───────────────────────────────────────────────────────
+
+@app.post("/api/videos/{job_id}/publish-youtube")
+async def publish_to_youtube(job_id: int, privacy: str = "public") -> Dict[str, Any]:
+    """
+    Đăng video đã render lên YouTube qua PublisherAgent.
+    """
+    with get_db() as db:
+        job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Không tìm thấy video job")
+        if job.status not in ("RENDERED", "PUBLISHED"):
+            raise HTTPException(status_code=400, detail=f"Video chưa render xong (status: {job.status})")
+        if not job.video_path or not Path(job.video_path).exists():
+            raise HTTPException(status_code=404, detail="File video không tồn tại trên máy")
+        
+        channel_id = job.target_channel_id or "default"
+        video_path = job.video_path
+        video_title = job.title or job.topic or f"Video_{job_id}"
+        video_desc = job.description or ""
+        video_tags = [t.strip() for t in (job.tags or "").split(",") if t.strip()]
+
+    try:
+        from app.agents.publisher_agent import PublisherAgent
+        from app.database.models import get_db as _get_db, log_activity
+
+        channels = settings.get_channels_config()
+        ch_cfg = next((c for c in channels if c.get("id") == channel_id), {"id": channel_id, "name": channel_id})
+
+        pub_agent = PublisherAgent(channel_config=ch_cfg)
+        if not pub_agent.service:
+            raise HTTPException(status_code=503, detail="YouTube OAuth chưa kết nối hoặc token không hợp lệ.")
+
+        pub_res = pub_agent.upload_video(
+            video_path=video_path,
+            title=video_title,
+            description=video_desc,
+            tags=video_tags,
+            privacy_status=privacy
+        )
+
+        if pub_res.get("status") == "success":
+            yt_url = pub_res.get("youtube_url")
+            yt_id = pub_res.get("video_id")
+            with _get_db() as db:
+                j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                if j:
+                    j.status = "PUBLISHED"
+                    j.youtube_video_id = yt_id
+                    log_activity(db, 0, "WebStudio", "PUBLISH_YOUTUBE",
+                                 f"Video #{job_id} đã đăng lên YouTube: {yt_url}",
+                                 channel_id=channel_id)
+            return {
+                "success": True,
+                "video_id": yt_id,
+                "youtube_url": yt_url,
+                "message": f"Đã đăng lên YouTube thành công! Link: {yt_url}"
+            }
+        else:
+            raise HTTPException(status_code=500, detail=pub_res.get("error", "Đăng YouTube thất bại"))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Lỗi đăng YouTube job #{job_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ─── Token Health Monitor (Part 4) ───────────────────────────────────────────
 
 def _check_gemini_key(key: str) -> Dict[str, Any]:
@@ -984,8 +1050,12 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest) -> Dict[str
 
     def _oauth_worker():
         try:
+            import webbrowser
+            import wsgiref.simple_server
+            import wsgiref.util
             from google_auth_oauthlib.flow import InstalledAppFlow
-            scopes = ["https://www.googleapis.com/auth/youtube.upload"] if service == "youtube" else ["https://www.googleapis.com/auth/drive.file"]
+
+            scopes = ["https://www.googleapis.com/auth/youtube"] if service == "youtube" else ["https://www.googleapis.com/auth/drive.file"]
             token_filename = "youtube_token.json" if service == "youtube" else "drive_token.json"
 
             base_dir = Path(settings.BASE_DIR)
@@ -1005,20 +1075,77 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest) -> Dict[str
                     return
 
             flow = InstalledAppFlow.from_client_secrets_file(str(secret_file), scopes=scopes)
-            creds = flow.run_local_server(
-                port=0,
-                prompt="consent",
-                access_type="offline",
-                authorization_prompt_message="👉 Vui lòng đăng nhập Google trên trình duyệt...",
-                success_message="Xác thực Google thành công! Bạn có thể đóng tab này và quay lại Web Studio.",
-                open_browser=True
+
+            # ── Tạo HTTP server cục bộ để nhận callback từ Google ──
+            received_uri = {"value": None}
+            success_page = (
+                "<html><body style='font-family:system-ui,sans-serif;text-align:center;padding:60px;"
+                "background:#1a1a2e;color:#e0e0e0'>"
+                "<h2 style='color:#34d399'>✅ Xác thực Google thành công!</h2>"
+                "<p>Bạn có thể đóng tab này và quay lại Web Studio.</p>"
+                "</body></html>"
             )
 
+            def _wsgi_app(environ, start_response):
+                received_uri["value"] = wsgiref.util.request_uri(environ)
+                start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
+                return [success_page.encode("utf-8")]
+
+            # Tắt log mặc định của wsgiref (tránh spam console)
+            class _SilentHandler(wsgiref.simple_server.WSGIRequestHandler):
+                def log_message(self, fmt, *args):
+                    pass
+
+            local_server = wsgiref.simple_server.make_server(
+                "localhost", 0, _wsgi_app, handler_class=_SilentHandler
+            )
+            port = local_server.server_port
+
+            # Cấu hình redirect URI trỏ về server cục bộ vừa tạo
+            flow.redirect_uri = f"http://localhost:{port}/"
+            auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline")
+
+            # Lưu URL xác thực để frontend hiển thị trên modal (giải quyết lỗi spinner xoay mãi)
+            _oauth_sessions[session_key].update({
+                "auth_url": auth_url,
+                "message": "Link xác thực đã sẵn sàng. Hãy đăng nhập Google trên trình duyệt."
+            })
+            logger.info(f"OAuth URL created for {session_key} on port {port}")
+
+            # Tự động mở trình duyệt (nếu được)
+            try:
+                webbrowser.open(auth_url)
+            except Exception:
+                logger.info("Không thể tự mở trình duyệt, user cần bấm link thủ công trên modal.")
+
+            # Chờ callback từ Google với timeout 3 phút
+            local_server.timeout = 180
+            local_server.handle_request()
+            local_server.server_close()
+
+            if not received_uri["value"]:
+                _oauth_sessions[session_key] = {
+                    "status": "error",
+                    "error": "Hết thời gian chờ xác thực (3 phút). Vui lòng thử lại."
+                }
+                return
+
+            # Trao đổi authorization code lấy token
+            # Note: oauthlib bắt buộc https scheme đối với URL phản hồi
+            os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+            auth_response = received_uri["value"]
+            if auth_response.startswith("http:"):
+                auth_response = auth_response.replace("http:", "https:", 1)
+            flow.fetch_token(authorization_response=auth_response)
+            creds = flow.credentials
+
+            # Lưu token file
             token_data = creds.to_json()
             token_file = acc_dir / token_filename
             with open(token_file, "w", encoding="utf-8") as f:
                 f.write(token_data)
 
+            # Lưu thêm file Base64 cho Render deployment
             b64_str = base64.b64encode(token_data.encode("utf-8")).decode("utf-8")
             b64_file = acc_dir / f"{Path(token_filename).stem}_base64.txt"
             with open(b64_file, "w", encoding="utf-8") as f:

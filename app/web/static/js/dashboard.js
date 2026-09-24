@@ -662,11 +662,15 @@ async function openVideoDetail(jobId) {
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
             ${(data.status === 'SCRIPT_READY' || data.status === 'FAILED') ? `<button class="btn btn-primary btn-sm" onclick="closeModal(); triggerWebRender(${data.id});">🚀 ${data.status === 'FAILED' ? 'Thử Render Lại' : 'Bắt Đầu Render'}</button>` : ''}
             ${data.status === 'RENDERED' && data.video_path ? `<a href="/api/videos/${data.id}/download" target="_blank" class="btn btn-primary btn-sm">📥 Tải Video</a>` : ''}
+            ${(data.status === 'RENDERED' && !data.youtube_id) ? `
+            <button class="btn btn-primary btn-sm" id="btn-publish-yt-${data.id}" onclick="publishToYouTube(${data.id})" style="background:linear-gradient(135deg,#ef4444,#dc2626);border:none;font-weight:600;">
+                🚀 Đăng Lên YouTube
+            </button>` : ''}
             ${(data.status === 'RENDERED' || data.status === 'PUBLISHED') ? `
             <button class="btn btn-secondary btn-sm" id="btn-upload-drive-${data.id}" onclick="uploadToDrive(${data.id})" style="background:linear-gradient(135deg,rgba(66,133,244,0.18),rgba(52,168,83,0.12));border-color:rgba(66,133,244,0.3);">
                 ☁️ ${data.drive_link ? 'Cập nhật Drive' : 'Tải lên Drive 20TB'}
             </button>` : ''}
-            ${data.youtube_id ? `<a href="https://youtube.com/shorts/${data.youtube_id}" target="_blank" class="btn btn-secondary btn-sm">▶ Xem trên YouTube</a>` : ''}
+            ${data.youtube_id ? `<a href="https://youtube.com/shorts/${data.youtube_id}" target="_blank" class="btn btn-secondary btn-sm" style="color:#ef4444;font-weight:600;">▶ Xem trên YouTube</a>` : ''}
             ${data.drive_link ? `<a href="${data.drive_link}" target="_blank" class="btn btn-secondary btn-sm" style="color:var(--accent-green);">📂 Mở Link Drive</a>` : ''}
             <button class="btn btn-danger btn-sm" onclick="deleteJob(${data.id}); closeModal();">🗑 Xoá Job</button>
         </div>`;
@@ -696,6 +700,36 @@ async function deleteJob(id) {
     }
 }
 
+/* ===============================================================
+   PUBLISH TO YOUTUBE
+================================================================ */
+async function publishToYouTube(jobId) {
+    if (!confirm(`🚀 Bạn có chắc muốn xuất bản Video #${jobId} lên kênh YouTube không?`)) return;
+    const btn = document.getElementById(`btn-publish-yt-${jobId}`);
+    const originalHTML = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="loading-spinner"></span> Đang tải lên YouTube...`;
+    }
+    showToast(`Bắt đầu upload Video #${jobId} lên YouTube...`, 'info');
+    try {
+        const res = await fetch(`/api/videos/${jobId}/publish-youtube`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            showToast(`🎉 ${data.message || 'Đăng video thành công!'}`, 'success');
+            openVideoDetail(jobId);
+            fetchStats();
+            fetchVideos();
+        } else {
+            const msg = data.detail || data.message || 'Đăng YouTube thất bại';
+            showToast('❌ ' + msg, 'error');
+            if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; }
+        }
+    } catch (e) {
+        showToast('Lỗi kết nối: ' + e.message, 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; }
+    }
+}
 
 /* ===============================================================
    UPLOAD TO GOOGLE DRIVE 20TB
@@ -1231,6 +1265,8 @@ function useChannelForScript(channelId) {
 /* ═══════════════════════════════════════════════════════
    GOOGLE OAUTH AUTHENTICATION
 ══════════════════════════════════════════════════════════ */
+let oauthCountdownTimer = null;
+
 async function startGoogleAuth(accountId, service) {
     try {
         const res = await apiPost(`/api/accounts/${accountId}/auth-start`, { service: service });
@@ -1243,42 +1279,84 @@ async function startGoogleAuth(accountId, service) {
         const heading = document.getElementById('oauth-status-heading');
         const desc = document.getElementById('oauth-status-desc');
         const resultBox = document.getElementById('oauth-result-box');
+        const linkBox = document.getElementById('oauth-link-box');
+        const authLink = document.getElementById('oauth-auth-link');
+        const timerText = document.getElementById('oauth-timer-text');
+        const spinner = document.getElementById('oauth-spinner');
 
+        // Reset trạng thái modal
         modal.classList.add('visible');
         heading.textContent = `Đang mở trình duyệt xác thực ${service.toUpperCase()}...`;
         desc.textContent = `Hệ thống đang mở trình duyệt đăng nhập Google cho tài khoản '${accountId}'. Hãy bấm 'Cho Phép' trên trang Google.`;
         resultBox.style.display = 'none';
+        linkBox.style.display = 'none';
+        spinner.style.display = '';
 
         if (oauthPollTimer) clearInterval(oauthPollTimer);
+        if (oauthCountdownTimer) clearInterval(oauthCountdownTimer);
 
-        // Start polling status every 2 seconds
+        // Đếm ngược 3 phút (đồng bộ với timeout 180s trên server)
+        let secondsLeft = 180;
+        oauthCountdownTimer = setInterval(() => {
+            secondsLeft--;
+            if (secondsLeft <= 0) {
+                clearInterval(oauthCountdownTimer);
+                oauthCountdownTimer = null;
+            }
+            if (timerText && secondsLeft > 0) {
+                const m = Math.floor(secondsLeft / 60);
+                const s = secondsLeft % 60;
+                timerText.textContent = `⏳ Thời gian còn lại: ${m}:${String(s).padStart(2, '0')}`;
+            }
+        }, 1000);
+
+        // Polling trạng thái mỗi 2 giây
         oauthPollTimer = setInterval(async () => {
             try {
                 const statusData = await apiGet(`/api/accounts/${accountId}/auth-status?service=${service}`);
-                if (statusData) {
-                    if (statusData.status === 'success') {
-                        clearInterval(oauthPollTimer);
-                        heading.textContent = '🎉 Xác Thực Thành Công!';
-                        desc.textContent = statusData.message || 'Đã lưu token đăng nhập thành công.';
-                        resultBox.style.display = 'block';
-                        resultBox.style.background = 'rgba(52,211,153,0.15)';
-                        resultBox.style.color = 'var(--accent-green)';
-                        resultBox.textContent = '✓ Token đã được đồng bộ vào hệ thống.';
-                        showToast(`Đã kết nối ${service.toUpperCase()} thành công!`, 'success');
-                        setTimeout(() => {
-                            closeOAuthModal();
-                            fetchAccounts();
-                            fetchStats();
-                        }, 1800);
-                    } else if (statusData.status === 'error') {
-                        clearInterval(oauthPollTimer);
-                        heading.textContent = '❌ Lỗi Xác Thực';
-                        desc.textContent = statusData.error || 'Quá trình xác thực bị hủy hoặc xảy ra lỗi.';
-                        resultBox.style.display = 'block';
-                        resultBox.style.background = 'rgba(251,113,133,0.15)';
-                        resultBox.style.color = 'var(--accent-rose)';
-                        resultBox.textContent = statusData.error || 'Lỗi không xác định.';
+                if (!statusData) return;
+
+                // Hiển thị link xác thực ngay khi server cung cấp auth_url
+                if (statusData.auth_url && linkBox.style.display === 'none') {
+                    authLink.href = statusData.auth_url;
+                    linkBox.style.display = 'block';
+                    heading.textContent = `Đăng nhập Google ${service.toUpperCase()}`;
+                    desc.innerHTML = `Vui lòng đăng nhập Google và bấm <strong>"Cho phép / Allow"</strong> để hoàn tất cấp quyền.`;
+                    try {
+                        window.open(statusData.auth_url, '_blank');
+                    } catch (e) {
+                        console.log('Browser blocked auto popup:', e);
                     }
+                }
+
+                if (statusData.status === 'success') {
+                    clearInterval(oauthPollTimer);
+                    if (oauthCountdownTimer) { clearInterval(oauthCountdownTimer); oauthCountdownTimer = null; }
+                    spinner.style.display = 'none';
+                    linkBox.style.display = 'none';
+                    heading.textContent = '🎉 Xác Thực Thành Công!';
+                    desc.textContent = statusData.message || 'Đã lưu token đăng nhập thành công.';
+                    resultBox.style.display = 'block';
+                    resultBox.style.background = 'rgba(52,211,153,0.15)';
+                    resultBox.style.color = 'var(--accent-green)';
+                    resultBox.textContent = '✓ Token đã được đồng bộ vào hệ thống.';
+                    showToast(`Đã kết nối ${service.toUpperCase()} thành công!`, 'success');
+                    setTimeout(() => {
+                        closeOAuthModal();
+                        fetchAccounts();
+                        fetchStats();
+                    }, 1800);
+                } else if (statusData.status === 'error') {
+                    clearInterval(oauthPollTimer);
+                    if (oauthCountdownTimer) { clearInterval(oauthCountdownTimer); oauthCountdownTimer = null; }
+                    spinner.style.display = 'none';
+                    linkBox.style.display = 'none';
+                    heading.textContent = '❌ Lỗi Xác Thực';
+                    desc.textContent = statusData.error || 'Quá trình xác thực bị hủy hoặc xảy ra lỗi.';
+                    resultBox.style.display = 'block';
+                    resultBox.style.background = 'rgba(251,113,133,0.15)';
+                    resultBox.style.color = 'var(--accent-rose)';
+                    resultBox.textContent = statusData.error || 'Lỗi không xác định.';
                 }
             } catch (err) {
                 console.warn('Polling OAuth error:', err);
@@ -1295,7 +1373,16 @@ function closeOAuthModal() {
         clearInterval(oauthPollTimer);
         oauthPollTimer = null;
     }
-    document.getElementById('modal-oauth').classList.remove('visible');
+    if (oauthCountdownTimer) {
+        clearInterval(oauthCountdownTimer);
+        oauthCountdownTimer = null;
+    }
+    const modal = document.getElementById('modal-oauth');
+    const linkBox = document.getElementById('oauth-link-box');
+    const spinner = document.getElementById('oauth-spinner');
+    if (modal) modal.classList.remove('visible');
+    if (linkBox) linkBox.style.display = 'none';
+    if (spinner) spinner.style.display = '';
 }
 
 async function disconnectService(accountId, service) {

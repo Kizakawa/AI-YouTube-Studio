@@ -9,6 +9,25 @@
 > 4. **Xử lý 8 điểm kẹt luồng:** Đã bọc timeout, non-blocking async và auto-recovery cho pipeline render.
 > 5. **Về Telegram Bot:** Render của Giang vẫn giữ nguyên cấu hình chạy bot chính `@VV1n_mybot` như cũ, không bị ảnh hưởng hay xung đột gì!
 
+## 🗓️ [2026-09-24] — Quản Lý Đa Tài Khoản OAuth, Fix Lỗi YouTube Upload & Đăng Công Khai (Public)
+
+### ✅ ĐÃ HOÀN THÀNH
+
+#### 1. Quản Lý Kênh & Tài Khoản Google Trực Tiếp Trên Web Studio
+- **Tab Kênh & Tài Khoản mới:** Giao diện cho phép xem danh sách tài khoản Google, trạng thái kết nối YouTube/Drive, dung lượng Drive và quota YouTube còn lại.
+- **Xác thực OAuth trên Web:** Thêm modal hỗ trợ đăng nhập OAuth trực tiếp cho từng tài khoản (Account 1, 2, 3...) thay vì phải chạy script terminal.
+- **Thêm / Xóa tài khoản:** Hỗ trợ upload file `client_secret.json` hoặc tạo mới tài khoản trực tiếp từ giao diện Web Studio.
+- **Khắc phục lỗi OAuth insecure_transport:** Đã thêm cấu hình `OAUTHLIB_INSECURE_TRANSPORT = 1` trong môi trường local để tránh lỗi `(insecure_transport) OAuth 2 MUST utilize https`.
+
+#### 2. Sửa Lỗi YouTube Upload (401 Unauthorized / youtubeSignupRequired)
+- **Nâng cấp YouTube Scope:** Mở rộng từ `https://www.googleapis.com/auth/youtube.upload` lên `https://www.googleapis.com/auth/youtube` (full scope). Scope cũ quá hẹp khiến YouTube Data API từ chối khi vừa tạo metadata (title, description, tags) vừa upload video.
+- **Tự động làm mới Token (Auto-refresh Token):** Bổ sung cơ chế tự động refresh token trong `PublisherAgent` khi access token hết hạn (`creds.refresh(Request())`), tránh lỗi token hết hạn giữa chừng.
+
+#### 3. Chuyển Chế Độ Đăng Video Sang Công Khai (Public)
+- **PublisherAgent:** Đổi mặc định `privacy_status` từ `"private"` sang `"public"`. (Nếu có hẹn giờ `schedule_time_iso`, YouTube API vẫn tự động đặt private chờ giờ công chiếu).
+- **Web Studio Server:** API endpoint `POST /api/videos/{job_id}/publish-youtube` mặc định đăng video ở chế độ `public`.
+- **Telegram Bot:** Cập nhật lệnh xuất bản video sang chế độ Công khai (Public) và cập nhật thông báo phản hồi cho người dùng.
+
 ---
 
 ## 🗓️ [2026-09-24] — Tích Hợp Google Drive 20TB
