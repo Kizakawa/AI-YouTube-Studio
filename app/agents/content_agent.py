@@ -9,12 +9,9 @@ from app.schemas.contracts import ScriptContract
 logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = [
-    "gemini-flash-lite-latest",
     "gemini-3-flash-preview",
-    "gemini-flash-latest",
-    "gemini-3.5-flash-lite",
     "gemini-3.5-flash",
-    "gemini-3.6-flash",
+    "gemini-flash-latest",
 ]
 
 class ContentAgent:
@@ -28,20 +25,19 @@ class ContentAgent:
         self.rotator = KeyRotator(keys)
         self.conversations: Dict[str, List[Dict[str, str]]] = {}
 
-    def _call_api(self, prompt: str, json_mode: bool = False, timeout: int = 15, max_total_seconds: int = 60) -> str:
+    def _call_api(self, prompt: str, json_mode: bool = False, timeout: int = 25, max_total_seconds: int = 150) -> str:
         """
-        Gọi trực tiếp Gemini REST API với timeout nghiêm ngặt.
-        Tự động xoay key và model ngay lập tức nếu gặp 429 (quota), 503 (quá tải) hoặc timeout.
-        [FIX #2] Thêm tổng timeout max_total_seconds (mặc định 60s) để tránh kẹt quá lâu.
+        Gọi trực tiếp Gemini REST API với timeout nghiêm ngặt và xoay key thông minh.
+        Khi một API Key bị 429 (hết quota) hoặc 403 (cấm), hệ thống xoay ngay sang key tiếp theo
+        thay vì lãng phí thời gian thử các model khác với cùng key đã hết quota.
         """
         import time
         start_time = time.monotonic()
         total_keys = max(len(self.rotator.keys), 1)
         attempts = 0
-        max_attempts = total_keys + 1  # Giảm từ total_keys * 2
+        max_attempts = max(total_keys * 2, 4)
 
         for attempt in range(max_attempts):
-            # [FIX #2] Kiểm tra tổng thời gian đã chạy
             elapsed = time.monotonic() - start_time
             if elapsed >= max_total_seconds:
                 raise RuntimeError(
@@ -53,8 +49,8 @@ class ContentAgent:
             if not key:
                 raise ValueError("Không có API Key nào hoạt động trong pool!")
 
+            key_failed_quota = False
             for model in AVAILABLE_MODELS:
-                # Kiểm tra timeout tổng trước mỗi request
                 elapsed = time.monotonic() - start_time
                 if elapsed >= max_total_seconds:
                     raise RuntimeError(
@@ -78,7 +74,32 @@ class ContentAgent:
                         if candidates:
                             parts = candidates[0].get("content", {}).get("parts", [])
                             if parts and "text" in parts[0]:
+                                logger.info(f"✅ Gemini API ({model}) thành công với key {key[:8]}... trong {time.monotonic()-start_time:.1f}s")
                                 return parts[0]["text"].strip()
+                    elif r.status_code in (429, 403):
+                        logger.warning(f"⚠️ Key {key[:8]}... gặp lỗi {r.status_code} (hết quota). Chuyển sang key tiếp theo ngay lập tức...")
+                        self.rotator.rotate_key()
+                        key_failed_quota = True
+                        break  # Thoát ngay vòng lặp model của key này
+                    elif r.status_code == 503 and json_mode:
+                        # Fallback: Thử lại không dùng responseMimeType (tránh 503 trên engine structured JSON)
+                        logger.info(f"Gemini API ({model}) gặp 503 với structured output, thử lại chế độ raw JSON...")
+                        time.sleep(1.0)
+                        try:
+                            fallback_payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                            r_fb = requests.post(url, json=fallback_payload, timeout=timeout)
+                            if r_fb.status_code == 200:
+                                data = r_fb.json()
+                                candidates = data.get("candidates", [])
+                                if candidates:
+                                    parts = candidates[0].get("content", {}).get("parts", [])
+                                    if parts and "text" in parts[0]:
+                                        logger.info(f"✅ Gemini API ({model}) thành công qua fallback raw JSON trong {time.monotonic()-start_time:.1f}s")
+                                        return parts[0]["text"].strip()
+                        except Exception as e_fb:
+                            logger.debug(f"Fallback raw JSON lỗi: {e_fb}")
+                        time.sleep(1.0)
+                        continue
                     else:
                         err_msg = ""
                         try:
@@ -86,15 +107,17 @@ class ContentAgent:
                         except Exception:
                             err_msg = r.text[:80]
                         logger.warning(f"Gemini API ({model}) trả lỗi {r.status_code} với key {key[:8]}...: {err_msg}")
+                        if r.status_code == 503:
+                            time.sleep(1.0)
                         continue
                 except Exception as e:
                     logger.warning(f"Lỗi kết nối Gemini API ({model}) với key {key[:8]}...: {e}")
+                    time.sleep(0.5)
                     continue
 
-            # Xoay sang key tiếp theo trong pool
-            new_key = self.rotator.rotate_key()
-            if not new_key:
-                break
+            # Nếu key chưa bị rotate do 429, xoay sang key tiếp theo sau khi đã thử các model
+            if not key_failed_quota:
+                self.rotator.rotate_key()
 
         raise RuntimeError(
             f"Đã thử tất cả {attempts} requests qua {total_keys} keys và "
@@ -104,6 +127,14 @@ class ContentAgent:
     def _parse_json_script(self, raw_text: str) -> ScriptContract:
         """Helper làm sạch markdown và parse JSON thành ScriptContract"""
         text = raw_text.strip()
+        if text.startswith("```"):
+            lines = text.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            text = "\n".join(lines).strip()
+
         start = text.find("{")
         end = text.rfind("}")
         if start != -1 and end != -1 and end > start:
@@ -115,55 +146,39 @@ class ContentAgent:
         """
         Sinh kịch bản video Shorts (30-50 giây) giật gân, nhịp điệu nhanh, cuốn hút triệu view.
         """
-        prompt = f"""
-You are a world-class YouTube Shorts director and scriptwriter producing multi-million view videos for the niche: '{channel_niche}'.
-Create a breathtaking, high-retention 40-50 second viral script on the topic: '{topic}'.
+        prompt = f"""You are a world-class YouTube Shorts director creating high-retention viral videos in '{channel_niche}'.
+Topic: '{topic}'
 Language: {language}
 
 STRICT RETENTION & STORYTELLING FORMULA:
-1. 💥 THE 3-SECOND PATTERN INTERRUPT HOOK:
-   - Start immediately with an irresistible curiosity gap, shocking counter-intuitive fact, or high-stakes dilemma.
-   - Absolutely NO greetings, NO "Did you know?", NO boring intros. Start with immediate impact.
-2. ⚡ VISCERAL, HIGH-SPEED PACING:
-   - Punchy, concise sentences (6 to 12 words per sentence).
-   - High emotional resonance (mystery, awe, suspense, fascination). Zero fluff or filler words.
-3. 🌀 ESCALATION & MINDBLOWING CLIMAX:
-   - Each scene must build tension or reveal a surprising layer of truth.
-   - Deliver a powerful climax or unexpected twist at the 30-40 second mark.
-4. 🔁 SEAMLESS REWATCH LOOP:
-   - Craft the ending to either loop seamlessly back into the opening sentence or deliver a punchy takeaway.
-5. 🎬 CINEMATIC VISUAL KEYWORDS (CRITICAL):
-   - For EACH scene, provide a highly specific, evocative English search keyword tailored for cinematic stock footage & AI image rendering.
-   - Examples of GREAT visual keywords:
-     - "bioluminescent glowing abyssal creature deep dark ocean 4k"
-     - "ancient forbidden tomb golden relic volumetric dust rays"
-     - "futuristic quantum supercomputer glowing blue holographic core"
-   - NEVER use lazy generic words like "ocean", "computer", "city".
-6. 🎯 REAL-WORLD ENTITIES & HISTORICAL ACCURACY (VITAL):
-   - If the topic or script involves REAL-WORLD people, leaders, celebrities, or historical figures/places (e.g. Vladimir Putin, John D. Rockefeller, Donald Trump, Elon Musk, Nikola Tesla, Julius Caesar, Kremlin, White House, NASA):
-   - Identify the MAIN real-world entity and fill "primary_entity" with their full official name (e.g. "John D. Rockefeller", "Vladimir Putin").
-   - VISUAL CONSISTENCY ACROSS ALL SCENES: For videos about a real figure, EVERY scene's visual_keyword MUST reflect that person, their historical era, or their actions (e.g. "John D. Rockefeller vintage portrait 1890", "Standard Oil monopoly archival refinery 19th century", "John D. Rockefeller calculated cold stare").
-   - NEVER use lazy generic descriptions like "powerful man in modern boardroom", "serious businessman", "man thinking", or "chess player" when discussing a real figure! This destroys immersion. Always anchor scenes to the real person's name and authentic context so the system can pull real documentary photographs.
+1. 3-Second Pattern Interrupt Hook: Shocking statement, dilemma, or curiosity gap. No boring intros.
+2. High-Speed Visceral Pacing: 6-12 words per sentence, high emotion, zero fluff.
+3. Escalation & Climax: Build tension each scene, climax at 30-40 seconds, ending loops seamlessly.
+4. Cinematic Visual Keywords & Real-World Accuracy:
+   - For real historical figures or places: EVERY scene's visual_keyword MUST name the figure and authentic historical era/action (e.g. '1911 historic ship port', 'archival portrait'). Do NOT use generic terms.
+   - For abstract topics: Highly specific evocative 4K cinematic English keywords.
+   - Identify the main real-world entity in 'primary_entity' (or null if abstract).
 
-Return ONLY valid JSON matching this exact schema:
+Return ONLY a valid JSON object matching this schema:
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
-  "primary_entity": "Full name of main real-world person/figure (e.g. 'John D. Rockefeller', 'Vladimir Putin') or null if abstract topic",
+  "primary_entity": "Full official name of main person/figure or null",
   "hook": "The opening 3-second hook sentence",
-  "full_narration": "The complete spoken text without any stage directions",
+  "full_narration": "Complete spoken text without stage directions",
   "scenes": [
     {{
       "scene_id": 1,
-      "narration": "First spoken scene sentence",
-      "visual_keyword": "cinematic descriptive English keyword (if real person: include their name & era context e.g. John D. Rockefeller vintage photograph)",
+      "narration": "Spoken sentence for this scene",
+      "visual_keyword": "cinematic descriptive English keyword with person name and era context",
       "estimated_seconds": 4
     }}
   ],
-  "tags": ["shorts", "viral", "niche_tags"],
+  "tags": ["shorts", "viral"],
   "description": "Engaging description with hashtags"
 }}
+Do not write any text or markdown outside the JSON block.
 """
-        raw_text = self._call_api(prompt, json_mode=True, timeout=30)
+        raw_text = self._call_api(prompt, json_mode=False, timeout=30)
         return self._parse_json_script(raw_text)
 
     def refine_script(
@@ -210,7 +225,7 @@ Strict requirements:
   "description": "Engaging description with hashtags"
 }}
 """
-        raw_text = self._call_api(prompt, json_mode=True, timeout=30)
+        raw_text = self._call_api(prompt, json_mode=False, timeout=30)
         return self._parse_json_script(raw_text)
 
     def chat_brainstorm(

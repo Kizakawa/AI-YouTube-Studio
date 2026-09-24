@@ -94,13 +94,12 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
   ]
 }}"""
 
-        models = ["gemini-flash-lite-latest", "gemini-3-flash-preview"]
+        models = ["gemini-3-flash-preview", "gemini-3.5-flash", "gemini-flash-latest"]
         for model in models:
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
                 payload = {
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"responseMimeType": "application/json"}
+                    "contents": [{"parts": [{"text": prompt}]}]
                 }
                 r = requests.post(url, json=payload, timeout=20)
                 if r.status_code == 200:
@@ -108,6 +107,11 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
                     candidates = data.get("candidates", [])
                     if candidates:
                         raw = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "{}")
+                        raw = raw.strip()
+                        start = raw.find("{")
+                        end = raw.rfind("}")
+                        if start != -1 and end != -1:
+                            raw = raw[start:end+1]
                         parsed = json.loads(raw)
                         return self._build_report(parsed)
             except Exception as e:

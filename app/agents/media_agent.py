@@ -818,15 +818,14 @@ Text: "{text}"
 
 If no real entities found, return empty array: []"""
 
-        models = ["gemini-flash-lite-latest", "gemini-3-flash-preview"]
+        models = ["gemini-3-flash-preview", "gemini-3.5-flash", "gemini-flash-latest"]
         for model in models:
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
                 payload = {
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"responseMimeType": "application/json"}
+                    "contents": [{"parts": [{"text": prompt}]}]
                 }
-                r = requests.post(url, json=payload, timeout=10)
+                r = requests.post(url, json=payload, timeout=12)
                 if r.status_code == 200:
                     data = r.json()
                     candidates = data.get("candidates", [])
@@ -839,6 +838,9 @@ If no real entities found, return empty array: []"""
                         if start != -1 and end != -1:
                             raw = raw[start:end+1]
                         return json.loads(raw)
+                elif r.status_code in (429, 403):
+                    key = rotator.rotate_key()
+                    continue
             except Exception as e:
                 logger.debug(f"AI entity detection ({model}): {e}")
                 continue
