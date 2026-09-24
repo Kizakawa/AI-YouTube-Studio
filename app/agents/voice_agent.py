@@ -93,8 +93,8 @@ class VoiceAgent:
             for scene in scenes:
                 if not scene.audio_path:
                     raise ValueError(f"Scene {scene.scene_id} chưa có audio_path")
-                # Escape single quotes trong path
-                safe_path = scene.audio_path.replace("'", "'\\''")
+                # Chuẩn hóa path sang forward slash (as_posix) an toàn cho FFmpeg concat trên Windows/Linux
+                safe_path = Path(scene.audio_path).resolve().as_posix().replace("'", "'\\''")
                 f.write(f"file '{safe_path}'\n")
 
         # FFmpeg concat demuxer an toàn qua run_ffmpeg

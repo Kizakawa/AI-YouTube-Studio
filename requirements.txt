@@ -9,6 +9,7 @@ edge-tts>=6.1.10
 
 # Video & Media Processing
 moviepy>=1.0.3
+imageio-ffmpeg>=0.4.9
 pillow>=10.0.0
 requests>=2.31.0
 

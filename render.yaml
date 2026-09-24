@@ -1,0 +1,30 @@
+# Render.com Blueprint Deployment Specification
+# Tự động cấu hình Web Service với Docker & FFmpeg
+services:
+  - type: web
+    name: ai-youtube-studio
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: PYTHONUNBUFFERED
+        value: 1
+      - key: FFMPEG_THREADS
+        value: 2
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: ALLOWED_TELEGRAM_GROUPS
+        sync: false
+      - key: ALLOWED_TELEGRAM_USERS
+        sync: false
+      - key: GEMINI_API_KEYS
+        sync: false
+      - key: PEXELS_API_KEYS
+        sync: false
+      - key: DEFAULT_TARGET_LANGUAGE
+        value: en
+      - key: DEFAULT_TTS_VOICE
+        value: en-US-ChristopherNeural

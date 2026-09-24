@@ -9,12 +9,12 @@ from app.schemas.contracts import ScriptContract
 logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = [
-    "gemini-3-flash-preview",
-    "gemini-3.5-flash-lite",
     "gemini-flash-lite-latest",
+    "gemini-3-flash-preview",
+    "gemini-flash-latest",
+    "gemini-3.5-flash-lite",
     "gemini-3.5-flash",
     "gemini-3.6-flash",
-    "gemma-4-26b-a4b-it",
 ]
 
 class ContentAgent:

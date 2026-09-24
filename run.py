@@ -155,6 +155,11 @@ def main():
             logger.debug(f"Bỏ qua cảnh báo vô hại của Telegram: {err_msg}")
             return
 
+        # Bỏ qua và chờ tự phục hồi nếu gặp xung đột getUpdates (khi Render deploy rolling hoặc chạy song song local/server)
+        if any(ign in err_msg for ign in ["Conflict", "terminated by other getUpdates request"]):
+            logger.warning("⚠️ [TELEGRAM CONFLICT] Đang có một tiến trình Bot khác chạy cùng lúc (local hoặc Render rolling deploy). Đang chờ kết nối ổn định...")
+            return
+
         logger.error(f"⚠️ Lỗi Telegram xảy ra: {context.error}", exc_info=context.error)
         if update and update.effective_message:
             try:
@@ -167,7 +172,9 @@ def main():
     print("🤖 Bot đang chạy Polling... Cả nhóm có thể ra lệnh từ Telegram hoặc xem Web!")
     print("👉 Mở trình duyệt xem Dashboard: http://127.0.0.1:8000")
     print("=" * 70)
-    app.run_polling(drop_pending_updates=False)
+    # drop_pending_updates=True: Xóa sạch các update lỗi tồn đọng cũ khi khởi động lại
+    # bootstrap_retries=-1: Tự động thử lại không giới hạn nếu mạng Render/Telegram bị ngắt kết nối tạm thời
+    app.run_polling(drop_pending_updates=True, bootstrap_retries=-1)
 
 if __name__ == "__main__":
     main()

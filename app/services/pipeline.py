@@ -24,6 +24,51 @@ from config.settings import settings
 logger = logging.getLogger(__name__)
 
 
+def _is_real_entity_context(keyword: str, script_context: str = "") -> Tuple[bool, Optional[str]]:
+    """
+    Phát hiện xem cảnh hoặc chủ đề có nhắc tới nhân vật lịch sử, chính trị gia,
+    người nổi tiếng hoặc sự kiện/địa danh có thật hay không.
+    Trả về (is_entity: bool, entity_name: Optional[str]).
+    """
+    text = f"{keyword} {script_context}".lower()
+    famous_entities = [
+        ("vladimir putin", "Vladimir Putin"),
+        ("putin", "Vladimir Putin"),
+        ("donald trump", "Donald Trump"),
+        ("trump", "Donald Trump"),
+        ("joe biden", "Joe Biden"),
+        ("biden", "Joe Biden"),
+        ("barack obama", "Barack Obama"),
+        ("obama", "Barack Obama"),
+        ("elon musk", "Elon Musk"),
+        ("bill gates", "Bill Gates"),
+        ("steve jobs", "Steve Jobs"),
+        ("mark zuckerberg", "Mark Zuckerberg"),
+        ("albert einstein", "Albert Einstein"),
+        ("einstein", "Albert Einstein"),
+        ("nikola tesla", "Nikola Tesla"),
+        ("tesla", "Nikola Tesla"),
+        ("adolf hitler", "Adolf Hitler"),
+        ("hitler", "Adolf Hitler"),
+        ("joseph stalin", "Joseph Stalin"),
+        ("stalin", "Joseph Stalin"),
+        ("winston churchill", "Winston Churchill"),
+        ("churchill", "Winston Churchill"),
+        ("napoleon", "Napoleon Bonaparte"),
+        ("julius caesar", "Julius Caesar"),
+        ("alexander the great", "Alexander the Great"),
+        ("cleopatra", "Cleopatra"),
+        ("kremlin", "Moscow Kremlin"),
+        ("white house", "White House"),
+        ("pentagon", "The Pentagon"),
+        ("nasa", "NASA"),
+    ]
+    for pattern, official_name in famous_entities:
+        if pattern in text:
+            return True, official_name
+    return False, None
+
+
 class VideoPipeline:
     """
     Orchestrator cho 1 VideoJob.
@@ -206,51 +251,6 @@ class VideoPipeline:
             })
             result.append(enriched)
         return result
-
-def _is_real_entity_context(keyword: str, script_context: str = "") -> Tuple[bool, Optional[str]]:
-    """
-    Phát hiện xem cảnh hoặc chủ đề có nhắc tới nhân vật lịch sử, chính trị gia,
-    người nổi tiếng hoặc sự kiện/địa danh có thật hay không.
-    Trả về (is_entity: bool, entity_name: Optional[str]).
-    """
-    text = f"{keyword} {script_context}".lower()
-    famous_entities = [
-        ("vladimir putin", "Vladimir Putin"),
-        ("putin", "Vladimir Putin"),
-        ("donald trump", "Donald Trump"),
-        ("trump", "Donald Trump"),
-        ("joe biden", "Joe Biden"),
-        ("biden", "Joe Biden"),
-        ("barack obama", "Barack Obama"),
-        ("obama", "Barack Obama"),
-        ("elon musk", "Elon Musk"),
-        ("bill gates", "Bill Gates"),
-        ("steve jobs", "Steve Jobs"),
-        ("mark zuckerberg", "Mark Zuckerberg"),
-        ("albert einstein", "Albert Einstein"),
-        ("einstein", "Albert Einstein"),
-        ("nikola tesla", "Nikola Tesla"),
-        ("tesla", "Nikola Tesla"),
-        ("adolf hitler", "Adolf Hitler"),
-        ("hitler", "Adolf Hitler"),
-        ("joseph stalin", "Joseph Stalin"),
-        ("stalin", "Joseph Stalin"),
-        ("winston churchill", "Winston Churchill"),
-        ("churchill", "Winston Churchill"),
-        ("napoleon", "Napoleon Bonaparte"),
-        ("julius caesar", "Julius Caesar"),
-        ("alexander the great", "Alexander the Great"),
-        ("cleopatra", "Cleopatra"),
-        ("kremlin", "Moscow Kremlin"),
-        ("white house", "White House"),
-        ("pentagon", "The Pentagon"),
-        ("nasa", "NASA"),
-    ]
-    for pattern, official_name in famous_entities:
-        if pattern in text:
-            return True, official_name
-    return False, None
-
 
     async def _fetch_scene_media(self, scene: SceneContract, media_dir: str) -> str:
         """

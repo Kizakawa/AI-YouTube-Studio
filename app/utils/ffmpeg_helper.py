@@ -74,6 +74,26 @@ def _ensure_ffmpeg_in_path():
 
         os.environ["PATH"] = os.pathsep.join(merged_dirs)
 
+    # Fallback cho cả Linux (Render Native) và Windows nếu chưa có ffmpeg trong PATH
+    if not shutil.which("ffmpeg"):
+        try:
+            import imageio_ffmpeg
+            exe = imageio_ffmpeg.get_ffmpeg_exe()
+            if exe and os.path.exists(exe):
+                exe_dir = str(Path(exe).parent)
+                # Đảm bảo có binary chuẩn tên 'ffmpeg'
+                target_name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+                target_path = Path(exe_dir) / target_name
+                if not target_path.exists():
+                    try:
+                        shutil.copy2(exe, str(target_path))
+                    except Exception:
+                        pass
+                if exe_dir not in os.environ.get("PATH", "").split(os.pathsep):
+                    os.environ["PATH"] = exe_dir + os.pathsep + os.environ.get("PATH", "")
+        except Exception:
+            pass
+
 
 _ensure_ffmpeg_in_path()
 _cached_ffmpeg_installed: Optional[bool] = None
