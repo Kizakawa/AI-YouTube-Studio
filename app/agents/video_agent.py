@@ -71,8 +71,8 @@ class VideoAgent:
                 video_paths=scene_clips,
                 output_path=silent_video,
                 fps=job.fps,
-                transition="fade",
-                transition_duration=0.25,
+                transition="fadeblack",
+                transition_duration=0.3,
                 scene_durations_seconds=scene_durations,
             )
 

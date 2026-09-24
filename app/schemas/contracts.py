@@ -37,7 +37,16 @@ class SceneContract(BaseModel):
     """
     scene_id: int = Field(ge=1)
     narration: str = Field(min_length=1, description="Lời thoại của cảnh này")
-    visual_keyword: str = Field(min_length=1, description="Từ khóa tìm media trên Pexels/Imagen")
+    visual_keyword: str = Field(min_length=1, description="Từ khóa tìm kiếm media trên Pexels/Wikimedia (ngắn gọn)")
+    visual_prompt: Optional[str] = Field(
+        default=None,
+        description=(
+            "Mô tả cảnh quay điện ảnh CHI TIẮT độc lập với lời thoại. "
+            "Phải là hiện tượng khoa học/vũ trụ/lịch sử THỰC TẠ — "
+            "không bao giờ mô tả nghĩa đen của phép ẩn dụ trong lời thoại. "
+            "Ví dụ: '[Vật thể chính], [Góc máy & Chuyển động], [Ánh sáng điện ảnh]'"
+        )
+    )
     estimated_seconds: float = Field(default=3.0, gt=0, le=30, description="Ước lượng thô từ Gemini (tham khảo)")
 
     # --- Populated bởi VoiceAgent (Step B) ---

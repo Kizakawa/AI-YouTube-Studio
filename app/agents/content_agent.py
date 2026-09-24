@@ -146,27 +146,45 @@ class ContentAgent:
         """
         Sinh kịch bản video Shorts (30-50 giây) giật gân, nhịp điệu nhanh, cuốn hút triệu view.
         """
-        prompt = f"""You are a world-class YouTube Shorts director and cinematographer creating high-retention viral videos in '{channel_niche}'.
+        prompt = f"""You are a world-class YouTube Shorts director AND cinematographer for a {channel_niche} channel.
 Topic: '{topic}'
-Language: {language}
+Script Language: {language}
 
-STRICT RETENTION & STORYTELLING FORMULA:
-1. 3-Second Pattern Interrupt Hook: Shocking statement, dilemma, or curiosity gap. No boring intros.
-2. High-Speed Visceral Pacing: 6-12 words per sentence, high emotion, zero fluff.
-3. Escalation & Climax: Build tension each scene, climax at 30-40 seconds, ending loops seamlessly.
-4. CINEMATIC VISUAL SCENE DESCRIPTION (CRITICAL RULES):
-   - Each visual_keyword MUST describe a SPECIFIC, CONCRETE, PHOTOREALISTIC scene a camera could actually capture.
-   - Format: "[Subject doing specific action], [lighting type], [camera angle], [environment detail]"
-   - Examples of GOOD descriptions:
-     * "A lone astronaut floating in dark space, dramatic backlit silhouette, wide-angle shot, Earth reflection in visor"
-     * "Close-up of aged weathered hands gripping a ship's wheel, golden hour rim light, 1912 period-accurate uniform"
-     * "Massive black hole surrounded by glowing accretion disk, deep space environment, nebula in background, photorealistic"
-   - FORBIDDEN: Abstract nouns alone (e.g. 'spaghettification', 'visual representation', 'concept of', 'abstract idea')
-   - FORBIDDEN: Cartoon/anime/2D art style references
-   - For real historical figures: name them explicitly + era + specific physical action
-   - Identify the main real-world entity in 'primary_entity' (or null if abstract).
+═══════════════════════════════════════════════════════════
+STORYTELLING FORMULA (HIGH RETENTION)
+═══════════════════════════════════════════════════════════
+1. 3-Second Pattern Interrupt Hook: Shocking statement or curiosity gap. No boring intros.
+2. High-Speed Pacing: 6-12 words per sentence, high emotion, zero fluff.
+3. Escalation & Climax: Build tension each scene, peak at 30-40s, loop-worthy ending.
 
-Return ONLY a valid JSON object matching this schema:
+═══════════════════════════════════════════════════════════
+VISUAL DIRECTION — HARD RULES (VIOLATIONS = FAILURE)
+═══════════════════════════════════════════════════════════
+RULE 1 — NO LITERAL METAPHORS:
+  The visual_prompt must NEVER illustrate the literal words of a metaphor or simile.
+  BAD: narration says "a mountain crushed into a grain of sand" → visual shows a snowy mountain. WRONG.
+  GOOD: narration says "a mountain crushed into a grain of sand" → visual shows "Stellar collapse sequence, a massive blue star imploding into a neutron star, extreme ultraviolet flash, wide-angle astrophotography".
+  Always depict the ACTUAL SCIENTIFIC/HISTORICAL PHENOMENON, not the metaphor's surface meaning.
+
+RULE 2 — UNIQUE VISUALS PER SCENE (NO DUPLICATES):
+  Every scene must have a VISUALLY DISTINCT subject. Review ALL previous scenes before writing a new one.
+  Forbidden repeat: same object (e.g. astronaut helmet), same location, same lighting setup across 2+ scenes.
+
+RULE 3 — CONCRETE CINEMATIC DESCRIPTION:
+  visual_prompt format: "[Main subject + specific action], [camera angle & movement], [cinematic lighting type], [environment detail]"
+  Examples:
+  ✓ "Supermassive black hole M87* with glowing orange accretion disk, extreme slow-motion orbit, side-lit by infalling plasma jets, deep space void backdrop"
+  ✓ "Dying red supergiant star surface, boiling plasma convection cells, close-up macro telescopic lens, intense amber and crimson glow"
+  ✗ "A mountain range" (too literal/metaphoric)
+  ✗ "Abstract 3D metallic sphere" (wrong art style)
+  ✗ "Wireframe grid representing space" (retro sci-fi cliché)
+
+RULE 4 — visual_keyword is SHORT (2-4 words max, for stock search):
+  Example: "black hole accretion", "supernova explosion 4k", "neutron star collision"
+
+═══════════════════════════════════════════════════════════
+OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
+═══════════════════════════════════════════════════════════
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
   "primary_entity": "Full official name of main person/figure or null",
@@ -175,15 +193,15 @@ Return ONLY a valid JSON object matching this schema:
   "scenes": [
     {{
       "scene_id": 1,
-      "narration": "Spoken sentence for this scene",
-      "visual_keyword": "Specific cinematic scene description: subject + action + lighting + camera angle + environment",
+      "narration": "Spoken sentence for this scene (the metaphor/story text)",
+      "visual_keyword": "black hole space 4k",
+      "visual_prompt": "Supermassive black hole with glowing accretion disk, low-angle orbit shot, dramatic volumetric backlit plasma, deep space void",
       "estimated_seconds": 4
     }}
   ],
   "tags": ["shorts", "viral"],
   "description": "Engaging description with hashtags"
 }}
-Do not write any text or markdown outside the JSON block.
 """
         raw_text = self._call_api(prompt, json_mode=False, timeout=30)
         return self._parse_json_script(raw_text)
@@ -208,17 +226,17 @@ USER FEEDBACK:
 CURRENT SCRIPT:
 {current_script.model_dump_json(indent=2)}
 
-Please refine and rewrite the script strictly adhering to the user's feedback.
+REFINE the script strictly adhering to the user's feedback.
 Language: {language}
 
-Strict requirements:
-1. Revise the narration, hook, or visual keywords according to the feedback.
-2. Fast-paced, punchy, concise sentences (35-50 seconds total).
-3. CINEMATIC SCENE DESCRIPTIONS (not abstract keywords):
-   - Each visual_keyword describes: [Subject + specific action], [lighting], [camera angle], [environment]
-   - Example: "A scientist in 1960s NASA control room hunched over screens, cold fluorescent overhead light, medium close-up, banks of blinking computer panels"
-   - FORBIDDEN: Abstract/conceptual terms, cartoon references, watermark-prone generic art styles.
-4. Return ONLY valid JSON matching this schema:
+HARD RULES:
+1. Fast-paced, punchy, concise sentences (35-50 seconds total).
+2. NO LITERAL METAPHORS in visual_prompt:
+   narration can use metaphors; visual_prompt must show the ACTUAL phenomenon, not the metaphor's literal image.
+3. NO DUPLICATE SCENES: every visual_prompt must describe a visually distinct subject and setting.
+4. visual_prompt format: "[Subject + action], [camera angle], [lighting], [environment]"
+5. visual_keyword: 2-4 words for stock search only.
+6. Return ONLY valid JSON:
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
   "hook": "The opening 3-second hook sentence",
@@ -227,7 +245,8 @@ Strict requirements:
     {{
       "scene_id": 1,
       "narration": "Text spoken in this scene",
-      "visual_keyword": "Specific cinematic scene: subject + action + lighting + camera angle + setting",
+      "visual_keyword": "2-4 word stock search term",
+      "visual_prompt": "Detailed cinematic scene: subject + camera angle + lighting + environment",
       "estimated_seconds": 4
     }}
   ],
@@ -316,15 +335,15 @@ Synthesize this entire discussion into a complete, high-retention 40-50 second Y
 Niche: '{channel_niche}'
 Script Language (narration & title): {language}
 
-Strict requirements:
+HARD RULES:
 1. Choose the absolute BEST hook from the discussion for the first 3 seconds.
 2. Fast-paced, punchy, concise sentences.
-3. CINEMATIC SCENE DESCRIPTIONS for AI image generation (not stock search terms):
-   - Each visual_keyword must describe a specific, camera-capturable, photorealistic scene.
-   - Format: "[Subject + specific action], [lighting type], [camera angle], [environment details]"
-   - Example: "Close-up of cracked dry earth in scorching desert, harsh midday overhead sun, extreme macro, heat shimmer waves rising"
-   - FORBIDDEN: Abstract nouns, cartoon references, 'spaghettification', 'visual representation', etc.
-4. Return ONLY valid JSON matching this schema:
+3. visual_prompt must depict the ACTUAL PHENOMENON, never the literal meaning of a metaphor:
+   - narration: "like a mountain crushed to sand" → visual_prompt: stellar collapse, NOT a mountain
+   - Each scene: visually UNIQUE subject, angle, and lighting from all others.
+4. visual_prompt format: "[Subject + action], [camera angle], [lighting], [environment detail]"
+5. visual_keyword: 2-4 words for Pexels/stock search.
+6. Return ONLY valid JSON:
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
   "hook": "The opening 3-second hook sentence",
@@ -333,7 +352,8 @@ Strict requirements:
     {{
       "scene_id": 1,
       "narration": "Spoken text in this scene",
-      "visual_keyword": "Specific cinematic scene: subject + action + lighting + camera angle + environment",
+      "visual_keyword": "2-4 word stock search term",
+      "visual_prompt": "Detailed cinematic scene: subject + camera angle + lighting + environment",
       "estimated_seconds": 4
     }}
   ],

@@ -321,10 +321,14 @@ def image_to_video(
             f"setsar=1"
         )
 
+    # Vignette filter — góc tối kiểu cinema, tạo chiều sâu, ảnh không bị "phẳng"
+    vignette_filter = "vignette=PI/4.5"
+    vf_chain = f"{zoompan},{vignette_filter}"
+
     args = [
         "-loop", "1",
         "-i", image_path,
-        "-vf", zoompan,
+        "-vf", vf_chain,
         "-t", str(duration_seconds),
         "-c:v", "libx264",
         "-preset", "veryfast",

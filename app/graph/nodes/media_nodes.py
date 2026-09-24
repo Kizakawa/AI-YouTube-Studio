@@ -83,14 +83,25 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             except Exception as e:
                 logger.debug(f"Scene {scene.scene_id}: Video clip search error: {e}")
 
-        # Tầng 3: AI Image Generation gắn với nhân vật lịch sử
+        # Tầng 3: AI Image Generation — ưu tiên visual_prompt (Director description) hơn visual_keyword
         if not media_path:
             try:
                 ai_img_path = str(media_dir / f"scene_{scene.scene_id:03d}_ai.jpg")
-                prompt = scene.visual_keyword
-                if primary_entity:
-                    prompt = f"Historical authentic photorealistic portrait of {primary_entity}, {scene.visual_keyword}, period accurate 8k"
-                res_img = await asyncio.to_thread(image_agent.generate_scene_image, prompt, ai_img_path)
+                # visual_prompt: mô tả cảnh quay chi tiết từ Director (không bị ảnh hưởng bởi ẩn dụ)
+                # visual_keyword: tag ngắn fallback
+                vp = getattr(scene, 'visual_prompt', None)
+                kw = scene.visual_keyword
+                if primary_entity and not vp:
+                    kw = f"Historical authentic photorealistic portrait of {primary_entity}, {kw}, period accurate 8k"
+                res_img = await asyncio.to_thread(
+                    image_agent.generate_scene_image,
+                    kw,
+                    ai_img_path,
+                    "9:16",
+                    "cinematic",
+                    scene.scene_id,
+                    vp,
+                )
                 if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 2000:
                     media_path = res_img
                     media_type = "image"
@@ -176,10 +187,20 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
             kw = item.get("visual_keyword", "")
             narr = item.get("narration", "")
             
-            # Sinh ảnh AI điện ảnh chất lượng cao chuyên biệt
+            # Sinh ảnh AI điện ảnh chất lượng cao — truyền cả visual_prompt nếu có
             ai_img_path = str(media_dir / f"scene_{scene_id:03d}_refined.jpg")
-            prompt = f"Dramatic cinematic photorealistic shot of {primary_entity or kw}, {kw}, 8k sharp focus, high detail"
-            res_img = await asyncio.to_thread(image_agent.generate_scene_image, prompt, ai_img_path)
+            vp = item.get("visual_prompt", None)
+            kw = item.get("visual_keyword", "")
+            fallback_kw = f"Dramatic cinematic photorealistic shot of {primary_entity or kw}, {kw}, 8k sharp focus"
+            res_img = await asyncio.to_thread(
+                image_agent.generate_scene_image,
+                fallback_kw,
+                ai_img_path,
+                "9:16",
+                "cinematic",
+                scene_id,
+                vp,
+            )
             if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 2000:
                 item["media_path"] = res_img
                 item["media_type"] = "image"
