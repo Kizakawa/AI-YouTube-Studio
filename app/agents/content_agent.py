@@ -179,8 +179,12 @@ RULE 3 — CONCRETE CINEMATIC DESCRIPTION:
   ✗ "Abstract 3D metallic sphere" (wrong art style)
   ✗ "Wireframe grid representing space" (retro sci-fi cliché)
 
-RULE 4 — visual_keyword is SHORT (2-4 words max, for stock search):
-  Example: "black hole accretion", "supernova explosion 4k", "neutron star collision"
+RULE 4 — stock_query is 2-3 ENGLISH TOPIC WORDS for Pexels (SEPARATE from visual_prompt):
+  FORBIDDEN in stock_query: director names, movie titles, actor names, style adjectives.
+  BAD: "Interstellar voyage cinematic", "Nolan dark atmosphere", "Hollywood thriller"
+  GOOD: "black hole", "galaxy nebula", "neutron star", "supernova"
+
+RULE 5 — visual_keyword is 3-5 words, for Wikimedia/general search.
 
 ═══════════════════════════════════════════════════════════
 OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
@@ -193,9 +197,10 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   "scenes": [
     {{
       "scene_id": 1,
-      "narration": "Spoken sentence for this scene (the metaphor/story text)",
-      "visual_keyword": "black hole space 4k",
+      "narration": "Spoken sentence for this scene",
+      "visual_keyword": "black hole event horizon space",
       "visual_prompt": "Supermassive black hole with glowing accretion disk, low-angle orbit shot, dramatic volumetric backlit plasma, deep space void",
+      "stock_query": "black hole",
       "estimated_seconds": 4
     }}
   ],
@@ -235,7 +240,8 @@ HARD RULES:
    narration can use metaphors; visual_prompt must show the ACTUAL phenomenon, not the metaphor's literal image.
 3. NO DUPLICATE SCENES: every visual_prompt must describe a visually distinct subject and setting.
 4. visual_prompt format: "[Subject + action], [camera angle], [lighting], [environment]"
-5. visual_keyword: 2-4 words for stock search only.
+5. stock_query: 2-3 English topic words ONLY for Pexels. NO movie titles, NO director names, NO actor names.
+   BAD: "Interstellar Nolan cinematic" | GOOD: "black hole space"
 6. Return ONLY valid JSON:
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
@@ -245,8 +251,9 @@ HARD RULES:
     {{
       "scene_id": 1,
       "narration": "Text spoken in this scene",
-      "visual_keyword": "2-4 word stock search term",
+      "visual_keyword": "black hole accretion disk",
       "visual_prompt": "Detailed cinematic scene: subject + camera angle + lighting + environment",
+      "stock_query": "black hole",
       "estimated_seconds": 4
     }}
   ],
@@ -342,7 +349,8 @@ HARD RULES:
    - narration: "like a mountain crushed to sand" → visual_prompt: stellar collapse, NOT a mountain
    - Each scene: visually UNIQUE subject, angle, and lighting from all others.
 4. visual_prompt format: "[Subject + action], [camera angle], [lighting], [environment detail]"
-5. visual_keyword: 2-4 words for Pexels/stock search.
+5. stock_query: 2-3 English topic words for Pexels ONLY. FORBIDDEN: movie titles, actor names, director names.
+   BAD: "Interstellar Nolan voyage" | GOOD: "black hole space" or "galaxy explosion"
 6. Return ONLY valid JSON:
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
@@ -352,8 +360,9 @@ HARD RULES:
     {{
       "scene_id": 1,
       "narration": "Spoken text in this scene",
-      "visual_keyword": "2-4 word stock search term",
+      "visual_keyword": "black hole event horizon",
       "visual_prompt": "Detailed cinematic scene: subject + camera angle + lighting + environment",
+      "stock_query": "black hole",
       "estimated_seconds": 4
     }}
   ],

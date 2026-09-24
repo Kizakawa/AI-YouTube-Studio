@@ -70,16 +70,38 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             except Exception:
                 pass
 
-        # Tầng 2.5: Pexels Vertical HD Video Clip (Tạo sự sống động điện ảnh cho phân cảnh)
+        # Tầng 2.5: Pexels Vertical HD Video Clip — dùng stock_query thay visual_keyword để tránh sai phong cách
         if not media_path and media_agent.api_key:
             try:
-                best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, scene.visual_keyword)
+                # Ưu tiên stock_query (2-3 từ thuần topic) > visual_keyword thô
+                raw_q = getattr(scene, 'stock_query', None) or scene.visual_keyword or ""
+                # Lọc bỏ từ nguy hiểm: tên đạo diễn, tên phim, diễn viên
+                _FORBIDDEN = {
+                    "nolan", "interstellar", "inception", "avatar", "hollywood",
+                    "cinematic", "movie", "film", "hathaway", "mcconaughey",
+                    "director", "actor", "actress", "red carpet", "rollercoaster",
+                    "cartoon", "anime", "animated",
+                }
+                clean_words = [w for w in raw_q.lower().split() if w not in _FORBIDDEN]
+                safe_q = " ".join(clean_words[:3]).strip() if clean_words else "space astronomy"
+                # Thêm context nếu chủ đề space
+                space_topics = ["black hole", "galaxy", "nebula", "star", "space", "universe", "supernova"]
+                if any(t in safe_q.lower() for t in space_topics) and "astronomy" not in safe_q:
+                    safe_q = f"{safe_q} astronomy"
+
+                best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, safe_q)
                 if best_vid and best_vid.get("url"):
-                    out_v = str(media_dir / f"scene_{scene.scene_id:03d}_pexels.mp4")
-                    await asyncio.to_thread(media_agent.download_file, best_vid["url"], out_v)
-                    if Path(out_v).exists() and Path(out_v).stat().st_size > 10000:
-                        media_path = out_v
-                        media_type = "video"
+                    vid_url = best_vid["url"]
+                    # DEDUP: không dùng lại cùng URL cho scene khác
+                    if vid_url not in used_pool_urls:
+                        out_v = str(media_dir / f"scene_{scene.scene_id:03d}_pexels.mp4")
+                        await asyncio.to_thread(media_agent.download_file, vid_url, out_v)
+                        if Path(out_v).exists() and Path(out_v).stat().st_size > 10000:
+                            used_pool_urls.add(vid_url)
+                            media_path = out_v
+                            media_type = "video"
+                    else:
+                        logger.debug(f"Scene {scene.scene_id}: Bỏ qua Pexels video trùng URL")
             except Exception as e:
                 logger.debug(f"Scene {scene.scene_id}: Video clip search error: {e}")
 
@@ -114,12 +136,14 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 ov_items = await asyncio.to_thread(media_agent.search_openverse, scene.visual_keyword, 2)
                 if ov_items:
                     ov_url = ov_items[0].get("url")
-                    ext = ".jpg" if "jpg" in ov_url.lower() else ".png"
-                    out_ov = str(media_dir / f"scene_{scene.scene_id:03d}_openverse{ext}")
-                    await asyncio.to_thread(media_agent.download_file, ov_url, out_ov)
-                    if Path(out_ov).exists() and Path(out_ov).stat().st_size > 3000:
-                        media_path = out_ov
-                        media_type = "image"
+                    if ov_url and ov_url not in used_pool_urls:
+                        ext = ".jpg" if "jpg" in ov_url.lower() else ".png"
+                        out_ov = str(media_dir / f"scene_{scene.scene_id:03d}_openverse{ext}")
+                        await asyncio.to_thread(media_agent.download_file, ov_url, out_ov)
+                        if Path(out_ov).exists() and Path(out_ov).stat().st_size > 3000:
+                            used_pool_urls.add(ov_url)
+                            media_path = out_ov
+                            media_type = "image"
             except Exception as e:
                 logger.debug(f"Scene {scene.scene_id}: Openverse fallback error: {e}")
 
@@ -136,6 +160,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             "media_path": media_path,
             "media_type": media_type,
             "visual_keyword": scene.visual_keyword,
+            "visual_prompt": getattr(scene, 'visual_prompt', None),
             "narration": scene.narration
         })
 

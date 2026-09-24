@@ -237,6 +237,7 @@ class VideoPipeline:
         entity_type = "person"
         entity_media_pool = []
         used_pool_urls = set()
+        used_asset_paths: set = set()  # ← DEDUP CROSS-SCENE: track URLs đã assign, cấm tái sử dụng
 
         try:
             with get_db() as db:
@@ -306,7 +307,8 @@ class VideoPipeline:
                 primary_entity=primary_entity,
                 entity_type=entity_type,
                 entity_media_pool=entity_media_pool,
-                used_pool_urls=used_pool_urls
+                used_pool_urls=used_pool_urls,
+                used_asset_paths=used_asset_paths,
             )
             enriched = scene.model_copy(update={
                 "media_path": media_path,
@@ -314,6 +316,44 @@ class VideoPipeline:
             })
             result.append(enriched)
         return result
+
+    @staticmethod
+    def _safe_pexels_query(scene, topic_context: str = "space astronomy") -> str:
+        """
+        Tạo Pexels search query an toàn:
+        - Ư u tiên stock_query (2-3 từ thuần chủ đề)
+        - Tự động thêm context suffix nếu tô chủ đề vũ trụ/khoa học
+        - Bộ lọc: Loại bỏ từng nhà làm phim, tên diễn viên, tên phim nếu lọt vào query
+        """
+        # Từ khóa tốt nhất: stock_query > visual_keyword
+        raw = getattr(scene, 'stock_query', None) or scene.visual_keyword or ""
+
+        # Bộ lọc keyword nguy hiểm (gây ra kết quả sai phong cách trên Pexels)
+        _FORBIDDEN_PEXELS_WORDS = {
+            "nolan", "interstellar", "inception", "avatar", "hollywood",
+            "cinematic", "movie", "film", "hathaway", "mcconaughey",
+            "director", "actor", "actress", "red carpet", "award",
+            "interview", "premiere", "promotional",
+            "rollercoaster", "thrill", "amusement", "park",
+            "cartoon", "anime", "animated", "2d animation",
+        }
+        words = raw.lower().split()
+        filtered = [w for w in words if w not in _FORBIDDEN_PEXELS_WORDS]
+        clean = " ".join(filtered).strip() if filtered else "space astronomy"
+
+        # Giới hạn 3 từ (2-3 là tốt nhất cho Pexels)
+        clean_words = clean.split()
+        if len(clean_words) > 3:
+            clean = " ".join(clean_words[:3])
+
+        # Thêm context suffix nếu quá ngắn hoặc chủ đề space/science
+        space_topics = {"black hole", "galaxy", "nebula", "star", "space", "universe",
+                        "cosmos", "astronaut", "neutron", "supernova", "planet", "asteroid"}
+        needs_context = any(t in clean.lower() for t in space_topics) or len(clean.split()) < 2
+        if needs_context and topic_context not in clean:
+            clean = f"{clean} {topic_context}"
+
+        return clean.strip()
 
     async def _fetch_scene_media(
         self,
@@ -323,6 +363,7 @@ class VideoPipeline:
         entity_type: str = "person",
         entity_media_pool: Optional[List[Dict]] = None,
         used_pool_urls: Optional[set] = None,
+        used_asset_paths: Optional[set] = None,
     ) -> str:
         """
         Tìm nạp media cho 1 scene với hệ thống phân cấp 7 tầng thông minh:
@@ -465,28 +506,40 @@ class VideoPipeline:
             except Exception as ex:
                 logger.debug(f"Scene {scene.scene_id}: Google search not available: {ex}")
 
-        # ── Tầng 3: AI Image Generation (Có gắn tên thực thể nếu có) ──
-        # Luôn đảm bảo nhân vật chính được thể hiện chân thực theo bối cảnh
+        # ── Tầng 3: AI Image Generation (ưu tiên visual_prompt) ──
+        # FALLBACK CHÍNH khi stock/wiki đều thất bại — KHÔNG dùng lại clip cũ từ scene khác
         try:
             ai_img_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_ai.jpg")
-            ai_prompt = scene.visual_keyword
-            if primary_entity:
-                ai_prompt = f"Historical authentic photorealistic shot of {primary_entity}, {scene.visual_keyword}, period accurate, dramatic volumetric lighting, 8k"
+            vp = getattr(scene, 'visual_prompt', None)
+            ai_prompt = (vp.strip() if vp and len(vp.strip()) > 10 else scene.visual_keyword)
+            if primary_entity and not vp:
+                ai_prompt = (
+                    f"Historical authentic photorealistic shot of {primary_entity}, "
+                    f"{scene.visual_keyword}, period accurate, dramatic volumetric lighting, 8k"
+                )
             res_img = await asyncio.to_thread(
-                self._image_agent.generate_scene_image, ai_prompt, ai_img_path
+                self._image_agent.generate_scene_image,
+                ai_prompt,
+                ai_img_path,
+                "9:16",
+                "cinematic",
+                scene.scene_id,
+                vp,
             )
             if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 1000 and self._is_valid_image_file(res_img):
-                logger.info(f"Scene {scene.scene_id}: Sinh thành công ảnh AI điện ảnh ({primary_entity or 'generic'})")
+                logger.info(f"Scene {scene.scene_id}: ✅ AI Image sinh thành công ({primary_entity or 'generic'})")
                 return res_img
         except Exception as e:
             logger.warning(f"Scene {scene.scene_id}: Lỗi sinh ảnh AI: {e}")
 
-        # ── Tầng 4: Pexels Video/Photo (CHỈ DÙNG CHO CHỦ ĐỀ CHUNG / TRỪU TƯỢNG) ──
-        # TUYỆT ĐỐI KHÔNG dùng stock video của diễn viên hiện đại khi làm video về nhân vật lịch sử
+        # ── Tầng 4: Pexels Video/Photo (CHỈ DÙNG KHI KHÔNG CÓ primary_entity) ──
+        # Dùng safe_q (stock_query đã lọc) thay vì raw visual_keyword để tránh Anne Hathaway, rollercoaster
         if not primary_entity and self._media_agent.api_key:
+            safe_q = self._safe_pexels_query(scene)
+            logger.info(f"Scene {scene.scene_id}: 🔍 Pexels safe_query = '{safe_q}'")
             try:
                 videos = await asyncio.to_thread(
-                    self._media_agent.search_videos, scene.visual_keyword, 2
+                    self._media_agent.search_videos, safe_q, 3
                 )
                 if videos:
                     for video_data in videos:
@@ -498,31 +551,46 @@ class VideoPipeline:
                             None
                         )
                         if best and best.get("link"):
+                            vid_url = best["link"]
+                            # DEDUP: Chỉ dùng URL chưa từng assign cho scene khác
+                            if used_asset_paths and vid_url in used_asset_paths:
+                                logger.debug(f"Scene {scene.scene_id}: Bỏ qua Pexels video trùng: {vid_url[:60]}")
+                                continue
                             output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}.mp4")
                             await asyncio.to_thread(
-                                self._media_agent.download_file, best["link"], output
+                                self._media_agent.download_file, vid_url, output
                             )
-                            logger.info(f"Scene {scene.scene_id}: Tải thành công Pexels Video")
+                            if used_asset_paths is not None:
+                                used_asset_paths.add(vid_url)
+                            logger.info(f"Scene {scene.scene_id}: ✅ Pexels Video (query='{safe_q}')")
                             return output
             except Exception as e:
                 logger.warning(f"Scene {scene.scene_id}: Lỗi tìm Pexels Video: {e}")
 
             try:
                 photos = await asyncio.to_thread(
-                    self._media_agent.search_photos, scene.visual_keyword, 2
+                    self._media_agent.search_photos, safe_q, 3
                 )
                 if photos:
-                    photo = photos[0]
-                    src = photo.get("src", {})
-                    img_url = src.get("large2x") or src.get("portrait") or src.get("original") or src.get("large")
-                    if img_url:
-                        img_output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}.jpg")
-                        await asyncio.to_thread(
-                            self._media_agent.download_file, img_url, img_output
+                    for photo in photos:
+                        src = photo.get("src", {})
+                        img_url = (
+                            src.get("large2x") or src.get("portrait")
+                            or src.get("original") or src.get("large")
                         )
-                        if self._is_valid_image_file(img_output):
-                            logger.info(f"Scene {scene.scene_id}: Tải thành công Pexels Photo cho Ken Burns")
-                            return img_output
+                        if img_url:
+                            if used_asset_paths and img_url in used_asset_paths:
+                                logger.debug(f"Scene {scene.scene_id}: Bỏ qua Pexels photo trùng")
+                                continue
+                            img_output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}.jpg")
+                            await asyncio.to_thread(
+                                self._media_agent.download_file, img_url, img_output
+                            )
+                            if self._is_valid_image_file(img_output):
+                                if used_asset_paths is not None:
+                                    used_asset_paths.add(img_url)
+                                logger.info(f"Scene {scene.scene_id}: ✅ Pexels Photo (query='{safe_q}')")
+                                return img_output
             except Exception as e:
                 logger.warning(f"Scene {scene.scene_id}: Lỗi tìm Pexels Photo: {e}")
 

@@ -41,10 +41,20 @@ class SceneContract(BaseModel):
     visual_prompt: Optional[str] = Field(
         default=None,
         description=(
-            "Mô tả cảnh quay điện ảnh CHI TIẮT độc lập với lời thoại. "
+            "Mô tả cảnh quay điện ảnh CHI TIẾT độc lập với lời thoại. "
             "Phải là hiện tượng khoa học/vũ trụ/lịch sử THỰC TẠ — "
             "không bao giờ mô tả nghĩa đen của phép ẩn dụ trong lời thoại. "
             "Ví dụ: '[Vật thể chính], [Góc máy & Chuyển động], [Ánh sáng điện ảnh]'"
+        )
+    )
+    stock_query: Optional[str] = Field(
+        default=None,
+        description=(
+            "Query TỐI ĐA 2-3 TỪ TIẾNG ANH thuần túy gửi sang Pexels/Pixabay. "
+            "CHỈ là danh từ chủ đề — TUYỆT ĐỐI KHÔNG chứa tên đạo diễn, "
+            "tên phim, tên diễn viên, từ tính từ phong cách (như 'Nolan', 'Interstellar', 'cinematic'). "
+            "Ví dụ đúng: 'black hole', 'galaxy nebula', 'neutron star'. "
+            "Ví dụ sai: 'Interstellar voyage cinematic', 'Nolan dark atmosphere'."
         )
     )
     estimated_seconds: float = Field(default=3.0, gt=0, le=30, description="Ước lượng thô từ Gemini (tham khảo)")
