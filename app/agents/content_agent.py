@@ -211,13 +211,31 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
    - DO NOT include channel tags, country names, or suffixes like "- VN", "- VI", "(Vietnam)".
    - Clean, punchy title under 60 characters with emojis.
 
-7. PRIMAL VISUAL HOOK ARCHETYPES (SCENE 1 ONLY — THE CLICK MAGNET):
-   For Scene 1, visual_prompt & stock_query MUST trigger primal biological curiosity. NEVER choose a boring office, passive figure, or generic landscape:
-   - If Deep Sea / Ocean / Abyss: "thalassophobia colossal sea monster shadow under tiny diver, bioluminescent giant eye" | stock_query: "deep sea monster"
-   - If Women / Seduction / Romance / Relationship: "alluring mysterious femme fatale, stunning beauty, seductive gaze over shoulder, mesmerizing piercing eyes" | stock_query: "femme fatale beauty"
-   - If Dark Psychology / Liar / Betrayal: "extreme macro close-up of unblinking intense eyes, whispering shadow, cold calculating smirk" | stock_query: "man staring camera"
-   - If Wealth / Greed / Power: "dark luxury vault opening, stacks of gold bars, raining cash in shadows" | stock_query: "gold vault cash"
-   - If Ancient Mystery / History / War: "lone warrior facing colossal glowing titan statue, burning empire in thunder storm" | stock_query: "colossal statue storm"
+7. DYNAMIC PRIMAL VISUAL HOOK ENGINE (SCENE 1 ONLY — HIGHEST CTR IMPACT):
+   Scene 1 visual is the SINGLE MOST IMPORTANT factor preventing swipe-away (>75% viewed).
+   DO NOT depict the topic literally or passively (FORBIDDEN: person sitting at desk, generic office, landscape without focal point, talking head, casual pose).
+   Instead, apply the universal laws of VISUAL PSYCHOLOGY to deduce the most potent biological curiosity trigger for '{topic}':
+   
+   A. THE 5 UNIVERSAL PRIMAL TRIGGERS:
+      1. Scale Shock & Unseen Terror (Thalassophobia, Megalodon, colossal towering titan, cosmic abyss, gargantuan shadows dwarfing a human).
+      2. Magnetic Attraction & Mystery (Captivating femme fatale, alluring glance over shoulder, intense seductive gaze, high-fashion noir silhouette).
+      3. Psychological Threat & Micro-Expression (Extreme macro close-up of unblinking dilated pupil, sinister whisper in shadows, calculating smirk, knife behind back).
+      4. Imminent Catastrophe & Collapse (Burning empire ruins, shattered glass mid-explosion, venomous fangs dripping, crown tumbling on blood-stained marble).
+      5. Forbidden Wealth & Forbidden Power (Gleaming gold vault opening in pitch black, raining cash, dark billionaire aesthetic).
+   
+   B. DEDUCTION PROCESS FOR ANY TOPIC:
+      Ask yourself: "If a viewer is scrolling at 0.1s speed, what shocking, high-tension visual metaphor related to '{topic}' will physically freeze their thumb?"
+      - Roman Empire -> Emperor's crown rolling down bloodied burning marble steps while shadowy barbarians loom.
+      - Quantum Entanglement -> A human eye splitting into two reality-bending dimensional portals with fractal light.
+      - Boeing Autopilot Stall -> Cockpit instrument alarms flashing red in darkness, pilot's white-knuckled grip on stick pulling up into storm clouds.
+      - Deep Ocean -> Tiny diver flashlight illuminating an impossibly massive ancient eye opening in the abyss.
+      - Seduction / Women -> Mesmerizing femme fatale staring piercingly over shoulder in dramatic chiaroscuro rim lighting.
+      - Dark Psychology / Liar -> Extreme macro unblinking cold gaze in an interrogation room with dark chiaroscuro shadows.
+   
+   C. REQUIREMENT FOR SCENE 1:
+      - visual_prompt: Must be a hyper-dramatic, high-contrast, cinematic masterpiece describing this exact deduced primal visual. Format: "[Primal subject + high-tension action], [camera angle: macro extreme close-up or low-angle colossal perspective], [cinematic lighting: chiaroscuro shadows with piercing rim light], [atmospheric details]"
+      - visual_keyword: 2-4 concrete visual words capturing the core dramatic visual.
+      - stock_query: 2-3 concrete physical search nouns for stock footage matching this high-tension scene.
 
 ═══════════════════════════════════════════════════════════
 OUTPUT — Return ONLY valid JSON, no markdown, no extra text:

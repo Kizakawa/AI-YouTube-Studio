@@ -353,14 +353,16 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
         if not replaced:
             try:
                 ai_path = str(media_dir / f"scene_{scene_id:03d}_content_ai.jpg")
-                clean_sug = clean_scene_search_query(suggestion or kw, max_words=5)
-                if primary_entity:
+                refined_prompt = suggestion or kw
+                if scene_id == 1:
+                    prompt = f"Ultra-high retention YouTube Shorts hook frame, 8k cinematic: {refined_prompt}"
+                elif primary_entity:
                     prompt = (
                         f"Historically authentic documentary portrait of {primary_entity}, "
-                        f"{clean_sug}, period accurate setting, 8k documentary photograph"
+                        f"{refined_prompt}, period accurate setting, 8k documentary photograph"
                     )
                 else:
-                    prompt = f"Authentic cinematic documentary photography: {clean_sug}, sharp focus 8k"
+                    prompt = f"Authentic cinematic documentary photography: {refined_prompt}, sharp focus 8k"
 
                 res = await asyncio.to_thread(
                     image_agent.generate_scene_image,
@@ -369,7 +371,7 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
                     "9:16",
                     "cinematic",
                     scene_id,
-                    clean_sug,
+                    refined_prompt,
                 )
                 if res and Path(res).exists() and Path(res).stat().st_size > 2000:
                     item["media_path"] = res
