@@ -103,9 +103,9 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
                     sa["audio_path"] = scene_audio_path
                     break
 
-            # Tạo lại toàn bộ audio concat & SRT
+            # Tạo lại toàn bộ audio concat & ASS Karaoke
             full_audio_path = str(work_dir / "full_voiceover.mp3")
-            subtitle_path = str(work_dir / "subtitles.srt")
+            subtitle_path = str(work_dir / "subtitles.ass")
             scenes_objs = [
                 SceneContract(
                     scene_id=s["scene_id"],
@@ -118,7 +118,7 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
                 for s in scenes_audio
             ]
             total_audio_duration_ms = await voice_agent.concat_scene_audio(scenes_objs, full_audio_path)
-            SubtitleHelper.save_srt_file(scenes_objs, subtitle_path)
+            SubtitleHelper.save_ass_file(scenes_objs, subtitle_path)
 
     # ── Action 3: Đổi giọng đọc (toàn bộ video) ──
     elif action_type == "change_voice":
@@ -138,7 +138,7 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
             sa["audio_path"] = p
 
         full_audio_path = str(work_dir / "full_voiceover.mp3")
-        subtitle_path = str(work_dir / "subtitles.srt")
+        subtitle_path = str(work_dir / "subtitles.ass")
         scenes_objs = [
             SceneContract(
                 scene_id=s["scene_id"],
@@ -151,7 +151,7 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
             for s in scenes_audio
         ]
         total_audio_duration_ms = await voice_agent.concat_scene_audio(scenes_objs, full_audio_path)
-        SubtitleHelper.save_srt_file(scenes_objs, subtitle_path)
+        SubtitleHelper.save_ass_file(scenes_objs, subtitle_path)
 
     return {
         "scenes_media": scenes_media,

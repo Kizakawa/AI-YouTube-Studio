@@ -727,19 +727,23 @@ def burn_subtitles(
     srt_path: str,
     output_path: str,
     font_name: str = "Arial",
-    font_size: int = 22,
+    font_size: int = 40,
     font_color: str = "&H0000FFFF",  # Vàng tươi chuẩn phong cách Shorts viral
     outline_color: str = "&H00000000", # Viền đen tuyền
-    outline_width: int = 3,
-    shadow: int = 1,
-    margin_v: int = 180,              # Cách đáy 180px tránh bị UI YouTube che
+    outline_width: float = 2.5,
+    shadow: float = 1.5,
+    margin_v: int = 210,              # Cách đáy 210px (trên thanh UI Shorts, không che giữa video)
     bold: bool = True,
 ) -> str:
     """
-    Burn-in subtitle SRT vào video (hardcode hardsub).
-    Phong cách YouTube Shorts: chữ vàng viền đen, font Arial/Segoe UI, cách đáy an toàn.
+    Burn-in subtitle SRT/ASS vào video (hardcode hardsub).
+    Phong cách YouTube Shorts: chữ vàng viền đen, font Arial/Segoe UI,
+    thu bé lại (40px) và đặt sát đáy màn hình (210px) thay vì nằm ở giữa video.
+    Đã bổ sung PlayResX=1080 & PlayResY=1920 để khóa chặt độ phân giải canvas.
     """
     style = (
+        f"PlayResX=1080,"
+        f"PlayResY=1920,"
         f"Fontname={font_name},"
         f"FontSize={font_size},"
         f"PrimaryColour={font_color},"
@@ -748,7 +752,7 @@ def burn_subtitles(
         f"Shadow={shadow},"
         f"Bold={'1' if bold else '0'},"
         f"Alignment=2,"      # Bottom center
-        f"MarginV={margin_v}" # Margin an toàn từ đáy tránh UI Shorts
+        f"MarginV={margin_v}" # 210px an toàn từ đáy
     )
     # Escape path cho Windows (ffmpeg subtitles filter cần forward slashes và escape colon)
     srt_escaped = srt_path.replace("\\", "/").replace(":", "\\:")

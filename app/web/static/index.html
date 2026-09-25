@@ -288,12 +288,9 @@
                     </div>
                     <div class="form-row">
                         <div class="form-group" style="flex:1;">
-                            <label class="form-label" for="input-channel">Kênh mục tiêu</label>
+                            <label class="form-label" for="input-channel">Kênh mục tiêu & Gmail quản lý</label>
                             <select id="input-channel" class="form-input">
-                                <option value="channel_psychology">🧠 Psychology</option>
-                                <option value="channel_history">📜 History</option>
-                                <option value="channel_science">🔬 Science</option>
-                                <option value="channel_motivation">💪 Motivation</option>
+                                <option value="">-- Đang tải danh sách kênh & Gmail... --</option>
                             </select>
                         </div>
                     </div>
@@ -349,7 +346,7 @@
                             <tr>
                                 <th>ID</th>
                                 <th>Tiêu Đề / Chủ Đề</th>
-                                <th>Kênh</th>
+                                <th>Kênh & Gmail Quản Lý</th>
                                 <th>Nguồn</th>
                                 <th>Scenes / Thời Lượng</th>
                                 <th>Trạng Thái</th>
@@ -376,27 +373,77 @@
             </div>
         </section>
 
-        <!-- ═══ TAB: CHANNELS ═══ -->
+        <!-- ═══ TAB: CHANNELS & ACCOUNTS ═══ -->
         <section class="tab-content" id="tab-channels">
-            <div class="panel-card">
+            <!-- 1. BẢNG KÊNH YOUTUBE ĐANG QUẢN LÝ -->
+            <div class="panel-card" style="margin-bottom: 24px;">
                 <div class="panel-header">
                     <div>
-                        <h3>📺 Ma Trận Tài Khoản Google & Kênh YouTube</h3>
-                        <p style="font-size:12px; color:var(--text-muted); margin-top:2px;">Quản lý đăng nhập Google OAuth, phân chia kênh thương hiệu, và cấu hình tự động hoá</p>
+                        <h3 style="display:flex; align-items:center; gap:8px;">
+                            <span style="color:#ef4444; font-size:18px;">📺</span> Kênh YouTube Đang Quản Lý
+                        </h3>
+                        <p style="font-size:12.5px; color:var(--text-muted); margin-top:3px;">
+                            Chi tiết từng kênh, tài khoản Gmail trực tiếp điều hành, trạng thái cấp quyền Google OAuth và thống kê video
+                        </p>
                     </div>
                     <div style="display:flex; gap:8px; align-items:center;">
-                        <button class="btn btn-primary btn-sm" onclick="openAddAccountModal()">
+                        <button class="btn btn-primary btn-sm" onclick="openAddChannelModal()">
                             <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                            + Thêm Tài Khoản Google
+                            + Thêm Kênh Mới
                         </button>
-                        <button class="btn btn-secondary btn-sm" onclick="fetchAccounts()">
+                        <button class="btn btn-secondary btn-sm" onclick="fetchChannels()">
                             <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                             Làm Mới
                         </button>
                     </div>
                 </div>
+
+                <!-- KPI Mini Bar -->
+                <div class="channel-kpi-bar" id="channel-kpi-bar">
+                    <div class="kpi-mini-item">
+                        <span class="kpi-mini-label">📺 Tổng Kênh Quản Lý</span>
+                        <strong class="kpi-mini-val" id="kpi-total-channels">0</strong>
+                    </div>
+                    <div class="kpi-mini-item">
+                        <span class="kpi-mini-label">📧 Tài Khoản Gmail</span>
+                        <strong class="kpi-mini-val" id="kpi-total-gmails" style="color:var(--accent-blue)">0</strong>
+                    </div>
+                    <div class="kpi-mini-item">
+                        <span class="kpi-mini-label">🟢 OAuth Sẵn Sàng</span>
+                        <strong class="kpi-mini-val" id="kpi-auth-channels" style="color:var(--accent-green)">0</strong>
+                    </div>
+                    <div class="kpi-mini-item">
+                        <span class="kpi-mini-label">🎬 Video Đã Sản Xuất</span>
+                        <strong class="kpi-mini-val" id="kpi-total-videos" style="color:var(--accent-purple)">0</strong>
+                    </div>
+                </div>
+
+                <!-- Channels Hub Cards Grid -->
+                <div id="channels-hub-container" class="channels-hub-grid">
+                    <div style="text-align:center; padding:30px; color:var(--text-muted);">Đang tải danh sách kênh YouTube...</div>
+                </div>
+            </div>
+
+            <!-- 2. HỆ THỐNG TÀI KHOẢN GOOGLE & QUOTA -->
+            <div class="panel-card">
+                <div class="panel-header">
+                    <div>
+                        <h3 style="display:flex; align-items:center; gap:8px;">
+                            <span style="color:#3b82f6; font-size:18px;">🌐</span> Tài Khoản Google & Cấu Hình OAuth API
+                        </h3>
+                        <p style="font-size:12.5px; color:var(--text-muted); margin-top:3px;">
+                            Quản lý tài khoản Gmail mẹ, kết nối YouTube API, dung lượng lưu trữ Google Drive và nạp file Client Secret
+                        </p>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <button class="btn btn-secondary btn-sm" onclick="openAddAccountModal()">
+                            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                            + Thêm Tài Khoản Google
+                        </button>
+                    </div>
+                </div>
                 <div id="accounts-container" class="accounts-list">
-                    <div style="text-align:center; padding:30px; color:var(--text-muted);">Đang tải dữ liệu tài khoản và kênh...</div>
+                    <div style="text-align:center; padding:30px; color:var(--text-muted);">Đang tải dữ liệu tài khoản...</div>
                 </div>
             </div>
         </section>
@@ -450,14 +497,16 @@
             <button class="modal-close" onclick="closeAccountModal()">✕</button>
         </div>
         <div class="modal-body">
+            <input type="hidden" id="acc-mode" value="add">
             <div class="form-group" style="margin-bottom:14px;">
                 <label class="form-label" for="acc-input-id">Mã định danh tài khoản <span class="required">*</span></label>
                 <input type="text" id="acc-input-id" class="form-input" placeholder="Ví dụ: account_3, account_main..." autocomplete="off">
-                <small style="color:var(--text-muted);font-size:11px;">Chỉ gồm chữ cái thường, số và dấu gạch dưới (viết liền)</small>
+                <small style="color:var(--text-muted);font-size:11px;">Mã nội bộ duy nhất (viết thường, số, gạch dưới)</small>
             </div>
             <div class="form-group" style="margin-bottom:14px;">
-                <label class="form-label" for="acc-input-email">Email Google / Ghi chú <span class="required">*</span></label>
-                <input type="email" id="acc-input-email" class="form-input" placeholder="Ví dụ: mychannel.media@gmail.com" autocomplete="off">
+                <label class="form-label" for="acc-input-email">Địa chỉ Gmail Quản Lý <span class="required">*</span></label>
+                <input type="email" id="acc-input-email" class="form-input" placeholder="Ví dụ: yourname.studio@gmail.com" autocomplete="off">
+                <small style="color:var(--text-muted);font-size:11px;">Tài khoản Gmail chính thức đăng nhập kênh YouTube này</small>
             </div>
             <div class="form-group" style="margin-bottom:14px;">
                 <label class="form-label" for="acc-input-drive">Dung lượng Google Drive</label>
@@ -598,6 +647,85 @@
             </div>
             <div id="oauth-result-box" style="display:none; padding:12px; border-radius:8px; margin-bottom:16px;"></div>
             <button class="btn btn-secondary" id="oauth-cancel-btn" onclick="closeOAuthModal()">Đóng cửa sổ này</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: PUBLISH VIDEO TO YOUTUBE -->
+<div class="modal-overlay" id="modal-publish-yt" onclick="closePublishModal()">
+    <div class="modal-card" onclick="event.stopPropagation()" style="max-width:580px;">
+        <div class="modal-header">
+            <h3 id="publish-modal-title">🚀 Đăng Video Lên YouTube</h3>
+            <button class="modal-close" onclick="closePublishModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="publish-job-id" value="">
+            
+            <!-- Channel Selection -->
+            <div class="form-group" style="margin-bottom:14px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <label class="form-label" style="margin-bottom:0;"><strong>1. Chọn Kênh YouTube Để Đăng:</strong></label>
+                    <a href="#channels" onclick="closePublishModal(); switchTab('channels');" style="font-size:11.5px; color:var(--accent-blue); text-decoration:none;">Quản lý kênh & tài khoản ↗</a>
+                </div>
+                <select id="publish-channel-select" class="form-input" onchange="onPublishChannelChange()" style="font-size:13.5px; font-weight:600; padding:10px;">
+                    <!-- Populated dynamically -->
+                </select>
+                <!-- Channel status card -->
+                <div id="publish-channel-info-box" style="margin-top:8px; padding:10px 12px; border-radius:8px; font-size:12px; display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);">
+                    <div id="publish-channel-info-text">Đang kiểm tra kết nối...</div>
+                    <div id="publish-channel-action-btn"></div>
+                </div>
+            </div>
+
+            <!-- Title Edit -->
+            <div class="form-group" style="margin-bottom:14px;">
+                <label class="form-label" for="publish-title-input" style="display:flex; justify-content:space-between;">
+                    <span><strong>2. Tiêu Đề Video (Tối ưu CTR):</strong></span>
+                    <span id="publish-title-counter" style="font-size:11px; color:var(--text-muted);">0/100</span>
+                </label>
+                <input type="text" id="publish-title-input" class="form-input" maxlength="100" oninput="updateTitleCounter()" placeholder="Nhập tiêu đề video...">
+            </div>
+
+            <!-- Description & Tags -->
+            <div class="form-group" style="margin-bottom:14px;">
+                <label class="form-label" for="publish-desc-input"><strong>3. Mô Tả Video & Hashtags:</strong></label>
+                <textarea id="publish-desc-input" class="form-input" rows="3" style="font-size:12px;" placeholder="#shorts #viral..."></textarea>
+            </div>
+
+            <!-- Privacy Status -->
+            <div class="form-group" style="margin-bottom:18px;">
+                <label class="form-label"><strong>4. Chế Độ Hiển Thị:</strong></label>
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
+                    <label class="privacy-option-card">
+                        <input type="radio" name="publish_privacy" value="public" checked style="margin-top:2px;">
+                        <div>
+                            <div style="font-weight:600; font-size:12.5px;">🌐 Công Khai</div>
+                            <div style="font-size:10.5px; color:var(--text-muted); line-height:1.3; margin-top:2px;">Ai cũng xem được (Khuyên dùng Shorts)</div>
+                        </div>
+                    </label>
+                    <label class="privacy-option-card">
+                        <input type="radio" name="publish_privacy" value="unlisted" style="margin-top:2px;">
+                        <div>
+                            <div style="font-weight:600; font-size:12.5px;">🔗 Không Công Khai</div>
+                            <div style="font-size:10.5px; color:var(--text-muted); line-height:1.3; margin-top:2px;">Chỉ ai có link mới xem được</div>
+                        </div>
+                    </label>
+                    <label class="privacy-option-card">
+                        <input type="radio" name="publish_privacy" value="private" style="margin-top:2px;">
+                        <div>
+                            <div style="font-weight:600; font-size:12.5px;">🔒 Riêng Tư</div>
+                            <div style="font-size:10.5px; color:var(--text-muted); line-height:1.3; margin-top:2px;">Chỉ chủ kênh xem được</div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:10px; border-top:1px solid rgba(255,255,255,0.08); padding-top:14px;">
+                <button class="btn btn-secondary" onclick="closePublishModal()">Hủy</button>
+                <button class="btn btn-primary" id="btn-confirm-publish" onclick="submitPublishYouTube()" style="background:linear-gradient(135deg,#ef4444,#dc2626); border:none; font-weight:600; padding:10px 20px;">
+                    🚀 Xác Nhận Đăng Lên YouTube
+                </button>
+            </div>
         </div>
     </div>
 </div>

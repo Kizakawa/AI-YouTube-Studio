@@ -45,8 +45,10 @@ tokens/
 # Storage & Temporary Files
 storage/temp/*
 storage/outputs/*
+storage/cache/*
 !storage/temp/.gitkeep
 !storage/outputs/.gitkeep
+!storage/cache/.gitkeep
 
 # IDE & OS
 .idea/

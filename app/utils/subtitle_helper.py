@@ -41,14 +41,14 @@ YCbCr Matrix: None
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1,0,1,4,2,2,40,40,{margin_v},1
+Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1,0,1,2.5,1.5,2,30,30,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
-# ── Fonts ưu tiên ─────────────────────────────────────────────────────────
-PREFERRED_FONTS = ["Montserrat", "Arial Black", "The Bold Font", "Roboto", "Arial"]
+# ── Fonts ưu tiên (Arial phổ cập toàn diện trên Windows) ───────────────────
+PREFERRED_FONTS = ["Arial", "Montserrat", "Segoe UI", "Arial Black", "Roboto"]
 
 
 class SubtitleHelper:
@@ -79,10 +79,11 @@ class SubtitleHelper:
         return f"{hours:02d}:{minutes:02d}:{seconds:02d},{millis:03d}"
 
     @classmethod
-    def split_text_to_chunks(cls, text: str, max_words: int = 5, max_chars: int = 32) -> List[str]:
+    def split_text_to_chunks(cls, text: str, max_words: int = 4, max_chars: int = 24) -> List[str]:
         """
-        Chia một đoạn văn bản thành các cụm từ ngắn gọn (3-5 từ),
-        chuẩn phong cách phụ đề Shorts cuốn hút, không bị tràn màn hình.
+        Chia một đoạn văn bản thành các cụm từ ngắn gọn (2-4 từ, tối đa 24 ký tự),
+        chuẩn phong cách phụ đề Shorts hiện đại: hiển thị 1 dòng duy nhất, không rớt dòng,
+        nhịp điệu thay đổi nhanh cuốn hút thị giác.
         """
         text = text.strip()
         # Normalize whitespace: collapse \n, \t, multiple spaces thành space đơn
@@ -105,7 +106,7 @@ class SubtitleHelper:
                 current_chunk = [word]
             else:
                 current_chunk.append(word)
-                if word.endswith((".", "!", "?", ":", ";", "—")) and len(current_chunk) >= 3:
+                if word.endswith((".", "!", "?", ":", ";", "—")) and len(current_chunk) >= 2:
                     chunks.append(" ".join(current_chunk))
                     current_chunk = []
 
@@ -134,15 +135,17 @@ class SubtitleHelper:
     def build_ass_content(
         cls,
         scenes: List[SceneContract],
-        fontname: str = "Montserrat",
-        fontsize: int = 64,
-        margin_v: int = 380,
+        fontname: str = "Arial",
+        fontsize: int = 40,
+        margin_v: int = 210,
     ) -> str:
         """
         Tạo nội dung file .ass chuẩn với karaoke word-level highlight.
 
-        Mỗi chunk (3-5 từ) = 1 dialogue entry.
+        Mỗi chunk (2-4 từ) = 1 dialogue entry.
         Mỗi từ trong chunk có {\\k} tag để highlight lần lượt.
+        Kích thước font: 40px (gọn gàng, thanh lịch, không che nhân vật).
+        Lề đáy: 210px (nằm an toàn ở cuối video, trên thanh tiêu đề Shorts, giải phóng 85% khung hình).
 
         Returns:
             Chuỗi nội dung ASS hoàn chỉnh.
@@ -227,9 +230,9 @@ class SubtitleHelper:
         cls,
         scenes: List[SceneContract],
         output_path: str,
-        fontname: str = "Montserrat",
-        fontsize: int = 64,
-        margin_v: int = 380,
+        fontname: str = "Arial",
+        fontsize: int = 40,
+        margin_v: int = 210,
     ) -> str:
         """Tạo và lưu file .ass ra ổ đĩa."""
         content = cls.build_ass_content(scenes, fontname=fontname, fontsize=fontsize, margin_v=margin_v)

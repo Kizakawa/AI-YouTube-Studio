@@ -21,6 +21,7 @@ from app.bot.keyboards import (
     get_video_post_render_keyboard,
     get_video_review_keyboard,
     get_chat_brainstorm_keyboard,
+    get_publish_channel_keyboard,
 )
 from app.database.models import get_db, User, VideoJob, log_activity
 from app.agents.content_agent import ContentAgent
@@ -1502,30 +1503,67 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not job or not job.video_path or not os.path.exists(job.video_path):
                 await safe_reply(update, f"❌ File video #{job_id} chưa sẵn sàng để xuất bản.")
                 return
-            channel_id = job.target_channel_id or "default"
+            video_title = job.title or job.topic
+            current_ch = job.target_channel_id or "Chưa chọn"
+
+        markup = get_publish_channel_keyboard(job_id)
+        text = (
+            f"📺 **CHỌN KÊNH YOUTUBE ĐỂ XUẤT BẢN (Task #{job_id})**\n\n"
+            f"📌 **Tiêu đề:** {video_title}\n"
+            f"🎯 **Kênh dự kiến:** `{current_ch}`\n\n"
+            f"👉 Vui lòng chọn kênh YouTube bạn muốn tải video lên:\n"
+            f"_(🟢: Đã kết nối OAuth | ⚠️: Chưa kết nối OAuth)_"
+        )
+        await safe_reply(update, text, reply_markup=markup)
+
+    elif data.startswith("cancel_publish:"):
+        job_id = int(data.split(":")[1])
+        await safe_reply(update, f"ℹ️ Đã hủy thao tác đăng YouTube cho Video #{job_id}.")
+
+    elif data.startswith("publish_to_channel:"):
+        parts = data.split(":")
+        job_id = int(parts[1])
+        channel_id = parts[2]
+        with get_db() as db:
+            job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if not job or not job.video_path or not os.path.exists(job.video_path):
+                await safe_reply(update, f"❌ File video #{job_id} chưa sẵn sàng để xuất bản.")
+                return
             video_path = job.video_path
             video_title = job.title or job.topic
             video_desc = job.description or ""
             video_tags = [t.strip() for t in (job.tags or "").split(",") if t.strip()]
 
+        channels = settings.get_channels_config()
+        ch_cfg = next((c for c in channels if c.get("id") == channel_id), {"id": channel_id, "name": channel_id})
+        acc_id = ch_cfg.get("google_account", "account_1")
+        token_path = os.path.join(settings.CREDENTIALS_DIR, "accounts", acc_id, "youtube_token.json")
+
+        if not os.path.exists(token_path):
+            await safe_reply(
+                update,
+                f"⚠️ **KÊNH CHƯA KẾT NỐI OAUTH!**\n\n"
+                f"Kênh `{ch_cfg.get('name', channel_id)}` thuộc tài khoản `{acc_id}` chưa có quyền YouTube OAuth.\n\n"
+                f"👉 Hãy truy cập Web Dashboard tại `http://127.0.0.1:8000` -> Tab **Kênh & Tài Khoản** -> Bấm **Cấp Quyền YouTube** để cấp quyền trước nhé!"
+            )
+            return
+
+        ch_lang = ch_cfg.get("language", "en")
         status_wait = await safe_reply(
             update,
             f"🚀 **ĐANG ĐĂNG VIDEO #{job_id} LÊN YOUTUBE & GOOGLE DRIVE...**\n\n"
-            f"📺 **Kênh:** `{channel_id}`\n"
+            f"📺 **Kênh:** `{ch_cfg.get('name', channel_id)}` (`{channel_id}`)\n"
             f"📌 **Tiêu đề:** {video_title}\n"
-            f"⏳ Đang sao lưu Google Drive 2TB và upload YouTube..."
+            f"⏳ Đang sao lưu Google Drive ({acc_id}) và upload YouTube..."
         )
 
         from app.agents.publisher_agent import PublisherAgent
         from app.agents.drive_agent import DriveAgent
 
-        channels = settings.get_channels_config()
-        ch_cfg = next((c for c in channels if c.get("id") == channel_id), {"id": channel_id, "name": channel_id})
-
         pub_agent = PublisherAgent(channel_config=ch_cfg)
-        drive_agent = DriveAgent(account_name="account_1")
+        drive_agent = DriveAgent(account_name=acc_id)
 
-        # 1. Tải lên Google Drive 2TB
+        # 1. Tải lên Google Drive
         drive_res = await asyncio.to_thread(drive_agent.upload_video, video_path, video_title)
         drive_link = drive_res.get("drive_link")
 
@@ -1536,7 +1574,9 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             title=video_title,
             description=video_desc,
             tags=video_tags,
-            privacy_status="public"
+            privacy_status="public",
+            default_language=ch_lang,
+            default_audio_language=ch_lang,
         )
 
         if pub_res.get("status") == "success":
@@ -1547,19 +1587,21 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if db_job:
                     db_job.status = "PUBLISHED"
                     db_job.youtube_video_id = yt_id
+                    db_job.target_channel_id = channel_id
                     if drive_link:
                         db_job.drive_link = drive_link
                     log_activity(db, user.id, user.username, "PUBLISH_YOUTUBE",
-                                 f"Đã đăng Video #{job_id} lên YouTube ({yt_url})",
+                                 f"Đã đăng Video #{job_id} lên YouTube kênh {channel_id} ({yt_url})",
                                  channel_id=channel_id)
 
             success_text = (
                 f"🎉 **ĐĂNG TẢI VIDEO #{job_id} THÀNH CÔNG!**\n\n"
+                f"📺 **Kênh đã đăng:** `{ch_cfg.get('name', channel_id)}`\n"
                 f"🎬 **Link xem YouTube (Chế độ Công khai):**\n👉 {yt_url}\n\n"
             )
             if drive_link:
-                success_text += f"💾 **Link lưu trữ Google Drive 2TB:**\n👉 {drive_link}\n\n"
-            success_text += "💡 Video đã được đăng ở chế độ Công khai (Public) cho mọi người cùng xem!"
+                success_text += f"💾 **Link lưu trữ Google Drive:**\n👉 {drive_link}\n\n"
+            success_text += "💡 Video đã được xuất bản Công khai (Public) thành công!"
             await safe_edit_text(status_wait, success_text)
         else:
             err = pub_res.get("error", "Lỗi không xác định")
@@ -1567,6 +1609,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if drive_link:
                 fail_text += f"\n\n💾 Tuy nhiên video đã được sao lưu an toàn lên Drive:\n👉 {drive_link}"
             await safe_edit_text(status_wait, fail_text)
+
 
     # 3. Góp ý chỉnh sửa kịch bản hoặc video
     elif data.startswith("feedback_video:") or data.startswith("edit_script:"):

@@ -96,25 +96,18 @@ class ImageAgent:
         )
         anchored = self._sanitize_and_anchor(base_prompt, niche)
 
-        # 1. Thử sinh ảnh bằng Pollinations với prompt tối ưu (không ép flux để tránh 500/timeout)
+        # 1. Thử sinh ảnh bằng Pollinations với prompt tối ưu (chuẩn 9:16 HD 768x1344)
         try:
-            seed = (scene_id * 179 + self._call_count * 43) % 999999
             words = anchored.split()
-            compact_prompt = " ".join(words[:60])
+            compact_prompt = " ".join(words[:35])
             encoded_prompt = urllib.parse.quote(compact_prompt)
 
-            url = (
-                f"https://image.pollinations.ai/prompt/{encoded_prompt}"
-                f"?width=720&height=1280"
-                f"&nologo=true"
-                f"&nofeed=true"
-                f"&seed={seed}"
-            )
+            url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=768&height=1344&nologo=true"
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AI-Shorts-Studio/2.0"
             }
 
-            res = requests.get(url, headers=headers, timeout=25)
+            res = requests.get(url, headers=headers, timeout=20)
             if res.status_code == 200 and len(res.content) > 5000:
                 with open(output_path, "wb") as f:
                     f.write(res.content)
@@ -125,9 +118,9 @@ class ImageAgent:
 
         # 2. Fallback: Thử với prompt ngắn gọn thuần túy nếu prompt dài bị lỗi
         try:
-            short_clean = " ".join(base_prompt.split()[:20])
+            short_clean = " ".join(base_prompt.split()[:18])
             p_encoded = urllib.parse.quote(f"photorealistic 8k vertical {short_clean}")
-            url_fallback = f"https://image.pollinations.ai/prompt/{p_encoded}?width=720&height=1280&nologo=true"
+            url_fallback = f"https://image.pollinations.ai/prompt/{p_encoded}?width=768&height=1344&nologo=true"
             res = requests.get(url_fallback, headers={"User-Agent": "AI-Shorts/2.0"}, timeout=20)
             if res.status_code == 200 and len(res.content) > 5000:
                 with open(output_path, "wb") as f:

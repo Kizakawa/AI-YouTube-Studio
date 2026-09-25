@@ -182,7 +182,11 @@ async def get_team_members() -> List[Dict[str, Any]]:
 
 @app.get("/api/channels")
 async def get_channels_matrix() -> List[Dict[str, Any]]:
-    channels = settings.get_channels_config()
+    cfg = _read_channels_yaml()
+    channels = cfg.get("channels", [])
+    raw_accounts = cfg.get("google_accounts", [])
+    accounts_map = {a.get("id"): a for a in raw_accounts}
+
     result = []
     with get_db() as db:
         for ch in channels:
@@ -192,26 +196,40 @@ async def get_channels_matrix() -> List[Dict[str, Any]]:
                 VideoJob.target_channel_id == ch_id, VideoJob.status == "PUBLISHED"
             ).count()
 
-            # Kiểm tra token xác thực Google OAuth thực tế
-            token_rel = (ch.get("credentials") or {}).get("youtube_token")
-            token_path = (BASE_DIR / token_rel) if token_rel else None
-            is_connected = bool(token_path and token_path.is_file())
+            # Lấy thông tin tài khoản Google mẹ
+            acc_id = ch.get("google_account", "account_1")
+            parent_acc = accounts_map.get(acc_id, {})
+            gmail = parent_acc.get("email_label") or "Chưa cấu hình Gmail"
+
+            # Kiểm tra token xác thực Google OAuth thực tế của tài khoản mẹ
+            token_status = _check_account_tokens(acc_id)
+            is_connected = token_status["youtube_connected"]
+            drive_connected = token_status["drive_connected"]
+            has_client_secret = token_status["has_client_secret"]
 
             result.append({
                 "id": ch_id,
                 "name": ch.get("name"),
                 "niche": ch.get("niche"),
                 "language": ch.get("language", "en"),
-                "google_account": ch.get("google_account", "account_1"),
+                "google_account": acc_id,
+                "gmail": gmail,
+                "email_label": gmail,
                 "token_status": "🟢 Đã kết nối" if is_connected else "🟡 Chờ cấp quyền",
                 "is_authenticated": is_connected,
+                "youtube_connected": is_connected,
+                "drive_connected": drive_connected,
+                "has_client_secret": has_client_secret,
+                "visual_mode": ch.get("visual_mode", "imagen_ai"),
                 "preferred_voice": ch.get("preferred_voice", "en-US-ChristopherNeural"),
                 "schedule": ch.get("schedule", {}),
                 "video_count": video_count,
                 "published_count": published_count,
-                "drive_quota": "2 TB Google One",
+                "drive_quota": parent_acc.get("drive_storage", "2 TB Google One"),
+                "youtube_quota_daily": parent_acc.get("youtube_quota_daily", 10000),
             })
     return result
+
 
 # ─── Videos ───────────────────────────────────────────────────────────────────
 
@@ -614,10 +632,23 @@ async def upload_to_drive(job_id: int, background_tasks: BackgroundTasks) -> Dic
 
 # ─── Publish to YouTube ───────────────────────────────────────────────────────
 
+class PublishYouTubeRequest(BaseModel):
+    channel_id: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    tags: Optional[str] = None
+    privacy: str = "public"
+    schedule_time_iso: Optional[str] = None
+
 @app.post("/api/videos/{job_id}/publish-youtube")
-async def publish_to_youtube(job_id: int, privacy: str = "public") -> Dict[str, Any]:
+async def publish_to_youtube(
+    job_id: int,
+    body: Optional[PublishYouTubeRequest] = None,
+    privacy: str = "public"
+) -> Dict[str, Any]:
     """
     Đăng video đã render lên YouTube qua PublisherAgent.
+    Hỗ trợ người dùng chủ động chọn kênh YouTube, tinh chỉnh tiêu đề, mô tả và chế độ hiển thị (privacy).
     """
     with get_db() as db:
         job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
@@ -628,47 +659,75 @@ async def publish_to_youtube(job_id: int, privacy: str = "public") -> Dict[str, 
         if not job.video_path or not Path(job.video_path).exists():
             raise HTTPException(status_code=404, detail="File video không tồn tại trên máy")
         
-        channel_id = job.target_channel_id or "default"
+        # Cập nhật thông tin nếu người dùng tùy chỉnh trước khi xuất bản
+        target_channel = (body.channel_id if body and body.channel_id else None) or job.target_channel_id or "default"
+        chosen_title = (body.title.strip() if body and body.title and body.title.strip() else None) or job.title or job.topic or f"Video_{job_id}"
+        chosen_desc = (body.description if body and body.description is not None else None) or job.description or ""
+        chosen_tags_str = (body.tags if body and body.tags is not None else None) or job.tags or ""
+        chosen_privacy = (body.privacy if body and body.privacy else None) or privacy or "public"
+        schedule_time = body.schedule_time_iso if body else None
+
+        # Đồng bộ lại job DB
+        job.target_channel_id = target_channel
+        job.title = chosen_title
+        job.description = chosen_desc
+        job.tags = chosen_tags_str
+
         video_path = job.video_path
-        video_title = job.title or job.topic or f"Video_{job_id}"
-        video_desc = job.description or ""
-        video_tags = [t.strip() for t in (job.tags or "").split(",") if t.strip()]
+        video_tags = [t.strip() for t in chosen_tags_str.split(",") if t.strip()]
 
     try:
         from app.agents.publisher_agent import PublisherAgent
         from app.database.models import get_db as _get_db, log_activity
 
-        channels = settings.get_channels_config()
-        ch_cfg = next((c for c in channels if c.get("id") == channel_id), {"id": channel_id, "name": channel_id})
+        cfg = _read_channels_yaml()
+        channels = cfg.get("channels", [])
+        ch_cfg = next((c for c in channels if c.get("id") == target_channel), {"id": target_channel, "name": target_channel})
+        ch_lang = ch_cfg.get("language", "en")
+        acc_id = ch_cfg.get("google_account", "account_1")
 
-        pub_agent = PublisherAgent(channel_config=ch_cfg)
+        # Gán token path chính xác theo tài khoản Google mẹ của kênh
+        token_file = f"credentials/accounts/{acc_id}/youtube_token.json"
+        ch_cfg["token_file"] = token_file
+
+        pub_agent = PublisherAgent(channel_config=ch_cfg, account_name=acc_id)
         if not pub_agent.service:
-            raise HTTPException(status_code=503, detail="YouTube OAuth chưa kết nối hoặc token không hợp lệ.")
+            ch_name = ch_cfg.get("name", target_channel)
+            raise HTTPException(
+                status_code=503,
+                detail=f"Kênh '{ch_name}' (tài khoản '{acc_id}') chưa kết nối YouTube OAuth. Vui lòng vào tab 'Kênh & Tài Khoản' bấm 'Đăng Nhập Google (YouTube)' để cấp quyền."
+            )
 
         pub_res = pub_agent.upload_video(
             video_path=video_path,
-            title=video_title,
-            description=video_desc,
+            title=chosen_title,
+            description=chosen_desc,
             tags=video_tags,
-            privacy_status=privacy
+            privacy_status=chosen_privacy,
+            schedule_time_iso=schedule_time,
+            default_language=ch_lang,
+            default_audio_language=ch_lang,
         )
 
         if pub_res.get("status") == "success":
             yt_url = pub_res.get("youtube_url")
             yt_id = pub_res.get("video_id")
+            ch_name = ch_cfg.get("name", target_channel)
             with _get_db() as db:
                 j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
                 if j:
                     j.status = "PUBLISHED"
                     j.youtube_video_id = yt_id
                     log_activity(db, 0, "WebStudio", "PUBLISH_YOUTUBE",
-                                 f"Video #{job_id} đã đăng lên YouTube: {yt_url}",
-                                 channel_id=channel_id)
+                                 f"Video #{job_id} đã đăng lên kênh '{ch_name}': {yt_url}",
+                                 channel_id=target_channel)
             return {
                 "success": True,
                 "video_id": yt_id,
                 "youtube_url": yt_url,
-                "message": f"Đã đăng lên YouTube thành công! Link: {yt_url}"
+                "channel_id": target_channel,
+                "channel_name": ch_name,
+                "message": f"Đã đăng lên kênh '{ch_name}' thành công! Link: {yt_url}"
             }
         else:
             raise HTTPException(status_code=500, detail=pub_res.get("error", "Đăng YouTube thất bại"))
@@ -883,6 +942,11 @@ class AccountCreateRequest(BaseModel):
     drive_storage: Optional[str] = "2 TB Google One"
     youtube_quota_daily: Optional[int] = 10000
 
+class AccountUpdateRequest(BaseModel):
+    email_label: Optional[str] = None
+    drive_storage: Optional[str] = None
+    youtube_quota_daily: Optional[int] = None
+
 class ChannelCreateRequest(BaseModel):
     id: str
     name: str
@@ -892,6 +956,7 @@ class ChannelCreateRequest(BaseModel):
     visual_mode: Optional[str] = "imagen_ai"
     publish_hour_utc: Optional[int] = 12
     days: Optional[List[str]] = ["monday", "wednesday", "friday", "sunday"]
+    google_account: Optional[str] = None
 
 class AuthStartRequest(BaseModel):
     service: str = "youtube"  # "youtube" hoặc "drive"
@@ -965,6 +1030,29 @@ async def create_google_account(req: AccountCreateRequest) -> Dict[str, Any]:
         "success": True,
         "message": f"Đã tạo tài khoản Google '{clean_id}' thành công!",
         "account": new_account
+    }
+
+@app.put("/api/accounts/{account_id}")
+async def update_google_account(account_id: str, req: AccountUpdateRequest) -> Dict[str, Any]:
+    """Cập nhật thông tin tài khoản Google (Gmail, Quota, Storage)."""
+    cfg = _read_channels_yaml()
+    accounts = cfg.get("google_accounts", [])
+    account = next((a for a in accounts if a.get("id") == account_id), None)
+    if not account:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản")
+
+    if req.email_label is not None:
+        account["email_label"] = req.email_label.strip()
+    if req.drive_storage is not None:
+        account["drive_storage"] = req.drive_storage.strip()
+    if req.youtube_quota_daily is not None:
+        account["youtube_quota_daily"] = req.youtube_quota_daily
+
+    _write_channels_yaml(cfg)
+    return {
+        "success": True,
+        "message": f"Đã cập nhật thông tin tài khoản '{account_id}' thành công!",
+        "account": account
     }
 
 @app.delete("/api/accounts/{account_id}")
@@ -1055,7 +1143,15 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest) -> Dict[str
             import wsgiref.util
             from google_auth_oauthlib.flow import InstalledAppFlow
 
-            scopes = ["https://www.googleapis.com/auth/youtube"] if service == "youtube" else ["https://www.googleapis.com/auth/drive.file"]
+            scopes = [
+                "https://www.googleapis.com/auth/youtube",
+                "https://www.googleapis.com/auth/userinfo.email",
+                "openid"
+            ] if service == "youtube" else [
+                "https://www.googleapis.com/auth/drive.file",
+                "https://www.googleapis.com/auth/userinfo.email",
+                "openid"
+            ]
             token_filename = "youtube_token.json" if service == "youtube" else "drive_token.json"
 
             base_dir = Path(settings.BASE_DIR)
@@ -1151,11 +1247,38 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest) -> Dict[str
             with open(b64_file, "w", encoding="utf-8") as f:
                 f.write(b64_str)
 
+            # Tự động nhận diện email thật của tài khoản Google vừa đăng nhập
+            detected_email = None
+            try:
+                import urllib.request
+                u_req = urllib.request.Request(
+                    "https://www.googleapis.com/oauth2/v3/userinfo",
+                    headers={"Authorization": f"Bearer {creds.token}"}
+                )
+                with urllib.request.urlopen(u_req, timeout=10) as resp:
+                    uinfo = json.loads(resp.read().decode())
+                    detected_email = uinfo.get("email")
+                if detected_email:
+                    cfg = _read_channels_yaml()
+                    for acc in cfg.get("google_accounts", []):
+                        if acc.get("id") == account_id:
+                            acc["email_label"] = detected_email
+                            break
+                    _write_channels_yaml(cfg)
+                    logger.info(f"Đã tự động nhận diện Gmail cho {account_id}: {detected_email}")
+            except Exception as ex:
+                logger.info(f"Không thể tự động đọc Google UserInfo: {ex}")
+
+            succ_msg = f"Đã kết nối {service.upper()} thành công!"
+            if detected_email:
+                succ_msg += f" (Gmail: {detected_email})"
+
             _oauth_sessions[session_key] = {
                 "status": "success",
                 "account_id": account_id,
                 "service": service,
-                "message": f"Đã kết nối {service.upper()} thành công!"
+                "message": succ_msg,
+                "email": detected_email
             }
         except Exception as ex:
             logger.error(f"OAuth Worker Error: {ex}")
@@ -1260,6 +1383,14 @@ async def update_brand_channel(account_id: str, channel_id: str, req: ChannelCre
         "days": req.days or ["monday", "wednesday", "friday", "sunday"]
     }
 
+    target_account_id = req.google_account or account_id
+    if target_account_id != account_id:
+        target_account = next((a for a in accounts if a.get("id") == target_account_id), None)
+        if target_account:
+            # Di chuyển channel từ tài khoản cũ sang tài khoản mới
+            account["brand_channels"] = [c for c in brand_channels if c.get("id") != channel_id]
+            target_account.setdefault("brand_channels", []).append(channel)
+
     flat_channels = cfg.get("channels", [])
     for fc in flat_channels:
         if fc.get("id") == channel_id:
@@ -1268,6 +1399,7 @@ async def update_brand_channel(account_id: str, channel_id: str, req: ChannelCre
             fc["language"] = channel["language"]
             fc["preferred_voice"] = channel["preferred_voice"]
             fc["visual_mode"] = channel["visual_mode"]
+            fc["google_account"] = target_account_id
 
     _write_channels_yaml(cfg)
 

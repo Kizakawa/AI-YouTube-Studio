@@ -1,85 +1,31 @@
 google_accounts:
 - id: account_1
-  email_label: ultra_media_hub_1@gmail.com
-  drive_storage: 2 TB Google One
+  email_label: pool1.studio@example.com
+  drive_storage: 20 TB Google One
   youtube_quota_daily: 10000
   credentials:
     client_secret: credentials/accounts/account_1/client_secret.json
     youtube_token: credentials/accounts/account_1/youtube_token.json
     drive_token: credentials/accounts/account_1/drive_token.json
   brand_channels:
-  - id: channel_stoic
-    name: Daily Stoic & Ancient Wisdom
-    niche: philosophy
-    language: en
-    visual_mode: imagen_ai
-    preferred_voice: en-US-GuyNeural
-    schedule:
-      publish_hour_utc: 14
-      days:
-      - tuesday
-      - thursday
-      - saturday
-- id: account_2
-  email_label: ultra_media_hub_2@gmail.com
-  drive_storage: 2 TB Google One
-  youtube_quota_daily: 10000
-  credentials:
-    client_secret: credentials/accounts/account_2/client_secret.json
-    youtube_token: credentials/accounts/account_2/youtube_token.json
-    drive_token: credentials/accounts/account_2/drive_token.json
-  brand_channels:
-  - id: channel_cosmos
-    name: Cosmic Odyssey & Space Secrets
-    niche: space_science
-    language: en
-    visual_mode: imagen_ai
-    preferred_voice: en-US-EricNeural
-    schedule:
-      publish_hour_utc: 13
-      days:
-      - monday
-      - thursday
-      - saturday
-  - id: channel_mysteries
-    name: History's Greatest Unsolved Mysteries
+  - id: channel_maya
+    name: Pyschology of the world
     niche: history_mystery
     language: en
-    visual_mode: pexels_stock
+    visual_mode: imagen_ai
     preferred_voice: en-US-ChristopherNeural
     schedule:
-      publish_hour_utc: 15
+      publish_hour_utc: 12
       days:
+      - monday
       - wednesday
+      - friday
       - sunday
-- id: account_3
-  email_label: không có
-  drive_storage: 2 TB Google One
-  youtube_quota_daily: 10000
-  credentials:
-    client_secret: credentials/accounts/account_3/client_secret.json
-    youtube_token: credentials/accounts/account_3/youtube_token.json
-    drive_token: credentials/accounts/account_3/drive_token.json
-  brand_channels: []
 channels:
-- id: channel_stoic
-  name: Daily Stoic & Ancient Wisdom
-  niche: philosophy
+- id: channel_maya
+  name: Pyschology of the world
+  niche: history_mystery
   language: en
   google_account: account_1
   visual_mode: imagen_ai
-  preferred_voice: en-US-GuyNeural
-- id: channel_cosmos
-  name: Cosmic Odyssey & Space Secrets
-  niche: space_science
-  language: en
-  google_account: account_2
-  visual_mode: imagen_ai
-  preferred_voice: en-US-EricNeural
-- id: channel_mysteries
-  name: History's Greatest Unsolved Mysteries
-  niche: history_mystery
-  language: en
-  google_account: account_2
-  visual_mode: pexels_stock
   preferred_voice: en-US-ChristopherNeural

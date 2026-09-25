@@ -63,6 +63,7 @@ def node_generate_script(state: VideoWorkflowState) -> Dict[str, Any]:
     topic = state.get("topic", "")
     channel_style = state.get("channel_style", "general")
     primary_entity = state.get("primary_entity")
+    language = state.get("language", "en")
 
     if primary_entity and primary_entity.lower() not in topic.lower():
         topic = f"{topic} (Focus on {primary_entity})"
@@ -70,7 +71,8 @@ def node_generate_script(state: VideoWorkflowState) -> Dict[str, Any]:
     content_agent = ContentAgent()
     script: ScriptContract = content_agent.generate_script(
         topic=topic,
-        channel_niche=channel_style
+        channel_niche=channel_style,
+        language=language
     )
 
     script_dict = script.to_dict()
@@ -120,6 +122,7 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
     topic = state.get("topic", "")
     channel_style = state.get("channel_style", "general")
     primary_entity = state.get("primary_entity")
+    language = state.get("language", "en")
 
     logger.info(f"🔄 [LangGraph] Tự động tinh chỉnh kịch bản lần {retry_count} theo nhận xét: {critiques}")
     
@@ -134,7 +137,8 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
     content_agent = ContentAgent()
     new_script = content_agent.generate_script(
         topic=refined_topic,
-        channel_niche=channel_style
+        channel_niche=channel_style,
+        language=language
     )
 
     return {

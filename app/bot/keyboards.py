@@ -198,3 +198,31 @@ def get_chat_brainstorm_keyboard(session_id: str) -> InlineKeyboardMarkup:
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
+
+def get_publish_channel_keyboard(job_id: int) -> InlineKeyboardMarkup:
+    """Tạo bàn phím nút bấm chọn kênh YouTube mục tiêu khi xuất bản video"""
+    import os
+    channels = settings.get_channels_config()
+    accounts = settings.get_accounts_config()
+    acc_map = {a.get("id"): a.get("email", a.get("id")) for a in accounts}
+    keyboard = []
+
+    for ch in channels:
+        ch_id = ch.get("id", "")
+        ch_name = ch.get("name", ch_id)
+        acc_id = ch.get("google_account", "account_1")
+        acc_email = acc_map.get(acc_id, acc_id)
+        token_path = os.path.join(settings.CREDENTIALS_DIR, "accounts", acc_id, "youtube_token.json")
+        auth_status = "🟢" if os.path.exists(token_path) else "⚠️"
+
+        keyboard.append([
+            InlineKeyboardButton(
+                f"{auth_status} {ch_name} [{acc_email}]",
+                callback_data=f"publish_to_channel:{job_id}:{ch_id}"
+            )
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton("❌ Hủy Đăng", callback_data=f"cancel_publish:{job_id}")
+    ])
+    return InlineKeyboardMarkup(keyboard)

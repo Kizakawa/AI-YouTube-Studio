@@ -125,7 +125,8 @@ class ContentAgent:
         )
 
     def _parse_json_script(self, raw_text: str) -> ScriptContract:
-        """Helper làm sạch markdown và parse JSON thành ScriptContract"""
+        """Helper làm sạch markdown và parse JSON thành ScriptContract, tự động khử rò rỉ ngôn ngữ ở tiêu đề."""
+        import re
         text = raw_text.strip()
         if text.startswith("```"):
             lines = text.split("\n")
@@ -140,51 +141,67 @@ class ContentAgent:
         if start != -1 and end != -1 and end > start:
             text = text[start:end+1]
         raw_data = json.loads(text)
+
+        # Khử sạch các hậu tố kênh hoặc mã quốc gia rò rỉ ở tiêu đề (tránh thuật toán YouTube phân phối nhầm vùng)
+        if "title" in raw_data and isinstance(raw_data["title"], str):
+            cleaned_title = re.sub(
+                r'[\[\(\s\-_|:]+[\w\s]*?\b(?:VN|VI|Vietnamese|Vietnam)\b.*$',
+                '',
+                raw_data["title"],
+                flags=re.IGNORECASE
+            ).strip()
+            if cleaned_title:
+                raw_data["title"] = cleaned_title
+
         return ScriptContract(**raw_data)
 
     def generate_script(self, topic: str, channel_niche: str = "general", language: str = "en") -> ScriptContract:
         """
-        Sinh kịch bản video Shorts (30-50 giây) giật gân, nhịp điệu nhanh, cuốn hút triệu view.
+        Sinh kịch bản video Shorts viral tối ưu thuật toán giữ chân (AVD > 75%, thời lượng vàng 20-28 giây).
+        Nhịp cảnh siêu nhanh (2.5-3.5s/cảnh), Hook 3s đầu đảo ngược định kiến, vòng lặp vô tận (Infinite Shorts Loop).
         """
-        prompt = f"""You are a world-class YouTube Shorts director AND cinematographer for a {channel_niche} channel.
+        prompt = f"""You are an elite YouTube Shorts director and viral retention engineer for a {channel_niche} channel.
 Topic: '{topic}'
 Script Language: {language}
 
 ═══════════════════════════════════════════════════════════
-STORYTELLING FORMULA (HIGH RETENTION)
+VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
 ═══════════════════════════════════════════════════════════
-1. 3-Second Pattern Interrupt Hook: Shocking statement or curiosity gap. No boring intros.
-2. High-Speed Pacing: 6-12 words per sentence, high emotion, zero fluff.
-3. Escalation & Climax: Build tension each scene, peak at 30-40s, loop-worthy ending.
+1. ULTRA-FOCUSED DURATION (20 - 28 SECONDS TOTAL):
+   - Total spoken word count: strictly 50 to 75 words.
+   - Exact scene count: strictly 6 to 8 scenes.
+   - Pacing: 2.5 to 3.5 seconds per scene (6 to 10 words per scene).
+   - NEVER drag a scene past 4 seconds. Fast visual cuts prevent viewer swiping.
 
-═══════════════════════════════════════════════════════════
-VISUAL DIRECTION — HARD RULES (VIOLATIONS = FAILURE)
-═══════════════════════════════════════════════════════════
-RULE 1 — NO LITERAL METAPHORS:
-  The visual_prompt must NEVER illustrate the literal words of a metaphor or simile.
-  BAD: narration says "a mountain crushed into a grain of sand" → visual shows a snowy mountain. WRONG.
-  GOOD: narration says "a mountain crushed into a grain of sand" → visual shows "Stellar collapse sequence, a massive blue star imploding into a neutron star, extreme ultraviolet flash, wide-angle astrophotography".
-  Always depict the ACTUAL SCIENTIFIC/HISTORICAL PHENOMENON, not the metaphor's surface meaning.
+2. 3-SECOND PATTERN INTERRUPT HOOK (SCENE 1):
+   - First 3 seconds MUST deliver an extreme curiosity gap, cognitive dissonance, or unbelievable fact.
+   - ABSOLUTELY FORBIDDEN: greetings ("Hello guys"), meta-introductions ("In this video", "Today we discover"), cliches ("Have you ever wondered", "Did you know that").
+   - Start immediately IN MEDIAS RES with high tension.
 
-RULE 2 — UNIQUE VISUALS PER SCENE (NO DUPLICATES):
-  Every scene must have a VISUALLY DISTINCT subject. Review ALL previous scenes before writing a new one.
-  Forbidden repeat: same object (e.g. astronaut helmet), same location, same lighting setup across 2+ scenes.
+3. THE INFINITE SHORTS LOOP (SEAMLESS REPLAY MULTIPLIER):
+   - The final scene (Scene 6/7/8) MUST NOT have a standard outro or goodbye ("Thanks for watching", "Subscribe", "Comment below").
+   - Instead, the final sentence MUST end on an open cliffhanger, preposition, or setup clause that syntactically flows directly back into the opening Hook sentence of Scene 1.
+   - When the YouTube Shorts player loops the video, the viewer should not realize it ended.
 
-RULE 3 — CONCRETE CINEMATIC DESCRIPTION:
-  visual_prompt format: "[Main subject + specific action], [camera angle & movement], [cinematic lighting type], [environment detail]"
-  Examples:
-  ✓ "Supermassive black hole M87* with glowing orange accretion disk, extreme slow-motion orbit, side-lit by infalling plasma jets, deep space void backdrop"
-  ✓ "Dying red supergiant star surface, boiling plasma convection cells, close-up macro telescopic lens, intense amber and crimson glow"
-  ✗ "A mountain range" (too literal/metaphoric)
-  ✗ "Abstract 3D metallic sphere" (wrong art style)
-  ✗ "Wireframe grid representing space" (retro sci-fi cliché)
+4. CONCRETE PHYSICAL STOCK QUERIES (NO ABSTRACT WORDS):
+   - stock_query is 2-3 English search words strictly for Pexels stock video/photo search.
+   - HARD RULE: stock_query MUST be a CONCRETE, VISIBLE, PHYSICAL OBJECT, PERSON, OR ACTION.
+   - STRICTLY FORBIDDEN abstract words: "psychology", "minimalism", "authority", "power", "wealth", "mindset", "discipline", "history", "secret", "truth".
+   - Examples:
+     * BAD: "psychology authority" → GOOD: "man wearing suit"
+     * BAD: "extreme minimalism" → GOOD: "worn leather sandals" or "empty wooden room"
+     * BAD: "greed power" → GOOD: "gold coins falling" or "hands holding cash"
+     * BAD: "ancient sacrifice" → GOOD: "mayan pyramid jungle" or "smoke rising altar"
 
-RULE 4 — stock_query is 2-3 ENGLISH TOPIC WORDS for Pexels (SEPARATE from visual_prompt):
-  FORBIDDEN in stock_query: director names, movie titles, actor names, style adjectives.
-  BAD: "Interstellar voyage cinematic", "Nolan dark atmosphere", "Hollywood thriller"
-  GOOD: "black hole", "galaxy nebula", "neutron star", "supernova"
+5. VISUAL PROMPT (FOR CINEMATIC AI IMAGE GENERATION):
+   - Concrete cinematic format: "[Main subject + specific action], [camera angle & movement], [cinematic lighting style], [environment detail]"
+   - No literal metaphors: always illustrate the actual historical/scientific phenomenon.
+   - Every scene must be visually unique (no repeating subjects or camera angles).
 
-RULE 5 — visual_keyword is 3-5 words, for Wikimedia/general search.
+6. TITLE & LANGUAGE INTEGRITY:
+   - Title MUST be in {language} and strictly focused on click-through rate (CTR > 10%).
+   - DO NOT include channel tags, country names, or suffixes like "- VN", "- VI", "(Vietnam)".
+   - Clean, punchy title under 60 characters with emojis.
 
 ═══════════════════════════════════════════════════════════
 OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
@@ -193,15 +210,15 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   "title": "Viral YouTube Shorts Title with Emojis",
   "primary_entity": "Full official name of main person/figure or null",
   "hook": "The opening 3-second hook sentence",
-  "full_narration": "Complete spoken text without stage directions",
+  "full_narration": "Complete spoken text without stage directions (50-75 words)",
   "scenes": [
     {{
       "scene_id": 1,
-      "narration": "Spoken sentence for this scene",
-      "visual_keyword": "black hole event horizon space",
-      "visual_prompt": "Supermassive black hole with glowing accretion disk, low-angle orbit shot, dramatic volumetric backlit plasma, deep space void",
-      "stock_query": "black hole",
-      "estimated_seconds": 4
+      "narration": "Spoken sentence for this scene (6-10 words)",
+      "visual_keyword": "concrete search keywords",
+      "visual_prompt": "Cinematic visual description: subject + camera angle + lighting + background",
+      "stock_query": "concrete physical nouns",
+      "estimated_seconds": 3.0
     }}
   ],
   "tags": ["shorts", "viral"],
@@ -234,27 +251,27 @@ CURRENT SCRIPT:
 REFINE the script strictly adhering to the user's feedback.
 Language: {language}
 
-HARD RULES:
-1. Fast-paced, punchy, concise sentences (35-50 seconds total).
-2. NO LITERAL METAPHORS in visual_prompt:
-   narration can use metaphors; visual_prompt must show the ACTUAL phenomenon, not the metaphor's literal image.
-3. NO DUPLICATE SCENES: every visual_prompt must describe a visually distinct subject and setting.
-4. visual_prompt format: "[Subject + action], [camera angle], [lighting], [environment]"
-5. stock_query: 2-3 English topic words ONLY for Pexels. NO movie titles, NO director names, NO actor names.
-   BAD: "Interstellar Nolan cinematic" | GOOD: "black hole space"
-6. Return ONLY valid JSON:
+HARD RETENTION RULES:
+1. Fast-paced, punchy, concise sentences: strictly 20-28 seconds total (50-75 words, 6-8 scenes, 2.5-3.5s per scene).
+2. NO ABSTRACT stock_query: 2-3 English CONCRETE PHYSICAL NOUNS only for Pexels.
+   NO "psychology", "minimalism", "authority", "power". Use physical objects/actions only.
+3. THE INFINITE SHORTS LOOP: The final scene must seamlessly connect back into Scene 1's hook.
+4. NO LITERAL METAPHORS in visual_prompt: show the actual phenomenon, not metaphorical words.
+5. NO DUPLICATE SCENES: every visual_prompt must describe a visually distinct subject and setting.
+6. visual_prompt format: "[Subject + action], [camera angle], [lighting], [environment]"
+7. Return ONLY valid JSON:
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
   "hook": "The opening 3-second hook sentence",
-  "full_narration": "The full spoken text without any stage directions",
+  "full_narration": "The full spoken text without any stage directions (50-75 words)",
   "scenes": [
     {{
       "scene_id": 1,
-      "narration": "Text spoken in this scene",
-      "visual_keyword": "black hole accretion disk",
+      "narration": "Text spoken in this scene (6-10 words)",
+      "visual_keyword": "concrete search keywords",
       "visual_prompt": "Detailed cinematic scene: subject + camera angle + lighting + environment",
-      "stock_query": "black hole",
-      "estimated_seconds": 4
+      "stock_query": "concrete physical nouns",
+      "estimated_seconds": 3.0
     }}
   ],
   "tags": ["tag1", "tag2", "shorts"],

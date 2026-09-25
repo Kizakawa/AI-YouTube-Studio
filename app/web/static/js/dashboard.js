@@ -361,39 +361,6 @@ async function fetchMembers() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   CHANNELS
-══════════════════════════════════════════════════════════ */
-async function fetchChannels() {
-    const channels = await apiGet('/api/channels');
-    const container = document.getElementById('channels-container');
-    if (!container) return;
-
-    if (!channels || channels.length === 0) {
-        container.innerHTML = `<div class="empty-state"><div class="empty-icon">📺</div><p>Chưa có kênh nào được cấu hình trong <code>config/channels.yaml</code></p></div>`;
-        return;
-    }
-
-    container.innerHTML = channels.map(ch => `
-        <div class="channel-card">
-            <div class="channel-header">
-                <div class="channel-title">
-                    <h4>📺 ${esc(ch.name)}</h4>
-                    <span>Ngách: <strong>${esc(ch.niche)}</strong> &nbsp;|&nbsp; ${ch.language.toUpperCase()}</span>
-                </div>
-                <span class="badge ${ch.is_authenticated ? 'badge-green' : 'badge-amber'}" style="${ch.is_authenticated ? '' : 'background: rgba(239, 68, 68, 0.15); color: #f87171;'}">${ch.token_status}</span>
-            </div>
-            <div class="channel-metrics">
-                <div class="metric-item"><span>Google Account</span><strong>${esc(ch.google_account).toUpperCase()}</strong></div>
-                <div class="metric-item"><span>Drive Quota</span><strong style="color:var(--accent-blue)">${ch.drive_quota}</strong></div>
-                <div class="metric-item"><span>Tổng Video</span><strong>${ch.video_count}</strong></div>
-                <div class="metric-item"><span>Đã Đăng</span><strong style="color:var(--accent-green)">${ch.published_count}</strong></div>
-            </div>
-            <div style="font-size:11.5px;color:var(--text-muted);">🎙 Voice: <code>${ch.preferred_voice}</code></div>
-        </div>
-    `).join('');
-}
-
-/* ═══════════════════════════════════════════════════════
    PIPELINE / VIDEOS
 ══════════════════════════════════════════════════════════ */
 async function fetchVideos() {
@@ -472,6 +439,11 @@ function renderPipelineTable(videos) {
             : `<span class="badge badge-purple" style="font-size:11px;">📱 Telegram</span>`;
         const creatorLine = isWeb ? '' : `<div style="font-size:10.5px;color:var(--text-muted);margin-top:2px;">@${esc(v.creator)}</div>`;
 
+        // Channel & Gmail resolution
+        const chObj = (allChannels || []).find(c => c.id === v.channel_id);
+        const chName = chObj ? chObj.name : v.channel_id;
+        const chGmail = chObj ? (chObj.gmail || chObj.email_label || chObj.google_account) : '';
+
         // Action buttons
         let actionButtons = `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết">🔍</button>`;
         if (v.status === 'SCRIPT_READY') {
@@ -479,7 +451,8 @@ function renderPipelineTable(videos) {
         } else if (v.status === 'FAILED') {
             actionButtons += `<button class="btn btn-primary btn-sm" onclick="triggerWebRender(${v.id})" title="Thử render lại" style="font-size:11px;background:var(--accent-amber);border-color:var(--accent-amber);">🔄 Thử lại</button>`;
         } else if (v.status === 'RENDERED') {
-            actionButtons += `<button class="btn btn-primary btn-sm" onclick="openVideoDetail(${v.id})" title="Xem & Xuất bản" style="font-size:11px;">📤 Xuất</button>`;
+            actionButtons += `<button class="btn btn-primary btn-sm" onclick="openPublishModal(${v.id})" title="Chọn kênh & Đăng YouTube" style="font-size:11px;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;font-weight:600;">🚀 Đăng YT</button>`;
+            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết video" style="font-size:11px;">🔍</button>`;
         }
         actionButtons += `<button class="btn btn-danger btn-sm" onclick="deleteJob(${v.id})" title="Xoá">🗑</button>`;
 
@@ -490,7 +463,13 @@ function renderPipelineTable(videos) {
                 <div style="font-weight:600;color:var(--text-primary);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(v.title)}">${esc(v.title)}</div>
                 <div style="font-size:11.5px;color:var(--text-muted);">${esc(v.topic)}</div>
             </td>
-            <td><code>${esc(v.channel_id)}</code></td>
+            <td>
+                <div class="channel-cell-name">📺 ${esc(chName)}</div>
+                <div class="channel-cell-gmail">
+                    <span>📧</span>
+                    <span>${esc(chGmail || v.channel_id)}</span>
+                </div>
+            </td>
             <td>
                 ${sourceBadge}
                 ${creatorLine}
@@ -663,8 +642,12 @@ async function openVideoDetail(jobId) {
             ${(data.status === 'SCRIPT_READY' || data.status === 'FAILED') ? `<button class="btn btn-primary btn-sm" onclick="closeModal(); triggerWebRender(${data.id});">🚀 ${data.status === 'FAILED' ? 'Thử Render Lại' : 'Bắt Đầu Render'}</button>` : ''}
             ${data.status === 'RENDERED' && data.video_path ? `<a href="/api/videos/${data.id}/download" target="_blank" class="btn btn-primary btn-sm">📥 Tải Video</a>` : ''}
             ${(data.status === 'RENDERED' && !data.youtube_id) ? `
-            <button class="btn btn-primary btn-sm" id="btn-publish-yt-${data.id}" onclick="publishToYouTube(${data.id})" style="background:linear-gradient(135deg,#ef4444,#dc2626);border:none;font-weight:600;">
-                🚀 Đăng Lên YouTube
+            <button class="btn btn-primary btn-sm" id="btn-publish-yt-${data.id}" onclick="openPublishModal(${data.id})" style="background:linear-gradient(135deg,#ef4444,#dc2626);border:none;font-weight:600;">
+                🚀 Chọn Kênh & Đăng YouTube
+            </button>` : ''}
+            ${(data.status === 'RENDERED' && data.youtube_id) ? `
+            <button class="btn btn-secondary btn-sm" onclick="openPublishModal(${data.id})" style="font-size:11.5px; border-color:rgba(239,68,68,0.4);">
+                🔄 Đăng Thêm Kênh Khác
             </button>` : ''}
             ${(data.status === 'RENDERED' || data.status === 'PUBLISHED') ? `
             <button class="btn btn-secondary btn-sm" id="btn-upload-drive-${data.id}" onclick="uploadToDrive(${data.id})" style="background:linear-gradient(135deg,rgba(66,133,244,0.18),rgba(52,168,83,0.12));border-color:rgba(66,133,244,0.3);">
@@ -701,33 +684,225 @@ async function deleteJob(id) {
 }
 
 /* ===============================================================
-   PUBLISH TO YOUTUBE
+   PUBLISH TO YOUTUBE MODAL & ACTIONS
 ================================================================ */
-async function publishToYouTube(jobId) {
-    if (!confirm(`🚀 Bạn có chắc muốn xuất bản Video #${jobId} lên kênh YouTube không?`)) return;
-    const btn = document.getElementById(`btn-publish-yt-${jobId}`);
+let activePublishJob = null;
+
+async function openPublishModal(jobId) {
+    activePublishJob = null;
+    let job = (allVideos || []).find(v => v.id === jobId);
+    if (!job) {
+        try {
+            job = await apiGet(`/api/videos/${jobId}`);
+        } catch (e) {}
+    }
+    if (!job) {
+        showToast(`Không tìm thấy video #${jobId}`, 'error');
+        return;
+    }
+    activePublishJob = job;
+
+    document.getElementById('publish-job-id').value = jobId;
+    document.getElementById('publish-modal-title').textContent = `🚀 Đăng Video #${jobId} Lên YouTube`;
+    
+    // Set title and counter
+    const titleInput = document.getElementById('publish-title-input');
+    titleInput.value = job.title || job.topic || '';
+    updateTitleCounter();
+
+    // Set description
+    const descInput = document.getElementById('publish-desc-input');
+    descInput.value = job.description || (job.tags ? job.tags.split(',').map(t => `#${t.trim()}`).join(' ') : '#shorts #viral');
+
+    // Make sure channels are loaded
+    if (!allChannels || allChannels.length === 0) {
+        await fetchChannels();
+    }
+
+    // Populate channel dropdown
+    const sel = document.getElementById('publish-channel-select');
+    sel.innerHTML = '';
+
+    if (!allChannels || allChannels.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = '⚠️ Chưa có kênh YouTube nào được cấu hình';
+        sel.appendChild(opt);
+    } else {
+        allChannels.forEach(ch => {
+            const opt = document.createElement('option');
+            opt.value = ch.id;
+            const isAuth = Boolean(ch.is_authenticated || ch.youtube_connected);
+            const statusIcon = isAuth ? '🟢' : '🟡';
+            const gmail = ch.gmail || ch.email_label || ch.google_account;
+            opt.textContent = `${statusIcon} ${ch.name} ── [${gmail}] ${isAuth ? '(Đã kết nối)' : '(Chưa cấp quyền)'}`;
+            sel.appendChild(opt);
+        });
+
+        // Set default selection
+        if (job.channel_id && allChannels.some(c => c.id === job.channel_id)) {
+            sel.value = job.channel_id;
+        } else {
+            // Pick first authenticated channel, or first channel
+            const firstAuth = allChannels.find(c => c.is_authenticated || c.youtube_connected);
+            if (firstAuth) {
+                sel.value = firstAuth.id;
+            } else {
+                sel.value = allChannels[0].id;
+            }
+        }
+    }
+
+    onPublishChannelChange();
+
+    const confirmBtn = document.getElementById('btn-confirm-publish');
+    if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = `🚀 Xác Nhận Đăng Lên YouTube`;
+    }
+
+    document.getElementById('modal-publish-yt').classList.add('visible');
+}
+
+function closePublishModal() {
+    document.getElementById('modal-publish-yt').classList.remove('visible');
+}
+
+function updateTitleCounter() {
+    const input = document.getElementById('publish-title-input');
+    const counter = document.getElementById('publish-title-counter');
+    if (input && counter) {
+        counter.textContent = `${input.value.length}/100`;
+        if (input.value.length > 85) {
+            counter.style.color = 'var(--accent-amber)';
+        } else {
+            counter.style.color = 'var(--text-muted)';
+        }
+    }
+}
+
+function onPublishChannelChange() {
+    const sel = document.getElementById('publish-channel-select');
+    const selectedId = sel ? sel.value : null;
+    const infoText = document.getElementById('publish-channel-info-text');
+    const actionBtn = document.getElementById('publish-channel-action-btn');
+    const infoBox = document.getElementById('publish-channel-info-box');
+
+    if (!selectedId) {
+        if (infoText) infoText.innerHTML = `<span style="color:var(--text-muted)">Vui lòng tạo kênh trước trong tab 'Kênh & Tài Khoản'</span>`;
+        if (actionBtn) actionBtn.innerHTML = '';
+        return;
+    }
+
+    const ch = (allChannels || []).find(c => c.id === selectedId);
+    if (!ch) return;
+
+    const isAuth = Boolean(ch.is_authenticated || ch.youtube_connected);
+    const gmail = ch.gmail || ch.email_label || ch.google_account;
+
+    if (isAuth) {
+        if (infoBox) {
+            infoBox.style.background = 'rgba(16, 185, 129, 0.12)';
+            infoBox.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+        }
+        if (infoText) {
+            infoText.innerHTML = `🟢 <strong>${esc(ch.name)}</strong>: Đã kết nối Google OAuth (Gmail: <code>${esc(gmail)}</code>). Sẵn sàng xuất bản!`;
+            infoText.style.color = 'var(--accent-green)';
+        }
+        if (actionBtn) actionBtn.innerHTML = '';
+    } else {
+        if (infoBox) {
+            infoBox.style.background = 'rgba(245, 158, 11, 0.15)';
+            infoBox.style.borderColor = 'rgba(245, 158, 11, 0.35)';
+        }
+        if (infoText) {
+            infoText.innerHTML = `⚠️ <strong>${esc(ch.name)}</strong> chưa cấp quyền YouTube API (Gmail: <code>${esc(gmail)}</code>).`;
+            infoText.style.color = 'var(--accent-amber)';
+        }
+        if (actionBtn) {
+            actionBtn.innerHTML = `
+                <button class="btn btn-primary btn-sm" onclick="startGoogleAuth('${esc(ch.google_account)}', 'youtube')" style="font-size:11.5px; background:var(--accent-amber); border-color:var(--accent-amber);">
+                    🔑 Cấp Quyền YouTube
+                </button>
+            `;
+        }
+    }
+}
+
+async function submitPublishYouTube() {
+    const jobId = document.getElementById('publish-job-id').value;
+    const channelId = document.getElementById('publish-channel-select').value;
+    const title = document.getElementById('publish-title-input').value.trim();
+    const description = document.getElementById('publish-desc-input').value.trim();
+    const privacy = document.querySelector('input[name="publish_privacy"]:checked')?.value || 'public';
+
+    if (!jobId) {
+        showToast('Không xác định được video job', 'error');
+        return;
+    }
+    if (!channelId) {
+        showToast('Vui lòng chọn kênh YouTube để đăng video', 'error');
+        return;
+    }
+    if (!title) {
+        showToast('Vui lòng nhập tiêu đề video trước khi đăng', 'error');
+        return;
+    }
+
+    const ch = (allChannels || []).find(c => c.id === channelId);
+    const isAuth = ch ? Boolean(ch.is_authenticated || ch.youtube_connected) : false;
+    if (!isAuth) {
+        if (!confirm(`⚠️ Kênh '${ch?.name || channelId}' chưa hoàn tất đăng nhập Google OAuth.\nBạn có muốn hủy để Cấp Quyền trước không?`)) {
+            return;
+        }
+    }
+
+    const btn = document.getElementById('btn-confirm-publish');
     const originalHTML = btn ? btn.innerHTML : '';
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = `<span class="loading-spinner"></span> Đang tải lên YouTube...`;
+        btn.innerHTML = `<span class="loading-spinner"></span> Đang xuất bản lên kênh '${ch?.name || channelId}'...`;
     }
-    showToast(`Bắt đầu upload Video #${jobId} lên YouTube...`, 'info');
+
+    showToast(`🚀 Đang xuất bản Video #${jobId} lên kênh '${ch?.name || channelId}'...`, 'info');
+
     try {
-        const res = await fetch(`/api/videos/${jobId}/publish-youtube`, { method: 'POST' });
+        const res = await fetch(`/api/videos/${jobId}/publish-youtube`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                channel_id: channelId,
+                title: title,
+                description: description,
+                privacy: privacy
+            })
+        });
+
         const data = await res.json();
         if (res.ok && data.success) {
-            showToast(`🎉 ${data.message || 'Đăng video thành công!'}`, 'success');
-            openVideoDetail(jobId);
-            fetchStats();
-            fetchVideos();
+            showToast(`🎉 ${data.message || 'Đăng video lên YouTube thành công!'}`, 'success');
+            closePublishModal();
+            await fetchStats();
+            await fetchVideos();
+            await fetchChannels();
+            const detailModal = document.getElementById('modal-overlay');
+            if (detailModal && detailModal.classList.contains('visible')) {
+                openVideoDetail(jobId);
+            }
         } else {
             const msg = data.detail || data.message || 'Đăng YouTube thất bại';
             showToast('❌ ' + msg, 'error');
-            if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; }
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalHTML;
+            }
         }
     } catch (e) {
-        showToast('Lỗi kết nối: ' + e.message, 'error');
-        if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; }
+        showToast('Lỗi kết nối máy chủ: ' + e.message, 'error');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+        }
     }
 }
 
@@ -865,16 +1040,25 @@ let oauthPollTimer = null;
 
 async function fetchChannels() {
     try {
-        const data = await apiGet('/api/channels');
-        if (data) {
-            allChannels = Array.isArray(data) ? data : (data.channels || []);
+        const [chData, accData] = await Promise.all([
+            apiGet('/api/channels'),
+            apiGet('/api/accounts')
+        ]);
+
+        if (chData) {
+            allChannels = Array.isArray(chData) ? chData : (chData.channels || []);
             updateChannelDropdowns(allChannels);
         }
+
+        if (accData && accData.accounts) {
+            allAccounts = accData.accounts;
+        }
+
+        renderChannelsHub(allChannels, allAccounts);
+        renderAccounts(allAccounts);
     } catch (e) {
-        console.error('Lỗi fetch channels:', e);
+        console.error('Lỗi fetch channels & accounts:', e);
     }
-    // Also fetch accounts
-    await fetchAccounts();
 }
 
 function updateChannelDropdowns(channels) {
@@ -882,33 +1066,179 @@ function updateChannelDropdowns(channels) {
     if (!sel) return;
     const currentVal = sel.value;
     sel.innerHTML = '';
+
+    if (!channels || channels.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = '⚠️ Chưa có kênh nào được cấu hình';
+        sel.appendChild(opt);
+        return;
+    }
+
     channels.forEach(ch => {
         const opt = document.createElement('option');
         opt.value = ch.id;
-        opt.textContent = `📺 ${ch.name} (${ch.niche || 'general'})`;
+        const gmail = ch.gmail || ch.email_label || ch.google_account;
+        opt.textContent = `📺 ${ch.name} ── 📧 [${gmail}]`;
         sel.appendChild(opt);
     });
+
     if (currentVal && channels.some(c => c.id === currentVal)) {
         sel.value = currentVal;
     }
 }
 
 async function fetchAccounts() {
-    const container = document.getElementById('accounts-container');
-    if (!container) return;
-
     try {
         const data = await apiGet('/api/accounts');
-        if (!data || !data.accounts) {
-            container.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted);">Không thể tải danh sách tài khoản.</div>`;
-            return;
+        if (data && data.accounts) {
+            allAccounts = data.accounts;
+            renderAccounts(allAccounts);
+            // Refresh channel hub as well to ensure synced email labels
+            if (allChannels && allChannels.length > 0) {
+                renderChannelsHub(allChannels, allAccounts);
+            }
         }
-
-        allAccounts = data.accounts;
-        renderAccounts(allAccounts);
     } catch (e) {
-        container.innerHTML = `<div style="text-align:center; padding:30px; color:var(--accent-rose);">Lỗi kết nối API: ${esc(e.message)}</div>`;
+        console.error('Lỗi fetch accounts:', e);
     }
+}
+
+function renderChannelsHub(channels, accounts) {
+    const container = document.getElementById('channels-hub-container');
+    if (!container) return;
+
+    // Update KPI Bar
+    const kpiChannels = document.getElementById('kpi-total-channels');
+    if (kpiChannels) kpiChannels.textContent = channels.length;
+
+    const uniqueGmails = new Set();
+    (accounts || []).forEach(a => { if (a.email_label && a.email_label !== 'không có') uniqueGmails.add(a.email_label); });
+    const kpiGmails = document.getElementById('kpi-total-gmails');
+    if (kpiGmails) kpiGmails.textContent = uniqueGmails.size || (accounts || []).length;
+
+    const kpiAuth = document.getElementById('kpi-auth-channels');
+    if (kpiAuth) {
+        const authCount = channels.filter(c => c.is_authenticated || c.youtube_connected).length;
+        kpiAuth.textContent = `${authCount}/${channels.length}`;
+    }
+
+    const kpiVideos = document.getElementById('kpi-total-videos');
+    if (kpiVideos) {
+        const totalV = channels.reduce((sum, c) => sum + (c.video_count || 0), 0);
+        kpiVideos.textContent = totalV;
+    }
+
+    if (!channels || channels.length === 0) {
+        container.innerHTML = `
+            <div style="grid-column: 1 / -1; text-align:center; padding:40px; color:var(--text-muted); background:rgba(255,255,255,0.02); border-radius:12px; border:1px dashed rgba(255,255,255,0.1);">
+                <div style="font-size:36px; margin-bottom:12px;">📺</div>
+                <h4 style="color:var(--text-primary); margin-bottom:6px;">Chưa có kênh YouTube nào</h4>
+                <p style="font-size:13px; margin-bottom:16px;">Tạo kênh thương hiệu đầu tiên và gắn vào tài khoản Gmail để bắt đầu.</p>
+                <button class="btn btn-primary" onclick="openAddChannelModal()">+ Thêm Kênh Đầu Tiên</button>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = channels.map(ch => {
+        const parentAcc = (accounts || []).find(a => a.id === ch.google_account) || {};
+        const gmail = ch.gmail || parentAcc.email_label || 'Chưa đặt Gmail';
+        const isAuth = Boolean(ch.is_authenticated || ch.youtube_connected);
+        const authBadge = isAuth 
+            ? `<span class="service-status-pill connected">🟢 Đã cấp quyền YouTube</span>`
+            : `<span class="service-status-pill disconnected">🟡 Chưa kết nối YouTube</span>`;
+
+        const visualLabel = ch.visual_mode === 'imagen_ai' ? '✨ Imagen 3' : '🎞️ Pexels HD';
+        const pubHour = ch.schedule?.publish_hour_utc ?? 12;
+
+        return `
+            <div class="channel-hub-card" id="hub-ch-${esc(ch.id)}">
+                <div class="channel-hub-header">
+                    <div class="channel-hub-title-wrap">
+                        <div class="channel-hub-avatar">📺</div>
+                        <div class="channel-hub-names">
+                            <h4>${esc(ch.name)}</h4>
+                            <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
+                                <span class="channel-hub-id-badge">ID: ${esc(ch.id)}</span>
+                                ${ch.language ? `<span class="badge badge-purple" style="font-size:10px;">${esc(ch.language.toUpperCase())}</span>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                    ${authBadge}
+                </div>
+
+                <!-- Highlight: Managing Gmail -->
+                <div class="channel-hub-gmail-box">
+                    <div class="channel-hub-gmail-info">
+                        <span class="gmail-icon">📧</span>
+                        <div style="min-width:0;">
+                            <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; font-weight:600;">Gmail Điều Hành Kênh</div>
+                            <div class="channel-hub-gmail-text" title="${esc(gmail)}">${esc(gmail)}</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                        <span class="channel-hub-gmail-account-id">${esc(ch.google_account)}</span>
+                        <button class="btn btn-secondary btn-sm" style="padding:3px 7px; font-size:11px;" onclick="openEditAccountModal('${esc(ch.google_account)}')" title="Đổi địa chỉ Gmail này">
+                            ✏️ Đổi
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Meta chips -->
+                <div class="channel-hub-meta-chips">
+                    <span class="hub-chip">🎯 <strong>Niche:</strong> ${esc(ch.niche || 'general')}</span>
+                    <span class="hub-chip">🎙️ <strong>Giọng:</strong> ${esc(ch.preferred_voice || 'Default')}</span>
+                    <span class="hub-chip">🖼️ <strong>Visual:</strong> ${visualLabel}</span>
+                    <span class="hub-chip">⏰ <strong>Đăng:</strong> ${pubHour}:00 UTC</span>
+                </div>
+
+                <!-- Stats row -->
+                <div class="channel-hub-stats-row">
+                    <div>
+                        <span>📊 Tổng video: <strong>${ch.video_count || 0}</strong></span>
+                        &nbsp;·&nbsp;
+                        <span style="color:var(--accent-green)">🚀 Đã đăng: <strong>${ch.published_count || 0}</strong></span>
+                    </div>
+                    <div style="font-size:11.5px; color:var(--text-muted);">
+                        ☁️ ${esc(ch.drive_quota || '2 TB Google One')}
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="channel-hub-actions">
+                    <button class="btn btn-primary btn-sm" style="flex:1; justify-content:center;" onclick="useChannelForScript('${esc(ch.id)}')" title="Tạo kịch bản mới cho kênh này">
+                        🚀 Tạo Video Cho Kênh
+                    </button>
+                    <button class="btn btn-secondary btn-sm" onclick="openEditChannelModal('${esc(ch.google_account)}', '${esc(ch.id)}')" title="Chỉnh sửa thông tin kênh">
+                        ✏️ Sửa Kênh
+                    </button>
+                    ${!isAuth ? `
+                        <button class="btn btn-primary btn-sm" style="background:var(--accent-amber); border-color:var(--accent-amber);" onclick="startGoogleAuth('${esc(ch.google_account)}', 'youtube')" title="Đăng nhập Google cấp quyền YouTube">
+                            🔑 Cấp Quyền
+                        </button>
+                    ` : ''}
+                    <button class="btn btn-danger btn-sm" onclick="deleteChannel('${esc(ch.google_account)}', '${esc(ch.id)}')" title="Xóa kênh">
+                        🗑️
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function useChannelForScript(channelId) {
+    switchTab('create');
+    const sel = document.getElementById('input-channel');
+    if (sel) {
+        sel.value = channelId;
+    }
+    const topicInput = document.getElementById('input-topic');
+    if (topicInput) {
+        topicInput.focus();
+    }
+    const ch = (allChannels || []).find(c => c.id === channelId);
+    showToast(`Đã chọn kênh: ${ch?.name || channelId}! Hãy nhập chủ đề video.`, 'info');
 }
 
 function renderAccounts(accounts) {
@@ -929,17 +1259,24 @@ function renderAccounts(accounts) {
 
     container.innerHTML = accounts.map(acc => {
         const brandChannels = acc.brand_channels || [];
+        const email = acc.email_label || 'Chưa đặt Gmail';
+
         return `
             <div class="account-card" id="card-${esc(acc.id)}">
                 <div class="account-header">
                     <div class="account-identity">
-                        <div class="account-icon">🌐</div>
+                        <div class="account-icon">📧</div>
                         <div class="account-title-wrap">
-                            <h4>
-                                ${esc(acc.id)}
-                                <span class="badge badge-blue">${brandChannels.length} Kênh</span>
+                            <h4 style="font-size:15.5px;">
+                                ${esc(email)}
+                                <span class="badge badge-blue">${brandChannels.length} Kênh Trực Thuộc</span>
                             </h4>
-                            <div class="account-email">${esc(acc.email_label)}</div>
+                            <div class="account-email" style="display:flex; align-items:center; gap:8px;">
+                                <span>Mã tài khoản: <code>${esc(acc.id)}</code></span>
+                                <button class="btn btn-secondary btn-sm" style="padding:2px 7px; font-size:11px;" onclick="openEditAccountModal('${esc(acc.id)}')">
+                                    ✏️ Đổi Gmail / Sửa
+                                </button>
+                            </div>
                         </div>
                     </div>
                     <div class="account-badges-group">
@@ -1008,7 +1345,7 @@ function renderAccounts(accounts) {
                 <!-- Channels List under this Account -->
                 <div class="account-channels-wrap">
                     <div class="channels-header">
-                        <h5>📺 Danh Sách Kênh Thương Hiệu (${brandChannels.length})</h5>
+                        <h5>📺 Kênh YouTube Thuộc Gmail Này (${brandChannels.length})</h5>
                         <button class="btn btn-secondary btn-sm" onclick="openAddChannelModal('${esc(acc.id)}')">
                             + Thêm Kênh Mới
                         </button>
@@ -1017,13 +1354,13 @@ function renderAccounts(accounts) {
                     <div class="channels-items-list">
                         ${brandChannels.length === 0 ? `
                             <div style="text-align:center; padding:18px; color:var(--text-muted); font-size:12.5px;">
-                                Chưa có kênh nào thuộc tài khoản này. Bấm <strong>"+ Thêm Kênh Mới"</strong> để gán kênh.
+                                Chưa có kênh nào gán với Gmail này. Bấm <strong>"+ Thêm Kênh Mới"</strong> để gán kênh.
                             </div>
                         ` : brandChannels.map(ch => `
                             <div class="channel-row-item">
                                 <div class="channel-row-main">
                                     <div class="channel-row-title">
-                                        <span>${esc(ch.name)}</span>
+                                        <span>📺 ${esc(ch.name)}</span>
                                         <span class="badge badge-blue" style="font-size:10px;">ID: ${esc(ch.id)}</span>
                                     </div>
                                     <div class="channel-row-meta">
@@ -1058,10 +1395,52 @@ function renderAccounts(accounts) {
    ACCOUNT MODALS & CRUD
 ══════════════════════════════════════════════════════════ */
 function openAddAccountModal() {
-    document.getElementById('acc-input-id').value = '';
+    const modeEl = document.getElementById('acc-mode');
+    if (modeEl) modeEl.value = 'add';
+
+    const titleEl = document.getElementById('modal-account-title');
+    if (titleEl) titleEl.textContent = 'Thêm Tài Khoản Google Mới';
+
+    const idInput = document.getElementById('acc-input-id');
+    if (idInput) {
+        idInput.value = '';
+        idInput.disabled = false;
+    }
+
     document.getElementById('acc-input-email').value = '';
     document.getElementById('acc-input-drive').value = '2 TB Google One';
     document.getElementById('acc-input-quota').value = '10000';
+    document.getElementById('modal-account').classList.add('visible');
+}
+
+function openEditAccountModal(accountId) {
+    const acc = (allAccounts || []).find(a => a.id === accountId);
+    if (!acc) {
+        showToast('Không tìm thấy tài khoản ' + accountId, 'error');
+        return;
+    }
+
+    const modeEl = document.getElementById('acc-mode');
+    if (modeEl) modeEl.value = 'edit';
+
+    const titleEl = document.getElementById('modal-account-title');
+    if (titleEl) titleEl.textContent = `Chỉnh Sửa Tài Khoản: ${acc.id}`;
+
+    const idInput = document.getElementById('acc-input-id');
+    if (idInput) {
+        idInput.value = acc.id;
+        idInput.disabled = true;
+    }
+
+    const emailInput = document.getElementById('acc-input-email');
+    if (emailInput) emailInput.value = acc.email_label || '';
+
+    const driveInput = document.getElementById('acc-input-drive');
+    if (driveInput) driveInput.value = acc.drive_storage || '2 TB Google One';
+
+    const quotaInput = document.getElementById('acc-input-quota');
+    if (quotaInput) quotaInput.value = acc.youtube_quota_daily || 10000;
+
     document.getElementById('modal-account').classList.add('visible');
 }
 
@@ -1070,6 +1449,7 @@ function closeAccountModal() {
 }
 
 async function submitAccountForm() {
+    const mode = document.getElementById('acc-mode')?.value || 'add';
     const id = document.getElementById('acc-input-id').value.trim();
     const email = document.getElementById('acc-input-email').value.trim();
     const drive = document.getElementById('acc-input-drive').value.trim();
@@ -1080,27 +1460,43 @@ async function submitAccountForm() {
         return;
     }
     if (!email) {
-        showToast('Vui lòng nhập Email / Ghi chú', 'error');
+        showToast('Vui lòng nhập Địa chỉ Gmail quản lý', 'error');
         return;
     }
 
     try {
-        const res = await apiPost('/api/accounts', {
-            id: id,
-            email_label: email,
-            drive_storage: drive,
-            youtube_quota_daily: quota
-        });
+        let res;
+        if (mode === 'edit') {
+            const resp = await fetch(`/api/accounts/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email_label: email,
+                    drive_storage: drive,
+                    youtube_quota_daily: quota
+                })
+            });
+            res = await resp.json();
+        } else {
+            res = await apiPost('/api/accounts', {
+                id: id,
+                email_label: email,
+                drive_storage: drive,
+                youtube_quota_daily: quota
+            });
+        }
+
         if (res && res.success) {
-            showToast(res.message || 'Đã tạo tài khoản Google thành công!', 'success');
+            showToast(res.message || 'Thành công!', 'success');
             closeAccountModal();
+            await fetchChannels();
             await fetchAccounts();
             await fetchStats();
         } else {
-            showToast(res?.detail || 'Không thể tạo tài khoản', 'error');
+            showToast(res?.detail || res?.message || 'Không thể lưu tài khoản', 'error');
         }
     } catch (e) {
-        showToast(`Lỗi tạo tài khoản: ${e.message}`, 'error');
+        showToast(`Lỗi: ${e.message}`, 'error');
     }
 }
 
@@ -1112,6 +1508,7 @@ async function deleteAccount(accountId) {
         const data = await res.json();
         if (res.ok && data.success) {
             showToast(data.message || `Đã xóa tài khoản ${accountId}`, 'success');
+            await fetchChannels();
             await fetchAccounts();
             await fetchStats();
         } else {
@@ -1129,11 +1526,15 @@ function populateParentAccountSelect(selectedAccId) {
     const sel = document.getElementById('channel-parent-acc');
     if (!sel) return;
     sel.innerHTML = '';
-    allAccounts.forEach(acc => {
+    const accList = allAccounts || [];
+    const activeAccId = selectedAccId || (accList[0]?.id || 'account_1');
+
+    accList.forEach(acc => {
         const opt = document.createElement('option');
         opt.value = acc.id;
-        opt.textContent = `${acc.id} (${acc.email_label})`;
-        if (acc.id === selectedAccId) opt.selected = true;
+        const email = acc.email_label || 'Chưa đặt Gmail';
+        opt.textContent = `📧 ${email} (Mã: ${acc.id})`;
+        if (acc.id === activeAccId) opt.selected = true;
         sel.appendChild(opt);
     });
 }
@@ -1207,7 +1608,8 @@ async function submitChannelForm() {
         preferred_voice: voice,
         visual_mode: visual,
         publish_hour_utc: hour,
-        days: ["monday", "wednesday", "friday", "sunday"]
+        days: ["monday", "wednesday", "friday", "sunday"],
+        google_account: accountId
     };
 
     try {
@@ -1251,14 +1653,6 @@ async function deleteChannel(accountId, channelId) {
         }
     } catch (e) {
         showToast(`Lỗi xóa kênh: ${e.message}`, 'error');
-    }
-}
-
-function useChannelForScript(channelId) {
-    switchTab('create');
-    const sel = document.getElementById('input-channel');
-    if (sel) {
-        sel.value = channelId;
     }
 }
 
@@ -1343,6 +1737,7 @@ async function startGoogleAuth(accountId, service) {
                     showToast(`Đã kết nối ${service.toUpperCase()} thành công!`, 'success');
                     setTimeout(() => {
                         closeOAuthModal();
+                        fetchChannels();
                         fetchAccounts();
                         fetchStats();
                     }, 1800);

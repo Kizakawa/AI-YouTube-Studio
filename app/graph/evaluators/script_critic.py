@@ -75,10 +75,10 @@ Phong cách kênh: {channel_style}
 
 --- BỘ QUY CHUẨN ĐÁNH GIÁ (Thang điểm 1 - 10) ---
 1. hook_strength: Cảnh 1 có đủ gây sốc, đảo ngược định kiến hoặc tạo sự tò mò tột cùng trong 3 giây đầu không? (Cần >= 8.0)
-2. story_pacing: Nhịp điệu câu chuyện, mỗi cảnh từ 12-25 từ, toàn bộ video từ 40-55 giây, không thừa thãi lê thê không?
+2. story_pacing: Nhịp điệu câu chuyện, mỗi cảnh ngắn gọn 6-10 từ (2.5-3.5s), toàn bộ video từ 20-28 giây (50-75 từ cho 6-8 cảnh), chuyển cảnh nhanh, không lê thê thừa thãi không? (Cần >= 8.0)
 3. entity_coherence: Kịch bản và hình ảnh có bám chặt vào nhân vật/bối cảnh lịch sử thực tế không?
-4. visual_direction: Từ khóa visual_keyword có sắc nét, cụ thể, giàu tính điện ảnh không?
-5. viral_loop: Cảnh cuối có tạo vòng lặp mượt mà quay trở lại Cảnh 1 không?
+4. visual_direction: Từ khóa visual_keyword & stock_query có cụ thể, vật lý, giàu tính điện ảnh không? (Tuyệt đối không dùng từ trừu tượng như psychology, minimalism)
+5. viral_loop: Cảnh cuối có tạo vòng lặp mượt mà quay trở lại Cảnh 1 không? (Infinite Shorts Loop)
 
 --- YÊU CẦU TRẢ VỀ ---
 Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với schema sau:
@@ -183,8 +183,8 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
         has_hook_words = any(w in narr1 for w in ["bí mật", "sự thật", "không ai biết", "kinh hoàng", "nguy hiểm", "thực sự", "secret", "never", "truth", "shocking"])
         hook_score = 8.5 if has_hook_words else 7.0
 
-        # Kiểm tra nhịp điệu (khoảng 90 - 150 từ cho 6 cảnh)
-        pace_score = 8.5 if 80 <= total_words <= 160 and scene_count >= 5 else 6.5
+        # Kiểm tra nhịp điệu (khoảng 50 - 75 từ cho 6-8 cảnh, thời lượng vàng 20-28s)
+        pace_score = 8.5 if 45 <= total_words <= 80 and 5 <= scene_count <= 8 else 6.5
 
         # Kiểm tra thực thể
         ent_score = 8.5
@@ -201,7 +201,7 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
         if hook_score < 8.0:
             critiques.append("Cảnh 1 cần mở đầu giật gân, tạo sự tò mò sốc hơn nữa trong 3 giây đầu.")
         if pace_score < 8.0:
-            critiques.append("Độ dài kịch bản chưa tối ưu cho Shorts (cần khoảng 90-140 từ chia đều cho 5-6 cảnh).")
+            critiques.append("Độ dài kịch bản chưa tối ưu cho Shorts (cần khoảng 50-75 từ chia đều cho 6-8 cảnh, tổng thời lượng 20-28 giây để tối đa tỷ lệ xem hết AVD).")
 
         return ScriptEvaluationReport(
             hook_strength=ScriptCriteriaScore(score=hook_score, feedback="Đánh giá theo độ hấp dẫn của hook cảnh 1"),

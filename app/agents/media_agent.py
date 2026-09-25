@@ -63,6 +63,9 @@ _COMMON_GEOPOLITICAL = {
     "saudi arabia", "south africa", "new zealand", "united arab emirates",
     "america", "russia", "china", "vietnam", "japan", "germany", "france", "england",
     "britain", "uk", "usa", "italy", "spain", "canada", "mexico", "brazil", "india",
+    "trung mỹ", "bắc mỹ", "nam mỹ", "châu âu", "châu á", "châu phi", "châu mỹ", "châu đại dương",
+    "central america", "north america", "south america", "latin america", "europe", "asia", "africa",
+    "hà nội", "sài gòn", "đà nẵng", "hồ chí minh city", "hcmc", "trung my", "nam my", "bac my",
 }
 
 
@@ -94,7 +97,7 @@ def _extract_proper_nouns(text: str, is_narration: bool = False) -> List[str]:
     valid = []
     for s in sequences:
         s_lower = s.lower()
-        if is_narration and s_lower in _COMMON_GEOPOLITICAL:
+        if s_lower in _COMMON_GEOPOLITICAL:
             continue
         if all(w.lower() in _SENTENCE_STARTERS for w in s.split()):
             continue
@@ -102,50 +105,201 @@ def _extract_proper_nouns(text: str, is_narration: bool = False) -> List[str]:
     return valid
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# HISTORICAL ENTITIES, CIVILIZATIONS & PHILOSOPHY KNOWLEDGE BASE
+# ──────────────────────────────────────────────────────────────────────────────
+_HISTORICAL_ENTITIES_AND_CIVILIZATIONS = {
+    # ── Ancient Civilizations & Empires ──
+    "maya": ("Maya Civilization", "civilization"),
+    "mayan": ("Maya Civilization", "civilization"),
+    "người maya": ("Maya Civilization", "civilization"),
+    "đế chế maya": ("Maya Civilization", "civilization"),
+    "văn minh maya": ("Maya Civilization", "civilization"),
+    "aztec": ("Aztec Civilization", "civilization"),
+    "người aztec": ("Aztec Civilization", "civilization"),
+    "inca": ("Inca Empire", "civilization"),
+    "người inca": ("Inca Empire", "civilization"),
+    "ai cập": ("Ancient Egypt", "civilization"),
+    "ancient egypt": ("Ancient Egypt", "civilization"),
+    "egyptian": ("Ancient Egypt", "civilization"),
+    "pharaoh": ("Ancient Egyptian Pharaoh", "civilization"),
+    "kim tự tháp": ("Giza Pyramids", "civilization"),
+    "tutankhamun": ("Tutankhamun", "person"),
+    "cleopatra": ("Cleopatra", "person"),
+    "ramses": ("Ramesses II", "person"),
+    "la mã": ("Ancient Rome", "civilization"),
+    "đế chế la mã": ("Ancient Rome", "civilization"),
+    "roman": ("Ancient Rome", "civilization"),
+    "roman empire": ("Ancient Rome", "civilization"),
+    "gladiator": ("Roman Gladiator", "civilization"),
+    "đấu sĩ la mã": ("Roman Gladiator", "civilization"),
+    "colosseum": ("Colosseum Rome", "place"),
+    "sparta": ("Ancient Sparta", "civilization"),
+    "spartan": ("Ancient Sparta", "civilization"),
+    "chiến binh sparta": ("Ancient Sparta", "civilization"),
+    "hy lạp": ("Ancient Greece", "civilization"),
+    "hy lạp cổ đại": ("Ancient Greece", "civilization"),
+    "ancient greece": ("Ancient Greece", "civilization"),
+    "athens": ("Ancient Athens", "civilization"),
+    "viking": ("Vikings", "civilization"),
+    "vikings": ("Vikings", "civilization"),
+    "người viking": ("Vikings", "civilization"),
+    "samurai": ("Samurai Feudal Japan", "civilization"),
+    "shogun": ("Shogun Japan", "civilization"),
+    "ninja": ("Ninja Feudal Japan", "civilization"),
+    "nhật bản phong kiến": ("Feudal Japan", "civilization"),
+    "trung cổ": ("Medieval Europe", "civilization"),
+    "thời trung cổ": ("Medieval Europe", "civilization"),
+    "medieval": ("Medieval Europe", "civilization"),
+    "middle ages": ("Medieval Europe", "civilization"),
+    "hiệp sĩ": ("Medieval Knights", "civilization"),
+    "knights": ("Medieval Knights", "civilization"),
+    "thập tự chinh": ("The Crusades", "event"),
+    "crusades": ("The Crusades", "event"),
+    "mông cổ": ("Mongol Empire", "civilization"),
+    "đế chế mông cổ": ("Mongol Empire", "civilization"),
+    "mongol": ("Mongol Empire", "civilization"),
+    "genghis khan": ("Genghis Khan", "person"),
+    "thành cát tư hãn": ("Genghis Khan", "person"),
+    "lưỡng hà": ("Ancient Mesopotamia", "civilization"),
+    "mesopotamia": ("Ancient Mesopotamia", "civilization"),
+    "babylon": ("Ancient Babylon", "civilization"),
+    "ba tư": ("Persian Empire", "civilization"),
+    "persian empire": ("Persian Empire", "civilization"),
+    "ottoman": ("Ottoman Empire", "civilization"),
+    "thổ nhĩ kỳ ottoman": ("Ottoman Empire", "civilization"),
+    "phục hưng": ("Italian Renaissance", "event"),
+    "renaissance": ("Italian Renaissance", "event"),
+
+    # ── Philosophers & Thinkers ──
+    "khắc kỷ": ("Stoicism Philosophy", "concept"),
+    "stoic": ("Stoicism Philosophy", "concept"),
+    "stoicism": ("Stoicism Philosophy", "concept"),
+    "marcus aurelius": ("Marcus Aurelius", "person"),
+    "seneca": ("Seneca the Younger", "person"),
+    "epictetus": ("Epictetus", "person"),
+    "socrates": ("Socrates", "person"),
+    "plato": ("Plato", "person"),
+    "aristotle": ("Aristotle", "person"),
+    "nietzsche": ("Friedrich Nietzsche", "person"),
+    "friedrich nietzsche": ("Friedrich Nietzsche", "person"),
+    "carl jung": ("Carl Jung", "person"),
+    "jung": ("Carl Jung", "person"),
+    "sigmund freud": ("Sigmund Freud", "person"),
+    "freud": ("Sigmund Freud", "person"),
+    "machiavelli": ("Niccolo Machiavelli", "person"),
+    "sun tzu": ("Sun Tzu", "person"),
+    "tôn tử": ("Sun Tzu", "person"),
+    "khổng tử": ("Confucius", "person"),
+    "confucius": ("Confucius", "person"),
+    "lão tử": ("Laozi", "person"),
+
+    # ── Scientists & Leaders ──
+    "oppenheimer": ("J. Robert Oppenheimer", "person"),
+    "j. robert oppenheimer": ("J. Robert Oppenheimer", "person"),
+    "alexander the great": ("Alexander the Great", "person"),
+    "alexander đại đế": ("Alexander the Great", "person"),
+    "julius caesar": ("Julius Caesar", "person"),
+    "caesar": ("Julius Caesar", "person"),
+    "napoleon": ("Napoleon Bonaparte", "person"),
+    "napoleon bonaparte": ("Napoleon Bonaparte", "person"),
+    "einstein": ("Albert Einstein", "person"),
+    "albert einstein": ("Albert Einstein", "person"),
+    "nikola tesla": ("Nikola Tesla", "person"),
+    "tesla": ("Nikola Tesla", "person"),
+    "edison": ("Thomas Edison", "person"),
+    "thomas edison": ("Thomas Edison", "person"),
+    "rockefeller": ("John D. Rockefeller", "person"),
+    "john d. rockefeller": ("John D. Rockefeller", "person"),
+    "newton": ("Isaac Newton", "person"),
+    "isaac newton": ("Isaac Newton", "person"),
+    "darwin": ("Charles Darwin", "person"),
+    "charles darwin": ("Charles Darwin", "person"),
+    "da vinci": ("Leonardo da Vinci", "person"),
+    "leonardo da vinci": ("Leonardo da Vinci", "person"),
+
+    # ── Vietnamese Historical Leaders ──
+    "hồ chí minh": ("Ho Chi Minh", "person"),
+    "ho chi minh": ("Ho Chi Minh", "person"),
+    "bác hồ": ("Ho Chi Minh", "person"),
+    "nguyễn ái quốc": ("Ho Chi Minh", "person"),
+    "nguyen ai quoc": ("Ho Chi Minh", "person"),
+    "võ nguyên giáp": ("Vo Nguyen Giap", "person"),
+    "vo nguyen giap": ("Vo Nguyen Giap", "person"),
+    "đại tướng võ nguyên giáp": ("Vo Nguyen Giap", "person"),
+    "trần hưng đạo": ("Tran Hung Dao", "person"),
+    "quang trung": ("Quang Trung Emperor", "person"),
+    "nguyễn huệ": ("Quang Trung Emperor", "person"),
+    "hai bà trưng": ("Hai Ba Trung Sisters", "person"),
+    "lý thường kiệt": ("Ly Thuong Kiet", "person"),
+    "đinh bộ lĩnh": ("Dinh Bo Linh Emperor", "person"),
+    "ngô quyền": ("Ngo Quyen King", "person"),
+}
+
+
 def detect_real_entity(visual_keyword: str, narration: str = "") -> Tuple[bool, Optional[str], str]:
     """
-    Phát hiện thông minh xem cảnh có liên quan đến nhân vật/sự kiện thực hay không.
-    Ưu tiên visual_keyword trước để phản ánh đúng ý đồ hình ảnh phân cảnh.
+    Phát hiện thông minh xem cảnh có liên quan đến nhân vật/nền văn minh/sự kiện thực hay không.
+    Ưu tiên tra cứu tri thức lịch sử & văn minh trước, sau đó là tên riêng và title indicators.
     
     Returns:
         (is_entity, entity_name, entity_type)
-        entity_type: "person" | "place" | "event" | "org" | ""
+        entity_type: "person" | "civilization" | "place" | "event" | "org" | "concept" | ""
     """
     vk = visual_keyword.strip()
     vk_lower = vk.lower()
+    combined_text = f"{vk} {narration}".lower()
 
-    # ── 1. ƯU TIÊN CAO NHẤT: Tên riêng trong visual_keyword ──
-    # "Vladimir Putin", "John D. Rockefeller", "Albert Einstein"
+    # ── 1. ƯU TIÊN 1: Tra cứu tri thức nền văn minh & nhân vật lịch sử đã biết ──
+    # Sắp xếp theo độ dài từ khóa giảm dần để khớp cụm từ dài trước ("đế chế maya" trước "maya")
+    for key, (full_name, ent_type) in sorted(_HISTORICAL_ENTITIES_AND_CIVILIZATIONS.items(), key=lambda x: len(x[0]), reverse=True):
+        if re.search(rf"\b{re.escape(key)}\b", vk_lower):
+            return True, full_name, ent_type
+
+    # ── 2. ƯU TIÊN 2: Tên riêng trong visual_keyword ──
     names = _extract_proper_nouns(vk, is_narration=False)
     if names:
-        return True, max(names, key=len), "person"
+        cand = max(names, key=len)
+        if cand.lower() not in _COMMON_GEOPOLITICAL:
+            return True, cand, "person"
 
-    # ── 2. Kiểm tra Title Indicators (President X, King Y...) trong visual_keyword ──
+    # ── 3. Kiểm tra Title Indicators (President X, King Y...) trong visual_keyword ──
     for indicator in _ENTITY_INDICATORS:
         m = re.search(rf"\b{re.escape(indicator)}\s+([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)*)", vk, re.IGNORECASE)
         if m:
-            return True, m.group(1), "person"
+            cand = m.group(1)
+            if cand.lower() not in _COMMON_GEOPOLITICAL:
+                return True, cand, "person"
 
-    # ── 3. Kiểm tra Known Events/Orgs trong visual_keyword (Word-Boundary) ──
+    # ── 4. Kiểm tra Known Events/Orgs trong visual_keyword (Word-Boundary) ──
     for regex, title in _EVENT_REGEXES:
         if regex.search(vk_lower):
             return True, title, "event"
 
-    # ── 4. Kiểm tra trong narration nếu visual_keyword là mô tả chung ──
+    # ── 5. Kiểm tra trong narration nếu visual_keyword là mô tả chung ──
     if narration:
         narr = narration.strip()
         narr_lower = narr.lower()
+
+        # Kiểm tra văn minh/lịch sử trong narration
+        for key, (full_name, ent_type) in sorted(_HISTORICAL_ENTITIES_AND_CIVILIZATIONS.items(), key=lambda x: len(x[0]), reverse=True):
+            if re.search(rf"\b{re.escape(key)}\b", narr_lower):
+                return True, full_name, ent_type
 
         # Kiểm tra Title Indicators trong narration
         for indicator in _ENTITY_INDICATORS:
             m = re.search(rf"\b{re.escape(indicator)}\s+([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)*)", narr, re.IGNORECASE)
             if m:
-                return True, m.group(1), "person"
+                cand = m.group(1)
+                if cand.lower() not in _COMMON_GEOPOLITICAL:
+                    return True, cand, "person"
 
         # Kiểm tra Proper Nouns trong narration (loại trừ từ đầu câu & quốc gia)
         narr_names = _extract_proper_nouns(narr, is_narration=True)
         if narr_names:
-            return True, max(narr_names, key=len), "person"
+            cand = max(narr_names, key=len)
+            if cand.lower() not in _COMMON_GEOPOLITICAL:
+                return True, cand, "person"
 
         # Kiểm tra Events/Orgs trong narration
         for regex, title in _EVENT_REGEXES:
@@ -212,38 +366,54 @@ def detect_video_primary_entity(
     tags: List[str] = None
 ) -> Tuple[Optional[str], str]:
     """
-    Xác định thực thể/nhân vật chính xuyên suốt toàn bộ video.
+    Xác định thực thể/nền văn minh/nhân vật chính xuyên suốt toàn bộ video.
     Giúp pipeline tự động chuyển sang chế độ tài liệu điện ảnh (Documentary Mode),
-    thu thập trọn bộ ảnh thật từ Wikipedia/Wikimedia Commons cho tất cả các phân cảnh.
+    thu thập trọn bộ ảnh thật từ Wikipedia/Wikimedia Commons/Pexels cho tất cả các phân cảnh.
     """
     tags = tags or []
     full_text = f"{topic} {title}".strip()
     full_text_lower = full_text.lower()
 
-    # 1. Tra cứu trực tiếp trong danh sách nhân vật đã biết
+    # 1. Tra cứu nền văn minh / nhân vật lịch sử / triết học trong topic và title
+    for key, (full_name, ent_type) in sorted(_HISTORICAL_ENTITIES_AND_CIVILIZATIONS.items(), key=lambda x: len(x[0]), reverse=True):
+        if re.search(rf"\b{re.escape(key)}\b", full_text_lower):
+            return full_name, ent_type
+
+    # 2. Tra cứu trực tiếp trong danh sách nhân vật đã biết
     for fig_key, fig_full in _KNOWN_FIGURES.items():
         if re.search(rf"\b{re.escape(fig_key)}\b", full_text_lower):
             return fig_full, "person"
 
-    # 2. Kiểm tra trong tags
+    # 3. Kiểm tra trong tags
     for tag in tags:
         t_clean = re.sub(r'[^\w\s]', '', tag).strip().lower()
+        if t_clean in _HISTORICAL_ENTITIES_AND_CIVILIZATIONS:
+            return _HISTORICAL_ENTITIES_AND_CIVILIZATIONS[t_clean]
         if t_clean in _KNOWN_FIGURES:
             return _KNOWN_FIGURES[t_clean], "person"
 
-    # 3. Kiểm tra Known Events
+    # 4. Kiểm tra Known Events
     for regex, ev_title in _EVENT_REGEXES:
         if regex.search(full_text_lower):
             return ev_title, "event"
 
-    # 4. Kiểm tra trong narration
+    # 5. Kiểm tra trong narration
     if narration:
+        narr_lower = narration.lower()
+        for key, (full_name, ent_type) in sorted(_HISTORICAL_ENTITIES_AND_CIVILIZATIONS.items(), key=lambda x: len(x[0]), reverse=True):
+            if re.search(rf"\b{re.escape(key)}\b", narr_lower):
+                return full_name, ent_type
+
         for fig_key, fig_full in _KNOWN_FIGURES.items():
-            if re.search(rf"\b{re.escape(fig_key)}\b", narration.lower()):
+            if re.search(rf"\b{re.escape(fig_key)}\b", narr_lower):
                 return fig_full, "person"
 
         narr_names = _extract_proper_nouns(narration, is_narration=True)
-        valid_names = [n for n in narr_names if not any(w.lower() in _TITLE_COMMON_WORDS for w in n.split())]
+        valid_names = [
+            n for n in narr_names
+            if n.lower() not in _COMMON_GEOPOLITICAL
+            and not any(w.lower() in _TITLE_COMMON_WORDS for w in n.split())
+        ]
         if valid_names:
             counts = {}
             for n in valid_names:
@@ -251,9 +421,13 @@ def detect_video_primary_entity(
             most_common = max(counts.items(), key=lambda x: x[1])[0]
             return most_common, "person"
 
-    # 5. Lọc proper nouns từ topic nếu không phải title common words
+    # 6. Lọc proper nouns từ topic nếu không phải title common words & không phải địa danh
     topic_names = _extract_proper_nouns(topic, is_narration=False)
-    filtered = [n for n in topic_names if not any(w.lower() in _TITLE_COMMON_WORDS for w in n.split())]
+    filtered = [
+        n for n in topic_names
+        if n.lower() not in _COMMON_GEOPOLITICAL
+        and not any(w.lower() in _TITLE_COMMON_WORDS for w in n.split())
+    ]
     if filtered:
         return max(filtered, key=len), "person"
 
@@ -301,6 +475,41 @@ def clean_scene_search_query(raw_query: str, max_words: int = 3) -> str:
     return " ".join(clean[:max_words]).strip()
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# BỘ ÁNH XẠ KHÁI NIỆM TRỪU TƯỢNG SANG HÌNH ẢNH VẬT THỂ VẬT LÝ (METAPHOR MAPPER)
+# ──────────────────────────────────────────────────────────────────────────────
+# Khi kịch bản chứa từ ngữ trừu tượng (tâm lý, thao túng, quyền lực, tối giản, giàu có...),
+# nếu tìm nguyên văn trên Pexels/Pixabay sẽ bị lọt ảnh văn phòng, bác sĩ tâm lý, người ngồi sofa.
+# Bộ ánh xạ này chuyển hóa trực tiếp sang các vật thể điện ảnh siêu thực & ấn tượng.
+_ABSTRACT_METAPHOR_MAP = {
+    ("psychology", "mind", "tâm lý", "dark psychology", "brain", "mental"): "man silhouette shadow intense gaze",
+    ("authority", "power", "quyền lực", "control", "thống trị"): "man tailored dark suit walking",
+    ("manipulation", "thao túng", "deception", "lừa dối", "liar"): "marionette puppet strings wooden hands",
+    ("wealth", "rich", "tiền tệ", "tài chính", "money", "millionaire", "billionaire"): "vintage ledger book ink pen",
+    ("greed", "lòng tham"): "gold bullion bars dark vault",
+    ("stoic", "stoicism", "khắc kỷ", "philosophy", "triết học"): "stoic marble statue Roman bust",
+    ("minimalism", "tối giản", "buông bỏ"): "empty minimalist room sunlight window",
+    ("secret", "bí mật", "mystery", "bí ẩn"): "antique brass key vintage lock",
+    ("time", "thời gian", "clock", "vội vã"): "antique hourglass sand flowing",
+    ("strategy", "chiến lược", "tactics", "cờ vua"): "chess pieces king checkmate dark",
+    ("silence", "im lặng", "tĩnh lặng"): "finger on lips cinematic shadow portrait",
+    ("universe", "vũ trụ", "cosmos", "space", "thiên hà"): "deep space galaxy nebula stars",
+    ("fear", "nỗi sợ", "terror", "ám ảnh"): "dark foggy forest silhouette figure",
+    ("solitude", "cô độc", "alone"): "lone wanderer mountain peak mist",
+}
+
+
+def _map_abstract_to_concrete(text: str) -> Optional[str]:
+    """Chuyển đổi từ khóa trừu tượng sang vật thể cụ thể chụp ảnh được."""
+    if not text:
+        return None
+    t_lower = text.lower()
+    for triggers, concrete_obj in _ABSTRACT_METAPHOR_MAP.items():
+        if any(tr in t_lower for tr in triggers):
+            return concrete_obj
+    return None
+
+
 def synthesize_scene_query(
     narration: str = "",
     visual_keyword: str = "",
@@ -310,6 +519,7 @@ def synthesize_scene_query(
 ) -> Tuple[str, str, str]:
     """
     Tổng hợp query tìm kiếm chính xác, tối ưu cho từng công cụ tìm ảnh.
+    Tự động chuyển hóa các khái niệm trừu tượng sang vật thể điện ảnh cụ thể.
     
     Returns:
         (primary_query, fallback_query, intent)
@@ -336,17 +546,30 @@ def synthesize_scene_query(
         intent = "historical_entity"
         return primary_query, fallback_query, intent
 
+    # Kiểm tra chuyển hóa từ trừu tượng sang vật thể vật lý
+    concrete_metaphor = _map_abstract_to_concrete(f"{cleaned_stock} {cleaned_vk} {narration}")
+
     if cleaned_stock and len(cleaned_stock.split()) >= 1:
-        primary_query = cleaned_stock
-        fallback_query = cleaned_vk if cleaned_vk != cleaned_stock else ""
+        # Nếu stock query là từ trừu tượng, thay thế bằng vật thể điện ảnh
+        abstract_fix = _map_abstract_to_concrete(cleaned_stock)
+        primary_query = abstract_fix if abstract_fix else cleaned_stock
+        fallback_query = cleaned_vk if cleaned_vk != cleaned_stock else (concrete_metaphor or "")
         intent = "specific_object"
         return primary_query, fallback_query, intent
 
     if cleaned_vk:
-        primary_query = " ".join(cleaned_vk.split()[:3])
-        fallback_query = " ".join(cleaned_vk.split()[:2])
+        abstract_fix = _map_abstract_to_concrete(cleaned_vk)
+        if abstract_fix:
+            primary_query = abstract_fix
+            fallback_query = " ".join(cleaned_vk.split()[:2])
+        else:
+            primary_query = " ".join(cleaned_vk.split()[:3])
+            fallback_query = " ".join(cleaned_vk.split()[:2])
         intent = "concept_photo"
         return primary_query, fallback_query, intent
+
+    if concrete_metaphor:
+        return concrete_metaphor, "cinematic atmosphere", "concept_photo"
 
     return "cinematic atmosphere", "dark moody", "concept_photo"
 
@@ -1062,19 +1285,77 @@ If no real entities found, return empty array: []"""
         if wiki_portrait and not (entity_type == "person" and self._is_noisy_entity_file(wiki_portrait.get("title", ""), wiki_portrait.get("url", ""))):
             add_unique(wiki_portrait)
 
-        # 2. Tìm kiếm nhiều góc ảnh từ Wikimedia Commons với dấu ngoặc kép và từ khóa lịch sử
-        search_queries = [
-            f'"{entity_name}"',
-            f'"{entity_name}" portrait',
-            f'"{entity_name}" photograph',
-        ]
-        if entity_type == "person":
-            search_queries.extend([
-                f'"{entity_name}" 1945',
+        # 2. Tìm kiếm nhiều góc ảnh từ Wikimedia Commons với từ khóa phù hợp loại thực thể
+        if entity_type == "civilization":
+            # Nền văn minh cổ đại: tìm kiến trúc, đền đài, di tích khảo cổ, cổ vật bảo tàng
+            search_queries = [
+                f"{entity_name} architecture",
+                f"{entity_name} temple ruins",
+                f"{entity_name} archaeological artifacts",
+                f"{entity_name} museum",
+            ]
+            ent_l = entity_name.lower()
+            if "maya" in ent_l:
+                search_queries.extend([
+                    "Mayan pyramid Tikal Chichen Itza",
+                    "Mayan glyphs stone carving",
+                    "Mesoamerican archaeology",
+                    "Palenque temple ruins",
+                ])
+            elif "egypt" in ent_l:
+                search_queries.extend([
+                    "Ancient Egypt pyramids Giza",
+                    "Egyptian hieroglyphs temple",
+                    "Pharaoh sarcophagus artifact",
+                    "Karnak temple columns",
+                ])
+            elif "rome" in ent_l or "roman" in ent_l:
+                search_queries.extend([
+                    "Colosseum Rome ruins",
+                    "Roman Forum archaeology",
+                    "Roman marble statue bust",
+                    "Roman gladiator armor",
+                ])
+            elif "greece" in ent_l or "sparta" in ent_l or "athens" in ent_l:
+                search_queries.extend([
+                    "Parthenon Athens ruins",
+                    "Ancient Greek temple architecture",
+                    "Greek marble sculpture museum",
+                ])
+            elif "viking" in ent_l:
+                search_queries.extend([
+                    "Viking longship museum",
+                    "Norse runestone archaeology",
+                    "Viking sword helmet artifact",
+                ])
+            elif "japan" in ent_l or "samurai" in ent_l:
+                search_queries.extend([
+                    "Samurai armor helmet Edo",
+                    "Japanese castle architecture feudal",
+                    "Japanese ukiyo-e woodblock print",
+                ])
+            elif "medieval" in ent_l:
+                search_queries.extend([
+                    "Medieval castle stone fortress",
+                    "Medieval knight armor museum",
+                    "Medieval manuscript illumination",
+                ])
+        elif entity_type == "concept":
+            search_queries = [
+                f"{entity_name} statue marble",
+                f"{entity_name} philosophy portrait",
+                "stoic marble bust Roman",
+                "ancient library scrolls",
+            ]
+        else:
+            # Person / Default
+            search_queries = [
+                f'"{entity_name}"',
+                f'"{entity_name}" portrait',
+                f'"{entity_name}" photograph',
                 f'"{entity_name}" official',
                 f'"{entity_name}" vintage',
-            ])
-            # Hỗ trợ nhân vật lịch sử nổi tiếng đặc biệt
+            ]
             ent_lower = entity_name.lower()
             if "hồ chí minh" in ent_lower or "ho chi minh" in ent_lower:
                 search_queries.extend([
@@ -1101,7 +1382,25 @@ If no real entities found, return empty array: []"""
                 if len(pool) >= count:
                     break
 
-        # 3. Mở rộng từ Openverse (kho lưu trữ ảnh mở, bảo tàng)
+        # 3. Bổ sung ảnh 4K siêu nét từ Pexels cho văn minh cổ đại & triết học
+        if self.api_key and len(pool) < count and entity_type in ("civilization", "concept"):
+            for pq in search_queries[:3]:
+                if len(pool) >= count:
+                    break
+                px_photos = self.search_photos(pq, per_page=3, orientation="portrait")
+                for p in px_photos:
+                    src = p.get("src", {})
+                    img_url = src.get("large2x") or src.get("portrait") or src.get("original")
+                    if img_url:
+                        add_unique({
+                            "url": img_url,
+                            "title": p.get("alt", pq),
+                            "source": "pexels_photo",
+                            "width": p.get("width", 1080),
+                            "height": p.get("height", 1920),
+                        })
+
+        # 4. Mở rộng từ Openverse (kho lưu trữ ảnh mở, bảo tàng)
         if len(pool) < count:
             ov_queries = [f'"{entity_name}"', f"{entity_name} archive"]
             for oq in ov_queries:
@@ -1113,13 +1412,13 @@ If no real entities found, return empty array: []"""
                     if len(pool) >= count:
                         break
 
-        # 4. Google Custom Search (nếu có key)
+        # 5. Google Custom Search (nếu có key)
         if len(pool) < count and self._google_search_key and self._google_cx:
             g_results = self.search_google_images(f"{entity_name} photo portrait", per_page=min(count - len(pool), 5))
             for item in g_results:
                 add_unique(item)
 
-        logger.info(f"📸 Đã thu thập được {len(pool)} ảnh tài liệu thực tế chuẩn cho '{entity_name}' (Wikimedia + Openverse)")
+        logger.info(f"📸 Đã thu thập được {len(pool)} ảnh tài liệu thực tế chuẩn cho '{entity_name}' (type={entity_type})")
         return pool
 
     def search_scene_media_multi_source(

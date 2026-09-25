@@ -64,12 +64,16 @@ class PublisherAgent:
         description: str,
         tags: Optional[List[str]] = None,
         schedule_time_iso: Optional[str] = None,
-        privacy_status: str = "public"
+        privacy_status: str = "public",
+        default_language: Optional[str] = "en",
+        default_audio_language: Optional[str] = "en",
     ) -> Dict:
         """
         Upload video lên YouTube qua YouTube Data API v3.
         Nếu có schedule_time_iso (ví dụ '2026-09-25T19:00:00Z'), video sẽ được đặt ở chế độ private và lên lịch công chiếu.
+        Đã bổ sung defaultLanguage & defaultAudioLanguage để định tuyến thuật toán đề xuất chính xác vùng người xem.
         """
+        import re
         if not self.service:
             self._init_service()
 
@@ -88,7 +92,17 @@ class PublisherAgent:
                 "video_id": None
             }
 
-        logger.info(f"Bắt đầu upload video '{title}' lên kênh {self.channel_name}...")
+        # Khử hậu tố kênh/quốc gia rò rỉ (ví dụ " - Maya Leader VN" hay " - VN")
+        clean_title = re.sub(
+            r'[\[\(\s\-_|:]+[\w\s]*?\b(?:VN|VI|Vietnamese|Vietnam)\b.*$',
+            '',
+            title,
+            flags=re.IGNORECASE
+        ).strip()
+        if not clean_title:
+            clean_title = title
+
+        logger.info(f"Bắt đầu upload video '{clean_title}' lên kênh {self.channel_name}...")
 
         tag_list = []
         if isinstance(tags, list):
@@ -98,7 +112,7 @@ class PublisherAgent:
 
         body = {
             "snippet": {
-                "title": title[:100],
+                "title": clean_title[:100],
                 "description": description[:5000],
                 "tags": tag_list[:20],
                 "categoryId": "22"  # People & Blogs / Shorts
@@ -108,6 +122,11 @@ class PublisherAgent:
                 "selfDeclaredMadeForKids": False
             }
         }
+
+        if default_language:
+            body["snippet"]["defaultLanguage"] = default_language
+        if default_audio_language:
+            body["snippet"]["defaultAudioLanguage"] = default_audio_language
 
         if schedule_time_iso:
             body["status"]["publishAt"] = schedule_time_iso
