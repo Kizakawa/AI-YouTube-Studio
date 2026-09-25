@@ -204,7 +204,7 @@ def get_publish_channel_keyboard(job_id: int) -> InlineKeyboardMarkup:
     import os
     channels = settings.get_channels_config()
     accounts = settings.get_accounts_config()
-    acc_map = {a.get("id"): a.get("email", a.get("id")) for a in accounts}
+    acc_map = {a.get("id"): a.get("email_label") or a.get("email") or a.get("id") for a in accounts}
     keyboard = []
 
     for ch in channels:

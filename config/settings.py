@@ -108,6 +108,7 @@ class Settings:
         return keys
 
     _cached_channels: Optional[List[Dict]] = None
+    _cached_accounts: Optional[List[Dict]] = None
     _channels_mtime: float = 0.0
 
     @classmethod
@@ -130,10 +131,37 @@ class Settings:
             with open(cls.CHANNELS_CONFIG_FILE, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
                 cls._cached_channels = data.get("channels", []) if data else []
+                cls._cached_accounts = data.get("google_accounts", []) if data else []
                 cls._channels_mtime = mtime
                 return cls._cached_channels
         except Exception:
             return cls._cached_channels or []
+
+    @classmethod
+    def get_accounts_config(cls) -> List[Dict]:
+        """Tải cấu hình danh sách tài khoản Google từ channels.yaml (có cache in-memory)."""
+        if not cls.CHANNELS_CONFIG_FILE.exists():
+            example_file = cls.CHANNELS_CONFIG_FILE.with_name("channels.example.yaml")
+            if example_file.exists():
+                try:
+                    import shutil
+                    shutil.copyfile(example_file, cls.CHANNELS_CONFIG_FILE)
+                except Exception:
+                    pass
+            else:
+                return []
+        try:
+            mtime = cls.CHANNELS_CONFIG_FILE.stat().st_mtime
+            if cls._cached_accounts is not None and mtime == cls._channels_mtime:
+                return cls._cached_accounts
+            with open(cls.CHANNELS_CONFIG_FILE, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+                cls._cached_channels = data.get("channels", []) if data else []
+                cls._cached_accounts = data.get("google_accounts", []) if data else []
+                cls._channels_mtime = mtime
+                return cls._cached_accounts
+        except Exception:
+            return cls._cached_accounts or []
 
 settings = Settings()
 settings.ensure_storage_dirs()

@@ -28,6 +28,7 @@ def write_channels_yaml(data: Dict[str, Any]) -> bool:
         with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True, sort_keys=False, indent=2)
         settings._cached_channels = None
+        settings._cached_accounts = None
         return True
     except Exception as e:
         logger.error(f"Lỗi ghi channels.yaml: {e}")
