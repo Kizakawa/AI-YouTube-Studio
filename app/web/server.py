@@ -875,7 +875,15 @@ _oauth_sessions: Dict[str, Dict[str, Any]] = {}
 def _read_channels_yaml() -> Dict[str, Any]:
     yaml_path = settings.CHANNELS_CONFIG_FILE
     if not yaml_path.exists():
-        return {"google_accounts": [], "channels": []}
+        example_path = yaml_path.with_name("channels.example.yaml")
+        if example_path.exists():
+            try:
+                import shutil
+                shutil.copyfile(example_path, yaml_path)
+            except Exception:
+                pass
+        else:
+            return {"google_accounts": [], "channels": []}
     try:
         with open(yaml_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
@@ -1448,8 +1456,8 @@ async def get_analytics_channels():
         result.append({
             "id": c.get("id"),
             "name": c.get("name"),
-            "handle": c.get("handle") or "@VV1n-oe9gs",
-            "channel_url": c.get("channel_url") or "https://www.youtube.com/@VV1n-oe9gs",
+            "handle": c.get("handle") or "",
+            "channel_url": c.get("channel_url") or "",
             "niche": c.get("niche", "general"),
             "google_account": c.get("google_account", "account_1")
         })
@@ -1461,10 +1469,15 @@ async def get_channel_live_analytics(channel_id: str):
     cfg = _read_channels_yaml()
     channels = cfg.get("channels", [])
     channel = next((c for c in channels if c.get("id") == channel_id), None)
-    if not channel:
-        channel = channels[0] if channels else {"id": channel_id, "handle": "@VV1n-oe9gs", "name": "Psychology of the world"}
+    if not channel and channels:
+        channel = channels[0]
+    elif not channel:
+        raise HTTPException(status_code=404, detail="Chưa có cấu hình kênh trong hệ thống")
 
-    url = channel.get("channel_url") or channel.get("handle") or "https://www.youtube.com/@VV1n-oe9gs"
+    url = channel.get("channel_url") or channel.get("handle")
+    if not url:
+        raise HTTPException(status_code=400, detail="Kênh này chưa được cấu hình đường dẫn YouTube hoặc handle (@tênkênh)")
+
     stats = fetch_channel_live_stats(url)
     if not stats.get("success"):
         raise HTTPException(status_code=500, detail=stats.get("error", "Không thể lấy số liệu kênh"))
@@ -1488,12 +1501,14 @@ async def calculate_forecast_endpoint(req: ForecastRequest):
     cfg = _read_channels_yaml()
     channels = cfg.get("channels", [])
     channel = next((c for c in channels if c.get("id") == req.channel_id), {})
-    url = channel.get("channel_url") or channel.get("handle") or "https://www.youtube.com/@VV1n-oe9gs"
+    url = channel.get("channel_url") or channel.get("handle")
+    if not url and channels:
+        url = channels[0].get("channel_url") or channels[0].get("handle")
 
-    stats = fetch_channel_live_stats(url)
-    total_views = stats.get("total_views", 931) if stats.get("success") else 931
-    total_vids = len(stats.get("videos", [])) if stats.get("success") else 3
-    avg_views = req.custom_avg_views or (stats.get("avg_views", 310) if stats.get("success") else 310)
+    stats = fetch_channel_live_stats(url) if url else {}
+    total_views = stats.get("total_views", 500) if stats.get("success") else 500
+    total_vids = len(stats.get("videos", [])) if stats.get("success") else 2
+    avg_views = req.custom_avg_views or (stats.get("avg_views", 300) if stats.get("success") else 300)
 
     forecast = calculate_ai_forecast(
         total_views=total_views,

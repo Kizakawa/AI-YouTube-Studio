@@ -35,6 +35,8 @@ tokens/
 *.token.json
 *.pem
 *.key
+config/channels.yaml
+
 
 # Database
 *.sqlite3

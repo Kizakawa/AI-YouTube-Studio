@@ -1,0 +1,43 @@
+# ==============================================================================
+# AI YOUTUBE MULTI-ACCOUNT & MULTI-CHANNEL CONFIGURATION TEMPLATE
+# ==============================================================================
+# Hướng dẫn: Đổi tên file này thành 'channels.yaml' và cấu hình tài khoản của bạn.
+# File 'channels.yaml' đã được thêm vào .gitignore để bảo mật thông tin cá nhân.
+# ==============================================================================
+
+google_accounts:
+- id: account_1
+  email_label: your_email@gmail.com
+  drive_storage: 15 GB Google Drive
+  youtube_quota_daily: 10000
+  credentials:
+    client_secret: credentials/accounts/account_1/client_secret.json
+    youtube_token: credentials/accounts/account_1/youtube_token.json
+    drive_token: credentials/accounts/account_1/drive_token.json
+  brand_channels:
+  - id: channel_1
+    name: My AI Channel
+    niche: psychology
+    language: en
+    visual_mode: imagen_ai
+    preferred_voice: en-US-ChristopherNeural
+    handle: "@your_channel"
+    channel_url: "https://www.youtube.com/@your_channel"
+    schedule:
+      publish_hour_utc: 12
+      days:
+      - monday
+      - wednesday
+      - friday
+      - sunday
+
+channels:
+- id: channel_1
+  name: My AI Channel
+  handle: "@your_channel"
+  channel_url: "https://www.youtube.com/@your_channel"
+  niche: psychology
+  language: en
+  google_account: account_1
+  visual_mode: imagen_ai
+  preferred_voice: en-US-ChristopherNeural

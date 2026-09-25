@@ -114,7 +114,15 @@ class Settings:
     def get_channels_config(cls) -> List[Dict]:
         """Tải cấu hình các kênh YouTube từ file YAML (kết quả được lưu cache in-memory)"""
         if not cls.CHANNELS_CONFIG_FILE.exists():
-            return []
+            example_file = cls.CHANNELS_CONFIG_FILE.with_name("channels.example.yaml")
+            if example_file.exists():
+                try:
+                    import shutil
+                    shutil.copyfile(example_file, cls.CHANNELS_CONFIG_FILE)
+                except Exception:
+                    pass
+            else:
+                return []
         try:
             mtime = cls.CHANNELS_CONFIG_FILE.stat().st_mtime
             if cls._cached_channels is not None and mtime == cls._channels_mtime:
