@@ -475,43 +475,6 @@ def clean_scene_search_query(raw_query: str, max_words: int = 3) -> str:
     return " ".join(clean[:max_words]).strip()
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# BỘ ÁNH XẠ KHÁI NIỆM TRỪU TƯỢNG SANG HÌNH ẢNH VẬT THỂ VẬT LÝ (METAPHOR MAPPER)
-# ──────────────────────────────────────────────────────────────────────────────
-# Khi kịch bản chứa từ ngữ trừu tượng (tâm lý, thao túng, quyền lực, tối giản, giàu có...),
-# nếu tìm nguyên văn trên Pexels/Pixabay sẽ bị lọt ảnh văn phòng, bác sĩ tâm lý, người ngồi sofa.
-# Bộ ánh xạ này chuyển hóa trực tiếp sang các vật thể điện ảnh siêu thực & ấn tượng.
-_ABSTRACT_METAPHOR_MAP = {
-    ("ocean", "sea", "deep ocean", "deep sea", "abyss", "biển", "đại dương", "biển sâu"): "thalassophobia deep sea monster shadow",
-    ("woman", "girl", "female", "seduction", "attraction", "phụ nữ", "quyến rũ", "gái"): "alluring femme fatale seductive eyes shadow",
-    ("psychology", "mind", "tâm lý", "dark psychology", "brain", "mental"): "man silhouette shadow intense gaze",
-    ("authority", "power", "quyền lực", "control", "thống trị"): "man tailored dark suit walking",
-    ("manipulation", "thao túng", "deception", "lừa dối", "liar", "lie", "nói dối"): "extreme macro intense unblinking eyes",
-    ("wealth", "rich", "tiền tệ", "tài chính", "money", "millionaire", "billionaire"): "gold bullion bars dark vault",
-    ("greed", "lòng tham"): "gold bullion bars dark vault",
-    ("stoic", "stoicism", "khắc kỷ", "philosophy", "triết học"): "stoic marble statue Roman bust",
-    ("minimalism", "tối giản", "buông bỏ"): "empty minimalist room sunlight window",
-    ("secret", "bí mật", "mystery", "bí ẩn"): "antique brass key vintage lock",
-    ("time", "thời gian", "clock", "vội vã"): "antique hourglass sand flowing",
-    ("strategy", "chiến lược", "tactics", "cờ vua"): "chess pieces king checkmate dark",
-    ("silence", "im lặng", "tĩnh lặng"): "finger on lips cinematic shadow portrait",
-    ("universe", "vũ trụ", "cosmos", "space", "thiên hà"): "deep space galaxy nebula stars",
-    ("fear", "nỗi sợ", "terror", "ám ảnh"): "dark foggy forest silhouette figure",
-    ("solitude", "cô độc", "alone"): "lone wanderer mountain peak mist",
-}
-
-
-def _map_abstract_to_concrete(text: str) -> Optional[str]:
-    """Chuyển đổi từ khóa trừu tượng sang vật thể cụ thể chụp ảnh được."""
-    if not text:
-        return None
-    t_lower = text.lower()
-    for triggers, concrete_obj in _ABSTRACT_METAPHOR_MAP.items():
-        if any(tr in t_lower for tr in triggers):
-            return concrete_obj
-    return None
-
-
 def synthesize_scene_query(
     narration: str = "",
     visual_keyword: str = "",
@@ -520,8 +483,9 @@ def synthesize_scene_query(
     primary_entity: Optional[str] = None,
 ) -> Tuple[str, str, str]:
     """
-    Tổng hợp query tìm kiếm chính xác, tối ưu cho từng công cụ tìm ảnh.
-    Tự động chuyển hóa các khái niệm trừu tượng sang vật thể điện ảnh cụ thể.
+    Tổng hợp query tìm kiếm chính xác cho từng công cụ tìm ảnh.
+    HOÀN TOÀN ĐỘNG — Sử dụng trực tiếp từ khóa vật thể cụ thể do AI Director (ContentAgent)
+    suy luận từ kịch bản, không dùng từ điển hardcode.
     
     Returns:
         (primary_query, fallback_query, intent)
@@ -530,7 +494,7 @@ def synthesize_scene_query(
     cleaned_stock = clean_scene_search_query(stock_query or "", max_words=3)
     cleaned_vk = clean_scene_search_query(visual_keyword or "", max_words=4)
 
-    # Phát hiện thực thể hoặc sự kiện lịch sử trong scene
+    # 1. Phát hiện thực thể hoặc sự kiện lịch sử có thật trong scene
     is_ent, ent_name, ent_type = detect_real_entity(visual_keyword, narration)
     target_ent = ent_name or (
         primary_entity
@@ -548,32 +512,22 @@ def synthesize_scene_query(
         intent = "historical_entity"
         return primary_query, fallback_query, intent
 
-    # Kiểm tra chuyển hóa từ trừu tượng sang vật thể vật lý
-    concrete_metaphor = _map_abstract_to_concrete(f"{cleaned_stock} {cleaned_vk} {narration}")
-
+    # 2. Sử dụng stock_query cụ thể đã được AI Director chuyển hóa thành vật thể vật lý
     if cleaned_stock and len(cleaned_stock.split()) >= 1:
-        # Nếu stock query là từ trừu tượng, thay thế bằng vật thể điện ảnh
-        abstract_fix = _map_abstract_to_concrete(cleaned_stock)
-        primary_query = abstract_fix if abstract_fix else cleaned_stock
-        fallback_query = cleaned_vk if cleaned_vk != cleaned_stock else (concrete_metaphor or "")
+        primary_query = cleaned_stock
+        fallback_query = cleaned_vk if (cleaned_vk and cleaned_vk != cleaned_stock) else cleaned_stock
         intent = "specific_object"
         return primary_query, fallback_query, intent
 
+    # 3. Sử dụng visual_keyword từ kịch bản
     if cleaned_vk:
-        abstract_fix = _map_abstract_to_concrete(cleaned_vk)
-        if abstract_fix:
-            primary_query = abstract_fix
-            fallback_query = " ".join(cleaned_vk.split()[:2])
-        else:
-            primary_query = " ".join(cleaned_vk.split()[:3])
-            fallback_query = " ".join(cleaned_vk.split()[:2])
+        primary_query = " ".join(cleaned_vk.split()[:3])
+        fallback_query = " ".join(cleaned_vk.split()[:2])
         intent = "concept_photo"
         return primary_query, fallback_query, intent
 
-    if concrete_metaphor:
-        return concrete_metaphor, "cinematic atmosphere", "concept_photo"
-
-    return "cinematic atmosphere", "dark moody", "concept_photo"
+    # 4. Fallback chung cho phong cách điện ảnh
+    return "cinematic atmosphere", "dramatic lighting", "concept_photo"
 
 
 def match_best_pool_photo(

@@ -55,9 +55,31 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         vp = getattr(scene, 'visual_prompt', None)
         kw = scene.visual_keyword or ""
 
+        # ── CẢNH 1 ĐẶC BIỆT: PRIMAL VISUAL HOOK ENGINE (3 GIÂY ĐẦU) ──
+        # Nếu không phải nhân vật lịch sử cần ảnh tư liệu gốc, ưu tiên tạo ảnh AI điện ảnh 8K
+        # theo đúng visual_prompt do AI Director đo ni đóng giày riêng cho chủ đề này.
+        if scene.scene_id == 1 and not primary_entity and vp and len(vp.strip()) > 15:
+            try:
+                ai_hook_path = str(media_dir / f"scene_{scene.scene_id:03d}_hook_ai.jpg")
+                res_img = await asyncio.to_thread(
+                    image_agent.generate_scene_image,
+                    vp,
+                    ai_hook_path,
+                    "9:16",
+                    "cinematic",
+                    scene.scene_id,
+                    vp,
+                )
+                if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 2000:
+                    media_path = ai_hook_path
+                    media_type = "image"
+                    logger.info(f"Scene 1 (Primal Hook): 🎯 Tạo thành công ảnh AI mở màn gây sốc: {vp[:50]}...")
+            except Exception as e:
+                logger.warning(f"Scene 1 Hook generation error: {e}")
+
         # ── TẦNG 1: SEMANTIC POOL MATCHER (DOCUMENTARY MODE) ──
         # Khớp ngữ nghĩa theo năm, sự kiện, từ khóa cụ thể thay vì lấy tuần tự
-        if primary_entity and entity_media_pool:
+        if not media_path and primary_entity and entity_media_pool:
             best_pool_photo = match_best_pool_photo(
                 scene_narration=scene.narration,
                 scene_kw=f"{kw} {sq or ''}",
@@ -324,30 +346,54 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
         suggestion = suggestions.get(scene_id, kw)
         replaced = False
 
-        # ── Chiến lược 1: Multi-Source Scene Search với từ khóa tinh chỉnh từ AI Vision ──
-        try:
-            cand = await asyncio.to_thread(
-                media_agent.search_scene_media_multi_source,
-                scene_narration=narr,
-                visual_keyword=suggestion or kw,
-                stock_query=suggestion,
-                primary_entity=primary_entity,
-                scene_id=scene_id,
-            )
-            if cand and cand.get("url"):
-                cand_url = cand["url"]
-                c_src = cand.get("source", "fix")
-                c_type = cand.get("media_type", "image")
-                ext = ".mp4" if c_type == "video" else (".jpg" if any(x in cand_url.lower() for x in ["jpg", "jpeg"]) else ".png")
-                out = str(media_dir / f"scene_{scene_id:03d}_content_fix_{c_src}{ext}")
-                await asyncio.to_thread(media_agent.download_file, cand_url, out)
-                if Path(out).exists() and Path(out).stat().st_size > 3000:
-                    item["media_path"] = out
-                    item["media_type"] = c_type
+        # ── Nếu là Scene 1 hoặc suggestion là prompt miêu tả điện ảnh dài (> 5 từ):
+        # Trực tiếp sinh ảnh AI (vì stock search không thể tìm theo prompt miêu tả điện ảnh chi tiết)
+        if scene_id == 1 or len(suggestion.split()) > 5:
+            try:
+                ai_path = str(media_dir / f"scene_{scene_id:03d}_content_ai.jpg")
+                refined_prompt = suggestion or kw
+                res = await asyncio.to_thread(
+                    image_agent.generate_scene_image,
+                    refined_prompt,
+                    ai_path,
+                    "9:16",
+                    "cinematic",
+                    scene_id,
+                    refined_prompt,
+                )
+                if res and Path(res).exists() and Path(res).stat().st_size > 2000:
+                    item["media_path"] = res
+                    item["media_type"] = "image"
                     replaced = True
-                    logger.info(f"Scene {scene_id}: ✅ Thay thế thành công từ {c_src} theo gợi ý AI Vision")
-        except Exception as e:
-            logger.debug(f"Scene {scene_id}: Multi-source content fix failed: {e}")
+                    logger.info(f"Scene {scene_id}: ✅ Tái tạo thành công ảnh AI Primal Hook chuẩn xác từ gợi ý AI Vision")
+            except Exception as e:
+                logger.warning(f"Scene {scene_id}: Lỗi tạo ảnh AI từ gợi ý: {e}")
+
+        # ── Chiến lược 1: Multi-Source Scene Search với từ khóa ngắn gọn tinh chỉnh từ AI Vision ──
+        if not replaced:
+            try:
+                cand = await asyncio.to_thread(
+                    media_agent.search_scene_media_multi_source,
+                    scene_narration=narr,
+                    visual_keyword=suggestion or kw,
+                    stock_query=suggestion if len(suggestion.split()) <= 4 else kw,
+                    primary_entity=primary_entity,
+                    scene_id=scene_id,
+                )
+                if cand and cand.get("url"):
+                    cand_url = cand["url"]
+                    c_src = cand.get("source", "fix")
+                    c_type = cand.get("media_type", "image")
+                    ext = ".mp4" if c_type == "video" else (".jpg" if any(x in cand_url.lower() for x in ["jpg", "jpeg"]) else ".png")
+                    out = str(media_dir / f"scene_{scene_id:03d}_content_fix_{c_src}{ext}")
+                    await asyncio.to_thread(media_agent.download_file, cand_url, out)
+                    if Path(out).exists() and Path(out).stat().st_size > 3000:
+                        item["media_path"] = out
+                        item["media_type"] = c_type
+                        replaced = True
+                        logger.info(f"Scene {scene_id}: ✅ Thay thế thành công từ {c_src} theo gợi ý AI Vision")
+            except Exception as e:
+                logger.debug(f"Scene {scene_id}: Multi-source content fix failed: {e}")
 
         # ── Chiến lược 2: AI Image Generation với prompt tinh chỉnh từ gợi ý ──
         if not replaced:

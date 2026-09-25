@@ -286,18 +286,17 @@ REFINE the script strictly adhering to the user's feedback.
 Language: {language}
 
 HARD RETENTION RULES:
-1. SCENE 1 PATTERN INTERRUPT HOOK (CRITICAL TO PREVENT SWIPING):
-   - Scene 1 must use an urgent warning, elite interrogation tactic, dark law, or counter-intuitive shock.
-   - Strictly 5-8 words in Scene 1. FORBIDDEN: Passive/academic greetings or statements.
-   - Scene 1 visual_keyword & stock_query MUST be intense, dramatic, and visually arresting.
+1. SCENE 1 PATTERN INTERRUPT & PRIMAL VISUAL HOOK (CRITICAL TO PREVENT SWIPING):
+   - Scene 1 spoken text must use an urgent warning, elite interrogation tactic, dark law, or counter-intuitive shock (5-8 words strictly).
+   - Scene 1 visual_prompt MUST be a high-tension Primal Visual Hook deduced dynamically from the topic (e.g. scale shock, magnetic attraction, psychological threat, catastrophe). Format: "[Subject + action], [camera angle], [lighting], [environment]"
+   - Scene 1 visual_keyword & stock_query MUST be concrete physical nouns (2-3 words).
 2. Fast-paced, punchy, concise sentences: strictly 20-28 seconds total (50-75 words, 6-8 scenes, 2.5-3.5s per scene).
 3. NO ABSTRACT stock_query: 2-3 English CONCRETE PHYSICAL NOUNS only for Pexels.
    NO "psychology", "minimalism", "authority", "power". Use physical objects/actions only.
 4. THE INFINITE SHORTS LOOP: The final scene must seamlessly connect back into Scene 1's hook.
 5. NO LITERAL METAPHORS in visual_prompt: show the actual phenomenon, not metaphorical words.
 6. NO DUPLICATE SCENES: every visual_prompt must describe a visually distinct subject and setting.
-7. visual_prompt format: "[Subject + action], [camera angle], [lighting], [environment]"
-8. Return ONLY valid JSON:
+7. Return ONLY valid JSON:
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
   "hook": "The opening 3-second hook sentence",
