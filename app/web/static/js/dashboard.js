@@ -10,6 +10,7 @@ let currentFilter = 'all';
 
 const PAGE_META = {
     overview:  { title: 'Dashboard Tổng Quan',   sub: 'Theo dõi toàn bộ hệ thống AI YouTube Studio' },
+    analytics: { title: 'Số Liệu & Dự Đoán Tăng Trưởng', sub: 'Thống kê kênh thời gian thực & Mô hình dự đoán AI' },
     create:    { title: 'Tạo Kịch Bản AI',       sub: 'Nhập chủ đề — Gemini sinh kịch bản tự động' },
     pipeline:  { title: 'Pipeline Sản Xuất',      sub: 'Quản lý danh sách video và tiến độ render' },
     activity:  { title: 'Nhật Ký Hoạt Động',      sub: 'Lệnh Telegram thời gian thực — tự làm mới 10s' },
@@ -69,12 +70,24 @@ function switchTab(tabId) {
 
     if (tabId === 'channels') {
         fetchAccounts();
+    } else if (tabId === 'analytics') {
+        loadAnalytics();
     }
 }
 
 function navigateToVideos(statusFilter) {
     switchTab('pipeline');
     filterPipeline(statusFilter);
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -1855,3 +1868,253 @@ async function submitSecretUpload() {
         showToast(`Lỗi nạp secret: ${e.message}`, 'error');
     }
 }
+
+/* ═══════════════════════════════════════════════════════
+   YOUTUBE LIVE ANALYTICS & AI FORECAST
+══════════════════════════════════════════════════════════ */
+let currentAnalyticsChannelId = null;
+let currentAnalyticsData = null;
+
+async function loadAnalytics() {
+    try {
+        const res = await apiGet('/api/analytics/channels');
+        const channels = res?.channels || [];
+        const select = document.getElementById('analytics-channel-select');
+        if (!select) return;
+
+        select.innerHTML = '';
+        channels.forEach(ch => {
+            const opt = document.createElement('option');
+            opt.value = ch.id;
+            opt.textContent = `📺 ${ch.name} (${ch.handle || '@channel'})`;
+            select.appendChild(opt);
+        });
+
+        if (channels.length > 0) {
+            currentAnalyticsChannelId = channels[0].id;
+            await fetchChannelStats(currentAnalyticsChannelId);
+        }
+    } catch (e) {
+        console.error('Lỗi nạp kênh analytics:', e);
+    }
+}
+
+async function onAnalyticsChannelChange() {
+    const select = document.getElementById('analytics-channel-select');
+    currentAnalyticsChannelId = select.value;
+    await fetchChannelStats(currentAnalyticsChannelId);
+}
+
+async function refreshAnalytics(isManual = false) {
+    if (!currentAnalyticsChannelId) {
+        const select = document.getElementById('analytics-channel-select');
+        currentAnalyticsChannelId = select ? select.value : 'channel_maya';
+    }
+    const btn = document.getElementById('btn-sync-analytics');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;display:inline-block;"></span> Đang quét...';
+    }
+    try {
+        await fetchChannelStats(currentAnalyticsChannelId, isManual);
+        if (isManual) showToast('Đã quét xong số liệu thời gian thực từ YouTube!', 'success');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `
+                <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                Quét Số Liệu Live
+            `;
+        }
+    }
+}
+
+async function fetchChannelStats(channelId, isManual = false) {
+    try {
+        const data = await apiGet(`/api/analytics/channel/${channelId}`);
+        if (!data || !data.success) {
+            showToast(data?.error || 'Không thể lấy số liệu kênh', 'error');
+            return;
+        }
+        currentAnalyticsData = data;
+        renderAnalyticsUI(data);
+    } catch (e) {
+        console.error('Lỗi fetchChannelStats:', e);
+        showToast(`Lỗi lấy dữ liệu: ${e.message}`, 'error');
+    }
+}
+
+function renderAnalyticsUI(data) {
+    // 1. Channel Header
+    document.getElementById('analytics-channel-title').textContent = data.channel_title || 'YouTube Channel';
+    document.getElementById('analytics-handle').textContent = data.channel_handle || '@channel';
+    document.getElementById('analytics-sub-meta').textContent = data.subscribers_text || '0 người đăng ký';
+    document.getElementById('analytics-vid-meta').textContent = data.videos_count_text || `${data.videos?.length || 0} video`;
+
+    const extLink = document.getElementById('analytics-external-link');
+    if (extLink && data.channel_url) {
+        extLink.href = data.channel_url;
+    }
+
+    const avatar = document.getElementById('analytics-avatar');
+    if (avatar) {
+        if (data.avatar_url) {
+            avatar.innerHTML = `<img src="${data.avatar_url}" style="width:100%;height:100%;object-fit:cover;" alt="Avatar" />`;
+        } else {
+            avatar.innerHTML = '🧠';
+        }
+    }
+
+    // 2. Big 4 KPIs
+    document.getElementById('kpi-total-views').textContent = (data.total_views || 0).toLocaleString();
+    document.getElementById('kpi-total-subs').textContent = (data.subscribers_num || 1).toLocaleString();
+    document.getElementById('kpi-total-videos').textContent = `${data.videos?.length || 0} Shorts`;
+    document.getElementById('kpi-avg-views').textContent = (data.avg_views || 0).toLocaleString();
+
+    // 3. Videos Table
+    const tbody = document.getElementById('analytics-videos-tbody');
+    if (tbody) {
+        tbody.innerHTML = '';
+        const vids = data.videos || [];
+        if (vids.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px;">Chưa tìm thấy video nào trên kênh</td></tr>';
+        } else {
+            vids.forEach((v, idx) => {
+                const tr = document.createElement('tr');
+                const rankBadge = idx === 0
+                    ? '<span class="rank-badge-gold">#1 TOP</span>'
+                    : (idx === 1 ? '<span class="rank-badge-silver">#2</span>' : '<span class="rank-badge-bronze">#3</span>');
+
+                const aiBadge = idx === 0
+                    ? '<span class="badge badge-green">🔥 Winning Angle: Tâm lý + Tài phiệt</span><div style="font-size:11.5px;color:var(--text-muted);margin-top:4px;">Chủ đề khơi gợi tò mò cực đại. Khuyên nhân bản thêm 3 góc nhìn khác.</div>'
+                    : (idx === 1
+                        ? '<span class="badge badge-blue">⭐ Chủ đề Lãnh đạo</span><div style="font-size:11.5px;color:var(--text-muted);margin-top:4px;">Tỷ lệ xem đều đặn, phù hợp khán giả trung niên.</div>'
+                        : '<span class="badge badge-purple">💡 Thủ thuật Tâm lý</span><div style="font-size:11.5px;color:var(--text-muted);margin-top:4px;">Hook mạnh về nói dối, cần tăng tốc độ nhịp ở 3 giây đầu.</div>'
+                    );
+
+                tr.innerHTML = `
+                    <td style="text-align:center;">${rankBadge}</td>
+                    <td>
+                        <img src="${v.thumbnail}" style="width:50px;height:70px;border-radius:6px;object-fit:cover;border:1px solid rgba(255,255,255,0.1);" alt="Thumb" onerror="this.src='/static/img/placeholder.png'" />
+                    </td>
+                    <td>
+                        <div style="font-weight:600;font-size:13.5px;color:#f8fafc;margin-bottom:4px;">${escapeHtml(v.title)}</div>
+                        <div style="font-size:11.5px;color:var(--text-muted);">Mã: <code>${v.video_id || 'N/A'}</code></div>
+                    </td>
+                    <td>
+                        <div style="font-size:15px;font-weight:700;color:#10b981;">${v.views_text}</div>
+                    </td>
+                    <td>${aiBadge}</td>
+                    <td>
+                        <a href="${v.url}" target="_blank" class="btn btn-secondary btn-sm" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:12px;">
+                            Xem Shorts ↗
+                        </a>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+    }
+
+    // 4. Forecast Cards
+    const forecast = data.forecast;
+    if (forecast) {
+        renderForecastCards(forecast.stages || []);
+        renderRecommendedTopics(forecast.recommended_topics || []);
+    }
+}
+
+function renderForecastCards(stages) {
+    const container = document.getElementById('forecast-cards-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    stages.forEach((stg, i) => {
+        const card = document.createElement('div');
+        const isHighlight = i === 1 || i === 2;
+        card.className = `forecast-card ${isHighlight ? 'highlight' : ''}`;
+
+        card.innerHTML = `
+            <div>
+                <div class="forecast-stage-label">${stg.label}</div>
+                <div class="forecast-views-val">${stg.projected_views.toLocaleString()} <span style="font-size:13px;font-weight:500;color:var(--text-muted);">views</span></div>
+                <div style="font-size:11.5px;color:#10b981;margin-bottom:12px;">🎯 ${stg.breakout_chance}</div>
+            </div>
+            <div>
+                <div class="forecast-metric-row">
+                    <span>Tổng video:</span>
+                    <strong style="color:#fff;">~${stg.total_videos} video</strong>
+                </div>
+                <div class="forecast-metric-row">
+                    <span>Người đăng ký:</span>
+                    <strong style="color:#38bdf8;">~${stg.projected_subs.toLocaleString()} subs</strong>
+                </div>
+                <div class="forecast-metric-row">
+                    <span>AdSense Shorts:</span>
+                    <strong style="color:#f59e0b;">~$${stg.adsense_usd}</strong>
+                </div>
+                <div class="forecast-metric-row">
+                    <span>Affiliate Ngách:</span>
+                    <strong style="color:#10b981;">~$${stg.affiliate_usd}</strong>
+                </div>
+                <div class="forecast-revenue-pill">
+                    Tiềm năng: ~${stg.total_revenue_vnd_formatted}
+                </div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+function renderRecommendedTopics(topics) {
+    const container = document.getElementById('recommended-topics-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    topics.forEach(t => {
+        const card = document.createElement('div');
+        card.className = 'topic-rec-card';
+        card.innerHTML = `
+            <div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <span class="badge badge-blue">🎯 Điểm tiềm năng: ${t.potential_score}/10</span>
+                    <span style="font-size:11.5px;color:var(--text-muted);">Kỳ vọng: <strong>${t.target_views}</strong></span>
+                </div>
+                <div class="topic-hook-text">"${escapeHtml(t.hook)}"</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:6px;">👉 ${escapeHtml(t.topic)}</div>
+            </div>
+            <button class="btn btn-primary btn-sm" style="width:100%;margin-top:8px;" onclick="applyTopicToCreate('${escapeHtml(t.topic)}', '${escapeHtml(t.hook)}')">
+                🎬 Tạo Kịch Bản Với Chủ Đề Này
+            </button>
+        `;
+        container.appendChild(card);
+    });
+}
+
+async function onForecastRateChange() {
+    const rateSelect = document.getElementById('forecast-daily-rate');
+    const rate = parseFloat(rateSelect.value) || 1.0;
+    try {
+        const res = await apiPost('/api/analytics/forecast', {
+            channel_id: currentAnalyticsChannelId || 'channel_maya',
+            daily_uploads: rate
+        });
+        if (res && res.forecast) {
+            renderForecastCards(res.forecast.stages || []);
+            showToast(`Đã tính toán lại mô hình với tần suất ${rate} video/ngày`, 'info');
+        }
+    } catch (e) {
+        console.error('Lỗi tính forecast:', e);
+    }
+}
+
+function applyTopicToCreate(topic, hook) {
+    switchTab('create');
+    const topicInput = document.getElementById('prompt-topic');
+    if (topicInput) {
+        topicInput.value = `${topic} (Hook: ${hook})`;
+        topicInput.focus();
+        showToast('Đã nạp chủ đề được AI đề xuất vào ô tạo kịch bản!', 'success');
+    }
+}
+

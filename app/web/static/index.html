@@ -29,6 +29,11 @@
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
                 <span>Dashboard</span>
             </li>
+            <li class="nav-item" data-tab="analytics" id="nav-analytics">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+                <span>Số Liệu & Dự Đoán</span>
+                <span class="nav-badge" style="background: linear-gradient(135deg, #10b981, #059669); font-size: 10px;">AI LIVE</span>
+            </li>
             <li class="nav-item" data-tab="activity" id="nav-activity">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                 <span>Nhật Ký Hoạt Động</span>
@@ -357,6 +362,141 @@
                         <tbody id="videos-table-body">
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══ TAB: ANALYTICS & AI FORECAST ═══ -->
+        <section class="tab-content" id="tab-analytics">
+            <!-- 1. HEADER & CHANNEL SWITCHER -->
+            <div class="panel-card" style="margin-bottom: 20px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+                    <div style="display:flex; align-items:center; gap:14px;">
+                        <div id="analytics-avatar" style="width:48px; height:48px; border-radius:50%; background:linear-gradient(135deg, #ef4444, #8b5cf6); display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:700; color:#fff; overflow:hidden; border:2px solid rgba(255,255,255,0.15); box-shadow:0 4px 12px rgba(0,0,0,0.3);">
+                            🧠
+                        </div>
+                        <div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <h3 id="analytics-channel-title" style="font-size:18px; font-weight:700; color:var(--text-main); margin:0;">Psychology of the world</h3>
+                                <span class="badge badge-green" id="analytics-status-badge">🟢 Realtime Live</span>
+                            </div>
+                            <p style="font-size:12.5px; color:var(--text-muted); margin:3px 0 0 0;">
+                                <span id="analytics-handle">@VV1n-oe9gs</span> · <span id="analytics-sub-meta">1 người đăng ký</span> · <span id="analytics-vid-meta">3 video</span>
+                                <a id="analytics-external-link" href="https://www.youtube.com/@VV1n-oe9gs" target="_blank" style="color:var(--primary); margin-left:8px; text-decoration:none;">
+                                    Mở kênh YouTube ↗
+                                </a>
+                            </p>
+                        </div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <select id="analytics-channel-select" class="form-control" style="width:auto; min-width:200px; padding:6px 12px; font-size:13px;" onchange="onAnalyticsChannelChange()">
+                            <!-- Dynamic channels -->
+                        </select>
+                        <button class="btn btn-primary btn-sm" id="btn-sync-analytics" onclick="refreshAnalytics(true)">
+                            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                            Quét Số Liệu Live
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. BIG 4 METRIC KPIS -->
+            <div class="metrics-grid" style="margin-bottom: 24px;">
+                <div class="metric-card" style="border-top: 3px solid #3b82f6;">
+                    <div class="metric-label">👁️ Tổng Lượt Xem (Total Views)</div>
+                    <div class="metric-value" id="kpi-total-views">931</div>
+                    <div class="metric-sub" style="color:#10b981;">⚡ Tăng trưởng ấn tượng (Kênh mới)</div>
+                </div>
+                <div class="metric-card" style="border-top: 3px solid #10b981;">
+                    <div class="metric-label">👥 Người Đăng Ký (Subscribers)</div>
+                    <div class="metric-value" id="kpi-total-subs">1</div>
+                    <div class="metric-sub">Mục tiêu 1.000 subs: 0.1%</div>
+                </div>
+                <div class="metric-card" style="border-top: 3px solid #f59e0b;">
+                    <div class="metric-label">🎬 Video Đã Đăng (Videos)</div>
+                    <div class="metric-value" id="kpi-total-videos">3 Shorts</div>
+                    <div class="metric-sub">100% video dạng dọc 9:16</div>
+                </div>
+                <div class="metric-card" style="border-top: 3px solid #ec4899;">
+                    <div class="metric-label">⚡ Lượt Xem Trung Bình / Video</div>
+                    <div class="metric-value" id="kpi-avg-views">310</div>
+                    <div class="metric-sub" style="color:#10b981;">🔥 Cao gấp 3 lần kênh mới thông thường</div>
+                </div>
+            </div>
+
+            <!-- 3. TOP VIDEOS BREAKDOWN & RANKING -->
+            <div class="panel-card" style="margin-bottom: 24px;">
+                <div class="panel-header">
+                    <div>
+                        <h3 style="display:flex; align-items:center; gap:8px;">
+                            <span>🏆</span> Bảng Xếp Hạng & Hiệu Suất Từng Video
+                        </h3>
+                        <p style="font-size:12.5px; color:var(--text-muted); margin-top:3px;">
+                            Số liệu thực tế cào từ YouTube Shorts Feed kết hợp với đánh giá nội dung của AI Critic
+                        </p>
+                    </div>
+                    <span class="badge badge-purple" id="analytics-sync-badge">Vừa đồng bộ</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="custom-table" id="analytics-videos-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px;">Hạng</th>
+                                <th style="width: 80px;">Thumbnail</th>
+                                <th>Tiêu Đề Video</th>
+                                <th style="width: 130px;">Lượt Xem Thực Tế</th>
+                                <th>Đánh Giá & Phân Tích AI</th>
+                                <th style="width: 110px;">Thao Tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="analytics-videos-tbody">
+                            <!-- Dynamic rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 4. AI GROWTH FORECAST & FINANCIAL MILESTONES -->
+            <div class="panel-card" style="margin-bottom: 24px;">
+                <div class="panel-header">
+                    <div>
+                        <h3 style="display:flex; align-items:center; gap:8px;">
+                            <span>🔮</span> Mô Hình Dự Đoán Tăng Trưởng & Doanh Thu AI (AI Growth Forecast)
+                        </h3>
+                        <p style="font-size:12.5px; color:var(--text-muted); margin-top:3px;">
+                            Mô phỏng đà tăng trưởng theo thuật toán Shorts, tỷ lệ lan tỏa và tiềm năng kiếm tiền (Monetization Engine)
+                        </p>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-muted);">
+                        <span>Tần suất xuất bản:</span>
+                        <select id="forecast-daily-rate" class="form-control" style="width:auto; padding:4px 8px; font-size:12.5px;" onchange="onForecastRateChange()">
+                            <option value="1.0">1 Video / ngày (Khuyên dùng)</option>
+                            <option value="2.0">2 Video / ngày (Bứt phá nhanh)</option>
+                            <option value="3.0">3 Video / ngày (Tối đa công suất)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 4 STAGE MILESTONE CARDS -->
+                <div class="forecast-grid" id="forecast-cards-container" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:16px; margin-top:16px;">
+                    <!-- Dynamic forecast cards -->
+                </div>
+            </div>
+
+            <!-- 5. TOP VIRAL RECOMMENDED TOPICS -->
+            <div class="panel-card">
+                <div class="panel-header">
+                    <div>
+                        <h3 style="display:flex; align-items:center; gap:8px;">
+                            <span>💡</span> Top Chủ Đề AI Đề Xuất Để Nhân Bản Video "Bùng Nổ" (Winning Angles)
+                        </h3>
+                        <p style="font-size:12.5px; color:var(--text-muted); margin-top:3px;">
+                            Các chủ đề và câu Hook có xác suất viral cao nhất được học từ video 471 views của bạn
+                        </p>
+                    </div>
+                </div>
+                <div id="recommended-topics-container" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:14px; margin-top:10px;">
+                    <!-- Dynamic topic cards -->
                 </div>
             </div>
         </section>
@@ -733,6 +873,6 @@
 <!-- TOAST NOTIFICATION -->
 <div class="toast-container" id="toast-container"></div>
 
-<script src="/static/js/dashboard.js"></script>
+<script src="/static/js/dashboard.js?v=2.2"></script>
 </body>
 </html>

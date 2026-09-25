@@ -14,6 +14,8 @@ google_accounts:
     language: en
     visual_mode: imagen_ai
     preferred_voice: en-US-ChristopherNeural
+    handle: "@VV1n-oe9gs"
+    channel_url: "https://www.youtube.com/@VV1n-oe9gs"
     schedule:
       publish_hour_utc: 12
       days:
@@ -24,6 +26,8 @@ google_accounts:
 channels:
 - id: channel_maya
   name: Pyschology of the world
+  handle: "@VV1n-oe9gs"
+  channel_url: "https://www.youtube.com/@VV1n-oe9gs"
   niche: history_mystery
   language: en
   google_account: account_1

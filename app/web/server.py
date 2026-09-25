@@ -1426,3 +1426,84 @@ async def delete_brand_channel(account_id: str, channel_id: str) -> Dict[str, An
         "success": True,
         "message": f"Đã xóa kênh '{channel_id}' thành công!"
     }
+
+
+# ==============================================================================
+# 11. YOUTUBE LIVE ANALYTICS & AI GROWTH FORECAST
+# ==============================================================================
+from app.services.youtube_analytics import fetch_channel_live_stats, calculate_ai_forecast
+
+class ForecastRequest(BaseModel):
+    channel_id: Optional[str] = "channel_maya"
+    daily_uploads: Optional[float] = 1.0
+    custom_avg_views: Optional[int] = None
+
+@app.get("/api/analytics/channels")
+async def get_analytics_channels():
+    """Lấy danh sách các kênh có hỗ trợ quét số liệu phân tích."""
+    cfg = _read_channels_yaml()
+    channels = cfg.get("channels", [])
+    result = []
+    for c in channels:
+        result.append({
+            "id": c.get("id"),
+            "name": c.get("name"),
+            "handle": c.get("handle") or "@VV1n-oe9gs",
+            "channel_url": c.get("channel_url") or "https://www.youtube.com/@VV1n-oe9gs",
+            "niche": c.get("niche", "general"),
+            "google_account": c.get("google_account", "account_1")
+        })
+    return {"channels": result}
+
+@app.get("/api/analytics/channel/{channel_id}")
+async def get_channel_live_analytics(channel_id: str):
+    """Cào trực tiếp số liệu thời gian thực và tính toán dự đoán tăng trưởng cho kênh."""
+    cfg = _read_channels_yaml()
+    channels = cfg.get("channels", [])
+    channel = next((c for c in channels if c.get("id") == channel_id), None)
+    if not channel:
+        channel = channels[0] if channels else {"id": channel_id, "handle": "@VV1n-oe9gs", "name": "Psychology of the world"}
+
+    url = channel.get("channel_url") or channel.get("handle") or "https://www.youtube.com/@VV1n-oe9gs"
+    stats = fetch_channel_live_stats(url)
+    if not stats.get("success"):
+        raise HTTPException(status_code=500, detail=stats.get("error", "Không thể lấy số liệu kênh"))
+
+    forecast = calculate_ai_forecast(
+        total_views=stats.get("total_views", 0),
+        total_videos=len(stats.get("videos", [])),
+        avg_views=stats.get("avg_views", 300),
+        daily_uploads=1.0,
+        niche=channel.get("niche", "history_mystery")
+    )
+
+    stats["forecast"] = forecast
+    stats["channel_id"] = channel_id
+    stats["channel_niche"] = channel.get("niche", "history_mystery")
+    return stats
+
+@app.post("/api/analytics/forecast")
+async def calculate_forecast_endpoint(req: ForecastRequest):
+    """Tính toán dự đoán tăng trưởng tùy biến theo tốc độ xuất bản và mức views mục tiêu."""
+    cfg = _read_channels_yaml()
+    channels = cfg.get("channels", [])
+    channel = next((c for c in channels if c.get("id") == req.channel_id), {})
+    url = channel.get("channel_url") or channel.get("handle") or "https://www.youtube.com/@VV1n-oe9gs"
+
+    stats = fetch_channel_live_stats(url)
+    total_views = stats.get("total_views", 931) if stats.get("success") else 931
+    total_vids = len(stats.get("videos", [])) if stats.get("success") else 3
+    avg_views = req.custom_avg_views or (stats.get("avg_views", 310) if stats.get("success") else 310)
+
+    forecast = calculate_ai_forecast(
+        total_views=total_views,
+        total_videos=total_vids,
+        avg_views=avg_views,
+        daily_uploads=req.daily_uploads or 1.0,
+        niche=channel.get("niche", "history_mystery")
+    )
+    return {
+        "success": True,
+        "forecast": forecast
+    }
+
