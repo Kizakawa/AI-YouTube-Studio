@@ -105,10 +105,14 @@ class ContentQualityCritic:
         hook_context = ""
         if scene_id == 1:
             hook_context = (
-                "\n- ĐẶC BIỆT (CẢNH 1 - HOOK 3 GIÂY ĐẦU): Bức ảnh này quyết định tỷ lệ người xem ở lại hay vuốt qua (Swipe Away). "
-                "Ảnh PHẢI có tính kịch tính cao, độ tương phản sắc nét, biểu cảm cận cảnh cuốn hút hoặc sự kiện gây sốc. "
-                "Tuyệt đối không được dùng ảnh tối tăm, ủ rũ, thụ động, người ngồi gục mặt hoặc không gian văn phòng buồn tẻ. "
-                "Nếu ảnh u tối, buồn ngủ, thiếu năng lượng → chấm visual_quality thấp (< 6.0) và yêu cầu thay ảnh hook kịch tính."
+                "\n- BẮT BUỘC ĐỐI VỚI CẢNH 1 (HOOK 3 GIÂY ĐẦU - QUYẾT ĐỊNH 90% RETENTION SHORTS):\n"
+                "Ảnh Cảnh 1 PHẢI mang tính kích thích thị giác mạnh mẽ (Primal Visual Trigger / Shock Magnet) tùy theo chủ đề:\n"
+                "  * Nếu chủ đề biển sâu/đại dương/bí ẩn: Phải có bóng quái vật khổng lồ/leviathan/thalassophobia hoặc vực thẳm rợn người.\n"
+                "  * Nếu chủ đề phụ nữ/tình cảm/quyến rũ: Phải là hình tượng Femme Fatale quyến rũ bí ẩn, ánh mắt hút hồn nhìn qua vai, ánh sáng điện ảnh sang trọng.\n"
+                "  * Nếu chủ đề kẻ nói dối/thao túng/tâm lý đen: Phải là cận cảnh cực đại (extreme macro) ánh mắt xoáy sâu, nụ cười nham hiểm hoặc bóng đen thì thầm.\n"
+                "  * Nếu chủ đề tiền tài/quyền lực: Hầm vàng rực rỡ trong bóng tối, tiền bay, phong cách tỷ phú bóng đêm.\n"
+                "  * TUYỆT ĐỐI KHÔNG ĐƯỢC CHẤP NHẬN: Ảnh đời thường tẻ nhạt, văn phòng làm việc chán ngắt, người ngồi gục mặt hoặc phong cảnh phẳng lặng.\n"
+                "  * Nếu vi phạm (ảnh chán / thiếu năng lượng): BẮT BUỘC cho verdict = 'FAIL', visual_quality < 6.0 và trong trường 'suggestion' ghi rõ prompt Primal Hook Archetype để hệ thống tự động sinh lại ảnh mới ngay lập tức!"
             )
 
         prompt = f"""Bạn là chuyên gia thẩm định nội dung hình ảnh cho kênh YouTube Shorts chất lượng cao.

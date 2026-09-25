@@ -482,10 +482,12 @@ def clean_scene_search_query(raw_query: str, max_words: int = 3) -> str:
 # nếu tìm nguyên văn trên Pexels/Pixabay sẽ bị lọt ảnh văn phòng, bác sĩ tâm lý, người ngồi sofa.
 # Bộ ánh xạ này chuyển hóa trực tiếp sang các vật thể điện ảnh siêu thực & ấn tượng.
 _ABSTRACT_METAPHOR_MAP = {
+    ("ocean", "sea", "deep ocean", "deep sea", "abyss", "biển", "đại dương", "biển sâu"): "thalassophobia deep sea monster shadow",
+    ("woman", "girl", "female", "seduction", "attraction", "phụ nữ", "quyến rũ", "gái"): "alluring femme fatale seductive eyes shadow",
     ("psychology", "mind", "tâm lý", "dark psychology", "brain", "mental"): "man silhouette shadow intense gaze",
     ("authority", "power", "quyền lực", "control", "thống trị"): "man tailored dark suit walking",
-    ("manipulation", "thao túng", "deception", "lừa dối", "liar"): "marionette puppet strings wooden hands",
-    ("wealth", "rich", "tiền tệ", "tài chính", "money", "millionaire", "billionaire"): "vintage ledger book ink pen",
+    ("manipulation", "thao túng", "deception", "lừa dối", "liar", "lie", "nói dối"): "extreme macro intense unblinking eyes",
+    ("wealth", "rich", "tiền tệ", "tài chính", "money", "millionaire", "billionaire"): "gold bullion bars dark vault",
     ("greed", "lòng tham"): "gold bullion bars dark vault",
     ("stoic", "stoicism", "khắc kỷ", "philosophy", "triết học"): "stoic marble statue Roman bust",
     ("minimalism", "tối giản", "buông bỏ"): "empty minimalist room sunlight window",

@@ -211,6 +211,14 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
    - DO NOT include channel tags, country names, or suffixes like "- VN", "- VI", "(Vietnam)".
    - Clean, punchy title under 60 characters with emojis.
 
+7. PRIMAL VISUAL HOOK ARCHETYPES (SCENE 1 ONLY — THE CLICK MAGNET):
+   For Scene 1, visual_prompt & stock_query MUST trigger primal biological curiosity. NEVER choose a boring office, passive figure, or generic landscape:
+   - If Deep Sea / Ocean / Abyss: "thalassophobia colossal sea monster shadow under tiny diver, bioluminescent giant eye" | stock_query: "deep sea monster"
+   - If Women / Seduction / Romance / Relationship: "alluring mysterious femme fatale, stunning beauty, seductive gaze over shoulder, mesmerizing piercing eyes" | stock_query: "femme fatale beauty"
+   - If Dark Psychology / Liar / Betrayal: "extreme macro close-up of unblinking intense eyes, whispering shadow, cold calculating smirk" | stock_query: "man staring camera"
+   - If Wealth / Greed / Power: "dark luxury vault opening, stacks of gold bars, raining cash in shadows" | stock_query: "gold vault cash"
+   - If Ancient Mystery / History / War: "lone warrior facing colossal glowing titan statue, burning empire in thunder storm" | stock_query: "colossal statue storm"
+
 ═══════════════════════════════════════════════════════════
 OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
 ═══════════════════════════════════════════════════════════

@@ -96,7 +96,18 @@ class ImageAgent:
         )
         anchored = self._sanitize_and_anchor(base_prompt, niche)
         if scene_id == 1:
-            anchored = f"Viral YouTube Shorts hook frame, extreme close up, intense dramatic lighting, piercing focus, {anchored}"
+            lower_p = f"{base_prompt} {niche}".lower()
+            if any(k in lower_p for k in ["sea", "ocean", "water", "deep", "abyss", "creature", "monster", "leviathan", "biển", "đại dương"]):
+                hook_prefix = "Thalassophobia viral hook, colossal terrifying sea monster shadow lurking in dark ocean abyss beneath tiny diver, bioluminescent giant eye, "
+            elif any(k in lower_p for k in ["woman", "girl", "female", "love", "attract", "seduce", "beauty", "phụ nữ", "quyến rũ", "gái"]):
+                hook_prefix = "Alluring mysterious femme fatale viral hook, stunning beauty, seductive gaze over shoulder, mesmerizing piercing eyes, dramatic chiaroscuro noir lighting, "
+            elif any(k in lower_p for k in ["money", "wealth", "rich", "billionaire", "gold", "tiền", "tài chính", "triệu phú"]):
+                hook_prefix = "Billionaire luxury power viral hook, gleaming gold vault doors in dark shadows, raining cash, dark cinematic aesthetic, "
+            elif any(k in lower_p for k in ["psychology", "liar", "lie", "manipulate", "betray", "dark", "secret", "tâm lý", "dối", "thao túng"]):
+                hook_prefix = "Dark psychology viral hook, extreme macro close up of sharp intense unblinking eyes, whispering shadow, cold dangerous smirk, David Fincher lighting, "
+            else:
+                hook_prefix = "Viral YouTube Shorts hook frame, extreme close up, intense dramatic lighting, piercing focus, "
+            anchored = f"{hook_prefix}{anchored}"
 
         # 1. Thử sinh ảnh bằng Pollinations với prompt tối ưu (chuẩn 9:16 HD 768x1344)
         try:
