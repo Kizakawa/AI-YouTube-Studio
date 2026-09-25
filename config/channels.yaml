@@ -8,19 +8,6 @@ google_accounts:
     youtube_token: credentials/accounts/account_1/youtube_token.json
     drive_token: credentials/accounts/account_1/drive_token.json
   brand_channels:
-  - id: channel_psychology
-    name: Dark Psychology & Mind Hacks
-    niche: psychology
-    language: en
-    visual_mode: imagen_ai
-    preferred_voice: en-US-ChristopherNeural
-    schedule:
-      publish_hour_utc: 12
-      days:
-      - monday
-      - wednesday
-      - friday
-      - sunday
   - id: channel_stoic
     name: Daily Stoic & Ancient Wisdom
     niche: philosophy
@@ -75,13 +62,6 @@ google_accounts:
     drive_token: credentials/accounts/account_3/drive_token.json
   brand_channels: []
 channels:
-- id: channel_psychology
-  name: Dark Psychology & Mind Hacks
-  niche: psychology
-  language: en
-  google_account: account_1
-  visual_mode: imagen_ai
-  preferred_voice: en-US-ChristopherNeural
 - id: channel_stoic
   name: Daily Stoic & Ancient Wisdom
   niche: philosophy

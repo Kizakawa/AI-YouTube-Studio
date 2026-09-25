@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Dict, Any, List
 
 from app.schemas.contracts import ScriptContract, SceneContract
-from app.agents.media_agent import MediaAgent, detect_real_entity
+from app.agents.media_agent import MediaAgent, detect_real_entity, match_best_pool_photo, clean_scene_search_query
 from app.agents.image_agent import ImageAgent
 from app.graph.evaluators.visual_critic import VisualCritic
 from app.graph.evaluators.content_quality_critic import ContentQualityCritic
@@ -24,7 +24,15 @@ logger = logging.getLogger(__name__)
 
 
 async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
-    """Node thu thập tư liệu hình ảnh/video chất lượng cao cho từng phân cảnh."""
+    """
+    Node thu thập tư liệu hình ảnh/video chất lượng cao cho từng phân cảnh.
+    
+    Quy trình tìm nạp thông minh 4 tầng:
+      Tầng 1: Semantic Pool Matcher (Khớp ngữ nghĩa ảnh tài liệu từ entity_media_pool)
+      Tầng 2: Multi-Source Scene Search (Wikipedia -> Wikimedia Commons -> Pexels HD Photos -> Openverse)
+      Tầng 3: AI Image Generation (Style thích ứng theo từng chủ đề kịch bản)
+      Tầng 4: Pexels Video (Chỉ dùng cho phong cảnh/không gian/thành phố trừu tượng)
+    """
     script_data = state.get("script_data", {})
     primary_entity = state.get("primary_entity")
     entity_type = state.get("entity_type", "person")
@@ -43,13 +51,22 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     for scene in script.scenes:
         media_path = ""
         media_type = "image"
+        sq = getattr(scene, 'stock_query', None)
+        vp = getattr(scene, 'visual_prompt', None)
+        kw = scene.visual_keyword or ""
 
-        # Tầng 1: Documentary Pool (Ưu tiên tuyệt đối cho nhân vật thực tế)
+        # ── TẦNG 1: SEMANTIC POOL MATCHER (DOCUMENTARY MODE) ──
+        # Khớp ngữ nghĩa theo năm, sự kiện, từ khóa cụ thể thay vì lấy tuần tự
         if primary_entity and entity_media_pool:
-            for cand_photo in entity_media_pool:
-                cand_url = cand_photo.get("url")
-                if not cand_url or cand_url in used_pool_urls:
-                    continue
+            best_pool_photo = match_best_pool_photo(
+                scene_narration=scene.narration,
+                scene_kw=f"{kw} {sq or ''}",
+                pool=entity_media_pool,
+                used_urls=used_pool_urls,
+                threshold=25,
+            )
+            if best_pool_photo and best_pool_photo.get("url"):
+                cand_url = best_pool_photo["url"]
                 try:
                     ext = ".jpg" if any(x in cand_url.lower() for x in ["jpg", "jpeg"]) else ".png"
                     output = str(media_dir / f"scene_{scene.scene_id:03d}_doc{ext}")
@@ -58,74 +75,57 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         used_pool_urls.add(cand_url)
                         media_path = output
                         media_type = "image"
-                        break
+                        logger.info(
+                            f"Scene {scene.scene_id}: ✅ Khớp ngữ nghĩa ảnh tài liệu: "
+                            f"{best_pool_photo.get('title', '')[:50]}"
+                        )
                 except Exception as ex:
-                    logger.debug(f"Scene {scene.scene_id}: Pool download error: {ex}")
+                    logger.debug(f"Scene {scene.scene_id}: Pool photo download error: {ex}")
 
-        # Tầng 2: Wikipedia chân dung hoặc Wikimedia
-        if not media_path and primary_entity:
+        # ── TẦNG 2: MULTI-SOURCE SCENE SEARCH (Wikipedia, Wikimedia, Pexels Photos, Openverse) ──
+        if not media_path:
             try:
-                wiki_img = await asyncio.to_thread(media_agent.search_wikipedia_entity_image, primary_entity)
-                if wiki_img and wiki_img.get("url") and wiki_img["url"] not in used_pool_urls:
-                    url = wiki_img["url"]
-                    ext = ".jpg" if any(x in url.lower() for x in ["jpg", "jpeg"]) else ".png"
-                    output = str(media_dir / f"scene_{scene.scene_id:03d}_wiki{ext}")
-                    await asyncio.to_thread(media_agent.download_file, url, output)
+                candidate_media = await asyncio.to_thread(
+                    media_agent.search_scene_media_multi_source,
+                    scene_narration=scene.narration,
+                    visual_keyword=kw,
+                    stock_query=sq,
+                    visual_prompt=vp,
+                    primary_entity=primary_entity,
+                    entity_type=entity_type,
+                    used_urls=used_pool_urls,
+                    scene_id=scene.scene_id,
+                )
+                if candidate_media and candidate_media.get("url"):
+                    cand_url = candidate_media["url"]
+                    c_src = candidate_media.get("source", "web")
+                    c_type = candidate_media.get("media_type", "image")
+                    ext = ".mp4" if c_type == "video" else (".jpg" if any(x in cand_url.lower() for x in ["jpg", "jpeg"]) else ".png")
+                    output = str(media_dir / f"scene_{scene.scene_id:03d}_{c_src}{ext}")
+                    await asyncio.to_thread(media_agent.download_file, cand_url, output)
                     if Path(output).exists() and Path(output).stat().st_size > 3000:
-                        used_pool_urls.add(url)
+                        used_pool_urls.add(cand_url)
                         media_path = output
-                        media_type = "image"
-            except Exception:
-                pass
-
-        # Tầng 2.5: Pexels Vertical HD Video Clip — dùng stock_query thay visual_keyword để tránh sai phong cách
-        if not media_path and media_agent.api_key:
-            try:
-                # Ưu tiên stock_query (2-3 từ thuần topic) > visual_keyword thô
-                raw_q = getattr(scene, 'stock_query', None) or scene.visual_keyword or ""
-                # Lọc bỏ từ nguy hiểm: tên đạo diễn, tên phim, diễn viên
-                _FORBIDDEN = {
-                    "nolan", "interstellar", "inception", "avatar", "hollywood",
-                    "cinematic", "movie", "film", "hathaway", "mcconaughey",
-                    "director", "actor", "actress", "red carpet", "rollercoaster",
-                    "cartoon", "anime", "animated",
-                }
-                clean_words = [w for w in raw_q.lower().split() if w not in _FORBIDDEN]
-                safe_q = " ".join(clean_words[:3]).strip() if clean_words else "space astronomy"
-                # Thêm context nếu chủ đề space
-                space_topics = ["black hole", "galaxy", "nebula", "star", "space", "universe", "supernova"]
-                if any(t in safe_q.lower() for t in space_topics) and "astronomy" not in safe_q:
-                    safe_q = f"{safe_q} astronomy"
-
-                best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, safe_q)
-                if best_vid and best_vid.get("url"):
-                    vid_url = best_vid["url"]
-                    # DEDUP: không dùng lại cùng URL cho scene khác
-                    if vid_url not in used_pool_urls:
-                        out_v = str(media_dir / f"scene_{scene.scene_id:03d}_pexels.mp4")
-                        await asyncio.to_thread(media_agent.download_file, vid_url, out_v)
-                        if Path(out_v).exists() and Path(out_v).stat().st_size > 10000:
-                            used_pool_urls.add(vid_url)
-                            media_path = out_v
-                            media_type = "video"
-                    else:
-                        logger.debug(f"Scene {scene.scene_id}: Bỏ qua Pexels video trùng URL")
+                        media_type = c_type
+                        logger.info(
+                            f"Scene {scene.scene_id}: ✅ Tải thành công từ {c_src} "
+                            f"({candidate_media.get('title', '')[:45]})"
+                        )
             except Exception as e:
-                logger.debug(f"Scene {scene.scene_id}: Video clip search error: {e}")
+                logger.debug(f"Scene {scene.scene_id}: Multi-source search error: {e}")
 
-        # Tầng 3: AI Image Generation — ưu tiên visual_prompt (Director description) hơn visual_keyword
+        # ── TẦNG 3: AI IMAGE GENERATION (Thích ứng theo chủ đề, tỷ lệ dọc 9:16) ──
         if not media_path:
             try:
                 ai_img_path = str(media_dir / f"scene_{scene.scene_id:03d}_ai.jpg")
-                # visual_prompt: mô tả cảnh quay chi tiết từ Director (không bị ảnh hưởng bởi ẩn dụ)
-                # visual_keyword: tag ngắn fallback
-                vp = getattr(scene, 'visual_prompt', None)
-                kw = scene.visual_keyword
+                clean_kw = clean_scene_search_query(kw, max_words=4)
+                prompt_to_use = vp if (vp and len(vp.strip()) > 10) else (clean_kw or "cinematic documentary")
                 if primary_entity and not vp:
-                    kw = f"Historical authentic photorealistic portrait of {primary_entity}, {kw}, period accurate 8k"
+                    prompt_to_use = f"Historical authentic documentary portrait of {primary_entity}, {clean_kw}, 8k"
+
                 res_img = await asyncio.to_thread(
                     image_agent.generate_scene_image,
-                    kw,
+                    prompt_to_use,
                     ai_img_path,
                     "9:16",
                     "cinematic",
@@ -135,27 +135,11 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 2000:
                     media_path = res_img
                     media_type = "image"
+                    logger.info(f"Scene {scene.scene_id}: ✅ Sinh ảnh AI chất lượng cao thành công")
             except Exception as e:
                 logger.warning(f"Scene {scene.scene_id}: AI Image error: {e}")
 
-        # Tầng 4: Openverse Free Archival Search (Dự phòng ảnh lưu trữ tự do)
-        if not media_path:
-            try:
-                ov_items = await asyncio.to_thread(media_agent.search_openverse, scene.visual_keyword, 2)
-                if ov_items:
-                    ov_url = ov_items[0].get("url")
-                    if ov_url and ov_url not in used_pool_urls:
-                        ext = ".jpg" if "jpg" in ov_url.lower() else ".png"
-                        out_ov = str(media_dir / f"scene_{scene.scene_id:03d}_openverse{ext}")
-                        await asyncio.to_thread(media_agent.download_file, ov_url, out_ov)
-                        if Path(out_ov).exists() and Path(out_ov).stat().st_size > 3000:
-                            used_pool_urls.add(ov_url)
-                            media_path = out_ov
-                            media_type = "image"
-            except Exception as e:
-                logger.debug(f"Scene {scene.scene_id}: Openverse fallback error: {e}")
-
-        # Fallback an toàn: Gradient graphic
+        # ── TẦNG 4: FALLBACK GRAPHIC ──
         if not media_path:
             out_g = str(media_dir / f"scene_{scene.scene_id:03d}_graphic.png")
             from app.utils.ffmpeg_helper import create_placeholder_image
@@ -340,70 +324,63 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
         suggestion = suggestions.get(scene_id, kw)
         replaced = False
 
-        # Chiến lược 1: Tìm ảnh Wikipedia/Wikimedia với từ khoá gợi ý
-        if primary_entity and not replaced:
-            try:
-                search_query = f"{primary_entity} {suggestion}" if suggestion else primary_entity
-                wiki_img = await asyncio.to_thread(
-                    media_agent.search_wikipedia_entity_image, search_query
-                )
-                if wiki_img and wiki_img.get("url"):
-                    url = wiki_img["url"]
-                    ext = ".jpg" if "jpg" in url.lower() else ".png"
-                    out = str(media_dir / f"scene_{scene_id:03d}_content_fix{ext}")
-                    await asyncio.to_thread(media_agent.download_file, url, out)
-                    if Path(out).exists() and Path(out).stat().st_size > 3000:
-                        item["media_path"] = out
-                        item["media_type"] = "image"
-                        replaced = True
-                        logger.info(f"Scene {scene_id}: ✅ Thay bằng ảnh tư liệu Wikipedia")
-            except Exception as e:
-                logger.debug(f"Scene {scene_id}: Wiki search for content fix failed: {e}")
+        # ── Chiến lược 1: Multi-Source Scene Search với từ khóa tinh chỉnh từ AI Vision ──
+        try:
+            cand = await asyncio.to_thread(
+                media_agent.search_scene_media_multi_source,
+                scene_narration=narr,
+                visual_keyword=suggestion or kw,
+                stock_query=suggestion,
+                primary_entity=primary_entity,
+                scene_id=scene_id,
+            )
+            if cand and cand.get("url"):
+                cand_url = cand["url"]
+                c_src = cand.get("source", "fix")
+                c_type = cand.get("media_type", "image")
+                ext = ".mp4" if c_type == "video" else (".jpg" if any(x in cand_url.lower() for x in ["jpg", "jpeg"]) else ".png")
+                out = str(media_dir / f"scene_{scene_id:03d}_content_fix_{c_src}{ext}")
+                await asyncio.to_thread(media_agent.download_file, cand_url, out)
+                if Path(out).exists() and Path(out).stat().st_size > 3000:
+                    item["media_path"] = out
+                    item["media_type"] = c_type
+                    replaced = True
+                    logger.info(f"Scene {scene_id}: ✅ Thay thế thành công từ {c_src} theo gợi ý AI Vision")
+        except Exception as e:
+            logger.debug(f"Scene {scene_id}: Multi-source content fix failed: {e}")
 
-        # Chiến lược 2: Openverse archival search với gợi ý
-        if not replaced:
-            try:
-                search_q = suggestion if suggestion else kw
-                ov_items = await asyncio.to_thread(media_agent.search_openverse, search_q, 3)
-                if ov_items:
-                    ov_url = ov_items[0].get("url")
-                    ext = ".jpg" if "jpg" in ov_url.lower() else ".png"
-                    out = str(media_dir / f"scene_{scene_id:03d}_content_ov{ext}")
-                    await asyncio.to_thread(media_agent.download_file, ov_url, out)
-                    if Path(out).exists() and Path(out).stat().st_size > 3000:
-                        item["media_path"] = out
-                        item["media_type"] = "image"
-                        replaced = True
-                        logger.info(f"Scene {scene_id}: ✅ Thay bằng ảnh Openverse archival")
-            except Exception:
-                pass
-
-        # Chiến lược 3: AI Image Generation với prompt tinh chỉnh từ gợi ý
+        # ── Chiến lược 2: AI Image Generation với prompt tinh chỉnh từ gợi ý ──
         if not replaced:
             try:
                 ai_path = str(media_dir / f"scene_{scene_id:03d}_content_ai.jpg")
+                clean_sug = clean_scene_search_query(suggestion or kw, max_words=5)
                 if primary_entity:
                     prompt = (
-                        f"Historically accurate dramatic portrait of {primary_entity}, "
-                        f"{suggestion or kw}, period-correct clothing and setting, "
-                        f"8k cinematic photorealistic, sharp focus, documentary style"
+                        f"Historically authentic documentary portrait of {primary_entity}, "
+                        f"{clean_sug}, period accurate setting, 8k documentary photograph"
                     )
                 else:
-                    prompt = (
-                        f"Dramatic cinematic photorealistic: {suggestion or kw}, "
-                        f"8k sharp focus, professional documentary photography"
-                    )
-                res = await asyncio.to_thread(image_agent.generate_scene_image, prompt, ai_path)
+                    prompt = f"Authentic cinematic documentary photography: {clean_sug}, sharp focus 8k"
+
+                res = await asyncio.to_thread(
+                    image_agent.generate_scene_image,
+                    prompt,
+                    ai_path,
+                    "9:16",
+                    "cinematic",
+                    scene_id,
+                    clean_sug,
+                )
                 if res and Path(res).exists() and Path(res).stat().st_size > 2000:
                     item["media_path"] = res
                     item["media_type"] = "image"
                     replaced = True
-                    logger.info(f"Scene {scene_id}: ✅ Thay bằng ảnh AI với prompt tinh chỉnh")
+                    logger.info(f"Scene {scene_id}: ✅ Thay bằng ảnh AI với prompt tinh chỉnh từ AI Vision")
             except Exception as e:
                 logger.warning(f"Scene {scene_id}: Content refine AI generation error: {e}")
 
         if replaced:
-            logger.info(f"  📝 Gợi ý AI đã dùng: '{suggestion}'")
+            logger.info(f"  📝 Gợi ý AI Vision đã áp dụng: '{suggestion}'")
         else:
             logger.warning(f"  ❌ Scene {scene_id}: Không thể tìm ảnh thay thế phù hợp")
 

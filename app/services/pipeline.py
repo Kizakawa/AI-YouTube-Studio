@@ -17,7 +17,13 @@ from app.schemas.contracts import (
 )
 from app.database.models import get_db, VideoJob
 from app.agents.voice_agent import VoiceAgent
-from app.agents.media_agent import MediaAgent, detect_real_entity, detect_video_primary_entity
+from app.agents.media_agent import (
+    MediaAgent,
+    detect_real_entity,
+    detect_video_primary_entity,
+    match_best_pool_photo,
+    clean_scene_search_query,
+)
 from app.agents.image_agent import ImageAgent
 from app.utils.subtitle_helper import SubtitleHelper
 from config.settings import settings
@@ -408,12 +414,17 @@ class VideoPipeline:
                         logger.info(f"Scene {scene.scene_id}: Dùng media tùy biến của người dùng ({cand.name})")
                         return str(dest)
 
-        # ── TẦNG 1: DOCUMENTARY MODE (Ưu tiên ảnh tài liệu thật cho nhân vật) ──
+        # ── TẦNG 1: SEMANTIC POOL MATCH (DOCUMENTARY MODE) ──
         if primary_entity and entity_media_pool:
-            for cand_photo in entity_media_pool:
-                cand_url = cand_photo.get("url")
-                if not cand_url or cand_url in (used_pool_urls or set()):
-                    continue
+            best_pool_photo = match_best_pool_photo(
+                scene_narration=scene.narration,
+                scene_kw=f"{scene.visual_keyword or ''} {getattr(scene, 'stock_query', '') or ''}",
+                pool=entity_media_pool,
+                used_urls=used_pool_urls or set(),
+                threshold=25,
+            )
+            if best_pool_photo and best_pool_photo.get("url"):
+                cand_url = best_pool_photo["url"]
                 try:
                     ext = ".jpg" if any(x in cand_url.lower() for x in ["jpg", "jpeg"]) else ".png"
                     output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_doc{ext}")
@@ -422,89 +433,45 @@ class VideoPipeline:
                         if used_pool_urls is not None:
                             used_pool_urls.add(cand_url)
                         logger.info(
-                            f"Scene {scene.scene_id}: ✅ Tải thành công ảnh TÀI LIỆU THẬT cho '{primary_entity}': "
-                            f"{cand_photo.get('title', '')[:50]}"
+                            f"Scene {scene.scene_id}: ✅ Khớp ngữ nghĩa ảnh TÀI LIỆU THẬT cho '{primary_entity}': "
+                            f"{best_pool_photo.get('title', '')[:50]}"
                         )
                         return output
                 except Exception as ex:
                     logger.warning(f"Scene {scene.scene_id}: Lỗi tải ảnh tài liệu pool ({cand_url[:40]}): {ex}")
 
-        # ── Tầng 2: Cảnh cụ thể có thực thể riêng (hoặc fallback cho primary_entity) ──
-        is_entity, entity_name, ent_type = detect_real_entity(scene.visual_keyword, scene.narration)
-        target_entity = entity_name or primary_entity
-        if target_entity:
-            try:
-                # A. Wikipedia — Ảnh chân dung chính thức
-                wiki_img = await asyncio.to_thread(
-                    self._media_agent.search_wikipedia_entity_image, target_entity
-                )
-                if wiki_img and wiki_img.get("url"):
-                    url = wiki_img["url"]
-                    if not used_pool_urls or url not in used_pool_urls:
-                        ext = ".jpg" if any(x in url.lower() for x in ["jpg", "jpeg"]) else ".png"
-                        output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_wiki{ext}")
-                        await asyncio.to_thread(self._media_agent.download_file, url, output)
-                        if Path(output).exists() and Path(output).stat().st_size > 3000 and self._is_valid_image_file(output):
-                            if used_pool_urls is not None:
-                                used_pool_urls.add(url)
-                            logger.info(
-                                f"Scene {scene.scene_id}: ✅ Tải thành công ảnh WIKIPEDIA chính thức "
-                                f"({target_entity}): {wiki_img.get('title', '')[:50]}"
-                            )
-                            return output
-            except Exception as ex:
-                logger.warning(f"Scene {scene.scene_id}: Wikipedia search error for {target_entity}: {ex}")
-
-            try:
-                # B. Wikimedia Commons — Ảnh tài liệu lịch sử
-                search_terms = [
-                    f"{target_entity} official portrait" if ent_type == "person" else target_entity,
-                    f"{target_entity} photograph",
-                    f"{target_entity} vintage",
-                    target_entity,
-                ]
-                for term in search_terms:
-                    web_photos = await asyncio.to_thread(
-                        self._media_agent.search_web_photos, term, 4
+        # ── TẦNG 2: MULTI-SOURCE SCENE SEARCH (Wikipedia, Wikimedia, Pexels Photos, Openverse) ──
+        try:
+            cand = await asyncio.to_thread(
+                self._media_agent.search_scene_media_multi_source,
+                scene_narration=scene.narration,
+                visual_keyword=scene.visual_keyword or "",
+                stock_query=getattr(scene, 'stock_query', None),
+                visual_prompt=getattr(scene, 'visual_prompt', None),
+                primary_entity=primary_entity,
+                entity_type=entity_type,
+                used_urls=used_pool_urls or set(),
+                scene_id=scene.scene_id,
+            )
+            if cand and cand.get("url"):
+                cand_url = cand["url"]
+                c_src = cand.get("source", "web")
+                c_type = cand.get("media_type", "image")
+                ext = ".mp4" if c_type == "video" else (".jpg" if any(x in cand_url.lower() for x in ["jpg", "jpeg"]) else ".png")
+                output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_{c_src}{ext}")
+                await asyncio.to_thread(self._media_agent.download_file, cand_url, output)
+                if Path(output).exists() and Path(output).stat().st_size > 3000 and self._is_valid_image_file(output):
+                    if used_pool_urls is not None:
+                        used_pool_urls.add(cand_url)
+                    if used_asset_paths is not None:
+                        used_asset_paths.add(cand_url)
+                    logger.info(
+                        f"Scene {scene.scene_id}: ✅ Tải thành công từ {c_src}: "
+                        f"{cand.get('title', '')[:50]}"
                     )
-                    for web_photo in web_photos:
-                        web_url = web_photo.get("url")
-                        if web_url and (not used_pool_urls or web_url not in used_pool_urls):
-                            ext = ".jpg" if any(x in web_url.lower() for x in ["jpg", "jpeg"]) else ".png"
-                            output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_real{ext}")
-                            await asyncio.to_thread(self._media_agent.download_file, web_url, output)
-                            if Path(output).exists() and Path(output).stat().st_size > 3000 and self._is_valid_image_file(output):
-                                if used_pool_urls is not None:
-                                    used_pool_urls.add(web_url)
-                                logger.info(
-                                    f"Scene {scene.scene_id}: ✅ Tải thành công ảnh Wikimedia Commons "
-                                    f"({target_entity}): {web_photo.get('title', '')[:50]}"
-                                )
-                                return output
-            except Exception as ex:
-                logger.warning(f"Scene {scene.scene_id}: Wikimedia search error for {target_entity}: {ex}")
-
-            try:
-                # C. Google Custom Search (nếu có key)
-                google_results = await asyncio.to_thread(
-                    self._media_agent.search_google_images, f"{target_entity} photo portrait", 2
-                )
-                if google_results:
-                    for g_photo in google_results:
-                        g_url = g_photo.get("url")
-                        if g_url and (not used_pool_urls or g_url not in used_pool_urls):
-                            ext = ".jpg"
-                            output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_google{ext}")
-                            await asyncio.to_thread(self._media_agent.download_file, g_url, output)
-                            if Path(output).exists() and Path(output).stat().st_size > 3000 and self._is_valid_image_file(output):
-                                if used_pool_urls is not None:
-                                    used_pool_urls.add(g_url)
-                                logger.info(
-                                    f"Scene {scene.scene_id}: ✅ Tải ảnh Google Search ({target_entity})"
-                                )
-                                return output
-            except Exception as ex:
-                logger.debug(f"Scene {scene.scene_id}: Google search not available: {ex}")
+                    return output
+        except Exception as ex:
+            logger.debug(f"Scene {scene.scene_id}: Multi-source search error: {ex}")
 
         # ── Tầng 3: AI Image Generation (ưu tiên visual_prompt) ──
         # FALLBACK CHÍNH khi stock/wiki đều thất bại — KHÔNG dùng lại clip cũ từ scene khác

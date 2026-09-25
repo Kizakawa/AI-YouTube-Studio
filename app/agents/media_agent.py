@@ -260,6 +260,172 @@ def detect_video_primary_entity(
     return None, ""
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# INTELLIGENT VISUAL SEARCH & SEMANTIC MATCHING HELPERS
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Bộ từ khóa nhiễu cần loại trừ khi tìm ảnh nhân vật lịch sử / danh nhân
+# Tránh lọt ảnh đô thị, xe cộ, tòa nhà hiện đại (VD: "Ho Chi Minh City", "Vietcombank tower", "street hawker")
+FORBIDDEN_ENTITY_NOISE = {
+    'city', 'tower', 'hotel', 'street', 'hawker', 'delivery', 'mailbox', 'road',
+    'district', 'statue', 'scooter', 'motorcycle', 'traffic', 'building', 'bridge',
+    'stadium', 'airport', 'hospital', 'university', 'restaurant', 'cafe', 'store',
+    'shop', 'skyline', 'apartment', 'plaza', 'mall', 'highway', 'park', 'avenue',
+    'billboard', 'sidewalk', 'taxi', 'pedestrian', 'alley', 'intersection'
+}
+
+# Các từ ngữ nhiễu liên quan đến thiết bị/kỹ thuật quay chụp (camera fluff) cần lọc bỏ để tìm kiếm ảnh chuẩn
+CAMERA_AND_STYLE_FLUFF = {
+    "cinematic", "lighting", "dramatic", "hyperrealistic", "photorealistic", "8k", "4k",
+    "ultra-sharp", "ultra", "sharp", "shot", "on", "35mm", "film", "imax", "anamorphic",
+    "lens", "macro", "extreme", "close-up", "close", "up", "wide-angle", "wide", "angle",
+    "volumetric", "fog", "atmospheric", "masterpiece", "award-winning", "award", "winning",
+    "portrait", "still", "render", "unreal", "engine", "octane", "vray", "style", "depth",
+    "of", "field", "bokeh", "studio", "photography", "photo", "image", "picture",
+    "vintage", "dark", "moody", "high-end", "prestigious", "editorial", "forbes", "aesthetic",
+    "detailed", "hyper-detailed", "unrealengine", "octanerender"
+}
+
+
+def clean_scene_search_query(raw_query: str, max_words: int = 3) -> str:
+    """
+    Làm sạch query tìm kiếm ảnh: loại bỏ toàn bộ từ rác kỹ thuật/nhiếp ảnh,
+    giữ lại đúng danh từ/chủ thể trọng tâm (2-3 từ).
+    """
+    if not raw_query:
+        return ""
+    words = re.sub(r'[^\w\s-]', ' ', raw_query).split()
+    clean = [w for w in words if w.lower() not in CAMERA_AND_STYLE_FLUFF and len(w) > 1]
+    if not clean:
+        clean = [w for w in words if len(w) > 1]
+    return " ".join(clean[:max_words]).strip()
+
+
+def synthesize_scene_query(
+    narration: str = "",
+    visual_keyword: str = "",
+    stock_query: Optional[str] = None,
+    visual_prompt: Optional[str] = None,
+    primary_entity: Optional[str] = None,
+) -> Tuple[str, str, str]:
+    """
+    Tổng hợp query tìm kiếm chính xác, tối ưu cho từng công cụ tìm ảnh.
+    
+    Returns:
+        (primary_query, fallback_query, intent)
+        intent: "historical_entity" | "specific_object" | "concept_photo"
+    """
+    cleaned_stock = clean_scene_search_query(stock_query or "", max_words=3)
+    cleaned_vk = clean_scene_search_query(visual_keyword or "", max_words=4)
+
+    # Phát hiện thực thể hoặc sự kiện lịch sử trong scene
+    is_ent, ent_name, ent_type = detect_real_entity(visual_keyword, narration)
+    target_ent = ent_name or (
+        primary_entity
+        if primary_entity and any(w.lower() in narration.lower() for w in primary_entity.lower().split())
+        else None
+    )
+
+    # Trích xuất năm lịch sử nếu có
+    years = re.findall(r'\b(18\d\d|19\d\d|20\d\d)\b', f"{narration} {visual_keyword}")
+    year_str = years[0] if years else ""
+
+    if target_ent:
+        primary_query = f"{target_ent} {year_str}".strip() if year_str else target_ent
+        fallback_query = cleaned_stock or cleaned_vk or target_ent
+        intent = "historical_entity"
+        return primary_query, fallback_query, intent
+
+    if cleaned_stock and len(cleaned_stock.split()) >= 1:
+        primary_query = cleaned_stock
+        fallback_query = cleaned_vk if cleaned_vk != cleaned_stock else ""
+        intent = "specific_object"
+        return primary_query, fallback_query, intent
+
+    if cleaned_vk:
+        primary_query = " ".join(cleaned_vk.split()[:3])
+        fallback_query = " ".join(cleaned_vk.split()[:2])
+        intent = "concept_photo"
+        return primary_query, fallback_query, intent
+
+    return "cinematic atmosphere", "dark moody", "concept_photo"
+
+
+def match_best_pool_photo(
+    scene_narration: str,
+    scene_kw: str,
+    pool: List[Dict],
+    used_urls: set,
+    threshold: int = 25
+) -> Optional[Dict]:
+    """
+    Tìm ảnh trong pool có độ khớp ngữ nghĩa cao nhất với cảnh hiện tại.
+    Thay vì gán tuần tự theo index, thuật toán tính điểm tương đồng:
+    - Trùng năm lịch sử (1911, 1945, 1870, 1920...): +65 điểm
+    - Trùng từ khóa ngữ nghĩa chính (tàu, đại hội, tuyên ngôn, dầu mỏ, gia đình...): +35-55 điểm
+    - Khớp từ trong tiêu đề ảnh: +12 điểm/từ
+    Nếu không có ảnh nào trong pool đạt ngưỡng điểm -> Trả về None để hệ thống
+    tự tìm kiếm tư liệu đặc thù cho cảnh đó (tránh ép gán ảnh sai lệch).
+    """
+    if not pool:
+        return None
+
+    full_scene_text = f"{scene_narration} {scene_kw}".lower()
+
+    # Trích xuất năm lịch sử
+    scene_years = set(re.findall(r'\b(18\d\d|19\d\d|20\d\d)\b', full_scene_text))
+
+    concept_mappings = {
+        ("tàu", "thuyền", "ship", "steamship", "boat", "port", "cảng", "latouche", "treville"): 50,
+        ("tours", "đại hội", "congres", "pháp", "france", "nguyễn ái quốc", "nguyen ai quoc"): 45,
+        ("ba đình", "ba dinh", "tuyên ngôn", "proclamation", "độc lập", "independence", "quảng trường"): 55,
+        ("phụ bếp", "bếp", "kitchen", "cook", "than", "cào than", "rửa bát"): 40,
+        ("dầu", "oil", "refinery", "nhà máy", "standard oil", "cleveland"): 50,
+        ("tiền", "money", "sổ sách", "ledger", "accounting", "bank", "ngân hàng"): 40,
+        ("gia đình", "family", "vợ", "con", "children", "wife"): 35,
+        ("chân dung", "portrait", "leader", "chủ tịch", "tổng thống", "president"): 25,
+    }
+
+    best_candidate = None
+    best_score = -1
+
+    for cand in pool:
+        url = cand.get("url")
+        if not url or url in used_urls:
+            continue
+
+        p_title = cand.get("title", "").lower()
+        score = 0
+
+        # 1. Điểm trùng năm
+        cand_years = set(re.findall(r'\b(18\d\d|19\d\d|20\d\d)\b', p_title))
+        if scene_years and cand_years:
+            if scene_years.intersection(cand_years):
+                score += 65
+            else:
+                score -= 20  # Lệch năm lịch sử -> giảm ưu tiên
+
+        # 2. Điểm khái niệm cốt lõi
+        for triggers, pts in concept_mappings.items():
+            if any(tr in full_scene_text for tr in triggers) and any(tr in p_title for tr in triggers):
+                score += pts
+
+        # 3. Điểm khớp từ thông thường (từ > 3 ký tự)
+        scene_words = {w for w in re.sub(r'[^\w\s]', '', full_scene_text).split() if len(w) > 3}
+        title_words = {w for w in re.sub(r'[^\w\s]', '', p_title).split() if len(w) > 3}
+        overlap = scene_words.intersection(title_words)
+        score += len(overlap) * 12
+
+        if score > best_score:
+            best_score = score
+            best_candidate = cand
+
+    if best_candidate and best_score >= threshold:
+        return best_candidate
+
+    return None
+
+
 class MediaAgent:
     """
     Agent tìm kiếm và tải media thông minh đa tầng cho video YouTube Shorts.
@@ -481,10 +647,22 @@ class MediaAgent:
     # TẦNG B: WIKIMEDIA COMMONS — Tìm kiếm nâng cao
     # ──────────────────────────────────────────────────────────────────────────
 
-    def search_web_photos(self, query: str, per_page: int = 3) -> List[Dict]:
+    @staticmethod
+    def _is_noisy_entity_file(title: str, url: str) -> bool:
+        """Kiểm tra xem tên file hoặc URL có chứa từ khóa nhiễu địa danh/đô thị không."""
+        clean = f"{title} {url}".lower()
+        return any(noise in clean for noise in FORBIDDEN_ENTITY_NOISE)
+
+    def search_web_photos(
+        self,
+        query: str,
+        per_page: int = 3,
+        filter_entity_noise: bool = False
+    ) -> List[Dict]:
         """
         Tìm kiếm hình ảnh chất lượng cao trên Wikimedia Commons API.
         Cải thiện: Dùng thumbnail 1280px từ CDN Varnish để tránh lỗi 429 và tải nhanh.
+        Hỗ trợ filter_entity_noise để lọc bỏ ảnh đường phố/đô thị khi tìm nhân vật.
         """
         headers = {"User-Agent": WIKIMEDIA_USER_AGENT}
         
@@ -525,6 +703,11 @@ class MediaAgent:
                         url = info.get("thumburl") or info.get("url", "")
                         w = info.get("thumbwidth") or info.get("width", 0)
                         h = info.get("thumbheight") or info.get("height", 0)
+                        file_title = v.get("title", "")
+                        
+                        # Lọc bỏ ảnh nhiễu địa danh nếu đang tìm người thật
+                        if filter_entity_noise and self._is_noisy_entity_file(file_title, url):
+                            continue
                         
                         # Chỉ lấy ảnh bitmap, kích thước đủ lớn
                         if (mime.startswith("image/") 
@@ -540,7 +723,7 @@ class MediaAgent:
                             
                             photos.append({
                                 "url": url,
-                                "title": v.get("title", ""),
+                                "title": file_title,
                                 "width": w,
                                 "height": h,
                                 "source": "wikimedia_commons",
@@ -560,7 +743,7 @@ class MediaAgent:
         if len(words) > 2:
             simplified = " ".join(words[:2])
             logger.info(f"Wikimedia: Không thấy ảnh cho '{query}', thử lại với '{simplified}'...")
-            return self.search_web_photos(simplified, per_page)
+            return self.search_web_photos(simplified, per_page, filter_entity_noise=filter_entity_noise)
         
         return []
 
@@ -856,6 +1039,7 @@ If no real entities found, return empty array: []"""
         """
         Thu thập bộ sưu tập ảnh tài liệu thực tế chất lượng cao đa dạng cho thực thể chính.
         Đảm bảo video có đủ ảnh khác nhau cho từng phân cảnh, không bị trùng lặp.
+        Loại trừ triệt để ảnh địa danh/đô thị/xe cộ hiện đại gây nhiễu nhân vật lịch sử.
         """
         pool = []
         seen_urls = set()
@@ -863,31 +1047,55 @@ If no real entities found, return empty array: []"""
         def add_unique(item: Optional[Dict]):
             if not item:
                 return
-            u = item.get("url")
-            if u and u not in seen_urls and self._is_valid_image_url(u):
-                seen_urls.add(u)
-                pool.append(item)
+            u = item.get("url", "")
+            t = item.get("title", "")
+            if not u or u in seen_urls or not self._is_valid_image_url(u):
+                return
+            if entity_type == "person" and self._is_noisy_entity_file(t, u):
+                logger.debug(f"Bỏ qua ảnh nhiễu địa danh cho nhân vật: {t}")
+                return
+            seen_urls.add(u)
+            pool.append(item)
 
         # 1. Ảnh chân dung chính thức từ bài Wikipedia
         wiki_portrait = self.search_wikipedia_entity_image(entity_name)
-        add_unique(wiki_portrait)
+        if wiki_portrait and not (entity_type == "person" and self._is_noisy_entity_file(wiki_portrait.get("title", ""), wiki_portrait.get("url", ""))):
+            add_unique(wiki_portrait)
 
-        # 2. Tìm kiếm nhiều góc ảnh từ Wikimedia Commons
+        # 2. Tìm kiếm nhiều góc ảnh từ Wikimedia Commons với dấu ngoặc kép và từ khóa lịch sử
         search_queries = [
-            entity_name,
-            f"{entity_name} portrait",
-            f"{entity_name} photograph",
+            f'"{entity_name}"',
+            f'"{entity_name}" portrait',
+            f'"{entity_name}" photograph',
         ]
         if entity_type == "person":
             search_queries.extend([
-                f"{entity_name} official",
-                f"{entity_name} vintage",
+                f'"{entity_name}" 1945',
+                f'"{entity_name}" official',
+                f'"{entity_name}" vintage',
             ])
+            # Hỗ trợ nhân vật lịch sử nổi tiếng đặc biệt
+            ent_lower = entity_name.lower()
+            if "hồ chí minh" in ent_lower or "ho chi minh" in ent_lower:
+                search_queries.extend([
+                    '"Nguyen Ai Quoc"',
+                    '"Ho Chi Minh" 1946',
+                    'Ba Dinh Square 1945',
+                ])
+            elif "rockefeller" in ent_lower:
+                search_queries.extend([
+                    '"John D. Rockefeller" vintage',
+                    'Standard Oil refinery 1880',
+                ])
 
         for q in search_queries:
             if len(pool) >= count:
                 break
-            results = self.search_web_photos(q, per_page=min(count, 8))
+            results = self.search_web_photos(
+                q,
+                per_page=min(count, 8),
+                filter_entity_noise=(entity_type == "person")
+            )
             for item in results:
                 add_unique(item)
                 if len(pool) >= count:
@@ -895,7 +1103,7 @@ If no real entities found, return empty array: []"""
 
         # 3. Mở rộng từ Openverse (kho lưu trữ ảnh mở, bảo tàng)
         if len(pool) < count:
-            ov_queries = [entity_name, f"{entity_name} {entity_type}"]
+            ov_queries = [f'"{entity_name}"', f"{entity_name} archive"]
             for oq in ov_queries:
                 if len(pool) >= count:
                     break
@@ -911,8 +1119,115 @@ If no real entities found, return empty array: []"""
             for item in g_results:
                 add_unique(item)
 
-        logger.info(f"📸 Đã thu thập được {len(pool)} ảnh tài liệu thực tế cho '{entity_name}' (Wikimedia + Openverse)")
+        logger.info(f"📸 Đã thu thập được {len(pool)} ảnh tài liệu thực tế chuẩn cho '{entity_name}' (Wikimedia + Openverse)")
         return pool
+
+    def search_scene_media_multi_source(
+        self,
+        scene_narration: str,
+        visual_keyword: str,
+        stock_query: Optional[str] = None,
+        visual_prompt: Optional[str] = None,
+        primary_entity: Optional[str] = None,
+        entity_type: str = "person",
+        used_urls: Optional[set] = None,
+        niche: str = "general",
+        scene_id: int = 0,
+    ) -> Optional[Dict]:
+        """
+        Tìm kiếm hình ảnh đa tầng tối ưu cao nhất cho 1 phân cảnh:
+        1. Query Synthesizer: làm sạch và tổng hợp từ khóa cốt lõi (2-3 từ)
+        2. Nếu phân cảnh nhắc đến thực thể/sự kiện/địa danh lịch sử cụ thể -> Wikipedia / Wikimedia Commons
+        3. Pexels HD Photos (Portrait 9:16) siêu nét cho đồ vật, con người, phong cảnh thực
+        4. Openverse Archival (800M+ ảnh bảo tàng & thư viện thế giới)
+        5. Pexels Video (chỉ dùng cho chuyển động tự nhiên/không gian/thành phố khi không có entity)
+        """
+        used = used_urls if used_urls is not None else set()
+        primary_q, fallback_q, intent = synthesize_scene_query(
+            narration=scene_narration,
+            visual_keyword=visual_keyword,
+            stock_query=stock_query,
+            visual_prompt=visual_prompt,
+            primary_entity=primary_entity,
+        )
+
+        logger.info(
+            f"[MediaAgent] Scene {scene_id} Search: intent='{intent}' | "
+            f"query='{primary_q}' (fallback='{fallback_q}')"
+        )
+
+        # ── TẦNG 1: Wikipedia / Wikimedia Commons cho thực thể / sự kiện lịch sử ──
+        if intent == "historical_entity" or primary_entity:
+            # A. Thử tìm trên Wikipedia
+            wiki_img = self.search_wikipedia_entity_image(primary_q)
+            if wiki_img and wiki_img.get("url") and wiki_img["url"] not in used:
+                if not (entity_type == "person" and self._is_noisy_entity_file(wiki_img.get("title", ""), wiki_img["url"])):
+                    return wiki_img
+
+            # B. Thử tìm trên Wikimedia Commons
+            wiki_queries = [f'"{primary_q}"', primary_q]
+            if fallback_q and fallback_q != primary_q:
+                wiki_queries.append(fallback_q)
+
+            for wq in wiki_queries:
+                commons = self.search_web_photos(
+                    wq,
+                    per_page=4,
+                    filter_entity_noise=(entity_type == "person")
+                )
+                for c in commons:
+                    u = c.get("url")
+                    if u and u not in used and self._is_valid_image_url(u):
+                        return c
+
+        # ── TẦNG 2: Pexels HD Photos (Portrait 9:16) — Đồ vật, đời sống, phong cảnh ──
+        # Tỷ lệ dọc 9:16 siêu nét (4K/HD), màu sắc điện ảnh, cực kỳ phù hợp hiệu ứng Ken Burns
+        if self.api_key:
+            px_queries = [primary_q]
+            if fallback_q and fallback_q != primary_q:
+                px_queries.append(fallback_q)
+
+            for pq in px_queries:
+                photos = self.search_photos(pq, per_page=4, orientation="portrait")
+                for p in photos:
+                    src = p.get("src", {})
+                    img_url = src.get("large2x") or src.get("portrait") or src.get("original")
+                    if img_url and img_url not in used and self._is_valid_image_url(img_url):
+                        return {
+                            "url": img_url,
+                            "title": p.get("alt", pq),
+                            "source": "pexels_photo",
+                            "media_type": "image",
+                            "width": p.get("width", 1080),
+                            "height": p.get("height", 1920),
+                        }
+
+        # ── TẦNG 3: Openverse Archival (800M+ ảnh bảo tàng & thư viện thế giới) ──
+        ov_queries = [primary_q]
+        if fallback_q and fallback_q != primary_q:
+            ov_queries.append(fallback_q)
+
+        for oq in ov_queries:
+            ov_items = self.search_openverse(oq, per_page=3)
+            for item in ov_items:
+                u = item.get("url")
+                if u and u not in used and self._is_valid_image_url(u):
+                    return {
+                        "url": u,
+                        "title": item.get("title", oq),
+                        "source": "openverse",
+                        "media_type": "image",
+                        "width": item.get("width", 1080),
+                        "height": item.get("height", 1920),
+                    }
+
+        # ── TẦNG 4: Pexels Video Clip (Chỉ dùng khi KHÔNG phải nhân vật tài liệu) ──
+        if not primary_entity and self.api_key:
+            best_vid = self.search_best_video_clip(primary_q)
+            if best_vid and best_vid.get("url") and best_vid["url"] not in used:
+                return best_vid
+
+        return None
 
     # ──────────────────────────────────────────────────────────────────────────
     # SMART SEARCH ORCHESTRATOR — Tìm kiếm tổng hợp thông minh
