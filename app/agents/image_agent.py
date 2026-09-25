@@ -95,11 +95,13 @@ class ImageAgent:
             else prompt.strip()
         )
         anchored = self._sanitize_and_anchor(base_prompt, niche)
+        if scene_id == 1:
+            anchored = f"Viral YouTube Shorts hook frame, extreme close up, intense dramatic lighting, piercing focus, {anchored}"
 
         # 1. Thử sinh ảnh bằng Pollinations với prompt tối ưu (chuẩn 9:16 HD 768x1344)
         try:
             words = anchored.split()
-            compact_prompt = " ".join(words[:35])
+            compact_prompt = " ".join(words[:40])
             encoded_prompt = urllib.parse.quote(compact_prompt)
 
             url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=768&height=1344&nologo=true"
@@ -119,7 +121,8 @@ class ImageAgent:
         # 2. Fallback: Thử với prompt ngắn gọn thuần túy nếu prompt dài bị lỗi
         try:
             short_clean = " ".join(base_prompt.split()[:18])
-            p_encoded = urllib.parse.quote(f"photorealistic 8k vertical {short_clean}")
+            prefix_fb = "viral hook extreme close up intense lighting vertical" if scene_id == 1 else "photorealistic 8k vertical"
+            p_encoded = urllib.parse.quote(f"{prefix_fb} {short_clean}")
             url_fallback = f"https://image.pollinations.ai/prompt/{p_encoded}?width=768&height=1344&nologo=true"
             res = requests.get(url_fallback, headers={"User-Agent": "AI-Shorts/2.0"}, timeout=20)
             if res.status_code == 200 and len(res.content) > 5000:

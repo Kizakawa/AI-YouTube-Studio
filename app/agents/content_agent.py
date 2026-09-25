@@ -173,10 +173,18 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
    - Pacing: 2.5 to 3.5 seconds per scene (6 to 10 words per scene).
    - NEVER drag a scene past 4 seconds. Fast visual cuts prevent viewer swiping.
 
-2. 3-SECOND PATTERN INTERRUPT HOOK (SCENE 1):
-   - First 3 seconds MUST deliver an extreme curiosity gap, cognitive dissonance, or unbelievable fact.
-   - ABSOLUTELY FORBIDDEN: greetings ("Hello guys"), meta-introductions ("In this video", "Today we discover"), cliches ("Have you ever wondered", "Did you know that").
-   - Start immediately IN MEDIAS RES with high tension.
+2. 3-SECOND PATTERN INTERRUPT HOOK (SCENE 1) — CRITICAL TO PREVENT SWIPE-AWAY (>75% VIEWED):
+   - The first 2.5 seconds determines 100% of Shorts performance (Viewed vs Swiped away).
+   - SCENE 1 HOOK FORMULA:
+     * MUST be an electric pattern interrupt. Never start with textbook definitions or passive statements.
+     * Use one of these 4 viral hook frameworks:
+       a) Urgent Warning: "If you notice [X], NEVER do [Y]..." or "If someone lies to you, DO NOT speak..."
+       b) Elite Power / Interrogation Tactic: "Top interrogators use this exact 3-second move to..."
+       c) The Dark Psychological Law: "The darkest psychological truth about [Topic] is..."
+       d) The Counter-Intuitive Shock: "The most dangerous people in the room always pretend to be..."
+     * STRICTLY FORBIDDEN: Passive openings ("To catch a liar, stop asking questions", "In psychology there is...", "Have you ever wondered").
+     * Scene 1 spoken text MUST be strictly 5 to 8 words, delivered with high stakes and immediate urgency.
+     * Scene 1 visual_keyword MUST be visually arresting and intense: e.g. "intense eye contact staring dramatic lighting" or "shocking whisper dark cinematic shadows" — NEVER a passive, sad or boring scene.
 
 3. THE INFINITE SHORTS LOOP (SEAMLESS REPLAY MULTIPLIER):
    - The final scene (Scene 6/7/8) MUST NOT have a standard outro or goodbye ("Thanks for watching", "Subscribe", "Comment below").
@@ -252,14 +260,18 @@ REFINE the script strictly adhering to the user's feedback.
 Language: {language}
 
 HARD RETENTION RULES:
-1. Fast-paced, punchy, concise sentences: strictly 20-28 seconds total (50-75 words, 6-8 scenes, 2.5-3.5s per scene).
-2. NO ABSTRACT stock_query: 2-3 English CONCRETE PHYSICAL NOUNS only for Pexels.
+1. SCENE 1 PATTERN INTERRUPT HOOK (CRITICAL TO PREVENT SWIPING):
+   - Scene 1 must use an urgent warning, elite interrogation tactic, dark law, or counter-intuitive shock.
+   - Strictly 5-8 words in Scene 1. FORBIDDEN: Passive/academic greetings or statements.
+   - Scene 1 visual_keyword & stock_query MUST be intense, dramatic, and visually arresting.
+2. Fast-paced, punchy, concise sentences: strictly 20-28 seconds total (50-75 words, 6-8 scenes, 2.5-3.5s per scene).
+3. NO ABSTRACT stock_query: 2-3 English CONCRETE PHYSICAL NOUNS only for Pexels.
    NO "psychology", "minimalism", "authority", "power". Use physical objects/actions only.
-3. THE INFINITE SHORTS LOOP: The final scene must seamlessly connect back into Scene 1's hook.
-4. NO LITERAL METAPHORS in visual_prompt: show the actual phenomenon, not metaphorical words.
-5. NO DUPLICATE SCENES: every visual_prompt must describe a visually distinct subject and setting.
-6. visual_prompt format: "[Subject + action], [camera angle], [lighting], [environment]"
-7. Return ONLY valid JSON:
+4. THE INFINITE SHORTS LOOP: The final scene must seamlessly connect back into Scene 1's hook.
+5. NO LITERAL METAPHORS in visual_prompt: show the actual phenomenon, not metaphorical words.
+6. NO DUPLICATE SCENES: every visual_prompt must describe a visually distinct subject and setting.
+7. visual_prompt format: "[Subject + action], [camera angle], [lighting], [environment]"
+8. Return ONLY valid JSON:
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
   "hook": "The opening 3-second hook sentence",
@@ -360,7 +372,7 @@ Niche: '{channel_niche}'
 Script Language (narration & title): {language}
 
 HARD RULES:
-1. Choose the absolute BEST hook from the discussion for the first 3 seconds.
+1. SCENE 1 HOOK (PREVENT SWIPING): Choose an electric 5-8 word pattern-interrupt hook (Warning, Elite Move, Dark Law, or Counter-Intuitive Shock). Never passive or textbook.
 2. Fast-paced, punchy, concise sentences.
 3. visual_prompt must depict the ACTUAL PHENOMENON, never the literal meaning of a metaphor:
    - narration: "like a mountain crushed to sand" → visual_prompt: stellar collapse, NOT a mountain

@@ -80,7 +80,7 @@ class ContentQualityCritic:
 
     def _call_vision_api(
         self, image_path: str, narration: str, visual_keyword: str,
-        primary_entity: Optional[str] = None
+        primary_entity: Optional[str] = None, scene_id: int = 0
     ) -> Optional[Dict[str, Any]]:
         """
         Gọi Gemini Vision API để phân tích một bức ảnh so với lời thoại.
@@ -102,14 +102,25 @@ class ContentQualityCritic:
                 f"đến nhân vật lịch sử này → chấm entity_accuracy rất thấp (1-3)."
             )
 
+        hook_context = ""
+        if scene_id == 1:
+            hook_context = (
+                "\n- ĐẶC BIỆT (CẢNH 1 - HOOK 3 GIÂY ĐẦU): Bức ảnh này quyết định tỷ lệ người xem ở lại hay vuốt qua (Swipe Away). "
+                "Ảnh PHẢI có tính kịch tính cao, độ tương phản sắc nét, biểu cảm cận cảnh cuốn hút hoặc sự kiện gây sốc. "
+                "Tuyệt đối không được dùng ảnh tối tăm, ủ rũ, thụ động, người ngồi gục mặt hoặc không gian văn phòng buồn tẻ. "
+                "Nếu ảnh u tối, buồn ngủ, thiếu năng lượng → chấm visual_quality thấp (< 6.0) và yêu cầu thay ảnh hook kịch tính."
+            )
+
         prompt = f"""Bạn là chuyên gia thẩm định nội dung hình ảnh cho kênh YouTube Shorts chất lượng cao.
 
 NHIỆM VỤ: Phân tích bức ảnh này và chấm điểm trên 4 tiêu chí (thang 1-10):
 
 THÔNG TIN CẢNH:
+- Cảnh số: {scene_id}
 - Lời thoại (narration): "{narration}"
 - Từ khoá hình ảnh (visual_keyword): "{visual_keyword}"
 {entity_context}
+{hook_context}
 
 TIÊU CHÍ ĐÁNH GIÁ:
 1. relevance (Độ liên quan): Ảnh có khớp với nội dung lời thoại và visual_keyword không?
@@ -310,7 +321,7 @@ TRẢ VỀ DUY NHẤT một chuỗi JSON (không markdown, không giải thích)
 
             if use_ai:
                 result = self._call_vision_api(
-                    media_path, narration, visual_keyword, primary_entity
+                    media_path, narration, visual_keyword, primary_entity, scene_id=scene_id
                 )
                 if result:
                     ai_checked += 1

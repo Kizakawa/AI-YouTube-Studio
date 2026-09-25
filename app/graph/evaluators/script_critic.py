@@ -74,7 +74,9 @@ Phong cách kênh: {channel_style}
 {scenes_formatted}
 
 --- BỘ QUY CHUẨN ĐÁNH GIÁ (Thang điểm 1 - 10) ---
-1. hook_strength: Cảnh 1 có đủ gây sốc, đảo ngược định kiến hoặc tạo sự tò mò tột cùng trong 3 giây đầu không? (Cần >= 8.0)
+1. hook_strength: Cảnh 1 có đủ điện giật, đảo ngược định kiến hoặc tạo sự cấp bách tột cùng để ngăn người xem lướt qua (Swipe Away) trong 2.5s đầu không? (Cần >= 8.0).
+   - Đạt điểm cao: Áp dụng 1 trong 4 công thức: Cảnh báo khẩn cấp ("Nếu bạn thấy X, TUYỆT ĐỐI KHÔNG làm Y"), Đòn tâm lý cao thủ/FBI, Quy luật bóng tối, hoặc Cú sốc ngược đời. Lời thoại 5-8 từ, dứt khoát.
+   - Bị trừ nặng (< 6.0): Mở đầu kiểu sách giáo khoa, định nghĩa học thuật, bị động ("Để bắt kẻ nói dối...", "Trong tâm lý học..."), câu hỏi sáo rỗng ("Bạn có biết...").
 2. story_pacing: Nhịp điệu câu chuyện, mỗi cảnh ngắn gọn 6-10 từ (2.5-3.5s), toàn bộ video từ 20-28 giây (50-75 từ cho 6-8 cảnh), chuyển cảnh nhanh, không lê thê thừa thãi không? (Cần >= 8.0)
 3. entity_coherence: Kịch bản và hình ảnh có bám chặt vào nhân vật/bối cảnh lịch sử thực tế không?
 4. visual_direction: Từ khóa visual_keyword & stock_query có cụ thể, vật lý, giàu tính điện ảnh không? (Tuyệt đối không dùng từ trừu tượng như psychology, minimalism)

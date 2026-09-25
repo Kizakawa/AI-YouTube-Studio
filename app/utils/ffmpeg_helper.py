@@ -221,6 +221,7 @@ def image_to_video(
     fps: int = 30,
     zoom_effect: bool = True,
     camera_motion: str = "zoom_in",
+    is_hook_scene: bool = False,
 ) -> str:
     """
     Biến 1 ảnh tĩnh → video MP4 với Ken Burns cinematic effect.
@@ -233,6 +234,8 @@ def image_to_video(
       - pan_up:    Kéo từ dưới lên (climax/rising)
       - pan_down:  Kéo từ trên xuống (tụt xuống/ominous)
     
+    Khi is_hook_scene=True: Áp dụng cú Punch-in Zoom kịch tính (1.05 -> 1.38)
+    nhằm kích thích thị giác, khóa chặt sự chú ý của người xem trong 2.5s đầu.
     Codec: H.264 + yuv420p (YouTube compatible).
     """
     # ── Chuẩn hóa ảnh bằng Pillow: chuyển sang RGB, scale về đúng tỷ lệ ──
@@ -245,9 +248,10 @@ def image_to_video(
         with Image.open(image_path) as im:
             if im.mode not in ("RGB",):
                 im = im.convert("RGB")
-            # Scale ảnh lên lớn hơn target (1.3x) để có "đệm" pan/zoom, tránh artifact đen góc
-            scale_w = int(width * 1.30)
-            scale_h = int(height * 1.30)
+            # Scale ảnh lên lớn hơn target (1.3x thường hoặc 1.45x cho hook) để có "đệm" pan/zoom, tránh artifact đen góc
+            scale_factor = 1.45 if is_hook_scene else 1.30
+            scale_w = int(width * scale_factor)
+            scale_h = int(height * scale_factor)
             im_resized = im.resize((scale_w, scale_h), Image.LANCZOS)
             im_resized.save(norm_path, "JPEG", quality=95)
             image_path = norm_path
@@ -255,8 +259,13 @@ def image_to_video(
         raise ValueError(f"File ảnh không hợp lệ hoặc không thể đọc '{image_path}': {e}")
 
     d = int(duration_seconds * fps)  # Tổng số frames
-    z_start = 1.0
-    z_end   = 1.25  # Zoom đủ rõ để Ken Burns trông sống động trên màn hình nhỏ
+    if is_hook_scene:
+        # Cú Punch-in Zoom kịch tính cho Scene 1 (0-3s) để giật mắt người xem ngay lập tức
+        z_start = 1.05
+        z_end   = 1.38
+    else:
+        z_start = 1.0
+        z_end   = 1.25  # Zoom đủ rõ để Ken Burns trông sống động trên màn hình nhỏ
     z_step  = (z_end - z_start) / max(d, 1)
 
     if not zoom_effect:
@@ -267,13 +276,21 @@ def image_to_video(
             f"fps={fps}"
         )
     elif camera_motion == "zoom_in":
-        # Slow zoom vào tâm ảnh với easing (bắt đầu nhanh, kết thúc mượt)
-        zoompan = (
-            f"zoompan=z='min(zoom+{z_step:.6f},{z_end})':"
-            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-            f"d={d}:s={width}x{height}:fps={fps},"
-            f"setsar=1"
-        )
+        # Zoom vào tâm ảnh (Hook scene: punch-in nhanh, kịch tính từ 1.05 -> 1.38)
+        if is_hook_scene:
+            zoompan = (
+                f"zoompan=z='if(lte(zoom,1.0),{z_start:.4f},min(zoom+{z_step:.6f},{z_end:.4f}))':"
+                f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+                f"d={d}:s={width}x{height}:fps={fps},"
+                f"setsar=1"
+            )
+        else:
+            zoompan = (
+                f"zoompan=z='min(zoom+{z_step:.6f},{z_end})':"
+                f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+                f"d={d}:s={width}x{height}:fps={fps},"
+                f"setsar=1"
+            )
     elif camera_motion == "zoom_out":
         # Bắt đầu ở z_end rồi thu nhỏ về z_start (khám phá/vĩ đại)
         zoompan = (

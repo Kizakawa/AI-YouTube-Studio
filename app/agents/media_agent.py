@@ -1479,6 +1479,15 @@ If no real entities found, return empty array: []"""
                     if u and u not in used and self._is_valid_image_url(u):
                         return c
 
+        # ── TẦNG ĐẶC BIỆT: HOOK SCENE 1 (0.0s - 2.5s) ──
+        # Với Scene 1 không phải nhân vật lịch sử cụ thể, ưu tiên tìm 1 video clip dọc (portrait 9:16)
+        # từ Pexels trước để tạo chuyển động sống động tức thì ngay giây đầu tiên, chặn đà lướt qua (Swipe Away)
+        if scene_id == 1 and not primary_entity and self.api_key:
+            best_vid = self.search_best_video_clip(primary_q)
+            if best_vid and best_vid.get("url") and best_vid["url"] not in used:
+                logger.info(f"🔥 [MediaAgent] Hook Scene 1: Đã chọn video clip động Pexels ('{primary_q}') để giữ chân người xem!")
+                return best_vid
+
         # ── TẦNG 2: Pexels HD Photos (Portrait 9:16) — Đồ vật, đời sống, phong cảnh ──
         # Tỷ lệ dọc 9:16 siêu nét (4K/HD), màu sắc điện ảnh, cực kỳ phù hợp hiệu ứng Ken Burns
         if self.api_key:

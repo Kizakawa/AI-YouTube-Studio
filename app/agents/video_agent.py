@@ -170,7 +170,8 @@ class VideoAgent:
             """Render 1 scene clip, trả về (scene_id, clip_path)."""
             clip_path = str(Path(work_dir) / f"clip_{scene.scene_id:03d}.mp4")
             duration = max(scene.actual_duration_seconds, 1.0)  # Tối thiểu 1 giây
-            motion = scene.resolved_camera_motion
+            is_hook = (scene.scene_id == 1)
+            motion = "zoom_in" if is_hook else scene.resolved_camera_motion
 
             # Kiểm tra media_path tồn tại trước khi render
             media_ok = scene.media_path and Path(scene.media_path).exists()
@@ -194,6 +195,7 @@ class VideoAgent:
             if effective_type == "image":
                 logger.info(
                     f"  Scene {scene.scene_id}: image → Ken Burns [{motion}] {duration:.1f}s"
+                    f"{' (🔥 HOOK PUNCH-IN)' if is_hook else ''}"
                 )
                 image_to_video(
                     image_path=scene.media_path,
@@ -204,10 +206,12 @@ class VideoAgent:
                     fps=job.fps,
                     zoom_effect=True,
                     camera_motion=motion,
+                    is_hook_scene=is_hook,
                 )
             elif effective_type == "video":
                 logger.info(
                     f"  Scene {scene.scene_id}: video → trim {duration:.1f}s"
+                    f"{' (🔥 HOOK VIDEO CLIP)' if is_hook else ''}"
                 )
                 trim_video(
                     input_path=scene.media_path,
@@ -231,6 +235,7 @@ class VideoAgent:
                     fps=job.fps,
                     zoom_effect=True,
                     camera_motion=motion,
+                    is_hook_scene=is_hook,
                 )
 
             return scene.scene_id, clip_path
