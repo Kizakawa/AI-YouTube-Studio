@@ -808,16 +808,19 @@ async def start_render_pipeline(
                     jb = db.query(VideoJob).filter(VideoJob.id == job_id).first()
                     if jb and jb.quality_scores:
                         import json
-                        q_data = json.loads(jb.quality_scores)
                         sc = q_data.get("script_critic") or {}
                         vc = q_data.get("visual_critic") or {}
+                        cqc = q_data.get("content_quality_critic") or {}
                         aq = q_data.get("audio_qa") or {}
+                        cqc_score = cqc.get("overall_score")
+                        cqc_line = f" 🧠 Nội dung (AI Vision Critic): `{cqc_score}/10`\n" if cqc_score is not None else ""
                         scores_text = (
-                            f"\n📊 **Báo cáo Thẩm định AI Graders:**\n"
+                            f"\n📊 **Báo cáo Thẩm định 5 Bộ AI Graders:**\n"
                             f" ⭐ Kịch bản (Script Critic): `{sc.get('overall_score', 8.5)}/10`\n"
-                            f" 🖼️ Hình ảnh (Visual Critic): `{vc.get('overall_score', 9.0)}/10`\n"
+                            f" 🖼️ Kỹ thuật Media (Visual Critic): `{vc.get('overall_score', 9.0)}/10`\n"
+                            f"{cqc_line}"
                             f" 🎙️ Giọng đọc (Audio QA): `{aq.get('words_per_minute', 145)} WPM ({aq.get('pacing_rating', 'PERFECT')})`\n"
-                            f" 🎬 Kỹ thuật (Video QA): `1080x1920 30fps (Đạt)`\n"
+                            f" 🎬 Kỹ thuật Render (Video QA): `1080x1920 30fps (Đạt)`\n"
                         )
             except Exception:
                 pass

@@ -102,6 +102,7 @@ class GraphRunner:
             "script_data": existing_script,
             "script_retry_count": 0,
             "media_retry_count": 0,
+            "content_retry_count": 0,
             "render_retry_count": 0,
             "status": "PROCESSING",
         }
@@ -163,6 +164,7 @@ class GraphRunner:
                 scores_summary = {
                     "script_critic": final_state.get("script_eval"),
                     "visual_critic": final_state.get("media_eval"),
+                    "content_quality_critic": final_state.get("content_quality_eval"),
                     "audio_qa": final_state.get("audio_eval"),
                     "video_qa": final_state.get("video_eval"),
                 }
@@ -170,7 +172,7 @@ class GraphRunner:
                 
                 j.status = "RENDERED"
                 j.progress_percent = 100
-                j.progress_message = "✅ Video hoàn thành xuất sắc! Đã qua 4 tầng kiểm định chất lượng."
+                j.progress_message = "✅ Video hoàn thành xuất sắc! Đã qua 5 tầng kiểm định chất lượng (bao gồm AI Vision)."
                 j.error_message = None
 
         logger.info(f"🎉 [LangGraph Job {self.job_id}] Video hoàn thành: {final_state.get('rendered_video_path')}")

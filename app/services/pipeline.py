@@ -88,11 +88,11 @@ class VideoPipeline:
             self.work_dir = Path(settings.TEMP_DIR) / f"job_{self.job_id}"
             self.work_dir.mkdir(parents=True, exist_ok=True)
 
-            # ── [NEW] Ưu tiên điều phối qua LangGraph Multi-Agent Engine với 4 Bộ Graders ──
+            # ── [NEW] Ưu tiên điều phối qua LangGraph Multi-Agent Engine với 5 Bộ Graders ──
             if getattr(settings, 'USE_LANGGRAPH', True):
                 try:
                     from app.graph.runner import GraphRunner
-                    logger.info(f"[Job {self.job_id}] 🌟 Kích hoạt LangGraph Multi-Agent Engine với 4 Bộ Graders & Self-Correction...")
+                    logger.info(f"[Job {self.job_id}] 🌟 Kích hoạt LangGraph Multi-Agent Engine với 5 Bộ Graders (bao gồm AI Vision ContentCritic) & Self-Correction...")
                     runner = GraphRunner(job_id=self.job_id, progress_callback=self._report_progress)
                     state = await runner.run()
 

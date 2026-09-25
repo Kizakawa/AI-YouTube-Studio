@@ -1,5 +1,12 @@
 """
 app.graph.nodes.media_nodes — Node tìm kiếm, thẩm định & sửa chữa media trong LangGraph.
+
+Bao gồm:
+- node_fetch_media: Thu thập tư liệu đa nguồn cho từng cảnh.
+- node_evaluate_media: Kiểm tra KỸ THUẬT file (VisualCritic rule-based).
+- node_refine_media: Sửa chữa file lỗi kỹ thuật.
+- node_content_quality_check: Đánh giá NỘI DUNG ảnh bằng AI Vision (ContentQualityCritic).
+- node_refine_content: Thay thế ảnh có nội dung kém chất lượng dựa trên gợi ý AI.
 """
 import asyncio
 import logging
@@ -10,6 +17,7 @@ from app.schemas.contracts import ScriptContract, SceneContract
 from app.agents.media_agent import MediaAgent, detect_real_entity
 from app.agents.image_agent import ImageAgent
 from app.graph.evaluators.visual_critic import VisualCritic
+from app.graph.evaluators.content_quality_critic import ContentQualityCritic
 from app.graph.state import VideoWorkflowState
 
 logger = logging.getLogger(__name__)
@@ -173,7 +181,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
 
 def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
-    """Node Visual Critic thẩm định chất lượng hình ảnh & độ khớp nhân vật."""
+    """Node Visual Critic thẩm định chất lượng KỸ THUẬT hình ảnh (file, resolution, hash)."""
     scenes_media = state.get("scenes_media", [])
     primary_entity = state.get("primary_entity")
 
@@ -181,7 +189,7 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
     eval_report = critic.evaluate_media(scenes_media=scenes_media, primary_entity=primary_entity)
 
     logger.info(
-        f"🖼️ [VisualCritic] Điểm media: {eval_report.overall_score}/10 | "
+        f"🖼️ [VisualCritic] Điểm kỹ thuật media: {eval_report.overall_score}/10 | "
         f"Passed: {eval_report.passed} | Lỗi: {len(eval_report.failed_scene_ids)} cảnh"
     )
 
@@ -189,12 +197,12 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
         "media_eval": eval_report.model_dump(),
         "current_step": "MEDIA_EVALUATED",
         "progress_percent": 70,
-        "progress_message": f"Thẩm định hình ảnh: {eval_report.overall_score}/10 ({'Đạt chuẩn' if eval_report.passed else f'Cần sửa {len(eval_report.failed_scene_ids)} cảnh'})",
+        "progress_message": f"Thẩm định kỹ thuật hình ảnh: {eval_report.overall_score}/10 ({'Đạt chuẩn' if eval_report.passed else f'Cần sửa {len(eval_report.failed_scene_ids)} cảnh'})",
     }
 
 
 async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
-    """Node tự động sửa chữa các cảnh bị đánh giá FAIL (thay thế ảnh mới hoặc sinh ảnh AI)."""
+    """Node tự động sửa chữa các cảnh bị đánh giá FAIL kỹ thuật (thay thế ảnh mới hoặc sinh ảnh AI)."""
     scenes_media = list(state.get("scenes_media", []))
     media_eval = state.get("media_eval", {})
     failed_ids = media_eval.get("failed_scene_ids", [])
@@ -204,7 +212,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
     retry_count = state.get("media_retry_count", 0) + 1
 
     image_agent = ImageAgent()
-    logger.info(f"🔄 [LangGraph] Tự động sửa chữa media cho các cảnh: {failed_ids} (Lần {retry_count})")
+    logger.info(f"🔄 [LangGraph] Tự động sửa chữa media kỹ thuật cho các cảnh: {failed_ids} (Lần {retry_count})")
 
     for item in scenes_media:
         if item.get("scene_id") in failed_ids:
@@ -235,5 +243,178 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
         "scenes_media": scenes_media,
         "media_retry_count": retry_count,
         "current_step": "MEDIA_REFINED",
-        "progress_message": f"Đã tự động sửa lại {len(failed_ids)} cảnh media chưa đạt",
+        "progress_message": f"Đã tự động sửa lại {len(failed_ids)} cảnh media kỹ thuật chưa đạt",
     }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# NỘI DUNG QUALITY NODES — Sử dụng AI Vision để đánh giá & sửa chữa nội dung
+# ──────────────────────────────────────────────────────────────────────────────
+
+def node_content_quality_check(state: VideoWorkflowState) -> Dict[str, Any]:
+    """
+    Node AI Vision Critic — phân tích NỘI DUNG hình ảnh bằng Gemini Vision.
+    
+    Kiểm tra:
+    1. Ảnh có liên quan đến lời thoại (relevance) không?
+    2. Nhân vật/sự vật có đúng (entity_accuracy) không?
+    3. Bối cảnh lịch sử có phù hợp (historical_fidelity) không?
+    4. Chất lượng thị giác (visual_quality) có đạt không?
+    
+    Khác với VisualCritic (rule-based), node này NHÌN THẬT vào ảnh bằng AI.
+    """
+    scenes_media = state.get("scenes_media", [])
+    primary_entity = state.get("primary_entity")
+
+    critic = ContentQualityCritic()
+    report = critic.evaluate_content_quality(
+        scenes_media=scenes_media,
+        primary_entity=primary_entity,
+        max_ai_checks=6,
+    )
+
+    logger.info(
+        f"🧠 [ContentQualityCritic] Điểm nội dung AI: {report.overall_score}/10 | "
+        f"Passed: {report.passed} | AI đã kiểm tra: {report.ai_scenes_checked} cảnh | "
+        f"Lỗi nội dung: {len(report.failed_scene_ids)} cảnh"
+    )
+
+    if report.failed_scene_ids:
+        for s in report.scene_scores:
+            if s.scene_id in report.failed_scene_ids:
+                logger.warning(
+                    f"  ⚠️ Cảnh {s.scene_id} ({s.verdict}): "
+                    f"Relevance={s.relevance_score}, Entity={s.entity_accuracy_score} | "
+                    f"Issues: {'; '.join(s.issues)} | "
+                    f"Gợi ý: {s.replacement_suggestion}"
+                )
+
+    return {
+        "content_quality_eval": report.model_dump(),
+        "current_step": "CONTENT_QUALITY_CHECKED",
+        "progress_percent": 75,
+        "progress_message": (
+            f"Thẩm định nội dung AI: {report.overall_score}/10 "
+            f"({'Đạt chuẩn' if report.passed else f'Cần cải thiện {len(report.failed_scene_ids)} cảnh'})"
+        ),
+    }
+
+
+async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
+    """
+    Node tự động thay thế ảnh có NỘI DUNG kém — dựa trên gợi ý AI Vision.
+    
+    Khác với node_refine_media (sửa file hỏng kỹ thuật):
+    - Sử dụng replacement_suggestion từ ContentQualityCritic để tìm ảnh thay thế phù hợp hơn.
+    - Ưu tiên tìm ảnh tư liệu thực tế trước, sau đó mới dùng AI Image Generation.
+    """
+    scenes_media = list(state.get("scenes_media", []))
+    content_eval = state.get("content_quality_eval", {})
+    failed_ids = content_eval.get("failed_scene_ids", [])
+    primary_entity = state.get("primary_entity")
+    work_dir = Path(state.get("work_dir", "storage/cache"))
+    media_dir = work_dir / "media"
+    content_retry = state.get("content_retry_count", 0) + 1
+
+    # Thu thập gợi ý thay thế từ AI
+    suggestions = {}
+    for score in content_eval.get("scene_scores", []):
+        if score.get("scene_id") in failed_ids and score.get("replacement_suggestion"):
+            suggestions[score["scene_id"]] = score["replacement_suggestion"]
+
+    image_agent = ImageAgent()
+    media_agent = MediaAgent()
+    
+    logger.info(
+        f"🔄 [ContentRefine] Tự sửa nội dung cho {len(failed_ids)} cảnh "
+        f"(Lần {content_retry}) dựa trên gợi ý AI Vision"
+    )
+
+    for item in scenes_media:
+        scene_id = item.get("scene_id")
+        if scene_id not in failed_ids:
+            continue
+
+        kw = item.get("visual_keyword", "")
+        narr = item.get("narration", "")
+        suggestion = suggestions.get(scene_id, kw)
+        replaced = False
+
+        # Chiến lược 1: Tìm ảnh Wikipedia/Wikimedia với từ khoá gợi ý
+        if primary_entity and not replaced:
+            try:
+                search_query = f"{primary_entity} {suggestion}" if suggestion else primary_entity
+                wiki_img = await asyncio.to_thread(
+                    media_agent.search_wikipedia_entity_image, search_query
+                )
+                if wiki_img and wiki_img.get("url"):
+                    url = wiki_img["url"]
+                    ext = ".jpg" if "jpg" in url.lower() else ".png"
+                    out = str(media_dir / f"scene_{scene_id:03d}_content_fix{ext}")
+                    await asyncio.to_thread(media_agent.download_file, url, out)
+                    if Path(out).exists() and Path(out).stat().st_size > 3000:
+                        item["media_path"] = out
+                        item["media_type"] = "image"
+                        replaced = True
+                        logger.info(f"Scene {scene_id}: ✅ Thay bằng ảnh tư liệu Wikipedia")
+            except Exception as e:
+                logger.debug(f"Scene {scene_id}: Wiki search for content fix failed: {e}")
+
+        # Chiến lược 2: Openverse archival search với gợi ý
+        if not replaced:
+            try:
+                search_q = suggestion if suggestion else kw
+                ov_items = await asyncio.to_thread(media_agent.search_openverse, search_q, 3)
+                if ov_items:
+                    ov_url = ov_items[0].get("url")
+                    ext = ".jpg" if "jpg" in ov_url.lower() else ".png"
+                    out = str(media_dir / f"scene_{scene_id:03d}_content_ov{ext}")
+                    await asyncio.to_thread(media_agent.download_file, ov_url, out)
+                    if Path(out).exists() and Path(out).stat().st_size > 3000:
+                        item["media_path"] = out
+                        item["media_type"] = "image"
+                        replaced = True
+                        logger.info(f"Scene {scene_id}: ✅ Thay bằng ảnh Openverse archival")
+            except Exception:
+                pass
+
+        # Chiến lược 3: AI Image Generation với prompt tinh chỉnh từ gợi ý
+        if not replaced:
+            try:
+                ai_path = str(media_dir / f"scene_{scene_id:03d}_content_ai.jpg")
+                if primary_entity:
+                    prompt = (
+                        f"Historically accurate dramatic portrait of {primary_entity}, "
+                        f"{suggestion or kw}, period-correct clothing and setting, "
+                        f"8k cinematic photorealistic, sharp focus, documentary style"
+                    )
+                else:
+                    prompt = (
+                        f"Dramatic cinematic photorealistic: {suggestion or kw}, "
+                        f"8k sharp focus, professional documentary photography"
+                    )
+                res = await asyncio.to_thread(image_agent.generate_scene_image, prompt, ai_path)
+                if res and Path(res).exists() and Path(res).stat().st_size > 2000:
+                    item["media_path"] = res
+                    item["media_type"] = "image"
+                    replaced = True
+                    logger.info(f"Scene {scene_id}: ✅ Thay bằng ảnh AI với prompt tinh chỉnh")
+            except Exception as e:
+                logger.warning(f"Scene {scene_id}: Content refine AI generation error: {e}")
+
+        if replaced:
+            logger.info(f"  📝 Gợi ý AI đã dùng: '{suggestion}'")
+        else:
+            logger.warning(f"  ❌ Scene {scene_id}: Không thể tìm ảnh thay thế phù hợp")
+
+    return {
+        "scenes_media": scenes_media,
+        "content_retry_count": content_retry,
+        "current_step": "CONTENT_REFINED",
+        "progress_percent": 78,
+        "progress_message": (
+            f"Đã tinh chỉnh nội dung {len(failed_ids)} cảnh "
+            f"dựa trên phân tích AI Vision (Lần {content_retry})"
+        ),
+    }
+
