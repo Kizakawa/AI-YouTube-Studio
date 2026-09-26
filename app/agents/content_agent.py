@@ -204,10 +204,20 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
      * Scene 1 spoken text MUST be strictly 5 to 8 words, delivered with high stakes and immediate urgency.
      * Scene 1 visual_keyword MUST be visually arresting and intense: e.g. "intense eye contact staring dramatic lighting" or "shocking whisper dark cinematic shadows" — NEVER a passive, sad or boring scene.
 
-3. THE INFINITE SHORTS LOOP (SEAMLESS REPLAY MULTIPLIER):
-   - The final scene (Scene 6/7/8) MUST NOT have a standard outro or goodbye ("Thanks for watching", "Subscribe", "Comment below").
-   - Instead, the final sentence MUST end on an open cliffhanger, preposition, or setup clause that syntactically flows directly back into the opening Hook sentence of Scene 1.
-   - When the YouTube Shorts player loops the video, the viewer should not realize it ended.
+3. PSYCHOLOGICAL VIRAL CALL TO ACTION (CTA) & SEAMLESS INFINITE LOOP:
+   - CRITICAL INSIGHT: High retention (150-160%+) proves viewers are hooked, but without an active Call To Action, viewers loop passively with 0 likes, 0 comments, and 0 subscribers, stalling algorithmic growth.
+   - The final scene (Scene 6/7/8) MUST integrate a high-converting, psychologically compelling Call To Action that connects directly into the loop:
+     Choose one of these 3 viral CTA formulas tailored to '{channel_niche}':
+     a) The "Double Tap & Protect" (Like & Subscribe Multiplier):
+        "Double tap if you've seen this red flag, and subscribe to protect your mind... because..." -> [seamlessly loops into Scene 1 hook: "...these are the 3 signs they're JUST using you!"]
+        (Tiếng Việt: "Nhấn thích nếu bạn từng gặp điều này, và đăng ký kênh để luôn tỉnh táo... bởi vì..." -> [nối liền vào Hook cảnh 1])
+     b) The "Debate in Comments" (Algorithmic Comment Rocket):
+        "Which of these signs hit closest to home? Drop a 1, 2, or 3 below, and follow for more... because..." -> [loops into Scene 1 hook]
+        (Tiếng Việt: "Bạn thấy dấu hiệu nào nguy hiểm nhất? Để lại số 1, 2 hay 3 dưới bình luận, và theo dõi kênh ngay... bởi vì..." -> [nối liền vào Hook cảnh 1])
+     c) The "Curiosity Part 2 / Stay Sharp" (Subscriber Magnet):
+        "Save this video before you forget, and subscribe so you don't miss Part 2... because..." -> [loops into Scene 1 hook]
+        (Tiếng Việt: "Lưu lại video này để tự bảo vệ bản thân, và đăng ký kênh đón xem phần 2... bởi vì..." -> [nối liền vào Hook cảnh 1])
+   - HARD RULE: The very last 2-3 words of the spoken narration MUST be an open bridge/connector clause (e.g. "...because...", "...which is why...", "...và đó là lý do vì sao...", "...bởi vì...") so that when YouTube loops the video, it forms one single continuous grammatically seamless sentence into Scene 1!
 
 4. CONCRETE PHYSICAL STOCK QUERIES (NO ABSTRACT WORDS):
    - stock_query is 2-3 English search words strictly for Pexels stock video/photo search.
@@ -323,7 +333,7 @@ HARD RETENTION RULES:
 2. Fast-paced, punchy, concise sentences: strictly 20-28 seconds total (50-75 words, 6-8 scenes, 2.5-3.5s per scene).
 3. NO ABSTRACT stock_query: 2-3 English CONCRETE PHYSICAL NOUNS only for Pexels.
    NO "psychology", "minimalism", "authority", "power". Use physical objects/actions only.
-4. THE INFINITE SHORTS LOOP: The final scene must seamlessly connect back into Scene 1's hook.
+4. PSYCHOLOGICAL VIRAL CTA & SEAMLESS INFINITE LOOP: The final scene MUST combine a high-converting call to action (Double tap / Drop a comment / Subscribe for Part 2) with an open bridge clause ("...because...") that seamlessly connects back into Scene 1's hook.
 5. NO LITERAL METAPHORS in visual_prompt: show the actual phenomenon, not metaphorical words.
 6. NO DUPLICATE SCENES: every visual_prompt must describe a visually distinct subject and setting.
 7. Return ONLY valid JSON:
