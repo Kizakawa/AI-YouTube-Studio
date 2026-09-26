@@ -16,6 +16,8 @@ from typing import Dict, Any, List
 from app.schemas.contracts import ScriptContract, SceneContract
 from app.agents.media_agent import MediaAgent, detect_real_entity, match_best_pool_photo, clean_scene_search_query
 from app.agents.image_agent import ImageAgent
+from app.agents.visual_director_agent import VisualDirectorAgent
+from app.agents.ai_video_agent import AIVideoAgent
 from app.graph.evaluators.visual_critic import VisualCritic
 from app.graph.evaluators.content_quality_critic import ContentQualityCritic
 from app.graph.state import VideoWorkflowState
@@ -23,15 +25,50 @@ from app.graph.state import VideoWorkflowState
 logger = logging.getLogger(__name__)
 
 
+async def node_direct_visual_strategy(state: VideoWorkflowState) -> Dict[str, Any]:
+    """
+    Node Đạo Diễn Hình Ảnh (Visual Director Agent).
+    Phân tích toàn diện ý tưởng, nhân vật và từng phân cảnh để ra quyết định:
+    - Khi nào dùng ảnh tư liệu thực tế (nhân vật có thật, sự kiện lịch sử).
+    - Khi nào dùng video B-roll chuyển động thực tế (hành động, con người, đường phố).
+    - Khi nào dùng video AI ảo (chủ đề huyền bí, giả tưởng, vũ trụ trừu tượng).
+    - Khi nào dùng ảnh nghệ thuật AI 8K.
+    """
+    topic = state.get("topic", "")
+    script_data = state.get("script_data", {})
+    primary_entity = state.get("primary_entity")
+    entity_type = state.get("entity_type", "general")
+    channel_style = state.get("channel_style", "cinematic")
+    scenes = script_data.get("scenes", [])
+
+    director = VisualDirectorAgent()
+    plan = await asyncio.to_thread(
+        director.create_visual_plan,
+        topic=topic,
+        scenes=scenes,
+        primary_entity=primary_entity,
+        entity_type=entity_type,
+        channel_niche=channel_style,
+    )
+
+    strategies_summary = ", ".join([f"Cảnh {s.get('scene_id')}: {s.get('strategy')}" for s in plan.get("scenes_strategy", [])[:4]])
+    logger.info(f"🎬 [VisualDirector] Đã duyệt chiến lược thị giác ({plan.get('topic_classification')}): {strategies_summary}...")
+
+    return {
+        "visual_plan": plan,
+        "current_step": "VISUAL_STRATEGY_PLANNED",
+        "progress_percent": 55,
+        "progress_message": f"🎬 Đạo diễn thị giác đã phân bổ chiến lược ({plan.get('topic_classification', 'Tự động')}): {len(plan.get('scenes_strategy', []))} cảnh",
+    }
+
+
 async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     """
-    Node thu thập tư liệu hình ảnh/video chất lượng cao cho từng phân cảnh.
-    
-    Quy trình tìm nạp thông minh 4 tầng:
-      Tầng 1: Semantic Pool Matcher (Khớp ngữ nghĩa ảnh tài liệu từ entity_media_pool)
-      Tầng 2: Multi-Source Scene Search (Wikipedia -> Wikimedia Commons -> Pexels HD Photos -> Openverse)
-      Tầng 3: AI Image Generation (Style thích ứng theo từng chủ đề kịch bản)
-      Tầng 4: Pexels Video (Chỉ dùng cho phong cảnh/không gian/thành phố trừu tượng)
+    Node thu thập tư liệu hình ảnh / video chất lượng cao dựa trên chỉ đạo của Visual Director:
+      1. REAL_DOCUMENTARY : Tìm ảnh tư liệu lịch sử thật (Wikipedia / Wikimedia / Archive)
+      2. STOCK_VIDEO      : Tìm video clip chuyển động 9:16 (Pexels Video)
+      3. AI_VIDEO         : Sinh video AI ảo / huyền bí bằng AIVideoAgent
+      4. AI_IMAGE         : Sinh ảnh nghệ thuật điện ảnh 8K bằng ImageAgent
     """
     script_data = state.get("script_data", {})
     primary_entity = state.get("primary_entity")
@@ -44,6 +81,25 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     script = ScriptContract(**script_data)
     media_agent = MediaAgent()
     image_agent = ImageAgent()
+    ai_video_agent = AIVideoAgent()
+
+    # Lấy bản kế hoạch từ VisualDirectorAgent (nếu chưa có thì tự động tạo nhanh)
+    visual_plan = state.get("visual_plan")
+    if not visual_plan:
+        director = VisualDirectorAgent()
+        visual_plan = await asyncio.to_thread(
+            director.create_visual_plan,
+            topic=state.get("topic", ""),
+            scenes=[s.model_dump() for s in script.scenes],
+            primary_entity=primary_entity,
+            entity_type=entity_type,
+            channel_niche=state.get("channel_style", "cinematic"),
+        )
+
+    strategy_map = {
+        s.get("scene_id"): s
+        for s in visual_plan.get("scenes_strategy", [])
+    }
 
     scenes_media = []
     used_pool_urls = set()
@@ -55,134 +111,136 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         vp = getattr(scene, 'visual_prompt', None)
         kw = scene.visual_keyword or ""
 
-        # Scene preference từ kịch bản hoặc người dùng: 'auto' | 'video' | 'ai_image' | 'photo'
-        scene_pref = getattr(scene, 'media_type', None) or "auto"
+        # Lấy chiến lược do Visual Director chỉ định
+        sc_strat = strategy_map.get(scene.scene_id, {})
+        chosen_strategy = sc_strat.get("strategy", "STOCK_VIDEO")
+        rationale = sc_strat.get("rationale", "")
+        search_query = sc_strat.get("search_query") or sq or kw
+        ai_prompt = sc_strat.get("ai_prompt") or vp or kw
+        camera_motion = sc_strat.get("camera_motion", "zoom_in")
+        sfx_cue = sc_strat.get("sfx_cue", "whoosh" if idx == 0 else "hit")
 
-        prefer_video = False
-        prefer_ai = False
-        prefer_photo = False
+        # Thời lượng ước lượng của phân cảnh (giây)
+        dur = float(getattr(scene, 'estimated_seconds', 3.5) or 3.5)
+        # Nếu có audio duration từ audio_nodes thì dùng chính xác
+        scenes_audio = state.get("scenes_audio", [])
+        if scenes_audio:
+            sc_audio = next((a for a in scenes_audio if a.get("scene_id") == scene.scene_id), None)
+            if sc_audio and sc_audio.get("audio_duration_ms"):
+                dur = max(float(sc_audio["audio_duration_ms"]) / 1000.0, 1.0)
 
-        if scene_pref == "video":
-            prefer_video = True
-        elif scene_pref == "ai_image":
-            prefer_ai = True
-        elif scene_pref == "photo":
-            prefer_photo = True
-        else:  # "auto" hoặc None: Kích hoạt chính sách Smart Hybrid (Golden Retention Mix)
-            if primary_entity:
-                prefer_photo = True
-            else:
-                # ── CHÍNH SÁCH SMART HYBRID (GOLDEN RETENTION MIX) ──
-                # Cảnh 1 (Hook mở màn 0-3s): Ưu tiên Video động Pexels để chặn đà lướt qua (Swipe-Away)
-                # Cảnh chẵn (2, 4, 6) hoặc có từ khóa chuyển động: Ưu tiên Video clip động thực tế 9:16
-                # Cảnh lẻ (3, 5): Ưu tiên Ảnh AI điện ảnh 8K theo visual_prompt
-                motion_keywords = {
-                    "walk", "run", "running", "moving", "movement", "crowd", "people", "city", "street",
-                    "traffic", "night", "dark", "shadow", "silhouette", "rain", "storm", "fire", "water", "sea",
-                    "clock", "time", "hourglass", "hands", "typing", "money", "cash", "brain", "mind",
-                    "space", "galaxy", "stars", "looking", "staring", "whisper", "talking", "smoke",
-                    "candle", "door", "window", "alone", "thinking", "eye", "eyes", "falling", "fight"
-                }
-                text_cue = f"{scene.narration} {kw} {sq or ''}".lower()
-                has_motion = any(mk in text_cue for mk in motion_keywords)
+        logger.info(f"🎯 [Scene {scene.scene_id}] Áp dụng chiến lược '{chosen_strategy}' ({rationale[:50]}...)")
 
-                if scene.scene_id == 1:
-                    prefer_video = True
-                elif has_motion or (idx % 2 == 1):
-                    prefer_video = True
-                else:
-                    prefer_ai = True
-
-        # ── TẦNG 0: Ưu tiên AI Image nếu prefer_ai được bật và có visual_prompt chất lượng ──
-        if prefer_ai and vp and len(vp.strip()) > 15:
-            try:
-                ai_hook_path = str(media_dir / f"scene_{scene.scene_id:03d}_ai.jpg")
-                res_img = await asyncio.to_thread(
-                    image_agent.generate_scene_image,
-                    vp,
-                    ai_hook_path,
-                    "9:16",
-                    "cinematic",
-                    scene.scene_id,
-                    vp,
-                )
-                if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 2000:
-                    media_path = ai_hook_path
-                    media_type = "image"
-                    logger.info(f"Scene {scene.scene_id}: ✨ Tạo thành công ảnh AI điện ảnh: {vp[:45]}...")
-            except Exception as e:
-                logger.warning(f"Scene {scene.scene_id} AI Image error: {e}")
-
-        # ── TẦNG 1: SEMANTIC POOL MATCHER (DOCUMENTARY MODE) ──
-        # Khớp ngữ nghĩa theo năm, sự kiện, từ khóa cụ thể thay vì lấy tuần tự
-        if not media_path and primary_entity and entity_media_pool:
-            best_pool_photo = match_best_pool_photo(
-                scene_narration=scene.narration,
-                scene_kw=f"{kw} {sq or ''}",
-                pool=entity_media_pool,
-                used_urls=used_pool_urls,
-                threshold=25,
-            )
-            if best_pool_photo and best_pool_photo.get("url"):
-                cand_url = best_pool_photo["url"]
-                try:
-                    ext = ".jpg" if any(x in cand_url.lower() for x in ["jpg", "jpeg"]) else ".png"
-                    output = str(media_dir / f"scene_{scene.scene_id:03d}_doc{ext}")
-                    await asyncio.to_thread(media_agent.download_file, cand_url, output)
-                    if Path(output).exists() and Path(output).stat().st_size > 3000:
-                        used_pool_urls.add(cand_url)
-                        media_path = output
-                        media_type = "image"
-                        logger.info(
-                            f"Scene {scene.scene_id}: ✅ Khớp ngữ nghĩa ảnh tài liệu: "
-                            f"{best_pool_photo.get('title', '')[:50]}"
-                        )
-                except Exception as ex:
-                    logger.debug(f"Scene {scene.scene_id}: Pool photo download error: {ex}")
-
-        # ── TẦNG 2: MULTI-SOURCE SCENE SEARCH (Pexels 9:16 Video, Wikipedia, Pexels Photos, Openverse) ──
-        if not media_path:
-            try:
-                candidate_media = await asyncio.to_thread(
-                    media_agent.search_scene_media_multi_source,
+        # ══════════════════════════════════════════════════════════════════════
+        # CHIẾN LƯỢC 1: REAL_DOCUMENTARY (Ảnh tư liệu / Nhân vật / Di tích thật)
+        # ══════════════════════════════════════════════════════════════════════
+        if chosen_strategy == "REAL_DOCUMENTARY":
+            # A. Thử Semantic Pool Matcher
+            if primary_entity and entity_media_pool:
+                best_pool_photo = match_best_pool_photo(
                     scene_narration=scene.narration,
-                    visual_keyword=kw,
-                    stock_query=sq,
-                    visual_prompt=vp,
-                    primary_entity=primary_entity,
-                    entity_type=entity_type,
+                    scene_kw=f"{kw} {search_query}",
+                    pool=entity_media_pool,
                     used_urls=used_pool_urls,
-                    scene_id=scene.scene_id,
-                    prefer_video=prefer_video,
-                    prefer_photo=prefer_photo,
+                    threshold=25,
                 )
-                if candidate_media and candidate_media.get("url"):
-                    cand_url = candidate_media["url"]
-                    c_src = candidate_media.get("source", "web")
-                    c_type = candidate_media.get("media_type", "image")
-                    ext = ".mp4" if c_type == "video" else (".jpg" if any(x in cand_url.lower() for x in ["jpg", "jpeg"]) else ".png")
-                    output = str(media_dir / f"scene_{scene.scene_id:03d}_{c_src}{ext}")
-                    await asyncio.to_thread(media_agent.download_file, cand_url, output)
-                    if Path(output).exists() and Path(output).stat().st_size > 3000:
-                        used_pool_urls.add(cand_url)
-                        media_path = output
-                        media_type = c_type
-                        logger.info(
-                            f"Scene {scene.scene_id}: ✅ Tải thành công từ {c_src} "
-                            f"({candidate_media.get('title', '')[:45]}) [{c_type.upper()}]"
-                        )
-            except Exception as e:
-                logger.debug(f"Scene {scene.scene_id}: Multi-source search error: {e}")
+                if best_pool_photo and best_pool_photo.get("url"):
+                    cand_url = best_pool_photo["url"]
+                    try:
+                        ext = ".jpg" if any(x in cand_url.lower() for x in ["jpg", "jpeg"]) else ".png"
+                        output = str(media_dir / f"scene_{scene.scene_id:03d}_doc{ext}")
+                        await asyncio.to_thread(media_agent.download_file, cand_url, output)
+                        if Path(output).exists() and Path(output).stat().st_size > 3000:
+                            used_pool_urls.add(cand_url)
+                            media_path = output
+                            media_type = "image"
+                            logger.info(f"Scene {scene.scene_id}: 📸 [Tư liệu thật] Khớp từ Pool: {best_pool_photo.get('title', '')[:45]}")
+                    except Exception as ex:
+                        logger.debug(f"Scene {scene.scene_id}: Pool photo download error: {ex}")
 
-        # ── TẦNG 3: AI IMAGE GENERATION (Thích ứng theo chủ đề, tỷ lệ dọc 9:16) ──
-        if not media_path:
+            # B. Thử Wikipedia & Wikimedia Commons
+            if not media_path:
+                try:
+                    candidate_media = await asyncio.to_thread(
+                        media_agent.search_scene_media_multi_source,
+                        scene_narration=scene.narration,
+                        visual_keyword=kw,
+                        stock_query=search_query,
+                        visual_prompt=vp,
+                        primary_entity=primary_entity,
+                        entity_type=entity_type,
+                        used_urls=used_pool_urls,
+                        scene_id=scene.scene_id,
+                        prefer_video=False,
+                        prefer_photo=True,
+                    )
+                    if candidate_media and candidate_media.get("url"):
+                        cand_url = candidate_media["url"]
+                        c_src = candidate_media.get("source", "web")
+                        ext = ".jpg" if any(x in cand_url.lower() for x in ["jpg", "jpeg"]) else ".png"
+                        output = str(media_dir / f"scene_{scene.scene_id:03d}_{c_src}{ext}")
+                        await asyncio.to_thread(media_agent.download_file, cand_url, output)
+                        if Path(output).exists() and Path(output).stat().st_size > 3000:
+                            used_pool_urls.add(cand_url)
+                            media_path = output
+                            media_type = "image"
+                            logger.info(f"Scene {scene.scene_id}: 📸 [Tư liệu thật] Tải từ {c_src}: {candidate_media.get('title', '')[:40]}")
+                except Exception as e:
+                    logger.debug(f"Scene {scene.scene_id}: Doc search error: {e}")
+
+        # ══════════════════════════════════════════════════════════════════════
+        # CHIẾN LƯỢC 2: AI_VIDEO (Video AI ảo / Giả tưởng / Huyền bí / Siêu thực)
+        # ══════════════════════════════════════════════════════════════════════
+        elif chosen_strategy == "AI_VIDEO":
             try:
-                ai_img_path = str(media_dir / f"scene_{scene.scene_id:03d}_ai.jpg")
-                clean_kw = clean_scene_search_query(kw, max_words=4)
-                prompt_to_use = vp if (vp and len(vp.strip()) > 10) else (clean_kw or "cinematic documentary")
-                if primary_entity and not vp:
-                    prompt_to_use = f"Historical authentic documentary portrait of {primary_entity}, {clean_kw}, 8k"
+                ai_vid_path = str(media_dir / f"scene_{scene.scene_id:03d}_ai_video.mp4")
+                prompt_ai = ai_prompt if len(ai_prompt.strip()) > 10 else f"Mysterious glowing {kw}, 8k vertical cinematic video"
+                res_vid = await ai_video_agent.generate_scene_video(
+                    prompt=prompt_ai,
+                    output_path=ai_vid_path,
+                    duration_seconds=dur,
+                    scene_id=scene.scene_id,
+                    camera_motion=camera_motion,
+                    visual_prompt=vp,
+                )
+                if res_vid and Path(res_vid).exists() and Path(res_vid).stat().st_size > 5000:
+                    media_path = res_vid
+                    media_type = "video"
+                    logger.info(f"Scene {scene.scene_id}: 🔮 [Video AI Ảo] Tạo thành công clip huyền bí ({dur:.1f}s)")
+            except Exception as e:
+                logger.warning(f"Scene {scene.scene_id}: AI Video error: {e}")
 
+        # ══════════════════════════════════════════════════════════════════════
+        # CHIẾN LƯỢC 3: STOCK_VIDEO (Video B-Roll chuyển động thực tế 9:16)
+        # ══════════════════════════════════════════════════════════════════════
+        elif chosen_strategy == "STOCK_VIDEO":
+            try:
+                best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, search_query)
+                if not best_vid and sq:
+                    best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, sq)
+                if not best_vid:
+                    clean_kw = clean_scene_search_query(kw, max_words=2)
+                    best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, clean_kw)
+
+                if best_vid and best_vid.get("url") and best_vid["url"] not in used_pool_urls:
+                    cand_url = best_vid["url"]
+                    vid_out = str(media_dir / f"scene_{scene.scene_id:03d}_pexels.mp4")
+                    await asyncio.to_thread(media_agent.download_file, cand_url, vid_out)
+                    if Path(vid_out).exists() and Path(vid_out).stat().st_size > 10000:
+                        used_pool_urls.add(cand_url)
+                        media_path = vid_out
+                        media_type = "video"
+                        logger.info(f"Scene {scene.scene_id}: 🎥 [Video B-Roll] Tải thành công video Pexels '{search_query}'")
+            except Exception as e:
+                logger.debug(f"Scene {scene.scene_id}: Pexels video search error: {e}")
+
+        # ══════════════════════════════════════════════════════════════════════
+        # CHIẾN LƯỢC 4: AI_IMAGE (Ảnh nghệ thuật AI điện ảnh 8K)
+        # ══════════════════════════════════════════════════════════════════════
+        elif chosen_strategy == "AI_IMAGE":
+            try:
+                ai_img_path = str(media_dir / f"scene_{scene.scene_id:03d}_ai_image.jpg")
+                prompt_to_use = ai_prompt if len(ai_prompt.strip()) > 10 else f"Cinematic 8k dramatic vertical photo of {kw}"
                 res_img = await asyncio.to_thread(
                     image_agent.generate_scene_image,
                     prompt_to_use,
@@ -195,11 +253,68 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 2000:
                     media_path = res_img
                     media_type = "image"
-                    logger.info(f"Scene {scene.scene_id}: ✅ Sinh ảnh AI chất lượng cao thành công")
+                    logger.info(f"Scene {scene.scene_id}: ✨ [Ảnh AI 8K] Tạo thành công ảnh điện ảnh nghệ thuật")
             except Exception as e:
                 logger.warning(f"Scene {scene.scene_id}: AI Image error: {e}")
 
-        # ── TẦNG 4: FALLBACK GRAPHIC ──
+        # ══════════════════════════════════════════════════════════════════════
+        # HỆ THỐNG DỰ PHÒNG THÔNG MINH (MULTI-TIER GRACEFUL FALLBACK)
+        # Nếu chiến lược chính ở trên chưa lấy được file, tự động fallback theo thứ tự
+        # ══════════════════════════════════════════════════════════════════════
+        if not media_path:
+            logger.info(f"Scene {scene.scene_id}: ⚠️ Chiến lược '{chosen_strategy}' chưa có file, kích hoạt Multi-Tier Fallback...")
+
+            # Fallback 1: Thử tìm ảnh Pexels HD thực tế
+            try:
+                candidate_media = await asyncio.to_thread(
+                    media_agent.search_scene_media_multi_source,
+                    scene_narration=scene.narration,
+                    visual_keyword=kw,
+                    stock_query=sq or search_query,
+                    visual_prompt=vp,
+                    primary_entity=primary_entity,
+                    entity_type=entity_type,
+                    used_urls=used_pool_urls,
+                    scene_id=scene.scene_id,
+                    prefer_video=(chosen_strategy in ("STOCK_VIDEO", "AI_VIDEO")),
+                    prefer_photo=(chosen_strategy == "REAL_DOCUMENTARY"),
+                )
+                if candidate_media and candidate_media.get("url"):
+                    cand_url = candidate_media["url"]
+                    c_src = candidate_media.get("source", "web")
+                    c_type = candidate_media.get("media_type", "image")
+                    ext = ".mp4" if c_type == "video" else (".jpg" if any(x in cand_url.lower() for x in ["jpg", "jpeg"]) else ".png")
+                    output = str(media_dir / f"scene_{scene.scene_id:03d}_{c_src}{ext}")
+                    await asyncio.to_thread(media_agent.download_file, cand_url, output)
+                    if Path(output).exists() and Path(output).stat().st_size > 3000:
+                        used_pool_urls.add(cand_url)
+                        media_path = output
+                        media_type = c_type
+            except Exception:
+                pass
+
+        # Fallback 2: Sinh ảnh AI cứu hộ
+        if not media_path:
+            try:
+                ai_img_path = str(media_dir / f"scene_{scene.scene_id:03d}_fb_ai.jpg")
+                clean_kw = clean_scene_search_query(kw, max_words=4)
+                prompt_fb = vp if (vp and len(vp.strip()) > 10) else (clean_kw or "cinematic scene")
+                res_img = await asyncio.to_thread(
+                    image_agent.generate_scene_image,
+                    prompt_fb,
+                    ai_img_path,
+                    "9:16",
+                    "cinematic",
+                    scene.scene_id,
+                    vp,
+                )
+                if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 2000:
+                    media_path = res_img
+                    media_type = "image"
+            except Exception:
+                pass
+
+        # Fallback 3: Graphic placeholder
         if not media_path:
             out_g = str(media_dir / f"scene_{scene.scene_id:03d}_graphic.png")
             from app.utils.ffmpeg_helper import create_placeholder_image
@@ -213,14 +328,18 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             "media_type": media_type,
             "visual_keyword": scene.visual_keyword,
             "visual_prompt": getattr(scene, 'visual_prompt', None),
-            "narration": scene.narration
+            "narration": scene.narration,
+            "camera_motion": camera_motion,
+            "sfx_cue": sfx_cue,
+            "visual_strategy": chosen_strategy,
+            "strategy_rationale": rationale,
         })
 
     return {
         "scenes_media": scenes_media,
         "current_step": "MEDIA_READY",
         "progress_percent": 65,
-        "progress_message": f"Đã thu thập trọn bộ media ({len(scenes_media)} cảnh)",
+        "progress_message": f"Đã thu thập trọn bộ media theo chiến lược đạo diễn ({len(scenes_media)} cảnh)",
     }
 
 

@@ -21,6 +21,7 @@ from app.graph.nodes import (
     node_refine_script,
     node_generate_audio,
     node_evaluate_audio,
+    node_direct_visual_strategy,
     node_fetch_media,
     node_evaluate_media,
     node_refine_media,
@@ -106,6 +107,7 @@ def create_video_workflow_graph() -> StateGraph:
     builder.add_node("refine_script", node_refine_script)
     builder.add_node("generate_audio", node_generate_audio)
     builder.add_node("evaluate_audio", node_evaluate_audio)
+    builder.add_node("visual_director", node_direct_visual_strategy)
     builder.add_node("fetch_media", node_fetch_media)
     builder.add_node("evaluate_media", node_evaluate_media)
     builder.add_node("refine_media", node_refine_media)
@@ -137,9 +139,10 @@ def create_video_workflow_graph() -> StateGraph:
     )
     builder.add_edge("refine_script", "evaluate_script")  # Vòng lặp phản biện
 
-    # ── Luồng Giọng đọc & QA ──
+    # ── Luồng Giọng đọc, Đạo diễn hình ảnh & Thu thập tư liệu ──
     builder.add_edge("generate_audio", "evaluate_audio")
-    builder.add_edge("evaluate_audio", "fetch_media")
+    builder.add_edge("evaluate_audio", "visual_director")
+    builder.add_edge("visual_director", "fetch_media")
 
     # ── Tầng 1: Kiểm tra KỸ THUẬT media (VisualCritic rule-based) ──
     builder.add_edge("fetch_media", "evaluate_media")

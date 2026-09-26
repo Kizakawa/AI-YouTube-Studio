@@ -151,6 +151,8 @@ class GraphRunner:
                         if sc_id in media_map:
                             sc_copy["media_path"] = media_map[sc_id].get("media_path")
                             sc_copy["media_type"] = media_map[sc_id].get("media_type")
+                            sc_copy["visual_strategy"] = media_map[sc_id].get("visual_strategy")
+                            sc_copy["strategy_rationale"] = media_map[sc_id].get("strategy_rationale")
                         if sc_id in audio_map:
                             sc_copy["audio_path"] = audio_map[sc_id].get("audio_path")
                             sc_copy["audio_duration_ms"] = audio_map[sc_id].get("duration_ms")
@@ -280,6 +282,10 @@ class GraphRunner:
                     if sc_id in media_map:
                         sc["media_path"] = media_map[sc_id].get("media_path")
                         sc["media_type"] = media_map[sc_id].get("media_type")
+                        if media_map[sc_id].get("visual_strategy"):
+                            sc["visual_strategy"] = media_map[sc_id].get("visual_strategy")
+                        if media_map[sc_id].get("strategy_rationale"):
+                            sc["strategy_rationale"] = media_map[sc_id].get("strategy_rationale")
                     if sc_id in audio_map:
                         sc["audio_path"] = audio_map[sc_id].get("audio_path")
                         sc["audio_duration_ms"] = audio_map[sc_id].get("duration_ms")

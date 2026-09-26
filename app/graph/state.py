@@ -98,6 +98,22 @@ class VideoQAReport(BaseModel):
     issues: List[str] = Field(default_factory=list)
 
 
+class SceneVisualStrategy(BaseModel):
+    scene_id: int
+    strategy: str = Field(description="REAL_DOCUMENTARY | STOCK_VIDEO | AI_VIDEO | AI_IMAGE")
+    rationale: str = Field(description="Lý do đạo diễn lựa chọn chiến lược này")
+    search_query: Optional[str] = None
+    ai_prompt: Optional[str] = None
+    camera_motion: Optional[str] = "zoom_in"
+    sfx_cue: Optional[str] = None
+
+
+class VisualPlanReport(BaseModel):
+    topic_classification: str = "DAILY_REALITY"
+    director_vision: str = ""
+    scenes_strategy: List[SceneVisualStrategy] = Field(default_factory=list)
+
+
 class EditRequest(BaseModel):
     action_type: str = Field(description="replace_media | edit_text | change_voice | remix_bgm")
     scene_id: Optional[int] = None
@@ -132,6 +148,9 @@ class VideoWorkflowState(TypedDict, total=False):
     total_audio_duration_ms: int
     subtitle_path: Optional[str]
     audio_eval: Optional[Dict[str, Any]]
+
+    # Bước 2.5: Đạo diễn Thị giác (Visual Director Agent)
+    visual_plan: Optional[Dict[str, Any]]  # VisualPlanReport dict
     
     # Bước 3: Hình ảnh / Video (Media)
     scenes_media: List[Dict[str, Any]]

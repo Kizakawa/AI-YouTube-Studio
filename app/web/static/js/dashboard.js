@@ -540,15 +540,32 @@ async function createScript() {
 }
 
 function buildScriptResultHTML(result) {
-    const scenesHTML = (result.scenes || []).map(s => `
+    const scenesHTML = (result.scenes || []).map(s => {
+        let stratBadge = '';
+        if (s.visual_strategy === 'AI_VIDEO' || s.media_type === 'ai_video') {
+            stratBadge = '<span class="badge" style="background:linear-gradient(135deg,#8b5cf6,#ec4899);color:#fff;font-size:10px;padding:2px 6px;border:none;">🔮 Video AI Ảo</span>';
+        } else if (s.visual_strategy === 'REAL_DOCUMENTARY' || s.media_type === 'photo') {
+            stratBadge = '<span class="badge badge-cyan" style="font-size:10px;padding:2px 6px;">📸 Tư Liệu Thật</span>';
+        } else if (s.visual_strategy === 'STOCK_VIDEO' || s.media_type === 'video') {
+            stratBadge = '<span class="badge badge-amber" style="font-size:10px;padding:2px 6px;">🎥 Video B-Roll</span>';
+        } else if (s.visual_strategy === 'AI_IMAGE' || s.media_type === 'ai_image') {
+            stratBadge = '<span class="badge badge-purple" style="font-size:10px;padding:2px 6px;">✨ Ảnh AI 8K</span>';
+        }
+
+        return `
         <div class="scene-item">
             <div class="scene-num">${s.scene_id}</div>
             <div class="scene-body">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                    ${stratBadge}
+                </div>
                 <div class="scene-narration">${esc(s.narration)}</div>
                 <div class="scene-keyword">🔍 ${esc(s.visual_keyword)}</div>
+                ${s.strategy_rationale ? `<div style="font-size:11px;color:#a78bfa;margin-top:2px;">🧠 Đạo diễn: ${esc(s.strategy_rationale)}</div>` : ''}
             </div>
             <div class="scene-dur">~${s.estimated_seconds}s</div>
-        </div>`).join('');
+        </div>`;
+    }).join('');
 
     return `
         <div class="script-meta">
@@ -618,21 +635,34 @@ async function openVideoDetail(jobId) {
     const scenesHTML = (data.scenes || []).map(s => {
         const isVid = (s.media_type === 'video' || (s.media_path && s.media_path.endsWith('.mp4')));
         const isAi = (s.media_type === 'ai_image' || (s.media_path && s.media_path.includes('_ai')));
-        const mediaBadge = isVid ? '<span class="badge badge-amber" style="font-size:10px;padding:2px 6px;">🎥 Video Động</span>'
-            : (isAi ? '<span class="badge badge-purple" style="font-size:10px;padding:2px 6px;">✨ Ảnh AI</span>'
-            : '<span class="badge badge-cyan" style="font-size:10px;padding:2px 6px;">📸 Ảnh Tư Liệu</span>');
+
+        let mediaBadge = '';
+        if (s.visual_strategy === 'AI_VIDEO' || (s.media_path && s.media_path.includes('ai_video'))) {
+            mediaBadge = '<span class="badge" style="background:linear-gradient(135deg,#8b5cf6,#ec4899);color:#fff;font-size:10px;padding:2px 6px;border:none;">🔮 Video AI Ảo</span>';
+        } else if (s.visual_strategy === 'REAL_DOCUMENTARY' || (s.media_path && (s.media_path.includes('_doc') || s.media_path.includes('_wiki')))) {
+            mediaBadge = '<span class="badge badge-cyan" style="font-size:10px;padding:2px 6px;">📸 Tư Liệu Thật</span>';
+        } else if (s.visual_strategy === 'STOCK_VIDEO' || isVid) {
+            mediaBadge = '<span class="badge badge-amber" style="font-size:10px;padding:2px 6px;">🎥 Video B-Roll</span>';
+        } else if (s.visual_strategy === 'AI_IMAGE' || isAi) {
+            mediaBadge = '<span class="badge badge-purple" style="font-size:10px;padding:2px 6px;">✨ Ảnh AI 8K</span>';
+        } else {
+            mediaBadge = '<span class="badge badge-cyan" style="font-size:10px;padding:2px 6px;">📸 Ảnh Thật</span>';
+        }
+
         const fileName = s.media_path ? s.media_path.split(/[\\\\/]/).pop() : '';
         return `
         <div class="scene-item">
             <div class="scene-num">${s.scene_id}</div>
             <div class="scene-body">
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap;">
                     ${mediaBadge}
                     <span style="font-size:11px;color:var(--text-muted);">${s.actual_duration_seconds ? s.actual_duration_seconds.toFixed(1) + 's' : '~' + (s.estimated_seconds || 3) + 's'}</span>
+                    ${s.camera_motion ? `<span style="font-size:10px;color:var(--text-muted);background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:4px;">🎬 ${s.camera_motion}</span>` : ''}
                 </div>
                 <div class="scene-narration">${esc(s.narration)}</div>
                 <div class="scene-keyword">🔍 ${esc(s.visual_keyword || '')}</div>
-                ${fileName ? `<div class="scene-keyword" style="color:var(--text-muted);font-size:11px;">${isVid ? '🎬' : '🖼'} ${esc(fileName)}</div>` : ''}
+                ${s.strategy_rationale ? `<div style="font-size:11px;color:#a78bfa;margin-top:2px;">🧠 Đạo diễn: ${esc(s.strategy_rationale)}</div>` : ''}
+                ${fileName ? `<div class="scene-keyword" style="color:var(--text-muted);font-size:11px;margin-top:2px;">${isVid ? '🎬' : '🖼'} ${esc(fileName)}</div>` : ''}
             </div>
             <div class="scene-dur">~${s.estimated_seconds}s</div>
         </div>`;
@@ -828,10 +858,11 @@ function addEditorSceneRow(sc = null, sceneNum = null) {
             <div class="form-group" style="margin-bottom:0;">
                 <label class="form-label" style="font-size:11.5px; margin-bottom:4px;"><strong>Loại Media (Visual Source):</strong></label>
                 <select class="form-input scene-mediatype-select" style="font-size:12px; height:34px; padding:4px 8px;">
-                    <option value="auto" ${mediaType === 'auto' ? 'selected' : ''}>⚡ Tự động (AI Hybrid: Video Động + Ảnh AI)</option>
-                    <option value="video" ${mediaType === 'video' ? 'selected' : ''}>🎥 Video Clip Động (Stock B-Roll 9:16)</option>
-                    <option value="ai_image" ${mediaType === 'ai_image' ? 'selected' : ''}>✨ Ảnh AI Điện Ảnh (Imagen 3 / Pollinations)</option>
-                    <option value="photo" ${mediaType === 'photo' ? 'selected' : ''}>📸 Ảnh Tư Liệu / Stock Thật (Wikipedia / Pexels)</option>
+                    <option value="auto" ${mediaType === 'auto' ? 'selected' : ''}>🧠 Tự Động (Visual Director tự chọn theo ý tưởng)</option>
+                    <option value="ai_video" ${mediaType === 'ai_video' ? 'selected' : ''}>🔮 Video AI Ảo (Huyền bí / Giả tưởng / Vũ trụ)</option>
+                    <option value="video" ${mediaType === 'video' ? 'selected' : ''}>🎥 Video Chuyển Động (Stock B-Roll 9:16)</option>
+                    <option value="photo" ${mediaType === 'photo' ? 'selected' : ''}>📸 Ảnh Tư Liệu Thật (Nhân vật / Di tích lịch sử)</option>
+                    <option value="ai_image" ${mediaType === 'ai_image' ? 'selected' : ''}>✨ Ảnh Nghệ Thuật AI 8K (Cinematic Dramatic)</option>
                 </select>
             </div>
             <div class="form-group" style="margin-bottom:0;">

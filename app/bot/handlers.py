@@ -768,6 +768,8 @@ async def start_render_pipeline(
             icons = {
                 "SCRIPT": "📝",
                 "AUDIO": "🎙️",
+                "VISUAL_DIRECTOR": "🎬",
+                "VISUAL_STRATEGY_PLANNED": "🔮",
                 "MEDIA": "🖼️",
                 "RENDER": "🎬",
                 "QA": "🔍",

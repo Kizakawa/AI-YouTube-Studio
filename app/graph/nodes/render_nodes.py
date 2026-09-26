@@ -45,6 +45,8 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             # Cinematic enhancement fields — cần cho Ken Burns & SFX
             "camera_motion": m.get("camera_motion"),   # ← Thiếu field này → motion mặc định
             "sfx_cue": m.get("sfx_cue"),               # ← Thiếu field này → không có SFX
+            "visual_strategy": m.get("visual_strategy"),
+            "strategy_rationale": m.get("strategy_rationale"),
         }
         enriched_scenes.append(SceneContract(**sc_dict))
 

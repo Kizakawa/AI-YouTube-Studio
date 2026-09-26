@@ -190,11 +190,25 @@ class VideoAgent:
                 )
                 scene = scene.model_copy(update={"media_path": placeholder, "media_type": "image"})
 
-            effective_type = scene.media_type or "image"
+            raw_type = (scene.media_type or "image").lower()
+            is_video_file = bool(scene.media_path and scene.media_path.lower().endswith((".mp4", ".mov", ".webm", ".mkv")))
 
-            if effective_type == "image":
+            if raw_type in ("video", "ai_video") or is_video_file:
                 logger.info(
-                    f"  Scene {scene.scene_id}: image → Ken Burns [{motion}] {duration:.1f}s"
+                    f"  Scene {scene.scene_id}: video ({raw_type}) → trim {duration:.1f}s"
+                    f"{' (🔥 HOOK VIDEO CLIP)' if is_hook else ''}"
+                )
+                trim_video(
+                    input_path=scene.media_path,
+                    duration_seconds=duration,
+                    output_path=clip_path,
+                    width=job.resolution_w,
+                    height=job.resolution_h,
+                    fps=job.fps,
+                )
+            elif raw_type in ("image", "ai_image", "photo", "documentary", "auto"):
+                logger.info(
+                    f"  Scene {scene.scene_id}: image ({raw_type}) → Ken Burns [{motion}] {duration:.1f}s"
                     f"{' (🔥 HOOK PUNCH-IN)' if is_hook else ''}"
                 )
                 image_to_video(
@@ -207,19 +221,6 @@ class VideoAgent:
                     zoom_effect=True,
                     camera_motion=motion,
                     is_hook_scene=is_hook,
-                )
-            elif effective_type == "video":
-                logger.info(
-                    f"  Scene {scene.scene_id}: video → trim {duration:.1f}s"
-                    f"{' (🔥 HOOK VIDEO CLIP)' if is_hook else ''}"
-                )
-                trim_video(
-                    input_path=scene.media_path,
-                    duration_seconds=duration,
-                    output_path=clip_path,
-                    width=job.resolution_w,
-                    height=job.resolution_h,
-                    fps=job.fps,
                 )
             else:
                 # Fallback graceful: log warning, render như image
