@@ -72,16 +72,19 @@ def on_startup():
 # ─── Serve UI ─────────────────────────────────────────────────────────────────
 
 _cached_index_html: Optional[str] = None
+_cached_index_mtime: float = 0.0
 
 @app.get("/")
 def serve_dashboard():
-    """Phục vụ file index.html tức thì (cache in-memory, giảm độ trễ từ 250ms xuống 1ms)"""
-    global _cached_index_html
+    """Phục vụ file index.html tức thì (cache in-memory tự cập nhật theo mtime của file, 1ms)"""
+    global _cached_index_html, _cached_index_mtime
     index_path = STATIC_DIR / "index.html"
     if not index_path.exists():
         raise HTTPException(status_code=404, detail="index.html chưa tồn tại")
-    if _cached_index_html is None:
+    mtime = index_path.stat().st_mtime
+    if _cached_index_html is None or mtime != _cached_index_mtime:
         _cached_index_html = index_path.read_text(encoding="utf-8")
+        _cached_index_mtime = mtime
     return Response(
         content=_cached_index_html,
         media_type="text/html; charset=utf-8",

@@ -3434,6 +3434,7 @@ async function submitSingleVideoStudio() {
         if (submitBtn) {
             submitBtn.disabled = false;
             submitBtn.innerHTML = originalBtnHTML;
+        }
     }
 }
 
