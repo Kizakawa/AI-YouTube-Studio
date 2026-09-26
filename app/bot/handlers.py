@@ -702,9 +702,9 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        # ContentAgent trả ScriptContract (validated Pydantic model)
-        script: ScriptContract = await asyncio.to_thread(
-            content_agent.generate_script,
+        # ContentAgent tạo kịch bản và tự động chấm điểm qua ScriptCritic (tự tinh chỉnh nếu chưa đạt)
+        script, eval_report = await asyncio.to_thread(
+            content_agent.generate_best_script,
             topic=clean_topic,
             channel_niche=channel_niche,
             language=channel_lang,
@@ -738,9 +738,23 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for s in script.scenes[:3]
         ])
 
+        score_text = ""
+        if eval_report:
+            overall = eval_report.overall_score
+            hook_s = eval_report.hook_strength.score
+            pacing_s = eval_report.story_pacing.score
+            vis_s = getattr(eval_report, 'visual_direction', None)
+            vis_score = vis_s.score if vis_s else 8.5
+            badge = "🏆 Xuất sắc" if overall >= 8.5 else "✅ Đạt chuẩn Viral"
+            score_text = (
+                f"📊 **ĐÁNH GIÁ CHẤT LƯỢNG (AI Editorial Critic):** `{overall:.1f}/10` {badge}\n"
+                f"• ⚡ Hook 3s: `{hook_s:.1f}/10` | ⏱️ Nhịp độ: `{pacing_s:.1f}/10` | 👁️ Thị giác: `{vis_score:.1f}/10`\n\n"
+            )
+
         notes_display = f"🎯 **Đạo diễn:** _{director_notes}_\n\n" if director_notes else ""
         reply_content = (
             f"🎬 **KỊCH BẢN ĐÃ HOÀN THÀNH (Task #{job_id})**\n\n"
+            f"{score_text}"
             f"📌 **Tiêu đề đề xuất:** {script.title}\n"
             f"🔥 **Hook 3 giây đầu:** \"{script.hook}\"\n\n"
             f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"

@@ -9,10 +9,11 @@ from app.schemas.contracts import ScriptContract
 logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = [
+    "gemini-3.1-pro-preview",
+    "gemini-pro-latest",
     "gemini-flash-latest",
-    "gemini-flash-lite-latest",
-    "gemini-3.1-flash-lite",
-    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite-preview",
+    "gemma-4-26b-a4b-it",
 ]
 
 class ContentAgent:
@@ -79,6 +80,10 @@ class ContentAgent:
                                 return parts[0]["text"].strip()
                     elif r.status_code in (429, 403):
                         logger.warning(f"⚠️ Model {model} với key {key[:8]}... gặp {r.status_code}. Đang thử model tiếp theo...")
+                        # Nếu là model flash phổ thông hoặc lỗi tài khoản hết hạn mức, xoay ngay sang key tiếp theo trong pool
+                        if "flash" in model.lower() or "quota" in r.text.lower():
+                            self.rotator.rotate_key()
+                            break
                         continue
                     elif r.status_code == 503 and json_mode:
                         # Fallback: Thử lại không dùng responseMimeType (tránh 503 trên engine structured JSON)
@@ -446,3 +451,62 @@ HARD RULES:
 """
         raw_text = self._call_api(prompt, json_mode=True, timeout=30)
         return self._parse_json_script(raw_text)
+
+    def generate_best_script(
+        self,
+        topic: str,
+        channel_niche: str = "general",
+        language: str = "en",
+        director_notes: Optional[str] = None,
+        min_acceptable_score: float = 8.0,
+    ) -> tuple:
+        """
+        Quy trình biên soạn cao cấp: Tạo kịch bản -> Tự động chấm điểm bằng ScriptCritic -> Tự động tinh chỉnh nếu chưa đạt chuẩn viral.
+        Trả về tuple: (ScriptContract, ScriptEvaluationReport).
+        """
+        # 1. Tạo kịch bản sơ khởi
+        script = self.generate_script(
+            topic=topic,
+            channel_niche=channel_niche,
+            language=language,
+            director_notes=director_notes
+        )
+
+        # 2. Chấm điểm kịch bản bằng ScriptCritic
+        try:
+            from app.graph.evaluators.script_critic import ScriptCritic
+            critic = ScriptCritic()
+            eval_report = critic.evaluate_script(
+                script_data=script.model_dump(),
+                topic=topic,
+                channel_style=channel_niche,
+                primary_entity=getattr(script, "primary_entity", None)
+            )
+
+            # 3. Nếu điểm tổng quát < min_acceptable_score và có nhận xét cụ thể: Tự động tinh chỉnh 1 vòng
+            if eval_report.overall_score < min_acceptable_score and eval_report.actionable_critiques:
+                logger.info(
+                    f"🎯 [ContentAgent] Kịch bản sơ bộ đạt {eval_report.overall_score:.1f}/10 (< {min_acceptable_score}). "
+                    f"Kích hoạt Auto-Refinement để sửa các lỗi: {eval_report.actionable_critiques[:2]}"
+                )
+                feedback_str = "Tự động tinh chỉnh chất lượng: " + "; ".join(eval_report.actionable_critiques)
+                refined = self.refine_script(
+                    current_script=script,
+                    feedback=feedback_str,
+                    channel_niche=channel_niche,
+                    language=language
+                )
+                # Chấm điểm lại kịch bản đã tinh chỉnh
+                new_eval = critic.evaluate_script(
+                    script_data=refined.model_dump(),
+                    topic=topic,
+                    channel_style=channel_niche,
+                    primary_entity=getattr(refined, "primary_entity", None)
+                )
+                if new_eval.overall_score >= eval_report.overall_score:
+                    return refined, new_eval
+
+            return script, eval_report
+        except Exception as e:
+            logger.warning(f"Lỗi trong quá trình tự chấm điểm kịch bản: {e}")
+            return script, None

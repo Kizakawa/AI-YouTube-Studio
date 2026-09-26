@@ -97,7 +97,12 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
 }}"""
 
         total_keys = max(len(self.rotator.keys), 1)
-        models = ["gemini-3-flash-preview", "gemini-3.5-flash"]
+        models = [
+            "gemini-flash-latest",
+            "gemini-3.1-flash-lite-preview",
+            "gemma-4-26b-a4b-it",
+            "gemini-3.1-pro-preview",
+        ]
         for attempt in range(total_keys):
             key = self.rotator.get_key()
             if not key:
