@@ -49,6 +49,8 @@ config/channels.yaml
 # Storage & Temporary Files
 storage/**
 !storage/**/.gitkeep
+output/**
+!output/**/.gitkeep
 *.jpg
 *.jpeg
 *.png

@@ -37,6 +37,10 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+MEDIA_DIR = BASE_DIR / "output"
+MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
+
 @app.on_event("startup")
 def on_startup():
     init_db()
@@ -1845,6 +1849,116 @@ async def get_channel_niche_endpoint(channel_id: str) -> Dict[str, Any]:
     from app.services.niche_manager import get_channel_niche
     profile = get_channel_niche(channel_id)
     return {"success": True, "profile": profile}
+
+# ─── Smart AI Shorts Repurposer Endpoints (Tái chế video dài thành Shorts) ─
+
+class RepurposeAnalyzeRequest(BaseModel):
+    url_or_path: str
+    niche_id: str = "general"
+    mode: str = "self_owned"
+    channel_name: str = ""
+
+class RepurposeRenderRequest(BaseModel):
+    source: str
+    start_seconds: float
+    end_seconds: float
+    title: str = ""
+    niche_id: str = "general"
+    layout_mode: str = "blur_background"
+    add_subtitles: bool = True
+    subtitle_text: str = ""
+    credit_text: Optional[str] = None
+
+@app.get("/api/repurposer/local-videos")
+async def list_local_videos_for_repurpose() -> Dict[str, Any]:
+    """Lấy danh sách các video có sẵn trong hệ thống để tái chế tức thì."""
+    from app.services.video_repurposer import repurposer_service
+    videos = repurposer_service.list_local_videos()
+    return {"success": True, "count": len(videos), "videos": videos}
+
+@app.post("/api/repurposer/analyze")
+async def analyze_repurpose_video(req: RepurposeAnalyzeRequest) -> Dict[str, Any]:
+    """Phân tích video và phát hiện 3-5 khoảnh khắc highlight viral bằng Gemini AI."""
+    from app.services.video_repurposer import repurposer_service, extract_youtube_video_id
+    try:
+        meta = repurposer_service.get_video_metadata(req.url_or_path)
+        transcript_entries = []
+        video_id = meta.get("video_id")
+        if meta.get("source_type") == "youtube" and video_id:
+            transcript_entries = repurposer_service.fetch_transcript(video_id)
+        
+        moments = repurposer_service.analyze_viral_moments(
+            transcript_entries=transcript_entries,
+            video_title=meta.get("title", "Video"),
+            video_duration=meta.get("duration_seconds", 60.0),
+            niche_id=req.niche_id,
+            mode=req.mode,
+            channel_name=req.channel_name,
+        )
+        
+        return {
+            "success": True,
+            "metadata": meta,
+            "has_transcript": len(transcript_entries) > 0,
+            "transcript_count": len(transcript_entries),
+            "moments": moments,
+            "niche_id": req.niche_id,
+            "mode": req.mode,
+        }
+    except Exception as e:
+        logger.error(f"Lỗi phân tích repurpose video: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/repurposer/render-clip")
+async def render_repurposed_clip(req: RepurposeRenderRequest) -> Dict[str, Any]:
+    """Cắt đoạn highlight, chuyển tỉ lệ 9:16 và ghép phụ đề Karaoke chuẩn Niche Profile."""
+    import time
+    from app.services.video_repurposer import repurposer_service, extract_youtube_video_id
+    try:
+        source_path = req.source.strip()
+        if not os.path.exists(source_path):
+            video_id = extract_youtube_video_id(source_path)
+            if not video_id:
+                raise HTTPException(status_code=400, detail="Không tìm thấy file nguồn hoặc link YouTube hợp lệ")
+            source_path = repurposer_service.download_segment_or_full(source_path)
+            
+        timestamp_int = int(time.time())
+        out_filename = f"short_{timestamp_int}_{int(req.start_seconds)}_{int(req.end_seconds)}.mp4"
+        
+        result = repurposer_service.render_repurposed_short(
+            source_video_path=source_path,
+            start_seconds=req.start_seconds,
+            end_seconds=req.end_seconds,
+            output_filename=out_filename,
+            niche_id=req.niche_id,
+            layout_mode=req.layout_mode,
+            add_subtitles=req.add_subtitles,
+            subtitle_text=req.subtitle_text or req.title,
+            credit_text=req.credit_text,
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Lỗi render repurposed short: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/repurposer/clips")
+async def list_repurposed_clips() -> Dict[str, Any]:
+    """Lấy danh sách các Shorts đã được trích xuất thành công."""
+    from app.services.video_repurposer import CLIPS_DIR
+    clips = []
+    if CLIPS_DIR.exists():
+        for f in CLIPS_DIR.glob("*.mp4"):
+            try:
+                clips.append({
+                    "filename": f.name,
+                    "url": f"/media/repurposer/clips/{f.name}",
+                    "size_mb": round(f.stat().st_size / (1024 * 1024), 2),
+                    "created_at": f.stat().st_mtime,
+                })
+            except Exception:
+                pass
+    clips.sort(key=lambda x: x["created_at"], reverse=True)
+    return {"success": True, "count": len(clips), "clips": clips}
 
 # ─── Channel-Level OAuth Endpoints (Đảm bảo mỗi kênh YouTube có Token riêng) ─
 

@@ -14,6 +14,7 @@ const PAGE_META = {
     create:        { title: 'Tạo Kịch Bản AI',       sub: 'Nhập chủ đề — Gemini sinh kịch bản tự động' },
     manual_studio: { title: 'Studio Lồng Tiếng & Hiệu Ứng AI', sub: 'Tải 1 video đã ghép (Google Flow, CapCut...) + Lời thoại, AI sẽ lồng tiếng đọc, SFX và phụ đề Shorts cực đẹp' },
     pipeline:      { title: 'Pipeline Sản Xuất',      sub: 'Quản lý danh sách video và tiến độ render' },
+    repurposer:    { title: 'Tái Chế Shorts AI Viral', sub: 'Trích xuất các khoảnh khắc vàng từ video dài thành YouTube Shorts 9:16 chuẩn bản quyền & tối ưu thuật toán' },
     activity:      { title: 'Nhật Ký Hoạt Động',      sub: 'Lệnh Telegram thời gian thực — tự làm mới 10s' },
     channels:      { title: 'Kênh & Tài Khoản',       sub: 'Ma trận kênh YouTube và Google Ultra Pool' },
     members:       { title: 'Thành Viên Nhóm',         sub: 'Bảng xếp hạng đóng góp của các thành viên' },
@@ -76,6 +77,8 @@ function switchTab(tabId) {
         loadAnalytics();
     } else if (tabId === 'manual_studio') {
         initManualStudio();
+    } else if (tabId === 'repurposer') {
+        initRepurposerTab();
     }
 }
 
@@ -5377,5 +5380,442 @@ function onChannelNicheSelectChanged(nicheId) {
 
     showToast(`🎯 Đã chọn ngách: ${n.badge || n.name} (Tự động tối ưu giọng đọc & visual)`, 'info');
 }
+
+/* ═══════════════════════════════════════════════════════
+   SMART LONG-TO-SHORTS REPURPOSER CONTROLLER
+══════════════════════════════════════════════════════════ */
+let currentRepurposeData = null;
+
+function initRepurposerTab() {
+    populateRepurposerChannels();
+    populateRepurposerNiches();
+    loadRepurposerLocalVideos();
+    loadRepurposerClips();
+}
+
+function populateRepurposerChannels() {
+    const sel = document.getElementById('repurposer-channel-select');
+    if (!sel) return;
+    sel.innerHTML = '';
+    if (!allChannels || allChannels.length === 0) {
+        sel.innerHTML = '<option value="">(Chưa có kênh - Dùng mặc định)</option>';
+        return;
+    }
+    allChannels.forEach(ch => {
+        const opt = document.createElement('option');
+        opt.value = ch.id;
+        opt.textContent = `${ch.name} (${ch.niche || 'general'})`;
+        opt.dataset.niche = ch.niche || 'general';
+        sel.appendChild(opt);
+    });
+    onRepurposerChannelChanged();
+}
+
+function populateRepurposerNiches() {
+    const sel = document.getElementById('repurposer-niche-select');
+    if (!sel) return;
+    sel.innerHTML = '';
+    if (!allNiches || allNiches.length === 0) {
+        sel.innerHTML = '<option value="general">🎯 Tổng Hợp & Đời Sống</option>';
+        return;
+    }
+    allNiches.forEach(n => {
+        const opt = document.createElement('option');
+        opt.value = n.id;
+        opt.textContent = `${n.badge || '🎯'} ${n.name}`;
+        sel.appendChild(opt);
+    });
+}
+
+function onRepurposerChannelChanged() {
+    const chanSel = document.getElementById('repurposer-channel-select');
+    const nicheSel = document.getElementById('repurposer-niche-select');
+    if (!chanSel || !nicheSel) return;
+    const selectedOpt = chanSel.options[chanSel.selectedIndex];
+    if (selectedOpt && selectedOpt.dataset.niche) {
+        nicheSel.value = selectedOpt.dataset.niche;
+    }
+}
+
+function toggleRepurposerSourceInput() {
+    const radios = document.getElementsByName('repurposer-src-type');
+    let val = 'youtube';
+    for (const r of radios) {
+        if (r.checked) { val = r.value; break; }
+    }
+    const ytBox = document.getElementById('repurposer-yt-input-container');
+    const localBox = document.getElementById('repurposer-local-input-container');
+    if (val === 'youtube') {
+        if (ytBox) ytBox.style.display = 'block';
+        if (localBox) localBox.style.display = 'none';
+    } else {
+        if (ytBox) ytBox.style.display = 'none';
+        if (localBox) localBox.style.display = 'block';
+        loadRepurposerLocalVideos();
+    }
+}
+
+function pasteSampleYouTubeUrl() {
+    const inp = document.getElementById('repurposer-yt-url');
+    if (inp) {
+        inp.value = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+        showToast('💡 Đã điền link YouTube mẫu để thử nghiệm!', 'info');
+    }
+}
+
+async function loadRepurposerLocalVideos() {
+    const sel = document.getElementById('repurposer-local-video-select');
+    if (!sel) return;
+    try {
+        const res = await fetch('/api/repurposer/local-videos');
+        const data = await res.json();
+        sel.innerHTML = '';
+        if (data.videos && data.videos.length > 0) {
+            data.videos.forEach(v => {
+                const opt = document.createElement('option');
+                opt.value = v.file_path;
+                opt.textContent = `${v.title} (${v.duration_seconds}s - ${v.file_size_mb} MB)`;
+                sel.appendChild(opt);
+            });
+        } else {
+            sel.innerHTML = '<option value="">(Chưa có video MP4 nào trong thư mục output/)</option>';
+        }
+    } catch (e) {
+        console.warn('loadRepurposerLocalVideos error:', e);
+        sel.innerHTML = '<option value="">(Lỗi quét video cục bộ)</option>';
+    }
+}
+
+async function startRepurposerAnalysis() {
+    const radios = document.getElementsByName('repurposer-src-type');
+    let srcType = 'youtube';
+    for (const r of radios) {
+        if (r.checked) { srcType = r.value; break; }
+    }
+
+    let urlOrPath = '';
+    if (srcType === 'youtube') {
+        const ytInput = document.getElementById('repurposer-yt-url');
+        urlOrPath = ytInput ? ytInput.value.trim() : '';
+        if (!urlOrPath) {
+            showToast('Vui lòng dán link YouTube cần phân tích!', 'error');
+            return;
+        }
+    } else {
+        const localSel = document.getElementById('repurposer-local-video-select');
+        urlOrPath = localSel ? localSel.value : '';
+        if (!urlOrPath) {
+            showToast('Vui lòng chọn 1 file video cục bộ có sẵn!', 'error');
+            return;
+        }
+    }
+
+    const mode = document.getElementById('repurposer-mode-select')?.value || 'self_owned';
+    const nicheId = document.getElementById('repurposer-niche-select')?.value || 'general';
+    const chanSel = document.getElementById('repurposer-channel-select');
+    const channelName = chanSel?.options[chanSel.selectedIndex]?.text || '';
+
+    const btn = document.getElementById('btn-repurposer-analyze');
+    const btnText = document.getElementById('btn-repurposer-analyze-text');
+    const statusText = document.getElementById('repurposer-status-text');
+
+    if (btn) btn.disabled = true;
+    if (btnText) btnText.textContent = 'Đang phân tích lời thoại bằng Gemini AI...';
+    if (statusText) statusText.textContent = '⏳ Đang quét transcript & trích xuất khoảnh khắc vàng...';
+
+    try {
+        const res = await fetch('/api/repurposer/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url_or_path: urlOrPath,
+                niche_id: nicheId,
+                mode: mode,
+                channel_name: channelName
+            })
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Lỗi khi phân tích video');
+        }
+
+        const data = await res.json();
+        currentRepurposeData = data;
+        renderRepurposerResults(data, urlOrPath);
+        showToast('🎉 Đã phát hiện các khoảnh khắc viral triệu view thành công!', 'success');
+    } catch (e) {
+        showToast('Lỗi: ' + e.message, 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+        if (btnText) btnText.textContent = 'Quét & Phân Tích Khoảnh Khắc Viral';
+        if (statusText) statusText.textContent = '';
+    }
+}
+
+function renderRepurposerResults(data, originalSource) {
+    const section = document.getElementById('repurposer-results-section');
+    if (!section) return;
+    section.style.display = 'block';
+
+    const meta = data.metadata || {};
+    const moments = data.moments || [];
+
+    const thumbImg = document.getElementById('repurposer-video-thumb');
+    if (thumbImg) {
+        thumbImg.src = meta.thumbnail || 'https://placehold.co/140x80/1e293b/94a3b8?text=Video';
+        thumbImg.onerror = () => { thumbImg.src = 'https://placehold.co/140x80/1e293b/94a3b8?text=Video'; };
+    }
+    const titleEl = document.getElementById('repurposer-video-title');
+    if (titleEl) titleEl.textContent = meta.title || 'Video Nguồn';
+    const authorEl = document.getElementById('repurposer-video-author');
+    if (authorEl) authorEl.textContent = meta.author || 'Tác Giả';
+    const durEl = document.getElementById('repurposer-video-duration');
+    if (durEl) durEl.textContent = `${meta.duration_seconds || 0} giây`;
+    const transEl = document.getElementById('repurposer-video-transcript-status');
+    if (transEl) {
+        transEl.textContent = data.has_transcript 
+            ? `Đã nạp ${data.transcript_count} dòng phụ đề chuẩn` 
+            : 'Phân tích đa phương thức AI';
+    }
+
+    const countBadge = document.getElementById('repurposer-moments-count');
+    if (countBadge) countBadge.textContent = `${moments.length} Phân Đoạn Viral`;
+
+    const listEl = document.getElementById('repurposer-moments-list');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+
+    moments.forEach((m, idx) => {
+        const score = m.viral_score || 90;
+        let scoreBadge = '';
+        if (score >= 95) {
+            scoreBadge = `<span style="background: linear-gradient(135deg, #ef4444, #f59e0b); color:#fff; font-weight:800; font-size:12px; padding:3px 10px; border-radius:12px; box-shadow:0 2px 8px rgba(239,68,68,0.4);">🔥 ${score}/100 VIRAL TOP 1</span>`;
+        } else if (score >= 90) {
+            scoreBadge = `<span style="background: linear-gradient(135deg, #10b981, #06b6d4); color:#fff; font-weight:800; font-size:12px; padding:3px 10px; border-radius:12px; box-shadow:0 2px 8px rgba(16,185,129,0.4);">⚡ ${score}/100 CAO TRÀO</span>`;
+        } else {
+            scoreBadge = `<span style="background: #3b82f6; color:#fff; font-weight:700; font-size:12px; padding:3px 10px; border-radius:12px;">✨ ${score}/100</span>`;
+        }
+
+        const card = document.createElement('div');
+        card.className = 'panel-card';
+        card.style.cssText = 'background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255,255,255,0.1); display:flex; flex-direction:column; justify-content:space-between; transition: transform 0.2s, border-color 0.2s;';
+        card.onmouseenter = () => { card.style.borderColor = 'rgba(16, 185, 129, 0.5)'; card.style.transform = 'translateY(-2px)'; };
+        card.onmouseleave = () => { card.style.borderColor = 'rgba(255, 255, 255, 0.1)'; card.style.transform = 'translateY(0)'; };
+
+        const startMin = Math.floor(m.start_seconds / 60);
+        const startSec = Math.floor(m.start_seconds % 60);
+        const endMin = Math.floor(m.end_seconds / 60);
+        const endSec = Math.floor(m.end_seconds % 60);
+        const timeRangeStr = `${String(startMin).padStart(2,'0')}:${String(startSec).padStart(2,'0')} ➔ ${String(endMin).padStart(2,'0')}:${String(endSec).padStart(2,'0')} (${m.duration_seconds}s)`;
+
+        card.innerHTML = `
+            <div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-weight:800; font-size:14px; color:#94a3b8;">#${m.segment_id || (idx+1)}</span>
+                        ${scoreBadge}
+                    </div>
+                    <span style="font-size:12px; font-weight:700; color:#38bdf8; background:rgba(56,189,248,0.12); padding:3px 8px; border-radius:6px; border:1px solid rgba(56,189,248,0.25);">
+                        ⏱️ ${timeRangeStr}
+                    </span>
+                </div>
+
+                <div style="margin-bottom:12px;">
+                    <label style="font-size:11px; color:#94a3b8; font-weight:600; text-transform:uppercase;">Tiêu đề Shorts đề xuất:</label>
+                    <input type="text" id="moment-title-${idx}" class="form-input" value="${escapeHtml(m.title || '')}" style="font-size:13px; font-weight:700; color:#fff; margin-top:2px;">
+                </div>
+
+                <div style="background:rgba(0,0,0,0.3); border-left:3px solid #f59e0b; padding:8px 12px; border-radius:4px; margin-bottom:12px;">
+                    <div style="font-size:11px; font-weight:700; color:#fbbf24; margin-bottom:2px;">🎯 Hook 3s đầu tiên:</div>
+                    <div style="font-size:12px; font-style:italic; color:#e2e8f0;">"${escapeHtml(m.hook_quote || '')}"</div>
+                </div>
+
+                <div style="font-size:12px; color:#cbd5e1; line-height:1.5; margin-bottom:10px;">
+                    <strong style="color:#94a3b8;">Tóm tắt:</strong> ${escapeHtml(m.summary || '')}
+                </div>
+
+                <div style="font-size:12px; color:#94a3b8; line-height:1.5; margin-bottom:12px; background:rgba(255,255,255,0.03); padding:8px; border-radius:6px;">
+                    <strong style="color:#10b981;">💡 Lý do viral:</strong> ${escapeHtml(m.viral_reason || '')}
+                </div>
+
+                <div style="font-size:11px; color:#38bdf8; line-height:1.4; margin-bottom:14px; background:rgba(56,189,248,0.06); padding:8px; border-radius:6px; border:1px dashed rgba(56,189,248,0.3);">
+                    <strong>⚖️ Góc nhìn an toàn (Fair Use):</strong> ${escapeHtml(m.safe_commentary_angle || 'Trích dẫn tạo giá trị mới')}
+                </div>
+            </div>
+
+            <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top:14px; margin-top:8px;">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:12px; font-size:12px;">
+                    <div>
+                        <label style="font-size:11px; color:#94a3b8;">Bố Cục 9:16:</label>
+                        <select id="moment-layout-${idx}" class="form-select" style="font-size:11px; padding:4px 8px; height:auto;">
+                            <option value="blur_background" selected>Blur Background (Chuẩn Shorts)</option>
+                            <option value="center_crop">Center Crop (Toàn màn hình)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:11px; color:#94a3b8;">Phụ Đề Niche:</label>
+                        <div style="display:flex; align-items:center; gap:6px; height:28px;">
+                            <input type="checkbox" id="moment-sub-${idx}" checked style="cursor:pointer; transform:scale(1.1);">
+                            <span style="font-size:11px; color:#e2e8f0;">Đốt Sub Karaoke</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="moment-render-box-${idx}">
+                    <button class="btn btn-primary" onclick="renderRepurposedMoment(${idx}, '${escapeHtml(originalSource)}')" style="width:100%; justify-content:center; background: linear-gradient(135deg, #10b981, #06b6d4); font-size:13px; font-weight:700; padding:8px;">
+                        ✂️ Render Short 9:16 Ngay
+                    </button>
+                </div>
+            </div>
+        `;
+        listEl.appendChild(card);
+    });
+
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function renderRepurposedMoment(idx, originalSource) {
+    if (!currentRepurposeData || !currentRepurposeData.moments[idx]) return;
+    const m = currentRepurposeData.moments[idx];
+
+    const titleInput = document.getElementById(`moment-title-${idx}`);
+    const title = titleInput ? titleInput.value.trim() : m.title;
+    const layout = document.getElementById(`moment-layout-${idx}`)?.value || 'blur_background';
+    const addSub = document.getElementById(`moment-sub-${idx}`)?.checked ?? true;
+    const nicheId = currentRepurposeData.niche_id || 'general';
+    const mode = currentRepurposeData.mode || 'self_owned';
+
+    const box = document.getElementById(`moment-render-box-${idx}`);
+    if (box) {
+        box.innerHTML = `
+            <div style="text-align:center; padding:10px; background:rgba(16,185,129,0.1); border-radius:8px; border:1px solid rgba(16,185,129,0.3);">
+                <div class="spinner" style="width:18px; height:18px; border-width:2px; margin:0 auto 6px auto;"></div>
+                <div style="font-size:12px; font-weight:600; color:#10b981;">⚡ FFmpeg đang cắt 9:16 & ghép phụ đề Karaoke...</div>
+                <div style="font-size:10px; color:#94a3b8; margin-top:2px;">Quá trình mất khoảng 5 - 15 giây</div>
+            </div>
+        `;
+    }
+
+    try {
+        const res = await fetch('/api/repurposer/render-clip', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                source: originalSource,
+                start_seconds: m.start_seconds,
+                end_seconds: m.end_seconds,
+                title: title,
+                niche_id: nicheId,
+                layout_mode: layout,
+                add_subtitles: addSub,
+                subtitle_text: m.transcript_snippet || m.title,
+                mode: mode
+            })
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Lỗi khi render video');
+        }
+
+        const data = await res.json();
+        showToast('🎉 Đã render Short 9:16 thành công!', 'success');
+
+        if (box) {
+            box.innerHTML = `
+                <div style="display:flex; gap:8px;">
+                    <button class="btn btn-primary" onclick="openRepurposedPlayer('${data.relative_url}', '${escapeHtml(title)}')" style="flex:1; justify-content:center; background:#10b981; font-size:12px; font-weight:700;">
+                        ▶️ Xem Video Short
+                    </button>
+                    <a href="${data.relative_url}" download class="btn btn-secondary" style="font-size:12px; padding:6px 10px;" title="Tải về">
+                        ⬇️
+                    </a>
+                </div>
+            `;
+        }
+
+        loadRepurposerClips();
+
+    } catch (e) {
+        showToast('Lỗi render: ' + e.message, 'error');
+        if (box) {
+            box.innerHTML = `
+                <button class="btn btn-primary" onclick="renderRepurposedMoment(${idx}, '${escapeHtml(originalSource)}')" style="width:100%; justify-content:center; background: #ef4444; font-size:12px;">
+                    ❌ Thử Lại (Lỗi: ${escapeHtml(e.message)})
+                </button>
+            `;
+        }
+    }
+}
+
+async function loadRepurposerClips() {
+    const gallery = document.getElementById('repurposer-clips-gallery');
+    if (!gallery) return;
+
+    try {
+        const res = await fetch('/api/repurposer/clips');
+        const data = await res.json();
+
+        if (!data.clips || data.clips.length === 0) {
+            gallery.innerHTML = `
+                <div style="grid-column: 1 / -1; text-align: center; padding: 30px; color: var(--text-muted); font-size: 13px;">
+                    Chưa có video Shorts nào được xuất. Hãy chọn một video dài và bấm "Quét & Phân Tích" để bắt đầu!
+                </div>
+            `;
+            return;
+        }
+
+        gallery.innerHTML = '';
+        data.clips.forEach(c => {
+            const card = document.createElement('div');
+            card.style.cssText = 'background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px;';
+            card.innerHTML = `
+                <div style="position:relative; width:100%; height:160px; background:#000; border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center; cursor:pointer;" onclick="openRepurposedPlayer('${c.url}', '${escapeHtml(c.filename)}')">
+                    <video src="${c.url}#t=0.5" preload="metadata" style="width:100%; height:100%; object-fit:contain; opacity:0.8;"></video>
+                    <div style="position:absolute; width:40px; height:40px; border-radius:50%; background:rgba(16,185,129,0.9); display:flex; align-items:center; justify-content:center; color:#fff; font-size:16px; box-shadow:0 4px 12px rgba(0,0,0,0.5);">
+                        ▶
+                    </div>
+                </div>
+                <div style="font-size:12px; font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(c.filename)}">
+                    ${escapeHtml(c.filename)}
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#94a3b8;">
+                    <span>💾 ${c.size_mb} MB</span>
+                    <a href="${c.url}" download class="btn btn-secondary" style="font-size:11px; padding:3px 8px;">Tải về</a>
+                </div>
+            `;
+            gallery.appendChild(card);
+        });
+    } catch (e) {
+        console.warn('loadRepurposerClips error:', e);
+    }
+}
+
+function openRepurposedPlayer(videoUrl, title) {
+    const modal = document.getElementById('modal-repurposed-player');
+    const vidEl = document.getElementById('repurposed-video-element');
+    const titleEl = document.getElementById('repurposed-player-title');
+    const dlBtn = document.getElementById('repurposed-download-btn');
+
+    if (!modal || !vidEl) return;
+    if (titleEl) titleEl.textContent = title || 'Xem Trước Video Short 9:16';
+    if (dlBtn) dlBtn.href = videoUrl;
+
+    vidEl.src = videoUrl;
+    modal.classList.add('active');
+    vidEl.play().catch(() => {});
+}
+
+function closeRepurposedPlayerModal() {
+    const modal = document.getElementById('modal-repurposed-player');
+    const vidEl = document.getElementById('repurposed-video-element');
+    if (vidEl) {
+        vidEl.pause();
+        vidEl.src = '';
+    }
+    if (modal) modal.classList.remove('active');
+}
+
 
 
