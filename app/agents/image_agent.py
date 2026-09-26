@@ -74,15 +74,16 @@ class ImageAgent:
             return google_res
 
         # 2. DỰ PHÒNG CHẤT LƯỢNG CAO: Thử sinh ảnh bằng Pollinations với prompt tối ưu (chuẩn 9:16 HD 768x1344)
-        # Cho phép tới 75 từ để bảo toàn trọn vẹn mô tả của AI Director (không bị cắt vụn)
         try:
+            import random
+            seed = random.randint(1000, 999999)
             words = anchored.split()
-            compact_prompt = " ".join(words[:75])
+            compact_prompt = " ".join(words[:60])
             encoded_prompt = urllib.parse.quote(compact_prompt)
 
-            url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=768&height=1344&nologo=true"
+            url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=768&height=1344&nologo=true&seed={seed}"
             headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AI-Shorts-Studio/2.0"
+                "User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AI-Shorts-Studio/{seed}"
             }
 
             res = requests.get(url, headers=headers, timeout=12)
@@ -96,11 +97,13 @@ class ImageAgent:
 
         # 3. Fallback: Thử với prompt ngắn gọn thuần túy nếu prompt dài bị nghẽn
         try:
-            short_clean = " ".join(base_prompt.split()[:20])
+            import random
+            seed = random.randint(1000, 999999)
+            short_clean = " ".join(base_prompt.split()[:15])
             prefix_fb = "viral hook intense dramatic lighting 8k vertical" if scene_id == 1 else "photorealistic 8k vertical cinema"
             p_encoded = urllib.parse.quote(f"{prefix_fb} {short_clean}")
-            url_fallback = f"https://image.pollinations.ai/prompt/{p_encoded}?width=768&height=1344&nologo=true"
-            res = requests.get(url_fallback, headers={"User-Agent": "AI-Shorts/2.0"}, timeout=8)
+            url_fallback = f"https://image.pollinations.ai/prompt/{p_encoded}?width=768&height=1344&nologo=true&seed={seed}"
+            res = requests.get(url_fallback, headers={"User-Agent": f"AI-Shorts/{seed}"}, timeout=8)
             if res.status_code == 200 and len(res.content) > 5000:
                 with open(output_path, "wb") as f:
                     f.write(res.content)
@@ -109,26 +112,37 @@ class ImageAgent:
         except Exception as fb_err:
             logger.debug(f"[ImageAgent] Fallback ngắn cũng lỗi: {fb_err}")
 
-        # 4. Ultimate Fallback (Không bao giờ lỗi): Tạo khung nền điện ảnh 1080x1920 bằng Pillow
-        try:
-            from PIL import Image, ImageDraw
-            width, height = 1080, 1920
-            base = Image.new("RGB", (width, height))
-            draw = ImageDraw.Draw(base)
-            top_color = (12, 17, 30)
-            bottom_color = (30, 27, 75)
-            for y in range(0, height, 4):
-                ratio = y / height
-                r = int(top_color[0] + (bottom_color[0] - top_color[0]) * ratio)
-                g = int(top_color[1] + (bottom_color[1] - top_color[1]) * ratio)
-                b = int(top_color[2] + (bottom_color[2] - top_color[2]) * ratio)
-                draw.line([(0, y), (width, y)], fill=(r, g, b), width=4)
-            base.save(output_path, quality=95)
-            logger.info(f"[ImageAgent] 🛡️ Đã tạo frame điện ảnh dự phòng an toàn (PIL) → {output_path}")
-            return output_path
-        except Exception as pil_err:
-            logger.debug(f"[ImageAgent] Lỗi tạo ảnh dự phòng PIL: {pil_err}")
+        # 4. Dự phòng ảnh thật HD từ Pexels Photo API (ảnh thật 9:16 sắc nét, tránh đơ/đen hình)
+        pexels_img = self._try_pexels_photo_fallback(base_prompt, output_path)
+        if pexels_img and Path(pexels_img).exists() and Path(pexels_img).stat().st_size > 5000:
+            return pexels_img
 
+        logger.warning(f"[ImageAgent] ⚠️ Không thể sinh ảnh cho Cảnh {scene_id} qua AI. Chuyển quyền cho Video/Media Fallback.")
+        return None
+
+    def _try_pexels_photo_fallback(self, query: str, output_path: str) -> Optional[str]:
+        """Tải ảnh chân thực chất lượng cao từ Pexels Photo API khi các engine AI gặp sự cố."""
+        try:
+            pexels_keys = settings.get_pexels_keys_pool()
+            if not pexels_keys or pexels_keys[0] == "your_pexels_api_key_here":
+                return None
+
+            clean_q = " ".join(re.sub(r'[^a-zA-Z0-9\s]', ' ', query).split()[:4])
+            headers = {"Authorization": pexels_keys[0]}
+            url = f"https://api.pexels.com/v1/search?query={urllib.parse.quote(clean_q)}&orientation=portrait&per_page=1"
+            res = requests.get(url, headers=headers, timeout=8)
+            if res.status_code == 200:
+                photos = res.json().get("photos", [])
+                if photos and photos[0].get("src", {}).get("large2x"):
+                    img_url = photos[0]["src"]["large2x"]
+                    img_res = requests.get(img_url, timeout=12)
+                    if img_res.status_code == 200 and len(img_res.content) > 5000:
+                        with open(output_path, "wb") as f:
+                            f.write(img_res.content)
+                        logger.info(f"[ImageAgent] 📸 Tải ảnh HD thực tế thành công từ Pexels: '{clean_q}' → {output_path}")
+                        return output_path
+        except Exception as e:
+            logger.debug(f"[ImageAgent] Pexels photo fallback error: {e}")
         return None
 
     def _try_google_image_api(self, prompt: str, output_path: str, aspect_ratio: str = "9:16") -> Optional[str]:

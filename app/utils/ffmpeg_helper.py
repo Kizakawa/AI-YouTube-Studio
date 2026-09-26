@@ -853,3 +853,46 @@ def validate_output(file_path: str) -> Dict:
 
     result["valid"] = len(result["errors"]) == 0
     return result
+
+
+def create_placeholder_image(path: str, text: str = "Scene", scene_id: int = 1) -> str:
+    """Tạo ảnh đồ họa dọc 1080x1920 phong cách điện ảnh cho trường hợp dự phòng khẩn cấp."""
+    try:
+        from PIL import Image, ImageDraw
+        width, height = 1080, 1920
+        base = Image.new("RGB", (width, height))
+        draw = ImageDraw.Draw(base)
+
+        top_color = (15, 23, 42)      # Deep slate blue
+        bottom_color = (30, 27, 75)   # Cinematic indigo
+
+        for y in range(0, height, 2):
+            ratio = y / height
+            r = int(top_color[0] + (bottom_color[0] - top_color[0]) * ratio)
+            g = int(top_color[1] + (bottom_color[1] - top_color[1]) * ratio)
+            b = int(top_color[2] + (bottom_color[2] - top_color[2]) * ratio)
+            draw.line([(0, y), (width, y)], fill=(r, g, b), width=2)
+
+        # Subtle frame
+        draw.rectangle([(40, 60), (width - 40, height - 60)], outline=(51, 65, 85), width=2)
+
+        # Scene badge
+        badge_text = f"SCENE #{scene_id:02d}"
+        draw.rectangle([(width // 2 - 140, 240), (width // 2 + 140, 310)], fill=(30, 41, 59))
+        draw.text((width // 2, 275), badge_text, fill=(226, 232, 240), anchor="mm")
+
+        # Visual Keyword
+        display_text = (text or f"Scene {scene_id}")[:80]
+        draw.text((width // 2, height // 2 - 40), display_text, fill=(248, 250, 252), anchor="mm")
+
+        base.save(path)
+        return path
+    except Exception as e:
+        logger.debug(f"create_placeholder_image error: {e}")
+        try:
+            from PIL import Image
+            Image.new("RGB", (1080, 1920), color=(15, 23, 42)).save(path)
+            return path
+        except Exception:
+            return path
+

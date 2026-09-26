@@ -217,6 +217,26 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             except Exception as e:
                 logger.warning(f"Scene {scene.scene_id}: Image-to-Video error: {e}")
 
+            # Cứu hộ ngay lập tức nếu AI chưa sinh được video
+            if not media_path:
+                logger.info(f"Scene {scene.scene_id}: ⚡ Image-to-Video không thành công, tự động cứu hộ bằng Pexels Video B-Roll...")
+                try:
+                    best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, search_query or sq or kw)
+                    if not best_vid and kw:
+                        clean_kw = clean_scene_search_query(kw, max_words=2)
+                        best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, clean_kw)
+                    if best_vid and best_vid.get("url") and best_vid["url"] not in used_pool_urls:
+                        cand_url = best_vid["url"]
+                        vid_out = str(media_dir / f"scene_{scene.scene_id:03d}_pexels_fb.mp4")
+                        await asyncio.to_thread(media_agent.download_file, cand_url, vid_out)
+                        if Path(vid_out).exists() and Path(vid_out).stat().st_size > 10000:
+                            used_pool_urls.add(cand_url)
+                            media_path = vid_out
+                            media_type = "video"
+                            logger.info(f"Scene {scene.scene_id}: 🎥 Cứu hộ thành công bằng Video Pexels: '{search_query or kw}'")
+                except Exception as ex:
+                    logger.debug(f"Scene {scene.scene_id}: Video fallback error: {ex}")
+
         # ══════════════════════════════════════════════════════════════════════
         # PHƯƠNG PHÁP 3: TEXT_TO_VIDEO (Tạo video AI trực tiếp cho cảnh kỳ ảo)
         # ══════════════════════════════════════════════════════════════════════
@@ -238,6 +258,26 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     logger.info(f"Scene {scene.scene_id}: 🔮 [Text-to-Video] Tạo video AI trực tiếp kỳ ảo ({dur:.1f}s)")
             except Exception as e:
                 logger.warning(f"Scene {scene.scene_id}: Text-to-Video error: {e}")
+
+            # Cứu hộ ngay lập tức nếu AI video chưa có kết quả
+            if not media_path:
+                logger.info(f"Scene {scene.scene_id}: ⚡ Text-to-Video không thành công, tự động cứu hộ bằng Pexels Video B-Roll...")
+                try:
+                    best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, search_query or sq or kw)
+                    if not best_vid and kw:
+                        clean_kw = clean_scene_search_query(kw, max_words=2)
+                        best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, clean_kw)
+                    if best_vid and best_vid.get("url") and best_vid["url"] not in used_pool_urls:
+                        cand_url = best_vid["url"]
+                        vid_out = str(media_dir / f"scene_{scene.scene_id:03d}_pexels_fb.mp4")
+                        await asyncio.to_thread(media_agent.download_file, cand_url, vid_out)
+                        if Path(vid_out).exists() and Path(vid_out).stat().st_size > 10000:
+                            used_pool_urls.add(cand_url)
+                            media_path = vid_out
+                            media_type = "video"
+                            logger.info(f"Scene {scene.scene_id}: 🎥 Cứu hộ thành công bằng Video Pexels: '{search_query or kw}'")
+                except Exception as ex:
+                    logger.debug(f"Scene {scene.scene_id}: Video fallback error: {ex}")
 
         # ══════════════════════════════════════════════════════════════════════
         # PHƯƠNG PHÁP 4: STOCK_FOOTAGE (Video B-Roll chuyển động thực tế 9:16)
@@ -293,7 +333,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         if not media_path:
             logger.info(f"Scene {scene.scene_id}: ⚠️ Chiến lược '{chosen_strategy}' chưa có file, kích hoạt Multi-Tier Fallback...")
 
-            # Fallback 1: Thử tìm ảnh Pexels HD thực tế
+            # Fallback 1: Thử tìm Video B-Roll hoặc ảnh Pexels HD thực tế
             try:
                 candidate_media = await asyncio.to_thread(
                     media_agent.search_scene_media_multi_source,
@@ -305,7 +345,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     entity_type=entity_type,
                     used_urls=used_pool_urls,
                     scene_id=scene.scene_id,
-                    prefer_video=(chosen_strategy in ("STOCK_VIDEO", "AI_VIDEO")),
+                    prefer_video=(chosen_strategy != "REAL_DOCUMENTARY"),
                     prefer_photo=(chosen_strategy == "REAL_DOCUMENTARY"),
                 )
                 if candidate_media and candidate_media.get("url"):
@@ -322,7 +362,27 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             except Exception:
                 pass
 
-        # Fallback 2: Sinh ảnh AI cứu hộ
+        # Fallback 2: Thử tìm ảnh Pexels Photo HD chân thực 9:16
+        if not media_path:
+            try:
+                clean_q = search_query or sq or kw
+                clean_kw = clean_scene_search_query(clean_q, max_words=3)
+                px_photos = await asyncio.to_thread(media_agent.search_photos, clean_kw, per_page=3, orientation="portrait")
+                for p in px_photos:
+                    img_url = p.get("src", {}).get("large2x") or p.get("src", {}).get("portrait")
+                    if img_url and img_url not in used_pool_urls:
+                        out_img = str(media_dir / f"scene_{scene.scene_id:03d}_pexels_photo.jpg")
+                        await asyncio.to_thread(media_agent.download_file, img_url, out_img)
+                        if Path(out_img).exists() and Path(out_img).stat().st_size > 3000:
+                            used_pool_urls.add(img_url)
+                            media_path = out_img
+                            media_type = "image"
+                            logger.info(f"Scene {scene.scene_id}: 📸 Fallback 2 thành công với Pexels Photo: {clean_kw}")
+                            break
+            except Exception as fb2_e:
+                logger.debug(f"Scene {scene.scene_id}: Fallback 2 photo error: {fb2_e}")
+
+        # Fallback 3: Sinh ảnh AI cứu hộ
         if not media_path:
             try:
                 ai_img_path = str(media_dir / f"scene_{scene.scene_id:03d}_fb_ai.jpg")
@@ -343,11 +403,11 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             except Exception:
                 pass
 
-        # Fallback 3: Graphic placeholder
+        # Fallback 4: Graphic placeholder an toàn
         if not media_path:
             out_g = str(media_dir / f"scene_{scene.scene_id:03d}_graphic.png")
             from app.utils.ffmpeg_helper import create_placeholder_image
-            create_placeholder_image(scene.visual_keyword, out_g)
+            create_placeholder_image(out_g, text=scene.visual_keyword or f"Scene {scene.scene_id}", scene_id=scene.scene_id)
             media_path = out_g
             media_type = "image"
 

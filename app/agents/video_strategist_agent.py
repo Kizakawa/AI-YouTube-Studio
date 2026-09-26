@@ -232,8 +232,10 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
         motion_cues = {
             "walk", "run", "running", "moving", "movement", "crowd", "people", "city", "street",
             "traffic", "night", "dark", "shadow", "silhouette", "rain", "storm", "fire", "water", "sea",
-            "clock", "time", "hourglass", "hands", "typing", "money", "cash", "brain", "mind",
-            "looking", "staring", "whisper", "talking", "smoke", "candle", "door", "window", "alone"
+            "ocean", "wave", "waves", "underwater", "deep sea", "fish", "whale", "submarine", "radar",
+            "dive", "diving", "swimming", "boat", "ship", "depth", "abyss", "clock", "time", "hourglass",
+            "hands", "typing", "money", "cash", "brain", "mind", "looking", "staring", "whisper",
+            "talking", "smoke", "candle", "door", "window", "alone", "sky", "clouds", "flight", "car", "nature"
         }
 
         abstract_fantasy_cues = {
@@ -287,23 +289,23 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
                 tool = "wan_t2v"
                 rationale = "Ý tưởng huyền bí / năng lượng trừu tượng không có hình thể cố định -> sinh Video AI trực tiếp để tạo sự choáng ngợp."
 
-            # Quy tắc 3: Cảnh có nhân vật hoặc bối cảnh nghệ thuật rõ ràng -> IMAGE_TO_VIDEO
-            elif len(vp) > 20 or any(c in text_all for c in ["portrait", "character", "face", "philosopher", "ancient temple", "room", "laboratory"]):
+            # Quy tắc 3: Cảnh có nhân vật, sinh vật kỳ ảo, chân dung hoặc bối cảnh nghệ thuật rõ ràng -> IMAGE_TO_VIDEO
+            elif any(c in text_all for c in ["monster", "creature", "leviathan", "tentacle", "beast", "dragon", "alien", "ufo", "portrait", "character", "face", "philosopher", "ancient temple", "room", "laboratory", "statue", "monk", "warrior", "cyborg"]):
                 method = "IMAGE_TO_VIDEO"
                 tool = "imagen3_i2v"
-                rationale = "Cảnh cần cố định chi tiết nhân vật/bối cảnh không bị méo -> tạo ảnh chủ đề 8K trước rồi chuyển hóa thành video 3D."
+                rationale = "Cảnh có sinh vật kỳ ảo / nhân vật cần độ chi tiết cao -> tạo ảnh chủ đề 8K chuẩn bố cục rồi chuyển hóa thành video 3D."
 
-            # Quy tắc 4: Chuyển động đời thực -> STOCK_FOOTAGE
-            elif any(mc in text_all for mc in motion_cues) or idx == 0:
+            # Quy tắc 4: Chuyển động đời thực, bối cảnh tự nhiên, b-roll động -> STOCK_FOOTAGE
+            elif any(mc in text_all for mc in motion_cues) or idx == 0 or topic_class == "REAL_LIFE_MOTION":
                 method = "STOCK_FOOTAGE"
                 tool = "pexels_video_api"
-                rationale = "Cảnh miêu tả hành động chuyển động đời thực -> dùng Video B-Roll Pexels 9:16 giữ chân người xem."
+                rationale = "Cảnh miêu tả chuyển động hoặc bối cảnh thực tế -> dùng Video B-Roll Pexels 9:16 giữ chân người xem liên tục."
 
-            # Quy tắc mặc định: IMAGE_TO_VIDEO
+            # Quy tắc mặc định: Xen kẽ Video chuyển động thực và Video nghệ thuật để nhịp điệu sinh động
             else:
-                method = "IMAGE_TO_VIDEO"
-                tool = "imagen3_i2v"
-                rationale = "Cảnh nghệ thuật điện ảnh -> sinh ảnh chủ đề 8K chuẩn bố cục rồi animate thành video."
+                method = "STOCK_FOOTAGE" if idx % 2 == 0 else "IMAGE_TO_VIDEO"
+                tool = "pexels_video_api" if method == "STOCK_FOOTAGE" else "imagen3_i2v"
+                rationale = "Cân bằng nhịp điệu video -> xen kẽ video chuyển động thực và nghệ thuật điện ảnh."
 
             cam_motion = motions_list[idx % len(motions_list)]
             sfx = "whoosh" if idx == 0 else "hit"
