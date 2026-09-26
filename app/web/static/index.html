@@ -548,9 +548,14 @@ Hôm nay, chúng ta sẽ khám phá 3 sự thật chấn động nhất...
                             Hệ thống sẽ chạy ngầm bằng FFmpeg Engine, đồng bộ âm thanh giọng đọc, BGM ducking, SFX và phụ đề ASS.
                         </p>
                     </div>
-                    <button class="btn btn-primary btn-lg" id="btn-submit-single-studio" onclick="submitSingleVideoStudio()" style="background:linear-gradient(135deg, #ec4899, #8b5cf6); border:none; padding:12px 28px; font-weight:700; box-shadow:0 4px 20px rgba(236,72,153,0.4);">
-                        🚀 Lồng Giọng Đọc, SFX & Gắn Phụ Đề
-                    </button>
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <button type="button" class="btn btn-secondary btn-lg" onclick="openInstantPreviewFromSingleStudio()" style="border-color:rgba(236,72,153,0.4); color:#f472b6; font-weight:600; padding:12px 20px;" title="Xem trước video cùng giọng đọc và phụ đề trước khi render">
+                            👁️ Xem Trước Nhanh (Instant Preview)
+                        </button>
+                        <button class="btn btn-primary btn-lg" id="btn-submit-single-studio" onclick="submitSingleVideoStudio()" style="background:linear-gradient(135deg, #ec4899, #8b5cf6); border:none; padding:12px 28px; font-weight:700; box-shadow:0 4px 20px rgba(236,72,153,0.4);">
+                            🚀 Lồng Giọng Đọc, SFX & Gắn Phụ Đề
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -777,9 +782,14 @@ Ví dụ Căn Theo Mốc:
                             Hệ thống sẽ chạy ngầm bằng FFmpeg Engine, đồng bộ các cảnh theo đúng thứ tự, lồng giọng đọc AI và xuất ra Pipeline.
                         </p>
                     </div>
-                    <button class="btn btn-primary btn-lg" id="btn-submit-manual-studio" onclick="submitManualStudio()" style="background:linear-gradient(135deg, #ec4899, #8b5cf6); border:none; padding:12px 28px; font-weight:700; box-shadow:0 4px 20px rgba(236,72,153,0.4);">
-                        🚀 Bắt Đầu Ghép & Tạo Video
-                    </button>
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <button type="button" class="btn btn-secondary btn-lg" onclick="openInstantPreviewFromMultiStudio()" style="border-color:rgba(236,72,153,0.4); color:#f472b6; font-weight:600; padding:12px 20px;" title="Xem trước các phân cảnh ghép nối cùng giọng đọc và phụ đề">
+                            👁️ Xem Trước Ghép Cảnh (Instant Preview)
+                        </button>
+                        <button class="btn btn-primary btn-lg" id="btn-submit-manual-studio" onclick="submitManualStudio()" style="background:linear-gradient(135deg, #ec4899, #8b5cf6); border:none; padding:12px 28px; font-weight:700; box-shadow:0 4px 20px rgba(236,72,153,0.4);">
+                            🚀 Bắt Đầu Ghép & Tạo Video
+                        </button>
+                    </div>
                 </div>
             </div>
         </section>
@@ -1489,6 +1499,150 @@ Ví dụ Căn Theo Mốc:
                 <button class="btn btn-primary" id="btn-save-and-render" onclick="submitScriptEdits(true)" style="font-weight:600; background:linear-gradient(135deg,#3b82f6,#8b5cf6); border:none;">
                     🚀 Lưu & Tạo Video Ngay
                 </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: INSTANT PREVIEW PLAYER (REMOTION-STYLE LIVE SHORTS PREVIEW) -->
+<div class="modal-overlay" id="modal-instant-preview" onclick="closeInstantPreview()">
+    <div class="modal-card instant-preview-modal-card" onclick="event.stopPropagation()">
+        <!-- Header -->
+        <div class="modal-header" style="flex-shrink:0; padding:14px 20px; border-bottom:1px solid rgba(255,255,255,0.08);">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <span style="font-size:24px;">🎥</span>
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <h3 id="preview-modal-title" style="margin:0; font-size:16px; font-weight:700; color:#fff;">Xem Trước Video Shorts Tức Thì</h3>
+                        <span class="badge badge-purple" style="font-size:11px;">⚡ Instant Player</span>
+                    </div>
+                    <div id="preview-modal-sub" style="font-size:12px; color:var(--text-muted); margin-top:2px;">
+                        Mô phỏng hình ảnh, giọng đọc AI & phụ đề nhảy động 9:16 trước khi gửi sang FFmpeg render
+                    </div>
+                </div>
+            </div>
+            <button class="modal-close" onclick="closeInstantPreview()">✕</button>
+        </div>
+
+        <!-- Body: 2-Column Responsive Workspace -->
+        <div class="instant-preview-body">
+            <!-- Left: Smartphone 9:16 Player Stage -->
+            <div class="preview-stage-col">
+                <div class="preview-phone-frame">
+                    <!-- Top Bar: Channel & Sound Equalizer -->
+                    <div class="preview-phone-topbar">
+                        <div class="preview-channel-chip">
+                            <span class="preview-channel-dot"></span>
+                            <span id="preview-stage-channel-name">@channel_psychology</span>
+                        </div>
+                        <div class="preview-audio-indicator" id="preview-audio-indicator">
+                            <span class="eq-bar"></span>
+                            <span class="eq-bar"></span>
+                            <span class="eq-bar"></span>
+                            <span class="eq-bar"></span>
+                        </div>
+                    </div>
+
+                    <!-- Screen Content Viewport -->
+                    <div class="preview-screen-viewport" id="preview-screen-viewport">
+                        <!-- Video Layer (if scene has video) -->
+                        <video id="preview-video-element" class="preview-media-layer" playsinline muted style="display:none;"></video>
+
+                        <!-- Image Layer with Ken Burns slow zoom (if scene has image) -->
+                        <div id="preview-image-element" class="preview-media-layer preview-image-layer" style="display:none;"></div>
+
+                        <!-- AI Canvas / Card Layer (if text only) -->
+                        <div id="preview-canvas-backdrop" class="preview-canvas-layer">
+                            <div class="preview-abstract-glow"></div>
+                            <div class="preview-scene-badge-watermark" id="preview-watermark-scene">SCENE 1</div>
+                            <div class="preview-prompt-hint" id="preview-prompt-hint">Visual Prompt AI...</div>
+                        </div>
+
+                        <!-- Dynamic Kinetic Subtitle Layer (Remotion style word-by-word) -->
+                        <div class="preview-subtitles-container" id="preview-subtitles-container">
+                            <div class="preview-subtitles-box" id="preview-subtitles-box">
+                                <!-- Dynamic words -->
+                            </div>
+                        </div>
+
+                        <!-- Big Center Play/Pause Overlay Touch Icon -->
+                        <div class="preview-center-play-overlay" id="preview-center-play-overlay" onclick="toggleInstantPlayPause()">
+                            <span id="preview-center-play-icon">▶</span>
+                        </div>
+                    </div>
+
+                    <!-- Bottom Controls Bar -->
+                    <div class="preview-player-controls">
+                        <!-- Timeline Scrubber -->
+                        <div class="preview-scrubber-track" id="preview-scrubber-track" onclick="onScrubberClick(event)">
+                            <div class="preview-scrubber-fill" id="preview-scrubber-fill" style="width:0%;"></div>
+                        </div>
+
+                        <!-- Control Buttons Row -->
+                        <div class="preview-buttons-row">
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <button type="button" class="preview-ctrl-btn" onclick="prevPreviewScene()" title="Cảnh trước">⏮</button>
+                                <button type="button" class="preview-ctrl-btn primary" id="preview-btn-play-pause" onclick="toggleInstantPlayPause()" title="Phát / Tạm dừng">
+                                    <span id="preview-btn-play-icon">▶</span>
+                                </button>
+                                <button type="button" class="preview-ctrl-btn" onclick="nextPreviewScene()" title="Cảnh tiếp">⏭</button>
+                                <span class="preview-time-badge" id="preview-time-badge">00:00 / 00:00</span>
+                            </div>
+
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <span class="preview-scene-pill" id="preview-scene-pill">Cảnh 1/1</span>
+                                <button type="button" class="preview-ctrl-btn" id="preview-btn-mute" onclick="togglePreviewMute()" title="Tắt / Bật tiếng">🔊</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Scene Timeline & Director Panel -->
+            <div class="preview-director-col">
+                <!-- Video Meta Card -->
+                <div class="preview-director-header">
+                    <h4 id="preview-director-title" style="margin:0 0 4px 0; font-size:14.5px; color:#fff; font-weight:700;">Tiêu đề kịch bản</h4>
+                    <p id="preview-director-hook" style="margin:0; font-size:12px; color:#a78bfa; font-style:italic;">💬 Hook: "..."</p>
+                </div>
+
+                <!-- Scene Timeline List -->
+                <div class="preview-scenes-timeline-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="font-size:11.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Phân Cảnh (Bấm để nhảy cảnh)</span>
+                        <span class="badge badge-blue" id="preview-total-scenes-badge" style="font-size:10.5px;">0 phân cảnh</span>
+                    </div>
+                    <div class="preview-scenes-list" id="preview-scenes-list">
+                        <!-- Dynamic scene cards -->
+                    </div>
+                </div>
+
+                <!-- Voiceover & Audio Status -->
+                <div class="preview-audio-status-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:12px; color:var(--text-muted);">🎙️ Giọng đọc MC:</span>
+                        <strong id="preview-current-voice" style="font-size:12px; color:#38bdf8;">vi-VN-HoaiMyNeural (+10%)</strong>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+                        <span style="font-size:12px; color:var(--text-muted);">💬 Kiểu phụ đề:</span>
+                        <span class="badge badge-green" style="font-size:10.5px;">Karaoke Shorts Đổi Màu</span>
+                    </div>
+                </div>
+
+                <!-- Action Footer -->
+                <div class="preview-director-footer">
+                    <button type="button" class="btn btn-primary btn-lg" id="preview-btn-proceed-render" onclick="proceedRenderFromPreview()" style="width:100%; justify-content:center; background:linear-gradient(135deg, #ec4899, #8b5cf6); border:none; font-weight:700; padding:11px; box-shadow:0 4px 18px rgba(236,72,153,0.4);">
+                        🚀 Duyệt & Bắt Đầu Render FFmpeg
+                    </button>
+                    <div style="display:flex; gap:8px; margin-top:8px;">
+                        <button type="button" class="btn btn-secondary" onclick="editScriptFromPreview()" style="flex:1; justify-content:center; font-size:12px; padding:7px;">
+                            ✏️ Sửa Kịch Bản
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="closeInstantPreview()" style="flex:1; justify-content:center; font-size:12px; padding:7px;">
+                            ✕ Đóng
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
