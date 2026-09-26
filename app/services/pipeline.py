@@ -375,6 +375,7 @@ class VideoPipeline:
                     entity_media_pool=entity_media_pool,
                     used_pool_urls=used_pool_urls,
                     used_asset_paths=used_asset_paths,
+                    sc_strat=sc_strat,
                 )
 
             enriched = scene.model_copy(update={
@@ -435,6 +436,7 @@ class VideoPipeline:
         entity_media_pool: Optional[List[Dict]] = None,
         used_pool_urls: Optional[set] = None,
         used_asset_paths: Optional[set] = None,
+        sc_strat: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         Tìm nạp media cho 1 scene với hệ thống phân cấp 7 tầng thông minh:
@@ -481,15 +483,18 @@ class VideoPipeline:
                         logger.info(f"Scene {scene.scene_id}: Dùng media tùy biến của người dùng ({cand.name})")
                         return str(dest)
 
-        # ── Quyết định chính sách Smart Hybrid theo Scene Preference ──
+        # ── Quyết định chính sách Smart Hybrid theo Đạo Diễn Chiến Lược (sc_strat) & Scene Preference ──
+        strat_method = (sc_strat or {}).get("production_method")
         scene_pref = getattr(scene, 'media_type', None) or "auto"
         prefer_video = False
         prefer_ai = False
         prefer_photo = False
 
-        if scene_pref == "video":
+        if strat_method == "REAL_ARCHIVE" or scene_pref == "documentary":
+            prefer_photo = True
+        elif strat_method == "STOCK_FOOTAGE" or scene_pref == "video":
             prefer_video = True
-        elif scene_pref == "ai_image":
+        elif strat_method in ("IMAGE_TO_VIDEO", "TEXT_TO_VIDEO") or scene_pref == "ai_image":
             prefer_ai = True
         elif scene_pref == "photo":
             prefer_photo = True
@@ -563,7 +568,7 @@ class VideoPipeline:
                 self._media_agent.search_scene_media_multi_source,
                 scene_narration=scene.narration,
                 visual_keyword=scene.visual_keyword or "",
-                stock_query=getattr(scene, 'stock_query', None),
+                stock_query=(sc_strat.get("search_query") if sc_strat and sc_strat.get("search_query") else getattr(scene, 'stock_query', None)),
                 visual_prompt=getattr(scene, 'visual_prompt', None),
                 primary_entity=primary_entity,
                 entity_type=entity_type,

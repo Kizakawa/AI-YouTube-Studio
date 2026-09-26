@@ -171,8 +171,15 @@ def _format_channel_info_text(ch: dict) -> str:
     ch_id = ch.get("id")
     niche = ch.get("niche", "general")
     lang = ch.get("language", "en").upper()
-    voice = ch.get("preferred_voice", "Default")
-    visual = "✨ Google Imagen 3 (Điện ảnh)" if ch.get("visual_mode") == "imagen_ai" else "🎞️ Pexels HD B-Roll"
+    vm = ch.get("visual_mode", "auto")
+    if vm == "auto":
+        visual = "🤖 AI Tự Quyết Định (Smart Director)"
+    elif vm == "imagen_ai":
+        visual = "✨ Google Imagen 3 (Điện ảnh AI)"
+    elif vm == "pexels_stock":
+        visual = "🎞️ Pexels HD B-Roll (Thực tế)"
+    else:
+        visual = "🤖 AI Tự Quyết Định (Smart Director)"
     sched = ch.get("schedule", {})
     hour = sched.get("publish_hour_utc", 12)
 
@@ -335,7 +342,8 @@ async def channel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         channel_id, visual_key = parts[1], parts[2]
         ok, msg, updated = channel_manager.update_channel(channel_id, visual_mode=visual_key)
         if ok:
-            text = f"✅ Đã đổi phong cách hình ảnh sang `{visual_key}`!\n\n" + _format_channel_info_text(updated)
+            v_label = "🤖 AI Tự Quyết Định (Đạo diễn thông minh)" if visual_key == "auto" else ("✨ Google Imagen 3 (Điện ảnh AI)" if visual_key == "imagen_ai" else "🎞️ Pexels HD B-Roll")
+            text = f"✅ Đã đổi phong cách hình ảnh sang **{v_label}**!\n\n" + _format_channel_info_text(updated)
             markup = get_channel_manage_keyboard(channel_id)
             await safe_edit_text(query.message, text, reply_markup=markup)
         else:

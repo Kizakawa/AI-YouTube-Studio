@@ -262,6 +262,14 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
      * Sci-Fi / Space discovery -> Astronaut helmet visor reflecting dazzling blinding portal in pitch-black cosmos.
      * Power / Stoicism -> Person standing completely motionless in torrential rain while crowd rushes past in panic.
 
+9. DYNAMIC AUTONOMOUS MEDIA SELECTION (`media_type` PER SCENE):
+   For EACH scene, act as the Master Director of Photography and autonomously decide what visual medium is objectively best suited for this exact moment:
+   - 'video': Real-world human motion, urban life, gestures, physics, nature, or cinematic movement (searches real Pexels 9:16 Video B-Roll).
+   - 'ai_image': Surreal, cosmic, mythological, sci-fi, or deep conceptual metaphors that do not exist as stock footage (generates 8K Flux.1 / Imagen).
+   - 'photo': Authentic high-resolution real-world still photography or modern realistic architecture.
+   - 'documentary': Authentic historical figures (e.g. Einstein, Napoleon), real artifacts, or historical events (searches Wikimedia / historical archive).
+   DO NOT default all scenes to one single type! Intelligently vary and balance media types across scenes for maximum viewer engagement.
+
 ═══════════════════════════════════════════════════════════
 OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
 ═══════════════════════════════════════════════════════════
@@ -277,6 +285,7 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
       "visual_keyword": "concrete search keywords",
       "visual_prompt": "Cinematic visual description: subject + camera angle + lighting + background",
       "stock_query": "concrete physical nouns",
+      "media_type": "video | ai_image | photo | documentary",
       "estimated_seconds": 3.0
     }}
   ],
@@ -333,6 +342,7 @@ HARD RETENTION RULES:
       "visual_keyword": "concrete search keywords",
       "visual_prompt": "Detailed cinematic scene: subject + camera angle + lighting + environment",
       "stock_query": "concrete physical nouns",
+      "media_type": "video | ai_image | photo | documentary",
       "estimated_seconds": 3.0
     }}
   ],

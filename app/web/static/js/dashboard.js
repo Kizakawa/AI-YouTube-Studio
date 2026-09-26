@@ -1550,7 +1550,7 @@ function renderChannelsHub(channels, accounts) {
             ? `<span class="service-status-pill connected">🟢 Đã cấp quyền YouTube</span>`
             : `<span class="service-status-pill disconnected">🟡 Chưa kết nối YouTube</span>`;
 
-        const visualLabel = ch.visual_mode === 'imagen_ai' ? '✨ Imagen 3' : '🎞️ Pexels HD';
+        const visualLabel = ch.visual_mode === 'auto' ? '🤖 AI Auto' : (ch.visual_mode === 'imagen_ai' ? '✨ Imagen 3' : '🎞️ Pexels HD');
         const pubHour = ch.schedule?.publish_hour_utc ?? 12;
 
         return `
@@ -1780,7 +1780,7 @@ function renderAccounts(accounts) {
                                             <span>🎯 <strong>Chủ đề:</strong> ${esc(ch.niche || 'general')}</span>
                                             <span>🌐 <strong>Ngôn ngữ:</strong> ${esc(ch.language || 'en').toUpperCase()}</span>
                                             <span>🎙️ <strong>Giọng:</strong> ${esc(ch.preferred_voice || 'Default')}</span>
-                                            <span>🖼️ <strong>Visual:</strong> ${ch.visual_mode === 'imagen_ai' ? '✨ Imagen 3' : '🎞️ Pexels'}</span>
+                                            <span>🖼️ <strong>Visual:</strong> ${ch.visual_mode === 'auto' ? '🤖 AI Tự chọn' : (ch.visual_mode === 'imagen_ai' ? '✨ Imagen 3' : '🎞️ Pexels')}</span>
                                             <span>⏰ <strong>Đăng:</strong> ${ch.schedule?.publish_hour_utc ?? 12}:00 UTC</span>
                                         </div>
                                     </div>
@@ -1988,7 +1988,7 @@ function openAddChannelModal(accountId) {
     document.getElementById('channel-input-niche').value = '';
     document.getElementById('channel-input-lang').value = 'en';
     document.getElementById('channel-input-voice').value = 'en-US-ChristopherNeural';
-    document.getElementById('channel-input-visual').value = 'imagen_ai';
+    document.getElementById('channel-input-visual').value = 'auto';
     document.getElementById('channel-input-hour').value = '12';
     document.getElementById('modal-channel').classList.add('visible');
     setTimeout(() => {
@@ -2013,7 +2013,7 @@ function openEditChannelModal(accountId, channelId) {
     document.getElementById('channel-input-niche').value = ch.niche || '';
     document.getElementById('channel-input-lang').value = ch.language || 'en';
     document.getElementById('channel-input-voice').value = ch.preferred_voice || 'en-US-ChristopherNeural';
-    document.getElementById('channel-input-visual').value = ch.visual_mode || 'imagen_ai';
+    document.getElementById('channel-input-visual').value = ch.visual_mode || 'auto';
     document.getElementById('channel-input-hour').value = ch.schedule?.publish_hour_utc ?? 12;
     document.getElementById('modal-channel').classList.add('visible');
 }

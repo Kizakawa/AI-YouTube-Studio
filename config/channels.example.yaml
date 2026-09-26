@@ -19,7 +19,7 @@ google_accounts:
     name: My AI Channel
     niche: psychology
     language: en
-    visual_mode: imagen_ai
+    visual_mode: auto
     preferred_voice: en-US-ChristopherNeural
     handle: "@your_channel"
     channel_url: "https://www.youtube.com/@your_channel"
@@ -39,5 +39,5 @@ channels:
   niche: psychology
   language: en
   google_account: account_1
-  visual_mode: imagen_ai
+  visual_mode: auto
   preferred_voice: en-US-ChristopherNeural

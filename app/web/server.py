@@ -246,7 +246,7 @@ async def get_channels_matrix() -> List[Dict[str, Any]]:
                 "token_channel_title": token_ch_title,
                 "drive_connected": drive_connected,
                 "has_client_secret": has_client_secret,
-                "visual_mode": ch.get("visual_mode", "imagen_ai"),
+                "visual_mode": ch.get("visual_mode", "auto"),
                 "preferred_voice": ch.get("preferred_voice", "en-US-ChristopherNeural"),
                 "schedule": ch.get("schedule", {}),
                 "video_count": video_count,
@@ -1194,7 +1194,7 @@ class ChannelCreateRequest(BaseModel):
     niche: Optional[str] = "general"
     language: Optional[str] = "en"
     preferred_voice: Optional[str] = "en-US-ChristopherNeural"
-    visual_mode: Optional[str] = "imagen_ai"
+    visual_mode: Optional[str] = "auto"
     publish_hour_utc: Optional[int] = 12
     days: Optional[List[str]] = ["monday", "wednesday", "friday", "sunday"]
     google_account: Optional[str] = None
@@ -1670,7 +1670,7 @@ async def add_brand_channel(account_id: str, req: ChannelCreateRequest) -> Dict[
         "name": req.name.strip(),
         "niche": req.niche.strip(),
         "language": req.language.strip(),
-        "visual_mode": req.visual_mode or "imagen_ai",
+        "visual_mode": req.visual_mode or "auto",
         "preferred_voice": req.preferred_voice or "en-US-ChristopherNeural",
         "schedule": {
             "publish_hour_utc": req.publish_hour_utc or 12,
@@ -1718,7 +1718,7 @@ async def update_brand_channel(account_id: str, channel_id: str, req: ChannelCre
     channel["name"] = req.name.strip()
     channel["niche"] = req.niche.strip()
     channel["language"] = req.language.strip()
-    channel["visual_mode"] = req.visual_mode or channel.get("visual_mode", "imagen_ai")
+    channel["visual_mode"] = req.visual_mode or channel.get("visual_mode", "auto")
     channel["preferred_voice"] = req.preferred_voice or channel.get("preferred_voice", "en-US-ChristopherNeural")
     channel["schedule"] = {
         "publish_hour_utc": req.publish_hour_utc or 12,

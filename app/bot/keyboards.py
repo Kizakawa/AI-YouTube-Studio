@@ -141,6 +141,9 @@ def get_visual_selection_keyboard(channel_id: str) -> InlineKeyboardMarkup:
     """Bàn phím chọn Visual Mode"""
     keyboard = [
         [
+            InlineKeyboardButton("🤖 AI Tự Quyết Định (Khuyên dùng - Đạo diễn thông minh)", callback_data=f"set_visual:{channel_id}:auto"),
+        ],
+        [
             InlineKeyboardButton("✨ Google Imagen 3 (Điện ảnh AI)", callback_data=f"set_visual:{channel_id}:imagen_ai"),
         ],
         [

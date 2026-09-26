@@ -166,7 +166,7 @@ def delete_account(account_id: str) -> Tuple[bool, str]:
     write_channels_yaml(cfg)
     return True, f"Đã xóa tài khoản '{account_id}' và các kênh liên kết"
 
-def add_channel(account_id: str, channel_id: str, name: str, niche: str, language: str = "en", visual_mode: str = "imagen_ai", preferred_voice: str = "en-US-ChristopherNeural", publish_hour_utc: int = 12, days: list = None) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+def add_channel(account_id: str, channel_id: str, name: str, niche: str, language: str = "en", visual_mode: str = "auto", preferred_voice: str = "en-US-ChristopherNeural", publish_hour_utc: int = 12, days: list = None) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """Thêm một kênh thương hiệu mới trực thuộc tài khoản Google."""
     clean_id = channel_id.strip().lower().replace(" ", "_")
     if not clean_id:
@@ -194,7 +194,7 @@ def add_channel(account_id: str, channel_id: str, name: str, niche: str, languag
         "name": name.strip(),
         "niche": niche.strip() if niche else "general",
         "language": language.strip() if language else "en",
-        "visual_mode": visual_mode or "imagen_ai",
+        "visual_mode": visual_mode or "auto",
         "preferred_voice": preferred_voice or "en-US-ChristopherNeural",
         "schedule": {
             "publish_hour_utc": int(publish_hour_utc) if publish_hour_utc is not None else 12,
@@ -260,7 +260,7 @@ def update_channel(channel_id: str, name: str = None, niche: str = None, languag
             "name": flat_ch.get("name", channel_id),
             "niche": flat_ch.get("niche", "general"),
             "language": flat_ch.get("language", "en"),
-            "visual_mode": flat_ch.get("visual_mode", "imagen_ai"),
+            "visual_mode": flat_ch.get("visual_mode", "auto"),
             "preferred_voice": flat_ch.get("preferred_voice", "en-US-ChristopherNeural"),
             "schedule": {"publish_hour_utc": 12, "days": ["monday", "wednesday", "friday", "sunday"]}
         }
