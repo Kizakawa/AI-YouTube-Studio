@@ -3109,18 +3109,16 @@ async function initManualStudio() {
             });
         }
 
-        // Initialize with 2 default scenes
+        // Initialize with 2 default scene slots
         if (manualScenesList.length === 0) {
-            addManualScene({
-                narration: "Bí mật này sẽ thay đổi hoàn toàn cách bạn nhìn nhận về thế giới!",
-                cameraMotion: "zoom_in",
-                sfxCue: "auto"
-            });
-            addManualScene({
-                narration: "Hãy nhìn kỹ chi tiết này, bạn sẽ nhận ra một sự thật bất ngờ.",
-                cameraMotion: "zoom_out",
-                sfxCue: "auto"
-            });
+            addManualScene({ cameraMotion: "zoom_in", sfxCue: "auto" });
+            addManualScene({ cameraMotion: "zoom_out", sfxCue: "auto" });
+        }
+
+        const manualScriptEl = document.getElementById('manual-script-input');
+        if (manualScriptEl && !manualScriptEl.value.trim()) {
+            manualScriptEl.value = `Bạn có tin rằng dưới đáy đại dương sâu thẳm vẫn còn những quái vật bí ẩn chưa từng được phát hiện?\nNơi mà áp lực nước có thể nghiền nát một chiếc tàu ngầm trong nháy mắt!`;
+            updateManualScriptStats();
         }
 
         manualStudioInitialized = true;
@@ -3129,18 +3127,299 @@ async function initManualStudio() {
     }
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// MULTI-SCENE STUDIO & SINGLE SCRIPT LOGIC
+// ═════════════════════════════════════════════════════════════════════════════
+let manualTimingMode = 'auto';
+
+function setManualScriptTimingMode(mode) {
+    manualTimingMode = mode;
+    const btnAuto = document.getElementById('manual-timing-mode-btn-auto');
+    const btnTimestamps = document.getElementById('manual-timing-mode-btn-timestamps');
+    const toolbar = document.getElementById('manual-timing-helper-toolbar');
+    const badge = document.getElementById('manual-timing-badge-indicator');
+
+    if (mode === 'timestamps') {
+        if (btnAuto) btnAuto.classList.remove('active');
+        if (btnTimestamps) btnTimestamps.classList.add('active');
+        if (toolbar) toolbar.style.display = 'flex';
+        if (badge) {
+            badge.textContent = '⏱️ AI căn khớp theo mốc thời gian hoặc nhãn cảnh';
+            badge.className = 'pill-indicator pill-indicator-pink';
+        }
+    } else {
+        if (btnAuto) btnAuto.classList.add('active');
+        if (btnTimestamps) btnTimestamps.classList.remove('active');
+        if (toolbar) toolbar.style.display = 'none';
+        if (badge) {
+            badge.textContent = '✨ AI tự động phân bổ đều cho các phân cảnh';
+            badge.className = 'pill-indicator pill-indicator-green';
+        }
+    }
+    updateManualScriptStats();
+}
+
+function parseMultiSceneScript(scriptText, numScenes, timingMode = 'auto') {
+    const raw = (scriptText || '').trim();
+    if (!raw || numScenes <= 0) {
+        return Array.from({ length: Math.max(1, numScenes) }, () => ({ narration: '', duration: null }));
+    }
+
+    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const tsRegex = /^\s*\[?\s*(\d{1,2}(?::\d{1,2})?)\s*(?:-|đến|to|->|:)\s*(\d{1,2}(?::\d{1,2})?)\s*\]?\s*[:\-]?\s*(.*)$/i;
+    const sceneLabelRegex = /^\s*(?:cảnh|phân cảnh|scene|đoạn|bước|part)?\s*#?(\d+)[:.\-]\s*(.*)$/i;
+
+    function toSec(v) {
+        const parts = v.trim().split(':');
+        if (parts.length === 2) return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
+        if (parts.length === 3) return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+        return parseFloat(v);
+    }
+
+    // 1. Phân tích theo mốc thời gian 00-10:
+    const tsMatches = [];
+    let currentTs = null;
+    for (const line of lines) {
+        const m = line.match(tsRegex);
+        if (m) {
+            const s1 = toSec(m[1]);
+            const s2 = toSec(m[2]);
+            const dur = (s2 > s1) ? Math.max(2.0, s2 - s1) : null;
+            currentTs = { text: m[3].trim(), duration: dur };
+            tsMatches.push(currentTs);
+        } else if (currentTs) {
+            currentTs.text += ' ' + line;
+        }
+    }
+
+    if (tsMatches.length > 0) {
+        const results = [];
+        for (let i = 0; i < numScenes; i++) {
+            if (i < tsMatches.length) {
+                results.push({ narration: tsMatches[i].text.trim(), duration: tsMatches[i].duration });
+            } else {
+                results.push({ narration: '', duration: null });
+            }
+        }
+        if (tsMatches.length > numScenes) {
+            const extra = tsMatches.slice(numScenes).map(m => m.text.trim()).join(' ');
+            results[results.length - 1].narration = (results[results.length - 1].narration + ' ' + extra).trim();
+        }
+        return results;
+    }
+
+    // 2. Phân tích theo nhãn Cảnh 1:, Cảnh 2:...
+    const sceneMatches = [];
+    let currentSc = null;
+    for (const line of lines) {
+        const m = line.match(sceneLabelRegex);
+        if (m) {
+            currentSc = { idx: parseInt(m[1]), text: m[2].trim() };
+            sceneMatches.push(currentSc);
+        } else if (currentSc) {
+            currentSc.text += ' ' + line;
+        }
+    }
+
+    if (sceneMatches.length >= 2) {
+        const results = [];
+        for (let i = 0; i < numScenes; i++) {
+            if (i < sceneMatches.length) {
+                results.push({ narration: sceneMatches[i].text.trim(), duration: null });
+            } else {
+                results.push({ narration: '', duration: null });
+            }
+        }
+        if (sceneMatches.length > numScenes) {
+            const extra = sceneMatches.slice(numScenes).map(s => s.text.trim()).join(' ');
+            results[results.length - 1].narration = (results[results.length - 1].narration + ' ' + extra).trim();
+        }
+        return results;
+    }
+
+    // 3. Phân tích theo đoạn văn (Paragraphs)
+    const paragraphs = raw.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+    if (paragraphs.length === numScenes) {
+        return paragraphs.map(p => ({ narration: p, duration: null }));
+    }
+
+    // 4. Chia đều theo câu văn (Sentences)
+    const fullText = lines.join(' ');
+    const rawSentences = fullText.split(/(?<=[.!?…])\s+/).map(s => s.trim()).filter(Boolean);
+    const sentences = rawSentences.length > 0 ? rawSentences : [fullText];
+
+    const results = [];
+    if (sentences.length >= numScenes) {
+        const k = Math.floor(sentences.length / numScenes);
+        const m = sentences.length % numScenes;
+        let start = 0;
+        for (let i = 0; i < numScenes; i++) {
+            const chunkSize = k + (i < m ? 1 : 0);
+            const chunk = sentences.slice(start, start + chunkSize).join(' ');
+            results.push({ narration: chunk, duration: null });
+            start += chunkSize;
+        }
+    } else {
+        for (let i = 0; i < numScenes; i++) {
+            results.push({ narration: sentences[i] || '', duration: null });
+        }
+    }
+    return results;
+}
+
+function updateManualScriptStats() {
+    const input = document.getElementById('manual-script-input');
+    if (!input) return;
+    const text = input.value.trim();
+    const words = text ? text.split(/\s+/).length : 0;
+    const chars = text.length;
+    const estSeconds = words > 0 ? Math.max(1, Math.round(words / 3.2)) : 0;
+
+    const wordEl = document.getElementById('manual-word-count');
+    const charEl = document.getElementById('manual-char-count');
+    const estEl = document.getElementById('manual-est-duration');
+    const slotsEl = document.getElementById('manual-timing-stats-slots');
+    const slotCountEl = document.getElementById('manual-slot-count');
+
+    if (wordEl) wordEl.textContent = words;
+    if (charEl) charEl.textContent = chars;
+    if (estEl) estEl.textContent = estSeconds;
+
+    const numScenes = manualScenesList.length || 1;
+    const parsed = parseMultiSceneScript(text, numScenes, manualTimingMode);
+
+    if (manualTimingMode === 'timestamps') {
+        if (slotsEl) slotsEl.style.display = 'inline';
+        if (slotCountEl) slotCountEl.textContent = parsed.filter(p => p.narration).length;
+    } else {
+        if (slotsEl) slotsEl.style.display = 'none';
+    }
+
+    // Render Live Preview Inspector
+    const previewContainer = document.getElementById('manual-script-scenes-preview');
+    const mappingList = document.getElementById('manual-mapping-list');
+    if (previewContainer && mappingList) {
+        if (words > 0) {
+            previewContainer.style.display = 'block';
+            mappingList.innerHTML = parsed.map((item, idx) => {
+                const durInfo = item.duration ? ` [${item.duration}s]` : '';
+                const snippet = item.narration ? escapeHtml(item.narration) : '<em style="color:#64748b;">(Chưa có lời thoại)</em>';
+                return `
+                    <div class="scene-mapping-item">
+                        <span class="scene-mapping-tag">🎬 Cảnh #${idx + 1}${durInfo}:</span>
+                        <span class="scene-mapping-text">${snippet}</span>
+                    </div>
+                `;
+            }).join('');
+        } else {
+            previewContainer.style.display = 'none';
+        }
+    }
+}
+
+function insertManualTimestampSample() {
+    const input = document.getElementById('manual-script-input');
+    if (!input) return;
+    const numScenes = Math.max(2, manualScenesList.length);
+    let sample = '';
+    let cur = 0;
+    for (let i = 1; i <= numScenes; i++) {
+        const next = cur + (i === 1 ? 10 : (i === 2 ? 15 : 12));
+        const pad = (n) => String(n).padStart(2, '0');
+        if (i === 1) {
+            sample += `${pad(cur)}-${pad(next)}: Bạn có tin rằng dưới đáy đại dương vẫn còn những bí ẩn kinh hoàng?\n`;
+        } else if (i === 2) {
+            sample += `${pad(cur)}:${pad(next)}: Nơi áp lực nước có thể nghiền nát một chiếc tàu ngầm trong chớp mắt!\n`;
+        } else {
+            sample += `${pad(cur)}-${pad(next)}: Cùng khám phá sự thật chấn động này ngay bây giờ!\n`;
+        }
+        cur = next;
+    }
+    input.value = sample.trim();
+    updateManualScriptStats();
+    showToast('📋 Đã chèn mẫu mốc thời gian khớp theo số phân cảnh!', 'success');
+    input.focus();
+}
+
+function autoFormatManualScriptByScenes() {
+    const input = document.getElementById('manual-script-input');
+    if (!input) return;
+    const numScenes = manualScenesList.length || 2;
+    const text = input.value.trim();
+    const parsed = parseMultiSceneScript(text, numScenes, 'auto');
+
+    let cur = 0;
+    const formatted = parsed.map((item, idx) => {
+        const next = cur + 10;
+        const pad = (n) => String(n).padStart(2, '0');
+        const content = item.narration || `[Nội dung lời thoại cho phân cảnh #${idx + 1}]`;
+        const line = `${pad(cur)}-${pad(next)}: ${content}`;
+        cur = next;
+        return line;
+    }).join('\n\n');
+
+    input.value = formatted;
+    setManualScriptTimingMode('timestamps');
+    updateManualScriptStats();
+    showToast(`🪄 Đã tự động chia kịch bản thành ${numScenes} mốc tương ứng với ${numScenes} phân cảnh!`, 'success');
+    input.focus();
+}
+
+function triggerBatchScenesUpload() {
+    const input = document.getElementById('batch-scenes-file-input');
+    if (input) input.click();
+}
+
+function handleBatchScenesSelect(input) {
+    if (!input.files || input.files.length === 0) return;
+    const files = Array.from(input.files);
+    
+    files.forEach((file, idx) => {
+        const isVideo = file.type.startsWith('video');
+        const previewUrl = URL.createObjectURL(file);
+        const sizeStr = (file.size / (1024 * 1024)).toFixed(1) + ' MB';
+        
+        // Nếu cảnh đầu tiên đang để trống chưa có file thì điền vào
+        const emptyScene = manualScenesList.find(s => !s.file);
+        if (emptyScene && idx === 0) {
+            emptyScene.file = file;
+            emptyScene.isVideo = isVideo;
+            emptyScene.fileName = file.name;
+            emptyScene.fileSize = sizeStr;
+            emptyScene.previewUrl = previewUrl;
+        } else {
+            addManualScene({
+                file: file,
+                fileName: file.name,
+                fileSize: sizeStr,
+                isVideo: isVideo,
+                previewUrl: previewUrl,
+                cameraMotion: 'zoom_in',
+                sfxCue: 'auto'
+            });
+        }
+    });
+
+    renderManualScenes();
+    updateManualScriptStats();
+    showToast(`📁 Đã nạp ${files.length} tệp phân cảnh theo đúng thứ tự!`, 'success');
+    input.value = '';
+}
+
 function addManualScene(data = null) {
     const sceneId = 'sc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
     manualScenesList.push({
         id: sceneId,
-        file: null,
-        previewUrl: '',
-        isVideo: false,
-        narration: data ? data.narration : '',
-        cameraMotion: data ? data.cameraMotion : 'zoom_in',
-        sfxCue: data ? data.sfxCue : 'auto'
+        file: data ? data.file : null,
+        fileName: data ? (data.fileName || '') : '',
+        fileSize: data ? (data.fileSize || '') : '',
+        previewUrl: data ? (data.previewUrl || '') : '',
+        isVideo: data ? (data.isVideo || false) : false,
+        cameraMotion: data ? (data.cameraMotion || 'zoom_in') : 'zoom_in',
+        sfxCue: data ? (data.sfxCue || 'auto') : 'auto'
     });
     renderManualScenes();
+    updateManualScriptStats();
 }
 
 function removeManualScene(sceneId) {
@@ -3150,11 +3429,22 @@ function removeManualScene(sceneId) {
     }
     manualScenesList = manualScenesList.filter(s => s.id !== sceneId);
     renderManualScenes();
+    updateManualScriptStats();
 }
 
-function updateSceneNarration(sceneId, text) {
-    const sc = manualScenesList.find(s => s.id === sceneId);
-    if (sc) sc.narration = text;
+function moveManualScene(sceneId, direction) {
+    const index = manualScenesList.findIndex(s => s.id === sceneId);
+    if (index === -1) return;
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= manualScenesList.length) return;
+
+    const temp = manualScenesList[index];
+    manualScenesList[index] = manualScenesList[targetIndex];
+    manualScenesList[targetIndex] = temp;
+
+    renderManualScenes();
+    updateManualScriptStats();
+    showToast(`Đã đổi sang Cảnh #${targetIndex + 1}`, 'info');
 }
 
 function updateSceneMotion(sceneId, val) {
@@ -3173,10 +3463,13 @@ function handleSceneFileSelect(sceneId, input) {
     const sc = manualScenesList.find(s => s.id === sceneId);
     if (sc) {
         sc.file = file;
+        sc.fileName = file.name;
+        sc.fileSize = (file.size / (1024 * 1024)).toFixed(1) + ' MB';
         sc.isVideo = file.type.startsWith('video');
         sc.previewUrl = URL.createObjectURL(file);
         renderManualScenes();
-        showToast(`Đã nạp tệp: ${file.name} (${Math.round(file.size / 1024)} KB)`, 'success');
+        updateManualScriptStats();
+        showToast(`Đã nạp Cảnh: ${file.name}`, 'success');
     }
 }
 
@@ -3188,6 +3481,7 @@ function renderManualScenes() {
 
     container.innerHTML = manualScenesList.map((sc, index) => {
         const isFirst = index === 0;
+        const isLast = index === manualScenesList.length - 1;
         const sfxHtml = manualSfxOptions.map(opt => {
             const isSelected = (sc.sfxCue === opt.id) ? 'selected' : '';
             return `<option value="${escapeHtml(opt.id)}" ${isSelected}>${escapeHtml(opt.name)}</option>`;
@@ -3196,79 +3490,178 @@ function renderManualScenes() {
         let previewContent = '';
         if (sc.previewUrl) {
             if (sc.isVideo) {
-                previewContent = `<video src="${sc.previewUrl}" class="manual-preview-media" muted autoplay loop playsinline></video>`;
+                previewContent = `<video src="${sc.previewUrl}" class="manual-compact-preview-media" muted autoplay loop playsinline></video>`;
             } else {
-                previewContent = `<img src="${sc.previewUrl}" class="manual-preview-media" alt="Preview">`;
+                previewContent = `<img src="${sc.previewUrl}" class="manual-compact-preview-media" alt="Preview">`;
             }
-            previewContent += `<div style="position:absolute; bottom:6px; right:6px; background:rgba(0,0,0,0.75); font-size:10px; color:#fff; padding:2px 8px; border-radius:4px; pointer-events:none;">Đổi tệp ↗</div>`;
+            previewContent += `<div style="position:absolute; bottom:4px; right:4px; background:rgba(0,0,0,0.8); font-size:9.5px; color:#fff; padding:1px 6px; border-radius:3px; pointer-events:none;">Đổi ↗</div>`;
         } else {
             previewContent = `
-                <div class="manual-dropzone-icon">📁</div>
-                <div class="manual-dropzone-text">
-                    <strong style="color:var(--text-main);">Chọn Ảnh hoặc Video</strong><br>
-                    Tỷ lệ 9:16 Shorts
-                </div>
+                <div style="font-size:24px; line-height:1; margin-bottom:4px;">📁</div>
+                <div style="font-size:11px; font-weight:600; color:var(--text-main);">Chọn Tệp</div>
+                <div style="font-size:9.5px; color:var(--text-muted);">Video hoặc Ảnh</div>
             `;
         }
 
+        const fileMetaHtml = sc.fileName 
+            ? `<span style="font-size:11px; color:#93c5fd; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(sc.fileName)}">📎 ${escapeHtml(sc.fileName)} (${sc.fileSize})</span>`
+            : `<span style="font-size:11px; color:var(--text-muted); font-style:italic;">Chưa chọn tệp</span>`;
+
         return `
-            <div class="manual-scene-card" id="card-${sc.id}">
-                <div class="manual-scene-header">
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <span class="manual-scene-badge">🎬 CẢNH #${index + 1}</span>
-                        ${isFirst ? '<span class="badge badge-purple" style="font-size:10px;">HOOK MỞ ĐẦU</span>' : ''}
+            <div class="manual-scene-compact-card" id="card-${sc.id}">
+                <div class="manual-scene-compact-header">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span class="manual-scene-badge" style="font-size:11px; padding:2px 8px;">🎬 CẢNH #${index + 1}</span>
+                        ${isFirst ? '<span class="badge badge-purple" style="font-size:9.5px; padding:1px 6px;">HOOK</span>' : ''}
+                        ${fileMetaHtml}
                     </div>
-                    <button class="btn-remove-scene" onclick="removeManualScene('${sc.id}')" title="Xóa cảnh này">
-                        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                        Xóa Cảnh
-                    </button>
+                    <div style="display:flex; align-items:center; gap:4px;">
+                        <button type="button" class="scene-btn-reorder" onclick="moveManualScene('${sc.id}', -1)" ${isFirst ? 'disabled' : ''} title="Đưa cảnh lên trước">⬆️</button>
+                        <button type="button" class="scene-btn-reorder" onclick="moveManualScene('${sc.id}', 1)" ${isLast ? 'disabled' : ''} title="Đưa cảnh xuống sau">⬇️</button>
+                        <button type="button" class="btn-remove-scene" onclick="removeManualScene('${sc.id}')" title="Xóa cảnh này" style="padding:3px 6px; font-size:11px; margin-left:4px;">
+                            <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                    </div>
                 </div>
 
-                <div class="manual-scene-body">
-                    <!-- Khung tải media -->
-                    <div class="manual-dropzone" onclick="document.getElementById('input-file-${sc.id}').click()" title="Bấm để chọn ảnh hoặc video">
+                <div class="manual-scene-compact-body">
+                    <!-- Khung tải media nhỏ gọn -->
+                    <div class="manual-compact-dropzone" onclick="document.getElementById('input-file-${sc.id}').click()" title="Bấm để chọn ảnh hoặc video">
                         ${previewContent}
                         <input type="file" id="input-file-${sc.id}" style="display:none;" accept="image/*,video/*" onchange="handleSceneFileSelect('${sc.id}', this)">
                     </div>
 
-                    <!-- Khung điều khiển & Lời thoại -->
-                    <div class="manual-scene-controls">
+                    <!-- Điều khiển Chuyển động & SFX -->
+                    <div class="manual-scene-controls-compact">
                         <div>
-                            <label class="form-label" style="font-size:12px; margin-bottom:4px;">
-                                🗣️ Lời thoại MC đọc ở cảnh này <span class="required">*</span>
+                            <label class="form-label" style="font-size:11px; margin-bottom:3px;">
+                                🎥 Chuyển động (Nếu là ảnh)
                             </label>
-                            <textarea class="form-input" rows="3" placeholder="Nhập câu thoại MC sẽ đọc... Hệ thống sẽ tự động đo thời lượng và căn khớp video hoàn hảo." oninput="updateSceneNarration('${sc.id}', this.value)" style="resize:vertical;">${escapeHtml(sc.narration)}</textarea>
+                            <select class="form-input" style="padding:4px 8px; font-size:12px;" onchange="updateSceneMotion('${sc.id}', this.value)">
+                                <option value="zoom_in" ${sc.cameraMotion === 'zoom_in' ? 'selected' : ''}>🔍 Zoom In (Vào tâm)</option>
+                                <option value="zoom_out" ${sc.cameraMotion === 'zoom_out' ? 'selected' : ''}>🔎 Zoom Out (Thu nhỏ)</option>
+                                <option value="pan_left" ${sc.cameraMotion === 'pan_left' ? 'selected' : ''}>⬅️ Pan Trái</option>
+                                <option value="pan_right" ${sc.cameraMotion === 'pan_right' ? 'selected' : ''}>➡️ Pan Phải</option>
+                                <option value="pan_up" ${sc.cameraMotion === 'pan_up' ? 'selected' : ''}>⬆️ Pan Lên</option>
+                                <option value="pan_down" ${sc.cameraMotion === 'pan_down' ? 'selected' : ''}>⬇️ Pan Xuống</option>
+                            </select>
                         </div>
 
-                        <div class="manual-controls-row">
-                            <div>
-                                <label class="form-label" style="font-size:11.5px; margin-bottom:4px;">
-                                    🎥 Chuyển động (Nếu là ảnh)
-                                </label>
-                                <select class="form-input" style="padding:6px 10px; font-size:12.5px;" onchange="updateSceneMotion('${sc.id}', this.value)">
-                                    <option value="zoom_in" ${sc.cameraMotion === 'zoom_in' ? 'selected' : ''}>🔍 Zoom In (Vào tâm)</option>
-                                    <option value="zoom_out" ${sc.cameraMotion === 'zoom_out' ? 'selected' : ''}>🔎 Zoom Out (Thu nhỏ)</option>
-                                    <option value="pan_left" ${sc.cameraMotion === 'pan_left' ? 'selected' : ''}>⬅️ Pan Trái (Lướt qua trái)</option>
-                                    <option value="pan_right" ${sc.cameraMotion === 'pan_right' ? 'selected' : ''}>➡️ Pan Phải (Lướt qua phải)</option>
-                                    <option value="pan_up" ${sc.cameraMotion === 'pan_up' ? 'selected' : ''}>⬆️ Pan Lên (Kéo lên)</option>
-                                    <option value="pan_down" ${sc.cameraMotion === 'pan_down' ? 'selected' : ''}>⬇️ Pan Xuống (Kéo xuống)</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label class="form-label" style="font-size:11.5px; margin-bottom:4px;">
-                                    🎵 SFX Chuyển Cảnh
-                                </label>
-                                <select class="form-input" style="padding:6px 10px; font-size:12.5px;" onchange="updateSceneSfx('${sc.id}', this.value)">
-                                    ${sfxHtml}
-                                </select>
-                            </div>
+                        <div>
+                            <label class="form-label" style="font-size:11px; margin-bottom:3px;">
+                                🎵 SFX Chuyển Cảnh
+                            </label>
+                            <select class="form-input" style="padding:4px 8px; font-size:12px;" onchange="updateSceneSfx('${sc.id}', this.value)">
+                                ${sfxHtml}
+                            </select>
                         </div>
                     </div>
                 </div>
             </div>
         `;
     }).join('');
+}
+
+function onManualVoiceChange(voiceId) {
+    previewManualSelectedVoice(true);
+}
+
+async function previewManualSelectedVoice(isAutoTrigger = false) {
+    if (currentVoiceAudio && !currentVoiceAudio.paused) {
+        currentVoiceAudio.pause();
+        currentVoiceAudio = null;
+        resetPreviewVoiceButton();
+        if (!isAutoTrigger) {
+            showToast('⏹️ Đã dừng phát giọng thử', 'info');
+            return;
+        }
+    }
+
+    if (isVoicePreviewLoading) return;
+
+    const voiceSelect = document.getElementById('manual-voice');
+    const rateSelect = document.getElementById('manual-voice-rate');
+    const scriptInput = document.getElementById('manual-script-input');
+    const btn = document.getElementById('btn-preview-voice-manual');
+    const icon = document.getElementById('preview-voice-icon-manual');
+    const text = document.getElementById('preview-voice-text-manual');
+
+    const voice = voiceSelect ? voiceSelect.value : 'vi-VN-HoaiMyNeural';
+    const rate = rateSelect ? rateSelect.value : '+10%';
+    const scriptText = scriptInput ? scriptInput.value.trim() : '';
+
+    let sampleText = scriptText;
+    if (!sampleText) {
+        sampleText = 'Chào bạn, đây là bản xem trước giọng đọc AI tự động cho các phân cảnh của bạn.';
+    } else {
+        const sentences = sampleText.split(/[.!?\n]/).map(s => s.trim()).filter(Boolean);
+        sampleText = sentences.slice(0, 2).join('. ') + '.';
+    }
+
+    isVoicePreviewLoading = true;
+    if (icon) icon.textContent = '⏳';
+    if (text) text.textContent = 'Đang tải âm...';
+    if (btn) btn.disabled = true;
+
+    try {
+        const resp = await fetch('/api/manual-studio/preview-voice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ voice, rate, text: sampleText })
+        });
+
+        const data = await resp.json();
+        if (!resp.ok || !data.success) {
+            throw new Error(data.detail || 'Không thể tạo âm thanh thử');
+        }
+
+        const audio = new Audio(data.audio_url);
+        currentVoiceAudio = audio;
+
+        if (icon) icon.textContent = '🔊';
+        if (text) text.textContent = 'Đang phát thử...';
+        if (btn) {
+            btn.disabled = false;
+            btn.style.borderColor = '#10b981';
+            btn.style.color = '#34d399';
+            btn.style.background = 'rgba(16, 185, 129, 0.12)';
+        }
+
+        audio.onended = () => {
+            currentVoiceAudio = null;
+            if (icon) icon.textContent = '🔊';
+            if (text) text.textContent = 'Nghe Thử Giọng';
+            if (btn) {
+                btn.style.borderColor = 'rgba(236,72,153,0.35)';
+                btn.style.color = '#f472b6';
+                btn.style.background = 'rgba(236,72,153,0.08)';
+            }
+        };
+
+        audio.onerror = (e) => {
+            console.error('Lỗi playback audio:', e);
+            currentVoiceAudio = null;
+            if (icon) icon.textContent = '🔊';
+            if (text) text.textContent = 'Nghe Thử Giọng';
+            if (btn) {
+                btn.style.borderColor = 'rgba(236,72,153,0.35)';
+                btn.style.color = '#f472b6';
+                btn.style.background = 'rgba(236,72,153,0.08)';
+            }
+        };
+
+        await audio.play();
+        showToast('🔊 Đang phát giọng đọc thử...', 'info');
+
+    } catch (err) {
+        console.error('Lỗi nghe thử giọng đọc:', err);
+        showToast(`❌ Không thể phát thử: ${err.message}`, 'error');
+        if (icon) icon.textContent = '🔊';
+        if (text) text.textContent = 'Nghe Thử Giọng';
+        if (btn) btn.disabled = false;
+    } finally {
+        isVoicePreviewLoading = false;
+    }
 }
 
 async function submitManualStudio() {
@@ -3282,44 +3675,67 @@ async function submitManualStudio() {
     const duckCheckbox = document.getElementById('manual-ducking-enabled');
     const sfxCheckbox = document.getElementById('manual-sfx-enabled');
     const submitBtn = document.getElementById('btn-submit-manual-studio');
+    const scriptInput = document.getElementById('manual-script-input');
 
     const title = (titleInput ? titleInput.value.trim() : '') || 'Shorts Tùy Chỉnh';
-    
-    // Check if at least 1 scene has file
-    const emptyFiles = manualScenesList.filter(s => !s.file);
-    if (emptyFiles.length > 0) {
-        showToast(`⚠️ Còn ${emptyFiles.length} phân cảnh chưa chọn file ảnh/video. Vui lòng bấm vào khung để tải media!`, 'warning');
+    const scriptText = scriptInput ? scriptInput.value.trim() : '';
+
+    if (!scriptText) {
+        showToast('⚠️ Vui lòng nhập lời thoại kịch bản cho video!', 'warning');
+        if (scriptInput) scriptInput.focus();
         return;
     }
 
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = `
-        <svg class="spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke-width="3" stroke-dasharray="32" stroke-linecap="round"></circle></svg>
-        Đang tải media & bắt đầu render...
-    `;
+    if (manualScenesList.length === 0) {
+        showToast('⚠️ Vui lòng thêm ít nhất 1 phân cảnh!', 'warning');
+        return;
+    }
+
+    const emptyFiles = manualScenesList.filter(s => !s.file);
+    if (emptyFiles.length > 0) {
+        showToast(`⚠️ Còn ${emptyFiles.length} phân cảnh chưa chọn tệp media. Vui lòng bấm vào khung tải để chọn video/ảnh!`, 'warning');
+        return;
+    }
+
+    const originalBtnHTML = submitBtn ? submitBtn.innerHTML : '🚀 Bắt Đầu Ghép & Tạo Video';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `
+            <svg class="spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke-width="3" stroke-dasharray="32" stroke-linecap="round"></circle></svg>
+            Đang tải media & bắt đầu render...
+        `;
+    }
 
     try {
         const formData = new FormData();
+        const parsedSegments = parseMultiSceneScript(scriptText, manualScenesList.length, manualTimingMode);
 
-        const scenesSpec = manualScenesList.map((sc, idx) => ({
-            scene_id: idx + 1,
-            file_index: idx,
-            narration: sc.narration.trim(),
-            camera_motion: sc.cameraMotion,
-            transition: transitionSelect ? transitionSelect.value : 'fade',
-            sfx_cue: sc.sfxCue
-        }));
+        const scenesSpec = manualScenesList.map((sc, idx) => {
+            const seg = parsedSegments[idx] || { narration: '', duration: null };
+            return {
+                scene_id: idx + 1,
+                file_index: idx,
+                narration: seg.narration.trim(),
+                camera_motion: sc.cameraMotion,
+                transition: transitionSelect ? transitionSelect.value : 'fade',
+                sfx_cue: sc.sfxCue,
+                manual_duration_seconds: seg.duration
+            };
+        });
 
         const payloadObj = {
             title: title,
             target_channel_id: channelSelect ? channelSelect.value : 'channel_1',
             voice: voiceSelect ? voiceSelect.value : 'vi-VN-HoaiMyNeural',
-            voice_rate: rateSelect ? rateSelect.value : '+0%',
+            voice_rate: rateSelect ? rateSelect.value : '+10%',
             bgm_path: bgmSelect ? bgmSelect.value : null,
             use_ducking: duckCheckbox ? duckCheckbox.checked : true,
             subtitle_enabled: subCheckbox ? subCheckbox.checked : true,
             use_sfx: sfxCheckbox ? sfxCheckbox.checked : true,
             transition_type: transitionSelect ? transitionSelect.value : 'fade',
+            timing_mode: manualTimingMode,
+            mode: 'multi_scene',
+            script: scriptText,
             scenes: scenesSpec
         };
 
@@ -3339,7 +3755,6 @@ async function submitManualStudio() {
 
         if (resp.ok && resData.success) {
             showToast(`🚀 ${resData.message}`, 'success');
-            // Switch to pipeline to watch live progress
             setTimeout(() => {
                 switchTab('pipeline');
                 fetchVideos();
@@ -3351,8 +3766,10 @@ async function submitManualStudio() {
         console.error('Lỗi gửi submit manual studio:', err);
         showToast(`❌ Lỗi kết nối: ${err.message}`, 'error');
     } finally {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = `🚀 Bắt Đầu Ghép & Tạo Video`;
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnHTML;
+        }
     }
 }
 

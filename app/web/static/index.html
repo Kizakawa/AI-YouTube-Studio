@@ -12,7 +12,7 @@
     <noscript>
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
     </noscript>
-    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=2.9">
 </head>
 <body>
 
@@ -564,10 +564,10 @@ Hôm nay, chúng ta sẽ khám phá 3 sự thật chấn động nhất...
                                 <span>✂️</span> Ghép Cảnh Tùy Chỉnh (Manual Scene Studio)
                             </h3>
                             <p style="font-size:12.5px; color:var(--text-muted); margin-top:3px;">
-                                Tải lên footage/ảnh từng cảnh riêng biệt, hệ thống tự động đọc thoại AI, căn khớp từng giây, lồng SFX & phụ đề Shorts
+                                Tải lên footage/ảnh từng cảnh theo đúng thứ tự, nhập lời thoại kịch bản vào 1 ô duy nhất. AI tự động căn khớp từng giây, lồng SFX & phụ đề Shorts!
                             </p>
                         </div>
-                        <span class="badge badge-purple">Multi-Scene Builder</span>
+                        <span class="badge badge-purple">Multi-Scene Engine</span>
                     </div>
 
                     <div class="create-form">
@@ -585,11 +585,123 @@ Hôm nay, chúng ta sẽ khám phá 3 sự thật chấn động nhất...
                             </div>
                         </div>
 
-                        <!-- Row 2: Giọng đọc AI & Tốc độ & Nhạc nền -->
-                        <div class="form-row">
+                        <!-- 2-Column Responsive Workspace: Multi-Scene Upload & Script Editor (Giống hệt Một Video Hoàn Chỉnh) -->
+                        <div class="multi-scene-grid">
+                            <!-- Left: Scene List Dropzone (Tải lên từng phân cảnh 1 theo đúng thứ tự) -->
+                            <div class="multi-scenes-box">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.06);">
+                                    <div>
+                                        <label class="form-label" style="display:flex; align-items:center; gap:6px; margin-bottom:2px; font-weight:700;">
+                                            <span>🎞️ 1. Tải Lên Các Phân Cảnh (Theo Đúng Thứ Tự) <span class="required">*</span></span>
+                                        </label>
+                                        <div style="font-size:11.5px; color:var(--text-muted);">
+                                            Đang có <strong id="manual-scene-count" style="color:#ec4899;">2</strong> cảnh · Hỗ trợ MP4, WebM, JPG, PNG
+                                        </div>
+                                    </div>
+                                    <div style="display:flex; gap:6px;">
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="triggerBatchScenesUpload()" style="font-size:11.5px; padding:4px 9px;" title="Chọn nhiều video/ảnh cùng lúc từ máy tính, hệ thống tự xếp thành Cảnh 1, Cảnh 2, Cảnh 3...">
+                                            📁 Tải Nhiều Clip
+                                        </button>
+                                        <button type="button" class="btn btn-primary btn-sm" onclick="addManualScene()" style="font-size:11.5px; padding:4px 10px; background:linear-gradient(135deg, #ec4899, #8b5cf6); border:none;">
+                                            ➕ Thêm Cảnh
+                                        </button>
+                                        <input type="file" id="batch-scenes-file-input" multiple accept="video/*,image/*" style="display:none;" onchange="handleBatchScenesSelect(this)">
+                                    </div>
+                                </div>
+
+                                <!-- Container danh sách các cảnh (không có ô textarea riêng trong từng cảnh) -->
+                                <div id="manual-scenes-container" style="display:flex; flex-direction:column; gap:12px; max-height:560px; overflow-y:auto; padding-right:4px;">
+                                    <!-- Rendered dynamically by renderManualScenes() -->
+                                </div>
+
+                                <div style="margin-top:12px;">
+                                    <button type="button" class="btn btn-secondary" onclick="addManualScene()" style="width:100%; padding:9px; border-style:dashed; border-color:rgba(236,72,153,0.3); color:#f472b6; font-size:12.5px; font-weight:600; background:rgba(236,72,153,0.04);">
+                                        ➕ Thêm Phân Cảnh Tiếp Theo
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Right: Narration Script Textarea (1 Ô DUY NHẤT GIỐNG HỆT VIDEO HOÀN CHỈNH) -->
+                            <div class="script-editor-card">
+                                <label class="form-label" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                    <span>🗣️ 2. Lời Thoại Kịch Bản Của Video <span class="required">*</span></span>
+                                    <span style="font-size:11px; color:#a78bfa;">AI phân đoạn & căn nhịp chuẩn xác</span>
+                                </label>
+
+                                <!-- Script Timing Mode Switcher -->
+                                <div class="script-timing-nav">
+                                    <button type="button" class="script-timing-btn active" id="manual-timing-mode-btn-auto" onclick="setManualScriptTimingMode('auto')">
+                                        <span>⚡</span> Chỉnh Tự Động (AI Auto)
+                                    </button>
+                                    <button type="button" class="script-timing-btn" id="manual-timing-mode-btn-timestamps" onclick="setManualScriptTimingMode('timestamps')">
+                                        <span>⏱️</span> Căn Theo Mốc Thời Gian (Thủ Công)
+                                    </button>
+                                </div>
+
+                                <!-- Helper Toolbar -->
+                                <div id="manual-timing-helper-toolbar" class="timing-helper-toolbar" style="display:none;">
+                                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                        <span>⏱️ Định dạng: <code>00-10: Cảnh 1</code> hoặc <code>Cảnh 1: Lời thoại</code></span>
+                                    </div>
+                                    <div style="display:flex; gap:6px;">
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="insertManualTimestampSample()" style="padding:2px 8px; font-size:11px;" title="Chèn kịch bản mẫu có chia mốc">
+                                            📋 Chèn Mẫu 00-10:
+                                        </button>
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="autoFormatManualScriptByScenes()" style="padding:2px 8px; font-size:11px;" title="Tự động chia đều kịch bản theo số phân cảnh đang có">
+                                            🪄 Chia Theo Số Cảnh
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <textarea id="manual-script-input" class="script-textarea" placeholder="Dán toàn bộ lời thoại kịch bản vào đây...
+
+Ví dụ Chỉnh Tự Động:
+Bạn có tin rằng dưới đáy đại dương sâu thẳm vẫn còn những quái vật bí ẩn chưa từng được phát hiện?
+Nơi mà áp lực nước có thể nghiền nát một chiếc tàu ngầm trong nháy mắt!
+Hôm nay, chúng ta sẽ khám phá 3 sự thật chấn động nhất...
+
+Ví dụ Căn Theo Mốc:
+00-10: Bạn có tin rằng dưới đáy đại dương sâu thẳm vẫn còn những quái vật bí ẩn?
+10-25: Nơi mà áp lực nước có thể nghiền nát một chiếc tàu ngầm trong nháy mắt!
+25-45: Hôm nay, chúng ta sẽ khám phá 3 sự thật chấn động nhất...
+
+💡 Mẹo: Nhập tất cả nội dung vào ô này, hệ thống sẽ tự động phân bổ và căn khớp hoàn hảo cho từng phân cảnh bạn tải lên!" oninput="updateManualScriptStats()"></textarea>
+
+                                <div class="script-stats-bar">
+                                    <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                                        <span>📝 <strong id="manual-word-count" style="color:var(--text-main);">0</strong> từ</span>
+                                        <span>·</span>
+                                        <span><strong id="manual-char-count" style="color:var(--text-main);">0</strong> ký tự</span>
+                                        <span>·</span>
+                                        <span id="manual-timing-stats-est">⏱️ Giọng đọc: ~<strong id="manual-est-duration" style="color:#ec4899;">0</strong>s</span>
+                                        <span id="manual-timing-stats-slots" style="display:none;">🎯 <strong id="manual-slot-count" style="color:#38bdf8;">0</strong> mốc</span>
+                                    </div>
+                                    <span id="manual-timing-badge-indicator" class="pill-indicator pill-indicator-green">✨ AI tự động phân bổ cho các phân cảnh</span>
+                                </div>
+
+                                <!-- Live Mapping Inspector: Xem trước kịch bản phân bổ vào các cảnh -->
+                                <div class="manual-script-scenes-preview" id="manual-script-scenes-preview" style="display:none;">
+                                    <div style="font-size:11px; font-weight:700; color:#c084fc; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+                                        <span>🔍 Xem Trước Phân Bổ Kịch Bản Vào Từng Cảnh:</span>
+                                    </div>
+                                    <div id="manual-mapping-list" style="display:flex; flex-direction:column; gap:4px;">
+                                        <!-- Rendered dynamically -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Row 3: Cấu hình Giọng đọc & Nhạc nền & Chuyển cảnh -->
+                        <div class="form-row" style="margin-top: 10px;">
                             <div class="form-group" style="flex:2;">
-                                <label class="form-label" for="manual-voice">🎙️ Giọng đọc MC (AI Voice)</label>
-                                <select id="manual-voice" class="form-input">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                    <label class="form-label" for="manual-voice" style="margin-bottom:0;">🎙️ Giọng đọc MC (AI Voice)</label>
+                                    <button type="button" id="btn-preview-voice-manual" class="btn btn-secondary btn-sm" onclick="previewManualSelectedVoice()" style="font-size:11.5px; padding:3px 10px; display:inline-flex; align-items:center; gap:5px; border-color:rgba(236,72,153,0.35); color:#f472b6; background:rgba(236,72,153,0.08);" title="Nghe thử giọng đọc qua loa">
+                                        <span id="preview-voice-icon-manual">🔊</span>
+                                        <span id="preview-voice-text-manual">Nghe Thử Giọng</span>
+                                    </button>
+                                </div>
+                                <select id="manual-voice" class="form-input" onchange="onManualVoiceChange(this.value)">
                                     <!-- Populated dynamically -->
                                 </select>
                             </div>
@@ -597,7 +709,7 @@ Hôm nay, chúng ta sẽ khám phá 3 sự thật chấn động nhất...
                                 <label class="form-label" for="manual-voice-rate">⚡ Tốc độ đọc</label>
                                 <select id="manual-voice-rate" class="form-input">
                                     <option value="+0%">Bình thường (100%)</option>
-                                    <option value="+10%">Nhanh cuốn (+10%)</option>
+                                    <option value="+10%" selected>Nhanh cuốn (+10% khuyên dùng)</option>
                                     <option value="+20%">Hối hả (+20%)</option>
                                     <option value="-10%">Trầm chậm (-10%)</option>
                                 </select>
@@ -608,13 +720,9 @@ Hôm nay, chúng ta sẽ khám phá 3 sự thật chấn động nhất...
                                     <option value="">-- Không dùng nhạc nền --</option>
                                 </select>
                             </div>
-                        </div>
-
-                        <!-- Row 3: Hiệu ứng chuyển cảnh & Subtitle & SFX toggles -->
-                        <div class="form-row" style="background:rgba(255,255,255,0.02); padding:12px; border-radius:8px; border:1px solid rgba(255,255,255,0.06); align-items:center;">
-                            <div class="form-group" style="flex:1;">
+                            <div class="form-group" style="flex:1.2;">
                                 <label class="form-label" for="manual-transition">Chuyển cảnh giữa các clip</label>
-                                <select id="manual-transition" class="form-input" style="padding:6px 10px; font-size:13px;">
+                                <select id="manual-transition" class="form-input">
                                     <option value="fade">Mờ dần (Cross Fade)</option>
                                     <option value="zoomin">Phóng to (Zoom In)</option>
                                     <option value="wipeleft">Gạt sang trái (Wipe Left)</option>
@@ -622,58 +730,51 @@ Hôm nay, chúng ta sẽ khám phá 3 sự thật chấn động nhất...
                                     <option value="dissolve">Hòa tan (Dissolve)</option>
                                 </select>
                             </div>
-                            <div style="display:flex; gap:20px; align-items:center; flex:2; justify-content:flex-end;">
-                                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; color:var(--text-main);">
-                                    <input type="checkbox" id="manual-subtitles-enabled" checked style="accent-color:var(--primary); width:16px; height:16px;">
-                                    <span>💬 Phụ đề Karaoke Shorts (ASS)</span>
-                                </label>
-                                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; color:var(--text-main);">
-                                    <input type="checkbox" id="manual-ducking-enabled" checked style="accent-color:var(--primary); width:16px; height:16px;">
-                                    <span>🔉 Giảm nhạc khi MC nói</span>
-                                </label>
-                                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; color:var(--text-main);">
-                                    <input type="checkbox" id="manual-sfx-enabled" checked style="accent-color:var(--primary); width:16px; height:16px;">
-                                    <span>💥 Bật SFX chuyển cảnh</span>
-                                </label>
-                            </div>
                         </div>
-                    </div>
-                </div>
 
-                <!-- 2. DANH SÁCH PHÂN CẢNH (SCENE BUILDER) -->
-                <div class="panel-card" style="margin-bottom: 24px;">
-                    <div class="panel-header" style="border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:14px; margin-bottom:16px;">
-                        <div>
-                            <h4 style="margin:0; font-size:15px; font-weight:700; color:var(--text-main); display:flex; align-items:center; gap:8px;">
-                                <span>🎞️</span> Phân Cảnh Media & Lời Thoại (<span id="manual-scene-count">2</span> cảnh)
-                            </h4>
-                            <p style="font-size:12px; color:var(--text-muted); margin:4px 0 0 0;">
-                                Mỗi cảnh tự động kéo dài/cắt theo thời lượng giọng đọc AI. Hỗ trợ cả file Video (MP4, WebM) và Ảnh (JPG, PNG, WebP).
-                            </p>
+                        <!-- Row 4: Smart Toggles (Tùy chọn thông minh) -->
+                        <div class="smart-options-grid">
+                            <label class="smart-option-item">
+                                <input type="checkbox" id="manual-subtitles-enabled" checked>
+                                <div>
+                                    <div class="smart-option-title">💬 Phụ Đề Karaoke Shorts (ASS)</div>
+                                    <div class="smart-option-desc">Tự động tạo chữ đổi màu động bắt mắt theo nhịp đọc của MC</div>
+                                </div>
+                            </label>
+
+                            <label class="smart-option-item">
+                                <input type="checkbox" id="manual-ducking-enabled" checked>
+                                <div>
+                                    <div class="smart-option-title">🔉 Audio Ducking Thông Minh</div>
+                                    <div class="smart-option-desc">Tự động giảm âm lượng BGM xuống khi MC nói, tăng lại khi ngừng</div>
+                                </div>
+                            </label>
+
+                            <label class="smart-option-item">
+                                <input type="checkbox" id="manual-sfx-enabled" checked>
+                                <div>
+                                    <div class="smart-option-title">💥 SFX Chuyển Cảnh & Kịch Tính</div>
+                                    <div class="smart-option-desc">AI tự động phân tích ngữ cảnh để chèn âm thanh chuyển cảnh Whoosh, Impact</div>
+                                </div>
+                            </label>
+
+                            <label class="smart-option-item">
+                                <input type="checkbox" id="manual-crop-916" checked disabled>
+                                <div>
+                                    <div class="smart-option-title">📐 Chuẩn 9:16 Shorts 1080x1920</div>
+                                    <div class="smart-option-desc">Tự động căn chỉnh khung hình và độ dài video vừa vặn hoàn hảo</div>
+                                </div>
+                            </label>
                         </div>
-                        <button class="btn btn-secondary btn-sm" onclick="addManualScene()">
-                            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                            Thêm Phân Cảnh
-                        </button>
-                    </div>
-
-                    <div id="manual-scenes-container" style="display:flex; flex-direction:column; gap:16px;">
-                        <!-- Rendered by JS -->
-                    </div>
-
-                    <div style="margin-top:20px; display:flex; justify-content:center;">
-                        <button class="btn btn-secondary" onclick="addManualScene()" style="border-style:dashed; border-color:rgba(255,255,255,0.2); width:100%; max-width:400px; padding:10px 16px;">
-                            ➕ Thêm Phân Cảnh Mới
-                        </button>
                     </div>
                 </div>
 
                 <!-- 3. ACTION BAR & RENDER TRIGGER -->
-                <div class="panel-card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; background:linear-gradient(135deg, rgba(236,72,153,0.06), rgba(99,102,241,0.06)); border:1px solid rgba(236,72,153,0.2);">
+                <div class="panel-card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; background:linear-gradient(135deg, rgba(236,72,153,0.06), rgba(99,102,241,0.06)); border:1px solid rgba(236,72,153,0.25);">
                     <div>
-                        <h4 style="margin:0 0 4px 0; font-size:15px; color:#fff;">Sẵn sàng sản xuất video Shorts từ phân cảnh</h4>
+                        <h4 style="margin:0 0 4px 0; font-size:15px; color:#fff;">Sẵn sàng ghép các phân cảnh & sản xuất video Shorts</h4>
                         <p style="margin:0; font-size:12px; color:var(--text-muted);">
-                            Hệ thống sẽ chạy ngầm bằng FFmpeg Engine, tự động đồng bộ giọng đọc, video 9:16 và xuất ra Pipeline.
+                            Hệ thống sẽ chạy ngầm bằng FFmpeg Engine, đồng bộ các cảnh theo đúng thứ tự, lồng giọng đọc AI và xuất ra Pipeline.
                         </p>
                     </div>
                     <button class="btn btn-primary btn-lg" id="btn-submit-manual-studio" onclick="submitManualStudio()" style="background:linear-gradient(135deg, #ec4899, #8b5cf6); border:none; padding:12px 28px; font-weight:700; box-shadow:0 4px 20px rgba(236,72,153,0.4);">
@@ -1355,6 +1456,6 @@ Hôm nay, chúng ta sẽ khám phá 3 sự thật chấn động nhất...
 <!-- TOAST NOTIFICATION -->
 <div class="toast-container" id="toast-container"></div>
 
-<script src="/static/js/dashboard.js?v=2.8"></script>
+<script src="/static/js/dashboard.js?v=2.9"></script>
 </body>
 </html>

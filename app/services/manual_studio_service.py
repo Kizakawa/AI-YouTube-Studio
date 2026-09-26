@@ -311,6 +311,7 @@ class ManualStudioService:
 
             if narration_text:
                 update_progress(20 + int(i / len(valid_scenes) * 15), f"Đang tạo giọng đọc cảnh {i}/{len(valid_scenes)}...")
+                target_dur = sc.manual_duration_seconds
                 dur = await self._generate_scene_tts(
                     text=narration_text,
                     voice=config.voice,
@@ -318,6 +319,30 @@ class ManualStudioService:
                     voice_pitch=config.voice_pitch,
                     output_audio_path=sc_audio
                 )
+
+                # Nếu có mốc thời gian chỉ định (target_dur)
+                if target_dur and target_dur >= 1.5:
+                    if dur > target_dur:
+                        # Tự động tăng tốc đọc để khớp vào khung thời gian của cảnh
+                        speedup_pct = min(60, int(((dur / target_dur) - 1.0) * 100 + 12))
+                        adapted_rate = f"+{speedup_pct}%"
+                        logger.info(f"[ManualStudio #{job_id}] Cảnh #{i}: Thoại dài ({dur:.1f}s > {target_dur:.1f}s) -> AI tự tăng tốc {adapted_rate}")
+                        dur = await self._generate_scene_tts(
+                            text=narration_text,
+                            voice=config.voice,
+                            voice_rate=adapted_rate,
+                            voice_pitch=config.voice_pitch,
+                            output_audio_path=sc_audio
+                        )
+                    # Nếu giọng đọc ngắn hơn khung thời gian của cảnh -> đệm khoảng lặng (pad) để audio khớp với video cảnh
+                    if target_dur > dur + 0.05:
+                        pad_sec = round(target_dur - dur, 3)
+                        pad_path = str(temp_dir / f"scene_{i:03d}_pad.mp3")
+                        await self._create_silent_audio(pad_sec, pad_path)
+                        padded_sc_audio = str(temp_dir / f"scene_{i:03d}_padded_voice.mp3")
+                        await self._concat_audios([sc_audio, pad_path], padded_sc_audio)
+                        sc_audio = padded_sc_audio
+                        dur = target_dur
             else:
                 # Không có thoại -> dùng manual_duration_seconds hoặc mặc định 3.5s
                 dur = sc.manual_duration_seconds or 3.5
@@ -530,6 +555,128 @@ class ManualStudioService:
 
         parsed.sort(key=lambda x: x["start"])
         return [(p["start"], p["end"], p["text"]) for p in parsed]
+
+    def parse_multi_scene_script(self, script_text: str, num_scenes: int, timing_mode: str = "auto") -> List[Dict[str, Any]]:
+        """
+        Phân tách nội dung kịch bản từ 1 ô duy nhất cho N phân cảnh tải lên.
+        Hỗ trợ:
+          1. Mốc thời gian (00-10: ..., 10:25: ...)
+          2. Nhãn cảnh (Cảnh 1: ..., Cảnh 2: ..., Đoạn 1: ..., 1: ...)
+          3. Đoạn văn tự nhiên (Paragraphs)
+          4. Chia đều theo câu văn (Sentences)
+        """
+        import re
+        raw_text = (script_text or "").strip()
+        if not raw_text or num_scenes <= 0:
+            return [{"narration": "", "duration": None} for _ in range(max(1, num_scenes))]
+
+        ts_regex = re.compile(
+            r'^\s*\[?\s*(\d{1,2}(?::\d{1,2})?)\s*(?:-|đến|to|->|:)\s*(\d{1,2}(?::\d{1,2})?)\s*\]?\s*[:\-]?\s*(.*)$',
+            re.IGNORECASE
+        )
+        scene_label_regex = re.compile(
+            r'^\s*(?:cảnh|phân cảnh|scene|đoạn|bước|part)?\s*#?(\d+)[:.\-]\s*(.*)$',
+            re.IGNORECASE
+        )
+
+        def to_sec(v: str) -> float:
+            v = v.strip()
+            parts = v.split(":")
+            if len(parts) == 2:
+                return float(parts[0]) * 60 + float(parts[1])
+            if len(parts) == 3:
+                return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+            return float(v)
+
+        lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+
+        # ── 1. Thử phân tích theo mốc thời gian 00-10: ──
+        ts_matches = []
+        current_ts = None
+        for line in lines:
+            m = ts_regex.match(line)
+            if m:
+                t1, t2, content = m.groups()
+                try:
+                    s1 = to_sec(t1)
+                    s2 = to_sec(t2)
+                    dur = max(2.0, s2 - s1) if s2 > s1 else None
+                    current_ts = {"text": content.strip(), "duration": dur}
+                    ts_matches.append(current_ts)
+                except Exception:
+                    if current_ts:
+                        current_ts["text"] += " " + line
+            else:
+                if current_ts:
+                    current_ts["text"] += " " + line
+
+        if ts_matches:
+            results = []
+            for i in range(num_scenes):
+                if i < len(ts_matches):
+                    results.append({"narration": ts_matches[i]["text"].strip(), "duration": ts_matches[i]["duration"]})
+                else:
+                    results.append({"narration": "", "duration": None})
+            if len(ts_matches) > num_scenes:
+                extra = " ".join(m["text"].strip() for m in ts_matches[num_scenes:])
+                results[-1]["narration"] = (results[-1]["narration"] + " " + extra).strip()
+            return results
+
+        # ── 2. Thử phân tích theo nhãn Cảnh 1:, Cảnh 2:, ... ──
+        scene_matches = []
+        current_scene = None
+        for line in lines:
+            m = scene_label_regex.match(line)
+            if m:
+                idx_str, content = m.groups()
+                current_scene = {"idx": int(idx_str), "text": content.strip()}
+                scene_matches.append(current_scene)
+            else:
+                if current_scene:
+                    current_scene["text"] += " " + line
+
+        if scene_matches and len(scene_matches) >= 2:
+            results = []
+            for i in range(num_scenes):
+                if i < len(scene_matches):
+                    results.append({"narration": scene_matches[i]["text"].strip(), "duration": None})
+                else:
+                    results.append({"narration": "", "duration": None})
+            if len(scene_matches) > num_scenes:
+                extra = " ".join(s["text"].strip() for s in scene_matches[num_scenes:])
+                results[-1]["narration"] = (results[-1]["narration"] + " " + extra).strip()
+            return results
+
+        # ── 3. Thử phân tích theo đoạn văn bản (Paragraphs) ──
+        paragraphs = [p.strip() for p in re.split(r'\n\s*\n', raw_text) if p.strip()]
+        if len(paragraphs) == num_scenes:
+            return [{"narration": p, "duration": None} for p in paragraphs]
+
+        # ── 4. Phân chia đều theo câu văn (Sentences) ──
+        clean_all = " ".join(lines)
+        raw_sentences = re.split(r'(?<=[.!?…])\s+', clean_all)
+        sentences = [s.strip() for s in raw_sentences if s.strip()]
+
+        if not sentences:
+            return [{"narration": raw_text, "duration": None}] + [{"narration": "", "duration": None} for _ in range(num_scenes - 1)]
+
+        results = []
+        if len(sentences) >= num_scenes:
+            k, m = divmod(len(sentences), num_scenes)
+            start = 0
+            for i in range(num_scenes):
+                chunk_size = k + (1 if i < m else 0)
+                chunk = " ".join(sentences[start:start + chunk_size])
+                results.append({"narration": chunk, "duration": None})
+                start += chunk_size
+        else:
+            for i in range(num_scenes):
+                if i < len(sentences):
+                    results.append({"narration": sentences[i], "duration": None})
+                else:
+                    results.append({"narration": "", "duration": None})
+
+        return results
 
     def _parse_script_segments(self, text: str) -> List[str]:
         """Tách kịch bản thành các phân đoạn tự nhiên để căn phụ đề và chèn SFX."""

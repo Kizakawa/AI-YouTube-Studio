@@ -2294,13 +2294,13 @@ async def create_manual_studio_video(
     scenes_spec = data.get("scenes", [])
 
     if not script_text and scenes_spec:
-        script_text = "\n".join([s.get("narration", "") for s in scenes_spec])
+        script_text = "\n".join([s.get("narration", "") for s in scenes_spec if s.get("narration")])
 
-    if mode == "single_video" and not script_text:
+    if not script_text:
         raise HTTPException(status_code=400, detail="Vui lòng nhập lời thoại kịch bản cho video")
 
     if len(files) == 0:
-        raise HTTPException(status_code=400, detail="Chưa có file video nào được tải lên")
+        raise HTTPException(status_code=400, detail="Chưa có file media nào được tải lên")
 
     # 1. Tạo bản ghi VideoJob trong Database
     with get_db() as db:
@@ -2371,6 +2371,16 @@ async def create_manual_studio_video(
         )
     else:
         # Chế độ nhiều scene
+        all_narrations_empty = all(not (s.get("narration") or "").strip() for s in scenes_spec)
+        if all_narrations_empty and script_text:
+            from app.services.manual_studio_service import ManualStudioService
+            parsed_parts = ManualStudioService().parse_multi_scene_script(script_text, len(scenes_spec), data.get("timing_mode", "auto"))
+            for idx, part in enumerate(parsed_parts):
+                if idx < len(scenes_spec):
+                    scenes_spec[idx]["narration"] = part.get("narration", "")
+                    if part.get("duration"):
+                        scenes_spec[idx]["manual_duration_seconds"] = part["duration"]
+
         manual_scenes = []
         for i, sc in enumerate(scenes_spec):
             file_idx = sc.get("file_index", i)
@@ -2385,14 +2395,14 @@ async def create_manual_studio_video(
                 camera_motion=sc.get("camera_motion", "zoom_in"),
                 transition=sc.get("transition", "fade"),
                 sfx_cue=sc.get("sfx_cue", "auto"),
-                manual_duration_seconds=float(sc.get("manual_duration_seconds", 3.5)) if sc.get("manual_duration_seconds") else None
+                manual_duration_seconds=float(sc.get("manual_duration_seconds")) if sc.get("manual_duration_seconds") else None
             ))
         background_tasks.add_task(
             _execute_manual_render,
             job_id,
             "multi_scene",
             None,
-            "",
+            script_text,
             manual_scenes,
             config
         )
