@@ -23,6 +23,7 @@ from app.bot.keyboards import (
     get_chat_brainstorm_keyboard,
     get_publish_channel_keyboard,
     get_viral_ideas_keyboard,
+    get_videos_list_keyboard,
 )
 from app.database.models import get_db, User, VideoJob, log_activity
 from app.agents.content_agent import ContentAgent
@@ -156,6 +157,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• Theo dõi toàn bộ hoạt động của admin qua Web Dashboard thời gian thực!\n\n"
         f"📌 **Các lệnh chính:**\n"
         f"• `/viral` - 🔥 Gợi ý 5 ý tưởng triệu view (Công thức giữ chân 160% Retention)\n"
+        f"• `/videos` - 📺 Xem danh sách tất cả video trong hệ thống (kèm nút xem/tải trực tiếp)\n"
+        f"• `/get <id>` - 📥 Tải file video MP4 gửi thẳng vào tin nhắn Telegram để xem ngay\n"
         f"• `/chat <nội dung>` - Thảo luận, phản biện và đồng sáng tạo kịch bản với Đạo diễn AI\n"
         f"• `/channels` - Xem và chuyển đổi kênh YouTube muốn sản xuất\n"
         f"• `/idea <chủ đề>` - Lên kịch bản AI ngay tức thì cho kênh đang chọn\n"
@@ -163,7 +166,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• `/queue` - Xem trạng thái hàng đợi render (FIFO)\n"
         f"• `/cancel <job_id>` - Hủy video đang chờ trong hàng đợi\n"
         f"• `/status` - Báo cáo số lượng video và trạng thái hệ thống\n\n"
-        f"👉 Gõ `/viral` hoặc `/idea` để bắt đầu sáng tạo video cùng nhóm!"
+        f"👉 Gõ `/viral`, `/videos` hoặc `/idea` để bắt đầu sáng tạo video cùng nhóm!"
     )
     await safe_reply(update, welcome_text)
 
@@ -2072,6 +2075,21 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "refresh_pending":
         await pending_command(update, context)
 
+    # 8.1 Tải / gửi video lên Telegram để xem ngay
+    elif data.startswith("send_video_file:"):
+        job_id = int(data.split(":")[1])
+        await send_video_file_handler(update, context, job_id)
+
+    # 8.2 Chuyển trang danh sách video
+    elif data.startswith("videos_page:"):
+        page = int(data.split(":")[1])
+        await _show_videos_list(update, context, page=page)
+
+    # 8.3 Làm mới danh sách video
+    elif data.startswith("refresh_videos:"):
+        page = int(data.split(":")[1])
+        await _show_videos_list(update, context, page=page)
+
     # 9. Gán media trực tiếp từ kết quả tìm kiếm vào phân cảnh
     elif data.startswith("apply_media:"):
         parts = data.split(":")
@@ -2530,6 +2548,276 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await safe_reply(update, text)
 
 
+def _resolve_video_file_path(job_id: int, recorded_path: Optional[str] = None) -> Optional[Path]:
+    """Tìm đường dẫn tệp video MP4 thực tế trên máy chủ cho Job ID."""
+    base_dir = Path(settings.BASE_DIR)
+    candidates = []
+    if recorded_path:
+        cand_rec = Path(recorded_path)
+        candidates.append(cand_rec)
+        if not cand_rec.is_absolute():
+            candidates.append(base_dir / cand_rec)
+
+    candidates.extend([
+        base_dir / "storage" / "outputs" / f"video_{job_id}.mp4",
+        base_dir / "storage" / "outputs" / f"rendered_{job_id}.mp4",
+        base_dir / "storage" / "outputs" / f"final_{job_id}.mp4",
+        base_dir / "storage" / f"video_{job_id}.mp4"
+    ])
+
+    for c in candidates:
+        try:
+            if c.exists() and c.is_file() and c.stat().st_size > 1000:
+                return c
+        except Exception:
+            pass
+    return None
+
+
+async def _show_videos_list(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int = 1):
+    """Truy vấn SQLite và hiển thị danh sách tất cả video kèm nút bấm xem / tải trực tiếp vào Telegram."""
+    if not is_authorized(update):
+        return
+
+    with get_db() as db:
+        total_jobs = db.query(VideoJob).count()
+        if total_jobs == 0:
+            await safe_reply(
+                update,
+                "📭 **Chưa có video nào trong hệ thống!**\n\n"
+                "👉 Bạn có thể gõ `/idea <chủ đề>` để tạo video Shorts đầu tiên ngay bây giờ!"
+            )
+            return
+
+        page_size = 5
+        total_pages = max(1, (total_jobs + page_size - 1) // page_size)
+        page = max(1, min(page, total_pages))
+
+        jobs = (
+            db.query(VideoJob)
+            .order_by(VideoJob.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+
+        status_emoji_map = {
+            "RENDERED": "✅ Đã dựng xong",
+            "PUBLISHED": "🚀 Đã đăng YouTube",
+            "RENDERING": "⏳ Đang dựng...",
+            "SCRIPT_READY": "📝 Kịch bản sẵn sàng",
+            "SCHEDULED": "⏰ Đã lên lịch",
+            "FAILED": "❌ Thất bại",
+            "DRAFT": "📋 Bản nháp"
+        }
+
+        items_text = []
+        jobs_with_files = []
+
+        for j in jobs:
+            v_file = _resolve_video_file_path(j.id, j.video_path)
+            st_text = status_emoji_map.get(j.status, f"ℹ️ {j.status}")
+            dur_text = f"{j.audio_duration_ms / 1000:.1f}s" if (j.audio_duration_ms and j.audio_duration_ms > 0) else "N/A"
+            title_display = j.title or j.topic or f"Video #{j.id}"
+
+            if v_file:
+                size_mb = v_file.stat().st_size / (1024 * 1024)
+                file_status = f"🟢 Có file ({size_mb:.1f} MB)"
+                jobs_with_files.append({"id": j.id, "title": title_display})
+            else:
+                file_status = "⏳ Chưa có file video"
+
+            items_text.append(
+                f"🎬 **#{j.id}: {title_display}**\n"
+                f"   • Trạng thái: {st_text}\n"
+                f"   • Thời lượng: `{dur_text}` | Kênh: `{j.target_channel_id or 'Chưa rõ'}`\n"
+                f"   • Tệp tin: {file_status}"
+            )
+
+    msg_body = (
+        f"📺 **DANH SÁCH TẤT CẢ VIDEO TRONG HỆ THỐNG**\n"
+        f"📊 Tổng cộng: `{total_jobs}` video — Trang **{page}/{total_pages}**\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        + "\n\n".join(items_text)
+        + "\n\n━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"👉 **Để tải video xem trực tiếp trên Telegram:**\n"
+        f"• Bấm nút **📥 Xem #{jobs_with_files[0]['id'] if jobs_with_files else 'ID'}** bên dưới.\n"
+        f"• Hoặc gõ lệnh `/get <ID>` (ví dụ: `/get {jobs_with_files[0]['id'] if jobs_with_files else 1}`).\n"
+        f"• Hoặc nhắn tin: *'tải video {jobs_with_files[0]['id'] if jobs_with_files else 1}'*, *'xem video'*"
+    )
+
+    markup = get_videos_list_keyboard(jobs_with_files, current_page=page, total_pages=total_pages)
+
+    if update.callback_query and update.callback_query.message:
+        await safe_edit_text(update.callback_query.message, msg_body, reply_markup=markup)
+    else:
+        await safe_reply(update, msg_body, reply_markup=markup)
+
+
+async def send_video_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, job_id: int):
+    """
+    Tải file video MP4 của VideoJob và gửi trực tiếp vào tin nhắn Telegram để người dùng xem ngay.
+    """
+    if not is_authorized(update):
+        return
+
+    chat_id = update.effective_chat.id if update.effective_chat else None
+    if not chat_id:
+        return
+
+    with get_db() as db:
+        job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+        if not job:
+            await safe_reply(update, f"❌ Không tìm thấy video có ID #{job_id} trong hệ thống.")
+            return
+
+        title = job.title or job.topic or f"Video #{job_id}"
+        channel_id = job.target_channel_id or "Chưa rõ"
+        status = job.status
+        recorded_path = job.video_path
+        progress_pct = job.progress_percent or 0
+
+    # Kiểm tra trạng thái nếu chưa render xong
+    if status == "RENDERING":
+        await safe_reply(
+            update,
+            f"⏳ **Video #{job_id} đang được hệ thống dựng ({progress_pct}%)...**\n\n"
+            f"📌 Tiêu đề: *{title}*\n"
+            f"Vui lòng đợi vài chục giây rồi bấm lại nút **📥 Xem Video** nhé!"
+        )
+        return
+    elif status in ("DRAFT", "SCRIPT_READY"):
+        await safe_reply(
+            update,
+            f"📝 **Video #{job_id} mới có kịch bản, chưa render thành file video!**\n\n"
+            f"📌 Tiêu đề: *{title}*\n"
+            f"👉 Bạn hãy gõ `/render {job_id}` để bắt đầu tạo video hoàn chỉnh."
+        )
+        return
+
+    v_file = _resolve_video_file_path(job_id, recorded_path)
+    if not v_file:
+        await safe_reply(
+            update,
+            f"⚠️ **Không tìm thấy tệp video của Job #{job_id} trên máy chủ!**\n\n"
+            f"• Trạng thái trong DB: `{status}`\n"
+            f"• Đường dẫn dự kiến: `{recorded_path or 'storage/outputs/video_' + str(job_id) + '.mp4'}`\n"
+            f"Có thể tệp đã bị xóa hoặc chuyển thư mục. Bạn có thể render lại bằng cách gõ `/render {job_id}`."
+        )
+        return
+
+    size_bytes = v_file.stat().st_size
+    size_mb = size_bytes / (1024 * 1024)
+
+    status_msg = await safe_reply(
+        update,
+        f"⏳ **Đang tải video #{job_id} lên Telegram ({size_mb:.1f} MB)...**\n"
+        f"Vui lòng đợi trong giây lát để video hiển thị trong mes tele!"
+    )
+
+    from app.utils.ffmpeg_helper import get_duration_ms
+    dur_ms = get_duration_ms(str(v_file))
+    dur_sec = dur_ms / 1000.0 if dur_ms > 0 else 0.0
+
+    caption = (
+        f"🎬 **{title}**\n\n"
+        f"🆔 **Mã Video:** `#{job_id}`\n"
+        f"⏱️ **Thời lượng:** {dur_sec:.1f}s\n"
+        f"📦 **Dung lượng:** {size_mb:.1f} MB\n"
+        f"📺 **Kênh xuất bản:** `{channel_id}`\n"
+        f"📊 **Trạng thái:** {status}\n\n"
+        f"👉 *Video đã có sẵn ở đây, bạn có thể xem trực tiếp hoặc lưu về máy!*"
+    )
+
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    actions_markup = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🚀 Đăng Lên YouTube", callback_data=f"publish_youtube:{job_id}"),
+            InlineKeyboardButton("⏰ Lên Lịch Tự Động", callback_data=f"schedule_youtube:{job_id}")
+        ],
+        [
+            InlineKeyboardButton("📋 Xem Danh Sách Video", callback_data="videos_page:1")
+        ]
+    ])
+
+    try:
+        with open(v_file, "rb") as vf:
+            if size_mb <= 50:
+                await context.bot.send_video(
+                    chat_id=chat_id,
+                    video=vf,
+                    caption=caption,
+                    supports_streaming=True,
+                    reply_markup=actions_markup,
+                    read_timeout=300,
+                    write_timeout=300
+                )
+            else:
+                await context.bot.send_document(
+                    chat_id=chat_id,
+                    document=vf,
+                    caption=caption,
+                    reply_markup=actions_markup,
+                    read_timeout=600,
+                    write_timeout=600
+                )
+
+        if status_msg:
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
+
+    except Exception as ex:
+        logger.error(f"Lỗi gửi file video #{job_id} qua Telegram: {ex}", exc_info=True)
+        err_text = (
+            f"❌ **Không thể gửi file video #{job_id} qua Telegram:** `{ex}`\n\n"
+            f"📂 File MP4 hiện đã có sẵn tại máy chủ: `{v_file}` ({size_mb:.1f} MB)\n"
+            f"Bạn có thể xem trực tiếp trên Web Dashboard tại http://127.0.0.1:8000"
+        )
+        if status_msg:
+            await safe_edit_text(status_msg, err_text)
+        else:
+            await safe_reply(update, err_text)
+
+
+async def videos_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Hiển thị danh sách tất cả các video đã tạo: /videos [trang]"""
+    if not is_authorized(update):
+        return
+    page = 1
+    if context.args:
+        try:
+            page = max(1, int(context.args[0]))
+        except ValueError:
+            page = 1
+    await _show_videos_list(update, context, page=page)
+
+
+async def get_video_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Tải và gửi video cụ thể vào tin nhắn Telegram: /get <job_id>"""
+    if not is_authorized(update):
+        return
+    if not context.args:
+        await safe_reply(
+            update,
+            "💡 **CÁCH XEM & TẢI VIDEO VÀO TELEGRAM:**\n\n"
+            "• Gõ `/get <Mã_Video>` để bot tải video lên đây xem ngay.\n"
+            "• **Ví dụ:** `/get 8` hoặc `/get 1`\n\n"
+            "👉 Hoặc gõ `/videos` để xem danh sách và bấm nút chọn video!"
+        )
+        return
+
+    raw_arg = context.args[0].replace("#", "").strip()
+    try:
+        job_id = int(raw_arg)
+    except ValueError:
+        await safe_reply(update, f"❌ Mã video `{raw_arg}` không hợp lệ. Vui lòng nhập số nguyên (Ví dụ: `/get 8`).")
+        return
+
+    await send_video_file_handler(update, context, job_id)
+
+
 async def chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Thảo luận kịch bản với Đạo diễn AI: /chat <câu hỏi hoặc ý tưởng>
@@ -2686,6 +2974,33 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             job_id = int(match.group(1))
             await _handle_script_revision(update, context, job_id, clean_text)
             return
+
+    # 1. Tự động nhận diện lệnh tải / gửi video cụ thể vào mes Telegram để xem ngay
+    # Ví dụ: "tải video 8", "gửi video 8", "xem video 8", "lấy video 8", "tải video 8 lên tele"
+    lower_text = clean_text.lower()
+    get_video_match = re.search(
+        r'(?:tải|gửi|xem|cho\s+xem|lấy|bật|phát|download|get|send)\s+(?:file\s+)?(?:lên\s+(?:mes\s+)?tele\s+)?video\s*(?:số|no|#)?\s*(\d+)',
+        lower_text
+    ) or re.search(
+        r'video\s*(?:số|no|#)?\s*(\d+)\s*(?:lên\s+tele|vào\s+tele|vào\s+đây|nhé|nào|đi)',
+        lower_text
+    )
+    if get_video_match:
+        target_job_id = int(get_video_match.group(1))
+        await send_video_file_handler(update, context, target_job_id)
+        return
+
+    # 2. Tự động nhận diện lệnh hiển thị danh sách tất cả video
+    # Ví dụ: "danh sách video", "hiện tất cả video", "xem video", "list video", "tất cả video"
+    is_asking_list = any(kw in lower_text for kw in [
+        "danh sách video", "danh sach video", "hiện tất cả video", "hien tat ca video",
+        "xem danh sách", "xem danh sach", "tất cả video", "tat ca video",
+        "list video", "ds video", "dsvideo", "các video", "cac video", "hiện video", "hien video",
+        "cho xem video", "xem cac video", "danh sach cac video", "tất cả các video"
+    ])
+    if is_asking_list:
+        await _show_videos_list(update, context, page=1)
+        return
 
     with get_db() as db:
         db_user = db.query(User).filter(User.telegram_id == user.id).first()

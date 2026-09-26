@@ -281,3 +281,53 @@ def get_viral_ideas_keyboard(ideas: list, channel_id: str = "channel_maya") -> I
     return InlineKeyboardMarkup(keyboard)
 
 
+def get_videos_list_keyboard(
+    jobs_with_files: list,
+    current_page: int = 1,
+    total_pages: int = 1
+) -> InlineKeyboardMarkup:
+    """
+    Tạo bàn phím hiển thị danh sách video:
+    - Nút bấm tải / xem trực tiếp cho từng video có sẵn file
+    - Nút phân trang (Trang trước, Trang sau)
+    - Nút làm mới và tạo video mới
+    """
+    keyboard = []
+
+    # 1. Các nút xem / tải video (sắp xếp tối đa 2 nút trên 1 hàng)
+    download_buttons = []
+    for item in jobs_with_files:
+        j_id = item["id"]
+        title_snip = item.get("title", f"#{j_id}")
+        if len(title_snip) > 18:
+            title_snip = title_snip[:16] + ".."
+        btn_text = f"📥 Xem #{j_id}: {title_snip}"
+        download_buttons.append(
+            InlineKeyboardButton(btn_text, callback_data=f"send_video_file:{j_id}")
+        )
+
+    for i in range(0, len(download_buttons), 2):
+        keyboard.append(download_buttons[i:i+2])
+
+    # 2. Hàng phân trang
+    nav_row = []
+    if current_page > 1:
+        nav_row.append(
+            InlineKeyboardButton("⬅️ Trước", callback_data=f"videos_page:{current_page - 1}")
+        )
+    nav_row.append(
+        InlineKeyboardButton(f"📄 Trang {current_page}/{total_pages}", callback_data=f"refresh_videos:{current_page}")
+    )
+    if current_page < total_pages:
+        nav_row.append(
+            InlineKeyboardButton("Sau ➡️", callback_data=f"videos_page:{current_page + 1}")
+        )
+    if nav_row:
+        keyboard.append(nav_row)
+
+    # 3. Tiện ích: Làm mới
+    keyboard.append([
+        InlineKeyboardButton("🔄 Làm Mới Danh Sách", callback_data=f"refresh_videos:{current_page}")
+    ])
+
+    return InlineKeyboardMarkup(keyboard)
