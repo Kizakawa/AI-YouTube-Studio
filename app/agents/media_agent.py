@@ -4,7 +4,7 @@ import re
 import json
 import requests
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -1120,14 +1120,17 @@ class MediaAgent:
                 time.sleep(1.0)
         return []
 
-    def search_best_video_clip(self, query: str, used_urls: Optional[set] = None) -> Optional[Dict]:
+    def search_best_video_clip(
+        self,
+        query: str,
+        used_urls: Optional[set] = None,
+        visual_analysis: Optional[Dict[str, Any]] = None,
+        narration: str = "",
+    ) -> Optional[Dict]:
         """
         Tìm kiếm 1 video clip dọc (9:16 portrait) chất lượng cao nhất từ Pexels.
-        Áp dụng chiến lược đa tầng từ khóa (Multi-Tier Query Fallback):
-        1. Query làm sạch chuẩn (2-3 từ)
-        2. Query 2 từ rút gọn
-        3. Từng danh từ/động từ độc lập
-        Loại trừ triệt để các URL đã được gán cho các phân cảnh khác.
+        Tích hợp VisualCurationAgent để thẩm định và tuyển chọn ứng viên xuất sắc nhất
+        dựa trên ngụ ý kịch bản và không khí bối cảnh, thay vì nhặt bừa kết quả đầu tiên.
         """
         used = used_urls or set()
         clean_q = clean_scene_search_query(query, max_words=3)
@@ -1135,7 +1138,12 @@ class MediaAgent:
 
         # Tạo danh sách các truy vấn tìm kiếm thử nghiệm theo thứ tự ưu tiên
         candidate_queries = []
-        if clean_q:
+        if visual_analysis and visual_analysis.get("search_queries"):
+            for sq in visual_analysis["search_queries"]:
+                if sq and sq not in candidate_queries:
+                    candidate_queries.append(sq)
+
+        if clean_q and clean_q not in candidate_queries:
             candidate_queries.append(clean_q)
         if len(words) >= 2:
             two_words = " ".join(words[:2])
@@ -1148,34 +1156,64 @@ class MediaAgent:
         if query and query not in candidate_queries:
             candidate_queries.append(query)
 
+        collected_candidates = []
         for q_try in candidate_queries:
-            videos = self.search_videos(q_try, per_page=8, orientation="portrait")
+            videos = self.search_videos(q_try, per_page=6, orientation="portrait")
             for v in videos:
-                v_files = v.get("video_files", [])
-                # Lọc các file MP4 tỉ lệ dọc (w <= h)
-                portrait_files = [
-                    vf for vf in v_files
-                    if vf.get("width", 0) <= vf.get("height", 0) and (
-                        vf.get("link", "").endswith(".mp4") or "mp4" in vf.get("file_type", "")
-                    )
-                ]
-                if portrait_files:
-                    # Ưu tiên độ phân giải cao nhất (>= 1080p hoặc 720p)
-                    hd_files = sorted(portrait_files, key=lambda x: x.get("height", 0), reverse=True)
-                    for best in hd_files:
-                        link = best.get("link")
-                        if link and link not in used:
-                            return {
-                                "url": link,
-                                "title": f"Pexels Video: {q_try}",
-                                "width": best.get("width", 1080),
-                                "height": best.get("height", 1920),
-                                "duration": v.get("duration", 0),
-                                "media_type": "video",
-                                "source": "pexels_video",
-                                "thumbnail": v.get("image", ""),
-                            }
+                if v.get("url") and v["url"] not in used and v not in collected_candidates:
+                    collected_candidates.append(v)
+            if len(collected_candidates) >= 8:
+                break
+
+        # Nếu có thông tin phân tích hoặc lời thoại, nhờ VisualCurationAgent tuyển chọn
+        if collected_candidates and (visual_analysis or narration):
+            try:
+                from app.agents.visual_curation_agent import VisualCurationAgent
+                curator = VisualCurationAgent()
+                v_analysis = visual_analysis or curator.analyze_scene_context(
+                    narration=narration or query,
+                    topic=query,
+                )
+                winner, score, rationale, should_ai = curator.curate_candidate_videos(
+                    candidates=collected_candidates,
+                    visual_analysis=v_analysis,
+                    narration=narration or query,
+                    used_urls=used,
+                )
+                if winner and score >= 6.0:
+                    return winner
+                if should_ai:
+                    logger.info(f"[MediaAgent] VisualCurationAgent từ chối stock video ({rationale}), nhường quyền cho AI Video.")
+                    return None
+            except Exception as e:
+                logger.debug(f"[MediaAgent] Lỗi khi gọi VisualCurationAgent tuyển chọn video: {e}")
+
+        # Fallback cơ bản nếu không kích hoạt hoặc lỗi agent curation
+        for v in collected_candidates:
+            v_files = v.get("video_files", [])
+            portrait_files = [
+                vf for vf in v_files
+                if vf.get("width", 0) <= vf.get("height", 0) and (
+                    vf.get("link", "").endswith(".mp4") or "mp4" in vf.get("file_type", "")
+                )
+            ]
+            if portrait_files:
+                hd_files = sorted(portrait_files, key=lambda x: x.get("height", 0), reverse=True)
+                for best in hd_files:
+                    link = best.get("link")
+                    if link and link not in used:
+                        return {
+                            "url": link,
+                            "title": f"Pexels Video: {v.get('url', query)}",
+                            "width": best.get("width", 1080),
+                            "height": best.get("height", 1920),
+                            "duration": v.get("duration", 0),
+                            "media_type": "video",
+                            "source": "pexels_video",
+                            "thumbnail": v.get("image", ""),
+                        }
         return None
+
 
     def search_photos(self, query: str, per_page: int = 3, orientation: str = "portrait") -> List[Dict]:
         """Tìm kiếm ảnh tĩnh trên Pexels theo từ khóa với tỷ lệ dọc (portrait 9:16) cho Ken Burns."""
@@ -1492,15 +1530,16 @@ If no real entities found, return empty array: []"""
         scene_id: int = 0,
         prefer_video: bool = False,
         prefer_photo: bool = False,
+        visual_analysis: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict]:
         """
         Tìm kiếm media đa tầng tối ưu cao nhất cho 1 phân cảnh:
-        1. Query Synthesizer: làm sạch và tổng hợp từ khóa cốt lõi (2-3 từ)
-        2. Nếu prefer_video hoặc cảnh có yếu tố chuyển động/b-roll -> Ưu tiên Video Clip dọc 9:16 từ Pexels
-        3. Nếu phân cảnh nhắc đến thực thể/sự kiện lịch sử cụ thể -> Wikipedia / Wikimedia Commons
-        4. Pexels HD Photos (Portrait 9:16) siêu nét cho đồ vật, con người, phong cảnh thực
-        5. Openverse Archival (800M+ ảnh bảo tàng & thư viện thế giới)
-        6. Pexels Video Clip Fallback
+        1. Contextual Visual Analysis: Tích hợp VisualCurationAgent để phân tích ngụ ý, không khí và ẩn dụ.
+        2. Nếu prefer_video hoặc cảnh có yếu tố chuyển động/b-roll -> Ưu tiên Video Clip dọc 9:16 từ Pexels qua Agent tuyển chọn.
+        3. Nếu phân cảnh nhắc đến thực thể/sự kiện lịch sử cụ thể -> Wikipedia / Wikimedia Commons.
+        4. Pexels HD Photos (Portrait 9:16) siêu nét qua Agent tuyển chọn.
+        5. Openverse Archival (800M+ ảnh bảo tàng & thư viện thế giới).
+        6. Pexels Video Clip Fallback.
         """
         used = used_urls if used_urls is not None else set()
         primary_q, fallback_q, intent = synthesize_scene_query(
@@ -1511,13 +1550,29 @@ If no real entities found, return empty array: []"""
             primary_entity=primary_entity,
         )
 
+        # Lấy hoặc tạo Visual Analysis từ VisualCurationAgent nếu chưa có
+        v_analysis = visual_analysis
+        if not v_analysis and scene_narration:
+            try:
+                from app.agents.visual_curation_agent import VisualCurationAgent
+                curator = VisualCurationAgent()
+                v_analysis = curator.analyze_scene_context(
+                    narration=scene_narration,
+                    topic=primary_entity or visual_keyword or "",
+                    scene_id=scene_id,
+                    primary_entity=primary_entity,
+                    entity_type=entity_type,
+                    channel_niche=niche,
+                )
+            except Exception as e:
+                logger.debug(f"[MediaAgent] Context analysis fallback: {e}")
+
         logger.info(
             f"[MediaAgent] Scene {scene_id} Search: intent='{intent}' | "
             f"query='{primary_q}' (fallback='{fallback_q}') | prefer_video={prefer_video} | prefer_photo={prefer_photo}"
         )
 
         # ── TẦNG 1: Wikipedia / Wikimedia Commons CHỈ DÀNH RIÊNG CHO THỰC THỂ / SỰ KIỆN LỊCH SỬ CÓ THẬT ──
-        # Tuyệt đối KHÔNG tìm Wikipedia cho chủ đề tâm lý, kỹ năng, đời sống, khoa học viễn tưởng, công nghệ!
         is_historical = (
             intent == "historical_entity"
             or (primary_entity and entity_type in ("person", "civilization", "monument", "event", "historical_figure"))
@@ -1546,11 +1601,6 @@ If no real entities found, return empty array: []"""
                         return c
 
         # ── TẦNG MOTION B-ROLL: Pexels Video Clip dọc (Portrait 9:16) ──
-        # Tự động kích hoạt khi:
-        # a) prefer_video = True (do người dùng chọn hoặc Smart Director chỉ định)
-        # b) Cảnh chứa từ khóa hành động/b-roll/chuyển động sống động
-        # c) Scene 1 Hook (để chặn đà lướt qua - Swipe Away)
-        # d) Hoặc bất kỳ chủ đề hiện đại/viễn tưởng/đời sống nào (khi không bị ép buộc prefer_photo)
         motion_keywords = {
             "walk", "walking", "run", "running", "moving", "movement", "crowd", "people", "city", "street",
             "traffic", "night", "dark", "shadow", "silhouette", "rain", "storm", "fire", "water", "sea", "ocean",
@@ -1571,8 +1621,14 @@ If no real entities found, return empty array: []"""
         )
 
         if should_try_video:
-            video_queries = [primary_q]
-            if fallback_q and fallback_q != primary_q:
+            video_queries = []
+            if v_analysis and v_analysis.get("search_queries"):
+                for sq in v_analysis["search_queries"]:
+                    if sq and sq not in video_queries:
+                        video_queries.append(sq)
+            if primary_q and primary_q not in video_queries:
+                video_queries.append(primary_q)
+            if fallback_q and fallback_q not in video_queries:
                 video_queries.append(fallback_q)
             if stock_query:
                 clean_sq = clean_scene_search_query(stock_query, max_words=3)
@@ -1580,39 +1636,71 @@ If no real entities found, return empty array: []"""
                     video_queries.append(clean_sq)
 
             for vq in video_queries:
-                best_vid = self.search_best_video_clip(vq, used_urls=used)
+                best_vid = self.search_best_video_clip(
+                    vq,
+                    used_urls=used,
+                    visual_analysis=v_analysis,
+                    narration=scene_narration,
+                )
                 if best_vid and best_vid.get("url") and best_vid["url"] not in used:
                     logger.info(
-                        f"🎥 [MediaAgent] Scene {scene_id}: Đã chọn video clip động Pexels ('{vq}') "
-                        f"để tạo chuyển động sống động giữ chân người xem!"
+                        f"🎥 [MediaAgent] Scene {scene_id}: Đã chọn video clip động Pexels ('{best_vid.get('title', vq)}') "
+                        f"thông qua Agent tuyển chọn thị giác!"
                     )
                     return best_vid
 
-        # ── TẦNG 2: Pexels HD Photos (Portrait 9:16) — Đồ vật, đời sống, phong cảnh ──
-        # Tỷ lệ dọc 9:16 siêu nét (4K/HD), màu sắc điện ảnh, cực kỳ phù hợp hiệu ứng Ken Burns
+        # ── TẦNG 2: Pexels HD Photos (Portrait 9:16) — Tuyển chọn thông minh ──
         if self.api_key:
-            px_queries = [primary_q]
-            if fallback_q and fallback_q != primary_q:
+            px_queries = []
+            if v_analysis and v_analysis.get("search_queries"):
+                for sq in v_analysis["search_queries"]:
+                    if sq and sq not in px_queries:
+                        px_queries.append(sq)
+            if primary_q and primary_q not in px_queries:
+                px_queries.append(primary_q)
+            if fallback_q and fallback_q not in px_queries:
                 px_queries.append(fallback_q)
             if stock_query:
                 clean_sq = clean_scene_search_query(stock_query, max_words=3)
                 if clean_sq and clean_sq not in px_queries:
                     px_queries.append(clean_sq)
 
+            raw_photos = []
             for pq in px_queries:
                 photos = self.search_photos(pq, per_page=4, orientation="portrait")
                 for p in photos:
                     src = p.get("src", {})
                     img_url = src.get("large2x") or src.get("portrait") or src.get("original")
                     if img_url and img_url not in used and self._is_valid_image_url(img_url):
-                        return {
+                        raw_photos.append({
                             "url": img_url,
                             "title": p.get("alt", pq),
                             "source": "pexels_photo",
                             "media_type": "image",
                             "width": p.get("width", 1080),
                             "height": p.get("height", 1920),
-                        }
+                        })
+                if len(raw_photos) >= 6:
+                    break
+
+            if raw_photos and v_analysis:
+                try:
+                    from app.agents.visual_curation_agent import VisualCurationAgent
+                    curator = VisualCurationAgent()
+                    winner_photo, p_score, p_rat, p_ai = curator.curate_candidate_photos(
+                        candidates=raw_photos,
+                        visual_analysis=v_analysis,
+                        narration=scene_narration,
+                        used_urls=used,
+                    )
+                    if winner_photo and p_score >= 6.0:
+                        logger.info(f"📸 [MediaAgent] Scene {scene_id}: Agent tuyển chọn ảnh Pexels: '{winner_photo.get('title')}' ({p_score}/10)")
+                        return winner_photo
+                except Exception as e:
+                    logger.debug(f"[MediaAgent] Photo curation error: {e}")
+
+            if raw_photos:
+                return raw_photos[0]
 
         # ── TẦNG 3: Openverse Archival (800M+ ảnh bảo tàng & thư viện thế giới) ──
         ov_queries = [primary_q]

@@ -26,6 +26,7 @@ from app.agents.media_agent import (
 )
 from app.agents.image_agent import ImageAgent
 from app.agents.media_relevance_agent import MediaRelevanceAgent
+from app.agents.visual_curation_agent import VisualCurationAgent
 from app.utils.subtitle_helper import SubtitleHelper
 from config.settings import settings
 
@@ -55,6 +56,7 @@ class VideoPipeline:
         self._media_agent = MediaAgent()
         self._image_agent = ImageAgent()
         self._media_relevance_agent = MediaRelevanceAgent()
+        self._visual_curation_agent = VisualCurationAgent()
 
     async def _report_progress(self, stage: str, message: str, percent: int = 0):
         """Báo cáo tiến độ thời gian thực về Telegram/Web Dashboard kèm phần trăm %."""
@@ -330,17 +332,33 @@ class VideoPipeline:
         for idx, scene in enumerate(scenes):
             pct = 25 + int(((idx + 1) / total_scenes) * 35)
             sc_strat = strategy_map.get(scene.scene_id, {})
-            prod_method = sc_strat.get("production_method", "STOCK_FOOTAGE")
+
+            # ── Agent Phân tích Ngữ cảnh & Ý niệm Thị giác Chuyên sâu (VisualCurationAgent) ──
+            surround_text = " ".join([s.narration for s in scenes[max(0, idx - 1):min(total_scenes, idx + 2)]])
+            v_analysis = await asyncio.to_thread(
+                self._visual_curation_agent.analyze_scene_context,
+                narration=scene.narration,
+                topic=topic,
+                scene_id=scene.scene_id,
+                total_scenes=total_scenes,
+                primary_entity=primary_entity,
+                entity_type=entity_type,
+                surrounding_context=surround_text,
+                channel_niche=channel_niche,
+            )
+
+            prod_method = sc_strat.get("production_method") or v_analysis.get("production_method", "STOCK_FOOTAGE")
             label = f"[{prod_method}] Cảnh {idx+1}/{total_scenes}"
-            await self._report_progress("MEDIA", f"🎬 {label}: {sc_strat.get('rationale', '')[:40]}...", percent=pct)
+            rationale_text = v_analysis.get("narrative_subtext") or sc_strat.get("rationale", "")
+            await self._report_progress("MEDIA", f"🎬 {label}: {rationale_text[:40]}...", percent=pct)
 
             media_path = ""
             dur = scene.actual_duration_seconds
+            p_ai = v_analysis.get("cinematic_ai_prompt") or sc_strat.get("ai_prompt") or scene.visual_prompt or scene.visual_keyword
 
             # 1. IMAGE_TO_VIDEO (Tạo video bám sát ảnh chủ đề 8K)
             if prod_method == "IMAGE_TO_VIDEO":
                 ai_vid_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_i2v.mp4")
-                p_ai = sc_strat.get("ai_prompt") or scene.visual_prompt or scene.visual_keyword
                 res_v = await ai_video_agent.generate_image_to_video(
                     prompt=p_ai,
                     output_path=ai_vid_path,
@@ -355,7 +373,6 @@ class VideoPipeline:
             # 2. TEXT_TO_VIDEO (Sinh video AI trực tiếp kỳ ảo)
             elif prod_method == "TEXT_TO_VIDEO":
                 ai_vid_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_t2v.mp4")
-                p_ai = sc_strat.get("ai_prompt") or scene.visual_prompt or scene.visual_keyword
                 res_v = await ai_video_agent.generate_text_to_video(
                     prompt=p_ai,
                     output_path=ai_vid_path,
@@ -378,9 +395,10 @@ class VideoPipeline:
                     used_pool_urls=used_pool_urls,
                     used_asset_paths=used_asset_paths,
                     sc_strat=sc_strat,
+                    v_analysis=v_analysis,
                 )
 
-            # ── [NEW] Thẩm định & Chấm điểm độ liên quan với MediaRelevanceAgent ──
+            # ── Thẩm định & Chấm điểm độ liên quan với MediaRelevanceAgent ──
             if media_path and Path(media_path).exists():
                 relevance_eval = await asyncio.to_thread(
                     self._media_relevance_agent.evaluate_media,
@@ -403,7 +421,13 @@ class VideoPipeline:
 
                     # Ưu tiên tìm video nếu phương pháp cần video hoặc cảnh cần chuyển động
                     if prod_method in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO") or scene.scene_id == 1:
-                        best_vid = await asyncio.to_thread(self._media_agent.search_best_video_clip, fix_query, used_pool_urls)
+                        best_vid = await asyncio.to_thread(
+                            self._media_agent.search_best_video_clip,
+                            fix_query,
+                            used_pool_urls,
+                            v_analysis,
+                            scene.narration,
+                        )
                         if best_vid and best_vid.get("url"):
                             cand_url = best_vid["url"]
                             new_v_p = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_relevance_fix.mp4")
@@ -414,7 +438,7 @@ class VideoPipeline:
 
                     # Nếu chưa tìm được video, thử sinh ảnh AI chất lượng cao từ refined_prompt
                     if not fixed_media:
-                        fix_prompt = relevance_eval.get("refined_prompt") or f"Cinematic photorealistic 8k vertical shot of {fix_query}"
+                        fix_prompt = relevance_eval.get("refined_prompt") or p_ai or f"Cinematic photorealistic 8k vertical shot of {fix_query}"
                         new_img_p = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_relevance_fix.jpg")
                         res_ai = await asyncio.to_thread(
                             self._image_agent.generate_scene_image,
@@ -438,10 +462,11 @@ class VideoPipeline:
                 "visual_strategy": sc_strat.get("strategy"),
                 "production_method": prod_method,
                 "tool": sc_strat.get("tool"),
-                "strategy_rationale": sc_strat.get("rationale"),
+                "strategy_rationale": rationale_text,
             })
             result.append(enriched)
         return result
+
 
     @staticmethod
     def _safe_pexels_query(scene, topic_context: str = "space astronomy") -> str:
@@ -491,6 +516,7 @@ class VideoPipeline:
         used_pool_urls: Optional[set] = None,
         used_asset_paths: Optional[set] = None,
         sc_strat: Optional[Dict[str, Any]] = None,
+        v_analysis: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         Tìm nạp media cho 1 scene với hệ thống phân cấp 7 tầng thông minh:
@@ -630,6 +656,7 @@ class VideoPipeline:
                 scene_id=scene.scene_id,
                 prefer_video=prefer_video,
                 prefer_photo=prefer_photo,
+                visual_analysis=v_analysis,
             )
             if cand and cand.get("url"):
                 cand_url = cand["url"]
@@ -651,17 +678,43 @@ class VideoPipeline:
         except Exception as ex:
             logger.debug(f"Scene {scene.scene_id}: Multi-source search error: {ex}")
 
-        # ── Tầng 3: AI Image Generation (ưu tiên visual_prompt) ──
-        # FALLBACK CHÍNH khi stock/wiki đều thất bại — KHÔNG dùng lại clip cũ từ scene khác
+        # ── Tầng 3: AI Media Generation (AI Video hoặc AI Image theo chỉ đạo Agent) ──
+        # FALLBACK KHI STOCK/WIKI THẤT BẠI HOẶC AGENT TỪ CHỐI
         try:
-            ai_img_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_ai.jpg")
             vp = getattr(scene, 'visual_prompt', None)
-            ai_prompt = (vp.strip() if vp and len(vp.strip()) > 10 else scene.visual_keyword)
+            ai_prompt = (
+                (v_analysis.get("cinematic_ai_prompt") if v_analysis else None)
+                or (vp.strip() if vp and len(vp.strip()) > 10 else None)
+                or scene.visual_keyword
+            )
             if primary_entity and not vp:
                 ai_prompt = (
                     f"Historical authentic photorealistic shot of {primary_entity}, "
                     f"{scene.visual_keyword}, period accurate, dramatic volumetric lighting, 8k"
                 )
+
+            # Nếu phân cảnh cần chuyển động (prefer_video hoặc phương pháp là TEXT_TO_VIDEO/STOCK_FOOTAGE)
+            is_dynamic_scene = prefer_video or (v_analysis and v_analysis.get("production_method") in ("TEXT_TO_VIDEO", "STOCK_FOOTAGE"))
+            if is_dynamic_scene:
+                try:
+                    from app.agents.ai_video_agent import AIVideoAgent
+                    ai_vid_agent = AIVideoAgent()
+                    ai_vid_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_t2v_fb.mp4")
+                    res_v = await ai_vid_agent.generate_text_to_video(
+                        prompt=ai_prompt,
+                        output_path=ai_vid_path,
+                        duration_seconds=scene.actual_duration_seconds,
+                        scene_id=scene.scene_id,
+                        visual_prompt=ai_prompt,
+                    )
+                    if res_v and Path(res_v).exists() and Path(res_v).stat().st_size > 5000:
+                        logger.info(f"Scene {scene.scene_id}: ✅ Tạo thành công Video AI (Wan/Pollinations) theo chỉ đạo Agent")
+                        return res_v
+                except Exception as e_v:
+                    logger.debug(f"Scene {scene.scene_id} AI Video fallback error: {e_v}")
+
+            # Tạo ảnh AI điện ảnh chất lượng cao 8K
+            ai_img_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_ai.jpg")
             res_img = await asyncio.to_thread(
                 self._image_agent.generate_scene_image,
                 ai_prompt,
@@ -672,10 +725,10 @@ class VideoPipeline:
                 vp,
             )
             if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 1000 and self._is_valid_image_file(res_img):
-                logger.info(f"Scene {scene.scene_id}: ✅ AI Image sinh thành công ({primary_entity or 'generic'})")
+                logger.info(f"Scene {scene.scene_id}: ✅ AI Image sinh thành công theo phân tích ngữ cảnh ({primary_entity or 'generic'})")
                 return res_img
         except Exception as e:
-            logger.warning(f"Scene {scene.scene_id}: Lỗi sinh ảnh AI: {e}")
+            logger.warning(f"Scene {scene.scene_id}: Lỗi sinh media AI: {e}")
 
         # ── Tầng 4: Pexels Video/Photo (CHỈ DÙNG KHI KHÔNG CÓ primary_entity) ──
         # Dùng safe_q (stock_query đã lọc) thay vì raw visual_keyword để tránh Anne Hathaway, rollercoaster

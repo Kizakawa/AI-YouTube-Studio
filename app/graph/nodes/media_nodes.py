@@ -18,6 +18,7 @@ from app.agents.media_agent import MediaAgent, detect_real_entity, match_best_po
 from app.agents.image_agent import ImageAgent
 from app.agents.visual_director_agent import VisualDirectorAgent
 from app.agents.video_strategist_agent import VideoStrategistAgent
+from app.agents.visual_curation_agent import VisualCurationAgent
 from app.agents.ai_video_agent import AIVideoAgent
 from app.graph.evaluators.visual_critic import VisualCritic
 from app.graph.evaluators.content_quality_critic import ContentQualityCritic
@@ -83,6 +84,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     media_agent = MediaAgent()
     image_agent = ImageAgent()
     ai_video_agent = AIVideoAgent()
+    curator = VisualCurationAgent()
 
     # Lấy bản kế hoạch từ VisualDirectorAgent (nếu chưa có thì tự động tạo nhanh)
     visual_plan = state.get("visual_plan")
@@ -112,18 +114,32 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         vp = getattr(scene, 'visual_prompt', None)
         kw = scene.visual_keyword or ""
 
-        # Lấy chiến lược và phương pháp do Video Strategist chỉ định
+        # ── Agent Phân tích Ngữ cảnh & Ý niệm Thị giác Chuyên sâu (VisualCurationAgent) ──
+        surround_text = " ".join([s.narration for s in script.scenes[max(0, idx - 1):min(len(script.scenes), idx + 2)]])
+        v_analysis = await asyncio.to_thread(
+            curator.analyze_scene_context,
+            narration=scene.narration,
+            topic=state.get("topic", ""),
+            scene_id=scene.scene_id,
+            total_scenes=len(script.scenes),
+            primary_entity=primary_entity,
+            entity_type=entity_type,
+            surrounding_context=surround_text,
+            channel_niche=state.get("channel_style", "cinematic"),
+        )
+
+        # Lấy chiến lược và phương pháp do Video Strategist hoặc Visual Curation Agent chỉ định
         sc_strat = strategy_map.get(scene.scene_id, {})
         chosen_strategy = sc_strat.get("strategy", "STOCK_VIDEO")
-        prod_method = sc_strat.get("production_method") or (
+        prod_method = sc_strat.get("production_method") or v_analysis.get("production_method") or (
             "IMAGE_TO_VIDEO" if chosen_strategy == "AI_IMAGE"
             else ("TEXT_TO_VIDEO" if chosen_strategy == "AI_VIDEO"
             else ("REAL_ARCHIVE" if chosen_strategy == "REAL_DOCUMENTARY" else "STOCK_FOOTAGE"))
         )
         tool = sc_strat.get("tool", "")
-        rationale = sc_strat.get("rationale", "")
-        search_query = sc_strat.get("search_query") or sq or kw
-        ai_prompt = sc_strat.get("ai_prompt") or vp or kw
+        rationale = v_analysis.get("narrative_subtext") or sc_strat.get("rationale", "")
+        search_query = (v_analysis.get("search_queries") or [sc_strat.get("search_query") or sq or kw])[0]
+        ai_prompt = v_analysis.get("cinematic_ai_prompt") or sc_strat.get("ai_prompt") or vp or kw
         camera_motion = sc_strat.get("camera_motion", "zoom_in")
         sfx_cue = sc_strat.get("sfx_cue", "whoosh" if idx == 0 else "hit")
 
@@ -179,6 +195,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         scene_id=scene.scene_id,
                         prefer_video=False,
                         prefer_photo=True,
+                        visual_analysis=v_analysis,
                     )
                     if candidate_media and candidate_media.get("url"):
                         cand_url = candidate_media["url"]
@@ -284,12 +301,30 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # ══════════════════════════════════════════════════════════════════════
         elif prod_method == "STOCK_FOOTAGE" or chosen_strategy == "STOCK_VIDEO":
             try:
-                best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, search_query, used_pool_urls)
+                best_vid = await asyncio.to_thread(
+                    media_agent.search_best_video_clip,
+                    search_query,
+                    used_pool_urls,
+                    v_analysis,
+                    scene.narration,
+                )
                 if not best_vid and sq:
-                    best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, sq, used_pool_urls)
+                    best_vid = await asyncio.to_thread(
+                        media_agent.search_best_video_clip,
+                        sq,
+                        used_pool_urls,
+                        v_analysis,
+                        scene.narration,
+                    )
                 if not best_vid:
                     clean_kw = clean_scene_search_query(kw, max_words=2)
-                    best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, clean_kw, used_pool_urls)
+                    best_vid = await asyncio.to_thread(
+                        media_agent.search_best_video_clip,
+                        clean_kw,
+                        used_pool_urls,
+                        v_analysis,
+                        scene.narration,
+                    )
 
                 if best_vid and best_vid.get("url") and best_vid["url"] not in used_pool_urls:
                     cand_url = best_vid["url"]
@@ -299,9 +334,29 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         used_pool_urls.add(cand_url)
                         media_path = vid_out
                         media_type = "video"
-                        logger.info(f"Scene {scene.scene_id}: 🎥 [Video B-Roll] Tải thành công video Pexels '{search_query}'")
+                        logger.info(f"Scene {scene.scene_id}: 🎥 [Video B-Roll Tuyển chọn] Tải thành công video: '{best_vid.get('title')}'")
             except Exception as e:
                 logger.debug(f"Scene {scene.scene_id}: Pexels video search error: {e}")
+
+            # Nếu Agent từ chối kho stock hoặc không có video phù hợp -> Tự động sinh Video AI kỳ ảo
+            if not media_path:
+                logger.info(f"Scene {scene.scene_id}: ⚡ Agent từ chối kho stock, tự động chuyển hướng tạo Video AI chuyển động...")
+                try:
+                    ai_vid_path = str(media_dir / f"scene_{scene.scene_id:03d}_t2v.mp4")
+                    res_vid = await ai_video_agent.generate_text_to_video(
+                        prompt=ai_prompt,
+                        output_path=ai_vid_path,
+                        duration_seconds=dur,
+                        scene_id=scene.scene_id,
+                        camera_motion=camera_motion,
+                        visual_prompt=ai_prompt,
+                    )
+                    if res_vid and Path(res_vid).exists() and Path(res_vid).stat().st_size > 5000:
+                        media_path = res_vid
+                        media_type = "video"
+                        logger.info(f"Scene {scene.scene_id}: 🔮 [AI Video Cứu hộ] Tạo video AI trực tiếp thành công ({dur:.1f}s)")
+                except Exception as e_ai:
+                    logger.debug(f"Scene {scene.scene_id}: AI video fallback error: {e_ai}")
 
         # ══════════════════════════════════════════════════════════════════════
         # CHIẾN LƯỢC 4: AI_IMAGE (Ảnh nghệ thuật AI điện ảnh 8K)
@@ -347,6 +402,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     scene_id=scene.scene_id,
                     prefer_video=(chosen_strategy != "REAL_DOCUMENTARY"),
                     prefer_photo=(chosen_strategy == "REAL_DOCUMENTARY"),
+                    visual_analysis=v_analysis,
                 )
                 if candidate_media and candidate_media.get("url"):
                     cand_url = candidate_media["url"]
