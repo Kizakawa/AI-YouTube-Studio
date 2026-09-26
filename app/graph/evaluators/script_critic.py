@@ -116,10 +116,8 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
                     }
                     r = requests.post(url, json=payload, timeout=15)
                     if r.status_code in (429, 403):
-                        logger.warning(f"ScriptCritic: Key bị giới hạn ({r.status_code}), xoay key...")
-                        self.rotator.rotate_key()
-                        key_quota_failed = True
-                        break
+                        logger.warning(f"ScriptCritic: Model {model} bị giới hạn ({r.status_code}), thử model tiếp theo...")
+                        continue
 
                     if r.status_code == 200:
                         data = r.json()

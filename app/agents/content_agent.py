@@ -9,11 +9,11 @@ from app.schemas.contracts import ScriptContract
 logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = [
-    "gemini-3.1-pro-preview",
-    "gemini-pro-latest",
     "gemini-flash-latest",
     "gemini-3.1-flash-lite-preview",
     "gemma-4-26b-a4b-it",
+    "gemini-3.1-pro-preview",
+    "gemini-pro-latest",
 ]
 
 class ContentAgent:
@@ -80,10 +80,6 @@ class ContentAgent:
                                 return parts[0]["text"].strip()
                     elif r.status_code in (429, 403):
                         logger.warning(f"⚠️ Model {model} với key {key[:8]}... gặp {r.status_code}. Đang thử model tiếp theo...")
-                        # Nếu là model flash phổ thông hoặc lỗi tài khoản hết hạn mức, xoay ngay sang key tiếp theo trong pool
-                        if "flash" in model.lower() or "quota" in r.text.lower():
-                            self.rotator.rotate_key()
-                            break
                         continue
                     elif r.status_code == 503 and json_mode:
                         # Fallback: Thử lại không dùng responseMimeType (tránh 503 trên engine structured JSON)
