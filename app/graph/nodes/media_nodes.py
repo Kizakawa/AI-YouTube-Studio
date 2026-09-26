@@ -17,6 +17,7 @@ from app.schemas.contracts import ScriptContract, SceneContract
 from app.agents.media_agent import MediaAgent, detect_real_entity, match_best_pool_photo, clean_scene_search_query
 from app.agents.image_agent import ImageAgent
 from app.agents.visual_director_agent import VisualDirectorAgent
+from app.agents.video_strategist_agent import VideoStrategistAgent
 from app.agents.ai_video_agent import AIVideoAgent
 from app.graph.evaluators.visual_critic import VisualCritic
 from app.graph.evaluators.content_quality_critic import ContentQualityCritic
@@ -27,12 +28,12 @@ logger = logging.getLogger(__name__)
 
 async def node_direct_visual_strategy(state: VideoWorkflowState) -> Dict[str, Any]:
     """
-    Node Đạo Diễn Hình Ảnh (Visual Director Agent).
+    Node Đạo Diễn Chiến Lược & Phương Pháp Làm Video (Video Strategist Agent).
     Phân tích toàn diện ý tưởng, nhân vật và từng phân cảnh để ra quyết định:
-    - Khi nào dùng ảnh tư liệu thực tế (nhân vật có thật, sự kiện lịch sử).
-    - Khi nào dùng video B-roll chuyển động thực tế (hành động, con người, đường phố).
-    - Khi nào dùng video AI ảo (chủ đề huyền bí, giả tưởng, vũ trụ trừu tượng).
-    - Khi nào dùng ảnh nghệ thuật AI 8K.
+    - Khi nào dùng REAL_ARCHIVE (Tư liệu lịch sử thật 100% của nhân vật/sự kiện có thật).
+    - Khi nào dùng IMAGE_TO_VIDEO (Tạo video phụ thuộc vào ảnh chủ đề 8K - giữ nét, không méo hình).
+    - Khi nào dùng TEXT_TO_VIDEO (Tạo video AI trực tiếp - cho chủ đề huyền bí, năng lượng, vũ trụ trừu tượng).
+    - Khi nào dùng STOCK_FOOTAGE (Video B-roll chuyển động thực tế 9:16 đời thường).
     """
     topic = state.get("topic", "")
     script_data = state.get("script_data", {})
@@ -41,9 +42,9 @@ async def node_direct_visual_strategy(state: VideoWorkflowState) -> Dict[str, An
     channel_style = state.get("channel_style", "cinematic")
     scenes = script_data.get("scenes", [])
 
-    director = VisualDirectorAgent()
+    strategist = VideoStrategistAgent()
     plan = await asyncio.to_thread(
-        director.create_visual_plan,
+        strategist.propose_production_strategy,
         topic=topic,
         scenes=scenes,
         primary_entity=primary_entity,
@@ -51,14 +52,14 @@ async def node_direct_visual_strategy(state: VideoWorkflowState) -> Dict[str, An
         channel_niche=channel_style,
     )
 
-    strategies_summary = ", ".join([f"Cảnh {s.get('scene_id')}: {s.get('strategy')}" for s in plan.get("scenes_strategy", [])[:4]])
-    logger.info(f"🎬 [VisualDirector] Đã duyệt chiến lược thị giác ({plan.get('topic_classification')}): {strategies_summary}...")
+    proposals_summary = ", ".join([f"Cảnh {s.get('scene_id')}: {s.get('production_method', s.get('strategy'))}" for s in plan.get("scenes_strategy", [])[:4]])
+    logger.info(f"🎬 [VideoStrategist] Đã duyệt phương pháp sản xuất ({plan.get('topic_classification')}): {proposals_summary}...")
 
     return {
         "visual_plan": plan,
         "current_step": "VISUAL_STRATEGY_PLANNED",
         "progress_percent": 55,
-        "progress_message": f"🎬 Đạo diễn thị giác đã phân bổ chiến lược ({plan.get('topic_classification', 'Tự động')}): {len(plan.get('scenes_strategy', []))} cảnh",
+        "progress_message": f"🎬 Đạo diễn chiến lược đã duyệt phương pháp ({plan.get('topic_classification', 'Tự động')}): {len(plan.get('scenes_strategy', []))} cảnh",
     }
 
 
@@ -111,9 +112,15 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         vp = getattr(scene, 'visual_prompt', None)
         kw = scene.visual_keyword or ""
 
-        # Lấy chiến lược do Visual Director chỉ định
+        # Lấy chiến lược và phương pháp do Video Strategist chỉ định
         sc_strat = strategy_map.get(scene.scene_id, {})
         chosen_strategy = sc_strat.get("strategy", "STOCK_VIDEO")
+        prod_method = sc_strat.get("production_method") or (
+            "IMAGE_TO_VIDEO" if chosen_strategy == "AI_IMAGE"
+            else ("TEXT_TO_VIDEO" if chosen_strategy == "AI_VIDEO"
+            else ("REAL_ARCHIVE" if chosen_strategy == "REAL_DOCUMENTARY" else "STOCK_FOOTAGE"))
+        )
+        tool = sc_strat.get("tool", "")
         rationale = sc_strat.get("rationale", "")
         search_query = sc_strat.get("search_query") or sq or kw
         ai_prompt = sc_strat.get("ai_prompt") or vp or kw
@@ -122,19 +129,18 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
         # Thời lượng ước lượng của phân cảnh (giây)
         dur = float(getattr(scene, 'estimated_seconds', 3.5) or 3.5)
-        # Nếu có audio duration từ audio_nodes thì dùng chính xác
         scenes_audio = state.get("scenes_audio", [])
         if scenes_audio:
             sc_audio = next((a for a in scenes_audio if a.get("scene_id") == scene.scene_id), None)
             if sc_audio and sc_audio.get("audio_duration_ms"):
                 dur = max(float(sc_audio["audio_duration_ms"]) / 1000.0, 1.0)
 
-        logger.info(f"🎯 [Scene {scene.scene_id}] Áp dụng chiến lược '{chosen_strategy}' ({rationale[:50]}...)")
+        logger.info(f"🎯 [Scene {scene.scene_id}] Phương pháp: '{prod_method}' | Strategy: '{chosen_strategy}' ({rationale[:60]}...)")
 
         # ══════════════════════════════════════════════════════════════════════
-        # CHIẾN LƯỢC 1: REAL_DOCUMENTARY (Ảnh tư liệu / Nhân vật / Di tích thật)
+        # PHƯƠNG PHÁP 1: REAL_ARCHIVE (Tư liệu lịch sử thật 100%)
         # ══════════════════════════════════════════════════════════════════════
-        if chosen_strategy == "REAL_DOCUMENTARY":
+        if prod_method == "REAL_ARCHIVE" or chosen_strategy == "REAL_DOCUMENTARY":
             # A. Thử Semantic Pool Matcher
             if primary_entity and entity_media_pool:
                 best_pool_photo = match_best_pool_photo(
@@ -189,13 +195,14 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     logger.debug(f"Scene {scene.scene_id}: Doc search error: {e}")
 
         # ══════════════════════════════════════════════════════════════════════
-        # CHIẾN LƯỢC 2: AI_VIDEO (Video AI ảo / Giả tưởng / Huyền bí / Siêu thực)
+        # PHƯƠNG PHÁP 2: IMAGE_TO_VIDEO (Tạo video phụ thuộc vào ảnh chủ đề 8K)
+        # Giữ nét tuyệt đối, không méo mặt, chuyển hóa ảnh thành video 3D
         # ══════════════════════════════════════════════════════════════════════
-        elif chosen_strategy == "AI_VIDEO":
+        elif prod_method == "IMAGE_TO_VIDEO":
             try:
-                ai_vid_path = str(media_dir / f"scene_{scene.scene_id:03d}_ai_video.mp4")
-                prompt_ai = ai_prompt if len(ai_prompt.strip()) > 10 else f"Mysterious glowing {kw}, 8k vertical cinematic video"
-                res_vid = await ai_video_agent.generate_scene_video(
+                ai_vid_path = str(media_dir / f"scene_{scene.scene_id:03d}_i2v.mp4")
+                prompt_ai = ai_prompt if len(ai_prompt.strip()) > 10 else f"Cinematic 8k dramatic vertical photo of {kw}"
+                res_vid = await ai_video_agent.generate_image_to_video(
                     prompt=prompt_ai,
                     output_path=ai_vid_path,
                     duration_seconds=dur,
@@ -206,14 +213,36 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 if res_vid and Path(res_vid).exists() and Path(res_vid).stat().st_size > 5000:
                     media_path = res_vid
                     media_type = "video"
-                    logger.info(f"Scene {scene.scene_id}: 🔮 [Video AI Ảo] Tạo thành công clip huyền bí ({dur:.1f}s)")
+                    logger.info(f"Scene {scene.scene_id}: 🎨 [Image-to-Video] Tạo video động từ ảnh chủ đề 8K ({dur:.1f}s)")
             except Exception as e:
-                logger.warning(f"Scene {scene.scene_id}: AI Video error: {e}")
+                logger.warning(f"Scene {scene.scene_id}: Image-to-Video error: {e}")
 
         # ══════════════════════════════════════════════════════════════════════
-        # CHIẾN LƯỢC 3: STOCK_VIDEO (Video B-Roll chuyển động thực tế 9:16)
+        # PHƯƠNG PHÁP 3: TEXT_TO_VIDEO (Tạo video AI trực tiếp cho cảnh kỳ ảo)
         # ══════════════════════════════════════════════════════════════════════
-        elif chosen_strategy == "STOCK_VIDEO":
+        elif prod_method == "TEXT_TO_VIDEO" or chosen_strategy == "AI_VIDEO":
+            try:
+                ai_vid_path = str(media_dir / f"scene_{scene.scene_id:03d}_t2v.mp4")
+                prompt_ai = ai_prompt if len(ai_prompt.strip()) > 10 else f"Mysterious glowing {kw}, 8k vertical cinematic video"
+                res_vid = await ai_video_agent.generate_text_to_video(
+                    prompt=prompt_ai,
+                    output_path=ai_vid_path,
+                    duration_seconds=dur,
+                    scene_id=scene.scene_id,
+                    camera_motion=camera_motion,
+                    visual_prompt=vp,
+                )
+                if res_vid and Path(res_vid).exists() and Path(res_vid).stat().st_size > 5000:
+                    media_path = res_vid
+                    media_type = "video"
+                    logger.info(f"Scene {scene.scene_id}: 🔮 [Text-to-Video] Tạo video AI trực tiếp kỳ ảo ({dur:.1f}s)")
+            except Exception as e:
+                logger.warning(f"Scene {scene.scene_id}: Text-to-Video error: {e}")
+
+        # ══════════════════════════════════════════════════════════════════════
+        # PHƯƠNG PHÁP 4: STOCK_FOOTAGE (Video B-Roll chuyển động thực tế 9:16)
+        # ══════════════════════════════════════════════════════════════════════
+        elif prod_method == "STOCK_FOOTAGE" or chosen_strategy == "STOCK_VIDEO":
             try:
                 best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, search_query)
                 if not best_vid and sq:
@@ -332,6 +361,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             "camera_motion": camera_motion,
             "sfx_cue": sfx_cue,
             "visual_strategy": chosen_strategy,
+            "production_method": prod_method,
+            "tool": tool,
             "strategy_rationale": rationale,
         })
 

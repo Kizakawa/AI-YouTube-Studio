@@ -46,6 +46,8 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             "camera_motion": m.get("camera_motion"),   # ← Thiếu field này → motion mặc định
             "sfx_cue": m.get("sfx_cue"),               # ← Thiếu field này → không có SFX
             "visual_strategy": m.get("visual_strategy"),
+            "production_method": m.get("production_method"),
+            "tool": m.get("tool"),
             "strategy_rationale": m.get("strategy_rationale"),
         }
         enriched_scenes.append(SceneContract(**sc_dict))

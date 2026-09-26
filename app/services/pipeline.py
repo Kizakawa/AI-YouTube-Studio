@@ -296,29 +296,94 @@ class VideoPipeline:
             )
             logger.info(f"[Job {self.job_id}] Đã lấy được {len(entity_media_pool)} ảnh tài liệu cho '{primary_entity}'")
 
+        from app.agents.video_strategist_agent import VideoStrategistAgent
+        from app.agents.ai_video_agent import AIVideoAgent
+
+        ai_video_agent = AIVideoAgent()
+        strategist = VideoStrategistAgent()
+
+        topic = ""
+        channel_niche = "general"
+        with get_db() as db:
+            job = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
+            if job:
+                topic = job.topic or job.title or ""
+                channel_niche = getattr(job, "niche", "general") or "general"
+
+        visual_plan = await asyncio.to_thread(
+            strategist.propose_production_strategy,
+            topic=topic,
+            scenes=[s.model_dump() for s in scenes],
+            primary_entity=primary_entity,
+            entity_type=entity_type,
+            channel_niche=channel_niche,
+        )
+        strategy_map = {
+            s.get("scene_id"): s
+            for s in visual_plan.get("scenes_strategy", [])
+        }
+
         total_scenes = len(scenes)
         result = []
         for idx, scene in enumerate(scenes):
             pct = 25 + int(((idx + 1) / total_scenes) * 35)
-            kw = scene.visual_keyword or "Stock 4K"
-            label = f"{primary_entity} - {kw[:20]}" if primary_entity else kw[:25]
-            await self._report_progress(
-                "MEDIA",
-                f"🖼️ Chuẩn bị media cảnh {idx+1}/{total_scenes} ({label})...",
-                percent=pct
-            )
-            media_path = await self._fetch_scene_media(
-                scene=scene,
-                media_dir=media_dir,
-                primary_entity=primary_entity,
-                entity_type=entity_type,
-                entity_media_pool=entity_media_pool,
-                used_pool_urls=used_pool_urls,
-                used_asset_paths=used_asset_paths,
-            )
+            sc_strat = strategy_map.get(scene.scene_id, {})
+            prod_method = sc_strat.get("production_method", "STOCK_FOOTAGE")
+            label = f"[{prod_method}] Cảnh {idx+1}/{total_scenes}"
+            await self._report_progress("MEDIA", f"🎬 {label}: {sc_strat.get('rationale', '')[:40]}...", percent=pct)
+
+            media_path = ""
+            dur = scene.actual_duration_seconds
+
+            # 1. IMAGE_TO_VIDEO (Tạo video bám sát ảnh chủ đề 8K)
+            if prod_method == "IMAGE_TO_VIDEO":
+                ai_vid_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_i2v.mp4")
+                p_ai = sc_strat.get("ai_prompt") or scene.visual_prompt or scene.visual_keyword
+                res_v = await ai_video_agent.generate_image_to_video(
+                    prompt=p_ai,
+                    output_path=ai_vid_path,
+                    duration_seconds=dur,
+                    scene_id=scene.scene_id,
+                    camera_motion=sc_strat.get("camera_motion", "zoom_in"),
+                    visual_prompt=scene.visual_prompt,
+                )
+                if res_v and Path(res_v).exists():
+                    media_path = res_v
+
+            # 2. TEXT_TO_VIDEO (Sinh video AI trực tiếp kỳ ảo)
+            elif prod_method == "TEXT_TO_VIDEO":
+                ai_vid_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_t2v.mp4")
+                p_ai = sc_strat.get("ai_prompt") or scene.visual_prompt or scene.visual_keyword
+                res_v = await ai_video_agent.generate_text_to_video(
+                    prompt=p_ai,
+                    output_path=ai_vid_path,
+                    duration_seconds=dur,
+                    scene_id=scene.scene_id,
+                    camera_motion=sc_strat.get("camera_motion", "zoom_in"),
+                    visual_prompt=scene.visual_prompt,
+                )
+                if res_v and Path(res_v).exists():
+                    media_path = res_v
+
+            # 3. Fallback hoặc các phương pháp REAL_ARCHIVE, STOCK_FOOTAGE
+            if not media_path:
+                media_path = await self._fetch_scene_media(
+                    scene=scene,
+                    media_dir=media_dir,
+                    primary_entity=primary_entity,
+                    entity_type=entity_type,
+                    entity_media_pool=entity_media_pool,
+                    used_pool_urls=used_pool_urls,
+                    used_asset_paths=used_asset_paths,
+                )
+
             enriched = scene.model_copy(update={
                 "media_path": media_path,
                 "media_type": "video" if media_path.endswith(".mp4") else "image",
+                "visual_strategy": sc_strat.get("strategy"),
+                "production_method": prod_method,
+                "tool": sc_strat.get("tool"),
+                "strategy_rationale": sc_strat.get("rationale"),
             })
             result.append(enriched)
         return result

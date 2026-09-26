@@ -65,7 +65,7 @@ class SceneContract(BaseModel):
 
     # --- Populated bởi MediaAgent/ImageAgent (Step C) ---
     media_path: Optional[str] = Field(default=None, description="Đường dẫn file ảnh/video nền cho scene")
-    media_type: Optional[str] = Field(default=None, pattern=r"^(image|video|ai_image|ai_video|photo|documentary|auto)$")
+    media_type: Optional[str] = Field(default=None, pattern=r"^(image|video|ai_image|ai_video|i2v|t2v|photo|documentary|auto)$")
 
     # ── Cinematic Enhancement Fields (Optional — sinh bởi ContentAgent hoặc để mặc định) ──
     camera_motion: Optional[str] = Field(
@@ -85,9 +85,17 @@ class SceneContract(BaseModel):
         default=None,
         description="Chiến lược do Visual Director phê duyệt: REAL_DOCUMENTARY, STOCK_VIDEO, AI_VIDEO, AI_IMAGE."
     )
+    production_method: Optional[str] = Field(
+        default=None,
+        description="Phương pháp sản xuất: REAL_ARCHIVE, IMAGE_TO_VIDEO, TEXT_TO_VIDEO, STOCK_FOOTAGE."
+    )
+    tool: Optional[str] = Field(
+        default=None,
+        description="Công cụ được chọn: wikimedia_archive, imagen3_i2v, wan_t2v, pexels_video_api."
+    )
     strategy_rationale: Optional[str] = Field(
         default=None,
-        description="Lý do Visual Director chọn chiến lược thị giác này."
+        description="Lý do Visual Director chọn chiến lược và phương pháp thị giác này."
     )
 
     @field_validator("narration")

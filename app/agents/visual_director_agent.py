@@ -33,44 +33,10 @@ class VisualDirectorAgent:
     """
 
     def __init__(self):
+        from app.agents.video_strategist_agent import VideoStrategistAgent
+        self.strategist = VideoStrategistAgent()
         keys = settings.get_gemini_keys_pool()
         self.rotator = KeyRotator(keys) if keys else None
-
-    def _call_gemini(self, prompt: str, timeout: int = 25) -> Optional[str]:
-        """Gọi Gemini REST API với KeyRotator và timeout an toàn."""
-        if not self.rotator:
-            return None
-
-        import requests
-        key = self.rotator.get_key()
-        if not key:
-            return None
-
-        for model in AVAILABLE_MODELS:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.4,
-                    "responseMimeType": "application/json",
-                }
-            }
-            try:
-                res = requests.post(url, json=payload, timeout=timeout)
-                if res.status_code == 200:
-                    data = res.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                        return text
-                elif res.status_code in (429, 403):
-                    self.rotator.rotate()
-                    key = self.rotator.get_key()
-            except Exception as e:
-                logger.debug(f"[VisualDirector] Gemini call error on {model}: {e}")
-                continue
-
-        return None
 
     def create_visual_plan(
         self,
@@ -82,19 +48,20 @@ class VisualDirectorAgent:
     ) -> Dict[str, Any]:
         """
         Lập bản kế hoạch chiến lược thị giác cho toàn bộ kịch bản.
-        Trả về dictionary kế hoạch chi tiết từng scene.
+        Sử dụng VideoStrategistAgent để phân định chính xác:
+        - REAL_ARCHIVE (Tư liệu lịch sử thật)
+        - IMAGE_TO_VIDEO (Video phụ thuộc vào ảnh chủ đề - giữ nét, không méo)
+        - TEXT_TO_VIDEO (Video AI trực tiếp - siêu thực, huyền bí)
+        - STOCK_FOOTAGE (Video B-roll thực tế)
         """
-        logger.info(f"🎬 [VisualDirector] Bắt đầu phân tích chiến lược thị giác cho chủ đề: '{topic}' (Entity: '{primary_entity}')")
-
-        # 1. Thử gọi Gemini để đạo diễn chuyên sâu
-        ai_plan = self._plan_with_ai(topic, scenes, primary_entity, entity_type, channel_niche)
-        if ai_plan and "scenes_strategy" in ai_plan and len(ai_plan["scenes_strategy"]) == len(scenes):
-            logger.info("🎬 [VisualDirector] Đã tạo thành công bản kế hoạch thị giác bằng AI Director!")
-            return ai_plan
-
-        # 2. Heuristic Rule-Based Fallback (đảm bảo 100% không bao giờ gián đoạn pipeline)
-        logger.info("🎬 [VisualDirector] Kích hoạt Heuristic Rule-Based Director Fallback...")
-        return self._plan_with_heuristics(topic, scenes, primary_entity, entity_type, channel_niche)
+        logger.info(f"🎬 [VisualDirector] Khởi chạy Video Strategist phân tích kịch bản: '{topic}' (Entity: '{primary_entity}')")
+        return self.strategist.propose_production_strategy(
+            topic=topic,
+            scenes=scenes,
+            primary_entity=primary_entity,
+            entity_type=entity_type,
+            channel_niche=channel_niche,
+        )
 
     def _plan_with_ai(
         self,

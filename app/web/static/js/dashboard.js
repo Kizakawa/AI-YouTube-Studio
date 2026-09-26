@@ -542,12 +542,14 @@ async function createScript() {
 function buildScriptResultHTML(result) {
     const scenesHTML = (result.scenes || []).map(s => {
         let stratBadge = '';
-        if (s.visual_strategy === 'AI_VIDEO' || s.media_type === 'ai_video') {
-            stratBadge = '<span class="badge" style="background:linear-gradient(135deg,#8b5cf6,#ec4899);color:#fff;font-size:10px;padding:2px 6px;border:none;">🔮 Video AI Ảo</span>';
-        } else if (s.visual_strategy === 'REAL_DOCUMENTARY' || s.media_type === 'photo') {
-            stratBadge = '<span class="badge badge-cyan" style="font-size:10px;padding:2px 6px;">📸 Tư Liệu Thật</span>';
-        } else if (s.visual_strategy === 'STOCK_VIDEO' || s.media_type === 'video') {
-            stratBadge = '<span class="badge badge-amber" style="font-size:10px;padding:2px 6px;">🎥 Video B-Roll</span>';
+        if (s.production_method === 'IMAGE_TO_VIDEO' || s.media_type === 'i2v') {
+            stratBadge = '<span class="badge" style="background:linear-gradient(135deg,#059669,#06b6d4);color:#fff;font-size:10px;padding:2px 6px;border:none;">🎨 Video từ Ảnh Chủ Đề (I2V)</span>';
+        } else if (s.production_method === 'TEXT_TO_VIDEO' || s.visual_strategy === 'AI_VIDEO' || s.media_type === 'ai_video' || s.media_type === 't2v') {
+            stratBadge = '<span class="badge" style="background:linear-gradient(135deg,#8b5cf6,#ec4899);color:#fff;font-size:10px;padding:2px 6px;border:none;">🔮 Video AI Trực Tiếp (T2V)</span>';
+        } else if (s.production_method === 'REAL_ARCHIVE' || s.visual_strategy === 'REAL_DOCUMENTARY' || s.media_type === 'photo') {
+            stratBadge = '<span class="badge badge-cyan" style="font-size:10px;padding:2px 6px;">📸 Tư Liệu Thật 100%</span>';
+        } else if (s.production_method === 'STOCK_FOOTAGE' || s.visual_strategy === 'STOCK_VIDEO' || s.media_type === 'video') {
+            stratBadge = '<span class="badge badge-amber" style="font-size:10px;padding:2px 6px;">🎥 Video B-Roll Thật</span>';
         } else if (s.visual_strategy === 'AI_IMAGE' || s.media_type === 'ai_image') {
             stratBadge = '<span class="badge badge-purple" style="font-size:10px;padding:2px 6px;">✨ Ảnh AI 8K</span>';
         }
@@ -556,8 +558,9 @@ function buildScriptResultHTML(result) {
         <div class="scene-item">
             <div class="scene-num">${s.scene_id}</div>
             <div class="scene-body">
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap;">
                     ${stratBadge}
+                    ${s.tool ? `<span style="font-size:10px;color:var(--text-muted);background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:4px;">🛠️ ${esc(s.tool)}</span>` : ''}
                 </div>
                 <div class="scene-narration">${esc(s.narration)}</div>
                 <div class="scene-keyword">🔍 ${esc(s.visual_keyword)}</div>
@@ -637,12 +640,14 @@ async function openVideoDetail(jobId) {
         const isAi = (s.media_type === 'ai_image' || (s.media_path && s.media_path.includes('_ai')));
 
         let mediaBadge = '';
-        if (s.visual_strategy === 'AI_VIDEO' || (s.media_path && s.media_path.includes('ai_video'))) {
-            mediaBadge = '<span class="badge" style="background:linear-gradient(135deg,#8b5cf6,#ec4899);color:#fff;font-size:10px;padding:2px 6px;border:none;">🔮 Video AI Ảo</span>';
-        } else if (s.visual_strategy === 'REAL_DOCUMENTARY' || (s.media_path && (s.media_path.includes('_doc') || s.media_path.includes('_wiki')))) {
-            mediaBadge = '<span class="badge badge-cyan" style="font-size:10px;padding:2px 6px;">📸 Tư Liệu Thật</span>';
-        } else if (s.visual_strategy === 'STOCK_VIDEO' || isVid) {
-            mediaBadge = '<span class="badge badge-amber" style="font-size:10px;padding:2px 6px;">🎥 Video B-Roll</span>';
+        if (s.production_method === 'IMAGE_TO_VIDEO' || (s.media_path && s.media_path.includes('_i2v'))) {
+            mediaBadge = '<span class="badge" style="background:linear-gradient(135deg,#059669,#06b6d4);color:#fff;font-size:10px;padding:2px 6px;border:none;">🎨 Video từ Ảnh Chủ Đề (I2V)</span>';
+        } else if (s.production_method === 'TEXT_TO_VIDEO' || (s.media_path && (s.media_path.includes('_t2v') || s.media_path.includes('ai_video')))) {
+            mediaBadge = '<span class="badge" style="background:linear-gradient(135deg,#8b5cf6,#ec4899);color:#fff;font-size:10px;padding:2px 6px;border:none;">🔮 Video AI Trực Tiếp (T2V)</span>';
+        } else if (s.production_method === 'REAL_ARCHIVE' || s.visual_strategy === 'REAL_DOCUMENTARY' || (s.media_path && (s.media_path.includes('_doc') || s.media_path.includes('_wiki')))) {
+            mediaBadge = '<span class="badge badge-cyan" style="font-size:10px;padding:2px 6px;">📸 Tư Liệu Thật 100%</span>';
+        } else if (s.production_method === 'STOCK_FOOTAGE' || isVid) {
+            mediaBadge = '<span class="badge badge-amber" style="font-size:10px;padding:2px 6px;">🎥 Video B-Roll Thật</span>';
         } else if (s.visual_strategy === 'AI_IMAGE' || isAi) {
             mediaBadge = '<span class="badge badge-purple" style="font-size:10px;padding:2px 6px;">✨ Ảnh AI 8K</span>';
         } else {
@@ -658,6 +663,7 @@ async function openVideoDetail(jobId) {
                     ${mediaBadge}
                     <span style="font-size:11px;color:var(--text-muted);">${s.actual_duration_seconds ? s.actual_duration_seconds.toFixed(1) + 's' : '~' + (s.estimated_seconds || 3) + 's'}</span>
                     ${s.camera_motion ? `<span style="font-size:10px;color:var(--text-muted);background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:4px;">🎬 ${s.camera_motion}</span>` : ''}
+                    ${s.tool ? `<span style="font-size:10px;color:var(--text-muted);background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:4px;">🛠️ ${esc(s.tool)}</span>` : ''}
                 </div>
                 <div class="scene-narration">${esc(s.narration)}</div>
                 <div class="scene-keyword">🔍 ${esc(s.visual_keyword || '')}</div>
@@ -858,10 +864,11 @@ function addEditorSceneRow(sc = null, sceneNum = null) {
             <div class="form-group" style="margin-bottom:0;">
                 <label class="form-label" style="font-size:11.5px; margin-bottom:4px;"><strong>Loại Media (Visual Source):</strong></label>
                 <select class="form-input scene-mediatype-select" style="font-size:12px; height:34px; padding:4px 8px;">
-                    <option value="auto" ${mediaType === 'auto' ? 'selected' : ''}>🧠 Tự Động (Visual Director tự chọn theo ý tưởng)</option>
-                    <option value="ai_video" ${mediaType === 'ai_video' ? 'selected' : ''}>🔮 Video AI Ảo (Huyền bí / Giả tưởng / Vũ trụ)</option>
-                    <option value="video" ${mediaType === 'video' ? 'selected' : ''}>🎥 Video Chuyển Động (Stock B-Roll 9:16)</option>
-                    <option value="photo" ${mediaType === 'photo' ? 'selected' : ''}>📸 Ảnh Tư Liệu Thật (Nhân vật / Di tích lịch sử)</option>
+                    <option value="auto" ${mediaType === 'auto' ? 'selected' : ''}>🧠 Tự Động (Video Strategist đề xuất cách làm tối ưu)</option>
+                    <option value="i2v" ${mediaType === 'i2v' ? 'selected' : ''}>🎨 Video từ Ảnh Chủ Đề (Image-to-Video: chuẩn nét, không méo hình)</option>
+                    <option value="ai_video" ${mediaType === 'ai_video' || mediaType === 't2v' ? 'selected' : ''}>🔮 Video AI Trực Tiếp (Text-to-Video: huyền bí, vũ trụ siêu thực)</option>
+                    <option value="photo" ${mediaType === 'photo' ? 'selected' : ''}>📸 Tư Liệu Thật 100% (Nhân vật / Di tích / Sự kiện lịch sử)</option>
+                    <option value="video" ${mediaType === 'video' ? 'selected' : ''}>🎥 Video Chuyển Động (Stock B-Roll Pexels 9:16)</option>
                     <option value="ai_image" ${mediaType === 'ai_image' ? 'selected' : ''}>✨ Ảnh Nghệ Thuật AI 8K (Cinematic Dramatic)</option>
                 </select>
             </div>

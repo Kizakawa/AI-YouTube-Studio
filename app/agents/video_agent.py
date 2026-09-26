@@ -193,7 +193,7 @@ class VideoAgent:
             raw_type = (scene.media_type or "image").lower()
             is_video_file = bool(scene.media_path and scene.media_path.lower().endswith((".mp4", ".mov", ".webm", ".mkv")))
 
-            if raw_type in ("video", "ai_video") or is_video_file:
+            if raw_type in ("video", "ai_video", "i2v", "t2v") or is_video_file:
                 logger.info(
                     f"  Scene {scene.scene_id}: video ({raw_type}) → trim {duration:.1f}s"
                     f"{' (🔥 HOOK VIDEO CLIP)' if is_hook else ''}"
