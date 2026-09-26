@@ -168,9 +168,16 @@ class SubtitleHelper:
             if scene_duration_ms <= 0:
                 scene_duration_ms = 3000
 
+            # Căn chỉnh timeline theo start_offset_ms nếu scene có mốc thời gian cố định
+            if getattr(scene, "start_offset_ms", None) is not None:
+                current_offset_ms = scene.start_offset_ms
+
             chunks = cls.split_text_to_chunks(scene.narration)
             if not chunks:
-                current_offset_ms += scene_duration_ms
+                if getattr(scene, "start_offset_ms", None) is not None:
+                    current_offset_ms = scene.start_offset_ms + scene_duration_ms
+                else:
+                    current_offset_ms += scene_duration_ms
                 continue
 
             # Chuyển ALL CAPS — phong cách phiếu phụ đề Shorts viral
@@ -221,7 +228,10 @@ class SubtitleHelper:
 
                 chunk_start_ms = chunk_end_ms
 
-            current_offset_ms += scene_duration_ms
+            if getattr(scene, "start_offset_ms", None) is not None:
+                current_offset_ms = scene.start_offset_ms + scene_duration_ms
+            else:
+                current_offset_ms += scene_duration_ms
 
         return header + "\n".join(dialogue_lines) + "\n"
 

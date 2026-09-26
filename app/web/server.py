@@ -2317,7 +2317,8 @@ async def create_manual_studio_video(
         subtitle_margin_v=int(data.get("subtitle_margin_v", 210)),
         transition_type=data.get("transition_type", "fade"),
         transition_duration=float(data.get("transition_duration", 0.25)),
-        use_sfx=bool(data.get("use_sfx", True))
+        use_sfx=bool(data.get("use_sfx", True)),
+        timing_mode=str(data.get("timing_mode", "auto"))
     )
 
     # 4. Đưa vào luồng render ngầm

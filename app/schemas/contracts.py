@@ -62,6 +62,7 @@ class SceneContract(BaseModel):
     # --- Populated bởi VoiceAgent (Step B) ---
     audio_path: Optional[str] = Field(default=None, description="Đường dẫn file MP3 của riêng scene này")
     audio_duration_ms: Optional[int] = Field(default=None, ge=0, description="Thời lượng thực tế (ms) sau TTS")
+    start_offset_ms: Optional[int] = Field(default=None, description="Offset bắt đầu cố định (ms) trong timeline video nếu có")
 
     # --- Populated bởi MediaAgent/ImageAgent (Step C) ---
     media_path: Optional[str] = Field(default=None, description="Đường dẫn file ảnh/video nền cho scene")

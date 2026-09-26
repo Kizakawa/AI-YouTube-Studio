@@ -2813,6 +2813,86 @@ function initSingleVideoDropzone() {
     }, false);
 }
 
+let singleTimingMode = 'auto';
+
+function setScriptTimingMode(mode) {
+    singleTimingMode = mode;
+    const btnAuto = document.getElementById('timing-mode-btn-auto');
+    const btnTimestamps = document.getElementById('timing-mode-btn-timestamps');
+    const toolbar = document.getElementById('timing-helper-toolbar');
+    const badge = document.getElementById('timing-badge-indicator');
+    const input = document.getElementById('single-script-input');
+
+    if (mode === 'timestamps') {
+        if (btnAuto) btnAuto.classList.remove('active');
+        if (btnTimestamps) btnTimestamps.classList.add('active');
+        if (toolbar) toolbar.style.display = 'flex';
+        if (badge) {
+            badge.textContent = '⏱️ AI căn khớp chuẩn xác từng khung thời gian';
+            badge.className = 'pill-indicator pill-indicator-pink';
+        }
+        if (input && !input.value.trim()) {
+            input.placeholder = `Nhập kịch bản kèm mốc thời gian theo định dạng:
+00-10: Bạn có tin dưới đáy đại dương vẫn còn những bí ẩn...
+10:25: Nơi áp lực nước có thể nghiền nát cả một chiếc tàu ngầm!
+25-45: Hôm nay chúng ta sẽ khám phá sự thật chấn động này...
+
+💡 Mẹo: Hỗ trợ 00-10:, 10:25:, 00:00 - 00:10:, hoặc [00-10]. AI sẽ tự động tăng tốc đọc hoặc đệm nhịp để khớp chuẩn xác từng giây!`;
+        }
+    } else {
+        if (btnAuto) btnAuto.classList.add('active');
+        if (btnTimestamps) btnTimestamps.classList.remove('active');
+        if (toolbar) toolbar.style.display = 'none';
+        if (badge) {
+            badge.textContent = '✨ Giữ trọn 100% thời lượng video';
+            badge.className = 'pill-indicator pill-indicator-green';
+        }
+        if (input && !input.value.trim()) {
+            input.placeholder = `Dán toàn bộ lời thoại kịch bản vào đây...
+
+Ví dụ:
+Bạn có tin rằng dưới đáy đại dương sâu thẳm vẫn còn những quái vật bí ẩn chưa từng được phát hiện?
+Nơi mà áp lực nước có thể nghiền nát một chiếc tàu ngầm trong nháy mắt!
+Hôm nay, chúng ta sẽ khám phá 3 sự thật chấn động nhất...
+
+💡 Mẹo: Hệ thống sẽ tự động đo thời lượng đọc, giữ trọn vẹn 100% video tải lên và chèn SFX chuyển ý cực kỳ mượt mà!`;
+        }
+    }
+    updateScriptStats();
+}
+
+function insertTimestampSample() {
+    const input = document.getElementById('single-script-input');
+    if (!input) return;
+    const sample = `00-10: Bạn có tin rằng dưới đáy đại dương sâu thẳm vẫn còn những sinh vật bí ẩn chưa từng được phát hiện?\n10:25: Nơi mà áp lực nước có thể nghiền nát một chiếc tàu ngầm titan trong nháy mắt!\n25-45: Hôm nay chúng ta sẽ cùng khám phá 3 sự thật gây chấn động nhất thế giới...`;
+    input.value = sample;
+    updateScriptStats();
+    showToast('📋 Đã điền kịch bản mẫu mốc thời gian (00-10, 10:25, 25-45)!', 'success');
+    input.focus();
+}
+
+function autoGenerateTimestampsFromVideo() {
+    const player = document.getElementById('single-video-player');
+    const totalSec = (player && player.duration && !isNaN(player.duration)) ? Math.round(player.duration) : 49;
+    
+    // Tự động phân chia 3 mốc thời gian tỷ lệ vàng: Mở đầu (25%), Cao trào (40%), Kết thúc (35%)
+    const m1 = 0;
+    const m2 = Math.max(8, Math.min(15, Math.round(totalSec * 0.25)));
+    const m3 = Math.max(m2 + 8, Math.round(totalSec * 0.65));
+    const m4 = totalSec;
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const template = `${pad(m1)}-${pad(m2)}: [Đoạn 1 - Mở đầu giật gân, cuốn hút người xem]\n${pad(m2)}:${pad(m3)}: [Đoạn 2 - Nội dung chính, dẫn dắt và cao trào]\n${pad(m3)}-${pad(m4)}: [Đoạn 3 - Bí ẩn kết luận, kêu gọi đăng ký kênh]`;
+
+    const input = document.getElementById('single-script-input');
+    if (input) {
+        input.value = template;
+        updateScriptStats();
+        showToast(`🪄 Đã tự động tạo 3 khung thời gian chuẩn theo video ${totalSec}s!`, 'success');
+        input.focus();
+    }
+}
+
 function updateScriptStats() {
     const input = document.getElementById('single-script-input');
     if (!input) return;
@@ -2826,10 +2906,22 @@ function updateScriptStats() {
     const wordEl = document.getElementById('single-word-count');
     const charEl = document.getElementById('single-char-count');
     const estEl = document.getElementById('single-est-duration');
+    const slotsEl = document.getElementById('timing-stats-slots');
+    const slotCountEl = document.getElementById('single-slot-count');
 
     if (wordEl) wordEl.textContent = words;
     if (charEl) charEl.textContent = chars;
     if (estEl) estEl.textContent = estSeconds;
+
+    if (singleTimingMode === 'timestamps') {
+        const tsRegex = /^\s*\[?\s*(\d{1,2}(?::\d{1,2})?)\s*(?:-|đến|to|->|:)\s*(\d{1,2}(?::\d{1,2})?)\s*\]?\s*[:\-]?\s*(.*)$/gm;
+        const matches = text.match(tsRegex);
+        const count = matches ? matches.length : 0;
+        if (slotCountEl) slotCountEl.textContent = count;
+        if (slotsEl) slotsEl.style.display = 'inline';
+    } else {
+        if (slotsEl) slotsEl.style.display = 'none';
+    }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -3300,6 +3392,7 @@ async function submitSingleVideoStudio() {
         const formData = new FormData();
         const payloadObj = {
             mode: 'single_video',
+            timing_mode: singleTimingMode,
             title: title,
             target_channel_id: channelSelect ? channelSelect.value : 'channel_1',
             voice: voiceSelect ? voiceSelect.value : 'vi-VN-HoaiMyNeural',

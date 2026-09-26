@@ -409,11 +409,37 @@
                             </div>
 
                             <!-- Right: Narration Script Textarea -->
+                            <!-- Right: Narration Script Textarea -->
                             <div class="script-editor-card">
                                 <label class="form-label" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                                     <span>🗣️ 2. Lời Thoại Kịch Bản Của Video <span class="required">*</span></span>
-                                    <span style="font-size:11px; color:#a78bfa;">AI phân đoạn & chèn SFX theo nhịp</span>
+                                    <span style="font-size:11px; color:#a78bfa;">AI phân đoạn & căn nhịp chuẩn xác</span>
                                 </label>
+
+                                <!-- Script Timing Mode Switcher -->
+                                <div class="script-timing-nav">
+                                    <button type="button" class="script-timing-btn active" id="timing-mode-btn-auto" onclick="setScriptTimingMode('auto')">
+                                        <span>⚡</span> Chỉnh Tự Động (AI Auto)
+                                    </button>
+                                    <button type="button" class="script-timing-btn" id="timing-mode-btn-timestamps" onclick="setScriptTimingMode('timestamps')">
+                                        <span>⏱️</span> Căn Theo Mốc Thời Gian (Thủ Công)
+                                    </button>
+                                </div>
+
+                                <!-- Helper Toolbar (Hiển thị khi ở chế độ Timestamps) -->
+                                <div id="timing-helper-toolbar" class="timing-helper-toolbar" style="display:none;">
+                                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                        <span>⏱️ Định dạng: <code>00-10: Lời thoại</code> hoặc <code>10:25: Lời thoại</code></span>
+                                    </div>
+                                    <div style="display:flex; gap:6px;">
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="insertTimestampSample()" style="padding:2px 8px; font-size:11px;" title="Chèn kịch bản mẫu có chia mốc">
+                                            📋 Chèn Mẫu 00-10:
+                                        </button>
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="autoGenerateTimestampsFromVideo()" style="padding:2px 8px; font-size:11px;" title="Tự động chia khung theo độ dài video đã nạp">
+                                            🪄 Chia Theo Video
+                                        </button>
+                                    </div>
+                                </div>
 
                                 <textarea id="single-script-input" class="script-textarea" placeholder="Dán toàn bộ lời thoại kịch bản vào đây...
 
@@ -422,17 +448,18 @@ Bạn có tin rằng dưới đáy đại dương sâu thẳm vẫn còn những
 Nơi mà áp lực nước có thể nghiền nát một chiếc tàu ngầm trong nháy mắt!
 Hôm nay, chúng ta sẽ khám phá 3 sự thật chấn động nhất...
 
-💡 Mẹo: Hệ thống sẽ tự động đo thời lượng đọc, cắt/loop video vừa vặn và chèn SFX chuyển ý cực kỳ mượt mà!" oninput="updateScriptStats()"></textarea>
+💡 Mẹo: Hệ thống sẽ tự động đo thời lượng đọc, giữ trọn vẹn 100% video tải lên và chèn SFX chuyển ý cực kỳ mượt mà!" oninput="updateScriptStats()"></textarea>
 
                                 <div class="script-stats-bar">
-                                    <div style="display:flex; gap:12px; align-items:center;">
+                                    <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
                                         <span>📝 <strong id="single-word-count" style="color:var(--text-main);">0</strong> từ</span>
                                         <span>·</span>
                                         <span><strong id="single-char-count" style="color:var(--text-main);">0</strong> ký tự</span>
                                         <span>·</span>
-                                        <span>⏱️ Giọng đọc: ~<strong id="single-est-duration" style="color:#ec4899;">0</strong>s</span>
+                                        <span id="timing-stats-est">⏱️ Giọng đọc: ~<strong id="single-est-duration" style="color:#ec4899;">0</strong>s</span>
+                                        <span id="timing-stats-slots" style="display:none;">🎯 <strong id="single-slot-count" style="color:#38bdf8;">0</strong> mốc</span>
                                     </div>
-                                    <span class="pill-indicator pill-indicator-green">✨ Tự động đồng bộ 100% thời lượng</span>
+                                    <span id="timing-badge-indicator" class="pill-indicator pill-indicator-green">✨ Giữ trọn 100% thời lượng video</span>
                                 </div>
                             </div>
                         </div>

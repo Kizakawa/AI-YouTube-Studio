@@ -16,7 +16,7 @@ import os
 import shutil
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Callable
+from typing import List, Dict, Any, Optional, Callable, Tuple
 from pydantic import BaseModel, Field
 
 import edge_tts
@@ -67,6 +67,7 @@ class ManualStudioConfig(BaseModel):
     transition_type: str = "fade"
     transition_duration: float = 0.25
     use_sfx: bool = True
+    timing_mode: str = "auto"  # "auto" (AI tự căn nhịp) hoặc "timestamps" (căn theo mốc thời gian 00-10: ...)
 
 
 class ManualStudioService:
@@ -478,6 +479,58 @@ class ManualStudioService:
         update_progress(100, f"✅ Xuất video thành công: video_{job_id}.mp4")
         return final_output_path
 
+    def _parse_timestamp_segments(self, text: str) -> List[Tuple[float, float, str]]:
+        """
+        Phân tích kịch bản theo từng mốc thời gian thủ công, ví dụ:
+          00-10: Bạn có tin dưới đáy đại dương...
+          10:25: Nơi áp lực nước kinh hoàng...
+          00:25 - 00:45: Hôm nay chúng ta sẽ cùng khám phá...
+          [00-10] Nội dung...
+        Trả về danh sách (start_seconds, end_seconds, narration_text).
+        """
+        import re
+
+        regex_pattern = re.compile(
+            r'^\s*\[?\s*(\d{1,2}(?::\d{1,2})?)\s*(?:-|đến|to|->|:)\s*(\d{1,2}(?::\d{1,2})?)\s*\]?\s*[:\-]?\s*(.*)$',
+            re.IGNORECASE
+        )
+
+        def _to_sec(val: str) -> float:
+            v = val.strip()
+            if ":" in v:
+                p = v.split(":")
+                if len(p) == 2:
+                    return float(p[0]) * 60 + float(p[1])
+                elif len(p) == 3:
+                    return float(p[0]) * 3600 + float(p[1]) * 60 + float(p[2])
+            return float(v)
+
+        raw_lines = [line.strip() for line in text.split("\n") if line.strip()]
+        if not raw_lines:
+            return []
+
+        parsed: List[Dict[str, Any]] = []
+        for line in raw_lines:
+            m = regex_pattern.match(line)
+            if m:
+                t1, t2, content = m.groups()
+                try:
+                    s1 = _to_sec(t1)
+                    s2 = _to_sec(t2)
+                    if s2 <= s1:
+                        s2 = s1 + 3.0
+                    parsed.append({"start": s1, "end": s2, "text": content.strip()})
+                except Exception:
+                    if parsed:
+                        parsed[-1]["text"] += " " + line
+            else:
+                if parsed:
+                    # Ghép các dòng kế tiếp không có mốc vào đoạn trước đó
+                    parsed[-1]["text"] += " " + line
+
+        parsed.sort(key=lambda x: x["start"])
+        return [(p["start"], p["end"], p["text"]) for p in parsed]
+
     def _parse_script_segments(self, text: str) -> List[str]:
         """Tách kịch bản thành các phân đoạn tự nhiên để căn phụ đề và chèn SFX."""
         import re
@@ -485,9 +538,16 @@ class ManualStudioService:
         if not raw_lines:
             return [""]
 
+        # Regex loại bỏ mốc thời gian nếu có để tránh AI đọc số ra loa
+        ts_strip_pattern = re.compile(
+            r'^\s*\[?\s*\d{1,2}(?::\d{1,2})?\s*(?:-|đến|to|->|:)\s*\d{1,2}(?::\d{1,2})?\s*\]?\s*[:\-]?\s*',
+            re.IGNORECASE
+        )
+
         segments = []
         for line in raw_lines:
-            cleaned = re.sub(r'^(cảnh|đoạn|scene|phân cảnh)?\s*\d+[\s:.-]*', '', line, flags=re.IGNORECASE).strip()
+            cleaned = ts_strip_pattern.sub('', line).strip()
+            cleaned = re.sub(r'^(cảnh|đoạn|scene|phân cảnh)?\s*\d+[\s:.-]*', '', cleaned, flags=re.IGNORECASE).strip()
             if not cleaned:
                 cleaned = line
             segments.append(cleaned)
@@ -511,10 +571,12 @@ class ManualStudioService:
         """
         Quy trình một chạm cho video đã dựng sẵn (từ Google Flow, CapCut, v.v.):
           1. Nhận 1 file video hoàn chỉnh + lời thoại kịch bản.
-          2. Tự động sinh giọng đọc AI (Edge-TTS) theo từng câu/đoạn và đo thời lượng.
-          3. Căn chỉnh video (scale, crop 9:16, trim hoặc loop nếu cần) khớp 100% với lời thoại.
-          4. Lồng nhạc nền (BGM) + Audio Ducking + SFX chuyển ý.
-          5. Tự động sinh phụ đề Karaoke Shorts (ASS) và burn-in vào video.
+          2. Hỗ trợ 2 chế độ:
+             - Tự động (Auto): AI tự phân đoạn, đọc tự nhiên, bảo toàn 100% thời lượng video gốc.
+             - Theo mốc thời gian (Timestamps): 00-10: ..., 10:25: ... AI tự căn nhịp, tăng tốc nếu lời dài, đệm silence nếu lời ngắn.
+          3. Căn chỉnh video (scale, crop 9:16) giữ trọn vẹn thời lượng video tải lên.
+          4. Lồng nhạc nền (BGM) + Audio Ducking + SFX chuyển ý tại các mốc.
+          5. Tự động sinh phụ đề Karaoke Shorts (ASS) chuẩn xác và burn-in vào video.
           6. Xuất ra file MP4 hoàn chỉnh.
         """
         def update_progress(percent: int, message: str):
@@ -536,61 +598,192 @@ class ManualStudioService:
         if not Path(video_path).exists():
             raise FileNotFoundError(f"Không tìm thấy file video tại '{video_path}'")
 
-        # ── BƯỚC 1: TÁCH KỊCH BẢN THÀNH CÁC PHÂN ĐOẠN ──
-        update_progress(10, "Đang phân tích cấu trúc kịch bản và nhịp đọc...")
-        segments = self._parse_script_segments(script_text)
-        logger.info(f"[SingleVideoStudio] Kịch bản có {len(segments)} phân đoạn")
+        # ── BƯỚC 0: ĐO THỜI LƯỢNG VIDEO GỐC ĐƯỢC TẢI LÊN ──
+        uploaded_video_ms = get_duration_ms(video_path)
+        uploaded_video_seconds = round(uploaded_video_ms / 1000.0, 3) if uploaded_video_ms > 0 else 0.0
+        logger.info(f"[SingleVideoStudio #{job_id}] Video gốc tải lên: {uploaded_video_seconds:.2f}s ({uploaded_video_ms}ms)")
 
-        # ── BƯỚC 2: SINH GIỌNG ĐỌC TTS VÀ ĐO THỜI LƯỢNG TỪNG ĐOẠN ──
+        # ── BƯỚC 1: XÁC ĐỊNH CHẾ ĐỘ CĂN CHỈNH (AUTO HOẶC TIMESTAMPS) ──
+        timing_mode = getattr(config, "timing_mode", "auto").lower()
+        timestamp_segments = []
+        if timing_mode == "timestamps":
+            timestamp_segments = self._parse_timestamp_segments(script_text)
+            if not timestamp_segments:
+                logger.warning(f"[SingleVideoStudio #{job_id}] Chế độ timestamps nhưng không tìm thấy mốc dạng 00-10:, tự động chuyển sang chế độ Auto")
+                timing_mode = "auto"
+
+        # ── BƯỚC 2: SINH GIỌNG ĐỌC & TẠO TIMELINE ÂM THANH ──
         update_progress(20, f"Đang sinh giọng đọc AI ({config.voice})...")
-        segment_durations: List[float] = []
-        segment_audio_paths: List[str] = []
         scene_contracts: List[SceneContract] = []
+        sfx_timestamps: List[float] = [0.0]
 
-        for i, seg_text in enumerate(segments, start=1):
-            seg_audio = str(temp_dir / f"seg_{i:03d}_voice.mp3")
-            if seg_text.strip():
-                dur = await self._generate_scene_tts(
-                    text=seg_text,
-                    voice=config.voice,
-                    voice_rate=config.voice_rate,
-                    voice_pitch=config.voice_pitch,
-                    output_audio_path=seg_audio
-                )
-            else:
-                dur = 3.0
-                await self._create_silent_audio(dur, seg_audio)
+        if timing_mode == "timestamps" and timestamp_segments:
+            logger.info(f"[SingleVideoStudio #{job_id}] Đang căn chỉnh theo {len(timestamp_segments)} mốc thời gian thủ công...")
+            timeline_audio_paths: List[str] = []
+            current_timeline = 0.0
 
-            segment_durations.append(dur)
-            segment_audio_paths.append(seg_audio)
+            for idx, (start_sec, end_sec, text_content) in enumerate(timestamp_segments, start=1):
+                clean_text = text_content.strip()
+                window_duration = max(1.0, round(end_sec - start_sec, 3))
 
-            scene_contracts.append(SceneContract(
-                scene_id=i,
-                narration=seg_text,
-                visual_keyword="shorts",
-                visual_prompt="",
-                camera_motion="zoom_in",
-                sfx_cue="auto",
-                audio_path=seg_audio,
-                audio_duration_ms=int(dur * 1000),
-                estimated_seconds=dur
-            ))
+                # 1. Chèn khoảng im lặng nếu có gap trước mốc này
+                if start_sec > current_timeline:
+                    gap_sec = round(start_sec - current_timeline, 3)
+                    if gap_sec >= 0.05:
+                        gap_audio = str(temp_dir / f"gap_{idx:03d}.mp3")
+                        await self._create_silent_audio(gap_sec, gap_audio)
+                        timeline_audio_paths.append(gap_audio)
+                        current_timeline += gap_sec
 
-        # Ghép toàn bộ audio giọng đọc
-        update_progress(45, "Đang ghép nối toàn bộ âm thanh giọng đọc...")
-        full_audio_path = str(temp_dir / "full_narration.mp3")
-        await self._concat_audios(segment_audio_paths, full_audio_path)
-        total_audio_ms = get_duration_ms(full_audio_path)
-        total_audio_seconds = round(total_audio_ms / 1000.0, 3)
+                # 2. Sinh giọng đọc cho khung giờ này
+                seg_audio = str(temp_dir / f"slot_{idx:03d}_voice.mp3")
+                if clean_text:
+                    tts_dur = await self._generate_scene_tts(
+                        text=clean_text,
+                        voice=config.voice,
+                        voice_rate=config.voice_rate,
+                        voice_pitch=config.voice_pitch,
+                        output_audio_path=seg_audio
+                    )
 
-        # ── BƯỚC 3: CĂN KHỚP THỜI LƯỢNG VIDEO VỚI GIỌNG ĐỌC ──
-        update_progress(60, f"Đang căn chỉnh video khớp với giọng đọc ({total_audio_seconds:.1f}s)...")
+                    # 3. AI Tự căn chỉnh nhịp: Nếu giọng đọc vượt quá khung giờ (tts_dur > window_duration)
+                    # thì tự động tăng tốc rate để đọc vừa vặn vào khung
+                    if tts_dur > window_duration:
+                        speedup_pct = min(60, int(((tts_dur / window_duration) - 1.0) * 100 + 12))
+                        adapted_rate = f"+{speedup_pct}%"
+                        logger.info(
+                            f"[Timestamps #{job_id}] Khung {start_sec:.1f}-{end_sec:.1f}s: Lời thoại dài ({tts_dur:.1f}s > {window_duration:.1f}s). "
+                            f"AI tự động tăng tốc đọc lên {adapted_rate} để vừa vặn khung giờ!"
+                        )
+                        tts_dur = await self._generate_scene_tts(
+                            text=clean_text,
+                            voice=config.voice,
+                            voice_rate=adapted_rate,
+                            voice_pitch=config.voice_pitch,
+                            output_audio_path=seg_audio
+                        )
+                else:
+                    tts_dur = 0.5
+                    await self._create_silent_audio(tts_dur, seg_audio)
+
+                timeline_audio_paths.append(seg_audio)
+                current_timeline += tts_dur
+
+                # Thêm vào hợp đồng phân cảnh cho phụ đề Karaoke ASS
+                scene_contracts.append(SceneContract(
+                    scene_id=idx,
+                    narration=clean_text or " ",
+                    visual_keyword="shorts",
+                    visual_prompt="",
+                    camera_motion="zoom_in",
+                    sfx_cue="auto",
+                    audio_path=seg_audio,
+                    audio_duration_ms=int(tts_dur * 1000),
+                    estimated_seconds=tts_dur,
+                    start_offset_ms=int(start_sec * 1000)
+                ))
+
+                if idx > 1:
+                    sfx_timestamps.append(round(start_sec, 2))
+
+                # 4. Nếu giọng đọc ngắn hơn khung giờ, đệm khoảng im lặng để đạt đủ window_duration
+                if current_timeline < (start_sec + window_duration):
+                    pad_sec = round((start_sec + window_duration) - current_timeline, 3)
+                    if pad_sec >= 0.05:
+                        pad_audio = str(temp_dir / f"pad_{idx:03d}.mp3")
+                        await self._create_silent_audio(pad_sec, pad_audio)
+                        timeline_audio_paths.append(pad_audio)
+                        current_timeline += pad_sec
+
+            # 5. Đệm phần đuôi video nếu video gốc dài hơn kịch bản (khắc phục triệt để lỗi 49s -> 36s)
+            target_duration = max(uploaded_video_seconds, current_timeline)
+            if current_timeline < target_duration:
+                tail_gap = round(target_duration - current_timeline, 3)
+                if tail_gap >= 0.05:
+                    logger.info(f"[SingleVideoStudio #{job_id}] Video gốc {uploaded_video_seconds:.2f}s > audio {current_timeline:.2f}s. Đệm {tail_gap:.2f}s im lặng cuối để giữ trọn video 100%!")
+                    tail_audio = str(temp_dir / "tail_silence.mp3")
+                    await self._create_silent_audio(tail_gap, tail_audio)
+                    timeline_audio_paths.append(tail_audio)
+                    current_timeline += tail_gap
+
+            update_progress(45, "Đang ghép nối toàn bộ âm thanh giọng đọc theo mốc...")
+            full_audio_path = str(temp_dir / "full_narration.mp3")
+            await self._concat_audios(timeline_audio_paths, full_audio_path)
+            total_audio_ms = get_duration_ms(full_audio_path)
+            total_audio_seconds = round(total_audio_ms / 1000.0, 3)
+            logger.info(f"[SingleVideoStudio #{job_id}] Tổng thời lượng audio timeline mốc: {total_audio_seconds:.2f}s")
+
+        else:
+            # ── CHẾ ĐỘ 1: TỰ ĐỘNG (AI AUTO) ──
+            segments = self._parse_script_segments(script_text)
+            logger.info(f"[SingleVideoStudio #{job_id}] Chế độ Auto: kịch bản có {len(segments)} phân đoạn")
+            segment_durations: List[float] = []
+            segment_audio_paths: List[str] = []
+
+            for i, seg_text in enumerate(segments, start=1):
+                seg_audio = str(temp_dir / f"seg_{i:03d}_voice.mp3")
+                if seg_text.strip():
+                    dur = await self._generate_scene_tts(
+                        text=seg_text,
+                        voice=config.voice,
+                        voice_rate=config.voice_rate,
+                        voice_pitch=config.voice_pitch,
+                        output_audio_path=seg_audio
+                    )
+                else:
+                    dur = 3.0
+                    await self._create_silent_audio(dur, seg_audio)
+
+                segment_durations.append(dur)
+                segment_audio_paths.append(seg_audio)
+
+                scene_contracts.append(SceneContract(
+                    scene_id=i,
+                    narration=seg_text,
+                    visual_keyword="shorts",
+                    visual_prompt="",
+                    camera_motion="zoom_in",
+                    sfx_cue="auto",
+                    audio_path=seg_audio,
+                    audio_duration_ms=int(dur * 1000),
+                    estimated_seconds=dur
+                ))
+
+            # Ghép audio lời thoại
+            update_progress(45, "Đang ghép nối toàn bộ âm thanh giọng đọc...")
+            full_audio_path = str(temp_dir / "full_narration.mp3")
+            await self._concat_audios(segment_audio_paths, full_audio_path)
+            total_audio_ms = get_duration_ms(full_audio_path)
+            total_audio_seconds = round(total_audio_ms / 1000.0, 3)
+
+            # Khắc phục lỗi video bị co ngắn: nếu video gốc dài hơn lời thoại, đệm im lặng phía sau!
+            target_duration = max(uploaded_video_seconds, total_audio_seconds)
+            if uploaded_video_seconds > total_audio_seconds:
+                tail_gap = round(uploaded_video_seconds - total_audio_seconds, 3)
+                if tail_gap >= 0.05:
+                    logger.info(f"[SingleVideoStudio #{job_id}] Video gốc ({uploaded_video_seconds:.2f}s) dài hơn giọng đọc ({total_audio_seconds:.2f}s). Đệm thêm {tail_gap:.2f}s im lặng cuối để giữ trọn vẹn 100% video!")
+                    tail_audio = str(temp_dir / "tail_silence.mp3")
+                    await self._create_silent_audio(tail_gap, tail_audio)
+                    padded_audio_path = str(temp_dir / "full_narration_padded.mp3")
+                    await self._concat_audios([full_audio_path, tail_audio], padded_audio_path)
+                    full_audio_path = padded_audio_path
+                    total_audio_seconds = target_duration
+
+            # Tính sfx timestamps cho auto
+            cum = 0.0
+            for d in segment_durations[:-1]:
+                cum += d
+                sfx_timestamps.append(round(cum, 2))
+
+        # ── BƯỚC 3: CĂN CHỈNH VIDEO GIỮ NGUYÊN 100% THỜI LƯỢNG ──
+        target_duration = max(uploaded_video_seconds, total_audio_seconds)
+        update_progress(60, f"Đang căn chỉnh video giữ trọn vẹn thời lượng ({target_duration:.1f}s)...")
         aligned_video_path = str(temp_dir / "aligned_video.mp4")
 
-        # Chuẩn hóa video: cắt hoặc loop sao cho độ dài khớp 100% với giọng đọc, scale/crop 9:16
+        # Chuẩn hóa video: giữ nguyên 100% độ dài video gốc (loop nếu audio dài hơn video, không bao giờ cắt ngắn video gốc)
         trim_video(
             input_path=video_path,
-            duration_seconds=total_audio_seconds,
+            duration_seconds=target_duration,
             output_path=aligned_video_path,
             width=1080,
             height=1920
@@ -615,14 +808,15 @@ class ManualStudioService:
             sfx_dir_path = self.get_sfx_dir()
             available_sfx = self.get_available_sfx()
             if sfx_dir_path.exists() and available_sfx:
-                timestamps = [0.0]
-                cum = 0.0
-                for d in segment_durations[:-1]:
-                    cum += d
-                    timestamps.append(round(cum, 2))
-
-                # Dùng smart resolver cho các mốc chuyển ý
-                pseudo_scenes = [ManualSceneItem(scene_id=idx+1, media_path=video_path, narration=seg, sfx_cue="auto") for idx, seg in enumerate(segments)]
+                pseudo_scenes = [
+                    ManualSceneItem(
+                        scene_id=idx,
+                        media_path=video_path,
+                        narration=sc.narration,
+                        sfx_cue="auto"
+                    )
+                    for idx, sc in enumerate(scene_contracts, start=1)
+                ]
                 transition_cues = self._resolve_smart_sfx_cues(pseudo_scenes, available_sfx)
 
                 sfx_output = str(temp_dir / "sfx_video.mp4")
@@ -630,7 +824,7 @@ class ManualStudioService:
                     current_video_stage = mix_sfx_transitions(
                         video_path=muxed_video,
                         output_path=sfx_output,
-                        scene_timestamps_seconds=timestamps,
+                        scene_timestamps_seconds=sfx_timestamps,
                         sfx_dir=str(sfx_dir_path),
                         default_sfx="whoosh",
                         sfx_cues=transition_cues,
@@ -641,7 +835,8 @@ class ManualStudioService:
                     current_video_stage = muxed_video
 
         # ── BƯỚC 5: TẠO PHỤ ĐỀ KARAOKE & HARD-SUB ──
-        if config.subtitle_enabled and any(s.strip() for s in segments):
+        has_sub_text = any(sc.narration.strip() for sc in scene_contracts)
+        if config.subtitle_enabled and has_sub_text:
             update_progress(88, "Đang tạo phụ đề Karaoke Shorts (ASS)...")
             ass_path = str(temp_dir / "subtitles.ass")
             SubtitleHelper.save_ass_file(
