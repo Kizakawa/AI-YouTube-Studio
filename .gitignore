@@ -65,3 +65,7 @@ Thumbs.db
 # Logs
 logs/
 *.log
+
+# Scratch scripts
+scratch/
+

@@ -7,7 +7,7 @@ import logging
 import requests as http_requests
 from pathlib import Path
 from typing import Dict, List, Any, Optional
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -2046,5 +2046,258 @@ async def calculate_forecast_endpoint(req: ForecastRequest):
     return {
         "success": True,
         "forecast": forecast
+    }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# ─── MANUAL STUDIO (GHÉP CẢNH TÙY CHỈNH) API ─────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
+
+def _execute_manual_render(job_id: int, mode: str, video_path: Optional[str], script_text: str, scenes_items: list, config_item: Any):
+    """Worker chạy ngầm cho tác vụ ghép / lồng tiếng video tùy chỉnh."""
+    from app.services.manual_studio_service import ManualStudioService
+    from app.database.models import get_db, VideoJob, log_activity
+
+    service = ManualStudioService()
+
+    def db_progress(percent: int, message: str):
+        try:
+            with get_db() as db:
+                j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                if j:
+                    j.progress_percent = percent
+                    j.progress_message = message
+        except Exception:
+            pass
+
+    try:
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        if mode == "single_video" and video_path:
+            final_video_path = loop.run_until_complete(
+                service.render_single_video_studio(
+                    job_id=job_id,
+                    video_path=video_path,
+                    script_text=script_text,
+                    config=config_item,
+                    progress_callback=db_progress
+                )
+            )
+        else:
+            final_video_path = loop.run_until_complete(
+                service.render_manual_video(
+                    job_id=job_id,
+                    scenes=scenes_items,
+                    config=config_item,
+                    progress_callback=db_progress
+                )
+            )
+        loop.close()
+
+        with get_db() as db:
+            j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if j:
+                j.status = "RENDERED"
+                j.video_path = final_video_path
+                j.progress_percent = 100
+                j.progress_message = "Lồng tiếng & gắn phụ đề hoàn tất!"
+                log_activity(db, 0, "Web Studio", "MANUAL_RENDER", f"Hoàn tất video #{job_id}: {j.title}")
+
+    except Exception as e:
+        logger.error(f"Lỗi render manual video #{job_id}: {e}", exc_info=True)
+        with get_db() as db:
+            j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if j:
+                j.status = "FAILED"
+                j.progress_message = f"Lỗi: {str(e)[:100]}"
+                j.error_message = str(e)
+                log_activity(db, 0, "Web Studio", "MANUAL_RENDER_FAILED", f"Lỗi video #{job_id}: {e}")
+
+
+@app.get("/api/manual-studio/sfx")
+async def get_manual_studio_sfx():
+    """Lấy danh sách tất cả hiệu ứng âm thanh SFX có sẵn trong hệ thống."""
+    try:
+        from app.services.manual_studio_service import ManualStudioService
+        svc = ManualStudioService()
+        available = svc.get_available_sfx()
+        options = [
+            {"id": "auto", "name": "🤖 AI Tự Chọn Thông Minh", "filename": "auto"},
+            {"id": "none", "name": "🔇 Tắt SFX Ở Cảnh Này", "filename": "none"}
+        ] + available
+        return {"success": True, "sfx": options}
+    except Exception as e:
+        logger.warning(f"Lỗi đọc sfx list: {e}")
+        return {
+            "success": True,
+            "sfx": [
+                {"id": "auto", "name": "🤖 AI Tự Chọn Thông Minh", "filename": "auto"},
+                {"id": "none", "name": "🔇 Tắt SFX Ở Cảnh Này", "filename": "none"},
+                {"id": "whoosh", "name": "Whoosh", "filename": "whoosh.mp3"},
+                {"id": "hit", "name": "Hit", "filename": "hit.wav"}
+            ]
+        }
+
+
+@app.get("/api/manual-studio/voices")
+async def get_manual_studio_voices():
+    """Lấy danh sách giọng đọc AI được hỗ trợ tốt nhất."""
+    voices = [
+        {"id": "vi-VN-HoaiMyNeural", "name": "🇻🇳 Tiếng Việt - Hoài My (Nữ truyền cảm)", "lang": "vi"},
+        {"id": "vi-VN-NamMinhNeural", "name": "🇻🇳 Tiếng Việt - Nam Minh (Nam trầm ấm)", "lang": "vi"},
+        {"id": "en-US-ChristopherNeural", "name": "🇺🇸 English - Christopher (Deep Cinematic)", "lang": "en"},
+        {"id": "en-US-GuyNeural", "name": "🇺🇸 English - Guy (Dynamic Storyteller)", "lang": "en"},
+        {"id": "en-US-JennyNeural", "name": "🇺🇸 English - Jenny (Warm & Natural)", "lang": "en"},
+        {"id": "en-US-AriaNeural", "name": "🇺🇸 English - Aria (Engaging & Clear)", "lang": "en"}
+    ]
+    return {"success": True, "voices": voices}
+
+
+@app.get("/api/manual-studio/bgm")
+async def get_manual_studio_bgm():
+    """Lấy danh sách nhạc nền (BGM) có sẵn."""
+    bgm_list = []
+    base_dir = Path(__file__).resolve().parent.parent.parent
+    for candidate in [base_dir / "assets" / "bgm", base_dir / "assets" / "audio" / "bgm"]:
+        if candidate.exists():
+            for f in sorted(candidate.iterdir(), key=lambda x: x.name.lower()):
+                if f.is_file() and f.suffix.lower() in [".mp3", ".wav", ".ogg", ".m4a"]:
+                    bgm_list.append({
+                        "id": f.stem,
+                        "name": f.stem.replace("_", " ").replace("-", " ").title(),
+                        "path": str(f)
+                    })
+    return {"success": True, "bgm": bgm_list}
+
+
+@app.post("/api/manual-studio/create")
+async def create_manual_studio_video(
+    background_tasks: BackgroundTasks,
+    payload: str = Form(...),
+    files: List[UploadFile] = File(...)
+):
+    """
+    Tiếp nhận video tải lên (từ Google Flow, CapCut...) và lời thoại kịch bản,
+    khởi tạo VideoJob trong SQLite và bắt đầu tiến trình lồng tiếng + phụ đề ngầm.
+    """
+    try:
+        data = json.loads(payload)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Dữ liệu payload JSON không hợp lệ: {e}")
+
+    title = data.get("title", "").strip() or "Shorts Lồng Tiếng"
+    channel_id = data.get("target_channel_id", "channel_1")
+    mode = data.get("mode", "single_video")
+    script_text = data.get("script", "").strip()
+    scenes_spec = data.get("scenes", [])
+
+    if not script_text and scenes_spec:
+        script_text = "\n".join([s.get("narration", "") for s in scenes_spec])
+
+    if mode == "single_video" and not script_text:
+        raise HTTPException(status_code=400, detail="Vui lòng nhập lời thoại kịch bản cho video")
+
+    if len(files) == 0:
+        raise HTTPException(status_code=400, detail="Chưa có file video nào được tải lên")
+
+    # 1. Tạo bản ghi VideoJob trong Database
+    with get_db() as db:
+        job = VideoJob(
+            user_id=0,
+            target_channel_id=channel_id,
+            topic=f"[Lồng Tiếng] {title}",
+            title=title,
+            script=script_text[:500],
+            status="RENDERING",
+            progress_percent=5,
+            progress_message="Đang tiếp nhận tệp tin và chuẩn bị lồng tiếng..."
+        )
+        db.add(job)
+        db.flush()
+        job_id = job.id
+        log_activity(db, 0, "Web Studio", "MANUAL_STUDIO_CREATE", f"Khởi tạo tác vụ lồng tiếng video #{job_id}: {title}")
+
+    # 2. Lưu file upload
+    from app.services.manual_studio_service import ManualSceneItem, ManualStudioConfig
+    base_dir = Path(__file__).resolve().parent.parent.parent
+    upload_dir = base_dir / "storage" / "temp" / f"manual_{job_id}" / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    saved_file_paths = []
+    for idx, f in enumerate(files):
+        ext = Path(f.filename).suffix.lower() if f.filename else ".mp4"
+        save_path = upload_dir / f"input_media_{idx:03d}{ext}"
+        contents = await f.read()
+        with open(save_path, "wb") as out_f:
+            out_f.write(contents)
+        saved_file_paths.append(str(save_path))
+
+    # 3. Cấu hình studio
+    bgm_path = data.get("bgm_path")
+    if bgm_path and not Path(bgm_path).exists():
+        bgm_path = None
+
+    config = ManualStudioConfig(
+        title=title,
+        voice=data.get("voice", "vi-VN-HoaiMyNeural"),
+        voice_rate=data.get("voice_rate", "+0%"),
+        voice_pitch=data.get("voice_pitch", "+0Hz"),
+        bgm_path=bgm_path,
+        bgm_volume=float(data.get("bgm_volume", 0.12)),
+        use_ducking=bool(data.get("use_ducking", True)),
+        subtitle_enabled=bool(data.get("subtitle_enabled", True)),
+        subtitle_font=data.get("subtitle_font", "Arial"),
+        subtitle_font_size=int(data.get("subtitle_font_size", 40)),
+        subtitle_margin_v=int(data.get("subtitle_margin_v", 210)),
+        transition_type=data.get("transition_type", "fade"),
+        transition_duration=float(data.get("transition_duration", 0.25)),
+        use_sfx=bool(data.get("use_sfx", True))
+    )
+
+    # 4. Đưa vào luồng render ngầm
+    if mode == "single_video":
+        primary_video_path = saved_file_paths[0]
+        background_tasks.add_task(
+            _execute_manual_render,
+            job_id,
+            "single_video",
+            primary_video_path,
+            script_text,
+            [],
+            config
+        )
+    else:
+        # Chế độ nhiều scene
+        manual_scenes = []
+        for i, sc in enumerate(scenes_spec):
+            file_idx = sc.get("file_index", i)
+            if file_idx >= len(saved_file_paths):
+                file_idx = 0
+            media_path = saved_file_paths[file_idx]
+
+            manual_scenes.append(ManualSceneItem(
+                scene_id=i + 1,
+                media_path=media_path,
+                narration=sc.get("narration", "").strip(),
+                camera_motion=sc.get("camera_motion", "zoom_in"),
+                transition=sc.get("transition", "fade"),
+                sfx_cue=sc.get("sfx_cue", "auto"),
+                manual_duration_seconds=float(sc.get("manual_duration_seconds", 3.5)) if sc.get("manual_duration_seconds") else None
+            ))
+        background_tasks.add_task(
+            _execute_manual_render,
+            job_id,
+            "multi_scene",
+            None,
+            "",
+            manual_scenes,
+            config
+        )
+
+    return {
+        "success": True,
+        "job_id": job_id,
+        "message": f"Tác vụ #{job_id} đã được khởi tạo! Hệ thống đang lồng giọng đọc AI và phụ đề trong nền..."
     }
 

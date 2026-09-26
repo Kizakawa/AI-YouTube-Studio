@@ -1,0 +1,673 @@
+"""
+ManualStudioService — Engine ghép video tùy chỉnh từ phân cảnh tự tải lên.
+
+Quy trình:
+  1. Nhận danh sách phân cảnh do người dùng tải lên (ảnh hoặc video + lời thoại).
+  2. Tự động sinh giọng đọc AI (Edge-TTS) từng cảnh và đo chính xác thời lượng (duration).
+  3. Tự động căn chỉnh từng media (ảnh -> Ken Burns 9:16; video -> scale/crop/loop 9:16).
+  4. Ghép nối các phân cảnh với hiệu ứng chuyển cảnh (xfade).
+  5. Ghép toàn bộ âm thanh lời thoại (narration).
+  6. Lồng nhạc nền (BGM) với Audio Ducking thông minh + hiệu ứng âm thanh (SFX).
+  7. Tự động sinh phụ đề Karaoke (ASS) và burn-in trực tiếp vào video 1080x1920.
+  8. Xuất ra file MP4 chuẩn YouTube Shorts sẵn sàng xem, tải hoặc xuất bản.
+"""
+import asyncio
+import os
+import shutil
+import logging
+from pathlib import Path
+from typing import List, Dict, Any, Optional, Callable
+from pydantic import BaseModel, Field
+
+import edge_tts
+from config.settings import settings
+from app.schemas.contracts import SceneContract
+from app.utils.subtitle_helper import SubtitleHelper
+from app.utils.ffmpeg_helper import (
+    image_to_video,
+    trim_video,
+    concat_videos,
+    concat_videos_with_xfade,
+    mux_audio_video,
+    mix_sfx_transitions,
+    burn_subtitles,
+    get_duration_ms,
+    run_ffmpeg,
+    list_available_sfx
+)
+
+logger = logging.getLogger(__name__)
+
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
+
+
+class ManualSceneItem(BaseModel):
+    scene_id: int
+    media_path: str
+    narration: str = ""
+    camera_motion: str = "zoom_in"  # zoom_in, zoom_out, pan_left, pan_right, pan_up, pan_down
+    transition: str = "fade"        # fade, zoomin, wipeleft, slideright, dissolve
+    sfx_cue: Optional[str] = "auto" # Tên SFX cụ thể, 'none' (tắt), hoặc 'auto'/'ai' (AI tự chọn từ kho)
+    manual_duration_seconds: Optional[float] = None  # Nếu không có lời thoại thì dùng thời lượng này
+
+
+class ManualStudioConfig(BaseModel):
+    title: str = "Manual Video"
+    voice: str = "vi-VN-HoaiMyNeural"
+    voice_rate: str = "+0%"
+    voice_pitch: str = "+0Hz"
+    bgm_path: Optional[str] = None
+    bgm_volume: float = 0.12
+    use_ducking: bool = True
+    subtitle_enabled: bool = True
+    subtitle_font: str = "Arial"
+    subtitle_font_size: int = 40
+    subtitle_margin_v: int = 210
+    transition_type: str = "fade"
+    transition_duration: float = 0.25
+    use_sfx: bool = True
+
+
+class ManualStudioService:
+    """Service xử lý ghép video từ phân cảnh người dùng tải lên."""
+
+    def __init__(self):
+        self.base_dir = Path(settings.BASE_DIR)
+
+    def _is_image(self, file_path: str) -> bool:
+        ext = Path(file_path).suffix.lower()
+        return ext in IMAGE_EXTENSIONS
+
+    def _is_video(self, file_path: str) -> bool:
+        ext = Path(file_path).suffix.lower()
+        return ext in VIDEO_EXTENSIONS
+
+    async def _generate_scene_tts(
+        self,
+        text: str,
+        voice: str,
+        voice_rate: str,
+        voice_pitch: str,
+        output_audio_path: str
+    ) -> float:
+        """Sinh giọng đọc Edge-TTS cho 1 cảnh và trả về thời lượng thực tế (giây) với cơ chế tự động retry."""
+        clean_text = text.strip()
+        if not clean_text:
+            return 0.0
+
+        Path(output_audio_path).parent.mkdir(parents=True, exist_ok=True)
+        
+        last_error = None
+        for attempt in range(1, 4):
+            try:
+                # Lần 1-2 dùng rate/pitch; nếu có lỗi lần 3 fallback bỏ pitch
+                r = voice_rate if (voice_rate and voice_rate != "+0%") else None
+                p = voice_pitch if (voice_pitch and voice_pitch != "+0Hz" and attempt < 3) else None
+
+                kwargs = {"text": clean_text, "voice": voice}
+                if r: kwargs["rate"] = r
+                if p: kwargs["pitch"] = p
+
+                communicate = edge_tts.Communicate(**kwargs)
+                await communicate.save(output_audio_path)
+
+                duration_ms = get_duration_ms(output_audio_path)
+                if duration_ms > 0:
+                    return round(duration_ms / 1000.0, 3)
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Edge-TTS attempt {attempt}/3 thất bại ({e}), đang thử lại...")
+                await asyncio.sleep(0.8 * attempt)
+
+        logger.error(f"Edge-TTS thất bại hoàn toàn sau 3 lần thử: {last_error}. Dùng fallback an toàn.")
+        # Fallback an toàn: ước tính theo số từ và tạo file im lặng để pipeline không bị gián đoạn
+        word_count = len(clean_text.split())
+        dur = max(2.5, round(word_count / 3.2, 2))
+        await self._create_silent_audio(dur, output_audio_path)
+        return dur
+
+    async def _create_silent_audio(self, duration_seconds: float, output_path: str) -> str:
+        """Tạo file audio im lặng với thời lượng mong muốn khi cảnh không có lời thoại."""
+        args = [
+            "-f", "lavfi",
+            "-i", f"anullsrc=r=44100:cl=stereo",
+            "-t", str(duration_seconds),
+            "-q:a", "9",
+            "-acodec", "libmp3lame",
+            output_path
+        ]
+        run_ffmpeg(args)
+        return output_path
+
+    def get_sfx_dir(self) -> Path:
+        """Lấy thư mục SFX khả dụng (ưu tiên assets/sfx rồi đến assets/audio/sfx)."""
+        p1 = self.base_dir / "assets" / "sfx"
+        p2 = self.base_dir / "assets" / "audio" / "sfx"
+        if p1.exists():
+            return p1
+        if p2.exists():
+            return p2
+        p1.mkdir(parents=True, exist_ok=True)
+        return p1
+
+    def get_available_sfx(self) -> List[Dict[str, str]]:
+        """Quét danh sách hiệu ứng âm thanh SFX có sẵn trong hệ thống."""
+        return list_available_sfx(self.get_sfx_dir())
+
+    def _resolve_smart_sfx_cues(
+        self,
+        scenes: List[ManualSceneItem],
+        available_sfx_list: List[Dict[str, str]]
+    ) -> List[Optional[str]]:
+        """
+        Phân tích và quyết định hiệu ứng âm thanh (SFX) cho từng điểm chuyển cảnh.
+        Hỗ trợ:
+          - Người dùng chỉ định cụ thể (vd: 'whoosh', 'hit', 'boom', 'glitch'...)
+          - Tắt âm ở cảnh đó ('none', 'off')
+          - Tự động AI/Heuristic ('auto', 'ai', rỗng) phân tích ngữ cảnh lời thoại.
+        Đảm bảo 100% an toàn: không bao giờ crash nếu file không tồn tại.
+        """
+        available_names = [s["id"].lower() for s in available_sfx_list]
+        resolved_cues: List[Optional[str]] = []
+
+        impact_keywords = [
+            "bất ngờ", "sự thật", "bí mật", "chấn động", "nguy hiểm", "kinh hoàng", "sợ hãi",
+            "nổ", "chết", "tiêu diệt", "shock", "danger", "secret", "suddenly", "explode",
+            "death", "climax", "warning", "cảnh báo", "khủng khiếp", "không thể tin"
+        ]
+        tech_keywords = [
+            "nhìn này", "xem", "chụp", "ảnh", "bằng chứng", "máy bay", "máy tính", "công nghệ",
+            "màn hình", "camera", "photo", "screen", "system", "hệ thống", "dữ liệu", "khoa học"
+        ]
+        swish_keywords = [
+            "tiếp theo", "ngay sau đó", "nhanh chóng", "và rồi", "tiếp tục", "chuyển sang",
+            "meanwhile", "next", "then", "fast", "speed", "quickly", "lướt qua"
+        ]
+
+        # transitions = scenes[1:] (chuyển cảnh từ cảnh 1 sang cảnh 2, 2 sang 3...)
+        for i, sc in enumerate(scenes[1:], start=2):
+            raw_cue = (sc.sfx_cue or "").strip().lower()
+
+            # 1. Người dùng chủ động tắt
+            if raw_cue in ("none", "off", "mute", "disable", "skip"):
+                resolved_cues.append("none")
+                continue
+
+            # 2. Người dùng chỉ định tên SFX cụ thể
+            if raw_cue and raw_cue not in ("auto", "ai", "smart"):
+                resolved_cues.append(raw_cue)
+                continue
+
+            # 3. Chế độ AI/Tự động phân tích từ kho
+            if not available_names:
+                resolved_cues.append("whoosh")
+                continue
+
+            text_lower = sc.narration.lower()
+            chosen = None
+
+            # Phân tích kịch tính / chấn động
+            if any(k in text_lower for k in impact_keywords):
+                for cand in available_names:
+                    if any(t in cand for t in ["boom", "hit", "impact", "thud", "drop", "blast"]):
+                        chosen = cand
+                        break
+
+            # Phân tích công nghệ / thị giác
+            if not chosen and any(k in text_lower for k in tech_keywords):
+                for cand in available_names:
+                    if any(t in cand for t in ["click", "shutter", "glitch", "snap", "beep"]):
+                        chosen = cand
+                        break
+
+            # Phân tích nhịp lướt nhanh
+            if not chosen and any(k in text_lower for k in swish_keywords):
+                for cand in available_names:
+                    if any(t in cand for t in ["whoosh", "swoosh", "swish", "swipe"]):
+                        chosen = cand
+                        break
+
+            # Fallback ưu tiên whoosh -> file đầu tiên
+            if not chosen:
+                whoosh_cand = next((s for s in available_names if "whoosh" in s or "swoosh" in s), None)
+                chosen = whoosh_cand or available_names[0]
+
+            logger.info(f"[ManualStudio SFX] Cảnh #{i}: AI tự động chọn SFX '{chosen}' theo ngữ cảnh: '{sc.narration[:30]}...'")
+            resolved_cues.append(chosen)
+
+        return resolved_cues
+
+    async def _concat_audios(self, audio_paths: List[str], output_path: str) -> str:
+        """Ghép N file audio narration lại thành 1 file MP3 duy nhất."""
+        if len(audio_paths) == 1:
+            shutil.copy2(audio_paths[0], output_path)
+            return output_path
+
+        list_file = str(Path(output_path).parent / "audio_concat_list.txt")
+        with open(list_file, "w", encoding="utf-8") as f:
+            for p in audio_paths:
+                safe_path = Path(p).resolve().as_posix().replace("'", "'\\''")
+                f.write(f"file '{safe_path}'\n")
+
+        args = [
+            "-f", "concat",
+            "-safe", "0",
+            "-i", list_file,
+            "-c:a", "libmp3lame",
+            "-b:a", "192k",
+            output_path
+        ]
+        run_ffmpeg(args)
+        return output_path
+
+    async def render_manual_video(
+        self,
+        job_id: int,
+        scenes: List[ManualSceneItem],
+        config: ManualStudioConfig,
+        progress_callback: Optional[Callable[[int, str], None]] = None
+    ) -> str:
+        """
+        Quy trình xử lý hoàn chỉnh biến danh sách phân cảnh thành video Shorts dọc 9:16.
+        """
+        def update_progress(percent: int, message: str):
+            logger.info(f"[ManualStudio #{job_id}] [{percent}%] {message}")
+            if progress_callback:
+                try:
+                    progress_callback(percent, message)
+                except Exception as e:
+                    logger.warning(f"Lỗi progress_callback: {e}")
+
+        update_progress(5, "Đang chuẩn bị thư mục làm việc...")
+        temp_dir = self.base_dir / "storage" / "temp" / f"manual_{job_id}"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        outputs_dir = self.base_dir / "storage" / "outputs"
+        outputs_dir.mkdir(parents=True, exist_ok=True)
+
+        final_output_path = str(outputs_dir / f"video_{job_id}.mp4")
+
+        # ── BƯỚC 1: XÁC MINH CÁC ASSET PHÂN CẢNH ──
+        update_progress(10, "Đang kiểm tra và chuẩn hóa các tệp tin tải lên...")
+        valid_scenes: List[ManualSceneItem] = []
+        for idx, sc in enumerate(scenes, start=1):
+            if not Path(sc.media_path).exists():
+                raise FileNotFoundError(f"Cảnh #{idx}: Không tìm thấy file media tại '{sc.media_path}'")
+            valid_scenes.append(sc)
+
+        if not valid_scenes:
+            raise ValueError("Không có phân cảnh hợp lệ nào để xử lý")
+
+        # ── BƯỚC 2: SINH GIỌNG ĐỌC TTS VÀ ĐO THỜI LƯỢNG ──
+        update_progress(20, f"Đang sinh giọng đọc AI ({config.voice}) cho từng cảnh...")
+        scene_durations: List[float] = []
+        scene_audio_paths: List[str] = []
+        scene_contracts: List[SceneContract] = []
+
+        for i, sc in enumerate(valid_scenes, start=1):
+            sc_audio = str(temp_dir / f"scene_{i:03d}_voice.mp3")
+            narration_text = sc.narration.strip()
+
+            if narration_text:
+                update_progress(20 + int(i / len(valid_scenes) * 15), f"Đang tạo giọng đọc cảnh {i}/{len(valid_scenes)}...")
+                dur = await self._generate_scene_tts(
+                    text=narration_text,
+                    voice=config.voice,
+                    voice_rate=config.voice_rate,
+                    voice_pitch=config.voice_pitch,
+                    output_audio_path=sc_audio
+                )
+            else:
+                # Không có thoại -> dùng manual_duration_seconds hoặc mặc định 3.5s
+                dur = sc.manual_duration_seconds or 3.5
+                await self._create_silent_audio(dur, sc_audio)
+
+            scene_durations.append(dur)
+            scene_audio_paths.append(sc_audio)
+
+            # Tạo SceneContract để hỗ trợ SubtitleHelper
+            scene_contracts.append(SceneContract(
+                scene_id=i,
+                narration=narration_text,
+                visual_keyword="shorts",
+                visual_prompt="",
+                camera_motion=sc.camera_motion or "zoom_in",
+                sfx_cue=sc.sfx_cue or "whoosh",
+                audio_path=sc_audio,
+                audio_duration_ms=int(dur * 1000),
+                estimated_seconds=dur
+            ))
+
+        # ── BƯỚC 3: CĂN CHỈNH & CHUYỂN HÓA MEDIA SANG 9:16 ──
+        update_progress(40, "Đang căn chỉnh tỷ lệ 9:16 và chuyển động điện ảnh...")
+        rendered_clips: List[str] = []
+
+        for i, sc in enumerate(valid_scenes, start=1):
+            dur = scene_durations[i - 1]
+            clip_path = str(temp_dir / f"scene_{i:03d}_clip.mp4")
+            update_progress(
+                40 + int(i / len(valid_scenes) * 25),
+                f"Đang xử lý hình ảnh/video cảnh {i}/{len(valid_scenes)} ({dur:.1f}s)..."
+            )
+
+            if self._is_image(sc.media_path):
+                # Ảnh tĩnh -> Ken Burns Motion
+                image_to_video(
+                    image_path=sc.media_path,
+                    duration_seconds=dur,
+                    output_path=clip_path,
+                    camera_motion=sc.camera_motion or "zoom_in",
+                    is_hook_scene=(i == 1)
+                )
+            else:
+                # Video -> Cắt hoặc lặp theo đúng thời lượng giọng đọc, scale & crop 1080x1920
+                trim_video(
+                    input_path=sc.media_path,
+                    duration_seconds=dur,
+                    output_path=clip_path
+                )
+
+            rendered_clips.append(clip_path)
+
+        # ── BƯỚC 4: GHÉP NỐI CÁC PHÂN CẢNH (CONCAT / XFADE) ──
+        update_progress(68, "Đang ghép nối các phân cảnh với hiệu ứng chuyển cảnh...")
+        raw_concat_video = str(temp_dir / "raw_video.mp4")
+
+        if len(rendered_clips) == 1:
+            shutil.copy2(rendered_clips[0], raw_concat_video)
+        else:
+            try:
+                concat_videos_with_xfade(
+                    video_paths=rendered_clips,
+                    output_path=raw_concat_video,
+                    transition=config.transition_type,
+                    transition_duration=config.transition_duration,
+                    scene_durations_seconds=scene_durations
+                )
+            except Exception as e:
+                logger.warning(f"Lỗi xfade concat, fallback sang concat thông thường: {e}")
+                concat_videos(rendered_clips, raw_concat_video)
+
+        # ── BƯỚC 5: GHÉP NỐI AUDIO LỜI THOẠI ──
+        update_progress(75, "Đang đồng bộ hóa toàn bộ âm thanh lời thoại...")
+        full_audio_path = str(temp_dir / "full_narration.mp3")
+        await self._concat_audios(scene_audio_paths, full_audio_path)
+
+        # ── BƯỚC 6: LỒNG NHẠC NỀN & SFX CHUYỂN CẢNH ──
+        update_progress(82, "Đang lồng nhạc nền (BGM) và hiệu ứng âm thanh (SFX)...")
+        muxed_video = str(temp_dir / "muxed_video.mp4")
+        mux_audio_video(
+            video_path=raw_concat_video,
+            audio_path=full_audio_path,
+            output_path=muxed_video,
+            bgm_path=config.bgm_path,
+            bgm_volume=config.bgm_volume,
+            use_ducking=config.use_ducking
+        )
+
+        current_video_stage = muxed_video
+
+        # Mix SFX nếu bật
+        if config.use_sfx:
+            sfx_dir_path = self.get_sfx_dir()
+            available_sfx = self.get_available_sfx()
+            if sfx_dir_path.exists() and available_sfx:
+                # Tính timestamps bắt đầu từng cảnh
+                timestamps = [0.0]
+                cum = 0.0
+                for d in scene_durations[:-1]:
+                    cum += d
+                    timestamps.append(round(cum, 2))
+
+                # Xác định SFX cho mở đầu (Scene 1)
+                first_cue = (valid_scenes[0].sfx_cue or "").strip().lower()
+                hit_sfx_name = "hit"
+                if first_cue in ("none", "off", "mute", "disable", "skip"):
+                    hit_sfx_name = "none"
+                elif first_cue and first_cue not in ("auto", "ai", "smart"):
+                    hit_sfx_name = first_cue
+
+                # Phân tích thông minh các điểm chuyển cảnh tiếp theo
+                transition_cues = self._resolve_smart_sfx_cues(valid_scenes, available_sfx)
+
+                sfx_output = str(temp_dir / "sfx_video.mp4")
+                try:
+                    current_video_stage = mix_sfx_transitions(
+                        video_path=muxed_video,
+                        output_path=sfx_output,
+                        scene_timestamps_seconds=timestamps,
+                        sfx_dir=str(sfx_dir_path),
+                        default_sfx="whoosh",
+                        sfx_cues=transition_cues,
+                        hit_sfx=hit_sfx_name
+                    )
+                except Exception as e:
+                    logger.warning(f"Lỗi mix SFX: {e}, an toàn bỏ qua SFX và giữ nguyên video gốc")
+                    current_video_stage = muxed_video
+            else:
+                logger.info("[ManualStudio] Không tìm thấy SFX trong kho hoặc thư mục rỗng, bỏ qua SFX an toàn.")
+
+        # ── BƯỚC 7: TẠO PHỤ ĐỀ KARAOKE & HARD-SUB ──
+        if config.subtitle_enabled and any(sc.narration.strip() for sc in valid_scenes):
+            update_progress(90, "Đang tạo và gắn phụ đề Karaoke phong cách Shorts...")
+            ass_path = str(temp_dir / "subtitles.ass")
+            SubtitleHelper.save_ass_file(
+                scenes=scene_contracts,
+                output_path=ass_path,
+                fontname=config.subtitle_font,
+                fontsize=config.subtitle_font_size,
+                margin_v=config.subtitle_margin_v
+            )
+
+            try:
+                burn_subtitles(
+                    video_path=current_video_stage,
+                    srt_path=ass_path,
+                    output_path=final_output_path,
+                    font_name=config.subtitle_font,
+                    font_size=config.subtitle_font_size,
+                    margin_v=config.subtitle_margin_v
+                )
+            except Exception as e:
+                logger.error(f"Lỗi burn phụ đề: {e}, sao chép video không sub làm sản phẩm")
+                shutil.copy2(current_video_stage, final_output_path)
+        else:
+            update_progress(92, "Bỏ qua tạo phụ đề...")
+            shutil.copy2(current_video_stage, final_output_path)
+
+        update_progress(100, f"✅ Xuất video thành công: video_{job_id}.mp4")
+        return final_output_path
+
+    def _parse_script_segments(self, text: str) -> List[str]:
+        """Tách kịch bản thành các phân đoạn tự nhiên để căn phụ đề và chèn SFX."""
+        import re
+        raw_lines = [line.strip() for line in text.split("\n") if line.strip()]
+        if not raw_lines:
+            return [""]
+
+        segments = []
+        for line in raw_lines:
+            cleaned = re.sub(r'^(cảnh|đoạn|scene|phân cảnh)?\s*\d+[\s:.-]*', '', line, flags=re.IGNORECASE).strip()
+            if not cleaned:
+                cleaned = line
+            segments.append(cleaned)
+
+        # Nếu chỉ có 1 dòng dài, tách theo dấu ngắt câu
+        if len(segments) == 1 and len(segments[0]) > 120:
+            parts = [p.strip() for p in re.split(r'(?<=[.!?])\s+', segments[0]) if p.strip()]
+            if len(parts) > 1:
+                return parts
+
+        return segments
+
+    async def render_single_video_studio(
+        self,
+        job_id: int,
+        video_path: str,
+        script_text: str,
+        config: ManualStudioConfig,
+        progress_callback: Optional[Callable[[int, str], None]] = None
+    ) -> str:
+        """
+        Quy trình một chạm cho video đã dựng sẵn (từ Google Flow, CapCut, v.v.):
+          1. Nhận 1 file video hoàn chỉnh + lời thoại kịch bản.
+          2. Tự động sinh giọng đọc AI (Edge-TTS) theo từng câu/đoạn và đo thời lượng.
+          3. Căn chỉnh video (scale, crop 9:16, trim hoặc loop nếu cần) khớp 100% với lời thoại.
+          4. Lồng nhạc nền (BGM) + Audio Ducking + SFX chuyển ý.
+          5. Tự động sinh phụ đề Karaoke Shorts (ASS) và burn-in vào video.
+          6. Xuất ra file MP4 hoàn chỉnh.
+        """
+        def update_progress(percent: int, message: str):
+            logger.info(f"[SingleVideoStudio #{job_id}] [{percent}%] {message}")
+            if progress_callback:
+                try:
+                    progress_callback(percent, message)
+                except Exception as e:
+                    logger.warning(f"Lỗi progress_callback: {e}")
+
+        update_progress(5, "Đang chuẩn bị thư mục làm việc...")
+        temp_dir = self.base_dir / "storage" / "temp" / f"manual_{job_id}"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        outputs_dir = self.base_dir / "storage" / "outputs"
+        outputs_dir.mkdir(parents=True, exist_ok=True)
+
+        final_output_path = str(outputs_dir / f"video_{job_id}.mp4")
+
+        if not Path(video_path).exists():
+            raise FileNotFoundError(f"Không tìm thấy file video tại '{video_path}'")
+
+        # ── BƯỚC 1: TÁCH KỊCH BẢN THÀNH CÁC PHÂN ĐOẠN ──
+        update_progress(10, "Đang phân tích cấu trúc kịch bản và nhịp đọc...")
+        segments = self._parse_script_segments(script_text)
+        logger.info(f"[SingleVideoStudio] Kịch bản có {len(segments)} phân đoạn")
+
+        # ── BƯỚC 2: SINH GIỌNG ĐỌC TTS VÀ ĐO THỜI LƯỢNG TỪNG ĐOẠN ──
+        update_progress(20, f"Đang sinh giọng đọc AI ({config.voice})...")
+        segment_durations: List[float] = []
+        segment_audio_paths: List[str] = []
+        scene_contracts: List[SceneContract] = []
+
+        for i, seg_text in enumerate(segments, start=1):
+            seg_audio = str(temp_dir / f"seg_{i:03d}_voice.mp3")
+            if seg_text.strip():
+                dur = await self._generate_scene_tts(
+                    text=seg_text,
+                    voice=config.voice,
+                    voice_rate=config.voice_rate,
+                    voice_pitch=config.voice_pitch,
+                    output_audio_path=seg_audio
+                )
+            else:
+                dur = 3.0
+                await self._create_silent_audio(dur, seg_audio)
+
+            segment_durations.append(dur)
+            segment_audio_paths.append(seg_audio)
+
+            scene_contracts.append(SceneContract(
+                scene_id=i,
+                narration=seg_text,
+                visual_keyword="shorts",
+                visual_prompt="",
+                camera_motion="zoom_in",
+                sfx_cue="auto",
+                audio_path=seg_audio,
+                audio_duration_ms=int(dur * 1000),
+                estimated_seconds=dur
+            ))
+
+        # Ghép toàn bộ audio giọng đọc
+        update_progress(45, "Đang ghép nối toàn bộ âm thanh giọng đọc...")
+        full_audio_path = str(temp_dir / "full_narration.mp3")
+        await self._concat_audios(segment_audio_paths, full_audio_path)
+        total_audio_ms = get_duration_ms(full_audio_path)
+        total_audio_seconds = round(total_audio_ms / 1000.0, 3)
+
+        # ── BƯỚC 3: CĂN KHỚP THỜI LƯỢNG VIDEO VỚI GIỌNG ĐỌC ──
+        update_progress(60, f"Đang căn chỉnh video khớp với giọng đọc ({total_audio_seconds:.1f}s)...")
+        aligned_video_path = str(temp_dir / "aligned_video.mp4")
+
+        # Chuẩn hóa video: cắt hoặc loop sao cho độ dài khớp 100% với giọng đọc, scale/crop 9:16
+        trim_video(
+            input_path=video_path,
+            duration_seconds=total_audio_seconds,
+            output_path=aligned_video_path,
+            width=1080,
+            height=1920
+        )
+
+        # ── BƯỚC 4: LỒNG NHẠC NỀN & SFX CHUYỂN Ý ──
+        update_progress(75, "Đang lồng nhạc nền và hiệu ứng âm thanh...")
+        muxed_video = str(temp_dir / "muxed_video.mp4")
+        mux_audio_video(
+            video_path=aligned_video_path,
+            audio_path=full_audio_path,
+            output_path=muxed_video,
+            bgm_path=config.bgm_path,
+            bgm_volume=config.bgm_volume,
+            use_ducking=config.use_ducking
+        )
+
+        current_video_stage = muxed_video
+
+        # Mix SFX nếu bật
+        if config.use_sfx:
+            sfx_dir_path = self.get_sfx_dir()
+            available_sfx = self.get_available_sfx()
+            if sfx_dir_path.exists() and available_sfx:
+                timestamps = [0.0]
+                cum = 0.0
+                for d in segment_durations[:-1]:
+                    cum += d
+                    timestamps.append(round(cum, 2))
+
+                # Dùng smart resolver cho các mốc chuyển ý
+                pseudo_scenes = [ManualSceneItem(scene_id=idx+1, media_path=video_path, narration=seg, sfx_cue="auto") for idx, seg in enumerate(segments)]
+                transition_cues = self._resolve_smart_sfx_cues(pseudo_scenes, available_sfx)
+
+                sfx_output = str(temp_dir / "sfx_video.mp4")
+                try:
+                    current_video_stage = mix_sfx_transitions(
+                        video_path=muxed_video,
+                        output_path=sfx_output,
+                        scene_timestamps_seconds=timestamps,
+                        sfx_dir=str(sfx_dir_path),
+                        default_sfx="whoosh",
+                        sfx_cues=transition_cues,
+                        hit_sfx="hit"
+                    )
+                except Exception as e:
+                    logger.warning(f"Lỗi mix SFX: {e}, an toàn giữ nguyên video")
+                    current_video_stage = muxed_video
+
+        # ── BƯỚC 5: TẠO PHỤ ĐỀ KARAOKE & HARD-SUB ──
+        if config.subtitle_enabled and any(s.strip() for s in segments):
+            update_progress(88, "Đang tạo phụ đề Karaoke Shorts (ASS)...")
+            ass_path = str(temp_dir / "subtitles.ass")
+            SubtitleHelper.save_ass_file(
+                scenes=scene_contracts,
+                output_path=ass_path,
+                fontname=config.subtitle_font,
+                fontsize=config.subtitle_font_size,
+                margin_v=config.subtitle_margin_v
+            )
+
+            try:
+                burn_subtitles(
+                    video_path=current_video_stage,
+                    srt_path=ass_path,
+                    output_path=final_output_path,
+                    font_name=config.subtitle_font,
+                    font_size=config.subtitle_font_size,
+                    margin_v=config.subtitle_margin_v
+                )
+            except Exception as e:
+                logger.error(f"Lỗi burn phụ đề: {e}, sao chép video không sub")
+                shutil.copy2(current_video_stage, final_output_path)
+        else:
+            update_progress(92, "Bỏ qua tạo phụ đề...")
+            shutil.copy2(current_video_stage, final_output_path)
+
+        update_progress(100, f"✅ Xuất video thành công: video_{job_id}.mp4")
+        return final_output_path
+

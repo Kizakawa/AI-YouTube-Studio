@@ -9,13 +9,14 @@ let allVideos = [];
 let currentFilter = 'all';
 
 const PAGE_META = {
-    overview:  { title: 'Dashboard Tổng Quan',   sub: 'Theo dõi toàn bộ hệ thống AI YouTube Studio' },
-    analytics: { title: 'Số Liệu & Dự Đoán Tăng Trưởng', sub: 'Thống kê kênh thời gian thực & Mô hình dự đoán AI' },
-    create:    { title: 'Tạo Kịch Bản AI',       sub: 'Nhập chủ đề — Gemini sinh kịch bản tự động' },
-    pipeline:  { title: 'Pipeline Sản Xuất',      sub: 'Quản lý danh sách video và tiến độ render' },
-    activity:  { title: 'Nhật Ký Hoạt Động',      sub: 'Lệnh Telegram thời gian thực — tự làm mới 10s' },
-    channels:  { title: 'Kênh & Tài Khoản',       sub: 'Ma trận kênh YouTube và Google Ultra Pool' },
-    members:   { title: 'Thành Viên Nhóm',         sub: 'Bảng xếp hạng đóng góp của các thành viên' },
+    overview:      { title: 'Dashboard Tổng Quan',   sub: 'Theo dõi toàn bộ hệ thống AI YouTube Studio' },
+    analytics:     { title: 'Số Liệu & Dự Đoán Tăng Trưởng', sub: 'Thống kê kênh thời gian thực & Mô hình dự đoán AI' },
+    create:        { title: 'Tạo Kịch Bản AI',       sub: 'Nhập chủ đề — Gemini sinh kịch bản tự động' },
+    manual_studio: { title: 'Studio Lồng Tiếng & Hiệu Ứng AI', sub: 'Tải 1 video đã ghép (Google Flow, CapCut...) + Lời thoại, AI sẽ lồng tiếng đọc, SFX và phụ đề Shorts cực đẹp' },
+    pipeline:      { title: 'Pipeline Sản Xuất',      sub: 'Quản lý danh sách video và tiến độ render' },
+    activity:      { title: 'Nhật Ký Hoạt Động',      sub: 'Lệnh Telegram thời gian thực — tự làm mới 10s' },
+    channels:      { title: 'Kênh & Tài Khoản',       sub: 'Ma trận kênh YouTube và Google Ultra Pool' },
+    members:       { title: 'Thành Viên Nhóm',         sub: 'Bảng xếp hạng đóng góp của các thành viên' },
 };
 
 /* ═══════════════════════════════════════════════════════
@@ -72,6 +73,8 @@ function switchTab(tabId) {
         fetchAccounts();
     } else if (tabId === 'analytics') {
         loadAnalytics();
+    } else if (tabId === 'manual_studio') {
+        initManualStudio();
     }
 }
 
@@ -2701,4 +2704,525 @@ function applyTopicToCreate(topic, hook) {
         showToast('Đã nạp chủ đề được AI đề xuất vào ô tạo kịch bản!', 'success');
     }
 }
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   MANUAL STUDIO (LỒNG TIẾNG, SFX & PHỤ ĐỀ AI)
+   ═════════════════════════════════════════════════════════════════════════════ */
+let manualStudioInitialized = false;
+let activeStudioMode = 'single_video';
+let singleVideoFile = null;
+let manualScenesList = [];
+let manualSfxOptions = [];
+let manualVoicesList = [];
+
+function setStudioMode(mode) {
+    activeStudioMode = mode;
+    const singleSection = document.getElementById('studio-single-video-section');
+    const multiSection = document.getElementById('studio-multi-scene-section');
+    const btnSingle = document.getElementById('btn-mode-single');
+    const btnMulti = document.getElementById('btn-mode-multi');
+
+    if (mode === 'single_video') {
+        if (singleSection) singleSection.style.display = 'block';
+        if (multiSection) multiSection.style.display = 'none';
+        if (btnSingle) btnSingle.classList.add('active');
+        if (btnMulti) btnMulti.classList.remove('active');
+    } else {
+        if (singleSection) singleSection.style.display = 'none';
+        if (multiSection) multiSection.style.display = 'block';
+        if (btnSingle) btnSingle.classList.remove('active');
+        if (btnMulti) btnMulti.classList.add('active');
+    }
+}
+
+function triggerSingleVideoSelect() {
+    const fileInput = document.getElementById('single-video-file-input');
+    if (fileInput) fileInput.click();
+}
+
+function handleSingleVideoSelect(input) {
+    if (!input.files || !input.files[0]) return;
+    loadSingleVideoFile(input.files[0]);
+}
+
+function loadSingleVideoFile(file) {
+    if (!file.type.startsWith('video/')) {
+        showToast('⚠️ Vui lòng chọn tệp video (MP4, WebM, MOV...)', 'warning');
+        return;
+    }
+    singleVideoFile = file;
+
+    const player = document.getElementById('single-video-player');
+    const emptyBox = document.getElementById('single-dropzone-empty');
+    const previewWrapper = document.getElementById('single-video-preview-wrapper');
+    const nameEl = document.getElementById('single-video-meta-name');
+    const sizeEl = document.getElementById('single-video-meta-size');
+    const durEl = document.getElementById('single-video-meta-duration');
+
+    if (nameEl) nameEl.textContent = file.name;
+    if (sizeEl) sizeEl.textContent = (file.size / (1024 * 1024)).toFixed(1) + ' MB';
+
+    const objectUrl = URL.createObjectURL(file);
+    if (player) {
+        player.src = objectUrl;
+        player.onloadedmetadata = () => {
+            const sec = Math.round(player.duration * 10) / 10;
+            if (durEl) durEl.textContent = sec + 's';
+        };
+    }
+
+    if (emptyBox) emptyBox.style.display = 'none';
+    if (previewWrapper) previewWrapper.style.display = 'block';
+
+    // Tự điền tiêu đề gợi ý nếu ô tiêu đề đang rỗng
+    const titleInput = document.getElementById('single-title');
+    if (titleInput && !titleInput.value.trim()) {
+        const rawName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+        titleInput.value = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+    }
+
+    showToast(`🎬 Đã nạp video: ${file.name}`, 'success');
+}
+
+function initSingleVideoDropzone() {
+    const dropzone = document.getElementById('single-video-dropzone');
+    if (!dropzone || dropzone._dragInitialized) return;
+    dropzone._dragInitialized = true;
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropzone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.add('dragover');
+        }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropzone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.remove('dragover');
+        }, false);
+    });
+
+    dropzone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        if (dt && dt.files && dt.files[0]) {
+            loadSingleVideoFile(dt.files[0]);
+        }
+    }, false);
+}
+
+function updateScriptStats() {
+    const input = document.getElementById('single-script-input');
+    if (!input) return;
+    const text = input.value.trim();
+    const words = text ? text.split(/\s+/).length : 0;
+    const chars = text.length;
+
+    // Tốc độ đọc trung bình tiếng Việt/Anh ~3.2 từ/giây
+    const estSeconds = words > 0 ? Math.max(1, Math.round(words / 3.2)) : 0;
+
+    const wordEl = document.getElementById('single-word-count');
+    const charEl = document.getElementById('single-char-count');
+    const estEl = document.getElementById('single-est-duration');
+
+    if (wordEl) wordEl.textContent = words;
+    if (charEl) charEl.textContent = chars;
+    if (estEl) estEl.textContent = estSeconds;
+}
+
+async function initManualStudio() {
+    // Populate channels cho cả 2 chế độ
+    const channelSelects = [
+        document.getElementById('manual-channel'),
+        document.getElementById('single-channel')
+    ];
+    if (allChannels && allChannels.length > 0) {
+        const optionsHtml = allChannels.map(c => 
+            `<option value="${escapeHtml(c.id)}">📺 ${escapeHtml(c.name)} (${escapeHtml(c.id)})</option>`
+        ).join('');
+        channelSelects.forEach(sel => {
+            if (sel) sel.innerHTML = optionsHtml;
+        });
+    }
+
+    initSingleVideoDropzone();
+    updateScriptStats();
+
+    if (manualStudioInitialized) return;
+
+    try {
+        const [voicesRes, sfxRes, bgmRes] = await Promise.all([
+            apiGet('/api/manual-studio/voices'),
+            apiGet('/api/manual-studio/sfx'),
+            apiGet('/api/manual-studio/bgm')
+        ]);
+
+        // 1. Voices
+        const voiceSelects = [
+            document.getElementById('manual-voice'),
+            document.getElementById('single-voice')
+        ];
+        if (voicesRes && voicesRes.voices) {
+            manualVoicesList = voicesRes.voices;
+            const voiceHtml = manualVoicesList.map(v => 
+                `<option value="${escapeHtml(v.id)}">${escapeHtml(v.name)}</option>`
+            ).join('');
+            voiceSelects.forEach(sel => {
+                if (sel) sel.innerHTML = voiceHtml;
+            });
+        }
+
+        // 2. SFX options
+        if (sfxRes && sfxRes.sfx) {
+            manualSfxOptions = sfxRes.sfx;
+        }
+
+        // 3. BGM
+        const bgmSelects = [
+            document.getElementById('manual-bgm'),
+            document.getElementById('single-bgm')
+        ];
+        if (bgmRes && bgmRes.bgm) {
+            const bgmHtml = '<option value="">-- Không dùng nhạc nền --</option>' + 
+                bgmRes.bgm.map(b => `<option value="${escapeHtml(b.path)}">🎵 ${escapeHtml(b.name)}</option>`).join('');
+            bgmSelects.forEach(sel => {
+                if (sel) {
+                    const currentVal = sel.value;
+                    sel.innerHTML = bgmHtml;
+                    if (currentVal) sel.value = currentVal;
+                }
+            });
+        }
+
+        // Initialize with 2 default scenes
+        if (manualScenesList.length === 0) {
+            addManualScene({
+                narration: "Bí mật này sẽ thay đổi hoàn toàn cách bạn nhìn nhận về thế giới!",
+                cameraMotion: "zoom_in",
+                sfxCue: "auto"
+            });
+            addManualScene({
+                narration: "Hãy nhìn kỹ chi tiết này, bạn sẽ nhận ra một sự thật bất ngờ.",
+                cameraMotion: "zoom_out",
+                sfxCue: "auto"
+            });
+        }
+
+        manualStudioInitialized = true;
+    } catch (e) {
+        console.error('Lỗi khởi tạo Manual Studio:', e);
+    }
+}
+
+function addManualScene(data = null) {
+    const sceneId = 'sc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+    manualScenesList.push({
+        id: sceneId,
+        file: null,
+        previewUrl: '',
+        isVideo: false,
+        narration: data ? data.narration : '',
+        cameraMotion: data ? data.cameraMotion : 'zoom_in',
+        sfxCue: data ? data.sfxCue : 'auto'
+    });
+    renderManualScenes();
+}
+
+function removeManualScene(sceneId) {
+    if (manualScenesList.length <= 1) {
+        showToast('Cần giữ lại ít nhất 1 phân cảnh!', 'warning');
+        return;
+    }
+    manualScenesList = manualScenesList.filter(s => s.id !== sceneId);
+    renderManualScenes();
+}
+
+function updateSceneNarration(sceneId, text) {
+    const sc = manualScenesList.find(s => s.id === sceneId);
+    if (sc) sc.narration = text;
+}
+
+function updateSceneMotion(sceneId, val) {
+    const sc = manualScenesList.find(s => s.id === sceneId);
+    if (sc) sc.cameraMotion = val;
+}
+
+function updateSceneSfx(sceneId, val) {
+    const sc = manualScenesList.find(s => s.id === sceneId);
+    if (sc) sc.sfxCue = val;
+}
+
+function handleSceneFileSelect(sceneId, input) {
+    if (!input.files || !input.files[0]) return;
+    const file = input.files[0];
+    const sc = manualScenesList.find(s => s.id === sceneId);
+    if (sc) {
+        sc.file = file;
+        sc.isVideo = file.type.startsWith('video');
+        sc.previewUrl = URL.createObjectURL(file);
+        renderManualScenes();
+        showToast(`Đã nạp tệp: ${file.name} (${Math.round(file.size / 1024)} KB)`, 'success');
+    }
+}
+
+function renderManualScenes() {
+    const container = document.getElementById('manual-scenes-container');
+    const countEl = document.getElementById('manual-scene-count');
+    if (countEl) countEl.textContent = manualScenesList.length;
+    if (!container) return;
+
+    container.innerHTML = manualScenesList.map((sc, index) => {
+        const isFirst = index === 0;
+        const sfxHtml = manualSfxOptions.map(opt => {
+            const isSelected = (sc.sfxCue === opt.id) ? 'selected' : '';
+            return `<option value="${escapeHtml(opt.id)}" ${isSelected}>${escapeHtml(opt.name)}</option>`;
+        }).join('');
+
+        let previewContent = '';
+        if (sc.previewUrl) {
+            if (sc.isVideo) {
+                previewContent = `<video src="${sc.previewUrl}" class="manual-preview-media" muted autoplay loop playsinline></video>`;
+            } else {
+                previewContent = `<img src="${sc.previewUrl}" class="manual-preview-media" alt="Preview">`;
+            }
+            previewContent += `<div style="position:absolute; bottom:6px; right:6px; background:rgba(0,0,0,0.75); font-size:10px; color:#fff; padding:2px 8px; border-radius:4px; pointer-events:none;">Đổi tệp ↗</div>`;
+        } else {
+            previewContent = `
+                <div class="manual-dropzone-icon">📁</div>
+                <div class="manual-dropzone-text">
+                    <strong style="color:var(--text-main);">Chọn Ảnh hoặc Video</strong><br>
+                    Tỷ lệ 9:16 Shorts
+                </div>
+            `;
+        }
+
+        return `
+            <div class="manual-scene-card" id="card-${sc.id}">
+                <div class="manual-scene-header">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span class="manual-scene-badge">🎬 CẢNH #${index + 1}</span>
+                        ${isFirst ? '<span class="badge badge-purple" style="font-size:10px;">HOOK MỞ ĐẦU</span>' : ''}
+                    </div>
+                    <button class="btn-remove-scene" onclick="removeManualScene('${sc.id}')" title="Xóa cảnh này">
+                        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        Xóa Cảnh
+                    </button>
+                </div>
+
+                <div class="manual-scene-body">
+                    <!-- Khung tải media -->
+                    <div class="manual-dropzone" onclick="document.getElementById('input-file-${sc.id}').click()" title="Bấm để chọn ảnh hoặc video">
+                        ${previewContent}
+                        <input type="file" id="input-file-${sc.id}" style="display:none;" accept="image/*,video/*" onchange="handleSceneFileSelect('${sc.id}', this)">
+                    </div>
+
+                    <!-- Khung điều khiển & Lời thoại -->
+                    <div class="manual-scene-controls">
+                        <div>
+                            <label class="form-label" style="font-size:12px; margin-bottom:4px;">
+                                🗣️ Lời thoại MC đọc ở cảnh này <span class="required">*</span>
+                            </label>
+                            <textarea class="form-input" rows="3" placeholder="Nhập câu thoại MC sẽ đọc... Hệ thống sẽ tự động đo thời lượng và căn khớp video hoàn hảo." oninput="updateSceneNarration('${sc.id}', this.value)" style="resize:vertical;">${escapeHtml(sc.narration)}</textarea>
+                        </div>
+
+                        <div class="manual-controls-row">
+                            <div>
+                                <label class="form-label" style="font-size:11.5px; margin-bottom:4px;">
+                                    🎥 Chuyển động (Nếu là ảnh)
+                                </label>
+                                <select class="form-input" style="padding:6px 10px; font-size:12.5px;" onchange="updateSceneMotion('${sc.id}', this.value)">
+                                    <option value="zoom_in" ${sc.cameraMotion === 'zoom_in' ? 'selected' : ''}>🔍 Zoom In (Vào tâm)</option>
+                                    <option value="zoom_out" ${sc.cameraMotion === 'zoom_out' ? 'selected' : ''}>🔎 Zoom Out (Thu nhỏ)</option>
+                                    <option value="pan_left" ${sc.cameraMotion === 'pan_left' ? 'selected' : ''}>⬅️ Pan Trái (Lướt qua trái)</option>
+                                    <option value="pan_right" ${sc.cameraMotion === 'pan_right' ? 'selected' : ''}>➡️ Pan Phải (Lướt qua phải)</option>
+                                    <option value="pan_up" ${sc.cameraMotion === 'pan_up' ? 'selected' : ''}>⬆️ Pan Lên (Kéo lên)</option>
+                                    <option value="pan_down" ${sc.cameraMotion === 'pan_down' ? 'selected' : ''}>⬇️ Pan Xuống (Kéo xuống)</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="form-label" style="font-size:11.5px; margin-bottom:4px;">
+                                    🎵 SFX Chuyển Cảnh
+                                </label>
+                                <select class="form-input" style="padding:6px 10px; font-size:12.5px;" onchange="updateSceneSfx('${sc.id}', this.value)">
+                                    ${sfxHtml}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function submitManualStudio() {
+    const titleInput = document.getElementById('manual-title');
+    const channelSelect = document.getElementById('manual-channel');
+    const voiceSelect = document.getElementById('manual-voice');
+    const rateSelect = document.getElementById('manual-voice-rate');
+    const bgmSelect = document.getElementById('manual-bgm');
+    const transitionSelect = document.getElementById('manual-transition');
+    const subCheckbox = document.getElementById('manual-subtitles-enabled');
+    const duckCheckbox = document.getElementById('manual-ducking-enabled');
+    const sfxCheckbox = document.getElementById('manual-sfx-enabled');
+    const submitBtn = document.getElementById('btn-submit-manual-studio');
+
+    const title = (titleInput ? titleInput.value.trim() : '') || 'Shorts Tùy Chỉnh';
+    
+    // Check if at least 1 scene has file
+    const emptyFiles = manualScenesList.filter(s => !s.file);
+    if (emptyFiles.length > 0) {
+        showToast(`⚠️ Còn ${emptyFiles.length} phân cảnh chưa chọn file ảnh/video. Vui lòng bấm vào khung để tải media!`, 'warning');
+        return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = `
+        <svg class="spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke-width="3" stroke-dasharray="32" stroke-linecap="round"></circle></svg>
+        Đang tải media & bắt đầu render...
+    `;
+
+    try {
+        const formData = new FormData();
+
+        const scenesSpec = manualScenesList.map((sc, idx) => ({
+            scene_id: idx + 1,
+            file_index: idx,
+            narration: sc.narration.trim(),
+            camera_motion: sc.cameraMotion,
+            transition: transitionSelect ? transitionSelect.value : 'fade',
+            sfx_cue: sc.sfxCue
+        }));
+
+        const payloadObj = {
+            title: title,
+            target_channel_id: channelSelect ? channelSelect.value : 'channel_1',
+            voice: voiceSelect ? voiceSelect.value : 'vi-VN-HoaiMyNeural',
+            voice_rate: rateSelect ? rateSelect.value : '+0%',
+            bgm_path: bgmSelect ? bgmSelect.value : null,
+            use_ducking: duckCheckbox ? duckCheckbox.checked : true,
+            subtitle_enabled: subCheckbox ? subCheckbox.checked : true,
+            use_sfx: sfxCheckbox ? sfxCheckbox.checked : true,
+            transition_type: transitionSelect ? transitionSelect.value : 'fade',
+            scenes: scenesSpec
+        };
+
+        formData.append('payload', JSON.stringify(payloadObj));
+
+        // Append files in order
+        manualScenesList.forEach(sc => {
+            formData.append('files', sc.file);
+        });
+
+        const resp = await fetch('/api/manual-studio/create', {
+            method: 'POST',
+            body: formData
+        });
+
+        const resData = await resp.json();
+
+        if (resp.ok && resData.success) {
+            showToast(`🚀 ${resData.message}`, 'success');
+            // Switch to pipeline to watch live progress
+            setTimeout(() => {
+                switchTab('pipeline');
+                fetchVideos();
+            }, 1200);
+        } else {
+            showToast(`❌ Lỗi: ${resData.detail || 'Không thể tạo video'}`, 'error');
+        }
+    } catch (err) {
+        console.error('Lỗi gửi submit manual studio:', err);
+        showToast(`❌ Lỗi kết nối: ${err.message}`, 'error');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = `🚀 Bắt Đầu Ghép & Tạo Video`;
+    }
+}
+
+async function submitSingleVideoStudio() {
+    if (!singleVideoFile) {
+        showToast('⚠️ Vui lòng tải lên 1 video hoàn chỉnh trước khi render!', 'warning');
+        return;
+    }
+
+    const scriptInput = document.getElementById('single-script-input');
+    const scriptText = scriptInput ? scriptInput.value.trim() : '';
+    if (!scriptText) {
+        showToast('⚠️ Vui lòng nhập lời thoại kịch bản cho video!', 'warning');
+        if (scriptInput) scriptInput.focus();
+        return;
+    }
+
+    const titleInput = document.getElementById('single-title');
+    const channelSelect = document.getElementById('single-channel');
+    const voiceSelect = document.getElementById('single-voice');
+    const rateSelect = document.getElementById('single-voice-rate');
+    const bgmSelect = document.getElementById('single-bgm');
+    const subCheckbox = document.getElementById('single-subtitles-enabled');
+    const duckCheckbox = document.getElementById('single-ducking-enabled');
+    const sfxCheckbox = document.getElementById('single-sfx-enabled');
+    const submitBtn = document.getElementById('btn-submit-single-studio');
+
+    const title = (titleInput ? titleInput.value.trim() : '') || 'Shorts Lồng Tiếng';
+    const originalBtnHTML = submitBtn ? submitBtn.innerHTML : '🚀 Lồng Giọng Đọc, SFX & Gắn Phụ Đề';
+
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `
+            <svg class="spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke-width="3" stroke-dasharray="32" stroke-linecap="round"></circle></svg>
+            Đang tải video & bắt đầu render...
+        `;
+    }
+
+    try {
+        const formData = new FormData();
+        const payloadObj = {
+            mode: 'single_video',
+            title: title,
+            target_channel_id: channelSelect ? channelSelect.value : 'channel_1',
+            voice: voiceSelect ? voiceSelect.value : 'vi-VN-HoaiMyNeural',
+            voice_rate: rateSelect ? rateSelect.value : '+10%',
+            bgm_path: bgmSelect ? bgmSelect.value : null,
+            use_ducking: duckCheckbox ? duckCheckbox.checked : true,
+            subtitle_enabled: subCheckbox ? subCheckbox.checked : true,
+            use_sfx: sfxCheckbox ? sfxCheckbox.checked : true,
+            script: scriptText
+        };
+
+        formData.append('payload', JSON.stringify(payloadObj));
+        formData.append('files', singleVideoFile);
+
+        const resp = await fetch('/api/manual-studio/create', {
+            method: 'POST',
+            body: formData
+        });
+
+        const resData = await resp.json();
+
+        if (resp.ok && resData.success) {
+            showToast(`🎉 ${resData.message}`, 'success');
+            // Chuyển sang pipeline để theo dõi tiến độ
+            setTimeout(() => {
+                switchTab('pipeline');
+                fetchVideos();
+            }, 1200);
+        } else {
+            showToast(`❌ Lỗi: ${resData.detail || 'Không thể tạo video'}`, 'error');
+        }
+    } catch (err) {
+        console.error('Lỗi gửi single video studio:', err);
+        showToast(`❌ Lỗi kết nối: ${err.message}`, 'error');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnHTML;
+        }
+    }
+}
+
+
 

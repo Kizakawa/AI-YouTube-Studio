@@ -619,12 +619,71 @@ def mux_audio_video(
     return output_path
 
 
+def list_available_sfx(sfx_dir_path: Optional[Path] = None) -> List[Dict[str, str]]:
+    """
+    Quét và liệt kê danh sách tất cả file SFX có trong kho thư mục.
+    Tự động hỗ trợ cả assets/sfx và assets/audio/sfx.
+    """
+    if sfx_dir_path is None:
+        base_dir = Path(__file__).resolve().parent.parent.parent
+        p1 = base_dir / "assets" / "sfx"
+        p2 = base_dir / "assets" / "audio" / "sfx"
+        sfx_dir_path = p1 if p1.exists() else p2
+
+    if not sfx_dir_path.exists():
+        return []
+
+    valid_exts = {".mp3", ".wav", ".ogg", ".m4a", ".aac"}
+    results = []
+    for f in sorted(sfx_dir_path.iterdir(), key=lambda x: x.name.lower()):
+        if f.is_file() and f.suffix.lower() in valid_exts:
+            results.append({
+                "id": f.stem,
+                "name": f.stem.replace("_", " ").replace("-", " ").title(),
+                "filename": f.name,
+                "path": str(f)
+            })
+    return results
+
+
 def _find_sfx_file(sfx_dir_path: Path, name: str) -> Optional[str]:
-    """Tìm file SFX theo tên (thử .mp3, .wav, .ogg). Trả None nếu không có."""
-    for ext in [".mp3", ".wav", ".ogg"]:
-        candidate = sfx_dir_path / f"{name}{ext}"
-        if candidate.exists():
-            return str(candidate)
+    """
+    Tìm file SFX theo tên linh hoạt:
+      - Nhận diện cả tên có hoặc không có đuôi mở rộng (.mp3, .wav, .ogg, .m4a, .aac).
+      - Không phân biệt chữ hoa/thường (case-insensitive).
+      - Khớp chính xác stem hoặc khớp tiền tố/chứa stem (vd: 'whoosh' khớp 'whoosh_fast.mp3').
+      - Tuyệt đối không crash, trả về None nếu không tìm thấy.
+    """
+    if not sfx_dir_path.exists():
+        return None
+
+    clean_name = str(name).strip()
+    if not clean_name:
+        return None
+
+    # 1. Trực tiếp kiểm tra nếu truyền sẵn tên file
+    direct = sfx_dir_path / clean_name
+    if direct.is_file():
+        return str(direct)
+
+    stem = Path(clean_name).stem.lower()
+    valid_exts = {".mp3", ".wav", ".ogg", ".m4a", ".aac"}
+
+    try:
+        files = [f for f in sfx_dir_path.iterdir() if f.is_file() and f.suffix.lower() in valid_exts]
+    except Exception:
+        return None
+
+    # 2. Khớp chính xác stem (case-insensitive)
+    for f in files:
+        if f.stem.lower() == stem:
+            return str(f)
+
+    # 3. Khớp tiền tố hoặc chứa stem (vd: "whoosh" khớp "whoosh_01.mp3")
+    for f in files:
+        if stem in f.stem.lower():
+            return str(f)
+
     return None
 
 
@@ -661,18 +720,27 @@ def mix_sfx_transitions(
     """
     sfx_dir_path = Path(sfx_dir)
     if not sfx_dir_path.exists():
-        logger.info(f"[SFX] Thư mục SFX không tồn tại: {sfx_dir} — bỏ qua.")
-        return video_path
+        base = Path(__file__).resolve().parent.parent.parent
+        alt1 = base / "assets" / "sfx"
+        alt2 = base / "assets" / "audio" / "sfx"
+        if alt1.exists():
+            sfx_dir_path = alt1
+        elif alt2.exists():
+            sfx_dir_path = alt2
+        else:
+            logger.info(f"[SFX] Thư mục SFX không tồn tại: {sfx_dir} — bỏ qua.")
+            return video_path
 
     sfx_entries: List[tuple] = []  # List of (timestamp_seconds, sfx_file, volume)
 
     # ── 1. Hit SFX tại giây đầu tiên (t=0) ──────────────────────────────────
-    hit_file = _find_sfx_file(sfx_dir_path, hit_sfx)
-    if hit_file:
-        sfx_entries.append((0.0, hit_file, hit_volume))
-        logger.info(f"[SFX] 💥 Hit SFX tại t=0.0s → {hit_file}")
-    else:
-        logger.debug(f"[SFX] Không tìm thấy hit SFX '{hit_sfx}' — bỏ qua.")
+    if hit_sfx and str(hit_sfx).lower() not in ("none", "off", "mute", "disable", "skip"):
+        hit_file = _find_sfx_file(sfx_dir_path, hit_sfx)
+        if hit_file:
+            sfx_entries.append((0.0, hit_file, hit_volume))
+            logger.info(f"[SFX] 💥 Hit SFX tại t=0.0s → {hit_file}")
+        else:
+            logger.debug(f"[SFX] Không tìm thấy hit SFX '{hit_sfx}' — bỏ qua.")
 
     # ── 2. Transition SFX tại mỗi mốc chuyển cảnh (bỏ t=0) ─────────────────
     transitions = scene_timestamps_seconds[1:]  # Bỏ giây đầu, đã xử lý bởi hit
@@ -682,7 +750,15 @@ def mix_sfx_transitions(
             if sfx_cues and i < len(sfx_cues) and sfx_cues[i]
             else default_sfx
         )
+        if cue_name and str(cue_name).lower() in ("none", "off", "mute", "disable", "skip"):
+            logger.debug(f"[SFX] Bỏ qua SFX tại t={ts:.2f}s theo cấu hình 'none'")
+            continue
+
         sfx_file = _find_sfx_file(sfx_dir_path, cue_name)
+        # Fallback an toàn về default_sfx nếu tên SFX chỉ định không có trong kho
+        if not sfx_file and cue_name != default_sfx:
+            sfx_file = _find_sfx_file(sfx_dir_path, default_sfx)
+
         if sfx_file:
             sfx_entries.append((ts, sfx_file, sfx_volume))
             logger.info(f"[SFX] 🎵 Chuyển cảnh {ts:.2f}s → {sfx_file}")
