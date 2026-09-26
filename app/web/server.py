@@ -1519,7 +1519,8 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest) -> Dict[str
                 with urllib.request.urlopen(u_req, timeout=10) as resp:
                     uinfo = json.loads(resp.read().decode())
                     detected_email = uinfo.get("email")
-                if detected_email:
+                # Chỉ cập nhật email thật (không lưu email dạng pages.plusgoogle.com của Brand Account)
+                if detected_email and not detected_email.endswith("@pages.plusgoogle.com"):
                     cfg = _read_channels_yaml()
                     for acc in cfg.get("google_accounts", []):
                         if acc.get("id") == account_id:
@@ -1530,8 +1531,80 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest) -> Dict[str
             except Exception as ex:
                 logger.info(f"Không thể tự động đọc Google UserInfo: {ex}")
 
+            # Nếu là service YouTube, kiểm tra xem kênh cụ thể nào vừa được cấp quyền
+            matched_channel_name = None
+            if service == "youtube":
+                try:
+                    from googleapiclient.discovery import build
+                    yt = build("youtube", "v3", credentials=creds)
+                    c_res = yt.channels().list(mine=True, part="snippet,id").execute()
+                    items = c_res.get("items", [])
+                    if items:
+                        real_yt_id = items[0].get("id")
+                        snippet = items[0].get("snippet", {})
+                        real_yt_title = snippet.get("title")
+                        custom_url = snippet.get("customUrl")
+                        logger.info(f"YouTube Channel detected from OAuth: {real_yt_title} ({real_yt_id})")
+
+                        # Tìm kênh tương ứng trong channels.yaml
+                        cfg = _read_channels_yaml()
+                        all_chs = cfg.get("channels", [])
+                        matched_ch = None
+                        for c in all_chs:
+                            if c.get("id", "").lower() == (real_yt_id or "").lower():
+                                matched_ch = c
+                                break
+                            if c.get("name", "").strip().lower() == (real_yt_title or "").strip().lower():
+                                matched_ch = c
+                                break
+
+                        # Nếu không match chính xác, nếu chỉ có 1 kênh chưa có token thì match với kênh đó
+                        if not matched_ch:
+                            for c in all_chs:
+                                ch_t_path = base_dir / "credentials" / "channels" / c.get("id", "") / "youtube_token.json"
+                                if not ch_t_path.exists():
+                                    matched_ch = c
+                                    break
+
+                        if matched_ch:
+                            ch_target_id = matched_ch.get("id")
+                            matched_channel_name = real_yt_title or matched_ch.get("name")
+                            ch_token_dir = base_dir / "credentials" / "channels" / ch_target_id
+                            ch_token_dir.mkdir(parents=True, exist_ok=True)
+                            ch_token_file = ch_token_dir / "youtube_token.json"
+
+                            ch_t_dict = json.loads(token_data)
+                            ch_t_dict["channel_id"] = real_yt_id
+                            ch_t_dict["channel_title"] = real_yt_title
+                            if custom_url:
+                                ch_t_dict["custom_url"] = custom_url
+                            with open(ch_token_file, "w", encoding="utf-8") as f:
+                                json.dump(ch_t_dict, f, indent=2)
+                            logger.info(f"Đã tự động đồng bộ token cho kênh '{ch_target_id}' ({matched_channel_name})")
+
+                            # Cập nhật channels.yaml
+                            for c in cfg.get("channels", []):
+                                if c.get("id") == ch_target_id:
+                                    if real_yt_title: c["youtube_title"] = real_yt_title
+                                    if real_yt_id: c["youtube_channel_id"] = real_yt_id
+                                    if custom_url: c["handle"] = custom_url
+                                    break
+                            for acc in cfg.get("google_accounts", []):
+                                if acc.get("id") == account_id:
+                                    for bch in acc.get("brand_channels", []):
+                                        if bch.get("id") == ch_target_id:
+                                            if real_yt_title: bch["youtube_title"] = real_yt_title
+                                            if real_yt_id: bch["youtube_channel_id"] = real_yt_id
+                                            if custom_url: bch["handle"] = custom_url
+                                            break
+                            _write_channels_yaml(cfg)
+                except Exception as ex:
+                    logger.warning(f"Lỗi tự động phân loại kênh YouTube sau OAuth: {ex}")
+
             succ_msg = f"Đã kết nối {service.upper()} thành công!"
-            if detected_email:
+            if matched_channel_name:
+                succ_msg += f" (Kênh: {matched_channel_name})"
+            elif detected_email and not detected_email.endswith("@pages.plusgoogle.com"):
                 succ_msg += f" (Gmail: {detected_email})"
 
             _oauth_sessions[session_key] = {
@@ -1539,6 +1612,7 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest) -> Dict[str
                 "account_id": account_id,
                 "service": service,
                 "message": succ_msg,
+                "channel_title": matched_channel_name,
                 "email": detected_email
             }
         except Exception as ex:
