@@ -114,15 +114,20 @@ class AIVideoAgent:
         if not target_img_path or not Path(target_img_path).exists():
             clean_prompt = visual_prompt or prompt
 
-            # Nếu cảnh có các yếu tố chuyển động viễn tưởng / không gian mạnh mẽ và không phải chân dung nhân vật cụ thể:
+            # Nếu cảnh có các yếu tố chuyển động thực tế / viễn tưởng / không gian và không phải chân dung nhân vật cụ thể:
             # Ưu tiên lấy Video Clip 9:16 chuyển động thực tế để video sống động (dynamic video)
-            motion_sci_fi_cues = ["spaceship", "flying", "cyberpunk", "galaxy", "stars", "universe", "wormhole", "robot", "laser", "space flight", "phi thuyền", "vũ trụ", "ngân hà", "hành tinh", "lỗ đen"]
+            motion_cues = [
+                "spaceship", "flying", "cyberpunk", "galaxy", "stars", "universe", "wormhole", "robot", "laser", "space flight",
+                "phi thuyền", "vũ trụ", "ngân hà", "hành tinh", "lỗ đen", "ocean", "water", "sea", "wave", "deep sea", "storm",
+                "abyss", "underwater", "cockpit", "airplane", "flight", "traffic", "city", "crowd", "running", "moving", "smoke",
+                "fire", "explosion", "speed", "dark water", "bioluminescent", "clouds", "sky", "dive", "diving", "swimming", "boat"
+            ]
             p_check = clean_prompt.lower()
             is_specific_character = any(f in p_check for f in ["portrait", "face", "philosopher", "chân dung", "khuôn mặt", "character closeup"])
-            if any(c in p_check for c in motion_sci_fi_cues) and not is_specific_character:
+            if any(c in p_check for c in motion_cues) and not is_specific_character:
                 px_vid = self._try_pexels_video_clip(clean_prompt, output_path, duration_seconds)
                 if px_vid and Path(px_vid).exists() and Path(px_vid).stat().st_size > 10000:
-                    logger.info(f"🎥 [AIVideoAgent] ✅ Image-to-Video đã nâng cấp thành Video B-Roll 9:16 chuyển động: {output_path}")
+                    logger.info(f"🎥 [AIVideoAgent] ✅ Nâng cấp thành Video Clip 9:16 chuyển động thực tế: {output_path}")
                     return output_path
 
             temp_ai_image = str(out_p.parent / f"_theme_frame_{scene_id:03d}.jpg")
@@ -363,18 +368,51 @@ class AIVideoAgent:
         return None
 
     def _try_external_video_api(self, prompt: str, output_path: str, duration_seconds: float) -> Optional[str]:
-        """Thử nghiệm các API sinh video ngoại vi (HuggingFace / Pollinations / Fal)."""
+        """Thử nghiệm các API sinh video ngoại vi (Pollinations / Fal / HuggingFace)."""
+        import requests
+
+        # 1. Thử Pollinations Video API nếu có POLLINATIONS_API_KEY
+        poll_key = os.getenv("POLLINATIONS_API_KEY")
+        if poll_key:
+            try:
+                headers = {"Authorization": f"Bearer {poll_key}", "Content-Type": "application/json"}
+                url = "https://gen.pollinations.ai/v1/chat/completions"
+                payload = {
+                    "model": "alibaba/wan-2.2-fast",
+                    "messages": [{"role": "user", "content": f"Cinematic 9:16 vertical video, 8k: {prompt}"}],
+                }
+                res = requests.post(url, json=payload, headers=headers, timeout=60)
+                if res.status_code == 200:
+                    data = res.json()
+                    choices = data.get("choices", [])
+                    if choices:
+                        content = choices[0].get("message", {}).get("content", "")
+                        # Trích xuất URL video từ content nếu có
+                        import re
+                        m = re.search(r'https?://[^\s]+\.mp4', content)
+                        if m:
+                            v_url = m.group(0)
+                            v_down = requests.get(v_url, timeout=45)
+                            if v_down.status_code == 200 and len(v_down.content) > 10000:
+                                with open(output_path, "wb") as f:
+                                    f.write(v_down.content)
+                                logger.info(f"🔮 [AIVideoAgent] ✅ Pollinations Wan 2.2 Video hoàn tất: {output_path}")
+                                return output_path
+            except Exception as e:
+                logger.debug(f"[AIVideoAgent] Pollinations video error: {e}")
+
+        # 2. Thử Hugging Face Inference API nếu có HUGGINGFACE_TOKEN
         hf_token = os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HF_TOKEN")
         if hf_token:
             try:
-                import requests
                 headers = {"Authorization": f"Bearer {hf_token}"}
                 api_url = "https://api-inference.huggingface.co/models/Wan-AI/Wan2.1-T2V-1.3B"
-                payload = {"inputs": prompt}
-                res = requests.post(api_url, headers=headers, json=payload, timeout=45)
+                payload = {"inputs": f"Cinematic vertical video, {prompt}"}
+                res = requests.post(api_url, headers=headers, json=payload, timeout=50)
                 if res.status_code == 200 and len(res.content) > 10000:
                     with open(output_path, "wb") as f:
                         f.write(res.content)
+                    logger.info(f"🔮 [AIVideoAgent] ✅ Hugging Face Wan 2.1 Video hoàn tất: {output_path}")
                     return output_path
             except Exception as e:
                 logger.debug(f"[AIVideoAgent] HF video api error: {e}")
@@ -387,17 +425,12 @@ class AIVideoAgent:
         Tự động cắt đúng thời lượng (trim_video) để ráp nối mượt mà vào video hoàn chỉnh.
         """
         try:
-            from app.agents.media_agent import MediaAgent, clean_scene_search_query
+            from app.agents.media_agent import MediaAgent
             media_agent = MediaAgent()
             if not media_agent.api_key:
                 return None
 
-            clean_q = clean_scene_search_query(prompt, max_words=3)
-            best_vid = media_agent.search_best_video_clip(clean_q)
-            if not best_vid and len(clean_q.split()) > 1:
-                shorter_q = " ".join(clean_q.split()[:2])
-                best_vid = media_agent.search_best_video_clip(shorter_q)
-
+            best_vid = media_agent.search_best_video_clip(prompt)
             if best_vid and best_vid.get("url"):
                 cand_url = best_vid["url"]
                 raw_temp = str(Path(output_path).parent / f"_raw_px_{Path(output_path).stem}.mp4")

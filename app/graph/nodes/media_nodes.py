@@ -524,7 +524,8 @@ def node_content_quality_check(state: VideoWorkflowState) -> Dict[str, Any]:
     report = critic.evaluate_content_quality(
         scenes_media=scenes_media,
         primary_entity=primary_entity,
-        max_ai_checks=6,
+        topic=state.get("topic", ""),
+        max_ai_checks=10,
     )
 
     logger.info(
@@ -594,9 +595,25 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
         suggestion = suggestions.get(scene_id, kw)
         replaced = False
 
-        # ── Nếu là Scene 1 hoặc suggestion là prompt miêu tả điện ảnh dài (> 5 từ):
-        # Trực tiếp sinh ảnh AI (vì stock search không thể tìm theo prompt miêu tả điện ảnh chi tiết)
-        if scene_id == 1 or len(suggestion.split()) > 5:
+        # ── Nếu phân cảnh là dạng VIDEO hoặc cần chuyển động: ưu tiên tìm video Pexels từ gợi ý ──
+        is_video_mode = item.get("production_method") in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO") or item.get("media_type") == "video"
+        if is_video_mode:
+            try:
+                best_v = await asyncio.to_thread(media_agent.search_best_video_clip, suggestion or kw)
+                if best_v and best_v.get("url"):
+                    cand_u = best_v["url"]
+                    out_v = str(media_dir / f"scene_{scene_id:03d}_content_fix_pexels.mp4")
+                    await asyncio.to_thread(media_agent.download_file, cand_u, out_v)
+                    if Path(out_v).exists() and Path(out_v).stat().st_size > 5000:
+                        item["media_path"] = out_v
+                        item["media_type"] = "video"
+                        replaced = True
+                        logger.info(f"Scene {scene_id}: ✅ Thay thế thành công bằng Video Clip Pexels: '{suggestion or kw}'")
+            except Exception as ex_v:
+                logger.debug(f"Scene {scene_id}: Video replacement error: {ex_v}")
+
+        # ── Nếu chưa thay thế và là Scene 1 hoặc prompt điện ảnh dài: Sinh ảnh AI Primal Hook ──
+        if not replaced and (scene_id == 1 or len(suggestion.split()) > 5):
             try:
                 ai_path = str(media_dir / f"scene_{scene_id:03d}_content_ai.jpg")
                 refined_prompt = suggestion or kw

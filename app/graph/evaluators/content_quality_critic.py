@@ -25,13 +25,9 @@ import requests
 from config.settings import settings
 from app.utils.key_rotator import KeyRotator
 from app.graph.state import ContentQualityReport, SceneContentScore
+from app.agents.media_relevance_agent import MediaRelevanceAgent, VISION_MODELS
 
 logger = logging.getLogger(__name__)
-
-VISION_MODELS = [
-    "gemini-3-flash-preview",
-    "gemini-3.5-flash",
-]
 
 
 class ContentQualityCritic:
@@ -295,16 +291,19 @@ TRẢ VỀ DUY NHẤT một chuỗi JSON (không markdown, không giải thích)
         self,
         scenes_media: List[Dict[str, Any]],
         primary_entity: Optional[str] = None,
-        max_ai_checks: int = 6,
+        topic: str = "",
+        max_ai_checks: int = 10,
     ) -> ContentQualityReport:
         """
-        Chấm điểm nội dung toàn bộ kho tư liệu — kết hợp AI Vision + Heuristic.
+        Chấm điểm nội dung toàn bộ kho tư liệu (cả video và ảnh) — kết hợp Gemini Vision + MediaRelevanceAgent.
 
         Args:
             scenes_media: Danh sách scene với media_path, visual_keyword, narration.
             primary_entity: Tên nhân vật/thực thể chính (nếu có).
-            max_ai_checks: Số lượng scene tối đa dùng AI Vision (tiết kiệm quota).
+            topic: Chủ đề video.
+            max_ai_checks: Số lượng scene tối đa dùng AI Vision.
         """
+        rel_agent = MediaRelevanceAgent()
         scene_scores: List[SceneContentScore] = []
         failed_scene_ids: List[int] = []
         ai_checked = 0
@@ -312,47 +311,31 @@ TRẢ VỀ DUY NHẤT một chuỗi JSON (không markdown, không giải thích)
         for item in scenes_media:
             scene_id = item.get("scene_id", 0)
             media_path = item.get("media_path", "")
-            media_type = item.get("media_type", "image")
             visual_keyword = item.get("visual_keyword", "")
             narration = item.get("narration", "")
 
-            # Chỉ phân tích AI cho ảnh (không cho video clip)
-            use_ai = (
-                media_type == "image"
-                and ai_checked < max_ai_checks
-                and Path(media_path).exists()
-                and Path(media_path).stat().st_size > 2000
-                and self.rotator is not None
+            # Gọi MediaRelevanceAgent để thẩm định
+            res = rel_agent.evaluate_media(
+                media_path=media_path,
+                narration=narration,
+                visual_keyword=visual_keyword,
+                topic=topic,
+                scene_id=scene_id,
+                primary_entity=primary_entity,
             )
 
-            if use_ai:
-                result = self._call_vision_api(
-                    media_path, narration, visual_keyword, primary_entity, scene_id=scene_id
-                )
-                if result:
-                    ai_checked += 1
-                else:
-                    result = self._heuristic_score(item, primary_entity)
-            else:
-                result = self._heuristic_score(item, primary_entity)
+            if res.get("ai_evaluated"):
+                ai_checked += 1
 
-            relevance = float(result.get("relevance", 7.0))
-            entity_acc = float(result.get("entity_accuracy", 7.0))
-            hist_fidelity = float(result.get("historical_fidelity", 7.0))
-            vis_quality = float(result.get("visual_quality", 7.0))
-            verdict = result.get("verdict", "MARGINAL")
-            issues = result.get("issues", [])
-            suggestion = result.get("suggestion", "")
+            relevance = float(res.get("relevance", 7.0))
+            entity_acc = float(res.get("entity_accuracy", 7.0))
+            vis_quality = float(res.get("visual_quality", 7.0))
+            scene_overall = float(res.get("overall_score") or (relevance * 0.45 + entity_acc * 0.3 + vis_quality * 0.25))
+            verdict = res.get("verdict", "PASS" if scene_overall >= 7.0 else "FAIL")
+            issues = res.get("issues", [])
+            suggestion = res.get("replacement_query") or res.get("refined_prompt") or ""
 
-            # Tính điểm tổng cho scene: Relevance 35%, Entity 30%, History 20%, Quality 15%
-            scene_overall = (
-                relevance * 0.35 +
-                entity_acc * 0.30 +
-                hist_fidelity * 0.20 +
-                vis_quality * 0.15
-            )
-
-            if verdict == "FAIL" or scene_overall < 5.5:
+            if verdict == "FAIL" or scene_overall < 6.5 or relevance < 6.5:
                 failed_scene_ids.append(scene_id)
 
             score = SceneContentScore(
@@ -360,13 +343,13 @@ TRẢ VỀ DUY NHẤT một chuỗi JSON (không markdown, không giải thích)
                 media_path=media_path,
                 relevance_score=max(1.0, min(10.0, relevance)),
                 entity_accuracy_score=max(1.0, min(10.0, entity_acc)),
-                historical_fidelity_score=max(1.0, min(10.0, hist_fidelity)),
+                historical_fidelity_score=max(1.0, min(10.0, entity_acc)),
                 visual_quality_score=max(1.0, min(10.0, vis_quality)),
                 scene_overall=round(scene_overall, 1),
                 verdict=verdict,
                 issues=issues,
                 replacement_suggestion=suggestion,
-                ai_evaluated=use_ai and result.get("relevance") is not None,
+                ai_evaluated=res.get("ai_evaluated", False),
             )
             scene_scores.append(score)
 

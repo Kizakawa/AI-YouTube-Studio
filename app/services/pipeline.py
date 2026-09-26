@@ -25,6 +25,7 @@ from app.agents.media_agent import (
     clean_scene_search_query,
 )
 from app.agents.image_agent import ImageAgent
+from app.agents.media_relevance_agent import MediaRelevanceAgent
 from app.utils.subtitle_helper import SubtitleHelper
 from config.settings import settings
 
@@ -53,6 +54,7 @@ class VideoPipeline:
         self._voice_agent = VoiceAgent()
         self._media_agent = MediaAgent()
         self._image_agent = ImageAgent()
+        self._media_relevance_agent = MediaRelevanceAgent()
 
     async def _report_progress(self, stage: str, message: str, percent: int = 0):
         """Báo cáo tiến độ thời gian thực về Telegram/Web Dashboard kèm phần trăm %."""
@@ -378,6 +380,58 @@ class VideoPipeline:
                     sc_strat=sc_strat,
                 )
 
+            # ── [NEW] Thẩm định & Chấm điểm độ liên quan với MediaRelevanceAgent ──
+            if media_path and Path(media_path).exists():
+                relevance_eval = await asyncio.to_thread(
+                    self._media_relevance_agent.evaluate_media,
+                    media_path=media_path,
+                    narration=scene.narration,
+                    visual_keyword=scene.visual_keyword or "",
+                    topic=topic,
+                    scene_id=scene.scene_id,
+                    primary_entity=primary_entity,
+                    production_method=prod_method,
+                )
+                if not relevance_eval.get("is_relevant", True) and relevance_eval.get("verdict") == "FAIL":
+                    logger.warning(
+                        f"[Job {self.job_id}] ⚠️ Cảnh {scene.scene_id} media chưa đạt chuẩn nội dung "
+                        f"(Score: {relevance_eval.get('overall_score')}/10). Vấn đề: {relevance_eval.get('issues')}. "
+                        f"Tự động sửa chữa theo gợi ý: '{relevance_eval.get('replacement_query')}'..."
+                    )
+                    fix_query = relevance_eval.get("replacement_query") or scene.visual_keyword
+                    fixed_media = None
+
+                    # Ưu tiên tìm video nếu phương pháp cần video hoặc cảnh cần chuyển động
+                    if prod_method in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO") or scene.scene_id == 1:
+                        best_vid = await asyncio.to_thread(self._media_agent.search_best_video_clip, fix_query, used_pool_urls)
+                        if best_vid and best_vid.get("url"):
+                            cand_url = best_vid["url"]
+                            new_v_p = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_relevance_fix.mp4")
+                            await asyncio.to_thread(self._media_agent.download_file, cand_url, new_v_p)
+                            if Path(new_v_p).exists() and Path(new_v_p).stat().st_size > 5000:
+                                fixed_media = new_v_p
+                                logger.info(f"[Job {self.job_id}] ✅ Đã thay thế Cảnh {scene.scene_id} bằng video clip chuẩn: {fix_query}")
+
+                    # Nếu chưa tìm được video, thử sinh ảnh AI chất lượng cao từ refined_prompt
+                    if not fixed_media:
+                        fix_prompt = relevance_eval.get("refined_prompt") or f"Cinematic photorealistic 8k vertical shot of {fix_query}"
+                        new_img_p = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_relevance_fix.jpg")
+                        res_ai = await asyncio.to_thread(
+                            self._image_agent.generate_scene_image,
+                            fix_prompt,
+                            new_img_p,
+                            "9:16",
+                            "cinematic",
+                            scene.scene_id,
+                            fix_prompt,
+                        )
+                        if res_ai and Path(res_ai).exists() and Path(res_ai).stat().st_size > 2000:
+                            fixed_media = res_ai
+                            logger.info(f"[Job {self.job_id}] ✅ Đã thay thế Cảnh {scene.scene_id} bằng ảnh AI từ gợi ý đạo diễn")
+
+                    if fixed_media:
+                        media_path = fixed_media
+
             enriched = scene.model_copy(update={
                 "media_path": media_path,
                 "media_type": "video" if media_path.endswith(".mp4") else "image",
@@ -465,7 +519,7 @@ class VideoPipeline:
         for suffix in allowed_suffixes:
             for ext in [".jpg", ".jpeg", ".png", ".webp"]:
                 candidate = Path(media_dir) / f"scene_{scene.scene_id:03d}{suffix}{ext}"
-                if candidate.exists() and candidate.stat().st_size > 3000 and self._is_valid_image_file(str(candidate)):
+                if candidate.exists() and candidate.stat().st_size > 3000 and self._is_valid_media_file(str(candidate)):
                     logger.info(f"Scene {scene.scene_id}: Tái sử dụng ảnh tài liệu từ checkpoint ({candidate.name})")
                     return str(candidate)
 
@@ -584,7 +638,7 @@ class VideoPipeline:
                 ext = ".mp4" if c_type == "video" else (".jpg" if any(x in cand_url.lower() for x in ["jpg", "jpeg"]) else ".png")
                 output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_{c_src}{ext}")
                 await asyncio.to_thread(self._media_agent.download_file, cand_url, output)
-                if Path(output).exists() and Path(output).stat().st_size > 3000 and self._is_valid_image_file(output):
+                if Path(output).exists() and Path(output).stat().st_size > 3000 and self._is_valid_media_file(output):
                     if used_pool_urls is not None:
                         used_pool_urls.add(cand_url)
                     if used_asset_paths is not None:
@@ -799,12 +853,26 @@ class VideoPipeline:
         return None
 
     @staticmethod
-    def _is_valid_image_file(path_str: str) -> bool:
-        """Kiểm tra file có tồn tại, kích thước hợp lệ và Pillow mở được định dạng raster (không phải SVG/hỏng/dải banner hẹp)"""
+    def _is_valid_media_file(path_str: str) -> bool:
+        """Kiểm tra tính hợp lệ của file media (cả video clip MP4 lẫn ảnh raster)."""
         if not path_str:
             return False
         p = Path(path_str)
         if not p.exists() or p.stat().st_size < 1000:
+            return False
+        if p.suffix.lower() in (".mp4", ".mov", ".webm", ".mkv"):
+            return p.stat().st_size > 5000
+        return VideoPipeline._is_valid_image_file(path_str)
+
+    @staticmethod
+    def _is_valid_image_file(path_str: str) -> bool:
+        """Kiểm tra file có tồn tại, kích thước hợp lệ và Pillow mở được định dạng raster (không phải SVG/hỏng/dải banner hẹp). Tuyệt đối không xóa file video."""
+        if not path_str:
+            return False
+        p = Path(path_str)
+        if not p.exists() or p.stat().st_size < 1000:
+            return False
+        if p.suffix.lower() in (".mp4", ".mov", ".webm", ".mkv"):
             return False
         try:
             from PIL import Image

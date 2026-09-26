@@ -1092,60 +1092,89 @@ class MediaAgent:
     # TẦNG D: PEXELS VIDEO & PHOTO (Stock footage)
     # ──────────────────────────────────────────────────────────────────────────
 
-    def search_videos(self, query: str, per_page: int = 3, orientation: str = "portrait") -> List[Dict]:
-        """Tìm kiếm video trên Pexels theo từ khóa với tỷ lệ dọc (portrait 9:16)."""
+    def search_videos(self, query: str, per_page: int = 4, orientation: str = "portrait") -> List[Dict]:
+        """Tìm kiếm video trên Pexels theo từ khóa với tỷ lệ dọc (portrait 9:16) có cơ chế retry và xoay key."""
         key = self._get_active_key()
         if not key:
             return []
 
-        try:
-            headers = {"Authorization": key}
-            params = {
-                "query": query,
-                "per_page": per_page,
-                "orientation": orientation
-            }
-            res = requests.get(self.base_url, headers=headers, params=params, timeout=10)
-            if res.status_code == 200:
-                return res.json().get("videos", [])
-            elif res.status_code == 401:
-                logger.warning("PEXELS_API_KEY không hợp lệ hoặc đã hết hạn.")
-        except Exception as e:
-            logger.warning(f"Lỗi khi tìm kiếm Pexels video: {e}")
+        import time
+        for attempt in range(2):
+            try:
+                headers = {"Authorization": key}
+                params = {
+                    "query": query,
+                    "per_page": per_page,
+                    "orientation": orientation
+                }
+                res = requests.get(self.base_url, headers=headers, params=params, timeout=12)
+                if res.status_code == 200:
+                    return res.json().get("videos", [])
+                elif res.status_code in (401, 429):
+                    logger.warning(f"Pexels key bị giới hạn ({res.status_code}), chuyển key...")
+                    if hasattr(self, '_pexels_keys') and len(self._pexels_keys) > 1:
+                        self._pexels_key_idx = (self._pexels_key_idx + 1) % len(self._pexels_keys)
+                        key = self._get_active_key()
+            except Exception as e:
+                logger.debug(f"Pexels search_videos attempt {attempt+1} error for '{query}': {e}")
+                time.sleep(1.0)
         return []
 
     def search_best_video_clip(self, query: str, used_urls: Optional[set] = None) -> Optional[Dict]:
         """
         Tìm kiếm 1 video clip dọc (9:16 portrait) chất lượng cao nhất từ Pexels.
-        Trả về dictionary gồm link tải MP4 1080p và metadata.
+        Áp dụng chiến lược đa tầng từ khóa (Multi-Tier Query Fallback):
+        1. Query làm sạch chuẩn (2-3 từ)
+        2. Query 2 từ rút gọn
+        3. Từng danh từ/động từ độc lập
         Loại trừ triệt để các URL đã được gán cho các phân cảnh khác.
         """
         used = used_urls or set()
         clean_q = clean_scene_search_query(query, max_words=3)
-        videos = self.search_videos(clean_q or query, per_page=8, orientation="portrait")
-        for v in videos:
-            v_files = v.get("video_files", [])
-            # Lọc các file MP4 tỉ lệ dọc (w <= h)
-            portrait_files = [
-                vf for vf in v_files
-                if vf.get("width", 0) <= vf.get("height", 0) and (vf.get("link", "").endswith(".mp4") or "mp4" in vf.get("file_type", ""))
-            ]
-            if portrait_files:
-                # Ưu tiên độ phân giải cao nhất (>= 1080p hoặc 720p)
-                hd_files = sorted(portrait_files, key=lambda x: x.get("height", 0), reverse=True)
-                for best in hd_files:
-                    link = best.get("link")
-                    if link and link not in used:
-                        return {
-                            "url": link,
-                            "title": f"Pexels Video: {clean_q or query}",
-                            "width": best.get("width", 1080),
-                            "height": best.get("height", 1920),
-                            "duration": v.get("duration", 0),
-                            "media_type": "video",
-                            "source": "pexels_video",
-                            "thumbnail": v.get("image", ""),
-                        }
+        words = clean_q.split() if clean_q else query.split()
+
+        # Tạo danh sách các truy vấn tìm kiếm thử nghiệm theo thứ tự ưu tiên
+        candidate_queries = []
+        if clean_q:
+            candidate_queries.append(clean_q)
+        if len(words) >= 2:
+            two_words = " ".join(words[:2])
+            if two_words not in candidate_queries:
+                candidate_queries.append(two_words)
+        if len(words) >= 1:
+            for w in words:
+                if len(w) > 2 and w not in candidate_queries:
+                    candidate_queries.append(w)
+        if query and query not in candidate_queries:
+            candidate_queries.append(query)
+
+        for q_try in candidate_queries:
+            videos = self.search_videos(q_try, per_page=8, orientation="portrait")
+            for v in videos:
+                v_files = v.get("video_files", [])
+                # Lọc các file MP4 tỉ lệ dọc (w <= h)
+                portrait_files = [
+                    vf for vf in v_files
+                    if vf.get("width", 0) <= vf.get("height", 0) and (
+                        vf.get("link", "").endswith(".mp4") or "mp4" in vf.get("file_type", "")
+                    )
+                ]
+                if portrait_files:
+                    # Ưu tiên độ phân giải cao nhất (>= 1080p hoặc 720p)
+                    hd_files = sorted(portrait_files, key=lambda x: x.get("height", 0), reverse=True)
+                    for best in hd_files:
+                        link = best.get("link")
+                        if link and link not in used:
+                            return {
+                                "url": link,
+                                "title": f"Pexels Video: {q_try}",
+                                "width": best.get("width", 1080),
+                                "height": best.get("height", 1920),
+                                "duration": v.get("duration", 0),
+                                "media_type": "video",
+                                "source": "pexels_video",
+                                "thumbnail": v.get("image", ""),
+                            }
         return None
 
     def search_photos(self, query: str, per_page: int = 3, orientation: str = "portrait") -> List[Dict]:
@@ -1253,7 +1282,7 @@ Text: "{text}"
 
 If no real entities found, return empty array: []"""
 
-        models = ["gemini-3-flash-preview", "gemini-3.5-flash", "gemini-flash-latest"]
+        models = ["gemini-3.1-flash-lite-preview", "gemini-flash-latest", "gemini-3.1-pro-preview"]
         for model in models:
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
