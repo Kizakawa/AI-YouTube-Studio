@@ -331,6 +331,95 @@ async def edit_video_endpoint(job_id: int, payload: EditVideoPayload, background
     background_tasks.add_task(runner.execute_edit, req)
     return {"status": "ok", "message": f"Đang thực hiện chỉnh sửa '{payload.action_type}' cho Video #{job_id}"}
 
+# ─── Edit Script & Scenes (Pre-render) ────────────────────────────────────────
+
+class SceneEditItem(BaseModel):
+    scene_id: Optional[int] = None
+    narration: str
+    visual_keyword: Optional[str] = None
+    visual_prompt: Optional[str] = None
+    estimated_seconds: Optional[float] = 3.0
+
+class UpdateScriptPayload(BaseModel):
+    title: Optional[str] = None
+    hook: Optional[str] = None
+    description: Optional[str] = None
+    tags: Optional[str] = None
+    scenes: List[SceneEditItem]
+
+@app.put("/api/videos/{job_id}/script")
+@app.post("/api/videos/{job_id}/script")
+async def update_video_script(job_id: int, payload: UpdateScriptPayload) -> Dict[str, Any]:
+    """
+    Cập nhật / chỉnh sửa toàn bộ kịch bản video (tiêu đề, lời thoại, phân cảnh).
+    Hỗ trợ thêm, sửa, xóa phân cảnh trước khi render.
+    """
+    with get_db() as db:
+        job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Không tìm thấy video job")
+        if job.status == "RENDERING":
+            raise HTTPException(status_code=409, detail="Video đang trong quá trình render, không thể sửa kịch bản!")
+
+        if not payload.scenes or len(payload.scenes) == 0:
+            raise HTTPException(status_code=400, detail="Kịch bản phải có ít nhất 1 phân cảnh!")
+
+        updated_scenes = []
+        for idx, sc in enumerate(payload.scenes, start=1):
+            narration_clean = sc.narration.strip()
+            if not narration_clean:
+                continue
+            kw_clean = (sc.visual_keyword or "cinematic scene").strip()
+            sec = float(sc.estimated_seconds) if sc.estimated_seconds and sc.estimated_seconds > 0 else 3.0
+            updated_scenes.append({
+                "scene_id": idx,
+                "narration": narration_clean,
+                "visual_keyword": kw_clean,
+                "visual_prompt": sc.visual_prompt or kw_clean,
+                "estimated_seconds": sec,
+            })
+
+        if not updated_scenes:
+            raise HTTPException(status_code=400, detail="Các phân cảnh không được để trống lời thoại!")
+
+        new_title = payload.title.strip() if payload.title and payload.title.strip() else (job.title or job.topic)
+        full_narration = " ".join(s["narration"] for s in updated_scenes)
+        hook = payload.hook.strip() if payload.hook and payload.hook.strip() else updated_scenes[0]["narration"][:100]
+
+        tags_raw = payload.tags or job.tags or "shorts, psychology, facts"
+        tags_list = [t.strip() for t in tags_raw.split(",") if t.strip()]
+        description = payload.description.strip() if payload.description and payload.description.strip() else (job.description or f"{new_title} #shorts")
+
+        script_dict = {
+            "title": new_title,
+            "hook": hook,
+            "full_narration": full_narration,
+            "scenes": updated_scenes,
+            "tags": tags_list,
+            "description": description,
+        }
+
+        job.title = new_title
+        job.script = full_narration
+        job.description = description
+        job.tags = ",".join(tags_list)
+        job.scenes_json = json.dumps(script_dict, ensure_ascii=False)
+        if job.status in ("FAILED", "DRAFT"):
+            job.status = "SCRIPT_READY"
+            job.error_message = None
+
+        log_activity(db, 0, "WebStudio", "EDIT_SCRIPT",
+                     f"Đã cập nhật kịch bản Video #{job_id}: {len(updated_scenes)} phân cảnh")
+
+    return {
+        "success": True,
+        "message": f"Kịch bản Video #{job_id} đã được lưu thành công ({len(updated_scenes)} phân cảnh)!",
+        "job_id": job_id,
+        "title": new_title,
+        "scene_count": len(updated_scenes),
+        "scenes": updated_scenes,
+    }
+
 # ─── Delete Job ───────────────────────────────────────────────────────────────
 
 @app.delete("/api/videos/{job_id}")

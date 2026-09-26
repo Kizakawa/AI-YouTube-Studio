@@ -460,8 +460,10 @@ function renderPipelineTable(videos) {
         // Action buttons
         let actionButtons = `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết">🔍</button>`;
         if (v.status === 'SCRIPT_READY') {
+            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openScriptEditor(${v.id})" title="Chỉnh sửa kịch bản" style="font-size:11px;">✏️ Sửa</button>`;
             actionButtons += `<button class="btn btn-primary btn-sm" onclick="triggerWebRender(${v.id})" title="Xuất Video" style="font-size:11px;">🚀 Render</button>`;
         } else if (v.status === 'FAILED') {
+            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openScriptEditor(${v.id})" title="Chỉnh sửa kịch bản" style="font-size:11px;">✏️ Sửa</button>`;
             actionButtons += `<button class="btn btn-primary btn-sm" onclick="triggerWebRender(${v.id})" title="Thử render lại" style="font-size:11px;background:var(--accent-amber);border-color:var(--accent-amber);">🔄 Thử lại</button>`;
         } else if (v.status === 'RENDERED') {
             actionButtons += `<button class="btn btn-primary btn-sm" onclick="openPublishModal(${v.id})" title="Chọn kênh & Đăng YouTube" style="font-size:11px;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;font-weight:600;">🚀 Đăng YT</button>`;
@@ -556,9 +558,36 @@ function buildScriptResultHTML(result) {
         </div>
         <div class="script-title">${esc(result.title)}</div>
         <div class="script-hook">💬 Hook: "${esc(result.hook)}"</div>
+
+        <!-- Action Toolbar Right After Generation -->
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin:16px 0; padding:12px 14px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; align-items:center;">
+            <button class="btn btn-primary" onclick="triggerWebRender(${result.job_id})" style="background:linear-gradient(135deg,#3b82f6,#8b5cf6); border:none; font-weight:600; padding:9px 18px;">
+                🚀 Bắt Đầu Tạo Video (Render)
+            </button>
+            <button class="btn btn-secondary" onclick="openScriptEditor(${result.job_id})" style="font-weight:600; padding:9px 16px;">
+                ✏️ Chỉnh Sửa Kịch Bản (Thêm/Sửa/Xóa Cảnh)
+            </button>
+            <button class="btn btn-secondary" onclick="switchTab('pipeline')" style="font-size:12px; padding:9px 14px;">
+                📋 Xem trong Pipeline →
+            </button>
+            <button class="btn btn-danger btn-sm" onclick="deleteJob(${result.job_id}); document.getElementById('script-result-panel').style.display='none';" style="margin-left:auto; padding:9px 14px;">
+                🗑️ Xóa Kịch Bản
+            </button>
+        </div>
+
         <div>
-            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:10px;">Phân Cảnh</div>
+            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:10px;">Phân Cảnh Chi Tiết</div>
             <div class="scenes-list">${scenesHTML}</div>
+        </div>
+
+        <!-- Bottom Action Bar -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08);">
+            <button class="btn btn-secondary" onclick="openScriptEditor(${result.job_id})" style="font-weight:600;">
+                ✏️ Chỉnh Sửa Kịch Bản Này
+            </button>
+            <button class="btn btn-primary btn-lg" onclick="triggerWebRender(${result.job_id})" style="background:linear-gradient(135deg,#3b82f6,#8b5cf6); border:none; font-weight:600;">
+                🚀 Bắt Đầu Tạo Video Ngay →
+            </button>
         </div>`;
 }
 
@@ -653,6 +682,7 @@ async function openVideoDetail(jobId) {
         </div>` : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
             ${(data.status === 'SCRIPT_READY' || data.status === 'FAILED') ? `<button class="btn btn-primary btn-sm" onclick="closeModal(); triggerWebRender(${data.id});">🚀 ${data.status === 'FAILED' ? 'Thử Render Lại' : 'Bắt Đầu Render'}</button>` : ''}
+            ${(data.status === 'SCRIPT_READY' || data.status === 'FAILED') ? `<button class="btn btn-secondary btn-sm" onclick="closeModal(); openScriptEditor(${data.id});">✏️ Chỉnh Sửa Kịch Bản</button>` : ''}
             ${data.status === 'RENDERED' && data.video_path ? `<a href="/api/videos/${data.id}/download" target="_blank" class="btn btn-primary btn-sm">📥 Tải Video</a>` : ''}
             ${(data.status === 'RENDERED' && !data.youtube_id) ? `
             <button class="btn btn-primary btn-sm" id="btn-publish-yt-${data.id}" onclick="openPublishModal(${data.id})" style="background:linear-gradient(135deg,#ef4444,#dc2626);border:none;font-weight:600;">
@@ -676,7 +706,254 @@ function closeModal() {
     document.getElementById('modal-overlay').classList.remove('visible');
 }
 
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+document.addEventListener('keydown', e => { 
+    if (e.key === 'Escape') {
+        closeModal();
+        closeScriptEditor();
+    }
+});
+
+/* ===============================================================
+   SCRIPT EDITOR MODAL (CRUD SCENES & METADATA)
+================================================================ */
+let activeEditorJob = null;
+
+async function openScriptEditor(jobId) {
+    const modal = document.getElementById('modal-script-editor');
+    if (!modal) return;
+
+    // Reset fields
+    document.getElementById('editor-job-id').value = jobId;
+    document.getElementById('editor-input-title').value = '';
+    document.getElementById('editor-input-hook').value = '';
+    document.getElementById('editor-input-tags').value = '';
+    document.getElementById('editor-scenes-list').innerHTML = `<div style="text-align:center;padding:24px;"><span class="loading-spinner"></span> Đang tải kịch bản...</div>`;
+    
+    document.getElementById('script-editor-title').textContent = `Chỉnh Sửa Kịch Bản Video #${jobId}`;
+    modal.classList.add('visible');
+
+    try {
+        const data = await apiGet(`/api/videos/${jobId}`);
+        if (!data) {
+            showToast('Không tải được dữ liệu kịch bản', 'error');
+            closeScriptEditor();
+            return;
+        }
+
+        activeEditorJob = data;
+        document.getElementById('editor-input-title').value = data.title || data.topic || '';
+        document.getElementById('editor-input-hook').value = (data.scenes && data.scenes[0]) ? data.scenes[0].narration : '';
+        document.getElementById('editor-input-tags').value = data.tags || 'shorts, psychology, facts';
+
+        renderEditorScenes(data.scenes || []);
+    } catch (e) {
+        showToast('Lỗi khi mở trình sửa kịch bản: ' + e.message, 'error');
+        closeScriptEditor();
+    }
+}
+
+function closeScriptEditor() {
+    const modal = document.getElementById('modal-script-editor');
+    if (modal) modal.classList.remove('visible');
+    activeEditorJob = null;
+}
+
+function renderEditorScenes(scenes) {
+    const container = document.getElementById('editor-scenes-list');
+    container.innerHTML = '';
+
+    if (!scenes || scenes.length === 0) {
+        addEditorSceneRow({ scene_id: 1, narration: '', visual_keyword: '', estimated_seconds: 4.0 });
+        return;
+    }
+
+    scenes.forEach((sc, idx) => {
+        addEditorSceneRow(sc, idx + 1);
+    });
+
+    updateEditorScenesCount();
+}
+
+function addEditorSceneRow(sc = null, sceneNum = null) {
+    const container = document.getElementById('editor-scenes-list');
+    const currentRows = container.querySelectorAll('.editor-scene-card');
+    const idx = sceneNum || (currentRows.length + 1);
+
+    const narration = sc ? (sc.narration || '') : '';
+    const kw = sc ? (sc.visual_keyword || '') : '';
+    const sec = sc ? (sc.estimated_seconds || 4.0) : 4.0;
+
+    const card = document.createElement('div');
+    card.className = 'editor-scene-card';
+    card.style.cssText = `
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 10px;
+        padding: 14px;
+        position: relative;
+        transition: all 0.2s ease;
+    `;
+    card.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span class="badge badge-purple scene-index-badge" style="font-size:12px; font-weight:700; padding:4px 8px;">Cảnh #${idx}</span>
+                <div style="display:flex; align-items:center; gap:4px; font-size:11.5px; color:var(--text-muted);">
+                    <span>Thời lượng: ~</span>
+                    <input type="number" class="scene-sec-input form-input" value="${sec}" min="1" max="25" step="0.5" style="width:58px; padding:2px 6px; font-size:12px; height:26px;" oninput="updateEditorScenesCount()">
+                    <span>giây</span>
+                </div>
+            </div>
+            <button type="button" class="btn btn-danger btn-sm" onclick="removeEditorSceneRow(this)" style="padding:3px 8px; font-size:11px;" title="Xóa cảnh này">
+                🗑 Xóa Cảnh
+            </button>
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label" style="font-size:11.5px; margin-bottom:4px;"><strong>Lời thoại phân cảnh (Narration / Voiceover):</strong></label>
+            <textarea class="form-input scene-narration-input" rows="2" style="font-size:13px; line-height:1.4;" placeholder="Nhập lời thoại AI sẽ đọc cho phân cảnh này...">${esc(narration)}</textarea>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label" style="font-size:11.5px; margin-bottom:4px;"><strong>Từ khóa tìm hình ảnh / Prompt AI (Visual Keyword):</strong></label>
+            <input type="text" class="form-input scene-keyword-input" value="${esc(kw)}" placeholder="Ví dụ: dark brain synapse glowing, stoic statue..." style="font-size:12px;">
+        </div>
+    `;
+
+    container.appendChild(card);
+    updateEditorScenesCount();
+}
+
+function removeEditorSceneRow(btn) {
+    const card = btn.closest('.editor-scene-card');
+    const container = document.getElementById('editor-scenes-list');
+    if (container.querySelectorAll('.editor-scene-card').length <= 1) {
+        showToast('Kịch bản phải có ít nhất 1 phân cảnh!', 'error');
+        return;
+    }
+    if (card) {
+        card.remove();
+        reindexEditorScenes();
+    }
+}
+
+function reindexEditorScenes() {
+    const container = document.getElementById('editor-scenes-list');
+    const cards = container.querySelectorAll('.editor-scene-card');
+    cards.forEach((card, idx) => {
+        const badge = card.querySelector('.scene-index-badge');
+        if (badge) badge.textContent = `Cảnh #${idx + 1}`;
+    });
+    updateEditorScenesCount();
+}
+
+function updateEditorScenesCount() {
+    const container = document.getElementById('editor-scenes-list');
+    if (!container) return;
+    const cards = container.querySelectorAll('.editor-scene-card');
+    const countEl = document.getElementById('editor-scenes-count');
+    if (countEl) countEl.textContent = cards.length;
+
+    let totalSec = 0;
+    cards.forEach(card => {
+        const secInput = card.querySelector('.scene-sec-input');
+        const val = parseFloat(secInput ? secInput.value : 0) || 0;
+        totalSec += val;
+    });
+
+    const durEl = document.getElementById('editor-total-duration');
+    if (durEl) {
+        durEl.textContent = `Ước tính thời lượng: ~${totalSec.toFixed(0)}s (${cards.length} cảnh)`;
+    }
+}
+
+async function submitScriptEdits(andRender = false) {
+    const jobId = document.getElementById('editor-job-id').value;
+    if (!jobId) return;
+
+    const title = document.getElementById('editor-input-title').value.trim();
+    if (!title) {
+        showToast('Vui lòng nhập tiêu đề video!', 'error');
+        return;
+    }
+
+    const hook = document.getElementById('editor-input-hook').value.trim();
+    const tags = document.getElementById('editor-input-tags').value.trim();
+
+    const container = document.getElementById('editor-scenes-list');
+    const cards = container.querySelectorAll('.editor-scene-card');
+    if (cards.length === 0) {
+        showToast('Kịch bản phải có ít nhất 1 phân cảnh!', 'error');
+        return;
+    }
+
+    const scenes = [];
+    for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        const narration = card.querySelector('.scene-narration-input').value.trim();
+        const kw = card.querySelector('.scene-keyword-input').value.trim();
+        const sec = parseFloat(card.querySelector('.scene-sec-input').value) || 3.5;
+
+        if (!narration) {
+            showToast(`Cảnh #${i + 1} chưa có lời thoại!`, 'error');
+            card.scrollIntoView({ behavior: 'smooth' });
+            return;
+        }
+
+        scenes.push({
+            scene_id: i + 1,
+            narration: narration,
+            visual_keyword: kw || 'cinematic historical scene',
+            estimated_seconds: sec
+        });
+    }
+
+    const saveBtn = andRender ? document.getElementById('btn-save-and-render') : document.getElementById('btn-save-script-only');
+    const origHTML = saveBtn ? saveBtn.innerHTML : '';
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = `<span class="loading-spinner"></span> Đang lưu...`;
+    }
+
+    try {
+        const res = await fetch(`/api/videos/${jobId}/script`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title: title,
+                hook: hook || scenes[0].narration,
+                tags: tags,
+                scenes: scenes
+            })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+            showToast(`💾 Đã lưu kịch bản Video #${jobId} (${scenes.length} cảnh)!`, 'success');
+            closeScriptEditor();
+            await fetchVideos();
+
+            // Cập nhật lại view preview nếu đang mở result panel của job này
+            const resultBadge = document.getElementById('result-job-badge');
+            if (resultBadge && resultBadge.textContent.includes(jobId)) {
+                data.total_duration = scenes.reduce((sum, s) => sum + s.estimated_seconds, 0);
+                data.hook = hook || scenes[0].narration;
+                document.getElementById('script-result-content').innerHTML = buildScriptResultHTML(data);
+            }
+
+            if (andRender) {
+                // Tự động kích hoạt render luôn
+                await triggerWebRender(jobId);
+            }
+        } else {
+            showToast(data.detail || data.message || 'Lỗi khi lưu kịch bản', 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi kết nối máy chủ: ' + e.message, 'error');
+    } finally {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = origHTML;
+        }
+    }
+}
 
 /* ═══════════════════════════════════════════════════════
    DELETE JOB
