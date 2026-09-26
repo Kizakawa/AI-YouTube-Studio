@@ -19,15 +19,48 @@ class PublisherAgent:
         self.channel_name = self.channel_config.get("name", "YouTube Channel")
         self.account_name = self.channel_config.get("google_account", account_name)
         
-        self.token_file = (
-            self.channel_config.get("token_file") or
-            f"credentials/accounts/{self.account_name}/youtube_token.json"
-        )
+        ch_token = f"credentials/channels/{self.channel_id}/youtube_token.json"
+        acc_token = f"credentials/accounts/{self.account_name}/youtube_token.json"
+
+        # Kiểm tra xem kênh này có phải kênh đầu tiên (mặc định) của account không
+        is_first_ch = False
+        try:
+            from app.utils.config_loader import load_config
+            cfg = load_config("channels.yaml")
+            accounts = cfg.get("google_accounts", [])
+            for a in accounts:
+                if a.get("id") == self.account_name:
+                    b_chs = a.get("brand_channels", [])
+                    if b_chs and b_chs[0].get("id") == self.channel_id:
+                        is_first_ch = True
+                    break
+        except Exception:
+            pass
+
+        if self.channel_config.get("token_file") and os.path.exists(self.channel_config["token_file"]):
+            self.token_file = self.channel_config["token_file"]
+        elif os.path.exists(ch_token):
+            self.token_file = ch_token
+        elif is_first_ch and os.path.exists(acc_token):
+            # Chỉ kênh đầu tiên được kế thừa token cấp tài khoản cũ
+            self.token_file = acc_token
+        else:
+            # Các kênh khác bắt buộc phải có token riêng, KHÔNG ĐƯỢC dùng chung token
+            # để tránh trường hợp đăng nhầm sang kênh cũ!
+            self.token_file = None
+
         self.service = None
         self._init_service()
 
     def _init_service(self):
         """Khởi tạo YouTube v3 client qua OAuth credentials"""
+        if not self.token_file:
+            logger.warning(
+                f"Kênh '{self.channel_name}' (ID: {self.channel_id}) chưa có token YouTube riêng. "
+                f"Hệ thống chặn không dùng token kênh khác để tránh đăng nhầm video!"
+            )
+            return
+
         try:
             creds = None
             env_b64 = os.getenv("YOUTUBE_TOKEN_BASE64")

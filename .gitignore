@@ -31,6 +31,8 @@ credentials/client_secret.json
 credentials/tokens/
 credentials/accounts/*
 !credentials/accounts/.gitkeep
+credentials/channels/*
+!credentials/channels/.gitkeep
 tokens/
 *.token.json
 *.pem
