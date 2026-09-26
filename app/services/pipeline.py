@@ -10,7 +10,7 @@ import asyncio
 import logging
 import shutil
 from pathlib import Path
-from typing import Optional, List, Tuple, Callable, Awaitable, Dict, Set
+from typing import Optional, List, Tuple, Callable, Awaitable, Dict, Set, Any
 
 from app.schemas.contracts import (
     JobStatus, ScriptContract, SceneContract, RenderJobContract
