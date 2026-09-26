@@ -9,9 +9,10 @@ from app.schemas.contracts import ScriptContract
 logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = [
-    "gemini-3-flash-preview",
-    "gemini-3.5-flash",
     "gemini-flash-latest",
+    "gemini-flash-lite-latest",
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash",
 ]
 
 class ContentAgent:
@@ -77,10 +78,8 @@ class ContentAgent:
                                 logger.info(f"✅ Gemini API ({model}) thành công với key {key[:8]}... trong {time.monotonic()-start_time:.1f}s")
                                 return parts[0]["text"].strip()
                     elif r.status_code in (429, 403):
-                        logger.warning(f"⚠️ Key {key[:8]}... gặp lỗi {r.status_code} (hết quota). Chuyển sang key tiếp theo ngay lập tức...")
-                        self.rotator.rotate_key()
-                        key_failed_quota = True
-                        break  # Thoát ngay vòng lặp model của key này
+                        logger.warning(f"⚠️ Model {model} với key {key[:8]}... gặp {r.status_code}. Đang thử model tiếp theo...")
+                        continue
                     elif r.status_code == 503 and json_mode:
                         # Fallback: Thử lại không dùng responseMimeType (tránh 503 trên engine structured JSON)
                         logger.info(f"Gemini API ({model}) gặp 503 với structured output, thử lại chế độ raw JSON...")

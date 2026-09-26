@@ -26,9 +26,10 @@ from app.utils.key_rotator import KeyRotator
 logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
+    "gemini-flash-latest",
+    "gemini-flash-lite-latest",
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash",
 ]
 
 
@@ -70,7 +71,7 @@ class VideoStrategistAgent:
                         text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
                         return text
                 elif res.status_code in (429, 403):
-                    self.rotator.rotate()
+                    self.rotator.rotate_key()
                     key = self.rotator.get_key()
             except Exception as e:
                 logger.debug(f"[VideoStrategist] Gemini call error on {model}: {e}")

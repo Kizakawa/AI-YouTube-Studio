@@ -20,9 +20,10 @@ from app.utils.key_rotator import KeyRotator
 logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = [
-    "gemini-3-flash-preview",
-    "gemini-3.5-flash",
     "gemini-flash-latest",
+    "gemini-flash-lite-latest",
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash",
 ]
 
 
