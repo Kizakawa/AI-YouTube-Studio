@@ -13,10 +13,11 @@ from app.bot.handlers import (
     pending_command, addchannel_command, editchannel_command, delchannel_command,
     search_image_command, search_video_command,
     viral_command,
-    videos_command, get_video_command,
+    videos_command, get_video_command, web_command,
     auto_resume_pending_jobs
 )
 from app.utils.ffmpeg_helper import is_ffmpeg_installed, get_ffmpeg_version
+from app.utils.network_helper import get_network_info
 
 def recover_stuck_jobs():
     """Tự động khôi phục các video bị gián đoạn do tắt bot đột ngột khi đang render và cảnh báo các job lỗi tồn đọng"""
@@ -66,12 +67,27 @@ logging.basicConfig(
 )
 logger = logging.getLogger("AI-YouTube")
 
+def print_network_banner():
+    """Hiển thị khung địa chỉ truy cập Web Dashboard qua localhost và Wi-Fi"""
+    try:
+        net = get_network_info()
+        print("\n" + "═" * 70)
+        print("🌐 AI YOUTUBE STUDIO - ĐÃ PHÁT SÓNG MẠNG NỘI BỘ (WI-FI / LAN)")
+        print("═" * 70)
+        print(f"💻 Trên máy tính này (Local):     {net['local_url']}  hoặc  {net['localhost_url']}")
+        if net['is_lan_available']:
+            print(f"📱 Trên điện thoại (Cùng Wi-Fi):  {net['wifi_url']}")
+        print("💡 Mẹo: Thiết bị chỉ cần kết nối cùng mạng Wi-Fi là mở được ngay!")
+        print("═" * 70 + "\n")
+    except Exception as e:
+        logger.debug(f"Lỗi hiển thị banner mạng: {e}")
+
 def run_fastapi_server():
     """Khởi động Web Dashboard bằng Uvicorn trong background thread"""
     try:
         import uvicorn
         port = int(os.getenv("PORT", 8000))
-        print(f"🌐 [Web Dashboard] Đang chạy tại địa chỉ: http://0.0.0.0:{port}")
+        print_network_banner()
         uvicorn.run("app.web.server:app", host="0.0.0.0", port=port, log_level="warning")
     except ImportError:
         print("⚠️ [Web Dashboard] Chưa cài đặt uvicorn. Hãy chạy 'pip install uvicorn fastapi' để bật Dashboard.")
@@ -107,7 +123,10 @@ def main():
     # 4. Kiểm tra chế độ chạy
     if "--web-only" in sys.argv or "--web" in sys.argv or os.getenv("WEB_ONLY"):
         print("[4/4] 🌐 [CHẾ ĐỘ WEB-ONLY] Chỉ khởi động Web Dashboard, KHÔNG chạy Telegram Bot!")
-        print("👉 Thoải mái chỉnh sửa UI và xem thay đổi tại: http://127.0.0.1:8000")
+        net = get_network_info()
+        print(f"👉 Trên máy tính này: {net['local_url']}")
+        if net['is_lan_available']:
+            print(f"👉 Trên điện thoại / máy khác (cùng Wi-Fi): {net['wifi_url']}")
         print("🔒 Không bị xung đột hay chập bot với máy bạn Giang / Render.")
         print("=" * 70)
         try:
@@ -119,7 +138,10 @@ def main():
     print("[4/4] Khởi động Telegram Bot Workspace...")
     if not settings.TELEGRAM_BOT_TOKEN:
         print("   -> [LƯU Ý] TELEGRAM_BOT_TOKEN chưa có trong file .env!")
-        print("   -> Web Dashboard vẫn hoạt động bình thường tại http://127.0.0.1:8000")
+        net = get_network_info()
+        print(f"   -> Web Dashboard vẫn hoạt động bình thường tại {net['local_url']}")
+        if net['is_lan_available']:
+            print(f"   -> Hoặc mở trên điện thoại (cùng Wi-Fi): {net['wifi_url']}")
         print("   -> Điền Token vào file .env để kích hoạt thêm Telegram Bot.")
         print("=" * 70)
         # Giữ process sống để Web Dashboard tiếp tục chạy
@@ -159,6 +181,7 @@ def main():
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler(["videos", "list_videos", "dsvideo", "ds_video", "list"], videos_command))
     app.add_handler(CommandHandler(["get", "getvideo", "xem", "download", "tai_video"], get_video_command))
+    app.add_handler(CommandHandler(["web", "dashboard", "wifi", "link"], web_command))
     app.add_handler(CallbackQueryHandler(channel_callback, pattern=r"^(select_channel|manage_channel|pick_niche|set_niche|prompt_rename|add_tpl|prompt_custom_channel|pick_voice|set_voice|pick_lang|set_lang|pick_visual|set_visual|confirm_del_channel|do_del_channel|prompt_add_channel|back_channels|refresh_channels)"))
     app.add_handler(CallbackQueryHandler(video_callback, pattern=r"^(render_video|publish_now|publish_youtube|publish_to_channel|schedule_to_channel|cancel_publish|feedback_video|edit_script|schedule|schedule_youtube|regenerate|cancel|process_all_pending|refresh_pending|retry_all_failed|apply_media|pick_viral_topic|refresh_viral_ideas|close_viral|send_video_file|videos_page|refresh_videos)"))
     app.add_handler(CallbackQueryHandler(chat_callback, pattern=r"^(convert_chat|suggest_more|change_hooks):"))
@@ -186,8 +209,11 @@ def main():
 
     app.add_error_handler(error_handler)
 
+    net = get_network_info()
     print("🤖 Bot đang chạy Polling... Cả nhóm có thể ra lệnh từ Telegram hoặc xem Web!")
-    print("👉 Mở trình duyệt xem Dashboard: http://127.0.0.1:8000")
+    print(f"👉 Mở Web trên máy tính này: {net['local_url']}")
+    if net['is_lan_available']:
+        print(f"👉 Mở Web trên điện thoại (cùng Wi-Fi): {net['wifi_url']}")
     print("=" * 70)
     # drop_pending_updates=True: Xóa sạch các update lỗi tồn đọng cũ khi khởi động lại
     # bootstrap_retries=-1: Tự động thử lại không giới hạn nếu mạng Render/Telegram bị ngắt kết nối tạm thời

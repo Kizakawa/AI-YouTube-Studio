@@ -3431,9 +3431,53 @@ async function submitSingleVideoStudio() {
         if (submitBtn) {
             submitBtn.disabled = false;
             submitBtn.innerHTML = originalBtnHTML;
-        }
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// WI-FI BROADCAST & MOBILE ACCESS
+// ═══════════════════════════════════════════════════════════════════════════════
+let currentWifiUrl = window.location.href;
 
+async function openWifiModal() {
+    const modal = document.getElementById('modal-wifi-share');
+    if (!modal) return;
+    modal.style.display = 'flex';
 
+    try {
+        const resp = await fetch('/api/network-info');
+        if (resp.ok) {
+            const data = await resp.json();
+            currentWifiUrl = data.wifi_url || window.location.href;
+            const urlText = document.getElementById('wifi-share-url-text');
+            if (urlText) urlText.innerText = currentWifiUrl;
+
+            const qrImg = document.getElementById('wifi-qr-img');
+            if (qrImg) {
+                const qrEndpoint = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(currentWifiUrl)}`;
+                qrImg.src = qrEndpoint;
+            }
+        }
+    } catch (e) {
+        console.error('Lỗi lấy network info:', e);
+        const urlText = document.getElementById('wifi-share-url-text');
+        if (urlText) urlText.innerText = window.location.href;
+    }
+}
+
+function closeWifiModal() {
+    const modal = document.getElementById('modal-wifi-share');
+    if (modal) modal.style.display = 'none';
+}
+
+function copyWifiUrl() {
+    if (navigator.clipboard && currentWifiUrl) {
+        navigator.clipboard.writeText(currentWifiUrl).then(() => {
+            showToast('✅ Đã sao chép địa chỉ Wi-Fi vào bộ nhớ tạm!', 'success');
+        }).catch(() => {
+            prompt('Sao chép địa chỉ dưới đây:', currentWifiUrl);
+        });
+    } else {
+        prompt('Sao chép địa chỉ dưới đây:', currentWifiUrl);
+    }
+}

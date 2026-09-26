@@ -156,6 +156,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• Mọi thành viên cùng ra lệnh, kịch bản hiển thị công khai trong nhóm.\n"
         f"• Theo dõi toàn bộ hoạt động của admin qua Web Dashboard thời gian thực!\n\n"
         f"📌 **Các lệnh chính:**\n"
+        f"• `/web` - 🌐 Link Web Dashboard qua Wi-Fi (mở trên điện thoại & máy tính)\n"
         f"• `/viral` - 🔥 Gợi ý 5 ý tưởng triệu view (Công thức giữ chân 160% Retention)\n"
         f"• `/videos` - 📺 Xem danh sách tất cả video trong hệ thống (kèm nút xem/tải trực tiếp)\n"
         f"• `/get <id>` - 📥 Tải file video MP4 gửi thẳng vào tin nhắn Telegram để xem ngay\n"
@@ -166,7 +167,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• `/queue` - Xem trạng thái hàng đợi render (FIFO)\n"
         f"• `/cancel <job_id>` - Hủy video đang chờ trong hàng đợi\n"
         f"• `/status` - Báo cáo số lượng video và trạng thái hệ thống\n\n"
-        f"👉 Gõ `/viral`, `/videos` hoặc `/idea` để bắt đầu sáng tạo video cùng nhóm!"
+        f"👉 Gõ `/web`, `/viral`, `/videos` hoặc `/idea` để bắt đầu sáng tạo video cùng nhóm!"
     )
     await safe_reply(update, welcome_text)
 
@@ -2818,6 +2819,37 @@ async def get_video_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_video_file_handler(update, context, job_id)
 
 
+async def web_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gửi link truy cập Web Dashboard qua localhost và mạng Wi-Fi/LAN"""
+    if not is_authorized(update):
+        return
+    from app.utils.network_helper import get_network_info
+    net = get_network_info()
+
+    lan_section = (
+        f"📱 **2. Mở trên điện thoại / iPad / máy khác (Cùng mạng Wi-Fi):**\n"
+        f"👉 `{net['wifi_url']}`\n\n"
+        f"*(Mẹo: Bạn có thể bấm thẳng vào link hoặc copy paste vào trình duyệt Safari/Chrome trên điện thoại)*\n\n"
+    ) if net['is_lan_available'] else ""
+
+    msg = (
+        "🌐 **ĐỊA CHỈ TRUY CẬP WEB DASHBOARD:**\n\n"
+        "💻 **1. Mở trên máy tính này (Localhost):**\n"
+        f"👉 `{net['local_url']}` hoặc `{net['localhost_url']}`\n\n"
+        f"{lan_section}"
+        "💡 **Lưu ý:** Chỉ cần thiết bị kết nối chung mạng Wi-Fi là truy cập được ngay mà không cần cài đặt thêm gì!"
+    )
+    keyboard = []
+    if net['is_lan_available']:
+        keyboard.append([
+            InlineKeyboardButton("📶 Mở Web Dashboard (Wi-Fi)", url=net['wifi_url'])
+        ])
+    keyboard.append([
+        InlineKeyboardButton("💻 Mở Localhost", url=net['local_url'])
+    ])
+    await safe_reply(update, msg, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
 async def chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Thảo luận kịch bản với Đạo diễn AI: /chat <câu hỏi hoặc ý tưởng>
@@ -3000,6 +3032,18 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     ])
     if is_asking_list:
         await _show_videos_list(update, context, page=1)
+        return
+
+    # 3. Tự động nhận diện hỏi địa chỉ Web / phát Wi-Fi / link Dashboard
+    # Ví dụ: "link web", "vào web", "địa chỉ web", "mở web", "wifi web", "web dashboard"
+    is_asking_web = any(kw in lower_text for kw in [
+        "link web", "vào web", "vào dashboard", "dia chi web", "địa chỉ web",
+        "mở web", "mo web", "web dashboard", "xem web", "trang web",
+        "phát wifi", "phat wifi", "wifi web", "truy cập web", "truy cap web",
+        "web studio", "link dashboard"
+    ])
+    if is_asking_web:
+        await web_command(update, context)
         return
 
     with get_db() as db:

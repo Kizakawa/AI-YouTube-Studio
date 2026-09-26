@@ -83,6 +83,12 @@ async def health_check():
     """Endpoint kiểm tra sức khỏe hệ thống (cho Render, UptimeRobot, Docker)"""
     return {"status": "ok", "app": "AI YouTube Multi-Channel Studio"}
 
+@app.get("/api/network-info")
+async def get_network_info_endpoint():
+    """Lấy thông tin địa chỉ IP Wi-Fi và URL truy cập Web Dashboard cho các thiết bị nội bộ"""
+    from app.utils.network_helper import get_network_info
+    return get_network_info()
+
 # ─── Stats ────────────────────────────────────────────────────────────────────
 
 @app.get("/api/stats")
