@@ -1,0 +1,63 @@
+id: health_biohacking
+name: Sức Khỏe Đỉnh Cao & Biohacking Cơ Thể
+badge: 🧬 Sức Khỏe & Sinh Học
+icon: 🧬
+description: "Khoa học tối ưu giấc ngủ, cân bằng dopamine, kéo dài tuổi thọ, hack năng lượng não bộ và giải mã cơ thể người."
+target_audience: "Người muốn nâng cao thể lực, tối ưu hiệu suất làm việc, cải thiện giấc ngủ và sống khỏe mạnh bền vững."
+
+script_blueprint:
+  tone_of_voice: "Khoa học, trực diện, kích hoạt động lực cải thiện bản thân, cảnh báo thói quen độc hại tiềm ẩn."
+  pacing: "Nhanh gọn, 2.5 - 3.0 giây/cảnh, dẫn chứng sinh học minh bạch."
+  hook_formulas:
+    - "Toxic Habit Shock: 'Nếu bạn làm điều này ngay trong 10 phút đầu sau khi thức dậy, bạn đang phá hủy dopamine suốt cả ngày...'"
+    - "Biological Hack: 'Thủ thuật 2 phút của lính đặc nhiệm SEAL giúp bạn chìm vào giấc ngủ sâu trong chưa đầy 5 phút...'"
+    - "Hidden Symptom: 'Nếu bạn thường xuyên thèm đồ ngọt vào 3 giờ chiều, cơ thể bạn đang phát đi tín hiệu cầu cứu về...'"
+    - "Longevity Secret: 'Nghiên cứu của Harvard trên 10.000 người đã phát hiện đúng 1 thói quen giúp kéo dài 10 năm tuổi thọ...'"
+  narrative_structure: "Hook thói quen độc hại -> Cơ chế sinh học diễn ra bên trong tế bào -> Giải pháp 1 phút thay đổi ngay -> Thách thức áp dụng hôm nay -> CTA nâng cấp sức khỏe & Infinite Loop"
+  forbidden_words:
+    - "Chào mừng các bạn đến với kênh sống khỏe"
+    - "Hôm nay mình chia sẻ vài mẹo vặt"
+    - "Hãy ăn uống đầy đủ chất"
+    - "Cảm ơn đã theo dõi video"
+  cta_templates:
+    - "Bạn có dám thử thách 7 ngày áp dụng thói quen này không? Để lại cam kết bên dưới và đăng ký kênh theo dõi... bởi vì..."
+    - "Lưu lại video này để bắt đầu từ sáng mai, và theo dõi kênh nâng cấp cơ thể... bởi vì..."
+  anti_hallucination_rules:
+    - "Luôn dựa trên kiến thức sinh lý học thần kinh (Andrew Huberman, Matthew Walker, David Sinclair, Peter Attia)."
+    - "Có tuyên bố từ chối trách nhiệm y tế ngầm định, không kê đơn thuốc bừa bãi."
+
+visual_aesthetics:
+  art_style: "Clean Medical Aesthetic & Glowing Microscopic Cellular 3D"
+  camera_angles: "Macro 3D zoom into glowing brain synapses, crisp morning sunlight pouring into minimalist kitchen, runner breathing in cold mist"
+  color_palette: "Clean clinical white, vibrant cyan blue, glowing neural gold, healthy fresh botanical green"
+  master_prompt_prefix: "hyper-realistic scientific medical visualization, glowing neural synapses in human brain, crisp modern minimalist laboratory aesthetic, 8k resolution"
+  master_prompt_suffix: "volumetric clean light beams, high-end science documentary quality, vertical 9:16 cinematography, no watermark, no text"
+  negative_prompts: "dirty, grim, cartoon, anime, blurry, low resolution, illness, disgusting, watermark, text"
+  stock_video_keywords:
+    - "brain synapse glowing"
+    - "person drinking clean water morning"
+    - "running athlete morning sun"
+    - "healthy heart beating 3d"
+    - "sleeping peacefully bed"
+
+subtitles:
+  font_family: "Poppins, Montserrat, sans-serif"
+  font_weight: "800"
+  font_size: 40
+  primary_color: "#FFFFFF"
+  highlight_color: "#00E5FF"
+  accent_color: "#10B981"
+  outline_color: "#064E3B"
+  outline_width: 3
+  margin_bottom: 210
+
+audio:
+  preferred_voice_en: "en-US-EricNeural"
+  preferred_voice_vi: "vi-VN-NamMinhNeural"
+  rate: "+2%"
+  pitch: "0Hz"
+  bgm_vibe: "inspiring modern ambient electronic, uplifting rhythmic pulse, energetic clarity"
+  sfx_cues:
+    - "heartbeat_clean"
+    - "water_drop"
+    - "energy_whoosh"

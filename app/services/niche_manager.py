@@ -1,0 +1,371 @@
+"""
+app.services.niche_manager — Hệ thống quản lý Hồ Sơ Ngách Kênh Chuyên Sâu (Niche Intelligence Profiles).
+Nạp, kiểm tra, đồng bộ và cung cấp các quy tắc kịch bản, thị giác, âm thanh và phụ đề cho từng kênh YouTube.
+"""
+import os
+import re
+import yaml
+import logging
+from pathlib import Path
+from typing import Dict, List, Any, Optional, Tuple
+from config.settings import settings
+
+logger = logging.getLogger(__name__)
+
+# Cache in-memory
+_cached_niches: Optional[Dict[str, Dict[str, Any]]] = None
+
+# Alias mapping cho các từ khóa ngách cũ
+NICHE_ALIASES: Dict[str, str] = {
+    "psychology": "psychology",
+    "tam_ly": "psychology",
+    "tam_ly_hoc": "psychology",
+    "history": "history_mystery",
+    "mystery": "history_mystery",
+    "mysteries": "history_mystery",
+    "history_mystery": "history_mystery",
+    "lich_su": "history_mystery",
+    "finance": "finance_wealth",
+    "wealth": "finance_wealth",
+    "money": "finance_wealth",
+    "finance_wealth": "finance_wealth",
+    "tai_chinh": "finance_wealth",
+    "tech": "scifi_future_tech",
+    "science": "scifi_future_tech",
+    "ai": "scifi_future_tech",
+    "scifi": "scifi_future_tech",
+    "scifi_future_tech": "scifi_future_tech",
+    "cong_nghe": "scifi_future_tech",
+    "philosophy": "philosophy_stoicism",
+    "stoic": "philosophy_stoicism",
+    "stoicism": "philosophy_stoicism",
+    "philosophy_stoicism": "philosophy_stoicism",
+    "triet_hoc": "philosophy_stoicism",
+    "horror": "horror_urban_legends",
+    "creepy": "horror_urban_legends",
+    "creepypasta": "horror_urban_legends",
+    "kinh_di": "horror_urban_legends",
+    "horror_urban_legends": "horror_urban_legends",
+    "health": "health_biohacking",
+    "biohack": "health_biohacking",
+    "biohacking": "health_biohacking",
+    "health_biohacking": "health_biohacking",
+    "suc_khoe": "health_biohacking",
+    "luxury": "luxury_motivation",
+    "motivation": "luxury_motivation",
+    "discipline": "luxury_motivation",
+    "luxury_motivation": "luxury_motivation",
+    "dong_luc": "luxury_motivation",
+    "general": "general",
+    "auto": "general",
+    "tong_hop": "general",
+}
+
+
+def get_niches_dir() -> Path:
+    """Trả về đường dẫn thư mục config/niches."""
+    niches_dir = Path(settings.BASE_DIR) / "config" / "niches"
+    niches_dir.mkdir(parents=True, exist_ok=True)
+    return niches_dir
+
+
+def load_all_niches(force_reload: bool = False) -> List[Dict[str, Any]]:
+    """
+    Quét và đọc toàn bộ file *.yaml trong config/niches.
+    Trả về danh sách các Niche Profile.
+    """
+    global _cached_niches
+    if _cached_niches is not None and not force_reload:
+        return list(_cached_niches.values())
+
+    niches_dir = get_niches_dir()
+    profiles: Dict[str, Dict[str, Any]] = {}
+
+    for file_path in niches_dir.glob("*.yaml"):
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+                if isinstance(data, dict) and "id" in data:
+                    nid = data["id"].strip().lower()
+                    data["_file_name"] = file_path.name
+                    profiles[nid] = data
+        except Exception as e:
+            logger.error(f"[NicheManager] Lỗi đọc file {file_path.name}: {e}")
+
+    _cached_niches = profiles
+    logger.info(f"[NicheManager] Đã nạp {len(profiles)} hồ sơ ngách từ {niches_dir}")
+    return list(profiles.values())
+
+
+def get_niche(niche_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Lấy thông tin chi tiết một Niche Profile theo ID.
+    Hỗ trợ alias lookup và fallback về 'general' nếu không tìm thấy.
+    """
+    global _cached_niches
+    if _cached_niches is None:
+        load_all_niches()
+
+    if not niche_id:
+        niche_id = "general"
+
+    raw_id = str(niche_id).strip().lower()
+    clean_id = NICHE_ALIASES.get(raw_id, raw_id)
+
+    if _cached_niches and clean_id in _cached_niches:
+        return _cached_niches[clean_id]
+
+    # Thử tìm theo substring
+    if _cached_niches:
+        for k, v in _cached_niches.items():
+            if k in clean_id or clean_id in k:
+                return v
+
+    # Fallback về general
+    if _cached_niches and "general" in _cached_niches:
+        return _cached_niches["general"]
+
+    # Fallback rỗng an toàn nếu chưa có gì
+    return {
+        "id": "general",
+        "name": "Tổng Hợp",
+        "badge": "🌐 Tổng Hợp",
+        "icon": "🌐",
+        "script_blueprint": {
+            "tone_of_voice": "Cuốn hút, tự nhiên, kịch tính vừa phải.",
+            "hook_formulas": ["Curiosity Gap", "Shock Fact"],
+            "forbidden_words": ["Chào mừng các bạn", "Trong video này"],
+            "cta_templates": ["Nhấn thích và theo dõi kênh..."],
+        },
+        "visual_aesthetics": {
+            "art_style": "Dynamic High-Definition Realism",
+            "master_prompt_prefix": "8k vertical film still, 35mm photography",
+            "master_prompt_suffix": "photorealistic 9:16 vertical composition, no watermark, no text",
+            "negative_prompts": "blurry, low quality, cartoon, watermark, text",
+        },
+        "subtitles": {
+            "primary_color": "#FFFFFF",
+            "highlight_color": "#FFE600",
+            "outline_color": "#000000",
+            "font_family": "Montserrat, sans-serif",
+            "font_size": 40,
+        },
+        "audio": {
+            "preferred_voice_en": "en-US-ChristopherNeural",
+            "preferred_voice_vi": "vi-VN-NamMinhNeural",
+            "bgm_vibe": "dynamic upbeat cinematic",
+        }
+    }
+
+
+def get_channel_niche(channel_id: str) -> Dict[str, Any]:
+    """
+    Lấy hồ sơ ngách chuyên sâu cho một kênh YouTube cụ thể.
+    Đọc từ channels.yaml để tìm niche ID, sau đó nạp profile.
+    """
+    from app.services.channel_manager import get_channel
+    ch = get_channel(channel_id)
+    if not ch:
+        return get_niche("general")
+
+    niche_key = ch.get("niche") or "general"
+    profile = get_niche(niche_key).copy()
+
+    # Áp dụng preferred_voice từ channel nếu có
+    if ch.get("preferred_voice"):
+        audio_cfg = profile.setdefault("audio", {})
+        if str(ch.get("language", "en")).startswith("vi"):
+            audio_cfg["preferred_voice_vi"] = ch["preferred_voice"]
+        else:
+            audio_cfg["preferred_voice_en"] = ch["preferred_voice"]
+
+    profile["_channel_id"] = channel_id
+    profile["_channel_name"] = ch.get("name", channel_id)
+    return profile
+
+
+def save_niche(niche_data: Dict[str, Any]) -> Tuple[bool, str]:
+    """
+    Lưu hoặc cập nhật một Niche Profile vào file YAML.
+    """
+    global _cached_niches
+    clean_id = str(niche_data.get("id", "")).strip().lower().replace(" ", "_")
+    clean_id = re.sub(r'[^a-z0-9_]', '', clean_id)
+    if not clean_id:
+        return False, "ID của hồ sơ ngách không hợp lệ"
+
+    niche_data["id"] = clean_id
+    niches_dir = get_niches_dir()
+    file_path = niches_dir / f"{clean_id}.yaml"
+
+    try:
+        # Xóa trường nội bộ trước khi ghi
+        save_data = {k: v for k, v in niche_data.items() if not k.startswith("_")}
+        with open(file_path, "w", encoding="utf-8") as f:
+            yaml.dump(save_data, f, allow_unicode=True, sort_keys=False, indent=2)
+
+        load_all_niches(force_reload=True)
+        return True, f"Đã lưu hồ sơ ngách '{clean_id}' thành công"
+    except Exception as e:
+        logger.error(f"[NicheManager] Lỗi ghi file {file_path}: {e}")
+        return False, f"Lỗi ghi file: {str(e)}"
+
+
+def delete_niche(niche_id: str) -> Tuple[bool, str]:
+    """
+    Xóa một hồ sơ ngách tùy biến (không cho phép xóa 'general').
+    """
+    global _cached_niches
+    clean_id = str(niche_id).strip().lower()
+    if clean_id in ("general", "psychology", "history_mystery", "finance_wealth"):
+        return False, f"Không thể xóa hồ sơ ngách mặc định cốt lõi '{clean_id}'"
+
+    niches_dir = get_niches_dir()
+    file_path = niches_dir / f"{clean_id}.yaml"
+    if not file_path.exists():
+        return False, f"Không tìm thấy hồ sơ '{clean_id}'"
+
+    try:
+        file_path.unlink()
+        load_all_niches(force_reload=True)
+        return True, f"Đã xóa hồ sơ ngách '{clean_id}'"
+    except Exception as e:
+        return False, f"Lỗi xóa file: {str(e)}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PROMPT INJECTION & STYLE CONVERTERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_script_prompt_instructions(niche_profile: Dict[str, Any], language: str = "en") -> str:
+    """
+    Biến đổi hồ sơ ngách thành khối chỉ dẫn kịch bản chi tiết để tiêm vào Gemini ContentAgent.
+    """
+    niche_name = niche_profile.get("name", "YouTube Shorts")
+    badge = niche_profile.get("badge", "Channel")
+    target_aud = niche_profile.get("target_audience", "Đại chúng người xem Shorts")
+    blueprint = niche_profile.get("script_blueprint", {})
+
+    tone = blueprint.get("tone_of_voice", "Cuốn hút, sắc bén, nhịp điệu nhanh")
+    pacing = blueprint.get("pacing", "2.5 - 3.2 giây/cảnh")
+    structure = blueprint.get("narrative_structure", "Hook 3s -> Bóc tách chi tiết -> Điểm nhấn -> CTA & Infinite Loop")
+    hooks = blueprint.get("hook_formulas", [])
+    forbidden = blueprint.get("forbidden_words", [])
+    ctas = blueprint.get("cta_templates", [])
+    anti_hallucination = blueprint.get("anti_hallucination_rules", [])
+
+    hooks_text = "\n".join(f"      - {h}" for h in hooks) if hooks else "      - 3s Pattern Interrupt Hook"
+    forbidden_text = "\n".join(f"      * KHÔNG ĐƯỢC DÙNG: \"{w}\"" for w in forbidden) if forbidden else "      * Tránh lời mở đầu sáo rỗng"
+    ctas_text = "\n".join(f"      - {c}" for c in ctas) if ctas else "      - Nhấn thích và theo dõi kênh"
+    facts_text = "\n".join(f"      * {rule}" for rule in anti_hallucination) if anti_hallucination else "      * Kiểm chứng tính chính xác"
+
+    return f"""
+═══════════════════════════════════════════════════════════════════════
+🎯 NICHE INTELLIGENCE PROFILE: {niche_name.upper()} ({badge})
+═══════════════════════════════════════════════════════════════════════
+1. KHÁN GIẢ MỤC TIÊU (TARGET AUDIENCE):
+   {target_aud}
+
+2. GIỌNG ĐIỆU ĐẶC TRƯNG (TONE OF VOICE & PACING):
+   - Giọng điệu: {tone}
+   - Nhịp cắt cảnh: {pacing}
+   - Cấu trúc tự sự: {structure}
+
+3. CÔNG THỨC HOOK 3 GIÂY ĐẦU DÀNH RIÊNG CHO NGÁCH NÀY (SCENE 1 HOOK BLUEPRINT):
+{hooks_text}
+
+4. BỘ TỪ KHÓA BỊ CẤM TUYỆT ĐỐI (STRICTLY FORBIDDEN CLICHÉS):
+{forbidden_text}
+
+5. MẪU CALL TO ACTION (CTA) & VÒNG LẶP VÔ TẬN (SEAMLESS INFINITE LOOP):
+{ctas_text}
+
+6. QUY TẮC DẪN CHỨNG & XÁC THỰC (ANTI-HALLUCINATION / RESEARCH RULES):
+{facts_text}
+═══════════════════════════════════════════════════════════════════════
+"""
+
+
+def build_visual_strategy_prompt_instructions(niche_profile: Dict[str, Any]) -> str:
+    """
+    Biến đổi hồ sơ ngách thành chỉ dẫn chiến lược hình ảnh cho VisualDirectorAgent.
+    """
+    visual = niche_profile.get("visual_aesthetics", {})
+    art_style = visual.get("art_style", "Cinematic 8k")
+    angles = visual.get("camera_angles", "Dramatic angles")
+    palette = visual.get("color_palette", "High-contrast cinematic")
+    stock_kws = visual.get("stock_video_keywords", [])
+    stock_text = ", ".join(f'"{kw}"' for kw in stock_kws[:6])
+
+    return f"""
+- Phong cách mỹ thuật ngách: {art_style}
+- Góc quay ưu tiên: {angles}
+- Bảng màu & Ánh sáng: {palette}
+- Từ khóa tư liệu thực tế (Stock keywords): {stock_text}
+"""
+
+
+def build_image_prompt(raw_prompt: str, scene_id: int, niche_profile: Dict[str, Any]) -> Tuple[str, str]:
+    """
+    Xây dựng prompt tối ưu cho ImageAgent (Prompt + Negative Prompt).
+    Kết hợp visual_aesthetics của hồ sơ ngách với mô tả phân cảnh.
+    """
+    cleaned = re.sub(r'[\r\n\t]+', ' ', raw_prompt).strip()
+    cleaned = re.sub(r'\b(watermark|logo|text|border|frame|subtitles)\b', '', cleaned, flags=re.IGNORECASE)
+
+    visual = niche_profile.get("visual_aesthetics", {})
+    prefix = visual.get("master_prompt_prefix", "8k vertical film still, 35mm photography")
+    suffix = visual.get("master_prompt_suffix", "photorealistic 9:16 vertical composition, no watermark, no text")
+    negative = visual.get("negative_prompts", "blurry, low quality, cartoon, watermark, text")
+
+    if scene_id == 1:
+        # Cảnh Hook mở màn: Tăng cường độ thị giác
+        full_prompt = f"viral dramatic frame, {prefix}: {cleaned}, {suffix}, extreme visual intensity, razor-sharp focus"
+    else:
+        full_prompt = f"{prefix}: {cleaned}, {suffix}"
+
+    return full_prompt, negative
+
+
+def hex_to_ass_color(hex_str: str, alpha: int = 0) -> str:
+    """
+    Chuyển đổi màu HEX (#RRGGBB) sang định dạng màu ASS (&HAABBGGRR&).
+    Ví dụ: #FFE600 (Yellow) -> &H0000E6FF&
+    """
+    clean_hex = hex_str.strip().lstrip("#")
+    if len(clean_hex) == 3:
+        clean_hex = "".join(c * 2 for c in clean_hex)
+    if len(clean_hex) != 6:
+        clean_hex = "FFFFFF"
+
+    r = int(clean_hex[0:2], 16)
+    g = int(clean_hex[2:4], 16)
+    b = int(clean_hex[4:6], 16)
+    a = max(0, min(255, alpha))
+
+    return f"&H{a:02X}{b:02X}{g:02X}{r:02X}&"
+
+
+def get_niche_subtitle_style(niche_profile: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Trả về bộ mã màu và font chữ đã chuyển đổi cho ASS Subtitles từ hồ sơ ngách.
+    """
+    sub_cfg = niche_profile.get("subtitles", {})
+    primary_hex = sub_cfg.get("primary_color", "#FFFFFF")
+    highlight_hex = sub_cfg.get("highlight_color", "#FFE600")
+    outline_hex = sub_cfg.get("outline_color", "#000000")
+    font_family = sub_cfg.get("font_family", "Montserrat, sans-serif").split(",")[0].strip()
+    font_size = int(sub_cfg.get("font_size", 40))
+    margin_v = int(sub_cfg.get("margin_bottom", 210))
+
+    return {
+        "fontname": font_family,
+        "fontsize": font_size,
+        "margin_v": margin_v,
+        "primary_ass": hex_to_ass_color(primary_hex, alpha=0),
+        "secondary_ass": hex_to_ass_color(highlight_hex, alpha=0), # Karaoke word-level highlight
+        "outline_ass": hex_to_ass_color(outline_hex, alpha=0),
+        "primary_hex": primary_hex,
+        "highlight_hex": highlight_hex,
+        "outline_hex": outline_hex,
+    }

@@ -1805,6 +1805,47 @@ async def delete_brand_channel(account_id: str, channel_id: str) -> Dict[str, An
         "message": f"Đã xóa kênh '{channel_id}' thành công!"
     }
 
+# ─── Niche Intelligence Profiles Endpoints ─────────────────────────────────
+
+@app.get("/api/niches")
+async def list_niches() -> Dict[str, Any]:
+    """Lấy danh sách tất cả các Hồ Sơ Ngách Kênh (Niche Intelligence Profiles)."""
+    from app.services.niche_manager import load_all_niches
+    niches = load_all_niches()
+    return {"success": True, "count": len(niches), "niches": niches}
+
+@app.get("/api/niches/{niche_id}")
+async def get_niche_endpoint(niche_id: str) -> Dict[str, Any]:
+    """Lấy chi tiết một Hồ Sơ Ngách theo ID."""
+    from app.services.niche_manager import get_niche
+    niche = get_niche(niche_id)
+    return {"success": True, "niche": niche}
+
+@app.post("/api/niches")
+async def save_niche_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Tạo hoặc cập nhật một Hồ Sơ Ngách (Niche Intelligence Profile)."""
+    from app.services.niche_manager import save_niche
+    ok, msg = save_niche(payload)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"success": True, "message": msg, "niche_id": payload.get("id")}
+
+@app.delete("/api/niches/{niche_id}")
+async def delete_niche_endpoint(niche_id: str) -> Dict[str, Any]:
+    """Xóa một Hồ Sơ Ngách tùy biến."""
+    from app.services.niche_manager import delete_niche
+    ok, msg = delete_niche(niche_id)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"success": True, "message": msg}
+
+@app.get("/api/channels/{channel_id}/niche")
+async def get_channel_niche_endpoint(channel_id: str) -> Dict[str, Any]:
+    """Lấy hồ sơ ngách đã phân giải cho một kênh YouTube cụ thể."""
+    from app.services.niche_manager import get_channel_niche
+    profile = get_channel_niche(channel_id)
+    return {"success": True, "profile": profile}
+
 # ─── Channel-Level OAuth Endpoints (Đảm bảo mỗi kênh YouTube có Token riêng) ─
 
 @app.post("/api/channels/{channel_id}/start-auth")

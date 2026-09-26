@@ -71,6 +71,7 @@ function switchTab(tabId) {
 
     if (tabId === 'channels') {
         fetchAccounts();
+        fetchNiches();
     } else if (tabId === 'analytics') {
         loadAnalytics();
     } else if (tabId === 'manual_studio') {
@@ -102,6 +103,7 @@ async function fetchAllData() {
         fetchActivities(),
         fetchMembers(),
         fetchChannels(),
+        fetchNiches(),
         fetchVideos(),
         fetchHealth(),
     ]);
@@ -1602,7 +1604,11 @@ function renderChannelsHub(channels, accounts) {
 
                 <!-- Meta chips -->
                 <div class="channel-hub-meta-chips">
-                    <span class="hub-chip">🎯 <strong>Niche:</strong> ${esc(ch.niche || 'general')}</span>
+                    ${(() => {
+                        const nObj = (allNiches || []).find(n => n.id === ch.niche);
+                        const nText = nObj ? `${esc(nObj.icon || '🎯')} ${esc(nObj.badge || nObj.name)}` : esc(ch.niche || 'general');
+                        return `<span class="hub-chip" style="border-color:rgba(245,158,11,0.35); background:rgba(245,158,11,0.1); color:#fbbf24; cursor:pointer;" onclick="openEditNicheModal('${esc(ch.niche || 'general')}')" title="Bấm để xem & tinh chỉnh khuôn mẫu ngách này"><strong>Ngách:</strong> ${nText}</span>`;
+                    })()}
                     <span class="hub-chip">🎙️ <strong>Giọng:</strong> ${esc(ch.preferred_voice || 'Default')}</span>
                     <span class="hub-chip">🖼️ <strong>Visual:</strong> ${visualLabel}</span>
                     <span class="hub-chip">⏰ <strong>Đăng:</strong> ${pubHour}:00 UTC</span>
@@ -1994,14 +2000,21 @@ function onChannelNameInput(val) {
 
 function openAddChannelModal(accountId) {
     populateParentAccountSelect(accountId);
+    updateChannelNicheSelectOptions(allNiches);
     document.getElementById('channel-mode').value = 'add';
     document.getElementById('modal-channel-title').textContent = 'Thêm Kênh YouTube Mới';
     document.getElementById('channel-input-id').value = '';
     document.getElementById('channel-input-id').disabled = false;
     document.getElementById('channel-input-name').value = '';
-    document.getElementById('channel-input-niche').value = '';
+    
+    // Mặc định chọn Niche đầu tiên hoặc psychology
+    const nicheSel = document.getElementById('channel-input-niche');
+    if (nicheSel) {
+        nicheSel.value = 'psychology';
+        onChannelNicheSelectChanged('psychology');
+    }
+
     document.getElementById('channel-input-lang').value = 'en';
-    document.getElementById('channel-input-voice').value = 'en-US-ChristopherNeural';
     document.getElementById('channel-input-visual').value = 'auto';
     document.getElementById('channel-input-hour').value = '12';
     document.getElementById('modal-channel').classList.add('visible');
@@ -2012,6 +2025,7 @@ function openAddChannelModal(accountId) {
 
 function openEditChannelModal(accountId, channelId) {
     populateParentAccountSelect(accountId);
+    updateChannelNicheSelectOptions(allNiches);
     const acc = allAccounts.find(a => a.id === accountId);
     const ch = acc?.brand_channels?.find(c => c.id === channelId);
     if (!ch) {
@@ -2024,7 +2038,12 @@ function openEditChannelModal(accountId, channelId) {
     document.getElementById('channel-input-id').value = ch.id;
     document.getElementById('channel-input-id').disabled = true; // Không cho đổi ID khi sửa
     document.getElementById('channel-input-name').value = ch.name || '';
-    document.getElementById('channel-input-niche').value = ch.niche || '';
+    
+    const nicheSel = document.getElementById('channel-input-niche');
+    if (nicheSel) {
+        nicheSel.value = ch.niche || 'general';
+    }
+
     document.getElementById('channel-input-lang').value = ch.language || 'en';
     document.getElementById('channel-input-voice').value = ch.preferred_voice || 'en-US-ChristopherNeural';
     document.getElementById('channel-input-visual').value = ch.visual_mode || 'auto';
@@ -4345,6 +4364,19 @@ function openInstantPreviewModal(cfg) {
     instantPlayerState.totalDuration = instantPlayerState.scenes.reduce((acc, sc) => acc + (parseFloat(sc.duration) || 4), 0);
     if (instantPlayerState.totalDuration <= 0) instantPlayerState.totalDuration = 30;
 
+    // Nạp màu highlight phụ đề từ Niche Profile tương ứng
+    let highlightColor = '#FFE600';
+    const targetNicheId = cfg.nicheId || cfg.niche;
+    if (targetNicheId) {
+        const n = (allNiches || []).find(x => x.id === targetNicheId);
+        if (n?.subtitles?.highlight_color) highlightColor = n.subtitles.highlight_color;
+    } else if (cfg.channelId) {
+        const ch = (allChannels || []).find(c => c.id === cfg.channelId);
+        const n = (allNiches || []).find(x => x.id === (ch?.niche || 'general'));
+        if (n?.subtitles?.highlight_color) highlightColor = n.subtitles.highlight_color;
+    }
+    instantPlayerState.highlightColor = highlightColor;
+
     // Update Header & Meta
     const titleEl = document.getElementById('preview-director-title');
     if (titleEl) titleEl.textContent = instantPlayerState.title;
@@ -4607,10 +4639,18 @@ function updateInstantPlayerTick() {
             if (wordEl) {
                 if (w < activeWordIdx) {
                     wordEl.className = 'preview-k-word passed';
+                    wordEl.style.color = '';
+                    wordEl.style.textShadow = '';
                 } else if (w === activeWordIdx) {
                     wordEl.className = 'preview-k-word active';
+                    if (instantPlayerState.highlightColor) {
+                        wordEl.style.color = instantPlayerState.highlightColor;
+                        wordEl.style.textShadow = `0 0 14px ${instantPlayerState.highlightColor}, 2px 2px 0 #000, -2px -2px 0 #000`;
+                    }
                 } else {
                     wordEl.className = 'preview-k-word future';
+                    wordEl.style.color = '';
+                    wordEl.style.textShadow = '';
                 }
             }
         }
@@ -4936,4 +4976,406 @@ async function openInstantPreviewForJob(jobId) {
         showToast('Lỗi tải dữ liệu job: ' + e.message, 'error');
     }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   NICHE INTELLIGENCE PROFILES CONTROLLER (HỒ SƠ NGÁCH KÊNH)
+   ═══════════════════════════════════════════════════════════════ */
+
+let allNiches = [];
+
+async function fetchNiches() {
+    try {
+        const res = await apiGet('/api/niches');
+        if (res && res.niches) {
+            allNiches = res.niches;
+            renderNichesGrid(allNiches);
+            updateChannelNicheSelectOptions(allNiches);
+        }
+    } catch (e) {
+        console.error('Lỗi tải danh sách hồ sơ ngách:', e);
+    }
+}
+
+function updateChannelNicheSelectOptions(niches) {
+    const sel = document.getElementById('channel-input-niche');
+    if (!sel || !niches || niches.length === 0) return;
+    const curVal = sel.value;
+    sel.innerHTML = niches.map(n => `
+        <option value="${esc(n.id)}">${esc(n.icon || '🎯')} ${esc(n.name)}</option>
+    `).join('');
+    if (curVal && niches.some(n => n.id === curVal)) {
+        sel.value = curVal;
+    }
+}
+
+function renderNichesGrid(niches) {
+    const container = document.getElementById('niches-grid-container');
+    if (!container) return;
+
+    if (!niches || niches.length === 0) {
+        container.innerHTML = `
+            <div style="grid-column: 1 / -1; text-align:center; padding:30px; color:var(--text-muted); background:rgba(255,255,255,0.02); border-radius:12px; border:1px dashed rgba(255,255,255,0.1);">
+                <div style="font-size:32px; margin-bottom:8px;">🎯</div>
+                <h4 style="color:var(--text-primary); margin-bottom:6px;">Chưa có Hồ Sơ Ngách nào</h4>
+                <button class="btn btn-primary btn-sm" onclick="openAddNicheModal()">+ Tạo Hồ Sơ Ngách Đầu Tiên</button>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = niches.map(n => {
+        const bp = n.script_blueprint || {};
+        const vis = n.visual_aesthetics || {};
+        const sub = n.subtitles || {};
+        const aud = n.audio || {};
+
+        // Find which channels are linked to this niche
+        const linkedChannels = (allChannels || []).filter(c => c.niche === n.id);
+        const linkedBadge = linkedChannels.length > 0
+            ? `<div class="niche-channels-connected">
+                 <span style="font-size:11px; color:var(--text-muted); margin-right:4px;">Kênh áp dụng:</span>
+                 ${linkedChannels.map(c => `<span class="niche-ch-chip">📺 ${esc(c.name)}</span>`).join('')}
+               </div>`
+            : `<div class="niche-channels-connected">
+                 <span style="font-size:11px; color:var(--text-muted); font-style:italic;">Chưa gắn vào kênh nào</span>
+               </div>`;
+
+        const firstHook = (bp.hook_formulas && bp.hook_formulas[0]) ? bp.hook_formulas[0] : 'Pattern Interrupt Hook';
+        const artStyle = vis.art_style || 'Cinematic Realism';
+        const highlightColor = sub.highlight_color || '#FFE600';
+        const primaryColor = sub.primary_color || '#FFFFFF';
+        const voiceDesc = aud.preferred_voice_en ? aud.preferred_voice_en.split('-')[2] || aud.preferred_voice_en : 'Default';
+
+        return `
+            <div class="niche-card" id="niche-card-${esc(n.id)}">
+                <div>
+                    <div class="niche-card-header">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="font-size:24px;">${esc(n.icon || '🎯')}</span>
+                            <div>
+                                <h4 style="margin:0; font-size:15px; font-weight:700; color:#fff;">${esc(n.name)}</h4>
+                                <span style="font-size:10.5px; color:var(--text-muted); font-family:monospace;">ID: ${esc(n.id)}</span>
+                            </div>
+                        </div>
+                        <span class="niche-badge-pill">${esc(n.badge || n.id)}</span>
+                    </div>
+
+                    <div class="niche-card-desc" title="${esc(n.description || '')}">
+                        ${esc(n.description || 'Chưa có mô tả chi tiết')}
+                    </div>
+
+                    <div class="niche-spec-list">
+                        <div class="niche-spec-item">
+                            <span class="niche-spec-label">⚡ Hook 3s:</span>
+                            <span class="niche-spec-val" title="${esc(firstHook)}">${esc(firstHook)}</span>
+                        </div>
+                        <div class="niche-spec-item">
+                            <span class="niche-spec-label">🎨 Mỹ thuật:</span>
+                            <span class="niche-spec-val" title="${esc(artStyle)}">${esc(artStyle)}</span>
+                        </div>
+                        <div class="niche-spec-item">
+                            <span class="niche-spec-label">🔤 Phụ đề:</span>
+                            <span class="niche-spec-val" style="display:flex; align-items:center; gap:6px;">
+                                <span style="width:12px; height:12px; border-radius:3px; background:${esc(highlightColor)}; display:inline-block; border:1px solid rgba(0,0,0,0.5);"></span>
+                                <strong style="color:${esc(highlightColor)};">${esc(highlightColor)}</strong>
+                                <span style="font-size:10.5px; color:var(--text-muted);">(${esc(sub.font_family ? sub.font_family.split(',')[0] : 'Arial')})</span>
+                            </span>
+                        </div>
+                        <div class="niche-spec-item">
+                            <span class="niche-spec-label">🎙️ Giọng/Nhạc:</span>
+                            <span class="niche-spec-val" title="${esc(aud.bgm_vibe || '')}">${esc(voiceDesc)} · ${esc(aud.bgm_vibe ? aud.bgm_vibe.split(',')[0] : 'Cinematic')}</span>
+                        </div>
+                    </div>
+
+                    ${linkedBadge}
+                </div>
+
+                <div style="display:flex; gap:8px; margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.06);">
+                    <button class="btn btn-primary btn-sm" style="flex:1; justify-content:center;" onclick="openEditNicheModal('${esc(n.id)}')">
+                        👁️ Xem & Tinh Chỉnh Khuôn Mẫu
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function openAddNicheModal() {
+    document.getElementById('niche-field-mode').value = 'add';
+    const tempId = `custom_${Date.now().toString(36)}`;
+    document.getElementById('niche-field-id').value = tempId;
+    document.getElementById('niche-modal-title').textContent = 'Tạo Hồ Sơ Ngách Mới';
+    document.getElementById('niche-modal-icon-badge').textContent = '✨';
+
+    document.getElementById('niche-input-name').value = '';
+    document.getElementById('niche-input-badge').value = '✨ Tùy Biến';
+    document.getElementById('niche-input-icon').value = '✨';
+    document.getElementById('niche-input-target-aud').value = 'Khán giả xem YouTube Shorts';
+    document.getElementById('niche-input-tone').value = 'Cuốn hút, sắc bén, kịch tính, nhịp điệu nhanh';
+    document.getElementById('niche-input-pacing').value = '2.5 - 3.2 giây/cảnh';
+    document.getElementById('niche-input-structure').value = 'Hook 3s -> Bóc trần tình tiết -> Điểm nhấn -> CTA & Infinite Loop';
+    document.getElementById('niche-input-hooks').value = "Curiosity Shock: 'Hầu hết mọi người không biết điều này...'\nThe Shock Law: 'Sự thật bất ngờ nhất là...'";
+    document.getElementById('niche-input-forbidden').value = "Chào mừng các bạn đã quay trở lại\nBạn có bao giờ tự hỏi\nTrong video hôm nay";
+    document.getElementById('niche-input-ctas').value = "Nhấn thích và theo dõi kênh để không bỏ lỡ phần tiếp theo... bởi vì...";
+    document.getElementById('niche-input-facts').value = "Kiểm chứng thông tin chính xác trước khi phát biểu";
+
+    document.getElementById('niche-input-art-style').value = 'Dark Cinematic Noir & 35mm Photography';
+    document.getElementById('niche-input-palette').value = 'High contrast, dramatic shadows, vibrant accents';
+    document.getElementById('niche-input-angles').value = 'Extreme close-up, dramatic low-angle, cinematic tracking';
+    document.getElementById('niche-input-prefix').value = '8k vertical film still, dramatic volumetric lighting, 35mm photography';
+    document.getElementById('niche-input-suffix').value = 'photorealistic 9:16 vertical composition, razor-sharp focus, no watermark, no text';
+    document.getElementById('niche-input-negatives').value = 'blurry, low quality, deformed, cartoon, anime, watermark, text';
+    document.getElementById('niche-input-stock-kws').value = 'people walking street, cinematic city, dramatic sunset';
+
+    document.getElementById('niche-input-font').value = 'Montserrat, sans-serif';
+    document.getElementById('niche-input-font-size').value = 40;
+    document.getElementById('niche-input-margin-v').value = 210;
+    document.getElementById('niche-color-primary').value = '#FFFFFF';
+    document.getElementById('niche-text-primary').value = '#FFFFFF';
+    document.getElementById('niche-color-highlight').value = '#FFE600';
+    document.getElementById('niche-text-highlight').value = '#FFE600';
+    document.getElementById('niche-color-outline').value = '#000000';
+    document.getElementById('niche-text-outline').value = '#000000';
+
+    document.getElementById('niche-input-voice-en').value = 'en-US-ChristopherNeural';
+    document.getElementById('niche-input-voice-vi').value = 'vi-VN-NamMinhNeural';
+    document.getElementById('niche-input-rate').value = '0%';
+    document.getElementById('niche-input-pitch').value = '0Hz';
+    document.getElementById('niche-input-bgm').value = 'dynamic upbeat cinematic, modern groove';
+
+    document.getElementById('btn-delete-niche').style.display = 'none';
+
+    switchNicheTab('script');
+    updateNicheLiveSubtitlePreview();
+    document.getElementById('modal-niche-editor').classList.add('visible');
+}
+
+function openEditNicheModal(nicheId) {
+    const n = allNiches.find(x => x.id === nicheId);
+    if (!n) {
+        showToast('Không tìm thấy thông tin hồ sơ ngách ' + nicheId, 'error');
+        return;
+    }
+
+    document.getElementById('niche-field-mode').value = 'edit';
+    document.getElementById('niche-field-id').value = n.id;
+    document.getElementById('niche-modal-title').textContent = `Chỉnh Sửa Khuôn Mẫu: ${n.name}`;
+    document.getElementById('niche-modal-icon-badge').textContent = n.icon || '🎯';
+
+    document.getElementById('niche-input-name').value = n.name || '';
+    document.getElementById('niche-input-badge').value = n.badge || '';
+    document.getElementById('niche-input-icon').value = n.icon || '🎯';
+    document.getElementById('niche-input-target-aud').value = n.target_audience || '';
+
+    const bp = n.script_blueprint || {};
+    document.getElementById('niche-input-tone').value = bp.tone_of_voice || '';
+    document.getElementById('niche-input-pacing').value = bp.pacing || '';
+    document.getElementById('niche-input-structure').value = bp.narrative_structure || '';
+    document.getElementById('niche-input-hooks').value = (bp.hook_formulas || []).join('\n');
+    document.getElementById('niche-input-forbidden').value = (bp.forbidden_words || []).join('\n');
+    document.getElementById('niche-input-ctas').value = (bp.cta_templates || []).join('\n');
+    document.getElementById('niche-input-facts').value = (bp.anti_hallucination_rules || []).join('\n');
+
+    const vis = n.visual_aesthetics || {};
+    document.getElementById('niche-input-art-style').value = vis.art_style || '';
+    document.getElementById('niche-input-palette').value = vis.color_palette || '';
+    document.getElementById('niche-input-angles').value = vis.camera_angles || '';
+    document.getElementById('niche-input-prefix').value = vis.master_prompt_prefix || '';
+    document.getElementById('niche-input-suffix').value = vis.master_prompt_suffix || '';
+    document.getElementById('niche-input-negatives').value = vis.negative_prompts || '';
+    document.getElementById('niche-input-stock-kws').value = (vis.stock_video_keywords || []).join(', ');
+
+    const sub = n.subtitles || {};
+    document.getElementById('niche-input-font').value = sub.font_family || 'Montserrat, sans-serif';
+    document.getElementById('niche-input-font-size').value = sub.font_size || 40;
+    document.getElementById('niche-input-margin-v').value = sub.margin_bottom || 210;
+    document.getElementById('niche-color-primary').value = sub.primary_color || '#FFFFFF';
+    document.getElementById('niche-text-primary').value = sub.primary_color || '#FFFFFF';
+    document.getElementById('niche-color-highlight').value = sub.highlight_color || '#FFE600';
+    document.getElementById('niche-text-highlight').value = sub.highlight_color || '#FFE600';
+    document.getElementById('niche-color-outline').value = sub.outline_color || '#000000';
+    document.getElementById('niche-text-outline').value = sub.outline_color || '#000000';
+
+    const aud = n.audio || {};
+    document.getElementById('niche-input-voice-en').value = aud.preferred_voice_en || 'en-US-ChristopherNeural';
+    document.getElementById('niche-input-voice-vi').value = aud.preferred_voice_vi || 'vi-VN-NamMinhNeural';
+    document.getElementById('niche-input-rate').value = aud.rate || '0%';
+    document.getElementById('niche-input-pitch').value = aud.pitch || '0Hz';
+    document.getElementById('niche-input-bgm').value = aud.bgm_vibe || '';
+
+    // Show delete button only if not core niche
+    const coreNiches = ['general', 'psychology', 'history_mystery', 'finance_wealth'];
+    document.getElementById('btn-delete-niche').style.display = coreNiches.includes(n.id) ? 'none' : 'block';
+
+    switchNicheTab('script');
+    updateNicheLiveSubtitlePreview();
+    document.getElementById('modal-niche-editor').classList.add('visible');
+}
+
+function closeNicheModal() {
+    document.getElementById('modal-niche-editor').classList.remove('visible');
+}
+
+function switchNicheTab(tabName) {
+    document.querySelectorAll('.niche-modal-tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.niche-pane').forEach(pane => {
+        pane.classList.remove('active');
+        pane.style.display = 'none';
+    });
+
+    const activeBtn = document.getElementById(`tab-btn-niche-${tabName}`);
+    const activePane = document.getElementById(`niche-pane-${tabName}`);
+    if (activeBtn) activeBtn.classList.add('active');
+    if (activePane) {
+        activePane.classList.add('active');
+        activePane.style.display = 'block';
+    }
+}
+
+function updateNicheLiveSubtitlePreview() {
+    const font = document.getElementById('niche-input-font')?.value || 'Montserrat, sans-serif';
+    const fontSize = parseInt(document.getElementById('niche-input-font-size')?.value) || 40;
+    const primary = document.getElementById('niche-color-primary')?.value || '#FFFFFF';
+    const highlight = document.getElementById('niche-color-highlight')?.value || '#FFE600';
+    const outline = document.getElementById('niche-color-outline')?.value || '#000000';
+
+    // Keep text inputs in sync
+    const textPri = document.getElementById('niche-text-primary');
+    const textHigh = document.getElementById('niche-text-highlight');
+    const textOut = document.getElementById('niche-text-outline');
+    if (textPri) textPri.value = primary;
+    if (textHigh) textHigh.value = highlight;
+    if (textOut) textOut.value = outline;
+
+    const w1 = document.getElementById('sample-w1');
+    const w2 = document.getElementById('sample-w2');
+    const w3 = document.getElementById('sample-w3');
+
+    const previewScale = 0.55; // Fit preview box comfortably
+    const scaledSize = Math.round(fontSize * previewScale);
+    const outlineShadow = `2px 2px 0 ${outline}, -2px -2px 0 ${outline}, 2px -2px 0 ${outline}, -2px 2px 0 ${outline}, 0 4px 10px rgba(0,0,0,0.8)`;
+
+    [w1, w2, w3].forEach(w => {
+        if (!w) return;
+        w.style.fontFamily = font;
+        w.style.fontSize = `${scaledSize}px`;
+    });
+
+    if (w1) {
+        w1.style.color = primary;
+        w1.style.textShadow = outlineShadow;
+    }
+    if (w2) {
+        w2.style.color = highlight;
+        w2.style.textShadow = `0 0 14px ${highlight}, ${outlineShadow}`;
+    }
+    if (w3) {
+        w3.style.color = primary;
+        w3.style.textShadow = outlineShadow;
+    }
+}
+
+async function submitNicheForm() {
+    const id = document.getElementById('niche-field-id').value.trim();
+    const name = document.getElementById('niche-input-name').value.trim();
+    if (!name) {
+        showToast('Vui lòng nhập Tên Ngách', 'error');
+        document.getElementById('niche-input-name')?.focus();
+        return;
+    }
+
+    const parseLines = (val) => (val || '').split('\n').map(l => l.trim()).filter(Boolean);
+    const parseCsv = (val) => (val || '').split(',').map(l => l.trim()).filter(Boolean);
+
+    const payload = {
+        id: id,
+        name: name,
+        badge: document.getElementById('niche-input-badge').value.trim() || name,
+        icon: document.getElementById('niche-input-icon').value.trim() || '🎯',
+        target_audience: document.getElementById('niche-input-target-aud').value.trim(),
+        script_blueprint: {
+            tone_of_voice: document.getElementById('niche-input-tone').value.trim(),
+            pacing: document.getElementById('niche-input-pacing').value.trim(),
+            narrative_structure: document.getElementById('niche-input-structure').value.trim(),
+            hook_formulas: parseLines(document.getElementById('niche-input-hooks').value),
+            forbidden_words: parseLines(document.getElementById('niche-input-forbidden').value),
+            cta_templates: parseLines(document.getElementById('niche-input-ctas').value),
+            anti_hallucination_rules: parseLines(document.getElementById('niche-input-facts').value),
+        },
+        visual_aesthetics: {
+            art_style: document.getElementById('niche-input-art-style').value.trim(),
+            color_palette: document.getElementById('niche-input-palette').value.trim(),
+            camera_angles: document.getElementById('niche-input-angles').value.trim(),
+            master_prompt_prefix: document.getElementById('niche-input-prefix').value.trim(),
+            master_prompt_suffix: document.getElementById('niche-input-suffix').value.trim(),
+            negative_prompts: document.getElementById('niche-input-negatives').value.trim(),
+            stock_video_keywords: parseCsv(document.getElementById('niche-input-stock-kws').value),
+        },
+        subtitles: {
+            font_family: document.getElementById('niche-input-font').value,
+            font_size: parseInt(document.getElementById('niche-input-font-size').value) || 40,
+            margin_bottom: parseInt(document.getElementById('niche-input-margin-v').value) || 210,
+            primary_color: document.getElementById('niche-color-primary').value,
+            highlight_color: document.getElementById('niche-color-highlight').value,
+            outline_color: document.getElementById('niche-color-outline').value,
+        },
+        audio: {
+            preferred_voice_en: document.getElementById('niche-input-voice-en').value,
+            preferred_voice_vi: document.getElementById('niche-input-voice-vi').value,
+            rate: document.getElementById('niche-input-rate').value.trim(),
+            pitch: document.getElementById('niche-input-pitch').value.trim(),
+            bgm_vibe: document.getElementById('niche-input-bgm').value.trim(),
+        }
+    };
+
+    try {
+        const res = await apiPost('/api/niches', payload);
+        if (res && res.success) {
+            showToast('✅ Đã lưu Hồ Sơ Ngách thành công!', 'success');
+            closeNicheModal();
+            await fetchNiches();
+        } else {
+            showToast('Lỗi lưu hồ sơ ngách: ' + (res?.message || 'Không rõ'), 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi: ' + e.message, 'error');
+    }
+}
+
+async function deleteCurrentNiche() {
+    const id = document.getElementById('niche-field-id').value;
+    if (!confirm(`Bạn có chắc chắn muốn xóa hồ sơ ngách '${id}' không?`)) return;
+
+    try {
+        const resp = await fetch(`/api/niches/${id}`, { method: 'DELETE' });
+        const res = await resp.json();
+        if (resp.ok && res.success) {
+            showToast('✅ Đã xóa hồ sơ ngách thành công!', 'success');
+            closeNicheModal();
+            await fetchNiches();
+        } else {
+            showToast('Lỗi xóa hồ sơ ngách: ' + (res?.detail || res?.message || 'Không rõ'), 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi: ' + e.message, 'error');
+    }
+}
+
+function onChannelNicheSelectChanged(nicheId) {
+    const n = allNiches.find(x => x.id === nicheId);
+    if (!n) return;
+
+    // Auto-suggest voice based on niche
+    const lang = document.getElementById('channel-input-lang')?.value || 'en';
+    const voiceSelect = document.getElementById('channel-input-voice');
+    if (voiceSelect && n.audio) {
+        const recVoice = lang === 'vi' ? n.audio.preferred_voice_vi : n.audio.preferred_voice_en;
+        if (recVoice && Array.from(voiceSelect.options).some(opt => opt.value === recVoice)) {
+            voiceSelect.value = recVoice;
+        }
+    }
+
+    showToast(`🎯 Đã chọn ngách: ${n.badge || n.name} (Tự động tối ưu giọng đọc & visual)`, 'info');
+}
+
 

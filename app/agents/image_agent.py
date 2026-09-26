@@ -10,20 +10,26 @@ from app.utils.key_rotator import KeyRotator
 logger = logging.getLogger(__name__)
 
 
-def master_cinematic_prompt(raw_prompt: str, scene_id: int = 0) -> str:
+def master_cinematic_prompt(raw_prompt: str, scene_id: int = 0, niche_id: str = "general") -> str:
     """
     Chuẩn hóa prompt cho AI tạo ảnh theo phong cách điện ảnh dọc 9:16 siêu thực.
-    HOÀN TOÀN ĐỘNG THEO NỘI DUNG DO AI DIRECTOR ĐỀ XUẤT — Không hardcode bất kỳ chủ đề cụ thể nào.
+    Tự động áp dụng bộ quy tắc thị giác chuyên sâu từ Niche Intelligence Profile.
     """
+    try:
+        from app.services.niche_manager import get_niche, build_image_prompt
+        niche_profile = get_niche(niche_id)
+        full_prompt, _ = build_image_prompt(raw_prompt, scene_id=scene_id, niche_profile=niche_profile)
+        return full_prompt
+    except Exception:
+        pass
+
     cleaned = re.sub(r'[\r\n\t]+', ' ', raw_prompt).strip()
     cleaned = re.sub(r'\b(watermark|logo|text|border|frame|subtitles)\b', '', cleaned, flags=re.IGNORECASE)
 
     if scene_id == 1:
-        # Cảnh mở màn Hook 3 giây đầu: Đặt chủ đề và hành động cốt lõi lên hàng đầu
         prefix = "8k vertical dramatic frame: "
         suffix = ", extreme visual intensity, dramatic chiaroscuro lighting, razor-sharp focus, award-winning cinematography, photorealistic 9:16 vertical composition, no watermark, no text, no border"
     else:
-        # Cảnh thông thường: Điện ảnh cao cấp, chân thực, giữ đúng chi tiết bối cảnh
         prefix = "8k vertical film still: "
         suffix = ", hyper-realistic details, dramatic volumetric lighting, 35mm cinematic photography, photorealistic 9:16 vertical composition, no watermark, no text, no border"
 
@@ -46,7 +52,7 @@ class ImageAgent:
         prompt: str,
         output_path: str,
         aspect_ratio: str = "9:16",
-        niche: str = "cinematic",
+        niche: str = "general",
         scene_id: int = 0,
         visual_prompt: Optional[str] = None,
     ) -> Optional[str]:
@@ -60,7 +66,7 @@ class ImageAgent:
             else prompt.strip()
         )
 
-        anchored = master_cinematic_prompt(base_prompt, scene_id=scene_id)
+        anchored = master_cinematic_prompt(base_prompt, scene_id=scene_id, niche_id=niche)
 
         # 1. ƯU TIÊN SỐ 1: Thử gọi trực tiếp công cụ tạo ảnh của Google (Gemini Flash/Pro Image)
         google_res = self._try_google_image_api(base_prompt, output_path, aspect_ratio=aspect_ratio)

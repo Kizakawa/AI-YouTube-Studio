@@ -1,0 +1,59 @@
+id: general
+name: Tổng Hợp & Đời Sống Thực Tế (General & Universal Viral)
+badge: 🌐 Tổng Hợp
+icon: 🌐
+description: "Chủ đề tổng hợp đa dạng, kiến thức đời sống thú vị, sự thật bất ngờ và các câu chuyện phổ quát dễ viral trên toàn cầu."
+target_audience: "Đại chúng người xem YouTube Shorts mọi lứa tuổi, yêu thích những điều mới lạ, thú vị."
+
+script_blueprint:
+  tone_of_voice: "Cuốn hút, tự nhiên, kịch tính vừa phải, gây tò mò tức thì và giữ nhịp chắc chắn."
+  pacing: "Chuẩn YouTube Shorts, 2.5 - 3.2 giây/cảnh, nhịp điệu sinh động."
+  hook_formulas:
+    - "Curiosity Gap: 'Hầu hết mọi người đều không biết điều kỳ lạ này diễn ra ngay sau lưng họ mỗi ngày...'"
+    - "The Counter-Intuitive Truth: 'Điều bạn luôn nghĩ là đúng bấy lâu nay thực ra lại hoàn toàn ngược lại...'"
+    - "Shock Fact: 'Đây là lý do chính xác tại sao [X] lại xảy ra mà 90% người giải thích sai...'"
+  narrative_structure: "Hook đảo ngược định kiến (3s) -> Mở rộng tình tiết hấp dẫn -> Điểm cao trào hé lộ bí mật -> CTA gắn kết cộng đồng & Infinite Loop"
+  forbidden_words:
+    - "Chào mừng các bạn"
+    - "Trong video này"
+    - "Hãy like và subscribe kênh"
+  cta_templates:
+    - "Bạn đã từng chứng kiến điều này bao giờ chưa? Thả bình luận bên dưới và đăng ký kênh theo dõi thêm nhiều điều thú vị... bởi vì..."
+    - "Lưu lại video này và theo dõi kênh để không bỏ lỡ những sự thật bất ngờ... bởi vì..."
+  anti_hallucination_rules:
+    - "Kiểm chứng thông tin chính xác trước khi khẳng định một sự thật."
+
+visual_aesthetics:
+  art_style: "Dynamic High-Definition Realism & Cinema"
+  camera_angles: "Dynamic tracking shot, eye-level cinematic medium shot, vivid environmental details"
+  color_palette: "Vibrant balanced tones, natural cinematic contrast, rich ambient lighting"
+  master_prompt_prefix: "8k vertical film still, dynamic composition, dramatic volumetric lighting, 35mm cinematic photography"
+  master_prompt_suffix: "hyper-realistic details, razor-sharp focus, photorealistic 9:16 vertical composition, no watermark, no text"
+  negative_prompts: "blurry, low quality, deformed, watermark, text, signature, cartoon, anime"
+  stock_video_keywords:
+    - "people walking street"
+    - "dramatic sunset nature"
+    - "city timelapse night"
+    - "man thinking looking away"
+
+subtitles:
+  font_family: "Montserrat, sans-serif"
+  font_weight: "900"
+  font_size: 40
+  primary_color: "#FFFFFF"
+  highlight_color: "#FFE600"
+  accent_color: "#FF3366"
+  outline_color: "#000000"
+  outline_width: 3
+  margin_bottom: 210
+
+audio:
+  preferred_voice_en: "en-US-ChristopherNeural"
+  preferred_voice_vi: "vi-VN-NamMinhNeural"
+  rate: "0%"
+  pitch: "0Hz"
+  bgm_vibe: "dynamic upbeat cinematic, modern groove, subtle suspense"
+  sfx_cues:
+    - "whoosh"
+    - "hit"
+    - "swell"

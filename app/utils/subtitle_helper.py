@@ -139,9 +139,14 @@ class SubtitleHelper:
         fontname: str = "Arial",
         fontsize: int = 40,
         margin_v: int = 210,
+        primary_color: Optional[str] = None,
+        secondary_color: Optional[str] = None,
+        outline_color: Optional[str] = None,
+        niche_id: Optional[str] = None,
     ) -> str:
         """
         Tạo nội dung file .ass chuẩn với karaoke word-level highlight.
+        Tự động nạp font và màu sắc từ Niche Profile nếu niche_id được cung cấp.
 
         Mỗi chunk (2-4 từ) = 1 dialogue entry.
         Mỗi từ trong chunk có {\\k} tag để highlight lần lượt.
@@ -151,14 +156,37 @@ class SubtitleHelper:
         Returns:
             Chuỗi nội dung ASS hoàn chỉnh.
         """
+        # Nếu có niche_id, tự động lấy cấu hình phụ đề từ Niche Profile
+        eff_primary = primary_color or ASS_WHITE
+        eff_secondary = secondary_color or ASS_YELLOW
+        eff_outline = outline_color or ASS_BLACK
+        eff_font = fontname
+        eff_size = fontsize
+        eff_margin = margin_v
+
+        if niche_id:
+            try:
+                from app.services.niche_manager import get_niche, get_niche_subtitle_style
+                niche_prof = get_niche(niche_id)
+                niche_sub = get_niche_subtitle_style(niche_prof)
+                eff_primary = primary_color or niche_sub.get("primary_ass", ASS_WHITE)
+                eff_secondary = secondary_color or niche_sub.get("secondary_ass", ASS_YELLOW)
+                eff_outline = outline_color or niche_sub.get("outline_ass", ASS_BLACK)
+                if not fontname or fontname == "Arial":
+                    eff_font = niche_sub.get("fontname", "Arial")
+                eff_size = fontsize if fontsize != 40 else niche_sub.get("fontsize", 40)
+                eff_margin = margin_v if margin_v != 210 else niche_sub.get("margin_v", 210)
+            except Exception as e:
+                pass
+
         header = ASS_HEADER_TEMPLATE.format(
-            fontname=fontname,
-            fontsize=fontsize,
-            primary=ASS_WHITE,
-            secondary=ASS_YELLOW,   # SecondaryColour = màu karaoke đang đọc
-            outline=ASS_BLACK,
+            fontname=eff_font,
+            fontsize=eff_size,
+            primary=eff_primary,
+            secondary=eff_secondary,   # SecondaryColour = màu karaoke đang đọc
+            outline=eff_outline,
             back=ASS_SHADOW,
-            margin_v=margin_v,
+            margin_v=eff_margin,
         )
 
         dialogue_lines = []
@@ -259,9 +287,22 @@ class SubtitleHelper:
         fontname: str = "Arial",
         fontsize: int = 40,
         margin_v: int = 210,
+        primary_color: Optional[str] = None,
+        secondary_color: Optional[str] = None,
+        outline_color: Optional[str] = None,
+        niche_id: Optional[str] = None,
     ) -> str:
-        """Tạo và lưu file .ass ra ổ đĩa."""
-        content = cls.build_ass_content(scenes, fontname=fontname, fontsize=fontsize, margin_v=margin_v)
+        """Tạo và lưu file .ass ra ổ đĩa, hỗ trợ Niche Profile."""
+        content = cls.build_ass_content(
+            scenes,
+            fontname=fontname,
+            fontsize=fontsize,
+            margin_v=margin_v,
+            primary_color=primary_color,
+            secondary_color=secondary_color,
+            outline_color=outline_color,
+            niche_id=niche_id,
+        )
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(content)

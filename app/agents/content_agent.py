@@ -178,10 +178,15 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
 ═══════════════════════════════════════════════════════════
 """
 
-        prompt = f"""You are an elite YouTube Shorts director and viral retention engineer for a {channel_niche} channel.
+        from app.services.niche_manager import get_niche, build_script_prompt_instructions
+        niche_profile = get_niche(channel_niche)
+        niche_instructions = build_script_prompt_instructions(niche_profile, language=language)
+
+        prompt = f"""You are an elite YouTube Shorts director and viral retention engineer for the channel '{niche_profile.get('name')}' (niche: '{channel_niche}').
 Topic: '{topic}'
 Script Language: {language}
 {director_block}
+{niche_instructions}
 ═══════════════════════════════════════════════════════════
 VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
 ═══════════════════════════════════════════════════════════
@@ -194,29 +199,15 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
 2. 3-SECOND PATTERN INTERRUPT HOOK (SCENE 1) — CRITICAL TO PREVENT SWIPE-AWAY (>75% VIEWED):
    - The first 2.5 seconds determines 100% of Shorts performance (Viewed vs Swiped away).
    - SCENE 1 HOOK FORMULA:
-     * MUST be an electric pattern interrupt. Never start with textbook definitions or passive statements.
-     * Use one of these 4 viral hook frameworks:
-       a) Urgent Warning: "If you notice [X], NEVER do [Y]..." or "If someone lies to you, DO NOT speak..."
-       b) Elite Power / Interrogation Tactic: "Top interrogators use this exact 3-second move to..."
-       c) The Dark Psychological Law: "The darkest psychological truth about [Topic] is..."
-       d) The Counter-Intuitive Shock: "The most dangerous people in the room always pretend to be..."
-     * STRICTLY FORBIDDEN: Passive openings ("To catch a liar, stop asking questions", "In psychology there is...", "Have you ever wondered").
+     * MUST be an electric pattern interrupt following the Niche Hook Blueprint above.
+     * Never start with textbook definitions or passive statements.
+     * STRICTLY FORBIDDEN: Any forbidden clichés listed in the Niche Intelligence Profile above.
      * Scene 1 spoken text MUST be strictly 5 to 8 words, delivered with high stakes and immediate urgency.
-     * Scene 1 visual_keyword MUST be visually arresting and intense: e.g. "intense eye contact staring dramatic lighting" or "shocking whisper dark cinematic shadows" — NEVER a passive, sad or boring scene.
+     * Scene 1 visual_keyword MUST be visually arresting and intense, tailored to '{niche_profile.get('name')}'.
 
 3. PSYCHOLOGICAL VIRAL CALL TO ACTION (CTA) & SEAMLESS INFINITE LOOP:
-   - CRITICAL INSIGHT: High retention (150-160%+) proves viewers are hooked, but without an active Call To Action, viewers loop passively with 0 likes, 0 comments, and 0 subscribers, stalling algorithmic growth.
-   - The final scene (Scene 6/7/8) MUST integrate a high-converting, psychologically compelling Call To Action that connects directly into the loop:
-     Choose one of these 3 viral CTA formulas tailored to '{channel_niche}':
-     a) The "Double Tap & Protect" (Like & Subscribe Multiplier):
-        "Double tap if you've seen this red flag, and subscribe to protect your mind... because..." -> [seamlessly loops into Scene 1 hook: "...these are the 3 signs they're JUST using you!"]
-        (Tiếng Việt: "Nhấn thích nếu bạn từng gặp điều này, và đăng ký kênh để luôn tỉnh táo... bởi vì..." -> [nối liền vào Hook cảnh 1])
-     b) The "Debate in Comments" (Algorithmic Comment Rocket):
-        "Which of these signs hit closest to home? Drop a 1, 2, or 3 below, and follow for more... because..." -> [loops into Scene 1 hook]
-        (Tiếng Việt: "Bạn thấy dấu hiệu nào nguy hiểm nhất? Để lại số 1, 2 hay 3 dưới bình luận, và theo dõi kênh ngay... bởi vì..." -> [nối liền vào Hook cảnh 1])
-     c) The "Curiosity Part 2 / Stay Sharp" (Subscriber Magnet):
-        "Save this video before you forget, and subscribe so you don't miss Part 2... because..." -> [loops into Scene 1 hook]
-        (Tiếng Việt: "Lưu lại video này để tự bảo vệ bản thân, và đăng ký kênh đón xem phần 2... bởi vì..." -> [nối liền vào Hook cảnh 1])
+   - High retention proves viewers are hooked, but without an active Call To Action, viewers loop passively without engagement.
+   - The final scene (Scene 6/7/8) MUST integrate a high-converting CTA matching the niche CTA templates specified in the Niche Profile above!
    - HARD RULE: The very last 2-3 words of the spoken narration MUST be an open bridge/connector clause (e.g. "...because...", "...which is why...", "...và đó là lý do vì sao...", "...bởi vì...") so that when YouTube loops the video, it forms one single continuous grammatically seamless sentence into Scene 1!
 
 4. CONCRETE PHYSICAL STOCK QUERIES (NO ABSTRACT WORDS):

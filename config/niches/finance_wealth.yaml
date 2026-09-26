@@ -1,0 +1,63 @@
+id: finance_wealth
+name: Tài Chính Thông Minh & Tư Duy Triệu Phú
+badge: 💰 Tài Chính & Làm Giàu
+icon: 💰
+description: "Vạch trần cạm bẫy tài chính, quy luật vận hành của tiền tệ, bài học đầu tư từ các tỷ phú và tư duy làm giàu của top 1%."
+target_audience: "Thế hệ trẻ Gen Z và Millennials quan tâm đến tự do tài chính, đầu tư, kinh doanh và tối ưu thu nhập."
+
+script_blueprint:
+  tone_of_voice: "Đanh thép, sắc sảo, thực tế, bẻ gãy tư duy tài chính sai lầm, nói thẳng vào bản chất đồng tiền."
+  pacing: "Fast & Punchy, 2.3 - 3.0 giây/cảnh, câu ngắn gọn, số liệu gây sốc."
+  hook_formulas:
+    - "Wealth Shock Hook: '99% người nghèo tiếp tục mất tiền vì không biết quy tắc này của ngân hàng...'"
+    - "Billionaire Secret: 'Warren Buffett đã làm đúng 1 điều này ở tuổi 25 mà trường học chưa từng dạy bạn...'"
+    - "The Trap Exposed: 'Lý do bạn làm việc 12 tiếng một ngày nhưng ví vẫn rỗng không phải vì bạn lười...'"
+    - "Money Loophole: 'Cách giới siêu giàu tránh mất tiền hợp pháp mà người làm công không bao giờ biết...'"
+  narrative_structure: "Hook bẫy tiền bạc -> Số liệu/Bằng chứng thực tế gây sốc -> Bí mật phân tích dòng tiền -> 1 Quy tắc áp dụng ngay hôm nay -> CTA thử thách hành động & Infinite Loop"
+  forbidden_words:
+    - "Xin chào các nhà đầu tư thông minh"
+    - "Hôm nay mình sẽ hướng dẫn kiếm tiền dễ dàng"
+    - "Làm giàu không khó"
+    - "Hãy đầu tư ngay hôm nay"
+  cta_templates:
+    - "Bạn đang ở bậc thang tài chính số mấy? Để lại con số bên dưới và đăng ký kênh để đổi đời... bởi vì..."
+    - "Lưu video này lại trước khi bạn tiêu hết tháng lương tiếp theo, và theo dõi kênh ngay... bởi vì..."
+  anti_hallucination_rules:
+    - "Dẫn chứng chính xác tên nhà đầu tư (Warren Buffett, Charlie Munger, Ray Dalio, John Bogle), quy luật lãi kép, lạm phát."
+    - "Không hứa hẹn làm giàu sau một đêm, không shill coin rác hay đa cấp."
+
+visual_aesthetics:
+  art_style: "High-End Corporate Noir & Luxury Modernist"
+  camera_angles: "Low-angle skyscraper dolly, macro focus on shiny gold/platinum bullion, crisp modern minimalist studio"
+  color_palette: "Matte carbon black, vibrant emerald green, burnished gold, high-contrast crisp white"
+  master_prompt_prefix: "sleek ultra-luxurious corporate cinematic still, modern Wall Street skyscraper penthouse at dusk, emerald neon accents, 35mm crisp photography"
+  master_prompt_suffix: "hyper-realistic glossy reflections, 8k resolution, razor-sharp textures, vertical 9:16 cinematography, no watermark, no text"
+  negative_prompts: "cheap, dirty, cartoon, anime, hand drawing, blurry, low resolution, messy, watermark, text"
+  stock_video_keywords:
+    - "hands holding cash"
+    - "stock market chart ticker"
+    - "modern skyscraper penthouse"
+    - "luxury watch wrist"
+    - "gold bars vault"
+
+subtitles:
+  font_family: "Inter, Montserrat, sans-serif"
+  font_weight: "900"
+  font_size: 40
+  primary_color: "#FFFFFF"
+  highlight_color: "#00FF88"
+  accent_color: "#FFD700"
+  outline_color: "#001A0D"
+  outline_width: 3
+  margin_bottom: 210
+
+audio:
+  preferred_voice_en: "en-US-ChristopherNeural"
+  preferred_voice_vi: "vi-VN-NamMinhNeural"
+  rate: "+3%"
+  pitch: "0Hz"
+  bgm_vibe: "confident modern synthwave bass, sleek lo-fi tech groove, punchy kick"
+  sfx_cues:
+    - "cash_register"
+    - "sub_bass_drop"
+    - "digital_click"

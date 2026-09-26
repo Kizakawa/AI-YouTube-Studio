@@ -83,6 +83,15 @@ class VisualDirectorAgent:
                 "media_type": s.get("media_type", "auto"),
             })
 
+        # Nạp chỉ dẫn thị giác chuyên sâu từ Niche Intelligence Profile
+        niche_visual_info = ""
+        try:
+            from app.services.niche_manager import get_niche, build_visual_strategy_prompt_instructions
+            niche_prof = get_niche(channel_niche)
+            niche_visual_info = f"\nQUY TẮC MỸ THUẬT & THỊ GIÁC CỦA NGÁCH ({niche_prof.get('name', channel_niche)}):\n" + build_visual_strategy_prompt_instructions(niche_prof)
+        except Exception:
+            pass
+
         system_prompt = f"""
 Bạn là Tổng Đạo Diễn Hình Ảnh & Chiến Lược Thị Giác (Master Visual Strategy Director) cho kênh YouTube Shorts triệu view.
 Nhiệm vụ: Phân tích kịch bản và ra quyết định chính xác từng cảnh quay nên dùng tư liệu loại nào. Nếu một cảnh đã có 'media_type' cụ thể do người dùng chỉ định khác 'auto', hãy ưu tiên tôn trọng mong muốn đó.
@@ -106,7 +115,7 @@ QUY TẮC PHÂN ĐỊNH CHIẾN LƯỢC (BẮT BUỘC TUÂN THỦ):
 THÔNG TIN ĐẦU VÀO:
 - Chủ đề: {topic}
 - Nhân vật / Thực thể chính: {primary_entity or 'Không có nhân vật cụ thể'} (Loại: {entity_type})
-- Niche: {channel_niche}
+- Niche Kênh: {channel_niche}{niche_visual_info}
 - Các phân cảnh:
 {json.dumps(scenes_context, ensure_ascii=False, indent=2)}
 

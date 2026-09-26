@@ -1108,7 +1108,36 @@ Ví dụ Căn Theo Mốc:
                 </div>
             </div>
 
-            <!-- 2. HỆ THỐNG TÀI KHOẢN GOOGLE & QUOTA -->
+            <!-- 2. HỒ SƠ NGÁCH KÊNH CHUYÊN SÂU (NICHE INTELLIGENCE PROFILES) -->
+            <div class="panel-card" style="margin-bottom: 24px;">
+                <div class="panel-header">
+                    <div>
+                        <h3 style="display:flex; align-items:center; gap:8px;">
+                            <span style="color:#f59e0b; font-size:18px;">🎯</span> Hồ Sơ Ngách Kênh Chuyên Sâu (Niche Intelligence Profiles)
+                        </h3>
+                        <p style="font-size:12.5px; color:var(--text-muted); margin-top:3px;">
+                            Bộ khuôn kịch bản độc quyền, công thức Hook 3 giây, quy tắc thị giác điện ảnh và màu sắc phụ đề riêng biệt cho từng kênh đang quản lý
+                        </p>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <button class="btn btn-primary btn-sm" onclick="openAddNicheModal()">
+                            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                            + Tạo Hồ Sơ Ngách Mới
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="fetchNiches()">
+                            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                            Làm Mới
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Niche Cards Grid -->
+                <div id="niches-grid-container" class="niches-grid">
+                    <div style="text-align:center; padding:30px; color:var(--text-muted);">Đang tải danh sách hồ sơ ngách...</div>
+                </div>
+            </div>
+
+            <!-- 3. HỆ THỐNG TÀI KHOẢN GOOGLE & QUOTA -->
             <div class="panel-card">
                 <div class="panel-header">
                     <div>
@@ -1243,8 +1272,18 @@ Ví dụ Căn Theo Mốc:
 
             <div class="form-row">
                 <div class="form-group" style="flex:1; margin-bottom:12px;">
-                    <label class="form-label" for="channel-input-niche">Chủ đề / Niche</label>
-                    <input type="text" id="channel-input-niche" class="form-input" placeholder="Ví dụ: mysteries, science, tech...">
+                    <label class="form-label" for="channel-input-niche">Hồ Sơ Ngách (Niche Profile) <span class="required">*</span></label>
+                    <select id="channel-input-niche" class="form-input" onchange="onChannelNicheSelectChanged(this.value)">
+                        <option value="psychology">🧠 Tâm Lý Học & Thao Túng Tâm Lý</option>
+                        <option value="history_mystery">📜 Lịch Sử & Bí Ẩn Thế Giới</option>
+                        <option value="finance_wealth">💰 Tài Chính & Tư Duy Triệu Phú</option>
+                        <option value="scifi_future_tech">🚀 Công Nghệ AI & Tương Lai Viễn Tưởng</option>
+                        <option value="philosophy_stoicism">🏛️ Triết Học Khắc Kỷ & Nhân Sinh</option>
+                        <option value="horror_urban_legends">👻 Truyện Kinh Dị & Truyền Thuyết Đô Thị</option>
+                        <option value="health_biohacking">🧬 Sức Khỏe & Biohacking</option>
+                        <option value="luxury_motivation">👑 Động Lực & Lối Sống Thượng Lưu</option>
+                        <option value="general">🌐 Tổng Hợp & Đời Sống</option>
+                    </select>
                 </div>
                 <div class="form-group" style="flex:1; margin-bottom:12px;">
                     <label class="form-label" for="channel-input-lang">Ngôn ngữ</label>
@@ -1675,6 +1714,273 @@ Ví dụ Căn Theo Mốc:
         <button type="button" class="btn btn-secondary" onclick="closeWifiModal()" style="width: 100%; padding: 10px; font-size: 14px; font-weight: 600;">
             Đóng
         </button>
+    </div>
+<!-- MODAL: CHỈNH SỬA / TẠO HỒ SƠ NGÁCH (NICHE INTELLIGENCE PROFILES) -->
+<div class="modal-overlay" id="modal-niche-editor" onclick="closeNicheModal()">
+    <div class="modal-card niche-editor-card" onclick="event.stopPropagation()" style="max-width: 860px; width: 95%; max-height: 90vh; display: flex; flex-direction: column;">
+        <div class="modal-header">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <span id="niche-modal-icon-badge" style="font-size:24px;">🎯</span>
+                <div>
+                    <h3 id="niche-modal-title" style="margin:0; font-size:17px; font-weight:700;">Chỉnh Sửa Hồ Sơ Ngách</h3>
+                    <p style="margin:2px 0 0; font-size:12px; color:var(--text-muted);">
+                        Bộ quy tắc kịch bản, thị giác điện ảnh và phong cách tạo hình ảnh AI riêng biệt
+                    </p>
+                </div>
+            </div>
+            <button class="modal-close" onclick="closeNicheModal()">✕</button>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="niche-modal-tabs">
+            <button type="button" class="niche-modal-tab-btn active" id="tab-btn-niche-script" onclick="switchNicheTab('script')">
+                📝 1. Kịch Bản & Giọng Điệu
+            </button>
+            <button type="button" class="niche-modal-tab-btn" id="tab-btn-niche-visual" onclick="switchNicheTab('visual')">
+                🎨 2. Thị Giác & AI Prompt
+            </button>
+            <button type="button" class="niche-modal-tab-btn" id="tab-btn-niche-style" onclick="switchNicheTab('style')">
+                🔤 3. Phụ Đề & Âm Thanh
+            </button>
+        </div>
+
+        <div class="modal-body" style="overflow-y: auto; flex: 1; padding: 20px 24px;">
+            <input type="hidden" id="niche-field-mode" value="edit">
+            <input type="hidden" id="niche-field-id" value="">
+
+            <!-- ── TAB 1: SCRIPT & TONE ── -->
+            <div id="niche-pane-script" class="niche-pane active">
+                <div class="form-row">
+                    <div class="form-group" style="flex:2;">
+                        <label class="form-label" for="niche-input-name">Tên Ngách & Thể Loại <span class="required">*</span></label>
+                        <input type="text" id="niche-input-name" class="form-input" placeholder="Ví dụ: Tâm Lý Học Hành Vi & Thao Túng">
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label" for="niche-input-badge">Huy Hiệu (Badge)</label>
+                        <input type="text" id="niche-input-badge" class="form-input" placeholder="Ví dụ: 🧠 Tâm Lý Học">
+                    </div>
+                    <div class="form-group" style="width:70px;">
+                        <label class="form-label" for="niche-input-icon">Icon</label>
+                        <input type="text" id="niche-input-icon" class="form-input" style="text-align:center; font-size:18px;" placeholder="🧠">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="niche-input-target-aud">Khán Giả Mục Tiêu (Target Audience)</label>
+                    <input type="text" id="niche-input-target-aud" class="form-input" placeholder="Ví dụ: Khán giả 18-35 tuổi muốn tự vệ tâm lý, đọc vị đối phương...">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label" for="niche-input-tone">Giọng Điệu Đặc Trưng (Tone of Voice)</label>
+                        <input type="text" id="niche-input-tone" class="form-input" placeholder="Ví dụ: Thâm sâu, sắc bén, cảnh báo, khơi gợi bản năng phòng thủ...">
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label" for="niche-input-pacing">Nhịp Cắt Cảnh (Pacing)</label>
+                        <input type="text" id="niche-input-pacing" class="form-input" placeholder="Ví dụ: Fast-paced, 2.5 - 3.2 giây/cảnh, nhịp ngắt dồn dập">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="niche-input-structure">Cấu Trúc Tự Sự Kịch Bản (Narrative Structure)</label>
+                    <input type="text" id="niche-input-structure" class="form-input" placeholder="Hook 3s -> Bóc trần dấu hiệu -> Phân tích -> Lời khuyên -> CTA & Loop">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="niche-input-hooks">
+                        ⚡ Công Thức Hook 3 Giây Đầu (Mỗi dòng 1 công thức kèm ví dụ)
+                    </label>
+                    <textarea id="niche-input-hooks" class="form-input" rows="4" style="font-family:monospace; font-size:12.5px; line-height:1.5;" placeholder="Urgent Warning: 'Nếu ai đó làm điều này với bạn...'&#10;The Dark Law: 'Quy luật tâm lý đen tối nhất là...'"></textarea>
+                    <span style="font-size:11px; color:var(--text-muted); margin-top:3px; display:block;">AI sẽ chọn ngẫu nhiên một trong các công thức này để mở đầu video triệu view.</span>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="niche-input-forbidden" style="color:#f87171;">
+                        🚫 Từ Ngữ & Lời Mở Đầu Bị CẤM TUYỆT ĐỐI (Strictly Forbidden Clichés)
+                    </label>
+                    <textarea id="niche-input-forbidden" class="form-input" rows="3" style="font-family:monospace; font-size:12.5px; border-color:rgba(239,68,68,0.3);" placeholder="Chào mừng các bạn đã quay trở lại&#10;Bạn có bao giờ tự hỏi&#10;Trong video hôm nay"></textarea>
+                    <span style="font-size:11px; color:var(--text-muted); margin-top:3px; display:block;">AI sẽ bị cấm 100% sử dụng những từ sáo rỗng này để giữ tỷ lệ giữ chân AVD > 80%.</span>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="niche-input-ctas">
+                        📢 Mẫu Kêu Gọi Hành Động (CTA) & Vòng Lặp Vô Tận (Infinite Loop)
+                    </label>
+                    <textarea id="niche-input-ctas" class="form-input" rows="3" style="font-family:monospace; font-size:12.5px;" placeholder="Nhấn thích nếu bạn từng gặp kiểu người này, và đăng ký kênh để luôn tỉnh táo... bởi vì...&#10;Bạn thấy dấu hiệu nào nguy hiểm nhất? Bình luận bên dưới... bởi vì..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="niche-input-facts">
+                        🔬 Quy Tắc Dẫn Chứng & Xác Thực (Anti-Hallucination Rules)
+                    </label>
+                    <textarea id="niche-input-facts" class="form-input" rows="2" style="font-family:monospace; font-size:12.5px;" placeholder="Luôn gắn liền với hiện tượng tâm lý học có thật (Dunning-Kruger, Gaslighting, Pavlov)&#10;Không đưa ra lời khuyên y tế cực đoan"></textarea>
+                </div>
+            </div>
+
+            <!-- ── TAB 2: VISUAL AESTHETICS & AI PROMPT ── -->
+            <div id="niche-pane-visual" class="niche-pane" style="display:none;">
+                <div class="form-row">
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label" for="niche-input-art-style">Phong Cách Mỹ Thuật (Art Style)</label>
+                        <input type="text" id="niche-input-art-style" class="form-input" placeholder="Ví dụ: Dark Cinematic Noir & Chiaroscuro">
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label" for="niche-input-palette">Bảng Màu & Ánh Sáng (Color Palette)</label>
+                        <input type="text" id="niche-input-palette" class="form-input" placeholder="Ví dụ: Obsidian black, desaturated cold cyan, sharp crimson accents">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="niche-input-angles">Góc Quay Ưu Tiên (Camera Angles)</label>
+                    <input type="text" id="niche-input-angles" class="form-input" placeholder="Ví dụ: Extreme close-up eye macro, Dutch angle, silhouette in shadows">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="niche-input-prefix">Tiền Tố Prompt AI (Master Prompt Prefix)</label>
+                    <textarea id="niche-input-prefix" class="form-input" rows="2" style="font-family:monospace; font-size:12.5px;" placeholder="dark cinematic film still, moody chiaroscuro lighting, psychological thriller atmosphere, 35mm photography"></textarea>
+                    <span style="font-size:11px; color:var(--text-muted); margin-top:3px; display:block;">Được gắn vào đầu mỗi câu lệnh sinh ảnh AI (Google Imagen / Flux) cho các phân cảnh.</span>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="niche-input-suffix">Hậu Tố Prompt AI (Master Prompt Suffix)</label>
+                    <textarea id="niche-input-suffix" class="form-input" rows="2" style="font-family:monospace; font-size:12.5px;" placeholder="extreme visual intensity, dramatic rim light, razor-sharp focus, photorealistic vertical 9:16, no text, no watermark"></textarea>
+                    <span style="font-size:11px; color:var(--text-muted); margin-top:3px; display:block;">Được gắn vào cuối câu lệnh để đảm bảo chất lượng sắc nét 8K và không dính chữ.</span>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="niche-input-negatives">Từ Khóa Loại Trừ (Negative Prompts)</label>
+                    <textarea id="niche-input-negatives" class="form-input" rows="2" style="font-family:monospace; font-size:12.5px; border-color:rgba(239,68,68,0.3);" placeholder="bright cartoon, 3d render, anime, smiling face, cheerful, overexposed, colorful pastel, watermark, text"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="niche-input-stock-kws">Từ Khóa Tìm Kiếm Tư Liệu Thực Tế (Stock Video Keywords)</label>
+                    <input type="text" id="niche-input-stock-kws" class="form-input" placeholder="intense eye contact, man in shadows, whispering secret, walking rain noir">
+                    <span style="font-size:11px; color:var(--text-muted); margin-top:3px; display:block;">Các từ khóa tiếng Anh ngăn cách bằng dấu phẩy dùng tìm B-Roll Pexels HD khi cần.</span>
+                </div>
+            </div>
+
+            <!-- ── TAB 3: SUBTITLE & AUDIO ── -->
+            <div id="niche-pane-style" class="niche-pane" style="display:none;">
+                <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px; margin-bottom:18px;">
+                    <h4 style="margin:0 0 12px; font-size:14px; font-weight:700; color:#38bdf8; display:flex; align-items:center; gap:6px;">
+                        <span>🔤</span> Bộ Phong Cách Phụ Đề Karaoke (ASS Typography)
+                    </h4>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:2;">
+                            <label class="form-label" for="niche-input-font">Font Chữ Phụ Đề</label>
+                            <select id="niche-input-font" class="form-input" onchange="updateNicheLiveSubtitlePreview()">
+                                <option value="Montserrat, sans-serif">Montserrat (Hiện đại, Đậm nét - Khuyên dùng)</option>
+                                <option value="Inter, sans-serif">Inter (Thanh lịch, Sắc sảo)</option>
+                                <option value="Oswald, Impact, sans-serif">Oswald / Impact (Mạnh mẽ, Khí phách)</option>
+                                <option value="Orbitron, sans-serif">Orbitron (Công nghệ, Sci-Fi)</option>
+                                <option value="Cinzel, Georgia, serif">Cinzel / Georgia (Cổ điển, Lịch sử)</option>
+                                <option value="Playfair Display, serif">Playfair Display (Triết học, Sâu lắng)</option>
+                                <option value="Poppins, sans-serif">Poppins (Sức khỏe, Tươi sáng)</option>
+                                <option value="Arial Black, sans-serif">Arial Black (Đậm nét phổ thông)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label" for="niche-input-font-size">Cỡ Chữ (px)</label>
+                            <input type="number" id="niche-input-font-size" class="form-input" min="28" max="56" value="40" oninput="updateNicheLiveSubtitlePreview()">
+                        </div>
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label" for="niche-input-margin-v">Lề Đáy Margin V (px)</label>
+                            <input type="number" id="niche-input-margin-v" class="form-input" min="120" max="360" value="210">
+                        </div>
+                    </div>
+
+                    <div class="form-row" style="margin-top:10px;">
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label">Màu Chữ Chưa Đọc</label>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <input type="color" id="niche-color-primary" value="#FFFFFF" onchange="updateNicheLiveSubtitlePreview()" style="width:38px; height:38px; border:none; border-radius:6px; cursor:pointer; background:none;">
+                                <input type="text" id="niche-text-primary" class="form-input" value="#FFFFFF" oninput="document.getElementById('niche-color-primary').value=this.value; updateNicheLiveSubtitlePreview();" style="flex:1; font-family:monospace;">
+                            </div>
+                        </div>
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label">Màu Karaoke Đang Đọc (Highlight) ⭐</label>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <input type="color" id="niche-color-highlight" value="#FFE600" onchange="updateNicheLiveSubtitlePreview()" style="width:38px; height:38px; border:none; border-radius:6px; cursor:pointer; background:none;">
+                                <input type="text" id="niche-text-highlight" class="form-input" value="#FFE600" oninput="document.getElementById('niche-color-highlight').value=this.value; updateNicheLiveSubtitlePreview();" style="flex:1; font-family:monospace; font-weight:700; color:#f59e0b;">
+                            </div>
+                        </div>
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label">Màu Viền Chữ (Outline)</label>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <input type="color" id="niche-color-outline" value="#000000" onchange="updateNicheLiveSubtitlePreview()" style="width:38px; height:38px; border:none; border-radius:6px; cursor:pointer; background:none;">
+                                <input type="text" id="niche-text-outline" class="form-input" value="#000000" oninput="document.getElementById('niche-color-outline').value=this.value; updateNicheLiveSubtitlePreview();" style="flex:1; font-family:monospace;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Live Subtitle Preview Box -->
+                    <div style="margin-top:14px;">
+                        <span style="font-size:11.5px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:6px;">
+                            Xem Trước Phụ Đề Hiển Thị Trên Video (Live Preview):
+                        </span>
+                        <div id="niche-live-subtitle-preview-box" class="niche-live-preview-box">
+                            <span class="preview-sample-word" id="sample-w1">BÍ MẬT</span>
+                            <span class="preview-sample-word active-highlight" id="sample-w2">NGUY HIỂM NHẤT</span>
+                            <span class="preview-sample-word" id="sample-w3">CỦA BẠN</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Audio & Voice -->
+                <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
+                    <h4 style="margin:0 0 12px; font-size:14px; font-weight:700; color:#a855f7; display:flex; align-items:center; gap:6px;">
+                        <span>🎙️</span> Giọng Đọc & Âm Hưởng Nhạc Nền (Audio Identity)
+                    </h4>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label" for="niche-input-voice-en">Giọng Tiếng Anh Ưu Tiên</label>
+                            <select id="niche-input-voice-en" class="form-input">
+                                <option value="en-US-ChristopherNeural">🇺🇸 Christopher (Nam - Trầm, cuốn hút, bí ẩn)</option>
+                                <option value="en-US-GuyNeural">🇺🇸 Guy (Nam - Sâu sắc, đĩnh đạc, kể chuyện)</option>
+                                <option value="en-US-BrianNeural">🇺🇸 Brian (Nam - Hiện đại, dứt khoát, công nghệ)</option>
+                                <option value="en-US-EricNeural">🇺🇸 Eric (Nam - Khoa học, tự nhiên)</option>
+                                <option value="en-US-JennyNeural">🇺🇸 Jenny (Nữ - Truyền cảm hứng, sinh động)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label" for="niche-input-voice-vi">Giọng Tiếng Việt Ưu Tiên</label>
+                            <select id="niche-input-voice-vi" class="form-input">
+                                <option value="vi-VN-NamMinhNeural">🇻🇳 Nam Minh (Nam - Giọng chuẩn truyền thông, sắc nét)</option>
+                                <option value="vi-VN-HoaiMyNeural">🇻🇳 Hoài My (Nữ - Ngọt ngào, kịch tính, lôi cuốn)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label" for="niche-input-rate">Tốc Độ Đọc (Rate)</label>
+                            <input type="text" id="niche-input-rate" class="form-input" placeholder="Ví dụ: -4% hoặc +3%">
+                        </div>
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label" for="niche-input-pitch">Cao Độ Giọng (Pitch)</label>
+                            <input type="text" id="niche-input-pitch" class="form-input" placeholder="Ví dụ: -2Hz hoặc 0Hz">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="niche-input-bgm">Vibe Nhạc Nền (BGM Vibe & Keywords)</label>
+                        <input type="text" id="niche-input-bgm" class="form-input" placeholder="Ví dụ: dark suspense cello, low ambient drone, tension riser">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-footer" style="padding:14px 24px; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-delete-niche" onclick="deleteCurrentNiche()" style="color:#f87171; border-color:rgba(239,68,68,0.3); display:none;">
+                🗑️ Xóa Hồ Sơ Này
+            </button>
+            <div style="display:flex; gap:10px; margin-left:auto;">
+                <button type="button" class="btn btn-secondary" onclick="closeNicheModal()">Hủy</button>
+                <button type="button" class="btn btn-primary" onclick="submitNicheForm()" style="background:linear-gradient(135deg, #f59e0b, #ef4444); border:none; font-weight:700;">
+                    💾 Lưu Hồ Sơ Ngách
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 

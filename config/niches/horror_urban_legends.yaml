@@ -1,0 +1,61 @@
+id: horror_urban_legends
+name: Truyện Kinh Dị & Truyền Thuyết Đô Thị (Creepypasta)
+badge: 👻 Kinh Dị & Kỳ Bí
+icon: 👻
+description: "Những câu chuyện kinh dị có thật, truyền thuyết đô thị rùng rợn lúc 3h sáng, hiện tượng tâm linh kỳ quái và luật cấm kỵ dân gian."
+target_audience: "Khán giả thích cảm giác mạnh, hồi hộp sợ hãi, khám phá góc tối bí ẩn."
+
+script_blueprint:
+  tone_of_voice: "Thì thầm, rợn gáy, giật gân, nghẹt thở, khiến người nghe lạnh sống lưng trong từng câu chữ."
+  pacing: "Biến thiên chậm-nhanh đột ngột, tiếng thì thầm dồn nén đến cao trào giật mình (jump-scare)."
+  hook_formulas:
+    - "Midnight Rule: 'Nếu bạn thức giấc lúc 3 giờ 07 phút sáng và thấy cửa tủ mở he hé, TUYỆT ĐỐI KHÔNG được nhìn vào...'"
+    - "Cursed Object: 'Bức tranh này đã bị cấm bán đấu giá sau khi cả 4 người sở hữu nó đều...'"
+    - "The Uncanny Stranger: 'Người đàn ông đứng dưới chân cột đèn trước nhà bạn suốt 3 đêm nay thực chất không phải...'"
+    - "Banned Emergency Call: 'Đoạn ghi âm cuộc gọi 911 bị giấu kín suốt 20 năm của một nhân viên trực đêm...'"
+  narrative_structure: "Hook quy tắc cấm kỵ rợn người -> Điềm báo quái dị leo thang -> Khoảnh khắc kinh hoàng bộc lộ -> Kết thúc mở rùng rợn -> CTA bảo vệ bản thân & Infinite Loop"
+  forbidden_words:
+    - "Xin chào các bạn đã quay trở lại kênh ma quái"
+    - "Chúc các bạn ngủ ngon"
+    - "Video này mang tính giải trí"
+  cta_templates:
+    - "Đừng xem video này một mình trong bóng tối. Nhấn lưu lại và chia sẻ cho người bạn muốn hù dọa... bởi vì..."
+    - "Nếu bạn cảm thấy có ai đó vừa nhìn sau lưng bạn, bấm đăng ký kênh để phá bỏ lời nguyền... bởi vì..."
+  anti_hallucination_rules:
+    - "Tạo dựng cốt truyện kịch tính nhưng không vi phạm chính sách nội dung gây hại hoặc kích động bạo lực của YouTube."
+
+visual_aesthetics:
+  art_style: "Analog VHS Horror & Found Footage Creepy Noir"
+  camera_angles: "Creepy peep-hole view, distorted fisheye lens, shaky handheld night-vision camera, shadow lurking in hallway"
+  color_palette: "Sickly green night vision, blood crimson, decrepit mold black, pale ghostly white"
+  master_prompt_prefix: "creepy horror analog VHS still, found footage aesthetic, dark hallway with terrifying shadow silhouette, grainy 1990s videotape distortion"
+  master_prompt_suffix: "eerie volumetric mist, disturbing uncanny atmosphere, vertical 9:16 cinematography, hyper-detailed, no text, no watermark"
+  negative_prompts: "sunny daylight, cheerful, colorful, smiling, anime, cartoon, 3d render, watermark, text"
+  stock_video_keywords:
+    - "creepy dark hallway"
+    - "shadow figure standing door"
+    - "old analog tv static"
+    - "flashlight in dark forest"
+    - "foggy cemetery night"
+
+subtitles:
+  font_family: "Creepster, Montserrat, Impact, sans-serif"
+  font_weight: "900"
+  font_size: 40
+  primary_color: "#FFF5F5"
+  highlight_color: "#FF0033"
+  accent_color: "#990000"
+  outline_color: "#1A0000"
+  outline_width: 4
+  margin_bottom: 210
+
+audio:
+  preferred_voice_en: "en-US-ChristopherNeural"
+  preferred_voice_vi: "vi-VN-NamMinhNeural"
+  rate: "-6%"
+  pitch: "-4Hz"
+  bgm_vibe: "eerie dark horror ambient drone, jump-scare screech, disturbing metallic scraping"
+  sfx_cues:
+    - "creepy_whisper"
+    - "door_slam"
+    - "heartbeat_intense"
