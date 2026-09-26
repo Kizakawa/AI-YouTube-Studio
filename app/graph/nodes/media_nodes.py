@@ -221,10 +221,10 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             if not media_path:
                 logger.info(f"Scene {scene.scene_id}: ⚡ Image-to-Video không thành công, tự động cứu hộ bằng Pexels Video B-Roll...")
                 try:
-                    best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, search_query or sq or kw)
+                    best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, search_query or sq or kw, used_pool_urls)
                     if not best_vid and kw:
                         clean_kw = clean_scene_search_query(kw, max_words=2)
-                        best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, clean_kw)
+                        best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, clean_kw, used_pool_urls)
                     if best_vid and best_vid.get("url") and best_vid["url"] not in used_pool_urls:
                         cand_url = best_vid["url"]
                         vid_out = str(media_dir / f"scene_{scene.scene_id:03d}_pexels_fb.mp4")
@@ -263,10 +263,10 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             if not media_path:
                 logger.info(f"Scene {scene.scene_id}: ⚡ Text-to-Video không thành công, tự động cứu hộ bằng Pexels Video B-Roll...")
                 try:
-                    best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, search_query or sq or kw)
+                    best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, search_query or sq or kw, used_pool_urls)
                     if not best_vid and kw:
                         clean_kw = clean_scene_search_query(kw, max_words=2)
-                        best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, clean_kw)
+                        best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, clean_kw, used_pool_urls)
                     if best_vid and best_vid.get("url") and best_vid["url"] not in used_pool_urls:
                         cand_url = best_vid["url"]
                         vid_out = str(media_dir / f"scene_{scene.scene_id:03d}_pexels_fb.mp4")
@@ -284,12 +284,12 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # ══════════════════════════════════════════════════════════════════════
         elif prod_method == "STOCK_FOOTAGE" or chosen_strategy == "STOCK_VIDEO":
             try:
-                best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, search_query)
+                best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, search_query, used_pool_urls)
                 if not best_vid and sq:
-                    best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, sq)
+                    best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, sq, used_pool_urls)
                 if not best_vid:
                     clean_kw = clean_scene_search_query(kw, max_words=2)
-                    best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, clean_kw)
+                    best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, clean_kw, used_pool_urls)
 
                 if best_vid and best_vid.get("url") and best_vid["url"] not in used_pool_urls:
                     cand_url = best_vid["url"]

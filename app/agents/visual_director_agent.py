@@ -155,7 +155,7 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
             "time travel", "future", "huyền bí", "bí ẩn", "vũ trụ", "tâm linh", "giả tưởng", "kỳ lạ"
         ])
 
-        is_historical = bool(primary_entity) or any(w in topic.lower() for w in [
+        is_historical = (bool(primary_entity) and entity_type in ("person", "civilization", "monument", "event", "historical_figure")) or any(w in topic.lower() for w in [
             "history", "war", "battle", "emperor", "king", "ancient", "century", "empire",
             "lịch sử", "thế chiến", "hoàng đế", "vua", "cổ đại", "triều đại"
         ])
@@ -198,13 +198,17 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
                 strategy = "STOCK_VIDEO"
                 rationale = "Chỉ định thủ công: Dùng Video B-Roll chuyển động 9:16."
             elif user_pref in ("photo", "documentary"):
-                strategy = "REAL_DOCUMENTARY"
-                rationale = "Chỉ định thủ công: Tìm ảnh tư liệu thực tế."
+                if primary_entity and entity_type in ("person", "civilization", "monument", "event", "historical_figure"):
+                    strategy = "REAL_DOCUMENTARY"
+                    rationale = "Chỉ định thủ công: Tìm ảnh tư liệu thực tế."
+                else:
+                    strategy = "STOCK_VIDEO"
+                    rationale = "Chỉ định thủ công: Dùng Video B-Roll chuyển động 9:16."
             elif user_pref == "ai_image":
                 strategy = "AI_IMAGE"
                 rationale = "Chỉ định thủ công: Sinh ảnh nghệ thuật AI 8K."
             # Ưu tiên 1: Thực thể lịch sử có thật
-            elif primary_entity and (idx in (0, 1) or primary_entity.lower() in text_all):
+            elif primary_entity and entity_type in ("person", "civilization", "monument", "event", "historical_figure") and (idx in (0, 1) or primary_entity.lower() in text_all):
                 strategy = "REAL_DOCUMENTARY"
                 rationale = f"Nhắc đến nhân vật/địa danh lịch sử có thật '{primary_entity}' -> dùng ảnh tư liệu thật để đảm bảo tính xác thực."
             # Ưu tiên 2: Yếu tố kỳ ảo, huyền bí, vũ trụ trừu tượng

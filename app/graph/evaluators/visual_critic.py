@@ -119,6 +119,11 @@ class VisualCritic:
                             aes_score -= 3.0
                             issues.append(f"Độ phân giải quá nhỏ: {w}x{h} px")
                             failed_scene_ids.append(scene_id)
+                        aspect = max(w / h, h / w)
+                        if aspect > 2.5:
+                            aes_score -= 4.0
+                            issues.append(f"Tỷ lệ khung hình bất thường (dải hẹp/banner: {w}x{h})")
+                            failed_scene_ids.append(scene_id)
 
                     # Kiểm tra ảnh đen kịt / hỏng
                     if self._is_solid_color_or_black(str(p)):

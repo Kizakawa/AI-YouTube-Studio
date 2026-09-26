@@ -68,9 +68,63 @@ _COMMON_GEOPOLITICAL = {
     "hà nội", "sài gòn", "đà nẵng", "hồ chí minh city", "hcmc", "trung my", "nam my", "bac my",
 }
 
+# Từ vựng tiếng Anh thông dụng (đại từ, động từ, danh từ cảnh, cơ thể, tâm lý, sci-fi)
+# TUYỆT ĐỐI KHÔNG nhận nhầm các từ này làm tên nhân vật lịch sử
+_NON_ENTITY_WORDS = {
+    # Đại từ & trợ động từ
+    "am", "i", "me", "my", "myself", "you", "your", "yourself", "he", "him", "his", "himself",
+    "she", "her", "hers", "herself", "it", "its", "itself", "we", "us", "our", "ours", "ourselves",
+    "they", "them", "their", "theirs", "themselves", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "having", "do", "does", "did", "doing", "will", "would", "shall", "should",
+    "can", "could", "may", "might", "must", "ought",
+    # Hành động & quan sát thị giác
+    "stop", "trying", "look", "looking", "stare", "staring", "watch", "watching", "see", "seeing",
+    "feel", "feeling", "think", "thinking", "know", "knowing", "say", "saying", "speak", "speaking",
+    "tell", "telling", "talk", "talking", "walk", "walking", "run", "running", "stand", "standing",
+    "sit", "sitting", "write", "writing", "read", "reading", "listen", "listening", "smile", "smiling",
+    "laugh", "laughing", "cry", "crying", "sweat", "sweating", "tremble", "trembling", "shake", "shaking",
+    "hyperventilate", "hyperventilating", "check", "checking", "use", "using", "work", "working",
+    # Danh từ cảnh & bộ phận cơ thể
+    "hand", "hands", "face", "faces", "eye", "eyes", "head", "body", "finger", "fingers", "voice",
+    "person", "people", "man", "men", "woman", "women", "human", "humans", "someone", "everyone", "nobody",
+    "room", "door", "window", "wall", "mirror", "podium", "stage", "notebook", "pen", "pencil", "phone", "phones",
+    "street", "road", "city", "hall", "car", "cars", "table", "chair", "light", "lights", "shadow", "shadows",
+    "dark", "darkness", "neon", "crowd", "party", "meeting", "cafe", "coffee", "office", "desk",
+    # Sci-Fi / Vũ trụ / Công nghệ
+    "space", "ship", "spaceship", "star", "stars", "planet", "planets", "galaxy", "universe", "cosmos",
+    "black", "hole", "wormhole", "robot", "robots", "android", "cyborg", "drone", "laser", "portal",
+    "future", "futuristic", "cyberpunk", "hologram", "alien", "aliens", "technology", "quantum", "ai",
+    # Tâm lý học & khái niệm trừu tượng
+    "confidence", "confident", "anxiety", "anxious", "stress", "stressed", "stressful", "panic",
+    "psychology", "psychological", "mind", "minds", "brain", "brains", "secret", "secrets", "habit", "habits",
+    "rule", "rules", "law", "laws", "truth", "fact", "facts", "trick", "tricks", "hack", "hacks",
+    "way", "ways", "thing", "things", "sign", "signs", "power", "effect", "effects", "spotlight",
+    "subconscious", "unconscious", "mental", "emotion", "emotions", "social", "success", "failure",
+    "morning", "routine", "day", "night", "time", "clock", "hour", "hours", "minute", "minutes",
+    "life", "world", "every", "right", "now", "here", "there", "today", "tomorrow", "yesterday",
+}
+
+
+def is_valid_entity_name(name: str) -> bool:
+    """Kiểm tra chuỗi có phải tên nhân vật/thực thể hợp lệ không (loại trừ từ vựng chung, đại từ, hành động)."""
+    if not name or len(name.strip()) < 3:
+        return False
+    words = [re.sub(r'[^\w]', '', w).lower() for w in name.split()]
+    words = [w for w in words if w]
+    if len(words) < 2:
+        return False
+    # Không được chứa từ vựng thông thường, đại từ hay stopword
+    if any(w in _NON_ENTITY_WORDS for w in words):
+        return False
+    if any(w in _SENTENCE_STARTERS for w in words):
+        return False
+    if name.lower() in _COMMON_GEOPOLITICAL:
+        return False
+    return True
+
 
 def _extract_proper_nouns(text: str, is_narration: bool = False) -> List[str]:
-    """Trích xuất chuỗi tên riêng nhiều từ (hỗ trợ cả chữ lót như John D. Rockefeller)."""
+    """Trích xuất chuỗi tên riêng nhiều từ (chỉ giữ lại chuỗi thỏa mãn quy chuẩn tên thực thể)."""
     words = text.split()
     sequences = []
     curr = []
@@ -83,26 +137,31 @@ def _extract_proper_nouns(text: str, is_narration: bool = False) -> List[str]:
         is_normal_cap = is_cap and not clean.isupper() and len(clean) >= 2
         is_acronym = clean.isupper() and 2 <= len(clean) <= 4
 
+        # Bỏ qua từ vựng thông thường dù có viết hoa
+        if clean.lower() in _NON_ENTITY_WORDS:
+            if len(curr) >= 2:
+                cand = " ".join(curr)
+                if is_valid_entity_name(cand):
+                    sequences.append(cand)
+            curr = []
+            continue
+
         if is_normal_cap or is_middle_initial or is_acronym:
             if is_narration and i == 0 and clean.lower() in _SENTENCE_STARTERS:
                 continue
             curr.append(clean)
         else:
             if len(curr) >= 2:
-                sequences.append(" ".join(curr))
+                cand = " ".join(curr)
+                if is_valid_entity_name(cand):
+                    sequences.append(cand)
             curr = []
     if len(curr) >= 2:
-        sequences.append(" ".join(curr))
+        cand = " ".join(curr)
+        if is_valid_entity_name(cand):
+            sequences.append(cand)
 
-    valid = []
-    for s in sequences:
-        s_lower = s.lower()
-        if s_lower in _COMMON_GEOPOLITICAL:
-            continue
-        if all(w.lower() in _SENTENCE_STARTERS for w in s.split()):
-            continue
-        valid.append(s)
-    return valid
+    return sequences
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -241,6 +300,7 @@ def detect_real_entity(visual_keyword: str, narration: str = "") -> Tuple[bool, 
     """
     Phát hiện thông minh xem cảnh có liên quan đến nhân vật/nền văn minh/sự kiện thực hay không.
     Ưu tiên tra cứu tri thức lịch sử & văn minh trước, sau đó là tên riêng và title indicators.
+    TUYỆT ĐỐI KHÔNG nhận nhầm các mô tả cảnh thông thường (như 'Sweating Hands', 'People Checking Phones') làm người!
     
     Returns:
         (is_entity, entity_name, entity_type)
@@ -248,58 +308,51 @@ def detect_real_entity(visual_keyword: str, narration: str = "") -> Tuple[bool, 
     """
     vk = visual_keyword.strip()
     vk_lower = vk.lower()
-    combined_text = f"{vk} {narration}".lower()
 
     # ── 1. ƯU TIÊN 1: Tra cứu tri thức nền văn minh & nhân vật lịch sử đã biết ──
-    # Sắp xếp theo độ dài từ khóa giảm dần để khớp cụm từ dài trước ("đế chế maya" trước "maya")
     for key, (full_name, ent_type) in sorted(_HISTORICAL_ENTITIES_AND_CIVILIZATIONS.items(), key=lambda x: len(x[0]), reverse=True):
         if re.search(rf"\b{re.escape(key)}\b", vk_lower):
             return True, full_name, ent_type
 
-    # ── 2. ƯU TIÊN 2: Tên riêng trong visual_keyword ──
-    names = _extract_proper_nouns(vk, is_narration=False)
-    if names:
-        cand = max(names, key=len)
-        if cand.lower() not in _COMMON_GEOPOLITICAL:
-            return True, cand, "person"
+    # ── 2. ƯU TIÊN 2: Nhân vật lịch sử / khoa học / lãnh đạo trong _KNOWN_FIGURES ──
+    for fig_key, fig_full in sorted(_KNOWN_FIGURES.items(), key=lambda x: len(x[0]), reverse=True):
+        if re.search(rf"\b{re.escape(fig_key)}\b", vk_lower):
+            return True, fig_full, "person"
 
     # ── 3. Kiểm tra Title Indicators (President X, King Y...) trong visual_keyword ──
     for indicator in _ENTITY_INDICATORS:
         m = re.search(rf"\b{re.escape(indicator)}\s+([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)*)", vk, re.IGNORECASE)
         if m:
             cand = m.group(1)
-            if cand.lower() not in _COMMON_GEOPOLITICAL:
-                return True, cand, "person"
+            if is_valid_entity_name(cand):
+                return True, f"{indicator.title()} {cand}", "person"
 
     # ── 4. Kiểm tra Known Events/Orgs trong visual_keyword (Word-Boundary) ──
     for regex, title in _EVENT_REGEXES:
         if regex.search(vk_lower):
             return True, title, "event"
 
-    # ── 5. Kiểm tra trong narration nếu visual_keyword là mô tả chung ──
+    # ── 5. Kiểm tra trong narration nếu có nhắc đến nhân vật / văn minh lịch sử ──
     if narration:
-        narr = narration.strip()
-        narr_lower = narr.lower()
+        narr_lower = narration.strip().lower()
 
         # Kiểm tra văn minh/lịch sử trong narration
         for key, (full_name, ent_type) in sorted(_HISTORICAL_ENTITIES_AND_CIVILIZATIONS.items(), key=lambda x: len(x[0]), reverse=True):
             if re.search(rf"\b{re.escape(key)}\b", narr_lower):
                 return True, full_name, ent_type
 
+        # Kiểm tra known figures trong narration
+        for fig_key, fig_full in sorted(_KNOWN_FIGURES.items(), key=lambda x: len(x[0]), reverse=True):
+            if re.search(rf"\b{re.escape(fig_key)}\b", narr_lower):
+                return True, fig_full, "person"
+
         # Kiểm tra Title Indicators trong narration
         for indicator in _ENTITY_INDICATORS:
-            m = re.search(rf"\b{re.escape(indicator)}\s+([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)*)", narr, re.IGNORECASE)
+            m = re.search(rf"\b{re.escape(indicator)}\s+([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)*)", narration, re.IGNORECASE)
             if m:
                 cand = m.group(1)
-                if cand.lower() not in _COMMON_GEOPOLITICAL:
-                    return True, cand, "person"
-
-        # Kiểm tra Proper Nouns trong narration (loại trừ từ đầu câu & quốc gia)
-        narr_names = _extract_proper_nouns(narr, is_narration=True)
-        if narr_names:
-            cand = max(narr_names, key=len)
-            if cand.lower() not in _COMMON_GEOPOLITICAL:
-                return True, cand, "person"
+                if is_valid_entity_name(cand):
+                    return True, f"{indicator.title()} {cand}", "person"
 
         # Kiểm tra Events/Orgs trong narration
         for regex, title in _EVENT_REGEXES:
@@ -356,6 +409,23 @@ _KNOWN_FIGURES = {
     "charles darwin": "Charles Darwin",
     "da vinci": "Leonardo da Vinci",
     "leonardo da vinci": "Leonardo da Vinci",
+    "marcus aurelius": "Marcus Aurelius",
+    "seneca": "Seneca the Younger",
+    "epictetus": "Epictetus",
+    "socrates": "Socrates",
+    "plato": "Plato",
+    "aristotle": "Aristotle",
+    "machiavelli": "Niccolo Machiavelli",
+    "sun tzu": "Sun Tzu",
+    "confucius": "Confucius",
+    "laozi": "Laozi",
+    "oppenheimer": "J. Robert Oppenheimer",
+    "galileo": "Galileo Galilei",
+    "genghis khan": "Genghis Khan",
+    "cleopatra": "Cleopatra",
+    "tutankhamun": "Tutankhamun",
+    "gandhi": "Mahatma Gandhi",
+    "mandela": "Nelson Mandela",
 }
 
 
@@ -367,8 +437,8 @@ def detect_video_primary_entity(
 ) -> Tuple[Optional[str], str]:
     """
     Xác định thực thể/nền văn minh/nhân vật chính xuyên suốt toàn bộ video.
-    Giúp pipeline tự động chuyển sang chế độ tài liệu điện ảnh (Documentary Mode),
-    thu thập trọn bộ ảnh thật từ Wikipedia/Wikimedia Commons/Pexels cho tất cả các phân cảnh.
+    Chỉ kích hoạt Documentary Mode khi THỰC SỰ là video tài liệu về nhân vật/di tích/sự kiện lịch sử.
+    Tuyệt đối không nhận nhầm video kỹ năng, tâm lý, đời sống, khoa học viễn tưởng!
     """
     tags = tags or []
     full_text = f"{topic} {title}".strip()
@@ -380,7 +450,7 @@ def detect_video_primary_entity(
             return full_name, ent_type
 
     # 2. Tra cứu trực tiếp trong danh sách nhân vật đã biết
-    for fig_key, fig_full in _KNOWN_FIGURES.items():
+    for fig_key, fig_full in sorted(_KNOWN_FIGURES.items(), key=lambda x: len(x[0]), reverse=True):
         if re.search(rf"\b{re.escape(fig_key)}\b", full_text_lower):
             return fig_full, "person"
 
@@ -397,39 +467,24 @@ def detect_video_primary_entity(
         if regex.search(full_text_lower):
             return ev_title, "event"
 
-    # 5. Kiểm tra trong narration
+    # 5. Kiểm tra Title Indicators trong topic / title (VD: "King Henry VIII", "General Patton")
+    for indicator in _ENTITY_INDICATORS:
+        m = re.search(rf"\b{re.escape(indicator)}\s+([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)*)", full_text, re.IGNORECASE)
+        if m:
+            cand = m.group(1)
+            if is_valid_entity_name(cand):
+                return f"{indicator.title()} {cand}", "person"
+
+    # 6. Kiểm tra trong narration — CHỈ NẾU xuất hiện nhiều lần (>= 2 lần) một nhân vật có thật
     if narration:
         narr_lower = narration.lower()
         for key, (full_name, ent_type) in sorted(_HISTORICAL_ENTITIES_AND_CIVILIZATIONS.items(), key=lambda x: len(x[0]), reverse=True):
-            if re.search(rf"\b{re.escape(key)}\b", narr_lower):
+            if len(re.findall(rf"\b{re.escape(key)}\b", narr_lower)) >= 2:
                 return full_name, ent_type
 
-        for fig_key, fig_full in _KNOWN_FIGURES.items():
-            if re.search(rf"\b{re.escape(fig_key)}\b", narr_lower):
+        for fig_key, fig_full in sorted(_KNOWN_FIGURES.items(), key=lambda x: len(x[0]), reverse=True):
+            if len(re.findall(rf"\b{re.escape(fig_key)}\b", narr_lower)) >= 2:
                 return fig_full, "person"
-
-        narr_names = _extract_proper_nouns(narration, is_narration=True)
-        valid_names = [
-            n for n in narr_names
-            if n.lower() not in _COMMON_GEOPOLITICAL
-            and not any(w.lower() in _TITLE_COMMON_WORDS for w in n.split())
-        ]
-        if valid_names:
-            counts = {}
-            for n in valid_names:
-                counts[n] = counts.get(n, 0) + 1
-            most_common = max(counts.items(), key=lambda x: x[1])[0]
-            return most_common, "person"
-
-    # 6. Lọc proper nouns từ topic nếu không phải title common words & không phải địa danh
-    topic_names = _extract_proper_nouns(topic, is_narration=False)
-    filtered = [
-        n for n in topic_names
-        if n.lower() not in _COMMON_GEOPOLITICAL
-        and not any(w.lower() in _TITLE_COMMON_WORDS for w in n.split())
-    ]
-    if filtered:
-        return max(filtered, key=len), "person"
 
     return None, ""
 
@@ -448,7 +503,7 @@ FORBIDDEN_ENTITY_NOISE = {
     'billboard', 'sidewalk', 'taxi', 'pedestrian', 'alley', 'intersection'
 }
 
-# Các từ ngữ nhiễu liên quan đến thiết bị/kỹ thuật quay chụp (camera fluff) cần lọc bỏ để tìm kiếm ảnh chuẩn
+# Các từ ngữ nhiễu liên quan đến thiết bị/kỹ thuật quay chụp (camera fluff) và từ trừu tượng cần lọc bỏ để tìm kiếm ảnh chuẩn
 CAMERA_AND_STYLE_FLUFF = {
     "cinematic", "lighting", "dramatic", "hyperrealistic", "photorealistic", "8k", "4k",
     "ultra-sharp", "ultra", "sharp", "shot", "on", "35mm", "film", "imax", "anamorphic",
@@ -457,7 +512,10 @@ CAMERA_AND_STYLE_FLUFF = {
     "portrait", "still", "render", "unreal", "engine", "octane", "vray", "style", "depth",
     "of", "field", "bokeh", "studio", "photography", "photo", "image", "picture",
     "vintage", "dark", "moody", "high-end", "prestigious", "editorial", "forbes", "aesthetic",
-    "detailed", "hyper-detailed", "unrealengine", "octanerender"
+    "detailed", "hyper-detailed", "unrealengine", "octanerender",
+    # Từ ngữ trừu tượng/tâm lý gây nhiễu search engine hình ảnh thực
+    "anxiety", "confident", "confidence", "psychology", "hacks", "secrets", "mindset",
+    "subconscious", "spotlight", "effect", "theory", "concept", "tricks", "habits"
 }
 
 
@@ -814,9 +872,10 @@ class MediaAgent:
         if ".svg" in clean_url:
             return False
 
-        # Loại trừ icon, biểu tượng, quốc huy, cờ, bản đồ, logo
+        # Loại trừ icon, biểu tượng, quốc huy, cờ, bản đồ, logo, banner, header
         if any(skip in clean_url for skip in [
-            "commons-logo", "flag_of", "coat_of_arms", "emblem", "symbol", "icon", "logo", "map", "diagram", "chart"
+            "commons-logo", "flag_of", "coat_of_arms", "emblem", "symbol", "icon", "logo", "map", "diagram", "chart",
+            "banner", "header", "ribbon", "strip", "footer", "border", "separator"
         ]):
             return False
 
@@ -842,6 +901,7 @@ class MediaAgent:
         Tìm kiếm hình ảnh chất lượng cao trên Wikimedia Commons API.
         Cải thiện: Dùng thumbnail 1280px từ CDN Varnish để tránh lỗi 429 và tải nhanh.
         Hỗ trợ filter_entity_noise để lọc bỏ ảnh đường phố/đô thị khi tìm nhân vật.
+        Loại trừ triệt để banner, dải băng hẹp và ảnh không đạt tỷ lệ.
         """
         headers = {"User-Agent": WIKIMEDIA_USER_AGENT}
         
@@ -887,13 +947,21 @@ class MediaAgent:
                         # Lọc bỏ ảnh nhiễu địa danh nếu đang tìm người thật
                         if filter_entity_noise and self._is_noisy_entity_file(file_title, url):
                             continue
+
+                        # Loại trừ ảnh tiêu đề hoặc URL chứa từ khóa banner
+                        if any(b in file_title.lower() for b in ["banner", "header", "ribbon", "strip", "footer", "border"]):
+                            continue
                         
-                        # Chỉ lấy ảnh bitmap, kích thước đủ lớn
+                        # Chỉ lấy ảnh bitmap, kích thước đủ lớn và không phải dải hẹp/banner
                         if (mime.startswith("image/") 
                             and "svg" not in mime 
                             and url 
                             and w >= 400 
-                            and h >= 300):
+                            and h >= 400):
+                            
+                            aspect = max(w / h, h / w) if (w > 0 and h > 0) else 99
+                            if aspect > 2.5:
+                                continue
                             
                             # Tính điểm ưu tiên: ảnh lớn + tỉ lệ phù hợp
                             score = w * h
@@ -1046,12 +1114,15 @@ class MediaAgent:
             logger.warning(f"Lỗi khi tìm kiếm Pexels video: {e}")
         return []
 
-    def search_best_video_clip(self, query: str) -> Optional[Dict]:
+    def search_best_video_clip(self, query: str, used_urls: Optional[set] = None) -> Optional[Dict]:
         """
         Tìm kiếm 1 video clip dọc (9:16 portrait) chất lượng cao nhất từ Pexels.
         Trả về dictionary gồm link tải MP4 1080p và metadata.
+        Loại trừ triệt để các URL đã được gán cho các phân cảnh khác.
         """
-        videos = self.search_videos(query, per_page=6, orientation="portrait")
+        used = used_urls or set()
+        clean_q = clean_scene_search_query(query, max_words=3)
+        videos = self.search_videos(clean_q or query, per_page=8, orientation="portrait")
         for v in videos:
             v_files = v.get("video_files", [])
             # Lọc các file MP4 tỉ lệ dọc (w <= h)
@@ -1062,17 +1133,19 @@ class MediaAgent:
             if portrait_files:
                 # Ưu tiên độ phân giải cao nhất (>= 1080p hoặc 720p)
                 hd_files = sorted(portrait_files, key=lambda x: x.get("height", 0), reverse=True)
-                best = hd_files[0]
-                return {
-                    "url": best.get("link"),
-                    "title": f"Pexels Video: {query}",
-                    "width": best.get("width", 1080),
-                    "height": best.get("height", 1920),
-                    "duration": v.get("duration", 0),
-                    "media_type": "video",
-                    "source": "pexels_video",
-                    "thumbnail": v.get("image", ""),
-                }
+                for best in hd_files:
+                    link = best.get("link")
+                    if link and link not in used:
+                        return {
+                            "url": link,
+                            "title": f"Pexels Video: {clean_q or query}",
+                            "width": best.get("width", 1080),
+                            "height": best.get("height", 1920),
+                            "duration": v.get("duration", 0),
+                            "media_type": "video",
+                            "source": "pexels_video",
+                            "thumbnail": v.get("image", ""),
+                        }
         return None
 
     def search_photos(self, query: str, per_page: int = 3, orientation: str = "portrait") -> List[Dict]:
@@ -1414,8 +1487,13 @@ If no real entities found, return empty array: []"""
             f"query='{primary_q}' (fallback='{fallback_q}') | prefer_video={prefer_video} | prefer_photo={prefer_photo}"
         )
 
-        # ── TẦNG 1: Wikipedia / Wikimedia Commons cho thực thể / sự kiện lịch sử ──
-        if (intent == "historical_entity" or primary_entity or prefer_photo) and not prefer_video:
+        # ── TẦNG 1: Wikipedia / Wikimedia Commons CHỈ DÀNH RIÊNG CHO THỰC THỂ / SỰ KIỆN LỊCH SỬ CÓ THẬT ──
+        # Tuyệt đối KHÔNG tìm Wikipedia cho chủ đề tâm lý, kỹ năng, đời sống, khoa học viễn tưởng, công nghệ!
+        is_historical = (
+            intent == "historical_entity"
+            or (primary_entity and entity_type in ("person", "civilization", "monument", "event", "historical_figure"))
+        )
+        if is_historical and not prefer_video:
             # A. Thử tìm trên Wikipedia
             wiki_img = self.search_wikipedia_entity_image(primary_q)
             if wiki_img and wiki_img.get("url") and wiki_img["url"] not in used:
@@ -1443,6 +1521,7 @@ If no real entities found, return empty array: []"""
         # a) prefer_video = True (do người dùng chọn hoặc Smart Director chỉ định)
         # b) Cảnh chứa từ khóa hành động/b-roll/chuyển động sống động
         # c) Scene 1 Hook (để chặn đà lướt qua - Swipe Away)
+        # d) Hoặc bất kỳ chủ đề hiện đại/viễn tưởng/đời sống nào (khi không bị ép buộc prefer_photo)
         motion_keywords = {
             "walk", "walking", "run", "running", "moving", "movement", "crowd", "people", "city", "street",
             "traffic", "night", "dark", "shadow", "silhouette", "rain", "storm", "fire", "water", "sea", "ocean",
@@ -1457,9 +1536,8 @@ If no real entities found, return empty array: []"""
         has_motion_cue = any(mk in text_for_motion for mk in motion_keywords)
 
         should_try_video = (
-            (prefer_video or has_motion_cue or scene_id == 1)
-            and not prefer_photo
-            and not primary_entity
+            (prefer_video or has_motion_cue or scene_id == 1 or not prefer_photo)
+            and not is_historical
             and self.api_key
         )
 
@@ -1473,7 +1551,7 @@ If no real entities found, return empty array: []"""
                     video_queries.append(clean_sq)
 
             for vq in video_queries:
-                best_vid = self.search_best_video_clip(vq)
+                best_vid = self.search_best_video_clip(vq, used_urls=used)
                 if best_vid and best_vid.get("url") and best_vid["url"] not in used:
                     logger.info(
                         f"🎥 [MediaAgent] Scene {scene_id}: Đã chọn video clip động Pexels ('{vq}') "
@@ -1487,6 +1565,10 @@ If no real entities found, return empty array: []"""
             px_queries = [primary_q]
             if fallback_q and fallback_q != primary_q:
                 px_queries.append(fallback_q)
+            if stock_query:
+                clean_sq = clean_scene_search_query(stock_query, max_words=3)
+                if clean_sq and clean_sq not in px_queries:
+                    px_queries.append(clean_sq)
 
             for pq in px_queries:
                 photos = self.search_photos(pq, per_page=4, orientation="portrait")
@@ -1512,7 +1594,9 @@ If no real entities found, return empty array: []"""
             ov_items = self.search_openverse(oq, per_page=3)
             for item in ov_items:
                 u = item.get("url")
-                if u and u not in used and self._is_valid_image_url(u):
+                w = item.get("width", 0)
+                h = item.get("height", 0)
+                if u and u not in used and self._is_valid_image_url(u) and (w == 0 or (w >= 400 and h >= 400)):
                     return {
                         "url": u,
                         "title": item.get("title", oq),
@@ -1523,8 +1607,8 @@ If no real entities found, return empty array: []"""
                     }
 
         # ── TẦNG 4: Pexels Video Clip Fallback (Nếu các tầng ảnh trước đều không có) ──
-        if not primary_entity and self.api_key:
-            best_vid = self.search_best_video_clip(primary_q)
+        if not is_historical and self.api_key:
+            best_vid = self.search_best_video_clip(primary_q, used_urls=used)
             if best_vid and best_vid.get("url") and best_vid["url"] not in used:
                 return best_vid
 
@@ -1660,6 +1744,9 @@ If no real entities found, return empty array: []"""
 
                 # Mở lại để chuẩn hóa sang RGB nếu mode không tương thích FFmpeg
                 with Image.open(output_path) as im:
+                    w, h = im.size
+                    if w < 250 or h < 250 or max(w / h, h / w) > 2.8:
+                        raise ValueError(f"Ảnh không đạt chuẩn kích thước/tỷ lệ ({w}x{h}, aspect={max(w/h, h/w):.2f})")
                     if im.mode not in ("RGB",):
                         rgb_im = im.convert("RGB")
                         save_fmt = "JPEG" if ext in [".jpg", ".jpeg"] else "PNG"

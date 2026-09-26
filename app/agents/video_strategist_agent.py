@@ -230,7 +230,7 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
             "ngoài hành tinh", "phi thuyền", "hành tinh", "chiến tranh giữa các vì sao", "vũ trụ quan"
         ])
 
-        is_historical = bool(primary_entity) or any(w in topic_lower for w in [
+        is_historical = (bool(primary_entity) and entity_type in ("person", "civilization", "monument", "event", "historical_figure")) or any(w in topic_lower for w in [
             "history", "war", "battle", "emperor", "king", "ancient", "century", "empire",
             "lịch sử", "thế chiến", "hoàng đế", "vua", "cổ đại", "triều đại", "di tích"
         ])
@@ -281,9 +281,14 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
                 tool = "pexels_video_api"
                 rationale = "Chỉ định thủ công: Dùng Video B-Roll chuyển động 9:16."
             elif user_pref in ("photo", "documentary"):
-                method = "REAL_ARCHIVE"
-                tool = "wikimedia_archive"
-                rationale = "Chỉ định thủ công: Tìm ảnh tư liệu lịch sử thực tế."
+                if primary_entity and entity_type in ("person", "civilization", "monument", "event", "historical_figure"):
+                    method = "REAL_ARCHIVE"
+                    tool = "wikimedia_archive"
+                    rationale = "Chỉ định thủ công: Tìm ảnh tư liệu lịch sử thực tế."
+                else:
+                    method = "STOCK_FOOTAGE"
+                    tool = "pexels_photo_api"
+                    rationale = "Chỉ định thủ công: Tìm ảnh chụp chất lượng cao (Pexels Photo)."
             elif user_pref == "ai_image":
                 method = "IMAGE_TO_VIDEO"
                 tool = "imagen3_i2v"
@@ -291,7 +296,7 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
 
             # ── 2. Đạo Diễn Tự Quyết Định Tối Ưu (Auto Strategist) ──
             # Quy tắc 1: Thực thể lịch sử thật -> REAL_ARCHIVE
-            elif primary_entity and (idx in (0, 1) or primary_entity.lower() in text_all):
+            elif primary_entity and entity_type in ("person", "civilization", "monument", "event", "historical_figure") and (idx in (0, 1) or primary_entity.lower() in text_all):
                 method = "REAL_ARCHIVE"
                 tool = "wikimedia_archive"
                 rationale = f"Nhắc đến nhân vật/địa danh lịch sử có thật '{primary_entity}' -> dùng ảnh tư liệu thật 100% để đảm bảo tính xác thực."

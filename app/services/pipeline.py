@@ -458,7 +458,9 @@ class VideoPipeline:
                     return str(candidate)
 
         # Kiểm tra checkpoint các file ảnh tài liệu hợp lệ
-        for suffix in ["_doc", "_wiki", "_real", "_web", "_google", "_ai"]:
+        # LƯU Ý: Nếu không phải primary_entity (video phi lịch sử), KHÔNG tái sử dụng các file ảnh tài liệu cũ (_doc, _wiki, _real)
+        allowed_suffixes = ["_doc", "_wiki", "_real", "_web", "_google", "_ai"] if primary_entity else ["_web", "_google", "_ai"]
+        for suffix in allowed_suffixes:
             for ext in [".jpg", ".jpeg", ".png", ".webp"]:
                 candidate = Path(media_dir) / f"scene_{scene.scene_id:03d}{suffix}{ext}"
                 if candidate.exists() and candidate.stat().st_size > 3000 and self._is_valid_image_file(str(candidate)):
@@ -793,7 +795,7 @@ class VideoPipeline:
 
     @staticmethod
     def _is_valid_image_file(path_str: str) -> bool:
-        """Kiểm tra file có tồn tại, kích thước hợp lệ và Pillow mở được định dạng raster (không phải SVG/hỏng)"""
+        """Kiểm tra file có tồn tại, kích thước hợp lệ và Pillow mở được định dạng raster (không phải SVG/hỏng/dải banner hẹp)"""
         if not path_str:
             return False
         p = Path(path_str)
@@ -803,6 +805,12 @@ class VideoPipeline:
             from PIL import Image
             with Image.open(path_str) as im:
                 im.verify()
+            with Image.open(path_str) as im:
+                w, h = im.size
+                if w < 300 or h < 300:
+                    return False
+                if max(w / h, h / w) > 2.8:
+                    return False
             return True
         except Exception:
             try:
