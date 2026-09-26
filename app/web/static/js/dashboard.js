@@ -107,10 +107,10 @@ async function fetchAllData() {
     ]);
     updateSyncTime();
 
-    // Auto-check token health on first load only
+    // Tải thông tin token ngầm sau khi UI đã hiển thị đầy đủ (không làm đơ/chậm trang web)
     if (!window._tokenHealthLoaded) {
         window._tokenHealthLoaded = true;
-        checkTokenHealth();
+        setTimeout(() => checkTokenHealth(false), 1500);
     }
 }
 
@@ -193,21 +193,24 @@ function setHealth(id, ok, msg) {
 /* ═══════════════════════════════════════════════════════
    TOKEN HEALTH MONITOR (Part 4)
 ══════════════════════════════════════════════════════════ */
-async function checkTokenHealth() {
+async function checkTokenHealth(force = false) {
     const btn = document.getElementById('btn-check-tokens');
     if (btn) {
         btn.disabled = true;
         btn.innerHTML = `<span class="loading-spinner"></span> Đang kiểm tra...`;
     }
 
-    // Show loading state in key lists
-    ['gemini-keys-list', 'pexels-keys-list'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.innerHTML = `<div class="token-checking"><span class="loading-spinner"></span> Đang kiểm tra keys...</div>`;
-    });
+    if (force) {
+        // Show loading state in key lists only on explicit click
+        ['gemini-keys-list', 'pexels-keys-list'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = `<div class="token-checking"><span class="loading-spinner"></span> Đang kiểm tra keys...</div>`;
+        });
+    }
 
     try {
-        const data = await apiGet('/api/token-health');
+        const url = force ? '/api/token-health?force=true' : '/api/token-health';
+        const data = await apiGet(url);
         if (data) {
             renderTokenHealth(data);
         }

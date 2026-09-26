@@ -7,7 +7,11 @@
     <meta name="description" content="Giao diện web quản lý tự động hoá YouTube: tạo kịch bản AI, quản lý video, theo dõi pipeline render.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
+    <noscript>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+    </noscript>
     <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
 <body>
@@ -197,7 +201,7 @@
                     <h3>🔑 Giám Sát API Token</h3>
                     <div style="display:flex; gap:8px; align-items:center;">
                         <span class="badge badge-blue">API Health Monitor</span>
-                        <button class="btn btn-secondary btn-sm" id="btn-check-tokens" onclick="checkTokenHealth()">
+                        <button class="btn btn-secondary btn-sm" id="btn-check-tokens" onclick="checkTokenHealth(true)">
                             <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                             Kiểm Tra
                         </button>

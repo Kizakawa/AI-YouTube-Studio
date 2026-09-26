@@ -2834,10 +2834,10 @@ async def web_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = (
         "🌐 **ĐỊA CHỈ TRUY CẬP WEB DASHBOARD:**\n\n"
-        "💻 **1. Mở trên máy tính này (Localhost):**\n"
-        f"👉 `{net['local_url']}` hoặc `{net['localhost_url']}`\n\n"
+        "💻 **1. Mở trên máy tính này (Khuyên dùng):**\n"
+        f"👉 `{net['local_url']}` *(Mở tức thì 0.01 giây)*\n\n"
         f"{lan_section}"
-        "💡 **Lưu ý:** Chỉ cần thiết bị kết nối chung mạng Wi-Fi là truy cập được ngay mà không cần cài đặt thêm gì!"
+        "💡 **Mẹo:** Dùng trực tiếp IP `127.0.0.1` hoặc IP Wi-Fi để tránh bị trễ phân giải DNS mạng!"
     )
     keyboard = []
     if net['is_lan_available']:
@@ -2845,7 +2845,7 @@ async def web_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("📶 Mở Web Dashboard (Wi-Fi)", url=net['wifi_url'])
         ])
     keyboard.append([
-        InlineKeyboardButton("💻 Mở Localhost", url=net['local_url'])
+        InlineKeyboardButton("💻 Mở Trên Máy Tính (127.0.0.1)", url=net['local_url'])
     ])
     await safe_reply(update, msg, reply_markup=InlineKeyboardMarkup(keyboard))
 

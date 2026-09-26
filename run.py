@@ -74,10 +74,10 @@ def print_network_banner():
         print("\n" + "═" * 70)
         print("🌐 AI YOUTUBE STUDIO - ĐÃ PHÁT SÓNG MẠNG NỘI BỘ (WI-FI / LAN)")
         print("═" * 70)
-        print(f"💻 Trên máy tính này (Local):     {net['local_url']}  hoặc  {net['localhost_url']}")
+        print(f"💻 Trên máy tính này (Khuyên dùng):  {net['local_url']}")
         if net['is_lan_available']:
-            print(f"📱 Trên điện thoại (Cùng Wi-Fi):  {net['wifi_url']}")
-        print("💡 Mẹo: Thiết bị chỉ cần kết nối cùng mạng Wi-Fi là mở được ngay!")
+            print(f"📱 Trên điện thoại (Cùng Wi-Fi):    {net['wifi_url']}")
+        print("💡 Lưu ý: Hãy dùng IP 127.0.0.1 (thay vì chữ localhost) để mở tức thì!")
         print("═" * 70 + "\n")
     except Exception as e:
         logger.debug(f"Lỗi hiển thị banner mạng: {e}")
@@ -88,7 +88,7 @@ def run_fastapi_server():
         import uvicorn
         port = int(os.getenv("PORT", 8000))
         print_network_banner()
-        uvicorn.run("app.web.server:app", host="0.0.0.0", port=port, log_level="warning")
+        uvicorn.run("app.web.server:app", host="0.0.0.0", port=port, log_level="warning", timeout_keep_alive=30)
     except ImportError:
         print("⚠️ [Web Dashboard] Chưa cài đặt uvicorn. Hãy chạy 'pip install uvicorn fastapi' để bật Dashboard.")
     except Exception as e:
