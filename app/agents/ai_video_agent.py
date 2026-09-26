@@ -21,6 +21,8 @@ from typing import Optional, Dict, Any
 
 from app.agents.image_agent import ImageAgent
 from app.utils.ffmpeg_helper import image_to_video, run_ffmpeg
+from app.utils.key_rotator import KeyRotator
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +31,13 @@ class AIVideoAgent:
     """
     Tác nhân sinh video AI chuyên nghiệp.
     Cung cấp cả 2 giải pháp: Text-to-Video trực tiếp & Image-to-Video có kiểm soát chi tiết.
+    Tích hợp trực tiếp Google Veo 3.1 & Gemini Image cùng Generative Motion Engine dự phòng.
     """
 
     def __init__(self):
         self.image_agent = ImageAgent()
+        keys = settings.get_gemini_keys_pool()
+        self.rotator = KeyRotator(keys) if keys else None
 
     async def generate_scene_video(
         self,
@@ -168,13 +173,19 @@ class AIVideoAgent:
 
         full_prompt = visual_prompt or prompt
 
-        # 1. Thử gọi API Video AI ngoại vi nếu có cấu hình
+        # 1. ƯU TIÊN SỐ 1: Thử gọi trực tiếp công cụ tạo video AI của Google (Google Veo 3.1)
+        google_veo_res = await self._try_google_veo_api(full_prompt, output_path, duration_seconds)
+        if google_veo_res and Path(google_veo_res).exists() and Path(google_veo_res).stat().st_size > 10000:
+            logger.info(f"🎥 [AIVideoAgent] ✅ Google Veo 3.1 Video hoàn tất: {output_path}")
+            return output_path
+
+        # 2. Thử gọi API Video AI ngoại vi nếu có cấu hình (HuggingFace Wan2.1 / Fal)
         external_res = self._try_external_video_api(full_prompt, output_path, duration_seconds)
         if external_res and Path(external_res).exists() and Path(external_res).stat().st_size > 10000:
             logger.info(f"🔮 [AIVideoAgent] ✅ Text-to-Video API ngoại vi hoàn tất: {output_path}")
             return output_path
 
-        # 2. Dự phòng: Generative Motion Engine siêu thực
+        # 3. DỰ PHÒNG CHẤT LƯỢNG CAO (Zero-Failure): Generative Motion Engine siêu thực
         temp_frame = str(out_p.parent / f"_t2v_frame_{scene_id:03d}.jpg")
         mystic_prompt = f"Breathtaking mystical cinematography, {full_prompt}, glowing dynamic energy, 8k vertical video still, cinematic dark atmosphere"
 
@@ -202,6 +213,111 @@ class AIVideoAgent:
                 except Exception:
                     pass
                 return output_path
+
+        return None
+
+    async def _try_google_veo_api(self, prompt: str, output_path: str, duration_seconds: float) -> Optional[str]:
+        """
+        Gọi trực tiếp công cụ sinh video AI chính hãng của Google (Google Veo 3.1).
+        Hỗ trợ các model:
+        - veo-3.1-fast-generate-preview (predictLongRunning)
+        - veo-3.1-generate-preview (predictLongRunning)
+        Tự động xoay vòng API Key và thăm dò kết quả (polling) không làm tắc nghẽn tiến trình.
+        """
+        if not self.rotator or not self.rotator.has_keys:
+            return None
+
+        import asyncio
+        import base64
+        import requests
+
+        veo_models = [
+            "veo-3.1-fast-generate-preview",
+            "veo-3.1-generate-preview",
+        ]
+
+        # Google Veo yêu cầu durationSeconds là số nguyên từ 4 đến 8 giây
+        dur_int = max(4, min(8, int(round(duration_seconds))))
+        clean_prompt = (
+            f"Cinematic 9:16 vertical video, 8k masterpiece, photorealistic, dramatic lighting, "
+            f"fluid dynamic camera movement, award-winning cinematography, no text, no watermark: {prompt}"
+        )
+
+        total_keys = len(self.rotator.keys)
+        for _ in range(min(total_keys, 3)):
+            api_key = self.rotator.get_key()
+            if not api_key:
+                break
+
+            for model in veo_models:
+                try:
+                    submit_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:predictLongRunning?key={api_key}"
+                    payload = {
+                        "instances": [
+                            {"prompt": clean_prompt}
+                        ],
+                        "parameters": {
+                            "aspectRatio": "9:16",
+                            "durationSeconds": dur_int
+                        }
+                    }
+                    headers = {"Content-Type": "application/json"}
+
+                    res = requests.post(submit_url, json=payload, headers=headers, timeout=25)
+                    if res.status_code == 200:
+                        op_data = res.json()
+                        op_name = op_data.get("name")
+                        if not op_name:
+                            continue
+
+                        logger.info(f"⏳ [AIVideoAgent] Google Veo ({model}) đã tiếp nhận lệnh tạo video ({op_name}). Đang xử lý...")
+                        poll_url = f"https://generativelanguage.googleapis.com/v1beta/{op_name}?key={api_key}"
+
+                        for _ in range(30):
+                            await asyncio.sleep(3)
+                            poll_res = requests.get(poll_url, timeout=15)
+                            if poll_res.status_code != 200:
+                                break
+                            status_data = poll_res.json()
+                            if status_data.get("done"):
+                                if "error" in status_data:
+                                    logger.warning(f"[AIVideoAgent] Google Veo hoàn thành với lỗi: {status_data['error']}")
+                                    break
+
+                                resp = status_data.get("response", {})
+                                samples = resp.get("generateVideoResponse", {}).get("generatedSamples", [])
+                                if not samples:
+                                    samples = resp.get("videos", [])
+
+                                for item in samples:
+                                    vid_info = item.get("video", item)
+                                    if vid_info.get("bytesBase64Encoded"):
+                                        b64 = vid_info["bytesBase64Encoded"]
+                                        v_bytes = base64.b64decode(b64)
+                                        if len(v_bytes) > 10000:
+                                            with open(output_path, "wb") as f:
+                                                f.write(v_bytes)
+                                            logger.info(f"🎥 [AIVideoAgent] ✅ Google Veo ({model}) thành công: {output_path} ({len(v_bytes):,} bytes)")
+                                            return output_path
+                                    elif vid_info.get("uri"):
+                                        v_uri = vid_info["uri"]
+                                        download_url = f"{v_uri}&key={api_key}" if "?" in v_uri else f"{v_uri}?key={api_key}"
+                                        d_res = requests.get(download_url, timeout=60)
+                                        if d_res.status_code == 200 and len(d_res.content) > 10000:
+                                            with open(output_path, "wb") as f:
+                                                f.write(d_res.content)
+                                            logger.info(f"🎥 [AIVideoAgent] ✅ Google Veo tải video thành công: {output_path} ({len(d_res.content):,} bytes)")
+                                            return output_path
+                                break
+                    elif res.status_code == 429:
+                        logger.debug(f"[AIVideoAgent] Google Veo {model} 429 (Cần bật Google Cloud Billing Pay-As-You-Go để kích hoạt quota Veo video).")
+                        break
+                    else:
+                        logger.debug(f"[AIVideoAgent] Google Veo {model} status {res.status_code}: {res.text[:120]}")
+                except Exception as e:
+                    logger.debug(f"[AIVideoAgent] Lỗi khi gọi Google Veo {model}: {e}")
+
+            self.rotator.rotate_key()
 
         return None
 
