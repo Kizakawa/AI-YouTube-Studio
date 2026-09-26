@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from contextlib import contextmanager
@@ -2152,6 +2152,71 @@ async def get_manual_studio_voices():
         {"id": "en-US-AriaNeural", "name": "🇺🇸 English - Aria (Engaging & Clear)", "lang": "en"}
     ]
     return {"success": True, "voices": voices}
+
+
+class VoicePreviewRequest(BaseModel):
+    voice: str = "vi-VN-HoaiMyNeural"
+    rate: str = "+0%"
+    pitch: str = "+0Hz"
+    text: Optional[str] = None
+
+
+@app.post("/api/manual-studio/preview-voice")
+async def preview_voice_sample(req: VoicePreviewRequest):
+    """
+    Sinh đoạn audio nghe thử giọng đọc AI theo nội dung kịch bản hoặc văn bản mẫu,
+    trả về trực tiếp stream MP3 để trình duyệt phát ra loa ngay lập tức.
+    """
+    import edge_tts
+
+    voice = req.voice or "vi-VN-HoaiMyNeural"
+    rate = req.rate if (req.rate and req.rate != "+0%") else None
+    pitch = req.pitch if (req.pitch and req.pitch != "+0Hz") else None
+
+    # Lấy văn bản nghe thử
+    raw_text = (req.text or "").strip()
+    if not raw_text:
+        if voice.startswith("vi"):
+            text = "Xin chào! Đây là giọng đọc thử nghiệm của tôi cho video của bạn. Hãy cùng bắt đầu sáng tạo nội dung ngay bây giờ!"
+        else:
+            text = "Hello! This is a preview of my voice for your video. Let's create something captivating together!"
+    else:
+        # Nếu kịch bản dài, trích xuất câu đầu tiên (hoặc tối đa 25 từ) để tạo preview siêu nhanh
+        first_line = raw_text.split("\n")[0].strip()
+        sentences = [s.strip() for s in first_line.split(".") if s.strip()]
+        snippet = sentences[0] if sentences else first_line
+        words = snippet.split()
+        if len(words) > 25:
+            text = " ".join(words[:25]) + "..."
+        else:
+            text = snippet
+
+    audio_bytes = bytearray()
+    last_err = None
+
+    for attempt in range(1, 3):
+        try:
+            kwargs = {"text": text, "voice": voice}
+            if rate and attempt == 1:
+                kwargs["rate"] = rate
+            if pitch and attempt == 1:
+                kwargs["pitch"] = pitch
+
+            communicate = edge_tts.Communicate(**kwargs)
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    audio_bytes.extend(chunk["data"])
+            if len(audio_bytes) > 0:
+                break
+        except Exception as e:
+            last_err = e
+            logger.warning(f"Preview voice attempt {attempt} error: {e}")
+
+    if len(audio_bytes) == 0:
+        logger.error(f"Preview voice failed: {last_err}")
+        raise HTTPException(status_code=500, detail=f"Không thể sinh giọng đọc mẫu: {last_err}")
+
+    return Response(content=bytes(audio_bytes), media_type="audio/mpeg")
 
 
 @app.get("/api/manual-studio/bgm")

@@ -440,8 +440,14 @@ Hôm nay, chúng ta sẽ khám phá 3 sự thật chấn động nhất...
                         <!-- Row 2: Cấu hình Giọng đọc & Nhạc nền -->
                         <div class="form-row" style="margin-top: 10px;">
                             <div class="form-group" style="flex:2;">
-                                <label class="form-label" for="single-voice">🎙️ Giọng đọc MC (AI Voice)</label>
-                                <select id="single-voice" class="form-input">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                    <label class="form-label" for="single-voice" style="margin-bottom:0;">🎙️ Giọng đọc MC (AI Voice)</label>
+                                    <button type="button" id="btn-preview-voice" class="btn btn-secondary btn-sm" onclick="previewSelectedVoice()" style="font-size:11.5px; padding:3px 10px; display:inline-flex; align-items:center; gap:5px; border-color:rgba(236,72,153,0.35); color:#f472b6; background:rgba(236,72,153,0.08);" title="Nghe thử giọng đọc qua loa">
+                                        <span id="preview-voice-icon">🔊</span>
+                                        <span id="preview-voice-text">Nghe Thử Giọng</span>
+                                    </button>
+                                </div>
+                                <select id="single-voice" class="form-input" onchange="onSingleVoiceChange(this.value)">
                                     <!-- Populated dynamically -->
                                 </select>
                             </div>

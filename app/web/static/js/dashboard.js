@@ -2832,6 +2832,124 @@ function updateScriptStats() {
     if (estEl) estEl.textContent = estSeconds;
 }
 
+/* ═══════════════════════════════════════════════════════
+   PREVIEW VOICE (NGHE THỬ GIỌNG ĐỌC AI PHÁT RA LOA)
+══════════════════════════════════════════════════════ */
+let currentVoiceAudio = null;
+let isVoicePreviewLoading = false;
+
+function resetPreviewVoiceButton() {
+    isVoicePreviewLoading = false;
+    const icon = document.getElementById('preview-voice-icon');
+    const text = document.getElementById('preview-voice-text');
+    const btn = document.getElementById('btn-preview-voice');
+    if (icon) icon.textContent = '🔊';
+    if (text) text.textContent = 'Nghe Thử Giọng';
+    if (btn) {
+        btn.disabled = false;
+        btn.style.color = '#f472b6';
+        btn.style.borderColor = 'rgba(236,72,153,0.35)';
+        btn.style.background = 'rgba(236,72,153,0.08)';
+    }
+}
+
+function onSingleVoiceChange(voiceId) {
+    // Tự động phát thử giọng đọc khi người dùng chọn giọng mới
+    previewSelectedVoice(true);
+}
+
+async function previewSelectedVoice(isAutoTrigger = false) {
+    // Nếu đang phát, bấm lại sẽ dừng
+    if (currentVoiceAudio && !currentVoiceAudio.paused) {
+        currentVoiceAudio.pause();
+        currentVoiceAudio = null;
+        resetPreviewVoiceButton();
+        if (!isAutoTrigger) {
+            showToast('⏹️ Đã dừng phát giọng thử', 'info');
+            return;
+        }
+    }
+
+    if (isVoicePreviewLoading) return;
+
+    const voiceSelect = document.getElementById('single-voice');
+    const rateSelect = document.getElementById('single-voice-rate');
+    const scriptInput = document.getElementById('single-script-input');
+    const btn = document.getElementById('btn-preview-voice');
+    const icon = document.getElementById('preview-voice-icon');
+    const text = document.getElementById('preview-voice-text');
+
+    const voice = voiceSelect ? voiceSelect.value : 'vi-VN-HoaiMyNeural';
+    const rate = rateSelect ? rateSelect.value : '+10%';
+    const scriptText = scriptInput ? scriptInput.value.trim() : '';
+
+    const selectedOption = voiceSelect ? voiceSelect.options[voiceSelect.selectedIndex] : null;
+    const voiceName = selectedOption ? selectedOption.text : voice;
+
+    // Trích câu thoại thử: lấy câu đầu tiên của kịch bản người dùng nhập
+    let sampleSnippet = '';
+    if (scriptText) {
+        const firstLine = scriptText.split('\n')[0].trim();
+        const sentences = firstLine.split(/[.?!]/).map(s => s.trim()).filter(Boolean);
+        sampleSnippet = sentences.length > 0 ? sentences[0] : firstLine;
+    }
+
+    isVoicePreviewLoading = true;
+    if (icon) icon.innerHTML = '<span class="loading-spinner" style="display:inline-block;width:12px;height:12px;border:2px solid #f472b6;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></span>';
+    if (text) text.textContent = 'Đang tải giọng...';
+    if (btn) btn.disabled = true;
+
+    try {
+        const resp = await fetch('/api/manual-studio/preview-voice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                voice: voice,
+                rate: rate,
+                text: sampleSnippet
+            })
+        });
+
+        if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            throw new Error(errData.detail || `Lỗi tải giọng đọc (${resp.status})`);
+        }
+
+        const audioBlob = await resp.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+
+        currentVoiceAudio = new Audio(audioUrl);
+        currentVoiceAudio.onended = () => {
+            resetPreviewVoiceButton();
+            currentVoiceAudio = null;
+        };
+        currentVoiceAudio.onerror = () => {
+            resetPreviewVoiceButton();
+            currentVoiceAudio = null;
+        };
+
+        await currentVoiceAudio.play();
+
+        // Cập nhật nút sang trạng thái đang phát
+        isVoicePreviewLoading = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.style.color = '#34d399';
+            btn.style.borderColor = 'rgba(52,211,153,0.4)';
+            btn.style.background = 'rgba(52,211,153,0.12)';
+        }
+        if (icon) icon.textContent = '⏹️';
+        if (text) text.textContent = 'Dừng Nghe';
+
+        showToast(`🎙️ Đang phát thử: ${voiceName}`, 'info');
+
+    } catch (err) {
+        console.error('Lỗi preview voice:', err);
+        showToast('❌ ' + err.message, 'error');
+        resetPreviewVoiceButton();
+    }
+}
+
 async function initManualStudio() {
     // Populate channels cho cả 2 chế độ
     const channelSelects = [
