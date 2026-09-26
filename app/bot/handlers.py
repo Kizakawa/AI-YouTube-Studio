@@ -1560,12 +1560,19 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from app.agents.publisher_agent import PublisherAgent
         from app.agents.drive_agent import DriveAgent
 
+        ch_name = ch_cfg.get("name", channel_id)
         pub_agent = PublisherAgent(channel_config=ch_cfg)
         drive_agent = DriveAgent(account_name=acc_id)
 
-        # 1. Tải lên Google Drive
-        drive_res = await asyncio.to_thread(drive_agent.upload_video, video_path, video_title)
+        # 1. Tải lên Google Drive đúng theo thư mục riêng của kênh
+        drive_res = await asyncio.to_thread(
+            drive_agent.upload_video,
+            video_path,
+            video_title,
+            channel_name=ch_name
+        )
         drive_link = drive_res.get("drive_link")
+        folder_link = drive_res.get("folder_link")
 
         # 2. Đăng tải lên YouTube
         pub_res = await asyncio.to_thread(
@@ -1600,7 +1607,9 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🎬 **Link xem YouTube (Chế độ Công khai):**\n👉 {yt_url}\n\n"
             )
             if drive_link:
-                success_text += f"💾 **Link lưu trữ Google Drive:**\n👉 {drive_link}\n\n"
+                success_text += f"💾 **Lưu trữ Google Drive (Kênh `{ch_name}`):**\n👉 {drive_link}\n"
+                if folder_link:
+                    success_text += f"📁 **Thư mục kênh trên Drive:**\n👉 {folder_link}\n\n"
             success_text += "💡 Video đã được xuất bản Công khai (Public) thành công!"
             await safe_edit_text(status_wait, success_text)
         else:
@@ -1693,12 +1702,19 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from app.agents.publisher_agent import PublisherAgent
         from app.agents.drive_agent import DriveAgent
 
+        ch_name = ch_cfg.get("name", channel_id)
         pub_agent = PublisherAgent(channel_config=ch_cfg)
         drive_agent = DriveAgent(account_name=acc_id)
 
-        # 1. Tải lên Google Drive
-        drive_res = await asyncio.to_thread(drive_agent.upload_video, video_path, video_title)
+        # 1. Tải lên Google Drive đúng theo thư mục riêng của kênh
+        drive_res = await asyncio.to_thread(
+            drive_agent.upload_video,
+            video_path,
+            video_title,
+            channel_name=ch_name
+        )
         drive_link = drive_res.get("drive_link")
+        folder_link = drive_res.get("folder_link")
 
         # 2. Đăng tải lên YouTube kèm schedule_time_iso
         ch_lang = ch_cfg.get("language", "en")
@@ -1739,7 +1755,9 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💡 **Hoàn toàn tự động:** Bạn có thể tắt máy tính / tắt bot, máy chủ YouTube sẽ tự động công chiếu đúng giờ này!"
             )
             if drive_link:
-                success_text += f"\n\n📂 **Bản gốc đã lưu trữ an toàn trên Google Drive:**\n👉 [Xem trên Google Drive]({drive_link})"
+                success_text += f"\n\n📂 **Bản gốc đã lưu trên Google Drive (Thư mục `{ch_name}`):**\n👉 [Xem video]({drive_link})"
+                if folder_link:
+                    success_text += f"\n📁 **Thư mục kênh trên Drive:** [Mở thư mục trên Drive]({folder_link})"
 
             await safe_reply(update, success_text)
         else:

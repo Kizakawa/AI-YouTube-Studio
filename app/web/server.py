@@ -603,25 +603,44 @@ async def upload_to_drive(job_id: int, background_tasks: BackgroundTasks) -> Dic
             return {"success": True, "drive_link": job.drive_link, "message": "Video đã có sẵn trên Drive rồi!"}
         video_path = job.video_path
         video_title = job.title or job.topic or f"Video_{job_id}"
+        target_channel = job.target_channel_id
+
+    # Xác định đúng kênh và tài khoản Google lưu trữ của kênh đó
+    cfg = _read_channels_yaml()
+    channels = cfg.get("channels", [])
+    ch_cfg = next((c for c in channels if c.get("id") == target_channel), {})
+    ch_name = ch_cfg.get("name") or target_channel or "Psychology of the world"
+    acc_id = ch_cfg.get("google_account", "account_1")
 
     # Upload đồng bộ (không chạy background để có link ngay)
     try:
         from app.agents.drive_agent import DriveAgent
         from app.database.models import get_db as _get_db
-        agent = DriveAgent(account_name="account_1")
+        agent = DriveAgent(account_name=acc_id)
         if not agent.service:
-            raise HTTPException(status_code=503, detail="Google Drive chưa kết nối. Chạy py auth_google.py drive để xác thực.")
-        result = agent.upload_video(video_path, video_title)
+            raise HTTPException(
+                status_code=503,
+                detail=f"Google Drive của tài khoản '{acc_id}' chưa kết nối. Chạy py auth_google.py drive để xác thực."
+            )
+        result = agent.upload_video(video_path, video_title, channel_name=ch_name)
         if result.get("status") == "success" and result.get("drive_link"):
             drive_link = result["drive_link"]
+            folder_link = result.get("folder_link")
             with _get_db() as db:
                 j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
                 if j:
                     j.drive_link = drive_link
                     from app.database.models import log_activity
                     log_activity(db, 0, "WebStudio", "UPLOAD_DRIVE",
-                                 f"Video #{job_id} đã tải lên Google Drive 20TB: {drive_link}")
-            return {"success": True, "drive_link": drive_link, "message": "Tải lên Google Drive 20TB thành công!"}
+                                 f"Video #{job_id} đã tải lên thư mục kênh '{ch_name}' trên Google Drive: {drive_link}",
+                                 channel_id=target_channel)
+            return {
+                "success": True,
+                "drive_link": drive_link,
+                "folder_link": folder_link,
+                "channel_name": ch_name,
+                "message": f"Tải lên Google Drive thành công vào thư mục kênh '{ch_name}'!"
+            }
         else:
             raise HTTPException(status_code=500, detail=result.get("error", "Upload thất bại"))
     except HTTPException:
@@ -745,11 +764,28 @@ async def publish_to_youtube(
             yt_url = pub_res.get("youtube_url")
             yt_id = pub_res.get("video_id")
             ch_name = ch_cfg.get("name", target_channel)
+
+            # Tự động sao lưu lên Google Drive vào đúng folder của kênh
+            drive_link = None
+            folder_link = None
+            try:
+                from app.agents.drive_agent import DriveAgent
+                drive_agent = DriveAgent(account_name=acc_id)
+                if drive_agent.service:
+                    drive_res = drive_agent.upload_video(video_path, chosen_title, channel_name=ch_name)
+                    if drive_res.get("status") == "success":
+                        drive_link = drive_res.get("drive_link")
+                        folder_link = drive_res.get("folder_link")
+            except Exception as e_drv:
+                logger.warning(f"Không thể tự động backup Drive cho Video #{job_id}: {e_drv}")
+
             with _get_db() as db:
                 j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
                 if j:
                     j.status = "SCHEDULED" if schedule_time else "PUBLISHED"
                     j.youtube_video_id = yt_id
+                    if drive_link:
+                        j.drive_link = drive_link
                     if slot_dt:
                         j.scheduled_time = slot_dt
                     elif schedule_time:
@@ -774,6 +810,8 @@ async def publish_to_youtube(
                 "success": True,
                 "video_id": yt_id,
                 "youtube_url": yt_url,
+                "drive_link": drive_link,
+                "folder_link": folder_link,
                 "channel_id": target_channel,
                 "channel_name": ch_name,
                 "scheduled": bool(schedule_time),
