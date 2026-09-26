@@ -840,6 +840,25 @@ function onPublishChannelChange() {
             `;
         }
     }
+
+    // Tự động tải thông tin khe giờ vàng tiếp theo cho kênh đã chọn
+    fetchGoldenSlotPreview(selectedId);
+}
+
+async function fetchGoldenSlotPreview(channelId) {
+    const el = document.getElementById('golden-slot-preview-text');
+    if (!el || !channelId) return;
+    try {
+        const res = await fetch(`/api/channels/${channelId}/next-golden-slot`);
+        const data = await res.json();
+        if (data.success && data.display_vn) {
+            el.innerHTML = `🎯 <strong>Khe tiếp theo:</strong> ${data.display_vn}<br><span style="color:#93c5fd">(${data.display_us})</span>`;
+        } else {
+            el.textContent = 'Tự động tính 20:00 hoặc 00:30 VN chưa có video';
+        }
+    } catch (e) {
+        el.textContent = 'Tự động tính 20:00 hoặc 00:30 VN chưa có video';
+    }
 }
 
 async function submitPublishYouTube() {
@@ -847,7 +866,9 @@ async function submitPublishYouTube() {
     const channelId = document.getElementById('publish-channel-select').value;
     const title = document.getElementById('publish-title-input').value.trim();
     const description = document.getElementById('publish-desc-input').value.trim();
-    const privacy = document.querySelector('input[name="publish_privacy"]:checked')?.value || 'public';
+    const rawPrivacy = document.querySelector('input[name="publish_privacy"]:checked')?.value || 'auto_golden_slot';
+    const isAutoSchedule = (rawPrivacy === 'auto_golden_slot');
+    const privacy = isAutoSchedule ? 'private' : rawPrivacy;
 
     if (!jobId) {
         showToast('Không xác định được video job', 'error');
@@ -874,10 +895,17 @@ async function submitPublishYouTube() {
     const originalHTML = btn ? btn.innerHTML : '';
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = `<span class="loading-spinner"></span> Đang xuất bản lên kênh '${ch?.name || channelId}'...`;
+        btn.innerHTML = isAutoSchedule
+            ? `<span class="loading-spinner"></span> Đang xếp vào khe giờ vàng cho kênh '${ch?.name || channelId}'...`
+            : `<span class="loading-spinner"></span> Đang xuất bản lên kênh '${ch?.name || channelId}'...`;
     }
 
-    showToast(`🚀 Đang xuất bản Video #${jobId} lên kênh '${ch?.name || channelId}'...`, 'info');
+    showToast(
+        isAutoSchedule
+            ? `⏰ Đang xếp Video #${jobId} vào khe giờ vàng tối ưu...`
+            : `🚀 Đang xuất bản Video #${jobId} lên kênh '${ch?.name || channelId}'...`,
+        'info'
+    );
 
     try {
         const res = await fetch(`/api/videos/${jobId}/publish-youtube`, {
@@ -887,7 +915,9 @@ async function submitPublishYouTube() {
                 channel_id: channelId,
                 title: title,
                 description: description,
-                privacy: privacy
+                privacy: privacy,
+                auto_schedule: isAutoSchedule,
+                schedule_time_iso: isAutoSchedule ? 'auto' : null
             })
         });
 

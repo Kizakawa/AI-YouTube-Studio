@@ -148,7 +148,7 @@ def main():
     app.add_handler(CommandHandler(["pending", "resume"], pending_command))
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CallbackQueryHandler(channel_callback, pattern=r"^(select_channel|manage_channel|pick_niche|set_niche|prompt_rename|add_tpl|prompt_custom_channel|pick_voice|set_voice|pick_lang|set_lang|pick_visual|set_visual|confirm_del_channel|do_del_channel|prompt_add_channel|back_channels|refresh_channels)"))
-    app.add_handler(CallbackQueryHandler(video_callback, pattern=r"^(render_video|publish_now|publish_youtube|publish_to_channel|cancel_publish|feedback_video|edit_script|schedule|schedule_youtube|regenerate|cancel|process_all_pending|refresh_pending|retry_all_failed|apply_media)"))
+    app.add_handler(CallbackQueryHandler(video_callback, pattern=r"^(render_video|publish_now|publish_youtube|publish_to_channel|schedule_to_channel|cancel_publish|feedback_video|edit_script|schedule|schedule_youtube|regenerate|cancel|process_all_pending|refresh_pending|retry_all_failed|apply_media)"))
     app.add_handler(CallbackQueryHandler(chat_callback, pattern=r"^(convert_chat|suggest_more|change_hooks):"))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.Document.ALL, media_upload_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))

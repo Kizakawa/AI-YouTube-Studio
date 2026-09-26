@@ -639,6 +639,25 @@ class PublishYouTubeRequest(BaseModel):
     tags: Optional[str] = None
     privacy: str = "public"
     schedule_time_iso: Optional[str] = None
+    auto_schedule: bool = False
+
+@app.get("/api/channels/{channel_id}/next-golden-slot")
+def get_channel_next_golden_slot(channel_id: str):
+    """Tính toán khe giờ vàng tiếp theo trống lịch cho kênh"""
+    try:
+        from app.services.smart_scheduler import get_next_available_golden_slot, get_channel_upcoming_schedule
+        slot_dt, slot_iso, display_vn, display_us = get_next_available_golden_slot(channel_id)
+        upcoming = get_channel_upcoming_schedule(channel_id, limit=5)
+        return {
+            "success": True,
+            "channel_id": channel_id,
+            "slot_iso": slot_iso,
+            "display_vn": display_vn,
+            "display_us": display_us,
+            "upcoming": upcoming
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 @app.post("/api/videos/{job_id}/publish-youtube")
 async def publish_to_youtube(
@@ -647,14 +666,14 @@ async def publish_to_youtube(
     privacy: str = "public"
 ) -> Dict[str, Any]:
     """
-    Đăng video đã render lên YouTube qua PublisherAgent.
-    Hỗ trợ người dùng chủ động chọn kênh YouTube, tinh chỉnh tiêu đề, mô tả và chế độ hiển thị (privacy).
+    Đăng hoặc tự động lên lịch video đã render lên YouTube qua PublisherAgent.
+    Hỗ trợ chế độ auto_schedule tự động xếp vào khe giờ vàng còn trống tiếp theo.
     """
     with get_db() as db:
         job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
         if not job:
             raise HTTPException(status_code=404, detail="Không tìm thấy video job")
-        if job.status not in ("RENDERED", "PUBLISHED"):
+        if job.status not in ("RENDERED", "SCHEDULED", "PUBLISHED"):
             raise HTTPException(status_code=400, detail=f"Video chưa render xong (status: {job.status})")
         if not job.video_path or not Path(job.video_path).exists():
             raise HTTPException(status_code=404, detail="File video không tồn tại trên máy")
@@ -666,6 +685,19 @@ async def publish_to_youtube(
         chosen_tags_str = (body.tags if body and body.tags is not None else None) or job.tags or ""
         chosen_privacy = (body.privacy if body and body.privacy else None) or privacy or "public"
         schedule_time = body.schedule_time_iso if body else None
+        auto_schedule = (body.auto_schedule if body else False) or (schedule_time == "auto")
+
+        display_vn_slot = None
+        display_us_slot = None
+        slot_dt = None
+
+        # Tự động tính toán khe giờ vàng nếu bật auto_schedule
+        if auto_schedule:
+            from app.services.smart_scheduler import get_next_available_golden_slot
+            slot_dt, schedule_time, display_vn_slot, display_us_slot = get_next_available_golden_slot(target_channel)
+            chosen_privacy = "private"
+        elif schedule_time:
+            chosen_privacy = "private"
 
         # Đồng bộ lại job DB
         job.target_channel_id = target_channel
@@ -716,18 +748,38 @@ async def publish_to_youtube(
             with _get_db() as db:
                 j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
                 if j:
-                    j.status = "PUBLISHED"
+                    j.status = "SCHEDULED" if schedule_time else "PUBLISHED"
                     j.youtube_video_id = yt_id
-                    log_activity(db, 0, "WebStudio", "PUBLISH_YOUTUBE",
-                                 f"Video #{job_id} đã đăng lên kênh '{ch_name}': {yt_url}",
-                                 channel_id=target_channel)
+                    if slot_dt:
+                        j.scheduled_time = slot_dt
+                    elif schedule_time:
+                        try:
+                            from datetime import datetime as _dt
+                            j.scheduled_time = _dt.fromisoformat(schedule_time.replace("Z", "+00:00"))
+                        except Exception:
+                            pass
+                    msg = (
+                        f"Video #{job_id} đã lên lịch công chiếu vào {display_vn_slot} trên kênh '{ch_name}': {yt_url}"
+                        if schedule_time and display_vn_slot
+                        else f"Video #{job_id} đã xuất bản lên kênh '{ch_name}': {yt_url}"
+                    )
+                    log_activity(db, 0, "WebStudio", "PUBLISH_YOUTUBE", msg, channel_id=target_channel)
+
+            success_msg = (
+                f"Đã lên lịch thành công cho Video #{job_id}! Tự động công chiếu vào {display_vn_slot} ({display_us_slot}). Link: {yt_url}"
+                if schedule_time and display_vn_slot
+                else f"Đã đăng lên kênh '{ch_name}' thành công! Link: {yt_url}"
+            )
             return {
                 "success": True,
                 "video_id": yt_id,
                 "youtube_url": yt_url,
                 "channel_id": target_channel,
                 "channel_name": ch_name,
-                "message": f"Đã đăng lên kênh '{ch_name}' thành công! Link: {yt_url}"
+                "scheduled": bool(schedule_time),
+                "scheduled_vn": display_vn_slot,
+                "scheduled_iso": schedule_time,
+                "message": success_msg
             }
         else:
             raise HTTPException(status_code=500, detail=pub_res.get("error", "Đăng YouTube thất bại"))
