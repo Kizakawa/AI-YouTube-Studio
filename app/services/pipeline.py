@@ -366,9 +366,13 @@ class VideoPipeline:
                     scene_id=scene.scene_id,
                     camera_motion=sc_strat.get("camera_motion", "zoom_in"),
                     visual_prompt=scene.visual_prompt,
+                    used_urls=used_asset_paths,
+                    visual_analysis=v_analysis,
+                    narration=scene.narration,
                 )
                 if res_v and Path(res_v).exists():
                     media_path = res_v
+                    used_asset_paths.add(res_v)
 
             # 2. TEXT_TO_VIDEO (Sinh video AI trực tiếp kỳ ảo)
             elif prod_method == "TEXT_TO_VIDEO":
@@ -380,9 +384,13 @@ class VideoPipeline:
                     scene_id=scene.scene_id,
                     camera_motion=sc_strat.get("camera_motion", "zoom_in"),
                     visual_prompt=scene.visual_prompt,
+                    used_urls=used_asset_paths,
+                    visual_analysis=v_analysis,
+                    narration=scene.narration,
                 )
                 if res_v and Path(res_v).exists():
                     media_path = res_v
+                    used_asset_paths.add(res_v)
 
             # 3. Fallback hoặc các phương pháp REAL_ARCHIVE, STOCK_FOOTAGE
             if not media_path:
@@ -397,6 +405,8 @@ class VideoPipeline:
                     sc_strat=sc_strat,
                     v_analysis=v_analysis,
                 )
+                if media_path:
+                    used_asset_paths.add(media_path)
 
             # ── Thẩm định & Chấm điểm độ liên quan với MediaRelevanceAgent ──
             if media_path and Path(media_path).exists():
@@ -530,24 +540,29 @@ class VideoPipeline:
         """
         import asyncio
 
-        # ── Checkpoint: Tái sử dụng media hợp lệ đã tải từ lần chạy trước ──
+        # ── Checkpoint: Chỉ tái sử dụng media nếu CHƯA từng gán cho cảnh nào trong video hiện tại ──
         # NẾU ĐANG Ở DOCUMENTARY MODE: Tuyệt đối không tái sử dụng video stock cũ (.mp4 từ Pexels) vì đó là diễn viên hiện đại!
         if not primary_entity:
             for ext in [".mp4", ".mov", ".jpg", ".jpeg", ".png", ".webp"]:
                 candidate = Path(media_dir) / f"scene_{scene.scene_id:03d}{ext}"
-                if candidate.exists() and candidate.stat().st_size > 10240:
+                cand_str = str(candidate)
+                if candidate.exists() and candidate.stat().st_size > 10240 and (used_asset_paths is None or cand_str not in used_asset_paths):
                     logger.info(f"Scene {scene.scene_id}: Tái sử dụng media từ checkpoint ({candidate.name})")
-                    return str(candidate)
+                    if used_asset_paths is not None:
+                        used_asset_paths.add(cand_str)
+                    return cand_str
 
         # Kiểm tra checkpoint các file ảnh tài liệu hợp lệ
-        # LƯU Ý: Nếu không phải primary_entity (video phi lịch sử), KHÔNG tái sử dụng các file ảnh tài liệu cũ (_doc, _wiki, _real)
         allowed_suffixes = ["_doc", "_wiki", "_real", "_web", "_google", "_ai"] if primary_entity else ["_web", "_google", "_ai"]
         for suffix in allowed_suffixes:
             for ext in [".jpg", ".jpeg", ".png", ".webp"]:
                 candidate = Path(media_dir) / f"scene_{scene.scene_id:03d}{suffix}{ext}"
-                if candidate.exists() and candidate.stat().st_size > 3000 and self._is_valid_media_file(str(candidate)):
+                cand_str = str(candidate)
+                if candidate.exists() and candidate.stat().st_size > 3000 and self._is_valid_media_file(cand_str) and (used_asset_paths is None or cand_str not in used_asset_paths):
                     logger.info(f"Scene {scene.scene_id}: Tái sử dụng ảnh tài liệu từ checkpoint ({candidate.name})")
-                    return str(candidate)
+                    if used_asset_paths is not None:
+                        used_asset_paths.add(cand_str)
+                    return cand_str
 
         # ── Tầng 0: User Custom Media (Người dùng gửi qua Telegram) ──
         custom_dir = Path("storage") / "jobs" / str(self.job_id) / "custom_media"
@@ -561,10 +576,12 @@ class VideoPipeline:
                         import shutil
                         shutil.copy2(str(cand), str(dest))
                         logger.info(f"Scene {scene.scene_id}: Dùng media tùy biến của người dùng ({cand.name})")
+                        if used_asset_paths is not None:
+                            used_asset_paths.add(str(dest))
                         return str(dest)
 
         # ── Quyết định chính sách Smart Hybrid theo Đạo Diễn Chiến Lược (sc_strat) & Scene Preference ──
-        strat_method = (sc_strat or {}).get("production_method")
+        strat_method = (sc_strat or {}).get("production_method") or (v_analysis or {}).get("production_method", "STOCK_FOOTAGE")
         scene_pref = getattr(scene, 'media_type', None) or "auto"
         prefer_video = False
         prefer_ai = False
@@ -572,9 +589,9 @@ class VideoPipeline:
 
         if strat_method == "REAL_ARCHIVE" or scene_pref == "documentary":
             prefer_photo = True
-        elif strat_method == "STOCK_FOOTAGE" or scene_pref == "video":
+        elif strat_method in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO") or scene_pref == "video" or scene.scene_id == 1:
             prefer_video = True
-        elif strat_method in ("IMAGE_TO_VIDEO", "TEXT_TO_VIDEO") or scene_pref == "ai_image":
+        elif strat_method == "IMAGE_TO_VIDEO" or scene_pref == "ai_image":
             prefer_ai = True
         elif scene_pref == "photo":
             prefer_photo = True
@@ -582,20 +599,8 @@ class VideoPipeline:
             if primary_entity:
                 prefer_photo = True
             else:
-                motion_keywords = {
-                    "walk", "run", "running", "moving", "movement", "crowd", "people", "city", "street",
-                    "traffic", "night", "dark", "shadow", "silhouette", "rain", "storm", "fire", "water", "sea",
-                    "clock", "time", "hourglass", "hands", "typing", "money", "cash", "brain", "mind",
-                    "space", "galaxy", "stars", "looking", "staring", "whisper", "talking", "smoke",
-                    "candle", "door", "window", "alone", "thinking", "eye", "eyes", "falling", "fight"
-                }
-                text_cue = f"{scene.narration} {scene.visual_keyword or ''} {getattr(scene, 'stock_query', '') or ''}".lower()
-                has_motion = any(mk in text_cue for mk in motion_keywords)
-
-                if scene.scene_id == 1 or has_motion or (scene.scene_id % 2 == 0):
-                    prefer_video = True
-                else:
-                    prefer_ai = True
+                # Mặc định cho Shorts: Ưu tiên Full Video 9:16 động để giữ retention cao!
+                prefer_video = True
 
         # ── TẦNG 0.5: Ưu tiên AI Image nếu prefer_ai và có visual_prompt ──
         if prefer_ai and getattr(scene, 'visual_prompt', None) and len(scene.visual_prompt.strip()) > 15:
@@ -611,6 +616,8 @@ class VideoPipeline:
                     scene.visual_prompt,
                 )
                 if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 2000 and self._is_valid_image_file(res_img):
+                    if used_asset_paths is not None:
+                        used_asset_paths.add(res_img)
                     logger.info(f"Scene {scene.scene_id}: ✨ Tạo thành công ảnh AI điện ảnh: {scene.visual_prompt[:45]}...")
                     return res_img
             except Exception as e:
@@ -694,7 +701,7 @@ class VideoPipeline:
                 )
 
             # Nếu phân cảnh cần chuyển động (prefer_video hoặc phương pháp là TEXT_TO_VIDEO/STOCK_FOOTAGE)
-            is_dynamic_scene = prefer_video or (v_analysis and v_analysis.get("production_method") in ("TEXT_TO_VIDEO", "STOCK_FOOTAGE"))
+            is_dynamic_scene = prefer_video or (v_analysis and v_analysis.get("production_method") in ("TEXT_TO_VIDEO", "STOCK_FOOTAGE")) or scene.scene_id == 1
             if is_dynamic_scene:
                 try:
                     from app.agents.ai_video_agent import AIVideoAgent
@@ -706,9 +713,14 @@ class VideoPipeline:
                         duration_seconds=scene.actual_duration_seconds,
                         scene_id=scene.scene_id,
                         visual_prompt=ai_prompt,
+                        used_urls=used_asset_paths,
+                        visual_analysis=v_analysis,
+                        narration=scene.narration,
                     )
                     if res_v and Path(res_v).exists() and Path(res_v).stat().st_size > 5000:
-                        logger.info(f"Scene {scene.scene_id}: ✅ Tạo thành công Video AI (Wan/Pollinations) theo chỉ đạo Agent")
+                        if used_asset_paths is not None:
+                            used_asset_paths.add(res_v)
+                        logger.info(f"Scene {scene.scene_id}: ✅ Tạo thành công Video AI theo chỉ đạo Agent")
                         return res_v
                 except Exception as e_v:
                     logger.debug(f"Scene {scene.scene_id} AI Video fallback error: {e_v}")
@@ -725,6 +737,8 @@ class VideoPipeline:
                 vp,
             )
             if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 1000 and self._is_valid_image_file(res_img):
+                if used_asset_paths is not None:
+                    used_asset_paths.add(res_img)
                 logger.info(f"Scene {scene.scene_id}: ✅ AI Image sinh thành công theo phân tích ngữ cảnh ({primary_entity or 'generic'})")
                 return res_img
         except Exception as e:
@@ -760,6 +774,7 @@ class VideoPipeline:
                             )
                             if used_asset_paths is not None:
                                 used_asset_paths.add(vid_url)
+                                used_asset_paths.add(output)
                             logger.info(f"Scene {scene.scene_id}: ✅ Pexels Video (query='{safe_q}')")
                             return output
             except Exception as e:
@@ -787,6 +802,7 @@ class VideoPipeline:
                             if self._is_valid_image_file(img_output):
                                 if used_asset_paths is not None:
                                     used_asset_paths.add(img_url)
+                                    used_asset_paths.add(img_output)
                                 logger.info(f"Scene {scene.scene_id}: ✅ Pexels Photo (query='{safe_q}')")
                                 return img_output
             except Exception as e:
@@ -795,20 +811,25 @@ class VideoPipeline:
         # ── Tầng 5: Web Image Search (Wikimedia Commons — cho cảnh generic) ──
         try:
             web_photos = await asyncio.to_thread(
-                self._media_agent.search_web_photos, scene.visual_keyword, 2
+                self._media_agent.search_web_photos, scene.visual_keyword, 4
             )
             if web_photos:
-                web_photo = web_photos[0]
-                web_url = web_photo.get("url")
-                if web_url:
-                    web_ext = ".jpg" if any(x in web_url.lower() for x in ["jpg", "jpeg"]) else ".png"
-                    web_output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_web{web_ext}")
-                    await asyncio.to_thread(
-                        self._media_agent.download_file, web_url, web_output
-                    )
-                    if self._is_valid_image_file(web_output):
-                        logger.info(f"Scene {scene.scene_id}: Tải thành công ảnh Web ({web_photo.get('title', '')[:30]})")
-                        return web_output
+                for web_photo in web_photos:
+                    web_url = web_photo.get("url")
+                    if web_url and (used_asset_paths is None or web_url not in used_asset_paths) and (used_pool_urls is None or web_url not in used_pool_urls):
+                        web_ext = ".jpg" if any(x in web_url.lower() for x in ["jpg", "jpeg"]) else ".png"
+                        web_output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_web{web_ext}")
+                        await asyncio.to_thread(
+                            self._media_agent.download_file, web_url, web_output
+                        )
+                        if self._is_valid_image_file(web_output):
+                            if used_asset_paths is not None:
+                                used_asset_paths.add(web_url)
+                                used_asset_paths.add(web_output)
+                            if used_pool_urls is not None:
+                                used_pool_urls.add(web_url)
+                            logger.info(f"Scene {scene.scene_id}: Tải thành công ảnh Web ({web_photo.get('title', '')[:30]})")
+                            return web_output
         except Exception as e:
             logger.warning(f"Scene {scene.scene_id}: Lỗi tìm ảnh Web: {e}")
 
@@ -816,6 +837,8 @@ class VideoPipeline:
         logger.info(f"Scene {scene.scene_id}: Dùng ảnh đồ họa cinematic gradient cho Ken Burns")
         placeholder = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_graphic.png")
         self._create_placeholder_image(placeholder, scene.visual_keyword, scene_id=scene.scene_id)
+        if used_asset_paths is not None:
+            used_asset_paths.add(placeholder)
         return placeholder
 
 

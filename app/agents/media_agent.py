@@ -1582,6 +1582,7 @@ If no real entities found, return empty array: []"""
             wiki_img = self.search_wikipedia_entity_image(primary_q)
             if wiki_img and wiki_img.get("url") and wiki_img["url"] not in used:
                 if not (entity_type == "person" and self._is_noisy_entity_file(wiki_img.get("title", ""), wiki_img["url"])):
+                    used.add(wiki_img["url"])
                     return wiki_img
 
             # B. Thử tìm trên Wikimedia Commons
@@ -1598,6 +1599,7 @@ If no real entities found, return empty array: []"""
                 for c in commons:
                     u = c.get("url")
                     if u and u not in used and self._is_valid_image_url(u):
+                        used.add(u)
                         return c
 
         # ── TẦNG MOTION B-ROLL: Pexels Video Clip dọc (Portrait 9:16) ──
@@ -1643,6 +1645,7 @@ If no real entities found, return empty array: []"""
                     narration=scene_narration,
                 )
                 if best_vid and best_vid.get("url") and best_vid["url"] not in used:
+                    used.add(best_vid["url"])
                     logger.info(
                         f"🎥 [MediaAgent] Scene {scene_id}: Đã chọn video clip động Pexels ('{best_vid.get('title', vq)}') "
                         f"thông qua Agent tuyển chọn thị giác!"
@@ -1695,12 +1698,21 @@ If no real entities found, return empty array: []"""
                     )
                     if winner_photo and p_score >= 6.0:
                         logger.info(f"📸 [MediaAgent] Scene {scene_id}: Agent tuyển chọn ảnh Pexels: '{winner_photo.get('title')}' ({p_score}/10)")
+                        if used is not None and winner_photo.get("url"):
+                            used.add(winner_photo["url"])
                         return winner_photo
+                    elif p_ai:
+                        logger.info(f"🎨 [MediaAgent] Scene {scene_id}: Agent từ chối ảnh stock Pexels ({p_rat}). Chuyển quyền cho Generative AI.")
+                        return None
                 except Exception as e:
                     logger.debug(f"[MediaAgent] Photo curation error: {e}")
 
-            if raw_photos:
-                return raw_photos[0]
+            # Không trả về ảnh stock nếu chưa qua kiểm duyệt khi prefer_video được bật
+            if not prefer_video and raw_photos:
+                fallback_pick = raw_photos[0]
+                if used is not None and fallback_pick.get("url"):
+                    used.add(fallback_pick["url"])
+                return fallback_pick
 
         # ── TẦNG 3: Openverse Archival (800M+ ảnh bảo tàng & thư viện thế giới) ──
         ov_queries = [primary_q]
@@ -1714,6 +1726,7 @@ If no real entities found, return empty array: []"""
                 w = item.get("width", 0)
                 h = item.get("height", 0)
                 if u and u not in used and self._is_valid_image_url(u) and (w == 0 or (w >= 400 and h >= 400)):
+                    used.add(u)
                     return {
                         "url": u,
                         "title": item.get("title", oq),
@@ -1727,6 +1740,7 @@ If no real entities found, return empty array: []"""
         if not is_historical and self.api_key:
             best_vid = self.search_best_video_clip(primary_q, used_urls=used)
             if best_vid and best_vid.get("url") and best_vid["url"] not in used:
+                used.add(best_vid["url"])
                 return best_vid
 
         return None

@@ -318,11 +318,12 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
                 tool = "imagen3_i2v"
                 rationale = "Cảnh cần đặc tả nhân vật/sinh vật cụ thể -> tạo ảnh chủ đề 8K chuẩn bố cục rồi chuyển hóa thành video 3D."
 
-            # Quy tắc mặc định: Xen kẽ Video chuyển động thực và Video nghệ thuật để nhịp điệu sinh động
+            # Quy tắc mặc định: Ưu tiên Full Video chuyển động thực tế 9:16 cho Shorts, chỉ dùng ảnh cho cảnh cần đặc tả
             else:
-                method = "STOCK_FOOTAGE" if idx % 2 == 0 else "IMAGE_TO_VIDEO"
-                tool = "pexels_video_api" if method == "STOCK_FOOTAGE" else "imagen3_i2v"
-                rationale = "Cân bằng nhịp điệu video -> xen kẽ video chuyển động thực và nghệ thuật điện ảnh."
+                # 3 trong 4 cảnh mặc định dùng Full Video để giữ retention cao, chỉ 1 cảnh dùng Image-to-Video
+                method = "IMAGE_TO_VIDEO" if (idx % 4 == 2) else "STOCK_FOOTAGE"
+                tool = "imagen3_i2v" if method == "IMAGE_TO_VIDEO" else "pexels_video_api"
+                rationale = "Đảm bảo video chuyển động sống động (Full Video 9:16) giữ chân người xem, kết hợp chuyển động camera mượt mà."
 
             cam_motion = motions_list[idx % len(motions_list)]
             sfx = "whoosh" if idx == 0 else "hit"

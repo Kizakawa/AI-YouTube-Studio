@@ -49,6 +49,9 @@ class AIVideoAgent:
         visual_prompt: Optional[str] = None,
         method: str = "AUTO",
         source_image_path: Optional[str] = None,
+        used_urls: Optional[set] = None,
+        visual_analysis: Optional[Dict[str, Any]] = None,
+        narration: str = "",
     ) -> Optional[str]:
         """
         Điểm điều phối chung: Nhận yêu cầu và tự động chuyển về đúng phương pháp:
@@ -79,6 +82,9 @@ class AIVideoAgent:
                 camera_motion=camera_motion,
                 visual_prompt=visual_prompt,
                 source_image_path=source_image_path,
+                used_urls=used_urls,
+                visual_analysis=visual_analysis,
+                narration=narration,
             )
         else:
             return await self.generate_text_to_video(
@@ -88,6 +94,9 @@ class AIVideoAgent:
                 scene_id=scene_id,
                 camera_motion=camera_motion,
                 visual_prompt=visual_prompt,
+                used_urls=used_urls,
+                visual_analysis=visual_analysis,
+                narration=narration,
             )
 
     async def generate_image_to_video(
@@ -99,6 +108,9 @@ class AIVideoAgent:
         camera_motion: str = "zoom_in",
         visual_prompt: Optional[str] = None,
         source_image_path: Optional[str] = None,
+        used_urls: Optional[set] = None,
+        visual_analysis: Optional[Dict[str, Any]] = None,
+        narration: str = "",
     ) -> Optional[str]:
         """
         PHƯƠNG PHÁP 1: IMAGE-TO-VIDEO (Tạo video phụ thuộc vào ảnh chủ đề).
@@ -125,7 +137,14 @@ class AIVideoAgent:
             p_check = clean_prompt.lower()
             is_specific_character = any(f in p_check for f in ["portrait", "face", "philosopher", "chân dung", "khuôn mặt", "character closeup"])
             if any(c in p_check for c in motion_cues) and not is_specific_character:
-                px_vid = self._try_pexels_video_clip(clean_prompt, output_path, duration_seconds)
+                px_vid = self._try_pexels_video_clip(
+                    clean_prompt,
+                    output_path,
+                    duration_seconds,
+                    used_urls=used_urls,
+                    visual_analysis=visual_analysis,
+                    narration=narration,
+                )
                 if px_vid and Path(px_vid).exists() and Path(px_vid).stat().st_size > 10000:
                     logger.info(f"🎥 [AIVideoAgent] ✅ Nâng cấp thành Video Clip 9:16 chuyển động thực tế: {output_path}")
                     return output_path
@@ -180,6 +199,9 @@ class AIVideoAgent:
         scene_id: int = 1,
         camera_motion: str = "zoom_in",
         visual_prompt: Optional[str] = None,
+        used_urls: Optional[set] = None,
+        visual_analysis: Optional[Dict[str, Any]] = None,
+        narration: str = "",
     ) -> Optional[str]:
         """
         PHƯƠNG PHÁP 2: TEXT-TO-VIDEO (Tạo video AI trực tiếp từ mô tả).
@@ -204,7 +226,14 @@ class AIVideoAgent:
 
         # 3. ƯU TIÊN SỐ 3: Tìm Video Clip B-Roll 9:16 chuyển động thực tế từ Pexels Video (cho viễn tưởng, không gian, cyberpunk, chuyển động thực)
         # Giúp cảnh có chuyển động động (dynamic video) 30fps thực sự thay vì chỉ là ảnh tĩnh phóng to!
-        pexels_vid = self._try_pexels_video_clip(full_prompt, output_path, duration_seconds)
+        pexels_vid = self._try_pexels_video_clip(
+            full_prompt,
+            output_path,
+            duration_seconds,
+            used_urls=used_urls,
+            visual_analysis=visual_analysis,
+            narration=narration,
+        )
         if pexels_vid and Path(pexels_vid).exists() and Path(pexels_vid).stat().st_size > 10000:
             logger.info(f"🎥 [AIVideoAgent] ✅ Pexels Video Clip 9:16 chuyển động hoàn tất: {output_path}")
             return output_path
@@ -419,19 +448,44 @@ class AIVideoAgent:
 
         return None
 
-    def _try_pexels_video_clip(self, prompt: str, output_path: str, duration_seconds: float) -> Optional[str]:
+    def _try_pexels_video_clip(
+        self,
+        prompt: str,
+        output_path: str,
+        duration_seconds: float,
+        used_urls: Optional[set] = None,
+        visual_analysis: Optional[Dict[str, Any]] = None,
+        narration: str = "",
+    ) -> Optional[str]:
         """
         Tìm kiếm và tải video clip 9:16 chất lượng cao từ Pexels Video cho các chủ đề viễn tưởng / chuyển động.
+        Sử dụng search_queries từ visual_analysis (2-3 từ ngắn gọn) thay vì AI prompt dài dòng.
         Tự động cắt đúng thời lượng (trim_video) để ráp nối mượt mà vào video hoàn chỉnh.
+        Đảm bảo không trùng lặp URL với các phân cảnh khác.
         """
         try:
-            from app.agents.media_agent import MediaAgent
+            from app.agents.media_agent import MediaAgent, clean_scene_search_query
             media_agent = MediaAgent()
             if not media_agent.api_key:
                 return None
 
-            best_vid = media_agent.search_best_video_clip(prompt)
-            if best_vid and best_vid.get("url"):
+            used = used_urls if used_urls is not None else set()
+            query_to_use = ""
+            if visual_analysis and visual_analysis.get("search_queries"):
+                for sq in visual_analysis["search_queries"]:
+                    if sq:
+                        query_to_use = sq
+                        break
+            if not query_to_use:
+                query_to_use = clean_scene_search_query(prompt, max_words=3)
+
+            best_vid = media_agent.search_best_video_clip(
+                query=query_to_use,
+                used_urls=used,
+                visual_analysis=visual_analysis,
+                narration=narration,
+            )
+            if best_vid and best_vid.get("url") and best_vid["url"] not in used:
                 cand_url = best_vid["url"]
                 raw_temp = str(Path(output_path).parent / f"_raw_px_{Path(output_path).stem}.mp4")
                 media_agent.download_file(cand_url, raw_temp)
@@ -449,6 +503,8 @@ class AIVideoAgent:
                     except Exception:
                         pass
                     if Path(output_path).exists() and Path(output_path).stat().st_size > 10000:
+                        used.add(cand_url)
+                        logger.info(f"🎥 [AIVideoAgent] ✅ Pexels Full Video Clip 9:16 ({duration_seconds:.1f}s) sẵn sàng: {output_path}")
                         return output_path
         except Exception as e:
             logger.debug(f"[AIVideoAgent] _try_pexels_video_clip error: {e}")

@@ -98,23 +98,34 @@ class VisualCurationAgent:
         """
         Phân tích chuyên sâu ngữ cảnh và cảm xúc của phân cảnh:
         - Đọc hiểu hàm ý (subtext), không dịch thô từ khóa bề mặt.
-        - Xác định phong cách hình ảnh & ẩn dụ thị giác.
-        - Tạo 3 truy vấn tìm kiếm chuyên biệt cho stock video.
+        - Đánh giá hoàn cảnh: lúc nào nên dùng Full Video chuyển động thực, lúc nào tạo Full Video bằng AI, lúc nào ghép ảnh tĩnh nghệ thuật.
+        - Tạo 3-4 truy vấn tìm kiếm chuyên biệt cho stock video (2-3 từ tiếng Anh).
         - Tạo prompt AI 9:16 sắc nét để sẵn sàng fallback.
         """
         prompt = f"""
 Bạn là Tổng Đạo Diễn Nghệ Thuật & Giám Sát Thị Giác (Cinematographer & Visual Curation Director) cho YouTube Shorts hàng đầu.
 
-NHIỆM VỤ:
-Phân tích lời thoại của phân cảnh này để đưa ra chỉ đạo hình ảnh CHÍNH XÁC VỀ MẶT CẢM XÚC VÀ NGỤ Ý, TUYỆT ĐỐI KHÔNG BẮT TỪ KHÓA BỀ MẶT (LITERAL KEYWORD).
+NHIỆM VỤ CỐT LÕI:
+Đánh giá hoàn cảnh của phân cảnh để LỰA CHỌN PHƯƠNG PHÁP & CÔNG CỤ SẢN XUẤT THỊ GIÁC TỐI ƯU NHẤT:
+Khán giả xem Shorts đòi hỏi VIDEO ĐỘNG CHUYỂN ĐỘNG SỐNG ĐỘNG (FULL VIDEO), KHÔNG ĐƯỢC để video thành "thuần ghép ảnh tĩnh chuyển cảnh" đơn điệu. Tuy nhiên, cũng phải linh động theo hoàn cảnh:
 
-VÍ DỤ VỀ SAI LẦM CẦN TRÁNH:
-- Lời thoại: "Bộ não của bạn không sợ thứ ở dưới nước. Nó sợ thứ bạn không nhìn thấy."
-  -> SAI: Tìm "não người", "uống nước", "hồ bơi" (ngây ngô, phá nát video).
-  -> ĐÚNG: Visual Metaphor: "Đáy đại dương sâu thẳm tối tăm, bóng đen bí ẩn khổng lồ lờ mờ ẩn dưới mặt nước rợn người".
-- Lời thoại: "Thương trường như chiến trường, một quyết định sai lầm sẽ mất tất cả."
-  -> SAI: Tìm chiến tranh Thế chiến 2 hoặc lính bắn nhau.
-  -> ĐÚNG: Visual Metaphor: "Thương trường tài chính hiện đại, đồ thị sụp đổ, ánh mắt căng thẳng của doanh nhân trong văn phòng đêm".
+QUY TẮC ĐÁNH GIÁ CÔNG CỤ THEO HOÀN CẢNH:
+1. 'STOCK_FOOTAGE' (Công cụ: pexels_video_clip - Full Video chuyển động thực 30fps/60fps 9:16):
+   - Áp dụng khi: Cảnh miêu tả HÀNH ĐỘNG CON NGƯỜI, cử chỉ, biểu cảm vi mô (ánh mắt căng thẳng, thì thầm, bước đi trong mưa/bóng tối, gõ phím, thao tác, nhìn gương, đơn độc trong quán cà phê), hoặc BỐI CẢNH THỰC TẾ/THIÊN NHIÊN (sóng biển gầm, mây giông cuộn, thành phố đêm neon, khói thuốc bay, đồng hồ đếm ngược).
+   - Hook (Cảnh 1) BẮT BUỘC ưu tiên Full Video để giữ chân khán giả (>70% tỷ lệ giữ chân).
+
+2. 'TEXT_TO_VIDEO' (Công cụ: ai_text_to_video - Full Video do AI sinh trực tiếp):
+   - Áp dụng khi: Cảnh mang tính HUYỀN BÍ, VŨ TRỤ TRỪU TƯỢNG, SIÊU THỰC (lỗ đen bẻ cong không thời gian, cổng không gian ánh sáng, luồng năng lượng tâm linh, khói ma mị biến hình, hố sâu tâm lý vô tận) — những thứ KHÔNG CÓ THẬT ngoài đời thực.
+
+3. 'IMAGE_TO_VIDEO' (Công cụ: ai_image_to_video - Tạo ảnh AI 8K rồi chuyển động 3D Ken Burns):
+   - Áp dụng khi: Cảnh cần ĐẶC TẢ CHI TIẾT TĨNH CHÂN THỰC TUYỆT ĐỐI (chân dung 1 triết gia giả tưởng, sinh vật huyền thoại có khuôn mặt cố định, cổ vật huyền bí, bản đồ cổ) mà nếu sinh video AI trực tiếp sẽ bị méo mặt hoặc dị dạng chi tiết.
+
+4. 'REAL_ARCHIVE' (Công cụ: real_archive_photo - Ảnh tư liệu lịch sử thật 100%):
+   - Áp dụng khi: Nhắc trực tiếp đến NHÂN VẬT LỊCH SỬ CÓ THẬT (Einstein, Tesla, Napoleon...), SỰ KIỆN LỊCH SỬ (Thế chiến, Apollo...), DI TÍCH LỊCH SỬ CỔ ĐẠI (Kim Tự Tháp, Vạn Lý Trường Thành). Cần bằng chứng lịch sử xác thực, cấm dùng AI giả mạo.
+
+TỶ LỆ VÀNG CHO VIDEO VIRAL (KHOA HỌC / TÂM LÝ / BÍ ẨN):
+- Ít nhất 60% - 75% các cảnh phải là FULL VIDEO CHUYỂN ĐỘNG (STOCK_FOOTAGE hoặc TEXT_TO_VIDEO).
+- Tối đa 25% - 40% là GHÉP ẢNH TĨNH / TƯ LIỆU THẬT (REAL_ARCHIVE hoặc IMAGE_TO_VIDEO) đúng chỗ cần tĩnh lặng hoặc chân dung.
 
 THÔNG TIN ĐẦU VÀO:
 - Chủ đề video: "{topic}"
@@ -126,28 +137,33 @@ THÔNG TIN ĐẦU VÀO:
 
 HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
 {{
-  "mood": "Tâm trạng chủ đạo (ví dụ: dark_ominous | epic_heroic | tense_mysterious | vibrant_energetic | melancholy_thoughtful | scientific_curiosity)",
+  "mood": "Tâm trạng chủ đạo (dark_ominous | tense_mysterious | epic_heroic | vibrant_energetic | melancholy_thoughtful | scientific_curiosity)",
   "narrative_subtext": "Ngụ ý và cảm xúc sâu xa mà phân cảnh này muốn truyền tải (1-2 câu tiếng Việt)",
   "visual_metaphor": "Mô tả bối cảnh điện ảnh cụ thể mà khán giả nên nhìn thấy trên màn hình 9:16 (tiếng Anh & tiếng Việt)",
   "production_method": "STOCK_FOOTAGE | TEXT_TO_VIDEO | IMAGE_TO_VIDEO | REAL_ARCHIVE",
+  "tool_choice": "pexels_video_clip | ai_text_to_video | ai_image_to_video | real_archive_photo",
+  "motion_level": "HIGH_MOTION | MEDIUM_MOTION | STATIC_DETAILED",
   "search_queries": [
-    "Truy vấn tiếng Anh 2-3 từ cụ thể cho thư viện stock (vd: deep dark ocean abyss)",
-    "Truy vấn thay thế góc nhìn 2 (vd: underwater dark sea trench)",
-    "Truy vấn thay thế góc nhìn 3 (vd: gloomy ocean depth night)"
+    "Truy vấn tiếng Anh 2-3 từ cụ thể cho thư viện video stock (vd: deep ocean abyss)",
+    "Truy vấn thay thế góc nhìn 2 (vd: dark underwater trench)",
+    "Truy vấn thay thế góc nhìn 3 (vd: gloomy water depth)"
   ],
   "negative_cues": [
-    "Từ/khái niệm cấm không được xuất hiện trong ảnh/video (vd: swimming pool, sunny beach, smiling people, drinking glass)"
+    "Từ/khái niệm cấm không được xuất hiện (vd: swimming pool, sunny beach, smiling corporate people, modern office)"
   ],
   "cinematic_ai_prompt": "Câu lệnh tiếng Anh chi tiết phong cách điện ảnh 8K tỷ lệ 9:16 dùng để sinh Video AI hoặc Ảnh AI nếu kho stock không có tư liệu đạt chuẩn"
 }}
 """
         res = self._call_gemini_json(prompt)
         if res and "search_queries" in res and res.get("visual_metaphor"):
-            logger.info(f"🎬 [VisualCuration] Cảnh {scene_id} ({res.get('mood')}): {res.get('narrative_subtext', '')[:60]}...")
+            logger.info(
+                f"🎬 [VisualCuration] Cảnh {scene_id} [{res.get('production_method')} / {res.get('tool_choice')}]: "
+                f"{res.get('narrative_subtext', '')[:60]}..."
+            )
             return res
 
         # Heuristic fallback an toàn nếu Gemini tạm ngưng
-        return self._heuristic_scene_analysis(narration, topic, primary_entity, entity_type)
+        return self._heuristic_scene_analysis(narration, topic, primary_entity, entity_type, scene_id, total_scenes)
 
     def _heuristic_scene_analysis(
         self,
@@ -155,43 +171,71 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
         topic: str,
         primary_entity: Optional[str],
         entity_type: str,
+        scene_id: int = 1,
+        total_scenes: int = 1,
     ) -> Dict[str, Any]:
         """Quy tắc dự phòng thông minh khi không có kết nối LLM."""
         narr_lower = narration.lower()
         topic_lower = topic.lower()
 
-        is_dark = any(w in narr_lower for w in ["sợ", "bí ẩn", "tối", "chết", "nguy hiểm", "bóng đêm", "abyss", "fear", "dark", "horror", "pressure"])
-        is_cosmic = any(w in narr_lower or w in topic_lower for w in ["vũ trụ", "hố đen", "lỗ đen", "không gian", "ngân hà", "space", "galaxy", "black hole", "cosmic"])
+        is_dark = any(w in narr_lower for w in ["sợ", "bí ẩn", "tối", "chết", "nguy hiểm", "bóng đêm", "abyss", "fear", "dark", "horror", "pressure", "nỗi sợ", "ác mộng", "rùng mình"])
+        is_cosmic = any(w in narr_lower or w in topic_lower for w in ["vũ trụ", "hố đen", "lỗ đen", "không gian", "ngân hà", "space", "galaxy", "black hole", "cosmic", "wormhole"])
         is_historical = bool(primary_entity) and entity_type in ("person", "civilization", "monument", "event", "historical_figure")
+        is_face_or_portrait = any(w in narr_lower for w in ["khuôn mặt", "chân dung", "ánh mắt nhìn", "nụ cười quái dị", "tượng đá", "triết gia", "portrait", "face", "statue"])
 
-        if is_historical:
+        # Cảnh 1 (Hook) luôn ưu tiên FULL VIDEO động
+        if scene_id == 1:
+            method = "STOCK_FOOTAGE"
+            tool = "pexels_video_clip"
+            motion = "HIGH_MOTION"
+            mood = "dark_ominous" if is_dark else "tense_mysterious"
+            q = ["cinematic dark mystery intro", "dramatic slow motion silhouette", "intense eye stare close up"]
+            ai_p = f"Cinematic 8k dramatic vertical hook shot of {topic or 'mystery'}, dark moody lighting, 9:16"
+        elif is_historical and primary_entity and primary_entity.lower() in narr_lower:
             method = "REAL_ARCHIVE"
+            tool = "real_archive_photo"
+            motion = "STATIC_DETAILED"
             mood = "historical_epic"
-            q = [f"{primary_entity} authentic history", f"{primary_entity} historical portrait", f"{primary_entity} archives"]
+            q = [f"{primary_entity} authentic history", f"{primary_entity} portrait", f"{primary_entity} archives"]
             ai_p = f"Cinematic historical documentary authentic photorealistic portrait of {primary_entity}, 8k, period accurate, 9:16"
         elif is_cosmic:
             method = "TEXT_TO_VIDEO"
+            tool = "ai_text_to_video"
+            motion = "HIGH_MOTION"
             mood = "cosmic_wonder"
             q = ["black hole event horizon", "galaxy space nebula", "deep space cosmos stars"]
             ai_p = f"Cinematic 8k vertical shot of {topic or 'cosmic universe'}, warping space-time, glowing accretion disk, photorealistic 9:16"
+        elif is_face_or_portrait:
+            method = "IMAGE_TO_VIDEO"
+            tool = "ai_image_to_video"
+            motion = "STATIC_DETAILED"
+            mood = "tense_mysterious"
+            q = ["dramatic character silhouette", "mysterious person face shadow", "thoughtful thinker portrait"]
+            ai_p = f"Cinematic 8k vertical portrait, highly detailed facial expression, dramatic chiaroscuro lighting, 9:16"
         elif is_dark:
             method = "STOCK_FOOTAGE"
-            mood = "tense_mysterious"
+            tool = "pexels_video_clip"
+            motion = "HIGH_MOTION"
+            mood = "dark_ominous"
             q = ["dark moody cinematic shadows", "eerie mysterious atmosphere", "dramatic storm night"]
             ai_p = f"Cinematic dark moody atmosphere, dramatic volumetric chiaroscuro lighting, highly detailed 8k, 9:16"
         else:
             method = "STOCK_FOOTAGE"
+            tool = "pexels_video_clip"
+            motion = "MEDIUM_MOTION"
             mood = "vibrant_energetic"
             q = ["cinematic modern aesthetic b roll", "dramatic slow motion cinematic", "inspiring natural landscape"]
             ai_p = f"Cinematic vibrant 8k vertical shot, beautiful golden hour lighting, photorealistic 9:16"
 
         return {
             "mood": mood,
-            "narrative_subtext": "Phân tích dự phòng: Tự động nhận diện bối cảnh và cảm xúc theo trường ngữ nghĩa.",
-            "visual_metaphor": f"Cinematic representation of {topic or narration[:40]}",
+            "narrative_subtext": "Phân tích ngữ cảnh tự động theo trường ngữ nghĩa và vị trí phân cảnh.",
+            "visual_metaphor": f"Cinematic visual representation of {topic or narration[:40]}",
             "production_method": method,
+            "tool_choice": tool,
+            "motion_level": motion,
             "search_queries": q,
-            "negative_cues": ["cartoon", "low quality", "blurry", "text overlay"],
+            "negative_cues": ["cartoon", "low quality", "blurry", "text overlay", "smiling corporate", "sunny beach"],
             "cinematic_ai_prompt": ai_p,
         }
 
@@ -441,7 +485,42 @@ TRẢ VỀ JSON DUY NHẤT:
                 winner_item["curation_score"] = score
                 winner_item["curation_rationale"] = rationale
                 return winner_item, score, rationale, False
-            else:
-                return None, score, rationale, True
+        # Heuristic curation dự phòng khi Gemini không phản hồi
+        return self._heuristic_curate_photos(pool, visual_analysis)
 
-        return pool[0]["item"], 5.0, "Default heuristic pick", False
+    def _heuristic_curate_photos(
+        self,
+        pool: List[Dict[str, Any]],
+        visual_analysis: Dict[str, Any],
+    ) -> Tuple[Optional[Dict[str, Any]], float, str, bool]:
+        """Lọc và chấm điểm ảnh bằng heuristic, loại bỏ negative cues."""
+        if not pool:
+            return None, 0.0, "Không có ảnh ứng viên.", True
+
+        negative_cues = [nc.lower() for nc in visual_analysis.get("negative_cues", [])]
+        queries = [q.lower() for q in visual_analysis.get("search_queries", [])]
+
+        best_item = None
+        best_score = -1.0
+
+        for p in pool:
+            desc = p.get("description", "").lower()
+            if any(nc in desc for nc in negative_cues):
+                continue
+
+            score = 5.0
+            for q in queries:
+                for w in q.split():
+                    if len(w) > 3 and w in desc:
+                        score += 1.5
+
+            if score > best_score:
+                best_score = score
+                best_item = p["item"]
+
+        if best_item and best_score >= 6.0:
+            best_item["curation_score"] = best_score
+            best_item["curation_rationale"] = "Khớp từ khóa ngữ cảnh qua bộ lọc heuristic"
+            return best_item, best_score, "Heuristic pass", False
+
+        return None, 4.0, "Tất cả ảnh ứng viên đều dính negative cues hoặc không đủ liên quan", True
