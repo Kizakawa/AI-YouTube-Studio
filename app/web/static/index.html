@@ -887,7 +887,78 @@ Ví dụ Căn Theo Mốc:
                 </div>
             </div>
 
-            <!-- 3. TOP VIDEOS BREAKDOWN & RANKING -->
+            <!-- 3. INTERACTIVE CHARTS & VISUAL ANALYTICS -->
+            <div class="analytics-charts-grid" style="display: grid; grid-template-columns: 2fr 1.15fr; gap: 20px; margin-bottom: 24px;">
+                <!-- Chart 1: AI Growth Forecast Curve (Line & Area) -->
+                <div class="panel-card chart-card" style="margin-bottom: 0;">
+                    <div class="panel-header" style="margin-bottom: 12px;">
+                        <div>
+                            <h3 style="display:flex; align-items:center; gap:8px;">
+                                <span style="color:#38bdf8;">📈</span> Biểu Đồ Xu Hướng Tăng Trưởng AI
+                            </h3>
+                            <p style="font-size:12px; color:var(--text-muted); margin-top:2px;">
+                                Dự báo tích lũy lượt xem & người đăng ký (Mốc 30N - 90N - 6T - 1N)
+                            </p>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span class="badge badge-blue">⚡ Thuật toán Shorts</span>
+                        </div>
+                    </div>
+                    <div class="chart-canvas-container" style="position: relative; height: 280px; width: 100%;">
+                        <canvas id="chart-growth-forecast"></canvas>
+                    </div>
+                </div>
+
+                <!-- Chart 2: Revenue Streams Donut -->
+                <div class="panel-card chart-card" style="margin-bottom: 0;">
+                    <div class="panel-header" style="margin-bottom: 12px;">
+                        <div>
+                            <h3 style="display:flex; align-items:center; gap:8px;">
+                                <span style="color:#10b981;">💰</span> Cơ Cấu Nguồn Thu Dự Kiến
+                            </h3>
+                            <p style="font-size:12px; color:var(--text-muted); margin-top:2px;">
+                                Tỷ trọng các nguồn doanh thu kênh Shorts
+                            </p>
+                        </div>
+                        <select id="chart-donut-stage-select" class="form-control" style="width:auto; padding:3px 8px; font-size:12px;" onchange="onRevenueDonutStageChange()">
+                            <option value="1" selected>Mốc 90 Ngày</option>
+                            <option value="0">Mốc 30 Ngày</option>
+                            <option value="2">Mốc 6 Tháng</option>
+                            <option value="3">Mốc 1 Năm</option>
+                        </select>
+                    </div>
+                    <div class="chart-canvas-container" style="position: relative; height: 220px; width: 100%; display: flex; align-items: center; justify-content: center;">
+                        <canvas id="chart-revenue-donut"></canvas>
+                        <div id="donut-center-kpi" class="donut-center-overlay">
+                            <div id="donut-center-revenue" style="font-size: 16px; font-weight: 800; color: #10b981;">0 ₫</div>
+                            <div style="font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Tổng kỳ vọng</div>
+                        </div>
+                    </div>
+                    <div id="donut-legend-summary" class="donut-legend-summary">
+                        <!-- Dynamic legend stats -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart 3: Video Performance Comparison Bar Chart (Full Width) -->
+            <div class="panel-card chart-card" style="margin-bottom: 24px;">
+                <div class="panel-header" style="margin-bottom: 12px;">
+                    <div>
+                        <h3 style="display:flex; align-items:center; gap:8px;">
+                            <span style="color:#f59e0b;">📊</span> Biểu Đồ So Sánh Hiệu Suất Video Shorts
+                        </h3>
+                        <p style="font-size:12px; color:var(--text-muted); margin-top:2px;">
+                            So sánh lượt xem thực tế của từng Shorts với mốc chuẩn trung bình kênh
+                        </p>
+                    </div>
+                    <span class="badge badge-purple" style="font-size:11.5px;">Đường vàng nét đứt: Mốc trung bình kênh</span>
+                </div>
+                <div class="chart-canvas-container" style="position: relative; height: 260px; width: 100%;">
+                    <canvas id="chart-videos-performance"></canvas>
+                </div>
+            </div>
+
+            <!-- 4. TOP VIDEOS BREAKDOWN & RANKING -->
             <div class="panel-card" style="margin-bottom: 24px;">
                 <div class="panel-header">
                     <div>
@@ -1456,6 +1527,7 @@ Ví dụ Căn Theo Mốc:
 <!-- TOAST NOTIFICATION -->
 <div class="toast-container" id="toast-container"></div>
 
-<script src="/static/js/dashboard.js?v=2.9"></script>
+<script src="/static/js/chart.min.js"></script>
+<script src="/static/js/dashboard.js?v=3.0"></script>
 </body>
 </html>

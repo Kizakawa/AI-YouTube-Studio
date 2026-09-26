@@ -2464,6 +2464,10 @@ async function submitSecretUpload() {
 ══════════════════════════════════════════════════════════ */
 let currentAnalyticsChannelId = null;
 let currentAnalyticsData = null;
+let chartGrowthForecast = null;
+let chartRevenueDonut = null;
+let chartVideosPerformance = null;
+let activeRevenueStageIdx = 1;
 
 async function loadAnalytics() {
     try {
@@ -2612,6 +2616,9 @@ function renderAnalyticsUI(data) {
         renderForecastCards(forecast.stages || []);
         renderRecommendedTopics(forecast.recommended_topics || []);
     }
+
+    // 5. Interactive Charts
+    initOrUpdateCharts(data);
 }
 
 function renderForecastCards(stages) {
@@ -2690,7 +2697,14 @@ async function onForecastRateChange() {
             daily_uploads: rate
         });
         if (res && res.forecast) {
+            if (currentAnalyticsData) {
+                currentAnalyticsData.forecast = res.forecast;
+            }
             renderForecastCards(res.forecast.stages || []);
+            if (window.Chart && currentAnalyticsData) {
+                renderGrowthForecastChart(currentAnalyticsData);
+                renderRevenueDonutChart(currentAnalyticsData, activeRevenueStageIdx);
+            }
             showToast(`Đã tính toán lại mô hình với tần suất ${rate} video/ngày`, 'info');
         }
     } catch (e) {
@@ -2706,6 +2720,374 @@ function applyTopicToCreate(topic, hook) {
         topicInput.focus();
         showToast('Đã nạp chủ đề được AI đề xuất vào ô tạo kịch bản!', 'success');
     }
+}
+
+/* ═══════════════════════════════════════════════════════
+   CHART.JS VISUALIZATION IMPLEMENTATION
+══════════════════════════════════════════════════════════ */
+function initOrUpdateCharts(data) {
+    if (!window.Chart) {
+        console.warn('[Analytics Charts] Chart.js chưa sẵn sàng.');
+        return;
+    }
+    try {
+        renderGrowthForecastChart(data);
+        renderRevenueDonutChart(data, activeRevenueStageIdx);
+        renderVideosPerformanceChart(data);
+    } catch (err) {
+        console.error('Lỗi khởi tạo biểu đồ:', err);
+    }
+}
+
+function renderGrowthForecastChart(data) {
+    const canvas = document.getElementById('chart-growth-forecast');
+    if (!canvas) return;
+
+    if (chartGrowthForecast) {
+        chartGrowthForecast.destroy();
+        chartGrowthForecast = null;
+    }
+
+    const stages = data?.forecast?.stages || [];
+    const labels = ['Hiện tại', ...stages.map(s => {
+        const parts = s.label.split('(')[0].trim();
+        return parts;
+    })];
+    const viewsData = [data.total_views || 0, ...stages.map(s => s.projected_views)];
+    const subsData = [data.subscribers_num || 1, ...stages.map(s => s.projected_subs)];
+
+    const ctx = canvas.getContext('2d');
+    const viewsGradient = ctx.createLinearGradient(0, 0, 0, 260);
+    viewsGradient.addColorStop(0, 'rgba(56, 189, 248, 0.40)');
+    viewsGradient.addColorStop(1, 'rgba(56, 189, 248, 0.01)');
+
+    const subsGradient = ctx.createLinearGradient(0, 0, 0, 260);
+    subsGradient.addColorStop(0, 'rgba(16, 185, 129, 0.35)');
+    subsGradient.addColorStop(1, 'rgba(16, 185, 129, 0.01)');
+
+    chartGrowthForecast = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: '👁️ Lượt xem tích lũy (Views)',
+                    data: viewsData,
+                    borderColor: '#38bdf8',
+                    backgroundColor: viewsGradient,
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.38,
+                    pointBackgroundColor: '#38bdf8',
+                    pointBorderColor: '#0f172a',
+                    pointBorderWidth: 2,
+                    pointRadius: 5,
+                    pointHoverRadius: 8,
+                    yAxisID: 'y'
+                },
+                {
+                    label: '👥 Người đăng ký (Subs)',
+                    data: subsData,
+                    borderColor: '#10b981',
+                    backgroundColor: subsGradient,
+                    borderWidth: 2.5,
+                    fill: true,
+                    tension: 0.38,
+                    pointBackgroundColor: '#10b981',
+                    pointBorderColor: '#0f172a',
+                    pointBorderWidth: 2,
+                    pointRadius: 5,
+                    pointHoverRadius: 8,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    align: 'end',
+                    labels: {
+                        color: '#94a3b8',
+                        font: { size: 12, family: 'Inter, sans-serif', weight: 600 },
+                        usePointStyle: true,
+                        pointStyle: 'circle',
+                        padding: 14
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    titleColor: '#f8fafc',
+                    bodyColor: '#cbd5e1',
+                    borderColor: 'rgba(255, 255, 255, 0.12)',
+                    borderWidth: 1,
+                    padding: 12,
+                    cornerRadius: 8,
+                    callbacks: {
+                        label: function(context) {
+                            const val = context.parsed.y;
+                            if (context.datasetIndex === 0) {
+                                return ` 👁️ Lượt xem: ${val.toLocaleString()} views`;
+                            } else {
+                                return ` 👥 Người đăng ký: ${val.toLocaleString()} subs`;
+                            }
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: { color: '#94a3b8', font: { size: 12 } }
+                },
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: {
+                        color: '#38bdf8',
+                        font: { size: 11 },
+                        callback: function(val) {
+                            if (val >= 1000000) return (val / 1000000).toFixed(1) + 'M';
+                            if (val >= 1000) return (val / 1000).toFixed(0) + 'K';
+                            return val.toLocaleString();
+                        }
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    grid: { drawOnChartArea: false },
+                    ticks: {
+                        color: '#10b981',
+                        font: { size: 11 },
+                        callback: function(val) {
+                            if (val >= 1000) return (val / 1000).toFixed(1) + 'K';
+                            return val.toLocaleString();
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderRevenueDonutChart(data, stageIdx = 1) {
+    const canvas = document.getElementById('chart-revenue-donut');
+    if (!canvas) return;
+
+    if (chartRevenueDonut) {
+        chartRevenueDonut.destroy();
+        chartRevenueDonut = null;
+    }
+
+    const stages = data?.forecast?.stages || [];
+    const stage = stages[stageIdx] || stages[1] || stages[0];
+    if (!stage) return;
+
+    const adsense = Number(stage.adsense_usd) || 0;
+    const affiliate = Number(stage.affiliate_usd) || 0;
+    const brand = stage.projected_views > 100000 ? Math.round(stage.total_revenue_usd * 0.25 * 10) / 10 : 0;
+
+    const revText = document.getElementById('donut-center-revenue');
+    if (revText) {
+        revText.textContent = stage.total_revenue_vnd_formatted || '0 ₫';
+    }
+
+    const legContainer = document.getElementById('donut-legend-summary');
+    if (legContainer) {
+        legContainer.innerHTML = `
+            <div class="donut-legend-item">
+                <div class="donut-legend-title"><span style="color:#f59e0b;">●</span> AdSense</div>
+                <div class="donut-legend-value" style="color:#f59e0b;">~$${adsense}</div>
+            </div>
+            <div class="donut-legend-item">
+                <div class="donut-legend-title"><span style="color:#10b981;">●</span> Affiliate</div>
+                <div class="donut-legend-value" style="color:#10b981;">~$${affiliate}</div>
+            </div>
+            <div class="donut-legend-item">
+                <div class="donut-legend-title"><span style="color:#8b5cf6;">●</span> Brand Deal</div>
+                <div class="donut-legend-value" style="color:#8b5cf6;">~$${brand}</div>
+            </div>
+        `;
+    }
+
+    const ctx = canvas.getContext('2d');
+    chartRevenueDonut = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['🪙 AdSense Shorts', '🛒 Affiliate Ngách', '🤝 Brand Sponsorship'],
+            datasets: [{
+                data: [adsense, affiliate, brand > 0 ? brand : 0.01],
+                backgroundColor: [
+                    '#f59e0b',
+                    '#10b981',
+                    '#8b5cf6'
+                ],
+                borderWidth: 2,
+                borderColor: '#0f172a',
+                hoverOffset: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '72%',
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    titleColor: '#f8fafc',
+                    bodyColor: '#cbd5e1',
+                    borderColor: 'rgba(255, 255, 255, 0.12)',
+                    borderWidth: 1,
+                    padding: 10,
+                    cornerRadius: 8,
+                    callbacks: {
+                        label: function(context) {
+                            return ` ${context.label}: ~$${context.parsed} USD`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function onRevenueDonutStageChange() {
+    const sel = document.getElementById('chart-donut-stage-select');
+    if (!sel || !currentAnalyticsData) return;
+    activeRevenueStageIdx = parseInt(sel.value, 10) || 0;
+    renderRevenueDonutChart(currentAnalyticsData, activeRevenueStageIdx);
+}
+
+function renderVideosPerformanceChart(data) {
+    const canvas = document.getElementById('chart-videos-performance');
+    if (!canvas) return;
+
+    if (chartVideosPerformance) {
+        chartVideosPerformance.destroy();
+        chartVideosPerformance = null;
+    }
+
+    const vids = data.videos || [];
+    if (vids.length === 0) return;
+
+    const labels = vids.map((v, i) => {
+        const cleanTitle = (v.title || `Video #${i + 1}`).trim();
+        return cleanTitle.length > 28 ? cleanTitle.slice(0, 25) + '...' : cleanTitle;
+    });
+    const views = vids.map(v => v.views_num || 0);
+    const avgVal = data.avg_views || 0;
+    const avgLineData = vids.map(() => avgVal);
+
+    const maxView = Math.max(...views);
+    const bgColors = views.map(v => {
+        if (v === maxView && v > 0) return '#f59e0b'; // Gold for #1 top
+        return '#8b5cf6'; // Indigo purple
+    });
+
+    const ctx = canvas.getContext('2d');
+    chartVideosPerformance = new Chart(ctx, {
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    type: 'bar',
+                    label: '👁️ Lượt xem thực tế',
+                    data: views,
+                    backgroundColor: bgColors,
+                    borderRadius: 6,
+                    maxBarThickness: 45,
+                    order: 2
+                },
+                {
+                    type: 'line',
+                    label: `⭐ Mức TB kênh (${avgVal.toLocaleString()} views)`,
+                    data: avgLineData,
+                    borderColor: '#fbbf24',
+                    borderWidth: 2,
+                    borderDash: [6, 6],
+                    pointRadius: 0,
+                    fill: false,
+                    order: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    align: 'end',
+                    labels: {
+                        color: '#94a3b8',
+                        font: { size: 12, family: 'Inter, sans-serif' },
+                        usePointStyle: true,
+                        padding: 12
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    titleColor: '#f8fafc',
+                    bodyColor: '#cbd5e1',
+                    borderColor: 'rgba(255, 255, 255, 0.12)',
+                    borderWidth: 1,
+                    padding: 12,
+                    cornerRadius: 8,
+                    callbacks: {
+                        title: function(items) {
+                            if (!items.length) return '';
+                            const idx = items[0].dataIndex;
+                            return vids[idx]?.title || items[0].label;
+                        },
+                        label: function(context) {
+                            if (context.dataset.type === 'line') {
+                                return ` ⭐ Mức trung bình: ${avgVal.toLocaleString()} lượt xem`;
+                            }
+                            const val = context.parsed.y;
+                            const diff = val - avgVal;
+                            const diffText = diff >= 0
+                                ? `(+${diff.toLocaleString()} so với TB - 🔥 Vượt trội)`
+                                : `(${diff.toLocaleString()} so với TB)`;
+                            return ` 👁️ Lượt xem: ${val.toLocaleString()} ${diffText}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: {
+                        color: '#94a3b8',
+                        font: { size: 11.5 },
+                        maxRotation: 20
+                    }
+                },
+                y: {
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: {
+                        color: '#94a3b8',
+                        font: { size: 11 },
+                        callback: function(val) {
+                            return val.toLocaleString();
+                        }
+                    }
+                }
+            }
+        }
+    });
 }
 
 /* ═════════════════════════════════════════════════════════════════════════════
