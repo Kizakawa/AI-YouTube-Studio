@@ -137,8 +137,15 @@ class ScriptContract(BaseModel):
     full_narration: str = Field(min_length=20, description="Toàn bộ lời thoại nối liền")
     scenes: List[SceneContract] = Field(min_length=1, max_length=15)
     tags: List[str] = Field(min_length=1, max_length=30)
-    description: str = Field(min_length=10)
     primary_entity: Optional[str] = Field(default=None, description="Tên thực thể/nhân vật chính nếu có")
+    pinned_comment: Optional[str] = Field(
+        default=None,
+        description="Bình luận mồi ghim đầu trang (Bait comment) để kích thích tranh luận tăng tương tác và thời lượng xem"
+    )
+    viral_formula: Optional[str] = Field(
+        default=None,
+        description="Công thức viral áp dụng (Double Tap & Protect, Debate in Comments, Curiosity Part 2)"
+    )
 
     @field_validator("scenes")
     @classmethod

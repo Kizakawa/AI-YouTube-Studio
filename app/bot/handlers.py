@@ -22,6 +22,7 @@ from app.bot.keyboards import (
     get_video_review_keyboard,
     get_chat_brainstorm_keyboard,
     get_publish_channel_keyboard,
+    get_viral_ideas_keyboard,
 )
 from app.database.models import get_db, User, VideoJob, log_activity
 from app.agents.content_agent import ContentAgent
@@ -154,6 +155,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• Mọi thành viên cùng ra lệnh, kịch bản hiển thị công khai trong nhóm.\n"
         f"• Theo dõi toàn bộ hoạt động của admin qua Web Dashboard thời gian thực!\n\n"
         f"📌 **Các lệnh chính:**\n"
+        f"• `/viral` - 🔥 Gợi ý 5 ý tưởng triệu view (Công thức giữ chân 160% Retention)\n"
         f"• `/chat <nội dung>` - Thảo luận, phản biện và đồng sáng tạo kịch bản với Đạo diễn AI\n"
         f"• `/channels` - Xem và chuyển đổi kênh YouTube muốn sản xuất\n"
         f"• `/idea <chủ đề>` - Lên kịch bản AI ngay tức thì cho kênh đang chọn\n"
@@ -161,7 +163,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• `/queue` - Xem trạng thái hàng đợi render (FIFO)\n"
         f"• `/cancel <job_id>` - Hủy video đang chờ trong hàng đợi\n"
         f"• `/status` - Báo cáo số lượng video và trạng thái hệ thống\n\n"
-        f"👉 Gõ `/chat` hoặc `/idea` để bắt đầu sáng tạo video cùng nhóm!"
+        f"👉 Gõ `/viral` hoặc `/idea` để bắt đầu sáng tạo video cùng nhóm!"
     )
     await safe_reply(update, welcome_text)
 
@@ -182,6 +184,7 @@ def _format_channel_info_text(ch: dict) -> str:
         visual = "🤖 AI Tự Quyết Định (Smart Director)"
     sched = ch.get("schedule", {})
     hour = sched.get("publish_hour_utc", 12)
+    voice = ch.get("preferred_voice", "en-US-ChristopherNeural")
 
     return (
         f"⚙️ **CẤU HÌNH KÊNH: {name}**\n\n"
@@ -665,6 +668,97 @@ def _parse_idea_input(raw_input: str) -> tuple:
     return raw_input.strip(), None
 
 
+async def viral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Lệnh gợi ý 5 chủ đề Shorts triệu view theo công thức giữ chân đỉnh cao (150-160%+ Retention).
+    Đánh trúng tâm lý, red flags, vạch trần dối trá, thao túng tâm lý ngầm.
+    Cung cấp bàn phím 1-Click để chọn ý tưởng và tự động sản xuất video ngay lập tức!
+    """
+    if not is_authorized(update):
+        return
+
+    user = update.effective_user
+
+    # Lấy kênh đang hoạt động của user
+    with get_db() as db:
+        db_user = db.query(User).filter(User.telegram_id == user.id).first()
+        channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_maya"
+        if db_user:
+            db_user.last_active = datetime.utcnow()
+
+        log_activity(db, user.id, user.username, "CMD_VIRAL",
+                     f"Yêu cầu gợi ý ý tưởng triệu view", channel_id=channel_id)
+
+    ch = channel_manager.get_channel(channel_id) or {}
+    channel_name = ch.get("name") or channel_id
+    channel_niche = ch.get("niche") or "psychology"
+    channel_lang = ch.get("language") or "en"
+
+    wait_msg = await safe_reply(
+        update,
+        f"🔥 **ĐẠO DIỄN SHORTS AI ĐANG TÌM Ý TƯỞNG TRIỆU VIEW...**\n\n"
+        f"📺 **Kênh:** `{channel_name}`\n"
+        f"🎯 **Chủ đề:** `{channel_niche}` ({channel_lang.upper()})\n"
+        f"⚡ **Thuật toán áp dụng:** Giữ chân 160% Retention + Loop vô tận + Pinned Bait Comment\n\n"
+        f"⏳ Đang kích hoạt AI Viral Growth Hacker..."
+    )
+
+    try:
+        ideas = await asyncio.to_thread(
+            content_agent.suggest_viral_ideas,
+            channel_niche=channel_niche,
+            language=channel_lang,
+            count=5
+        )
+
+        if not ideas:
+            await safe_edit_text(wait_msg, "⚠️ Chưa thể tìm ý tưởng phù hợp lúc này. Vui lòng thử lại sau giây lát!")
+            return
+
+        # Lưu cache vào chat_data để callback dùng
+        if context.chat_data is None:
+            context.chat_data = {}
+        context.chat_data["cached_viral_ideas"] = ideas
+        context.chat_data["cached_viral_channel"] = channel_id
+
+        text_lines = [
+            f"🔥 **5 Ý TƯỞNG SHORTS TRIỆU VIEW (DỰ BÁO RETENTION >150%)**\n",
+            f"📺 **Kênh:** `{channel_name}` | 🎯 **Chủ đề:** `{channel_niche}`\n",
+        ]
+
+        for idx, item in enumerate(ideas):
+            topic = item.get("topic", "")
+            title = item.get("title", topic)
+            hook = item.get("hook", "")
+            retention = item.get("predicted_retention", "150%+")
+            pinned = item.get("pinned_comment", "")
+            formula = item.get("viral_formula", "Debate in Comments")
+
+            text_lines.append(f"**#{idx+1}. {title}**")
+            text_lines.append(f"• ⚡ **Hook 3s:** \"_{hook}_\"")
+            text_lines.append(f"• 📈 **Dự báo:** `{retention}` | **CTA:** `{formula}`")
+            if pinned:
+                text_lines.append(f"• 💬 **Bình luận mồi:** \"_{pinned}_\"")
+            text_lines.append("")
+
+        text_lines.append("👉 **Bấm vào nút bên dưới** để AI tự động lên kịch bản và sản xuất video ngay lập tức!")
+
+        full_text = "\n".join(text_lines)
+        markup = get_viral_ideas_keyboard(ideas, channel_id)
+
+        if wait_msg:
+            await safe_edit_text(wait_msg, full_text, reply_markup=markup)
+        else:
+            await safe_reply(update, full_text, reply_markup=markup)
+
+    except Exception as e:
+        logger.error(f"Lỗi khi gợi ý ý tưởng viral: {e}", exc_info=True)
+        if wait_msg:
+            await safe_edit_text(wait_msg, f"❌ Có lỗi xảy ra khi tìm ý tưởng: `{e}`")
+        else:
+            await safe_reply(update, f"❌ Có lỗi xảy ra khi tìm ý tưởng: `{e}`")
+
+
 async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Lệnh sinh kịch bản AI và gửi vào nhóm cho mọi người cùng duyệt"""
     if not is_authorized(update):
@@ -760,12 +854,16 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
         notes_display = f"🎯 **Đạo diễn:** _{director_notes}_\n\n" if director_notes else ""
+        pinned_display = f"💬 **Bình luận mồi ghim Top (Pinned Bait):**\n> _{script.pinned_comment}_\n\n" if getattr(script, "pinned_comment", None) else ""
+        formula_display = f"⚡ **Công thức Viral:** `{script.viral_formula}`\n" if getattr(script, "viral_formula", None) else ""
         reply_content = (
             f"🎬 **KỊCH BẢN ĐÃ HOÀN THÀNH (Task #{job_id})**\n\n"
             f"{score_text}"
             f"📌 **Tiêu đề đề xuất:** {script.title}\n"
             f"🔥 **Hook 3 giây đầu:** \"{script.hook}\"\n\n"
+            f"{formula_display}"
             f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
+            f"{pinned_display}"
             f"{notes_display}"
             f"⏱️ **Ước lượng:** ~{script.total_estimated_duration:.0f}s | {len(script.scenes)} cảnh\n\n"
             f"🗣️ **Người tạo:** {user.first_name} | 📺 **Kênh:** `{channel_name}` ({channel_niche})\n\n"
@@ -1652,6 +1750,15 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         drive_link = drive_res.get("drive_link")
         folder_link = drive_res.get("folder_link")
 
+        # Trích xuất bình luận mồi (pinned_comment) từ kịch bản nếu có
+        pinned_comment = None
+        if job.scenes_json:
+            try:
+                s_data = json.loads(job.scenes_json)
+                pinned_comment = s_data.get("pinned_comment")
+            except Exception:
+                pass
+
         # 2. Đăng tải lên YouTube
         pub_res = await asyncio.to_thread(
             pub_agent.upload_video,
@@ -1662,6 +1769,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             privacy_status="public",
             default_language=ch_lang,
             default_audio_language=ch_lang,
+            pinned_comment=pinned_comment,
         )
 
         if pub_res.get("status") == "success":
@@ -1684,6 +1792,8 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📺 **Kênh đã đăng:** `{ch_cfg.get('name', channel_id)}`\n"
                 f"🎬 **Link xem YouTube (Chế độ Công khai):**\n👉 {yt_url}\n\n"
             )
+            if pub_res.get("comment_id"):
+                success_text += f"💬 **Bình luận mồi tự động (Pinned Bait):** Đã đăng thành công!\n> _{pinned_comment}_\n\n"
             if drive_link:
                 success_text += f"💾 **Lưu trữ Google Drive (Kênh `{ch_name}`):**\n👉 {drive_link}\n"
                 if folder_link:
@@ -1794,6 +1904,15 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         drive_link = drive_res.get("drive_link")
         folder_link = drive_res.get("folder_link")
 
+        # Trích xuất bình luận mồi (pinned_comment) từ kịch bản nếu có
+        pinned_comment = None
+        if job.scenes_json:
+            try:
+                s_data = json.loads(job.scenes_json)
+                pinned_comment = s_data.get("pinned_comment")
+            except Exception:
+                pass
+
         # 2. Đăng tải lên YouTube kèm schedule_time_iso
         ch_lang = ch_cfg.get("language", "en")
         pub_res = await asyncio.to_thread(
@@ -1806,6 +1925,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             schedule_time_iso=slot_iso,
             default_language=ch_lang,
             default_audio_language=ch_lang,
+            pinned_comment=pinned_comment,
         )
 
         if pub_res.get("status") == "success":
@@ -1830,8 +1950,10 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"⏰ **Giờ công chiếu tự động:**\n👉 **{display_vn}**\n"
                 f"*(🇺🇸 {display_us})*\n\n"
                 f"🎬 **Link xem YouTube (Đã khóa hẹn giờ):**\n👉 {yt_url}\n\n"
-                f"💡 **Hoàn toàn tự động:** Bạn có thể tắt máy tính / tắt bot, máy chủ YouTube sẽ tự động công chiếu đúng giờ này!"
             )
+            if pub_res.get("comment_id"):
+                success_text += f"💬 **Bình luận mồi tự động (Pinned Bait):** Đã đăng thành công!\n> _{pinned_comment}_\n\n"
+            success_text += "💡 **Hoàn toàn tự động:** Bạn có thể tắt máy tính / tắt bot, máy chủ YouTube sẽ tự động công chiếu đúng giờ này!"
             if drive_link:
                 success_text += f"\n\n📂 **Bản gốc đã lưu trên Google Drive (Thư mục `{ch_name}`):**\n👉 [Xem video]({drive_link})"
                 if folder_link:
@@ -1998,6 +2120,162 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
             except Exception as ex:
                 logger.error(f"Gửi video sau khi apply media thất bại: {ex}")
+
+    # 8. Chọn ý tưởng Shorts triệu view (1-Click Viral Production)
+    elif data.startswith("pick_viral_topic:"):
+        idx = int(data.split(":")[1])
+        ideas = context.chat_data.get("cached_viral_ideas", []) if context.chat_data else []
+        if not ideas or idx >= len(ideas):
+            await safe_reply(update, "⚠️ Danh sách ý tưởng đã hết hạn. Vui lòng gõ `/viral` để lấy danh sách mới!")
+            return
+
+        idea = ideas[idx]
+        topic = idea.get("topic", "")
+        angle = idea.get("angle", "")
+        formula = idea.get("viral_formula", "Debate in Comments")
+        director_notes = f"Góc tiếp cận viral: {angle}. Áp dụng công thức kêu gọi hành động: {formula}"
+
+        channel_id = context.chat_data.get("cached_viral_channel", "channel_maya") if context.chat_data else "channel_maya"
+        ch = channel_manager.get_channel(channel_id) or {}
+        channel_name = ch.get("name") or channel_id
+        channel_niche = ch.get("niche") or "psychology"
+        channel_lang = ch.get("language") or "en"
+
+        status_msg = await safe_reply(
+            update,
+            f"🎬 **{user.first_name}** đã chọn ý tưởng #{idx+1}: *\"{topic}\"*\n"
+            f"⚡ **Công thức:** `{formula}`\n"
+            f"⏳ Đang kích hoạt Gemini AI lên kịch bản chuẩn giữ chân 160% cho kênh `{channel_name}`..."
+        )
+
+        try:
+            script, eval_report = await asyncio.to_thread(
+                content_agent.generate_best_script,
+                topic=topic,
+                channel_niche=channel_niche,
+                language=channel_lang,
+                director_notes=director_notes
+            )
+
+            with get_db() as db:
+                job = VideoJob(
+                    user_id=user.id,
+                    target_channel_id=channel_id,
+                    topic=topic,
+                    title=script.title,
+                    script=script.full_narration,
+                    description=script.description,
+                    tags=",".join(script.tags),
+                    scenes_json=script.to_json_str(),
+                    status="SCRIPT_READY"
+                )
+                db.add(job)
+                db.flush()
+                job_id = job.id
+
+                log_activity(db, user.id, user.username, "SCRIPT_CREATED_VIRAL",
+                             f"Kịch bản Viral #{job_id} đã tạo: '{script.title}'",
+                             channel_id=channel_id)
+
+            scenes_preview = "\n".join([
+                f"• Cảnh {s.scene_id}: {s.narration[:60]}... _(Tìm: {s.visual_keyword})_"
+                for s in script.scenes[:3]
+            ])
+
+            score_text = ""
+            if eval_report:
+                overall = eval_report.overall_score
+                hook_s = eval_report.hook_strength.score
+                pacing_s = eval_report.story_pacing.score
+                vis_s = getattr(eval_report, 'visual_direction', None)
+                vis_score = vis_s.score if vis_s else 8.5
+                badge = "🏆 Xuất sắc" if overall >= 8.5 else "✅ Đạt chuẩn Viral"
+                score_text = (
+                    f"📊 **ĐÁNH GIÁ CHẤT LƯỢNG (AI Editorial Critic):** `{overall:.1f}/10` {badge}\n"
+                    f"• ⚡ Hook 3s: `{hook_s:.1f}/10` | ⏱️ Nhịp độ: `{pacing_s:.1f}/10` | 👁️ Thị giác: `{vis_score:.1f}/10`\n\n"
+                )
+
+            pinned_display = f"💬 **Bình luận mồi ghim Top (Pinned Bait):**\n> _{script.pinned_comment}_\n\n" if getattr(script, "pinned_comment", None) else ""
+            formula_display = f"⚡ **Công thức Viral:** `{script.viral_formula or formula}`\n"
+            reply_content = (
+                f"🎬 **KỊCH BẢN ĐÃ HOÀN THÀNH (Task #{job_id})**\n\n"
+                f"{score_text}"
+                f"📌 **Tiêu đề đề xuất:** {script.title}\n"
+                f"🔥 **Hook 3 giây đầu:** \"{script.hook}\"\n\n"
+                f"{formula_display}"
+                f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
+                f"{pinned_display}"
+                f"⏱️ **Ước lượng:** ~{script.total_estimated_duration:.0f}s | {len(script.scenes)} cảnh\n\n"
+                f"🗣️ **Người tạo:** {user.first_name} | 📺 **Kênh:** `{channel_name}` ({channel_niche})\n\n"
+                f"👉 Bấm nút bên dưới để tiến hành sản xuất video ngay lập tức!"
+            )
+
+            review_markup = get_script_review_keyboard(job_id)
+            if status_msg:
+                await safe_edit_text(status_msg, reply_content, reply_markup=review_markup)
+            else:
+                await safe_reply(update, reply_content, reply_markup=review_markup)
+
+        except Exception as e:
+            logger.error(f"Lỗi khi tạo kịch bản viral: {e}", exc_info=True)
+            if status_msg:
+                await safe_edit_text(status_msg, f"❌ Có lỗi xảy ra khi tạo kịch bản: `{e}`")
+            else:
+                await safe_reply(update, f"❌ Có lỗi xảy ra khi tạo kịch bản: `{e}`")
+
+    # 9. Làm mới 5 ý tưởng viral
+    elif data.startswith("refresh_viral_ideas:"):
+        channel_id = data.split(":")[1] if ":" in data else "channel_maya"
+        ch = channel_manager.get_channel(channel_id) or {}
+        channel_name = ch.get("name") or channel_id
+        channel_niche = ch.get("niche") or "psychology"
+        channel_lang = ch.get("language") or "en"
+
+        try:
+            ideas = await asyncio.to_thread(
+                content_agent.suggest_viral_ideas,
+                channel_niche=channel_niche,
+                language=channel_lang,
+                count=5
+            )
+            if context.chat_data is None:
+                context.chat_data = {}
+            context.chat_data["cached_viral_ideas"] = ideas
+            context.chat_data["cached_viral_channel"] = channel_id
+
+            text_lines = [
+                f"🔥 **5 Ý TƯỞNG SHORTS TRIỆU VIEW MỚI (RETENTION >150%)**\n",
+                f"📺 **Kênh:** `{channel_name}` | 🎯 **Chủ đề:** `{channel_niche}`\n",
+            ]
+            for idx, item in enumerate(ideas):
+                title = item.get("title", item.get("topic", ""))
+                hook = item.get("hook", "")
+                retention = item.get("predicted_retention", "150%+")
+                pinned = item.get("pinned_comment", "")
+                formula = item.get("viral_formula", "Debate in Comments")
+
+                text_lines.append(f"**#{idx+1}. {title}**")
+                text_lines.append(f"• ⚡ **Hook 3s:** \"_{hook}_\"")
+                text_lines.append(f"• 📈 **Dự báo:** `{retention}` | **CTA:** `{formula}`")
+                if pinned:
+                    text_lines.append(f"• 💬 **Bình luận mồi:** \"_{pinned}_\"")
+                text_lines.append("")
+
+            text_lines.append("👉 **Bấm vào nút bên dưới** để AI tự động lên kịch bản và sản xuất video ngay lập tức!")
+            full_text = "\n".join(text_lines)
+            markup = get_viral_ideas_keyboard(ideas, channel_id)
+            if query.message:
+                await safe_edit_text(query.message, full_text, reply_markup=markup)
+        except Exception as e:
+            logger.error(f"Lỗi khi làm mới ý tưởng viral: {e}")
+
+    # 10. Đóng menu ý tưởng viral
+    elif data == "close_viral":
+        if query.message:
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
 
 
 # Cache tạm cho kết quả tìm kiếm hình ảnh & video trên Telegram

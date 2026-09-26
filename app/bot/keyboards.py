@@ -259,3 +259,25 @@ def get_schedule_channel_keyboard(job_id: int) -> InlineKeyboardMarkup:
     ])
     return InlineKeyboardMarkup(keyboard)
 
+
+def get_viral_ideas_keyboard(ideas: list, channel_id: str = "channel_maya") -> InlineKeyboardMarkup:
+    """Bàn phím 1-Click chọn ý tưởng triệu view để sản xuất kịch bản ngay lập tức"""
+    keyboard = []
+    for idx, idea in enumerate(ideas):
+        topic_short = idea.get("topic", f"Ý tưởng {idx+1}")
+        if len(topic_short) > 34:
+            topic_short = topic_short[:32] + ".."
+        keyboard.append([
+            InlineKeyboardButton(
+                f"🎬 #{idx+1}: {topic_short}",
+                callback_data=f"pick_viral_topic:{idx}"
+            )
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton("🔄 Sinh 5 Ý Tưởng Khác", callback_data=f"refresh_viral_ideas:{channel_id}"),
+        InlineKeyboardButton("❌ Đóng", callback_data="close_viral")
+    ])
+    return InlineKeyboardMarkup(keyboard)
+
+
