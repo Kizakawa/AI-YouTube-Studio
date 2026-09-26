@@ -917,8 +917,18 @@ async def auto_resume_pending_jobs(application):
             # 1. Tìm job bị gián đoạn ở RENDERING hoặc SCRIPT_READY
             stuck_rendering = db.query(VideoJob).filter(VideoJob.status == "RENDERING").order_by(VideoJob.id.asc()).all()
             stuck_ready = db.query(VideoJob).filter(VideoJob.status == "SCRIPT_READY").order_by(VideoJob.id.asc()).all()
+            # 2. Khôi phục cả các job FAILED có kịch bản sẵn (đang làm dở hoặc bị ngắt)
+            stuck_failed = db.query(VideoJob).filter(
+                VideoJob.status == "FAILED",
+                VideoJob.scenes_json.isnot(None)
+            ).order_by(VideoJob.id.desc()).all()
+            for fj in stuck_failed:
+                fj.status = "SCRIPT_READY"
+                fj.progress_percent = 0
+                fj.error_message = None
+                fj.progress_message = "Tự động khôi phục khi khởi động hệ thống"
 
-            for j in stuck_rendering + stuck_ready:
+            for j in stuck_rendering + stuck_ready + stuck_failed:
                 unfinished_jobs.append({
                     "id": j.id,
                     "title": j.title or j.topic or f"Video #{j.id}",

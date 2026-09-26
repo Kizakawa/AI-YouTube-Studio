@@ -31,14 +31,21 @@ def recover_stuck_jobs():
             if stuck_jobs:
                 print(f"   -> [Khôi phục] Đã tự động khôi phục {len(stuck_jobs)} video bị gián đoạn về trạng thái sẵn sàng.")
 
-            # 2. Cảnh báo các job FAILED tồn đọng (để người dùng dễ dàng khôi phục trên Web hoặc Telegram)
-            failed_jobs = db.query(VideoJob).filter(VideoJob.status == "FAILED").all()
+            # 2. Tự động khôi phục các job FAILED có kịch bản sẵn (đang làm dở bị lỗi hoặc hủy) để bot tự động dựng lại
+            failed_jobs = db.query(VideoJob).filter(
+                VideoJob.status == "FAILED",
+                VideoJob.scenes_json.isnot(None)
+            ).order_by(VideoJob.id.desc()).all()
             if failed_jobs:
-                print(f"   -> [Tồn đọng] Phát hiện {len(failed_jobs)} video bị lỗi (FAILED) trong hàng đợi:")
+                print(f"   -> [Tự động khôi phục] Phát hiện {len(failed_jobs)} video lỗi dở có kịch bản — Chuyển sang SCRIPT_READY để bot dựng tiếp:")
                 for fj in failed_jobs:
-                    err_preview = fj.error_message.replace("\n", " ")[:50] if fj.error_message else "N/A"
-                    print(f"      * Job #{fj.id}: {fj.title[:30] if fj.title else fj.topic} -> Lỗi: {err_preview}...")
-                print("   -> [Khuyên dùng] Trên Web Dashboard: bấm nút '🔄 Khôi phục Job Lỗi', hoặc trên Telegram: gõ /pending để render lại!")
+                    fj.status = "SCRIPT_READY"
+                    fj.progress_percent = 0
+                    fj.error_message = None
+                    fj.progress_message = "Tự động khôi phục khi khởi động lại hệ thống"
+                    log_activity(db, 0, "System", "AUTO_RECOVER_FAILED", f"Khôi phục Video lỗi #{fj.id} để tự động render lại")
+                    title_clean = fj.title[:35] if fj.title else (fj.topic or f"Job #{fj.id}")
+                    print(f"      * Job #{fj.id}: {title_clean} -> Đã chuyển sang SCRIPT_READY để tự động render!")
     except Exception as e:
         print(f"   -> ⚠️ Lỗi khôi phục jobs: {e}")
 
