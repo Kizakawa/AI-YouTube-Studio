@@ -64,6 +64,7 @@ def node_generate_script(state: VideoWorkflowState) -> Dict[str, Any]:
     channel_style = state.get("channel_style", "general")
     primary_entity = state.get("primary_entity")
     language = state.get("language", "en")
+    director_notes = state.get("director_notes")
 
     if primary_entity and primary_entity.lower() not in topic.lower():
         topic = f"{topic} (Focus on {primary_entity})"
@@ -72,7 +73,8 @@ def node_generate_script(state: VideoWorkflowState) -> Dict[str, Any]:
     script: ScriptContract = content_agent.generate_script(
         topic=topic,
         channel_niche=channel_style,
-        language=language
+        language=language,
+        director_notes=director_notes
     )
 
     script_dict = script.to_dict()

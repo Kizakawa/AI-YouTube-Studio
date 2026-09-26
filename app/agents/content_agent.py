@@ -154,15 +154,33 @@ class ContentAgent:
 
         return ScriptContract(**raw_data)
 
-    def generate_script(self, topic: str, channel_niche: str = "general", language: str = "en") -> ScriptContract:
+    def generate_script(
+        self,
+        topic: str,
+        channel_niche: str = "general",
+        language: str = "en",
+        director_notes: Optional[str] = None
+    ) -> ScriptContract:
         """
         Sinh kịch bản video Shorts viral tối ưu thuật toán giữ chân (AVD > 75%, thời lượng vàng 20-28 giây).
         Nhịp cảnh siêu nhanh (2.5-3.5s/cảnh), Hook 3s đầu đảo ngược định kiến, vòng lặp vô tận (Infinite Shorts Loop).
+        Đã tích hợp ghi chú đạo diễn (director_notes) và chuyển đổi ý niệm trừu tượng thành hành vi vật lý cụ thể (Physical Action Mapping).
         """
+        director_block = ""
+        if director_notes and len(director_notes.strip()) > 3:
+            director_block = f"""
+═══════════════════════════════════════════════════════════
+🎯 CREATOR'S CUSTOM CREATIVE DIRECTION (HIGHEST PRIORITY):
+The creator provided the following specific guidance for this video:
+"{director_notes.strip()}"
+You MUST strictly align the angle, narrative tone, character focus, and visual atmosphere with these instructions!
+═══════════════════════════════════════════════════════════
+"""
+
         prompt = f"""You are an elite YouTube Shorts director and viral retention engineer for a {channel_niche} channel.
 Topic: '{topic}'
 Script Language: {language}
-
+{director_block}
 ═══════════════════════════════════════════════════════════
 VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
 ═══════════════════════════════════════════════════════════
@@ -201,8 +219,8 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
      * BAD: "ancient sacrifice" → GOOD: "mayan pyramid jungle" or "smoke rising altar"
 
 5. VISUAL PROMPT (FOR CINEMATIC AI IMAGE GENERATION):
-   - Concrete cinematic format: "[Main subject + specific action], [camera angle & movement], [cinematic lighting style], [environment detail]"
-   - No literal metaphors: always illustrate the actual historical/scientific phenomenon.
+   - Format: Put the MAIN SUBJECT & ACTION FIRST: "[Focal Subject + Specific Micro-Action], [Environment & Setting], [Camera Angle: macro close-up / low-angle dolly], [Lighting: dramatic chiaroscuro / rim lighting / neon glow]"
+   - No literal metaphors: always illustrate the actual physical scene or observable behavior.
    - Every scene must be visually unique (no repeating subjects or camera angles).
 
 6. TITLE & LANGUAGE INTEGRITY:
@@ -230,11 +248,14 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
       - Deep Ocean -> Tiny diver flashlight illuminating an impossibly massive ancient eye opening in the abyss.
       - Seduction / Women -> Mesmerizing femme fatale staring piercingly over shoulder in dramatic chiaroscuro rim lighting.
       - Dark Psychology / Liar -> Extreme macro unblinking cold gaze in an interrogation room with dark chiaroscuro shadows.
-   
-   C. REQUIREMENT FOR SCENE 1:
-      - visual_prompt: Must be a hyper-dramatic, high-contrast, cinematic masterpiece describing this exact deduced primal visual. Format: "[Primal subject + high-tension action], [camera angle: macro extreme close-up or low-angle colossal perspective], [cinematic lighting: chiaroscuro shadows with piercing rim light], [atmospheric details]"
-      - visual_keyword: 2-4 concrete visual words capturing the core dramatic visual.
-      - stock_query: 2-3 concrete physical search nouns for stock footage matching this high-tension scene.
+
+8. PHYSICAL ACTION & SENSORY MAPPING (ALL SCENES MUST HAVE TANGIBLE SIGHTS):
+   - In EVERY scene, translate abstract psychological thoughts or conceptual science into PHYSICAL BEHAVIORS a camera can film:
+     * Overthinking / Mental pain -> Person staring at bathroom mirror running cold water over trembling hands in dim blue light.
+     * Deception / Lying -> Close-up of throat swallowing nervously, twitching index finger tapping wristwatch.
+     * Social Pressure / Insecurity -> Person fixing suit collar repeatedly in crowded hallway looking sideways.
+     * Sci-Fi / Space discovery -> Astronaut helmet visor reflecting dazzling blinding portal in pitch-black cosmos.
+     * Power / Stoicism -> Person standing completely motionless in torrential rain while crowd rushes past in panic.
 
 ═══════════════════════════════════════════════════════════
 OUTPUT — Return ONLY valid JSON, no markdown, no extra text:

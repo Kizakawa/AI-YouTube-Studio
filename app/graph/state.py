@@ -130,6 +130,8 @@ class VideoWorkflowState(TypedDict, total=False):
     topic: str
     target_channel_id: str
     channel_style: str
+    language: Optional[str]
+    director_notes: Optional[str]
     work_dir: str
     
     # Nhận diện thực thể

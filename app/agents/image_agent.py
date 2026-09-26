@@ -19,20 +19,14 @@ def master_cinematic_prompt(raw_prompt: str, scene_id: int = 0) -> str:
     cleaned = re.sub(r'\b(watermark|logo|text|border|frame|subtitles)\b', '', cleaned, flags=re.IGNORECASE)
 
     if scene_id == 1:
-        # Cảnh mở màn Hook 3 giây đầu: Kích hoạt tối đa độ căng thẳng thị giác và tương phản
-        prefix = (
-            "Ultra-high retention YouTube Shorts opening hook frame, 9:16 vertical orientation, "
-            "cinematic 8k masterpiece, extreme visual intensity, dramatic chiaroscuro lighting, "
-            "razor-sharp focus, award-winning cinematography: "
-        )
+        # Cảnh mở màn Hook 3 giây đầu: Đặt chủ đề và hành động cốt lõi lên hàng đầu
+        prefix = "8k vertical dramatic frame: "
+        suffix = ", extreme visual intensity, dramatic chiaroscuro lighting, razor-sharp focus, award-winning cinematography, photorealistic 9:16 vertical composition, no watermark, no text, no border"
     else:
         # Cảnh thông thường: Điện ảnh cao cấp, chân thực, giữ đúng chi tiết bối cảnh
-        prefix = (
-            "Cinematic 8k vertical film still, 9:16 aspect ratio, masterwork composition, "
-            "hyper-realistic details, dramatic lighting, 35mm photography: "
-        )
+        prefix = "8k vertical film still: "
+        suffix = ", hyper-realistic details, dramatic volumetric lighting, 35mm cinematic photography, photorealistic 9:16 vertical composition, no watermark, no text, no border"
 
-    suffix = ", photorealistic 8k, ultra-sharp detail, no watermark, no text, no border"
     return f"{prefix}{cleaned}{suffix}"
 
 
@@ -81,16 +75,16 @@ class ImageAgent:
             compact_prompt = " ".join(words[:60])
             encoded_prompt = urllib.parse.quote(compact_prompt)
 
-            url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=768&height=1344&nologo=true&seed={seed}"
+            url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=768&height=1344&model=flux&nologo=true&seed={seed}"
             headers = {
                 "User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AI-Shorts-Studio/{seed}"
             }
 
-            res = requests.get(url, headers=headers, timeout=12)
+            res = requests.get(url, headers=headers, timeout=14)
             if res.status_code == 200 and len(res.content) > 5000:
                 with open(output_path, "wb") as f:
                     f.write(res.content)
-                logger.info(f"[ImageAgent] ✅ AI Image generated ({len(res.content):,} bytes) → {output_path}")
+                logger.info(f"[ImageAgent] ✅ AI Image generated via Flux ({len(res.content):,} bytes) → {output_path}")
                 return output_path
         except Exception as e:
             logger.warning(f"[ImageAgent] Lỗi Pollinations: {e}")
@@ -99,11 +93,11 @@ class ImageAgent:
         try:
             import random
             seed = random.randint(1000, 999999)
-            short_clean = " ".join(base_prompt.split()[:15])
-            prefix_fb = "viral hook intense dramatic lighting 8k vertical" if scene_id == 1 else "photorealistic 8k vertical cinema"
-            p_encoded = urllib.parse.quote(f"{prefix_fb} {short_clean}")
-            url_fallback = f"https://image.pollinations.ai/prompt/{p_encoded}?width=768&height=1344&nologo=true&seed={seed}"
-            res = requests.get(url_fallback, headers={"User-Agent": f"AI-Shorts/{seed}"}, timeout=8)
+            short_clean = " ".join(base_prompt.split()[:20])
+            prefix_fb = "viral dramatic 8k vertical" if scene_id == 1 else "photorealistic 8k vertical cinema"
+            p_encoded = urllib.parse.quote(f"{short_clean}, {prefix_fb}")
+            url_fallback = f"https://image.pollinations.ai/prompt/{p_encoded}?width=768&height=1344&model=flux&nologo=true&seed={seed}"
+            res = requests.get(url_fallback, headers={"User-Agent": f"AI-Shorts/{seed}"}, timeout=10)
             if res.status_code == 200 and len(res.content) > 5000:
                 with open(output_path, "wb") as f:
                     f.write(res.content)

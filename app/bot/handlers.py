@@ -632,6 +632,31 @@ async def delchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await safe_reply(update, f"❌ Không thể xóa: {msg}")
 
 
+def _parse_idea_input(raw_input: str) -> tuple:
+    """Tách chủ đề chính và các ghi chú đạo diễn (Director's Notes) nếu có."""
+    if not raw_input:
+        return "", None
+
+    # 1. Kiểm tra dấu phân cách pipe (|)
+    if "|" in raw_input:
+        parts = raw_input.split("|", 1)
+        topic = parts[0].strip()
+        notes = parts[1].strip()
+        return topic, notes if notes else None
+
+    # 2. Kiểm tra cờ dạng --style, --mood, --focus, --angle, --pace, --visual
+    flags_pattern = r'(\s+--(?:style|mood|focus|angle|pace|visual)\s+[^\-]+)'
+    match = re.search(flags_pattern, raw_input, re.IGNORECASE)
+    if match:
+        start_idx = match.start()
+        topic = raw_input[:start_idx].strip()
+        notes = raw_input[start_idx:].strip()
+        notes_clean = re.sub(r'--(style|mood|focus|angle|pace|visual)\s+', r'\1: ', notes, flags=re.IGNORECASE)
+        return topic, notes_clean
+
+    return raw_input.strip(), None
+
+
 async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Lệnh sinh kịch bản AI và gửi vào nhóm cho mọi người cùng duyệt"""
     if not is_authorized(update):
@@ -640,33 +665,50 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await safe_reply(
             update,
-            "💡 Cú pháp: `/idea <chủ đề video>`\nVí dụ: `/idea 3 bí ẩn dưới đáy biển sâu`")
+            "💡 Cú pháp: `/idea <chủ đề> [| ghi chú đạo diễn]`\n\n"
+            "Ví dụ cơ bản: `/idea 3 bí ẩn dưới đáy biển sâu`\n"
+            "Ví dụ nâng cao: `/idea Stop Trying To Be Confident | style: noir, mood: dark, focus: chấp nhận nỗi sợ`"
+        )
         return
 
-    topic = " ".join(context.args)
+    raw_topic = " ".join(context.args)
+    clean_topic, director_notes = _parse_idea_input(raw_topic)
+    if not clean_topic:
+        clean_topic = raw_topic
+
     user = update.effective_user
 
     # Lấy kênh đang hoạt động
     with get_db() as db:
         db_user = db.query(User).filter(User.telegram_id == user.id).first()
-        channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_psychology"
+        channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_maya"
         if db_user:
             db_user.last_active = datetime.utcnow()
 
         log_activity(db, user.id, user.username, "CMD_IDEA",
-                     f"Yêu cầu lên ý tưởng video: '{topic}'", channel_id=channel_id)
+                     f"Yêu cầu lên ý tưởng video: '{clean_topic}'", channel_id=channel_id)
 
+    # Lấy cấu hình niche & ngôn ngữ từ kênh
+    ch = channel_manager.get_channel(channel_id) or {}
+    channel_name = ch.get("name") or channel_id
+    channel_niche = ch.get("niche") or "history_mystery"
+    channel_lang = ch.get("language") or "en"
+
+    notes_info = f"\n🎯 **Hướng đạo diễn:** _{director_notes}_" if director_notes else ""
     status_msg = await safe_reply(
         update,
-        f"🤖 **{user.first_name}** vừa yêu cầu lên ý tưởng: *\"{topic}\"*\n"
-        f"Đang kích hoạt Gemini AI (Key Rotation Pool) để tạo kịch bản cho kênh `{channel_id}`..."
+        f"🤖 **{user.first_name}** vừa yêu cầu lên ý tưởng: *\"{clean_topic}\"*{notes_info}\n"
+        f"Đang kích hoạt Gemini AI cho kênh `{channel_name}` (Chủ đề: {channel_niche})..."
     )
 
     try:
         # ContentAgent trả ScriptContract (validated Pydantic model)
         script: ScriptContract = await asyncio.to_thread(
             content_agent.generate_script,
-            topic=topic, channel_niche="general", language="en"
+            topic=clean_topic,
+            channel_niche=channel_niche,
+            language=channel_lang,
+            director_notes=director_notes
         )
 
         # Lưu vào Database — dùng context manager
@@ -674,12 +716,12 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             job = VideoJob(
                 user_id=user.id,
                 target_channel_id=channel_id,
-                topic=topic,
+                topic=clean_topic,
                 title=script.title,
                 script=script.full_narration,
                 description=script.description,
                 tags=",".join(script.tags),
-                scenes_json=script.to_json_str(),   # [NEW] Lưu structured data
+                scenes_json=script.to_json_str(),   # Lưu structured data
                 status="SCRIPT_READY"
             )
             db.add(job)
@@ -696,13 +738,15 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for s in script.scenes[:3]
         ])
 
+        notes_display = f"🎯 **Đạo diễn:** _{director_notes}_\n\n" if director_notes else ""
         reply_content = (
             f"🎬 **KỊCH BẢN ĐÃ HOÀN THÀNH (Task #{job_id})**\n\n"
             f"📌 **Tiêu đề đề xuất:** {script.title}\n"
             f"🔥 **Hook 3 giây đầu:** \"{script.hook}\"\n\n"
             f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
+            f"{notes_display}"
             f"⏱️ **Ước lượng:** ~{script.total_estimated_duration:.0f}s | {len(script.scenes)} cảnh\n\n"
-            f"🗣️ **Người tạo:** {user.first_name} | 📺 **Kênh:** `{channel_id}`\n\n"
+            f"🗣️ **Người tạo:** {user.first_name} | 📺 **Kênh:** `{channel_name}` ({channel_niche})\n\n"
             f"💡 **Tùy biến hình ảnh:** Gửi ảnh/video vào nhóm kèm chú thích `/scene <số_cảnh>` (hoặc `/media <số_cảnh> <link>`) để gán hình ảnh của bạn cho cảnh đó!\n\n"
             f"👉 Cả nhóm hãy góp ý hoặc bấm nút bên dưới để tiến hành sản xuất video!"
         )
