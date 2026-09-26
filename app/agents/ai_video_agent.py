@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 
 from app.agents.image_agent import ImageAgent
-from app.utils.ffmpeg_helper import image_to_video, run_ffmpeg
+from app.utils.ffmpeg_helper import image_to_video, run_ffmpeg, trim_video
 from app.utils.key_rotator import KeyRotator
 from config.settings import settings
 
@@ -112,8 +112,20 @@ class AIVideoAgent:
 
         # Nếu chưa có ảnh nguồn, sinh bức ảnh chủ đề 8K trước
         if not target_img_path or not Path(target_img_path).exists():
-            temp_ai_image = str(out_p.parent / f"_theme_frame_{scene_id:03d}.jpg")
             clean_prompt = visual_prompt or prompt
+
+            # Nếu cảnh có các yếu tố chuyển động viễn tưởng / không gian mạnh mẽ và không phải chân dung nhân vật cụ thể:
+            # Ưu tiên lấy Video Clip 9:16 chuyển động thực tế để video sống động (dynamic video)
+            motion_sci_fi_cues = ["spaceship", "flying", "cyberpunk", "galaxy", "stars", "universe", "wormhole", "robot", "laser", "space flight", "phi thuyền", "vũ trụ", "ngân hà", "hành tinh", "lỗ đen"]
+            p_check = clean_prompt.lower()
+            is_specific_character = any(f in p_check for f in ["portrait", "face", "philosopher", "chân dung", "khuôn mặt", "character closeup"])
+            if any(c in p_check for c in motion_sci_fi_cues) and not is_specific_character:
+                px_vid = self._try_pexels_video_clip(clean_prompt, output_path, duration_seconds)
+                if px_vid and Path(px_vid).exists() and Path(px_vid).stat().st_size > 10000:
+                    logger.info(f"🎥 [AIVideoAgent] ✅ Image-to-Video đã nâng cấp thành Video B-Roll 9:16 chuyển động: {output_path}")
+                    return output_path
+
+            temp_ai_image = str(out_p.parent / f"_theme_frame_{scene_id:03d}.jpg")
             if "8k" not in clean_prompt.lower() and "cinematic" not in clean_prompt.lower():
                 clean_prompt = f"Cinematic photorealistic 8k, {clean_prompt}, sharp details, volumetric lighting, vertical 9:16 composition"
 
@@ -185,7 +197,14 @@ class AIVideoAgent:
             logger.info(f"🔮 [AIVideoAgent] ✅ Text-to-Video API ngoại vi hoàn tất: {output_path}")
             return output_path
 
-        # 3. DỰ PHÒNG CHẤT LƯỢNG CAO (Zero-Failure): Generative Motion Engine siêu thực
+        # 3. ƯU TIÊN SỐ 3: Tìm Video Clip B-Roll 9:16 chuyển động thực tế từ Pexels Video (cho viễn tưởng, không gian, cyberpunk, chuyển động thực)
+        # Giúp cảnh có chuyển động động (dynamic video) 30fps thực sự thay vì chỉ là ảnh tĩnh phóng to!
+        pexels_vid = self._try_pexels_video_clip(full_prompt, output_path, duration_seconds)
+        if pexels_vid and Path(pexels_vid).exists() and Path(pexels_vid).stat().st_size > 10000:
+            logger.info(f"🎥 [AIVideoAgent] ✅ Pexels Video Clip 9:16 chuyển động hoàn tất: {output_path}")
+            return output_path
+
+        # 4. DỰ PHÒNG CHẤT LƯỢNG CAO (Zero-Failure): Generative Motion Engine siêu thực
         temp_frame = str(out_p.parent / f"_t2v_frame_{scene_id:03d}.jpg")
         mystic_prompt = f"Breathtaking mystical cinematography, {full_prompt}, glowing dynamic energy, 8k vertical video still, cinematic dark atmosphere"
 
@@ -360,6 +379,46 @@ class AIVideoAgent:
             except Exception as e:
                 logger.debug(f"[AIVideoAgent] HF video api error: {e}")
 
+        return None
+
+    def _try_pexels_video_clip(self, prompt: str, output_path: str, duration_seconds: float) -> Optional[str]:
+        """
+        Tìm kiếm và tải video clip 9:16 chất lượng cao từ Pexels Video cho các chủ đề viễn tưởng / chuyển động.
+        Tự động cắt đúng thời lượng (trim_video) để ráp nối mượt mà vào video hoàn chỉnh.
+        """
+        try:
+            from app.agents.media_agent import MediaAgent, clean_scene_search_query
+            media_agent = MediaAgent()
+            if not media_agent.api_key:
+                return None
+
+            clean_q = clean_scene_search_query(prompt, max_words=3)
+            best_vid = media_agent.search_best_video_clip(clean_q)
+            if not best_vid and len(clean_q.split()) > 1:
+                shorter_q = " ".join(clean_q.split()[:2])
+                best_vid = media_agent.search_best_video_clip(shorter_q)
+
+            if best_vid and best_vid.get("url"):
+                cand_url = best_vid["url"]
+                raw_temp = str(Path(output_path).parent / f"_raw_px_{Path(output_path).stem}.mp4")
+                media_agent.download_file(cand_url, raw_temp)
+                if Path(raw_temp).exists() and Path(raw_temp).stat().st_size > 10000:
+                    trim_video(
+                        input_path=raw_temp,
+                        duration_seconds=duration_seconds,
+                        output_path=output_path,
+                        width=1080,
+                        height=1920,
+                        fps=30
+                    )
+                    try:
+                        Path(raw_temp).unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    if Path(output_path).exists() and Path(output_path).stat().st_size > 10000:
+                        return output_path
+        except Exception as e:
+            logger.debug(f"[AIVideoAgent] _try_pexels_video_clip error: {e}")
         return None
 
     def _render_cinematic_motion(

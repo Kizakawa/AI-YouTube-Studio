@@ -148,10 +148,15 @@ QUY TẮC PHÂN ĐỊNH 4 PHƯƠNG PHÁP LÀM VIDEO (BẮT BUỘC TUÂN THỦ):
    - Công cụ: 'wan_t2v' / 'ai_video_generative'.
    - Lý do: Các hiện tượng siêu thực cần sự biến ảo không ngừng của AI Video để tạo sự choáng ngợp.
 
-4. 'STOCK_FOOTAGE' (Video clip B-Roll chuyển động thực tế 9:16):
-   - Áp dụng khi: Cảnh miêu tả HÀNH ĐỘNG ĐỜI THỰC, CHUYỂN ĐỘNG VẬT LÝ (người bước đi trên phố, xe cộ tấp nập, bàn tay gõ phím, đồng hồ cát trôi, giọt mưa rơi, biển sóng cuộn...). Đặc biệt ưu tiên cảnh mở màn (Hook) nếu là hành động đời thường.
-   - Công cụ: 'pexels_video_api'.
-   - Lý do: Chuyển động người thật và thế giới thật giữ chân người xem không lướt qua.
+4. 'STOCK_FOOTAGE' (Video clip B-Roll 9:16 chuyển động thực tế & viễn tưởng):
+   - Áp dụng khi: Cảnh cần CHUYỂN ĐỘNG THỰC 30fps/60fps (thay vì ảnh tĩnh zoom Ken Burns).
+   - Kho Pexels Video chứa hàng triệu video clip 9:16 chuyển động tuyệt đẹp:
+     * Viễn tưởng / Sci-Fi / Không gian: Phi thuyền bay trong không gian (spaceship space), lỗ đen (black hole), dải ngân hà quay (galaxy stars), thành phố tương lai neon (cyberpunk city), robot/AI (robot android), cổng không gian (wormhole tunnel), công nghệ hologram (futuristic technology), địa hình hành tinh xa xôi (alien planet)...
+     * Hành động / Đời thực: Sóng biển cuộn, bão tố, sấm chớp, thành phố đêm, xe cộ, dòng người, thao tác công nghệ, phòng thí nghiệm...
+   - QUY TẮC BẮT BUỘC: Khi làm chủ đề VIỄN TƯỞNG, HUYỀN BÍ, KHOA HỌC, khán giả xem Shorts để thấy VIDEO ĐỘNG CHUYỂN ĐỘNG SỐNG ĐỘNG!
+     TUYỆT ĐỐI TRÁNH việc biến toàn bộ video thành ảnh tĩnh chuyển cảnh (IMAGE_TO_VIDEO).
+     PHẢI CHỈ ĐỊNH ÍT NHẤT 50% - 70% CÁC CẢNH DÙNG 'STOCK_FOOTAGE' (pexels_video_api) hoặc 'TEXT_TO_VIDEO' để đảm bảo video có CHUYỂN ĐỘNG ĐỘNG (DYNAMIC VIDEO) 30fps thực sự!
+     Chỉ dùng 'IMAGE_TO_VIDEO' cho 1-2 cảnh khi cần đặc tả chân dung một nhân vật cụ thể hoặc sinh vật kỳ dị không thể tìm thấy video.
 
 THÔNG TIN ĐẦU VÀO:
 - Chủ đề: {topic}
@@ -219,7 +224,10 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
         is_mystery_or_fantasy = any(w in topic_lower for w in [
             "mystery", "mysteries", "secret", "alien", "ufo", "space", "galaxy", "supernatural",
             "paranormal", "magic", "fantasy", "myth", "monster", "ghost", "dimension", "portal",
-            "time travel", "future", "huyền bí", "bí ẩn", "vũ trụ", "tâm linh", "giả tưởng", "kỳ lạ", "lỗ đen"
+            "time travel", "future", "huyền bí", "bí ẩn", "vũ trụ", "tâm linh", "giả tưởng", "kỳ lạ", "lỗ đen",
+            "viễn tưởng", "khoa học viễn tưởng", "sci-fi", "scifi", "science fiction", "cyberpunk",
+            "futuristic", "robot", "người máy", "trí tuệ nhân tạo", "ai", "không gian", "ngân hà", "hố đen",
+            "ngoài hành tinh", "phi thuyền", "hành tinh", "chiến tranh giữa các vì sao", "vũ trụ quan"
         ])
 
         is_historical = bool(primary_entity) or any(w in topic_lower for w in [
@@ -235,7 +243,12 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
             "ocean", "wave", "waves", "underwater", "deep sea", "fish", "whale", "submarine", "radar",
             "dive", "diving", "swimming", "boat", "ship", "depth", "abyss", "clock", "time", "hourglass",
             "hands", "typing", "money", "cash", "brain", "mind", "looking", "staring", "whisper",
-            "talking", "smoke", "candle", "door", "window", "alone", "sky", "clouds", "flight", "car", "nature"
+            "talking", "smoke", "candle", "door", "window", "alone", "sky", "clouds", "flight", "car", "nature",
+            # Sci-Fi / Không gian / Viễn tưởng B-Roll
+            "spaceship", "space", "galaxy", "stars", "planet", "alien planet", "wormhole", "black hole",
+            "cyberpunk", "neon", "futuristic", "robot", "android", "laser", "portal", "orbit", "cosmos",
+            "technology", "hologram", "warp", "speed", "flight", "flying", "universe", "nebula",
+            "phi thuyền", "ngân hà", "hành tinh", "vũ trụ", "lỗ đen", "công nghệ", "viễn tưởng"
         }
 
         abstract_fantasy_cues = {
@@ -289,17 +302,17 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
                 tool = "wan_t2v"
                 rationale = "Ý tưởng huyền bí / năng lượng trừu tượng không có hình thể cố định -> sinh Video AI trực tiếp để tạo sự choáng ngợp."
 
-            # Quy tắc 3: Cảnh có nhân vật, sinh vật kỳ ảo, chân dung hoặc bối cảnh nghệ thuật rõ ràng -> IMAGE_TO_VIDEO
-            elif any(c in text_all for c in ["monster", "creature", "leviathan", "tentacle", "beast", "dragon", "alien", "ufo", "portrait", "character", "face", "philosopher", "ancient temple", "room", "laboratory", "statue", "monk", "warrior", "cyborg"]):
-                method = "IMAGE_TO_VIDEO"
-                tool = "imagen3_i2v"
-                rationale = "Cảnh có sinh vật kỳ ảo / nhân vật cần độ chi tiết cao -> tạo ảnh chủ đề 8K chuẩn bố cục rồi chuyển hóa thành video 3D."
-
-            # Quy tắc 4: Chuyển động đời thực, bối cảnh tự nhiên, b-roll động -> STOCK_FOOTAGE
-            elif any(mc in text_all for mc in motion_cues) or idx == 0 or topic_class == "REAL_LIFE_MOTION":
+            # Quy tắc 3: Chuyển động đời thực, bối cảnh viễn tưởng, không gian, b-roll động -> STOCK_FOOTAGE
+            elif any(mc in text_all for mc in motion_cues) or idx == 0 or topic_class in ("REAL_LIFE_MOTION", "MYSTERY_ABSTRACT"):
                 method = "STOCK_FOOTAGE"
                 tool = "pexels_video_api"
-                rationale = "Cảnh miêu tả chuyển động hoặc bối cảnh thực tế -> dùng Video B-Roll Pexels 9:16 giữ chân người xem liên tục."
+                rationale = "Cảnh miêu tả chuyển động hoặc bối cảnh viễn tưởng/thực tế -> dùng Video B-Roll Pexels 9:16 giữ chân người xem bằng video động."
+
+            # Quy tắc 4: Cảnh có nhân vật, chân dung cụ thể hoặc sinh vật đặc thù cần độ nét tuyệt đối -> IMAGE_TO_VIDEO
+            elif any(c in text_all for c in ["portrait", "face", "philosopher", "chân dung", "khuôn mặt", "statue", "monk", "warrior", "creature", "monster", "leviathan"]):
+                method = "IMAGE_TO_VIDEO"
+                tool = "imagen3_i2v"
+                rationale = "Cảnh cần đặc tả nhân vật/sinh vật cụ thể -> tạo ảnh chủ đề 8K chuẩn bố cục rồi chuyển hóa thành video 3D."
 
             # Quy tắc mặc định: Xen kẽ Video chuyển động thực và Video nghệ thuật để nhịp điệu sinh động
             else:
