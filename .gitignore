@@ -45,12 +45,12 @@ config/channels.yaml
 *.db-wal
 
 # Storage & Temporary Files
-storage/temp/*
-storage/outputs/*
-storage/cache/*
-!storage/temp/.gitkeep
-!storage/outputs/.gitkeep
-!storage/cache/.gitkeep
+storage/**
+!storage/**/.gitkeep
+*.jpg
+*.jpeg
+*.png
+!app/web/static/**
 
 # IDE & OS
 .idea/
