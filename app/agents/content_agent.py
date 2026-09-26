@@ -533,17 +533,43 @@ HARD RULES:
 
     def suggest_viral_ideas(
         self,
+        channel_id: str = "channel_maya",
+        channel_name: str = "Psychology of the world",
         channel_niche: str = "psychology",
         language: str = "en",
+        recent_titles: Optional[List[str]] = None,
         count: int = 5
     ) -> List[Dict[str, Any]]:
         """
-        Sinh danh sách các chủ đề Shorts triệu view theo đúng 'công thức chiến thắng' (Winning Formula):
-        - Đánh trúng tâm lý, red flags, vạch trần dối trá, thao túng tâm lý ngầm.
-        - Đã kiểm chứng mang lại tỷ lệ giữ chân (Retention) 140% - 160%+.
-        - Kèm câu Hook giật gân, góc tiếp cận, bình luận mồi (pinned bait comment).
+        Sinh danh sách các chủ đề Shorts triệu view bám sát nội dung thực tế của kênh:
+        - Đọc danh sách các video đã đăng/sản xuất của kênh để tránh trùng lặp.
+        - Nhân bản công thức chiến thắng từ video đạt 160% Retention (3 Signs They're JUST Using You).
+        - Xây dựng cụm chủ đề liên hoàn (Topic Cluster / Binge-watching Playlist) kích thích xem tiếp.
         """
         is_psychology = "psychology" in channel_niche.lower() or "tâm lý" in channel_niche.lower()
+
+        recent_context_block = ""
+        if recent_titles:
+            clean_titles = [f"  - \"{t}\"" for t in recent_titles[:8] if t]
+            if clean_titles:
+                recent_context_block = f"""
+═══════════════════════════════════════════════════════════
+📺 CHANNEL IDENTITY & RECENT VIDEO PORTFOLIO:
+Channel Name: '{channel_name}'
+Channel Niche: '{channel_niche}'
+Recently Produced / Uploaded Videos on this Channel:
+{chr(10).join(clean_titles)}
+
+🏆 CHANNEL'S PROVEN WINNING HERO (160.2% RETENTION BENCHMARK):
+- "3 Signs They’re JUST Using You 🚩 #psychology" (Viral breakthrough hit!)
+- Winning Mechanism: Interpersonal red flags, covert manipulation, spotting exploitation, psychological self-defense.
+
+CRITICAL CHANNEL ALIGNMENT & BINGE-WATCHING RULES:
+1. DEEP CHANNEL SYNERGY: The {count} suggested concepts MUST feel like natural sister episodes in a binge-worthy playlist for '{channel_name}'.
+2. NO DUPLICATES: DO NOT suggest topics or titles already covered in the recent videos list above!
+3. BINGE-WATCHING MULTIPLIER: Viewers who watched "3 Signs They’re JUST Using You" must feel an irresistible psychological compulsion to click these videos next (e.g. Secret jealousy in friend circles, subtle tests toxic people use, psychological boundary defense, detecting hidden deceit).
+═══════════════════════════════════════════════════════════
+"""
 
         fallback_psychology_en = [
             {
@@ -554,7 +580,7 @@ HARD RULES:
                 "pinned_comment": "Which sign hit closest to home? 1, 2, or 3? Be honest 👇",
                 "viral_formula": "Debate in Comments",
                 "predicted_retention": "155% - 165%",
-                "why_viral": "Đánh trúng nỗi sợ bị phản bội từ bạn bè, kích thích người xem comment kể chuyện cá nhân"
+                "why_viral": "Nối tiếp hoàn hảo video 'Using You' — vạch trần bạn bè giả tạo, kích thích comment cực mạnh"
             },
             {
                 "topic": "4 Body Language Signs Someone is Lying to Your Face",
@@ -574,7 +600,7 @@ HARD RULES:
                 "pinned_comment": "If you recognize sign #1, walk away immediately. Have you experienced this? 👇",
                 "viral_formula": "Curiosity Part 2",
                 "predicted_retention": "160% - 170%",
-                "why_viral": "Hiệu ứng nhận diện kẻ thù, người xem liên tưởng ngay tới người yêu cũ hoặc đồng nghiệp"
+                "why_viral": "Phần tiếp theo trực tiếp của '3 Signs They're Using You' — giải mã bước đi đầu tiên của kẻ thao túng"
             },
             {
                 "topic": "3 Signs Someone Has a CRUSH on You but Tries to Hide It",
@@ -651,10 +677,10 @@ HARD RULES:
             }
         ]
 
-        prompt = f"""You are an elite YouTube Shorts Growth Hacker and Viral Strategist for a channel in niche: '{channel_niche}'.
+        prompt = f"""You are an elite YouTube Shorts Growth Hacker and Viral Strategist for the channel '{channel_name}' in niche: '{channel_niche}'.
 Language: {language}
-Goal: Generate {count} ULTRA-VIRAL video concepts modeled directly after high-retention winners (150-165% Average Percentage Viewed).
-
+Goal: Generate {count} ULTRA-VIRAL video concepts tailored specifically to match this channel's existing identity and build upon its highest-performing video.
+{recent_context_block}
 CORE RETENTION PRINCIPLES:
 1. High-Stakes Personal & Relational Angle: Focus on topics that make viewers fear being tricked, betrayed, or ignored (e.g. Red Flags, Covert Narcissism, Dark Psychology Laws, Body Language of Liars, Hidden Jealousy).
 2. Electric Hook (First 2.5s): Pattern interrupt, urgent warning, or elite insider rule.
@@ -671,7 +697,7 @@ Return ONLY a JSON array with exactly {count} objects:
     "pinned_comment": "High-converting pinned bait question for the comment section",
     "viral_formula": "Double Tap & Protect | Debate in Comments | Curiosity Part 2",
     "predicted_retention": "150% - 165%",
-    "why_viral": "Brief 1-sentence reason why this will blow up"
+    "why_viral": "Brief 1-sentence reason why this will blow up and fits the channel"
   }}
 ]
 """

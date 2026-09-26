@@ -679,7 +679,8 @@ async def viral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
 
-    # Lấy kênh đang hoạt động của user
+    # Lấy kênh đang hoạt động của user và lịch sử các video đã sản xuất
+    recent_titles = []
     with get_db() as db:
         db_user = db.query(User).filter(User.telegram_id == user.id).first()
         channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_maya"
@@ -689,6 +690,13 @@ async def viral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log_activity(db, user.id, user.username, "CMD_VIRAL",
                      f"Yêu cầu gợi ý ý tưởng triệu view", channel_id=channel_id)
 
+        # Lấy tối đa 8 video gần đây của kênh này để AI hiểu nội dung thực tế và không trùng lặp
+        recent_jobs = db.query(VideoJob).filter(
+            VideoJob.target_channel_id == channel_id,
+            VideoJob.title.isnot(None)
+        ).order_by(VideoJob.id.desc()).limit(8).all()
+        recent_titles = [j.title for j in recent_jobs if j.title]
+
     ch = channel_manager.get_channel(channel_id) or {}
     channel_name = ch.get("name") or channel_id
     channel_niche = ch.get("niche") or "psychology"
@@ -696,18 +704,21 @@ async def viral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     wait_msg = await safe_reply(
         update,
-        f"🔥 **ĐẠO DIỄN SHORTS AI ĐANG TÌM Ý TƯỞNG TRIỆU VIEW...**\n\n"
-        f"📺 **Kênh:** `{channel_name}`\n"
-        f"🎯 **Chủ đề:** `{channel_niche}` ({channel_lang.upper()})\n"
-        f"⚡ **Thuật toán áp dụng:** Giữ chân 160% Retention + Loop vô tận + Pinned Bait Comment\n\n"
+        f"🔥 **ĐẠO DIỄN SHORTS AI ĐANG PHÂN TÍCH KÊNH `{channel_name}`...**\n\n"
+        f"📺 **Chủ đề kênh:** `{channel_niche}` ({channel_lang.upper()})\n"
+        f"📚 **Thư viện đã đối chiếu:** {len(recent_titles)} video gần nhất\n"
+        f"⚡ **Thuật toán áp dụng:** Bám sát video đạt 160% Retention (*3 Signs They're JUST Using You*) + Loop vô tận + Pinned Bait Comment\n\n"
         f"⏳ Đang kích hoạt AI Viral Growth Hacker..."
     )
 
     try:
         ideas = await asyncio.to_thread(
             content_agent.suggest_viral_ideas,
+            channel_id=channel_id,
+            channel_name=channel_name,
             channel_niche=channel_niche,
             language=channel_lang,
+            recent_titles=recent_titles,
             count=5
         )
 
@@ -722,9 +733,13 @@ async def viral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.chat_data["cached_viral_channel"] = channel_id
 
         text_lines = [
-            f"🔥 **5 Ý TƯỞNG SHORTS TRIỆU VIEW (DỰ BÁO RETENTION >150%)**\n",
+            f"🔥 **5 Ý TƯỞNG SHORTS TRIỆU VIEW (BÁM SÁT NỘI DUNG KÊNH)**\n",
             f"📺 **Kênh:** `{channel_name}` | 🎯 **Chủ đề:** `{channel_niche}`\n",
+            f"🏆 **Chuẩn mẫu:** Dựa theo video đạt 160% Retention (*3 Signs They're JUST Using You*)\n",
         ]
+        if recent_titles:
+            recent_str = ", ".join([f"_{t[:24]}..._" for t in recent_titles[:2]])
+            text_lines.append(f"📌 **Đã đối chiếu thư viện kênh:** {recent_str}\n")
 
         for idx, item in enumerate(ideas):
             topic = item.get("topic", "")
@@ -2231,11 +2246,22 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         channel_niche = ch.get("niche") or "psychology"
         channel_lang = ch.get("language") or "en"
 
+        recent_titles = []
+        with get_db() as db:
+            recent_jobs = db.query(VideoJob).filter(
+                VideoJob.target_channel_id == channel_id,
+                VideoJob.title.isnot(None)
+            ).order_by(VideoJob.id.desc()).limit(8).all()
+            recent_titles = [j.title for j in recent_jobs if j.title]
+
         try:
             ideas = await asyncio.to_thread(
                 content_agent.suggest_viral_ideas,
+                channel_id=channel_id,
+                channel_name=channel_name,
                 channel_niche=channel_niche,
                 language=channel_lang,
+                recent_titles=recent_titles,
                 count=5
             )
             if context.chat_data is None:
@@ -2244,9 +2270,13 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.chat_data["cached_viral_channel"] = channel_id
 
             text_lines = [
-                f"🔥 **5 Ý TƯỞNG SHORTS TRIỆU VIEW MỚI (RETENTION >150%)**\n",
+                f"🔥 **5 Ý TƯỞNG SHORTS TRIỆU VIEW MỚI (BÁM SÁT NỘI DUNG KÊNH)**\n",
                 f"📺 **Kênh:** `{channel_name}` | 🎯 **Chủ đề:** `{channel_niche}`\n",
+                f"🏆 **Chuẩn mẫu:** Dựa theo video đạt 160% Retention (*3 Signs They're JUST Using You*)\n",
             ]
+            if recent_titles:
+                recent_str = ", ".join([f"_{t[:24]}..._" for t in recent_titles[:2]])
+                text_lines.append(f"📌 **Đã đối chiếu thư viện kênh:** {recent_str}\n")
             for idx, item in enumerate(ideas):
                 title = item.get("title", item.get("topic", ""))
                 hook = item.get("hook", "")
