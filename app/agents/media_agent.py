@@ -1388,14 +1388,17 @@ If no real entities found, return empty array: []"""
         used_urls: Optional[set] = None,
         niche: str = "general",
         scene_id: int = 0,
+        prefer_video: bool = False,
+        prefer_photo: bool = False,
     ) -> Optional[Dict]:
         """
-        Tìm kiếm hình ảnh đa tầng tối ưu cao nhất cho 1 phân cảnh:
+        Tìm kiếm media đa tầng tối ưu cao nhất cho 1 phân cảnh:
         1. Query Synthesizer: làm sạch và tổng hợp từ khóa cốt lõi (2-3 từ)
-        2. Nếu phân cảnh nhắc đến thực thể/sự kiện/địa danh lịch sử cụ thể -> Wikipedia / Wikimedia Commons
-        3. Pexels HD Photos (Portrait 9:16) siêu nét cho đồ vật, con người, phong cảnh thực
-        4. Openverse Archival (800M+ ảnh bảo tàng & thư viện thế giới)
-        5. Pexels Video (chỉ dùng cho chuyển động tự nhiên/không gian/thành phố khi không có entity)
+        2. Nếu prefer_video hoặc cảnh có yếu tố chuyển động/b-roll -> Ưu tiên Video Clip dọc 9:16 từ Pexels
+        3. Nếu phân cảnh nhắc đến thực thể/sự kiện lịch sử cụ thể -> Wikipedia / Wikimedia Commons
+        4. Pexels HD Photos (Portrait 9:16) siêu nét cho đồ vật, con người, phong cảnh thực
+        5. Openverse Archival (800M+ ảnh bảo tàng & thư viện thế giới)
+        6. Pexels Video Clip Fallback
         """
         used = used_urls if used_urls is not None else set()
         primary_q, fallback_q, intent = synthesize_scene_query(
@@ -1408,11 +1411,11 @@ If no real entities found, return empty array: []"""
 
         logger.info(
             f"[MediaAgent] Scene {scene_id} Search: intent='{intent}' | "
-            f"query='{primary_q}' (fallback='{fallback_q}')"
+            f"query='{primary_q}' (fallback='{fallback_q}') | prefer_video={prefer_video} | prefer_photo={prefer_photo}"
         )
 
         # ── TẦNG 1: Wikipedia / Wikimedia Commons cho thực thể / sự kiện lịch sử ──
-        if intent == "historical_entity" or primary_entity:
+        if (intent == "historical_entity" or primary_entity or prefer_photo) and not prefer_video:
             # A. Thử tìm trên Wikipedia
             wiki_img = self.search_wikipedia_entity_image(primary_q)
             if wiki_img and wiki_img.get("url") and wiki_img["url"] not in used:
@@ -1435,14 +1438,48 @@ If no real entities found, return empty array: []"""
                     if u and u not in used and self._is_valid_image_url(u):
                         return c
 
-        # ── TẦNG ĐẶC BIỆT: HOOK SCENE 1 (0.0s - 2.5s) ──
-        # Với Scene 1 không phải nhân vật lịch sử cụ thể, ưu tiên tìm 1 video clip dọc (portrait 9:16)
-        # từ Pexels trước để tạo chuyển động sống động tức thì ngay giây đầu tiên, chặn đà lướt qua (Swipe Away)
-        if scene_id == 1 and not primary_entity and self.api_key:
-            best_vid = self.search_best_video_clip(primary_q)
-            if best_vid and best_vid.get("url") and best_vid["url"] not in used:
-                logger.info(f"🔥 [MediaAgent] Hook Scene 1: Đã chọn video clip động Pexels ('{primary_q}') để giữ chân người xem!")
-                return best_vid
+        # ── TẦNG MOTION B-ROLL: Pexels Video Clip dọc (Portrait 9:16) ──
+        # Tự động kích hoạt khi:
+        # a) prefer_video = True (do người dùng chọn hoặc Smart Director chỉ định)
+        # b) Cảnh chứa từ khóa hành động/b-roll/chuyển động sống động
+        # c) Scene 1 Hook (để chặn đà lướt qua - Swipe Away)
+        motion_keywords = {
+            "walk", "walking", "run", "running", "moving", "movement", "crowd", "people", "city", "street",
+            "traffic", "night", "dark", "shadow", "silhouette", "rain", "storm", "fire", "water", "sea", "ocean",
+            "clock", "time", "hourglass", "hands", "typing", "money", "cash", "brain", "mind", "synapse",
+            "space", "galaxy", "stars", "looking", "staring", "whisper", "talking", "laugh", "cry",
+            "smoke", "abstract", "blur", "lights", "neon", "car", "train", "sky", "clouds",
+            "candle", "door", "window", "chess", "alone", "thinking", "eye", "eyes", "pupil",
+            "stress", "anxiety", "depression", "success", "power", "mirror", "reflection", "falling",
+            "burning", "gold", "fight", "war", "explosion", "flame", "flying", "universe"
+        }
+        text_for_motion = f"{scene_narration} {visual_keyword} {stock_query or ''}".lower()
+        has_motion_cue = any(mk in text_for_motion for mk in motion_keywords)
+
+        should_try_video = (
+            (prefer_video or has_motion_cue or scene_id == 1)
+            and not prefer_photo
+            and not primary_entity
+            and self.api_key
+        )
+
+        if should_try_video:
+            video_queries = [primary_q]
+            if fallback_q and fallback_q != primary_q:
+                video_queries.append(fallback_q)
+            if stock_query:
+                clean_sq = clean_scene_search_query(stock_query, max_words=3)
+                if clean_sq and clean_sq not in video_queries:
+                    video_queries.append(clean_sq)
+
+            for vq in video_queries:
+                best_vid = self.search_best_video_clip(vq)
+                if best_vid and best_vid.get("url") and best_vid["url"] not in used:
+                    logger.info(
+                        f"🎥 [MediaAgent] Scene {scene_id}: Đã chọn video clip động Pexels ('{vq}') "
+                        f"để tạo chuyển động sống động giữ chân người xem!"
+                    )
+                    return best_vid
 
         # ── TẦNG 2: Pexels HD Photos (Portrait 9:16) — Đồ vật, đời sống, phong cảnh ──
         # Tỷ lệ dọc 9:16 siêu nét (4K/HD), màu sắc điện ảnh, cực kỳ phù hợp hiệu ứng Ken Burns
@@ -1485,7 +1522,7 @@ If no real entities found, return empty array: []"""
                         "height": item.get("height", 1920),
                     }
 
-        # ── TẦNG 4: Pexels Video Clip (Chỉ dùng khi KHÔNG phải nhân vật tài liệu) ──
+        # ── TẦNG 4: Pexels Video Clip Fallback (Nếu các tầng ảnh trước đều không có) ──
         if not primary_entity and self.api_key:
             best_vid = self.search_best_video_clip(primary_q)
             if best_vid and best_vid.get("url") and best_vid["url"] not in used:

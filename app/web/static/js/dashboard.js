@@ -615,17 +615,28 @@ async function openVideoDetail(jobId) {
         FAILED:       `<span class="badge badge-rose">Lỗi</span>`,
     };
 
-    const scenesHTML = (data.scenes || []).map(s => `
+    const scenesHTML = (data.scenes || []).map(s => {
+        const isVid = (s.media_type === 'video' || (s.media_path && s.media_path.endsWith('.mp4')));
+        const isAi = (s.media_type === 'ai_image' || (s.media_path && s.media_path.includes('_ai')));
+        const mediaBadge = isVid ? '<span class="badge badge-amber" style="font-size:10px;padding:2px 6px;">🎥 Video Động</span>'
+            : (isAi ? '<span class="badge badge-purple" style="font-size:10px;padding:2px 6px;">✨ Ảnh AI</span>'
+            : '<span class="badge badge-cyan" style="font-size:10px;padding:2px 6px;">📸 Ảnh Tư Liệu</span>');
+        const fileName = s.media_path ? s.media_path.split(/[\\\\/]/).pop() : '';
+        return `
         <div class="scene-item">
             <div class="scene-num">${s.scene_id}</div>
             <div class="scene-body">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                    ${mediaBadge}
+                    <span style="font-size:11px;color:var(--text-muted);">${s.actual_duration_seconds ? s.actual_duration_seconds.toFixed(1) + 's' : '~' + (s.estimated_seconds || 3) + 's'}</span>
+                </div>
                 <div class="scene-narration">${esc(s.narration)}</div>
-                <div class="scene-keyword">🔍 ${esc(s.visual_keyword)}</div>
-                ${s.audio_path ? `<div class="scene-keyword">🎵 ${esc(s.audio_path)}</div>` : ''}
-                ${s.media_path ? `<div class="scene-keyword">🖼 ${esc(s.media_path)}</div>` : ''}
+                <div class="scene-keyword">🔍 ${esc(s.visual_keyword || '')}</div>
+                ${fileName ? `<div class="scene-keyword" style="color:var(--text-muted);font-size:11px;">${isVid ? '🎬' : '🖼'} ${esc(fileName)}</div>` : ''}
             </div>
             <div class="scene-dur">~${s.estimated_seconds}s</div>
-        </div>`).join('');
+        </div>`;
+    }).join('');
 
     body.innerHTML = `
         <div class="detail-grid">
@@ -781,7 +792,9 @@ function addEditorSceneRow(sc = null, sceneNum = null) {
 
     const narration = sc ? (sc.narration || '') : '';
     const kw = sc ? (sc.visual_keyword || '') : '';
+    const vp = sc ? (sc.visual_prompt || '') : '';
     const sec = sc ? (sc.estimated_seconds || 4.0) : 4.0;
+    const mediaType = sc ? (sc.media_type || 'auto') : 'auto';
 
     const card = document.createElement('div');
     card.className = 'editor-scene-card';
@@ -811,9 +824,27 @@ function addEditorSceneRow(sc = null, sceneNum = null) {
             <label class="form-label" style="font-size:11.5px; margin-bottom:4px;"><strong>Lời thoại phân cảnh (Narration / Voiceover):</strong></label>
             <textarea class="form-input scene-narration-input" rows="2" style="font-size:13px; line-height:1.4;" placeholder="Nhập lời thoại AI sẽ đọc cho phân cảnh này...">${esc(narration)}</textarea>
         </div>
+        <div style="display:grid; grid-template-columns: 1.1fr 1fr; gap:10px; margin-bottom:8px;">
+            <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:11.5px; margin-bottom:4px;"><strong>Loại Media (Visual Source):</strong></label>
+                <select class="form-input scene-mediatype-select" style="font-size:12px; height:34px; padding:4px 8px;">
+                    <option value="auto" ${mediaType === 'auto' ? 'selected' : ''}>⚡ Tự động (AI Hybrid: Video Động + Ảnh AI)</option>
+                    <option value="video" ${mediaType === 'video' ? 'selected' : ''}>🎥 Video Clip Động (Stock B-Roll 9:16)</option>
+                    <option value="ai_image" ${mediaType === 'ai_image' ? 'selected' : ''}>✨ Ảnh AI Điện Ảnh (Imagen 3 / Pollinations)</option>
+                    <option value="photo" ${mediaType === 'photo' ? 'selected' : ''}>📸 Ảnh Tư Liệu / Stock Thật (Wikipedia / Pexels)</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:11.5px; margin-bottom:4px;"><strong>Từ khóa tìm kiếm (Visual Keyword):</strong></label>
+                <input type="text" class="form-input scene-keyword-input" value="${esc(kw)}" placeholder="Ví dụ: dark silhouette rain, ticking clock..." style="font-size:12px; height:34px;">
+            </div>
+        </div>
         <div class="form-group" style="margin-bottom:0;">
-            <label class="form-label" style="font-size:11.5px; margin-bottom:4px;"><strong>Từ khóa tìm hình ảnh / Prompt AI (Visual Keyword):</strong></label>
-            <input type="text" class="form-input scene-keyword-input" value="${esc(kw)}" placeholder="Ví dụ: dark brain synapse glowing, stoic statue..." style="font-size:12px;">
+            <label class="form-label" style="font-size:11.5px; margin-bottom:4px; display:flex; justify-content:space-between;">
+                <strong>Prompt AI Chi Tiết (Visual Prompt - Tùy chọn):</strong>
+                <span style="font-size:10.5px; color:var(--text-muted);">Tùy chỉnh góc máy, ánh sáng cho ảnh AI</span>
+            </label>
+            <input type="text" class="form-input scene-prompt-input" value="${esc(vp)}" placeholder="Mô tả bối cảnh điện ảnh chi tiết..." style="font-size:12px;">
         </div>
     `;
 
@@ -889,6 +920,8 @@ async function submitScriptEdits(andRender = false) {
         const card = cards[i];
         const narration = card.querySelector('.scene-narration-input').value.trim();
         const kw = card.querySelector('.scene-keyword-input').value.trim();
+        const vp = card.querySelector('.scene-prompt-input')?.value.trim() || kw;
+        const mediaType = card.querySelector('.scene-mediatype-select')?.value || 'auto';
         const sec = parseFloat(card.querySelector('.scene-sec-input').value) || 3.5;
 
         if (!narration) {
@@ -901,6 +934,8 @@ async function submitScriptEdits(andRender = false) {
             scene_id: i + 1,
             narration: narration,
             visual_keyword: kw || 'cinematic historical scene',
+            visual_prompt: vp || kw || 'cinematic scene',
+            media_type: mediaType,
             estimated_seconds: sec
         });
     }

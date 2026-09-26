@@ -414,6 +414,56 @@ class VideoPipeline:
                         logger.info(f"Scene {scene.scene_id}: Dùng media tùy biến của người dùng ({cand.name})")
                         return str(dest)
 
+        # ── Quyết định chính sách Smart Hybrid theo Scene Preference ──
+        scene_pref = getattr(scene, 'media_type', None) or "auto"
+        prefer_video = False
+        prefer_ai = False
+        prefer_photo = False
+
+        if scene_pref == "video":
+            prefer_video = True
+        elif scene_pref == "ai_image":
+            prefer_ai = True
+        elif scene_pref == "photo":
+            prefer_photo = True
+        else:
+            if primary_entity:
+                prefer_photo = True
+            else:
+                motion_keywords = {
+                    "walk", "run", "running", "moving", "movement", "crowd", "people", "city", "street",
+                    "traffic", "night", "dark", "shadow", "silhouette", "rain", "storm", "fire", "water", "sea",
+                    "clock", "time", "hourglass", "hands", "typing", "money", "cash", "brain", "mind",
+                    "space", "galaxy", "stars", "looking", "staring", "whisper", "talking", "smoke",
+                    "candle", "door", "window", "alone", "thinking", "eye", "eyes", "falling", "fight"
+                }
+                text_cue = f"{scene.narration} {scene.visual_keyword or ''} {getattr(scene, 'stock_query', '') or ''}".lower()
+                has_motion = any(mk in text_cue for mk in motion_keywords)
+
+                if scene.scene_id == 1 or has_motion or (scene.scene_id % 2 == 0):
+                    prefer_video = True
+                else:
+                    prefer_ai = True
+
+        # ── TẦNG 0.5: Ưu tiên AI Image nếu prefer_ai và có visual_prompt ──
+        if prefer_ai and getattr(scene, 'visual_prompt', None) and len(scene.visual_prompt.strip()) > 15:
+            try:
+                ai_img_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_ai.jpg")
+                res_img = await asyncio.to_thread(
+                    self._image_agent.generate_scene_image,
+                    scene.visual_prompt,
+                    ai_img_path,
+                    "9:16",
+                    "cinematic",
+                    scene.scene_id,
+                    scene.visual_prompt,
+                )
+                if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 2000 and self._is_valid_image_file(res_img):
+                    logger.info(f"Scene {scene.scene_id}: ✨ Tạo thành công ảnh AI điện ảnh: {scene.visual_prompt[:45]}...")
+                    return res_img
+            except Exception as e:
+                logger.warning(f"Scene {scene.scene_id} AI Image error: {e}")
+
         # ── TẦNG 1: SEMANTIC POOL MATCH (DOCUMENTARY MODE) ──
         if primary_entity and entity_media_pool:
             best_pool_photo = match_best_pool_photo(
@@ -440,7 +490,7 @@ class VideoPipeline:
                 except Exception as ex:
                     logger.warning(f"Scene {scene.scene_id}: Lỗi tải ảnh tài liệu pool ({cand_url[:40]}): {ex}")
 
-        # ── TẦNG 2: MULTI-SOURCE SCENE SEARCH (Wikipedia, Wikimedia, Pexels Photos, Openverse) ──
+        # ── TẦNG 2: MULTI-SOURCE SCENE SEARCH (Pexels 9:16 Video, Wikipedia, Pexels Photos, Openverse) ──
         try:
             cand = await asyncio.to_thread(
                 self._media_agent.search_scene_media_multi_source,
@@ -452,6 +502,8 @@ class VideoPipeline:
                 entity_type=entity_type,
                 used_urls=used_pool_urls or set(),
                 scene_id=scene.scene_id,
+                prefer_video=prefer_video,
+                prefer_photo=prefer_photo,
             )
             if cand and cand.get("url"):
                 cand_url = cand["url"]

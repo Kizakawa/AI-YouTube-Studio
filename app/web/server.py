@@ -338,6 +338,7 @@ class SceneEditItem(BaseModel):
     narration: str
     visual_keyword: Optional[str] = None
     visual_prompt: Optional[str] = None
+    media_type: Optional[str] = "auto"
     estimated_seconds: Optional[float] = 3.0
 
 class UpdateScriptPayload(BaseModel):
@@ -376,6 +377,7 @@ async def update_video_script(job_id: int, payload: UpdateScriptPayload) -> Dict
                 "narration": narration_clean,
                 "visual_keyword": kw_clean,
                 "visual_prompt": sc.visual_prompt or kw_clean,
+                "media_type": getattr(sc, 'media_type', 'auto') or 'auto',
                 "estimated_seconds": sec,
             })
 

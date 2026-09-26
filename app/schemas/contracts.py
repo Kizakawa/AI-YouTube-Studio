@@ -65,7 +65,7 @@ class SceneContract(BaseModel):
 
     # --- Populated bởi MediaAgent/ImageAgent (Step C) ---
     media_path: Optional[str] = Field(default=None, description="Đường dẫn file ảnh/video nền cho scene")
-    media_type: Optional[str] = Field(default=None, pattern=r"^(image|video)$")
+    media_type: Optional[str] = Field(default=None, pattern=r"^(image|video|ai_image|photo|auto)$")
 
     # ── Cinematic Enhancement Fields (Optional — sinh bởi ContentAgent hoặc để mặc định) ──
     camera_motion: Optional[str] = Field(

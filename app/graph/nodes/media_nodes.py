@@ -48,19 +48,55 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     scenes_media = []
     used_pool_urls = set()
 
-    for scene in script.scenes:
+    for idx, scene in enumerate(script.scenes):
         media_path = ""
         media_type = "image"
         sq = getattr(scene, 'stock_query', None)
         vp = getattr(scene, 'visual_prompt', None)
         kw = scene.visual_keyword or ""
 
-        # ── CẢNH 1 ĐẶC BIỆT: PRIMAL VISUAL HOOK ENGINE (3 GIÂY ĐẦU) ──
-        # Nếu không phải nhân vật lịch sử cần ảnh tư liệu gốc, ưu tiên tạo ảnh AI điện ảnh 8K
-        # theo đúng visual_prompt do AI Director đo ni đóng giày riêng cho chủ đề này.
-        if scene.scene_id == 1 and not primary_entity and vp and len(vp.strip()) > 15:
+        # Scene preference từ kịch bản hoặc người dùng: 'auto' | 'video' | 'ai_image' | 'photo'
+        scene_pref = getattr(scene, 'media_type', None) or "auto"
+
+        prefer_video = False
+        prefer_ai = False
+        prefer_photo = False
+
+        if scene_pref == "video":
+            prefer_video = True
+        elif scene_pref == "ai_image":
+            prefer_ai = True
+        elif scene_pref == "photo":
+            prefer_photo = True
+        else:  # "auto" hoặc None: Kích hoạt chính sách Smart Hybrid (Golden Retention Mix)
+            if primary_entity:
+                prefer_photo = True
+            else:
+                # ── CHÍNH SÁCH SMART HYBRID (GOLDEN RETENTION MIX) ──
+                # Cảnh 1 (Hook mở màn 0-3s): Ưu tiên Video động Pexels để chặn đà lướt qua (Swipe-Away)
+                # Cảnh chẵn (2, 4, 6) hoặc có từ khóa chuyển động: Ưu tiên Video clip động thực tế 9:16
+                # Cảnh lẻ (3, 5): Ưu tiên Ảnh AI điện ảnh 8K theo visual_prompt
+                motion_keywords = {
+                    "walk", "run", "running", "moving", "movement", "crowd", "people", "city", "street",
+                    "traffic", "night", "dark", "shadow", "silhouette", "rain", "storm", "fire", "water", "sea",
+                    "clock", "time", "hourglass", "hands", "typing", "money", "cash", "brain", "mind",
+                    "space", "galaxy", "stars", "looking", "staring", "whisper", "talking", "smoke",
+                    "candle", "door", "window", "alone", "thinking", "eye", "eyes", "falling", "fight"
+                }
+                text_cue = f"{scene.narration} {kw} {sq or ''}".lower()
+                has_motion = any(mk in text_cue for mk in motion_keywords)
+
+                if scene.scene_id == 1:
+                    prefer_video = True
+                elif has_motion or (idx % 2 == 1):
+                    prefer_video = True
+                else:
+                    prefer_ai = True
+
+        # ── TẦNG 0: Ưu tiên AI Image nếu prefer_ai được bật và có visual_prompt chất lượng ──
+        if prefer_ai and vp and len(vp.strip()) > 15:
             try:
-                ai_hook_path = str(media_dir / f"scene_{scene.scene_id:03d}_hook_ai.jpg")
+                ai_hook_path = str(media_dir / f"scene_{scene.scene_id:03d}_ai.jpg")
                 res_img = await asyncio.to_thread(
                     image_agent.generate_scene_image,
                     vp,
@@ -73,9 +109,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 2000:
                     media_path = ai_hook_path
                     media_type = "image"
-                    logger.info(f"Scene 1 (Primal Hook): 🎯 Tạo thành công ảnh AI mở màn gây sốc: {vp[:50]}...")
+                    logger.info(f"Scene {scene.scene_id}: ✨ Tạo thành công ảnh AI điện ảnh: {vp[:45]}...")
             except Exception as e:
-                logger.warning(f"Scene 1 Hook generation error: {e}")
+                logger.warning(f"Scene {scene.scene_id} AI Image error: {e}")
 
         # ── TẦNG 1: SEMANTIC POOL MATCHER (DOCUMENTARY MODE) ──
         # Khớp ngữ nghĩa theo năm, sự kiện, từ khóa cụ thể thay vì lấy tuần tự
@@ -104,7 +140,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 except Exception as ex:
                     logger.debug(f"Scene {scene.scene_id}: Pool photo download error: {ex}")
 
-        # ── TẦNG 2: MULTI-SOURCE SCENE SEARCH (Wikipedia, Wikimedia, Pexels Photos, Openverse) ──
+        # ── TẦNG 2: MULTI-SOURCE SCENE SEARCH (Pexels 9:16 Video, Wikipedia, Pexels Photos, Openverse) ──
         if not media_path:
             try:
                 candidate_media = await asyncio.to_thread(
@@ -117,6 +153,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     entity_type=entity_type,
                     used_urls=used_pool_urls,
                     scene_id=scene.scene_id,
+                    prefer_video=prefer_video,
+                    prefer_photo=prefer_photo,
                 )
                 if candidate_media and candidate_media.get("url"):
                     cand_url = candidate_media["url"]
@@ -131,7 +169,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         media_type = c_type
                         logger.info(
                             f"Scene {scene.scene_id}: ✅ Tải thành công từ {c_src} "
-                            f"({candidate_media.get('title', '')[:45]})"
+                            f"({candidate_media.get('title', '')[:45]}) [{c_type.upper()}]"
                         )
             except Exception as e:
                 logger.debug(f"Scene {scene.scene_id}: Multi-source search error: {e}")
