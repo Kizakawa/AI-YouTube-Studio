@@ -1638,8 +1638,21 @@ async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 action_type="change_language",
                 new_language=target_lang
             )
-            await runner.execute_edit(edit_req)
-            await safe_edit_text(status_msg, f"✅ Đã chuyển thành công kịch bản và giọng lồng tiếng Video #{job_id} sang {lang_name} và render lại video hoàn tất! Bạn có thể xem video mới.")
+            final_state = await runner.execute_edit(edit_req)
+            video_out = final_state.get("rendered_video_path")
+            markup = get_video_post_render_keyboard(job_id, is_republish=True)
+            await safe_edit_text(status_msg, f"✅ Đã chuyển thành công kịch bản và giọng lồng tiếng Video #{job_id} sang {lang_name} và render lại video hoàn tất! Bạn có thể xem và đăng tải video bên dưới:", reply_markup=markup)
+            if video_out and os.path.exists(video_out):
+                try:
+                    with open(video_out, "rb") as vf:
+                        await update.effective_chat.send_video(
+                            video=vf,
+                            caption=f"🎥 **Video #{job_id} sau khi chuyển sang {lang_name}:**",
+                            supports_streaming=True,
+                            reply_markup=markup
+                        )
+                except Exception as ex:
+                    logger.error(f"Gửi video sau khi edit lang thất bại: {ex}")
         except Exception as e:
             await safe_edit_text(status_msg, f"❌ Lỗi khi đổi ngôn ngữ: {e}")
         return
@@ -1657,8 +1670,21 @@ async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 scene_id=scene_id,
                 new_media_query=new_query
             )
-            await runner.execute_edit(edit_req)
-            await safe_edit_text(status_msg, f"✅ Đã cập nhật ảnh Cảnh #{scene_id} và render lại video thành công! Bạn có thể xem video mới.")
+            final_state = await runner.execute_edit(edit_req)
+            video_out = final_state.get("rendered_video_path")
+            markup = get_video_post_render_keyboard(job_id, is_republish=True)
+            await safe_edit_text(status_msg, f"✅ Đã cập nhật ảnh Cảnh #{scene_id} và render lại video thành công! Bạn có thể xem và đăng tải video bên dưới:", reply_markup=markup)
+            if video_out and os.path.exists(video_out):
+                try:
+                    with open(video_out, "rb") as vf:
+                        await update.effective_chat.send_video(
+                            video=vf,
+                            caption=f"🎥 **Video #{job_id} sau khi cập nhật Cảnh #{scene_id}:**",
+                            supports_streaming=True,
+                            reply_markup=markup
+                        )
+                except Exception as ex:
+                    logger.error(f"Gửi video sau khi edit scene thất bại: {ex}")
         except Exception as e:
             await safe_edit_text(status_msg, f"❌ Lỗi khi chỉnh sửa Cảnh #{scene_id}: {e}")
         return
@@ -1676,8 +1702,21 @@ async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 scene_id=scene_id,
                 new_text=new_text
             )
-            await runner.execute_edit(edit_req)
-            await safe_edit_text(status_msg, f"✅ Đã cập nhật lời thoại Cảnh #{scene_id}, đồng bộ phụ đề và render lại video thành công!")
+            final_state = await runner.execute_edit(edit_req)
+            video_out = final_state.get("rendered_video_path")
+            markup = get_video_post_render_keyboard(job_id, is_republish=True)
+            await safe_edit_text(status_msg, f"✅ Đã cập nhật lời thoại Cảnh #{scene_id}, đồng bộ phụ đề và render lại video thành công! Bạn có thể xem và đăng tải video bên dưới:", reply_markup=markup)
+            if video_out and os.path.exists(video_out):
+                try:
+                    with open(video_out, "rb") as vf:
+                        await update.effective_chat.send_video(
+                            video=vf,
+                            caption=f"🎥 **Video #{job_id} sau khi sửa lời thoại Cảnh #{scene_id}:**",
+                            supports_streaming=True,
+                            reply_markup=markup
+                        )
+                except Exception as ex:
+                    logger.error(f"Gửi video sau khi edit text thất bại: {ex}")
         except Exception as e:
             await safe_edit_text(status_msg, f"❌ Lỗi khi sửa lời thoại Cảnh #{scene_id}: {e}")
         return
@@ -1734,8 +1773,21 @@ async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 action_type="change_voice",
                 new_voice_id=voice_id
             )
-            await runner.execute_edit(edit_req)
-            await safe_edit_text(status_msg, f"✅ Đã đổi toàn bộ giọng đọc sang {display_name} và render lại video hoàn tất! Bạn có thể xem video mới.")
+            final_state = await runner.execute_edit(edit_req)
+            video_out = final_state.get("rendered_video_path")
+            markup = get_video_post_render_keyboard(job_id, is_republish=True)
+            await safe_edit_text(status_msg, f"✅ Đã đổi toàn bộ giọng đọc sang {display_name} và render lại video hoàn tất! Bạn có thể xem và đăng tải video bên dưới:", reply_markup=markup)
+            if video_out and os.path.exists(video_out):
+                try:
+                    with open(video_out, "rb") as vf:
+                        await update.effective_chat.send_video(
+                            video=vf,
+                            caption=f"🎥 **Video #{job_id} với giọng đọc mới ({display_name}):**",
+                            supports_streaming=True,
+                            reply_markup=markup
+                        )
+                except Exception as ex:
+                    logger.error(f"Gửi video sau khi edit voice thất bại: {ex}")
         except Exception as e:
             await safe_edit_text(status_msg, f"❌ Lỗi khi đổi giọng đọc: {e}")
         return
@@ -1958,10 +2010,12 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             final_state = await runner.execute_edit(edit_req)
             video_out = final_state.get("rendered_video_path")
+            markup = get_video_post_render_keyboard(job_id, is_republish=True)
             await safe_edit_text(
                 status_msg,
                 f"✅ **ĐÃ CHUYỂN TOÀN BỘ SANG {lang_label.upper()} THÀNH CÔNG!**\n\n"
-                f"🎬 Video #{job_id} đã được biên tập và render lại hoàn tất."
+                f"🎬 Video #{job_id} đã được biên tập và render lại hoàn tất. Bạn có thể xem và đăng tải video bên dưới:",
+                reply_markup=markup
             )
             if video_out and os.path.exists(video_out):
                 try:
@@ -1969,7 +2023,8 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await update.effective_chat.send_video(
                             video=vf,
                             caption=f"🎥 **Video #{job_id} sau khi chuyển sang {lang_label}:**",
-                            supports_streaming=True
+                            supports_streaming=True,
+                            reply_markup=markup
                         )
                 except Exception as ex:
                     logger.error(f"Gửi video sau khi edit_lang thất bại: {ex}")
@@ -2011,10 +2066,12 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             final_state = await runner.execute_edit(edit_req)
             video_out = final_state.get("rendered_video_path")
+            markup = get_video_post_render_keyboard(job_id, is_republish=True)
             await safe_edit_text(
                 status_msg,
                 f"✅ **ĐÃ ĐỔI GIỌNG ĐỌC SANG {voice_name.upper()} THÀNH CÔNG!**\n\n"
-                f"🎬 Video #{job_id} đã được khớp lại phụ đề ASS và render hoàn tất."
+                f"🎬 Video #{job_id} đã được khớp lại phụ đề ASS và render hoàn tất. Bạn có thể xem và đăng tải video bên dưới:",
+                reply_markup=markup
             )
             if video_out and os.path.exists(video_out):
                 try:
@@ -2022,7 +2079,8 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await update.effective_chat.send_video(
                             video=vf,
                             caption=f"🎥 **Video #{job_id} với giọng đọc mới ({voice_name}):**",
-                            supports_streaming=True
+                            supports_streaming=True,
+                            reply_markup=markup
                         )
                 except Exception as ex:
                     logger.error(f"Gửi video sau khi edit_voice thất bại: {ex}")
@@ -2329,17 +2387,18 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         final_state = await runner.execute_edit(edit_req)
         video_out = final_state.get("rendered_video_path")
+        markup = get_video_post_render_keyboard(job_id, is_republish=True)
 
         success_text = (
             f"✅ **ĐÃ CẬP NHẬT CẢNH {scene_id} THÀNH CÔNG!**\n\n"
             f"🎬 **Tư liệu mới:** {item.get('title')}\n"
             f"📊 **Loại:** {m_type.upper()} ({item.get('source')})\n\n"
-            f"✨ Video #{job_id} đã được dựng hoàn chỉnh lại với tư liệu mới!"
+            f"✨ Video #{job_id} đã được dựng hoàn chỉnh lại với tư liệu mới! Bạn có thể xem và đăng tải video bên dưới:"
         )
         if status_msg:
-            await safe_edit_text(status_msg, success_text)
+            await safe_edit_text(status_msg, success_text, reply_markup=markup)
         else:
-            await safe_reply(update, success_text)
+            await safe_reply(update, success_text, reply_markup=markup)
 
         if video_out and Path(video_out).exists():
             try:
@@ -2347,7 +2406,8 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.effective_chat.send_video(
                         video=vf,
                         caption=f"🎥 **Video #{job_id} sau khi cập nhật Cảnh {scene_id}:**",
-                        supports_streaming=True
+                        supports_streaming=True,
+                        reply_markup=markup
                     )
             except Exception as ex:
                 logger.error(f"Gửi video sau khi apply media thất bại: {ex}")

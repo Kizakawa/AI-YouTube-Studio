@@ -173,11 +173,12 @@ def get_script_review_keyboard(job_id: int) -> InlineKeyboardMarkup:
 
 get_video_review_keyboard = get_script_review_keyboard
 
-def get_video_post_render_keyboard(job_id: int) -> InlineKeyboardMarkup:
+def get_video_post_render_keyboard(job_id: int, is_republish: bool = False) -> InlineKeyboardMarkup:
     """Bàn phím Bước 2: Khi video đã render xong và gửi vào nhóm, chọn Đăng luôn hoặc Góp ý sửa lại"""
+    pub_label = "🔄 Đăng Lại Lên YouTube (Bản Mới)" if is_republish else "🚀 Đăng Lên YouTube Ngay"
     keyboard = [
         [
-            InlineKeyboardButton("🚀 Đăng Lên YouTube Ngay", callback_data=f"publish_youtube:{job_id}"),
+            InlineKeyboardButton(pub_label, callback_data=f"publish_youtube:{job_id}"),
         ],
         [
             InlineKeyboardButton("✍️ Góp Ý Chỉnh Sửa & Dựng Lại", callback_data=f"feedback_video:{job_id}"),
@@ -192,6 +193,10 @@ def get_video_post_render_keyboard(job_id: int) -> InlineKeyboardMarkup:
 def get_video_edit_options_keyboard(job_id: int) -> InlineKeyboardMarkup:
     """Bàn phím menu chọn nhanh khi bấm 'Góp Ý Chỉnh Sửa & Dựng Lại'"""
     keyboard = [
+        [
+            InlineKeyboardButton("🚀 Đăng Lên YouTube Ngay", callback_data=f"publish_youtube:{job_id}"),
+            InlineKeyboardButton("⏰ Lên Lịch Tự Động", callback_data=f"schedule_youtube:{job_id}"),
+        ],
         [
             InlineKeyboardButton("🇺🇸 Chuyển Sang Tiếng Anh", callback_data=f"edit_lang:{job_id}:en"),
             InlineKeyboardButton("🇻🇳 Chuyển Sang Tiếng Việt", callback_data=f"edit_lang:{job_id}:vi"),

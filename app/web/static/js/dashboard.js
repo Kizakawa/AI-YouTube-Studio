@@ -496,6 +496,9 @@ function renderPipelineTable(videos) {
         } else if (v.status === 'RENDERED') {
             actionButtons += `<button class="btn btn-primary btn-sm" onclick="openPublishModal(${v.id})" title="Chọn kênh & Đăng YouTube" style="font-size:11px;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;font-weight:600;">🚀 Đăng YT</button>`;
             actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết video" style="font-size:11px;">🔍</button>`;
+        } else if (v.status === 'PUBLISHED') {
+            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openPublishModal(${v.id})" title="Đăng lại / Đăng kênh khác" style="font-size:11px;border-color:rgba(239,68,68,0.4);color:#ef4444;font-weight:600;">🔄 Đăng Lại</button>`;
+            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết video" style="font-size:11px;">🔍</button>`;
         }
         actionButtons += `<button class="btn btn-danger btn-sm" onclick="deleteJob(${v.id})" title="Xoá">🗑</button>`;
 
@@ -764,14 +767,14 @@ async function openVideoDetail(jobId) {
             ${(data.status === 'SCRIPT_READY' || data.status === 'FAILED') ? `<button class="btn btn-secondary btn-sm" onclick="closeModal(); openInstantPreviewForJob(${data.id});" style="color:#f472b6; border-color:rgba(236,72,153,0.4); font-weight:600;">👁️ Xem Trước Nhanh</button>` : ''}
             ${(data.status === 'SCRIPT_READY' || data.status === 'FAILED') ? `<button class="btn btn-primary btn-sm" onclick="closeModal(); triggerWebRender(${data.id});">🚀 ${data.status === 'FAILED' ? 'Thử Render Lại' : 'Bắt Đầu Render'}</button>` : ''}
             ${(data.status === 'SCRIPT_READY' || data.status === 'FAILED') ? `<button class="btn btn-secondary btn-sm" onclick="closeModal(); openScriptEditor(${data.id});">✏️ Chỉnh Sửa Kịch Bản</button>` : ''}
-            ${data.status === 'RENDERED' && data.video_path ? `<a href="/api/videos/${data.id}/download" target="_blank" class="btn btn-primary btn-sm">📥 Tải Video</a>` : ''}
-            ${(data.status === 'RENDERED' && !data.youtube_id) ? `
+            ${(data.status === 'RENDERED' || data.status === 'PUBLISHED') && data.video_path ? `<a href="/api/videos/${data.id}/download" target="_blank" class="btn btn-primary btn-sm">📥 Tải Video</a>` : ''}
+            ${((data.status === 'RENDERED' || data.status === 'PUBLISHED') && !data.youtube_id) ? `
             <button class="btn btn-primary btn-sm" id="btn-publish-yt-${data.id}" onclick="openPublishModal(${data.id})" style="background:linear-gradient(135deg,#ef4444,#dc2626);border:none;font-weight:600;">
                 🚀 Chọn Kênh & Đăng YouTube
             </button>` : ''}
-            ${(data.status === 'RENDERED' && data.youtube_id) ? `
-            <button class="btn btn-secondary btn-sm" onclick="openPublishModal(${data.id})" style="font-size:11.5px; border-color:rgba(239,68,68,0.4);">
-                🔄 Đăng Thêm Kênh Khác
+            ${((data.status === 'RENDERED' || data.status === 'PUBLISHED') && data.youtube_id) ? `
+            <button class="btn btn-secondary btn-sm" onclick="openPublishModal(${data.id})" style="font-size:11.5px; border-color:rgba(239,68,68,0.4); color:#ef4444; font-weight:600;">
+                🔄 Đăng Lại / Đăng Kênh Khác
             </button>` : ''}
             ${(data.status === 'RENDERED' || data.status === 'PUBLISHED') ? `
             <button class="btn btn-secondary btn-sm" id="btn-upload-drive-${data.id}" onclick="uploadToDrive(${data.id})" style="background:linear-gradient(135deg,rgba(66,133,244,0.18),rgba(52,168,83,0.12));border-color:rgba(66,133,244,0.3);">
