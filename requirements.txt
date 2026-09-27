@@ -35,3 +35,6 @@ pydantic>=2.0.0
 # Database & Scheduler
 sqlalchemy>=2.0.0
 apscheduler>=3.10.0
+
+# Local Network mDNS & Discovery (Same Wi-Fi fixed address)
+zeroconf>=0.140.0

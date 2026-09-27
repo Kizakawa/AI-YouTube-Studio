@@ -101,8 +101,10 @@ function escapeHtml(str) {
 /* ═══════════════════════════════════════════════════════
    FETCH ALL
 ══════════════════════════════════════════════════════════ */
+let consecutiveNetworkErrors = 0;
+
 async function fetchAllData() {
-    await Promise.allSettled([
+    const results = await Promise.allSettled([
         fetchStats(),
         fetchActivities(),
         fetchMembers(),
@@ -111,6 +113,18 @@ async function fetchAllData() {
         fetchVideos(),
         fetchHealth(),
     ]);
+
+    // Tự động phát hiện khi máy chủ bị tắt và tự tìm máy chủ mới trong mạng Wi-Fi
+    const allFailed = results.every(r => r.status === 'rejected');
+    if (allFailed) {
+        consecutiveNetworkErrors++;
+        if (consecutiveNetworkErrors >= 2 && !isScanningForServer && window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'localhost') {
+            scanForActiveServer();
+        }
+    } else {
+        consecutiveNetworkErrors = 0;
+    }
+
     updateSyncTime();
 
     // Tải thông tin token ngầm sau khi UI đã hiển thị đầy đủ (không làm đơ/chậm trang web)
@@ -4271,7 +4285,12 @@ async function submitSingleVideoStudio() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // WI-FI BROADCAST & MOBILE ACCESS
 // ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
+// WI-FI BROADCAST & MOBILE ACCESS (WITH FIXED MDNS & AUTO-FAILOVER)
+// ═══════════════════════════════════════════════════════════════════════════════
 let currentWifiUrl = window.location.href;
+let currentMdnsUrl = 'http://aiyoutube.local:8000';
+let isScanningForServer = false;
 
 async function openWifiModal() {
     const modal = document.getElementById('modal-wifi-share');
@@ -4283,12 +4302,18 @@ async function openWifiModal() {
         if (resp.ok) {
             const data = await resp.json();
             currentWifiUrl = data.wifi_url || window.location.href;
+            currentMdnsUrl = data.mdns_url || 'http://aiyoutube.local:8000';
+
             const urlText = document.getElementById('wifi-share-url-text');
             if (urlText) urlText.innerText = currentWifiUrl;
 
+            const mdnsText = document.getElementById('wifi-share-mdns-text');
+            if (mdnsText) mdnsText.innerText = currentMdnsUrl;
+
             const qrImg = document.getElementById('wifi-qr-img');
             if (qrImg) {
-                const qrEndpoint = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(currentWifiUrl)}`;
+                // Tạo QR code trỏ tới URL mDNS cố định để mọi người quét 1 lần là dùng vĩnh viễn!
+                const qrEndpoint = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(currentMdnsUrl)}`;
                 qrImg.src = qrEndpoint;
             }
         }
@@ -4307,13 +4332,86 @@ function closeWifiModal() {
 function copyWifiUrl() {
     if (navigator.clipboard && currentWifiUrl) {
         navigator.clipboard.writeText(currentWifiUrl).then(() => {
-            showToast('✅ Đã sao chép địa chỉ Wi-Fi vào bộ nhớ tạm!', 'success');
+            showToast('✅ Đã sao chép địa chỉ IP trực tiếp!', 'success');
         }).catch(() => {
             prompt('Sao chép địa chỉ dưới đây:', currentWifiUrl);
         });
     } else {
         prompt('Sao chép địa chỉ dưới đây:', currentWifiUrl);
     }
+}
+
+function copyMdnsUrl() {
+    const url = currentMdnsUrl || 'http://aiyoutube.local:8000';
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(() => {
+            showToast('✅ Đã sao chép địa chỉ cố định aiyoutube.local!', 'success');
+        }).catch(() => {
+            prompt('Sao chép địa chỉ cố định:', url);
+        });
+    } else {
+        prompt('Sao chép địa chỉ cố định:', url);
+    }
+}
+
+async function scanForActiveServer() {
+    if (isScanningForServer) return;
+    isScanningForServer = true;
+    showToast('🔍 Đang tự động quét tìm máy chủ mới trong mạng Wi-Fi...', 'warning', 10000);
+
+    // 1. Thử tên miền mDNS cố định trước
+    try {
+        const testRes = await fetch('http://aiyoutube.local:8000/api/system/client-info', {
+            mode: 'cors',
+            signal: AbortSignal.timeout(1500)
+        });
+        if (testRes.ok) {
+            showToast('🎉 Đã kết nối tới máy chủ qua aiyoutube.local! Đang chuyển hướng...', 'success');
+            setTimeout(() => { window.location.href = 'http://aiyoutube.local:8000'; }, 800);
+            return;
+        }
+    } catch (_) {}
+
+    // 2. Quét nhanh dải subnet LAN
+    const curHost = window.location.hostname;
+    const parts = curHost.split('.');
+    if (parts.length === 4 && curHost !== '127.0.0.1' && curHost !== 'localhost') {
+        const prefix = `${parts[0]}.${parts[1]}.${parts[2]}`;
+        const myLast = parseInt(parts[3], 10);
+        
+        const candidates = [];
+        for (let i = 2; i <= 50; i++) {
+            if (i !== myLast) candidates.push(`${prefix}.${i}`);
+        }
+        for (let i = 51; i <= 150; i++) {
+            if (i !== myLast) candidates.push(`${prefix}.${i}`);
+        }
+
+        const batchSize = 12;
+        for (let b = 0; b < candidates.length; b += batchSize) {
+            const batch = candidates.slice(b, b + batchSize);
+            const promises = batch.map(async ip => {
+                try {
+                    const r = await fetch(`http://${ip}:8000/api/system/client-info`, {
+                        mode: 'cors',
+                        signal: AbortSignal.timeout(800)
+                    });
+                    if (r.ok) return ip;
+                } catch (_) {}
+                return null;
+            });
+            const results = await Promise.all(promises);
+            const found = results.find(ip => ip !== null);
+            if (found) {
+                showToast(`🎉 Đã tìm thấy máy chủ mới tại ${found}:8000! Đang chuyển hướng...`, 'success', 4000);
+                setTimeout(() => { window.location.href = `http://${found}:8000`; }, 1000);
+                return;
+            }
+        }
+    }
+
+    isScanningForServer = false;
+    showToast('⚠️ Không tìm thấy máy chủ nào đang bật cổng 8000. Hãy kiểm tra lệnh py run.py!', 'error', 6000);
 }
 
 /* ═════════════════════════════════════════════════════════════════════════════

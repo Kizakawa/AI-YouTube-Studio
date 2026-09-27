@@ -133,5 +133,30 @@ Khi hai hoặc nhiều người cùng kết nối vào hệ thống qua mạng W
 
 ---
 
+## 🌐 7. GIẢI PHÁP DÙNG 1 ĐỊA CHỈ CỐ ĐỊNH KHI CHUYỂN SERVER GIỮA CÁC MÁY TÍNH
+
+Khi bạn tắt server trên máy A để chuyển sang máy B (hoặc ngược lại), Router Wi-Fi thường cấp 2 địa chỉ IP khác nhau (ví dụ: `192.168.2.2` và `192.168.2.5`), khiến điện thoại hoặc máy tính khác bị mất kết nối nếu gõ IP cũ. Hệ thống đã được nâng cấp giải pháp 3 lớp toàn diện:
+
+### 🌟 Cách 1 (Khuyên dùng): Dùng tên miền nội bộ cố định mDNS
+Tất cả các máy khi khởi động `py run.py` đều tự động phát sóng tên miền mDNS `aiyoutube.local`.
+* **Link duy nhất cho cả nhóm**:  
+  👉 **`http://aiyoutube.local:8000`**
+* **Ưu điểm**: Dù hôm nay máy A làm máy chủ, ngày mai máy B làm máy chủ, điện thoại (iPhone/Android/iPad) và các laptop khác chỉ cần lưu đúng 1 Bookmark này là vào thẳng máy đang bật mà **không bao giờ bị đổi số IP**.
+
+### 🔍 Cách 2: Tự Động Quét & Chuyển Hướng (Auto-Discovery Failover)
+* Nếu điện thoại của bạn đang mở trang bằng IP cũ (ví dụ: `192.168.2.2:8000`) mà máy đó bị tắt:
+* Web Studio trên điện thoại sẽ tự động kích hoạt tính năng quét ngầm dải mạng Wi-Fi LAN. Ngay khi phát hiện máy bạn bè đang chạy cổng 8000, trang sẽ **tự động chuyển hướng (Redirect)** điện thoại sang máy bạn bè ngay lập tức!
+* Bạn cũng có thể bấm nút **"🔍 Quét Tìm Máy Chủ Khác"** trong cửa sổ *📶 Phát Wi-Fi*.
+
+### 🔁 Cách 3: Chạy Trạm Chuyển Tiếp Tạm Thời (Relay Proxy)
+Nếu máy bạn vừa tắt `run.py` nhưng máy tính vẫn đang mở, bạn chỉ cần gõ:
+```bash
+py switch_server_relay.py
+```
+Tiến trình siêu nhẹ này sẽ tự động chuyển tiếp toàn bộ điện thoại/thiết bị đang vào IP máy bạn sang thẳng máy bạn bè mà không làm gián đoạn bất kỳ ai!
+
+---
+
 *Chúc bạn có những trải nghiệm tuyệt vời cùng hệ thống AI YouTube Studio! Mọi thắc mắc hoặc cần tùy biến thêm, hãy trao đổi trực tiếp để được hỗ trợ.*
+
 

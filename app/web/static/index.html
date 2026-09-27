@@ -1879,32 +1879,58 @@ Ví dụ Căn Theo Mốc:
 
 <!-- MODAL: PHÁT SÓNG TRUY CẬP QUA WI-FI -->
 <div class="modal-backdrop" id="modal-wifi-share" style="display: none; align-items: center; justify-content: center; z-index: 9999;">
-    <div class="modal-content" style="max-width: 480px; width: 90%; text-align: center; border-radius: 18px; padding: 28px; background: #181826; border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7); animation: fadeIn 0.25s ease;">
-        <div style="font-size: 40px; margin-bottom: 8px;">📶</div>
-        <h3 style="font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 6px;">Truy Cập Web Qua Wi-Fi</h3>
-        <p style="font-size: 13px; color: #94a3b8; margin-bottom: 20px; line-height: 1.5;">
-            Quét mã QR bằng Camera điện thoại hoặc gõ link dưới đây để mở Web Studio ngay trên điện thoại / iPad / Laptop khác cùng mạng Wi-Fi!
+    <div class="modal-content" style="max-width: 520px; width: 92%; text-align: center; border-radius: 18px; padding: 26px 28px; background: #131722; border: 1px solid rgba(56, 189, 248, 0.25); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8); animation: fadeIn 0.25s ease;">
+        <div style="font-size: 38px; margin-bottom: 6px;">📶</div>
+        <h3 style="font-size: 19px; font-weight: 700; color: #fff; margin-bottom: 4px;">Truy Cập Web Qua Mạng Wi-Fi</h3>
+        <p style="font-size: 12.5px; color: #94a3b8; margin-bottom: 16px; line-height: 1.5;">
+            Dùng 1 địa chỉ cố định duy nhất cho mọi thiết bị — Dù chuyển server giữa các máy tính vẫn không bị đổi link!
         </p>
 
-        <div id="wifi-qr-container" style="background: #ffffff; border-radius: 14px; padding: 14px; display: inline-block; margin-bottom: 18px; box-shadow: 0 8px 24px rgba(0,0,0,0.45);">
-            <img id="wifi-qr-img" src="" alt="QR Code truy cập Web" style="width: 180px; height: 180px; display: block; border-radius: 6px;" />
+        <!-- QR Code Display -->
+        <div id="wifi-qr-container" style="background: #ffffff; border-radius: 14px; padding: 12px; display: inline-block; margin-bottom: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.45);">
+            <img id="wifi-qr-img" src="" alt="QR Code truy cập Web" style="width: 170px; height: 170px; display: block; border-radius: 6px;" />
         </div>
 
-        <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-            <span id="wifi-share-url-text" style="font-family: monospace; font-size: 15px; font-weight: 700; color: #38bdf8; word-break: break-all;">Đang kết nối...</span>
-            <button type="button" class="btn btn-secondary" onclick="copyWifiUrl()" style="padding: 7px 14px; font-size: 12px; white-space: nowrap; font-weight: 600;">
-                📋 Sao chép
+        <!-- 1. CỐ ĐỊNH: mDNS URL (KHUYÊN DÙNG) -->
+        <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 10px 14px; margin-bottom: 10px; text-align: left;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-size: 11px; font-weight: 700; color: #10b981; text-transform: uppercase; letter-spacing: 0.5px;">🌟 Địa chỉ cố định (Dùng chung cả nhóm):</span>
+                <span class="badge" style="background: rgba(16,185,129,0.2); color:#10b981; font-size:10px; padding:2px 6px;">Khuyên Dùng</span>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <span id="wifi-share-mdns-text" style="font-family: monospace; font-size: 14px; font-weight: 700; color: #6ee7b7; word-break: break-all;">http://aiyoutube.local:8000</span>
+                <button type="button" class="btn btn-secondary" onclick="copyMdnsUrl()" style="padding: 5px 12px; font-size: 11px; white-space: nowrap; font-weight: 600;">
+                    📋 Sao chép
+                </button>
+            </div>
+            <div style="font-size: 11px; color: #a7f3d0; margin-top: 4px; line-height: 1.4;">
+                💡 Lưu Bookmark link này trên điện thoại! Khi tắt máy này chuyển sang máy bạn, mở lại link này vẫn vào thẳng máy bạn.
+            </div>
+        </div>
+
+        <!-- 2. TRỰC TIẾP: LAN IP -->
+        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 10px 14px; margin-bottom: 14px; text-align: left;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase;">📱 Địa chỉ IP trực tiếp máy này:</span>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <span id="wifi-share-url-text" style="font-family: monospace; font-size: 13.5px; font-weight: 600; color: #38bdf8; word-break: break-all;">Đang kết nối...</span>
+                <button type="button" class="btn btn-secondary" onclick="copyWifiUrl()" style="padding: 5px 12px; font-size: 11px; white-space: nowrap; font-weight: 600;">
+                    📋 Sao chép
+                </button>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 8px; justify-content: space-between;">
+            <button type="button" class="btn btn-secondary" onclick="scanForActiveServer()" title="Tự động tìm kiếm nếu bạn đổi sang máy tính khác" style="flex: 1; padding: 8px; font-size: 12.5px; font-weight: 600; background: rgba(56, 189, 248, 0.1); border-color: rgba(56, 189, 248, 0.3); color: #38bdf8;">
+                🔍 Quét Tìm Máy Chủ Khác
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="closeWifiModal()" style="padding: 8px 18px; font-size: 12.5px; font-weight: 600;">
+                Đóng
             </button>
         </div>
-
-        <div style="background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 10px; padding: 12px 14px; margin-bottom: 20px; text-align: left; font-size: 12px; color: #93c5fd; line-height: 1.5;">
-            💡 <b>Mẹo nhanh:</b> Chỉ cần điện thoại kết nối chung Wi-Fi với máy tính này, mở Camera quét mã trên là vào thẳng trang web mà không cần cài đặt thêm bất kỳ phần mềm nào!
-        </div>
-
-        <button type="button" class="btn btn-secondary" onclick="closeWifiModal()" style="width: 100%; padding: 10px; font-size: 14px; font-weight: 600;">
-            Đóng
-        </button>
     </div>
+</div>
 <!-- MODAL: CHỈNH SỬA / TẠO HỒ SƠ NGÁCH (NICHE INTELLIGENCE PROFILES) -->
 <div class="modal-overlay" id="modal-niche-editor" onclick="closeNicheModal()">
     <div class="modal-card niche-editor-card" onclick="event.stopPropagation()" style="max-width: 860px; width: 95%; max-height: 90vh; display: flex; flex-direction: column;">
