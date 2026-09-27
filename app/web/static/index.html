@@ -1568,6 +1568,21 @@ Ví dụ Căn Theo Mốc:
                     🔗 Mở trang đăng nhập Google
                 </a>
                 <p id="oauth-timer-text" style="font-size:11px; color:var(--text-muted); margin-top:8px; text-align:center;">⏳ Thời gian còn lại: 3:00</p>
+
+                <!-- Dành cho thiết bị khác trong cùng mạng Wi-Fi / LAN -->
+                <div id="oauth-remote-helper" style="margin-top:14px; padding:12px; border-radius:8px; background:rgba(15,23,42,0.8); border:1px dashed rgba(56,189,248,0.35); text-align:left;">
+                    <div style="font-size:12px; font-weight:700; color:#38bdf8; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+                        <span>📱</span> Đang dùng thiết bị khác / máy tính phụ?
+                    </div>
+                    <div style="font-size:11.5px; color:var(--text-muted); line-height:1.5; margin-bottom:8px;">
+                        Sau khi bấm <strong>"Cho phép / Allow"</strong> trên Google, nếu trình duyệt báo <em>"Không thể truy cập localhost"</em>:<br>
+                        👉 Hãy copy toàn bộ link trên thanh địa chỉ dán vào đây và bấm <strong>Xác Nhận</strong>:
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <input type="text" id="oauth-manual-input" placeholder="Dán link http://localhost:... hoặc mã code vào đây" class="form-input" style="font-size:11.5px; padding:6px 10px; flex:1; background:#090d16; border-color:rgba(56,189,248,0.4);">
+                        <button class="btn btn-primary btn-sm" id="btn-oauth-submit-manual" onclick="submitManualOAuthCode()" style="white-space:nowrap; padding:6px 12px; font-size:12px;">Xác Nhận</button>
+                    </div>
+                </div>
             </div>
             <div id="oauth-result-box" style="display:none; padding:12px; border-radius:8px; margin-bottom:16px;"></div>
             <button class="btn btn-secondary" id="oauth-cancel-btn" onclick="closeOAuthModal()">Đóng cửa sổ này</button>

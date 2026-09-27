@@ -2166,8 +2166,11 @@ async function deleteChannel(accountId, channelId) {
 /* ═══════════════════════════════════════════════════════
    CHANNEL-SPECIFIC YOUTUBE OAUTH
 ══════════════════════════════════════════════════════════ */
+let currentOAuthSessionKey = '';
+
 async function startChannelAuth(channelId, channelName) {
     try {
+        currentOAuthSessionKey = 'channel:' + channelId + ':youtube';
         const modal = document.getElementById('modal-oauth');
         const heading = document.getElementById('oauth-status-heading');
         const desc = document.getElementById('oauth-status-desc');
@@ -2311,6 +2314,7 @@ let oauthCountdownTimer = null;
 
 async function startGoogleAuth(accountId, service) {
     try {
+        currentOAuthSessionKey = accountId + ':' + service;
         const res = await apiPost(`/api/accounts/${accountId}/auth-start`, { service: service });
         if (!res || !res.success) {
             showToast(res?.detail || 'Không thể khởi chạy phiên đăng nhập Google', 'error');
@@ -2423,9 +2427,43 @@ function closeOAuthModal() {
     const modal = document.getElementById('modal-oauth');
     const linkBox = document.getElementById('oauth-link-box');
     const spinner = document.getElementById('oauth-spinner');
+    const manualInput = document.getElementById('oauth-manual-input');
+    if (manualInput) manualInput.value = '';
+    currentOAuthSessionKey = '';
     if (modal) modal.classList.remove('visible');
     if (linkBox) linkBox.style.display = 'none';
     if (spinner) spinner.style.display = '';
+}
+
+async function submitManualOAuthCode() {
+    const input = document.getElementById('oauth-manual-input');
+    const val = input ? input.value.trim() : '';
+    if (!val) {
+        showToast('Vui lòng dán link chuyển hướng hoặc mã code từ Google', 'error');
+        return;
+    }
+    if (!currentOAuthSessionKey) {
+        showToast('Không tìm thấy phiên xác thực đang chạy', 'error');
+        return;
+    }
+    const btn = document.getElementById('btn-oauth-submit-manual');
+    if (btn) btn.textContent = '⏳ Đang xác thực...';
+
+    try {
+        const res = await apiPost('/api/oauth/submit-callback', {
+            session_key: currentOAuthSessionKey,
+            callback_url_or_code: val
+        });
+        if (res && res.success) {
+            showToast('✓ Đã gửi mã xác thực! Hệ thống đang lưu token...', 'success');
+        } else {
+            showToast(res?.detail || 'Không thể xử lý mã xác thực', 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi gửi mã xác thực: ' + e.message, 'error');
+    } finally {
+        if (btn) btn.textContent = 'Xác Nhận';
+    }
 }
 
 async function disconnectService(accountId, service) {

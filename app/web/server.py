@@ -1188,6 +1188,27 @@ def get_token_health(force: bool = False) -> Dict[str, Any]:
 # ═════════════════════════════════════════════════════════════════════════════
 
 _oauth_sessions: Dict[str, Dict[str, Any]] = {}
+_oauth_manual_responses: Dict[str, str] = {}
+
+
+class OAuthSubmitCallbackRequest(BaseModel):
+    session_key: str
+    callback_url_or_code: str
+
+
+@app.post("/api/oauth/submit-callback")
+async def submit_oauth_callback(req: OAuthSubmitCallbackRequest) -> Dict[str, Any]:
+    """Nhận link chuyển hướng hoặc mã code xác thực từ thiết bị khách / mạng LAN."""
+    session_key = req.session_key.strip()
+    raw = req.callback_url_or_code.strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Vui lòng cung cấp link chuyển hướng hoặc mã xác thực từ Google")
+    _oauth_manual_responses[session_key] = raw
+    logger.info(f"Đã nhận mã callback thủ công cho session '{session_key}'")
+    return {
+        "success": True,
+        "message": "Đã tiếp nhận mã xác thực! Hệ thống đang xử lý và lưu token..."
+    }
 
 def _read_channels_yaml() -> Dict[str, Any]:
     yaml_path = settings.CHANNELS_CONFIG_FILE
@@ -1468,10 +1489,12 @@ async def upload_client_secret(account_id: str, req: UploadSecretRequest) -> Dic
     }
 
 @app.post("/api/accounts/{account_id}/auth-start")
-async def start_google_oauth(account_id: str, req: AuthStartRequest) -> Dict[str, Any]:
+async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Request) -> Dict[str, Any]:
     """Khởi chạy luồng xác thực Google OAuth trong luồng nền và tự động mở trình duyệt."""
     service = req.service.lower()
     session_key = f"{account_id}:{service}"
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    is_local_client = client_ip in ("127.0.0.1", "localhost", "::1", "testclient")
 
     _oauth_sessions[session_key] = {
         "status": "in_progress",
@@ -1553,16 +1576,50 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest) -> Dict[str
             })
             logger.info(f"OAuth URL created for {session_key} on port {port}")
 
-            # Tự động mở trình duyệt (nếu được)
-            try:
-                webbrowser.open(auth_url)
-            except Exception:
-                logger.info("Không thể tự mở trình duyệt, user cần bấm link thủ công trên modal.")
+            # Chỉ tự động mở trình duyệt nếu gọi từ chính localhost (127.0.0.1)
+            # Ngăn chặn việc máy chủ tự động bật trình duyệt đăng nhập khi bạn bè trên máy khác đang thao tác
+            if is_local_client:
+                try:
+                    webbrowser.open(auth_url)
+                except Exception:
+                    logger.info("Không thể tự mở trình duyệt, user cần bấm link thủ công trên modal.")
+            else:
+                logger.info(f"Yêu cầu OAuth từ thiết bị khách ({client_ip}), không mở trình duyệt trên máy chủ.")
 
-            # Chờ callback từ Google với timeout 3 phút
-            local_server.timeout = 180
-            local_server.handle_request()
-            local_server.server_close()
+            # Chờ callback từ Google hoặc từ người dùng dán vào modal (timeout 3 phút)
+            srv_thread = threading.Thread(target=local_server.handle_request, daemon=True)
+            srv_thread.start()
+
+            import time
+            start_t = time.time()
+            while time.time() - start_t < 180:
+                if received_uri["value"]:
+                    break
+                if session_key in _oauth_manual_responses:
+                    raw_val = _oauth_manual_responses.pop(session_key)
+                    if "code=" in raw_val:
+                        from urllib.parse import urlparse, parse_qs
+                        parsed = urlparse(raw_val)
+                        qs = parse_qs(parsed.query)
+                        code_val = qs.get("code", [None])[0]
+                        state_val = qs.get("state", [None])[0]
+                        q_parts = []
+                        if state_val:
+                            q_parts.append(f"state={state_val}")
+                        if code_val:
+                            q_parts.append(f"code={code_val}")
+                        received_uri["value"] = f"{flow.redirect_uri}?{'&'.join(q_parts)}" if q_parts else raw_val
+                    elif raw_val.startswith("http"):
+                        received_uri["value"] = raw_val
+                    else:
+                        received_uri["value"] = f"{flow.redirect_uri}?code={raw_val}"
+                    break
+                time.sleep(0.5)
+
+            try:
+                local_server.server_close()
+            except Exception:
+                pass
 
             if not received_uri["value"]:
                 _oauth_sessions[session_key] = {
@@ -2042,8 +2099,11 @@ async def list_repurposed_clips() -> Dict[str, Any]:
 # ─── Channel-Level OAuth Endpoints (Đảm bảo mỗi kênh YouTube có Token riêng) ─
 
 @app.post("/api/channels/{channel_id}/start-auth")
-async def start_channel_oauth(channel_id: str, service: str = "youtube") -> Dict[str, Any]:
+async def start_channel_oauth(channel_id: str, request: Request, service: str = "youtube") -> Dict[str, Any]:
     """Bắt đầu phiên xác thực OAuth riêng biệt cho một kênh YouTube cụ thể."""
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    is_local_client = client_ip in ("127.0.0.1", "localhost", "::1", "testclient")
+
     cfg = _read_channels_yaml()
     channels = cfg.get("channels", [])
     ch = next((c for c in channels if c.get("id") == channel_id), None)
@@ -2104,14 +2164,48 @@ async def start_channel_oauth(channel_id: str, service: str = "youtube") -> Dict
                 "message": f"Link đăng nhập đã sẵn sàng. Khi Google hiển thị danh sách kênh, hãy chọn đúng kênh '{ch_name}'!"
             })
 
+            if is_local_client:
+                try:
+                    webbrowser.open(auth_url)
+                except Exception:
+                    pass
+            else:
+                logger.info(f"Yêu cầu OAuth kênh từ thiết bị khách ({client_ip}), không mở trình duyệt trên máy chủ.")
+
+            # Chờ callback từ Google hoặc từ người dùng dán vào modal (timeout 3 phút)
+            srv_thread = threading.Thread(target=local_server.handle_request, daemon=True)
+            srv_thread.start()
+
+            import time
+            start_t = time.time()
+            while time.time() - start_t < 180:
+                if received_uri["value"]:
+                    break
+                if session_key in _oauth_manual_responses:
+                    raw_val = _oauth_manual_responses.pop(session_key)
+                    if "code=" in raw_val:
+                        from urllib.parse import urlparse, parse_qs
+                        parsed = urlparse(raw_val)
+                        qs = parse_qs(parsed.query)
+                        code_val = qs.get("code", [None])[0]
+                        state_val = qs.get("state", [None])[0]
+                        q_parts = []
+                        if state_val:
+                            q_parts.append(f"state={state_val}")
+                        if code_val:
+                            q_parts.append(f"code={code_val}")
+                        received_uri["value"] = f"{flow.redirect_uri}?{'&'.join(q_parts)}" if q_parts else raw_val
+                    elif raw_val.startswith("http"):
+                        received_uri["value"] = raw_val
+                    else:
+                        received_uri["value"] = f"{flow.redirect_uri}?code={raw_val}"
+                    break
+                time.sleep(0.5)
+
             try:
-                webbrowser.open(auth_url)
+                local_server.server_close()
             except Exception:
                 pass
-
-            local_server.timeout = 180
-            local_server.handle_request()
-            local_server.server_close()
 
             if not received_uri["value"]:
                 _oauth_sessions[session_key] = {
