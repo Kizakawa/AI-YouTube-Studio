@@ -20,6 +20,15 @@ if %errorlevel% neq 0 (
 echo [✓] Đã tìm thấy Python:
 python --version
 
+:: 1.2 Tự động nạp cấu hình bí mật nếu người dùng copy secrets_config.zip vào
+if exist "secrets_config.zip" (
+    echo.
+    echo [✓] Tìm thấy file secrets_config.zip!
+    echo ⏳ Đang tự động nạp .env, channels.yaml và token OAuth vào thư mục...
+    tar -xf secrets_config.zip 2>nul || powershell -command "Expand-Archive -Path 'secrets_config.zip' -DestinationPath '.' -Force"
+    echo [✓] Đã nạp thành công toàn bộ cấu hình và token YouTube!
+)
+
 :: 2. Kiểm tra FFmpeg
 ffmpeg -version >nul 2>&1
 if %errorlevel% neq 0 (
