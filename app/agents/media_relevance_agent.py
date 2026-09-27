@@ -204,9 +204,9 @@ class MediaRelevanceAgent:
                 "  Nếu là cảnh tĩnh lặng, công sở tẻ nhạt, đồ vật vô hồn -> ĐÁNH RỚT (verdict = FAIL, visual_quality < 6.0)."
             )
 
-        prompt = f"""Bạn là Tổng Đạo Diễn Hình Ảnh & Giám Khảo Thẩm Định Nội Dung (Director of Photography & Content Quality Judge) cho kênh YouTube Shorts chất lượng cao.
+        prompt = f"""Bạn là Tổng Đạo Diễn Hình Ảnh & Giám Khảo Thẩm Định Tư Liệu (Director of Photography & Visual Media Critic) cho kênh YouTube Shorts hàng đầu.
 
-NHIỆM VỤ: Nhìn kỹ vào bức ảnh này (đây là {media_desc}) và đánh giá mức độ phù hợp với kịch bản phân cảnh:
+NHIỆM VỤ: Nhìn kỹ vào tư liệu này (đây là {media_desc}) và đánh giá mức độ chuyên nghiệp, phù hợp với kịch bản phân cảnh:
 
 THÔNG TIN PHÂN CẢNH:
 - Chủ đề video: "{topic}"
@@ -215,14 +215,16 @@ THÔNG TIN PHÂN CẢNH:
 - Từ khóa thị giác (Visual Keyword): "{visual_keyword}"{entity_instruction}{hook_instruction}
 
 TIÊU CHÍ ĐÁNH GIÁ (Thang điểm 1.0 đến 10.0):
-1. relevance (Độ liên quan):
+1. relevance (Độ liên quan nội dung & cảm xúc):
    - 9-10: Minh họa xuất sắc, trực quan, khớp 100% với lời kể và ý tưởng.
-   - 7-8: Phù hợp, liên quan đến ngữ cảnh chung của cảnh.
+   - 7-8: Phù hợp, hòa hợp với ngữ cảnh chung của cảnh.
    - 4-6: Liên quan mơ hồ, chung chung, chưa sát với lời thoại.
-   - 1-3: HOÀN TOÀN SAI LỆCH hoặc LẠC QUẺ (ví dụ: cảnh nói về đại dương/vũ trụ/buồng lái nhưng ảnh lại là văn phòng công sở, người ngồi gục mặt, hoặc tượng đá không liên quan).
+   - 1-3: HOÀN TOÀN SAI LỆCH hoặc LẠC QUẺ.
 
-2. entity_accuracy (Độ chính xác thực thể/chủ thể):
-   - Đúng đối tượng, bối cảnh thời đại, không bị sai lệch thực tế.
+2. modality_fitness (Độ phù hợp của thể loại công cụ & chuyển động):
+   - Shorts là nền tảng chuyển động nhanh! Video chuyển động thực (Stock Video) hoặc Video AI kỳ ảo được ƯU TIÊN và KHUYẾN KHÍCH.
+   - Nếu cảnh miêu tả hành động mạnh, bão tố, đường phố, thao tác mà chỉ dùng ảnh tĩnh phẳng lặng -> TRỪ ĐIỂM (modality_fitness <= 5.0).
+   - Nếu là chân dung hoặc nhân vật lịch sử cụ thể: Cho phép ảnh tư liệu thật hoặc chân dung I2V 8K, nhưng cấm dùng stock video người hiện đại giả mạo.
 
 3. visual_quality (Chất lượng thị giác & tính điện ảnh 9:16):
    - Bố cục sắc nét, ánh sáng điện ảnh, thu hút ánh nhìn, không mờ nhòe, không méo mó dị dạng.
@@ -235,12 +237,15 @@ HÃY TRẢ VỀ DUY NHẤT MỘT ĐỐI TƯỢNG JSON (Không kèm markdown ```j
 {{
   "relevance": 8.5,
   "entity_accuracy": 8.0,
+  "modality_fitness": 9.0,
   "visual_quality": 9.0,
-  "overall_score": 8.5,
+  "overall_score": 8.6,
   "verdict": "PASS hoặc FAIL",
-  "issues": ["Ghi rõ vấn đề nếu có"],
+  "issues": ["Ghi rõ vấn đề nếu có (ví dụ: quá tĩnh, lạc đề, diễn viên hiện đại...)"],
+  "recommended_tool": "pexels_video | ai_video | imagen3_i2v | wikimedia_archive",
   "replacement_query": "Từ khóa tiếng Anh 2-3 từ ngắn gọn tốt nhất để tìm kiếm video/ảnh thay thế nếu cần",
-  "refined_prompt": "Prompt mô tả điện ảnh 8K 9:16 để sinh lại bằng AI nếu cần"
+  "refined_prompt": "Prompt mô tả điện ảnh 8K 9:16 để sinh lại bằng AI nếu cần",
+  "creative_idea": "Gợi ý 1 câu ý tưởng hình ảnh độc đáo, đan xen linh hoạt thay thế tư duy ghép ảnh tĩnh"
 }}"""
 
         total_keys = max(len(self.rotator.keys), 1)
@@ -284,26 +289,30 @@ HÃY TRẢ VỀ DUY NHẤT MỘT ĐỐI TƯỢNG JSON (Không kèm markdown ```j
                         parsed = json.loads(raw)
                         rel = float(parsed.get("relevance", 7.0))
                         ent = float(parsed.get("entity_accuracy", 7.0))
+                        mod = float(parsed.get("modality_fitness", 8.0))
                         vis = float(parsed.get("visual_quality", 7.0))
-                        ov = float(parsed.get("overall_score") or (rel * 0.45 + ent * 0.3 + vis * 0.25))
+                        ov = float(parsed.get("overall_score") or (rel * 0.35 + ent * 0.25 + mod * 0.20 + vis * 0.20))
                         verdict = parsed.get("verdict", "PASS" if ov >= 7.0 else "FAIL").upper()
-                        is_rel = (verdict == "PASS" and rel >= 7.0)
+                        is_rel = (verdict == "PASS" and rel >= 6.8)
 
                         result = {
                             "relevance": round(rel, 1),
                             "entity_accuracy": round(ent, 1),
+                            "modality_fitness": round(mod, 1),
                             "visual_quality": round(vis, 1),
                             "overall_score": round(ov, 1),
                             "is_relevant": is_rel,
                             "verdict": "PASS" if is_rel else "FAIL",
                             "issues": parsed.get("issues", []),
+                            "recommended_tool": parsed.get("recommended_tool") or ("pexels_video" if is_video else "ai_video"),
                             "replacement_query": parsed.get("replacement_query") or visual_keyword,
                             "refined_prompt": parsed.get("refined_prompt") or f"Cinematic {visual_keyword}, 8k",
+                            "creative_idea": parsed.get("creative_idea", ""),
                             "ai_evaluated": True,
                         }
                         logger.info(
                             f"🧠 [MediaRelevanceAgent] Cảnh {scene_id} ({'Video' if is_video else 'Ảnh'}): "
-                            f"Điểm={ov}/10 (Rel={rel}, Vis={vis}) -> {result['verdict']}"
+                            f"Điểm={ov}/10 (Rel={rel}, Mod={mod}, Vis={vis}) -> {result['verdict']}"
                         )
                         return result
                     elif r.status_code in (429, 403):
@@ -341,13 +350,17 @@ HÃY TRẢ VỀ DUY NHẤT MỘT ĐỐI TƯỢNG JSON (Không kèm markdown ```j
                 "is_relevant": False,
                 "verdict": "FAIL",
                 "issues": ["File placeholder tạm thời, không phải tư liệu thực tế"],
+                "recommended_tool": "pexels_video",
                 "replacement_query": visual_keyword or "cinematic",
                 "refined_prompt": f"Dramatic cinematic shot of {visual_keyword}",
                 "ai_evaluated": False,
             }
 
-        # Kiểm tra stock video hiện đại bị gán nhầm cho nhân vật lịch sử
-        if primary_entity and ("pexels" in m_lower or "stock" in m_lower):
+        # Chỉ phạt stock video nếu phân cảnh đang nhắc trực tiếp tên nhân vật lịch sử và cần chân dung
+        is_direct_person_mention = primary_entity and primary_entity.lower() in narration.lower()
+        is_portrait_focus = any(w in text_full for w in ["portrait", "face", "chân dung", "khuôn mặt", "người"])
+
+        if is_direct_person_mention and is_portrait_focus and ("pexels" in m_lower or "stock" in m_lower):
             return {
                 "relevance": 4.0,
                 "entity_accuracy": 2.0,
@@ -355,22 +368,24 @@ HÃY TRẢ VỀ DUY NHẤT MỘT ĐỐI TƯỢNG JSON (Không kèm markdown ```j
                 "overall_score": 4.5,
                 "is_relevant": False,
                 "verdict": "FAIL",
-                "issues": [f"Dùng video stock hiện đại cho nhân vật lịch sử '{primary_entity}'"],
+                "issues": [f"Dùng video stock diễn viên hiện đại cho chân dung nhân vật lịch sử '{primary_entity}'"],
+                "recommended_tool": "wikimedia_archive",
                 "replacement_query": f"{primary_entity} historical portrait",
                 "refined_prompt": f"Historical authentic portrait of {primary_entity}",
                 "ai_evaluated": False,
             }
 
-        # Nếu là video clip B-roll thật từ Pexels cho chủ đề thiên nhiên/viễn tưởng/chuyển động
-        if is_video and ("pexels" in m_lower or "broll" in m_lower):
+        # Nếu là video clip B-roll thật từ Pexels cho hành động / môi trường / bối cảnh
+        if is_video and ("pexels" in m_lower or "broll" in m_lower or "_video" in m_lower):
             return {
-                "relevance": 8.0,
+                "relevance": 8.2,
                 "entity_accuracy": 8.0,
                 "visual_quality": 9.0,
-                "overall_score": 8.3,
+                "overall_score": 8.5,
                 "is_relevant": True,
                 "verdict": "PASS",
                 "issues": [],
+                "recommended_tool": "pexels_video",
                 "replacement_query": visual_keyword,
                 "refined_prompt": f"Cinematic dynamic video of {visual_keyword}",
                 "ai_evaluated": False,

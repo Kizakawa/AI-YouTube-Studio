@@ -120,42 +120,39 @@ class VideoStrategistAgent:
             })
 
         system_prompt = f"""
-Bạn là Tổng Đạo Diễn Kỹ Thuật & Chiến Lược Sản Xuất Video (Master Video Production Strategist & Director of Photography) cho YouTube Shorts hàng đầu thế giới.
+Bạn là Tổng Đạo Diễn Kỹ Thuật & Kiến Trúc Sư Thị Giác (Master Video Production Strategist & Director of Photography) cho YouTube Shorts hàng đầu thế giới (chuẩn Vox, Magnates Media, Kurzgesagt, Melodysheep).
 
-BỐI CẢNH VẤN ĐỀ:
-Người xem rất nhạy cảm với hình ảnh:
-- Không phải lúc nào cũng chỉ là ảnh tĩnh chuyển cảnh đơn điệu.
-- Cũng KHÔNG ĐƯỢC lạm dụng sinh video AI trực tiếp (Text-to-Video) bừa bãi vì Text-to-Video rất dễ làm méo mó khuôn mặt, dị dạng bàn tay, sai bối cảnh lịch sử.
-- Vì vậy, một đạo diễn giỏi PHẢI BIẾT LÚC NÀO NÊN DÙNG CÁCH NÀO CHO PHÙ HỢP!
+TRIẾT LÝ NGHỆ THUẬT: ĐẬP TAN TƯ DUY "GHÉP ẢNH TĨNH" (ANTI-SLIDESHOW MANIFESTO):
+Người xem YouTube Shorts lướt qua cực nhanh (Swipe-away < 2s). Một video thuần ghép ảnh tĩnh chuyển cảnh (Slideshow) sẽ khiến kênh bị bóp tương tác vì retention thấp!
+Đạo diễn xuất sắc là người biết:
+1. Đan xen linh hoạt giữa VIDEO CHUYỂN ĐỘNG THỰC (B-Roll 60fps), VIDEO AI KỲ ẢO (Text-to-Video), VIDEO TỪ ẢNH CHỦ ĐỀ (Image-to-Video 3D Parallax), và TƯ LIỆU LỊCH SỬ THẬT.
+2. Lúc nào dùng công cụ gì, ý tưởng gì để đạt cảm xúc cao nhất (High-Emotion Visual Pacing).
 
-QUY TẮC PHÂN ĐỊNH 4 PHƯƠNG PHÁP LÀM VIDEO (BẮT BUỘC TUÂN THỦ):
+BẢN ĐỒ LỰA CHỌN CÔNG CỤ & Ý TƯỞNG (QUY TẮC BẮT BUỘC):
 
-1. 'REAL_ARCHIVE' (Tư liệu lịch sử thật 100%):
-   - Áp dụng khi: Cảnh nhắc trực tiếp đến NHÂN VẬT LỊCH SỬ CÓ THẬT (Einstein, Tesla, Napoleon, danh nhân...), SỰ KIỆN LỊCH SỬ CÓ THẬT (Thế chiến, thảm họa Chernobyl...), CÔNG TRÌNH / DI TÍCH CỔ CÓ THẬT (Kim tự tháp Giza, Vạn lý trường thành, tượng Nhân sư...).
-   - Công cụ: 'wikimedia_archive' / 'wikipedia'.
-   - Lý do: Khán giả cần thấy bằng chứng và chân dung thật ngoài đời để tin tưởng. TUYỆT ĐỐI KHÔNG sinh AI giả mạo làm sai lệch lịch sử.
+1. 'STOCK_FOOTAGE' (Công cụ: 'pexels_video_api' - Video clip B-Roll 9:16 chuyển động thực 30-60fps):
+   - Khi nào dùng: Cảnh có HÀNH ĐỘNG THỰC TẾ, CỬ CHỈ CON NGƯỜI (bước đi trong mưa/bóng tối, ánh mắt liếc nhìn, bàn tay run rẩy, gõ phím, lật trang sách, đếm tiền, uống cà phê), KHÔNG KHÍ ĐỜI THƯỜNG / ĐÔ THỊ (dòng người hối hả, xe cộ đêm neon, thành phố u ám, phòng họp căng thẳng), THIÊN NHIÊN DỮ DỘI (sóng biển cuộn, sấm chớp, bão cát, lửa cháy, khói sương bốc lên), BIỂU TƯỢNG VẬT LÝ (đồng hồ cát rơi, đồng hồ kim tích tắc, con lắc, bàn cờ vua đổ, ổ khóa mở).
+   - ĐẶC BIỆT: CẢNH 1 (HOOK 3S ĐẦU) BẮT BUỘC ƯU TIÊN STOCK_FOOTAGE ĐỘNG để giật sự chú ý khán giả ngay tích tắc đầu tiên!
 
-2. 'IMAGE_TO_VIDEO' (Tạo video chuyển động PHỤ THUỘC VÀO ẢNH THEO CHỦ ĐỀ):
-   - Áp dụng khi: Cảnh miêu tả một nhân vật hư cấu cụ thể, bức tranh nghệ thuật sâu sắc, chân dung triết gia, hoặc bối cảnh kiến trúc rõ ràng CẦN ĐỘ SẮC NÉT VÀ ĐỘ CHÍNH XÁC CAO.
-   - Cơ chế: Sinh bức ảnh 8K chuẩn bố cục trước (để khóa chặt tỷ lệ khuôn mặt và bối cảnh, không bị biến dạng), sau đó áp dụng hiệu ứng chuyển động camera 3D (Parallax, dynamic lighting, zoom-in có chiều sâu) để biến thành video MP4 sống động!
-   - Công cụ: 'imagen3_i2v' (ImageAgent -> Motion Engine).
-   - Lý do: Vừa đảm bảo video ĐỘNG, vừa KHÔNG BỊ BIẾN DẠNG như khi sinh video AI trực tiếp.
+2. 'TEXT_TO_VIDEO' (Công cụ: 'wan_t2v' / 'ai_video_generative' - Sinh Video AI chuyển động trực tiếp):
+   - Khi nào dùng: Cảnh mang tính HUYỀN BÍ, VŨ TRỤ TRỪU TƯỢNG, NĂNG LƯỢNG SIÊU THỰC (lỗ đen bẻ cong không thời gian, cổng không gian ánh sáng, luồng năng lượng tâm linh, khói ma mị biến hình, vũ trụ 4D, nơ-ron thần kinh phát sáng, hố sâu tâm lý vô tận) — những thứ KHÔNG CÓ THẬT ngoài đời thực và không thể tìm thấy trong video stock.
 
-3. 'TEXT_TO_VIDEO' (Tạo video AI trực tiếp từ văn bản):
-   - Áp dụng khi: Chủ đề hoặc phân cảnh mang tính HUYỀN BÍ, VŨ TRỤ TRỪU TƯỢNG (lỗ đen, chiều không gian thứ 4, cổng không gian, năng lượng tâm linh, khói bụi ma mị, sinh vật kỳ ảo) — những thứ KHÔNG CÓ HÌNH THÙ CỐ ĐỊNH NGOÀI ĐỜI.
-   - Cơ chế: Sinh video chuyển đổi dynamic liên tục từ prompt.
-   - Công cụ: 'wan_t2v' / 'ai_video_generative'.
-   - Lý do: Các hiện tượng siêu thực cần sự biến ảo không ngừng của AI Video để tạo sự choáng ngợp.
+3. 'IMAGE_TO_VIDEO' (Công cụ: 'imagen3_i2v' - Tạo ảnh 8K chuẩn trước, sau đó chuyển động 3D Camera / Parallax):
+   - Khi nào dùng: Cảnh cần ĐẶC TẢ CHI TIẾT TĨNH CHÂN THỰC TUYỆT ĐỐI (chân dung 1 triết gia giả tưởng, sinh vật huyền thoại có khuôn mặt cố định, cổ vật huyền bí, bản đồ cổ, kiến trúc hùng vĩ) mà nếu sinh video AI trực tiếp sẽ bị méo mặt, biến dạng bàn tay.
+   - Nhịp điệu: Đóng vai trò "khoảng lặng nghệ thuật" (Visual Breathing Space) đan xen giữa các cảnh video tốc độ cao.
 
-4. 'STOCK_FOOTAGE' (Video clip B-Roll 9:16 chuyển động thực tế & viễn tưởng):
-   - Áp dụng khi: Cảnh cần CHUYỂN ĐỘNG THỰC 30fps/60fps (thay vì ảnh tĩnh zoom Ken Burns).
-   - Kho Pexels Video chứa hàng triệu video clip 9:16 chuyển động tuyệt đẹp:
-     * Viễn tưởng / Sci-Fi / Không gian: Phi thuyền bay trong không gian (spaceship space), lỗ đen (black hole), dải ngân hà quay (galaxy stars), thành phố tương lai neon (cyberpunk city), robot/AI (robot android), cổng không gian (wormhole tunnel), công nghệ hologram (futuristic technology), địa hình hành tinh xa xôi (alien planet)...
-     * Hành động / Đời thực: Sóng biển cuộn, bão tố, sấm chớp, thành phố đêm, xe cộ, dòng người, thao tác công nghệ, phòng thí nghiệm...
-   - QUY TẮC BẮT BUỘC: Khi làm chủ đề VIỄN TƯỞNG, HUYỀN BÍ, KHOA HỌC, khán giả xem Shorts để thấy VIDEO ĐỘNG CHUYỂN ĐỘNG SỐNG ĐỘNG!
-     TUYỆT ĐỐI TRÁNH việc biến toàn bộ video thành ảnh tĩnh chuyển cảnh (IMAGE_TO_VIDEO).
-     PHẢI CHỈ ĐỊNH ÍT NHẤT 50% - 70% CÁC CẢNH DÙNG 'STOCK_FOOTAGE' (pexels_video_api) hoặc 'TEXT_TO_VIDEO' để đảm bảo video có CHUYỂN ĐỘNG ĐỘNG (DYNAMIC VIDEO) 30fps thực sự!
-     Chỉ dùng 'IMAGE_TO_VIDEO' cho 1-2 cảnh khi cần đặc tả chân dung một nhân vật cụ thể hoặc sinh vật kỳ dị không thể tìm thấy video.
+4. 'REAL_ARCHIVE' (Công cụ: 'wikimedia_archive' / 'wikipedia' - Ảnh tư liệu lịch sử có thật 100%):
+   - Khi nào dùng: Nhắc trực tiếp đến NHÂN VẬT LỊCH SỬ CÓ THẬT (Einstein, Tesla, Napoleon, Julius Caesar...), SỰ KIỆN LỊCH SỬ (Thế chiến, Apollo 11, sụp đổ La Mã...), DI TÍCH LỊCH SỬ CỔ ĐẠI (Kim Tự Tháp Giza, Đấu trường Colosseum). Cần bằng chứng lịch sử xác thực, TUYỆT ĐỐI CẤM dùng AI giả mạo làm sai lệch lịch sử.
+
+QUY TẮC ĐAN XEN NHỊP ĐIỆU (RHYTHMIC WEAVING):
+- ÍT NHẤT 60% - 75% CÁC CẢNH TRONG VIDEO PHẢI LÀ FULL VIDEO CHUYỂN ĐỘNG (STOCK_FOOTAGE hoặc TEXT_TO_VIDEO).
+- KHÔNG BAO GIỜ để 2 cảnh ảnh tĩnh nối tiếp nhau (tránh hội chứng Slideshow Fatigue).
+- Mẫu nhịp điệu lý tưởng:
+  * Cảnh 1 (Hook): STOCK_FOOTAGE / DYNAMIC VIDEO (Cú sốc thị giác)
+  * Cảnh 2 (Thiết lập): REAL_ARCHIVE hoặc IMAGE_TO_VIDEO (Điểm nhấn nhân vật/chủ thể)
+  * Cảnh 3 (Diễn biến): STOCK_FOOTAGE (Hành động/chuyển động đẩy nhanh nhịp)
+  * Cảnh 4 (Cao trào): TEXT_TO_VIDEO hoặc STOCK_FOOTAGE (Biến đổi siêu thực / kịch tính)
+  * Cảnh 5-6 (Hệ quả/Kêu gọi): STOCK_FOOTAGE / DYNAMIC VIDEO (Khép lại nhịp đập)
 
 THÔNG TIN ĐẦU VÀO:
 - Chủ đề: {topic}
@@ -167,21 +164,20 @@ THÔNG TIN ĐẦU VÀO:
 HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
 {{
   "topic_classification": "HISTORICAL_DOCUMENTARY | MYSTERY_ABSTRACT | CINEMATIC_STORY | REAL_LIFE_MOTION",
-  "director_overview": "Tầm nhìn nghệ thuật tổng thể (Màu sắc, phong cách, nhịp điệu)",
+  "director_overview": "Tầm nhìn nghệ thuật tổng thể (Màu sắc, phong cách, nhịp điệu đan xen)",
   "scene_proposals": [
     {{
       "scene_id": 1,
       "production_method": "REAL_ARCHIVE | IMAGE_TO_VIDEO | TEXT_TO_VIDEO | STOCK_FOOTAGE",
       "tool": "wikimedia_archive | imagen3_i2v | wan_t2v | pexels_video_api",
-      "rationale": "Giải thích chi tiết 1 câu vì sao chọn phương pháp này cho cảnh này (bằng tiếng Việt)",
-      "search_query": "Từ khóa tiếng Anh 2-3 từ ngắn gọn nếu là REAL_ARCHIVE hoặc STOCK_FOOTAGE",
+      "rationale": "Giải thích chi tiết 1 câu vì sao chọn phương pháp & công cụ này cho cảnh này (bằng tiếng Việt)",
+      "search_query": "Từ khóa tiếng Anh 2-3 từ ngắn gọn tốt nhất để tìm tư liệu nếu là REAL_ARCHIVE hoặc STOCK_FOOTAGE",
       "ai_prompt": "Câu lệnh tiếng Anh chi tiết phong cách điện ảnh 8K 9:16 nếu là IMAGE_TO_VIDEO hoặc TEXT_TO_VIDEO",
       "camera_motion": "zoom_in | zoom_out | pan_left | pan_right | pan_up | pan_down",
       "sfx_cue": "whoosh | hit | tension_riser | cinematic_swell | heartbeat"
     }}
   ]
-}}
-"""
+}}"""
         raw = self._call_gemini(system_prompt)
         if not raw:
             return None
@@ -189,7 +185,12 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
         try:
             plan = json.loads(raw)
             if "scene_proposals" in plan and isinstance(plan["scene_proposals"], list):
-                # Chuẩn hóa để tương thích với các component đang dùng 'scenes_strategy'
+                for p in plan["scene_proposals"]:
+                    sq = p.get("search_query") or "cinematic"
+                    ap = p.get("ai_prompt") or f"Cinematic 8k dramatic vertical shot of {sq}, dramatic lighting, 9:16"
+                    p["search_query"] = sq
+                    p["ai_prompt"] = ap
+
                 plan["scenes_strategy"] = [
                     {
                         "scene_id": p.get("scene_id"),
@@ -293,37 +294,49 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
                 tool = "imagen3_i2v"
                 rationale = "Chỉ định thủ công: Tạo ảnh chủ đề 8K rồi chuyển hóa thành video động."
 
-            # ── 2. Đạo Diễn Tự Quyết Định Tối Ưu (Auto Strategist) ──
-            # Quy tắc 1: Thực thể lịch sử thật -> REAL_ARCHIVE
-            elif primary_entity and entity_type in ("person", "civilization", "monument", "event", "historical_figure") and (idx in (0, 1) or primary_entity.lower() in text_all):
+            # ── 2. Đạo Diễn Tự Quyết Định Tối Ưu (Auto Strategist & Dynamic Weaving) ──
+            # Cảnh 1 (Hook 3s đầu): BẮT BUỘC dùng Video chuyển động mạnh để giữ chân khán giả
+            elif idx == 0:
+                method = "STOCK_FOOTAGE"
+                tool = "pexels_video_api"
+                rationale = "Cảnh 1 (Primal Hook): Bắt buộc dùng Video B-Roll chuyển động 9:16 để giật sự chú ý, chống lướt qua."
+
+            # Quy tắc 1: Thực thể lịch sử thật (từ Cảnh 2 trở đi hoặc khi nhắc đích danh) -> REAL_ARCHIVE
+            elif primary_entity and entity_type in ("person", "civilization", "monument", "event", "historical_figure") and (idx == 1 or primary_entity.lower() in text_all):
                 method = "REAL_ARCHIVE"
                 tool = "wikimedia_archive"
                 rationale = f"Nhắc đến nhân vật/địa danh lịch sử có thật '{primary_entity}' -> dùng ảnh tư liệu thật 100% để đảm bảo tính xác thực."
 
             # Quy tắc 2: Hiện tượng huyền bí, vũ trụ siêu thực không có hình thái cố định -> TEXT_TO_VIDEO
-            elif any(fc in text_all for fc in abstract_fantasy_cues) or (is_mystery_or_fantasy and idx in (1, 3)):
+            elif any(fc in text_all for fc in abstract_fantasy_cues) or (is_mystery_or_fantasy and idx in (2, 3)):
                 method = "TEXT_TO_VIDEO"
                 tool = "wan_t2v"
                 rationale = "Ý tưởng huyền bí / năng lượng trừu tượng không có hình thể cố định -> sinh Video AI trực tiếp để tạo sự choáng ngợp."
 
-            # Quy tắc 3: Chuyển động đời thực, bối cảnh viễn tưởng, không gian, b-roll động -> STOCK_FOOTAGE
-            elif any(mc in text_all for mc in motion_cues) or idx == 0 or topic_class in ("REAL_LIFE_MOTION", "MYSTERY_ABSTRACT"):
-                method = "STOCK_FOOTAGE"
-                tool = "pexels_video_api"
-                rationale = "Cảnh miêu tả chuyển động hoặc bối cảnh viễn tưởng/thực tế -> dùng Video B-Roll Pexels 9:16 giữ chân người xem bằng video động."
-
-            # Quy tắc 4: Cảnh có nhân vật, chân dung cụ thể hoặc sinh vật đặc thù cần độ nét tuyệt đối -> IMAGE_TO_VIDEO
+            # Quy tắc 3: Cảnh có nhân vật, chân dung cụ thể hoặc sinh vật đặc thù cần độ nét tuyệt đối -> IMAGE_TO_VIDEO
             elif any(c in text_all for c in ["portrait", "face", "philosopher", "chân dung", "khuôn mặt", "statue", "monk", "warrior", "creature", "monster", "leviathan"]):
                 method = "IMAGE_TO_VIDEO"
                 tool = "imagen3_i2v"
                 rationale = "Cảnh cần đặc tả nhân vật/sinh vật cụ thể -> tạo ảnh chủ đề 8K chuẩn bố cục rồi chuyển hóa thành video 3D."
 
-            # Quy tắc mặc định: Ưu tiên Full Video chuyển động thực tế 9:16 cho Shorts, chỉ dùng ảnh cho cảnh cần đặc tả
+            # Quy tắc 4: Chuyển động đời thực, bối cảnh viễn tưởng, không gian, b-roll động -> STOCK_FOOTAGE
+            elif any(mc in text_all for mc in motion_cues) or topic_class in ("REAL_LIFE_MOTION", "MYSTERY_ABSTRACT"):
+                method = "STOCK_FOOTAGE"
+                tool = "pexels_video_api"
+                rationale = "Cảnh miêu tả chuyển động hoặc bối cảnh đời thực/viễn tưởng -> dùng Video B-Roll Pexels 9:16 giữ chân người xem bằng video động."
+
+            # Quy tắc mặc định: Đan xen nhịp nhàng giữa Video Động và Ảnh Chân dung (chống Slideshow Fatigue)
             else:
-                # 3 trong 4 cảnh mặc định dùng Full Video để giữ retention cao, chỉ 1 cảnh dùng Image-to-Video
-                method = "IMAGE_TO_VIDEO" if (idx % 4 == 2) else "STOCK_FOOTAGE"
-                tool = "imagen3_i2v" if method == "IMAGE_TO_VIDEO" else "pexels_video_api"
-                rationale = "Đảm bảo video chuyển động sống động (Full Video 9:16) giữ chân người xem, kết hợp chuyển động camera mượt mà."
+                prev_method = scene_proposals[-1]["production_method"] if scene_proposals else ""
+                if prev_method in ("IMAGE_TO_VIDEO", "REAL_ARCHIVE"):
+                    # Nếu cảnh trước đã là ảnh tĩnh/I2V -> Cảnh này BẮT BUỘC phải là Video động
+                    method = "STOCK_FOOTAGE"
+                    tool = "pexels_video_api"
+                    rationale = "Đan xen nhịp điệu: Sau cảnh tĩnh, chuyển sang Video B-roll động 9:16 để video thở và giữ nhịp."
+                else:
+                    method = "IMAGE_TO_VIDEO" if (idx % 3 == 1) else "STOCK_FOOTAGE"
+                    tool = "imagen3_i2v" if method == "IMAGE_TO_VIDEO" else "pexels_video_api"
+                    rationale = "Đảm bảo video chuyển động sống động (Full Video 9:16) kết hợp chuyển động camera mượt mà."
 
             cam_motion = motions_list[idx % len(motions_list)]
             sfx = "whoosh" if idx == 0 else "hit"

@@ -79,7 +79,9 @@ Phong cách kênh: {channel_style}
    - Bị trừ nặng (< 6.0): Mở đầu kiểu sách giáo khoa, định nghĩa học thuật, bị động ("Để bắt kẻ nói dối...", "Trong tâm lý học..."), câu hỏi sáo rỗng ("Bạn có biết...").
 2. story_pacing: Nhịp điệu câu chuyện, mỗi cảnh ngắn gọn 6-10 từ (2.5-3.5s), toàn bộ video từ 20-28 giây (50-75 từ cho 6-8 cảnh), chuyển cảnh nhanh, không lê thê thừa thãi không? (Cần >= 8.0)
 3. entity_coherence: Kịch bản và hình ảnh có bám chặt vào nhân vật/bối cảnh lịch sử thực tế không?
-4. visual_direction: Từ khóa visual_keyword & stock_query có cụ thể, vật lý, giàu tính điện ảnh không? (Tuyệt đối không dùng từ trừu tượng như psychology, minimalism)
+4. visual_direction: Khả năng chỉ đạo hình ảnh & Đan xen công cụ linh hoạt (Anti-Slideshow & Tool Matching):
+   - Đạt điểm cao (>= 8.5): Từ khóa visual_keyword & stock_query có động từ hành động vật lý mạnh mẽ, giàu tính điện ảnh, định hướng rõ khi nào dùng Video B-roll thực tế, khi nào dùng Video AI kỳ ảo, khi nào dùng ảnh tư liệu lịch sử.
+   - Bị trừ nặng (< 6.0): Tư duy "ghép ảnh tĩnh" máy móc, dùng từ ngữ trừu tượng (psychology, success, happiness, minimalism) khiến video trở thành slideshow ảnh đơn điệu.
 5. viral_loop: Cảnh cuối có tạo vòng lặp mượt mà quay trở lại Cảnh 1 không? (Infinite Shorts Loop)
 
 --- YÊU CẦU TRẢ VỀ ---
@@ -88,11 +90,11 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
   "hook_strength": {{"score": 8.5, "feedback": "Nhận xét chi tiết..."}},
   "story_pacing": {{"score": 8.0, "feedback": "Nhận xét chi tiết..."}},
   "entity_coherence": {{"score": 9.0, "feedback": "Nhận xét chi tiết..."}},
-  "visual_direction": {{"score": 8.5, "feedback": "Nhận xét chi tiết..."}},
+  "visual_direction": {{"score": 8.5, "feedback": "Nhận xét chi tiết về nhịp điệu thị giác và công cụ phù hợp..."}},
   "viral_loop": {{"score": 8.0, "feedback": "Nhận xét chi tiết..."}},
   "actionable_critiques": [
-    "Điểm cần sửa 1...",
-    "Điểm cần sửa 2..."
+    "Chỉ đạo viết lại / bổ sung từ khóa hành động cho Cảnh X để dùng Video động...",
+    "Gợi ý công cụ & ý tưởng trực quan cho Cảnh Y..."
   ]
 }}"""
 

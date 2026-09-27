@@ -427,7 +427,29 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             except Exception:
                 pass
 
-        # Fallback 2: Thử tìm ảnh Pexels Photo HD chân thực 9:16
+        # Fallback 2: Nếu là chế độ VIDEO (STOCK_FOOTAGE hoặc TEXT_TO_VIDEO) -> Ưu tiên tạo Video AI chuyển động 3D thay vì hạ cấp xuống ảnh tĩnh
+        is_video_mode = prod_method in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO") or chosen_strategy in ("STOCK_VIDEO", "AI_VIDEO")
+        if not media_path and is_video_mode:
+            try:
+                ai_v_path = str(media_dir / f"scene_{scene.scene_id:03d}_fb_motion.mp4")
+                prompt_fb = ai_prompt or vp or kw or "cinematic dramatic scene"
+                res_v = await ai_video_agent.generate_image_to_video(
+                    prompt=prompt_fb,
+                    output_path=ai_v_path,
+                    duration_seconds=dur,
+                    scene_id=scene.scene_id,
+                    camera_motion=camera_motion,
+                    visual_prompt=vp,
+                    narration=scene.narration,
+                )
+                if res_v and Path(res_v).exists() and Path(res_v).stat().st_size > 5000:
+                    media_path = res_v
+                    media_type = "video"
+                    logger.info(f"Scene {scene.scene_id}: 🎥 Fallback 2 thành công với AI Motion Video 9:16 (giữ nhịp video động)")
+            except Exception as fb_v_e:
+                logger.debug(f"Scene {scene.scene_id}: Fallback 2 AI video error: {fb_v_e}")
+
+        # Fallback 3: Thử tìm ảnh Pexels Photo HD chân thực 9:16
         if not media_path:
             try:
                 clean_q = search_query or sq or kw
@@ -442,12 +464,12 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             used_pool_urls.add(img_url)
                             media_path = out_img
                             media_type = "image"
-                            logger.info(f"Scene {scene.scene_id}: 📸 Fallback 2 thành công với Pexels Photo: {clean_kw}")
+                            logger.info(f"Scene {scene.scene_id}: 📸 Fallback 3 thành công với Pexels Photo: {clean_kw}")
                             break
-            except Exception as fb2_e:
-                logger.debug(f"Scene {scene.scene_id}: Fallback 2 photo error: {fb2_e}")
+            except Exception as fb3_e:
+                logger.debug(f"Scene {scene.scene_id}: Fallback 3 photo error: {fb3_e}")
 
-        # Fallback 3: Sinh ảnh AI cứu hộ
+        # Fallback 4: Sinh ảnh AI cứu hộ
         if not media_path:
             try:
                 ai_img_path = str(media_dir / f"scene_{scene.scene_id:03d}_fb_ai.jpg")
@@ -521,7 +543,7 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
 
 async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
-    """Node tự động sửa chữa các cảnh bị đánh giá FAIL kỹ thuật (thay thế ảnh mới hoặc sinh ảnh AI)."""
+    """Node tự động sửa chữa các cảnh bị đánh giá FAIL kỹ thuật (thay thế media mới chuẩn xác, giữ vững video động)."""
     scenes_media = list(state.get("scenes_media", []))
     media_eval = state.get("media_eval", {})
     failed_ids = media_eval.get("failed_scene_ids", [])
@@ -531,6 +553,8 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
     retry_count = state.get("media_retry_count", 0) + 1
 
     image_agent = ImageAgent()
+    media_agent = MediaAgent()
+    ai_video_agent = AIVideoAgent()
     logger.info(f"🔄 [LangGraph] Tự động sửa chữa media kỹ thuật cho các cảnh: {failed_ids} (Lần {retry_count})")
 
     for item in scenes_media:
@@ -538,25 +562,62 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
             scene_id = item["scene_id"]
             kw = item.get("visual_keyword", "")
             narr = item.get("narration", "")
-            
-            # Sinh ảnh AI điện ảnh chất lượng cao — truyền cả visual_prompt nếu có
-            ai_img_path = str(media_dir / f"scene_{scene_id:03d}_refined.jpg")
             vp = item.get("visual_prompt", None)
-            kw = item.get("visual_keyword", "")
-            fallback_kw = f"Dramatic cinematic photorealistic shot of {primary_entity or kw}, {kw}, 8k sharp focus"
-            res_img = await asyncio.to_thread(
-                image_agent.generate_scene_image,
-                fallback_kw,
-                ai_img_path,
-                "9:16",
-                "cinematic",
-                scene_id,
-                vp,
-            )
-            if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 2000:
-                item["media_path"] = res_img
-                item["media_type"] = "image"
-                logger.info(f"Scene {scene_id}: ✅ Đã thay thế bằng ảnh AI sắc nét mới")
+            is_video = item.get("media_type") == "video" or item.get("production_method") in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO")
+            replaced = False
+
+            # Nếu cảnh ban đầu là video -> Cố gắng giữ nguyên định dạng video chuyển động
+            if is_video:
+                try:
+                    best_v = await asyncio.to_thread(media_agent.search_best_video_clip, kw, None, None, narr)
+                    if best_v and best_v.get("url"):
+                        cand_url = best_v["url"]
+                        out_v = str(media_dir / f"scene_{scene_id:03d}_refined_video.mp4")
+                        await asyncio.to_thread(media_agent.download_file, cand_url, out_v)
+                        if Path(out_v).exists() and Path(out_v).stat().st_size > 10000:
+                            item["media_path"] = out_v
+                            item["media_type"] = "video"
+                            replaced = True
+                            logger.info(f"Scene {scene_id}: ✅ Sửa lỗi kỹ thuật bằng Video Clip Pexels mới: '{kw}'")
+                except Exception as ex_v:
+                    logger.debug(f"Scene {scene_id}: Video refine error: {ex_v}")
+
+                if not replaced:
+                    try:
+                        ai_v_path = str(media_dir / f"scene_{scene_id:03d}_refined_i2v.mp4")
+                        res_vid = await ai_video_agent.generate_image_to_video(
+                            prompt=vp or kw,
+                            output_path=ai_v_path,
+                            duration_seconds=3.5,
+                            scene_id=scene_id,
+                            visual_prompt=vp,
+                            narration=narr,
+                        )
+                        if res_vid and Path(res_vid).exists() and Path(res_vid).stat().st_size > 5000:
+                            item["media_path"] = res_vid
+                            item["media_type"] = "video"
+                            replaced = True
+                            logger.info(f"Scene {scene_id}: ✅ Sửa lỗi kỹ thuật bằng Image-to-Video chuyển động 3D")
+                    except Exception as ex_ai_v:
+                        logger.debug(f"Scene {scene_id}: AI video refine error: {ex_ai_v}")
+
+            # Nếu là ảnh hoặc video dự phòng chưa thành công: sinh ảnh AI điện ảnh chất lượng cao
+            if not replaced:
+                ai_img_path = str(media_dir / f"scene_{scene_id:03d}_refined.jpg")
+                fallback_kw = f"Dramatic cinematic photorealistic shot of {primary_entity or kw}, {kw}, 8k sharp focus"
+                res_img = await asyncio.to_thread(
+                    image_agent.generate_scene_image,
+                    fallback_kw,
+                    ai_img_path,
+                    "9:16",
+                    "cinematic",
+                    scene_id,
+                    vp,
+                )
+                if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 2000:
+                    item["media_path"] = res_img
+                    item["media_type"] = "image"
+                    logger.info(f"Scene {scene_id}: ✅ Đã thay thế bằng ảnh AI sắc nét mới")
 
     return {
         "scenes_media": scenes_media,
@@ -622,11 +683,13 @@ def node_content_quality_check(state: VideoWorkflowState) -> Dict[str, Any]:
 
 async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
     """
-    Node tự động thay thế ảnh có NỘI DUNG kém — dựa trên gợi ý AI Vision.
-    
-    Khác với node_refine_media (sửa file hỏng kỹ thuật):
-    - Sử dụng replacement_suggestion từ ContentQualityCritic để tìm ảnh thay thế phù hợp hơn.
-    - Ưu tiên tìm ảnh tư liệu thực tế trước, sau đó mới dùng AI Image Generation.
+    Node tự động thay thế tư liệu có NỘI DUNG kém — dựa trên chỉ đạo sắc bén từ AI Vision Critic.
+    Đảm bảo:
+    - Khi Critic chỉ định [pexels_video] -> Tìm đúng video clip B-roll chuyển động 9:16.
+    - Khi Critic chỉ định [ai_video] -> Tạo Video AI siêu thực trực tiếp.
+    - Khi Critic chỉ định [imagen3_i2v] -> Tạo ảnh 8K rồi chuyển hóa thành video 3D.
+    - Khi Critic chỉ định [wikimedia_archive] -> Lấy ảnh tư liệu lịch sử thật 100%.
+    - Triệt tiêu tư duy ép cứng sang ảnh tĩnh, giữ tỷ lệ video động cao!
     """
     scenes_media = list(state.get("scenes_media", []))
     content_eval = state.get("content_quality_eval", {})
@@ -644,10 +707,11 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
 
     image_agent = ImageAgent()
     media_agent = MediaAgent()
+    ai_video_agent = AIVideoAgent()
     
     logger.info(
         f"🔄 [ContentRefine] Tự sửa nội dung cho {len(failed_ids)} cảnh "
-        f"(Lần {content_retry}) dựa trên gợi ý AI Vision"
+        f"(Lần {content_retry}) dựa trên chỉ đạo AI Vision Critic"
     )
 
     for item in scenes_media:
@@ -657,58 +721,91 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
 
         kw = item.get("visual_keyword", "")
         narr = item.get("narration", "")
-        suggestion = suggestions.get(scene_id, kw)
+        raw_suggestion = suggestions.get(scene_id, kw)
         replaced = False
 
-        # ── Nếu phân cảnh là dạng VIDEO hoặc cần chuyển động: ưu tiên tìm video Pexels từ gợi ý ──
-        is_video_mode = item.get("production_method") in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO") or item.get("media_type") == "video"
-        if is_video_mode:
+        # Phân tích chỉ đạo: [recommended_tool] query | prompt | creative_idea
+        rec_tool = ""
+        clean_sugg = raw_suggestion
+        if raw_suggestion.startswith("[") and "]" in raw_suggestion:
+            rec_tool = raw_suggestion[1:raw_suggestion.find("]")].strip().lower()
+            clean_sugg = raw_suggestion[raw_suggestion.find("]") + 1:].strip()
+
+        parts = [p.strip() for p in clean_sugg.split("|")]
+        query_part = parts[0] if len(parts) > 0 and parts[0] else kw
+        prompt_part = parts[1] if len(parts) > 1 and parts[1] else clean_sugg
+        idea_part = parts[2] if len(parts) > 2 else ""
+
+        logger.info(f"🎯 [Scene {scene_id} Fix] Tool chỉ định: '{rec_tool or 'auto'}' | Query: '{query_part}' | Idea: '{idea_part[:40]}'")
+
+        # ── HÀNH ĐỘNG 1: Nếu chỉ định pexels_video hoặc cảnh cần chuyển động B-roll ──
+        if rec_tool == "pexels_video" or (not rec_tool and item.get("production_method") in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO")):
             try:
-                best_v = await asyncio.to_thread(media_agent.search_best_video_clip, suggestion or kw)
+                best_v = await asyncio.to_thread(media_agent.search_best_video_clip, query_part or kw, None, None, narr)
                 if best_v and best_v.get("url"):
                     cand_u = best_v["url"]
                     out_v = str(media_dir / f"scene_{scene_id:03d}_content_fix_pexels.mp4")
                     await asyncio.to_thread(media_agent.download_file, cand_u, out_v)
-                    if Path(out_v).exists() and Path(out_v).stat().st_size > 5000:
+                    if Path(out_v).exists() and Path(out_v).stat().st_size > 10000:
                         item["media_path"] = out_v
                         item["media_type"] = "video"
                         replaced = True
-                        logger.info(f"Scene {scene_id}: ✅ Thay thế thành công bằng Video Clip Pexels: '{suggestion or kw}'")
+                        logger.info(f"Scene {scene_id}: ✅ Thay thế thành công bằng Video Clip Pexels: '{query_part}'")
             except Exception as ex_v:
                 logger.debug(f"Scene {scene_id}: Video replacement error: {ex_v}")
 
-        # ── Nếu chưa thay thế và là Scene 1 hoặc prompt điện ảnh dài: Sinh ảnh AI Primal Hook ──
-        if not replaced and (scene_id == 1 or len(suggestion.split()) > 5):
+        # ── HÀNH ĐỘNG 2: Nếu chỉ định ai_video (Text-to-Video siêu thực) ──
+        if not replaced and (rec_tool == "ai_video" or item.get("production_method") == "TEXT_TO_VIDEO"):
             try:
-                ai_path = str(media_dir / f"scene_{scene_id:03d}_content_ai.jpg")
-                refined_prompt = suggestion or kw
-                res = await asyncio.to_thread(
-                    image_agent.generate_scene_image,
-                    refined_prompt,
-                    ai_path,
-                    "9:16",
-                    "cinematic",
-                    scene_id,
-                    refined_prompt,
+                ai_v_path = str(media_dir / f"scene_{scene_id:03d}_content_fix_t2v.mp4")
+                res_v = await ai_video_agent.generate_text_to_video(
+                    prompt=prompt_part or query_part,
+                    output_path=ai_v_path,
+                    duration_seconds=3.5,
+                    scene_id=scene_id,
+                    visual_prompt=prompt_part,
+                    narration=narr,
                 )
-                if res and Path(res).exists() and Path(res).stat().st_size > 2000:
-                    item["media_path"] = res
-                    item["media_type"] = "image"
+                if res_v and Path(res_v).exists() and Path(res_v).stat().st_size > 5000:
+                    item["media_path"] = res_v
+                    item["media_type"] = "video"
                     replaced = True
-                    logger.info(f"Scene {scene_id}: ✅ Tái tạo thành công ảnh AI Primal Hook chuẩn xác từ gợi ý AI Vision")
-            except Exception as e:
-                logger.warning(f"Scene {scene_id}: Lỗi tạo ảnh AI từ gợi ý: {e}")
+                    logger.info(f"Scene {scene_id}: ✅ Thay thế thành công bằng Video AI kỳ ảo: '{prompt_part[:50]}'")
+            except Exception as ex_ai_t2v:
+                logger.debug(f"Scene {scene_id}: Text-to-Video fix error: {ex_ai_t2v}")
 
-        # ── Chiến lược 1: Multi-Source Scene Search với từ khóa ngắn gọn tinh chỉnh từ AI Vision ──
-        if not replaced:
+        # ── HÀNH ĐỘNG 3: Nếu chỉ định imagen3_i2v (Ảnh chủ đề chuyển thành video 3D) ──
+        if not replaced and (rec_tool == "imagen3_i2v" or item.get("production_method") == "IMAGE_TO_VIDEO"):
+            try:
+                ai_v_path = str(media_dir / f"scene_{scene_id:03d}_content_fix_i2v.mp4")
+                res_v = await ai_video_agent.generate_image_to_video(
+                    prompt=prompt_part or query_part,
+                    output_path=ai_v_path,
+                    duration_seconds=3.5,
+                    scene_id=scene_id,
+                    visual_prompt=prompt_part,
+                    narration=narr,
+                )
+                if res_v and Path(res_v).exists() and Path(res_v).stat().st_size > 5000:
+                    item["media_path"] = res_v
+                    item["media_type"] = "video"
+                    replaced = True
+                    logger.info(f"Scene {scene_id}: ✅ Thay thế thành công bằng Image-to-Video 3D Parallax: '{prompt_part[:50]}'")
+            except Exception as ex_i2v:
+                logger.debug(f"Scene {scene_id}: Image-to-Video fix error: {ex_i2v}")
+
+        # ── HÀNH ĐỘNG 4: Nếu chỉ định wikimedia_archive hoặc có thực thể lịch sử ──
+        if not replaced and (rec_tool == "wikimedia_archive" or (primary_entity and scene_id in (1, 2))):
             try:
                 cand = await asyncio.to_thread(
                     media_agent.search_scene_media_multi_source,
                     scene_narration=narr,
-                    visual_keyword=suggestion or kw,
-                    stock_query=suggestion if len(suggestion.split()) <= 4 else kw,
+                    visual_keyword=query_part or kw,
+                    stock_query=query_part,
                     primary_entity=primary_entity,
                     scene_id=scene_id,
+                    prefer_video=False,
+                    prefer_photo=True,
                 )
                 if cand and cand.get("url"):
                     cand_url = cand["url"]
@@ -721,15 +818,15 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
                         item["media_path"] = out
                         item["media_type"] = c_type
                         replaced = True
-                        logger.info(f"Scene {scene_id}: ✅ Thay thế thành công từ {c_src} theo gợi ý AI Vision")
-            except Exception as e:
-                logger.debug(f"Scene {scene_id}: Multi-source content fix failed: {e}")
+                        logger.info(f"Scene {scene_id}: ✅ Thay thế thành công tư liệu thật từ {c_src}")
+            except Exception as ex_wiki:
+                logger.debug(f"Scene {scene_id}: Archive fix failed: {ex_wiki}")
 
-        # ── Chiến lược 2: AI Image Generation với prompt tinh chỉnh từ gợi ý ──
+        # ── HÀNH ĐỘNG 5: Dự phòng cuối cùng — AI Image Generation phong cách điện ảnh 8K ──
         if not replaced:
             try:
                 ai_path = str(media_dir / f"scene_{scene_id:03d}_content_ai.jpg")
-                refined_prompt = suggestion or kw
+                refined_prompt = prompt_part or query_part or kw
                 if scene_id == 1:
                     prompt = f"Ultra-high retention YouTube Shorts hook frame, 8k cinematic: {refined_prompt}"
                 elif primary_entity:
@@ -758,9 +855,9 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
                 logger.warning(f"Scene {scene_id}: Content refine AI generation error: {e}")
 
         if replaced:
-            logger.info(f"  📝 Gợi ý AI Vision đã áp dụng: '{suggestion}'")
+            logger.info(f"  📝 Chỉ đạo AI Vision đã áp dụng hoàn tất: '{clean_sugg[:60]}'")
         else:
-            logger.warning(f"  ❌ Scene {scene_id}: Không thể tìm ảnh thay thế phù hợp")
+            logger.warning(f"  ❌ Scene {scene_id}: Không thể tìm tư liệu thay thế phù hợp")
 
     return {
         "scenes_media": scenes_media,

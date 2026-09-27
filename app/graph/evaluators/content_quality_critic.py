@@ -261,17 +261,27 @@ TRẢ VỀ DUY NHẤT một chuỗi JSON (không markdown, không giải thích)
                 "verdict": "MARGINAL", "issues": ["Ảnh AI — cần xác minh tính chân thật"],
                 "suggestion": ""
             }
-        # Stock video → điểm thấp nếu có primary_entity
-        if primary_entity and ("pexels" in media_path or "stock" in media_path):
+        # Stock video / Video clip chuyển động
+        if "pexels" in media_path or "stock" in media_path or media_path.endswith((".mp4", ".mov", ".webm")):
+            narr_text = scene.get("narration", "").lower()
+            is_direct_person_mention = primary_entity and primary_entity.lower() in narr_text
+            is_portrait_focus = any(w in narr_text for w in ["portrait", "face", "chân dung", "khuôn mặt", "người"])
+            if is_direct_person_mention and is_portrait_focus:
+                return {
+                    "relevance": 4.0, "entity_accuracy": 2.0,
+                    "historical_fidelity": 2.0, "visual_quality": 7.0,
+                    "verdict": "FAIL",
+                    "issues": [f"Stock video diễn viên hiện đại cho chân dung nhân vật lịch sử '{primary_entity}'"],
+                    "suggestion": f"Tìm ảnh tư liệu hoặc AI portrait của {primary_entity}"
+                }
             return {
-                "relevance": 4.0, "entity_accuracy": 2.0,
-                "historical_fidelity": 2.0, "visual_quality": 7.0,
-                "verdict": "FAIL",
-                "issues": [f"Stock video hiện đại cho nhân vật lịch sử '{primary_entity}'"],
-                "suggestion": f"Tìm ảnh tư liệu hoặc AI portrait của {primary_entity}"
+                "relevance": 8.0, "entity_accuracy": 8.0,
+                "historical_fidelity": 8.0, "visual_quality": 8.5,
+                "verdict": "PASS", "issues": [],
+                "suggestion": ""
             }
         # Graphic placeholder → fail
-        if "_graphic" in media_path:
+        if "_graphic" in media_path or "placeholder" in media_path:
             return {
                 "relevance": 3.0, "entity_accuracy": 2.0,
                 "historical_fidelity": 2.0, "visual_quality": 4.0,
@@ -333,7 +343,17 @@ TRẢ VỀ DUY NHẤT một chuỗi JSON (không markdown, không giải thích)
             scene_overall = float(res.get("overall_score") or (relevance * 0.45 + entity_acc * 0.3 + vis_quality * 0.25))
             verdict = res.get("verdict", "PASS" if scene_overall >= 7.0 else "FAIL")
             issues = res.get("issues", [])
-            suggestion = res.get("replacement_query") or res.get("refined_prompt") or ""
+            
+            # Đóng gói chỉ đạo thay thế thông minh: Tool + Query + Ý tưởng sáng tạo
+            rec_tool = res.get("recommended_tool", "")
+            rep_q = res.get("replacement_query", "")
+            ref_p = res.get("refined_prompt", "")
+            idea = res.get("creative_idea", "")
+            
+            if rec_tool and rep_q:
+                suggestion = f"[{rec_tool}] {rep_q} | {ref_p} | {idea}".strip(" |")
+            else:
+                suggestion = rep_q or ref_p or ""
 
             if verdict == "FAIL" or scene_overall < 6.5 or relevance < 6.5:
                 failed_scene_ids.append(scene_id)

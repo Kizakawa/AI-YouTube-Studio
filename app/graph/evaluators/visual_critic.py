@@ -95,16 +95,18 @@ class VisualCritic:
                 ))
                 continue
 
-            # 2. Kiểm tra nếu có primary_entity: CẤM stock video của diễn viên hiện đại
+            # 2. Kiểm tra tính chân thật thực thể (Entity & Context Check)
+            # Không đánh đồng: Video B-roll môi trường, hành động, biểu tượng, thiên nhiên (mưa bão, vũ khí, khói lửa, đồng hồ...)
+            # là hoàn toàn hợp lệ và làm video sống động hơn, chỉ phạt nếu video stock có người hiện đại đóng vai sai thời đại.
             if primary_entity:
-                if media_type == "video" and ("pexels" in media_path.lower() or "stock" in media_path.lower()):
-                    entity_score = 3.0
-                    issues.append(f"Cảnh báo: Dùng stock video hiện đại cho nhân vật lịch sử '{primary_entity}'")
-                    failed_scene_ids.append(scene_id)
-                elif any(tag in p.name.lower() for tag in ["_doc", "_wiki", "_real"]):
-                    entity_score = 10.0  # Ảnh tư liệu đích thực
-                elif "_ai" in p.name.lower():
-                    entity_score = 8.5   # Ảnh AI có gắn context
+                p_lower = p.name.lower()
+                if any(tag in p_lower for tag in ["_doc", "_wiki", "_real"]):
+                    entity_score = 10.0  # Ảnh/tư liệu đích thực
+                elif "_ai" in p_lower or "_t2v" in p_lower or "_i2v" in p_lower:
+                    entity_score = 8.5   # AI video/ảnh có định hướng bối cảnh
+                elif media_type == "video":
+                    # Video B-roll phong cảnh, hành động giúp giữ chân người xem
+                    entity_score = 8.0
                 else:
                     entity_score = 7.5
 
@@ -167,12 +169,30 @@ class VisualCritic:
             for s in scene_scores
         ) / total_scenes if total_scenes > 0 else 0.0
 
-        passed = len(failed_scene_ids) == 0 and overall >= 7.8
+        # ── 5. Kiểm tra Tỷ lệ Chuyển động Động (Anti-Slideshow Dynamism Check) ──
+        # Đảm bảo video không bị cứng nhắc ở tư duy "ghép ảnh tĩnh"
+        video_count = sum(
+            1 for item in scenes_media
+            if item.get("media_type") == "video"
+            or Path(item.get("media_path", "")).suffix.lower() in (".mp4", ".mov", ".webm")
+        )
+        video_ratio = (video_count / total_scenes) if total_scenes > 0 else 0.0
+
+        if total_scenes >= 4 and video_ratio < 0.25:
+            # Nếu toàn bộ video gần như là ảnh tĩnh (ít hơn 25% video động) -> Cảnh báo Slideshow Fatigue
+            issues_summary.append(
+                f"⚠️ Cảnh báo Slideshow Fatigue: Tỷ lệ video động chỉ đạt {video_ratio*100:.0f}%. "
+                f"Khuyến nghị đan xen thêm video clip B-roll chuyển động thực tế hoặc AI Video (mục tiêu >= 50-70%)."
+            )
+            # Trừ nhẹ điểm để khuyến khích hệ thống chèn thêm video động
+            overall = max(1.0, overall - 0.5)
+
+        passed = len(failed_scene_ids) == 0 and overall >= 7.5
 
         return VisualEvaluationReport(
             scene_scores=scene_scores,
             overall_score=round(overall, 1),
             failed_scene_ids=list(set(failed_scene_ids)),
             passed=passed,
-            summary="\n".join(issues_summary) if issues_summary else "Tất cả hình ảnh đạt chuẩn chất lượng cao & chân thật."
+            summary="\n".join(issues_summary) if issues_summary else f"Tất cả hình ảnh/video đạt chuẩn kỹ thuật & tính chân thật (Tỷ lệ video động: {video_ratio*100:.0f}%)."
         )
