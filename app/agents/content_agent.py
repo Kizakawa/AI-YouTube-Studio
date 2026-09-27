@@ -9,10 +9,8 @@ from app.schemas.contracts import ScriptContract
 logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = [
+    "gemini-flash-lite-latest",
     "gemini-flash-latest",
-    "gemini-3.1-flash-lite-preview",
-    "gemma-4-26b-a4b-it",
-    "gemini-3.1-pro-preview",
     "gemini-pro-latest",
 ]
 
@@ -27,7 +25,7 @@ class ContentAgent:
         self.rotator = KeyRotator(keys)
         self.conversations: Dict[str, List[Dict[str, str]]] = {}
 
-    def _call_api(self, prompt: str, json_mode: bool = False, timeout: int = 25, max_total_seconds: int = 150) -> str:
+    def _call_api(self, prompt: str, json_mode: bool = False, timeout: int = 20, max_total_seconds: int = 60) -> str:
         """
         Gọi trực tiếp Gemini REST API với timeout nghiêm ngặt và xoay key thông minh.
         Khi một API Key bị 429 (hết quota) hoặc 403 (cấm), hệ thống xoay ngay sang key tiếp theo
@@ -79,12 +77,14 @@ class ContentAgent:
                                 logger.info(f"✅ Gemini API ({model}) thành công với key {key[:8]}... trong {time.monotonic()-start_time:.1f}s")
                                 return parts[0]["text"].strip()
                     elif r.status_code in (429, 403):
-                        logger.warning(f"⚠️ Model {model} với key {key[:8]}... gặp {r.status_code}. Đang thử model tiếp theo...")
-                        continue
+                        logger.warning(f"⚠️ Key {key[:8]}... gặp mã {r.status_code} trên model {model}. Đang xoay sang API Key kế tiếp...")
+                        self.rotator.rotate_key()
+                        key_failed_quota = True
+                        break
                     elif r.status_code == 503 and json_mode:
                         # Fallback: Thử lại không dùng responseMimeType (tránh 503 trên engine structured JSON)
                         logger.info(f"Gemini API ({model}) gặp 503 với structured output, thử lại chế độ raw JSON...")
-                        time.sleep(1.0)
+                        time.sleep(0.5)
                         try:
                             fallback_payload = {"contents": [{"parts": [{"text": prompt}]}]}
                             r_fb = requests.post(url, json=fallback_payload, timeout=timeout)
@@ -98,7 +98,6 @@ class ContentAgent:
                                         return parts[0]["text"].strip()
                         except Exception as e_fb:
                             logger.debug(f"Fallback raw JSON lỗi: {e_fb}")
-                        time.sleep(1.0)
                         continue
                     else:
                         err_msg = ""
@@ -107,8 +106,6 @@ class ContentAgent:
                         except Exception:
                             err_msg = r.text[:80]
                         logger.warning(f"Gemini API ({model}) trả lỗi {r.status_code} với key {key[:8]}...: {err_msg}")
-                        if r.status_code == 503:
-                            time.sleep(1.0)
                         continue
                 except Exception as e:
                     logger.warning(f"Lỗi kết nối Gemini API ({model}) với key {key[:8]}...: {e}")

@@ -1320,32 +1320,41 @@ Text: "{text}"
 
 If no real entities found, return empty array: []"""
 
-        models = ["gemini-3.1-flash-lite-preview", "gemini-flash-latest", "gemini-3.1-pro-preview"]
-        for model in models:
-            try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-                payload = {
-                    "contents": [{"parts": [{"text": prompt}]}]
-                }
-                r = requests.post(url, json=payload, timeout=12)
-                if r.status_code == 200:
-                    data = r.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        raw = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "[]")
-                        # Parse JSON
-                        raw = raw.strip()
-                        start = raw.find("[")
-                        end = raw.rfind("]")
-                        if start != -1 and end != -1:
-                            raw = raw[start:end+1]
-                        return json.loads(raw)
-                elif r.status_code in (429, 403):
-                    key = rotator.rotate_key()
+        models = ["gemini-flash-lite-latest", "gemini-flash-latest"]
+        total_keys = max(len(rotator.keys), 1)
+        for _ in range(total_keys * 2):
+            key = rotator.get_key()
+            if not key:
+                break
+            key_failed = False
+            for model in models:
+                try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+                    payload = {
+                        "contents": [{"parts": [{"text": prompt}]}]
+                    }
+                    r = requests.post(url, json=payload, timeout=12)
+                    if r.status_code == 200:
+                        data = r.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            raw = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "[]")
+                            # Parse JSON
+                            raw = raw.strip()
+                            start = raw.find("[")
+                            end = raw.rfind("]")
+                            if start != -1 and end != -1:
+                                raw = raw[start:end+1]
+                            return json.loads(raw)
+                    elif r.status_code in (429, 403):
+                        rotator.rotate_key()
+                        key_failed = True
+                        break
+                except Exception as e:
+                    logger.debug(f"AI entity detection ({model}): {e}")
                     continue
-            except Exception as e:
-                logger.debug(f"AI entity detection ({model}): {e}")
-                continue
+            if not key_failed:
+                rotator.rotate_key()
         
         return []
 

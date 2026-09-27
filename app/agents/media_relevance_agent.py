@@ -27,11 +27,9 @@ from app.utils.key_rotator import KeyRotator
 
 logger = logging.getLogger(__name__)
 
-# Danh sách models hỗ trợ Vision trong cụm Google Ultra
 VISION_MODELS = [
-    "gemini-3.1-flash-lite-preview",
+    "gemini-flash-lite-latest",
     "gemini-flash-latest",
-    "gemini-3.1-pro-preview",
 ]
 
 

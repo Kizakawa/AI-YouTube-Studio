@@ -100,10 +100,8 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
 
         total_keys = max(len(self.rotator.keys), 1)
         models = [
+            "gemini-flash-lite-latest",
             "gemini-flash-latest",
-            "gemini-3.1-flash-lite-preview",
-            "gemma-4-26b-a4b-it",
-            "gemini-3.1-pro-preview",
         ]
         for attempt in range(total_keys):
             key = self.rotator.get_key()
@@ -116,10 +114,12 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
                     payload = {
                         "contents": [{"parts": [{"text": prompt}]}]
                     }
-                    r = requests.post(url, json=payload, timeout=15)
+                    r = requests.post(url, json=payload, timeout=25)
                     if r.status_code in (429, 403):
-                        logger.warning(f"ScriptCritic: Model {model} bị giới hạn ({r.status_code}), thử model tiếp theo...")
-                        continue
+                        logger.warning(f"ScriptCritic: Model {model} bị giới hạn ({r.status_code}), xoay key ngay...")
+                        self.rotator.rotate_key()
+                        key_quota_failed = True
+                        break
 
                     if r.status_code == 200:
                         data = r.json()
