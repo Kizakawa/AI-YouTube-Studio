@@ -1,3 +1,4 @@
+import os
 import logging
 import re
 import urllib.parse
@@ -73,7 +74,12 @@ class ImageAgent:
         if google_res and Path(google_res).exists() and Path(google_res).stat().st_size > 5000:
             return google_res
 
-        # 2. DỰ PHÒNG CHẤT LƯỢNG CAO: Thử sinh ảnh bằng Pollinations với prompt tối ưu (chuẩn 9:16 HD 768x1344)
+        # 2. ƯU TIÊN SỐ 2: Thử sinh ảnh AI qua Hugging Face Serverless Inference (FLUX.1-schnell / SDXL không watermark)
+        hf_res = self._try_huggingface_image_api(anchored, output_path)
+        if hf_res and Path(hf_res).exists() and Path(hf_res).stat().st_size > 5000:
+            return hf_res
+
+        # 3. DỰ PHÒNG CHẤT LƯỢNG CAO: Thử sinh ảnh bằng Pollinations với prompt tối ưu (chuẩn 9:16 HD 768x1344)
         try:
             import random
             seed = random.randint(1000, 999999)
@@ -219,5 +225,40 @@ class ImageAgent:
             # Thử key tiếp theo nếu key hiện tại hết quota
             self.rotator.rotate_key()
 
+        return None
+
+    def _try_huggingface_image_api(self, prompt: str, output_path: str) -> Optional[str]:
+        """
+        Sinh ảnh AI siêu thực trực tiếp qua Hugging Face Serverless Inference API.
+        Ưu tiên các checkpoint hàng đầu thế giới:
+        - black-forest-labs/FLUX.1-schnell (Siêu thực, không watermark)
+        - stabilityai/stable-diffusion-xl-base-1.0
+        """
+        token = getattr(settings, 'HUGGINGFACE_TOKEN', '') or os.getenv("HUGGINGFACE_TOKEN", "") or os.getenv("HF_TOKEN", "")
+        if not token or token == "your_hf_token_here":
+            return None
+
+        models_to_try = [
+            "black-forest-labs/FLUX.1-schnell",
+            "stabilityai/stable-diffusion-xl-base-1.0",
+        ]
+        headers = {"Authorization": f"Bearer {token.strip()}"}
+
+        for model in models_to_try:
+            api_url = f"https://api-inference.huggingface.co/models/{model}"
+            try:
+                payload = {"inputs": prompt}
+                res = requests.post(api_url, headers=headers, json=payload, timeout=30)
+                if res.status_code == 200 and len(res.content) > 5000:
+                    with open(output_path, "wb") as f:
+                        f.write(res.content)
+                    logger.info(f"✨ [ImageAgent] ✅ Hugging Face ({model}) thành công: {output_path} ({len(res.content):,} bytes)")
+                    return output_path
+                elif res.status_code == 503:
+                    logger.debug(f"[ImageAgent] Hugging Face model {model} đang khởi động (503), chuyển model tiếp...")
+                else:
+                    logger.debug(f"[ImageAgent] Hugging Face {model} trả về mã {res.status_code}")
+            except Exception as e:
+                logger.debug(f"[ImageAgent] Lỗi Hugging Face {model}: {e}")
         return None
 

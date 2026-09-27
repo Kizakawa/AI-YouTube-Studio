@@ -1,3 +1,5 @@
+import os
+import urllib.parse
 import itertools
 import logging
 import re
@@ -691,6 +693,9 @@ class MediaAgent:
         self._google_cx = getattr(settings, 'GOOGLE_SEARCH_CX', '') or ''
         self._google_search_key = getattr(settings, 'GOOGLE_SEARCH_API_KEY', '') or ''
 
+        # Pixabay API (Kho B-Roll 3D, CGI và animation trừu tượng, miễn phí)
+        self._pixabay_key = getattr(settings, 'PIXABAY_API_KEY', '') or os.getenv("PIXABAY_API_KEY", "")
+
     @property
     def api_key(self) -> Optional[str]:
         return self.keys[0] if self.keys else None
@@ -1089,6 +1094,152 @@ class MediaAgent:
         return []
 
     # ──────────────────────────────────────────────────────────────────────────
+    # TẦNG C3: PIXABAY VIDEO & PHOTO (3D, CGI, Animation, Hạt Ánh Sáng)
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def search_pixabay_videos(self, query: str, per_page: int = 4) -> List[Dict]:
+        """
+        Tìm kiếm video clip trên Pixabay API (kho video 3D, CGI, chuyển động trừu tượng phong phú).
+        Miễn phí thương mại 100 requests/phút.
+        """
+        key = self._pixabay_key
+        if not key or key == "your_pixabay_api_key_here":
+            return []
+
+        try:
+            clean_q = clean_scene_search_query(query, max_words=3) or query
+            url = f"https://pixabay.com/api/videos/?key={key}&q={urllib.parse.quote(clean_q)}&video_type=all&per_page={max(per_page, 3)}&safesearch=true"
+            res = requests.get(url, timeout=10)
+            if res.status_code == 200:
+                data = res.json()
+                hits = data.get("hits", [])
+                results = []
+                for h in hits:
+                    vids = h.get("videos", {})
+                    # Ưu tiên large -> medium -> small
+                    v_info = vids.get("large") or vids.get("medium") or vids.get("small")
+                    if v_info and v_info.get("url"):
+                        results.append({
+                            "url": v_info["url"],
+                            "title": f"Pixabay Video: {h.get('tags', clean_q)}",
+                            "width": v_info.get("width", 1080),
+                            "height": v_info.get("height", 1920),
+                            "duration": h.get("duration", 0),
+                            "media_type": "video",
+                            "source": "pixabay_video",
+                            "thumbnail": f"https://i.vimeocdn.com/video/{h.get('picture_id', '')}_640x360.jpg" if h.get("picture_id") else "",
+                        })
+                return results
+            else:
+                logger.debug(f"Pixabay video returned status {res.status_code}")
+        except Exception as e:
+            logger.debug(f"Pixabay video search error for '{query}': {e}")
+        return []
+
+    def search_pixabay_photos(self, query: str, per_page: int = 4) -> List[Dict]:
+        """Tìm kiếm ảnh chất lượng cao trên Pixabay API."""
+        key = self._pixabay_key
+        if not key or key == "your_pixabay_api_key_here":
+            return []
+
+        try:
+            clean_q = clean_scene_search_query(query, max_words=3) or query
+            url = f"https://pixabay.com/api/?key={key}&q={urllib.parse.quote(clean_q)}&image_type=photo,illustration&per_page={max(per_page, 3)}&safesearch=true"
+            res = requests.get(url, timeout=10)
+            if res.status_code == 200:
+                data = res.json()
+                hits = data.get("hits", [])
+                results = []
+                for h in hits:
+                    img_url = h.get("largeImageURL") or h.get("webformatURL")
+                    if img_url:
+                        results.append({
+                            "url": img_url,
+                            "title": f"Pixabay: {h.get('tags', clean_q)}",
+                            "width": h.get("imageWidth", 1080),
+                            "height": h.get("imageHeight", 1920),
+                            "source": "pixabay",
+                            "thumbnail": h.get("previewURL", img_url),
+                        })
+                return results
+        except Exception as e:
+            logger.debug(f"Pixabay photo search error for '{query}': {e}")
+        return []
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # TẦNG C4: NASA IMAGE AND VIDEO LIBRARY (Thiên văn, Vũ Trụ, 4K Public Domain)
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def search_nasa_media(self, query: str, media_type: str = "video,image", per_page: int = 4) -> List[Dict]:
+        """
+        Tìm kiếm trực tiếp từ Thư viện Ảnh & Video của NASA (images-api.nasa.gov).
+        Miễn phí 100%, không cần API key, Public Domain hoàn toàn.
+        Lý tưởng cho chủ đề vũ trụ, hố đen, thiên hà, thiên văn, phi hành gia.
+        """
+        try:
+            clean_q = clean_scene_search_query(query, max_words=3) or query
+            encoded_q = urllib.parse.quote(clean_q)
+            url = f"https://images-api.nasa.gov/search?q={encoded_q}&media_type={media_type}"
+            res = requests.get(url, timeout=12)
+            if res.status_code == 200:
+                items = res.json().get("collection", {}).get("items", [])
+                results = []
+                for item in items[:per_page * 2]:
+                    data_list = item.get("data", [{}])
+                    m_type = data_list[0].get("media_type", "image")
+                    title = data_list[0].get("title", f"NASA {clean_q}")
+                    links = item.get("links", [{}])
+                    thumb = links[0].get("href", "") if links else ""
+
+                    if m_type == "video":
+                        # Với video NASA, gọi collection JSON để lấy link MP4
+                        col_url = item.get("href")
+                        if col_url:
+                            try:
+                                col_res = requests.get(col_url, timeout=5)
+                                if col_res.status_code == 200:
+                                    files = col_res.json()
+                                    mp4s = [f for f in files if isinstance(f, str) and f.endswith(".mp4")]
+                                    chosen_mp4 = None
+                                    for f in mp4s:
+                                        if "~medium.mp4" in f or "~large.mp4" in f:
+                                            chosen_mp4 = f
+                                            break
+                                    if not chosen_mp4 and mp4s:
+                                        chosen_mp4 = mp4s[0]
+
+                                    if chosen_mp4:
+                                        results.append({
+                                            "url": chosen_mp4,
+                                            "title": f"NASA Video: {title}",
+                                            "width": 1080,
+                                            "height": 1920,
+                                            "duration": 10.0,
+                                            "media_type": "video",
+                                            "source": "nasa_video",
+                                            "thumbnail": thumb,
+                                        })
+                            except Exception:
+                                pass
+                    elif m_type == "image":
+                        if thumb:
+                            results.append({
+                                "url": thumb,
+                                "title": f"NASA Photo: {title}",
+                                "width": 1080,
+                                "height": 1920,
+                                "source": "nasa_photo",
+                                "thumbnail": thumb,
+                            })
+
+                    if len(results) >= per_page:
+                        break
+                return results
+        except Exception as e:
+            logger.debug(f"NASA Library search error for '{query}': {e}")
+        return []
+
+    # ──────────────────────────────────────────────────────────────────────────
     # TẦNG D: PEXELS VIDEO & PHOTO (Stock footage)
     # ──────────────────────────────────────────────────────────────────────────
 
@@ -1157,6 +1308,17 @@ class MediaAgent:
             candidate_queries.append(query)
 
         collected_candidates = []
+
+        # ── 1. Kiểm tra NASA Library nếu chủ đề thiên văn / vũ trụ ──
+        space_words = ["space", "universe", "galaxy", "black hole", "nebula", "planet", "mars", "moon", "star", "telescope", "astronaut", "astronomy", "hố đen", "vũ trụ", "ngân hà", "hành tinh", "sao hỏa", "mặt trăng"]
+        is_space = any(w in f"{query} {narration} {clean_q}".lower() for w in space_words)
+        if is_space:
+            nasa_vids = self.search_nasa_media(query, media_type="video", per_page=3)
+            for nv in nasa_vids:
+                if nv.get("url") and nv["url"] not in used and nv not in collected_candidates:
+                    collected_candidates.append(nv)
+
+        # ── 2. Thu thập video từ Pexels ──
         for q_try in candidate_queries:
             videos = self.search_videos(q_try, per_page=6, orientation="portrait")
             for v in videos:
@@ -1164,6 +1326,16 @@ class MediaAgent:
                     collected_candidates.append(v)
             if len(collected_candidates) >= 8:
                 break
+
+        # ── 3. Thu thập bổ sung từ Pixabay (3D, CGI, Animation) nếu còn thiếu ứng viên ──
+        if len(collected_candidates) < 4 and self._pixabay_key:
+            for q_try in candidate_queries[:2]:
+                pxb_vids = self.search_pixabay_videos(q_try, per_page=4)
+                for pv in pxb_vids:
+                    if pv.get("url") and pv["url"] not in used and pv not in collected_candidates:
+                        collected_candidates.append(pv)
+                if len(collected_candidates) >= 8:
+                    break
 
         # ── Nếu chưa tìm thấy video nào, tự động mở rộng sang Thematic Motion Concepts ──
         if not collected_candidates:
@@ -1221,6 +1393,10 @@ class MediaAgent:
 
         # Fallback cơ bản nếu không kích hoạt hoặc lỗi agent curation
         for v in collected_candidates:
+            # Nếu là ứng viên đã chuẩn hóa từ NASA hoặc Pixabay
+            if v.get("source") in ("nasa_video", "pixabay_video") and v.get("url") and v["url"] not in used:
+                return v
+
             v_files = v.get("video_files", [])
             portrait_files = [
                 vf for vf in v_files
@@ -1321,6 +1497,19 @@ class MediaAgent:
                         "source": "pexels",
                         "thumbnail": src.get("medium", url),
                     })
+
+        # 6. NASA Image Library (Chủ đề không gian / thiên văn)
+        space_words = ["space", "universe", "galaxy", "black hole", "nebula", "planet", "mars", "moon", "star", "telescope", "astronaut", "vũ trụ", "ngân hà"]
+        if any(w in query.lower() for w in space_words):
+            nasa_imgs = self.search_nasa_media(query, media_type="image", per_page=per_page)
+            for ni in nasa_imgs:
+                add_item(ni)
+
+        # 7. Pixabay Photos (Kho ảnh 3D, CGI, minh họa chất lượng cao)
+        if self._pixabay_key:
+            pxb_imgs = self.search_pixabay_photos(query, per_page=per_page)
+            for pi in pxb_imgs:
+                add_item(pi)
 
         return combined[:per_page]
 

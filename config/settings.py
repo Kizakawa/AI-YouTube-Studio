@@ -24,6 +24,12 @@ class Settings:
     PEXELS_API_KEYS_RAW: str = os.getenv("PEXELS_API_KEYS", "")
     PEXELS_API_KEY: str = os.getenv("PEXELS_API_KEY", "")
     
+    # Pixabay API (Kho B-Roll 3D, CGI và animation trừu tượng, miễn phí)
+    PIXABAY_API_KEY: str = os.getenv("PIXABAY_API_KEY", "")
+
+    # Hugging Face Access Token (Sinh ảnh/video AI Cloud cao cấp FLUX / Wan)
+    HUGGINGFACE_TOKEN: str = os.getenv("HUGGINGFACE_TOKEN", "") or os.getenv("HF_TOKEN", "")
+
     # Google Custom Search (Tùy chọn — Tìm ảnh nhân vật thực, miễn phí 100 queries/ngày)
     GOOGLE_SEARCH_API_KEY: str = os.getenv("GOOGLE_SEARCH_API_KEY", "")
     GOOGLE_SEARCH_CX: str = os.getenv("GOOGLE_SEARCH_CX", "")
