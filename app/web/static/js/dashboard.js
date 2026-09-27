@@ -3603,7 +3603,7 @@ async function previewSelectedVoice(isAutoTrigger = false) {
     const icon = document.getElementById('preview-voice-icon');
     const text = document.getElementById('preview-voice-text');
 
-    const voice = voiceSelect ? voiceSelect.value : 'vi-VN-HoaiMyNeural';
+    const voice = voiceSelect ? voiceSelect.value : 'en-US-AndrewNeural';
     const rate = rateSelect ? rateSelect.value : '+10%';
     const scriptText = scriptInput ? scriptInput.value.trim() : '';
 
@@ -3712,7 +3712,10 @@ async function initManualStudio() {
                 `<option value="${escapeHtml(v.id)}">${escapeHtml(v.name)}</option>`
             ).join('');
             voiceSelects.forEach(sel => {
-                if (sel) sel.innerHTML = voiceHtml;
+                if (sel) {
+                    sel.innerHTML = voiceHtml;
+                    sel.value = 'en-US-AndrewNeural';
+                }
             });
         }
 
@@ -4215,7 +4218,7 @@ async function previewManualSelectedVoice(isAutoTrigger = false) {
     const icon = document.getElementById('preview-voice-icon-manual');
     const text = document.getElementById('preview-voice-text-manual');
 
-    const voice = voiceSelect ? voiceSelect.value : 'vi-VN-HoaiMyNeural';
+    const voice = voiceSelect ? voiceSelect.value : 'en-US-AndrewNeural';
     const rate = rateSelect ? rateSelect.value : '+10%';
     const scriptText = scriptInput ? scriptInput.value.trim() : '';
 
@@ -4355,7 +4358,7 @@ async function submitManualStudio() {
         const payloadObj = {
             title: title,
             target_channel_id: channelSelect ? channelSelect.value : 'channel_1',
-            voice: voiceSelect ? voiceSelect.value : 'vi-VN-HoaiMyNeural',
+            voice: voiceSelect ? voiceSelect.value : 'en-US-AndrewNeural',
             voice_rate: rateSelect ? rateSelect.value : '+10%',
             bgm_path: bgmSelect ? bgmSelect.value : null,
             use_ducking: duckCheckbox ? duckCheckbox.checked : true,
@@ -4444,7 +4447,7 @@ async function submitSingleVideoStudio() {
             timing_mode: singleTimingMode,
             title: title,
             target_channel_id: channelSelect ? channelSelect.value : 'channel_1',
-            voice: voiceSelect ? voiceSelect.value : 'vi-VN-HoaiMyNeural',
+            voice: voiceSelect ? voiceSelect.value : 'en-US-AndrewNeural',
             voice_rate: rateSelect ? rateSelect.value : '+10%',
             bgm_path: bgmSelect ? bgmSelect.value : null,
             use_ducking: duckCheckbox ? duckCheckbox.checked : true,
@@ -4628,7 +4631,7 @@ let instantPlayerState = {
     title: '',
     hook: '',
     channelName: '@channel',
-    voice: 'vi-VN-HoaiMyNeural',
+    voice: 'en-US-AndrewNeural',
     voiceRate: '+10%',
     scenes: [],
     currentSceneIndex: 0,
@@ -4656,7 +4659,7 @@ function openInstantPreviewModal(cfg) {
     instantPlayerState.title = cfg.title || 'Video Shorts';
     instantPlayerState.hook = cfg.hook || '';
     instantPlayerState.channelName = cfg.channelName || '@your_channel';
-    instantPlayerState.voice = cfg.voice || 'vi-VN-HoaiMyNeural';
+    instantPlayerState.voice = cfg.voice || 'en-US-AndrewNeural';
     instantPlayerState.voiceRate = cfg.voiceRate || '+10%';
     instantPlayerState.scenes = cfg.scenes || [];
     instantPlayerState.currentSceneIndex = 0;
@@ -5150,7 +5153,7 @@ function openInstantPreviewFromCreate() {
         title: res.title || 'Video Shorts AI',
         hook: res.hook || '',
         channelName: chName,
-        voice: 'vi-VN-HoaiMyNeural',
+        voice: 'en-US-AndrewNeural',
         voiceRate: '+10%',
         scenes: scenes
     });
@@ -5159,7 +5162,7 @@ function openInstantPreviewFromCreate() {
 function openInstantPreviewFromSingleStudio() {
     const title = document.getElementById('single-title')?.value.trim() || 'Video Shorts Hoàn Chỉnh';
     const script = document.getElementById('single-script-input')?.value.trim() || '';
-    const voice = document.getElementById('single-voice')?.value || 'vi-VN-HoaiMyNeural';
+    const voice = document.getElementById('single-voice')?.value || 'en-US-AndrewNeural';
     const voiceRate = document.getElementById('single-voice-rate')?.value || '+10%';
 
     let videoUrl = null;
@@ -5206,7 +5209,7 @@ function openInstantPreviewFromSingleStudio() {
 
 function openInstantPreviewFromMultiStudio() {
     const title = document.getElementById('manual-title')?.value.trim() || 'Video Shorts Ghép Cảnh';
-    const voice = document.getElementById('manual-voice')?.value || 'vi-VN-HoaiMyNeural';
+    const voice = document.getElementById('manual-voice')?.value || 'en-US-AndrewNeural';
     const voiceRate = document.getElementById('manual-voice-rate')?.value || '+10%';
 
     if (!manualScenes || manualScenes.length === 0) {
@@ -5272,7 +5275,7 @@ async function openInstantPreviewForJob(jobId) {
             title: data.title || `Job #${data.id}`,
             hook: data.topic || '',
             channelName: `@channel_${data.channel_id || 'shorts'}`,
-            voice: 'vi-VN-HoaiMyNeural',
+            voice: 'en-US-AndrewNeural',
             voiceRate: '+10%',
             scenes: scenes
         });
@@ -5444,7 +5447,7 @@ function openAddNicheModal() {
     document.getElementById('niche-color-outline').value = '#000000';
     document.getElementById('niche-text-outline').value = '#000000';
 
-    document.getElementById('niche-input-voice-en').value = 'en-US-ChristopherNeural';
+    document.getElementById('niche-input-voice-en').value = 'en-US-AndrewNeural';
     document.getElementById('niche-input-voice-vi').value = 'vi-VN-NamMinhNeural';
     document.getElementById('niche-input-rate').value = '0%';
     document.getElementById('niche-input-pitch').value = '0Hz';
@@ -5504,7 +5507,7 @@ function openEditNicheModal(nicheId) {
     document.getElementById('niche-text-outline').value = sub.outline_color || '#000000';
 
     const aud = n.audio || {};
-    document.getElementById('niche-input-voice-en').value = aud.preferred_voice_en || 'en-US-ChristopherNeural';
+    document.getElementById('niche-input-voice-en').value = aud.preferred_voice_en || 'en-US-AndrewNeural';
     document.getElementById('niche-input-voice-vi').value = aud.preferred_voice_vi || 'vi-VN-NamMinhNeural';
     document.getElementById('niche-input-rate').value = aud.rate || '0%';
     document.getElementById('niche-input-pitch').value = aud.pitch || '0Hz';

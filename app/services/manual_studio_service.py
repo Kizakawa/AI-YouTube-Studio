@@ -54,7 +54,7 @@ class ManualSceneItem(BaseModel):
 
 class ManualStudioConfig(BaseModel):
     title: str = "Manual Video"
-    voice: str = "vi-VN-HoaiMyNeural"
+    voice: str = "en-US-AndrewNeural"
     voice_rate: str = "+0%"
     voice_pitch: str = "+0Hz"
     bgm_path: Optional[str] = None

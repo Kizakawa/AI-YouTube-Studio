@@ -371,7 +371,7 @@ HARD RETENTION RULES:
         session_id: str,
         user_message: str,
         channel_niche: str = "general",
-        language: str = "vi"
+        language: str = "en"
     ) -> str:
         """
         Thảo luận, phản biện và đồng sáng tạo ý tưởng Shorts với người dùng.

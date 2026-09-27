@@ -548,7 +548,7 @@ async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         niche=ch_niche,
         language=ch_lang,
         visual_mode="imagen_ai",
-        preferred_voice="vi-VN-NamMinhNeural" if ch_lang == "vi" else "en-US-ChristopherNeural"
+        preferred_voice="vi-VN-NamMinhNeural" if ch_lang == "vi" else "en-US-AndrewNeural"
     )
 
     if ok:
@@ -3417,10 +3417,12 @@ async def chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Lấy thông tin ngách kênh
     channel_niche = "psychology"
+    channel_lang = "en"
     channels = settings.get_channels_config()
     for ch in channels:
         if ch.get("id") == channel_id:
             channel_niche = ch.get("niche", "general")
+            channel_lang = ch.get("language", "en")
             break
 
     session_id = str(chat.id)
@@ -3431,7 +3433,7 @@ async def chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session_id=session_id,
         user_message=prompt,
         channel_niche=channel_niche,
-        language="vi"
+        language=channel_lang
     )
 
     markup = get_chat_brainstorm_keyboard(session_id)
@@ -3507,9 +3509,9 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             channel_id=new_id,
             name=clean_text,
             niche="general",
-            language="vi",
+            language="en",
             visual_mode="imagen_ai",
-            preferred_voice="vi-VN-NamMinhNeural"
+            preferred_voice="en-US-AndrewNeural"
         )
         if ok:
             with get_db() as db:
@@ -3523,7 +3525,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 f"📺 **Tên kênh:** {clean_text}\n"
                 f"🔑 **Mã kênh:** `{new_id}`\n"
                 f"🎯 **Chủ đề:** Mặc định\n"
-                f"🌐 **Ngôn ngữ:** Tiếng Việt (vi)\n\n"
+                f"🌐 **Ngôn ngữ:** Tiếng Anh (en)\n\n"
                 f"👉 Đã tự động đặt làm **kênh đang chọn** của bạn!\n"
                 f"Bấm các nút bên dưới để tùy chỉnh tiếp (Đổi chủ đề, giọng đọc...) hoặc gõ `/idea <chủ đề>` để tạo video ngay!"
             )
@@ -3593,10 +3595,12 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         log_activity(db, user.id, user.username, "CHAT_REPLY", f"Trao đổi tự nhiên: '{clean_text[:50]}...'", channel_id=channel_id)
 
     channel_niche = "psychology"
+    channel_lang = "en"
     channels = settings.get_channels_config()
     for ch in channels:
         if ch.get("id") == channel_id:
             channel_niche = ch.get("niche", "general")
+            channel_lang = ch.get("language", "en")
             break
 
     session_id = str(chat.id)
@@ -3607,7 +3611,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         session_id=session_id,
         user_message=clean_text,
         channel_niche=channel_niche,
-        language="vi"
+        language=channel_lang
     )
 
     markup = get_chat_brainstorm_keyboard(session_id)
@@ -3718,7 +3722,7 @@ async def chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             content_agent.chat_brainstorm,
             session_id=session_id,
             user_message="Hãy cho mình thêm 3 góc nhìn khác thật độc lạ, gây tò mò cực độ cho chủ đề này!",
-            language="vi"
+            language="en"
         )
         markup = get_chat_brainstorm_keyboard(session_id)
         await safe_reply(update, f"💡 **3 GÓC NHÌN MỚI TỪ ĐẠO DIỄN:**\n\n{msg}", reply_markup=markup)
@@ -3729,7 +3733,7 @@ async def chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             content_agent.chat_brainstorm,
             session_id=session_id,
             user_message="Hãy viết cho mình 3 câu Hook 3 giây đầu hoàn toàn mới: 1 câu gây sốc, 1 câu tâm lý tò mò, 1 câu đánh trúng nỗi sợ của người xem!",
-            language="vi"
+            language="en"
         )
         markup = get_chat_brainstorm_keyboard(session_id)
         await safe_reply(update, f"🔥 **3 CÂU HOOK MỚI:**\n\n{msg}", reply_markup=markup)

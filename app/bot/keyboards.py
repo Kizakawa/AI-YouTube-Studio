@@ -108,6 +108,7 @@ def get_add_channel_templates_keyboard() -> InlineKeyboardMarkup:
 def get_voice_selection_keyboard(channel_id: str) -> InlineKeyboardMarkup:
     """Bàn phím chọn giọng đọc Edge-TTS"""
     voices = [
+        ("🇺🇸 Andrew (Nam - Truyền cảm, tự nhiên)", "en-US-AndrewNeural"),
         ("🇺🇸 Christopher (Nam - Trầm, cuốn hút)", "en-US-ChristopherNeural"),
         ("🇺🇸 Guy (Nam - Sâu sắc, tự tin)", "en-US-GuyNeural"),
         ("🇺🇸 Jenny (Nữ - Truyền cảm hứng)", "en-US-JennyNeural"),

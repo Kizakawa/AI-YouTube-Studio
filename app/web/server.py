@@ -2704,18 +2704,19 @@ async def get_manual_studio_sfx():
 async def get_manual_studio_voices():
     """Lấy danh sách giọng đọc AI được hỗ trợ tốt nhất."""
     voices = [
-        {"id": "vi-VN-HoaiMyNeural", "name": "🇻🇳 Tiếng Việt - Hoài My (Nữ truyền cảm)", "lang": "vi"},
-        {"id": "vi-VN-NamMinhNeural", "name": "🇻🇳 Tiếng Việt - Nam Minh (Nam trầm ấm)", "lang": "vi"},
+        {"id": "en-US-AndrewNeural", "name": "🇺🇸 English - Andrew (Dynamic & Natural - Default)", "lang": "en"},
         {"id": "en-US-ChristopherNeural", "name": "🇺🇸 English - Christopher (Deep Cinematic)", "lang": "en"},
         {"id": "en-US-GuyNeural", "name": "🇺🇸 English - Guy (Dynamic Storyteller)", "lang": "en"},
         {"id": "en-US-JennyNeural", "name": "🇺🇸 English - Jenny (Warm & Natural)", "lang": "en"},
-        {"id": "en-US-AriaNeural", "name": "🇺🇸 English - Aria (Engaging & Clear)", "lang": "en"}
+        {"id": "en-US-AriaNeural", "name": "🇺🇸 English - Aria (Engaging & Clear)", "lang": "en"},
+        {"id": "vi-VN-NamMinhNeural", "name": "🇻🇳 Tiếng Việt - Nam Minh (Nam trầm ấm)", "lang": "vi"},
+        {"id": "vi-VN-HoaiMyNeural", "name": "🇻🇳 Tiếng Việt - Hoài My (Nữ truyền cảm)", "lang": "vi"}
     ]
     return {"success": True, "voices": voices}
 
 
 class VoicePreviewRequest(BaseModel):
-    voice: str = "vi-VN-HoaiMyNeural"
+    voice: str = "en-US-AndrewNeural"
     rate: str = "+0%"
     pitch: str = "+0Hz"
     text: Optional[str] = None
@@ -2729,7 +2730,7 @@ async def preview_voice_sample(req: VoicePreviewRequest):
     """
     import edge_tts
 
-    voice = req.voice or "vi-VN-HoaiMyNeural"
+    voice = req.voice or "en-US-AndrewNeural"
     rate = req.rate if (req.rate and req.rate != "+0%") else None
     pitch = req.pitch if (req.pitch and req.pitch != "+0Hz") else None
 
@@ -2865,7 +2866,7 @@ async def create_manual_studio_video(
 
     config = ManualStudioConfig(
         title=title,
-        voice=data.get("voice", "vi-VN-HoaiMyNeural"),
+        voice=data.get("voice", "en-US-AndrewNeural"),
         voice_rate=data.get("voice_rate", "+0%"),
         voice_pitch=data.get("voice_pitch", "+0Hz"),
         bgm_path=bgm_path,
