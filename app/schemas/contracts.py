@@ -58,7 +58,7 @@ class SceneContract(BaseModel):
             "Ví dụ sai: 'Interstellar voyage cinematic', 'Nolan dark atmosphere'."
         )
     )
-    estimated_seconds: float = Field(default=3.0, gt=0, le=30, description="Ước lượng thô từ Gemini (tham khảo)")
+    estimated_seconds: float = Field(default=3.0, gt=0, le=300, description="Ước lượng thô từ Gemini hoặc thời lượng clip (tham khảo)")
 
     # --- Populated bởi VoiceAgent (Step B) ---
     audio_path: Optional[str] = Field(default=None, description="Đường dẫn file MP3 của riêng scene này")

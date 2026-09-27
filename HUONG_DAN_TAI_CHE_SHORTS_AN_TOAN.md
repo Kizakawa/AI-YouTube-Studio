@@ -111,4 +111,27 @@ py run.py
 # http://127.0.0.1:8000
 ```
 
+---
+
+## 📶 6. CƠ CHẾ PHÂN BIỆT THIẾT BỊ CÙNG MẠNG WI-FI & CHỐNG XUNG ĐỘT
+
+Khi hai hoặc nhiều người cùng kết nối vào hệ thống qua mạng Wi-Fi LAN (ví dụ: `192.168.x.x:8000`), hệ thống đã được trang bị cơ chế điều phối thông minh:
+
+1. **Định danh thiết bị tự động (Device Identity)**:
+   - Mỗi máy khách (Laptop, PC, iPhone, Android...) khi truy cập Web Studio sẽ tự động được cấp một **Device ID độc nhất** lưu trong `localStorage` và tự động nhận diện tên thiết bị (ví dụ: `iPhone / iPad #a1b2`, `Máy Windows #8f90`).
+   - Người dùng có thể click vào huy hiệu **"💻 Máy của tôi"** ở góc trên cùng bên phải để đổi tên máy theo ý thích (ví dụ: `Laptop của An`, `PC của Bình`).
+2. **Chống va chạm và ghi đè file**:
+   - Tên file Shorts render được tạo với cấu trúc an toàn tuyệt đối: `short_{tên_máy}_{timestamp}_{uuid}.mp4`.
+   - Mỗi file render sẽ lưu kèm tệp siêu dữ liệu `.meta.json` ghi nhận chính xác máy nào đã tạo clip, IP nào, và tiêu đề là gì.
+3. **Chống nghẽn CPU & Xung đột YouTube**:
+   - **Tải YouTube an toàn**: Nếu hai máy cùng chọn phân tích một video YouTube, hệ thống sử dụng khóa `threading.Lock()` theo từng video ID để tránh 2 tiến trình yt-dlp ghi đè file cache của nhau.
+   - **Hàng đợi Render**: FFmpeg được điều phối bằng `threading.Semaphore(2)` để giữ tối đa 2 tác vụ render đồng thời, ngăn chặn việc quá tải CPU làm sập máy chủ.
+4. **Bộ lọc xem video theo thiết bị**:
+   - Trong kho Shorts, có 3 nút lọc nhanh: **[Tất Cả]**, **[💻 Máy Này]** (chỉ hiện video của máy bạn vừa tạo), và **[👥 Máy Khác]** (xem video bạn bè cùng mạng vừa tạo).
+5. **Khắc phục lỗi trích xuất phân đoạn > 30s (VD: 45s)**:
+   - Nâng cấp giới hạn kiểm tra `SceneContract.estimated_seconds` từ 30s lên 300s (5 phút), cho phép render mượt mà các phân đoạn highlight dài từ 15s đến 60s mà không còn bị lỗi validation `less than or equal to 30`.
+
+---
+
 *Chúc bạn có những trải nghiệm tuyệt vời cùng hệ thống AI YouTube Studio! Mọi thắc mắc hoặc cần tùy biến thêm, hãy trao đổi trực tiếp để được hỗ trợ.*
+

@@ -98,6 +98,11 @@
             <p id="page-subtitle">Theo dõi toàn bộ hệ thống AI YouTube Studio</p>
         </div>
         <div class="header-actions">
+            <div id="device-identity-badge" class="device-badge" onclick="openDeviceNameModal()" title="Bấm để đổi tên thiết bị của bạn trên mạng Wi-Fi">
+                <span class="device-icon" id="device-icon-display">💻</span>
+                <span id="device-name-display" class="device-name">Máy của tôi</span>
+                <span id="device-ip-display" class="device-ip">127.0.0.1</span>
+            </div>
             <span id="last-sync-time" class="sync-time">Đang tải...</span>
             <button class="btn btn-primary" id="btn-wifi-share" onclick="openWifiModal()" title="Mở Web trên điện thoại qua mạng Wi-Fi" style="background: linear-gradient(135deg, #2563eb, #7c3aed); display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);">
                 <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"></path></svg>
@@ -1005,9 +1010,16 @@ Ví dụ Căn Theo Mốc:
                     <h4 style="margin:0; font-size: 16px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
                         <span>📱</span> Kho Video Shorts Đã Trích Xuất Gần Đây
                     </h4>
-                    <button class="btn btn-secondary" onclick="loadRepurposerClips()" style="font-size:12px; padding:6px 12px;">
-                        🔄 Làm Mới
-                    </button>
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <div class="filter-group" style="display:inline-flex; background:rgba(15,23,42,0.8); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:2px;">
+                            <button id="clip-filter-all" class="filter-btn-pill active" onclick="setClipDeviceFilter('all')">Tất Cả</button>
+                            <button id="clip-filter-mine" class="filter-btn-pill" onclick="setClipDeviceFilter('mine')">💻 Máy Này</button>
+                            <button id="clip-filter-others" class="filter-btn-pill" onclick="setClipDeviceFilter('others')">👥 Máy Khác</button>
+                        </div>
+                        <button class="btn btn-secondary" onclick="loadRepurposerClips()" style="font-size:12px; padding:6px 12px;">
+                            🔄 Làm Mới
+                        </button>
+                    </div>
                 </div>
                 <div id="repurposer-clips-gallery" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px;">
                     <div style="grid-column: 1 / -1; text-align: center; padding: 30px; color: var(--text-muted); font-size: 13px;">
@@ -2177,6 +2189,35 @@ Ví dụ Căn Theo Mốc:
                 </a>
                 <button class="btn btn-secondary" onclick="closeRepurposedPlayerModal()" style="font-size: 12px;">Đóng</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: DEVICE NAME SETTING -->
+<div class="modal-overlay" id="modal-device-name" onclick="closeDeviceNameModal()">
+    <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 440px; padding: 20px; background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 16px;">
+        <div class="modal-header" style="padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center;">
+            <h3 style="font-size: 16px; color:#fff; font-weight:700; margin:0; display:flex; align-items:center; gap:8px;">
+                <span>📶</span> Định Danh Thiết Bị Mạng Wi-Fi
+            </h3>
+            <button class="modal-close" onclick="closeDeviceNameModal()">✕</button>
+        </div>
+        <div class="modal-body" style="display:flex; flex-direction:column; gap:14px;">
+            <p style="font-size:12.5px; color:var(--text-muted); line-height:1.5; margin:0;">
+                Khi bạn và đồng đội cùng kết nối chung một mạng Wi-Fi LAN, việc đặt tên máy giúp phân biệt người tạo video và ngăn chặn xung đột tài nguyên.
+            </p>
+            <div class="form-group" style="margin:0;">
+                <label class="form-label" style="font-size:12.5px; margin-bottom:6px;">Tên Thiết Bị Của Bạn:</label>
+                <input type="text" id="input-device-name" class="form-input" placeholder="VD: Laptop của An, iPhone 15..." maxlength="24" style="background:#090d16; border-color:rgba(56, 189, 248, 0.4);">
+            </div>
+            <div style="font-size:12px; color:#94a3b8; background:rgba(255,255,255,0.03); padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.06); display:flex; flex-direction:column; gap:4px;">
+                <div>Mã ID Thiết Bị: <span id="lbl-device-id" style="color:#38bdf8; font-family:monospace; font-weight:600;"></span></div>
+                <div>Địa Chỉ IP LAN: <span id="lbl-device-ip" style="color:#10b981; font-family:monospace; font-weight:600;"></span></div>
+            </div>
+        </div>
+        <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+            <button class="btn btn-secondary" onclick="closeDeviceNameModal()" style="font-size: 12px;">Hủy</button>
+            <button class="btn btn-primary" onclick="saveDeviceName()" style="font-size: 12px; background:linear-gradient(135deg, #0284c7, #06b6d4);">Lưu Tên Máy</button>
         </div>
     </div>
 </div>

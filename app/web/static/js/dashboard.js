@@ -36,6 +36,7 @@ function scheduleNextFetch(delay = 10000) {
 
 document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
+    initDeviceIdentity();
     fetchAllData().then(() => scheduleNextFetch(10000));
 
     document.getElementById('btn-refresh').addEventListener('click', () => {
@@ -5531,7 +5532,9 @@ async function startRepurposerAnalysis() {
                 url_or_path: urlOrPath,
                 niche_id: nicheId,
                 mode: mode,
-                channel_name: channelName
+                channel_name: channelName,
+                device_id: getDeviceId(),
+                device_name: getDeviceName()
             })
         });
 
@@ -5710,7 +5713,9 @@ async function renderRepurposedMoment(idx, originalSource) {
                 layout_mode: layout,
                 add_subtitles: addSub,
                 subtitle_text: m.transcript_snippet || m.title,
-                mode: mode
+                mode: mode,
+                device_id: getDeviceId(),
+                device_name: getDeviceName()
             })
         });
 
@@ -5749,44 +5754,176 @@ async function renderRepurposedMoment(idx, originalSource) {
     }
 }
 
-async function loadRepurposerClips() {
+/* ═══════════════════════════════════════════════════════
+   MULTI-DEVICE LAN IDENTIFICATION & CONCURRENCY CONTROLLER
+══════════════════════════════════════════════════════════ */
+let clientDeviceIp = '127.0.0.1';
+let allRepurposedClips = [];
+let currentClipFilter = 'all';
+
+function getDeviceId() {
+    let id = localStorage.getItem('ai_yt_device_id');
+    if (!id) {
+        id = 'dev_' + Math.random().toString(36).substring(2, 8) + Date.now().toString(36).slice(-4);
+        localStorage.setItem('ai_yt_device_id', id);
+    }
+    return id;
+}
+
+function getDeviceName() {
+    let name = localStorage.getItem('ai_yt_device_name');
+    if (!name) {
+        const ua = navigator.userAgent;
+        if (/iPhone|iPad|iPod/i.test(ua)) name = 'iPhone / iPad';
+        else if (/Android/i.test(ua)) name = 'Thiết Bị Android';
+        else if (/Mac/i.test(ua)) name = 'MacBook';
+        else if (/Windows/i.test(ua)) name = 'Máy Windows';
+        else name = 'Máy Khách LAN';
+        
+        name += ' #' + getDeviceId().slice(-4);
+        localStorage.setItem('ai_yt_device_name', name);
+    }
+    return name;
+}
+
+async function initDeviceIdentity() {
+    const devName = getDeviceName();
+    const devId = getDeviceId();
+    
+    const nameEl = document.getElementById('device-name-display');
+    const ipEl = document.getElementById('device-ip-display');
+    const iconEl = document.getElementById('device-icon-display');
+    
+    if (nameEl) nameEl.textContent = devName;
+    if (iconEl) {
+        if (/iPhone|Android|Mobile/i.test(navigator.userAgent)) iconEl.textContent = '📱';
+        else iconEl.textContent = '💻';
+    }
+    
+    try {
+        const res = await fetch('/api/system/client-info');
+        if (res.ok) {
+            const data = await res.json();
+            clientDeviceIp = data.client_ip || '127.0.0.1';
+            if (ipEl) ipEl.textContent = clientDeviceIp;
+        }
+    } catch (e) {
+        console.warn('initDeviceIdentity fetch IP error:', e);
+    }
+}
+
+function openDeviceNameModal() {
+    const modal = document.getElementById('modal-device-name');
+    const input = document.getElementById('input-device-name');
+    const lblId = document.getElementById('lbl-device-id');
+    const lblIp = document.getElementById('lbl-device-ip');
+    
+    if (input) input.value = getDeviceName();
+    if (lblId) lblId.textContent = getDeviceId();
+    if (lblIp) lblIp.textContent = clientDeviceIp;
+    if (modal) modal.classList.add('active');
+}
+
+function closeDeviceNameModal() {
+    const modal = document.getElementById('modal-device-name');
+    if (modal) modal.classList.remove('active');
+}
+
+function saveDeviceName() {
+    const input = document.getElementById('input-device-name');
+    if (!input) return;
+    const newName = input.value.trim();
+    if (!newName) {
+        showToast('Vui lòng nhập tên thiết bị', 'error');
+        return;
+    }
+    localStorage.setItem('ai_yt_device_name', newName);
+    const nameEl = document.getElementById('device-name-display');
+    if (nameEl) nameEl.textContent = newName;
+    closeDeviceNameModal();
+    showToast('✅ Đã lưu tên máy: ' + newName, 'success');
+    renderFilteredRepurposedClips();
+}
+
+function setClipDeviceFilter(filter) {
+    currentClipFilter = filter;
+    document.querySelectorAll('.filter-btn-pill').forEach(btn => btn.classList.remove('active'));
+    const activeBtn = document.getElementById(`clip-filter-${filter}`);
+    if (activeBtn) activeBtn.classList.add('active');
+    renderFilteredRepurposedClips();
+}
+
+function renderFilteredRepurposedClips() {
     const gallery = document.getElementById('repurposer-clips-gallery');
     if (!gallery) return;
 
+    const myId = getDeviceId();
+    let filtered = allRepurposedClips || [];
+
+    if (currentClipFilter === 'mine') {
+        filtered = filtered.filter(c => c.device_id === myId || (!c.device_id && !c.client_ip));
+    } else if (currentClipFilter === 'others') {
+        filtered = filtered.filter(c => c.device_id && c.device_id !== myId);
+    }
+
+    if (filtered.length === 0) {
+        let msg = 'Chưa có video Shorts nào trong bộ lọc này.';
+        if (currentClipFilter === 'mine') msg = 'Bạn chưa render clip nào từ máy này. Hãy chọn một phân đoạn ở trên và bấm Render!';
+        else if (currentClipFilter === 'others') msg = 'Chưa có clip nào do các máy khác trong cùng mạng Wi-Fi tạo.';
+        gallery.innerHTML = `
+            <div style="grid-column: 1 / -1; text-align: center; padding: 30px; color: var(--text-muted); font-size: 13px;">
+                ${msg}
+            </div>
+        `;
+        return;
+    }
+
+    gallery.innerHTML = '';
+    filtered.forEach(c => {
+        const isMine = c.device_id === myId || (!c.device_id && !c.client_ip);
+        const card = document.createElement('div');
+        card.style.cssText = 'background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; position:relative;';
+        
+        let deviceBadgeHtml = '';
+        if (isMine) {
+            deviceBadgeHtml = `<span class="clip-device-badge clip-device-mine" title="Tạo từ máy này">💻 Máy Này</span>`;
+        } else if (c.device_name || c.device_id) {
+            const devLabel = c.device_name || (c.device_id ? c.device_id.slice(-6) : 'Máy Khác');
+            deviceBadgeHtml = `<span class="clip-device-badge clip-device-other" title="Tạo bởi ${escapeHtml(devLabel)} (${c.client_ip || 'LAN'})">👥 ${escapeHtml(devLabel)}</span>`;
+        } else {
+            deviceBadgeHtml = `<span class="clip-device-badge" style="background:rgba(255,255,255,0.05); color:#94a3b8;">🎞️ Hệ Thống</span>`;
+        }
+
+        const displayTitle = c.title || c.filename;
+
+        card.innerHTML = `
+            <div style="position:relative; width:100%; height:160px; background:#000; border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center; cursor:pointer;" onclick="openRepurposedPlayer('${c.url}', '${escapeHtml(displayTitle)}')">
+                <video src="${c.url}#t=0.5" preload="metadata" style="width:100%; height:100%; object-fit:contain; opacity:0.85;"></video>
+                <div style="position:absolute; width:40px; height:40px; border-radius:50%; background:rgba(16,185,129,0.9); display:flex; align-items:center; justify-content:center; color:#fff; font-size:16px; box-shadow:0 4px 12px rgba(0,0,0,0.5);">
+                    ▶
+                </div>
+                <div style="position:absolute; top:8px; left:8px; z-index:2;">
+                    ${deviceBadgeHtml}
+                </div>
+            </div>
+            <div style="font-size:12px; font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(displayTitle)}">
+                ${escapeHtml(displayTitle)}
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#94a3b8;">
+                <span>💾 ${c.size_mb} MB</span>
+                <a href="${c.url}" download class="btn btn-secondary" style="font-size:11px; padding:3px 8px;">Tải về</a>
+            </div>
+        `;
+        gallery.appendChild(card);
+    });
+}
+
+async function loadRepurposerClips() {
     try {
         const res = await fetch('/api/repurposer/clips');
         const data = await res.json();
-
-        if (!data.clips || data.clips.length === 0) {
-            gallery.innerHTML = `
-                <div style="grid-column: 1 / -1; text-align: center; padding: 30px; color: var(--text-muted); font-size: 13px;">
-                    Chưa có video Shorts nào được xuất. Hãy chọn một video dài và bấm "Quét & Phân Tích" để bắt đầu!
-                </div>
-            `;
-            return;
-        }
-
-        gallery.innerHTML = '';
-        data.clips.forEach(c => {
-            const card = document.createElement('div');
-            card.style.cssText = 'background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px;';
-            card.innerHTML = `
-                <div style="position:relative; width:100%; height:160px; background:#000; border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center; cursor:pointer;" onclick="openRepurposedPlayer('${c.url}', '${escapeHtml(c.filename)}')">
-                    <video src="${c.url}#t=0.5" preload="metadata" style="width:100%; height:100%; object-fit:contain; opacity:0.8;"></video>
-                    <div style="position:absolute; width:40px; height:40px; border-radius:50%; background:rgba(16,185,129,0.9); display:flex; align-items:center; justify-content:center; color:#fff; font-size:16px; box-shadow:0 4px 12px rgba(0,0,0,0.5);">
-                        ▶
-                    </div>
-                </div>
-                <div style="font-size:12px; font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(c.filename)}">
-                    ${escapeHtml(c.filename)}
-                </div>
-                <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#94a3b8;">
-                    <span>💾 ${c.size_mb} MB</span>
-                    <a href="${c.url}" download class="btn btn-secondary" style="font-size:11px; padding:3px 8px;">Tải về</a>
-                </div>
-            `;
-            gallery.appendChild(card);
-        });
+        allRepurposedClips = data.clips || [];
+        renderFilteredRepurposedClips();
     } catch (e) {
         console.warn('loadRepurposerClips error:', e);
     }
@@ -5816,6 +5953,7 @@ function closeRepurposedPlayerModal() {
     }
     if (modal) modal.classList.remove('active');
 }
+
 
 
 

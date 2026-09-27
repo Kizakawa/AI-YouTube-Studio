@@ -38,6 +38,23 @@ SUBS_DIR = REPURPOSER_DIR / "subtitles"
 for d in [REPURPOSER_DIR, DOWNLOADS_DIR, CLIPS_DIR, SUBS_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
+import time
+import uuid
+import threading
+
+# Giới hạn tối đa 2 render FFmpeg đồng thời trên toàn server để tránh đơ CPU/tràn RAM
+_render_semaphore = threading.Semaphore(2)
+
+# Lock download theo video_id để tránh việc 2 máy cùng tải đè hoặc xung đột file
+_download_locks: Dict[str, threading.Lock] = {}
+_dl_pool_lock = threading.Lock()
+
+def _get_video_download_lock(vid: str) -> threading.Lock:
+    with _dl_pool_lock:
+        if vid not in _download_locks:
+            _download_locks[vid] = threading.Lock()
+        return _download_locks[vid]
+
 
 def extract_youtube_video_id(url_or_id: str) -> Optional[str]:
     """Trích xuất Video ID từ các định dạng URL YouTube khác nhau hoặc ID trực tiếp."""
@@ -293,31 +310,34 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không kèm text rác) t
         start_seconds: Optional[float] = None,
         end_seconds: Optional[float] = None,
     ) -> str:
-        """Tải video YouTube ở độ phân giải 720p/1080p bằng yt-dlp vào thư mục tạm."""
+        """Tải video YouTube ở độ phân giải 720p/1080p bằng yt-dlp vào thư mục tạm (thread-safe)."""
         video_id = extract_youtube_video_id(url_or_id) or "source_video"
         target_path = DOWNLOADS_DIR / f"{video_id}.mp4"
 
-        if target_path.exists() and target_path.stat().st_size > 1024 * 1024:
-            logger.info(f"Đã có sẵn file tải trước đó: {target_path}")
+        # Sử dụng lock theo video_id để tránh việc 2 máy cùng tải đè 1 file
+        lock = _get_video_download_lock(video_id)
+        with lock:
+            if target_path.exists() and target_path.stat().st_size > 1024 * 1024:
+                logger.info(f"Đã có sẵn file tải trước đó: {target_path}")
+                return str(target_path)
+
+            import yt_dlp
+            ydl_opts = {
+                "format": "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                "outtmpl": str(target_path),
+                "quiet": True,
+                "no_warnings": True,
+                "merge_output_format": "mp4",
+            }
+            watch_url = f"https://www.youtube.com/watch?v={video_id}" if len(video_id) == 11 else url_or_id
+            logger.info(f"Đang tải video từ YouTube: {watch_url}")
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([watch_url])
+
+            if not target_path.exists():
+                raise FileNotFoundError(f"Tải video thất bại, không tìm thấy: {target_path}")
+
             return str(target_path)
-
-        import yt_dlp
-        ydl_opts = {
-            "format": "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-            "outtmpl": str(target_path),
-            "quiet": True,
-            "no_warnings": True,
-            "merge_output_format": "mp4",
-        }
-        watch_url = f"https://www.youtube.com/watch?v={video_id}" if len(video_id) == 11 else url_or_id
-        logger.info(f"Đang tải video từ YouTube: {watch_url}")
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([watch_url])
-
-        if not target_path.exists():
-            raise FileNotFoundError(f"Tải video thất bại, không tìm thấy: {target_path}")
-
-        return str(target_path)
 
     # ── 4. CẮT VIDEO, VERTICAL 9:16 CROP & GHÉP PHỤ ĐỀ KARAOKE ─────────────────
 
@@ -332,13 +352,14 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không kèm text rác) t
         add_subtitles: bool = True,
         subtitle_text: str = "",
         credit_text: Optional[str] = None,
+        device_id: str = "default_device",
+        device_name: str = "Thiết bị khách",
+        client_ip: str = "",
+        title: str = "",
     ) -> Dict[str, Any]:
         """
         Cắt đoạn highlight, chuyển sang tỉ lệ dọc 9:16 (1080x1920) và đốt phụ đề Karaoke ASS chuẩn Niche Profile.
-        
-        layout_mode:
-          - 'blur_background': Video gốc giữ nguyên tỉ lệ ở giữa, nền trên dưới làm mờ phóng to (Chuẩn phong cách Opus Clip/Shorts).
-          - 'center_crop': Cắt phần trung tâm 9:16 toàn màn hình.
+        Có hỗ trợ giới hạn luồng render và lưu thông tin định danh thiết bị tạo clip.
         """
         if not os.path.exists(source_video_path):
             raise FileNotFoundError(f"Không tìm thấy file nguồn: {source_video_path}")
@@ -366,7 +387,7 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không kèm text rác) t
                 narration=subtitle_text.strip(),
                 visual_keyword="viral highlight",
                 audio_duration_ms=int(duration * 1000),
-                estimated_seconds=duration,
+                estimated_seconds=min(max(float(duration), 1.0), 300.0),
             )
             SubtitleHelper.save_ass_file(
                 scenes=[pseudo_scene],
@@ -399,7 +420,7 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không kèm text rác) t
                     f"[bg][fg]overlay=(W-w)/2:(H-h)/2,ass='{escaped_ass}'[v]"
                 )
 
-        # 3. Chạy FFmpeg cắt chính xác và render
+        # 3. Chạy FFmpeg cắt chính xác và render (có Semaphore giới hạn tải đồng thời)
         ffmpeg_args = [
             "-ss", str(start_seconds),
             "-t", str(duration),
@@ -421,13 +442,36 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không kèm text rác) t
             output_path_str,
         ]
 
-        logger.info(f"Đang render Short 9:16: {output_path_str}")
-        run_ffmpeg(ffmpeg_args, timeout=240)
+        logger.info(f"[{device_name} ({client_ip})] Đang render Short 9:16: {output_path_str}")
+        with _render_semaphore:
+            run_ffmpeg(ffmpeg_args, timeout=240)
 
         if not os.path.exists(output_path_str):
             raise RuntimeError(f"Render Short thất bại, không tìm thấy file: {output_path_str}")
 
         file_size_mb = round(os.path.getsize(output_path_str) / (1024 * 1024), 2)
+
+        # Lưu file metadata định danh thiết bị tạo clip
+        meta_file = CLIPS_DIR / f"{Path(output_filename).stem}.meta.json"
+        meta_data = {
+            "filename": output_filename,
+            "device_id": device_id,
+            "device_name": device_name,
+            "client_ip": client_ip,
+            "created_at": time.time(),
+            "duration": round(duration, 1),
+            "file_size_mb": file_size_mb,
+            "niche_id": niche_id,
+            "layout_mode": layout_mode,
+            "title": title or Path(output_filename).stem,
+            "subtitle_text": subtitle_text[:120],
+        }
+        try:
+            with open(meta_file, "w", encoding="utf-8") as mf:
+                json.dump(meta_data, mf, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"Lỗi lưu clip meta: {e}")
+
         return {
             "success": True,
             "output_path": output_path_str,
@@ -437,6 +481,10 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không kèm text rác) t
             "file_size_mb": file_size_mb,
             "niche_id": niche_id,
             "layout_mode": layout_mode,
+            "device_id": device_id,
+            "device_name": device_name,
+            "client_ip": client_ip,
+            "title": title or Path(output_filename).stem,
         }
 
     # ── 5. QUÉT DANH SÁCH VIDEO CÓ SẴN TRONG HỆ THỐNG ĐỂ TÁI CHẾ ─────────────

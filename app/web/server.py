@@ -7,7 +7,7 @@ import logging
 import requests as http_requests
 from pathlib import Path
 from typing import Dict, List, Any, Optional
-from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -1901,6 +1901,8 @@ class RepurposeAnalyzeRequest(BaseModel):
     niche_id: str = "general"
     mode: str = "self_owned"
     channel_name: str = ""
+    device_id: Optional[str] = None
+    device_name: Optional[str] = None
 
 class RepurposeRenderRequest(BaseModel):
     source: str
@@ -1912,6 +1914,17 @@ class RepurposeRenderRequest(BaseModel):
     add_subtitles: bool = True
     subtitle_text: str = ""
     credit_text: Optional[str] = None
+    device_id: Optional[str] = None
+    device_name: Optional[str] = None
+
+@app.get("/api/system/client-info")
+async def get_client_system_info(request: Request) -> Dict[str, Any]:
+    """Trả về thông tin kết nối mạng LAN của máy khách đang truy cập."""
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    return {
+        "client_ip": client_ip,
+        "is_local": client_ip in ("127.0.0.1", "localhost", "::1"),
+    }
 
 @app.get("/api/repurposer/local-videos")
 async def list_local_videos_for_repurpose() -> Dict[str, Any]:
@@ -1954,11 +1967,13 @@ async def analyze_repurpose_video(req: RepurposeAnalyzeRequest) -> Dict[str, Any
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/repurposer/render-clip")
-async def render_repurposed_clip(req: RepurposeRenderRequest) -> Dict[str, Any]:
+async def render_repurposed_clip(req: RepurposeRenderRequest, request: Request) -> Dict[str, Any]:
     """Cắt đoạn highlight, chuyển tỉ lệ 9:16 và ghép phụ đề Karaoke chuẩn Niche Profile."""
     import time
+    import uuid
     from app.services.video_repurposer import repurposer_service, extract_youtube_video_id
     try:
+        client_ip = request.client.host if request.client else "unknown"
         source_path = req.source.strip()
         if not os.path.exists(source_path):
             video_id = extract_youtube_video_id(source_path)
@@ -1967,7 +1982,11 @@ async def render_repurposed_clip(req: RepurposeRenderRequest) -> Dict[str, Any]:
             source_path = repurposer_service.download_segment_or_full(source_path)
             
         timestamp_int = int(time.time())
-        out_filename = f"short_{timestamp_int}_{int(req.start_seconds)}_{int(req.end_seconds)}.mp4"
+        # Tạo tên file độc nhất tuyệt đối, có định danh thiết bị chống xung đột mạng LAN
+        raw_dev = (req.device_name or req.device_id or "dev").strip()
+        safe_dev = "".join(c for c in raw_dev if c.isalnum() or c in ("-", "_"))[:10] or "dev"
+        unique_tag = uuid.uuid4().hex[:6]
+        out_filename = f"short_{safe_dev}_{timestamp_int}_{unique_tag}.mp4"
         
         result = repurposer_service.render_repurposed_short(
             source_video_path=source_path,
@@ -1979,6 +1998,10 @@ async def render_repurposed_clip(req: RepurposeRenderRequest) -> Dict[str, Any]:
             add_subtitles=req.add_subtitles,
             subtitle_text=req.subtitle_text or req.title,
             credit_text=req.credit_text,
+            device_id=req.device_id,
+            device_name=req.device_name,
+            client_ip=client_ip,
+            title=req.title,
         )
         return result
     except Exception as e:
@@ -1987,17 +2010,29 @@ async def render_repurposed_clip(req: RepurposeRenderRequest) -> Dict[str, Any]:
 
 @app.get("/api/repurposer/clips")
 async def list_repurposed_clips() -> Dict[str, Any]:
-    """Lấy danh sách các Shorts đã được trích xuất thành công."""
+    """Lấy danh sách các Shorts đã được trích xuất thành công kèm thông tin thiết bị tạo."""
     from app.services.video_repurposer import CLIPS_DIR
     clips = []
     if CLIPS_DIR.exists():
         for f in CLIPS_DIR.glob("*.mp4"):
             try:
+                meta_path = f.with_name(f"{f.name}.meta.json")
+                meta_info = {}
+                if meta_path.exists():
+                    try:
+                        with open(meta_path, "r", encoding="utf-8") as mf:
+                            meta_info = json.load(mf)
+                    except Exception:
+                        pass
                 clips.append({
                     "filename": f.name,
                     "url": f"/media/repurposer/clips/{f.name}",
                     "size_mb": round(f.stat().st_size / (1024 * 1024), 2),
-                    "created_at": f.stat().st_mtime,
+                    "created_at": meta_info.get("created_at") or f.stat().st_mtime,
+                    "device_id": meta_info.get("device_id", ""),
+                    "device_name": meta_info.get("device_name", ""),
+                    "client_ip": meta_info.get("client_ip", ""),
+                    "title": meta_info.get("title", ""),
                 })
             except Exception:
                 pass
