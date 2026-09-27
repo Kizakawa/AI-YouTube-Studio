@@ -1848,10 +1848,11 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         markup = get_publish_channel_keyboard(job_id)
         text = (
-            f"📺 **CHỌN KÊNH YOUTUBE ĐỂ XUẤT BẢN (Task #{job_id})**\n\n"
+            f"⚡ **CHỌN KÊNH YOUTUBE SHORTS ĐỂ XUẤT BẢN (Task #{job_id})**\n\n"
             f"📌 **Tiêu đề:** {video_title}\n"
+            f"⚡ **Định dạng:** YouTube Shorts (Dọc 9:16 + Gắn cờ #Shorts)\n"
             f"🎯 **Kênh dự kiến:** `{current_ch}`\n\n"
-            f"👉 Vui lòng chọn kênh YouTube bạn muốn tải video lên:\n"
+            f"👉 Vui lòng chọn kênh YouTube bạn muốn tải Shorts lên:\n"
             f"_(🟢: Đã kết nối OAuth | ⚠️: Chưa kết nối OAuth)_"
         )
         await safe_reply(update, text, reply_markup=markup)
@@ -1894,11 +1895,21 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
             ch_lang = ch_cfg.get("language", "en")
+            # Đảm bảo tiêu đề và mô tả có gắn cờ Shorts
+            if "#shorts" not in video_title.lower():
+                if len(video_title) > 91:
+                    video_title = video_title[:91].rstrip()
+                video_title = f"{video_title} #Shorts"
+
+            if "#shorts" not in video_desc.lower():
+                video_desc = f"{video_desc.strip()}\n\n#Shorts #shorts #viral" if video_desc.strip() else "#Shorts #shorts #viral"
+
             status_wait = await safe_reply(
                 update,
-                f"🚀 **ĐANG ĐĂNG VIDEO #{job_id} LÊN YOUTUBE & GOOGLE DRIVE...**\n\n"
+                f"🚀 **ĐANG ĐĂNG YOUTUBE SHORTS #{job_id} & GOOGLE DRIVE...**\n\n"
                 f"📺 **Kênh:** `{ch_cfg.get('name', channel_id)}` (`{channel_id}`)\n"
                 f"📌 **Tiêu đề:** {video_title}\n"
+                f"⚡ **Chế độ:** YouTube Shorts (9:16 + Tag #Shorts)\n"
                 f"⏳ Đang sao lưu Google Drive ({acc_id}) và upload YouTube..."
             )
 
@@ -1928,7 +1939,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except Exception:
                     pass
 
-            # 2. Đăng tải lên YouTube
+            # 2. Đăng tải lên YouTube Shorts
             pub_res = await asyncio.to_thread(
                 pub_agent.upload_video,
                 video_path=video_path,
@@ -1943,6 +1954,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             if pub_res.get("status") == "success":
                 yt_url = pub_res.get("youtube_url")
+                yt_shorts_url = pub_res.get("shorts_url") or f"https://www.youtube.com/shorts/{pub_res.get('video_id')}"
                 yt_id = pub_res.get("video_id")
                 with get_db() as db:
                     db_job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
@@ -1953,13 +1965,14 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         if drive_link:
                             db_job.drive_link = drive_link
                         log_activity(db, user.id, user.username, "PUBLISH_YOUTUBE",
-                                     f"Đã đăng Video #{job_id} lên YouTube kênh {channel_id} ({yt_url})",
+                                     f"Đã đăng Video #{job_id} lên YouTube Shorts kênh {channel_id} ({yt_shorts_url})",
                                      channel_id=channel_id)
 
                 success_text = (
-                    f"🎉 **ĐĂNG TẢI VIDEO #{job_id} THÀNH CÔNG!**\n\n"
+                    f"🎉 **ĐĂNG TẢI YOUTUBE SHORTS #{job_id} THÀNH CÔNG!**\n\n"
                     f"📺 **Kênh đã đăng:** `{ch_cfg.get('name', channel_id)}`\n"
-                    f"🎬 **Link xem YouTube (Chế độ Công khai):**\n👉 {yt_url}\n\n"
+                    f"⚡ **Link xem YouTube Shorts (Công khai):**\n👉 {yt_shorts_url}\n\n"
+                    f"🎬 **Link phụ:** {yt_url}\n\n"
                 )
                 if pub_res.get("comment_id"):
                     success_text += f"💬 **Bình luận mồi tự động (Pinned Bait):** Đã đăng thành công!\n> _{pinned_comment}_\n\n"
@@ -2117,13 +2130,13 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from app.bot.keyboards import get_schedule_channel_keyboard
         markup = get_schedule_channel_keyboard(job_id)
         text = (
-            f"⏰ **TỰ ĐỘNG XẾP VÀO KHE GIỜ VÀNG (Video #{job_id})**\n\n"
+            f"⏰ **TỰ ĐỘNG XẾP VÀO KHE GIỜ VÀNG SHORTS (Video #{job_id})**\n\n"
             f"📌 **Tiêu đề:** {video_title}\n\n"
             f"🎯 **Thuật toán thông minh sẽ tự động:**\n"
             f"• Quét các khung giờ có lượng xem Shorts cao nhất tại Mỹ (20:00 hoặc 00:30 đêm VN).\n"
             f"• Tự động chọn khe giờ vàng TRỐNG tiếp theo (tránh trùng lịch, tối đa 2 video/ngày).\n"
-            f"• Upload video lên YouTube và khóa chế độ hẹn giờ (`publishAt`).\n\n"
-            f"👉 Vui lòng chọn kênh để kích hoạt lên lịch tự động:"
+            f"• Upload video lên YouTube Shorts (kèm cờ #Shorts) và khóa chế độ hẹn giờ (`publishAt`).\n\n"
+            f"👉 Vui lòng chọn kênh để kích hoạt lên lịch Shorts tự động:"
         )
         await safe_reply(update, text, reply_markup=markup)
 
@@ -2163,14 +2176,24 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             from app.services.smart_scheduler import get_next_available_golden_slot
             slot_dt, slot_iso, display_vn, display_us = get_next_available_golden_slot(channel_id)
 
+            # Đảm bảo tiêu đề và mô tả có gắn tag Shorts
+            if "#shorts" not in video_title.lower():
+                if len(video_title) > 91:
+                    video_title = video_title[:91].rstrip()
+                video_title = f"{video_title} #Shorts"
+
+            if "#shorts" not in video_desc.lower():
+                video_desc = f"{video_desc.strip()}\n\n#Shorts #shorts #viral" if video_desc.strip() else "#Shorts #shorts #viral"
+
             await safe_reply(
                 update,
-                f"⏰ **ĐANG TỰ ĐỘNG XẾP VÀO KHE GIỜ VÀNG (Video #{job_id})...**\n\n"
+                f"⏰ **ĐANG TỰ ĐỘNG XẾP VÀO KHE GIỜ VÀNG SHORTS (Video #{job_id})...**\n\n"
                 f"📺 **Kênh:** `{ch_cfg.get('name', channel_id)}`\n"
+                f"⚡ **Chế độ:** YouTube Shorts\n"
                 f"🎯 **Khe giờ vàng tìm thấy:**\n"
                 f"👉 **{display_vn}**\n"
                 f"*(🇺🇸 {display_us})*\n\n"
-                f"🚀 Đang sao lưu Google Drive ({acc_id}) và upload lên YouTube ở chế độ hẹn giờ (publishAt)..."
+                f"🚀 Đang sao lưu Google Drive ({acc_id}) và upload lên YouTube Shorts ở chế độ hẹn giờ (publishAt)..."
             )
 
             from app.agents.publisher_agent import PublisherAgent
@@ -2216,6 +2239,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             if pub_res.get("status") == "success":
                 yt_url = pub_res.get("youtube_url")
+                yt_shorts_url = pub_res.get("shorts_url") or f"https://www.youtube.com/shorts/{pub_res.get('video_id')}"
                 yt_id = pub_res.get("video_id")
                 with get_db() as db:
                     db_job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
@@ -2227,15 +2251,17 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         if drive_link:
                             db_job.drive_link = drive_link
                         log_activity(db, user.id, user.username, "SCHEDULE_YOUTUBE",
-                                     f"Đã lên lịch Video #{job_id} vào {display_vn} ({yt_url})",
+                                     f"Đã lên lịch Video #{job_id} vào {display_vn} ({yt_shorts_url})",
                                      channel_id=channel_id)
 
                 success_text = (
-                    f"🎉 **ĐÃ LÊN LỊCH PHÁT SÓNG THÀNH CÔNG CHO VIDEO #{job_id}!**\n\n"
+                    f"🎉 **ĐÃ LÊN LỊCH PHÁT SÓNG SHORTS THÀNH CÔNG CHO VIDEO #{job_id}!**\n\n"
                     f"📺 **Kênh:** `{ch_cfg.get('name', channel_id)}`\n"
+                    f"⚡ **Chế độ:** YouTube Shorts\n"
                     f"⏰ **Giờ công chiếu tự động:**\n👉 **{display_vn}**\n"
                     f"*(🇺🇸 {display_us})*\n\n"
-                    f"🎬 **Link xem YouTube (Đã khóa hẹn giờ):**\n👉 {yt_url}\n\n"
+                    f"⚡ **Link xem YouTube Shorts (Đã khóa hẹn giờ):**\n👉 {yt_shorts_url}\n\n"
+                    f"🎬 **Link phụ:** {yt_url}\n\n"
                 )
                 if pub_res.get("comment_id"):
                     success_text += f"💬 **Bình luận mồi tự động (Pinned Bait):** Đã đăng thành công!\n> _{pinned_comment}_\n\n"

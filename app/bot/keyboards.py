@@ -176,14 +176,14 @@ get_video_review_keyboard = get_script_review_keyboard
 
 def get_video_post_render_keyboard(job_id: int, is_republish: bool = False) -> InlineKeyboardMarkup:
     """Bàn phím Bước 2: Khi video đã render xong và gửi vào nhóm, chọn Đăng luôn hoặc Góp ý sửa lại"""
-    pub_label = "🔄 Đăng Lại Lên YouTube (Bản Mới)" if is_republish else "🚀 Đăng Lên YouTube Ngay"
+    pub_label = "🔄 Đăng Lại Lên YouTube Shorts (Bản Mới)" if is_republish else "🚀 Đăng Lên YouTube Shorts Ngay"
     keyboard = [
         [
             InlineKeyboardButton(pub_label, callback_data=f"publish_youtube:{job_id}"),
         ],
         [
             InlineKeyboardButton("✍️ Góp Ý Chỉnh Sửa & Dựng Lại", callback_data=f"feedback_video:{job_id}"),
-            InlineKeyboardButton("⏰ Lên Lịch Tự Động", callback_data=f"schedule_youtube:{job_id}"),
+            InlineKeyboardButton("⏰ Lên Lịch Tự Động (Shorts)", callback_data=f"schedule_youtube:{job_id}"),
         ],
         [
             InlineKeyboardButton("❌ Hủy Video", callback_data=f"cancel:{job_id}"),
@@ -195,8 +195,8 @@ def get_video_edit_options_keyboard(job_id: int) -> InlineKeyboardMarkup:
     """Bàn phím menu chọn nhanh khi bấm 'Góp Ý Chỉnh Sửa & Dựng Lại'"""
     keyboard = [
         [
-            InlineKeyboardButton("🚀 Đăng Lên YouTube Ngay", callback_data=f"publish_youtube:{job_id}"),
-            InlineKeyboardButton("⏰ Lên Lịch Tự Động", callback_data=f"schedule_youtube:{job_id}"),
+            InlineKeyboardButton("🚀 Đăng Lên YouTube Shorts Ngay", callback_data=f"publish_youtube:{job_id}"),
+            InlineKeyboardButton("⏰ Lên Lịch Tự Động (Shorts)", callback_data=f"schedule_youtube:{job_id}"),
         ],
         [
             InlineKeyboardButton("🇺🇸 Chuyển Sang Tiếng Anh", callback_data=f"edit_lang:{job_id}:en"),
@@ -227,7 +227,7 @@ def get_chat_brainstorm_keyboard(session_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 def get_publish_channel_keyboard(job_id: int) -> InlineKeyboardMarkup:
-    """Tạo bàn phím nút bấm chọn kênh YouTube mục tiêu khi xuất bản video"""
+    """Tạo bàn phím nút bấm chọn kênh YouTube mục tiêu khi xuất bản video Shorts"""
     import os
     channels = settings.get_channels_config()
     accounts = settings.get_accounts_config()
@@ -244,7 +244,7 @@ def get_publish_channel_keyboard(job_id: int) -> InlineKeyboardMarkup:
 
         keyboard.append([
             InlineKeyboardButton(
-                f"{auth_status} {ch_name} [{acc_email}]",
+                f"{auth_status} ⚡ Shorts: {ch_name} [{acc_email}]",
                 callback_data=f"publish_to_channel:{job_id}:{ch_id}"
             )
         ])
@@ -256,7 +256,7 @@ def get_publish_channel_keyboard(job_id: int) -> InlineKeyboardMarkup:
 
 
 def get_schedule_channel_keyboard(job_id: int) -> InlineKeyboardMarkup:
-    """Tạo bàn phím nút bấm chọn kênh khi lên lịch tự động theo khung giờ vàng tối ưu"""
+    """Tạo bàn phím nút bấm chọn kênh khi lên lịch tự động theo khung giờ vàng Shorts tối ưu"""
     import os
     channels = settings.get_channels_config()
     accounts = settings.get_accounts_config()
@@ -273,7 +273,7 @@ def get_schedule_channel_keyboard(job_id: int) -> InlineKeyboardMarkup:
 
         keyboard.append([
             InlineKeyboardButton(
-                f"{auth_status} {ch_name} [{acc_email}]",
+                f"{auth_status} ⚡ Shorts: {ch_name} [{acc_email}]",
                 callback_data=f"schedule_to_channel:{job_id}:{ch_id}"
             )
         ])

@@ -1061,6 +1061,7 @@ async def publish_to_youtube(
         if pub_res.get("status") == "success":
             yt_url = pub_res.get("youtube_url")
             yt_id = pub_res.get("video_id")
+            yt_shorts_url = pub_res.get("shorts_url") or f"https://www.youtube.com/shorts/{yt_id}"
             ch_name = ch_cfg.get("name", target_channel)
 
             # Tự động sao lưu lên Google Drive vào đúng folder của kênh
@@ -1093,21 +1094,22 @@ async def publish_to_youtube(
                         except Exception:
                             pass
                     msg = (
-                        f"Video #{job_id} đã lên lịch công chiếu vào {display_vn_slot} trên kênh '{ch_name}': {yt_url}"
+                        f"Video #{job_id} đã lên lịch công chiếu vào {display_vn_slot} trên kênh '{ch_name}': {yt_shorts_url}"
                         if schedule_time and display_vn_slot
-                        else f"Video #{job_id} đã xuất bản lên kênh '{ch_name}': {yt_url}"
+                        else f"Video #{job_id} đã xuất bản lên kênh '{ch_name}': {yt_shorts_url}"
                     )
                     log_activity(db, 0, "WebStudio", "PUBLISH_YOUTUBE", msg, channel_id=target_channel)
 
             success_msg = (
-                f"Đã lên lịch thành công cho Video #{job_id}! Tự động công chiếu vào {display_vn_slot} ({display_us_slot}). Link: {yt_url}"
+                f"Đã lên lịch thành công cho Video #{job_id}! Tự động công chiếu vào {display_vn_slot} ({display_us_slot}). Link: {yt_shorts_url}"
                 if schedule_time and display_vn_slot
-                else f"Đã đăng lên kênh '{ch_name}' thành công! Link: {yt_url}"
+                else f"Đã đăng lên Shorts kênh '{ch_name}' thành công! Link: {yt_shorts_url}"
             )
             return {
                 "success": True,
                 "video_id": yt_id,
                 "youtube_url": yt_url,
+                "shorts_url": yt_shorts_url,
                 "drive_link": drive_link,
                 "folder_link": folder_link,
                 "channel_id": target_channel,

@@ -146,18 +146,34 @@ class PublisherAgent:
         if not clean_title:
             clean_title = title
 
-        logger.info(f"Bắt đầu upload video '{clean_title}' lên kênh {self.channel_name}...")
+        # Đảm bảo video được gắn cờ và phân loại 100% là YouTube Shorts
+        if "#shorts" not in clean_title.lower():
+            if len(clean_title) > 91:
+                clean_title = clean_title[:91].rstrip()
+            clean_title = f"{clean_title} #Shorts"
+
+        logger.info(f"Bắt đầu upload Shorts '{clean_title}' lên kênh {self.channel_name}...")
+
+        # Đảm bảo description luôn có hashtag nhận diện Shorts
+        shorts_hashtags = "#Shorts #shorts #viral #ytshorts"
+        desc_clean = description or ""
+        if "#shorts" not in desc_clean.lower():
+            desc_clean = f"{desc_clean.strip()}\n\n{shorts_hashtags}" if desc_clean.strip() else shorts_hashtags
 
         tag_list = []
         if isinstance(tags, list):
-            tag_list = tags
+            tag_list = list(tags)
         elif isinstance(tags, str):
             tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+
+        for req_tag in ["Shorts", "shorts", "ytshorts", "viral"]:
+            if req_tag.lower() not in [t.lower() for t in tag_list]:
+                tag_list.append(req_tag)
 
         body = {
             "snippet": {
                 "title": clean_title[:100],
-                "description": description[:5000],
+                "description": desc_clean[:5000],
                 "tags": tag_list[:20],
                 "categoryId": "22"  # People & Blogs / Shorts
             },
@@ -198,7 +214,8 @@ class PublisherAgent:
 
             video_id = response.get("id")
             youtube_url = f"https://youtu.be/{video_id}"
-            logger.info(f"Đã upload video thành công lên YouTube: {youtube_url}")
+            shorts_url = f"https://www.youtube.com/shorts/{video_id}"
+            logger.info(f"Đã upload Shorts thành công lên YouTube: {shorts_url} ({youtube_url})")
 
             # Tự động đăng bình luận mồi nếu có
             posted_comment_id = None
@@ -211,6 +228,7 @@ class PublisherAgent:
                 "status": "success",
                 "video_id": video_id,
                 "youtube_url": youtube_url,
+                "shorts_url": shorts_url,
                 "channel": self.channel_name,
                 "scheduled_at": schedule_time_iso,
                 "pinned_comment": pinned_comment,
