@@ -27,6 +27,9 @@ wheels/
 # Secrets & Environment variables (CRITICAL: NEVER COMMIT)
 .env
 *.env
+*.zip
+*.rar
+*.7z
 credentials/client_secret.json
 credentials/tokens/
 credentials/accounts/*
