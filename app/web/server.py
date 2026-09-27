@@ -35,6 +35,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def device_gatekeeper_middleware(request: Request, call_next):
+    """Bảo mật 2 lớp: Thiết bị từ xa (khác localhost) phải có token đã được Admin duyệt trên Telegram mới được gọi API"""
+    path = request.url.path
+    # Cho phép trang chủ HTML, tài nguyên tĩnh, media video, health check, và các endpoint xác thực thiết bị
+    if (
+        path.startswith("/static")
+        or path.startswith("/media")
+        or path.startswith("/api/auth")
+        or path in ("/", "/health", "/api/network-info", "/favicon.ico")
+    ):
+        return await call_next(request)
+
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip()
+
+    from app.services.device_auth import is_local_ip, is_device_token_valid
+
+    # Máy chủ localhost luôn được cho qua
+    if is_local_ip(client_ip):
+        return await call_next(request)
+
+    # Thiết bị từ xa phải có token hợp lệ đã được phê duyệt qua Telegram
+    token = request.headers.get("X-Device-Token") or request.cookies.get("device_token")
+    if not is_device_token_valid(token):
+        from starlette.responses import JSONResponse
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Thiết bị chưa được Quản trị viên Telegram phê duyệt truy cập. Vui lòng nhờ Quản trị viên bấm [Đồng Ý] trên nhóm Telegram."}
+        )
+
+    return await call_next(request)
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 MEDIA_DIR = BASE_DIR / "output"

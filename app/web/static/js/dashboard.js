@@ -35,6 +35,24 @@ function scheduleNextFetch(delay = 10000) {
 }
 
 /* ═══════════════════════════════════════════════════════
+   FETCH INTERCEPTOR (Tự động đính kèm X-Device-Token)
+══════════════════════════════════════════════════════════ */
+const _originalFetch = window.fetch;
+window.fetch = function(url, options = {}) {
+    options = options || {};
+    options.headers = options.headers || {};
+    const token = localStorage.getItem('youtube_device_token');
+    if (token) {
+        if (options.headers instanceof Headers) {
+            options.headers.set('X-Device-Token', token);
+        } else if (typeof options.headers === 'object') {
+            options.headers['X-Device-Token'] = token;
+        }
+    }
+    return _originalFetch(url, options);
+};
+
+/* ═══════════════════════════════════════════════════════
    TELEGRAM 2FA DEVICE GATEKEEPER
 ══════════════════════════════════════════════════════════ */
 let _gkPollingInterval = null;
@@ -49,11 +67,11 @@ async function checkDeviceAuthorization() {
         const data = await res.json();
 
         const overlay = document.getElementById('device-gatekeeper-overlay');
-        if (!overlay) return;
+        if (!overlay) return true;
 
         if (data.authenticated) {
             overlay.style.display = 'none';
-            return;
+            return true;
         }
 
         // Thiết bị từ xa chưa được duyệt -> Hiện màn hình chờ 2FA
@@ -65,8 +83,10 @@ async function checkDeviceAuthorization() {
 
         // Tự động kích hoạt gửi yêu cầu phê duyệt về Telegram
         await initiateDeviceAccessRequest();
+        return false;
     } catch (e) {
         console.warn('Lỗi kiểm tra quyền thiết bị:', e);
+        return false;
     }
 }
 
@@ -129,7 +149,7 @@ async function pollDeviceStatus() {
                     setTimeout(() => {
                         overlay.style.display = 'none';
                         overlay.style.opacity = '1';
-                        fetchAllData();
+                        fetchAllData().then(() => scheduleNextFetch(10000));
                     }, 500);
                 }
             }, 800);
@@ -170,11 +190,13 @@ async function requestDeviceAccessAgain() {
     await initiateDeviceAccessRequest();
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     initNavigation();
     initDeviceIdentity();
-    checkDeviceAuthorization();
-    fetchAllData().then(() => scheduleNextFetch(10000));
+    const isAuth = await checkDeviceAuthorization();
+    if (isAuth) {
+        fetchAllData().then(() => scheduleNextFetch(10000));
+    }
 
     document.getElementById('btn-refresh').addEventListener('click', () => {
         const btn = document.getElementById('btn-refresh');
