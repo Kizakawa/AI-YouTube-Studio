@@ -2263,10 +2263,60 @@ Ví dụ Căn Theo Mốc:
     </div>
 </div>
 
+<!-- OVERLAY: TELEGRAM 2FA DEVICE GATEKEEPER -->
+<div id="device-gatekeeper-overlay" style="display:none; position:fixed; inset:0; z-index:999999; background:radial-gradient(ellipse at center, rgba(15,23,42,0.98) 0%, rgba(3,7,18,0.99) 100%); backdrop-filter:blur(20px); align-items:center; justify-content:center; padding:20px; font-family:'Inter', sans-serif;">
+    <div style="max-width: 480px; width: 100%; background: rgba(15, 23, 42, 0.92); border: 1px solid rgba(56, 189, 248, 0.3); box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 40px rgba(56, 189, 248, 0.15); border-radius: 24px; padding: 36px 28px; text-align: center; position: relative; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #38bdf8, #818cf8, #c084fc);"></div>
+
+        <div id="gk-icon-container" style="width: 76px; height: 76px; margin: 0 auto 20px; border-radius: 20px; background: linear-gradient(135deg, rgba(56,189,248,0.15), rgba(129,140,248,0.1)); border: 1px solid rgba(56,189,248,0.3); display: flex; align-items: center; justify-content: center; font-size: 36px; box-shadow: 0 0 25px rgba(56, 189, 248, 0.2);">
+            🛡️
+        </div>
+
+        <h2 style="font-size: 20px; font-weight: 800; color: #fff; margin: 0 0 6px; letter-spacing: -0.02em;">
+            AI YOUTUBE STUDIO
+        </h2>
+        <div style="font-size: 12px; font-weight: 700; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 18px;">
+            Bảo Mật Thiết Bị 2 Lớp (Telegram 2FA)
+        </div>
+
+        <p id="gk-subtitle" style="font-size: 13.5px; color: #94a3b8; line-height: 1.6; margin: 0 0 20px;">
+            Bạn đang truy cập hệ thống từ thiết bị từ xa. Để đảm bảo an toàn, yêu cầu đăng nhập đã được gửi đến nhóm Telegram của Quản trị viên.
+        </p>
+
+        <div style="background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 14px 16px; margin-bottom: 22px; text-align: left; font-size: 12.5px; color: #cbd5e1; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: #64748b;">Thiết bị:</span>
+                <span id="gk-device-name" style="font-weight: 600; color: #f8fafc;">Đang nhận diện...</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: #64748b;">Địa chỉ IP:</span>
+                <span id="gk-client-ip" style="font-family: monospace; color: #38bdf8; font-weight: 600;">127.0.0.1</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: #64748b;">Trạng thái:</span>
+                <span id="gk-status-badge" style="font-weight: 700; color: #fbbf24; display: flex; align-items: center; gap: 6px;">
+                    <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#fbbf24;"></span>
+                    Chờ duyệt trên Telegram...
+                </span>
+            </div>
+        </div>
+
+        <div id="gk-hint-box" style="font-size: 12px; color: #94a3b8; line-height: 1.5; padding: 12px; background: rgba(56, 189, 248, 0.05); border-radius: 10px; border: 1px dashed rgba(56, 189, 248, 0.2); margin-bottom: 20px;">
+            💬 Vui lòng nhờ Quản trị viên bấm nút <strong>"✅ Đồng Ý Cấp Quyền"</strong> trên Telegram. Trang này sẽ tự động mở khóa ngay sau khi được duyệt!
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: center;">
+            <button id="gk-retry-btn" class="btn btn-secondary" onclick="requestDeviceAccessAgain()" style="font-size: 12px; padding: 8px 16px;">
+                🔄 Gửi Lại Yêu Cầu
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- TOAST NOTIFICATION -->
 <div class="toast-container" id="toast-container"></div>
 
 <script src="/static/js/chart.min.js"></script>
-<script src="/static/js/dashboard.js?v=3.0"></script>
+<script src="/static/js/dashboard.js?v=3.1"></script>
 </body>
 </html>

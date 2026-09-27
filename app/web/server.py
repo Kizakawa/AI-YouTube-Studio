@@ -113,6 +113,53 @@ async def get_network_info_endpoint():
     from app.utils.network_helper import get_network_info
     return get_network_info()
 
+# ─── Device Authentication & Telegram 2FA Gatekeeper ─────────────────────────
+
+@app.get("/api/auth/check")
+async def check_device_auth(request: Request):
+    """Kiểm tra quyền truy cập thiết bị (Localhost luôn qua; Thiết bị từ xa phải có token đã duyệt)"""
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip()
+
+    from app.services.device_auth import is_local_ip, is_device_token_valid, parse_device_info
+    
+    if is_local_ip(client_ip):
+        return {"authenticated": True, "is_local": True, "client_ip": client_ip}
+
+    auth_token = request.headers.get("X-Device-Token") or request.cookies.get("device_token")
+    if is_device_token_valid(auth_token):
+        return {"authenticated": True, "is_local": False, "client_ip": client_ip}
+
+    ua = request.headers.get("user-agent", "")
+    device_name = parse_device_info(ua)
+    return {
+        "authenticated": False,
+        "is_local": False,
+        "client_ip": client_ip,
+        "device_name": device_name
+    }
+
+@app.post("/api/auth/request-access")
+async def request_device_access(request: Request):
+    """Gửi yêu cầu phê duyệt thiết bị mới đến nhóm Telegram"""
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip()
+
+    from app.services.device_auth import create_access_request
+    ua = request.headers.get("user-agent", "")
+    res = create_access_request(client_ip, ua)
+    return res
+
+@app.get("/api/auth/status/{request_id}")
+async def check_device_request_status(request_id: str):
+    """Frontend polling kiểm tra xem Admin đã bấm [Đồng Ý] trên Telegram chưa"""
+    from app.services.device_auth import get_request_status
+    return get_request_status(request_id)
+
 # ─── Stats ────────────────────────────────────────────────────────────────────
 
 @app.get("/api/stats")

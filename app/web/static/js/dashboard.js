@@ -34,9 +34,146 @@ function scheduleNextFetch(delay = 10000) {
     }, delay);
 }
 
+/* ═══════════════════════════════════════════════════════
+   TELEGRAM 2FA DEVICE GATEKEEPER
+══════════════════════════════════════════════════════════ */
+let _gkPollingInterval = null;
+let _currentRequestId = null;
+
+async function checkDeviceAuthorization() {
+    try {
+        const token = localStorage.getItem('youtube_device_token') || '';
+        const res = await fetch('/api/auth/check', {
+            headers: { 'X-Device-Token': token }
+        });
+        const data = await res.json();
+
+        const overlay = document.getElementById('device-gatekeeper-overlay');
+        if (!overlay) return;
+
+        if (data.authenticated) {
+            overlay.style.display = 'none';
+            return;
+        }
+
+        // Thiết bị từ xa chưa được duyệt -> Hiện màn hình chờ 2FA
+        overlay.style.display = 'flex';
+        const devNameEl = document.getElementById('gk-device-name');
+        const ipEl = document.getElementById('gk-client-ip');
+        if (devNameEl) devNameEl.textContent = data.device_name || 'Thiết bị khách';
+        if (ipEl) ipEl.textContent = data.client_ip || '---';
+
+        // Tự động kích hoạt gửi yêu cầu phê duyệt về Telegram
+        await initiateDeviceAccessRequest();
+    } catch (e) {
+        console.warn('Lỗi kiểm tra quyền thiết bị:', e);
+    }
+}
+
+async function initiateDeviceAccessRequest() {
+    try {
+        const statusBadge = document.getElementById('gk-status-badge');
+        if (statusBadge) {
+            statusBadge.innerHTML = `<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#38bdf8; animation: pulse 1.2s infinite;"></span> Đang gửi yêu cầu...`;
+        }
+
+        const res = await fetch('/api/auth/request-access', { method: 'POST' });
+        const data = await res.json();
+        _currentRequestId = data.request_id;
+
+        if (statusBadge) {
+            statusBadge.innerHTML = `<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#fbbf24;"></span> Chờ duyệt trên Telegram...`;
+        }
+
+        if (_gkPollingInterval) clearInterval(_gkPollingInterval);
+        _gkPollingInterval = setInterval(pollDeviceStatus, 2000);
+    } catch (e) {
+        console.error('Không thể gửi yêu cầu xác thực thiết bị:', e);
+    }
+}
+
+async function pollDeviceStatus() {
+    if (!_currentRequestId) return;
+    try {
+        const res = await fetch(`/api/auth/status/${_currentRequestId}`);
+        const data = await res.json();
+
+        const overlay = document.getElementById('device-gatekeeper-overlay');
+        const iconCont = document.getElementById('gk-icon-container');
+        const statusBadge = document.getElementById('gk-status-badge');
+        const hintBox = document.getElementById('gk-hint-box');
+
+        if (data.status === 'approved') {
+            clearInterval(_gkPollingInterval);
+            if (data.token) {
+                localStorage.setItem('youtube_device_token', data.token);
+            }
+            if (iconCont) {
+                iconCont.innerHTML = '✅';
+                iconCont.style.background = 'linear-gradient(135deg, rgba(16,185,129,0.2), rgba(5,150,105,0.15))';
+                iconCont.style.borderColor = 'rgba(16,185,129,0.5)';
+            }
+            if (statusBadge) {
+                statusBadge.innerHTML = `<span style="color:#10b981; font-weight:700;">✅ Đã Phê Duyệt!</span>`;
+            }
+            if (hintBox) {
+                hintBox.innerHTML = `🎉 <strong>Quản trị viên đã chấp thuận!</strong> Đang mở khóa Web Studio...`;
+                hintBox.style.borderColor = 'rgba(16,185,129,0.4)';
+                hintBox.style.background = 'rgba(16,185,129,0.08)';
+            }
+
+            setTimeout(() => {
+                if (overlay) {
+                    overlay.style.transition = 'opacity 0.5s ease';
+                    overlay.style.opacity = '0';
+                    setTimeout(() => {
+                        overlay.style.display = 'none';
+                        overlay.style.opacity = '1';
+                        fetchAllData();
+                    }, 500);
+                }
+            }, 800);
+        } else if (data.status === 'rejected') {
+            clearInterval(_gkPollingInterval);
+            if (iconCont) {
+                iconCont.innerHTML = '❌';
+                iconCont.style.background = 'linear-gradient(135deg, rgba(239,68,68,0.2), rgba(220,38,38,0.15))';
+                iconCont.style.borderColor = 'rgba(239,68,68,0.5)';
+            }
+            if (statusBadge) {
+                statusBadge.innerHTML = `<span style="color:#ef4444; font-weight:700;">⛔ Đã Bị Từ Chối</span>`;
+            }
+            if (hintBox) {
+                hintBox.innerHTML = `⚠️ <strong>Yêu cầu truy cập của bạn đã bị từ chối</strong> bởi Quản trị viên trên Telegram.`;
+                hintBox.style.borderColor = 'rgba(239,68,68,0.4)';
+                hintBox.style.background = 'rgba(239,68,68,0.08)';
+            }
+        }
+    } catch (e) {
+        console.warn('Lỗi poll trạng thái thiết bị:', e);
+    }
+}
+
+async function requestDeviceAccessAgain() {
+    const hintBox = document.getElementById('gk-hint-box');
+    const iconCont = document.getElementById('gk-icon-container');
+    if (iconCont) {
+        iconCont.innerHTML = '🛡️';
+        iconCont.style.background = 'linear-gradient(135deg, rgba(56,189,248,0.15), rgba(129,140,248,0.1))';
+        iconCont.style.borderColor = 'rgba(56,189,248,0.3)';
+    }
+    if (hintBox) {
+        hintBox.innerHTML = `💬 Vui lòng nhờ Quản trị viên bấm nút <strong>"✅ Đồng Ý Cấp Quyền"</strong> trên Telegram.`;
+        hintBox.style.borderColor = 'rgba(56, 189, 248, 0.2)';
+        hintBox.style.background = 'rgba(56, 189, 248, 0.05)';
+    }
+    await initiateDeviceAccessRequest();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
     initDeviceIdentity();
+    checkDeviceAuthorization();
     fetchAllData().then(() => scheduleNextFetch(10000));
 
     document.getElementById('btn-refresh').addEventListener('click', () => {

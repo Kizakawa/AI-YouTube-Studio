@@ -2678,6 +2678,46 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "refresh_kpi_report":
         await kpi_command(update, context)
 
+    # 15. Duyệt hoặc Từ chối cấp quyền thiết bị truy cập Web Dashboard (2FA Gatekeeper)
+    elif data.startswith("approve_device:"):
+        req_id = data.split(":")[1]
+        from app.services.device_auth import approve_access_request
+        approver = user.username or user.first_name
+        req = approve_access_request(req_id, admin_name=approver)
+        if req:
+            await safe_edit_text(
+                query.message,
+                f"✅ **ĐÃ DUYỆT THÀNH CÔNG CHO THIẾT BỊ!**\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"💻 **Thiết bị:** {req.get('device_name')}\n"
+                f"🌐 **Địa chỉ IP:** `{req.get('client_ip')}`\n"
+                f"👤 **Người phê duyệt:** @{approver}\n"
+                f"⏳ **Thời hạn:** 7 ngày\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"✨ Thiết bị trên đã được mở khóa và có thể sử dụng Web Studio ngay bây giờ!"
+            )
+        else:
+            await safe_edit_text(query.message, "⚠️ Yêu cầu này đã hết hạn hoặc không tồn tại.")
+
+    elif data.startswith("reject_device:"):
+        req_id = data.split(":")[1]
+        from app.services.device_auth import reject_access_request
+        rejecter = user.username or user.first_name
+        req = reject_access_request(req_id, admin_name=rejecter)
+        if req:
+            await safe_edit_text(
+                query.message,
+                f"❌ **ĐÃ TỪ CHỐI TRUY CẬP THIẾT BỊ!**\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"💻 **Thiết bị:** {req.get('device_name')}\n"
+                f"🌐 **Địa chỉ IP:** `{req.get('client_ip')}`\n"
+                f"👤 **Người từ chối:** @{rejecter}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⛔ Thiết bị trên đã bị chặn truy cập Web Studio."
+            )
+        else:
+            await safe_edit_text(query.message, "⚠️ Yêu cầu này đã hết hạn hoặc không tồn tại.")
+
 
 
 # Cache tạm cho kết quả tìm kiếm hình ảnh & video trên Telegram
