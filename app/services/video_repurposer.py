@@ -214,8 +214,8 @@ class VideoRepurposerService:
         )
 
         prompt = f"""
-Bạn là Đạo diễn Biên tập Shorts Triệu View (Viral Shorts Retention Director).
-Nhiệm vụ của bạn: Phân tích toàn bộ bản ghi lời thoại (transcript) của video dài dưới đây và trích xuất đúng 3 đến 5 phân đoạn "VÀNG" (High-Impact Viral Highlights) tốt nhất để dựng thành YouTube Shorts (thời lượng 25s - 55s mỗi clip).
+Bạn là Đạo diễn Biên tập Shorts Triệu View (Viral Shorts Retention Director & Content Strategist).
+Nhiệm vụ của bạn: Phân tích toàn bộ bản ghi lời thoại (transcript) của video dài dưới đây và trích xuất đúng 3 đến 5 phân đoạn "VÀNG" (High-Impact Viral Highlights) tốt nhất để dựng thành YouTube Shorts (thời lượng 25s - 55s mỗi clip), đồng thời xây dựng Kịch Bản Dựng Chi Tiết (Director Edit Blueprint) và Gói Phân Phối Đa Nền Tảng (Omnichannel Pack).
 
 THÔNG TIN VIDEO GỐC:
 - Tiêu đề: {video_title}
@@ -230,31 +230,53 @@ TRANSCRIPT KÈM TIMESTAMPS:
 {timeline_str}
 \"\"\"
 
-TIÊU CHÍ ĐÁNH GIÁ ĐOẠN VIRAL:
-1. Hook 3 giây đầu (Bắt buộc): Phải bắt đầu bằng một câu nói gây chấn động, đảo ngược định kiến hoặc kích thích tò mò tột độ.
-2. Trọn vẹn ý nghĩa: Đoạn cắt phải kết thúc ở một luận điểm đắt giá hoặc một cú twist / cao trào, không được cắt ngang giữa chừng một từ hoặc ý dở dang.
-3. Thời lượng chuẩn: Bắt buộc từ 25 giây đến 55 giây (start_seconds và end_seconds chênh nhau 25-55s).
-4. Điểm Viral Score: Chấm điểm từ 80 đến 99 dựa trên tiềm năng giữ chân người xem (Audience Retention).
+TIÊU CHÍ BIÊN TẬP VÀ PHÂN TÍCH CHUYÊN SÂU:
+1. Hook 3 giây đầu (Bắt buộc): Phải mở đầu bằng câu nói gây chấn động, kích thích tò mò tột độ. Đưa ra 3 phương án hook khác nhau (Tò Mò, Gây Sốc, Câu Hỏi Đảo Ngược).
+2. Trọn vẹn ý nghĩa: Kết thúc ở một cú twist, bài học hoặc cao trào đắt giá. Độ dài chuẩn từ 25s - 55s (start_seconds và end_seconds chênh nhau 25-55s).
+3. Kịch bản dựng theo nhịp (Director Timeline Blueprint): Cung cấp hướng dẫn cắt cảnh, zoom, âm thanh SFX, từ khóa nổi bật trên phụ đề và từ khóa B-roll cụ thể để editor thực hiện ngay mà không cần suy nghĩ thêm.
+4. Gói nội dung đa nền tảng (Omnichannel Pack): Viết sẵn caption tối ưu thuật toán cho TikTok/Reels, Facebook Watch và Bình luận ghim (Pinned Comment) YouTube Shorts để kéo view xem video dài.
 
-BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không kèm text rác) theo cấu trúc:
+BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không kèm text rác hay giải thích ngoài khối json):
 [
   {{
     "segment_id": 1,
-    "title": "Tiêu đề Shorts giật tít viết hoa (kèm 2 hashtag chuẩn SEO)",
+    "moment_type": "🔥 BÍ MẬT GÂY SỐC",
+    "title": "Tiêu đề Shorts viết hoa giật tít chuẩn SEO #Shorts #Viral",
     "start_seconds": 12.0,
     "end_seconds": 48.0,
     "duration_seconds": 36.0,
     "hook_quote": "Câu mở đầu 3s đầu tiên của đoạn này",
+    "hook_options": [
+      {{"type": "Tò Mò", "hook": "Có một sự thật ít ai nhận ra khi..."}},
+      {{"type": "Gây Sốc", "hook": "Đừng bao giờ làm điều này nếu không muốn..."}},
+      {{"type": "Câu Hỏi", "hook": "Bạn có từng tự hỏi tại sao 90% mọi người đều..."}}
+    ],
     "summary": "Tóm tắt ngắn gọn nội dung đoạn này trong 1 câu",
     "viral_score": 95,
     "viral_reason": "Lý do tâm lý học khiến đoạn này sẽ viral và giữ chân người xem",
     "safe_commentary_angle": "Góc nhìn phân tích hoặc câu dẫn dắt tạo giá trị mới bảo vệ bản quyền",
+    "edit_blueprint": {{
+      "timeline_steps": [
+        "00:00 - 00:03 | Hook mở đầu: Zoom in 1.15x vào chủ thể chính, chữ to màu vàng viền đen, SFX tiếng Whoosh impact.",
+        "00:03 - 00:15 | Đặt vấn đề: Cắt cảnh mỗi 2.5s, chèn B-roll minh họa bối cảnh, chữ subtitle chạy từng từ highlight từ khóa.",
+        "00:15 - 00:30 | Cao trào: Tiết lộ sự thật then chốt, hiệu ứng Slow zoom hoặc punch in, nhạc nền đẩy cao trào.",
+        "00:30 - Kết thúc | Loop CTA: Đúc kết thông điệp trong 1 câu ngắn, kêu gọi: Xem phân tích trọn vẹn ở video dài ghim bên dưới!"
+      ],
+      "broll_cues": ["cận cảnh biểu cảm kinh ngạc", "bối cảnh diễn biến kịch tính", "tài liệu chứng minh sự thật"],
+      "subtitle_highlights": ["BÍ MẬT", "SAI LẦM", "NGUY HIỂM", "SỰ THẬT"],
+      "audio_sfx_cues": ["0s: Whoosh impact", "3s: Ding / Bell", "18s: Dramatic boom", "Cuối: Swoosh out"]
+    }},
+    "omnichannel_pack": {{
+      "tiktok_reels_caption": "Sự thật này có thể thay đổi hoàn toàn suy nghĩ của bạn! 🤯 Bạn có đồng ý với điều này không? Xem hết để biết kết quả! #kienthuc #shorts #viral #fyp",
+      "facebook_post": "Nhiều người vẫn lầm tưởng về điều này cho đến khi sự thật được sáng tỏ... Bạn đã từng chứng kiến tình huống tương tự chưa? Hãy chia sẻ suy nghĩ bên dưới! 👇",
+      "youtube_pinned_comment": "📌 Bạn nghĩ sao về quan điểm này? Xem trọn vẹn video phân tích chi tiết tại đây: [Link Video Dài]"
+    }},
     "transcript_snippet": "Lời thoại trọn vẹn trong khoảng thời gian này"
   }}
 ]
 """
         try:
-            raw_response = self.content_agent._call_api(prompt, json_mode=True, timeout=30)
+            raw_response = self.content_agent._call_api(prompt, json_mode=True, timeout=40)
             clean_json = raw_response.strip()
             if clean_json.startswith("```json"):
                 clean_json = clean_json[7:]
@@ -267,38 +289,104 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không kèm text rác) t
             moments = json.loads(clean_json)
             if isinstance(moments, list) and len(moments) > 0:
                 validated_moments = []
-                for m in moments:
+                for idx, m in enumerate(moments):
                     s = max(0.0, float(m.get("start_seconds", 0)))
                     e = min(video_duration if video_duration > 0 else 9999.0, float(m.get("end_seconds", s + 35.0)))
                     dur = round(e - s, 1)
                     if dur < 15.0:
                         e = s + 30.0
                         dur = 30.0
+                    m["segment_id"] = m.get("segment_id", idx + 1)
                     m["start_seconds"] = round(s, 1)
                     m["end_seconds"] = round(e, 1)
                     m["duration_seconds"] = dur
                     m["viral_score"] = int(m.get("viral_score", 90))
+                    m["moment_type"] = m.get("moment_type", "🔥 BÍ MẬT GÂY SỐC")
+
+                    # Đảm bảo cấu trúc hook_options
+                    if not m.get("hook_options") or not isinstance(m.get("hook_options"), list):
+                        hook_base = m.get("hook_quote", "Đây là điều mà hầu hết mọi người đều bỏ lỡ...")
+                        m["hook_options"] = [
+                          {"type": "Tò Mò", "hook": f"Có một sự thật ít ai nhận ra: {hook_base}"},
+                          {"type": "Gây Sốc", "hook": f"Đừng tin vào điều này cho đến khi bạn thấy: {hook_base}"},
+                          {"type": "Câu Hỏi", "hook": f"Bạn sẽ làm gì nếu biết: {hook_base}?"}
+                        ]
+
+                    # Đảm bảo cấu trúc edit_blueprint
+                    bp = m.get("edit_blueprint")
+                    if not isinstance(bp, dict):
+                        bp = {}
+                    if not bp.get("timeline_steps"):
+                        bp["timeline_steps"] = [
+                          f"00:00 - 00:03 | Hook mở đầu: Zoom in 1.15x chủ thể chính, Sub chữ to nổi bật, SFX tiếng Whoosh.",
+                          f"00:03 - 00:15 | Đặt vấn đề: Cắt cảnh mỗi 2.5s, chèn B-roll minh họa, Highlight từ khóa nóng.",
+                          f"00:15 - 00:{int(dur)-5:02d} | Cao trào: Tiết lộ sự thật bất ngờ, nhạc nền tăng kịch tính, punch-in góc quay.",
+                          f"00:{int(dur)-5:02d} - {int(dur):02d}s | Loop CTA: Đúc kết 1 câu ngắn, kêu gọi xem full video dài đính kèm!"
+                        ]
+                    if not bp.get("broll_cues"):
+                        bp["broll_cues"] = ["cận cảnh biểu cảm bất ngờ", "tư liệu minh chứng", "bối cảnh diễn biến kịch tính"]
+                    if not bp.get("subtitle_highlights"):
+                        bp["subtitle_highlights"] = ["BÍ MẬT", "SỰ THẬT", "SAI LẦM", "CẢNH BÁO"]
+                    if not bp.get("audio_sfx_cues"):
+                        bp["audio_sfx_cues"] = ["0s: Whoosh impact", "3s: Ding / Bell", "15s: Cinematic boom", "Cuối: Swoosh out"]
+                    m["edit_blueprint"] = bp
+
+                    # Đảm bảo cấu trúc omnichannel_pack
+                    op = m.get("omnichannel_pack")
+                    if not isinstance(op, dict):
+                        op = {}
+                    title_clean = m.get("title", video_title)[:50]
+                    if not op.get("tiktok_reels_caption"):
+                        op["tiktok_reels_caption"] = f"{title_clean} 🤯 Bạn nghĩ sao về điều này? Xem hết để biết kết quả! #kienthuc #shorts #viral #fyp #xuhuong"
+                    if not op.get("facebook_post"):
+                        op["facebook_post"] = f"Nhiều người vẫn lầm tưởng về điều này cho đến khi sự thật được hé lộ: {m.get('summary', title_clean)}... Bạn đã từng chứng kiến tình huống tương tự chưa? Hãy chia sẻ suy nghĩ bên dưới! 👇"
+                    if not op.get("youtube_pinned_comment"):
+                        op["youtube_pinned_comment"] = f"📌 Bạn có đồng ý với quan điểm này không? Xem video phân tích dài trọn vẹn tại đây: [Link Video Dài]"
+                    m["omnichannel_pack"] = op
+
                     validated_moments.append(m)
                 return validated_moments
         except Exception as e:
             logger.error(f"Lỗi phân tích Gemini cho moments: {e}")
 
-        # Fallback phân đoạn
+        # Fallback phân đoạn chất lượng cao khi không có API hoặc lỗi mạng
         default_start = min(15.0, video_duration * 0.1)
         default_end = min(default_start + 45.0, video_duration if video_duration > 0 else 60.0)
         return [
             {
                 "segment_id": 1,
+                "moment_type": "🔥 BÍ MẬT GÂY SỐC",
                 "title": f"BÍ MẬT ĐẰNG SAU: {video_title[:40].upper()} #Shorts #Viral",
                 "start_seconds": round(default_start, 1),
                 "end_seconds": round(default_end, 1),
                 "duration_seconds": round(default_end - default_start, 1),
-                "hook_quote": "Đây là điều mà 99% mọi người đã bỏ lỡ...",
-                "summary": "Phân đoạn cao trào làm sáng tỏ bí mật quan trọng nhất.",
-                "viral_score": 91,
-                "viral_reason": "Mở đầu trực diện đánh trúng tâm lý tò mò của người xem.",
-                "safe_commentary_angle": "Bình luận đúc kết bài học thực tiễn giúp người xem ứng dụng ngay.",
-                "transcript_snippet": "Nội dung phân đoạn cao trào được trích xuất từ video gốc.",
+                "hook_quote": "Đây là điều mà 99% mọi người đã hoàn toàn bỏ lỡ...",
+                "hook_options": [
+                    {"type": "Tò Mò", "hook": "Có một bí mật ít ai nhận ra khi theo dõi câu chuyện này..."},
+                    {"type": "Gây Sốc", "hook": "Đừng bao giờ tin vào điều này cho đến khi bạn thấy toàn bộ sự thật!"},
+                    {"type": "Câu Hỏi", "hook": "Nếu ở trong hoàn cảnh này, liệu bạn có đưa ra quyết định tương tự?"}
+                ],
+                "summary": "Phân đoạn cao trào làm sáng tỏ bí mật quan trọng nhất của câu chuyện.",
+                "viral_score": 95,
+                "viral_reason": "Mở đầu trực diện đánh trúng tâm lý tò mò và cú twist bất ngờ ở cuối phân đoạn.",
+                "safe_commentary_angle": "Bình luận đúc kết bài học thực tiễn giúp người xem ứng dụng ngay, tạo giá trị mới bảo vệ bản quyền.",
+                "edit_blueprint": {
+                    "timeline_steps": [
+                        "00:00 - 00:03 | Hook mở đầu: Zoom in 1.15x vào chủ thể chính, Sub chữ to vàng viền đen, SFX tiếng Whoosh impact.",
+                        "00:03 - 00:15 | Đặt vấn đề: Cắt cảnh mỗi 2.5s, chèn B-roll bối cảnh, chạy phụ đề karaoke highlight từ khóa.",
+                        "00:15 - 00:30 | Cao trào: Tiết lộ sự thật then chốt, punch-in góc quay, nhạc nền đẩy cao trào kịch tính.",
+                        "00:30 - Kết thúc | Loop CTA: Đúc kết 1 câu ngắn, kêu gọi: 'Xem phân tích trọn vẹn ở video dài ghim bên dưới!'"
+                    ],
+                    "broll_cues": ["cận cảnh biểu cảm kinh ngạc", "bối cảnh diễn biến kịch tính", "tài liệu chứng minh sự thật"],
+                    "subtitle_highlights": ["BÍ MẬT", "SAI LẦM", "NGUY HIỂM", "SỰ THẬT"],
+                    "audio_sfx_cues": ["0s: Whoosh impact", "3s: Ding / Bell", "18s: Dramatic boom", "Cuối: Swoosh out"]
+                },
+                "omnichannel_pack": {
+                    "tiktok_reels_caption": f"Sự thật đằng sau {video_title[:35]} sẽ khiến bạn kinh ngạc! 🤯 Bạn có đồng ý với điều này không? #kienthuc #shorts #viral #fyp #xuhuong",
+                    "facebook_post": f"Rất nhiều người đã hiểu sai về vấn đề này. Hãy xem đoạn clip ngắn này để thấy góc nhìn thực tế! Bạn nghĩ thế nào? Hãy để lại bình luận nhé! 👇",
+                    "youtube_pinned_comment": "📌 Bạn có đồng ý với quan điểm này không? Xem video dài đầy đủ chi tiết tại đây: [Link Video Dài]"
+                },
+                "transcript_snippet": "Nội dung phân đoạn cao trào được trích xuất từ video gốc."
             }
         ]
 

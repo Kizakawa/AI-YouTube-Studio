@@ -6173,11 +6173,7 @@ function renderRepurposerResults(data, originalSource) {
             scoreBadge = `<span style="background: #3b82f6; color:#fff; font-weight:700; font-size:12px; padding:3px 10px; border-radius:12px;">✨ ${score}/100</span>`;
         }
 
-        const card = document.createElement('div');
-        card.className = 'panel-card';
-        card.style.cssText = 'background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255,255,255,0.1); display:flex; flex-direction:column; justify-content:space-between; transition: transform 0.2s, border-color 0.2s;';
-        card.onmouseenter = () => { card.style.borderColor = 'rgba(16, 185, 129, 0.5)'; card.style.transform = 'translateY(-2px)'; };
-        card.onmouseleave = () => { card.style.borderColor = 'rgba(255, 255, 255, 0.1)'; card.style.transform = 'translateY(0)'; };
+        const momentTypeBadge = m.moment_type ? `<span style="background:rgba(245,158,11,0.15); color:#f59e0b; font-weight:700; font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid rgba(245,158,11,0.3);">${escapeHtml(m.moment_type)}</span>` : '';
 
         const startMin = Math.floor(m.start_seconds / 60);
         const startSec = Math.floor(m.start_seconds % 60);
@@ -6185,11 +6181,54 @@ function renderRepurposerResults(data, originalSource) {
         const endSec = Math.floor(m.end_seconds % 60);
         const timeRangeStr = `${String(startMin).padStart(2,'0')}:${String(startSec).padStart(2,'0')} ➔ ${String(endMin).padStart(2,'0')}:${String(endSec).padStart(2,'0')} (${m.duration_seconds}s)`;
 
+        // Hook options pill buttons
+        const hookOpts = m.hook_options || [];
+        let hookButtonsHtml = '';
+        if (hookOpts.length > 0) {
+            hookButtonsHtml = hookOpts.map((h, hIdx) => {
+                const hType = escapeHtml(h.type || `Kiểu ${hIdx+1}`);
+                return `<button type="button" class="btn" onclick="selectRepurposerHook(${idx}, ${hIdx})" style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18); color:#f8fafc; font-size:10.5px; padding:2px 8px; border-radius:12px; cursor:pointer;" title="Bấm để chọn hook này">
+                    🎯 ${hType}
+                </button>`;
+            }).join(' ');
+        }
+
+        // Blueprint data
+        const bp = m.edit_blueprint || {};
+        const timelineSteps = bp.timeline_steps || [];
+        const brollCues = bp.broll_cues || [];
+        const subtitleHighlights = bp.subtitle_highlights || [];
+        const audioSfx = bp.audio_sfx_cues || [];
+
+        const timelineStepsHtml = timelineSteps.map(step => `
+            <div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:6px; font-size:12px; line-height:1.45;">
+                <span style="color:#10b981; font-weight:700; flex-shrink:0;">▸</span>
+                <span style="color:#e2e8f0;">${escapeHtml(step)}</span>
+            </div>
+        `).join('');
+
+        const brollBadges = brollCues.map(c => `<span style="background:rgba(6,182,212,0.15); color:#38bdf8; border:1px solid rgba(6,182,212,0.3); font-size:11px; padding:2px 6px; border-radius:4px;">🎬 ${escapeHtml(c)}</span>`).join(' ');
+        const subBadges = subtitleHighlights.map(k => `<span style="background:rgba(245,158,11,0.15); color:#fbbf24; border:1px solid rgba(245,158,11,0.3); font-size:11px; font-weight:700; padding:2px 6px; border-radius:4px;">🔤 ${escapeHtml(k)}</span>`).join(' ');
+        const sfxBadges = audioSfx.map(s => `<span style="background:rgba(168,85,247,0.15); color:#c084fc; border:1px solid rgba(168,85,247,0.3); font-size:11px; padding:2px 6px; border-radius:4px;">🔊 ${escapeHtml(s)}</span>`).join(' ');
+
+        // Omnichannel data
+        const op = m.omnichannel_pack || {};
+        const tiktokCaption = op.tiktok_reels_caption || '';
+        const fbPost = op.facebook_post || '';
+        const ytComment = op.youtube_pinned_comment || '';
+
+        const card = document.createElement('div');
+        card.className = 'panel-card';
+        card.style.cssText = 'background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255,255,255,0.1); display:flex; flex-direction:column; justify-content:space-between; transition: transform 0.2s, border-color 0.2s;';
+        card.onmouseenter = () => { card.style.borderColor = 'rgba(16, 185, 129, 0.5)'; card.style.transform = 'translateY(-2px)'; };
+        card.onmouseleave = () => { card.style.borderColor = 'rgba(255, 255, 255, 0.1)'; card.style.transform = 'translateY(0)'; };
+
         card.innerHTML = `
             <div>
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
-                    <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                         <span style="font-weight:800; font-size:14px; color:#94a3b8;">#${m.segment_id || (idx+1)}</span>
+                        ${momentTypeBadge}
                         ${scoreBadge}
                     </div>
                     <span style="font-size:12px; font-weight:700; color:#38bdf8; background:rgba(56,189,248,0.12); padding:3px 8px; border-radius:6px; border:1px solid rgba(56,189,248,0.25);">
@@ -6202,24 +6241,121 @@ function renderRepurposerResults(data, originalSource) {
                     <input type="text" id="moment-title-${idx}" class="form-input" value="${escapeHtml(m.title || '')}" style="font-size:13px; font-weight:700; color:#fff; margin-top:2px;">
                 </div>
 
-                <div style="background:rgba(0,0,0,0.3); border-left:3px solid #f59e0b; padding:8px 12px; border-radius:4px; margin-bottom:12px;">
-                    <div style="font-size:11px; font-weight:700; color:#fbbf24; margin-bottom:2px;">🎯 Hook 3s đầu tiên:</div>
-                    <div style="font-size:12px; font-style:italic; color:#e2e8f0;">"${escapeHtml(m.hook_quote || '')}"</div>
+                <!-- HOOK 3S & VARIANT BUTTONS -->
+                <div style="background:rgba(0,0,0,0.35); border-left:3px solid #f59e0b; padding:10px 12px; border-radius:6px; margin-bottom:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:4px;">
+                        <span style="font-size:11px; font-weight:700; color:#fbbf24;">🎯 Hook 3s đầu tiên:</span>
+                        <div style="display:flex; gap:4px; flex-wrap:wrap;">
+                            ${hookButtonsHtml}
+                        </div>
+                    </div>
+                    <div id="moment-hook-display-${idx}" style="font-size:12px; font-style:italic; color:#e2e8f0; line-height:1.45; transition: color 0.3s;">
+                        "${escapeHtml(m.hook_quote || '')}"
+                    </div>
                 </div>
 
                 <div style="font-size:12px; color:#cbd5e1; line-height:1.5; margin-bottom:10px;">
                     <strong style="color:#94a3b8;">Tóm tắt:</strong> ${escapeHtml(m.summary || '')}
                 </div>
 
-                <div style="font-size:12px; color:#94a3b8; line-height:1.5; margin-bottom:12px; background:rgba(255,255,255,0.03); padding:8px; border-radius:6px;">
+                <div style="font-size:12px; color:#94a3b8; line-height:1.5; margin-bottom:10px; background:rgba(255,255,255,0.03); padding:8px; border-radius:6px;">
                     <strong style="color:#10b981;">💡 Lý do viral:</strong> ${escapeHtml(m.viral_reason || '')}
                 </div>
 
-                <div style="font-size:11px; color:#38bdf8; line-height:1.4; margin-bottom:14px; background:rgba(56,189,248,0.06); padding:8px; border-radius:6px; border:1px dashed rgba(56,189,248,0.3);">
+                <div style="font-size:11px; color:#38bdf8; line-height:1.4; margin-bottom:12px; background:rgba(56,189,248,0.06); padding:8px; border-radius:6px; border:1px dashed rgba(56,189,248,0.3);">
                     <strong>⚖️ Góc nhìn an toàn (Fair Use):</strong> ${escapeHtml(m.safe_commentary_angle || 'Trích dẫn tạo giá trị mới')}
+                </div>
+
+                <!-- ACCORDION 1: KỊCH BẢN DỰNG & NHỊP EDIT -->
+                <div style="margin-bottom:10px; border:1px solid rgba(255,255,255,0.1); border-radius:8px; overflow:hidden; background:rgba(15,23,42,0.6);">
+                    <div onclick="toggleRepurposerSection('blueprint-box-${idx}')" style="display:flex; justify-content:space-between; align-items:center; padding:9px 12px; cursor:pointer; background:rgba(255,255,255,0.04); transition:background 0.2s;">
+                        <span style="font-size:12px; font-weight:700; color:#38bdf8; display:flex; align-items:center; gap:6px;">
+                            🎬 Kịch Bản Dựng & Nhịp Edit (Director Sheet)
+                        </span>
+                        <span style="font-size:11px; color:#94a3b8;">▼ Bấm mở</span>
+                    </div>
+                    <div id="blueprint-box-${idx}" style="display:none; padding:12px; border-top:1px solid rgba(255,255,255,0.08); background:rgba(0,0,0,0.25);">
+                        <div style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">⏱️ Timeline Nhịp Dựng & Cắt Cảnh:</div>
+                        <div style="margin-bottom:10px;">
+                            ${timelineStepsHtml || '<div style="font-size:11px; color:#64748b;">(Đang cập nhật timeline)</div>'}
+                        </div>
+
+                        ${brollCues.length > 0 ? `
+                        <div style="margin-bottom:8px;">
+                            <div style="font-size:11px; font-weight:700; color:#38bdf8; margin-bottom:4px;">🎥 Gợi ý B-roll chèn cảnh:</div>
+                            <div style="display:flex; flex-wrap:wrap; gap:4px;">${brollBadges}</div>
+                        </div>` : ''}
+
+                        ${subtitleHighlights.length > 0 ? `
+                        <div style="margin-bottom:8px;">
+                            <div style="font-size:11px; font-weight:700; color:#fbbf24; margin-bottom:4px;">🔤 Highlight từ khóa phụ đề:</div>
+                            <div style="display:flex; flex-wrap:wrap; gap:4px;">${subBadges}</div>
+                        </div>` : ''}
+
+                        ${audioSfx.length > 0 ? `
+                        <div style="margin-bottom:10px;">
+                            <div style="font-size:11px; font-weight:700; color:#c084fc; margin-bottom:4px;">🔊 Hiệu ứng âm thanh SFX:</div>
+                            <div style="display:flex; flex-wrap:wrap; gap:4px;">${sfxBadges}</div>
+                        </div>` : ''}
+
+                        <button type="button" class="btn btn-secondary" onclick="copyRepurposerPackItem(${idx}, 'blueprint', this)" style="width:100%; justify-content:center; font-size:11px; padding:6px; margin-top:4px; font-weight:600;">
+                            📋 Sao Chép Toàn Bộ Kịch Bản Edit
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ACCORDION 2: GÓI PHÂN PHỐI ĐA NỀN TẢNG (OMNICHANNEL PACK) -->
+                <div style="margin-bottom:12px; border:1px solid rgba(255,255,255,0.1); border-radius:8px; overflow:hidden; background:rgba(15,23,42,0.6);">
+                    <div onclick="toggleRepurposerSection('omnichannel-box-${idx}')" style="display:flex; justify-content:space-between; align-items:center; padding:9px 12px; cursor:pointer; background:rgba(255,255,255,0.04); transition:background 0.2s;">
+                        <span style="font-size:12px; font-weight:700; color:#10b981; display:flex; align-items:center; gap:6px;">
+                            📱 Gói Đa Kênh (TikTok / Reels / Facebook / YouTube)
+                        </span>
+                        <span style="font-size:11px; color:#94a3b8;">▼ Bấm mở</span>
+                    </div>
+                    <div id="omnichannel-box-${idx}" style="display:none; padding:12px; border-top:1px solid rgba(255,255,255,0.08); background:rgba(0,0,0,0.25);">
+                        <!-- TikTok / Reels -->
+                        <div style="margin-bottom:10px; background:rgba(255,255,255,0.02); padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                <span style="font-size:11px; font-weight:700; color:#f43f5e;">🎵 TikTok & Instagram Reels:</span>
+                                <button type="button" class="btn" onclick="copyRepurposerPackItem(${idx}, 'tiktok', this)" style="font-size:10px; padding:2px 8px; background:rgba(244,63,94,0.15); color:#fda4af; border:1px solid rgba(244,63,94,0.3); border-radius:4px; cursor:pointer;">
+                                    📋 Chép Caption
+                                </button>
+                            </div>
+                            <div style="font-size:11.5px; color:#cbd5e1; line-height:1.45; font-style:italic;">
+                                ${escapeHtml(tiktokCaption)}
+                            </div>
+                        </div>
+
+                        <!-- Facebook Post -->
+                        <div style="margin-bottom:10px; background:rgba(255,255,255,0.02); padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                <span style="font-size:11px; font-weight:700; color:#3b82f6;">📘 Facebook Reels / Watch:</span>
+                                <button type="button" class="btn" onclick="copyRepurposerPackItem(${idx}, 'facebook', this)" style="font-size:10px; padding:2px 8px; background:rgba(59,130,246,0.15); color:#93c5fd; border:1px solid rgba(59,130,246,0.3); border-radius:4px; cursor:pointer;">
+                                    📋 Chép Bài Đăng
+                                </button>
+                            </div>
+                            <div style="font-size:11.5px; color:#cbd5e1; line-height:1.45;">
+                                ${escapeHtml(fbPost)}
+                            </div>
+                        </div>
+
+                        <!-- YouTube Pinned Comment -->
+                        <div style="background:rgba(255,255,255,0.02); padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                <span style="font-size:11px; font-weight:700; color:#ef4444;">🔴 YouTube Pinned Comment:</span>
+                                <button type="button" class="btn" onclick="copyRepurposerPackItem(${idx}, 'youtube', this)" style="font-size:10px; padding:2px 8px; background:rgba(239,68,68,0.15); color:#fca5a5; border:1px solid rgba(239,68,68,0.3); border-radius:4px; cursor:pointer;">
+                                    📋 Chép Comment Ghim
+                                </button>
+                            </div>
+                            <div style="font-size:11.5px; color:#cbd5e1; line-height:1.45;">
+                                ${escapeHtml(ytComment)}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
+            <!-- RENDER SHORT CONTROLS -->
             <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top:14px; margin-top:8px;">
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:12px; font-size:12px;">
                     <div>
@@ -6249,6 +6385,73 @@ function renderRepurposerResults(data, originalSource) {
     });
 
     section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function selectRepurposerHook(idx, hIdx) {
+    if (!currentRepurposeData || !currentRepurposeData.moments || !currentRepurposeData.moments[idx]) return;
+    const m = currentRepurposeData.moments[idx];
+    const hookObj = (m.hook_options && m.hook_options[hIdx]) ? m.hook_options[hIdx] : null;
+    const hookText = hookObj ? hookObj.hook : (m.hook_quote || '');
+
+    const el = document.getElementById(`moment-hook-display-${idx}`);
+    if (el) {
+        el.textContent = `"${hookText}"`;
+        el.style.color = '#fbbf24';
+        setTimeout(() => { el.style.color = '#e2e8f0'; }, 500);
+    }
+    m.hook_quote = hookText;
+    showToast(`Đã chọn Hook: "${hookText.substring(0, 35)}..."`, 'info');
+}
+
+function toggleRepurposerSection(sectionId) {
+    const el = document.getElementById(sectionId);
+    if (!el) return;
+    const isHidden = (el.style.display === 'none' || el.style.display === '');
+    el.style.display = isHidden ? 'block' : 'none';
+}
+
+function copyRepurposerPackItem(idx, type, btnElement) {
+    if (!currentRepurposeData || !currentRepurposeData.moments || !currentRepurposeData.moments[idx]) return;
+    const m = currentRepurposeData.moments[idx];
+    let textToCopy = '';
+
+    if (type === 'blueprint') {
+        const bp = m.edit_blueprint || {};
+        const steps = (bp.timeline_steps || []).join('\n');
+        const broll = (bp.broll_cues || []).join(', ');
+        const subs = (bp.subtitle_highlights || []).join(', ');
+        const sfx = (bp.audio_sfx_cues || []).join(', ');
+        textToCopy = `🎬 KỊCH BẢN DỰNG SHORTS: ${m.title || ''}\nThời lượng: ${m.duration_seconds}s\nHook 3s: ${m.hook_quote || ''}\n\n⏱️ TIMELINE DỰNG:\n${steps}\n\n🎥 B-ROLL: ${broll}\n🔤 TỪ KHÓA SUBTITLE: ${subs}\n🔊 SFX: ${sfx}`;
+    } else if (type === 'tiktok') {
+        textToCopy = m.omnichannel_pack?.tiktok_reels_caption || '';
+    } else if (type === 'facebook') {
+        textToCopy = m.omnichannel_pack?.facebook_post || '';
+    } else if (type === 'youtube') {
+        textToCopy = m.omnichannel_pack?.youtube_pinned_comment || '';
+    }
+
+    if (!textToCopy) {
+        showToast('Không có nội dung để sao chép', 'warning');
+        return;
+    }
+
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            if (btnElement) {
+                const oldText = btnElement.innerText;
+                btnElement.innerText = '✓ Đã chép!';
+                btnElement.style.background = 'rgba(16,185,129,0.3)';
+                setTimeout(() => {
+                    btnElement.innerText = oldText;
+                    btnElement.style.background = '';
+                }, 2000);
+            }
+            showToast('✓ Đã sao chép nội dung thành công!', 'success');
+        }).catch(err => {
+            console.warn('Lỗi clipboard:', err);
+            showToast('Không thể sao chép tự động', 'error');
+        });
+    }
 }
 
 async function renderRepurposedMoment(idx, originalSource) {
