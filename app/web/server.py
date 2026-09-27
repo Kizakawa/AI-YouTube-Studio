@@ -61,7 +61,7 @@ async def device_gatekeeper_middleware(request: Request, call_next):
 
     # Thiết bị từ xa phải có token hợp lệ đã được phê duyệt qua Telegram
     token = request.headers.get("X-Device-Token") or request.cookies.get("device_token")
-    if not is_device_token_valid(token):
+    if not is_device_token_valid(token, client_ip=client_ip):
         from starlette.responses import JSONResponse
         return JSONResponse(
             status_code=401,
@@ -152,20 +152,21 @@ async def get_network_info_endpoint():
 
 @app.get("/api/auth/check")
 async def check_device_auth(request: Request):
-    """Kiểm tra quyền truy cập thiết bị (Localhost luôn qua; Thiết bị từ xa phải có token đã duyệt)"""
+    """Kiểm tra quyền truy cập thiết bị (Localhost luôn qua; Thiết bị từ xa phải có token hoặc IP đã duyệt)"""
     client_ip = request.client.host if request.client else "127.0.0.1"
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         client_ip = forwarded.split(",")[0].strip()
 
-    from app.services.device_auth import is_local_ip, is_device_token_valid, parse_device_info
+    from app.services.device_auth import is_local_ip, is_device_token_valid, get_token_for_ip, parse_device_info
     
     if is_local_ip(client_ip):
         return {"authenticated": True, "is_local": True, "client_ip": client_ip}
 
     auth_token = request.headers.get("X-Device-Token") or request.cookies.get("device_token")
-    if is_device_token_valid(auth_token):
-        return {"authenticated": True, "is_local": False, "client_ip": client_ip}
+    if is_device_token_valid(auth_token, client_ip=client_ip):
+        token = auth_token or get_token_for_ip(client_ip)
+        return {"authenticated": True, "is_local": False, "client_ip": client_ip, "token": token}
 
     ua = request.headers.get("user-agent", "")
     device_name = parse_device_info(ua)
@@ -190,10 +191,15 @@ async def request_device_access(request: Request):
     return res
 
 @app.get("/api/auth/status/{request_id}")
-async def check_device_request_status(request_id: str):
+async def check_device_request_status(request_id: str, request: Request):
     """Frontend polling kiểm tra xem Admin đã bấm [Đồng Ý] trên Telegram chưa"""
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip()
+
     from app.services.device_auth import get_request_status
-    return get_request_status(request_id)
+    return get_request_status(request_id, client_ip=client_ip)
 
 # ─── Stats ────────────────────────────────────────────────────────────────────
 

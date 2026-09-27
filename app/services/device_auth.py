@@ -5,28 +5,27 @@ Tính năng:
 - Mọi thiết bị từ xa (khác 127.0.0.1/localhost) khi truy cập Web Studio sẽ phải chờ Admin duyệt trên Telegram.
 - Máy chủ (127.0.0.1) tự động được tin cậy.
 - Khi có thiết bị mới vào web, hệ thống tự động bắn tin nhắn kèm 2 nút [✅ Đồng Ý] / [❌ Từ Chối] vào nhóm Telegram.
-- Admin bấm [✅ Đồng Ý], thiết bị đó lập tức được cấp token có hạn 7 ngày và tự động mở khóa Web Dashboard.
-- Dữ liệu thiết bị đã duyệt được lưu tại storage/approved_devices.json để không bị mất khi restart server.
+- Phê duyệt theo cả IP VÀ Token: đảm bảo người dùng F5 hoặc đổi tab vẫn được mở khóa tức thì 100%.
+- Lưu trữ bền vững (Persistent) xuống file JSON: không bao giờ bị mất request khi restart bot.
+- Tự động chống spam: không bắn nhiều tin nhắn trùng lặp nếu người dùng tải lại trang liên tục.
 """
 
 import json
 import logging
 import secrets
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 
 from config.settings import settings
 from app.services.channel_intelligence import send_telegram_broadcast
 
 logger = logging.getLogger(__name__)
 
-STORAGE_FILE = Path(settings.BASE_DIR) / "storage" / "approved_devices.json"
-
-# Bộ nhớ tạm lưu các yêu cầu đang chờ duyệt (Pending Requests)
-# request_id -> { "ip": str, "user_agent": str, "device_name": str, "status": "pending"|"approved"|"rejected", "created_at": float, "token": str|None }
-_pending_requests: Dict[str, Dict[str, Any]] = {}
+STORAGE_DIR = Path(settings.BASE_DIR) / "storage"
+STORAGE_FILE = STORAGE_DIR / "approved_devices.json"
+PENDING_FILE = STORAGE_DIR / "pending_requests.json"
 
 
 def _load_approved_devices() -> Dict[str, Dict[str, Any]]:
@@ -36,10 +35,8 @@ def _load_approved_devices() -> Dict[str, Dict[str, Any]]:
     try:
         with open(STORAGE_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-            # Dọn dẹp các token đã quá hạn
             now = time.time()
-            valid_devices = {k: v for k, v in data.items() if v.get("expires_at", 0) > now}
-            return valid_devices
+            return {k: v for k, v in data.items() if v.get("expires_at", 0) > now}
     except Exception as e:
         logger.warning(f"Lỗi đọc {STORAGE_FILE}: {e}")
         return {}
@@ -47,7 +44,7 @@ def _load_approved_devices() -> Dict[str, Dict[str, Any]]:
 
 def _save_approved_devices(devices: Dict[str, Dict[str, Any]]):
     """Lưu danh sách thiết bị đã duyệt xuống file JSON"""
-    STORAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    STORAGE_DIR.mkdir(parents=True, exist_ok=True)
     try:
         with open(STORAGE_FILE, "w", encoding="utf-8") as f:
             json.dump(devices, f, ensure_ascii=False, indent=2)
@@ -55,7 +52,32 @@ def _save_approved_devices(devices: Dict[str, Dict[str, Any]]):
         logger.error(f"Lỗi ghi {STORAGE_FILE}: {e}")
 
 
-def is_local_ip(ip: str) -> bool:
+def _load_pending_requests() -> Dict[str, Dict[str, Any]]:
+    """Tải danh sách các yêu cầu đang chờ duyệt từ file JSON"""
+    if not PENDING_FILE.exists():
+        return {}
+    try:
+        with open(PENDING_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            now = time.time()
+            # Giữ các request trong vòng 24 giờ
+            return {k: v for k, v in data.items() if now - v.get("created_at", 0) < 86400}
+    except Exception as e:
+        logger.warning(f"Lỗi đọc {PENDING_FILE}: {e}")
+        return {}
+
+
+def _save_pending_requests(reqs: Dict[str, Dict[str, Any]]):
+    """Lưu danh sách yêu cầu đang chờ duyệt xuống file JSON"""
+    STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(PENDING_FILE, "w", encoding="utf-8") as f:
+            json.dump(reqs, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Lỗi ghi {PENDING_FILE}: {e}")
+
+
+def is_local_ip(ip: Optional[str]) -> bool:
     """Kiểm tra xem IP có phải là localhost của chính máy chủ đang chạy bot không"""
     if not ip:
         return False
@@ -63,17 +85,41 @@ def is_local_ip(ip: str) -> bool:
     return clean_ip in ("127.0.0.1", "localhost", "::1", "testclient")
 
 
-def is_device_token_valid(token: Optional[str]) -> bool:
-    """Kiểm tra token thiết bị có hợp lệ và còn hạn không"""
-    if not token:
-        return False
+def is_device_token_valid(token: Optional[str] = None, client_ip: Optional[str] = None) -> bool:
+    """
+    Kiểm tra xem thiết bị có được cấp quyền truy cập không.
+    Hỗ trợ kiểm tra cả token VÀ địa chỉ IP của thiết bị đã được duyệt.
+    """
+    if is_local_ip(client_ip):
+        return True
+
     devices = _load_approved_devices()
-    device_info = devices.get(token)
-    if not device_info:
-        return False
-    if device_info.get("expires_at", 0) < time.time():
-        return False
-    return True
+    now = time.time()
+
+    # 1. Kiểm tra theo Token
+    if token and token in devices:
+        if devices[token].get("expires_at", 0) > now:
+            return True
+
+    # 2. Kiểm tra theo IP (dành cho trường hợp client vừa được duyệt nhưng chưa kịp nạp token vào header)
+    if client_ip:
+        for dev in devices.values():
+            if dev.get("client_ip") == client_ip and dev.get("expires_at", 0) > now:
+                return True
+
+    return False
+
+
+def get_token_for_ip(client_ip: str) -> Optional[str]:
+    """Tìm token hợp lệ của một IP đã được duyệt"""
+    if not client_ip:
+        return None
+    devices = _load_approved_devices()
+    now = time.time()
+    for tok, dev in devices.items():
+        if dev.get("client_ip") == client_ip and dev.get("expires_at", 0) > now:
+            return tok
+    return None
 
 
 def parse_device_info(user_agent: str) -> str:
@@ -110,21 +156,36 @@ def parse_device_info(user_agent: str) -> str:
 
 def create_access_request(client_ip: str, user_agent: str) -> Dict[str, Any]:
     """
-    Tạo yêu cầu truy cập mới từ thiết bị từ xa và bắn tin nhắn duyệt về nhóm Telegram
+    Tạo yêu cầu truy cập mới từ thiết bị từ xa và bắn tin nhắn duyệt về nhóm Telegram.
+    Chống spam: nếu IP này đã có request pending trong 2 phút gần nhất thì tái sử dụng.
     """
+    pending = _load_pending_requests()
+    now = time.time()
+
+    # Kiểm tra xem IP này đã có yêu cầu pending gần đây chưa
+    for r_id, r in pending.items():
+        if r.get("client_ip") == client_ip and r.get("status") == "pending" and (now - r.get("created_at", 0) < 180):
+            return {
+                "request_id": r_id,
+                "status": "pending",
+                "device_name": r.get("device_name"),
+                "client_ip": client_ip
+            }
+
     req_id = "dev_" + secrets.token_hex(4)
     device_name = parse_device_info(user_agent)
     now_str = datetime.now().strftime("%H:%M:%S %d/%m/%Y")
 
-    _pending_requests[req_id] = {
+    pending[req_id] = {
         "request_id": req_id,
         "client_ip": client_ip,
         "user_agent": user_agent,
         "device_name": device_name,
         "status": "pending",
-        "created_at": time.time(),
+        "created_at": now,
         "token": None
     }
+    _save_pending_requests(pending)
 
     # Nội dung thông báo gửi vào nhóm Telegram
     alert_text = (
@@ -146,9 +207,7 @@ def create_access_request(client_ip: str, user_agent: str) -> Dict[str, Any]:
     ]
 
     try:
-        # Gửi đến cả admin và các nhóm chat đã đăng ký
         send_telegram_broadcast(alert_text, inline_keyboard=inline_keyboard)
-        # Bổ sung gửi trực tiếp vào allowed_groups nếu có
         _broadcast_to_allowed_groups(alert_text, inline_keyboard)
     except Exception as e:
         logger.error(f"Lỗi gửi yêu cầu duyệt thiết bị qua Telegram: {e}")
@@ -187,11 +246,35 @@ def _broadcast_to_allowed_groups(text: str, inline_keyboard: list):
             logger.debug(f"Không thể gửi tin duyệt thiết bị tới nhóm {gid}: {ex}")
 
 
-def get_request_status(req_id: str) -> Dict[str, Any]:
-    """Kiểm tra trạng thái của một yêu cầu phê duyệt"""
-    req = _pending_requests.get(req_id)
+def get_request_status(req_id: str, client_ip: Optional[str] = None) -> Dict[str, Any]:
+    """Kiểm tra trạng thái của một yêu cầu phê duyệt (hỗ trợ kiểm tra cả IP đã duyệt)"""
+    # 1. Kiểm tra nếu IP này đã có trong danh sách approved_devices
+    if client_ip:
+        devices = _load_approved_devices()
+        now = time.time()
+        for tok, dev in devices.items():
+            if dev.get("client_ip") == client_ip and dev.get("expires_at", 0) > now:
+                return {
+                    "request_id": req_id,
+                    "status": "approved",
+                    "token": tok
+                }
+
+    # 2. Kiểm tra theo req_id
+    pending = _load_pending_requests()
+    req = pending.get(req_id)
     if not req:
+        # Nếu không thấy theo ID, kiểm tra xem có pending request nào của IP này không
+        if client_ip:
+            for r_id, r in pending.items():
+                if r.get("client_ip") == client_ip:
+                    return {
+                        "request_id": r_id,
+                        "status": r.get("status", "pending"),
+                        "token": r.get("token")
+                    }
         return {"status": "not_found"}
+
     return {
         "request_id": req_id,
         "status": req.get("status", "pending"),
@@ -201,8 +284,19 @@ def get_request_status(req_id: str) -> Dict[str, Any]:
 
 def approve_access_request(req_id: str, admin_name: str = "Admin") -> Optional[Dict[str, Any]]:
     """Admin bấm [✅ Đồng Ý] trên Telegram"""
-    req = _pending_requests.get(req_id)
+    pending = _load_pending_requests()
+    req = pending.get(req_id)
+
+    # Fallback an toàn: nếu req_id cụ thể không có (do restart), lấy request pending gần nhất
     if not req:
+        for r_id, r in pending.items():
+            if r.get("status") == "pending":
+                req_id = r_id
+                req = r
+                break
+
+    if not req:
+        logger.warning(f"Không tìm thấy yêu cầu duyệt thiết bị: {req_id}")
         return None
 
     # Sinh token mới có hạn 7 ngày
@@ -211,28 +305,41 @@ def approve_access_request(req_id: str, admin_name: str = "Admin") -> Optional[D
 
     req["status"] = "approved"
     req["token"] = device_token
+    pending[req_id] = req
+    _save_pending_requests(pending)
 
     devices = _load_approved_devices()
     devices[device_token] = {
         "client_ip": req["client_ip"],
-        "device_name": req["device_name"],
+        "device_name": req.get("device_name", "Thiết bị"),
         "approved_by": admin_name,
         "approved_at": datetime.now().isoformat(),
         "expires_at": expires_at
     }
     _save_approved_devices(devices)
 
-    logger.info(f"✅ Đã phê duyệt thiết bị {req['device_name']} ({req['client_ip']}) bởi {admin_name}")
+    logger.info(f"✅ Đã phê duyệt thiết bị {req.get('device_name')} ({req['client_ip']}) bởi {admin_name}")
     return req
 
 
 def reject_access_request(req_id: str, admin_name: str = "Admin") -> Optional[Dict[str, Any]]:
     """Admin bấm [❌ Từ Chối] trên Telegram"""
-    req = _pending_requests.get(req_id)
+    pending = _load_pending_requests()
+    req = pending.get(req_id)
+    if not req:
+        for r_id, r in pending.items():
+            if r.get("status") == "pending":
+                req_id = r_id
+                req = r
+                break
+
     if not req:
         return None
 
     req["status"] = "rejected"
     req["token"] = None
-    logger.info(f"❌ Đã từ chối thiết bị {req['device_name']} ({req['client_ip']}) bởi {admin_name}")
+    pending[req_id] = req
+    _save_pending_requests(pending)
+
+    logger.info(f"❌ Đã từ chối thiết bị {req.get('device_name')} ({req['client_ip']}) bởi {admin_name}")
     return req

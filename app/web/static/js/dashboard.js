@@ -70,6 +70,9 @@ async function checkDeviceAuthorization() {
         if (!overlay) return true;
 
         if (data.authenticated) {
+            if (data.token) {
+                localStorage.setItem('youtube_device_token', data.token);
+            }
             overlay.style.display = 'none';
             return true;
         }
