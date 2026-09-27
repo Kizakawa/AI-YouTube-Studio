@@ -30,35 +30,36 @@ MIN_SPACING_SECONDS = 12600
 # ──────────────────────────────────────────────────────────────────────────────
 # CẤU HÌNH CÁC KHUNG GIỜ VÀNG QUỐC TẾ (US & GLOBAL PEAKS) CHO YOUTUBE SHORTS
 # ──────────────────────────────────────────────────────────────────────────────
-# Shorts có 3 chu kỳ vàng tiêu thụ mạnh nhất đối với khán giả Mỹ & Toàn cầu:
-# 1. 13:00 UTC = 20:00 Tối VN = 09:00 AM EST (ĐỈNH VÀNG SỐ 1 — Sáng Mỹ & Chiều Châu Âu)
-# 2. 23:00 UTC = 06:00 Sáng VN hôm sau = 18:00 - 19:00 PM EST (ĐỈNH GIẢI TRÍ TỐI MỸ)
-# 3. 04:30 UTC = 11:30 Trưa VN = 00:30 AM EST (Nuôi view đêm Mỹ & Đón đầu sáng Châu Âu — Khung video đầu tiên lúc 11:18)
+# Căn lịch sớm hơn giờ vàng thực tế 30 - 60 phút để AI YouTube kịp render codec,
+# quét bản quyền và phân phối thử nghiệm (Seed Testing Phase) trước khi bước vào đỉnh:
+# 1. 12:30 UTC = 19:30 Tối VN = 08:30 AM EST (ĐÓN ĐẦU ĐỈNH VÀNG SỐ 1: Sáng Mỹ & Chiều Châu Âu)
+# 2. 22:30 UTC = 05:30 Sáng VN hôm sau = 17:30 PM EST (ĐÓN ĐẦU ĐỈNH GIẢI TRÍ TỐI MỸ: Tan sở & Ăn tối)
+# 3. 04:15 UTC = 11:15 Trưa VN = 00:15 AM EST (ĐÓN ĐẦU NGHỈ TRƯA & TIỀN LỆ 11:18)
 GOLDEN_SLOTS_UTC = [
     {
-        "hour": 13,
-        "minute": 0,
-        "label_vn": "20:00 Tối",
-        "label_us": "09:00 AM EST (ĐỈNH VÀNG SỐ 1 — Sáng Mỹ & Chiều Châu Âu 15:00)",
-        "description": "Khán giả Mỹ bắt đầu ngày mới và nghỉ trưa; Châu Âu chiều tối. Khuyên dùng nhất cho kênh mới!",
+        "hour": 12,
+        "minute": 30,
+        "label_vn": "19:30 Tối",
+        "label_us": "08:30 AM EST (ĐÓN ĐẦU ĐỈNH VÀNG SỐ 1 — Sáng Mỹ & Chiều Châu Âu)",
+        "description": "Đăng sớm hơn đỉnh 20:30-22:00 45-60 phút để YouTube AI kịp render codec và phân phối thử nghiệm.",
         "tag": "US_MORNING_PEAK",
         "rank": 1
     },
     {
-        "hour": 23,
-        "minute": 0,
-        "label_vn": "06:00 Sáng",
-        "label_us": "18:00 - 19:00 PM EST (ĐỈNH GIẢI TRÍ TỐI MỸ — Tan sở & Ăn tối)",
-        "description": "Khán giả Mỹ trong khung giờ vàng giải trí buổi tối sau giờ làm việc / ăn tối.",
+        "hour": 22,
+        "minute": 30,
+        "label_vn": "05:30 Sáng",
+        "label_us": "17:30 PM EST (ĐÓN ĐẦU ĐỈNH GIẢI TRÍ TỐI MỸ — Tan sở & Ăn tối)",
+        "description": "Đăng sớm trước 18:30-20:00 EST 45-60 phút để video sẵn sàng ngay khi người Mỹ về nhà lướt Shorts.",
         "tag": "US_EVENING_PRIME",
         "rank": 2
     },
     {
         "hour": 4,
-        "minute": 30,
-        "label_vn": "11:30 Trưa",
-        "label_us": "00:30 AM EST (Nuôi view đêm Mỹ) & Đón đầu sáng Châu Âu",
-        "description": "Phù hợp để video có thời gian phân phối trước khi bước vào buổi sáng tại các nước phương Tây (khung giờ video đầu tiên lúc 11:18).",
+        "minute": 15,
+        "label_vn": "11:15 Trưa",
+        "label_us": "00:15 AM EST (Nuôi view đêm Mỹ & Đón đầu sáng Châu Âu)",
+        "description": "Đón đầu trước giờ trưa (khung chuẩn video tiền nhiệm Why You're Terrified of Deep Water lúc 11:18).",
         "tag": "GLOBAL_MORNING_PREP",
         "rank": 3
     },
