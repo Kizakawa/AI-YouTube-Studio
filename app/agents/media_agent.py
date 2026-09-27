@@ -1183,6 +1183,10 @@ class MediaAgent:
                 theme_fallbacks.extend(["storm clouds", "lightning storm", "dark clouds", "rain night"])
             if any(w in combined_text for w in ["fire", "flame", "burn", "explosion", "lửa", "cháy", "nổ"]):
                 theme_fallbacks.extend(["fire flames", "burning fire", "explosion blast"])
+            if any(w in combined_text for w in ["dog", "puppy", "cat", "kitten", "pet", "rescue", "paw", "animal", "chó", "mèo", "cứu hộ", "thú cưng"]):
+                theme_fallbacks.extend(["rescued dog", "sad puppy rain", "human petting dog", "kitten playing", "dog running grass"])
+            if any(w in combined_text for w in ["lion", "tiger", "cheetah", "leopard", "predator", "wildlife", "shark", "eagle", "wolf", "hunt", "săn mồi", "hoang dã", "sư tử", "hổ"]):
+                theme_fallbacks.extend(["wild lion hunting", "cheetah running savanna", "african wildlife predator", "eagle diving", "wolf pack snow"])
 
             for tf in theme_fallbacks:
                 videos = self.search_videos(tf, per_page=4, orientation="portrait")

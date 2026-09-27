@@ -68,6 +68,10 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
+# Tắt log spam getUpdates của httpx để màn hình console sạch sẽ, dễ nhìn
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 logger = logging.getLogger("AI-YouTube")
 
 def print_network_banner():

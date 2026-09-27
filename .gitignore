@@ -43,6 +43,9 @@ tokens/
 .master.key
 credentials/.master.key
 config/channels.yaml
+*.backup
+secrets_config.zip
+*.zip
 
 
 # Database

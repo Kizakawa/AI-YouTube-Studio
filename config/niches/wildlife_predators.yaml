@@ -1,0 +1,70 @@
+id: wildlife_predators
+name: Động Vật Săn Mồi Đỉnh Cao & Sinh Tồn Hoang Dã (Wild Odyssey)
+badge: 🦁 Động Vật Săn Mồi
+icon: 🦁
+description: "Khám phá sức mạnh nguyên thủy, chiến thuật săn mồi tàn khốc, chỉ số sinh tồn nghẹt thở (lực cắn, tốc độ bứt phá, nọc độc) và sự thống trị của các loài thú săn mồi đỉnh cao."
+target_audience: "Khán giả toàn cầu đam mê thế giới động vật hoang dã, phim tài liệu BBC Earth/National Geographic, các cuộc đối đầu sinh tử và quy luật tự nhiên khắc nghiệt."
+
+script_blueprint:
+  tone_of_voice: "Trầm hùng, dồn dập, sắc bén, kích thích adrenaline tột độ, uy lực và tôn kính trước sự tàn khốc hoàn hảo của mẹ thiên nhiên."
+  pacing: "Fast-paced nghẹt thở, 2.2 - 3.0 giây/cảnh, câu ngắn dứt khoát 4-7 từ, dồn nén đến cú tấn công bùng nổ."
+  hook_formulas:
+    - "Lethal Fact Shock: 'A lion\\'s roar can freeze its prey\\'s muscles from 5 miles away... but that\\'s not its deadliest weapon.'"
+    - "Survival Countdown: 'In the next 3 seconds, one of these two apex predators will make a fatal mistake...'"
+    - "Apex Rule of Law: 'There is one creature in the deep ocean that even the Great White Shark refuses to fight alone...'"
+    - "Bite Force Terrifying: 'With a bone-crushing 4,000 PSI bite force, nothing escapes this prehistoric jaws once locked...'"
+    - "Ghost of the Savanna: 'You will never see the leopard stalking you until it\\'s already 2 feet behind your back...'"
+  narrative_structure: "Hook sinh tử cận kề (3s) -> Chiến thuật rình mồi giấu mình im ắng -> Cú bứt phá bùng nổ tốc độ kinh hoàng -> Thông số lực sát thương đỉnh cao -> Quy luật tàn nhẫn của chuỗi thức ăn & Infinite Loop"
+  forbidden_words:
+    - "Chào mừng các bạn đến với thế giới động vật"
+    - "Hôm nay chúng ta sẽ tìm hiểu về loài"
+    - "Thiên nhiên thật kỳ diệu phải không các bạn"
+    - "Hãy ấn theo dõi kênh để biết thêm nhiều loài vật"
+    - "Như các nhà khoa học đã nghiên cứu"
+  cta_templates:
+    - "Theo bạn giữa Sư Tử và Hổ Siberia, ai mới là vua thực sự của rừng xanh? Bình luận dự đoán của bạn và đăng ký kênh đón xem trận đối đầu tiếp theo... bởi vì..."
+    - "Nếu bạn cũng tôn kính sức mạnh tàn khốc của tự nhiên hoang dã, nhấn thích và theo dõi kênh ngay... bởi vì..."
+    - "Lưu lại video này và đăng ký kênh để khám phá cỗ máy săn mồi đáng sợ nhất lịch sử Trái Đất... bởi vì..."
+  anti_hallucination_rules:
+    - "Mọi thông số sinh học (tốc độ tối đa, lực cắn PSI, chiều dài móng vuốt, nồng độ độc tố LD50) phải chuẩn xác theo tài liệu sinh học động vật thực tế."
+    - "Không phóng đại phi thực tế hay tạo ra các cuộc đối đầu phản tự nhiên."
+
+visual_aesthetics:
+  art_style: "Epic BBC Earth Wildlife Cinema & Hyper-Detailed High-Speed Action"
+  camera_angles: "Low-angle dynamic tracking shot at predator eye level, slow-motion 1000fps water droplet splashing, extreme macro close-up of amber predator eyes and bared fangs, sweeping drone aerial savanna run"
+  color_palette: "Dusty African savanna gold, deep jungle emerald, dark river mud, intense predator amber eyes, blood-tinged sunlit dust"
+  master_prompt_prefix: "award-winning National Geographic wildlife photograph, vertical 8k film still, dramatic predatory intensity, golden hour dusty rim light, 400mm telephoto lens"
+  master_prompt_suffix: "hyper-realistic animal anatomy, razor-sharp fur and claw details, motion blur background, photorealistic vertical 9:16, no text, no watermark"
+  negative_prompts: "zoo cage, human, collar, domestic, friendly pet, cartoon, 3d render, anime, blurry, low resolution, watermark, text"
+  stock_video_keywords:
+    - "lion stalking savanna grass"
+    - "cheetah running full speed slow motion"
+    - "great white shark breach surface"
+    - "crocodile attack water slow motion"
+    - "eagle diving talons water"
+    - "leopard jumping tree branch"
+    - "wolf pack hunting snow"
+
+subtitles:
+  font_family: "Montserrat, Oswald, sans-serif"
+  font_weight: "900"
+  font_size: 40
+  primary_color: "#FFFFFF"
+  highlight_color: "#FFAA00"
+  accent_color: "#FF3300"
+  outline_color: "#000000"
+  outline_width: 3
+  margin_bottom: 210
+
+audio:
+  preferred_voice_en: "en-US-ChristopherNeural"
+  preferred_voice_vi: "vi-VN-NamMinhNeural"
+  rate: "-1%"
+  pitch: "-2Hz"
+  bgm_vibe: "primal tribal drums, accelerating heartbeat bass, intense suspense thriller orchestral, epic crescendo"
+  sfx_cues:
+    - "predator_growl_deep"
+    - "heartbeat_heavy"
+    - "whoosh_strike"
+    - "heavy_impact_hit"
+    - "water_splash_explosion"

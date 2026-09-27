@@ -403,6 +403,72 @@ def _get_curated_niche_fallbacks(niche_id: str, lang: str = "en") -> List[Dict[s
                 "why_viral": "Nghịch lý thời gian lịch sử khơi gợi sự tò mò tri thức cực cao"
             }
         ]
+    elif "animal" in niche_id or "rescue" in niche_id or "pet" in niche_id:
+        return [
+            {
+                "topic": "The Abandoned Golden Retriever Puppy Who Waited In The Freezing Rain For 48 Hours",
+                "title": "He Waited 48 Hours In The Freezing Rain... 💔🐾 #rescue",
+                "hook": "He was dumped on this empty road, but still believed his owners would return...",
+                "angle": "Heartbreaking loyalty, trembling eyes, miracle rescue, glorious adoption transformation",
+                "pinned_comment": "Drop a ❤️ if you believe every stray animal deserves love! 👇",
+                "viral_formula": "Emotional Rollercoaster & Tears to Joy",
+                "predicted_retention": "170% - 185%",
+                "why_viral": "Đánh trúng lòng trắc ẩn tột cùng, người xem thả tim và bình luận cầu phúc cực kỳ mạnh"
+            },
+            {
+                "topic": "The Exact Moment An Abused Shelter Dog Realizes He Will Never Be Hurt Again",
+                "title": "The Moment He Realized He Was Finally SAFE 🥺❤️ #dogrescue",
+                "hook": "Every time a hand reached toward him, he flinched in terror... until today.",
+                "angle": "Overcoming severe trauma, first gentle touch, trembling tail wag, unconditional human warmth",
+                "pinned_comment": "Have you ever rescued an animal? Tell us their name below! 👇",
+                "viral_formula": "Double Tap & Healing Empathy",
+                "predicted_retention": "165% - 175%",
+                "why_viral": "Video chữa lành tâm hồn, tỷ lệ lưu lại (Save/Share) cao nhất trong các thể loại Shorts"
+            },
+            {
+                "topic": "Stray Dog Risks Its Own Life to Drag An Injured Kitten Out Of Highway Traffic",
+                "title": "Stray Dog RISKS Life to Save A Tiny Kitten 🐕🐱 #animals",
+                "hook": "Cars were speeding past at 50 mph, but this stray dog saw something moving in the road...",
+                "angle": "Cross-species empathy, heroic rescue instinct, inseparable animal brotherhood",
+                "pinned_comment": "Animals truly have purer hearts than humans. Agree or disagree? 👇",
+                "viral_formula": "Debate in Comments & Heroic Miracle",
+                "predicted_retention": "160% - 170%",
+                "why_viral": "Câu chuyện động vật cứu nhau luôn đạt triệu view nhờ tính kỳ tích phi thường"
+            }
+        ]
+    elif "wildlife" in niche_id or "predator" in niche_id or "nature" in niche_id:
+        return [
+            {
+                "topic": "Why Even a Pride of Adult Lions Refuses to Fight The Honey Badger",
+                "title": "Why Lions REFUSE to Fight The Honey Badger 🦡🦁 #wildlife",
+                "hook": "A male lion has a bone-crushing 1,000 PSI bite force... yet it backs away from this 20-pound creature.",
+                "angle": "Complete venom immunity, loose impenetrable rubber skin, terrifying fearless psychology",
+                "pinned_comment": "Who is the REAL King of the Savanna? Drop your vote below! 👇",
+                "viral_formula": "Shock Fact & Savanna Hierarchy",
+                "predicted_retention": "175% - 185%",
+                "why_viral": "Nhân vật Honey Badger là hiện tượng meme huyền thoại về sự lì lợm và bản lĩnh sinh tồn"
+            },
+            {
+                "topic": "What Actually Happens in The 3 Seconds Before a Cheetah Strikes at 70 MPH",
+                "title": "The 3 Seconds Before a Cheetah STRIKES at 70 MPH 🐆⚡ #animals",
+                "hook": "Her heart rate explodes to 250 beats per minute, yet her gaze never moves one millimeter...",
+                "angle": "Biomechanical perfection, non-retractable claw traction, flexible spine energy storage",
+                "pinned_comment": "Drop a ⚡ if you think the Cheetah is nature's ultimate speed machine!",
+                "viral_formula": "Adrenaline Surge & High-Speed Physics",
+                "predicted_retention": "165% - 175%",
+                "why_viral": "Hình ảnh rượt đuổi tốc độ cao slow-motion kết hợp thông số giật gân giữ chân 100% người xem"
+            },
+            {
+                "topic": "The Only Ocean Predator That Terrifies The Great White Shark",
+                "title": "The ONLY Creature Great White Sharks FEAR 🦈🌊 #ocean",
+                "hook": "Great White Sharks rule the open ocean... until a pod of Orcas appears on the horizon.",
+                "angle": "Tactical suffocation, tonic immobility induction, surgical liver extraction",
+                "pinned_comment": "Do you think Orcas are the most intelligent predators on Earth? 👇",
+                "viral_formula": "Debate in Comments & Ocean Mystery",
+                "predicted_retention": "170% - 180%",
+                "why_viral": "Bí ẩn sức mạnh vượt trội của cá voi sát thủ (Orca) luôn là thỏi nam châm hút hàng triệu lượt xem tranh luận"
+            }
+        ]
     else:  # psychology / default
         return [
             {
