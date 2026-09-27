@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = [
     "gemini-flash-lite-latest",
-    "gemini-flash-latest",
-    "gemini-pro-latest",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
 ]
 
 class ContentAgent:
@@ -37,6 +37,13 @@ class ContentAgent:
         attempts = 0
         max_attempts = max(total_keys * 2, 4)
 
+        safety_settings = [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+        ]
+
         for attempt in range(max_attempts):
             elapsed = time.monotonic() - start_time
             if elapsed >= max_total_seconds:
@@ -60,7 +67,8 @@ class ContentAgent:
 
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
                 payload = {
-                    "contents": [{"parts": [{"text": prompt}]}]
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "safetySettings": safety_settings,
                 }
                 if json_mode:
                     payload["generationConfig"] = {"responseMimeType": "application/json"}
@@ -73,9 +81,11 @@ class ContentAgent:
                         candidates = data.get("candidates", [])
                         if candidates:
                             parts = candidates[0].get("content", {}).get("parts", [])
-                            if parts and "text" in parts[0]:
+                            texts = [p.get("text", "") for p in parts if isinstance(p, dict) and "text" in p]
+                            full_text = "".join(texts).strip()
+                            if full_text:
                                 logger.info(f"✅ Gemini API ({model}) thành công với key {key[:8]}... trong {time.monotonic()-start_time:.1f}s")
-                                return parts[0]["text"].strip()
+                                return full_text
                     elif r.status_code in (429, 403):
                         logger.warning(f"⚠️ Key {key[:8]}... gặp mã {r.status_code} trên model {model}. Đang xoay sang API Key kế tiếp...")
                         self.rotator.rotate_key()
@@ -86,16 +96,21 @@ class ContentAgent:
                         logger.info(f"Gemini API ({model}) gặp 503 với structured output, thử lại chế độ raw JSON...")
                         time.sleep(0.5)
                         try:
-                            fallback_payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                            fallback_payload = {
+                                "contents": [{"parts": [{"text": prompt}]}],
+                                "safetySettings": safety_settings,
+                            }
                             r_fb = requests.post(url, json=fallback_payload, timeout=timeout)
                             if r_fb.status_code == 200:
                                 data = r_fb.json()
                                 candidates = data.get("candidates", [])
                                 if candidates:
                                     parts = candidates[0].get("content", {}).get("parts", [])
-                                    if parts and "text" in parts[0]:
+                                    texts = [p.get("text", "") for p in parts if isinstance(p, dict) and "text" in p]
+                                    full_text = "".join(texts).strip()
+                                    if full_text:
                                         logger.info(f"✅ Gemini API ({model}) thành công qua fallback raw JSON trong {time.monotonic()-start_time:.1f}s")
-                                        return parts[0]["text"].strip()
+                                        return full_text
                         except Exception as e_fb:
                             logger.debug(f"Fallback raw JSON lỗi: {e_fb}")
                         continue
@@ -401,7 +416,10 @@ Phong cách làm việc:
             return reply_text
         except Exception as e:
             logger.warning(f"Lỗi khi chat Gemini: {e}")
-            return "⚠️ Hiện tại các Gemini API Key trong pool đều đang bận hoặc quá hạn mức. Vui lòng thử lại sau vài giây!"
+            err_str = str(e)
+            if "quota" in err_str.lower() or "429" in err_str:
+                return "⚠️ Các Gemini API Key trong pool tạm thời đạt giới hạn request/phút. Vui lòng thử lại sau 15-30 giây!"
+            return f"⚠️ Lỗi kết nối AI: {err_str[:120]}. Vui lòng thử lại!"
 
     def convert_discussion_to_script(
         self,
