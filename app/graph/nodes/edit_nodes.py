@@ -8,6 +8,7 @@ Cho phép can thiệp từng phân cảnh độc lập mà không phải render 
 - remix_bgm: Đổi nhạc nền trong 2 giây
 """
 import asyncio
+import json
 import logging
 from pathlib import Path
 from typing import Dict, Any
@@ -31,6 +32,17 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
     scenes_media = list(state.get("scenes_media", []))
     scenes_audio = list(state.get("scenes_audio", []))
     primary_entity = state.get("primary_entity")
+
+    script_data = dict(state.get("script_data") or {})
+    if not script_data and state.get("job_id"):
+        from app.database.models import get_db, VideoJob
+        with get_db() as db:
+            j = db.query(VideoJob).filter(VideoJob.id == state["job_id"]).first()
+            if j and j.scenes_json:
+                try:
+                    script_data = json.loads(j.scenes_json)
+                except Exception:
+                    pass
 
     logger.info(f"🛠️ [LangGraph Edit] Thực hiện chỉnh sửa vi mô: {action_type} (Scene {scene_id})")
 
@@ -168,13 +180,52 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
         target_lang = "vi" if "vi" in target_lang else "en"
 
         ca = ContentAgent()
-        current_script = ScriptContract(**script_data)
+        try:
+            current_script = ScriptContract(**script_data)
+        except Exception:
+            sc_list = script_data.get("scenes") or scenes_audio
+            current_script = ScriptContract(
+                title=script_data.get("title") or state.get("title") or "Video",
+                hook=script_data.get("hook") or (sc_list[0].get("narration", "Hook") if sc_list else "Hook"),
+                full_narration=script_data.get("full_narration") or " ".join(s.get("narration", "") for s in sc_list),
+                scenes=[
+                    SceneContract(
+                        scene_id=idx + 1,
+                        narration=s.get("narration", ""),
+                        visual_keyword=s.get("visual_keyword", "nature"),
+                    )
+                    for idx, s in enumerate(sc_list)
+                ],
+                tags=script_data.get("tags") or ["shorts", "viral"],
+                description=script_data.get("description"),
+            )
+
+        channel_style = state.get("channel_style") or "general"
         revised = ca.refine_script(
             current_script=current_script,
             feedback=f"Translate and fully rewrite the script into {'Vietnamese' if target_lang == 'vi' else 'English'}. Keep the viral hook, structure, and pacing.",
+            channel_niche=channel_style,
             language=target_lang
         )
         script_data.update(revised.model_dump())
+
+        # Đồng bộ hóa scenes_media theo số cảnh mới
+        new_scenes_media = []
+        for idx, sc in enumerate(revised.scenes):
+            if idx < len(scenes_media):
+                m_item = dict(scenes_media[idx])
+                m_item["scene_id"] = sc.scene_id
+                m_item["visual_keyword"] = sc.visual_keyword
+                new_scenes_media.append(m_item)
+            else:
+                fallback_m = scenes_media[-1] if scenes_media else {"media_path": "", "media_type": "image"}
+                new_scenes_media.append({
+                    "scene_id": sc.scene_id,
+                    "media_path": fallback_m.get("media_path", ""),
+                    "media_type": fallback_m.get("media_type", "image"),
+                    "visual_keyword": sc.visual_keyword,
+                })
+        scenes_media = new_scenes_media
 
         # Chọn giọng chuẩn theo ngôn ngữ mới
         req_voice = edit_req.get("new_voice_id")
