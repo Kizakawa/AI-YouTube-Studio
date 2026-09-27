@@ -114,10 +114,57 @@ async def safe_query_answer(query, text: str = None, show_alert: bool = False):
 
 def is_authorized(update: Update) -> bool:
     """
-    Tất cả thành viên trong nhóm Telegram hoặc chat trực tiếp đều có toàn quyền sử dụng bot.
-    Không bắt buộc cấu hình ALLOWED_TELEGRAM_USERS để tránh phiền toái cho người dùng.
+    Kiểm tra quyền truy cập bot:
+    - Nếu có cấu hình ALLOWED_TELEGRAM_USERS hoặc ALLOWED_GROUP_IDS: bắt buộc tuân thủ danh sách trắng.
+    - Nếu không cấu hình: Cho phép tương tác (nhưng các thao tác đặc quyền như duyệt thiết bị sẽ yêu cầu quyền Admin).
     """
-    return True
+    allowed_users = settings.get_allowed_users()
+    allowed_groups = settings.get_allowed_group_ids()
+
+    # Mặc định mở nếu chưa đặt whitelist trong .env
+    if not allowed_users and not allowed_groups:
+        return True
+
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if chat and chat.type in ["group", "supergroup"]:
+        if allowed_groups and chat.id in allowed_groups:
+            return True
+        if user and user.id in allowed_users:
+            return True
+        return False
+
+    if user and user.id in allowed_users:
+        return True
+
+    return False
+
+
+def is_admin_user(telegram_id: int) -> bool:
+    """Kiểm tra xem người dùng có phải là Quản trị viên (Admin) hay không"""
+    if not telegram_id:
+        return False
+    # 1. Kiểm tra cấu hình ALLOWED_TELEGRAM_USERS trong .env
+    allowed_users = settings.get_allowed_users()
+    if telegram_id in allowed_users:
+        return allowed_users[telegram_id].lower() == "admin"
+
+    # 2. Kiểm tra vai trò trong Database
+    try:
+        with get_db() as db:
+            db_user = db.query(User).filter(User.telegram_id == telegram_id).first()
+            if db_user and db_user.role == "admin":
+                return True
+            # Nếu hệ thống chưa có ai được gán admin, user người thật đầu tiên sẽ là Admin
+            first_user = db.query(User).filter(User.telegram_id > 0).order_by(User.created_at.asc()).first()
+            if first_user and first_user.telegram_id == telegram_id:
+                if first_user.role != "admin":
+                    first_user.role = "admin"
+                return True
+    except Exception as e:
+        logger.error(f"Lỗi kiểm tra quyền admin cho {telegram_id}: {e}")
+    return False
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -130,11 +177,21 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     is_group = chat.type in ["group", "supergroup"]
 
-    # FIX: Dùng context manager — không bao giờ leak session
+    # Dùng context manager — không bao giờ leak session
     with get_db() as db:
         db_user = db.query(User).filter(User.telegram_id == user.id).first()
+        human_users_count = db.query(User).filter(User.telegram_id > 0).count()
+
         if not db_user:
-            role = settings.get_allowed_users().get(user.id, "creator")
+            allowed_users = settings.get_allowed_users()
+            if user.id in allowed_users:
+                role = allowed_users[user.id]
+            elif human_users_count == 0:
+                # User đầu tiên khởi động bot sẽ tự động được trao quyền Admin
+                role = "admin"
+            else:
+                role = "creator"
+
             db_user = User(
                 telegram_id=user.id,
                 username=user.username,
@@ -145,15 +202,21 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             db.add(db_user)
         else:
             db_user.last_active = datetime.utcnow()
-        # commit tự động bởi get_db()
+            # Nếu chỉ có duy nhất 1 user trong hệ thống và chưa là admin, tự động gán admin
+            if human_users_count <= 1 and db_user.role != "admin":
+                db_user.role = "admin"
+
+        is_admin = (db_user.role == "admin") or (user.id in settings.get_allowed_users() and settings.get_allowed_users()[user.id] == "admin")
 
         log_activity(db, user.id, user.username, "START_BOT",
-                     f"Khởi động bot từ {chat.type} '{chat.title or user.first_name}'")
+                     f"Khởi động bot từ {chat.type} '{chat.title or user.first_name}' (Role: {db_user.role})")
 
     scope_text = f"nhóm **{chat.title}**" if is_group else f"bạn **{user.first_name}**"
+    role_badge = f"👑 **Quyền hạn:** Quản trị viên (Admin) • `ID: {user.id}`\n*(Có đặc quyền phê duyệt thiết bị truy cập Web Studio)*" if is_admin else f"👤 **Quyền hạn:** Thành viên sáng tạo (Creator) • `ID: {user.id}`"
 
     welcome_text = (
         f"🎬 **AI YouTube Multi-Channel Studio đã sẵn sàng cho {scope_text}!**\n\n"
+        f"{role_badge}\n\n"
         f"👥 **Cơ chế làm việc nhóm & Web Dashboard:**\n"
         f"• Mọi thành viên cùng ra lệnh, kịch bản hiển thị công khai trong nhóm.\n"
         f"• Theo dõi toàn bộ hoạt động của admin qua Web Dashboard thời gian thực!\n\n"
@@ -2738,6 +2801,14 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 15. Duyệt hoặc Từ chối cấp quyền thiết bị truy cập Web Dashboard (2FA Gatekeeper)
     elif data.startswith("approve_device:"):
+        if not is_admin_user(user.id):
+            await safe_answer_query(
+                query,
+                text="⛔ CHẶN BẢO MẬT: Bạn không phải Quản trị viên (Admin). Chỉ Admin mới có quyền duyệt cấp phép thiết bị vào Web Studio!",
+                show_alert=True
+            )
+            return
+
         req_id = data.split(":")[1]
         from app.services.device_auth import approve_access_request
         approver = user.username or user.first_name
@@ -2758,6 +2829,14 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await safe_edit_text(query.message, "⚠️ Yêu cầu này đã hết hạn hoặc không tồn tại.")
 
     elif data.startswith("reject_device:"):
+        if not is_admin_user(user.id):
+            await safe_answer_query(
+                query,
+                text="⛔ CHẶN BẢO MẬT: Bạn không phải Quản trị viên (Admin). Chỉ Admin mới có quyền từ chối thiết bị!",
+                show_alert=True
+            )
+            return
+
         req_id = data.split(":")[1]
         from app.services.device_auth import reject_access_request
         rejecter = user.username or user.first_name

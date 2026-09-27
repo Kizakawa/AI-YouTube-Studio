@@ -22,6 +22,9 @@ google-api-python-client>=2.100.0
 google-auth-httplib2>=0.2.0
 google-auth-oauthlib>=1.2.0
 
+# Security & Encryption (AES-256-GCM)
+cryptography>=41.0.0
+
 # Web Dashboard (FastAPI & Server)
 fastapi>=0.110.0
 uvicorn>=0.28.0

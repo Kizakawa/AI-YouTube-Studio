@@ -72,20 +72,21 @@ class PublisherAgent:
                 token_data = json.loads(base64.b64decode(env_b64).decode("utf-8"))
                 creds = Credentials.from_authorized_user_info(token_data)
             elif os.path.exists(self.token_file):
-                with open(self.token_file, "r", encoding="utf-8") as f:
-                    token_data = json.load(f)
-                creds = Credentials.from_authorized_user_info(token_data)
+                from app.utils.security import load_encrypted_json, save_encrypted_json
+                token_data = load_encrypted_json(self.token_file)
+                if token_data:
+                    creds = Credentials.from_authorized_user_info(token_data)
 
             if creds:
                 # Tự động refresh token nếu hết hạn
                 if creds.expired and creds.refresh_token:
                     from google.auth.transport.requests import Request
                     creds.refresh(Request())
-                    # Lưu lại token đã refresh
+                    # Lưu lại token đã refresh được mã hoá AES-256
                     if os.path.exists(self.token_file):
-                        with open(self.token_file, "w", encoding="utf-8") as f:
-                            f.write(creds.to_json())
-                        logger.info(f"Đã tự động refresh YouTube token cho '{self.channel_name}'")
+                        from app.utils.security import save_encrypted_json
+                        save_encrypted_json(self.token_file, json.loads(creds.to_json()))
+                        logger.info(f"Đã tự động refresh & lưu mã hoá AES-256 YouTube token cho '{self.channel_name}'")
 
                 self.service = build("youtube", "v3", credentials=creds)
                 logger.info(f"YouTube Data API v3 đã kết nối thành công cho '{self.channel_name}'")

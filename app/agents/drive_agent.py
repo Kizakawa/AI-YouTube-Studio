@@ -33,9 +33,10 @@ class DriveAgent:
                 token_data = json.loads(base64.b64decode(env_b64).decode("utf-8"))
                 creds = Credentials.from_authorized_user_info(token_data)
             elif os.path.exists(self.token_path):
-                with open(self.token_path, "r", encoding="utf-8") as f:
-                    token_data = json.load(f)
-                creds = Credentials.from_authorized_user_info(token_data)
+                from app.utils.security import load_encrypted_json
+                token_data = load_encrypted_json(self.token_path)
+                if token_data:
+                    creds = Credentials.from_authorized_user_info(token_data)
 
             if creds:
                 self.service = build("drive", "v3", credentials=creds)

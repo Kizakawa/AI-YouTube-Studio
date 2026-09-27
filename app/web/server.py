@@ -16,6 +16,7 @@ from contextlib import contextmanager
 from sqlalchemy import func
 from config.settings import settings
 from app.database.models import init_db, get_db, User, VideoJob, ActivityLog, log_activity
+from app.utils.security import load_encrypted_json, save_encrypted_json, is_safe_identifier, is_safe_path
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=r"^(https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?)$",
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -48,10 +50,16 @@ async def device_gatekeeper_middleware(request: Request, call_next):
     ):
         return await call_next(request)
 
-    client_ip = request.client.host if request.client else "127.0.0.1"
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        client_ip = forwarded.split(",")[0].strip()
+    real_socket_ip = request.client.host if request.client else "127.0.0.1"
+    client_ip = real_socket_ip
+
+    # Chống IP Spoofing: Chỉ tin cậy header X-Forwarded-For nếu kết nối đến từ local reverse proxy (127.0.0.1 / ::1)
+    if real_socket_ip in ("127.0.0.1", "::1", "localhost"):
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            first_ip = forwarded.split(",")[0].strip()
+            if first_ip:
+                client_ip = first_ip
 
     from app.services.device_auth import is_local_ip, is_device_token_valid
 
@@ -326,9 +334,8 @@ async def get_channels_matrix() -> List[Dict[str, Any]]:
             token_ch_title = None
             if has_ch_token:
                 try:
-                    with open(ch_token_file, "r", encoding="utf-8") as f:
-                        t_data = json.load(f)
-                        token_ch_title = t_data.get("channel_title")
+                    t_data = load_encrypted_json(ch_token_file)
+                    token_ch_title = t_data.get("channel_title")
                 except Exception:
                     pass
 
@@ -1515,10 +1522,9 @@ def _check_account_tokens(account_id: str) -> Dict[str, Any]:
     youtube_connected = False
     if yt_token_path.exists():
         try:
-            with open(yt_token_path, "r", encoding="utf-8") as f:
-                tok = json.load(f)
-                if tok.get("token") or tok.get("refresh_token"):
-                    youtube_connected = True
+            tok = load_encrypted_json(yt_token_path)
+            if tok.get("token") or tok.get("refresh_token"):
+                youtube_connected = True
         except Exception:
             pass
 
@@ -1526,10 +1532,9 @@ def _check_account_tokens(account_id: str) -> Dict[str, Any]:
     drive_connected = False
     if drive_token_path.exists():
         try:
-            with open(drive_token_path, "r", encoding="utf-8") as f:
-                tok = json.load(f)
-                if tok.get("token") or tok.get("refresh_token"):
-                    drive_connected = True
+            tok = load_encrypted_json(drive_token_path)
+            if tok.get("token") or tok.get("refresh_token"):
+                drive_connected = True
         except Exception:
             pass
 
@@ -1588,8 +1593,7 @@ async def get_accounts_and_channels() -> Dict[str, Any]:
             ch_title = None
             if has_own:
                 try:
-                    with open(ch_token_file, "r", encoding="utf-8") as f:
-                        ch_title = json.load(f).get("channel_title")
+                    ch_title = load_encrypted_json(ch_token_file).get("channel_title")
                 except Exception:
                     pass
             is_conn = has_own or (idx == 0 and token_status["youtube_connected"])
@@ -1701,8 +1705,14 @@ async def delete_google_account(account_id: str) -> Dict[str, Any]:
 @app.post("/api/accounts/{account_id}/disconnect")
 async def disconnect_account_service(account_id: str, req: AuthStartRequest) -> Dict[str, Any]:
     """Ngắt kết nối YouTube hoặc Drive token của tài khoản."""
+    if not is_safe_identifier(account_id):
+        raise HTTPException(status_code=400, detail="Mã tài khoản không hợp lệ.")
+
     base_dir = Path(settings.BASE_DIR)
-    acc_dir = base_dir / "credentials" / "accounts" / account_id
+    accounts_root = (base_dir / "credentials" / "accounts").resolve()
+    acc_dir = (accounts_root / account_id).resolve()
+    if not is_safe_path(acc_dir, accounts_root):
+        raise HTTPException(status_code=400, detail="Đường dẫn không hợp lệ.")
 
     service = req.service.lower()
     files_to_remove = []
@@ -1726,6 +1736,9 @@ async def disconnect_account_service(account_id: str, req: AuthStartRequest) -> 
 @app.post("/api/accounts/{account_id}/upload-secret")
 async def upload_client_secret(account_id: str, req: UploadSecretRequest) -> Dict[str, Any]:
     """Nạp file client_secret.json cho tài khoản."""
+    if not is_safe_identifier(account_id):
+        raise HTTPException(status_code=400, detail="Mã tài khoản không hợp lệ.")
+
     try:
         secret_data = json.loads(req.content)
         if "installed" not in secret_data and "web" not in secret_data:
@@ -1733,7 +1746,12 @@ async def upload_client_secret(account_id: str, req: UploadSecretRequest) -> Dic
     except Exception as ex:
         raise HTTPException(status_code=400, detail=f"Nội dung file JSON không hợp lệ: {ex}")
 
-    acc_dir = Path(settings.BASE_DIR) / "credentials" / "accounts" / account_id.strip()
+    base_dir = Path(settings.BASE_DIR)
+    accounts_root = (base_dir / "credentials" / "accounts").resolve()
+    acc_dir = (accounts_root / account_id.strip()).resolve()
+    if not is_safe_path(acc_dir, accounts_root):
+        raise HTTPException(status_code=400, detail="Đường dẫn không hợp lệ.")
+
     acc_dir.mkdir(parents=True, exist_ok=True)
     secret_path = acc_dir / "client_secret.json"
 
@@ -1748,6 +1766,8 @@ async def upload_client_secret(account_id: str, req: UploadSecretRequest) -> Dic
 @app.post("/api/accounts/{account_id}/auth-start")
 async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Request) -> Dict[str, Any]:
     """Khởi chạy luồng xác thực Google OAuth trong luồng nền và tự động mở trình duyệt."""
+    if not is_safe_identifier(account_id):
+        raise HTTPException(status_code=400, detail="Mã tài khoản không hợp lệ.")
     service = req.service.lower()
     session_key = f"{account_id}:{service}"
     client_ip = request.client.host if request.client else "127.0.0.1"
@@ -1894,11 +1914,11 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
             flow.fetch_token(authorization_response=auth_response)
             creds = flow.credentials
 
-            # Lưu token file
+            # Lưu token file mã hoá AES-256-GCM
             token_data = creds.to_json()
             token_file = acc_dir / token_filename
-            with open(token_file, "w", encoding="utf-8") as f:
-                f.write(token_data)
+            token_dict_to_save = json.loads(token_data)
+            save_encrypted_json(token_file, token_dict_to_save)
 
             # Lưu thêm file Base64 cho Render deployment
             b64_str = base64.b64encode(token_data.encode("utf-8")).decode("utf-8")
@@ -1976,8 +1996,7 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
                             ch_t_dict["channel_title"] = real_yt_title
                             if custom_url:
                                 ch_t_dict["custom_url"] = custom_url
-                            with open(ch_token_file, "w", encoding="utf-8") as f:
-                                json.dump(ch_t_dict, f, indent=2)
+                            save_encrypted_json(ch_token_file, ch_t_dict)
                             logger.info(f"Đã tự động đồng bộ token cho kênh '{ch_target_id}' ({matched_channel_name})")
 
                             # Cập nhật channels.yaml
@@ -2511,8 +2530,7 @@ async def start_channel_oauth(channel_id: str, request: Request, service: str = 
             if custom_url:
                 token_dict["custom_url"] = custom_url
 
-            with open(token_file, "w", encoding="utf-8") as f:
-                json.dump(token_dict, f, indent=2)
+            save_encrypted_json(token_file, token_dict)
 
             # Cập nhật channels.yaml với thông tin thật
             cfg = _read_channels_yaml()
@@ -2581,8 +2599,16 @@ async def get_channel_oauth_status(channel_id: str) -> Dict[str, Any]:
 @app.post("/api/channels/{channel_id}/disconnect")
 async def disconnect_channel(channel_id: str) -> Dict[str, Any]:
     """Ngắt kết nối YouTube riêng cho kênh."""
+    if not is_safe_identifier(channel_id):
+        raise HTTPException(status_code=400, detail="Mã kênh không hợp lệ.")
+
     base_dir = Path(settings.BASE_DIR)
-    ch_token = base_dir / "credentials" / "channels" / channel_id / "youtube_token.json"
+    channels_root = (base_dir / "credentials" / "channels").resolve()
+    ch_dir = (channels_root / channel_id).resolve()
+    if not is_safe_path(ch_dir, channels_root):
+        raise HTTPException(status_code=400, detail="Đường dẫn không hợp lệ.")
+
+    ch_token = ch_dir / "youtube_token.json"
     if ch_token.exists():
         ch_token.unlink()
     return {"success": True, "message": f"Đã ngắt kết nối YouTube cho kênh '{channel_id}'"}
@@ -3024,11 +3050,18 @@ async def create_manual_studio_video(
     upload_dir = base_dir / "storage" / "temp" / f"manual_{job_id}" / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
 
+    ALLOWED_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".jpg", ".jpeg", ".png", ".webp", ".mp3", ".wav"}
+    MAX_FILE_SIZE = 500 * 1024 * 1024  # 500 MB
+
     saved_file_paths = []
     for idx, f in enumerate(files):
         ext = Path(f.filename).suffix.lower() if f.filename else ".mp4"
+        if ext not in ALLOWED_EXTS:
+            raise HTTPException(status_code=400, detail=f"Định dạng tệp '{ext}' không được phép. Chỉ chấp nhận video, hình ảnh hoặc âm thanh.")
         save_path = upload_dir / f"input_media_{idx:03d}{ext}"
         contents = await f.read()
+        if len(contents) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail=f"Tệp '{f.filename}' vượt quá dung lượng tối đa cho phép 500MB.")
         with open(save_path, "wb") as out_f:
             out_f.write(contents)
         saved_file_paths.append(str(save_path))

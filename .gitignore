@@ -37,6 +37,8 @@ tokens/
 *.token.json
 *.pem
 *.key
+.master.key
+credentials/.master.key
 config/channels.yaml
 
 
