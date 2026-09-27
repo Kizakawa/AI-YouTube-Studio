@@ -87,6 +87,22 @@ class VoiceAgent:
         Ghép tất cả scene audio thành 1 file MP3 liên tục.
         Trả về total_duration_ms.
         """
+        # Tạo file silence 0.6s để làm đệm kết thúc (giúp giọng đọc dứt câu trọn vẹn, không ngắt đột ngột)
+        from app.utils.ffmpeg_helper import run_ffmpeg, get_duration_ms
+        tail_silence_path = str(Path(output_path).parent / "tail_silence.mp3")
+        has_tail = False
+        try:
+            run_ffmpeg([
+                "-f", "lavfi",
+                "-i", "anullsrc=r=24000:cl=mono",
+                "-t", "0.6",
+                "-c:a", "libmp3lame",
+                tail_silence_path
+            ])
+            has_tail = Path(tail_silence_path).exists()
+        except Exception as e:
+            logger.warning(f"Không thể tạo tail silence: {e}")
+
         # Tạo file list cho ffmpeg concat
         list_file = str(Path(output_path).parent / "audio_concat_list.txt")
         with open(list_file, "w", encoding="utf-8") as f:
@@ -96,9 +112,11 @@ class VoiceAgent:
                 # Chuẩn hóa path sang forward slash (as_posix) an toàn cho FFmpeg concat trên Windows/Linux
                 safe_path = Path(scene.audio_path).resolve().as_posix().replace("'", "'\\''")
                 f.write(f"file '{safe_path}'\n")
+            if has_tail:
+                safe_tail = Path(tail_silence_path).resolve().as_posix().replace("'", "'\\''")
+                f.write(f"file '{safe_tail}'\n")
 
         # FFmpeg concat demuxer an toàn qua run_ffmpeg
-        from app.utils.ffmpeg_helper import run_ffmpeg, get_duration_ms
         run_ffmpeg([
             "-f", "concat",
             "-safe", "0",

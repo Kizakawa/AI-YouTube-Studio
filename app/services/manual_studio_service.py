@@ -368,8 +368,15 @@ class ManualStudioService:
         update_progress(40, "Đang căn chỉnh tỷ lệ 9:16 và chuyển động điện ảnh...")
         rendered_clips: List[str] = []
 
+        td = config.transition_duration if len(valid_scenes) > 1 else 0.0
+        tail_buffer = 0.6
+        adjusted_durations = [
+            d + (td if idx < len(valid_scenes) - 1 else tail_buffer)
+            for idx, d in enumerate(scene_durations)
+        ]
+
         for i, sc in enumerate(valid_scenes, start=1):
-            dur = scene_durations[i - 1]
+            dur = adjusted_durations[i - 1]
             clip_path = str(temp_dir / f"scene_{i:03d}_clip.mp4")
             update_progress(
                 40 + int(i / len(valid_scenes) * 25),
@@ -408,7 +415,7 @@ class ManualStudioService:
                     output_path=raw_concat_video,
                     transition=config.transition_type,
                     transition_duration=config.transition_duration,
-                    scene_durations_seconds=scene_durations
+                    scene_durations_seconds=adjusted_durations
                 )
             except Exception as e:
                 logger.warning(f"Lỗi xfade concat, fallback sang concat thông thường: {e}")

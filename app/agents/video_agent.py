@@ -63,17 +63,26 @@ class VideoAgent:
             scene_clips = self._prepare_scene_clips(job.scenes, str(work_dir), job)
 
             # ── Step 2: Concat tất cả scenes → 1 video silent với xfade transition ──
-            logger.info(f"[VideoAgent] Job {job.job_id}: Ghép {len(scene_clips)} clips (xfade fade 0.25s)...")
+            transition_duration = 0.3
+            tail_buffer = 0.6
+            total_scenes = len(job.scenes)
+
+            logger.info(f"[VideoAgent] Job {job.job_id}: Ghép {len(scene_clips)} clips (xfade {transition_duration}s, tail buffer {tail_buffer}s)...")
             await report(f"🎬 Đang ghép nối các phân cảnh với hiệu ứng chuyển cảnh mượt...", 75)
             silent_video = str(work_dir / "concat_silent.mp4")
-            scene_durations = [s.actual_duration_seconds for s in job.scenes]
+
+            # Tính chính xác thời lượng từng clip (đã bù xfade overlap và tail buffer)
+            clip_durations = [
+                max(s.actual_duration_seconds, 1.0) + (transition_duration if idx < total_scenes - 1 else tail_buffer)
+                for idx, s in enumerate(job.scenes)
+            ]
             concat_videos_with_xfade(
                 video_paths=scene_clips,
                 output_path=silent_video,
                 fps=job.fps,
                 transition="fadeblack",
-                transition_duration=0.3,
-                scene_durations_seconds=scene_durations,
+                transition_duration=transition_duration,
+                scene_durations_seconds=clip_durations,
             )
 
             # ── Step 3: Mux audio (voice + optional BGM với Audio Ducking) ──
@@ -166,10 +175,21 @@ class VideoAgent:
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        def _render_one(scene: SceneContract) -> tuple[int, str]:
+        total_scenes = len(scenes)
+        transition_duration = 0.3
+        tail_buffer = 0.6
+
+        def _render_one(idx: int, scene: SceneContract) -> tuple[int, str]:
             """Render 1 scene clip, trả về (scene_id, clip_path)."""
             clip_path = str(Path(work_dir) / f"clip_{scene.scene_id:03d}.mp4")
-            duration = max(scene.actual_duration_seconds, 1.0)  # Tối thiểu 1 giây
+            base_dur = max(scene.actual_duration_seconds, 1.0)
+            # Cảnh trước cảnh cuối bù thêm transition_duration để xfade không làm hụt video
+            # Cảnh cuối cùng đệm thêm tail_buffer để dứt câu hoàn toàn, không bao giờ ngắt cụt
+            if idx < total_scenes - 1:
+                duration = base_dur + transition_duration
+            else:
+                duration = base_dur + tail_buffer
+
             is_hook = (scene.scene_id == 1)
             motion = "zoom_in" if is_hook else scene.resolved_camera_motion
 
@@ -247,7 +267,7 @@ class VideoAgent:
         results: dict[int, str] = {}
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_map = {executor.submit(_render_one, s): s.scene_id for s in scenes}
+            future_map = {executor.submit(_render_one, idx, s): s.scene_id for idx, s in enumerate(scenes)}
             for future in as_completed(future_map):
                 scene_id = future_map[future]
                 try:
