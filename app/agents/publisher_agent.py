@@ -25,17 +25,21 @@ class PublisherAgent:
         # Kiểm tra xem kênh này có phải kênh đầu tiên (mặc định) của account không
         is_first_ch = False
         try:
-            from app.utils.config_loader import load_config
-            cfg = load_config("channels.yaml")
-            accounts = cfg.get("google_accounts", [])
-            for a in accounts:
-                if a.get("id") == self.account_name:
-                    b_chs = a.get("brand_channels", [])
-                    if b_chs and b_chs[0].get("id") == self.channel_id:
-                        is_first_ch = True
-                    break
-        except Exception:
-            pass
+            import yaml
+            from config.settings import settings
+            cfg_path = Path(settings.BASE_DIR) / "config" / "channels.yaml"
+            if cfg_path.exists():
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    cfg = yaml.safe_load(f) or {}
+                accounts = cfg.get("google_accounts", [])
+                for a in accounts:
+                    if a.get("id") == self.account_name:
+                        b_chs = a.get("brand_channels", [])
+                        if b_chs and b_chs[0].get("id") == self.channel_id:
+                            is_first_ch = True
+                        break
+        except Exception as e:
+            logger.debug(f"PublisherAgent config check error: {e}")
 
         if self.channel_config.get("token_file") and os.path.exists(self.channel_config["token_file"]):
             self.token_file = self.channel_config["token_file"]
@@ -113,10 +117,15 @@ class PublisherAgent:
             self._init_service()
 
         if not self.service:
-            logger.error(f"Không thể kết nối YouTube API để upload: {self.token_file}")
+            err_msg = (
+                f"Kênh '{self.channel_name}' chưa có token YouTube riêng. "
+                f"Vui lòng vào Web Dashboard (http://127.0.0.1:8000) -> Tab Kênh & Tài Khoản -> Bấm '🔑 Cấp Quyền YouTube (Kênh Này)' để kết nối."
+            )
+            logger.error(f"Không thể kết nối YouTube API để upload: {self.token_file} ({err_msg})")
             return {
                 "status": "failed",
-                "error": "Chưa kết nối YouTube OAuth token",
+                "error": err_msg,
+                "message": err_msg,
                 "video_id": None
             }
 

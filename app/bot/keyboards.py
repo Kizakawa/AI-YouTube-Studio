@@ -239,8 +239,8 @@ def get_publish_channel_keyboard(job_id: int) -> InlineKeyboardMarkup:
         ch_name = ch.get("name", ch_id)
         acc_id = ch.get("google_account", "account_1")
         acc_email = acc_map.get(acc_id, acc_id)
-        token_path = os.path.join(settings.CREDENTIALS_DIR, "accounts", acc_id, "youtube_token.json")
-        auth_status = "🟢" if os.path.exists(token_path) else "⚠️"
+        ch_token = os.path.join(settings.CREDENTIALS_DIR, "channels", ch_id, "youtube_token.json")
+        auth_status = "🟢" if os.path.exists(ch_token) else "⚠️"
 
         keyboard.append([
             InlineKeyboardButton(
@@ -268,8 +268,8 @@ def get_schedule_channel_keyboard(job_id: int) -> InlineKeyboardMarkup:
         ch_name = ch.get("name", ch_id)
         acc_id = ch.get("google_account", "account_1")
         acc_email = acc_map.get(acc_id, acc_id)
-        token_path = os.path.join(settings.CREDENTIALS_DIR, "accounts", acc_id, "youtube_token.json")
-        auth_status = "🟢" if os.path.exists(token_path) else "⚠️"
+        ch_token = os.path.join(settings.CREDENTIALS_DIR, "channels", ch_id, "youtube_token.json")
+        auth_status = "🟢" if os.path.exists(ch_token) else "⚠️"
 
         keyboard.append([
             InlineKeyboardButton(

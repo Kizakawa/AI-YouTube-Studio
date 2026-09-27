@@ -1879,14 +1879,17 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             channels = settings.get_channels_config()
             ch_cfg = next((c for c in channels if c.get("id") == channel_id), {"id": channel_id, "name": channel_id})
             acc_id = ch_cfg.get("google_account", "account_1")
-            token_path = os.path.join(settings.CREDENTIALS_DIR, "accounts", acc_id, "youtube_token.json")
+            ch_token_path = os.path.join(settings.CREDENTIALS_DIR, "channels", channel_id, "youtube_token.json")
 
-            if not os.path.exists(token_path):
+            if not os.path.exists(ch_token_path):
                 await safe_reply(
                     update,
-                    f"⚠️ **KÊNH CHƯA KẾT NỐI OAUTH!**\n\n"
-                    f"Kênh `{ch_cfg.get('name', channel_id)}` thuộc tài khoản `{acc_id}` chưa có quyền YouTube OAuth.\n\n"
-                    f"👉 Hãy truy cập Web Dashboard tại `http://127.0.0.1:8000` -> Tab **Kênh & Tài Khoản** -> Bấm **Cấp Quyền YouTube** để cấp quyền trước nhé!"
+                    f"⚠️ **KÊNH CHƯA CẤP QUYỀN YOUTUBE RIÊNG!**\n\n"
+                    f"Kênh `{ch_cfg.get('name', channel_id)}` thuộc tài khoản `{acc_id}` chưa có quyền YouTube OAuth riêng.\n\n"
+                    f"👉 **Cách kết nối trong 10 giây:**\n"
+                    f"1. Mở Web Studio tại `http://127.0.0.1:8000` -> Tab **Kênh & Tài Khoản**.\n"
+                    f"2. Tại dòng kênh `{ch_cfg.get('name', channel_id)}`, bấm nút đỏ: **`🔑 Cấp Quyền YouTube (Kênh Này)`**.\n"
+                    f"3. Đăng nhập Google và bấm chọn đúng kênh `{ch_cfg.get('name', channel_id)}` là xong!"
                 )
                 return
 
@@ -1903,7 +1906,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             from app.agents.drive_agent import DriveAgent
 
             ch_name = ch_cfg.get("name", channel_id)
-            pub_agent = PublisherAgent(channel_config=ch_cfg)
+            pub_agent = PublisherAgent(channel_config=ch_cfg, account_name=acc_id)
             drive_agent = DriveAgent(account_name=acc_id)
 
             # 1. Tải lên Google Drive đúng theo thư mục riêng của kênh
@@ -2143,14 +2146,17 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             channels = settings.get_channels_config()
             ch_cfg = next((c for c in channels if c.get("id") == channel_id), {"id": channel_id, "name": channel_id})
             acc_id = ch_cfg.get("google_account", "account_1")
-            token_path = os.path.join(settings.CREDENTIALS_DIR, "accounts", acc_id, "youtube_token.json")
+            ch_token_path = os.path.join(settings.CREDENTIALS_DIR, "channels", channel_id, "youtube_token.json")
 
-            if not os.path.exists(token_path):
+            if not os.path.exists(ch_token_path):
                 await safe_reply(
                     update,
-                    f"⚠️ **KÊNH CHƯA KẾT NỐI OAUTH!**\n\n"
-                    f"Kênh `{ch_cfg.get('name', channel_id)}` thuộc tài khoản `{acc_id}` chưa có quyền YouTube OAuth.\n\n"
-                    f"👉 Hãy truy cập Web Dashboard tại `http://127.0.0.1:8000` -> Tab **Kênh & Tài Khoản** -> Bấm **Cấp Quyền YouTube** để cấp quyền trước nhé!"
+                    f"⚠️ **KÊNH CHƯA CẤP QUYỀN YOUTUBE RIÊNG!**\n\n"
+                    f"Kênh `{ch_cfg.get('name', channel_id)}` thuộc tài khoản `{acc_id}` chưa có quyền YouTube OAuth riêng.\n\n"
+                    f"👉 **Cách kết nối trong 10 giây:**\n"
+                    f"1. Mở Web Studio tại `http://127.0.0.1:8000` -> Tab **Kênh & Tài Khoản**.\n"
+                    f"2. Tại dòng kênh `{ch_cfg.get('name', channel_id)}`, bấm nút đỏ: **`🔑 Cấp Quyền YouTube (Kênh Này)`**.\n"
+                    f"3. Đăng nhập Google và bấm chọn đúng kênh `{ch_cfg.get('name', channel_id)}` là xong!"
                 )
                 return
 
@@ -2171,7 +2177,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             from app.agents.drive_agent import DriveAgent
 
             ch_name = ch_cfg.get("name", channel_id)
-            pub_agent = PublisherAgent(channel_config=ch_cfg)
+            pub_agent = PublisherAgent(channel_config=ch_cfg, account_name=acc_id)
             drive_agent = DriveAgent(account_name=acc_id)
 
             # 1. Tải lên Google Drive đúng theo thư mục riêng của kênh
@@ -2241,7 +2247,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 await safe_reply(update, success_text)
             else:
-                err = pub_res.get("message", "Lỗi không xác định")
+                err = pub_res.get("error") or pub_res.get("message") or "Lỗi không xác định"
                 await safe_reply(
                     update,
                     f"❌ **LÊN LỊCH VIDEO #{job_id} THẤT BẠI!**\n\n"
