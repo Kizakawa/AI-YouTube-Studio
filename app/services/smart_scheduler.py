@@ -15,8 +15,15 @@ from app.database.models import get_db, VideoJob
 
 logger = logging.getLogger(__name__)
 
-# Múi giờ Việt Nam (UTC+7)
+# Múi giờ Việt Nam (UTC+7) và Múi giờ bờ Đông Mỹ (New York / EDT UTC-4 hoặc EST UTC-5)
 VN_TZ = timezone(timedelta(hours=7))
+US_TZ = timezone(timedelta(hours=-4))  # New York / EDT (tháng 3 đến tháng 11)
+
+# Giới hạn tối đa video trên mỗi kênh trong 1 ngày
+MAX_VIDEOS_PER_DAY = 2
+
+# Khoảng cách tối thiểu an toàn giữa 2 video (3.5 giờ = 12,600 giây) để thuật toán Shorts phân bổ
+MIN_SPACING_SECONDS = 12600
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CẤU HÌNH 4 KHUNG GIỜ VÀNG QUỐC TẾ (US & GLOBAL PEAKS) CHO YOUTUBE SHORTS
@@ -194,10 +201,16 @@ def get_next_available_golden_slot(
 
     logger.debug(f"[SmartScheduler] Kênh {channel_id} (Family: {channel_family}) hiện có {len(occupied_slots_utc)} khe giờ đã đặt lịch.")
 
-    # 2. Duyệt tìm khe giờ trống bắt đầu từ ngày hôm nay đến 35 ngày tiếp theo
+    # 2. Duyệt tìm khe giờ trống bắt đầu từ ngày hôm nay đến 45 ngày tiếp theo
+    # Áp dụng triệt để: TỐI ĐA 2 VIDEO / NGÀY / KÊNH
+    # Ưu tiên 2 đỉnh cao nhất: Buổi tối Mỹ (23:00 UTC = 06:00 VN) & Buổi sáng Mỹ (13:00 UTC = 20:00 VN)
+    # Tự động chèn khe dự phòng nếu trùng (17:30 UTC = 00:30 VN hoặc 03:00 UTC = 10:00 VN)
     start_date = now_utc.date()
-    for day_offset in range(35):
+    for day_offset in range(45):
         target_date = start_date + timedelta(days=day_offset)
+
+        # Tạo danh sách các khe giờ vàng trong ngày
+        candidate_slots = []
         for slot in GOLDEN_SLOTS_UTC:
             candidate_dt = datetime(
                 year=target_date.year,
@@ -208,41 +221,60 @@ def get_next_available_golden_slot(
                 second=0,
                 tzinfo=timezone.utc
             )
+            if candidate_dt > min_allowed_time:
+                candidate_slots.append((candidate_dt, slot))
 
-            # Khe giờ phải nằm sau thời điểm tối thiểu (cần ít nhất min_lead_minutes để YouTube xử lý)
-            if candidate_dt <= min_allowed_time:
-                continue
+        # Ưu tiên 2 khung giờ vàng lớn nhất (US_EVENING_PRIME, US_MORNING), 
+        # sau đó đến 2 khung giờ dự phòng (US_LUNCH, US_WEST_PRIME) nếu khung chính bị chiếm
+        candidate_slots.sort(key=lambda item: (
+            0 if item[1]["tag"] in ("US_EVENING_PRIME", "US_MORNING") else 1,
+            item[0]
+        ))
 
-            # Kiểm tra xem khe giờ này có bị trùng hoặc quá gần video khác không
-            # Giữ khoảng cách an toàn ít nhất 3.5 tiếng (12,600 giây) để thuật toán Shorts tối ưu
-            is_occupied = False
+        for candidate_dt, slot in candidate_slots:
+            # 1. Kiểm tra va chạm thời gian: Cách mọi video đã có ít nhất 3.5 giờ (12,600s)
+            is_too_close = False
             for occ in occupied_slots_utc:
                 diff_seconds = abs((candidate_dt - occ).total_seconds())
-                if diff_seconds < 12600:  # Trùng trong khoảng dưới 3.5 tiếng
-                    is_occupied = True
+                if diff_seconds < MIN_SPACING_SECONDS:
+                    is_too_close = True
                     break
+            if is_too_close:
+                continue
 
-            if not is_occupied:
-                # Tìm thấy khe giờ vàng trống tối ưu!
-                slot_iso = candidate_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            # 2. KIỂM TRA QUY TẮC "TỐI ĐA 2 VIDEO / 1 NGÀY":
+            # Đếm số lượng video đã đặt trên cùng chu kỳ ngày của thị trường mục tiêu US EST
+            target_us_date = candidate_dt.astimezone(US_TZ).date()
+            us_day_count = sum(1 for occ in occupied_slots_utc if occ.astimezone(US_TZ).date() == target_us_date)
 
-                # Chuyển đổi sang giờ Việt Nam để hiển thị
-                candidate_vn = candidate_dt.astimezone(VN_TZ)
-                weekday_name = WEEKDAY_VN_MAP.get(candidate_vn.weekday(), "Ngày")
-                display_vn = f"{slot['label_vn']} {weekday_name}, {candidate_vn.strftime('%d/%m/%Y')} (Giờ VN)"
-                display_us = slot["label_us"]
-
-                logger.info(
-                    f"🎯 [SmartScheduler] Đã xếp lịch tối ưu cho kênh {channel_id}: "
-                    f"{display_vn} ({slot_iso}) — {display_us}"
+            if us_day_count >= MAX_VIDEOS_PER_DAY:
+                logger.debug(
+                    f"[SmartScheduler] Ngày {target_us_date} (US) đã có đủ {us_day_count} video "
+                    f"(đạt giới hạn tối đa {MAX_VIDEOS_PER_DAY} video/ngày) -> Chuyển sang ngày tiếp theo."
                 )
-                return candidate_dt, slot_iso, display_vn, display_us
+                continue
 
-    # Fallback dự phòng nếu lịch quá đầy (sau 35 ngày):
+            # 3. TÌM THẤY KHE GIỜ VÀNG TRỐNG TỐI ƯU THỎA MÃN MỌI ĐIỀU KIỆN!
+            slot_iso = candidate_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            # Chuyển đổi sang giờ Việt Nam để hiển thị
+            candidate_vn = candidate_dt.astimezone(VN_TZ)
+            weekday_name = WEEKDAY_VN_MAP.get(candidate_vn.weekday(), "Ngày")
+            display_vn = f"{slot['label_vn']} {weekday_name}, {candidate_vn.strftime('%d/%m/%Y')} (Giờ VN)"
+            display_us = slot["label_us"]
+
+            logger.info(
+                f"🎯 [SmartScheduler] Đã xếp lịch tối ưu (Tối đa 2 video/ngày) cho kênh {channel_id}: "
+                f"{display_vn} ({slot_iso}) — {display_us}"
+            )
+            return candidate_dt, slot_iso, display_vn, display_us
+
+    # Fallback dự phòng nếu lịch quá đầy (sau 45 ngày):
     fallback_dt = min_allowed_time + timedelta(hours=4)
     fallback_iso = fallback_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
     fallback_vn = fallback_dt.astimezone(VN_TZ).strftime("%H:%M %d/%m/%Y (Giờ VN)")
     return fallback_dt, fallback_iso, fallback_vn, "Khung giờ dự phòng"
+
 
 
 def get_channel_upcoming_schedule(channel_id: str = "channel_maya", limit: int = 10) -> List[Dict[str, Any]]:
