@@ -718,13 +718,10 @@ async def viral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
+        from app.services.channel_intelligence import suggest_channel_topics
         ideas = await asyncio.to_thread(
-            content_agent.suggest_viral_ideas,
+            suggest_channel_topics,
             channel_id=channel_id,
-            channel_name=channel_name,
-            channel_niche=channel_niche,
-            language=channel_lang,
-            recent_titles=recent_titles,
             count=5
         )
 
@@ -2334,6 +2331,86 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         channel_id = parts[1] if len(parts) > 1 else None
         await _show_schedule_view(update, context, channel_id=channel_id)
 
+    # 12. Duyệt video tự động cứu nguy (KPI Auto-Approval: now / schedule / cancel)
+    elif data.startswith("approve_auto:"):
+        parts = data.split(":")
+        job_id = int(parts[1])
+        action = parts[2]
+        with get_db() as db:
+            job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if not job:
+                await safe_reply(update, f"❌ Không tìm thấy video #{job_id}")
+                return
+            target_ch = job.target_channel_id
+            job_title = job.title or job.topic
+
+            if action == "cancel":
+                job.status = "DRAFT"
+                job.progress_message = "Người dùng đã hủy duyệt video tự động"
+                log_activity(db, user.id, user.username, "CANCEL_AUTO_JOB", f"Người dùng hủy duyệt Video #{job_id}", channel_id=target_ch)
+                if query.message:
+                    await safe_edit_text(query.message, f"❌ **ĐÃ HỦY DUYỆT VIDEO #{job_id}**\n\n🎬 *{job_title}*\nVideo này sẽ không được đăng lên kênh `{target_ch}`.")
+                else:
+                    await safe_reply(update, f"❌ Đã hủy duyệt Video #{job_id}")
+                return
+
+            elif action == "schedule":
+                from app.services.smart_scheduler import get_next_available_golden_slot
+                slot_dt, slot_iso, vn_label, us_label = get_next_available_golden_slot(target_ch)
+                job.status = "SCHEDULED"
+                job.scheduled_time = slot_dt
+                job.progress_message = f"Đã duyệt: Lên lịch lúc {vn_label}"
+                log_activity(db, user.id, user.username, "APPROVE_SCHEDULE", f"Duyệt Video #{job_id} lên lịch lúc {vn_label}", channel_id=target_ch)
+                confirm_txt = (
+                    f"✅ **ĐÃ DUYỆT & LÊN LỊCH CÔNG CHIẾU THÀNH CÔNG!**\n\n"
+                    f"🎬 **Video #{job_id}:** *{job_title}*\n"
+                    f"📺 **Kênh:** `{target_ch}`\n"
+                    f"⏰ **Giờ công chiếu:** `{vn_label}` ({us_label})\n\n"
+                    f"✨ Video sẽ tự động phát sóng theo khung giờ vàng quốc tế để giữ vững đề xuất thuật toán!"
+                )
+                if query.message:
+                    await safe_edit_text(query.message, confirm_txt)
+                else:
+                    await safe_reply(update, confirm_txt)
+                return
+
+            elif action == "now":
+                job.status = "RENDERED"
+                log_activity(db, user.id, user.username, "APPROVE_NOW", f"Duyệt Video #{job_id} để đăng ngay", channel_id=target_ch)
+                confirm_txt = (
+                    f"✅ **ĐÃ DUYỆT ĐĂNG NGAY CHO VIDEO #{job_id}!**\n\n"
+                    f"🎬 **Video:** *{job_title}*\n"
+                    f"📺 **Kênh:** `{target_ch}`\n\n"
+                    f"Hệ thống đang chuẩn bị xuất bản lên YouTube..."
+                )
+                if query.message:
+                    await safe_edit_text(query.message, confirm_txt)
+                else:
+                    await safe_reply(update, confirm_txt)
+                return
+
+    # 13. Kích hoạt thủ công tạo video cứu nguy KPI
+    elif data.startswith("auto_gen_kpi:"):
+        cid = data.split(":")[1]
+        from app.services.channel_intelligence import trigger_auto_generation_for_overdue_channel
+        status_msg = await safe_reply(update, f"⏳ Đang kích hoạt AI sản xuất video cứu tương tác cho kênh `{cid}`...")
+        res = await asyncio.to_thread(trigger_auto_generation_for_overdue_channel, cid, grace_hours=4.0, force=True)
+        if res.get("success"):
+            await safe_edit_text(
+                status_msg,
+                f"🚀 **ĐÃ BẮT ĐẦU SẢN XUẤT VIDEO CỨU NGUY (Task #{res['job_id']})**\n\n"
+                f"📺 **Kênh:** `{cid}`\n"
+                f"🎬 **Tiêu đề:** *{res['title']}*\n"
+                f"⏱️ **Hạn chót duyệt:** 4 tiếng kể từ khi render xong.\n\n"
+                f"Gõ `/queue` để theo dõi tiến độ render!"
+            )
+        else:
+            await safe_edit_text(status_msg, f"⚠️ {res.get('message', 'Không thể khởi động tác vụ.')}")
+
+    # 14. Làm mới báo cáo KPI
+    elif data == "refresh_kpi_report":
+        await kpi_command(update, context)
+
 
 
 # Cache tạm cho kết quả tìm kiếm hình ảnh & video trên Telegram
@@ -2937,6 +3014,62 @@ async def _show_schedule_view(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def schedule_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Lệnh xem lịch phát sóng & 4 khung giờ vàng YouTube Shorts: /schedule hoặc /lich, /lichdang"""
     await _show_schedule_view(update, context)
+
+
+async def kpi_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Lệnh /kpi hoặc /baocao, /tiendo:
+    Báo cáo sức khỏe tiến độ của tất cả các kênh YouTube trong hệ thống:
+    - Kênh nào đang đúng tiến độ (< 24h).
+    - Kênh nào sắp trễ (24-48h).
+    - Kênh nào trễ deadline >= 2 ngày và trạng thái video tự động cứu nguy.
+    """
+    if not is_authorized(update):
+        return
+
+    from app.services.channel_intelligence import run_network_kpi_audit
+    msg = await safe_reply(update, "⏳ Đang kiểm tra số liệu và báo cáo chỉ tiêu KPI các kênh...")
+    audit = await asyncio.to_thread(run_network_kpi_audit)
+
+    lines = [
+        "📊 **BÁO CÁO TIẾN ĐỘ & CHỈ TIÊU KPI CÁC KÊNH YOUTUBE**\n",
+        f"🎯 **Tổng số kênh:** {audit['total_channels']}",
+        f"✅ **Đúng tiến độ (<24h):** {audit['on_track_count']} kênh",
+        f"⚠️ **Sắp trễ hạn (24-48h):** {audit['warning_count']} kênh",
+        f"🚨 **Trễ deadline (≥ 2 ngày):** {audit['overdue_count']} kênh\n",
+        "─────────────────────────────"
+    ]
+
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    kb_buttons = []
+
+    for ch in audit["channels"]:
+        cname = ch["channel_name"]
+        cid = ch["channel_id"]
+        status_label = ch["status_label"]
+        days = ch["days_since_last_video"]
+        hours = ch["hours_since_last_video"]
+
+        lines.append(f"\n📺 **Kênh:** `{cname}` ({ch['niche']})")
+        lines.append(f"• **Trạng thái:** {status_label}")
+        lines.append(f"• **Thời gian từ video cuối:** {hours:.1f}h (~{days:.1f} ngày)")
+
+        if ch.get("pending_job"):
+            pj = ch["pending_job"]
+            p_title = (pj['title'] or pj.get('topic') or '')[:30]
+            lines.append(f"• 🤖 **Video cứu tương tác:** #{pj['job_id']} (*{p_title}...*) — `{pj['status']}`")
+        elif ch["is_overdue_2_days"]:
+            lines.append(f"• ⚡ *Đã quá hạn 2 ngày! Hệ thống tự động kích hoạt tạo video cứu nguy.*")
+            kb_buttons.append([InlineKeyboardButton(f"⚡ Tạo video cứu nguy: {cname}", callback_data=f"auto_gen_kpi:{cid}")])
+
+    kb_buttons.append([InlineKeyboardButton("🔄 Làm mới báo cáo", callback_data="refresh_kpi_report")])
+    markup = InlineKeyboardMarkup(kb_buttons)
+
+    if msg:
+        await safe_edit_text(msg, "\n".join(lines), reply_markup=markup)
+    else:
+        await safe_reply(update, "\n".join(lines), reply_markup=markup)
+
 
 
 

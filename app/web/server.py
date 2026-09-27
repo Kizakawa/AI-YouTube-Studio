@@ -73,6 +73,13 @@ def on_startup():
     except Exception as e:
         logger.warning(f"Lỗi recover stuck jobs on startup: {e}")
 
+    # Khởi động ChannelIntelligenceWorker ngầm (giám sát KPI, chống trùng ý tưởng, tự động đăng tạm)
+    try:
+        from app.services.channel_intelligence import ChannelIntelligenceWorker
+        ChannelIntelligenceWorker.start(check_interval_minutes=30)
+    except Exception as e:
+        logger.warning(f"Lỗi khởi động ChannelIntelligenceWorker on startup: {e}")
+
 # ─── Serve UI ─────────────────────────────────────────────────────────────────
 
 _cached_index_html: Optional[str] = None
@@ -2275,6 +2282,114 @@ async def calculate_forecast_endpoint(req: ForecastRequest):
         "success": True,
         "forecast": forecast
     }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# ─── CHANNEL INTELLIGENCE & KPI MANAGEMENT API ──────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/channels/{channel_id}/topics/suggest")
+async def suggest_channel_topics_endpoint(channel_id: str, count: int = 5):
+    """
+    Gợi ý ý tưởng video Shorts độc lạ cho kênh, chống trùng lặp 100% với video cũ.
+    """
+    try:
+        from app.services.channel_intelligence import suggest_channel_topics
+        ideas = suggest_channel_topics(channel_id=channel_id, count=count)
+        return {
+            "success": True,
+            "channel_id": channel_id,
+            "count": len(ideas),
+            "ideas": ideas
+        }
+    except Exception as e:
+        logger.error(f"Lỗi gợi ý ý tưởng kênh {channel_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/channels/kpi/report")
+async def get_kpi_report_endpoint():
+    """
+    Báo cáo sức khỏe KPI toàn bộ các kênh YouTube:
+    - Danh sách kênh đúng hạn, cảnh báo, trễ deadline >= 2 ngày.
+    """
+    try:
+        from app.services.channel_intelligence import run_network_kpi_audit
+        audit = run_network_kpi_audit()
+        return {
+            "success": True,
+            "report": audit
+        }
+    except Exception as e:
+        logger.error(f"Lỗi tạo báo cáo KPI: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+class AutoGenerateKPIRequest(BaseModel):
+    grace_hours: Optional[float] = 4.0
+    force: Optional[bool] = False
+
+@app.post("/api/channels/{channel_id}/kpi/auto-generate")
+async def auto_generate_kpi_video(channel_id: str, req: Optional[AutoGenerateKPIRequest] = None):
+    """
+    Tự động sản xuất video cứu tương tác cho kênh bị trễ deadline 2 ngày (hoặc force=True).
+    """
+    try:
+        from app.services.channel_intelligence import trigger_auto_generation_for_overdue_channel
+        grace = req.grace_hours if req and req.grace_hours else 4.0
+        force = req.force if req and req.force is not None else False
+        res = trigger_auto_generation_for_overdue_channel(channel_id, grace_hours=grace, force=force)
+        return res
+    except Exception as e:
+        logger.error(f"Lỗi tự động sản xuất video cho kênh {channel_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+class ApproveJobRequest(BaseModel):
+    action: str = "schedule"  # "now", "schedule", "cancel"
+
+@app.post("/api/videos/{job_id}/approve")
+async def approve_video_job(job_id: int, req: Optional[ApproveJobRequest] = None):
+    """
+    Duyệt video tự động tạo (AWAITING_APPROVAL):
+    - action='now': Duyệt để đăng ngay.
+    - action='schedule': Xếp lịch vào khung giờ vàng chuẩn quốc tế.
+    - action='cancel': Huỷ bỏ và chuyển trạng thái về DRAFT.
+    """
+    action = (req.action if req else "schedule").lower()
+    with get_db() as db:
+        job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Không tìm thấy video job")
+
+        target_ch = job.target_channel_id
+
+        if action == "cancel":
+            job.status = "DRAFT"
+            job.progress_message = "Người dùng đã từ chối/hủy duyệt video tự động"
+            log_activity(db, 0, "Web_User", "CANCEL_AUTO_JOB", f"Người dùng hủy duyệt Video #{job_id}", channel_id=target_ch)
+            return {"success": True, "message": f"Đã hủy duyệt video #{job_id}"}
+
+        if action == "schedule":
+            from app.services.smart_scheduler import get_next_available_golden_slot
+            slot_dt, slot_iso, vn_label, us_label = get_next_available_golden_slot(target_ch)
+            job.status = "SCHEDULED"
+            job.scheduled_time = slot_dt
+            job.progress_message = f"Đã duyệt: Lên lịch công chiếu lúc {vn_label} ({us_label})"
+            log_activity(db, 0, "Web_User", "APPROVE_SCHEDULE", f"Duyệt Video #{job_id} lên lịch lúc {vn_label}", channel_id=target_ch)
+            return {
+                "success": True,
+                "message": f"Đã duyệt và lên lịch công chiếu Video #{job_id} lúc {vn_label}",
+                "scheduled_slot_vn": vn_label,
+                "scheduled_slot_us": us_label
+            }
+
+        elif action == "now":
+            job.status = "RENDERED"
+            log_activity(db, 0, "Web_User", "APPROVE_NOW", f"Duyệt Video #{job_id} để xuất bản", channel_id=target_ch)
+            return {
+                "success": True,
+                "message": f"Đã duyệt Video #{job_id} sẵn sàng xuất bản!"
+            }
+        else:
+            raise HTTPException(status_code=400, detail=f"Hành động '{action}' không hợp lệ (hỗ trợ: now, schedule, cancel)")
 
 
 # ═════════════════════════════════════════════════════════════════════════════

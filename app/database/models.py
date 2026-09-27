@@ -102,9 +102,11 @@ class VideoJob(Base):
     subtitle_path = Column(String(500), nullable=True)  # [NEW]
     drive_link = Column(String(500), nullable=True)
 
-    # YouTube info
+    # YouTube & Auto-Publish info
     youtube_video_id = Column(String(100), nullable=True)
     scheduled_time = Column(DateTime, nullable=True)
+    is_auto_generated = Column(Integer, default=0)        # 1 = Hệ thống tự động sinh khi trễ KPI
+    approval_deadline = Column(DateTime, nullable=True)   # Hạn chót duyệt video trước khi tự động đăng tạm
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -167,6 +169,8 @@ def init_db():
                 "progress_percent": "INTEGER DEFAULT 0",
                 "progress_message": "VARCHAR(255)",
                 "quality_scores": "TEXT",
+                "is_auto_generated": "INTEGER DEFAULT 0",
+                "approval_deadline": "DATETIME",
             }
             for col_name, col_type in columns_to_add.items():
                 if col_name not in existing_columns:

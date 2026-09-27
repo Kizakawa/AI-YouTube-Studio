@@ -14,7 +14,7 @@ from app.bot.handlers import (
     search_image_command, search_video_command,
     viral_command,
     videos_command, get_video_command, web_command, schedule_command,
-    auto_resume_pending_jobs
+    kpi_command, auto_resume_pending_jobs
 )
 from app.utils.ffmpeg_helper import is_ffmpeg_installed, get_ffmpeg_version
 from app.utils.network_helper import get_network_info
@@ -183,8 +183,9 @@ def main():
     app.add_handler(CommandHandler(["get", "getvideo", "xem", "download", "tai_video"], get_video_command))
     app.add_handler(CommandHandler(["web", "dashboard", "wifi", "link"], web_command))
     app.add_handler(CommandHandler(["schedule", "lich", "lichdang", "lich_dang"], schedule_command))
+    app.add_handler(CommandHandler(["kpi", "baocao", "tiendo", "report"], kpi_command))
     app.add_handler(CallbackQueryHandler(channel_callback, pattern=r"^(select_channel|manage_channel|pick_niche|set_niche|prompt_rename|add_tpl|prompt_custom_channel|pick_voice|set_voice|pick_lang|set_lang|pick_visual|set_visual|confirm_del_channel|do_del_channel|prompt_add_channel|back_channels|refresh_channels)"))
-    app.add_handler(CallbackQueryHandler(video_callback, pattern=r"^(render_video|publish_now|publish_youtube|publish_to_channel|schedule_to_channel|cancel_publish|feedback_video|edit_script|schedule|schedule_youtube|regenerate|cancel|process_all_pending|refresh_pending|retry_all_failed|apply_media|pick_viral_topic|refresh_viral_ideas|close_viral|send_video_file|videos_page|refresh_videos|refresh_schedule)"))
+    app.add_handler(CallbackQueryHandler(video_callback, pattern=r"^(render_video|publish_now|publish_youtube|publish_to_channel|schedule_to_channel|cancel_publish|feedback_video|edit_script|schedule|schedule_youtube|regenerate|cancel|process_all_pending|refresh_pending|retry_all_failed|apply_media|pick_viral_topic|refresh_viral_ideas|close_viral|send_video_file|videos_page|refresh_videos|refresh_schedule|approve_auto|auto_gen_kpi|refresh_kpi_report)"))
     app.add_handler(CallbackQueryHandler(chat_callback, pattern=r"^(convert_chat|suggest_more|change_hooks):"))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.Document.ALL, media_upload_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))

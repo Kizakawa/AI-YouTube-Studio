@@ -16,16 +16,17 @@ from pydantic import BaseModel, Field, field_validator
 
 class JobStatus(str, Enum):
     """Máy trạng thái (State Machine) của 1 VideoJob xuyên suốt pipeline."""
-    DRAFT          = "DRAFT"
-    SCRIPT_READY   = "SCRIPT_READY"
-    AUDIO_READY    = "AUDIO_READY"
-    MEDIA_READY    = "MEDIA_READY"
-    RENDERING      = "RENDERING"
-    RENDERED       = "RENDERED"
-    UPLOADING      = "UPLOADING"
-    SCHEDULED      = "SCHEDULED"
-    PUBLISHED      = "PUBLISHED"
-    FAILED         = "FAILED"
+    DRAFT             = "DRAFT"
+    SCRIPT_READY      = "SCRIPT_READY"
+    AUDIO_READY       = "AUDIO_READY"
+    MEDIA_READY       = "MEDIA_READY"
+    RENDERING         = "RENDERING"
+    RENDERED          = "RENDERED"
+    AWAITING_APPROVAL = "AWAITING_APPROVAL"  # Video tự động tạo khi trễ KPI, chờ người dùng duyệt hoặc đăng tạm
+    UPLOADING         = "UPLOADING"
+    SCHEDULED         = "SCHEDULED"
+    PUBLISHED         = "PUBLISHED"
+    FAILED            = "FAILED"
 
 
 class SceneContract(BaseModel):
