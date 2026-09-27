@@ -24,6 +24,7 @@ from app.bot.keyboards import (
     get_publish_channel_keyboard,
     get_viral_ideas_keyboard,
     get_videos_list_keyboard,
+    get_schedule_keyboard,
 )
 from app.database.models import get_db, User, VideoJob, log_activity
 from app.agents.content_agent import ContentAgent
@@ -158,6 +159,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📌 **Các lệnh chính:**\n"
         f"• `/web` - 🌐 Link Web Dashboard qua Wi-Fi (mở trên điện thoại & máy tính)\n"
         f"• `/viral` - 🔥 Gợi ý 5 ý tưởng triệu view (Công thức giữ chân 160% Retention)\n"
+        f"• `/schedule` - ⏰ Xem lịch công chiếu & 4 khung giờ vàng YouTube Shorts (Mỹ & VN)\n"
         f"• `/videos` - 📺 Xem danh sách tất cả video trong hệ thống (kèm nút xem/tải trực tiếp)\n"
         f"• `/get <id>` - 📥 Tải file video MP4 gửi thẳng vào tin nhắn Telegram để xem ngay\n"
         f"• `/chat <nội dung>` - Thảo luận, phản biện và đồng sáng tạo kịch bản với Đạo diễn AI\n"
@@ -167,7 +169,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• `/queue` - Xem trạng thái hàng đợi render (FIFO)\n"
         f"• `/cancel <job_id>` - Hủy video đang chờ trong hàng đợi\n"
         f"• `/status` - Báo cáo số lượng video và trạng thái hệ thống\n\n"
-        f"👉 Gõ `/web`, `/viral`, `/videos` hoặc `/idea` để bắt đầu sáng tạo video cùng nhóm!"
+        f"👉 Gõ `/web`, `/viral`, `/schedule`, `/videos` hoặc `/idea` để bắt đầu sáng tạo video cùng nhóm!"
     )
     await safe_reply(update, welcome_text)
 
@@ -2326,6 +2328,13 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
 
+    # 11. Làm mới bảng phân bổ lịch phát sóng (Schedule)
+    elif data.startswith("refresh_schedule:"):
+        parts = data.split(":")
+        channel_id = parts[1] if len(parts) > 1 else None
+        await _show_schedule_view(update, context, channel_id=channel_id)
+
+
 
 # Cache tạm cho kết quả tìm kiếm hình ảnh & video trên Telegram
 _SEARCH_CACHE: Dict[str, Dict[str, Any]] = {}
@@ -2850,6 +2859,87 @@ async def web_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await safe_reply(update, msg, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
+async def _show_schedule_view(update: Update, context: ContextTypes.DEFAULT_TYPE, channel_id: Optional[str] = None):
+    """Hiển thị bảng phân bổ lịch phát sóng khe giờ vàng và danh sách video sắp công chiếu."""
+    if not is_authorized(update):
+        return
+
+    user = update.effective_user
+    channels = settings.get_channels_config()
+    default_ch_id = channels[0].get("id") if channels else "channel_maya"
+
+    if not channel_id:
+        with get_db() as db:
+            db_user = db.query(User).filter(User.telegram_id == user.id).first()
+            channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else default_ch_id
+
+    ch_cfg = next((c for c in channels if c.get("id") == channel_id), {"id": channel_id, "name": channel_id})
+    ch_name = ch_cfg.get("name", channel_id)
+
+    from app.services.smart_scheduler import (
+        get_next_available_golden_slot,
+        get_channel_upcoming_schedule,
+        get_golden_slots_overview,
+        sync_scheduled_jobs_status
+    )
+
+    # 1. Tự động đồng bộ các video đã qua giờ hẹn sang PUBLISHED
+    sync_scheduled_jobs_status()
+
+    # 2. Lấy khe tiếp theo và danh sách video sắp lên sóng
+    slot_dt, slot_iso, display_vn, display_us = get_next_available_golden_slot(channel_id)
+    upcoming = get_channel_upcoming_schedule(channel_id, limit=5)
+    overview = get_golden_slots_overview()
+
+    upcoming_text = ""
+    if upcoming:
+        for idx, u in enumerate(upcoming, 1):
+            yt_link = f" [🔗 Xem trước]({u['youtube_url']})" if u.get("youtube_url") else ""
+            upcoming_text += (
+                f"{idx}. 🎬 **#{u['job_id']}: {u['title'][:40]}**\n"
+                f"   ⏰ **{u['scheduled_vn']}**\n"
+                f"   🇺🇸 _{u['scheduled_us']}_{yt_link}\n\n"
+            )
+    else:
+        upcoming_text = "   _Hiện chưa có video nào đang chờ công chiếu trên kênh này._\n\n"
+
+    overview_text = ""
+    for o in overview:
+        overview_text += f"• 🎯 **{o['time_vn']}** (🇺🇸 _{o['time_us']}_)\n  _{o['description']}_\n"
+
+    msg = (
+        f"📅 **LỊCH PHÁT SÓNG & 4 KHUNG GIỜ VÀNG SHORTS QUỐC TẾ**\n"
+        f"📺 **Kênh:** `{ch_name}` (`{channel_id}`)\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🎯 **KHE GIỜ VÀNG TIẾP THEO (TỰ ĐỘNG XẾP):**\n"
+        f"👉 **{display_vn}**\n"
+        f"🇺🇸 *({display_us})*\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📋 **DANH SÁCH VIDEO ĐÃ LÊN LỊCH:**\n\n"
+        f"{upcoming_text}"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🌟 **4 KHUNG GIỜ VÀNG SHORTS ĐẠT VIEW CAO NHẤT (MỸ & TOÀN CẦU):**\n\n"
+        f"{overview_text}\n"
+        f"💡 **Cơ chế tự động thông minh:**\n"
+        f"• Tự động giãn cách >= 3.5 giờ giữa các video để tránh 'nuốt view' thuật toán.\n"
+        f"• Máy chủ YouTube tự động chuyển video sang Công khai khi tới giờ hẹn (kể cả khi bạn tắt máy)!\n"
+        f"• Lên lịch video đã dựng: Dùng nút **⏰ Lên Lịch Tự Động** sau khi render hoặc gõ `/videos`."
+    )
+
+    markup = get_schedule_keyboard(channel_id)
+
+    if update.callback_query and update.callback_query.message:
+        await safe_edit_text(update.callback_query.message, msg, reply_markup=markup)
+    else:
+        await safe_reply(update, msg, reply_markup=markup)
+
+
+async def schedule_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lệnh xem lịch phát sóng & 4 khung giờ vàng YouTube Shorts: /schedule hoặc /lich, /lichdang"""
+    await _show_schedule_view(update, context)
+
+
+
 async def chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Thảo luận kịch bản với Đạo diễn AI: /chat <câu hỏi hoặc ý tưởng>
@@ -2875,10 +2965,15 @@ async def chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     with get_db() as db:
         db_user = db.query(User).filter(User.telegram_id == user.id).first()
-        channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_psychology"
+        channels = settings.get_channels_config()
+        default_ch = channels[0].get("id") if channels else "channel_maya"
+        channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else default_ch
+        if channel_id == "channel_psychology":
+            channel_id = "channel_maya"
         if db_user:
             db_user.last_active = datetime.utcnow()
         log_activity(db, user.id, user.username, "CHAT_BRAINSTORM", f"Thảo luận kịch bản: '{prompt[:50]}...'", channel_id=channel_id)
+
 
     # Lấy thông tin ngách kênh
     channel_niche = "psychology"
@@ -3048,7 +3143,11 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     with get_db() as db:
         db_user = db.query(User).filter(User.telegram_id == user.id).first()
-        channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_psychology"
+        channels = settings.get_channels_config()
+        default_ch = channels[0].get("id") if channels else "channel_maya"
+        channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else default_ch
+        if channel_id == "channel_psychology":
+            channel_id = "channel_maya"
         if db_user:
             db_user.last_active = datetime.utcnow()
         log_activity(db, user.id, user.username, "CHAT_REPLY", f"Trao đổi tự nhiên: '{clean_text[:50]}...'", channel_id=channel_id)
@@ -3094,7 +3193,11 @@ async def chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         with get_db() as db:
             db_user = db.query(User).filter(User.telegram_id == user.id).first()
-            channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_psychology"
+            channels = settings.get_channels_config()
+            default_ch = channels[0].get("id") if channels else "channel_maya"
+            channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else default_ch
+            if channel_id == "channel_psychology":
+                channel_id = "channel_maya"
 
         channel_niche = "psychology"
         channel_lang = "en"

@@ -331,3 +331,18 @@ def get_videos_list_keyboard(
     ])
 
     return InlineKeyboardMarkup(keyboard)
+
+
+def get_schedule_keyboard(channel_id: str) -> InlineKeyboardMarkup:
+    """Bàn phím tương tác xem và quản lý lịch đăng khe giờ vàng"""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🔄 Làm Mới Lịch", callback_data=f"refresh_schedule:{channel_id}"),
+            InlineKeyboardButton("📺 Đổi Kênh", callback_data="refresh_channels")
+        ],
+        [
+            InlineKeyboardButton("🎬 Xem Danh Sách Video", callback_data="videos_page:1"),
+            InlineKeyboardButton("⏳ Hàng Đợi Render", callback_data="refresh_pending")
+        ]
+    ])
+

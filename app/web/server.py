@@ -54,7 +54,7 @@ def on_startup():
                     username="web_studio",
                     full_name="Web Studio UI",
                     role="admin",
-                    active_channel_id="channel_psychology"
+                    active_channel_id="channel_maya"
                 )
                 db.add(admin)
     except Exception as e:
@@ -508,7 +508,7 @@ async def download_video(job_id: int):
 
 class CreateScriptRequest(BaseModel):
     topic: str
-    channel_id: str = "channel_psychology"
+    channel_id: str = "channel_maya"
     language: str = "en"
 
 @app.post("/api/scripts/create")
@@ -804,19 +804,56 @@ class PublishYouTubeRequest(BaseModel):
 def get_channel_next_golden_slot(channel_id: str):
     """Tính toán khe giờ vàng tiếp theo trống lịch cho kênh"""
     try:
-        from app.services.smart_scheduler import get_next_available_golden_slot, get_channel_upcoming_schedule
+        from app.services.smart_scheduler import (
+            get_next_available_golden_slot,
+            get_channel_upcoming_schedule,
+            get_golden_slots_overview,
+            sync_scheduled_jobs_status
+        )
+        sync_scheduled_jobs_status()
         slot_dt, slot_iso, display_vn, display_us = get_next_available_golden_slot(channel_id)
         upcoming = get_channel_upcoming_schedule(channel_id, limit=5)
+        overview = get_golden_slots_overview()
         return {
             "success": True,
             "channel_id": channel_id,
             "slot_iso": slot_iso,
             "display_vn": display_vn,
             "display_us": display_us,
-            "upcoming": upcoming
+            "upcoming": upcoming,
+            "golden_slots": overview
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+@app.get("/api/channels/{channel_id}/schedule")
+def get_channel_full_schedule(channel_id: str):
+    """Lấy chi tiết toàn bộ lịch phát sóng, khe tiếp theo và 4 khung giờ vàng quốc tế"""
+    try:
+        from app.services.smart_scheduler import (
+            get_next_available_golden_slot,
+            get_channel_upcoming_schedule,
+            get_golden_slots_overview,
+            sync_scheduled_jobs_status
+        )
+        sync_scheduled_jobs_status()
+        slot_dt, slot_iso, display_vn, display_us = get_next_available_golden_slot(channel_id)
+        upcoming = get_channel_upcoming_schedule(channel_id, limit=10)
+        overview = get_golden_slots_overview()
+        return {
+            "success": True,
+            "channel_id": channel_id,
+            "next_slot": {
+                "iso": slot_iso,
+                "display_vn": display_vn,
+                "display_us": display_us
+            },
+            "upcoming": upcoming,
+            "golden_slots": overview
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 
 @app.post("/api/videos/{job_id}/publish-youtube")
 async def publish_to_youtube(

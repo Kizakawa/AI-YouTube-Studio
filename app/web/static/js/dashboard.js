@@ -1232,10 +1232,10 @@ async function fetchGoldenSlotPreview(channelId) {
         if (data.success && data.display_vn) {
             el.innerHTML = `🎯 <strong>Khe tiếp theo:</strong> ${data.display_vn}<br><span style="color:#93c5fd">(${data.display_us})</span>`;
         } else {
-            el.textContent = 'Tự động tính 20:00 hoặc 00:30 VN chưa có video';
+            el.textContent = 'Tự động tính 1 trong 4 khung giờ vàng chuẩn US (06:00, 10:00, 20:00, 00:30 VN)';
         }
     } catch (e) {
-        el.textContent = 'Tự động tính 20:00 hoặc 00:30 VN chưa có video';
+        el.textContent = 'Tự động tính 1 trong 4 khung giờ vàng chuẩn US (06:00, 10:00, 20:00, 00:30 VN)';
     }
 }
 
