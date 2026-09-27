@@ -26,45 +26,41 @@ MAX_VIDEOS_PER_DAY = 2
 MIN_SPACING_SECONDS = 12600
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CẤU HÌNH 4 KHUNG GIỜ VÀNG QUỐC TẾ (US & GLOBAL PEAKS) CHO YOUTUBE SHORTS
+# CẤU HÌNH CÁC KHUNG GIỜ VÀNG QUỐC TẾ (US & GLOBAL PEAKS) CHO YOUTUBE SHORTS
 # ──────────────────────────────────────────────────────────────────────────────
-# Shorts có 4 chu kỳ tiêu thụ mạnh nhất trong ngày của khán giả Mỹ:
-# 1. 23:00 UTC = 06:00 Sáng VN hôm sau = 18:00 / 6:00 PM EST (ĐỈNH LỚN NHẤT — Người Mỹ vừa tan sở)
-# 2. 03:00 UTC = 10:00 Sáng VN = 22:00 / 10:00 PM EST & 19:00 / 7:00 PM PST (Bờ Tây tan làm, Bờ Đông thư giãn trước ngủ)
-# 3. 13:00 UTC = 20:00 Tối VN = 8:00 Sáng EST (Người Mỹ thức dậy, đi làm & ăn sáng)
-# 4. 17:30 UTC = 00:30 Đêm VN = 12:30 Trưa EST (Giờ nghỉ trưa các văn phòng & trường học Mỹ)
+# CẤU HÌNH CÁC KHUNG GIỜ VÀNG QUỐC TẾ (US & GLOBAL PEAKS) CHO YOUTUBE SHORTS
+# ──────────────────────────────────────────────────────────────────────────────
+# Shorts có 3 chu kỳ vàng tiêu thụ mạnh nhất đối với khán giả Mỹ & Toàn cầu:
+# 1. 13:00 UTC = 20:00 Tối VN = 09:00 AM EST (ĐỈNH VÀNG SỐ 1 — Sáng Mỹ & Chiều Châu Âu)
+# 2. 23:00 UTC = 06:00 Sáng VN hôm sau = 18:00 - 19:00 PM EST (ĐỈNH GIẢI TRÍ TỐI MỸ)
+# 3. 04:30 UTC = 11:30 Trưa VN = 00:30 AM EST (Nuôi view đêm Mỹ & Đón đầu sáng Châu Âu — Khung video đầu tiên lúc 11:18)
 GOLDEN_SLOTS_UTC = [
-    {
-        "hour": 3,
-        "minute": 0,
-        "label_vn": "10:00 Sáng",
-        "label_us": "10:00 PM EST / 7:00 PM PST (Giờ vàng Bờ Tây & Thư giãn Bờ Đông)",
-        "description": "Bờ Tây tan làm, Bờ Đông nằm lướt điện thoại trước khi ngủ",
-        "tag": "US_WEST_PRIME"
-    },
     {
         "hour": 13,
         "minute": 0,
         "label_vn": "20:00 Tối",
-        "label_us": "8:00 AM EST (Buổi sáng Mỹ — Thức dậy & Đi làm)",
-        "description": "Người Mỹ thức dậy, kiểm tra Shorts trong lúc ăn sáng và đi làm",
-        "tag": "US_MORNING"
-    },
-    {
-        "hour": 17,
-        "minute": 30,
-        "label_vn": "00:30 Đêm",
-        "label_us": "12:30 PM EST (Nghỉ trưa Mỹ — Đỉnh lướt Shorts giữa ngày)",
-        "description": "Giờ ăn trưa của nhân viên văn phòng & học sinh trên khắp nước Mỹ",
-        "tag": "US_LUNCH"
+        "label_us": "09:00 AM EST (ĐỈNH VÀNG SỐ 1 — Sáng Mỹ & Chiều Châu Âu 15:00)",
+        "description": "Khán giả Mỹ bắt đầu ngày mới và nghỉ trưa; Châu Âu chiều tối. Khuyên dùng nhất cho kênh mới!",
+        "tag": "US_MORNING_PEAK",
+        "rank": 1
     },
     {
         "hour": 23,
         "minute": 0,
-        "label_vn": "06:00 Sáng (Hôm sau)",
-        "label_us": "6:00 PM EST (GIỜ VÀNG LỚN NHẤT MỸ — Tan sở & Buổi tối)",
-        "description": "Đỉnh cao điểm lượt xem Shorts cao nhất ngày khi người Mỹ vừa tan việc",
-        "tag": "US_EVENING_PRIME"
+        "label_vn": "06:00 Sáng",
+        "label_us": "18:00 - 19:00 PM EST (ĐỈNH GIẢI TRÍ TỐI MỸ — Tan sở & Ăn tối)",
+        "description": "Khán giả Mỹ trong khung giờ vàng giải trí buổi tối sau giờ làm việc / ăn tối.",
+        "tag": "US_EVENING_PRIME",
+        "rank": 2
+    },
+    {
+        "hour": 4,
+        "minute": 30,
+        "label_vn": "11:30 Trưa",
+        "label_us": "00:30 AM EST (Nuôi view đêm Mỹ) & Đón đầu sáng Châu Âu",
+        "description": "Phù hợp để video có thời gian phân phối trước khi bước vào buổi sáng tại các nước phương Tây (khung giờ video đầu tiên lúc 11:18).",
+        "tag": "GLOBAL_MORNING_PREP",
+        "rank": 3
     },
 ]
 
@@ -224,10 +220,12 @@ def get_next_available_golden_slot(
             if candidate_dt > min_allowed_time:
                 candidate_slots.append((candidate_dt, slot))
 
-        # Ưu tiên 2 khung giờ vàng lớn nhất (US_EVENING_PRIME, US_MORNING), 
-        # sau đó đến 2 khung giờ dự phòng (US_LUNCH, US_WEST_PRIME) nếu khung chính bị chiếm
+        # Ưu tiên theo thứ hạng vàng:
+        # Rank 1: 20:00 Tối VN (Khuyên dùng nhất — Cố định hàng ngày)
+        # Rank 2: 06:00 Sáng VN (Đỉnh giải trí tối Mỹ 18:00-19:00 EST)
+        # Rank 3: 11:30 Trưa VN (Đón đầu phân phối & video tiền nhiệm 11:18)
         candidate_slots.sort(key=lambda item: (
-            0 if item[1]["tag"] in ("US_EVENING_PRIME", "US_MORNING") else 1,
+            item[1].get("rank", 99),
             item[0]
         ))
 
