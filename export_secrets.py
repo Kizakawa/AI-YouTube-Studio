@@ -15,7 +15,8 @@ if sys.platform == "win32":
         pass
 
 BASE_DIR = Path(__file__).resolve().parent
-OUTPUT_ZIP = BASE_DIR / "secrets_config.zip"
+# File zip được tạo trực tiếp duy nhất ở thư mục ngoài cùng (E:\AI Youtube\secrets_config.zip)
+OUTPUT_ZIP = BASE_DIR.parent / "secrets_config.zip"
 
 FILES_AND_DIRS_TO_PACK = [
     ".env",
@@ -52,20 +53,10 @@ def export_secrets():
                         count += 1
                 print(f" ✓ Đã thêm thư mục: {item}/ ({count} files)")
 
-    # Sao chép thêm 1 bản ra thư mục cha ngoài cùng (E:\AI Youtube\secrets_config.zip)
-    outer_zip = BASE_DIR.parent / "secrets_config.zip"
-    try:
-        import shutil
-        shutil.copyfile(OUTPUT_ZIP, outer_zip)
-        print(f" ✓ Đã sao chép 1 bản ra phía ngoài cùng: {outer_zip}")
-    except Exception as e:
-        print(f"⚠️ Lỗi khi sao chép ra thư mục ngoài: {e}")
-
     size_kb = OUTPUT_ZIP.stat().st_size / 1024
     print("=" * 60)
     print("🎉 ĐÃ TẠO THÀNH CÔNG: secrets_config.zip")
-    print(f"📍 File trong repo: {OUTPUT_ZIP}")
-    print(f"📍 File ngoài cùng: {outer_zip}")
+    print(f"📍 Đường dẫn file ngoài cùng: {OUTPUT_ZIP}")
     print(f"📦 Dung lượng: {size_kb:.1f} KB (siêu nhẹ, gửi qua Zalo/Telegram trong 1 giây)")
     print("=" * 60)
     print("👉 CÁCH DÙNG CHO BẠN BÈ SỬA CODE CHUNG:")
