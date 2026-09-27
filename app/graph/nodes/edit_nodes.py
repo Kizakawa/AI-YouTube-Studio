@@ -122,23 +122,11 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
 
     # ── Action 3: Đổi giọng đọc (toàn bộ video) ──
     elif action_type == "change_voice":
-        import edge_tts
-        new_voice = edit_req.get("new_voice_id", "vi-VN-HoaiMyNeural")
-        voice_agent = VoiceAgent(default_voice=new_voice)
+        new_voice = edit_req.get("new_voice_id")
         audio_dir = work_dir / "audio"
         audio_dir.mkdir(parents=True, exist_ok=True)
 
-        for sa in scenes_audio:
-            clean_text = sa.get("narration", "").strip()
-            p = str(audio_dir / f"scene_{sa['scene_id']:03d}.mp3")
-            communicate = edge_tts.Communicate(clean_text, new_voice)
-            await communicate.save(p)
-            d = voice_agent._get_audio_duration_ms(p)
-            sa["duration_ms"] = d
-            sa["audio_path"] = p
-
-        full_audio_path = str(work_dir / "full_voiceover.mp3")
-        subtitle_path = str(work_dir / "subtitles.ass")
+        # Xây dựng danh sách SceneContract từ scenes_audio
         scenes_objs = [
             SceneContract(
                 scene_id=s["scene_id"],
@@ -150,10 +138,86 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
             )
             for s in scenes_audio
         ]
-        total_audio_duration_ms = await voice_agent.concat_scene_audio(scenes_objs, full_audio_path)
-        SubtitleHelper.save_ass_file(scenes_objs, subtitle_path)
+
+        voice_agent = VoiceAgent(default_voice=new_voice)
+        enriched_scenes = await voice_agent.generate_per_scene_audio(
+            scenes=scenes_objs,
+            output_dir=str(audio_dir),
+            voice=new_voice
+        )
+
+        scenes_audio = [
+            {
+                **s.model_dump(),
+                "duration_ms": s.audio_duration_ms or 3000,
+                "audio_path": s.audio_path
+            }
+            for s in enriched_scenes
+        ]
+
+        full_audio_path = str(work_dir / "full_voiceover.mp3")
+        subtitle_path = str(work_dir / "subtitles.ass")
+        total_audio_duration_ms = await voice_agent.concat_scene_audio(enriched_scenes, full_audio_path)
+        channel_style = state.get("channel_style") or "general"
+        SubtitleHelper.save_ass_file(enriched_scenes, subtitle_path, niche_id=channel_style)
+
+    # ── Action 4: Đổi ngôn ngữ toàn bộ kịch bản & giọng lồng tiếng ──
+    elif action_type == "change_language":
+        from app.agents.content_agent import ContentAgent
+        target_lang = (edit_req.get("new_language") or edit_req.get("new_text") or "en").lower().strip()
+        target_lang = "vi" if "vi" in target_lang else "en"
+
+        ca = ContentAgent()
+        current_script = ScriptContract(**script_data)
+        revised = ca.refine_script(
+            current_script=current_script,
+            feedback=f"Translate and fully rewrite the script into {'Vietnamese' if target_lang == 'vi' else 'English'}. Keep the viral hook, structure, and pacing.",
+            language=target_lang
+        )
+        script_data.update(revised.model_dump())
+
+        # Chọn giọng chuẩn theo ngôn ngữ mới
+        req_voice = edit_req.get("new_voice_id")
+        if not req_voice:
+            req_voice = "vi-VN-NamMinhNeural" if target_lang == "vi" else "en-US-AndrewNeural"
+
+        voice_agent = VoiceAgent(default_voice=req_voice)
+        audio_dir = work_dir / "audio"
+        audio_dir.mkdir(parents=True, exist_ok=True)
+
+        # Xóa các file audio cũ trong work_dir để đảm bảo tạo mới hoàn toàn
+        for p in audio_dir.glob("scene_*.mp3"):
+            try:
+                p.unlink(missing_ok=True)
+            except Exception:
+                pass
+        for p in audio_dir.glob("scene_*.meta.json"):
+            try:
+                p.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+        enriched = await voice_agent.generate_per_scene_audio(
+            scenes=revised.scenes,
+            output_dir=str(audio_dir),
+            voice=req_voice
+        )
+        scenes_audio = [
+            {
+                **s.model_dump(),
+                "duration_ms": s.audio_duration_ms or 3000,
+                "audio_path": s.audio_path
+            }
+            for s in enriched
+        ]
+        full_audio_path = str(work_dir / "full_voiceover.mp3")
+        subtitle_path = str(work_dir / "subtitles.ass")
+        total_audio_duration_ms = await voice_agent.concat_scene_audio(enriched, full_audio_path)
+        channel_style = state.get("channel_style") or "general"
+        SubtitleHelper.save_ass_file(enriched, subtitle_path, niche_id=channel_style)
 
     return {
+        "script_data": script_data,
         "scenes_media": scenes_media,
         "scenes_audio": scenes_audio,
         "full_audio_path": full_audio_path,

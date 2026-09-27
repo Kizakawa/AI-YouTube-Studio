@@ -19,6 +19,7 @@ from app.bot.keyboards import (
     get_visual_selection_keyboard,
     get_script_review_keyboard,
     get_video_post_render_keyboard,
+    get_video_edit_options_keyboard,
     get_video_review_keyboard,
     get_chat_brainstorm_keyboard,
     get_publish_channel_keyboard,
@@ -1510,6 +1511,16 @@ async def _handle_script_revision(update: Update, context: ContextTypes.DEFAULT_
         niche = ch_cfg.get("niche", "general")
         lang = ch_cfg.get("language", "en")
 
+        # Tự động nhận diện nếu người dùng yêu cầu đổi ngôn ngữ trong feedback
+        feedback_lower = feedback.lower()
+        lang_changed = False
+        if any(kw in feedback_lower for kw in ["tiếng việt", "dịch sang việt", "sang tiếng việt", "vietnamese", "bằng tiếng việt", "tiếng việt nam", "việt hóa", "tieng viet"]):
+            lang = "vi"
+            lang_changed = True
+        elif any(kw in feedback_lower for kw in ["tiếng anh", "dịch sang anh", "sang tiếng anh", "english", "bằng tiếng anh", "tieng anh"]):
+            lang = "en"
+            lang_changed = True
+
         revised_script: ScriptContract = await asyncio.to_thread(
             content_agent.refine_script,
             current_script=current_script,
@@ -1517,6 +1528,21 @@ async def _handle_script_revision(update: Update, context: ContextTypes.DEFAULT_
             channel_niche=niche,
             language=lang
         )
+
+        # Nếu đổi ngôn ngữ, tự động dọn cache audio cũ để không bị nói tiếng khác
+        if lang_changed:
+            audio_dir = Path(settings.TEMP_DIR) / f"job_{job_id}" / "audio"
+            if audio_dir.exists():
+                for p in audio_dir.glob("*.mp3"):
+                    try:
+                        p.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                for p in audio_dir.glob("*.meta.json"):
+                    try:
+                        p.unlink(missing_ok=True)
+                    except Exception:
+                        pass
 
         with get_db() as db:
             db_job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
@@ -1535,9 +1561,11 @@ async def _handle_script_revision(update: Update, context: ContextTypes.DEFAULT_
             for s in revised_script.scenes[:3]
         ])
 
+        lang_badge = "🇻🇳 Tiếng Việt" if lang == "vi" else "🇺🇸 Tiếng Anh"
         reply_content = (
             f"✨ **KỊCH BẢN ĐÃ ĐƯỢC CHỈNH SỬA (Task #{job_id})**\n\n"
             f"📌 **Tiêu đề mới:** {revised_script.title}\n"
+            f"🌐 **Ngôn ngữ:** {lang_badge}\n"
             f"🔥 **Hook mới:** \"{revised_script.hook}\"\n\n"
             f"📝 **Phân cảnh cập nhật:**\n{scenes_preview}\n\n"
             f"⏱️ **Ước lượng:** ~{revised_script.total_estimated_duration:.0f}s | {len(revised_script.scenes)} cảnh\n"
@@ -1563,9 +1591,10 @@ async def _handle_script_revision(update: Update, context: ContextTypes.DEFAULT_
 async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Lệnh góp ý và chỉnh sửa kịch bản hoặc phân cảnh vi mô:
     - Sửa kịch bản: /edit <job_id> <góp ý>
+    - Đổi ngôn ngữ: /edit <job_id> lang <vi|en>
+    - Đổi giọng đọc: /edit <job_id> voice <nam|nu|andrew|brian|ava|namminh|hoaimy>
     - Đổi ảnh cảnh: /edit <job_id> scene <số cảnh> <từ khóa ảnh mới>
     - Đổi câu thoại cảnh: /edit <job_id> text <số cảnh> <câu thoại mới>
-    - Đổi giọng đọc: /edit <job_id> voice <nam|nu>
     """
     if not is_authorized(update):
         return
@@ -1574,26 +1603,49 @@ async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_reply(
             update,
             "💡 **Cú pháp chỉnh sửa thông minh (LangGraph Multi-Agent):**\n\n"
-            "1. **Góp ý sửa kịch bản chung:**\n"
+            "1. **Đổi ngôn ngữ kịch bản & giọng đọc (EN ↔ VI):**\n"
+            "`/edit <job_id> lang <vi|en>`\n"
+            "   _Ví dụ:_ `/edit 27 lang vi` (Dịch sang Tiếng Việt & lồng tiếng Việt)\n"
+            "   _Ví dụ:_ `/edit 27 lang en` (Dịch sang Tiếng Anh & lồng tiếng Anh)\n\n"
+            "2. **Đổi giọng đọc AI (Nam / Nữ / Giọng cụ thể):**\n"
+            "`/edit <job_id> voice <nam|nu|andrew|brian|ava|emma|namminh|hoaimy>`\n"
+            "   _Ví dụ:_ `/edit 27 voice nam` (Tự động chọn giọng Nam theo ngôn ngữ video)\n"
+            "   _Ví dụ:_ `/edit 27 voice nu` (Tự động chọn giọng Nữ theo ngôn ngữ video)\n"
+            "   _Ví dụ:_ `/edit 27 voice brian` (Giọng nam trầm điện ảnh)\n\n"
+            "3. **Góp ý sửa kịch bản tự do:**\n"
             "`/edit <job_id> <góp ý>`\n"
-            "   _Ví dụ:_ `/edit 2 Đổi câu hook đầu thành câu hỏi giật gân hơn`\n\n"
-            "2. **Đổi ảnh/video của 1 cảnh cụ thể:**\n"
-            "`/edit <job_id> scene <số_cảnh> <từ_khóa_mới>`\n"
-            "   _Ví dụ:_ `/edit 2 scene 3 John D. Rockefeller Standard Oil refinery vintage`\n\n"
-            "3. **Sửa câu thoại của 1 cảnh cụ thể:**\n"
-            "`/edit <job_id> text <số_cảnh> <câu_thoại_mới>`\n"
-            "   _Ví dụ:_ `/edit 2 text 1 Sự thật mà cả thế giới chưa từng biết về ông trùm...`\n\n"
-            "4. **Đổi giọng đọc AI:**\n"
-            "`/edit <job_id> voice <nam|nu>`\n"
-            "   _Ví dụ:_ `/edit 2 voice nu`"
+            "   _Ví dụ:_ `/edit 27 Đổi sang tiếng Việt và lồng tiếng Việt giúp tôi`\n"
+            "   _Ví dụ:_ `/edit 27 Đổi câu hook đầu thành câu hỏi giật gân hơn`\n\n"
+            "4. **Đổi ảnh/video của 1 cảnh:**\n"
+            "`/edit <job_id> scene <số_cảnh> <từ_khóa_mới>`\n\n"
+            "5. **Sửa câu thoại của 1 cảnh:**\n"
+            "`/edit <job_id> text <số_cảnh> <câu_thoại_mới>`"
         )
         return
 
     job_id = int(context.args[0])
     sub_cmd = context.args[1].lower()
 
-    # ── Chỉnh sửa vi mô bằng LangGraph ──
-    if sub_cmd == "scene" and len(context.args) >= 4 and context.args[2].isdigit():
+    # ── 1. Đổi ngôn ngữ toàn bộ kịch bản & giọng lồng tiếng qua LangGraph ──
+    if sub_cmd in ("lang", "language", "ngonngu") and len(context.args) >= 3:
+        target_lang = "vi" if "vi" in context.args[2].lower() else "en"
+        lang_name = "Tiếng Việt (vi)" if target_lang == "vi" else "Tiếng Anh (en)"
+        status_msg = await safe_reply(update, f"🌐 [LangGraph] Đang dịch và chuyển toàn bộ kịch bản + giọng lồng tiếng Video #{job_id} sang {lang_name}...")
+        try:
+            from app.graph import GraphRunner, EditRequest
+            runner = GraphRunner(job_id=job_id)
+            edit_req = EditRequest(
+                action_type="change_language",
+                new_language=target_lang
+            )
+            await runner.execute_edit(edit_req)
+            await safe_edit_text(status_msg, f"✅ Đã chuyển thành công kịch bản và giọng lồng tiếng Video #{job_id} sang {lang_name} và render lại video hoàn tất! Bạn có thể xem video mới.")
+        except Exception as e:
+            await safe_edit_text(status_msg, f"❌ Lỗi khi đổi ngôn ngữ: {e}")
+        return
+
+    # ── 2. Đổi ảnh/video cảnh ──
+    elif sub_cmd == "scene" and len(context.args) >= 4 and context.args[2].isdigit():
         scene_id = int(context.args[2])
         new_query = " ".join(context.args[3:])
         status_msg = await safe_reply(update, f"🛠️ [LangGraph] Đang đổi ảnh/video cho Cảnh #{scene_id} với từ khóa: `{new_query}`...")
@@ -1611,6 +1663,7 @@ async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await safe_edit_text(status_msg, f"❌ Lỗi khi chỉnh sửa Cảnh #{scene_id}: {e}")
         return
 
+    # ── 3. Sửa câu thoại của 1 cảnh ──
     elif sub_cmd == "text" and len(context.args) >= 4 and context.args[2].isdigit():
         scene_id = int(context.args[2])
         new_text = " ".join(context.args[3:])
@@ -1629,10 +1682,51 @@ async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await safe_edit_text(status_msg, f"❌ Lỗi khi sửa lời thoại Cảnh #{scene_id}: {e}")
         return
 
+    # ── 4. Đổi giọng đọc thông minh ──
     elif sub_cmd == "voice" and len(context.args) >= 3:
         voice_arg = context.args[2].lower()
-        voice_id = "vi-VN-HoaiMyNeural" if "nu" in voice_arg or "female" in voice_arg else "vi-VN-NamMinhNeural"
-        status_msg = await safe_reply(update, f"🎙️ [LangGraph] Đang đổi giọng đọc sang {'Nữ' if 'nu' in voice_arg else 'Nam'} ({voice_id})...")
+
+        # Kiểm tra ngôn ngữ hiện tại của kịch bản job
+        is_vn = False
+        with get_db() as db:
+            j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if j and j.scenes_json:
+                from app.agents.voice_agent import VoiceAgent
+                is_vn = VoiceAgent._is_vietnamese(j.script or j.scenes_json)
+
+        # Ánh xạ giọng đọc thông minh
+        if "andrew" in voice_arg:
+            voice_id = "en-US-AndrewNeural"
+            display_name = "Andrew (Nam Mỹ ấm áp)"
+        elif "brian" in voice_arg:
+            voice_id = "en-US-BrianNeural"
+            display_name = "Brian (Nam Mỹ trầm ấm)"
+        elif "christopher" in voice_arg:
+            voice_id = "en-US-ChristopherNeural"
+            display_name = "Christopher (Nam Mỹ quyền uy)"
+        elif "guy" in voice_arg:
+            voice_id = "en-US-GuyNeural"
+            display_name = "Guy (Nam Mỹ năng động)"
+        elif "ava" in voice_arg:
+            voice_id = "en-US-AvaNeural"
+            display_name = "Ava (Nữ Mỹ tự nhiên)"
+        elif "emma" in voice_arg:
+            voice_id = "en-US-EmmaNeural"
+            display_name = "Emma (Nữ Mỹ truyền cảm)"
+        elif "namminh" in voice_arg:
+            voice_id = "vi-VN-NamMinhNeural"
+            display_name = "Nam Minh (Nam Việt chuẩn)"
+        elif "hoaimy" in voice_arg:
+            voice_id = "vi-VN-HoaiMyNeural"
+            display_name = "Hoài My (Nữ Việt truyền cảm)"
+        elif "nu" in voice_arg or "female" in voice_arg:
+            voice_id = "vi-VN-HoaiMyNeural" if is_vn else "en-US-AvaNeural"
+            display_name = "Nữ Việt (Hoài My)" if is_vn else "Nữ Mỹ (Ava)"
+        else: # nam / male
+            voice_id = "vi-VN-NamMinhNeural" if is_vn else "en-US-AndrewNeural"
+            display_name = "Nam Việt (Nam Minh)" if is_vn else "Nam Mỹ (Andrew)"
+
+        status_msg = await safe_reply(update, f"🎙️ [LangGraph] Đang đổi giọng đọc Video #{job_id} sang {display_name} (`{voice_id}`)...")
         try:
             from app.graph import GraphRunner, EditRequest
             runner = GraphRunner(job_id=job_id)
@@ -1641,7 +1735,7 @@ async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 new_voice_id=voice_id
             )
             await runner.execute_edit(edit_req)
-            await safe_edit_text(status_msg, f"✅ Đã đổi toàn bộ giọng đọc sang {'Nữ' if 'nu' in voice_arg else 'Nam'} và render lại video!")
+            await safe_edit_text(status_msg, f"✅ Đã đổi toàn bộ giọng đọc sang {display_name} và render lại video hoàn tất! Bạn có thể xem video mới.")
         except Exception as e:
             await safe_edit_text(status_msg, f"❌ Lỗi khi đổi giọng đọc: {e}")
         return
@@ -1829,16 +1923,120 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 3. Góp ý chỉnh sửa kịch bản hoặc video
     elif data.startswith("feedback_video:") or data.startswith("edit_script:"):
         job_id = int(data.split(":")[1])
+        markup = get_video_edit_options_keyboard(job_id)
         await safe_reply(
             update,
-            f"✍️ **GÓP Ý & SỬA ĐỔI VIDEO #{job_id}**\n\n"
-            f"Bạn muốn thay đổi điểm gì? Hãy **Reply (Trả lời)** tin nhắn này hoặc gõ lệnh:\n"
-            f"`/edit {job_id} <nội dung muốn sửa>`\n\n"
-            f"💡 **Ví dụ:**\n"
-            f"• `/edit {job_id} Đổi câu hook đầu thành câu hỏi giật gân hơn`\n"
-            f"• `/edit {job_id} Viết ngắn lại khoảng 30s, nhịp điệu nhanh hơn`\n"
-            f"• `/edit {job_id} Cảnh 2 và 3 đổi sang hình ảnh huyền bí`"
+            f"✍️ **BẢNG ĐIỀU KHIỂN CHỈNH SỬA VIDEO #{job_id}**\n\n"
+            f"⚡ **Thao tác nhanh 1 chạm:** Chọn các nút bên dưới để chuyển ngôn ngữ (Anh ↔ Việt) hoặc đổi giọng đọc Nam/Nữ tức thì.\n\n"
+            f"📝 **Hoặc gõ lệnh `/edit` chi tiết:**\n"
+            f"• `/edit {job_id} lang vi` : Chuyển kịch bản & lồng tiếng sang Tiếng Việt\n"
+            f"• `/edit {job_id} lang en` : Chuyển kịch bản & lồng tiếng sang Tiếng Anh\n"
+            f"• `/edit {job_id} voice nam|nu` : Đổi giọng đọc Nam hoặc Nữ\n"
+            f"• `/edit {job_id} voice brian|andrew|ava|namminh|hoaimy` : Đổi giọng cụ thể\n"
+            f"• `/edit {job_id} <góp ý>` : Chỉnh sửa nội dung kịch bản (VD: _Sửa hook giật gân hơn_)\n"
+            f"• `/edit {job_id} scene <số> <từ khóa>` : Đổi hình ảnh/video của 1 cảnh",
+            reply_markup=markup
         )
+
+    # 3.1 Đổi ngôn ngữ qua nút bấm nhanh
+    elif data.startswith("edit_lang:"):
+        parts = data.split(":")
+        job_id = int(parts[1])
+        target_lang = parts[2]
+        lang_label = "Tiếng Việt (vi)" if target_lang == "vi" else "Tiếng Anh (en)"
+        status_msg = await safe_reply(
+            update,
+            f"🌐 **[LangGraph] Đang chuyển toàn bộ kịch bản và giọng lồng tiếng Video #{job_id} sang {lang_label}...**\n"
+            f"⏳ AI đang dịch kịch bản, tạo giọng bản xứ mới và tự động render lại..."
+        )
+        try:
+            from app.graph import GraphRunner, EditRequest
+            runner = GraphRunner(job_id=job_id)
+            edit_req = EditRequest(
+                action_type="change_language",
+                new_language=target_lang
+            )
+            final_state = await runner.execute_edit(edit_req)
+            video_out = final_state.get("rendered_video_path")
+            await safe_edit_text(
+                status_msg,
+                f"✅ **ĐÃ CHUYỂN TOÀN BỘ SANG {lang_label.upper()} THÀNH CÔNG!**\n\n"
+                f"🎬 Video #{job_id} đã được biên tập và render lại hoàn tất."
+            )
+            if video_out and os.path.exists(video_out):
+                try:
+                    with open(video_out, "rb") as vf:
+                        await update.effective_chat.send_video(
+                            video=vf,
+                            caption=f"🎥 **Video #{job_id} sau khi chuyển sang {lang_label}:**",
+                            supports_streaming=True
+                        )
+                except Exception as ex:
+                    logger.error(f"Gửi video sau khi edit_lang thất bại: {ex}")
+        except Exception as e:
+            logger.error(f"Lỗi khi đổi ngôn ngữ qua callback: {e}", exc_info=True)
+            await safe_edit_text(status_msg, f"❌ Lỗi khi đổi ngôn ngữ Video #{job_id}: `{e}`")
+
+    # 3.2 Đổi giọng đọc qua nút bấm nhanh
+    elif data.startswith("edit_voice:"):
+        parts = data.split(":")
+        job_id = int(parts[1])
+        gender = parts[2]
+
+        is_vn = False
+        with get_db() as db:
+            j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if j and (j.script or j.scenes_json):
+                from app.agents.voice_agent import VoiceAgent
+                is_vn = VoiceAgent._is_vietnamese(j.script or j.scenes_json)
+
+        if gender == "female":
+            voice_id = "vi-VN-HoaiMyNeural" if is_vn else "en-US-AvaNeural"
+            voice_name = "Nữ Việt (Hoài My)" if is_vn else "Nữ Mỹ (Ava)"
+        else:
+            voice_id = "vi-VN-NamMinhNeural" if is_vn else "en-US-AndrewNeural"
+            voice_name = "Nam Việt (Nam Minh)" if is_vn else "Nam Mỹ (Andrew)"
+
+        status_msg = await safe_reply(
+            update,
+            f"🎙️ **[LangGraph] Đang đổi giọng đọc Video #{job_id} sang {voice_name}...**\n"
+            f"⏳ Đang tạo lại âm thanh các phân cảnh và render lại video..."
+        )
+        try:
+            from app.graph import GraphRunner, EditRequest
+            runner = GraphRunner(job_id=job_id)
+            edit_req = EditRequest(
+                action_type="change_voice",
+                new_voice_id=voice_id
+            )
+            final_state = await runner.execute_edit(edit_req)
+            video_out = final_state.get("rendered_video_path")
+            await safe_edit_text(
+                status_msg,
+                f"✅ **ĐÃ ĐỔI GIỌNG ĐỌC SANG {voice_name.upper()} THÀNH CÔNG!**\n\n"
+                f"🎬 Video #{job_id} đã được khớp lại phụ đề ASS và render hoàn tất."
+            )
+            if video_out and os.path.exists(video_out):
+                try:
+                    with open(video_out, "rb") as vf:
+                        await update.effective_chat.send_video(
+                            video=vf,
+                            caption=f"🎥 **Video #{job_id} với giọng đọc mới ({voice_name}):**",
+                            supports_streaming=True
+                        )
+                except Exception as ex:
+                    logger.error(f"Gửi video sau khi edit_voice thất bại: {ex}")
+        except Exception as e:
+            logger.error(f"Lỗi khi đổi giọng đọc qua callback: {e}", exc_info=True)
+            await safe_edit_text(status_msg, f"❌ Lỗi khi đổi giọng đọc Video #{job_id}: `{e}`")
+
+    # 3.3 Hủy / đóng menu chỉnh sửa
+    elif data.startswith("cancel_edit:"):
+        if query.message:
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
 
     # 4. Lên lịch tự động theo khe giờ vàng tối ưu
     elif data.startswith("schedule_youtube:") or data.startswith("schedule:"):

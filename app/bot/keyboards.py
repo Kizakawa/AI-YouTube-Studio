@@ -189,6 +189,24 @@ def get_video_post_render_keyboard(job_id: int) -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(keyboard)
 
+def get_video_edit_options_keyboard(job_id: int) -> InlineKeyboardMarkup:
+    """Bàn phím menu chọn nhanh khi bấm 'Góp Ý Chỉnh Sửa & Dựng Lại'"""
+    keyboard = [
+        [
+            InlineKeyboardButton("🇺🇸 Chuyển Sang Tiếng Anh", callback_data=f"edit_lang:{job_id}:en"),
+            InlineKeyboardButton("🇻🇳 Chuyển Sang Tiếng Việt", callback_data=f"edit_lang:{job_id}:vi"),
+        ],
+        [
+            InlineKeyboardButton("🎙️ Đổi Giọng Nam (Mỹ/Việt)", callback_data=f"edit_voice:{job_id}:male"),
+            InlineKeyboardButton("🎙️ Đổi Giọng Nữ (Mỹ/Việt)", callback_data=f"edit_voice:{job_id}:female"),
+        ],
+        [
+            InlineKeyboardButton("🔄 Render Lại Toàn Bộ", callback_data=f"render_video:{job_id}"),
+            InlineKeyboardButton("❌ Đóng Menu", callback_data=f"cancel_edit:{job_id}"),
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
 def get_chat_brainstorm_keyboard(session_id: str) -> InlineKeyboardMarkup:
     """Tạo bàn phím nút bấm thao tác khi đang thảo luận kịch bản với AI"""
     keyboard = [

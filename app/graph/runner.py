@@ -281,8 +281,20 @@ class GraphRunner:
                 if final_state.get("total_audio_duration_ms"):
                     j.audio_duration_ms = final_state["total_audio_duration_ms"]
 
-                # Cập nhật scenes_json
-                s_data = json.loads(j.scenes_json) if j.scenes_json else {}
+                # Cập nhật scenes_json & thông tin kịch bản
+                if final_state.get("script_data"):
+                    s_data = dict(final_state["script_data"])
+                    if s_data.get("title"):
+                        j.title = s_data["title"]
+                    if s_data.get("description"):
+                        j.description = s_data["description"]
+                    if s_data.get("tags"):
+                        j.tags = ",".join(s_data["tags"]) if isinstance(s_data["tags"], list) else s_data["tags"]
+                    if s_data.get("full_narration"):
+                        j.script = s_data["full_narration"]
+                else:
+                    s_data = json.loads(j.scenes_json) if j.scenes_json else {}
+
                 media_map = {m["scene_id"]: m for m in final_state.get("scenes_media", [])}
                 audio_map = {a["scene_id"]: a for a in final_state.get("scenes_audio", [])}
                 for sc in s_data.get("scenes", []):

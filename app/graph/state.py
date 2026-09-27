@@ -115,12 +115,13 @@ class VisualPlanReport(BaseModel):
 
 
 class EditRequest(BaseModel):
-    action_type: str = Field(description="replace_media | edit_text | change_voice | remix_bgm")
+    action_type: str = Field(description="replace_media | edit_text | change_voice | change_language | remix_bgm")
     scene_id: Optional[int] = None
     new_text: Optional[str] = None
     new_media_query: Optional[str] = None
     new_media_path: Optional[str] = None
     new_voice_id: Optional[str] = None
+    new_language: Optional[str] = None
     new_bgm_track: Optional[str] = None
 
 
