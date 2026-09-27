@@ -22,13 +22,15 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
     audio_dir = work_dir / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
 
+    preferred_voice = state.get("preferred_voice")
     script = ScriptContract(**script_data)
     voice_agent = VoiceAgent()
 
-    # Sinh audio cho từng cảnh qua VoiceAgent
+    # Sinh audio cho từng cảnh qua VoiceAgent với preferred_voice từ channel
     scenes_objs = await voice_agent.generate_per_scene_audio(
         scenes=script.scenes,
-        output_dir=str(audio_dir)
+        output_dir=str(audio_dir),
+        voice=preferred_voice
     )
 
     enriched_scenes = [

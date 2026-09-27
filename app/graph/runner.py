@@ -85,13 +85,15 @@ class GraphRunner:
                 except Exception:
                     pass
 
-        # Lấy channel niche / style và language từ config
+        # Lấy channel niche / style, language và preferred_voice từ config
         channels = settings.get_channels_config()
         channel_lang = "en"
+        preferred_voice = None
         for ch in channels:
             if ch.get("id") == channel_id:
                 channel_style = ch.get("niche") or ch.get("style") or "general"
                 channel_lang = ch.get("language") or "en"
+                preferred_voice = ch.get("preferred_voice")
                 break
 
         # 2. Khởi tạo trạng thái ban đầu cho LangGraph
@@ -101,6 +103,7 @@ class GraphRunner:
             "target_channel_id": channel_id,
             "channel_style": channel_style,
             "language": channel_lang,
+            "preferred_voice": preferred_voice,
             "work_dir": str(self.work_dir),
             "script_data": existing_script,
             "script_retry_count": 0,

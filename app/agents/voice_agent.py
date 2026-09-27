@@ -25,6 +25,37 @@ class VoiceAgent:
     def __init__(self, default_voice: str = None):
         self.default_voice = default_voice or settings.DEFAULT_TTS_VOICE
 
+    @staticmethod
+    def _is_vietnamese(text: str) -> bool:
+        """Kiểm tra văn bản có chứa ký tự tiếng Việt có dấu hay không."""
+        import re
+        vn_pattern = r'[àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ]'
+        return bool(re.search(vn_pattern, text, re.IGNORECASE))
+
+    def _resolve_safe_voice(self, text: str, requested_voice: Optional[str] = None) -> str:
+        """
+        Bảo vệ khớp ngôn ngữ - giọng đọc:
+        - Nếu văn bản tiếng Việt mà giọng đọc tiếng Anh -> tự động chuyển sang giọng Việt chuẩn (vi-VN-NamMinhNeural).
+        - Nếu văn bản tiếng Anh mà giọng đọc tiếng Việt -> tự động chuyển sang giọng Mỹ chuẩn (en-US-AndrewNeural).
+        """
+        voice = requested_voice or self.default_voice
+        is_vn_text = self._is_vietnamese(text)
+        is_vn_voice = voice.lower().startswith("vi-")
+
+        if is_vn_text and not is_vn_voice:
+            logger.warning(
+                f"⚠️ Phát hiện văn bản tiếng Việt ('{text[:30]}...') nhưng giọng đọc chỉ định là '{voice}' (tiếng Anh). "
+                f"Tự động chuyển sang 'vi-VN-NamMinhNeural' để tránh giọng đọc ngọng / phát âm bồi dị hợm!"
+            )
+            return "vi-VN-NamMinhNeural"
+        elif not is_vn_text and is_vn_voice:
+            logger.warning(
+                f"⚠️ Phát hiện văn bản tiếng Anh ('{text[:30]}...') nhưng giọng đọc chỉ định là '{voice}' (tiếng Việt). "
+                f"Tự động chuyển sang 'en-US-AndrewNeural' để đọc chuẩn bản ngữ!"
+            )
+            return "en-US-AndrewNeural"
+        return voice
+
     # ──────────────────────────────────────────
     # PUBLIC API — Gọi từ Pipeline Orchestrator
     # ──────────────────────────────────────────
@@ -38,31 +69,63 @@ class VoiceAgent:
         """
         Sinh MP3 cho từng scene. Trả về list SceneContract đã enriched
         với audio_path và audio_duration_ms.
+        Tích hợp Metadata Verification để bảo vệ cache: chỉ tái sử dụng nếu
+        cả nội dung lời thoại (narration) và giọng đọc (voice) khớp chính xác 100%.
         """
-        selected_voice = voice or self.default_voice
         enriched_scenes = []
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
 
         for scene in scenes:
             scene_audio_path = str(Path(output_dir) / f"scene_{scene.scene_id:03d}.mp3")
+            meta_path = Path(output_dir) / f"scene_{scene.scene_id:03d}.meta.json"
 
-            # Checkpoint: Tái sử dụng audio đã tạo từ trước nếu hợp lệ (> 1KB)
-            if Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024:
-                duration_ms = self._get_audio_duration_ms(scene_audio_path)
-                if duration_ms > 0:
-                    logger.info(f"Scene {scene.scene_id}: Tái sử dụng audio từ checkpoint ({duration_ms}ms)")
-                    enriched = scene.model_copy(update={
-                        "audio_path": scene_audio_path,
-                        "audio_duration_ms": duration_ms,
-                    })
-                    enriched_scenes.append(enriched)
-                    continue
+            safe_voice = self._resolve_safe_voice(scene.narration, voice or self.default_voice)
+
+            # Checkpoint: Chỉ tái sử dụng audio từ trước nếu file audio > 1KB VÀ metadata khớp chính xác cả text lẫn voice
+            cache_valid = False
+            if Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024 and meta_path.exists():
+                try:
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    if meta.get("narration") == scene.narration and meta.get("voice") == safe_voice:
+                        duration_ms = meta.get("duration_ms") or self._get_audio_duration_ms(scene_audio_path)
+                        if duration_ms > 0:
+                            cache_valid = True
+                            logger.info(f"Scene {scene.scene_id}: Tái sử dụng audio hợp lệ từ checkpoint ({duration_ms}ms, voice={safe_voice})")
+                            enriched = scene.model_copy(update={
+                                "audio_path": scene_audio_path,
+                                "audio_duration_ms": duration_ms,
+                            })
+                            enriched_scenes.append(enriched)
+                except Exception as ex:
+                    logger.debug(f"Scene {scene.scene_id}: Lỗi đọc cache metadata: {ex}")
+
+            if cache_valid:
+                continue
+
+            # Cache không hợp lệ hoặc lời thoại / giọng đọc đã đổi -> xóa file cũ
+            if Path(scene_audio_path).exists():
+                logger.info(f"Scene {scene.scene_id}: Lời thoại hoặc giọng đọc đã đổi. Xóa audio cũ để tạo mới...")
+                try:
+                    Path(scene_audio_path).unlink(missing_ok=True)
+                except Exception:
+                    pass
 
             # Sinh audio cho 1 scene
-            communicate = edge_tts.Communicate(scene.narration, selected_voice)
+            communicate = edge_tts.Communicate(scene.narration, safe_voice)
             await communicate.save(scene_audio_path)
 
             # Đo duration thực bằng ffprobe
             duration_ms = self._get_audio_duration_ms(scene_audio_path)
+
+            # Lưu metadata để xác minh checkpoint trong tương lai
+            try:
+                meta_path.write_text(json.dumps({
+                    "narration": scene.narration,
+                    "voice": safe_voice,
+                    "duration_ms": duration_ms,
+                }, ensure_ascii=False), encoding="utf-8")
+            except Exception as ex:
+                logger.debug(f"Scene {scene.scene_id}: Lỗi ghi cache metadata: {ex}")
 
             # Enriched scene với actual timing
             enriched = scene.model_copy(update={
@@ -72,7 +135,7 @@ class VoiceAgent:
             enriched_scenes.append(enriched)
 
             logger.info(
-                f"Scene {scene.scene_id}: audio={duration_ms}ms "
+                f"Scene {scene.scene_id}: audio={duration_ms}ms (voice={safe_voice}) "
                 f"(estimated={scene.estimated_seconds}s, actual={duration_ms/1000:.1f}s)"
             )
 
@@ -139,8 +202,8 @@ class VoiceAgent:
         Backward-compatible: Tạo 1 file audio từ toàn bộ narration.
         Dùng cho trường hợp không cần per-scene timing.
         """
-        selected_voice = voice or self.default_voice
-        communicate = edge_tts.Communicate(text, selected_voice)
+        safe_voice = self._resolve_safe_voice(text, voice or self.default_voice)
+        communicate = edge_tts.Communicate(text, safe_voice)
         await communicate.save(output_path)
         return output_path
 
