@@ -7,8 +7,12 @@ from app.graph.state import (
     VideoQAReport,
     EditRequest,
 )
-from app.graph.workflow import video_graph
-from app.graph.runner import GraphRunner
+try:
+    from app.graph.workflow import video_graph
+    from app.graph.runner import GraphRunner
+except ImportError:
+    video_graph = None
+    GraphRunner = None
 
 __all__ = [
     "VideoWorkflowState",

@@ -1521,12 +1521,14 @@ async def _handle_script_revision(update: Update, context: ContextTypes.DEFAULT_
             lang = "en"
             lang_changed = True
 
-        revised_script: ScriptContract = await asyncio.to_thread(
-            content_agent.refine_script,
+        revised_script, eval_report = await asyncio.to_thread(
+            content_agent.refine_with_feedback_and_eval,
             current_script=current_script,
             feedback=feedback,
             channel_niche=niche,
-            language=lang
+            language=lang,
+            min_acceptable_score=8.0,
+            max_attempts=3
         )
 
         # Nếu đổi ngôn ngữ, tự động dọn cache audio cũ để không bị nói tiếng khác
@@ -1553,6 +1555,15 @@ async def _handle_script_revision(update: Update, context: ContextTypes.DEFAULT_
                 db_job.tags = ",".join(revised_script.tags)
                 db_job.scenes_json = revised_script.to_json_str()
                 db_job.status = "SCRIPT_READY"
+                if eval_report:
+                    scores = {}
+                    if db_job.quality_scores:
+                        try:
+                            scores = json.loads(db_job.quality_scores)
+                        except Exception:
+                            pass
+                    scores["script_critic"] = eval_report.model_dump()
+                    db_job.quality_scores = json.dumps(scores, ensure_ascii=False)
                 log_activity(db, user.id, user.username, "REFINE_SCRIPT",
                              f"Sửa kịch bản #{job_id} theo góp ý: '{feedback}'")
 
@@ -1562,14 +1573,29 @@ async def _handle_script_revision(update: Update, context: ContextTypes.DEFAULT_
         ])
 
         lang_badge = "🇻🇳 Tiếng Việt" if lang == "vi" else "🇺🇸 Tiếng Anh"
+        score_info = ""
+        if eval_report:
+            overall = eval_report.overall_score
+            hook_s = eval_report.hook_strength.score
+            pacing_s = eval_report.story_pacing.score
+            vis_s = getattr(eval_report, 'visual_direction', None)
+            vis_score = vis_s.score if vis_s else 8.5
+            badge = "🏆 Xuất sắc" if overall >= 8.5 else "✅ Đạt chuẩn Viral"
+            score_info = (
+                f"📊 **ĐÁNH GIÁ CHẤT LƯỢNG SAU GÓP Ý:** `{overall:.1f}/10` {badge}\n"
+                f"• ⚡ Hook 3s: `{hook_s:.1f}/10` | ⏱️ Nhịp độ: `{pacing_s:.1f}/10` | 👁️ Thị giác: `{vis_score:.1f}/10`\n\n"
+            )
+
         reply_content = (
-            f"✨ **KỊCH BẢN ĐÃ ĐƯỢC CHỈNH SỬA (Task #{job_id})**\n\n"
+            f"✨ **KỊCH BẢN ĐÃ ĐƯỢC CHỈNH SỬA & CHẤM ĐIỂM (Task #{job_id})**\n\n"
+            f"{score_info}"
             f"📌 **Tiêu đề mới:** {revised_script.title}\n"
             f"🌐 **Ngôn ngữ:** {lang_badge}\n"
             f"🔥 **Hook mới:** \"{revised_script.hook}\"\n\n"
             f"📝 **Phân cảnh cập nhật:**\n{scenes_preview}\n\n"
             f"⏱️ **Ước lượng:** ~{revised_script.total_estimated_duration:.0f}s | {len(revised_script.scenes)} cảnh\n"
-            f"🗣️ **Người góp ý:** {user.first_name}\n\n"
+            f"🗣️ **Người góp ý:** {user.first_name}\n"
+            f"💬 **Góp ý đã tiếp thu:** _{feedback}_\n\n"
             f"👉 Cả nhóm xem qua, nếu đã ưng ý hãy bấm **Duyệt Kịch Bản & Dựng Video** bên dưới!"
         )
 

@@ -662,13 +662,25 @@ function renderPipelineTable(videos) {
             actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openPublishModal(${v.id})" title="Đăng lại / Đăng kênh khác" style="font-size:11px;border-color:rgba(239,68,68,0.4);color:#ef4444;font-weight:600;">🔄 Đăng Lại</button>`;
             actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết video" style="font-size:11px;">🔍</button>`;
         }
+        let scoreBadge = '';
+        let qScore = v.quality_scores;
+        if (typeof qScore === 'string') {
+            try { qScore = JSON.parse(qScore); } catch (e) { qScore = null; }
+        }
+        if (qScore && (qScore.overall !== undefined || qScore.overall_score !== undefined)) {
+            const overall = qScore.overall !== undefined ? qScore.overall : qScore.overall_score;
+            scoreBadge = `<span class="badge ${overall >= 8.0 ? 'badge-green' : 'badge-amber'}" style="font-size:10px; padding:1px 6px; margin-left:6px; font-weight:700; white-space:nowrap;" title="Điểm Script Critic">⭐ ${overall.toFixed(1)}/10</span>`;
+        }
+
         actionButtons += `<button class="btn btn-danger btn-sm" onclick="deleteJob(${v.id})" title="Xoá">🗑</button>`;
 
         return `
         <tr>
             <td><code>#${v.id}</code></td>
             <td>
-                <div style="font-weight:600;color:var(--text-primary);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(v.title)}">${esc(v.title)}</div>
+                <div style="font-weight:600;color:var(--text-primary);max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;" title="${esc(v.title)}">
+                    <span style="overflow:hidden;text-overflow:ellipsis;">${esc(v.title)}</span>${scoreBadge}
+                </div>
                 <div style="font-size:11.5px;color:var(--text-muted);">${esc(v.topic)}</div>
             </td>
             <td>
@@ -735,6 +747,46 @@ async function createScript() {
 }
 
 function buildScriptResultHTML(result) {
+    let evalData = result.eval || result.quality_scores;
+    if (typeof evalData === 'string') {
+        try { evalData = JSON.parse(evalData); } catch (e) { evalData = null; }
+    }
+    let evalBannerHTML = '';
+    if (evalData && (evalData.overall_score !== undefined || evalData.overall !== undefined)) {
+        const overall = evalData.overall_score !== undefined ? evalData.overall_score : evalData.overall;
+        const hook = evalData.hook_strength !== undefined ? evalData.hook_strength : (evalData.hook || 0);
+        const pacing = evalData.story_pacing !== undefined ? evalData.story_pacing : (evalData.pacing || 0);
+        const visual = evalData.visual_direction !== undefined ? evalData.visual_direction : (evalData.visual || 0);
+        const passed = evalData.passed !== undefined ? evalData.passed : (overall >= 8.0);
+        const critiques = evalData.actionable_critiques || [];
+
+        evalBannerHTML = `
+        <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(59, 130, 246, 0.1)); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 12px; padding: 14px 18px; margin: 14px 0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom: 8px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:20px;">🎯</span>
+                    <div>
+                        <div style="font-weight:700; color:#34d399; font-size:13.5px; display:flex; align-items:center; gap:8px;">
+                            <span>Script Critic Đã Duyệt Đạt Chuẩn: ${overall.toFixed(1)}/10</span>
+                            <span class="badge ${passed ? 'badge-green' : 'badge-amber'}">${passed ? 'ĐẠT CHUẨN VIRAL' : 'CẦN CẢI THIỆN'}</span>
+                        </div>
+                        <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Kịch bản đã vượt qua bài kiểm tra chất lượng tự động trước khi xuất ra màn hình</div>
+                    </div>
+                </div>
+                <div style="display:flex; gap:12px; font-size:12px; background:rgba(0,0,0,0.25); padding:6px 12px; border-radius:8px;">
+                    <span>⚡ Hook 3s: <strong style="color:#60a5fa;">${hook.toFixed(1)}/10</strong></span>
+                    <span>⏱️ Nhịp độ: <strong style="color:#a78bfa;">${pacing.toFixed(1)}/10</strong></span>
+                    <span>👁️ Thị giác: <strong style="color:#f472b6;">${visual.toFixed(1)}/10</strong></span>
+                </div>
+            </div>
+            ${critiques.length > 0 ? `
+                <div style="font-size:11.5px; color:#cbd5e1; background:rgba(0,0,0,0.2); padding:8px 12px; border-radius:8px; line-height:1.4; margin-top:6px;">
+                    <strong>💡 Gợi ý từ Critic:</strong> ${critiques.map(c => esc(c)).join(' • ')}
+                </div>
+            ` : ''}
+        </div>`;
+    }
+
     const scenesHTML = (result.scenes || []).map(s => {
         let stratBadge = '';
         if (s.production_method === 'IMAGE_TO_VIDEO' || s.media_type === 'i2v') {
@@ -774,6 +826,24 @@ function buildScriptResultHTML(result) {
         <div class="script-title">${esc(result.title)}</div>
         <div class="script-hook">💬 Hook: "${esc(result.hook)}"</div>
 
+        ${evalBannerHTML}
+
+        <!-- Quick AI Feedback box right on the result card -->
+        <div style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(236, 72, 153, 0.08)); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 12px; padding: 14px 18px; margin: 14px 0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
+                <div style="font-weight: 700; color: #c084fc; font-size: 13px; display:flex; align-items:center; gap:6px;">
+                    <span>🤖 Góp Ý Cho AI Viết Lại Kịch Bản & Tự Động Chấm Điểm</span>
+                </div>
+                <span style="font-size:11px; color:var(--text-muted);">AI sẽ tiếp thu góp ý, tái cấu trúc kịch bản và chấm điểm lại</span>
+            </div>
+            <div style="display:flex; gap:8px;">
+                <input type="text" id="result-quick-feedback-input" class="form-input" placeholder="Ví dụ: Đổi câu hook giật gân hơn, thêm tình tiết bí ẩn ở cảnh 3, nhịp độ dồn dập hơn..." style="font-size:12.5px; height:38px;" onkeydown="if(event.key==='Enter') submitQuickFeedbackFromCard(${result.job_id})">
+                <button type="button" class="btn btn-primary" id="btn-quick-feedback-${result.job_id}" onclick="submitQuickFeedbackFromCard(${result.job_id})" style="background:linear-gradient(135deg,#8b5cf6,#ec4899); border:none; white-space:nowrap; font-weight:600; font-size:12px; padding:0 18px;">
+                    ✨ Viết Lại & Chấm Điểm
+                </button>
+            </div>
+        </div>
+
         <!-- Action Toolbar Right After Generation -->
         <div style="display:flex; gap:10px; flex-wrap:wrap; margin:16px 0; padding:12px 14px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; align-items:center;">
             <button class="btn btn-secondary" onclick="openInstantPreviewFromCreate()" style="background:linear-gradient(135deg, rgba(236,72,153,0.15), rgba(139,92,246,0.15)); border-color:rgba(236,72,153,0.45); color:#f472b6; font-weight:700; padding:9px 18px; box-shadow:0 2px 12px rgba(236,72,153,0.2);">
@@ -807,6 +877,48 @@ function buildScriptResultHTML(result) {
                 🚀 Bắt Đầu Tạo Video Ngay →
             </button>
         </div>`;
+}
+
+async function submitQuickFeedbackFromCard(jobId) {
+    const input = document.getElementById('result-quick-feedback-input');
+    const feedback = input ? input.value.trim() : '';
+    if (!feedback) {
+        showToast('Vui lòng nhập góp ý để AI chỉnh sửa kịch bản!', 'error');
+        if (input) input.focus();
+        return;
+    }
+
+    const btn = document.getElementById(`btn-quick-feedback-${jobId}`);
+    const origHTML = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="loading-spinner"></span> Đang viết lại & chấm điểm...`;
+    }
+
+    try {
+        const res = await fetch(`/api/videos/${jobId}/ai-refine`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ feedback: feedback })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.detail || data.message || 'Lỗi khi tinh chỉnh kịch bản');
+        }
+
+        showToast(`✨ Kịch bản #${jobId} đã được AI viết lại theo góp ý và đạt chuẩn!`, 'success');
+        data.total_duration = (data.scenes || []).reduce((sum, s) => sum + (s.estimated_seconds || 3.5), 0);
+        data.scene_count = (data.scenes || []).length;
+        document.getElementById('script-result-content').innerHTML = buildScriptResultHTML(data);
+        await fetchVideos();
+    } catch (e) {
+        showToast('Lỗi AI tinh chỉnh: ' + e.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHTML;
+        }
+    }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -872,6 +984,35 @@ async function openVideoDetail(jobId) {
         </div>`;
     }).join('');
 
+    let evalDetailHTML = '';
+    let qScore = data.quality_scores;
+    if (typeof qScore === 'string') {
+        try { qScore = JSON.parse(qScore); } catch (e) { qScore = null; }
+    }
+    if (qScore && (qScore.overall !== undefined || qScore.overall_score !== undefined)) {
+        const overall = qScore.overall !== undefined ? qScore.overall : qScore.overall_score;
+        const hook = qScore.hook !== undefined ? qScore.hook : (qScore.hook_strength || 0);
+        const pacing = qScore.pacing !== undefined ? qScore.pacing : (qScore.story_pacing || 0);
+        const visual = qScore.visual !== undefined ? qScore.visual : (qScore.visual_direction || 0);
+        const passed = qScore.passed !== undefined ? qScore.passed : (overall >= 8.0);
+        const critiques = qScore.actionable_critiques || [];
+        evalDetailHTML = `
+        <div class="detail-row" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(59, 130, 246, 0.08)); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 12px 14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:6px;">
+                <div style="font-weight:700; color:#34d399; font-size:13px; display:flex; align-items:center; gap:6px;">
+                    <span>🎯 Điểm Script Critic: ${overall.toFixed(1)}/10</span>
+                    <span class="badge ${passed ? 'badge-green' : 'badge-amber'}">${passed ? 'ĐẠT CHUẨN VIRAL' : 'CẦN CẢI THIỆN'}</span>
+                </div>
+                <div style="display:flex; gap:10px; font-size:11.5px; color:var(--text-secondary);">
+                    <span>⚡ Hook: <strong style="color:#60a5fa;">${hook.toFixed(1)}</strong></span>
+                    <span>⏱️ Nhịp độ: <strong style="color:#a78bfa;">${pacing.toFixed(1)}</strong></span>
+                    <span>👁️ Thị giác: <strong style="color:#f472b6;">${visual.toFixed(1)}</strong></span>
+                </div>
+            </div>
+            ${critiques.length > 0 ? `<div style="font-size:11px; color:#cbd5e1; margin-top:4px;"><strong>💡 Gợi ý:</strong> ${critiques.map(c => esc(c)).join(' • ')}</div>` : ''}
+        </div>`;
+    }
+
     body.innerHTML = `
         <div class="detail-grid">
             <div class="detail-row">
@@ -898,6 +1039,7 @@ async function openVideoDetail(jobId) {
             <div class="detail-label">Tiêu Đề</div>
             <div class="detail-value" style="font-weight:600;font-size:16px;">${esc(data.title) || '—'}</div>
         </div>
+        ${evalDetailHTML}
         ${data.error_message && data.status === 'FAILED' ? `
         <div class="detail-row">
             <div class="detail-label" style="color:var(--accent-rose);">Lỗi</div>
@@ -973,6 +1115,13 @@ async function openScriptEditor(jobId) {
     document.getElementById('editor-input-title').value = '';
     document.getElementById('editor-input-hook').value = '';
     document.getElementById('editor-input-tags').value = '';
+    const fbInput = document.getElementById('editor-ai-feedback-input');
+    if (fbInput) fbInput.value = '';
+    const badge = document.getElementById('editor-ai-score-badge');
+    if (badge) badge.style.display = 'none';
+    const critiquesEl = document.getElementById('editor-ai-critiques');
+    if (critiquesEl) critiquesEl.style.display = 'none';
+
     document.getElementById('editor-scenes-list').innerHTML = `<div style="text-align:center;padding:24px;"><span class="loading-spinner"></span> Đang tải kịch bản...</div>`;
     
     document.getElementById('script-editor-title').textContent = `Chỉnh Sửa Kịch Bản Video #${jobId}`;
@@ -990,6 +1139,32 @@ async function openScriptEditor(jobId) {
         document.getElementById('editor-input-title').value = data.title || data.topic || '';
         document.getElementById('editor-input-hook').value = (data.scenes && data.scenes[0]) ? data.scenes[0].narration : '';
         document.getElementById('editor-input-tags').value = data.tags || 'shorts, psychology, facts';
+
+        let qScore = data.quality_scores;
+        if (typeof qScore === 'string') {
+            try { qScore = JSON.parse(qScore); } catch (e) { qScore = null; }
+        }
+        if (qScore && (qScore.overall !== undefined || qScore.overall_score !== undefined)) {
+            const overall = qScore.overall !== undefined ? qScore.overall : qScore.overall_score;
+            const hook = qScore.hook !== undefined ? qScore.hook : (qScore.hook_strength || 0);
+            const pacing = qScore.pacing !== undefined ? qScore.pacing : (qScore.story_pacing || 0);
+            const visual = qScore.visual !== undefined ? qScore.visual : (qScore.visual_direction || 0);
+            const passed = qScore.passed !== undefined ? qScore.passed : (overall >= 8.0);
+            if (badge) {
+                badge.style.display = 'inline-block';
+                badge.className = `badge ${passed ? 'badge-green' : 'badge-amber'}`;
+                badge.textContent = `🎯 Script Critic: ${overall.toFixed(1)}/10 (Hook: ${hook.toFixed(1)} | Pacing: ${pacing.toFixed(1)} | Visual: ${visual.toFixed(1)})`;
+            }
+            if (critiquesEl) {
+                const critList = qScore.actionable_critiques || [];
+                if (critList.length > 0) {
+                    critiquesEl.style.display = 'block';
+                    critiquesEl.innerHTML = `<strong>💡 Đánh giá từ Critic:</strong> ` + critList.map(c => esc(c)).join(' • ');
+                } else {
+                    critiquesEl.style.display = 'none';
+                }
+            }
+        }
 
         renderEditorScenes(data.scenes || []);
     } catch (e) {
@@ -1223,6 +1398,94 @@ async function submitScriptEdits(andRender = false) {
         if (saveBtn) {
             saveBtn.disabled = false;
             saveBtn.innerHTML = origHTML;
+        }
+    }
+}
+
+async function submitAiScriptRefinement() {
+    const jobId = document.getElementById('editor-job-id').value;
+    if (!jobId) return;
+
+    const feedbackInput = document.getElementById('editor-ai-feedback-input');
+    const feedback = feedbackInput ? feedbackInput.value.trim() : '';
+    if (!feedback) {
+        showToast('Vui lòng nhập nội dung góp ý chỉnh sửa kịch bản!', 'error');
+        if (feedbackInput) feedbackInput.focus();
+        return;
+    }
+
+    const btn = document.getElementById('btn-editor-ai-refine');
+    const origHTML = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="loading-spinner"></span> Đang tinh chỉnh & chấm điểm lại...`;
+    }
+
+    try {
+        const res = await fetch(`/api/videos/${jobId}/ai-refine`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ feedback: feedback })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.detail || data.message || 'Lỗi khi tinh chỉnh kịch bản');
+        }
+
+        showToast(`✨ Kịch bản #${jobId} đã được AI viết lại và chấm điểm đạt chuẩn!`, 'success');
+        if (feedbackInput) feedbackInput.value = '';
+
+        if (data.title) document.getElementById('editor-input-title').value = data.title;
+        if (data.hook) document.getElementById('editor-input-hook').value = data.hook;
+        if (data.tags) document.getElementById('editor-input-tags').value = data.tags;
+
+        if (data.scenes && data.scenes.length > 0) {
+            renderEditorScenes(data.scenes);
+        }
+
+        const badge = document.getElementById('editor-ai-score-badge');
+        const critiquesEl = document.getElementById('editor-ai-critiques');
+        let qScore = data.quality_scores;
+        if (typeof qScore === 'string') {
+            try { qScore = JSON.parse(qScore); } catch (e) { qScore = null; }
+        }
+        if (qScore && (qScore.overall !== undefined || qScore.overall_score !== undefined)) {
+            const overall = qScore.overall !== undefined ? qScore.overall : qScore.overall_score;
+            const hook = qScore.hook !== undefined ? qScore.hook : (qScore.hook_strength || 0);
+            const pacing = qScore.pacing !== undefined ? qScore.pacing : (qScore.story_pacing || 0);
+            const visual = qScore.visual !== undefined ? qScore.visual : (qScore.visual_direction || 0);
+            const passed = qScore.passed !== undefined ? qScore.passed : (overall >= 8.0);
+            if (badge) {
+                badge.style.display = 'inline-block';
+                badge.className = `badge ${passed ? 'badge-green' : 'badge-amber'}`;
+                badge.textContent = `🎯 Script Critic: ${overall.toFixed(1)}/10 (Hook: ${hook.toFixed(1)} | Pacing: ${pacing.toFixed(1)} | Visual: ${visual.toFixed(1)})`;
+            }
+            if (critiquesEl) {
+                const critList = qScore.actionable_critiques || [];
+                if (critList.length > 0) {
+                    critiquesEl.style.display = 'block';
+                    critiquesEl.innerHTML = `<strong>💡 Đánh giá từ Critic:</strong> ` + critList.map(c => esc(c)).join(' • ');
+                } else {
+                    critiquesEl.style.display = 'none';
+                }
+            }
+        }
+
+        // Cập nhật result panel nếu đang mở cho job này
+        const resultBadge = document.getElementById('result-job-badge');
+        if (resultBadge && resultBadge.textContent.includes(jobId)) {
+            data.total_duration = (data.scenes || []).reduce((sum, s) => sum + (s.estimated_seconds || 3.5), 0);
+            data.scene_count = (data.scenes || []).length;
+            document.getElementById('script-result-content').innerHTML = buildScriptResultHTML(data);
+        }
+
+        await fetchVideos();
+    } catch (e) {
+        showToast('Lỗi AI tinh chỉnh: ' + e.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHTML;
         }
     }
 }

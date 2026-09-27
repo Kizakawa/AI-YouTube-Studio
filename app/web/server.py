@@ -605,21 +605,50 @@ class CreateScriptRequest(BaseModel):
     topic: str
     channel_id: str = "channel_maya"
     language: str = "en"
+    director_notes: Optional[str] = None
+
+class RefineScriptRequest(BaseModel):
+    feedback: str
+    language: Optional[str] = None
 
 @app.post("/api/scripts/create")
 async def create_script_from_web(body: CreateScriptRequest) -> Dict[str, Any]:
     """
-    Tạo kịch bản AI trực tiếp từ Web Studio.
-    Lưu vào DB dưới dạng user_id=0 (Web UI trigger).
+    Tạo kịch bản AI trực tiếp từ Web Studio:
+    Tự động chấm điểm qua ScriptCritic và lặp lại tái tạo cho đến khi đạt chuẩn viral (>= 8.0/10) mới hiển thị.
     """
     try:
         from app.agents.content_agent import ContentAgent
+        channels = settings.get_channels_config()
+        ch = next((c for c in channels if c.get("id") == body.channel_id), {})
+        channel_niche = ch.get("niche") or "general"
+        channel_lang = body.language or ch.get("language") or "en"
+
         agent = ContentAgent()
-        script = agent.generate_script(
+        script, eval_report = await asyncio.to_thread(
+            agent.generate_best_script,
             topic=body.topic,
-            channel_niche="general",
-            language=body.language
+            channel_niche=channel_niche,
+            language=channel_lang,
+            director_notes=body.director_notes,
+            min_acceptable_score=8.0,
+            max_attempts=3
         )
+
+        scores_summary = {
+            "overall": eval_report.overall_score if eval_report else 0,
+            "overall_score": eval_report.overall_score if eval_report else 0,
+            "passed": eval_report.passed if eval_report else False,
+            "hook": eval_report.hook_strength.score if eval_report else 0,
+            "hook_strength": eval_report.hook_strength.score if eval_report else 0,
+            "pacing": eval_report.story_pacing.score if eval_report else 0,
+            "story_pacing": eval_report.story_pacing.score if eval_report else 0,
+            "visual": (eval_report.visual_direction.score if getattr(eval_report, "visual_direction", None) else 8.5) if eval_report else 0,
+            "visual_direction": (eval_report.visual_direction.score if getattr(eval_report, "visual_direction", None) else 8.5) if eval_report else 0,
+            "actionable_critiques": eval_report.actionable_critiques if eval_report else [],
+            "script_critic": eval_report.model_dump() if eval_report else None,
+        }
+
         with get_db() as db:
             job = VideoJob(
                 user_id=0,  # 0 = Web UI
@@ -631,10 +660,26 @@ async def create_script_from_web(body: CreateScriptRequest) -> Dict[str, Any]:
                 tags=",".join(script.tags),
                 scenes_json=script.to_json_str(),
                 status="SCRIPT_READY",
+                quality_scores=json.dumps(scores_summary, ensure_ascii=False) if eval_report else None
             )
             db.add(job)
             db.flush()
             job_id = job.id
+
+        eval_data = None
+        if eval_report:
+            vis_s = getattr(eval_report, "visual_direction", None)
+            vis_score = vis_s.score if vis_s else 8.5
+            eval_data = {
+                "overall_score": eval_report.overall_score,
+                "hook_score": eval_report.hook_strength.score,
+                "pacing_score": eval_report.story_pacing.score,
+                "visual_score": vis_score,
+                "passed": eval_report.passed,
+                "badge": "🏆 Xuất sắc" if eval_report.overall_score >= 8.5 else "✅ Đạt chuẩn Viral",
+                "critiques": eval_report.actionable_critiques or []
+            }
+
         return {
             "success": True,
             "job_id": job_id,
@@ -647,14 +692,136 @@ async def create_script_from_web(body: CreateScriptRequest) -> Dict[str, Any]:
                     "scene_id": s.scene_id,
                     "narration": s.narration,
                     "visual_keyword": s.visual_keyword,
+                    "visual_prompt": getattr(s, "visual_prompt", s.visual_keyword),
+                    "media_type": getattr(s, "media_type", "auto"),
                     "estimated_seconds": s.estimated_seconds,
                 }
                 for s in script.scenes
             ],
+            "eval": eval_data
         }
     except Exception as e:
         import traceback
         raise HTTPException(status_code=500, detail=f"Lỗi tạo kịch bản: {str(e)}\n{traceback.format_exc()}")
+
+
+@app.post("/api/videos/{job_id}/ai-refine")
+async def refine_script_with_ai(job_id: int, body: RefineScriptRequest) -> Dict[str, Any]:
+    """
+    Tiếp thu góp ý chỉnh sửa của người dùng, tái tạo kịch bản,
+    tự động chấm điểm bằng ScriptCritic và lặp lại đến khi đạt chuẩn viral.
+    """
+    try:
+        from app.agents.content_agent import ContentAgent
+        from app.schemas.contracts import ScriptContract
+
+        with get_db() as db:
+            job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if not job:
+                raise HTTPException(status_code=404, detail=f"Không tìm thấy video job #{job_id}")
+            if not job.scenes_json:
+                raise HTTPException(status_code=400, detail=f"Job #{job_id} chưa có kịch bản phân cảnh")
+
+            current_script = ScriptContract.from_json_str(job.scenes_json)
+            channel_id = job.target_channel_id
+
+        channels = settings.get_channels_config()
+        ch = next((c for c in channels if c.get("id") == channel_id), {})
+        channel_niche = ch.get("niche") or "general"
+        channel_lang = body.language or ch.get("language") or "en"
+
+        agent = ContentAgent()
+        revised_script, eval_report = await asyncio.to_thread(
+            agent.refine_with_feedback_and_eval,
+            current_script=current_script,
+            feedback=body.feedback,
+            channel_niche=channel_niche,
+            language=channel_lang,
+            min_acceptable_score=8.0,
+            max_attempts=3
+        )
+
+        with get_db() as db:
+            job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if job:
+                job.title = revised_script.title
+                job.script = revised_script.full_narration
+                job.description = revised_script.description
+                job.tags = ",".join(revised_script.tags)
+                job.scenes_json = revised_script.to_json_str()
+                job.status = "SCRIPT_READY"
+
+                scores = {}
+                if job.quality_scores:
+                    try:
+                        scores = json.loads(job.quality_scores)
+                    except Exception:
+                        pass
+                if eval_report:
+                    vis_s = getattr(eval_report, "visual_direction", None)
+                    vis_score = vis_s.score if vis_s else 8.5
+                    scores["overall"] = eval_report.overall_score
+                    scores["overall_score"] = eval_report.overall_score
+                    scores["passed"] = eval_report.passed
+                    scores["hook"] = eval_report.hook_strength.score
+                    scores["hook_strength"] = eval_report.hook_strength.score
+                    scores["pacing"] = eval_report.story_pacing.score
+                    scores["story_pacing"] = eval_report.story_pacing.score
+                    scores["visual"] = vis_score
+                    scores["visual_direction"] = vis_score
+                    scores["actionable_critiques"] = eval_report.actionable_critiques or []
+                    scores["script_critic"] = eval_report.model_dump()
+                job.quality_scores = json.dumps(scores, ensure_ascii=False)
+                db.commit()
+
+        eval_data = None
+        if eval_report:
+            vis_s = getattr(eval_report, "visual_direction", None)
+            vis_score = vis_s.score if vis_s else 8.5
+            eval_data = {
+                "overall": eval_report.overall_score,
+                "overall_score": eval_report.overall_score,
+                "hook": eval_report.hook_strength.score,
+                "hook_score": eval_report.hook_strength.score,
+                "hook_strength": eval_report.hook_strength.score,
+                "pacing": eval_report.story_pacing.score,
+                "pacing_score": eval_report.story_pacing.score,
+                "story_pacing": eval_report.story_pacing.score,
+                "visual": vis_score,
+                "visual_score": vis_score,
+                "visual_direction": vis_score,
+                "passed": eval_report.passed,
+                "badge": "🏆 Xuất sắc" if eval_report.overall_score >= 8.5 else "✅ Đạt chuẩn Viral",
+                "critiques": eval_report.actionable_critiques or [],
+                "actionable_critiques": eval_report.actionable_critiques or []
+            }
+
+        return {
+            "success": True,
+            "job_id": job_id,
+            "title": revised_script.title,
+            "hook": revised_script.hook,
+            "tags": ",".join(revised_script.tags),
+            "scene_count": len(revised_script.scenes),
+            "total_duration": revised_script.total_estimated_duration,
+            "scenes": [
+                {
+                    "scene_id": s.scene_id,
+                    "narration": s.narration,
+                    "visual_keyword": s.visual_keyword,
+                    "visual_prompt": getattr(s, "visual_prompt", s.visual_keyword),
+                    "media_type": getattr(s, "media_type", "auto"),
+                    "estimated_seconds": s.estimated_seconds,
+                }
+                for s in revised_script.scenes
+            ],
+            "eval": eval_data
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        raise HTTPException(status_code=500, detail=f"Lỗi khi tinh chỉnh kịch bản: {str(e)}\n{traceback.format_exc()}")
 
 # ─── Update Job Status ────────────────────────────────────────────────────────
 

@@ -165,6 +165,19 @@ class ContentAgent:
             if cleaned_title:
                 raw_data["title"] = cleaned_title
 
+        # Tự động bù đắp các trường bắt buộc của ScriptContract nếu LLM vô tình bỏ sót
+        scenes = raw_data.get("scenes", [])
+        if "full_narration" not in raw_data or not raw_data["full_narration"]:
+            raw_data["full_narration"] = " ".join(s.get("narration", "") for s in scenes if isinstance(s, dict))
+        if "tags" not in raw_data or not raw_data["tags"]:
+            raw_data["tags"] = ["shorts", "viral"]
+        elif isinstance(raw_data["tags"], str):
+            raw_data["tags"] = [t.strip() for t in raw_data["tags"].split(",") if t.strip()]
+        if "total_duration_estimate" not in raw_data or not raw_data["total_duration_estimate"]:
+            raw_data["total_duration_estimate"] = sum(s.get("estimated_seconds", 3.5) for s in scenes if isinstance(s, dict)) or 25.0
+        if "topic" not in raw_data or not raw_data["topic"]:
+            raw_data["topic"] = raw_data.get("title", "Shorts Video")
+
         return ScriptContract(**raw_data)
 
     def generate_script(
@@ -485,57 +498,199 @@ HARD RULES:
         language: str = "en",
         director_notes: Optional[str] = None,
         min_acceptable_score: float = 8.0,
+        max_attempts: int = 3,
     ) -> tuple:
         """
-        Quy trình biên soạn cao cấp: Tạo kịch bản -> Tự động chấm điểm bằng ScriptCritic -> Tự động tinh chỉnh nếu chưa đạt chuẩn viral.
+        Quy trình biên soạn cao cấp: Tạo kịch bản -> Tự động chấm điểm bằng ScriptCritic.
+        Nếu điểm tệ (< min_acceptable_score hoặc chưa passed), hệ thống tự động tái tạo & tinh chỉnh
+        qua nhiều vòng lặp cho đến khi đạt chuẩn viral mới xuất ra cho người dùng.
         Trả về tuple: (ScriptContract, ScriptEvaluationReport).
         """
+        from app.graph.evaluators.script_critic import ScriptCritic
+        critic = ScriptCritic()
+
         # 1. Tạo kịch bản sơ khởi
-        script = self.generate_script(
+        best_script = self.generate_script(
             topic=topic,
             channel_niche=channel_niche,
             language=language,
             director_notes=director_notes
         )
 
-        # 2. Chấm điểm kịch bản bằng ScriptCritic
         try:
-            from app.graph.evaluators.script_critic import ScriptCritic
-            critic = ScriptCritic()
-            eval_report = critic.evaluate_script(
-                script_data=script.model_dump(),
+            best_eval = critic.evaluate_script(
+                script_data=best_script.model_dump(),
                 topic=topic,
                 channel_style=channel_niche,
-                primary_entity=getattr(script, "primary_entity", None)
+                primary_entity=getattr(best_script, "primary_entity", None)
+            )
+        except Exception as e:
+            logger.warning(f"Lỗi khi chấm điểm kịch bản sơ bộ: {e}")
+            return best_script, None
+
+        # Nếu ngay vòng 1 đã đạt chuẩn xuất sắc (>= min_acceptable_score và passed) -> Trả về ngay
+        if best_eval.overall_score >= min_acceptable_score and best_eval.passed:
+            logger.info(f"✅ [ContentAgent] Kịch bản đạt chuẩn ngay vòng 1: {best_eval.overall_score:.1f}/10")
+            return best_script, best_eval
+
+        # 2. Vòng lặp tự động tái tạo & hoàn thiện cho đến khi đạt điểm chuẩn
+        logger.info(
+            f"⚠️ [ContentAgent] Kịch bản sơ bộ chưa đạt ({best_eval.overall_score:.1f}/10 < {min_acceptable_score}). "
+            f"Bắt đầu quy trình tự động tái tạo đến khi đạt chuẩn (Tối đa {max_attempts} lần thử)..."
+        )
+
+        for attempt in range(1, max_attempts + 1):
+            critiques_list = list(best_eval.actionable_critiques) if best_eval.actionable_critiques else []
+
+            # Thêm chỉ đạo chuyên sâu theo các tiêu chí bị điểm kém
+            if best_eval.hook_strength.score < 8.0:
+                critiques_list.insert(0, f"Cảnh 1 Hook bị trừ nặng ({best_eval.hook_strength.score:.1f}/10): {best_eval.hook_strength.feedback}. Bắt buộc thay thế bằng hook giật gân, đảo ngược định kiến hoặc cảnh báo cấp bách trong 5-8 từ.")
+            if best_eval.story_pacing.score < 8.0:
+                critiques_list.append(f"Nhịp điệu chưa chuẩn ({best_eval.story_pacing.score:.1f}/10): {best_eval.story_pacing.feedback}. Rút gọn lời thoại strictly 50-75 từ cho toàn bộ video, 2.5-3.5s/cảnh.")
+            if getattr(best_eval, "visual_direction", None) and best_eval.visual_direction.score < 8.0:
+                critiques_list.append(f"Thị giác yếu ({best_eval.visual_direction.score:.1f}/10): Cấm từ ngữ trừu tượng. visual_keyword và stock_query phải là danh từ/hành động vật lý cụ thể.")
+
+            directive = (
+                f"KỊCH BẢN TRƯỚC ĐÓ ĐẠT ĐIỂM KÉM ({best_eval.overall_score:.1f}/10). "
+                f"CHỈ ĐẠO BẮT BUỘC SỬA ĐỂ ĐẠT CHUẨN VIRAL: " + " | ".join(critiques_list)
             )
 
-            # 3. Nếu điểm tổng quát < min_acceptable_score và có nhận xét cụ thể: Tự động tinh chỉnh 1 vòng
-            if eval_report.overall_score < min_acceptable_score and eval_report.actionable_critiques:
-                logger.info(
-                    f"🎯 [ContentAgent] Kịch bản sơ bộ đạt {eval_report.overall_score:.1f}/10 (< {min_acceptable_score}). "
-                    f"Kích hoạt Auto-Refinement để sửa các lỗi: {eval_report.actionable_critiques[:2]}"
+            try:
+                if attempt < max_attempts:
+                    # Tinh chỉnh sâu kịch bản hiện tại với các chỉ đạo sửa lỗi
+                    candidate_script = self.refine_script(
+                        current_script=best_script,
+                        feedback=directive,
+                        channel_niche=channel_niche,
+                        language=language
+                    )
+                else:
+                    # Lần thử cuối cùng: Tái tạo kịch bản từ đầu với góc nhìn sốc và sắc bén hơn
+                    refreshed_topic = f"{topic} (Shocking perspective, intense curiosity loop)"
+                    candidate_script = self.generate_script(
+                        topic=refreshed_topic,
+                        channel_niche=channel_niche,
+                        language=language,
+                        director_notes=f"MUST FIX: {'; '.join(critiques_list[:3])}"
+                    )
+
+                candidate_eval = critic.evaluate_script(
+                    script_data=candidate_script.model_dump(),
+                    topic=topic,
+                    channel_style=channel_niche,
+                    primary_entity=getattr(candidate_script, "primary_entity", None)
                 )
-                feedback_str = "Tự động tinh chỉnh chất lượng: " + "; ".join(eval_report.actionable_critiques)
-                refined = self.refine_script(
-                    current_script=script,
-                    feedback=feedback_str,
+
+                logger.info(
+                    f"🔄 [ContentAgent Auto-Retry {attempt}/{max_attempts}] "
+                    f"Điểm số mới: {candidate_eval.overall_score:.1f}/10 (Cũ: {best_eval.overall_score:.1f}/10)"
+                )
+
+                # Cập nhật ứng viên tốt nhất
+                if candidate_eval.overall_score > best_eval.overall_score:
+                    best_script = candidate_script
+                    best_eval = candidate_eval
+
+                # Kiểm tra nếu đã vượt qua ngưỡng chuẩn
+                if candidate_eval.overall_score >= min_acceptable_score and candidate_eval.passed:
+                    logger.info(f"🎉 [ContentAgent] Kịch bản đã đạt chuẩn xuất sắc {candidate_eval.overall_score:.1f}/10 ở lần thử {attempt}!")
+                    return candidate_script, candidate_eval
+
+            except Exception as e:
+                logger.warning(f"Lỗi trong vòng lặp tự sửa kịch bản lần {attempt}: {e}")
+                continue
+
+        logger.info(f"🏁 [ContentAgent] Hoàn thành tối ưu hóa kịch bản, điểm tốt nhất đạt được: {best_eval.overall_score:.1f}/10")
+        return best_script, best_eval
+
+    def refine_with_feedback_and_eval(
+        self,
+        current_script: ScriptContract,
+        feedback: str,
+        channel_niche: str = "general",
+        language: str = "en",
+        min_acceptable_score: float = 8.0,
+        max_attempts: int = 3
+    ) -> tuple:
+        """
+        Tiếp thu góp ý chỉnh sửa của người dùng, tổng hợp lại kịch bản,
+        tự động chấm điểm qua ScriptCritic và tinh chỉnh liên tục cho đến khi đạt chuẩn.
+        Trả về tuple: (ScriptContract, ScriptEvaluationReport).
+        """
+        from app.graph.evaluators.script_critic import ScriptCritic
+        critic = ScriptCritic()
+
+        logger.info(f"✍️ [ContentAgent] Bắt đầu tổng hợp góp ý: '{feedback}' cho kênh {channel_niche} ({language})")
+
+        # 1. Tinh chỉnh lần 1 dựa trên góp ý trực tiếp của người dùng
+        best_script = self.refine_script(
+            current_script=current_script,
+            feedback=feedback,
+            channel_niche=channel_niche,
+            language=language
+        )
+
+        try:
+            best_eval = critic.evaluate_script(
+                script_data=best_script.model_dump(),
+                topic=best_script.title,
+                channel_style=channel_niche,
+                primary_entity=getattr(best_script, "primary_entity", None)
+            )
+        except Exception as e:
+            logger.warning(f"Lỗi chấm điểm sau khi nhận feedback: {e}")
+            return best_script, None
+
+        if best_eval.overall_score >= min_acceptable_score and best_eval.passed:
+            logger.info(f"✅ [ContentAgent] Kịch bản sau góp ý đạt chuẩn ngay lần 1: {best_eval.overall_score:.1f}/10")
+            return best_script, best_eval
+
+        # 2. Vòng lặp cải thiện: Vừa giữ trọn vẹn yêu cầu của người dùng, vừa khắc phục điểm yếu của Critic
+        logger.info(
+            f"⚠️ [ContentAgent] Kịch bản sau góp ý đạt {best_eval.overall_score:.1f}/10 (< {min_acceptable_score}). "
+            f"Tiến hành tối ưu tự động để vừa thỏa mãn góp ý, vừa đạt điểm chất lượng cao..."
+        )
+
+        for attempt in range(1, max_attempts + 1):
+            critiques_list = list(best_eval.actionable_critiques) if best_eval.actionable_critiques else []
+            combined_directive = (
+                f"YÊU CẦU CỐT LÕI CỦA NGƯỜI DÙNG (BẮT BUỘC TUÂN THỦ 100%): \"{feedback}\"\n"
+                f"ĐỒNG THỜI KHẮC PHỤC CÁC LỖI CRITIC SAU ĐỂ ĐẠT CHUẨN VIRAL: " + " | ".join(critiques_list[:3])
+            )
+
+            try:
+                candidate_script = self.refine_script(
+                    current_script=best_script,
+                    feedback=combined_directive,
                     channel_niche=channel_niche,
                     language=language
                 )
-                # Chấm điểm lại kịch bản đã tinh chỉnh
-                new_eval = critic.evaluate_script(
-                    script_data=refined.model_dump(),
-                    topic=topic,
-                    channel_style=channel_niche,
-                    primary_entity=getattr(refined, "primary_entity", None)
-                )
-                if new_eval.overall_score >= eval_report.overall_score:
-                    return refined, new_eval
 
-            return script, eval_report
-        except Exception as e:
-            logger.warning(f"Lỗi trong quá trình tự chấm điểm kịch bản: {e}")
-            return script, None
+                candidate_eval = critic.evaluate_script(
+                    script_data=candidate_script.model_dump(),
+                    topic=candidate_script.title,
+                    channel_style=channel_niche,
+                    primary_entity=getattr(candidate_script, "primary_entity", None)
+                )
+
+                logger.info(
+                    f"🔄 [ContentAgent Feedback-Retry {attempt}/{max_attempts}] "
+                    f"Điểm mới: {candidate_eval.overall_score:.1f}/10 (Cũ: {best_eval.overall_score:.1f}/10)"
+                )
+
+                if candidate_eval.overall_score > best_eval.overall_score:
+                    best_script = candidate_script
+                    best_eval = candidate_eval
+
+                if candidate_eval.overall_score >= min_acceptable_score and candidate_eval.passed:
+                    logger.info(f"🎉 [ContentAgent] Kịch bản tinh chỉnh đạt điểm xuất sắc: {candidate_eval.overall_score:.1f}/10!")
+                    return candidate_script, candidate_eval
+
+            except Exception as e:
+                logger.warning(f"Lỗi khi tinh chỉnh kịch bản theo góp ý lần {attempt}: {e}")
+                continue
+
+        return best_script, best_eval
 
     def suggest_viral_ideas(
         self,
