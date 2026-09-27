@@ -322,9 +322,10 @@ class VideoPipeline:
             entity_type=entity_type,
             channel_niche=channel_niche,
         )
+        proposals = visual_plan.get("scenes_strategy") or visual_plan.get("scene_proposals") or []
         strategy_map = {
             s.get("scene_id"): s
-            for s in visual_plan.get("scenes_strategy", [])
+            for s in proposals
         }
 
         total_scenes = len(scenes)
@@ -677,6 +678,28 @@ class VideoPipeline:
                         used_pool_urls.add(cand_url)
                     if used_asset_paths is not None:
                         used_asset_paths.add(cand_url)
+
+                    # ── NÂNG CẤP ĐỘNG: Nếu cảnh cần video mà chỉ tải được ảnh tĩnh, chuyển hóa ngay thành Video Clip 3D MP4 ──
+                    if prefer_video and c_type != "video":
+                        try:
+                            from app.agents.ai_video_agent import AIVideoAgent
+                            ai_vid_agent = AIVideoAgent()
+                            anim_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_{c_src}_anim.mp4")
+                            res_anim = ai_vid_agent.animate_thematic_image(
+                                image_path=output,
+                                output_path=anim_path,
+                                duration_seconds=scene.actual_duration_seconds,
+                                camera_motion=sc_strat.get("camera_motion", "zoom_in") if sc_strat else "zoom_in",
+                                is_hook=(scene.scene_id == 1),
+                            )
+                            if res_anim and Path(res_anim).exists() and Path(res_anim).stat().st_size > 5000:
+                                logger.info(f"Scene {scene.scene_id}: 🎬 Đã nâng cấp ảnh {c_src} thành Video Clip chuyển động 3D MP4: {anim_path}")
+                                if used_asset_paths is not None:
+                                    used_asset_paths.add(anim_path)
+                                return anim_path
+                        except Exception as ex_anim:
+                            logger.debug(f"Scene {scene.scene_id} animation error: {ex_anim}")
+
                     logger.info(
                         f"Scene {scene.scene_id}: ✅ Tải thành công từ {c_src}: "
                         f"{cand.get('title', '')[:50]}"
@@ -803,6 +826,25 @@ class VideoPipeline:
                                 if used_asset_paths is not None:
                                     used_asset_paths.add(img_url)
                                     used_asset_paths.add(img_output)
+                                if prefer_video:
+                                    try:
+                                        from app.agents.ai_video_agent import AIVideoAgent
+                                        ai_vid_agent = AIVideoAgent()
+                                        anim_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_px_anim.mp4")
+                                        res_anim = ai_vid_agent.animate_thematic_image(
+                                            image_path=img_output,
+                                            output_path=anim_path,
+                                            duration_seconds=scene.actual_duration_seconds,
+                                            camera_motion=sc_strat.get("camera_motion", "zoom_in") if sc_strat else "zoom_in",
+                                            is_hook=(scene.scene_id == 1),
+                                        )
+                                        if res_anim and Path(res_anim).exists() and Path(res_anim).stat().st_size > 5000:
+                                            logger.info(f"Scene {scene.scene_id}: 🎬 Đã chuyển hóa Pexels Photo thành Video Clip MP4: {anim_path}")
+                                            if used_asset_paths is not None:
+                                                used_asset_paths.add(anim_path)
+                                            return anim_path
+                                    except Exception as ex_anim:
+                                        logger.debug(f"Scene {scene.scene_id} animation error: {ex_anim}")
                                 logger.info(f"Scene {scene.scene_id}: ✅ Pexels Photo (query='{safe_q}')")
                                 return img_output
             except Exception as e:

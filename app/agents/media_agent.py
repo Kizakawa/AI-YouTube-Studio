@@ -1165,6 +1165,33 @@ class MediaAgent:
             if len(collected_candidates) >= 8:
                 break
 
+        # ── Nếu chưa tìm thấy video nào, tự động mở rộng sang Thematic Motion Concepts ──
+        if not collected_candidates:
+            combined_text = f"{query} {narration} {clean_q}".lower()
+            theme_fallbacks = []
+            if any(w in combined_text for w in ["ocean", "sea", "water", "underwater", "deep", "biển", "nước", "sóng", "đáy biển", "submersible", "dive"]):
+                theme_fallbacks.extend(["underwater ocean", "ocean waves", "deep water", "dark ocean"])
+            if any(w in combined_text for w in ["space", "galaxy", "stars", "universe", "planet", "vũ trụ", "ngân hà", "hành tinh", "black hole", "lỗ đen"]):
+                theme_fallbacks.extend(["space galaxy", "universe stars", "nebula space", "planet in space"])
+            if any(w in combined_text for w in ["cyberpunk", "tech", "technology", "neon", "ai", "robot", "công nghệ", "viễn tưởng", "code"]):
+                theme_fallbacks.extend(["cyberpunk city", "neon technology", "futuristic city", "computer code"])
+            if any(w in combined_text for w in ["city", "street", "night", "crowd", "people", "walk", "đường phố", "đêm", "người", "traffic"]):
+                theme_fallbacks.extend(["city night", "walking alone", "street lights", "city crowd"])
+            if any(w in combined_text for w in ["mind", "brain", "think", "alone", "dark", "shadow", "tâm lý", "nghĩ", "bóng tối", "stress", "anxiety"]):
+                theme_fallbacks.extend(["dark silhouette", "person thinking", "shadow in dark", "alone night", "clock ticking"])
+            if any(w in combined_text for w in ["storm", "rain", "clouds", "sky", "lightning", "bão", "mưa", "sấm chớp", "mây"]):
+                theme_fallbacks.extend(["storm clouds", "lightning storm", "dark clouds", "rain night"])
+            if any(w in combined_text for w in ["fire", "flame", "burn", "explosion", "lửa", "cháy", "nổ"]):
+                theme_fallbacks.extend(["fire flames", "burning fire", "explosion blast"])
+
+            for tf in theme_fallbacks:
+                videos = self.search_videos(tf, per_page=4, orientation="portrait")
+                for v in videos:
+                    if v.get("url") and v["url"] not in used and v not in collected_candidates:
+                        collected_candidates.append(v)
+                if len(collected_candidates) >= 4:
+                    break
+
         # Nếu có thông tin phân tích hoặc lời thoại, nhờ VisualCurationAgent tuyển chọn
         if collected_candidates and (visual_analysis or narration):
             try:
@@ -1180,7 +1207,7 @@ class MediaAgent:
                     narration=narration or query,
                     used_urls=used,
                 )
-                if winner and score >= 6.0:
+                if winner and score >= 4.8:
                     return winner
                 if should_ai:
                     logger.info(f"[MediaAgent] VisualCurationAgent từ chối stock video ({rationale}), nhường quyền cho AI Video.")
