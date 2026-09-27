@@ -1980,7 +1980,7 @@ function renderAccounts(accounts) {
                                             `}
                                         </div>
                                         <div class="channel-row-meta" style="font-size:12px; color:var(--text-secondary); display:flex; gap:12px; flex-wrap:wrap;">
-                                            <span>🎯 <strong>Chủ đề:</strong> ${esc(ch.niche || 'general')}</span>
+                                            <span>🎯 <strong>Chủ đề:</strong> ${ch.niche ? esc(ch.niche) : '<em style="color:var(--text-muted)">✨ Tự do (Đa chủ đề)</em>'}</span>
                                             <span>🌐 <strong>Ngôn ngữ:</strong> ${esc(ch.language || 'en').toUpperCase()}</span>
                                             <span>🎙️ <strong>Giọng:</strong> ${esc(ch.preferred_voice || 'Default')}</span>
                                             <span>🖼️ <strong>Visual:</strong> ${ch.visual_mode === 'auto' ? '🤖 AI Tự chọn' : (ch.visual_mode === 'imagen_ai' ? '✨ Imagen 3' : '🎞️ Pexels')}</span>
@@ -2190,11 +2190,10 @@ function openAddChannelModal(accountId) {
     document.getElementById('channel-input-id').disabled = false;
     document.getElementById('channel-input-name').value = '';
     
-    // Mặc định chọn Niche đầu tiên hoặc psychology
+    // Mặc định: Không bắt buộc chọn hồ sơ ngách (cho phép rỗng)
     const nicheSel = document.getElementById('channel-input-niche');
     if (nicheSel) {
-        nicheSel.value = 'psychology';
-        onChannelNicheSelectChanged('psychology');
+        nicheSel.value = '';
     }
 
     document.getElementById('channel-input-lang').value = 'en';
@@ -2224,7 +2223,7 @@ function openEditChannelModal(accountId, channelId) {
     
     const nicheSel = document.getElementById('channel-input-niche');
     if (nicheSel) {
-        nicheSel.value = ch.niche || 'general';
+        nicheSel.value = ch.niche || '';
     }
 
     document.getElementById('channel-input-lang').value = ch.language || 'en';
@@ -2243,7 +2242,7 @@ async function submitChannelForm() {
     const accountId = document.getElementById('channel-parent-acc').value;
     let id = document.getElementById('channel-input-id').value.trim();
     const name = document.getElementById('channel-input-name').value.trim();
-    const niche = document.getElementById('channel-input-niche').value.trim() || 'general';
+    const niche = document.getElementById('channel-input-niche').value.trim(); // Có thể rỗng nếu không chọn
     const lang = document.getElementById('channel-input-lang').value;
     const voice = document.getElementById('channel-input-voice').value;
     const visual = document.getElementById('channel-input-visual').value;
@@ -2267,7 +2266,7 @@ async function submitChannelForm() {
     const payload = {
         id: id,
         name: name,
-        niche: niche,
+        niche: niche || '',
         language: lang,
         preferred_voice: voice,
         visual_mode: visual,
@@ -5303,13 +5302,16 @@ async function fetchNiches() {
 
 function updateChannelNicheSelectOptions(niches) {
     const sel = document.getElementById('channel-input-niche');
-    if (!sel || !niches || niches.length === 0) return;
+    if (!sel) return;
     const curVal = sel.value;
-    sel.innerHTML = niches.map(n => `
+    const items = (niches || []).map(n => `
         <option value="${esc(n.id)}">${esc(n.icon || '🎯')} ${esc(n.name)}</option>
     `).join('');
-    if (curVal && niches.some(n => n.id === curVal)) {
+    sel.innerHTML = `<option value="">✨ Không chọn (Kênh tự do / Đa chủ đề)</option>` + items;
+    if (curVal !== undefined && curVal !== null && (curVal === '' || (niches || []).some(n => n.id === curVal))) {
         sel.value = curVal;
+    } else {
+        sel.value = '';
     }
 }
 
@@ -5667,6 +5669,10 @@ async function deleteCurrentNiche() {
 }
 
 function onChannelNicheSelectChanged(nicheId) {
+    if (!nicheId) {
+        showToast('✨ Đã chọn: Không gán hồ sơ ngách (Kênh tự do / Đa chủ đề)', 'info');
+        return;
+    }
     const n = allNiches.find(x => x.id === nicheId);
     if (!n) return;
 

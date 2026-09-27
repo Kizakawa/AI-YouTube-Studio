@@ -1384,7 +1384,7 @@ class AccountUpdateRequest(BaseModel):
 class ChannelCreateRequest(BaseModel):
     id: str
     name: str
-    niche: Optional[str] = "general"
+    niche: Optional[str] = ""
     language: Optional[str] = "en"
     preferred_voice: Optional[str] = "en-US-ChristopherNeural"
     visual_mode: Optional[str] = "auto"
@@ -1897,8 +1897,8 @@ async def add_brand_channel(account_id: str, req: ChannelCreateRequest) -> Dict[
     new_channel = {
         "id": clean_id,
         "name": req.name.strip(),
-        "niche": req.niche.strip(),
-        "language": req.language.strip(),
+        "niche": (req.niche or "").strip(),
+        "language": (req.language or "en").strip(),
         "visual_mode": req.visual_mode or "auto",
         "preferred_voice": req.preferred_voice or "en-US-ChristopherNeural",
         "schedule": {
@@ -1945,8 +1945,8 @@ async def update_brand_channel(account_id: str, channel_id: str, req: ChannelCre
         raise HTTPException(status_code=404, detail="Không tìm thấy kênh cần sửa")
 
     channel["name"] = req.name.strip()
-    channel["niche"] = req.niche.strip()
-    channel["language"] = req.language.strip()
+    channel["niche"] = (req.niche or "").strip()
+    channel["language"] = (req.language or "en").strip()
     channel["visual_mode"] = req.visual_mode or channel.get("visual_mode", "auto")
     channel["preferred_voice"] = req.preferred_voice or channel.get("preferred_voice", "en-US-ChristopherNeural")
     channel["schedule"] = {
