@@ -7,20 +7,23 @@ from typing import Dict, Any, List, Optional
 logger = logging.getLogger(__name__)
 
 def parse_view_count(view_text: str) -> int:
-    """Chuyển chuỗi lượt xem (ví dụ: '471 lượt xem', '1.2K views', '100K lượt xem') thành số nguyên."""
+    """Chuyển chuỗi lượt xem (ví dụ: '471 lượt xem', '1,2 N lượt xem', '1.2K views', '100K lượt xem') thành số nguyên."""
     if not view_text:
         return 0
-    text = view_text.lower().replace(",", ".").strip()
-    match = re.search(r"([\d\.]+)\s*([kmbt]?)", text)
+    text = view_text.replace("\xa0", " ").replace(",", ".").lower().strip()
+    match = re.search(r"([\d\.]+)\s*(nghìn|triệu|tỷ|tr|k|m|b|\bn\b)?", text)
     if not match:
         return 0
-    num = float(match.group(1))
-    unit = match.group(2)
-    if unit == "k":
+    try:
+        num = float(match.group(1))
+    except ValueError:
+        return 0
+    unit = (match.group(2) or "").strip()
+    if unit in ("k", "n", "nghìn"):
         return int(num * 1000)
-    elif unit == "m":
+    elif unit in ("m", "tr", "triệu"):
         return int(num * 1000000)
-    elif unit == "b":
+    elif unit in ("b", "tỷ"):
         return int(num * 1000000000)
     return int(num)
 
