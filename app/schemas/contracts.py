@@ -11,7 +11,7 @@ import json
 from enum import Enum
 from typing import List, Optional
 from pathlib import Path
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class JobStatus(str, Enum):
@@ -138,6 +138,7 @@ class ScriptContract(BaseModel):
     full_narration: str = Field(min_length=20, description="Toàn bộ lời thoại nối liền")
     scenes: List[SceneContract] = Field(min_length=1, max_length=15)
     tags: List[str] = Field(min_length=1, max_length=30)
+    description: Optional[str] = Field(default=None, description="Mô tả video chuẩn SEO với hashtag")
     primary_entity: Optional[str] = Field(default=None, description="Tên thực thể/nhân vật chính nếu có")
     pinned_comment: Optional[str] = Field(
         default=None,
@@ -147,6 +148,16 @@ class ScriptContract(BaseModel):
         default=None,
         description="Công thức viral áp dụng (Double Tap & Protect, Debate in Comments, Curiosity Part 2)"
     )
+
+    @model_validator(mode="after")
+    def ensure_description_and_defaults(self) -> "ScriptContract":
+        """Đảm bảo description luôn tồn tại, không bao giờ None hoặc rỗng."""
+        if not self.description or not str(self.description).strip():
+            tag_str = " ".join(f"#{t.strip().replace(' ', '')}" for t in self.tags if t.strip()) if self.tags else "#shorts #viral"
+            self.description = f"{self.title}\n\n{tag_str}"
+        else:
+            self.description = self.description.strip()
+        return self
 
     @field_validator("scenes")
     @classmethod
