@@ -1864,112 +1864,117 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts = data.split(":")
         job_id = int(parts[1])
         channel_id = parts[2]
-        with get_db() as db:
-            job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
-            if not job or not job.video_path or not os.path.exists(job.video_path):
-                await safe_reply(update, f"❌ File video #{job_id} chưa sẵn sàng để xuất bản.")
-                return
-            video_path = job.video_path
-            video_title = job.title or job.topic
-            video_desc = job.description or ""
-            video_tags = [t.strip() for t in (job.tags or "").split(",") if t.strip()]
-
-        channels = settings.get_channels_config()
-        ch_cfg = next((c for c in channels if c.get("id") == channel_id), {"id": channel_id, "name": channel_id})
-        acc_id = ch_cfg.get("google_account", "account_1")
-        token_path = os.path.join(settings.CREDENTIALS_DIR, "accounts", acc_id, "youtube_token.json")
-
-        if not os.path.exists(token_path):
-            await safe_reply(
-                update,
-                f"⚠️ **KÊNH CHƯA KẾT NỐI OAUTH!**\n\n"
-                f"Kênh `{ch_cfg.get('name', channel_id)}` thuộc tài khoản `{acc_id}` chưa có quyền YouTube OAuth.\n\n"
-                f"👉 Hãy truy cập Web Dashboard tại `http://127.0.0.1:8000` -> Tab **Kênh & Tài Khoản** -> Bấm **Cấp Quyền YouTube** để cấp quyền trước nhé!"
-            )
-            return
-
-        ch_lang = ch_cfg.get("language", "en")
-        status_wait = await safe_reply(
-            update,
-            f"🚀 **ĐANG ĐĂNG VIDEO #{job_id} LÊN YOUTUBE & GOOGLE DRIVE...**\n\n"
-            f"📺 **Kênh:** `{ch_cfg.get('name', channel_id)}` (`{channel_id}`)\n"
-            f"📌 **Tiêu đề:** {video_title}\n"
-            f"⏳ Đang sao lưu Google Drive ({acc_id}) và upload YouTube..."
-        )
-
-        from app.agents.publisher_agent import PublisherAgent
-        from app.agents.drive_agent import DriveAgent
-
-        ch_name = ch_cfg.get("name", channel_id)
-        pub_agent = PublisherAgent(channel_config=ch_cfg)
-        drive_agent = DriveAgent(account_name=acc_id)
-
-        # 1. Tải lên Google Drive đúng theo thư mục riêng của kênh
-        drive_res = await asyncio.to_thread(
-            drive_agent.upload_video,
-            video_path,
-            video_title,
-            channel_name=ch_name
-        )
-        drive_link = drive_res.get("drive_link")
-        folder_link = drive_res.get("folder_link")
-
-        # Trích xuất bình luận mồi (pinned_comment) từ kịch bản nếu có
-        pinned_comment = None
-        if job.scenes_json:
-            try:
-                s_data = json.loads(job.scenes_json)
-                pinned_comment = s_data.get("pinned_comment")
-            except Exception:
-                pass
-
-        # 2. Đăng tải lên YouTube
-        pub_res = await asyncio.to_thread(
-            pub_agent.upload_video,
-            video_path=video_path,
-            title=video_title,
-            description=video_desc,
-            tags=video_tags,
-            privacy_status="public",
-            default_language=ch_lang,
-            default_audio_language=ch_lang,
-            pinned_comment=pinned_comment,
-        )
-
-        if pub_res.get("status") == "success":
-            yt_url = pub_res.get("youtube_url")
-            yt_id = pub_res.get("video_id")
+        try:
             with get_db() as db:
-                db_job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
-                if db_job:
-                    db_job.status = "PUBLISHED"
-                    db_job.youtube_video_id = yt_id
-                    db_job.target_channel_id = channel_id
-                    if drive_link:
-                        db_job.drive_link = drive_link
-                    log_activity(db, user.id, user.username, "PUBLISH_YOUTUBE",
-                                 f"Đã đăng Video #{job_id} lên YouTube kênh {channel_id} ({yt_url})",
-                                 channel_id=channel_id)
+                job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                if not job or not job.video_path or not os.path.exists(job.video_path):
+                    await safe_reply(update, f"❌ File video #{job_id} chưa sẵn sàng để xuất bản.")
+                    return
+                video_path = job.video_path
+                video_title = job.title or job.topic
+                video_desc = job.description or ""
+                video_tags = [t.strip() for t in (job.tags or "").split(",") if t.strip()]
+                scenes_json = job.scenes_json
 
-            success_text = (
-                f"🎉 **ĐĂNG TẢI VIDEO #{job_id} THÀNH CÔNG!**\n\n"
-                f"📺 **Kênh đã đăng:** `{ch_cfg.get('name', channel_id)}`\n"
-                f"🎬 **Link xem YouTube (Chế độ Công khai):**\n👉 {yt_url}\n\n"
+            channels = settings.get_channels_config()
+            ch_cfg = next((c for c in channels if c.get("id") == channel_id), {"id": channel_id, "name": channel_id})
+            acc_id = ch_cfg.get("google_account", "account_1")
+            token_path = os.path.join(settings.CREDENTIALS_DIR, "accounts", acc_id, "youtube_token.json")
+
+            if not os.path.exists(token_path):
+                await safe_reply(
+                    update,
+                    f"⚠️ **KÊNH CHƯA KẾT NỐI OAUTH!**\n\n"
+                    f"Kênh `{ch_cfg.get('name', channel_id)}` thuộc tài khoản `{acc_id}` chưa có quyền YouTube OAuth.\n\n"
+                    f"👉 Hãy truy cập Web Dashboard tại `http://127.0.0.1:8000` -> Tab **Kênh & Tài Khoản** -> Bấm **Cấp Quyền YouTube** để cấp quyền trước nhé!"
+                )
+                return
+
+            ch_lang = ch_cfg.get("language", "en")
+            status_wait = await safe_reply(
+                update,
+                f"🚀 **ĐANG ĐĂNG VIDEO #{job_id} LÊN YOUTUBE & GOOGLE DRIVE...**\n\n"
+                f"📺 **Kênh:** `{ch_cfg.get('name', channel_id)}` (`{channel_id}`)\n"
+                f"📌 **Tiêu đề:** {video_title}\n"
+                f"⏳ Đang sao lưu Google Drive ({acc_id}) và upload YouTube..."
             )
-            if pub_res.get("comment_id"):
-                success_text += f"💬 **Bình luận mồi tự động (Pinned Bait):** Đã đăng thành công!\n> _{pinned_comment}_\n\n"
-            if drive_link:
-                success_text += f"💾 **Lưu trữ Google Drive (Kênh `{ch_name}`):**\n👉 {drive_link}\n"
-                if folder_link:
-                    success_text += f"📁 **Thư mục kênh trên Drive:**\n👉 {folder_link}\n\n"
-            success_text += "💡 Video đã được xuất bản Công khai (Public) thành công!"
-            await safe_edit_text(status_wait, success_text)
-        else:
-            err = pub_res.get("error", "Lỗi không xác định")
-            fail_text = f"❌ **Đăng YouTube thất bại:** `{err}`"
-            if drive_link:
-                fail_text += f"\n\n💾 Tuy nhiên video đã được sao lưu an toàn lên Drive:\n👉 {drive_link}"
-            await safe_edit_text(status_wait, fail_text)
+
+            from app.agents.publisher_agent import PublisherAgent
+            from app.agents.drive_agent import DriveAgent
+
+            ch_name = ch_cfg.get("name", channel_id)
+            pub_agent = PublisherAgent(channel_config=ch_cfg)
+            drive_agent = DriveAgent(account_name=acc_id)
+
+            # 1. Tải lên Google Drive đúng theo thư mục riêng của kênh
+            drive_res = await asyncio.to_thread(
+                drive_agent.upload_video,
+                video_path,
+                video_title,
+                channel_name=ch_name
+            )
+            drive_link = drive_res.get("drive_link")
+            folder_link = drive_res.get("folder_link")
+
+            # Trích xuất bình luận mồi (pinned_comment) từ kịch bản nếu có
+            pinned_comment = None
+            if scenes_json:
+                try:
+                    s_data = json.loads(scenes_json)
+                    pinned_comment = s_data.get("pinned_comment")
+                except Exception:
+                    pass
+
+            # 2. Đăng tải lên YouTube
+            pub_res = await asyncio.to_thread(
+                pub_agent.upload_video,
+                video_path=video_path,
+                title=video_title,
+                description=video_desc,
+                tags=video_tags,
+                privacy_status="public",
+                default_language=ch_lang,
+                default_audio_language=ch_lang,
+                pinned_comment=pinned_comment,
+            )
+
+            if pub_res.get("status") == "success":
+                yt_url = pub_res.get("youtube_url")
+                yt_id = pub_res.get("video_id")
+                with get_db() as db:
+                    db_job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                    if db_job:
+                        db_job.status = "PUBLISHED"
+                        db_job.youtube_video_id = yt_id
+                        db_job.target_channel_id = channel_id
+                        if drive_link:
+                            db_job.drive_link = drive_link
+                        log_activity(db, user.id, user.username, "PUBLISH_YOUTUBE",
+                                     f"Đã đăng Video #{job_id} lên YouTube kênh {channel_id} ({yt_url})",
+                                     channel_id=channel_id)
+
+                success_text = (
+                    f"🎉 **ĐĂNG TẢI VIDEO #{job_id} THÀNH CÔNG!**\n\n"
+                    f"📺 **Kênh đã đăng:** `{ch_cfg.get('name', channel_id)}`\n"
+                    f"🎬 **Link xem YouTube (Chế độ Công khai):**\n👉 {yt_url}\n\n"
+                )
+                if pub_res.get("comment_id"):
+                    success_text += f"💬 **Bình luận mồi tự động (Pinned Bait):** Đã đăng thành công!\n> _{pinned_comment}_\n\n"
+                if drive_link:
+                    success_text += f"💾 **Lưu trữ Google Drive (Kênh `{ch_name}`):**\n👉 {drive_link}\n"
+                    if folder_link:
+                        success_text += f"📁 **Thư mục kênh trên Drive:**\n👉 {folder_link}\n\n"
+                success_text += "💡 Video đã được xuất bản Công khai (Public) thành công!"
+                await safe_edit_text(status_wait, success_text)
+            else:
+                err = pub_res.get("error", "Lỗi không xác định")
+                fail_text = f"❌ **Đăng YouTube thất bại:** `{err}`"
+                if drive_link:
+                    fail_text += f"\n\n💾 Tuy nhiên video đã được sao lưu an toàn lên Drive:\n👉 {drive_link}"
+                await safe_edit_text(status_wait, fail_text)
+        except Exception as e:
+            logger.error(f"Lỗi khi đăng YouTube Video #{job_id}: {e}", exc_info=True)
+            await safe_reply(update, f"❌ Lỗi khi xuất bản Video #{job_id}: `{e}`")
 
 
     # 3. Góp ý chỉnh sửa kịch bản hoặc video
@@ -2123,124 +2128,128 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts = data.split(":")
         job_id = int(parts[1])
         channel_id = parts[2]
-
-        with get_db() as db:
-            job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
-            if not job or not job.video_path or not os.path.exists(job.video_path):
-                await safe_reply(update, f"❌ File video #{job_id} chưa sẵn sàng để xuất bản.")
-                return
-            video_path = job.video_path
-            video_title = job.title or job.topic
-            video_desc = job.description or ""
-            video_tags = [t.strip() for t in (job.tags or "").split(",") if t.strip()]
-
-        channels = settings.get_channels_config()
-        ch_cfg = next((c for c in channels if c.get("id") == channel_id), {"id": channel_id, "name": channel_id})
-        acc_id = ch_cfg.get("google_account", "account_1")
-        token_path = os.path.join(settings.CREDENTIALS_DIR, "accounts", acc_id, "youtube_token.json")
-
-        if not os.path.exists(token_path):
-            await safe_reply(
-                update,
-                f"⚠️ **KÊNH CHƯA KẾT NỐI OAUTH!**\n\n"
-                f"Kênh `{ch_cfg.get('name', channel_id)}` thuộc tài khoản `{acc_id}` chưa có quyền YouTube OAuth.\n\n"
-                f"👉 Hãy truy cập Web Dashboard tại `http://127.0.0.1:8000` -> Tab **Kênh & Tài Khoản** -> Bấm **Cấp Quyền YouTube** để cấp quyền trước nhé!"
-            )
-            return
-
-        from app.services.smart_scheduler import get_next_available_golden_slot
-        slot_dt, slot_iso, display_vn, display_us = get_next_available_golden_slot(channel_id)
-
-        await safe_reply(
-            update,
-            f"⏰ **ĐANG TỰ ĐỘNG XẾP VÀO KHE GIỜ VÀNG (Video #{job_id})...**\n\n"
-            f"📺 **Kênh:** `{ch_cfg.get('name', channel_id)}`\n"
-            f"🎯 **Khe giờ vàng tìm thấy:**\n"
-            f"👉 **{display_vn}**\n"
-            f"*(🇺🇸 {display_us})*\n\n"
-            f"🚀 Đang sao lưu Google Drive ({acc_id}) và upload lên YouTube ở chế độ hẹn giờ (publishAt)..."
-        )
-
-        from app.agents.publisher_agent import PublisherAgent
-        from app.agents.drive_agent import DriveAgent
-
-        ch_name = ch_cfg.get("name", channel_id)
-        pub_agent = PublisherAgent(channel_config=ch_cfg)
-        drive_agent = DriveAgent(account_name=acc_id)
-
-        # 1. Tải lên Google Drive đúng theo thư mục riêng của kênh
-        drive_res = await asyncio.to_thread(
-            drive_agent.upload_video,
-            video_path,
-            video_title,
-            channel_name=ch_name
-        )
-        drive_link = drive_res.get("drive_link")
-        folder_link = drive_res.get("folder_link")
-
-        # Trích xuất bình luận mồi (pinned_comment) từ kịch bản nếu có
-        pinned_comment = None
-        if job.scenes_json:
-            try:
-                s_data = json.loads(job.scenes_json)
-                pinned_comment = s_data.get("pinned_comment")
-            except Exception:
-                pass
-
-        # 2. Đăng tải lên YouTube kèm schedule_time_iso
-        ch_lang = ch_cfg.get("language", "en")
-        pub_res = await asyncio.to_thread(
-            pub_agent.upload_video,
-            video_path=video_path,
-            title=video_title,
-            description=video_desc,
-            tags=video_tags,
-            privacy_status="private",
-            schedule_time_iso=slot_iso,
-            default_language=ch_lang,
-            default_audio_language=ch_lang,
-            pinned_comment=pinned_comment,
-        )
-
-        if pub_res.get("status") == "success":
-            yt_url = pub_res.get("youtube_url")
-            yt_id = pub_res.get("video_id")
+        try:
             with get_db() as db:
-                db_job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
-                if db_job:
-                    db_job.status = "SCHEDULED"
-                    db_job.scheduled_time = slot_dt
-                    db_job.youtube_video_id = yt_id
-                    db_job.target_channel_id = channel_id
-                    if drive_link:
-                        db_job.drive_link = drive_link
-                    log_activity(db, user.id, user.username, "SCHEDULE_YOUTUBE",
-                                 f"Đã lên lịch Video #{job_id} vào {display_vn} ({yt_url})",
-                                 channel_id=channel_id)
+                job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                if not job or not job.video_path or not os.path.exists(job.video_path):
+                    await safe_reply(update, f"❌ File video #{job_id} chưa sẵn sàng để xuất bản.")
+                    return
+                video_path = job.video_path
+                video_title = job.title or job.topic
+                video_desc = job.description or ""
+                video_tags = [t.strip() for t in (job.tags or "").split(",") if t.strip()]
+                scenes_json = job.scenes_json
 
-            success_text = (
-                f"🎉 **ĐÃ LÊN LỊCH PHÁT SÓNG THÀNH CÔNG CHO VIDEO #{job_id}!**\n\n"
-                f"📺 **Kênh:** `{ch_cfg.get('name', channel_id)}`\n"
-                f"⏰ **Giờ công chiếu tự động:**\n👉 **{display_vn}**\n"
-                f"*(🇺🇸 {display_us})*\n\n"
-                f"🎬 **Link xem YouTube (Đã khóa hẹn giờ):**\n👉 {yt_url}\n\n"
-            )
-            if pub_res.get("comment_id"):
-                success_text += f"💬 **Bình luận mồi tự động (Pinned Bait):** Đã đăng thành công!\n> _{pinned_comment}_\n\n"
-            success_text += "💡 **Hoàn toàn tự động:** Bạn có thể tắt máy tính / tắt bot, máy chủ YouTube sẽ tự động công chiếu đúng giờ này!"
-            if drive_link:
-                success_text += f"\n\n📂 **Bản gốc đã lưu trên Google Drive (Thư mục `{ch_name}`):**\n👉 [Xem video]({drive_link})"
-                if folder_link:
-                    success_text += f"\n📁 **Thư mục kênh trên Drive:** [Mở thư mục trên Drive]({folder_link})"
+            channels = settings.get_channels_config()
+            ch_cfg = next((c for c in channels if c.get("id") == channel_id), {"id": channel_id, "name": channel_id})
+            acc_id = ch_cfg.get("google_account", "account_1")
+            token_path = os.path.join(settings.CREDENTIALS_DIR, "accounts", acc_id, "youtube_token.json")
 
-            await safe_reply(update, success_text)
-        else:
-            err = pub_res.get("message", "Lỗi không xác định")
+            if not os.path.exists(token_path):
+                await safe_reply(
+                    update,
+                    f"⚠️ **KÊNH CHƯA KẾT NỐI OAUTH!**\n\n"
+                    f"Kênh `{ch_cfg.get('name', channel_id)}` thuộc tài khoản `{acc_id}` chưa có quyền YouTube OAuth.\n\n"
+                    f"👉 Hãy truy cập Web Dashboard tại `http://127.0.0.1:8000` -> Tab **Kênh & Tài Khoản** -> Bấm **Cấp Quyền YouTube** để cấp quyền trước nhé!"
+                )
+                return
+
+            from app.services.smart_scheduler import get_next_available_golden_slot
+            slot_dt, slot_iso, display_vn, display_us = get_next_available_golden_slot(channel_id)
+
             await safe_reply(
                 update,
-                f"❌ **LÊN LỊCH VIDEO #{job_id} THẤT BẠI!**\n\n"
-                f"Chi tiết lỗi từ YouTube API: `{err}`"
+                f"⏰ **ĐANG TỰ ĐỘNG XẾP VÀO KHE GIỜ VÀNG (Video #{job_id})...**\n\n"
+                f"📺 **Kênh:** `{ch_cfg.get('name', channel_id)}`\n"
+                f"🎯 **Khe giờ vàng tìm thấy:**\n"
+                f"👉 **{display_vn}**\n"
+                f"*(🇺🇸 {display_us})*\n\n"
+                f"🚀 Đang sao lưu Google Drive ({acc_id}) và upload lên YouTube ở chế độ hẹn giờ (publishAt)..."
             )
+
+            from app.agents.publisher_agent import PublisherAgent
+            from app.agents.drive_agent import DriveAgent
+
+            ch_name = ch_cfg.get("name", channel_id)
+            pub_agent = PublisherAgent(channel_config=ch_cfg)
+            drive_agent = DriveAgent(account_name=acc_id)
+
+            # 1. Tải lên Google Drive đúng theo thư mục riêng của kênh
+            drive_res = await asyncio.to_thread(
+                drive_agent.upload_video,
+                video_path,
+                video_title,
+                channel_name=ch_name
+            )
+            drive_link = drive_res.get("drive_link")
+            folder_link = drive_res.get("folder_link")
+
+            # Trích xuất bình luận mồi (pinned_comment) từ kịch bản nếu có
+            pinned_comment = None
+            if scenes_json:
+                try:
+                    s_data = json.loads(scenes_json)
+                    pinned_comment = s_data.get("pinned_comment")
+                except Exception:
+                    pass
+
+            # 2. Đăng tải lên YouTube kèm schedule_time_iso
+            ch_lang = ch_cfg.get("language", "en")
+            pub_res = await asyncio.to_thread(
+                pub_agent.upload_video,
+                video_path=video_path,
+                title=video_title,
+                description=video_desc,
+                tags=video_tags,
+                privacy_status="private",
+                schedule_time_iso=slot_iso,
+                default_language=ch_lang,
+                default_audio_language=ch_lang,
+                pinned_comment=pinned_comment,
+            )
+
+            if pub_res.get("status") == "success":
+                yt_url = pub_res.get("youtube_url")
+                yt_id = pub_res.get("video_id")
+                with get_db() as db:
+                    db_job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                    if db_job:
+                        db_job.status = "SCHEDULED"
+                        db_job.scheduled_time = slot_dt
+                        db_job.youtube_video_id = yt_id
+                        db_job.target_channel_id = channel_id
+                        if drive_link:
+                            db_job.drive_link = drive_link
+                        log_activity(db, user.id, user.username, "SCHEDULE_YOUTUBE",
+                                     f"Đã lên lịch Video #{job_id} vào {display_vn} ({yt_url})",
+                                     channel_id=channel_id)
+
+                success_text = (
+                    f"🎉 **ĐÃ LÊN LỊCH PHÁT SÓNG THÀNH CÔNG CHO VIDEO #{job_id}!**\n\n"
+                    f"📺 **Kênh:** `{ch_cfg.get('name', channel_id)}`\n"
+                    f"⏰ **Giờ công chiếu tự động:**\n👉 **{display_vn}**\n"
+                    f"*(🇺🇸 {display_us})*\n\n"
+                    f"🎬 **Link xem YouTube (Đã khóa hẹn giờ):**\n👉 {yt_url}\n\n"
+                )
+                if pub_res.get("comment_id"):
+                    success_text += f"💬 **Bình luận mồi tự động (Pinned Bait):** Đã đăng thành công!\n> _{pinned_comment}_\n\n"
+                success_text += "💡 **Hoàn toàn tự động:** Bạn có thể tắt máy tính / tắt bot, máy chủ YouTube sẽ tự động công chiếu đúng giờ này!"
+                if drive_link:
+                    success_text += f"\n\n📂 **Bản gốc đã lưu trên Google Drive (Thư mục `{ch_name}`):**\n👉 [Xem video]({drive_link})"
+                    if folder_link:
+                        success_text += f"\n📁 **Thư mục kênh trên Drive:** [Mở thư mục trên Drive]({folder_link})"
+
+                await safe_reply(update, success_text)
+            else:
+                err = pub_res.get("message", "Lỗi không xác định")
+                await safe_reply(
+                    update,
+                    f"❌ **LÊN LỊCH VIDEO #{job_id} THẤT BẠI!**\n\n"
+                    f"Chi tiết lỗi từ YouTube API: `{err}`"
+                )
+        except Exception as e:
+            logger.error(f"Lỗi khi lên lịch YouTube Video #{job_id}: {e}", exc_info=True)
+            await safe_reply(update, f"❌ Lỗi khi lên lịch Video #{job_id}: `{e}`")
 
     # 5. Tạo lại kịch bản từ đầu
     elif data.startswith("regenerate:"):
