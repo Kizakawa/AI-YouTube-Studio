@@ -2217,6 +2217,11 @@ async def start_channel_oauth(channel_id: str, request: Request, service: str = 
 
     def _channel_oauth_worker():
         try:
+            import webbrowser
+            import wsgiref.simple_server
+            import wsgiref.util
+            from google_auth_oauthlib.flow import InstalledAppFlow
+
             scopes = [
                 "https://www.googleapis.com/auth/youtube",
                 "https://www.googleapis.com/auth/userinfo.email",
