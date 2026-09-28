@@ -43,14 +43,45 @@ class ColabClient:
         self._last_health_check_time = 0.0
         return settings.set_colab_url(clean_url)
 
+    def auto_discover_colab_url(self) -> Optional[str]:
+        """
+        Tự động phát hiện URL Colab Worker từ Google Drive (colab_url.txt)
+        Giúp người dùng KHÔNG CẦN copy paste đường link thủ công!
+        """
+        try:
+            from app.agents.drive_agent import DriveAgent
+            agent = DriveAgent()
+            url_from_drive = agent.read_text_file("colab_url.txt", folder_name="AI_YouTube_RenderFarm")
+            if url_from_drive and url_from_drive.startswith("http"):
+                clean = url_from_drive.strip().rstrip("/")
+                try:
+                    resp = requests.get(f"{clean}/health", timeout=3.0)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        self.set_worker_url(clean)
+                        self._cached_health_status = True
+                        self._cached_gpu_info = data
+                        self._last_health_check_time = time.time()
+                        logger.info(f"🎉 Đã tự động kết nối Colab GPU Farm từ Google Drive: {clean} ({data.get('gpu')})")
+                        return clean
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.debug(f"Không thể tự động phát hiện Colab URL từ Drive: {e}")
+        return None
+
     def check_health(self, timeout: float = 3.5) -> Tuple[bool, Dict[str, Any]]:
         """
         Kiểm tra trạng thái kết nối tới Colab GPU Worker.
-        Trả về: (is_online, gpu_info)
+        Tự động tìm kiếm trên Google Drive nếu chưa cấu hình hoặc URL cũ bị mất kết nối.
         """
         url = self.worker_url
         if not url or not url.startswith("http"):
-            return False, {"error": "Chưa cấu hình URL Colab Worker"}
+            # Tự động quét Drive tìm URL mới do Colab ghi lên
+            discovered = self.auto_discover_colab_url()
+            if discovered:
+                return True, self._cached_gpu_info
+            return False, {"error": "Chưa kết nối Colab GPU Farm"}
 
         try:
             resp = requests.get(f"{url}/health", timeout=timeout)
@@ -62,9 +93,17 @@ class ColabClient:
                 return True, data
             else:
                 self._cached_health_status = False
+                # Thử auto-discover nếu URL cũ bị lỗi
+                discovered = self.auto_discover_colab_url()
+                if discovered:
+                    return True, self._cached_gpu_info
                 return False, {"error": f"HTTP {resp.status_code}"}
         except Exception as e:
             self._cached_health_status = False
+            # Thử auto-discover nếu kết nối bị đứt (Colab mới đổi link)
+            discovered = self.auto_discover_colab_url()
+            if discovered:
+                return True, self._cached_gpu_info
             return False, {"error": str(e)}
 
     def is_online(self, cache_seconds: float = 15.0) -> bool:

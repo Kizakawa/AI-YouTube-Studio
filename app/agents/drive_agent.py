@@ -234,3 +234,65 @@ class DriveAgent:
                 logger.info(f"Đã dọn dẹp file tạm local: {local_path}")
         except Exception as e:
             logger.error(f"Không thể xóa file tạm {local_path}: {e}")
+
+    def read_text_file(self, filename: str, folder_name: str = "AI_YouTube_RenderFarm") -> Optional[str]:
+        """Đọc nội dung văn bản của một file trong thư mục Drive (ví dụ: colab_url.txt)"""
+        if not self.service:
+            self._init_service()
+        if not self.service:
+            return None
+        try:
+            folder_id = self._get_or_create_folder(folder_name)
+            if not folder_id:
+                return None
+            safe_name = filename.replace("'", "\\'")
+            q = f"name = '{safe_name}' and '{folder_id}' in parents and trashed = false"
+            res = self.service.files().list(q=q, fields="files(id, name)").execute()
+            files = res.get("files", [])
+            if not files:
+                return None
+            file_id = files[0]["id"]
+            content_bytes = self.service.files().get_media(fileId=file_id).execute()
+            return content_bytes.decode("utf-8").strip()
+        except Exception as e:
+            logger.debug(f"Không thể đọc file {filename} từ Drive: {e}")
+            return None
+
+    def list_files_in_folder_name(self, folder_name: str = "AI_YouTube_RenderFarm/completed") -> list:
+        """Liệt kê danh sách file trong thư mục Drive"""
+        if not self.service:
+            self._init_service()
+        if not self.service:
+            return []
+        try:
+            folder_id = self._get_or_create_folder(folder_name)
+            if not folder_id:
+                return []
+            q = f"'{folder_id}' in parents and trashed = false"
+            res = self.service.files().list(q=q, fields="files(id, name, size, createdTime)").execute()
+            return res.get("files", [])
+        except Exception as e:
+            logger.debug(f"Không thể liệt kê file trong {folder_name}: {e}")
+            return []
+
+    def download_file_by_id(self, file_id: str, dest_local_path: str) -> bool:
+        """Tải file từ Google Drive về máy cục bộ"""
+        if not self.service:
+            self._init_service()
+        if not self.service:
+            return False
+        try:
+            from googleapiclient.http import MediaIoBaseDownload
+            request = self.service.files().get_media(fileId=file_id)
+            dest = Path(dest_local_path)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            with open(dest, "wb") as fh:
+                downloader = MediaIoBaseDownload(fh, request)
+                done = False
+                while not done:
+                    status, done = downloader.next_chunk()
+            return True
+        except Exception as e:
+            logger.error(f"Lỗi khi tải file {file_id} về {dest_local_path}: {e}")
+            return False
+
