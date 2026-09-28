@@ -245,6 +245,7 @@ class PublisherAgent:
                 "scheduled_at": schedule_time_iso,
                 "pinned_comment": pinned_comment,
                 "comment_id": posted_comment_id,
+                "product_info": prod_info if "prod_info" in locals() else None,
             }
 
         except Exception as e:

@@ -966,6 +966,24 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         notes_display = f"🎯 **Đạo diễn:** _{director_notes}_\n\n" if director_notes else ""
         pinned_display = f"💬 **Bình luận mồi ghim Top (Pinned Bait):**\n> _{script.pinned_comment}_\n\n" if getattr(script, "pinned_comment", None) else ""
         formula_display = f"⚡ **Công thức Viral:** `{script.viral_formula}`\n" if getattr(script, "viral_formula", None) else ""
+
+        # Tự động trích xuất đề xuất kiếm tiền Amazon Affiliate từ MonetizationEngine
+        monetization_card = ""
+        try:
+            from app.services.monetization_engine import find_best_amazon_product, build_amazon_url
+            channel_cfg = next((c for c in settings.get_channels_config() if c.get("id") == target_channel_id), {})
+            tag = channel_cfg.get("amazon_tag") or os.getenv("AMAZON_ASSOCIATE_TAG", "kizakawa-20")
+            best_prod = find_best_amazon_product(niche=channel_niche, title=script.title, topic=topic)
+            aff_link = build_amazon_url(best_prod["asin"], tag)
+            monetization_card = (
+                f"🛒 **ĐỀ XUẤT KIẾM TIỀN (AMAZON AFFILIATE):**\n"
+                f"• Sản phẩm AI khớp: `{best_prod['name']}`\n"
+                f"• Link tự động gán: {aff_link}\n"
+                f"• Tag theo dõi: `{tag}`\n\n"
+            )
+        except Exception:
+            pass
+
         reply_content = (
             f"🎬 **KỊCH BẢN ĐÃ HOÀN THÀNH (Task #{job_id})**\n\n"
             f"{score_text}"
@@ -973,6 +991,7 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🔥 **Hook 3 giây đầu:** \"{script.hook}\"\n\n"
             f"{formula_display}"
             f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
+            f"{monetization_card}"
             f"{pinned_display}"
             f"{notes_display}"
             f"⏱️ **Ước lượng:** ~{script.total_estimated_duration:.0f}s | {len(script.scenes)} cảnh\n\n"
@@ -2057,7 +2076,15 @@ async def _execute_channel_publish(update: Update, context: ContextTypes.DEFAULT
                 f"🎬 **Link phụ:** {yt_url}\n\n"
             )
             if pub_res.get("comment_id"):
-                success_text += f"💬 **Bình luận mồi tự động (Pinned Bait):** Đã đăng thành công!\n> _{pinned_comment}_\n\n"
+                success_text += f"💬 **Bình luận mồi tự động (Pinned Bait):** Đã đăng & ghim thành công!\n> _{pinned_comment}_\n\n"
+            prod_info = pub_res.get("product_info")
+            if prod_info:
+                success_text += (
+                    f"🛒 **Sản phẩm liên kết tự động (Amazon Affiliate):**\n"
+                    f"• **Món hàng:** `{prod_info.get('name')}`\n"
+                    f"• **Link kiếm tiền:** {prod_info.get('affiliate_url')}\n"
+                    f"• **Mã Tag:** `{prod_info.get('tracking_tag')}`\n\n"
+                )
             if drive_link:
                 success_text += f"💾 **Lưu trữ Google Drive (Kênh `{ch_name}`):**\n👉 {drive_link}\n"
                 if folder_link:
