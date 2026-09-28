@@ -131,7 +131,8 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
     # Bổ sung lời khuyên của Critic vào yêu cầu kịch bản
     refined_topic = (
         f"{topic}. LƯU Ý TỪ CRITIC: {'; '.join(critiques)}. "
-        f"Cảnh 1 phải giật gân, cuốn hút tuyệt đối trong 3 giây đầu."
+        f"Cảnh 1 phải giật gân, cuốn hút tuyệt đối trong 3 giây đầu (5-8 từ, dùng nghịch lý/tâm lý nghịch đảo). "
+        f"Cảnh cuối bắt buộc kết thúc bằng từ nối lửng (...because... hoặc ...which is why...) tạo Seamless Loop và có câu gợi mở bấm Đăng ký xem Part 2."
     )
     if primary_entity and primary_entity.lower() not in refined_topic.lower():
         refined_topic = f"{refined_topic} (Focus on {primary_entity})"

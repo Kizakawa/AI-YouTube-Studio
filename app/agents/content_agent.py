@@ -223,16 +223,18 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
 
 2. 3-SECOND PATTERN INTERRUPT HOOK (SCENE 1) — CRITICAL TO PREVENT SWIPE-AWAY (>75% VIEWED):
    - The first 2.5 seconds determines 100% of Shorts performance (Viewed vs Swiped away).
-   - SCENE 1 HOOK FORMULA:
-     * MUST be an electric pattern interrupt following the Niche Hook Blueprint above.
-     * Never start with textbook definitions or passive statements.
-     * STRICTLY FORBIDDEN: Any forbidden clichés listed in the Niche Intelligence Profile above.
-     * Scene 1 spoken text MUST be strictly 5 to 8 words, delivered with high stakes and immediate urgency.
-     * Scene 1 visual_keyword MUST be visually arresting and intense, tailored to '{niche_profile.get('name')}'.
+   - SCENE 1 HOOK FORMULA (MUST CHOOSE 1 OF 3 CORE FORMULAS):
+     * Formula A (Reverse Psychology): "If you have [fear/thalassophobia/dark thoughts], swipe away right now..."
+     * Formula B (Shocking Paradox / Unsolved Secret): "Why did [Authority/NASA/Scientists] abruptly abandon [Ocean/Exploration] in [Year]?"
+     * Formula C (Scale Shock / Contrast): "We know more about [Space/Mars] than what's hiding [Depth/Distance] below us..."
+   - Never start with textbook definitions, greetings, or passive statements.
+   - Scene 1 spoken text MUST be strictly 5 to 8 words, delivered with high stakes and immediate urgency.
+   - Scene 1 visual_keyword & visual_prompt MUST be visually arresting, shocking, and intense.
 
 3. PSYCHOLOGICAL VIRAL CALL TO ACTION (CTA) & SEAMLESS INFINITE LOOP:
-   - High retention proves viewers are hooked, but without an active Call To Action, viewers loop passively without engagement.
-   - The final scene (Scene 6/7/8) MUST integrate a high-converting CTA matching the niche CTA templates specified in the Niche Profile above!
+   - High retention proves viewers are hooked, but without an active Call To Action, viewers swipe away without subscribing!
+   - The final scene (Scene 6/7/8) MUST integrate a high-converting CTA promising Part 2 or cliffhanger answer:
+     (e.g., "Subscribe to see the decoded sonar audio in Part 2 tomorrow... because..." or "Bình luận suy đoán của bạn và đăng ký kênh đón xem Phần 2... bởi vì...")
    - HARD RULE: The very last 2-3 words of the spoken narration MUST be an open bridge/connector clause (e.g. "...because...", "...which is why...", "...và đó là lý do vì sao...", "...bởi vì...") so that when YouTube loops the video, it forms one single continuous grammatically seamless sentence into Scene 1!
 
 4. CONCRETE PHYSICAL STOCK QUERIES (NO ABSTRACT WORDS):
@@ -313,7 +315,7 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   ],
   "tags": ["shorts", "viral"],
   "description": "Engaging description with hashtags",
-  "pinned_comment": "Provocative engagement bait question for pinned comment (e.g. Which sign hit closest to home? 1, 2, or 3? Be honest 👇)",
+  "pinned_comment": "Provocative engagement bait question + subscribe CTA for Part 2 (e.g. Do you believe something ancient is still down there? Comment your theory and Subscribe for Part 2! 👇)",
   "viral_formula": "Double Tap & Protect | Debate in Comments | Curiosity Part 2"
 }}
 """

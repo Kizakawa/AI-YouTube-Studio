@@ -1156,6 +1156,21 @@ async def publish_to_youtube(
                 detail=f"Kênh '{ch_name}' chưa kết nối YouTube OAuth. Vui lòng vào tab 'Kênh & Tài Khoản' bấm '🔑 Đăng Nhập YouTube (Kênh Này)' để cấp quyền."
             )
 
+        pinned_comment = None
+        if job.scenes_json:
+            try:
+                s_data = json.loads(job.scenes_json)
+                pinned_comment = s_data.get("pinned_comment")
+            except Exception:
+                pass
+        if not pinned_comment:
+            if ch_cfg.get("niche") in ("deep_sea_earth_mysteries", "history_mystery"):
+                pinned_comment = "What's your theory about this? Comment below and Subscribe for Part 2! 👇🌊"
+            elif ch_cfg.get("niche") == "psychology":
+                pinned_comment = "Did this hit close to home? Subscribe and comment which sign is most accurate! 👇🧠"
+            else:
+                pinned_comment = "What do you think about this? Comment below and subscribe for more! 👇"
+
         pub_res = pub_agent.upload_video(
             video_path=video_path,
             title=chosen_title,
@@ -1165,6 +1180,7 @@ async def publish_to_youtube(
             schedule_time_iso=schedule_time,
             default_language=ch_lang,
             default_audio_language=ch_lang,
+            pinned_comment=pinned_comment,
         )
 
         if pub_res.get("status") == "success":

@@ -2013,6 +2013,13 @@ async def _execute_channel_publish(update: Update, context: ContextTypes.DEFAULT
                 pinned_comment = s_data.get("pinned_comment")
             except Exception:
                 pass
+        if not pinned_comment:
+            if ch_cfg.get("niche") in ("deep_sea_earth_mysteries", "history_mystery"):
+                pinned_comment = "What's your theory about this? Comment below and Subscribe for Part 2! 👇🌊"
+            elif ch_cfg.get("niche") == "psychology":
+                pinned_comment = "Did this hit close to home? Subscribe and comment which sign is most accurate! 👇🧠"
+            else:
+                pinned_comment = "What do you think about this? Comment below and subscribe for more! 👇"
 
         # 2. Đăng tải lên YouTube Shorts
         pub_res = await asyncio.to_thread(
@@ -2372,6 +2379,13 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     pinned_comment = s_data.get("pinned_comment")
                 except Exception:
                     pass
+            if not pinned_comment:
+                if ch_cfg.get("niche") in ("deep_sea_earth_mysteries", "history_mystery"):
+                    pinned_comment = "What's your theory about this? Comment below and Subscribe for Part 2! 👇🌊"
+                elif ch_cfg.get("niche") == "psychology":
+                    pinned_comment = "Did this hit close to home? Subscribe and comment which sign is most accurate! 👇🧠"
+                else:
+                    pinned_comment = "What do you think about this? Comment below and subscribe for more! 👇"
 
             # 2. Đăng tải lên YouTube kèm schedule_time_iso
             ch_lang = ch_cfg.get("language", "en")
