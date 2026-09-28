@@ -33,6 +33,10 @@ class Settings:
     # Google Custom Search (Tùy chọn — Tìm ảnh nhân vật thực, miễn phí 100 queries/ngày)
     GOOGLE_SEARCH_API_KEY: str = os.getenv("GOOGLE_SEARCH_API_KEY", "")
     GOOGLE_SEARCH_CX: str = os.getenv("GOOGLE_SEARCH_CX", "")
+
+    # Colab GPU Render Farm (Tăng tốc NVENC GPU 20s/video & WhisperX)
+    COLAB_WORKER_URL: str = os.getenv("COLAB_WORKER_URL", "")
+    RENDER_BACKEND: str = os.getenv("RENDER_BACKEND", "auto")  # "auto", "colab", "local"
     
     # Defaults
     DEFAULT_TARGET_LANGUAGE: str = os.getenv("DEFAULT_TARGET_LANGUAGE", "en")
@@ -59,6 +63,25 @@ class Settings:
             db_clean_path = cls.DATABASE_URL.split("sqlite:///")[-1]
             if db_clean_path:
                 Path(db_clean_path).resolve().parent.mkdir(parents=True, exist_ok=True)
+
+    @classmethod
+    def set_colab_url(cls, url: str) -> bool:
+        """Cập nhật Colab Worker URL trong runtime và tự động lưu vào file .env"""
+        import re
+        clean_url = url.strip().rstrip("/")
+        cls.COLAB_WORKER_URL = clean_url
+        os.environ["COLAB_WORKER_URL"] = clean_url
+        env_file = cls.BASE_DIR / ".env"
+        try:
+            content = env_file.read_text(encoding="utf-8") if env_file.exists() else ""
+            if "COLAB_WORKER_URL=" in content:
+                new_content = re.sub(r'COLAB_WORKER_URL=.*', f'COLAB_WORKER_URL="{clean_url}"', content)
+            else:
+                new_content = content.rstrip() + f'\nCOLAB_WORKER_URL="{clean_url}"\n'
+            env_file.write_text(new_content, encoding="utf-8")
+            return True
+        except Exception as e:
+            return False
 
     @classmethod
     def get_allowed_users(cls) -> Dict[int, str]:

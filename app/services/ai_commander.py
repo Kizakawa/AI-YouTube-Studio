@@ -199,6 +199,10 @@ class AICommander:
             "CHAT_ASSIST": {
                 "description": "Tư vấn nội dung, giải đáp thắc mắc, hướng dẫn sử dụng hoặc trò chuyện sáng tạo",
                 "parameters": {"answer": "Nội dung trả lời trực tiếp cho người dùng"}
+            },
+            "CONNECT_COLAB": {
+                "description": "Kết nối hoặc xem trạng thái Colab GPU Render Farm (NVIDIA GPU 20s/video)",
+                "parameters": {"url": "Đường dẫn Cloudflare Tunnel Colab (nếu có)"}
             }
         }
 
@@ -345,7 +349,22 @@ class AICommander:
                 "reply_message": f"Đang kích hoạt tiến trình dựng video cho Video #{job_id}..."
             }
 
-        # 4. Khẩu lệnh DANH SÁCH VIDEO
+        # 4. Khẩu lệnh KẾT NỐI / TRẠNG THÁI COLAB GPU FARM
+        colab_url_match = re.search(r'(?:colab|gpu|render\s*farm)\s+(https?://[^\s]+)', q_lower)
+        if colab_url_match:
+            return {
+                "intent": "CONNECT_COLAB",
+                "parameters": {"url": colab_url_match.group(1)},
+                "reply_message": "Đang kết nối tới Colab GPU Farm..."
+            }
+        if any(kw in q_lower for kw in ["trạng thái colab", "trang thai colab", "colab bật chưa", "colab online không", "kiểm tra colab", "kiem tra colab", "xem colab", "colab gpu"]):
+            return {
+                "intent": "CONNECT_COLAB",
+                "parameters": {},
+                "reply_message": "Đang kiểm tra kết nối tới Colab GPU Farm..."
+            }
+
+        # 5. Khẩu lệnh DANH SÁCH VIDEO
         if any(kw in q_lower for kw in ["danh sách video", "danh sach video", "xem danh sách", "tất cả video", "list video", "cac video hiện có", "các video đã làm"]):
             return {
                 "intent": "LIST_VIDEOS",
@@ -353,7 +372,7 @@ class AICommander:
                 "reply_message": "Đang mở danh bạ video của hệ thống..."
             }
 
-        # 5. Khẩu lệnh TRẠNG THÁI / HÀNG ĐỢI
+        # 6. Khẩu lệnh TRẠNG THÁI / HÀNG ĐỢI
         if any(kw in q_lower for kw in ["trạng thái", "trang thai", "tiến độ", "tien do", "bot đang làm gì", "hàng đợi", "status"]):
             return {
                 "intent": "SHOW_STATUS",
@@ -361,7 +380,7 @@ class AICommander:
                 "reply_message": "Đang tổng hợp trạng thái hệ thống..."
             }
 
-        # 6. Khẩu lệnh LINK WEB DASHBOARD
+        # 7. Khẩu lệnh LINK WEB DASHBOARD
         if any(kw in q_lower for kw in ["link web", "vào web", "mở web", "địa chỉ web", "wifi web", "dashboard"]):
             return {
                 "intent": "SHOW_WEB",
@@ -369,7 +388,7 @@ class AICommander:
                 "reply_message": "Đang lấy địa chỉ phát sóng Web Dashboard và Wi-Fi..."
             }
 
-        # 7. Khẩu lệnh KPI
+        # 8. Khẩu lệnh KPI
         if any(kw in q_lower for kw in ["báo cáo kpi", "kpi hôm nay", "báo cáo", "thống kê kpi", "tiến độ kpi"]):
             return {
                 "intent": "SHOW_KPI",
@@ -377,7 +396,7 @@ class AICommander:
                 "reply_message": "Đang xuất báo cáo chỉ tiêu KPI kênh..."
             }
 
-        # 8. Khẩu lệnh XEM / ĐỔI KÊNH
+        # 9. Khẩu lệnh XEM / ĐỔI KÊNH
         if any(kw in q_lower for kw in ["danh sách kênh", "kênh đang chọn", "quản lý kênh", "chọn kênh", "xem kênh"]):
             return {
                 "intent": "SHOW_CHANNELS",
@@ -385,7 +404,7 @@ class AICommander:
                 "reply_message": "Đang mở bảng điều khiển quản lý các kênh YouTube..."
             }
 
-        # 9. Khẩu lệnh TẠO VIDEO (Cụ thể)
+        # 10. Khẩu lệnh TẠO VIDEO (Cụ thể)
         create_match = re.search(r'^(?:tạo|làm|viết kịch bản|lên ý tưởng)\s+(?:cho\s+tôi\s+)?(?:1\s+|một\s+)?(?:video|clip|short|shorts|kịch bản)\s+(?:về|chu de|chủ đề)?\s*(.+)', q_lower)
         if create_match:
             topic_raw = create_match.group(1).strip()
@@ -765,7 +784,17 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON DUY NHẤT (không bọc tron
             return True
 
         # ──────────────────────────────────────────────────────────────────────
-        # M. INTENT: TRÒ CHUYỆN / TƯ VẤN SÁNG TẠO (CHAT_ASSIST)
+        # M. INTENT: KẾT NỐI / TRẠNG THÁI COLAB GPU FARM
+        # ──────────────────────────────────────────────────────────────────────
+        elif intent == "CONNECT_COLAB":
+            from app.bot.handlers import colab_command
+            url = params.get("url")
+            context.args = [url] if url else []
+            await colab_command(update, context)
+            return True
+
+        # ──────────────────────────────────────────────────────────────────────
+        # N. INTENT: TRÒ CHUYỆN / TƯ VẤN SÁNG TẠO (CHAT_ASSIST)
         # ──────────────────────────────────────────────────────────────────────
         else:
             session_id = str(update.effective_chat.id) if update.effective_chat else "default"

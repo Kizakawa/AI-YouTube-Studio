@@ -29,3 +29,14 @@ Giải nén và kéo thả đè trực tiếp các thư mục/file:
  - credentials/
 vào đúng thư mục dự án của bạn.
 ================================================================================
+
+--------------------------------------------------------------------------------
+🚀 SỬ DỤNG CHUNG COLAB GPU FARM (RENDER 20 GIÂY BẰNG A100/T4):
+--------------------------------------------------------------------------------
+1. Khi chủ phòng (anh Giang) mở file 'colab_gpu_worker.ipynb' trên Google Colab Pro+ và gửi cho bạn đường link Cloudflare Tunnel (dạng https://...trycloudflare.com).
+2. Bạn chỉ cần mở Telegram bot gõ:
+   /colab https://...trycloudflare.com
+3. Toàn bộ video bạn yêu cầu render sẽ bay sang GPU A100/T4 của Colab để render trong 20s!
+4. Nếu chủ phòng tắt Colab, máy bạn vẫn tự động render bình thường bằng CPU (không bao giờ lỗi).
+================================================================================
+

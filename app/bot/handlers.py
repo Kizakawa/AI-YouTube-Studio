@@ -3157,14 +3157,19 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         port = os.getenv("PORT", "8000")
         dashboard_url = f"http://localhost:{port}"
 
-    # Kiểm tra Drive token thật sự
-    drive_token_path = os.path.join(os.path.dirname(__file__), "..", "..", "credentials", "accounts", "account_1", "drive_token.json")
-    drive_status = "Sẵn sàng 🟢 (20TB)" if os.path.exists(drive_token_path) else "Chưa xác thực ⚠️ (chạy py auth_google.py drive)"
+    # Kiểm tra trạng thái Colab GPU Farm
+    from app.services.colab_client import colab_client
+    is_colab_on, c_info = colab_client.check_health(timeout=1.5)
+    if is_colab_on:
+        colab_status_str = f"Trực tuyến 🟢 ({c_info.get('gpu', 'NVIDIA GPU')} — 20s/video)"
+    else:
+        colab_status_str = "Ngoại tuyến ⚪ (Đang chạy Local CPU — gõ /colab để kết nối)"
 
     text = (
         f"📊 **BÁO CÁO NHÓM LÀM VIỆC (AI STUDIO)**\n\n"
         f"• Tổng số video trong hệ thống: `{total_jobs}`\n"
         f"• Kịch bản đang chờ duyệt/render: `{ready_jobs}`\n"
+        f"• GPU Farm (Colab Pro+): {colab_status_str}\n"
         f"• Kho Google Drive: {drive_status}\n"
         f"• Cụm Google Ultra Quota: Đang hoạt động 🟢\n"
         f"• Web Dashboard: {dashboard_url} 🌐"
@@ -3551,6 +3556,83 @@ async def _show_schedule_view(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def schedule_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Lệnh xem lịch phát sóng & 4 khung giờ vàng YouTube Shorts: /schedule hoặc /lich, /lichdang"""
     await _show_schedule_view(update, context)
+
+
+async def colab_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Quản lý kết nối tới Google Colab GPU Farm: /colab [url]
+    - /colab: Xem trạng thái GPU, VRAM, tốc độ render.
+    - /colab <url>: Kết nối tới Cloudflare Tunnel URL từ Colab Pro+.
+    """
+    if not is_authorized(update):
+        return
+
+    from app.services.colab_client import colab_client
+
+    if not context.args:
+        wait_msg = await safe_reply(update, "🔍 Đang kiểm tra kết nối tới Colab GPU Farm...")
+        is_online, info = colab_client.check_health(timeout=3.5)
+
+        if is_online:
+            gpu_name = info.get("gpu", "NVIDIA GPU")
+            text = (
+                f"🚀 **COLAB GPU RENDER FARM: ĐANG HOẠT ĐỘNG!**\n\n"
+                f"🎮 **Cạc đồ họa:** `{gpu_name}`\n"
+                f"⚡ **Tốc độ render:** ~15-25 giây / video (NVENC Hardware Acceleration)\n"
+                f"🎙️ **Phụ đề WhisperX:** Sẵn sàng (chính xác từng mili-giây)\n"
+                f"🌐 **Đường truyền:** `{colab_client.worker_url}`\n"
+                f"🔄 **Chế độ:** Tự động điều phối (Auto-Failover sang Local nếu Colab tắt)\n\n"
+                f"💡 Mọi video bạn hoặc đồng đội yêu cầu render đều sẽ tự động được GPU này xử lý!"
+            )
+        else:
+            cur_url = colab_client.worker_url or "Chưa cấu hình"
+            text = (
+                f"⚪ **COLAB GPU RENDER FARM: CHƯA KẾT NỐI (OFFLINE)**\n\n"
+                f"🔗 **URL hiện tại:** `{cur_url}`\n"
+                f"💻 **Chế độ hiện tại:** Đang render bằng CPU máy tính nội bộ (Local Mode)\n\n"
+                f"📖 **HƯỚNG DẪN BẬT GPU FARM 20 GIÂY:**\n"
+                f"1. Mở file `colab_gpu_worker.ipynb` trên Google Colab Pro+.\n"
+                f"2. Bấm **Runtime** ➡️ **Run All**.\n"
+                f"3. Lấy đường link `https://...trycloudflare.com` ở ô cuối cùng.\n"
+                f"4. Gõ lệnh: `/colab <đường_link>`\n\n"
+                f"*(Ví dụ: `/colab https://apple-orange.trycloudflare.com`)*"
+            )
+        await safe_edit_text(wait_msg, text)
+        return
+
+    raw_url = context.args[0].strip()
+    match = re.search(r"https?://[^\s]+", raw_url)
+    if not match:
+        await safe_reply(update, "❌ URL không hợp lệ. Vui lòng nhập link dạng: `/colab https://...trycloudflare.com`")
+        return
+
+    target_url = match.group(0).rstrip("/")
+    wait_msg = await safe_reply(update, f"⏳ Đang bắt tay và kiểm tra cạc GPU tại: `{target_url}`...")
+
+    prev_url = colab_client.worker_url
+    colab_client._custom_url = target_url
+    is_online, info = colab_client.check_health(timeout=5.0)
+
+    if is_online:
+        colab_client.set_worker_url(target_url)
+        gpu_name = info.get("gpu", "NVIDIA GPU")
+        text = (
+            f"🎉 **KẾT NỐI COLAB GPU FARM THÀNH CÔNG!**\n\n"
+            f"🎮 **Cạc đồ họa:** `{gpu_name}`\n"
+            f"⚡ **Tốc độ:** ~15-25 giây / video (NVENC Hardware Acceleration)\n"
+            f"🌐 **Đường truyền:** `{target_url}`\n"
+            f"💾 Đã lưu cấu hình vĩnh viễn vào hệ thống!\n\n"
+            f"👉 Giờ đây cả bạn và bạn của bạn gõ `/render` đều sẽ được tăng tốc siêu tốc!"
+        )
+    else:
+        colab_client._custom_url = prev_url
+        err = info.get("error", "Không phản hồi")
+        text = (
+            f"❌ **Không thể kết nối tới Colab GPU Worker:**\n\n"
+            f"Chi tiết: `{err}`\n\n"
+            f"⚠️ Hãy chắc chắn bạn đã bấm **Run All** trên Colab và chờ đến khi hiện link Cloudflare ở ô cuối cùng nhé!"
+        )
+    await safe_edit_text(wait_msg, text)
 
 
 async def kpi_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
