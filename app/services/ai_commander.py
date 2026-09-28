@@ -21,7 +21,6 @@ from config.settings import settings
 from app.utils.key_rotator import KeyRotator
 from app.database.models import get_db, User, VideoJob, log_activity
 from app.services import channel_manager
-from app.utils.network_helper import get_network_info
 from app.bot.keyboards import (
     get_delete_confirmation_keyboard,
     get_delete_failed_confirmation_keyboard,
@@ -185,7 +184,7 @@ class AICommander:
                 "parameters": {}
             },
             "SHOW_WEB": {
-                "description": "Lấy link truy cập Web Dashboard, Wi-Fi LAN và tên miền mDNS cho điện thoại",
+                "description": "Lấy link truy cập Web Dashboard Studio",
                 "parameters": {}
             },
             "SEARCH_MEDIA": {
@@ -291,15 +290,12 @@ class AICommander:
             )
 
         # 4. Mạng & Web Dashboard
-        try:
-            net = get_network_info()
-            context_data["web_urls"] = {
-                "local": net.get("local_url", "http://localhost:8000"),
-                "mdns": net.get("mdns_url", "http://aiyoutube.local:8000"),
-                "wifi": net.get("wifi_url", "http://localhost:8000")
-            }
-        except Exception:
-            context_data["web_urls"] = {"local": "http://localhost:8000", "mdns": "http://aiyoutube.local:8000"}
+        port = int(os.getenv("PORT", 8000))
+        web_url = os.getenv("WEB_DASHBOARD_URL") or f"http://localhost:{port}"
+        context_data["web_urls"] = {
+            "local": f"http://localhost:{port}",
+            "url": web_url
+        }
 
         return context_data
 
@@ -450,8 +446,7 @@ Nhiệm vụ của bạn là đọc yêu cầu bằng ngôn ngữ tự nhiên c�
    {context['queue_status']}
 
 5. Địa chỉ Web Studio:
-   - Local: {context['web_urls']['local']}
-   - Wi-Fi / mDNS: {context['web_urls']['mdns']}
+   - Dashboard: {context['web_urls']['url']}
 
 === DANH MỤC CÔNG CỤ (TOOLS) BẠN CÓ THỂ ĐIỀU KHIỂN ===
 {tools_catalog_desc}

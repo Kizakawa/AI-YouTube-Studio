@@ -17,10 +17,6 @@ from app.bot.handlers import (
     kpi_command, colab_command, auto_resume_pending_jobs
 )
 from app.utils.ffmpeg_helper import is_ffmpeg_installed, get_ffmpeg_version
-from app.utils.network_helper import get_network_info, start_mdns_broadcaster, stop_mdns_broadcaster
-import atexit
-
-atexit.register(stop_mdns_broadcaster)
 
 def recover_stuck_jobs():
     """Tự động khôi phục các video bị gián đoạn do tắt bot đột ngột khi đang render và cảnh báo các job lỗi tồn đọng"""
@@ -75,36 +71,26 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger("AI-YouTube")
 
 def print_network_banner():
-    """Hiển thị khung địa chỉ truy cập Web Dashboard qua localhost, Wi-Fi và tên miền cố định mDNS"""
-    try:
-        net = get_network_info()
-        print("\n" + "═" * 74)
-        print("🌐 AI YOUTUBE STUDIO - ĐÃ PHÁT SÓNG MẠNG NỘI BỘ (WI-FI / LAN)")
-        print("═" * 74)
-        print(f"💻 Trên máy tính này:                  {net['local_url']}")
-        print(f"🌟 ĐỊA CHỈ CỐ ĐỊNH (Khuyên Dùng):      {net['mdns_url']}")
-        print("   -> Điện thoại / Máy khác truy cập link này KHÔNG BAO GIỜ bị đổi IP")
-        print("   -> Dù chuyển server từ máy bạn sang máy bạn bè vẫn dùng đúng 1 link này!")
-        if net['is_lan_available']:
-            print(f"📱 Địa chỉ IP trực tiếp:              {net['wifi_url']}")
-        print("═" * 74 + "\n")
-    except Exception as e:
-        logger.debug(f"Lỗi hiển thị banner mạng: {e}")
+    """Hiển thị địa chỉ truy cập Web Dashboard chuẩn HTTP"""
+    port = int(os.getenv("PORT", 8000))
+    web_url = os.getenv("WEB_DASHBOARD_URL") or f"http://localhost:{port}"
+    print("\n" + "═" * 70)
+    print("🌐 AI YOUTUBE STUDIO - WEB DASHBOARD ĐANG HOẠT ĐỘNG")
+    print("═" * 70)
+    print(f"💻 Web Dashboard: {web_url}")
+    print("═" * 70 + "\n")
 
 def run_fastapi_server():
-    """Khởi động Web Dashboard bằng Uvicorn trong background thread & phát sóng mDNS"""
+    """Khởi động Web Dashboard bằng Uvicorn trong background thread"""
     try:
         import uvicorn
         port = int(os.getenv("PORT", 8000))
-        start_mdns_broadcaster(port=port)
         print_network_banner()
         uvicorn.run("app.web.server:app", host="0.0.0.0", port=port, log_level="warning", timeout_keep_alive=30)
     except ImportError:
         print("⚠️ [Web Dashboard] Chưa cài đặt uvicorn. Hãy chạy 'pip install uvicorn fastapi' để bật Dashboard.")
     except Exception as e:
         print(f"❌ [Web Dashboard] Lỗi khi chạy web server: {e}")
-    finally:
-        stop_mdns_broadcaster()
 
 def main():
     print("=" * 70)
