@@ -163,12 +163,13 @@ def find_best_amazon_product(niche: str, title: str, topic: str = "", script: st
     3. Trả về sản phẩm có điểm tương đồng cao nhất, hoặc fallback về Best Seller số 1 của ngách.
     """
     # Chuẩn hóa niche
+    niche_lower = (niche or "").lower()
     niche_clean = "psychology"
-    if "mystery" in niche or "history" in niche:
+    if any(k in niche_lower for k in ["mystery", "mysteries", "history", "deep_sea", "ocean", "sea", "earth"]):
         niche_clean = "history_mystery"
-    elif "rescue" in niche or "cat" in niche or "dog" in niche:
+    elif any(k in niche_lower for k in ["rescue", "cat", "dog", "pet"]):
         niche_clean = "animal_rescue"
-    elif "wild" in niche or "predator" in niche or "animal" in niche:
+    elif any(k in niche_lower for k in ["wild", "predator", "animal"]):
         niche_clean = "wildlife_predators"
 
     catalog = NICHE_PRODUCT_CATALOG.get(niche_clean, NICHE_PRODUCT_CATALOG["psychology"])
