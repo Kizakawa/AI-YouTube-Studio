@@ -2345,65 +2345,61 @@ async def start_channel_oauth(channel_id: str, request: Request, service: str = 
     if not secret_file.exists():
         raise HTTPException(status_code=400, detail="Chưa có file client_secret.json trong tài khoản mẹ!")
 
+    import webbrowser
+    import wsgiref.simple_server
+    import wsgiref.util
+    from google_auth_oauthlib.flow import InstalledAppFlow
+
+    scopes = [
+        "https://www.googleapis.com/auth/youtube",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "openid"
+    ]
+    flow = InstalledAppFlow.from_client_secrets_file(str(secret_file), scopes=scopes)
+    received_uri = {"value": None}
+    ch_name = ch.get("name", channel_id)
+    success_page = (
+        f"<html><body style='font-family:system-ui,sans-serif;text-align:center;padding:60px;"
+        f"background:#1a1a2e;color:#e0e0e0'>"
+        f"<h2 style='color:#34d399'>✅ Đã kết nối kênh '{ch_name}' thành công!</h2>"
+        f"<p>Bạn có thể đóng tab này và quay lại Web Studio để đăng video.</p>"
+        f"</body></html>"
+    )
+
+    def _wsgi_app(environ, start_response):
+        received_uri["value"] = wsgiref.util.request_uri(environ)
+        start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
+        return [success_page.encode("utf-8")]
+
+    class _SilentHandler(wsgiref.simple_server.WSGIRequestHandler):
+        def log_message(self, fmt, *args):
+            pass
+
+    local_server = wsgiref.simple_server.make_server("localhost", 0, _wsgi_app, handler_class=_SilentHandler)
+    port = local_server.server_port
+    flow.redirect_uri = f"http://localhost:{port}/"
+    auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline")
+
     session_key = f"channel:{channel_id}:{service}"
     _oauth_sessions[session_key] = {
         "status": "starting",
         "channel_id": channel_id,
         "channel_name": ch.get("name", channel_id),
         "service": service,
-        "message": f"Đang khởi tạo phiên đăng nhập Google cho kênh '{ch.get('name')}'..."
+        "auth_url": auth_url,
+        "message": f"Link đăng nhập đã sẵn sàng. Khi Google hiển thị danh sách kênh, hãy chọn đúng kênh '{ch_name}'!"
     }
+
+    if is_local_client:
+        try:
+            webbrowser.open(auth_url)
+        except Exception:
+            pass
+    else:
+        logger.info(f"Yêu cầu OAuth kênh từ thiết bị khách ({client_ip}), không mở trình duyệt trên máy chủ.")
 
     def _channel_oauth_worker():
         try:
-            import webbrowser
-            import wsgiref.simple_server
-            import wsgiref.util
-            from google_auth_oauthlib.flow import InstalledAppFlow
-
-            scopes = [
-                "https://www.googleapis.com/auth/youtube",
-                "https://www.googleapis.com/auth/userinfo.email",
-                "openid"
-            ]
-            flow = InstalledAppFlow.from_client_secrets_file(str(secret_file), scopes=scopes)
-            received_uri = {"value": None}
-            ch_name = ch.get("name", channel_id)
-            success_page = (
-                f"<html><body style='font-family:system-ui,sans-serif;text-align:center;padding:60px;"
-                f"background:#1a1a2e;color:#e0e0e0'>"
-                f"<h2 style='color:#34d399'>✅ Đã kết nối kênh '{ch_name}' thành công!</h2>"
-                f"<p>Bạn có thể đóng tab này và quay lại Web Studio để đăng video.</p>"
-                f"</body></html>"
-            )
-
-            def _wsgi_app(environ, start_response):
-                received_uri["value"] = wsgiref.util.request_uri(environ)
-                start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
-                return [success_page.encode("utf-8")]
-
-            class _SilentHandler(wsgiref.simple_server.WSGIRequestHandler):
-                def log_message(self, fmt, *args):
-                    pass
-
-            local_server = wsgiref.simple_server.make_server("localhost", 0, _wsgi_app, handler_class=_SilentHandler)
-            port = local_server.server_port
-            flow.redirect_uri = f"http://localhost:{port}/"
-            auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline")
-
-            _oauth_sessions[session_key].update({
-                "auth_url": auth_url,
-                "message": f"Link đăng nhập đã sẵn sàng. Khi Google hiển thị danh sách kênh, hãy chọn đúng kênh '{ch_name}'!"
-            })
-
-            if is_local_client:
-                try:
-                    webbrowser.open(auth_url)
-                except Exception:
-                    pass
-            else:
-                logger.info(f"Yêu cầu OAuth kênh từ thiết bị khách ({client_ip}), không mở trình duyệt trên máy chủ.")
-
             # Chờ callback từ Google hoặc từ người dùng dán vào modal (timeout 3 phút)
             srv_thread = threading.Thread(target=local_server.handle_request, daemon=True)
             srv_thread.start()
@@ -2536,6 +2532,7 @@ async def start_channel_oauth(channel_id: str, request: Request, service: str = 
 
     return {
         "success": True,
+        "auth_url": auth_url,
         "session_key": session_key,
         "status": "in_progress",
         "message": f"Đang mở trình duyệt. Khi Google hiển thị danh sách kênh, hãy chọn đúng kênh '{ch.get('name')}'!"

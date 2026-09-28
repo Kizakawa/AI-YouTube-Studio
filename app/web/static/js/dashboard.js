@@ -1651,7 +1651,7 @@ function onPublishChannelChange() {
         }
         if (actionBtn) {
             actionBtn.innerHTML = `
-                <button class="btn btn-primary btn-sm" onclick="startChannelAuth('${esc(ch.id)}', '${esc(ch.name)}')" style="font-size:11.5px; background:var(--accent-amber); border-color:var(--accent-amber); font-weight:600;">
+                <button class="btn btn-primary btn-sm" onclick="startChannelAuth(decodeURIComponent('${encodeURIComponent(ch.id)}'), decodeURIComponent('${encodeURIComponent(ch.name)}'))" style="font-size:11.5px; background:var(--accent-amber); border-color:var(--accent-amber); font-weight:600;">
                     🔑 Cấp Quyền YouTube (Kênh Này)
                 </button>
             `;
@@ -2252,11 +2252,11 @@ function renderAccounts(accounts) {
                                     </div>
                                     <div class="channel-row-actions" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
                                         ${!isAuth ? `
-                                            <button class="btn btn-primary btn-sm" onclick="startChannelAuth('${esc(ch.id)}', '${esc(ch.name)}')" title="Cấp quyền đăng video cho kênh này" style="background:linear-gradient(135deg,rgba(239,68,68,0.9),rgba(220,38,38,0.9)); border-color:#dc2626; font-size:11.5px; font-weight:600;">
+                                            <button class="btn btn-primary btn-sm" onclick="startChannelAuth(decodeURIComponent('${encodeURIComponent(ch.id)}'), decodeURIComponent('${encodeURIComponent(ch.name)}'))" title="Cấp quyền đăng video cho kênh này" style="background:linear-gradient(135deg,rgba(239,68,68,0.9),rgba(220,38,38,0.9)); border-color:#dc2626; font-size:11.5px; font-weight:600;">
                                                 🔑 Cấp Quyền YouTube (Kênh Này)
                                             </button>
                                         ` : `
-                                            <button class="btn btn-secondary btn-sm" onclick="startChannelAuth('${esc(ch.id)}', '${esc(ch.name)}')" title="Ủy quyền lại kênh này nếu cần" style="font-size:11px;">
+                                            <button class="btn btn-secondary btn-sm" onclick="startChannelAuth(decodeURIComponent('${encodeURIComponent(ch.id)}'), decodeURIComponent('${encodeURIComponent(ch.name)}'))" title="Ủy quyền lại kênh này nếu cần" style="font-size:11px;">
                                                 🔄 Cấp Lại Quyền
                                             </button>
                                             <button class="btn btn-secondary btn-sm" onclick="disconnectChannelAuth('${esc(ch.id)}')" title="Hủy quyền YouTube" style="color:var(--accent-rose); font-size:11px;">
@@ -2643,22 +2643,44 @@ async function startChannelAuth(channelId, channelName) {
         }, 1000);
 
         // Khởi động OAuth cho kênh này
-        const res = await apiPost(`/api/channels/${channelId}/start-auth?service=youtube`, {});
+        const res = await apiPost(`/api/channels/${encodeURIComponent(channelId)}/start-auth?service=youtube`, {});
         if (!res || !res.success) {
             showToast(res?.detail || 'Không thể khởi động xác thực cho kênh này', 'error');
             closeOAuthModal();
             return;
         }
 
-        // Polling trạng thái mỗi 2 giây
+        // Nếu có auth_url trả về ngay lập tức, hiển thị nút và mở luôn không chờ polling
+        if (res.auth_url) {
+            authLink.href = res.auth_url;
+            linkBox.style.display = 'block';
+            spinner.style.display = 'none';
+            desc.innerHTML = `
+                <div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:8px; padding:12px; margin-bottom:12px; text-align:left; font-size:12.5px; color:#fde68a; line-height:1.6;">
+                    <strong>⚠️ LƯU Ý RẤT QUAN TRỌNG KHI ĐĂNG NHẬP GOOGLE:</strong><br>
+                    1. Chọn Gmail của bạn.<br>
+                    👉 <strong>2. CHỌN ĐÚNG KÊNH "${esc(channelName || channelId)}"</strong> trong danh sách Kênh / Brand Account.<br>
+                    3. Bấm <strong>Cho phép (Allow)</strong> để hoàn tất!
+                </div>
+                Trang đăng nhập Google đã sẵn sàng. Hãy bấm nút bên dưới nếu trình duyệt không tự mở:
+            `;
+            try {
+                window.open(res.auth_url, '_blank');
+            } catch (e) {
+                console.log('Popup blocked:', e);
+            }
+        }
+
+        // Polling trạng thái mỗi 1.5 giây
         oauthPollTimer = setInterval(async () => {
             try {
-                const statusData = await apiGet(`/api/channels/${channelId}/auth-status`);
+                const statusData = await apiGet(`/api/channels/${encodeURIComponent(channelId)}/auth-status`);
                 if (!statusData) return;
 
                 if (statusData.auth_url && linkBox.style.display === 'none') {
                     authLink.href = statusData.auth_url;
                     linkBox.style.display = 'block';
+                    spinner.style.display = 'none';
                     desc.innerHTML = `
                         <div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:8px; padding:12px; margin-bottom:12px; text-align:left; font-size:12.5px; color:#fde68a; line-height:1.6;">
                             <strong>⚠️ LƯU Ý RẤT QUAN TRỌNG KHI ĐĂNG NHẬP GOOGLE:</strong><br>
