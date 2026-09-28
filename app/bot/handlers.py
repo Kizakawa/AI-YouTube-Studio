@@ -2579,6 +2579,11 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❌ **{user.first_name}** đã hủy video #{job_id}."
         )
 
+    # 6.1 Kiểm tra trạng thái Colab GPU Farm
+    elif data == "check_colab_status":
+        await colab_command(update, context)
+        return
+
     # 7. Xử lý toàn bộ các kịch bản đang chờ (Render Queue Batch)
     elif data == "process_all_pending":
         with get_db() as db:
@@ -3700,35 +3705,59 @@ async def colab_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     from app.services.colab_client import colab_client
 
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    from app.database.models import get_db, VideoJob
+
+    colab_github_url = "https://colab.research.google.com/github/Giangvv1n/AI-youtube/blob/main/colab_gpu_worker.ipynb"
+    colab_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⚡ MỞ & CHẠY COLAB TRÊN ĐT / PC (1-CHẠM)", url=colab_github_url)],
+        [InlineKeyboardButton("🔄 Quét lại kết nối GPU", callback_data="check_colab_status")]
+    ])
+
+    # Đếm số lượng video đang chờ hoặc bị kẹt
+    pending_count = 0
+    try:
+        with get_db() as db:
+            pending_count = db.query(VideoJob).filter(VideoJob.status.in_(["SCRIPT_READY", "RENDERING", "FAILED"])).count()
+    except Exception:
+        pass
+
     if not context.args:
-        wait_msg = await safe_reply(update, "🔍 Đang kiểm tra kết nối tới Colab GPU Farm...")
-        is_online, info = colab_client.check_health(timeout=3.5)
+        wait_msg = await safe_reply(update, "🔍 Đang kiểm tra kết nối tới Colab GPU Farm (qua Google Drive)...")
+        is_online, info = colab_client.check_health(timeout=4.0)
 
         if is_online:
             gpu_name = info.get("gpu", "NVIDIA GPU")
             text = (
-                f"🚀 **COLAB GPU RENDER FARM: ĐANG HOẠT ĐỘNG!**\n\n"
+                f"🚀 **COLAB GPU RENDER FARM: ĐANG TRỰC TUYẾN 🟢**\n\n"
                 f"🎮 **Cạc đồ họa:** `{gpu_name}`\n"
-                f"⚡ **Tốc độ render:** ~15-25 giây / video (NVENC Hardware Acceleration)\n"
-                f"🎙️ **Phụ đề WhisperX:** Sẵn sàng (chính xác từng mili-giây)\n"
+                f"⚡ **Tốc độ render:** ~15-20 giây / video (NVENC Hardware Acceleration)\n"
+                f"🎙️ **Phụ đề WhisperX:** Sẵn sàng trên GPU\n"
+                f"📁 **Google Drive Sync:** Đã đồng bộ (`/AI_YouTube_RenderFarm/`)\n"
                 f"🌐 **Đường truyền:** `{colab_client.worker_url}`\n"
-                f"🔄 **Chế độ:** Tự động điều phối (Auto-Failover sang Local nếu Colab tắt)\n\n"
-                f"💡 Mọi video bạn hoặc đồng đội yêu cầu render đều sẽ tự động được GPU này xử lý!"
+                f"📋 **Hàng đợi hiện tại:** `{pending_count}` video đang chờ xử lý\n\n"
+                f"💡 Bạn có thể bấm tạo video từ điện thoại hoặc máy tính, GPU Colab sẽ tự động gánh toàn bộ tải render!"
             )
+            await safe_edit_text(wait_msg, text, reply_markup=colab_keyboard)
         else:
-            cur_url = colab_client.worker_url or "Chưa cấu hình"
-            text = (
-                f"⚪ **COLAB GPU RENDER FARM: CHƯA KẾT NỐI (OFFLINE)**\n\n"
-                f"🔗 **URL hiện tại:** `{cur_url}`\n"
-                f"💻 **Chế độ hiện tại:** Đang render bằng CPU máy tính nội bộ (Local Mode)\n\n"
-                f"📖 **HƯỚNG DẪN BẬT GPU FARM 20 GIÂY:**\n"
-                f"1. Mở file `colab_gpu_worker.ipynb` trên Google Colab Pro+.\n"
-                f"2. Bấm **Runtime** ➡️ **Run All**.\n"
-                f"3. Lấy đường link `https://...trycloudflare.com` ở ô cuối cùng.\n"
-                f"4. Gõ lệnh: `/colab <đường_link>`\n\n"
-                f"*(Ví dụ: `/colab https://apple-orange.trycloudflare.com`)*"
+            pending_note = (
+                f"\n⚠️ **Phát hiện `{pending_count}` video đang chờ dựng.**\n"
+                f"Khi bạn bấm chạy Colab, GPU sẽ tự động quét và hoàn thiện nốt toàn bộ!\n"
+                if pending_count > 0 else ""
             )
-        await safe_edit_text(wait_msg, text)
+            text = (
+                f"⚪ **COLAB GPU RENDER FARM: CHƯA BẬT (OFFLINE)**\n\n"
+                f"💻 **Chế độ hiện tại:** Đang render bằng CPU máy tính nội bộ (chậm 2-3 phút/video)\n"
+                f"{pending_note}\n"
+                f"📱 **HƯỚNG DẪN BẬT TRÊN ĐIỆN THOẠI HOẶC MÁY TÍNH (1-CHẠM):**\n"
+                f"1. Bấm nút **[⚡ MỞ & CHẠY COLAB TRÊN ĐT / PC]** bên dưới (chạy được trên cả Safari, Chrome điện thoại).\n"
+                f"2. Bấm menu **Runtime** ➡️ **Run all** (hoặc nút Chạy tất cả) ➡️ Bấm Cho phép Drive.\n"
+                f"3. **BẬT XONG BẠN CÓ THỂ THOÁT LINK / TẮT MÀN HÌNH ĐIỆN THOẠI!**\n"
+                f"   • Colab sẽ tự chạy ngầm trên đám mây của Google.\n"
+                f"   • Tự động kết nối với bot qua Google Drive mà bạn **không cần copy paste link**.\n"
+                f"   • Render xong video tự lưu vào Google Drive (`/AI_YouTube_RenderFarm/completed/`) và bot tự động lấy video gửi về Telegram cho bạn!\n"
+            )
+            await safe_edit_text(wait_msg, text, reply_markup=colab_keyboard)
         return
 
     raw_url = context.args[0].strip()
