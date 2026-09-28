@@ -167,6 +167,30 @@ class ContentAgent:
 
         # Tự động bù đắp các trường bắt buộc của ScriptContract nếu LLM vô tình bỏ sót
         scenes = raw_data.get("scenes", [])
+
+        # ── BẮT BUỘC ĐẢM BẢO PHÂN CẢNH CUỐI CÓ CÂU KÊU GỌI ĐĂNG KÝ (SPOKEN CTA ENFORCEMENT) ──
+        if scenes and isinstance(scenes, list):
+            last_scene = scenes[-1]
+            if isinstance(last_scene, dict):
+                last_narr = last_scene.get("narration", "").strip()
+                is_vi = any(c in last_narr.lower() for c in "àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ")
+                has_cta = any(k in last_narr.lower() for k in ["subscribe", "đăng ký", "follow", "part 2", "phần 2", "double tap", "like"])
+                if not has_cta and len(last_narr) > 0:
+                    connectors = ["because", "which is why", "and that is why", "bởi vì", "và đó là lý do"]
+                    injected = False
+                    for conn in connectors:
+                        if last_narr.lower().endswith(conn):
+                            base_part = last_narr[:-len(conn)].rstrip(",. ")
+                            cta_phrase = "Subscribe for Part 2" if not is_vi else "Đăng ký kênh đón xem Phần 2"
+                            last_scene["narration"] = f"{base_part}. {cta_phrase}, {conn}..."
+                            injected = True
+                            break
+                    if not injected:
+                        cta_phrase = "Subscribe and drop a comment for Part 2!" if not is_vi else "Đăng ký kênh và bình luận đón xem Phần 2!"
+                        last_scene["narration"] = f"{last_narr.rstrip('.')} — {cta_phrase}"
+                    # Tăng thời lượng tối thiểu cho phân cảnh cuối để giọng đọc đọc đủ câu kêu gọi
+                    last_scene["estimated_seconds"] = max(float(last_scene.get("estimated_seconds", 3.0)), 4.0)
+
         if "full_narration" not in raw_data or not raw_data["full_narration"]:
             raw_data["full_narration"] = " ".join(s.get("narration", "") for s in scenes if isinstance(s, dict))
         if "tags" not in raw_data or not raw_data["tags"]:
