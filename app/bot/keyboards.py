@@ -255,6 +255,30 @@ def get_publish_channel_keyboard(job_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
+def get_pre_publish_advisory_keyboard(job_id: int, channel_id: str, next_slot_label: str) -> InlineKeyboardMarkup:
+    """Tạo bàn phím tư vấn cảnh báo rủi ro & đề xuất phương án trước khi xuất bản Shorts"""
+    slot_text = f"⏰ Đăng Vào Giờ Vàng ({next_slot_label})" if next_slot_label else "⏰ Đăng Vào Giờ Vàng Khuyến Nghị"
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                slot_text,
+                callback_data=f"schedule_to_channel:{job_id}:{channel_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "⚡ Vẫn Đăng Ngay (Tôi Chấp Nhận Rủi Ro)",
+                callback_data=f"force_publish_to_channel:{job_id}:{channel_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton("✍️ Sửa Kịch Bản / Hook 3s", callback_data=f"feedback_video:{job_id}"),
+            InlineKeyboardButton("❌ Hủy Đăng", callback_data=f"cancel_publish:{job_id}")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
 def get_schedule_channel_keyboard(job_id: int) -> InlineKeyboardMarkup:
     """Tạo bàn phím nút bấm chọn kênh khi lên lịch tự động theo khung giờ vàng Shorts tối ưu"""
     import os

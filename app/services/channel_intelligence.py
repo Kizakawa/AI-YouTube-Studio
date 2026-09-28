@@ -675,6 +675,118 @@ def _get_curated_niche_fallbacks(niche_id: str, lang: str = "en") -> List[Dict[s
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# 3.5 KIỂM TRA AN TOÀN & TỐI ƯU TRƯỚC KHI XUẤT BẢN (PRE-PUBLISH SAFETY AUDIT)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def check_pre_publish_safety(job_id: int, channel_id: str) -> Dict[str, Any]:
+    """
+    Kiểm tra an toàn & tối ưu toàn diện trước khi đăng Shorts:
+    1. Kiểm tra trùng lặp nội dung / tiêu đề với kho video của kênh (Duplicate Check).
+    2. Kiểm tra khoảng cách thời gian đăng (Cannibalization Proximity Check):
+       - Tránh tự bóp tương tác do đăng quá sát video trước (< 3 tiếng, đặc biệt < 1 tiếng như sự cố 44s ngày 26/09).
+    3. Kiểm tra tối ưu hóa Shorts (Hook 3s đầu, độ dài tiêu đề <= 60 ký tự, thẻ #Shorts).
+    4. Đề xuất khe giờ vàng an toàn kế tiếp để người dùng cân nhắc.
+    """
+    with get_db() as db:
+        job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+        if not job:
+            return {"has_warnings": False, "is_safe": True, "error": f"Không tìm thấy job #{job_id}"}
+        
+        job_title = job.title or job.topic or ""
+        job_topic = job.topic or ""
+        scenes_json = job.scenes_json
+
+    portfolio = get_channel_existing_portfolio(channel_id)
+    channel_name = portfolio.get("channel_name", channel_id)
+    channel_niche = portfolio.get("channel_niche", "general")
+    existing_titles = portfolio.get("existing_titles", [])
+    
+    # Loại trừ chính tiêu đề của job này nếu có trong existing_titles
+    candidate_existing = [t for t in existing_titles if t.strip() and t.strip().lower() != job_title.strip().lower()]
+
+    warnings: List[str] = []
+    recommendations: List[str] = []
+    is_duplicate = False
+    duplicate_match = ""
+    duplicate_score = 0.0
+
+    # 1. KIỂM TRA TRÙNG LẶP NỘI DUNG (DUPLICATE CHECK)
+    if candidate_existing:
+        is_dup_t, score_t, match_t = check_idea_similarity(job_title, candidate_existing, similarity_threshold=0.38)
+        is_dup_p, score_p, match_p = check_idea_similarity(job_topic, candidate_existing, similarity_threshold=0.38)
+        if is_dup_t or is_dup_p:
+            is_duplicate = True
+            duplicate_score = max(score_t, score_p)
+            duplicate_match = match_t or match_p
+            warnings.append(
+                f"**Trùng lặp nội dung:** Tiêu đề có độ tương đồng {int(duplicate_score * 100)}% với video cũ: *\"{duplicate_match}\"* (dễ bị thuật toán đánh giá là lặp lại/spam đề tài)."
+            )
+            recommendations.append("Nên đổi góc tiếp cận hoặc thay đổi tiêu đề để tạo sự mới lạ 100%.")
+
+    # 2. KIỂM TRA KHOẢNG CÁCH THỜI GIAN ĐĂNG (CANNIBALIZATION CHECK)
+    hours_since_last = portfolio.get("hours_since_last_video", 999.0)
+    slot_dt, slot_iso, vn_label, us_label = get_next_available_golden_slot(channel_id)
+
+    if hours_since_last < 3.0:
+        if hours_since_last < 1.0:
+            mins_ago = max(1, int(hours_since_last * 60))
+            warnings.append(
+                f"🚨 **Nguy cơ Tự bóp tương tác (Cannibalization):** Kênh vừa xuất bản video cách đây chỉ **{mins_ago} phút**! "
+                f"Đăng liền lúc 2 video (tương tự sự cố 44 giây ngày 26/09) sẽ khiến thuật toán Shorts Feed chia đôi lượt phân phối, dẫn tới cả 2 video đều bị flop (dưới 10 views)."
+            )
+        else:
+            warnings.append(
+                f"⚠️ **Khoảng cách đăng quá sát:** Kênh vừa có video mới cách đây **{hours_since_last:.1f} giờ**. "
+                f"Nên giãn cách tối thiểu 4-12 giờ để video trước tích luỹ đủ lượt xem ban đầu trên Shorts Feed."
+            )
+        recommendations.append(f"Dời lịch đăng sang khung giờ vàng kế tiếp: **{vn_label}** (*{us_label}*) để tối ưu hóa lượt phân phối.")
+
+    # 3. KIỂM TRA TỐI ƯU TIÊU ĐỀ & HOOK 3S ĐẦU (OPTIMIZATION CHECK)
+    clean_title_no_shorts = re.sub(r"#\w+", "", job_title).strip()
+    if len(clean_title_no_shorts) > 60:
+        warnings.append(
+            f"⚠️ **Tiêu đề quá dài ({len(clean_title_no_shorts)} ký tự):** Trên ứng dụng YouTube Shorts di động, tiêu đề dài hơn 60 ký tự sẽ bị cắt bớt (...), làm giảm tỷ lệ người xem tò mò bấm vào."
+        )
+        recommendations.append("Rút ngắn tiêu đề dưới 60 ký tự, đưa từ khóa kích thích tò mò lên đầu.")
+
+    first_scene_text = ""
+    if scenes_json:
+        try:
+            s_data = json.loads(scenes_json)
+            scenes_list = s_data.get("scenes") or (s_data if isinstance(s_data, list) else [])
+            if scenes_list and isinstance(scenes_list[0], dict):
+                first_scene_text = scenes_list[0].get("voiceover") or scenes_list[0].get("text") or ""
+        except Exception:
+            pass
+
+    if first_scene_text:
+        words = first_scene_text.strip().split()
+        if len(words) > 18:
+            warnings.append(
+                f"⚠️ **Cảnh báo Hook 3s đầu quá dài ({len(words)} từ):** Câu mở đầu dài dòng có nguy cơ làm tụt tỷ lệ Ở lại xem (Stayed to watch) dưới 30% như các video trước."
+            )
+            recommendations.append("Tối ưu câu hook 3s đầu ngắn gọn (5-10 từ), giật gân, đánh thẳng vào sự tò mò.")
+
+    has_warnings = len(warnings) > 0
+    return {
+        "has_warnings": has_warnings,
+        "is_safe": not has_warnings,
+        "job_id": job_id,
+        "channel_id": channel_id,
+        "channel_name": channel_name,
+        "channel_niche": channel_niche,
+        "title": job_title,
+        "hours_since_last_video": hours_since_last,
+        "warnings": warnings,
+        "recommendations": recommendations,
+        "next_slot_vn": vn_label,
+        "next_slot_us": us_label,
+        "next_slot_dt": slot_dt,
+        "next_slot_iso": slot_iso
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # 4. HỆ THỐNG THEO DÕI KPI & BÁO CÁO CẢNH BÁO (CHANNEL KPI MONITOR)
 # ──────────────────────────────────────────────────────────────────────────────
 
