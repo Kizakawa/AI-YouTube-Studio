@@ -106,3 +106,43 @@ Hệ thống đã nạp sẵn danh mục sản phẩm có tỷ lệ chuyển đ�
 Hệ thống đã tự động cài đặt sẵn các lớp bảo vệ:
 * **Tự động chèn câu Disclaimer:** *"As an Amazon Associate I earn from qualifying purchases"* vào cuối mô tả mọi video theo đúng điều khoản mục 5 của Amazon Operating Agreement.
 * **Link sạch và minh bạch:** Không dùng các dịch vụ rút gọn link không rõ nguồn gốc làm ẩn tên miền Amazon (tránh vi phạm chính sách của Amazon).
+
+---
+
+## 6. DỰ BÁO TÀI CHÍNH & LỘ TRÌNH MỞ RỘNG 10 KÊNH (2 - 3 THÁNG TỚI)
+
+Khi vận hành mở rộng lên **10 kênh YouTube Shorts** (1 video/ngày/kênh = 300 video/tháng = 900 video sau 3 tháng), dự báo thu nhập theo 3 kịch bản dựa trên số liệu thực tế thị trường:
+
+| Kịch Bản | Tháng 1 | Tháng 2 | Tháng 3 | Tổng Kết Sau 3 Tháng |
+| :--- | :--- | :--- | :--- | :--- |
+| 🟢 **TỐT NHẤT (Best-Case)** | $50 – $150 | **$300 – $800** *(7.5tr – 20tr VNĐ)* | **$1.000 – $2.500+** *(25tr – 62tr VNĐ)* | 2-3 kênh đủ điều kiện YPP + Đơn hàng Amazon bùng nổ |
+| 🟡 **THỰC TẾ (Realistic)** | $10 – $30 | **$80 – $180** *(2tr – 4.5tr VNĐ)* | **$250 – $500** *(6.2tr – 12.5tr VNĐ)* | Thu nhập thụ động 6tr-12.5tr/tháng trang trải toàn bộ chi phí học tập |
+| 🔴 **TỆ NHẤT (Worst-Case)** | $0 – $5 | **$10 – $30** *(250k – 750k VNĐ)* | **$30 – $70** *(750k – 1.7tr VNĐ)* | View thấp lẹt đẹt, 0 mất vốn, giữ tài sản 10 kênh có sẵn 900 video |
+
+### Chiến Lược Phân Bổ Danh Mục 10 Kênh (Đa Dạng Ngách Chống Bão Hòa):
+1. **Nhóm Tâm lý học (3 kênh):**
+   * Kênh 1: *Dark Psychology & Manipulation Defense* (Phòng vệ tâm lý tối)
+   * Kênh 2: *High-Status Frame & Stoic Silence* (Tâm lý vị thế cao, Khắc kỷ)
+   * Kênh 3: *Body Language & Micro-Expressions* (Đọc vị ngôn ngữ cơ thể)
+2. **Nhóm Bí ẩn & Khám phá (3 kênh):**
+   * Kênh 4: *Deep Sea & Subterranean Anomalies* (Bí ẩn đại dương & lòng đất)
+   * Kênh 5: *Cosmic Paradox & Space Anomalies* (Nghịch lý vũ trụ & NASA)
+   * Kênh 6: *Ancient Archives & Sealed Chambers* (Khảo cổ Ai Cập & lăng mộ)
+3. **Nhóm Động vật hoang dã & Cứu hộ (2 kênh):**
+   * Kênh 7: *Pet Rescue & Emotional Healing* (Cứu hộ chó mèo xúc động)
+   * Kênh 8: *Apex Predators & Combat Biomechanics* (Mãnh thú săn mồi)
+4. **Nhóm Tri thức gây sốc & Lịch sử (2 kênh):**
+   * Kênh 9: *Bizarre Historical Paradoxes* (Nghịch lý lịch sử khó tin)
+   * Kênh 10: *Mind-Blowing Scientific Facts* (Sự thật khoa học gây sốc)
+
+---
+
+## 7. KIẾN TRÚC TÁC NHÂN: MONETIZATION AGENT
+
+Trong hệ sinh thái Multi-Agent của dự án:
+* [`app/agents/monetization_agent.py`](app/agents/monetization_agent.py) đóng vai trò **Giám Đốc Thương Mại & Affiliate**:
+  1. **Buyer Intent Analysis:** Quét kịch bản phân tích cảm xúc & nhu cầu mua sắm tiềm ẩn của người xem.
+  2. **Smart Product Matcher:** Khớp sản phẩm Best-Seller Amazon có tỷ lệ chuyển đổi cao nhất.
+  3. **Conversational CTA Writer:** Soạn câu kêu gọi hành động tự nhiên, không lộ liễu, không gây phản cảm.
+  4. **Smart Pinned Comment:** Tự động tạo bình luận mồi thảo luận và dẫn link Amazon sạch.
+  5. **Shopping Tag Generator:** Tối ưu hóa hashtag thương mại cho nền tảng video.
