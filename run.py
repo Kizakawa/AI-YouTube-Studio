@@ -216,8 +216,18 @@ def main():
     print(f"👉 Địa chỉ Web Studio: {web_url}")
     print("=" * 70)
     # drop_pending_updates=True: Xóa sạch các update lỗi tồn đọng cũ khi khởi động lại
-    # bootstrap_retries=-1: Tự động thử lại không giới hạn nếu mạng Render/Telegram bị ngắt kết nối tạm thời
-    app.run_polling(drop_pending_updates=True, bootstrap_retries=-1)
+    # Tự động kết nối lại nếu mạng WiFi/máy tính bị chập chờn hoặc rớt kết nối tạm thời
+    while True:
+        try:
+            app.run_polling(drop_pending_updates=True, bootstrap_retries=-1)
+            break
+        except (KeyboardInterrupt, SystemExit):
+            print("\n👋 Đã dừng Telegram Bot theo yêu cầu của bạn.")
+            break
+        except Exception as e:
+            logger.warning(f"⚠️ Mạng chập chờn / Mất kết nối tạm thời tới Telegram ({e}). Đang tự động kết nối lại sau 5 giây...")
+            import time
+            time.sleep(5)
 
 if __name__ == "__main__":
     main()
