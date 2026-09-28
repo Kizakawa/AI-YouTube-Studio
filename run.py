@@ -210,11 +210,10 @@ def main():
 
     app.add_error_handler(error_handler)
 
-    net = get_network_info()
+    port = int(os.getenv("PORT", 8000))
+    web_url = os.getenv("WEB_DASHBOARD_URL") or f"http://localhost:{port}"
     print("🤖 Bot đang chạy Polling... Cả nhóm có thể ra lệnh từ Telegram hoặc xem Web!")
-    print(f"👉 Mở Web trên máy tính này: {net['local_url']}")
-    if net['is_lan_available']:
-        print(f"👉 Mở Web trên điện thoại (cùng Wi-Fi): {net['wifi_url']}")
+    print(f"👉 Địa chỉ Web Studio: {web_url}")
     print("=" * 70)
     # drop_pending_updates=True: Xóa sạch các update lỗi tồn đọng cũ khi khởi động lại
     # bootstrap_retries=-1: Tự động thử lại không giới hạn nếu mạng Render/Telegram bị ngắt kết nối tạm thời
