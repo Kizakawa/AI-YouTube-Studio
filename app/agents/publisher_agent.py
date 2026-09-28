@@ -153,11 +153,22 @@ class PublisherAgent:
                 clean_title = clean_title[:91].rstrip()
             clean_title = f"{clean_title} #Shorts"
 
-        logger.info(f"Bắt đầu upload Shorts '{clean_title}' lên kênh {self.channel_name}...")
+        # Tự động tối ưu hóa kiếm tiền qua Amazon Affiliate (Monetization Engine)
+        try:
+            from app.services.monetization_engine import enrich_video_monetization
+            desc_clean, pinned_comment, prod_info = enrich_video_monetization(
+                channel_config=self.channel_config,
+                title=clean_title,
+                description=description or "",
+                pinned_comment=pinned_comment
+            )
+            logger.info(f"Đã tự động lồng ghép sản phẩm kiếm tiền Amazon: {prod_info.get('name')}")
+        except Exception as ex:
+            logger.warning(f"Không thể áp dụng monetization_engine: {ex}")
+            desc_clean = description or ""
 
         # Đảm bảo description luôn có hashtag nhận diện Shorts
         shorts_hashtags = "#Shorts #shorts #viral #ytshorts"
-        desc_clean = description or ""
         if "#shorts" not in desc_clean.lower():
             desc_clean = f"{desc_clean.strip()}\n\n{shorts_hashtags}" if desc_clean.strip() else shorts_hashtags
 
