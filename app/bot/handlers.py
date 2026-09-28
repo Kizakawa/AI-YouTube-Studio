@@ -774,17 +774,34 @@ async def viral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     channel_niche = ch.get("niche") or "psychology"
     channel_lang = ch.get("language") or "en"
 
+    from app.services.channel_intelligence import get_channel_existing_portfolio, suggest_channel_topics
+
+    portfolio = await asyncio.to_thread(get_channel_existing_portfolio, channel_id)
+    top_performers = portfolio.get("top_performers", [])
+    flop_videos = portfolio.get("flop_videos", [])
+
+    if top_performers:
+        top_name = top_performers[0].get("title", "")
+        if len(top_name) > 35:
+            top_name = top_name[:35] + "..."
+        top_stat_text = top_performers[0].get("views_text") or f"{top_performers[0].get('views_num', 0)} views"
+        top_desc = f"Dựa trên video đỉnh cao: *{top_name}* ({top_stat_text})"
+    else:
+        top_desc = "Tối ưu hóa Retention > 150% + Hook giật gân 3 giây đầu"
+
+    flop_desc = f"🛡️ Đã quét {len(flop_videos)} video flop/tụt tương tác để né bẫy chủ đề" if flop_videos else "🛡️ Chống trùng lặp & bão hòa đề tài 100%"
+
     wait_msg = await safe_reply(
         update,
         f"🔥 **ĐẠO DIỄN SHORTS AI ĐANG PHÂN TÍCH KÊNH `{channel_name}`...**\n\n"
         f"📺 **Chủ đề kênh:** `{channel_niche}` ({channel_lang.upper()})\n"
-        f"📚 **Thư viện đã đối chiếu:** {len(recent_titles)} video gần nhất\n"
-        f"⚡ **Thuật toán áp dụng:** Bám sát video đạt 160% Retention (*3 Signs They're JUST Using You*) + Loop vô tận + Pinned Bait Comment\n\n"
-        f"⏳ Đang kích hoạt AI Viral Growth Hacker..."
+        f"🏆 **Thống kê:** {top_desc}\n"
+        f"{flop_desc}\n"
+        f"🌍 **Xu hướng thế giới:** Đang đối chiếu ngách `{channel_niche}` toàn cầu 2026...\n\n"
+        f"⏳ Đang tạo 5 ý tưởng triệu view bám sát dữ liệu..."
     )
 
     try:
-        from app.services.channel_intelligence import suggest_channel_topics
         ideas = await asyncio.to_thread(
             suggest_channel_topics,
             channel_id=channel_id,
@@ -802,13 +819,15 @@ async def viral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.chat_data["cached_viral_channel"] = channel_id
 
         text_lines = [
-            f"🔥 **5 Ý TƯỞNG SHORTS TRIỆU VIEW (BÁM SÁT NỘI DUNG KÊNH)**\n",
+            f"🔥 **5 Ý TƯỞNG SHORTS TRIỆU VIEW (BÁM SÁT DỮ LIỆU & XU HƯỚNG THẾ GIỚI)**\n",
             f"📺 **Kênh:** `{channel_name}` | 🎯 **Chủ đề:** `{channel_niche}`\n",
-            f"🏆 **Chuẩn mẫu:** Dựa theo video đạt 160% Retention (*3 Signs They're JUST Using You*)\n",
         ]
-        if recent_titles:
-            recent_str = ", ".join([f"_{t[:24]}..._" for t in recent_titles[:2]])
-            text_lines.append(f"📌 **Đã đối chiếu thư viện kênh:** {recent_str}\n")
+        if top_performers:
+            top_perf_views = top_performers[0].get("views_text") or (str(top_performers[0].get("views_num", 0)) + " views")
+            text_lines.append(f"🏆 **Phát huy thế mạnh kênh:** *{top_performers[0]['title']}* ({top_perf_views})")
+        if flop_videos:
+            text_lines.append(f"🛡️ **Cơ chế chống Flop:** Khắc phục tình trạng bão hòa / lệch ngách từ {len(flop_videos)} video trước")
+        text_lines.append("")
 
         for idx, item in enumerate(ideas):
             topic = item.get("topic", "")
@@ -817,10 +836,16 @@ async def viral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             retention = item.get("predicted_retention", "150%+")
             pinned = item.get("pinned_comment", "")
             formula = item.get("viral_formula", "Debate in Comments")
+            fixes_flaw = item.get("fixes_flaw", "")
+            trend_align = item.get("trend_alignment", "")
 
             text_lines.append(f"**#{idx+1}. {title}**")
             text_lines.append(f"• ⚡ **Hook 3s:** \"_{hook}_\"")
             text_lines.append(f"• 📈 **Dự báo:** `{retention}` | **CTA:** `{formula}`")
+            if fixes_flaw:
+                text_lines.append(f"• 🛡️ **Khắc phục nhược điểm:** {fixes_flaw}")
+            if trend_align:
+                text_lines.append(f"• 🌍 **Xu hướng 2026:** {trend_align}")
             if pinned:
                 text_lines.append(f"• 💬 **Bình luận mồi:** \"_{pinned}_\"")
             text_lines.append("")

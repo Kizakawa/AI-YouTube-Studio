@@ -140,7 +140,65 @@ def get_channel_existing_portfolio(channel_id: str) -> Dict[str, Any]:
     existing_titles: List[str] = []
     existing_topics: List[str] = []
     top_performers: List[Dict[str, Any]] = []
+    flop_videos: List[Dict[str, Any]] = []
     last_activity_time: Optional[datetime] = None
+
+    # A0. Đọc dữ liệu từ file audit kênh mới nhất (storage/channel_audit_latest.json)
+    try:
+        audit_file = Path(__file__).resolve().parent.parent.parent / "storage" / "channel_audit_latest.json"
+        if audit_file.exists():
+            audit_data = json.loads(audit_file.read_text(encoding="utf-8"))
+            matched_audit = audit_data.get(channel_id)
+            if not matched_audit:
+                for k, v in audit_data.items():
+                    if (
+                        v.get("id") == channel_id
+                        or (v.get("handle") and v.get("handle").lower() == str(handle_or_url).lower())
+                        or (v.get("name") and v.get("name").lower() == str(channel_name).lower())
+                    ):
+                        matched_audit = v
+                        break
+
+            if matched_audit:
+                raw_vids = matched_audit.get("videos") or []
+                if not raw_vids and matched_audit.get("live_scraper_stats"):
+                    raw_vids = matched_audit.get("live_scraper_stats", {}).get("videos", [])
+
+                audit_vids_parsed = []
+                for v in raw_vids:
+                    t = (v.get("title") or "").strip()
+                    if not t:
+                        continue
+                    if t not in existing_titles:
+                        existing_titles.append(t)
+                    
+                    v_views = v.get("views") if v.get("views") is not None else v.get("views_num", 0)
+                    try:
+                        v_views = int(v_views)
+                    except Exception:
+                        v_views = 0
+
+                    audit_vids_parsed.append({
+                        "title": t,
+                        "views_num": v_views,
+                        "views_text": v.get("views_text") or f"{v_views} lượt xem",
+                        "url": v.get("url") or f"https://youtube.com/shorts/{v.get('id', '')}"
+                    })
+
+                if audit_vids_parsed:
+                    # Sắp xếp lượt xem giảm dần
+                    audit_vids_parsed.sort(key=lambda x: x["views_num"], reverse=True)
+                    # Video đỉnh cao (views >= 100 hoặc video top 1 có views > 20)
+                    for pv in audit_vids_parsed:
+                        if pv["views_num"] >= 100 or (pv["views_num"] == audit_vids_parsed[0]["views_num"] and pv["views_num"] > 20):
+                            if pv not in top_performers:
+                                top_performers.append(pv)
+                    # Video flop (views <= 25 hoặc nhóm views thấp nhất kênh cần né tránh)
+                    for pv in reversed(audit_vids_parsed):
+                        if pv["views_num"] <= 25 and pv not in flop_videos and pv not in top_performers:
+                            flop_videos.append(pv)
+    except Exception as e:
+        logger.warning(f"[Portfolio] Lỗi đọc channel_audit_latest.json cho {channel_id}: {e}")
 
     # A. Cào dữ liệu Live từ YouTube
     yt_stats = {}
@@ -151,11 +209,21 @@ def get_channel_existing_portfolio(channel_id: str) -> Dict[str, Any]:
                 t = vid.get("title", "").strip()
                 if t and t not in existing_titles:
                     existing_titles.append(t)
-                if vid.get("is_top_performer") or vid.get("views_num", 0) >= 300:
-                    top_performers.append({
+                v_num = vid.get("views_num", 0)
+                if vid.get("is_top_performer") or v_num >= 300:
+                    top_obj = {
                         "title": t,
-                        "views_num": vid.get("views_num", 0),
-                        "views_text": vid.get("views_text", ""),
+                        "views_num": v_num,
+                        "views_text": vid.get("views_text", f"{v_num} lượt xem"),
+                        "url": vid.get("url", "")
+                    }
+                    if not any(x["title"] == t for x in top_performers):
+                        top_performers.append(top_obj)
+                elif v_num < 30 and not any(x["title"] == t for x in flop_videos):
+                    flop_videos.append({
+                        "title": t,
+                        "views_num": v_num,
+                        "views_text": vid.get("views_text", f"{v_num} lượt xem"),
                         "url": vid.get("url", "")
                     })
     except Exception as e:
@@ -216,11 +284,49 @@ def get_channel_existing_portfolio(channel_id: str) -> Dict[str, Any]:
         "existing_titles": existing_titles,
         "existing_topics": existing_topics,
         "top_performers": top_performers,
+        "flop_videos": flop_videos,
         "last_activity_time": last_activity_time,
         "hours_since_last_video": round(hours_since_last_video, 1),
         "days_since_last_video": round(days_since_last_video, 2),
         "total_existing_count": len(existing_titles)
     }
+
+
+def _get_global_trends_directive(niche_id: str) -> str:
+    """Cung cấp xu hướng Shorts toàn cầu 2026 thịnh hành nhất theo từng ngách cụ thể."""
+    nid = (niche_id or "").lower()
+    if "mystery" in nid or "history" in nid:
+        return """
+🌍 2026 GLOBAL VIRAL SHORTS TRENDS (MYSTERIES & ANOMALIES):
+1. Subterranean & Ocean Acoustic Anomalies: Declassified underwater hydrophone recordings (The Bloop, Julia, Upsweep, Train), Mariana acoustic anomalies with exact frequency stats. (CRITICAL: Pivot AWAY from repetitive generic 'what is at 1000m depth' lists!).
+2. Forbidden Architecture & Sealed Vaults: Underground secrets beneath the Sphinx's right paw, Derinkuyu subterranean ventilation mysteries, Vatican secret vault micro-documents.
+3. Glitches in Historical Reality: Prophecies with eerie modern precision (Roger Bacon 1290 machines), ancient precision masonry acoustic resonance (Kailasa, Puma Punku).
+Hook Formula: 'In [Year], deep sonar sensors picked up this classified acoustic signal...'
+"""
+    elif "animal" in nid or "rescue" in nid or "pet" in nid:
+        return """
+🌍 2026 GLOBAL VIRAL SHORTS TRENDS (ANIMAL RESCUE & EMOTIONAL HEALING):
+1. 3-Phase Transformation Arc: High-contrast emotional rollercoaster (Abandoned/shivering in freezing rain -> First tentative warm meal & soft blanket -> Healthy glowing coat & joyful adoption leap).
+2. Emergency Cross-Species Miracles: Stray dogs protecting tiny kittens, maternal animal instincts across species.
+3. Unconditional Loyalty Testimonials: Stories where the rescued pet repays human kindness or stays vigilant beside their savior.
+Hook Formula: 'He had completely given up on living... until a stranger stopped their car.'
+"""
+    elif "wildlife" in nid or "predator" in nid or "nature" in nid:
+        return """
+🌍 2026 GLOBAL VIRAL SHORTS TRENDS (WILDLIFE & APEX PREDATORS):
+1. Extreme Asymmetric Combat Biomechanics: Orcas using tonic immobility on Great White Sharks; Honey Badger venom neurotoxin immunity vs Black Mamba & Lion Prides; Jaguar skull-crushing bite vs Black Caiman.
+2. Sensory Superpowers & Strike Physics: Cheetah elastic spine 70 mph acceleration in 3 seconds; Peregrine Falcon 240 mph air-dive aerodynamics; Mantis Shrimp cavitation bubble punch.
+STRICT NEGATIVE CONSTRAINT: Strictly 100% biological animal predator behaviors. ZERO space facts, zero deep sea fantasy, zero psychology! Keep audience bucket clean!
+Hook Formula: 'This 20-pound creature has zero fear of an entire pride of lions... and here is why.'
+"""
+    else:  # psychology / dark psychology / self-mastery
+        return """
+🌍 2026 GLOBAL VIRAL SHORTS TRENDS (DARK PSYCHOLOGY & HUMAN BEHAVIOR):
+1. Stealth Dark Triad Detection: Micro-expressions of covert envy, conversational gaslighting traps, sudden eye pupil dilation when lying.
+2. High-Status Unblinking Silence: How calm, deliberate non-reaction flips power dynamics during public disrespect or pressure.
+3. Micro-Behavioral Tell Guides: '3 physical tells someone secretly resents your success', 'The 2-second shoulder freeze that reveals guilt'.
+Hook Formula: 'If someone does this within the first 5 seconds of speaking to you, pay close attention...'
+"""
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -234,8 +340,10 @@ def suggest_channel_topics(
 ) -> List[Dict[str, Any]]:
     """
     Thuật toán AI gợi ý ý tưởng làm video riêng biệt cho từng kênh:
-    - Bám sát hồ sơ ngách (Niche Profile: Tâm lý, Bí ẩn, Tài chính, v.v.).
-    - Học tập từ các video thành công nhất của kênh (Top Performers).
+    - Bám sát hồ sơ ngách (Niche Profile: Tâm lý, Bí ẩn, Động vật, v.v.).
+    - Học tập và phát huy từ các video thành công nhất của kênh (Top Performers).
+    - Khắc phục triệt để các nhược điểm / bẫy flop từ video trước (Topic Fatigue, Niche Confusion, Passive tone).
+    - Đón đầu xu hướng toàn cầu năm 2026 theo từng ngách.
     - LỌC TRÙNG LẶP TUYỆT ĐỐI (Strict De-duplication): Kiểm tra qua check_idea_similarity với mọi video cũ.
     """
     portfolio = get_channel_existing_portfolio(channel_id)
@@ -243,6 +351,8 @@ def suggest_channel_topics(
     niche_profile = get_niche(niche_id)
     channel_name = portfolio["channel_name"]
     lang = portfolio["channel_lang"]
+    top_performers = portfolio.get("top_performers", [])
+    flop_videos = portfolio.get("flop_videos", [])
 
     all_existing = list(portfolio["existing_titles"])
     if exclude_additional:
@@ -255,14 +365,36 @@ def suggest_channel_topics(
 
     # Xây dựng dữ liệu Top Performers làm hình mẫu lan toả
     top_performer_prompt = ""
-    if portfolio["top_performers"]:
-        top_lines = [f"- \"{p['title']}\" ({p['views_text']})" for p in portfolio["top_performers"][:3]]
+    if top_performers:
+        top_lines = []
+        for p in top_performers[:3]:
+            v_txt = p.get("views_text") or (str(p.get("views_num", 0)) + " views")
+            top_lines.append(f"- \"{p['title']}\" ({v_txt})")
         top_performer_prompt = f"""
 🏆 PROVEN HIGH-RETENTION BREAKTHROUGH VIDEOS ON THIS CHANNEL:
 {chr(10).join(top_lines)}
 Winning Mechanism: High-curiosity primal trigger, instant pattern interrupt, urgent psychological or existential stakes.
 Your new ideas MUST inherit this winning emotional DNA without copying the same subject!
 """
+
+    # Xây dựng dữ liệu Flop Videos và các cạm bẫy cần tránh
+    flop_prompt = ""
+    if flop_videos:
+        flop_lines = []
+        for p in flop_videos[:4]:
+            v_txt = p.get("views_text") or (str(p.get("views_num", 0)) + " views")
+            flop_lines.append(f"- \"{p['title']}\" ({v_txt})")
+        flop_prompt = f"""
+⚠️ UNDERPERFORMING / FLOP VIDEOS ON THIS CHANNEL (CRITICAL TRAPS TO AVOID):
+{chr(10).join(flop_lines)}
+Core Weaknesses Identified:
+1. Topic fatigue: Do NOT repeat the exact same sub-topic or keyword consecutively (e.g., avoid repetitive deep sea ocean lists).
+2. Passive / philosophical / low-urgency openings lacking a 3-second pattern interrupt.
+3. Niche mismatch: Stay 100% faithful to '{niche_id}', never confuse YouTube's recommendation algorithm with off-niche topics.
+Mandate: Each new idea MUST actively solve these weaknesses!
+"""
+
+    global_trends_prompt = _get_global_trends_directive(niche_id)
 
     prompt = f"""You are the Master Creative Director and Viral Algorithm Strategist for YouTube Shorts channel '{channel_name}'.
 Niche: '{niche_profile.get('name')}' ({niche_id})
@@ -279,21 +411,31 @@ CRITICAL MANDATE:
 ═══════════════════════════════════════════════════════════
 {top_performer_prompt}
 ═══════════════════════════════════════════════════════════
+{flop_prompt}
+═══════════════════════════════════════════════════════════
+{global_trends_prompt}
+═══════════════════════════════════════════════════════════
 🎯 OBJECTIVE:
 Generate exactly {count + 2} completely unique, high-retention Shorts concepts tailored specifically to '{channel_name}'.
-Each concept must trigger intense visceral curiosity (AVD > 80%, loop rate > 150%).
+Each concept must:
+1. Inherit the winning emotional hook of top performers.
+2. Actively eliminate and fix the channel's past flop weaknesses (topic fatigue, passive tone, niche dilution).
+3. Align directly with 2026 global viral trends for this niche.
+4. Keep YouTube Shorts titles concise (under 60 characters), punchy, and include #Shorts.
 
 Return ONLY a valid JSON array of objects with the following structure:
 [
   {{
     "topic": "Core punchy topic concept (e.g. The 3-second silence interrogation trick)",
-    "title": "Viral YouTube Shorts Title with Emojis (under 60 chars)",
+    "title": "Viral YouTube Shorts Title with Emojis and #Shorts (under 60 chars)",
     "hook": "Electric 3-second pattern interrupt opening line (5-8 words)",
     "angle": "Micro-narrative breakdown & specific observable behaviors or phenomena",
     "pinned_comment": "Provocative engagement bait question to pin at top of comments",
     "viral_formula": "Double Tap & Protect | Debate in Comments | Curiosity Part 2",
     "predicted_retention": "150% - 165%",
-    "why_viral": "Giải thích ngắn gọn bằng tiếng Việt vì sao chủ đề này sẽ bùng nổ views"
+    "why_viral": "Giải thích ngắn gọn bằng tiếng Việt vì sao chủ đề này sẽ bùng nổ views",
+    "fixes_flaw": "Giải thích bằng tiếng Việt cách ý tưởng này khắc phục nhược điểm/lỗi flop của kênh (ví dụ: tránh bão hòa biển sâu, tăng tính giật gân, bám đúng ngách)",
+    "trend_alignment": "Xu hướng toàn cầu 2026 được đón đầu (ví dụ: Giải mã âm thanh dưới đáy biển / Biomechanics mãnh thú / Dark Triad body language)"
   }}
 ]
 """
@@ -341,6 +483,10 @@ Return ONLY a valid JSON array of objects with the following structure:
                 cand["channel_name"] = channel_name
                 cand["niche"] = niche_id
                 cand["similarity_score"] = max(score_title, score_topic)
+                if not cand.get("fixes_flaw"):
+                    cand["fixes_flaw"] = "Khắc phục tình trạng bão hòa nội dung cũ, tăng tính kích thích tò mò 3 giây đầu."
+                if not cand.get("trend_alignment"):
+                    cand["trend_alignment"] = "Đón đầu trào lưu Shorts 2026 với cấu trúc loop vô tận và hook thị giác."
                 verified_ideas.append(cand)
 
                 if len(verified_ideas) >= count:
@@ -374,132 +520,156 @@ def _get_curated_niche_fallbacks(niche_id: str, lang: str = "en") -> List[Dict[s
         return [
             {
                 "topic": "The 3 Underwater Sounds Recorded in Deep Oceans Science Can't Explain",
-                "title": "3 Deep Ocean Sounds Science CANNOT Explain 🌊📻",
+                "title": "3 Deep Ocean Sounds Science CANNOT Explain 🌊📻 #Shorts",
                 "hook": "In 1997, oceanic sensors detected this terrifying subterranean creature sound...",
                 "angle": "The Bloop, Julia sound, Mariana acoustic anomalies",
                 "pinned_comment": "Do you believe there are unknown titanic leviathans in the abyss? 👇",
                 "viral_formula": "Debate in Comments",
                 "predicted_retention": "160% - 170%",
-                "why_viral": "Ăn theo video 1.2K views 'Why You're Terrified of Deep Water' — khai thác âm thanh bí ẩn đại dương"
+                "why_viral": "Ăn theo video 1.2K views 'Why You're Terrified of Deep Water' — khai thác âm thanh bí ẩn đại dương",
+                "fixes_flaw": "Khắc phục bão hòa hình ảnh đại dương bằng cách chuyển trọng tâm sang giải mã tệp âm thanh bí ẩn (The Bloop/Julia) có tần số thực nghiệm, giữ chân người nghe bằng thính giác.",
+                "trend_alignment": "Đón đầu trào lưu Subterranean Acoustic Anomalies 2026 (âm thanh bí ẩn đáy đại dương thu hút hàng triệu lượt bàn tán toàn cầu)."
             },
             {
                 "topic": "The Real Reason Why Nobody is Allowed to Dive Under the Sphinx",
-                "title": "Why Divers Are BANNED Under The Great Sphinx 📜👁️",
+                "title": "Why Divers Are BANNED Under The Great Sphinx 📜👁️ #Shorts",
                 "hook": "Under the right paw of the Sphinx lies a secret sealed underground chamber...",
                 "angle": "Acoustic seismology findings, Hall of Records, Egyptian secrecy",
                 "pinned_comment": "What do you think is hidden under the Sphinx? Drop your theories 👇",
                 "viral_formula": "Curiosity Part 2",
                 "predicted_retention": "155% - 165%",
-                "why_viral": "Bí ẩn Ai Cập cổ đại muôn thuở kích thích người xem xem hết video"
+                "why_viral": "Bí ẩn Ai Cập cổ đại muôn thuở kích thích người xem xem hết video",
+                "fixes_flaw": "Cắt đứt chuỗi 5 video đại dương liên tiếp gây topic fatigue, đổi sang chủ đề hầm ngầm cấm kỵ Ai Cập cổ đại để làm mới luồng phân phối của thuật toán.",
+                "trend_alignment": "Bí mật khảo cổ và mật thất bị niêm phong (Sealed Ancient Chambers) - chủ đề muôn thuở đứng đầu bảng xếp hạng tò mò toàn cầu."
             },
             {
                 "topic": "The Medieval Manuscript That Predicted Modern Technology in 1290",
-                "title": "The 1290 Monk Who PREDICTED Airplanes & Submarines 📜⚡",
+                "title": "The 1290 Monk Who PREDICTED Airplanes & Submarines 📜⚡ #Shorts",
                 "hook": "In 1290, a Franciscan friar wrote down machines that horrified the Church...",
                 "angle": "Roger Bacon prophecy, banned scientific texts, mechanical foresight",
                 "pinned_comment": "Was this divine inspiration or forbidden lost technology? 👇",
                 "viral_formula": "Debate in Comments",
                 "predicted_retention": "150% - 160%",
-                "why_viral": "Nghịch lý thời gian lịch sử khơi gợi sự tò mò tri thức cực cao"
+                "why_viral": "Nghịch lý thời gian lịch sử khơi gợi sự tò mò tri thức cực cao",
+                "fixes_flaw": "Đa dạng hóa kho nội dung, chuyển từ bí ẩn biển sâu sang nghịch lý tiên tri lịch sử có tài liệu xác thực, kích thích tranh luận mạnh trong comment.",
+                "trend_alignment": "Nghịch lý thời gian và văn bản cổ tiên tri công nghệ (Historical Time Glitches & Prophecies)."
             }
         ]
     elif "animal" in niche_id or "rescue" in niche_id or "pet" in niche_id:
         return [
             {
                 "topic": "The Abandoned Golden Retriever Puppy Who Waited In The Freezing Rain For 48 Hours",
-                "title": "He Waited 48 Hours In The Freezing Rain... 💔🐾 #rescue",
+                "title": "He Waited 48 Hours In The Freezing Rain... 💔🐾 #Shorts",
                 "hook": "He was dumped on this empty road, but still believed his owners would return...",
                 "angle": "Heartbreaking loyalty, trembling eyes, miracle rescue, glorious adoption transformation",
                 "pinned_comment": "Drop a ❤️ if you believe every stray animal deserves love! 👇",
                 "viral_formula": "Emotional Rollercoaster & Tears to Joy",
                 "predicted_retention": "170% - 185%",
-                "why_viral": "Đánh trúng lòng trắc ẩn tột cùng, người xem thả tim và bình luận cầu phúc cực kỳ mạnh"
+                "why_viral": "Đánh trúng lòng trắc ẩn tột cùng, người xem thả tim và bình luận cầu phúc cực kỳ mạnh",
+                "fixes_flaw": "Tạo cao trào thị giác và cảm xúc đối nghịch cực đại (giữa sự lạnh lẽo bơ vơ và vòng tay ấm áp), giải quyết nhược điểm video mở đầu quá nhẹ nhàng.",
+                "trend_alignment": "Cấu trúc biến đổi 3 giai đoạn (Before & After Emotional Transformation) đạt tỷ lệ thả tim và chia sẻ cao nhất YouTube Shorts."
             },
             {
                 "topic": "The Exact Moment An Abused Shelter Dog Realizes He Will Never Be Hurt Again",
-                "title": "The Moment He Realized He Was Finally SAFE 🥺❤️ #dogrescue",
+                "title": "The Moment He Realized He Was Finally SAFE 🥺❤️ #Shorts",
                 "hook": "Every time a hand reached toward him, he flinched in terror... until today.",
                 "angle": "Overcoming severe trauma, first gentle touch, trembling tail wag, unconditional human warmth",
                 "pinned_comment": "Have you ever rescued an animal? Tell us their name below! 👇",
                 "viral_formula": "Double Tap & Healing Empathy",
                 "predicted_retention": "165% - 175%",
-                "why_viral": "Video chữa lành tâm hồn, tỷ lệ lưu lại (Save/Share) cao nhất trong các thể loại Shorts"
+                "why_viral": "Video chữa lành tâm hồn, tỷ lệ lưu lại (Save/Share) cao nhất trong các thể loại Shorts",
+                "fixes_flaw": "Tập trung vào vi biểu cảm ánh mắt sợ hãi chuyển sang tin tưởng của thú cưng, khắc phục sự dàn trải nội dung, kéo dài thời gian giữ chân (AVD > 85%).",
+                "trend_alignment": "Nội dung chữa lành tâm hồn (Healing & Empathy) có tỷ lệ lưu lại (Save) cao nhất trên nền tảng."
             },
             {
                 "topic": "Stray Dog Risks Its Own Life to Drag An Injured Kitten Out Of Highway Traffic",
-                "title": "Stray Dog RISKS Life to Save A Tiny Kitten 🐕🐱 #animals",
+                "title": "Stray Dog RISKS Life to Save A Tiny Kitten 🐕🐱 #Shorts",
                 "hook": "Cars were speeding past at 50 mph, but this stray dog saw something moving in the road...",
                 "angle": "Cross-species empathy, heroic rescue instinct, inseparable animal brotherhood",
                 "pinned_comment": "Animals truly have purer hearts than humans. Agree or disagree? 👇",
                 "viral_formula": "Debate in Comments & Heroic Miracle",
                 "predicted_retention": "160% - 170%",
-                "why_viral": "Câu chuyện động vật cứu nhau luôn đạt triệu view nhờ tính kỳ tích phi thường"
+                "why_viral": "Câu chuyện động vật cứu nhau luôn đạt triệu view nhờ tính kỳ tích phi thường",
+                "fixes_flaw": "Tạo tình huống khẩn cấp giật gân (nguy hiểm giao thông) ngay giây đầu tiên, chặn đứng tỷ lệ lướt qua (Swipe Away Rate).",
+                "trend_alignment": "Kỳ tích động vật cứu nhau xuyên loài (Cross-species rescue miracle) luôn chạm mốc triệu view thế giới."
             }
         ]
     elif "wildlife" in niche_id or "predator" in niche_id or "nature" in niche_id:
         return [
             {
                 "topic": "Why Even a Pride of Adult Lions Refuses to Fight The Honey Badger",
-                "title": "Why Lions REFUSE to Fight The Honey Badger 🦡🦁 #wildlife",
+                "title": "Why Lions REFUSE to Fight The Honey Badger 🦡🦁 #Shorts",
                 "hook": "A male lion has a bone-crushing 1,000 PSI bite force... yet it backs away from this 20-pound creature.",
                 "angle": "Complete venom immunity, loose impenetrable rubber skin, terrifying fearless psychology",
                 "pinned_comment": "Who is the REAL King of the Savanna? Drop your vote below! 👇",
                 "viral_formula": "Shock Fact & Savanna Hierarchy",
                 "predicted_retention": "175% - 185%",
-                "why_viral": "Nhân vật Honey Badger là hiện tượng meme huyền thoại về sự lì lợm và bản lĩnh sinh tồn"
+                "why_viral": "Nhân vật Honey Badger là hiện tượng meme huyền thoại về sự lì lợm và bản lĩnh sinh tồn",
+                "fixes_flaw": "Khắc phục 100% lỗi lệch ngách (đăng vũ trụ/hố đen/tâm lý trên kênh động vật) — đưa kênh về chuẩn ngách mãnh thú săn mồi với biểu tượng bất bại Honey Badger.",
+                "trend_alignment": "Hiện tượng meme sức mạnh sinh tồn lì lợm (Animal Hierarchy Subversion) thu hút lượng bình luận tranh cãi khổng lồ."
             },
             {
                 "topic": "What Actually Happens in The 3 Seconds Before a Cheetah Strikes at 70 MPH",
-                "title": "The 3 Seconds Before a Cheetah STRIKES at 70 MPH 🐆⚡ #animals",
+                "title": "The 3 Seconds Before a Cheetah STRIKES at 70 MPH 🐆⚡ #Shorts",
                 "hook": "Her heart rate explodes to 250 beats per minute, yet her gaze never moves one millimeter...",
                 "angle": "Biomechanical perfection, non-retractable claw traction, flexible spine energy storage",
                 "pinned_comment": "Drop a ⚡ if you think the Cheetah is nature's ultimate speed machine!",
                 "viral_formula": "Adrenaline Surge & High-Speed Physics",
                 "predicted_retention": "165% - 175%",
-                "why_viral": "Hình ảnh rượt đuổi tốc độ cao slow-motion kết hợp thông số giật gân giữ chân 100% người xem"
+                "why_viral": "Hình ảnh rượt đuổi tốc độ cao slow-motion kết hợp thông số giật gân giữ chân 100% người xem",
+                "fixes_flaw": "Khắc phục nhịp điệu chậm, ứng dụng cơ học tốc độ cao và góc quay slow-motion để khóa chặt mắt người xem trong 3 giây mở màn.",
+                "trend_alignment": "Giải phẫu cơ sinh học động vật săn mồi (Predator Biomechanics & Sensory Overload)."
             },
             {
                 "topic": "The Only Ocean Predator That Terrifies The Great White Shark",
-                "title": "The ONLY Creature Great White Sharks FEAR 🦈🌊 #ocean",
+                "title": "The ONLY Creature Great White Sharks FEAR 🦈🌊 #Shorts",
                 "hook": "Great White Sharks rule the open ocean... until a pod of Orcas appears on the horizon.",
                 "angle": "Tactical suffocation, tonic immobility induction, surgical liver extraction",
                 "pinned_comment": "Do you think Orcas are the most intelligent predators on Earth? 👇",
                 "viral_formula": "Debate in Comments & Ocean Mystery",
                 "predicted_retention": "170% - 180%",
-                "why_viral": "Bí ẩn sức mạnh vượt trội của cá voi sát thủ (Orca) luôn là thỏi nam châm hút hàng triệu lượt xem tranh luận"
+                "why_viral": "Bí ẩn sức mạnh vượt trội của cá voi sát thủ (Orca) luôn là thỏi nam châm hút hàng triệu lượt xem tranh luận",
+                "fixes_flaw": "Định vị lại tệp người xem yêu thích kẻ săn mồi đại dương, thay thế các video thảm họa biển sâu chung chung bằng cuộc chiến trí tuệ đỉnh cao Orca vs Cá mập.",
+                "trend_alignment": "Đại chiến kẻ thống trị đại dương (Apex Clash Orca vs Shark) luôn là nam châm hút triệu view tranh luận."
             }
         ]
     else:  # psychology / default
         return [
             {
                 "topic": "The 3-Second Cold Silence Trick to Flip Any Interrogation",
-                "title": "How to Use The 3-Second SILENCE Trick 🤫🧠 #psychology",
+                "title": "How to Use The 3-Second SILENCE Trick 🤫🧠 #Shorts",
                 "hook": "When someone tries to manipulate or pressure you, NEVER speak...",
                 "angle": "Status reversal through unblinking silence, discomfort amplification",
                 "pinned_comment": "Have you ever silenced an arrogant person with this? Tell your story 👇",
                 "viral_formula": "Double Tap & Protect",
                 "predicted_retention": "155% - 165%",
-                "why_viral": "Vũ khí tự vệ giao tiếp thực chiến ai cũng muốn học ngay lập tức"
+                "why_viral": "Vũ khí tự vệ giao tiếp thực chiến ai cũng muốn học ngay lập tức",
+                "fixes_flaw": "Kế thừa trọn vẹn công thức video đạt 514 views (3 Signs They're Using You) nhưng nâng cấp thành vũ khí tự vệ phản đòn cụ thể, thay vì chỉ cảnh báo thụ động.",
+                "trend_alignment": "Nghệ thuật kiểm soát vị thế bằng sự im lặng (High-Status Frame Control & Cold Silence) đang viral khắp TikTok & Shorts quốc tế."
             },
             {
                 "topic": "3 Signs Someone is Intimidated by Your Quiet Presence",
-                "title": "3 Signs People Are INTIMIDATED by You 👑 #psychology",
+                "title": "3 Signs People Are INTIMIDATED by You 👑 #Shorts",
                 "hook": "If people act strangely awkward around you, it means one thing...",
                 "angle": "Over-explaining, avoiding direct eye contact, nervous laughter",
                 "pinned_comment": "Do people often misjudge your quietness for arrogance? 👇",
                 "viral_formula": "Debate in Comments",
                 "predicted_retention": "150% - 160%",
-                "why_viral": "Đánh trúng đối tượng người hướng nội (introverts) muốn khẳng định giá trị bản thân"
+                "why_viral": "Đánh trúng đối tượng người hướng nội (introverts) muốn khẳng định giá trị bản thân",
+                "fixes_flaw": "Khắc phục điểm yếu của video flop 'Loneliness Is Your Superpower' (quá triết lý, thụ động), chuyển sang tâm lý vị thế cao giúp người xem tự tin.",
+                "trend_alignment": "Đánh trúng tâm lý người hướng nội muốn nhìn thấu phản ứng người khác (Introvert Empowerment & Status Cues)."
             },
             {
                 "topic": "How High-Value Minds React When Someone Insults Them in Public",
-                "title": "How Elite Minds React When INSULTED Publicly 🛡️ #psychology",
+                "title": "How Elite Minds React When INSULTED Publicly 🛡️ #Shorts",
                 "hook": "When an amateur insults you, never insult them back. Do this...",
                 "angle": "Calm pity response, turning the audience against the aggressor, emotional detachment",
                 "pinned_comment": "Drop a 🧠 if you choose peace over petty drama!",
                 "viral_formula": "Double Tap & Protect",
                 "predicted_retention": "160% - 170%",
-                "why_viral": "Kỹ năng phản đòn thanh lịch, người xem bấm lưu (save) và chia sẻ cực nhiều"
+                "why_viral": "Kỹ năng phản đòn thanh lịch, người xem bấm lưu (save) và chia sẻ cực nhiều",
+                "fixes_flaw": "Tạo tình huống kịch tính có tính ứng dụng xã hội cao, biến cảm giác tức giận thành phản đòn thanh lịch, kích thích người xem xem lặp lại (Loop Rate > 150%).",
+                "trend_alignment": "Tâm lý học khắc kỷ thực chiến và phòng vệ thao túng nơi công cộng (Stoic Power Dynamic in Public)."
             }
         ]
 
