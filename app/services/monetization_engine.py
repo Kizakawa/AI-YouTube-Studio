@@ -46,14 +46,48 @@ NICHE_PRODUCT_CATALOG: Dict[str, List[Dict[str, Any]]] = {
             "search_fallback": "daily stoic journal ryan holiday"
         }
     ],
+    "deep_sea_earth_mysteries": [
+        {
+            "keywords": ["ocean", "water", "abyss", "deep", "diver", "megalodon", "shark", "monster", "lamp", "creature", "dark", "light"],
+            "asin": "B0CJ6J9Z1N",
+            "name": "Deep Sea Diver & Megalodon Epoxy Resin Wood Night Light",
+            "cta": "Bring the glowing chill of the deep sea abyss into your room",
+            "short_desc": "Handmade epoxy resin lamp featuring deep sea diver facing giant predator in glowing blue abyss",
+            "search_fallback": "deep sea diver resin night light lamp"
+        },
+        {
+            "keywords": ["sea", "wave", "mariana", "trench", "blue", "water", "room", "night", "stars", "sleep", "sound", "projector"],
+            "asin": "B08H734L6J",
+            "name": "Northern Ocean Wave & Galaxy Light Projector with Relaxing Sound",
+            "cta": "Turn your bedroom ceiling into a glowing underwater ocean abyss",
+            "short_desc": "Mesmerizing 3D ocean wave projector creating deep-sea ambience in any dark room",
+            "search_fallback": "ocean wave light projector bedroom"
+        },
+        {
+            "keywords": ["fossil", "megalodon", "tooth", "shark", "ancient", "monster", "predator", "extinct", "bone", "jaw", "beast"],
+            "asin": "B08D3R48Z1",
+            "name": "Megalodon Giant Prehistoric Shark Tooth Fossil Replica in Display Case",
+            "cta": "Hold a 1:1 scale prehistoric deep-sea apex predator tooth",
+            "short_desc": "Museum-grade 5.5 inch Megalodon shark tooth replica in collector showcase",
+            "search_fallback": "megalodon shark tooth replica display"
+        },
+        {
+            "keywords": ["creature", "abyss", "unsolved", "unknown", "scientists", "explore", "mystery", "photo", "species", "nasa"],
+            "asin": "0226595668",
+            "name": "The Deep: The Extraordinary Creatures of the Abyss (Claire Nouvian)",
+            "cta": "Discover the bizarre glowing alien species lurking 10,000m below",
+            "short_desc": "Full-color photographic compendium of bizarre bioluminescent deep-sea life",
+            "search_fallback": "the deep extraordinary creatures abyss claire nouvian"
+        }
+    ],
     "history_mystery": [
         {
-            "keywords": ["sky", "star", "space", "alien", "telescope", "nasa", "planet", "galaxy", "night"],
-            "asin": "B001TI9Y2M",
-            "name": "Celestron 70mm Portable Astronomy Telescope",
-            "cta": "Explore the unseen night sky & cosmic mysteries",
-            "short_desc": "High-clarity travel telescope perfect for stargazers & sky watchers",
-            "search_fallback": "celestron travel telescope 70mm"
+            "keywords": ["sky", "star", "space", "alien", "galaxy", "nasa", "planet", "astronaut", "universe", "nebula"],
+            "asin": "B09S9YF57Q",
+            "name": "Astronaut Galaxy Star Projector (TikTok Viral Night Light)",
+            "cta": "Transform your room into a breathtaking cosmic nebula",
+            "short_desc": "360-degree magnetic astronaut projector casting high-definition galaxy stars",
+            "search_fallback": "astronaut galaxy star projector night light"
         },
         {
             "keywords": ["ancient", "vault", "sphinx", "pyramid", "ruin", "civilization", "history", "secret", "archive"],
@@ -64,15 +98,23 @@ NICHE_PRODUCT_CATALOG: Dict[str, List[Dict[str, Any]]] = {
             "search_fallback": "atlas of ancient mysteries hardcover"
         },
         {
-            "keywords": ["ocean", "water", "abyss", "deep", "dark", "flashlight", "survival", "gear", "underground"],
-            "asin": "B08B81QG62",
-            "name": "Ultra-Bright Tactical Waterproof Exploration Flashlight",
-            "cta": "Gear up for dark underground & outdoor exploration",
-            "short_desc": "10,000 Lumen military-grade waterproof rechargeable torch",
-            "search_fallback": "high lumen waterproof tactical flashlight"
+            "keywords": ["moon", "levitate", "floating", "gravity", "technology", "quantum", "strange", "desk", "night"],
+            "asin": "B08L7V4QW6",
+            "name": "Levitating Magnetic Floating Moon Lamp (3D Night Light)",
+            "cta": "Experience real magnetic levitation on your desk",
+            "short_desc": "Wireless floating 3D moon lamp spinning smoothly in mid-air via magnetic levitation",
+            "search_fallback": "levitating magnetic floating moon lamp"
         }
     ],
     "animal_rescue": [
+        {
+            "keywords": ["bed", "sleep", "calm", "anxiety", "rescue", "trauma", "dog", "cat", "comfort", "safe", "warm"],
+            "asin": "B07G4T12WQ",
+            "name": "Fluffy Calming Anti-Anxiety Donut Cuddle Dog/Cat Bed",
+            "cta": "Give rescued anxious pets the feeling of total safety and warmth",
+            "short_desc": "Orthopedic self-warming shag fur donut bed engineered for traumatized pets",
+            "search_fallback": "calming donut dog cat bed"
+        },
         {
             "keywords": ["lost", "track", "gps", "run", "stray", "find", "safe", "collar", "dog", "cat"],
             "asin": "B08M6BFVDD",
@@ -88,24 +130,16 @@ NICHE_PRODUCT_CATALOG: Dict[str, List[Dict[str, Any]]] = {
             "cta": "Give rescued kittens comfort, grooming & endless play",
             "short_desc": "Multi-sensory massage and interactive cat play station",
             "search_fallback": "catit senses wellness center"
-        },
-        {
-            "keywords": ["first aid", "emergency", "wound", "heal", "vet", "rescue", "health", "care"],
-            "asin": "B08HMR1F7H",
-            "name": "Tactical Emergency Pet First Aid Kit for Dogs & Cats",
-            "cta": "Essential medical rescue gear every pet parent needs",
-            "short_desc": "Compact veterinary emergency kit for pet injuries & cuts",
-            "search_fallback": "pet first aid kit for dogs cats"
         }
     ],
     "wildlife_predators": [
         {
-            "keywords": ["binocular", "spot", "safari", "watch", "lion", "tiger", "bear", "zoom", "sight"],
-            "asin": "B004KM82IQ",
-            "name": "Celestron Outland X 10x42 High-Definition Wildlife Binoculars",
-            "cta": "Spot apex predators in crystal-clear 10x zoom",
-            "short_desc": "Waterproof, fogproof multi-coated optics for wildlife observation",
-            "search_fallback": "celestron outland x 10x42 binoculars"
+            "keywords": ["lion", "tiger", "wolf", "lamp", "desk", "room", "decor", "night", "apex", "power", "3d"],
+            "asin": "B07H831N6L",
+            "name": "3D Optical Illusion Majestic Predator LED Night Lamp",
+            "cta": "Bring the raw power of apex predators to your desk",
+            "short_desc": "Color-changing 3D optical illusion lamp featuring majestic wild beasts",
+            "search_fallback": "3d optical illusion lion wolf led lamp"
         },
         {
             "keywords": ["predator", "hunt", "lethal", "bite", "strike", "biomechanic", "shark", "badger", "crocodile"],
@@ -116,12 +150,12 @@ NICHE_PRODUCT_CATALOG: Dict[str, List[Dict[str, Any]]] = {
             "search_fallback": "national geographic predators most lethal hunters"
         },
         {
-            "keywords": ["distance", "range", "track", "field", "speed", "measure"],
-            "asin": "B08KGWD554",
-            "name": "Bushnell Bone Collector Laser Rangefinder for Wildlife",
-            "cta": "Precision long-range tracking for outdoor wildlife explorers",
-            "short_desc": "Instant distance measurement optics for open terrain",
-            "search_fallback": "bushnell laser rangefinder wildlife"
+            "keywords": ["binocular", "spot", "safari", "watch", "lion", "tiger", "bear", "zoom", "sight"],
+            "asin": "B004KM82IQ",
+            "name": "Celestron Outland X 10x42 High-Definition Wildlife Binoculars",
+            "cta": "Spot apex predators in crystal-clear 10x zoom",
+            "short_desc": "Waterproof, fogproof multi-coated optics for wildlife observation",
+            "search_fallback": "celestron outland x 10x42 binoculars"
         }
     ]
 }
@@ -165,7 +199,9 @@ def find_best_amazon_product(niche: str, title: str, topic: str = "", script: st
     # Chuẩn hóa niche
     niche_lower = (niche or "").lower()
     niche_clean = "psychology"
-    if any(k in niche_lower for k in ["mystery", "mysteries", "history", "deep_sea", "ocean", "sea", "earth"]):
+    if any(k in niche_lower for k in ["deep_sea", "ocean", "sea", "marine", "abyss"]):
+        niche_clean = "deep_sea_earth_mysteries"
+    elif any(k in niche_lower for k in ["mystery", "mysteries", "history", "ancient", "space", "earth"]):
         niche_clean = "history_mystery"
     elif any(k in niche_lower for k in ["rescue", "cat", "dog", "pet"]):
         niche_clean = "animal_rescue"
