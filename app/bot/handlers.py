@@ -26,6 +26,8 @@ from app.bot.keyboards import (
     get_viral_ideas_keyboard,
     get_videos_list_keyboard,
     get_schedule_keyboard,
+    get_delete_confirmation_keyboard,
+    get_delete_failed_confirmation_keyboard,
 )
 from app.database.models import get_db, User, VideoJob, log_activity
 from app.agents.content_agent import ContentAgent
@@ -2855,6 +2857,97 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await safe_edit_text(query.message, "⚠️ Yêu cầu này đã hết hạn hoặc không tồn tại.")
 
+    # 16. XÁC NHẬN HOẶC HỦY XÓA VIDEO VĨNH VIỄN KHỎI HỆ THỐNG
+    elif data.startswith("confirm_del_vid:"):
+        job_id = int(data.split(":")[1])
+        await _handle_confirm_delete_video(update, context, job_id)
+
+    elif data.startswith("cancel_del_vid:"):
+        job_id = int(data.split(":")[1])
+        await _handle_cancel_delete_video(update, context, job_id)
+
+    elif data == "confirm_del_failed":
+        await _handle_confirm_delete_failed_videos(update, context)
+
+
+async def _handle_confirm_delete_video(update: Update, context: ContextTypes.DEFAULT_TYPE, job_id: int):
+    """Xử lý khi người dùng ấn nút [XÁC NHẬN XÓA] video cụ thể"""
+    query = update.callback_query
+    user = query.from_user
+    username = user.username or user.first_name
+
+    from app.services.ai_commander import delete_video_job
+    ok, msg, info = delete_video_job(job_id, user_id=user.id, username=username)
+
+    if ok:
+        text = (
+            f"🗑️ **ĐÃ XÓA VIDEO #{job_id} THÀNH CÔNG!**\n\n"
+            f"✅ **Tiêu đề:** *{info.get('title', f'Video #{job_id}')}*\n"
+            f"🎯 **Kênh:** `{info.get('channel_id', 'Chưa rõ')}`\n"
+            f"📁 **Dọn dẹp:** Đã giải phóng {info.get('deleted_files_count', 0)} tệp video/audio/temp trên máy chủ.\n"
+            f"💾 Toàn bộ dữ liệu đã được gỡ bỏ sạch sẽ khỏi Database SQLite."
+        )
+    else:
+        text = f"❌ **Không thể xóa video #{job_id}:** {msg}"
+
+    if query.message:
+        await safe_edit_text(query.message, text)
+    else:
+        await safe_reply(update, text)
+
+
+async def _handle_cancel_delete_video(update: Update, context: ContextTypes.DEFAULT_TYPE, job_id: int):
+    """Xử lý khi người dùng ấn nút [HỦY BỎ] xóa video"""
+    query = update.callback_query
+    msg_id_text = f" #{job_id}" if job_id > 0 else ""
+    text = (
+        f"🛡️ **ĐÃ HỦY THAO TÁC XÓA!**\n\n"
+        f"Video{msg_id_text} vẫn được bảo toàn nguyên vẹn trong hệ thống."
+    )
+    if query.message:
+        await safe_edit_text(query.message, text)
+    else:
+        await safe_reply(update, text)
+
+
+async def _handle_confirm_delete_failed_videos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Xử lý khi người dùng ấn nút [XÁC NHẬN XÓA TẤT CẢ VIDEO LỖI]"""
+    query = update.callback_query
+    user = query.from_user
+    username = user.username or user.first_name
+
+    from app.services.ai_commander import delete_video_job
+    with get_db() as db:
+        failed_jobs = db.query(VideoJob).filter(VideoJob.status == "FAILED").all()
+        failed_ids = [j.id for j in failed_jobs]
+
+    if not failed_ids:
+        text = "ℹ️ Không tìm thấy video lỗi nào để xóa."
+        if query.message:
+            await safe_edit_text(query.message, text)
+        else:
+            await safe_reply(update, text)
+        return
+
+    deleted_count = 0
+    total_files = 0
+    for jid in failed_ids:
+        ok, _, info = delete_video_job(jid, user_id=user.id, username=username)
+        if ok:
+            deleted_count += 1
+            total_files += info.get("deleted_files_count", 0)
+
+    text = (
+        f"🗑️ **ĐÃ DỌN DẸP XÓA {deleted_count} VIDEO LỖI THÀNH CÔNG!**\n\n"
+        f"📁 Đã giải phóng {total_files} tệp tạm và file lỗi trên máy chủ.\n"
+        f"✨ Cơ sở dữ liệu và ổ cứng đã được dọn sạch gọn gàng."
+    )
+    if query.message:
+        await safe_edit_text(query.message, text)
+    else:
+        await safe_reply(update, text)
+
+
 
 
 # Cache tạm cho kết quả tìm kiếm hình ảnh & video trên Telegram
@@ -3519,25 +3612,33 @@ async def kpi_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Thảo luận kịch bản với Đạo diễn AI: /chat <câu hỏi hoặc ý tưởng>
+    AI Tổng Quản Đa Năng (Universal AI Assistant / AI Director): /chat <yêu cầu tự nhiên>
+    Tự động phân tích ý định (RAG context, tạo kịch bản, xóa video với bước xác nhận, render, xem status...)
     """
     if not is_authorized(update):
         return
 
     if not context.args:
         help_text = (
-            "💡 **CÁCH THẢO LUẬN & LÊN KỊCH BẢN VỚI AI DIRECTOR:**\n\n"
-            "• Gõ `/chat <câu hỏi hoặc ý tưởng>` để bắt đầu thảo luận.\n"
-            "• **Ví dụ:**\n"
-            "  - `/chat Cho mình 3 ý tưởng Shorts thật sốc về tâm lý học hành vi`\n"
-            "  - `/chat Ý tưởng 'Thao túng bằng ánh mắt' thì 3 giây đầu nên nói câu gì giật gân?`\n\n"
-            "👉 Trong nhóm, bạn cũng có thể **Tag @VV1n_mybot** hoặc **Reply vào tin nhắn của bot** để chat tự nhiên!"
+            "🤖 **AI TỔNG QUẢN STUDIO - ĐIỀU HÀNH BẰNG TIẾNG VIỆT TỰ NHIÊN:**\n\n"
+            "Chỉ cần gõ `/chat <bất kỳ yêu cầu nào>` (hoặc nhắn tin trực tiếp với Bot):\n\n"
+            "✨ **Ví dụ:**\n"
+            "• `/chat Xóa video số 5 giúp tôi` _(Có bước hỏi xác nhận Yes/No an toàn)_\n"
+            "• `/chat Xóa tất cả các video bị lỗi`\n"
+            "• `/chat Tạo video về bí ẩn đại dương cho kênh Maya`\n"
+            "• `/chat Render video số 3 đi`\n"
+            "• `/chat Cho xem danh sách video hiện có`\n"
+            "• `/chat Gửi video số 2 lên đây để xem`\n"
+            "• `/chat Cho xin link Web Studio và Wi-Fi`\n"
+            "• `/chat Báo cáo KPI các kênh hôm nay thế nào?`\n"
+            "• `/chat Đổi sang kênh Paws & Hearts Rescue`\n"
+            "• `/chat Cho mình 3 ý tưởng Shorts thật sốc về tâm lý học hành vi`\n\n"
+            "👉 Trong nhóm, bạn cũng có thể **Tag @VV1n_mybot** hoặc **Reply vào tin nhắn của bot** để ra lệnh tự nhiên!"
         )
         await safe_reply(update, help_text)
         return
 
     user = update.effective_user
-    chat = update.effective_chat
     prompt = " ".join(context.args)
 
     with get_db() as db:
@@ -3545,41 +3646,14 @@ async def chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         channels = settings.get_channels_config()
         default_ch = channels[0].get("id") if channels else "channel_maya"
         channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else default_ch
-        if channel_id == "channel_psychology":
-            channel_id = "channel_maya"
         if db_user:
             db_user.last_active = datetime.utcnow()
-        log_activity(db, user.id, user.username, "CHAT_BRAINSTORM", f"Thảo luận kịch bản: '{prompt[:50]}...'", channel_id=channel_id)
+        log_activity(db, user.id, user.username, "AI_COMMAND", f"Lệnh tự nhiên: '{prompt[:50]}...'", channel_id=channel_id)
 
+    status_msg = await safe_reply(update, f"🧠 **{user.first_name}**: *\"{prompt}\"*\n\n⏳ *AI Tổng Quản đang phân tích ngữ cảnh và điều phối...*")
 
-    # Lấy thông tin ngách kênh
-    channel_niche = "psychology"
-    channel_lang = "en"
-    channels = settings.get_channels_config()
-    for ch in channels:
-        if ch.get("id") == channel_id:
-            channel_niche = ch.get("niche", "general")
-            channel_lang = ch.get("language", "en")
-            break
-
-    session_id = str(chat.id)
-    status_msg = await safe_reply(update, f"🧠 **{user.first_name}**: *\"{prompt}\"*\n\n⏳ *Đạo diễn AI đang tư duy và phân tích góc nhìn...*")
-
-    ai_reply = await asyncio.to_thread(
-        content_agent.chat_brainstorm,
-        session_id=session_id,
-        user_message=prompt,
-        channel_niche=channel_niche,
-        language=channel_lang
-    )
-
-    markup = get_chat_brainstorm_keyboard(session_id)
-    formatted_reply = f"🎬 **ĐẠO DIỄN SHORTS AI:**\n\n{ai_reply}\n\n💡 *Ưng ý ý tưởng nào? Hãy bấm nút bên dưới để chốt thành kịch bản sản xuất video!*"
-
-    if status_msg:
-        await safe_edit_text(status_msg, formatted_reply, reply_markup=markup)
-    else:
-        await safe_reply(update, formatted_reply, reply_markup=markup)
+    from app.services.ai_commander import ai_commander
+    await ai_commander.process_and_execute(update, context, prompt, status_message=status_msg)
 
 
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3725,39 +3799,14 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         channels = settings.get_channels_config()
         default_ch = channels[0].get("id") if channels else "channel_maya"
         channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else default_ch
-        if channel_id == "channel_psychology":
-            channel_id = "channel_maya"
         if db_user:
             db_user.last_active = datetime.utcnow()
-        log_activity(db, user.id, user.username, "CHAT_REPLY", f"Trao đổi tự nhiên: '{clean_text[:50]}...'", channel_id=channel_id)
+        log_activity(db, user.id, user.username, "AI_NATURAL_TEXT", f"Trao đổi tự nhiên: '{clean_text[:50]}...'", channel_id=channel_id)
 
-    channel_niche = "psychology"
-    channel_lang = "en"
-    channels = settings.get_channels_config()
-    for ch in channels:
-        if ch.get("id") == channel_id:
-            channel_niche = ch.get("niche", "general")
-            channel_lang = ch.get("language", "en")
-            break
+    status_msg = await safe_reply(update, f"🧠 *AI Tổng Quản đang tiếp nhận:* \"{clean_text}\"...")
 
-    session_id = str(chat.id)
-    status_msg = await safe_reply(update, "⏳ *Đạo diễn AI đang trả lời...*")
-
-    ai_reply = await asyncio.to_thread(
-        content_agent.chat_brainstorm,
-        session_id=session_id,
-        user_message=clean_text,
-        channel_niche=channel_niche,
-        language=channel_lang
-    )
-
-    markup = get_chat_brainstorm_keyboard(session_id)
-    formatted_reply = f"🎬 **ĐẠO DIỄN SHORTS AI:**\n\n{ai_reply}"
-
-    if status_msg:
-        await safe_edit_text(status_msg, formatted_reply, reply_markup=markup)
-    else:
-        await safe_reply(update, formatted_reply, reply_markup=markup)
+    from app.services.ai_commander import ai_commander
+    await ai_commander.process_and_execute(update, context, clean_text, status_message=status_msg)
 
 
 async def chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):

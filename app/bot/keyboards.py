@@ -370,3 +370,24 @@ def get_schedule_keyboard(channel_id: str) -> InlineKeyboardMarkup:
         ]
     ])
 
+
+def get_delete_confirmation_keyboard(job_id: int) -> InlineKeyboardMarkup:
+    """Bàn phím xác nhận xóa video vĩnh viễn khỏi Database và ổ cứng"""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🗑️ XÁC NHẬN XÓA", callback_data=f"confirm_del_vid:{job_id}"),
+            InlineKeyboardButton("❌ HỦY BỎ", callback_data=f"cancel_del_vid:{job_id}")
+        ]
+    ])
+
+
+def get_delete_failed_confirmation_keyboard(count: int) -> InlineKeyboardMarkup:
+    """Bàn phím xác nhận xóa hàng loạt tất cả video lỗi"""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(f"🗑️ XÓA HẾT {count} VIDEO LỖI", callback_data="confirm_del_failed"),
+            InlineKeyboardButton("❌ HỦY BỎ", callback_data="cancel_del_vid:0")
+        ]
+    ])
+
+
