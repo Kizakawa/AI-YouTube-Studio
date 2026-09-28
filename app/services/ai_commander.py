@@ -652,6 +652,9 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON DUY NHẤT (không bọc tron
         elif intent == "CREATE_VIDEO":
             topic = params.get("topic") or raw_query
             notes = params.get("director_notes")
+            target_ch = params.get("channel_id")
+            if target_ch and context and context.user_data is not None:
+                context.user_data["target_channel_id"] = target_ch
             if notes:
                 topic = f"{topic} | {notes}"
 

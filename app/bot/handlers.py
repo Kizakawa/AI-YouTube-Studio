@@ -741,6 +741,67 @@ def _parse_idea_input(raw_input: str) -> tuple:
     return raw_input.strip(), None
 
 
+def detect_best_channel_for_topic(topic: str, current_channel_id: Optional[str] = None) -> tuple:
+    """
+    Tự động phân tích nội dung chủ đề (Topic) để chọn đúng kênh YouTube phù hợp nhất,
+    tránh trường hợp chủ đề động vật hoang dã/thiên nhiên lại bị nhầm vào kênh Tâm lý học.
+    
+    Returns:
+        (resolved_channel_id, switch_reason)
+    """
+    t = (topic or "").lower()
+    
+    wildlife_keywords = [
+        "chim", "bird", "săn mồi", "predator", "hổ", "tiger", "sư tử", "lion",
+        "báo", "leopard", "cheetah", "đại bàng", "eagle", "sói", "wolf", "gấu", "bear",
+        "cá sấu", "crocodile", "rắn", "snake", "voi", "elephant", "kiếm ăn", "nuôi con",
+        "nuôi các con", "rừng", "safari", "thiên nhiên hoang dã", "wildlife", "wild", "mãnh thú", "bầy đàn"
+    ]
+    
+    rescue_keywords = [
+        "chó", "mèo", "kitten", "puppy", "dog", "cat", "cứu hộ", "rescue", "bỏ rơi",
+        "stray", "lang thang", "nhận nuôi", "thú cưng", "pet", "trạm cứu hộ", "chăm sóc thú"
+    ]
+    
+    mystery_keywords = [
+        "biển sâu", "đại dương", "ocean", "abyss", "mariana", "trench", "thalassophobia",
+        "vũ trụ", "space", "hố đen", "black hole", "sao hỏa", "mars", "nasa", "alien",
+        "ngoài hành tinh", "bí ẩn", "tam giác bermuda", "bermuda", "kim tự tháp", "pyramid",
+        "antarctica", "nam cực", "quái vật biển", "megalodon", "titanic"
+    ]
+    
+    psychology_keywords = [
+        "tâm lý", "psychology", "thao túng", "manipulation", "đọc vị", "nói dối", "liar",
+        "body language", "ngôn ngữ cơ thể", "tự tin", "confident", "khắc kỷ", "stoic",
+        "lợi dụng", "using you", "bạn bè toxic", "toxic", "cảm xúc", "lo âu", "anxiety",
+        "48 laws of power", "quy luật quyền lực", "tính cách", "personality", "mbti"
+    ]
+    
+    scores = {
+        "ch_wild_odyssey": sum(1 for kw in wildlife_keywords if kw in t),
+        "ch_paws_hearts_rescue": sum(1 for kw in rescue_keywords if kw in t),
+        "ucsrjiil67qxidtxt70z-iwa": sum(1 for kw in mystery_keywords if kw in t),
+        "channel_maya": sum(1 for kw in psychology_keywords if kw in t),
+    }
+    
+    best_candidate, best_score = max(scores.items(), key=lambda x: x[1])
+    
+    if best_score >= 1 and current_channel_id and best_candidate != current_channel_id:
+        current_score = scores.get(current_channel_id, 0)
+        if best_score > current_score:
+            ch_names = {
+                "ch_wild_odyssey": "Wild Odyssey (Động vật hoang dã)",
+                "ch_paws_hearts_rescue": "Paws & Hearts Rescue (Cứu hộ thú cưng)",
+                "ucsrjiil67qxidtxt70z-iwa": "The mysteries of the world (Bí ẩn vũ trụ & đại dương)",
+                "channel_maya": "Psychology of the world (Tâm lý học)"
+            }
+            reason = f"Phát hiện chủ đề phù hợp với kênh {ch_names.get(best_candidate)} -> Tự động chuyển kênh mục tiêu!"
+            return best_candidate, reason
+
+    return current_channel_id or "channel_maya", None
+
+
+
 async def viral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Lệnh gợi ý 5 chủ đề Shorts triệu view theo công thức giữ chân đỉnh cao (150-160%+ Retention).
@@ -888,14 +949,26 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not clean_topic:
         clean_topic = raw_topic
 
+    # Dọn dẹp dấu thời gian vô tình bị dính vào cuối câu (ví dụ copy paste dính 22:51 hoặc 222:51)
+    clean_topic = re.sub(r'[\s\d]*\d{1,2}:\d{2}\s*$', '', clean_topic).strip()
+
     user = update.effective_user
 
-    # Lấy kênh đang hoạt động
+    # Kiểm tra xem có kênh được chỉ định tạm thời từ AI Commander không
+    override_ch_id = context.user_data.pop("target_channel_id", None) if context and context.user_data else None
+
+    # Lấy kênh đang hoạt động và tự động điều hướng nếu chủ đề lệch ngách
     with get_db() as db:
         db_user = db.query(User).filter(User.telegram_id == user.id).first()
-        channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_maya"
+        active_id = override_ch_id or (db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_maya")
+        
+        # Tự động phát hiện và chuyển đúng kênh nếu chủ đề lệch ngách (Ví dụ: chim muông -> Wild Odyssey)
+        channel_id, switch_reason = detect_best_channel_for_topic(clean_topic, active_id)
+
         if db_user:
             db_user.last_active = datetime.utcnow()
+            if not db_user.active_channel_id:
+                db_user.active_channel_id = channel_id
 
         log_activity(db, user.id, user.username, "CMD_IDEA",
                      f"Yêu cầu lên ý tưởng video: '{clean_topic}'", channel_id=channel_id)
@@ -907,9 +980,10 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     channel_lang = ch.get("language") or "en"
 
     notes_info = f"\n🎯 **Hướng đạo diễn:** _{director_notes}_" if director_notes else ""
+    switch_info = f"\n💡 *{switch_reason}*" if switch_reason else ""
     status_msg = await safe_reply(
         update,
-        f"🤖 **{user.first_name}** vừa yêu cầu lên ý tưởng: *\"{clean_topic}\"*{notes_info}\n"
+        f"🤖 **{user.first_name}** vừa yêu cầu lên ý tưởng: *\"{clean_topic}\"*{notes_info}{switch_info}\n"
         f"Đang kích hoạt Gemini AI cho kênh `{channel_name}` (Chủ đề: {channel_niche})..."
     )
 
