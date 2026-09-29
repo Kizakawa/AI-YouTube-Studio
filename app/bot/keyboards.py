@@ -156,18 +156,38 @@ def get_visual_selection_keyboard(channel_id: str) -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(keyboard)
 
+COLAB_PRO_URL = "https://colab.research.google.com/github/Giangvv1n/AI-youtube/blob/main/colab_gpu_worker.ipynb"
+
 def get_script_review_keyboard(job_id: int) -> InlineKeyboardMarkup:
-    """Bàn phím Bước 1: Khi kịch bản vừa tạo xong, nhóm duyệt kịch bản trước khi render"""
+    """Bàn phím Bước 1: Khi kịch bản vừa tạo xong, ưu tiên Render bằng Colab Pro+ GPU"""
     keyboard = [
         [
-            InlineKeyboardButton("🎬 Duyệt Kịch Bản & Dựng Video", callback_data=f"render_video:{job_id}"),
+            InlineKeyboardButton("⚡ MỞ COLAB PRO+ RENDER (1-CHẠM 20S)", url=COLAB_PRO_URL),
         ],
         [
-            InlineKeyboardButton("✍️ Góp Ý Sửa Kịch Bản", callback_data=f"edit_script:{job_id}"),
+            InlineKeyboardButton("🔄 Đã Bấm Run — Quét Video Từ Drive", callback_data=f"check_drive_render:{job_id}"),
+            InlineKeyboardButton("🎬 Duyệt & Đẩy Lại Drive", callback_data=f"render_video:{job_id}"),
+        ],
+        [
+            InlineKeyboardButton("✍️ Góp Ý Sửa", callback_data=f"edit_script:{job_id}"),
             InlineKeyboardButton("🔄 Tạo Lại", callback_data=f"regenerate:{job_id}"),
         ],
         [
+            InlineKeyboardButton("💻 Render CPU Cục Bộ (Chậm)", callback_data=f"render_local:{job_id}"),
             InlineKeyboardButton("❌ Hủy Bỏ", callback_data=f"cancel:{job_id}"),
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_colab_wait_keyboard(job_id: int) -> InlineKeyboardMarkup:
+    """Bàn phím điều hướng khi kịch bản đã nằm trong hàng đợi Google Drive chờ Colab chạy"""
+    keyboard = [
+        [
+            InlineKeyboardButton("⚡ MỞ & CHẠY COLAB PRO+ NGAY (1-CHẠM)", url=COLAB_PRO_URL),
+        ],
+        [
+            InlineKeyboardButton("🔄 Quét Kết Quả Từ Drive", callback_data=f"check_drive_render:{job_id}"),
+            InlineKeyboardButton("💻 Render Dự Phòng Bằng CPU", callback_data=f"render_local:{job_id}"),
         ]
     ]
     return InlineKeyboardMarkup(keyboard)

@@ -258,41 +258,147 @@ class DriveAgent:
             logger.debug(f"Không thể đọc file {filename} từ Drive: {e}")
             return None
 
-    def list_files_in_folder_name(self, folder_name: str = "AI_YouTube_RenderFarm/completed") -> list:
-        """Liệt kê danh sách file trong thư mục Drive"""
+    def get_folder_by_path(self, path_str: str) -> Optional[str]:
+        """
+        Tìm hoặc tạo thư mục theo đường dẫn phân cấp (ví dụ: 'AI_YouTube_RenderFarm/pending').
+        Tự động duyệt qua từng cấp thư mục và tạo mới nếu chưa tồn tại.
+        """
+        if not self.service:
+            self._init_service()
+        if not self.service:
+            return None
+        parts = [p.strip() for p in path_str.replace("\\", "/").split("/") if p.strip()]
+        parent_id = None
+        for part in parts:
+            parent_id = self._get_or_create_folder(part, parent_id=parent_id)
+            if not parent_id:
+                return None
+        return parent_id
+
+    def upload_task_json(
+        self,
+        task_dict: dict,
+        filename: Optional[str] = None,
+        folder_path: str = "AI_YouTube_RenderFarm/pending"
+    ) -> Dict[str, Any]:
+        """
+        Đẩy file task_{job_id}.json vào Google Drive hàng đợi cho Colab GPU Farm quét.
+        Nếu file đã tồn tại thì tự động ghi đè bản mới nhất.
+        """
+        if not self.service:
+            self._init_service()
+        if not self.service:
+            return {"status": "skipped", "error": "Chưa kết nối Google Drive"}
+
+        try:
+            import io
+            from googleapiclient.http import MediaIoBaseUpload
+
+            folder_id = self.get_folder_by_path(folder_path)
+            if not folder_id:
+                return {"status": "failed", "error": f"Không thể tạo thư mục Drive '{folder_path}'"}
+
+            job_id = task_dict.get("job_id", "unknown")
+            fname = filename or f"task_{job_id}.json"
+
+            # Xóa bản cũ nếu có để tránh trùng lặp
+            safe_name = fname.replace("'", "\\'")
+            q = f"name = '{safe_name}' and '{folder_id}' in parents and trashed = false"
+            res = self.service.files().list(q=q, fields="files(id)").execute()
+            for old_f in res.get("files", []):
+                try:
+                    self.service.files().delete(fileId=old_f["id"]).execute()
+                except Exception:
+                    pass
+
+            json_bytes = json.dumps(task_dict, ensure_ascii=False, indent=2).encode("utf-8")
+            media = MediaIoBaseUpload(io.BytesIO(json_bytes), mimetype="application/json", resumable=False)
+            meta = {
+                "name": fname,
+                "parents": [folder_id],
+                "description": f"AI Render Task #{job_id}: {task_dict.get('title', '')}"
+            }
+            created = self.service.files().create(body=meta, media_body=media, fields="id, name, webViewLink").execute()
+            logger.info(f"Đã đẩy thành công task kịch bản #{job_id} vào Drive: {folder_path}/{fname}")
+            return {
+                "status": "success",
+                "file_id": created.get("id"),
+                "file_name": fname,
+                "drive_link": created.get("webViewLink")
+            }
+        except Exception as e:
+            logger.error(f"Lỗi khi upload task JSON lên Drive: {e}", exc_info=True)
+            return {"status": "failed", "error": str(e)}
+
+    def list_completed_videos(self, folder_path: str = "AI_YouTube_RenderFarm/completed") -> list:
+        """
+        Liệt kê các file video MP4 đã hoàn thành từ Colab trên Google Drive.
+        """
         if not self.service:
             self._init_service()
         if not self.service:
             return []
         try:
-            folder_id = self._get_or_create_folder(folder_name)
+            folder_id = self.get_folder_by_path(folder_path)
             if not folder_id:
                 return []
-            q = f"'{folder_id}' in parents and trashed = false"
-            res = self.service.files().list(q=q, fields="files(id, name, size, createdTime)").execute()
+            q = f"'{folder_id}' in parents and trashed = false and name contains '.mp4'"
+            res = self.service.files().list(
+                q=q,
+                fields="files(id, name, size, mimeType, webViewLink, webContentLink, createdTime)",
+                pageSize=100
+            ).execute()
             return res.get("files", [])
         except Exception as e:
-            logger.debug(f"Không thể liệt kê file trong {folder_name}: {e}")
+            logger.debug(f"Lỗi khi list completed videos trên Drive: {e}")
             return []
 
-    def download_file_by_id(self, file_id: str, dest_local_path: str) -> bool:
-        """Tải file từ Google Drive về máy cục bộ"""
+    def get_completed_video_by_job_id(self, job_id: int, folder_path: str = "AI_YouTube_RenderFarm/completed") -> Optional[Dict[str, Any]]:
+        """
+        Tìm kiếm video hoàn thiện cho job_id cụ thể (ví dụ: 'video_39.mp4')
+        """
+        if not self.service:
+            self._init_service()
+        if not self.service:
+            return None
+        try:
+            folder_id = self.get_folder_by_path(folder_path)
+            if not folder_id:
+                return None
+            target_name = f"video_{job_id}.mp4"
+            safe_name = target_name.replace("'", "\\'")
+            q = f"name = '{safe_name}' and '{folder_id}' in parents and trashed = false"
+            res = self.service.files().list(
+                q=q,
+                fields="files(id, name, size, mimeType, webViewLink, webContentLink, createdTime)"
+            ).execute()
+            files = res.get("files", [])
+            return files[0] if files else None
+        except Exception as e:
+            logger.debug(f"Lỗi khi tìm video #{job_id} trên Drive: {e}")
+            return None
+
+    def download_file_by_name(self, filename: str, dest_local_path: str, folder_path: str = "AI_YouTube_RenderFarm/completed") -> bool:
+        """
+        Tìm và tải file theo tên trong thư mục Drive về máy cục bộ
+        """
         if not self.service:
             self._init_service()
         if not self.service:
             return False
         try:
-            from googleapiclient.http import MediaIoBaseDownload
-            request = self.service.files().get_media(fileId=file_id)
-            dest = Path(dest_local_path)
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            with open(dest, "wb") as fh:
-                downloader = MediaIoBaseDownload(fh, request)
-                done = False
-                while not done:
-                    status, done = downloader.next_chunk()
-            return True
+            folder_id = self.get_folder_by_path(folder_path)
+            if not folder_id:
+                return False
+            safe_name = filename.replace("'", "\\'")
+            q = f"name = '{safe_name}' and '{folder_id}' in parents and trashed = false"
+            res = self.service.files().list(q=q, fields="files(id)").execute()
+            files = res.get("files", [])
+            if not files:
+                return False
+            return self.download_file_by_id(files[0]["id"], dest_local_path)
         except Exception as e:
-            logger.error(f"Lỗi khi tải file {file_id} về {dest_local_path}: {e}")
+            logger.error(f"Lỗi khi tải file {filename} từ {folder_path}: {e}")
             return False
+
 
