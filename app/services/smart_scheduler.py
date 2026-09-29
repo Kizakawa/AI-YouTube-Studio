@@ -15,9 +15,11 @@ from app.database.models import get_db, VideoJob
 
 logger = logging.getLogger(__name__)
 
-# Múi giờ Việt Nam (UTC+7) và Múi giờ bờ Đông Mỹ (New York / EDT UTC-4 hoặc EST UTC-5)
+# Múi giờ Việt Nam (UTC+7) và Múi giờ bờ Đông Mỹ (New York - tự động DST: EDT UTC-4 hoặc EST UTC-5)
+from zoneinfo import ZoneInfo
 VN_TZ = timezone(timedelta(hours=7))
-US_TZ = timezone(timedelta(hours=-4))  # New York / EDT (tháng 3 đến tháng 11)
+US_EASTERN = ZoneInfo("America/New_York")
+US_TZ = US_EASTERN  # Alias để đảm bảo tương thích ngược
 
 # Giới hạn tối đa video trên mỗi kênh trong 1 ngày
 MAX_VIDEOS_PER_DAY = 2
@@ -160,6 +162,11 @@ def process_waiting_quota_jobs() -> int:
     Tự động xử lý hàng đợi VideoJob có status == 'WAITING_QUOTA_RESET'.
     Nếu hệ thống đã qua mốc 14:00 (Google reset Quota) và QuotaManager.can_upload() là True:
     Tự động thử upload video lên kênh tương ứng.
+
+    Áp dụng pattern 3 bước:
+    1. Đọc danh sách job cần upload và đóng DB session ngay lập tức.
+    2. Thực hiện I/O nặng (upload YouTube 30-120s) NGOÀI session DB.
+    3. Mở session mới ngắn hạn để cập nhật trạng thái kết quả.
     """
     from app.services.quota_manager import QuotaManager
     from app.agents.publisher_agent import PublisherAgent
@@ -168,45 +175,70 @@ def process_waiting_quota_jobs() -> int:
     
     processed_count = 0
     try:
+        # Bước 1: Đọc danh sách jobs cần xử lý (session đóng ngay sau đó)
         with get_db() as db:
-            waiting_jobs = db.query(VideoJob).filter(
-                VideoJob.status == "WAITING_QUOTA_RESET"
-            ).order_by(VideoJob.id.asc()).all()
+            waiting_jobs_data = [
+                {
+                    "id": j.id,
+                    "target_channel_id": j.target_channel_id,
+                    "video_path": j.video_path,
+                    "title": j.title,
+                    "description": j.description,
+                    "tags": j.tags,
+                    "topic": j.topic,
+                    "scenes_json": j.scenes_json,
+                }
+                for j in db.query(VideoJob).filter(
+                    VideoJob.status == "WAITING_QUOTA_RESET"
+                ).order_by(VideoJob.id.asc()).all()
+            ]
 
-            if not waiting_jobs:
-                return 0
+        if not waiting_jobs_data:
+            return 0
 
-            for job in waiting_jobs:
-                ch_cfg = get_channel(job.target_channel_id) or {}
+        # Bước 2: Thực hiện upload NGOÀI session (I/O nặng không giữ kết nối DB)
+        for job_data in waiting_jobs_data:
+            job_id = job_data["id"]
+            try:
+                ch_cfg = get_channel(job_data["target_channel_id"]) or {}
                 pub_agent = PublisherAgent(channel_config=ch_cfg)
                 
                 # Kiểm tra xem project của kênh này đã có quota chưa
                 if not QuotaManager.can_upload(pub_agent.project_id):
-                    logger.debug(f"[SmartScheduler] Project '{pub_agent.project_id}' vẫn chưa có quota cho Job #{job.id}, tiếp tục đợi.")
+                    logger.debug(f"[SmartScheduler] Project '{pub_agent.project_id}' vẫn chưa có quota cho Job #{job_id}, tiếp tục đợi.")
                     continue
 
-                if not job.video_path or not Path(job.video_path).exists():
-                    logger.warning(f"[SmartScheduler] File video #{job.id} không tìm thấy tại {job.video_path}")
+                if not job_data["video_path"] or not Path(job_data["video_path"]).exists():
+                    logger.warning(f"[SmartScheduler] File video #{job_id} không tìm thấy tại {job_data['video_path']}")
                     continue
 
-                logger.info(f"🚀 [SmartScheduler] Quota đã được nạp lại! Đang tự động xuất bản Video #{job.id} ('{job.title}')...")
+                logger.info(f"🚀 [SmartScheduler] Quota đã được nạp lại! Đang tự động xuất bản Video #{job_id} ('{job_data['title']}')...")
                 res = pub_agent.upload_video(
-                    video_path=job.video_path,
-                    title=job.title or f"Shorts #{job.id}",
-                    description=job.description or "",
-                    tags=job.tags.split(",") if job.tags else None,
+                    video_path=job_data["video_path"],
+                    title=job_data["title"] or f"Shorts #{job_id}",
+                    description=job_data["description"] or "",
+                    tags=job_data["tags"].split(",") if job_data.get("tags") else None,
                     privacy_status="public",
                     default_language=ch_cfg.get("language", "en"),
-                    topic=job.topic or "",
-                    script=job.scenes_json or ""
+                    topic=job_data.get("topic") or "",
+                    script=job_data.get("scenes_json") or ""
                 )
 
+                # Bước 3: Mở session MỚI để ghi kết quả (session sống ngắn)
                 if res.get("status") == "success":
-                    job.status = "PUBLISHED"
-                    job.youtube_video_id = res.get("video_id")
-                    job.error_message = None
+                    with get_db() as db:
+                        job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                        if job:
+                            job.status = "PUBLISHED"
+                            job.youtube_video_id = res.get("video_id")
+                            job.error_message = None
                     processed_count += 1
-                    logger.info(f"✅ [SmartScheduler] Tự động xuất bản thành công Video #{job.id}: {res.get('shorts_url')}")
+                    logger.info(f"✅ [SmartScheduler] Tự động xuất bản thành công Video #{job_id}: {res.get('shorts_url')}")
+
+            except Exception as job_ex:
+                logger.warning(f"[SmartScheduler] Lỗi khi xử lý job #{job_id}: {job_ex}")
+                continue
+
     except Exception as ex:
         logger.warning(f"Lỗi khi xử lý waiting_quota_jobs: {ex}")
 
@@ -307,9 +339,9 @@ def get_next_available_golden_slot(
                 continue
 
             # 2. KIỂM TRA QUY TẮC "TỐI ĐA 2 VIDEO / 1 NGÀY":
-            # Đếm số lượng video đã đặt trên cùng chu kỳ ngày của thị trường mục tiêu US EST
-            target_us_date = candidate_dt.astimezone(US_TZ).date()
-            us_day_count = sum(1 for occ in occupied_slots_utc if occ.astimezone(US_TZ).date() == target_us_date)
+            # Đếm số lượng video đã đặt trên cùng chu kỳ ngày của thị trường mục tiêu US EST/EDT
+            target_us_date = candidate_dt.astimezone(US_EASTERN).date()
+            us_day_count = sum(1 for occ in occupied_slots_utc if occ.astimezone(US_EASTERN).date() == target_us_date)
 
             if us_day_count >= MAX_VIDEOS_PER_DAY:
                 logger.debug(

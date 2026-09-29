@@ -79,6 +79,8 @@ async def device_gatekeeper_middleware(request: Request, call_next):
         or path.startswith("/api/auth")
         or path.startswith("/api/oauth")
         or path.startswith("/api/colab")
+        or path.startswith("/api/worker")
+        or path.startswith("/api/render-complete")
         or "/start-auth" in path
         or "/auth-start" in path
         or "/auth-status" in path
@@ -883,7 +885,6 @@ async def refine_script_with_ai(job_id: int, body: RefineScriptRequest) -> Dict[
                     scores["actionable_critiques"] = eval_report.actionable_critiques or []
                     scores["script_critic"] = eval_report.model_dump()
                 job.quality_scores = json.dumps(scores, ensure_ascii=False)
-                db.commit()
 
         eval_data = None
         if eval_report:
@@ -1220,6 +1221,104 @@ async def get_colab_farm_status() -> Dict[str, Any]:
             "description": "Colab Pro+ cho phép chạy nhiều GPU độc lập. Mở Node 1 cho video thứ nhất và Node 2 cho video thứ hai trong tab mới để render song song không bao giờ xung đột."
         }
     }
+
+
+# ─── Worker Webhook Callback & Dispatch Endpoints (P1.2 Architecture) ────────
+
+@app.post("/api/worker/callback")
+@app.post("/api/colab/callback")
+@app.post("/api/render-complete")
+async def worker_render_callback(request: Request) -> Dict[str, Any]:
+    """
+    Webhook tiếp nhận kết quả hoàn thành từ GPU Worker (Modal, Colab, RunPod).
+    Tự động cập nhật VideoJob sang RENDERED ngay lập tức mà không cần polling Drive.
+    """
+    try:
+        body = await request.json()
+    except Exception as e:
+        return {"status": "error", "message": f"Invalid JSON payload: {e}"}
+
+    job_id = body.get("job_id")
+    if not job_id:
+        return {"status": "error", "message": "job_id is required"}
+
+    status = body.get("status", "completed")
+    video_path = body.get("video_path")
+    drive_link = body.get("drive_link")
+    render_time = body.get("render_time_s", 0)
+    error_msg = body.get("error")
+
+    with get_db() as db:
+        job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+        if not job:
+            return {"status": "error", "message": f"VideoJob #{job_id} not found"}
+
+        if status == "completed":
+            job.status = "RENDERED"
+            if video_path:
+                job.video_path = video_path
+            if drive_link:
+                job.drive_link = drive_link
+            job.progress_percent = 100
+            job.progress_message = f"🎉 Video đã render hoàn tất trên GPU Worker ({render_time}s)!"
+            job.error_message = None
+
+            log_activity(db, job.user_id or 0, "System", "WORKER_RENDER_COMPLETE",
+                         f"GPU Worker hoàn tất render Video #{job_id} trong {render_time}s: {drive_link or video_path}",
+                         channel_id=job.target_channel_id)
+
+            logger.info(f"✅ [Worker Callback] VideoJob #{job_id} đã cập nhật thành công sang RENDERED.")
+
+            # Gửi thông báo Telegram
+            try:
+                from app.services.channel_intelligence import send_telegram_broadcast
+                notify_text = (
+                    f"🎉 **VIDEO #{job_id} ĐÃ RENDER XONG TRÊN GPU WORKER!**\n\n"
+                    f"🎬 **Tiêu đề:** `{job.title or job.topic}`\n"
+                    f"⚡ **Thời gian render:** {render_time}s\n"
+                    f"📺 **Kênh:** `{job.target_channel_id}`\n"
+                )
+                if drive_link:
+                    notify_text += f"🔗 [Xem file trên Google Drive]({drive_link})\n"
+                send_telegram_broadcast(notify_text)
+            except Exception as e_tg:
+                logger.debug(f"Không thể gửi thông báo Telegram cho job #{job_id}: {e_tg}")
+
+        else:
+            job.status = "FAILED"
+            job.error_message = error_msg or "Worker báo lỗi không xác định"
+            job.progress_message = f"❌ GPU Worker render thất bại: {job.error_message}"
+            log_activity(db, job.user_id or 0, "System", "WORKER_RENDER_FAILED",
+                         f"GPU Worker thất bại khi render Video #{job_id}: {error_msg}",
+                         channel_id=job.target_channel_id)
+            logger.warning(f"❌ [Worker Callback] VideoJob #{job_id} render thất bại: {error_msg}")
+
+    return {
+        "status": "success",
+        "message": f"Đã xử lý callback cho VideoJob #{job_id} thành công",
+        "job_status": status
+    }
+
+
+@app.post("/api/worker/dispatch/{job_id}")
+async def dispatch_job_to_worker(job_id: int) -> Dict[str, Any]:
+    """Điều phối tác vụ render của VideoJob sang GPU Worker."""
+    from app.services.worker_dispatcher import worker_dispatcher
+    ok, msg, worker_type = worker_dispatcher.dispatch_job(job_id)
+    return {
+        "status": "success" if ok else "error",
+        "message": msg,
+        "worker_type": worker_type,
+        "job_id": job_id
+    }
+
+
+@app.get("/api/worker/status")
+async def get_worker_status_api() -> Dict[str, Any]:
+    """Trả về trạng thái chi tiết của toàn bộ hệ thống GPU Workers (Colab, Modal, Local)."""
+    from app.services.worker_dispatcher import worker_dispatcher
+    return worker_dispatcher.get_workers_status()
+
 
 @app.post("/api/colab/send-telegram-guide")
 async def send_colab_telegram_guide(request: Request) -> Dict[str, Any]:

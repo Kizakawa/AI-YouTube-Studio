@@ -154,7 +154,6 @@ class QuotaManager:
                     tracker.upload_count += 1
                 tracker.last_updated = datetime.utcnow()
 
-            db.commit()
             logger.info(
                 f"📊 [QuotaManager] Project '{project_id}' chu kỳ {cycle}: "
                 f"Đã dùng {tracker.used_units}/{tracker.max_daily_quota} units "
@@ -186,7 +185,6 @@ class QuotaManager:
                 tracker.used_units = max(tracker.used_units, DEFAULT_DAILY_LIMIT)
                 tracker.last_updated = datetime.utcnow()
 
-            db.commit()
             logger.warning(
                 f"🚨 [QuotaManager] Project '{project_id}' đã chạm trần Quota Google! "
                 f"Tất cả upload tiếp theo của project này sẽ được chuyển vào hàng đợi cho đến 14:00 chiều."

@@ -108,7 +108,6 @@ def push_job_to_drive_queue(job_id: int) -> Tuple[bool, str, Optional[str]]:
                 log_activity(db, job.user_id or 0, "System", "PUSH_COLAB_QUEUE",
                              f"Đã đẩy task kịch bản #{job_id} vào Google Drive Render Farm: {res.get('drive_link')}",
                              channel_id=job.target_channel_id)
-                db.commit()
                 return True, "Đã đẩy kịch bản vào hàng đợi Google Drive thành công!", res.get("drive_link")
             else:
                 err = res.get("error", "Lỗi không xác định khi kết nối Drive")
@@ -171,7 +170,6 @@ def check_and_import_completed_video(job_id: int) -> Tuple[bool, str, Optional[s
                 log_activity(db, 0, "System", "COLAB_RENDER_COMPLETE",
                              f"Đã tự động khôi phục và đồng bộ video #{job_id} từ Colab GPU Farm: {local_video_path}",
                              channel_id=job.target_channel_id)
-                db.commit()
             else:
                 job.status = "RENDERED"
                 job.video_path = local_video_path
@@ -181,7 +179,6 @@ def check_and_import_completed_video(job_id: int) -> Tuple[bool, str, Optional[s
                 log_activity(db, job.user_id or 0, "System", "COLAB_RENDER_COMPLETE",
                              f"Hoàn tất đồng bộ video #{job_id} từ Colab GPU Farm: {local_video_path}",
                              channel_id=job.target_channel_id)
-                db.commit()
 
         return True, local_video_path, drive_link
 

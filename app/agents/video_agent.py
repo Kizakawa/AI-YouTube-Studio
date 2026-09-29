@@ -78,7 +78,7 @@ class VideoAgent:
             # ── Step 1: Chuẩn bị scene clips với Ken Burns đa chế độ ──
             logger.info(f"[VideoAgent] Job {job.job_id}: Chuẩn bị {len(job.scenes)} scene clips (Ken Burns cinematic)...")
             await report(f"🎬 Đang chuẩn bị {len(job.scenes)} phân cảnh video 9:16 với hiệu ứng Ken Burns...", 65)
-            scene_clips = self._prepare_scene_clips(job.scenes, str(work_dir), job)
+            scene_clips = await asyncio.to_thread(self._prepare_scene_clips, job.scenes, str(work_dir), job)
 
             # ── Step 2: Concat tất cả scenes → 1 video silent với xfade transition ──
             transition_duration = 0.3
@@ -286,7 +286,7 @@ class VideoAgent:
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_map = {executor.submit(_render_one, idx, s): s.scene_id for idx, s in enumerate(scenes)}
-            for future in as_completed(future_map):
+            for future in as_completed(future_map, timeout=300):
                 scene_id = future_map[future]
                 try:
                     sid, clip_path = future.result()

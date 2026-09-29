@@ -276,65 +276,66 @@ def image_to_video(
             f"fps={fps}"
         )
     elif camera_motion == "zoom_in":
-        # Zoom vào tâm ảnh (Hook scene: punch-in nhanh, kịch tính từ 1.05 -> 1.38)
+        # P2.1: Cubic ease-out — Bắt đầu nhanh dứt khoát và giảm tốc mượt mà (chống giật cục)
         if is_hook_scene:
+            # Punch-in kịch tính cho Scene 1 (0-3s) tạo thumbstopper giật mắt người xem
             zoompan = (
-                f"zoompan=z='if(lte(zoom,1.0),{z_start:.4f},min(zoom+{z_step:.6f},{z_end:.4f}))':"
+                f"zoompan=z='{z_start}+({z_end}-{z_start})*(1-pow(1-min(on/{d}\\,1)\\,3))':"
                 f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
                 f"d={d}:s={width}x{height}:fps={fps},"
                 f"setsar=1"
             )
         else:
             zoompan = (
-                f"zoompan=z='min(zoom+{z_step:.6f},{z_end})':"
+                f"zoompan=z='{z_start}+({z_end}-{z_start})*(1-pow(1-min(on/{d}\\,1)\\,2.8))':"
                 f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
                 f"d={d}:s={width}x{height}:fps={fps},"
                 f"setsar=1"
             )
     elif camera_motion == "zoom_out":
-        # Bắt đầu ở z_end rồi thu nhỏ về z_start (khám phá/vĩ đại)
+        # P2.1: Cubic ease-out từ z_end thu nhỏ dần về z_start (khám phá chiều sâu)
         zoompan = (
-            f"zoompan=z='max(zoom-{z_step:.6f},{z_start})':"
+            f"zoompan=z='{z_end}-({z_end}-{z_start})*(1-pow(1-min(on/{d}\\,1)\\,2.8))':"
             f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
             f"d={d}:s={width}x{height}:fps={fps},"
             f"setsar=1"
         )
     elif camera_motion == "pan_left":
-        # Pan ngang từ phải sang trái (x đi từ 0 dần về phải cuối)
+        # P2.1: Pan ngang từ phải sang trái mượt mà với cubic deceleration
         zoompan = (
-            f"zoompan=z=1.1:"
-            f"x='iw*0.1*(1-on/{d})':y='ih/2-(ih/zoom/2)':"
+            f"zoompan=z=1.15:"
+            f"x='iw*0.1*pow(1-min(on/{d}\\,1)\\,2.5)':y='ih/2-(ih/zoom/2)':"
             f"d={d}:s={width}x{height}:fps={fps},"
             f"setsar=1"
         )
     elif camera_motion == "pan_right":
-        # Pan từ trái sang phải
+        # P2.1: Pan ngang từ trái sang phải với cubic ease-out
         zoompan = (
-            f"zoompan=z=1.1:"
-            f"x='iw*0.1*(on/{d})':y='ih/2-(ih/zoom/2)':"
+            f"zoompan=z=1.15:"
+            f"x='iw*0.1*(1-pow(1-min(on/{d}\\,1)\\,2.5))':y='ih/2-(ih/zoom/2)':"
             f"d={d}:s={width}x{height}:fps={fps},"
             f"setsar=1"
         )
     elif camera_motion == "pan_up":
-        # Pan từ dưới lên (y dịch từ dưới lên trên)
+        # P2.1: Pan dọc từ dưới lên trên với cubic ease-out
         zoompan = (
-            f"zoompan=z=1.1:"
-            f"x='iw/2-(iw/zoom/2)':y='ih*0.1*(1-on/{d})':"
+            f"zoompan=z=1.15:"
+            f"x='iw/2-(iw/zoom/2)':y='ih*0.1*pow(1-min(on/{d}\\,1)\\,2.5)':"
             f"d={d}:s={width}x{height}:fps={fps},"
             f"setsar=1"
         )
     elif camera_motion == "pan_down":
-        # Pan từ trên xuống dưới
+        # P2.1: Pan dọc từ trên xuống dưới với cubic ease-out
         zoompan = (
-            f"zoompan=z=1.1:"
-            f"x='iw/2-(iw/zoom/2)':y='ih*0.1*(on/{d})':"
+            f"zoompan=z=1.15:"
+            f"x='iw/2-(iw/zoom/2)':y='ih*0.1*(1-pow(1-min(on/{d}\\,1)\\,2.5))':"
             f"d={d}:s={width}x{height}:fps={fps},"
             f"setsar=1"
         )
     else:
-        # Fallback: zoom_in
+        # Fallback: zoom_in cubic ease-out
         zoompan = (
-            f"zoompan=z='min(zoom+{z_step:.6f},{z_end})':"
+            f"zoompan=z='{z_start}+({z_end}-{z_start})*(1-pow(1-min(on/{d}\\,1)\\,2.8))':"
             f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
             f"d={d}:s={width}x{height}:fps={fps},"
             f"setsar=1"
@@ -556,14 +557,19 @@ def mux_audio_video(
     bgm_path: str = None,
     bgm_volume: float = 0.08,
     use_ducking: bool = True,
+    normalize_loudness: bool = True,
 ) -> str:
     """
-    Ghép audio narration + video + optional BGM với Audio Ducking thông minh.
+    Ghép audio narration + video + optional BGM với Audio Ducking thông minh và Broadcast Loudness Normalization.
 
     Audio Ducking (use_ducking=True, chỉ khi có BGM):
       - Khi voice đang nói: BGM tự động giảm xuống ~15% volume
       - Khi voice im lặng: BGM tăng lại tự nhiên
       - Dùng sidechaincompress filter của FFmpeg (chuyên nghiệp, không hardcode)
+
+    P2.3 Broadcast Audio Normalization (normalize_loudness=True):
+      - Chuẩn YouTube Shorts EBU R128: loudnorm=I=-14:TP=-1.5:LRA=11
+      - Chống clipping, đảm bảo giọng đọc rõ ràng trên mọi loa điện thoại
 
     Fallback: Nếu BGM ngắn hơn voice, tự động loop lại (aloop).
     """
@@ -575,18 +581,34 @@ def mux_audio_video(
             # threshold=0.02: bắt đầu duck khi voice > -34dB
             # ratio=4: giảm BGM còn ~25%
             # attack=5ms, release=200ms: duck nhanh, recover chậm (tự nhiên)
-            filter_complex = (
-                f"[2:a]aloop=loop=-1:size=2000000000,volume={bgm_volume}[bgm_looped];"
-                f"[bgm_looped][1:a]sidechaincompress="
-                f"threshold=0.02:ratio=4:attack=5:release=200:makeup=1[bgm_ducked];"
-                f"[1:a][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=2:weights='1 1'[aout]"
-            )
+            if normalize_loudness:
+                filter_complex = (
+                    f"[2:a]aloop=loop=-1:size=2000000000,volume={bgm_volume}[bgm_looped];"
+                    f"[bgm_looped][1:a]sidechaincompress="
+                    f"threshold=0.02:ratio=4:attack=5:release=200:makeup=1[bgm_ducked];"
+                    f"[1:a][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=2:weights='1 1'[amix_out];"
+                    f"[amix_out]loudnorm=I=-14:TP=-1.5:LRA=11[aout]"
+                )
+            else:
+                filter_complex = (
+                    f"[2:a]aloop=loop=-1:size=2000000000,volume={bgm_volume}[bgm_looped];"
+                    f"[bgm_looped][1:a]sidechaincompress="
+                    f"threshold=0.02:ratio=4:attack=5:release=200:makeup=1[bgm_ducked];"
+                    f"[1:a][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=2:weights='1 1'[aout]"
+                )
         else:
             # Simple mix: BGM ở volume cố định, không ducking
-            filter_complex = (
-                f"[2:a]volume={bgm_volume},aloop=loop=-1:size=2000000000[bgm];"
-                f"[1:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
-            )
+            if normalize_loudness:
+                filter_complex = (
+                    f"[2:a]volume={bgm_volume},aloop=loop=-1:size=2000000000[bgm];"
+                    f"[1:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[amix_out];"
+                    f"[amix_out]loudnorm=I=-14:TP=-1.5:LRA=11[aout]"
+                )
+            else:
+                filter_complex = (
+                    f"[2:a]volume={bgm_volume},aloop=loop=-1:size=2000000000[bgm];"
+                    f"[1:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+                )
         args = [
             "-i", video_path,
             "-i", audio_path,
@@ -602,18 +624,33 @@ def mux_audio_video(
             output_path
         ]
     else:
-        args = [
-            "-i", video_path,
-            "-i", audio_path,
-            "-map", "0:v",
-            "-map", "1:a",
-            "-c:v", "copy",
-            "-c:a", "aac",
-            "-b:a", "192k",
-            "-movflags", "+faststart",
-            "-shortest",
-            output_path
-        ]
+        if normalize_loudness:
+            args = [
+                "-i", video_path,
+                "-i", audio_path,
+                "-filter_complex", "[1:a]loudnorm=I=-14:TP=-1.5:LRA=11[aout]",
+                "-map", "0:v",
+                "-map", "[aout]",
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-movflags", "+faststart",
+                "-shortest",
+                output_path
+            ]
+        else:
+            args = [
+                "-i", video_path,
+                "-i", audio_path,
+                "-map", "0:v",
+                "-map", "1:a",
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-movflags", "+faststart",
+                "-shortest",
+                output_path
+            ]
 
     run_ffmpeg(args)
     return output_path

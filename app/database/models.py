@@ -245,6 +245,10 @@ def init_db():
                     if col_name not in existing_columns:
                         conn.execute(text(f"ALTER TABLE video_jobs ADD COLUMN {col_name} {col_type}"))
                 conn.commit()
-            except Exception:
-                pass
+            except Exception as migration_err:
+                logger.error(
+                    f"❌ [DB Migration] Lỗi khi tự động nâng cấp schema SQLite: {migration_err}. "
+                    f"Kiểm tra quyền truy cập file CSDL và dung lượng ổ cứng.",
+                    exc_info=True
+                )
 

@@ -41,7 +41,7 @@ YCbCr Matrix: None
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1,0,1,2.5,1.5,2,30,30,{margin_v},1
+Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1,0,1,3.2,2.0,2,30,30,{margin_v},1
 Style: CTABadge,{fontname},46,&H0000FFFF,&H00FFFFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,3.5,2.0,2,30,30,340,1
 
 [Events]
@@ -121,15 +121,17 @@ class SubtitleHelper:
     @classmethod
     def _build_karaoke_text(cls, words: List[str], word_durations_cs: List[int]) -> str:
         """
-        Tạo chuỗi ASS karaoke với {\\k} tags theo từng từ.
+        P2.2: Tạo chuỗi ASS kinetic karaoke với {\\kf} fluid tags theo từng từ.
 
-        Cú pháp: {\\kN} (centiseconds) đứng trước mỗi từ.
-        Primary color = white (chưa đọc đến) → Yellow (đang đọc) → Red (đã đọc).
-        FFmpeg burn_subtitles hỗ trợ \\k karaoke khi render với libass.
+        Cú pháp: {\\kfN} (centiseconds) đứng trước mỗi từ.
+        - Trước khi đọc: từ hiển thị bằng SecondaryColour (trắng cơ sở)
+        - Khi đọc đến: hiệu ứng {\\kf} quét màu mượt mà (fluid wipe) từ trái sang phải,
+          chuyển sang PrimaryColour (vàng/highlight rực rỡ).
+        FFmpeg burn_subtitles với libass render chuyển động mượt mà điện ảnh (không giật cục).
         """
         parts = []
         for i, (word, dur_cs) in enumerate(zip(words, word_durations_cs)):
-            parts.append(f"{{\\k{dur_cs}}}{word}")
+            parts.append(f"{{\\kf{dur_cs}}}{word}")
         return " ".join(parts)
 
     @classmethod
@@ -182,8 +184,8 @@ class SubtitleHelper:
         header = ASS_HEADER_TEMPLATE.format(
             fontname=eff_font,
             fontsize=eff_size,
-            primary=eff_primary,
-            secondary=eff_secondary,   # SecondaryColour = màu karaoke đang đọc
+            primary=eff_secondary,     # PrimaryColour = màu highlight sau khi đọc (Vàng tươi/Gold/Neon)
+            secondary=eff_primary,     # SecondaryColour = màu mặc định trước khi đọc (Trắng sáng)
             outline=eff_outline,
             back=ASS_SHADOW,
             margin_v=eff_margin,

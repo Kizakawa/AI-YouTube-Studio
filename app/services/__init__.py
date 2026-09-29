@@ -1,1 +1,3 @@
-from app.services.pipeline import VideoPipeline
+"""
+app.services package.
+"""

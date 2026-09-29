@@ -33,6 +33,15 @@ from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
+_VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v"}
+
+def _infer_media_type(media_path: Optional[str]) -> str:
+    """Xác định media type chính xác từ extension file."""
+    if not media_path:
+        return "image"
+    suffix = Path(media_path).suffix.lower()
+    return "video" if suffix in _VIDEO_EXTENSIONS else "image"
+
 
 class VideoPipeline:
     """
@@ -51,6 +60,7 @@ class VideoPipeline:
         self.job_id = job_id
         self.progress_callback = progress_callback
         self.work_dir: Path = Path(settings.TEMP_DIR) / f"job_{self.job_id}"
+        self.niche: Optional[str] = None
 
         # Agents (lazy init)
         self._voice_agent = VoiceAgent()
@@ -153,9 +163,9 @@ class VideoPipeline:
             enriched_scenes = await self._step_audio(script)
             full_audio_path, total_duration = await self._step_concat_audio(enriched_scenes)
 
-            # Tạo file phụ đề ASS Karaoke (word-level highlight)
+            # Tạo file phụ đề ASS Karaoke (word-level kinetic highlight theo Niche)
             subtitle_path = str(self.work_dir / "subtitles.ass")
-            SubtitleHelper.save_ass_file(enriched_scenes, subtitle_path)
+            SubtitleHelper.save_ass_file(enriched_scenes, subtitle_path, niche_id=self.niche)
 
             self._save_audio_metadata(full_audio_path, total_duration, enriched_scenes)
             logger.info(f"[Job {self.job_id}] Step B: Audio done — {total_duration}ms total")
@@ -179,8 +189,8 @@ class VideoPipeline:
                 full_audio_path=full_audio_path,
                 total_audio_duration_ms=total_duration,
                 subtitle_path=subtitle_path,
-                bgm_path=self._find_bgm(),
-                sfx_dir="assets/sfx",  # Thư mục SFX cho chuyển cảnh (whoosh, hit...)
+                bgm_path=self._find_bgm(niche=self.niche),
+                sfx_dir="assets/sfx",  # Thư mục SFX cho chuyển cảnh (whoosh, hit, impact...)
                 output_path=output_path,
             )
 
@@ -202,6 +212,12 @@ class VideoPipeline:
             self._update_status(JobStatus.FAILED, error_msg=str(e))
             await self._report_progress("ERROR", f"❌ Quá trình dựng video thất bại: {e}")
             raise
+        finally:
+            # Dọn dẹp temp files khi hoàn thành (thành công hoặc thất bại)
+            try:
+                self.cleanup_temp()
+            except Exception as cleanup_err:
+                logger.warning(f"[Job {self.job_id}] Lỗi cleanup temp: {cleanup_err}")
 
     # ──────────────────────────────────────────
     # STEP IMPLEMENTATIONS
@@ -215,6 +231,19 @@ class VideoPipeline:
                 raise ValueError(f"VideoJob #{self.job_id} không tồn tại")
             if not job.scenes_json:
                 raise ValueError(f"VideoJob #{self.job_id} chưa có scenes_json (status={job.status})")
+            
+            # P2.4: Tự động trích xuất Niche từ VideoJob hoặc Channels config
+            self.niche = getattr(job, "niche", None)
+            if not self.niche and job.target_channel_id:
+                try:
+                    channels = settings.get_channels_config()
+                    for ch in channels:
+                        if ch.get("id") == job.target_channel_id:
+                            self.niche = ch.get("niche")
+                            break
+                except Exception:
+                    pass
+
             return ScriptContract.from_json_str(job.scenes_json)
 
     async def _step_audio(self, script: ScriptContract) -> List[SceneContract]:
@@ -250,18 +279,23 @@ class VideoPipeline:
         used_pool_urls = set()
         used_asset_paths: set = set()  # ← DEDUP CROSS-SCENE: track URLs đã assign, cấm tái sử dụng
 
+        topic = ""
+        channel_niche = "general"
+
         try:
             with get_db() as db:
                 job = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
                 if job:
+                    topic = job.topic or job.title or ""
+                    channel_niche = getattr(job, "niche", "general") or "general"
                     script_obj = None
                     if job.scenes_json:
                         try:
                             script_obj = ScriptContract.from_json_str(job.scenes_json)
                             if getattr(script_obj, 'primary_entity', None):
                                 primary_entity = script_obj.primary_entity
-                        except Exception:
-                            pass
+                        except Exception as parse_err:
+                            logger.warning(f"[Job {self.job_id}] Không thể parse ScriptContract từ scenes_json: {parse_err}")
 
                     if not primary_entity:
                         tags_list = []
@@ -306,14 +340,6 @@ class VideoPipeline:
 
         ai_video_agent = AIVideoAgent()
         strategist = VideoStrategistAgent()
-
-        topic = ""
-        channel_niche = "general"
-        with get_db() as db:
-            job = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
-            if job:
-                topic = job.topic or job.title or ""
-                channel_niche = getattr(job, "niche", "general") or "general"
 
         visual_plan = await asyncio.to_thread(
             strategist.propose_production_strategy,
@@ -470,7 +496,7 @@ class VideoPipeline:
 
             enriched = scene.model_copy(update={
                 "media_path": media_path,
-                "media_type": "video" if media_path.endswith(".mp4") else "image",
+                "media_type": _infer_media_type(media_path),
                 "visual_strategy": sc_strat.get("strategy"),
                 "production_method": prod_method,
                 "tool": sc_strat.get("tool"),
@@ -707,7 +733,7 @@ class VideoPipeline:
                     )
                     return output
         except Exception as ex:
-            logger.debug(f"Scene {scene.scene_id}: Multi-source search error: {ex}")
+            logger.warning(f"Scene {scene.scene_id}: Multi-source search error: {ex}")
 
         # ── Tầng 3: AI Media Generation (AI Video hoặc AI Image theo chỉ đạo Agent) ──
         # FALLBACK KHI STOCK/WIKI THẤT BẠI HOẶC AGENT TỪ CHỐI
@@ -747,7 +773,7 @@ class VideoPipeline:
                         logger.info(f"Scene {scene.scene_id}: ✅ Tạo thành công Video AI theo chỉ đạo Agent")
                         return res_v
                 except Exception as e_v:
-                    logger.debug(f"Scene {scene.scene_id} AI Video fallback error: {e_v}")
+                    logger.warning(f"Scene {scene.scene_id} AI Video fallback error: {e_v}")
 
             # Tạo ảnh AI điện ảnh chất lượng cao 8K
             ai_img_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_ai.jpg")
@@ -961,15 +987,61 @@ class VideoPipeline:
                     return ch.get("preferred_voice")
         return None
 
-    def _find_bgm(self) -> Optional[str]:
-        """Tìm file nhạc nền mặc định."""
+    def _find_bgm(self, niche: Optional[str] = None) -> Optional[str]:
+        """
+        P2.4: Tìm file nhạc nền phù hợp theo Niche (Sound Design Automation) hoặc fallback về mặc định:
+        - luxury, motivation, finance -> inspiring_epic / energetic
+        - psychology, philosophy, history -> deep_ambient / thoughtful
+        - scifi, tech, future -> scifi_cyber / futuristic
+        - horror, mystery, deep_sea -> dark_suspense / eerie
+        - default / chill / general -> chill_ambient
+        """
         bgm_dir = Path(settings.BASE_DIR) / "assets" / "bgm"
-        if bgm_dir.exists():
-            for ext in ("*.mp3", "*.wav", "*.m4a"):
-                files = list(bgm_dir.glob(ext))
-                if files:
-                    return str(files[0])
-        return None
+        if not bgm_dir.exists():
+            return None
+
+        # Niche keyword mapping
+        niche_keywords = {
+            "luxury": ["inspiring_epic", "epic", "motivation", "luxury"],
+            "motivation": ["inspiring_epic", "epic", "motivation"],
+            "finance": ["inspiring_epic", "wealth", "finance"],
+            "psychology": ["deep_ambient", "ambient", "psychology"],
+            "philosophy": ["deep_ambient", "thoughtful", "ambient"],
+            "history": ["deep_ambient", "history", "ancient"],
+            "scifi": ["scifi_cyber", "cyber", "scifi", "tech"],
+            "future": ["scifi_cyber", "cyber", "future"],
+            "horror": ["dark_suspense", "suspense", "dark", "horror"],
+            "mystery": ["dark_suspense", "deep_ambient", "mystery"],
+            "deep_sea": ["dark_suspense", "deep_ambient"],
+            "general": ["chill_ambient", "chill", "ambient"],
+        }
+
+        # Quét tất cả file audio trong assets/bgm
+        all_bgms = []
+        for ext in ("*.mp3", "*.wav", "*.m4a"):
+            all_bgms.extend(bgm_dir.glob(ext))
+
+        if not all_bgms:
+            return None
+
+        # 1. Tìm theo từ khóa niche
+        effective_niche = niche or getattr(self, "niche", None)
+        if effective_niche:
+            clean_niche = str(effective_niche).lower().replace("-", "_")
+            target_keys = []
+            for k, keys in niche_keywords.items():
+                if k in clean_niche:
+                    target_keys.extend(keys)
+            
+            # Khớp file BGM
+            for key in target_keys:
+                for f in all_bgms:
+                    if key in f.stem.lower():
+                        logger.info(f"[Job {self.job_id}] 🎵 BGM khớp Niche '{effective_niche}' → {f.name}")
+                        return str(f)
+
+        # 2. Fallback: file đầu tiên có sẵn
+        return str(all_bgms[0])
 
     @staticmethod
     def _is_valid_media_file(path_str: str) -> bool:
