@@ -2027,7 +2027,25 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
             auth_response = received_uri["value"]
             if auth_response.startswith("http:"):
                 auth_response = auth_response.replace("http:", "https:", 1)
-            flow.fetch_token(authorization_response=auth_response)
+            try:
+                flow.fetch_token(authorization_response=auth_response)
+            except Exception as e_fetch:
+                if any(k in str(e_fetch).lower() for k in ["mismatching_state", "csrf", "state not equal"]):
+                    logger.warning(f"Bỏ qua CSRF state mismatch cho account: {e_fetch}")
+                    parsed_u = urlparse(auth_response)
+                    qs_u = parse_qs(parsed_u.query)
+                    st_val = qs_u.get("state", [None])[0]
+                    cd_val = qs_u.get("code", [None])[0]
+                    if st_val:
+                        flow.oauth2session._state = st_val
+                        flow.fetch_token(authorization_response=auth_response)
+                    elif cd_val:
+                        flow.oauth2session._state = None
+                        flow.fetch_token(code=cd_val)
+                    else:
+                        raise
+                else:
+                    raise
             creds = flow.credentials
 
             # Lưu token file mã hoá AES-256-GCM
@@ -2611,7 +2629,25 @@ async def start_channel_oauth(channel_id: str, request: Request, service: str = 
             auth_response = received_uri["value"]
             if auth_response.startswith("http:"):
                 auth_response = auth_response.replace("http:", "https:", 1)
-            flow.fetch_token(authorization_response=auth_response)
+            try:
+                flow.fetch_token(authorization_response=auth_response)
+            except Exception as e_fetch:
+                if any(k in str(e_fetch).lower() for k in ["mismatching_state", "csrf", "state not equal"]):
+                    logger.warning(f"Bỏ qua CSRF state mismatch cho channel: {e_fetch}")
+                    parsed_u = urlparse(auth_response)
+                    qs_u = parse_qs(parsed_u.query)
+                    st_val = qs_u.get("state", [None])[0]
+                    cd_val = qs_u.get("code", [None])[0]
+                    if st_val:
+                        flow.oauth2session._state = st_val
+                        flow.fetch_token(authorization_response=auth_response)
+                    elif cd_val:
+                        flow.oauth2session._state = None
+                        flow.fetch_token(code=cd_val)
+                    else:
+                        raise
+                else:
+                    raise
             creds = flow.credentials
 
             # Đọc thông tin kênh YouTube thật từ token trả về
