@@ -1040,69 +1040,38 @@ def trigger_auto_generation_for_overdue_channel(
             channel_id=channel_id
         )
 
-    # 4. Kích hoạt Render Pipeline trong background thread
+    # 4. Tự động đóng gói và đẩy kịch bản lên Google Drive cho Colab GPU Farm (tránh OOM làm sập server Render)
     def _background_render_worker(jid: int, ch_name: str, ch_id: str, deadl: datetime):
-        import asyncio
-        from app.services.pipeline import VideoPipeline
-
-        async def _do():
-            try:
-                # Đổi status sang RENDERING
-                with get_db() as _db:
-                    _j = _db.query(VideoJob).filter(VideoJob.id == jid).first()
-                    if _j:
-                        _j.status = "RENDERING"
-                        _j.progress_message = "Đang dựng hình ảnh, giọng đọc và ghép hiệu ứng..."
-
-                pipeline = VideoPipeline(job_id=jid)
-                await asyncio.wait_for(pipeline.execute(), timeout=600)
-
-                # Khi render xong: chuyển sang AWAITING_APPROVAL (Chờ người dùng kiểm duyệt)
-                with get_db() as _db:
-                    _j = _db.query(VideoJob).filter(VideoJob.id == jid).first()
-                    if _j:
-                        _j.status = "AWAITING_APPROVAL"
-                        _j.progress_percent = 100
-                        _j.progress_message = f"Render hoàn tất! Đang chờ kiểm duyệt trước {deadl.strftime('%H:%M %d/%m')}"
-                        video_title = _j.title
-
-                # Gửi thông báo thúc giục kiểm tra qua Telegram
-                grace_str = f"{grace_hours:.0f}"
-                alert_text = (
-                    f"🚨 **CẢNH BÁO TỤT TƯƠNG TÁC KÊNH: `{ch_name}`**\n\n"
-                    f"⚠️ Kênh này đã trễ deadline đăng bài **hơn 2 ngày**!\n"
-                    f"🤖 **Hệ thống AI đã tự động sản xuất video cứu nguy:**\n"
-                    f"🎬 **Tiêu đề:** *{video_title}*\n"
-                    f"⏱️ **Hạn chót duyệt:** `{deadl.strftime('%H:%M %d/%m/2026')}` (còn ~{grace_str} tiếng)\n\n"
-                    f"👉 **Nếu bạn bận không kiểm tra hoặc không phản hồi:**\n"
-                    f"Hệ thống sẽ **TỰ ĐỘNG ĐĂNG TẠM** video này vào khung giờ vàng tiếp theo để duy trì đề xuất thuật toán YouTube Shorts cho kênh!\n\n"
-                    f"Vui lòng nhấn nút bên dưới để duyệt hoặc mở Web Studio:"
-                )
-                inline_kb = [
-                    [
-                        {"text": f"✅ Duyệt & Đăng ngay (#{jid})", "callback_data": f"approve_auto:{jid}:now"},
-                        {"text": f"⏰ Đăng theo giờ vàng (#{jid})", "callback_data": f"approve_auto:{jid}:schedule"}
-                    ],
-                    [
-                        {"text": f"❌ Huỷ bỏ (#{jid})", "callback_data": f"approve_auto:{jid}:cancel"}
-                    ]
-                ]
-                send_telegram_broadcast(alert_text, inline_keyboard=inline_kb)
-
-            except Exception as ex:
-                logger.error(f"[AutoGeneration] Lỗi render job #{jid}: {ex}", exc_info=True)
-                with get_db() as _db:
-                    _j = _db.query(VideoJob).filter(VideoJob.id == jid).first()
-                    if _j:
-                        _j.status = "FAILED"
-                        _j.error_message = str(ex)[:400]
-
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         try:
-            loop.run_until_complete(_do())
-        finally:
-            loop.close()
+            from app.services.colab_queue_service import push_job_to_drive_queue
+            ok_push, msg_push, d_link = push_job_to_drive_queue(jid)
+            
+            with get_db() as _db:
+                _j = _db.query(VideoJob).filter(VideoJob.id == jid).first()
+                video_title = _j.title if _j else "Video Shorts"
+
+            grace_str = f"{grace_hours:.0f}"
+            alert_text = (
+                f"🚨 **CẢNH BÁO TỤT TƯƠNG TÁC KÊNH: `{ch_name}`**\n\n"
+                f"⚠️ Kênh này đã trễ lịch đăng bài!\n"
+                f"🤖 **AI Guardian đã tự động tạo kịch bản và đẩy lên Google Drive cho Colab GPU:**\n"
+                f"🎬 **Tiêu đề:** *{video_title}*\n"
+                f"☁️ **Google Drive:** {d_link or 'Đã lưu hàng đợi render'}\n"
+                f"⏱️ **Hạn chót duyệt:** `{deadl.strftime('%H:%M %d/%m/2026')}` (còn ~{grace_str} tiếng)\n\n"
+                f"👉 Bấm nút bên dưới để mở Colab GPU render nhanh 20s hoặc duyệt nội dung:"
+            )
+            inline_kb = [
+                [
+                    {"text": f"⚡ Mở Colab Render (#{jid})", "callback_data": f"colab_rotation_guide"},
+                    {"text": f"📥 Quét Video Từ Drive (#{jid})", "callback_data": f"check_drive_render:{jid}"}
+                ],
+                [
+                    {"text": f"❌ Huỷ bỏ (#{jid})", "callback_data": f"approve_auto:{jid}:cancel"}
+                ]
+            ]
+            send_telegram_broadcast(alert_text, inline_keyboard=inline_kb)
+        except Exception as ex:
+            logger.error(f"[AutoGeneration] Lỗi đẩy task lên Colab queue #{jid}: {ex}", exc_info=True)
 
     render_thread = threading.Thread(
         target=_background_render_worker,

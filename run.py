@@ -304,11 +304,11 @@ def main():
     print("🤖 Bot đang chạy Polling... Cả nhóm có thể ra lệnh từ Telegram hoặc xem Web!")
     print(f"👉 Địa chỉ Web Studio: {web_url}")
     print("=" * 70)
-    # drop_pending_updates=True: Xóa sạch các update lỗi tồn đọng cũ khi khởi động lại
+    # drop_pending_updates=False: Không xóa tin nhắn của người dùng gửi trong lúc server khởi động/deploy lại
     # Tự động kết nối lại nếu mạng WiFi/máy tính bị chập chờn hoặc rớt kết nối tạm thời
     while True:
         try:
-            app.run_polling(drop_pending_updates=True, bootstrap_retries=-1)
+            app.run_polling(drop_pending_updates=False, bootstrap_retries=-1)
             break
         except (KeyboardInterrupt, SystemExit):
             print("\n👋 Đã dừng Telegram Bot theo yêu cầu của bạn.")
