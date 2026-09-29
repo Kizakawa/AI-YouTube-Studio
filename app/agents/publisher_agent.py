@@ -192,7 +192,8 @@ class PublisherAgent:
                 topic=topic or "",
                 script=script or ""
             )
-            logger.info(f"Đã tự động lồng ghép sản phẩm kiếm tiền Amazon: {prod_info.get('name')}")
+            if prod_info:
+                logger.info(f"Đã tự động lồng ghép sản phẩm kiếm tiền Amazon: {prod_info.get('name')}")
         except Exception as ex:
             logger.warning(f"Không thể áp dụng monetization_engine: {ex}")
             desc_clean = description or ""

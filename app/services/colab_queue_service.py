@@ -67,6 +67,16 @@ def push_job_to_drive_queue(job_id: int) -> Tuple[bool, str, Optional[str]]:
             valid_px = [k for k in pexels_keys if k and k != "your_pexels_api_key_here"]
             active_px_key = valid_px[0] if valid_px else ""
 
+            # Thu thập danh sách chat telegram để Colab có thể bắn tin nhắn báo hoàn thành ngay
+            notify_chats = set()
+            if job.user_id:
+                notify_chats.add(job.user_id)
+            for gid in settings.get_allowed_group_ids():
+                notify_chats.add(gid)
+            if not notify_chats:
+                for u in settings.get_allowed_users().keys():
+                    notify_chats.add(u)
+
             task_payload = {
                 "job_id": job.id,
                 "topic": job.topic,
@@ -80,6 +90,9 @@ def push_job_to_drive_queue(job_id: int) -> Tuple[bool, str, Optional[str]]:
                 "tags": job.tags or "",
                 "scenes": scenes_data,
                 "pexels_api_key": active_px_key,
+                "pixabay_api_key": settings.PIXABAY_API_KEY,
+                "telegram_bot_token": settings.TELEGRAM_BOT_TOKEN,
+                "telegram_chat_ids": list(notify_chats),
                 "created_at": datetime.utcnow().isoformat(),
                 "status": "pending"
             }
@@ -111,7 +124,7 @@ def check_and_import_completed_video(job_id: int) -> Tuple[bool, str, Optional[s
     Kiểm tra thư mục /AI_YouTube_RenderFarm/completed/ trên Drive.
     Nếu thấy video_{job_id}.mp4:
     - Tải bản sao về storage/outputs/video_{job_id}.mp4
-    - Cập nhật VideoJob trong DB sang RENDERED
+    - Cập nhật (hoặc tự động khôi phục) VideoJob trong DB sang RENDERED
     - Trả về: (thành_công, đường_dẫn_local, link_drive)
     """
     try:
@@ -137,7 +150,29 @@ def check_and_import_completed_video(job_id: int) -> Tuple[bool, str, Optional[s
         # Cập nhật cơ sở dữ liệu
         with get_db() as db:
             job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
-            if job:
+            if not job:
+                # Tự động đọc lại metadata từ task_{job_id}.json trên Drive để tái tạo VideoJob nếu DB bị rỗng
+                meta_info = drive_agent.read_task_json_by_job_id(job_id) or {}
+                job = VideoJob(
+                    id=job_id,
+                    user_id=meta_info.get("user_id") or 0,
+                    target_channel_id=meta_info.get("target_channel_id", "channel_maya"),
+                    topic=meta_info.get("topic", f"Video #{job_id}"),
+                    title=meta_info.get("title", f"Video #{job_id}"),
+                    script=meta_info.get("full_narration", ""),
+                    scenes_json=json.dumps(meta_info.get("scenes", [])) if meta_info.get("scenes") else None,
+                    status="RENDERED",
+                    video_path=local_video_path,
+                    drive_link=drive_link,
+                    progress_percent=100,
+                    progress_message="🎉 Video đã render hoàn tất từ Colab GPU Farm!"
+                )
+                db.add(job)
+                log_activity(db, 0, "System", "COLAB_RENDER_COMPLETE",
+                             f"Đã tự động khôi phục và đồng bộ video #{job_id} từ Colab GPU Farm: {local_video_path}",
+                             channel_id=job.target_channel_id)
+                db.commit()
+            else:
                 job.status = "RENDERED"
                 job.video_path = local_video_path
                 job.drive_link = drive_link

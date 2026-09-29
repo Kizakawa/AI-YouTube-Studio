@@ -171,31 +171,33 @@ class ContentAgent:
         # Tự động bù đắp các trường bắt buộc của ScriptContract nếu LLM vô tình bỏ sót
         scenes = raw_data.get("scenes", [])
 
-        # ── BẮT BUỘC ĐẢM BẢO PHÂN CẢNH CUỐI CÓ CÂU KÊU GỌI ĐĂNG KÝ (SPOKEN CTA ENFORCEMENT) ──
+        # ── BẮT BUỘC ĐẢM BẢO PHÂN CẢNH CUỐI CÓ CÂU KÊU GỌI ĐĂNG KÝ KÊNH (SPOKEN CTA ENFORCEMENT) ──
         if scenes and isinstance(scenes, list):
             last_scene = scenes[-1]
             if isinstance(last_scene, dict):
                 last_narr = last_scene.get("narration", "").strip()
                 is_vi = any(c in last_narr.lower() for c in "àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ")
-                has_cta = any(k in last_narr.lower() for k in ["subscribe", "đăng ký", "follow", "part 2", "phần 2", "double tap", "like"])
-                if not has_cta and len(last_narr) > 0:
-                    connectors = ["because", "which is why", "and that is why", "bởi vì", "và đó là lý do"]
-                    injected = False
+                has_sub = any(k in last_narr.lower() for k in ["subscribe", "đăng ký", "đăng kí", "follow"])
+                if not has_sub and len(last_narr) > 0:
+                    clean_narr = re.sub(r'[\s\.\,\-]+$', '', last_narr)
+                    # Kiểm tra xem có đuôi nối loop không
+                    connectors = ["because", "which is why", "and that is why", "bởi vì", "và đó là lý do", "vậy nên"]
+                    found_conn = None
                     for conn in connectors:
-                        if last_narr.lower().endswith(conn):
-                            base_part = last_narr[:-len(conn)].rstrip(",. ")
-                            cta_phrase = "Subscribe for Part 2" if not is_vi else "Đăng ký kênh đón xem Phần 2"
-                            last_scene["narration"] = f"{base_part}. {cta_phrase}, {conn}..."
-                            injected = True
+                        if clean_narr.lower().endswith(conn):
+                            clean_narr = clean_narr[:-len(conn)].rstrip(",. -")
+                            found_conn = conn
                             break
-                    if not injected:
-                        cta_phrase = "Subscribe and drop a comment for Part 2!" if not is_vi else "Đăng ký kênh và bình luận đón xem Phần 2!"
-                        last_scene["narration"] = f"{last_narr.rstrip('.')} — {cta_phrase}"
-                    # Tăng thời lượng tối thiểu cho phân cảnh cuối để giọng đọc đọc đủ câu kêu gọi
+
+                    sub_cta = "Subscribe and follow for Part 2" if not is_vi else "Đăng ký kênh đón xem Phần 2"
+                    if found_conn:
+                        last_scene["narration"] = f"{clean_narr}. {sub_cta}, {found_conn}..."
+                    else:
+                        last_scene["narration"] = f"{clean_narr} — {sub_cta}!"
                     last_scene["estimated_seconds"] = max(float(last_scene.get("estimated_seconds", 3.0)), 4.0)
 
-        if "full_narration" not in raw_data or not raw_data["full_narration"]:
-            raw_data["full_narration"] = " ".join(s.get("narration", "") for s in scenes if isinstance(s, dict))
+        # Cập nhật lại full_narration để đồng bộ 100% với các scene
+        raw_data["full_narration"] = " ".join(s.get("narration", "") for s in scenes if isinstance(s, dict))
         if "tags" not in raw_data or not raw_data["tags"]:
             raw_data["tags"] = ["shorts", "viral"]
         elif isinstance(raw_data["tags"], str):

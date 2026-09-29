@@ -435,4 +435,28 @@ class DriveAgent:
             logger.error(f"Lỗi khi tải file {filename} từ {folder_path}: {e}")
             return False
 
+    def read_task_json_by_job_id(self, job_id: int) -> Optional[Dict[str, Any]]:
+        """Đọc file task_{job_id}.json từ archive, completed, hoặc pending để lấy metadata khôi phục VideoJob"""
+        if not self.service:
+            self._init_service()
+        if not self.service:
+            return None
+        target_name = f"task_{job_id}.json"
+        safe_name = target_name.replace("'", "\\'")
+        for folder_path in ["AI_YouTube_RenderFarm/archive", "AI_YouTube_RenderFarm/completed", "AI_YouTube_RenderFarm/pending"]:
+            try:
+                fid = self.get_folder_by_path(folder_path)
+                if not fid:
+                    continue
+                q = f"name = '{safe_name}' and '{fid}' in parents and trashed = false"
+                res = self.service.files().list(q=q, fields="files(id, name)").execute()
+                files = res.get("files", [])
+                if files:
+                    content = self.service.files().get_media(fileId=files[0]["id"]).execute().decode("utf-8")
+                    import json
+                    return json.loads(content)
+            except Exception as e:
+                logger.debug(f"Không thể đọc {target_name} từ {folder_path}: {e}")
+        return None
+
 

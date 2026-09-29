@@ -207,70 +207,122 @@ def main():
     # Khởi động tác vụ ngầm tự động theo dõi video Colab hoàn thành trên Google Drive & gửi ting ting về Telegram
     async def _auto_check_drive_completed(context):
         from app.services.colab_queue_service import check_and_import_completed_video
-        from app.database.models import get_db, VideoJob
+        from app.database.models import get_db, VideoJob, ActivityLog, log_activity
         from app.bot.keyboards import get_video_post_render_keyboard
+        from app.agents.drive_agent import DriveAgent
+        import re
 
         try:
+            # 1. Quét toàn bộ video hoàn thiện trên Drive
+            da = DriveAgent()
+            completed_files = da.list_completed_videos()
+            candidate_job_ids = set()
+            for cf in completed_files:
+                name = cf.get("name", "")
+                m = re.search(r'video_(\d+)\.mp4', name)
+                if m:
+                    candidate_job_ids.add(int(m.group(1)))
+
+            # 2. Bổ sung các jobs đang chờ trong DB
             with get_db() as db:
-                waiting = db.query(VideoJob).filter(VideoJob.status.in_(["PENDING_COLAB", "SCRIPT_READY", "RENDERING"])).all()
-                jobs_data = [(w.id, w.user_id, w.title or w.topic or f"Video #{w.id}") for w in waiting]
+                waiting = db.query(VideoJob.id).filter(
+                    VideoJob.status.in_(["PENDING_COLAB", "SCRIPT_READY", "RENDERING"])
+                ).all()
+                for (wid,) in waiting:
+                    candidate_job_ids.add(wid)
 
-            for jid, uid, title in jobs_data:
+            if not candidate_job_ids:
+                return
+
+            # 3. Lọc danh sách đã thông báo Telegram để không bị gửi trùng lặp
+            with get_db() as db:
+                already_notified = set()
+                logs = db.query(ActivityLog.action_type).filter(
+                    ActivityLog.action_type.like("TELEGRAM_NOTIFIED_VIDEO_%")
+                ).all()
+                for (act,) in logs:
+                    try:
+                        already_notified.add(int(act.split("_")[-1]))
+                    except Exception:
+                        pass
+
+            for jid in sorted(list(candidate_job_ids)):
+                if jid in already_notified:
+                    continue
+
                 ok, local_p, d_link = check_and_import_completed_video(jid)
-                if ok:
-                    logger.info(f"🎉 [Drive Watcher] Đã tự động đồng bộ Video #{jid} từ Google Drive: {local_p}")
-                    from config.settings import settings
+                if not ok:
+                    continue
 
-                    # Thu thập toàn bộ đích cần gửi: ID người tạo VÀ Nhóm làm việc Telegram
-                    target_chats = set()
-                    if uid and uid != 0:
-                        target_chats.add(uid)
-                    for gid in settings.get_allowed_group_ids():
-                        target_chats.add(gid)
-                    if not target_chats:
-                        for u in settings.get_allowed_users().keys():
-                            target_chats.add(u)
+                logger.info(f"🎉 [Drive Watcher] Đã tự động đồng bộ Video #{jid} từ Google Drive: {local_p}")
+                from config.settings import settings
 
-                    post_markup = get_video_post_render_keyboard(jid)
-                    size_mb = os.path.getsize(local_p) / (1024 * 1024) if (local_p and os.path.exists(local_p)) else 0
-                    cap = (
-                        f"🎉 **VIDEO #{jid} ĐÃ ĐƯỢC COLAB RENDER XONG & TỰ ĐỘNG GỬI VỀ!**\n\n"
-                        f"📌 **Tiêu đề:** {title}\n"
-                        f"📦 **Dung lượng:** {size_mb:.1f} MB\n"
-                        f"⚡ **Công nghệ:** GPU NVENC Tăng Tốc (1080x1920 30fps)\n"
-                        f"☁️ **Google Drive:** {d_link or 'Đã lưu an toàn'}\n\n"
-                        f"👉 Cả nhóm hãy xem video! Bấm **Đăng Ngay** hoặc **Góp Ý Sửa Lại** bên dưới:"
-                    )
+                with get_db() as db:
+                    jb = db.query(VideoJob).filter(VideoJob.id == jid).first()
+                    title = jb.title or jb.topic if jb else f"Video #{jid}"
+                    uid = jb.user_id if jb else 0
+                    ch_id = jb.target_channel_id if jb else None
 
-                    for t_chat in target_chats:
-                        sent = False
-                        if size_mb <= 49.0 and local_p and os.path.exists(local_p):
-                            try:
-                                with open(local_p, "rb") as vf:
-                                    await context.bot.send_video(
-                                        chat_id=t_chat,
-                                        video=vf,
-                                        caption=cap,
-                                        reply_markup=post_markup,
-                                        supports_streaming=True,
-                                        read_timeout=120,
-                                        write_timeout=120
-                                    )
-                                sent = True
-                                logger.info(f"✅ Đã tự động gửi video #{jid} đến Telegram chat {t_chat}")
-                            except Exception as ex_v:
-                                logger.warning(f"Lỗi gửi video #{jid} qua Telegram chat {t_chat}: {ex_v}")
+                # Thu thập toàn bộ đích cần gửi: ID người tạo VÀ Nhóm làm việc Telegram
+                target_chats = set()
+                if uid and uid != 0:
+                    target_chats.add(uid)
+                for gid in settings.get_allowed_group_ids():
+                    target_chats.add(gid)
+                if not target_chats:
+                    for u in settings.get_allowed_users().keys():
+                        target_chats.add(u)
 
-                        if not sent:
-                            try:
-                                await context.bot.send_message(
+                post_markup = get_video_post_render_keyboard(jid)
+                size_mb = os.path.getsize(local_p) / (1024 * 1024) if (local_p and os.path.exists(local_p)) else 0
+                cap = (
+                    f"🎉 **VIDEO #{jid} ĐÃ ĐƯỢC COLAB RENDER XONG & TỰ ĐỘNG GỬI VỀ!**\n\n"
+                    f"📌 **Tiêu đề:** {title}\n"
+                    f"📦 **Dung lượng:** {size_mb:.1f} MB\n"
+                    f"⚡ **Công nghệ:** GPU NVENC Tăng Tốc (1080x1920 30fps)\n"
+                    f"☁️ **Google Drive:** {d_link or 'Đã lưu an toàn'}\n\n"
+                    f"👉 Cả nhóm hãy xem video! Bấm **Đăng Ngay** hoặc **Góp Ý Sửa Lại** bên dưới:"
+                )
+
+                any_sent = False
+                for t_chat in target_chats:
+                    sent = False
+                    if size_mb <= 49.0 and local_p and os.path.exists(local_p):
+                        try:
+                            with open(local_p, "rb") as vf:
+                                await context.bot.send_video(
                                     chat_id=t_chat,
-                                    text=cap,
-                                    reply_markup=post_markup
+                                    video=vf,
+                                    caption=cap,
+                                    reply_markup=post_markup,
+                                    supports_streaming=True,
+                                    read_timeout=120,
+                                    write_timeout=120
                                 )
-                                logger.info(f"✅ Đã gửi thông báo text #{jid} đến Telegram chat {t_chat}")
-                            except Exception as ex_m:
-                                logger.warning(f"Lỗi gửi thông báo #{jid} qua Telegram chat {t_chat}: {ex_m}")
+                            sent = True
+                            any_sent = True
+                            logger.info(f"✅ Đã tự động gửi video #{jid} đến Telegram chat {t_chat}")
+                        except Exception as ex_v:
+                            logger.warning(f"Lỗi gửi video #{jid} qua Telegram chat {t_chat}: {ex_v}")
+
+                    if not sent:
+                        try:
+                            await context.bot.send_message(
+                                chat_id=t_chat,
+                                text=cap,
+                                reply_markup=post_markup
+                            )
+                            logger.info(f"✅ Đã gửi thông báo text #{jid} đến Telegram chat {t_chat}")
+                            any_sent = True
+                        except Exception as ex_m:
+                            logger.warning(f"Lỗi gửi thông báo #{jid} qua Telegram chat {t_chat}: {ex_m}")
+
+                if any_sent:
+                    with get_db() as db:
+                        log_activity(db, uid, "System", f"TELEGRAM_NOTIFIED_VIDEO_{jid}",
+                                     f"Đã gửi video #{jid} thành công đến các kênh Telegram",
+                                     channel_id=ch_id)
+                        db.commit()
         except Exception as e_w:
             logger.error(f"[Drive Watcher error]: {e_w}", exc_info=True)
 

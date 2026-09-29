@@ -271,6 +271,17 @@ def enrich_video_monetization(
     
     Trả về: (enriched_description, enriched_pinned_comment, product_info)
     """
+    # ── BẢO VỆ AN TOÀN: Kiểm tra cấu hình cho phép gắn Affiliate ──
+    # Mặc định TẮT (False) để bảo vệ kênh không bị YouTube phạt spam link / hạn chế đề xuất Shorts
+    enable_affiliate = os.getenv("ENABLE_AMAZON_AFFILIATE", "false").lower() in ("true", "1", "yes")
+    channel_override = channel_config.get("enable_monetization")
+    if channel_override is not None:
+        enable_affiliate = bool(channel_override)
+
+    if not enable_affiliate:
+        logger.info("[MonetizationEngine] Bỏ qua gắn Amazon Affiliate (chế độ bảo vệ an toàn: ENABLE_AMAZON_AFFILIATE=false)")
+        return description or "", pinned_comment, None
+
     niche = channel_config.get("niche", "general")
     tracking_tag = (
         channel_config.get("amazon_tag")
@@ -358,5 +369,5 @@ def preview_monetization_bundle(
         "enriched_pinned_comment": enriched_comment,
         "channel_id": channel_config.get("id"),
         "channel_name": channel_config.get("name"),
-        "tracking_tag": product_info.get("tracking_tag")
+        "tracking_tag": product_info.get("tracking_tag") if product_info else None
     }
