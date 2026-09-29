@@ -2,6 +2,7 @@ import asyncio
 import logging
 import subprocess
 import json
+import re
 from pathlib import Path
 from typing import List, Optional
 import edge_tts

@@ -14,6 +14,8 @@ Hỗ trợ 2 phương pháp sản xuất cốt lõi:
 """
 import logging
 import os
+import re
+import asyncio
 import shutil
 import subprocess
 from pathlib import Path

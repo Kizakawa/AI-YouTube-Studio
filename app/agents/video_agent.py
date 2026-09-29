@@ -12,6 +12,7 @@ Luồng render nâng cấp (v2):
   5. (Optional) Burn-in ASS/SRT subtitles (ASS karaoke ưu tiên)
 """
 import logging
+import shutil
 from pathlib import Path
 from typing import List, Optional
 
