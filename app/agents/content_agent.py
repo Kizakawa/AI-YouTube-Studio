@@ -11,11 +11,11 @@ from app.schemas.contracts import ScriptContract
 logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = [
-    "gemini-2.5-flash",              # Model 2.5 Flash cực nhanh, ổn định cao nhất, không bị quá tải
-    "gemini-flash-latest",           # Bản Flash mới nhất
+    "gemini-flash-latest",           # Bản Flash ổn định và thông minh nhất
+    "gemini-3.5-flash",              # Model 3.5 Flash mới siêu tốc
     "gemini-flash-lite-latest",      # Bản Lite siêu tốc
+    "gemini-3.5-flash-lite",         # Bản 3.5 Lite
     "gemini-3.1-flash-lite-preview", # Dự phòng Gemini 3.1
-    "gemini-3-flash-preview",        # Gemini 3 Preview
     "gemini-pro-latest",             # Pro (thử cuối để tránh kẹt 429)
 ]
 
