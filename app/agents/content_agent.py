@@ -11,11 +11,11 @@ from app.schemas.contracts import ScriptContract
 logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = [
-    "gemini-pro-latest",         # Model Pro thông minh nhất (suy luận sâu, cốt truyện lôi cuốn)
-    "gemini-1.5-pro",            # Dự phòng Pro
-    "gemini-flash-latest",       # Model Flash cân bằng tốc độ và chất lượng
-    "gemini-1.5-flash",          # Dự phòng Flash
-    "gemini-flash-lite-latest",  # Model nhẹ nhất dự phòng khẩn cấp khi các model trên hết quota
+    "gemini-3-flash-preview",        # Model Gemini 3 thế hệ mới cực kỳ thông minh, không bị 429
+    "gemini-3.1-flash-lite-preview", # Dự phòng Gemini 3.1 siêu tốc
+    "gemini-flash-lite-latest",      # Bản Lite ổn định nhất
+    "gemini-flash-latest",           # Dự phòng Flash
+    "gemini-pro-latest",             # Pro (thử cuối để tránh kẹt 429)
 ]
 
 class ContentAgent:

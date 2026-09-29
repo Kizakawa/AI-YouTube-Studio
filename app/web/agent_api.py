@@ -312,7 +312,7 @@ async def create_new_job(req: CreateJobRequest):
         scenes_json = json.dumps([{"scene_id": 1, "narration": narration, "stock_query": req.topic}], ensure_ascii=False)
     else:
         logger.info(f"Agent creating script for topic: '{req.topic}' (lang: {lang})")
-        contract = content_agent.create_structured_script(req.topic, target_language=lang)
+        contract = content_agent.generate_script(req.topic, language=lang)
         title = contract.title
         narration = contract.full_narration
         scenes_json = contract.to_json_str()

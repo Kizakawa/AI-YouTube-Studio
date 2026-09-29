@@ -177,8 +177,7 @@ def cmd_create(args):
     ch_cfg = next((c for c in settings.get_channels_config() if c.get("id") == ch_id), {})
     lang = args.lang or ch_cfg.get("language", "en")
 
-    print(f"⏳ Đang viết kịch bản AI cho topic: '{args.topic}' (kênh: {ch_id}, ngôn ngữ: {lang})...")
-    contract = content_agent.create_structured_script(args.topic, target_language=lang)
+    contract = content_agent.generate_script(args.topic, language=lang)
 
     with get_db() as db:
         job = VideoJob(
