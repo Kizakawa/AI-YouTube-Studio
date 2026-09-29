@@ -1066,6 +1066,23 @@ async def health_check() -> Dict[str, Any]:
     except Exception:
         pass
 
+    # Colab GPU Farm status
+    colab_info = {
+        "online": False,
+        "gpu": None,
+        "worker_url": settings.COLAB_WORKER_URL or "",
+        "notebook_id": "1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo",
+    }
+    try:
+        from app.services.colab_client import colab_client
+        is_online, c_info = colab_client.check_health(timeout=1.0)
+        colab_info["online"] = is_online
+        if is_online:
+            colab_info["gpu"] = c_info.get("gpu", "NVIDIA GPU")
+            colab_info["worker_url"] = colab_client.worker_url
+    except Exception:
+        pass
+
     return {
         "status": "online",
         "ffmpeg": get_ffmpeg_version() if is_ffmpeg_installed() else "not installed",
@@ -1074,7 +1091,142 @@ async def health_check() -> Dict[str, Any]:
         "web_only": web_only,
         "drive_connected": drive_connected,
         "drive_quota_label": drive_quota_label,
+        "colab": colab_info,
     }
+
+
+# ─── Colab GPU Farm Multi-Account Endpoints ─────────────────────────────────
+
+COLAB_SHARED_NOTEBOOK_ID = "1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo"
+COLAB_SHARED_FOLDER_ID = "1J4pW7WNwFvIKpNjMqW8qkdOMf4gXTDC0"
+COLAB_BASE_URL = f"https://colab.research.google.com/drive/{COLAB_SHARED_NOTEBOOK_ID}"
+
+COLAB_ACCOUNTS = [
+    {
+        "id": "account_1",
+        "name": "Tài khoản 1 (Chính)",
+        "email": "pool1.studio@example.com",
+        "storage": "20 TB Google One",
+        "role": "Thư mục Render Farm gốc & Lưu trữ",
+        "badge": "Host 20TB",
+        "badge_color": "green",
+        "is_primary": True,
+        "colab_url": f"{COLAB_BASE_URL}?authuser=pool1.studio@example.com"
+    },
+    {
+        "id": "acount_2",
+        "name": "Tài khoản 2 (Dự phòng 1)",
+        "email": "pool2.studio@example.com",
+        "storage": "2 TB Google One",
+        "role": "Worker GPU xoay vòng (Đã cấp quyền Editor)",
+        "badge": "Dự phòng 1",
+        "badge_color": "blue",
+        "is_primary": False,
+        "colab_url": f"{COLAB_BASE_URL}?authuser=pool2.studio@example.com"
+    },
+    {
+        "id": "accout3",
+        "name": "Tài khoản 3 (Dự phòng 2)",
+        "email": "pool3.studio@example.com",
+        "storage": "2 TB Google One",
+        "role": "Worker GPU xoay vòng (Đã cấp quyền Editor)",
+        "badge": "Dự phòng 2",
+        "badge_color": "purple",
+        "is_primary": False,
+        "colab_url": f"{COLAB_BASE_URL}?authuser=pool3.studio@example.com"
+    }
+]
+
+@app.get("/api/colab/farm-status")
+async def get_colab_farm_status() -> Dict[str, Any]:
+    """Trả về trạng thái chi tiết của Colab GPU Farm và danh sách 3 tài khoản xoay vòng"""
+    from app.services.colab_client import colab_client
+    is_online, info = colab_client.check_health(timeout=1.5)
+    
+    pending_count = 0
+    try:
+        with get_db() as db:
+            pending_count = db.query(VideoJob).filter(VideoJob.status.in_(["SCRIPT_READY", "RENDERING", "PENDING_COLAB"])).count()
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "online": is_online,
+        "gpu": info.get("gpu", "NVIDIA GPU") if is_online else None,
+        "worker_url": colab_client.worker_url,
+        "shared_notebook_id": COLAB_SHARED_NOTEBOOK_ID,
+        "shared_notebook_url": COLAB_BASE_URL,
+        "shared_folder_id": COLAB_SHARED_FOLDER_ID,
+        "pending_count": pending_count,
+        "accounts": COLAB_ACCOUNTS,
+        "rotation_strategy": {
+            "title": "Cơ chế xoay vòng tài khoản vượt hạn mức Colab Free",
+            "description": "Mỗi tài khoản Google có hạn mức GPU riêng (thường 4-8 tiếng/ngày). Khi tài khoản 1 chạm ngưỡng 'Cannot connect to GPU backend', chỉ cần mở tài khoản 2 hoặc 3 để tiếp tục render mà không bị gián đoạn."
+        }
+    }
+
+@app.post("/api/colab/send-telegram-guide")
+async def send_colab_telegram_guide(request: Request) -> Dict[str, Any]:
+    """
+    Gửi link Colab và hướng dẫn mở đúng tài khoản về Telegram của người dùng.
+    Hỗ trợ gửi cho 1 tài khoản cụ thể hoặc toàn bộ danh sách 3 tài khoản.
+    """
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    
+    acc_id = body.get("account_id", "all")
+    selected_acc = next((a for a in COLAB_ACCOUNTS if a["id"] == acc_id), None)
+    
+    from app.services.channel_intelligence import send_telegram_broadcast
+    
+    if selected_acc:
+        msg = (
+            f"🚀 **ĐỀ XUẤT MỞ COLAB GPU FARM — {selected_acc['name'].upper()}**\n\n"
+            f"🎯 **Tài khoản mục tiêu:** `{selected_acc['email']}`\n"
+            f"📦 **Gói Drive:** {selected_acc['storage']} ({selected_acc['role']})\n"
+            f"🔗 **Link Colab 1-chạm:**\n{selected_acc['colab_url']}\n\n"
+            f"🧭 **HƯỚNG DẪN 3 BƯỚC MỞ ĐÚNG TÀI KHOẢN:**\n"
+            f"1️⃣ **Mở link:** Bấm nút bên dưới để mở Colab. Link đã kèm `?authuser={selected_acc['email']}` để Google tự chọn profile này.\n"
+            f"2️⃣ **Kiểm tra Avatar:** Nhìn góc trên bên phải màn hình Colab:\n"
+            f"   • Nếu đúng email `{selected_acc['email']}`: Sẵn sàng!\n"
+            f"   • Nếu hiện email khác: Nhấp vào avatar ➡️ Chọn `{selected_acc['email']}` (hoặc bấm Thêm tài khoản).\n"
+            f"3️⃣ **Bấm Chạy tất cả:** Vào menu **Runtime** ➡️ Chọn **Run all** (hoặc nhấn `Ctrl + F9`) ➡️ Bấm Cho phép Drive.\n\n"
+            f"✨ **Bật xong bạn có thể thoát tab hoặc tắt màn hình!** GPU Colab sẽ tự quét hàng đợi Drive và render video 20 giây/video."
+        )
+        inline_kb = [
+            [{"text": f"🚀 Mở Colab ({selected_acc['name']})", "url": selected_acc["colab_url"]}],
+            [{"text": "🔄 Quét lại kết nối GPU", "callback_data": "check_colab_status"}]
+        ]
+    else:
+        msg = (
+            f"🚀 **TRẠM RENDER COLAB GPU FARM — XOAY VÒNG 3 TÀI KHOẢN**\n\n"
+            f"Giải pháp render video siêu tốc 20s/video, tự động xoay tài khoản khi chạm hạn mức GPU miễn phí của Google Colab.\n\n"
+            f"📌 **DANH SÁCH 3 TÀI KHOẢN GPU:**\n"
+            f"1️⃣ **Tài khoản 1 (Chính):** `pool1.studio@example.com` (20 TB)\n"
+            f"2️⃣ **Tài khoản 2 (Dự phòng 1):** `pool2.studio@example.com` (2 TB)\n"
+            f"3️⃣ **Tài khoản 3 (Dự phòng 2):** `pool3.studio@example.com` (2 TB)\n\n"
+            f"💡 **HƯỚNG DẪN XOAY TÀI KHOẢN KHI HẾT QUOTA:**\n"
+            f"• Bạn mở Tài khoản 1 chạy trước.\n"
+            f"• Khi Colab báo *'Cannot connect to GPU backend'* (hết hạn mức trong ngày), bạn chỉ cần mở nút **Tài khoản 2** và bấm **Run all**.\n"
+            f"• Cả 3 tài khoản đều chung thư mục Google Drive `/AI_YouTube_RenderFarm/` nên video vẫn tiếp tục render bình thường!\n\n"
+            f"👇 Chọn tài khoản bạn muốn mở ngay bên dưới:"
+        )
+        inline_kb = [
+            [{"text": "🚀 Mở Acc 1: giangnguyenviet38 (20TB)", "url": COLAB_ACCOUNTS[0]["colab_url"]}],
+            [{"text": "🚀 Mở Acc 2: tonyabcd1234567890 (2TB)", "url": COLAB_ACCOUNTS[1]["colab_url"]}],
+            [{"text": "🚀 Mở Acc 3: maychuvv1n1 (2TB)", "url": COLAB_ACCOUNTS[2]["colab_url"]}],
+            [{"text": "🔄 Quét lại kết nối GPU", "callback_data": "check_colab_status"}]
+        ]
+        
+    try:
+        send_telegram_broadcast(msg, inline_keyboard=inline_kb)
+        return {"success": True, "message": "Đã gửi link Colab và hướng dẫn mở tài khoản về Telegram thành công!"}
+    except Exception as e:
+        return {"success": False, "message": f"Lỗi gửi Telegram: {str(e)}"}
 
 
 # ─── Upload to Google Drive ───────────────────────────────────────────────────

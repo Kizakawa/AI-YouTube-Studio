@@ -500,6 +500,11 @@ async function fetchHealth() {
         data.drive_connected
             ? (data.drive_quota_label || '20 TB Google One (Đã kết nối ✓)')
             : 'Chưa kết nối — Bấm [Kết Nối Google Drive] bên dưới');
+
+    if (data.colab) {
+        const isOnline = data.colab.online;
+        setHealth('health-colab', isOnline, isOnline ? `${data.colab.gpu || 'NVIDIA GPU'} (20s/vid ✓)` : 'Chưa bật (Chế độ CPU 2 phút)');
+    }
 }
 
 function setHealth(id, ok, msg) {
@@ -510,6 +515,168 @@ function setHealth(id, ok, msg) {
     dot.className = 'health-dot ' + (ok ? 'dot-ok' : 'dot-warn');
     span.textContent = msg;
     span.style.color = ok ? 'var(--accent-green)' : 'var(--accent-amber)';
+}
+
+/* ═══════════════════════════════════════════════════════
+   COLAB GPU RENDER FARM MULTI-ACCOUNT ROTATION
+══════════════════════════════════════════════════════════ */
+let currentColabAccountId = 'account_1';
+const colabFarmData = {
+    notebook_id: '1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo',
+    base_url: 'https://colab.research.google.com/drive/1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo',
+    accounts: {
+        'account_1': {
+            id: 'account_1',
+            name: 'Tài khoản 1 (Chính)',
+            email: 'pool1.studio@example.com',
+            storage: '20 TB Google One',
+            role: 'Kho lưu trữ gốc & Render chính',
+            url: 'https://colab.research.google.com/drive/1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo?authuser=pool1.studio@example.com'
+        },
+        'acount_2': {
+            id: 'acount_2',
+            name: 'Tài khoản 2 (Dự phòng 1)',
+            email: 'pool2.studio@example.com',
+            storage: '2 TB Google One',
+            role: 'Xoay vòng khi Acc 1 hết hạn mức GPU',
+            url: 'https://colab.research.google.com/drive/1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo?authuser=pool2.studio@example.com'
+        },
+        'accout3': {
+            id: 'accout3',
+            name: 'Tài khoản 3 (Dự phòng 2)',
+            email: 'pool3.studio@example.com',
+            storage: '2 TB Google One',
+            role: 'Dự phòng render xuyên suốt 24/7',
+            url: 'https://colab.research.google.com/drive/1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo?authuser=pool3.studio@example.com'
+        }
+    }
+};
+
+async function openColabFarmModal(targetAccId = null) {
+    const modal = document.getElementById('modal-colab-farm');
+    if (!modal) return;
+    modal.style.display = 'flex';
+
+    if (targetAccId && colabFarmData.accounts[targetAccId]) {
+        selectColabAccount(targetAccId);
+    } else {
+        selectColabAccount(currentColabAccountId || 'account_1');
+    }
+
+    try {
+        const res = await apiGet('/api/colab/farm-status');
+        if (res) {
+            const badge = document.getElementById('colab-modal-status-badge');
+            const gpuName = document.getElementById('colab-modal-gpu-name');
+            const pendingEl = document.getElementById('colab-modal-pending-count');
+
+            if (badge) {
+                if (res.online) {
+                    badge.className = 'badge badge-green';
+                    badge.textContent = '🟢 GPU Trực Tuyến';
+                } else {
+                    badge.className = 'badge badge-amber';
+                    badge.textContent = '⚪ Chờ Kích Hoạt (Offline)';
+                }
+            }
+            if (gpuName) {
+                gpuName.textContent = res.online ? `${res.gpu || 'NVIDIA GPU'} (20s/vid)` : 'Chưa bật (Render CPU nội bộ)';
+            }
+            if (pendingEl) {
+                pendingEl.textContent = `${res.pending_count || 0} video đang chờ`;
+            }
+        }
+    } catch (e) {
+        console.warn('Lỗi lấy thông tin Colab Farm:', e);
+    }
+}
+
+function closeColabFarmModal() {
+    const modal = document.getElementById('modal-colab-farm');
+    if (modal) modal.style.display = 'none';
+}
+
+function selectColabAccount(accId) {
+    const acc = colabFarmData.accounts[accId];
+    if (!acc) return;
+    currentColabAccountId = accId;
+
+    ['account_1', 'acount_2', 'accout3'].forEach(id => {
+        const card = document.getElementById(`card-acc-${id}`);
+        if (card) {
+            if (id === accId) {
+                card.style.border = '2px solid #38bdf8';
+                card.style.background = 'rgba(56,189,248,0.12)';
+                card.style.boxShadow = '0 0 20px rgba(56,189,248,0.2)';
+            } else {
+                card.style.border = '1px solid rgba(255,255,255,0.1)';
+                card.style.background = 'rgba(255,255,255,0.02)';
+                card.style.boxShadow = 'none';
+            }
+        }
+    });
+
+    const labelEl = document.getElementById('colab-target-account-label');
+    if (labelEl) {
+        labelEl.innerHTML = `${acc.name}: <span style="color:#38bdf8; font-family:monospace;">${acc.email}</span>`;
+    }
+
+    const inputUrl = document.getElementById('colab-direct-url-input');
+    if (inputUrl) {
+        inputUrl.value = acc.url;
+    }
+}
+
+function openColabAccount(accId) {
+    selectColabAccount(accId);
+    const acc = colabFarmData.accounts[accId];
+    if (!acc) return;
+
+    showToast(`Đang mở Colab cho ${acc.email}... Nhớ kiểm tra avatar góc phải trang Colab nhé!`, 'info');
+    window.open(acc.url, '_blank');
+}
+
+function triggerCurrentColabOpen() {
+    openColabAccount(currentColabAccountId);
+}
+
+function copyCurrentColabUrl() {
+    const acc = colabFarmData.accounts[currentColabAccountId];
+    if (!acc) return;
+    navigator.clipboard.writeText(acc.url).then(() => {
+        showToast(`Đã sao chép link Colab cho tài khoản ${acc.email}!`, 'success');
+    }).catch(() => {
+        showToast('Không thể sao chép vào clipboard', 'error');
+    });
+}
+
+function copyColabGuide(accId) {
+    const acc = colabFarmData.accounts[accId];
+    if (!acc) return;
+    const text = `🚀 LINK COLAB GPU FARM (${acc.name})\n🎯 Email: ${acc.email} (${acc.storage})\n🔗 Link: ${acc.url}\n\n📌 3 BƯỚC MỞ ĐÚNG TÀI KHOẢN:\n1. Mở link trên.\n2. Kiểm tra avatar góc trên bên phải trang Colab đúng email ${acc.email}.\n3. Vào Runtime -> Run all (Ctrl+F9) và Cho phép Drive.`;
+    navigator.clipboard.writeText(text).then(() => {
+        showToast(`Đã sao chép hướng dẫn & link cho ${acc.name}!`, 'success');
+    }).catch(() => {
+        showToast('Không thể sao chép vào clipboard', 'error');
+    });
+}
+
+async function sendColabGuideToTelegram(accId = 'all') {
+    try {
+        showToast('Đang gửi link và hướng dẫn về Telegram...', 'info');
+        const res = await apiPost('/api/colab/send-telegram-guide', { account_id: accId });
+        if (res && res.success) {
+            showToast('✅ Đã gửi link Colab và hướng dẫn mở tài khoản về Telegram!', 'success');
+        } else {
+            showToast('⚠️ Không thể gửi Telegram: ' + (res?.message || 'Lỗi không xác định'), 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi gửi Telegram: ' + e.message, 'error');
+    }
+}
+
+function triggerCurrentColabSendTele() {
+    sendColabGuideToTelegram(currentColabAccountId);
 }
 
 /* ═══════════════════════════════════════════════════════

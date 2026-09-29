@@ -197,6 +197,13 @@
                             <span>Đang kiểm tra...</span>
                         </div>
                     </div>
+                    <div class="health-item" id="health-colab" style="cursor:pointer;" onclick="openColabFarmModal()" title="Bấm để mở Trạm Quản Lý Colab GPU Farm (Xoay 3 Tài Khoản Google)">
+                        <div class="health-dot dot-loading"></div>
+                        <div class="health-info">
+                            <strong>Colab GPU Farm (3 Acc)</strong>
+                            <span>Đang kiểm tra...</span>
+                        </div>
+                    </div>
                     <div class="health-item" id="health-db">
                         <div class="health-dot dot-ok"></div>
                         <div class="health-info">
@@ -2330,6 +2337,207 @@ Ví dụ Căn Theo Mốc:
     </div>
 </div>
 
+<!-- MODAL: COLAB GPU RENDER FARM MULTI-ACCOUNT MANAGER -->
+<div class="modal-overlay" id="modal-colab-farm" onclick="closeColabFarmModal()" style="display:none; z-index:9999;">
+    <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 860px; width: 95%; max-height: 90vh; overflow-y: auto; padding: 24px; background: rgba(13, 19, 33, 0.96); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 20px; box-shadow: 0 25px 60px rgba(0,0,0,0.8), 0 0 35px rgba(56,189,248,0.15); backdrop-filter: blur(20px);">
+        
+        <!-- Header -->
+        <div class="modal-header" style="padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:12px;">
+                <div style="width:44px; height:44px; border-radius:12px; background:linear-gradient(135deg, rgba(56,189,248,0.2), rgba(168,85,247,0.2)); border:1px solid rgba(56,189,248,0.4); display:flex; align-items:center; justify-content:center; font-size:22px;">
+                    🚀
+                </div>
+                <div>
+                    <h3 style="font-size: 18px; color:#fff; font-weight:800; margin:0; letter-spacing:-0.01em; display:flex; align-items:center; gap:8px;">
+                        Trạm Quản Lý Colab GPU Render Farm
+                        <span id="colab-modal-status-badge" class="badge badge-amber" style="font-size:11px; padding:3px 8px;">Đang kiểm tra...</span>
+                    </h3>
+                    <div style="font-size: 12px; color:#94a3b8; margin-top:2px;">
+                        Tăng tốc NVENC 20s/video • Tự động xoay vòng 3 tài khoản Google vượt hạn mức GPU Colab Free
+                    </div>
+                </div>
+            </div>
+            <button class="modal-close" onclick="closeColabFarmModal()" style="font-size:18px; background:none; border:none; color:#94a3b8; cursor:pointer;">✕</button>
+        </div>
+
+        <!-- Info / Stats Bar -->
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:18px;">
+            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:12px; padding:12px 14px;">
+                <span style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700; letter-spacing:0.05em; display:block;">Cạc Đồ Họa GPU</span>
+                <span id="colab-modal-gpu-name" style="font-size:14px; font-weight:700; color:#38bdf8; margin-top:2px; display:block;">NVIDIA GPU (~20s/video)</span>
+            </div>
+            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:12px; padding:12px 14px;">
+                <span style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700; letter-spacing:0.05em; display:block;">Hàng Đợi Chờ Render</span>
+                <span id="colab-modal-pending-count" style="font-size:14px; font-weight:700; color:#fbbf24; margin-top:2px; display:block;">0 video đang chờ</span>
+            </div>
+            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:12px; padding:12px 14px;">
+                <span style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700; letter-spacing:0.05em; display:block;">Thư Mục Google Drive</span>
+                <span style="font-size:13px; font-weight:700; color:#34d399; margin-top:2px; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">/AI_YouTube_RenderFarm/ ✓</span>
+            </div>
+        </div>
+
+        <!-- 3 Google Accounts Rotation Grid -->
+        <div style="margin-bottom:18px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <label style="font-size:13px; font-weight:700; color:#cbd5e1; text-transform:uppercase; letter-spacing:0.04em;">
+                    📋 Chọn Tài Khoản Google Để Mở Hoặc Gửi Link:
+                </label>
+                <button class="btn btn-secondary btn-sm" onclick="sendColabGuideToTelegram('all')" style="font-size:11.5px; padding:4px 10px; display:flex; align-items:center; gap:5px; background:rgba(56,189,248,0.1); border-color:rgba(56,189,248,0.3); color:#38bdf8;">
+                    <span>📲</span> Gửi Toàn Bộ Link Về Telegram
+                </button>
+            </div>
+
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:12px;" id="colab-accounts-cards-container">
+                <!-- Account 1 -->
+                <div class="colab-acc-card active-acc" id="card-acc-account_1" onclick="selectColabAccount('account_1')" style="background:rgba(56,189,248,0.08); border:2px solid #38bdf8; border-radius:14px; padding:14px; cursor:pointer; transition:all 0.25s ease; position:relative;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="font-size:11px; font-weight:800; color:#38bdf8; background:rgba(56,189,248,0.2); padding:2px 8px; border-radius:6px;">TÀI KHOẢN 1 (CHÍNH)</span>
+                        <span style="font-size:11px; color:#34d399; font-weight:700;">20 TB Google One</span>
+                    </div>
+                    <div style="font-size:13px; font-weight:700; color:#fff; word-break:break-all; margin-bottom:4px;">pool1.studio@example.com</div>
+                    <div style="font-size:11.5px; color:#94a3b8; margin-bottom:12px;">Kho lưu trữ gốc & Render chính</div>
+                    <div style="display:flex; gap:6px;">
+                        <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); openColabAccount('account_1');" style="flex:1; font-size:11.5px; padding:6px 8px; background:linear-gradient(135deg, #0284c7, #2563eb); font-weight:700;">
+                            🚀 Mở Colab
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); sendColabGuideToTelegram('account_1');" title="Gửi link & hướng dẫn acc này về Telegram" style="padding:6px 10px; font-size:12px;">
+                            📲
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); copyColabGuide('account_1');" title="Sao chép link & hướng dẫn" style="padding:6px 10px; font-size:12px;">
+                            📋
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Account 2 -->
+                <div class="colab-acc-card" id="card-acc-acount_2" onclick="selectColabAccount('acount_2')" style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.1); border-radius:14px; padding:14px; cursor:pointer; transition:all 0.25s ease; position:relative;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="font-size:11px; font-weight:800; color:#a78bfa; background:rgba(167,139,250,0.15); padding:2px 8px; border-radius:6px;">TÀI KHOẢN 2 (DỰ PHÒNG 1)</span>
+                        <span style="font-size:11px; color:#38bdf8; font-weight:700;">2 TB Google One</span>
+                    </div>
+                    <div style="font-size:13px; font-weight:700; color:#fff; word-break:break-all; margin-bottom:4px;">pool2.studio@example.com</div>
+                    <div style="font-size:11.5px; color:#94a3b8; margin-bottom:12px;">Xoay vòng khi Acc 1 hết hạn mức GPU</div>
+                    <div style="display:flex; gap:6px;">
+                        <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); openColabAccount('acount_2');" style="flex:1; font-size:11.5px; padding:6px 8px; background:linear-gradient(135deg, #7c3aed, #4f46e5); font-weight:700;">
+                            🚀 Mở Colab
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); sendColabGuideToTelegram('acount_2');" title="Gửi link & hướng dẫn acc này về Telegram" style="padding:6px 10px; font-size:12px;">
+                            📲
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); copyColabGuide('acount_2');" title="Sao chép link & hướng dẫn" style="padding:6px 10px; font-size:12px;">
+                            📋
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Account 3 -->
+                <div class="colab-acc-card" id="card-acc-accout3" onclick="selectColabAccount('accout3')" style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.1); border-radius:14px; padding:14px; cursor:pointer; transition:all 0.25s ease; position:relative;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="font-size:11px; font-weight:800; color:#f472b6; background:rgba(244,114,182,0.15); padding:2px 8px; border-radius:6px;">TÀI KHOẢN 3 (DỰ PHÒNG 2)</span>
+                        <span style="font-size:11px; color:#38bdf8; font-weight:700;">2 TB Google One</span>
+                    </div>
+                    <div style="font-size:13px; font-weight:700; color:#fff; word-break:break-all; margin-bottom:4px;">pool3.studio@example.com</div>
+                    <div style="font-size:11.5px; color:#94a3b8; margin-bottom:12px;">Dự phòng render xuyên suốt 24/7</div>
+                    <div style="display:flex; gap:6px;">
+                        <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); openColabAccount('accout3');" style="flex:1; font-size:11.5px; padding:6px 8px; background:linear-gradient(135deg, #db2777, #9333ea); font-weight:700;">
+                            🚀 Mở Colab
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); sendColabGuideToTelegram('accout3');" title="Gửi link & hướng dẫn acc này về Telegram" style="padding:6px 10px; font-size:12px;">
+                            📲
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); copyColabGuide('accout3');" title="Sao chép link & hướng dẫn" style="padding:6px 10px; font-size:12px;">
+                            📋
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ DEDICATED ACCOUNT GUIDANCE PANEL (ĐỀ XUẤT HƯỚNG MỞ TÀI KHOẢN ĐÓ) ═══ -->
+        <div id="colab-account-guidance-panel" style="background:rgba(15, 23, 42, 0.85); border:1px solid rgba(56, 189, 248, 0.35); border-radius:16px; padding:18px; margin-bottom:16px; box-shadow: inset 0 0 20px rgba(56, 189, 248, 0.05);">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                <div>
+                    <div style="font-size:11px; text-transform:uppercase; color:#38bdf8; font-weight:800; letter-spacing:0.06em; margin-bottom:2px; display:flex; align-items:center; gap:6px;">
+                        <span>🎯</span> HƯỚNG DẪN MỞ ĐÚNG TÀI KHOẢN MỤC TIÊU:
+                    </div>
+                    <div id="colab-target-account-label" style="font-size:15px; font-weight:800; color:#fff;">
+                        Tài khoản 1: pool1.studio@example.com
+                    </div>
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button id="btn-colab-open-direct" class="btn btn-primary btn-sm" onclick="triggerCurrentColabOpen()" style="font-weight:700; background:linear-gradient(135deg, #0284c7, #2563eb);">
+                        🚀 Mở Tab Colab Ngay
+                    </button>
+                    <button id="btn-colab-send-tele-direct" class="btn btn-secondary btn-sm" onclick="triggerCurrentColabSendTele()">
+                        📲 Gửi Về Telegram
+                    </button>
+                </div>
+            </div>
+
+            <!-- Direct URL box -->
+            <div style="margin-bottom:14px;">
+                <label style="font-size:11px; color:#94a3b8; display:block; margin-bottom:4px;">
+                    Đường dẫn Colab tích hợp sẵn cờ chuyển tài khoản tự động (<code>?authuser=...</code>):
+                </label>
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <input type="text" id="colab-direct-url-input" readonly value="https://colab.research.google.com/drive/1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo?authuser=pool1.studio@example.com" class="form-input" style="font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#38bdf8; background:rgba(0,0,0,0.4); border-color:rgba(56,189,248,0.3);">
+                    <button class="btn btn-secondary btn-sm" onclick="copyCurrentColabUrl()" style="white-space:nowrap; padding:6px 12px;">
+                        📋 Copy Link
+                    </button>
+                </div>
+            </div>
+
+            <!-- 3 Steps Visual Guide -->
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
+                <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:10px 12px;">
+                    <div style="font-size:12px; font-weight:700; color:#38bdf8; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+                        <span style="width:20px; height:20px; border-radius:50%; background:rgba(56,189,248,0.2); display:inline-flex; align-items:center; justify-content:center; font-size:11px;">1</span>
+                        Nhấp Mở Đường Link
+                    </div>
+                    <div style="font-size:11.5px; color:#cbd5e1; line-height:1.5;">
+                        Google Colab sẽ tự động đối chiếu cờ <code>authuser</code> và ưu tiên mở giao diện bằng email này.
+                    </div>
+                </div>
+
+                <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:10px 12px;">
+                    <div style="font-size:12px; font-weight:700; color:#a78bfa; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+                        <span style="width:20px; height:20px; border-radius:50%; background:rgba(167,139,250,0.2); display:inline-flex; align-items:center; justify-content:center; font-size:11px;">2</span>
+                        Kiểm Tra Avatar Góc Phải
+                    </div>
+                    <div style="font-size:11.5px; color:#cbd5e1; line-height:1.5;">
+                        Nhìn góc trên bên phải trang Colab: nếu chưa đúng email, nhấp vào Avatar để chọn đúng email này (tránh dùng nhầm tài khoản đã hết quota).
+                    </div>
+                </div>
+
+                <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:10px 12px;">
+                    <div style="font-size:12px; font-weight:700; color:#34d399; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+                        <span style="width:20px; height:20px; border-radius:50%; background:rgba(52,211,153,0.2); display:inline-flex; align-items:center; justify-content:center; font-size:11px;">3</span>
+                        Bấm Runtime ➡️ Run All
+                    </div>
+                    <div style="font-size:11.5px; color:#cbd5e1; line-height:1.5;">
+                        Nhấn <strong>Ctrl + F9</strong> và bấm <em>Connect to Drive</em>. Sau đó bạn có thể <strong>tắt màn hình điện thoại hoặc đóng tab</strong>, Colab sẽ tự render ngầm!
+                    </div>
+                </div>
+            </div>
+
+            <!-- Smart Rotation Tip -->
+            <div style="margin-top:12px; padding:10px 12px; background:rgba(251,191,36,0.08); border-left:3px solid #fbbf24; border-radius:6px; font-size:11.5px; color:#fde68a; line-height:1.5;">
+                <strong>💡 Cơ chế xoay tài khoản:</strong> Khi Colab hiện thông báo <em>"Cannot connect to GPU backend"</em> (hết quota GPU miễn phí trong ngày của Google), bạn chỉ cần quay lại đây, nhấp chọn <strong>Tài khoản tiếp theo</strong> và bấm Run all để tiếp tục render video liên tục!
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="modal-footer" style="padding-top:12px; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:11.5px; color:#64748b;">
+                Tất cả 3 tài khoản đã được phân quyền vào thư mục chung <code>AI_YouTube_RenderFarm</code>
+            </div>
+            <button class="btn btn-secondary" onclick="closeColabFarmModal()" style="font-size:12px; padding:8px 18px;">
+                Đóng
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- OVERLAY / LANDING PORTAL: TELEGRAM 2FA DEVICE GATEKEEPER -->
 <div id="device-gatekeeper-overlay" class="gk-portal-wrapper" style="display:none;">
     <div class="gk-ambient-orb gk-ambient-orb-1"></div>
@@ -2423,6 +2631,6 @@ Ví dụ Căn Theo Mốc:
 <div class="toast-container" id="toast-container"></div>
 
 <script src="/static/js/chart.min.js"></script>
-<script src="/static/js/dashboard.js?v=3.3"></script>
+<script src="/static/js/dashboard.js?v=3.4"></script>
 </body>
 </html>

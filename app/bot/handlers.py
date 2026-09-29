@@ -2709,6 +2709,32 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await colab_command(update, context)
         return
 
+    elif data == "colab_rotation_guide":
+        nb_id = "1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo"
+        colab_base = f"https://colab.research.google.com/drive/{nb_id}"
+        guide_text = (
+            "🧭 **HƯỚNG DẪN MỞ TÀI KHOẢN & XOAY VÒNG GPU COLAB**\n\n"
+            "🎯 **Tại sao cần xoay tài khoản?**\n"
+            "Google Colab cấp GPU T4/A100 miễn phí cho mỗi tài khoản Google với hạn mức 4-8 tiếng render. Khi tài khoản chạm trần (*'Cannot connect to GPU backend'* / GPU quota exceeded), bạn không cần chờ đợi hay mua thêm, mà chỉ việc xoay sang tài khoản tiếp theo!\n\n"
+            "📌 **DANH SÁCH 3 TÀI KHOẢN:**\n"
+            "1️⃣ **Tài khoản 1 (Chính):** `pool1.studio@example.com` (20 TB)\n"
+            "2️⃣ **Tài khoản 2 (Dự phòng 1):** `pool2.studio@example.com` (2 TB)\n"
+            "3️⃣ **Tài khoản 3 (Dự phòng 2):** `pool3.studio@example.com` (2 TB)\n\n"
+            "🧭 **3 BƯỚC ĐẢM BẢO MỞ ĐÚNG TÀI KHOẢN:**\n"
+            "1️⃣ **Bấm link tài khoản cần mở:** Link đã kèm sẵn mã `?authuser=<email>` để Google Colab tự mở tài khoản đó.\n"
+            "2️⃣ **Kiểm tra Avatar góc trên bên phải:** Đảm bảo đúng email bạn muốn chạy. Nếu trình duyệt đang lưu tài khoản khác, hãy bấm vào avatar góc phải để chuyển sang đúng email.\n"
+            "3️⃣ **Bấm Chạy tất cả:** Vào menu **Runtime** ➡️ Bấm **Run all** (hoặc `Ctrl + F9`) ➡️ Bấm Cho phép Drive.\n\n"
+            "✨ *Tắt màn hình hoặc đóng tab, Colab vẫn chạy ngầm và render video 20s/video!*"
+        )
+        guide_kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🚀 Mở Acc 1: giangnguyenviet38 (20TB)", url=f"{colab_base}?authuser=pool1.studio@example.com")],
+            [InlineKeyboardButton("🚀 Mở Acc 2: tonyabcd1234567890 (2TB)", url=f"{colab_base}?authuser=pool2.studio@example.com")],
+            [InlineKeyboardButton("🚀 Mở Acc 3: maychuvv1n1 (2TB)", url=f"{colab_base}?authuser=pool3.studio@example.com")],
+            [InlineKeyboardButton("⬅️ Quay lại trạng thái Colab", callback_data="check_colab_status")]
+        ])
+        await safe_edit_text(query.message, guide_text, reply_markup=guide_kb)
+        return
+
     # 7. Xử lý toàn bộ các kịch bản đang chờ (Render Queue Batch)
     elif data == "process_all_pending":
         with get_db() as db:
@@ -3900,10 +3926,21 @@ async def colab_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     from app.database.models import get_db, VideoJob
 
-    colab_github_url = "https://colab.research.google.com/github/Giangvv1n/AI-youtube/blob/main/colab_gpu_worker.ipynb"
+    nb_id = "1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo"
+    colab_base = f"https://colab.research.google.com/drive/{nb_id}"
+
+    acc1_url = f"{colab_base}?authuser=pool1.studio@example.com"
+    acc2_url = f"{colab_base}?authuser=pool2.studio@example.com"
+    acc3_url = f"{colab_base}?authuser=pool3.studio@example.com"
+
     colab_keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚡ MỞ & CHẠY COLAB TRÊN ĐT / PC (1-CHẠM)", url=colab_github_url)],
-        [InlineKeyboardButton("🔄 Quét lại kết nối GPU", callback_data="check_colab_status")]
+        [InlineKeyboardButton("🚀 Mở Acc 1: giangnguyenviet38 (20TB)", url=acc1_url)],
+        [InlineKeyboardButton("🚀 Mở Acc 2: tonyabcd1234567890 (2TB)", url=acc2_url)],
+        [InlineKeyboardButton("🚀 Mở Acc 3: maychuvv1n1 (2TB)", url=acc3_url)],
+        [
+            InlineKeyboardButton("💡 Hướng dẫn xoay tài khoản", callback_data="colab_rotation_guide"),
+            InlineKeyboardButton("🔄 Quét kết nối GPU", callback_data="check_colab_status")
+        ]
     ])
 
     # Đếm số lượng video đang chờ hoặc bị kẹt
@@ -3928,7 +3965,8 @@ async def colab_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📁 **Google Drive Sync:** Đã đồng bộ (`/AI_YouTube_RenderFarm/`)\n"
                 f"🌐 **Đường truyền:** `{colab_client.worker_url}`\n"
                 f"📋 **Hàng đợi hiện tại:** `{pending_count}` video đang chờ xử lý\n\n"
-                f"💡 Bạn có thể bấm tạo video từ điện thoại hoặc máy tính, GPU Colab sẽ tự động gánh toàn bộ tải render!"
+                f"💡 Bạn có thể bấm tạo video từ điện thoại hoặc máy tính, GPU Colab sẽ tự động gánh toàn bộ tải render!\n\n"
+                f"👇 **Mở thêm hoặc đổi tài khoản Colab (Xoay vòng):**"
             )
             await safe_edit_text(wait_msg, text, reply_markup=colab_keyboard)
         else:
@@ -3942,12 +3980,13 @@ async def colab_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💻 **Chế độ hiện tại:** Đang render bằng CPU máy tính nội bộ (chậm 2-3 phút/video)\n"
                 f"{pending_note}\n"
                 f"📱 **HƯỚNG DẪN BẬT TRÊN ĐIỆN THOẠI HOẶC MÁY TÍNH (1-CHẠM):**\n"
-                f"1. Bấm nút **[⚡ MỞ & CHẠY COLAB TRÊN ĐT / PC]** bên dưới (chạy được trên cả Safari, Chrome điện thoại).\n"
-                f"2. Bấm menu **Runtime** ➡️ **Run all** (hoặc nút Chạy tất cả) ➡️ Bấm Cho phép Drive.\n"
+                f"1. Bấm vào một trong **3 Tài Khoản Google** bên dưới (Link tự động chọn profile tài khoản tương ứng).\n"
+                f"2. Kiểm tra avatar góc phải trên cùng xem đúng email chưa ➡️ Vào **Runtime** ➡️ **Run all** (Chạy tất cả) ➡️ Bấm Cho phép Drive.\n"
                 f"3. **BẬT XONG BẠN CÓ THỂ THOÁT LINK / TẮT MÀN HÌNH ĐIỆN THOẠI!**\n"
-                f"   • Colab sẽ tự chạy ngầm trên đám mây của Google.\n"
+                f"   • Colab tự chạy ngầm trên đám mây của Google.\n"
                 f"   • Tự động kết nối với bot qua Google Drive mà bạn **không cần copy paste link**.\n"
-                f"   • Render xong video tự lưu vào Google Drive (`/AI_YouTube_RenderFarm/completed/`) và bot tự động lấy video gửi về Telegram cho bạn!\n"
+                f"   • Render xong video tự lưu vào Google Drive (`/AI_YouTube_RenderFarm/completed/`) và bot gửi ngay về Telegram!\n\n"
+                f"🔄 *Khi 1 tài khoản hết hạn mức Colab Free trong ngày, chỉ cần mở tài khoản tiếp theo!*"
             )
             await safe_edit_text(wait_msg, text, reply_markup=colab_keyboard)
         return
