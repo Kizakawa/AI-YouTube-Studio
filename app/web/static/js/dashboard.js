@@ -2826,6 +2826,24 @@ async function deleteChannel(accountId, channelId) {
 let currentOAuthSessionKey = '';
 
 async function startChannelAuth(channelId, channelName) {
+    let authWin = null;
+    try {
+        // Mở trước tab mới trực tiếp trong sự kiện click của người dùng để tránh bị trình duyệt Edge/Chrome chặn popup
+        authWin = window.open('about:blank', '_blank');
+        if (authWin) {
+            authWin.document.title = "Đang kết nối Google...";
+            authWin.document.body.innerHTML = `
+                <div style="font-family:system-ui,-apple-system,sans-serif; text-align:center; padding:80px 20px; color:#1e293b; background:#f8fafc; min-height:100vh;">
+                    <div style="font-size:48px; margin-bottom:16px;">⏳</div>
+                    <h2 style="font-size:22px; margin-bottom:8px; color:#0f172a;">Đang mở trang đăng nhập Google...</h2>
+                    <p style="color:#64748b; font-size:14px;">Trình duyệt đang kết nối máy chủ Google OAuth an toàn, vui lòng đợi 1 giây...</p>
+                </div>
+            `;
+        }
+    } catch (e) {
+        console.warn("Popup pre-open:", e);
+    }
+
     try {
         currentOAuthSessionKey = 'channel:' + channelId + ':youtube';
         const modal = document.getElementById('modal-oauth');
@@ -2843,13 +2861,13 @@ async function startChannelAuth(channelId, channelName) {
         desc.innerHTML = `
             <div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:8px; padding:12px; margin-bottom:12px; text-align:left; font-size:12.5px; color:#fde68a; line-height:1.6;">
                 <strong>⚠️ LƯU Ý RẤT QUAN TRỌNG KHI ĐĂNG NHẬP GOOGLE:</strong><br>
-                1. Trình duyệt sẽ mở trang Google, hãy chọn Gmail của bạn.<br>
+                1. Trình duyệt đã mở trang Google trên tab mới, hãy chọn Gmail của bạn.<br>
                 2. Một danh sách các <strong>Kênh YouTube / Brand Account</strong> sẽ hiện ra:<br>
                 👉 <strong>HÃY BẤM CHỌN ĐÚNG KÊNH "${esc(channelName || channelId)}"!</strong><br>
                 <em>(Tuyệt đối không chọn kênh cũ để tránh đăng nhầm video).</em><br>
                 3. Bấm <strong>Cho phép / Allow</strong> để hoàn tất.
             </div>
-            Đang khởi động phiên đăng nhập Google...
+            Đang tải trang đăng nhập Google...
         `;
         resultBox.style.display = 'none';
         linkBox.style.display = 'none';
@@ -2875,29 +2893,50 @@ async function startChannelAuth(channelId, channelName) {
         // Khởi động OAuth cho kênh này
         const res = await apiPost(`/api/channels/${encodeURIComponent(channelId)}/start-auth?service=youtube`, {});
         if (!res || !res.success) {
+            if (authWin && !authWin.closed) authWin.close();
             showToast(res?.detail || 'Không thể khởi động xác thực cho kênh này', 'error');
             closeOAuthModal();
             return;
         }
 
-        // Nếu có auth_url trả về ngay lập tức, hiển thị nút và mở luôn không chờ polling
+        // Nếu có auth_url trả về ngay lập tức, chuyển hướng tab popup ngay
         if (res.auth_url) {
             authLink.href = res.auth_url;
             linkBox.style.display = 'block';
             spinner.style.display = 'none';
-            desc.innerHTML = `
-                <div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:8px; padding:12px; margin-bottom:12px; text-align:left; font-size:12.5px; color:#fde68a; line-height:1.6;">
-                    <strong>⚠️ LƯU Ý RẤT QUAN TRỌNG KHI ĐĂNG NHẬP GOOGLE:</strong><br>
-                    1. Chọn Gmail của bạn.<br>
-                    👉 <strong>2. CHỌN ĐÚNG KÊNH "${esc(channelName || channelId)}"</strong> trong danh sách Kênh / Brand Account.<br>
-                    3. Bấm <strong>Cho phép (Allow)</strong> để hoàn tất!
-                </div>
-                Trang đăng nhập Google đã sẵn sàng. Hãy bấm nút bên dưới nếu trình duyệt không tự mở:
-            `;
-            try {
-                window.open(res.auth_url, '_blank');
-            } catch (e) {
-                console.log('Popup blocked:', e);
+            let openedTab = false;
+            if (authWin && !authWin.closed) {
+                try {
+                    authWin.location.href = res.auth_url;
+                    openedTab = true;
+                } catch (e) {}
+            }
+            if (!openedTab) {
+                try {
+                    const w = window.open(res.auth_url, '_blank');
+                    if (w) openedTab = true;
+                } catch (e) {}
+            }
+
+            if (openedTab) {
+                heading.innerHTML = `🌐 Đang Xác Thực Kênh: <span style="color:#60a5fa;">${esc(channelName || channelId)}</span>`;
+                desc.innerHTML = `
+                    <div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:8px; padding:12px; margin-bottom:12px; text-align:left; font-size:12.5px; color:#fde68a; line-height:1.6;">
+                        <strong>⚠️ LƯU Ý RẤT QUAN TRỌNG KHI ĐĂNG NHẬP GOOGLE:</strong><br>
+                        1. Trình duyệt đã mở trang Google ở tab mới, hãy chọn Gmail của bạn.<br>
+                        👉 <strong>2. HÃY BẤM CHỌN ĐÚNG KÊNH "${esc(channelName || channelId)}"!</strong><br>
+                        3. Bấm <strong>Cho phép / Allow</strong> để hoàn tất.
+                    </div>
+                    <em>(Nếu tab đăng nhập không tự mở, hãy bấm nút to màu xanh bên dưới)</em>
+                `;
+            } else {
+                heading.innerHTML = `⚠️ Trình Duyệt Đang Chặn Tab Tự Động`;
+                desc.innerHTML = `
+                    <div style="background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); border-radius:8px; padding:12px; margin-bottom:12px; text-align:left; font-size:12.5px; color:#fca5a5; line-height:1.6;">
+                        Trình duyệt của bạn đã chặn cửa sổ bật lên tự động.<br>
+                        👉 <strong>VUI LÒNG BẤM VÀO NÚT BÊN DƯỚI ĐỂ MỞ TRANG ĐĂNG NHẬP:</strong>
+                    </div>
+                `;
             }
         }
 
@@ -2911,19 +2950,8 @@ async function startChannelAuth(channelId, channelName) {
                     authLink.href = statusData.auth_url;
                     linkBox.style.display = 'block';
                     spinner.style.display = 'none';
-                    desc.innerHTML = `
-                        <div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:8px; padding:12px; margin-bottom:12px; text-align:left; font-size:12.5px; color:#fde68a; line-height:1.6;">
-                            <strong>⚠️ LƯU Ý RẤT QUAN TRỌNG KHI ĐĂNG NHẬP GOOGLE:</strong><br>
-                            1. Chọn Gmail của bạn.<br>
-                            👉 <strong>2. CHỌN ĐÚNG KÊNH "${esc(channelName || channelId)}"</strong> trong danh sách Kênh / Brand Account.<br>
-                            3. Bấm <strong>Cho phép (Allow)</strong> để hoàn tất!
-                        </div>
-                        Trang đăng nhập Google đã sẵn sàng. Hãy bấm nút bên dưới nếu trình duyệt không tự mở:
-                    `;
-                    try {
-                        window.open(statusData.auth_url, '_blank');
-                    } catch (e) {
-                        console.log('Popup blocked:', e);
+                    if (authWin && !authWin.closed && authWin.location.href.includes('about:blank')) {
+                        authWin.location.href = statusData.auth_url;
                     }
                 }
 
@@ -2949,12 +2977,10 @@ async function startChannelAuth(channelId, channelName) {
                         fetchStats();
                     }, 2200);
                 } else if (statusData.status === 'error') {
-                    clearInterval(oauthPollTimer);
-                    if (oauthCountdownTimer) { clearInterval(oauthCountdownTimer); oauthCountdownTimer = null; }
                     spinner.style.display = 'none';
-                    linkBox.style.display = 'none';
+                    linkBox.style.display = 'block';
                     heading.textContent = '❌ Lỗi Cấp Quyền Kênh';
-                    desc.textContent = statusData.error || 'Quá trình xác thực bị hủy hoặc xảy ra lỗi.';
+                    desc.innerHTML = 'Hệ thống chưa nhận được mã hợp lệ. Bạn có thể mở lại trang đăng nhập hoặc dán lại đường link vào ô bên dưới:';
                     resultBox.style.display = 'block';
                     resultBox.style.background = 'rgba(251,113,133,0.15)';
                     resultBox.style.color = 'var(--accent-rose)';
@@ -2992,10 +3018,29 @@ async function disconnectChannelAuth(channelId) {
 let oauthCountdownTimer = null;
 
 async function startGoogleAuth(accountId, service) {
+    let authWin = null;
+    try {
+        // Mở trước tab mới trực tiếp trong sự kiện click của người dùng để tránh bị trình duyệt Edge/Chrome chặn popup
+        authWin = window.open('about:blank', '_blank');
+        if (authWin) {
+            authWin.document.title = "Đang kết nối Google...";
+            authWin.document.body.innerHTML = `
+                <div style="font-family:system-ui,-apple-system,sans-serif; text-align:center; padding:80px 20px; color:#1e293b; background:#f8fafc; min-height:100vh;">
+                    <div style="font-size:48px; margin-bottom:16px;">⏳</div>
+                    <h2 style="font-size:22px; margin-bottom:8px; color:#0f172a;">Đang mở trang đăng nhập Google...</h2>
+                    <p style="color:#64748b; font-size:14px;">Trình duyệt đang kết nối máy chủ Google OAuth an toàn, vui lòng đợi 1 giây...</p>
+                </div>
+            `;
+        }
+    } catch (e) {
+        console.warn("Popup pre-open:", e);
+    }
+
     try {
         currentOAuthSessionKey = accountId + ':' + service;
         const res = await apiPost(`/api/accounts/${accountId}/auth-start`, { service: service });
         if (!res || !res.success) {
+            if (authWin && !authWin.closed) authWin.close();
             showToast(res?.detail || 'Không thể khởi chạy phiên đăng nhập Google', 'error');
             return;
         }
@@ -3011,11 +3056,46 @@ async function startGoogleAuth(accountId, service) {
 
         // Reset trạng thái modal
         modal.classList.add('visible');
-        heading.textContent = `Đang mở trình duyệt xác thực ${service.toUpperCase()}...`;
-        desc.textContent = `Hệ thống đang mở trình duyệt đăng nhập Google cho tài khoản '${accountId}'. Hãy bấm 'Cho Phép' trên trang Google.`;
+        heading.textContent = `Đăng nhập Google ${service.toUpperCase()}: ${accountId}`;
+        desc.textContent = `Hệ thống đã mở trang đăng nhập Google trên tab mới. Hãy đăng nhập Gmail và bấm 'Cho Phép'.`;
         resultBox.style.display = 'none';
-        linkBox.style.display = 'none';
         spinner.style.display = '';
+
+        if (res.auth_url) {
+            authLink.href = res.auth_url;
+            linkBox.style.display = 'block';
+            spinner.style.display = 'none';
+            let openedTab = false;
+            if (authWin && !authWin.closed) {
+                try {
+                    authWin.location.href = res.auth_url;
+                    openedTab = true;
+                } catch (e) {}
+            }
+            if (!openedTab) {
+                try {
+                    const w = window.open(res.auth_url, '_blank');
+                    if (w) openedTab = true;
+                } catch (e) {}
+            }
+
+            if (openedTab) {
+                heading.innerHTML = `🌐 Đang Xác Thực: <span style="color:#60a5fa;">${esc(accountId)} (${service.toUpperCase()})</span>`;
+                desc.innerHTML = `
+                    Đã mở tab mới để đăng nhập Google.<br>
+                    Vui lòng chọn Gmail của bạn và bấm <strong>Cho phép (Allow)</strong>.<br>
+                    <em style="color:#94a3b8; font-size:12px;">(Nếu tab không tự mở, hãy bấm nút xanh bên dưới).</em>
+                `;
+            } else {
+                heading.innerHTML = `⚠️ Trình Duyệt Đang Chặn Tab Tự Động`;
+                desc.innerHTML = `
+                    <div style="background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); border-radius:8px; padding:12px; margin-bottom:12px; text-align:left; font-size:12.5px; color:#fca5a5; line-height:1.6;">
+                        Trình duyệt của bạn đã chặn cửa sổ bật lên tự động.<br>
+                        👉 <strong>VUI LÒNG BẤM VÀO NÚT BÊN DƯỚI ĐỂ MỞ TRANG ĐĂNG NHẬP:</strong>
+                    </div>
+                `;
+            }
+        }
 
         if (oauthPollTimer) clearInterval(oauthPollTimer);
         if (oauthCountdownTimer) clearInterval(oauthCountdownTimer);
@@ -3035,7 +3115,7 @@ async function startGoogleAuth(accountId, service) {
             }
         }, 1000);
 
-        // Polling trạng thái mỗi 2 giây
+        // Polling trạng thái mỗi 1.5 giây
         oauthPollTimer = setInterval(async () => {
             try {
                 const statusData = await apiGet(`/api/accounts/${accountId}/auth-status?service=${service}`);
@@ -3045,12 +3125,9 @@ async function startGoogleAuth(accountId, service) {
                 if (statusData.auth_url && linkBox.style.display === 'none') {
                     authLink.href = statusData.auth_url;
                     linkBox.style.display = 'block';
-                    heading.textContent = `Đăng nhập Google ${service.toUpperCase()}`;
-                    desc.innerHTML = `Vui lòng đăng nhập Google và bấm <strong>"Cho phép / Allow"</strong> để hoàn tất cấp quyền.`;
-                    try {
-                        window.open(statusData.auth_url, '_blank');
-                    } catch (e) {
-                        console.log('Browser blocked auto popup:', e);
+                    spinner.style.display = 'none';
+                    if (authWin && !authWin.closed && authWin.location.href.includes('about:blank')) {
+                        authWin.location.href = statusData.auth_url;
                     }
                 }
 
@@ -3073,12 +3150,10 @@ async function startGoogleAuth(accountId, service) {
                         fetchStats();
                     }, 1800);
                 } else if (statusData.status === 'error') {
-                    clearInterval(oauthPollTimer);
-                    if (oauthCountdownTimer) { clearInterval(oauthCountdownTimer); oauthCountdownTimer = null; }
                     spinner.style.display = 'none';
-                    linkBox.style.display = 'none';
+                    linkBox.style.display = 'block';
                     heading.textContent = '❌ Lỗi Xác Thực';
-                    desc.textContent = statusData.error || 'Quá trình xác thực bị hủy hoặc xảy ra lỗi.';
+                    desc.innerHTML = 'Hệ thống chưa nhận được mã hợp lệ. Bạn có thể mở lại trang đăng nhập Google hoặc dán lại mã code bên dưới:';
                     resultBox.style.display = 'block';
                     resultBox.style.background = 'rgba(251,113,133,0.15)';
                     resultBox.style.color = 'var(--accent-rose)';
@@ -3087,7 +3162,7 @@ async function startGoogleAuth(accountId, service) {
             } catch (err) {
                 console.warn('Polling OAuth error:', err);
             }
-        }, 2000);
+        }, 1500);
 
     } catch (e) {
         showToast(`Lỗi khởi động OAuth: ${e.message}`, 'error');
@@ -3184,6 +3259,12 @@ async function submitManualOAuthCode() {
         });
         if (res && res.success) {
             showToast('✓ Đã gửi mã xác thực! Hệ thống đang lưu token...', 'success');
+            const resultBox = document.getElementById('oauth-result-box');
+            if (resultBox) resultBox.style.display = 'none';
+            const heading = document.getElementById('oauth-status-heading');
+            if (heading) heading.textContent = '⏳ Đang kiểm tra mã và lưu token Google...';
+            const spinner = document.getElementById('oauth-spinner');
+            if (spinner) spinner.style.display = '';
         } else {
             showToast(res?.detail || 'Không thể xử lý mã xác thực', 'error');
         }

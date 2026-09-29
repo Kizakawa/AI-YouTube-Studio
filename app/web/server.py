@@ -2065,7 +2065,7 @@ def exchange_oauth_code_for_credentials(flow, raw_val: str):
 
 @app.post("/api/accounts/{account_id}/auth-start")
 async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Request) -> Dict[str, Any]:
-    """Khởi chạy luồng xác thực Google OAuth trong luồng nền và tự động mở trình duyệt."""
+    """Khởi chạy luồng xác thực Google OAuth và trả về auth_url ngay lập tức để mở trang đăng nhập."""
     if not is_safe_identifier(account_id):
         raise HTTPException(status_code=400, detail="Mã tài khoản không hợp lệ.")
     service = req.service.lower()
@@ -2073,110 +2073,108 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
     client_ip = request.client.host if request.client else "127.0.0.1"
     is_local_client = client_ip in ("127.0.0.1", "localhost", "::1", "testclient")
 
+    import webbrowser
+    import wsgiref.simple_server
+    import wsgiref.util
+    from google_auth_oauthlib.flow import InstalledAppFlow
+
+    scopes = [
+        "https://www.googleapis.com/auth/youtube",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "openid"
+    ] if service == "youtube" else [
+        "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "openid"
+    ]
+    token_filename = "youtube_token.json" if service == "youtube" else "drive_token.json"
+
+    base_dir = Path(settings.BASE_DIR)
+    acc_dir = base_dir / "credentials" / "accounts" / account_id
+    acc_dir.mkdir(parents=True, exist_ok=True)
+
+    secret_file = acc_dir / "client_secret.json"
+    if not secret_file.exists():
+        fallback = base_dir / "credentials" / "accounts" / "account_1" / "client_secret.json"
+        if fallback.exists():
+            secret_file = fallback
+        else:
+            raise HTTPException(status_code=400, detail="Chưa có file client_secret.json! Vui lòng nạp file trước.")
+
+    flow = InstalledAppFlow.from_client_secrets_file(str(secret_file), scopes=scopes)
+
+    # ── Tạo HTTP server cục bộ để nhận callback từ Google ──
+    received_uri = {"value": None}
+    success_page = (
+        "<html><body style='font-family:system-ui,sans-serif;text-align:center;padding:60px;"
+        "background:#1a1a2e;color:#e0e0e0'>"
+        "<h2 style='color:#34d399'>✅ Xác thực Google thành công!</h2>"
+        "<p>Bạn có thể đóng tab này và quay lại Web Studio.</p>"
+        "</body></html>"
+    )
+
+    def _wsgi_app(environ, start_response):
+        received_uri["value"] = wsgiref.util.request_uri(environ)
+        start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
+        return [success_page.encode("utf-8")]
+
+    # Tắt log mặc định của wsgiref (tránh spam console)
+    class _SilentHandler(wsgiref.simple_server.WSGIRequestHandler):
+        def log_message(self, fmt, *args):
+            pass
+
+    local_server = wsgiref.simple_server.make_server(
+        "localhost", 0, _wsgi_app, handler_class=_SilentHandler
+    )
+    port = local_server.server_port
+
+    # Cấu hình redirect URI trỏ về server cục bộ vừa tạo
+    flow.redirect_uri = f"http://localhost:{port}/"
+    auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline")
+
+    # Lưu URL xác thực để frontend hiển thị trên modal
     _oauth_sessions[session_key] = {
         "status": "in_progress",
         "account_id": account_id,
         "service": service,
-        "message": f"Đang mở trình duyệt để xác thực {service.upper()} cho {account_id}...",
+        "auth_url": auth_url,
+        "message": "Link xác thực đã sẵn sàng. Hãy đăng nhập Google trên trình duyệt.",
         "error": None
     }
+    logger.info(f"OAuth URL created for {session_key} on port {port}")
+
+    if is_local_client:
+        try:
+            webbrowser.open(auth_url)
+        except Exception:
+            pass
 
     def _oauth_worker():
         try:
-            import webbrowser
-            import wsgiref.simple_server
-            import wsgiref.util
-            from google_auth_oauthlib.flow import InstalledAppFlow
-
-            scopes = [
-                "https://www.googleapis.com/auth/youtube",
-                "https://www.googleapis.com/auth/userinfo.email",
-                "openid"
-            ] if service == "youtube" else [
-                "https://www.googleapis.com/auth/drive.file",
-                "https://www.googleapis.com/auth/userinfo.email",
-                "openid"
-            ]
-            token_filename = "youtube_token.json" if service == "youtube" else "drive_token.json"
-
-            base_dir = Path(settings.BASE_DIR)
-            acc_dir = base_dir / "credentials" / "accounts" / account_id
-            acc_dir.mkdir(parents=True, exist_ok=True)
-
-            secret_file = acc_dir / "client_secret.json"
-            if not secret_file.exists():
-                fallback = base_dir / "credentials" / "accounts" / "account_1" / "client_secret.json"
-                if fallback.exists():
-                    secret_file = fallback
-                else:
-                    _oauth_sessions[session_key] = {
-                        "status": "error",
-                        "error": "Chưa có file client_secret.json! Vui lòng nạp file trước."
-                    }
-                    return
-
-            flow = InstalledAppFlow.from_client_secrets_file(str(secret_file), scopes=scopes)
-
-            # ── Tạo HTTP server cục bộ để nhận callback từ Google ──
-            received_uri = {"value": None}
-            success_page = (
-                "<html><body style='font-family:system-ui,sans-serif;text-align:center;padding:60px;"
-                "background:#1a1a2e;color:#e0e0e0'>"
-                "<h2 style='color:#34d399'>✅ Xác thực Google thành công!</h2>"
-                "<p>Bạn có thể đóng tab này và quay lại Web Studio.</p>"
-                "</body></html>"
-            )
-
-            def _wsgi_app(environ, start_response):
-                received_uri["value"] = wsgiref.util.request_uri(environ)
-                start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
-                return [success_page.encode("utf-8")]
-
-            # Tắt log mặc định của wsgiref (tránh spam console)
-            class _SilentHandler(wsgiref.simple_server.WSGIRequestHandler):
-                def log_message(self, fmt, *args):
-                    pass
-
-            local_server = wsgiref.simple_server.make_server(
-                "localhost", 0, _wsgi_app, handler_class=_SilentHandler
-            )
-            port = local_server.server_port
-
-            # Cấu hình redirect URI trỏ về server cục bộ vừa tạo
-            flow.redirect_uri = f"http://localhost:{port}/"
-            auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline")
-
-            # Lưu URL xác thực để frontend hiển thị trên modal (giải quyết lỗi spinner xoay mãi)
-            _oauth_sessions[session_key].update({
-                "auth_url": auth_url,
-                "message": "Link xác thực đã sẵn sàng. Hãy đăng nhập Google trên trình duyệt."
-            })
-            logger.info(f"OAuth URL created for {session_key} on port {port}")
-
-            # Chỉ tự động mở trình duyệt nếu gọi từ chính localhost (127.0.0.1)
-            # Ngăn chặn việc máy chủ tự động bật trình duyệt đăng nhập khi bạn bè trên máy khác đang thao tác
-            if is_local_client:
-                try:
-                    webbrowser.open(auth_url)
-                except Exception:
-                    logger.info("Không thể tự mở trình duyệt, user cần bấm link thủ công trên modal.")
-            else:
-                logger.info(f"Yêu cầu OAuth từ thiết bị khách ({client_ip}), không mở trình duyệt trên máy chủ.")
-
             # Chờ callback từ Google hoặc từ người dùng dán vào modal (timeout 3 phút)
             srv_thread = threading.Thread(target=local_server.handle_request, daemon=True)
             srv_thread.start()
 
             import time
             start_t = time.time()
-            auth_input = None
+            creds = None
             while time.time() - start_t < 180:
+                auth_input = None
                 if received_uri["value"]:
                     auth_input = received_uri["value"]
-                    break
-                if session_key in _oauth_manual_responses:
+                elif session_key in _oauth_manual_responses:
                     auth_input = _oauth_manual_responses.pop(session_key)
-                    break
+
+                if auth_input:
+                    try:
+                        creds = exchange_oauth_code_for_credentials(flow, auth_input)
+                        if creds:
+                            break
+                    except Exception as ex:
+                        logger.warning(f"Thử đổi mã OAuth thất bại: {ex}")
+                        _oauth_sessions[session_key]["status"] = "error"
+                        _oauth_sessions[session_key]["error"] = str(ex)
+
                 time.sleep(0.5)
 
             try:
@@ -2184,14 +2182,13 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
             except Exception:
                 pass
 
-            if not auth_input:
-                _oauth_sessions[session_key] = {
-                    "status": "error",
-                    "error": "Hết thời gian chờ xác thực (3 phút). Vui lòng thử lại."
-                }
+            if not creds:
+                if _oauth_sessions.get(session_key, {}).get("status") != "error":
+                    _oauth_sessions[session_key] = {
+                        "status": "error",
+                        "error": "Hết thời gian chờ xác thực (3 phút). Vui lòng thử lại."
+                    }
                 return
-
-            creds = exchange_oauth_code_for_credentials(flow, auth_input)
 
             # Lưu token file mã hoá AES-256-GCM
             token_data = creds.to_json()
@@ -2323,9 +2320,10 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
 
     return {
         "success": True,
+        "auth_url": auth_url,
         "session_key": session_key,
         "status": "in_progress",
-        "message": "Trình duyệt Google đang được mở để cấp quyền. Hãy bấm 'Cho Phép' trên trình duyệt."
+        "message": "Trang đăng nhập Google đã sẵn sàng. Hãy bấm 'Cho Phép' trên trình duyệt."
     }
 
 @app.get("/api/accounts/{account_id}/auth-status")
@@ -2734,14 +2732,24 @@ async def start_channel_oauth(channel_id: str, request: Request, service: str = 
 
             import time
             start_t = time.time()
-            auth_input = None
+            creds = None
             while time.time() - start_t < 180:
+                auth_input = None
                 if received_uri["value"]:
                     auth_input = received_uri["value"]
-                    break
-                if session_key in _oauth_manual_responses:
+                elif session_key in _oauth_manual_responses:
                     auth_input = _oauth_manual_responses.pop(session_key)
-                    break
+
+                if auth_input:
+                    try:
+                        creds = exchange_oauth_code_for_credentials(flow, auth_input)
+                        if creds:
+                            break
+                    except Exception as ex:
+                        logger.warning(f"Thử đổi mã OAuth kênh thất bại: {ex}")
+                        _oauth_sessions[session_key]["status"] = "error"
+                        _oauth_sessions[session_key]["error"] = str(ex)
+
                 time.sleep(0.5)
 
             try:
@@ -2749,14 +2757,13 @@ async def start_channel_oauth(channel_id: str, request: Request, service: str = 
             except Exception:
                 pass
 
-            if not auth_input:
-                _oauth_sessions[session_key] = {
-                    "status": "error",
-                    "error": "Hết thời gian chờ xác thực (3 phút). Vui lòng thử lại."
-                }
+            if not creds:
+                if _oauth_sessions.get(session_key, {}).get("status") != "error":
+                    _oauth_sessions[session_key] = {
+                        "status": "error",
+                        "error": "Hết thời gian chờ xác thực (3 phút). Vui lòng thử lại."
+                    }
                 return
-
-            creds = exchange_oauth_code_for_credentials(flow, auth_input)
 
             # Đọc thông tin kênh YouTube thật từ token trả về
             real_yt_title = None
