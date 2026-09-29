@@ -397,7 +397,17 @@ class DriveAgent:
                 fields="files(id, name, size, mimeType, webViewLink, webContentLink, createdTime)"
             ).execute()
             files = res.get("files", [])
-            return files[0] if files else None
+            if files:
+                return files[0]
+
+            # Fallback: tìm file mp4 bất kỳ chứa job_id trong tên (ví dụ: video_39_node1.mp4 hoặc 39.mp4)
+            q_fallback = f"'{folder_id}' in parents and trashed = false and name contains '{job_id}' and name contains '.mp4'"
+            res_fb = self.service.files().list(
+                q=q_fallback,
+                fields="files(id, name, size, mimeType, webViewLink, webContentLink, createdTime)"
+            ).execute()
+            fb_files = res_fb.get("files", [])
+            return fb_files[0] if fb_files else None
         except Exception as e:
             logger.debug(f"Lỗi khi tìm video #{job_id} trên Drive: {e}")
             return None
