@@ -2533,6 +2533,7 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
 
     scopes = [
         "https://www.googleapis.com/auth/youtube",
+        "https://www.googleapis.com/auth/youtube.force-ssl",
         "https://www.googleapis.com/auth/userinfo.email",
         "openid"
     ] if service == "youtube" else [
@@ -3190,6 +3191,7 @@ async def start_channel_oauth(channel_id: str, request: Request, service: str = 
 
     scopes = [
         "https://www.googleapis.com/auth/youtube",
+        "https://www.googleapis.com/auth/youtube.force-ssl",
         "https://www.googleapis.com/auth/userinfo.email",
         "openid"
     ]

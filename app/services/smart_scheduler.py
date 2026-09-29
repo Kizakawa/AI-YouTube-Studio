@@ -146,7 +146,72 @@ def sync_scheduled_jobs_status() -> int:
     except Exception as e:
         logger.warning(f"Lỗi khi đồng bộ trạng thái SCHEDULED jobs: {e}")
 
+    # Tự động quét và xả hàng đợi các video chờ nạp lại Quota
+    try:
+        updated_count += process_waiting_quota_jobs()
+    except Exception as qe:
+        logger.debug(f"Lỗi khi xử lý hàng đợi quota: {qe}")
+
     return updated_count
+
+
+def process_waiting_quota_jobs() -> int:
+    """
+    Tự động xử lý hàng đợi VideoJob có status == 'WAITING_QUOTA_RESET'.
+    Nếu hệ thống đã qua mốc 14:00 (Google reset Quota) và QuotaManager.can_upload() là True:
+    Tự động thử upload video lên kênh tương ứng.
+    """
+    from app.services.quota_manager import QuotaManager
+    from app.agents.publisher_agent import PublisherAgent
+    from app.services.channel_manager import get_channel
+    from pathlib import Path
+    
+    processed_count = 0
+    try:
+        with get_db() as db:
+            waiting_jobs = db.query(VideoJob).filter(
+                VideoJob.status == "WAITING_QUOTA_RESET"
+            ).order_by(VideoJob.id.asc()).all()
+
+            if not waiting_jobs:
+                return 0
+
+            for job in waiting_jobs:
+                ch_cfg = get_channel(job.target_channel_id) or {}
+                pub_agent = PublisherAgent(channel_config=ch_cfg)
+                
+                # Kiểm tra xem project của kênh này đã có quota chưa
+                if not QuotaManager.can_upload(pub_agent.project_id):
+                    logger.debug(f"[SmartScheduler] Project '{pub_agent.project_id}' vẫn chưa có quota cho Job #{job.id}, tiếp tục đợi.")
+                    continue
+
+                if not job.video_path or not Path(job.video_path).exists():
+                    logger.warning(f"[SmartScheduler] File video #{job.id} không tìm thấy tại {job.video_path}")
+                    continue
+
+                logger.info(f"🚀 [SmartScheduler] Quota đã được nạp lại! Đang tự động xuất bản Video #{job.id} ('{job.title}')...")
+                res = pub_agent.upload_video(
+                    video_path=job.video_path,
+                    title=job.title or f"Shorts #{job.id}",
+                    description=job.description or "",
+                    tags=job.tags.split(",") if job.tags else None,
+                    privacy_status="public",
+                    default_language=ch_cfg.get("language", "en"),
+                    topic=job.topic or "",
+                    script=job.scenes_json or ""
+                )
+
+                if res.get("status") == "success":
+                    job.status = "PUBLISHED"
+                    job.youtube_video_id = res.get("video_id")
+                    job.error_message = None
+                    processed_count += 1
+                    logger.info(f"✅ [SmartScheduler] Tự động xuất bản thành công Video #{job.id}: {res.get('shorts_url')}")
+    except Exception as ex:
+        logger.warning(f"Lỗi khi xử lý waiting_quota_jobs: {ex}")
+
+    return processed_count
+
 
 
 def get_next_available_golden_slot(

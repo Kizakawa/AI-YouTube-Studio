@@ -19,6 +19,11 @@ class PublisherAgent:
         self.channel_id = self.channel_config.get("id", "default")
         self.channel_name = self.channel_config.get("name", "YouTube Channel")
         self.account_name = self.channel_config.get("google_account", account_name)
+
+        # Quản lý Hạn mức Quota theo Google Cloud Project ID
+        from app.services.quota_manager import QuotaManager, get_project_id_from_client_secret, COST_FULL_SHORTS, get_next_reset_time
+        cs_path = self.channel_config.get("client_secret") or f"credentials/accounts/{self.account_name}/client_secret.json"
+        self.project_id = get_project_id_from_client_secret(cs_path)
         
         ch_token = f"credentials/channels/{self.channel_id}/youtube_token.json"
         acc_token = f"credentials/accounts/{self.account_name}/youtube_token.json"
@@ -140,6 +145,25 @@ class PublisherAgent:
                 "video_id": None
             }
 
+        # ──────────────────────────────────────────────────────────
+        # QUOTA GUARD: Kiểm tra hạn mức trước khi gọi API (Pre-flight check)
+        # ──────────────────────────────────────────────────────────
+        from app.services.quota_manager import QuotaManager, COST_FULL_SHORTS, get_next_reset_time
+        if not QuotaManager.can_upload(self.project_id, required_units=COST_FULL_SHORTS):
+            next_reset_str = get_next_reset_time().strftime("%H:%M ngày %d/%m/%Y")
+            quota_msg = (
+                f"Hạn mức YouTube API hôm nay của dự án '{self.project_id}' đã đạt giới hạn an toàn (gần chạm trần 10.000 units). "
+                f"Video đã được tự động lưu và chuyển vào hàng đợi an toàn, sẽ tự động đăng sau khi Google cấp hạn mức mới lúc {next_reset_str}."
+            )
+            logger.warning(f"⚠️ [QuotaGuard] {quota_msg}")
+            return {
+                "status": "waiting_quota_reset",
+                "error": quota_msg,
+                "message": quota_msg,
+                "video_id": None,
+                "project_id": self.project_id
+            }
+
         # Khử hậu tố kênh/quốc gia rò rỉ (ví dụ " - Maya Leader VN" hay " - VN")
         clean_title = re.sub(
             r'[\[\(\s\-_|:]+[\w\s]*?\b(?:VN|VI|Vietnamese|Vietnam)\b.*$',
@@ -242,6 +266,12 @@ class PublisherAgent:
                 if comment_res:
                     posted_comment_id = comment_res.get("id")
 
+            # Ghi nhận tiêu hao Quota vào database
+            try:
+                QuotaManager.record_consumption(self.project_id, units=COST_FULL_SHORTS, is_upload=True)
+            except Exception as q_err:
+                logger.warning(f"Không thể ghi nhận quota: {q_err}")
+
             return {
                 "status": "success",
                 "video_id": video_id,
@@ -256,6 +286,25 @@ class PublisherAgent:
             }
 
         except Exception as e:
+            err_str = str(e)
+            # Bắt mã lỗi 403 quotaExceeded từ Google API
+            if "quotaExceeded" in err_str or "exceeded your quota" in err_str:
+                from app.services.quota_manager import QuotaManager, get_next_reset_time
+                QuotaManager.mark_exhausted(self.project_id)
+                next_reset_str = get_next_reset_time().strftime("%H:%M ngày %d/%m/%Y")
+                quota_msg = (
+                    f"Dự án '{self.project_id}' đã chạm trần YouTube Quota 10.000 units/ngày của Google. "
+                    f"Video được bảo vệ và chuyển sang hàng đợi tự động, sẽ xuất bản vào {next_reset_str}."
+                )
+                logger.warning(f"🚨 [QuotaExceeded] {quota_msg}")
+                return {
+                    "status": "waiting_quota_reset",
+                    "error": quota_msg,
+                    "message": quota_msg,
+                    "video_id": None,
+                    "project_id": self.project_id
+                }
+
             logger.error(f"Lỗi khi upload video lên YouTube: {e}", exc_info=True)
             return {
                 "status": "failed",

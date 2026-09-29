@@ -1,35 +1,80 @@
 import logging
 from pathlib import Path
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, event
+from sqlalchemy import create_engine, Column, Integer, BigInteger, String, Text, DateTime, ForeignKey, event, text
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from contextlib import contextmanager
 from config.settings import settings
 
-# Đảm bảo thư mục cha của SQLite database luôn tồn tại trước khi khởi tạo engine!
-if "sqlite" in settings.DATABASE_URL:
-    db_clean_path = settings.DATABASE_URL.split("sqlite:///")[-1]
+logger = logging.getLogger(__name__)
+
+def normalize_database_url(url: str) -> str:
+    """Chuẩn hóa DATABASE_URL: chuyển postgres:// thành postgresql:// cho SQLAlchemy 2.0"""
+    if not url:
+        return f"sqlite:///{settings.BASE_DIR}/storage/ai_youtube.db"
+    clean_url = url.strip()
+    if clean_url.startswith("postgres://"):
+        clean_url = "postgresql://" + clean_url[len("postgres://"):]
+    return clean_url
+
+def create_configured_engine(raw_url: str):
+    """
+    Khởi tạo SQLAlchemy engine thông minh:
+    - Nếu là PostgreSQL: Cấu hình connection pool (pool_size=10, max_overflow=20, pool_pre_ping=True, pool_recycle=300).
+    - Nếu là SQLite: Đảm bảo thư mục tồn tại, cấu hình check_same_thread=False, kích hoạt WAL mode.
+    - Fallback: Nếu kết nối PostgreSQL thất bại, tự động chuyển về SQLite cục bộ an toàn.
+    """
+    db_url = normalize_database_url(raw_url)
+    is_postgres = db_url.startswith("postgresql://")
+
+    if is_postgres:
+        try:
+            eng = create_engine(
+                db_url,
+                echo=False,
+                pool_size=10,
+                max_overflow=20,
+                pool_pre_ping=True,
+                pool_recycle=300,
+            )
+            # Test ping connection
+            with eng.connect() as test_conn:
+                test_conn.execute(text("SELECT 1"))
+            logger.info("✅ [Database] Đã kết nối thành công tới PostgreSQL Cloud!")
+            return eng, db_url
+        except Exception as ex:
+            logger.warning(
+                f"⚠️ [Database] Không thể kết nối PostgreSQL ({ex}). "
+                f"Tự động chuyển về SQLite cục bộ (storage/ai_youtube.db) an toàn..."
+            )
+            db_url = f"sqlite:///{settings.BASE_DIR}/storage/ai_youtube.db"
+
+    # SQLite Configuration
+    db_clean_path = db_url.split("sqlite:///")[-1]
     if db_clean_path:
         Path(db_clean_path).resolve().parent.mkdir(parents=True, exist_ok=True)
 
+    eng = create_engine(
+        db_url,
+        echo=False,
+        connect_args={"check_same_thread": False},
+    )
+
+    @event.listens_for(eng, "connect")
+    def _set_sqlite_pragma(dbapi_connection, connection_record):
+        try:
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.close()
+        except Exception:
+            pass
+
+    return eng, db_url
+
 Base = declarative_base()
-engine = create_engine(
-    settings.DATABASE_URL,
-    echo=False,
-    connect_args={"check_same_thread": False},  # Bắt buộc cho SQLite + multi-thread
-)
-
-# ──────────────────────────────────────────────
-# FIX CRITICAL: Bật WAL mode + busy_timeout
-# ──────────────────────────────────────────────
-@event.listens_for(engine, "connect")
-def _set_sqlite_pragma(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA busy_timeout=5000")   # chờ 5s thay vì crash ngay
-    cursor.execute("PRAGMA synchronous=NORMAL")  # an toàn + nhanh hơn FULL
-    cursor.close()
-
+engine, ACTIVE_DATABASE_URL = create_configured_engine(settings.DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
 
 
@@ -56,7 +101,7 @@ def get_db():
 class User(Base):
     __tablename__ = "users"
 
-    telegram_id = Column(Integer, primary_key=True)
+    telegram_id = Column(BigInteger, primary_key=True)
     username = Column(String(100), nullable=True)
     full_name = Column(String(150), nullable=True)
     role = Column(String(50), default="creator") # 'admin' hoặc 'creator'
@@ -72,7 +117,7 @@ class VideoJob(Base):
     __tablename__ = "video_jobs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.telegram_id"))
+    user_id = Column(BigInteger, ForeignKey("users.telegram_id"))
     target_channel_id = Column(String(100), nullable=False)
 
     # Nội dung
@@ -119,7 +164,7 @@ class ActivityLog(Base):
     __tablename__ = "activity_logs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    telegram_id = Column(Integer, ForeignKey("users.telegram_id"), nullable=True)
+    telegram_id = Column(BigInteger, ForeignKey("users.telegram_id"), nullable=True)
     username = Column(String(100), nullable=True)
     action_type = Column(String(100), nullable=False) # 'CMD_IDEA', 'CHANGE_CHANNEL', 'APPROVE_VIDEO', 'PUBLISH_VIDEO'
     details = Column(Text, nullable=False)
@@ -129,13 +174,33 @@ class ActivityLog(Base):
     user = relationship("User", back_populates="activities")
 
 
+class QuotaTracker(Base):
+    __tablename__ = "quota_trackers"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(String(100), nullable=False, index=True)
+    cycle_date = Column(String(20), nullable=False, index=True)  # Ngày chu kỳ PT (reset lúc 14:00 VN)
+    used_units = Column(Integer, default=0)
+    upload_count = Column(Integer, default=0)
+    max_daily_quota = Column(Integer, default=10000)
+    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+
 def log_activity(db, telegram_id: int, username: str, action_type: str, details: str, channel_id: str = None):
     """Hàm tiện ích ghi lại vết hành động của thành viên để theo dõi trên Web Dashboard.
     LƯU Ý: Không gọi db.commit() ở đây — get_db() context manager đã auto-commit.
     """
     try:
+        valid_user_id = telegram_id
+        if valid_user_id:
+            # Kiểm tra xem telegram_id có tồn tại trong bảng users không để tránh Foreign Key Violation trên PostgreSQL
+            user_exists = db.query(User.telegram_id).filter(User.telegram_id == valid_user_id).first()
+            if not user_exists:
+                valid_user_id = None
+
         activity = ActivityLog(
-            telegram_id=telegram_id,
+            telegram_id=valid_user_id,
             username=username or f"User_{telegram_id}",
             action_type=action_type,
             details=details,
@@ -153,29 +218,30 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     
     # Tự động bổ sung các cột mới cho SQLite nếu bảng đã tồn tại từ phiên bản trước
-    with engine.connect() as conn:
-        try:
-            from sqlalchemy import text
-            result = conn.execute(text("PRAGMA table_info(video_jobs)")).fetchall()
-            existing_columns = {row[1] for row in result}
-            
-            columns_to_add = {
-                "description": "TEXT",
-                "scenes_json": "TEXT",
-                "audio_duration_ms": "INTEGER",
-                "render_manifest": "TEXT",
-                "error_message": "TEXT",
-                "subtitle_path": "VARCHAR(255)",
-                "updated_at": "DATETIME",
-                "progress_percent": "INTEGER DEFAULT 0",
-                "progress_message": "VARCHAR(255)",
-                "quality_scores": "TEXT",
-                "is_auto_generated": "INTEGER DEFAULT 0",
-                "approval_deadline": "DATETIME",
-            }
-            for col_name, col_type in columns_to_add.items():
-                if col_name not in existing_columns:
-                    conn.execute(text(f"ALTER TABLE video_jobs ADD COLUMN {col_name} {col_type}"))
-            conn.commit()
-        except Exception:
-            pass
+    if engine.dialect.name == "sqlite":
+        with engine.connect() as conn:
+            try:
+                result = conn.execute(text("PRAGMA table_info(video_jobs)")).fetchall()
+                existing_columns = {row[1] for row in result}
+                
+                columns_to_add = {
+                    "description": "TEXT",
+                    "scenes_json": "TEXT",
+                    "audio_duration_ms": "INTEGER",
+                    "render_manifest": "TEXT",
+                    "error_message": "TEXT",
+                    "subtitle_path": "VARCHAR(255)",
+                    "updated_at": "DATETIME",
+                    "progress_percent": "INTEGER DEFAULT 0",
+                    "progress_message": "VARCHAR(255)",
+                    "quality_scores": "TEXT",
+                    "is_auto_generated": "INTEGER DEFAULT 0",
+                    "approval_deadline": "DATETIME",
+                }
+                for col_name, col_type in columns_to_add.items():
+                    if col_name not in existing_columns:
+                        conn.execute(text(f"ALTER TABLE video_jobs ADD COLUMN {col_name} {col_type}"))
+                conn.commit()
+            except Exception:
+                pass
+
