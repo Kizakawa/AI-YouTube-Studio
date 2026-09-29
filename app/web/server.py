@@ -160,7 +160,7 @@ def on_startup():
 _cached_index_html: Optional[str] = None
 _cached_index_mtime: float = 0.0
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def serve_dashboard():
     """Phục vụ file index.html tức thì (cache in-memory tự cập nhật theo mtime của file, 1ms)"""
     global _cached_index_html, _cached_index_mtime
@@ -177,7 +177,7 @@ def serve_dashboard():
         headers={"Cache-Control": "no-cache"}
     )
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
     """Endpoint kiểm tra sức khỏe hệ thống (cho Render, UptimeRobot, Docker)"""
     return {"status": "ok", "app": "AI YouTube Multi-Channel Studio"}
@@ -1019,7 +1019,7 @@ async def recover_all_failed_jobs() -> Dict[str, Any]:
 
 # ─── Health Check ─────────────────────────────────────────────────────────────
 
-@app.get("/api/health")
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 async def health_check() -> Dict[str, Any]:
     import sys
     from app.utils.ffmpeg_helper import is_ffmpeg_installed, get_ffmpeg_version
