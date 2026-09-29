@@ -157,9 +157,18 @@ def get_visual_selection_keyboard(channel_id: str) -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(keyboard)
 
+import urllib.parse
+
 COLAB_NOTEBOOK_ID = "1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo"
 COLAB_DRIVE_URL = f"https://colab.research.google.com/drive/{COLAB_NOTEBOOK_ID}"
-COLAB_PRO_URL = f"{COLAB_DRIVE_URL}?authuser=pool1.studio@example.com"
+
+def make_colab_account_url(email: str) -> str:
+    """Tạo link Google AccountChooser để ép trình duyệt mở chính xác tài khoản mong muốn"""
+    target = f"{COLAB_DRIVE_URL}?authuser={email}"
+    enc = urllib.parse.quote(target, safe="")
+    return f"https://accounts.google.com/AccountChooser?Email={email}&continue={enc}"
+
+COLAB_PRO_URL = make_colab_account_url("pool1.studio@example.com")
 
 def get_script_review_keyboard(job_id: int) -> InlineKeyboardMarkup:
     """Bàn phím Bước 1: Khi kịch bản vừa tạo xong, ưu tiên Render bằng Colab Pro+ GPU (Google Drive)"""

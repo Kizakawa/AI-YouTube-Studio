@@ -521,6 +521,11 @@ function setHealth(id, ok, msg) {
    COLAB GPU RENDER FARM MULTI-ACCOUNT ROTATION
 ══════════════════════════════════════════════════════════ */
 let currentColabAccountId = 'account_1';
+function makeGoogleChooserUrl(email) {
+    const target = encodeURIComponent(`https://colab.research.google.com/drive/1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo?authuser=${email}`);
+    return `https://accounts.google.com/AccountChooser?Email=${email}&continue=${target}`;
+}
+
 const colabFarmData = {
     notebook_id: '1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo',
     base_url: 'https://colab.research.google.com/drive/1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo',
@@ -531,7 +536,7 @@ const colabFarmData = {
             email: 'pool1.studio@example.com',
             storage: '20 TB Google One',
             role: 'Kho lưu trữ gốc & Render chính',
-            url: 'https://colab.research.google.com/drive/1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo?authuser=pool1.studio@example.com'
+            url: makeGoogleChooserUrl('pool1.studio@example.com')
         },
         'acount_2': {
             id: 'acount_2',
@@ -539,7 +544,7 @@ const colabFarmData = {
             email: 'pool2.studio@example.com',
             storage: '2 TB Google One',
             role: 'Xoay vòng khi Acc 1 hết hạn mức GPU',
-            url: 'https://colab.research.google.com/drive/1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo?authuser=pool2.studio@example.com'
+            url: makeGoogleChooserUrl('pool2.studio@example.com')
         },
         'accout3': {
             id: 'accout3',
@@ -547,7 +552,7 @@ const colabFarmData = {
             email: 'pool3.studio@example.com',
             storage: '2 TB Google One',
             role: 'Dự phòng render xuyên suốt 24/7',
-            url: 'https://colab.research.google.com/drive/1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo?authuser=pool3.studio@example.com'
+            url: makeGoogleChooserUrl('pool3.studio@example.com')
         }
     }
 };

@@ -2722,15 +2722,16 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "2️⃣ **Tài khoản 2 (Dự phòng 1):** `pool2.studio@example.com` (2 TB)\n"
             "3️⃣ **Tài khoản 3 (Dự phòng 2):** `pool3.studio@example.com` (2 TB)\n\n"
             "🧭 **3 BƯỚC ĐẢM BẢO MỞ ĐÚNG TÀI KHOẢN:**\n"
-            "1️⃣ **Bấm link tài khoản cần mở:** Link đã kèm sẵn mã `?authuser=<email>` để Google Colab tự mở tài khoản đó.\n"
-            "2️⃣ **Kiểm tra Avatar góc trên bên phải:** Đảm bảo đúng email bạn muốn chạy. Nếu trình duyệt đang lưu tài khoản khác, hãy bấm vào avatar góc phải để chuyển sang đúng email.\n"
+            "1️⃣ **Bấm link tài khoản cần mở:** Link đã dùng cổng Google AccountChooser để ép trình duyệt chọn đúng tài khoản.\n"
+            "2️⃣ **Kiểm tra Avatar góc trên bên phải:** Đảm bảo đúng email bạn muốn chạy.\n"
             "3️⃣ **Bấm Chạy tất cả:** Vào menu **Runtime** ➡️ Bấm **Run all** (hoặc `Ctrl + F9`) ➡️ Bấm Cho phép Drive.\n\n"
             "✨ *Tắt màn hình hoặc đóng tab, Colab vẫn chạy ngầm và render video 20s/video!*"
         )
+        from app.bot.keyboards import make_colab_account_url
         guide_kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🚀 Mở Acc 1: giangnguyenviet38 (20TB)", url=f"{colab_base}?authuser=pool1.studio@example.com")],
-            [InlineKeyboardButton("🚀 Mở Acc 2: tonyabcd1234567890 (2TB)", url=f"{colab_base}?authuser=pool2.studio@example.com")],
-            [InlineKeyboardButton("🚀 Mở Acc 3: maychuvv1n1 (2TB)", url=f"{colab_base}?authuser=pool3.studio@example.com")],
+            [InlineKeyboardButton("🚀 Mở Acc 1: giangnguyenviet38 (20TB)", url=make_colab_account_url("pool1.studio@example.com"))],
+            [InlineKeyboardButton("🚀 Mở Acc 2: tonyabcd1234567890 (2TB)", url=make_colab_account_url("pool2.studio@example.com"))],
+            [InlineKeyboardButton("🚀 Mở Acc 3: maychuvv1n1 (2TB)", url=make_colab_account_url("pool3.studio@example.com"))],
             [InlineKeyboardButton("⬅️ Quay lại trạng thái Colab", callback_data="check_colab_status")]
         ])
         await safe_edit_text(query.message, guide_text, reply_markup=guide_kb)
@@ -4006,11 +4007,10 @@ async def colab_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from app.database.models import get_db, VideoJob
 
     nb_id = "1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo"
-    colab_base = f"https://colab.research.google.com/drive/{nb_id}"
-
-    acc1_url = f"{colab_base}?authuser=pool1.studio@example.com"
-    acc2_url = f"{colab_base}?authuser=pool2.studio@example.com"
-    acc3_url = f"{colab_base}?authuser=pool3.studio@example.com"
+    from app.bot.keyboards import make_colab_account_url
+    acc1_url = make_colab_account_url("pool1.studio@example.com")
+    acc2_url = make_colab_account_url("pool2.studio@example.com")
+    acc3_url = make_colab_account_url("pool3.studio@example.com")
 
     colab_keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🚀 Mở Acc 1: giangnguyenviet38 (20TB)", url=acc1_url)],

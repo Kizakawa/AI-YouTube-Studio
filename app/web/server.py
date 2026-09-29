@@ -1102,6 +1102,14 @@ COLAB_SHARED_NOTEBOOK_ID = "1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo"
 COLAB_SHARED_FOLDER_ID = "1J4pW7WNwFvIKpNjMqW8qkdOMf4gXTDC0"
 COLAB_BASE_URL = f"https://colab.research.google.com/drive/{COLAB_SHARED_NOTEBOOK_ID}"
 
+import urllib.parse
+
+def make_account_chooser_url(email: str, base_url: str = COLAB_BASE_URL) -> str:
+    """Tạo URL Google AccountChooser để ép trình duyệt chọn đúng tài khoản Google mong muốn."""
+    target = f"{base_url}?authuser={email}"
+    enc = urllib.parse.quote(target, safe="")
+    return f"https://accounts.google.com/AccountChooser?Email={email}&continue={enc}"
+
 COLAB_ACCOUNTS = [
     {
         "id": "account_1",
@@ -1112,7 +1120,7 @@ COLAB_ACCOUNTS = [
         "badge": "Host 20TB",
         "badge_color": "green",
         "is_primary": True,
-        "colab_url": f"{COLAB_BASE_URL}?authuser=pool1.studio@example.com"
+        "colab_url": make_account_chooser_url("pool1.studio@example.com")
     },
     {
         "id": "acount_2",
@@ -1123,7 +1131,7 @@ COLAB_ACCOUNTS = [
         "badge": "Dự phòng 1",
         "badge_color": "blue",
         "is_primary": False,
-        "colab_url": f"{COLAB_BASE_URL}?authuser=pool2.studio@example.com"
+        "colab_url": make_account_chooser_url("pool2.studio@example.com")
     },
     {
         "id": "accout3",
@@ -1134,7 +1142,7 @@ COLAB_ACCOUNTS = [
         "badge": "Dự phòng 2",
         "badge_color": "purple",
         "is_primary": False,
-        "colab_url": f"{COLAB_BASE_URL}?authuser=pool3.studio@example.com"
+        "colab_url": make_account_chooser_url("pool3.studio@example.com")
     }
 ]
 
