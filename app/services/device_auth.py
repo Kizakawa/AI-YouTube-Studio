@@ -31,8 +31,8 @@ PENDING_FILE = STORAGE_DIR / "pending_requests.json"
 
 
 def is_gatekeeper_enabled() -> bool:
-    """Kiểm tra xem tính năng bảo mật Telegram 2FA Gatekeeper có đang bật không (mặc định: false)"""
-    val = os.getenv("ENABLE_DEVICE_GATEKEEPER", "false").strip().lower()
+    """Kiểm tra xem tính năng bảo mật Telegram 2FA Gatekeeper có đang bật không (mặc định: true)"""
+    val = os.getenv("ENABLE_DEVICE_GATEKEEPER", "true").strip().lower()
     return val in ("true", "1", "yes", "on")
 
 
