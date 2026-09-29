@@ -93,10 +93,11 @@ class Settings:
         
         for item in cls.ALLOWED_USERS_RAW.split(","):
             parts = item.strip().split(":")
-            if len(parts) == 2 and parts[0].isdigit():
-                users[int(parts[0])] = parts[1].strip().lower()
-            elif len(parts) == 1 and parts[0].isdigit():
-                users[int(parts[0])] = "creator"
+            if len(parts) >= 1 and parts[0].isdigit():
+                uid = int(parts[0])
+                if uid in (123456789, 987654321):
+                    continue
+                users[uid] = parts[1].strip().lower() if len(parts) >= 2 else "creator"
         return users
 
     @classmethod
