@@ -51,7 +51,7 @@ async def device_gatekeeper_middleware(request: Request, call_next):
         path.startswith("/static")
         or path.startswith("/media")
         or path.startswith("/api/auth")
-        or path in ("/", "/health", "/api/network-info", "/favicon.ico")
+        or path in ("/", "/health", "/api/health", "/api/system/client-info", "/api/network-info", "/favicon.ico")
     ):
         return await call_next(request)
 
