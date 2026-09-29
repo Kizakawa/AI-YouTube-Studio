@@ -2711,8 +2711,6 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif data == "colab_rotation_guide":
-        nb_id = "1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo"
-        colab_base = f"https://colab.research.google.com/drive/{nb_id}"
         guide_text = (
             "🧭 **HƯỚNG DẪN MỞ TÀI KHOẢN & XOAY VÒNG GPU COLAB**\n\n"
             "🎯 **Tại sao cần xoay tài khoản?**\n"
@@ -4006,7 +4004,6 @@ async def colab_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     from app.database.models import get_db, VideoJob
 
-    nb_id = "1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo"
     from app.bot.keyboards import make_colab_account_url
     acc1_url = make_colab_account_url("pool1.studio@example.com")
     acc2_url = make_colab_account_url("pool2.studio@example.com")
