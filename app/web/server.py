@@ -37,8 +37,43 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Device gatekeeper middleware đã được chuyển sang nhánh feat/wifi-lan-device-auth.
-# Môi trường main phục vụ triển khai HTTP / Cloud chuẩn mà không cần qua Telegram 2FA.
+@app.middleware("http")
+async def device_gatekeeper_middleware(request: Request, call_next):
+    """Bảo mật 2 lớp: Thiết bị từ xa (khác localhost) phải có token đã được Admin duyệt trên Telegram mới được gọi API"""
+    from app.services.device_auth import is_gatekeeper_enabled, is_local_ip, is_device_token_valid
+
+    if not is_gatekeeper_enabled():
+        return await call_next(request)
+
+    path = request.url.path
+    # Cho phép trang chủ HTML, tài nguyên tĩnh, media video, health check, và các endpoint xác thực thiết bị
+    if (
+        path.startswith("/static")
+        or path.startswith("/media")
+        or path.startswith("/api/auth")
+        or path in ("/", "/health", "/api/network-info", "/favicon.ico")
+    ):
+        return await call_next(request)
+
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip()
+
+    # Máy chủ localhost luôn được cho qua
+    if is_local_ip(client_ip):
+        return await call_next(request)
+
+    # Thiết bị từ xa phải có token hợp lệ đã được phê duyệt qua Telegram
+    token = request.headers.get("X-Device-Token") or request.cookies.get("device_token")
+    if not is_device_token_valid(token, client_ip=client_ip):
+        from starlette.responses import JSONResponse
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Thiết bị chưa được Quản trị viên Telegram phê duyệt truy cập. Vui lòng nhờ Quản trị viên bấm [Đồng Ý] trên nhóm Telegram."}
+        )
+
+    return await call_next(request)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -128,21 +163,57 @@ async def get_network_info_endpoint():
         "is_lan_available": False
     }
 
-# ─── Device Authentication & Access (HTTP Standard) ─────────────────────────
+# ─── Device Authentication & Telegram 2FA Gatekeeper ─────────────────────────
 
 @app.get("/api/auth/check")
 async def check_device_auth(request: Request):
-    """Kiểm tra quyền truy cập thiết bị (mặc định đã xác thực trên môi trường HTTP/Web Studio)"""
+    """Kiểm tra quyền truy cập thiết bị (Localhost luôn qua; Thiết bị từ xa phải có token hoặc IP đã duyệt)"""
     client_ip = request.client.host if request.client else "127.0.0.1"
-    return {"authenticated": True, "is_local": True, "client_ip": client_ip}
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip()
+
+    from app.services.device_auth import is_gatekeeper_enabled, is_local_ip, is_device_token_valid, get_token_for_ip, parse_device_info
+
+    if not is_gatekeeper_enabled() or is_local_ip(client_ip):
+        return {"authenticated": True, "is_local": True, "client_ip": client_ip}
+
+    auth_token = request.headers.get("X-Device-Token") or request.cookies.get("device_token")
+    if is_device_token_valid(auth_token, client_ip=client_ip):
+        token = auth_token or get_token_for_ip(client_ip)
+        return {"authenticated": True, "is_local": False, "client_ip": client_ip, "token": token}
+
+    ua = request.headers.get("user-agent", "")
+    device_name = parse_device_info(ua)
+    return {
+        "authenticated": False,
+        "is_local": False,
+        "client_ip": client_ip,
+        "device_name": device_name
+    }
 
 @app.post("/api/auth/request-access")
 async def request_device_access(request: Request):
-    return {"status": "approved", "request_id": "direct"}
+    """Gửi yêu cầu phê duyệt thiết bị mới đến nhóm Telegram"""
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip()
+
+    from app.services.device_auth import create_access_request
+    ua = request.headers.get("user-agent", "")
+    return create_access_request(client_ip, ua)
 
 @app.get("/api/auth/status/{request_id}")
 async def check_device_request_status(request_id: str, request: Request):
-    return {"status": "approved", "token": "direct"}
+    """Frontend polling kiểm tra xem Admin đã bấm [Đồng Ý] trên Telegram chưa"""
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip()
+
+    from app.services.device_auth import get_request_status
+    return get_request_status(request_id, client_ip=client_ip)
 
 # ─── Stats ────────────────────────────────────────────────────────────────────
 
