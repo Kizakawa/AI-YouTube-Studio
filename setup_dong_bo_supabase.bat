@@ -20,8 +20,8 @@ if %ERRORLEVEL% neq 0 (
 echo ✅ Thư viện PostgreSQL đã sẵn sàng!
 echo.
 
-echo ⚙️ 2. Đang kiểm tra và cập nhật biến DATABASE_URL trong .env...
-%PYTHON_CMD% -c "import re; p = '.env'; content = open(p, 'r', encoding='utf-8').read() if open(p).readable() else ''; target = 'DATABASE_URL=\"postgresql://postgres.ywcjevlkeeabufeuacpi:BaoVy24072509%21%40%23@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres\"'; content = re.sub(r'DATABASE_URL=.*', target, content) if 'DATABASE_URL' in content else content + '\n' + target; open(p, 'w', encoding='utf-8').write(content); print('   -> Đã trỏ DATABASE_URL sang Supabase Cloud thành công!')"
+echo ⚙️ 2. Đang kiểm tra cấu hình DATABASE_URL trong .env...
+%PYTHON_CMD% -c "import os; p = '.env'; content = open(p, 'r', encoding='utf-8').read() if os.path.exists(p) else ''; print('   -> DATABASE_URL đã được thiết lập!' if 'postgresql://' in content else '   ⚠️ Lưu ý: Bạn nhớ dán DATABASE_URL nhận từ Kizakawa vào file .env nhé!')"
 echo.
 
 echo 🧪 3. Đang chạy bộ kiểm thử tự động xác nhận CSDL & Quota...

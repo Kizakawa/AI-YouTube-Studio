@@ -31,16 +31,16 @@ Bạn Giang chỉ cần thực hiện 2 bước cực kỳ đơn giản sau:
 3. Vào tab **Environment** (ở menu bên trái).
 4. Tìm hoặc bấm **Add Environment Variable**:
    - **Key:** `DATABASE_URL`
-   - **Value:**
+   - **Value:** *(Lấy chuỗi kết nối đầy đủ trong file nén `GOI_DONG_BO_SUPABASE_CHO_GIANG.zip` hoặc tin nhắn riêng từ Kizakawa)*
      ```env
-     postgresql://postgres.ywcjevlkeeabufeuacpi:BaoVy24072509%21%40%23@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres
+     postgresql://postgres.ywcjevlkeeabufeuacpi:<MAT_KHAU_TRONG_FILE_NEN>@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres
      ```
 5. Bấm **Save Changes**. Render sẽ tự động build lại và kết nối thẳng vào Supabase.
 
 ### BƯỚC B: Cấu hình trên máy tính cá nhân của Giang
 1. **Lấy code mới:**
    - Nếu qua Git: Chạy lệnh `git pull origin main`.
-   - Hoặc giải nén các file từ file zip này đè vào thư mục dự án của Giang.
+   - Hoặc giải nén các file từ file zip đè vào thư mục dự án của Giang.
 2. **Cài đặt thư viện mới:**
    Mở terminal / cmd trong môi trường ảo của dự án và chạy:
    ```bash
@@ -48,10 +48,7 @@ Bạn Giang chỉ cần thực hiện 2 bước cực kỳ đơn giản sau:
    ```
    *(hoặc `pip install -r requirements.txt`)*
 3. **Cập nhật file `.env` trên máy Giang:**
-   Mở file `.env`, tìm dòng `DATABASE_URL` và sửa thành:
-   ```env
-   DATABASE_URL="postgresql://postgres.ywcjevlkeeabufeuacpi:BaoVy24072509%21%40%23@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres"
-   ```
+   Mở file `.env`, tìm dòng `DATABASE_URL` và điền chuỗi kết nối nhận được từ Kizakawa (hoặc file nén).
 4. **Kiểm tra kết nối:**
    Chạy 2 bộ test tự động có sẵn để kiểm tra:
    ```bash
@@ -72,9 +69,8 @@ Bạn Giang chỉ cần thực hiện 2 bước cực kỳ đơn giản sau:
 1. **Kiểm tra và Cài đặt Driver:**
    Chạy lệnh cài đặt `psycopg2-binary>=2.9.13` vào môi trường Python/venv hiện tại của máy Giang.
 2. **Cập nhật biến môi trường `.env`:**
-   Đảm bảo giá trị `DATABASE_URL` trong file `.env` của máy Giang được gán chính xác là:
-   `postgresql://postgres.ywcjevlkeeabufeuacpi:BaoVy24072509%21%40%23@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres`
-   *(Lưu ý: Mật khẩu có ký tự đặc biệt đã được percent-encode chuẩn thành `BaoVy24072509%21%40%23`, không được tự ý sửa lại ký tự thô)*.
+   Nhắc Giang điền `DATABASE_URL` (lấy từ file nén `GOI_DONG_BO_SUPABASE_CHO_GIANG.zip` hoặc tin nhắn Kizakawa gửi) vào file `.env`.
+   *(Lưu ý: Mật khẩu có ký tự đặc biệt đã được percent-encode chuẩn, không được tự ý sửa lại ký tự thô)*.
 3. **Chạy kiểm thử xác nhận:**
    Thực thi lệnh:
    ```bash
