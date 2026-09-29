@@ -6,6 +6,7 @@ import threading
 import logging
 import requests as http_requests
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs, unquote
 from typing import Dict, List, Any, Optional
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form, Request
 from fastapi.staticfiles import StaticFiles
@@ -1879,6 +1880,90 @@ async def upload_client_secret(account_id: str, req: UploadSecretRequest) -> Dic
         "message": f"Đã lưu file client_secret.json cho tài khoản '{account_id}' thành công!"
     }
 
+def exchange_oauth_code_for_credentials(flow, raw_val: str):
+    """
+    Trao đổi OAuth code hoặc Redirect URL lấy Credentials an toàn tuyệt đối.
+    Hỗ trợ mọi định dạng: URL hoàn chỉnh, query string, hoặc chỉ code.
+    Tự động xử lý CSRF State Mismatch và fallback về direct Google token endpoint.
+    """
+    raw_val = (raw_val or "").strip()
+    if not raw_val:
+        raise ValueError("Không nhận được authorization code từ Google hoặc người dùng.")
+
+    code = None
+    state = None
+
+    # Phân tích chuỗi đầu vào (có thể là URL, query string, hoặc code thuần)
+    if "code=" in raw_val:
+        parsed = urlparse(raw_val)
+        qs = parse_qs(parsed.query if parsed.query else raw_val)
+        code = qs.get("code", [None])[0]
+        state = qs.get("state", [None])[0]
+    elif raw_val.startswith("http://") or raw_val.startswith("https://"):
+        parsed = urlparse(raw_val)
+        qs = parse_qs(parsed.query)
+        code = qs.get("code", [None])[0]
+        state = qs.get("state", [None])[0]
+    else:
+        code = raw_val
+
+    if not code:
+        code = raw_val
+
+    if code and "%" in code:
+        code = unquote(code)
+
+    os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+
+    # 1. Thử dùng flow.fetch_token()
+    try:
+        if state:
+            flow.oauth2session._state = state
+        if raw_val.startswith("http://") or raw_val.startswith("https://"):
+            auth_url = raw_val.replace("http:", "https:", 1)
+            flow.fetch_token(authorization_response=auth_url)
+        else:
+            flow.fetch_token(code=code)
+        if flow.credentials:
+            return flow.credentials
+    except Exception as e_flow:
+        logger.warning(f"flow.fetch_token không thành công ({e_flow}), chuyển sang trao đổi trực tiếp với Google token endpoint...")
+
+    # 2. Dự phòng: Gửi POST trực tiếp tới token endpoint của Google
+    client_id = flow.client_config.get("client_id")
+    client_secret = flow.client_config.get("client_secret")
+    token_uri = flow.client_config.get("token_uri", "https://oauth2.googleapis.com/token")
+
+    token_payload = {
+        "code": code,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "redirect_uri": flow.redirect_uri,
+        "grant_type": "authorization_code"
+    }
+
+    resp = http_requests.post(token_uri, data=token_payload, timeout=30)
+    if resp.status_code != 200:
+        err_msg = resp.text
+        try:
+            err_json = resp.json()
+            err_msg = err_json.get("error_description", err_json.get("error", resp.text))
+        except Exception:
+            pass
+        raise ValueError(f"Google Token Exchange thất bại: {err_msg}")
+
+    token_resp = resp.json()
+    from google.oauth2.credentials import Credentials
+    creds = Credentials(
+        token=token_resp.get("access_token"),
+        refresh_token=token_resp.get("refresh_token"),
+        token_uri=token_uri,
+        client_id=client_id,
+        client_secret=client_secret,
+        scopes=list(flow.oauth2session.scope) if hasattr(flow.oauth2session, "scope") and flow.oauth2session.scope else None
+    )
+    return creds
+
 @app.post("/api/accounts/{account_id}/auth-start")
 async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Request) -> Dict[str, Any]:
     """Khởi chạy luồng xác thực Google OAuth trong luồng nền và tự động mở trình duyệt."""
@@ -1985,27 +2070,13 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
 
             import time
             start_t = time.time()
+            auth_input = None
             while time.time() - start_t < 180:
                 if received_uri["value"]:
+                    auth_input = received_uri["value"]
                     break
                 if session_key in _oauth_manual_responses:
-                    raw_val = _oauth_manual_responses.pop(session_key)
-                    if "code=" in raw_val:
-                        from urllib.parse import urlparse, parse_qs
-                        parsed = urlparse(raw_val)
-                        qs = parse_qs(parsed.query)
-                        code_val = qs.get("code", [None])[0]
-                        state_val = qs.get("state", [None])[0]
-                        q_parts = []
-                        if state_val:
-                            q_parts.append(f"state={state_val}")
-                        if code_val:
-                            q_parts.append(f"code={code_val}")
-                        received_uri["value"] = f"{flow.redirect_uri}?{'&'.join(q_parts)}" if q_parts else raw_val
-                    elif raw_val.startswith("http"):
-                        received_uri["value"] = raw_val
-                    else:
-                        received_uri["value"] = f"{flow.redirect_uri}?code={raw_val}"
+                    auth_input = _oauth_manual_responses.pop(session_key)
                     break
                 time.sleep(0.5)
 
@@ -2014,39 +2085,14 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
             except Exception:
                 pass
 
-            if not received_uri["value"]:
+            if not auth_input:
                 _oauth_sessions[session_key] = {
                     "status": "error",
                     "error": "Hết thời gian chờ xác thực (3 phút). Vui lòng thử lại."
                 }
                 return
 
-            # Trao đổi authorization code lấy token
-            # Note: oauthlib bắt buộc https scheme đối với URL phản hồi
-            os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
-            auth_response = received_uri["value"]
-            if auth_response.startswith("http:"):
-                auth_response = auth_response.replace("http:", "https:", 1)
-            try:
-                flow.fetch_token(authorization_response=auth_response)
-            except Exception as e_fetch:
-                if any(k in str(e_fetch).lower() for k in ["mismatching_state", "csrf", "state not equal"]):
-                    logger.warning(f"Bỏ qua CSRF state mismatch cho account: {e_fetch}")
-                    parsed_u = urlparse(auth_response)
-                    qs_u = parse_qs(parsed_u.query)
-                    st_val = qs_u.get("state", [None])[0]
-                    cd_val = qs_u.get("code", [None])[0]
-                    if st_val:
-                        flow.oauth2session._state = st_val
-                        flow.fetch_token(authorization_response=auth_response)
-                    elif cd_val:
-                        flow.oauth2session._state = None
-                        flow.fetch_token(code=cd_val)
-                    else:
-                        raise
-                else:
-                    raise
-            creds = flow.credentials
+            creds = exchange_oauth_code_for_credentials(flow, auth_input)
 
             # Lưu token file mã hoá AES-256-GCM
             token_data = creds.to_json()
@@ -2589,27 +2635,13 @@ async def start_channel_oauth(channel_id: str, request: Request, service: str = 
 
             import time
             start_t = time.time()
+            auth_input = None
             while time.time() - start_t < 180:
                 if received_uri["value"]:
+                    auth_input = received_uri["value"]
                     break
                 if session_key in _oauth_manual_responses:
-                    raw_val = _oauth_manual_responses.pop(session_key)
-                    if "code=" in raw_val:
-                        from urllib.parse import urlparse, parse_qs
-                        parsed = urlparse(raw_val)
-                        qs = parse_qs(parsed.query)
-                        code_val = qs.get("code", [None])[0]
-                        state_val = qs.get("state", [None])[0]
-                        q_parts = []
-                        if state_val:
-                            q_parts.append(f"state={state_val}")
-                        if code_val:
-                            q_parts.append(f"code={code_val}")
-                        received_uri["value"] = f"{flow.redirect_uri}?{'&'.join(q_parts)}" if q_parts else raw_val
-                    elif raw_val.startswith("http"):
-                        received_uri["value"] = raw_val
-                    else:
-                        received_uri["value"] = f"{flow.redirect_uri}?code={raw_val}"
+                    auth_input = _oauth_manual_responses.pop(session_key)
                     break
                 time.sleep(0.5)
 
@@ -2618,37 +2650,14 @@ async def start_channel_oauth(channel_id: str, request: Request, service: str = 
             except Exception:
                 pass
 
-            if not received_uri["value"]:
+            if not auth_input:
                 _oauth_sessions[session_key] = {
                     "status": "error",
                     "error": "Hết thời gian chờ xác thực (3 phút). Vui lòng thử lại."
                 }
                 return
 
-            os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
-            auth_response = received_uri["value"]
-            if auth_response.startswith("http:"):
-                auth_response = auth_response.replace("http:", "https:", 1)
-            try:
-                flow.fetch_token(authorization_response=auth_response)
-            except Exception as e_fetch:
-                if any(k in str(e_fetch).lower() for k in ["mismatching_state", "csrf", "state not equal"]):
-                    logger.warning(f"Bỏ qua CSRF state mismatch cho channel: {e_fetch}")
-                    parsed_u = urlparse(auth_response)
-                    qs_u = parse_qs(parsed_u.query)
-                    st_val = qs_u.get("state", [None])[0]
-                    cd_val = qs_u.get("code", [None])[0]
-                    if st_val:
-                        flow.oauth2session._state = st_val
-                        flow.fetch_token(authorization_response=auth_response)
-                    elif cd_val:
-                        flow.oauth2session._state = None
-                        flow.fetch_token(code=cd_val)
-                    else:
-                        raise
-                else:
-                    raise
-            creds = flow.credentials
+            creds = exchange_oauth_code_for_credentials(flow, auth_input)
 
             # Đọc thông tin kênh YouTube thật từ token trả về
             real_yt_title = None
