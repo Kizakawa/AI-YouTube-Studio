@@ -263,7 +263,7 @@ class VideoAgent:
             else:
                 # Fallback graceful: log warning, render như image
                 logger.warning(
-                    f"  Scene {scene.scene_id}: media_type không hợp lệ '{effective_type}' → fallback image mode"
+                    f"  Scene {scene.scene_id}: media_type không hợp lệ '{raw_type}' → fallback image mode"
                 )
                 image_to_video(
                     image_path=scene.media_path,

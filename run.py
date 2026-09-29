@@ -19,6 +19,20 @@ from app.bot.handlers import (
 )
 from app.utils.ffmpeg_helper import is_ffmpeg_installed, get_ffmpeg_version
 
+def get_network_info():
+    """Lấy thông tin mạng để hiển thị URL truy cập Web Dashboard"""
+    port = int(os.getenv("PORT", 8000))
+    web_url = os.getenv("WEB_DASHBOARD_URL") or f"http://localhost:{port}"
+    return {
+        "port": port,
+        "lan_ip": "127.0.0.1",
+        "local_url": f"http://127.0.0.1:{port}",
+        "localhost_url": f"http://localhost:{port}",
+        "wifi_url": web_url,
+        "mdns_url": web_url,
+        "is_lan_available": False
+    }
+
 def recover_stuck_jobs():
     """Tự động khôi phục các video bị gián đoạn do tắt bot đột ngột khi đang render và cảnh báo các job lỗi tồn đọng"""
     try:

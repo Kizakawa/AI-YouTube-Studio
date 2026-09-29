@@ -8,7 +8,7 @@ import time
 from typing import Optional, List, Dict, Any, Union, Tuple
 from pathlib import Path
 from datetime import datetime
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from config.settings import settings
 from app.bot.keyboards import (
@@ -1064,9 +1064,9 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         monetization_card = ""
         try:
             from app.services.monetization_engine import find_best_amazon_product, build_amazon_url
-            channel_cfg = next((c for c in settings.get_channels_config() if c.get("id") == target_channel_id), {})
+            channel_cfg = next((c for c in settings.get_channels_config() if c.get("id") == channel_id), {})
             tag = channel_cfg.get("amazon_tag") or os.getenv("AMAZON_ASSOCIATE_TAG", "kizakawa-20")
-            best_prod = find_best_amazon_product(niche=channel_niche, title=script.title, topic=topic)
+            best_prod = find_best_amazon_product(niche=channel_niche, title=script.title, topic=clean_topic)
             aff_link = build_amazon_url(best_prod["asin"], tag)
             monetization_card = (
                 f"🛒 **ĐỀ XUẤT KIẾM TIỀN (AMAZON AFFILIATE):**\n"
@@ -1212,6 +1212,7 @@ async def start_render_pipeline(
                     jb = db.query(VideoJob).filter(VideoJob.id == job_id).first()
                     if jb and jb.quality_scores:
                         import json
+                        q_data = json.loads(jb.quality_scores) if isinstance(jb.quality_scores, str) else (jb.quality_scores or {})
                         sc = q_data.get("script_critic") or {}
                         vc = q_data.get("visual_critic") or {}
                         cqc = q_data.get("content_quality_critic") or {}
@@ -2956,6 +2957,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
 
             pinned_display = f"💬 **Bình luận mồi ghim Top (Pinned Bait):**\n> _{script.pinned_comment}_\n\n" if getattr(script, "pinned_comment", None) else ""
+            formula_display = f"⚡ **Công thức Viral:** `{script.viral_formula}`\n" if getattr(script, "viral_formula", None) else ""
             # Tự động đẩy kịch bản lên Google Drive cho Colab GPU Farm
             drive_status_note = ""
             try:
@@ -3530,6 +3532,18 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         colab_status_str = f"Trực tuyến 🟢 ({c_info.get('gpu', 'NVIDIA GPU')} — 20s/video)"
     else:
         colab_status_str = "Ngoại tuyến ⚪ (Đang chạy Local CPU — gõ /colab để kết nối)"
+
+    # Kiểm tra trạng thái Google Drive
+    drive_status = "Chưa kết nối ⚠️"
+    try:
+        from app.utils.security import load_encrypted_json
+        dt_path = Path(settings.BASE_DIR) / "credentials" / "accounts" / "account_1" / "drive_token.json"
+        if dt_path.exists():
+            tok = load_encrypted_json(dt_path)
+            if tok and (tok.get("token") or tok.get("refresh_token")):
+                drive_status = "Đã kết nối ✓ (Google One 20TB)"
+    except Exception:
+        pass
 
     text = (
         f"📊 **BÁO CÁO NHÓM LÀM VIỆC (AI STUDIO)**\n\n"

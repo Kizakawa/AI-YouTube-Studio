@@ -59,6 +59,7 @@ async def device_gatekeeper_middleware(request: Request, call_next):
         or path.startswith("/media")
         or path.startswith("/api/auth")
         or path.startswith("/api/oauth")
+        or path.startswith("/api/colab")
         or "/start-auth" in path
         or "/auth-start" in path
         or "/auth-status" in path
