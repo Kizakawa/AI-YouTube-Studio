@@ -114,6 +114,9 @@ async def safe_query_answer(query, text: str = None, show_alert: bool = False):
     except Exception as e:
         logger.debug(f"Bỏ qua lỗi timeout query.answer: {e}")
 
+# Alias an toàn tránh NameError
+safe_answer_query = safe_query_answer
+
 
 def is_authorized(update: Update) -> bool:
     """
@@ -148,22 +151,24 @@ def is_admin_user(telegram_id: int) -> bool:
     """Kiểm tra xem người dùng có phải là Quản trị viên (Admin) hay không"""
     if not telegram_id:
         return False
+    # Chủ sở hữu hệ thống luôn luôn là Admin
+    if telegram_id in (7177163590, 8498162618):
+        return True
+
     # 1. Kiểm tra cấu hình ALLOWED_TELEGRAM_USERS trong .env
     allowed_users = settings.get_allowed_users()
     if telegram_id in allowed_users:
-        return allowed_users[telegram_id].lower() == "admin"
+        return allowed_users[telegram_id].lower() in ("admin", "owner")
 
     # 2. Kiểm tra vai trò trong Database
     try:
         with get_db() as db:
             db_user = db.query(User).filter(User.telegram_id == telegram_id).first()
-            if db_user and db_user.role == "admin":
+            if db_user and db_user.role in ("admin", "owner"):
                 return True
-            # Nếu hệ thống chưa có ai được gán admin, user người thật đầu tiên sẽ là Admin
-            first_user = db.query(User).filter(User.telegram_id > 0).order_by(User.created_at.asc()).first()
-            if first_user and first_user.telegram_id == telegram_id:
-                if first_user.role != "admin":
-                    first_user.role = "admin"
+            # Nếu hệ thống ít thành viên (dưới 4 người), cấp quyền Admin cho các thành viên sáng lập
+            human_count = db.query(User).filter(User.telegram_id > 0).count()
+            if human_count <= 4:
                 return True
     except Exception as e:
         logger.error(f"Lỗi kiểm tra quyền admin cho {telegram_id}: {e}")
@@ -3134,8 +3139,9 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 15. Duyệt hoặc Từ chối cấp quyền thiết bị truy cập Web Dashboard (2FA Gatekeeper)
     elif data.startswith("approve_device:"):
+        await safe_query_answer(query)
         if not is_admin_user(user.id):
-            await safe_answer_query(
+            await safe_query_answer(
                 query,
                 text="⛔ CHẶN BẢO MẬT: Bạn không phải Quản trị viên (Admin). Chỉ Admin mới có quyền duyệt cấp phép thiết bị vào Web Studio!",
                 show_alert=True
@@ -3162,8 +3168,9 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await safe_edit_text(query.message, "⚠️ Yêu cầu này đã hết hạn hoặc không tồn tại.")
 
     elif data.startswith("reject_device:"):
+        await safe_query_answer(query)
         if not is_admin_user(user.id):
-            await safe_answer_query(
+            await safe_query_answer(
                 query,
                 text="⛔ CHẶN BẢO MẬT: Bạn không phải Quản trị viên (Admin). Chỉ Admin mới có quyền từ chối thiết bị!",
                 show_alert=True
