@@ -113,6 +113,44 @@ def on_startup():
     except Exception as e:
         logger.warning(f"Lỗi recover stuck jobs on startup: {e}")
 
+    # Tự động nạp hoặc khôi phục credentials/tokens cho Google Account 1 trên Cloud (Render)
+    try:
+        import base64
+        acc1_dir = BASE_DIR / "credentials" / "accounts" / "account_1"
+        acc1_dir.mkdir(parents=True, exist_ok=True)
+        secret_p = acc1_dir / "client_secret.json"
+        if not secret_p.exists() or secret_p.stat().st_size < 10:
+            default_secret = {
+                "installed": {
+                    "client_id": "972622851789-4175b1dquscrk08j2aq4jb8s84llh4uo.apps.googleusercontent.com",
+                    "project_id": "bionic-client-509515-h2",
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                    "client_secret": "GOCSPX-REDACTED_OAUTH_CLIENT_SECRET",
+                    "redirect_uris": ["http://localhost"]
+                }
+            }
+            import json
+            secret_p.write_text(json.dumps(default_secret, indent=2), encoding="utf-8")
+            logger.info("✅ [Startup] Đã tự động tạo client_secret.json cho account_1")
+
+        # Tự động nạp token Drive
+        drive_tok_p = acc1_dir / "drive_token.json"
+        if not drive_tok_p.exists() or drive_tok_p.stat().st_size < 10:
+            b64_drive = os.getenv("DRIVE_TOKEN_BASE64") or "eyJ0b2tlbiI6ICJ5YTI5LmEwQVgwN0NtczZiUHEzbDA2d0JYLXFDNmV3N1F1SksxcDcwTUhtUkZLcHUzbTJ5Tl9qdm16TXhzOGJLdVJiUUZMWGQzSXJ6Mzc1ZFpDVk1zQXVQZzFTZGdUNzZ0ZDF1QVZ0THl0dU5RUXVvN0F2VFg1cnRxMXJQRFhxandaanRrSjYxaHZsNFUycU9NUHJxOTQ1S0JWLVRNQlB3X3JRVmlMeDZpdm5lQV84YVVvZ1JSTGxIR0xTd2J0eWdvU1p3cExlMnRaUExkd2FDZ1lLQWZnU0FSRVNGUUhHWDJNaTBHd0RkZ3A0Q0FPLV94NkFyOEtJTlEwMjA2IiwgInJlZnJlc2hfdG9rZW4iOiAiMS8vMGdnZFdjMkNRS0NDSENnWUlBUkFBR0JBU053Ri1MOUlydVM3Ny04N3pNUlU3WWt6bVUzb1JXc1RJaHQtZkdOWEFEVGZ5RTZSMjBCQV9zMURIUWRQNEdxM2dydUdHVnhpZDFadyIsICJ0b2tlbl91cmkiOiAiaHR0cHM6Ly9vYXV0aDIuZ29vZ2xlYXBpcy5jb20vdG9rZW4iLCAiY2xpZW50X2lkIjogIjk3MjYyMjg1MTc4OS00MTc1YjFkcXVzY3JrMDhqMmFxNGpiOHM4NGxsaDR1by5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbSIsICJjbGllbnRfc2VjcmV0IjogIkdPQ1NQWC16bGE0ZXJNNi1pMGs2MUE1REM1QV9COGRtaXJQIiwgInNjb3BlcyI6IFsiaHR0cHM6Ly93d3cuZ29vZ2xlYXBpcy5jb20vYXV0aC9kcml2ZS5maWxlIl0sICJ1bml2ZXJzZV9kb21haW4iOiAiZ29vZ2xlYXBpcy5jb20iLCAiYWNjb3VudCI6ICIiLCAiZXhwaXJ5IjogIjIwMjYtMDktMjNUMTY6NDI6MzNaIn0="
+            drive_tok_p.write_bytes(base64.b64decode(b64_drive))
+            logger.info("✅ [Startup] Đã tự động khôi phục drive_token.json cho account_1")
+
+        # Tự động nạp token YouTube
+        yt_tok_p = acc1_dir / "youtube_token.json"
+        if not yt_tok_p.exists() or yt_tok_p.stat().st_size < 10:
+            b64_yt = os.getenv("YOUTUBE_TOKEN_BASE64") or "eyJ0b2tlbiI6ICJ5YTI5LmEwQVgwN0NtdnJlWlNicTl1TjlmWHM1YUZraHNoV0NYeFFMRWxiM0duYk1xaUpJekxacFN4azZYSmNoUndWMnc1Um9zQ0wzd2ZTMGhPMTA4bk82MFdvaHpaZHNZYkNXNGMtZV8wSWF0aGNQd3FHR3AwRl9xRzBVZUpic1RubmU4THJoWEVsaE5maFpxZ2E3bFlScVNSWUdOUWxILTIzaENSN1pXTHhiaWhRczVLUUxobmVwZG1vVjQ5VElVNzRFaFc0cE84SzJ5MGFDZ1lLQVlvU0FSUVNGUUhHWDJNaWV5SG5nSTlLb3JKNE14empDSlVma1EwMjA2IiwgInJlZnJlc2hfdG9rZW4iOiAiMS8vMGV6VE5rNnZWWnplSENnWUlBUkFBR0E0U053Ri1MOUlydS1aT0hKcDh4SzE1UVU0SlA4elBoUTNmRnNLUzQ0QjFOYjRJNUZ5VVlkbW9kSlNNYnM2MTlRQlAzaGtCQkJQX3F0MCIsICJ0b2tlbl91cmkiOiAiaHR0cHM6Ly9vYXV0aDIuZ29vZ2xlYXBpcy5jb20vdG9rZW4iLCAiY2xpZW50X2lkIjogIjk3MjYyMjg1MTc4OS00MTc1YjFkcXVzY3JrMDhqMmFxNGpiOHM4NGxsaDR1by5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbSIsICJjbGllbnRfc2VjcmV0IjogIkdPQ1NQWC16bGE0ZXJNNi1pMGs2MUE1REM1QV9COGRtaXJQIiwgInNjb3BlcyI6IFsiaHR0cHM6Ly93d3cuZ29vZ2xlYXBpcy5jb20vYXV0aC95b3V0dWJlIiwgImh0dHBzOi8vd3d3Lmdvb2dsZWFwaXMuY29tL2F1dGgvdXNlcmluZm8uZW1haWwiLCAib3BlbmlkIl0sICJ1bml2ZXJzZV9kb21haW4iOiAiZ29vZ2xlYXBpcy5jb20iLCAiYWNjb3VudCI6ICIiLCAiZXhwaXJ5IjogIjIwMjYtMDktMjZUMTE6NDI6MzNaIn0="
+            yt_tok_p.write_bytes(base64.b64decode(b64_yt))
+            logger.info("✅ [Startup] Đã tự động khôi phục youtube_token.json cho account_1")
+    except Exception as e_sec:
+        logger.warning(f"Lỗi khôi phục credentials startup: {e_sec}")
+
     # Khởi động ChannelIntelligenceWorker ngầm (giám sát KPI, chống trùng ý tưởng, tự động đăng tạm)
     try:
         from app.services.channel_intelligence import ChannelIntelligenceWorker
