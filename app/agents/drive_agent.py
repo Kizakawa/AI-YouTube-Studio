@@ -353,6 +353,30 @@ class DriveAgent:
             logger.debug(f"Lỗi khi list completed videos trên Drive: {e}")
             return []
 
+    def list_pending_tasks(self, folder_path: str = "AI_YouTube_RenderFarm/pending") -> list:
+        """
+        Liệt kê các file task kịch bản JSON đang chờ Colab render trên Google Drive.
+        """
+        if not self.service:
+            self._init_service()
+        if not self.service:
+            return []
+        try:
+            folder_id = self.get_folder_by_path(folder_path)
+            if not folder_id:
+                return []
+            q = f"'{folder_id}' in parents and trashed = false and name contains '.json'"
+            res = self.service.files().list(
+                q=q,
+                fields="files(id, name, size, mimeType, webViewLink, createdTime)",
+                pageSize=100
+            ).execute()
+            return res.get("files", [])
+        except Exception as e:
+            logger.debug(f"Lỗi khi list pending tasks trên Drive: {e}")
+            return []
+
+
     def get_completed_video_by_job_id(self, job_id: int, folder_path: str = "AI_YouTube_RenderFarm/completed") -> Optional[Dict[str, Any]]:
         """
         Tìm kiếm video hoàn thiện cho job_id cụ thể (ví dụ: 'video_39.mp4')

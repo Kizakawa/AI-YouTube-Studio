@@ -53,6 +53,25 @@ async def device_gatekeeper_middleware(request: Request, call_next):
         return await call_next(request)
 
     path = request.url.path
+
+    # Cho phép AI Agent có key hợp lệ hoặc truy cập các endpoint /api/agent
+    agent_key = (
+        request.headers.get("X-Agent-Key")
+        or request.headers.get("X-Agent-Secret")
+        or request.query_params.get("agent_key")
+    )
+    auth_hdr = request.headers.get("Authorization", "")
+    if auth_hdr.startswith("Bearer "):
+        bearer_val = auth_hdr[7:].strip()
+        if bearer_val == getattr(settings, "AGENT_API_KEY", "agy_agent_supersecret_key_2026"):
+            agent_key = bearer_val
+
+    if agent_key and agent_key == getattr(settings, "AGENT_API_KEY", "agy_agent_supersecret_key_2026"):
+        return await call_next(request)
+
+    if path.startswith("/api/agent"):
+        return await call_next(request)
+
     # Cho phép trang chủ HTML, tài nguyên tĩnh, media video, health check, oauth callback, và các endpoint xác thực thiết bị
     if (
         path.startswith("/static")
@@ -92,6 +111,10 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 MEDIA_DIR = BASE_DIR / "output"
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
+
+# Đăng ký Router dành riêng cho AI Agent
+from app.web.agent_api import agent_router
+app.include_router(agent_router)
 
 @app.on_event("startup")
 def on_startup():
