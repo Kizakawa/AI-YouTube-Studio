@@ -101,11 +101,13 @@ async function checkDeviceAuthorization() {
             if (data.token) {
                 saveDeviceToken(data.token);
             }
+            document.documentElement.classList.remove('device-unauthorized');
             overlay.style.display = 'none';
             return true;
         }
 
-        // Thiết bị từ xa chưa được duyệt -> Hiện màn hình chờ 2FA
+        // Thiết bị từ xa chưa được duyệt -> Kích hoạt giao diện Cyber Gatekeeper 2FA
+        document.documentElement.classList.add('device-unauthorized');
         overlay.style.display = 'flex';
         const devNameEl = document.getElementById('gk-device-name');
         const ipEl = document.getElementById('gk-client-ip');
@@ -124,22 +126,36 @@ async function checkDeviceAuthorization() {
 async function initiateDeviceAccessRequest() {
     try {
         const statusBadge = document.getElementById('gk-status-badge');
+        const reqIdEl = document.getElementById('gk-request-id');
+        const reqTimeEl = document.getElementById('gk-request-time');
+
         if (statusBadge) {
-            statusBadge.innerHTML = `<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#38bdf8; animation: pulse 1.2s infinite;"></span> Đang gửi yêu cầu...`;
+            statusBadge.innerHTML = `<span class="gk-pulse-amber"></span> Đang tạo mã phiên & gửi Telegram...`;
         }
+        if (reqIdEl) reqIdEl.textContent = 'Đang khởi tạo...';
 
         const res = await fetch('/api/auth/request-access', { method: 'POST' });
         const data = await res.json();
         _currentRequestId = data.request_id;
 
+        if (reqIdEl) {
+            reqIdEl.textContent = data.request_id || 'Chưa xác định';
+        }
+        if (reqTimeEl) {
+            reqTimeEl.textContent = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
         if (statusBadge) {
-            statusBadge.innerHTML = `<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#fbbf24;"></span> Chờ duyệt trên Telegram...`;
+            statusBadge.innerHTML = `<span class="gk-pulse-amber"></span> Chờ duyệt trên Telegram...`;
         }
 
         if (_gkPollingInterval) clearInterval(_gkPollingInterval);
         _gkPollingInterval = setInterval(pollDeviceStatus, 2000);
     } catch (e) {
         console.error('Không thể gửi yêu cầu xác thực thiết bị:', e);
+        const statusBadge = document.getElementById('gk-status-badge');
+        if (statusBadge) {
+            statusBadge.innerHTML = `<span style="color:#ef4444; font-weight:700;">⚠️ Lỗi kết nối máy chủ</span>`;
+        }
     }
 }
 
@@ -153,49 +169,71 @@ async function pollDeviceStatus() {
         const iconCont = document.getElementById('gk-icon-container');
         const statusBadge = document.getElementById('gk-status-badge');
         const hintBox = document.getElementById('gk-hint-box');
+        const portalTitle = document.getElementById('gk-portal-title');
+        const subtitle = document.getElementById('gk-subtitle');
 
         if (data.status === 'approved') {
             clearInterval(_gkPollingInterval);
+            _gkPollingInterval = null;
             if (data.token) {
                 saveDeviceToken(data.token);
             }
+            if (portalTitle) {
+                portalTitle.innerHTML = '🎉 XÁC THỰC THÀNH CÔNG!';
+                portalTitle.style.color = '#34d399';
+            }
+            if (subtitle) {
+                subtitle.textContent = 'Quản trị viên đã phê duyệt thiết bị (hạn 7 ngày). Đang chuyển hướng vào Studio...';
+            }
             if (iconCont) {
                 iconCont.innerHTML = '✅';
-                iconCont.style.background = 'linear-gradient(135deg, rgba(16,185,129,0.2), rgba(5,150,105,0.15))';
-                iconCont.style.borderColor = 'rgba(16,185,129,0.5)';
+                iconCont.style.background = 'linear-gradient(135deg, rgba(16,185,129,0.25), rgba(5,150,105,0.2))';
+                iconCont.style.borderColor = 'rgba(16,185,129,0.6)';
+                iconCont.style.boxShadow = '0 0 35px rgba(16,185,129,0.5)';
             }
             if (statusBadge) {
-                statusBadge.innerHTML = `<span style="color:#10b981; font-weight:700;">✅ Đã Phê Duyệt!</span>`;
+                statusBadge.innerHTML = `<span style="color:#10b981; font-weight:700; display:flex; align-items:center; gap:6px;"><span>🟢</span> Đã Phê Duyệt (Hạn 7 ngày)</span>`;
             }
             if (hintBox) {
-                hintBox.innerHTML = `🎉 <strong>Quản trị viên đã chấp thuận!</strong> Đang mở khóa Web Studio...`;
+                hintBox.innerHTML = `🎉 <strong>Quyền truy cập đã sẵn sàng!</strong> Hệ thống đang mở giao diện làm việc...`;
                 hintBox.style.borderColor = 'rgba(16,185,129,0.4)';
-                hintBox.style.background = 'rgba(16,185,129,0.08)';
+                hintBox.style.background = 'rgba(16,185,129,0.1)';
             }
 
             setTimeout(() => {
+                document.documentElement.classList.remove('device-unauthorized');
                 if (overlay) {
-                    overlay.style.transition = 'opacity 0.5s ease';
+                    overlay.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
                     overlay.style.opacity = '0';
+                    overlay.style.transform = 'scale(1.02)';
                     setTimeout(() => {
                         overlay.style.display = 'none';
                         overlay.style.opacity = '1';
+                        overlay.style.transform = 'none';
                         fetchAllData().then(() => scheduleNextFetch(10000));
-                    }, 500);
+                    }, 600);
+                } else {
+                    fetchAllData().then(() => scheduleNextFetch(10000));
                 }
-            }, 800);
+            }, 900);
         } else if (data.status === 'rejected') {
             clearInterval(_gkPollingInterval);
+            _gkPollingInterval = null;
+            if (portalTitle) {
+                portalTitle.innerHTML = '⛔ TỪ CHỐI TRUY CẬP';
+                portalTitle.style.color = '#ef4444';
+            }
             if (iconCont) {
                 iconCont.innerHTML = '❌';
-                iconCont.style.background = 'linear-gradient(135deg, rgba(239,68,68,0.2), rgba(220,38,38,0.15))';
-                iconCont.style.borderColor = 'rgba(239,68,68,0.5)';
+                iconCont.style.background = 'linear-gradient(135deg, rgba(239,68,68,0.25), rgba(220,38,38,0.15))';
+                iconCont.style.borderColor = 'rgba(239,68,68,0.6)';
+                iconCont.style.boxShadow = '0 0 35px rgba(239,68,68,0.4)';
             }
             if (statusBadge) {
-                statusBadge.innerHTML = `<span style="color:#ef4444; font-weight:700;">⛔ Đã Bị Từ Chối</span>`;
+                statusBadge.innerHTML = `<span style="color:#ef4444; font-weight:700; display:flex; align-items:center; gap:6px;"><span>🔴</span> Quản Trị Viên Từ Chối</span>`;
             }
             if (hintBox) {
-                hintBox.innerHTML = `⚠️ <strong>Yêu cầu truy cập của bạn đã bị từ chối</strong> bởi Quản trị viên trên Telegram.`;
+                hintBox.innerHTML = `⚠️ <strong>Yêu cầu truy cập của bạn đã bị từ chối</strong> bởi Quản trị viên trên Telegram.<br>Nếu đây là nhầm lẫn, vui lòng liên hệ Admin hoặc bấm nút <strong>"Gửi Lại Yêu Cầu"</strong>.`;
                 hintBox.style.borderColor = 'rgba(239,68,68,0.4)';
                 hintBox.style.background = 'rgba(239,68,68,0.08)';
             }
@@ -205,20 +243,94 @@ async function pollDeviceStatus() {
     }
 }
 
+function copyGkRequestId() {
+    const reqIdEl = document.getElementById('gk-request-id');
+    const text = reqIdEl ? (reqIdEl.textContent || '').trim() : '';
+    if (!text || text.includes('Đang') || text === '---') {
+        return;
+    }
+
+    navigator.clipboard.writeText(text).then(() => {
+        const copyBtns = document.querySelectorAll('.gk-btn-copy-sm');
+        copyBtns.forEach(btn => {
+            const old = btn.textContent;
+            btn.textContent = '✅ Đã Copy!';
+            btn.style.color = '#34d399';
+            setTimeout(() => {
+                btn.textContent = old;
+                btn.style.color = '';
+            }, 2000);
+        });
+    }).catch(err => {
+        console.warn('Không thể sao chép Request ID:', err);
+    });
+}
+
+async function checkDeviceStatusManual() {
+    const btn = document.getElementById('gk-check-now-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span style="display:inline-block; animation:gk-spin 1s infinite linear;">⚙️</span> Đang kiểm tra...`;
+    }
+
+    try {
+        if (_currentRequestId) {
+            await pollDeviceStatus();
+        } else {
+            const isAuth = await checkDeviceAuthorization();
+            if (isAuth) {
+                fetchAllData().then(() => scheduleNextFetch(10000));
+            }
+        }
+    } catch (e) {
+        console.error('Lỗi khi kiểm tra thủ công:', e);
+    } finally {
+        setTimeout(() => {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = `⚡ Kiểm Tra Trạng Thái`;
+            }
+        }, 800);
+    }
+}
+
 async function requestDeviceAccessAgain() {
+    const retryBtn = document.getElementById('gk-retry-btn');
+    if (retryBtn) {
+        retryBtn.disabled = true;
+        retryBtn.innerHTML = `⏳ Đang gửi...`;
+    }
     const hintBox = document.getElementById('gk-hint-box');
     const iconCont = document.getElementById('gk-icon-container');
+    const portalTitle = document.getElementById('gk-portal-title');
+    const subtitle = document.getElementById('gk-subtitle');
+
+    if (portalTitle) {
+        portalTitle.innerHTML = 'AI YOUTUBE STUDIO HUB';
+        portalTitle.style.color = '#fff';
+    }
+    if (subtitle) {
+        subtitle.textContent = 'Thiết bị của bạn đang chờ phê duyệt. Để bảo mật ma trận kênh YouTube và hạn ngạch AI, yêu cầu truy cập đã được gửi tự động tới nhóm Telegram của Quản trị viên.';
+    }
     if (iconCont) {
         iconCont.innerHTML = '🛡️';
-        iconCont.style.background = 'linear-gradient(135deg, rgba(56,189,248,0.15), rgba(129,140,248,0.1))';
-        iconCont.style.borderColor = 'rgba(56,189,248,0.3)';
+        iconCont.style.background = 'linear-gradient(135deg, rgba(56,189,248,0.2), rgba(129,140,248,0.12))';
+        iconCont.style.borderColor = 'rgba(56,189,248,0.45)';
+        iconCont.style.boxShadow = '0 0 30px rgba(56,189,248,0.28)';
     }
     if (hintBox) {
-        hintBox.innerHTML = `💬 Vui lòng nhờ Quản trị viên bấm nút <strong>"✅ Đồng Ý Cấp Quyền"</strong> trên Telegram.`;
-        hintBox.style.borderColor = 'rgba(56, 189, 248, 0.2)';
-        hintBox.style.background = 'rgba(56, 189, 248, 0.05)';
+        hintBox.innerHTML = `<div style="font-weight:700; color:#38bdf8; margin-bottom:4px; display:flex; align-items:center; gap:6px;"><span>💬</span> Cách mở khóa:</div>1. Mở nhóm Telegram của bot &rarr; Tìm tin nhắn <strong>"🛡️ YÊU CẦU TRUY CẬP THIẾT BỊ MỚI"</strong>.<br>2. Quản trị viên chỉ cần bấm nút <strong>"✅ Đồng Ý Cấp Quyền (7 ngày)"</strong>.<br>3. Màn hình này sẽ <strong>tự động nhận diện và mở khóa Web Studio sau 1 giây</strong> mà bạn không cần phải làm gì thêm!`;
+        hintBox.style.borderColor = 'rgba(56, 189, 248, 0.28)';
+        hintBox.style.background = 'rgba(56, 189, 248, 0.06)';
     }
+
     await initiateDeviceAccessRequest();
+    if (retryBtn) {
+        setTimeout(() => {
+            retryBtn.disabled = false;
+            retryBtn.innerHTML = `🔄 Gửi Lại Yêu Cầu`;
+        }, 1500);
+    }
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
