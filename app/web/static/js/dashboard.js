@@ -35,13 +35,41 @@ function scheduleNextFetch(delay = 10000) {
 }
 
 /* ═══════════════════════════════════════════════════════
+   DEVICE TOKEN PERSISTENCE (Lưu trữ 7 ngày qua LocalStorage & Cookie)
+══════════════════════════════════════════════════════════ */
+function saveDeviceToken(token) {
+    if (!token) return;
+    try {
+        localStorage.setItem('youtube_device_token', token);
+        document.cookie = `device_token=${encodeURIComponent(token)}; path=/; max-age=604800; SameSite=Lax`;
+    } catch (e) {
+        console.warn('Không thể lưu token thiết bị:', e);
+    }
+}
+
+function getStoredDeviceToken() {
+    let token = '';
+    try {
+        token = localStorage.getItem('youtube_device_token');
+    } catch (e) {}
+    if (!token) {
+        const match = document.cookie.match(/(?:^|;\s*)device_token=([^;]+)/);
+        if (match) {
+            token = decodeURIComponent(match[1]);
+            try { localStorage.setItem('youtube_device_token', token); } catch (e) {}
+        }
+    }
+    return token || '';
+}
+
+/* ═══════════════════════════════════════════════════════
    FETCH INTERCEPTOR (Tự động đính kèm X-Device-Token)
 ══════════════════════════════════════════════════════════ */
 const _originalFetch = window.fetch;
 window.fetch = function(url, options = {}) {
     options = options || {};
     options.headers = options.headers || {};
-    const token = localStorage.getItem('youtube_device_token');
+    const token = getStoredDeviceToken();
     if (token) {
         if (options.headers instanceof Headers) {
             options.headers.set('X-Device-Token', token);
@@ -60,7 +88,7 @@ let _currentRequestId = null;
 
 async function checkDeviceAuthorization() {
     try {
-        const token = localStorage.getItem('youtube_device_token') || '';
+        const token = getStoredDeviceToken();
         const res = await fetch('/api/auth/check', {
             headers: { 'X-Device-Token': token }
         });
@@ -71,7 +99,7 @@ async function checkDeviceAuthorization() {
 
         if (data.authenticated) {
             if (data.token) {
-                localStorage.setItem('youtube_device_token', data.token);
+                saveDeviceToken(data.token);
             }
             overlay.style.display = 'none';
             return true;
@@ -129,7 +157,7 @@ async function pollDeviceStatus() {
         if (data.status === 'approved') {
             clearInterval(_gkPollingInterval);
             if (data.token) {
-                localStorage.setItem('youtube_device_token', data.token);
+                saveDeviceToken(data.token);
             }
             if (iconCont) {
                 iconCont.innerHTML = '✅';

@@ -11,6 +11,9 @@ Tính năng:
 - Hỗ trợ biến môi trường ENABLE_DEVICE_GATEKEEPER (mặc định: true).
 """
 
+import hmac
+import hashlib
+import base64
 import json
 import logging
 import os
@@ -28,6 +31,77 @@ logger = logging.getLogger(__name__)
 STORAGE_DIR = Path(settings.BASE_DIR) / "storage"
 STORAGE_FILE = STORAGE_DIR / "approved_devices.json"
 PENDING_FILE = STORAGE_DIR / "pending_requests.json"
+
+
+def _get_signing_key() -> bytes:
+    """Khóa bí mật tạo chữ ký HMAC cho device token, không bao giờ mất khi Render restart"""
+    secret = (
+        os.getenv("DEVICE_GATEKEEPER_SECRET")
+        or settings.TELEGRAM_BOT_TOKEN
+        or "ai_youtube_studio_device_gatekeeper_2026_salt"
+    )
+    return secret.encode("utf-8")
+
+
+def generate_signed_token(client_ip: str, device_name: str, approver: str = "Admin", duration_days: int = 7) -> str:
+    """
+    Tạo token chữ ký số HMAC-SHA256 lưu giữ trực tiếp trên thiết bị (Client-Side State).
+    Đặc tính:
+    - Chứa thời hạn hết hạn (exp = 7 ngày).
+    - Có chữ ký bí mật từ TELEGRAM_BOT_TOKEN.
+    - Miễn nhiễm hoàn toàn khi Render ngủ đông, khởi động lại hoặc redeploy!
+    """
+    now = time.time()
+    expires_at = now + (duration_days * 86400)
+    payload = {
+        "ip": client_ip,
+        "dev": device_name,
+        "by": approver,
+        "iat": int(now),
+        "exp": int(expires_at),
+        "v": 2
+    }
+    payload_json = json.dumps(payload, separators=(',', ':'))
+    payload_b64 = base64.urlsafe_b64encode(payload_json.encode("utf-8")).decode("utf-8").rstrip("=")
+    signature = hmac.new(_get_signing_key(), payload_b64.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"dtk_{payload_b64}.{signature}"
+
+
+def verify_signed_token(token: Optional[str]) -> Optional[Dict[str, Any]]:
+    """
+    Kiểm tra tính hợp lệ của token chữ ký số HMAC.
+    Nếu chữ ký khớp và thời hạn exp > hiện tại: thiết bị được tin cậy 100% trong 7 ngày.
+    """
+    if not token or not isinstance(token, str):
+        return None
+    token = token.strip()
+    if not token.startswith("dtk_"):
+        return None
+    try:
+        parts = token[4:].split(".")
+        if len(parts) != 2:
+            return None
+        payload_b64, signature = parts
+
+        expected_sig = hmac.new(_get_signing_key(), payload_b64.encode("utf-8"), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(signature, expected_sig):
+            logger.warning("Device token signature mismatch!")
+            return None
+
+        padding = 4 - (len(payload_b64) % 4)
+        if padding != 4:
+            payload_b64 += "=" * padding
+
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64.encode("utf-8")).decode("utf-8"))
+
+        if payload.get("exp", 0) < time.time():
+            logger.info("Device token has expired (> 7 days)")
+            return None
+
+        return payload
+    except Exception as e:
+        logger.debug(f"Error verifying signed token: {e}")
+        return None
 
 
 def is_gatekeeper_enabled() -> bool:
@@ -96,7 +170,9 @@ def is_local_ip(ip: Optional[str]) -> bool:
 def is_device_token_valid(token: Optional[str] = None, client_ip: Optional[str] = None) -> bool:
     """
     Kiểm tra xem thiết bị có được cấp quyền truy cập không.
-    Hỗ trợ kiểm tra cả token VÀ địa chỉ IP của thiết bị đã được duyệt.
+    1. Localhost luôn hợp lệ.
+    2. Token chữ ký số HMAC (dtk_...) hợp lệ và còn hạn 7 ngày -> Luôn hợp lệ (không phụ thuộc file hệ thống).
+    3. Token cũ hoặc IP đã lưu trong approved_devices.json -> Hợp lệ.
     """
     if not is_gatekeeper_enabled():
         return True
@@ -104,15 +180,22 @@ def is_device_token_valid(token: Optional[str] = None, client_ip: Optional[str] 
     if is_local_ip(client_ip):
         return True
 
+    # 1. Kiểm tra Signed Cryptographic Token (Chống mất khi Render restart / ngủ đông)
+    if token:
+        signed_payload = verify_signed_token(token)
+        if signed_payload is not None:
+            return True
+
+    # 2. Kiểm tra danh sách thiết bị lưu tạm thời trên đĩa
     devices = _load_approved_devices()
     now = time.time()
 
-    # 1. Kiểm tra theo Token
+    # Kiểm tra theo Token cũ
     if token and token in devices:
         if devices[token].get("expires_at", 0) > now:
             return True
 
-    # 2. Kiểm tra theo IP (dành cho trường hợp client vừa được duyệt nhưng chưa kịp nạp token vào header)
+    # Kiểm tra theo IP (dành cho trường hợp client vừa được duyệt nhưng chưa kịp nạp token vào header)
     if client_ip:
         for dev in devices.values():
             if dev.get("client_ip") == client_ip and dev.get("expires_at", 0) > now:
@@ -310,8 +393,13 @@ def approve_access_request(req_id: str, admin_name: str = "Admin") -> Optional[D
         logger.warning(f"Không tìm thấy yêu cầu duyệt thiết bị: {req_id}")
         return None
 
-    # Sinh token mới có hạn 7 ngày
-    device_token = "tok_" + secrets.token_urlsafe(32)
+    # Sinh signed token có chữ ký số bí mật, hạn 7 ngày
+    device_token = generate_signed_token(
+        client_ip=req.get("client_ip", ""),
+        device_name=req.get("device_name", "Thiết bị"),
+        approver=admin_name,
+        duration_days=7
+    )
     expires_at = time.time() + (7 * 24 * 3600)  # 7 ngày
 
     req["status"] = "approved"
@@ -329,7 +417,7 @@ def approve_access_request(req_id: str, admin_name: str = "Admin") -> Optional[D
     }
     _save_approved_devices(devices)
 
-    logger.info(f"✅ Đã phê duyệt thiết bị {req.get('device_name')} ({req['client_ip']}) bởi {admin_name}")
+    logger.info(f"✅ Đã phê duyệt thiết bị {req.get('device_name')} ({req['client_ip']}) bởi {admin_name} (Signed Token)")
     return req
 
 

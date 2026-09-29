@@ -205,7 +205,7 @@ async def get_network_info_endpoint():
 # ─── Device Authentication & Telegram 2FA Gatekeeper ─────────────────────────
 
 @app.get("/api/auth/check")
-async def check_device_auth(request: Request):
+async def check_device_auth(request: Request, response: Response):
     """Kiểm tra quyền truy cập thiết bị (Localhost luôn qua; Thiết bị từ xa phải có token hoặc IP đã duyệt)"""
     client_ip = request.client.host if request.client else "127.0.0.1"
     forwarded = request.headers.get("x-forwarded-for")
@@ -220,6 +220,15 @@ async def check_device_auth(request: Request):
     auth_token = request.headers.get("X-Device-Token") or request.cookies.get("device_token")
     if is_device_token_valid(auth_token, client_ip=client_ip):
         token = auth_token or get_token_for_ip(client_ip)
+        if token:
+            response.set_cookie(
+                key="device_token",
+                value=token,
+                max_age=7 * 24 * 3600,
+                path="/",
+                samesite="lax",
+                httponly=False
+            )
         return {"authenticated": True, "is_local": False, "client_ip": client_ip, "token": token}
 
     ua = request.headers.get("user-agent", "")
@@ -244,7 +253,7 @@ async def request_device_access(request: Request):
     return create_access_request(client_ip, ua)
 
 @app.get("/api/auth/status/{request_id}")
-async def check_device_request_status(request_id: str, request: Request):
+async def check_device_request_status(request_id: str, request: Request, response: Response):
     """Frontend polling kiểm tra xem Admin đã bấm [Đồng Ý] trên Telegram chưa"""
     client_ip = request.client.host if request.client else "127.0.0.1"
     forwarded = request.headers.get("x-forwarded-for")
@@ -252,7 +261,17 @@ async def check_device_request_status(request_id: str, request: Request):
         client_ip = forwarded.split(",")[0].strip()
 
     from app.services.device_auth import get_request_status
-    return get_request_status(request_id, client_ip=client_ip)
+    res = get_request_status(request_id, client_ip=client_ip)
+    if res.get("status") == "approved" and res.get("token"):
+        response.set_cookie(
+            key="device_token",
+            value=res["token"],
+            max_age=7 * 24 * 3600,
+            path="/",
+            samesite="lax",
+            httponly=False
+        )
+    return res
 
 # ─── Stats ────────────────────────────────────────────────────────────────────
 
