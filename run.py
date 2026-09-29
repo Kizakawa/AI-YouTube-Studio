@@ -204,26 +204,69 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.Document.ALL, media_upload_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
 
-    # Khởi động luồng ngầm tự động theo dõi video Colab hoàn thành trên Google Drive
-    def _drive_watcher():
-        import time
+    # Khởi động tác vụ ngầm tự động theo dõi video Colab hoàn thành trên Google Drive & gửi ting ting về Telegram
+    async def _auto_check_drive_completed(context):
         from app.services.colab_queue_service import check_and_import_completed_video
         from app.database.models import get_db, VideoJob
-        time.sleep(10)
-        while True:
-            try:
-                with get_db() as db:
-                    waiting = db.query(VideoJob).filter(VideoJob.status.in_(["PENDING_COLAB", "SCRIPT_READY"])).all()
-                    j_ids = [w.id for w in waiting]
-                for jid in j_ids:
-                    ok, local_p, d_link = check_and_import_completed_video(jid)
-                    if ok:
-                        logger.info(f"🎉 [Drive Watcher] Đã tự động đồng bộ Video #{jid} từ Google Drive: {local_p}")
-            except Exception as e_w:
-                logger.debug(f"[Drive Watcher error]: {e_w}")
-            time.sleep(25)
+        from app.bot.keyboards import get_video_post_render_keyboard
 
-    threading.Thread(target=_drive_watcher, daemon=True).start()
+        try:
+            with get_db() as db:
+                waiting = db.query(VideoJob).filter(VideoJob.status.in_(["PENDING_COLAB", "SCRIPT_READY"])).all()
+                jobs_data = [(w.id, w.user_id, w.title or w.topic or f"Video #{w.id}") for w in waiting]
+
+            for jid, uid, title in jobs_data:
+                ok, local_p, d_link = check_and_import_completed_video(jid)
+                if ok:
+                    logger.info(f"🎉 [Drive Watcher] Đã tự động đồng bộ Video #{jid} từ Google Drive: {local_p}")
+                    target_chat = uid
+                    if not target_chat:
+                        from config.settings import settings
+                        target_chat = settings.ALLOWED_TELEGRAM_USERS[0] if settings.ALLOWED_TELEGRAM_USERS else None
+
+                    if target_chat:
+                        post_markup = get_video_post_render_keyboard(jid)
+                        size_mb = os.path.getsize(local_p) / (1024 * 1024) if (local_p and os.path.exists(local_p)) else 0
+                        cap = (
+                            f"🎉 **VIDEO #{jid} ĐÃ ĐƯỢC COLAB RENDER XONG & TỰ ĐỘNG GỬI VỀ!**\n\n"
+                            f"📌 **Tiêu đề:** {title}\n"
+                            f"📦 **Dung lượng:** {size_mb:.1f} MB\n"
+                            f"⚡ **Công nghệ:** GPU NVENC Tăng Tốc (1080x1920 30fps)\n"
+                            f"☁️ **Google Drive:** {d_link or 'Đã lưu an toàn'}\n\n"
+                            f"👉 Cả nhóm hãy xem video! Bấm **Đăng Ngay** hoặc **Góp Ý Sửa Lại** bên dưới:"
+                        )
+                        sent = False
+                        if size_mb <= 49.0 and local_p and os.path.exists(local_p):
+                            try:
+                                with open(local_p, "rb") as vf:
+                                    await context.bot.send_video(
+                                        chat_id=target_chat,
+                                        video=vf,
+                                        caption=cap,
+                                        reply_markup=post_markup,
+                                        supports_streaming=True,
+                                        read_timeout=120,
+                                        write_timeout=120
+                                    )
+                                sent = True
+                            except Exception as ex_v:
+                                logger.warning(f"Lỗi gửi video #{jid} qua Telegram: {ex_v}")
+
+                        if not sent:
+                            try:
+                                await context.bot.send_message(
+                                    chat_id=target_chat,
+                                    text=cap,
+                                    reply_markup=post_markup
+                                )
+                            except Exception as ex_m:
+                                logger.warning(f"Lỗi gửi thông báo #{jid} qua Telegram: {ex_m}")
+        except Exception as e_w:
+            logger.debug(f"[Drive Watcher error]: {e_w}")
+
+    if app.job_queue:
+        app.job_queue.run_repeating(_auto_check_drive_completed, interval=15, first=5)
+
 
     async def error_handler(update, context):
         err_msg = str(context.error) if context.error else ""
