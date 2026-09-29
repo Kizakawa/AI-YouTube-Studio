@@ -48,7 +48,10 @@ def migrate_database(sqlite_path: str, target_postgres_url: str, dry_run: bool =
     SrcSession = sessionmaker(bind=src_engine)
 
     if is_pg:
-        tgt_engine = create_engine(norm_target, pool_pre_ping=True)
+        driver_target = norm_target
+        if driver_target.startswith("postgresql://"):
+            driver_target = "postgresql+psycopg2://" + driver_target[len("postgresql://"):]
+        tgt_engine = create_engine(driver_target, pool_pre_ping=True)
     else:
         tgt_engine = create_engine(norm_target, connect_args={"check_same_thread": False})
     TgtSession = sessionmaker(bind=tgt_engine)

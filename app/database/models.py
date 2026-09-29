@@ -25,12 +25,15 @@ def create_configured_engine(raw_url: str):
     - Fallback: Nếu kết nối PostgreSQL thất bại, tự động chuyển về SQLite cục bộ an toàn.
     """
     db_url = normalize_database_url(raw_url)
-    is_postgres = db_url.startswith("postgresql://")
+    is_postgres = db_url.startswith("postgresql://") or db_url.startswith("postgresql+psycopg2://")
 
     if is_postgres:
+        driver_url = db_url
+        if driver_url.startswith("postgresql://"):
+            driver_url = "postgresql+psycopg2://" + driver_url[len("postgresql://"):]
         try:
             eng = create_engine(
-                db_url,
+                driver_url,
                 echo=False,
                 pool_size=10,
                 max_overflow=20,
