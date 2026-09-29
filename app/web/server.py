@@ -1,4 +1,6 @@
 import os
+import time
+import secrets
 import json
 import yaml
 import base64
@@ -121,21 +123,22 @@ def on_startup():
         acc1_dir = BASE_DIR / "credentials" / "accounts" / "account_1"
         acc1_dir.mkdir(parents=True, exist_ok=True)
         secret_p = acc1_dir / "client_secret.json"
-        if not secret_p.exists() or secret_p.stat().st_size < 10:
-            default_secret = {
-                "installed": {
-                    "client_id": "972622851789-4175b1dquscrk08j2aq4jb8s84llh4uo.apps.googleusercontent.com",
-                    "project_id": "bionic-client-509515-h2",
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
-                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                    "client_secret": "GOCSPX-REDACTED_OAUTH_CLIENT_SECRET",
-                    "redirect_uris": ["http://localhost"]
-                }
+        default_secret = {
+            "web": {
+                "client_id": "972622851789-l65i20vr94lp5mnc504oc58gdgumbr42.apps.googleusercontent.com",
+                "project_id": "bionic-client-509515-h2",
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                "client_secret": "GOCSPX-REDACTED_OAUTH_CLIENT_SECRET",
+                "redirect_uris": [
+                    "https://ai-youtube-studio-8kbu.onrender.com/api/oauth/callback"
+                ]
             }
-            import json
-            secret_p.write_text(json.dumps(default_secret, indent=2), encoding="utf-8")
-            logger.info("✅ [Startup] Đã tự động tạo client_secret.json cho account_1")
+        }
+        import json
+        secret_p.write_text(json.dumps(default_secret, indent=2), encoding="utf-8")
+        logger.info("✅ [Startup] Đã tự động kích hoạt client_secret.json Web Application 1-Click cho account_1")
 
         # Tự động nạp toàn bộ 11 tokens của cả 3 tài khoản mẹ và 5 kênh YouTube từ Token Vault
         try:
