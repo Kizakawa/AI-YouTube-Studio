@@ -308,10 +308,19 @@ async def get_overview_stats() -> Dict[str, Any]:
     drive_connected = False
     drive_quota_str = "Chưa kết nối"
     try:
-        drive_token_path = BASE_DIR / "credentials" / "accounts" / "account_1" / "drive_token.json"
-        if drive_token_path.exists():
-            drive_connected = True
-            drive_quota_str = "20 TB (Đã kết nối ✓)"
+        cfg = _read_channels_yaml()
+        for acc in cfg.get("google_accounts", []):
+            acc_id = acc.get("id")
+            if not acc_id:
+                continue
+            drive_token_path = BASE_DIR / "credentials" / "accounts" / acc_id / "drive_token.json"
+            if drive_token_path.exists():
+                tok = load_encrypted_json(drive_token_path)
+                if tok and (tok.get("token") or tok.get("refresh_token")):
+                    drive_connected = True
+                    storage_label = acc.get("drive_storage") or "Google One"
+                    drive_quota_str = f"{storage_label} (Đã kết nối ✓)"
+                    break
     except Exception:
         pass
 
@@ -1041,14 +1050,19 @@ async def health_check() -> Dict[str, Any]:
     drive_connected = False
     drive_quota_label = "Chưa kết nối"
     try:
-        drive_token_path = BASE_DIR / "credentials" / "accounts" / "account_1" / "drive_token.json"
-        if drive_token_path.exists():
-            import json as _json
-            with open(drive_token_path, "r", encoding="utf-8") as f:
-                tok = _json.load(f)
-            if tok.get("token") or tok.get("refresh_token"):
-                drive_connected = True
-                drive_quota_label = "20 TB Google One (Đã kết nối)"
+        cfg = _read_channels_yaml()
+        for acc in cfg.get("google_accounts", []):
+            acc_id = acc.get("id")
+            if not acc_id:
+                continue
+            drive_token_path = BASE_DIR / "credentials" / "accounts" / acc_id / "drive_token.json"
+            if drive_token_path.exists():
+                tok = load_encrypted_json(drive_token_path)
+                if tok and (tok.get("token") or tok.get("refresh_token")):
+                    drive_connected = True
+                    storage_label = acc.get("drive_storage") or "Google One"
+                    drive_quota_label = f"{storage_label} (Đã kết nối ✓)"
+                    break
     except Exception:
         pass
 

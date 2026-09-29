@@ -499,7 +499,7 @@ async function fetchHealth() {
     setHealth('health-drive', data.drive_connected,
         data.drive_connected
             ? (data.drive_quota_label || '20 TB Google One (Đã kết nối ✓)')
-            : 'Chưa xác thực — Chạy: py auth_google.py drive');
+            : 'Chưa kết nối — Bấm [Kết Nối Google Drive] bên dưới');
 }
 
 function setHealth(id, ok, msg) {
