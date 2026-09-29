@@ -3189,6 +3189,17 @@ function closeOAuthModal() {
     if (spinner) spinner.style.display = '';
 }
 
+// Lắng nghe sự kiện callback tự động 1-Click từ cửa sổ popup Google OAuth (Web application)
+window.addEventListener('message', function(event) {
+    if (event.data && (event.data.type === 'oauth_complete' || event.data.type === 'oauth_success')) {
+        showToast('🎉 Đã cấp quyền Google thành công!', 'success');
+        closeOAuthModal();
+        fetchChannels();
+        fetchAccounts();
+        fetchStats();
+    }
+});
+
 async function submitManualOAuthCode() {
     const input = document.getElementById('oauth-manual-input');
     let val = input ? input.value.trim() : '';

@@ -10,7 +10,7 @@ from urllib.parse import urlparse, parse_qs, unquote
 from typing import Dict, List, Any, Optional
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from contextlib import contextmanager
@@ -47,11 +47,12 @@ async def device_gatekeeper_middleware(request: Request, call_next):
         return await call_next(request)
 
     path = request.url.path
-    # Cho phép trang chủ HTML, tài nguyên tĩnh, media video, health check, và các endpoint xác thực thiết bị
+    # Cho phép trang chủ HTML, tài nguyên tĩnh, media video, health check, oauth callback, và các endpoint xác thực thiết bị
     if (
         path.startswith("/static")
         or path.startswith("/media")
         or path.startswith("/api/auth")
+        or path.startswith("/api/oauth")
         or path in ("/", "/health", "/api/health", "/api/system/client-info", "/api/network-info", "/favicon.ico")
     ):
         return await call_next(request)
@@ -1585,6 +1586,7 @@ def get_token_health(force: bool = False) -> Dict[str, Any]:
 
 _oauth_sessions: Dict[str, Dict[str, Any]] = {}
 _oauth_manual_responses: Dict[str, str] = {}
+_oauth_web_states: Dict[str, Dict[str, Any]] = {}
 
 
 class OAuthSubmitCallbackRequest(BaseModel):
@@ -1605,6 +1607,213 @@ async def submit_oauth_callback(req: OAuthSubmitCallbackRequest) -> Dict[str, An
         "success": True,
         "message": "Đã tiếp nhận mã xác thực! Hệ thống đang xử lý và lưu token..."
     }
+
+
+@app.get("/api/oauth/callback")
+async def oauth_callback(
+    request: Request,
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None
+):
+    """
+    Endpoint tiếp nhận chuyển hướng tự động 1-Click từ Google OAuth (Web application).
+    Người dùng không cần copy-paste hay đụng vào bàn phím.
+    """
+    if error:
+        return HTMLResponse(
+            content=f"""<!DOCTYPE html>
+            <html><head><meta charset="utf-8"><title>Lỗi Xác Thực</title></head>
+            <body style="font-family:system-ui,sans-serif; background:#0f172a; color:#f8fafc; text-align:center; padding:60px 20px;">
+                <div style="font-size:50px; margin-bottom:12px;">❌</div>
+                <h2 style="color:#ef4444;">Lỗi Xác Thực Từ Google</h2>
+                <p style="color:#94a3b8;">Chi tiết: {error}</p>
+                <p style="color:#64748b; font-size:13px;">Bạn có thể đóng cửa sổ này và thử lại từ Web Dashboard.</p>
+            </body></html>""",
+            status_code=400
+        )
+
+    if not code or not state or state not in _oauth_web_states:
+        return HTMLResponse(
+            content="""<!DOCTYPE html>
+            <html><head><meta charset="utf-8"><title>Hết Hạn</title></head>
+            <body style="font-family:system-ui,sans-serif; background:#0f172a; color:#f8fafc; text-align:center; padding:60px 20px;">
+                <div style="font-size:50px; margin-bottom:12px;">⚠️</div>
+                <h2 style="color:#f59e0b;">Phiên Đăng Nhập Không Hợp Lệ Hoặc Đã Hết Hạn</h2>
+                <p style="color:#94a3b8;">Vui lòng quay lại Web Dashboard và bấm Kết Nối lại.</p>
+            </body></html>""",
+            status_code=400
+        )
+
+    st_info = _oauth_web_states.pop(state)
+    flow = st_info["flow"]
+    session_key = st_info["session_key"]
+    base_dir = Path(settings.BASE_DIR)
+
+    try:
+        flow.fetch_token(code=code)
+        creds = flow.credentials
+
+        if st_info.get("type") == "channel":
+            channel_id = st_info["channel_id"]
+            ch_name = st_info.get("channel_name", channel_id)
+            acc_id = st_info.get("acc_id", "account_1")
+
+            real_yt_title = None
+            real_yt_id = None
+            custom_url = None
+            try:
+                from googleapiclient.discovery import build
+                yt = build("youtube", "v3", credentials=creds)
+                c_res = yt.channels().list(mine=True, part="snippet,id").execute()
+                items = c_res.get("items", [])
+                if items:
+                    real_yt_id = items[0].get("id")
+                    snippet = items[0].get("snippet", {})
+                    real_yt_title = snippet.get("title")
+                    custom_url = snippet.get("customUrl")
+            except Exception as e:
+                logger.warning(f"Không thể đọc thông tin kênh YouTube từ token: {e}")
+
+            ch_dir = base_dir / "credentials" / "channels" / channel_id
+            ch_dir.mkdir(parents=True, exist_ok=True)
+            token_file = ch_dir / "youtube_token.json"
+
+            token_dict = json.loads(creds.to_json())
+            token_dict["channel_id"] = real_yt_id or channel_id
+            token_dict["channel_title"] = real_yt_title or ch_name
+            if custom_url:
+                token_dict["custom_url"] = custom_url
+
+            save_encrypted_json(token_file, token_dict)
+
+            cfg = _read_channels_yaml()
+            for c in cfg.get("channels", []):
+                if c.get("id") == channel_id:
+                    if real_yt_title:
+                        c["youtube_title"] = real_yt_title
+                    if real_yt_id:
+                        c["youtube_channel_id"] = real_yt_id
+                        c["channel_url"] = f"https://www.youtube.com/channel/{real_yt_id}"
+                    if custom_url:
+                        c["handle"] = custom_url
+                    break
+
+            for acc in cfg.get("google_accounts", []):
+                if acc.get("id") == acc_id:
+                    for bch in acc.get("brand_channels", []):
+                        if bch.get("id") == channel_id:
+                            if real_yt_title:
+                                bch["youtube_title"] = real_yt_title
+                            if real_yt_id:
+                                bch["youtube_channel_id"] = real_yt_id
+                            break
+                    break
+            _write_channels_yaml(cfg)
+
+            succ_title = real_yt_title or ch_name
+            succ_msg = f"Đã cấp quyền YouTube thành công cho kênh '{succ_title}'!"
+            _oauth_sessions[session_key] = {
+                "status": "success",
+                "channel_title": succ_title,
+                "message": succ_msg
+            }
+            display_name = f"Kênh YouTube: {succ_title}"
+        else:
+            account_id = st_info["account_id"]
+            service = st_info["service"]
+            acc_dir = Path(st_info["acc_dir"])
+            token_filename = st_info["token_filename"]
+
+            token_data = creds.to_json()
+            token_file = acc_dir / token_filename
+            token_dict_to_save = json.loads(token_data)
+            save_encrypted_json(token_file, token_dict_to_save)
+
+            b64_str = base64.b64encode(token_data.encode("utf-8")).decode("utf-8")
+            b64_file = acc_dir / f"{Path(token_filename).stem}_base64.txt"
+            with open(b64_file, "w", encoding="utf-8") as f:
+                f.write(b64_str)
+
+            detected_email = None
+            try:
+                import urllib.request
+                u_req = urllib.request.Request(
+                    "https://www.googleapis.com/oauth2/v3/userinfo",
+                    headers={"Authorization": f"Bearer {creds.token}"}
+                )
+                with urllib.request.urlopen(u_req, timeout=10) as resp:
+                    uinfo = json.loads(resp.read().decode())
+                    detected_email = uinfo.get("email")
+                if detected_email and not detected_email.endswith("@pages.plusgoogle.com"):
+                    cfg = _read_channels_yaml()
+                    for acc in cfg.get("google_accounts", []):
+                        if acc.get("id") == account_id:
+                            acc["email_label"] = detected_email
+                            break
+                    _write_channels_yaml(cfg)
+            except Exception:
+                pass
+
+            succ_msg = f"Đã kết nối {service.upper()} thành công cho tài khoản '{account_id}'!"
+            _oauth_sessions[session_key] = {
+                "status": "success",
+                "message": succ_msg
+            }
+            display_name = f"Tài khoản Google: {account_id}"
+
+        return HTMLResponse(content=f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Cấp Quyền Thành Công</title>
+    <style>
+        body {{ font-family: system-ui, -apple-system, sans-serif; background: #0b1120; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }}
+        .card {{ background: #1e293b; border: 1px solid rgba(56,189,248,0.3); border-radius: 16px; padding: 40px; text-align: center; max-width: 440px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7); }}
+        .icon {{ font-size: 56px; margin-bottom: 16px; }}
+        h2 {{ color: #34d399; margin: 0 0 10px 0; font-size: 24px; font-weight: 800; }}
+        p {{ color: #94a3b8; font-size: 14.5px; line-height: 1.6; margin: 0 0 24px 0; }}
+        .badge {{ display: inline-block; padding: 6px 14px; background: rgba(52,211,153,0.15); color: #34d399; border: 1px solid rgba(52,211,153,0.3); border-radius: 20px; font-size: 13px; font-weight: 600; margin-bottom: 20px; }}
+        .progress-bar {{ width: 100%; height: 5px; background: #334155; border-radius: 3px; overflow: hidden; }}
+        .progress-fill {{ width: 100%; height: 100%; background: linear-gradient(90deg, #34d399, #38bdf8); animation: shrink 2.2s linear forwards; }}
+        @keyframes shrink {{ from {{ width: 100%; }} to {{ width: 0%; }} }}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon">🎉</div>
+        <div class="badge">✓ ĐÃ KẾT NỐI 1-CLICK THÀNH CÔNG</div>
+        <h2>Cấp Quyền Google Hoàn Tất!</h2>
+        <p>Hệ thống đã nhận diện và đồng bộ <strong>{display_name}</strong>.<br>Cửa sổ này sẽ <strong>tự động đóng sau 2 giây</strong>...</p>
+        <div class="progress-bar"><div class="progress-fill"></div></div>
+    </div>
+    <script>
+        try {{
+            if (window.opener) {{
+                window.opener.postMessage({{ type: 'oauth_complete', success: true }}, '*');
+            }}
+        }} catch(e) {{}}
+        setTimeout(function() {{
+            try {{ window.close(); }} catch(e) {{}}
+        }}, 2200);
+    </script>
+</body>
+</html>""")
+
+    except Exception as ex:
+        logger.error(f"Lỗi trao đổi code OAuth qua callback: {ex}")
+        _oauth_sessions[session_key] = {"status": "error", "error": str(ex)}
+        return HTMLResponse(
+            content=f"""<!DOCTYPE html>
+            <html><head><meta charset="utf-8"><title>Lỗi</title></head>
+            <body style="font-family:system-ui,sans-serif; background:#0f172a; color:#f8fafc; text-align:center; padding:60px 20px;">
+                <div style="font-size:50px; margin-bottom:12px;">❌</div>
+                <h2 style="color:#ef4444;">Không Thể Xác Thực Mã Code</h2>
+                <p style="color:#94a3b8;">Lỗi: {ex}</p>
+                <p style="color:#64748b; font-size:13px;">Bạn có thể đóng tab này và thử lại từ Dashboard.</p>
+            </body></html>""",
+            status_code=500
+        )
 
 def _read_channels_yaml() -> Dict[str, Any]:
     yaml_path = settings.CHANNELS_CONFIG_FILE
@@ -2100,6 +2309,50 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
             secret_file = fallback
         else:
             raise HTTPException(status_code=400, detail="Chưa có file client_secret.json! Vui lòng nạp file trước.")
+    # Kiểm tra xem client_secret có phải loại Web application không
+    is_web = False
+    sec_json = {}
+    try:
+        with open(secret_file, "r", encoding="utf-8") as f:
+            sec_json = json.load(f)
+        if "web" in sec_json:
+            is_web = True
+    except Exception:
+        pass
+
+    if is_web:
+        from google_auth_oauthlib.flow import Flow
+        import secrets
+        scheme = request.headers.get("x-forwarded-proto", "https")
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost:8000"
+        callback_url = f"{scheme}://{host}/api/oauth/callback"
+        flow = Flow.from_client_config(sec_json, scopes=scopes, redirect_uri=callback_url)
+        state_token = secrets.token_urlsafe(32)
+        auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline", state=state_token)
+        _oauth_web_states[state_token] = {
+            "flow": flow,
+            "session_key": session_key,
+            "type": "account",
+            "account_id": account_id,
+            "service": service,
+            "acc_dir": str(acc_dir),
+            "token_filename": token_filename,
+            "created_at": time.time()
+        }
+        _oauth_sessions[session_key] = {
+            "status": "in_progress",
+            "account_id": account_id,
+            "service": service,
+            "auth_url": auth_url,
+            "message": "Phiên xác thực 1-Click tự động đã sẵn sàng. Hãy bấm đăng nhập trên trang Google.",
+            "error": None
+        }
+        return {
+            "success": True,
+            "auth_url": auth_url,
+            "session_key": session_key,
+            "status": "in_progress"
+        }
 
     flow = InstalledAppFlow.from_client_secrets_file(str(secret_file), scopes=scopes)
 
@@ -2681,6 +2934,51 @@ async def start_channel_oauth(channel_id: str, request: Request, service: str = 
         "https://www.googleapis.com/auth/userinfo.email",
         "openid"
     ]
+    # Kiểm tra xem client_secret có phải loại Web application không
+    is_web = False
+    sec_json = {}
+    try:
+        with open(secret_file, "r", encoding="utf-8") as f:
+            sec_json = json.load(f)
+        if "web" in sec_json:
+            is_web = True
+    except Exception:
+        pass
+
+    if is_web:
+        from google_auth_oauthlib.flow import Flow
+        import secrets
+        scheme = request.headers.get("x-forwarded-proto", "https")
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost:8000"
+        callback_url = f"{scheme}://{host}/api/oauth/callback"
+        flow = Flow.from_client_config(sec_json, scopes=scopes, redirect_uri=callback_url)
+        state_token = secrets.token_urlsafe(32)
+        auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline", state=state_token)
+        _oauth_web_states[state_token] = {
+            "flow": flow,
+            "session_key": session_key,
+            "type": "channel",
+            "channel_id": channel_id,
+            "channel_name": ch_name,
+            "acc_id": acc_id,
+            "service": service,
+            "created_at": time.time()
+        }
+        _oauth_sessions[session_key] = {
+            "status": "in_progress",
+            "channel_id": channel_id,
+            "channel_name": ch_name,
+            "service": service,
+            "auth_url": auth_url,
+            "message": f"Phiên xác thực 1-Click tự động cho kênh '{ch_name}' đã sẵn sàng."
+        }
+        return {
+            "success": True,
+            "auth_url": auth_url,
+            "session_key": session_key,
+            "status": "in_progress"
+        }
+
     flow = InstalledAppFlow.from_client_secrets_file(str(secret_file), scopes=scopes)
     received_uri = {"value": None}
     ch_name = ch.get("name", channel_id)
