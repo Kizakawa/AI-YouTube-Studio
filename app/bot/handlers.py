@@ -2236,16 +2236,19 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             j_title = j.title or j.topic if j else f"Video #{job_id}"
 
         colab_markup = get_colab_wait_keyboard(job_id)
+        default_node = ((job_id - 1) % 3) + 1
         text = (
             f"🚀 **ĐÃ ĐỒNG BỘ KỊCH BẢN VIDEO #{job_id} VÀO GOOGLE DRIVE!**\n\n"
             f"🎬 **Tiêu đề:** *{j_title}*\n"
-            f"⚡ **Thời gian render ước tính:** ~20-30 giây (GPU NVENC)\n\n"
+            f"⚡ **Thời gian render:** ~20-30 giây (GPU NVENC)\n"
+            f"🔥 **Đề xuất Node:** **Node {default_node}** *(Hỗ trợ Colab Pro+ chạy song song)*\n\n"
             f"📱 **HƯỚNG DẪN DỰNG 1-CHẠM TRÊN ĐIỆN THOẠI HOẶC PC:**\n"
-            f"1. Bấm nút **[⚡ MỞ & CHẠY COLAB PRO+ NGAY]** bên dưới.\n"
+            f"1. Bấm nút **[⚡ MỞ COLAB GPU (Node {default_node})]** bên dưới.\n"
+            f"   *(Nếu Node 1 đang bận tạo video khác, hãy bấm mở Node 2 hoặc Node 3 để chạy song song cùng lúc, không lo xung đột!)*\n"
             f"2. Bấm menu **Runtime** ➡️ **Run all** (Chạy tất cả) ➡️ Cấp quyền Drive.\n"
-            f"3. **TẮT MÀN HÌNH ĐIỆN THOẠI ĐƯỢC NGAY!**\n\n"
-            f"💡 Colab GPU sẽ tự động quét kịch bản, render siêu tốc và đẩy video hoàn thành về Drive.\n"
-            f"🤖 Sau khi bấm xong, bạn có thể bấm **[🔄 Quét Kết Quả Từ Drive]** bên dưới để nhận video!"
+            f"3. **TẮT MÀN HÌNH HOẶC ĐÓNG TAB ĐƯỢC NGAY!**\n\n"
+            f"💡 **Cơ chế khóa nguyên tử (Atomic Lock):** Các Node tự động chia task, không bao giờ render trùng hay đè file nhau.\n"
+            f"🤖 Sau khi render xong, hệ thống sẽ tự động gửi video thành phẩm vào nhóm cho bạn!"
         )
         await safe_reply(update, text, reply_markup=colab_markup)
 
@@ -2712,21 +2715,27 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "colab_rotation_guide":
         guide_text = (
-            "🧭 **HƯỚNG DẪN MỞ TÀI KHOẢN & XOAY VÒNG GPU COLAB**\n\n"
-            "🎯 **Tại sao cần xoay tài khoản?**\n"
-            "Google Colab cấp GPU T4/A100 miễn phí cho mỗi tài khoản Google với hạn mức 4-8 tiếng render. Khi tài khoản chạm trần (*'Cannot connect to GPU backend'* / GPU quota exceeded), bạn không cần chờ đợi hay mua thêm, mà chỉ việc xoay sang tài khoản tiếp theo!\n\n"
-            "📌 **DANH SÁCH 3 TÀI KHOẢN:**\n"
-            "1️⃣ **Tài khoản 1 (Chính):** `pool1.studio@example.com` (20 TB)\n"
-            "2️⃣ **Tài khoản 2 (Dự phòng 1):** `pool2.studio@example.com` (2 TB)\n"
-            "3️⃣ **Tài khoản 3 (Dự phòng 2):** `pool3.studio@example.com` (2 TB)\n\n"
-            "🧭 **3 BƯỚC ĐẢM BẢO MỞ ĐÚNG TÀI KHOẢN:**\n"
-            "1️⃣ **Bấm link tài khoản cần mở:** Link đã dùng cổng Google AccountChooser để ép trình duyệt chọn đúng tài khoản.\n"
-            "2️⃣ **Kiểm tra Avatar góc trên bên phải:** Đảm bảo đúng email bạn muốn chạy.\n"
-            "3️⃣ **Bấm Chạy tất cả:** Vào menu **Runtime** ➡️ Bấm **Run all** (hoặc `Ctrl + F9`) ➡️ Bấm Cho phép Drive.\n\n"
-            "✨ *Tắt màn hình hoặc đóng tab, Colab vẫn chạy ngầm và render video 20s/video!*"
+            "🧭 **HƯỚNG DẪN CHẠY COLAB PRO+ ĐA LUỒNG & XOAY VÒNG TÀI KHOẢN**\n\n"
+            "🔥 **1. CHẠY NHIỀU VIDEO SONG SONG CÙNG LÚC (Colab Pro+):**\n"
+            "Tài khoản Pro+ cho phép chạy nhiều GPU độc lập cùng lúc. Để không bị mâu thuẫn hay đè file, hệ thống đã tạo sẵn **3 Node Worker độc lập** trên Drive:\n"
+            "• **Node 1:** `colab_gpu_worker.ipynb`\n"
+            "• **Node 2:** `colab_worker_node2.ipynb` (Chạy song song)\n"
+            "• **Node 3:** `colab_worker_node3.ipynb` (Chạy song song)\n"
+            "👉 Khi bạn tạo Video 1, mở Node 1. Nếu tạo tiếp Video 2 mà Video 1 chưa xong, hãy mở Node 2 trong tab mới! Hai video sẽ được 2 GPU render song song siêu tốc!\n\n"
+            "🎯 **2. CƠ CHẾ KHÓA NGUYÊN TỬ (ATOMIC LOCK):**\n"
+            "Cả 3 Node đều dùng cơ chế khóa nhiệm vụ tự động: Khi Node 1 nhận Video 1, nó chuyển file sang `in_progress/` ngay lập tức. Node 2 sẽ tự động bỏ qua và nhận Video 2. Hoàn toàn không bao giờ trùng lặp hay xung đột!\n\n"
+            "📌 **3. XOAY VÒNG TÀI KHOẢN KHI HẾT QUOTA:**\n"
+            "1️⃣ **Acc 1 (Pro+ / 20TB):** `pool1.studio@example.com` (Chính)\n"
+            "2️⃣ **Acc 2 (2TB):** `pool2.studio@example.com`\n"
+            "3️⃣ **Acc 3 (2TB):** `pool3.studio@example.com`\n"
         )
-        from app.bot.keyboards import make_colab_account_url
+        from app.bot.keyboards import make_colab_node_url, make_colab_account_url
         guide_kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("⚡ Node 1 (Pro+)", url=make_colab_node_url("pool1.studio@example.com", 1)),
+                InlineKeyboardButton("⚡ Node 2 (Song Song)", url=make_colab_node_url("pool1.studio@example.com", 2)),
+                InlineKeyboardButton("⚡ Node 3 (Song Song)", url=make_colab_node_url("pool1.studio@example.com", 3)),
+            ],
             [InlineKeyboardButton("🚀 Mở Acc 1: giangnguyenviet38 (20TB)", url=make_colab_account_url("pool1.studio@example.com"))],
             [InlineKeyboardButton("🚀 Mở Acc 2: tonyabcd1234567890 (2TB)", url=make_colab_account_url("pool2.studio@example.com"))],
             [InlineKeyboardButton("🚀 Mở Acc 3: maychuvv1n1 (2TB)", url=make_colab_account_url("pool3.studio@example.com"))],
@@ -4004,17 +4013,22 @@ async def colab_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     from app.database.models import get_db, VideoJob
 
-    from app.bot.keyboards import make_colab_account_url
+    from app.bot.keyboards import make_colab_node_url, make_colab_account_url
     acc1_url = make_colab_account_url("pool1.studio@example.com")
     acc2_url = make_colab_account_url("pool2.studio@example.com")
     acc3_url = make_colab_account_url("pool3.studio@example.com")
 
     colab_keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("⚡ Node 1 (Pro+)", url=make_colab_node_url("pool1.studio@example.com", 1)),
+            InlineKeyboardButton("⚡ Node 2 (Song Song)", url=make_colab_node_url("pool1.studio@example.com", 2)),
+            InlineKeyboardButton("⚡ Node 3 (Song Song)", url=make_colab_node_url("pool1.studio@example.com", 3)),
+        ],
         [InlineKeyboardButton("🚀 Mở Acc 1: giangnguyenviet38 (20TB)", url=acc1_url)],
         [InlineKeyboardButton("🚀 Mở Acc 2: tonyabcd1234567890 (2TB)", url=acc2_url)],
         [InlineKeyboardButton("🚀 Mở Acc 3: maychuvv1n1 (2TB)", url=acc3_url)],
         [
-            InlineKeyboardButton("💡 Hướng dẫn xoay tài khoản", callback_data="colab_rotation_guide"),
+            InlineKeyboardButton("💡 Hướng dẫn Colab Pro+ đa luồng", callback_data="colab_rotation_guide"),
             InlineKeyboardButton("🔄 Quét kết nối GPU", callback_data="check_colab_status")
         ]
     ])

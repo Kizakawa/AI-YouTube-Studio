@@ -1168,10 +1168,33 @@ async def get_colab_farm_status() -> Dict[str, Any]:
         "shared_notebook_url": COLAB_BASE_URL,
         "shared_folder_id": COLAB_SHARED_FOLDER_ID,
         "pending_count": pending_count,
+        "nodes": [
+            {
+                "node_num": 1,
+                "name": "Node 1 (Chính)",
+                "id": "1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo",
+                "url": make_account_chooser_url("pool1.studio@example.com", "https://colab.research.google.com/drive/1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo"),
+                "desc": "Worker GPU mặc định"
+            },
+            {
+                "node_num": 2,
+                "name": "Node 2 (Chạy song song)",
+                "id": "10kBAHrC_dfubSfBUhU1yBK_9z8FruGK7",
+                "url": make_account_chooser_url("pool1.studio@example.com", "https://colab.research.google.com/drive/10kBAHrC_dfubSfBUhU1yBK_9z8FruGK7"),
+                "desc": "Colab Pro+ chạy đồng thời không xung đột"
+            },
+            {
+                "node_num": 3,
+                "name": "Node 3 (Chạy song song)",
+                "id": "1ubdsL5iN0cPal4hP4LllhVjKSs_QGl6u",
+                "url": make_account_chooser_url("pool1.studio@example.com", "https://colab.research.google.com/drive/1ubdsL5iN0cPal4hP4LllhVjKSs_QGl6u"),
+                "desc": "Colab Pro+ chạy đồng thời không xung đột"
+            }
+        ],
         "accounts": COLAB_ACCOUNTS,
         "rotation_strategy": {
-            "title": "Cơ chế xoay vòng tài khoản vượt hạn mức Colab Free",
-            "description": "Mỗi tài khoản Google có hạn mức GPU riêng (thường 4-8 tiếng/ngày). Khi tài khoản 1 chạm ngưỡng 'Cannot connect to GPU backend', chỉ cần mở tài khoản 2 hoặc 3 để tiếp tục render mà không bị gián đoạn."
+            "title": "Cơ chế Render Song Song Colab Pro+ & Xoay Vòng Tài Khoản",
+            "description": "Colab Pro+ cho phép chạy nhiều GPU độc lập. Mở Node 1 cho video thứ nhất và Node 2 cho video thứ hai trong tab mới để render song song không bao giờ xung đột."
         }
     }
 

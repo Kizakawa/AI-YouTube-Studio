@@ -159,29 +159,50 @@ def get_visual_selection_keyboard(channel_id: str) -> InlineKeyboardMarkup:
 
 import urllib.parse
 
-COLAB_NOTEBOOK_ID = "1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo"
+COLAB_NODES = {
+    1: {"id": "1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo", "name": "Node 1", "file": "colab_gpu_worker.ipynb"},
+    2: {"id": "10kBAHrC_dfubSfBUhU1yBK_9z8FruGK7", "name": "Node 2", "file": "colab_worker_node2.ipynb"},
+    3: {"id": "1ubdsL5iN0cPal4hP4LllhVjKSs_QGl6u", "name": "Node 3", "file": "colab_worker_node3.ipynb"},
+}
+COLAB_NOTEBOOK_ID = COLAB_NODES[1]["id"]
 COLAB_DRIVE_URL = f"https://colab.research.google.com/drive/{COLAB_NOTEBOOK_ID}"
 
-def make_colab_account_url(email: str) -> str:
-    """Tạo link Google AccountChooser để ép trình duyệt mở chính xác tài khoản mong muốn"""
-    target = f"{COLAB_DRIVE_URL}?authuser={email}"
+def make_colab_node_url(email: str = "pool1.studio@example.com", node_num: int = 1) -> str:
+    """Tạo link Google AccountChooser trỏ tới Node Colab cụ thể để chạy đa luồng không xung đột"""
+    node = COLAB_NODES.get(node_num, COLAB_NODES[1])
+    target = f"https://colab.research.google.com/drive/{node['id']}?authuser={email}"
     enc = urllib.parse.quote(target, safe="")
     return f"https://accounts.google.com/AccountChooser?Email={email}&continue={enc}"
 
-COLAB_PRO_URL = make_colab_account_url("pool1.studio@example.com")
+def make_colab_account_url(email: str, node_num: int = 1) -> str:
+    """Tương thích ngược: tạo link mở Colab kèm email và node chỉ định"""
+    return make_colab_node_url(email, node_num)
+
+COLAB_PRO_URL = make_colab_node_url("pool1.studio@example.com", 1)
 
 def get_script_review_keyboard(job_id: int) -> InlineKeyboardMarkup:
-    """Bàn phím Bước 1: Khi kịch bản vừa tạo xong, ưu tiên Render bằng Colab Pro+ GPU (Google Drive)"""
+    """Bàn phím Bước 1: Khi kịch bản vừa tạo xong, hỗ trợ Render GPU đơn hoặc đa luồng song song"""
+    default_node = ((job_id - 1) % 3) + 1
+    primary_url = make_colab_node_url("pool1.studio@example.com", default_node)
+    node1_url = make_colab_node_url("pool1.studio@example.com", 1)
+    node2_url = make_colab_node_url("pool1.studio@example.com", 2)
+    node3_url = make_colab_node_url("pool1.studio@example.com", 3)
+
     keyboard = [
         [
-            InlineKeyboardButton("⚡ MỞ COLAB GPU FARM (Google Drive)", url=COLAB_PRO_URL),
+            InlineKeyboardButton(f"⚡ MỞ COLAB GPU (Node {default_node} - Khuyên Dùng)", url=primary_url),
         ],
         [
-            InlineKeyboardButton("🔄 Đã Bấm Run — Quét Video Từ Drive", callback_data=f"check_drive_render:{job_id}"),
-            InlineKeyboardButton("🎬 Duyệt & Đẩy Lại Drive", callback_data=f"render_video:{job_id}"),
+            InlineKeyboardButton("⚡ Node 1", url=node1_url),
+            InlineKeyboardButton("⚡ Node 2 (Song Song)", url=node2_url),
+            InlineKeyboardButton("⚡ Node 3 (Song Song)", url=node3_url),
         ],
         [
-            InlineKeyboardButton("💡 Chọn Acc 2 / Acc 3 (Xoay Vòng)", callback_data="colab_rotation_guide"),
+            InlineKeyboardButton("🔄 Quét Kết Quả Từ Drive", callback_data=f"check_drive_render:{job_id}"),
+            InlineKeyboardButton("🎬 Đẩy Lại Drive", callback_data=f"render_video:{job_id}"),
+        ],
+        [
+            InlineKeyboardButton("💡 Đổi Tài Khoản / Xem Hướng Dẫn Cluster", callback_data="colab_rotation_guide"),
         ],
         [
             InlineKeyboardButton("✍️ Góp Ý Sửa", callback_data=f"edit_script:{job_id}"),
@@ -196,15 +217,26 @@ def get_script_review_keyboard(job_id: int) -> InlineKeyboardMarkup:
 
 def get_colab_wait_keyboard(job_id: int) -> InlineKeyboardMarkup:
     """Bàn phím điều hướng khi kịch bản đã nằm trong hàng đợi Google Drive chờ Colab chạy"""
+    default_node = ((job_id - 1) % 3) + 1
+    primary_url = make_colab_node_url("pool1.studio@example.com", default_node)
+    node1_url = make_colab_node_url("pool1.studio@example.com", 1)
+    node2_url = make_colab_node_url("pool1.studio@example.com", 2)
+    node3_url = make_colab_node_url("pool1.studio@example.com", 3)
+
     keyboard = [
         [
-            InlineKeyboardButton("⚡ MỞ COLAB GPU FARM (Google Drive)", url=COLAB_PRO_URL),
+            InlineKeyboardButton(f"⚡ MỞ COLAB GPU (Node {default_node} - Khuyên Dùng)", url=primary_url),
         ],
         [
-            InlineKeyboardButton("💡 Chọn Acc 2 / Acc 3 (Xoay Vòng)", callback_data="colab_rotation_guide"),
+            InlineKeyboardButton("⚡ Node 1", url=node1_url),
+            InlineKeyboardButton("⚡ Node 2 (Song Song)", url=node2_url),
+            InlineKeyboardButton("⚡ Node 3 (Song Song)", url=node3_url),
         ],
         [
             InlineKeyboardButton("🔄 Quét Kết Quả Từ Drive", callback_data=f"check_drive_render:{job_id}"),
+            InlineKeyboardButton("💡 Hướng Dẫn Chạy Đa Node", callback_data="colab_rotation_guide"),
+        ],
+        [
             InlineKeyboardButton("💻 Render Dự Phòng Bằng CPU", callback_data=f"render_local:{job_id}"),
         ]
     ]
