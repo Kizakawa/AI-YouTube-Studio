@@ -9,8 +9,8 @@ from app.schemas.contracts import ScriptContract
 logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = [
-    "gemini-flash-latest",
     "gemini-flash-lite-latest",
+    "gemini-flash-latest",
     "gemini-1.5-flash",
     "gemini-1.5-pro",
 ]
