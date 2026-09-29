@@ -148,9 +148,17 @@ def on_startup():
         if not yt_tok_p.exists() or yt_tok_p.stat().st_size < 10:
             b64_yt = os.getenv("YOUTUBE_TOKEN_BASE64") or "eyJ0b2tlbiI6ICJ5YTI5LmEwQVgwN0NtdnJlWlNicTl1TjlmWHM1YUZraHNoV0NYeFFMRWxiM0duYk1xaUpJekxacFN4azZYSmNoUndWMnc1Um9zQ0wzd2ZTMGhPMTA4bk82MFdvaHpaZHNZYkNXNGMtZV8wSWF0aGNQd3FHR3AwRl9xRzBVZUpic1RubmU4THJoWEVsaE5maFpxZ2E3bFlScVNSWUdOUWxILTIzaENSN1pXTHhiaWhRczVLUUxobmVwZG1vVjQ5VElVNzRFaFc0cE84SzJ5MGFDZ1lLQVlvU0FSUVNGUUhHWDJNaWV5SG5nSTlLb3JKNE14empDSlVma1EwMjA2IiwgInJlZnJlc2hfdG9rZW4iOiAiMS8vMGV6VE5rNnZWWnplSENnWUlBUkFBR0E0U053Ri1MOUlydS1aT0hKcDh4SzE1UVU0SlA4elBoUTNmRnNLUzQ0QjFOYjRJNUZ5VVlkbW9kSlNNYnM2MTlRQlAzaGtCQkJQX3F0MCIsICJ0b2tlbl91cmkiOiAiaHR0cHM6Ly9vYXV0aDIuZ29vZ2xlYXBpcy5jb20vdG9rZW4iLCAiY2xpZW50X2lkIjogIjk3MjYyMjg1MTc4OS00MTc1YjFkcXVzY3JrMDhqMmFxNGpiOHM4NGxsaDR1by5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbSIsICJjbGllbnRfc2VjcmV0IjogIkdPQ1NQWC16bGE0ZXJNNi1pMGs2MUE1REM1QV9COGRtaXJQIiwgInNjb3BlcyI6IFsiaHR0cHM6Ly93d3cuZ29vZ2xlYXBpcy5jb20vYXV0aC95b3V0dWJlIiwgImh0dHBzOi8vd3d3Lmdvb2dsZWFwaXMuY29tL2F1dGgvdXNlcmluZm8uZW1haWwiLCAib3BlbmlkIl0sICJ1bml2ZXJzZV9kb21haW4iOiAiZ29vZ2xlYXBpcy5jb20iLCAiYWNjb3VudCI6ICIiLCAiZXhwaXJ5IjogIjIwMjYtMDktMjZUMTE6NDI6MzNaIn0="
             yt_tok_p.write_bytes(base64.b64decode(b64_yt))
-            logger.info("✅ [Startup] Đã tự động khôi phục youtube_token.json cho account_1")
+        # Tự động nạp toàn bộ token của cả 3 tài khoản mẹ và 5 kênh YouTube từ Token Vault
+        try:
+            from app.services.token_vault import restore_all_embedded_tokens
+            restored = restore_all_embedded_tokens()
+            if restored > 0:
+                logger.info(f"✅ [Startup] Token Vault đã khôi phục {restored} tokens thành công!")
+        except Exception as e_vault:
+            logger.warning(f"Lỗi khởi động Token Vault: {e_vault}")
     except Exception as e_sec:
         logger.warning(f"Lỗi khôi phục credentials startup: {e_sec}")
+
 
     # Khởi động ChannelIntelligenceWorker ngầm (giám sát KPI, chống trùng ý tưởng, tự động đăng tạm)
     try:
