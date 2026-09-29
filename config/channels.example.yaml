@@ -1,28 +1,67 @@
-# ==============================================================================
-# AI YOUTUBE MULTI-ACCOUNT & MULTI-CHANNEL CONFIGURATION TEMPLATE
-# ==============================================================================
-# Hướng dẫn: Đổi tên file này thành 'channels.yaml' và cấu hình tài khoản của bạn.
-# File 'channels.yaml' đã được thêm vào .gitignore để bảo mật thông tin cá nhân.
-# ==============================================================================
-
 google_accounts:
 - id: account_1
-  email_label: your_email@gmail.com
-  drive_storage: 15 GB Google Drive
+  email_label: pool1.studio@example.com
+  drive_storage: 20 TB Google One
   youtube_quota_daily: 10000
   credentials:
     client_secret: credentials/accounts/account_1/client_secret.json
     youtube_token: credentials/accounts/account_1/youtube_token.json
     drive_token: credentials/accounts/account_1/drive_token.json
   brand_channels:
-  - id: channel_1
-    name: My AI Channel
+  - id: channel_maya
+    name: Psychology of the world
     niche: psychology
     language: en
     visual_mode: auto
-    preferred_voice: en-US-ChristopherNeural
-    handle: "@your_channel"
-    channel_url: "https://www.youtube.com/@your_channel"
+    preferred_voice: en-US-AndrewNeural
+    handle: '@VV1n-oe9gs'
+    channel_url: https://www.youtube.com/@VV1n-oe9gs
+    video_type: shorts
+    format: shorts
+    amazon_tag: kizakawa-20
+    schedule:
+      publish_hour_utc: 13
+      days:
+      - monday
+      - wednesday
+      - friday
+      - sunday
+  - id: ucsrjiil67qxidtxt70z-iwa
+    name: The mysteries of the world
+    niche: deep_sea_earth_mysteries
+    language: en
+    visual_mode: auto
+    preferred_voice: en-US-BrianNeural
+    handle: '@Themysteriesoftheworld-f3w'
+    channel_url: https://www.youtube.com/@Themysteriesoftheworld-f3w
+    video_type: shorts
+    format: shorts
+    amazon_tag: kizakawa-20
+    schedule:
+      publish_hour_utc: 13
+      days:
+      - monday
+      - wednesday
+      - friday
+      - sunday
+- id: acount_2
+  email_label: pool2.studio@example.com
+  drive_storage: 2 TB Google One
+  youtube_quota_daily: 10000
+  credentials:
+    client_secret: credentials/accounts/acount_2/client_secret.json
+    youtube_token: credentials/accounts/acount_2/youtube_token.json
+    drive_token: credentials/accounts/acount_2/drive_token.json
+  brand_channels:
+  - id: ch_paws_hearts_rescue
+    name: Paws & Hearts Rescue
+    niche: animal_rescue
+    language: en
+    visual_mode: auto
+    preferred_voice: en-US-JennyNeural
+    video_type: shorts
+    format: shorts
+    amazon_tag: kizakawa-20
     schedule:
       publish_hour_utc: 12
       days:
@@ -30,14 +69,119 @@ google_accounts:
       - wednesday
       - friday
       - sunday
-
+    youtube_title: Paws & Hearts Rescue
+    youtube_channel_id: UCv-2dYUQKx1u0CjqdmzDHTA
+    channel_url: https://www.youtube.com/channel/UCv-2dYUQKx1u0CjqdmzDHTA
+    handle: '@pawsandheartsrescue'
+  - id: ch_wild_odyssey
+    name: Wild Odyssey
+    niche: wildlife_predators
+    language: en
+    visual_mode: auto
+    preferred_voice: en-US-ChristopherNeural
+    video_type: shorts
+    format: shorts
+    amazon_tag: kizakawa-20
+    schedule:
+      publish_hour_utc: 12
+      days:
+      - monday
+      - wednesday
+      - friday
+      - sunday
+    youtube_title: Wild Odyssey
+    youtube_channel_id: UClsJHbVjjXI-j16VzXXs68A
+    handle: '@wildodysseyhq'
+    channel_url: https://www.youtube.com/channel/UClsJHbVjjXI-j16VzXXs68A
+- id: accout3
+  email_label: pool3.studio@example.com
+  drive_storage: 2 TB Google One
+  youtube_quota_daily: 10000
+  credentials:
+    client_secret: credentials/accounts/accout3/client_secret.json
+    youtube_token: credentials/accounts/accout3/youtube_token.json
+    drive_token: credentials/accounts/accout3/drive_token.json
+  brand_channels:
+  - id: '@alternatehistorywhatif-e2x'
+    name: Alternate History & "What If?
+    niche: history_mystery
+    language: en
+    visual_mode: auto
+    preferred_voice: en-US-GuyNeural
+    amazon_tag: kizakawa-20
+    schedule:
+      publish_hour_utc: 12
+      days:
+      - monday
+      - wednesday
+      - friday
+      - sunday
+    youtube_title: Alternate History & "What If?
+    youtube_channel_id: UC_ozpYzTlOiHZdRAACGH4Qg
+    channel_url: https://www.youtube.com/channel/UC_ozpYzTlOiHZdRAACGH4Qg
+    handle: '@alternatehistorywhatif-e2x'
 channels:
-- id: channel_1
-  name: My AI Channel
-  handle: "@your_channel"
-  channel_url: "https://www.youtube.com/@your_channel"
+- id: channel_maya
+  name: Psychology of the world
+  handle: '@VV1n-oe9gs'
+  channel_url: https://www.youtube.com/@VV1n-oe9gs
   niche: psychology
   language: en
   google_account: account_1
   visual_mode: auto
+  preferred_voice: en-US-AndrewNeural
+  video_type: shorts
+  format: shorts
+  amazon_tag: kizakawa-20
+- id: ucsrjiil67qxidtxt70z-iwa
+  name: The mysteries of the world
+  handle: '@Themysteriesoftheworld-f3w'
+  channel_url: https://www.youtube.com/@Themysteriesoftheworld-f3w
+  niche: deep_sea_earth_mysteries
+  language: en
+  google_account: account_1
+  visual_mode: auto
+  preferred_voice: en-US-BrianNeural
+  video_type: shorts
+  format: shorts
+  amazon_tag: kizakawa-20
+- id: ch_paws_hearts_rescue
+  name: Paws & Hearts Rescue
+  niche: animal_rescue
+  language: en
+  google_account: acount_2
+  visual_mode: auto
+  preferred_voice: en-US-JennyNeural
+  video_type: shorts
+  format: shorts
+  amazon_tag: kizakawa-20
+  youtube_title: Paws & Hearts Rescue
+  youtube_channel_id: UCv-2dYUQKx1u0CjqdmzDHTA
+  channel_url: https://www.youtube.com/channel/UCv-2dYUQKx1u0CjqdmzDHTA
+  handle: '@pawsandheartsrescue'
+- id: ch_wild_odyssey
+  name: Wild Odyssey
+  niche: wildlife_predators
+  language: en
+  google_account: acount_2
+  visual_mode: auto
   preferred_voice: en-US-ChristopherNeural
+  video_type: shorts
+  format: shorts
+  amazon_tag: kizakawa-20
+  youtube_title: Wild Odyssey
+  youtube_channel_id: UClsJHbVjjXI-j16VzXXs68A
+  handle: '@wildodysseyhq'
+  channel_url: https://www.youtube.com/channel/UClsJHbVjjXI-j16VzXXs68A
+- id: '@alternatehistorywhatif-e2x'
+  name: Alternate History & "What If?
+  niche: history_mystery
+  language: en
+  google_account: accout3
+  visual_mode: auto
+  preferred_voice: en-US-GuyNeural
+  amazon_tag: kizakawa-20
+  youtube_title: Alternate History & "What If?
+  youtube_channel_id: UC_ozpYzTlOiHZdRAACGH4Qg
+  channel_url: https://www.youtube.com/channel/UC_ozpYzTlOiHZdRAACGH4Qg
+  handle: '@alternatehistorywhatif-e2x'

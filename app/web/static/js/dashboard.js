@@ -2992,6 +2992,20 @@ async function startChannelAuth(channelId, channelName) {
         }, 2000);
 
     } catch (e) {
+        if (authWin && !authWin.closed) {
+            try {
+                authWin.document.body.innerHTML = `
+                    <div style="font-family:system-ui,-apple-system,sans-serif; text-align:center; padding:60px 20px; color:#ef4444; background:#f8fafc; min-height:100vh;">
+                        <div style="font-size:48px; margin-bottom:16px;">⚠️</div>
+                        <h2 style="font-size:20px; margin-bottom:8px; color:#dc2626;">Không Thể Kết Nối Máy Chủ</h2>
+                        <p style="color:#64748b; font-size:14px; max-width:450px; margin:0 auto 20px;">Lỗi: ${esc(e.message)}</p>
+                        <p style="color:#94a3b8; font-size:13px;">Vui lòng quay lại tab Studio, tải lại trang và thử lại.</p>
+                    </div>
+                `;
+            } catch (err) {
+                try { authWin.close(); } catch (cl) {}
+            }
+        }
         showToast(`Lỗi cấp quyền kênh: ${e.message}`, 'error');
     }
 }
@@ -3165,6 +3179,20 @@ async function startGoogleAuth(accountId, service) {
         }, 1500);
 
     } catch (e) {
+        if (authWin && !authWin.closed) {
+            try {
+                authWin.document.body.innerHTML = `
+                    <div style="font-family:system-ui,-apple-system,sans-serif; text-align:center; padding:60px 20px; color:#ef4444; background:#f8fafc; min-height:100vh;">
+                        <div style="font-size:48px; margin-bottom:16px;">⚠️</div>
+                        <h2 style="font-size:20px; margin-bottom:8px; color:#dc2626;">Không Thể Kết Nối Máy Chủ</h2>
+                        <p style="color:#64748b; font-size:14px; max-width:450px; margin:0 auto 20px;">Lỗi: ${esc(e.message)}</p>
+                        <p style="color:#94a3b8; font-size:13px;">Vui lòng quay lại tab Studio, tải lại trang và thử lại.</p>
+                    </div>
+                `;
+            } catch (err) {
+                try { authWin.close(); } catch (cl) {}
+            }
+        }
         showToast(`Lỗi khởi động OAuth: ${e.message}`, 'error');
     }
 }

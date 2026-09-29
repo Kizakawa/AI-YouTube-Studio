@@ -55,6 +55,9 @@ async def device_gatekeeper_middleware(request: Request, call_next):
         or path.startswith("/media")
         or path.startswith("/api/auth")
         or path.startswith("/api/oauth")
+        or "/start-auth" in path
+        or "/auth-start" in path
+        or "/auth-status" in path
         or path in ("/", "/health", "/api/health", "/api/system/client-info", "/api/network-info", "/favicon.ico")
     ):
         return await call_next(request)
@@ -1820,8 +1823,8 @@ async def oauth_callback(
 
 def _read_channels_yaml() -> Dict[str, Any]:
     yaml_path = settings.CHANNELS_CONFIG_FILE
+    example_path = yaml_path.with_name("channels.example.yaml")
     if not yaml_path.exists():
-        example_path = yaml_path.with_name("channels.example.yaml")
         if example_path.exists():
             try:
                 import shutil
@@ -1833,6 +1836,19 @@ def _read_channels_yaml() -> Dict[str, Any]:
     try:
         with open(yaml_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
+            if isinstance(data, dict) and example_path.exists():
+                ch_list = data.get("channels", [])
+                # Nếu file hiện tại chỉ có 1 kênh dummy 'channel_1' từ template cũ thì tự cập nhật từ example
+                if len(ch_list) <= 1 and any(c.get("id") == "channel_1" for c in ch_list):
+                    try:
+                        with open(example_path, "r", encoding="utf-8") as ef:
+                            ex_data = yaml.safe_load(ef)
+                            if isinstance(ex_data, dict) and len(ex_data.get("channels", [])) > 1:
+                                import shutil
+                                shutil.copyfile(example_path, yaml_path)
+                                data = ex_data
+                    except Exception:
+                        pass
             return data if isinstance(data, dict) else {}
     except Exception as e:
         logger.error(f"Lỗi đọc channels.yaml: {e}")
@@ -2916,10 +2932,25 @@ async def start_channel_oauth(channel_id: str, request: Request, service: str = 
     cfg = _read_channels_yaml()
     channels = cfg.get("channels", [])
     ch = next((c for c in channels if c.get("id") == channel_id), None)
+    acc_id = "account_1"
+    if ch:
+        acc_id = ch.get("google_account", "account_1")
+    else:
+        # Tìm trong brand_channels của từng google_account
+        for acc in cfg.get("google_accounts", []):
+            for bc in acc.get("brand_channels", []):
+                if bc.get("id") == channel_id:
+                    ch = bc
+                    acc_id = acc.get("id", "account_1")
+                    break
+            if ch:
+                break
     if not ch:
         raise HTTPException(status_code=404, detail="Không tìm thấy kênh")
 
-    acc_id = ch.get("google_account", "account_1")
+    ch_name = ch.get("name", channel_id)
+    session_key = f"channel:{channel_id}:{service}"
+
     base_dir = Path(settings.BASE_DIR)
     secret_file = base_dir / "credentials" / "accounts" / acc_id / "client_secret.json"
     if not secret_file.exists():
