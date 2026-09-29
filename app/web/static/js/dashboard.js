@@ -3116,16 +3116,35 @@ function closeOAuthModal() {
 
 async function submitManualOAuthCode() {
     const input = document.getElementById('oauth-manual-input');
-    const val = input ? input.value.trim() : '';
+    let val = input ? input.value.trim() : '';
     if (!val) {
         showToast('Vui lòng dán link chuyển hướng hoặc mã code từ Google', 'error');
         return;
     }
-    if (val.includes('accounts.google.com')) {
+
+    // Gỡ dấu ngoặc kép nếu user lỡ copy cả dấu ngoặc
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1).trim();
+    }
+
+    // Kiểm tra xem có phải link đăng nhập (login/consent) ban đầu không
+    // (Link callback hợp lệ của Google luôn có code= hoặc chứa localhost/127.0.0.1)
+    const isLoginLink = !val.includes('code=') && 
+                        !val.includes('localhost') && 
+                        !val.includes('127.0.0.1') && 
+                        (val.startsWith('https://accounts.google.com') || val.includes('accounts.google.com/o/oauth2'));
+    if (isLoginLink) {
         showToast('⚠️ Bạn đang dán link đăng nhập Google! Hãy mở link đó trên trình duyệt để lấy link localhost.', 'error');
-        alert('⚠️ BẠN ĐANG DÁN LINK ĐĂNG NHẬP GOOGLE!\n\nCách lấy link chính xác:\n1. Bấm vào nút "🔗 Mở trang đăng nhập Google" ở trên.\n2. Chọn tài khoản Gmail của bạn và bấm [Tiếp tục] / [Cho Phép].\n3. Trình duyệt sẽ chuyển hướng đến một trang báo "Không thể truy cập trang web này (localhost)" - ĐÂY LÀ ĐÚNG!\n4. Bạn chỉ cần COPY TOÀN BỘ ĐƯỜNG LINK TRÊN THANH ĐỊA CHỈ (bắt đầu bằng http://localhost...), dán vào ô này rồi bấm Xác Nhận!');
+        alert('⚠️ BẠN ĐANG DÁN LINK ĐĂNG NHẬP GOOGLE!\n\nCách lấy link chính xác:\n1. Bấm vào nút "🔗 Mở trang đăng nhập Google" ở trên.\n2. Chọn tài khoản Gmail của bạn và bấm [Tiếp tục] / [Cho Phép].\n3. Trình duyệt sẽ chuyển hướng đến một trang báo "Không thể truy cập trang web này (localhost)" - ĐÂY LÀ ĐÚNG!\n4. Bạn chỉ cần CLICK VÀO THANH ĐỊA CHỈ, nhấn Ctrl+A rồi Ctrl+C để COPY TOÀN BỘ ĐƯỜNG LINK (bắt đầu bằng http://localhost...), dán vào ô này rồi bấm Xác Nhận!');
         return;
     }
+
+    // Kiểm tra xem link có bị cắt ngắn (...) do trình duyệt Edge/Chrome thu gọn không
+    if (val.includes('...') || val.endsWith('…')) {
+        alert('⚠️ ĐƯỜNG LINK BỊ CẮT THIẾU!\n\nBạn đã copy đường link bị thiếu ở cuối (có dấu "..." do trình duyệt Edge thu gọn).\n\n👉 Cách khắc phục:\nTại tab báo "Không thể truy cập localhost", hãy CLICK CHUỘT VÀO THANH ĐỊA CHỈ, nhấn tổ hợp phím Ctrl + A (chọn tất cả), rồi Ctrl + C (sao chép) để lấy toàn bộ đường link!');
+        return;
+    }
+
     if (!currentOAuthSessionKey) {
         showToast('Không tìm thấy phiên xác thực đang chạy. Vui lòng bấm Kết Nối lại.', 'error');
         return;

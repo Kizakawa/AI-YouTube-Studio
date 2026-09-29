@@ -1587,12 +1587,12 @@ Ví dụ Căn Theo Mốc:
                     </div>
                     <div style="font-size:12px; color:#cbd5e1; line-height:1.6; margin-bottom:10px;">
                         <strong>Bước 1:</strong> Bấm nút <strong>🔗 Mở trang đăng nhập Google</strong> ở trên.<br>
-                        <strong>Bước 2:</strong> Chọn tài khoản Gmail của bạn và bấm <strong>[Cho Phép / Allow]</strong>.<br>
-                        <strong>Bước 3:</strong> Trình duyệt sẽ hiển thị thông báo <em>"Không thể truy cập trang web này (localhost)"</em> &rarr; <strong>ĐÂY LÀ ĐIỀU HOÀN TOÀN BÌNH THƯỜNG!</strong><br>
-                        <strong>Bước 4:</strong> Hãy <strong>COPY toàn bộ đường link trên thanh địa chỉ</strong> (bắt đầu bằng <code>http://localhost...</code>), dán vào ô bên dưới rồi bấm <strong>Xác Nhận</strong>.
+                        <strong>Bước 2:</strong> Chọn tài khoản Gmail của bạn và bấm <strong>[Tiếp tục] &rarr; [Cho Phép / Allow]</strong>.<br>
+                        <strong>Bước 3:</strong> Trình duyệt sẽ chuyển hướng đến trang báo <em>"Không thể truy cập localhost / refused to connect"</em> &rarr; <strong>ĐÂY LÀ ĐÚNG 100%!</strong><br>
+                        <strong>Bước 4:</strong> Click vào thanh địa chỉ, nhấn phím <strong>Ctrl + A</strong> (chọn tất cả) rồi <strong>Ctrl + C</strong> để copy <strong>TOÀN BỘ ĐƯỜNG LINK</strong>, dán vào ô dưới rồi bấm <strong>Xác Nhận</strong>.
                     </div>
                     <div style="display:flex; gap:8px;">
-                        <input type="text" id="oauth-manual-input" placeholder="Dán link http://localhost:... vào đây" class="form-input" style="font-size:12px; padding:8px 12px; flex:1; background:#0b1120; border-color:rgba(56,189,248,0.5); color:#f8fafc;">
+                        <input type="text" id="oauth-manual-input" placeholder="Dán toàn bộ link http://localhost:... vào đây" class="form-input" style="font-size:12px; padding:8px 12px; flex:1; background:#0b1120; border-color:rgba(56,189,248,0.5); color:#f8fafc;">
                         <button class="btn btn-primary" id="btn-oauth-submit-manual" onclick="submitManualOAuthCode()" style="white-space:nowrap; padding:8px 16px; font-size:13px; font-weight:700;">Xác Nhận</button>
                     </div>
                 </div>
@@ -2423,6 +2423,6 @@ Ví dụ Căn Theo Mốc:
 <div class="toast-container" id="toast-container"></div>
 
 <script src="/static/js/chart.min.js"></script>
-<script src="/static/js/dashboard.js?v=3.2"></script>
+<script src="/static/js/dashboard.js?v=3.3"></script>
 </body>
 </html>

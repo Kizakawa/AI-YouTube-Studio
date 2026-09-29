@@ -1904,12 +1904,30 @@ def extract_auth_code_and_redirect_uri(raw_val: str, default_redirect_uri: str):
     if not raw_val:
         raise ValueError("Vui lòng dán đường link chuyển hướng hoặc mã code xác thực từ Google.")
 
-    if "accounts.google.com" in raw_val:
+    # Gỡ bỏ dấu ngoặc kép nếu user lỡ copy cả cặp dấu ngoặc
+    if (raw_val.startswith('"') and raw_val.endswith('"')) or (raw_val.startswith("'") and raw_val.endswith("'")):
+        raw_val = raw_val[1:-1].strip()
+
+    # Bổ sung scheme http:// nếu copy từ thanh địa chỉ Edge/Chrome (vốn ẩn http://)
+    if raw_val.startswith("localhost") or raw_val.startswith("127.0.0.1"):
+        raw_val = "http://" + raw_val
+
+    # Kiểm tra xem người dùng có dán nhầm link đăng nhập/ủy quyền Google ban đầu hay không.
+    # LƯU Ý: Link callback kết quả hợp lệ của Google có chứa query param '&iss=https://accounts.google.com'
+    # và mã 'code=...', nên chỉ báo lỗi đăng nhập nếu KHÔNG CÓ 'code='!
+    is_login_page = False
+    if "code=" not in raw_val:
+        if raw_val.startswith("https://accounts.google.com") or raw_val.startswith("http://accounts.google.com"):
+            is_login_page = True
+        elif "accounts.google.com/o/oauth2" in raw_val or "accounts.google.com/signin" in raw_val:
+            is_login_page = True
+
+    if is_login_page:
         raise ValueError(
             "Bạn vừa dán link đăng nhập Google thay vì link kết quả! "
-            "Hãy mở link đó trên trình duyệt, đăng nhập và bấm [Cho Phép] "
-            "đến khi màn hình báo 'Không thể truy cập localhost', "
-            "sau đó COPY đường link trên thanh địa chỉ (bắt đầu bằng http://localhost...) rồi dán vào đây."
+            "Hãy mở link đó trên trình duyệt, đăng nhập Gmail và bấm [Tiếp tục] / [Cho Phép] "
+            "đến khi màn hình báo 'Không thể truy cập trang web này (localhost)', "
+            "sau đó COPY TOÀN BỘ đường link trên thanh địa chỉ (bắt đầu bằng http://localhost...) rồi dán vào đây."
         )
 
     code = None
@@ -1919,9 +1937,10 @@ def extract_auth_code_and_redirect_uri(raw_val: str, default_redirect_uri: str):
         parsed = urlparse(raw_val)
         qs = parse_qs(parsed.query)
         code = qs.get("code", [None])[0]
-        redirect_uri = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-        if not redirect_uri.endswith("/"):
-            redirect_uri += "/"
+        if parsed.netloc:
+            redirect_uri = f"{parsed.scheme}://{parsed.netloc}{parsed.path or '/'}"
+            if not redirect_uri.endswith("/"):
+                redirect_uri += "/"
     elif "code=" in raw_val:
         qs_str = raw_val.split("?", 1)[-1] if "?" in raw_val else raw_val
         qs = parse_qs(qs_str)
@@ -1938,6 +1957,13 @@ def extract_auth_code_and_redirect_uri(raw_val: str, default_redirect_uri: str):
 
     if code and "%" in code:
         code = unquote(code).strip()
+
+    # Cảnh báo nếu mã bị cắt ngắn do trình duyệt Edge hiển thị dấu '...'
+    if code and (code.endswith("...") or code.endswith("…") or "..." in code):
+        raise ValueError(
+            "Đường link / mã xác thực bạn copy bị thiếu (có dấu '...' ở cuối do trình duyệt thu gọn)! "
+            "Cách khắc phục: Tại tab 'localhost', click chuột vào thanh địa chỉ, nhấn Ctrl + A (chọn tất cả) rồi Ctrl + C (copy) để lấy đầy đủ toàn bộ link."
+        )
 
     if code and not code.startswith("4/") and code.startswith("0A"):
         code = "4/" + code
@@ -1974,6 +2000,18 @@ def exchange_oauth_code_for_credentials(flow, raw_val: str):
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         timeout=30
     )
+
+    # Thử lại nếu có lỗi redirect_uri_mismatch với flow.redirect_uri
+    if resp.status_code != 200 and "redirect_uri_mismatch" in resp.text and redirect_uri != flow.redirect_uri:
+        logger.info(f"Thử lại token exchange với flow.redirect_uri: {flow.redirect_uri}")
+        token_payload["redirect_uri"] = flow.redirect_uri
+        resp = http_requests.post(
+            token_uri,
+            data=token_payload,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=30
+        )
+
     if resp.status_code != 200:
         err_msg = resp.text
         try:
@@ -1982,6 +2020,7 @@ def exchange_oauth_code_for_credentials(flow, raw_val: str):
         except Exception:
             pass
         raise ValueError(f"Google Token Exchange thất bại: {err_msg}")
+
 
     token_resp = resp.json()
     from google.oauth2.credentials import Credentials
