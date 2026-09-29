@@ -305,6 +305,11 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
       - Dark Psychology / Liar -> Extreme macro unblinking cold gaze in an interrogation room with dark chiaroscuro shadows.
 
 8. PHYSICAL ACTION & SENSORY MAPPING (ALL SCENES MUST HAVE TANGIBLE SIGHTS):
+   - CRITICAL FIDELITY FOR ANIMALS & NATURE (STRICT RULE):
+     If the topic or command mentions animals, birds, wildlife, pets, or nature (e.g. chim, đại bàng, thú hoang, sư tử, hổ, chó, mèo, cá heo):
+     * 100% of scenes MUST directly show the REAL LIVING ANIMAL, its chicks/cubs, hunting, feeding, nesting, and wild habitat!
+     * NEVER hallucinate human equipment (cameras, film rolls, darkrooms), cameramen, or human organs (human eye, DNA helix) when the topic is about animals!
+     * All 'stock_query' and 'visual_keyword' MUST be concrete animal terms (e.g. 'mother bird feeding chicks', 'baby birds in nest', 'eagle flying across storm', 'hawk diving')!
    - In EVERY scene, translate abstract psychological thoughts or conceptual science into PHYSICAL BEHAVIORS a camera can film:
      * Overthinking / Mental pain -> Person staring at bathroom mirror running cold water over trembling hands in dim blue light.
      * Deception / Lying -> Close-up of throat swallowing nervously, twitching index finger tapping wristwatch.
