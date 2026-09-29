@@ -136,19 +136,7 @@ def on_startup():
             secret_p.write_text(json.dumps(default_secret, indent=2), encoding="utf-8")
             logger.info("✅ [Startup] Đã tự động tạo client_secret.json cho account_1")
 
-        # Tự động nạp token Drive
-        drive_tok_p = acc1_dir / "drive_token.json"
-        if not drive_tok_p.exists() or drive_tok_p.stat().st_size < 10:
-            b64_drive = os.getenv("DRIVE_TOKEN_BASE64") or "eyJ0b2tlbiI6ICJ5YTI5LmEwQVgwN0NtczZiUHEzbDA2d0JYLXFDNmV3N1F1SksxcDcwTUhtUkZLcHUzbTJ5Tl9qdm16TXhzOGJLdVJiUUZMWGQzSXJ6Mzc1ZFpDVk1zQXVQZzFTZGdUNzZ0ZDF1QVZ0THl0dU5RUXVvN0F2VFg1cnRxMXJQRFhxandaanRrSjYxaHZsNFUycU9NUHJxOTQ1S0JWLVRNQlB3X3JRVmlMeDZpdm5lQV84YVVvZ1JSTGxIR0xTd2J0eWdvU1p3cExlMnRaUExkd2FDZ1lLQWZnU0FSRVNGUUhHWDJNaTBHd0RkZ3A0Q0FPLV94NkFyOEtJTlEwMjA2IiwgInJlZnJlc2hfdG9rZW4iOiAiMS8vMGdnZFdjMkNRS0NDSENnWUlBUkFBR0JBU053Ri1MOUlydVM3Ny04N3pNUlU3WWt6bVUzb1JXc1RJaHQtZkdOWEFEVGZ5RTZSMjBCQV9zMURIUWRQNEdxM2dydUdHVnhpZDFadyIsICJ0b2tlbl91cmkiOiAiaHR0cHM6Ly9vYXV0aDIuZ29vZ2xlYXBpcy5jb20vdG9rZW4iLCAiY2xpZW50X2lkIjogIjk3MjYyMjg1MTc4OS00MTc1YjFkcXVzY3JrMDhqMmFxNGpiOHM4NGxsaDR1by5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbSIsICJjbGllbnRfc2VjcmV0IjogIkdPQ1NQWC16bGE0ZXJNNi1pMGs2MUE1REM1QV9COGRtaXJQIiwgInNjb3BlcyI6IFsiaHR0cHM6Ly93d3cuZ29vZ2xlYXBpcy5jb20vYXV0aC9kcml2ZS5maWxlIl0sICJ1bml2ZXJzZV9kb21haW4iOiAiZ29vZ2xlYXBpcy5jb20iLCAiYWNjb3VudCI6ICIiLCAiZXhwaXJ5IjogIjIwMjYtMDktMjNUMTY6NDI6MzNaIn0="
-            drive_tok_p.write_bytes(base64.b64decode(b64_drive))
-            logger.info("✅ [Startup] Đã tự động khôi phục drive_token.json cho account_1")
-
-        # Tự động nạp token YouTube
-        yt_tok_p = acc1_dir / "youtube_token.json"
-        if not yt_tok_p.exists() or yt_tok_p.stat().st_size < 10:
-            b64_yt = os.getenv("YOUTUBE_TOKEN_BASE64") or "eyJ0b2tlbiI6ICJ5YTI5LmEwQVgwN0NtdnJlWlNicTl1TjlmWHM1YUZraHNoV0NYeFFMRWxiM0duYk1xaUpJekxacFN4azZYSmNoUndWMnc1Um9zQ0wzd2ZTMGhPMTA4bk82MFdvaHpaZHNZYkNXNGMtZV8wSWF0aGNQd3FHR3AwRl9xRzBVZUpic1RubmU4THJoWEVsaE5maFpxZ2E3bFlScVNSWUdOUWxILTIzaENSN1pXTHhiaWhRczVLUUxobmVwZG1vVjQ5VElVNzRFaFc0cE84SzJ5MGFDZ1lLQVlvU0FSUVNGUUhHWDJNaWV5SG5nSTlLb3JKNE14empDSlVma1EwMjA2IiwgInJlZnJlc2hfdG9rZW4iOiAiMS8vMGV6VE5rNnZWWnplSENnWUlBUkFBR0E0U053Ri1MOUlydS1aT0hKcDh4SzE1UVU0SlA4elBoUTNmRnNLUzQ0QjFOYjRJNUZ5VVlkbW9kSlNNYnM2MTlRQlAzaGtCQkJQX3F0MCIsICJ0b2tlbl91cmkiOiAiaHR0cHM6Ly9vYXV0aDIuZ29vZ2xlYXBpcy5jb20vdG9rZW4iLCAiY2xpZW50X2lkIjogIjk3MjYyMjg1MTc4OS00MTc1YjFkcXVzY3JrMDhqMmFxNGpiOHM4NGxsaDR1by5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbSIsICJjbGllbnRfc2VjcmV0IjogIkdPQ1NQWC16bGE0ZXJNNi1pMGs2MUE1REM1QV9COGRtaXJQIiwgInNjb3BlcyI6IFsiaHR0cHM6Ly93d3cuZ29vZ2xlYXBpcy5jb20vYXV0aC95b3V0dWJlIiwgImh0dHBzOi8vd3d3Lmdvb2dsZWFwaXMuY29tL2F1dGgvdXNlcmluZm8uZW1haWwiLCAib3BlbmlkIl0sICJ1bml2ZXJzZV9kb21haW4iOiAiZ29vZ2xlYXBpcy5jb20iLCAiYWNjb3VudCI6ICIiLCAiZXhwaXJ5IjogIjIwMjYtMDktMjZUMTE6NDI6MzNaIn0="
-            yt_tok_p.write_bytes(base64.b64decode(b64_yt))
-        # Tự động nạp toàn bộ token của cả 3 tài khoản mẹ và 5 kênh YouTube từ Token Vault
+        # Tự động nạp toàn bộ 11 tokens của cả 3 tài khoản mẹ và 5 kênh YouTube từ Token Vault
         try:
             from app.services.token_vault import restore_all_embedded_tokens
             restored = restore_all_embedded_tokens()
@@ -1920,9 +1908,7 @@ def extract_auth_code_and_redirect_uri(raw_val: str, default_redirect_uri: str):
     if raw_val.startswith("localhost") or raw_val.startswith("127.0.0.1"):
         raw_val = "http://" + raw_val
 
-    # Kiểm tra xem người dùng có dán nhầm link đăng nhập/ủy quyền Google ban đầu hay không.
-    # LƯU Ý: Link callback kết quả hợp lệ của Google có chứa query param '&iss=https://accounts.google.com'
-    # và mã 'code=...', nên chỉ báo lỗi đăng nhập nếu KHÔNG CÓ 'code='!
+    # 1. Cảnh báo nếu dán nhầm link đăng nhập/ủy quyền Google ban đầu
     is_login_page = False
     if "code=" not in raw_val:
         if raw_val.startswith("https://accounts.google.com") or raw_val.startswith("http://accounts.google.com"):
@@ -1935,20 +1921,33 @@ def extract_auth_code_and_redirect_uri(raw_val: str, default_redirect_uri: str):
             "Bạn vừa dán link đăng nhập Google thay vì link kết quả! "
             "Hãy mở link đó trên trình duyệt, đăng nhập Gmail và bấm [Tiếp tục] / [Cho Phép] "
             "đến khi màn hình báo 'Không thể truy cập trang web này (localhost)', "
-            "sau đó COPY TOÀN BỘ đường link trên thanh địa chỉ (bắt đầu bằng http://localhost...) rồi dán vào đây."
+            "sau đó nhấn tổ hợp phím Ctrl + L (hoặc click thanh địa chỉ), nhấn Ctrl + A rồi Ctrl + C để sao chép toàn bộ link."
         )
 
-    code = None
-    redirect_uri = default_redirect_uri
+    # 2. Cảnh báo nếu dán link localhost nhưng hoàn toàn KHÔNG có mã code
+    if (raw_val.startswith("http://") or raw_val.startswith("https://")) and "code=" not in raw_val:
+        raise ValueError(
+            "Đường link bạn dán không chứa mã xác thực ('code=')! "
+            "Có thể bạn chỉ mới copy tên miền 'http://localhost' mà chưa bôi đen toàn bộ đường link. "
+            "👉 Cách khắc phục: Tại tab báo lỗi 'localhost refused to connect', click chuột vào thanh địa chỉ, "
+            "nhấn tổ hợp phím Ctrl + A (chọn toàn bộ) rồi Ctrl + C (sao chép), sau đó dán lại vào đây."
+        )
 
+    # 3. Trích xuất redirect_uri
+    redirect_uri = default_redirect_uri
     if raw_val.startswith("http://") or raw_val.startswith("https://"):
         parsed = urlparse(raw_val)
-        qs = parse_qs(parsed.query)
-        code = qs.get("code", [None])[0]
         if parsed.netloc:
             redirect_uri = f"{parsed.scheme}://{parsed.netloc}{parsed.path or '/'}"
             if not redirect_uri.endswith("/"):
                 redirect_uri += "/"
+
+    # 4. Trích xuất mã code bằng Regex
+    code = None
+    import re
+    code_match = re.search(r"code=([^&?\s#]+)", raw_val)
+    if code_match:
+        code = code_match.group(1)
     elif "code=" in raw_val:
         qs_str = raw_val.split("?", 1)[-1] if "?" in raw_val else raw_val
         qs = parse_qs(qs_str)
@@ -1963,21 +1962,34 @@ def extract_auth_code_and_redirect_uri(raw_val: str, default_redirect_uri: str):
     if code and "#" in code:
         code = code.split("#")[0].strip()
 
-    if code and "%" in code:
+    if code:
         code = unquote(code).strip()
+
+    if code.startswith("code="):
+        code = code[5:].strip()
 
     # Cảnh báo nếu mã bị cắt ngắn do trình duyệt Edge hiển thị dấu '...'
     if code and (code.endswith("...") or code.endswith("…") or "..." in code):
         raise ValueError(
             "Đường link / mã xác thực bạn copy bị thiếu (có dấu '...' ở cuối do trình duyệt thu gọn)! "
-            "Cách khắc phục: Tại tab 'localhost', click chuột vào thanh địa chỉ, nhấn Ctrl + A (chọn tất cả) rồi Ctrl + C (copy) để lấy đầy đủ toàn bộ link."
+            "👉 Cách khắc phục: Tại tab 'localhost', click chuột vào thanh địa chỉ, nhấn Ctrl + A (chọn tất cả) rồi Ctrl + C (copy) để lấy đầy đủ toàn bộ link."
         )
 
     if code and not code.startswith("4/") and code.startswith("0A"):
         code = "4/" + code
 
-    if not code or len(code) < 15:
-        raise ValueError(f"Mã code xác thực không hợp lệ: '{code}'. Vui lòng copy toàn bộ link http://localhost...")
+    # Kiểm tra tính hợp lệ của mã xác thực Google
+    if not code.startswith("4/"):
+        raise ValueError(
+            f"Mã xác thực không đúng định dạng của Google (mã Google hợp lệ bắt buộc phải bắt đầu bằng '4/'). "
+            f"Bạn vừa dán: '{code[:35]}...'. Vui lòng copy lại toàn bộ đường link bắt đầu bằng http://localhost..."
+        )
+
+    if len(code) < 35:
+        raise ValueError(
+            f"Mã xác thực quá ngắn (chỉ có {len(code)} ký tự, mã Google hợp lệ dài từ 50-100 ký tự). "
+            f"Có thể bạn đã bôi đen thiếu phần đuôi. Hãy click vào thanh địa chỉ, nhấn Ctrl + A rồi Ctrl + C để sao chép toàn bộ."
+        )
 
     return code, redirect_uri
 
@@ -2024,7 +2036,16 @@ def exchange_oauth_code_for_credentials(flow, raw_val: str):
         err_msg = resp.text
         try:
             err_json = resp.json()
-            err_msg = err_json.get("error_description", err_json.get("error", resp.text))
+            err_desc = err_json.get("error_description", "")
+            err_code = err_json.get("error", "")
+            if "Malformed auth code" in err_desc:
+                err_msg = (
+                    "Mã xác thực Google không hợp lệ hoặc đã hết hạn (Malformed auth code). "
+                    "Lưu ý: Mỗi mã code chỉ dùng được 1 lần trong vòng 2 phút. "
+                    "Vui lòng đóng cửa sổ này, bấm 'Kết Nối' lại từ đầu và sao chép toàn bộ đường link mới."
+                )
+            else:
+                err_msg = err_desc or err_code or resp.text
         except Exception:
             pass
         raise ValueError(f"Google Token Exchange thất bại: {err_msg}")

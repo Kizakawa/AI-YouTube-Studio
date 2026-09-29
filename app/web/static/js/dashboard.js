@@ -3128,20 +3128,45 @@ async function submitManualOAuthCode() {
     }
 
     // Kiểm tra xem có phải link đăng nhập (login/consent) ban đầu không
-    // (Link callback hợp lệ của Google luôn có code= hoặc chứa localhost/127.0.0.1)
     const isLoginLink = !val.includes('code=') && 
                         !val.includes('localhost') && 
                         !val.includes('127.0.0.1') && 
                         (val.startsWith('https://accounts.google.com') || val.includes('accounts.google.com/o/oauth2'));
     if (isLoginLink) {
         showToast('⚠️ Bạn đang dán link đăng nhập Google! Hãy mở link đó trên trình duyệt để lấy link localhost.', 'error');
-        alert('⚠️ BẠN ĐANG DÁN LINK ĐĂNG NHẬP GOOGLE!\n\nCách lấy link chính xác:\n1. Bấm vào nút "🔗 Mở trang đăng nhập Google" ở trên.\n2. Chọn tài khoản Gmail của bạn và bấm [Tiếp tục] / [Cho Phép].\n3. Trình duyệt sẽ chuyển hướng đến một trang báo "Không thể truy cập trang web này (localhost)" - ĐÂY LÀ ĐÚNG!\n4. Bạn chỉ cần CLICK VÀO THANH ĐỊA CHỈ, nhấn Ctrl+A rồi Ctrl+C để COPY TOÀN BỘ ĐƯỜNG LINK (bắt đầu bằng http://localhost...), dán vào ô này rồi bấm Xác Nhận!');
+        alert('⚠️ BẠN ĐANG DÁN LINK ĐĂNG NHẬP GOOGLE!\n\nCách lấy link chính xác:\n1. Bấm vào nút "🔗 Mở trang đăng nhập Google" ở trên.\n2. Chọn tài khoản Gmail của bạn và bấm [Tiếp tục] / [Cho Phép].\n3. Trình duyệt sẽ chuyển hướng đến một trang báo "Không thể truy cập trang web này (localhost)" - ĐÂY LÀ ĐÚNG!\n4. Bạn chỉ cần nhấn tổ hợp phím Ctrl + L (hoặc click thanh địa chỉ), nhấn Ctrl + A rồi Ctrl + C để COPY TOÀN BỘ ĐƯỜNG LINK (bắt đầu bằng http://localhost...), dán vào ô này rồi bấm Xác Nhận!');
         return;
     }
 
     // Kiểm tra xem link có bị cắt ngắn (...) do trình duyệt Edge/Chrome thu gọn không
     if (val.includes('...') || val.endsWith('…')) {
-        alert('⚠️ ĐƯỜNG LINK BỊ CẮT THIẾU!\n\nBạn đã copy đường link bị thiếu ở cuối (có dấu "..." do trình duyệt Edge thu gọn).\n\n👉 Cách khắc phục:\nTại tab báo "Không thể truy cập localhost", hãy CLICK CHUỘT VÀO THANH ĐỊA CHỈ, nhấn tổ hợp phím Ctrl + A (chọn tất cả), rồi Ctrl + C (sao chép) để lấy toàn bộ đường link!');
+        alert('⚠️ ĐƯỜNG LINK BỊ CẮT THIẾU!\n\nBạn đã copy đường link bị thiếu ở cuối (có dấu "..." do trình duyệt Edge thu gọn).\n\n👉 Cách khắc phục:\nTại tab báo "Không thể truy cập localhost", hãy nhấn tổ hợp phím Ctrl + L (hoặc click chuột vào thanh địa chỉ), nhấn Ctrl + A (chọn tất cả), rồi Ctrl + C (sao chép) để lấy toàn bộ đường link!');
+        return;
+    }
+
+    // Cảnh báo nếu dán link localhost nhưng thiếu tham số code=
+    if ((val.startsWith('http://') || val.startsWith('https://') || val.startsWith('localhost')) && !val.includes('code=')) {
+        alert('⚠️ ĐƯỜNG LINK THIẾU MÃ CODE!\n\nBạn chỉ mới copy phần đầu địa chỉ (http://localhost...). Đường link kết quả của Google bắt buộc phải có chứa "?code=4/...".\n\n👉 Cách lấy đúng:\n1. Mở lại tab báo "localhost refused to connect".\n2. Nhấn phím Ctrl + L (hoặc click vào thanh địa chỉ), nhấn Ctrl + A rồi Ctrl + C để sao chép toàn bộ.\n3. Dán lại vào đây rồi bấm Xác Nhận!');
+        return;
+    }
+
+    // Trích xuất và kiểm tra định dạng mã Google trước khi gửi
+    let extractedCode = val;
+    const m = val.match(/code=([^&?\s#]+)/);
+    if (m) {
+        extractedCode = decodeURIComponent(m[1]);
+    } else {
+        extractedCode = decodeURIComponent(val.split('&')[0].split('?')[0].trim());
+    }
+    if (extractedCode.startsWith('code=')) extractedCode = extractedCode.slice(5).trim();
+    if (extractedCode.startsWith('0A') && !extractedCode.startsWith('4/')) extractedCode = '4/' + extractedCode;
+
+    if (!extractedCode.startsWith('4/')) {
+        alert('⚠️ MÃ XÁC THỰC KHÔNG HỢP LỆ!\n\nMã xác thực Google OAuth bắt buộc phải bắt đầu bằng "4/".\nChuỗi bạn vừa dán không chứa mã Google hợp lệ.\n\nVui lòng kiểm tra lại đường link trên thanh địa chỉ của tab localhost!');
+        return;
+    }
+    if (extractedCode.length < 35) {
+        alert('⚠️ MÃ XÁC THỰC BỊ THIẾU KÝ TỰ!\n\nMã xác thực quá ngắn (' + extractedCode.length + ' ký tự). Mã Google hợp lệ dài từ 50 đến 100 ký tự.\n\n👉 Bạn hãy mở lại tab localhost, nhấn phím Ctrl + L rồi Ctrl + C để sao chép 100% đường link!');
         return;
     }
 
