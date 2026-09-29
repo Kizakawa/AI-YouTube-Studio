@@ -9,9 +9,11 @@ from app.schemas.contracts import ScriptContract
 logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-flash-latest",
     "gemini-flash-lite-latest",
-    "gemini-3.5-flash-lite",
-    "gemini-3.1-flash-lite",
+    "gemini-2.5-pro",
 ]
 
 class ContentAgent:
@@ -87,10 +89,8 @@ class ContentAgent:
                                 logger.info(f"✅ Gemini API ({model}) thành công với key {key[:8]}... trong {time.monotonic()-start_time:.1f}s")
                                 return full_text
                     elif r.status_code in (429, 403):
-                        logger.warning(f"⚠️ Key {key[:8]}... gặp mã {r.status_code} trên model {model}. Đang xoay sang API Key kế tiếp...")
-                        self.rotator.rotate_key()
-                        key_failed_quota = True
-                        break
+                        logger.warning(f"⚠️ Model {model} gặp mã {r.status_code} trên key {key[:8]}... Thử model tiếp theo...")
+                        continue
                     elif r.status_code == 503 and json_mode:
                         # Fallback: Thử lại không dùng responseMimeType (tránh 503 trên engine structured JSON)
                         logger.info(f"Gemini API ({model}) gặp 503 với structured output, thử lại chế độ raw JSON...")

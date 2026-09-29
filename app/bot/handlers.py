@@ -936,11 +936,23 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not context.args:
+        user = update.effective_user
+        with get_db() as db:
+            db_user = db.query(User).filter(User.telegram_id == user.id).first()
+            active_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_maya"
+        ch = channel_manager.get_channel(active_id) or {}
+        ch_name = ch.get("name") or active_id
         await safe_reply(
             update,
-            "💡 Cú pháp: `/idea <chủ đề> [| ghi chú đạo diễn]`\n\n"
-            "Ví dụ cơ bản: `/idea 3 bí ẩn dưới đáy biển sâu`\n"
-            "Ví dụ nâng cao: `/idea Stop Trying To Be Confident | style: noir, mood: dark, focus: chấp nhận nỗi sợ`"
+            f"💡 **HƯỚNG DẪN TẠO Ý TƯỞNG & KỊCH BẢN CHO KÊNH `{ch_name}`**\n\n"
+            "1️⃣ **Nhập chủ đề tùy ý:**\n"
+            "   `/idea <chủ đề> [| ghi chú đạo diễn]`\n"
+            "   *Ví dụ:* `/idea 3 bí ẩn dưới đáy biển sâu`\n\n"
+            "2️⃣ **AI tự động phân tích kênh & đề xuất 5 ý tưởng triệu view:**\n"
+            "   Gõ `/viral` (hoặc `/ideas`) hoặc bấm nút bên dưới để AI đối chiếu video top & flop, loại bỏ bão hòa và đón đầu xu hướng 2026!",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(f"🔥 Đề xuất 5 ý tưởng triệu view cho {ch_name}", callback_data=f"refresh_viral_ideas:{active_id}")
+            ]])
         )
         return
 
@@ -2125,6 +2137,8 @@ async def _execute_channel_publish(update: Update, context: ContextTypes.DEFAULT
             default_language=ch_lang,
             default_audio_language=ch_lang,
             pinned_comment=pinned_comment,
+            topic=job.topic or "",
+            script=scenes_json or "",
         )
 
         if pub_res.get("status") == "success":
@@ -2137,6 +2151,8 @@ async def _execute_channel_publish(update: Update, context: ContextTypes.DEFAULT
                     db_job.status = "PUBLISHED"
                     db_job.youtube_video_id = yt_id
                     db_job.target_channel_id = channel_id
+                    if pub_res.get("enriched_description"):
+                        db_job.description = pub_res.get("enriched_description")
                     if drive_link:
                         db_job.drive_link = drive_link
                     log_activity(db, user.id, user.username, "PUBLISH_YOUTUBE",
@@ -2501,6 +2517,8 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 default_language=ch_lang,
                 default_audio_language=ch_lang,
                 pinned_comment=pinned_comment,
+                topic=video_title,
+                script=scenes_json or "",
             )
 
             if pub_res.get("status") == "success":
@@ -2514,6 +2532,8 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         db_job.scheduled_time = slot_dt
                         db_job.youtube_video_id = yt_id
                         db_job.target_channel_id = channel_id
+                        if pub_res.get("enriched_description"):
+                            db_job.description = pub_res.get("enriched_description")
                         if drive_link:
                             db_job.drive_link = drive_link
                         log_activity(db, user.id, user.username, "SCHEDULE_YOUTUBE",
@@ -2531,6 +2551,14 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 if pub_res.get("comment_id"):
                     success_text += f"💬 **Bình luận mồi tự động (Pinned Bait):** Đã đăng thành công!\n> _{pinned_comment}_\n\n"
+                prod_info = pub_res.get("product_info")
+                if prod_info:
+                    success_text += (
+                        f"🛒 **Sản phẩm liên kết tự động (Amazon Affiliate):**\n"
+                        f"• **Món hàng:** `{prod_info.get('name')}`\n"
+                        f"• **Link kiếm tiền:** {prod_info.get('affiliate_url')}\n"
+                        f"• **Mã Tag:** `{prod_info.get('tracking_tag')}`\n\n"
+                    )
                 success_text += "💡 **Hoàn toàn tự động:** Bạn có thể tắt máy tính / tắt bot, máy chủ YouTube sẽ tự động công chiếu đúng giờ này!"
                 if drive_link:
                     success_text += f"\n\n📂 **Bản gốc đã lưu trên Google Drive (Thư mục `{ch_name}`):**\n👉 [Xem video]({drive_link})"
@@ -2736,7 +2764,13 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         topic = idea.get("topic", "")
         angle = idea.get("angle", "")
         formula = idea.get("viral_formula", "Debate in Comments")
-        director_notes = f"Góc tiếp cận viral: {angle}. Áp dụng công thức kêu gọi hành động: {formula}"
+        fixes_flaw = idea.get("fixes_flaw", "")
+        trend_align = idea.get("trend_alignment", "")
+        director_notes = f"Góc tiếp cận viral: {angle}. Áp dụng công thức kêu gọi hành động: {formula}."
+        if fixes_flaw:
+            director_notes += f" Chiến lược khắc phục điểm yếu của kênh: {fixes_flaw}."
+        if trend_align:
+            director_notes += f" Đón đầu xu hướng toàn cầu: {trend_align}."
 
         channel_id = context.chat_data.get("cached_viral_channel", "channel_maya") if context.chat_data else "channel_maya"
         ch = channel_manager.get_channel(channel_id) or {}
@@ -2843,14 +2877,17 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             recent_titles = [j.title for j in recent_jobs if j.title]
 
         try:
+            from app.services.channel_intelligence import get_channel_existing_portfolio, suggest_channel_topics
+
+            portfolio = await asyncio.to_thread(get_channel_existing_portfolio, channel_id)
+            top_performers = portfolio.get("top_performers", [])
+            flop_videos = portfolio.get("flop_videos", [])
+
             ideas = await asyncio.to_thread(
-                content_agent.suggest_viral_ideas,
+                suggest_channel_topics,
                 channel_id=channel_id,
-                channel_name=channel_name,
-                channel_niche=channel_niche,
-                language=channel_lang,
-                recent_titles=recent_titles,
-                count=5
+                count=5,
+                exclude_additional=recent_titles
             )
             if context.chat_data is None:
                 context.chat_data = {}
@@ -2858,23 +2895,32 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.chat_data["cached_viral_channel"] = channel_id
 
             text_lines = [
-                f"🔥 **5 Ý TƯỞNG SHORTS TRIỆU VIEW MỚI (BÁM SÁT NỘI DUNG KÊNH)**\n",
+                f"🔥 **5 Ý TƯỞNG SHORTS TRIỆU VIEW MỚI (BÁM SÁT DỮ LIỆU & XU HƯỚNG 2026)**\n",
                 f"📺 **Kênh:** `{channel_name}` | 🎯 **Chủ đề:** `{channel_niche}`\n",
-                f"🏆 **Chuẩn mẫu:** Dựa theo video đạt 160% Retention (*3 Signs They're JUST Using You*)\n",
             ]
-            if recent_titles:
-                recent_str = ", ".join([f"_{t[:24]}..._" for t in recent_titles[:2]])
-                text_lines.append(f"📌 **Đã đối chiếu thư viện kênh:** {recent_str}\n")
+            if top_performers:
+                top_perf_views = top_performers[0].get("views_text") or (str(top_performers[0].get("views_num", 0)) + " views")
+                text_lines.append(f"🏆 **Phát huy thế mạnh kênh:** *{top_performers[0]['title']}* ({top_perf_views})")
+            if flop_videos:
+                text_lines.append(f"🛡️ **Cơ chế chống Flop:** Khắc phục tình trạng bão hòa / lệch ngách từ {len(flop_videos)} video trước")
+            text_lines.append("")
+
             for idx, item in enumerate(ideas):
                 title = item.get("title", item.get("topic", ""))
                 hook = item.get("hook", "")
                 retention = item.get("predicted_retention", "150%+")
                 pinned = item.get("pinned_comment", "")
                 formula = item.get("viral_formula", "Debate in Comments")
+                fixes_flaw = item.get("fixes_flaw", "")
+                trend_align = item.get("trend_alignment", "")
 
                 text_lines.append(f"**#{idx+1}. {title}**")
                 text_lines.append(f"• ⚡ **Hook 3s:** \"_{hook}_\"")
                 text_lines.append(f"• 📈 **Dự báo:** `{retention}` | **CTA:** `{formula}`")
+                if fixes_flaw:
+                    text_lines.append(f"• 🛡️ **Khắc phục nhược điểm:** {fixes_flaw}")
+                if trend_align:
+                    text_lines.append(f"• 🌍 **Xu hướng 2026:** {trend_align}")
                 if pinned:
                     text_lines.append(f"• 💬 **Bình luận mồi:** \"_{pinned}_\"")
                 text_lines.append("")

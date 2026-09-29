@@ -1003,6 +1003,50 @@ class PublishYouTubeRequest(BaseModel):
     privacy: str = "public"
     schedule_time_iso: Optional[str] = None
     auto_schedule: bool = False
+    pinned_comment: Optional[str] = None
+
+
+@app.get("/api/videos/{job_id}/monetization-preview")
+def get_video_monetization_preview(job_id: int, channel_id: Optional[str] = None):
+    """
+    Sinh gói xem trước sản phẩm Affiliate Amazon (link kèm tag kizakawa-20, mô tả & bình luận mồi)
+    cho video trước khi đăng lên YouTube.
+    """
+    with get_db() as db:
+        job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Không tìm thấy video job")
+
+        target_ch = channel_id or job.target_channel_id or "channel_maya"
+        cfg = _read_channels_yaml()
+        channels = cfg.get("channels", [])
+        ch_cfg = next((c for c in channels if c.get("id") == target_ch), {"id": target_ch, "name": target_ch})
+
+        title = job.title or job.topic or f"Video #{job_id}"
+        description = job.description or ""
+        pinned_comment = None
+        topic = job.topic or ""
+        script_text = ""
+
+        if job.scenes_json:
+            try:
+                s_data = json.loads(job.scenes_json)
+                pinned_comment = s_data.get("pinned_comment")
+                scenes = s_data.get("scenes", [])
+                script_text = " ".join([sc.get("narration", "") for sc in scenes])
+            except Exception:
+                pass
+
+        from app.services.monetization_engine import preview_monetization_bundle
+        bundle = preview_monetization_bundle(
+            channel_config=ch_cfg,
+            title=title,
+            description=description,
+            pinned_comment=pinned_comment,
+            topic=topic,
+            script=script_text
+        )
+        return {"success": True, **bundle}
 
 @app.get("/api/channels/{channel_id}/next-golden-slot")
 def get_channel_next_golden_slot(channel_id: str):
@@ -1156,8 +1200,8 @@ async def publish_to_youtube(
                 detail=f"Kênh '{ch_name}' chưa kết nối YouTube OAuth. Vui lòng vào tab 'Kênh & Tài Khoản' bấm '🔑 Đăng Nhập YouTube (Kênh Này)' để cấp quyền."
             )
 
-        pinned_comment = None
-        if job.scenes_json:
+        pinned_comment = (body.pinned_comment.strip() if body and body.pinned_comment else None)
+        if not pinned_comment and job.scenes_json:
             try:
                 s_data = json.loads(job.scenes_json)
                 pinned_comment = s_data.get("pinned_comment")
@@ -1181,6 +1225,8 @@ async def publish_to_youtube(
             default_language=ch_lang,
             default_audio_language=ch_lang,
             pinned_comment=pinned_comment,
+            topic=job.topic or "",
+            script=job.scenes_json or "",
         )
 
         if pub_res.get("status") == "success":
@@ -1208,6 +1254,8 @@ async def publish_to_youtube(
                 if j:
                     j.status = "SCHEDULED" if schedule_time else "PUBLISHED"
                     j.youtube_video_id = yt_id
+                    if pub_res.get("enriched_description"):
+                        j.description = pub_res.get("enriched_description")
                     if drive_link:
                         j.drive_link = drive_link
                     if slot_dt:
@@ -1218,10 +1266,14 @@ async def publish_to_youtube(
                             j.scheduled_time = _dt.fromisoformat(schedule_time.replace("Z", "+00:00"))
                         except Exception:
                             pass
+                    
+                    prod_info = pub_res.get("product_info")
+                    prod_name = prod_info.get("name") if prod_info else ""
+                    affiliate_note = f" (Amazon: {prod_name})" if prod_name else ""
                     msg = (
-                        f"Video #{job_id} đã lên lịch công chiếu vào {display_vn_slot} trên kênh '{ch_name}': {yt_shorts_url}"
+                        f"Video #{job_id} đã lên lịch công chiếu vào {display_vn_slot} trên kênh '{ch_name}'{affiliate_note}: {yt_shorts_url}"
                         if schedule_time and display_vn_slot
-                        else f"Video #{job_id} đã xuất bản lên kênh '{ch_name}': {yt_shorts_url}"
+                        else f"Video #{job_id} đã xuất bản lên kênh '{ch_name}'{affiliate_note}: {yt_shorts_url}"
                     )
                     log_activity(db, 0, "WebStudio", "PUBLISH_YOUTUBE", msg, channel_id=target_channel)
 
@@ -1242,6 +1294,10 @@ async def publish_to_youtube(
                 "scheduled": bool(schedule_time),
                 "scheduled_vn": display_vn_slot,
                 "scheduled_iso": schedule_time,
+                "product_info": pub_res.get("product_info"),
+                "pinned_comment": pub_res.get("pinned_comment"),
+                "comment_id": pub_res.get("comment_id"),
+                "enriched_description": pub_res.get("enriched_description"),
                 "message": success_msg
             }
         else:

@@ -296,6 +296,13 @@
                         <div class="form-group" style="flex:3;">
                             <label class="form-label" for="input-topic">Chủ đề video <span class="required">*</span></label>
                             <input type="text" id="input-topic" class="form-input" placeholder="Ví dụ: 3 bí ẩn tâm lý đen tối bạn cần biết" autocomplete="off">
+                            <div class="quick-topic-pills" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; align-items:center;">
+                                <span style="font-size:11px; color:var(--text-muted); font-weight:600;">💡 Gợi ý nhanh:</span>
+                                <button type="button" class="btn-chip" onclick="fillQuickTopic('3 Dark Psychology Tricks You Must Know')" style="font-size:11px; padding:3px 9px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#94a3b8; cursor:pointer; transition:all 0.2s;" onmouseover="this.style.color='#fff'; this.style.borderColor='var(--accent-cyan)'" onmouseout="this.style.color='#94a3b8'; this.style.borderColor='rgba(255,255,255,0.12)'">🔥 3 Dark Psychology Tricks</button>
+                                <button type="button" class="btn-chip" onclick="fillQuickTopic('What Lies at the Deepest Ocean Trench')" style="font-size:11px; padding:3px 9px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#94a3b8; cursor:pointer; transition:all 0.2s;" onmouseover="this.style.color='#fff'; this.style.borderColor='var(--accent-cyan)'" onmouseout="this.style.color='#94a3b8'; this.style.borderColor='rgba(255,255,255,0.12)'">🌊 Deepest Ocean Trench</button>
+                                <button type="button" class="btn-chip" onclick="fillQuickTopic('The Most Brutal Apex Predator in Nature')" style="font-size:11px; padding:3px 9px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#94a3b8; cursor:pointer; transition:all 0.2s;" onmouseover="this.style.color='#fff'; this.style.borderColor='var(--accent-cyan)'" onmouseout="this.style.color='#94a3b8'; this.style.borderColor='rgba(255,255,255,0.12)'">🦅 Brutal Apex Predator</button>
+                                <button type="button" class="btn-chip" onclick="fillQuickTopic('Heartwarming Stray Dog Rescue Transformation')" style="font-size:11px; padding:3px 9px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#94a3b8; cursor:pointer; transition:all 0.2s;" onmouseover="this.style.color='#fff'; this.style.borderColor='var(--accent-cyan)'" onmouseout="this.style.color='#94a3b8'; this.style.borderColor='rgba(255,255,255,0.12)'">🐾 Dog Rescue Story</button>
+                            </div>
                         </div>
                         <div class="form-group" style="flex:1;">
                             <label class="form-label" for="input-language">Ngôn ngữ</label>
@@ -1621,12 +1628,48 @@ Ví dụ Căn Theo Mốc:
             <!-- Description & Tags -->
             <div class="form-group" style="margin-bottom:14px;">
                 <label class="form-label" for="publish-desc-input"><strong>3. Mô Tả Video & Hashtags:</strong></label>
-                <textarea id="publish-desc-input" class="form-input" rows="3" style="font-size:12px;" placeholder="#shorts #viral..."></textarea>
+                <textarea id="publish-desc-input" class="form-input" rows="4" style="font-size:12px;" placeholder="#shorts #viral..."></textarea>
+            </div>
+
+            <!-- Amazon Affiliate Monetization Preview Card -->
+            <div class="form-group" style="margin-bottom:14px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <label class="form-label" style="margin-bottom:0;">
+                        <strong>🛒 4. Tự Động Gắn Link Amazon Affiliate (Tag: kizakawa-20):</strong>
+                    </label>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="applyAffiliateToDescription()" style="font-size:11px; padding:3px 8px; border-color:rgba(16,185,129,0.4); color:var(--accent-green);">
+                        ✨ Cập nhật vào mô tả
+                    </button>
+                </div>
+                <div id="publish-affiliate-box" style="padding:10px 14px; border-radius:8px; font-size:12px; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.25);">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:16px;">📦</span>
+                        <div style="flex-grow:1; min-width:0;">
+                            <div id="publish-affiliate-name" style="font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Đang khớp sản phẩm tối ưu...</div>
+                            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;" id="publish-affiliate-cta">Đang phân tích nội dung video...</div>
+                        </div>
+                    </div>
+                    <div style="margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.06); display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+                        <span style="color:var(--accent-green); font-weight:600;">🔗 Link: <a id="publish-affiliate-link" href="#" target="_blank" style="color:#60a5fa; text-decoration:none;">...</a></span>
+                        <span style="color:var(--text-muted);" id="publish-affiliate-tag">Tag: kizakawa-20</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pinned Comment (Bình Luận Mồi) -->
+            <div class="form-group" style="margin-bottom:14px;">
+                <label class="form-label" for="publish-pinned-comment-input">
+                    <strong>💬 5. Bình Luận Mồi Tự Động (Pinned Top 1 Comment):</strong>
+                </label>
+                <textarea id="publish-pinned-comment-input" class="form-input" rows="2" style="font-size:12px;" placeholder="Bình luận mồi kích thích tương tác & mua sắm..."></textarea>
+                <div style="font-size:10.5px; color:var(--text-muted); margin-top:3px;">
+                    💡 Bình luận của chủ kênh chứa link mua hàng sẽ tự động được đăng ngay khi video xuất bản.
+                </div>
             </div>
 
             <!-- Privacy Status / Auto Golden Slot Schedule -->
             <div class="form-group" style="margin-bottom:18px;">
-                <label class="form-label"><strong>4. Chế Độ Xuất Bản & Lên Lịch Tự Động:</strong></label>
+                <label class="form-label"><strong>6. Chế Độ Xuất Bản & Lên Lịch Tự Động:</strong></label>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
                     <label class="privacy-option-card" style="border:1px solid rgba(59,130,246,0.35); background:rgba(59,130,246,0.08);">
                         <input type="radio" name="publish_privacy" value="auto_golden_slot" checked style="margin-top:2px;">

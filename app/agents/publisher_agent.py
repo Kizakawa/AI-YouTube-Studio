@@ -106,12 +106,14 @@ class PublisherAgent:
         default_language: Optional[str] = "en",
         default_audio_language: Optional[str] = "en",
         pinned_comment: Optional[str] = None,
+        topic: str = "",
+        script: str = "",
     ) -> Dict:
         """
         Upload video lên YouTube qua YouTube Data API v3.
         Nếu có schedule_time_iso (ví dụ '2026-09-25T19:00:00Z'), video sẽ được đặt ở chế độ private và lên lịch công chiếu.
         Đã bổ sung defaultLanguage & defaultAudioLanguage để định tuyến thuật toán đề xuất chính xác vùng người xem.
-        Tự động đăng bình luận mồi (pinned_comment) của chính chủ kênh ngay sau khi upload thành công.
+        Tự động gắn link Amazon Affiliate chuẩn xác vào Mô tả & Bình luận mồi.
         """
         import re
         if not self.service:
@@ -154,13 +156,16 @@ class PublisherAgent:
             clean_title = f"{clean_title} #Shorts"
 
         # Tự động tối ưu hóa kiếm tiền qua Amazon Affiliate (Monetization Engine)
+        prod_info = None
         try:
             from app.services.monetization_engine import enrich_video_monetization
             desc_clean, pinned_comment, prod_info = enrich_video_monetization(
                 channel_config=self.channel_config,
                 title=clean_title,
                 description=description or "",
-                pinned_comment=pinned_comment
+                pinned_comment=pinned_comment,
+                topic=topic or "",
+                script=script or ""
             )
             logger.info(f"Đã tự động lồng ghép sản phẩm kiếm tiền Amazon: {prod_info.get('name')}")
         except Exception as ex:
@@ -245,7 +250,8 @@ class PublisherAgent:
                 "scheduled_at": schedule_time_iso,
                 "pinned_comment": pinned_comment,
                 "comment_id": posted_comment_id,
-                "product_info": prod_info if "prod_info" in locals() else None,
+                "product_info": prod_info if "prod_info" in locals() and prod_info else None,
+                "enriched_description": desc_clean,
             }
 
         except Exception as e:

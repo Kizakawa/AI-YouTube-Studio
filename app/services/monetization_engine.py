@@ -22,6 +22,14 @@ NICHE_PRODUCT_CATALOG: Dict[str, List[Dict[str, Any]]] = {
             "search_fallback": "48 laws of power robert greene"
         },
         {
+            "keywords": ["habit", "discipline", "parent", "sacrifice", "success", "mindset", "atomic", "routine", "focus", "ego", "truth"],
+            "asin": "0735211299",
+            "name": "Atomic Habits (James Clear)",
+            "cta": "Build unbreakable daily habits & mental resilience",
+            "short_desc": "The definitive guide to breaking bad behaviors and mastering personal discipline",
+            "search_fallback": "atomic habits james clear"
+        },
+        {
             "keywords": ["idiot", "behavior", "type", "personality", "mbti", "people", "conflict", "argue"],
             "asin": "1250251145",
             "name": "Surrounded by Idiots (Thomas Erikson)",
@@ -82,6 +90,14 @@ NICHE_PRODUCT_CATALOG: Dict[str, List[Dict[str, Any]]] = {
     ],
     "history_mystery": [
         {
+            "keywords": ["what if", "alternate", "history", "timeline", "scenario", "hypothetical", "paradox", "world war", "empire"],
+            "asin": "0544272994",
+            "name": "What If? Serious Scientific Answers to Absurd Hypothetical Questions",
+            "cta": "Explore mind-bending hypothetical questions & alternate scenarios",
+            "short_desc": "Hilarious and deeply researched hypothetical scenarios by Randall Munroe",
+            "search_fallback": "what if randall munroe"
+        },
+        {
             "keywords": ["sky", "star", "space", "alien", "galaxy", "nasa", "planet", "astronaut", "universe", "nebula"],
             "asin": "B09S9YF57Q",
             "name": "Astronaut Galaxy Star Projector (TikTok Viral Night Light)",
@@ -134,6 +150,14 @@ NICHE_PRODUCT_CATALOG: Dict[str, List[Dict[str, Any]]] = {
     ],
     "wildlife_predators": [
         {
+            "keywords": ["binocular", "spot", "safari", "watch", "lion", "tiger", "bear", "zoom", "sight", "bird", "eagle", "hunt", "nature"],
+            "asin": "B004KM82IQ",
+            "name": "Celestron Outland X 10x42 High-Definition Wildlife Binoculars",
+            "cta": "Spot apex predators & wild birds in crystal-clear 10x zoom",
+            "short_desc": "Waterproof, fogproof multi-coated optics for wildlife observation",
+            "search_fallback": "celestron outland x 10x42 binoculars"
+        },
+        {
             "keywords": ["lion", "tiger", "wolf", "lamp", "desk", "room", "decor", "night", "apex", "power", "3d"],
             "asin": "B07H831N6L",
             "name": "3D Optical Illusion Majestic Predator LED Night Lamp",
@@ -148,14 +172,6 @@ NICHE_PRODUCT_CATALOG: Dict[str, List[Dict[str, Any]]] = {
             "cta": "Dive deep into extreme predator combat biomechanics",
             "short_desc": "Full-color hardcover guide exploring lethal hunting adaptations",
             "search_fallback": "national geographic predators most lethal hunters"
-        },
-        {
-            "keywords": ["binocular", "spot", "safari", "watch", "lion", "tiger", "bear", "zoom", "sight"],
-            "asin": "B004KM82IQ",
-            "name": "Celestron Outland X 10x42 High-Definition Wildlife Binoculars",
-            "cta": "Spot apex predators in crystal-clear 10x zoom",
-            "short_desc": "Waterproof, fogproof multi-coated optics for wildlife observation",
-            "search_fallback": "celestron outland x 10x42 binoculars"
         }
     ]
 }
@@ -171,18 +187,15 @@ AMAZON_COMPLIANCE_DISCLAIMER = (
 # 2. BỘ TẠO LINK AFFILIATE AMAZON CHUẨN XÁC
 # ═════════════════════════════════════════════════════════════════════════════
 
-def build_amazon_url(asin_or_search: str, tracking_tag: str, is_search: bool = False) -> str:
+def build_amazon_url(asin_or_search: str, tracking_tag: str = "", is_search: bool = False) -> str:
     """
     Sinh đường link Amazon Affiliate hợp lệ kèm mã định danh theo dõi (Tracking Tag).
     - Link trực tiếp ASIN: https://www.amazon.com/dp/{asin}?tag={tag}
     - Link tìm kiếm Smart Search: https://www.amazon.com/s?k={query}&tag={tag}
     """
-    tag = (tracking_tag or os.getenv("AMAZON_ASSOCIATE_TAG", "")).strip()
+    tag = (tracking_tag or os.getenv("AMAZON_ASSOCIATE_TAG", "kizakawa-20")).strip()
     if not tag:
-        # Nếu chưa cấu hình tag, link sẽ là link Amazon sạch, sẵn sàng thêm tag khi user đăng ký xong
-        if is_search:
-            return f"https://www.amazon.com/s?k={quote_plus(asin_or_search)}"
-        return f"https://www.amazon.com/dp/{asin_or_search}"
+        tag = "kizakawa-20"
 
     if is_search:
         return f"https://www.amazon.com/s?k={quote_plus(asin_or_search)}&tag={tag}"
@@ -279,7 +292,13 @@ def enrich_video_monetization(
 
     # Tránh chèn trùng lặp nếu mô tả đã có link amazon này rồi
     if product['asin'] not in desc_base and "amazon.com" not in desc_base:
-        enriched_desc = f"{desc_base}{monetization_footer}".strip()
+        hashtag_match = re.search(r'(\s*(?:#[a-zA-Z0-9_]+\s*)+)$', desc_base)
+        if hashtag_match:
+            tags_part = hashtag_match.group(1).strip()
+            text_part = desc_base[:hashtag_match.start()].strip()
+            enriched_desc = f"{text_part}{monetization_footer}\n\n{tags_part}".strip()
+        else:
+            enriched_desc = f"{desc_base}{monetization_footer}".strip()
     else:
         enriched_desc = desc_base
 
@@ -287,11 +306,14 @@ def enrich_video_monetization(
     comment_base = (pinned_comment or "").strip()
     if comment_base:
         # Nếu đã có câu hỏi tương tác, gắn thêm gợi ý sản phẩm ngay bên dưới
-        enriched_comment = (
-            f"{comment_base}\n\n"
-            f"📖 Recommended: {product['name']}\n"
-            f"👉 Check availability on Amazon: {affiliate_url}"
-        )
+        if "amazon.com" not in comment_base and product['asin'] not in comment_base:
+            enriched_comment = (
+                f"{comment_base}\n\n"
+                f"📖 Recommended: {product['name']}\n"
+                f"👉 Check on Amazon: {affiliate_url}"
+            )
+        else:
+            enriched_comment = comment_base
     else:
         # Nếu chưa có comment, tự sinh câu comment mồi hấp dẫn
         enriched_comment = (
@@ -304,7 +326,37 @@ def enrich_video_monetization(
         "name": product["name"],
         "cta": product["cta"],
         "affiliate_url": affiliate_url,
-        "tracking_tag": tracking_tag or "(Chưa điền tag - Dùng link trực tiếp)"
+        "tracking_tag": tracking_tag or "kizakawa-20"
     }
 
     return enriched_desc, enriched_comment, product_info
+
+
+def preview_monetization_bundle(
+    channel_config: Dict[str, Any],
+    title: str,
+    description: str = "",
+    pinned_comment: Optional[str] = None,
+    topic: str = "",
+    script: str = ""
+) -> Dict[str, Any]:
+    """
+    Sinh gói xem trước (Preview Bundle) để hiển thị trực tiếp lên Web Studio hoặc Telegram Bot
+    trước khi người dùng bấm xác nhận xuất bản.
+    """
+    enriched_desc, enriched_comment, product_info = enrich_video_monetization(
+        channel_config=channel_config,
+        title=title,
+        description=description,
+        pinned_comment=pinned_comment,
+        topic=topic,
+        script=script
+    )
+    return {
+        "product": product_info,
+        "enriched_description": enriched_desc,
+        "enriched_pinned_comment": enriched_comment,
+        "channel_id": channel_config.get("id"),
+        "channel_name": channel_config.get("name"),
+        "tracking_tag": product_info.get("tracking_tag")
+    }

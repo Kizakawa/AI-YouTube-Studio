@@ -709,10 +709,29 @@ function renderPipelineTable(videos) {
 /* ═══════════════════════════════════════════════════════
    CREATE SCRIPT
 ══════════════════════════════════════════════════════════ */
+function fillQuickTopic(topic) {
+    const input = document.getElementById('input-topic');
+    if (!input) return;
+    input.value = topic;
+    input.focus();
+    input.style.borderColor = 'var(--accent-cyan)';
+    setTimeout(() => { input.style.borderColor = ''; }, 1200);
+}
+
 async function createScript() {
-    const topic = document.getElementById('input-topic').value.trim();
+    const inputTopic = document.getElementById('input-topic');
+    const topic = inputTopic ? inputTopic.value.trim() : '';
     if (!topic) {
-        showToast('Vui lòng nhập chủ đề video!', 'error');
+        if (inputTopic) {
+            inputTopic.focus();
+            inputTopic.style.borderColor = '#ef4444';
+            inputTopic.style.boxShadow = '0 0 0 3px rgba(239, 68, 68, 0.35)';
+            setTimeout(() => {
+                inputTopic.style.borderColor = '';
+                inputTopic.style.boxShadow = '';
+            }, 2000);
+        }
+        showToast('⚠️ Vui lòng nhập chủ đề video (hoặc bấm chọn gợi ý nhanh bên dưới)!', 'warning');
         return;
     }
 
@@ -721,7 +740,7 @@ async function createScript() {
 
     const btn = document.getElementById('btn-create-script');
     btn.disabled = true;
-    btn.innerHTML = `<span class="loading-spinner"></span> Đang gọi Gemini AI...`;
+    btn.innerHTML = `<span class="loading-spinner"></span> Đang phân tích & tạo kịch bản...`;
 
     try {
         const result = await apiPost('/api/scripts/create', { topic, channel_id: channel, language });
@@ -1539,6 +1558,12 @@ async function openPublishModal(jobId) {
     const descInput = document.getElementById('publish-desc-input');
     descInput.value = job.description || (job.tags ? job.tags.split(',').map(t => `#${t.trim()}`).join(' ') : '#shorts #viral');
 
+    // Reset pinned comment
+    const commentInput = document.getElementById('publish-pinned-comment-input');
+    if (commentInput) {
+        commentInput.value = '';
+    }
+
     // Make sure channels are loaded
     if (!allChannels || allChannels.length === 0) {
         await fetchChannels();
@@ -1664,6 +1689,65 @@ function onPublishChannelChange() {
 
     // Tự động tải thông tin khe giờ vàng tiếp theo cho kênh đã chọn
     fetchGoldenSlotPreview(selectedId);
+    if (activePublishJob && activePublishJob.id) {
+        fetchMonetizationPreview(activePublishJob.id, selectedId);
+    }
+}
+
+let currentMonetizationBundle = null;
+
+async function fetchMonetizationPreview(jobId, channelId) {
+    const nameEl = document.getElementById('publish-affiliate-name');
+    const ctaEl = document.getElementById('publish-affiliate-cta');
+    const linkEl = document.getElementById('publish-affiliate-link');
+    const tagEl = document.getElementById('publish-affiliate-tag');
+    const pinnedCommentInput = document.getElementById('publish-pinned-comment-input');
+    const descInput = document.getElementById('publish-desc-input');
+
+    if (!jobId) return;
+    if (nameEl) nameEl.textContent = 'Đang phân tích kịch bản & khớp sản phẩm Amazon...';
+
+    try {
+        const url = `/api/videos/${jobId}/monetization-preview` + (channelId ? `?channel_id=${encodeURIComponent(channelId)}` : '');
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.success && data.product) {
+            currentMonetizationBundle = data;
+            if (nameEl) nameEl.textContent = data.product.name;
+            if (ctaEl) ctaEl.textContent = `🎯 ${data.product.cta}`;
+            if (linkEl) {
+                linkEl.href = data.product.affiliate_url;
+                linkEl.textContent = data.product.affiliate_url;
+            }
+            if (tagEl) tagEl.textContent = `Tag: ${data.product.tracking_tag || 'kizakawa-20'}`;
+
+            // Điền bình luận mồi nếu ô bình luận đang trống
+            if (pinnedCommentInput && (!pinnedCommentInput.value || pinnedCommentInput.value.trim() === '')) {
+                pinnedCommentInput.value = data.enriched_pinned_comment || '';
+            }
+
+            // Nếu mô tả chưa có link amazon thì tự động chèn vào
+            if (descInput && !descInput.value.includes('amazon.com') && !descInput.value.includes(data.product.asin)) {
+                if (data.enriched_description) {
+                    descInput.value = data.enriched_description;
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('Lỗi lấy preview monetization:', e);
+    }
+}
+
+function applyAffiliateToDescription() {
+    if (!currentMonetizationBundle || !currentMonetizationBundle.enriched_description) {
+        showToast('Chưa có thông tin sản phẩm affiliate để áp dụng', 'info');
+        return;
+    }
+    const descInput = document.getElementById('publish-desc-input');
+    if (descInput) {
+        descInput.value = currentMonetizationBundle.enriched_description;
+        showToast('✅ Đã cập nhật link Affiliate Amazon vào mô tả!', 'success');
+    }
 }
 
 async function fetchGoldenSlotPreview(channelId) {
@@ -1687,6 +1771,7 @@ async function submitPublishYouTube() {
     const channelId = document.getElementById('publish-channel-select').value;
     const title = document.getElementById('publish-title-input').value.trim();
     const description = document.getElementById('publish-desc-input').value.trim();
+    const pinnedComment = document.getElementById('publish-pinned-comment-input')?.value?.trim() || null;
     const rawPrivacy = document.querySelector('input[name="publish_privacy"]:checked')?.value || 'auto_golden_slot';
     const isAutoSchedule = (rawPrivacy === 'auto_golden_slot');
     const privacy = isAutoSchedule ? 'private' : rawPrivacy;
@@ -1735,6 +1820,7 @@ async function submitPublishYouTube() {
                 channel_id: channelId,
                 title: title,
                 description: description,
+                pinned_comment: pinnedComment,
                 privacy: privacy,
                 auto_schedule: isAutoSchedule,
                 schedule_time_iso: isAutoSchedule ? 'auto' : null
@@ -1743,7 +1829,11 @@ async function submitPublishYouTube() {
 
         const data = await res.json();
         if (res.ok && data.success) {
-            showToast(`🎉 ${data.message || 'Đăng video lên YouTube thành công!'}`, 'success');
+            let msg = `🎉 ${data.message || 'Đăng video lên YouTube thành công!'}`;
+            if (data.product_info && data.product_info.name) {
+                msg += ` ── 🛒 Gắn link Amazon: ${data.product_info.name} (Tag: ${data.product_info.tracking_tag || 'kizakawa-20'})`;
+            }
+            showToast(msg, 'success');
             closePublishModal();
             await fetchStats();
             await fetchVideos();
