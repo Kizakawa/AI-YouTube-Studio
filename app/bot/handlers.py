@@ -3558,7 +3558,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def _resolve_video_file_path(job_id: int, recorded_path: Optional[str] = None) -> Optional[Path]:
-    """Tìm đường dẫn tệp video MP4 thực tế trên máy chủ cho Job ID."""
+    """Tìm đường dẫn tệp video MP4 thực tế trên máy chủ cho Job ID. Tự động đồng bộ từ Google Drive nếu cần."""
     base_dir = Path(settings.BASE_DIR)
     candidates = []
     if recorded_path:
@@ -3580,6 +3580,16 @@ def _resolve_video_file_path(job_id: int, recorded_path: Optional[str] = None) -
                 return c
         except Exception:
             pass
+
+    # Tự động đồng bộ từ Google Drive nếu máy chủ chưa có file cục bộ
+    try:
+        from app.services.colab_queue_service import check_and_import_completed_video
+        ok, local_p, _ = check_and_import_completed_video(job_id)
+        if ok and local_p and os.path.exists(local_p) and os.path.getsize(local_p) > 1000:
+            return Path(local_p)
+    except Exception:
+        pass
+
     return None
 
 
@@ -3629,9 +3639,15 @@ async def _show_videos_list(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             dur_text = f"{j.audio_duration_ms / 1000:.1f}s" if (j.audio_duration_ms and j.audio_duration_ms > 0) else "N/A"
             title_display = j.title or j.topic or f"Video #{j.id}"
 
-            if v_file:
+            if j.youtube_video_id:
+                file_status = f"🚀 Đã đăng YouTube: https://youtu.be/{j.youtube_video_id}"
+                jobs_with_files.append({"id": j.id, "title": title_display})
+            elif v_file:
                 size_mb = v_file.stat().st_size / (1024 * 1024)
                 file_status = f"🟢 Có file ({size_mb:.1f} MB)"
+                jobs_with_files.append({"id": j.id, "title": title_display})
+            elif j.drive_link:
+                file_status = f"☁️ Trên Google Drive"
                 jobs_with_files.append({"id": j.id, "title": title_display})
             else:
                 file_status = "⏳ Chưa có file video"
@@ -3685,6 +3701,8 @@ async def send_video_file_handler(update: Update, context: ContextTypes.DEFAULT_
         status = job.status
         recorded_path = job.video_path
         progress_pct = job.progress_percent or 0
+        yt_id = job.youtube_video_id
+        d_link = job.drive_link
 
     # Kiểm tra trạng thái nếu chưa render xong
     if status == "RENDERING":
@@ -3706,12 +3724,47 @@ async def send_video_file_handler(update: Update, context: ContextTypes.DEFAULT_
 
     v_file = _resolve_video_file_path(job_id, recorded_path)
     if not v_file:
+        # Nếu video đã đăng YouTube
+        if yt_id:
+            yt_url = f"https://youtu.be/{yt_id}"
+            actions_markup = InlineKeyboardMarkup([
+                [InlineKeyboardButton("▶️ Mở Xem Trên YouTube", url=yt_url)],
+                [InlineKeyboardButton("📋 Xem Danh Sách Video", callback_data="videos_page:1")]
+            ])
+            await safe_reply(
+                update,
+                f"🎉 **VIDEO #{job_id} ĐÃ ĐƯỢC ĐĂNG LÊN YOUTUBE!**\n\n"
+                f"📌 **Tiêu đề:** {title}\n"
+                f"📺 **Kênh:** `{channel_id}`\n"
+                f"🔗 **Link xem video:** {yt_url}\n\n"
+                f"💡 Tệp tin gốc trên máy chủ đã được tối ưu dọn dẹp để tiết kiệm bộ nhớ. Bạn có thể bấm nút bên dưới để xem trực tiếp trên YouTube!",
+                reply_markup=actions_markup
+            )
+            return
+
+        # Nếu video có link Google Drive
+        if d_link:
+            actions_markup = InlineKeyboardMarkup([
+                [InlineKeyboardButton("☁️ Xem / Tải Trên Google Drive", url=d_link)],
+                [InlineKeyboardButton("📋 Xem Danh Sách Video", callback_data="videos_page:1")]
+            ])
+            await safe_reply(
+                update,
+                f"☁️ **VIDEO #{job_id} ĐÃ ĐƯỢC LƯU TRÊN GOOGLE DRIVE!**\n\n"
+                f"📌 **Tiêu đề:** {title}\n"
+                f"📺 **Kênh:** `{channel_id}`\n"
+                f"🔗 **Link Google Drive:** {d_link}\n\n"
+                f"👉 Bấm nút bên dưới để mở xem hoặc tải video từ kho lưu trữ Google Drive 20TB!",
+                reply_markup=actions_markup
+            )
+            return
+
         await safe_reply(
             update,
-            f"⚠️ **Không tìm thấy tệp video của Job #{job_id} trên máy chủ!**\n\n"
+            f"⚠️ **Không tìm thấy tệp video của Job #{job_id} trên máy chủ hoặc Google Drive!**\n\n"
             f"• Trạng thái trong DB: `{status}`\n"
             f"• Đường dẫn dự kiến: `{recorded_path or 'storage/outputs/video_' + str(job_id) + '.mp4'}`\n"
-            f"Có thể tệp đã bị xóa hoặc chuyển thư mục. Bạn có thể render lại bằng cách gõ `/render {job_id}`."
+            f"Có thể video đang được Colab xử lý hoặc chưa bấm chạy. Bạn có thể render lại bằng cách gõ `/render {job_id}`."
         )
         return
 
@@ -3734,20 +3787,32 @@ async def send_video_file_handler(update: Update, context: ContextTypes.DEFAULT_
         f"⏱️ **Thời lượng:** {dur_sec:.1f}s\n"
         f"📦 **Dung lượng:** {size_mb:.1f} MB\n"
         f"📺 **Kênh xuất bản:** `{channel_id}`\n"
-        f"📊 **Trạng thái:** {status}\n\n"
-        f"👉 *Video đã có sẵn ở đây, bạn có thể xem trực tiếp hoặc lưu về máy!*"
+        f"📊 **Trạng thái:** {status}\n"
     )
+    if yt_id:
+        caption += f"🚀 **YouTube:** https://youtu.be/{yt_id}\n"
+    caption += "\n👉 *Video đã có sẵn ở đây, bạn có thể xem trực tiếp hoặc lưu về máy!*"
 
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    actions_markup = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("🚀 Đăng Lên YouTube", callback_data=f"publish_youtube:{job_id}"),
-            InlineKeyboardButton("⏰ Lên Lịch Tự Động", callback_data=f"schedule_youtube:{job_id}")
-        ],
-        [
-            InlineKeyboardButton("📋 Xem Danh Sách Video", callback_data="videos_page:1")
-        ]
-    ])
+    if yt_id:
+        actions_markup = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("▶️ Xem Trực Tiếp Trên YouTube", url=f"https://youtu.be/{yt_id}")
+            ],
+            [
+                InlineKeyboardButton("📋 Xem Danh Sách Video", callback_data="videos_page:1")
+            ]
+        ])
+    else:
+        actions_markup = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🚀 Đăng Lên YouTube", callback_data=f"publish_youtube:{job_id}"),
+                InlineKeyboardButton("⏰ Lên Lịch Tự Động", callback_data=f"schedule_youtube:{job_id}")
+            ],
+            [
+                InlineKeyboardButton("📋 Xem Danh Sách Video", callback_data="videos_page:1")
+            ]
+        ])
+
 
     try:
         with open(v_file, "rb") as vf:
