@@ -1899,56 +1899,63 @@ async def upload_client_secret(account_id: str, req: UploadSecretRequest) -> Dic
         "message": f"Đã lưu file client_secret.json cho tài khoản '{account_id}' thành công!"
     }
 
-def exchange_oauth_code_for_credentials(flow, raw_val: str):
-    """
-    Trao đổi OAuth code hoặc Redirect URL lấy Credentials an toàn tuyệt đối.
-    Hỗ trợ mọi định dạng: URL hoàn chỉnh, query string, hoặc chỉ code.
-    Tự động xử lý CSRF State Mismatch và fallback về direct Google token endpoint.
-    """
+def extract_auth_code_and_redirect_uri(raw_val: str, default_redirect_uri: str):
     raw_val = (raw_val or "").strip()
     if not raw_val:
-        raise ValueError("Không nhận được authorization code từ Google hoặc người dùng.")
+        raise ValueError("Vui lòng dán đường link chuyển hướng hoặc mã code xác thực từ Google.")
+
+    if "accounts.google.com" in raw_val:
+        raise ValueError(
+            "Bạn vừa dán link đăng nhập Google thay vì link kết quả! "
+            "Hãy mở link đó trên trình duyệt, đăng nhập và bấm [Cho Phép] "
+            "đến khi màn hình báo 'Không thể truy cập localhost', "
+            "sau đó COPY đường link trên thanh địa chỉ (bắt đầu bằng http://localhost...) rồi dán vào đây."
+        )
 
     code = None
-    state = None
+    redirect_uri = default_redirect_uri
 
-    # Phân tích chuỗi đầu vào (có thể là URL, query string, hoặc code thuần)
-    if "code=" in raw_val:
-        parsed = urlparse(raw_val)
-        qs = parse_qs(parsed.query if parsed.query else raw_val)
-        code = qs.get("code", [None])[0]
-        state = qs.get("state", [None])[0]
-    elif raw_val.startswith("http://") or raw_val.startswith("https://"):
+    if raw_val.startswith("http://") or raw_val.startswith("https://"):
         parsed = urlparse(raw_val)
         qs = parse_qs(parsed.query)
         code = qs.get("code", [None])[0]
-        state = qs.get("state", [None])[0]
+        redirect_uri = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+        if not redirect_uri.endswith("/"):
+            redirect_uri += "/"
+    elif "code=" in raw_val:
+        qs_str = raw_val.split("?", 1)[-1] if "?" in raw_val else raw_val
+        qs = parse_qs(qs_str)
+        code = qs.get("code", [None])[0]
     else:
-        code = raw_val
+        clean_val = raw_val.split("&")[0].split("?")[0].strip()
+        code = clean_val
 
     if not code:
-        code = raw_val
+        code = raw_val.strip()
+
+    if code and "#" in code:
+        code = code.split("#")[0].strip()
 
     if code and "%" in code:
-        code = unquote(code)
+        code = unquote(code).strip()
 
-    os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+    if code and not code.startswith("4/") and code.startswith("0A"):
+        code = "4/" + code
 
-    # 1. Thử dùng flow.fetch_token()
-    try:
-        if state:
-            flow.oauth2session._state = state
-        if raw_val.startswith("http://") or raw_val.startswith("https://"):
-            auth_url = raw_val.replace("http:", "https:", 1)
-            flow.fetch_token(authorization_response=auth_url)
-        else:
-            flow.fetch_token(code=code)
-        if flow.credentials:
-            return flow.credentials
-    except Exception as e_flow:
-        logger.warning(f"flow.fetch_token không thành công ({e_flow}), chuyển sang trao đổi trực tiếp với Google token endpoint...")
+    if not code or len(code) < 15:
+        raise ValueError(f"Mã code xác thực không hợp lệ: '{code}'. Vui lòng copy toàn bộ link http://localhost...")
 
-    # 2. Dự phòng: Gửi POST trực tiếp tới token endpoint của Google
+    return code, redirect_uri
+
+
+def exchange_oauth_code_for_credentials(flow, raw_val: str):
+    """
+    Trao đổi OAuth code hoặc Redirect URL lấy Credentials an toàn tuyệt đối.
+    Gửi trực tiếp 1 lần duy nhất tới Google Token Endpoint, loại bỏ hoàn toàn các lỗi
+    mismatching_state của oauthlib và tự động sửa các lỗi sao chép URL của người dùng.
+    """
+    code, redirect_uri = extract_auth_code_and_redirect_uri(raw_val, flow.redirect_uri)
+
     client_id = flow.client_config.get("client_id")
     client_secret = flow.client_config.get("client_secret")
     token_uri = flow.client_config.get("token_uri", "https://oauth2.googleapis.com/token")
@@ -1957,11 +1964,16 @@ def exchange_oauth_code_for_credentials(flow, raw_val: str):
         "code": code,
         "client_id": client_id,
         "client_secret": client_secret,
-        "redirect_uri": flow.redirect_uri,
+        "redirect_uri": redirect_uri,
         "grant_type": "authorization_code"
     }
 
-    resp = http_requests.post(token_uri, data=token_payload, timeout=30)
+    resp = http_requests.post(
+        token_uri,
+        data=token_payload,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        timeout=30
+    )
     if resp.status_code != 200:
         err_msg = resp.text
         try:

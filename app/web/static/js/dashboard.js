@@ -3009,8 +3009,13 @@ async function submitManualOAuthCode() {
         showToast('Vui lòng dán link chuyển hướng hoặc mã code từ Google', 'error');
         return;
     }
+    if (val.includes('accounts.google.com')) {
+        showToast('⚠️ Bạn đang dán link đăng nhập Google! Hãy mở link đó trên trình duyệt để lấy link localhost.', 'error');
+        alert('⚠️ BẠN ĐANG DÁN LINK ĐĂNG NHẬP GOOGLE!\n\nCách lấy link chính xác:\n1. Bấm vào nút "🔗 Mở trang đăng nhập Google" ở trên.\n2. Chọn tài khoản Gmail của bạn và bấm [Tiếp tục] / [Cho Phép].\n3. Trình duyệt sẽ chuyển hướng đến một trang báo "Không thể truy cập trang web này (localhost)" - ĐÂY LÀ ĐÚNG!\n4. Bạn chỉ cần COPY TOÀN BỘ ĐƯỜNG LINK TRÊN THANH ĐỊA CHỈ (bắt đầu bằng http://localhost...), dán vào ô này rồi bấm Xác Nhận!');
+        return;
+    }
     if (!currentOAuthSessionKey) {
-        showToast('Không tìm thấy phiên xác thực đang chạy', 'error');
+        showToast('Không tìm thấy phiên xác thực đang chạy. Vui lòng bấm Kết Nối lại.', 'error');
         return;
     }
     const btn = document.getElementById('btn-oauth-submit-manual');
