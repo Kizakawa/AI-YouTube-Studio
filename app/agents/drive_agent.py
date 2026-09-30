@@ -40,7 +40,18 @@ class DriveAgent:
 
             if creds:
                 self.service = build("drive", "v3", credentials=creds)
-                logger.info(f"Google Drive API đã kết nối thành công cho '{self.account_name}'")
+                try:
+                    self.service.files().list(pageSize=1, fields="files(id)").execute()
+                    logger.info(f"Google Drive API đã kết nối thành công cho '{self.account_name}'")
+                except Exception as ex_test:
+                    if "invalid_grant" in str(ex_test) and self.account_name == "account_1":
+                        logger.warning(f"⚠️ Token '{self.account_name}' bị invalid_grant, tự động chuyển sang 'account_2'...")
+                        self.account_name = "account_2"
+                        self.token_path = "credentials/accounts/account_2/drive_token.json"
+                        self._init_service()
+                        return
+                    else:
+                        raise ex_test
             else:
                 logger.warning(f"Chưa tìm thấy drive_token hợp lệ cho '{self.account_name}'")
         except Exception as e:
