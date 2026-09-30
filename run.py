@@ -347,8 +347,26 @@ def main():
         except Exception as e_w:
             logger.error(f"[Drive Watcher error]: {e_w}", exc_info=True)
 
+    async def _auto_sync_scheduler(context):
+        try:
+            from app.services.smart_scheduler import sync_scheduled_jobs_status
+            updated = sync_scheduled_jobs_status()
+            if updated > 0:
+                logger.info(f"🔄 [AutoScheduler] Đã tự động đồng bộ {updated} tác vụ (SCHEDULED -> PUBLISHED, quota flush).")
+        except Exception as e_s:
+            logger.error(f"[AutoScheduler error]: {e_s}", exc_info=True)
+
     if app.job_queue:
         app.job_queue.run_repeating(_auto_check_drive_completed, interval=15, first=5)
+        app.job_queue.run_repeating(_auto_sync_scheduler, interval=60, first=10)
+
+    # Khởi động ChannelIntelligenceWorker ngầm (giám sát KPI, tự động tạo video cứu nguy khi trễ deadline)
+    try:
+        from app.services.channel_intelligence import ChannelIntelligenceWorker
+        ChannelIntelligenceWorker.start(check_interval_minutes=15)
+        print("   -> ChannelIntelligenceWorker: Đang giám sát KPI 4 kênh để tự động sản xuất video khi trễ hạn.")
+    except Exception as e_ci:
+        logger.warning(f"Lỗi khởi động ChannelIntelligenceWorker trong run.py: {e_ci}")
 
 
     async def error_handler(update, context):

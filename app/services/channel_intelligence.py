@@ -253,23 +253,46 @@ def get_channel_existing_portfolio(channel_id: str) -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"[Portfolio] Lỗi truy vấn DB cho {channel_id}: {e}")
 
-    # Tính toán thời gian kể từ video cuối cùng
     now_utc = datetime.utcnow()
-    hours_since_last_video = 999.0
-    days_since_last_video = 99.0
-
     if last_activity_time:
         delta = now_utc - last_activity_time
         hours_since_last_video = max(0.0, delta.total_seconds() / 3600.0)
         days_since_last_video = max(0.0, delta.total_seconds() / 86400.0)
     else:
-        # Nếu chưa có video nào trong DB, ước tính theo số video YouTube
+        # Thử lấy thời gian video mới nhất từ YouTube Data API (nếu kênh có token cấu hình)
+        try:
+            from app.agents.publisher_agent import PublisherAgent
+            channels_list = settings.get_channels_config()
+            matched_cfg = None
+            for ch_item in channels_list:
+                if ch_item.get("id") == channel_id or ch_item.get("handle") == handle_or_url:
+                    matched_cfg = ch_item
+                    break
+            if matched_cfg:
+                pub = PublisherAgent(channel_config=matched_cfg)
+                if pub.service:
+                    ch_res = pub.service.channels().list(mine=True, part="contentDetails").execute()
+                    if ch_res.get("items"):
+                        up_id = ch_res["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
+                        pl_res = pub.service.playlistItems().list(playlistId=up_id, part="snippet", maxResults=1).execute()
+                        if pl_res.get("items"):
+                            p_at = pl_res["items"][0]["snippet"]["publishedAt"]
+                            dt = datetime.fromisoformat(p_at.replace("Z", "+00:00")).replace(tzinfo=None)
+                            last_activity_time = dt
+                            delta = now_utc - last_activity_time
+                            hours_since_last_video = max(0.0, delta.total_seconds() / 3600.0)
+                            days_since_last_video = max(0.0, delta.total_seconds() / 86400.0)
+        except Exception as e_yt:
+            logger.debug(f"[Portfolio] Không thể lấy thời gian thực từ YouTube API cho {channel_id}: {e_yt}")
+
+    # Fallback nếu vẫn chưa xác định được last_activity_time
+    if not last_activity_time:
         yt_vids_count = yt_stats.get("videos_count_num", 0) if isinstance(yt_stats, dict) else 0
         if yt_vids_count > 0:
-            # Có video trên YouTube nhưng chưa có log DB -> giả định ~ 36 giờ
-            hours_since_last_video = 36.0
-            days_since_last_video = 1.5
-            last_activity_time = now_utc - timedelta(hours=36)
+            # Có video trên YouTube nhưng chưa có log DB -> giả định đã trễ 52 giờ để AI kích hoạt cứu tương tác
+            hours_since_last_video = 52.0
+            days_since_last_video = 2.1
+            last_activity_time = now_utc - timedelta(hours=52)
         else:
             # Kênh hoàn toàn mới, chưa có video
             hours_since_last_video = 120.0
@@ -1197,10 +1220,13 @@ class ChannelIntelligenceWorker:
 
                     for ch in overdue_channels:
                         cid = ch["channel_id"]
-                        # Nếu kênh chưa có job đang chạy, tự động kích hoạt
-                        if not ch.get("pending_job"):
-                            logger.info(f"[ChannelIntelligence] Phát hiện kênh '{cid}' trễ deadline 2 ngày! Tự động sản xuất video cứu nguy...")
-                            trigger_auto_generation_for_overdue_channel(cid)
+                        try:
+                            # Nếu kênh chưa có job đang chạy, tự động kích hoạt
+                            if not ch.get("pending_job"):
+                                logger.info(f"[ChannelIntelligence] Phát hiện kênh '{cid}' trễ deadline 2 ngày! Tự động sản xuất video cứu nguy...")
+                                trigger_auto_generation_for_overdue_channel(cid)
+                        except Exception as e_ch:
+                            logger.error(f"[ChannelIntelligence] Lỗi tự động sản xuất cho kênh '{cid}': {e_ch}")
 
                 except Exception as ex:
                     logger.error(f"[ChannelIntelligence] Lỗi chu kỳ worker: {ex}")
