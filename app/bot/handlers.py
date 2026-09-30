@@ -2763,12 +2763,12 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         guide_kb = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("⚡ Node 1 (Pro+)", url=make_colab_node_url("pool1.studio@example.com", 1)),
-                InlineKeyboardButton("⚡ Node 2 (Song Song)", url=make_colab_node_url("pool1.studio@example.com", 2)),
-                InlineKeyboardButton("⚡ Node 3 (Song Song)", url=make_colab_node_url("pool1.studio@example.com", 3)),
+                InlineKeyboardButton("⚡ Node 2 (Song Song)", url=make_colab_node_url("pool2.studio@example.com", 2)),
+                InlineKeyboardButton("⚡ Node 3 (Song Song)", url=make_colab_node_url("pool3.studio@example.com", 3)),
             ],
-            [InlineKeyboardButton("🚀 Mở Acc 1: giangnguyenviet38 (20TB)", url=make_colab_account_url("pool1.studio@example.com"))],
-            [InlineKeyboardButton("🚀 Mở Acc 2: tonyabcd1234567890 (2TB)", url=make_colab_account_url("pool2.studio@example.com"))],
-            [InlineKeyboardButton("🚀 Mở Acc 3: maychuvv1n1 (2TB)", url=make_colab_account_url("pool3.studio@example.com"))],
+            [InlineKeyboardButton("🚀 Mở Acc 1: giangnguyenviet38 (20TB)", url=make_colab_account_url("pool1.studio@example.com", 1))],
+            [InlineKeyboardButton("🚀 Mở Acc 2: tonyabcd1234567890 (2TB)", url=make_colab_account_url("pool2.studio@example.com", 2))],
+            [InlineKeyboardButton("🚀 Mở Acc 3: maychuvv1n1 (2TB)", url=make_colab_account_url("pool3.studio@example.com", 3))],
             [InlineKeyboardButton("⬅️ Quay lại trạng thái Colab", callback_data="check_colab_status")]
         ])
         await safe_edit_text(query.message, guide_text, reply_markup=guide_kb)

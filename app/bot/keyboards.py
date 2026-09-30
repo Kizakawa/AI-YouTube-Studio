@@ -167,12 +167,21 @@ COLAB_NODES = {
 COLAB_NOTEBOOK_ID = COLAB_NODES[1]["id"]
 COLAB_DRIVE_URL = f"https://colab.research.google.com/drive/{COLAB_NOTEBOOK_ID}"
 
-def make_colab_node_url(email: str = "", node_num: int = 1) -> str:
-    """Tạo link sạch mở thẳng Colab Notebook (không gắn authuser để tương thích 100% mọi trình duyệt và tránh lỗi OAuth GapiError)"""
+def make_colab_node_url(email: str = "pool1.studio@example.com", node_num: int = 1) -> str:
+    """
+    Tạo link mở Google Colab với tài khoản Google chỉ định:
+    - Nếu đúng tài khoản: mở thẳng Colab.
+    - Nếu chưa đăng nhập hoặc đang ở tài khoản khác: Google hiển thị trang đăng nhập tài khoản này (điền sẵn email) rồi tự chuyển vào Colab.
+    - Tuyệt đối không dẫn ra Google Drive hay văng lỗi GapiError.
+    """
+    import urllib.parse
     node = COLAB_NODES.get(node_num, COLAB_NODES[1])
-    return f"https://colab.research.google.com/drive/{node['id']}"
+    target_email = email or "pool1.studio@example.com"
+    colab_raw = f"https://colab.research.google.com/drive/{node['id']}"
+    encoded = urllib.parse.quote(colab_raw, safe="")
+    return f"https://accounts.google.com/AccountChooser?Email={target_email}&continue={encoded}"
 
-def make_colab_account_url(email: str = "", node_num: int = 1) -> str:
+def make_colab_account_url(email: str = "pool1.studio@example.com", node_num: int = 1) -> str:
     """Tương thích ngược: tạo link mở Colab node chỉ định"""
     return make_colab_node_url(email, node_num)
 
@@ -181,7 +190,13 @@ COLAB_PRO_URL = make_colab_node_url("pool1.studio@example.com", 1)
 def get_script_review_keyboard(job_id: int) -> InlineKeyboardMarkup:
     """Bàn phím Bước 1: Khi kịch bản vừa tạo xong, tinh gọn, chuẩn SaaS cao cấp"""
     default_node = ((job_id - 1) % 3) + 1
-    primary_url = make_colab_node_url("pool1.studio@example.com", default_node)
+    node_accounts = {
+        1: "pool1.studio@example.com",
+        2: "pool2.studio@example.com",
+        3: "pool3.studio@example.com"
+    }
+    acc = node_accounts.get(default_node, "pool1.studio@example.com")
+    primary_url = make_colab_node_url(acc, default_node)
 
     keyboard = [
         [
@@ -205,7 +220,13 @@ def get_script_review_keyboard(job_id: int) -> InlineKeyboardMarkup:
 def get_colab_wait_keyboard(job_id: int) -> InlineKeyboardMarkup:
     """Bàn phím điều hướng khi kịch bản đã nằm trong hàng đợi Google Drive chờ Colab Pro+ chạy"""
     default_node = ((job_id - 1) % 3) + 1
-    primary_url = make_colab_node_url("pool1.studio@example.com", default_node)
+    node_accounts = {
+        1: "pool1.studio@example.com",
+        2: "pool2.studio@example.com",
+        3: "pool3.studio@example.com"
+    }
+    acc = node_accounts.get(default_node, "pool1.studio@example.com")
+    primary_url = make_colab_node_url(acc, default_node)
 
     keyboard = [
         [
@@ -225,8 +246,8 @@ def get_colab_wait_keyboard(job_id: int) -> InlineKeyboardMarkup:
 def get_colab_cluster_menu_keyboard(job_id: int) -> InlineKeyboardMarkup:
     """Menu chọn Node Colab chi tiết khi bấm '⚙️ Cụm Đa Node'"""
     node1_url = make_colab_node_url("pool1.studio@example.com", 1)
-    node2_url = make_colab_node_url("pool1.studio@example.com", 2)
-    node3_url = make_colab_node_url("pool1.studio@example.com", 3)
+    node2_url = make_colab_node_url("pool2.studio@example.com", 2)
+    node3_url = make_colab_node_url("pool3.studio@example.com", 3)
     keyboard = [
         [
             InlineKeyboardButton("⚡ Node 1 (Chính)", url=node1_url),

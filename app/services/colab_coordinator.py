@@ -116,10 +116,21 @@ class ColabCoordinator:
 
     @staticmethod
     def make_node_url(account: str = "", node_id: int = 1) -> str:
-        """Tạo link sạch mở thẳng Colab trực tiếp (tránh gán ?authuser= gây lỗi GapiError 401 khi tài khoản trình duyệt không khớp)"""
+        """
+        Tạo link mở Google Colab với tài khoản Google cụ thể:
+        - Sử dụng Google AccountChooser với tham số Email và continue.
+        - Nếu trình duyệt đã đăng nhập đúng tài khoản: Mở thẳng Colab của tài khoản đó.
+        - Nếu chưa đăng nhập hoặc đang dùng tài khoản khác: Google hiển thị màn hình yêu cầu đăng nhập đúng tài khoản này (điền sẵn email), sau đó tự động chuyển hướng vào Colab.
+        - Tuyệt đối không dẫn ra Google Drive hay báo lỗi OAuth GapiError.
+        """
         node_cfg = DEFAULT_CLUSTER_NODES.get(node_id, DEFAULT_CLUSTER_NODES[1])
         nb_id = node_cfg["notebook_id"]
-        return f"https://colab.research.google.com/drive/{nb_id}"
+        raw_colab_url = f"https://colab.research.google.com/drive/{nb_id}"
+        if account:
+            import urllib.parse
+            encoded_continue = urllib.parse.quote(raw_colab_url, safe="")
+            return f"https://accounts.google.com/AccountChooser?Email={account}&continue={encoded_continue}"
+        return raw_colab_url
 
     def read_state_from_drive(self) -> Dict[str, Any]:
         """Tải file cluster_state.json từ Google Drive (hoặc đọc local cache nếu chưa có)"""
