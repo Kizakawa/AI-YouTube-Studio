@@ -124,6 +124,135 @@ def run_fastapi_server():
     except Exception as e:
         print(f"❌ [Web Dashboard] Lỗi khi chạy web server: {e}")
 
+async def check_drive_and_notify(bot_instance=None):
+    """Quét thư mục Google Drive (/AI_YouTube_RenderFarm/completed/) và tự động tải video gửi về Telegram"""
+    from app.services.colab_queue_service import check_and_import_completed_video
+    from app.database.models import get_db, VideoJob, ActivityLog, log_activity
+    from app.bot.keyboards import get_video_post_render_keyboard
+    from app.agents.drive_agent import DriveAgent
+    from telegram import Bot
+    from config.settings import settings
+    import re
+
+    bot = bot_instance
+    if bot is None:
+        if not settings.TELEGRAM_BOT_TOKEN:
+            return
+        bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
+
+    try:
+        da = DriveAgent()
+        completed_files = da.list_completed_videos()
+        candidate_job_ids = set()
+        for cf in completed_files:
+            name = cf.get("name", "")
+            m = re.search(r'video_(\d+)\.mp4', name)
+            if m:
+                candidate_job_ids.add(int(m.group(1)))
+
+        with get_db() as db:
+            waiting = db.query(VideoJob.id).filter(
+                VideoJob.status.in_(["PENDING_COLAB", "SCRIPT_READY", "RENDERING"])
+            ).all()
+            for (wid,) in waiting:
+                candidate_job_ids.add(wid)
+
+        if not candidate_job_ids:
+            return
+
+        with get_db() as db:
+            already_notified = set()
+            logs = db.query(ActivityLog.action_type).filter(
+                ActivityLog.action_type.like("TELEGRAM_NOTIFIED_VIDEO_%")
+            ).all()
+            for (act,) in logs:
+                try:
+                    already_notified.add(int(act.split("_")[-1]))
+                except Exception:
+                    pass
+
+        for jid in sorted(list(candidate_job_ids)):
+            if jid in already_notified:
+                continue
+
+            ok, local_p, d_link = check_and_import_completed_video(jid)
+            if not ok:
+                continue
+
+            logger.info(f"🎉 [Drive Watcher] Đã tự động đồng bộ Video #{jid} từ Google Drive: {local_p}")
+
+            with get_db() as db:
+                jb = db.query(VideoJob).filter(VideoJob.id == jid).first()
+                title = jb.title or jb.topic if jb else f"Video #{jid}"
+                uid = jb.user_id if jb else 0
+                ch_id = jb.target_channel_id if jb else None
+
+            target_chats = set()
+            if uid and uid != 0:
+                target_chats.add(uid)
+            for gid in settings.get_allowed_group_ids():
+                target_chats.add(gid)
+            if not target_chats:
+                for u in settings.get_allowed_users().keys():
+                    target_chats.add(u)
+
+            post_markup = get_video_post_render_keyboard(jid)
+            size_mb = os.path.getsize(local_p) / (1024 * 1024) if (local_p and os.path.exists(local_p)) else 0
+            drive_html = f'<a href="{d_link}">Mở file gốc trên Google Drive</a>' if d_link else "Đã lưu an toàn"
+            cap = (
+                f"🎉 <b>VIDEO #{jid} ĐÃ RENDER HOÀN TẤT & ĐÃ GỬI VỀ NHÓM!</b>\n\n"
+                f"📌 <b>Tiêu đề:</b> {title}\n"
+                f"📦 <b>Dung lượng:</b> {size_mb:.1f} MB\n"
+                f"⚡ <b>Công nghệ:</b> GPU NVENC 1080p Siêu Nét (1080x1920 30fps)\n"
+                f"☁️ <b>Google Drive:</b> {drive_html}\n\n"
+                f"👉 Cả nhóm hãy xem video! Bấm <b>Đăng Ngay</b> hoặc <b>Góp Ý Sửa Lại</b> bên dưới:"
+            )
+
+            any_sent = False
+            for t_chat in target_chats:
+                sent = False
+                if size_mb <= 49.0 and local_p and os.path.exists(local_p):
+                    try:
+                        with open(local_p, "rb") as vf:
+                            await bot.send_video(
+                                chat_id=t_chat,
+                                video=vf,
+                                caption=cap,
+                                parse_mode="HTML",
+                                reply_markup=post_markup,
+                                supports_streaming=True,
+                                read_timeout=120,
+                                write_timeout=120
+                            )
+                        sent = True
+                        any_sent = True
+                        logger.info(f"✅ Đã tự động gửi video #{jid} đến Telegram chat {t_chat}")
+                    except Exception as ex_v:
+                        logger.warning(f"Lỗi gửi video #{jid} qua Telegram chat {t_chat}: {ex_v}")
+
+                if not sent:
+                    try:
+                        await bot.send_message(
+                            chat_id=t_chat,
+                            text=cap,
+                            parse_mode="HTML",
+                            disable_web_page_preview=False,
+                            reply_markup=post_markup
+                        )
+                        logger.info(f"✅ Đã gửi thông báo text #{jid} đến Telegram chat {t_chat}")
+                        any_sent = True
+                    except Exception as ex_m:
+                        logger.warning(f"Lỗi gửi thông báo #{jid} qua Telegram chat {t_chat}: {ex_m}")
+
+            if any_sent:
+                with get_db() as db:
+                    log_activity(db, uid, "System", f"TELEGRAM_NOTIFIED_VIDEO_{jid}",
+                                 f"Đã gửi video #{jid} thành công đến các kênh Telegram",
+                                 channel_id=ch_id)
+                    db.commit()
+    except Exception as e_w:
+        logger.error(f"[Drive Watcher error]: {e_w}", exc_info=True)
+
 def main():
     print("=" * 70)
     print("🚀 KHỞI ĐỘNG HỆ THỐNG AI YOUTUBE STUDIO: TELEGRAM BOT & WEB DASHBOARD")
@@ -158,13 +287,37 @@ def main():
         or os.getenv("ENABLE_TELEGRAM_POLLING", "1").lower() in ("0", "false", "no")
     )
     if disable_polling:
-        print("[4/4] 🌐 [CHẾ ĐỘ WEB & API] Khởi động Web Dashboard & Dịch vụ ngầm, KHÔNG chiếm quyền Telegram Polling!")
+        print("[4/4] 🌐 [CHẾ ĐỘ WEB & DRIVE WATCHER] Khởi động Web Dashboard & Quét Drive ngầm (Không chiếm Polling)!")
         net = get_network_info()
         print(f"👉 Trên máy tính này: {net['local_url']}")
         if net['is_lan_available']:
             print(f"👉 Trên điện thoại / máy khác (cùng Wi-Fi): {net['wifi_url']}")
-        print("🔒 Tránh hoàn toàn xung đột 409 Conflict với Render/máy chủ khác đang chạy bot.")
+        print("🔒 Không chiếm quyền getUpdates (tránh 409 Conflict). Vẫn tự động quét Drive & bắn video về Telegram!")
         print("=" * 70)
+
+        # Khởi động Drive Watcher ngầm ngay cả khi không polling
+        def _standalone_drive_loop():
+            import asyncio
+            async def _run():
+                from telegram import Bot
+                bot = Bot(token=settings.TELEGRAM_BOT_TOKEN) if settings.TELEGRAM_BOT_TOKEN else None
+                while True:
+                    try:
+                        if bot:
+                            await check_drive_and_notify(bot)
+                    except Exception as ex:
+                        logger.debug(f"[Standalone Drive Watcher] {ex}")
+                    await asyncio.sleep(15)
+            asyncio.run(_run())
+        threading.Thread(target=_standalone_drive_loop, daemon=True).start()
+
+        # Khởi động ChannelIntelligenceWorker ngầm
+        try:
+            from app.services.channel_intelligence import ChannelIntelligenceWorker
+            ChannelIntelligenceWorker.start(check_interval_minutes=15)
+        except Exception as ex_ci:
+            logger.debug(f"ChannelIntelligenceWorker: {ex_ci}")
+
         try:
             web_thread.join()
         except KeyboardInterrupt:
@@ -229,129 +382,7 @@ def main():
 
     # Khởi động tác vụ ngầm tự động theo dõi video Colab hoàn thành trên Google Drive & gửi ting ting về Telegram
     async def _auto_check_drive_completed(context):
-        from app.services.colab_queue_service import check_and_import_completed_video
-        from app.database.models import get_db, VideoJob, ActivityLog, log_activity
-        from app.bot.keyboards import get_video_post_render_keyboard
-        from app.agents.drive_agent import DriveAgent
-        import re
-
-        try:
-            # 1. Quét toàn bộ video hoàn thiện trên Drive
-            da = DriveAgent()
-            completed_files = da.list_completed_videos()
-            candidate_job_ids = set()
-            for cf in completed_files:
-                name = cf.get("name", "")
-                m = re.search(r'video_(\d+)\.mp4', name)
-                if m:
-                    candidate_job_ids.add(int(m.group(1)))
-
-            # 2. Bổ sung các jobs đang chờ trong DB
-            with get_db() as db:
-                waiting = db.query(VideoJob.id).filter(
-                    VideoJob.status.in_(["PENDING_COLAB", "SCRIPT_READY", "RENDERING"])
-                ).all()
-                for (wid,) in waiting:
-                    candidate_job_ids.add(wid)
-
-            if not candidate_job_ids:
-                return
-
-            # 3. Lọc danh sách đã thông báo Telegram để không bị gửi trùng lặp
-            with get_db() as db:
-                already_notified = set()
-                logs = db.query(ActivityLog.action_type).filter(
-                    ActivityLog.action_type.like("TELEGRAM_NOTIFIED_VIDEO_%")
-                ).all()
-                for (act,) in logs:
-                    try:
-                        already_notified.add(int(act.split("_")[-1]))
-                    except Exception:
-                        pass
-
-            for jid in sorted(list(candidate_job_ids)):
-                if jid in already_notified:
-                    continue
-
-                ok, local_p, d_link = check_and_import_completed_video(jid)
-                if not ok:
-                    continue
-
-                logger.info(f"🎉 [Drive Watcher] Đã tự động đồng bộ Video #{jid} từ Google Drive: {local_p}")
-                from config.settings import settings
-
-                with get_db() as db:
-                    jb = db.query(VideoJob).filter(VideoJob.id == jid).first()
-                    title = jb.title or jb.topic if jb else f"Video #{jid}"
-                    uid = jb.user_id if jb else 0
-                    ch_id = jb.target_channel_id if jb else None
-
-                # Thu thập toàn bộ đích cần gửi: ID người tạo VÀ Nhóm làm việc Telegram
-                target_chats = set()
-                if uid and uid != 0:
-                    target_chats.add(uid)
-                for gid in settings.get_allowed_group_ids():
-                    target_chats.add(gid)
-                if not target_chats:
-                    for u in settings.get_allowed_users().keys():
-                        target_chats.add(u)
-
-                post_markup = get_video_post_render_keyboard(jid)
-                size_mb = os.path.getsize(local_p) / (1024 * 1024) if (local_p and os.path.exists(local_p)) else 0
-                drive_html = f'<a href="{d_link}">Mở file gốc trên Google Drive</a>' if d_link else "Đã lưu an toàn"
-                cap = (
-                    f"🎉 <b>VIDEO #{jid} ĐÃ RENDER HOÀN TẤT & ĐÃ GỬI VỀ NHÓM!</b>\n\n"
-                    f"📌 <b>Tiêu đề:</b> {title}\n"
-                    f"📦 <b>Dung lượng:</b> {size_mb:.1f} MB\n"
-                    f"⚡ <b>Công nghệ:</b> GPU NVENC P2 Tăng Tốc (1080x1920 30fps)\n"
-                    f"☁️ <b>Google Drive:</b> {drive_html}\n\n"
-                    f"👉 Cả nhóm hãy xem video! Bấm <b>Đăng Ngay</b> hoặc <b>Góp Ý Sửa Lại</b> bên dưới:"
-                )
-
-                any_sent = False
-                for t_chat in target_chats:
-                    sent = False
-                    if size_mb <= 49.0 and local_p and os.path.exists(local_p):
-                        try:
-                            with open(local_p, "rb") as vf:
-                                await context.bot.send_video(
-                                    chat_id=t_chat,
-                                    video=vf,
-                                    caption=cap,
-                                    parse_mode="HTML",
-                                    reply_markup=post_markup,
-                                    supports_streaming=True,
-                                    read_timeout=120,
-                                    write_timeout=120
-                                )
-                            sent = True
-                            any_sent = True
-                            logger.info(f"✅ Đã tự động gửi video #{jid} đến Telegram chat {t_chat}")
-                        except Exception as ex_v:
-                            logger.warning(f"Lỗi gửi video #{jid} qua Telegram chat {t_chat}: {ex_v}")
-
-                    if not sent:
-                        try:
-                            await context.bot.send_message(
-                                chat_id=t_chat,
-                                text=cap,
-                                parse_mode="HTML",
-                                disable_web_page_preview=False,
-                                reply_markup=post_markup
-                            )
-                            logger.info(f"✅ Đã gửi thông báo text #{jid} đến Telegram chat {t_chat}")
-                            any_sent = True
-                        except Exception as ex_m:
-                            logger.warning(f"Lỗi gửi thông báo #{jid} qua Telegram chat {t_chat}: {ex_m}")
-
-                if any_sent:
-                    with get_db() as db:
-                        log_activity(db, uid, "System", f"TELEGRAM_NOTIFIED_VIDEO_{jid}",
-                                     f"Đã gửi video #{jid} thành công đến các kênh Telegram",
-                                     channel_id=ch_id)
-                        db.commit()
-        except Exception as e_w:
-            logger.error(f"[Drive Watcher error]: {e_w}", exc_info=True)
+        await check_drive_and_notify(context.bot)
 
     async def _auto_sync_scheduler(context):
         try:

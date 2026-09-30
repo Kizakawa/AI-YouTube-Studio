@@ -28,3 +28,5 @@ services:
         value: en
       - key: DEFAULT_TTS_VOICE
         value: en-US-ChristopherNeural
+      - key: WEB_ONLY
+        value: "1"

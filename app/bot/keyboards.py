@@ -168,11 +168,11 @@ COLAB_NOTEBOOK_ID = COLAB_NODES[1]["id"]
 COLAB_DRIVE_URL = f"https://colab.research.google.com/drive/{COLAB_NOTEBOOK_ID}"
 
 def make_colab_node_url(email: str = "pool1.studio@example.com", node_num: int = 1) -> str:
-    """Tạo link Google AccountChooser trỏ tới Node Colab cụ thể để chạy đa luồng không xung đột"""
+    """Tạo link mở thẳng Colab Notebook trực tiếp theo tài khoản chỉ định"""
     node = COLAB_NODES.get(node_num, COLAB_NODES[1])
-    target = f"https://colab.research.google.com/drive/{node['id']}?authuser={email}"
-    enc = urllib.parse.quote(target, safe="")
-    return f"https://accounts.google.com/AccountChooser?Email={email}&continue={enc}"
+    if email:
+        return f"https://colab.research.google.com/drive/{node['id']}?authuser={email}"
+    return f"https://colab.research.google.com/drive/{node['id']}"
 
 def make_colab_account_url(email: str, node_num: int = 1) -> str:
     """Tương thích ngược: tạo link mở Colab kèm email và node chỉ định"""
@@ -187,7 +187,7 @@ def get_script_review_keyboard(job_id: int) -> InlineKeyboardMarkup:
 
     keyboard = [
         [
-            InlineKeyboardButton("🎬 DUYỆT & DỰNG VIDEO NGAY (GPU Pro+)", callback_data=f"render_video:{job_id}"),
+            InlineKeyboardButton("🎬 DUYỆT & ĐẨY LÊN COLAB GPU", callback_data=f"render_video:{job_id}"),
         ],
         [
             InlineKeyboardButton("✍️ Góp Ý Sửa", callback_data=f"edit_script:{job_id}"),
@@ -211,10 +211,10 @@ def get_colab_wait_keyboard(job_id: int) -> InlineKeyboardMarkup:
 
     keyboard = [
         [
-            InlineKeyboardButton("🔄 Quét Kết Quả Từ Drive Ngay", callback_data=f"check_drive_render:{job_id}"),
+            InlineKeyboardButton(f"⚡ MỞ COLAB NODE {default_node} (BẤM VÀO ĐỂ CHẠY)", url=primary_url),
         ],
         [
-            InlineKeyboardButton(f"⚡ Mở Colab Node {default_node}", url=primary_url),
+            InlineKeyboardButton("🔄 Quét Kết Quả Từ Drive Ngay", callback_data=f"check_drive_render:{job_id}"),
             InlineKeyboardButton("⚙️ Cụm Đa Node", callback_data=f"colab_cluster_menu:{job_id}"),
         ],
         [

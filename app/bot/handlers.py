@@ -2239,12 +2239,17 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         colab_markup = get_colab_wait_keyboard(job_id)
         default_node = ((job_id - 1) % 3) + 1
+        from app.bot.keyboards import make_colab_node_url
+        colab_url = make_colab_node_url("pool1.studio@example.com", default_node)
         text = (
-            f"🚀 <b>ĐÃ ĐỒNG BỘ KỊCH BẢN VIDEO #{job_id} VÀO GOOGLE DRIVE!</b>\n\n"
+            f"🚀 <b>ĐÃ ĐẨY KỊCH BẢN VIDEO #{job_id} VÀO GOOGLE DRIVE!</b>\n\n"
             f"🎬 <b>Tiêu đề:</b> <i>{j_title}</i>\n"
-            f"⚡ <b>Công nghệ:</b> GPU NVENC P2 Tăng Tốc (1080x1920 30fps)\n"
-            f"☁️ <b>Trạng thái:</b> Đã sẵn sàng trên Google Drive, Colab Pro+ đang nhận việc ngầm...\n\n"
-            f"💡 Video hoàn thành sẽ tự động gửi thẳng vào nhóm cho bạn!"
+            f"⚡ <b>Công nghệ:</b> GPU NVENC 1080p Siêu Tốc (20-30s/video)\n\n"
+            f"👉 <b>BƯỚC TIẾP THEO ĐỂ TẠO VIDEO:</b>\n"
+            f"1️⃣ Bấm vào link dưới đây để mở Colab:\n"
+            f"🔗 <b><a href=\"{colab_url}\">MỞ GOOGLE COLAB ĐỂ CHẠY (Tài khoản: pool1.studio@example.com)</a></b>\n\n"
+            f"2️⃣ Trên giao diện Colab, vào menu <b>Runtime (Thời gian chạy) ➡️ Run all (Chạy tất cả)</b>.\n\n"
+            f"3️⃣ Sau khi Colab chạy xong (~25s), <b>Bot Telegram sẽ TỰ ĐỘNG quét Google Drive và gửi ngay video hoàn chỉnh về đây cho bạn!</b>"
         )
         await safe_reply(update, text, reply_markup=colab_markup, parse_mode="HTML")
 

@@ -1091,9 +1091,11 @@ def trigger_auto_generation_for_overdue_channel(
                 f"⏱️ **Hạn chót duyệt:** `{deadl.strftime('%H:%M %d/%m/2026')}` (còn ~{grace_str} tiếng)\n\n"
                 f"👉 Bấm nút bên dưới để mở Colab GPU render nhanh 20s hoặc duyệt nội dung:"
             )
+            from app.bot.keyboards import make_colab_node_url
+            colab_url = make_colab_node_url("pool1.studio@example.com", 1)
             inline_kb = [
                 [
-                    {"text": f"⚡ Mở Colab Render (#{jid})", "callback_data": f"colab_rotation_guide"},
+                    {"text": f"⚡ Mở Colab Render (#{jid})", "url": colab_url},
                     {"text": f"📥 Quét Video Từ Drive (#{jid})", "callback_data": f"check_drive_render:{jid}"}
                 ],
                 [
