@@ -655,8 +655,13 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON DUY NHẤT (không bọc tron
             topic = params.get("topic") or raw_query
             notes = params.get("director_notes")
             target_ch = params.get("channel_id")
-            if target_ch and context and context.user_data is not None:
-                context.user_data["target_channel_id"] = target_ch
+
+            # Tự động định tuyến kênh chính xác theo chủ đề nếu người dùng chưa chỉ định kênh
+            from app.bot.handlers import detect_best_channel_for_topic
+            resolved_ch, _ = detect_best_channel_for_topic(topic, target_ch)
+            if resolved_ch and context and context.user_data is not None:
+                context.user_data["target_channel_id"] = resolved_ch
+
             if notes:
                 topic = f"{topic} | {notes}"
 

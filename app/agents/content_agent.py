@@ -171,7 +171,94 @@ class ContentAgent:
         # Tự động bù đắp các trường bắt buộc của ScriptContract nếu LLM vô tình bỏ sót
         scenes = raw_data.get("scenes", [])
 
-        # ── BẮT BUỘC ĐẢM BẢO PHÂN CẢNH CUỐI CÓ CÂU KÊU GỌI ĐĂNG KÝ KÊNH (SPOKEN CTA ENFORCEMENT) ──
+        # ── 1. ENTITY & CONTEXT CONSISTENCY SANITIZER (CHỐNG LỆCH HÌNH ẢNH & HALLUCINATION) ──
+        # Ngăn chặn triệt để hiện tượng hình ảnh không liên quan đến nội dung
+        # (Ví dụ: Chủ đề chim nuôi con lại sinh ra mắt người 'human eye', chuỗi xoắn ADN 'dna helix', hoặc văn phòng)
+        all_narr_context = " ".join([
+            str(raw_data.get("topic", "")),
+            str(raw_data.get("title", "")),
+            " ".join(s.get("narration", "") for s in scenes if isinstance(s, dict))
+        ]).lower()
+
+        is_bird_topic = any(w in all_narr_context for w in [
+            "chim", "bird", "nest", "tổ chim", "chick", "đại bàng", "eagle", "hawk", "owl", "cú", "chim non"
+        ])
+        is_wildlife = is_bird_topic or any(w in all_narr_context for w in [
+            "săn mồi", "predator", "hổ", "tiger", "sư tử", "lion", "báo", "cheetah", "leopard",
+            "sói", "wolf", "gấu", "bear", "cá sấu", "crocodile", "rắn", "snake", "voi", "elephant",
+            "kiếm ăn", "nuôi con", "nuôi các con", "mãnh thú", "wildlife", "safari", "rừng", "jungle",
+            "chó", "mèo", "pet", "rescue", "thú hoang", "cá heo", "dolphin", "cá voi", "whale", "animal"
+        ])
+        is_ocean = any(w in all_narr_context for w in [
+            "biển sâu", "đại dương", "ocean", "abyss", "trench", "mariana", "thalassophobia", "hải cẩu", "shark", "cá mập", "deep sea"
+        ])
+        is_space = any(w in all_narr_context for w in [
+            "vũ trụ", "space", "hố đen", "black hole", "sao hỏa", "mars", "galaxy", "thiên hà", "nasa", "alien"
+        ])
+
+        banned_abstract = ["psychology", "minimalism", "authority", "power", "wealth", "mindset", "discipline", "history", "secret", "truth"]
+
+        for sc in scenes:
+            if not isinstance(sc, dict):
+                continue
+            sq = sc.get("stock_query", "").strip()
+            vp = sc.get("visual_prompt", "").strip()
+            vk = sc.get("visual_keyword", "").strip()
+            combined_scene_visual = f"{sq} {vp} {vk}".lower()
+
+            # Nếu là chủ đề Động vật hoang dã / Chim muông: CẤM TUYỆT ĐỐI các khái niệm con người, phòng lab, ADN, văn phòng
+            if is_wildlife:
+                has_human_eye = any(k in combined_scene_visual for k in ["human eye", "human iris", "dilated pupil", "human pupil", "unblinking dilated", "eye dilating"])
+                has_dna_lab = any(k in combined_scene_visual for k in ["dna helix", "double helix", "dna double", "dna rotating", "laboratory", "test tube", "dna "])
+                has_human_office = any(k in combined_scene_visual for k in ["businessman", "person in suit", "man wearing suit", "office room", "interrogation room", "femme fatale", "skyscraper"])
+
+                if is_bird_topic:
+                    if has_human_eye:
+                        sc["stock_query"] = "bird eye close up"
+                        sc["visual_keyword"] = "bird eye macro"
+                        sc["visual_prompt"] = "Extreme macro close-up of a wild mother bird eye focusing intensely in natural daylight, crisp feather detail, soft blurred forest background, 8k cinematic"
+                        sc["media_type"] = "video"
+                    elif has_dna_lab:
+                        sc["stock_query"] = "baby birds in nest"
+                        sc["visual_keyword"] = "baby birds feeding"
+                        sc["visual_prompt"] = "Hungry baby birds opening beaks wide inside a tree nest awaiting mother bird, warm golden sunlight, National Geographic style documentary, 8k"
+                        sc["media_type"] = "video"
+                    elif has_human_office:
+                        sc["stock_query"] = "mother bird flying forest"
+                        sc["visual_keyword"] = "bird flying canopy"
+                        sc["visual_prompt"] = "Mother bird in dynamic mid-flight carrying an insect in beak through dense sunlit forest canopy, wings fully spread, high shutter speed, 8k documentary"
+                        sc["media_type"] = "video"
+                else:
+                    if has_human_eye:
+                        sc["stock_query"] = "wild animal eyes close up"
+                        sc["visual_keyword"] = "predator eyes macro"
+                        sc["visual_prompt"] = "Extreme macro close-up of a wild predator intense eyes focusing in the forest shadows, vivid biological texture, 8k"
+                    elif has_dna_lab:
+                        sc["stock_query"] = "wild animals in nature"
+                        sc["visual_keyword"] = "wildlife habitat"
+                        sc["visual_prompt"] = "Wild animals moving through natural lush green wilderness, warm natural golden hour lighting, 8k documentary"
+                    elif has_human_office:
+                        sc["stock_query"] = "wild animal running nature"
+                        sc["visual_keyword"] = "wildlife motion"
+                        sc["visual_prompt"] = "Wild animal in dynamic motion across the wild terrain, natural sunlight, National Geographic 8k"
+
+            # Nếu là chủ đề Biển sâu: khử các yếu tố văn phòng, đường phố
+            elif is_ocean:
+                if any(k in combined_scene_visual for k in ["office", "businessman", "suit", "interrogation", "laptop"]):
+                    sc["stock_query"] = "deep sea glowing creature"
+                    sc["visual_keyword"] = "bioluminescent abyss"
+                    sc["visual_prompt"] = "Bioluminescent mysterious deep sea creature glowing in pitch black abyss ocean, submarine headlight beam, 8k underwater documentary"
+
+            # Khử các từ trừu tượng cấm kỵ khỏi stock_query của Pexels
+            clean_sq = sc.get("stock_query", "")
+            for b in banned_abstract:
+                clean_sq = re.sub(rf'\b{b}\b', '', clean_sq, flags=re.IGNORECASE).strip()
+            clean_sq = re.sub(r'\s+', ' ', clean_sq).strip()
+            if not clean_sq:
+                clean_sq = "wild nature documentary" if is_wildlife else ("ocean underwater abyss" if is_ocean else "cinematic documentary")
+            sc["stock_query"] = clean_sq
+
+        # ── 2. BẮT BUỘC ĐẢM BẢO PHÂN CẢNH CUỐI CÓ CÂU KÊU GỌI ĐĂNG KÝ KÊNH (SPOKEN CTA ENFORCEMENT) ──
         if scenes and isinstance(scenes, list):
             last_scene = scenes[-1]
             if isinstance(last_scene, dict):
@@ -198,6 +285,8 @@ class ContentAgent:
 
         # Cập nhật lại full_narration để đồng bộ 100% với các scene
         raw_data["full_narration"] = " ".join(s.get("narration", "") for s in scenes if isinstance(s, dict))
+        if "hook" not in raw_data or not raw_data["hook"]:
+            raw_data["hook"] = scenes[0].get("narration", "") if scenes and isinstance(scenes[0], dict) else raw_data.get("title", "")
         if "tags" not in raw_data or not raw_data["tags"]:
             raw_data["tags"] = ["shorts", "viral"]
         elif isinstance(raw_data["tags"], str):
@@ -208,6 +297,7 @@ class ContentAgent:
             raw_data["topic"] = raw_data.get("title", "Shorts Video")
 
         return ScriptContract(**raw_data)
+
 
     def generate_script(
         self,

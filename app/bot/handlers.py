@@ -783,12 +783,18 @@ def detect_best_channel_for_topic(topic: str, current_channel_id: Optional[str] 
         "lợi dụng", "using you", "bạn bè toxic", "toxic", "cảm xúc", "lo âu", "anxiety",
         "48 laws of power", "quy luật quyền lực", "tính cách", "personality", "mbti"
     ]
+
+    history_keywords = [
+        "what if", "nếu như", "lịch sử", "history", "chiến tranh", "war", "thế chiến", "ww2", "ww1",
+        "hitler", "napoleon", "caesar", "rome", "liên xô", "soviet", "đế chế", "quân đội", "giả định"
+    ]
     
     scores = {
         "ch_wild_odyssey": sum(1 for kw in wildlife_keywords if kw in t),
         "ch_paws_hearts_rescue": sum(1 for kw in rescue_keywords if kw in t),
         "ucsrjiil67qxidtxt70z-iwa": sum(1 for kw in mystery_keywords if kw in t),
         "channel_maya": sum(1 for kw in psychology_keywords if kw in t),
+        "@alternatehistorywhatif-e2x": sum(1 for kw in history_keywords if kw in t),
     }
     
     best_candidate, best_score = max(scores.items(), key=lambda x: x[1])
@@ -800,9 +806,10 @@ def detect_best_channel_for_topic(topic: str, current_channel_id: Optional[str] 
                 "ch_wild_odyssey": "Wild Odyssey (Động vật hoang dã)",
                 "ch_paws_hearts_rescue": "Paws & Hearts Rescue (Cứu hộ thú cưng)",
                 "ucsrjiil67qxidtxt70z-iwa": "The mysteries of the world (Bí ẩn vũ trụ & đại dương)",
-                "channel_maya": "Psychology of the world (Tâm lý học)"
+                "channel_maya": "Psychology of the world (Tâm lý học)",
+                "@alternatehistorywhatif-e2x": "Alternate History (Lịch sử giả định / What If)"
             }
-            reason = f"Phát hiện chủ đề phù hợp với kênh {ch_names.get(best_candidate)} -> Tự động chuyển kênh mục tiêu!"
+            reason = f"Phát hiện chủ đề phù hợp với kênh {ch_names.get(best_candidate, best_candidate)} -> Tự động chuyển kênh mục tiêu!"
             return best_candidate, reason
 
     return current_channel_id or "channel_maya", None

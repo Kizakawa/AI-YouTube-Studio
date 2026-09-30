@@ -987,6 +987,14 @@ def trigger_auto_generation_for_overdue_channel(
     6. Gửi cảnh báo thúc giục người dùng kiểm tra trên Telegram và Web Dashboard!
     """
     kpi = calculate_channel_kpi(channel_id)
+    if not force and not getattr(settings, "ENABLE_OVERDUE_AUTO_PRODUCTION", False):
+        logger.info(f"[AutoGeneration] Kênh '{channel_id}' trễ hạn nhưng ENABLE_OVERDUE_AUTO_PRODUCTION đang tắt (False). Không tự ý sinh video.")
+        return {
+            "success": False,
+            "message": f"Tính năng tự động sản xuất video quá hạn đang tắt (ENABLE_OVERDUE_AUTO_PRODUCTION=false). Hãy chủ động gõ lệnh tạo video.",
+            "kpi": kpi
+        }
+
     if not kpi["is_overdue_2_days"] and not force:
         return {
             "success": False,
@@ -1124,8 +1132,11 @@ def process_fallback_publishing() -> List[Dict[str, Any]]:
     - Đang ở trạng thái AWAITING_APPROVAL.
     - Đã vượt quá thời hạn chờ duyệt (approval_deadline <= now).
     - Người dùng bận không xác nhận.
-    => Tự động lên lịch hoặc đăng tạm lên YouTube để duy trì nhịp tương tác thuật toán!
+    => Tự động lên lịch hoặc đăng tạm lên YouTube để duy trì nhịp tương tác thuật toán (nếu ENABLE_FALLBACK_AUTO_PUBLISH=true)!
     """
+    if not getattr(settings, "ENABLE_FALLBACK_AUTO_PUBLISH", False):
+        return []
+
     now_utc = datetime.utcnow()
     published_jobs = []
 
@@ -1211,22 +1222,27 @@ class ChannelIntelligenceWorker:
             logger.info(f"🚀 [ChannelIntelligence] Background Worker đã khởi động (chu kỳ kiểm tra: {check_interval_minutes} phút)!")
             while cls._running:
                 try:
-                    # 1. Xử lý đăng tạm cho các video hết hạn duyệt
-                    process_fallback_publishing()
+                    # 1. Xử lý đăng tạm cho các video hết hạn duyệt (nếu người dùng bật)
+                    if getattr(settings, "ENABLE_FALLBACK_AUTO_PUBLISH", False):
+                        process_fallback_publishing()
 
                     # 2. Quét KPI toàn mạng lưới kênh
                     audit = run_network_kpi_audit()
                     overdue_channels = [c for c in audit.get("channels", []) if c.get("kpi_status") == "OVERDUE_CRITICAL"]
 
-                    for ch in overdue_channels:
-                        cid = ch["channel_id"]
-                        try:
-                            # Nếu kênh chưa có job đang chạy, tự động kích hoạt
-                            if not ch.get("pending_job"):
-                                logger.info(f"[ChannelIntelligence] Phát hiện kênh '{cid}' trễ deadline 2 ngày! Tự động sản xuất video cứu nguy...")
-                                trigger_auto_generation_for_overdue_channel(cid)
-                        except Exception as e_ch:
-                            logger.error(f"[ChannelIntelligence] Lỗi tự động sản xuất cho kênh '{cid}': {e_ch}")
+                    if getattr(settings, "ENABLE_OVERDUE_AUTO_PRODUCTION", False):
+                        for ch in overdue_channels:
+                            cid = ch["channel_id"]
+                            try:
+                                # Nếu kênh chưa có job đang chạy, tự động kích hoạt
+                                if not ch.get("pending_job"):
+                                    logger.info(f"[ChannelIntelligence] Phát hiện kênh '{cid}' trễ deadline 2 ngày! Tự động sản xuất video cứu nguy...")
+                                    trigger_auto_generation_for_overdue_channel(cid)
+                            except Exception as e_ch:
+                                logger.error(f"[ChannelIntelligence] Lỗi tự động sản xuất cho kênh '{cid}': {e_ch}")
+                    else:
+                        if overdue_channels:
+                            logger.info(f"[ChannelIntelligence] Có {len(overdue_channels)} kênh trễ hạn nhưng ENABLE_OVERDUE_AUTO_PRODUCTION đang tắt (False). Không tự sinh video.")
 
                 except Exception as ex:
                     logger.error(f"[ChannelIntelligence] Lỗi chu kỳ worker: {ex}")

@@ -46,6 +46,10 @@ class Settings:
     ENABLE_DEVICE_GATEKEEPER: bool = os.getenv("ENABLE_DEVICE_GATEKEEPER", "true").lower() in ("true", "1", "yes")
     AGENT_API_KEY: str = os.getenv("AGENT_API_KEY", "agy_agent_supersecret_key_2026")
     
+    # Tự động hóa sản xuất & đăng bài (Mặc định FALSE để tránh bot tự ý sinh video linh tinh)
+    ENABLE_OVERDUE_AUTO_PRODUCTION: bool = os.getenv("ENABLE_OVERDUE_AUTO_PRODUCTION", "false").lower() in ("true", "1", "yes")
+    ENABLE_FALLBACK_AUTO_PUBLISH: bool = os.getenv("ENABLE_FALLBACK_AUTO_PUBLISH", "false").lower() in ("true", "1", "yes")
+    
     # Storage Paths
     DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/storage/ai_youtube.db")
     TEMP_DIR: Path = BASE_DIR / "storage" / "temp"
