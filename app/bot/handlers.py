@@ -2226,19 +2226,24 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
             j_title = j.title or j.topic if j else f"Video #{job_id}"
 
+        from app.services.colab_coordinator import colab_coordinator
+        coord_state = colab_coordinator.sync_cluster_state()
+        action_req = coord_state.get("action_required", {})
+        active_node = coord_state.get("active_node", 1)
+        active_account = coord_state.get("active_account", "pool1.studio@example.com")
+        colab_url = action_req.get("direct_colab_url") or colab_coordinator.make_node_url(active_account, active_node)
+
         colab_markup = get_colab_wait_keyboard(job_id)
-        default_node = ((job_id - 1) % 3) + 1
-        from app.bot.keyboards import make_colab_node_url
-        colab_url = make_colab_node_url("pool1.studio@example.com", default_node)
         text = (
             f"🚀 <b>ĐÃ ĐẨY KỊCH BẢN VIDEO #{job_id} VÀO GOOGLE DRIVE!</b>\n\n"
             f"🎬 <b>Tiêu đề:</b> <i>{j_title}</i>\n"
-            f"⚡ <b>Công nghệ:</b> GPU NVENC 1080p Siêu Tốc (20-30s/video)\n\n"
+            f"📡 <b>Điều phối:</b> Đã đồng bộ vào <code>cluster_state.json</code> trên Google Drive\n"
+            f"⚡ <b>Trạm GPU mục tiêu:</b> Node {active_node} (<code>{active_account}</code>)\n\n"
             f"👉 <b>BƯỚC TIẾP THEO ĐỂ TẠO VIDEO:</b>\n"
             f"1️⃣ Bấm vào link dưới đây để mở Colab:\n"
-            f"🔗 <b><a href=\"{colab_url}\">MỞ GOOGLE COLAB ĐỂ CHẠY (Tài khoản: pool1.studio@example.com)</a></b>\n\n"
+            f"🔗 <b><a href=\"{colab_url}\">MỞ GOOGLE COLAB ĐỂ CHẠY (Tài khoản: {active_account})</a></b>\n\n"
             f"2️⃣ Trên giao diện Colab, vào menu <b>Runtime (Thời gian chạy) ➡️ Run all (Chạy tất cả)</b>.\n\n"
-            f"3️⃣ Sau khi Colab chạy xong (~25s), <b>Bot Telegram sẽ TỰ ĐỘNG quét Google Drive và gửi ngay video hoàn chỉnh về đây cho bạn!</b>"
+            f"3️⃣ Sau khi Colab chạy xong (~25s), <b>Colab sẽ tự động tắt để tiết kiệm Compute Units và Bot Telegram sẽ TỰ ĐỘNG quét Google Drive gửi ngay video về đây cho bạn!</b>"
         )
         await safe_reply(update, text, reply_markup=colab_markup, parse_mode="HTML")
 
@@ -2729,6 +2734,12 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 6.1 Kiểm tra trạng thái Colab GPU Farm
     elif data == "check_colab_status":
+        await colab_command(update, context)
+        return
+
+    elif data == "rotate_colab_node":
+        from app.services.colab_coordinator import colab_coordinator
+        colab_coordinator.rotate_to_next_node(reason="Người dùng chuyển trạm thủ công qua Bot Telegram")
         await colab_command(update, context)
         return
 
@@ -3263,6 +3274,36 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "confirm_del_failed":
         await _handle_confirm_delete_failed_videos(update, context)
+
+    # 17. ĐIỀU PHỐI CỤM COLAB GPU CLUSTER (ROTATE, STATUS, GUIDE)
+    elif data.startswith("rotate_colab_node"):
+        await safe_query_answer(query, text="🔄 Đang chuyển trạm sang Node kế tiếp...")
+        from app.services.colab_coordinator import colab_coordinator
+        colab_coordinator.rotate_to_next_node(reason="Người dùng đổi trạm thủ công trên Telegram")
+        await colab_command(update, context)
+
+    elif data.startswith("check_colab_status"):
+        await safe_query_answer(query, text="📡 Đang quét trạng thái Google Drive...")
+        await colab_command(update, context)
+
+    elif data.startswith("colab_rotation_guide"):
+        await safe_query_answer(query)
+        from app.services.colab_coordinator import colab_coordinator
+        st = colab_coordinator.sync_cluster_state()
+        act = st.get("action_required", {})
+        active_node = st.get("active_node", 1)
+        active_acc = st.get("active_account", "pool1.studio@example.com")
+        direct_url = act.get("direct_colab_url") or colab_coordinator.make_node_url(active_acc, active_node)
+        guide_text = (
+            f"🔄 <b>TRUNG TÂM PHỐI HỢP & XOAY VÒNG GOOGLE COLAB</b>\n\n"
+            f"📌 <b>Cơ chế hoạt động nhịp nhàng qua Google Drive:</b>\n"
+            f"1️⃣ <b>Đồng bộ thời gian thực:</b> Trạng thái hàng đợi, tiến độ và cạc GPU được ghi tự động vào file <code>cluster_state.json</code> trong thư mục <code>AI_YouTube_RenderFarm/coordinator/</code>.\n\n"
+            f"2️⃣ <b>Tự động xoay Node khi hết Quota:</b> Cụm có 3 Node (3 tài khoản Google). Khi 1 Node hết Compute Units / GPU, hệ thống tự động đổi link sang Node tiếp theo.\n\n"
+            f"3️⃣ <b>Tự động tắt Runtime:</b> Sau khi Colab render xong toàn bộ video đang chờ, Colab sẽ tự gọi <code>runtime.unassign()</code> để ngắt kết nối ngay lập tức, tiết kiệm 100% Compute Units cho bạn.\n\n"
+            f"🎯 <b>Node đang kích hoạt hiện tại:</b> Node {active_node} (<code>{active_acc}</code>)\n"
+            f"🔗 <a href=\"{direct_url}\">BẤM VÀO ĐÂY ĐỂ MỞ COLAB RUNTIME</a>"
+        )
+        await safe_reply(update, guide_text, parse_mode="HTML")
 
 
 async def _handle_confirm_delete_video(update: Update, context: ContextTypes.DEFAULT_TYPE, job_id: int):
@@ -4027,77 +4068,61 @@ async def colab_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(update):
         return
 
-    from app.services.colab_client import colab_client
-
+    from app.services.colab_coordinator import colab_coordinator
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    from app.database.models import get_db, VideoJob
-
-    from app.bot.keyboards import make_colab_node_url, make_colab_account_url
-    acc1_url = make_colab_account_url("pool1.studio@example.com")
-    acc2_url = make_colab_account_url("pool2.studio@example.com")
-    acc3_url = make_colab_account_url("pool3.studio@example.com")
-
-    colab_keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("⚡ Node 1 (Pro+)", url=make_colab_node_url("pool1.studio@example.com", 1)),
-            InlineKeyboardButton("⚡ Node 2 (Song Song)", url=make_colab_node_url("pool1.studio@example.com", 2)),
-            InlineKeyboardButton("⚡ Node 3 (Song Song)", url=make_colab_node_url("pool1.studio@example.com", 3)),
-        ],
-        [InlineKeyboardButton("🚀 Mở Acc 1: giangnguyenviet38 (20TB)", url=acc1_url)],
-        [InlineKeyboardButton("🚀 Mở Acc 2: tonyabcd1234567890 (2TB)", url=acc2_url)],
-        [InlineKeyboardButton("🚀 Mở Acc 3: maychuvv1n1 (2TB)", url=acc3_url)],
-        [
-            InlineKeyboardButton("💡 Hướng dẫn Colab Pro+ đa luồng", callback_data="colab_rotation_guide"),
-            InlineKeyboardButton("🔄 Quét kết nối GPU", callback_data="check_colab_status")
-        ]
-    ])
-
-    # Đếm số lượng video đang chờ hoặc bị kẹt
-    pending_count = 0
-    try:
-        with get_db() as db:
-            pending_count = db.query(VideoJob).filter(VideoJob.status.in_(["SCRIPT_READY", "RENDERING", "FAILED"])).count()
-    except Exception:
-        pass
 
     if not context.args:
-        wait_msg = await safe_reply(update, "🔍 Đang kiểm tra kết nối tới Colab GPU Farm (qua Google Drive)...")
-        is_online, info = colab_client.check_health(timeout=4.0)
+        wait_msg = await safe_reply(update, "🔍 Đang kết nối Trung tâm Điều phối Google Drive (`cluster_state.json`)...")
+        coord_state = colab_coordinator.sync_cluster_state()
 
-        if is_online:
-            gpu_name = info.get("gpu", "NVIDIA GPU")
-            text = (
-                f"🚀 **COLAB GPU RENDER FARM: ĐANG TRỰC TUYẾN 🟢**\n\n"
-                f"🎮 **Cạc đồ họa:** `{gpu_name}`\n"
-                f"⚡ **Tốc độ render:** ~15-20 giây / video (NVENC Hardware Acceleration)\n"
-                f"🎙️ **Phụ đề WhisperX:** Sẵn sàng trên GPU\n"
-                f"📁 **Google Drive Sync:** Đã đồng bộ (`/AI_YouTube_RenderFarm/`)\n"
-                f"🌐 **Đường truyền:** `{colab_client.worker_url}`\n"
-                f"📋 **Hàng đợi hiện tại:** `{pending_count}` video đang chờ xử lý\n\n"
-                f"💡 Bạn có thể bấm tạo video từ điện thoại hoặc máy tính, GPU Colab sẽ tự động gánh toàn bộ tải render!\n\n"
-                f"👇 **Mở thêm hoặc đổi tài khoản Colab (Xoay vòng):**"
-            )
-            await safe_edit_text(wait_msg, text, reply_markup=colab_keyboard)
-        else:
-            pending_note = (
-                f"\n⚠️ **Phát hiện `{pending_count}` video đang chờ dựng.**\n"
-                f"Khi bạn bấm chạy Colab, GPU sẽ tự động quét và hoàn thiện nốt toàn bộ!\n"
-                if pending_count > 0 else ""
-            )
-            text = (
-                f"⚪ **COLAB GPU RENDER FARM: CHƯA BẬT (OFFLINE)**\n\n"
-                f"💻 **Chế độ hiện tại:** Đang render bằng CPU máy tính nội bộ (chậm 2-3 phút/video)\n"
-                f"{pending_note}\n"
-                f"📱 **HƯỚNG DẪN BẬT TRÊN ĐIỆN THOẠI HOẶC MÁY TÍNH (1-CHẠM):**\n"
-                f"1. Bấm vào một trong **3 Tài Khoản Google** bên dưới (Link tự động chọn profile tài khoản tương ứng).\n"
-                f"2. Kiểm tra avatar góc phải trên cùng xem đúng email chưa ➡️ Vào **Runtime** ➡️ **Run all** (Chạy tất cả) ➡️ Bấm Cho phép Drive.\n"
-                f"3. **BẬT XONG BẠN CÓ THỂ THOÁT LINK / TẮT MÀN HÌNH ĐIỆN THOẠI!**\n"
-                f"   • Colab tự chạy ngầm trên đám mây của Google.\n"
-                f"   • Tự động kết nối với bot qua Google Drive mà bạn **không cần copy paste link**.\n"
-                f"   • Render xong video tự lưu vào Google Drive (`/AI_YouTube_RenderFarm/completed/`) và bot gửi ngay về Telegram!\n\n"
-                f"🔄 *Khi 1 tài khoản hết hạn mức Colab Free trong ngày, chỉ cần mở tài khoản tiếp theo!*"
-            )
-            await safe_edit_text(wait_msg, text, reply_markup=colab_keyboard)
+        active_node = coord_state.get("active_node", 1)
+        active_acc = coord_state.get("active_account", "pool1.studio@example.com")
+        queue_info = coord_state.get("queue_summary", {})
+        p_count = queue_info.get("pending_count", 0)
+        c_count = queue_info.get("completed_count", 0)
+        action_req = coord_state.get("action_required", {})
+        direct_url = action_req.get("direct_colab_url") or colab_coordinator.make_node_url(active_acc, active_node)
+
+        nodes_data = coord_state.get("cluster_nodes", {})
+        n1_st = nodes_data.get("1", {}).get("status", "IDLE")
+        n2_st = nodes_data.get("2", {}).get("status", "IDLE")
+        n3_st = nodes_data.get("3", {}).get("status", "IDLE")
+
+        icon_map = {"RUNNING": "🟢 Đang chạy", "IDLE": "⚪ Đang chờ", "COMPLETED": "✅ Xong", "QUOTA_EXHAUSTED": "🔴 Hết Quota"}
+
+        colab_keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(f"⚡ MỞ NODE {active_node} ({active_acc.split('@')[0]}) BẤM ĐỂ CHẠY", url=direct_url)
+            ],
+            [
+                InlineKeyboardButton(f"Node 1: {icon_map.get(n1_st, n1_st)}", url=colab_coordinator.make_node_url("pool1.studio@example.com", 1)),
+                InlineKeyboardButton(f"Node 2: {icon_map.get(n2_st, n2_st)}", url=colab_coordinator.make_node_url("pool2.studio@example.com", 2)),
+                InlineKeyboardButton(f"Node 3: {icon_map.get(n3_st, n3_st)}", url=colab_coordinator.make_node_url("pool3.studio@example.com", 3)),
+            ],
+            [
+                InlineKeyboardButton("🔄 Xoay Sang Node Tiếp Theo", callback_data="rotate_colab_node"),
+                InlineKeyboardButton("📡 Quét Trạng Thái Drive", callback_data="check_colab_status")
+            ],
+            [
+                InlineKeyboardButton("💡 Cơ Chế Điều Phối Drive", callback_data="colab_rotation_guide")
+            ]
+        ])
+
+        status_badge = "🟢 ĐANG CÓ WORKER HOẠT ĐỘNG" if any(st == "RUNNING" for st in [n1_st, n2_st, n3_st]) else "⚪ SẴN SÀNG NHẬN LỆNH"
+        action_desc = action_req.get("reason", "Hàng đợi ổn định")
+
+        text = (
+            f"🚀 <b>TRUNG TÂM ĐIỀU PHỐI COLAB GPU CLUSTER</b>\n"
+            f"<i>(Đồng bộ thời gian thực qua file <code>cluster_state.json</code> trên Google Drive)</i>\n\n"
+            f"📊 <b>Trạng thái cụm:</b> {status_badge}\n"
+            f"🎯 <b>Node ưu tiên hiện tại:</b> <b>Node {active_node}</b> (<code>{active_acc}</code>)\n"
+            f"📥 <b>Video kịch bản đang chờ render:</b> <b>{p_count} video</b>\n"
+            f"🎉 <b>Video đã hoàn thành trên Drive:</b> <b>{c_count} video</b>\n\n"
+            f"💡 <b>Hành động đề xuất:</b> {action_desc}\n\n"
+            f"👉 <b>Bấm nút bên dưới để mở Node {active_node} và ấn <i>Run all</i>:</b>\n"
+            f"<i>(Khi render xong, Colab sẽ tự ngắt kết nối để tiết kiệm 100% Compute Units!)</i>"
+        )
+        await safe_edit_text(wait_msg, text, reply_markup=colab_keyboard, parse_mode="HTML")
         return
 
     raw_url = context.args[0].strip()
