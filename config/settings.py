@@ -37,6 +37,7 @@ class Settings:
     # Colab GPU Render Farm (Tăng tốc NVENC GPU 20s/video & WhisperX)
     COLAB_WORKER_URL: str = os.getenv("COLAB_WORKER_URL", "")
     RENDER_BACKEND: str = os.getenv("RENDER_BACKEND", "auto")  # "auto", "colab", "local"
+    COLAB_TIMEOUT_MINUTES: int = int(os.getenv("COLAB_TIMEOUT_MINUTES", "60"))
     
     # Defaults
     DEFAULT_TARGET_LANGUAGE: str = os.getenv("DEFAULT_TARGET_LANGUAGE", "en")

@@ -77,6 +77,22 @@ def push_job_to_drive_queue(job_id: int) -> Tuple[bool, str, Optional[str]]:
                 for u in settings.get_allowed_users().keys():
                     notify_chats.add(u)
 
+            # Lấy 1 Gemini Key hợp lệ để Colab có thể gọi AI Vision thẩm định
+            gemini_keys = settings.get_gemini_keys_pool()
+            valid_gemini = [k for k in gemini_keys if k and "your_" not in k]
+            active_gemini_key = valid_gemini[0] if valid_gemini else (getattr(settings, "GEMINI_API_KEY", "") or "")
+
+            # Kiểm tra phụ đề đã dựng sẵn từ Server (chuẩn P2.2 kinetic karaoke \kf)
+            sub_content = None
+            if job.subtitle_path and os.path.exists(job.subtitle_path):
+                try:
+                    with open(job.subtitle_path, "r", encoding="utf-8") as sf:
+                        sub_content = sf.read()
+                except Exception:
+                    pass
+
+            has_prebaked_audio = bool(job.audio_path and os.path.exists(job.audio_path))
+
             task_payload = {
                 "job_id": job.id,
                 "topic": job.topic,
@@ -91,6 +107,9 @@ def push_job_to_drive_queue(job_id: int) -> Tuple[bool, str, Optional[str]]:
                 "scenes": scenes_data,
                 "pexels_api_key": active_px_key,
                 "pixabay_api_key": settings.PIXABAY_API_KEY,
+                "gemini_api_key": active_gemini_key,
+                "subtitle_ass_content": sub_content,
+                "prebaked": bool(sub_content and has_prebaked_audio),
                 "telegram_bot_token": settings.TELEGRAM_BOT_TOKEN,
                 "telegram_chat_ids": list(notify_chats),
                 "created_at": datetime.utcnow().isoformat(),
@@ -146,6 +165,28 @@ def check_and_import_completed_video(job_id: int) -> Tuple[bool, str, Optional[s
             if not ok_down:
                 return False, f"Tìm thấy file trên Drive nhưng tải về thất bại: {drive_link}", drive_link
 
+        # [PHASE 4] VideoQA: Kiểm định chất lượng kỹ thuật video bằng FFprobe trước khi chấp thuận
+        try:
+            from app.graph.evaluators.video_qa import VideoQA
+            qa_report = VideoQA.inspect_video(local_video_path)
+            if not qa_report.passed:
+                err_issues = "; ".join(qa_report.issues)
+                logger.warning(f"❌ [VideoQA] Video #{job_id} từ Colab không đạt chuẩn: {err_issues}")
+                with get_db() as db:
+                    job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                    if job:
+                        job.status = "FAILED"
+                        job.error_message = f"VideoQA không đạt: {err_issues}"
+                        job.progress_message = f"Video tải về bị lỗi kỹ thuật ({err_issues})"
+                        log_activity(db, job.user_id or 0, "System", "COLAB_QA_FAILED",
+                                     f"Video #{job_id} từ Colab hỏng kỹ thuật: {err_issues}",
+                                     channel_id=job.target_channel_id)
+                return False, f"Video không đạt chuẩn kiểm định VideoQA: {err_issues}", drive_link
+            qa_dump = json.dumps({"video_qa": qa_report.model_dump()})
+        except Exception as e_qa:
+            logger.warning(f"Không thể chạy VideoQA cho video #{job_id}: {e_qa}")
+            qa_dump = None
+
         # Cập nhật cơ sở dữ liệu
         with get_db() as db:
             job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
@@ -163,8 +204,9 @@ def check_and_import_completed_video(job_id: int) -> Tuple[bool, str, Optional[s
                     status="RENDERED",
                     video_path=local_video_path,
                     drive_link=drive_link,
+                    quality_scores=qa_dump,
                     progress_percent=100,
-                    progress_message="🎉 Video đã render hoàn tất từ Colab GPU Farm!"
+                    progress_message="🎉 Video đã render hoàn tất từ Colab GPU Farm (Đạt chuẩn VideoQA)!"
                 )
                 db.add(job)
                 log_activity(db, 0, "System", "COLAB_RENDER_COMPLETE",
@@ -174,10 +216,12 @@ def check_and_import_completed_video(job_id: int) -> Tuple[bool, str, Optional[s
                 job.status = "RENDERED"
                 job.video_path = local_video_path
                 job.drive_link = drive_link
+                if qa_dump:
+                    job.quality_scores = qa_dump
                 job.progress_percent = 100
-                job.progress_message = "🎉 Video đã render hoàn tất từ Colab GPU Farm!"
+                job.progress_message = "🎉 Video đã render hoàn tất từ Colab GPU Farm (Đạt chuẩn VideoQA)!"
                 log_activity(db, job.user_id or 0, "System", "COLAB_RENDER_COMPLETE",
-                             f"Hoàn tất đồng bộ video #{job_id} từ Colab GPU Farm: {local_video_path}",
+                             f"Hoàn tất đồng bộ video #{job_id} từ Colab GPU Farm (Pass VideoQA): {local_video_path}",
                              channel_id=job.target_channel_id)
 
         return True, local_video_path, drive_link
