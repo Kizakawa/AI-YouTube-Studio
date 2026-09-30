@@ -62,6 +62,45 @@ def push_job_to_drive_queue(job_id: int) -> Tuple[bool, str, Optional[str]]:
             ch_lang = ch_cfg.get("language") or "en"
             ch_voice = ch_cfg.get("voice") or ("en-US-AndrewNeural" if ch_lang == "en" else "vi-VN-NamMinhNeural")
 
+            # Kích hoạt VideoStrategistAgent (Anti-Slideshow Manifesto):
+            # Phân định chiến lược thị giác thông minh cho từng phân cảnh:
+            # - Thứ có thật/lịch sử/đời thực -> REAL_ARCHIVE / STOCK_FOOTAGE
+            # - Viễn tưởng/huyền bí/vũ trụ -> TEXT_TO_VIDEO / AI_IMAGE
+            # - Cảnh Hook 1 luôn là chuyển động video mạnh
+            has_strategy = any(s.get("production_method") for s in scenes_data if isinstance(s, dict))
+            if not has_strategy and scenes_data:
+                try:
+                    from app.agents.video_strategist_agent import VideoStrategistAgent
+                    strategist = VideoStrategistAgent()
+                    ch_niche = ch_cfg.get("niche") or ch_cfg.get("style") or "general"
+                    strat_plan = strategist.propose_production_strategy(
+                        topic=job.topic or job.title or "General Topic",
+                        scenes=scenes_data,
+                        channel_niche=ch_niche,
+                    )
+                    if strat_plan and "scenes_strategy" in strat_plan:
+                        strat_map = {sc["scene_id"]: sc for sc in strat_plan["scenes_strategy"] if "scene_id" in sc}
+                        for sc in scenes_data:
+                            if isinstance(sc, dict) and sc.get("scene_id") in strat_map:
+                                s_meta = strat_map[sc["scene_id"]]
+                                sc["production_method"] = s_meta.get("production_method", "STOCK_FOOTAGE")
+                                sc["visual_strategy"] = s_meta.get("strategy", "STOCK_VIDEO")
+                                sc["search_query"] = s_meta.get("search_query") or sc.get("stock_query") or sc.get("visual_keyword")
+                                sc["ai_prompt"] = s_meta.get("ai_prompt") or sc.get("visual_prompt")
+                                sc["camera_motion"] = s_meta.get("camera_motion", "zoom_in")
+                                sc["sfx_cue"] = s_meta.get("sfx_cue", "whoosh")
+                                sc["strategy_rationale"] = s_meta.get("rationale", "")
+                        if 's_json' in locals():
+                            if isinstance(s_json, dict):
+                                s_json["scenes"] = scenes_data
+                                job.scenes_json = json.dumps(s_json, ensure_ascii=False)
+                            elif isinstance(s_json, list):
+                                job.scenes_json = json.dumps(scenes_data, ensure_ascii=False)
+                            db.commit()
+                        logger.info(f"🎬 [ColabQueue] VideoStrategistAgent đã phê duyệt chiến lược thị giác cho Video #{job_id}!")
+                except Exception as e_strat:
+                    logger.warning(f"Lỗi khi gọi VideoStrategistAgent #{job_id}: {e_strat}")
+
             # Lấy 1 Pexels Key hợp lệ để Colab tải stock B-roll
             pexels_keys = settings.get_pexels_keys_pool()
             valid_px = [k for k in pexels_keys if k and k != "your_pexels_api_key_here"]
