@@ -18,9 +18,11 @@ class DriveAgent:
     - Tiết kiệm dung lượng ổ cứng local sau khi tải lên thành công
     """
 
-    def __init__(self, account_name: str = "account_1", token_path: Optional[str] = None):
-        self.account_name = account_name
-        self.token_path = token_path or f"credentials/accounts/{account_name}/drive_token.json"
+    DEFAULT_ACCOUNT = "account_2"
+
+    def __init__(self, account_name: Optional[str] = None, token_path: Optional[str] = None):
+        self.account_name = account_name or self.DEFAULT_ACCOUNT
+        self.token_path = token_path or f"credentials/accounts/{self.account_name}/drive_token.json"
         self.service = None
         self._init_service()
 

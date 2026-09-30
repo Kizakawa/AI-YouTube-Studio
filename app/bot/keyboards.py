@@ -1,4 +1,5 @@
 import os
+from typing import Optional, List, Dict, Any
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from config.settings import settings
 
@@ -265,21 +266,49 @@ def get_colab_cluster_menu_keyboard(job_id: int) -> InlineKeyboardMarkup:
 
 get_video_review_keyboard = get_script_review_keyboard
 
-def get_video_post_render_keyboard(job_id: int, is_republish: bool = False) -> InlineKeyboardMarkup:
-    """Bàn phím Bước 2: Khi video đã render xong và gửi vào nhóm, chọn Đăng luôn hoặc Góp ý sửa lại"""
-    pub_label = "🔄 Đăng Lại Bản Mới (Shorts)" if is_republish else "🚀 Đăng Lên YouTube Shorts Ngay"
-    keyboard = [
-        [
-            InlineKeyboardButton(pub_label, callback_data=f"publish_youtube:{job_id}"),
-        ],
-        [
-            InlineKeyboardButton("✍️ Góp Ý Sửa Lại", callback_data=f"feedback_video:{job_id}"),
-            InlineKeyboardButton("⏰ Lên Lịch Đăng (Shorts)", callback_data=f"schedule_youtube:{job_id}"),
-        ],
-        [
-            InlineKeyboardButton("❌ Hủy Video", callback_data=f"cancel:{job_id}"),
-        ]
-    ]
+def get_video_post_render_keyboard(
+    job_id: int,
+    is_republish: bool = False,
+    affiliate_url: Optional[str] = None,
+    affiliate_name: Optional[str] = None
+) -> InlineKeyboardMarkup:
+    """Bàn phím sau khi video hoàn thành: Đăng luôn, Đăng theo lịch, Sửa, Xóa và Link Tiếp Thị Sản Phẩm"""
+    # Nếu chưa truyền affiliate_url, tự động tìm sản phẩm tối ưu từ DB
+    if not affiliate_url:
+        try:
+            from app.database.models import get_db, VideoJob
+            from app.services.monetization_engine import find_best_amazon_product, build_amazon_url
+            with get_db() as db:
+                jb = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                if jb:
+                    prod = find_best_amazon_product(jb.target_channel_id or "", jb.title or "", jb.topic or "", jb.script or "")
+                    affiliate_url = build_amazon_url(prod["asin"])
+                    affiliate_name = prod.get("name")
+        except Exception:
+            pass
+
+    pub_label = "🔄 Đăng Lại Bản Mới (Shorts)" if is_republish else "🚀 Đăng Ngay (Shorts)"
+    keyboard = []
+
+    # Hàng 1: Nút Mua Sản Phẩm Tiếp Thị (Affiliate URL Button)
+    if affiliate_url:
+        btn_label = f"🛒 Mua Ngay: {affiliate_name[:26]}..." if affiliate_name else "🛒 Mua Sản Phẩm Đề Xuất (Affiliate)"
+        keyboard.append([
+            InlineKeyboardButton(btn_label, url=affiliate_url)
+        ])
+
+    # Hàng 2: Đăng Luôn & Đăng Theo Lịch
+    keyboard.append([
+        InlineKeyboardButton(pub_label, callback_data=f"publish_youtube:{job_id}"),
+        InlineKeyboardButton("⏰ Đăng Theo Lịch", callback_data=f"schedule_youtube:{job_id}"),
+    ])
+
+    # Hàng 3: Sửa Video & Xóa Video
+    keyboard.append([
+        InlineKeyboardButton("✏️ Sửa Video", callback_data=f"feedback_video:{job_id}"),
+        InlineKeyboardButton("🗑️ Xóa Video", callback_data=f"delete_video:{job_id}"),
+    ])
+
     return InlineKeyboardMarkup(keyboard)
 
 def get_video_edit_options_keyboard(job_id: int) -> InlineKeyboardMarkup:
@@ -299,7 +328,10 @@ def get_video_edit_options_keyboard(job_id: int) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("🔄 Render Lại Toàn Bộ", callback_data=f"render_video:{job_id}"),
-            InlineKeyboardButton("❌ Đóng Menu", callback_data=f"cancel_edit:{job_id}"),
+            InlineKeyboardButton("🗑️ Xóa Video Này", callback_data=f"delete_video:{job_id}"),
+        ],
+        [
+            InlineKeyboardButton("⬅️ Đóng Menu", callback_data=f"cancel_edit:{job_id}"),
         ]
     ]
     return InlineKeyboardMarkup(keyboard)

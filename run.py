@@ -169,7 +169,27 @@ async def check_drive_and_notify(bot_instance=None):
                 for u in settings.get_allowed_users().keys():
                     target_chats.add(u)
 
-            post_markup = get_video_post_render_keyboard(jid)
+            from app.services.monetization_engine import find_best_amazon_product, build_amazon_url
+            channels = settings.get_channels_config()
+            ch_cfg = next((c for c in channels if c.get("id") == ch_id), {}) if ch_id else {}
+            ch_niche = ch_cfg.get("niche", "psychology")
+            ch_tag = ch_cfg.get("amazon_tag", "kizakawa-20")
+
+            aff_prod = find_best_amazon_product(
+                niche=ch_niche,
+                title=title,
+                topic=jb.topic if jb else "",
+                script=jb.script if jb else ""
+            )
+            aff_url = build_amazon_url(aff_prod["asin"], tracking_tag=ch_tag)
+            aff_name = aff_prod.get("name", "Sản phẩm đề xuất")
+            aff_cta = aff_prod.get("cta", "")
+
+            post_markup = get_video_post_render_keyboard(
+                jid,
+                affiliate_url=aff_url,
+                affiliate_name=aff_name
+            )
             size_mb = os.path.getsize(local_p) / (1024 * 1024) if (local_p and os.path.exists(local_p)) else 0
             drive_html = f'<a href="{d_link}">Mở file gốc trên Google Drive</a>' if d_link else "Đã lưu an toàn"
             cap = (
@@ -178,7 +198,11 @@ async def check_drive_and_notify(bot_instance=None):
                 f"📦 <b>Dung lượng:</b> {size_mb:.1f} MB\n"
                 f"⚡ <b>Công nghệ:</b> GPU NVENC 1080p Siêu Nét (1080x1920 30fps)\n"
                 f"☁️ <b>Google Drive:</b> {drive_html}\n\n"
-                f"👉 Cả nhóm hãy xem video! Bấm <b>Đăng Ngay</b> hoặc <b>Góp Ý Sửa Lại</b> bên dưới:"
+                f"🛒 <b>SẢN PHẨM TIẾP THỊ LIÊN KẾT (AFFILIATE):</b>\n"
+                f"• <b>Sản phẩm:</b> {aff_name}\n"
+                f"• <b>Gợi ý:</b> <i>{aff_cta}</i>\n"
+                f"👉 <b>Link mua ngay:</b> <a href=\"{aff_url}\">{aff_url}</a>\n\n"
+                f"👉 Bấm <b>Đăng Ngay</b>, <b>Lên Lịch</b>, <b>Sửa</b> hoặc <b>Xóa</b> bên dưới:"
             )
 
             any_sent = False

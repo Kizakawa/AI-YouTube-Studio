@@ -2284,10 +2284,17 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if ok:
             chat_id = update.effective_chat.id if update.effective_chat else None
             bot = context.bot
-            post_markup = get_video_post_render_keyboard(job_id)
+            from app.services.monetization_engine import find_best_amazon_product, build_amazon_url
             with get_db() as db:
                 jb = db.query(VideoJob).filter(VideoJob.id == job_id).first()
                 v_title = jb.title or jb.topic if jb else f"Video #{job_id}"
+                ch_id = jb.target_channel_id if jb else None
+
+            aff_prod = find_best_amazon_product(ch_id or "", v_title, jb.topic if jb else "", jb.script if jb else "")
+            aff_url = build_amazon_url(aff_prod["asin"])
+            aff_name = aff_prod.get("name", "Sản phẩm đề xuất")
+            aff_cta = aff_prod.get("cta", "")
+            post_markup = get_video_post_render_keyboard(job_id, affiliate_url=aff_url, affiliate_name=aff_name)
 
             size_mb = os.path.getsize(local_p) / (1024 * 1024) if os.path.exists(local_p) else 0
             drive_str = f'<a href="{d_link}">Mở file gốc trên Drive</a>' if d_link else "Đã lưu an toàn"
@@ -2297,7 +2304,11 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📦 <b>Dung lượng:</b> {size_mb:.1f} MB\n"
                 f"⚡ <b>Công nghệ:</b> GPU NVENC P2 Tăng Tốc (1080x1920 30fps)\n"
                 f"☁️ <b>Google Drive:</b> {drive_str}\n\n"
-                f"👉 Cả nhóm hãy xem video! Bấm <b>Đăng Ngay</b> hoặc <b>Góp Ý Sửa Lại</b> bên dưới:"
+                f"🛒 <b>SẢN PHẨM TIẾP THỊ LIÊN KẾT (AFFILIATE):</b>\n"
+                f"• <b>Sản phẩm:</b> {aff_name}\n"
+                f"• <b>Gợi ý:</b> <i>{aff_cta}</i>\n"
+                f"👉 <b>Link mua ngay:</b> <a href=\"{aff_url}\">{aff_url}</a>\n\n"
+                f"👉 Bấm <b>Đăng Ngay</b>, <b>Lên Lịch</b>, <b>Sửa</b> hoặc <b>Xóa</b> bên dưới:"
             )
             sent_video = False
             if size_mb <= 49.0 and os.path.exists(local_p) and chat_id and bot:
@@ -2516,6 +2527,82 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.message.delete()
             except Exception:
                 pass
+
+    # 3.4 Xóa Video hoàn toàn khỏi máy chủ & Google Drive
+    elif data.startswith("delete_video:") or data.startswith("cancel:"):
+        job_id = int(data.split(":")[1])
+        from app.database.models import get_db, VideoJob, log_activity
+        from app.agents.drive_agent import DriveAgent
+
+        with get_db() as db:
+            job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if not job:
+                await safe_reply(update, f"⚠️ Không tìm thấy Video #{job_id} trong hệ thống.")
+                return
+            v_title = job.title or job.topic or f"Video #{job_id}"
+            local_path = job.video_path
+
+            # Xóa file video local nếu có
+            if local_path and os.path.exists(local_path):
+                try:
+                    os.remove(local_path)
+                except Exception as e_del:
+                    logger.warning(f"Lỗi xóa file local {local_path}: {e_del}")
+
+            if job.audio_path and os.path.exists(job.audio_path):
+                try:
+                    os.remove(job.audio_path)
+                except Exception:
+                    pass
+
+            if job.subtitle_path and os.path.exists(job.subtitle_path):
+                try:
+                    os.remove(job.subtitle_path)
+                except Exception:
+                    pass
+
+            # Cập nhật database
+            job.status = "CANCELLED"
+            job.video_path = None
+            job.progress_percent = 0
+            job.progress_message = "Đã xóa video theo yêu cầu người dùng trên Telegram."
+            user_id = user.id if user else 0
+            u_name = user.first_name if user else "TelegramUser"
+            log_activity(db, user_id, u_name, "DELETE_VIDEO", f"Đã xóa Video #{job_id}: {v_title}", channel_id=job.target_channel_id)
+
+        # Xóa file trên Google Drive nếu có
+        try:
+            da = DriveAgent()
+            if da.service:
+                for sub in ["pending", "in_progress", "completed", "locks", "archive"]:
+                    fid = da.get_folder_by_path(f"AI_YouTube_RenderFarm/{sub}")
+                    if fid:
+                        q = f"'{fid}' in parents and trashed = false and (name contains '{job_id}' or name = 'task_{job_id}.json' or name = 'video_{job_id}.mp4')"
+                        res = da.service.files().list(q=q, fields="files(id, name)").execute()
+                        for f_d in res.get("files", []):
+                            try:
+                                da.service.files().delete(fileId=f_d["id"]).execute()
+                            except Exception:
+                                pass
+        except Exception as ex_drive:
+            logger.warning(f"Lỗi dọn dẹp Drive khi xóa video #{job_id}: {ex_drive}")
+
+        msg_del = (
+            f"🗑️ <b>ĐÃ XÓA VIDEO #{job_id} THÀNH CÔNG!</b>\n\n"
+            f"📌 <b>Tiêu đề:</b> {v_title}\n"
+            f"🧹 Đã xóa file MP4, phụ đề và hủy tác vụ trên Google Drive Render Farm.\n"
+            f"👉 Trạng thái tác vụ đã chuyển thành: <code>CANCELLED</code>."
+        )
+        if query and query.message:
+            try:
+                if query.message.video or query.message.photo:
+                    await query.message.edit_caption(caption=msg_del, parse_mode="HTML")
+                else:
+                    await query.message.edit_text(msg_del, parse_mode="HTML")
+            except Exception:
+                await safe_reply(update, msg_del, parse_mode="HTML")
+        else:
+            await safe_reply(update, msg_del, parse_mode="HTML")
 
     # 4. Lên lịch tự động theo khe giờ vàng tối ưu
     elif data.startswith("schedule_youtube:") or data.startswith("schedule:"):

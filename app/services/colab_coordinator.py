@@ -87,7 +87,7 @@ class ColabCoordinator:
 
     @staticmethod
     def _get_active_drive_agent() -> DriveAgent:
-        for acc in ["account_1", "account_2", "account_3"]:
+        for acc in ["account_2", "account_3", "account_1"]:
             try:
                 da = DriveAgent(acc)
                 if da.service:

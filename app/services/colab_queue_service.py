@@ -132,6 +132,10 @@ def push_job_to_drive_queue(job_id: int) -> Tuple[bool, str, Optional[str]]:
 
             has_prebaked_audio = bool(job.audio_path and os.path.exists(job.audio_path))
 
+            from app.services.monetization_engine import find_best_amazon_product, build_amazon_url
+            aff_prod = find_best_amazon_product(job.target_channel_id or "", job.title or job.topic or "", job.topic or "", full_narration)
+            aff_url = build_amazon_url(aff_prod["asin"])
+
             task_payload = {
                 "job_id": job.id,
                 "topic": job.topic,
@@ -149,6 +153,8 @@ def push_job_to_drive_queue(job_id: int) -> Tuple[bool, str, Optional[str]]:
                 "gemini_api_key": active_gemini_key,
                 "subtitle_ass_content": sub_content,
                 "prebaked": bool(sub_content and has_prebaked_audio),
+                "affiliate_product": aff_prod,
+                "affiliate_url": aff_url,
                 "telegram_bot_token": settings.TELEGRAM_BOT_TOKEN,
                 "telegram_chat_ids": list(notify_chats),
                 "created_at": datetime.utcnow().isoformat(),
