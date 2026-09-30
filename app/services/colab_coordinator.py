@@ -115,12 +115,10 @@ class ColabCoordinator:
         }
 
     @staticmethod
-    def make_node_url(account: str, node_id: int) -> str:
-        """Tạo link mở thẳng Colab trực tiếp theo tài khoản chỉ định"""
+    def make_node_url(account: str = "", node_id: int = 1) -> str:
+        """Tạo link sạch mở thẳng Colab trực tiếp (tránh gán ?authuser= gây lỗi GapiError 401 khi tài khoản trình duyệt không khớp)"""
         node_cfg = DEFAULT_CLUSTER_NODES.get(node_id, DEFAULT_CLUSTER_NODES[1])
         nb_id = node_cfg["notebook_id"]
-        if account:
-            return f"https://colab.research.google.com/drive/{nb_id}?authuser={account}"
         return f"https://colab.research.google.com/drive/{nb_id}"
 
     def read_state_from_drive(self) -> Dict[str, Any]:

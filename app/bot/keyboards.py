@@ -167,15 +167,13 @@ COLAB_NODES = {
 COLAB_NOTEBOOK_ID = COLAB_NODES[1]["id"]
 COLAB_DRIVE_URL = f"https://colab.research.google.com/drive/{COLAB_NOTEBOOK_ID}"
 
-def make_colab_node_url(email: str = "pool1.studio@example.com", node_num: int = 1) -> str:
-    """Tạo link mở thẳng Colab Notebook trực tiếp theo tài khoản chỉ định"""
+def make_colab_node_url(email: str = "", node_num: int = 1) -> str:
+    """Tạo link sạch mở thẳng Colab Notebook (không gắn authuser để tương thích 100% mọi trình duyệt và tránh lỗi OAuth GapiError)"""
     node = COLAB_NODES.get(node_num, COLAB_NODES[1])
-    if email:
-        return f"https://colab.research.google.com/drive/{node['id']}?authuser={email}"
     return f"https://colab.research.google.com/drive/{node['id']}"
 
-def make_colab_account_url(email: str, node_num: int = 1) -> str:
-    """Tương thích ngược: tạo link mở Colab kèm email và node chỉ định"""
+def make_colab_account_url(email: str = "", node_num: int = 1) -> str:
+    """Tương thích ngược: tạo link mở Colab node chỉ định"""
     return make_colab_node_url(email, node_num)
 
 COLAB_PRO_URL = make_colab_node_url("pool1.studio@example.com", 1)
