@@ -1039,7 +1039,7 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Soạn nội dung thông báo cho nhóm
         scenes_preview = "\n".join([
-            f"• Cảnh {s.scene_id}: {s.narration[:60]}... _(Tìm: {s.visual_keyword})_"
+            f"• Cảnh {s.scene_id}: {s.narration[:65]}..."
             for s in script.scenes[:3]
         ])
 
@@ -1083,7 +1083,7 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             from app.services.colab_queue_service import push_job_to_drive_queue
             ok_push, _, d_link = push_job_to_drive_queue(job_id)
             if ok_push:
-                drive_status_note = "\n☁️ **Đã tự động đồng bộ kịch bản vào Google Drive!**\n"
+                drive_status_note = "☁️ **Đã tự động nạp kịch bản vào hàng đợi Google Drive!**\n"
         except Exception as ex_p:
             logger.debug(f"Auto-push queue error: {ex_p}")
 
@@ -1097,15 +1097,10 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{monetization_card}"
             f"{pinned_display}"
             f"{notes_display}"
-            f"⏱️ **Ước lượng:** ~{script.total_estimated_duration:.0f}s | {len(script.scenes)} cảnh\n\n"
+            f"⏱️ **Ước lượng:** ~{script.total_estimated_duration:.0f}s | {len(script.scenes)} cảnh\n"
             f"🗣️ **Người tạo:** {user.first_name} | 📺 **Kênh:** `{channel_name}` ({channel_niche})\n\n"
             f"{drive_status_note}"
-            f"⚡ **XUẤT VIDEO TRONG 20S (1-CHẠM TRÊN ĐIỆN THOẠI HOẶC PC):**\n"
-            f"1. Bấm nút **[⚡ MỞ COLAB PRO+ RENDER]** bên dưới.\n"
-            f"2. Bấm **Runtime** ➡️ **Run all** (Chạy tất cả) trên Colab.\n"
-            f"3. **TẮT MÀN HÌNH ĐIỆN THOẠI ĐƯỢC NGAY!**\n"
-            f"Colab GPU sẽ tự động quét kịch bản, dựng video NVENC siêu tốc và đẩy về Drive cho bạn!\n"
-            f"*(Sau khi chạy xong, bấm 'Quét Video Từ Drive' bên dưới để nhận video)*"
+            f"👉 Cả nhóm hãy xem kịch bản, bấm **DUYỆT & DỰNG VIDEO** bên dưới để sản xuất Shorts!"
         )
 
         review_markup = get_script_review_keyboard(job_id)
@@ -2238,19 +2233,40 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         colab_markup = get_colab_wait_keyboard(job_id)
         default_node = ((job_id - 1) % 3) + 1
         text = (
-            f"🚀 **ĐÃ ĐỒNG BỘ KỊCH BẢN VIDEO #{job_id} VÀO GOOGLE DRIVE!**\n\n"
-            f"🎬 **Tiêu đề:** *{j_title}*\n"
-            f"⚡ **Thời gian render:** ~20-30 giây (GPU NVENC)\n"
-            f"🔥 **Đề xuất Node:** **Node {default_node}** *(Hỗ trợ Colab Pro+ chạy song song)*\n\n"
-            f"📱 **HƯỚNG DẪN DỰNG 1-CHẠM TRÊN ĐIỆN THOẠI HOẶC PC:**\n"
-            f"1. Bấm nút **[⚡ MỞ COLAB GPU (Node {default_node})]** bên dưới.\n"
-            f"   *(Nếu Node 1 đang bận tạo video khác, hãy bấm mở Node 2 hoặc Node 3 để chạy song song cùng lúc, không lo xung đột!)*\n"
-            f"2. Bấm menu **Runtime** ➡️ **Run all** (Chạy tất cả) ➡️ Cấp quyền Drive.\n"
-            f"3. **TẮT MÀN HÌNH HOẶC ĐÓNG TAB ĐƯỢC NGAY!**\n\n"
-            f"💡 **Cơ chế khóa nguyên tử (Atomic Lock):** Các Node tự động chia task, không bao giờ render trùng hay đè file nhau.\n"
-            f"🤖 Sau khi render xong, hệ thống sẽ tự động gửi video thành phẩm vào nhóm cho bạn!"
+            f"🚀 <b>ĐÃ ĐỒNG BỘ KỊCH BẢN VIDEO #{job_id} VÀO GOOGLE DRIVE!</b>\n\n"
+            f"🎬 <b>Tiêu đề:</b> <i>{j_title}</i>\n"
+            f"⚡ <b>Công nghệ:</b> GPU NVENC P2 Tăng Tốc (1080x1920 30fps)\n"
+            f"☁️ <b>Trạng thái:</b> Đã sẵn sàng trên Google Drive, Colab Pro+ đang nhận việc ngầm...\n\n"
+            f"💡 Video hoàn thành sẽ tự động gửi thẳng vào nhóm cho bạn!"
         )
-        await safe_reply(update, text, reply_markup=colab_markup)
+        await safe_reply(update, text, reply_markup=colab_markup, parse_mode="HTML")
+
+    elif data.startswith("colab_cluster_menu:"):
+        job_id = int(data.split(":")[1])
+        from app.bot.keyboards import get_colab_cluster_menu_keyboard
+        markup = get_colab_cluster_menu_keyboard(job_id)
+        msg_text = (
+            f"⚡ <b>HỆ THỐNG CỤM COLAB GPU CLUSTER (Task #{job_id})</b>\n\n"
+            f"💡 Hệ thống hỗ trợ 3 Node chạy song song trên 3 tài khoản Google độc lập.\n"
+            f"Bấm chọn Node tương ứng bên dưới để mở hoặc xem tài liệu hướng dẫn:"
+        )
+        if query and query.message:
+            await query.message.edit_text(msg_text, reply_markup=markup, parse_mode="HTML")
+        else:
+            await safe_reply(update, msg_text, reply_markup=markup, parse_mode="HTML")
+
+    elif data.startswith("back_script_review:"):
+        job_id = int(data.split(":")[1])
+        from app.bot.keyboards import get_script_review_keyboard
+        markup = get_script_review_keyboard(job_id)
+        msg_text = (
+            f"🎬 <b>MENU KỊCH BẢN (Task #{job_id})</b>\n\n"
+            f"👉 Cả nhóm hãy xem kịch bản, bấm <b>DUYỆT & DỰNG VIDEO</b> bên dưới để sản xuất Shorts!"
+        )
+        if query and query.message:
+            await query.message.edit_text(msg_text, reply_markup=markup, parse_mode="HTML")
+        else:
+            await safe_reply(update, msg_text, reply_markup=markup, parse_mode="HTML")
 
     elif data.startswith("check_drive_render:"):
         job_id = int(data.split(":")[1])
@@ -2268,13 +2284,14 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 v_title = jb.title or jb.topic if jb else f"Video #{job_id}"
 
             size_mb = os.path.getsize(local_p) / (1024 * 1024) if os.path.exists(local_p) else 0
+            drive_str = f'<a href="{d_link}">Mở file gốc trên Drive</a>' if d_link else "Đã lưu an toàn"
             cap = (
-                f"🎉 **VIDEO #{job_id} ĐÃ ĐƯỢC COLAB RENDER HOÀN TẤT & LẤY VỀ!**\n\n"
-                f"📌 **Tiêu đề:** {v_title}\n"
-                f"📦 **Dung lượng:** {size_mb:.1f} MB\n"
-                f"⚡ **Công nghệ:** GPU NVENC Tăng Tốc (1080x1920 30fps)\n"
-                f"☁️ **Google Drive:** {d_link or 'Đã lưu an toàn'}\n\n"
-                f"👉 Cả nhóm hãy xem thử video! Chọn **Đăng Ngay** hoặc **Góp Ý Sửa Lại** bên dưới:"
+                f"🎉 <b>VIDEO #{job_id} ĐÃ RENDER HOÀN TẤT & ĐÃ GỬI VỀ NHÓM!</b>\n\n"
+                f"📌 <b>Tiêu đề:</b> {v_title}\n"
+                f"📦 <b>Dung lượng:</b> {size_mb:.1f} MB\n"
+                f"⚡ <b>Công nghệ:</b> GPU NVENC P2 Tăng Tốc (1080x1920 30fps)\n"
+                f"☁️ <b>Google Drive:</b> {drive_str}\n\n"
+                f"👉 Cả nhóm hãy xem video! Bấm <b>Đăng Ngay</b> hoặc <b>Góp Ý Sửa Lại</b> bên dưới:"
             )
             sent_video = False
             if size_mb <= 49.0 and os.path.exists(local_p) and chat_id and bot:
@@ -2284,6 +2301,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             chat_id=chat_id,
                             video=vf,
                             caption=cap,
+                            parse_mode="HTML",
                             reply_markup=post_markup,
                             supports_streaming=True,
                             read_timeout=120,
@@ -2298,9 +2316,9 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     logger.warning(f"Lỗi gửi file video: {ex_v}")
 
             if not sent_video:
-                await safe_edit_text(wait_m, cap, reply_markup=post_markup)
+                await safe_edit_text(wait_m, cap, reply_markup=post_markup, parse_mode="HTML")
         else:
-            await safe_edit_text(wait_m, f"⏳ {local_p}\n\n👉 Vui lòng mở link Colab bấm 'Run all' hoặc đợi vài giây rồi bấm thử lại!")
+            await safe_edit_text(wait_m, f"⏳ {local_p}\n\n👉 Vui lòng đợi vài giây để Colab Pro+ render xong rồi bấm thử lại!")
 
     elif data.startswith("render_local:"):
         job_id = int(data.split(":")[1])

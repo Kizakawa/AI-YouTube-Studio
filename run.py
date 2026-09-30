@@ -292,13 +292,14 @@ def main():
 
                 post_markup = get_video_post_render_keyboard(jid)
                 size_mb = os.path.getsize(local_p) / (1024 * 1024) if (local_p and os.path.exists(local_p)) else 0
+                drive_html = f'<a href="{d_link}">Mở file gốc trên Google Drive</a>' if d_link else "Đã lưu an toàn"
                 cap = (
-                    f"🎉 **VIDEO #{jid} ĐÃ ĐƯỢC COLAB RENDER XONG & TỰ ĐỘNG GỬI VỀ!**\n\n"
-                    f"📌 **Tiêu đề:** {title}\n"
-                    f"📦 **Dung lượng:** {size_mb:.1f} MB\n"
-                    f"⚡ **Công nghệ:** GPU NVENC Tăng Tốc (1080x1920 30fps)\n"
-                    f"☁️ **Google Drive:** {d_link or 'Đã lưu an toàn'}\n\n"
-                    f"👉 Cả nhóm hãy xem video! Bấm **Đăng Ngay** hoặc **Góp Ý Sửa Lại** bên dưới:"
+                    f"🎉 <b>VIDEO #{jid} ĐÃ RENDER HOÀN TẤT & ĐÃ GỬI VỀ NHÓM!</b>\n\n"
+                    f"📌 <b>Tiêu đề:</b> {title}\n"
+                    f"📦 <b>Dung lượng:</b> {size_mb:.1f} MB\n"
+                    f"⚡ <b>Công nghệ:</b> GPU NVENC P2 Tăng Tốc (1080x1920 30fps)\n"
+                    f"☁️ <b>Google Drive:</b> {drive_html}\n\n"
+                    f"👉 Cả nhóm hãy xem video! Bấm <b>Đăng Ngay</b> hoặc <b>Góp Ý Sửa Lại</b> bên dưới:"
                 )
 
                 any_sent = False
@@ -311,6 +312,7 @@ def main():
                                     chat_id=t_chat,
                                     video=vf,
                                     caption=cap,
+                                    parse_mode="HTML",
                                     reply_markup=post_markup,
                                     supports_streaming=True,
                                     read_timeout=120,
@@ -327,6 +329,8 @@ def main():
                             await context.bot.send_message(
                                 chat_id=t_chat,
                                 text=cap,
+                                parse_mode="HTML",
+                                disable_web_page_preview=False,
                                 reply_markup=post_markup
                             )
                             logger.info(f"✅ Đã gửi thông báo text #{jid} đến Telegram chat {t_chat}")

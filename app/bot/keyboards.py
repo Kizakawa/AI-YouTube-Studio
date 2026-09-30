@@ -181,63 +181,65 @@ def make_colab_account_url(email: str, node_num: int = 1) -> str:
 COLAB_PRO_URL = make_colab_node_url("pool1.studio@example.com", 1)
 
 def get_script_review_keyboard(job_id: int) -> InlineKeyboardMarkup:
-    """Bàn phím Bước 1: Khi kịch bản vừa tạo xong, hỗ trợ Render GPU đơn hoặc đa luồng song song"""
+    """Bàn phím Bước 1: Khi kịch bản vừa tạo xong, tinh gọn, chuẩn SaaS cao cấp"""
     default_node = ((job_id - 1) % 3) + 1
     primary_url = make_colab_node_url("pool1.studio@example.com", default_node)
-    node1_url = make_colab_node_url("pool1.studio@example.com", 1)
-    node2_url = make_colab_node_url("pool1.studio@example.com", 2)
-    node3_url = make_colab_node_url("pool1.studio@example.com", 3)
 
     keyboard = [
         [
-            InlineKeyboardButton(f"⚡ MỞ COLAB GPU (Node {default_node} - Khuyên Dùng)", url=primary_url),
-        ],
-        [
-            InlineKeyboardButton("⚡ Node 1", url=node1_url),
-            InlineKeyboardButton("⚡ Node 2 (Song Song)", url=node2_url),
-            InlineKeyboardButton("⚡ Node 3 (Song Song)", url=node3_url),
-        ],
-        [
-            InlineKeyboardButton("🔄 Quét Kết Quả Từ Drive", callback_data=f"check_drive_render:{job_id}"),
-            InlineKeyboardButton("🎬 Đẩy Lại Drive", callback_data=f"render_video:{job_id}"),
-        ],
-        [
-            InlineKeyboardButton("💡 Đổi Tài Khoản / Xem Hướng Dẫn Cluster", callback_data="colab_rotation_guide"),
+            InlineKeyboardButton("🎬 DUYỆT & DỰNG VIDEO NGAY (GPU Pro+)", callback_data=f"render_video:{job_id}"),
         ],
         [
             InlineKeyboardButton("✍️ Góp Ý Sửa", callback_data=f"edit_script:{job_id}"),
-            InlineKeyboardButton("🔄 Tạo Lại", callback_data=f"regenerate:{job_id}"),
+            InlineKeyboardButton("🔄 Tạo Lại Kịch Bản", callback_data=f"regenerate:{job_id}"),
         ],
         [
-            InlineKeyboardButton("💻 Render CPU Cục Bộ (Chậm)", callback_data=f"render_local:{job_id}"),
+            InlineKeyboardButton(f"⚡ Mở Colab Node {default_node}", url=primary_url),
+            InlineKeyboardButton("⚙️ Cụm Đa Node", callback_data=f"colab_cluster_menu:{job_id}"),
+        ],
+        [
+            InlineKeyboardButton("💻 Render CPU Cục Bộ", callback_data=f"render_local:{job_id}"),
             InlineKeyboardButton("❌ Hủy Bỏ", callback_data=f"cancel:{job_id}"),
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 def get_colab_wait_keyboard(job_id: int) -> InlineKeyboardMarkup:
-    """Bàn phím điều hướng khi kịch bản đã nằm trong hàng đợi Google Drive chờ Colab chạy"""
+    """Bàn phím điều hướng khi kịch bản đã nằm trong hàng đợi Google Drive chờ Colab Pro+ chạy"""
     default_node = ((job_id - 1) % 3) + 1
     primary_url = make_colab_node_url("pool1.studio@example.com", default_node)
-    node1_url = make_colab_node_url("pool1.studio@example.com", 1)
-    node2_url = make_colab_node_url("pool1.studio@example.com", 2)
-    node3_url = make_colab_node_url("pool1.studio@example.com", 3)
 
     keyboard = [
         [
-            InlineKeyboardButton(f"⚡ MỞ COLAB GPU (Node {default_node} - Khuyên Dùng)", url=primary_url),
+            InlineKeyboardButton("🔄 Quét Kết Quả Từ Drive Ngay", callback_data=f"check_drive_render:{job_id}"),
         ],
         [
-            InlineKeyboardButton("⚡ Node 1", url=node1_url),
+            InlineKeyboardButton(f"⚡ Mở Colab Node {default_node}", url=primary_url),
+            InlineKeyboardButton("⚙️ Cụm Đa Node", callback_data=f"colab_cluster_menu:{job_id}"),
+        ],
+        [
+            InlineKeyboardButton("💻 Render Dự Phòng Bằng CPU", callback_data=f"render_local:{job_id}"),
+            InlineKeyboardButton("❌ Hủy Bỏ", callback_data=f"cancel:{job_id}"),
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_colab_cluster_menu_keyboard(job_id: int) -> InlineKeyboardMarkup:
+    """Menu chọn Node Colab chi tiết khi bấm '⚙️ Cụm Đa Node'"""
+    node1_url = make_colab_node_url("pool1.studio@example.com", 1)
+    node2_url = make_colab_node_url("pool1.studio@example.com", 2)
+    node3_url = make_colab_node_url("pool1.studio@example.com", 3)
+    keyboard = [
+        [
+            InlineKeyboardButton("⚡ Node 1 (Chính)", url=node1_url),
             InlineKeyboardButton("⚡ Node 2 (Song Song)", url=node2_url),
             InlineKeyboardButton("⚡ Node 3 (Song Song)", url=node3_url),
         ],
         [
-            InlineKeyboardButton("🔄 Quét Kết Quả Từ Drive", callback_data=f"check_drive_render:{job_id}"),
-            InlineKeyboardButton("💡 Hướng Dẫn Chạy Đa Node", callback_data="colab_rotation_guide"),
+            InlineKeyboardButton("💡 Đổi Tài Khoản / Hướng Dẫn Cluster", callback_data="colab_rotation_guide"),
         ],
         [
-            InlineKeyboardButton("💻 Render Dự Phòng Bằng CPU", callback_data=f"render_local:{job_id}"),
+            InlineKeyboardButton("⬅️ Quay Lại", callback_data=f"back_script_review:{job_id}"),
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -246,14 +248,14 @@ get_video_review_keyboard = get_script_review_keyboard
 
 def get_video_post_render_keyboard(job_id: int, is_republish: bool = False) -> InlineKeyboardMarkup:
     """Bàn phím Bước 2: Khi video đã render xong và gửi vào nhóm, chọn Đăng luôn hoặc Góp ý sửa lại"""
-    pub_label = "🔄 Đăng Lại Lên YouTube Shorts (Bản Mới)" if is_republish else "🚀 Đăng Lên YouTube Shorts Ngay"
+    pub_label = "🔄 Đăng Lại Bản Mới (Shorts)" if is_republish else "🚀 Đăng Lên YouTube Shorts Ngay"
     keyboard = [
         [
             InlineKeyboardButton(pub_label, callback_data=f"publish_youtube:{job_id}"),
         ],
         [
-            InlineKeyboardButton("✍️ Góp Ý Chỉnh Sửa & Dựng Lại", callback_data=f"feedback_video:{job_id}"),
-            InlineKeyboardButton("⏰ Lên Lịch Tự Động (Shorts)", callback_data=f"schedule_youtube:{job_id}"),
+            InlineKeyboardButton("✍️ Góp Ý Sửa Lại", callback_data=f"feedback_video:{job_id}"),
+            InlineKeyboardButton("⏰ Lên Lịch Đăng (Shorts)", callback_data=f"schedule_youtube:{job_id}"),
         ],
         [
             InlineKeyboardButton("❌ Hủy Video", callback_data=f"cancel:{job_id}"),
