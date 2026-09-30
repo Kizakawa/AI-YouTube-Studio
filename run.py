@@ -38,7 +38,7 @@ def recover_stuck_jobs():
     try:
         from app.database.models import get_db, VideoJob, log_activity
         with get_db() as db:
-            # 1. Khôi phục các job bị kẹt ở RENDERING
+            # 1. Chỉ khôi phục các job thực sự bị ngắt giữa chừng khi đang RENDERING
             stuck_jobs = db.query(VideoJob).filter(VideoJob.status == "RENDERING").all()
             for j in stuck_jobs:
                 j.status = "SCRIPT_READY"
@@ -47,39 +47,6 @@ def recover_stuck_jobs():
                 log_activity(db, 0, "System", "RECOVER_JOB", f"Khôi phục Video #{j.id} về SCRIPT_READY")
             if stuck_jobs:
                 print(f"   -> [Khôi phục] Đã tự động khôi phục {len(stuck_jobs)} video bị gián đoạn về trạng thái sẵn sàng.")
-
-            # 2. Tự động khôi phục các job FAILED có kịch bản sẵn (đang làm dở bị lỗi hoặc hủy) để bot tự động dựng lại
-            failed_jobs = db.query(VideoJob).filter(
-                VideoJob.status == "FAILED",
-                VideoJob.scenes_json.isnot(None)
-            ).order_by(VideoJob.id.desc()).all()
-            if failed_jobs:
-                print(f"   -> [Tự động khôi phục] Phát hiện {len(failed_jobs)} video lỗi dở có kịch bản — Chuyển sang SCRIPT_READY để bot dựng tiếp:")
-                for fj in failed_jobs:
-                    fj.status = "SCRIPT_READY"
-                    fj.progress_percent = 0
-                    fj.error_message = None
-                    fj.progress_message = "Tự động khôi phục khi khởi động lại hệ thống"
-                    log_activity(db, 0, "System", "AUTO_RECOVER_FAILED", f"Khôi phục Video lỗi #{fj.id} để tự động render lại")
-                    title_clean = fj.title[:35] if fj.title else (fj.topic or f"Job #{fj.id}")
-                    print(f"      * Job #{fj.id}: {title_clean} -> Đã chuyển sang SCRIPT_READY để tự động render!")
-
-            # 3. Kiểm tra các job PENDING_COLAB tồn đọng lâu ngày khi khởi động lại
-            from datetime import datetime, timedelta
-            from config.settings import settings
-            timeout_colab = getattr(settings, "COLAB_TIMEOUT_MINUTES", 60)
-            cutoff_colab = datetime.utcnow() - timedelta(minutes=timeout_colab)
-            stale_colab_jobs = db.query(VideoJob).filter(
-                VideoJob.status == "PENDING_COLAB",
-                (VideoJob.updated_at < cutoff_colab) | (VideoJob.updated_at.is_(None))
-            ).all()
-            for cj in stale_colab_jobs:
-                cj.status = "SCRIPT_READY"
-                cj.progress_percent = 20
-                cj.progress_message = f"Khôi phục sau restart (Colab chờ quá {timeout_colab}m)"
-                log_activity(db, 0, "System", "RECOVER_COLAB_JOB", f"Khôi phục Video #{cj.id} từ PENDING_COLAB về SCRIPT_READY")
-            if stale_colab_jobs:
-                print(f"   -> [Khôi phục] Đã phát hiện và phục hồi {len(stale_colab_jobs)} video PENDING_COLAB bị quá hạn.")
     except Exception as e:
         print(f"   -> ⚠️ Lỗi khôi phục jobs: {e}")
 

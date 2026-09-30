@@ -182,7 +182,28 @@ class ScriptContract(BaseModel):
 
     @classmethod
     def from_json_str(cls, json_str: str) -> "ScriptContract":
-        """Deserialize từ cột scenes_json của VideoJob."""
+        """Deserialize từ cột scenes_json của VideoJob (hỗ trợ cả định dạng dict lẫn legacy list)."""
+        import json
+        try:
+            parsed = json.loads(json_str)
+        except Exception:
+            return cls.model_validate_json(json_str)
+
+        if isinstance(parsed, list):
+            scenes = parsed
+            title = "Video Shorts"
+            hook = scenes[0].get("narration", "Watch until the end...") if scenes else "Watch until the end..."
+            full_narr = " ".join(s.get("narration", "") for s in scenes if isinstance(s, dict) and s.get("narration"))
+            data = {
+                "title": title,
+                "hook": hook,
+                "full_narration": full_narr or hook,
+                "scenes": scenes,
+                "tags": ["shorts", "viral"]
+            }
+            return cls.model_validate(data)
+        elif isinstance(parsed, dict):
+            return cls.model_validate(parsed)
         return cls.model_validate_json(json_str)
 
 

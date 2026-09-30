@@ -11,6 +11,7 @@ Luồng render nâng cấp (v2):
   4. (Optional) Mix SFX vào các mốc chuyển cảnh (whoosh, hit...)
   5. (Optional) Burn-in ASS/SRT subtitles (ASS karaoke ưu tiên)
 """
+import asyncio
 import logging
 import shutil
 from pathlib import Path

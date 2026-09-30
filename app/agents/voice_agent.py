@@ -111,9 +111,43 @@ class VoiceAgent:
                 except Exception:
                     pass
 
-            # Sinh audio cho 1 scene
-            communicate = edge_tts.Communicate(scene.narration, safe_voice)
-            await communicate.save(scene_audio_path)
+            # Sinh audio cho 1 scene với cơ chế retry và fallback voice
+            success = False
+            last_err = None
+            candidate_voices = [safe_voice]
+            if safe_voice.startswith("vi-"):
+                if "HoaiMy" in safe_voice:
+                    candidate_voices.append("vi-VN-NamMinhNeural")
+                else:
+                    candidate_voices.append("vi-VN-HoaiMyNeural")
+            else:
+                if "Andrew" in safe_voice:
+                    candidate_voices.extend(["en-US-GuyNeural", "en-US-ChristopherNeural"])
+                elif "Guy" in safe_voice:
+                    candidate_voices.extend(["en-US-AndrewNeural", "en-US-ChristopherNeural"])
+                else:
+                    candidate_voices.extend(["en-US-GuyNeural", "en-US-AndrewNeural"])
+
+            for c_voice in candidate_voices:
+                for attempt in range(3):
+                    try:
+                        communicate = edge_tts.Communicate(scene.narration, c_voice)
+                        await communicate.save(scene_audio_path)
+                        if Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024:
+                            safe_voice = c_voice
+                            success = True
+                            break
+                        else:
+                            raise RuntimeError("Audio file empty or incomplete")
+                    except Exception as err_tts:
+                        last_err = err_tts
+                        logger.warning(f"Scene {scene.scene_id}: Lỗi TTS '{c_voice}' (lần {attempt+1}/3): {err_tts}")
+                        await asyncio.sleep(1.0 * (attempt + 1))
+                if success:
+                    break
+
+            if not success:
+                raise last_err or RuntimeError(f"Không thể sinh audio cho cảnh {scene.scene_id}")
 
             # Đo duration thực bằng ffprobe
             duration_ms = self._get_audio_duration_ms(scene_audio_path)
