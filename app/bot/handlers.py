@@ -123,18 +123,34 @@ safe_answer_query = safe_query_answer
 def is_authorized(update: Update) -> bool:
     """
     Kiểm tra quyền truy cập bot:
+    - Chủ sở hữu hệ thống (Giang & Vương): Luôn luôn được cấp quyền truy cập.
+    - Thành viên đã được lưu trong Database: Luôn được cấp quyền.
     - Nếu có cấu hình ALLOWED_TELEGRAM_USERS hoặc ALLOWED_GROUP_IDS: bắt buộc tuân thủ danh sách trắng.
-    - Nếu không cấu hình: Cho phép tương tác (nhưng các thao tác đặc quyền như duyệt thiết bị sẽ yêu cầu quyền Admin).
+    - Nếu không cấu hình: Cho phép tương tác (nhưng các thao tác đặc quyền yêu cầu quyền Admin).
     """
+    user = update.effective_user
+    chat = update.effective_chat
+
+    # 1. Chủ sở hữu hệ thống luôn luôn được cấp quyền
+    if user and user.id in (7177163590, 8498162618):
+        return True
+
+    # 2. Thành viên đã có hồ sơ trong Database được phép truy cập
+    if user:
+        try:
+            with get_db() as db:
+                db_user = db.query(User).filter(User.telegram_id == user.id).first()
+                if db_user:
+                    return True
+        except Exception:
+            pass
+
     allowed_users = settings.get_allowed_users()
     allowed_groups = settings.get_allowed_group_ids()
 
-    # Mặc định mở nếu chưa đặt whitelist trong .env
+    # 3. Mặc định mở nếu chưa đặt whitelist trong .env
     if not allowed_users and not allowed_groups:
         return True
-
-    chat = update.effective_chat
-    user = update.effective_user
 
     if chat and chat.type in ["group", "supergroup"]:
         if allowed_groups and chat.id in allowed_groups:
