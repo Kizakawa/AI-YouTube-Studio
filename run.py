@@ -190,20 +190,27 @@ async def check_drive_and_notify(bot_instance=None):
                 affiliate_url=aff_url,
                 affiliate_name=aff_name
             )
+            import html
+            safe_title = html.escape(str(title))
+            safe_aff_name = html.escape(str(aff_name))
+            safe_aff_cta = html.escape(str(aff_cta))
+            aff_url_esc = html.escape(str(aff_url))
             size_mb = os.path.getsize(local_p) / (1024 * 1024) if (local_p and os.path.exists(local_p)) else 0
             drive_html = f'<a href="{d_link}">Mở file gốc trên Google Drive</a>' if d_link else "Đã lưu an toàn"
             cap = (
-                f"🎉 <b>VIDEO #{jid} ĐÃ RENDER HOÀN TẤT & ĐÃ GỬI VỀ NHÓM!</b>\n\n"
-                f"📌 <b>Tiêu đề:</b> {title}\n"
+                f"🎉 <b>VIDEO #{jid} ĐÃ RENDER HOÀN TẤT &amp; ĐÃ GỬI VỀ NHÓM!</b>\n\n"
+                f"📌 <b>Tiêu đề:</b> {safe_title}\n"
                 f"📦 <b>Dung lượng:</b> {size_mb:.1f} MB\n"
                 f"⚡ <b>Công nghệ:</b> GPU NVENC 1080p Siêu Nét (1080x1920 30fps)\n"
                 f"☁️ <b>Google Drive:</b> {drive_html}\n\n"
                 f"🛒 <b>SẢN PHẨM TIẾP THỊ LIÊN KẾT (AFFILIATE):</b>\n"
-                f"• <b>Sản phẩm:</b> {aff_name}\n"
-                f"• <b>Gợi ý:</b> <i>{aff_cta}</i>\n"
-                f"👉 <b>Link mua ngay:</b> <a href=\"{aff_url}\">{aff_url}</a>\n\n"
+                f"• <b>Sản phẩm:</b> {safe_aff_name}\n"
+                f"• <b>Gợi ý:</b> <i>{safe_aff_cta}</i>\n"
+                f"👉 <b>Link mua ngay:</b> <a href=\"{aff_url_esc}\">{aff_url_esc}</a>\n\n"
                 f"👉 Bấm <b>Đăng Ngay</b>, <b>Lên Lịch</b>, <b>Sửa</b> hoặc <b>Xóa</b> bên dưới:"
             )
+            if len(cap) > 1000:
+                cap = cap[:990] + "..."
 
             any_sent = False
             for t_chat in target_chats:
@@ -218,14 +225,30 @@ async def check_drive_and_notify(bot_instance=None):
                                 parse_mode="HTML",
                                 reply_markup=post_markup,
                                 supports_streaming=True,
-                                read_timeout=120,
-                                write_timeout=120
+                                read_timeout=180,
+                                write_timeout=180
                             )
                         sent = True
                         any_sent = True
                         logger.info(f"✅ Đã tự động gửi video #{jid} đến Telegram chat {t_chat}")
                     except Exception as ex_v:
                         logger.warning(f"Lỗi gửi video #{jid} qua Telegram chat {t_chat}: {ex_v}")
+                        try:
+                            with open(local_p, "rb") as vf_doc:
+                                await bot.send_document(
+                                    chat_id=t_chat,
+                                    document=vf_doc,
+                                    caption=cap,
+                                    parse_mode="HTML",
+                                    reply_markup=post_markup,
+                                    read_timeout=180,
+                                    write_timeout=180
+                                )
+                            sent = True
+                            any_sent = True
+                            logger.info(f"✅ Đã gửi video dạng document #{jid} đến Telegram chat {t_chat}")
+                        except Exception as ex_doc:
+                            logger.warning(f"Lỗi gửi document video #{jid}: {ex_doc}")
 
                 if not sent:
                     try:
