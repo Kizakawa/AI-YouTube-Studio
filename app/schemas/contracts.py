@@ -176,6 +176,10 @@ class ScriptContract(BaseModel):
         """Serialize để lưu vào cột scenes_json của VideoJob."""
         return self.model_dump_json()
 
+    def to_dict(self) -> dict:
+        """Chuyển đổi thành dictionary (Pydantic model_dump)."""
+        return self.model_dump()
+
     @classmethod
     def from_json_str(cls, json_str: str) -> "ScriptContract":
         """Deserialize từ cột scenes_json của VideoJob."""

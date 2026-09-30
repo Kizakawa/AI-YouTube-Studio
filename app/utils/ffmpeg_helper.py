@@ -352,7 +352,11 @@ def image_to_video(
         "-vf", vf_chain,
         "-t", str(duration_seconds),
         "-c:v", "libx264",
-        "-preset", "veryfast",
+        "-preset", "medium",
+        "-crf", "18",
+        "-b:v", "12M",
+        "-maxrate", "16M",
+        "-bufsize", "24M",
         "-tune", "stillimage",   # Optimize encoder cho ảnh tĩnh (tăng tốc 20-40%)
         "-pix_fmt", "yuv420p",
         "-r", str(fps),
@@ -399,7 +403,11 @@ def trim_video(
             f"fps={fps}"
         ),
         "-c:v", "libx264",
-        "-preset", "veryfast",
+        "-preset", "medium",
+        "-crf", "18",
+        "-b:v", "12M",
+        "-maxrate", "16M",
+        "-bufsize", "24M",
         "-pix_fmt", "yuv420p",
         "-r", str(fps),
         "-an",  # Bỏ audio gốc của stock video
@@ -433,7 +441,11 @@ def concat_videos(
         "-safe", "0",
         "-i", list_file,
         "-c:v", "libx264",
-        "-preset", "veryfast",
+        "-preset", "medium",
+        "-crf", "18",
+        "-b:v", "12M",
+        "-maxrate", "16M",
+        "-bufsize", "24M",
         "-pix_fmt", "yuv420p",
         "-r", str(fps),
     ] + fps_flag + [
@@ -530,7 +542,11 @@ def concat_videos_with_xfade(
         "-filter_complex", filter_complex,
         "-map", f"[{current_label}]",
         "-c:v", "libx264",
-        "-preset", "veryfast",
+        "-preset", "medium",
+        "-crf", "18",
+        "-b:v", "12M",
+        "-maxrate", "16M",
+        "-bufsize", "24M",
         "-pix_fmt", "yuv420p",
         "-r", str(fps),
         "-an",
@@ -618,7 +634,7 @@ def mux_audio_video(
             "-map", "[aout]",
             "-c:v", "copy",
             "-c:a", "aac",
-            "-b:a", "192k",
+            "-b:a", "256k",
             "-movflags", "+faststart",
             "-shortest",
             output_path
@@ -633,7 +649,7 @@ def mux_audio_video(
                 "-map", "[aout]",
                 "-c:v", "copy",
                 "-c:a", "aac",
-                "-b:a", "192k",
+                "-b:a", "256k",
                 "-movflags", "+faststart",
                 "-shortest",
                 output_path
@@ -646,7 +662,7 @@ def mux_audio_video(
                 "-map", "1:a",
                 "-c:v", "copy",
                 "-c:a", "aac",
-                "-b:a", "192k",
+                "-b:a", "256k",
                 "-movflags", "+faststart",
                 "-shortest",
                 output_path
@@ -837,7 +853,7 @@ def mix_sfx_transitions(
         "-map", "[aout]",
         "-c:v", "copy",
         "-c:a", "aac",
-        "-b:a", "192k",
+        "-b:a", "256k",
         "-shortest",
         output_path
     ]
@@ -899,8 +915,11 @@ def burn_subtitles(
         "-i", video_path,
         "-vf", vf_filter,
         "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "20",
+        "-preset", "medium",
+        "-crf", "18",
+        "-b:v", "12M",
+        "-maxrate", "16M",
+        "-bufsize", "24M",
         "-c:a", "copy",
         output_path
     ]

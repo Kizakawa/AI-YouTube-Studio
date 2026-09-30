@@ -151,13 +151,19 @@ def main():
     print(f"   -> Cụm Google Ultra: Đã nạp {len(keys)} Gemini API Key(s) vào pool.")
 
     # 4. Kiểm tra chế độ chạy
-    if "--web-only" in sys.argv or "--web" in sys.argv or os.getenv("WEB_ONLY"):
-        print("[4/4] 🌐 [CHẾ ĐỘ WEB-ONLY] Chỉ khởi động Web Dashboard, KHÔNG chạy Telegram Bot!")
+    disable_polling = (
+        "--web-only" in sys.argv or "--web" in sys.argv or "--no-bot" in sys.argv
+        or os.getenv("WEB_ONLY")
+        or os.getenv("DISABLE_TELEGRAM_POLLING", "0").lower() in ("1", "true", "yes")
+        or os.getenv("ENABLE_TELEGRAM_POLLING", "1").lower() in ("0", "false", "no")
+    )
+    if disable_polling:
+        print("[4/4] 🌐 [CHẾ ĐỘ WEB & API] Khởi động Web Dashboard & Dịch vụ ngầm, KHÔNG chiếm quyền Telegram Polling!")
         net = get_network_info()
         print(f"👉 Trên máy tính này: {net['local_url']}")
         if net['is_lan_available']:
             print(f"👉 Trên điện thoại / máy khác (cùng Wi-Fi): {net['wifi_url']}")
-        print("🔒 Không bị xung đột hay chập bot với máy bạn Giang / Render.")
+        print("🔒 Tránh hoàn toàn xung đột 409 Conflict với Render/máy chủ khác đang chạy bot.")
         print("=" * 70)
         try:
             web_thread.join()
@@ -397,6 +403,7 @@ def main():
     print("=" * 70)
     # drop_pending_updates=False: Không xóa tin nhắn của người dùng gửi trong lúc server khởi động/deploy lại
     # Tự động kết nối lại nếu mạng WiFi/máy tính bị chập chờn hoặc rớt kết nối tạm thời
+    conflict_count = 0
     while True:
         try:
             app.run_polling(drop_pending_updates=False, bootstrap_retries=-1)
@@ -405,9 +412,20 @@ def main():
             print("\n👋 Đã dừng Telegram Bot theo yêu cầu của bạn.")
             break
         except Exception as e:
-            logger.warning(f"⚠️ Mạng chập chờn / Mất kết nối tạm thời tới Telegram ({e}). Đang tự động kết nối lại sau 5 giây...")
-            import time
-            time.sleep(5)
+            err_str = str(e)
+            if "Conflict" in err_str or "terminated by other getUpdates" in err_str:
+                conflict_count += 1
+                wait_sec = min(60, 10 * conflict_count)
+                logger.warning(
+                    f"⚠️ [TELEGRAM 409 CONFLICT] Đang có một tiến trình Bot khác (trên Render hoặc máy khác) chạy cùng lúc với cùng 1 Token!\n"
+                    f"   -> Đang tạm dừng {wait_sec}s trước khi kết nối lại để không gây nghẽn Telegram...\n"
+                    f"   💡 Gợi ý: Nếu Bot đã chạy trên Render 24/7, bạn có thể chạy local bằng: 'python run.py --web' để tránh tranh chấp Token!"
+                )
+                time.sleep(wait_sec)
+            else:
+                conflict_count = 0
+                logger.warning(f"⚠️ Mạng chập chờn / Mất kết nối tạm thời tới Telegram ({e}). Đang tự động kết nối lại sau 5 giây...")
+                time.sleep(5)
 
 if __name__ == "__main__":
     main()

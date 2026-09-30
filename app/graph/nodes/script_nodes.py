@@ -144,8 +144,9 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
         language=language
     )
 
+    script_dict = new_script.to_dict() if hasattr(new_script, "to_dict") else new_script.model_dump()
     return {
-        "script_data": new_script.to_dict(),
+        "script_data": script_dict,
         "script_retry_count": retry_count,
         "current_step": "SCRIPT_REFINED",
         "progress_message": f"Đã tinh chỉnh kịch bản theo nhận xét (Lần {retry_count})",
