@@ -412,6 +412,28 @@ class DriveAgent:
             logger.debug(f"Lỗi khi tìm video #{job_id} trên Drive: {e}")
             return None
 
+    def download_file_by_id(self, file_id: str, dest_local_path: str) -> bool:
+        """
+        Tải file từ Google Drive theo file_id về đường dẫn cục bộ
+        """
+        if not self.service:
+            self._init_service()
+        if not self.service:
+            return False
+        try:
+            from googleapiclient.http import MediaIoBaseDownload
+            Path(dest_local_path).parent.mkdir(parents=True, exist_ok=True)
+            request = self.service.files().get_media(fileId=file_id)
+            with open(dest_local_path, "wb") as fh:
+                downloader = MediaIoBaseDownload(fh, request, chunksize=1024 * 1024 * 5)
+                done = False
+                while not done:
+                    status, done = downloader.next_chunk()
+            return os.path.exists(dest_local_path) and os.path.getsize(dest_local_path) > 0
+        except Exception as e:
+            logger.error(f"Lỗi khi tải file (ID: {file_id}) về {dest_local_path}: {e}")
+            return False
+
     def download_file_by_name(self, filename: str, dest_local_path: str, folder_path: str = "AI_YouTube_RenderFarm/completed") -> bool:
         """
         Tìm và tải file theo tên trong thư mục Drive về máy cục bộ
