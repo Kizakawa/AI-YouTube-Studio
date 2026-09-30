@@ -39,7 +39,7 @@ DEFAULT_CLUSTER_NODES = {
         "node_id": 1,
         "name": "Node 1 (Chính - Pro+ GPU)",
         "account": "pool1.studio@example.com",
-        "notebook_id": "1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo",
+        "notebook_id": "1n2wi-ZuXZpx_5OfLE20qctkGRIPikDoL",
         "notebook_file": "colab_gpu_worker.ipynb",
         "status": "IDLE",            # IDLE, RUNNING, COMPLETED, QUOTA_EXHAUSTED
         "last_heartbeat": None,
@@ -51,7 +51,7 @@ DEFAULT_CLUSTER_NODES = {
         "node_id": 2,
         "name": "Node 2 (Dự phòng 1 - Song Song)",
         "account": "pool2.studio@example.com",
-        "notebook_id": "10kBAHrC_dfubSfBUhU1yBK_9z8FruGK7",
+        "notebook_id": "1e1Wd972RIFIPm7lotcsUY5_Je9rqvf3f",
         "notebook_file": "colab_worker_node2.ipynb",
         "status": "IDLE",
         "last_heartbeat": None,
@@ -63,7 +63,7 @@ DEFAULT_CLUSTER_NODES = {
         "node_id": 3,
         "name": "Node 3 (Dự phòng 2 - Siêu Tốc)",
         "account": "pool3.studio@example.com",
-        "notebook_id": "1ubdsL5iN0cPal4hP4LllhVjKSs_QGl6u",
+        "notebook_id": "1-gDTr-ZncnsHkXKQMtqcSOPk8Cu4OOn4",
         "notebook_file": "colab_worker_node3.ipynb",
         "status": "IDLE",
         "last_heartbeat": None,
@@ -85,8 +85,20 @@ class ColabCoordinator:
             cls._instance = super(ColabCoordinator, cls).__new__(cls)
         return cls._instance
 
+    @staticmethod
+    def _get_active_drive_agent() -> DriveAgent:
+        for acc in ["account_1", "account_2", "account_3"]:
+            try:
+                da = DriveAgent(acc)
+                if da.service:
+                    da.service.files().list(pageSize=1, fields="files(id)").execute()
+                    return da
+            except Exception:
+                continue
+        return DriveAgent("account_2")
+
     def __init__(self, drive_agent: Optional[DriveAgent] = None):
-        self.da = drive_agent or DriveAgent("account_1")
+        self.da = drive_agent or self._get_active_drive_agent()
 
     def _get_default_state(self) -> Dict[str, Any]:
         return {

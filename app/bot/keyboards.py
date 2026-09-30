@@ -160,9 +160,9 @@ def get_visual_selection_keyboard(channel_id: str) -> InlineKeyboardMarkup:
 import urllib.parse
 
 COLAB_NODES = {
-    1: {"id": "1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo", "name": "Node 1", "file": "colab_gpu_worker.ipynb"},
-    2: {"id": "10kBAHrC_dfubSfBUhU1yBK_9z8FruGK7", "name": "Node 2", "file": "colab_worker_node2.ipynb"},
-    3: {"id": "1ubdsL5iN0cPal4hP4LllhVjKSs_QGl6u", "name": "Node 3", "file": "colab_worker_node3.ipynb"},
+    1: {"id": "1n2wi-ZuXZpx_5OfLE20qctkGRIPikDoL", "name": "Node 1", "file": "colab_gpu_worker.ipynb"},
+    2: {"id": "1e1Wd972RIFIPm7lotcsUY5_Je9rqvf3f", "name": "Node 2", "file": "colab_worker_node2.ipynb"},
+    3: {"id": "1-gDTr-ZncnsHkXKQMtqcSOPk8Cu4OOn4", "name": "Node 3", "file": "colab_worker_node3.ipynb"},
 }
 COLAB_NOTEBOOK_ID = COLAB_NODES[1]["id"]
 COLAB_DRIVE_URL = f"https://colab.research.google.com/drive/{COLAB_NOTEBOOK_ID}"
