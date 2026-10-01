@@ -553,7 +553,10 @@ async def get_video_pipeline(limit: int = 50) -> List[Dict[str, Any]]:
                 try:
                     import json
                     data = json.loads(j.scenes_json)
-                    scene_count = len(data.get("scenes", []))
+                    if isinstance(data, list):
+                        scene_count = len(data)
+                    elif isinstance(data, dict):
+                        scene_count = len(data.get("scenes", []))
                 except Exception:
                     pass
             # Xác định nguồn tạo: Web (user_id=0) hoặc Telegram
@@ -593,7 +596,10 @@ async def get_video_detail(job_id: int) -> Dict[str, Any]:
             try:
                 import json
                 data = json.loads(job.scenes_json)
-                scenes = data.get("scenes", [])
+                if isinstance(data, list):
+                    scenes = data
+                elif isinstance(data, dict):
+                    scenes = data.get("scenes", [])
             except Exception:
                 pass
         return {
@@ -1537,9 +1543,13 @@ def get_video_monetization_preview(job_id: int, channel_id: Optional[str] = None
         if job.scenes_json:
             try:
                 s_data = json.loads(job.scenes_json)
-                pinned_comment = s_data.get("pinned_comment")
-                scenes = s_data.get("scenes", [])
-                script_text = " ".join([sc.get("narration", "") for sc in scenes])
+                if isinstance(s_data, list):
+                    scenes = s_data
+                    pinned_comment = None
+                elif isinstance(s_data, dict):
+                    pinned_comment = s_data.get("pinned_comment")
+                    scenes = s_data.get("scenes", [])
+                script_text = " ".join([sc.get("narration", "") for sc in scenes if isinstance(sc, dict)])
             except Exception:
                 pass
 

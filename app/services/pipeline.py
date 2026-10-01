@@ -281,12 +281,14 @@ class VideoPipeline:
 
         topic = ""
         channel_niche = "general"
+        target_channel_id = None
 
         try:
             with get_db() as db:
                 job = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
                 if job:
                     topic = job.topic or job.title or ""
+                    target_channel_id = job.target_channel_id
                     channel_niche = getattr(job, "niche", "general") or "general"
                     script_obj = None
                     if job.scenes_json:
@@ -317,6 +319,19 @@ class VideoPipeline:
                             entity_type = ent_type
         except Exception as e:
             logger.warning(f"[Job {self.job_id}] Lỗi khi nhận diện primary_entity: {e}")
+
+        # Khởi tạo mặc định tránh UnboundLocalError khi không có primary_entity
+        entity_media_pool: List[Dict[str, Any]] = []
+
+        channel_visual_mode = "auto"
+        channels = settings.get_channels_config()
+        if target_channel_id:
+            for ch in channels:
+                if ch.get("id") == target_channel_id:
+                    channel_visual_mode = ch.get("visual_mode") or "auto"
+                    if not channel_niche or channel_niche == "general":
+                        channel_niche = ch.get("niche") or ch.get("style") or "general"
+                    break
 
         if primary_entity:
             logger.info(
@@ -376,6 +391,12 @@ class VideoPipeline:
             )
 
             prod_method = sc_strat.get("production_method") or v_analysis.get("production_method", "STOCK_FOOTAGE")
+            scene_pref = getattr(scene, 'media_type', None)
+            if channel_visual_mode in ("imagen_ai", "ai_image") and prod_method != "REAL_ARCHIVE":
+                prod_method = "IMAGE_TO_VIDEO"
+            elif scene_pref == "ai_image":
+                prod_method = "IMAGE_TO_VIDEO"
+
             label = f"[{prod_method}] Cảnh {idx+1}/{total_scenes}"
             rationale_text = v_analysis.get("narrative_subtext") or sc_strat.get("rationale", "")
             await self._report_progress("MEDIA", f"🎬 {label}: {rationale_text[:40]}...", percent=pct)
