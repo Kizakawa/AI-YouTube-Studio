@@ -30,6 +30,32 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
+DEFAULT_DESKTOP_CLIENT = {
+    "installed": {
+        "client_id": "972622851789-4175b1dquscrk08j2aq4jb8s84llh4uo.apps.googleusercontent.com",
+        "project_id": "bionic-client-509515-h2",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_secret": "GOCSPX-REDACTED_OAUTH_CLIENT_SECRET",
+        "redirect_uris": ["http://localhost"]
+    }
+}
+
+DEFAULT_WEB_CLIENT = {
+    "web": {
+        "client_id": "972622851789-l65i20vr94lp5mnc504oc58gdgumbr42.apps.googleusercontent.com",
+        "project_id": "bionic-client-509515-h2",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_secret": "GOCSPX-REDACTED_OAUTH_CLIENT_SECRET",
+        "redirect_uris": [
+            "https://ai-youtube-studio-8kbu.onrender.com/api/oauth/callback"
+        ]
+    }
+}
+
 app = FastAPI(
     title="AI YouTube Multi-Channel Studio",
     description="Giao diện Web quản lý hệ thống tự động hoá YouTube",
@@ -150,28 +176,18 @@ def on_startup():
     except Exception as e:
         logger.warning(f"Lỗi recover stuck jobs on startup: {e}")
 
-    # Tự động nạp hoặc khôi phục credentials/tokens cho Google Account 1 trên Cloud (Render)
+    # Tự động nạp hoặc khôi phục credentials/tokens cho Google Account 1
     try:
         import base64
+        import json
         acc1_dir = BASE_DIR / "credentials" / "accounts" / "account_1"
         acc1_dir.mkdir(parents=True, exist_ok=True)
         secret_p = acc1_dir / "client_secret.json"
-        default_secret = {
-            "web": {
-                "client_id": "972622851789-l65i20vr94lp5mnc504oc58gdgumbr42.apps.googleusercontent.com",
-                "project_id": "bionic-client-509515-h2",
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                "client_secret": "GOCSPX-REDACTED_OAUTH_CLIENT_SECRET",
-                "redirect_uris": [
-                    "https://ai-youtube-studio-8kbu.onrender.com/api/oauth/callback"
-                ]
-            }
-        }
-        import json
+        is_render = bool(os.getenv("RENDER") or os.getenv("IS_RENDER"))
+        default_secret = DEFAULT_WEB_CLIENT if is_render else DEFAULT_DESKTOP_CLIENT
         secret_p.write_text(json.dumps(default_secret, indent=2), encoding="utf-8")
-        logger.info("✅ [Startup] Đã tự động kích hoạt client_secret.json Web Application 1-Click cho account_1")
+        mode_label = "Web Application 1-Click (Render)" if is_render else "Desktop Application (Localhost)"
+        logger.info(f"✅ [Startup] Đã tự động kích hoạt client_secret.json {mode_label} cho account_1")
 
         # Tự động nạp toàn bộ 11 tokens của cả 3 tài khoản mẹ và 5 kênh YouTube từ Token Vault
         try:
@@ -2715,23 +2731,30 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
             secret_file = fallback
         else:
             raise HTTPException(status_code=400, detail="Chưa có file client_secret.json! Vui lòng nạp file trước.")
-    # Kiểm tra xem client_secret có phải loại Web application không
+    scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost:8000"
+    callback_url = f"{scheme}://{host}/api/oauth/callback"
+
+    # Kiểm tra xem client_secret có phải loại Web application không và có khớp redirect_uris không
     is_web = False
     sec_json = {}
     try:
         with open(secret_file, "r", encoding="utf-8") as f:
             sec_json = json.load(f)
-        if "web" in sec_json:
-            is_web = True
     except Exception:
         pass
+
+    if "web" in sec_json:
+        allowed_uris = sec_json.get("web", {}).get("redirect_uris", [])
+        if callback_url in allowed_uris:
+            is_web = True
+        else:
+            logger.info(f"Callback URL '{callback_url}' không nằm trong web redirect_uris ({allowed_uris}). Tự động dùng Desktop Flow.")
+            is_web = False
 
     if is_web:
         from google_auth_oauthlib.flow import Flow
         import secrets
-        scheme = request.headers.get("x-forwarded-proto", "https")
-        host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost:8000"
-        callback_url = f"{scheme}://{host}/api/oauth/callback"
         flow = Flow.from_client_config(sec_json, scopes=scopes, redirect_uri=callback_url)
         state_token = secrets.token_urlsafe(32)
         auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline", state=state_token)
@@ -2760,7 +2783,8 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
             "status": "in_progress"
         }
 
-    flow = InstalledAppFlow.from_client_secrets_file(str(secret_file), scopes=scopes)
+    desktop_cfg = sec_json if "installed" in sec_json else DEFAULT_DESKTOP_CLIENT
+    flow = InstalledAppFlow.from_client_config(desktop_cfg, scopes=scopes)
 
     # ── Tạo HTTP server cục bộ để nhận callback từ Google ──
     received_uri = {"value": None}
@@ -3356,23 +3380,30 @@ async def start_channel_oauth(channel_id: str, request: Request, service: str = 
         "https://www.googleapis.com/auth/userinfo.email",
         "openid"
     ]
-    # Kiểm tra xem client_secret có phải loại Web application không
+    scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost:8000"
+    callback_url = f"{scheme}://{host}/api/oauth/callback"
+
+    # Kiểm tra xem client_secret có phải loại Web application không và có khớp redirect_uris không
     is_web = False
     sec_json = {}
     try:
         with open(secret_file, "r", encoding="utf-8") as f:
             sec_json = json.load(f)
-        if "web" in sec_json:
-            is_web = True
     except Exception:
         pass
+
+    if "web" in sec_json:
+        allowed_uris = sec_json.get("web", {}).get("redirect_uris", [])
+        if callback_url in allowed_uris:
+            is_web = True
+        else:
+            logger.info(f"Callback URL '{callback_url}' không nằm trong web redirect_uris ({allowed_uris}). Tự động dùng Desktop Flow cho kênh '{ch_name}'.")
+            is_web = False
 
     if is_web:
         from google_auth_oauthlib.flow import Flow
         import secrets
-        scheme = request.headers.get("x-forwarded-proto", "https")
-        host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost:8000"
-        callback_url = f"{scheme}://{host}/api/oauth/callback"
         flow = Flow.from_client_config(sec_json, scopes=scopes, redirect_uri=callback_url)
         state_token = secrets.token_urlsafe(32)
         auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline", state=state_token)
@@ -3401,7 +3432,8 @@ async def start_channel_oauth(channel_id: str, request: Request, service: str = 
             "status": "in_progress"
         }
 
-    flow = InstalledAppFlow.from_client_secrets_file(str(secret_file), scopes=scopes)
+    desktop_cfg = sec_json if "installed" in sec_json else DEFAULT_DESKTOP_CLIENT
+    flow = InstalledAppFlow.from_client_config(desktop_cfg, scopes=scopes)
     received_uri = {"value": None}
     ch_name = ch.get("name", channel_id)
     success_page = (
