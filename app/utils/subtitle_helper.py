@@ -12,7 +12,7 @@ Cả hai format đều tính toán timestamp lũy kế (cumulative timeline) ch�
 """
 import re
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import timedelta
 
 from app.schemas.contracts import SceneContract
@@ -42,7 +42,8 @@ YCbCr Matrix: None
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1,0,1,3.2,2.0,2,30,30,{margin_v},1
-Style: CTABadge,{fontname},46,&H0000FFFF,&H00FFFFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,3.5,2.0,2,30,30,340,1
+Style: CTABadge,{fontname},46,&H0000FFFF,&H00FFFFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,3.5,2.0,2,30,30,780,1
+Style: WatermarkStyle,Arial,28,&H30FFFFFF,&H30FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1.8,1.2,8,30,30,90,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -116,6 +117,27 @@ class SubtitleHelper:
 
         return chunks
 
+    @staticmethod
+    def sanitize_subtitle_text(text: str) -> str:
+        """
+        Khử toàn bộ chuỗi rác template, placeholder, âm thanh tự sinh YouTube:
+        - Loại bỏ [Music], [Âm nhạc], [Applause], [Tiếng cười], (Laughter), v.v.
+        - Loại bỏ placeholder dạng {hook_quote}, {default_...}, v.v.
+        - Loại bỏ từ khóa dummy: lorem ipsum, placeholder, scene X
+        """
+        if not text:
+            return ""
+        # Loại bỏ các tag âm thanh [Music], [Âm nhạc], [Applause], ...
+        t = re.sub(r'\[(?:Music|Âm nhạc|Applause|Laughter|Tiếng cười|Vỗ tay|Cheering|SFX|Audio)\]', '', text, flags=re.IGNORECASE)
+        t = re.sub(r'\((?:Music|Âm nhạc|Applause|Laughter|Tiếng cười|Vỗ tay|Cheering|SFX|Audio)\)', '', t, flags=re.IGNORECASE)
+        # Loại bỏ các biến placeholder dạng {hook_quote}, {default_...}
+        t = re.sub(r'\{[^{}]*\}', '', t)
+        # Loại bỏ các từ khóa dummy/rác
+        t = re.sub(r'\b(?:placeholder|dummy text|lorem ipsum|scene \d+)\b', '', t, flags=re.IGNORECASE)
+        # Chuẩn hóa khoảng trắng
+        t = re.sub(r'\s+', ' ', t).strip()
+        return t
+
     # ── ASS Generation ────────────────────────────────────────────────────
 
     @classmethod
@@ -139,21 +161,22 @@ class SubtitleHelper:
         cls,
         scenes: List[SceneContract],
         fontname: str = "Arial",
-        fontsize: int = 40,
-        margin_v: int = 210,
+        fontsize: int = 42,
+        margin_v: int = 580,
         primary_color: Optional[str] = None,
         secondary_color: Optional[str] = None,
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
+        credit_text: Optional[str] = None,
     ) -> str:
         """
         Tạo nội dung file .ass chuẩn với karaoke word-level highlight.
         Tự động nạp font và màu sắc từ Niche Profile nếu niche_id được cung cấp.
 
         Mỗi chunk (2-4 từ) = 1 dialogue entry.
-        Mỗi từ trong chunk có {\\k} tag để highlight lần lượt.
-        Kích thước font: 40px (gọn gàng, thanh lịch, không che nhân vật).
-        Lề đáy: 210px (nằm an toàn ở cuối video, trên thanh tiêu đề Shorts, giải phóng 85% khung hình).
+        Mỗi từ trong chunk có {\\kf} tag để highlight lần lượt.
+        Kích thước font: 42px.
+        Lề đáy: 580px (Safe Zone chuẩn YouTube Shorts: cách đáy ~30.2%, hoàn toàn không bị che bởi tiêu đề, tên kênh, nút Subscribe).
 
         Returns:
             Chuỗi nội dung ASS hoàn chỉnh.
@@ -176,8 +199,8 @@ class SubtitleHelper:
                 eff_outline = outline_color or niche_sub.get("outline_ass", ASS_BLACK)
                 if not fontname or fontname == "Arial":
                     eff_font = niche_sub.get("fontname", "Arial")
-                eff_size = fontsize if fontsize != 40 else niche_sub.get("fontsize", 40)
-                eff_margin = margin_v if margin_v != 210 else niche_sub.get("margin_v", 210)
+                eff_size = fontsize if fontsize != 42 else niche_sub.get("fontsize", 42)
+                eff_margin = margin_v if margin_v != 580 else niche_sub.get("margin_v", 580)
             except Exception as e:
                 pass
 
@@ -279,6 +302,14 @@ class SubtitleHelper:
                 f"Dialogue: 1,{cta_start_str},{cta_end_str},CTABadge,,0,0,0,,{{\\fade(250,150)\\t(0,250,\\fscx110\\fscy110)\\t(250,500,\\fscx100\\fscy100)}}{cta_text}"
             )
 
+        # ── Kích hoạt Watermark / Credit tác giả trên đỉnh video nếu có ──
+        if credit_text and credit_text.strip():
+            credit_clean = credit_text.strip().replace("\n", " ")
+            credit_end_str = cls._ms_to_ass_time(current_offset_ms if current_offset_ms > 0 else 60000)
+            dialogue_lines.insert(0,
+                f"Dialogue: 2,0:00:00.00,{credit_end_str},WatermarkStyle,,0,0,0,,{{\\fade(300,300)}}🎬 {credit_clean}"
+            )
+
         return header + "\n".join(dialogue_lines) + "\n"
 
     @classmethod
@@ -287,14 +318,15 @@ class SubtitleHelper:
         scenes: List[SceneContract],
         output_path: str,
         fontname: str = "Arial",
-        fontsize: int = 40,
-        margin_v: int = 210,
+        fontsize: int = 42,
+        margin_v: int = 580,
         primary_color: Optional[str] = None,
         secondary_color: Optional[str] = None,
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
+        credit_text: Optional[str] = None,
     ) -> str:
-        """Tạo và lưu file .ass ra ổ đĩa, hỗ trợ Niche Profile."""
+        """Tạo và lưu file .ass ra ổ đĩa, hỗ trợ Niche Profile & Watermark Credit."""
         content = cls.build_ass_content(
             scenes,
             fontname=fontname,
@@ -304,6 +336,189 @@ class SubtitleHelper:
             secondary_color=secondary_color,
             outline_color=outline_color,
             niche_id=niche_id,
+            credit_text=credit_text,
+        )
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return output_path
+
+    @classmethod
+    def build_ass_from_timed_segments(
+        cls,
+        timed_segments: List[Dict[str, Any]],
+        total_duration_sec: float = 0.0,
+        clip_start_offset: float = 0.0,
+        fontname: str = "Arial",
+        fontsize: int = 42,
+        margin_v: int = 580,
+        primary_color: Optional[str] = None,
+        secondary_color: Optional[str] = None,
+        outline_color: Optional[str] = None,
+        niche_id: Optional[str] = None,
+        credit_text: Optional[str] = None,
+        show_cta_badge: bool = True,
+    ) -> str:
+        """
+        Tạo nội dung file .ass từ mốc thời gian thực của giọng đọc (ASR/Whisper/Transcript).
+        - Trích xuất từng câu/cụm từ có mốc start và duration thực.
+        - Khử hoàn toàn chuỗi rác template (placeholder sanitizer).
+        - Phân chia thành cụm từ ngắn (2-4 từ) và gắn tag karaoke {\\kf} theo từng từ.
+        - Căn chuẩn Safe Zone 30-35% từ đáy (margin_v=580), chống va chạm layer với CTA badge.
+        """
+        eff_primary = primary_color or ASS_WHITE
+        eff_secondary = secondary_color or ASS_YELLOW
+        eff_outline = outline_color or ASS_BLACK
+        eff_font = fontname
+        eff_size = fontsize
+        eff_margin = margin_v
+
+        if niche_id:
+            try:
+                from app.services.niche_manager import get_niche, get_niche_subtitle_style
+                niche_prof = get_niche(niche_id)
+                niche_sub = get_niche_subtitle_style(niche_prof)
+                eff_primary = primary_color or niche_sub.get("primary_ass", ASS_WHITE)
+                eff_secondary = secondary_color or niche_sub.get("secondary_ass", ASS_YELLOW)
+                eff_outline = outline_color or niche_sub.get("outline_ass", ASS_BLACK)
+                if not fontname or fontname == "Arial":
+                    eff_font = niche_sub.get("fontname", "Arial")
+                eff_size = fontsize if fontsize != 42 else niche_sub.get("fontsize", 42)
+                eff_margin = margin_v if margin_v != 580 else niche_sub.get("margin_v", 580)
+            except Exception:
+                pass
+
+        header = ASS_HEADER_TEMPLATE.format(
+            fontname=eff_font,
+            fontsize=eff_size,
+            primary=eff_secondary,     # Highlight color
+            secondary=eff_primary,     # Base color
+            outline=eff_outline,
+            back=ASS_SHADOW,
+            margin_v=eff_margin,
+        )
+
+        dialogue_lines = []
+        max_seen_end_ms = 0
+
+        for seg in timed_segments:
+            raw_text = seg.get("text", "")
+            clean_text = cls.sanitize_subtitle_text(raw_text)
+            if not clean_text:
+                continue
+
+            raw_start = float(seg.get("start", 0.0))
+            raw_dur = float(seg.get("duration", 0.0))
+            if raw_dur <= 0.0:
+                raw_dur = max(float(seg.get("end", raw_start + 2.0)) - raw_start, 1.0)
+
+            # Căn chỉnh timestamp tương đối so với điểm bắt đầu clip
+            rel_start_sec = max(0.0, raw_start - clip_start_offset)
+            seg_start_ms = int(rel_start_sec * 1000)
+            seg_dur_ms = max(int(raw_dur * 1000), 400)
+            seg_end_ms = seg_start_ms + seg_dur_ms
+            max_seen_end_ms = max(max_seen_end_ms, seg_end_ms)
+
+            chunks = cls.split_text_to_chunks(clean_text)
+            if not chunks:
+                continue
+
+            chunks = [c.upper() for c in chunks]
+            total_chars = sum(len(c) for c in chunks)
+            chunk_durations_ms = []
+            for c in chunks:
+                ratio = len(c) / total_chars if total_chars > 0 else 1.0 / len(chunks)
+                chunk_durations_ms.append(max(int(seg_dur_ms * ratio), 300))
+
+            diff = seg_dur_ms - sum(chunk_durations_ms)
+            if chunk_durations_ms:
+                chunk_durations_ms[-1] = max(chunk_durations_ms[-1] + diff, 200)
+
+            chunk_curr_start_ms = seg_start_ms
+            for chunk, c_dur_ms in zip(chunks, chunk_durations_ms):
+                chunk_curr_end_ms = chunk_curr_start_ms + c_dur_ms
+                words = chunk.split()
+                if not words:
+                    chunk_curr_start_ms = chunk_curr_end_ms
+                    continue
+
+                total_w_chars = sum(len(w) for w in words)
+                word_durations_cs = []
+                for w in words:
+                    w_ratio = len(w) / total_w_chars if total_w_chars > 0 else 1.0 / len(words)
+                    word_durations_cs.append(max(int(c_dur_ms * w_ratio / 10), 4))
+
+                tot_w_cs = sum(word_durations_cs)
+                target_c_cs = c_dur_ms // 10
+                if word_durations_cs:
+                    word_durations_cs[-1] += (target_c_cs - tot_w_cs)
+                    word_durations_cs[-1] = max(word_durations_cs[-1], 3)
+
+                karaoke_str = cls._build_karaoke_text(words, word_durations_cs)
+                st_str = cls._ms_to_ass_time(chunk_curr_start_ms)
+                en_str = cls._ms_to_ass_time(chunk_curr_end_ms)
+
+                dialogue_lines.append(
+                    f"Dialogue: 0,{st_str},{en_str},Karaoke,,0,0,0,,{karaoke_str}"
+                )
+                chunk_curr_start_ms = chunk_curr_end_ms
+
+        effective_total_ms = int(total_duration_sec * 1000) if total_duration_sec > 0 else max_seen_end_ms
+
+        # ── Kích hoạt Visual CTA Banner ở 3.5s cuối (Layer 1, MarginV=780 tránh đè Subtitle) ──
+        if show_cta_badge and effective_total_ms > 4000:
+            cta_start_ms = max(0, effective_total_ms - 3500)
+            cta_end_ms = effective_total_ms
+            all_text_concat = " ".join([seg.get("text", "") for seg in timed_segments])
+            is_vi = any(c in all_text_concat.lower() for c in "àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ")
+            cta_text = "🔔 ĐĂNG KÝ KÊNH ĐÓN XEM PHẦN 2 🔔" if is_vi else "🔔 SUBSCRIBE FOR PART 2 🔔"
+            cta_start_str = cls._ms_to_ass_time(cta_start_ms)
+            cta_end_str = cls._ms_to_ass_time(cta_end_ms)
+            dialogue_lines.append(
+                f"Dialogue: 1,{cta_start_str},{cta_end_str},CTABadge,,0,0,0,,{{\\fade(250,150)\\t(0,250,\\fscx110\\fscy110)\\t(250,500,\\fscx100\\fscy100)}}{cta_text}"
+            )
+
+        # ── Watermark Credit ở đỉnh video (Layer 2) ──
+        if credit_text and credit_text.strip():
+            clean_credit = credit_text.strip().replace("\n", " ")
+            credit_end_str = cls._ms_to_ass_time(effective_total_ms if effective_total_ms > 0 else 60000)
+            dialogue_lines.insert(0,
+                f"Dialogue: 2,0:00:00.00,{credit_end_str},WatermarkStyle,,0,0,0,,{{\\fade(300,300)}}🎬 {clean_credit}"
+            )
+
+        return header + "\n".join(dialogue_lines) + "\n"
+
+    @classmethod
+    def save_ass_from_timed_segments(
+        cls,
+        timed_segments: List[Dict[str, Any]],
+        output_path: str,
+        total_duration_sec: float = 0.0,
+        clip_start_offset: float = 0.0,
+        fontname: str = "Arial",
+        fontsize: int = 42,
+        margin_v: int = 580,
+        primary_color: Optional[str] = None,
+        secondary_color: Optional[str] = None,
+        outline_color: Optional[str] = None,
+        niche_id: Optional[str] = None,
+        credit_text: Optional[str] = None,
+        show_cta_badge: bool = True,
+    ) -> str:
+        """Tạo và lưu file .ass từ timed_segments ra ổ đĩa."""
+        content = cls.build_ass_from_timed_segments(
+            timed_segments=timed_segments,
+            total_duration_sec=total_duration_sec,
+            clip_start_offset=clip_start_offset,
+            fontname=fontname,
+            fontsize=fontsize,
+            margin_v=margin_v,
+            primary_color=primary_color,
+            secondary_color=secondary_color,
+            outline_color=outline_color,
+            niche_id=niche_id,
+            credit_text=credit_text,
+            show_cta_badge=show_cta_badge,
         )
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:

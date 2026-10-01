@@ -382,8 +382,9 @@ def get_niche_subtitle_style(niche_profile: Dict[str, Any]) -> Dict[str, Any]:
     highlight_hex = sub_cfg.get("highlight_color", "#FFE600")
     outline_hex = sub_cfg.get("outline_color", "#000000")
     font_family = sub_cfg.get("font_family", "Montserrat, sans-serif").split(",")[0].strip()
-    font_size = int(sub_cfg.get("font_size", 40))
-    margin_v = int(sub_cfg.get("margin_bottom", 210))
+    font_size = int(sub_cfg.get("font_size", 42))
+    raw_margin = int(sub_cfg.get("margin_bottom", 580))
+    margin_v = raw_margin if raw_margin >= 400 else 580
 
     return {
         "fontname": font_family,

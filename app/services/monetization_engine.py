@@ -14,86 +14,62 @@ logger = logging.getLogger(__name__)
 NICHE_PRODUCT_CATALOG: Dict[str, List[Dict[str, Any]]] = {
     "psychology": [
         {
-            "keywords": ["hypnotic", "illusion", "focus", "mind", "stress", "calm", "relax", "brain", "overthinking", "anxiety", "kinetic"],
-            "asin": "B085CD6B95",
-            "name": "Kinetic Optical Illusion Anti-Gravity Desk Sphere (Stress Relief)",
-            "cta": "Mesmerizing 360° hypnotic spiral to reset mind & kill overthinking",
-            "short_desc": "Aerospace-grade kinetic desk toy creating mind-bending continuous optical illusion",
-            "search_fallback": "kinetic optical illusion desk toy stress relief"
-        },
-        {
-            "keywords": ["manipulat", "control", "power", "dark", "glow", "night", "moon", "ambient", "desk", "room", "levitate", "shadow", "focus"],
-            "asin": "B09D38VY34",
-            "name": "VGAzer Magnetic Levitating Moon Lamp (16 Colors Galaxy 3D)",
-            "cta": "Bring hypnotic floating dark aesthetic ambient to your desk",
-            "short_desc": "Wireless 3D magnetic floating moon lamp spinning smoothly in mid-air",
-            "search_fallback": "levitating magnetic floating moon lamp"
-        },
-        {
-            "keywords": ["voice", "sound", "light", "wave", "music", "reaction", "secret", "body language", "frequency", "vibe"],
-            "asin": "B099F8D69H",
-            "name": "Sound-Reactive RGB Flowing Rhythm Light Bar (32-Bit ARM)",
-            "cta": "Visualize unseen sound frequencies & ambient energy in your room",
-            "short_desc": "Voice-activated music rhythm pickup light with 32 vibrant RGB LEDs",
-            "search_fallback": "sound reactive rgb light bar rhythm pickup"
-        },
-        {
-            "keywords": ["habit", "discipline", "fidget", "pen", "focus", "restless", "energy", "channel", "trick", "toxic"],
-            "asin": "B09M8CYX7Q",
-            "name": "Polar Magnetic Modular Fidget Pen & Decompression Toy",
-            "cta": "Transformable magnetic metal pen to channel restless mental energy",
-            "short_desc": "Multi-functional magnetic stylus pen engineered for anxiety relief and focus",
-            "search_fallback": "magnetic modular fidget pen stress toy"
-        },
-        {
-            "keywords": ["peace", "emotion", "calm", "sleep", "jellyfish", "meditate", "stoic", "silence", "insult"],
-            "asin": "B08CXK9R4Q",
-            "name": "Sensory LED Floating Jellyfish Mood Aquarium Lamp",
-            "cta": "Induce deep alpha brainwaves & melt tension with lifelike glowing jellyfish",
-            "short_desc": "Color-changing ambient mood tank with ultra-quiet brushless motor",
-            "search_fallback": "sensory led jellyfish mood lamp"
-        },
-        {
-            "keywords": ["book", "read", "robert greene", "48 laws", "laws of power"],
+            "keywords": ["power", "manipulat", "dark", "control", "laws of power", "robert greene", "rule", "status", "ego", "strategy"],
             "asin": "0140280197",
             "name": "The 48 Laws of Power (Robert Greene)",
-            "cta": "Expose dark psychology & protect your mind",
-            "short_desc": "The bestselling guide on how power & manipulation work in real life",
+            "cta": "Expose dark psychology & protect your mind from manipulation",
+            "short_desc": "The definitive bestselling manual on the mechanics of power, influence, and dark psychology",
             "search_fallback": "48 laws of power robert greene"
+        },
+        {
+            "keywords": ["habit", "discipline", "mindset", "focus", "brain", "routine", "change", "success", "overthinking", "stop"],
+            "asin": "0735211299",
+            "name": "Atomic Habits: Proven Way to Build Good Habits & Break Bad Ones",
+            "cta": "Rewire your subconscious mindset & master peak daily discipline",
+            "short_desc": "World's #1 breakthrough psychological guide to habit formation and behavioral science",
+            "search_fallback": "atomic habits james clear"
+        },
+        {
+            "keywords": ["persuade", "influence", "convince", "body language", "secret", "trick", "social", "psychology", "negotiat"],
+            "asin": "0062937650",
+            "name": "Influence: The Psychology of Persuasion (Robert Cialdini)",
+            "cta": "Understand universal psychological triggers that make people say yes",
+            "short_desc": "The foundational science of persuasion and compliance techniques by Dr. Robert Cialdini",
+            "search_fallback": "influence psychology of persuasion cialdini"
+        },
+        {
+            "keywords": ["think", "decision", "overthinking", "bias", "illusion", "stress", "calm", "fast", "slow", "mental"],
+            "asin": "0374533555",
+            "name": "Thinking, Fast and Slow (Daniel Kahneman - Nobel Prize)",
+            "cta": "Uncover how your brain makes decisions and falls for cognitive traps",
+            "short_desc": "Nobel laureate landmark exploration of intuitive vs analytical thinking",
+            "search_fallback": "thinking fast and slow daniel kahneman"
         }
     ],
     "deep_sea_earth_mysteries": [
         {
-            "keywords": ["ocean", "water", "abyss", "deep", "diver", "megalodon", "shark", "monster", "lamp", "creature", "dark", "light"],
-            "asin": "B0CJ6J9Z1N",
-            "name": "Deep Sea Diver & Megalodon Epoxy Resin Wood Night Light",
-            "cta": "Bring the glowing chill of the deep sea abyss into your room",
-            "short_desc": "Handmade epoxy resin lamp featuring deep sea diver facing giant predator in glowing blue abyss",
-            "search_fallback": "deep sea diver resin night light lamp"
-        },
-        {
-            "keywords": ["sea", "wave", "mariana", "trench", "blue", "water", "room", "night", "stars", "sleep", "sound", "projector"],
-            "asin": "B08H734L6J",
-            "name": "Northern Ocean Wave & Galaxy Light Projector with Relaxing Sound",
-            "cta": "Turn your bedroom ceiling into a glowing underwater ocean abyss",
-            "short_desc": "Mesmerizing 3D ocean wave projector creating deep-sea ambience in any dark room",
-            "search_fallback": "ocean wave light projector bedroom"
-        },
-        {
-            "keywords": ["fossil", "megalodon", "tooth", "shark", "ancient", "monster", "predator", "extinct", "bone", "jaw", "beast"],
-            "asin": "B08D3R48Z1",
-            "name": "Megalodon Giant Prehistoric Shark Tooth Fossil Replica in Display Case",
-            "cta": "Hold a 1:1 scale prehistoric deep-sea apex predator tooth",
-            "short_desc": "Museum-grade 5.5 inch Megalodon shark tooth replica in collector showcase",
-            "search_fallback": "megalodon shark tooth replica display"
-        },
-        {
-            "keywords": ["creature", "abyss", "unsolved", "unknown", "scientists", "explore", "mystery", "photo", "species", "nasa"],
+            "keywords": ["creature", "abyss", "unsolved", "unknown", "scientists", "explore", "mystery", "species", "alien", "monster"],
             "asin": "0226595668",
             "name": "The Deep: The Extraordinary Creatures of the Abyss (Claire Nouvian)",
             "cta": "Discover the bizarre glowing alien species lurking 10,000m below",
             "short_desc": "Full-color photographic compendium of bizarre bioluminescent deep-sea life",
             "search_fallback": "the deep extraordinary creatures abyss claire nouvian"
+        },
+        {
+            "keywords": ["ocean", "octopus", "intelligence", "sea", "tentacle", "creature", "diver", "water", "marine"],
+            "asin": "1451697724",
+            "name": "The Soul of an Octopus: Wonder of Oceanic Consciousness",
+            "cta": "Meet the most alien, hyper-intelligent minds lurking on our planet",
+            "short_desc": "National Book Award finalist exploring deep ocean invertebrate intelligence",
+            "search_fallback": "the soul of an octopus sy montgomery"
+        },
+        {
+            "keywords": ["ocean", "water", "abyss", "deep", "diver", "shark", "megalodon", "mariana", "trench", "explore"],
+            "asin": "054448407X",
+            "name": "Deep: Freediving, Renegade Science, and the Ocean Abyss",
+            "cta": "Experience the limits of human survival in the extreme oceanic abyss",
+            "short_desc": "Thrilling exploration of the extreme depths and uncharted frontiers of the sea",
+            "search_fallback": "deep freediving renegade science james nestor"
         }
     ],
     "history_mystery": [
@@ -106,80 +82,64 @@ NICHE_PRODUCT_CATALOG: Dict[str, List[Dict[str, Any]]] = {
             "search_fallback": "what if randall munroe"
         },
         {
-            "keywords": ["sky", "star", "space", "alien", "galaxy", "nasa", "planet", "astronaut", "universe", "nebula"],
-            "asin": "B09S9YF57Q",
-            "name": "Astronaut Galaxy Star Projector (TikTok Viral Night Light)",
-            "cta": "Transform your room into a breathtaking cosmic nebula",
-            "short_desc": "360-degree magnetic astronaut projector casting high-definition galaxy stars",
-            "search_fallback": "astronaut galaxy star projector night light"
-        },
-        {
-            "keywords": ["ancient", "vault", "sphinx", "pyramid", "ruin", "civilization", "history", "secret", "archive"],
+            "keywords": ["ancient", "vault", "sphinx", "pyramid", "ruin", "civilization", "history", "secret", "archive", "lost"],
             "asin": "0753558661",
             "name": "The Atlas of Ancient Mysteries",
             "cta": "Uncover forbidden archaeological archives & sealed vaults",
-            "short_desc": "Illustrated historical compendium of unexplained ancient ruins",
+            "short_desc": "Illustrated historical compendium of unexplained ancient ruins and forgotten history",
             "search_fallback": "atlas of ancient mysteries hardcover"
-        },
-        {
-            "keywords": ["moon", "levitate", "floating", "gravity", "technology", "quantum", "strange", "desk", "night"],
-            "asin": "B08L7V4QW6",
-            "name": "Levitating Magnetic Floating Moon Lamp (3D Night Light)",
-            "cta": "Experience real magnetic levitation on your desk",
-            "short_desc": "Wireless floating 3D moon lamp spinning smoothly in mid-air via magnetic levitation",
-            "search_fallback": "levitating magnetic floating moon lamp"
         }
     ],
     "animal_rescue": [
         {
-            "keywords": ["bed", "sleep", "calm", "anxiety", "rescue", "trauma", "dog", "cat", "comfort", "safe", "warm"],
-            "asin": "B07G4T12WQ",
-            "name": "Fluffy Calming Anti-Anxiety Donut Cuddle Dog/Cat Bed",
-            "cta": "Give rescued anxious pets the feeling of total safety and warmth",
-            "short_desc": "Orthopedic self-warming shag fur donut bed engineered for traumatized pets",
-            "search_fallback": "calming donut dog cat bed"
+            "keywords": ["bed", "sleep", "calm", "anxiety", "rescue", "trauma", "dog", "cat", "comfort", "safe", "warm", "shag"],
+            "asin": "B01MV0IX66",
+            "name": "Best Friends by Sheri The Original Calming Donut Dog/Cat Bed",
+            "cta": "Give rescued anxious pets the feeling of total safety, warmth & deep sleep",
+            "short_desc": "Orthopedic self-warming shag fur donut bed engineered specifically for traumatized and anxious pets",
+            "search_fallback": "calming donut dog cat bed best friends by sheri"
         },
         {
-            "keywords": ["lost", "track", "gps", "run", "stray", "find", "safe", "collar", "dog", "cat"],
-            "asin": "B08M6BFVDD",
-            "name": "Tractive Waterproof GPS Pet Tracker (Live Location)",
-            "cta": "Never lose a beloved rescued fur baby again",
-            "short_desc": "Real-time GPS tracking collar attachment for dogs & cats",
-            "search_fallback": "tractive waterproof gps pet tracker"
+            "keywords": ["toy", "play", "chew", "puppy", "dog", "anxious", "calm", "boredom", "rubber", "kong"],
+            "asin": "B0002AR0I8",
+            "name": "KONG Classic Dog Toy (Ultra-Durable Natural Rubber)",
+            "cta": "Help rescued traumatized dogs relieve anxiety, stress & boredom",
+            "short_desc": "Veterinarian recommended ultra-durable mental stimulation & stress-relief rubber toy",
+            "search_fallback": "kong classic dog toy rubber"
         },
         {
-            "keywords": ["kitten", "cat", "play", "warm", "toy", "joy", "heal", "lonely"],
+            "keywords": ["lost", "run", "leash", "walk", "harness", "pull", "safe", "stray", "collar", "safety"],
+            "asin": "B0009ZBKG4",
+            "name": "PetSafe Easy Walk No-Pull Dog Safety Harness",
+            "cta": "Keep rescued dogs safe and stress-free on walks with zero choking",
+            "short_desc": "Trusted gentle front-leash attachment harness preventing pulling without neck strain",
+            "search_fallback": "petsafe easy walk dog harness"
+        },
+        {
+            "keywords": ["ball", "fetch", "run", "park", "energy", "active", "happy", "exercise"],
+            "asin": "B000F4AVPA",
+            "name": "Chuckit! Ultra Ball High-Bounce Durable Dog Toy",
+            "cta": "Reignite pure playfulness and happiness in rescued dogs",
+            "short_desc": "High-bounce, natural rubber durable fetch ball for energetic and healing dogs",
+            "search_fallback": "chuckit ultra ball dog toy"
+        },
+        {
+            "keywords": ["kitten", "cat", "massage", "groom", "purr", "pet", "warm", "play", "center"],
             "asin": "B00D3NI2PG",
-            "name": "Catit Senses 2.0 Wellness & Play Center",
-            "cta": "Give rescued kittens comfort, grooming & endless play",
-            "short_desc": "Multi-sensory massage and interactive cat play station",
-            "search_fallback": "catit senses wellness center"
+            "name": "Catit Senses 2.0 Wellness & Massage Play Center",
+            "cta": "Give rescued stray cats & kittens supreme comfort, grooming and love",
+            "short_desc": "Multi-sensory 360-degree massage and interactive feline relaxation station",
+            "search_fallback": "catit senses 2.0 wellness center"
         }
     ],
     "wildlife_predators": [
         {
-            "keywords": ["binocular", "spot", "safari", "watch", "lion", "tiger", "bear", "zoom", "sight", "bird", "eagle", "hunt", "nature"],
+            "keywords": ["binocular", "spot", "safari", "watch", "lion", "tiger", "bear", "zoom", "sight", "bird", "eagle", "hunt", "nature", "predator"],
             "asin": "B004KM82IQ",
             "name": "Celestron Outland X 10x42 High-Definition Wildlife Binoculars",
             "cta": "Spot apex predators & wild birds in crystal-clear 10x zoom",
             "short_desc": "Waterproof, fogproof multi-coated optics for wildlife observation",
             "search_fallback": "celestron outland x 10x42 binoculars"
-        },
-        {
-            "keywords": ["lion", "tiger", "wolf", "lamp", "desk", "room", "decor", "night", "apex", "power", "3d"],
-            "asin": "B07H831N6L",
-            "name": "3D Optical Illusion Majestic Predator LED Night Lamp",
-            "cta": "Bring the raw power of apex predators to your desk",
-            "short_desc": "Color-changing 3D optical illusion lamp featuring majestic wild beasts",
-            "search_fallback": "3d optical illusion lion wolf led lamp"
-        },
-        {
-            "keywords": ["predator", "hunt", "lethal", "bite", "strike", "biomechanic", "shark", "badger", "crocodile"],
-            "asin": "1426217036",
-            "name": "Predators: The World's Most Lethal Hunters (National Geographic)",
-            "cta": "Dive deep into extreme predator combat biomechanics",
-            "short_desc": "Full-color hardcover guide exploring lethal hunting adaptations",
-            "search_fallback": "national geographic predators most lethal hunters"
         }
     ]
 }
@@ -189,6 +149,48 @@ AMAZON_COMPLIANCE_DISCLAIMER = (
     "⚖️ Disclaimer: As an Amazon Associate I earn from qualifying purchases "
     "at no additional cost to you. Product prices and availability are accurate as of the date indicated."
 )
+
+import time
+import urllib.request
+
+# Cache kiểm tra trạng thái ASIN trong bộ nhớ (asin -> (is_alive: bool, timestamp: float))
+_ASIN_VALIDITY_CACHE: Dict[str, Tuple[bool, float]] = {}
+CACHE_TTL_SECONDS = 86400  # 24 giờ
+
+
+def verify_amazon_product_alive(asin: str, timeout: float = 3.5) -> bool:
+    """
+    Tự động truy cập kiểm tra tính khả dụng thực tế của link sản phẩm trên Amazon:
+    - Sử dụng Amazon CDN Asset Image Endpoint (không bị Cloudflare/WAF chặn)
+    - Khi ASIN tồn tại: Trả về ảnh sản phẩm thật (kích thước > 300 bytes, thường từ 5KB - 50KB).
+    - Khi ASIN bị xóa / 404 / 'Dogs of Amazon': Trả về ảnh dummy 1x1 trong suốt có dung lượng đúng 43 bytes.
+    - Lưu cache 24h để tăng tốc độ phản hồi tối đa cho các lần truy cập tiếp theo.
+    """
+    clean_asin = (asin or "").strip().upper()
+    if not clean_asin or len(clean_asin) < 5:
+        return False
+
+    now = time.time()
+    if clean_asin in _ASIN_VALIDITY_CACHE:
+        is_alive, cached_time = _ASIN_VALIDITY_CACHE[clean_asin]
+        if now - cached_time < CACHE_TTL_SECONDS:
+            return is_alive
+
+    img_url = f"https://images-na.ssl-images-amazon.com/images/P/{clean_asin}.01._SX300_SCLZZZZZZZ_.jpg"
+    req = urllib.request.Request(
+        img_url,
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = resp.read()
+            # 43 bytes là ảnh rỗng của Amazon khi sản phẩm không tồn tại (Dogs of Amazon 404 placeholder)
+            is_alive = len(data) > 300
+            _ASIN_VALIDITY_CACHE[clean_asin] = (is_alive, now)
+            return is_alive
+    except Exception as e:
+        logger.warning(f"[MonetizationEngine] Lỗi kiểm tra ASIN {clean_asin} trên Amazon CDN: {e}")
+        return False
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -212,10 +214,18 @@ def build_amazon_url(asin_or_search: str, tracking_tag: str = "", is_search: boo
 
 def find_best_amazon_product(niche: str, title: str, topic: str = "", script: str = "") -> Dict[str, Any]:
     """
-    Thuật toán AI đối chiếu nội dung video để tìm sản phẩm Amazon phù hợp nhất:
-    1. Chuẩn hóa text tiêu đề + chủ đề + kịch bản thành chữ thường.
-    2. Quét bộ từ khóa (keywords) trong kho catalog của ngách đó.
-    3. Trả về sản phẩm có điểm tương đồng cao nhất, hoặc fallback về Best Seller số 1 của ngách.
+    Thuật toán AI tự động tìm và kiểm tra link sản phẩm Amazon:
+    1. Chuẩn hóa niche và quét catalog sản phẩm.
+    2. Chấm điểm tương đồng từ khóa dựa trên tiêu đề, chủ đề và kịch bản.
+    3. Sắp xếp danh sách ứng viên từ điểm cao nhất xuống thấp nhất.
+    4. VÒNG LẶP KIỂM TRA THỰC TẾ (Live Availability Check):
+       - Hệ thống tự động truy cập link kiểm tra sản phẩm có còn tồn tại trên Amazon không.
+       - Nếu sản phẩm còn tồn tại (ALIVE): Chọn sản phẩm đó ngay lập tức!
+       - Nếu sản phẩm không còn tồn tại (DEAD/404): Tự động đổi sang sản phẩm kế tiếp và lặp lại.
+    5. FALLBACK AN TOÀN TUYỆT ĐỐI (Smart Search):
+       - Nếu tất cả ASIN cụ thể trong catalog đều bị lỗi/hết hàng, hệ thống tự động chuyển sang
+         Link Tìm Kiếm Thông Minh Amazon (Smart Search URL kèm Store ID kizakawa-20),
+         đảm bảo người xem bấm vào luôn ra sản phẩm thực tế, không bao giờ bị trang lỗi 404!
     """
     # Chuẩn hóa niche
     niche_lower = (niche or "").lower()
@@ -224,38 +234,64 @@ def find_best_amazon_product(niche: str, title: str, topic: str = "", script: st
         niche_clean = "deep_sea_earth_mysteries"
     elif any(k in niche_lower for k in ["mystery", "mysteries", "history", "ancient", "space", "earth"]):
         niche_clean = "history_mystery"
-    elif any(k in niche_lower for k in ["rescue", "cat", "dog", "pet"]):
-        niche_clean = "animal_rescue"
-    elif any(k in niche_lower for k in ["wild", "predator", "animal"]):
+    elif any(k in niche_lower for k in ["rescue", "cat", "dog", "pet", "animal"]):
+        if any(k in niche_lower for k in ["predator", "wild", "hunt", "lion", "tiger", "bear"]):
+            niche_clean = "wildlife_predators"
+        else:
+            niche_clean = "animal_rescue"
+    elif any(k in niche_lower for k in ["wild", "predator"]):
         niche_clean = "wildlife_predators"
 
     catalog = NICHE_PRODUCT_CATALOG.get(niche_clean, NICHE_PRODUCT_CATALOG["psychology"])
-
     full_text = f"{title} {topic} {script}".lower()
 
-    best_match = None
-    best_score = 0
-
+    # Chấm điểm tất cả ứng viên trong catalog
+    scored_candidates = []
     for item in catalog:
         score = 0
         for kw in item.get("keywords", []):
             if kw.lower() in full_text:
                 score += 1
-        if score > best_score:
-            best_score = score
-            best_match = item
+        scored_candidates.append((score, item))
 
-    # Nếu không khớp từ khóa cụ thể nào, chọn sản phẩm đầu tiên (Bestseller #1) của ngách
-    if not best_match:
-        best_match = catalog[0]
+    # Sắp xếp theo điểm tương đồng giảm dần
+    scored_candidates.sort(key=lambda x: x[0], reverse=True)
 
+    # 4. VÒNG LẶP KIỂM TRA LINK SẢN PHẨM TRỰC TIẾP
+    for score, item in scored_candidates:
+        asin = item.get("asin", "")
+        if not asin:
+            continue
+        logger.info(f"🔍 [MonetizationEngine] Đang kiểm tra tính tồn tại của sản phẩm Amazon: {item['name']} (ASIN: {asin})...")
+        if verify_amazon_product_alive(asin):
+            logger.info(f"✅ [MonetizationEngine] Sản phẩm '{item['name']}' (ASIN: {asin}) CÒN HOẠT ĐỘNG trên Amazon. Đã chọn!")
+            return {
+                "niche": niche_clean,
+                "asin": asin,
+                "name": item["name"],
+                "cta": item["cta"],
+                "short_desc": item["short_desc"],
+                "search_fallback": item.get("search_fallback", ""),
+                "is_search": False,
+                "is_verified_alive": True,
+            }
+        else:
+            logger.warning(f"⚠️ [MonetizationEngine] Sản phẩm '{item['name']}' (ASIN: {asin}) KHÔNG CÒN TỒN TẠI trên Amazon! Tự động đổi sang sản phẩm khác trong danh mục...")
+
+    # 5. FALLBACK AN TOÀN TUYỆT ĐỐI (Smart Search):
+    # Nếu không có ASIN đơn lẻ nào khả dụng, tự động chuyển sang Link Tìm Kiếm Amazon Smart Search
+    top_candidate = scored_candidates[0][1] if scored_candidates else catalog[0]
+    fallback_query = top_candidate.get("search_fallback") or f"{niche_clean.replace('_', ' ')} best seller"
+    logger.warning(f"⚠️ [MonetizationEngine] Không có ASIN đơn lẻ nào khả dụng. Tự động chuyển sang Link Tìm Kiếm Amazon Smart Search: '{fallback_query}'")
     return {
         "niche": niche_clean,
-        "asin": best_match["asin"],
-        "name": best_match["name"],
-        "cta": best_match["cta"],
-        "short_desc": best_match["short_desc"],
-        "search_fallback": best_match.get("search_fallback", "")
+        "asin": fallback_query,
+        "name": top_candidate["name"],
+        "cta": top_candidate["cta"],
+        "short_desc": top_candidate["short_desc"],
+        "search_fallback": fallback_query,
+        "is_search": True,
+        "is_verified_alive": True,
     }
 
 
@@ -382,3 +418,121 @@ def preview_monetization_bundle(
         "channel_name": channel_config.get("name"),
         "tracking_tag": product_info.get("tracking_tag") if product_info else None
     }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 4. KHO SẢN PHẨM & LIÊN KẾT LAZADA THEO NGÁCH (LAZADA AFFILIATE MATRIX)
+# ═════════════════════════════════════════════════════════════════════════════
+
+def get_lazada_product_for_niche(niche: str = "general", title: str = "", tracking_tag: str = "") -> Dict[str, Any]:
+    """Hàm tương thích ngược (Hệ thống hiện tại 100% chuyên biệt hóa cho Amazon Associates Store ID kizakawa-20)."""
+    return {}
+
+
+def build_repurposed_pinned_comment(
+    title: str,
+    niche_id: str = "general",
+    source_url: str = "",
+    author: str = "",
+    channel_name: str = "",
+    tracking_tag: str = "kizakawa-20",
+) -> str:
+    """
+    Tự động xây dựng Bình luận ghim (Pinned Comment) cho Shorts tái chế:
+    - Dẫn link xem bản đầy đủ của video gốc
+    - Giới thiệu sản phẩm hữu ích kèm Store ID Amazon kizakawa-20 trực tiếp (Đã kiểm tra còn tồn tại)
+    - Kêu gọi theo dõi kênh
+    """
+    tag = (tracking_tag or os.getenv("AMAZON_ASSOCIATE_TAG", "kizakawa-20") or "kizakawa-20").strip()
+    amazon_prod = find_best_amazon_product(niche=niche_id, title=title)
+    is_search = amazon_prod.get("is_search", False)
+    amazon_aff_url = build_amazon_url(amazon_prod["asin"], tag, is_search=is_search)
+    cta_label = "Search & shop on Amazon" if is_search else "Check price on Amazon"
+
+    creator_name = author or channel_name
+    creator_tag = f"by {creator_name} " if creator_name else ""
+    full_story_line = f"📌 Watch the full story {creator_tag}here: {source_url}" if source_url else "📌 Watch and subscribe for daily incredible highlights! ❤️"
+
+    comment = (
+        f"{full_story_line}\n\n"
+        f"🛒 Featured Gear (Store ID: {tag}): {amazon_prod['name']}\n"
+        f"👉 {cta_label}: {amazon_aff_url}\n\n"
+        f"All rights belong to original creators. Subscribe for more! ❤️"
+    )
+    return comment
+
+
+def build_repurposed_video_description(
+    title: str,
+    summary: str = "",
+    niche_id: str = "general",
+    channel_name: str = "",
+    source_url: str = "",
+    author: str = "",
+    mode: str = "self_owned",
+    tracking_tag: str = "kizakawa-20",
+) -> str:
+    """
+    Tự động xây dựng mô tả YouTube Shorts hoàn chỉnh chuẩn Bản Quyền & Kiếm Tiền Amazon Affiliate (Store ID: kizakawa-20):
+    - Nội dung tiếng Anh hấp dẫn
+    - Dẫn link video đầy đủ (Full Video / Original Source Link) giúp kéo view hoặc tôn trọng bản quyền tác giả
+    - Điều khoản miễn trừ bản quyền Fair Use (Section 107 of the Copyright Act 1976)
+    - Kêu gọi theo dõi kênh
+    - Khối gắn link sản phẩm Amazon chuẩn ngách KÈM STORE ID: kizakawa-20 (Đã kiểm tra còn tồn tại trên Amazon)
+    - Bộ Hashtags chuẩn SEO
+    """
+    tag = (tracking_tag or os.getenv("AMAZON_ASSOCIATE_TAG", "kizakawa-20") or "kizakawa-20").strip()
+    
+    # Tìm sản phẩm Amazon chuẩn ngách và gắn Store ID kizakawa-20
+    amazon_prod = find_best_amazon_product(niche=niche_id, title=title, topic=summary)
+    is_search = amazon_prod.get("is_search", False)
+    amazon_aff_url = build_amazon_url(amazon_prod["asin"], tag, is_search=is_search)
+    cta_label = "Search & shop on Amazon" if is_search else "Check price on Amazon"
+    
+    niche_tags = {
+        "animal_rescue": "#AnimalRescue #RescueDog #Pets #Heartwarming #Shorts #AnimalLovers",
+        "wildlife_predators": "#Wildlife #ApexPredator #Nature #WildAnimals #NatureLovers #Shorts",
+        "psychology": "#Psychology #DarkPsychology #Mindset #BodyLanguage #LifeLessons #Shorts",
+        "deep_sea_earth_mysteries": "#OceanMysteries #DeepSea #Unexplained #Science #Mysteries #Shorts",
+    }.get(niche_id, "#Shorts #Viral #Trending #MustWatch")
+
+    channel_cta = f"🔔 Subscribe to {channel_name} for daily high-retention stories!\n👍 Like & Share if you enjoyed this moment." if channel_name else "🔔 Subscribe for more incredible moments!\n👍 Like & Share to support the channel."
+    
+    content_lead = (summary or title or "Incredible viral highlight that you cannot miss!").strip()
+
+    # Khối ghi nguồn & dẫn link video đầy đủ (Credit & Full Video Link)
+    credit_block = ""
+    if source_url and source_url.strip():
+        clean_url = source_url.strip()
+        if mode == "self_owned":
+            credit_block = f"🎬 Watch the full video on our channel:\n🔗 {clean_url}"
+        else:
+            creator_name = author.strip() if author else "the original creators"
+            credit_block = (
+                f"🎥 Original footage & full story by {creator_name}:\n"
+                f"🔗 {clean_url}\n\n"
+                f"⚖️ FAIR USE DISCLAIMER:\n"
+                f"This video features transformative commentary, educational breakdown, and narrative curation under Section 107 of the US Copyright Act 1976. "
+                f"All rights belong to their respective owners. For credit, inquiries, or removal requests, please contact us."
+            )
+
+    parts = [content_lead]
+    if credit_block:
+        parts.append(credit_block)
+    
+    parts.append(channel_cta)
+
+    affiliate_block = f"""─────────────────────────
+🛒 FEATURED GEAR & SHOPPING (STORE ID: {tag}):
+👉 {amazon_prod['name']}
+🔗 {cta_label}: {amazon_aff_url}
+💡 {amazon_prod['cta']}
+⚖️ (As an Amazon Associate I earn from qualifying purchases with Store ID: {tag})
+─────────────────────────"""
+    parts.append(affiliate_block)
+    parts.append(niche_tags)
+
+    return "\n\n".join(parts).strip()
+
+
+

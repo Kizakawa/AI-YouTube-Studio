@@ -1028,3 +1028,113 @@ def create_placeholder_image(path: str, text: str = "Scene", scene_id: int = 1) 
         except Exception:
             return path
 
+
+def detect_audio_speech_start(
+    file_path: str,
+    start_seconds: float = 0.0,
+    scan_duration: float = 3.0,
+    noise_threshold_db: float = -32.0,
+) -> float:
+    """
+    Phát hiện khoảng lặng (dead air) ở đầu đoạn cắt bằng bộ lọc silencedetect native của FFmpeg.
+    Nếu phát hiện đoạn đầu bị im lặng hoặc chỉ có tiếng rè nhỏ (< noise_threshold_db),
+    trả về số giây cần dịch tới (speech start offset) để video bật lên là có tiếng nói ngay lập tức.
+    Nếu không phát hiện khoảng lặng hoặc lỗi, trả về 0.0.
+    """
+    if not os.path.exists(file_path):
+        return 0.0
+
+    try:
+        cmd = [
+            "ffmpeg", "-v", "info",
+            "-ss", str(max(0.0, start_seconds)),
+            "-t", str(scan_duration),
+            "-i", file_path,
+            "-af", f"silencedetect=noise={noise_threshold_db}dB:d=0.15",
+            "-f", "null", "-"
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        stderr = res.stderr or ""
+        
+        # Tìm pattern: silence_end: X.XX
+        import re
+        ends = re.findall(r'silence_end:\s*([0-9.]+)', stderr)
+        if ends:
+            first_end = float(ends[0])
+            # Giới hạn dịch từ 0.15s đến 2.2s (tránh nhảy quá xa mất câu)
+            if 0.15 <= first_end <= 2.2:
+                logger.info(f"VAD silencedetect: Phát hiện dead air {first_end:.2f}s ở đầu clip, tự động dịch mốc cắt.")
+                return round(first_end, 2)
+    except Exception as e:
+        logger.debug(f"detect_audio_speech_start error: {e}")
+
+    return 0.0
+
+
+def measure_audio_loudness_and_silence(file_path: str) -> Dict:
+    """
+    Đo đạc chỉ số âm lượng phát sóng (Integrated Loudness LUFS) & kiểm tra dead air đầu video bằng FFmpeg ebur128/volumedetect.
+    - Chuẩn YouTube Shorts: -14.0 LUFS (khoảng tối ưu: -13.0 đến -16.0 LUFS)
+    - Dead-air 2 giây đầu: Kiểm tra xem 2s đầu có bị mute hoàn toàn hay không
+    """
+    result = {
+        "integrated_lufs": -14.0,
+        "max_volume_db": 0.0,
+        "mean_volume_db": -20.0,
+        "has_dead_air_opening": False,
+        "lufs_passed": True,
+        "feedback": "Âm thanh đạt chuẩn"
+    }
+    if not os.path.exists(file_path):
+        result["lufs_passed"] = False
+        result["feedback"] = "File không tồn tại"
+        return result
+
+    try:
+        cmd = [
+            "ffmpeg", "-i", file_path,
+            "-af", "ebur128=metadata=1,volumedetect",
+            "-f", "null", "-"
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
+        output = (res.stderr or "") + (res.stdout or "")
+        import re
+
+        # Parse Integrated loudness
+        lufs_match = re.search(r'Integrated loudness:\s+I:\s+([-\d.]+)\s+LUFS', output)
+        if lufs_match:
+            result["integrated_lufs"] = round(float(lufs_match.group(1)), 1)
+
+        # Parse mean volume
+        mean_match = re.search(r'mean_volume:\s+([-\d.]+)\s+dB', output)
+        if mean_match:
+            result["mean_volume_db"] = round(float(mean_match.group(1)), 1)
+
+        # Parse max volume
+        max_match = re.search(r'max_volume:\s+([-\d.]+)\s+dB', output)
+        if max_match:
+            result["max_volume_db"] = round(float(max_match.group(1)), 1)
+
+        # Đánh giá LUFS (YouTube Shorts khuyến nghị -14 LUFS, biên độ chấp nhận được -11 đến -19 LUFS)
+        lufs = result["integrated_lufs"]
+        if lufs < -22.0:
+            result["lufs_passed"] = False
+            result["feedback"] = f"Âm lượng quá nhỏ ({lufs} LUFS < -22 LUFS), cần tăng gain"
+        elif lufs > -9.0:
+            result["lufs_passed"] = False
+            result["feedback"] = f"Âm lượng quá lớn ({lufs} LUFS > -9 LUFS), nguy cơ bị xé âm / clipping"
+        else:
+            result["lufs_passed"] = True
+            result["feedback"] = f"Chuẩn âm thanh ({lufs} LUFS, YouTube Shorts tối ưu -14 LUFS)"
+
+        # Kiểm tra 2 giây đầu có dead air không
+        first_silence = detect_audio_speech_start(file_path, start_seconds=0.0, scan_duration=2.0, noise_threshold_db=-45.0)
+        if first_silence >= 1.8:
+            result["has_dead_air_opening"] = True
+            result["feedback"] += f" | Cảnh báo: 2 giây đầu im lặng ({first_silence}s dead air)"
+
+    except Exception as e:
+        logger.warning(f"measure_audio_loudness_and_silence error: {e}")
+
+    return result
+

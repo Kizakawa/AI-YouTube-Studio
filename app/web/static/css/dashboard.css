@@ -876,7 +876,21 @@ code {
   padding: 20px;
 }
 
-.modal-overlay.visible { display: flex; animation: fadeIn 0.2s ease; }
+.modal-overlay.visible,
+.modal-overlay.active { display: flex !important; animation: fadeIn 0.2s ease; }
+
+#modal-repurposed-player {
+  z-index: 99999 !important;
+}
+
+#modal-repurposed-player .modal-card {
+  max-width: 520px;
+  width: 95%;
+  max-height: 92vh;
+  overflow-y: auto;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  box-shadow: 0 32px 80px rgba(0,0,0,0.85);
+}
 
 .modal-card {
   background: var(--bg-secondary);

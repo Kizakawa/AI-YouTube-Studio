@@ -3209,6 +3209,7 @@ class RepurposeAnalyzeRequest(BaseModel):
     niche_id: str = "general"
     mode: str = "self_owned"
     channel_name: str = ""
+    video_description: str = ""
     device_id: Optional[str] = None
     device_name: Optional[str] = None
 
@@ -3217,16 +3218,23 @@ class RepurposeRenderRequest(BaseModel):
     start_seconds: float
     end_seconds: float
     title: str = ""
+    description: str = ""
+    channel_name: str = ""
     niche_id: str = "general"
-    layout_mode: str = "blur_background"
+    layout_mode: str = "smart_crop_full"
+    audio_mode: str = "original"
     add_subtitles: bool = True
     subtitle_text: str = ""
+    timed_transcript: Optional[List[Dict[str, Any]]] = None
     credit_text: Optional[str] = None
     device_id: Optional[str] = None
     device_name: Optional[str] = None
+    source_url: str = ""
+    author: str = ""
+    mode: str = "self_owned"
 
 @app.get("/api/system/client-info")
-async def get_client_system_info(request: Request) -> Dict[str, Any]:
+def get_client_system_info(request: Request) -> Dict[str, Any]:
     """Trả về thông tin kết nối mạng LAN của máy khách đang truy cập."""
     client_ip = request.client.host if request.client else "127.0.0.1"
     return {
@@ -3235,14 +3243,14 @@ async def get_client_system_info(request: Request) -> Dict[str, Any]:
     }
 
 @app.get("/api/repurposer/local-videos")
-async def list_local_videos_for_repurpose() -> Dict[str, Any]:
+def list_local_videos_for_repurpose() -> Dict[str, Any]:
     """Lấy danh sách các video có sẵn trong hệ thống để tái chế tức thì."""
     from app.services.video_repurposer import repurposer_service
     videos = repurposer_service.list_local_videos()
     return {"success": True, "count": len(videos), "videos": videos}
 
 @app.post("/api/repurposer/analyze")
-async def analyze_repurpose_video(req: RepurposeAnalyzeRequest) -> Dict[str, Any]:
+def analyze_repurpose_video(req: RepurposeAnalyzeRequest) -> Dict[str, Any]:
     """Phân tích video và phát hiện 3-5 khoảnh khắc highlight viral bằng Gemini AI."""
     from app.services.video_repurposer import repurposer_service, extract_youtube_video_id
     try:
@@ -3252,6 +3260,9 @@ async def analyze_repurpose_video(req: RepurposeAnalyzeRequest) -> Dict[str, Any
         if meta.get("source_type") == "youtube" and video_id:
             transcript_entries = repurposer_service.fetch_transcript(video_id)
         
+        # Lấy mô tả từ request hoặc tự động từ yt-dlp metadata
+        video_desc = req.video_description or meta.get("description", "")
+
         moments = repurposer_service.analyze_viral_moments(
             transcript_entries=transcript_entries,
             video_title=meta.get("title", "Video"),
@@ -3259,6 +3270,7 @@ async def analyze_repurpose_video(req: RepurposeAnalyzeRequest) -> Dict[str, Any
             niche_id=req.niche_id,
             mode=req.mode,
             channel_name=req.channel_name,
+            video_description=video_desc,
         )
         
         return {
@@ -3275,7 +3287,7 @@ async def analyze_repurpose_video(req: RepurposeAnalyzeRequest) -> Dict[str, Any
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/repurposer/render-clip")
-async def render_repurposed_clip(req: RepurposeRenderRequest, request: Request) -> Dict[str, Any]:
+def render_repurposed_clip(req: RepurposeRenderRequest, request: Request) -> Dict[str, Any]:
     """Cắt đoạn highlight, chuyển tỉ lệ 9:16 và ghép phụ đề Karaoke chuẩn Niche Profile."""
     import time
     import uuid
@@ -3283,10 +3295,13 @@ async def render_repurposed_clip(req: RepurposeRenderRequest, request: Request) 
     try:
         client_ip = request.client.host if request.client else "unknown"
         source_path = req.source.strip()
+        effective_source_url = req.source_url.strip() if req.source_url else (source_path if source_path.startswith("http") else "")
         if not os.path.exists(source_path):
             video_id = extract_youtube_video_id(source_path)
             if not video_id:
                 raise HTTPException(status_code=400, detail="Không tìm thấy file nguồn hoặc link YouTube hợp lệ")
+            if not effective_source_url:
+                effective_source_url = f"https://www.youtube.com/watch?v={video_id}"
             source_path = repurposer_service.download_segment_or_full(source_path)
             
         timestamp_int = int(time.time())
@@ -3303,13 +3318,20 @@ async def render_repurposed_clip(req: RepurposeRenderRequest, request: Request) 
             output_filename=out_filename,
             niche_id=req.niche_id,
             layout_mode=req.layout_mode,
+            audio_mode=req.audio_mode,
             add_subtitles=req.add_subtitles,
             subtitle_text=req.subtitle_text or req.title,
+            timed_transcript=req.timed_transcript,
             credit_text=req.credit_text,
             device_id=req.device_id,
             device_name=req.device_name,
             client_ip=client_ip,
             title=req.title,
+            description=req.description,
+            channel_name=req.channel_name,
+            source_url=effective_source_url,
+            author=req.author,
+            mode=req.mode,
         )
         return result
     except Exception as e:
@@ -3317,14 +3339,21 @@ async def render_repurposed_clip(req: RepurposeRenderRequest, request: Request) 
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/repurposer/clips")
-async def list_repurposed_clips() -> Dict[str, Any]:
-    """Lấy danh sách các Shorts đã được trích xuất thành công kèm thông tin thiết bị tạo."""
+def list_repurposed_clips() -> Dict[str, Any]:
+    """
+    Lấy danh sách các Shorts đã được trích xuất thành công kèm thông tin thiết bị tạo, chỉ số QA và link Amazon.
+    Tương thích ngược cả 2 định dạng file: [name].meta.json và [stem].meta.json.
+    """
     from app.services.video_repurposer import CLIPS_DIR
     clips = []
     if CLIPS_DIR.exists():
         for f in CLIPS_DIR.glob("*.mp4"):
             try:
-                meta_path = f.with_name(f"{f.name}.meta.json")
+                # Tương thích ngược: Ưu tiên [stem].meta.json, nếu không thấy thì thử [name].meta.json
+                meta_path = f.with_name(f"{f.stem}.meta.json")
+                if not meta_path.exists():
+                    meta_path = f.with_name(f"{f.name}.meta.json")
+
                 meta_info = {}
                 if meta_path.exists():
                     try:
@@ -3332,6 +3361,68 @@ async def list_repurposed_clips() -> Dict[str, Any]:
                             meta_info = json.load(mf)
                     except Exception:
                         pass
+                
+                from app.services.monetization_engine import (
+                    build_repurposed_pinned_comment,
+                    build_repurposed_video_description,
+                    find_best_amazon_product,
+                    build_amazon_url,
+                    verify_amazon_product_alive
+                )
+                amz_prod = meta_info.get("amazon_product")
+                needs_save = False
+
+                # Tự động kiểm tra và làm mới nếu sản phẩm Amazon bị chết hoặc chưa kiểm tra
+                if not amz_prod or not amz_prod.get("is_verified_alive"):
+                    prod_asin = (amz_prod.get("asin") if amz_prod else "") or ""
+                    if not prod_asin or not verify_amazon_product_alive(prod_asin):
+                        niche_cur = meta_info.get("niche_id", "general")
+                        title_cur = meta_info.get("title") or f.stem
+                        amz_prod = find_best_amazon_product(niche=niche_cur, title=title_cur)
+                        amz_prod["affiliate_url"] = build_amazon_url(
+                            amz_prod["asin"],
+                            "kizakawa-20",
+                            is_search=amz_prod.get("is_search", False)
+                        )
+                        meta_info["amazon_product"] = amz_prod
+                        meta_info["pinned_comment"] = build_repurposed_pinned_comment(
+                            title=title_cur,
+                            niche_id=niche_cur,
+                            source_url=meta_info.get("source_url", ""),
+                            author=meta_info.get("author", ""),
+                            tracking_tag="kizakawa-20"
+                        )
+                        meta_info["description"] = build_repurposed_video_description(
+                            title=title_cur,
+                            summary=meta_info.get("subtitle_text", ""),
+                            niche_id=niche_cur,
+                            channel_name="",
+                            source_url=meta_info.get("source_url", ""),
+                            author=meta_info.get("author", ""),
+                            mode=meta_info.get("mode", "self_owned"),
+                            tracking_tag="kizakawa-20"
+                        )
+                        needs_save = True
+
+                clip_pinned = meta_info.get("pinned_comment")
+                if not clip_pinned:
+                    clip_pinned = build_repurposed_pinned_comment(
+                        title=meta_info.get("title") or f.stem,
+                        niche_id=meta_info.get("niche_id", "general"),
+                        source_url=meta_info.get("source_url", ""),
+                        author=meta_info.get("author", ""),
+                        tracking_tag="kizakawa-20"
+                    )
+                    meta_info["pinned_comment"] = clip_pinned
+                    needs_save = True
+
+                if needs_save:
+                    try:
+                        with open(meta_path, "w", encoding="utf-8") as mf:
+                            json.dump(meta_info, mf, ensure_ascii=False, indent=2)
+                    except Exception:
+                        pass
+
                 clips.append({
                     "filename": f.name,
                     "url": f"/media/repurposer/clips/{f.name}",
@@ -3340,12 +3431,195 @@ async def list_repurposed_clips() -> Dict[str, Any]:
                     "device_id": meta_info.get("device_id", ""),
                     "device_name": meta_info.get("device_name", ""),
                     "client_ip": meta_info.get("client_ip", ""),
-                    "title": meta_info.get("title", ""),
+                    "title": meta_info.get("title") or f.stem,
+                    "description": meta_info.get("description", ""),
+                    "pinned_comment": meta_info.get("pinned_comment") or clip_pinned,
+                    "niche_id": meta_info.get("niche_id", "general"),
+                    "layout_mode": meta_info.get("layout_mode", "smart_crop_full"),
+                    "audio_mode": meta_info.get("audio_mode", "original"),
+                    "qa_report": meta_info.get("qa_report"),
+                    "amazon_product": amz_prod,
+                    "source_url": meta_info.get("source_url", ""),
+                    "author": meta_info.get("author", ""),
+                    "mode": meta_info.get("mode", "self_owned"),
                 })
             except Exception:
                 pass
     clips.sort(key=lambda x: x["created_at"], reverse=True)
     return {"success": True, "count": len(clips), "clips": clips}
+
+@app.delete("/api/repurposer/clips/{filename}")
+def delete_repurposed_clip(filename: str) -> Dict[str, Any]:
+    """
+    Xóa video Shorts đã tạo cùng toàn bộ file metadata (.meta.json) và subtitle (.ass) đi kèm.
+    Bảo vệ chống Path Traversal (kiểm tra an toàn đường dẫn).
+    """
+    from app.services.video_repurposer import CLIPS_DIR, SUBS_DIR
+    # Kiểm tra an toàn: cấm path traversal
+    safe_filename = os.path.basename(filename).strip()
+    if not safe_filename or ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Tên file không hợp lệ")
+
+    if not safe_filename.endswith(".mp4"):
+        raise HTTPException(status_code=400, detail="Chỉ cho phép xóa file định dạng .mp4")
+
+    target_video = CLIPS_DIR / safe_filename
+    if not target_video.exists():
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy video: {safe_filename}")
+
+    try:
+        # Xóa file video MP4
+        target_video.unlink(missing_ok=True)
+
+        # Xóa cả 2 định dạng file metadata để dọn sạch hoàn toàn
+        meta_stem = CLIPS_DIR / f"{Path(safe_filename).stem}.meta.json"
+        meta_full = CLIPS_DIR / f"{safe_filename}.meta.json"
+        meta_stem.unlink(missing_ok=True)
+        meta_full.unlink(missing_ok=True)
+
+        # Xóa file phụ đề ASS nếu có
+        ass_file = SUBS_DIR / f"sub_{Path(safe_filename).stem}.ass"
+        ass_file.unlink(missing_ok=True)
+
+        logger.info(f"Đã xóa thành công clip và metadata: {safe_filename}")
+        return {"success": True, "message": f"Đã xóa video {safe_filename} thành công"}
+    except Exception as e:
+        logger.error(f"Lỗi khi xóa clip {safe_filename}: {e}")
+        raise HTTPException(status_code=500, detail=f"Lỗi xóa file: {str(e)}")
+
+# ─── Publish Repurposed Short to YouTube ─────────────────────────────────────
+
+class RepurposePublishRequest(BaseModel):
+    clip_filename: str           # Tên file clip trong CLIPS_DIR, VD: short_dev_17...abc123.mp4
+    channel_id: str              # ID kênh YouTube đích (VD: ch_paws_hearts_rescue)
+    title: str                   # Tiêu đề video khi đăng
+    description: str = ""        # Mô tả video (để trống = dùng mô tả mặc định kênh)
+    tags: str = ""               # Tags phân cách bởi dấu phẩy
+    auto_schedule: bool = False  # True = hẹn giờ vàng tự động (private scheduled)
+    pinned_comment: Optional[str] = None # Bình luận ghim kèm affiliate Store ID kizakawa-20
+
+@app.post("/api/repurposer/publish-clip")
+async def publish_repurposed_clip(req: RepurposePublishRequest) -> Dict[str, Any]:
+    """
+    Đăng Short đã được render (9:16) thẳng lên YouTube không cần VideoJob.
+    Hỗ trợ: đăng ngay (public) hoặc hẹn giờ vàng tự động (auto_schedule=true).
+    """
+    from app.services.video_repurposer import CLIPS_DIR
+    from pathlib import Path as _Path
+
+    clip_path = CLIPS_DIR / req.clip_filename
+    if not clip_path.exists():
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy clip: {req.clip_filename}")
+
+    try:
+        cfg = _read_channels_yaml()
+        channels = cfg.get("channels", [])
+        ch_cfg = next((c for c in channels if c.get("id") == req.channel_id), None)
+        if not ch_cfg:
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy kênh: {req.channel_id}")
+
+        acc_id = ch_cfg.get("google_account", "account_1")
+        ch_lang = ch_cfg.get("language", "en")
+        ch_name = ch_cfg.get("name", req.channel_id)
+
+        # Tìm token file cho kênh
+        base_dir = Path(settings.BASE_DIR)
+        ch_token = base_dir / "credentials" / "channels" / req.channel_id / "youtube_token.json"
+        acc_token = base_dir / "credentials" / "accounts" / acc_id / "youtube_token.json"
+        token_file = str(ch_token) if ch_token.exists() else str(acc_token)
+
+        ch_cfg["token_file"] = token_file
+
+        from app.agents.publisher_agent import PublisherAgent
+        pub_agent = PublisherAgent(channel_config=ch_cfg, account_name=acc_id)
+        if not pub_agent.service:
+            init_err = getattr(pub_agent, "init_error", None) or "Chưa kết nối OAuth"
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"⚠️ Kênh '{ch_name}' chưa kết nối YouTube OAuth ({init_err}). "
+                    f"Vui lòng vào tab 'Kênh & Tài Khoản' → '🔑 Cấp Quyền YouTube (Kênh Này)' để xác thực lại."
+                )
+            )
+
+        # Tính giờ vàng nếu auto_schedule
+        schedule_time = None
+        display_slot_vn = None
+        privacy = "public"
+        if req.auto_schedule:
+            from app.services.smart_scheduler import get_next_available_golden_slot
+            _, schedule_time, display_slot_vn, _ = get_next_available_golden_slot(req.channel_id)
+            privacy = "private"
+
+        # Chuẩn bị tags
+        video_tags = [t.strip() for t in req.tags.split(",") if t.strip()] if req.tags else []
+
+        # Mô tả mặc định nếu để trống
+        description = req.description.strip() if req.description else (
+            f"Short viral được trích xuất bởi AI từ video gốc của kênh {ch_name}. "
+            f"Subscribe để xem thêm nội dung độc đáo! 🔔"
+        )
+
+        # Bình luận ghim tự động (kèm store ID kizakawa-20)
+        pinned_comment = req.pinned_comment.strip() if req.pinned_comment else None
+        if not pinned_comment:
+            meta_stem = CLIPS_DIR / f"{_Path(req.clip_filename).stem}.meta.json"
+            if meta_stem.exists():
+                try:
+                    with open(meta_stem, "r", encoding="utf-8") as mf:
+                        m_data = json.load(mf)
+                        pinned_comment = m_data.get("pinned_comment")
+                except Exception:
+                    pass
+
+        if not pinned_comment:
+            from app.services.monetization_engine import build_repurposed_pinned_comment
+            pinned_comment = build_repurposed_pinned_comment(
+                title=req.title,
+                channel_name=ch_name,
+                tracking_tag="kizakawa-20"
+            )
+
+        pub_res = pub_agent.upload_video(
+            video_path=str(clip_path),
+            title=req.title,
+            description=description,
+            tags=video_tags,
+            privacy_status=privacy,
+            schedule_time_iso=schedule_time,
+            default_language=ch_lang,
+            default_audio_language=ch_lang,
+            pinned_comment=pinned_comment,
+            topic=req.title,
+            script="",
+        )
+
+        if pub_res.get("status") == "success":
+            yt_url = pub_res.get("youtube_url", "")
+            yt_id = pub_res.get("video_id", "")
+            shorts_url = f"https://www.youtube.com/shorts/{yt_id}" if yt_id else yt_url
+            msg = (
+                f"✅ Đã lên lịch đăng tại khe vàng {display_slot_vn}!"
+                if req.auto_schedule
+                else f"✅ Đã đăng công khai lên YouTube!"
+            )
+            return {
+                "success": True,
+                "message": msg,
+                "youtube_url": yt_url,
+                "shorts_url": shorts_url,
+                "video_id": yt_id,
+                "scheduled_at": display_slot_vn or None,
+                "channel_name": ch_name,
+            }
+        else:
+            raise HTTPException(status_code=500, detail=pub_res.get("error", "Lỗi không xác định từ YouTube API"))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Lỗi publish repurposed clip: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ─── Channel-Level OAuth Endpoints (Đảm bảo mỗi kênh YouTube có Token riêng) ─
 
