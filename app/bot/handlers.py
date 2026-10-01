@@ -47,7 +47,8 @@ async def safe_reply(update: Update, text: str, reply_markup=None, parse_mode="M
     """
     Gửi tin nhắn an toàn:
     - Cắt gọn nếu vượt quá giới hạn 4096 ký tự của Telegram.
-    - Tự động fallback sang Plain Text nếu lỗi Markdown parse.
+    - Tự động fallback sang Plain Text nếu lỗi Markdown/HTML parse.
+    - Luôn có fallback gửi qua effective_chat.send_message nếu reply_text trên media/callback thất bại.
     - Không bao giờ để văng exception làm chết bot.
     """
     if not text:
@@ -57,22 +58,33 @@ async def safe_reply(update: Update, text: str, reply_markup=None, parse_mode="M
     if len(text) > 4000:
         text = text[:3980] + "\n\n...(nội dung còn tiếp)"
 
+    # 1. Thử gửi với định dạng yêu cầu
     try:
         if update.message:
             return await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
-        elif update.callback_query and update.callback_query.message:
+        elif update.callback_query and getattr(update.callback_query, "message", None) and hasattr(update.callback_query.message, "reply_text"):
             return await update.callback_query.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+        elif update.effective_chat:
+            return await update.effective_chat.send_message(text, reply_markup=reply_markup, parse_mode=parse_mode)
     except Exception as e:
         logger.warning(f"Lỗi gửi tin nhắn parse_mode={parse_mode} ({e}), fallback sang Plain Text...")
+
+    # 2. Fallback sang Plain Text không định dạng
+    plain = re.sub(r'[*_`\[\]()<>]', '', text)
+    try:
+        if update.message:
+            return await update.message.reply_text(plain, reply_markup=reply_markup)
+        elif update.callback_query and getattr(update.callback_query, "message", None) and hasattr(update.callback_query.message, "reply_text"):
+            return await update.callback_query.message.reply_text(plain, reply_markup=reply_markup)
+        elif update.effective_chat:
+            return await update.effective_chat.send_message(plain, reply_markup=reply_markup)
+    except Exception as e2:
+        logger.warning(f"Fallback reply_text thất bại ({e2}), gửi thẳng vào effective_chat...")
         try:
-            # Fallback: Plain text không định dạng
-            plain = re.sub(r'[*_`\[\]()<>]', '', text)
-            if update.message:
-                return await update.message.reply_text(plain, reply_markup=reply_markup)
-            elif update.callback_query and update.callback_query.message:
-                return await update.callback_query.message.reply_text(plain, reply_markup=reply_markup)
-        except Exception as e2:
-            logger.error(f"Fallback gửi tin nhắn thất bại: {e2}")
+            if update.effective_chat:
+                return await update.effective_chat.send_message(plain, reply_markup=reply_markup)
+        except Exception as e3:
+            logger.error(f"Tất cả phương thức gửi tin nhắn đều thất bại: {e3}")
             return None
 
 
@@ -92,15 +104,18 @@ async def safe_edit_text(message, text: str, reply_markup=None, parse_mode="Mark
             return message
 
         logger.warning(f"Lỗi edit_text parse_mode={parse_mode} ({e}), fallback sang Plain Text...")
+        plain = re.sub(r'[*_`\[\]()<>]', '', text)
         try:
-            plain = re.sub(r'[*_`\[\]()<>]', '', text)
             return await message.edit_text(plain, reply_markup=reply_markup)
         except Exception as e2:
             if "Message is not modified" in str(e2):
                 return message
             logger.error(f"Fallback edit_text thất bại ({e2}), gửi tin nhắn mới thay thế...")
             try:
-                return await message.reply_text(plain, reply_markup=reply_markup)
+                if hasattr(message, "reply_text"):
+                    return await message.reply_text(plain, reply_markup=reply_markup)
+                elif hasattr(message, "chat") and hasattr(message.chat, "send_message"):
+                    return await message.chat.send_message(plain, reply_markup=reply_markup)
             except Exception:
                 return None
 
@@ -2494,50 +2509,108 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with get_db() as db:
             job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
             if not job or not job.video_path or not os.path.exists(job.video_path):
+                await safe_query_answer(query, f"❌ File video #{job_id} chưa sẵn sàng để xuất bản.", show_alert=True)
                 await safe_reply(update, f"❌ File video #{job_id} chưa sẵn sàng để xuất bản.")
                 return
-            video_title = job.title or job.topic
-            current_ch = job.target_channel_id or "Chưa chọn"
+            video_title = job.title or job.topic or f"Video #{job_id}"
+            target_ch = job.target_channel_id
+
+        # Kiểm tra kênh đích của video đã có token OAuth YouTube chưa
+        ch_token = os.path.join(settings.CREDENTIALS_DIR, "channels", target_ch, "youtube_token.json") if target_ch else None
+        channels = settings.get_channels_config()
+        ch_cfg = next((c for c in channels if c.get("id") == target_ch), None)
+        ch_name = ch_cfg.get("name", target_ch) if ch_cfg else (target_ch or "Chưa chọn")
+
+        if target_ch and ch_token and os.path.exists(ch_token):
+            # Kênh đã cấp quyền OAuth đầy đủ!
+            await safe_query_answer(query, f"⚡ Đang kiểm tra xuất bản lên kênh {ch_name}...", show_alert=False)
+            from app.services.channel_intelligence import check_pre_publish_safety
+            safety = await asyncio.to_thread(check_pre_publish_safety, job_id, target_ch)
+
+            if safety.get("has_warnings"):
+                warn_bullets = "\n".join([f"• {html.escape(w)}" for w in safety["warnings"]])
+                rec_bullets = "\n".join([f"• {html.escape(r)}" for r in safety["recommendations"]])
+
+                advisory_text = (
+                    f"🛡️ <b>KIỂM TRA AN TOÀN & TỐI ƯU TRƯỚC KHI ĐĂNG (Task #{job_id})</b>\n\n"
+                    f"📺 <b>Kênh dự kiến:</b> <code>{html.escape(ch_name)}</code>\n"
+                    f"🎬 <b>Tiêu đề:</b> <i>{html.escape(video_title)}</i>\n\n"
+                    f"🔍 <b>Hệ thống AI phát hiện các rủi ro có thể khiến video bị flop:</b>\n"
+                    f"{warn_bullets}\n\n"
+                    f"💡 <b>KHUYẾN NGHỊ TỐI ƯU CỦA HỆ THỐNG:</b>\n"
+                    f"{rec_bullets}\n\n"
+                    f"👉 <b>Bạn muốn xử lý như thế nào trước khi xuất bản?</b>"
+                )
+                markup = get_pre_publish_advisory_keyboard(job_id, target_ch, safety.get("next_slot_vn", ""))
+                await safe_reply(update, advisory_text, reply_markup=markup, parse_mode="HTML")
+                return
+
+            # Không có cảnh báo -> Xuất bản trực tiếp ngay lập tức!
+            await _execute_channel_publish(update, context, job_id, target_ch, user)
+            return
+
+        # Nếu chưa chọn kênh hoặc chưa có OAuth -> Mở danh sách chọn kênh
+        await safe_query_answer(query, "📋 Vui lòng chọn kênh YouTube Shorts...", show_alert=False)
+        markup = get_publish_channel_keyboard(job_id)
+        text = (
+            f"⚡ <b>CHỌN KÊNH YOUTUBE SHORTS ĐỂ XUẤT BẢN (Task #{job_id})</b>\n\n"
+            f"📌 <b>Tiêu đề:</b> {html.escape(video_title)}\n"
+            f"⚡ <b>Định dạng:</b> YouTube Shorts (Dọc 9:16 + Gắn cờ #Shorts)\n"
+            f"🎯 <b>Kênh dự kiến:</b> <code>{html.escape(str(target_ch or 'Chưa chọn'))}</code>\n\n"
+            f"👉 Vui lòng chọn kênh YouTube bạn muốn tải Shorts lên:\n"
+            f"<i>(🟢: Đã kết nối OAuth | ⚠️: Chưa kết nối OAuth)</i>"
+        )
+        await safe_reply(update, text, reply_markup=markup, parse_mode="HTML")
+
+    elif data.startswith("pick_publish_channel:"):
+        job_id = int(data.split(":")[1])
+        await safe_query_answer(query, "📋 Mở danh sách kênh YouTube...", show_alert=False)
+        with get_db() as db:
+            job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            video_title = job.title or job.topic if job else f"Video #{job_id}"
+            target_ch = job.target_channel_id if job else "Chưa chọn"
 
         markup = get_publish_channel_keyboard(job_id)
         text = (
-            f"⚡ **CHỌN KÊNH YOUTUBE SHORTS ĐỂ XUẤT BẢN (Task #{job_id})**\n\n"
-            f"📌 **Tiêu đề:** {video_title}\n"
-            f"⚡ **Định dạng:** YouTube Shorts (Dọc 9:16 + Gắn cờ #Shorts)\n"
-            f"🎯 **Kênh dự kiến:** `{current_ch}`\n\n"
-            f"👉 Vui lòng chọn kênh YouTube bạn muốn tải Shorts lên:\n"
-            f"_(🟢: Đã kết nối OAuth | ⚠️: Chưa kết nối OAuth)_"
+            f"⚡ <b>CHỌN KÊNH YOUTUBE SHORTS ĐỂ XUẤT BẢN (Task #{job_id})</b>\n\n"
+            f"📌 <b>Tiêu đề:</b> {html.escape(video_title)}\n"
+            f"⚡ <b>Định dạng:</b> YouTube Shorts (Dọc 9:16 + Gắn cờ #Shorts)\n"
+            f"🎯 <b>Kênh hiện tại:</b> <code>{html.escape(str(target_ch))}</code>\n\n"
+            f"👉 Vui lòng chọn kênh bạn muốn tải Shorts lên:\n"
+            f"<i>(🟢: Đã kết nối OAuth | ⚠️: Chưa kết nối OAuth)</i>"
         )
-        await safe_reply(update, text, reply_markup=markup)
+        await safe_reply(update, text, reply_markup=markup, parse_mode="HTML")
 
     elif data.startswith("cancel_publish:"):
         job_id = int(data.split(":")[1])
+        await safe_query_answer(query, "ℹ️ Đã hủy xuất bản.", show_alert=False)
         await safe_reply(update, f"ℹ️ Đã hủy thao tác đăng YouTube cho Video #{job_id}.")
 
     elif data.startswith("publish_to_channel:"):
         parts = data.split(":")
         job_id = int(parts[1])
         channel_id = parts[2]
+        await safe_query_answer(query, "⏳ Đang kiểm tra điều kiện xuất bản...", show_alert=False)
 
         from app.services.channel_intelligence import check_pre_publish_safety
         safety = await asyncio.to_thread(check_pre_publish_safety, job_id, channel_id)
 
         if safety.get("has_warnings"):
-            warn_bullets = "\n".join([f"• {w}" for w in safety["warnings"]])
-            rec_bullets = "\n".join([f"• {r}" for r in safety["recommendations"]])
+            warn_bullets = "\n".join([f"• {html.escape(w)}" for w in safety["warnings"]])
+            rec_bullets = "\n".join([f"• {html.escape(r)}" for r in safety["recommendations"]])
 
             advisory_text = (
-                f"🛡️ **KIỂM TRA AN TOÀN & TỐI ƯU TRƯỚC KHI ĐĂNG (Task #{job_id})**\n\n"
-                f"📺 **Kênh dự kiến:** `{safety.get('channel_name', channel_id)}`\n"
-                f"🎬 **Tiêu đề:** *{safety.get('title', '')}*\n\n"
-                f"🔍 **Hệ thống AI phát hiện các rủi ro có thể khiến video bị flop:**\n"
+                f"🛡️ <b>KIỂM TRA AN TOÀN & TỐI ƯU TRƯỚC KHI ĐĂNG (Task #{job_id})</b>\n\n"
+                f"📺 <b>Kênh dự kiến:</b> <code>{html.escape(safety.get('channel_name', channel_id))}</code>\n"
+                f"🎬 <b>Tiêu đề:</b> <i>{html.escape(safety.get('title', ''))}</i>\n\n"
+                f"🔍 <b>Hệ thống AI phát hiện các rủi ro có thể khiến video bị flop:</b>\n"
                 f"{warn_bullets}\n\n"
-                f"💡 **KHUYẾN NGHỊ TỐI ƯU CỦA HỆ THỐNG:**\n"
+                f"💡 <b>KHUYẾN NGHỊ TỐI ƯU CỦA HỆ THỐNG:</b>\n"
                 f"{rec_bullets}\n\n"
-                f"👉 **Bạn muốn xử lý như thế nào trước khi xuất bản?**"
+                f"👉 <b>Bạn muốn xử lý như thế nào trước khi xuất bản?</b>"
             )
             markup = get_pre_publish_advisory_keyboard(job_id, channel_id, safety.get("next_slot_vn", ""))
-            await safe_reply(update, advisory_text, reply_markup=markup)
+            await safe_reply(update, advisory_text, reply_markup=markup, parse_mode="HTML")
             return
 
         # Nếu hoàn toàn tối ưu và không có rủi ro, tiến hành xuất bản ngay
@@ -2547,6 +2620,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts = data.split(":")
         job_id = int(parts[1])
         channel_id = parts[2]
+        await safe_query_answer(query, "⚡ Đang tiến hành xuất bản ngay...", show_alert=False)
         await _execute_channel_publish(update, context, job_id, channel_id, user)
 
 
@@ -3493,16 +3567,8 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             elif action == "now":
                 job.status = "RENDERED"
                 log_activity(db, user.id, user.username, "APPROVE_NOW", f"Duyệt Video #{job_id} để đăng ngay", channel_id=target_ch)
-                confirm_txt = (
-                    f"✅ **ĐÃ DUYỆT ĐĂNG NGAY CHO VIDEO #{job_id}!**\n\n"
-                    f"🎬 **Video:** *{job_title}*\n"
-                    f"📺 **Kênh:** `{target_ch}`\n\n"
-                    f"Hệ thống đang chuẩn bị xuất bản lên YouTube..."
-                )
-                if query.message:
-                    await safe_edit_text(query.message, confirm_txt)
-                else:
-                    await safe_reply(update, confirm_txt)
+                await safe_query_answer(query, "🚀 Đang tiến hành xuất bản ngay...", show_alert=False)
+                await _execute_channel_publish(update, context, job_id, target_ch, user)
                 return
 
     # 13. Kích hoạt thủ công tạo video cứu nguy KPI

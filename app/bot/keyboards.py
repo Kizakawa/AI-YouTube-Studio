@@ -352,18 +352,21 @@ def get_pre_publish_advisory_keyboard(job_id: int, channel_id: str, next_slot_la
     keyboard = [
         [
             InlineKeyboardButton(
+                "⚡ Vẫn Đăng Ngay Lên Kênh Này",
+                callback_data=f"force_publish_to_channel:{job_id}:{channel_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
                 slot_text,
                 callback_data=f"schedule_to_channel:{job_id}:{channel_id}"
             )
         ],
         [
-            InlineKeyboardButton(
-                "⚡ Vẫn Đăng Ngay (Tôi Chấp Nhận Rủi Ro)",
-                callback_data=f"force_publish_to_channel:{job_id}:{channel_id}"
-            )
+            InlineKeyboardButton("🔄 Đổi Sang Kênh Khác", callback_data=f"pick_publish_channel:{job_id}"),
+            InlineKeyboardButton("✍️ Sửa Video", callback_data=f"feedback_video:{job_id}"),
         ],
         [
-            InlineKeyboardButton("✍️ Sửa Kịch Bản / Hook 3s", callback_data=f"feedback_video:{job_id}"),
             InlineKeyboardButton("❌ Hủy Đăng", callback_data=f"cancel_publish:{job_id}")
         ]
     ]
