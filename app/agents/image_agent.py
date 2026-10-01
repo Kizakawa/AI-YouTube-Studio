@@ -56,6 +56,8 @@ class ImageAgent:
         niche: str = "general",
         scene_id: int = 0,
         visual_prompt: Optional[str] = None,
+        used_urls: Optional[set] = None,
+        topic: str = "",
     ) -> Optional[str]:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         self._call_count += 1
@@ -118,34 +120,50 @@ class ImageAgent:
         except Exception as fb_err:
             logger.debug(f"[ImageAgent] Fallback ngắn cũng lỗi: {fb_err}")
 
-        # 4. Dự phòng ảnh thật HD từ Pexels Photo API (ảnh thật 9:16 sắc nét, tránh đơ/đen hình)
-        pexels_img = self._try_pexels_photo_fallback(base_prompt, output_path)
+        # 4. Dự phòng ảnh thật HD từ Pexels Photo API (ảnh thật 9:16 sắc nét có kiểm định độ phù hợp và chống trùng)
+        pexels_img = self._try_pexels_photo_fallback(base_prompt, output_path, used_urls=used_urls, topic=topic)
         if pexels_img and Path(pexels_img).exists() and Path(pexels_img).stat().st_size > 5000:
             return pexels_img
 
         logger.warning(f"[ImageAgent] ⚠️ Không thể sinh ảnh cho Cảnh {scene_id} qua AI. Chuyển quyền cho Video/Media Fallback.")
         return None
 
-    def _try_pexels_photo_fallback(self, query: str, output_path: str) -> Optional[str]:
+    def _try_pexels_photo_fallback(
+        self,
+        query: str,
+        output_path: str,
+        used_urls: Optional[set] = None,
+        topic: str = "",
+    ) -> Optional[str]:
         """Tải ảnh chân thực chất lượng cao từ Pexels Photo API khi các engine AI gặp sự cố."""
         try:
-            pexels_keys = settings.get_pexels_keys_pool()
-            if not pexels_keys or pexels_keys[0] == "your_pexels_api_key_here":
-                return None
+            from app.services.media.stock_fetcher import StockFetcher
+            from app.services.media.entity_detector import clean_scene_search_query
+            stock = StockFetcher()
+            clean_q = clean_scene_search_query(query, max_words=3)
+            if topic and clean_q and clean_q.lower() not in topic.lower():
+                clean_topic = clean_scene_search_query(topic, max_words=2)
+                clean_q = f"{clean_topic} {clean_q}".strip()
 
-            clean_q = " ".join(re.sub(r'[^a-zA-Z0-9\s]', ' ', query).split()[:4])
-            headers = {"Authorization": pexels_keys[0]}
-            url = f"https://api.pexels.com/v1/search?query={urllib.parse.quote(clean_q)}&orientation=portrait&per_page=1"
-            res = requests.get(url, headers=headers, timeout=8)
-            if res.status_code == 200:
-                photos = res.json().get("photos", [])
-                if photos and photos[0].get("src", {}).get("large2x"):
-                    img_url = photos[0]["src"]["large2x"]
+            target_query = clean_q or topic or "dramatic landscape"
+            photos = stock.search_photos(
+                target_query,
+                per_page=3,
+                orientation="portrait",
+                topic=topic,
+                used_urls=used_urls,
+            )
+            for photo in photos:
+                img_url = photo.get("url")
+                if img_url:
                     img_res = requests.get(img_url, timeout=12)
                     if img_res.status_code == 200 and len(img_res.content) > 5000:
                         with open(output_path, "wb") as f:
                             f.write(img_res.content)
-                        logger.info(f"[ImageAgent] 📸 Tải ảnh HD thực tế thành công từ Pexels: '{clean_q}' → {output_path}")
+                        if used_urls is not None:
+                            from app.services.media.media_history import extract_media_identity
+                            used_urls.update(extract_media_identity(img_url))
+                        logger.info(f"[ImageAgent] 📸 Tải ảnh HD thực tế thành công từ Pexels: '{target_query}' → {output_path}")
                         return output_path
         except Exception as e:
             logger.debug(f"[ImageAgent] Pexels photo fallback error: {e}")

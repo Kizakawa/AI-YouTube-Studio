@@ -85,9 +85,21 @@ class StockFetcher:
                 time.sleep(1.0)
         return []
 
-    def search_photos(self, query: str, per_page: int = 3, orientation: str = "portrait", page: Optional[int] = None) -> List[Dict]:
-        """Tìm kiếm ảnh tĩnh trên Pexels theo từ khóa với tỷ lệ dọc (portrait 9:16) cho Ken Burns, có pagination jitter."""
+    def search_photos(
+        self,
+        query: str,
+        per_page: int = 3,
+        orientation: str = "portrait",
+        page: Optional[int] = None,
+        topic: str = "",
+        narration: str = "",
+        used_urls: Optional[set] = None,
+    ) -> List[Dict]:
+        """Tìm kiếm ảnh tĩnh trên Pexels theo từ khóa với tỷ lệ dọc (portrait 9:16) cho Ken Burns, có pagination jitter và lọc lạc đề."""
         import random
+        from app.services.media.entity_detector import is_incongruent_stock_image
+        from app.services.media.media_history import is_media_already_used, extract_media_identity
+
         key = self._get_active_key()
         if not key:
             return []
@@ -98,7 +110,7 @@ class StockFetcher:
             headers = {"Authorization": key}
             params = {
                 "query": query,
-                "per_page": per_page,
+                "per_page": max(per_page * 2, 6),  # Lấy dư để lọc bỏ ảnh trùng lặp và ảnh lạc đề
                 "orientation": orientation,
                 "page": target_page,
             }
@@ -114,15 +126,33 @@ class StockFetcher:
                 for p in data:
                     src = p.get("src", {})
                     img_url = src.get("portrait") or src.get("large2x") or src.get("large") or src.get("original")
-                    if img_url:
-                        results.append({
-                            "url": img_url,
-                            "title": f"Pexels: {p.get('alt') or query}",
-                            "width": p.get("width", 1080),
-                            "height": p.get("height", 1920),
-                            "source": "pexels",
-                            "thumbnail": src.get("medium") or img_url,
-                        })
+                    if not img_url:
+                        continue
+
+                    p_id = str(p.get("id", ""))
+                    alt_text = p.get("alt", "") or query
+
+                    # Lọc ảnh lạc quẻ (văn phòng, cafe, tiệc tùng lọt vào chủ đề khác)
+                    if is_incongruent_stock_image(alt_text, topic=topic or query, narration=narration):
+                        continue
+
+                    # Lọc trùng lặp qua used_urls
+                    if used_urls:
+                        if is_media_already_used(img_url, used_urls) or p_id in used_urls or f"pexels:{p_id}" in used_urls:
+                            continue
+
+                    results.append({
+                        "url": img_url,
+                        "title": f"Pexels: {alt_text}",
+                        "id": p_id,
+                        "alt": alt_text,
+                        "width": p.get("width", 1080),
+                        "height": p.get("height", 1920),
+                        "source": "pexels",
+                        "thumbnail": src.get("medium") or img_url,
+                    })
+                    if len(results) >= per_page:
+                        break
                 return results
         except Exception as e:
             logger.debug(f"Pexels search_photos error for '{query}': {e}")
@@ -315,8 +345,13 @@ class StockFetcher:
         for q_try in candidate_queries:
             videos = self.search_videos(q_try, per_page=6, orientation="portrait")
             for v in videos:
-                if v.get("url") and v["url"] not in used and v not in collected_candidates:
-                    collected_candidates.append(v)
+                v_url = v.get("url")
+                v_desc = v.get("tags") or v.get("url") or ""
+                from app.services.media.entity_detector import is_incongruent_stock_image
+                from app.services.media.media_history import is_media_already_used
+                if v_url and not is_media_already_used(v_url, used) and not is_incongruent_stock_image(v_desc, topic=query, narration=narration):
+                    if v not in collected_candidates:
+                        collected_candidates.append(v)
             if len(collected_candidates) >= 8:
                 break
 
@@ -324,8 +359,13 @@ class StockFetcher:
             for q_try in candidate_queries[:2]:
                 pxb_vids = self.search_pixabay_videos(q_try, per_page=4)
                 for pv in pxb_vids:
-                    if pv.get("url") and pv["url"] not in used and pv not in collected_candidates:
-                        collected_candidates.append(pv)
+                    pv_url = pv.get("url")
+                    pv_desc = pv.get("title") or ""
+                    from app.services.media.entity_detector import is_incongruent_stock_image
+                    from app.services.media.media_history import is_media_already_used
+                    if pv_url and not is_media_already_used(pv_url, used) and not is_incongruent_stock_image(pv_desc, topic=query, narration=narration):
+                        if pv not in collected_candidates:
+                            collected_candidates.append(pv)
                 if len(collected_candidates) >= 8:
                     break
 
@@ -344,7 +384,9 @@ class StockFetcher:
             for tf in theme_fallbacks:
                 videos = self.search_videos(tf, per_page=4, orientation="portrait")
                 for v in videos:
-                    if v.get("url") and v["url"] not in used and v not in collected_candidates:
+                    v_url = v.get("url")
+                    from app.services.media.media_history import is_media_already_used
+                    if v_url and not is_media_already_used(v_url, used) and v not in collected_candidates:
                         collected_candidates.append(v)
                 if len(collected_candidates) >= 4:
                     break
@@ -366,6 +408,11 @@ class StockFetcher:
                 if winner and score >= 4.8:
                     if winner.get("url"):
                         record_used_media(winner["url"], query=query, source=winner.get("source", "curated_video"))
+                        from app.services.media.media_history import extract_media_identity
+                        ids = extract_media_identity(winner["url"])
+                        used.update(ids)
+                        if used_urls is not None:
+                            used_urls.update(ids)
                     return winner
                 if should_ai:
                     logger.info(f"[StockFetcher] VisualCurationAgent từ chối stock video ({rationale}), chuyển sang AI Video.")
@@ -403,7 +450,8 @@ class StockFetcher:
                 hd_files = sorted(portrait_files, key=_res_score, reverse=True)
                 for best in hd_files:
                     link = best.get("link")
-                    if link and link not in used:
+                    from app.services.media.media_history import is_media_already_used
+                    if link and not is_media_already_used(link, used):
                         candidates_found.append({
                             "url": link,
                             "title": f"Pexels Video: {v.get('url', query)}",
@@ -425,6 +473,11 @@ class StockFetcher:
             chosen = random.choice(top_pool)
             if chosen.get("url"):
                 record_used_media(chosen["url"], query=query, source=chosen.get("source", "pexels_video"))
+                from app.services.media.media_history import extract_media_identity
+                ids = extract_media_identity(chosen["url"])
+                used.update(ids)
+                if used_urls is not None:
+                    used_urls.update(ids)
             return chosen
 
         return None

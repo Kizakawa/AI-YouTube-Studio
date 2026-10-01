@@ -24,6 +24,7 @@ from typing import Dict, Any, Optional, List
 import requests
 from config.settings import settings
 from app.utils.key_rotator import KeyRotator
+from app.services.media.entity_detector import is_incongruent_stock_image
 
 logger = logging.getLogger(__name__)
 
@@ -351,6 +352,22 @@ HÃY TRẢ VỀ DUY NHẤT MỘT ĐỐI TƯỢNG JSON (Không kèm markdown ```j
                 "recommended_tool": "pexels_video",
                 "replacement_query": visual_keyword or "cinematic",
                 "refined_prompt": f"Dramatic cinematic shot of {visual_keyword}",
+                "ai_evaluated": False,
+            }
+
+        # Kiểm tra nội dung lạc quẻ / incongruent tags (văn phòng, cafe, tiệc tùng, sơ đồ...)
+        if is_incongruent_stock_image(m_lower, topic=topic, narration=narration):
+            return {
+                "relevance": 2.5,
+                "entity_accuracy": 2.5,
+                "visual_quality": 6.0,
+                "overall_score": 3.0,
+                "is_relevant": False,
+                "verdict": "FAIL",
+                "issues": [f"Tư liệu '{m_lower}' chứa từ khóa lạc quẻ (văn phòng, cafe, tiệc tùng, sơ đồ...) so với chủ đề '{topic}'"],
+                "recommended_tool": "ai_video" if is_video else "ai_image",
+                "replacement_query": visual_keyword or topic,
+                "refined_prompt": f"Dramatic cinematic vertical shot of {visual_keyword or topic}, highly detailed, 8k",
                 "ai_evaluated": False,
             }
 

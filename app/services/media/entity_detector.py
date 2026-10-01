@@ -482,16 +482,79 @@ def clean_scene_search_query(raw_query: str, max_words: int = 3) -> str:
     return " ".join(clean[:max_words]).strip()
 
 
+_INCONGRUENT_TAG_GROUPS = {
+    # Văn phòng / Công sở hiện đại
+    "office_corporate": [
+        "office", "corporate", "coworking", "meeting room", "boardroom", "cubicle",
+        "laptop", "typing on keyboard", "handshake", "colleagues", "spreadsheets",
+        "whiteboard", "presentation screen", "businesswoman", "businessman", "office desk",
+        "office workers",
+    ],
+    # Cafe / Đồ uống / Đồ ăn nhanh
+    "cafe_fastfood": [
+        "coffee cup", "coffee shop", "cafe", "café", "latte", "espresso", "cappuccino",
+        "barista", "burger", "fast food", "restaurant table", "starbucks",
+    ],
+    # Tiệc tùng / Bar / Hộp đêm
+    "nightlife": [
+        "nightclub", "party dj", "disco", "clubbing", "beer toast", "beer party",
+        "drinking beer", "cheering concert", "confetti party", "cocktail bar", "pub party",
+        "rave party", "club party", "party celebration",
+    ],
+    # Làm đẹp / Thời trang / Selfie
+    "glamour_selfie": [
+        "fashion model", "runway", "makeup tutorial", "selfie", "posing for camera",
+        "influencer posing",
+    ],
+    # Đồ họa / Sơ đồ / Bản đồ / Tiền tệ (Wikimedia)
+    "wikimedia_diagrams": [
+        "diagram", "infographic", "flowchart", "pie chart", "bar graph", "schematic",
+        "blueprint", "coat of arms", "postage stamp", "commemorative coin", "seal of",
+        "flag of", "emblem of", "crest of", "location map", "locator map",
+    ],
+}
+
+
+def is_incongruent_stock_image(title_or_alt: str, topic: str = "", narration: str = "") -> bool:
+    """
+    Kiểm tra xem mô tả/alt text/tiêu đề của ảnh stock có thuộc nhóm thể loại lạc đề,
+    lạc lõng hoàn toàn so với chủ đề video hay không (ví dụ: ảnh văn phòng, cafe, tiệc tùng
+    lọt vào video về vũ trụ, đáy biển sâu, tâm lý học, lịch sử).
+    """
+    if not title_or_alt:
+        return False
+
+    t_lower = title_or_alt.lower()
+    context_lower = f"{topic} {narration}".lower()
+
+    for group_name, bad_words in _INCONGRUENT_TAG_GROUPS.items():
+        matched_bad = [bw for bw in bad_words if bw in t_lower]
+        if matched_bad:
+            # Nếu trong ngữ cảnh video thật sự có nhắc đến chủ đề này thì cho phép, ngược lại coi là lạc đề
+            is_legit = any(bw in context_lower for bw in matched_bad)
+            if not is_legit:
+                logger.info(f"🚫 [EntityDetector] Từ chối ảnh stock lạc đề ('{title_or_alt[:45]}...') do chứa từ khóa: {matched_bad}")
+                return True
+
+    return False
+
+
 def synthesize_scene_query(
     narration: str = "",
     visual_keyword: str = "",
     stock_query: Optional[str] = None,
     visual_prompt: Optional[str] = None,
     primary_entity: Optional[str] = None,
+    topic: str = "",
+    channel_niche: str = "",
 ) -> Tuple[str, str, str]:
-    """Tổng hợp query tìm kiếm chính xác cho từng công cụ tìm ảnh."""
+    """
+    Tổng hợp query tìm kiếm chính xác cho từng công cụ tìm ảnh.
+    Tự động gắn neo ngữ cảnh chủ đề (Topic Anchoring) để chống lạc quẻ stock.
+    """
     cleaned_stock = clean_scene_search_query(stock_query or "", max_words=3)
     cleaned_vk = clean_scene_search_query(visual_keyword or "", max_words=4)
+    cleaned_topic = clean_scene_search_query(topic or "", max_words=3)
 
     is_ent, ent_name, ent_type = detect_real_entity(visual_keyword, narration)
     target_ent = ent_name or (
@@ -508,17 +571,47 @@ def synthesize_scene_query(
         fallback_query = cleaned_stock or cleaned_vk or target_ent
         return primary_query, fallback_query, "historical_entity"
 
+    # Danh sách các từ khóa trừu tượng / chung chung dễ gây hiểu lầm trên Stock Search
+    _VAGUE_SINGLE_WORDS = {
+        "trap", "mind", "power", "money", "secret", "dark", "light", "focus", "pressure",
+        "fall", "rise", "time", "clock", "hands", "hand", "man", "woman", "person", "room",
+        "eye", "eyes", "face", "door", "alone", "deep", "space", "future", "fear", "brain",
+        "bẫy", "tâm trí", "sức mạnh", "tiền", "bí mật", "tối", "sáng", "thời gian", "đồng hồ"
+    }
+
     if cleaned_stock and len(cleaned_stock.split()) >= 1:
-        primary_query = cleaned_stock
-        fallback_query = cleaned_vk if (cleaned_vk and cleaned_vk != cleaned_stock) else cleaned_stock
+        # Nếu từ khóa quá chung chung hoặc là 1 từ đơn, bắt buộc neo vào topic
+        is_vague = (len(cleaned_stock.split()) == 1 and cleaned_stock.lower() in _VAGUE_SINGLE_WORDS)
+        if is_vague and cleaned_topic and not any(w in cleaned_stock.lower() for w in cleaned_topic.lower().split()):
+            primary_query = f"{cleaned_topic} {cleaned_stock}"
+            fallback_query = cleaned_stock
+        else:
+            primary_query = cleaned_stock
+            fallback_query = f"{cleaned_topic} {cleaned_stock}" if (cleaned_topic and cleaned_topic not in cleaned_stock) else (cleaned_vk or cleaned_stock)
         return primary_query, fallback_query, "specific_object"
 
     if cleaned_vk:
-        primary_query = " ".join(cleaned_vk.split()[:3])
-        fallback_query = " ".join(cleaned_vk.split()[:2])
+        is_vague = (len(cleaned_vk.split()) == 1 and cleaned_vk.lower() in _VAGUE_SINGLE_WORDS)
+        if is_vague and cleaned_topic and not any(w in cleaned_vk.lower() for w in cleaned_topic.lower().split()):
+            primary_query = f"{cleaned_topic} {cleaned_vk}"
+            fallback_query = cleaned_vk
+        else:
+            primary_query = " ".join(cleaned_vk.split()[:3])
+            fallback_query = " ".join(cleaned_vk.split()[:2])
         return primary_query, fallback_query, "concept_photo"
 
-    return "cinematic atmosphere", "dramatic lighting", "concept_photo"
+    # Fallback khi cả stock_query và visual_keyword đều trống:
+    # Tuyệt đối không dùng "cinematic atmosphere" vì sẽ trả về người uống cà phê / công sở!
+    if cleaned_topic:
+        primary_query = cleaned_topic
+        fallback_query = f"{cleaned_topic} landscape"
+        return primary_query, fallback_query, "topic_anchor"
+
+    narr_clean = clean_scene_search_query(narration or "", max_words=3)
+    if narr_clean:
+        return narr_clean, f"{narr_clean} background", "narration_anchor"
+
+    return "dramatic landscape", "epic mysterious nature", "concept_photo"
 
 
 def match_best_pool_photo(

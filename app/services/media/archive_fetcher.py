@@ -238,7 +238,15 @@ class ArchiveFetcher:
                         if filter_entity_noise and self._is_noisy_entity_file(file_title, url):
                             continue
 
-                        if any(b in file_title.lower() for b in ["banner", "header", "ribbon", "strip", "footer", "border"]):
+                        forbidden_wiki_terms = [
+                            "banner", "header", "ribbon", "strip", "footer", "border",
+                            "diagram", "infographic", "flowchart", "pie_chart", "bar_graph", "schematic",
+                            "blueprint", "coat_of_arms", "coat of arms", "postage_stamp", "stamp",
+                            "coin", "banknote", "currency", "seal_of", "flag_of", "flag", "emblem", "crest",
+                            "locator_map", "location_map", "topographic", "map_", "_map", "orthographic",
+                            "distribution_map", "logo", "icon", "symbol"
+                        ]
+                        if any(b in file_title.lower() for b in forbidden_wiki_terms):
                             continue
 
                         if (mime.startswith("image/") 

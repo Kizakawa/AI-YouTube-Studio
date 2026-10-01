@@ -104,8 +104,23 @@ class MediaAgent:
     def search_videos(self, query: str, per_page: int = 4, orientation: str = "portrait") -> List[Dict]:
         return self._stock.search_videos(query, per_page=per_page, orientation=orientation)
 
-    def search_photos(self, query: str, per_page: int = 3, orientation: str = "portrait") -> List[Dict]:
-        return self._stock.search_photos(query, per_page=per_page, orientation=orientation)
+    def search_photos(
+        self,
+        query: str,
+        per_page: int = 3,
+        orientation: str = "portrait",
+        topic: str = "",
+        narration: str = "",
+        used_urls: Optional[set] = None,
+    ) -> List[Dict]:
+        return self._stock.search_photos(
+            query,
+            per_page=per_page,
+            orientation=orientation,
+            topic=topic,
+            narration=narration,
+            used_urls=used_urls,
+        )
 
     def search_pixabay_videos(self, query: str, per_page: int = 4) -> List[Dict]:
         return self._stock.search_pixabay_videos(query, per_page=per_page)
@@ -336,8 +351,12 @@ If no real entities found, return empty array: []"""
         prefer_video: bool = False,
         prefer_photo: bool = False,
         visual_analysis: Optional[Dict[str, Any]] = None,
+        topic: str = "",
     ) -> Optional[Dict]:
         """Tìm kiếm media đa tầng tối ưu cao nhất cho 1 phân cảnh."""
+        from app.services.media.entity_detector import is_incongruent_stock_image
+        from app.services.media.media_history import extract_media_identity, is_media_already_used
+
         used = used_urls if used_urls is not None else set()
         primary_q, fallback_q, intent = synthesize_scene_query(
             narration=scene_narration,
@@ -345,6 +364,8 @@ If no real entities found, return empty array: []"""
             stock_query=stock_query,
             visual_prompt=visual_prompt,
             primary_entity=primary_entity,
+            topic=topic,
+            channel_niche=niche,
         )
 
         v_analysis = visual_analysis
@@ -354,7 +375,7 @@ If no real entities found, return empty array: []"""
                 curator = VisualCurationAgent()
                 v_analysis = curator.analyze_scene_context(
                     narration=scene_narration,
-                    topic=primary_entity or visual_keyword or "",
+                    topic=topic or primary_entity or visual_keyword or "",
                     scene_id=scene_id,
                     primary_entity=primary_entity,
                     entity_type=entity_type,
@@ -365,7 +386,7 @@ If no real entities found, return empty array: []"""
 
         logger.info(
             f"[MediaAgent] Scene {scene_id} Search: intent='{intent}' | "
-            f"query='{primary_q}' (fallback='{fallback_q}') | prefer_video={prefer_video} | prefer_photo={prefer_photo}"
+            f"query='{primary_q}' (fallback='{fallback_q}') | topic='{topic}' | prefer_video={prefer_video} | prefer_photo={prefer_photo}"
         )
 
         is_historical = (
@@ -374,9 +395,9 @@ If no real entities found, return empty array: []"""
         )
         if is_historical and not prefer_video:
             wiki_img = self.search_wikipedia_entity_image(primary_q)
-            if wiki_img and wiki_img.get("url") and wiki_img["url"] not in used:
+            if wiki_img and wiki_img.get("url") and not is_media_already_used(wiki_img["url"], used):
                 if not (entity_type == "person" and self._is_noisy_entity_file(wiki_img.get("title", ""), wiki_img["url"])):
-                    used.add(wiki_img["url"])
+                    used.update(extract_media_identity(wiki_img["url"]))
                     return wiki_img
 
             wiki_queries = [f'"{primary_q}"', primary_q]
@@ -387,9 +408,10 @@ If no real entities found, return empty array: []"""
                 commons = self.search_web_photos(wq, per_page=4, filter_entity_noise=(entity_type == "person"))
                 for c in commons:
                     u = c.get("url")
-                    if u and u not in used and self._is_valid_image_url(u):
-                        used.add(u)
-                        return c
+                    if u and not is_media_already_used(u, used) and self._is_valid_image_url(u):
+                        if not is_incongruent_stock_image(c.get("title", ""), topic=topic, narration=scene_narration):
+                            used.update(extract_media_identity(u))
+                            return c
 
         motion_keywords = {
             "walk", "walking", "run", "running", "moving", "movement", "crowd", "people", "city", "street",
@@ -398,7 +420,7 @@ If no real entities found, return empty array: []"""
             "space", "galaxy", "stars", "looking", "staring", "smoke", "lights", "neon", "car", "train", "sky",
             "burning", "war", "explosion", "universe"
         }
-        text_for_motion = f"{scene_narration} {visual_keyword} {stock_query or ''}".lower()
+        text_for_motion = f"{topic} {scene_narration} {visual_keyword} {stock_query or ''}".lower()
         has_motion_cue = any(mk in text_for_motion for mk in motion_keywords)
 
         should_try_video = (prefer_video or has_motion_cue or scene_id == 1 or not prefer_photo)
@@ -410,24 +432,34 @@ If no real entities found, return empty array: []"""
                 visual_analysis=v_analysis,
                 narration=scene_narration,
             )
-            if best_clip and best_clip.get("url"):
-                used.add(best_clip["url"])
+            if best_clip and best_clip.get("url") and not is_media_already_used(best_clip["url"], used):
+                used.update(extract_media_identity(best_clip["url"]))
                 return best_clip
 
         if self.api_key:
-            px_photos = self.search_photos(primary_q or fallback_q, per_page=3, orientation="portrait")
+            px_photos = self.search_photos(
+                primary_q or fallback_q,
+                per_page=3,
+                orientation="portrait",
+                topic=topic,
+                narration=scene_narration,
+                used_urls=used,
+            )
             for p in px_photos:
                 u = p.get("url")
-                if u and u not in used:
-                    used.add(u)
-                    return p
+                if u and not is_media_already_used(u, used):
+                    alt_desc = p.get("alt") or p.get("title", "")
+                    if not is_incongruent_stock_image(alt_desc, topic=topic, narration=scene_narration):
+                        used.update(extract_media_identity(u))
+                        return p
 
         commons_fallback = self.search_web_photos(primary_q or fallback_q, per_page=3)
         for c in commons_fallback:
             u = c.get("url")
-            if u and u not in used:
-                used.add(u)
-                return c
+            if u and not is_media_already_used(u, used):
+                if not is_incongruent_stock_image(c.get("title", ""), topic=topic, narration=scene_narration):
+                    used.update(extract_media_identity(u))
+                    return c
 
         if self.api_key and not should_try_video:
             target_query = stock_query or fallback_q
@@ -437,8 +469,8 @@ If no real entities found, return empty array: []"""
                 visual_analysis=v_analysis,
                 narration=scene_narration,
             )
-            if clip_fb and clip_fb.get("url"):
-                used.add(clip_fb["url"])
+            if clip_fb and clip_fb.get("url") and not is_media_already_used(clip_fb["url"], used):
+                used.update(extract_media_identity(clip_fb["url"]))
                 return clip_fb
 
         return None

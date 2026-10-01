@@ -473,9 +473,15 @@ class VideoPipeline:
                     used_asset_paths=used_asset_paths,
                     sc_strat=sc_strat,
                     v_analysis=v_analysis,
+                    topic=topic,
                 )
                 if media_path:
                     used_asset_paths.add(media_path)
+                    from app.services.media.media_history import compute_file_md5
+                    m_md5 = compute_file_md5(media_path)
+                    if m_md5:
+                        used_asset_paths.add(f"md5:{m_md5}")
+                        used_pool_urls.add(f"md5:{m_md5}")
 
             # ── Thẩm định & Chấm điểm độ liên quan với MediaRelevanceAgent ──
             if media_path and Path(media_path).exists():
@@ -495,7 +501,7 @@ class VideoPipeline:
                         f"(Score: {relevance_eval.get('overall_score')}/10). Vấn đề: {relevance_eval.get('issues')}. "
                         f"Tự động sửa chữa theo gợi ý: '{relevance_eval.get('replacement_query')}'..."
                     )
-                    fix_query = relevance_eval.get("replacement_query") or scene.visual_keyword
+                    fix_query = relevance_eval.get("replacement_query") or scene.visual_keyword or topic
                     fixed_media = None
 
                     # Ưu tiên tìm video nếu phương pháp cần video hoặc cảnh cần chuyển động
@@ -513,11 +519,17 @@ class VideoPipeline:
                             await asyncio.to_thread(self._media_agent.download_file, cand_url, new_v_p)
                             if Path(new_v_p).exists() and Path(new_v_p).stat().st_size > 5000:
                                 fixed_media = new_v_p
+                                from app.services.media.media_history import extract_media_identity, record_used_media
+                                ids = extract_media_identity(cand_url)
+                                used_pool_urls.update(ids)
+                                used_asset_paths.update(ids)
+                                used_asset_paths.add(new_v_p)
+                                record_used_media(cand_url, query=fix_query, source="relevance_fix", media_path=new_v_p)
                                 logger.info(f"[Job {self.job_id}] ✅ Đã thay thế Cảnh {scene.scene_id} bằng video clip chuẩn: {fix_query}")
 
                     # Nếu chưa tìm được video, thử sinh ảnh AI chất lượng cao từ refined_prompt
                     if not fixed_media:
-                        fix_prompt = relevance_eval.get("refined_prompt") or p_ai or f"Cinematic photorealistic 8k vertical shot of {fix_query}"
+                        fix_prompt = relevance_eval.get("refined_prompt") or p_ai or f"Cinematic photorealistic 8k vertical shot of {fix_query}, {topic}"
                         new_img_p = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_relevance_fix.jpg")
                         res_ai = await asyncio.to_thread(
                             self._image_agent.generate_scene_image,
@@ -527,10 +539,34 @@ class VideoPipeline:
                             "cinematic",
                             scene.scene_id,
                             fix_prompt,
+                            used_asset_paths,
+                            topic,
                         )
                         if res_ai and Path(res_ai).exists() and Path(res_ai).stat().st_size > 2000:
-                            fixed_media = res_ai
-                            logger.info(f"[Job {self.job_id}] ✅ Đã thay thế Cảnh {scene.scene_id} bằng ảnh AI từ gợi ý đạo diễn")
+                            # Nếu cảnh cần video động, animate ngay thành video MP4 9:16
+                            if prod_method in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO") or (sc_strat and sc_strat.get("production_method") == "STOCK_FOOTAGE") or scene.scene_id == 1:
+                                anim_fix_p = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_relevance_fix_anim.mp4")
+                                res_anim = ai_video_agent.animate_thematic_image(
+                                    image_path=res_ai,
+                                    output_path=anim_fix_p,
+                                    duration_seconds=scene.actual_duration_seconds,
+                                    camera_motion=sc_strat.get("camera_motion", "zoom_in") if sc_strat else "zoom_in",
+                                    is_hook=(scene.scene_id == 1),
+                                )
+                                if res_anim and Path(res_anim).exists() and Path(res_anim).stat().st_size > 5000:
+                                    fixed_media = res_anim
+                                else:
+                                    fixed_media = res_ai
+                            else:
+                                fixed_media = res_ai
+
+                            from app.services.media.media_history import extract_media_identity, compute_file_md5
+                            used_asset_paths.add(fixed_media)
+                            md5_h = compute_file_md5(fixed_media)
+                            if md5_h:
+                                used_asset_paths.add(f"md5:{md5_h}")
+                                used_pool_urls.add(f"md5:{md5_h}")
+                            logger.info(f"[Job {self.job_id}] ✅ Đã thay thế Cảnh {scene.scene_id} bằng ảnh/video AI chuẩn xác từ đạo diễn")
 
                     if fixed_media:
                         media_path = fixed_media
@@ -544,21 +580,96 @@ class VideoPipeline:
                 "strategy_rationale": rationale_text,
             })
             result.append(enriched)
+
+        # ── VÒNG KIỂM TOÁN CHỐNG TRÙNG LẶP HÌNH ẢNH TOÀN DIỆN (CROSS-SCENE PERCEPTUAL DEDUPLICATION AUDIT) ──
+        # Đảm bảo 100% không có bất kỳ 2 phân cảnh nào dùng chung 1 ảnh hoặc frame video giống nhau
+        from app.services.media.media_history import compute_file_md5, compute_image_dhash, hamming_distance, record_batch_used_media
+
+        seen_scene_md5s: Dict[str, int] = {}
+        seen_scene_dhashes: Dict[str, int] = {}
+        final_used_urls = []
+
+        for enriched_idx, enriched_scene in enumerate(result):
+            m_path = enriched_scene.media_path
+            if not m_path or not Path(m_path).exists():
+                continue
+
+            final_used_urls.append(m_path)
+            cur_md5 = compute_file_md5(m_path)
+            cur_dhash = compute_image_dhash(m_path)
+
+            duplicate_scene_id = None
+            if cur_md5 and cur_md5 in seen_scene_md5s:
+                duplicate_scene_id = seen_scene_md5s[cur_md5]
+            elif cur_dhash:
+                for prev_dh, prev_sc_id in seen_scene_dhashes.items():
+                    if hamming_distance(cur_dhash, prev_dh) <= 3:
+                        duplicate_scene_id = prev_sc_id
+                        break
+
+            if duplicate_scene_id is not None:
+                logger.warning(
+                    f"[Job {self.job_id}] ⚠️ PHÁT HIỆN TRÙNG HÌNH ẢNH: Cảnh {enriched_scene.scene_id} "
+                    f"trùng với Cảnh #{duplicate_scene_id}! Đang tự động sinh ảnh/video AI độc bản thay thế..."
+                )
+                unique_ai_prompt = (
+                    f"Cinematic 8k vertical shot, {enriched_scene.visual_prompt or enriched_scene.visual_keyword or topic}, "
+                    f"scene {enriched_scene.scene_id} unique composition, photorealistic, dramatic atmosphere, 9:16 composition"
+                )
+                replacement_path = str(Path(media_dir) / f"scene_{enriched_scene.scene_id:03d}_dedup_unique.jpg")
+                res_unique = await asyncio.to_thread(
+                    self._image_agent.generate_scene_image,
+                    unique_ai_prompt,
+                    replacement_path,
+                    "9:16",
+                    "cinematic",
+                    enriched_scene.scene_id,
+                    unique_ai_prompt,
+                    used_asset_paths,
+                    topic,
+                )
+                if res_unique and Path(res_unique).exists() and Path(res_unique).stat().st_size > 2000:
+                    final_path = res_unique
+                    if enriched_scene.media_type == "video" or enriched_scene.scene_id == 1:
+                        anim_p = str(Path(media_dir) / f"scene_{enriched_scene.scene_id:03d}_dedup_anim.mp4")
+                        res_anim = ai_video_agent.animate_thematic_image(
+                            image_path=res_unique,
+                            output_path=anim_p,
+                            duration_seconds=enriched_scene.actual_duration_seconds,
+                            is_hook=(enriched_scene.scene_id == 1),
+                        )
+                        if res_anim and Path(res_anim).exists() and Path(res_anim).stat().st_size > 5000:
+                            final_path = res_anim
+
+                    result[enriched_idx] = enriched_scene.model_copy(update={
+                        "media_path": final_path,
+                        "media_type": _infer_media_type(final_path),
+                    })
+                    cur_md5 = compute_file_md5(final_path)
+                    cur_dhash = compute_image_dhash(final_path)
+                    logger.info(f"[Job {self.job_id}] ✅ Đã khử trùng thành công cho Cảnh {enriched_scene.scene_id}")
+
+            if cur_md5:
+                seen_scene_md5s[cur_md5] = enriched_scene.scene_id
+            if cur_dhash:
+                seen_scene_dhashes[cur_dhash] = enriched_scene.scene_id
+
+        # Lưu lại vào lịch sử cross-job
+        record_batch_used_media(final_used_urls, job_id=self.job_id)
+
         return result
 
 
     @staticmethod
-    def _safe_pexels_query(scene, topic_context: str = "space astronomy") -> str:
+    def _safe_pexels_query(scene, topic_context: str = "") -> str:
         """
         Tạo Pexels search query an toàn:
-        - Ư u tiên stock_query (2-3 từ thuần chủ đề)
-        - Tự động thêm context suffix nếu tô chủ đề vũ trụ/khoa học
-        - Bộ lọc: Loại bỏ từng nhà làm phim, tên diễn viên, tên phim nếu lọt vào query
+        - Ưu tiên stock_query (2-3 từ thuần chủ đề)
+        - Tự động gắn kết ngữ cảnh topic_context nếu từ khóa quá ngắn hoặc trừu tượng
+        - Bộ lọc: Loại bỏ tên diễn viên, đạo diễn, từ ngữ rác kỹ thuật
         """
-        # Từ khóa tốt nhất: stock_query > visual_keyword
         raw = getattr(scene, 'stock_query', None) or scene.visual_keyword or ""
 
-        # Bộ lọc keyword nguy hiểm (gây ra kết quả sai phong cách trên Pexels)
         _FORBIDDEN_PEXELS_WORDS = {
             "nolan", "interstellar", "inception", "avatar", "hollywood",
             "cinematic", "movie", "film", "hathaway", "mcconaughey",
@@ -569,19 +680,19 @@ class VideoPipeline:
         }
         words = raw.lower().split()
         filtered = [w for w in words if w not in _FORBIDDEN_PEXELS_WORDS]
-        clean = " ".join(filtered).strip() if filtered else "space astronomy"
+        clean = " ".join(filtered).strip()
 
-        # Giới hạn 3 từ (2-3 là tốt nhất cho Pexels)
+        # Giới hạn 3 từ
         clean_words = clean.split()
         if len(clean_words) > 3:
             clean = " ".join(clean_words[:3])
 
-        # Thêm context suffix nếu quá ngắn hoặc chủ đề space/science
-        space_topics = {"black hole", "galaxy", "nebula", "star", "space", "universe",
-                        "cosmos", "astronaut", "neutron", "supernova", "planet", "asteroid"}
-        needs_context = any(t in clean.lower() for t in space_topics) or len(clean.split()) < 2
-        if needs_context and topic_context not in clean:
-            clean = f"{clean} {topic_context}"
+        if not clean:
+            clean = topic_context or "dramatic scene"
+
+        # Nếu từ khóa quá ngắn (1 từ) và có topic_context, kết hợp để tránh trả về ảnh lạc đề
+        if len(clean.split()) < 2 and topic_context and topic_context.lower() not in clean.lower():
+            clean = f"{topic_context} {clean}".strip()
 
         return clean.strip()
 
@@ -596,6 +707,7 @@ class VideoPipeline:
         used_asset_paths: Optional[set] = None,
         sc_strat: Optional[Dict[str, Any]] = None,
         v_analysis: Optional[Dict[str, Any]] = None,
+        topic: str = "",
     ) -> str:
         """
         Tìm nạp media cho 1 scene với hệ thống phân cấp 7 tầng thông minh:
@@ -608,6 +720,12 @@ class VideoPipeline:
           Tầng 6: Dynamic Aesthetic Graphic (Fallback an toàn tuyệt đối)
         """
         import asyncio
+        from app.services.media.media_history import (
+            extract_media_identity,
+            is_media_already_used,
+            compute_file_md5,
+            record_used_media,
+        )
 
         # ── Checkpoint: Chỉ tái sử dụng media nếu CHƯA từng gán cho cảnh nào trong video hiện tại ──
         # NẾU ĐANG Ở DOCUMENTARY MODE: Tuyệt đối không tái sử dụng video stock cũ (.mp4 từ Pexels) vì đó là diễn viên hiện đại!
@@ -615,7 +733,7 @@ class VideoPipeline:
             for ext in [".mp4", ".mov", ".jpg", ".jpeg", ".png", ".webp"]:
                 candidate = Path(media_dir) / f"scene_{scene.scene_id:03d}{ext}"
                 cand_str = str(candidate)
-                if candidate.exists() and candidate.stat().st_size > 10240 and (used_asset_paths is None or cand_str not in used_asset_paths):
+                if candidate.exists() and candidate.stat().st_size > 10240 and not is_media_already_used(cand_str, used_asset_paths or set()):
                     logger.info(f"Scene {scene.scene_id}: Tái sử dụng media từ checkpoint ({candidate.name})")
                     if used_asset_paths is not None:
                         used_asset_paths.add(cand_str)
@@ -627,7 +745,7 @@ class VideoPipeline:
             for ext in [".jpg", ".jpeg", ".png", ".webp"]:
                 candidate = Path(media_dir) / f"scene_{scene.scene_id:03d}{suffix}{ext}"
                 cand_str = str(candidate)
-                if candidate.exists() and candidate.stat().st_size > 3000 and self._is_valid_media_file(cand_str) and (used_asset_paths is None or cand_str not in used_asset_paths):
+                if candidate.exists() and candidate.stat().st_size > 3000 and self._is_valid_media_file(cand_str) and not is_media_already_used(cand_str, used_asset_paths or set()):
                     logger.info(f"Scene {scene.scene_id}: Tái sử dụng ảnh tài liệu từ checkpoint ({candidate.name})")
                     if used_asset_paths is not None:
                         used_asset_paths.add(cand_str)
@@ -697,6 +815,8 @@ class VideoPipeline:
                     "cinematic",
                     scene.scene_id,
                     scene.visual_prompt,
+                    used_asset_paths,
+                    topic,
                 )
                 if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 2000 and self._is_valid_image_file(res_img):
                     if used_asset_paths is not None:
@@ -722,8 +842,13 @@ class VideoPipeline:
                     output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_doc{ext}")
                     await asyncio.to_thread(self._media_agent.download_file, cand_url, output)
                     if Path(output).exists() and Path(output).stat().st_size > 3000 and self._is_valid_image_file(output):
+                        ids = extract_media_identity(cand_url)
                         if used_pool_urls is not None:
-                            used_pool_urls.add(cand_url)
+                            used_pool_urls.update(ids)
+                        if used_asset_paths is not None:
+                            used_asset_paths.update(ids)
+                            used_asset_paths.add(output)
+                        record_used_media(cand_url, query=primary_entity, source="wiki_pool", media_path=output)
                         logger.info(
                             f"Scene {scene.scene_id}: ✅ Khớp ngữ nghĩa ảnh TÀI LIỆU THẬT cho '{primary_entity}': "
                             f"{best_pool_photo.get('title', '')[:50]}"
@@ -747,6 +872,7 @@ class VideoPipeline:
                 prefer_video=prefer_video,
                 prefer_photo=prefer_photo,
                 visual_analysis=v_analysis,
+                topic=topic,
             )
             if cand and cand.get("url"):
                 cand_url = cand["url"]
@@ -756,10 +882,13 @@ class VideoPipeline:
                 output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_{c_src}{ext}")
                 await asyncio.to_thread(self._media_agent.download_file, cand_url, output)
                 if Path(output).exists() and Path(output).stat().st_size > 3000 and self._is_valid_media_file(output):
+                    ids = extract_media_identity(cand_url)
                     if used_pool_urls is not None:
-                        used_pool_urls.add(cand_url)
+                        used_pool_urls.update(ids)
                     if used_asset_paths is not None:
-                        used_asset_paths.add(cand_url)
+                        used_asset_paths.update(ids)
+                        used_asset_paths.add(output)
+                    record_used_media(cand_url, query=scene.visual_keyword or topic, source=c_src, media_path=output)
 
                     # ── NÂNG CẤP ĐỘNG: Nếu cảnh cần video mà chỉ tải được ảnh tĩnh, chuyển hóa ngay thành Video Clip 3D MP4 ──
                     if prefer_video and c_type != "video":
@@ -840,6 +969,8 @@ class VideoPipeline:
                 "cinematic",
                 scene.scene_id,
                 vp,
+                used_asset_paths,
+                topic,
             )
             if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 1000 and self._is_valid_image_file(res_img):
                 if used_asset_paths is not None:
@@ -850,13 +981,13 @@ class VideoPipeline:
             logger.warning(f"Scene {scene.scene_id}: Lỗi sinh media AI: {e}")
 
         # ── Tầng 4: Pexels Video/Photo (CHỈ DÙNG KHI KHÔNG CÓ primary_entity) ──
-        # Dùng safe_q (stock_query đã lọc) thay vì raw visual_keyword để tránh Anne Hathaway, rollercoaster
+        # Dùng safe_q (stock_query đã lọc có gắn neo topic) thay vì raw visual_keyword
         if not primary_entity and self._media_agent.api_key:
-            safe_q = self._safe_pexels_query(scene)
+            safe_q = self._safe_pexels_query(scene, topic_context=topic)
             logger.info(f"Scene {scene.scene_id}: 🔍 Pexels safe_query = '{safe_q}'")
             try:
                 videos = await asyncio.to_thread(
-                    self._media_agent.search_videos, safe_q, 3
+                    self._media_agent.search_videos, safe_q, 4
                 )
                 if videos:
                     for video_data in videos:
@@ -870,34 +1001,35 @@ class VideoPipeline:
                         if best and best.get("link"):
                             vid_url = best["link"]
                             # DEDUP: Chỉ dùng URL chưa từng assign cho scene khác
-                            if used_asset_paths and vid_url in used_asset_paths:
+                            if used_asset_paths and is_media_already_used(vid_url, used_asset_paths):
                                 logger.debug(f"Scene {scene.scene_id}: Bỏ qua Pexels video trùng: {vid_url[:60]}")
                                 continue
                             output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}.mp4")
                             await asyncio.to_thread(
                                 self._media_agent.download_file, vid_url, output
                             )
-                            if used_asset_paths is not None:
-                                used_asset_paths.add(vid_url)
-                                used_asset_paths.add(output)
-                            logger.info(f"Scene {scene.scene_id}: ✅ Pexels Video (query='{safe_q}')")
-                            return output
+                            if Path(output).exists() and Path(output).stat().st_size > 5000:
+                                ids = extract_media_identity(vid_url)
+                                if used_asset_paths is not None:
+                                    used_asset_paths.update(ids)
+                                    used_asset_paths.add(output)
+                                if used_pool_urls is not None:
+                                    used_pool_urls.update(ids)
+                                record_used_media(vid_url, query=safe_q, source="pexels_video", media_path=output)
+                                logger.info(f"Scene {scene.scene_id}: ✅ Pexels Video (query='{safe_q}')")
+                                return output
             except Exception as e:
                 logger.warning(f"Scene {scene.scene_id}: Lỗi tìm Pexels Video: {e}")
 
             try:
                 photos = await asyncio.to_thread(
-                    self._media_agent.search_photos, safe_q, 3
+                    self._media_agent.search_photos, safe_q, 3, "portrait", topic, scene.narration, used_asset_paths
                 )
                 if photos:
                     for photo in photos:
-                        src = photo.get("src", {})
-                        img_url = (
-                            src.get("large2x") or src.get("portrait")
-                            or src.get("original") or src.get("large")
-                        )
+                        img_url = photo.get("url") or photo.get("src", {}).get("large2x") or photo.get("src", {}).get("portrait")
                         if img_url:
-                            if used_asset_paths and img_url in used_asset_paths:
+                            if used_asset_paths and is_media_already_used(img_url, used_asset_paths):
                                 logger.debug(f"Scene {scene.scene_id}: Bỏ qua Pexels photo trùng")
                                 continue
                             img_output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}.jpg")
@@ -905,9 +1037,13 @@ class VideoPipeline:
                                 self._media_agent.download_file, img_url, img_output
                             )
                             if self._is_valid_image_file(img_output):
+                                ids = extract_media_identity(img_url)
                                 if used_asset_paths is not None:
-                                    used_asset_paths.add(img_url)
+                                    used_asset_paths.update(ids)
                                     used_asset_paths.add(img_output)
+                                if used_pool_urls is not None:
+                                    used_pool_urls.update(ids)
+                                record_used_media(img_url, query=safe_q, source="pexels_photo", media_path=img_output)
                                 if prefer_video:
                                     try:
                                         from app.agents.ai_video_agent import AIVideoAgent
@@ -940,18 +1076,23 @@ class VideoPipeline:
             if web_photos:
                 for web_photo in web_photos:
                     web_url = web_photo.get("url")
-                    if web_url and (used_asset_paths is None or web_url not in used_asset_paths) and (used_pool_urls is None or web_url not in used_pool_urls):
+                    if web_url and not is_media_already_used(web_url, used_asset_paths or set()):
+                        from app.services.media.entity_detector import is_incongruent_stock_image
+                        if is_incongruent_stock_image(web_photo.get("title", ""), topic=topic, narration=scene.narration):
+                            continue
                         web_ext = ".jpg" if any(x in web_url.lower() for x in ["jpg", "jpeg"]) else ".png"
                         web_output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_web{web_ext}")
                         await asyncio.to_thread(
                             self._media_agent.download_file, web_url, web_output
                         )
                         if self._is_valid_image_file(web_output):
+                            ids = extract_media_identity(web_url)
                             if used_asset_paths is not None:
-                                used_asset_paths.add(web_url)
+                                used_asset_paths.update(ids)
                                 used_asset_paths.add(web_output)
                             if used_pool_urls is not None:
-                                used_pool_urls.add(web_url)
+                                used_pool_urls.update(ids)
+                            record_used_media(web_url, query=scene.visual_keyword or topic, source="wikimedia_web", media_path=web_output)
                             logger.info(f"Scene {scene.scene_id}: Tải thành công ảnh Web ({web_photo.get('title', '')[:30]})")
                             return web_output
         except Exception as e:
