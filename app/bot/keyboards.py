@@ -188,17 +188,25 @@ def make_colab_account_url(email: str = "pool1.studio@example.com", node_num: in
 
 COLAB_PRO_URL = make_colab_node_url("pool1.studio@example.com", 1)
 
-def get_script_review_keyboard(job_id: int) -> InlineKeyboardMarkup:
+def get_script_review_keyboard(job_id: int, current_lang: Optional[str] = None) -> InlineKeyboardMarkup:
     """Bàn phím Bước 1: Khi kịch bản vừa tạo xong, tinh gọn, chuẩn SaaS cao cấp"""
+    if current_lang and current_lang.lower().startswith("vi"):
+        switch_btn = InlineKeyboardButton("🇺🇸 Đổi Sang Tiếng Anh", callback_data=f"switch_lang:{job_id}:en")
+    elif current_lang and current_lang.lower().startswith("en"):
+        switch_btn = InlineKeyboardButton("🇻🇳 Đổi Sang Tiếng Việt", callback_data=f"switch_lang:{job_id}:vi")
+    else:
+        switch_btn = InlineKeyboardButton("🌐 Đổi Ngôn Ngữ (VI/EN)", callback_data=f"switch_lang:{job_id}:toggle")
+
     keyboard = [
         [
             InlineKeyboardButton("🎬 DUYỆT & DỰNG VIDEO NGAY", callback_data=f"render_video:{job_id}"),
         ],
         [
             InlineKeyboardButton("✍️ Góp Ý Sửa", callback_data=f"edit_script:{job_id}"),
-            InlineKeyboardButton("🔄 Tạo Lại Kịch Bản", callback_data=f"regenerate:{job_id}"),
+            switch_btn,
         ],
         [
+            InlineKeyboardButton("🔄 Tạo Lại Kịch Bản", callback_data=f"regenerate:{job_id}"),
             InlineKeyboardButton("❌ Hủy Bỏ", callback_data=f"cancel:{job_id}"),
         ]
     ]

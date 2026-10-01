@@ -741,28 +741,65 @@ async def delchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 def _parse_idea_input(raw_input: str) -> tuple:
-    """Tách chủ đề chính và các ghi chú đạo diễn (Director's Notes) nếu có."""
+    """Tách chủ đề chính, các ghi chú đạo diễn (Director's Notes) và ngôn ngữ chỉ định (Language)."""
     if not raw_input:
-        return "", None
+        return "", None, None
 
-    # 1. Kiểm tra dấu phân cách pipe (|)
-    if "|" in raw_input:
-        parts = raw_input.split("|", 1)
+    text = raw_input.strip()
+    explicit_lang = None
+
+    # 1. Kiểm tra tiền tố ngôn ngữ: vi, en, [vi], [en], vi:, en:
+    prefix_match = re.match(r'^(?:\[(vi|en)\]|(vi|en):|(vi|en))\s+', text, re.IGNORECASE)
+    if prefix_match:
+        explicit_lang = (prefix_match.group(1) or prefix_match.group(2) or prefix_match.group(3)).lower()
+        text = text[prefix_match.end():].strip()
+
+    # 2. Kiểm tra cờ ngôn ngữ: --vi, --en, -vi, -en, --lang vi, --lang en, --language vi, --language en
+    lang_flag_match = re.search(r'(?:\s+|^)--(?:lang(?:uage)?\s+(vi|en)|(vi|en))\b', text, re.IGNORECASE)
+    if not lang_flag_match:
+        lang_flag_match = re.search(r'(?:\s+|^)-(vi|en)\b', text, re.IGNORECASE)
+    if lang_flag_match:
+        explicit_lang = (lang_flag_match.group(1) or lang_flag_match.group(2)).lower()
+        text = text[:lang_flag_match.start()] + text[lang_flag_match.end():]
+        text = text.strip()
+
+    # 3. Kiểm tra cụm từ cuối câu: "bằng tiếng việt", "tiếng việt", "in english", "bằng tiếng anh", "tiếng anh"
+    tail_vi = re.search(r'\s+(?:bằng\s+)?(?:tiếng\s+việt|tieng\s+viet|tiếng\s+vi|vietnamese)\s*$', text, re.IGNORECASE)
+    if tail_vi:
+        explicit_lang = "vi"
+        text = text[:tail_vi.start()].strip()
+    else:
+        tail_en = re.search(r'\s+(?:in\s+english|bằng\s+tiếng\s+anh|tiếng\s+anh|english)\s*$', text, re.IGNORECASE)
+        if tail_en:
+            explicit_lang = "en"
+            text = text[:tail_en.start()].strip()
+
+    # 4. Kiểm tra dấu phân cách pipe (|)
+    topic = text
+    notes = None
+    if "|" in text:
+        parts = text.split("|", 1)
         topic = parts[0].strip()
         notes = parts[1].strip()
-        return topic, notes if notes else None
+        # Kiểm tra nếu trong notes có ghi "lang: vi" hoặc "lang: en"
+        lang_in_notes = re.search(r'\blang(?:uage)?\s*[:=]\s*(vi|en)\b', notes, re.IGNORECASE)
+        if lang_in_notes:
+            explicit_lang = lang_in_notes.group(1).lower()
+            notes = re.sub(r'\blang(?:uage)?\s*[:=]\s*(vi|en)\b', '', notes, flags=re.IGNORECASE).strip()
+            notes = re.sub(r'^[,\s|]+|[,\s|]+$', '', notes).strip()
+            if not notes:
+                notes = None
+    else:
+        # Kiểm tra cờ dạng --style, --mood, --focus, --angle, --pace, --visual
+        flags_pattern = r'(\s+--(?:style|mood|focus|angle|pace|visual)\s+[^\-]+)'
+        match = re.search(flags_pattern, text, re.IGNORECASE)
+        if match:
+            start_idx = match.start()
+            topic = text[:start_idx].strip()
+            notes = text[start_idx:].strip()
+            notes = re.sub(r'--(style|mood|focus|angle|pace|visual)\s+', r'\1: ', notes, flags=re.IGNORECASE)
 
-    # 2. Kiểm tra cờ dạng --style, --mood, --focus, --angle, --pace, --visual
-    flags_pattern = r'(\s+--(?:style|mood|focus|angle|pace|visual)\s+[^\-]+)'
-    match = re.search(flags_pattern, raw_input, re.IGNORECASE)
-    if match:
-        start_idx = match.start()
-        topic = raw_input[:start_idx].strip()
-        notes = raw_input[start_idx:].strip()
-        notes_clean = re.sub(r'--(style|mood|focus|angle|pace|visual)\s+', r'\1: ', notes, flags=re.IGNORECASE)
-        return topic, notes_clean
-
-    return raw_input.strip(), None
+    return topic.strip(), notes, explicit_lang
 
 
 def detect_best_channel_for_topic(topic: str, current_channel_id: Optional[str] = None) -> tuple:
@@ -973,12 +1010,16 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             active_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_maya"
         ch = channel_manager.get_channel(active_id) or {}
         ch_name = ch.get("name") or active_id
+        ch_lang = ch.get("language") or "en"
+        ch_lang_name = "Tiếng Việt (vi)" if ch_lang.startswith("vi") else "Tiếng Anh (en)"
         await safe_reply(
             update,
             f"💡 **HƯỚNG DẪN TẠO Ý TƯỞNG & KỊCH BẢN CHO KÊNH `{ch_name}`**\n\n"
-            "1️⃣ **Nhập chủ đề tùy ý:**\n"
-            "   `/idea <chủ đề> [| ghi chú đạo diễn]`\n"
-            "   *Ví dụ:* `/idea 3 bí ẩn dưới đáy biển sâu`\n\n"
+            "1️⃣ **Nhập chủ đề tùy ý (Chủ động chọn Ngôn ngữ):**\n"
+            "   • Tiếng Việt: `/idea vi <chủ đề>` hoặc `/idea <chủ đề> --vi`\n"
+            "   • Tiếng Anh:  `/idea en <chủ đề>` hoặc `/idea <chủ đề> --en`\n"
+            "   • Thêm ghi chú: `/idea vi 3 bí ẩn đáy biển | phong cách rùng rợn, nghẹt thở`\n"
+            f"   _(Ngôn ngữ mặc định kênh hiện tại: **{ch_lang_name}**)_\n\n"
             "2️⃣ **AI tự động phân tích kênh & đề xuất 5 ý tưởng triệu view:**\n"
             "   Gõ `/viral` (hoặc `/ideas`) hoặc bấm nút bên dưới để AI đối chiếu video top & flop, loại bỏ bão hòa và đón đầu xu hướng 2026!",
             reply_markup=InlineKeyboardMarkup([[
@@ -988,7 +1029,7 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     raw_topic = " ".join(context.args)
-    clean_topic, director_notes = _parse_idea_input(raw_topic)
+    clean_topic, director_notes, explicit_lang = _parse_idea_input(raw_topic)
     if not clean_topic:
         clean_topic = raw_topic
 
@@ -1016,18 +1057,20 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log_activity(db, user.id, user.username, "CMD_IDEA",
                      f"Yêu cầu lên ý tưởng video: '{clean_topic}'", channel_id=channel_id)
 
-    # Lấy cấu hình niche & ngôn ngữ từ kênh
+    # Lấy cấu hình niche & ngôn ngữ từ kênh (ưu tiên cờ ngôn ngữ explicit nếu có)
     ch = channel_manager.get_channel(channel_id) or {}
     channel_name = ch.get("name") or channel_id
     channel_niche = ch.get("niche") or "history_mystery"
-    channel_lang = ch.get("language") or "en"
+    channel_lang = explicit_lang or ch.get("language") or "en"
+    lang_display = "🇻🇳 Tiếng Việt" if channel_lang.lower().startswith("vi") else "🇺🇸 Tiếng Anh"
 
     notes_info = f"\n🎯 **Hướng đạo diễn:** _{director_notes}_" if director_notes else ""
     switch_info = f"\n💡 *{switch_reason}*" if switch_reason else ""
     status_msg = await safe_reply(
         update,
         f"🤖 **{user.first_name}** vừa yêu cầu lên ý tưởng: *\"{clean_topic}\"*{notes_info}{switch_info}\n"
-        f"Đang kích hoạt Gemini AI cho kênh `{channel_name}` (Chủ đề: {channel_niche})..."
+        f"📺 Kênh: `{channel_name}` ({channel_niche}) | 🌐 Ngôn ngữ: **{lang_display}**\n"
+        f"⏳ Đang kích hoạt Gemini AI biên soạn kịch bản..."
     )
 
     try:
@@ -1112,11 +1155,11 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{pinned_display}"
             f"{notes_display}"
             f"⏱️ **Ước lượng:** ~{script.total_estimated_duration:.0f}s | {len(script.scenes)} cảnh\n"
-            f"🗣️ **Người tạo:** {user.first_name} | 📺 **Kênh:** `{channel_name}` ({channel_niche})\n\n"
+            f"🗣️ **Người tạo:** {user.first_name} | 📺 **Kênh:** `{channel_name}` ({channel_niche}) | 🌐 **Ngôn ngữ:** {lang_display}\n\n"
             f"👉 Cả nhóm hãy xem kịch bản, bấm **DUYỆT & DỰNG VIDEO NGAY** bên dưới để máy chủ tự động sản xuất Shorts!"
         )
 
-        review_markup = get_script_review_keyboard(job_id)
+        review_markup = get_script_review_keyboard(job_id, current_lang=channel_lang)
         if status_msg:
             await safe_edit_text(status_msg, reply_content, reply_markup=review_markup)
         else:
@@ -2890,20 +2933,154 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Lỗi khi lên lịch YouTube Video #{job_id}: {e}", exc_info=True)
             await safe_reply(update, f"❌ Lỗi khi lên lịch Video #{job_id}: `{e}`")
 
+    # 5.1 Đổi ngôn ngữ kịch bản 1-Click (Tiếng Việt <-> Tiếng Anh)
+    elif data.startswith("switch_lang:"):
+        parts = data.split(":")
+        job_id = int(parts[1])
+        target_lang = parts[2] if len(parts) > 2 else "toggle"
+
+        with get_db() as db:
+            job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if not job or not job.scenes_json:
+                await safe_reply(update, f"❌ Không tìm thấy kịch bản cho Job #{job_id}")
+                return
+            channel_id = job.target_channel_id or "channel_maya"
+            current_script_json = job.scenes_json
+
+        from app.agents.voice_agent import VoiceAgent
+        from app.schemas.contracts import ScriptContract
+        current_script = ScriptContract.from_json_str(current_script_json)
+
+        if target_lang == "toggle":
+            is_vn = VoiceAgent._is_vietnamese(current_script.full_narration or current_script.hook)
+            target_lang = "en" if is_vn else "vi"
+
+        target_lang_display = "🇻🇳 Tiếng Việt" if target_lang == "vi" else "🇺🇸 Tiếng Anh"
+        ch = channel_manager.get_channel(channel_id) or {}
+        channel_niche = ch.get("niche") or "general"
+        channel_name = ch.get("name") or channel_id
+
+        wait_m = await safe_reply(
+            update,
+            f"🌐 **{user.first_name}** yêu cầu chuyển đổi toàn bộ kịch bản Task #{job_id} sang **{target_lang_display}**...\n"
+            f"⏳ Gemini AI đang dịch và tái cấu trúc lời thoại chuẩn viral..."
+        )
+
+        try:
+            prompt_directive = (
+                f"TRANSLATE AND REWRITE THIS ENTIRE SCRIPT STRICTLY TO {target_lang_display.upper()} ('{target_lang}'). "
+                f"Every spoken scene narration, hook, full_narration, and title MUST be 100% in {target_lang}. "
+                f"Maintain the exact viral hooks, pacing, and seamless infinite loop."
+            )
+            revised_script = await asyncio.to_thread(
+                content_agent.refine_script,
+                current_script=current_script,
+                feedback=prompt_directive,
+                channel_niche=channel_niche,
+                language=target_lang
+            )
+
+            with get_db() as db:
+                db_job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                if db_job:
+                    db_job.title = revised_script.title
+                    db_job.script = revised_script.full_narration
+                    db_job.description = revised_script.description
+                    db_job.tags = ",".join(revised_script.tags)
+                    db_job.scenes_json = revised_script.to_json_str()
+                    db_job.status = "SCRIPT_READY"
+                    log_activity(db, user.id, user.first_name, "SWITCH_LANG",
+                                 f"Chuyển kịch bản #{job_id} sang {target_lang_display}: '{revised_script.title}'",
+                                 channel_id=channel_id)
+
+            scenes_preview = "\n".join([
+                f"• Cảnh {s.scene_id}: {s.narration[:65]}..."
+                for s in revised_script.scenes[:3]
+            ])
+            markup = get_script_review_keyboard(job_id, current_lang=target_lang)
+
+            reply_text = (
+                f"🎬 **KỊCH BẢN ĐÃ CHUYỂN SANG {target_lang_display.upper()} (Task #{job_id})**\n\n"
+                f"📌 **Tiêu đề:** {revised_script.title}\n"
+                f"🔥 **Hook 3 giây đầu:** \"{revised_script.hook}\"\n\n"
+                f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
+                f"⏱️ **Ước lượng:** ~{revised_script.total_estimated_duration:.0f}s | {len(revised_script.scenes)} cảnh\n"
+                f"🗣️ **Người đổi:** {user.first_name} | 📺 **Kênh:** `{channel_name}` | 🌐 **Ngôn ngữ:** {target_lang_display}\n\n"
+                f"👉 Cả nhóm hãy xem kịch bản, bấm **DUYỆT & DỰNG VIDEO NGAY** bên dưới để máy chủ tự động sản xuất Shorts!"
+            )
+            await safe_edit_text(wait_m, reply_text, reply_markup=markup)
+        except Exception as ex:
+            logger.error(f"Lỗi chuyển ngôn ngữ kịch bản #{job_id}: {ex}", exc_info=True)
+            await safe_edit_text(wait_m, f"❌ Lỗi khi chuyển đổi ngôn ngữ: `{ex}`")
+
     # 5. Tạo lại kịch bản từ đầu
     elif data.startswith("regenerate:"):
         job_id = int(data.split(":")[1])
         with get_db() as db:
             job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
-            if job:
-                job.status = "DRAFT"
-                log_activity(db, user.id, user.username, "REGENERATE",
-                             f"Yêu cầu tạo lại kịch bản #{job_id}")
-        await safe_reply(
+            if not job:
+                await safe_reply(update, f"❌ Không tìm thấy VideoJob #{job_id}")
+                return
+            channel_id = job.target_channel_id or "channel_maya"
+            topic = job.topic or job.title or "Viral Concept"
+            # Nhận diện ngôn ngữ hiện tại của job
+            from app.agents.voice_agent import VoiceAgent
+            is_vn = VoiceAgent._is_vietnamese(job.script or job.scenes_json or "")
+            current_lang = "vi" if is_vn else "en"
+
+        ch = channel_manager.get_channel(channel_id) or {}
+        channel_name = ch.get("name") or channel_id
+        channel_niche = ch.get("niche") or "general"
+        lang_display = "🇻🇳 Tiếng Việt" if current_lang == "vi" else "🇺🇸 Tiếng Anh"
+
+        wait_m = await safe_reply(
             update,
-            f"🔄 **{user.first_name}** yêu cầu tạo lại kịch bản #{job_id}.\n"
-            f"Hãy gõ `/idea <chủ đề mới>` để tạo kịch bản thay thế."
+            f"🔄 **{user.first_name}** yêu cầu tạo lại kịch bản mới cho Task #{job_id}...\n"
+            f"📌 Chủ đề: *\"{topic}\"*\n"
+            f"📺 Kênh: `{channel_name}` | 🌐 Ngôn ngữ: **{lang_display}**\n"
+            f"⏳ Gemini AI đang viết lại kịch bản với góc nhìn mới..."
         )
+
+        try:
+            new_script, eval_report = await asyncio.to_thread(
+                content_agent.generate_best_script,
+                topic=topic,
+                channel_niche=channel_niche,
+                language=current_lang
+            )
+
+            with get_db() as db:
+                db_job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                if db_job:
+                    db_job.title = new_script.title
+                    db_job.script = new_script.full_narration
+                    db_job.description = new_script.description
+                    db_job.tags = ",".join(new_script.tags)
+                    db_job.scenes_json = new_script.to_json_str()
+                    db_job.status = "SCRIPT_READY"
+                    log_activity(db, user.id, user.first_name, "REGENERATE_SCRIPT",
+                                 f"Đã tạo lại kịch bản #{job_id}: '{new_script.title}'",
+                                 channel_id=channel_id)
+
+            scenes_preview = "\n".join([
+                f"• Cảnh {s.scene_id}: {s.narration[:65]}..."
+                for s in new_script.scenes[:3]
+            ])
+            markup = get_script_review_keyboard(job_id, current_lang=current_lang)
+
+            reply_text = (
+                f"🎬 **KỊCH BẢN ĐÃ TÁI TẠO XONG (Task #{job_id})**\n\n"
+                f"📌 **Tiêu đề mới:** {new_script.title}\n"
+                f"🔥 **Hook 3 giây đầu:** \"{new_script.hook}\"\n\n"
+                f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
+                f"⏱️ **Ước lượng:** ~{new_script.total_estimated_duration:.0f}s | {len(new_script.scenes)} cảnh\n"
+                f"🗣️ **Người tạo:** {user.first_name} | 📺 **Kênh:** `{channel_name}` | 🌐 **Ngôn ngữ:** {lang_display}\n\n"
+                f"👉 Cả nhóm hãy xem kịch bản, bấm **DUYỆT & DỰNG VIDEO NGAY** bên dưới để máy chủ tự động sản xuất Shorts!"
+            )
+            await safe_edit_text(wait_m, reply_text, reply_markup=markup)
+        except Exception as ex:
+            logger.error(f"Lỗi tái tạo kịch bản #{job_id}: {ex}", exc_info=True)
+            await safe_edit_text(wait_m, f"❌ Lỗi khi tạo lại kịch bản: `{ex}`")
 
     # 6. Hủy bỏ
     elif data.startswith("cancel:"):

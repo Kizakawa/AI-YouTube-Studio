@@ -20,6 +20,44 @@ AVAILABLE_MODELS = [
     "gemini-pro-latest",             # Pro (thử cuối để tránh kẹt 429)
 ]
 
+
+def build_language_integrity_instruction(language: str) -> str:
+    lang_clean = (language or "en").strip().lower()
+    is_vi = lang_clean.startswith("vi")
+    if is_vi:
+        return """
+═══════════════════════════════════════════════════════════════════
+🌐 CRITICAL LANGUAGE INTEGRITY: 100% TIẾNG VIỆT (VIETNAMESE)
+═══════════════════════════════════════════════════════════════════
+- TARGET SCRIPT LANGUAGE: VIETNAMESE ('vi').
+- SPOKEN NARRATION REQUIREMENT:
+  * 'hook', 'full_narration', and 'narration' in EVERY scene MUST be written 100% in natural, dramatic, conversational VIETNAMESE.
+  * Even if the topic, director notes, or instructions are in English, you MUST TRANSLATE and write all narration in VIETNAMESE.
+  * STRICTLY FORBIDDEN: Do NOT output English spoken narration.
+- TITLE REQUIREMENT:
+  * 'title' MUST be in VIETNAMESE (click-through optimized, CTR > 10%, under 60 chars with emojis).
+  * DO NOT add suffixes like '- VN', '- VI', '(Việt Nam)'.
+- NEVER mix languages (e.g. Vietnamese narration with English title or vice-versa).
+═══════════════════════════════════════════════════════════════════
+"""
+    else:
+        return """
+═══════════════════════════════════════════════════════════════════
+🌐 CRITICAL LANGUAGE INTEGRITY: 100% ENGLISH (AMERICAN)
+═══════════════════════════════════════════════════════════════════
+- TARGET SCRIPT LANGUAGE: ENGLISH ('en').
+- SPOKEN NARRATION REQUIREMENT:
+  * 'hook', 'full_narration', and 'narration' in EVERY scene MUST be written 100% in natural, punchy, conversational AMERICAN ENGLISH.
+  * Even if the topic, director notes, or niche instructions are in Vietnamese, you MUST TRANSLATE and write all narration in ENGLISH.
+  * STRICTLY FORBIDDEN: Do NOT output Vietnamese spoken narration.
+- TITLE REQUIREMENT:
+  * 'title' MUST be in ENGLISH (click-through optimized, CTR > 10%, under 60 chars with emojis).
+  * DO NOT add suffixes like '- EN', '- US', '(English)'.
+- NEVER mix languages (e.g. English narration with Vietnamese title or vice-versa).
+═══════════════════════════════════════════════════════════════════
+"""
+
+
 class ContentAgent:
     """Agent chịu trách nhiệm lên ý tưởng, viết kịch bản giật gân (hook), phân cảnh và metadata SEO.
     Đã tích hợp KeyRotator để xoay vòng API Keys qua nhiều tài khoản Google Ultra bằng direct HTTP REST
@@ -395,10 +433,13 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
         from app.services.niche_manager import get_niche, build_script_prompt_instructions
         niche_profile = get_niche(channel_niche)
         niche_instructions = build_script_prompt_instructions(niche_profile, language=language)
+        lang_instruction = build_language_integrity_instruction(language)
+        target_lang_display = "TIẾNG VIỆT" if str(language).lower().startswith("vi") else "ENGLISH"
 
         prompt = f"""You are an elite YouTube Shorts director and viral retention engineer for the channel '{niche_profile.get('name')}' (niche: '{channel_niche}').
 Topic: '{topic}'
-Script Language: {language}
+Target Language: {language} ({target_lang_display})
+{lang_instruction}
 {director_block}
 {niche_instructions}
 ═══════════════════════════════════════════════════════════
@@ -444,10 +485,11 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
    - No literal metaphors: always illustrate the actual physical scene or observable behavior.
    - Every scene must be visually unique (no repeating subjects or camera angles).
 
-6. TITLE & LANGUAGE INTEGRITY:
-   - Title MUST be in {language} and strictly focused on click-through rate (CTR > 10%).
-   - DO NOT include channel tags, country names, or suffixes like "- VN", "- VI", "(Vietnam)".
+6. TITLE & LANGUAGE INTEGRITY (100% STRICT ENFORCEMENT):
+   - The entire video script (spoken narration in all scenes, hook, full_narration, title) MUST be 100% in {target_lang_display}.
+   - Title MUST be in {target_lang_display} and strictly focused on click-through rate (CTR > 10%).
    - Clean, punchy title under 60 characters with emojis.
+   - DO NOT include channel tags, country names, or suffixes like "- VN", "- VI", "(Vietnam)", "- EN".
 
 7. DYNAMIC PRIMAL VISUAL HOOK ENGINE (SCENE 1 ONLY — HIGHEST CTR IMPACT):
    Scene 1 visual is the SINGLE MOST IMPORTANT factor preventing swipe-away (>75% viewed).
@@ -530,6 +572,9 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
         """
         Tiếp thu góp ý của người dùng/nhóm để tinh chỉnh kịch bản hiện tại chuẩn viral.
         """
+        lang_instruction = build_language_integrity_instruction(language)
+        target_lang_display = "TIẾNG VIỆT" if str(language).lower().startswith("vi") else "ENGLISH"
+
         prompt = f"""
 You are an elite viral YouTube Shorts director and cinematographer.
 We have an existing script, but the creator and team provided specific feedback/revisions:
@@ -541,7 +586,8 @@ CURRENT SCRIPT:
 {current_script.model_dump_json(indent=2)}
 
 REFINE the script strictly adhering to the user's feedback.
-Language: {language}
+Target Language: {language} ({target_lang_display})
+{lang_instruction}
 
 HARD RETENTION RULES:
 1. SCENE 1 PATTERN INTERRUPT & PRIMAL VISUAL HOOK (CRITICAL TO PREVENT SWIPING):
@@ -554,7 +600,10 @@ HARD RETENTION RULES:
 4. PSYCHOLOGICAL VIRAL CTA & SEAMLESS INFINITE LOOP: The final scene MUST combine a high-converting call to action (Double tap / Drop a comment / Subscribe for Part 2) with an open bridge clause ("...because...") that seamlessly connects back into Scene 1's hook.
 5. NO LITERAL METAPHORS in visual_prompt: show the actual phenomenon, not metaphorical words.
 6. NO DUPLICATE SCENES: every visual_prompt must describe a visually distinct subject and setting.
-7. Return ONLY valid JSON:
+7. LANGUAGE INTEGRITY (100% STRICT):
+   - The entire revised script (title, hook, full_narration, and scene narration) MUST be 100% in {target_lang_display}.
+   - Even if the current script or user feedback is in another language, TRANSLATE and output strictly in {target_lang_display}!
+8. Return ONLY valid JSON:
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
   "hook": "The opening 3-second hook sentence",
@@ -649,6 +698,9 @@ Phong cách làm việc:
 
         dialogue_text = "\n".join([f"{h['role']}: {h['content']}" for h in history[-8:]])
 
+        lang_instruction = build_language_integrity_instruction(language)
+        target_lang_display = "TIẾNG VIỆT" if str(language).lower().startswith("vi") else "ENGLISH"
+
         prompt = f"""
 You are an expert YouTube Shorts producer and cinematographer.
 Based on the following brainstorm discussion between a creator and director:
@@ -658,7 +710,8 @@ Based on the following brainstorm discussion between a creator and director:
 
 Synthesize this entire discussion into a complete, high-retention 40-50 second YouTube Shorts script.
 Niche: '{channel_niche}'
-Script Language (narration & title): {language}
+Target Language: {language} ({target_lang_display})
+{lang_instruction}
 
 HARD RULES:
 1. SCENE 1 HOOK (PREVENT SWIPING): Choose an electric 5-8 word pattern-interrupt hook (Warning, Elite Move, Dark Law, or Counter-Intuitive Shock). Never passive or textbook.
@@ -750,8 +803,13 @@ HARD RULES:
             if getattr(best_eval, "visual_direction", None) and best_eval.visual_direction.score < 8.0:
                 critiques_list.append(f"Thị giác yếu ({best_eval.visual_direction.score:.1f}/10): Cấm từ ngữ trừu tượng. visual_keyword và stock_query phải là danh từ/hành động vật lý cụ thể.")
 
+            target_lang_note = (
+                "CRITICAL: TARGET SCRIPT LANGUAGE IS 100% ENGLISH. All rewritten narration, hook, and title MUST be in natural English."
+                if not str(language).lower().startswith("vi")
+                else "QUAN TRỌNG: NGÔN NGỮ KỊCH BẢN BẮT BUỘC LÀ 100% TIẾNG VIỆT. Toàn bộ lời thoại và tiêu đề phải viết bằng Tiếng Việt chuẩn."
+            )
             directive = (
-                f"KỊCH BẢN TRƯỚC ĐÓ ĐẠT ĐIỂM KÉM ({best_eval.overall_score:.1f}/10). "
+                f"KỊCH BẢN TRƯỚC ĐÓ ĐẠT ĐIỂM KÉM ({best_eval.overall_score:.1f}/10). {target_lang_note} "
                 f"CHỈ ĐẠO BẮT BUỘC SỬA ĐỂ ĐẠT CHUẨN VIRAL: " + " | ".join(critiques_list)
             )
 
@@ -851,10 +909,17 @@ HARD RULES:
             f"Tiến hành tối ưu tự động để vừa thỏa mãn góp ý, vừa đạt điểm chất lượng cao..."
         )
 
+        target_lang_note = (
+            "CRITICAL: TARGET SCRIPT LANGUAGE IS 100% ENGLISH. All rewritten narration, hook, and title MUST be in natural English."
+            if not str(language).lower().startswith("vi")
+            else "QUAN TRỌNG: NGÔN NGỮ KỊCH BẢN BẮT BUỘC LÀ 100% TIẾNG VIỆT. Toàn bộ lời thoại và tiêu đề phải viết bằng Tiếng Việt chuẩn."
+        )
+
         for attempt in range(1, max_attempts + 1):
             critiques_list = list(best_eval.actionable_critiques) if best_eval.actionable_critiques else []
             combined_directive = (
                 f"YÊU CẦU CỐT LÕI CỦA NGƯỜI DÙNG (BẮT BUỘC TUÂN THỦ 100%): \"{feedback}\"\n"
+                f"{target_lang_note}\n"
                 f"ĐỒNG THỜI KHẮC PHỤC CÁC LỖI CRITIC SAU ĐỂ ĐẠT CHUẨN VIRAL: " + " | ".join(critiques_list[:3])
             )
 

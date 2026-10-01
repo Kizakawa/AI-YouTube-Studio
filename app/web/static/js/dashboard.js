@@ -2202,6 +2202,26 @@ function updateChannelDropdowns(channels) {
 
     if (currentVal && channels.some(c => c.id === currentVal)) {
         sel.value = currentVal;
+    } else if (channels.length > 0) {
+        sel.value = channels[0].id;
+    }
+
+    const syncChannelLanguage = (channelId) => {
+        const selectedCh = channels.find(c => c.id === channelId);
+        if (selectedCh && selectedCh.language) {
+            const langSel = document.getElementById('input-language');
+            if (langSel) {
+                langSel.value = selectedCh.language.toLowerCase().startsWith('vi') ? 'vi' : 'en';
+            }
+        }
+    };
+
+    sel.onchange = () => {
+        syncChannelLanguage(sel.value);
+    };
+
+    if (sel.value) {
+        syncChannelLanguage(sel.value);
     }
 }
 
