@@ -516,7 +516,6 @@ function setHealth(id, ok, msg) {
     span.style.color = ok ? 'var(--accent-green)' : 'var(--accent-amber)';
 }
 
-/* ═══════════════════════════════════════════════════════
 /* =======================================================
    LOCAL RENDER ENGINE (Colab feature disabled)
 ======================================================= */
@@ -525,7 +524,7 @@ function openColabFarmModal() {
 }
 function closeColabFarmModal() {}
 
-
+/* ═══════════════════════════════════════════════════════
    TOKEN HEALTH MONITOR (Part 4)
 ══════════════════════════════════════════════════════════ */
 async function checkTokenHealth(force = false) {
