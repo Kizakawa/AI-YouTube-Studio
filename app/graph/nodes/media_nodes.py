@@ -645,6 +645,18 @@ def node_content_quality_check(state: VideoWorkflowState) -> Dict[str, Any]:
     """
     scenes_media = state.get("scenes_media", [])
     primary_entity = state.get("primary_entity")
+    job_id = state.get("job_id", 0)
+
+    if job_id:
+        try:
+            from app.database.models import get_db, VideoJob
+            with get_db() as db:
+                jb = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                if jb:
+                    jb.progress_percent = 72
+                    jb.progress_message = "🧠 Đang thẩm định tính phù hợp nội dung qua AI Vision..."
+        except Exception:
+            pass
 
     critic = ContentQualityCritic()
     report = critic.evaluate_content_quality(
@@ -714,10 +726,23 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
         f"(Lần {content_retry}) dựa trên chỉ đạo AI Vision Critic"
     )
 
+    job_id = state.get("job_id", 0)
     for item in scenes_media:
         scene_id = item.get("scene_id")
         if scene_id not in failed_ids:
             continue
+
+        if job_id:
+            try:
+                from app.database.models import get_db, VideoJob
+                with get_db() as db:
+                    jb = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                    if jb:
+                        fix_idx = failed_ids.index(scene_id) + 1 if scene_id in failed_ids else 1
+                        jb.progress_percent = min(85, 72 + int((fix_idx / max(len(failed_ids), 1)) * 14))
+                        jb.progress_message = f"🎯 Đang tối ưu lại tư liệu Cảnh {scene_id} ({fix_idx}/{len(failed_ids)})..."
+            except Exception:
+                pass
 
         kw = item.get("visual_keyword", "")
         narr = item.get("narration", "")

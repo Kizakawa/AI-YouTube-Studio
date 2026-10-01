@@ -282,9 +282,9 @@ class AIVideoAgent:
         if not self.rotator or not self.rotator.has_keys:
             return None
 
-        import asyncio
-        import base64
-        import requests
+        # Google Veo yêu cầu Google Cloud Billing trả phí; mặc định tắt để tránh treo luồng 150s
+        if not getattr(settings, "GOOGLE_VEO_ENABLED", False):
+            return None
 
         veo_models = [
             "veo-3.1-fast-generate-preview",
@@ -434,12 +434,12 @@ class AIVideoAgent:
 
         # 2. Thử Hugging Face Inference API nếu có HUGGINGFACE_TOKEN
         hf_token = os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HF_TOKEN")
-        if hf_token:
+        if hf_token and os.getenv("HF_VIDEO_ENDPOINT_ENABLED", "0") == "1":
             try:
                 headers = {"Authorization": f"Bearer {hf_token}"}
                 api_url = "https://api-inference.huggingface.co/models/Wan-AI/Wan2.1-T2V-1.3B"
                 payload = {"inputs": f"Cinematic vertical video, {prompt}"}
-                res = requests.post(api_url, headers=headers, json=payload, timeout=50)
+                res = requests.post(api_url, headers=headers, json=payload, timeout=5)
                 if res.status_code == 200 and len(res.content) > 10000:
                     with open(output_path, "wb") as f:
                         f.write(res.content)

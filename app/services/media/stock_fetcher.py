@@ -358,7 +358,21 @@ class StockFetcher:
                 )
             ]
             if portrait_files:
-                hd_files = sorted(portrait_files, key=lambda x: x.get("height", 0), reverse=True)
+                # Tối ưu tốc độ: Ưu tiên Full HD (1080x1920) hoặc HD (720x1280) để tải nhanh gấp 5 lần
+                # và FFmpeg render CPU mượt mà, tránh các file 4K (height > 1920) nặng 40-60MB gây chậm hệ thống.
+                def _res_score(vf):
+                    h = vf.get("height", 0)
+                    if h == 1920:
+                        return 1000
+                    elif 1080 <= h < 1920:
+                        return 800 + h
+                    elif 720 <= h < 1080:
+                        return 600 + h
+                    elif h > 1920:
+                        return 200 - h  # 4K ưu tiên thấp nhất
+                    return h
+
+                hd_files = sorted(portrait_files, key=_res_score, reverse=True)
                 for best in hd_files:
                     link = best.get("link")
                     if link and link not in used:
