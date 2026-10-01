@@ -515,12 +515,8 @@ _INCONGRUENT_TAG_GROUPS = {
 }
 
 
-def is_incongruent_stock_image(title_or_alt: str, topic: str = "", narration: str = "") -> bool:
-    """
-    Kiểm tra xem mô tả/alt text/tiêu đề của ảnh stock có thuộc nhóm thể loại lạc đề,
-    lạc lõng hoàn toàn so với chủ đề video hay không (ví dụ: ảnh văn phòng, cafe, tiệc tùng
-    lọt vào video về vũ trụ, đáy biển sâu, tâm lý học, lịch sử).
-    """
+def _is_incongruent_stock_heuristic(title_or_alt: str, topic: str = "", narration: str = "") -> bool:
+    """Bộ lọc heuristic từ khóa 0ms để phát hiện các nhóm thể loại lạc quẻ phổ biến."""
     if not title_or_alt:
         return False
 
@@ -533,10 +529,62 @@ def is_incongruent_stock_image(title_or_alt: str, topic: str = "", narration: st
             # Nếu trong ngữ cảnh video thật sự có nhắc đến chủ đề này thì cho phép, ngược lại coi là lạc đề
             is_legit = any(bw in context_lower for bw in matched_bad)
             if not is_legit:
-                logger.info(f"🚫 [EntityDetector] Từ chối ảnh stock lạc đề ('{title_or_alt[:45]}...') do chứa từ khóa: {matched_bad}")
+                logger.info(f"🚫 [EntityDetector:Heuristic] Từ chối ảnh stock lạc đề ('{title_or_alt[:45]}...') do chứa từ khóa: {matched_bad}")
                 return True
 
     return False
+
+
+def is_incongruent_stock_image(
+    title_or_alt: str,
+    topic: str = "",
+    narration: str = "",
+    use_llm: bool = False,
+) -> bool:
+    """
+    Kiểm tra xem mô tả/alt text/tiêu đề của ảnh/video stock có thuộc nhóm thể loại lạc đề,
+    lạc lõng hoàn toàn so với chủ đề video hay không (ví dụ: ảnh văn phòng, cafe, tiệc tùng
+    lọt vào video về vũ trụ, đáy biển sâu, tâm lý học, lịch sử).
+
+    Hỗ trợ 2 chế độ:
+    - use_llm=True: Ủy quyền cho VisualCurationAgent (Gemini LLM) phân tích ngữ nghĩa sâu sắc.
+    - use_llm=False: Dùng bộ lọc heuristic 0ms qua danh mục từ khóa phủ định.
+    """
+    if not title_or_alt:
+        return False
+
+    if use_llm:
+        try:
+            from app.agents.visual_curation_agent import VisualCurationAgent
+            curator = VisualCurationAgent()
+            is_incong, score, rationale = curator.check_media_congruence(
+                media_desc=title_or_alt,
+                topic=topic,
+                narration=narration,
+            )
+            if is_incong:
+                logger.info(f"🚫 [EntityDetector:LLM] VisualCurationAgent từ chối ('{title_or_alt[:45]}...') | Lý do: {rationale}")
+            return is_incong
+        except Exception as e:
+            logger.debug(f"[EntityDetector] LLM incongruence check error ({e}), fallback sang heuristic")
+
+    return _is_incongruent_stock_heuristic(title_or_alt, topic=topic, narration=narration)
+
+
+async def is_incongruent_stock_image_async(
+    title_or_alt: str,
+    topic: str = "",
+    narration: str = "",
+) -> bool:
+    """Phiên bản bất đồng bộ gọi LLM Agent thẩm định độ lạc đề của media."""
+    import asyncio
+    return await asyncio.to_thread(
+        is_incongruent_stock_image,
+        title_or_alt,
+        topic=topic,
+        narration=narration,
+        use_llm=True,
+    )
 
 
 def synthesize_scene_query(

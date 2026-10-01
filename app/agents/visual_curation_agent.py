@@ -346,9 +346,10 @@ DANH SÁCH ỨNG VIÊN VIDEO CÓ SẴN (Nội dung thực tế trích xuất t�
 
 QUY TẮC TUYỂN CHỌN:
 1. Video phải có cùng tâm trạng (ví dụ nếu u ám thì không chọn cảnh có nắng tươi vui).
-2. Video KHÔNG được dính các yếu tố cấm kỵ.
-3. Nếu CÓ ứng viên đạt chuẩn (điểm >= 6.0/10) -> Chọn index của ứng viên đó.
-4. NẾU TẤT CẢ ỨNG VIÊN ĐỀU KHÔNG LIÊN QUAN, LẠC ĐỀ HOẶC PHÁ HỎNG BỐI CẢNH (Tất cả < 6.0) -> Trả về winner_index = -1 và should_fallback_to_ai = true để hệ thống tự động sinh Video AI kỳ ảo.
+2. TUYỆT ĐỐI LOẠI TRỪ video lạc đề, sai lệch thời đại (anachronism) hoặc lệch thể loại (ví dụ: người văn phòng/laptop/quán cafe/tiệc bar/hộp đêm/selfie trong video về vũ trụ, triết học, lịch sử, thiên nhiên hoang dã).
+3. Video KHÔNG được dính các yếu tố cấm kỵ (Negative Cues).
+4. Nếu CÓ ứng viên đạt chuẩn (điểm >= 6.0/10) -> Chọn index của ứng viên đó.
+5. NẾU TẤT CẢ ỨNG VIÊN ĐỀU KHÔNG LIÊN QUAN, LẠC ĐỀ HOẶC PHÁ HỎNG BỐI CẢNH (Tất cả < 6.0) -> Trả về winner_index = -1 và should_fallback_to_ai = true để hệ thống tự động sinh Video AI kỳ ảo.
 
 TRẢ VỀ JSON DUY NHẤT:
 {{
@@ -441,6 +442,59 @@ TRẢ VỀ JSON DUY NHẤT:
 
         return None, 4.0, "Không có ứng viên nào vượt qua bộ lọc âm tính", True
 
+    def check_media_congruence(
+        self,
+        media_desc: str,
+        topic: str = "",
+        narration: str = "",
+        visual_keyword: str = "",
+    ) -> Tuple[bool, float, str]:
+        """
+        Agent LLM phân tích ngữ nghĩa sâu sắc: Thẩm định xem 1 mô tả ảnh/video
+        có bị lạc đề, lệch thời đại (anachronism) hay phá vỡ thể loại video hay không.
+        Trả về (is_incongruent: bool, score: float, rationale: str).
+        """
+        if not media_desc:
+            return False, 5.0, "Không có mô tả tư liệu"
+
+        prompt = f"""
+Bạn là Tổng Giám Khảo Thẩm Định Tư Liệu Hình Ảnh & Video (Visual Relevance & Congruence Critic) cho YouTube Shorts.
+Nhiệm vụ: Đánh giá xem tư liệu sau ĐÂY CÓ BỊ LẠC ĐỀ HOÀN TOÀN (INCONGRUENT) so với chủ đề và nội dung phân cảnh video hay không.
+
+NGỮ CẢNH VIDEO:
+- Chủ đề video: "{topic}"
+- Lời thoại phân cảnh: "{narration}"
+- Từ khóa mong muốn: "{visual_keyword}"
+
+TƯ LIỆU CẦN THẨM ĐỊNH:
+- Mô tả / Tiêu đề / Thẻ: "{media_desc}"
+
+TIÊU CHUẨN ĐÁNH GIÁ LẠC ĐỀ:
+1. Lạc đề thể loại (Genre Incongruence): Ví dụ cảnh văn phòng/hội họp công sở/gõ laptop/uống cafe/tiệc bar/hộp đêm/người mẫu runway lọt vào video về vũ trụ, triết học cổ đại, chiến tranh lịch sử, sinh tồn hoang dã.
+2. Lạc đề thời đại (Anachronism): Đồ vật hiện đại trong bối cảnh cổ đại / trung cổ.
+3. Lạc đề định dạng: Bản đồ hành chính, biểu đồ kỹ thuật, tem thư nếu kịch bản không yêu cầu.
+
+TRẢ VỀ JSON DUY NHẤT:
+{{
+  "is_incongruent": true,
+  "congruence_score": 2.5,
+  "rationale": "Giải thích ngắn gọn 1 câu vì sao lạc đề hoặc vì sao ăn khớp"
+}}
+"""
+        res = self._call_gemini_json(prompt, timeout=10)
+        if res:
+            is_incong = bool(res.get("is_incongruent", False))
+            score = float(res.get("congruence_score", 5.0))
+            if score < 5.0:
+                is_incong = True
+            rationale = res.get("rationale", "")
+            return is_incong, score, rationale
+
+        # Fallback sang heuristic keyword nếu LLM không phản hồi
+        from app.services.media.entity_detector import _is_incongruent_stock_heuristic
+        heur_incong = _is_incongruent_stock_heuristic(media_desc, topic=topic, narration=narration)
+        return heur_incong, (3.0 if heur_incong else 7.0), "Heuristic keyword fallback"
+
     def curate_candidate_photos(
         self,
         candidates: List[Dict[str, Any]],
@@ -452,8 +506,8 @@ TRẢ VỀ JSON DUY NHẤT:
     ) -> Tuple[Optional[Dict[str, Any]], float, str, bool]:
         """
         Đánh giá và tuyển chọn ảnh chụp tĩnh (Pexels, Wikimedia, Openverse):
-        Agent LLM phân tích ngữ nghĩa của các ảnh ứng viên, chọn ra ảnh tốt nhất
-        hoặc từ chối toàn bộ nếu lạc đề để kích hoạt sinh Ảnh AI.
+        Agent LLM phân tích ngữ nghĩa của các ảnh ứng viên, phát hiện thể loại lạc đề,
+        chọn ra ảnh tốt nhất hoặc từ chối toàn bộ nếu lạc đề để kích hoạt sinh Ảnh AI.
         """
         used = used_urls or set()
         valid = [c for c in candidates if c.get("url") and c.get("url") not in used]
@@ -466,8 +520,7 @@ TRẢ VỀ JSON DUY NHẤT:
                 topic=topic or visual_keyword,
             )
 
-        # Trích xuất mô tả ảnh & lọc sơ bộ bằng heuristic 0ms
-        from app.services.media.entity_detector import is_incongruent_stock_image
+        # Trích xuất mô tả ảnh đầy đủ để gửi cho LLM Agent thẩm định toàn diện
         pool = []
         for c in valid:
             desc = c.get("title") or c.get("alt") or ""
@@ -475,8 +528,6 @@ TRẢ VỀ JSON DUY NHẤT:
                 m = re.search(r'/photo/([a-zA-Z0-9-]+)-\d+/?', c.get("url", ""))
                 if m:
                     desc = m.group(1).replace("-", " ")
-            if is_incongruent_stock_image(desc, topic=topic or narration, narration=narration):
-                continue
             pool.append({
                 "item": c,
                 "description": desc or "photograph",
@@ -485,7 +536,7 @@ TRẢ VỀ JSON DUY NHẤT:
                 break
 
         if not pool:
-            return None, 3.0, "Toàn bộ ảnh ứng viên dính thẻ lạc đề (văn phòng, cafe, tiệc tùng, sơ đồ...)", True
+            return None, 3.0, "Không có ứng viên ảnh nào khả dụng.", True
 
         mood = visual_analysis.get("mood", "cinematic")
         metaphor = visual_analysis.get("visual_metaphor", "")
