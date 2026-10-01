@@ -1327,7 +1327,6 @@ async def start_render_pipeline(
                 pass
 
             # Xây dựng Caption gửi Telegram bằng HTML để tránh lỗi Markdown entity
-            import html
             safe_title = html.escape(str(render_job.title or f"Video #{job_id}"))
             safe_prefix = html.escape(str(prefix_title).replace("**", "").replace("*", ""))
             safe_aff_name = html.escape(str(aff_name)) if aff_name else ""
@@ -2432,7 +2431,6 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             aff_cta = aff_prod.get("cta", "")
             post_markup = get_video_post_render_keyboard(job_id, affiliate_url=aff_url, affiliate_name=aff_name)
 
-            import html
             safe_title = html.escape(str(v_title))
             safe_aff_name = html.escape(str(aff_name))
             safe_aff_cta = html.escape(str(aff_cta))
