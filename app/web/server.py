@@ -1147,22 +1147,11 @@ async def health_check() -> Dict[str, Any]:
     except Exception:
         pass
 
-    # Colab GPU Farm status
-    colab_info = {
-        "online": False,
-        "gpu": None,
-        "worker_url": settings.COLAB_WORKER_URL or "",
-        "notebook_id": "1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo",
+    render_info = {
+        "backend": "local",
+        "engine": "FFmpeg Local GPU / CPU",
+        "status": "ready"
     }
-    try:
-        from app.services.colab_client import colab_client
-        is_online, c_info = colab_client.check_health(timeout=1.0)
-        colab_info["online"] = is_online
-        if is_online:
-            colab_info["gpu"] = c_info.get("gpu", "NVIDIA GPU")
-            colab_info["worker_url"] = colab_client.worker_url
-    except Exception:
-        pass
 
     return {
         "status": "online",
@@ -1172,7 +1161,7 @@ async def health_check() -> Dict[str, Any]:
         "web_only": web_only,
         "drive_connected": drive_connected,
         "drive_quota_label": drive_quota_label,
-        "colab": colab_info,
+        "render": render_info,
     }
 
 
@@ -1228,7 +1217,9 @@ COLAB_ACCOUNTS = [
 
 @app.get("/api/colab/farm-status")
 async def get_colab_farm_status() -> Dict[str, Any]:
-    """Trả về trạng thái chi tiết của Colab GPU Farm và danh sách 3 tài khoản xoay vòng"""
+    return {"success": True, "colab_disabled": True, "online": False, "message": "Đã tắt tính năng Google Colab, render cục bộ 100%"}
+
+async def _old_get_colab_farm_status() -> Dict[str, Any]:
     from app.services.colab_client import colab_client
     is_online, info = colab_client.check_health(timeout=1.5)
     
@@ -1378,6 +1369,9 @@ async def get_worker_status_api() -> Dict[str, Any]:
 
 @app.post("/api/colab/send-telegram-guide")
 async def send_colab_telegram_guide(request: Request) -> Dict[str, Any]:
+    return {"success": False, "message": "Tính năng Colab đã được tắt. Hệ thống render cục bộ bằng FFmpeg."}
+
+async def _old_send_colab_telegram_guide(request: Request) -> Dict[str, Any]:
     """
     Gửi link Colab và hướng dẫn mở đúng tài khoản về Telegram của người dùng.
     Hỗ trợ gửi cho 1 tài khoản cụ thể hoặc toàn bộ danh sách 3 tài khoản.

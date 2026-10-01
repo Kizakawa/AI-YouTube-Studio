@@ -3768,13 +3768,8 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         port = os.getenv("PORT", "8000")
         dashboard_url = f"http://localhost:{port}"
 
-    # Kiểm tra trạng thái Colab GPU Farm
-    from app.services.colab_client import colab_client
-    is_colab_on, c_info = colab_client.check_health(timeout=1.5)
-    if is_colab_on:
-        colab_status_str = f"Trực tuyến 🟢 ({c_info.get('gpu', 'NVIDIA GPU')} — 20s/video)"
-    else:
-        colab_status_str = "Ngoại tuyến ⚪ (Đang chạy Local CPU — gõ /colab để kết nối)"
+    # Trạng thái Local Render Engine
+    render_status_str = "Local FFmpeg GPU / CPU (Sẵn sàng 🟢)"
 
     # Kiểm tra trạng thái Google Drive
     drive_status = "Chưa kết nối ⚠️"
@@ -3792,7 +3787,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📊 **BÁO CÁO NHÓM LÀM VIỆC (AI STUDIO)**\n\n"
         f"• Tổng số video trong hệ thống: `{total_jobs}`\n"
         f"• Kịch bản đang chờ duyệt/render: `{ready_jobs}`\n"
-        f"• GPU Farm (Colab Pro+): {colab_status_str}\n"
+        f"• Bộ dựng video: {render_status_str}\n"
         f"• Kho Google Drive: {drive_status}\n"
         f"• Cụm Google Ultra Quota: Đang hoạt động 🟢\n"
         f"• Web Dashboard: {dashboard_url} 🌐"

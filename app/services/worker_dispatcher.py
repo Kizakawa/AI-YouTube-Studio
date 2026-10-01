@@ -76,14 +76,12 @@ class WorkerDispatcher:
 
     def get_workers_status(self) -> Dict[str, Any]:
         """Kiểm tra tổng hợp trạng thái các Worker GPU."""
-        colab_online, colab_info = self.colab_client.check_health(timeout=1.5)
         modal_configured = bool(os.getenv("MODAL_TOKEN_ID") and os.getenv("MODAL_TOKEN_SECRET"))
-
         return {
             "colab": {
-                "online": colab_online,
-                "gpu": colab_info.get("gpu", "NVIDIA GPU") if colab_online else "Offline",
-                "worker_url": self.colab_client.worker_url,
+                "online": False,
+                "gpu": "Đã tắt (Render Local)",
+                "worker_url": "",
             },
             "modal": {
                 "configured": modal_configured,

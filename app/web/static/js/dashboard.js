@@ -501,9 +501,8 @@ async function fetchHealth() {
             ? (data.drive_quota_label || '20 TB Google One (Đã kết nối ✓)')
             : 'Chưa kết nối — Bấm [Kết Nối Google Drive] bên dưới');
 
-    if (data.colab) {
-        const isOnline = data.colab.online;
-        setHealth('health-colab', isOnline, isOnline ? `${data.colab.gpu || 'NVIDIA GPU'} (20s/vid ✓)` : 'Chưa bật (Chế độ CPU 2 phút)');
+    if (data.render) {
+        setHealth('health-render', true, data.render.engine || 'FFmpeg GPU Ready');
     }
 }
 
@@ -518,173 +517,15 @@ function setHealth(id, ok, msg) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   COLAB GPU RENDER FARM MULTI-ACCOUNT ROTATION
-══════════════════════════════════════════════════════════ */
-let currentColabAccountId = 'account_1';
-function makeGoogleChooserUrl(email) {
-    const target = encodeURIComponent(`https://colab.research.google.com/drive/1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo?authuser=${email}`);
-    return `https://accounts.google.com/AccountChooser?Email=${email}&continue=${target}`;
+/* =======================================================
+   LOCAL RENDER ENGINE (Colab feature disabled)
+======================================================= */
+function openColabFarmModal() {
+    showToast('Hệ thống render cục bộ (Local FFmpeg Hardware Acceleration) 100% không dùng Google Colab.', 'info');
 }
+function closeColabFarmModal() {}
 
-const colabFarmData = {
-    notebook_id: '1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo',
-    base_url: 'https://colab.research.google.com/drive/1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo',
-    accounts: {
-        'account_1': {
-            id: 'account_1',
-            name: 'Tài khoản 1 (Chính)',
-            email: 'pool1.studio@example.com',
-            storage: '20 TB Google One',
-            role: 'Kho lưu trữ gốc & Render chính',
-            url: makeGoogleChooserUrl('pool1.studio@example.com')
-        },
-        'acount_2': {
-            id: 'acount_2',
-            name: 'Tài khoản 2 (Dự phòng 1)',
-            email: 'pool2.studio@example.com',
-            storage: '2 TB Google One',
-            role: 'Xoay vòng khi Acc 1 hết hạn mức GPU',
-            url: makeGoogleChooserUrl('pool2.studio@example.com')
-        },
-        'accout3': {
-            id: 'accout3',
-            name: 'Tài khoản 3 (Dự phòng 2)',
-            email: 'pool3.studio@example.com',
-            storage: '2 TB Google One',
-            role: 'Dự phòng render xuyên suốt 24/7',
-            url: makeGoogleChooserUrl('pool3.studio@example.com')
-        }
-    }
-};
 
-async function openColabFarmModal(targetAccId = null) {
-    const modal = document.getElementById('modal-colab-farm');
-    if (!modal) return;
-    modal.style.display = 'flex';
-
-    if (targetAccId && colabFarmData.accounts[targetAccId]) {
-        selectColabAccount(targetAccId);
-    } else {
-        selectColabAccount(currentColabAccountId || 'account_1');
-    }
-
-    try {
-        const res = await apiGet('/api/colab/farm-status');
-        if (res) {
-            const badge = document.getElementById('colab-modal-status-badge');
-            const gpuName = document.getElementById('colab-modal-gpu-name');
-            const pendingEl = document.getElementById('colab-modal-pending-count');
-
-            if (badge) {
-                if (res.online) {
-                    badge.className = 'badge badge-green';
-                    badge.textContent = '🟢 GPU Trực Tuyến';
-                } else {
-                    badge.className = 'badge badge-amber';
-                    badge.textContent = '⚪ Chờ Kích Hoạt (Offline)';
-                }
-            }
-            if (gpuName) {
-                gpuName.textContent = res.online ? `${res.gpu || 'NVIDIA GPU'} (20s/vid)` : 'Chưa bật (Render CPU nội bộ)';
-            }
-            if (pendingEl) {
-                pendingEl.textContent = `${res.pending_count || 0} video đang chờ`;
-            }
-        }
-    } catch (e) {
-        console.warn('Lỗi lấy thông tin Colab Farm:', e);
-    }
-}
-
-function closeColabFarmModal() {
-    const modal = document.getElementById('modal-colab-farm');
-    if (modal) modal.style.display = 'none';
-}
-
-function selectColabAccount(accId) {
-    const acc = colabFarmData.accounts[accId];
-    if (!acc) return;
-    currentColabAccountId = accId;
-
-    ['account_1', 'acount_2', 'accout3'].forEach(id => {
-        const card = document.getElementById(`card-acc-${id}`);
-        if (card) {
-            if (id === accId) {
-                card.style.border = '2px solid #38bdf8';
-                card.style.background = 'rgba(56,189,248,0.12)';
-                card.style.boxShadow = '0 0 20px rgba(56,189,248,0.2)';
-            } else {
-                card.style.border = '1px solid rgba(255,255,255,0.1)';
-                card.style.background = 'rgba(255,255,255,0.02)';
-                card.style.boxShadow = 'none';
-            }
-        }
-    });
-
-    const labelEl = document.getElementById('colab-target-account-label');
-    if (labelEl) {
-        labelEl.innerHTML = `${acc.name}: <span style="color:#38bdf8; font-family:monospace;">${acc.email}</span>`;
-    }
-
-    const inputUrl = document.getElementById('colab-direct-url-input');
-    if (inputUrl) {
-        inputUrl.value = acc.url;
-    }
-}
-
-function openColabAccount(accId) {
-    selectColabAccount(accId);
-    const acc = colabFarmData.accounts[accId];
-    if (!acc) return;
-
-    showToast(`Đang mở Colab cho ${acc.email}... Nhớ kiểm tra avatar góc phải trang Colab nhé!`, 'info');
-    window.open(acc.url, '_blank');
-}
-
-function triggerCurrentColabOpen() {
-    openColabAccount(currentColabAccountId);
-}
-
-function copyCurrentColabUrl() {
-    const acc = colabFarmData.accounts[currentColabAccountId];
-    if (!acc) return;
-    navigator.clipboard.writeText(acc.url).then(() => {
-        showToast(`Đã sao chép link Colab cho tài khoản ${acc.email}!`, 'success');
-    }).catch(() => {
-        showToast('Không thể sao chép vào clipboard', 'error');
-    });
-}
-
-function copyColabGuide(accId) {
-    const acc = colabFarmData.accounts[accId];
-    if (!acc) return;
-    const text = `🚀 LINK COLAB GPU FARM (${acc.name})\n🎯 Email: ${acc.email} (${acc.storage})\n🔗 Link: ${acc.url}\n\n📌 3 BƯỚC MỞ ĐÚNG TÀI KHOẢN:\n1. Mở link trên.\n2. Kiểm tra avatar góc trên bên phải trang Colab đúng email ${acc.email}.\n3. Vào Runtime -> Run all (Ctrl+F9) và Cho phép Drive.`;
-    navigator.clipboard.writeText(text).then(() => {
-        showToast(`Đã sao chép hướng dẫn & link cho ${acc.name}!`, 'success');
-    }).catch(() => {
-        showToast('Không thể sao chép vào clipboard', 'error');
-    });
-}
-
-async function sendColabGuideToTelegram(accId = 'all') {
-    try {
-        showToast('Đang gửi link và hướng dẫn về Telegram...', 'info');
-        const res = await apiPost('/api/colab/send-telegram-guide', { account_id: accId });
-        if (res && res.success) {
-            showToast('✅ Đã gửi link Colab và hướng dẫn mở tài khoản về Telegram!', 'success');
-        } else {
-            showToast('⚠️ Không thể gửi Telegram: ' + (res?.message || 'Lỗi không xác định'), 'error');
-        }
-    } catch (e) {
-        showToast('Lỗi gửi Telegram: ' + e.message, 'error');
-    }
-}
-
-function triggerCurrentColabSendTele() {
-    sendColabGuideToTelegram(currentColabAccountId);
-}
-
-/* ═══════════════════════════════════════════════════════
    TOKEN HEALTH MONITOR (Part 4)
 ══════════════════════════════════════════════════════════ */
 async function checkTokenHealth(force = false) {
@@ -1919,13 +1760,12 @@ async function openPublishModal(jobId) {
         }
     }
 
-    onPublishChannelChange();
-
     const confirmBtn = document.getElementById('btn-confirm-publish');
     if (confirmBtn) {
         confirmBtn.disabled = false;
-        confirmBtn.innerHTML = `🚀 Xác Nhận Đăng Lên YouTube`;
     }
+
+    onPublishChannelChange();
 
     document.getElementById('modal-publish-yt').classList.add('visible');
 }
@@ -1979,27 +1819,34 @@ function onPublishChannelChange() {
         if (actionBtn) actionBtn.innerHTML = '';
         if (confirmBtn) {
             confirmBtn.disabled = false;
-            confirmBtn.title = '';
+            confirmBtn.title = 'Bấm để xuất bản video lên kênh này';
+            confirmBtn.innerHTML = `🚀 Xác Nhận Đăng Lên YouTube`;
+            confirmBtn.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
         }
     } else {
+        const isExp = Boolean(ch.token_expired);
         if (infoBox) {
             infoBox.style.background = 'rgba(245, 158, 11, 0.15)';
             infoBox.style.borderColor = 'rgba(245, 158, 11, 0.35)';
         }
         if (infoText) {
-            infoText.innerHTML = `⚠️ <strong>${esc(ch.name)}</strong> chưa cấp quyền YouTube riêng! Không thể xuất bản để tránh đăng nhầm sang kênh cũ.`;
+            infoText.innerHTML = isExp
+                ? `🔴 <strong>${esc(ch.name)}</strong>: Token Google đã hết hạn/thu hồi. Bấm nút bên phải hoặc bấm 'Cấp Quyền' bên dưới để cấp lại trong 10s!`
+                : `⚠️ <strong>${esc(ch.name)}</strong>: Chưa cấp quyền YouTube riêng. Bấm nút bên phải để kết nối nhanh!`;
             infoText.style.color = 'var(--accent-amber)';
         }
         if (actionBtn) {
             actionBtn.innerHTML = `
-                <button class="btn btn-primary btn-sm" onclick="startChannelAuth(decodeURIComponent('${encodeURIComponent(ch.id)}'), decodeURIComponent('${encodeURIComponent(ch.name)}'))" style="font-size:11.5px; background:var(--accent-amber); border-color:var(--accent-amber); font-weight:600;">
-                    🔑 Cấp Quyền YouTube (Kênh Này)
+                <button type="button" class="btn btn-primary btn-sm" onclick="startChannelAuth(decodeURIComponent('${encodeURIComponent(ch.id)}'), decodeURIComponent('${encodeURIComponent(ch.name)}'))" style="font-size:11.5px; background:var(--accent-amber); border-color:var(--accent-amber); font-weight:600;">
+                    🔑 Cấp Quyền YouTube (1 Chạm)
                 </button>
             `;
         }
         if (confirmBtn) {
-            confirmBtn.disabled = true;
-            confirmBtn.title = 'Vui lòng cấp quyền YouTube cho kênh này trước khi xuất bản';
+            confirmBtn.disabled = false; // Luôn cho phép bấm, không bao giờ disable làm người dùng tưởng đơ web
+            confirmBtn.title = 'Kênh này cần cấp quyền YouTube trước khi đăng. Bấm để kết nối Google 1-chạm.';
+            confirmBtn.innerHTML = `🔑 Cấp Quyền YouTube & Đăng Video`;
+            confirmBtn.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
         }
     }
 
@@ -2108,7 +1955,8 @@ async function submitPublishYouTube() {
     const ch = (allChannels || []).find(c => c.id === channelId);
     const isAuth = ch ? Boolean(ch.is_authenticated || ch.youtube_connected) : false;
     if (!isAuth) {
-        showToast(`⚠️ Kênh '${ch?.name || channelId}' chưa được cấp quyền YouTube riêng. Hãy bấm 'Cấp Quyền YouTube (Kênh Này)' trước khi đăng!`, 'error');
+        showToast(`🔑 Kênh '${ch?.name || channelId}' chưa cấp quyền hoặc Token đã hết hạn. Đang mở trang kết nối Google OAuth...`, 'warning');
+        startChannelAuth(channelId, ch?.name || channelId);
         return;
     }
 
