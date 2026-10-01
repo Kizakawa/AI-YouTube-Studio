@@ -138,6 +138,18 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             else ("TEXT_TO_VIDEO" if chosen_strategy == "AI_VIDEO"
             else ("REAL_ARCHIVE" if chosen_strategy == "REAL_DOCUMENTARY" else "STOCK_FOOTAGE"))
         )
+
+        channel_visual_mode = state.get("visual_mode") or "auto"
+        scene_media_pref = getattr(scene, 'media_type', None)
+
+        # Tôn trọng tuyệt đối chế độ hình ảnh của kênh (imagen_ai) hoặc chỉ định cảnh (ai_image)
+        if channel_visual_mode in ("imagen_ai", "ai_image") and prod_method != "REAL_ARCHIVE":
+            prod_method = "IMAGE_TO_VIDEO"
+            chosen_strategy = "AI_IMAGE"
+        elif scene_media_pref == "ai_image":
+            prod_method = "IMAGE_TO_VIDEO"
+            chosen_strategy = "AI_IMAGE"
+
         tool = sc_strat.get("tool", "")
         rationale = v_analysis.get("narrative_subtext") or sc_strat.get("rationale", "")
         search_query = (v_analysis.get("search_queries") or [sc_strat.get("search_query") or sq or kw])[0]
@@ -451,7 +463,35 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             except Exception as fb_v_e:
                 logger.debug(f"Scene {scene.scene_id}: Fallback 2 AI video error: {fb_v_e}")
 
-        # Fallback 3: Thử tìm ảnh Pexels Photo HD chân thực 9:16
+        # Fallback 3: Với chủ đề Tâm lý học / Khắc kỷ / Bí ẩn hoặc kênh chế độ AI -> Ưu tiên sinh ảnh AI 8K nghệ thuật
+        is_psych_or_ai = (
+            channel_visual_mode in ("imagen_ai", "ai_image")
+            or scene_media_pref == "ai_image"
+            or state.get("channel_style") in ("psychology", "philosophy_stoicism", "horror_urban_legends", "deep_sea_earth_mysteries")
+        )
+
+        if not media_path and is_psych_or_ai:
+            try:
+                ai_img_path = str(media_dir / f"scene_{scene.scene_id:03d}_fb_ai.jpg")
+                clean_kw = clean_scene_search_query(kw, max_words=4)
+                prompt_fb = vp if (vp and len(vp.strip()) > 10) else (clean_kw or "cinematic scene")
+                res_img = await asyncio.to_thread(
+                    image_agent.generate_scene_image,
+                    prompt_fb,
+                    ai_img_path,
+                    "9:16",
+                    state.get("channel_style", "cinematic"),
+                    scene.scene_id,
+                    vp,
+                )
+                if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 2000:
+                    media_path = res_img
+                    media_type = "image"
+                    logger.info(f"Scene {scene.scene_id}: ✨ [Ảnh AI 8K Cứu hộ] Sinh thành công ảnh nghệ thuật ({state.get('channel_style')})")
+            except Exception as e_fb_ai:
+                logger.debug(f"Scene {scene.scene_id}: AI image fallback error: {e_fb_ai}")
+
+        # Fallback 4: Thử tìm ảnh Pexels Photo HD chân thực 9:16
         if not media_path:
             try:
                 clean_q = search_query or sq or kw
@@ -466,15 +506,15 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             used_pool_urls.add(img_url)
                             media_path = out_img
                             media_type = "image"
-                            logger.info(f"Scene {scene.scene_id}: 📸 Fallback 3 thành công với Pexels Photo: {clean_kw}")
+                            logger.info(f"Scene {scene.scene_id}: 📸 Fallback thành công với Pexels Photo: {clean_kw}")
                             break
             except Exception as fb3_e:
-                logger.debug(f"Scene {scene.scene_id}: Fallback 3 photo error: {fb3_e}")
+                logger.debug(f"Scene {scene.scene_id}: Fallback photo error: {fb3_e}")
 
-        # Fallback 4: Sinh ảnh AI cứu hộ
+        # Fallback 5: Sinh ảnh AI cứu hộ tổng quát nếu vẫn chưa có
         if not media_path:
             try:
-                ai_img_path = str(media_dir / f"scene_{scene.scene_id:03d}_fb_ai.jpg")
+                ai_img_path = str(media_dir / f"scene_{scene.scene_id:03d}_fb_ai_gen.jpg")
                 clean_kw = clean_scene_search_query(kw, max_words=4)
                 prompt_fb = vp if (vp and len(vp.strip()) > 10) else (clean_kw or "cinematic scene")
                 res_img = await asyncio.to_thread(

@@ -128,29 +128,6 @@ class AIVideoAgent:
         if not target_img_path or not Path(target_img_path).exists():
             clean_prompt = visual_prompt or prompt
 
-            # Nếu cảnh có các yếu tố chuyển động thực tế / viễn tưởng / không gian và không phải chân dung nhân vật cụ thể:
-            # Ưu tiên lấy Video Clip 9:16 chuyển động thực tế để video sống động (dynamic video)
-            motion_cues = [
-                "spaceship", "flying", "cyberpunk", "galaxy", "stars", "universe", "wormhole", "robot", "laser", "space flight",
-                "phi thuyền", "vũ trụ", "ngân hà", "hành tinh", "lỗ đen", "ocean", "water", "sea", "wave", "deep sea", "storm",
-                "abyss", "underwater", "cockpit", "airplane", "flight", "traffic", "city", "crowd", "running", "moving", "smoke",
-                "fire", "explosion", "speed", "dark water", "bioluminescent", "clouds", "sky", "dive", "diving", "swimming", "boat"
-            ]
-            p_check = clean_prompt.lower()
-            is_specific_character = any(f in p_check for f in ["portrait", "face", "philosopher", "chân dung", "khuôn mặt", "character closeup"])
-            if any(c in p_check for c in motion_cues) and not is_specific_character:
-                px_vid = self._try_pexels_video_clip(
-                    clean_prompt,
-                    output_path,
-                    duration_seconds,
-                    used_urls=used_urls,
-                    visual_analysis=visual_analysis,
-                    narration=narration,
-                )
-                if px_vid and Path(px_vid).exists() and Path(px_vid).stat().st_size > 10000:
-                    logger.info(f"🎥 [AIVideoAgent] ✅ Nâng cấp thành Video Clip 9:16 chuyển động thực tế: {output_path}")
-                    return output_path
-
             temp_ai_image = str(out_p.parent / f"_theme_frame_{scene_id:03d}.jpg")
             if "8k" not in clean_prompt.lower() and "cinematic" not in clean_prompt.lower():
                 clean_prompt = f"Cinematic photorealistic 8k, {clean_prompt}, sharp details, volumetric lighting, vertical 9:16 composition"
@@ -167,6 +144,18 @@ class AIVideoAgent:
                 target_img_path = generated_img
                 created_temp = True
             else:
+                logger.info(f"Scene {scene_id}: Sinh ảnh AI không thành công, thử cứu hộ bằng Pexels Video B-Roll...")
+                px_vid = self._try_pexels_video_clip(
+                    clean_prompt,
+                    output_path,
+                    duration_seconds,
+                    used_urls=used_urls,
+                    visual_analysis=visual_analysis,
+                    narration=narration,
+                )
+                if px_vid and Path(px_vid).exists() and Path(px_vid).stat().st_size > 10000:
+                    logger.info(f"🎥 [AIVideoAgent] Cứu hộ thành công bằng Video Clip 9:16: {output_path}")
+                    return output_path
                 logger.warning(f"Scene {scene_id}: Không thể sinh ảnh chủ đề cho Image-to-Video.")
                 return None
 

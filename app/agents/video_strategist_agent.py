@@ -129,37 +129,33 @@ class VideoStrategistAgent:
         system_prompt = f"""
 Bạn là Tổng Đạo Diễn Kỹ Thuật & Kiến Trúc Sư Thị Giác (Master Video Production Strategist & Director of Photography) cho YouTube Shorts hàng đầu thế giới (chuẩn Vox, Magnates Media, Kurzgesagt, Melodysheep).
 
-TRIẾT LÝ NGHỆ THUẬT: ĐẬP TAN TƯ DUY "GHÉP ẢNH TĨNH" (ANTI-SLIDESHOW MANIFESTO):
-Người xem YouTube Shorts lướt qua cực nhanh (Swipe-away < 2s). Một video thuần ghép ảnh tĩnh chuyển cảnh (Slideshow) sẽ khiến kênh bị bóp tương tác vì retention thấp!
+TRIẾT LÝ NGHỆ THUẬT: ĐAN XEN ĐỈNH CAO GIỮA VIDEO ĐỘNG VÀ NGHỆ THUẬT AI (CINEMATIC WEAVING):
+Người xem YouTube Shorts lướt qua cực nhanh (Swipe-away < 2s). Một video thuần ghép ảnh tĩnh nhạt nhẽo sẽ mất tương tác, nhưng một video lạm dụng stock footage đại trà, lặp đi lặp lại cũng sẽ khiến người xem nhàm chán!
 Đạo diễn xuất sắc là người biết:
-1. Đan xen linh hoạt giữa VIDEO CHUYỂN ĐỘNG THỰC (B-Roll 60fps), VIDEO AI KỲ ẢO (Text-to-Video), VIDEO TỪ ẢNH CHỦ ĐỀ (Image-to-Video 3D Parallax), và TƯ LIỆU LỊCH SỬ THẬT.
-2. Lúc nào dùng công cụ gì, ý tưởng gì để đạt cảm xúc cao nhất (High-Emotion Visual Pacing).
+1. Đan xen chuẩn xác giữa VIDEO CHUYỂN ĐỘNG THỰC (B-Roll 60fps), VIDEO TỪ ẢNH CHỦ ĐỀ AI (Image-to-Video 3D Parallax 8K), VIDEO AI TRỰC TIẾP (Text-to-Video), và TƯ LIỆU LỊCH SỬ THẬT.
+2. Với các chủ đề TÂM LÝ HỌC (Psychology), KHẮC KỶ (Stoicism), THAO TÚNG (Dark Psychology), BÍ ẨN (Mysteries), TRIẾT HỌC: Kho stock video thường rất hạn chế, dễ trùng lặp và không thể hiện được chiều sâu ẩn dụ -> BẮT BUỘC ƯU TIÊN 'IMAGE_TO_VIDEO' (Sinh ảnh 8K Flux/Imagen với ánh sáng Chiaroscuro siêu thực, sau đó chuyển động 3D Camera / Parallax) chiếm 50% - 75% số cảnh!
 
 BẢN ĐỒ LỰA CHỌN CÔNG CỤ & Ý TƯỞNG (QUY TẮC BẮT BUỘC):
 
-1. 'STOCK_FOOTAGE' (Công cụ: 'pexels_video_api' - Video clip B-Roll 9:16 chuyển động thực 30-60fps):
-   - Khi nào dùng: Cảnh có HÀNH ĐỘNG THỰC TẾ, CỬ CHỈ CON NGƯỜI (bước đi trong mưa/bóng tối, ánh mắt liếc nhìn, bàn tay run rẩy, gõ phím, lật trang sách, đếm tiền, uống cà phê), KHÔNG KHÍ ĐỜI THƯỜNG / ĐÔ THỊ (dòng người hối hả, xe cộ đêm neon, thành phố u ám, phòng họp căng thẳng), THIÊN NHIÊN DỮ DỘI (sóng biển cuộn, sấm chớp, bão cát, lửa cháy, khói sương bốc lên), BIỂU TƯỢNG VẬT LÝ (đồng hồ cát rơi, đồng hồ kim tích tắc, con lắc, bàn cờ vua đổ, ổ khóa mở).
-   - ĐẶC BIỆT: CẢNH 1 (HOOK 3S ĐẦU) BẮT BUỘC ƯU TIÊN STOCK_FOOTAGE ĐỘNG để giật sự chú ý khán giả ngay tích tắc đầu tiên!
+1. 'IMAGE_TO_VIDEO' (Công cụ: 'imagen3_i2v' - Tạo ảnh 8K chuẩn trước, sau đó chuyển động 3D Camera / Parallax):
+   - Khi nào dùng:
+     * ĐẶC BIỆT ƯU TIÊN cho các chủ đề Tâm lý học, Khắc kỷ, Thao túng, Triết học, Bí ẩn, Khoa học viễn tưởng.
+     * Cảnh cần ĐẶC TẢ CHI TIẾT CHÂN THỰC, ÁNH MẮT, KHUÔN MẶT, BIỂU CẢM, TƯỢNG ĐÁ KHẮC KỶ, KHÔNG GIAN TÂM TRÍ, ẨN DỤ TÂM LÝ mà stock footage không có hoặc rất giả tạo.
+     * Cảnh Cú sốc thị giác Hook (Scene 1) mang tính tâm lý / chân dung sắc lạnh với cú zoom-in 3D nghẹt thở.
 
-2. 'TEXT_TO_VIDEO' (Công cụ: 'wan_t2v' / 'ai_video_generative' - Sinh Video AI chuyển động trực tiếp):
-   - Khi nào dùng: Cảnh mang tính HUYỀN BÍ, VŨ TRỤ TRỪU TƯỢNG, NĂNG LƯỢNG SIÊU THỰC (lỗ đen bẻ cong không thời gian, cổng không gian ánh sáng, luồng năng lượng tâm linh, khói ma mị biến hình, vũ trụ 4D, nơ-ron thần kinh phát sáng, hố sâu tâm lý vô tận) — những thứ KHÔNG CÓ THẬT ngoài đời thực và không thể tìm thấy trong video stock.
+2. 'STOCK_FOOTAGE' (Công cụ: 'pexels_video_api' - Video clip B-Roll 9:16 chuyển động thực 30-60fps):
+   - Khi nào dùng: Cảnh có HÀNH ĐỘNG VẬT LÝ THỰC TẾ (bước đi trong mưa, gõ phím, lật trang sách, đếm tiền, uống cà phê), KHÔNG KHÍ ĐÔ THỊ (dòng người hối hả, xe cộ đêm neon), ĐỘNG VẬT HOANG DÃ (săn mồi, chim bay), THIÊN NHIÊN DỮ DỘI (sóng biển cuộn, sấm chớp, bão cát, lửa cháy, khói sương bốc lên), BIỂU TƯỢNG VẬT LÝ (đồng hồ cát rơi, đồng hồ kim tích tắc, con lắc, bàn cờ vua đổ).
 
-3. 'IMAGE_TO_VIDEO' (Công cụ: 'imagen3_i2v' - Tạo ảnh 8K chuẩn trước, sau đó chuyển động 3D Camera / Parallax):
-   - Khi nào dùng: Cảnh cần ĐẶC TẢ CHI TIẾT TĨNH CHÂN THỰC TUYỆT ĐỐI (chân dung 1 triết gia giả tưởng, sinh vật huyền thoại có khuôn mặt cố định, cổ vật huyền bí, bản đồ cổ, kiến trúc hùng vĩ) mà nếu sinh video AI trực tiếp sẽ bị méo mặt, biến dạng bàn tay.
-   - Nhịp điệu: Đóng vai trò "khoảng lặng nghệ thuật" (Visual Breathing Space) đan xen giữa các cảnh video tốc độ cao.
+3. 'TEXT_TO_VIDEO' (Công cụ: 'wan_t2v' / 'ai_video_generative' - Sinh Video AI chuyển động trực tiếp):
+   - Khi nào dùng: Cảnh mang tính HUYỀN BÍ, VŨ TRỤ TRỪU TƯỢNG, NĂNG LƯỢNG SIÊU THỰC (lỗ đen bẻ cong không thời gian, cổng không gian ánh sáng, luồng năng lượng tâm linh, khói ma mị biến hình, vũ trụ 4D, nơ-ron thần kinh phát sáng, hố sâu tâm lý vô tận).
 
 4. 'REAL_ARCHIVE' (Công cụ: 'wikimedia_archive' / 'wikipedia' - Ảnh tư liệu lịch sử có thật 100%):
-   - Khi nào dùng: Nhắc trực tiếp đến NHÂN VẬT LỊCH SỬ CÓ THẬT (Einstein, Tesla, Napoleon, Julius Caesar...), SỰ KIỆN LỊCH SỬ (Thế chiến, Apollo 11, sụp đổ La Mã...), DI TÍCH LỊCH SỬ CỔ ĐẠI (Kim Tự Tháp Giza, Đấu trường Colosseum). Cần bằng chứng lịch sử xác thực, TUYỆT ĐỐI CẤM dùng AI giả mạo làm sai lệch lịch sử.
+   - Khi nào dùng: Nhắc trực tiếp đến NHÂN VẬT LỊCH SỬ CÓ THẬT (Einstein, Tesla, Napoleon, Julius Caesar...), SỰ KIỆN LỊCH SỬ (Thế chiến, Apollo 11, sụp đổ La Mã...), DI TÍCH LỊCH SỬ CỔ ĐẠI (Kim Tự Tháp Giza, Đấu trường Colosseum).
 
 QUY TẮC ĐAN XEN NHỊP ĐIỆU (RHYTHMIC WEAVING):
-- ÍT NHẤT 60% - 75% CÁC CẢNH TRONG VIDEO PHẢI LÀ FULL VIDEO CHUYỂN ĐỘNG (STOCK_FOOTAGE hoặc TEXT_TO_VIDEO).
-- KHÔNG BAO GIỜ để 2 cảnh ảnh tĩnh nối tiếp nhau (tránh hội chứng Slideshow Fatigue).
-- Mẫu nhịp điệu lý tưởng:
-  * Cảnh 1 (Hook): STOCK_FOOTAGE / DYNAMIC VIDEO (Cú sốc thị giác)
-  * Cảnh 2 (Thiết lập): REAL_ARCHIVE hoặc IMAGE_TO_VIDEO (Điểm nhấn nhân vật/chủ thể)
-  * Cảnh 3 (Diễn biến): STOCK_FOOTAGE (Hành động/chuyển động đẩy nhanh nhịp)
-  * Cảnh 4 (Cao trào): TEXT_TO_VIDEO hoặc STOCK_FOOTAGE (Biến đổi siêu thực / kịch tính)
-  * Cảnh 5-6 (Hệ quả/Kêu gọi): STOCK_FOOTAGE / DYNAMIC VIDEO (Khép lại nhịp đập)
+- Với chủ đề Động vật hoang dã / Đời sống thực tế: 70% - 90% là STOCK_FOOTAGE.
+- Với chủ đề Tâm lý học, Khắc kỷ, Tư duy, Bí ẩn: 50% - 75% là IMAGE_TO_VIDEO (8K AI + 3D motion), đan xen nhịp nhàng với STOCK_FOOTAGE ở các cảnh hành động thực tế.
+- Đảm bảo mọi cảnh dù dùng ảnh AI cũng được chuyển hóa thành video động (3D Zoom / Pan / Parallax), không có ảnh tĩnh đứng yên!
 
 THÔNG TIN ĐẦU VÀO:
 - Chủ đề: {topic}
@@ -242,15 +238,25 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
             "lịch sử", "thế chiến", "hoàng đế", "vua", "cổ đại", "triều đại", "di tích"
         ])
 
-        topic_class = "HISTORICAL_DOCUMENTARY" if is_historical else ("MYSTERY_ABSTRACT" if is_mystery_or_fantasy else "REAL_LIFE_MOTION")
+        is_psychology_or_philosophy = any(w in topic_lower or channel_niche.lower() for w in [
+            "psychology", "stoic", "stoicism", "mindset", "tâm lý", "khắc kỷ", "triết lý", "thao túng",
+            "manipulation", "dark psychology", "tư duy", "triết học", "nghĩ", "bản ngã", "ego", "focus",
+            "human behavior", "psychological", "habits", "mental", "thói quen"
+        ])
+
+        topic_class = "HISTORICAL_DOCUMENTARY" if is_historical else (
+            "MYSTERY_ABSTRACT" if is_mystery_or_fantasy else (
+                "CINEMATIC_STORY" if is_psychology_or_philosophy else "REAL_LIFE_MOTION"
+            )
+        )
 
         motion_cues = {
-            "walk", "run", "running", "moving", "movement", "crowd", "people", "city", "street",
-            "traffic", "night", "dark", "shadow", "silhouette", "rain", "storm", "fire", "water", "sea",
+            "walk", "run", "running", "moving", "movement", "crowd", "people", "street",
+            "traffic", "rain", "storm", "fire", "water", "sea",
             "ocean", "wave", "waves", "underwater", "deep sea", "fish", "whale", "submarine", "radar",
             "dive", "diving", "swimming", "boat", "ship", "depth", "abyss", "clock", "time", "hourglass",
-            "hands", "typing", "money", "cash", "brain", "mind", "looking", "staring", "whisper",
-            "talking", "smoke", "candle", "door", "window", "alone", "sky", "clouds", "flight", "car", "nature",
+            "typing", "money", "cash",
+            "door", "window", "sky", "clouds", "flight", "car", "nature",
             # Sci-Fi / Không gian / Viễn tưởng B-Roll
             "spaceship", "space", "galaxy", "stars", "planet", "alien planet", "wormhole", "black hole",
             "cyberpunk", "neon", "futuristic", "robot", "android", "laser", "portal", "orbit", "cosmos",
@@ -262,6 +268,14 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
             "energy", "glowing", "glow", "cosmic", "universe", "alien", "portal", "dimensional",
             "supernatural", "secret", "magic", "spirit", "floating", "beam", "ray", "power",
             "mystic", "huyền bí", "phép thuật", "năng lượng", "lỗ đen", "vũ trụ", "vô tận"
+        }
+
+        psychology_ai_cues = {
+            "portrait", "face", "philosopher", "chân dung", "khuôn mặt", "statue", "monk", "warrior",
+            "creature", "monster", "leviathan", "eye", "eyes", "stare", "gaze", "whisper", "shadow",
+            "silhouette", "alone", "mind", "brain", "thought", "mask", "manipulation", "reflection",
+            "mirror", "stoic", "dark", "ego", "fear", "tension", "interrogation", "unblinking",
+            "gaslighting", "soul", "subconscious", "thao túng", "tâm trí", "ảo giác"
         }
 
         motions_list = ["zoom_in", "zoom_out", "pan_left", "pan_right", "pan_up", "pan_down"]
@@ -278,8 +292,12 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
 
             user_pref = sc.get("media_type")
 
-            # ── 1. Xét chỉ định thủ công từ người dùng (nếu có) ──
-            if user_pref == "ai_video":
+            # ── 1. Xét chỉ định thủ công từ người dùng hoặc kịch bản (nếu có) ──
+            if user_pref == "ai_image":
+                method = "IMAGE_TO_VIDEO"
+                tool = "imagen3_i2v"
+                rationale = "Chỉ định kịch bản / Người dùng: Tạo ảnh nghệ thuật 8K siêu nét rồi chuyển hóa thành video 3D."
+            elif user_pref == "ai_video":
                 method = "TEXT_TO_VIDEO"
                 tool = "wan_t2v"
                 rationale = "Chỉ định thủ công: Sinh Video AI trực tiếp cho cảnh này."
@@ -296,18 +314,8 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
                     method = "STOCK_FOOTAGE"
                     tool = "pexels_photo_api"
                     rationale = "Chỉ định thủ công: Tìm ảnh chụp chất lượng cao (Pexels Photo)."
-            elif user_pref == "ai_image":
-                method = "IMAGE_TO_VIDEO"
-                tool = "imagen3_i2v"
-                rationale = "Chỉ định thủ công: Tạo ảnh chủ đề 8K rồi chuyển hóa thành video động."
 
             # ── 2. Đạo Diễn Tự Quyết Định Tối Ưu (Auto Strategist & Dynamic Weaving) ──
-            # Cảnh 1 (Hook 3s đầu): BẮT BUỘC dùng Video chuyển động mạnh để giữ chân khán giả
-            elif idx == 0:
-                method = "STOCK_FOOTAGE"
-                tool = "pexels_video_api"
-                rationale = "Cảnh 1 (Primal Hook): Bắt buộc dùng Video B-Roll chuyển động 9:16 để giật sự chú ý, chống lướt qua."
-
             # Quy tắc 1: Thực thể lịch sử thật (từ Cảnh 2 trở đi hoặc khi nhắc đích danh) -> REAL_ARCHIVE
             elif primary_entity and entity_type in ("person", "civilization", "monument", "event", "historical_figure") and (idx == 1 or primary_entity.lower() in text_all):
                 method = "REAL_ARCHIVE"
@@ -320,23 +328,40 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
                 tool = "wan_t2v"
                 rationale = "Ý tưởng huyền bí / năng lượng trừu tượng không có hình thể cố định -> sinh Video AI trực tiếp để tạo sự choáng ngợp."
 
-            # Quy tắc 3: Cảnh có nhân vật, chân dung cụ thể hoặc sinh vật đặc thù cần độ nét tuyệt đối -> IMAGE_TO_VIDEO
+            # Quy tắc 3: Chủ đề Tâm lý học / Khắc kỷ / Bí ẩn / Triết học -> BẮT BUỘC ƯU TIÊN IMAGE_TO_VIDEO (8K AI + 3D Camera)
+            elif is_psychology_or_philosophy and (idx == 0 or any(pc in text_all for pc in psychology_ai_cues)):
+                method = "IMAGE_TO_VIDEO"
+                tool = "imagen3_i2v"
+                rationale = "Chủ đề Tâm lý / Khắc kỷ: Tạo ảnh nghệ thuật 8K Chiaroscuro siêu nét theo chuẩn phong cách kênh, chuyển hóa thành video 3D Parallax mượt mà."
+
+            # Cảnh 1 Hook cho các chủ đề khác: Video B-Roll chuyển động mạnh để giữ chân khán giả
+            elif idx == 0:
+                method = "STOCK_FOOTAGE"
+                tool = "pexels_video_api"
+                rationale = "Cảnh 1 (Primal Hook): Bắt buộc dùng Video B-Roll chuyển động 9:16 để giật sự chú ý, chống lướt qua."
+
+            # Quy tắc 4: Cảnh có nhân vật, chân dung cụ thể hoặc sinh vật đặc thù cần độ nét tuyệt đối -> IMAGE_TO_VIDEO
             elif any(c in text_all for c in ["portrait", "face", "philosopher", "chân dung", "khuôn mặt", "statue", "monk", "warrior", "creature", "monster", "leviathan"]):
                 method = "IMAGE_TO_VIDEO"
                 tool = "imagen3_i2v"
                 rationale = "Cảnh cần đặc tả nhân vật/sinh vật cụ thể -> tạo ảnh chủ đề 8K chuẩn bố cục rồi chuyển hóa thành video 3D."
 
-            # Quy tắc 4: Chuyển động đời thực, bối cảnh viễn tưởng, không gian, b-roll động -> STOCK_FOOTAGE
-            elif any(mc in text_all for mc in motion_cues) or topic_class in ("REAL_LIFE_MOTION", "MYSTERY_ABSTRACT"):
+            # Quy tắc 5: Chuyển động đời thực, bối cảnh viễn tưởng, không gian, b-roll động -> STOCK_FOOTAGE
+            elif any(mc in text_all for mc in motion_cues):
                 method = "STOCK_FOOTAGE"
                 tool = "pexels_video_api"
-                rationale = "Cảnh miêu tả chuyển động hoặc bối cảnh đời thực/viễn tưởng -> dùng Video B-Roll Pexels 9:16 giữ chân người xem bằng video động."
+                rationale = "Cảnh miêu tả chuyển động hoặc bối cảnh đời thực -> dùng Video B-Roll Pexels 9:16 giữ chân người xem bằng video động."
 
-            # Quy tắc mặc định: Đan xen nhịp nhàng giữa Video Động và Ảnh Chân dung (chống Slideshow Fatigue)
+            # Quy tắc mặc định: Đan xen nhịp nhàng giữa Video Động và Ảnh AI Chuyển động 3D
             else:
                 prev_method = scene_proposals[-1]["production_method"] if scene_proposals else ""
-                if prev_method in ("IMAGE_TO_VIDEO", "REAL_ARCHIVE"):
-                    # Nếu cảnh trước đã là ảnh tĩnh/I2V -> Cảnh này BẮT BUỘC phải là Video động
+                if is_psychology_or_philosophy:
+                    # Tâm lý học: 70% IMAGE_TO_VIDEO, 30% STOCK_FOOTAGE
+                    method = "STOCK_FOOTAGE" if (prev_method == "IMAGE_TO_VIDEO" and idx % 3 == 0) else "IMAGE_TO_VIDEO"
+                    tool = "pexels_video_api" if method == "STOCK_FOOTAGE" else "imagen3_i2v"
+                    rationale = "Đan xen nhịp nhàng: Giữ tính nghệ thuật 8K AI độc bản kết hợp B-roll thực tế."
+                elif prev_method in ("IMAGE_TO_VIDEO", "REAL_ARCHIVE"):
+                    # Nếu cảnh trước đã là ảnh tĩnh/I2V -> Cảnh này chuyển sang Video động
                     method = "STOCK_FOOTAGE"
                     tool = "pexels_video_api"
                     rationale = "Đan xen nhịp điệu: Sau cảnh tĩnh, chuyển sang Video B-roll động 9:16 để video thở và giữ nhịp."

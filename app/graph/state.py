@@ -133,6 +133,7 @@ class VideoWorkflowState(TypedDict, total=False):
     channel_style: str
     language: Optional[str]
     preferred_voice: Optional[str]
+    visual_mode: Optional[str]
     director_notes: Optional[str]
     work_dir: str
     

@@ -201,6 +201,10 @@ class ContentAgent:
         is_space = any(w in all_narr_context for w in [
             "vũ trụ", "space", "hố đen", "black hole", "sao hỏa", "mars", "galaxy", "thiên hà", "nasa", "alien"
         ])
+        is_psychology_or_mindset = any(w in all_narr_context for w in [
+            "psychology", "manipulation", "mindset", "stoic", "stoicism", "tâm lý", "thao túng", "khắc kỷ",
+            "triết học", "tư duy", "gaslighting", "dunning", "behavior", "liar", "dark psychology", "ego", "bản ngã", "ngôn ngữ cơ thể"
+        ])
 
         banned_abstract = ["psychology", "minimalism", "authority", "power", "wealth", "mindset", "discipline", "history", "secret", "truth"]
 
@@ -211,6 +215,12 @@ class ContentAgent:
             vp = sc.get("visual_prompt", "").strip()
             vk = sc.get("visual_keyword", "").strip()
             combined_scene_visual = f"{sq} {vp} {vk}".lower()
+
+            # Nếu là chủ đề Tâm lý học / Khắc kỷ / Thao túng: gán media_type = 'ai_image' cho các cảnh chân dung, biểu cảm, ẩn dụ tâm lý
+            if is_psychology_or_mindset:
+                has_physical_action = any(k in combined_scene_visual for k in ["walk", "run", "street", "car", "typing", "money", "rain", "clock", "bước đi", "chạy"])
+                if not has_physical_action and sc.get("media_type") not in ("video", "documentary"):
+                    sc["media_type"] = "ai_image"
 
             # Nếu là chủ đề Động vật hoang dã / Chim muông: CẤM TUYỆT ĐỐI các khái niệm con người, phòng lab, ADN, văn phòng
             if is_wildlife:
@@ -475,8 +485,9 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
 
 9. DYNAMIC AUTONOMOUS MEDIA SELECTION (`media_type` PER SCENE):
    For EACH scene, act as the Master Director of Photography and autonomously decide what visual medium is objectively best suited for this exact moment:
-   - 'video': Real-world human motion, urban life, gestures, physics, nature, or cinematic movement (searches real Pexels 9:16 Video B-Roll).
-   - 'ai_image': Surreal, cosmic, mythological, sci-fi, or deep conceptual metaphors that do not exist as stock footage (generates 8K Flux.1 / Imagen).
+   - 'ai_image': MANDATORY FOR PSYCHOLOGY, PHILOSOPHY, STOICISM, MINDSET, DARK PSYCHOLOGY, DEEP MYSTERIES, AND METAPHORS!
+     Stock video is repetitive, generic, and cannot portray deep psychological nuance. You MUST choose 'ai_image' for at least 50% - 75% of scenes (especially intense chiaroscuro portraits, piercing unblinking gaze, psychological metaphors, Stoic stone statues, shadowy mind landscapes). These are rendered with 8K Flux.1 / Imagen and dynamic 3D camera parallax motion!
+   - 'video': Real-world physical action, urban life, footsteps, hands, clock ticking, nature, or wildlife (searches real Pexels 9:16 Video B-Roll).
    - 'photo': Authentic high-resolution real-world still photography or modern realistic architecture.
    - 'documentary': Authentic historical figures (e.g. Einstein, Napoleon), real artifacts, or historical events (searches Wikimedia / historical archive).
    DO NOT default all scenes to one single type! Intelligently vary and balance media types across scenes for maximum viewer engagement.

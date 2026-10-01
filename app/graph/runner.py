@@ -89,11 +89,13 @@ class GraphRunner:
         channels = settings.get_channels_config()
         channel_lang = "en"
         preferred_voice = None
+        channel_visual_mode = "auto"
         for ch in channels:
             if ch.get("id") == channel_id:
                 channel_style = ch.get("niche") or ch.get("style") or "general"
                 channel_lang = ch.get("language") or "en"
                 preferred_voice = ch.get("preferred_voice")
+                channel_visual_mode = ch.get("visual_mode") or "auto"
                 break
 
         # 2. Khởi tạo trạng thái ban đầu cho LangGraph
@@ -104,6 +106,7 @@ class GraphRunner:
             "channel_style": channel_style,
             "language": channel_lang,
             "preferred_voice": preferred_voice,
+            "visual_mode": channel_visual_mode,
             "work_dir": str(self.work_dir),
             "script_data": existing_script,
             "script_retry_count": 0,
