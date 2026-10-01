@@ -77,6 +77,7 @@ def print_network_banner():
     print("🌐 AI YOUTUBE STUDIO - WEB DASHBOARD ĐANG HOẠT ĐỘNG")
     print("═" * 70)
     print(f"💻 Web Dashboard: {web_url}")
+    print("💡 Chia sẻ ra Internet (Cloudflare): chạy 'python tunnel.py' hoặc click 'tunnel.bat'")
     print("═" * 70 + "\n")
 
 def run_fastapi_server():
@@ -85,6 +86,13 @@ def run_fastapi_server():
         import uvicorn
         port = int(os.getenv("PORT", 8000))
         print_network_banner()
+        if "--tunnel" in sys.argv:
+            try:
+                import threading
+                from tunnel import start_tunnel
+                threading.Thread(target=start_tunnel, daemon=True).start()
+            except Exception as e_tun:
+                print(f"⚠️ [Tunnel] Không thể khởi động Cloudflare Tunnel: {e_tun}")
         uvicorn.run("app.web.server:app", host="0.0.0.0", port=port, log_level="warning", timeout_keep_alive=30)
     except ImportError:
         print("⚠️ [Web Dashboard] Chưa cài đặt uvicorn. Hãy chạy 'pip install uvicorn fastapi' để bật Dashboard.")

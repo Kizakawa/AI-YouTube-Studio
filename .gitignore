@@ -79,3 +79,8 @@ logs/
 # Scratch scripts
 scratch/
 
+# Binaries & Cloudflare Tunnel
+bin/
+*.exe
+*.msi
+
