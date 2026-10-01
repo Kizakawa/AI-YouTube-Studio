@@ -1565,10 +1565,12 @@ Ví dụ Căn Theo Mốc:
 </div>
 
 <!-- MODAL: OAUTH IN PROGRESS -->
-<div class="modal-overlay" id="modal-oauth" onclick="event.stopPropagation()">
-    <div class="modal-card" style="max-width:520px; text-align:center;">
-        <div class="modal-header" style="justify-content:center;">
-            <h3 id="modal-oauth-title">Đang Xác Thực Google OAuth</h3>
+<div class="modal-overlay" id="modal-oauth" onclick="closeOAuthModal()">
+    <div class="modal-card" onclick="event.stopPropagation()" style="max-width:520px; text-align:center;">
+        <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="width:24px;"></div>
+            <h3 id="modal-oauth-title" style="margin:0; flex:1; text-align:center;">Đang Xác Thực Google OAuth</h3>
+            <button class="modal-close" onclick="closeOAuthModal()" style="background:none; border:none; color:var(--text-secondary); font-size:20px; cursor:pointer; line-height:1; padding:4px 8px;">✕</button>
         </div>
         <div class="modal-body" style="padding:24px 16px;">
             <div class="oauth-spinner" id="oauth-spinner" style="margin:0 auto 16px auto;">
