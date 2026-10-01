@@ -1023,10 +1023,22 @@ class VideoPipeline:
 
             try:
                 photos = await asyncio.to_thread(
-                    self._media_agent.search_photos, safe_q, 3, "portrait", topic, scene.narration, used_asset_paths
+                    self._media_agent.search_photos, safe_q, 4, "portrait", topic, scene.narration, used_asset_paths
                 )
                 if photos:
-                    for photo in photos:
+                    from app.agents.visual_curation_agent import VisualCurationAgent
+                    curator = VisualCurationAgent()
+                    winner_photo, p_score, p_rationale, should_ai_photo = await asyncio.to_thread(
+                        curator.curate_candidate_photos,
+                        photos,
+                        None,
+                        scene.narration,
+                        topic,
+                        scene.visual_keyword or safe_q,
+                        used_asset_paths,
+                    )
+                    eval_photos = [winner_photo] if winner_photo and not should_ai_photo else []
+                    for photo in eval_photos:
                         img_url = photo.get("url") or photo.get("src", {}).get("large2x") or photo.get("src", {}).get("portrait")
                         if img_url:
                             if used_asset_paths and is_media_already_used(img_url, used_asset_paths):
@@ -1063,7 +1075,7 @@ class VideoPipeline:
                                             return anim_path
                                     except Exception as ex_anim:
                                         logger.debug(f"Scene {scene.scene_id} animation error: {ex_anim}")
-                                logger.info(f"Scene {scene.scene_id}: ✅ Pexels Photo (query='{safe_q}')")
+                                logger.info(f"Scene {scene.scene_id}: ✅ Pexels Photo đã qua Agent thẩm định (Score: {p_score}/10 | query='{safe_q}')")
                                 return img_output
             except Exception as e:
                 logger.warning(f"Scene {scene.scene_id}: Lỗi tìm Pexels Photo: {e}")
@@ -1074,7 +1086,19 @@ class VideoPipeline:
                 self._media_agent.search_web_photos, scene.visual_keyword, 4
             )
             if web_photos:
-                for web_photo in web_photos:
+                from app.agents.visual_curation_agent import VisualCurationAgent
+                curator = VisualCurationAgent()
+                winner_web, w_score, w_rationale, should_ai_web = await asyncio.to_thread(
+                    curator.curate_candidate_photos,
+                    web_photos,
+                    None,
+                    scene.narration,
+                    topic,
+                    scene.visual_keyword,
+                    used_asset_paths,
+                )
+                eval_web = [winner_web] if winner_web and not should_ai_web else []
+                for web_photo in eval_web:
                     web_url = web_photo.get("url")
                     if web_url and not is_media_already_used(web_url, used_asset_paths or set()):
                         from app.services.media.entity_detector import is_incongruent_stock_image
@@ -1093,7 +1117,7 @@ class VideoPipeline:
                             if used_pool_urls is not None:
                                 used_pool_urls.update(ids)
                             record_used_media(web_url, query=scene.visual_keyword or topic, source="wikimedia_web", media_path=web_output)
-                            logger.info(f"Scene {scene.scene_id}: Tải thành công ảnh Web ({web_photo.get('title', '')[:30]})")
+                            logger.info(f"Scene {scene.scene_id}: ✅ Tải thành công ảnh Web qua Agent thẩm định ({web_photo.get('title', '')[:30]})")
                             return web_output
         except Exception as e:
             logger.warning(f"Scene {scene.scene_id}: Lỗi tìm ảnh Web: {e}")

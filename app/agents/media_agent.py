@@ -436,30 +436,56 @@ If no real entities found, return empty array: []"""
                 used.update(extract_media_identity(best_clip["url"]))
                 return best_clip
 
+        # Thu thập ứng viên ảnh tĩnh từ Pexels & Wikimedia Commons
+        candidate_photos = []
         if self.api_key:
             px_photos = self.search_photos(
                 primary_q or fallback_q,
-                per_page=3,
+                per_page=4,
                 orientation="portrait",
                 topic=topic,
                 narration=scene_narration,
                 used_urls=used,
             )
-            for p in px_photos:
-                u = p.get("url")
-                if u and not is_media_already_used(u, used):
-                    alt_desc = p.get("alt") or p.get("title", "")
-                    if not is_incongruent_stock_image(alt_desc, topic=topic, narration=scene_narration):
-                        used.update(extract_media_identity(u))
-                        return p
+            candidate_photos.extend(px_photos)
 
-        commons_fallback = self.search_web_photos(primary_q or fallback_q, per_page=3)
-        for c in commons_fallback:
-            u = c.get("url")
-            if u and not is_media_already_used(u, used):
-                if not is_incongruent_stock_image(c.get("title", ""), topic=topic, narration=scene_narration):
-                    used.update(extract_media_identity(u))
-                    return c
+        commons_fallback = self.search_web_photos(primary_q or fallback_q, per_page=4)
+        candidate_photos.extend(commons_fallback)
+
+        if candidate_photos:
+            try:
+                from app.agents.visual_curation_agent import VisualCurationAgent
+                curator = VisualCurationAgent()
+                v_analysis = v_analysis or curator.analyze_scene_context(
+                    narration=scene_narration or primary_q,
+                    topic=topic or primary_q,
+                    scene_id=scene_id,
+                )
+                winner_photo, score, rationale, should_ai = curator.curate_candidate_photos(
+                    candidates=candidate_photos,
+                    visual_analysis=v_analysis,
+                    narration=scene_narration,
+                    topic=topic,
+                    visual_keyword=visual_keyword or primary_q,
+                    used_urls=used,
+                )
+                if winner_photo and score >= 6.0 and not should_ai:
+                    u = winner_photo.get("url")
+                    if u and not is_media_already_used(u, used):
+                        used.update(extract_media_identity(u))
+                        return winner_photo
+                elif should_ai:
+                    logger.info(f"[MediaAgent] VisualCurationAgent từ chối stock photos ({rationale}), ưu tiên chuyển AI Media.")
+            except Exception as e:
+                logger.debug(f"[MediaAgent] VisualCurationAgent candidate photos error: {e}")
+                # Dự phòng heuristic nếu Agent lỗi
+                for p in candidate_photos:
+                    u = p.get("url")
+                    if u and not is_media_already_used(u, used):
+                        alt_desc = p.get("alt") or p.get("title", "")
+                        if not is_incongruent_stock_image(alt_desc, topic=topic, narration=scene_narration):
+                            used.update(extract_media_identity(u))
+                            return p
 
         if self.api_key and not should_try_video:
             target_query = stock_query or fallback_q

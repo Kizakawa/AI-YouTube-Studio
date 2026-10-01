@@ -444,51 +444,78 @@ TRẢ VỀ JSON DUY NHẤT:
     def curate_candidate_photos(
         self,
         candidates: List[Dict[str, Any]],
-        visual_analysis: Dict[str, Any],
+        visual_analysis: Optional[Dict[str, Any]] = None,
         narration: str = "",
+        topic: str = "",
+        visual_keyword: str = "",
         used_urls: Optional[set] = None,
     ) -> Tuple[Optional[Dict[str, Any]], float, str, bool]:
-        """Đánh giá và tuyển chọn ảnh chụp tĩnh (Pexels, Wikimedia, Openverse)."""
+        """
+        Đánh giá và tuyển chọn ảnh chụp tĩnh (Pexels, Wikimedia, Openverse):
+        Agent LLM phân tích ngữ nghĩa của các ảnh ứng viên, chọn ra ảnh tốt nhất
+        hoặc từ chối toàn bộ nếu lạc đề để kích hoạt sinh Ảnh AI.
+        """
         used = used_urls or set()
         valid = [c for c in candidates if c.get("url") and c.get("url") not in used]
         if not valid:
             return None, 0.0, "Không có ứng viên ảnh nào khả dụng.", True
 
-        # Trích xuất mô tả ảnh
+        if not visual_analysis:
+            visual_analysis = self.analyze_scene_context(
+                narration=narration or visual_keyword,
+                topic=topic or visual_keyword,
+            )
+
+        # Trích xuất mô tả ảnh & lọc sơ bộ bằng heuristic 0ms
+        from app.services.media.entity_detector import is_incongruent_stock_image
         pool = []
-        for c in valid[:6]:
+        for c in valid:
             desc = c.get("title") or c.get("alt") or ""
             if not desc and "/photo/" in c.get("url", ""):
                 m = re.search(r'/photo/([a-zA-Z0-9-]+)-\d+/?', c.get("url", ""))
                 if m:
                     desc = m.group(1).replace("-", " ")
+            if is_incongruent_stock_image(desc, topic=topic or narration, narration=narration):
+                continue
             pool.append({
                 "item": c,
                 "description": desc or "photograph",
             })
+            if len(pool) >= 6:
+                break
+
+        if not pool:
+            return None, 3.0, "Toàn bộ ảnh ứng viên dính thẻ lạc đề (văn phòng, cafe, tiệc tùng, sơ đồ...)", True
 
         mood = visual_analysis.get("mood", "cinematic")
         metaphor = visual_analysis.get("visual_metaphor", "")
         negative_cues = visual_analysis.get("negative_cues", [])
 
         prompt = f"""
-Bạn là Tổng Đạo Diễn Hình Ảnh. Hãy tuyển chọn 1 bức ảnh phù hợp nhất từ kho tư liệu cho phân cảnh:
-- Lời thoại: "{narration}"
-- Ý niệm thị giác: "{metaphor}"
+Bạn là Tổng Đạo Diễn Hình Ảnh & Giám Khảo Tuyển Chọn Tư Liệu (Visual Curation Director) cho YouTube Shorts.
+Nhiệm vụ: Duyệt qua các bức ảnh ứng viên từ kho tư liệu và LỰA CHỌN DUY NHẤT 1 ẢNH phù hợp nhất với tinh thần phân cảnh.
+
+BỐI CẢNH PHÂN CẢNH:
+- Chủ đề video: "{topic}"
+- Lời thoại (Narration): "{narration}"
+- Từ khóa thị giác (Visual Keyword): "{visual_keyword or metaphor}"
 - Không khí (Mood): "{mood}"
-- Tránh (Negative Cues): {json.dumps(negative_cues, ensure_ascii=False)}
+- Yếu tố cấm kỵ (Negative Cues): {json.dumps(negative_cues, ensure_ascii=False)}
 
-DANH SÁCH ẢNH ỨNG VIÊN:
-{json.dumps([{"index": i, "description": p["description"][:100]} for i, p in enumerate(pool)], ensure_ascii=False, indent=2)}
+DANH SÁCH ẢNH ỨNG VIÊN CÓ SẴN TỪ KHO TƯ LIỆU:
+{json.dumps([{"index": i, "description": p["description"][:120], "source": p["item"].get("source", "stock")} for i, p in enumerate(pool)], ensure_ascii=False, indent=2)}
 
-Nếu có ảnh phù hợp (điểm >= 6.0/10) -> winner_index = index.
-Nếu tất cả đều không phù hợp -> winner_index = -1, should_fallback_to_ai = true.
+QUY TẮC TUYỂN CHỌN:
+1. Ảnh phải phù hợp ngữ cảnh, thời đại và không khí của phân cảnh.
+2. TUYỆT ĐỐI KHÔNG CHỌN ảnh lạc quẻ, sai lệch thời đại (ví dụ: ảnh người hiện đại/công sở/tiệc tùng/quán cafe trong bối cảnh vũ trụ, lịch sử cổ đại, triết học; hoặc sơ đồ/biểu đồ/tem thư/bản đồ không hợp kịch bản).
+3. Nếu có ứng viên đạt chuẩn (điểm >= 6.0/10) -> winner_index = index của ứng viên đó.
+4. NẾU TẤT CẢ ỨNG VIÊN ĐỀU KHÔNG LIÊN QUAN, LẠC ĐỀ HOẶC PHÁ HỎNG BỐI CẢNH (Tất cả < 6.0) -> Trả về winner_index = -1 và should_fallback_to_ai = true để hệ thống tự động sinh Ảnh AI kỳ ảo độc bản.
 
 TRẢ VỀ JSON DUY NHẤT:
 {{
   "winner_index": 0,
   "confidence_score": 8.0,
-  "rationale": "...",
+  "rationale": "Giải thích ngắn gọn 1 câu vì sao chọn (hoặc vì sao từ chối toàn bộ)",
   "should_fallback_to_ai": false
 }}
 """
@@ -503,19 +530,33 @@ TRẢ VỀ JSON DUY NHẤT:
                 winner_item = pool[w_idx]["item"]
                 winner_item["curation_score"] = score
                 winner_item["curation_rationale"] = rationale
+                logger.info(
+                    f"📸 [VisualCuration] ✅ Đã tuyển chọn Ảnh: '{pool[w_idx]['description'][:50]}' | "
+                    f"Điểm: {score}/10 | {rationale}"
+                )
                 return winner_item, score, rationale, False
+            else:
+                logger.info(
+                    f"📸 [VisualCuration] ⚠️ Agent từ chối các ảnh stock (Score: {score}/10 | {rationale}). "
+                    f"Tự động chuyển hướng sang AI Image Generation!"
+                )
+                return None, score, rationale, True
+
         # Heuristic curation dự phòng khi Gemini không phản hồi
-        return self._heuristic_curate_photos(pool, visual_analysis)
+        return self._heuristic_curate_photos(pool, visual_analysis, topic=topic, narration=narration)
 
     def _heuristic_curate_photos(
         self,
         pool: List[Dict[str, Any]],
         visual_analysis: Dict[str, Any],
+        topic: str = "",
+        narration: str = "",
     ) -> Tuple[Optional[Dict[str, Any]], float, str, bool]:
         """Lọc và chấm điểm ảnh bằng heuristic, loại bỏ negative cues."""
         if not pool:
             return None, 0.0, "Không có ảnh ứng viên.", True
 
+        from app.services.media.entity_detector import is_incongruent_stock_image
         negative_cues = [nc.lower() for nc in visual_analysis.get("negative_cues", [])]
         queries = [q.lower() for q in visual_analysis.get("search_queries", [])]
 
@@ -524,7 +565,7 @@ TRẢ VỀ JSON DUY NHẤT:
 
         for p in pool:
             desc = p.get("description", "").lower()
-            if any(nc in desc for nc in negative_cues):
+            if any(nc in desc for nc in negative_cues) or is_incongruent_stock_image(desc, topic=topic, narration=narration):
                 continue
 
             score = 5.0
