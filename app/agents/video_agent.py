@@ -58,22 +58,7 @@ class VideoAgent:
                 except Exception:
                     pass
 
-        # ── Step 0: Tăng tốc siêu tốc bằng Colab GPU Farm nếu có kết nối ──
-        from config.settings import settings
-        if getattr(settings, "RENDER_BACKEND", "auto") in ["auto", "colab"]:
-            try:
-                from app.services.colab_client import colab_client
-                if colab_client.is_online():
-                    gpu_name = colab_client.get_gpu_name()
-                    logger.info(f"[VideoAgent] 🚀 Phát hiện Colab GPU Farm ({gpu_name}) đang Online — Chuyển quyền render sang Cloud GPU...")
-                    await report(f"🚀 Đang tăng tốc render trên Colab GPU Farm ({gpu_name})...", 60)
-                    remote_res = await colab_client.render_remote(job, progress_callback=report)
-                    if remote_res and Path(remote_res).exists() and Path(remote_res).stat().st_size > 1000:
-                        logger.info(f"✅ Video #{job.job_id} đã render hoàn tất trên Colab GPU Farm!")
-                        return remote_res
-                    logger.warning(f"⚠️ Render trên Colab không trả về file hợp lệ, tự động fallback sang Local CPU...")
-            except Exception as ex_colab:
-                logger.warning(f"⚠️ Lỗi kết nối Colab GPU ({ex_colab}), chuyển sang Local FFmpeg...")
+        # ── Bộ máy dựng video cục bộ chuẩn hóa FFmpeg & AI Media ──
 
         try:
             # ── Step 1: Chuẩn bị scene clips với Ken Burns đa chế độ ──

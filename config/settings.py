@@ -34,10 +34,9 @@ class Settings:
     GOOGLE_SEARCH_API_KEY: str = os.getenv("GOOGLE_SEARCH_API_KEY", "")
     GOOGLE_SEARCH_CX: str = os.getenv("GOOGLE_SEARCH_CX", "")
 
-    # Colab GPU Render Farm (Tăng tốc NVENC GPU 20s/video & WhisperX)
-    COLAB_WORKER_URL: str = os.getenv("COLAB_WORKER_URL", "")
-    RENDER_BACKEND: str = os.getenv("RENDER_BACKEND", "auto")  # "auto", "colab", "local"
-    COLAB_TIMEOUT_MINUTES: int = int(os.getenv("COLAB_TIMEOUT_MINUTES", "60"))
+    # Render Backend (Chế độ dựng video máy chủ cục bộ / Docker không phụ thuộc Colab)
+    RENDER_BACKEND: str = os.getenv("RENDER_BACKEND", "local")  # "local", "auto"
+    ENABLE_COLAB: bool = os.getenv("ENABLE_COLAB", "false").lower() in ("true", "1", "yes")
     
     # Defaults
     DEFAULT_TARGET_LANGUAGE: str = os.getenv("DEFAULT_TARGET_LANGUAGE", "en")

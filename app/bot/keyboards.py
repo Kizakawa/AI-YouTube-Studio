@@ -190,79 +190,39 @@ COLAB_PRO_URL = make_colab_node_url("pool1.studio@example.com", 1)
 
 def get_script_review_keyboard(job_id: int) -> InlineKeyboardMarkup:
     """Bàn phím Bước 1: Khi kịch bản vừa tạo xong, tinh gọn, chuẩn SaaS cao cấp"""
-    default_node = ((job_id - 1) % 3) + 1
-    node_accounts = {
-        1: "pool1.studio@example.com",
-        2: "pool2.studio@example.com",
-        3: "pool3.studio@example.com"
-    }
-    acc = node_accounts.get(default_node, "pool1.studio@example.com")
-    primary_url = make_colab_node_url(acc, default_node)
-
     keyboard = [
         [
-            InlineKeyboardButton("🎬 DUYỆT & ĐẨY LÊN COLAB GPU", callback_data=f"render_video:{job_id}"),
+            InlineKeyboardButton("🎬 DUYỆT & DỰNG VIDEO NGAY", callback_data=f"render_video:{job_id}"),
         ],
         [
             InlineKeyboardButton("✍️ Góp Ý Sửa", callback_data=f"edit_script:{job_id}"),
             InlineKeyboardButton("🔄 Tạo Lại Kịch Bản", callback_data=f"regenerate:{job_id}"),
         ],
         [
-            InlineKeyboardButton(f"⚡ Mở Colab Node {default_node}", url=primary_url),
-            InlineKeyboardButton("⚙️ Cụm Đa Node", callback_data=f"colab_cluster_menu:{job_id}"),
-        ],
-        [
-            InlineKeyboardButton("💻 Render CPU Cục Bộ", callback_data=f"render_local:{job_id}"),
             InlineKeyboardButton("❌ Hủy Bỏ", callback_data=f"cancel:{job_id}"),
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 def get_colab_wait_keyboard(job_id: int) -> InlineKeyboardMarkup:
-    """Bàn phím điều hướng khi kịch bản đã nằm trong hàng đợi Google Drive chờ Colab Pro+ chạy"""
-    default_node = ((job_id - 1) % 3) + 1
-    node_accounts = {
-        1: "pool1.studio@example.com",
-        2: "pool2.studio@example.com",
-        3: "pool3.studio@example.com"
-    }
-    acc = node_accounts.get(default_node, "pool1.studio@example.com")
-    primary_url = make_colab_node_url(acc, default_node)
-
-    keyboard = [
+    """Tương thích ngược: Bàn phím điều hướng render trực tiếp"""
+    return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton(f"⚡ MỞ COLAB NODE {default_node} (BẤM VÀO ĐỂ CHẠY)", url=primary_url),
-        ],
-        [
-            InlineKeyboardButton("🔄 Quét Kết Quả Từ Drive Ngay", callback_data=f"check_drive_render:{job_id}"),
-            InlineKeyboardButton("⚙️ Cụm Đa Node", callback_data=f"colab_cluster_menu:{job_id}"),
-        ],
-        [
-            InlineKeyboardButton("💻 Render Dự Phòng Bằng CPU", callback_data=f"render_local:{job_id}"),
+            InlineKeyboardButton("🎬 Dựng Video Ngay", callback_data=f"render_video:{job_id}"),
             InlineKeyboardButton("❌ Hủy Bỏ", callback_data=f"cancel:{job_id}"),
         ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
+    ])
 
 def get_colab_cluster_menu_keyboard(job_id: int) -> InlineKeyboardMarkup:
-    """Menu chọn Node Colab chi tiết khi bấm '⚙️ Cụm Đa Node'"""
-    node1_url = make_colab_node_url("pool1.studio@example.com", 1)
-    node2_url = make_colab_node_url("pool2.studio@example.com", 2)
-    node3_url = make_colab_node_url("pool3.studio@example.com", 3)
-    keyboard = [
+    """Tương thích ngược: Quay lại menu kịch bản"""
+    return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("⚡ Node 1 (Chính)", url=node1_url),
-            InlineKeyboardButton("⚡ Node 2 (Song Song)", url=node2_url),
-            InlineKeyboardButton("⚡ Node 3 (Song Song)", url=node3_url),
-        ],
-        [
-            InlineKeyboardButton("💡 Đổi Tài Khoản / Hướng Dẫn Cluster", callback_data="colab_rotation_guide"),
+            InlineKeyboardButton("🎬 Dựng Video Ngay", callback_data=f"render_video:{job_id}"),
         ],
         [
             InlineKeyboardButton("⬅️ Quay Lại", callback_data=f"back_script_review:{job_id}"),
         ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
+    ])
 
 get_video_review_keyboard = get_script_review_keyboard
 

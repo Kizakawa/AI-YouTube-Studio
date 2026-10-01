@@ -1100,16 +1100,6 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
 
-        # Tự động đóng gói và đẩy kịch bản lên Google Drive cho Colab GPU Farm
-        drive_status_note = ""
-        try:
-            from app.services.colab_queue_service import push_job_to_drive_queue
-            ok_push, _, d_link = push_job_to_drive_queue(job_id)
-            if ok_push:
-                drive_status_note = "☁️ **Đã tự động nạp kịch bản vào hàng đợi Google Drive!**\n"
-        except Exception as ex_p:
-            logger.debug(f"Auto-push queue error: {ex_p}")
-
         reply_content = (
             f"🎬 **KỊCH BẢN ĐÃ HOÀN THÀNH (Task #{job_id})**\n\n"
             f"{score_text}"
@@ -1122,8 +1112,7 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{notes_display}"
             f"⏱️ **Ước lượng:** ~{script.total_estimated_duration:.0f}s | {len(script.scenes)} cảnh\n"
             f"🗣️ **Người tạo:** {user.first_name} | 📺 **Kênh:** `{channel_name}` ({channel_niche})\n\n"
-            f"{drive_status_note}"
-            f"👉 Cả nhóm hãy xem kịch bản, bấm **DUYỆT & DỰNG VIDEO** bên dưới để sản xuất Shorts!"
+            f"👉 Cả nhóm hãy xem kịch bản, bấm **DUYỆT & DỰNG VIDEO NGAY** bên dưới để máy chủ tự động sản xuất Shorts!"
         )
 
         review_markup = get_script_review_keyboard(job_id)
@@ -1212,9 +1201,41 @@ async def start_render_pipeline(
 
         # Kiểm tra file MP4 hoàn chỉnh
         out_path = Path(render_job.output_path)
-        if out_path.exists() and chat_id and bot:
+        if out_path.exists() and bot:
             size_mb = out_path.stat().st_size / (1024 * 1024)
-            post_render_markup = get_video_post_render_keyboard(job_id)
+
+            # Lấy thông tin sản phẩm tiếp thị liên kết (Amazon Affiliate)
+            from app.services.monetization_engine import find_best_amazon_product, build_amazon_url
+            aff_url = None
+            aff_name = None
+            aff_cta = ""
+            aff_text = ""
+            try:
+                from app.database.models import get_db, VideoJob
+                with get_db() as db:
+                    jb = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                    ch_id = jb.target_channel_id if jb else ""
+                    v_title = render_job.title or (jb.title if jb else "")
+                    v_topic = jb.topic if jb else ""
+                    v_script = jb.script if jb else ""
+                aff_prod = find_best_amazon_product(ch_id, v_title, v_topic, v_script)
+                aff_url = build_amazon_url(aff_prod["asin"])
+                aff_name = aff_prod.get("name", "Sản phẩm đề xuất")
+                aff_cta = aff_prod.get("cta", "")
+                aff_text = (
+                    f"\n🛒 **SẢN PHẨM TIẾP THỊ LIÊN KẾT (AFFILIATE):**\n"
+                    f"• **Sản phẩm:** {aff_name}\n"
+                    f"• **Gợi ý:** _{aff_cta}_\n"
+                    f"👉 **Link mua:** [Bấm xem trên Amazon]({aff_url})\n"
+                )
+            except Exception as ex_aff:
+                logger.debug(f"Không thể lấy affiliate product #{job_id}: {ex_aff}")
+
+            post_render_markup = get_video_post_render_keyboard(
+                job_id,
+                affiliate_url=aff_url,
+                affiliate_name=aff_name
+            )
 
             prefix_title = (
                 f"🎉 **VIDEO ĐÃ DỰNG THÀNH CÔNG (TỰ ĐỘNG TIẾP TỤC)! (Task #{job_id})**"
@@ -1248,50 +1269,80 @@ async def start_render_pipeline(
             except Exception:
                 pass
 
-            # Telegram Bot API cho phép upload video tối đa 50MB
-            if size_mb <= 49.0:
-                caption = (
-                    f"{prefix_title}\n\n"
-                    f"📌 **Tiêu đề:** {render_job.title}\n"
-                    f"⏱️ **Thời lượng:** {render_job.total_audio_duration_ms / 1000:.1f}s\n"
-                    f"📦 **Dung lượng:** {size_mb:.1f} MB\n"
-                    f"🎬 **Chuẩn:** 1080x1920 (9:16 Shorts) kèm phụ đề hardsub\n"
-                    f"{scores_text}\n"
-                    f"👉 Cả nhóm hãy xem thử video! Chọn **Đăng Ngay** hoặc **Góp Ý Sửa Lại** bên dưới:"
-                )
-                try:
-                    with open(out_path, "rb") as vf:
-                        await bot.send_video(
-                            chat_id=chat_id,
-                            video=vf,
-                            caption=caption,
-                            reply_markup=post_render_markup,
-                            supports_streaming=True,
-                            read_timeout=120,
-                            write_timeout=120
-                        )
-                except Exception as ex_upload:
-                    logger.warning(f"Không thể gửi file video trực tiếp qua Telegram: {ex_upload}")
+            # Xây dựng Caption gửi Telegram (giới hạn 1024 ký tự)
+            caption = (
+                f"{prefix_title}\n\n"
+                f"📌 **Tiêu đề:** {render_job.title}\n"
+                f"⏱️ **Thời lượng:** {render_job.total_audio_duration_ms / 1000:.1f}s\n"
+                f"📦 **Dung lượng:** {size_mb:.1f} MB\n"
+                f"🎬 **Chuẩn:** 1080x1920 (9:16 Shorts) kèm phụ đề động\n"
+                f"{scores_text}"
+                f"{aff_text}\n"
+                f"👉 Cả nhóm hãy xem thử video! Chọn **Đăng Ngay**, **Đăng Theo Lịch**, **Sửa** hoặc **Xóa** bên dưới:"
+            )
+            if len(caption) > 1010:
+                caption = caption[:1000] + "..."
+
+            # Xác định các chat mục tiêu (chat cá nhân & các nhóm được cấp phép)
+            target_chats = set()
+            if chat_id:
+                target_chats.add(chat_id)
+            for gid in settings.get_allowed_group_ids():
+                if gid:
+                    target_chats.add(gid)
+
+            for t_chat in target_chats:
+                sent_ok = False
+                if size_mb <= 49.0:
+                    try:
+                        with open(out_path, "rb") as vf:
+                            await bot.send_video(
+                                chat_id=t_chat,
+                                video=vf,
+                                caption=caption,
+                                parse_mode="Markdown",
+                                reply_markup=post_render_markup,
+                                supports_streaming=True,
+                                read_timeout=180,
+                                write_timeout=180
+                            )
+                        sent_ok = True
+                    except Exception as ex_upload:
+                        logger.warning(f"send_video thất bại tới chat {t_chat}: {ex_upload}, thử gửi dạng document...")
+                        try:
+                            with open(out_path, "rb") as vf_doc:
+                                await bot.send_document(
+                                    chat_id=t_chat,
+                                    document=vf_doc,
+                                    caption=caption,
+                                    parse_mode="Markdown",
+                                    reply_markup=post_render_markup,
+                                    read_timeout=180,
+                                    write_timeout=180
+                                )
+                            sent_ok = True
+                        except Exception as ex_doc:
+                            logger.error(f"send_document cũng thất bại tới chat {t_chat}: {ex_doc}")
+
+                if not sent_ok:
                     fallback_msg = (
-                        f"🎉 **Video #{job_id} đã hoàn tất!**\n"
-                        f"📂 File đã lưu tại: `{render_job.output_path}` ({size_mb:.1f} MB)\n\n"
+                        f"{prefix_title}\n\n"
+                        f"📌 **Tiêu đề:** {render_job.title}\n"
+                        f"📂 File đã lưu tại: `{render_job.output_path}` ({size_mb:.1f} MB)\n"
+                        f"{aff_text}\n"
                         f"👉 Cả nhóm chọn thao tác tiếp theo:"
                     )
-                    if update:
-                        await safe_reply(update, fallback_msg, reply_markup=post_render_markup)
-                    else:
-                        await bot.send_message(chat_id=chat_id, text=fallback_msg, reply_markup=post_render_markup)
-            else:
-                large_msg = (
-                    f"🎉 **Video #{job_id} đã hoàn tất!**\n"
-                    f"📦 Dung lượng ({size_mb:.1f} MB) vượt quá giới hạn 50MB của Telegram.\n"
-                    f"📂 File đã lưu sẵn tại:\n`{render_job.output_path}`\n\n"
-                    f"👉 Cả nhóm chọn thao tác tiếp theo:"
-                )
-                if update:
-                    await safe_reply(update, large_msg, reply_markup=post_render_markup)
-                else:
-                    await bot.send_message(chat_id=chat_id, text=large_msg, reply_markup=post_render_markup)
+                    try:
+                        await bot.send_message(chat_id=t_chat, text=fallback_msg, reply_markup=post_render_markup, parse_mode="Markdown")
+                    except Exception as ex_m:
+                        logger.error(f"Không thể gửi tin nhắn thông báo video tới chat {t_chat}: {ex_m}")
+
+            # Xóa tin nhắn trạng thái chờ để nhóm không bị rác
+            if status_msg:
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
 
         with get_db() as db:
             log_activity(db, 0, user_name, "RENDER_COMPLETE",
@@ -2231,46 +2282,33 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     user = query.from_user
 
-    # 1. Duyệt kịch bản & Đẩy sang Colab GPU Farm (Bước 1 -> Bước 2)
+    # 1. Duyệt kịch bản & Render video trực tiếp bằng máy chủ nội bộ
     if data.startswith("render_video:"):
         job_id = int(data.split(":")[1])
-        from app.services.colab_queue_service import push_job_to_drive_queue
-        from app.bot.keyboards import get_colab_wait_keyboard
-
-        ok_push, msg_push, drive_link = push_job_to_drive_queue(job_id)
         with get_db() as db:
             j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
             j_title = j.title or j.topic if j else f"Video #{job_id}"
 
-        from app.services.colab_coordinator import colab_coordinator
-        coord_state = colab_coordinator.sync_cluster_state()
-        action_req = coord_state.get("action_required", {})
-        active_node = coord_state.get("active_node", 1)
-        active_account = coord_state.get("active_account", "pool1.studio@example.com")
-        colab_url = action_req.get("direct_colab_url") or colab_coordinator.make_node_url(active_account, active_node)
-
-        colab_markup = get_colab_wait_keyboard(job_id)
-        text = (
-            f"🚀 <b>ĐÃ ĐẨY KỊCH BẢN VIDEO #{job_id} VÀO GOOGLE DRIVE!</b>\n\n"
+        user_name = user.first_name if user else "Creator"
+        await safe_reply(
+            update,
+            f"🚀 <b>ĐÃ DUYỆT! BẮT ĐẦU DỰNG VIDEO #{job_id}...</b>\n\n"
             f"🎬 <b>Tiêu đề:</b> <i>{j_title}</i>\n"
-            f"📡 <b>Điều phối:</b> Đã đồng bộ vào <code>cluster_state.json</code> trên Google Drive\n"
-            f"⚡ <b>Trạm GPU mục tiêu:</b> Node {active_node} (<code>{active_account}</code>)\n\n"
-            f"👉 <b>BƯỚC TIẾP THEO ĐỂ TẠO VIDEO:</b>\n"
-            f"1️⃣ Bấm vào link dưới đây để mở Colab:\n"
-            f"🔗 <b><a href=\"{colab_url}\">MỞ GOOGLE COLAB ĐỂ CHẠY (Tài khoản: {active_account})</a></b>\n\n"
-            f"2️⃣ Trên giao diện Colab, vào menu <b>Runtime (Thời gian chạy) ➡️ Run all (Chạy tất cả)</b>.\n\n"
-            f"3️⃣ Sau khi Colab chạy xong (~25s), <b>Colab sẽ tự động tắt để tiết kiệm Compute Units và Bot Telegram sẽ TỰ ĐỘNG quét Google Drive gửi ngay video về đây cho bạn!</b>"
+            f"⚡ Hệ thống AI đang tự động: Sinh giọng đọc chuẩn, chọn & tạo hình ảnh bám sát kịch bản, làm phụ đề động và kết xuất video 1080x1920.\n"
+            f"⏳ Video sẽ tự động gửi về nhóm ngay khi hoàn thành!",
+            parse_mode="HTML"
         )
-        await safe_reply(update, text, reply_markup=colab_markup, parse_mode="HTML")
+        await _enqueue_render(update, context, job_id, user_name)
 
     elif data.startswith("colab_cluster_menu:"):
         job_id = int(data.split(":")[1])
-        from app.bot.keyboards import get_colab_cluster_menu_keyboard
-        markup = get_colab_cluster_menu_keyboard(job_id)
+        from app.bot.keyboards import get_script_review_keyboard
+        markup = get_script_review_keyboard(job_id)
         msg_text = (
-            f"⚡ <b>HỆ THỐNG CỤM COLAB GPU CLUSTER (Task #{job_id})</b>\n\n"
-            f"💡 Hệ thống hỗ trợ 3 Node chạy song song trên 3 tài khoản Google độc lập.\n"
-            f"Bấm chọn Node tương ứng bên dưới để mở hoặc xem tài liệu hướng dẫn:"
+            f"🎬 <b>HỆ THỐNG DỰNG VIDEO AI NỘI BỘ (Task #{job_id})</b>\n\n"
+            f"💡 Hệ thống hiện tại đang sử dụng động cơ AI Render Nội Bộ (Local Native Engine) "
+            f"kết hợp AI Image Generator và kho tài nguyên chất lượng cao, không phụ thuộc Google Colab.\n\n"
+            f"👉 Bấm <b>🎬 DUYỆT & DỰNG VIDEO NGAY</b> bên dưới để sản xuất Shorts!"
         )
         if query and query.message:
             await query.message.edit_text(msg_text, reply_markup=markup, parse_mode="HTML")
@@ -3124,16 +3162,6 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             pinned_display = f"💬 **Bình luận mồi ghim Top (Pinned Bait):**\n> _{script.pinned_comment}_\n\n" if getattr(script, "pinned_comment", None) else ""
             formula_display = f"⚡ **Công thức Viral:** `{script.viral_formula}`\n" if getattr(script, "viral_formula", None) else ""
-            # Tự động đẩy kịch bản lên Google Drive cho Colab GPU Farm
-            drive_status_note = ""
-            try:
-                from app.services.colab_queue_service import push_job_to_drive_queue
-                ok_push, _, d_link = push_job_to_drive_queue(job_id)
-                if ok_push:
-                    drive_status_note = "\n☁️ **Đã tự động đồng bộ kịch bản vào Google Drive!**\n"
-            except Exception as ex_p:
-                logger.debug(f"Auto-push queue error: {ex_p}")
-
             reply_content = (
                 f"🎬 **KỊCH BẢN ĐÃ HOÀN THÀNH (Task #{job_id})**\n\n"
                 f"{score_text}"
@@ -3144,13 +3172,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{pinned_display}"
                 f"⏱️ **Ước lượng:** ~{script.total_estimated_duration:.0f}s | {len(script.scenes)} cảnh\n\n"
                 f"🗣️ **Người tạo:** {user.first_name} | 📺 **Kênh:** `{channel_name}` ({channel_niche})\n\n"
-                f"{drive_status_note}"
-                f"⚡ **XUẤT VIDEO TRONG 20S (1-CHẠM TRÊN ĐIỆN THOẠI HOẶC PC):**\n"
-                f"1. Bấm nút **[⚡ MỞ COLAB PRO+ RENDER]** bên dưới.\n"
-                f"2. Bấm **Runtime** ➡️ **Run all** (Chạy tất cả) trên Colab.\n"
-                f"3. **TẮT MÀN HÌNH ĐIỆN THOẠI ĐƯỢC NGAY!**\n"
-                f"Colab GPU sẽ tự động quét kịch bản, dựng video NVENC siêu tốc và đẩy về Drive cho bạn!\n"
-                f"*(Sau khi chạy xong, bấm 'Quét Video Từ Drive' bên dưới để nhận video)*"
+                f"👉 Cả nhóm hãy xem kịch bản, bấm **🎬 DUYỆT & DỰNG VIDEO NGAY** bên dưới để máy chủ tự động sản xuất Shorts!"
             )
 
             review_markup = get_script_review_keyboard(job_id)
@@ -4196,6 +4218,23 @@ async def colab_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(update):
         return
 
+    if not getattr(settings, "ENABLE_COLAB", False):
+        from app.services.render_queue import get_render_queue
+        rq = get_render_queue()
+        status_text = (
+            "⚙️ <b>HỆ THỐNG DỰNG VIDEO AI NỘI BỘ (LOCAL ENGINE)</b>\n\n"
+            "✅ Tính năng Google Colab đã được tắt theo yêu cầu.\n"
+            "⚡ Toàn bộ video được render tự động 100% bằng <b>Local AI Render Pipeline</b>:\n"
+            "• Sử dụng <b>AI Image Generator (FLUX / SDXL / Imagen 3)</b> tạo hình ảnh bám sát kịch bản\n"
+            "• Tự động chọn lọc video/hình ảnh liên quan chính xác nội dung từng cảnh\n"
+            "• Xuất video chuẩn 1080x1920 (9:16 Shorts) kèm phụ đề động, hiệu ứng chuyển cảnh\n"
+            "• Gửi video trực tiếp về nhóm kèm nút tiếp thị liên kết Amazon & nút Đăng/Lên Lịch/Sửa/Xóa\n\n"
+            f"📊 <b>Trạng thái hàng đợi render hiện tại:</b>\n"
+            f"{rq.get_status_text()}"
+        )
+        await safe_reply(update, status_text, parse_mode="HTML")
+        return
+
     from app.services.colab_coordinator import colab_coordinator
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -4612,16 +4651,6 @@ async def chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for s in script.scenes[:3]
             ])
 
-            # Tự động đẩy kịch bản lên Google Drive cho Colab GPU Farm
-            drive_status_note = ""
-            try:
-                from app.services.colab_queue_service import push_job_to_drive_queue
-                ok_push, _, d_link = push_job_to_drive_queue(job_id)
-                if ok_push:
-                    drive_status_note = "\n☁️ **Đã tự động đồng bộ kịch bản vào Google Drive!**\n"
-            except Exception as ex_p:
-                logger.debug(f"Auto-push queue error: {ex_p}")
-
             reply_content = (
                 f"🎉 **ĐÃ TỔNG HỢP XONG KỊCH BẢN SẢN XUẤT (Task #{job_id})**\n\n"
                 f"📌 **Tiêu đề:** {script.title}\n"
@@ -4629,13 +4658,7 @@ async def chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
                 f"⏱️ **Ước lượng:** ~{script.total_estimated_duration:.0f}s | {len(script.scenes)} cảnh\n"
                 f"📺 **Kênh:** `{channel_id}` | 🗣️ **Người chốt:** {user.first_name}\n\n"
-                f"{drive_status_note}"
-                f"⚡ **XUẤT VIDEO TRONG 20S (1-CHẠM TRÊN ĐIỆN THOẠI HOẶC PC):**\n"
-                f"1. Bấm nút **[⚡ MỞ COLAB PRO+ RENDER]** bên dưới.\n"
-                f"2. Bấm **Runtime** ➡️ **Run all** (Chạy tất cả) trên Colab.\n"
-                f"3. **TẮT MÀN HÌNH ĐIỆN THOẠI ĐƯỢC NGAY!**\n"
-                f"Colab GPU sẽ tự động quét kịch bản, dựng video NVENC siêu tốc và đẩy về Drive cho bạn!\n"
-                f"*(Sau khi chạy xong, bấm 'Quét Video Từ Drive' bên dưới để nhận video)*"
+                f"👉 Bấm **🎬 DUYỆT & DỰNG VIDEO NGAY** bên dưới để hệ thống AI tự động sản xuất Shorts 1080x1920!"
             )
 
             review_markup = get_script_review_keyboard(job_id)

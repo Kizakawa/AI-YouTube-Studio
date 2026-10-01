@@ -105,6 +105,14 @@ class WorkerDispatcher:
         if not payload:
             return False, f"Không tìm thấy VideoJob #{job_id}", "none"
 
+        # Nếu Colab bị tắt hoặc backend là local, điều phối trực tiếp sang Local Render
+        if not getattr(settings, "ENABLE_COLAB", False) or getattr(settings, "RENDER_BACKEND", "local") == "local":
+            with get_db() as db:
+                log_activity(db, 0, "System", "DISPATCH_WORKER",
+                             f"Đã điều phối Job #{job_id} sang Local AI Render Pipeline",
+                             channel_id=payload.get("target_channel_id"))
+            return True, f"Đã điều phối sang Local AI Render Pipeline cho Job #{job_id}", "local"
+
         # 1. Nếu Colab đang Online, gửi thông báo hoặc đẩy task
         if self.colab_client.is_online(cache_seconds=5.0):
             logger.info(f"🚀 [WorkerDispatcher] Colab GPU đang trực tuyến. Đẩy task #{job_id} vào Drive Queue...")

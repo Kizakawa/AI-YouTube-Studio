@@ -414,7 +414,8 @@ def main():
             logger.error(f"[AutoScheduler error]: {e_s}", exc_info=True)
 
     if app.job_queue:
-        app.job_queue.run_repeating(_auto_check_drive_completed, interval=15, first=5)
+        if getattr(settings, "ENABLE_COLAB", False):
+            app.job_queue.run_repeating(_auto_check_drive_completed, interval=15, first=5)
         app.job_queue.run_repeating(_auto_sync_scheduler, interval=60, first=10)
 
     # Khởi động ChannelIntelligenceWorker ngầm (giám sát KPI, tự động tạo video cứu nguy khi trễ deadline)
