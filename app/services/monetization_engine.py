@@ -14,44 +14,52 @@ logger = logging.getLogger(__name__)
 NICHE_PRODUCT_CATALOG: Dict[str, List[Dict[str, Any]]] = {
     "psychology": [
         {
-            "keywords": ["manipulat", "control", "power", "dark", "influence", "trick", "toxic", "lie", "liar"],
+            "keywords": ["hypnotic", "illusion", "focus", "mind", "stress", "calm", "relax", "brain", "overthinking", "anxiety", "kinetic"],
+            "asin": "B085CD6B95",
+            "name": "Kinetic Optical Illusion Anti-Gravity Desk Sphere (Stress Relief)",
+            "cta": "Mesmerizing 360° hypnotic spiral to reset mind & kill overthinking",
+            "short_desc": "Aerospace-grade kinetic desk toy creating mind-bending continuous optical illusion",
+            "search_fallback": "kinetic optical illusion desk toy stress relief"
+        },
+        {
+            "keywords": ["manipulat", "control", "power", "dark", "glow", "night", "moon", "ambient", "desk", "room", "levitate", "shadow"],
+            "asin": "B08L7V4QW6",
+            "name": "Levitating Magnetic Floating Moon Lamp (3D Night Light)",
+            "cta": "Bring hypnotic floating dark aesthetic ambient to your desk",
+            "short_desc": "Wireless 3D magnetic floating moon lamp spinning smoothly in mid-air",
+            "search_fallback": "levitating magnetic floating moon lamp"
+        },
+        {
+            "keywords": ["voice", "sound", "light", "wave", "music", "reaction", "secret", "body language", "frequency", "vibe"],
+            "asin": "B099F8D69H",
+            "name": "Sound-Reactive RGB Flowing Rhythm Light Bar (32-Bit ARM)",
+            "cta": "Visualize unseen sound frequencies & ambient energy in your room",
+            "short_desc": "Voice-activated music rhythm pickup light with 32 vibrant RGB LEDs",
+            "search_fallback": "sound reactive rgb light bar rhythm pickup"
+        },
+        {
+            "keywords": ["habit", "discipline", "fidget", "pen", "focus", "restless", "energy", "channel", "trick", "toxic"],
+            "asin": "B09M8CYX7Q",
+            "name": "Polar Magnetic Modular Fidget Pen & Decompression Toy",
+            "cta": "Transformable magnetic metal pen to channel restless mental energy",
+            "short_desc": "Multi-functional magnetic stylus pen engineered for anxiety relief and focus",
+            "search_fallback": "magnetic modular fidget pen stress toy"
+        },
+        {
+            "keywords": ["peace", "emotion", "calm", "sleep", "jellyfish", "meditate", "stoic", "silence", "insult"],
+            "asin": "B08CXK9R4Q",
+            "name": "Sensory LED Floating Jellyfish Mood Aquarium Lamp",
+            "cta": "Induce deep alpha brainwaves & melt tension with lifelike glowing jellyfish",
+            "short_desc": "Color-changing ambient mood tank with ultra-quiet brushless motor",
+            "search_fallback": "sensory led jellyfish mood lamp"
+        },
+        {
+            "keywords": ["book", "read", "robert greene", "48 laws", "laws of power"],
             "asin": "0140280197",
             "name": "The 48 Laws of Power (Robert Greene)",
             "cta": "Expose dark psychology & protect your mind",
             "short_desc": "The bestselling guide on how power & manipulation work in real life",
             "search_fallback": "48 laws of power robert greene"
-        },
-        {
-            "keywords": ["habit", "discipline", "parent", "sacrifice", "success", "mindset", "atomic", "routine", "focus", "ego", "truth"],
-            "asin": "0735211299",
-            "name": "Atomic Habits (James Clear)",
-            "cta": "Build unbreakable daily habits & mental resilience",
-            "short_desc": "The definitive guide to breaking bad behaviors and mastering personal discipline",
-            "search_fallback": "atomic habits james clear"
-        },
-        {
-            "keywords": ["idiot", "behavior", "type", "personality", "mbti", "people", "conflict", "argue"],
-            "asin": "1250251145",
-            "name": "Surrounded by Idiots (Thomas Erikson)",
-            "cta": "Decode human behavior & the 4 personality types",
-            "short_desc": "Learn how to communicate with people who seem impossible to understand",
-            "search_fallback": "surrounded by idiots thomas erikson"
-        },
-        {
-            "keywords": ["persuade", "persuasion", "influence", "sell", "agree", "comply", "negotiat"],
-            "asin": "006124189X",
-            "name": "Influence: The Psychology of Persuasion (Robert Cialdini)",
-            "cta": "Master the 6 universal triggers of human compliance",
-            "short_desc": "The foundational science of persuasion and ethical influence",
-            "search_fallback": "influence psychology of persuasion cialdini"
-        },
-        {
-            "keywords": ["stoic", "calm", "silence", "emotion", "anxiety", "react", "insult", "peace"],
-            "asin": "0525534393",
-            "name": "The Daily Stoic Journal (Ryan Holiday)",
-            "cta": "Master high-status unshakeable calm & cold silence",
-            "short_desc": "Daily stoic practices for emotional control and mental toughness",
-            "search_fallback": "daily stoic journal ryan holiday"
         }
     ],
     "deep_sea_earth_mysteries": [
@@ -295,9 +303,10 @@ def enrich_video_monetization(
     # 1. Nâng cấp mô tả (Description)
     desc_base = (description or "").strip()
     monetization_footer = (
-        f"\n\n📌 Recommended Resources & Gear:\n"
+        f"\n\n📌 Featured Trend & Gear:\n"
         f"👉 {product['name']} — {product['cta']}:\n"
-        f"🔗 {affiliate_url}\n\n"
+        f"🔗 Direct Link: {affiliate_url}\n"
+        f"💡 (Shorts viewers: Tap channel icon ➔ Clickable link in Bio!)\n\n"
         f"{AMAZON_COMPLIANCE_DISCLAIMER}"
     )
 
@@ -320,8 +329,9 @@ def enrich_video_monetization(
         if "amazon.com" not in comment_base and product['asin'] not in comment_base:
             enriched_comment = (
                 f"{comment_base}\n\n"
-                f"📖 Recommended: {product['name']}\n"
-                f"👉 Check on Amazon: {affiliate_url}"
+                f"✨ Trending Gear: {product['name']}\n"
+                f"👉 Link: {affiliate_url}\n"
+                f"🔗 (Or tap channel icon ➔ Link in Bio)"
             )
         else:
             enriched_comment = comment_base
@@ -329,7 +339,8 @@ def enrich_video_monetization(
         # Nếu chưa có comment, tự sinh câu comment mồi hấp dẫn
         enriched_comment = (
             f"🔥 {product['cta']}!\n"
-            f"👉 {product['name']} on Amazon: {affiliate_url}"
+            f"👉 {product['name']}: {affiliate_url}\n"
+            f"🔗 (Or tap channel icon ➔ Link in Bio)"
         )
 
     product_info = {
