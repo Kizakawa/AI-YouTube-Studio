@@ -11,11 +11,12 @@ from app.schemas.contracts import ScriptContract
 logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = [
-    "gemini-flash-latest",           # Bản Flash ổn định và thông minh nhất
-    "gemini-3.5-flash",              # Model 3.5 Flash mới siêu tốc
-    "gemini-flash-lite-latest",      # Bản Lite siêu tốc
-    "gemini-3.5-flash-lite",         # Bản 3.5 Lite
-    "gemini-3.1-flash-lite-preview", # Dự phòng Gemini 3.1
+    "gemini-flash-lite-latest",      # Bản Lite siêu tốc, ổn định, thông lượng cao nhất
+    "gemini-3.5-flash-lite",         # Bản 3.5 Lite mới nhất
+    "gemini-3.1-flash-lite",         # Bản 3.1 Lite
+    "gemini-3-flash-preview",        # Bản 3.0 Preview
+    "gemini-flash-latest",           # Bản Flash tổng hợp
+    "gemini-3.5-flash",              # Model 3.5 Flash
     "gemini-pro-latest",             # Pro (thử cuối để tránh kẹt 429)
 ]
 
@@ -92,8 +93,10 @@ class ContentAgent:
                                 logger.info(f"✅ Gemini API ({model}) thành công với key {key[:8]}... trong {time.monotonic()-start_time:.1f}s")
                                 return full_text
                     elif r.status_code in (429, 403):
-                        logger.warning(f"⚠️ Model {model} gặp mã {r.status_code} trên key {key[:8]}... Thử model tiếp theo...")
-                        continue
+                        logger.warning(f"⚠️ Key {key[:8]}... gặp mã {r.status_code} ({model}). Xoay ngay sang key tiếp theo...")
+                        self.rotator.rotate_key()
+                        key_failed_quota = True
+                        break  # Bỏ qua các model còn lại của key đã hết quota, chuyển sang key mới ngay
                     elif r.status_code == 503 and json_mode:
                         # Fallback: Thử lại không dùng responseMimeType (tránh 503 trên engine structured JSON)
                         logger.info(f"Gemini API ({model}) gặp 503 với structured output, thử lại chế độ raw JSON...")
@@ -116,6 +119,9 @@ class ContentAgent:
                                         return full_text
                         except Exception as e_fb:
                             logger.debug(f"Fallback raw JSON lỗi: {e_fb}")
+                        continue
+                    elif r.status_code == 503:
+                        logger.warning(f"⚠️ Model {model} đang quá tải tạm thời (503). Chuyển sang model tiếp theo...")
                         continue
                     else:
                         err_msg = ""

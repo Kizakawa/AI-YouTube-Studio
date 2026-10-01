@@ -1269,19 +1269,34 @@ async def start_render_pipeline(
             except Exception:
                 pass
 
-            # Xây dựng Caption gửi Telegram (giới hạn 1024 ký tự)
+            # Xây dựng Caption gửi Telegram bằng HTML để tránh lỗi Markdown entity
+            import html
+            safe_title = html.escape(str(render_job.title or f"Video #{job_id}"))
+            safe_prefix = html.escape(str(prefix_title).replace("**", "").replace("*", ""))
+            safe_aff_name = html.escape(str(aff_name)) if aff_name else ""
+            safe_aff_cta = html.escape(str(aff_cta)) if aff_cta else ""
+            safe_aff_url = html.escape(str(aff_url)) if aff_url else ""
+
+            aff_html = ""
+            if aff_url:
+                aff_html = (
+                    f"\n🛒 <b>SẢN PHẨM TIẾP THỊ LIÊN KẾT (AFFILIATE):</b>\n"
+                    f"• <b>Sản phẩm:</b> {safe_aff_name}\n"
+                    f"• <b>Gợi ý:</b> <i>{safe_aff_cta}</i>\n"
+                    f"👉 <b>Link mua:</b> <a href=\"{safe_aff_url}\">{safe_aff_url}</a>\n"
+                )
+
             caption = (
-                f"{prefix_title}\n\n"
-                f"📌 **Tiêu đề:** {render_job.title}\n"
-                f"⏱️ **Thời lượng:** {render_job.total_audio_duration_ms / 1000:.1f}s\n"
-                f"📦 **Dung lượng:** {size_mb:.1f} MB\n"
-                f"🎬 **Chuẩn:** 1080x1920 (9:16 Shorts) kèm phụ đề động\n"
-                f"{scores_text}"
-                f"{aff_text}\n"
-                f"👉 Cả nhóm hãy xem thử video! Chọn **Đăng Ngay**, **Đăng Theo Lịch**, **Sửa** hoặc **Xóa** bên dưới:"
+                f"{safe_prefix}\n\n"
+                f"📌 <b>Tiêu đề:</b> {safe_title}\n"
+                f"⏱️ <b>Thời lượng:</b> {render_job.total_audio_duration_ms / 1000:.1f}s\n"
+                f"📦 <b>Dung lượng:</b> {size_mb:.1f} MB\n"
+                f"🎬 <b>Chuẩn:</b> 1080x1920 (9:16 Shorts) kèm phụ đề động\n"
+                f"{aff_html}\n"
+                f"👉 Cả nhóm hãy xem thử video! Chọn <b>Đăng Ngay</b>, <b>Đăng Theo Lịch</b>, <b>Sửa</b> hoặc <b>Xóa</b> bên dưới:"
             )
-            if len(caption) > 1010:
-                caption = caption[:1000] + "..."
+            if len(caption) > 1000:
+                caption = caption[:990] + "..."
 
             # Xác định các chat mục tiêu (chat cá nhân & các nhóm được cấp phép)
             target_chats = set()
@@ -1300,7 +1315,7 @@ async def start_render_pipeline(
                                 chat_id=t_chat,
                                 video=vf,
                                 caption=caption,
-                                parse_mode="Markdown",
+                                parse_mode="HTML",
                                 reply_markup=post_render_markup,
                                 supports_streaming=True,
                                 read_timeout=180,
@@ -1308,32 +1323,46 @@ async def start_render_pipeline(
                             )
                         sent_ok = True
                     except Exception as ex_upload:
-                        logger.warning(f"send_video thất bại tới chat {t_chat}: {ex_upload}, thử gửi dạng document...")
+                        logger.warning(f"send_video HTML thất bại tới chat {t_chat}: {ex_upload}, thử gửi lại không parse_mode...")
                         try:
-                            with open(out_path, "rb") as vf_doc:
-                                await bot.send_document(
+                            with open(out_path, "rb") as vf:
+                                await bot.send_video(
                                     chat_id=t_chat,
-                                    document=vf_doc,
-                                    caption=caption,
-                                    parse_mode="Markdown",
+                                    video=vf,
+                                    caption=f"Video #{job_id}: {render_job.title}",
                                     reply_markup=post_render_markup,
+                                    supports_streaming=True,
                                     read_timeout=180,
                                     write_timeout=180
                                 )
                             sent_ok = True
-                        except Exception as ex_doc:
-                            logger.error(f"send_document cũng thất bại tới chat {t_chat}: {ex_doc}")
+                        except Exception as ex_raw_vid:
+                            logger.warning(f"send_video raw thất bại: {ex_raw_vid}, thử gửi dạng document...")
+                            try:
+                                with open(out_path, "rb") as vf_doc:
+                                    await bot.send_document(
+                                        chat_id=t_chat,
+                                        document=vf_doc,
+                                        caption=caption,
+                                        parse_mode="HTML",
+                                        reply_markup=post_render_markup,
+                                        read_timeout=180,
+                                        write_timeout=180
+                                    )
+                                sent_ok = True
+                            except Exception as ex_doc:
+                                logger.error(f"send_document cũng thất bại tới chat {t_chat}: {ex_doc}")
 
                 if not sent_ok:
                     fallback_msg = (
-                        f"{prefix_title}\n\n"
-                        f"📌 **Tiêu đề:** {render_job.title}\n"
-                        f"📂 File đã lưu tại: `{render_job.output_path}` ({size_mb:.1f} MB)\n"
-                        f"{aff_text}\n"
+                        f"🎉 <b>Video #{job_id} đã hoàn tất!</b>\n\n"
+                        f"📌 <b>Tiêu đề:</b> {safe_title}\n"
+                        f"📂 File đã lưu tại: <code>{render_job.output_path}</code> ({size_mb:.1f} MB)\n"
+                        f"{aff_html}\n"
                         f"👉 Cả nhóm chọn thao tác tiếp theo:"
                     )
                     try:
-                        await bot.send_message(chat_id=t_chat, text=fallback_msg, reply_markup=post_render_markup, parse_mode="Markdown")
+                        await bot.send_message(chat_id=t_chat, text=fallback_msg, reply_markup=post_render_markup, parse_mode="HTML")
                     except Exception as ex_m:
                         logger.error(f"Không thể gửi tin nhắn thông báo video tới chat {t_chat}: {ex_m}")
 
@@ -4301,6 +4330,7 @@ async def colab_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_url = match.group(0).rstrip("/")
     wait_msg = await safe_reply(update, f"⏳ Đang bắt tay và kiểm tra cạc GPU tại: `{target_url}`...")
 
+    from app.services.colab_client import colab_client
     prev_url = colab_client.worker_url
     colab_client._custom_url = target_url
     is_online, info = colab_client.check_health(timeout=5.0)
