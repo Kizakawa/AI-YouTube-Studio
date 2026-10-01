@@ -2629,12 +2629,22 @@ def exchange_oauth_code_for_credentials(flow, raw_val: str):
     Trao đổi OAuth code hoặc Redirect URL lấy Credentials an toàn tuyệt đối.
     Gửi trực tiếp 1 lần duy nhất tới Google Token Endpoint, loại bỏ hoàn toàn các lỗi
     mismatching_state của oauthlib và tự động sửa các lỗi sao chép URL của người dùng.
+    Hỗ trợ đầy đủ chuẩn PKCE (code_verifier).
     """
     code, redirect_uri = extract_auth_code_and_redirect_uri(raw_val, flow.redirect_uri)
 
-    client_id = flow.client_config.get("client_id")
-    client_secret = flow.client_config.get("client_secret")
-    token_uri = flow.client_config.get("token_uri", "https://oauth2.googleapis.com/token")
+    cfg = flow.client_config or {}
+    if "installed" in cfg:
+        cfg = cfg["installed"]
+    elif "web" in cfg:
+        cfg = cfg["web"]
+
+    client_id = cfg.get("client_id") or getattr(flow, "client_id", None)
+    client_secret = cfg.get("client_secret") or getattr(flow, "client_secret", None)
+    token_uri = cfg.get("token_uri", "https://oauth2.googleapis.com/token")
+    code_verifier = getattr(flow, "code_verifier", None)
+    if not code_verifier and hasattr(flow, "oauth2session") and hasattr(flow.oauth2session, "code_verifier"):
+        code_verifier = flow.oauth2session.code_verifier
 
     token_payload = {
         "code": code,
@@ -2643,6 +2653,8 @@ def exchange_oauth_code_for_credentials(flow, raw_val: str):
         "redirect_uri": redirect_uri,
         "grant_type": "authorization_code"
     }
+    if code_verifier:
+        token_payload["code_verifier"] = code_verifier
 
     resp = http_requests.post(
         token_uri,
@@ -2678,8 +2690,8 @@ def exchange_oauth_code_for_credentials(flow, raw_val: str):
                 err_msg = err_desc or err_code or resp.text
         except Exception:
             pass
+        logger.warning(f"Google Token Exchange lỗi ({resp.status_code}): {err_msg}")
         raise ValueError(f"Google Token Exchange thất bại: {err_msg}")
-
 
     token_resp = resp.json()
     from google.oauth2.credentials import Credentials
@@ -2692,6 +2704,7 @@ def exchange_oauth_code_for_credentials(flow, raw_val: str):
         scopes=list(flow.oauth2session.scope) if hasattr(flow.oauth2session, "scope") and flow.oauth2session.scope else None
     )
     return creds
+
 
 @app.post("/api/accounts/{account_id}/auth-start")
 async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Request) -> Dict[str, Any]:
@@ -2845,6 +2858,7 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
                 auth_input = None
                 if received_uri["value"]:
                     auth_input = received_uri["value"]
+                    received_uri["value"] = None
                 elif session_key in _oauth_manual_responses:
                     auth_input = _oauth_manual_responses.pop(session_key)
 
@@ -2857,6 +2871,7 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
                         logger.warning(f"Thử đổi mã OAuth thất bại: {ex}")
                         _oauth_sessions[session_key]["status"] = "error"
                         _oauth_sessions[session_key]["error"] = str(ex)
+                        break
 
                 time.sleep(0.5)
 
@@ -3489,6 +3504,7 @@ async def start_channel_oauth(channel_id: str, request: Request, service: str = 
                 auth_input = None
                 if received_uri["value"]:
                     auth_input = received_uri["value"]
+                    received_uri["value"] = None
                 elif session_key in _oauth_manual_responses:
                     auth_input = _oauth_manual_responses.pop(session_key)
 
@@ -3501,6 +3517,7 @@ async def start_channel_oauth(channel_id: str, request: Request, service: str = 
                         logger.warning(f"Thử đổi mã OAuth kênh thất bại: {ex}")
                         _oauth_sessions[session_key]["status"] = "error"
                         _oauth_sessions[session_key]["error"] = str(ex)
+                        break
 
                 time.sleep(0.5)
 
