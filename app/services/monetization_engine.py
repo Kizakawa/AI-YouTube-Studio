@@ -22,9 +22,9 @@ NICHE_PRODUCT_CATALOG: Dict[str, List[Dict[str, Any]]] = {
             "search_fallback": "kinetic optical illusion desk toy stress relief"
         },
         {
-            "keywords": ["manipulat", "control", "power", "dark", "glow", "night", "moon", "ambient", "desk", "room", "levitate", "shadow"],
-            "asin": "B08L7V4QW6",
-            "name": "Levitating Magnetic Floating Moon Lamp (3D Night Light)",
+            "keywords": ["manipulat", "control", "power", "dark", "glow", "night", "moon", "ambient", "desk", "room", "levitate", "shadow", "focus"],
+            "asin": "B09D38VY34",
+            "name": "VGAzer Magnetic Levitating Moon Lamp (16 Colors Galaxy 3D)",
             "cta": "Bring hypnotic floating dark aesthetic ambient to your desk",
             "short_desc": "Wireless 3D magnetic floating moon lamp spinning smoothly in mid-air",
             "search_fallback": "levitating magnetic floating moon lamp"
