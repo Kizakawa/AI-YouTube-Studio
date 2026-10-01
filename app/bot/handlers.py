@@ -1211,7 +1211,6 @@ async def start_render_pipeline(
             aff_cta = ""
             aff_text = ""
             try:
-                from app.database.models import get_db, VideoJob
                 with get_db() as db:
                     jb = db.query(VideoJob).filter(VideoJob.id == job_id).first()
                     ch_id = jb.target_channel_id if jb else ""
@@ -1246,7 +1245,6 @@ async def start_render_pipeline(
             # Đọc điểm chất lượng từ LangGraph AI Graders nếu có
             scores_text = ""
             try:
-                from app.database.models import get_db, VideoJob
                 with get_db() as db:
                     jb = db.query(VideoJob).filter(VideoJob.id == job_id).first()
                     if jb and jb.quality_scores:
@@ -1404,7 +1402,6 @@ async def auto_resume_pending_jobs(application):
       hoặc 'SCRIPT_READY' đang chờ dựng.
     - Gửi thông báo đến nhóm Telegram và tự động đưa vào hàng đợi render.
     """
-    from app.database.models import get_db, VideoJob
     from app.services.render_queue import get_render_queue
     from config.settings import settings
 
@@ -2639,7 +2636,6 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 3.4 Xóa Video hoàn toàn khỏi máy chủ & Google Drive
     elif data.startswith("delete_video:") or data.startswith("cancel:"):
         job_id = int(data.split(":")[1])
-        from app.database.models import get_db, VideoJob, log_activity
         from app.agents.drive_agent import DriveAgent
 
         with get_db() as db:
