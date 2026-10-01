@@ -29,6 +29,7 @@ from app.bot.keyboards import (
     get_viral_ideas_keyboard,
     get_videos_list_keyboard,
     get_schedule_keyboard,
+    get_schedule_channel_keyboard,
     get_delete_confirmation_keyboard,
     get_delete_failed_confirmation_keyboard,
 )
@@ -2328,7 +2329,6 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("colab_cluster_menu:"):
         job_id = int(data.split(":")[1])
-        from app.bot.keyboards import get_script_review_keyboard
         markup = get_script_review_keyboard(job_id)
         msg_text = (
             f"🎬 <b>HỆ THỐNG DỰNG VIDEO AI NỘI BỘ (Task #{job_id})</b>\n\n"
@@ -2343,7 +2343,6 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("back_script_review:"):
         job_id = int(data.split(":")[1])
-        from app.bot.keyboards import get_script_review_keyboard
         markup = get_script_review_keyboard(job_id)
         msg_text = (
             f"🎬 <b>MENU KỊCH BẢN (Task #{job_id})</b>\n\n"
@@ -2357,7 +2356,6 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("check_drive_render:"):
         job_id = int(data.split(":")[1])
         from app.services.colab_queue_service import check_and_import_completed_video
-        from app.bot.keyboards import get_video_post_render_keyboard
 
         wait_m = await safe_reply(update, f"🔍 Đang quét tìm video #{job_id} từ thư mục Google Drive...")
         ok, local_p, d_link = check_and_import_completed_video(job_id)
@@ -2718,7 +2716,6 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             video_title = job.title or job.topic
 
-        from app.bot.keyboards import get_schedule_channel_keyboard
         markup = get_schedule_channel_keyboard(job_id)
         text = (
             f"⏰ **TỰ ĐỘNG XẾP VÀO KHE GIỜ VÀNG SHORTS (Video #{job_id})**\n\n"
@@ -2935,34 +2932,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif data == "colab_rotation_guide":
-        guide_text = (
-            "🧭 **HƯỚNG DẪN CHẠY COLAB PRO+ ĐA LUỒNG & XOAY VÒNG TÀI KHOẢN**\n\n"
-            "🔥 **1. CHẠY NHIỀU VIDEO SONG SONG CÙNG LÚC (Colab Pro+):**\n"
-            "Tài khoản Pro+ cho phép chạy nhiều GPU độc lập cùng lúc. Để không bị mâu thuẫn hay đè file, hệ thống đã tạo sẵn **3 Node Worker độc lập** trên Drive:\n"
-            "• **Node 1:** `colab_gpu_worker.ipynb`\n"
-            "• **Node 2:** `colab_worker_node2.ipynb` (Chạy song song)\n"
-            "• **Node 3:** `colab_worker_node3.ipynb` (Chạy song song)\n"
-            "👉 Khi bạn tạo Video 1, mở Node 1. Nếu tạo tiếp Video 2 mà Video 1 chưa xong, hãy mở Node 2 trong tab mới! Hai video sẽ được 2 GPU render song song siêu tốc!\n\n"
-            "🎯 **2. CƠ CHẾ KHÓA NGUYÊN TỬ (ATOMIC LOCK):**\n"
-            "Cả 3 Node đều dùng cơ chế khóa nhiệm vụ tự động: Khi Node 1 nhận Video 1, nó chuyển file sang `in_progress/` ngay lập tức. Node 2 sẽ tự động bỏ qua và nhận Video 2. Hoàn toàn không bao giờ trùng lặp hay xung đột!\n\n"
-            "📌 **3. XOAY VÒNG TÀI KHOẢN KHI HẾT QUOTA:**\n"
-            "1️⃣ **Acc 1 (Pro+ / 20TB):** `pool1.studio@example.com` (Chính)\n"
-            "2️⃣ **Acc 2 (2TB):** `pool2.studio@example.com`\n"
-            "3️⃣ **Acc 3 (2TB):** `pool3.studio@example.com`\n"
-        )
-        from app.bot.keyboards import make_colab_node_url, make_colab_account_url
-        guide_kb = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("⚡ Node 1 (Pro+)", url=make_colab_node_url("pool1.studio@example.com", 1)),
-                InlineKeyboardButton("⚡ Node 2 (Song Song)", url=make_colab_node_url("pool2.studio@example.com", 2)),
-                InlineKeyboardButton("⚡ Node 3 (Song Song)", url=make_colab_node_url("pool3.studio@example.com", 3)),
-            ],
-            [InlineKeyboardButton("🚀 Mở Acc 1: giangnguyenviet38 (20TB)", url=make_colab_account_url("pool1.studio@example.com", 1))],
-            [InlineKeyboardButton("🚀 Mở Acc 2: tonyabcd1234567890 (2TB)", url=make_colab_account_url("pool2.studio@example.com", 2))],
-            [InlineKeyboardButton("🚀 Mở Acc 3: maychuvv1n1 (2TB)", url=make_colab_account_url("pool3.studio@example.com", 3))],
-            [InlineKeyboardButton("⬅️ Quay lại trạng thái Colab", callback_data="check_colab_status")]
-        ])
-        await safe_edit_text(query.message, guide_text, reply_markup=guide_kb)
+        await colab_command(update, context)
         return
 
     # 7. Xử lý toàn bộ các kịch bản đang chờ (Render Queue Batch)
@@ -3463,22 +3433,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("colab_rotation_guide"):
         await safe_query_answer(query)
-        from app.services.colab_coordinator import colab_coordinator
-        st = colab_coordinator.sync_cluster_state()
-        act = st.get("action_required", {})
-        active_node = st.get("active_node", 1)
-        active_acc = st.get("active_account", "pool1.studio@example.com")
-        direct_url = act.get("direct_colab_url") or colab_coordinator.make_node_url(active_acc, active_node)
-        guide_text = (
-            f"🔄 <b>TRUNG TÂM PHỐI HỢP & XOAY VÒNG GOOGLE COLAB</b>\n\n"
-            f"📌 <b>Cơ chế hoạt động nhịp nhàng qua Google Drive:</b>\n"
-            f"1️⃣ <b>Đồng bộ thời gian thực:</b> Trạng thái hàng đợi, tiến độ và cạc GPU được ghi tự động vào file <code>cluster_state.json</code> trong thư mục <code>AI_YouTube_RenderFarm/coordinator/</code>.\n\n"
-            f"2️⃣ <b>Tự động xoay Node khi hết Quota:</b> Cụm có 3 Node (3 tài khoản Google). Khi 1 Node hết Compute Units / GPU, hệ thống tự động đổi link sang Node tiếp theo.\n\n"
-            f"3️⃣ <b>Tự động tắt Runtime:</b> Sau khi Colab render xong toàn bộ video đang chờ, Colab sẽ tự gọi <code>runtime.unassign()</code> để ngắt kết nối ngay lập tức, tiết kiệm 100% Compute Units cho bạn.\n\n"
-            f"🎯 <b>Node đang kích hoạt hiện tại:</b> Node {active_node} (<code>{active_acc}</code>)\n"
-            f"🔗 <a href=\"{direct_url}\">BẤM VÀO ĐÂY ĐỂ MỞ COLAB RUNTIME</a>"
-        )
-        await safe_reply(update, guide_text, parse_mode="HTML")
+        await colab_command(update, context)
 
 
 async def _handle_confirm_delete_video(update: Update, context: ContextTypes.DEFAULT_TYPE, job_id: int):
