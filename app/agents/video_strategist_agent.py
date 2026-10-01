@@ -95,17 +95,77 @@ class VideoStrategistAgent:
     ) -> Dict[str, Any]:
         """
         Lập bản đề xuất chiến lược kỹ thuật sản xuất video cho từng cảnh.
-        Ưu tiên AI Strategist thông minh, tự động dự phòng sang Heuristic Rules nếu mất kết nối.
+        Tích hợp SciFiVisualDispatcherAgent:
+        - Nhận diện chuyên sâu yếu tố Viễn tưởng / Vũ trụ / Cyberpunk / Đa vũ trụ.
+        - Ép phương thức sản xuất thành TEXT_TO_VIDEO (AI Video) hoặc STOCK_FOOTAGE (Kho video 9:16).
+        - Tuyệt đối ngăn chặn hiện tượng tạo mỗi ảnh tĩnh chuyển qua lại gây nhàm chán!
         """
+        from app.agents.scifi_visual_dispatcher_agent import SciFiVisualDispatcherAgent
+        scifi_agent = SciFiVisualDispatcherAgent()
+        is_scifi_topic, conf, subgenre, scifi_kws = scifi_agent.detect_scifi_elements(
+            topic=topic,
+            channel_niche=channel_niche,
+        )
+
+        if is_scifi_topic:
+            logger.info(
+                f"🚀 [VideoStrategist] PHÁT HIỆN CHỦ ĐỀ VIỄN TƯỞNG ({subgenre}, Độ tin cậy: {conf:.2f}). "
+                f"KÍCH HOẠT CHẾ ĐỘ ĐIỀU PHỐI ĐỘNG (ƯU TIÊN AI VIDEO & KHO VIDEO 9:16, CHỐNG SLIDESHOW ẢNH TĨNH)!"
+            )
+
         # 1. Thử gọi AI Strategist
         ai_proposal = self._propose_with_ai(topic, scenes, primary_entity, entity_type, channel_niche)
         if ai_proposal and "scene_proposals" in ai_proposal and len(ai_proposal["scene_proposals"]) == len(scenes):
             logger.info("🎬 [VideoStrategist] ✅ Đã phê duyệt Bản Đề Xuất Chiến Lược Sản Xuất Video từ AI Strategist!")
-            return ai_proposal
+            final_plan = ai_proposal
+        else:
+            # 2. Heuristic Rules Fallback
+            logger.info("🎬 [VideoStrategist] Kích hoạt Heuristic Rule-Based Strategist Fallback...")
+            final_plan = self._propose_with_heuristics(topic, scenes, primary_entity, entity_type, channel_niche)
 
-        # 2. Heuristic Rules Fallback
-        logger.info("🎬 [VideoStrategist] Kích hoạt Heuristic Rule-Based Strategist Fallback...")
-        return self._propose_with_heuristics(topic, scenes, primary_entity, entity_type, channel_niche)
+        # 3. ÉP CHẶT ĐIỀU PHỐI VIỄN TƯỞNG CHO TOÀN BỘ PHÂN CẢNH (Anti-Slideshow Enforcement)
+        if is_scifi_topic and final_plan:
+            proposals = final_plan.get("scene_proposals") or []
+            strategies = final_plan.get("scenes_strategy") or []
+
+            for idx, sc_dict in enumerate(scenes):
+                d_meta = scifi_agent.dispatch_scene_strategy(
+                    scene=sc_dict,
+                    topic=topic,
+                    channel_niche=channel_niche,
+                    idx=idx,
+                    total_scenes=len(scenes),
+                )
+                if idx < len(proposals):
+                    prop = proposals[idx]
+                    # Nếu đề xuất cũ là ảnh tĩnh IMAGE_TO_VIDEO, nâng cấp ngay sang AI Video hoặc Kho Video Clip
+                    if prop.get("production_method") in ("IMAGE_TO_VIDEO", "REAL_ARCHIVE"):
+                        prop["production_method"] = d_meta["production_method"]
+                        prop["tool"] = d_meta["tool"]
+                        prop["rationale"] = d_meta["rationale"]
+                    prop["search_queries"] = d_meta["search_queries"]
+                    prop["search_query"] = d_meta["search_query"]
+                    prop["ai_prompt"] = d_meta["ai_prompt"]
+                    prop["is_scifi"] = True
+                    prop["reject_static_slideshow"] = True
+
+                if idx < len(strategies):
+                    strat = strategies[idx]
+                    if strat.get("production_method") in ("IMAGE_TO_VIDEO", "REAL_ARCHIVE"):
+                        strat["production_method"] = d_meta["production_method"]
+                        strat["strategy"] = "AI_VIDEO" if d_meta["production_method"] == "TEXT_TO_VIDEO" else "STOCK_VIDEO"
+                        strat["tool"] = d_meta["tool"]
+                        strat["rationale"] = d_meta["rationale"]
+                    strat["search_queries"] = d_meta["search_queries"]
+                    strat["search_query"] = d_meta["search_query"]
+                    strat["ai_prompt"] = d_meta["ai_prompt"]
+                    strat["is_scifi"] = True
+                    strat["reject_static_slideshow"] = True
+
+            final_plan["is_scifi_video"] = True
+            final_plan["scifi_subgenre"] = subgenre
+
+        return final_plan
 
     def _propose_with_ai(
         self,

@@ -190,14 +190,25 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
         is_historical = bool(primary_entity) and entity_type in ("person", "civilization", "monument", "event", "historical_figure")
         is_face_or_portrait = any(w in narr_lower for w in ["khuôn mặt", "chân dung", "ánh mắt nhìn", "nụ cười quái dị", "tượng đá", "triết gia", "portrait", "face", "statue"])
 
+        from app.agents.scifi_visual_dispatcher_agent import SciFiVisualDispatcherAgent
+        scifi_agent = SciFiVisualDispatcherAgent()
+        is_scifi, conf, subgenre, scifi_kws = scifi_agent.detect_scifi_elements(
+            topic=topic,
+            narration=narration,
+        )
+
         # Cảnh 1 (Hook) luôn ưu tiên FULL VIDEO động
         if scene_id == 1:
             method = "STOCK_FOOTAGE"
             tool = "pexels_video_clip"
             motion = "HIGH_MOTION"
             mood = "dark_ominous" if is_dark else "tense_mysterious"
-            q = ["cinematic dark mystery intro", "dramatic slow motion silhouette", "intense eye stare close up"]
-            ai_p = f"Cinematic 8k dramatic vertical hook shot of {topic or 'mystery'}, dark moody lighting, 9:16"
+            if is_scifi:
+                q = scifi_agent.get_curated_video_search_queries(subgenre=subgenre, narration=narration)
+                ai_p = scifi_agent.create_cinematic_ai_video_prompt(topic or narration, subgenre=subgenre, scene_id=scene_id)
+            else:
+                q = ["cinematic dark mystery intro", "dramatic slow motion silhouette", "intense eye stare close up"]
+                ai_p = f"Cinematic 8k dramatic vertical hook shot of {topic or 'mystery'}, dark moody lighting, 9:16"
         elif is_historical and primary_entity and primary_entity.lower() in narr_lower:
             method = "REAL_ARCHIVE"
             tool = "real_archive_photo"
@@ -205,13 +216,14 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
             mood = "historical_epic"
             q = [f"{primary_entity} authentic history", f"{primary_entity} portrait", f"{primary_entity} archives"]
             ai_p = f"Cinematic historical documentary authentic photorealistic portrait of {primary_entity}, 8k, period accurate, 9:16"
-        elif is_cosmic:
+        elif is_scifi or is_cosmic:
+            # Viễn tưởng / Vũ trụ: BẮT BUỘC ƯU TIÊN TEXT_TO_VIDEO hoặc STOCK_FOOTAGE, CẤM THUẦN ẢNH TĨNH
             method = "TEXT_TO_VIDEO"
             tool = "ai_text_to_video"
             motion = "HIGH_MOTION"
             mood = "cosmic_wonder"
-            q = ["black hole event horizon", "galaxy space nebula", "deep space cosmos stars"]
-            ai_p = f"Cinematic 8k vertical shot of {topic or 'cosmic universe'}, warping space-time, glowing accretion disk, photorealistic 9:16"
+            q = scifi_agent.get_curated_video_search_queries(subgenre=subgenre, narration=narration)
+            ai_p = scifi_agent.create_cinematic_ai_video_prompt(topic or narration, subgenre=subgenre, scene_id=scene_id)
         elif is_face_or_portrait:
             method = "IMAGE_TO_VIDEO"
             tool = "ai_image_to_video"

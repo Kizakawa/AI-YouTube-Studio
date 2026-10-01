@@ -392,10 +392,30 @@ class VideoPipeline:
 
             prod_method = sc_strat.get("production_method") or v_analysis.get("production_method", "STOCK_FOOTAGE")
             scene_pref = getattr(scene, 'media_type', None)
-            if channel_visual_mode in ("imagen_ai", "ai_image") and prod_method != "REAL_ARCHIVE":
-                prod_method = "IMAGE_TO_VIDEO"
-            elif scene_pref == "ai_image":
-                prod_method = "IMAGE_TO_VIDEO"
+
+            # ── Kiểm tra phân cảnh Viễn Tưởng qua SciFiVisualDispatcherAgent ──
+            from app.agents.scifi_visual_dispatcher_agent import SciFiVisualDispatcherAgent
+            scifi_agent = SciFiVisualDispatcherAgent()
+            is_scifi_scene = sc_strat.get("is_scifi") or False
+            if not is_scifi_scene:
+                is_scifi_scene, _, _, _ = scifi_agent.detect_scifi_elements(
+                    topic=topic,
+                    narration=scene.narration,
+                    visual_keyword=scene.visual_keyword or "",
+                    visual_prompt=scene.visual_prompt or "",
+                    channel_niche=channel_niche,
+                )
+
+            if is_scifi_scene:
+                # Video viễn tưởng: Bắt buộc TEXT_TO_VIDEO (AI Video) hoặc STOCK_FOOTAGE (Kho video 9:16), cấm ép về IMAGE_TO_VIDEO
+                if prod_method == "IMAGE_TO_VIDEO":
+                    prod_method = "TEXT_TO_VIDEO"
+                logger.info(f"[Job {self.job_id}] 🚀 Cảnh {idx+1}/{total_scenes}: YẾU TỐ VIỄN TƯỞNG -> Khóa chế độ Video Động ({prod_method}), chống chuyển ảnh đơn điệu!")
+            else:
+                if channel_visual_mode in ("imagen_ai", "ai_image") and prod_method != "REAL_ARCHIVE":
+                    prod_method = "IMAGE_TO_VIDEO"
+                elif scene_pref == "ai_image":
+                    prod_method = "IMAGE_TO_VIDEO"
 
             label = f"[{prod_method}] Cảnh {idx+1}/{total_scenes}"
             rationale_text = v_analysis.get("narrative_subtext") or sc_strat.get("rationale", "")
@@ -636,7 +656,21 @@ class VideoPipeline:
         prefer_ai = False
         prefer_photo = False
 
-        if strat_method == "REAL_ARCHIVE" or scene_pref == "documentary":
+        from app.agents.scifi_visual_dispatcher_agent import SciFiVisualDispatcherAgent
+        is_scifi_scene = (sc_strat or {}).get("is_scifi") or False
+        if not is_scifi_scene:
+            is_scifi_scene, _, _, _ = SciFiVisualDispatcherAgent().detect_scifi_elements(
+                narration=scene.narration,
+                visual_keyword=scene.visual_keyword or "",
+                visual_prompt=getattr(scene, 'visual_prompt', None) or "",
+            )
+
+        if is_scifi_scene:
+            # Video viễn tưởng: Bắt buộc ưu tiên Full Video 9:16 chuyển động (Kho video hoặc AI Video), cấm dùng ảnh tĩnh
+            prefer_video = True
+            prefer_ai = False
+            prefer_photo = False
+        elif strat_method == "REAL_ARCHIVE" or scene_pref == "documentary":
             prefer_photo = True
         elif strat_method in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO") or scene_pref == "video" or scene.scene_id == 1:
             prefer_video = True
@@ -651,8 +685,8 @@ class VideoPipeline:
                 # Mặc định cho Shorts: Ưu tiên Full Video 9:16 động để giữ retention cao!
                 prefer_video = True
 
-        # ── TẦNG 0.5: Ưu tiên AI Image nếu prefer_ai và có visual_prompt ──
-        if prefer_ai and getattr(scene, 'visual_prompt', None) and len(scene.visual_prompt.strip()) > 15:
+        # ── TẦNG 0.5: Ưu tiên AI Image nếu prefer_ai và KHÔNG PHẢI VIỄN TƯỞNG ──
+        if not is_scifi_scene and prefer_ai and getattr(scene, 'visual_prompt', None) and len(scene.visual_prompt.strip()) > 15:
             try:
                 ai_img_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_ai.jpg")
                 res_img = await asyncio.to_thread(

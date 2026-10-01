@@ -64,8 +64,19 @@ class AIVideoAgent:
         out_p = Path(output_path)
         out_p.parent.mkdir(parents=True, exist_ok=True)
 
-        # Quyết định phương pháp nếu là AUTO
-        if method == "AUTO":
+        # Quyết định phương pháp nếu là AUTO hoặc kiểm tra yếu tố Viễn tưởng
+        from app.agents.scifi_visual_dispatcher_agent import SciFiVisualDispatcherAgent
+        scifi_agent = SciFiVisualDispatcherAgent()
+        is_scifi, conf, subgenre, _ = scifi_agent.detect_scifi_elements(
+            topic=prompt,
+            narration=narration,
+            visual_prompt=visual_prompt,
+        )
+
+        if is_scifi:
+            method = "TEXT_TO_VIDEO"
+            logger.info(f"🚀 [AIVideoAgent] Phân cảnh {scene_id} PHÁT HIỆN YẾU TỐ VIỄN TƯỞNG ({subgenre}) -> Bắt buộc thực thi 'TEXT_TO_VIDEO' (Ưu tiên AI Video & Kho Video 9:16, cấm dùng ảnh tĩnh)!")
+        elif method == "AUTO":
             abstract_cues = ["energy", "portal", "wormhole", "cosmic ray", "hyperspace", "vortex", "dimension", "black hole", "nebula", "huyền bí", "vũ trụ", "siêu nhiên", "ảo diệu"]
             p_lower = (prompt + " " + (visual_prompt or "")).lower()
             if any(c in p_lower for c in abstract_cues):
@@ -461,21 +472,40 @@ class AIVideoAgent:
                 return None
 
             used = used_urls if used_urls is not None else set()
-            query_to_use = ""
-            if visual_analysis and visual_analysis.get("search_queries"):
-                for sq in visual_analysis["search_queries"]:
-                    if sq:
-                        query_to_use = sq
-                        break
-            if not query_to_use:
-                query_to_use = clean_scene_search_query(prompt, max_words=3)
 
-            best_vid = media_agent.search_best_video_clip(
-                query=query_to_use,
-                used_urls=used,
-                visual_analysis=visual_analysis,
+            queries_to_try = []
+            if visual_analysis and visual_analysis.get("search_queries"):
+                queries_to_try.extend([q for q in visual_analysis["search_queries"] if q])
+
+            # Tự động nạp bộ từ khóa kho viễn tưởng chuyên dụng từ SciFiVisualDispatcherAgent
+            from app.agents.scifi_visual_dispatcher_agent import SciFiVisualDispatcherAgent
+            scifi_agent = SciFiVisualDispatcherAgent()
+            is_scifi, conf, subgenre, _ = scifi_agent.detect_scifi_elements(
+                topic=prompt,
                 narration=narration,
             )
+            if is_scifi:
+                curated_scifi_qs = scifi_agent.get_curated_video_search_queries(subgenre=subgenre, narration=narration)
+                for csq in curated_scifi_qs:
+                    if csq not in queries_to_try:
+                        queries_to_try.append(csq)
+
+            cleaned_q = clean_scene_search_query(prompt, max_words=3)
+            if cleaned_q and cleaned_q not in queries_to_try:
+                queries_to_try.append(cleaned_q)
+
+            best_vid = None
+            for q_candidate in queries_to_try[:6]:
+                candidate_vid = media_agent.search_best_video_clip(
+                    query=q_candidate,
+                    used_urls=used,
+                    visual_analysis=visual_analysis,
+                    narration=narration,
+                )
+                if candidate_vid and candidate_vid.get("url") and candidate_vid["url"] not in used:
+                    best_vid = candidate_vid
+                    logger.info(f"🎥 [AIVideoAgent] Tìm thấy Video Clip kho 9:16 phù hợp với từ khóa '{q_candidate}': {best_vid.get('url', '')[:60]}...")
+                    break
             if best_vid and best_vid.get("url") and best_vid["url"] not in used:
                 cand_url = best_vid["url"]
                 raw_temp = str(Path(output_path).parent / f"_raw_px_{Path(output_path).stem}.mp4")

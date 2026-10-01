@@ -228,7 +228,11 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
             elif any(mc in text_all for mc in motion_cues) or idx == 0:
                 strategy = "STOCK_VIDEO"
                 rationale = "Cảnh chuyển động hành động đời thực -> dùng Video B-Roll Pexels 9:16 giữ chân người xem."
-            # Ưu tiên 4: Cảnh nghệ thuật tĩnh
+            # Ưu tiên 4: Xử lý cảnh viễn tưởng / kỳ ảo (TUYỆT ĐỐI KHÔNG DÙNG ẢNH TĨNH)
+            elif is_mystery_or_fantasy:
+                strategy = "AI_VIDEO"
+                rationale = "Chủ đề viễn tưởng / kỳ ảo: Ưu tiên Video AI chuyển động điện ảnh, cấm dùng ảnh tĩnh."
+            # Ưu tiên 5: Cảnh nghệ thuật tĩnh cho các chủ đề khác
             else:
                 strategy = "AI_IMAGE"
                 rationale = "Cảnh cần khung hình nghệ thuật điện ảnh đặc thù -> tạo ảnh AI chất lượng cao."
