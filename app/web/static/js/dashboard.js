@@ -1895,20 +1895,24 @@ async function openPublishModal(jobId) {
             const opt = document.createElement('option');
             opt.value = ch.id;
             const isAuth = Boolean(ch.is_authenticated || ch.youtube_connected);
-            const statusIcon = isAuth ? '🟢' : '🟡';
+            const isExpired = Boolean(ch.token_expired);
+            const statusIcon = isExpired ? '🔴' : (isAuth ? '🟢' : '🟡');
+            const statusText = isExpired ? '(Token đã hết hạn - Cần cấp lại)' : (isAuth ? '(Đã kết nối)' : '(Chưa cấp quyền)');
             const gmail = ch.gmail || ch.email_label || ch.google_account;
-            opt.textContent = `${statusIcon} ${ch.name} ── [${gmail}] ${isAuth ? '(Đã kết nối)' : '(Chưa cấp quyền)'}`;
+            opt.textContent = `${statusIcon} ${ch.name} ── [${gmail}] ${statusText}`;
             sel.appendChild(opt);
         });
 
-        // Set default selection
-        if (job.channel_id && allChannels.some(c => c.id === job.channel_id)) {
+        // Set default selection: Ưu tiên kênh đang kết nối tốt và chưa hết hạn
+        const isCurrentAuth = job.channel_id && allChannels.some(c => c.id === job.channel_id && (c.is_authenticated || c.youtube_connected) && !c.token_expired);
+        if (isCurrentAuth) {
             sel.value = job.channel_id;
         } else {
-            // Pick first authenticated channel, or first channel
-            const firstAuth = allChannels.find(c => c.is_authenticated || c.youtube_connected);
-            if (firstAuth) {
-                sel.value = firstAuth.id;
+            const firstValidAuth = allChannels.find(c => (c.is_authenticated || c.youtube_connected) && !c.token_expired);
+            if (firstValidAuth) {
+                sel.value = firstValidAuth.id;
+            } else if (job.channel_id && allChannels.some(c => c.id === job.channel_id)) {
+                sel.value = job.channel_id;
             } else {
                 sel.value = allChannels[0].id;
             }

@@ -275,9 +275,9 @@ class VideoPipeline:
         # ── PHÁT HIỆN THỰC THỂ CHÍNH CỦA TOÀN BỘ VIDEO (DOCUMENTARY MODE) ──
         primary_entity = None
         entity_type = "person"
-        entity_media_pool = []
-        used_pool_urls = set()
-        used_asset_paths: set = set()  # ← DEDUP CROSS-SCENE: track URLs đã assign, cấm tái sử dụng
+        from app.services.media.media_history import get_recent_media_urls, record_used_media
+        used_pool_urls = get_recent_media_urls(limit=150)
+        used_asset_paths: set = set(used_pool_urls)  # ← DEDUP CROSS-JOB & CROSS-SCENE: track URLs đã dùng
 
         topic = ""
         channel_niche = "general"

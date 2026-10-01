@@ -47,11 +47,16 @@ class StockFetcher:
             return next(self._key_cycle)
         return None
 
-    def search_videos(self, query: str, per_page: int = 4, orientation: str = "portrait") -> List[Dict]:
-        """Tìm kiếm video trên Pexels theo từ khóa với tỷ lệ dọc (portrait 9:16) có cơ chế retry và xoay key."""
+    def search_videos(self, query: str, per_page: int = 4, orientation: str = "portrait", page: Optional[int] = None) -> List[Dict]:
+        """Tìm kiếm video trên Pexels theo từ khóa với tỷ lệ dọc (portrait 9:16) có cơ chế retry, xoay key và pagination jitter."""
+        import random
         key = self._get_active_key()
         if not key:
             return []
+
+        # Jitter ngẫu nhiên trang 1-3 để phân bổ đa dạng kho footage khổng lồ của Pexels,
+        # tránh việc mọi video cùng chủ đề đều lấy clip đầu tiên của trang 1
+        target_page = page if page is not None else random.choice([1, 1, 2, 3])
 
         for attempt in range(2):
             try:
@@ -59,11 +64,19 @@ class StockFetcher:
                 params = {
                     "query": query,
                     "per_page": per_page,
-                    "orientation": orientation
+                    "orientation": orientation,
+                    "page": target_page,
                 }
                 res = requests.get(self.base_url, headers=headers, params=params, timeout=12)
                 if res.status_code == 200:
-                    return res.json().get("videos", [])
+                    vids = res.json().get("videos", [])
+                    if not vids and target_page > 1:
+                        # Fallback về page 1 nếu page cao không có kết quả
+                        params["page"] = 1
+                        res1 = requests.get(self.base_url, headers=headers, params=params, timeout=10)
+                        if res1.status_code == 200:
+                            return res1.json().get("videos", [])
+                    return vids
                 elif res.status_code in (401, 429):
                     logger.warning(f"Pexels key bị giới hạn ({res.status_code}), chuyển key...")
                     key = self._get_active_key()
@@ -72,22 +85,31 @@ class StockFetcher:
                 time.sleep(1.0)
         return []
 
-    def search_photos(self, query: str, per_page: int = 3, orientation: str = "portrait") -> List[Dict]:
-        """Tìm kiếm ảnh tĩnh trên Pexels theo từ khóa với tỷ lệ dọc (portrait 9:16) cho Ken Burns."""
+    def search_photos(self, query: str, per_page: int = 3, orientation: str = "portrait", page: Optional[int] = None) -> List[Dict]:
+        """Tìm kiếm ảnh tĩnh trên Pexels theo từ khóa với tỷ lệ dọc (portrait 9:16) cho Ken Burns, có pagination jitter."""
+        import random
         key = self._get_active_key()
         if not key:
             return []
+
+        target_page = page if page is not None else random.choice([1, 1, 2, 3])
 
         try:
             headers = {"Authorization": key}
             params = {
                 "query": query,
                 "per_page": per_page,
-                "orientation": orientation
+                "orientation": orientation,
+                "page": target_page,
             }
             res = requests.get(self.photo_url, headers=headers, params=params, timeout=10)
             if res.status_code == 200:
                 data = res.json().get("photos", [])
+                if not data and target_page > 1:
+                    params["page"] = 1
+                    res1 = requests.get(self.photo_url, headers=headers, params=params, timeout=10)
+                    if res1.status_code == 200:
+                        data = res1.json().get("photos", [])
                 results = []
                 for p in data:
                     src = p.get("src", {})
@@ -253,8 +275,11 @@ class StockFetcher:
         visual_analysis: Optional[Dict[str, Any]] = None,
         narration: str = "",
     ) -> Optional[Dict]:
-        """Tìm kiếm 1 video clip dọc (9:16) chất lượng cao nhất, có tích hợp VisualCurationAgent."""
-        used = used_urls or set()
+        from app.services.media.media_history import get_recent_media_urls, record_used_media
+        used = set(used_urls) if used_urls else set()
+        recent_history = get_recent_media_urls(limit=150)
+        used.update(recent_history)
+
         clean_q = clean_scene_search_query(query, max_words=3)
         words = clean_q.split() if clean_q else query.split()
 
@@ -339,6 +364,8 @@ class StockFetcher:
                     used_urls=used,
                 )
                 if winner and score >= 4.8:
+                    if winner.get("url"):
+                        record_used_media(winner["url"], query=query, source=winner.get("source", "curated_video"))
                     return winner
                 if should_ai:
                     logger.info(f"[StockFetcher] VisualCurationAgent từ chối stock video ({rationale}), chuyển sang AI Video.")
@@ -346,9 +373,24 @@ class StockFetcher:
             except Exception as e:
                 logger.debug(f"[StockFetcher] Lỗi khi gọi VisualCurationAgent: {e}")
 
+        # Tối ưu tốc độ: Ưu tiên Full HD (1080x1920) hoặc HD (720x1280) để tải nhanh gấp 5 lần
+        def _res_score(vf):
+            h = vf.get("height", 0)
+            if h == 1920:
+                return 1000
+            elif 1080 <= h < 1920:
+                return 800 + h
+            elif 720 <= h < 1080:
+                return 600 + h
+            elif h > 1920:
+                return 200 - h  # 4K ưu tiên thấp nhất
+            return h
+
+        candidates_found = []
         for v in collected_candidates:
             if v.get("source") in ("nasa_video", "pixabay_video") and v.get("url") and v["url"] not in used:
-                return v
+                candidates_found.append(v)
+                continue
 
             v_files = v.get("video_files", [])
             portrait_files = [
@@ -358,25 +400,11 @@ class StockFetcher:
                 )
             ]
             if portrait_files:
-                # Tối ưu tốc độ: Ưu tiên Full HD (1080x1920) hoặc HD (720x1280) để tải nhanh gấp 5 lần
-                # và FFmpeg render CPU mượt mà, tránh các file 4K (height > 1920) nặng 40-60MB gây chậm hệ thống.
-                def _res_score(vf):
-                    h = vf.get("height", 0)
-                    if h == 1920:
-                        return 1000
-                    elif 1080 <= h < 1920:
-                        return 800 + h
-                    elif 720 <= h < 1080:
-                        return 600 + h
-                    elif h > 1920:
-                        return 200 - h  # 4K ưu tiên thấp nhất
-                    return h
-
                 hd_files = sorted(portrait_files, key=_res_score, reverse=True)
                 for best in hd_files:
                     link = best.get("link")
                     if link and link not in used:
-                        return {
+                        candidates_found.append({
                             "url": link,
                             "title": f"Pexels Video: {v.get('url', query)}",
                             "width": best.get("width", 1080),
@@ -385,5 +413,18 @@ class StockFetcher:
                             "media_type": "video",
                             "source": "pexels_video",
                             "thumbnail": v.get("image", ""),
-                        }
+                        })
+                        break
+            if len(candidates_found) >= 5:
+                break
+
+        if candidates_found:
+            import random
+            # Chọn ngẫu nhiên trong top 2-3 clips tốt nhất để luân phiên cảnh, tránh video nào cũng lấy clip đầu tiên
+            top_pool = candidates_found[:min(len(candidates_found), 3)]
+            chosen = random.choice(top_pool)
+            if chosen.get("url"):
+                record_used_media(chosen["url"], query=query, source=chosen.get("source", "pexels_video"))
+            return chosen
+
         return None

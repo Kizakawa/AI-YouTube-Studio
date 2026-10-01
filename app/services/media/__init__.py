@@ -17,6 +17,11 @@ from app.services.media.entity_detector import (
 )
 from app.services.media.stock_fetcher import StockFetcher
 from app.services.media.archive_fetcher import ArchiveFetcher
+from app.services.media.media_history import (
+    get_recent_media_urls,
+    record_used_media,
+    record_batch_used_media,
+)
 
 __all__ = [
     "detect_real_entity",
@@ -28,4 +33,7 @@ __all__ = [
     "is_valid_entity_name",
     "StockFetcher",
     "ArchiveFetcher",
+    "get_recent_media_urls",
+    "record_used_media",
+    "record_batch_used_media",
 ]

@@ -105,7 +105,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     }
 
     scenes_media = []
-    used_pool_urls = set()
+    from app.services.media.media_history import get_recent_media_urls, record_used_media
+    used_pool_urls = get_recent_media_urls(limit=150)
+    job_id = state.get("job_id", 0)
 
     for idx, scene in enumerate(script.scenes):
         media_path = ""

@@ -412,6 +412,45 @@ async def get_team_members() -> List[Dict[str, Any]]:
 
 # ─── Channels ─────────────────────────────────────────────────────────────────
 
+_channel_token_health_cache: Dict[str, Dict[str, Any]] = {}
+
+def _check_channel_token_health(ch_id: str, token_file: Path) -> Dict[str, Any]:
+    """Kiểm tra xem token của kênh có thực sự dùng được hay bị invalid_grant (cache 60s)."""
+    now = time.time()
+    cached = _channel_token_health_cache.get(ch_id)
+    if cached and (now - cached.get("checked_at", 0) < 60):
+        return cached
+
+    if not token_file.exists():
+        res = {"valid": False, "expired": False, "title": None, "error": "No token file", "checked_at": now}
+        _channel_token_health_cache[ch_id] = res
+        return res
+
+    try:
+        t_data = load_encrypted_json(token_file)
+        if not t_data or "refresh_token" not in t_data:
+            res = {"valid": False, "expired": False, "title": None, "error": "Malformed token", "checked_at": now}
+            _channel_token_health_cache[ch_id] = res
+            return res
+
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
+        creds = Credentials.from_authorized_user_info(t_data)
+        if creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            # Save refreshed token
+            save_encrypted_json(token_file, json.loads(creds.to_json()))
+
+        res = {"valid": True, "expired": False, "title": t_data.get("channel_title"), "error": None, "checked_at": now}
+        _channel_token_health_cache[ch_id] = res
+        return res
+    except Exception as e:
+        err_str = str(e)
+        is_exp = "invalid_grant" in err_str or "expired" in err_str or "revoked" in err_str
+        res = {"valid": False, "expired": is_exp, "title": None, "error": err_str, "checked_at": now}
+        _channel_token_health_cache[ch_id] = res
+        return res
+
 @app.get("/api/channels")
 async def get_channels_matrix() -> List[Dict[str, Any]]:
     cfg = _read_channels_yaml()
@@ -452,9 +491,19 @@ async def get_channels_matrix() -> List[Dict[str, Any]]:
             has_client_secret = token_status["has_client_secret"]
             drive_connected = token_status["drive_connected"]
 
+            ch_health = _check_channel_token_health(str(ch_id), ch_token_file) if has_ch_token else {"valid": False, "expired": False}
+            token_expired = ch_health.get("expired", False)
+
             if has_ch_token:
-                is_connected = True
-                status_label = f"🟢 Đã liên kết ({token_ch_title or ch.get('name')})"
+                if ch_health.get("valid"):
+                    is_connected = True
+                    status_label = f"🟢 Đã liên kết ({token_ch_title or ch.get('name')})"
+                elif token_expired:
+                    is_connected = False
+                    status_label = f"🔴 Token đã hết hạn ({token_ch_title or ch.get('name')}) - Cần cấp lại"
+                else:
+                    is_connected = False
+                    status_label = f"🟡 Lỗi token ({token_ch_title or ch.get('name')})"
             elif is_first_ch and token_status["youtube_connected"]:
                 is_connected = True
                 status_label = "🟢 Dùng quyền Gmail mẹ"
@@ -471,6 +520,7 @@ async def get_channels_matrix() -> List[Dict[str, Any]]:
                 "gmail": gmail,
                 "email_label": gmail,
                 "token_status": status_label,
+                "token_expired": token_expired,
                 "is_authenticated": is_connected,
                 "youtube_connected": is_connected,
                 "has_own_token": has_ch_token,
@@ -1651,9 +1701,17 @@ async def publish_to_youtube(
         pub_agent = PublisherAgent(channel_config=ch_cfg, account_name=acc_id)
         if not pub_agent.service:
             ch_name = ch_cfg.get("name", target_channel)
+            init_err = getattr(pub_agent, "init_error", None) or "Chưa kết nối OAuth"
+            if "invalid_grant" in init_err or "expired" in init_err:
+                detail_msg = (
+                    f"⚠️ Phiên đăng nhập YouTube của kênh '{ch_name}' đã hết hạn (Google OAuth token expired/revoked). "
+                    f"Vui lòng chạy lệnh 'python auth_channel.py {target_channel}' trong terminal hoặc vào tab 'Kênh & Tài Khoản' bấm '🔑 Cấp Quyền YouTube (Kênh Này)' để kết nối lại."
+                )
+            else:
+                detail_msg = f"Kênh '{ch_name}' chưa kết nối YouTube OAuth ({init_err}). Vui lòng vào tab 'Kênh & Tài Khoản' bấm '🔑 Đăng Nhập YouTube (Kênh Này)' hoặc chạy 'python auth_channel.py {target_channel}'."
             raise HTTPException(
                 status_code=503,
-                detail=f"Kênh '{ch_name}' chưa kết nối YouTube OAuth. Vui lòng vào tab 'Kênh & Tài Khoản' bấm '🔑 Đăng Nhập YouTube (Kênh Này)' để cấp quyền."
+                detail=detail_msg
             )
 
         pinned_comment = (body.pinned_comment.strip() if body and body.pinned_comment else None)

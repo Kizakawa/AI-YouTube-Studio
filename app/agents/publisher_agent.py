@@ -60,11 +60,13 @@ class PublisherAgent:
             self.token_file = None
 
         self.service = None
+        self.init_error = None
         self._init_service()
 
     def _init_service(self):
         """Khởi tạo YouTube v3 client qua OAuth credentials"""
         if not self.token_file:
+            self.init_error = f"Kênh '{self.channel_name}' chưa có file token riêng."
             logger.warning(
                 f"Kênh '{self.channel_name}' (ID: {self.channel_id}) chưa có token YouTube riêng. "
                 f"Hệ thống chặn không dùng token kênh khác để tránh đăng nhầm video!"
@@ -95,10 +97,13 @@ class PublisherAgent:
                         logger.info(f"Đã tự động refresh & lưu mã hoá AES-256 YouTube token cho '{self.channel_name}'")
 
                 self.service = build("youtube", "v3", credentials=creds)
+                self.init_error = None
                 logger.info(f"YouTube Data API v3 đã kết nối thành công cho '{self.channel_name}'")
             else:
+                self.init_error = f"File token rỗng hoặc không giải mã được: {self.token_file}"
                 logger.warning(f"Chưa tìm thấy youtube_token hợp lệ cho '{self.token_file}'")
         except Exception as e:
+            self.init_error = str(e)
             logger.error(f"Lỗi khởi tạo YouTube API cho '{self.channel_name}': {e}")
 
     def upload_video(
@@ -126,10 +131,16 @@ class PublisherAgent:
             self._init_service()
 
         if not self.service:
-            err_msg = (
-                f"Kênh '{self.channel_name}' chưa có token YouTube riêng. "
-                f"Vui lòng vào Web Dashboard (http://127.0.0.1:8000) -> Tab Kênh & Tài Khoản -> Bấm '🔑 Cấp Quyền YouTube (Kênh Này)' để kết nối."
-            )
+            if self.init_error and ("invalid_grant" in self.init_error or "expired" in self.init_error):
+                err_msg = (
+                    f"⚠️ Phiên đăng nhập YouTube của kênh '{self.channel_name}' đã hết hạn (Google OAuth token expired). "
+                    f"Vui lòng chạy lệnh 'python auth_channel.py {self.channel_id}' trong terminal hoặc vào Web Dashboard (http://127.0.0.1:8000) -> Tab Kênh & Tài Khoản -> Bấm '🔑 Cấp Quyền YouTube (Kênh Này)' để kết nối lại."
+                )
+            else:
+                err_msg = (
+                    f"Kênh '{self.channel_name}' chưa có token YouTube riêng hoặc chưa được cấp quyền ({self.init_error or 'Chưa xác thực'}). "
+                    f"Vui lòng vào Web Dashboard -> Tab Kênh & Tài Khoản -> Bấm '🔑 Cấp Quyền YouTube (Kênh Này)' hoặc chạy 'python auth_channel.py {self.channel_id}'."
+                )
             logger.error(f"Không thể kết nối YouTube API để upload: {self.token_file} ({err_msg})")
             return {
                 "status": "failed",

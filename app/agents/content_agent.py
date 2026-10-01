@@ -264,17 +264,25 @@ class ContentAgent:
                 clean_sq = "wild nature documentary" if is_wildlife else ("ocean underwater abyss" if is_ocean else "cinematic documentary")
             sc["stock_query"] = clean_sq
 
-        # ── 2. BẮT BUỘC ĐẢM BẢO PHÂN CẢNH CUỐI CÓ CÂU KÊU GỌI ĐĂNG KÝ KÊNH (SPOKEN CTA ENFORCEMENT) ──
+        # ── 2. ĐẢM BẢO PHÂN CẢNH CUỐI CÓ CALL TO ACTION (CTA) TỰ NHIÊN, ĐA DẠNG, THEO NGÁCH ──
         if scenes and isinstance(scenes, list):
             last_scene = scenes[-1]
             if isinstance(last_scene, dict):
                 last_narr = last_scene.get("narration", "").strip()
                 is_vi = any(c in last_narr.lower() for c in "àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ")
-                has_sub = any(k in last_narr.lower() for k in ["subscribe", "đăng ký", "đăng kí", "follow"])
-                if not has_sub and len(last_narr) > 0:
+                
+                # Nhận diện xem kịch bản đã có sẵn lời kêu gọi hành động tự nhiên chưa
+                organic_cta_keywords = [
+                    "subscribe", "đăng ký", "đăng kí", "follow", "theo dõi", "bình luận", "comment",
+                    "save this", "lưu lại", "chia sẻ", "share", "tell me", "bạn nghĩ sao", "let me know",
+                    "drop your", "part 2", "phần 2", "which one", "ai trong số", "do this", "hãy thử"
+                ]
+                has_organic_cta = any(k in last_narr.lower() for k in organic_cta_keywords)
+
+                if not has_organic_cta and len(last_narr) > 0:
                     clean_narr = re.sub(r'[\s\.\,\-]+$', '', last_narr)
                     # Kiểm tra xem có đuôi nối loop không
-                    connectors = ["because", "which is why", "and that is why", "bởi vì", "và đó là lý do", "vậy nên"]
+                    connectors = ["because", "which is why", "and that is why", "bởi vì", "và đó là lý do", "vậy nên", "cho nên"]
                     found_conn = None
                     for conn in connectors:
                         if clean_narr.lower().endswith(conn):
@@ -282,11 +290,57 @@ class ContentAgent:
                             found_conn = conn
                             break
 
-                    sub_cta = "Subscribe and follow for Part 2" if not is_vi else "Đăng ký kênh đón xem Phần 2"
-                    if found_conn:
-                        last_scene["narration"] = f"{clean_narr}. {sub_cta}, {found_conn}..."
+                    # Phân loại ngách từ ngữ cảnh kịch bản để chọn CTA phù hợp nhất
+                    all_text_lower = (str(raw_data.get("topic", "")) + " " + clean_narr).lower()
+                    import random
+
+                    if any(w in all_text_lower for w in ["chim", "bird", "chó", "mèo", "pet", "animal", "rescue", "thú hoang", "cứu hộ"]):
+                        # Ngách động vật / Cứu hộ
+                        cta_options_en = [
+                            "Every life deserves love. Follow for more rescues",
+                            "Share this to help another innocent soul find a home",
+                            "Follow to support our daily rescue missions",
+                        ]
+                        cta_options_vi = [
+                            "Mỗi sinh mệnh đều xứng đáng được yêu thương. Hãy cùng lan tỏa nhé",
+                            "Theo dõi kênh để đón xem những hành trình giải cứu tiếp theo",
+                            "Chia sẻ video để lan tỏa tình yêu thương đến động vật nhé",
+                        ]
+                    elif any(w in all_text_lower for w in ["ocean", "sea", "biển", "abyss", "vực", "mariana", "mystery", "bí ẩn", "history", "lịch sử", "what if"]):
+                        # Ngách Bí ẩn đại dương / Lịch sử giả tưởng
+                        cta_options_en = [
+                            "What's your theory about this? Drop your thoughts below",
+                            "Follow to uncover what history books won't tell you",
+                            "Did this really happen? Tell me in the comments",
+                            "Follow for more unsolved mysteries of our world",
+                        ]
+                        cta_options_vi = [
+                            "Bạn nghĩ sự thật đằng sau là gì? Hãy bình luận bên dưới nhé",
+                            "Đăng ký kênh để khám phá những bí ẩn chưa có lời giải",
+                            "Liệu đây là sự thật hay huyền thoại? Hãy để lại ý kiến của bạn nhé",
+                        ]
                     else:
-                        last_scene["narration"] = f"{clean_narr} — {sub_cta}!"
+                        # Ngách Tâm lý học (Psychology) & Kỹ năng
+                        cta_options_en = [
+                            "Save this video before your next debate",
+                            "Have you seen someone use this? Drop your thoughts below",
+                            "Follow to master psychological defense daily",
+                            "Save this to protect your peace of mind",
+                            "Which of these signs hit closest to home? Tell me below",
+                        ]
+                        cta_options_vi = [
+                            "Lưu lại video này phòng khi bạn cần đến",
+                            "Bạn đã từng gặp chiêu tâm lý này chưa? Để lại bình luận nhé",
+                            "Follow kênh để làm chủ tâm lý và bảo vệ bản thân mỗi ngày",
+                            "Bạn nghĩ sao về điều này? Hãy chia sẻ bên dưới nhé",
+                        ]
+
+                    chosen_cta = random.choice(cta_options_vi if is_vi else cta_options_en)
+
+                    if found_conn:
+                        last_scene["narration"] = f"{clean_narr}. {chosen_cta} — {found_conn}..."
+                    else:
+                        last_scene["narration"] = f"{clean_narr}. {chosen_cta}."
                     last_scene["estimated_seconds"] = max(float(last_scene.get("estimated_seconds", 3.0)), 4.0)
 
         # Cập nhật lại full_narration để đồng bộ 100% với các scene
@@ -357,10 +411,13 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
    - Scene 1 visual_keyword & visual_prompt MUST be visually arresting, shocking, and intense.
 
 3. PSYCHOLOGICAL VIRAL CALL TO ACTION (CTA) & SEAMLESS INFINITE LOOP:
-   - High retention proves viewers are hooked, but without an active Call To Action, viewers swipe away without subscribing!
-   - The final scene (Scene 6/7/8) MUST integrate a high-converting CTA promising Part 2 or cliffhanger answer:
-     (e.g., "Subscribe to see the decoded sonar audio in Part 2 tomorrow... because..." or "Bình luận suy đoán của bạn và đăng ký kênh đón xem Phần 2... bởi vì...")
-   - HARD RULE: The very last 2-3 words of the spoken narration MUST be an open bridge/connector clause (e.g. "...because...", "...which is why...", "...và đó là lý do vì sao...", "...bởi vì...") so that when YouTube loops the video, it forms one single continuous grammatically seamless sentence into Scene 1!
+   - High retention proves viewers are hooked, but without an active Call To Action, viewers swipe away without engaging!
+   - The final scene (Scene 6/7/8) MUST integrate a high-converting, natural Call To Action matching the topic angle:
+     * Psychology / Value: "Save this video before your next debate..." / "Have you seen someone use this? Drop your thoughts below..." / "Follow to master psychological defense daily..."
+     * Mystery / History: "What's your theory about this? Comment below..." / "Follow to uncover what history won't tell you..."
+     * Animal Rescue: "Every life deserves love. Follow to support more rescues..."
+     * Only use "Part 2" if the story is genuinely a multi-part series! DO NOT force Part 2 on standalone facts.
+   - HARD RULE FOR INFINITE LOOP: The very last 2-3 words of the spoken narration MUST be an open bridge/connector clause (e.g. "...because...", "...which is why...", "...và đó là lý do vì sao...", "...bởi vì...") so that when YouTube loops the video, it forms one single continuous grammatically seamless sentence into Scene 1!
 
 4. CONCRETE PHYSICAL STOCK QUERIES (NO ABSTRACT WORDS):
    - stock_query is 2-3 English search words strictly for Pexels stock video/photo search.
