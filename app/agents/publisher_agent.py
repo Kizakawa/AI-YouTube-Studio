@@ -3,6 +3,7 @@ import re
 import json
 import base64
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, List
 from google.oauth2.credentials import Credentials
@@ -191,23 +192,37 @@ class PublisherAgent:
                 clean_title = clean_title[:91].rstrip()
             clean_title = f"{clean_title} #Shorts"
 
-        # Tự động tối ưu hóa kiếm tiền qua Amazon Affiliate (Monetization Engine)
+        # Tự động tối ưu hóa kiếm tiền qua Amazon Affiliate (CHỈ kích hoạt cho ngách có affiliate_enabled: True)
         prod_info = None
+        desc_clean = description or ""
+        niche_id = str(self.channel_config.get("niche") or "").lower()
+        
+        affiliate_enabled = False
         try:
-            from app.services.monetization_engine import enrich_video_monetization
-            desc_clean, pinned_comment, prod_info = enrich_video_monetization(
-                channel_config=self.channel_config,
-                title=clean_title,
-                description=description or "",
-                pinned_comment=pinned_comment,
-                topic=topic or "",
-                script=script or ""
-            )
-            if prod_info:
-                logger.info(f"Đã tự động lồng ghép sản phẩm kiếm tiền Amazon: {prod_info.get('name')}")
-        except Exception as ex:
-            logger.warning(f"Không thể áp dụng monetization_engine: {ex}")
-            desc_clean = description or ""
+            from app.services.niche_manager import get_niche
+            niche_prof = get_niche(niche_id)
+            monet_cfg = niche_prof.get("monetization", {})
+            affiliate_enabled = bool(monet_cfg.get("affiliate_enabled", False) or self.channel_config.get("affiliate_enabled", False))
+        except Exception:
+            pass
+
+        if affiliate_enabled:
+            try:
+                from app.services.monetization_engine import enrich_video_monetization
+                desc_clean, pinned_comment, prod_info = enrich_video_monetization(
+                    channel_config=self.channel_config,
+                    title=clean_title,
+                    description=desc_clean,
+                    pinned_comment=pinned_comment,
+                    topic=topic or "",
+                    script=script or ""
+                )
+                if prod_info:
+                    logger.info(f"Đã tự động lồng ghép sản phẩm kiếm tiền Amazon cho ngách '{niche_id}': {prod_info.get('name')}")
+            except Exception as ex:
+                logger.warning(f"Không thể áp dụng monetization_engine: {ex}")
+        else:
+            logger.info(f"Ngách '{niche_id}' không bật affiliate -> Giữ mô tả sạch 100%")
 
         # Đảm bảo description luôn có hashtag nhận diện Shorts
         shorts_hashtags = "#Shorts #shorts #viral #ytshorts"
@@ -224,23 +239,28 @@ class PublisherAgent:
             if req_tag.lower() not in [t.lower() for t in tag_list]:
                 tag_list.append(req_tag)
 
+        # Chuẩn hóa ngôn ngữ mặc định (Target US Audience)
+        target_lang = default_language or self.channel_config.get("language") or "en"
+        if not default_audio_language or default_audio_language.lower() == "en":
+            target_audio_lang = "vi-VN" if str(target_lang).lower().startswith("vi") else "en-US"
+        else:
+            target_audio_lang = default_audio_language
+
         body = {
             "snippet": {
                 "title": clean_title[:100],
                 "description": desc_clean[:5000],
                 "tags": tag_list[:20],
-                "categoryId": "22"  # People & Blogs / Shorts
+                "categoryId": "22",  # People & Blogs / Shorts
+                "defaultLanguage": target_lang,
+                "defaultAudioLanguage": target_audio_lang,
             },
             "status": {
                 "privacyStatus": "private" if schedule_time_iso else privacy_status,
-                "selfDeclaredMadeForKids": False
+                "selfDeclaredMadeForKids": False,
+                "containsSyntheticMedia": True  # Khai báo minh bạch nội dung AI / Synthetic theo chính sách YouTube 2026
             }
         }
-
-        if default_language:
-            body["snippet"]["defaultLanguage"] = default_language
-        if default_audio_language:
-            body["snippet"]["defaultAudioLanguage"] = default_audio_language
 
         if schedule_time_iso:
             body["status"]["publishAt"] = schedule_time_iso
@@ -304,9 +324,42 @@ class PublisherAgent:
                 from app.services.quota_manager import QuotaManager, get_next_reset_time
                 QuotaManager.mark_exhausted(self.project_id)
                 next_reset_str = get_next_reset_time().strftime("%H:%M ngày %d/%m/%Y")
+                
+                # Đóng gói an toàn toàn bộ video + metadata + phụ đề vào file .zip để người dùng tải về up tay
+                fallback_zip = None
+                try:
+                    import zipfile
+                    pkg_dir = Path("output/packages")
+                    pkg_dir.mkdir(parents=True, exist_ok=True)
+                    v_stem = Path(video_path).stem
+                    zip_path = pkg_dir / f"{v_stem}_manual_upload.zip"
+                    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                        if Path(video_path).exists():
+                            zf.write(video_path, arcname=Path(video_path).name)
+                        meta_payload = {
+                            "title": clean_title,
+                            "description": desc_clean,
+                            "tags": tag_list,
+                            "channel_name": self.channel_name,
+                            "defaultLanguage": target_lang,
+                            "defaultAudioLanguage": target_audio_lang,
+                            "containsSyntheticMedia": True,
+                            "created_at": datetime.utcnow().isoformat()
+                        }
+                        zf.writestr("metadata.json", json.dumps(meta_payload, indent=2, ensure_ascii=False))
+                        v_parent = Path(video_path).parent
+                        for extra in v_parent.glob(f"{v_stem}*.*"):
+                            if extra.suffix.lower() in (".srt", ".ass", ".jpg", ".png"):
+                                zf.write(extra, arcname=extra.name)
+                    fallback_zip = str(zip_path)
+                    logger.info(f"📦 [QuotaFallback] Đã đóng gói video vào zip: {fallback_zip}")
+                except Exception as ex_zip:
+                    logger.warning(f"Không thể đóng gói zip fallback: {ex_zip}")
+
                 quota_msg = (
                     f"Dự án '{self.project_id}' đã chạm trần YouTube Quota 10.000 units/ngày của Google. "
-                    f"Video được bảo vệ và chuyển sang hàng đợi tự động, sẽ xuất bản vào {next_reset_str}."
+                    f"Video được bảo vệ và chuyển sang hàng đợi tự động (sẽ xuất bản vào {next_reset_str})."
+                    + (f" Gói tải về thủ công: {fallback_zip}" if fallback_zip else "")
                 )
                 logger.warning(f"🚨 [QuotaExceeded] {quota_msg}")
                 return {
@@ -314,7 +367,8 @@ class PublisherAgent:
                     "error": quota_msg,
                     "message": quota_msg,
                     "video_id": None,
-                    "project_id": self.project_id
+                    "project_id": self.project_id,
+                    "fallback_zip": fallback_zip
                 }
 
             logger.error(f"Lỗi khi upload video lên YouTube: {e}", exc_info=True)

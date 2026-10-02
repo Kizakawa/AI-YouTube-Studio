@@ -2,67 +2,103 @@ id: deep_sea_earth_mysteries
 name: Bí Ẩn Biển Sâu & Kỳ Quan Trái Đất Chưa Lời Giải
 badge: 🌊 Biển Sâu & Bí Ẩn Trái Đất
 icon: 🌊
-description: "Khám phá thế giới đại dương tăm tối, rãnh vực Mariana, nỗi sợ biển sâu (Thalassophobia), âm thanh bí ẩn (The Bloop), di tích chìm dưới đáy biển và những điều kỳ lạ chưa có lời giải của Trái Đất."
-target_audience: "Khán giả quốc tế mê mẩn bí ẩn đại dương, thám hiểm biển sâu, khoa học kỳ dị, hiện tượng siêu nhiên tự nhiên và các câu chuyện rùng mình kích thích trí tò mò."
-
+description: Khám phá thế giới đại dương tăm tối, rãnh vực Mariana, nỗi sợ biển sâu
+  (Thalassophobia), âm thanh bí ẩn (The Bloop), di tích chìm dưới đáy biển và những
+  điều kỳ lạ chưa có lời giải của Trái Đất.
+target_audience: Khán giả quốc tế mê mẩn bí ẩn đại dương, thám hiểm biển sâu, khoa
+  học kỳ dị, hiện tượng siêu nhiên tự nhiên và các câu chuyện rùng mình kích thích
+  trí tò mò.
 script_blueprint:
-  tone_of_voice: "Kỳ bí, rùng mình (Eerie), giật gân, nhịp thở dồn dập như đang ngồi trong tàu lặn tiến vào bóng tối rãnh Mariana, khiến người xem lạnh gáy nhưng không thể rời mắt."
-  pacing: "Siêu nhanh, 2.2 - 3.2 giây/cảnh, nhịp điệu nghẹt thở, cao trào dồn nén ở 5 giây cuối."
+  tone_of_voice: Kỳ bí, rùng mình (Eerie), giật gân, nhịp thở dồn dập như đang ngồi
+    trong tàu lặn tiến vào bóng tối rãnh Mariana, khiến người xem lạnh gáy nhưng không
+    thể rời mắt.
+  pacing: Siêu nhanh 155 WPM, 2.5 - 3.2 giây/cảnh, nhịp điệu dồn dập, cao trào dồn
+    nén.
   hook_formulas:
-    - "Reverse Psychology Thalassophobia: 'If you have thalassophobia or fear the dark unknown, swipe away right now...'"
-    - "NASA Ocean Paradox: 'NASA began exploring the ocean before space. Here is why they abruptly fled in 1970...'"
-    - "Classified Sonar Anomaly: 'The classified 1997 US Navy sonar audio that was 10 times louder than a blue whale...'"
-    - "Scale Shock Mariana Trench: 'At 11,000 meters below, where sunlight has never reached, cameras captured something massive moving...'"
-    - "Point Nemo Warning: 'You are closer to astronauts in space than any human being when you reach this spot on Earth...'"
-  narrative_structure: "Hook cảnh báo sợ hãi 3s -> Dẫn chứng sự thật rợn tóc gáy -> Cao trào phát hiện không xác định -> Lời mời xem Phần 2 & Infinite Seamless Loop"
+  - 'Reverse Psychology Thalassophobia: ''If you have thalassophobia or fear the dark
+    unknown, swipe away right now...'''
+  - 'NASA Ocean Paradox: ''NASA began exploring the ocean before space. Here is why
+    they abruptly fled in 1970...'''
+  - 'Classified Sonar Anomaly: ''The classified 1997 US Navy sonar audio that was
+    10 times louder than a blue whale...'''
+  - 'Scale Shock Mariana Trench: ''At 11,000 meters below, where sunlight has never
+    reached, cameras captured something massive moving...'''
+  - 'Point Nemo Warning: ''You are closer to astronauts in space than any human being
+    when you reach this spot on Earth...'''
+  narrative_structure: Hook cảnh báo sợ hãi 3s -> Dẫn chứng sự thật rợn tóc gáy ->
+    Cao trào phát hiện không xác định -> Lời mời xem Phần 2 & Infinite Seamless Loop
   forbidden_words:
-    - "Welcome back to our channel"
-    - "Today we will explore"
-    - "Don't forget to like and subscribe"
-    - "The ocean is very big and deep"
-    - "In this video"
+  - Welcome back to our channel
+  - Today we will explore
+  - Don't forget to like and subscribe
+  - The ocean is very big and deep
+  - In this video
   cta_templates:
-    - "Do you believe something ancient is still alive down there? Subscribe to unlock the decoded Part 2 tomorrow... because..."
-    - "Would you dive 10,000 meters into the abyss? Subscribe and comment your theory for Part 2... and that is why..."
-    - "Subscribe before Part 2 drops tomorrow with the raw classified footage... because..."
+  - Do you believe something ancient is still alive down there? Subscribe to unlock
+    the decoded Part 2 tomorrow.
+  - Would you dive 10,000 meters into the abyss? Subscribe and comment your theory
+    for Part 2.
+  - Subscribe before Part 2 drops tomorrow with the raw classified footage.
   anti_hallucination_rules:
-    - "Dựa trên các địa danh và hiện tượng có thật (Mariana Trench, Challenger Deep, Point Nemo, The Bloop 1997, Baltic Sea Anomaly, Kola Borehole)."
-    - "Phân biệt rõ ràng giữa 'ghi nhận khoa học/sonar' và 'truyền thuyết quái vật biển bí ẩn'."
-
+  - Dựa trên các địa danh và hiện tượng có thật (Mariana Trench, Challenger Deep,
+    Point Nemo, The Bloop 1997, Baltic Sea Anomaly, Kola Borehole).
+  - Phân biệt rõ ràng giữa 'ghi nhận khoa học/sonar' và 'truyền thuyết quái vật biển
+    bí ẩn'.
+  banned_lexicon: &id001
+  - cigarette
+  - office cubicle
+  - plastic toy
+  - cryptocurrency
+  - bitcoin
+  - skyscraper
+  - traffic jam
+  - shopping mall
+  - fast food
 visual_aesthetics:
-  art_style: "Cinematic Abyssal Darkness & Bioluminescence HDR"
-  camera_angles: "First-person submarine viewport, sweeping low-angle abyssal drone, claustrophobic diver flashlight POV, sudden rapid macro zoom into glowing entity"
-  color_palette: "Abyssal midnight navy (#020617), deep obsidian black (#000000), bioluminescent neon cyan (#38bdf8), piercing submarine spotlight amber (#f59e0b), ghostly aquatic emerald (#10b981)"
-  master_prompt_prefix: "masterpiece cinematic deep sea abyss film still, colossal scale thalassophobia, submarine spotlight beam piercing through pitch-black dark ocean water, floating underwater particles, intense claustrophobic tension, 8k resolution vertical 9:16"
-  master_prompt_suffix: "hyper-realistic water caustics, dramatic volumetric fog light, photorealistic, Unreal Engine 5 render, no text, no watermark"
-  negative_prompts: "sunny beach, cartoon, anime, bright daylight, tropical reef, smiling person, plastic, low resolution, blurry, watermark, text"
+  art_style: Cinematic Abyssal Darkness & Bioluminescence HDR
+  camera_angles: First-person submarine viewport, sweeping low-angle abyssal drone,
+    claustrophobic diver flashlight POV, sudden rapid macro zoom into glowing entity
+  color_palette: Abyssal midnight navy (#020617), deep obsidian black (#000000), bioluminescent
+    neon cyan (#38bdf8), piercing submarine spotlight amber (#f59e0b), ghostly aquatic
+    emerald (#10b981)
+  master_prompt_prefix: masterpiece cinematic deep sea abyss film still, colossal
+    scale thalassophobia, submarine spotlight beam piercing through pitch-black dark
+    ocean water, floating underwater particles, intense claustrophobic tension, 8k
+    resolution vertical 9:16
+  master_prompt_suffix: hyper-realistic water caustics, dramatic volumetric fog light,
+    photorealistic, Unreal Engine 5 render, no text, no watermark
+  negative_prompts: sunny beach, cartoon, anime, bright daylight, tropical reef, smiling
+    person, plastic, low resolution, blurry, watermark, text
   stock_video_keywords:
-    - "deep sea submarine light"
-    - "dark ocean underwater abyss"
-    - "scuba diver dark cavern"
-    - "ocean storm dark waves"
-    - "underwater sonar radar"
-    - "deep trench creature darkness"
-
+  - deep sea submarine light
+  - dark ocean underwater abyss
+  - scuba diver dark cavern
+  - ocean storm dark waves
+  - underwater sonar radar
+  - deep trench creature darkness
 subtitles:
-  font_family: "Montserrat, Arial Black, sans-serif"
-  font_weight: "900"
+  font_family: Montserrat, Arial Black, sans-serif
+  font_weight: '900'
   font_size: 42
-  primary_color: "#FFFFFF"
-  highlight_color: "#38BDF8"
-  accent_color: "#F59E0B"
-  outline_color: "#020617"
+  primary_color: '#FFFFFF'
+  highlight_color: '#38BDF8'
+  accent_color: '#F59E0B'
+  outline_color: '#020617'
   outline_width: 3.5
-  margin_bottom: 210
-
+  margin_bottom: 600
 audio:
-  preferred_voice_en: "en-US-BrianNeural"
-  preferred_voice_vi: "vi-VN-NamMinhNeural"
-  rate: "+3%"
-  pitch: "-2Hz"
-  bgm_vibe: "deep ambient sub-bass drone, eerie metallic submarine groaning, low sonar ping, tense orchestral heartbeat"
+  preferred_voice_en: en-US-BrianNeural
+  preferred_voice_vi: vi-VN-NamMinhNeural
+  rate: +3%
+  pitch: -2Hz
+  bgm_vibe: deep ambient sub-bass drone, eerie metallic submarine groaning, low sonar
+    ping, tense orchestral heartbeat
   sfx_cues:
-    - "sonar_ping"
-    - "sub_bass_drop"
-    - "heartbeat_heavy"
-    - "water_surge_impact"
+  - sonar_ping
+  - sub_bass_drop
+  - heartbeat_heavy
+  - water_surge_impact
+banned_lexicon: *id001
+target_wpm: 155
+monetization:
+  affiliate_enabled: false

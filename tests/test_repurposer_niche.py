@@ -144,7 +144,7 @@ class TestNoTranscriptIntelligence(unittest.TestCase):
 
     def test_TC12_deep_sea_no_transcript_relevant_type(self):
         moments = _build_fallback("deep_sea_earth_mysteries", "Deep Ocean Mystery", 600.0)
-        keys = ["BÍ ẨN", "LỜI GIẢI", "DEEP", "MYSTERY", "CLASSIFIED", "OCEAN", "UNKNOWN"]
+        keys = ["BÍ ẨN", "LỜI GIẢI", "DEEP", "MYSTERY", "CLASSIFIED", "OCEAN", "UNKNOWN", "ABYSS", "ANOMALY", "PHENOMENON"]
         for m in moments:
             mt = m.get("moment_type","").upper()
             self.assertTrue(any(k.upper() in mt for k in keys),

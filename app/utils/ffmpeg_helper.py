@@ -248,8 +248,8 @@ def image_to_video(
         with Image.open(image_path) as im:
             if im.mode not in ("RGB",):
                 im = im.convert("RGB")
-            # Scale ảnh lên lớn hơn target (1.3x thường hoặc 1.45x cho hook) để có "đệm" pan/zoom, tránh artifact đen góc
-            scale_factor = 1.45 if is_hook_scene else 1.30
+            # Scale ảnh vừa phải để có đệm zoom nhẹ nhàng, sắc nét, không bị vỡ hạt
+            scale_factor = 1.25 if is_hook_scene else 1.20
             scale_w = int(width * scale_factor)
             scale_h = int(height * scale_factor)
             im_resized = im.resize((scale_w, scale_h), Image.LANCZOS)
@@ -260,12 +260,12 @@ def image_to_video(
 
     d = int(duration_seconds * fps)  # Tổng số frames
     if is_hook_scene:
-        # Cú Punch-in Zoom kịch tính cho Scene 1 (0-3s) để giật mắt người xem ngay lập tức
+        # Cú Micro-Zoom điện ảnh mượt mà cho Scene 1 (1.05 -> 1.18) giữ độ nét 4K không méo/chói
         z_start = 1.05
-        z_end   = 1.38
+        z_end   = 1.18
     else:
         z_start = 1.0
-        z_end   = 1.25  # Zoom đủ rõ để Ken Burns trông sống động trên màn hình nhỏ
+        z_end   = 1.15  # Zoom mượt mà 15% chuẩn cinema
     z_step  = (z_end - z_start) / max(d, 1)
 
     if not zoom_effect:
@@ -868,6 +868,35 @@ def mix_sfx_transitions(
 
 
 
+def trim_audio_silence(
+    input_path: str,
+    output_path: str,
+    silence_duration: float = 0.3,
+    silence_threshold_db: float = -40.0
+) -> bool:
+    """
+    Tối ưu nhịp đọc (Pacing): Cắt các khoảng lặng > 0.3s nhưng giữ lại đệm âm thở tự nhiên (0.1 - 0.15s).
+    Sử dụng bộ lọc silenceremove an toàn của FFmpeg.
+    """
+    try:
+        # silenceremove=stop_periods=-1:stop_duration=0.3:stop_threshold=-40dB
+        af_filter = f"silenceremove=stop_periods=-1:stop_duration={silence_duration}:stop_threshold={silence_threshold_db}dB"
+        args = [
+            "-i", input_path,
+            "-af", af_filter,
+            "-c:a", "libmp3lame",
+            "-q:a", "2",
+            "-y", output_path
+        ]
+        run_ffmpeg(args)
+        if Path(output_path).exists() and Path(output_path).stat().st_size > 512:
+            return True
+        return False
+    except Exception as e:
+        logger.warning(f"[Pacing] silenceremove thất bại: {e}")
+        return False
+
+
 def burn_subtitles(
     video_path: str,
     srt_path: str,
@@ -878,15 +907,16 @@ def burn_subtitles(
     outline_color: str = "&H00000000", # Viền đen tuyền
     outline_width: float = 2.5,
     shadow: float = 1.5,
-    margin_v: int = 210,              # Cách đáy 210px (trên thanh UI Shorts, không che giữa video)
+    margin_v: int = 600,              # Chuẩn hóa 600px (vùng an toàn 576-672px, không bị che bởi Shorts UI)
     bold: bool = True,
 ) -> str:
     """
     Burn-in subtitle SRT/ASS vào video (hardcode hardsub).
     Phong cách YouTube Shorts: chữ vàng viền đen, font Arial/Segoe UI,
-    thu bé lại (40px) và đặt sát đáy màn hình (210px) thay vì nằm ở giữa video.
+    đặt ở vùng an toàn (MarginV: 576-672px, mặc định 600px) để không bị đè bởi Shorts UI.
     Đã bổ sung PlayResX=1080 & PlayResY=1920 để khóa chặt độ phân giải canvas.
     """
+    safe_margin = margin_v if 576 <= margin_v <= 672 else 600
     style = (
         f"PlayResX=1080,"
         f"PlayResY=1920,"
@@ -898,7 +928,7 @@ def burn_subtitles(
         f"Shadow={shadow},"
         f"Bold={'1' if bold else '0'},"
         f"Alignment=2,"      # Bottom center
-        f"MarginV={margin_v}" # 210px an toàn từ đáy
+        f"MarginV={safe_margin}" # Chuẩn hóa vùng an toàn Shorts UI
     )
     # Escape path cho Windows (ffmpeg subtitles filter cần forward slashes và escape colon)
     srt_escaped = srt_path.replace("\\", "/").replace(":", "\\:")

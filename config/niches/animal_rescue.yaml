@@ -2,69 +2,102 @@ id: animal_rescue
 name: Giải Cứu Động Vật & Phép Màu Tình Yêu (Paws & Hearts Rescue)
 badge: 🐾 Giải Cứu Động Vật
 icon: 🐾
-description: "Những câu chuyện giải cứu chó mèo bị bỏ rơi, phép màu phục hồi kỳ diệu từ đau khổ đến hạnh phúc, lan tỏa tình yêu thương và sự ấm áp chạm đáy tim."
-target_audience: "Hàng trăm triệu người yêu động vật toàn cầu, phụ nữ và gia đình từ 16-65 tuổi, những người dễ rung động trước lòng trắc ẩn và sự chữa lành."
-
+description: Những câu chuyện giải cứu chó mèo bị bỏ rơi, phép màu phục hồi kỳ diệu
+  từ đau khổ đến hạnh phúc, lan tỏa tình yêu thương và sự ấm áp chạm đáy tim.
+target_audience: Hàng trăm triệu người yêu động vật toàn cầu, phụ nữ và gia đình từ
+  16-65 tuổi, những người dễ rung động trước lòng trắc ẩn và sự chữa lành.
 script_blueprint:
-  tone_of_voice: "Truyền cảm, ấm áp, thắt nghẹn ở phần đầu và vỡ òa xúc động ở phần kết, chạm thẳng vào trái tim người xem, kích hoạt phản xạ đồng cảm tức thì."
-  pacing: "Nhịp cảm xúc dâng trào, 2.5 - 3.2 giây/cảnh, lắng đọng ở khoảnh khắc run rẩy và bùng nổ năng lượng ở màn lột xác."
+  tone_of_voice: Truyền cảm, ấm áp, thắt nghẹn ở phần đầu và vỡ òa xúc động ở phần
+    kết, chạm thẳng vào trái tim người xem, kích hoạt phản xạ đồng cảm tức thì.
+  pacing: Siêu nhanh 155 WPM, 2.5 - 3.2 giây/cảnh, nhịp điệu dồn dập, cao trào dồn
+    nén.
   hook_formulas:
-    - "Heartbreaking Abandonment: 'They dumped him in the freezing rain, assuming no one would ever look inside this soaked cardboard box...'"
-    - "The Trembling Eye Contact: 'The exact moment she stopped shaking and dared to look into the rescuer\\'s eyes, everything changed...'"
-    - "Compassion Trigger: 'Hundreds of people walked past this wounded stray puppy without stopping, until one stranger heard a faint heartbeat...'"
-    - "Miracle Second Chance: 'The vet said he had less than 24 hours to live, but this puppy had a reason to fight...'"
-    - "Unspoken Betrayal: 'He waited at the empty roadside for 3 whole days, not knowing his owners were never coming back...'"
-  narrative_structure: "Cảnh báo xót xa / Ánh mắt run rẩy bị bỏ rơi (Hook 3s) -> Bàn tay cứu trợ ấm áp chạm vào nỗi sợ hãi -> Quá trình điều trị kiên cường & Miếng ăn đầu tiên -> Màn lột xác kỳ diệu sau 60 ngày -> Lời kêu gọi bảo vệ động vật & Infinite Loop"
+  - 'Heartbreaking Abandonment: ''They dumped him in the freezing rain, assuming no
+    one would ever look inside this soaked cardboard box...'''
+  - 'The Trembling Eye Contact: ''The exact moment she stopped shaking and dared to
+    look into the rescuer\''s eyes, everything changed...'''
+  - 'Compassion Trigger: ''Hundreds of people walked past this wounded stray puppy
+    without stopping, until one stranger heard a faint heartbeat...'''
+  - 'Miracle Second Chance: ''The vet said he had less than 24 hours to live, but
+    this puppy had a reason to fight...'''
+  - 'Unspoken Betrayal: ''He waited at the empty roadside for 3 whole days, not knowing
+    his owners were never coming back...'''
+  narrative_structure: Cảnh báo xót xa / Ánh mắt run rẩy bị bỏ rơi (Hook 3s) -> Bàn
+    tay cứu trợ ấm áp chạm vào nỗi sợ hãi -> Quá trình điều trị kiên cường & Miếng
+    ăn đầu tiên -> Màn lột xác kỳ diệu sau 60 ngày -> Lời kêu gọi bảo vệ động vật
+    & Infinite Loop
   forbidden_words:
-    - "Chào mừng các bạn đến với kênh yêu thú cưng"
-    - "Hôm nay mình sẽ kể cho các bạn nghe"
-    - "Động vật là bạn của con người"
-    - "Hãy like và subscribe ủng hộ trạm cứu hộ"
-    - "Như chúng ta đã biết"
+  - Chào mừng các bạn đến với kênh yêu thú cưng
+  - Hôm nay mình sẽ kể cho các bạn nghe
+  - Động vật là bạn của con người
+  - Hãy like và subscribe ủng hộ trạm cứu hộ
+  - Như chúng ta đã biết
   cta_templates:
-    - "Hãy thả một trái tim ❤️ nếu bạn tin mọi chú chó mèo đều xứng đáng được yêu thương, và đăng ký kênh theo dõi hành trình kỳ diệu tiếp theo... bởi vì..."
-    - "Bạn có sẵn sàng dang tay cưu mang một bé cưng như thế này không? Bình luận chia sẻ và theo dõi kênh để lan tỏa tình yêu... bởi vì..."
-    - "Nhấn thích để gửi ngàn lời chúc bình an đến bé cưng dũng cảm này, và đăng ký kênh đón xem phần 2... bởi vì..."
+  - Hãy thả một trái tim ❤️ nếu bạn tin mọi chú chó mèo đều xứng đáng được yêu thương,
+    và đăng ký kênh theo dõi hành trình kỳ diệu tiếp theo.
+  - Bạn có sẵn sàng dang tay cưu mang một bé cưng như thế này không? Bình luận chia
+    sẻ và theo dõi kênh để lan tỏa tình yêu.
+  - Nhấn thích để gửi ngàn lời chúc bình an đến bé cưng dũng cảm này, và đăng ký kênh
+    đón xem phần 2.
   anti_hallucination_rules:
-    - "Kịch bản phải tôn trọng phẩm giá và sự an toàn của động vật, không khuyến khích hành vi gây hại hay dàn dựng cứu trợ độc hại."
-    - "Mô tả chân thực các triệu chứng phục hồi thú y (suy dinh dưỡng, hạ thân nhiệt, chấn thương, hồi sinh)."
-
+  - Kịch bản phải tôn trọng phẩm giá và sự an toàn của động vật, không khuyến khích
+    hành vi gây hại hay dàn dựng cứu trợ độc hại.
+  - Mô tả chân thực các triệu chứng phục hồi thú y (suy dinh dưỡng, hạ thân nhiệt,
+    chấn thương, hồi sinh).
+  banned_lexicon: &id001
+  - hunting trophy
+  - slaughterhouse
+  - alien spacecraft
+  - cyborg
+  - cryptocurrency
 visual_aesthetics:
-  art_style: "Warm Emotional Cinema & Golden Hour Tender Realism"
-  camera_angles: "Low-angle eye-level macro close-up of pet eyes with tear reflection, shallow depth of field, gentle tracking shot of rescue hands, slow-motion running in sunlit meadow"
-  color_palette: "Cold desaturated grey-blue in beginning (suffering), transitioning to warm golden amber, soft peach, vibrant meadow green (healing & joy)"
-  master_prompt_prefix: "masterpiece 8k vertical film still, award-winning animal documentary photography, intense emotional resonance, soulful eyes reflecting golden light, 35mm lens"
-  master_prompt_suffix: "hyper-realistic fur texture, individual whiskers, warm cinematic backlight, photorealistic vertical 9:16, no text, no watermark, perfectly natural anatomy"
-  negative_prompts: "ugly, deformed limbs, extra paws, distorted eyes, blood, gore, cartoon, 3d render, anime, blurry, low resolution, watermark, text"
+  art_style: Warm Emotional Cinema & Golden Hour Tender Realism
+  camera_angles: Low-angle eye-level macro close-up of pet eyes with tear reflection,
+    shallow depth of field, gentle tracking shot of rescue hands, slow-motion running
+    in sunlit meadow
+  color_palette: Cold desaturated grey-blue in beginning (suffering), transitioning
+    to warm golden amber, soft peach, vibrant meadow green (healing & joy)
+  master_prompt_prefix: masterpiece 8k vertical film still, award-winning animal documentary
+    photography, intense emotional resonance, soulful eyes reflecting golden light,
+    35mm lens
+  master_prompt_suffix: hyper-realistic fur texture, individual whiskers, warm cinematic
+    backlight, photorealistic vertical 9:16, no text, no watermark, perfectly natural
+    anatomy
+  negative_prompts: ugly, deformed limbs, extra paws, distorted eyes, blood, gore,
+    cartoon, 3d render, anime, blurry, low resolution, watermark, text
   stock_video_keywords:
-    - "sad puppy shaking rain"
-    - "rescuer holding small dog"
-    - "human hand petting scared dog"
-    - "golden retriever puppy smiling"
-    - "rescued dog running green field"
-    - "cat purring closed eyes warm light"
-    - "veterinarian caring injured puppy"
-
+  - sad puppy shaking rain
+  - rescuer holding small dog
+  - human hand petting scared dog
+  - golden retriever puppy smiling
+  - rescued dog running green field
+  - cat purring closed eyes warm light
+  - veterinarian caring injured puppy
 subtitles:
-  font_family: "Outfit, Nunito, sans-serif"
-  font_weight: "900"
+  font_family: Outfit, Nunito, sans-serif
+  font_weight: '900'
   font_size: 40
-  primary_color: "#FFFFFF"
-  highlight_color: "#FF8DA1"
-  accent_color: "#FFD166"
-  outline_color: "#2B1A1D"
+  primary_color: '#FFFFFF'
+  highlight_color: '#FF8DA1'
+  accent_color: '#FFD166'
+  outline_color: '#2B1A1D'
   outline_width: 3
-  margin_bottom: 210
-
+  margin_bottom: 600
 audio:
-  preferred_voice_en: "en-US-JennyNeural"
-  preferred_voice_vi: "vi-VN-HoaiMyNeural"
-  rate: "-2%"
-  pitch: "0Hz"
-  bgm_vibe: "emotional acoustic piano into soaring orchestral violin, heartwarming, tears of joy, gentle hopeful warmth"
+  preferred_voice_en: en-US-JennyNeural
+  preferred_voice_vi: vi-VN-HoaiMyNeural
+  rate: -2%
+  pitch: 0Hz
+  bgm_vibe: emotional acoustic piano into soaring orchestral violin, heartwarming,
+    tears of joy, gentle hopeful warmth
   sfx_cues:
-    - "heartbeat_soft"
-    - "dog_whimper"
-    - "gentle_piano_swell"
-    - "tail_wag_thump"
-    - "chime_miracle"
+  - heartbeat_soft
+  - dog_whimper
+  - gentle_piano_swell
+  - tail_wag_thump
+  - chime_miracle
+banned_lexicon: *id001
+target_wpm: 155
+monetization:
+  affiliate_enabled: true
+  affiliate_category: pet_care

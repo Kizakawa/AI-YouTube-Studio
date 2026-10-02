@@ -325,18 +325,10 @@ class ContentAgent:
                     "save this", "lưu lại", "chia sẻ", "share", "tell me", "bạn nghĩ sao", "let me know",
                     "drop your", "part 2", "phần 2", "which one", "ai trong số", "do this", "hãy thử"
                 ]
-                has_organic_cta = any(k in last_narr.lower() for k in organic_cta_keywords)
-
                 if not has_organic_cta and len(last_narr) > 0:
                     clean_narr = re.sub(r'[\s\.\,\-]+$', '', last_narr)
-                    # Kiểm tra xem có đuôi nối loop không
-                    connectors = ["because", "which is why", "and that is why", "bởi vì", "và đó là lý do", "vậy nên", "cho nên"]
-                    found_conn = None
-                    for conn in connectors:
-                        if clean_narr.lower().endswith(conn):
-                            clean_narr = clean_narr[:-len(conn)].rstrip(",. -")
-                            found_conn = conn
-                            break
+                    clean_narr = re.sub(r'[\s\.\,\-\—\…]+(?:because|which|and|so|that|but|with|or|while|as|if)[\s\.\,\-\—\…]*$', '', clean_narr, flags=re.IGNORECASE)
+                    clean_narr = clean_narr.strip().rstrip(".,-—…")
 
                     # Phân loại ngách từ ngữ cảnh kịch bản để chọn CTA phù hợp nhất
                     all_text_lower = (str(raw_data.get("topic", "")) + " " + clean_narr).lower()
@@ -384,11 +376,7 @@ class ContentAgent:
                         ]
 
                     chosen_cta = random.choice(cta_options_vi if is_vi else cta_options_en)
-
-                    if found_conn:
-                        last_scene["narration"] = f"{clean_narr}. {chosen_cta} — {found_conn}..."
-                    else:
-                        last_scene["narration"] = f"{clean_narr}. {chosen_cta}."
+                    last_scene["narration"] = f"{clean_narr}. {chosen_cta}."
                     last_scene["estimated_seconds"] = max(float(last_scene.get("estimated_seconds", 3.0)), 4.0)
 
         # Cập nhật lại full_narration để đồng bộ 100% với các scene
@@ -412,7 +400,8 @@ class ContentAgent:
         topic: str,
         channel_niche: str = "general",
         language: str = "en",
-        director_notes: Optional[str] = None
+        director_notes: Optional[str] = None,
+        cooldown_entities: Optional[List[str]] = None
     ) -> ScriptContract:
         """
         Sinh kịch bản video Shorts viral tối ưu thuật toán giữ chân (AVD > 75%, thời lượng vàng 20-28 giây).
@@ -461,14 +450,17 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
    - Scene 1 spoken text MUST be strictly 5 to 8 words, delivered with high stakes and immediate urgency.
    - Scene 1 visual_keyword & visual_prompt MUST be visually arresting, shocking, and intense.
 
-3. PSYCHOLOGICAL VIRAL CALL TO ACTION (CTA) & SEAMLESS INFINITE LOOP:
+3. PSYCHOLOGICAL VIRAL CALL TO ACTION (CTA) & COMPLETE NATURAL SEAMLESS LOOP:
    - High retention proves viewers are hooked, but without an active Call To Action, viewers swipe away without engaging!
    - The final scene (Scene 6/7/8) MUST integrate a high-converting, natural Call To Action matching the topic angle:
-     * Psychology / Value: "Save this video before your next debate..." / "Have you seen someone use this? Drop your thoughts below..." / "Follow to master psychological defense daily..."
-     * Mystery / History: "What's your theory about this? Comment below..." / "Follow to uncover what history won't tell you..."
-     * Animal Rescue: "Every life deserves love. Follow to support more rescues..."
+     * Psychology / Value: "Save this video before your next debate." / "Have you seen someone use this? Drop your thoughts below." / "Follow to master psychological defense daily."
+     * Mystery / History: "What's your theory about this? Comment below." / "Follow to uncover what history won't tell you."
+     * Animal Rescue: "Every life deserves love. Follow to support more rescues."
      * Only use "Part 2" if the story is genuinely a multi-part series! DO NOT force Part 2 on standalone facts.
-   - HARD RULE FOR INFINITE LOOP: The very last 2-3 words of the spoken narration MUST be an open bridge/connector clause (e.g. "...because...", "...which is why...", "...và đó là lý do vì sao...", "...bởi vì...") so that when YouTube loops the video, it forms one single continuous grammatically seamless sentence into Scene 1!
+   - HARD GRAMMAR & COMPLETENESS RULE:
+     * Spoken narration MUST be 100% grammatically complete with proper closing punctuation (period, exclamation, or question mark).
+     * NEVER end the script with dangling prepositions or incomplete conjunctions like 'because', 'which', 'and', 'so', 'that', 'but', 'with', 'bởi vì', etc.
+     * The video loops seamlessly through conceptual continuity (the ending thought naturally makes the viewer rethink the opening hook), NOT by cutting words in half!
 
 4. CONCRETE PHYSICAL STOCK QUERIES (NO ABSTRACT WORDS):
    - stock_query is 2-3 English search words strictly for Pexels stock video/photo search.
@@ -559,8 +551,55 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   "viral_formula": "Double Tap & Protect | Debate in Comments | Curiosity Part 2"
 }}
 """
-        raw_text = self._call_api(prompt, json_mode=False, timeout=30)
-        return self._parse_json_script(raw_text)
+        from app.services.content_linter import ScriptValidationLinter
+
+        max_attempts = 3
+        current_prompt = prompt
+        last_script: Optional[ScriptContract] = None
+        last_issues: List[str] = []
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                raw_text = self._call_api(current_prompt, json_mode=False, timeout=30)
+                script = self._parse_json_script(raw_text)
+                last_script = script
+
+                linter_res = ScriptValidationLinter.lint(
+                    script=script,
+                    niche_profile=niche_profile,
+                    cooldown_entities=cooldown_entities,
+                    target_wpm=niche_profile.get("target_wpm", 155)
+                )
+
+                if linter_res.is_valid:
+                    logger.info(f"✅ [ContentAgent] Script passed Quality Gate Linter on attempt {attempt}/{max_attempts}")
+                    return script
+
+                last_issues = linter_res.issues
+                logger.warning(
+                    f"⚠️ [ContentAgent] Quality Gate failed (attempt {attempt}/{max_attempts}): "
+                    f"{'; '.join(linter_res.issues)}. Retrying with corrective prompt..."
+                )
+
+                current_prompt = f"""{prompt}
+
+═══════════════════════════════════════════════════════════
+🚨 CORRECTION FEEDBACK FROM QUALITY LINTER (ATTEMPT {attempt}/{max_attempts}):
+{linter_res.retry_prompt_hint}
+PREVIOUS ATTEMPT FAILED ON:
+{'; '.join(linter_res.issues)}
+Rewrite immediately addressing ALL violations above!
+═══════════════════════════════════════════════════════════
+"""
+            except Exception as e:
+                logger.warning(f"[ContentAgent] Generation attempt {attempt} error: {e}")
+                if attempt == max_attempts and not last_script:
+                    raise
+
+        logger.error(f"❌ [ContentAgent] Script failed Quality Gate Linter after {max_attempts} attempts: {last_issues}")
+        if last_script:
+            return last_script
+        raise RuntimeError(f"Script validation failed after {max_attempts} attempts: {'; '.join(last_issues)}")
 
     def refine_script(
         self,
@@ -597,7 +636,7 @@ HARD RETENTION RULES:
 2. Fast-paced, punchy, concise sentences: strictly 20-28 seconds total (50-75 words, 6-8 scenes, 2.5-3.5s per scene).
 3. NO ABSTRACT stock_query: 2-3 English CONCRETE PHYSICAL NOUNS only for Pexels.
    NO "psychology", "minimalism", "authority", "power". Use physical objects/actions only.
-4. PSYCHOLOGICAL VIRAL CTA & SEAMLESS INFINITE LOOP: The final scene MUST combine a high-converting call to action (Double tap / Drop a comment / Subscribe for Part 2) with an open bridge clause ("...because...") that seamlessly connects back into Scene 1's hook.
+4. PSYCHOLOGICAL VIRAL CTA & SEAMLESS LOOP: The final scene MUST combine a natural high-converting Call To Action with complete grammatical closure. NEVER end with dangling prepositions or conjunctions like 'because', 'which', 'and', 'but', etc. Ensure the script ends with a complete standalone sentence!
 5. NO LITERAL METAPHORS in visual_prompt: show the actual phenomenon, not metaphorical words.
 6. NO DUPLICATE SCENES: every visual_prompt must describe a visually distinct subject and setting.
 7. LANGUAGE INTEGRITY (100% STRICT):

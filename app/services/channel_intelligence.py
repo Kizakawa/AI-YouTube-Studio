@@ -1025,14 +1025,18 @@ def trigger_auto_generation_for_overdue_channel(
     niche_id = kpi["niche"]
     lang = kpi["language"]
 
-    # 2. Sinh kịch bản phân cảnh chuẩn viral
+    # 2. Sinh kịch bản phân cảnh chuẩn viral với Entity Cooldown Tracker
+    from app.services.entity_tracker import get_channel_cooldown_entities, register_job_entities
+    cooldown_ents = get_channel_cooldown_entities(channel_id, limit_jobs=15)
+
     agent = ContentAgent()
     try:
         script = agent.generate_script(
             topic=topic_str,
             channel_niche=niche_id,
             language=lang,
-            director_notes="Kịch bản được kích hoạt tự động theo cơ chế cứu tương tác kênh. Nhịp độ dồn dập, hook cắt đà lướt cực mạnh, CTA bám sát kịch bản."
+            director_notes="Kịch bản được kích hoạt tự động theo cơ chế cứu tương tác kênh. Nhịp độ dồn dập, hook cắt đà lướt cực mạnh, CTA bám sát kịch bản.",
+            cooldown_entities=cooldown_ents
         )
     except Exception as e:
         logger.error(f"[AutoGeneration] Lỗi sinh kịch bản cho {channel_id}: {e}")
@@ -1070,6 +1074,12 @@ def trigger_auto_generation_for_overdue_channel(
             details=f"Tự động sản xuất video cứu tương tác cho kênh '{kpi['channel_name']}' (Job #{job_id}): '{job.title}'",
             channel_id=channel_id
         )
+
+        # Ghi nhận thực thể vào Cooldown Memory
+        try:
+            register_job_entities(channel_id, script, job_id=job_id)
+        except Exception as e_reg:
+            logger.debug(f"Không thể ghi nhận thực thể cooldown: {e_reg}")
 
     # 4. Tự động đóng gói và đẩy kịch bản lên Google Drive cho Colab GPU Farm (tránh OOM làm sập server Render)
     def _background_render_worker(jid: int, ch_name: str, ch_id: str, deadl: datetime):

@@ -2,62 +2,88 @@ id: history_mystery
 name: Lịch Sử Thế Giới & Bí Ẩn Chưa Có Lời Giải
 badge: 📜 Lịch Sử & Bí Ẩn
 icon: 📜
-description: "Khám phá bí mật lịch sử bị chôn vùi, lăng mộ cổ đại, các nền văn minh bí ẩn (Ai Cập, Atlantis) và các sự kiện kỳ bí có thật."
-target_audience: "Khán giả yêu thích khám phá lịch sử, khảo cổ, thuyết bí ẩn và những câu chuyện kỳ thú vượt thời gian."
-
+description: Khám phá bí mật lịch sử bị chôn vùi, lăng mộ cổ đại, các nền văn minh
+  bí ẩn (Ai Cập, Atlantis) và các sự kiện kỳ bí có thật.
+target_audience: Khán giả yêu thích khám phá lịch sử, khảo cổ, thuyết bí ẩn và những
+  câu chuyện kỳ thú vượt thời gian.
 script_blueprint:
-  tone_of_voice: "Hồi hộp, ly kỳ, như người dẫn chuyện phim tài liệu Discovery/BBC, kích thích trí tò mò, mở ra những bí mật chấn động."
-  pacing: "Kịch tính, 2.8 - 3.5 giây/cảnh, nhịp điệu dồn dập về cuối với các tình tiết lịch sử bất ngờ."
+  tone_of_voice: Hồi hộp, ly kỳ, như người dẫn chuyện phim tài liệu Discovery/BBC,
+    kích thích trí tò mò, mở ra những bí mật chấn động.
+  pacing: Siêu nhanh 155 WPM, 2.5 - 3.2 giây/cảnh, nhịp điệu dồn dập, cao trào dồn
+    nén.
   hook_formulas:
-    - "Lost Archive Shock: 'Năm 1922, khi các nhà khảo cổ phá niêm phong lăng mộ này, họ đã kinh hoàng phát hiện...'"
-    - "Censored History: 'Sự thật đen tối về [Sự kiện/Nhân vật] mà sách giáo khoa chưa từng kể cho bạn...'"
-    - "Impossible Artifact: 'Thứ được tìm thấy sâu 30 mét dưới lòng kim tự tháp đã thách thức toàn bộ khoa học hiện đại...'"
-    - "Last Words Mystery: 'Trước khi qua đời, hoàng đế [X] đã để lại một mật mã mà 500 năm qua chưa ai giải được...'"
-  narrative_structure: "Hook bí mật bị chôn vùi -> Khám phá bằng chứng lịch sử gây sốc -> Tình tiết bất ngờ đảo ngược giả thuyết -> Câu hỏi mở kích thích bình luận & Infinite Loop"
+  - 'Lost Archive Shock: ''Năm 1922, khi các nhà khảo cổ phá niêm phong lăng mộ này,
+    họ đã kinh hoàng phát hiện...'''
+  - 'Censored History: ''Sự thật đen tối về [Sự kiện/Nhân vật] mà sách giáo khoa chưa
+    từng kể cho bạn...'''
+  - 'Impossible Artifact: ''Thứ được tìm thấy sâu 30 mét dưới lòng kim tự tháp đã
+    thách thức toàn bộ khoa học hiện đại...'''
+  - 'Last Words Mystery: ''Trước khi qua đời, hoàng đế [X] đã để lại một mật mã mà
+    500 năm qua chưa ai giải được...'''
+  narrative_structure: Hook bí mật bị chôn vùi -> Khám phá bằng chứng lịch sử gây
+    sốc -> Tình tiết bất ngờ đảo ngược giả thuyết -> Câu hỏi mở kích thích bình luận
+    & Infinite Loop
   forbidden_words:
-    - "Chào mừng các bạn quay lại với kênh lịch sử"
-    - "Hôm nay chúng ta cùng tìm hiểu về"
-    - "Cảm ơn các bạn đã theo dõi"
-    - "Lịch sử thế giới rất phong phú"
+  - Chào mừng các bạn quay lại với kênh lịch sử
+  - Hôm nay chúng ta cùng tìm hiểu về
+  - Cảm ơn các bạn đã theo dõi
+  - Lịch sử thế giới rất phong phú
   cta_templates:
-    - "Bạn tin đây là trò lừa thế kỷ hay sự thật bị che giấu? Bình luận suy đoán của bạn và đăng ký kênh đón xem phần tiếp theo... bởi vì..."
-    - "Nếu bạn cũng mê mẩn những bí ẩn lịch sử, nhấn thích và theo dõi kênh ngay... bởi vì..."
+  - Bạn tin đây là trò lừa thế kỷ hay sự thật bị che giấu? Bình luận suy đoán của
+    bạn và đăng ký kênh đón xem phần tiếp theo.
+  - Nếu bạn cũng mê mẩn những bí ẩn lịch sử, nhấn thích và theo dõi kênh ngay.
   anti_hallucination_rules:
-    - "Phải trích dẫn đúng mốc niên đại, tên nhân vật, địa danh khảo cổ có thật (như Howard Carter, Tutankhamun, Pompeii, Göbekli Tepe)."
-    - "Phân biệt rõ giữa 'tài liệu lịch sử xác thực' và 'giả thuyết chưa được chứng minh'."
-
+  - Phải trích dẫn đúng mốc niên đại, tên nhân vật, địa danh khảo cổ có thật (như
+    Howard Carter, Tutankhamun, Pompeii, Göbekli Tepe).
+  - Phân biệt rõ giữa 'tài liệu lịch sử xác thực' và 'giả thuyết chưa được chứng minh'.
+  banned_lexicon: &id001
+  - smartphone
+  - social media
+  - internet
+  - wifi
+  - laptop
+  - bitcoin
+  - space rocket
 visual_aesthetics:
-  art_style: "Baroque Oil Painting & Vintage Archival Cinema"
-  camera_angles: "Low-angle monumental ruin view, slow cinematic push into ancient chamber, dusty golden beam lighting"
-  color_palette: "Warm amber gold, antique parchment, deep sepia, oxidized copper green, torch flame glow"
-  master_prompt_prefix: "masterpiece cinematic history film still, Renaissance chiaroscuro oil painting style, ancient dust particles floating in golden light, 35mm archival footage"
-  master_prompt_suffix: "hyper-realistic ancient textures, dramatic torchlight shadows, 8k resolution, photorealistic vertical 9:16, no text, no watermark"
-  negative_prompts: "modern city, plastic, digital gadgets, neon light, cartoon, anime, blurry, low resolution, watermark, text"
+  art_style: Baroque Oil Painting & Vintage Archival Cinema
+  camera_angles: Low-angle monumental ruin view, slow cinematic push into ancient
+    chamber, dusty golden beam lighting
+  color_palette: Warm amber gold, antique parchment, deep sepia, oxidized copper green,
+    torch flame glow
+  master_prompt_prefix: masterpiece cinematic history film still, Renaissance chiaroscuro
+    oil painting style, ancient dust particles floating in golden light, 35mm archival
+    footage
+  master_prompt_suffix: hyper-realistic ancient textures, dramatic torchlight shadows,
+    8k resolution, photorealistic vertical 9:16, no text, no watermark
+  negative_prompts: modern city, plastic, digital gadgets, neon light, cartoon, anime,
+    blurry, low resolution, watermark, text
   stock_video_keywords:
-    - "ancient pyramid desert"
-    - "dust floating dark chamber"
-    - "old manuscript candle"
-    - "ancient stone carvings"
-    - "archeologist torch light"
-
+  - ancient pyramid desert
+  - dust floating dark chamber
+  - old manuscript candle
+  - ancient stone carvings
+  - archeologist torch light
 subtitles:
-  font_family: "Cinzel, Georgia, serif"
-  font_weight: "800"
+  font_family: Cinzel, Georgia, serif
+  font_weight: '800'
   font_size: 40
-  primary_color: "#FFF8E7"
-  highlight_color: "#FFD700"
-  accent_color: "#FF9900"
-  outline_color: "#1A0F00"
+  primary_color: '#FFF8E7'
+  highlight_color: '#FFD700'
+  accent_color: '#FF9900'
+  outline_color: '#1A0F00'
   outline_width: 3
-  margin_bottom: 210
-
+  margin_bottom: 600
 audio:
-  preferred_voice_en: "en-US-GuyNeural"
-  preferred_voice_vi: "vi-VN-NamMinhNeural"
-  rate: "-2%"
-  pitch: "-3Hz"
-  bgm_vibe: "epic orchestral mystery, ancient chanting, slow booming timpani drum"
+  preferred_voice_en: en-US-GuyNeural
+  preferred_voice_vi: vi-VN-NamMinhNeural
+  rate: -2%
+  pitch: -3Hz
+  bgm_vibe: epic orchestral mystery, ancient chanting, slow booming timpani drum
   sfx_cues:
-    - "ancient_gong"
-    - "stone_door_creak"
-    - "cinematic_swell"
+  - ancient_gong
+  - stone_door_creak
+  - cinematic_swell
+banned_lexicon: *id001
+target_wpm: 155
+monetization:
+  affiliate_enabled: false
