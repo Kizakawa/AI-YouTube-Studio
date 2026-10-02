@@ -1181,10 +1181,10 @@ def _run_web_render(job_id: int):
         try:
             from app.services.pipeline import VideoPipeline
             pipeline = VideoPipeline(job_id=job_id)
-            # [FIX #5] Tổng timeout 10 phút cho toàn pipeline
-            await asyncio.wait_for(pipeline.execute(), timeout=600)
+            # [FIX #5] Tổng timeout 20 phút cho toàn pipeline (đủ thời gian cho AI Vision & thẩm định kỹ)
+            await asyncio.wait_for(pipeline.execute(), timeout=1200)
         except asyncio.TimeoutError:
-            error_msg = "Pipeline render vượt quá thời gian cho phép (10 phút)"
+            error_msg = "Pipeline render vượt quá thời gian cho phép (20 phút)"
             logger.error(f"[Web Render] Job #{job_id}: {error_msg}")
             _mark_job_failed(job_id, error_msg)
             raise
