@@ -7299,6 +7299,53 @@ function renderFilteredRepurposedClips() {
         }
 
         const displayTitle = c.title || c.filename;
+        const pubStatus = c.publish_status || 'draft';
+        
+        let statusBadgeHtml = '';
+        let thumbStatusHtml = '';
+
+        if (pubStatus === 'published') {
+            const ytLink = c.shorts_url || c.youtube_url || (c.video_id ? `https://www.youtube.com/shorts/${c.video_id}` : '');
+            statusBadgeHtml = `
+                <span class="repurpose-status-badge badge-published" 
+                      style="font-size:10.5px; padding:2px 7px; border-radius:5px; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.35); font-weight:700; display:inline-flex; align-items:center; gap:3px; white-space:nowrap;"
+                      title="Đã đăng lên YouTube${c.published_channel_name ? ' (' + escapeHtml(c.published_channel_name) + ')' : ''}">
+                    ${ytLink ? `<a href="${ytLink}" target="_blank" style="color:#10b981; text-decoration:none; display:inline-flex; align-items:center; gap:2px;">✅ Đã đăng <span style="font-size:9px;">↗</span></a>` : '✅ Đã đăng'}
+                </span>
+            `;
+            thumbStatusHtml = `
+                <span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(16,185,129,0.92); color:#fff; font-weight:700; box-shadow:0 2px 6px rgba(0,0,0,0.5); backdrop-filter:blur(4px);">
+                    ✅ Đã đăng
+                </span>
+            `;
+        } else if (pubStatus === 'scheduled' || pubStatus === 'queued') {
+            const schedTitle = c.scheduled_at ? `Lịch: ${escapeHtml(c.scheduled_at)}` : 'Đang trong hàng đợi công chiếu';
+            statusBadgeHtml = `
+                <span class="repurpose-status-badge badge-queued" 
+                      style="font-size:10.5px; padding:2px 7px; border-radius:5px; background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.35); font-weight:700; display:inline-flex; align-items:center; gap:3px; white-space:nowrap;"
+                      title="${schedTitle}">
+                    🗓️ Hàng đợi
+                </span>
+            `;
+            thumbStatusHtml = `
+                <span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(14,165,233,0.92); color:#fff; font-weight:700; box-shadow:0 2px 6px rgba(0,0,0,0.5); backdrop-filter:blur(4px);">
+                    🗓️ Hàng đợi
+                </span>
+            `;
+        } else {
+            statusBadgeHtml = `
+                <span class="repurpose-status-badge badge-draft" 
+                      style="font-size:10.5px; padding:2px 7px; border-radius:5px; background:rgba(148,163,184,0.12); color:#94a3b8; border:1px solid rgba(148,163,184,0.25); font-weight:600; display:inline-flex; align-items:center; gap:3px; white-space:nowrap;"
+                      title="Chưa đăng lên YouTube (Bấm Xem để đăng)">
+                    ⚪ Chưa đăng
+                </span>
+            `;
+            thumbStatusHtml = `
+                <span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(71,85,105,0.85); color:#cbd5e1; font-weight:600; box-shadow:0 2px 6px rgba(0,0,0,0.4); backdrop-filter:blur(4px);">
+                    ⚪ Chưa đăng
+                </span>
+            `;
+        }
 
         card.innerHTML = `
             <div class="repurpose-card-thumb" style="position:relative; width:100%; height:160px; background:#000; border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center; cursor:pointer;" title="Bấm để xem video &amp; đăng kênh">
@@ -7309,13 +7356,17 @@ function renderFilteredRepurposedClips() {
                 <div style="position:absolute; top:8px; left:8px; z-index:2; pointer-events:none;">
                     ${deviceBadgeHtml}
                 </div>
+                <div style="position:absolute; top:8px; right:8px; z-index:2; pointer-events:none;">
+                    ${thumbStatusHtml}
+                </div>
             </div>
             <div class="repurpose-card-title" style="font-size:12px; font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;" title="${escapeHtml(displayTitle)}">
                 ${escapeHtml(displayTitle)}
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#94a3b8; margin-top:2px;">
                 <span>💾 ${c.size_mb} MB</span>
-                <div style="display:flex; gap:5px;">
+                <div style="display:flex; gap:4px; align-items:center;">
+                    ${statusBadgeHtml}
                     <button type="button" class="btn btn-primary repurposed-card-play-btn" style="font-size:11px; padding:3px 9px; background:#10b981; font-weight:700; border:none; border-radius:6px; cursor:pointer;" title="Xem video &amp; đăng kênh">▶ Xem</button>
                     <a href="${c.url}" download class="btn btn-secondary" style="font-size:11px; padding:3px 8px; border-radius:6px;" title="Tải video về máy">⬇ Tải</a>
                     <button type="button" class="btn btn-secondary repurposed-card-del-btn" style="font-size:11px; padding:3px 7px; color:#f87171; border-color:rgba(239,68,68,0.3); background:rgba(239,68,68,0.08); border-radius:6px; cursor:pointer;" title="Xóa video khỏi danh sách">🗑️</button>
@@ -7689,6 +7740,10 @@ async function publishRepurposedClip(mode) {
         }
 
         showToast(data.message || '🎉 Đã đăng thành công lên YouTube!', 'success');
+        // Tự động làm mới danh sách clip để cập nhật trạng thái Đã đăng / Hàng đợi
+        if (typeof loadRepurposerClips === 'function') {
+            loadRepurposerClips();
+        }
 
     } catch (e) {
         if (statusDiv) {
@@ -7698,6 +7753,9 @@ async function publishRepurposedClip(mode) {
             statusDiv.textContent = '❌ ' + (e.message || 'Lỗi không xác định');
         }
         showToast('Lỗi đăng video: ' + e.message, 'error');
+        if (typeof loadRepurposerClips === 'function') {
+            loadRepurposerClips();
+        }
     } finally {
         if (btnNow) btnNow.disabled = false;
         if (btnQueue) btnQueue.disabled = false;

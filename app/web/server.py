@@ -3442,6 +3442,13 @@ def list_repurposed_clips() -> Dict[str, Any]:
                     "source_url": meta_info.get("source_url", ""),
                     "author": meta_info.get("author", ""),
                     "mode": meta_info.get("mode", "self_owned"),
+                    "publish_status": meta_info.get("publish_status") or "draft",
+                    "youtube_url": meta_info.get("youtube_url") or "",
+                    "shorts_url": meta_info.get("shorts_url") or "",
+                    "video_id": meta_info.get("video_id") or "",
+                    "scheduled_at": meta_info.get("scheduled_at") or "",
+                    "published_at": meta_info.get("published_at") or "",
+                    "published_channel_name": meta_info.get("published_channel_name") or "",
                 })
             except Exception:
                 pass
@@ -3598,6 +3605,26 @@ async def publish_repurposed_clip(req: RepurposePublishRequest) -> Dict[str, Any
             yt_url = pub_res.get("youtube_url", "")
             yt_id = pub_res.get("video_id", "")
             shorts_url = f"https://www.youtube.com/shorts/{yt_id}" if yt_id else yt_url
+            pub_status = "scheduled" if req.auto_schedule else "published"
+
+            # Cập nhật metadata file của clip để lưu trạng thái
+            meta_stem = CLIPS_DIR / f"{_Path(req.clip_filename).stem}.meta.json"
+            if meta_stem.exists():
+                try:
+                    with open(meta_stem, "r", encoding="utf-8") as mf:
+                        m_data = json.load(mf)
+                    m_data["publish_status"] = pub_status
+                    m_data["youtube_url"] = yt_url
+                    m_data["shorts_url"] = shorts_url
+                    m_data["video_id"] = yt_id
+                    m_data["scheduled_at"] = display_slot_vn or None
+                    m_data["published_at"] = datetime.now(timezone.utc).isoformat()
+                    m_data["published_channel_name"] = ch_name
+                    with open(meta_stem, "w", encoding="utf-8") as mf:
+                        json.dump(m_data, mf, ensure_ascii=False, indent=2)
+                except Exception as ex:
+                    logger.warning(f"Không thể ghi nhận publish_status vào meta.json: {ex}")
+
             msg = (
                 f"✅ Đã lên lịch đăng tại khe vàng {display_slot_vn}!"
                 if req.auto_schedule
@@ -3606,6 +3633,7 @@ async def publish_repurposed_clip(req: RepurposePublishRequest) -> Dict[str, Any
             return {
                 "success": True,
                 "message": msg,
+                "publish_status": pub_status,
                 "youtube_url": yt_url,
                 "shorts_url": shorts_url,
                 "video_id": yt_id,
@@ -3613,6 +3641,19 @@ async def publish_repurposed_clip(req: RepurposePublishRequest) -> Dict[str, Any
                 "channel_name": ch_name,
             }
         else:
+            if pub_res.get("status") == "waiting_quota_reset":
+                meta_stem = CLIPS_DIR / f"{_Path(req.clip_filename).stem}.meta.json"
+                if meta_stem.exists():
+                    try:
+                        with open(meta_stem, "r", encoding="utf-8") as mf:
+                            m_data = json.load(mf)
+                        m_data["publish_status"] = "queued"
+                        m_data["scheduled_at"] = "Chờ cấp hạn mức 14:00"
+                        m_data["published_channel_name"] = ch_name
+                        with open(meta_stem, "w", encoding="utf-8") as mf:
+                            json.dump(m_data, mf, ensure_ascii=False, indent=2)
+                    except Exception:
+                        pass
             raise HTTPException(status_code=500, detail=pub_res.get("error", "Lỗi không xác định từ YouTube API"))
 
     except HTTPException:
