@@ -267,18 +267,8 @@ async def check_device_auth(request: Request, response: Response):
         return {"authenticated": True, "is_local": True, "client_ip": client_ip}
 
     auth_token = request.headers.get("X-Device-Token") or request.cookies.get("device_token")
-    if is_device_token_valid(auth_token, client_ip=client_ip):
-        token = auth_token or get_token_for_ip(client_ip)
-        if token:
-            response.set_cookie(
-                key="device_token",
-                value=token,
-                max_age=7 * 24 * 3600,
-                path="/",
-                samesite="lax",
-                httponly=False
-            )
-        return {"authenticated": True, "is_local": False, "client_ip": client_ip, "token": token}
+    if auth_token and is_device_token_valid(auth_token, client_ip=client_ip):
+        return {"authenticated": True, "is_local": False, "client_ip": client_ip, "token": auth_token}
 
     ua = request.headers.get("user-agent", "")
     device_name = parse_device_info(ua)

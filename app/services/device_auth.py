@@ -195,12 +195,6 @@ def is_device_token_valid(token: Optional[str] = None, client_ip: Optional[str] 
         if devices[token].get("expires_at", 0) > now:
             return True
 
-    # Kiểm tra theo IP (dành cho trường hợp client vừa được duyệt nhưng chưa kịp nạp token vào header)
-    if client_ip:
-        for dev in devices.values():
-            if dev.get("client_ip") == client_ip and dev.get("expires_at", 0) > now:
-                return True
-
     return False
 
 
@@ -256,9 +250,14 @@ def create_access_request(client_ip: str, user_agent: str) -> Dict[str, Any]:
     pending = _load_pending_requests()
     now = time.time()
 
-    # Kiểm tra xem IP này đã có yêu cầu pending gần đây chưa
+    # Kiểm tra xem thiết bị này (cùng IP và cùng User-Agent) đã có yêu cầu pending gần đây chưa
     for r_id, r in pending.items():
-        if r.get("client_ip") == client_ip and r.get("status") == "pending" and (now - r.get("created_at", 0) < 180):
+        if (
+            r.get("client_ip") == client_ip
+            and r.get("user_agent") == user_agent
+            and r.get("status") == "pending"
+            and (now - r.get("created_at", 0) < 60)
+        ):
             return {
                 "request_id": r_id,
                 "status": "pending",
