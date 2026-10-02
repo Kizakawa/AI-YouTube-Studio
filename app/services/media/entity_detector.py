@@ -512,6 +512,11 @@ _INCONGRUENT_TAG_GROUPS = {
         "blueprint", "coat of arms", "postage stamp", "commemorative coin", "seal of",
         "flag of", "emblem of", "crest of", "location map", "locator map",
     ],
+    # Động vật hoang dã / Thú săn mồi lạc quẻ nếu chủ đề là tâm lý học, AI, công nghệ, con người
+    "wild_predators": [
+        "wolf", "cougar", "mountain lion", "lion", "tiger", "bear", "cheetah", "leopard",
+        "hyena", "panther", "grizzly bear", "predator cat", "wild animal",
+    ],
 }
 
 
@@ -576,6 +581,7 @@ def synthesize_scene_query(
         "trap", "mind", "power", "money", "secret", "dark", "light", "focus", "pressure",
         "fall", "rise", "time", "clock", "hands", "hand", "man", "woman", "person", "room",
         "eye", "eyes", "face", "door", "alone", "deep", "space", "future", "fear", "brain",
+        "primal", "threat", "evolution", "panic", "reflex", "alarm", "instinct", "hunting", "prey", "predator", "survival",
         "bẫy", "tâm trí", "sức mạnh", "tiền", "bí mật", "tối", "sáng", "thời gian", "đồng hồ"
     }
 

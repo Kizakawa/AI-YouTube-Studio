@@ -7,18 +7,37 @@
 ---
 
 ## 📑 MỤC LỤC
+0. [CÁC TỬ HUYỆT ĐÃ KHẮC PHỤC NGAY LẬP TỨC (QUY TRÌNH TỐI ƯU CỐT LÕI)](#0-các-tử-huyệt-đã-khắc-phục-ngay-lập-tức-quy-trình-tối-ưu-cốt-lõi)
 1. [Tổng quan & Ma trận phân loại rủi ro](#1-tổng-quan--ma-trận-phân-loại-rủi-ro)
 2. [Chi tiết các lỗ hổng & Sai sót kỹ thuật](#2-chi-tiết-các-lỗ-hổng--sai-sót-kỹ-thuật)
-   - [Lỗ hổng 1: Hardcoded Google OAuth Client Secrets (High)](#lỗ-hổng-1-hardcoded-google-oauth-client-secrets-high)
-   - [Lỗ hổng 2: Device Gatekeeper IP Spoofing qua Header (High)](#lỗ-hổng-2-device-gatekeeper-ip-spoofing-qua-header-high)
-   - [Lỗ hổng 3: Đường dẫn tuyệt đối lưu trên Shared Database Supabase (High)](#lỗ-hổng-3-đường-dẫn-tuyệt-đối-lưu-trên-shared-database-supabase-high)
-   - [Lỗ hổng 4: Tranh chấp Job giữa 2 máy (Optimus vs Megatron) khi khởi động (High)](#lỗ-hổng-4-tranh-chấp-job-giữa-2-máy-optimus-vs-megatron-khi-khởi-động-high)
-   - [Lỗ hổng 5: Double-Upload Race Condition khi xả hàng chờ Quota Reset (Medium)](#lỗ-hổng-5-double-upload-race-condition-khi-xả-hàng-chờ-quota-reset-medium)
-   - [Lỗ hổng 6: Cơ chế Fallback SQLite một chiều (Medium)](#lỗ-hổng-6-cơ-chế-fallback-sqlite-một-chiều-medium)
-   - [Lỗ hổng 7: Test `test_scenario_5_queue_auto_flush` bị phụ thuộc state quota (Medium)](#lỗ-hổng-7-test-test_scenario_5_queue_auto_flush-bị-phụ-thuộc-state-quota-medium)
-   - [Lỗ hổng 8: Nợ kỹ thuật Deprecated `datetime.utcnow()` & FastAPI Events (Low)](#lỗ-hổng-8-nợ-kỹ-thuật-deprecated-datetimeutcnow--fastapi-events-low)
 3. [Lộ trình triển khai khắc phục (Phases)](#3-lộ-trình-triển-khai-khắc-phục-phases)
 4. [Quy trình kiểm thử & Nghiệm thu (Checklist)](#4-quy-trình-kiểm-thử--nghiệm-thu-checklist)
+
+---
+
+## 0. CÁC TỬ HUYỆT ĐÃ KHẮC PHỤC NGAY LẬP TỨC (QUY TRÌNH TỐI ƯU CỐT LÕI)
+> *"Sửa đúng trọng tâm, không sửa lan man. Trước hết tối ưu quy trình trước mắt không lại càng sửa càng sai."*
+
+1. **Khóa cứng ngôn ngữ Tiếng Anh (English US) cho Repurposer & Pipeline:**
+   - **Gốc rễ:** `fetch_transcript` trong `video_repurposer.py` hardcode `target_langs = ['vi', 'en', ...]` nên luôn lấy phụ đề tiếng Việt của YouTube.
+   - **Xử lý:** Đảo thứ tự ưu tiên tuyệt đối `['en', 'en-US', 'en-GB', 'en-CA']` cho kênh US, ưu tiên manual transcript trước auto-generated, tự động tra cứu language của kênh và dọn sạch tiếng Việt trong mô tả video.
+   - **Trạng thái:** ✅ *Đã xử lý & Verified.*
+2. **Xóa bỏ vĩnh viễn banner hardcode `SUBSCRIBE FOR PART 2`:**
+   - **Gốc rễ:** Dòng chữ `🔔 SUBSCRIBE FOR PART 2 🔔` xuất hiện ở cuối video làm mất tính liền mạch của Infinite Loop.
+   - **Xử lý:** Thiết lập mặc định `show_cta_badge=False` ở toàn bộ các hàm sinh subtitle ASS.
+   - **Trạng thái:** ✅ *Đã xử lý & Verified.*
+3. **Khắc phục triệt để lỗi Watermark `@pollinations.ai`:**
+   - **Gốc rễ:** Ảnh AI sinh qua Pollinations thường bị đóng logo mờ ở chân ảnh.
+   - **Xử lý:** Tích hợp hàm `_sanitize_ai_image()` bằng Pillow tự động cắt 48px chân ảnh và upscale khôi phục độ phân giải 9:16 (768x1344) bằng bộ lọc Lanczos.
+   - **Trạng thái:** ✅ *Đã xử lý & Verified.*
+4. **Nâng cấp Font phụ đề & Tương phản cao cho Shorts:**
+   - **Gốc rễ:** Font Arial thường mảnh, chìm vào nền video khi khung hình sáng.
+   - **Xử lý:** Đổi font mặc định sang `Arial Black` bản cực dày, viền đen tương phản `Outline: 4.2`, đổ bóng `Shadow: 2.2`, chữ vàng chanh/neon nổi bật.
+   - **Trạng thái:** ✅ *Đã xử lý & Verified.*
+5. **Sửa bộ bóc tách từ khóa tìm hình ảnh: Triệt tiêu Bẫy ẩn dụ (Metaphor Trap):**
+   - **Gốc rễ:** Các từ ẩn dụ tâm lý (*"primal", "threat", "panic"*) kéo nhầm ảnh thú săn mồi (chó sói, báo, gấu) vào video Uncanny Valley.
+   - **Xử lý:** Đưa `wild_predators` vào blacklist loại trừ ảnh stock không phù hợp khi chủ đề không phải động vật hoang dã; lọc các từ ẩn dụ trong query, neo chặt vào danh từ thực tế từ `visual_keyword`.
+   - **Trạng thái:** ✅ *Đã xử lý & Verified.*
 
 ---
 

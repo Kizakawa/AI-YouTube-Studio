@@ -6865,6 +6865,8 @@ async function startRepurposerAnalysis() {
                 niche_id: nicheId,
                 mode: mode,
                 channel_name: channelName,
+                channel_id: chanSel?.value || '',
+                target_lang: 'en',
                 video_description: videoDesc,
                 device_id: getDeviceId(),
                 device_name: getDeviceName()

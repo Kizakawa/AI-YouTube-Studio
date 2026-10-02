@@ -6,6 +6,7 @@
 ---
 
 ## 📑 MỤC LỤC
+0. [PHẦN ƯU TIÊN 0: KẾ HOẠCH TỐI ƯU NGAY ("SỬA ĐÚNG TRỌNG TÂM, KHÔNG SỬA LAN MAN")](#-phần-ưu-tiên-0-kế-hoạch-tối-ưu-ngay-sửa-đúng-trọng-tâm-không-sửa-lan-man)
 1. [Bản đồ hiện trạng & Điểm nghẽn hệ thống (Gap Analysis)](#1-bản-đồ-hiện-trạng--điểm-nghẽn-hệ-thống-gap-analysis)
 2. [Trụ cột 1: Ý tưởng & Tiêu đề Phá vỡ Định kiến (Viral Topic & Hook Engine)](#2-trụ-cột-1-ý-tưởng--tiêu-đề-phá-vỡ-định-kiến-viral-topic--hook-engine)
 3. [Trụ cột 2: Kịch nghệ Giữ Chân 35-45s & Vòng lặp Vô tận (Retention Scriptwriting)](#3-trụ-cột-2-kịch-nghệ-giữ-chân-35-45s--vòng-lặp-vô-tận-retention-scriptwriting)
@@ -14,6 +15,20 @@
 6. [Trụ cột 5: Dựng Phim Động, Phụ Đề Nảy Chữ & Xử Lý Song Song (Visuals & Motion FX)](#6-trụ-cột-5-dựng-phim-động-phụ-đề-nảy-chữ--xử-lý-song-song-visuals--motion-fx)
 7. [Trụ cột 6: Phân phối Thuật toán & Bình luận Ghim Tương tác (Algorithm Distribution)](#7-trụ-cột-6-phân-phối-thuật-toán--bình-luận-ghim-tương-tác-algorithm-distribution)
 8. [Lộ trình triển khai (Sprint Roadmap)](#8-lộ-trình-triển-khai-sprint-roadmap)
+
+---
+
+## 🛠️ PHẦN ƯU TIÊN 0: KẾ HOẠCH TỐI ƯU NGAY ("SỬA ĐÚNG TRỌNG TÂM, KHÔNG SỬA LAN MAN")
+> **Tôn chỉ thực thi:** *"Trước hết tối ưu quy trình trước mắt không lại càng sửa càng sai."*  
+> Tập trung giải quyết dứt điểm 5 tử huyệt kỹ thuật đang phá hỏng trải nghiệm người dùng và chất lượng video Shorts:
+
+| STT | Vấn đề kỹ thuật | Tác động thực tế | Giải pháp công nghệ dứt điểm | Trạng thái |
+| :---: | :--- | :--- | :--- | :---: |
+| **1** | **Khóa cứng ngôn ngữ Tiếng Anh (English US) cho Repurposer & Pipeline** | Video tái chế bị tải phụ đề tiếng Việt của YouTube làm ô nhiễm cả subtitle Karaoke (`"MỘT THỨ TRỞ NÊN"`) và mô tả video thành tiếng Việt dù kênh hướng thị trường Mỹ (`Psychology of the world`). | - Trong [`app/services/video_repurposer.py`](file:///d:/AI_YouTube_Project_Ready/AI-youtube-main/app/services/video_repurposer.py): Cấu hình hàm `fetch_transcript(video_id, target_lang='en')` ưu tiên tuyệt đối `['en', 'en-US', 'en-GB', 'en-CA', 'en-AU']`, ưu tiên manual transcript trước auto-generated.<br>- Trong [`app/web/server.py`](file:///d:/AI_YouTube_Project_Ready/AI-youtube-main/app/web/server.py): Tự động nhận diện ngôn ngữ kênh đích từ `channels.yaml` để truyền `target_lang` tương ứng.<br>- Trong [`app/services/monetization_engine.py`](file:///d:/AI_YouTube_Project_Ready/AI-youtube-main/app/services/monetization_engine.py): Tự động lọc sạch ký tự tiếng Việt trong mô tả, thay bằng tiêu đề và nội dung tiếng Anh chuẩn SEO quốc tế & Fair Use. | ✅ **ĐÃ FIX & TEST PASSED 100%** |
+| **2** | **Xóa bỏ vĩnh viễn banner hardcode `SUBSCRIBE FOR PART 2`** | Dòng chữ `🔔 SUBSCRIBE FOR PART 2 🔔` xuất hiện ở cuối video làm mất tính liền mạch của vòng lặp giữ chân (Infinite Loop). | Trong [`app/utils/subtitle_helper.py`](file:///d:/AI_YouTube_Project_Ready/AI-youtube-main/app/utils/subtitle_helper.py) và [`app/services/video_repurposer.py`](file:///d:/AI_YouTube_Project_Ready/AI-youtube-main/app/services/video_repurposer.py): Thiết lập mặc định `show_cta_badge=False` ở toàn bộ các hàm sinh subtitle ASS (`build_ass_from_timed_segments`, `generate_karaoke_ass_content`, `render_repurposed_short`). | ✅ **ĐÃ FIX & TEST PASSED 100%** |
+| **3** | **Khắc phục triệt để lỗi Watermark `@pollinations.ai`** | Ảnh AI sinh ra từ Pollinations bị dính logo mờ `@pollinations.ai` ở góc đáy làm giảm độ chuyên nghiệp và dễ bị hạn chế tương tác. | Trong [`app/agents/image_agent.py`](file:///d:/AI_YouTube_Project_Ready/AI-youtube-main/app/agents/image_agent.py): Tích hợp hàm `_sanitize_ai_image()` bằng Pillow tự động cắt 48px chân ảnh (nơi chứa logo) và upscale khôi phục độ phân giải chuẩn 9:16 (768x1344) bằng bộ lọc Lanczos cao cấp. | ✅ **ĐÃ FIX & TEST PASSED 100%** |
+| **4** | **Nâng cấp Font phụ đề & Tương phản cao cho Shorts** | Font Arial thường mảnh, chìm vào nền video khi khung hình sáng, khó đọc trên màn hình điện thoại. | Trong [`app/utils/subtitle_helper.py`](file:///d:/AI_YouTube_Project_Ready/AI-youtube-main/app/utils/subtitle_helper.py): Đổi font mặc định sang **`Arial Black`** bản cực dày, tăng viền đen tương phản (`Outline: 4.2`), đổ bóng (`Shadow: 2.2`), chữ vàng chanh/neon nổi bật chuẩn phong cách Shorts triệu view. | ✅ **ĐÃ FIX & TEST PASSED 100%** |
+| **5** | **Sửa bộ bóc tách từ khóa tìm hình ảnh: Triệt tiêu Bẫy ẩn dụ (Metaphor Trap)** | Các từ ẩn dụ tâm lý (*"primal", "threat", "panic"*) kéo nhầm ảnh thú săn mồi (chó sói, báo, gấu) vào video Thung lũng Kỳ lạ (Uncanny Valley). | - Trong [`app/services/media/entity_detector.py`](file:///d:/AI_YouTube_Project_Ready/AI-youtube-main/app/services/media/entity_detector.py): Bổ sung nhóm `wild_predators` vào blacklist loại trừ ảnh stock không phù hợp khi chủ đề không phải động vật hoang dã.<br>- Trong [`app/services/pipeline.py`](file:///d:/AI_YouTube_Project_Ready/AI-youtube-main/app/services/pipeline.py): Lọc sạch các từ ẩn dụ trong query stock, buộc hệ thống chỉ neo vào danh từ thực tế từ `visual_keyword` (*búp bê sứ, ma-nơ-canh, robot, mắt thủy tinh*). | ✅ **ĐÃ FIX & TEST PASSED 100%** |
 
 ---
 

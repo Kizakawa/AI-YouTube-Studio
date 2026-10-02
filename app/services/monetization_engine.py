@@ -498,7 +498,13 @@ def build_repurposed_video_description(
 
     channel_cta = f"🔔 Subscribe to {channel_name} for daily high-retention stories!\n👍 Like & Share if you enjoyed this moment." if channel_name else "🔔 Subscribe for more incredible moments!\n👍 Like & Share to support the channel."
     
-    content_lead = (summary or title or "Incredible viral highlight that you cannot miss!").strip()
+    vietnamese_regex = re.compile(r'[àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ]', re.IGNORECASE)
+    raw_lead = (summary or title or "Incredible viral highlight that you cannot miss!").strip()
+    # Nếu thị trường quốc tế / Mỹ nhưng raw_lead chứa ký tự tiếng Việt, ưu tiên tiêu đề tiếng Anh sạch
+    if vietnamese_regex.search(raw_lead):
+        content_lead = (title or "Incredible viral highlight that you cannot miss!").strip()
+    else:
+        content_lead = raw_lead
 
     # Khối ghi nguồn & dẫn link video đầy đủ (Credit & Full Video Link)
     credit_block = ""

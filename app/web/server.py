@@ -3352,6 +3352,8 @@ class RepurposeAnalyzeRequest(BaseModel):
     niche_id: str = "general"
     mode: str = "self_owned"
     channel_name: str = ""
+    channel_id: Optional[str] = None
+    target_lang: str = "en"
     video_description: str = ""
     device_id: Optional[str] = None
     device_name: Optional[str] = None
@@ -3400,8 +3402,21 @@ def analyze_repurpose_video(req: RepurposeAnalyzeRequest) -> Dict[str, Any]:
         meta = repurposer_service.get_video_metadata(req.url_or_path)
         transcript_entries = []
         video_id = meta.get("video_id")
+
+        # Xác định ngôn ngữ đích (ưu tiên tiếng Anh cho US/Global channel)
+        resolved_lang = (req.target_lang or "en").strip().lower()
+        if req.channel_id or req.channel_name:
+            try:
+                cfg = _read_channels_yaml()
+                for ch in cfg.get("channels", []):
+                    if (req.channel_id and ch.get("id") == req.channel_id) or (req.channel_name and (ch.get("name") in req.channel_name or ch.get("id") in req.channel_name)):
+                        resolved_lang = ch.get("language", "en")
+                        break
+            except Exception:
+                pass
+
         if meta.get("source_type") == "youtube" and video_id:
-            transcript_entries = repurposer_service.fetch_transcript(video_id)
+            transcript_entries = repurposer_service.fetch_transcript(video_id, target_lang=resolved_lang)
         
         # Lấy mô tả từ request hoặc tự động từ yt-dlp metadata
         video_desc = req.video_description or meta.get("description", "")
@@ -3414,6 +3429,7 @@ def analyze_repurpose_video(req: RepurposeAnalyzeRequest) -> Dict[str, Any]:
             mode=req.mode,
             channel_name=req.channel_name,
             video_description=video_desc,
+            target_lang=resolved_lang,
         )
         
         return {
@@ -3546,6 +3562,23 @@ def list_repurposed_clips() -> Dict[str, Any]:
                             tracking_tag="kizakawa-20"
                         )
                         needs_save = True
+
+                # Tự động dọn dẹp các mô tả còn dính tiếng Việt từ các lần test trước cho kênh tiếng Anh
+                cur_desc = meta_info.get("description", "")
+                if cur_desc and re.search(r'[àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ]', cur_desc, re.IGNORECASE):
+                    niche_cur = meta_info.get("niche_id", "general")
+                    title_cur = meta_info.get("title") or f.stem
+                    meta_info["description"] = build_repurposed_video_description(
+                        title=title_cur,
+                        summary=title_cur,
+                        niche_id=niche_cur,
+                        channel_name="",
+                        source_url=meta_info.get("source_url", ""),
+                        author=meta_info.get("author", ""),
+                        mode=meta_info.get("mode", "self_owned"),
+                        tracking_tag="kizakawa-20"
+                    )
+                    needs_save = True
 
                 clip_pinned = meta_info.get("pinned_comment")
                 if not clip_pinned:

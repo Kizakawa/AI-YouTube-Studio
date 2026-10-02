@@ -704,6 +704,11 @@ class VideoPipeline:
             "rollercoaster", "thrill", "amusement", "park",
             "cartoon", "anime", "animated", "2d animation",
         }
+        # Nếu chủ đề không phải động vật hoang dã, cấm các từ ẩn dụ dễ gây kéo nhầm thú săn mồi (cougar/wolf)
+        is_wildlife = any(w in topic_context.lower() for w in ["wildlife", "animal", "predator", "safari", "jungle", "rescue", "dog", "cat"])
+        if not is_wildlife:
+            _FORBIDDEN_PEXELS_WORDS.update({"primal", "predator", "prey", "cougar", "wolf", "apex", "hunting"})
+
         words = raw.lower().split()
         filtered = [w for w in words if w not in _FORBIDDEN_PEXELS_WORDS]
         clean = " ".join(filtered).strip()

@@ -154,6 +154,60 @@ class TestSystemWideUpgrade(unittest.TestCase):
             self.assertTrue(Path(res["fallback_zip"]).exists())
             Path(res["fallback_zip"]).unlink(missing_ok=True)
 
+    def test_repurposer_prioritizes_english_for_us_channels(self):
+        from app.services.video_repurposer import VideoRepurposerService
+        svc = VideoRepurposerService()
+
+        mock_manual_en = MagicMock()
+        mock_manual_en.language_code = "en"
+        mock_manual_en.fetch.return_value = [
+            {"start": 1.0, "duration": 2.5, "text": "Why do things feel creepy?"},
+            {"start": 3.5, "duration": 3.0, "text": "The uncanny valley causes instant panic."}
+        ]
+
+        mock_transcript_list = MagicMock()
+        mock_transcript_list.find_manually_created_transcript.side_effect = lambda langs: mock_manual_en if "en" in langs else None
+
+        with patch("youtube_transcript_api.YouTubeTranscriptApi.list", return_value=mock_transcript_list):
+            res = svc.fetch_transcript("PEikGKDVsCc", target_lang="en")
+            self.assertEqual(len(res), 2)
+            self.assertEqual(res[0]["text"], "Why do things feel creepy?")
+            self.assertNotIn("ghê rợn", res[0]["text"])
+
+    def test_subtitle_helper_infinite_loop_no_cta_badge(self):
+        from app.utils.subtitle_helper import SubtitleHelper
+        timed_segments = [
+            {"start": 0.0, "duration": 3.0, "text": "Your brain panics instantly when something looks human."},
+            {"start": 3.0, "duration": 3.0, "text": "And that is why you should never look away."}
+        ]
+        ass_content = SubtitleHelper.build_ass_from_timed_segments(
+            timed_segments=timed_segments,
+            total_duration_sec=6.0,
+            show_cta_badge=False,
+            fontname="Arial Black"
+        )
+        # Bắt buộc KHÔNG có Dialogue CTABadge hoặc SUBSCRIBE FOR PART 2 để giữ trọn vẹn Infinite Loop
+        self.assertNotIn("Dialogue: 1,", ass_content)
+        self.assertNotIn("SUBSCRIBE FOR PART 2", ass_content)
+        self.assertNotIn("ĐĂNG KÝ KÊNH ĐÓN XEM PHẦN 2", ass_content)
+        self.assertIn("Arial Black", ass_content)
+
+    def test_image_agent_sanitizer_removes_pollinations_watermark(self):
+        from app.agents.image_agent import ImageAgent
+        from PIL import Image
+        agent = ImageAgent()
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
+            test_img = Path(td) / "test_flux_pollinations.png"
+            img = Image.new("RGB", (768, 1344), color=(30, 40, 50))
+            img.save(test_img)
+
+            agent._sanitize_ai_image(str(test_img))
+            self.assertTrue(test_img.exists())
+            with Image.open(test_img) as verified:
+                self.assertEqual(verified.size, (768, 1344))
+
 
 if __name__ == "__main__":
     unittest.main()
+

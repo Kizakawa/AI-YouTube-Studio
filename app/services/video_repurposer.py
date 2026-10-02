@@ -136,26 +136,71 @@ class VideoRepurposerService:
                 "description": "",
             }
 
-    def fetch_transcript(self, video_id: str) -> List[Dict[str, Any]]:
+    def fetch_transcript(self, video_id: str, target_lang: str = "en") -> List[Dict[str, Any]]:
         """
         Lấy phụ đề / transcript kèm mốc thời gian từ YouTube.
-        Hỗ trợ ưu tiên phụ đề tiếng Việt, tiếng Anh và phụ đề tự động (auto-generated).
+        - Mặc định ưu tiên Tiếng Anh (en, en-US, en-GB, en-CA, en-AU) cho thị trường Mỹ và kênh quốc tế.
+        - Chỉ ưu tiên tiếng Việt khi target_lang == 'vi'.
+        - Tự động ưu tiên phụ đề do người tạo (manual transcript) trước phụ đề tự động (auto-generated).
+        - Nếu video không có tiếng Anh, thử dùng bản dịch transcript sang tiếng Anh nếu có.
+        - Khử hoàn toàn các thẻ âm thanh rác: [Music], [Âm nhạc], [Applause]...
         """
         try:
             from youtube_transcript_api import YouTubeTranscriptApi
             ytt = YouTubeTranscriptApi()
             transcript_list = ytt.list(video_id)
             
-            target_langs = ['vi', 'en', 'es', 'fr', 'ja', 'ko', 'zh']
+            clean_target = (target_lang or "en").strip().lower()
+            if clean_target.startswith("vi"):
+                target_langs = ['vi', 'en']
+            else:
+                target_langs = ['en', 'en-US', 'en-GB', 'en-CA', 'en-AU']
+
             selected_transcript = None
 
+            # 1. Thử tìm phụ đề thủ công do người làm video tải lên trước (Manual Transcripts)
             for lang in target_langs:
                 try:
-                    selected_transcript = transcript_list.find_transcript([lang])
-                    break
+                    selected_transcript = transcript_list.find_manually_created_transcript([lang])
+                    if selected_transcript:
+                        logger.info(f"✅ [Repurposer] Tìm thấy manual transcript ({selected_transcript.language_code}) cho {video_id}")
+                        break
                 except Exception:
                     pass
 
+            # 2. Thử tìm phụ đề tự động theo đúng ngôn ngữ mục tiêu (Generated Transcripts)
+            if not selected_transcript:
+                for lang in target_langs:
+                    try:
+                        selected_transcript = transcript_list.find_generated_transcript([lang])
+                        if selected_transcript:
+                            logger.info(f"✅ [Repurposer] Tìm thấy generated transcript ({selected_transcript.language_code}) cho {video_id}")
+                            break
+                    except Exception:
+                        pass
+
+            # 3. Thử tìm bất kỳ bản nào khớp với target_langs
+            if not selected_transcript:
+                for lang in target_langs:
+                    try:
+                        selected_transcript = transcript_list.find_transcript([lang])
+                        if selected_transcript:
+                            break
+                    except Exception:
+                        pass
+
+            # 4. Nếu không có tiếng Anh nhưng có transcript khác, ưu tiên translate sang tiếng Anh nếu translatable
+            if not selected_transcript and clean_target != "vi":
+                for t in transcript_list:
+                    if getattr(t, 'is_translatable', False):
+                        try:
+                            selected_transcript = t.translate('en')
+                            logger.info(f"🌐 [Repurposer] Đã dịch tự động transcript ({t.language_code} -> en) cho {video_id}")
+                            break
+                        except Exception:
+                            pass
+
+            # 5. Fallback cuối cùng: lấy bất kỳ transcript nào có sẵn
             if not selected_transcript:
                 for t in transcript_list:
                     selected_transcript = t
@@ -164,6 +209,7 @@ class VideoRepurposerService:
             if selected_transcript:
                 raw_entries = selected_transcript.fetch()
                 result = []
+                noise_tags = {"[Music]", "[Âm nhạc]", "[Applause]", "[Laughter]", "[Sound]", "[Audio]", "[Tiếng vỗ tay]"}
                 for item in raw_entries:
                     if isinstance(item, dict):
                         text = item.get("text", "").strip()
@@ -175,7 +221,7 @@ class VideoRepurposerService:
                         start_val = getattr(item, "start", 0)
                         dur_val = getattr(item, "duration", 0)
 
-                    if text and text != "[Music]" and text != "[Âm nhạc]":
+                    if text and text not in noise_tags:
                         result.append({
                             "start": round(float(start_val), 2),
                             "duration": round(float(dur_val), 2),
@@ -535,12 +581,14 @@ class VideoRepurposerService:
         mode: str = "self_owned",
         channel_name: str = "",
         video_description: str = "",
+        target_lang: str = "en",
     ) -> List[Dict[str, Any]]:
         """
         Gửi transcript và ngữ cảnh video sang Gemini AI để phân tích 3-5 đoạn cao trào nhất.
         ĐẶC BIỆT:
         - Tiêu đề (title) BẮT BUỘC 100% TIẾNG ANH chuyên nghiệp chuẩn Native Speaker.
         - TUYỆT ĐỐI KHÔNG dịch lại hoặc lấy lại tiêu đề gốc.
+        - Toàn bộ hook, summary, caption BẮT BUỘC bằng Tiếng Anh khi kênh mục tiêu là US/quốc tế (target_lang='en').
         - Khối mô tả & hashtags đa nền tảng chuẩn SEO quốc tế.
         """
         from app.services.niche_manager import build_script_prompt_instructions
@@ -550,7 +598,7 @@ class VideoRepurposerService:
         target_audience = niche_profile.get("target_audience", "Global YouTube Shorts Viewers")
 
         # ── Niche DNA Blueprint injection ──────────────────────────────────────
-        niche_blueprint_instructions = build_script_prompt_instructions(niche_profile, language="en")
+        niche_blueprint_instructions = build_script_prompt_instructions(niche_profile, language=target_lang or "en")
 
         # ── Lấy defaults theo niche để dùng trong validation ──────────────────
         niche_cfg = self._NICHE_FALLBACK_CFG.get(niche_id, {})
@@ -727,17 +775,35 @@ OUTPUT MUST BE A STRICT JSON ARRAY ONLY (No markdown formatting around json, no 
                         m["hook_options"] = default_hook_options
 
 
+                    # Khử rò rỉ tiếng Việt trong summary & viral reason nếu nhắm thị trường Mỹ / Quốc tế
+                    vietnamese_regex = re.compile(r'[àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ]', re.IGNORECASE)
+                    if (target_lang or "en").startswith("en"):
+                        if m.get("summary") and vietnamese_regex.search(m["summary"]):
+                            m["summary"] = niche_cfg.get("summary", "Standout high-retention highlight extracted from the video.")
+                        if m.get("viral_reason") and vietnamese_regex.search(m["viral_reason"]):
+                            m["viral_reason"] = niche_cfg.get("viral_reason", "High-tension emotional hook drives strong completion rate.")
+                        if m.get("hook_quote") and vietnamese_regex.search(m["hook_quote"]):
+                            m["hook_quote"] = niche_cfg.get("hook_quote", "Watch what happens right here...")
+
                     # Đảm bảo cấu trúc edit_blueprint (niche-aware defaults)
                     bp = m.get("edit_blueprint")
                     if not isinstance(bp, dict):
                         bp = {}
                     if not bp.get("timeline_steps"):
-                        bp["timeline_steps"] = [
-                            f"00:00 - 00:03 | Hook mở đầu phù hợp tone {niche_name}: Zoom in 1.15x, SFX: {default_sfx_cues[0] if default_sfx_cues else 'attention sfx'}",
-                            f"00:03 - 00:15 | Xây dựng cảm xúc {niche_name}: Cắt cảnh 2.5s, B-roll: {default_broll_cues[0] if default_broll_cues else 'key b-roll'}",
-                            f"00:15 - 00:{max(0, int(dur) - 5):02d} | Cao trào phù hợp ngách, SFX: {default_sfx_cues[2] if len(default_sfx_cues) > 2 else 'climax sfx'}",
-                            f"00:{max(0, int(dur) - 5):02d} - {int(dur):02d}s | CTA Loop phù hợp cộng đồng {niche_name}!"
-                        ]
+                        if (target_lang or "en").startswith("en"):
+                            bp["timeline_steps"] = [
+                                f"00:00 - 00:03 | Opening Hook ({niche_name}): Zoom in 1.15x, SFX: {default_sfx_cues[0] if default_sfx_cues else 'attention sfx'}",
+                                f"00:03 - 00:15 | Emotion / Tension Build: Fast 2.5s pacing, B-roll: {default_broll_cues[0] if default_broll_cues else 'key moment'}",
+                                f"00:15 - 00:{max(0, int(dur) - 5):02d} | Climax Reveal: SFX: {default_sfx_cues[2] if len(default_sfx_cues) > 2 else 'climax sfx'}",
+                                f"00:{max(0, int(dur) - 5):02d} - {int(dur):02d}s | Seamless Infinite Loop & Retention CTA!"
+                            ]
+                        else:
+                            bp["timeline_steps"] = [
+                                f"00:00 - 00:03 | Hook mở đầu phù hợp tone {niche_name}: Zoom in 1.15x, SFX: {default_sfx_cues[0] if default_sfx_cues else 'attention sfx'}",
+                                f"00:03 - 00:15 | Xây dựng cảm xúc {niche_name}: Cắt cảnh 2.5s, B-roll: {default_broll_cues[0] if default_broll_cues else 'key b-roll'}",
+                                f"00:15 - 00:{max(0, int(dur) - 5):02d} | Cao trào phù hợp ngách, SFX: {default_sfx_cues[2] if len(default_sfx_cues) > 2 else 'climax sfx'}",
+                                f"00:{max(0, int(dur) - 5):02d} - {int(dur):02d}s | CTA Loop phù hợp cộng đồng {niche_name}!"
+                            ]
                     if not bp.get("broll_cues"):
                         bp["broll_cues"] = default_broll_cues
                     if not bp.get("subtitle_highlights"):
@@ -755,8 +821,12 @@ OUTPUT MUST BE A STRICT JSON ARRAY ONLY (No markdown formatting around json, no 
                     if not op.get("tiktok_reels_caption"):
                         op["tiktok_reels_caption"] = f"{title_clean} ✨ {niche_hashtags}"
                     if not op.get("facebook_post"):
-                        op["facebook_post"] = niche_cfg.get("fb_cta",
-                            f"{m.get('summary', title_clean)} Bạn nghĩ sao? Chia sẻ cảm nhận bên dưới! 👇")
+                        if (target_lang or "en").startswith("en"):
+                            op["facebook_post"] = niche_cfg.get("fb_cta",
+                                f"{m.get('summary', title_clean)} What do you think about this? Drop your thoughts below! 👇")
+                        else:
+                            op["facebook_post"] = niche_cfg.get("fb_cta",
+                                f"{m.get('summary', title_clean)} Bạn nghĩ sao? Chia sẻ cảm nhận bên dưới! 👇")
                     if not op.get("youtube_pinned_comment"):
                         from app.services.monetization_engine import build_repurposed_pinned_comment
                         op["youtube_pinned_comment"] = build_repurposed_pinned_comment(
@@ -907,7 +977,7 @@ OUTPUT MUST BE A STRICT JSON ARRAY ONLY (No markdown formatting around json, no 
         # Lấy thông tin phụ đề Niche Profile
         niche_profile = get_niche(niche_id)
         niche_sub = get_niche_subtitle_style(niche_profile)
-        fontname = niche_sub.get("fontname", "Arial")
+        fontname = niche_sub.get("fontname", "Arial Black")
         highlight_color = niche_sub.get("secondary_ass", "&H0000FFFF")
 
         # 1. Tạo file phụ đề ASS nếu có yêu cầu
@@ -932,11 +1002,11 @@ OUTPUT MUST BE A STRICT JSON ARRAY ONLY (No markdown formatting around json, no 
                     total_duration_sec=duration,
                     clip_start_offset=start_seconds,
                     fontname=fontname,
-                    fontsize=42,
+                    fontsize=44,
                     margin_v=580,
                     niche_id=niche_id,
                     credit_text=effective_credit,
-                    show_cta_badge=True,
+                    show_cta_badge=False,
                 )
             elif subtitle_text.strip():
                 clean_sub = SubtitleHelper.sanitize_subtitle_text(subtitle_text)

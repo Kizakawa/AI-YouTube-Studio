@@ -41,7 +41,7 @@ YCbCr Matrix: None
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1,0,1,3.2,2.0,2,30,30,{margin_v},1
+Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1,0,1,4.2,2.2,2,30,30,{margin_v},1
 Style: CTABadge,{fontname},46,&H0000FFFF,&H00FFFFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,3.5,2.0,2,30,30,780,1
 Style: WatermarkStyle,Arial,28,&H30FFFFFF,&H30FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1.8,1.2,8,30,30,90,1
 
@@ -49,8 +49,8 @@ Style: WatermarkStyle,Arial,28,&H30FFFFFF,&H30FFFFFF,&H00000000,&H80000000,-1,0,
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
-# ── Fonts ưu tiên (Arial phổ cập toàn diện trên Windows) ───────────────────
-PREFERRED_FONTS = ["Arial", "Montserrat", "Segoe UI", "Arial Black", "Roboto"]
+# ── Fonts ưu tiên (Arial Black / Arial phổ cập toàn diện trên Windows) ───────
+PREFERRED_FONTS = ["Arial Black", "Montserrat", "Segoe UI", "Arial", "Roboto"]
 
 
 class SubtitleHelper:
@@ -160,7 +160,7 @@ class SubtitleHelper:
     def build_ass_content(
         cls,
         scenes: List[SceneContract],
-        fontname: str = "Arial",
+        fontname: str = "Arial Black",
         fontsize: int = 42,
         margin_v: int = 580,
         primary_color: Optional[str] = None,
@@ -168,6 +168,7 @@ class SubtitleHelper:
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
+        show_cta_badge: bool = False,
     ) -> str:
         """
         Tạo nội dung file .ass chuẩn với karaoke word-level highlight.
@@ -287,8 +288,8 @@ class SubtitleHelper:
             else:
                 current_offset_ms += scene_duration_ms
 
-        # ── Kích hoạt Visual CTA Banner ở phân cảnh cuối (Center Above Subtitles) ──
-        if scenes and current_offset_ms > 3000:
+        # ── Kích hoạt Visual CTA Banner ở phân cảnh cuối (Chỉ bật khi show_cta_badge=True, không làm gãy Infinite Loop) ──
+        if show_cta_badge and scenes and current_offset_ms > 3000:
             last_scene = scenes[-1]
             last_dur = last_scene.audio_duration_ms or int(last_scene.estimated_seconds * 1000)
             cta_start_ms = max(0, current_offset_ms - min(last_dur, 4500))
@@ -317,7 +318,7 @@ class SubtitleHelper:
         cls,
         scenes: List[SceneContract],
         output_path: str,
-        fontname: str = "Arial",
+        fontname: str = "Arial Black",
         fontsize: int = 42,
         margin_v: int = 580,
         primary_color: Optional[str] = None,
@@ -325,6 +326,7 @@ class SubtitleHelper:
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
+        show_cta_badge: bool = False,
     ) -> str:
         """Tạo và lưu file .ass ra ổ đĩa, hỗ trợ Niche Profile & Watermark Credit."""
         content = cls.build_ass_content(
@@ -337,6 +339,7 @@ class SubtitleHelper:
             outline_color=outline_color,
             niche_id=niche_id,
             credit_text=credit_text,
+            show_cta_badge=show_cta_badge,
         )
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:
@@ -349,7 +352,7 @@ class SubtitleHelper:
         timed_segments: List[Dict[str, Any]],
         total_duration_sec: float = 0.0,
         clip_start_offset: float = 0.0,
-        fontname: str = "Arial",
+        fontname: str = "Arial Black",
         fontsize: int = 42,
         margin_v: int = 580,
         primary_color: Optional[str] = None,
@@ -357,7 +360,7 @@ class SubtitleHelper:
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
-        show_cta_badge: bool = True,
+        show_cta_badge: bool = False,
     ) -> str:
         """
         Tạo nội dung file .ass từ mốc thời gian thực của giọng đọc (ASR/Whisper/Transcript).
