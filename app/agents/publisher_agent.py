@@ -120,11 +120,13 @@ class PublisherAgent:
         pinned_comment: Optional[str] = None,
         topic: str = "",
         script: str = "",
+        thumbnail_path: Optional[str] = None,
     ) -> Dict:
         """
         Upload video lên YouTube qua YouTube Data API v3.
         Nếu có schedule_time_iso (ví dụ '2026-09-25T19:00:00Z'), video sẽ được đặt ở chế độ private và lên lịch công chiếu.
         Đã bổ sung defaultLanguage & defaultAudioLanguage để định tuyến thuật toán đề xuất chính xác vùng người xem.
+        Tự động trích xuất và tải lên Shock Thumbnail và Bình luận mồi ghim.
         Tự động gắn link Amazon Affiliate chuẩn xác vào Mô tả & Bình luận mồi.
         """
         import re
@@ -291,10 +293,35 @@ class PublisherAgent:
             shorts_url = f"https://www.youtube.com/shorts/{video_id}"
             logger.info(f"Đã upload Shorts thành công lên YouTube: {shorts_url} ({youtube_url})")
 
-            # Tự động đăng bình luận mồi nếu có
+            # ── 1. Tự động trích xuất và tải lên thumbnail đỉnh cao (Shock Frame) ──
+            uploaded_thumb = False
+            target_thumb = thumbnail_path
+            if not target_thumb or not os.path.exists(target_thumb):
+                auto_thumb = Path(video_path).with_suffix(".thumb.jpg")
+                if not auto_thumb.exists():
+                    try:
+                        from app.utils.ffmpeg_helper import extract_shock_thumbnail
+                        extract_shock_thumbnail(video_path, str(auto_thumb), timestamp_seconds=0.8)
+                    except Exception as th_err:
+                        logger.debug(f"Không thể trích xuất shock thumbnail: {th_err}")
+                if auto_thumb.exists():
+                    target_thumb = str(auto_thumb)
+
+            if target_thumb and os.path.exists(target_thumb):
+                uploaded_thumb = self.upload_thumbnail(video_id, target_thumb)
+
+            # ── 2. Tự động đăng bình luận mồi (Engagement Bait) ──
+            effective_comment = pinned_comment
+            if not effective_comment:
+                is_vn = str(target_lang).lower().startswith("vi")
+                if is_vn:
+                    effective_comment = "Bạn thấy chi tiết nào bất ngờ nhất? Hãy bình luận suy nghĩ của bạn bên dưới! 👇\nĐăng ký kênh để không bỏ lỡ video tiếp theo! 🔥"
+                else:
+                    effective_comment = "Which moment shocked you the most? Drop your theory in the comments below! 👇\nSubscribe so you don't miss the next one! 🔥"
+
             posted_comment_id = None
-            if video_id and pinned_comment:
-                comment_res = self.add_pinned_comment(video_id, pinned_comment)
+            if video_id and effective_comment:
+                comment_res = self.add_pinned_comment(video_id, effective_comment)
                 if comment_res:
                     posted_comment_id = comment_res.get("id")
 
@@ -311,8 +338,9 @@ class PublisherAgent:
                 "shorts_url": shorts_url,
                 "channel": self.channel_name,
                 "scheduled_at": schedule_time_iso,
-                "pinned_comment": pinned_comment,
+                "pinned_comment": effective_comment,
                 "comment_id": posted_comment_id,
+                "thumbnail_uploaded": uploaded_thumb,
                 "product_info": prod_info if "prod_info" in locals() and prod_info else None,
                 "enriched_description": desc_clean,
             }
@@ -406,3 +434,24 @@ class PublisherAgent:
         except Exception as e:
             logger.warning(f"💬 [PublisherAgent] Không thể tự động post bình luận mồi lên video {video_id}: {e}")
             return None
+
+    def upload_thumbnail(self, video_id: str, thumbnail_path: str) -> bool:
+        """
+        Tải thumbnail tùy chỉnh lên YouTube qua YouTube Data API v3 (thumbnails.set).
+        Áp dụng cho video Shorts nhằm tối ưu tỷ lệ click CTR > 10%.
+        """
+        if not self.service or not video_id or not os.path.exists(thumbnail_path):
+            logger.warning(f"📸 [PublisherAgent] Không đủ điều kiện upload thumbnail (video_id={video_id}, path={thumbnail_path})")
+            return False
+        try:
+            media = MediaFileUpload(thumbnail_path, mimetype="image/jpeg", resumable=False)
+            self.service.thumbnails().set(
+                videoId=video_id,
+                media_body=media
+            ).execute()
+            logger.info(f"📸 [PublisherAgent] ✅ Đã upload custom thumbnail thành công cho video {video_id}: {thumbnail_path}")
+            return True
+        except Exception as e:
+            logger.warning(f"📸 [PublisherAgent] Không thể upload custom thumbnail ({thumbnail_path}): {e}")
+            return False
+

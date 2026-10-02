@@ -56,6 +56,13 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
 
     title = state.get("title") or (state.get("script_data") or {}).get("title") or f"Shorts #{job_id}"
 
+    # Tự động chọn BGM theo Niche và SFX Transitions
+    from config.settings import settings
+    from app.services.pipeline import VideoPipeline
+    niche = state.get("channel_style") or state.get("niche") or "general"
+    bgm_path = VideoPipeline.find_bgm_for_niche(niche)
+    sfx_dir = str(Path(settings.BASE_DIR) / "assets" / "sfx")
+
     render_job = RenderJobContract(
         job_id=job_id,
         title=title,
@@ -63,6 +70,8 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
         full_audio_path=full_audio_path,
         total_audio_duration_ms=total_audio_duration_ms,
         subtitle_path=subtitle_path,
+        bgm_path=bgm_path,
+        sfx_dir=sfx_dir,
         output_path=final_output,
     )
 

@@ -65,7 +65,8 @@ class VoiceAgent:
         self,
         scenes: List[SceneContract],
         output_dir: str,
-        voice: str = None
+        voice: str = None,
+        rate: Optional[str] = None,
     ) -> List[SceneContract]:
         """
         Sinh MP3 cho từng scene. Trả về list SceneContract đã enriched
@@ -134,8 +135,9 @@ class VoiceAgent:
                         clean_text = re.sub(r'^[^\w\s\(\)]+', '', scene.narration).strip()
                         if not clean_text or len(clean_text) < 2:
                             clean_text = scene.narration.strip() or "..."
-                        # Tốc độ đọc chuẩn hóa 150-160 WPM (rate: +7%) rõ chữ, dồn dập, tự nhiên
-                        communicate = edge_tts.Communicate(clean_text, c_voice, rate="+7%")
+                        # Tốc độ đọc chuẩn hóa 160-175 WPM (rate: +12% cho Tiếng Anh, +7% cho Tiếng Việt) dồn dập, tự nhiên, chống tụt retention
+                        tts_rate = rate or ("+7%" if c_voice.startswith("vi-") else "+12%")
+                        communicate = edge_tts.Communicate(clean_text, c_voice, rate=tts_rate)
                         await communicate.save(scene_audio_path)
                         if Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024:
                             safe_voice = c_voice

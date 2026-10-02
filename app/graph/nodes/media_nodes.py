@@ -109,35 +109,38 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     used_pool_urls = get_recent_media_urls(limit=150)
     job_id = state.get("job_id", 0)
 
-    for idx, scene in enumerate(script.scenes):
-        media_path = ""
-        media_type = "image"
-        sq = getattr(scene, 'stock_query', None)
-        vp = getattr(scene, 'visual_prompt', None)
-        kw = scene.visual_keyword or ""
+    sem = asyncio.Semaphore(4)
 
-        # ── Agent Phân tích Ngữ cảnh & Ý niệm Thị giác Chuyên sâu (VisualCurationAgent) ──
-        surround_text = " ".join([s.narration for s in script.scenes[max(0, idx - 1):min(len(script.scenes), idx + 2)]])
-        v_analysis = await asyncio.to_thread(
-            curator.analyze_scene_context,
-            narration=scene.narration,
-            topic=state.get("topic", ""),
-            scene_id=scene.scene_id,
-            total_scenes=len(script.scenes),
-            primary_entity=primary_entity,
-            entity_type=entity_type,
-            surrounding_context=surround_text,
-            channel_niche=state.get("channel_style", "cinematic"),
-        )
+    async def _fetch_one_scene(idx: int, scene) -> Dict[str, Any]:
+        async with sem:
+            media_path = ""
+            media_type = "image"
+            sq = getattr(scene, 'stock_query', None)
+            vp = getattr(scene, 'visual_prompt', None)
+            kw = scene.visual_keyword or ""
 
-        # Lấy chiến lược và phương pháp do Video Strategist hoặc Visual Curation Agent chỉ định
-        sc_strat = strategy_map.get(scene.scene_id, {})
-        chosen_strategy = sc_strat.get("strategy", "STOCK_VIDEO")
-        prod_method = sc_strat.get("production_method") or v_analysis.get("production_method") or (
-            "IMAGE_TO_VIDEO" if chosen_strategy == "AI_IMAGE"
-            else ("TEXT_TO_VIDEO" if chosen_strategy == "AI_VIDEO"
-            else ("REAL_ARCHIVE" if chosen_strategy == "REAL_DOCUMENTARY" else "STOCK_FOOTAGE"))
-        )
+            # ── Agent Phân tích Ngữ cảnh & Ý niệm Thị giác Chuyên sâu (VisualCurationAgent) ──
+            surround_text = " ".join([s.narration for s in script.scenes[max(0, idx - 1):min(len(script.scenes), idx + 2)]])
+            v_analysis = await asyncio.to_thread(
+                curator.analyze_scene_context,
+                narration=scene.narration,
+                topic=state.get("topic", ""),
+                scene_id=scene.scene_id,
+                total_scenes=len(script.scenes),
+                primary_entity=primary_entity,
+                entity_type=entity_type,
+                surrounding_context=surround_text,
+                channel_niche=state.get("channel_style", "cinematic"),
+            )
+
+            # Lấy chiến lược và phương pháp do Video Strategist hoặc Visual Curation Agent chỉ định
+            sc_strat = strategy_map.get(scene.scene_id, {})
+            chosen_strategy = sc_strat.get("strategy", "STOCK_VIDEO")
+            prod_method = sc_strat.get("production_method") or v_analysis.get("production_method") or (
+                "IMAGE_TO_VIDEO" if chosen_strategy == "AI_IMAGE"
+                else ("TEXT_TO_VIDEO" if chosen_strategy == "AI_VIDEO"
+                else ("REAL_ARCHIVE" if chosen_strategy == "REAL_DOCUMENTARY" else "STOCK_FOOTAGE"))
+            )
 
         channel_visual_mode = state.get("visual_mode") or "auto"
         scene_media_pref = getattr(scene, 'media_type', None)
@@ -540,7 +543,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             media_path = out_g
             media_type = "image"
 
-        scenes_media.append({
+        return {
             "scene_id": scene.scene_id,
             "media_path": media_path,
             "media_type": media_type,
@@ -553,7 +556,10 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             "production_method": prod_method,
             "tool": tool,
             "strategy_rationale": rationale,
-        })
+        }
+
+    tasks = [_fetch_one_scene(i, s) for i, s in enumerate(script.scenes)]
+    scenes_media = list(await asyncio.gather(*tasks))
 
     return {
         "scenes_media": scenes_media,

@@ -1168,3 +1168,42 @@ def measure_audio_loudness_and_silence(file_path: str) -> Dict:
 
     return result
 
+
+def extract_shock_thumbnail(
+    video_path: str,
+    output_path: str,
+    timestamp_seconds: float = 0.8
+) -> str:
+    """
+    Trích xuất frame đỉnh cao (Shock Frame) tại timestamp_seconds (mặc định 0.8s, giữa Hook Cảnh 1) làm thumbnail Shorts.
+    Khung hình này có tác động thị giác mạnh mẽ nhất ngăn người xem vuốt qua (Swipe Away).
+    """
+    if not Path(video_path).exists():
+        raise FileNotFoundError(f"Video file không tồn tại: {video_path}")
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    args = [
+        "-ss", f"{timestamp_seconds:.2f}",
+        "-i", video_path,
+        "-vframes", "1",
+        "-q:v", "2",
+        "-y",
+        output_path
+    ]
+    try:
+        run_ffmpeg(args)
+        logger.info(f"[Thumbnail] 📸 Đã trích xuất shock thumbnail tại {timestamp_seconds}s → {output_path}")
+        return output_path
+    except Exception as e:
+        logger.warning(f"[Thumbnail] Không thể trích xuất thumbnail tại {timestamp_seconds}s: {e}")
+        # Fallback về 0.1s
+        if timestamp_seconds != 0.1:
+            try:
+                args[1] = "0.10"
+                run_ffmpeg(args)
+                return output_path
+            except Exception:
+                pass
+        return ""
+
+

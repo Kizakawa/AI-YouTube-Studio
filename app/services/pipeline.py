@@ -385,215 +385,227 @@ class VideoPipeline:
         }
 
         total_scenes = len(scenes)
-        result = []
-        for idx, scene in enumerate(scenes):
-            pct = 25 + int(((idx + 1) / total_scenes) * 35)
-            sc_strat = strategy_map.get(scene.scene_id, {})
+        sem = asyncio.Semaphore(4)
+        completed_count = 0
 
-            # ── Agent Phân tích Ngữ cảnh & Ý niệm Thị giác Chuyên sâu (VisualCurationAgent) ──
-            surround_text = " ".join([s.narration for s in scenes[max(0, idx - 1):min(total_scenes, idx + 2)]])
-            v_analysis = await asyncio.to_thread(
-                self._visual_curation_agent.analyze_scene_context,
-                narration=scene.narration,
-                topic=topic,
-                scene_id=scene.scene_id,
-                total_scenes=total_scenes,
-                primary_entity=primary_entity,
-                entity_type=entity_type,
-                surrounding_context=surround_text,
-                channel_niche=channel_niche,
-            )
+        async def _fetch_scene_worker(idx: int, scene: SceneContract) -> SceneContract:
+            nonlocal completed_count
+            async with sem:
+                sc_strat = strategy_map.get(scene.scene_id, {})
 
-            prod_method = sc_strat.get("production_method") or v_analysis.get("production_method", "STOCK_FOOTAGE")
-            scene_pref = getattr(scene, 'media_type', None)
-
-            # ── Kiểm tra phân cảnh Viễn Tưởng qua SciFiVisualDispatcherAgent ──
-            from app.agents.scifi_visual_dispatcher_agent import SciFiVisualDispatcherAgent
-            scifi_agent = SciFiVisualDispatcherAgent()
-            is_scifi_scene = sc_strat.get("is_scifi") or False
-            if not is_scifi_scene:
-                is_scifi_scene, _, _, _ = scifi_agent.detect_scifi_elements(
-                    topic=topic,
+                # ── Agent Phân tích Ngữ cảnh & Ý niệm Thị giác Chuyên sâu (VisualCurationAgent) ──
+                surround_text = " ".join([s.narration for s in scenes[max(0, idx - 1):min(total_scenes, idx + 2)]])
+                v_analysis = await asyncio.to_thread(
+                    self._visual_curation_agent.analyze_scene_context,
                     narration=scene.narration,
-                    visual_keyword=scene.visual_keyword or "",
-                    visual_prompt=scene.visual_prompt or "",
+                    topic=topic,
+                    scene_id=scene.scene_id,
+                    total_scenes=total_scenes,
+                    primary_entity=primary_entity,
+                    entity_type=entity_type,
+                    surrounding_context=surround_text,
                     channel_niche=channel_niche,
                 )
 
-            if is_scifi_scene:
-                # Video viễn tưởng: Bắt buộc TEXT_TO_VIDEO (AI Video) hoặc STOCK_FOOTAGE (Kho video 9:16), cấm ép về IMAGE_TO_VIDEO
-                if prod_method == "IMAGE_TO_VIDEO":
-                    prod_method = "TEXT_TO_VIDEO"
-                logger.info(f"[Job {self.job_id}] 🚀 Cảnh {idx+1}/{total_scenes}: YẾU TỐ VIỄN TƯỞNG -> Khóa chế độ Video Động ({prod_method}), chống chuyển ảnh đơn điệu!")
-            else:
-                if channel_visual_mode in ("imagen_ai", "ai_image") and prod_method != "REAL_ARCHIVE":
-                    prod_method = "IMAGE_TO_VIDEO"
-                elif scene_pref == "ai_image":
-                    prod_method = "IMAGE_TO_VIDEO"
+                prod_method = sc_strat.get("production_method") or v_analysis.get("production_method", "STOCK_FOOTAGE")
+                scene_pref = getattr(scene, 'media_type', None)
 
-            label = f"[{prod_method}] Cảnh {idx+1}/{total_scenes}"
-            rationale_text = v_analysis.get("narrative_subtext") or sc_strat.get("rationale", "")
-            await self._report_progress("MEDIA", f"🎬 {label}: {rationale_text[:40]}...", percent=pct)
-
-            media_path = ""
-            dur = scene.actual_duration_seconds
-            p_ai = v_analysis.get("cinematic_ai_prompt") or sc_strat.get("ai_prompt") or scene.visual_prompt or scene.visual_keyword
-
-            # 1. IMAGE_TO_VIDEO (Tạo video bám sát ảnh chủ đề 8K)
-            if prod_method == "IMAGE_TO_VIDEO":
-                ai_vid_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_i2v.mp4")
-                res_v = await ai_video_agent.generate_image_to_video(
-                    prompt=p_ai,
-                    output_path=ai_vid_path,
-                    duration_seconds=dur,
-                    scene_id=scene.scene_id,
-                    camera_motion=sc_strat.get("camera_motion", "zoom_in"),
-                    visual_prompt=scene.visual_prompt,
-                    used_urls=used_asset_paths,
-                    visual_analysis=v_analysis,
-                    narration=scene.narration,
-                )
-                if res_v and Path(res_v).exists():
-                    media_path = res_v
-                    used_asset_paths.add(res_v)
-
-            # 2. TEXT_TO_VIDEO (Sinh video AI trực tiếp kỳ ảo)
-            elif prod_method == "TEXT_TO_VIDEO":
-                ai_vid_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_t2v.mp4")
-                res_v = await ai_video_agent.generate_text_to_video(
-                    prompt=p_ai,
-                    output_path=ai_vid_path,
-                    duration_seconds=dur,
-                    scene_id=scene.scene_id,
-                    camera_motion=sc_strat.get("camera_motion", "zoom_in"),
-                    visual_prompt=scene.visual_prompt,
-                    used_urls=used_asset_paths,
-                    visual_analysis=v_analysis,
-                    narration=scene.narration,
-                )
-                if res_v and Path(res_v).exists():
-                    media_path = res_v
-                    used_asset_paths.add(res_v)
-
-            # 3. Fallback hoặc các phương pháp REAL_ARCHIVE, STOCK_FOOTAGE
-            if not media_path:
-                media_path = await self._fetch_scene_media(
-                    scene=scene,
-                    media_dir=media_dir,
-                    primary_entity=primary_entity,
-                    entity_type=entity_type,
-                    entity_media_pool=entity_media_pool,
-                    used_pool_urls=used_pool_urls,
-                    used_asset_paths=used_asset_paths,
-                    sc_strat=sc_strat,
-                    v_analysis=v_analysis,
-                    topic=topic,
-                )
-                if media_path:
-                    used_asset_paths.add(media_path)
-                    from app.services.media.media_history import compute_file_md5
-                    m_md5 = compute_file_md5(media_path)
-                    if m_md5:
-                        used_asset_paths.add(f"md5:{m_md5}")
-                        used_pool_urls.add(f"md5:{m_md5}")
-
-            # ── Thẩm định & Chấm điểm độ liên quan với MediaRelevanceAgent ──
-            if media_path and Path(media_path).exists():
-                relevance_eval = await asyncio.to_thread(
-                    self._media_relevance_agent.evaluate_media,
-                    media_path=media_path,
-                    narration=scene.narration,
-                    visual_keyword=scene.visual_keyword or "",
-                    topic=topic,
-                    scene_id=scene.scene_id,
-                    primary_entity=primary_entity,
-                    production_method=prod_method,
-                )
-                if not relevance_eval.get("is_relevant", True) and relevance_eval.get("verdict") == "FAIL":
-                    logger.warning(
-                        f"[Job {self.job_id}] ⚠️ Cảnh {scene.scene_id} media chưa đạt chuẩn nội dung "
-                        f"(Score: {relevance_eval.get('overall_score')}/10). Vấn đề: {relevance_eval.get('issues')}. "
-                        f"Tự động sửa chữa theo gợi ý: '{relevance_eval.get('replacement_query')}'..."
+                # ── Kiểm tra phân cảnh Viễn Tưởng qua SciFiVisualDispatcherAgent ──
+                from app.agents.scifi_visual_dispatcher_agent import SciFiVisualDispatcherAgent
+                scifi_agent = SciFiVisualDispatcherAgent()
+                is_scifi_scene = sc_strat.get("is_scifi") or False
+                if not is_scifi_scene:
+                    is_scifi_scene, _, _, _ = scifi_agent.detect_scifi_elements(
+                        topic=topic,
+                        narration=scene.narration,
+                        visual_keyword=scene.visual_keyword or "",
+                        visual_prompt=scene.visual_prompt or "",
+                        channel_niche=channel_niche,
                     )
-                    fix_query = relevance_eval.get("replacement_query") or scene.visual_keyword or topic
-                    fixed_media = None
 
-                    # Ưu tiên tìm video nếu phương pháp cần video hoặc cảnh cần chuyển động
-                    if prod_method in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO") or scene.scene_id == 1:
-                        best_vid = await asyncio.to_thread(
-                            self._media_agent.search_best_video_clip,
-                            fix_query,
-                            used_pool_urls,
-                            v_analysis,
-                            scene.narration,
-                        )
-                        if best_vid and best_vid.get("url"):
-                            cand_url = best_vid["url"]
-                            new_v_p = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_relevance_fix.mp4")
-                            await asyncio.to_thread(self._media_agent.download_file, cand_url, new_v_p)
-                            if Path(new_v_p).exists() and Path(new_v_p).stat().st_size > 5000:
-                                fixed_media = new_v_p
-                                from app.services.media.media_history import extract_media_identity, record_used_media
-                                ids = extract_media_identity(cand_url)
-                                used_pool_urls.update(ids)
-                                used_asset_paths.update(ids)
-                                used_asset_paths.add(new_v_p)
-                                record_used_media(cand_url, query=fix_query, source="relevance_fix", media_path=new_v_p)
-                                logger.info(f"[Job {self.job_id}] ✅ Đã thay thế Cảnh {scene.scene_id} bằng video clip chuẩn: {fix_query}")
+                if is_scifi_scene:
+                    # Video viễn tưởng: Bắt buộc TEXT_TO_VIDEO (AI Video) hoặc STOCK_FOOTAGE (Kho video 9:16), cấm ép về IMAGE_TO_VIDEO
+                    if prod_method == "IMAGE_TO_VIDEO":
+                        prod_method = "TEXT_TO_VIDEO"
+                    logger.info(f"[Job {self.job_id}] 🚀 Cảnh {idx+1}/{total_scenes}: YẾU TỐ VIỄN TƯỞNG -> Khóa chế độ Video Động ({prod_method}), chống chuyển ảnh đơn điệu!")
+                else:
+                    if channel_visual_mode in ("imagen_ai", "ai_image") and prod_method != "REAL_ARCHIVE":
+                        prod_method = "IMAGE_TO_VIDEO"
+                    elif scene_pref == "ai_image":
+                        prod_method = "IMAGE_TO_VIDEO"
 
-                    # Nếu chưa tìm được video, thử sinh ảnh AI chất lượng cao từ refined_prompt
-                    if not fixed_media:
-                        fix_prompt = relevance_eval.get("refined_prompt") or p_ai or f"Cinematic photorealistic 8k vertical shot of {fix_query}, {topic}"
-                        new_img_p = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_relevance_fix.jpg")
-                        res_ai = await asyncio.to_thread(
-                            self._image_agent.generate_scene_image,
-                            fix_prompt,
-                            new_img_p,
-                            "9:16",
-                            "cinematic",
-                            scene.scene_id,
-                            fix_prompt,
-                            used_asset_paths,
-                            topic,
+                label = f"[{prod_method}] Cảnh {idx+1}/{total_scenes}"
+                rationale_text = v_analysis.get("narrative_subtext") or sc_strat.get("rationale", "")
+                completed_count += 1
+                pct = 25 + int((completed_count / total_scenes) * 35)
+                await self._report_progress("MEDIA", f"🎬 {label}: {rationale_text[:40]}...", percent=pct)
+
+                media_path = ""
+                dur = scene.actual_duration_seconds
+                p_ai = v_analysis.get("cinematic_ai_prompt") or sc_strat.get("ai_prompt") or scene.visual_prompt or scene.visual_keyword
+
+                # 1. IMAGE_TO_VIDEO (Tạo video bám sát ảnh chủ đề 8K)
+                if prod_method == "IMAGE_TO_VIDEO":
+                    ai_vid_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_i2v.mp4")
+                    res_v = await ai_video_agent.generate_image_to_video(
+                        prompt=p_ai,
+                        output_path=ai_vid_path,
+                        duration_seconds=dur,
+                        scene_id=scene.scene_id,
+                        camera_motion=sc_strat.get("camera_motion", "zoom_in"),
+                        visual_prompt=scene.visual_prompt,
+                        used_urls=used_asset_paths,
+                        visual_analysis=v_analysis,
+                        narration=scene.narration,
+                    )
+                    if res_v and Path(res_v).exists():
+                        media_path = res_v
+                        used_asset_paths.add(res_v)
+
+                # 2. TEXT_TO_VIDEO (Sinh video AI trực tiếp kỳ ảo)
+                elif prod_method == "TEXT_TO_VIDEO":
+                    ai_vid_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_t2v.mp4")
+                    res_v = await ai_video_agent.generate_text_to_video(
+                        prompt=p_ai,
+                        output_path=ai_vid_path,
+                        duration_seconds=dur,
+                        scene_id=scene.scene_id,
+                        camera_motion=sc_strat.get("camera_motion", "zoom_in"),
+                        visual_prompt=scene.visual_prompt,
+                        used_urls=used_asset_paths,
+                        visual_analysis=v_analysis,
+                        narration=scene.narration,
+                    )
+                    if res_v and Path(res_v).exists():
+                        media_path = res_v
+                        used_asset_paths.add(res_v)
+
+                # 3. Fallback hoặc các phương pháp REAL_ARCHIVE, STOCK_FOOTAGE
+                if not media_path:
+                    media_path = await self._fetch_scene_media(
+                        scene=scene,
+                        media_dir=media_dir,
+                        primary_entity=primary_entity,
+                        entity_type=entity_type,
+                        entity_media_pool=entity_media_pool,
+                        used_pool_urls=used_pool_urls,
+                        used_asset_paths=used_asset_paths,
+                        sc_strat=sc_strat,
+                        v_analysis=v_analysis,
+                        topic=topic,
+                    )
+                    if media_path:
+                        used_asset_paths.add(media_path)
+                        from app.services.media.media_history import compute_file_md5
+                        m_md5 = compute_file_md5(media_path)
+                        if m_md5:
+                            used_asset_paths.add(f"md5:{m_md5}")
+                            used_pool_urls.add(f"md5:{m_md5}")
+
+                # ── Thẩm định & Chấm điểm độ liên quan với MediaRelevanceAgent ──
+                if media_path and Path(media_path).exists():
+                    relevance_eval = await asyncio.to_thread(
+                        self._media_relevance_agent.evaluate_media,
+                        media_path=media_path,
+                        narration=scene.narration,
+                        visual_keyword=scene.visual_keyword or "",
+                        topic=topic,
+                        scene_id=scene.scene_id,
+                        primary_entity=primary_entity,
+                        production_method=prod_method,
+                    )
+                    if not relevance_eval.get("is_relevant", True) and relevance_eval.get("verdict") == "FAIL":
+                        logger.warning(
+                            f"[Job {self.job_id}] ⚠️ Cảnh {scene.scene_id} media chưa đạt chuẩn nội dung "
+                            f"(Score: {relevance_eval.get('overall_score')}/10). Vấn đề: {relevance_eval.get('issues')}. "
+                            f"Tự động sửa chữa theo gợi ý: '{relevance_eval.get('replacement_query')}'..."
                         )
-                        if res_ai and Path(res_ai).exists() and Path(res_ai).stat().st_size > 2000:
-                            # Nếu cảnh cần video động, animate ngay thành video MP4 9:16
-                            if prod_method in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO") or (sc_strat and sc_strat.get("production_method") == "STOCK_FOOTAGE") or scene.scene_id == 1:
-                                anim_fix_p = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_relevance_fix_anim.mp4")
-                                res_anim = ai_video_agent.animate_thematic_image(
-                                    image_path=res_ai,
-                                    output_path=anim_fix_p,
-                                    duration_seconds=scene.actual_duration_seconds,
-                                    camera_motion=sc_strat.get("camera_motion", "zoom_in") if sc_strat else "zoom_in",
-                                    is_hook=(scene.scene_id == 1),
-                                )
-                                if res_anim and Path(res_anim).exists() and Path(res_anim).stat().st_size > 5000:
-                                    fixed_media = res_anim
+                        fix_query = relevance_eval.get("replacement_query") or scene.visual_keyword or topic
+                        fixed_media = None
+
+                        # Ưu tiên tìm video nếu phương pháp cần video hoặc cảnh cần chuyển động
+                        if prod_method in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO") or scene.scene_id == 1:
+                            best_vid = await asyncio.to_thread(
+                                self._media_agent.search_best_video_clip,
+                                fix_query,
+                                used_pool_urls,
+                                v_analysis,
+                                scene.narration,
+                            )
+                            if best_vid and best_vid.get("url"):
+                                cand_url = best_vid["url"]
+                                new_v_p = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_relevance_fix.mp4")
+                                await asyncio.to_thread(self._media_agent.download_file, cand_url, new_v_p)
+                                if Path(new_v_p).exists() and Path(new_v_p).stat().st_size > 5000:
+                                    fixed_media = new_v_p
+                                    from app.services.media.media_history import extract_media_identity, record_used_media
+                                    ids = extract_media_identity(cand_url)
+                                    used_pool_urls.update(ids)
+                                    used_asset_paths.update(ids)
+                                    used_asset_paths.add(new_v_p)
+                                    record_used_media(cand_url, query=fix_query, source="relevance_fix", media_path=new_v_p)
+                                    logger.info(f"[Job {self.job_id}] ✅ Đã thay thế Cảnh {scene.scene_id} bằng video clip chuẩn: {fix_query}")
+
+                        # Nếu chưa tìm được video, thử sinh ảnh AI chất lượng cao từ refined_prompt
+                        if not fixed_media:
+                            fix_prompt = relevance_eval.get("refined_prompt") or p_ai or f"Cinematic photorealistic 8k vertical shot of {fix_query}, {topic}"
+                            new_img_p = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_relevance_fix.jpg")
+                            res_ai = await asyncio.to_thread(
+                                self._image_agent.generate_scene_image,
+                                fix_prompt,
+                                new_img_p,
+                                "9:16",
+                                "cinematic",
+                                scene.scene_id,
+                                fix_prompt,
+                                used_asset_paths,
+                                topic,
+                            )
+                            if res_ai and Path(res_ai).exists() and Path(res_ai).stat().st_size > 2000:
+                                # Nếu cảnh cần video động, animate ngay thành video MP4 9:16
+                                if prod_method in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO") or (sc_strat and sc_strat.get("production_method") == "STOCK_FOOTAGE") or scene.scene_id == 1:
+                                    anim_fix_p = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_relevance_fix_anim.mp4")
+                                    res_anim = ai_video_agent.animate_thematic_image(
+                                        image_path=res_ai,
+                                        output_path=anim_fix_p,
+                                        duration_seconds=scene.actual_duration_seconds,
+                                        camera_motion=sc_strat.get("camera_motion", "zoom_in") if sc_strat else "zoom_in",
+                                        is_hook=(scene.scene_id == 1),
+                                    )
+                                    if res_anim and Path(res_anim).exists() and Path(res_anim).stat().st_size > 5000:
+                                        fixed_media = res_anim
+                                    else:
+                                        fixed_media = res_ai
                                 else:
                                     fixed_media = res_ai
-                            else:
-                                fixed_media = res_ai
 
-                            from app.services.media.media_history import extract_media_identity, compute_file_md5
-                            used_asset_paths.add(fixed_media)
-                            md5_h = compute_file_md5(fixed_media)
-                            if md5_h:
-                                used_asset_paths.add(f"md5:{md5_h}")
-                                used_pool_urls.add(f"md5:{md5_h}")
-                            logger.info(f"[Job {self.job_id}] ✅ Đã thay thế Cảnh {scene.scene_id} bằng ảnh/video AI chuẩn xác từ đạo diễn")
+                                from app.services.media.media_history import extract_media_identity, compute_file_md5
+                                used_asset_paths.add(fixed_media)
+                                md5_h = compute_file_md5(fixed_media)
+                                if md5_h:
+                                    used_asset_paths.add(f"md5:{md5_h}")
+                                    used_pool_urls.add(f"md5:{md5_h}")
+                                logger.info(f"[Job {self.job_id}] ✅ Đã thay thế Cảnh {scene.scene_id} bằng ảnh/video AI chuẩn xác từ đạo diễn")
 
-                    if fixed_media:
-                        media_path = fixed_media
+                        if fixed_media:
+                            media_path = fixed_media
 
-            enriched = scene.model_copy(update={
-                "media_path": media_path,
-                "media_type": _infer_media_type(media_path),
-                "visual_strategy": sc_strat.get("strategy"),
-                "production_method": prod_method,
-                "tool": sc_strat.get("tool"),
-                "strategy_rationale": rationale_text,
-            })
-            result.append(enriched)
+                sfx = sc_strat.get("sfx_cue") or getattr(scene, 'sfx_cue', None) or ("hit" if idx == 0 else "whoosh")
+                cam = sc_strat.get("camera_motion") or getattr(scene, 'camera_motion', None) or ("zoom_in" if idx == 0 else None)
+
+                return scene.model_copy(update={
+                    "media_path": media_path,
+                    "media_type": _infer_media_type(media_path),
+                    "visual_strategy": sc_strat.get("strategy"),
+                    "production_method": prod_method,
+                    "tool": sc_strat.get("tool"),
+                    "strategy_rationale": rationale_text,
+                    "sfx_cue": sfx,
+                    "camera_motion": cam,
+                })
+
+        tasks = [_fetch_scene_worker(i, s) for i, s in enumerate(scenes)]
+        result = list(await asyncio.gather(*tasks))
 
         # ── VÒNG KIỂM TOÁN CHỐNG TRÙNG LẶP HÌNH ẢNH TOÀN DIỆN (CROSS-SCENE PERCEPTUAL DEDUPLICATION AUDIT) ──
         # Đảm bảo 100% không có bất kỳ 2 phân cảnh nào dùng chung 1 ảnh hoặc frame video giống nhau
@@ -1221,7 +1233,8 @@ class VideoPipeline:
                     return ch.get("preferred_voice")
         return None
 
-    def _find_bgm(self, niche: Optional[str] = None) -> Optional[str]:
+    @staticmethod
+    def find_bgm_for_niche(niche: Optional[str] = None) -> Optional[str]:
         """
         P2.4: Tìm file nhạc nền phù hợp theo Niche (Sound Design Automation) hoặc fallback về mặc định:
         - luxury, motivation, finance -> inspiring_epic / energetic
@@ -1259,9 +1272,8 @@ class VideoPipeline:
             return None
 
         # 1. Tìm theo từ khóa niche
-        effective_niche = niche or getattr(self, "niche", None)
-        if effective_niche:
-            clean_niche = str(effective_niche).lower().replace("-", "_")
+        if niche:
+            clean_niche = str(niche).lower().replace("-", "_")
             target_keys = []
             for k, keys in niche_keywords.items():
                 if k in clean_niche:
@@ -1271,11 +1283,15 @@ class VideoPipeline:
             for key in target_keys:
                 for f in all_bgms:
                     if key in f.stem.lower():
-                        logger.info(f"[Job {self.job_id}] 🎵 BGM khớp Niche '{effective_niche}' → {f.name}")
+                        logger.info(f"🎵 BGM khớp Niche '{niche}' → {f.name}")
                         return str(f)
 
         # 2. Fallback: file đầu tiên có sẵn
         return str(all_bgms[0])
+
+    def _find_bgm(self, niche: Optional[str] = None) -> Optional[str]:
+        effective_niche = niche or getattr(self, "niche", None)
+        return self.find_bgm_for_niche(effective_niche)
 
     @staticmethod
     def _is_valid_media_file(path_str: str) -> bool:
