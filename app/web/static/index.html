@@ -338,10 +338,15 @@
                             </select>
                         </div>
                     </div>
-                    <button class="btn btn-primary btn-lg" id="btn-create-script" onclick="createScript()">
-                        <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                        Tạo Kịch Bản với Gemini AI
-                    </button>
+                    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:8px;">
+                        <button class="btn btn-primary btn-lg" id="btn-create-script" onclick="createScript()" style="flex:2; min-width:240px;">
+                            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                            Tạo Kịch Bản với Gemini AI
+                        </button>
+                        <button class="btn btn-secondary btn-lg" id="btn-create-manual-script" onclick="createManualScript()" style="flex:1; min-width:200px; font-weight:700; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.18); color:#f8fafc; display:flex; align-items:center; justify-content:center; gap:8px;">
+                            <span>✍️</span> Tự Soạn Kịch Bản Thủ Công
+                        </button>
+                    </div>
                 </div>
             </div>
 

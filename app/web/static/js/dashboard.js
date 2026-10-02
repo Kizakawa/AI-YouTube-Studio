@@ -925,6 +925,61 @@ async function createScript() {
     }
 }
 
+async function createManualScript() {
+    const inputTopic = document.getElementById('input-topic');
+    let title = inputTopic ? inputTopic.value.trim() : '';
+    if (!title) {
+        title = prompt('Nhập tiêu đề hoặc chủ đề cho kịch bản thủ công:', 'Kịch bản Shorts mới') || '';
+        title = title.trim();
+        if (!title) return;
+        if (inputTopic) inputTopic.value = title;
+    }
+
+    const channel = document.getElementById('input-channel').value;
+    const language = document.getElementById('input-language').value;
+
+    const btn = document.getElementById('btn-create-manual-script');
+    const origHTML = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="loading-spinner"></span> Đang tạo...`;
+    }
+
+    try {
+        const result = await apiPost('/api/scripts/create-manual', {
+            title: title,
+            topic: title,
+            channel_id: channel,
+            language: language
+        });
+
+        if (!result) return;
+
+        lastCreatedScriptResult = result;
+
+        // Hiển thị panel kết quả kịch bản
+        document.getElementById('result-job-badge').textContent = `Job #${result.job_id} (Soạn thủ công)`;
+        document.getElementById('script-result-panel').style.display = 'flex';
+        document.getElementById('script-result-content').innerHTML = buildScriptResultHTML(result);
+        document.getElementById('script-result-panel').scrollIntoView({ behavior: 'smooth' });
+
+        showToast(`✍️ Đã khởi tạo kịch bản #${result.job_id}! Bạn có thể chỉnh sửa lời thoại ngay.`, 'success');
+        fetchVideos(); // refresh pipeline
+
+        // Tự động mở ngay Modal chỉnh sửa để người dùng nhập lời thoại và tùy chỉnh
+        setTimeout(() => {
+            openScriptEditor(result.job_id);
+        }, 300);
+    } catch (e) {
+        showToast('Lỗi khi tạo kịch bản thủ công: ' + e.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHTML;
+        }
+    }
+}
+
 function buildScriptResultHTML(result) {
     let evalData = result.eval || result.quality_scores;
     if (typeof evalData === 'string') {
@@ -1025,19 +1080,19 @@ function buildScriptResultHTML(result) {
 
         <!-- Action Toolbar Right After Generation -->
         <div style="display:flex; gap:10px; flex-wrap:wrap; margin:16px 0; padding:12px 14px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; align-items:center;">
-            <button class="btn btn-secondary" onclick="openInstantPreviewFromCreate()" style="background:linear-gradient(135deg, rgba(236,72,153,0.15), rgba(139,92,246,0.15)); border-color:rgba(236,72,153,0.45); color:#f472b6; font-weight:700; padding:9px 18px; box-shadow:0 2px 12px rgba(236,72,153,0.2);">
-                👁️ Xem Trước Nhanh (Instant Preview)
+            <button class="btn btn-secondary" onclick="openScriptEditor(${result.job_id})" style="font-weight:700; padding:9px 18px; background:linear-gradient(135deg, rgba(234,179,8,0.15), rgba(249,115,22,0.15)); border-color:rgba(234,179,8,0.5); color:#facc15; box-shadow:0 2px 10px rgba(234,179,8,0.15);">
+                ✏️ Bước 1: Chỉnh Sửa Kịch Bản (Thêm / Sửa / Xóa Cảnh)
             </button>
-            <button class="btn btn-primary" onclick="triggerWebRender(${result.job_id})" style="background:linear-gradient(135deg,#3b82f6,#8b5cf6); border:none; font-weight:600; padding:9px 18px;">
-                🚀 Bắt Đầu Tạo Video (Render)
+            <button class="btn btn-secondary" onclick="openInstantPreviewFromCreate()" style="background:linear-gradient(135deg, rgba(236,72,153,0.15), rgba(139,92,246,0.15)); border-color:rgba(236,72,153,0.45); color:#f472b6; font-weight:700; padding:9px 18px;">
+                👁️ Xem Trước Nhịp Đọc & B-Roll
             </button>
-            <button class="btn btn-secondary" onclick="openScriptEditor(${result.job_id})" style="font-weight:600; padding:9px 16px;">
-                ✏️ Chỉnh Sửa Kịch Bản (Thêm/Sửa/Xóa Cảnh)
+            <button class="btn btn-primary" onclick="triggerWebRender(${result.job_id})" style="background:linear-gradient(135deg,#3b82f6,#8b5cf6); border:none; font-weight:700; padding:9px 20px; box-shadow:0 3px 14px rgba(59,130,246,0.35);">
+                🚀 Bước 2: Duyệt & Tạo Video (Render)
             </button>
-            <button class="btn btn-secondary" onclick="switchTab('pipeline')" style="font-size:12px; padding:9px 14px;">
+            <button class="btn btn-secondary" onclick="switchTab('pipeline')" style="font-size:12px; padding:9px 14px; margin-left:auto;">
                 📋 Xem trong Pipeline →
             </button>
-            <button class="btn btn-danger btn-sm" onclick="deleteJob(${result.job_id}); document.getElementById('script-result-panel').style.display='none';" style="margin-left:auto; padding:9px 14px;">
+            <button class="btn btn-danger btn-sm" onclick="deleteJob(${result.job_id}); document.getElementById('script-result-panel').style.display='none';" style="padding:9px 14px;">
                 🗑️ Xóa Kịch Bản
             </button>
         </div>
@@ -1048,12 +1103,12 @@ function buildScriptResultHTML(result) {
         </div>
 
         <!-- Bottom Action Bar -->
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08);">
-            <button class="btn btn-secondary" onclick="openScriptEditor(${result.job_id})" style="font-weight:600;">
-                ✏️ Chỉnh Sửa Kịch Bản Này
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08); flex-wrap:wrap; gap:12px;">
+            <button class="btn btn-secondary btn-lg" onclick="openScriptEditor(${result.job_id})" style="font-weight:700; border-color:rgba(234,179,8,0.5); color:#facc15;">
+                ✏️ Chỉnh Sửa Kịch Bản Này (Thêm / Sửa Cảnh)
             </button>
-            <button class="btn btn-primary btn-lg" onclick="triggerWebRender(${result.job_id})" style="background:linear-gradient(135deg,#3b82f6,#8b5cf6); border:none; font-weight:600;">
-                🚀 Bắt Đầu Tạo Video Ngay →
+            <button class="btn btn-primary btn-lg" onclick="triggerWebRender(${result.job_id})" style="background:linear-gradient(135deg,#3b82f6,#8b5cf6); border:none; font-weight:700; box-shadow:0 4px 18px rgba(59,130,246,0.35);">
+                🚀 Duyệt Kịch Bản & Bắt Đầu Tạo Video Ngay →
             </button>
         </div>`;
 }

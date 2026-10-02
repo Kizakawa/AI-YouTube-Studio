@@ -890,6 +890,122 @@ async def create_script_from_web(body: CreateScriptRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Lỗi tạo kịch bản: {str(e)}\n{traceback.format_exc()}")
 
 
+class CreateManualScriptRequest(BaseModel):
+    title: Optional[str] = None
+    topic: Optional[str] = None
+    channel_id: str = "channel_maya"
+    language: str = "en"
+    scenes: Optional[List[Dict[str, Any]]] = None
+
+@app.post("/api/scripts/create-manual")
+async def create_manual_script(body: CreateManualScriptRequest) -> Dict[str, Any]:
+    """
+    Tạo kịch bản thủ công từ Web Studio:
+    Người dùng có thể tự viết tiêu đề, lời thoại từng phân cảnh hoặc mở trình soạn thảo để tự tạo từ A-Z mà không bắt buộc dùng AI.
+    """
+    try:
+        channels = settings.get_channels_config()
+        ch = next((c for c in channels if c.get("id") == body.channel_id), {})
+        channel_name = ch.get("name") or body.channel_id
+        raw_title = (body.title or body.topic or "Kịch bản Shorts mới").strip()
+
+        # Tạo sẵn cấu trúc phân cảnh mẫu nếu người dùng chưa truyền
+        initial_scenes = body.scenes or [
+            {
+                "scene_id": 1,
+                "narration": f"Chào mừng bạn đến với {channel_name}! Đây là phân cảnh mở đầu...",
+                "visual_keyword": "cinematic dramatic opening",
+                "visual_prompt": "cinematic dramatic opening 9:16 high quality",
+                "media_type": "auto",
+                "estimated_seconds": 4.0
+            },
+            {
+                "scene_id": 2,
+                "narration": "Chi tiết hấp dẫn nhất của câu chuyện nằm ở đây...",
+                "visual_keyword": "mysterious revelation documentary",
+                "visual_prompt": "mysterious revelation documentary 9:16 high quality",
+                "media_type": "auto",
+                "estimated_seconds": 5.0
+            },
+            {
+                "scene_id": 3,
+                "narration": "Hãy theo dõi kênh để không bỏ lỡ phần tiếp theo!",
+                "visual_keyword": "subscribe follow channel cinematic",
+                "visual_prompt": "cinematic dramatic closing",
+                "media_type": "auto",
+                "estimated_seconds": 3.5
+            }
+        ]
+
+        full_narration = " ".join(s.get("narration", "") for s in initial_scenes)
+        hook_text = initial_scenes[0].get("narration", "")[:100]
+
+        script_payload = {
+            "title": raw_title,
+            "hook": hook_text,
+            "full_narration": full_narration,
+            "scenes": initial_scenes,
+            "tags": ["shorts", "viral", "trending"],
+            "description": f"{raw_title} #Shorts #viral"
+        }
+
+        with get_db() as db:
+            job = VideoJob(
+                user_id=0,  # 0 = Web Studio
+                target_channel_id=body.channel_id,
+                topic=body.topic or raw_title,
+                title=raw_title,
+                script=full_narration,
+                description=f"{raw_title} #Shorts #viral",
+                tags="shorts,viral,trending",
+                scenes_json=json.dumps(script_payload, ensure_ascii=False),
+                status="SCRIPT_READY",
+                quality_scores=json.dumps({
+                    "overall": 9.0,
+                    "overall_score": 9.0,
+                    "passed": True,
+                    "hook": 9.0,
+                    "hook_strength": 9.0,
+                    "pacing": 9.0,
+                    "story_pacing": 9.0,
+                    "visual": 9.0,
+                    "visual_direction": 9.0,
+                    "actionable_critiques": ["Kịch bản do người dùng tự soạn thảo thủ công"],
+                    "badge": "✍️ Soạn thủ công"
+                }, ensure_ascii=False)
+            )
+            db.add(job)
+            db.flush()
+            job_id = job.id
+
+            log_activity(db, 0, "WebStudio", "CREATE_MANUAL_SCRIPT",
+                         f"Đã tạo kịch bản thủ công Job #{job_id}: '{raw_title}'")
+
+        total_dur = sum(s.get("estimated_seconds", 4.0) for s in initial_scenes)
+
+        return {
+            "success": True,
+            "job_id": job_id,
+            "title": raw_title,
+            "hook": hook_text,
+            "scene_count": len(initial_scenes),
+            "total_duration": total_dur,
+            "scenes": initial_scenes,
+            "eval": {
+                "overall_score": 9.0,
+                "hook_score": 9.0,
+                "pacing_score": 9.0,
+                "visual_score": 9.0,
+                "passed": True,
+                "badge": "✍️ Kịch Bản Tự Soạn",
+                "critiques": ["Kịch bản do người dùng tự biên soạn và quản lý"]
+            }
+        }
+    except Exception as e:
+        import traceback
+        raise HTTPException(status_code=500, detail=f"Lỗi tạo kịch bản thủ công: {str(e)}\n{traceback.format_exc()}")
+
+
 @app.post("/api/videos/{job_id}/ai-refine")
 async def refine_script_with_ai(job_id: int, body: RefineScriptRequest) -> Dict[str, Any]:
     """

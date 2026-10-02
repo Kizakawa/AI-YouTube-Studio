@@ -325,6 +325,7 @@ class ContentAgent:
                     "save this", "lưu lại", "chia sẻ", "share", "tell me", "bạn nghĩ sao", "let me know",
                     "drop your", "part 2", "phần 2", "which one", "ai trong số", "do this", "hãy thử"
                 ]
+                has_organic_cta = any(k in last_narr.lower() for k in organic_cta_keywords)
                 if not has_organic_cta and len(last_narr) > 0:
                     clean_narr = re.sub(r'[\s\.\,\-]+$', '', last_narr)
                     clean_narr = re.sub(r'[\s\.\,\-\—\…]+(?:because|which|and|so|that|but|with|or|while|as|if)[\s\.\,\-\—\…]*$', '', clean_narr, flags=re.IGNORECASE)
