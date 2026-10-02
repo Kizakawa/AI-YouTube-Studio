@@ -98,6 +98,8 @@ def start_tunnel():
         str(cloudflared_bin),
         "tunnel",
         "--url", f"http://127.0.0.1:{port}",
+        "--http-host-header", f"localhost:{port}",
+        "--no-autoupdate",
     ]
 
     print("⏳ Đang kết nối tới mạng lưới toàn cầu Cloudflare Edge...", flush=True)
@@ -145,16 +147,23 @@ def start_tunnel():
         print("👉 Gửi link này cho bạn bè/đối tác để họ truy cập Web Studio từ xa!", flush=True)
         print("👉 Nhấn Ctrl + C để dừng đóng gói và đóng đường hầm khi dùng xong.\n", flush=True)
 
-        # Giữ tiến trình chạy cho đến khi người dùng ngắt
-        while True:
-            line = proc.stdout.readline()
-            if not line and proc.poll() is not None:
-                break
-            # Ẩn bớt log kỹ thuật rườm rà, chỉ giữ tiến trình sống
-            time.sleep(0.5)
+        # Luồng ngầm liên tục giải phóng bộ đệm stdout để tránh nghẽn luồng mạng OS pipe
+        import threading
+        def _drain_stdout():
+            try:
+                for _ in iter(proc.stdout.readline, ""):
+                    pass
+            except Exception:
+                pass
+
+        drain_thread = threading.Thread(target=_drain_stdout, daemon=True)
+        drain_thread.start()
+
+        # Giữ tiến trình chạy mượt mà không block IO
+        proc.wait()
 
     except KeyboardInterrupt:
-        print("\n\n👋 Đang đóng đường hầm Cloudflare Tunnel...")
+        print("\n\n👋 Đang đóng đường hầm Cloudflare Tunnel...", flush=True)
     finally:
         try:
             proc.terminate()
@@ -164,7 +173,7 @@ def start_tunnel():
                 proc.kill()
             except Exception:
                 pass
-        print("✅ Đã ngắt kết nối an toàn.")
+        print("✅ Đã ngắt kết nối an toàn.", flush=True)
 
 
 if __name__ == "__main__":
