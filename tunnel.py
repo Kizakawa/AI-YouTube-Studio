@@ -135,17 +135,25 @@ def start_tunnel():
 
         copied = copy_to_clipboard(public_url)
 
-        print("\n" + "╔" + "═" * 68 + "╗", flush=True)
-        print("║" + " " * 18 + "🌐 LINK TRUY CẬP CÔNG KHAI ĐÃ SẴN SÀNG" + " " * 12 + "║", flush=True)
-        print("╠" + "═" * 68 + "╣", flush=True)
-        print(f"║  🔗 Public URL:  {public_url:<49}║", flush=True)
-        print(f"║  🏠 Local URL:   http://localhost:{port:<39}║", flush=True)
-        print("║  🔒 Bảo mật:     HTTPS / SSL tự động bởi Cloudflare Edge          ║", flush=True)
+        print("\n" + "═" * 70, flush=True)
+        print("🌐 LINK TRUY CẬP CÔNG KHAI (CLOUDFLARE PUBLIC TUNNEL)", flush=True)
+        print("═" * 70, flush=True)
+        print(f"\n   👉 {public_url}\n", flush=True)
+        print("═" * 70, flush=True)
+        print(f"📍 Local:      http://localhost:{port}", flush=True)
+        print("🔒 Bảo mật:    HTTPS / SSL tự động bởi Cloudflare Edge", flush=True)
         if copied:
-            print("║  📋 Clipboard:   ĐÃ TỰ ĐỘNG SAO CHÉP LINK (Chỉ cần Ctrl + V)!     ║", flush=True)
-        print("╚" + "═" * 68 + "╝\n", flush=True)
-        print("👉 Gửi link này cho bạn bè/đối tác để họ truy cập Web Studio từ xa!", flush=True)
-        print("👉 Nhấn Ctrl + C để dừng đóng gói và đóng đường hầm khi dùng xong.\n", flush=True)
+            print("📋 Clipboard:  ĐÃ SAO CHÉP TỰ ĐỘNG (Bấm Ctrl + V trên trình duyệt để dán)!", flush=True)
+        print("💡 Mẹo:        Giữ phím Ctrl + Click vào link trên để mở nhanh!", flush=True)
+        print("👉 Gửi link trên cho bạn bè/đối tác để họ vào Web Studio từ xa.", flush=True)
+        print("👉 Nhấn Ctrl + C tại cửa sổ này khi bạn muốn đóng đường hầm.\n", flush=True)
+
+        # Tự động mở trình duyệt mặc định với link công khai
+        try:
+            import webbrowser
+            webbrowser.open(public_url)
+        except Exception:
+            pass
 
         # Luồng ngầm liên tục giải phóng bộ đệm stdout để tránh nghẽn luồng mạng OS pipe
         import threading
