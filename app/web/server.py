@@ -784,6 +784,33 @@ async def download_video(job_id: int):
         filename=filename,
     )
 
+@app.get("/api/videos/{job_id}/stream")
+async def stream_video(job_id: int):
+    """Phát video trực tiếp trên trình duyệt (inline streaming) hỗ trợ seek / scrub."""
+    with get_db() as db:
+        job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Không tìm thấy video job")
+        if not job.video_path:
+            raise HTTPException(status_code=404, detail="Video chưa được render")
+        video_path = Path(job.video_path)
+        if not video_path.exists():
+            local_fallback = Path(settings.OUTPUT_DIR) / f"video_{job_id}.mp4"
+            if local_fallback.exists():
+                video_path = local_fallback
+            else:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"File video không tồn tại trên máy cục bộ này (Đường dẫn: {job.video_path}). Có thể video được render trên máy khác."
+                )
+
+    return FileResponse(
+        path=str(video_path),
+        media_type="video/mp4",
+        content_disposition_type="inline",
+        headers={"Accept-Ranges": "bytes", "Cache-Control": "no-cache"},
+    )
+
 # ─── Create Script (Web UI trigger) ──────────────────────────────────────────
 
 class CreateScriptRequest(BaseModel):

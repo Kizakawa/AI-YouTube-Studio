@@ -806,21 +806,27 @@ function renderPipelineTable(videos) {
         const chGmail = chObj ? (chObj.gmail || chObj.email_label || chObj.google_account) : '';
 
         // Action buttons
-        let actionButtons = `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết">🔍</button>`;
-        if (v.status === 'SCRIPT_READY') {
+        let actionButtons = '';
+        if (v.status === 'SCRIPT_READY' || v.status === 'MEDIA_READY' || v.status === 'AUDIO_READY') {
+            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết kịch bản">🔍</button>`;
             actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openInstantPreviewForJob(${v.id})" title="Xem trước video và phụ đề tức thì" style="font-size:11px; color:#f472b6; border-color:rgba(236,72,153,0.4);">👁️ Xem trước</button>`;
             actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openScriptEditor(${v.id})" title="Chỉnh sửa kịch bản" style="font-size:11px;">✏️ Sửa</button>`;
             actionButtons += `<button class="btn btn-primary btn-sm" onclick="triggerWebRender(${v.id})" title="Xuất Video" style="font-size:11px;">🚀 Render</button>`;
         } else if (v.status === 'FAILED') {
+            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Xem chi tiết lỗi">🔍</button>`;
             actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openInstantPreviewForJob(${v.id})" title="Xem trước kịch bản" style="font-size:11px; color:#f472b6; border-color:rgba(236,72,153,0.4);">👁️ Xem trước</button>`;
             actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openScriptEditor(${v.id})" title="Chỉnh sửa kịch bản" style="font-size:11px;">✏️ Sửa</button>`;
             actionButtons += `<button class="btn btn-primary btn-sm" onclick="triggerWebRender(${v.id})" title="Thử render lại" style="font-size:11px;background:var(--accent-amber);border-color:var(--accent-amber);">🔄 Thử lại</button>`;
         } else if (v.status === 'RENDERED') {
+            actionButtons += `<button class="btn btn-success btn-sm" onclick="playRenderedVideo(${v.id})" title="Bấm vào để xem video thành phẩm" style="font-size:11.5px;background:linear-gradient(135deg,#10b981,#059669);border:none;font-weight:700;color:#fff;box-shadow:0 2px 8px rgba(16,185,129,0.35);">▶️ Xem Video</button>`;
             actionButtons += `<button class="btn btn-primary btn-sm" onclick="openPublishModal(${v.id})" title="Chọn kênh & Đăng YouTube" style="font-size:11px;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;font-weight:600;">🚀 Đăng YT</button>`;
-            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết video" style="font-size:11px;">🔍</button>`;
+            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết video & phân cảnh" style="font-size:11px;">🔍</button>`;
         } else if (v.status === 'PUBLISHED') {
+            actionButtons += `<button class="btn btn-success btn-sm" onclick="playRenderedVideo(${v.id})" title="Xem video đã đăng" style="font-size:11.5px;background:linear-gradient(135deg,#10b981,#059669);border:none;font-weight:700;color:#fff;box-shadow:0 2px 8px rgba(16,185,129,0.35);">▶️ Xem Video</button>`;
             actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openPublishModal(${v.id})" title="Đăng lại / Đăng kênh khác" style="font-size:11px;border-color:rgba(239,68,68,0.4);color:#ef4444;font-weight:600;">🔄 Đăng Lại</button>`;
-            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết video" style="font-size:11px;">🔍</button>`;
+            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết video & phân cảnh" style="font-size:11px;">🔍</button>`;
+        } else {
+            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết">🔍</button>`;
         }
         let scoreBadge = '';
         let qScore = v.quality_scores;
@@ -1279,18 +1285,24 @@ async function openVideoDetail(jobId) {
             <div class="detail-label" style="color:var(--accent-rose);">Lỗi</div>
             <div class="detail-value script-box" style="color:var(--accent-rose);">${esc(data.error_message)}</div>
         </div>` : ''}
-        ${data.status === 'RENDERED' && data.video_path ? `
-        <div class="detail-row" style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.25);border-radius:8px;padding:14px;">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-                <span style="font-size:20px;">🎬</span>
-                <div>
-                    <div style="font-weight:700;color:var(--accent-green);font-size:13px;">Video Đã Sẵn Sàng!</div>
-                    <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">📂 ${esc(data.video_path)}</div>
+        ${(data.status === 'RENDERED' || data.status === 'PUBLISHED') && data.video_path ? `
+        <div class="detail-row" style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <div style="font-weight:700;color:var(--accent-green);font-size:13px;display:flex;align-items:center;gap:6px;">
+                    <span>🎬 Video Thành Phẩm (Shorts 9:16)</span>
                 </div>
+                <button class="btn btn-sm btn-success" onclick="closeModal(); playRenderedVideo(${data.id});" style="font-size:11px;font-weight:700;padding:3px 10px;background:linear-gradient(135deg,#10b981,#059669);border:none;color:#fff;">
+                    ▶️ Xem Toàn Màn Hình
+                </button>
             </div>
-            <a href="/api/videos/${data.id}/download" target="_blank" class="btn btn-primary btn-sm" style="width:100%;justify-content:center;">
-                📥 Tải Video Về Máy
-            </a>
+            <div style="display:flex;justify-content:center;background:#000;border-radius:10px;padding:8px;margin-bottom:10px;">
+                <video controls playsinline style="max-height:300px;max-width:100%;aspect-ratio:9/16;border-radius:8px;background:#000;" src="/api/videos/${data.id}/stream" onerror="this.parentElement.innerHTML='<div style=\'color:#f87171;font-size:12px;padding:12px;text-align:center;\'>⚠️ Video được render trên máy đồng đội hoặc file không khả dụng trên máy local này.</div>'"></video>
+            </div>
+            <div style="display:flex;gap:8px;">
+                <a href="/api/videos/${data.id}/download" target="_blank" class="btn btn-secondary btn-sm" style="flex:1;justify-content:center;font-weight:600;">
+                    📥 Tải Video Về Máy
+                </a>
+            </div>
         </div>` : ''}
         <div class="detail-row">
             <div class="detail-label">Nội Dung Lời Thoại</div>
@@ -1328,10 +1340,92 @@ function closeModal() {
     document.getElementById('modal-overlay').classList.remove('visible');
 }
 
+/* ===============================================================
+   RENDERED SHORTS VIDEO PLAYER MODAL
+================================================================ */
+async function playRenderedVideo(jobId) {
+    const modal = document.getElementById('modal-rendered-player');
+    const vidEl = document.getElementById('rendered-video-element');
+    const titleEl = document.getElementById('rendered-player-title');
+    const durEl = document.getElementById('rendered-player-duration');
+    const fallbackBox = document.getElementById('rendered-player-fallback');
+    const fallbackTitle = document.getElementById('rendered-player-fallback-title');
+    const fallbackMsg = document.getElementById('rendered-player-fallback-msg');
+    const downloadBtn = document.getElementById('rendered-player-download-btn');
+    const detailBtn = document.getElementById('rendered-player-detail-btn');
+    const publishBtn = document.getElementById('rendered-player-publish-btn');
+
+    if (!modal || !vidEl) return;
+
+    // Reset video state
+    vidEl.pause();
+    vidEl.removeAttribute('src');
+    vidEl.load();
+    vidEl.style.display = 'block';
+    if (fallbackBox) fallbackBox.style.display = 'none';
+
+    titleEl.textContent = `Video #${jobId} — Đang tải...`;
+    durEl.textContent = '';
+    downloadBtn.href = `/api/videos/${jobId}/download`;
+    detailBtn.onclick = () => { closeRenderedPlayerModal(); openVideoDetail(jobId); };
+    publishBtn.onclick = () => { closeRenderedPlayerModal(); openPublishModal(jobId); };
+
+    modal.style.display = 'flex';
+    modal.classList.add('visible');
+
+    // Lấy thông tin chi tiết video
+    try {
+        const data = await apiGet(`/api/videos/${jobId}`);
+        if (data) {
+            titleEl.textContent = data.title || `Video #${jobId}`;
+            if (data.audio_duration_ms) {
+                durEl.textContent = `⏱️ ${(data.audio_duration_ms / 1000).toFixed(1)}s`;
+            } else if (data.scenes && data.scenes.length) {
+                durEl.textContent = `🎬 ${data.scenes.length} cảnh`;
+            }
+        }
+    } catch (e) {
+        console.warn('Lỗi lấy thông tin video:', e);
+    }
+
+    // Set streaming URL
+    const streamUrl = `/api/videos/${jobId}/stream?t=${Date.now()}`;
+    vidEl.src = streamUrl;
+
+    vidEl.onerror = () => {
+        vidEl.style.display = 'none';
+        if (fallbackBox) {
+            fallbackBox.style.display = 'block';
+            fallbackTitle.textContent = 'Không Thể Phát Video Trực Tiếp';
+            fallbackMsg.innerHTML = `File video có thể được dựng trên máy đồng đội hoặc đường dẫn không khả dụng trên máy local này.<br><br>
+                <a href="/api/videos/${jobId}/download" class="btn btn-secondary btn-sm" style="display:inline-flex;margin-top:6px;">📥 Thử Tải Trực Tiếp</a>`;
+        }
+    };
+
+    vidEl.play().catch(err => {
+        console.log('Video autoplay caught:', err);
+    });
+}
+
+function closeRenderedPlayerModal() {
+    const modal = document.getElementById('modal-rendered-player');
+    const vidEl = document.getElementById('rendered-video-element');
+    if (vidEl) {
+        vidEl.pause();
+        vidEl.removeAttribute('src');
+        vidEl.load();
+    }
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('visible');
+    }
+}
+
 document.addEventListener('keydown', e => { 
     if (e.key === 'Escape') {
         closeModal();
         closeScriptEditor();
+        closeRenderedPlayerModal();
     }
 });
 

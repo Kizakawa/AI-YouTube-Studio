@@ -125,26 +125,40 @@ class VideoPipeline:
                     sub_p = state.get("subtitle_path", "")
 
                     scenes_list = []
+                    scenes_audio = state.get("scenes_audio", [])
+                    audio_map = {s.get("scene_id"): s for s in scenes_audio if isinstance(s, dict)}
                     for s in state.get("scenes_media", []):
+                        sc_id = s.get("scene_id", 1)
+                        a_info = audio_map.get(sc_id, {})
                         scenes_list.append(SceneContract(
-                            scene_id=s["scene_id"],
-                            narration=s.get("narration", ""),
+                            scene_id=sc_id,
+                            narration=s.get("narration") or a_info.get("narration") or " ",
                             visual_keyword=s.get("visual_keyword", ""),
                             media_path=s.get("media_path", ""),
                             media_type=s.get("media_type", "image"),
+                            audio_path=a_info.get("audio_path") or audio_p or "",
+                            audio_duration_ms=a_info.get("audio_duration_ms") or a_info.get("duration_ms") or 0,
                         ))
+
+                    output_final_path = str(Path(settings.OUTPUT_DIR) / f"video_{self.job_id}.mp4")
+                    Path(settings.OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
+                    if Path(video_p).exists() and Path(video_p).resolve() != Path(output_final_path).resolve():
+                        import shutil
+                        shutil.copy2(video_p, output_final_path)
+                        video_p = output_final_path
 
                     render_job = RenderJobContract(
                         job_id=self.job_id,
                         title=title,
                         scenes=scenes_list,
                         full_audio_path=audio_p,
-                        total_duration_ms=dur_ms,
+                        total_audio_duration_ms=dur_ms,
                         subtitle_path=sub_p,
                         output_path=video_p,
                     )
                     self._save_render_manifest(render_job)
                     self._update_status(JobStatus.RENDERED)
+                    await self._report_progress("COMPLETED", f"🎉 Video #{self.job_id} đã hoàn tất và sẵn sàng phát hành!", percent=100)
                     return render_job
                 except Exception as e:
                     logger.warning(f"[Job {self.job_id}] LangGraph engine gặp sự cố ({e}), chuyển sang pipeline tuyến tính dự phòng...")
