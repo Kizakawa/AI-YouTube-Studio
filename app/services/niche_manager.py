@@ -384,8 +384,8 @@ def get_niche_subtitle_style(niche_profile: Dict[str, Any]) -> Dict[str, Any]:
     sub_cfg = niche_profile.get("subtitles", {})
     primary_hex = sub_cfg.get("primary_color", "#FFFFFF")
     highlight_hex = sub_cfg.get("highlight_color", "#FFE600")
-    outline_hex = sub_cfg.get("outline_color", "#000000")
-    font_family = sub_cfg.get("font_family", "Montserrat, sans-serif").split(",")[0].strip()
+    raw_font = sub_cfg.get("font_family") or "Montserrat, sans-serif"
+    font_family = raw_font.split(",")[0].strip() or "Montserrat"
     font_size = int(sub_cfg.get("font_size", 42))
     
     raw_margin = int(sub_cfg.get("margin_bottom", 600))
