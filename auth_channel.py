@@ -47,15 +47,35 @@ def authenticate_channel(channel_id: str):
     if not cfg:
         return False
 
+    # Chuẩn hoá alias cho các kênh
+    alias_map = {
+        "ucsrjiil67qxidtxt70z-iwa": "ch_the_mysteries_of_the_world",
+        "the_mysteries": "ch_the_mysteries_of_the_world",
+        "mysteries": "ch_the_mysteries_of_the_world",
+        "maya": "channel_maya",
+        "psychology": "channel_maya",
+        "paws": "ch_paws_hearts_rescue",
+        "rescue": "ch_paws_hearts_rescue",
+        "wild": "ch_wild_odyssey",
+        "odyssey": "ch_wild_odyssey",
+        "whatif": "@alternatehistorywhatif-e2x",
+        "history": "@alternatehistorywhatif-e2x",
+    }
+    channel_id = alias_map.get(channel_id.lower(), channel_id)
+
     # Tìm thông tin kênh và tài khoản Google tương ứng
     target_channel = None
     target_account = None
+    is_primary_channel = False
 
     for acc in cfg.get("google_accounts", []):
-        for bch in acc.get("brand_channels", []):
+        bchs = acc.get("brand_channels", [])
+        for idx, bch in enumerate(bchs):
             if bch.get("id") == channel_id:
                 target_channel = bch
                 target_account = acc
+                if idx == 0:
+                    is_primary_channel = True
                 break
         if target_channel:
             break
@@ -128,6 +148,16 @@ def authenticate_channel(channel_id: str):
         except Exception as e_yt:
             print(f"⚠️ Không thể đọc snippet kênh: {e_yt}")
 
+        # Kiểm tra xem người dùng có chọn nhầm kênh trên trình duyệt không
+        expected_yt_id = target_channel.get("youtube_channel_id")
+        if expected_yt_id and real_yt_id and expected_yt_id.lower() != real_yt_id.lower():
+            print("\n" + "!" * 68)
+            print("⚠️ CẢNH BÁO: BẠN CÓ THỂ ĐÃ CHỌN NHẦM KÊNH TRÊN TRÌNH DUYỆT!")
+            print(f"   👉 Kênh bạn vừa chọn cấp quyền: '{real_yt_title}' ({real_yt_id})")
+            print(f"   👉 Kênh dự kiến trong cấu hình: '{ch_name}' ({expected_yt_id})")
+            print("   Vui lòng kiểm tra lại nếu video bị đăng nhầm kênh!")
+            print("!" * 68 + "\n")
+
         # Lưu token vào credentials/channels/{channel_id}/youtube_token.json (Mã hoá AES-256)
         ch_dir = base_dir / "credentials" / "channels" / channel_id
         ch_dir.mkdir(parents=True, exist_ok=True)
@@ -140,17 +170,19 @@ def authenticate_channel(channel_id: str):
 
         save_encrypted_json(token_file, token_dict)
 
-        # Đồng bộ vào thư mục tài khoản mẹ để tương thích hoàn toàn
-        for acc_folder in [acc_id, "account_2" if "2" in acc_id else acc_id, "account_3" if "3" in acc_id else acc_id]:
-            acc_dir = base_dir / "credentials" / "accounts" / acc_folder
-            if acc_dir.exists():
-                try:
-                    save_encrypted_json(acc_dir / "youtube_token.json", token_dict)
-                    b64_str = base64.b64encode(json.dumps(token_dict).encode("utf-8")).decode("utf-8")
-                    with open(acc_dir / "youtube_token_base64.txt", "w", encoding="utf-8") as f:
-                        f.write(b64_str)
-                except Exception:
-                    pass
+        # Chỉ đồng bộ vào thư mục tài khoản mẹ nếu đây là kênh chính (kênh đầu tiên)
+        # Tránh ghi đè token của kênh khác trong cùng một Gmail!
+        if is_primary_channel:
+            for acc_folder in [acc_id, "account_2" if "2" in acc_id else acc_id, "account_3" if "3" in acc_id else acc_id]:
+                acc_dir = base_dir / "credentials" / "accounts" / acc_folder
+                if acc_dir.exists():
+                    try:
+                        save_encrypted_json(acc_dir / "youtube_token.json", token_dict)
+                        b64_str = base64.b64encode(json.dumps(token_dict).encode("utf-8")).decode("utf-8")
+                        with open(acc_dir / "youtube_token_base64.txt", "w", encoding="utf-8") as f:
+                            f.write(b64_str)
+                    except Exception:
+                        pass
 
         print("\n" + "=" * 68)
         print("🎉 XÁC THỰC THÀNH CÔNG VÀ ĐÃ LƯU TOKEN AN TOÀN (AES-256)!")
