@@ -29,8 +29,8 @@ SCIFI_GENRE_KEYWORDS: Dict[str, List[str]] = {
     ],
     "cyberpunk_futuristic": [
         "tương lai", "công nghệ cao", "thành phố tương lai", "cyberpunk", "người máy", "robot",
-        "trí tuệ nhân tạo", "ai", "agi", "cyborg", "android", "máy học", "công nghệ lượng tử", "máy tính lượng tử",
-        "hình chiếu 3d", "hologram", "chip não", "neuralink", "thực tế ảo", "vr", "matrix", "mạng lượng tử",
+        "trí tuệ nhân tạo", "agi", "cyborg", "android", "máy học", "công nghệ lượng tử", "máy tính lượng tử",
+        "hình chiếu 3d", "hologram", "chip não", "neuralink", "thực tế ảo", "matrix", "mạng lượng tử",
         "siêu trí tuệ", "robot hình người", "vũ khí năng lượng", "xe bay", "công nghệ nano",
         "futuristic", "cyberpunk", "robot", "android", "cyborg", "artificial intelligence", "quantum computing",
         "hologram", "neural network", "simulation theory", "nanotechnology", "neon future", "flying car",
@@ -129,19 +129,30 @@ class SciFiVisualDispatcherAgent:
         - matched_subgenre (str): Phân nhánh cụ thể (deep_space_cosmic, cyberpunk, multiverse, alien, general).
         - matched_keywords (List[str]): Các từ khóa khớp.
         """
-        full_text = f"{topic} {narration} {visual_keyword} {visual_prompt} {channel_niche}".lower()
+        raw_text = f"{topic} {narration} {visual_keyword} {visual_prompt} {channel_niche}"
+        full_text = raw_text.lower()
 
         scores: Dict[str, int] = {}
         matched_kws: Dict[str, List[str]] = {}
+
+        def _has(term: str) -> bool:
+            # So khớp NGUYÊN TỪ (hỗ trợ tiếng Việt có dấu). Trước đây dùng thêm `kw in full_text` nên
+            # 'ai' khớp trong 'brain' / 'said', 'vr' trong 'every' -> video tâm lý bị xếp nhầm là cyberpunk.
+            return re.search(rf"(?<![\w]){re.escape(term)}(?![\w])", full_text) is not None
 
         for subgenre, kw_list in SCIFI_GENRE_KEYWORDS.items():
             count = 0
             matched = []
             for kw in kw_list:
-                # Tìm kiếm từ khóa chính xác
-                if re.search(r'\b' + re.escape(kw) + r'\b', full_text) or kw in full_text:
+                if _has(kw):
                     count += 1
                     matched.append(kw)
+            if subgenre == "cyberpunk_futuristic":
+                # 'AI' / 'VR' chỉ tính khi VIẾT HOA: 'Ai Cập', 'ai đó', 'every' không phải công nghệ
+                for acr in ("AI", "VR"):
+                    if re.search(rf"(?<![\w]){acr}(?![\w])(?!\s+c[ậa]p\b)", raw_text, flags=0) and not re.search(r"\bAI\s+C[ẬA]P\b", raw_text, re.IGNORECASE):
+                        count += 1
+                        matched.append(acr.lower())
             if count > 0:
                 scores[subgenre] = count
                 matched_kws[subgenre] = matched
@@ -154,7 +165,7 @@ class SciFiVisualDispatcherAgent:
         confidence = min(1.0, 0.4 + (total_matches * 0.15))
 
         all_matched = [kw for kws in matched_kws.values() for kw in kws]
-        is_scifi = confidence >= 0.5 or total_matches >= 2 or any(k in full_text for k in ["viễn tưởng", "sci-fi", "hố đen", "lỗ đen", "vũ trụ", "black hole", "galaxy", "alien", "multiverse"])
+        is_scifi = confidence >= 0.5 or total_matches >= 2 or any(_has(k) for k in ["viễn tưởng", "sci-fi", "hố đen", "lỗ đen", "vũ trụ", "black hole", "galaxy", "alien", "multiverse"])
 
         return is_scifi, confidence, best_subgenre, all_matched
 
@@ -273,22 +284,27 @@ class SciFiVisualDispatcherAgent:
                 f"Từ khóa khớp: {kws[:4]}. KÍCH HOẠT CHẾ ĐỘ ƯU TIÊN FULL VIDEO (AI VIDEO & KHO VIDEO)!"
             )
 
-            # Cảnh 1 (Hook) hoặc cảnh có từ khóa hành động -> STOCK_FOOTAGE (Video clip chuyển động thực tế từ kho)
-            # Cảnh trừu tượng/vũ trụ vô tận -> TEXT_TO_VIDEO (AI Video)
-            if idx == 0 or any(w in narr.lower() for w in ["hành động", "nhìn", "bước", "nhanh", "chạy", "tốc độ", "bay", "bùng nổ"]):
-                chosen_method = "STOCK_FOOTAGE"
-                chosen_tool = "pexels_video_api"
-                rationale = f"Cảnh viễn tưởng có nhịp điệu động ({subgenre}) -> ưu tiên lấy Video Clip 9:16 chuyển động thực từ kho để giữ chân người xem."
-            else:
-                chosen_method = "TEXT_TO_VIDEO"
-                chosen_tool = "wan_t2v"
-                rationale = f"Cảnh viễn tưởng siêu thực ({subgenre}) -> ưu tiên AI Video Generator tạo hoạt cảnh động hoành tráng, không dùng ảnh tĩnh."
+            # Quyết định công cụ theo BẢN CHẤT cảnh (VisualToolRouter) thay vì vị trí cảnh / từ hành động:
+            # - Thứ có thật đã được quay (phi hành gia, tên lửa...)      -> kho video thật (NASA/Pexels)
+            # - Có thật nhưng không quay được (hố đen, siêu tân tinh...) -> kho mô phỏng CGI, AI dự phòng
+            # - Hư cấu hoàn toàn (người ngoài hành tinh, quả cầu Dyson)  -> sinh bằng AI
+            # - Khái niệm trừu tượng (thuyết mô phỏng, vô hạn)           -> motion graphics từ kho
+            from app.agents.visual_tool_router import VisualToolRouter
+            route = VisualToolRouter().route_scene(scene, topic=topic, subgenre_queries=curated_queries)
+            chosen_method = route["production_method"]
+            chosen_tool = route["tool"]
+            rationale = f"Cảnh viễn tưởng ({subgenre}) {route['rationale']}"
+            prefer_generation = route["prefer_generation"]
+            routed_queries = route["search_queries"] or curated_queries
 
             # Nếu người dùng có chỉ định thủ công thì tôn trọng nhưng vẫn giữ cờ Sci-Fi
             if user_pref == "video":
                 chosen_method = "STOCK_FOOTAGE"
+                prefer_generation = False
             elif user_pref == "ai_video":
                 chosen_method = "TEXT_TO_VIDEO"
+                prefer_generation = True
+            logger.info(f"🧭 [SciFiDispatcher] Cảnh {idx+1}: {chosen_method} — {rationale}")
 
             # Chuỗi chuyển động camera viễn tưởng đa dạng
             scifi_motions = ["hyper_zoom", "cinematic_drift", "zoom_out", "warp_zoom", "pan_left", "pan_right"]
@@ -313,11 +329,13 @@ class SciFiVisualDispatcherAgent:
                 "tool": chosen_tool,
                 "rationale": rationale,
                 "reject_static_slideshow": True,
-                "search_queries": curated_queries,
-                "search_query": curated_queries[0] if curated_queries else kw,
+                "search_queries": routed_queries,
+                "search_query": routed_queries[0] if routed_queries else kw,
                 "ai_prompt": ai_vid_prompt,
                 "camera_motion": chosen_motion,
-                "sfx_cue": chosen_sfx
+                "sfx_cue": chosen_sfx,
+                "prefer_generation": prefer_generation,
+                "reality_class": route["reality_class"],
             }
 
         # ── NẾU KHÔNG PHẢI VIỄN TƯỞNG: Giữ nguyên cơ chế thông thường ──
@@ -377,6 +395,8 @@ class SciFiVisualDispatcherAgent:
                 sc_copy["subgenre"] = d_res.get("subgenre", main_subgenre)
                 sc_copy["camera_motion"] = d_res.get("camera_motion", "zoom_in")
                 sc_copy["sfx_cue"] = d_res.get("sfx_cue", "whoosh_fast")
+                sc_copy["prefer_generation"] = d_res.get("prefer_generation", False)
+                sc_copy["reality_class"] = d_res.get("reality_class", "")
                 dispatched_scenes.append(sc_copy)
             else:
                 dispatched_scenes.append(sc)

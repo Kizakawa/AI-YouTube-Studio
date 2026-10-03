@@ -153,12 +153,14 @@ class MediaAgent:
         used_urls: Optional[set] = None,
         visual_analysis: Optional[Dict[str, Any]] = None,
         narration: str = "",
+        topic: str = "",
     ) -> Optional[Dict]:
         return self._stock.search_best_video_clip(
             query=query,
             used_urls=used_urls,
             visual_analysis=visual_analysis,
             narration=narration,
+            topic=topic,
         )
 
     # ──────────────────────────────────────────────────────────────────────────

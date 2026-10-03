@@ -179,6 +179,10 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         tool = sc_strat.get("tool", "")
         rationale = v_analysis.get("narrative_subtext") or sc_strat.get("rationale", "")
         search_query = (v_analysis.get("search_queries") or [sc_strat.get("search_query") or sq or kw])[0]
+        if sc_strat.get("reality_class") and sc_strat.get("search_query"):
+            # VisualToolRouter đã dựng truy vấn theo đúng cảnh (stock_query / keyword / gợi ý CGI) -> ưu tiên hơn bộ curated chung
+            search_query = sc_strat["search_query"]
+        prefer_generation = bool(sc_strat.get("prefer_generation"))
         ai_prompt = v_analysis.get("cinematic_ai_prompt") or sc_strat.get("ai_prompt") or vp or kw
         camera_motion = sc_strat.get("camera_motion", "zoom_in")
         sfx_cue = sc_strat.get("sfx_cue", "whoosh" if idx == 0 else "hit")
@@ -307,10 +311,10 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             if not media_path:
                 logger.info(f"Scene {scene.scene_id}: ⚡ Image-to-Video không thành công, tự động cứu hộ bằng Pexels Video B-Roll...")
                 try:
-                    best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, search_query or sq or kw, used_pool_urls, v_analysis, scene.narration)
+                    best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, search_query or sq or kw, used_pool_urls, v_analysis, scene.narration, state.get("topic", ""))
                     if not best_vid and kw:
                         clean_kw = clean_scene_search_query(kw, max_words=2)
-                        best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, clean_kw, used_pool_urls, v_analysis, scene.narration)
+                        best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, clean_kw, used_pool_urls, v_analysis, scene.narration, state.get("topic", ""))
                     if best_vid and best_vid.get("url") and best_vid["url"] not in used_pool_urls:
                         cand_url = best_vid["url"]
                         vid_out = str(media_dir / f"scene_{scene.scene_id:03d}_pexels_fb.mp4")
@@ -340,6 +344,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     used_urls=used_pool_urls,
                     visual_analysis=v_analysis,
                     narration=scene.narration,
+                    skip_stock_lookup=prefer_generation,
                 )
                 if res_vid and Path(res_vid).exists() and Path(res_vid).stat().st_size > 5000:
                     media_path = res_vid
@@ -352,10 +357,10 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             if not media_path:
                 logger.info(f"Scene {scene.scene_id}: ⚡ Text-to-Video không thành công, tự động cứu hộ bằng Pexels Video B-Roll...")
                 try:
-                    best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, search_query or sq or kw, used_pool_urls)
+                    best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, search_query or sq or kw, used_pool_urls, v_analysis, scene.narration, state.get("topic", ""))
                     if not best_vid and kw:
                         clean_kw = clean_scene_search_query(kw, max_words=2)
-                        best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, clean_kw, used_pool_urls)
+                        best_vid = await asyncio.to_thread(media_agent.search_best_video_clip, clean_kw, used_pool_urls, v_analysis, scene.narration, state.get("topic", ""))
                     if best_vid and best_vid.get("url") and best_vid["url"] not in used_pool_urls:
                         cand_url = best_vid["url"]
                         vid_out = str(media_dir / f"scene_{scene.scene_id:03d}_pexels_fb.mp4")
@@ -379,6 +384,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     used_pool_urls,
                     v_analysis,
                     scene.narration,
+                    state.get("topic", ""),
                 )
                 if not best_vid and sq:
                     best_vid = await asyncio.to_thread(
@@ -674,7 +680,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
             # Nếu cảnh ban đầu là video -> Cố gắng giữ nguyên định dạng video chuyển động
             if is_video:
                 try:
-                    best_v = await asyncio.to_thread(media_agent.search_best_video_clip, kw, None, None, narr)
+                    best_v = await asyncio.to_thread(media_agent.search_best_video_clip, kw, None, None, narr, state.get("topic", ""))
                     if best_v and best_v.get("url"):
                         cand_url = best_v["url"]
                         out_v = str(media_dir / f"scene_{scene_id:03d}_refined_video.mp4")
@@ -825,6 +831,11 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
     image_agent = ImageAgent()
     media_agent = MediaAgent()
     ai_video_agent = AIVideoAgent()
+
+    # Chủ đề thiên nhiên / địa danh có thật (rừng Amazon, biển sâu, sa mạc...): footage thật luôn được thử trước,
+    # vì ảnh AI miễn phí thường vẽ sai loài (cá sấu thành gấu / báo) và không có bối cảnh thật.
+    from app.services.media.query_broadener import is_real_world_nature_topic
+    is_nature_topic = is_real_world_nature_topic(state.get("topic", ""))
     
     logger.info(
         f"🔄 [ContentRefine] Tự sửa nội dung cho {len(failed_ids)} cảnh "
@@ -869,9 +880,13 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
         logger.info(f"🎯 [Scene {scene_id} Fix] Tool chỉ định: '{rec_tool or 'auto'}' | Query: '{query_part}' | Idea: '{idea_part[:40]}'")
 
         # ── HÀNH ĐỘNG 1: Nếu chỉ định pexels_video hoặc cảnh cần chuyển động B-roll ──
-        if rec_tool == "pexels_video" or (not rec_tool and item.get("production_method") in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO")):
+        if (
+            rec_tool == "pexels_video"
+            or (not rec_tool and item.get("production_method") in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO"))
+            or (is_nature_topic and rec_tool != "wikimedia_archive")
+        ):
             try:
-                best_v = await asyncio.to_thread(media_agent.search_best_video_clip, query_part or kw, None, None, narr)
+                best_v = await asyncio.to_thread(media_agent.search_best_video_clip, query_part or kw, None, None, narr, state.get("topic", ""))
                 if best_v and best_v.get("url"):
                     cand_u = best_v["url"]
                     out_v = str(media_dir / f"scene_{scene_id:03d}_content_fix_pexels.mp4")

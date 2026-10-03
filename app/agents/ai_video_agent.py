@@ -73,9 +73,14 @@ class AIVideoAgent:
             visual_prompt=visual_prompt,
         )
 
-        if is_scifi:
-            method = "TEXT_TO_VIDEO"
-            logger.info(f"🚀 [AIVideoAgent] Phân cảnh {scene_id} PHÁT HIỆN YẾU TỐ VIỄN TƯỞNG ({subgenre}) -> Bắt buộc thực thi 'TEXT_TO_VIDEO' (Ưu tiên AI Video & Kho Video 9:16, cấm dùng ảnh tĩnh)!")
+        skip_stock = False
+        if is_scifi and method == "AUTO":
+            # Không ép cứng TEXT_TO_VIDEO nữa: hỏi VisualToolRouter bản chất cảnh (thật / mô phỏng / hư cấu / trừu tượng)
+            from app.agents.visual_tool_router import VisualToolRouter
+            route = VisualToolRouter().route_scene({"narration": narration, "visual_prompt": visual_prompt or prompt})
+            skip_stock = route["prefer_generation"]
+            method = route["production_method"] if route["production_method"] in ("IMAGE_TO_VIDEO", "TEXT_TO_VIDEO") else "TEXT_TO_VIDEO"
+            logger.info(f"🚀 [AIVideoAgent] Phân cảnh {scene_id} viễn tưởng ({subgenre}) -> {method} | {route['rationale']}")
         elif method == "AUTO":
             abstract_cues = ["energy", "portal", "wormhole", "cosmic ray", "hyperspace", "vortex", "dimension", "black hole", "nebula", "huyền bí", "vũ trụ", "siêu nhiên", "ảo diệu"]
             p_lower = (prompt + " " + (visual_prompt or "")).lower()
@@ -110,6 +115,7 @@ class AIVideoAgent:
                 used_urls=used_urls,
                 visual_analysis=visual_analysis,
                 narration=narration,
+                skip_stock_lookup=skip_stock,
             )
 
     async def generate_image_to_video(
@@ -204,6 +210,7 @@ class AIVideoAgent:
         used_urls: Optional[set] = None,
         visual_analysis: Optional[Dict[str, Any]] = None,
         narration: str = "",
+        skip_stock_lookup: bool = False,
     ) -> Optional[str]:
         """
         PHƯƠNG PHÁP 2: TEXT-TO-VIDEO (Tạo video AI trực tiếp từ mô tả).
@@ -228,14 +235,20 @@ class AIVideoAgent:
 
         # 3. ƯU TIÊN SỐ 3: Tìm Video Clip B-Roll 9:16 chuyển động thực tế từ Pexels Video (cho viễn tưởng, không gian, cyberpunk, chuyển động thực)
         # Giúp cảnh có chuyển động động (dynamic video) 30fps thực sự thay vì chỉ là ảnh tĩnh phóng to!
-        pexels_vid = self._try_pexels_video_clip(
-            full_prompt,
-            output_path,
-            duration_seconds,
-            used_urls=used_urls,
-            visual_analysis=visual_analysis,
-            narration=narration,
-        )
+        # BỎ QUA khi router xác định cảnh là HƯ CẤU THUẦN TÚY (skip_stock_lookup): kho stock không thể có đúng
+        # người ngoài hành tinh / quả cầu Dyson, clip "gần đúng" sẽ lệch nội dung lời thoại.
+        pexels_vid = None
+        if not skip_stock_lookup:
+            pexels_vid = self._try_pexels_video_clip(
+                full_prompt,
+                output_path,
+                duration_seconds,
+                used_urls=used_urls,
+                visual_analysis=visual_analysis,
+                narration=narration,
+            )
+        else:
+            logger.info(f"🧭 [AIVideoAgent] Cảnh {scene_id} hư cấu thuần túy -> bỏ qua kho stock, sinh hình AI trực tiếp.")
         if pexels_vid and Path(pexels_vid).exists() and Path(pexels_vid).stat().st_size > 10000:
             logger.info(f"🎥 [AIVideoAgent] ✅ Pexels Video Clip 9:16 chuyển động hoàn tất: {output_path}")
             return output_path

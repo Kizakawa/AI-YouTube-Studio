@@ -118,58 +118,159 @@ class VideoStrategistAgent:
         if ai_proposal and "scene_proposals" in ai_proposal and len(ai_proposal["scene_proposals"]) == len(scenes):
             logger.info("🎬 [VideoStrategist] ✅ Đã phê duyệt Bản Đề Xuất Chiến Lược Sản Xuất Video từ AI Strategist!")
             final_plan = ai_proposal
+            plan_source = "ai"
         else:
             # 2. Heuristic Rules Fallback
             logger.info("🎬 [VideoStrategist] Kích hoạt Heuristic Rule-Based Strategist Fallback...")
             final_plan = self._propose_with_heuristics(topic, scenes, primary_entity, entity_type, channel_niche)
+            plan_source = "heuristic"
 
-        # 3. ÉP CHẶT ĐIỀU PHỐI VIỄN TƯỞNG CHO TOÀN BỘ PHÂN CẢNH (Anti-Slideshow Enforcement)
-        if is_scifi_topic and final_plan:
-            proposals = final_plan.get("scene_proposals") or []
-            strategies = final_plan.get("scenes_strategy") or []
+        # 3. HẬU KIỂM ĐỊNH TUYẾN CÔNG CỤ (VisualToolRouter)
+        # - Kế hoạch từ AI Strategist (Gemini): AI là người QUYẾT ĐỊNH. Router chỉ sửa khi AI chọn công cụ mà máy chủ
+        #   KHÔNG CÓ thật (vd TEXT_TO_VIDEO khi chưa bật Veo/Wan) và bổ sung từ khóa khi AI trả từ khóa chung chung.
+        #   Luật từ khóa KHÔNG được ghi đè phán đoán ngữ nghĩa của AI nữa (trước đây 'ai' trong 'Brain' đủ để ghi đè).
+        # - Kế hoạch heuristic (Gemini lỗi / hết quota): router quyết định cho chủ đề viễn tưởng.
+        if final_plan:
+            final_plan["plan_source"] = plan_source
+            self._apply_tool_routing(
+                final_plan, scenes, topic, channel_niche, plan_source,
+                is_scifi_topic, subgenre, scifi_agent,
+            )
+            if is_scifi_topic:
+                final_plan["is_scifi_video"] = True
+                final_plan["scifi_subgenre"] = subgenre
 
-            for idx, sc_dict in enumerate(scenes):
-                d_meta = scifi_agent.dispatch_scene_strategy(
-                    scene=sc_dict,
-                    topic=topic,
-                    channel_niche=channel_niche,
-                    idx=idx,
-                    total_scenes=len(scenes),
-                )
-                if idx < len(proposals):
-                    prop = proposals[idx]
-                    # Nếu đề xuất cũ là ảnh tĩnh IMAGE_TO_VIDEO, nâng cấp ngay sang AI Video hoặc Kho Video Clip
-                    if prop.get("production_method") in ("IMAGE_TO_VIDEO", "REAL_ARCHIVE"):
-                        prop["production_method"] = d_meta["production_method"]
-                        prop["tool"] = d_meta["tool"]
-                        prop["rationale"] = d_meta["rationale"]
-                    prop["search_queries"] = d_meta["search_queries"]
-                    prop["search_query"] = d_meta["search_query"]
-                    prop["ai_prompt"] = d_meta["ai_prompt"]
-                    prop["camera_motion"] = d_meta.get("camera_motion", "zoom_in")
-                    prop["sfx_cue"] = d_meta.get("sfx_cue", "whoosh_fast")
-                    prop["is_scifi"] = True
-                    prop["reject_static_slideshow"] = True
-
-                if idx < len(strategies):
-                    strat = strategies[idx]
-                    if strat.get("production_method") in ("IMAGE_TO_VIDEO", "REAL_ARCHIVE"):
-                        strat["production_method"] = d_meta["production_method"]
-                        strat["strategy"] = "AI_VIDEO" if d_meta["production_method"] == "TEXT_TO_VIDEO" else "STOCK_VIDEO"
-                        strat["tool"] = d_meta["tool"]
-                        strat["rationale"] = d_meta["rationale"]
-                    strat["search_queries"] = d_meta["search_queries"]
-                    strat["search_query"] = d_meta["search_query"]
-                    strat["ai_prompt"] = d_meta["ai_prompt"]
-                    strat["camera_motion"] = d_meta.get("camera_motion", "zoom_in")
-                    strat["sfx_cue"] = d_meta.get("sfx_cue", "whoosh_fast")
-                    strat["is_scifi"] = True
-                    strat["reject_static_slideshow"] = True
-
-            final_plan["is_scifi_video"] = True
-            final_plan["scifi_subgenre"] = subgenre
+        # 4. CHỦ ĐỀ THIÊN NHIÊN / ĐỊA DANH CÓ THẬT -> ƯU TIÊN FOOTAGE THẬT
+        # Ảnh AI miễn phí vẽ sai loài và không có bối cảnh thật (video cá sấu Amazon ra gấu / báo / người đứng trên nước).
+        # Cảnh AI được chuyển sang STOCK_FOOTAGE; nếu kho stock không có clip đạt chuẩn, pipeline vẫn tự rơi về AI.
+        if final_plan and not is_scifi_topic:
+            try:
+                from app.services.media.query_broadener import is_real_world_nature_topic
+                # Chỉ xét CHỦ ĐỀ: lời thoại hay có ẩn dụ ("corporate jungle") dễ kích hoạt nhầm cho video tâm lý.
+                if is_real_world_nature_topic(topic):
+                    switched = 0
+                    scene_by_id = {s.get("scene_id"): s for s in scenes}
+                    for key in ("scenes_strategy", "scene_proposals"):
+                        for strat in final_plan.get(key) or []:
+                            if strat.get("production_method") in ("IMAGE_TO_VIDEO", "TEXT_TO_VIDEO"):
+                                sc = scene_by_id.get(strat.get("scene_id"), {})
+                                strat["production_method"] = "STOCK_FOOTAGE"
+                                strat["strategy"] = "STOCK_VIDEO"
+                                strat["tool"] = "pexels_video_api"
+                                if sc.get("stock_query") and strat.get("search_query") in (None, "", "cinematic"):
+                                    strat["search_query"] = sc["stock_query"]
+                                strat["rationale"] = "Chủ đề thiên nhiên có thật: ưu tiên footage thật, AI chỉ là dự phòng."
+                                if key == "scenes_strategy":
+                                    switched += 1
+                    if switched:
+                        final_plan["real_footage_priority"] = True
+                        logger.info(f"🌿 [VideoStrategist] Chủ đề thiên nhiên có thật -> chuyển {switched} cảnh AI sang footage thật (AI là dự phòng).")
+            except Exception as e:
+                logger.debug(f"[VideoStrategist] Nature real-footage enforcement error: {e}")
 
         return final_plan
+
+    # Từ khóa quá chung chung, tìm kho sẽ ra clip ngẫu nhiên
+    _GENERIC_QUERIES = {"", "cinematic", "cinematic shot", "b roll", "broll", "video", "footage", "scene", "background"}
+
+    def _apply_tool_routing(
+        self,
+        final_plan: Dict[str, Any],
+        scenes: List[Dict[str, Any]],
+        topic: str,
+        channel_niche: str,
+        plan_source: str,
+        is_scifi_topic: bool,
+        subgenre: str,
+        scifi_agent: Any,
+    ) -> None:
+        from app.agents.visual_tool_router import (
+            VisualToolRouter, PURE_FICTION, REAL_FILMABLE, REALITY_KEYWORDS,
+        )
+        router = VisualToolRouter()
+        true_t2v = router.caps.get("true_text_to_video", False)
+        valid_methods = ("REAL_ARCHIVE", "IMAGE_TO_VIDEO", "TEXT_TO_VIDEO", "STOCK_FOOTAGE")
+
+        prop_by_id = {p.get("scene_id"): p for p in final_plan.get("scene_proposals") or []}
+        strat_by_id = {s.get("scene_id"): s for s in final_plan.get("scenes_strategy") or []}
+        stats = {"kept_ai": 0, "capability_fix": 0, "router": 0}
+
+        for idx, sc in enumerate(scenes):
+            sid = sc.get("scene_id")
+            targets = [d for d in (prop_by_id.get(sid), strat_by_id.get(sid)) if d is not None]
+            if not targets:
+                continue
+
+            d_meta = None
+            if is_scifi_topic:
+                d_meta = scifi_agent.dispatch_scene_strategy(
+                    scene=sc, topic=topic, channel_niche=channel_niche, idx=idx, total_scenes=len(scenes),
+                )
+            route = router.route_scene(sc, topic=topic, subgenre_queries=(d_meta or {}).get("search_queries"))
+
+            # Bản chất cảnh: tin phân loại ngữ nghĩa của AI trước, từ khóa chỉ là dự phòng
+            ai_reality = str(targets[0].get("reality_class") or "").upper()
+            reality = ai_reality if ai_reality in REALITY_KEYWORDS else route["reality_class"]
+
+            for t in targets:
+                method = t.get("production_method")
+                note = ""
+                if plan_source == "ai" and method in valid_methods:
+                    new_method = method
+                    if method == "TEXT_TO_VIDEO" and not true_t2v:
+                        # AI muốn video AI thật nhưng máy chủ chưa có -> chọn phương án thật sự tốt nhất hiện có
+                        new_method = "IMAGE_TO_VIDEO" if reality == PURE_FICTION else "STOCK_FOOTAGE"
+                        note = (f" [Hiệu chỉnh năng lực: AI chọn TEXT_TO_VIDEO nhưng chưa bật backend video AI thật -> "
+                                f"{new_method} ({reality})]")
+                elif plan_source == "ai":
+                    new_method = route["production_method"]
+                    note = f" [AI trả phương pháp không hợp lệ '{method}' -> router]"
+                elif is_scifi_topic:
+                    keep_archive = method == "REAL_ARCHIVE" and reality == REAL_FILMABLE
+                    new_method = method if keep_archive else route["production_method"]
+                    if not keep_archive:
+                        t["tool"] = route["tool"]
+                        t["rationale"] = (d_meta or {}).get("rationale") or route["rationale"]
+                else:
+                    new_method = method
+
+                if new_method != method:
+                    t["production_method"] = new_method
+                    if "strategy" in t or t is strat_by_id.get(sid):
+                        t["strategy"] = self._map_method_to_legacy_strategy(new_method)
+                if note:
+                    t["rationale"] = f"{t.get('rationale') or ''}{note}"
+
+                # Từ khóa: giữ từ khóa của AI nếu cụ thể; nếu chung chung ("cinematic") dùng truy vấn theo đúng cảnh
+                q = str(t.get("search_query") or "").strip()
+                if q.lower() in self._GENERIC_QUERIES or len(q.split()) < 2:
+                    q = route["search_query"] or q
+                queries = [q] + [x for x in route["search_queries"] if x != q]
+                t["search_query"] = q
+                t["search_queries"] = queries[:6]
+                t["reality_class"] = reality
+                t["prefer_generation"] = reality == PURE_FICTION and new_method in ("IMAGE_TO_VIDEO", "TEXT_TO_VIDEO")
+
+                if d_meta and d_meta.get("is_scifi"):
+                    if plan_source != "ai" or not t.get("ai_prompt"):
+                        t["ai_prompt"] = d_meta["ai_prompt"]
+                    t["camera_motion"] = d_meta.get("camera_motion", t.get("camera_motion", "zoom_in"))
+                    t["sfx_cue"] = d_meta.get("sfx_cue", t.get("sfx_cue", "whoosh_fast"))
+                    t["is_scifi"] = True
+                    t["reject_static_slideshow"] = True
+
+                if t is strat_by_id.get(sid):
+                    if plan_source != "ai":
+                        stats["router"] += 1 if is_scifi_topic else 0
+                    elif note:
+                        stats["capability_fix"] += 1
+                    else:
+                        stats["kept_ai"] += 1
+
+        logger.info(
+            f"🧭 [VideoStrategist] Định tuyến công cụ (nguồn kế hoạch: {plan_source}, video AI thật: {true_t2v}): "
+            f"giữ quyết định AI {stats['kept_ai']}, hiệu chỉnh năng lực {stats['capability_fix']}, router quyết {stats['router']}"
+        )
 
     def _propose_with_ai(
         self,
@@ -190,6 +291,18 @@ class VideoStrategistAgent:
                 "media_type": s.get("media_type", "auto"),
             })
 
+        from app.agents.visual_tool_router import get_generation_capabilities
+        caps = get_generation_capabilities()
+        if caps.get("true_text_to_video"):
+            capability_note = ("- CÓ backend video AI thật (TEXT_TO_VIDEO tạo chuyển động thật).\n"
+                               "- Kho video: Pexels, Pixabay, NASA. Ảnh AI: Gemini/Pollinations.")
+        else:
+            capability_note = ("- CHƯA CÓ backend video AI thật: TEXT_TO_VIDEO và IMAGE_TO_VIDEO đều chỉ là 1 ẢNH AI TĨNH + hiệu ứng "
+                               "zoom/pan. Đừng chọn TEXT_TO_VIDEO với kỳ vọng có chuyển động thật.\n"
+                               "- Kho video (Pexels, Pixabay, NASA) cho chuyển động THẬT 30-60fps -> ưu tiên cho REAL_FILMABLE và "
+                               "SCIENTIFIC_VISUALIZATION. Dùng ảnh AI (IMAGE_TO_VIDEO) cho PURE_FICTION và ẩn dụ mà kho không thể có.\n"
+                               "- Ảnh AI miễn phí hay vẽ SAI loài vật / địa danh có thật -> tránh dùng AI cho động vật, địa danh thật.")
+
         system_prompt = f"""
 Bạn là Tổng Đạo Diễn Kỹ Thuật & Kiến Trúc Sư Thị Giác (Master Video Production Strategist & Director of Photography) cho YouTube Shorts hàng đầu thế giới (chuẩn Vox, Magnates Media, Kurzgesagt, Melodysheep).
 
@@ -203,7 +316,7 @@ BẢN ĐỒ LỰA CHỌN CÔNG CỤ & Ý TƯỞNG (QUY TẮC BẮT BUỘC):
 
 1. 'IMAGE_TO_VIDEO' (Công cụ: 'imagen3_i2v' - Tạo ảnh 8K chuẩn trước, sau đó chuyển động 3D Camera / Parallax):
    - Khi nào dùng:
-     * ĐẶC BIỆT ƯU TIÊN cho các chủ đề Tâm lý học, Khắc kỷ, Thao túng, Triết học, Bí ẩn, Khoa học viễn tưởng.
+     * ĐẶC BIỆT ƯU TIÊN cho các chủ đề Tâm lý học, Khắc kỷ, Thao túng, Triết học, Bí ẩn, và cảnh viễn tưởng HƯ CẤU (PURE_FICTION).
      * Cảnh cần ĐẶC TẢ CHI TIẾT CHÂN THỰC, ÁNH MẮT, KHUÔN MẶT, BIỂU CẢM, TƯỢNG ĐÁ KHẮC KỶ, KHÔNG GIAN TÂM TRÍ, ẨN DỤ TÂM LÝ mà stock footage không có hoặc rất giả tạo.
      * Cảnh Cú sốc thị giác Hook (Scene 1) mang tính tâm lý / chân dung sắc lạnh với cú zoom-in 3D nghẹt thở.
 
@@ -211,7 +324,7 @@ BẢN ĐỒ LỰA CHỌN CÔNG CỤ & Ý TƯỞNG (QUY TẮC BẮT BUỘC):
    - Khi nào dùng: Cảnh có HÀNH ĐỘNG VẬT LÝ THỰC TẾ (bước đi trong mưa, gõ phím, lật trang sách, đếm tiền, uống cà phê), KHÔNG KHÍ ĐÔ THỊ (dòng người hối hả, xe cộ đêm neon), ĐỘNG VẬT HOANG DÃ (săn mồi, chim bay), THIÊN NHIÊN DỮ DỘI (sóng biển cuộn, sấm chớp, bão cát, lửa cháy, khói sương bốc lên), BIỂU TƯỢNG VẬT LÝ (đồng hồ cát rơi, đồng hồ kim tích tắc, con lắc, bàn cờ vua đổ).
 
 3. 'TEXT_TO_VIDEO' (Công cụ: 'wan_t2v' / 'ai_video_generative' - Sinh Video AI chuyển động trực tiếp):
-   - Khi nào dùng: Cảnh mang tính HUYỀN BÍ, VŨ TRỤ TRỪU TƯỢNG, NĂNG LƯỢNG SIÊU THỰC (lỗ đen bẻ cong không thời gian, cổng không gian ánh sáng, luồng năng lượng tâm linh, khói ma mị biến hình, vũ trụ 4D, nơ-ron thần kinh phát sáng, hố sâu tâm lý vô tận).
+   - Khi nào dùng: CHỈ KHI máy chủ CÓ backend video AI thật (xem NĂNG LỰC THẬT) và cảnh là PURE_FICTION / năng lượng siêu thực cần chuyển động (cổng không gian, luồng năng lượng tâm linh, khói ma mị biến hình). Hố đen / thiên hà / tinh vân là SCIENTIFIC_VISUALIZATION: kho đã có mô phỏng CGI chuyển động thật -> STOCK_FOOTAGE.
 
 4. 'REAL_ARCHIVE' (Công cụ: 'wikimedia_archive' / 'wikipedia' - Ảnh tư liệu lịch sử có thật 100%):
    - Khi nào dùng: Nhắc trực tiếp đến NHÂN VẬT LỊCH SỬ CÓ THẬT (Einstein, Tesla, Napoleon, Julius Caesar...), SỰ KIỆN LỊCH SỬ (Thế chiến, Apollo 11, sụp đổ La Mã...), DI TÍCH LỊCH SỬ CỔ ĐẠI (Kim Tự Tháp Giza, Đấu trường Colosseum).
@@ -220,6 +333,16 @@ QUY TẮC ĐAN XEN NHỊP ĐIỆU (RHYTHMIC WEAVING):
 - Với chủ đề Động vật hoang dã / Đời sống thực tế: 70% - 90% là STOCK_FOOTAGE.
 - Với chủ đề Tâm lý học, Khắc kỷ, Tư duy, Bí ẩn: 50% - 75% là IMAGE_TO_VIDEO (8K AI + 3D motion), đan xen nhịp nhàng với STOCK_FOOTAGE ở các cảnh hành động thực tế.
 - Đảm bảo mọi cảnh dù dùng ảnh AI cũng được chuyển hóa thành video động (3D Zoom / Pan / Parallax), không có ảnh tĩnh đứng yên!
+
+PHÂN LOẠI BẢN CHẤT CẢNH (reality_class) — HỎI: "Thứ cần hiển thị có tồn tại và đã từng được QUAY chưa?":
+- REAL_FILMABLE: có thật, đã được quay (phi hành gia, tên lửa, kính thiên văn, robot công nghiệp, thành phố đêm, động vật) -> footage thật luôn thuyết phục hơn AI.
+- SCIENTIFIC_VISUALIZATION: có thật nhưng không quay được (hố đen, sao neutron, Big Bang, thiên hà) -> kho có sẵn nhiều mô phỏng CGI/NASA chất lượng cao.
+- PURE_FICTION: không tồn tại (người ngoài hành tinh, quả cầu Dyson, cỗ máy thời gian, thành phố năm 3000) -> kho stock KHÔNG thể có đúng hình, phải sinh AI.
+- ABSTRACT_CONCEPT: khái niệm trừu tượng (ý thức, thuyết mô phỏng, ẩn dụ tâm lý).
+LƯU Ý: phân loại theo Ý NGHĨA, không theo từ đơn lẻ ("brain" không phải AI; "Ai Cập" là Egypt; "corporate jungle" không phải rừng).
+
+NĂNG LỰC THẬT CỦA MÁY CHỦ (BẮT BUỘC TÔN TRỌNG):
+{capability_note}
 
 THÔNG TIN ĐẦU VÀO:
 - Chủ đề: {topic}
@@ -235,10 +358,11 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
   "scene_proposals": [
     {{
       "scene_id": 1,
+      "reality_class": "REAL_FILMABLE | SCIENTIFIC_VISUALIZATION | PURE_FICTION | ABSTRACT_CONCEPT",
       "production_method": "REAL_ARCHIVE | IMAGE_TO_VIDEO | TEXT_TO_VIDEO | STOCK_FOOTAGE",
       "tool": "wikimedia_archive | imagen3_i2v | wan_t2v | pexels_video_api",
       "rationale": "Giải thích chi tiết 1 câu vì sao chọn phương pháp & công cụ này cho cảnh này (bằng tiếng Việt)",
-      "search_query": "Từ khóa tiếng Anh 2-3 từ ngắn gọn tốt nhất để tìm tư liệu nếu là REAL_ARCHIVE hoặc STOCK_FOOTAGE",
+      "search_query": "LUÔN ĐIỀN (kể cả cảnh AI, để dự phòng): 2-4 từ tiếng Anh CỤ THỂ mô tả đúng vật thể trong khung hình, cấm từ chung chung như 'cinematic'",
       "ai_prompt": "Câu lệnh tiếng Anh chi tiết phong cách điện ảnh 8K 9:16 nếu là IMAGE_TO_VIDEO hoặc TEXT_TO_VIDEO",
       "camera_motion": "zoom_in | zoom_out | pan_left | pan_right | pan_up | pan_down",
       "sfx_cue": "whoosh | hit | tension_riser | cinematic_swell | heartbeat"
@@ -261,6 +385,7 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
                 plan["scenes_strategy"] = [
                     {
                         "scene_id": p.get("scene_id"),
+                        "reality_class": p.get("reality_class"),
                         "strategy": self._map_method_to_legacy_strategy(p.get("production_method")),
                         "production_method": p.get("production_method"),
                         "tool": p.get("tool"),

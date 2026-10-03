@@ -419,8 +419,11 @@ class StockFetcher:
         used_urls: Optional[set] = None,
         visual_analysis: Optional[Dict[str, Any]] = None,
         narration: str = "",
+        topic: str = "",
+        _establishing_pass: bool = False,
     ) -> Optional[Dict]:
         from app.services.media.media_history import get_recent_media_urls, record_used_media
+        from app.services.media.query_broadener import build_query_ladder, is_vague_single_word
         used = set(used_urls) if used_urls else set()
         recent_history = get_recent_media_urls(limit=150)
         used.update(recent_history)
@@ -428,37 +431,72 @@ class StockFetcher:
         clean_q = clean_scene_search_query(query, max_words=3)
         words = clean_q.split() if clean_q else query.split()
 
-        candidate_queries = []
+        # Thang truy vấn: cụ thể -> đồng nghĩa phổ biến (caiman -> crocodile) -> cảnh toàn đúng bối cảnh
+        ladder = build_query_ladder(query, narration=narration, topic=topic)
+        establishing = [] if _establishing_pass else ladder["establishing"]
+
+        candidate_queries: List[str] = []
+
+        def _push(q: str):
+            q = (q or "").strip()
+            if q and q not in candidate_queries:
+                candidate_queries.append(q)
+
         if visual_analysis and visual_analysis.get("search_queries"):
             for sq in visual_analysis["search_queries"]:
-                if sq and sq not in candidate_queries:
-                    candidate_queries.append(sq)
-
-        if clean_q and clean_q not in candidate_queries:
-            candidate_queries.append(clean_q)
+                _push(sq)
+        _push(clean_q)
+        for b in ladder["broadened"]:
+            _push(b)
         if len(words) >= 2:
-            two_words = " ".join(words[:2])
-            if two_words not in candidate_queries:
-                candidate_queries.append(two_words)
-        if len(words) >= 1:
+            _push(" ".join(words[:2]))
+        # Từ đơn chỉ dùng khi KHÔNG có thang thay thế: từ đơn như 'black' / 'swimming' / 'amazon'
+        # trả về clip ngẫu nhiên (hộp hàng Amazon, người bơi hồ bơi...) làm loãng bể ứng viên.
+        if not ladder["broadened"] and not establishing and not _establishing_pass:
             for w in words:
-                if len(w) > 2 and w not in candidate_queries:
-                    candidate_queries.append(w)
-        if query and query not in candidate_queries:
-            candidate_queries.append(query)
+                if not is_vague_single_word(w):
+                    _push(w)
+        _push(query)
 
-        # Tự động nạp bộ từ khóa Pexels chuyên dụng nếu là Động vật / Thiên nhiên
+        # Bộ từ khóa Động vật chung (leopard / tiger / lion...) chỉ là phương án CUỐI:
+        # trước đây chèn lên đầu danh sách nên video cá sấu Amazon lại toàn ứng viên hổ / sư tử.
         try:
             from app.agents.wildlife_visual_dispatcher_agent import WildlifeVisualDispatcherAgent
             w_agent = WildlifeVisualDispatcherAgent()
             is_wl, _, subg, _ = w_agent.detect_wildlife_elements(topic=query, narration=narration)
-            if is_wl:
-                curated_wl = w_agent.get_curated_video_search_queries(subgenre=subg, narration=narration)
-                for cw in curated_wl:
-                    if cw not in candidate_queries:
-                        candidate_queries.insert(0, cw)
+            if is_wl and not establishing:
+                for cw in w_agent.get_curated_video_search_queries(subgenre=subg, narration=narration):
+                    _push(cw)
         except Exception:
             pass
+
+        def _try_establishing_pass(reason: str) -> Optional[Dict]:
+            """Cảnh toàn đúng địa điểm/bối cảnh thật (rừng Amazon, sông rừng rậm...) trước khi nhờ AI vẽ ảnh."""
+            if not establishing:
+                return None
+            logger.info(f"[StockFetcher] {reason} -> thử cảnh toàn đúng bối cảnh: {establishing[:3]}")
+            est_va = dict(visual_analysis or {})
+            est_va["search_queries"] = list(establishing)
+            est_va["visual_metaphor"] = (
+                f"Establishing shot of the real location ({', '.join(establishing[:2])}) for the topic '{topic or query}'"
+            )
+            # Tâm trạng sẽ được xử lý bằng color grading theo niche -> không loại clip chỉ vì ánh sáng / màu
+            est_va["mood"] = "bất kỳ (hệ thống sẽ tự chỉnh màu u tối theo kênh)"
+            est_narr = (
+                f"{narration or query}\n(Cảnh bối cảnh / establishing shot: CHẤP NHẬN mọi cảnh toàn đúng LOẠI địa hình "
+                f"của chủ đề ({', '.join(establishing[:3])}). Người xem KHÔNG phân biệt được rừng mưa / sông rừng ở quốc gia nào, "
+                f"nên địa danh trong mô tả clip (Bangladesh, Thái Lan, Costa Rica...) KHÔNG phải lý do loại. "
+                f"Không bắt buộc thấy chính xác chủ thể trong lời thoại và không bắt buộc đúng tâm trạng/ánh sáng. "
+                f"Chỉ loại clip có người/vật hiện đại lạc đề, chữ/watermark, hoặc sai loại địa hình.)"
+            )
+            return self.search_best_video_clip(
+                query=establishing[0],
+                used_urls=used_urls,
+                visual_analysis=est_va,
+                narration=est_narr,
+                topic=topic,
+                _establishing_pass=True,
+            )
 
         collected_candidates = []
 
@@ -477,7 +515,12 @@ class StockFetcher:
                 v_desc = v.get("tags") or v.get("url") or ""
                 from app.services.media.entity_detector import is_incongruent_stock_image
                 from app.services.media.media_history import is_media_already_used
-                if v_url and not is_media_already_used(v_url, used) and not is_incongruent_stock_image(v_desc, topic=query, narration=narration):
+                from app.services.media.query_broadener import conflicts_with_topic_biome
+                if (
+                    v_url and not is_media_already_used(v_url, used)
+                    and not is_incongruent_stock_image(v_desc, topic=query, narration=narration)
+                    and not conflicts_with_topic_biome(v_desc, topic)
+                ):
                     if v not in collected_candidates:
                         collected_candidates.append(v)
             if len(collected_candidates) >= 6:
@@ -493,13 +536,23 @@ class StockFetcher:
                     pv_desc = pv.get("title") or ""
                     from app.services.media.entity_detector import is_incongruent_stock_image
                     from app.services.media.media_history import is_media_already_used
-                    if pv_url and not is_media_already_used(pv_url, used) and not is_incongruent_stock_image(pv_desc, topic=query, narration=narration):
+                    from app.services.media.query_broadener import conflicts_with_topic_biome
+                    if (
+                        pv_url and not is_media_already_used(pv_url, used)
+                        and not is_incongruent_stock_image(pv_desc, topic=query, narration=narration)
+                        and not conflicts_with_topic_biome(pv_desc, topic)
+                    ):
                         if pv not in collected_candidates:
                             # Xen kẽ vào vị trí 2,4,6... để pool 8 ứng viên luôn có cả 2 nguồn
                             collected_candidates.insert(min(len(collected_candidates), 1 + pxb_added * 2), pv)
                             pxb_added += 1
                 if pxb_added >= 3:
                     break
+
+        if not collected_candidates and establishing:
+            est_res = _try_establishing_pass("Không tìm thấy clip cho truy vấn cụ thể")
+            if est_res:
+                return est_res
 
         if not collected_candidates:
             combined_text = f"{query} {narration} {clean_q}".lower()
@@ -549,6 +602,9 @@ class StockFetcher:
                             used_urls.update(ids)
                     return winner
                 if should_ai:
+                    est_res = _try_establishing_pass(f"AI Vision từ chối clip cụ thể ({str(rationale)[:80]})")
+                    if est_res:
+                        return est_res
                     logger.info(f"[StockFetcher] VisualCurationAgent từ chối stock video ({rationale}), chuyển sang AI Video.")
                     return None
             except Exception as e:
