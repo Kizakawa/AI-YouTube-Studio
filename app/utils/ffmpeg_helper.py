@@ -208,6 +208,104 @@ def run_ffmpeg(args: List[str], timeout: int = FFMPEG_TIMEOUT) -> subprocess.Com
     return result
 
 
+def get_niche_color_grading(niche: Optional[str] = None, is_scifi: bool = False) -> Dict[str, str]:
+    """
+    Trả về bộ lọc màu sắc, độ tương phản và vignette điện ảnh chuẩn hóa theo từng ngách (Niche Identity).
+    Sử dụng 100% các filter native của FFmpeg (eq, colorbalance, unsharp, vignette) với tốc độ render cao,
+    đồng bộ hóa màu sắc cho cả ảnh tĩnh (Ken Burns) và stock video.
+    """
+    raw_niche = (niche or "").lower().strip()
+
+    if "psycholog" in raw_niche or "tam_ly" in raw_niche:
+        niche_key = "psychology"
+    elif any(k in raw_niche for k in ("deep_sea", "ocean", "bien_sau", "sea")):
+        niche_key = "deep_sea"
+    elif any(k in raw_niche for k in ("predator", "wildlife", "wild", "san_moi", "hoang_da")):
+        niche_key = "wildlife_predators"
+    elif any(k in raw_niche for k in ("rescue", "animal", "pet", "thu_cung", "giai_cuu")):
+        niche_key = "animal_rescue"
+    elif any(k in raw_niche for k in ("history", "ancient", "mystery", "lich_su", "bi_an")):
+        niche_key = "history_mystery"
+    elif any(k in raw_niche for k in ("horror", "creepy", "kinh_di")):
+        niche_key = "horror"
+    elif is_scifi or any(k in raw_niche for k in ("scifi", "tech", "ai", "future", "cong_nghe")):
+        niche_key = "scifi"
+    elif any(k in raw_niche for k in ("finance", "wealth", "luxury", "money", "tai_chinh")):
+        niche_key = "luxury"
+    elif any(k in raw_niche for k in ("stoic", "philosophy", "triet_hoc")):
+        niche_key = "stoic"
+    elif any(k in raw_niche for k in ("health", "biohack", "suc_khoe")):
+        niche_key = "health"
+    else:
+        niche_key = "general"
+
+    PROFILES = {
+        "psychology": {
+            # Noir moody: tương phản cao, hơi desaturate nhẹ, bóng đen sâu, khuôn mặt sắc nét
+            "vf_filter": "eq=contrast=1.12:saturation=0.92:brightness=-0.02,unsharp=5:5:0.6:5:5:0.25",
+            "vignette": "vignette=0.74",
+        },
+        "deep_sea": {
+            # Vực thẳm đại dương: tương phản sâu, sắc cyan/blue vùng tối, tăng độ rõ vi mô
+            "vf_filter": "eq=contrast=1.15:saturation=1.10:brightness=-0.01,colorbalance=rs=-0.03:gs=0.02:bs=0.07,unsharp=5:5:0.7:5:5:0.25",
+            "vignette": "vignette=0.76",
+        },
+        "wildlife_predators": {
+            # National Geographic: màu sắc sống động, sắc nét từng sợi lông/nanh vuốt, tương phản kịch tính
+            "vf_filter": "eq=contrast=1.14:saturation=1.18:brightness=0.01,unsharp=5:5:0.8:5:5:0.30",
+            "vignette": "vignette=0.68",
+        },
+        "animal_rescue": {
+            # Cảm xúc ấm áp: ánh sáng vàng ấm nhẹ, tương phản mềm mại tự nhiên, tôn vinh ánh mắt động vật
+            "vf_filter": "eq=contrast=1.06:saturation=1.08:brightness=0.02,colorbalance=rs=0.04:gs=0.02:bs=-0.02,unsharp=5:5:0.5:5:5:0.20",
+            "vignette": "vignette=0.65",
+        },
+        "history_mystery": {
+            # Cổ tích & Huyền bí: ánh vàng kim cổ kính (sepia/gold), tương phản điện ảnh cổ điển
+            "vf_filter": "eq=contrast=1.12:saturation=1.04:brightness=-0.01,colorbalance=rs=0.05:gs=0.03:bs=-0.04,unsharp=5:5:0.6:5:5:0.25",
+            "vignette": "vignette=0.74",
+        },
+        "horror": {
+            # Rùng rợn: ám xanh lạnh, độ bão hòa thấp, bóng đổ tối sẫm, viền đen dày
+            "vf_filter": "eq=contrast=1.18:saturation=0.82:brightness=-0.03,colorbalance=rs=-0.04:gs=0.03:bs=0.02,unsharp=5:5:0.8:5:5:0.30",
+            "vignette": "vignette=0.78",
+        },
+        "scifi": {
+            # Viễn tưởng công nghệ cao: tương phản cao, neon rực rỡ, chi tiết sắc nét 8K
+            "vf_filter": "eq=contrast=1.14:saturation=1.22:brightness=0.01,unsharp=5:5:0.7:5:5:0.30",
+            "vignette": "vignette=0.72",
+        },
+        "luxury": {
+            # Sang trọng & Động lực: ánh vàng kim tinh tế, sắc nét cao cấp
+            "vf_filter": "eq=contrast=1.10:saturation=1.12:brightness=0.01,colorbalance=rs=0.03:gs=0.02:bs=-0.01,unsharp=5:5:0.6:5:5:0.25",
+            "vignette": "vignette=0.68",
+        },
+        "stoic": {
+            # Khắc kỷ / Triết học: tông đá hoa cương trầm lắng, tương phản dứt khoát
+            "vf_filter": "eq=contrast=1.10:saturation=0.90:brightness=-0.01,unsharp=5:5:0.6:5:5:0.25",
+            "vignette": "vignette=0.72",
+        },
+        "health": {
+            # Sức khỏe & Sinh học: màu sắc tươi tắn, trong trẻo, năng lượng cao
+            "vf_filter": "eq=contrast=1.08:saturation=1.15:brightness=0.01,unsharp=5:5:0.6:5:5:0.25",
+            "vignette": "vignette=0.66",
+        },
+        "general": {
+            # Mặc định cinema: tăng nhẹ tương phản, độ nét và vignette nhẹ
+            "vf_filter": "eq=contrast=1.08:saturation=1.06:brightness=0.00,unsharp=5:5:0.5:5:5:0.20",
+            "vignette": "vignette=0.68",
+        },
+    }
+
+    cfg = PROFILES.get(niche_key, PROFILES["general"])
+    return {
+        "niche_key": niche_key,
+        "vf_filter": cfg["vf_filter"],
+        "vignette": cfg["vignette"],
+        "full_filter": f"{cfg['vf_filter']},{cfg['vignette']}",
+    }
+
+
 # ──────────────────────────────────────────────
 # CHECKPOINT A: Ảnh tĩnh → Video (Ken Burns)
 # ──────────────────────────────────────────────
@@ -223,9 +321,10 @@ def image_to_video(
     camera_motion: str = "zoom_in",
     is_hook_scene: bool = False,
     is_scifi: bool = False,
+    niche: Optional[str] = None,
 ) -> str:
     """
-    Biến 1 ảnh tĩnh → video MP4 với Ken Burns cinematic effect và bộ lọc thị giác viễn tưởng.
+    Biến 1 ảnh tĩnh → video MP4 với Ken Burns cinematic effect và bộ lọc thị giác viễn tưởng / Niche Grading.
     
     Hỗ trợ các loại chuyển động:
       - zoom_in:        Zoom dần vào tâm ảnh (mặc định, cảm giác áp lực/sức mạnh)
@@ -372,14 +471,9 @@ def image_to_video(
             f"setsar=1"
         )
 
-    # Hiệu ứng màu sắc và chiều sâu: Sci-Fi grading rực rỡ neon & tương phản cao
-    if is_scifi:
-        color_grading = "eq=contrast=1.14:saturation=1.22:brightness=0.01,unsharp=5:5:0.7:5:5:0.3"
-        vignette_filter = "vignette=0.72"
-        vf_chain = f"{zoompan},{color_grading},{vignette_filter}"
-    else:
-        vignette_filter = "vignette=0.698"
-        vf_chain = f"{zoompan},{vignette_filter}"
+    # Hiệu ứng màu sắc điện ảnh và chiều sâu theo Niche Profile (100% Free Native FFmpeg Filter)
+    grading = get_niche_color_grading(niche=niche, is_scifi=is_scifi)
+    vf_chain = f"{zoompan},{grading['vf_filter']},{grading['vignette']}"
 
     args = [
         "-loop", "1",
@@ -422,29 +516,23 @@ def trim_video(
     height: int = 1920,
     fps: int = 30,
     is_scifi: bool = False,
+    niche: Optional[str] = None,
 ) -> str:
     """
     Cắt video Pexels về đúng duration cần thiết + scale/crop 9:16 + chuẩn hóa fps 30.
     Tự động lặp lại (stream_loop) nếu video stock ngắn hơn thời lượng lời thoại.
     Bỏ audio gốc của stock video.
-    Khi is_scifi=True: Áp dụng cinematic sci-fi grading (tăng tương phản và độ nét).
+    Áp dụng Cinematic Color Grading & Vignette chuẩn hóa theo từng Niche (100% Free Native FFmpeg Filter).
     """
-    if is_scifi:
-        vf_chain = (
-            f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-            f"crop={width}:{height},"
-            f"eq=contrast=1.08:saturation=1.16:brightness=0.01,"
-            f"unsharp=5:5:0.5:5:5:0.2,"
-            f"setsar=1,"
-            f"fps={fps}"
-        )
-    else:
-        vf_chain = (
-            f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-            f"crop={width}:{height},"
-            f"setsar=1,"
-            f"fps={fps}"
-        )
+    grading = get_niche_color_grading(niche=niche, is_scifi=is_scifi)
+    vf_chain = (
+        f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+        f"crop={width}:{height},"
+        f"{grading['vf_filter']},"
+        f"{grading['vignette']},"
+        f"setsar=1,"
+        f"fps={fps}"
+    )
 
     # Clip ngắn hơn lời thoại một chút (≤ 1.6x) → kéo dãn slow-motion nhẹ thay vì lặp lại (lặp rất dễ bị nhận ra)
     loop_args = ["-stream_loop", "-1"]
@@ -816,6 +904,78 @@ def _find_sfx_file(sfx_dir_path: Path, name: str) -> Optional[str]:
             return str(f)
 
     return None
+
+
+def resolve_smart_sfx_cue(
+    narration: str,
+    scene_idx: int,
+    total_scenes: int,
+    niche: Optional[str] = None,
+) -> str:
+    """
+    Phân tích cảm xúc và ngữ nghĩa của lời thoại để tự động chọn hiệu ứng âm thanh (SFX)
+    chuyển cảnh phù hợp nhất từ kho assets/sfx:
+      - hit.wav / impact_sub.wav: Cú va chạm, xung đột, tử vong, tấn công, đòn đánh
+      - sub_drop.wav: Vực thẳm, chìm sâu, bí ẩn u ám, không đáy, biến mất
+      - reveal.wav: Khám phá, hé lộ sự thật, phát hiện bất ngờ, giải mã
+      - riser.wav: Cao trào, chuẩn bị đến nút thắt hoặc bước ngoặt, cận kề kết luận
+      - glitch.wav: Lừa dối, thao túng, bẫy tâm lý, lỗi sai, ảo giác, dị thường
+      - whoosh_heavy.wav: Chuyển động quy mô lớn, sức mạnh, nhanh mạnh
+      - whoosh_fast.wav / whoosh.mp3: Lướt nhanh dứt khoát
+    """
+    text = (narration or "").lower()
+    raw_niche = (niche or "").lower()
+
+    # 1. Phân cảnh cận kề kết thúc hoặc cao trào chuẩn bị kết luận
+    is_climax_scene = (scene_idx == total_scenes - 1) or (scene_idx >= total_scenes - 2 and total_scenes >= 4)
+
+    # 2. Từ khóa Hé lộ bí mật / Sự thật ngỡ ngàng -> reveal
+    reveal_keywords = (
+        "reveal", "truth", "secret", "discover", "uncover", "found out", "realize", "actually",
+        "sự thật", "bí mật", "hé lộ", "phát hiện", "hóa ra", "nhận ra", "bóc trần", "tìm thấy",
+        "không ngờ", "chính là", "giải mã"
+    )
+    if any(k in text for k in reveal_keywords):
+        return "reveal"
+
+    # 3. Từ khóa Đe dọa / Tấn công / Xung đột / Nguy hiểm tột cùng -> impact_sub
+    danger_keywords = (
+        "danger", "deadly", "fatal", "attack", "kill", "predator", "strike", "monster", "terrifying",
+        "blood", "bite", "crush", "poison", "venom", "hunt", "lethal",
+        "tấn công", "nguy hiểm", "chết", "tiêu diệt", "sát thủ", "quái vật", "kinh hoàng", "nanh vuốt",
+        "máu", "cắn xé", "nọc độc", "săn mồi", "chí mạng", "hủy diệt"
+    )
+    if any(k in text for k in danger_keywords):
+        return "impact_sub"
+
+    # 4. Từ khóa Thao túng / Lừa dối / Bẫy / Dị thường / Ảo giác -> glitch
+    glitch_keywords = (
+        "glitch", "trap", "lie", "manipulat", "gaslight", "illusion", "fake", "mistake", "error",
+        "trick", "deceiv", "insane", "distort",
+        "lừa dối", "thao túng", "bẫy", "ảo giác", "sai lầm", "dối trá", "ngụy biện", "bất thường",
+        "ảo ảnh", "ảo tưởng", "giả tạo"
+    )
+    if any(k in text for k in glitch_keywords):
+        return "glitch"
+
+    # 5. Từ khóa Vực thẳm / Biến mất / Bóng tối vô tận / Đại dương sâu -> sub_drop
+    abyss_keywords = (
+        "abyss", "deep", "ocean", "darkness", "disappear", "unknown", "bottom", "drown", "trench",
+        "vực thẳm", "chìm sâu", "bóng tối", "đáy biển", "không đáy", "biến mất", "hố sâu", "u ám",
+        "hút cạn", "chìm vào"
+    )
+    if any(k in text for k in abyss_keywords) or ("deep_sea" in raw_niche and scene_idx % 2 == 1):
+        return "sub_drop"
+
+    # 6. Chuẩn bị cao trào / Riser trước phân cảnh kết
+    if is_climax_scene:
+        return "riser"
+
+    # 7. Phân cảnh xoay vòng dứt khoát -> luân phiên whoosh_fast và whoosh_heavy
+    if scene_idx % 2 == 0:
+        return "whoosh_fast"
+    else:
+        return "whoosh_heavy"
 
 
 def mix_sfx_transitions(

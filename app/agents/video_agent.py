@@ -25,6 +25,7 @@ from app.utils.ffmpeg_helper import (
     concat_videos_with_xfade,
     mux_audio_video,
     mix_sfx_transitions,
+    resolve_smart_sfx_cue,
     burn_subtitles,
 )
 
@@ -116,19 +117,33 @@ class VideoAgent:
             )
 
             # ── Step 4: Mix SFX vào các mốc chuyển cảnh ──
-            sfx_cues = [s.sfx_cue for s in job.scenes[1:]]  # SFX cho từng chuyển cảnh
-            has_any_sfx_cue = any(s.sfx_cue for s in job.scenes)
+            raw_niche = (job.niche or "").lower()
+            is_heavy_hit_niche = is_scifi_job or any(k in raw_niche for k in ("psychology", "deep_sea", "wildlife", "horror", "mystery"))
+            hit_sfx_name = "impact_sub" if is_heavy_hit_niche else "hit"
+            default_sfx_name = "whoosh_fast" if is_scifi_job else "whoosh"
+
+            # Tự động phân tích ngữ nghĩa và cảm xúc để chọn SFX chuẩn cho từng chuyển cảnh
+            total_sc = len(job.scenes)
+            resolved_sfx_cues = []
+            for i, s in enumerate(job.scenes[1:], start=1):
+                cue = s.sfx_cue
+                if not cue or cue.lower() in ("whoosh", "default", "none", "auto"):
+                    cue = resolve_smart_sfx_cue(
+                        narration=s.narration,
+                        scene_idx=i,
+                        total_scenes=total_sc,
+                        niche=job.niche,
+                    )
+                resolved_sfx_cues.append(cue)
+
             sfx_dir_exists = Path(sfx_dir).exists()
 
-            if sfx_dir_exists or has_any_sfx_cue:
-                logger.info(f"[VideoAgent] Job {job.job_id}: Mix SFX transitions từ {sfx_dir}...")
-                await report(f"🔊 Đang chèn âm thanh chuyển cảnh SFX...", 86)
+            if sfx_dir_exists or resolved_sfx_cues:
+                logger.info(f"[VideoAgent] Job {job.job_id}: Mix SFX transitions từ {sfx_dir} (Niche: {job.niche})...")
+                await report(f"🔊 Đang chèn âm thanh chuyển cảnh SFX chuẩn hóa cảm xúc...", 86)
 
                 # Tính timestamp bắt đầu từng scene (giây)
                 scene_timestamps = self._compute_scene_timestamps(job.scenes)
-
-                hit_sfx_name = "impact_sub" if is_scifi_job else "hit"
-                default_sfx_name = "whoosh_fast" if is_scifi_job else "whoosh"
 
                 sfx_out = str(work_dir / "muxed_with_sfx.mp4")
                 result_video = mix_sfx_transitions(
@@ -137,10 +152,10 @@ class VideoAgent:
                     scene_timestamps_seconds=scene_timestamps,
                     sfx_dir=sfx_dir,
                     default_sfx=default_sfx_name,
-                    sfx_cues=sfx_cues if sfx_cues else None,
-                    sfx_volume=0.40 if is_scifi_job else 0.35,
+                    sfx_cues=resolved_sfx_cues if resolved_sfx_cues else None,
+                    sfx_volume=0.42 if is_heavy_hit_niche else 0.38,
                     hit_sfx=hit_sfx_name,
-                    hit_volume=0.55 if is_scifi_job else 0.50,
+                    hit_volume=0.55 if is_heavy_hit_niche else 0.50,
                 )
                 # mix_sfx_transitions trả video gốc nếu không có SFX file
                 muxed_video = result_video
@@ -226,11 +241,12 @@ class VideoAgent:
             raw_type = (scene.media_type or "image").lower()
             is_video_file = bool(scene.media_path and scene.media_path.lower().endswith((".mp4", ".mov", ".webm", ".mkv")))
             is_scifi_clip = getattr(job, "is_scifi", False) or (raw_type in ("ai_video", "t2v")) or ("scifi" in (getattr(scene, "visual_keyword", "") or "").lower())
+            clip_niche = getattr(job, "niche", None)
 
             if raw_type in ("video", "ai_video", "i2v", "t2v") or is_video_file:
                 logger.info(
                     f"  Scene {scene.scene_id}: video ({raw_type}) → trim {duration:.1f}s"
-                    f"{' (🔥 HOOK VIDEO CLIP)' if is_hook else ''}{' [Sci-Fi Grading]' if is_scifi_clip else ''}"
+                    f"{' (🔥 HOOK VIDEO CLIP)' if is_hook else ''}{f' [{clip_niche} Grading]' if clip_niche else ''}"
                 )
                 trim_video(
                     input_path=scene.media_path,
@@ -240,11 +256,12 @@ class VideoAgent:
                     height=job.resolution_h,
                     fps=job.fps,
                     is_scifi=is_scifi_clip,
+                    niche=clip_niche,
                 )
             elif raw_type in ("image", "ai_image", "photo", "documentary", "auto"):
                 logger.info(
                     f"  Scene {scene.scene_id}: image ({raw_type}) → Ken Burns [{motion}] {duration:.1f}s"
-                    f"{' (🔥 HOOK PUNCH-IN)' if is_hook else ''}{' [Sci-Fi HDR Grading]' if is_scifi_clip else ''}"
+                    f"{' (🔥 HOOK PUNCH-IN)' if is_hook else ''}{f' [{clip_niche} Grading]' if clip_niche else ''}"
                 )
                 image_to_video(
                     image_path=scene.media_path,
@@ -257,6 +274,7 @@ class VideoAgent:
                     camera_motion=motion,
                     is_hook_scene=is_hook,
                     is_scifi=is_scifi_clip,
+                    niche=clip_niche,
                 )
             else:
                 # Fallback graceful: log warning, render như image
@@ -274,6 +292,7 @@ class VideoAgent:
                     camera_motion=motion,
                     is_hook_scene=is_hook,
                     is_scifi=is_scifi_clip,
+                    niche=clip_niche,
                 )
 
             return scene.scene_id, clip_path

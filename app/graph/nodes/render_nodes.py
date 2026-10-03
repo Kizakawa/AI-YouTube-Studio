@@ -72,6 +72,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
         total_audio_duration_ms=resolved_total_dur,
         subtitle_path=subtitle_path,
         bgm_path=bgm_path,
+        niche=niche,
         sfx_dir=sfx_dir,
         output_path=final_output,
     )

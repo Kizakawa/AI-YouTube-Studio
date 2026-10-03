@@ -26,6 +26,26 @@ ASS_RED         = "&H000000FF"   # Đỏ rực — từ đã đọc xong (karaok
 ASS_BLACK       = "&H00000000"   # Đen — viền chữ (tương phản cao trên mọi nền)
 ASS_SHADOW      = "&HA0000000"   # Đen 63% trong suốt — shadow mềm mại
 
+# ── Bộ từ khóa cảm xúc mạnh kích thích thị giác (Hypnotic Power Words) ─────
+POWER_WORDS = {
+    # English Power Words (Emotional triggers & High retention)
+    "NEVER", "ALWAYS", "SECRET", "SECRETS", "DANGER", "DANGEROUS", "DEADLY",
+    "TRUTH", "SHOCKING", "DISASTER", "MONSTER", "KILLER", "MISTAKE", "WHY",
+    "WARNING", "STOP", "DESTROY", "ATTACK", "FATAL", "PREDATOR", "FEAR",
+    "TERRIFYING", "HORROR", "TRAPPED", "ABSOLUTELY", "INSANE", "IMPOSSIBLE",
+    "UNBELIEVABLE", "BEAST", "LETHAL", "POISON", "VENOM", "MYSTERY", "DISCOVERED",
+    "HIDDEN", "REVEALED", "LIES", "DECEPTION", "DARK", "BLOOD", "WAR", "DEATH",
+    "RULE", "RULES", "LAW", "ESCAPE", "SURVIVE", "SURVIVAL", "URGENT",
+    # Vietnamese Power Words (Từ kích hoạt cảm xúc mạnh & Giữ chân người xem)
+    "ĐỪNG", "KHÔNG", "BAO GIỜ", "BÍ MẬT", "NGUY HIỂM", "CHẾT", "TỬ THẦN",
+    "SỰ THẬT", "SỐC", "KINH HOÀNG", "CẢNH BÁO", "DỪNG LẠI", "TIÊU DIỆT",
+    "TẤN CÔNG", "SÁT THỦ", "QUÁI VẬT", "ÁC MỘNG", "SỢ HÃI", "HOẢNG LOẠN",
+    "MẮC KẸT", "TUYỆT ĐỐI", "ĐIÊN RỒ", "BẤT KHẢ THI", "KHÔNG THỂ TIN",
+    "DÃ THÚ", "NỌC ĐỘC", "BÍ ẨN", "HÉ LỘ", "DỐI TRÁ", "THAO TÚNG", "ĐEN TỐI",
+    "MÁU", "CHIẾN TRANH", "ĐỘT NHIÊN", "KHỔNG LỒ", "ĐÁNG SỢ", "KHỦNG KHIẾP",
+    "TRỪNG PHẠT", "BẪY", "HẬU QUẢ", "BÍ TRUYỀN", "BẤT NGỜ", "CẤM", "SINH TỒN"
+}
+
 # ── ASS Style template ────────────────────────────────────────────────────
 # Thứ tự field: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour,
 #               OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut,
@@ -141,7 +161,13 @@ class SubtitleHelper:
     # ── ASS Generation ────────────────────────────────────────────────────
 
     @classmethod
-    def _build_karaoke_text(cls, words: List[str], word_durations_cs: List[int]) -> str:
+    def _build_karaoke_text(
+        cls,
+        words: List[str],
+        word_durations_cs: List[int],
+        default_highlight: str = "&H0000FFFF",
+        power_color: str = "&H000000FF",
+    ) -> str:
         """
         P2.2: Tạo chuỗi ASS kinetic karaoke với {\\kf} fluid tags theo từng từ.
 
@@ -149,11 +175,24 @@ class SubtitleHelper:
         - Trước khi đọc: từ hiển thị bằng SecondaryColour (trắng cơ sở)
         - Khi đọc đến: hiệu ứng {\\kf} quét màu mượt mà (fluid wipe) từ trái sang phải,
           chuyển sang PrimaryColour (vàng/highlight rực rỡ).
+        Tự động nhận diện và làm nổi bật các Power Words bằng màu sắc kích thích thị giác
+        (Crimson Red / Neon Accent) tạo cảm giác thôi miên (Hypnotic Kinetic Typography).
         FFmpeg burn_subtitles với libass render chuyển động mượt mà điện ảnh (không giật cục).
         """
+        # Chuẩn hóa cú pháp màu ASS (luôn kết thúc bằng &)
+        norm_power = power_color if power_color.endswith("&") else f"{power_color}&"
+        norm_highlight = default_highlight if default_highlight.endswith("&") else f"{default_highlight}&"
+
         parts = []
         for i, (word, dur_cs) in enumerate(zip(words, word_durations_cs)):
-            parts.append(f"{{\\kf{dur_cs}}}{word}")
+            clean_word = re.sub(r'[^\w\d]', '', word.upper())
+            is_power_word = clean_word in POWER_WORDS
+
+            if is_power_word:
+                # Power Word: đổi màu highlight thành power_color rực rỡ, rồi reset về default_highlight
+                parts.append(f"{{\\kf{dur_cs}\\1c{norm_power}\\b1}}{word}{{\\1c{norm_highlight}}}")
+            else:
+                parts.append(f"{{\\kf{dur_cs}}}{word}")
         return " ".join(parts)
 
     @classmethod
@@ -271,7 +310,21 @@ class SubtitleHelper:
                     word_durations_cs[-1] += (chunk_cs - total_word_cs)
                     word_durations_cs[-1] = max(word_durations_cs[-1], 5)
 
-                karaoke_text = cls._build_karaoke_text(words, word_durations_cs)
+                # Chọn màu sắc cho Power Words theo Niche
+                raw_niche = (niche_id or "").lower()
+                if "scifi" in raw_niche:
+                    power_color = "&H00FFFF00"  # Neon Cyan
+                elif "rescue" in raw_niche:
+                    power_color = "&H002080FF"  # Vivid Warm Amber / Orange
+                else:
+                    power_color = "&H000000FF"  # Vivid Crimson Red (High Urgency & Dopamine)
+
+                karaoke_text = cls._build_karaoke_text(
+                    words,
+                    word_durations_cs,
+                    default_highlight=eff_secondary,
+                    power_color=power_color,
+                )
 
                 start_str = cls._ms_to_ass_time(chunk_start_ms)
                 end_str = cls._ms_to_ass_time(chunk_end_ms)
