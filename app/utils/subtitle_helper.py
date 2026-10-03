@@ -43,7 +43,11 @@ POWER_WORDS = {
     "MẮC KẸT", "TUYỆT ĐỐI", "ĐIÊN RỒ", "BẤT KHẢ THI", "KHÔNG THỂ TIN",
     "DÃ THÚ", "NỌC ĐỘC", "BÍ ẨN", "HÉ LỘ", "DỐI TRÁ", "THAO TÚNG", "ĐEN TỐI",
     "MÁU", "CHIẾN TRANH", "ĐỘT NHIÊN", "KHỔNG LỒ", "ĐÁNG SỢ", "KHỦNG KHIẾP",
-    "TRỪNG PHẠT", "BẪY", "HẬU QUẢ", "BÍ TRUYỀN", "BẤT NGỜ", "CẤM", "SINH TỒN"
+    "TRỪNG PHẠT", "BẪY", "HẬU QUẢ", "BÍ TRUYỀN", "BẤT NGỜ", "CẤM", "SINH TỒN",
+    # Các âm tiết cốt lõi đơn để khớp phụ đề từng từ (Syllable Level Matching)
+    "BÍ", "MẬT", "NGUY", "HIỂM", "CẢNH", "BÁO", "TỬ", "THẦN", "SỰ", "THẬT",
+    "DỐI", "TRÁ", "THAO", "TÚNG", "KINH", "HOÀNG", "QUÁI", "VẬT", "ÁC", "MỘNG",
+    "SỢ", "HÃI", "MẮC", "KẸT"
 }
 
 # ── ASS Style template ────────────────────────────────────────────────────
@@ -62,6 +66,7 @@ YCbCr Matrix: None
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1,0,1,4.2,2.2,2,30,30,{margin_v},1
+Style: PatternInterruptBadge,{fontname},30,&H00FFFFFF,&H00FFFFFF,&H0000E6FF&,&HC0101010,-1,0,0,0,100,100,2,0,3,1.8,0.0,8,40,40,280,1
 Style: CTABadge,{fontname},46,&H0000FFFF,&H00FFFFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,3.5,2.0,2,30,30,780,1
 Style: WatermarkStyle,Arial,28,&H30FFFFFF,&H30FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1.8,1.2,8,30,30,90,1
 
@@ -341,6 +346,53 @@ class SubtitleHelper:
             else:
                 current_offset_ms += scene_duration_ms
 
+        # ── Kích hoạt Investigative Evidence Badge ở Scene 1 & Mid-Scene (Pattern Interrupt Vox / Magnates Media) ──
+        if scenes:
+            raw_niche = (niche_id or "").lower()
+            full_txt = " ".join([s.narration for s in scenes]).lower()
+            is_vi = any(c in full_txt for c in "àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ")
+
+            if "psychology" in raw_niche:
+                badge_title = "[ 🧠 TÂM LÝ ĐEN TỐI ]" if is_vi else "[ 🧠 MENTAL TRAP ]"
+            elif any(k in raw_niche for k in ("deep_sea", "ocean")):
+                badge_title = "[ 🌊 VỰC THẲM BÍ ẨN ]" if is_vi else "[ 🌊 UNCHARTED ABYSS ]"
+            elif any(k in raw_niche for k in ("predator", "wildlife")):
+                badge_title = "[ 🦁 QUY LUẬT SĂN MỒI ]" if is_vi else "[ 🦁 APEX PREDATOR ]"
+            elif any(k in raw_niche for k in ("rescue", "animal")):
+                badge_title = "[ 🐾 HỒ SƠ CỨU HỘ ]" if is_vi else "[ 🐾 RESCUE ARCHIVE ]"
+            elif any(k in raw_niche for k in ("history", "mystery")):
+                badge_title = "[ 📜 TÀI LIỆU MẬT ]" if is_vi else "[ 📜 CLASSIFIED FILE ]"
+            elif "horror" in raw_niche:
+                badge_title = "[ ⚠️ CHUYỆN KINH DỊ ]" if is_vi else "[ ⚠️ URBAN LEGEND ]"
+            else:
+                badge_title = "[ ⚠️ ĐIỀU CHƯA BIẾT ]" if is_vi else "[ ⚠️ CRITICAL NOTICE ]"
+
+            first_scene_dur_ms = scenes[0].audio_duration_ms or int(scenes[0].estimated_seconds * 1000)
+            badge_end_ms = min(2600, max(1200, first_scene_dur_ms - 200))
+            badge_start_str = cls._ms_to_ass_time(200)
+            badge_end_str = cls._ms_to_ass_time(badge_end_ms)
+            dialogue_lines.insert(0,
+                f"Dialogue: 2,{badge_start_str},{badge_end_str},PatternInterruptBadge,,0,0,0,,{{\\fade(150,150)\\t(0,150,\\fscx106\\fscy106)}}{badge_title}"
+            )
+
+            # Mid-video evidence stamp nếu phân cảnh sau có từ khóa chứng thực
+            evidence_kw = ("bằng chứng", "sự thật", "dấu hiệu", "nghiên cứu", "quy tắc", "evidence", "truth", "sign", "proof", "rule")
+            for idx, sc in enumerate(scenes[1:], start=2):
+                sc_txt = sc.narration.lower()
+                if any(k in sc_txt for k in evidence_kw):
+                    sc_start_ms = getattr(sc, "start_offset_ms", None)
+                    if sc_start_ms is None:
+                        sc_start_ms = sum(s.audio_duration_ms or int(s.estimated_seconds * 1000) for s in scenes[:idx-1])
+                    sc_dur = sc.audio_duration_ms or int(sc.estimated_seconds * 1000)
+                    stamp_end_ms = sc_start_ms + min(2200, sc_dur)
+                    stamp_start_str = cls._ms_to_ass_time(sc_start_ms + 100)
+                    stamp_end_str = cls._ms_to_ass_time(stamp_end_ms)
+                    stamp_title = f"[ 🔍 BẰNG CHỨNG #{idx} ]" if is_vi else f"[ 🔍 EVIDENCE #{idx} ]"
+                    dialogue_lines.append(
+                        f"Dialogue: 2,{stamp_start_str},{stamp_end_str},PatternInterruptBadge,,0,0,0,,{{\\fade(150,150)\\t(0,150,\\fscx105\\fscy105)}}{stamp_title}"
+                    )
+                    break
+
         # ── Kích hoạt Visual CTA Banner ở phân cảnh cuối (Chỉ bật khi show_cta_badge=True, không làm gãy Infinite Loop) ──
         if show_cta_badge and scenes and current_offset_ms > 3000:
             last_scene = scenes[-1]
@@ -398,6 +450,89 @@ class SubtitleHelper:
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(content)
         return output_path
+
+    @classmethod
+    def extract_power_word_cues(
+        cls,
+        scenes: List[SceneContract],
+        min_interval_s: float = 2.5,
+    ) -> List[tuple]:
+        """
+        Level 4 Multi-Layer Sound Design:
+        Trích xuất các mốc thời gian xuất hiện của Power Words để làm Micro-SFX Foley (Text-Pop).
+        Trả về danh sách (timestamp_seconds, sfx_cue, volume):
+          - Từ khóa đe dọa/nguy hiểm: impact_sub (vol 0.24)
+          - Từ khóa lừa dối/bẫy: glitch (vol 0.22)
+          - Từ khóa bí mật/sự thật: reveal (vol 0.22)
+          - Mặc định: whoosh_fast (vol 0.20)
+        Debounce min_interval_s để nhịp âm thanh tinh tế, không dồn dập.
+        """
+        cues = []
+        current_offset_ms = 0
+        last_ts_s = -999.0
+
+        for scene in scenes:
+            scene_duration_ms = scene.audio_duration_ms or int(scene.estimated_seconds * 1000)
+            if scene_duration_ms <= 0:
+                scene_duration_ms = 3000
+
+            if getattr(scene, "start_offset_ms", None) is not None:
+                current_offset_ms = scene.start_offset_ms
+
+            chunks = cls.split_text_to_chunks(scene.narration)
+            if not chunks:
+                current_offset_ms += scene_duration_ms
+                continue
+
+            chunks = [c.upper() for c in chunks]
+            total_chars = sum(len(c) for c in chunks)
+            chunk_durations_ms = []
+            for c in chunks:
+                ratio = len(c) / total_chars if total_chars > 0 else 1.0 / len(chunks)
+                dur = int(scene_duration_ms * ratio)
+                chunk_durations_ms.append(max(dur, 600))
+
+            diff = scene_duration_ms - sum(chunk_durations_ms)
+            if chunk_durations_ms:
+                chunk_durations_ms[-1] = max(chunk_durations_ms[-1] + diff, 300)
+
+            chunk_start_ms = current_offset_ms
+            for chunk, chunk_dur_ms in zip(chunks, chunk_durations_ms):
+                words = chunk.split()
+                total_word_chars = sum(len(w) for w in words)
+                word_durations_cs = []
+                for w in words:
+                    ratio = len(w) / total_word_chars if total_word_chars > 0 else 1.0 / len(words)
+                    dur_cs = max(int(chunk_dur_ms * ratio / 10), 5)
+                    word_durations_cs.append(dur_cs)
+
+                word_offset_ms = 0
+                for w, dur_cs in zip(words, word_durations_cs):
+                    clean_word = re.sub(r'[^\w\d]', '', w.upper())
+                    if clean_word in POWER_WORDS:
+                        word_ts_s = (chunk_start_ms + word_offset_ms) / 1000.0
+                        if word_ts_s - last_ts_s >= min_interval_s and word_ts_s >= 0.5:
+                            if any(k in clean_word for k in ("NGUY", "HIỂM", "CHẾT", "DANGER", "DEADLY", "KILL", "TỬ")):
+                                sfx_name = "impact_sub"
+                                vol = 0.24
+                            elif any(k in clean_word for k in ("BẪY", "DỐI", "THAO", "TÚNG", "LIES", "TRAP", "MISTAKE")):
+                                sfx_name = "glitch"
+                                vol = 0.22
+                            elif any(k in clean_word for k in ("BÍ", "MẬT", "SỰ", "THẬT", "SECRET", "TRUTH")):
+                                sfx_name = "reveal"
+                                vol = 0.22
+                            else:
+                                sfx_name = "whoosh_fast"
+                                vol = 0.20
+                            cues.append((round(word_ts_s, 2), sfx_name, vol))
+                            last_ts_s = word_ts_s
+                    word_offset_ms += dur_cs * 10
+
+                chunk_start_ms += chunk_dur_ms
+
+            current_offset_ms += scene_duration_ms
+
+        return cues
 
     @classmethod
     def build_ass_from_timed_segments(

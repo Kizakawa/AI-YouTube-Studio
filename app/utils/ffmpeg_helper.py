@@ -298,11 +298,13 @@ def get_niche_color_grading(niche: Optional[str] = None, is_scifi: bool = False)
     }
 
     cfg = PROFILES.get(niche_key, PROFILES["general"])
+    # Level 4 Magnates Media Hallmark: 35mm film grain texture (loại bỏ cảm giác nhựa AI, tạo chiều sâu phim nhựa)
+    grain_filter = "noise=c0s=7:c0f=t+u"
     return {
         "niche_key": niche_key,
-        "vf_filter": cfg["vf_filter"],
+        "vf_filter": f"{cfg['vf_filter']},{grain_filter}",
         "vignette": cfg["vignette"],
-        "full_filter": f"{cfg['vf_filter']},{cfg['vignette']}",
+        "full_filter": f"{cfg['vf_filter']},{grain_filter},{cfg['vignette']}",
     }
 
 
@@ -354,7 +356,7 @@ def image_to_video(
             if im.mode not in ("RGB",):
                 im = im.convert("RGB")
             # Scale ảnh vừa phải để có đệm zoom nhẹ nhàng, sắc nét, không bị vỡ hạt
-            scale_factor = 1.25 if is_hook_scene else 1.20
+            scale_factor = 1.30 if is_hook_scene else 1.25
             scale_w = int(width * scale_factor)
             scale_h = int(height * scale_factor)
             im_resized = im.resize((scale_w, scale_h), Image.LANCZOS)
@@ -372,6 +374,11 @@ def image_to_video(
         z_start = 1.0
         z_end   = 1.15  # Zoom mượt mà 15% chuẩn cinema
     z_step  = (z_end - z_start) / max(d, 1)
+
+    # Level 4 Pattern Interrupt: Cú Stepped Punch-in Snap (thu phóng đột ngột 5.5% tại 46% thời lượng)
+    # Ngắt nhịp nhận thức mỗi 3-4 giây phong cách Vox/Magnates Media
+    mid_snap_frame = int(d * 0.46)
+    snap_expr = f"+if(gte(on\\,{mid_snap_frame})\\,0.055\\,0)" if (duration_seconds >= 3.2 and not is_hook_scene) else ""
 
     if not zoom_effect:
         zoompan = (
@@ -406,7 +413,7 @@ def image_to_video(
             f"setsar=1"
         )
     elif camera_motion == "zoom_in":
-        # P2.1: Cubic ease-out — Bắt đầu nhanh dứt khoát và giảm tốc mượt mà (chống giật cục)
+        # P2.1: Cubic ease-out — Bắt đầu nhanh dứt khoát và giảm tốc mượt mà
         if is_hook_scene:
             # Punch-in kịch tính cho Scene 1 (0-3s) tạo thumbstopper giật mắt người xem
             zoompan = (
@@ -417,7 +424,7 @@ def image_to_video(
             )
         else:
             zoompan = (
-                f"zoompan=z='{z_start}+({z_end}-{z_start})*(1-pow(1-min(on/{d}\\,1)\\,2.8))':"
+                f"zoompan=z='{z_start}+({z_end}-{z_start})*(1-pow(1-min(on/{d}\\,1)\\,2.8)){snap_expr}':"
                 f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
                 f"d={d}:s={width}x{height}:fps={fps},"
                 f"setsar=1"
@@ -463,9 +470,9 @@ def image_to_video(
             f"setsar=1"
         )
     else:
-        # Fallback: zoom_in cubic ease-out
+        # Fallback: zoom_in cubic ease-out với Stepped Punch-in
         zoompan = (
-            f"zoompan=z='{z_start}+({z_end}-{z_start})*(1-pow(1-min(on/{d}\\,1)\\,2.8))':"
+            f"zoompan=z='{z_start}+({z_end}-{z_start})*(1-pow(1-min(on/{d}\\,1)\\,2.8)){snap_expr}':"
             f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
             f"d={d}:s={width}x{height}:fps={fps},"
             f"setsar=1"
@@ -525,9 +532,23 @@ def trim_video(
     Áp dụng Cinematic Color Grading & Vignette chuẩn hóa theo từng Niche (100% Free Native FFmpeg Filter).
     """
     grading = get_niche_color_grading(niche=niche, is_scifi=is_scifi)
+
+    # Level 4 Pattern Interrupt Vox/Magnates Style: Nếu clip dài >= 3.4s, tự động ngắt nhịp bằng cú Punch-in Snap (thu phóng 7% ở mốc giữa)
+    if duration_seconds >= 3.4:
+        snap_t = duration_seconds * 0.46
+        crop_snap = (
+            f",crop=w='if(gte(t\\,{snap_t:.2f})\\,{width}*0.93\\,{width})':"
+            f"h='if(gte(t\\,{snap_t:.2f})\\,{height}*0.93\\,{height})':"
+            f"x='(in_w-out_w)/2':y='(in_h-out_h)/2',"
+            f"scale={width}:{height}"
+        )
+    else:
+        crop_snap = ""
+
     vf_chain = (
         f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-        f"crop={width}:{height},"
+        f"crop={width}:{height}"
+        f"{crop_snap},"
         f"{grading['vf_filter']},"
         f"{grading['vignette']},"
         f"setsar=1,"
@@ -988,23 +1009,25 @@ def mix_sfx_transitions(
     sfx_volume: float = 0.4,
     hit_sfx: str = "hit",
     hit_volume: float = 0.5,
+    micro_sfx_cues: Optional[List[tuple]] = None,
 ) -> str:
     """
-    Chèn file SFX vào video:
-      - hit.mp3 (hoặc hit_sfx) tại giây 0 (mở đầu video — tạo impact ngay lập tức)
-      - whoosh.mp3 (hoặc default_sfx) tại mỗi mốc chuyển cảnh (scene_timestamps[1:])
+    Chèn file SFX đa tầng (Multi-layer Sound Design Level 4):
+      - Dual-Layer Hollywood Impact: hit_sfx (sub thump) + hit (transient punch) tại giây 0
+      - Transition SFX tại mỗi mốc chuyển cảnh (scene_timestamps[1:])
+      - Micro-SFX Foley: Text-pop đồng bộ các từ khóa cảm xúc mạnh (Power Words)
 
     Args:
         video_path:              File MP4 đã có audio (sau mux_audio_video)
         output_path:             File MP4 output sau khi mix SFX
         scene_timestamps_seconds: Danh sách thời điểm bắt đầu từng scene (giây)
-                                  Ví dụ: [0.0, 3.5, 7.2, 12.0]
         sfx_dir:                 Thư mục chứa file .mp3/.wav SFX
-        default_sfx:             Tên SFX mặc định cho chuyển cảnh (không có extension)
-        sfx_cues:                Danh sách SFX tùy chỉnh cho từng transition (optional)
+        default_sfx:             Tên SFX mặc định cho chuyển cảnh
+        sfx_cues:                Danh sách SFX tùy chỉnh cho từng transition
         sfx_volume:              Volume SFX chuyển cảnh (0.0–1.0)
         hit_sfx:                 Tên SFX impact ở giây đầu tiên
         hit_volume:              Volume SFX hit đầu video
+        micro_sfx_cues:          Danh sách (ts_seconds, sfx_name, volume) cho Power Words
 
     Returns:
         output_path nếu thành công, video_path gốc nếu không có SFX nào tồn tại.
@@ -1024,12 +1047,18 @@ def mix_sfx_transitions(
 
     sfx_entries: List[tuple] = []  # List of (timestamp_seconds, sfx_file, volume)
 
-    # ── 1. Hit SFX tại giây đầu tiên (t=0) ──────────────────────────────────
+    # ── 1. Hit SFX tại giây đầu tiên (t=0) — Dual-Layer Hollywood (Sub Thump + Punch Snap) ──
     if hit_sfx and str(hit_sfx).lower() not in ("none", "off", "mute", "disable", "skip"):
         hit_file = _find_sfx_file(sfx_dir_path, hit_sfx)
         if hit_file:
             sfx_entries.append((0.0, hit_file, hit_volume))
-            logger.info(f"[SFX] 💥 Hit SFX tại t=0.0s → {hit_file}")
+            logger.info(f"[SFX] 💥 Primary Hit SFX tại t=0.0s → {hit_file}")
+            # Nếu primary hit là sub boom -> layer thêm transient snap punch (hit.wav) để dội cả dải trầm lẫn dải cao
+            if any(k in str(hit_sfx).lower() for k in ("sub", "drop")):
+                snap_file = _find_sfx_file(sfx_dir_path, "hit")
+                if snap_file and snap_file != hit_file:
+                    sfx_entries.append((0.0, snap_file, min(0.35, hit_volume * 0.7)))
+                    logger.info(f"[SFX] ⚡ Layer 2 Transient Snap tại t=0.0s → {snap_file}")
         else:
             logger.debug(f"[SFX] Không tìm thấy hit SFX '{hit_sfx}' — bỏ qua.")
 
@@ -1046,7 +1075,6 @@ def mix_sfx_transitions(
             continue
 
         sfx_file = _find_sfx_file(sfx_dir_path, cue_name)
-        # Fallback an toàn về default_sfx nếu tên SFX chỉ định không có trong kho
         if not sfx_file and cue_name != default_sfx:
             sfx_file = _find_sfx_file(sfx_dir_path, default_sfx)
 
@@ -1056,13 +1084,28 @@ def mix_sfx_transitions(
         else:
             logger.debug(f"[SFX] Không tìm thấy SFX '{cue_name}' — bỏ qua t={ts:.2f}s")
 
+    # ── 3. Level 4 Micro-SFX Foley: Text-pop đồng bộ các từ khóa cảm xúc mạnh ──
+    if micro_sfx_cues:
+        for m_ts, m_cue, m_vol in micro_sfx_cues:
+            # Không chèn trùng với t=0 hoặc ngay sát các mốc chuyển cảnh (cách tối thiểu 0.8s)
+            is_near_transition = any(abs(m_ts - t) < 0.8 for t in scene_timestamps_seconds)
+            if is_near_transition or m_ts <= 0.4:
+                continue
+            m_file = _find_sfx_file(sfx_dir_path, m_cue)
+            if not m_file:
+                m_file = _find_sfx_file(sfx_dir_path, "whoosh_fast")
+            if m_file:
+                sfx_entries.append((m_ts, m_file, m_vol))
+                logger.debug(f"[SFX] 🎯 Micro-SFX text pop tại t={m_ts:.2f}s ({m_cue}) → {m_file}")
+
     if not sfx_entries:
         logger.info("[SFX] Không có SFX file nào khả dụng — bỏ qua bước mix SFX.")
         return video_path
 
+    # Sắp xếp theo mốc thời gian tăng dần
+    sfx_entries.sort(key=lambda x: x[0])
+
     # ── Xây FFmpeg filter_complex ────────────────────────────────────────────
-    # Input 0: video gốc (audio narration+BGM)
-    # Input 1..N: file SFX
     input_args = ["-i", video_path]
     for _, sfx_file, _ in sfx_entries:
         input_args += ["-i", sfx_file]
@@ -1077,11 +1120,11 @@ def mix_sfx_transitions(
         )
         sfx_labels.append(label)
 
-    # Gộp audio gốc + tất cả SFX labels
+    # Gộp audio gốc + tất cả SFX labels bằng amix với normalize=0 (giữ nguyên âm lượng voice & BGM)
     all_inputs = "[0:a]" + "".join(sfx_labels)
     n_inputs = 1 + len(sfx_labels)
     filter_parts.append(
-        f"{all_inputs}amix=inputs={n_inputs}:duration=first:dropout_transition=0[aout]"
+        f"{all_inputs}amix=inputs={n_inputs}:duration=first:dropout_transition=0:normalize=0[aout]"
     )
     filter_complex = ";".join(filter_parts)
 

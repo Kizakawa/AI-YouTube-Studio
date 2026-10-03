@@ -116,13 +116,13 @@ class VideoAgent:
                 use_ducking=True,  # Bật Audio Ducking thực sự qua sidechaincompress
             )
 
-            # ── Step 4: Mix SFX vào các mốc chuyển cảnh ──
+            # ── Step 4: Mix SFX đa tầng (Multi-layer Sound Design Level 4) ──
             raw_niche = (job.niche or "").lower()
             is_heavy_hit_niche = is_scifi_job or any(k in raw_niche for k in ("psychology", "deep_sea", "wildlife", "horror", "mystery"))
             hit_sfx_name = "impact_sub" if is_heavy_hit_niche else "hit"
             default_sfx_name = "whoosh_fast" if is_scifi_job else "whoosh"
 
-            # Tự động phân tích ngữ nghĩa và cảm xúc để chọn SFX chuẩn cho từng chuyển cảnh
+            # 1. Tự động phân tích ngữ nghĩa và cảm xúc để chọn SFX chuẩn cho từng chuyển cảnh
             total_sc = len(job.scenes)
             resolved_sfx_cues = []
             for i, s in enumerate(job.scenes[1:], start=1):
@@ -136,11 +136,15 @@ class VideoAgent:
                     )
                 resolved_sfx_cues.append(cue)
 
+            # 2. Level 4 Multi-Layer Foley: Trích xuất các mốc xuất hiện của Power Words để đánh Micro-SFX
+            from app.utils.subtitle_helper import SubtitleHelper
+            micro_sfx_cues = SubtitleHelper.extract_power_word_cues(job.scenes, min_interval_s=2.6)
+
             sfx_dir_exists = Path(sfx_dir).exists()
 
-            if sfx_dir_exists or resolved_sfx_cues:
-                logger.info(f"[VideoAgent] Job {job.job_id}: Mix SFX transitions từ {sfx_dir} (Niche: {job.niche})...")
-                await report(f"🔊 Đang chèn âm thanh chuyển cảnh SFX chuẩn hóa cảm xúc...", 86)
+            if sfx_dir_exists or resolved_sfx_cues or micro_sfx_cues:
+                logger.info(f"[VideoAgent] Job {job.job_id}: Mix Multi-layer SFX transitions từ {sfx_dir} (Niche: {job.niche})...")
+                await report(f"🔊 Đang thiết kế âm thanh đa tầng Level 4 (Bass Impact, Foley & Riser)...", 86)
 
                 # Tính timestamp bắt đầu từng scene (giây)
                 scene_timestamps = self._compute_scene_timestamps(job.scenes)
@@ -156,6 +160,7 @@ class VideoAgent:
                     sfx_volume=0.42 if is_heavy_hit_niche else 0.38,
                     hit_sfx=hit_sfx_name,
                     hit_volume=0.55 if is_heavy_hit_niche else 0.50,
+                    micro_sfx_cues=micro_sfx_cues if micro_sfx_cues else None,
                 )
                 # mix_sfx_transitions trả video gốc nếu không có SFX file
                 muxed_video = result_video

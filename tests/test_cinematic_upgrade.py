@@ -58,7 +58,33 @@ def test_all():
     assert job.niche == "psychology"
     print("RenderJobContract niche serialization PASSED!")
 
-    print("\n🚀 ALL CINEMATIC TESTS PASSED SUCCESSFULLY!")
+    print("\n--- Test 5: Level 4 35mm Film Grain ---")
+    res_grain = get_niche_color_grading("psychology")
+    assert "noise=c0s=7:c0f=t+u" in res_grain["vf_filter"], "35mm film grain missing!"
+    print("35mm Film Grain in Color Grading PASSED!")
+
+    print("\n--- Test 6: Level 4 Pattern Interrupt Badges ---")
+    scs_badge = [
+        SceneContract(scene_id=1, narration="ĐỪNG BAO GIỜ tin vào điều này.", visual_keyword="test", estimated_seconds=3, audio_path="a1.mp3", audio_duration_ms=3000),
+        SceneContract(scene_id=2, narration="Đây là bằng chứng xác thực số 1.", visual_keyword="test2", estimated_seconds=3, audio_path="a2.mp3", audio_duration_ms=3000)
+    ]
+    ass_badge = SubtitleHelper.build_ass_content(scs_badge, niche_id="psychology")
+    assert "PatternInterruptBadge" in ass_badge, "PatternInterruptBadge style missing!"
+    assert "[ 🧠 TÂM LÝ ĐEN TỐI ]" in ass_badge, "Hook Investigative Badge missing!"
+    assert "[ 🔍 BẰNG CHỨNG #2 ]" in ass_badge, "Mid-scene Evidence Badge missing!"
+    print("Pattern Interrupt Investigative Badges PASSED!")
+
+    print("\n--- Test 7: Level 4 Multi-Layer Micro-SFX Extraction ---")
+    scs_sfx = [
+        SceneContract(scene_id=1, narration="ĐỪNG BAO GIỜ tin vào bí mật này.", visual_keyword="test", estimated_seconds=3, audio_path="a1.mp3", audio_duration_ms=3000),
+        SceneContract(scene_id=2, narration="Đây là nguy hiểm chết người đang rình rập.", visual_keyword="test2", estimated_seconds=3, audio_path="a2.mp3", audio_duration_ms=3000)
+    ]
+    cues = SubtitleHelper.extract_power_word_cues(scs_sfx, min_interval_s=2.0)
+    assert len(cues) >= 2, f"Expected at least 2 micro SFX cues, got {len(cues)}"
+    print(f"Extracted {len(cues)} Micro-SFX Cues: {cues}")
+    print("Multi-Layer Micro-SFX Extraction PASSED!")
+
+    print("\n🚀 ALL LEVEL 4 CINEMATIC TESTS PASSED SUCCESSFULLY!")
 
 if __name__ == "__main__":
     test_all()
