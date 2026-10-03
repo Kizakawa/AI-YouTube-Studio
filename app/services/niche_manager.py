@@ -278,11 +278,13 @@ def build_script_prompt_instructions(niche_profile: Dict[str, Any], language: st
     structure = blueprint.get("narrative_structure", "Hook 3s -> Bóc tách chi tiết -> Điểm nhấn -> CTA & Infinite Loop")
     hooks = blueprint.get("hook_formulas", [])
     forbidden = blueprint.get("forbidden_words", [])
+    banned_lex = niche_profile.get("banned_lexicon") or blueprint.get("banned_lexicon", [])
     ctas = blueprint.get("cta_templates", [])
     anti_hallucination = blueprint.get("anti_hallucination_rules", [])
 
     hooks_text = "\n".join(f"      - {h}" for h in hooks) if hooks else "      - 3s Pattern Interrupt Hook"
     forbidden_text = "\n".join(f"      * KHÔNG ĐƯỢC DÙNG: \"{w}\"" for w in forbidden) if forbidden else "      * Tránh lời mở đầu sáo rỗng"
+    banned_lex_text = "\n".join(f"      * STRICTLY FORBIDDEN VOCABULARY/CONCEPTS: \"{w}\"" for w in banned_lex) if banned_lex else ""
     ctas_text = "\n".join(f"      - {c}" for c in ctas) if ctas else "      - Nhấn thích và theo dõi kênh"
     facts_text = "\n".join(f"      * {rule}" for rule in anti_hallucination) if anti_hallucination else "      * Kiểm chứng tính chính xác"
 
@@ -301,8 +303,9 @@ def build_script_prompt_instructions(niche_profile: Dict[str, Any], language: st
 3. CÔNG THỨC HOOK 3 GIÂY ĐẦU DÀNH RIÊNG CHO NGÁCH NÀY (SCENE 1 HOOK BLUEPRINT):
 {hooks_text}
 
-4. BỘ TỪ KHÓA BỊ CẤM TUYỆT ĐỐI (STRICTLY FORBIDDEN CLICHÉS):
+4. BỘ TỪ KHÓA BỊ CẤM TUYỆT ĐỐI (STRICTLY FORBIDDEN CLICHÉS & OUT-OF-NICHE CONCEPTS):
 {forbidden_text}
+{banned_lex_text}
 
 5. MẪU CALL TO ACTION (CTA) & VÒNG LẶP VÔ TẬN (SEAMLESS INFINITE LOOP):
 {ctas_text}
@@ -376,14 +379,18 @@ def hex_to_ass_color(hex_str: str, alpha: int = 0) -> str:
 def get_niche_subtitle_style(niche_profile: Dict[str, Any]) -> Dict[str, Any]:
     """
     Trả về bộ mã màu và font chữ đã chuyển đổi cho ASS Subtitles từ hồ sơ ngách.
+    Chuẩn hóa MarginV: 576 - 672px trên khung 1080x1920 để không bị che bởi Shorts UI.
     """
     sub_cfg = niche_profile.get("subtitles", {})
     primary_hex = sub_cfg.get("primary_color", "#FFFFFF")
     highlight_hex = sub_cfg.get("highlight_color", "#FFE600")
     outline_hex = sub_cfg.get("outline_color", "#000000")
     font_family = sub_cfg.get("font_family", "Montserrat, sans-serif").split(",")[0].strip()
-    font_size = int(sub_cfg.get("font_size", 40))
-    margin_v = int(sub_cfg.get("margin_bottom", 210))
+    font_size = int(sub_cfg.get("font_size", 42))
+    
+    raw_margin = int(sub_cfg.get("margin_bottom", 600))
+    # Chuẩn hóa an toàn trong khoảng 576 - 672 px (mặc định 600)
+    margin_v = raw_margin if 576 <= raw_margin <= 672 else 600
 
     return {
         "fontname": font_family,

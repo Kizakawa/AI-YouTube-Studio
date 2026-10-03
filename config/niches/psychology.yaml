@@ -2,64 +2,84 @@ id: psychology
 name: Tâm Lý Học Hành Vi & Thao Túng Tâm Lý
 badge: 🧠 Tâm Lý Học
 icon: 🧠
-description: "Chuyên sâu về tâm lý học hành vi, đọc vị ngôn ngữ cơ thể, bóc trần thủ thuật thao túng (Gaslighting, Love bombing) và bí mật giao tiếp ngầm."
-target_audience: "Khán giả 18-35 tuổi muốn tự vệ tâm lý, đọc vị đối phương và làm chủ các mối quan hệ xã hội."
-
+description: Chuyên sâu về tâm lý học hành vi, đọc vị ngôn ngữ cơ thể, bóc trần thủ
+  thuật thao túng (Gaslighting, Love bombing) và bí mật giao tiếp ngầm.
+target_audience: Khán giả 18-35 tuổi muốn tự vệ tâm lý, đọc vị đối phương và làm chủ
+  các mối quan hệ xã hội.
 script_blueprint:
-  tone_of_voice: "Thâm sâu, sắc bén, cảnh báo, khơi gợi bản năng phòng thủ và tò mò, trực diện không vòng vo."
-  pacing: "Fast-paced, 2.5 - 3.2 giây/cảnh, nhịp ngắt dồn dập, câu ngắn 5-8 từ sắc lẹm."
+  tone_of_voice: Thâm sâu, sắc bén, cảnh báo, khơi gợi bản năng phòng thủ và tò mò,
+    trực diện không vòng vo.
+  pacing: Siêu nhanh 155 WPM, 2.5 - 3.2 giây/cảnh, nhịp điệu dồn dập, cao trào dồn
+    nén.
   hook_formulas:
-    - "Urgent Warning: 'Nếu ai đó làm điều này với bạn, ĐỪNG BAO GIỜ...'"
-    - "The Counter-Intuitive Shock: 'Kẻ nguy hiểm nhất trong phòng luôn giả vờ...'"
-    - "The Dark Psychological Law: 'Quy luật tâm lý đen tối nhất mà 99% không nhận ra là...'"
-    - "Elite Interrogation Tactic: 'Cách chuyên gia đọc vị kẻ nói dối trong đúng 3 giây...'"
-  narrative_structure: "Hook (3s cắt đà lướt) -> Dấu hiệu bóc trần ngầm (3 Signs) -> Phân tích hiệu ứng tâm lý học -> Lời khuyên tự vệ -> CTA kích hoạt tranh luận & Vòng lặp vô tận (Infinite Loop)"
+  - 'Urgent Warning: ''Nếu ai đó làm điều này với bạn, ĐỪNG BAO GIỜ...'''
+  - 'The Counter-Intuitive Shock: ''Kẻ nguy hiểm nhất trong phòng luôn giả vờ...'''
+  - 'The Dark Psychological Law: ''Quy luật tâm lý đen tối nhất mà 99% không nhận
+    ra là...'''
+  - 'Elite Interrogation Tactic: ''Cách chuyên gia đọc vị kẻ nói dối trong đúng 3
+    giây...'''
+  narrative_structure: Hook (3s cắt đà lướt) -> Dấu hiệu bóc trần ngầm (3 Signs) ->
+    Phân tích hiệu ứng tâm lý học -> Lời khuyên tự vệ -> CTA kích hoạt tranh luận
+    & Vòng lặp vô tận (Infinite Loop)
   forbidden_words:
-    - "Chào mừng các bạn đã quay trở lại"
-    - "Bạn có bao giờ tự hỏi"
-    - "Trong video hôm nay tôi sẽ chia sẻ"
-    - "Hãy like và subscribe kênh của mình nhé"
-    - "Theo định nghĩa tâm lý học"
+  - Chào mừng các bạn đã quay trở lại
+  - Bạn có bao giờ tự hỏi
+  - Trong video hôm nay tôi sẽ chia sẻ
+  - Hãy like và subscribe kênh của mình nhé
+  - Theo định nghĩa tâm lý học
   cta_templates:
-    - "Nhấn thích nếu bạn từng gặp kiểu người này, và đăng ký kênh để luôn tỉnh táo... bởi vì..."
-    - "Bạn thấy dấu hiệu nào nguy hiểm nhất? Để lại số 1, 2 hay 3 dưới bình luận, và theo dõi kênh ngay... bởi vì..."
-    - "Lưu lại video này để tự bảo vệ bản thân, và đăng ký kênh đón xem phần 2... bởi vì..."
+  - Nhấn thích nếu bạn từng gặp kiểu người này, và đăng ký kênh để luôn tỉnh táo.
+  - Bạn thấy dấu hiệu nào nguy hiểm nhất? Để lại số 1, 2 hay 3 dưới bình luận, và
+    theo dõi kênh ngay.
+  - Lưu lại video này để tự bảo vệ bản thân, và đăng ký kênh đón xem phần 2.
   anti_hallucination_rules:
-    - "Luôn gắn liền với hiện tượng tâm lý học có thật (Dunning-Kruger, Gaslighting, Pavlov, Body language FBI, Dark Triad)."
-    - "Không đưa ra lời khuyên y tế tâm thần cực đoan."
-
+  - Luôn gắn liền với hiện tượng tâm lý học có thật (Dunning-Kruger, Gaslighting,
+    Pavlov, Body language FBI, Dark Triad).
+  - Không đưa ra lời khuyên y tế tâm thần cực đoan.
+  banned_lexicon: &id001
+  - astrology horoscope
+  - magic crystal
+  - alien invasion
+  - deep sea creature
 visual_aesthetics:
-  art_style: "Dark Cinematic Noir & Chiaroscuro"
-  camera_angles: "Extreme close-up eye macro, Dutch angle, silhouette in shadows, low-angle dramatic staring"
-  color_palette: "Obsidian black, desaturated cold cyan, sharp crimson accents, dramatic shadows"
-  master_prompt_prefix: "dark cinematic film still, moody chiaroscuro lighting, psychological thriller atmosphere, 35mm photography"
-  master_prompt_suffix: "extreme visual intensity, dramatic rim light, razor-sharp focus, photorealistic vertical 9:16, no text, no watermark"
-  negative_prompts: "bright cartoon, 3d render, anime, smiling face, cheerful, overexposed, colorful pastel, watermark, text"
+  art_style: Dark Cinematic Noir & Chiaroscuro
+  camera_angles: Extreme close-up eye macro, Dutch angle, silhouette in shadows, low-angle
+    dramatic staring
+  color_palette: Obsidian black, desaturated cold cyan, sharp crimson accents, dramatic
+    shadows
+  master_prompt_prefix: dark cinematic film still, moody chiaroscuro lighting, psychological
+    thriller atmosphere, 35mm photography
+  master_prompt_suffix: extreme visual intensity, dramatic rim light, razor-sharp
+    focus, photorealistic vertical 9:16, no text, no watermark
+  negative_prompts: bright cartoon, 3d render, anime, smiling face, cheerful, overexposed,
+    colorful pastel, watermark, text
   stock_video_keywords:
-    - "intense eye contact"
-    - "man in shadows"
-    - "whispering secret"
-    - "walking rain noir"
-    - "broken mirror reflection"
-
+  - intense eye contact
+  - man in shadows
+  - whispering secret
+  - walking rain noir
+  - broken mirror reflection
 subtitles:
-  font_family: "Montserrat, sans-serif"
-  font_weight: "900"
+  font_family: Montserrat, sans-serif
+  font_weight: '900'
   font_size: 40
-  primary_color: "#FFFFFF"
-  highlight_color: "#FFE600"
-  accent_color: "#FF3366"
-  outline_color: "#000000"
+  primary_color: '#FFFFFF'
+  highlight_color: '#FFE600'
+  accent_color: '#FF3366'
+  outline_color: '#000000'
   outline_width: 3
-  margin_bottom: 210
-
+  margin_bottom: 600
 audio:
-  preferred_voice_en: "en-US-ChristopherNeural"
-  preferred_voice_vi: "vi-VN-NamMinhNeural"
-  rate: "-4%"
-  pitch: "-2Hz"
-  bgm_vibe: "dark suspense cello, low ambient drone, tension riser"
+  preferred_voice_en: en-US-ChristopherNeural
+  preferred_voice_vi: vi-VN-NamMinhNeural
+  rate: -4%
+  pitch: -2Hz
+  bgm_vibe: dark suspense cello, low ambient drone, tension riser
   sfx_cues:
-    - "whoosh"
-    - "heartbeat"
-    - "tension_riser"
+  - whoosh
+  - heartbeat
+  - tension_riser
+banned_lexicon: *id001
+target_wpm: 155
+monetization:
+  affiliate_enabled: false

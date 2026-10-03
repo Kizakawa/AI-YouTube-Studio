@@ -3,6 +3,7 @@ import re
 import json
 import base64
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, List
 from google.oauth2.credentials import Credentials
@@ -119,11 +120,13 @@ class PublisherAgent:
         pinned_comment: Optional[str] = None,
         topic: str = "",
         script: str = "",
+        thumbnail_path: Optional[str] = None,
     ) -> Dict:
         """
         Upload video lên YouTube qua YouTube Data API v3.
         Nếu có schedule_time_iso (ví dụ '2026-09-25T19:00:00Z'), video sẽ được đặt ở chế độ private và lên lịch công chiếu.
         Đã bổ sung defaultLanguage & defaultAudioLanguage để định tuyến thuật toán đề xuất chính xác vùng người xem.
+        Tự động trích xuất và tải lên Shock Thumbnail và Bình luận mồi ghim.
         Tự động gắn link Amazon Affiliate chuẩn xác vào Mô tả & Bình luận mồi.
         """
         import re
@@ -191,23 +194,37 @@ class PublisherAgent:
                 clean_title = clean_title[:91].rstrip()
             clean_title = f"{clean_title} #Shorts"
 
-        # Tự động tối ưu hóa kiếm tiền qua Amazon Affiliate (Monetization Engine)
+        # Tự động tối ưu hóa kiếm tiền qua Amazon Affiliate (CHỈ kích hoạt cho ngách có affiliate_enabled: True)
         prod_info = None
+        desc_clean = description or ""
+        niche_id = str(self.channel_config.get("niche") or "").lower()
+        
+        affiliate_enabled = False
         try:
-            from app.services.monetization_engine import enrich_video_monetization
-            desc_clean, pinned_comment, prod_info = enrich_video_monetization(
-                channel_config=self.channel_config,
-                title=clean_title,
-                description=description or "",
-                pinned_comment=pinned_comment,
-                topic=topic or "",
-                script=script or ""
-            )
-            if prod_info:
-                logger.info(f"Đã tự động lồng ghép sản phẩm kiếm tiền Amazon: {prod_info.get('name')}")
-        except Exception as ex:
-            logger.warning(f"Không thể áp dụng monetization_engine: {ex}")
-            desc_clean = description or ""
+            from app.services.niche_manager import get_niche
+            niche_prof = get_niche(niche_id)
+            monet_cfg = niche_prof.get("monetization", {})
+            affiliate_enabled = bool(monet_cfg.get("affiliate_enabled", False) or self.channel_config.get("affiliate_enabled", False))
+        except Exception:
+            pass
+
+        if affiliate_enabled:
+            try:
+                from app.services.monetization_engine import enrich_video_monetization
+                desc_clean, pinned_comment, prod_info = enrich_video_monetization(
+                    channel_config=self.channel_config,
+                    title=clean_title,
+                    description=desc_clean,
+                    pinned_comment=pinned_comment,
+                    topic=topic or "",
+                    script=script or ""
+                )
+                if prod_info:
+                    logger.info(f"Đã tự động lồng ghép sản phẩm kiếm tiền Amazon cho ngách '{niche_id}': {prod_info.get('name')}")
+            except Exception as ex:
+                logger.warning(f"Không thể áp dụng monetization_engine: {ex}")
+        else:
+            logger.info(f"Ngách '{niche_id}' không bật affiliate -> Giữ mô tả sạch 100%")
 
         # Đảm bảo description luôn có hashtag nhận diện Shorts
         shorts_hashtags = "#Shorts #shorts #viral #ytshorts"
@@ -224,23 +241,28 @@ class PublisherAgent:
             if req_tag.lower() not in [t.lower() for t in tag_list]:
                 tag_list.append(req_tag)
 
+        # Chuẩn hóa ngôn ngữ mặc định (Target US Audience)
+        target_lang = default_language or self.channel_config.get("language") or "en"
+        if not default_audio_language or default_audio_language.lower() == "en":
+            target_audio_lang = "vi-VN" if str(target_lang).lower().startswith("vi") else "en-US"
+        else:
+            target_audio_lang = default_audio_language
+
         body = {
             "snippet": {
                 "title": clean_title[:100],
                 "description": desc_clean[:5000],
                 "tags": tag_list[:20],
-                "categoryId": "22"  # People & Blogs / Shorts
+                "categoryId": "22",  # People & Blogs / Shorts
+                "defaultLanguage": target_lang,
+                "defaultAudioLanguage": target_audio_lang,
             },
             "status": {
                 "privacyStatus": "private" if schedule_time_iso else privacy_status,
-                "selfDeclaredMadeForKids": False
+                "selfDeclaredMadeForKids": False,
+                "containsSyntheticMedia": True  # Khai báo minh bạch nội dung AI / Synthetic theo chính sách YouTube 2026
             }
         }
-
-        if default_language:
-            body["snippet"]["defaultLanguage"] = default_language
-        if default_audio_language:
-            body["snippet"]["defaultAudioLanguage"] = default_audio_language
 
         if schedule_time_iso:
             body["status"]["publishAt"] = schedule_time_iso
@@ -271,10 +293,35 @@ class PublisherAgent:
             shorts_url = f"https://www.youtube.com/shorts/{video_id}"
             logger.info(f"Đã upload Shorts thành công lên YouTube: {shorts_url} ({youtube_url})")
 
-            # Tự động đăng bình luận mồi nếu có
+            # ── 1. Tự động trích xuất và tải lên thumbnail đỉnh cao (Shock Frame) ──
+            uploaded_thumb = False
+            target_thumb = thumbnail_path
+            if not target_thumb or not os.path.exists(target_thumb):
+                auto_thumb = Path(video_path).with_suffix(".thumb.jpg")
+                if not auto_thumb.exists():
+                    try:
+                        from app.utils.ffmpeg_helper import extract_shock_thumbnail
+                        extract_shock_thumbnail(video_path, str(auto_thumb), timestamp_seconds=0.8)
+                    except Exception as th_err:
+                        logger.debug(f"Không thể trích xuất shock thumbnail: {th_err}")
+                if auto_thumb.exists():
+                    target_thumb = str(auto_thumb)
+
+            if target_thumb and os.path.exists(target_thumb):
+                uploaded_thumb = self.upload_thumbnail(video_id, target_thumb)
+
+            # ── 2. Tự động đăng bình luận mồi (Engagement Bait) ──
+            effective_comment = pinned_comment
+            if not effective_comment:
+                is_vn = str(target_lang).lower().startswith("vi")
+                if is_vn:
+                    effective_comment = "Bạn thấy chi tiết nào bất ngờ nhất? Hãy bình luận suy nghĩ của bạn bên dưới! 👇\nĐăng ký kênh để không bỏ lỡ video tiếp theo! 🔥"
+                else:
+                    effective_comment = "Which moment shocked you the most? Drop your theory in the comments below! 👇\nSubscribe so you don't miss the next one! 🔥"
+
             posted_comment_id = None
-            if video_id and pinned_comment:
-                comment_res = self.add_pinned_comment(video_id, pinned_comment)
+            if video_id and effective_comment:
+                comment_res = self.add_pinned_comment(video_id, effective_comment)
                 if comment_res:
                     posted_comment_id = comment_res.get("id")
 
@@ -291,8 +338,9 @@ class PublisherAgent:
                 "shorts_url": shorts_url,
                 "channel": self.channel_name,
                 "scheduled_at": schedule_time_iso,
-                "pinned_comment": pinned_comment,
+                "pinned_comment": effective_comment,
                 "comment_id": posted_comment_id,
+                "thumbnail_uploaded": uploaded_thumb,
                 "product_info": prod_info if "prod_info" in locals() and prod_info else None,
                 "enriched_description": desc_clean,
             }
@@ -304,9 +352,42 @@ class PublisherAgent:
                 from app.services.quota_manager import QuotaManager, get_next_reset_time
                 QuotaManager.mark_exhausted(self.project_id)
                 next_reset_str = get_next_reset_time().strftime("%H:%M ngày %d/%m/%Y")
+                
+                # Đóng gói an toàn toàn bộ video + metadata + phụ đề vào file .zip để người dùng tải về up tay
+                fallback_zip = None
+                try:
+                    import zipfile
+                    pkg_dir = Path("output/packages")
+                    pkg_dir.mkdir(parents=True, exist_ok=True)
+                    v_stem = Path(video_path).stem
+                    zip_path = pkg_dir / f"{v_stem}_manual_upload.zip"
+                    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                        if Path(video_path).exists():
+                            zf.write(video_path, arcname=Path(video_path).name)
+                        meta_payload = {
+                            "title": clean_title,
+                            "description": desc_clean,
+                            "tags": tag_list,
+                            "channel_name": self.channel_name,
+                            "defaultLanguage": target_lang,
+                            "defaultAudioLanguage": target_audio_lang,
+                            "containsSyntheticMedia": True,
+                            "created_at": datetime.utcnow().isoformat()
+                        }
+                        zf.writestr("metadata.json", json.dumps(meta_payload, indent=2, ensure_ascii=False))
+                        v_parent = Path(video_path).parent
+                        for extra in v_parent.glob(f"{v_stem}*.*"):
+                            if extra.suffix.lower() in (".srt", ".ass", ".jpg", ".png"):
+                                zf.write(extra, arcname=extra.name)
+                    fallback_zip = str(zip_path)
+                    logger.info(f"📦 [QuotaFallback] Đã đóng gói video vào zip: {fallback_zip}")
+                except Exception as ex_zip:
+                    logger.warning(f"Không thể đóng gói zip fallback: {ex_zip}")
+
                 quota_msg = (
                     f"Dự án '{self.project_id}' đã chạm trần YouTube Quota 10.000 units/ngày của Google. "
-                    f"Video được bảo vệ và chuyển sang hàng đợi tự động, sẽ xuất bản vào {next_reset_str}."
+                    f"Video được bảo vệ và chuyển sang hàng đợi tự động (sẽ xuất bản vào {next_reset_str})."
+                    + (f" Gói tải về thủ công: {fallback_zip}" if fallback_zip else "")
                 )
                 logger.warning(f"🚨 [QuotaExceeded] {quota_msg}")
                 return {
@@ -314,7 +395,8 @@ class PublisherAgent:
                     "error": quota_msg,
                     "message": quota_msg,
                     "video_id": None,
-                    "project_id": self.project_id
+                    "project_id": self.project_id,
+                    "fallback_zip": fallback_zip
                 }
 
             logger.error(f"Lỗi khi upload video lên YouTube: {e}", exc_info=True)
@@ -352,3 +434,24 @@ class PublisherAgent:
         except Exception as e:
             logger.warning(f"💬 [PublisherAgent] Không thể tự động post bình luận mồi lên video {video_id}: {e}")
             return None
+
+    def upload_thumbnail(self, video_id: str, thumbnail_path: str) -> bool:
+        """
+        Tải thumbnail tùy chỉnh lên YouTube qua YouTube Data API v3 (thumbnails.set).
+        Áp dụng cho video Shorts nhằm tối ưu tỷ lệ click CTR > 10%.
+        """
+        if not self.service or not video_id or not os.path.exists(thumbnail_path):
+            logger.warning(f"📸 [PublisherAgent] Không đủ điều kiện upload thumbnail (video_id={video_id}, path={thumbnail_path})")
+            return False
+        try:
+            media = MediaFileUpload(thumbnail_path, mimetype="image/jpeg", resumable=False)
+            self.service.thumbnails().set(
+                videoId=video_id,
+                media_body=media
+            ).execute()
+            logger.info(f"📸 [PublisherAgent] ✅ Đã upload custom thumbnail thành công cho video {video_id}: {thumbnail_path}")
+            return True
+        except Exception as e:
+            logger.warning(f"📸 [PublisherAgent] Không thể upload custom thumbnail ({thumbnail_path}): {e}")
+            return False
+

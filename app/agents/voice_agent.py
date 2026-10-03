@@ -65,7 +65,8 @@ class VoiceAgent:
         self,
         scenes: List[SceneContract],
         output_dir: str,
-        voice: str = None
+        voice: str = None,
+        rate: Optional[str] = None,
     ) -> List[SceneContract]:
         """
         Sinh MP3 cho từng scene. Trả về list SceneContract đã enriched
@@ -134,7 +135,9 @@ class VoiceAgent:
                         clean_text = re.sub(r'^[^\w\s\(\)]+', '', scene.narration).strip()
                         if not clean_text or len(clean_text) < 2:
                             clean_text = scene.narration.strip() or "..."
-                        communicate = edge_tts.Communicate(clean_text, c_voice)
+                        # Tốc độ đọc chuẩn hóa 160-175 WPM (rate: +12% cho Tiếng Anh, +7% cho Tiếng Việt) dồn dập, tự nhiên, chống tụt retention
+                        tts_rate = rate or ("+7%" if c_voice.startswith("vi-") else "+12%")
+                        communicate = edge_tts.Communicate(clean_text, c_voice, rate=tts_rate)
                         await communicate.save(scene_audio_path)
                         if Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024:
                             safe_voice = c_voice
@@ -225,6 +228,17 @@ class VoiceAgent:
             "-c", "copy",
             output_path
         ])
+
+        # Áp dụng bộ lọc Pacing silenceremove an toàn (chỉ cắt khoảng lặng > 0.3s, giữ đệm thở tự nhiên 0.1-0.15s)
+        try:
+            import shutil
+            from app.utils.ffmpeg_helper import trim_audio_silence
+            trimmed_temp = str(Path(output_path).parent / "narration_trimmed.mp3")
+            if trim_audio_silence(output_path, trimmed_temp, silence_duration=0.3, silence_threshold_db=-40.0):
+                shutil.move(trimmed_temp, output_path)
+                logger.info("[Pacing] ✅ Đã tối ưu nhịp thở silenceremove cho full narration audio")
+        except Exception as e_trim:
+            logger.debug(f"[Pacing] Bỏ qua silenceremove: {e_trim}")
 
         total_ms = get_duration_ms(output_path)
         logger.info(f"Full narration audio: {total_ms}ms ({total_ms/1000:.1f}s)")

@@ -406,6 +406,14 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
+function linkifyText(str) {
+    if (!str) return '';
+    const safe = escapeHtml(str);
+    return safe
+        .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:#38bdf8; text-decoration:underline; word-break:break-all;">$1</a>')
+        .replace(/\n/g, '<br>');
+}
+
 /* ═══════════════════════════════════════════════════════
    FETCH ALL
 ══════════════════════════════════════════════════════════ */
@@ -804,21 +812,27 @@ function renderPipelineTable(videos) {
         const chGmail = chObj ? (chObj.gmail || chObj.email_label || chObj.google_account) : '';
 
         // Action buttons
-        let actionButtons = `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết">🔍</button>`;
-        if (v.status === 'SCRIPT_READY') {
+        let actionButtons = '';
+        if (v.status === 'SCRIPT_READY' || v.status === 'MEDIA_READY' || v.status === 'AUDIO_READY') {
+            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết kịch bản">🔍</button>`;
             actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openInstantPreviewForJob(${v.id})" title="Xem trước video và phụ đề tức thì" style="font-size:11px; color:#f472b6; border-color:rgba(236,72,153,0.4);">👁️ Xem trước</button>`;
             actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openScriptEditor(${v.id})" title="Chỉnh sửa kịch bản" style="font-size:11px;">✏️ Sửa</button>`;
             actionButtons += `<button class="btn btn-primary btn-sm" onclick="triggerWebRender(${v.id})" title="Xuất Video" style="font-size:11px;">🚀 Render</button>`;
         } else if (v.status === 'FAILED') {
+            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Xem chi tiết lỗi">🔍</button>`;
             actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openInstantPreviewForJob(${v.id})" title="Xem trước kịch bản" style="font-size:11px; color:#f472b6; border-color:rgba(236,72,153,0.4);">👁️ Xem trước</button>`;
             actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openScriptEditor(${v.id})" title="Chỉnh sửa kịch bản" style="font-size:11px;">✏️ Sửa</button>`;
             actionButtons += `<button class="btn btn-primary btn-sm" onclick="triggerWebRender(${v.id})" title="Thử render lại" style="font-size:11px;background:var(--accent-amber);border-color:var(--accent-amber);">🔄 Thử lại</button>`;
         } else if (v.status === 'RENDERED') {
+            actionButtons += `<button class="btn btn-success btn-sm" onclick="playRenderedVideo(${v.id})" title="Bấm vào để xem video thành phẩm" style="font-size:11.5px;background:linear-gradient(135deg,#10b981,#059669);border:none;font-weight:700;color:#fff;box-shadow:0 2px 8px rgba(16,185,129,0.35);">▶️ Xem Video</button>`;
             actionButtons += `<button class="btn btn-primary btn-sm" onclick="openPublishModal(${v.id})" title="Chọn kênh & Đăng YouTube" style="font-size:11px;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;font-weight:600;">🚀 Đăng YT</button>`;
-            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết video" style="font-size:11px;">🔍</button>`;
+            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết video & phân cảnh" style="font-size:11px;">🔍</button>`;
         } else if (v.status === 'PUBLISHED') {
+            actionButtons += `<button class="btn btn-success btn-sm" onclick="playRenderedVideo(${v.id})" title="Xem video đã đăng" style="font-size:11.5px;background:linear-gradient(135deg,#10b981,#059669);border:none;font-weight:700;color:#fff;box-shadow:0 2px 8px rgba(16,185,129,0.35);">▶️ Xem Video</button>`;
             actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openPublishModal(${v.id})" title="Đăng lại / Đăng kênh khác" style="font-size:11px;border-color:rgba(239,68,68,0.4);color:#ef4444;font-weight:600;">🔄 Đăng Lại</button>`;
-            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết video" style="font-size:11px;">🔍</button>`;
+            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết video & phân cảnh" style="font-size:11px;">🔍</button>`;
+        } else {
+            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết">🔍</button>`;
         }
         let scoreBadge = '';
         let qScore = v.quality_scores;
@@ -923,6 +937,61 @@ async function createScript() {
     }
 }
 
+async function createManualScript() {
+    const inputTopic = document.getElementById('input-topic');
+    let title = inputTopic ? inputTopic.value.trim() : '';
+    if (!title) {
+        title = prompt('Nhập tiêu đề hoặc chủ đề cho kịch bản thủ công:', 'Kịch bản Shorts mới') || '';
+        title = title.trim();
+        if (!title) return;
+        if (inputTopic) inputTopic.value = title;
+    }
+
+    const channel = document.getElementById('input-channel').value;
+    const language = document.getElementById('input-language').value;
+
+    const btn = document.getElementById('btn-create-manual-script');
+    const origHTML = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="loading-spinner"></span> Đang tạo...`;
+    }
+
+    try {
+        const result = await apiPost('/api/scripts/create-manual', {
+            title: title,
+            topic: title,
+            channel_id: channel,
+            language: language
+        });
+
+        if (!result) return;
+
+        lastCreatedScriptResult = result;
+
+        // Hiển thị panel kết quả kịch bản
+        document.getElementById('result-job-badge').textContent = `Job #${result.job_id} (Soạn thủ công)`;
+        document.getElementById('script-result-panel').style.display = 'flex';
+        document.getElementById('script-result-content').innerHTML = buildScriptResultHTML(result);
+        document.getElementById('script-result-panel').scrollIntoView({ behavior: 'smooth' });
+
+        showToast(`✍️ Đã khởi tạo kịch bản #${result.job_id}! Bạn có thể chỉnh sửa lời thoại ngay.`, 'success');
+        fetchVideos(); // refresh pipeline
+
+        // Tự động mở ngay Modal chỉnh sửa để người dùng nhập lời thoại và tùy chỉnh
+        setTimeout(() => {
+            openScriptEditor(result.job_id);
+        }, 300);
+    } catch (e) {
+        showToast('Lỗi khi tạo kịch bản thủ công: ' + e.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHTML;
+        }
+    }
+}
+
 function buildScriptResultHTML(result) {
     let evalData = result.eval || result.quality_scores;
     if (typeof evalData === 'string') {
@@ -1023,19 +1092,19 @@ function buildScriptResultHTML(result) {
 
         <!-- Action Toolbar Right After Generation -->
         <div style="display:flex; gap:10px; flex-wrap:wrap; margin:16px 0; padding:12px 14px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; align-items:center;">
-            <button class="btn btn-secondary" onclick="openInstantPreviewFromCreate()" style="background:linear-gradient(135deg, rgba(236,72,153,0.15), rgba(139,92,246,0.15)); border-color:rgba(236,72,153,0.45); color:#f472b6; font-weight:700; padding:9px 18px; box-shadow:0 2px 12px rgba(236,72,153,0.2);">
-                👁️ Xem Trước Nhanh (Instant Preview)
+            <button class="btn btn-secondary" onclick="openScriptEditor(${result.job_id})" style="font-weight:700; padding:9px 18px; background:linear-gradient(135deg, rgba(234,179,8,0.15), rgba(249,115,22,0.15)); border-color:rgba(234,179,8,0.5); color:#facc15; box-shadow:0 2px 10px rgba(234,179,8,0.15);">
+                ✏️ Bước 1: Chỉnh Sửa Kịch Bản (Thêm / Sửa / Xóa Cảnh)
             </button>
-            <button class="btn btn-primary" onclick="triggerWebRender(${result.job_id})" style="background:linear-gradient(135deg,#3b82f6,#8b5cf6); border:none; font-weight:600; padding:9px 18px;">
-                🚀 Bắt Đầu Tạo Video (Render)
+            <button class="btn btn-secondary" onclick="openInstantPreviewFromCreate()" style="background:linear-gradient(135deg, rgba(236,72,153,0.15), rgba(139,92,246,0.15)); border-color:rgba(236,72,153,0.45); color:#f472b6; font-weight:700; padding:9px 18px;">
+                👁️ Xem Trước Nhịp Đọc & B-Roll
             </button>
-            <button class="btn btn-secondary" onclick="openScriptEditor(${result.job_id})" style="font-weight:600; padding:9px 16px;">
-                ✏️ Chỉnh Sửa Kịch Bản (Thêm/Sửa/Xóa Cảnh)
+            <button class="btn btn-primary" onclick="triggerWebRender(${result.job_id})" style="background:linear-gradient(135deg,#3b82f6,#8b5cf6); border:none; font-weight:700; padding:9px 20px; box-shadow:0 3px 14px rgba(59,130,246,0.35);">
+                🚀 Bước 2: Duyệt & Tạo Video (Render)
             </button>
-            <button class="btn btn-secondary" onclick="switchTab('pipeline')" style="font-size:12px; padding:9px 14px;">
+            <button class="btn btn-secondary" onclick="switchTab('pipeline')" style="font-size:12px; padding:9px 14px; margin-left:auto;">
                 📋 Xem trong Pipeline →
             </button>
-            <button class="btn btn-danger btn-sm" onclick="deleteJob(${result.job_id}); document.getElementById('script-result-panel').style.display='none';" style="margin-left:auto; padding:9px 14px;">
+            <button class="btn btn-danger btn-sm" onclick="deleteJob(${result.job_id}); document.getElementById('script-result-panel').style.display='none';" style="padding:9px 14px;">
                 🗑️ Xóa Kịch Bản
             </button>
         </div>
@@ -1046,12 +1115,12 @@ function buildScriptResultHTML(result) {
         </div>
 
         <!-- Bottom Action Bar -->
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08);">
-            <button class="btn btn-secondary" onclick="openScriptEditor(${result.job_id})" style="font-weight:600;">
-                ✏️ Chỉnh Sửa Kịch Bản Này
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08); flex-wrap:wrap; gap:12px;">
+            <button class="btn btn-secondary btn-lg" onclick="openScriptEditor(${result.job_id})" style="font-weight:700; border-color:rgba(234,179,8,0.5); color:#facc15;">
+                ✏️ Chỉnh Sửa Kịch Bản Này (Thêm / Sửa Cảnh)
             </button>
-            <button class="btn btn-primary btn-lg" onclick="triggerWebRender(${result.job_id})" style="background:linear-gradient(135deg,#3b82f6,#8b5cf6); border:none; font-weight:600;">
-                🚀 Bắt Đầu Tạo Video Ngay →
+            <button class="btn btn-primary btn-lg" onclick="triggerWebRender(${result.job_id})" style="background:linear-gradient(135deg,#3b82f6,#8b5cf6); border:none; font-weight:700; box-shadow:0 4px 18px rgba(59,130,246,0.35);">
+                🚀 Duyệt Kịch Bản & Bắt Đầu Tạo Video Ngay →
             </button>
         </div>`;
 }
@@ -1223,20 +1292,22 @@ async function openVideoDetail(jobId) {
             <div class="detail-value script-box" style="color:var(--accent-rose);">${esc(data.error_message)}</div>
         </div>` : ''}
         ${(data.status === 'RENDERED' || data.status === 'PUBLISHED') && data.video_path ? `
-        <div class="detail-row" style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.25);border-radius:8px;padding:14px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
-                <div style="display:flex;align-items:center;gap:10px;">
-                    <span style="font-size:24px;">🎬</span>
-                    <div>
-                        <div style="font-weight:700;color:var(--accent-green);font-size:14px;">Video & Thumbnail Thị Trường 1 Giây</div>
-                        <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">📂 ${esc(data.video_path)}</div>
-                    </div>
+        <div class="detail-row" style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+                <div style="font-weight:700;color:var(--accent-green);font-size:13px;display:flex;align-items:center;gap:6px;">
+                    <span>🎬 Video Thành Phẩm (Shorts 9:16)</span>
                 </div>
-                <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                    <a href="/api/videos/${data.id}/download" target="_blank" class="btn btn-primary btn-sm">
+                <div style="display:flex;gap:6px;">
+                    <button class="btn btn-sm btn-success" onclick="closeModal(); playRenderedVideo(${data.id});" style="font-size:11px;font-weight:700;padding:3px 10px;background:linear-gradient(135deg,#10b981,#059669);border:none;color:#fff;">
+                        ▶️ Xem Toàn Màn Hình
+                    </button>
+                    <a href="/api/videos/${data.id}/download" target="_blank" class="btn btn-primary btn-sm" style="font-size:11px;padding:3px 10px;">
                         📥 Tải Video MP4
                     </a>
                 </div>
+            </div>
+            <div style="display:flex;justify-content:center;background:#000;border-radius:10px;padding:8px;margin-bottom:10px;">
+                <video controls playsinline style="max-height:280px;max-width:100%;aspect-ratio:9/16;border-radius:8px;background:#000;" src="/api/videos/${data.id}/stream" onerror="this.parentElement.innerHTML='<div style=\'color:#f87171;font-size:12px;padding:12px;text-align:center;\'>⚠️ Video được render trên máy đồng đội hoặc file không khả dụng trên máy local này.</div>'"></video>
             </div>
 
             <!-- Thumbnail High-CTR Preview & Download -->
@@ -1250,7 +1321,7 @@ async function openVideoDetail(jobId) {
                     </button>
                 </div>
                 <div style="display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap;">
-                    <div style="flex:1.4; min-width:220px; text-align:center;">
+                    <div style="flex:1.4; min-width:200px; text-align:center;">
                         <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px; font-weight:600;">Chuẩn Ngang 16:9 (YouTube Standard)</div>
                         <img src="/api/videos/${data.id}/thumbnail?aspect_ratio=16x9&t=${Date.now()}" onerror="this.style.display='none'" style="width:100%; border-radius:6px; border:1px solid rgba(255,255,255,0.15); box-shadow:0 4px 12px rgba(0,0,0,0.4);" alt="Thumbnail 16:9">
                         <div style="margin-top:8px;">
@@ -1259,9 +1330,9 @@ async function openVideoDetail(jobId) {
                             </a>
                         </div>
                     </div>
-                    <div style="width:140px; text-align:center;">
+                    <div style="width:130px; text-align:center;">
                         <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px; font-weight:600;">Dọc 9:16 (Shorts)</div>
-                        <img src="/api/videos/${data.id}/thumbnail?aspect_ratio=9x16&t=${Date.now()}" onerror="this.style.display='none'" style="max-height:180px; width:auto; border-radius:6px; border:1px solid rgba(255,255,255,0.15); box-shadow:0 4px 12px rgba(0,0,0,0.4);" alt="Thumbnail 9:16">
+                        <img src="/api/videos/${data.id}/thumbnail?aspect_ratio=9x16&t=${Date.now()}" onerror="this.style.display='none'" style="max-height:160px; width:auto; border-radius:6px; border:1px solid rgba(255,255,255,0.15); box-shadow:0 4px 12px rgba(0,0,0,0.4);" alt="Thumbnail 9:16">
                         <div style="margin-top:8px;">
                             <a href="/api/videos/${data.id}/thumbnail?aspect_ratio=9x16" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px; padding:4px 10px;">
                                 📥 Tải Ảnh 9:16
@@ -1307,10 +1378,92 @@ function closeModal() {
     document.getElementById('modal-overlay').classList.remove('visible');
 }
 
+/* ===============================================================
+   RENDERED SHORTS VIDEO PLAYER MODAL
+================================================================ */
+async function playRenderedVideo(jobId) {
+    const modal = document.getElementById('modal-rendered-player');
+    const vidEl = document.getElementById('rendered-video-element');
+    const titleEl = document.getElementById('rendered-player-title');
+    const durEl = document.getElementById('rendered-player-duration');
+    const fallbackBox = document.getElementById('rendered-player-fallback');
+    const fallbackTitle = document.getElementById('rendered-player-fallback-title');
+    const fallbackMsg = document.getElementById('rendered-player-fallback-msg');
+    const downloadBtn = document.getElementById('rendered-player-download-btn');
+    const detailBtn = document.getElementById('rendered-player-detail-btn');
+    const publishBtn = document.getElementById('rendered-player-publish-btn');
+
+    if (!modal || !vidEl) return;
+
+    // Reset video state
+    vidEl.pause();
+    vidEl.removeAttribute('src');
+    vidEl.load();
+    vidEl.style.display = 'block';
+    if (fallbackBox) fallbackBox.style.display = 'none';
+
+    titleEl.textContent = `Video #${jobId} — Đang tải...`;
+    durEl.textContent = '';
+    downloadBtn.href = `/api/videos/${jobId}/download`;
+    detailBtn.onclick = () => { closeRenderedPlayerModal(); openVideoDetail(jobId); };
+    publishBtn.onclick = () => { closeRenderedPlayerModal(); openPublishModal(jobId); };
+
+    modal.style.display = 'flex';
+    modal.classList.add('visible');
+
+    // Lấy thông tin chi tiết video
+    try {
+        const data = await apiGet(`/api/videos/${jobId}`);
+        if (data) {
+            titleEl.textContent = data.title || `Video #${jobId}`;
+            if (data.audio_duration_ms) {
+                durEl.textContent = `⏱️ ${(data.audio_duration_ms / 1000).toFixed(1)}s`;
+            } else if (data.scenes && data.scenes.length) {
+                durEl.textContent = `🎬 ${data.scenes.length} cảnh`;
+            }
+        }
+    } catch (e) {
+        console.warn('Lỗi lấy thông tin video:', e);
+    }
+
+    // Set streaming URL
+    const streamUrl = `/api/videos/${jobId}/stream?t=${Date.now()}`;
+    vidEl.src = streamUrl;
+
+    vidEl.onerror = () => {
+        vidEl.style.display = 'none';
+        if (fallbackBox) {
+            fallbackBox.style.display = 'block';
+            fallbackTitle.textContent = 'Không Thể Phát Video Trực Tiếp';
+            fallbackMsg.innerHTML = `File video có thể được dựng trên máy đồng đội hoặc đường dẫn không khả dụng trên máy local này.<br><br>
+                <a href="/api/videos/${jobId}/download" class="btn btn-secondary btn-sm" style="display:inline-flex;margin-top:6px;">📥 Thử Tải Trực Tiếp</a>`;
+        }
+    };
+
+    vidEl.play().catch(err => {
+        console.log('Video autoplay caught:', err);
+    });
+}
+
+function closeRenderedPlayerModal() {
+    const modal = document.getElementById('modal-rendered-player');
+    const vidEl = document.getElementById('rendered-video-element');
+    if (vidEl) {
+        vidEl.pause();
+        vidEl.removeAttribute('src');
+        vidEl.load();
+    }
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('visible');
+    }
+}
+
 document.addEventListener('keydown', e => { 
     if (e.key === 'Escape') {
         closeModal();
         closeScriptEditor();
+        closeRenderedPlayerModal();
     }
 });
 
@@ -6536,11 +6689,87 @@ window.renderNichesGrid = renderNichesGrid;
 ══════════════════════════════════════════════════════════ */
 let currentRepurposeData = null;
 
-function initRepurposerTab() {
-    populateRepurposerChannels();
+const REPURPOSER_NICHE_META = {
+    animal_rescue: {
+        badge: "🐾",
+        name: "Cứu Hộ Động Vật (Paws & Hearts Rescue)",
+        tone: "Cảm động, thấu cảm, hành trình hồi sinh kỳ diệu",
+        hook_sample: "Khoảnh khắc sinh tử: ánh mắt sợ hãi ➔ niềm vui vỡ òa khi được cứu sống!",
+        accent_color: "#10b981",
+        alert_tone: "Tuyệt đối không dùng từ giật gân, câu like rẻ tiền. Giữ trọn sự ấm áp và tính nhân văn."
+    },
+    wildlife_predators: {
+        badge: "🦁",
+        name: "Động Vật Hoang Dã (Wild Odyssey)",
+        tone: "Săn mồi đỉnh cao, thống số sát thương, sinh tồn khắc nghiệt",
+        hook_sample: "Lực cắn 1,500 PSI, cú bứt tốc 0.3s — khoảnh khắc săn mồi triệu view!",
+        accent_color: "#f59e0b",
+        alert_tone: "Tập trung vào adrenaline, thống số sức mạnh thực tế và sinh tồn tự nhiên."
+    },
+    psychology: {
+        badge: "🧠",
+        name: "Tâm Lý Học (Psychology of the world)",
+        tone: "Bóc trần thao túng, giải mã hành vi, bảo vệ bản thân",
+        hook_sample: "Dấu hiệu thao túng tâm lý ngầm: 99% người không nhận ra!",
+        accent_color: "#a855f7",
+        alert_tone: "Tập trung vào phân tích tâm lý ứng dụng và giá trị bảo vệ người xem."
+    },
+    deep_sea_earth_mysteries: {
+        badge: "🌊",
+        name: "Bí Mật Thế Giới (The mysteries of the world)",
+        tone: "Bí ẩn đại dương sâu, hiện tượng khoa học chưa giải thích, kích hoạt tò mò tột đỉnh",
+        hook_sample: "Âm thanh bí ẩn ghi lại từ độ sâu 11,000m — khoa học vẫn bất lực!",
+        accent_color: "#06b6d4",
+        alert_tone: "Kích hoạt curiosity gap mạnh mẽ dựa trên tài liệu và hiện tượng thực tế."
+    },
+    general: {
+        badge: "🎯",
+        name: "Tổng Hợp & Đời Sống",
+        tone: "Điểm nhấn nội dung, giá trị giải trí và bài học cuộc sống",
+        hook_sample: "Khoảnh khắc đắt giá nhất ít người nhận ra...",
+        accent_color: "#3b82f6",
+        alert_tone: "Cân bằng giữa giải trí và cung cấp thông tin hấp dẫn."
+    }
+};
+
+async function initRepurposerTab() {
+    if (!allNiches || allNiches.length === 0) {
+        if (typeof fetchNiches === 'function') await fetchNiches();
+    }
+    if (!allChannels || allChannels.length === 0) {
+        if (typeof fetchChannels === 'function') await fetchChannels();
+    }
     populateRepurposerNiches();
+    populateRepurposerChannels();
     loadRepurposerLocalVideos();
     loadRepurposerClips();
+}
+
+function populateRepurposerNiches() {
+    const sel = document.getElementById('repurposer-niche-select');
+    if (!sel) return;
+    const currentVal = sel.value;
+    sel.innerHTML = '';
+    if (!allNiches || allNiches.length === 0) {
+        sel.innerHTML = `
+            <option value="animal_rescue">🐾 Cứu Hộ Động Vật (Paws & Hearts Rescue)</option>
+            <option value="wildlife_predators">🦁 Động Vật Hoang Dã (Wild Odyssey)</option>
+            <option value="psychology">🧠 Tâm Lý Học (Psychology of the world)</option>
+            <option value="deep_sea_earth_mysteries">🌊 Bí Mật Thế Giới (The mysteries of the world)</option>
+            <option value="general">🎯 Tổng Hợp & Đời Sống</option>
+        `;
+    } else {
+        allNiches.forEach(n => {
+            const opt = document.createElement('option');
+            opt.value = n.id;
+            opt.textContent = `${n.badge || n.icon || '🎯'} ${n.name}`;
+            sel.appendChild(opt);
+        });
+    }
+    if (currentVal && sel.querySelector(`option[value="${currentVal}"]`)) {
+        sel.value = currentVal;
+    }
+    updateRepurposerNicheBadge(sel.value || 'general');
 }
 
 function populateRepurposerChannels() {
@@ -6561,29 +6790,90 @@ function populateRepurposerChannels() {
     onRepurposerChannelChanged();
 }
 
-function populateRepurposerNiches() {
-    const sel = document.getElementById('repurposer-niche-select');
-    if (!sel) return;
-    sel.innerHTML = '';
-    if (!allNiches || allNiches.length === 0) {
-        sel.innerHTML = '<option value="general">🎯 Tổng Hợp & Đời Sống</option>';
-        return;
-    }
-    allNiches.forEach(n => {
-        const opt = document.createElement('option');
-        opt.value = n.id;
-        opt.textContent = `${n.badge || '🎯'} ${n.name}`;
-        sel.appendChild(opt);
-    });
-}
-
 function onRepurposerChannelChanged() {
     const chanSel = document.getElementById('repurposer-channel-select');
     const nicheSel = document.getElementById('repurposer-niche-select');
     if (!chanSel || !nicheSel) return;
     const selectedOpt = chanSel.options[chanSel.selectedIndex];
     if (selectedOpt && selectedOpt.dataset.niche) {
-        nicheSel.value = selectedOpt.dataset.niche;
+        const targetNiche = selectedOpt.dataset.niche;
+        if (nicheSel.querySelector(`option[value="${targetNiche}"]`)) {
+            nicheSel.value = targetNiche;
+        }
+    }
+    onRepurposerNicheChanged();
+}
+
+function onRepurposerNicheChanged() {
+    const chanSel = document.getElementById('repurposer-channel-select');
+    const nicheSel = document.getElementById('repurposer-niche-select');
+    const lockBadge = document.getElementById('repurposer-niche-lock-status');
+    if (!nicheSel) return;
+
+    const currentNiche = nicheSel.value;
+    const selectedChanOpt = chanSel ? chanSel.options[chanSel.selectedIndex] : null;
+    const chanNiche = selectedChanOpt ? selectedChanOpt.dataset.niche : null;
+
+    if (lockBadge) {
+        if (chanNiche && chanNiche === currentNiche) {
+            lockBadge.textContent = '🔒 Đã đồng bộ với Kênh';
+            lockBadge.style.background = 'rgba(16,185,129,0.2)';
+            lockBadge.style.color = '#10b981';
+            lockBadge.style.borderColor = 'rgba(16,185,129,0.4)';
+        } else {
+            lockBadge.textContent = '✏️ Tùy chọn độc lập';
+            lockBadge.style.background = 'rgba(245,158,11,0.2)';
+            lockBadge.style.color = '#f59e0b';
+            lockBadge.style.borderColor = 'rgba(245,158,11,0.4)';
+        }
+    }
+
+    updateRepurposerNicheBadge(currentNiche);
+}
+
+function updateRepurposerNicheBadge(nicheId) {
+    const iconEl = document.getElementById('repurposer-niche-badge-icon');
+    const titleEl = document.getElementById('repurposer-niche-badge-title');
+    const descEl = document.getElementById('repurposer-niche-badge-desc');
+    const hookEl = document.getElementById('repurposer-niche-badge-hook');
+    const bannerEl = document.getElementById('repurposer-niche-banner');
+
+    const meta = REPURPOSER_NICHE_META[nicheId] || {
+        badge: '🎯',
+        name: 'Hồ Sơ Ngách Chuẩn Hóa',
+        tone: 'Định hình kịch bản và khoảnh khắc cao trào theo từng kênh.',
+        hook_sample: 'Mở đầu ấn tượng thu hút người xem trong 3s đầu',
+        accent_color: '#38bdf8',
+        alert_tone: 'Nội dung tối ưu cho YouTube Shorts & TikTok.'
+    };
+
+    if (iconEl) iconEl.textContent = meta.badge;
+    if (titleEl) {
+        titleEl.textContent = `${meta.badge} ${meta.name}`;
+        titleEl.style.color = meta.accent_color;
+    }
+    if (descEl) {
+        descEl.innerHTML = `<strong>Tone & Style:</strong> ${escapeHtml(meta.tone)}<br><span style="color:#94a3b8; font-size:11px;">⚠️ ${escapeHtml(meta.alert_tone)}</span>`;
+    }
+    if (hookEl) {
+        hookEl.innerHTML = `💡 <strong>Hook đặc trưng:</strong> <em>"${escapeHtml(meta.hook_sample)}"</em>`;
+        hookEl.style.borderLeftColor = meta.accent_color;
+    }
+    if (bannerEl) {
+        bannerEl.style.borderColor = `${meta.accent_color}55`;
+    }
+}
+
+function toggleRepurposerDescBox() {
+    const box = document.getElementById('repurposer-desc-container');
+    const icon = document.getElementById('repurposer-desc-toggle-icon');
+    if (!box) return;
+    if (box.style.display === 'none' || !box.style.display) {
+        box.style.display = 'block';
+        if (icon) icon.textContent = '➖';
+    } else {
+        box.style.display = 'none';
+        if (icon) icon.textContent = '➕';
     }
 }
 
@@ -6664,6 +6954,7 @@ async function startRepurposerAnalysis() {
     const nicheId = document.getElementById('repurposer-niche-select')?.value || 'general';
     const chanSel = document.getElementById('repurposer-channel-select');
     const channelName = chanSel?.options[chanSel.selectedIndex]?.text || '';
+    const videoDesc = document.getElementById('repurposer-video-desc')?.value.trim() || '';
 
     const btn = document.getElementById('btn-repurposer-analyze');
     const btnText = document.getElementById('btn-repurposer-analyze-text');
@@ -6682,6 +6973,9 @@ async function startRepurposerAnalysis() {
                 niche_id: nicheId,
                 mode: mode,
                 channel_name: channelName,
+                channel_id: chanSel?.value || '',
+                target_lang: 'en',
+                video_description: videoDesc,
                 device_id: getDeviceId(),
                 device_name: getDeviceName()
             })
@@ -6807,9 +7101,12 @@ function renderRepurposerResults(data, originalSource) {
                         ${momentTypeBadge}
                         ${scoreBadge}
                     </div>
-                    <span style="font-size:12px; font-weight:700; color:#38bdf8; background:rgba(56,189,248,0.12); padding:3px 8px; border-radius:6px; border:1px solid rgba(56,189,248,0.25);">
-                        ⏱️ ${timeRangeStr}
-                    </span>
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <span style="font-size:12px; font-weight:700; color:#38bdf8; background:rgba(56,189,248,0.12); padding:3px 8px; border-radius:6px; border:1px solid rgba(56,189,248,0.25);">
+                            ⏱️ ${timeRangeStr}
+                        </span>
+                        ${(m.duration_seconds >= 48 && m.duration_seconds <= 59) ? '<span style="font-size:11px; font-weight:700; color:#10b981; background:rgba(16,185,129,0.15); padding:3px 8px; border-radius:6px; border:1px solid rgba(16,185,129,0.3);">🎯 Chuẩn 50-58s</span>' : ''}
+                    </div>
                 </div>
 
                 <div style="margin-bottom:12px;">
@@ -6924,7 +7221,7 @@ function renderRepurposerResults(data, originalSource) {
                                 </button>
                             </div>
                             <div style="font-size:11.5px; color:#cbd5e1; line-height:1.45;">
-                                ${escapeHtml(ytComment)}
+                                ${linkifyText(ytComment)}
                             </div>
                         </div>
                     </div>
@@ -6933,19 +7230,27 @@ function renderRepurposerResults(data, originalSource) {
 
             <!-- RENDER SHORT CONTROLS -->
             <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top:14px; margin-top:8px;">
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:12px; font-size:12px;">
+                <div style="display:grid; grid-template-columns: 1.2fr 1fr 0.8fr; gap:10px; margin-bottom:12px; font-size:12px;">
                     <div>
-                        <label style="font-size:11px; color:#94a3b8;">Bố Cục 9:16:</label>
+                        <label style="font-size:11px; color:#94a3b8; font-weight:600;">Bố Cục 9:16:</label>
                         <select id="moment-layout-${idx}" class="form-select" style="font-size:11px; padding:4px 8px; height:auto;">
-                            <option value="blur_background" selected>Blur Background (Chuẩn Shorts)</option>
-                            <option value="center_crop">Center Crop (Toàn màn hình)</option>
+                            <option value="smart_crop_full" selected>🚀 Fullscreen (Tự Xóa Logo)</option>
+                            <option value="blur_background">📺 Blur Box (Hộp Mờ 3 Tầng)</option>
+                            <option value="center_crop">🎯 Center Crop (Cắt Giữa)</option>
                         </select>
                     </div>
                     <div>
-                        <label style="font-size:11px; color:#94a3b8;">Phụ Đề Niche:</label>
+                        <label style="font-size:11px; color:#94a3b8; font-weight:600;">Âm Thanh:</label>
+                        <select id="moment-audio-${idx}" class="form-select" style="font-size:11px; padding:4px 8px; height:auto;">
+                            <option value="original" selected>🎵 Gốc + Lọc Anti-ID</option>
+                            <option value="ai_voiceover">🎙️ Lồng Tiếng AI + Ducking</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:11px; color:#94a3b8; font-weight:600;">Phụ Đề:</label>
                         <div style="display:flex; align-items:center; gap:6px; height:28px;">
                             <input type="checkbox" id="moment-sub-${idx}" checked style="cursor:pointer; transform:scale(1.1);">
-                            <span style="font-size:11px; color:#e2e8f0;">Đốt Sub Karaoke</span>
+                            <span style="font-size:11px; color:#e2e8f0;">Safe Zone</span>
                         </div>
                     </div>
                 </div>
@@ -7036,7 +7341,8 @@ async function renderRepurposedMoment(idx, originalSource) {
 
     const titleInput = document.getElementById(`moment-title-${idx}`);
     const title = titleInput ? titleInput.value.trim() : m.title;
-    const layout = document.getElementById(`moment-layout-${idx}`)?.value || 'blur_background';
+    const layout = document.getElementById(`moment-layout-${idx}`)?.value || 'smart_crop_full';
+    const audioMode = document.getElementById(`moment-audio-${idx}`)?.value || 'original';
     const addSub = document.getElementById(`moment-sub-${idx}`)?.checked ?? true;
     const nicheId = currentRepurposeData.niche_id || 'general';
     const mode = currentRepurposeData.mode || 'self_owned';
@@ -7046,8 +7352,8 @@ async function renderRepurposedMoment(idx, originalSource) {
         box.innerHTML = `
             <div style="text-align:center; padding:10px; background:rgba(16,185,129,0.1); border-radius:8px; border:1px solid rgba(16,185,129,0.3);">
                 <div class="spinner" style="width:18px; height:18px; border-width:2px; margin:0 auto 6px auto;"></div>
-                <div style="font-size:12px; font-weight:600; color:#10b981;">⚡ FFmpeg đang cắt 9:16 & ghép phụ đề Karaoke...</div>
-                <div style="font-size:10px; color:#94a3b8; margin-top:2px;">Quá trình mất khoảng 5 - 15 giây</div>
+                <div style="font-size:12px; font-weight:600; color:#10b981;">⚡ VAD & Smart 9:16 Render...</div>
+                <div style="font-size:10px; color:#94a3b8; margin-top:2px;">Cắt chuẩn giọng nói & lọc bản quyền (5 - 15s)</div>
             </div>
         `;
     }
@@ -7063,9 +7369,14 @@ async function renderRepurposedMoment(idx, originalSource) {
                 title: title,
                 niche_id: nicheId,
                 layout_mode: layout,
+                audio_mode: audioMode,
                 add_subtitles: addSub,
                 subtitle_text: m.transcript_snippet || m.title,
+                timed_transcript: m.timed_transcript || null,
                 mode: mode,
+                source_url: currentRepurposeData?.metadata?.webpage_url || (originalSource.startsWith('http') ? originalSource : ''),
+                author: currentRepurposeData?.metadata?.author || '',
+                channel_name: document.getElementById('repurposer-channel-select')?.options[document.getElementById('repurposer-channel-select')?.selectedIndex]?.text || '',
                 device_id: getDeviceId(),
                 device_name: getDeviceName()
             })
@@ -7082,7 +7393,7 @@ async function renderRepurposedMoment(idx, originalSource) {
         if (box) {
             box.innerHTML = `
                 <div style="display:flex; gap:8px;">
-                    <button class="btn btn-primary" onclick="openRepurposedPlayer('${data.relative_url}', '${escapeHtml(title)}')" style="flex:1; justify-content:center; background:#10b981; font-size:12px; font-weight:700;">
+                    <button class="btn btn-primary" onclick="openRepurposedPlayer('${data.relative_url}', '${escapeHtml(title)}', '${data.filename || data.relative_url.split('/').pop()}')" style="flex:1; justify-content:center; background:#10b981; font-size:12px; font-weight:700;">
                         ▶️ Xem Video Short
                     </button>
                     <a href="${data.relative_url}" download class="btn btn-secondary" style="font-size:12px; padding:6px 10px;" title="Tải về">
@@ -7247,25 +7558,134 @@ function renderFilteredRepurposedClips() {
         }
 
         const displayTitle = c.title || c.filename;
+        const pubStatus = c.publish_status || 'draft';
+        
+        let statusBadgeHtml = '';
+        let thumbStatusHtml = '';
+
+        if (pubStatus === 'published') {
+            const ytLink = c.shorts_url || c.youtube_url || (c.video_id ? `https://www.youtube.com/shorts/${c.video_id}` : '');
+            statusBadgeHtml = `
+                <span class="repurpose-status-badge badge-published" 
+                      style="font-size:10.5px; padding:2px 7px; border-radius:5px; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.35); font-weight:700; display:inline-flex; align-items:center; gap:3px; white-space:nowrap;"
+                      title="Đã đăng lên YouTube${c.published_channel_name ? ' (' + escapeHtml(c.published_channel_name) + ')' : ''}">
+                    ${ytLink ? `<a href="${ytLink}" target="_blank" style="color:#10b981; text-decoration:none; display:inline-flex; align-items:center; gap:2px;">✅ Đã đăng <span style="font-size:9px;">↗</span></a>` : '✅ Đã đăng'}
+                </span>
+            `;
+            thumbStatusHtml = `
+                <span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(16,185,129,0.92); color:#fff; font-weight:700; box-shadow:0 2px 6px rgba(0,0,0,0.5); backdrop-filter:blur(4px);">
+                    ✅ Đã đăng
+                </span>
+            `;
+        } else if (pubStatus === 'scheduled' || pubStatus === 'queued') {
+            const schedTitle = c.scheduled_at ? `Lịch: ${escapeHtml(c.scheduled_at)}` : 'Đang trong hàng đợi công chiếu';
+            statusBadgeHtml = `
+                <span class="repurpose-status-badge badge-queued" 
+                      style="font-size:10.5px; padding:2px 7px; border-radius:5px; background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.35); font-weight:700; display:inline-flex; align-items:center; gap:3px; white-space:nowrap;"
+                      title="${schedTitle}">
+                    🗓️ Hàng đợi
+                </span>
+            `;
+            thumbStatusHtml = `
+                <span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(14,165,233,0.92); color:#fff; font-weight:700; box-shadow:0 2px 6px rgba(0,0,0,0.5); backdrop-filter:blur(4px);">
+                    🗓️ Hàng đợi
+                </span>
+            `;
+        } else {
+            statusBadgeHtml = `
+                <span class="repurpose-status-badge badge-draft" 
+                      style="font-size:10.5px; padding:2px 7px; border-radius:5px; background:rgba(148,163,184,0.12); color:#94a3b8; border:1px solid rgba(148,163,184,0.25); font-weight:600; display:inline-flex; align-items:center; gap:3px; white-space:nowrap;"
+                      title="Chưa đăng lên YouTube (Bấm Xem để đăng)">
+                    ⚪ Chưa đăng
+                </span>
+            `;
+            thumbStatusHtml = `
+                <span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(71,85,105,0.85); color:#cbd5e1; font-weight:600; box-shadow:0 2px 6px rgba(0,0,0,0.4); backdrop-filter:blur(4px);">
+                    ⚪ Chưa đăng
+                </span>
+            `;
+        }
 
         card.innerHTML = `
-            <div style="position:relative; width:100%; height:160px; background:#000; border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center; cursor:pointer;" onclick="openRepurposedPlayer('${c.url}', '${escapeHtml(displayTitle)}')">
-                <video src="${c.url}#t=0.5" preload="metadata" style="width:100%; height:100%; object-fit:contain; opacity:0.85;"></video>
-                <div style="position:absolute; width:40px; height:40px; border-radius:50%; background:rgba(16,185,129,0.9); display:flex; align-items:center; justify-content:center; color:#fff; font-size:16px; box-shadow:0 4px 12px rgba(0,0,0,0.5);">
+            <div class="repurpose-card-thumb" style="position:relative; width:100%; height:160px; background:#000; border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center; cursor:pointer;" title="Bấm để xem video &amp; đăng kênh">
+                <video src="${c.url}#t=0.5" preload="metadata" style="width:100%; height:100%; object-fit:contain; opacity:0.85; pointer-events:none;"></video>
+                <div class="repurpose-play-icon" style="position:absolute; width:44px; height:44px; border-radius:50%; background:rgba(16,185,129,0.92); display:flex; align-items:center; justify-content:center; color:#fff; font-size:18px; box-shadow:0 4px 14px rgba(0,0,0,0.6); pointer-events:none;">
                     ▶
                 </div>
-                <div style="position:absolute; top:8px; left:8px; z-index:2;">
+                <div style="position:absolute; top:8px; left:8px; z-index:2; pointer-events:none;">
                     ${deviceBadgeHtml}
                 </div>
+                <div style="position:absolute; top:8px; right:8px; z-index:2; pointer-events:none;">
+                    ${thumbStatusHtml}
+                </div>
             </div>
-            <div style="font-size:12px; font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(displayTitle)}">
+            <div class="repurpose-card-title" style="font-size:12px; font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;" title="${escapeHtml(displayTitle)}">
                 ${escapeHtml(displayTitle)}
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#94a3b8;">
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#94a3b8; margin-top:2px;">
                 <span>💾 ${c.size_mb} MB</span>
-                <a href="${c.url}" download class="btn btn-secondary" style="font-size:11px; padding:3px 8px;">Tải về</a>
+                <div style="display:flex; gap:4px; align-items:center;">
+                    ${statusBadgeHtml}
+                    <button type="button" class="btn btn-primary repurposed-card-play-btn" style="font-size:11px; padding:3px 9px; background:#10b981; font-weight:700; border:none; border-radius:6px; cursor:pointer;" title="Xem video &amp; đăng kênh">▶ Xem</button>
+                    <a href="${c.url}" download class="btn btn-secondary" style="font-size:11px; padding:3px 8px; border-radius:6px;" title="Tải video về máy">⬇ Tải</a>
+                    <button type="button" class="btn btn-secondary repurposed-card-del-btn" style="font-size:11px; padding:3px 7px; color:#f87171; border-color:rgba(239,68,68,0.3); background:rgba(239,68,68,0.08); border-radius:6px; cursor:pointer;" title="Xóa video khỏi danh sách">🗑️</button>
+                </div>
             </div>
         `;
+
+        // Gắn sự kiện mở player trực tiếp qua JS event listener (tránh lỗi escape HTML onclick)
+        const handleOpen = (e) => {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            openRepurposedPlayer(c.url, displayTitle, c.filename);
+        };
+
+        const thumbEl = card.querySelector('.repurpose-card-thumb');
+        if (thumbEl) thumbEl.addEventListener('click', handleOpen);
+
+        const titleEl = card.querySelector('.repurpose-card-title');
+        if (titleEl) titleEl.addEventListener('click', handleOpen);
+
+        const playBtn = card.querySelector('.repurposed-card-play-btn');
+        if (playBtn) playBtn.addEventListener('click', handleOpen);
+
+        // Gắn sự kiện xóa video an toàn có hộp thoại xác nhận
+        const delBtn = card.querySelector('.repurposed-card-del-btn');
+        if (delBtn) {
+            delBtn.addEventListener('click', async (e) => {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+                const confirmMsg = `⚠️ Bạn có chắc muốn XÓA vĩnh viễn video này?\n\n"${displayTitle}"\n\nVideo, phụ đề và dữ liệu metadata liên quan sẽ bị xóa khỏi máy chủ.`;
+                if (!confirm(confirmMsg)) return;
+
+                delBtn.disabled = true;
+                delBtn.textContent = '⏳';
+                try {
+                    const res = await fetch(`/api/repurposer/clips/${encodeURIComponent(c.filename)}`, {
+                        method: 'DELETE'
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        showToast(data.message || 'Đã xóa video thành công!', 'success');
+                        allRepurposedClips = allRepurposedClips.filter(item => item.filename !== c.filename);
+                        renderFilteredRepurposedClips();
+                    } else {
+                        showToast(data.detail || 'Không thể xóa video', 'error');
+                        delBtn.disabled = false;
+                        delBtn.textContent = '🗑️';
+                    }
+                } catch (err) {
+                    showToast('Lỗi khi xóa video: ' + err.message, 'error');
+                    delBtn.disabled = false;
+                    delBtn.textContent = '🗑️';
+                }
+            });
+        }
+
         gallery.appendChild(card);
     });
 }
@@ -7281,19 +7701,137 @@ async function loadRepurposerClips() {
     }
 }
 
-function openRepurposedPlayer(videoUrl, title) {
+// ── Biến lưu context của clip đang mở player ──────────────────────────────────
+let _currentPlayerClipFilename = '';
+let _currentPlayerClipUrl = '';
+
+async function openRepurposedPlayer(videoUrl, title, clipFilename) {
     const modal = document.getElementById('modal-repurposed-player');
     const vidEl = document.getElementById('repurposed-video-element');
     const titleEl = document.getElementById('repurposed-player-title');
     const dlBtn = document.getElementById('repurposed-download-btn');
+    const titleInput = document.getElementById('repurposed-publish-title');
+    const descInput = document.getElementById('repurposed-publish-desc');
+    const descBox = document.getElementById('rpub-desc-box');
+    const descIcon = document.getElementById('rpub-desc-icon');
+    const statusDiv = document.getElementById('repurposed-publish-status');
 
-    if (!modal || !vidEl) return;
+    if (!modal || !vidEl) {
+        console.error('Không tìm thấy #modal-repurposed-player hoặc #repurposed-video-element');
+        return;
+    }
+
+    // Lưu context
+    _currentPlayerClipFilename = clipFilename || (videoUrl ? videoUrl.split('/').pop() : '');
+    _currentPlayerClipUrl = videoUrl;
+
+    // Tìm thông tin clip trong danh sách đã tải
+    const currentClipObj = (allRepurposedClips || []).find(item => item.filename === _currentPlayerClipFilename || item.url === videoUrl);
+
+    // Set tiêu đề header
     if (titleEl) titleEl.textContent = title || 'Xem Trước Video Short 9:16';
+
+    // Pre-fill publish title
+    if (titleInput) titleInput.value = title || '';
+
+    // Pre-fill publish description & pinned comment (tự động gắn link Store ID: kizakawa-20)
+    const pinnedCommentInput = document.getElementById('repurposed-publish-pinned-comment');
+    if (descInput) {
+        if (currentClipObj && currentClipObj.description) {
+            descInput.value = currentClipObj.description;
+            if (descBox) descBox.style.display = 'flex';
+            if (descIcon) descIcon.textContent = '➖';
+        } else {
+            descInput.value = '';
+        }
+    }
+    if (pinnedCommentInput) {
+        pinnedCommentInput.value = (currentClipObj && currentClipObj.pinned_comment) ? currentClipObj.pinned_comment : '';
+    }
+
+    // Cập nhật liên kết thử nghiệm Amazon Store ID kizakawa-20 trực tiếp
+    const amzLinkBtn = document.getElementById('repurposed-preview-amazon-link');
+    let amzUrl = currentClipObj?.amazon_product?.affiliate_url;
+    if (!amzUrl && currentClipObj?.description) {
+        const amzMatch = currentClipObj.description.match(/https:\/\/www\.amazon\.com\/[^\s]+/);
+        if (amzMatch) amzUrl = amzMatch[0];
+    }
+    if (amzLinkBtn) amzLinkBtn.href = amzUrl || 'https://www.amazon.com/s?k=wildlife+gear&tag=kizakawa-20';
+
+    // Cập nhật Pre-flight QA Banner
+    const qaBanner = document.getElementById('repurposed-qa-banner');
+    const qaText = document.getElementById('repurposed-qa-text');
+    const qaScore = document.getElementById('repurposed-qa-score');
+    if (qaBanner && qaText && qaScore) {
+        if (currentClipObj && currentClipObj.qa_report) {
+            const qr = currentClipObj.qa_report;
+            qaBanner.style.display = 'flex';
+            qaText.textContent = qr.summary || (qr.passed ? '✅ QA PASSED' : '⚠️ CẦN LƯU Ý');
+            qaScore.textContent = `${qr.score || 95}/100`;
+            if (qr.passed) {
+                qaBanner.style.borderColor = 'rgba(16,185,129,0.4)';
+                qaBanner.style.background = 'rgba(16,185,129,0.12)';
+                qaBanner.style.color = '#34d399';
+                qaScore.style.background = '#10b981';
+                qaScore.style.color = '#000';
+            } else {
+                qaBanner.style.borderColor = 'rgba(239,68,68,0.4)';
+                qaBanner.style.background = 'rgba(239,68,68,0.12)';
+                qaBanner.style.color = '#f87171';
+                qaScore.style.background = '#ef4444';
+                qaScore.style.color = '#fff';
+            }
+        } else {
+            qaBanner.style.display = 'none';
+        }
+    }
+
+    // Reset status
+    if (statusDiv) { statusDiv.style.display = 'none'; statusDiv.textContent = ''; }
+
+    // Download button
     if (dlBtn) dlBtn.href = videoUrl;
 
-    vidEl.src = videoUrl;
-    modal.classList.add('active');
-    vidEl.play().catch(() => {});
+    // HIỂN THỊ MODAL NGAY LẬP TỨC (đảm bảo hiển thị bất kể cache hay network)
+    modal.classList.add('visible', 'active');
+    modal.style.display = 'flex';
+    modal.style.opacity = '1';
+    modal.style.visibility = 'visible';
+    modal.style.zIndex = '99999';
+
+    // Đợi layout frame hoàn tất để video element nhận diện được kích thước khung hình
+    requestAnimationFrame(() => {
+        try {
+            vidEl.pause();
+            vidEl.currentTime = 0;
+            vidEl.src = videoUrl;
+            vidEl.load();
+            const playPromise = vidEl.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(err => {
+                    console.warn('Tự động phát bị chặn (chờ người dùng tương tác):', err);
+                });
+            }
+        } catch(e) {
+            console.warn('Lỗi load video element:', e);
+        }
+    });
+
+    // Duration badge
+    vidEl.onloadedmetadata = () => {
+        const durBadge = document.getElementById('repurposed-player-duration-badge');
+        if (durBadge && vidEl.duration) {
+            const d = Math.round(vidEl.duration);
+            durBadge.textContent = `⏱️ ${d}s • 9:16 Short Ready`;
+        }
+    };
+
+    // Load danh sách kênh YouTube bất đồng bộ (không chặn việc hiển thị modal)
+    try {
+        await populateRepurposedPublishChannels();
+    } catch (e) {
+        console.warn('populateRepurposedPublishChannels error:', e);
+    }
 }
 
 function closeRepurposedPlayerModal() {
@@ -7301,9 +7839,44 @@ function closeRepurposedPlayerModal() {
     const vidEl = document.getElementById('repurposed-video-element');
     if (vidEl) {
         vidEl.pause();
-        vidEl.src = '';
+        vidEl.removeAttribute('src');
+        vidEl.load();
     }
-    if (modal) modal.classList.remove('active');
+    if (modal) {
+        modal.classList.remove('visible', 'active');
+        modal.style.display = 'none';
+        modal.style.opacity = '0';
+        modal.style.visibility = 'hidden';
+    }
+    _currentPlayerClipFilename = '';
+    _currentPlayerClipUrl = '';
+}
+
+async function deleteCurrentRepurposedPlayerClip() {
+    if (!_currentPlayerClipFilename) {
+        showToast('Không xác định được file video để xóa!', 'error');
+        return;
+    }
+    const title = document.getElementById('repurposed-publish-title')?.value || _currentPlayerClipFilename;
+    const confirmMsg = `⚠️ Bạn có chắc muốn XÓA vĩnh viễn video này khỏi hệ thống?\n\n"${title}"\n\nVideo, phụ đề và metadata liên quan sẽ bị xóa hoàn toàn.`;
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        const res = await fetch(`/api/repurposer/clips/${encodeURIComponent(_currentPlayerClipFilename)}`, {
+            method: 'DELETE'
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            showToast(data.message || 'Đã xóa video thành công!', 'success');
+            allRepurposedClips = allRepurposedClips.filter(item => item.filename !== _currentPlayerClipFilename);
+            closeRepurposedPlayerModal();
+            renderFilteredRepurposedClips();
+        } else {
+            showToast(data.detail || 'Không thể xóa video', 'error');
+        }
+    } catch (err) {
+        showToast('Lỗi khi xóa video: ' + err.message, 'error');
+    }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -7637,6 +8210,155 @@ window.quickCreateFromTrend = quickCreateFromTrend;
 window.fillTopicToCreate = fillTopicToCreate;
 
 
+async function populateRepurposedPublishChannels() {
+    const sel = document.getElementById('repurposed-publish-channel');
+    if (!sel) return;
+
+    // Auto-fetch channels nếu chưa có
+    if (!allChannels || allChannels.length === 0) {
+        await fetchChannels();
+    }
+
+    sel.innerHTML = '';
+    if (!allChannels || allChannels.length === 0) {
+        sel.innerHTML = '<option value="">-- Chưa có kênh được liên kết --</option>';
+        return;
+    }
+    allChannels.forEach(ch => {
+        const opt = document.createElement('option');
+        opt.value = ch.id;
+        opt.textContent = `${ch.name} (${ch.niche || 'general'})`;
+        // Pre-select kênh khớp với niche đang chọn trong repurposer
+        const activeNiche = document.getElementById('repurposer-niche-select')?.value;
+        if (activeNiche && ch.niche === activeNiche) opt.selected = true;
+        sel.appendChild(opt);
+    });
+}
+
+function toggleRepurposedDescBox() {
+    const box = document.getElementById('rpub-desc-box');
+    const icon = document.getElementById('rpub-desc-icon');
+    if (!box) return;
+    if (box.style.display === 'none' || !box.style.display) {
+        box.style.display = 'flex';
+        if (icon) icon.textContent = '➖';
+    } else {
+        box.style.display = 'none';
+        if (icon) icon.textContent = '➕';
+    }
+}
+
+async function publishRepurposedClip(mode) {
+    // mode: 'now' = đăng ngay public | 'queue' = auto hẹn giờ vàng
+    const channelSel = document.getElementById('repurposed-publish-channel');
+    const titleInput = document.getElementById('repurposed-publish-title');
+    const descInput  = document.getElementById('repurposed-publish-desc');
+    const pinnedInput= document.getElementById('repurposed-publish-pinned-comment');
+    const tagsInput  = document.getElementById('repurposed-publish-tags');
+    const statusDiv  = document.getElementById('repurposed-publish-status');
+    const btnNow     = document.getElementById('btn-repurposed-publish');
+    const btnQueue   = document.getElementById('btn-repurposed-queue');
+
+    const channelId  = channelSel?.value;
+    const title      = titleInput?.value.trim() || '';
+    const desc       = descInput?.value.trim() || '';
+    const pinnedComm = pinnedInput?.value.trim() || '';
+    const tags       = tagsInput?.value.trim() || '';
+
+    if (!_currentPlayerClipFilename) {
+        showToast('Không xác định được file clip!', 'error');
+        return;
+    }
+    if (!channelId) {
+        showToast('Vui lòng chọn kênh YouTube đăng tải!', 'error');
+        channelSel?.focus();
+        return;
+    }
+    if (!title) {
+        showToast('Vui lòng nhập tiêu đề video!', 'error');
+        titleInput?.focus();
+        return;
+    }
+
+    const isQueue = (mode === 'queue');
+    const actionLabel = isQueue ? '🗓️ Đang lên lịch hẹn giờ vàng...' : '🚀 Đang đăng lên YouTube...';
+
+    // Disable buttons
+    if (btnNow) btnNow.disabled = true;
+    if (btnQueue) btnQueue.disabled = true;
+    if (statusDiv) {
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = 'rgba(56,189,248,0.1)';
+        statusDiv.style.color = '#38bdf8';
+        statusDiv.style.border = '1px solid rgba(56,189,248,0.3)';
+        statusDiv.textContent = actionLabel;
+    }
+
+    try {
+        const res = await fetch('/api/repurposer/publish-clip', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                clip_filename: _currentPlayerClipFilename,
+                channel_id: channelId,
+                title: title,
+                description: desc,
+                tags: tags,
+                auto_schedule: isQueue,
+                pinned_comment: pinnedComm,
+            })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.detail || 'Lỗi từ server');
+        }
+
+        // Success
+        if (statusDiv) {
+            statusDiv.style.background = 'rgba(16,185,129,0.12)';
+            statusDiv.style.color = '#10b981';
+            statusDiv.style.border = '1px solid rgba(16,185,129,0.3)';
+            const ytLink = data.shorts_url || data.youtube_url || '';
+            statusDiv.innerHTML = `
+                ${data.message || '✅ Thành công!'}<br>
+                ${ytLink ? `<a href="${escapeHtml(ytLink)}" target="_blank" style="color:#38bdf8; text-decoration:underline; font-size:11px;">🔗 Xem trên YouTube Shorts</a>` : ''}
+                ${data.scheduled_at ? `<br><span style="font-size:10.5px; color:#94a3b8;">📅 Hẹn giờ: ${escapeHtml(data.scheduled_at)}</span>` : ''}
+            `;
+        }
+
+        showToast(data.message || '🎉 Đã đăng thành công lên YouTube!', 'success');
+        // Tự động làm mới danh sách clip để cập nhật trạng thái Đã đăng / Hàng đợi
+        if (typeof loadRepurposerClips === 'function') {
+            loadRepurposerClips();
+        }
+
+    } catch (e) {
+        if (statusDiv) {
+            statusDiv.style.background = 'rgba(239,68,68,0.12)';
+            statusDiv.style.color = '#f87171';
+            statusDiv.style.border = '1px solid rgba(239,68,68,0.3)';
+            statusDiv.textContent = '❌ ' + (e.message || 'Lỗi không xác định');
+        }
+        showToast('Lỗi đăng video: ' + e.message, 'error');
+        if (typeof loadRepurposerClips === 'function') {
+            loadRepurposerClips();
+        }
+    } finally {
+        if (btnNow) btnNow.disabled = false;
+        if (btnQueue) btnQueue.disabled = false;
+    }
+}
+
+// Lắng nghe phím Escape để đóng modal xem video
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        const modal = document.getElementById('modal-repurposed-player');
+        if (modal && (modal.style.display === 'flex' || modal.classList.contains('visible') || modal.classList.contains('active'))) {
+            closeRepurposedPlayerModal();
+        }
+    }
+});
 
 async function promptRegenerateThumbnail(jobId) {
     const customText = prompt('Nhập chữ hiển thị trên Thumbnail (2-4 từ, IN HOA, cực kỳ kích thích tò mò):\n(Để trống nếu muốn AI tự tính toán theo kịch bản)', '');

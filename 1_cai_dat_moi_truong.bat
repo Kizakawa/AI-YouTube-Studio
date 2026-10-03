@@ -45,10 +45,24 @@ if %errorlevel% neq 0 (
     echo [✓] Đã có FFmpeg trên hệ thống.
 )
 
-:: 3. Cài đặt các thư viện Python
+:: 3. Khởi tạo môi trường ảo Python (venv) sạch cho máy này
+echo.
+echo ⏳ Đang kiểm tra / khởi tạo môi trường ảo Python (venv)...
+if not exist "venv\Scripts\python.exe" (
+    echo [i] Đang khởi tạo môi trường ảo tại thư mục venv...
+    python -m venv venv 2>nul || py -m venv venv
+)
+
+:: 4. Cài đặt các thư viện Python
 echo.
 echo ⏳ Đang cài đặt các thư viện cần thiết từ requirements.txt...
-pip install -r requirements.txt
+if exist "venv\Scripts\python.exe" (
+    "venv\Scripts\python.exe" -m pip install --upgrade pip
+    "venv\Scripts\python.exe" -m pip install -r requirements.txt
+) else (
+    pip install -r requirements.txt
+)
+
 if %errorlevel% neq 0 (
     echo [X] Có lỗi khi cài đặt thư viện!
     pause

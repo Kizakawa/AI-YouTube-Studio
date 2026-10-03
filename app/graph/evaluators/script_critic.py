@@ -77,12 +77,12 @@ Phong cách kênh: {channel_style}
 1. hook_strength: Cảnh 1 có đủ điện giật, đảo ngược định kiến hoặc tạo sự cấp bách tột cùng để ngăn người xem lướt qua (Swipe Away) trong 2.5s đầu không? (Cần >= 8.0).
    - Đạt điểm cao: Áp dụng 1 trong 4 công thức: Cảnh báo khẩn cấp ("Nếu bạn thấy X, TUYỆT ĐỐI KHÔNG làm Y"), Đòn tâm lý cao thủ/FBI, Quy luật bóng tối, hoặc Cú sốc ngược đời. Lời thoại 5-8 từ, dứt khoát.
    - Bị trừ nặng (< 6.0): Mở đầu kiểu sách giáo khoa, định nghĩa học thuật, bị động ("Để bắt kẻ nói dối...", "Trong tâm lý học..."), câu hỏi sáo rỗng ("Bạn có biết...").
-2. story_pacing: Nhịp điệu câu chuyện, mỗi cảnh ngắn gọn 6-10 từ (2.5-3.5s), toàn bộ video từ 20-28 giây (50-75 từ cho 6-8 cảnh), chuyển cảnh nhanh, không lê thê thừa thãi không? (Cần >= 8.0)
+2. story_pacing: Nhịp điệu câu chuyện, mỗi cảnh ngắn gọn 8-12 từ (3.0-4.5s), toàn bộ video từ 35-45 giây (80-115 từ cho 8-10 cảnh), chuyển cảnh nhanh, cấu trúc Hook -> Buildup -> Climax -> Loop, không lê thê thừa thãi không? (Cần >= 8.0)
 3. entity_coherence: Kịch bản và hình ảnh có bám chặt vào nhân vật/bối cảnh lịch sử thực tế không?
 4. visual_direction: Khả năng chỉ đạo hình ảnh & Đan xen công cụ linh hoạt (Anti-Slideshow & Tool Matching):
    - Đạt điểm cao (>= 8.5): Từ khóa visual_keyword & stock_query có động từ hành động vật lý mạnh mẽ, giàu tính điện ảnh, định hướng rõ khi nào dùng Video B-roll thực tế, khi nào dùng Video AI kỳ ảo, khi nào dùng ảnh tư liệu lịch sử.
    - Bị trừ nặng (< 6.0): Tư duy "ghép ảnh tĩnh" máy móc, dùng từ ngữ trừu tượng (psychology, success, happiness, minimalism) khiến video trở thành slideshow ảnh đơn điệu.
-5. viral_loop: Cảnh cuối có tạo vòng lặp mượt mà quay trở lại Cảnh 1 không? (Infinite Shorts Loop)
+5. viral_loop: Cảnh cuối có tạo vòng lặp mượt mà quay trở lại Cảnh 1 (Infinite Shorts Loop) với câu văn hoàn chỉnh ngữ pháp (không ngắt cụt từ nối lửng) không? (Cần >= 8.0)
 
 --- YÊU CẦU TRẢ VỀ ---
 Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với schema sau:
@@ -196,8 +196,8 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
         is_short_hook = len(words1) <= 12
         hook_score = 9.0 if (has_hook_words and is_short_hook) else (7.5 if has_hook_words or is_short_hook else 6.0)
 
-        # Kiểm tra nhịp điệu (khoảng 50 - 75 từ cho 6-8 cảnh, thời lượng vàng 20-28s)
-        pace_score = 8.5 if 45 <= total_words <= 80 and 5 <= scene_count <= 8 else 6.5
+        # Kiểm tra nhịp điệu (khoảng 80 - 115 từ cho 8-10 cảnh, thời lượng vàng 35-45s)
+        pace_score = 8.5 if 70 <= total_words <= 125 and 6 <= scene_count <= 12 else 6.5
 
         # Kiểm tra thực thể
         ent_score = 8.5
@@ -210,11 +210,11 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
         # Kiểm tra vòng lặp vô tận (Seamless Loop) ở cảnh cuối
         last_scene = scenes[-1] if scenes else {}
         last_narr = last_scene.get("narration", "").strip().lower()
-        has_loop_connector = any(last_narr.endswith(w) or f"{w}..." in last_narr for w in [
-            "because", "which is why", "and that is", "and that's why", "so that",
-            "bởi vì", "đó là lý do", "chính là vì", "và đó là", "cho nên"
-        ]) or last_narr.endswith("...")
-        loop_score = 9.0 if has_loop_connector else 6.5
+        has_loop_context = any(w in last_narr for w in [
+            "which leads to", "that's how", "it all started", "this is why", "all began",
+            "chính là lý do", "bắt đầu từ", "và đó là lúc", "và tất cả"
+        ]) or (len(last_narr.split()) >= 4 and last_narr[-1:] in (".", "!", "?"))
+        loop_score = 8.5 if has_loop_context else 7.0
 
         overall = round((hook_score * 0.3) + (pace_score * 0.25) + (ent_score * 0.25) + (vis_score * 0.1) + (loop_score * 0.1), 1)
 
@@ -222,9 +222,9 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
         if hook_score < 8.0:
             critiques.append("Cảnh 1 cần mở đầu giật gân, tạo sự tò mò sốc hoặc tâm lý nghịch đảo trong 3 giây đầu (dưới 8-10 từ).")
         if pace_score < 8.0:
-            critiques.append("Độ dài kịch bản chưa tối ưu cho Shorts (cần khoảng 50-75 từ chia đều cho 6-8 cảnh, tổng thời lượng 20-28 giây để tối đa tỷ lệ xem hết AVD).")
+            critiques.append("Độ dài kịch bản chưa tối ưu cho Shorts (cần khoảng 80-115 từ chia đều cho 8-10 cảnh, tổng thời lượng 35-45 giây để tối đa tỷ lệ xem hết AVD).")
         if loop_score < 8.0:
-            critiques.append("Cảnh cuối cần kết thúc bằng từ nối lửng (...which is why... hoặc ...because...) để tạo vòng lặp vô tận (Seamless Loop) nối mượt mà vào Cảnh 1.")
+            critiques.append("Cảnh cuối cần kết nối ý niệm mượt mà quay trở lại Cảnh 1 (Seamless Loop) và đảm bảo câu văn hoàn chỉnh ngữ pháp.")
 
         return ScriptEvaluationReport(
             hook_strength=ScriptCriteriaScore(score=hook_score, feedback="Đánh giá theo độ hấp dẫn của hook cảnh 1"),

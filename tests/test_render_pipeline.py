@@ -27,8 +27,10 @@ from app.database.models import get_db, VideoJob
 from app.schemas.contracts import ScriptContract, SceneContract
 from app.services.pipeline import VideoPipeline
 from app.utils.ffmpeg_helper import validate_output, is_ffmpeg_installed, get_ffmpeg_version
+import pytest
 
 
+@pytest.mark.anyio
 async def test_full_pipeline_render():
     print("=" * 70)
     print("🧪 KIỂM THỬ END-TO-END RENDER VIDEO THỰC TẾ (ƯU TIÊN 1)")
@@ -65,7 +67,14 @@ async def test_full_pipeline_render():
     )
 
     # 4. Lưu job vào Database
+    from app.database.models import User
     with get_db() as db:
+        u = db.query(User).filter(User.telegram_id == 123456).first()
+        if not u:
+            u = User(telegram_id=123456, username="test_user", full_name="Test User", role="admin")
+            db.add(u)
+            db.flush()
+
         job = VideoJob(
             user_id=123456,
             target_channel_id="channel_psychology",

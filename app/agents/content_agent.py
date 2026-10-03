@@ -326,17 +326,10 @@ class ContentAgent:
                     "drop your", "part 2", "phần 2", "which one", "ai trong số", "do this", "hãy thử"
                 ]
                 has_organic_cta = any(k in last_narr.lower() for k in organic_cta_keywords)
-
                 if not has_organic_cta and len(last_narr) > 0:
                     clean_narr = re.sub(r'[\s\.\,\-]+$', '', last_narr)
-                    # Kiểm tra xem có đuôi nối loop không
-                    connectors = ["because", "which is why", "and that is why", "bởi vì", "và đó là lý do", "vậy nên", "cho nên"]
-                    found_conn = None
-                    for conn in connectors:
-                        if clean_narr.lower().endswith(conn):
-                            clean_narr = clean_narr[:-len(conn)].rstrip(",. -")
-                            found_conn = conn
-                            break
+                    clean_narr = re.sub(r'[\s\.\,\-\—\…]+(?:because|which|and|so|that|but|with|or|while|as|if)[\s\.\,\-\—\…]*$', '', clean_narr, flags=re.IGNORECASE)
+                    clean_narr = clean_narr.strip().rstrip(".,-—…")
 
                     # Phân loại ngách từ ngữ cảnh kịch bản để chọn CTA phù hợp nhất
                     all_text_lower = (str(raw_data.get("topic", "")) + " " + clean_narr).lower()
@@ -384,11 +377,7 @@ class ContentAgent:
                         ]
 
                     chosen_cta = random.choice(cta_options_vi if is_vi else cta_options_en)
-
-                    if found_conn:
-                        last_scene["narration"] = f"{clean_narr}. {chosen_cta} — {found_conn}..."
-                    else:
-                        last_scene["narration"] = f"{clean_narr}. {chosen_cta}."
+                    last_scene["narration"] = f"{clean_narr}. {chosen_cta}."
                     last_scene["estimated_seconds"] = max(float(last_scene.get("estimated_seconds", 3.0)), 4.0)
 
         # Cập nhật lại full_narration để đồng bộ 100% với các scene
@@ -418,11 +407,12 @@ class ContentAgent:
         topic: str,
         channel_niche: str = "general",
         language: str = "en",
-        director_notes: Optional[str] = None
+        director_notes: Optional[str] = None,
+        cooldown_entities: Optional[List[str]] = None
     ) -> ScriptContract:
         """
-        Sinh kịch bản video Shorts viral tối ưu thuật toán giữ chân (AVD > 75%, thời lượng vàng 20-28 giây).
-        Nhịp cảnh siêu nhanh (2.5-3.5s/cảnh), Hook 3s đầu đảo ngược định kiến, vòng lặp vô tận (Infinite Shorts Loop).
+        Sinh kịch bản video Shorts viral tối ưu thuật toán giữ chân (AVD > 80%, thời lượng vàng 35-45 giây, 8-10 cảnh).
+        Nhịp cảnh dồn dập (3.0-4.5s/cảnh), Hook 3s đầu đảo ngược định kiến / cảnh báo sốc, vòng lặp vô tận (Infinite Shorts Loop).
         Đã tích hợp ghi chú đạo diễn (director_notes) và chuyển đổi ý niệm trừu tượng thành hành vi vật lý cụ thể (Physical Action Mapping).
         """
         director_block = ""
@@ -451,30 +441,31 @@ Target Language: {language} ({target_lang_display})
 ═══════════════════════════════════════════════════════════
 VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
 ═══════════════════════════════════════════════════════════
-1. ULTRA-FOCUSED DURATION (20 - 28 SECONDS TOTAL):
-   - Total spoken word count: strictly 50 to 75 words.
-   - Exact scene count: strictly 6 to 8 scenes.
-   - Pacing: 2.5 to 3.5 seconds per scene (6 to 10 words per scene).
-   - NEVER drag a scene past 4 seconds. Fast visual cuts prevent viewer swiping.
+1. ULTRA-FOCUSED DURATION (35 - 45 SECONDS TOTAL):
+   - Total spoken word count: strictly 80 to 115 words.
+   - Exact scene count: strictly 8 to 10 scenes.
+   - Pacing: 3.0 to 4.5 seconds per scene (8 to 12 words per scene).
+   - Fast visual cuts: NEVER drag a scene past 4.5 seconds. Rapid visual momentum prevents viewer swiping.
+   - Narrative Structure: Hook (Scene 1) -> Buildup & Tension (Scenes 2-4) -> Climax/Twist (Scenes 5-7) -> Seamless Loop Bridge (Scenes 8-10).
 
-2. 3-SECOND PATTERN INTERRUPT HOOK (SCENE 1) — CRITICAL TO PREVENT SWIPE-AWAY (>75% VIEWED):
+2. 3-SECOND SHOCK ANGLE HOOK (SCENE 1) — CRITICAL TO PREVENT SWIPE-AWAY (>80% VIEWED):
    - The first 2.5 seconds determines 100% of Shorts performance (Viewed vs Swiped away).
    - SCENE 1 HOOK FORMULA (MUST CHOOSE 1 OF 3 CORE FORMULAS):
-     * Formula A (Reverse Psychology): "If you have [fear/thalassophobia/dark thoughts], swipe away right now..."
-     * Formula B (Shocking Paradox / Unsolved Secret): "Why did [Authority/NASA/Scientists] abruptly abandon [Ocean/Exploration] in [Year]?"
-     * Formula C (Scale Shock / Contrast): "We know more about [Space/Mars] than what's hiding [Depth/Distance] below us..."
-   - Never start with textbook definitions, greetings, or passive statements.
-   - Scene 1 spoken text MUST be strictly 5 to 8 words, delivered with high stakes and immediate urgency.
+     * Formula 1 (Urgent Danger / Warning): "If you ever see [X], TUYỆT ĐỐI KHÔNG làm [Y]..." / "If you notice this symbol, leave immediately..."
+     * Formula 2 (Pattern Interrupt / Elite Authority Secret): "The FBI interrogator trick that exposes any liar in seconds..." / "The forbidden rule 99% of people discover too late..."
+     * Formula 3 (Dark Paradox / Hidden Archive): "Why was this ancient chamber sealed with 12 layers of solid iron?" / "The classified reason scientists abruptly abandoned this ocean trench..."
+   - Never start with textbook definitions, greetings, or passive rhetorical questions ("Did you know...").
+   - Scene 1 spoken text MUST be strictly 6 to 10 words, delivered with high stakes and immediate urgency.
    - Scene 1 visual_keyword & visual_prompt MUST be visually arresting, shocking, and intense.
 
-3. PSYCHOLOGICAL VIRAL CALL TO ACTION (CTA) & SEAMLESS INFINITE LOOP:
-   - High retention proves viewers are hooked, but without an active Call To Action, viewers swipe away without engaging!
-   - The final scene (Scene 6/7/8) MUST integrate a high-converting, natural Call To Action matching the topic angle:
-     * Psychology / Value: "Save this video before your next debate..." / "Have you seen someone use this? Drop your thoughts below..." / "Follow to master psychological defense daily..."
-     * Mystery / History: "What's your theory about this? Comment below..." / "Follow to uncover what history won't tell you..."
-     * Animal Rescue: "Every life deserves love. Follow to support more rescues..."
-     * Only use "Part 2" if the story is genuinely a multi-part series! DO NOT force Part 2 on standalone facts.
-   - HARD RULE FOR INFINITE LOOP: The very last 2-3 words of the spoken narration MUST be an open bridge/connector clause (e.g. "...because...", "...which is why...", "...và đó là lý do vì sao...", "...bởi vì...") so that when YouTube loops the video, it forms one single continuous grammatically seamless sentence into Scene 1!
+3. SEAMLESS LOOP BRIDGE (INFINITE SHORTS LOOP — APV > 150%):
+   - FORBIDDEN: NEVER narrate generic swiping triggers like "drop a comment below", "leave your thoughts", "follow for part 2", "subscribe for more". These cause viewers to swipe away before the video finishes!
+   - Engagement bait is driven by the provocative cliffhanger and the automated pinned comment, NOT by the voiceover begging for interaction.
+   - The final scene MUST act as a Seamless Loop Bridge that grammatically or conceptually flows directly back into Scene 1's hook. When the video repeats, the viewer doesn't realize it has looped until they are already several seconds into their second watch!
+   - HARD GRAMMAR & COMPLETENESS RULE:
+     * Spoken narration MUST be 100% grammatically complete with proper closing punctuation (period, exclamation, or question mark).
+     * NEVER end the script with dangling prepositions or incomplete conjunctions like 'because', 'which', 'and', 'so', 'that', 'but', 'with', 'bởi vì', etc.
+     * The video loops seamlessly through conceptual continuity (the ending thought naturally makes the viewer rethink the opening hook), NOT by cutting words in half!
 
 4. CONCRETE PHYSICAL STOCK QUERIES (NO ABSTRACT WORDS):
    - stock_query is 2-3 English search words strictly for Pexels stock video/photo search.
@@ -564,7 +555,7 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   "title": "Viral YouTube Shorts Title with Emojis",
   "primary_entity": "Full official name of main person/figure or null",
   "hook": "The opening 3-second hook sentence",
-  "full_narration": "Complete spoken text without stage directions (50-75 words)",
+  "full_narration": "Complete spoken text without stage directions (80-115 words)",
   "thumbnail_text": "2-4 TỪ IN HOA CỰC TO GỢI TÒ MÒ CHO ẢNH BÌA",
   "scenes": [
     {{
@@ -583,8 +574,55 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   "viral_formula": "Double Tap & Protect | Debate in Comments | Curiosity Part 2"
 }}
 """
-        raw_text = self._call_api(prompt, json_mode=False, timeout=30)
-        return self._parse_json_script(raw_text)
+        from app.services.content_linter import ScriptValidationLinter
+
+        max_attempts = 3
+        current_prompt = prompt
+        last_script: Optional[ScriptContract] = None
+        last_issues: List[str] = []
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                raw_text = self._call_api(current_prompt, json_mode=False, timeout=30)
+                script = self._parse_json_script(raw_text)
+                last_script = script
+
+                linter_res = ScriptValidationLinter.lint(
+                    script=script,
+                    niche_profile=niche_profile,
+                    cooldown_entities=cooldown_entities,
+                    target_wpm=niche_profile.get("target_wpm", 155)
+                )
+
+                if linter_res.is_valid:
+                    logger.info(f"✅ [ContentAgent] Script passed Quality Gate Linter on attempt {attempt}/{max_attempts}")
+                    return script
+
+                last_issues = linter_res.issues
+                logger.warning(
+                    f"⚠️ [ContentAgent] Quality Gate failed (attempt {attempt}/{max_attempts}): "
+                    f"{'; '.join(linter_res.issues)}. Retrying with corrective prompt..."
+                )
+
+                current_prompt = f"""{prompt}
+
+═══════════════════════════════════════════════════════════
+🚨 CORRECTION FEEDBACK FROM QUALITY LINTER (ATTEMPT {attempt}/{max_attempts}):
+{linter_res.retry_prompt_hint}
+PREVIOUS ATTEMPT FAILED ON:
+{'; '.join(linter_res.issues)}
+Rewrite immediately addressing ALL violations above!
+═══════════════════════════════════════════════════════════
+"""
+            except Exception as e:
+                logger.warning(f"[ContentAgent] Generation attempt {attempt} error: {e}")
+                if attempt == max_attempts and not last_script:
+                    raise
+
+        logger.error(f"❌ [ContentAgent] Script failed Quality Gate Linter after {max_attempts} attempts: {last_issues}")
+        if last_script:
+            return last_script
+        raise RuntimeError(f"Script validation failed after {max_attempts} attempts: {'; '.join(last_issues)}")
 
     def refine_script(
         self,
@@ -618,10 +656,10 @@ HARD RETENTION RULES:
    - Scene 1 spoken text must use an urgent warning, elite interrogation tactic, dark law, or counter-intuitive shock (5-8 words strictly).
    - Scene 1 visual_prompt MUST be a high-tension Primal Visual Hook deduced dynamically from the topic (e.g. scale shock, magnetic attraction, psychological threat, catastrophe). Format: "[Subject + action], [camera angle], [lighting], [environment]"
    - Scene 1 visual_keyword & stock_query MUST be concrete physical nouns (2-3 words).
-2. Fast-paced, punchy, concise sentences: strictly 20-28 seconds total (50-75 words, 6-8 scenes, 2.5-3.5s per scene).
+2. Fast-paced, punchy, concise sentences: strictly 35-45 seconds total (80-115 words, 8-10 scenes, 3.0-4.5s per scene).
 3. NO ABSTRACT stock_query: 2-3 English CONCRETE PHYSICAL NOUNS only for Pexels.
    NO "psychology", "minimalism", "authority", "power". Use physical objects/actions only.
-4. PSYCHOLOGICAL VIRAL CTA & SEAMLESS INFINITE LOOP: The final scene MUST combine a high-converting call to action (Double tap / Drop a comment / Subscribe for Part 2) with an open bridge clause ("...because...") that seamlessly connects back into Scene 1's hook.
+4. SEAMLESS LOOP BRIDGE (INFINITE SHORTS LOOP): The final scene MUST seamlessly bridge back into Scene 1's opening hook with complete grammatical closure. NEVER use generic CTAs like "drop a comment below" or "follow for part 2" in spoken narration. NEVER end with dangling prepositions or conjunctions like 'because', 'which', 'and', 'but', etc. Ensure the script ends with a complete standalone sentence!
 5. NO LITERAL METAPHORS in visual_prompt: show the actual phenomenon, not metaphorical words.
 6. NO DUPLICATE SCENES: every visual_prompt must describe a visually distinct subject and setting.
 7. LANGUAGE INTEGRITY (100% STRICT):
@@ -631,7 +669,7 @@ HARD RETENTION RULES:
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
   "hook": "The opening 3-second hook sentence",
-  "full_narration": "The full spoken text without any stage directions (50-75 words)",
+  "full_narration": "The full spoken text without any stage directions (80-115 words)",
   "scenes": [
     {{
       "scene_id": 1,
@@ -823,7 +861,7 @@ HARD RULES:
             if best_eval.hook_strength.score < 8.0:
                 critiques_list.insert(0, f"Cảnh 1 Hook bị trừ nặng ({best_eval.hook_strength.score:.1f}/10): {best_eval.hook_strength.feedback}. Bắt buộc thay thế bằng hook giật gân, đảo ngược định kiến hoặc cảnh báo cấp bách trong 5-8 từ.")
             if best_eval.story_pacing.score < 8.0:
-                critiques_list.append(f"Nhịp điệu chưa chuẩn ({best_eval.story_pacing.score:.1f}/10): {best_eval.story_pacing.feedback}. Rút gọn lời thoại strictly 50-75 từ cho toàn bộ video, 2.5-3.5s/cảnh.")
+                critiques_list.append(f"Nhịp điệu chưa chuẩn ({best_eval.story_pacing.score:.1f}/10): {best_eval.story_pacing.feedback}. Điều chỉnh lời thoại strictly 80-115 từ cho toàn bộ video, 3.0-4.5s/cảnh, 8-10 cảnh.")
             if getattr(best_eval, "visual_direction", None) and best_eval.visual_direction.score < 8.0:
                 critiques_list.append(f"Thị giác yếu ({best_eval.visual_direction.score:.1f}/10): Cấm từ ngữ trừu tượng. visual_keyword và stock_query phải là danh từ/hành động vật lý cụ thể.")
 

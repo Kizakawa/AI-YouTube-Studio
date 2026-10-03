@@ -201,8 +201,9 @@ class TestYouTubeQuotaScenarios(unittest.TestCase):
                 db.commit()
                 test_job_id = job.id
 
-            # Mock PublisherAgent.upload_video thành công khi Quota được phục hồi
-            with patch("app.agents.publisher_agent.PublisherAgent.upload_video") as mock_upload:
+            # Mock PublisherAgent.upload_video và QuotaManager.can_upload thành công khi Quota được phục hồi
+            with patch("app.agents.publisher_agent.PublisherAgent.upload_video") as mock_upload, \
+                 patch("app.services.quota_manager.QuotaManager.can_upload", return_value=True):
                 mock_upload.return_value = {
                     "status": "success",
                     "video_id": "yt_flush_123",

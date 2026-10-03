@@ -2,62 +2,88 @@ id: philosophy_stoicism
 name: Triết Học Khắc Kỷ & Nhân Sinh (Stoicism)
 badge: 🏛️ Triết Học Khắc Kỷ
 icon: 🏛️
-description: "Chủ nghĩa Khắc Kỷ (Marcus Aurelius, Seneca, Epictetus), sự bình thản trước bão giông cuộc đời, kỷ luật nội tâm và triết lý sống đỉnh cao."
-target_audience: "Người trưởng thành đang tìm kiếm sự bình yên nội tâm, vượt qua căng thẳng, thất bại và rèn luyện bản lĩnh thép."
-
+description: Chủ nghĩa Khắc Kỷ (Marcus Aurelius, Seneca, Epictetus), sự bình thản
+  trước bão giông cuộc đời, kỷ luật nội tâm và triết lý sống đỉnh cao.
+target_audience: Người trưởng thành đang tìm kiếm sự bình yên nội tâm, vượt qua căng
+  thẳng, thất bại và rèn luyện bản lĩnh thép.
 script_blueprint:
-  tone_of_voice: "Trầm lắng, sâu sắc, thông tuệ, tĩnh tại như một vị triết gia thông thái, thức tỉnh nhận thức."
-  pacing: "Vừa phải, 3.0 - 3.8 giây/cảnh, câu từ chắc nịch, có khoảng lặng suy ngẫm."
+  tone_of_voice: Trầm lắng, sâu sắc, thông tuệ, tĩnh tại như một vị triết gia thông
+    thái, thức tỉnh nhận thức.
+  pacing: Siêu nhanh 155 WPM, 2.5 - 3.2 giây/cảnh, nhịp điệu dồn dập, cao trào dồn
+    nén.
   hook_formulas:
-    - "Stoic Truth: 'Marcus Aurelius từng viết trong nhật ký lúc nửa đêm: Thứ hủy hoại bạn không phải biến cố, mà là...'"
-    - "Emotional Antidote: 'Khi cả thế giới quay lưng và bạn rơi vào bế tắc cùng cực, hãy nhớ 1 quy tắc khắc kỷ này...'"
-    - "Pain Inversion: 'Nỗi đau mà bạn đang chịu đựng hôm nay thực chất là bài test duy nhất để...'"
-    - "The Illusion of Control: '99% năng lượng của bạn đang bị lãng phí vì bạn cố kiểm soát điều này...'"
-  narrative_structure: "Hook nỗi đau nhân sinh -> Lời dạy khắc kỷ nghìn năm -> Soi chiếu vào hành vi đời thực -> Câu châm ngôn đắt giá -> CTA rèn luyện bản lĩnh & Infinite Loop"
+  - 'Stoic Truth: ''Marcus Aurelius từng viết trong nhật ký lúc nửa đêm: Thứ hủy hoại
+    bạn không phải biến cố, mà là...'''
+  - 'Emotional Antidote: ''Khi cả thế giới quay lưng và bạn rơi vào bế tắc cùng cực,
+    hãy nhớ 1 quy tắc khắc kỷ này...'''
+  - 'Pain Inversion: ''Nỗi đau mà bạn đang chịu đựng hôm nay thực chất là bài test
+    duy nhất để...'''
+  - 'The Illusion of Control: ''99% năng lượng của bạn đang bị lãng phí vì bạn cố
+    kiểm soát điều này...'''
+  narrative_structure: Hook nỗi đau nhân sinh -> Lời dạy khắc kỷ nghìn năm -> Soi
+    chiếu vào hành vi đời thực -> Câu châm ngôn đắt giá -> CTA rèn luyện bản lĩnh
+    & Infinite Loop
   forbidden_words:
-    - "Chào các bạn yêu triết học"
-    - "Hôm nay mình chia sẻ vài điều tích cực"
-    - "Hãy luôn mỉm cười và vui vẻ"
-    - "Triết học rất khó hiểu nhưng hay"
+  - Chào các bạn yêu triết học
+  - Hôm nay mình chia sẻ vài điều tích cực
+  - Hãy luôn mỉm cười và vui vẻ
+  - Triết học rất khó hiểu nhưng hay
   cta_templates:
-    - "Bạn có sẵn sàng buông bỏ điều bạn không thể kiểm soát? Nhấn thích để ghi nhớ lời nhắc này và theo dõi kênh... bởi vì..."
-    - "Lưu video này để mở lại mỗi khi bạn cảm thấy chông chênh, và đăng ký kênh rèn luyện tâm trí... bởi vì..."
+  - Bạn có sẵn sàng buông bỏ điều bạn không thể kiểm soát? Nhấn thích để ghi nhớ lời
+    nhắc này và theo dõi kênh.
+  - Lưu video này để mở lại mỗi khi bạn cảm thấy chông chênh, và đăng ký kênh rèn
+    luyện tâm trí.
   anti_hallucination_rules:
-    - "Trích dẫn đúng tư tưởng của các triết gia Khắc Kỷ cổ đại (Marcus Aurelius - Meditations, Seneca - Letters, Epictetus - Enchiridion)."
-    - "Tránh biến tướng thành sáo rỗng vô cảm."
-
+  - Trích dẫn đúng tư tưởng của các triết gia Khắc Kỷ cổ đại (Marcus Aurelius - Meditations,
+    Seneca - Letters, Epictetus - Enchiridion).
+  - Tránh biến tướng thành sáo rỗng vô cảm.
+  banned_lexicon: &id001
+  - get rich quick
+  - crypto moon
+  - lottery ticket
+  - gossip celebrity
+  - drama
 visual_aesthetics:
-  art_style: "Monochrome Classical Sculpture & Melancholic Nature"
-  camera_angles: "Dramatic slow tilt on cracked marble bust of Roman emperor, solitary figure standing on windy misty cliff"
-  color_palette: "Stormy marble gray, muted alabaster white, charcoal black, deep somber blue, antique bronze"
-  master_prompt_prefix: "breathtaking fine art photography, ancient Roman marble statue of Marcus Aurelius with weathered cracks, misty stormy mountain cliff, dramatic chiaroscuro"
-  master_prompt_suffix: "35mm black and white monochrome aesthetic with subtle warm bronze tone, hyper-detailed, vertical 9:16 cinematography, no watermark, no text"
-  negative_prompts: "neon colors, modern cars, bright cheerful party, cartoon, anime, blurry, low resolution, watermark, text"
+  art_style: Monochrome Classical Sculpture & Melancholic Nature
+  camera_angles: Dramatic slow tilt on cracked marble bust of Roman emperor, solitary
+    figure standing on windy misty cliff
+  color_palette: Stormy marble gray, muted alabaster white, charcoal black, deep somber
+    blue, antique bronze
+  master_prompt_prefix: breathtaking fine art photography, ancient Roman marble statue
+    of Marcus Aurelius with weathered cracks, misty stormy mountain cliff, dramatic
+    chiaroscuro
+  master_prompt_suffix: 35mm black and white monochrome aesthetic with subtle warm
+    bronze tone, hyper-detailed, vertical 9:16 cinematography, no watermark, no text
+  negative_prompts: neon colors, modern cars, bright cheerful party, cartoon, anime,
+    blurry, low resolution, watermark, text
   stock_video_keywords:
-    - "marble statue ancient"
-    - "man standing mountain fog"
-    - "rain hitting window glass"
-    - "candle flickering dark room"
-    - "ocean waves hitting rocks"
-
+  - marble statue ancient
+  - man standing mountain fog
+  - rain hitting window glass
+  - candle flickering dark room
+  - ocean waves hitting rocks
 subtitles:
-  font_family: "Playfair Display, Georgia, serif"
-  font_weight: "700"
+  font_family: Playfair Display, Georgia, serif
+  font_weight: '700'
   font_size: 38
-  primary_color: "#F8F9FA"
-  highlight_color: "#E2E8F0"
-  accent_color: "#CBD5E1"
-  outline_color: "#0F172A"
+  primary_color: '#F8F9FA'
+  highlight_color: '#E2E8F0'
+  accent_color: '#CBD5E1'
+  outline_color: '#0F172A'
   outline_width: 3
-  margin_bottom: 210
-
+  margin_bottom: 600
 audio:
-  preferred_voice_en: "en-US-ChristopherNeural"
-  preferred_voice_vi: "vi-VN-NamMinhNeural"
-  rate: "-5%"
-  pitch: "-4Hz"
-  bgm_vibe: "melancholic emotional solo piano, gentle rainfall ambience, deep resonant cello"
+  preferred_voice_en: en-US-ChristopherNeural
+  preferred_voice_vi: vi-VN-NamMinhNeural
+  rate: -5%
+  pitch: -4Hz
+  bgm_vibe: melancholic emotional solo piano, gentle rainfall ambience, deep resonant
+    cello
   sfx_cues:
-    - "gentle_thunder"
-    - "deep_breath"
-    - "clock_ticking"
+  - gentle_thunder
+  - deep_breath
+  - clock_ticking
+banned_lexicon: *id001
+target_wpm: 155
+monetization:
+  affiliate_enabled: false

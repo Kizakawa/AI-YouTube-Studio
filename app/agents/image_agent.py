@@ -111,6 +111,7 @@ class ImageAgent:
             if res.status_code == 200 and len(res.content) > 5000:
                 with open(output_path, "wb") as f:
                     f.write(res.content)
+                self._sanitize_ai_image(output_path)
                 logger.info(f"[ImageAgent] ✅ AI Image generated via Flux ({len(res.content):,} bytes) → {output_path}")
                 return output_path
         except Exception as e:
@@ -128,6 +129,7 @@ class ImageAgent:
             if res.status_code == 200 and len(res.content) > 5000:
                 with open(output_path, "wb") as f:
                     f.write(res.content)
+                self._sanitize_ai_image(output_path)
                 logger.info(f"[ImageAgent] ✅ AI Image fallback generated → {output_path}")
                 return output_path
         except Exception as fb_err:
@@ -292,4 +294,23 @@ class ImageAgent:
             except Exception as e:
                 logger.debug(f"[ImageAgent] Lỗi Hugging Face {model}: {e}")
         return None
+
+    def _sanitize_ai_image(self, image_path: str) -> None:
+        """
+        Loại bỏ triệt để watermark góc dưới (như @pollinations.ai) bằng cách cắt bỏ 48px chân ảnh
+        và resize giữ nguyên độ phân giải chuẩn (768x1344) với bộ lọc Lanczos cao cấp.
+        """
+        try:
+            from PIL import Image
+            if not Path(image_path).exists():
+                return
+            with Image.open(image_path) as img:
+                w, h = img.size
+                if h > 200:
+                    cropped = img.crop((0, 0, w, h - 48))
+                    final_img = cropped.resize((w, h), Image.Resampling.LANCZOS)
+                    final_img.save(image_path, quality=95)
+                    logger.debug(f"[ImageAgent] 🛡️ Đã cắt lọc watermark chân ảnh và phục hồi kích thước: {image_path}")
+        except Exception as e:
+            logger.debug(f"[ImageAgent] Bỏ qua hậu xử lý watermark: {e}")
 

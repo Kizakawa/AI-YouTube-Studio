@@ -2,62 +2,85 @@ id: scifi_future_tech
 name: Công Nghệ AI, Khoa Học & Tương Lai Viễn Tưởng
 badge: 🚀 Công Nghệ & AI
 icon: 🚀
-description: "Đột phá Trí tuệ Nhân tạo, robot hình người, thám hiểm không gian vũ trụ, máy tính lượng tử và viễn cảnh nhân loại năm 2050."
-target_audience: "Dân đam mê công nghệ, lập trình viên, người theo dõi xu hướng AI và khám phá tương lai."
-
+description: Đột phá Trí tuệ Nhân tạo, robot hình người, thám hiểm không gian vũ trụ,
+  máy tính lượng tử và viễn cảnh nhân loại năm 2050.
+target_audience: Dân đam mê công nghệ, lập trình viên, người theo dõi xu hướng AI
+  và khám phá tương lai.
 script_blueprint:
-  tone_of_voice: "Kinh ngạc, dồn dập, cảnh báo tương lai, mở ra tầm nhìn đột phá làm rung chuyển cách thế giới vận hành."
-  pacing: "Siêu nhanh, 2.2 - 2.8 giây/cảnh, hiệu ứng chuyển cảnh kỹ thuật số dồn dập."
+  tone_of_voice: Kinh ngạc, dồn dập, cảnh báo tương lai, mở ra tầm nhìn đột phá làm
+    rung chuyển cách thế giới vận hành.
+  pacing: Siêu nhanh 155 WPM, 2.5 - 3.2 giây/cảnh, nhịp điệu dồn dập, cao trào dồn
+    nén.
   hook_formulas:
-    - "AI Takeover Shock: 'Chỉ trong 48 giờ qua, một AI bí mật đã tự viết lại mã nguồn và bắt đầu...'"
-    - "Timeline Warning: 'Năm 2030, 80% công việc văn phòng hiện tại sẽ biến mất vì công nghệ này...'"
-    - "Cosmic Mystery: 'Kính viễn vọng James Webb vừa bắt được một tín hiệu vô tuyến không thể giải thích từ...'"
-    - "Bio-Tech Breakthrough: 'Các nhà khoa học vừa tạo ra con chip cấy trực tiếp vào não cho phép...'"
-  narrative_structure: "Hook công nghệ gây sốc -> Minh họa sức mạnh vượt trội -> Tác động trực tiếp đến đời sống người xem -> Dự đoán viễn cảnh tương lai -> CTA đón đầu xu hướng & Infinite Loop"
+  - 'AI Takeover Shock: ''Chỉ trong 48 giờ qua, một AI bí mật đã tự viết lại mã nguồn
+    và bắt đầu...'''
+  - 'Timeline Warning: ''Năm 2030, 80% công việc văn phòng hiện tại sẽ biến mất vì
+    công nghệ này...'''
+  - 'Cosmic Mystery: ''Kính viễn vọng James Webb vừa bắt được một tín hiệu vô tuyến
+    không thể giải thích từ...'''
+  - 'Bio-Tech Breakthrough: ''Các nhà khoa học vừa tạo ra con chip cấy trực tiếp vào
+    não cho phép...'''
+  narrative_structure: Hook công nghệ gây sốc -> Minh họa sức mạnh vượt trội -> Tác
+    động trực tiếp đến đời sống người xem -> Dự đoán viễn cảnh tương lai -> CTA đón
+    đầu xu hướng & Infinite Loop
   forbidden_words:
-    - "Chào mừng các bạn đến với tin công nghệ hôm nay"
-    - "AI đang phát triển rất mạnh mẽ"
-    - "Công nghệ rất có ích cho con người"
-    - "Cảm ơn các bạn đã theo dõi kênh"
+  - Chào mừng các bạn đến với tin công nghệ hôm nay
+  - AI đang phát triển rất mạnh mẽ
+  - Công nghệ rất có ích cho con người
+  - Cảm ơn các bạn đã theo dõi kênh
   cta_templates:
-    - "Bạn nghĩ con người hay AI sẽ thắng trong 5 năm tới? Bình luận ý kiến và đăng ký kênh để không bị bỏ lại phía sau... bởi vì..."
-    - "Lưu lại video này để kiểm chứng vào năm 2030, và theo dõi kênh ngay... bởi vì..."
+  - Bạn nghĩ con người hay AI sẽ thắng trong 5 năm tới? Bình luận ý kiến và đăng ký
+    kênh để không bị bỏ lại phía sau.
+  - Lưu lại video này để kiểm chứng vào năm 2030, và theo dõi kênh ngay.
   anti_hallucination_rules:
-    - "Bám sát các mô hình AI có thật (GPT, Claude, Gemini, Sora, Tesla Optimus, Neuralink, Starship)."
-    - "Không tung tin đồn vô căn cứ kiểu 'ngày tận thế tuần sau'."
-
+  - Bám sát các mô hình AI có thật (GPT, Claude, Gemini, Sora, Tesla Optimus, Neuralink,
+    Starship).
+  - Không tung tin đồn vô căn cứ kiểu 'ngày tận thế tuần sau'.
+  banned_lexicon: &id001
+  - horse carriage
+  - ancient pyramid
+  - medieval sword
+  - magic spell
+  - witchcraft
 visual_aesthetics:
-  art_style: "Cyberpunk Neon & Holographic Octane 3D"
-  camera_angles: "Macro electronic microchip zoom, panoramic neon futuristic megacity, robotic optic lens scan"
-  color_palette: "Cyber cyan, neon purple, electric blue, deep space void black, holographic iridescence"
-  master_prompt_prefix: "futuristic scifi cinematic film still, neon cyberpunk metropolis, glowing holographic interfaces, advanced AI robotics, Octane render 8k"
-  master_prompt_suffix: "volumetric laser lighting, hyper-realistic reflections, vertical 9:16 cinematography, no text, no watermark"
-  negative_prompts: "vintage, rustic, ancient, historical, cartoon, anime, blurry, low resolution, watermark, text"
+  art_style: Cyberpunk Neon & Holographic Octane 3D
+  camera_angles: Macro electronic microchip zoom, panoramic neon futuristic megacity,
+    robotic optic lens scan
+  color_palette: Cyber cyan, neon purple, electric blue, deep space void black, holographic
+    iridescence
+  master_prompt_prefix: futuristic scifi cinematic film still, neon cyberpunk metropolis,
+    glowing holographic interfaces, advanced AI robotics, Octane render 8k
+  master_prompt_suffix: volumetric laser lighting, hyper-realistic reflections, vertical
+    9:16 cinematography, no text, no watermark
+  negative_prompts: vintage, rustic, ancient, historical, cartoon, anime, blurry,
+    low resolution, watermark, text
   stock_video_keywords:
-    - "hologram technology interface"
-    - "robot humanoid walking"
-    - "futuristic city night neon"
-    - "microchip glowing circuit"
-    - "deep space stars galaxy"
-
+  - hologram technology interface
+  - robot humanoid walking
+  - futuristic city night neon
+  - microchip glowing circuit
+  - deep space stars galaxy
 subtitles:
-  font_family: "Orbitron, Montserrat, sans-serif"
-  font_weight: "900"
+  font_family: Orbitron, Montserrat, sans-serif
+  font_weight: '900'
   font_size: 40
-  primary_color: "#FFFFFF"
-  highlight_color: "#00F0FF"
-  accent_color: "#BF00FF"
-  outline_color: "#001020"
+  primary_color: '#FFFFFF'
+  highlight_color: '#00F0FF'
+  accent_color: '#BF00FF'
+  outline_color: '#001020'
   outline_width: 3
-  margin_bottom: 210
-
+  margin_bottom: 600
 audio:
-  preferred_voice_en: "en-US-BrianNeural"
-  preferred_voice_vi: "vi-VN-NamMinhNeural"
-  rate: "+2%"
-  pitch: "0Hz"
-  bgm_vibe: "futuristic synth pulse, cyberpunk electronic arpeggio, deep bass riser"
+  preferred_voice_en: en-US-BrianNeural
+  preferred_voice_vi: vi-VN-NamMinhNeural
+  rate: +2%
+  pitch: 0Hz
+  bgm_vibe: futuristic synth pulse, cyberpunk electronic arpeggio, deep bass riser
   sfx_cues:
-    - "digital_glitch"
-    - "laser_sweep"
-    - "sci_fi_hum"
+  - digital_glitch
+  - laser_sweep
+  - sci_fi_hum
+banned_lexicon: *id001
+target_wpm: 155
+monetization:
+  affiliate_enabled: false
