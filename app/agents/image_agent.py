@@ -18,6 +18,19 @@ def master_cinematic_prompt(raw_prompt: str, scene_id: int = 0, niche_id: str = 
     """
     try:
         from app.services.niche_manager import get_niche, build_image_prompt
+        if niche_id in ("general", "auto", ""):
+            from app.agents.scifi_visual_dispatcher_agent import SciFiVisualDispatcherAgent
+            scifi_agent = SciFiVisualDispatcherAgent()
+            is_scifi, _, _, _ = scifi_agent.detect_scifi_elements(topic=raw_prompt, visual_prompt=raw_prompt)
+            if is_scifi:
+                niche_id = "scifi_future_tech"
+            else:
+                from app.agents.wildlife_visual_dispatcher_agent import WildlifeVisualDispatcherAgent
+                w_agent = WildlifeVisualDispatcherAgent()
+                is_wl, _, subg, _ = w_agent.detect_wildlife_elements(topic=raw_prompt, visual_prompt=raw_prompt)
+                if is_wl:
+                    niche_id = "animal_rescue" if subg == "animal_rescue_pets" else "wildlife_predators"
+
         niche_profile = get_niche(niche_id)
         full_prompt, _ = build_image_prompt(raw_prompt, scene_id=scene_id, niche_profile=niche_profile)
         return full_prompt

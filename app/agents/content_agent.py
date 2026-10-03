@@ -403,6 +403,12 @@ class ContentAgent:
             raw_data["total_duration_estimate"] = sum(s.get("estimated_seconds", 3.5) for s in scenes if isinstance(s, dict)) or 25.0
         if "topic" not in raw_data or not raw_data["topic"]:
             raw_data["topic"] = raw_data.get("title", "Shorts Video")
+        if "thumbnail_text" not in raw_data or not raw_data["thumbnail_text"]:
+            try:
+                from app.services.thumbnail_service import ThumbnailService
+                raw_data["thumbnail_text"] = ThumbnailService().derive_curiosity_text(topic=raw_data.get("topic", ""), viral_title=raw_data.get("title", ""))
+            except Exception:
+                raw_data["thumbnail_text"] = "SỰ THẬT TÀN KHỐC!"
 
         return ScriptContract(**raw_data)
 
@@ -534,6 +540,23 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
    - 'documentary': Authentic historical figures (e.g. Einstein, Napoleon), real artifacts, or historical events (searches Wikimedia / historical archive).
    DO NOT default all scenes to one single type! Intelligently vary and balance media types across scenes for maximum viewer engagement.
 
+10. NỘI DUNG CHẠM CẢM XÚC & NỖI LÒNG SỐ ĐÔNG (EMOTIONAL RESONANCE & STORYTELLING):
+   - Đánh trúng 1 trong 4 cảm xúc cực mạnh của số đông: Nỗi đau/sự bất công thầm kín, nỗi sợ bị tụt hậu (FOMO), khát khao khẳng định giá trị bản thân, hoặc sự tò mò chấn động trước bí mật bị che giấu.
+   - BẮT BUỘC LỒNG GHÉP ÍT NHẤT 1-2 CON SỐ CỤ THỂ GÂY SỐC:
+     * Ví dụ: "97% mọi người đều mắc bẫy này...", "Chỉ trong 3 giây tiếp theo...", "Ở độ tuổi 25-35...", "Lực cắn 4,000 PSI...", "Chỉ 0.01% người nhận ra sự thật...".
+     * Con số cụ thể tạo tính xác thực tức thì và thôi miên não bộ người xem tiếp tục theo dõi.
+   - Cấu trúc kể chuyện lôi cuốn (Narrative Arc): Mở đầu bằng nỗi đau/nghịch lý số đông -> Cú ngoặt bất ngờ (Twist) -> Giải pháp chạm đáy cảm xúc -> Kết nối vòng lặp vô tận (Infinite Loop).
+
+11. TỐI ƯU 50% THỜI LƯỢNG ĐẦU & NHỊP BIÊN TẬP NHANH (THE 50% FRONTLOAD RULE):
+   - 50% thời lượng đầu (Scenes 1 đến 3) quyết định 90% sự thành bại của video Shorts.
+   - Cảnh 1 đóng vai trò như một đoạn Micro-Trailer giật gân, hé lộ ngay hình ảnh hoặc khoảnh khắc kịch tính nhất của video.
+   - Nhịp biên tập (Pacing) của các cảnh trong 50% đầu phải cực nhanh: mỗi cảnh chỉ từ 2.0 - 3.2 giây.
+   - Cắt cảnh phụ (B-roll / Chuyển cảnh) dồn dập mỗi 3-5 giây để giữ dopamine người xem ở mức cao nhất, triệt tiêu tỷ lệ swipe-away.
+
+12. TỐI ƯU ẢNH BÌA THỊ TRƯỜNG 1 GIÂY (THUMBNAIL HOOK TEXT):
+   - Trường "thumbnail_text" TRẢ VỀ DUY NHẤT 2-4 TỪ IN HOA CỰC TO, GIẬT GÂN, TƯƠNG PHẢN CAO.
+   - Không lặp lại nguyên văn tiêu đề mà khơi gợi câu hỏi chưa có lời đáp (Ví dụ: 'SỰ THẬT TÀN KHỐC!', 'ĐỪNG LÀM ĐIỀU NÀY!', '0.01% BIẾT ĐIỀU NÀY', 'CÚ SỐC THỊ GIÁC').
+
 ═══════════════════════════════════════════════════════════
 OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
 ═══════════════════════════════════════════════════════════
@@ -542,6 +565,7 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   "primary_entity": "Full official name of main person/figure or null",
   "hook": "The opening 3-second hook sentence",
   "full_narration": "Complete spoken text without stage directions (50-75 words)",
+  "thumbnail_text": "2-4 TỪ IN HOA CỰC TO GỢI TÒ MÒ CHO ẢNH BÌA",
   "scenes": [
     {{
       "scene_id": 1,

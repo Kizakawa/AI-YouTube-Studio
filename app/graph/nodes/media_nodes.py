@@ -27,6 +27,29 @@ from app.graph.state import VideoWorkflowState
 logger = logging.getLogger(__name__)
 
 
+def _scene_audio_duration(work_dir: Path, scene_id: int, default: float = 6.0) -> float:
+    """
+    Độ dài thực tế lời thoại của cảnh (giây) để clip thay thế đủ dài, không bị renderer lặp lại (stream_loop).
+    Đọc audio/scene_XXX.meta.json → ffprobe mp3 → mặc định.
+    """
+    try:
+        import json as _json
+        meta = work_dir / "audio" / f"scene_{scene_id:03d}.meta.json"
+        if meta.exists():
+            ms = _json.loads(meta.read_text(encoding="utf-8")).get("duration_ms") or 0
+            if ms > 300:
+                return round(ms / 1000.0 + 0.3, 2)
+        mp3 = work_dir / "audio" / f"scene_{scene_id:03d}.mp3"
+        if mp3.exists():
+            from app.utils.ffmpeg_helper import get_duration_ms
+            ms = get_duration_ms(str(mp3))
+            if ms > 300:
+                return round(ms / 1000.0 + 0.3, 2)
+    except Exception:
+        pass
+    return default
+
+
 async def node_direct_visual_strategy(state: VideoWorkflowState) -> Dict[str, Any]:
     """
     Node Đạo Diễn Chiến Lược & Phương Pháp Làm Video (Video Strategist Agent).
@@ -224,6 +247,32 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             logger.info(f"Scene {scene.scene_id}: 📸 [Tư liệu thật] Tải từ {c_src}: {candidate_media.get('title', '')[:40]}")
                 except Exception as e:
                     logger.debug(f"Scene {scene.scene_id}: Doc search error: {e}")
+
+            # C. Ảnh Internet có giấy phép (Openverse/Flickr, Commons, Unsplash) + stock do AI Vision tuyển chọn
+            if not media_path:
+                try:
+                    best_photo = await asyncio.to_thread(
+                        media_agent.search_best_photo,
+                        search_query or sq or kw,
+                        used_pool_urls,
+                        v_analysis,
+                        scene.narration,
+                        state.get("topic", ""),
+                    )
+                    if best_photo and best_photo.get("url"):
+                        src = best_photo.get("source", "web")
+                        output = str(media_dir / f"scene_{scene.scene_id:03d}_{src}_doc.jpg")
+                        await asyncio.to_thread(media_agent.download_file, best_photo["url"], output)
+                        if Path(output).exists() and Path(output).stat().st_size > 3000:
+                            used_pool_urls.add(best_photo["url"])
+                            media_path = output
+                            media_type = "image"
+                            logger.info(
+                                f"Scene {scene.scene_id}: 📸 [Tư liệu web có giấy phép] {src} "
+                                f"điểm {best_photo.get('curation_score', '-')}: {str(best_photo.get('title', ''))[:45]}"
+                            )
+                except Exception as e:
+                    logger.debug(f"Scene {scene.scene_id}: Curated web photo error: {e}")
 
         # ══════════════════════════════════════════════════════════════════════
         # PHƯƠNG PHÁP 2: IMAGE_TO_VIDEO (Tạo video phụ thuộc vào ảnh chủ đề 8K)
@@ -491,23 +540,31 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             except Exception as e_fb_ai:
                 logger.debug(f"Scene {scene.scene_id}: AI image fallback error: {e_fb_ai}")
 
-        # Fallback 4: Thử tìm ảnh Pexels Photo HD chân thực 9:16
+        # Fallback 4: Ảnh tĩnh HD đa nguồn (Pexels + Pixabay + Openverse) do AI Vision tuyển chọn
         if not media_path:
             try:
                 clean_q = search_query or sq or kw
-                clean_kw = clean_scene_search_query(clean_q, max_words=3)
-                px_photos = await asyncio.to_thread(media_agent.search_photos, clean_kw, per_page=3, orientation="portrait")
-                for p in px_photos:
-                    img_url = p.get("src", {}).get("large2x") or p.get("src", {}).get("portrait")
-                    if img_url and img_url not in used_pool_urls:
-                        out_img = str(media_dir / f"scene_{scene.scene_id:03d}_pexels_photo.jpg")
-                        await asyncio.to_thread(media_agent.download_file, img_url, out_img)
-                        if Path(out_img).exists() and Path(out_img).stat().st_size > 3000:
-                            used_pool_urls.add(img_url)
-                            media_path = out_img
-                            media_type = "image"
-                            logger.info(f"Scene {scene.scene_id}: 📸 Fallback thành công với Pexels Photo: {clean_kw}")
-                            break
+                best_photo = await asyncio.to_thread(
+                    media_agent.search_best_photo,
+                    clean_q,
+                    used_pool_urls,
+                    v_analysis,
+                    scene.narration,
+                    state.get("topic", ""),
+                )
+                if best_photo and best_photo.get("url"):
+                    img_url = best_photo["url"]
+                    src = best_photo.get("source", "stock")
+                    out_img = str(media_dir / f"scene_{scene.scene_id:03d}_{src}_photo.jpg")
+                    await asyncio.to_thread(media_agent.download_file, img_url, out_img)
+                    if Path(out_img).exists() and Path(out_img).stat().st_size > 3000:
+                        used_pool_urls.add(img_url)
+                        media_path = out_img
+                        media_type = "image"
+                        logger.info(
+                            f"Scene {scene.scene_id}: 📸 Ảnh tuyển chọn ({src}) "
+                            f"điểm {best_photo.get('curation_score', '-')}: {str(best_photo.get('title', ''))[:50]}"
+                        )
             except Exception as fb3_e:
                 logger.debug(f"Scene {scene.scene_id}: Fallback photo error: {fb3_e}")
 
@@ -630,7 +687,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         res_vid = await ai_video_agent.generate_image_to_video(
                             prompt=vp or kw,
                             output_path=ai_v_path,
-                            duration_seconds=3.5,
+                            duration_seconds=_scene_audio_duration(work_dir, scene_id),
                             scene_id=scene_id,
                             visual_prompt=vp,
                             narration=narr,
@@ -828,7 +885,7 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
                 res_v = await ai_video_agent.generate_text_to_video(
                     prompt=prompt_part or query_part,
                     output_path=ai_v_path,
-                    duration_seconds=3.5,
+                    duration_seconds=_scene_audio_duration(work_dir, scene_id),
                     scene_id=scene_id,
                     visual_prompt=prompt_part,
                     narration=narr,
@@ -848,7 +905,7 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
                 res_v = await ai_video_agent.generate_image_to_video(
                     prompt=prompt_part or query_part,
                     output_path=ai_v_path,
-                    duration_seconds=3.5,
+                    duration_seconds=_scene_audio_duration(work_dir, scene_id),
                     scene_id=scene_id,
                     visual_prompt=prompt_part,
                     narration=narr,

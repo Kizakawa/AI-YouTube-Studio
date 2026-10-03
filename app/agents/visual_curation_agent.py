@@ -42,24 +42,38 @@ class VisualCurationAgent:
         keys = settings.get_gemini_keys_pool()
         self.rotator = KeyRotator(keys) if keys else None
 
-    def _call_gemini_json(self, prompt: str, timeout: int = 15) -> Optional[Dict[str, Any]]:
-        """Gọi Gemini API trả về JSON với KeyRotator và fallback an toàn."""
+    def _call_gemini_json(
+        self,
+        prompt: str,
+        timeout: int = 15,
+        images: Optional[List[Tuple[str, str]]] = None,
+        models: Optional[List[str]] = None,
+        max_attempts: Optional[int] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Gọi Gemini API trả về JSON với KeyRotator và fallback an toàn.
+        images: danh sách (mime_type, base64_data) để gửi kèm (Gemini Vision).
+        """
         if not self.rotator:
             return None
 
         import requests
         total_keys = max(len(self.rotator.keys), 1)
 
-        for attempt in range(total_keys * 2):
+        parts: List[Dict[str, Any]] = [{"text": prompt}]
+        for mime, b64 in (images or []):
+            parts.append({"inline_data": {"mime_type": mime, "data": b64}})
+
+        for attempt in range(max_attempts or total_keys * 2):
             key = self.rotator.get_key()
             if not key:
                 return None
 
             key_failed = False
-            for model in AVAILABLE_MODELS:
+            for model in (models or AVAILABLE_MODELS):
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
                 payload = {
-                    "contents": [{"parts": [{"text": prompt}]}],
+                    "contents": [{"parts": parts}],
                     "generationConfig": {
                         "temperature": 0.2,
                         "responseMimeType": "application/json",
@@ -259,6 +273,164 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
         }
 
     # ──────────────────────────────────────────────────────────────────────────
+    # PHASE 1.5: AI VISION — NHÌN THẬT THUMBNAIL ĐỂ CHẤM ĐỘ HẤP DẪN & LIÊN QUAN
+    # ──────────────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _vision_enabled() -> bool:
+        import os
+        return os.getenv("ENABLE_VISION_CURATION", "true").strip().lower() not in ("0", "false", "no", "off")
+
+    @staticmethod
+    def _fetch_thumbnail_b64(url: str, timeout: int = 6) -> Optional[Tuple[str, str]]:
+        """Tải thumbnail nhỏ của ứng viên và trả về (mime, base64). Bỏ qua ảnh quá lớn / lỗi."""
+        if not url:
+            return None
+        import base64
+        import requests
+        try:
+            ua = "Mozilla/5.0 AIYouTubeStudio/2.0"
+            if "wikimedia.org" in url or "wikipedia.org" in url:
+                from app.services.media.entity_detector import WIKIMEDIA_USER_AGENT
+                ua = WIKIMEDIA_USER_AGENT
+            res = requests.get(url, timeout=timeout, headers={"User-Agent": ua})
+            if res.status_code != 200 or not res.content:
+                return None
+            data = res.content
+            if len(data) < 1500 or len(data) > 2_500_000:
+                return None
+            mime = (res.headers.get("Content-Type") or "image/jpeg").split(";")[0].strip()
+            if not mime.startswith("image/"):
+                mime = "image/jpeg"
+            return mime, base64.b64encode(data).decode("ascii")
+        except Exception:
+            return None
+
+    def vision_rank_candidates(
+        self,
+        candidates: List[Dict[str, Any]],
+        narration: str,
+        topic: str = "",
+        visual_analysis: Optional[Dict[str, Any]] = None,
+        kind: str = "video",
+        max_candidates: int = 8,
+    ) -> Optional[Tuple[int, float, str]]:
+        """
+        Gemini Vision nhìn trực tiếp thumbnail của từng ứng viên và chấm:
+          - relevance (0-10): khớp lời thoại / chủ đề / không khí cảnh.
+          - appeal    (0-10): độ hấp dẫn thị giác (bố cục, ánh sáng, màu, độ nét, sức hút giữ chân).
+        Mỗi candidate cần có khóa 'thumbnail' (URL ảnh xem trước).
+
+        Returns: (best_index, combined_score, rationale) hoặc None nếu Vision không khả dụng
+                 (caller sẽ tự fallback về tuyển chọn bằng văn bản).
+                 best_index = -1 nghĩa là Vision từ chối toàn bộ ứng viên.
+        """
+        if not self.rotator or not self._vision_enabled() or not candidates:
+            return None
+
+        from concurrent.futures import ThreadPoolExecutor
+
+        pool = candidates[:max_candidates]
+        with ThreadPoolExecutor(max_workers=min(8, len(pool))) as ex:
+            thumbs = list(ex.map(lambda c: self._fetch_thumbnail_b64(c.get("thumbnail", "")), pool))
+
+        indexed = [(i, t) for i, t in enumerate(thumbs) if t]
+        if len(indexed) < 1:
+            return None
+
+        va = visual_analysis or {}
+        mood = va.get("mood", "cinematic")
+        metaphor = va.get("visual_metaphor", "")
+        negative_cues = va.get("negative_cues", [])
+
+        meta_lines = []
+        for img_no, (orig_idx, _) in enumerate(indexed):
+            c = pool[orig_idx]
+            w, h = c.get("width") or 0, c.get("height") or 0
+            orient = "dọc 9:16" if (w and h and h >= w) else ("ngang" if (w and h) else "không rõ")
+            desc = (c.get("description") or c.get("title") or c.get("alt") or "")[:90]
+            meta_lines.append(f"- Ảnh #{img_no}: nguồn={c.get('source', 'stock')}, bố cục={orient}, mô tả='{desc}'")
+
+        prompt = f"""
+Bạn là Giám Đốc Hình Ảnh (Director of Photography) cho kênh YouTube Shorts triệu view.
+Bạn được xem {len(indexed)} ảnh thumbnail của các {'video clip' if kind == 'video' else 'bức ảnh'} ứng viên (theo đúng thứ tự Ảnh #0, #1, ...).
+Hãy NHÌN KỸ từng ảnh và chọn ứng viên vừa ĐÚNG NỘI DUNG vừa HẤP DẪN THỊ GIÁC NHẤT cho phân cảnh.
+
+PHÂN CẢNH:
+- Chủ đề video: "{topic}"
+- Lời thoại: "{narration}"
+- Ý niệm thị giác: "{metaphor}"
+- Không khí (mood): "{mood}"
+- Yếu tố cấm kỵ: {json.dumps(negative_cues, ensure_ascii=False)}
+
+THÔNG TIN ỨNG VIÊN:
+{chr(10).join(meta_lines)}
+
+TIÊU CHÍ CHẤM (mỗi ứng viên):
+1. relevance (0-10): Hình ảnh có thể hiện đúng chủ thể/hành động/cảm xúc của lời thoại không? Lạc đề, sai thời đại, sai thể loại -> dưới 4.
+2. appeal (0-10): Sức hút thị giác giữ chân người xem: chủ thể rõ ràng, bố cục mạnh, ánh sáng điện ảnh, màu sắc ấn tượng, sắc nét, có chiều sâu/cảm xúc. Ảnh nhạt nhòa, mờ, chung chung, stock sến, có chữ/watermark -> dưới 5.
+3. Ưu tiên bố cục dọc hoặc chủ thể nằm giữa (dễ cắt 9:16).
+
+TRẢ VỀ JSON DUY NHẤT:
+{{
+  "scores": [{{"image": 0, "relevance": 8.0, "appeal": 7.5}}],
+  "best_image": 0,
+  "rationale": "1 câu giải thích vì sao chọn (hoặc vì sao từ chối tất cả)",
+  "reject_all": false
+}}
+Nếu KHÔNG ảnh nào có relevance >= 5 -> đặt best_image = -1 và reject_all = true.
+"""
+        res = self._call_gemini_json(
+            prompt,
+            timeout=25,
+            images=[t for _, t in indexed],
+            models=["gemini-flash-latest", "gemini-flash-lite-latest"],
+            max_attempts=3,
+        )
+        if not res:
+            return None
+
+        try:
+            score_map: Dict[int, Tuple[float, float]] = {}
+            for s in res.get("scores", []) or []:
+                img_no = int(s.get("image", -1))
+                if 0 <= img_no < len(indexed):
+                    score_map[img_no] = (float(s.get("relevance", 0) or 0), float(s.get("appeal", 0) or 0))
+
+            rationale = str(res.get("rationale", ""))[:200]
+            if res.get("reject_all") or int(res.get("best_image", -1)) < 0:
+                logger.info(f"👁️ [VisionCuration] Từ chối toàn bộ {len(indexed)} ứng viên {kind}: {rationale}")
+                return -1, 0.0, rationale
+
+            # Chọn theo điểm tổng hợp (60% liên quan + 40% hấp dẫn), bắt buộc relevance >= 5
+            best_img, best_combined = -1, -1.0
+            for img_no, (rel, app) in score_map.items():
+                if rel < 5.0:
+                    continue
+                combined = 0.6 * rel + 0.4 * app
+                if combined > best_combined:
+                    best_img, best_combined = img_no, combined
+
+            if best_img < 0:
+                suggested = int(res.get("best_image", -1))
+                if 0 <= suggested < len(indexed) and suggested not in score_map:
+                    best_img, best_combined = suggested, 6.0
+                else:
+                    logger.info(f"👁️ [VisionCuration] Không ứng viên {kind} nào đạt relevance >= 5: {rationale}")
+                    return -1, 0.0, rationale
+
+            orig_idx = indexed[best_img][0]
+            rel, app = score_map.get(best_img, (best_combined, best_combined))
+            logger.info(
+                f"👁️ [VisionCuration] ✅ Chọn {kind} #{orig_idx} ({pool[orig_idx].get('source', 'stock')}) | "
+                f"Liên quan {rel:.1f} · Hấp dẫn {app:.1f} · Tổng {best_combined:.1f}/10 | {rationale}"
+            )
+            return orig_idx, round(best_combined, 2), rationale
+        except Exception as e:
+            logger.debug(f"[VisionCuration] Parse error: {e}")
+            return None
+
+    # ──────────────────────────────────────────────────────────────────────────
     # PHASE 2: ĐÁNH GIÁ & TUYỂN CHỌN ỨNG VIÊN TƯ LIỆU (CANDIDATE CURATION)
     # ──────────────────────────────────────────────────────────────────────────
 
@@ -282,7 +454,21 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
         if not candidates:
             return None, 0.0, "Không có ứng viên video nào từ kho tư liệu.", True
 
-        # 1. Tiền lọc: Chỉ giữ video có file dọc MP4, thời lượng hợp lệ, chưa từng sử dụng
+        # 1. Tiền lọc: Chỉ giữ video có file MP4 hợp lệ, chưa từng sử dụng
+        #    - Pexels: chọn file dọc, ưu tiên 1080x1920 (tải nhanh, đủ nét) thay vì 4K nặng.
+        #    - Pixabay / NASA: đã được chuẩn hóa sẵn (url trực tiếp + thumbnail).
+        def _res_pref(vf: Dict[str, Any]) -> int:
+            h = vf.get("height", 0) or 0
+            if h == 1920:
+                return 10000
+            if 1280 <= h < 1920:
+                return 8000 + h
+            if 720 <= h < 1280:
+                return 6000 + h
+            if h > 1920:
+                return 4000 - h // 10
+            return h
+
         valid_candidates = []
         for v in candidates:
             url = v.get("url", "")
@@ -290,6 +476,23 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
                 continue
 
             v_files = v.get("video_files", [])
+            if not v_files:
+                # Ứng viên đã chuẩn hóa (Pixabay / NASA / nguồn khác)
+                if v.get("media_type", "video") != "video":
+                    continue
+                valid_candidates.append({
+                    "raw_video": v,
+                    "url": url,
+                    "download_link": url,
+                    "width": v.get("width", 1920),
+                    "height": v.get("height", 1080),
+                    "duration": v.get("duration", 0),
+                    "slug": re.sub(r"^(Pixabay Video|NASA[^:]*):\s*", "", v.get("title", "")) or "video clip",
+                    "thumbnail": v.get("thumbnail", ""),
+                    "source": v.get("source", "stock_video"),
+                })
+                continue
+
             portrait_files = [
                 vf for vf in v_files
                 if vf.get("width", 0) <= vf.get("height", 0) and (
@@ -308,7 +511,7 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
             else:
                 slug = v.get("tags") or v.get("title") or "video clip"
 
-            best_file = sorted(portrait_files, key=lambda x: x.get("height", 0), reverse=True)[0]
+            best_file = sorted(portrait_files, key=_res_pref, reverse=True)[0]
             valid_candidates.append({
                 "raw_video": v,
                 "url": url,
@@ -318,13 +521,47 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
                 "duration": v.get("duration", 0),
                 "slug": slug,
                 "thumbnail": v.get("image", ""),
+                "source": "pexels_video",
             })
 
         if not valid_candidates:
-            return None, 0.0, "Tất cả ứng viên đều không đạt định dạng 9:16 hoặc đã được sử dụng.", True
+            return None, 0.0, "Tất cả ứng viên đều không đạt định dạng hoặc đã được sử dụng.", True
 
-        # Giới hạn tối đa 6 ứng viên để Agent phân tích nhanh
-        eval_pool = valid_candidates[:6]
+        # Ưu tiên clip dọc lên trước, tối đa 8 ứng viên cho Agent phân tích
+        valid_candidates.sort(key=lambda c: 0 if (c["height"] or 0) >= (c["width"] or 0) else 1)
+        eval_pool = valid_candidates[:8]
+
+        def _format_winner(winner: Dict[str, Any], score: float, rationale: str) -> Dict[str, Any]:
+            return {
+                "url": winner["download_link"],
+                "web_url": winner["url"],
+                "title": f"{winner['source']}: {winner['slug']}",
+                "width": winner["width"],
+                "height": winner["height"],
+                "duration": winner["duration"],
+                "media_type": "video",
+                "source": winner["source"],
+                "thumbnail": winner["thumbnail"],
+                "curation_score": score,
+                "curation_rationale": rationale,
+            }
+
+        # 2A. AI VISION: Nhìn thumbnail thật để chọn clip vừa đúng nội dung vừa hấp dẫn nhất
+        vision = self.vision_rank_candidates(
+            [{**c, "description": c["slug"]} for c in eval_pool],
+            narration=narration,
+            topic=visual_analysis.get("visual_metaphor", ""),
+            visual_analysis=visual_analysis,
+            kind="video",
+        )
+        if vision is not None:
+            v_idx, v_score, v_rat = vision
+            if v_idx >= 0:
+                return _format_winner(eval_pool[v_idx], max(v_score, 6.0), f"[Vision] {v_rat}"), max(v_score, 6.0), v_rat, False
+            return None, 0.0, f"[Vision] {v_rat}", True
+
+        # 2B. Fallback: Agent tuyển chọn dựa trên mô tả văn bản (slug)
+        eval_pool = eval_pool[:6]
 
         # 2. Gọi Agent phân tích & tuyển chọn
         mood = visual_analysis.get("mood", "cinematic")
@@ -372,20 +609,7 @@ TRẢ VỀ JSON DUY NHẤT:
                     f"🎬 [VisualCuration] ✅ Đã tuyển chọn Video #{winner['raw_video'].get('id')} "
                     f"('{winner['slug']}') | Điểm: {score}/10 | {rationale}"
                 )
-                formatted = {
-                    "url": winner["download_link"],
-                    "web_url": winner["url"],
-                    "title": f"Pexels Video: {winner['slug']}",
-                    "width": winner["width"],
-                    "height": winner["height"],
-                    "duration": winner["duration"],
-                    "media_type": "video",
-                    "source": "pexels_video",
-                    "thumbnail": winner["thumbnail"],
-                    "curation_score": score,
-                    "curation_rationale": rationale,
-                }
-                return formatted, score, rationale, False
+                return _format_winner(winner, score, rationale), score, rationale, False
             else:
                 logger.warning(
                     f"🎬 [VisualCuration] ⚠️ Agent từ chối toàn bộ stock videos (Score: {score}/10). "
@@ -428,12 +652,12 @@ TRẢ VỀ JSON DUY NHẤT:
             formatted = {
                 "url": best_cand["download_link"],
                 "web_url": best_cand["url"],
-                "title": f"Pexels Video: {best_cand['slug']}",
+                "title": f"{best_cand.get('source', 'pexels_video')}: {best_cand['slug']}",
                 "width": best_cand["width"],
                 "height": best_cand["height"],
                 "duration": best_cand["duration"],
                 "media_type": "video",
-                "source": "pexels_video",
+                "source": best_cand.get("source", "pexels_video"),
                 "thumbnail": best_cand["thumbnail"],
                 "curation_score": best_score,
                 "curation_rationale": f"Khớp từ vựng ngữ cảnh ({best_cand['slug']})",
@@ -532,11 +756,30 @@ TRẢ VỀ JSON DUY NHẤT:
                 "item": c,
                 "description": desc or "photograph",
             })
-            if len(pool) >= 6:
+            if len(pool) >= 8:
                 break
 
         if not pool:
             return None, 3.0, "Không có ứng viên ảnh nào khả dụng.", True
+
+        # AI VISION: Nhìn trực tiếp ảnh để chọn bức vừa đúng nội dung vừa hấp dẫn nhất
+        vision = self.vision_rank_candidates(
+            [{**p["item"], "description": p["description"]} for p in pool],
+            narration=narration,
+            topic=topic or visual_keyword,
+            visual_analysis=visual_analysis,
+            kind="photo",
+        )
+        if vision is not None:
+            v_idx, v_score, v_rat = vision
+            if v_idx >= 0:
+                winner_item = pool[v_idx]["item"]
+                winner_item["curation_score"] = max(v_score, 6.0)
+                winner_item["curation_rationale"] = f"[Vision] {v_rat}"
+                return winner_item, max(v_score, 6.0), v_rat, False
+            return None, 0.0, f"[Vision] {v_rat}", True
+
+        pool = pool[:6]
 
         mood = visual_analysis.get("mood", "cinematic")
         metaphor = visual_analysis.get("visual_metaphor", "")

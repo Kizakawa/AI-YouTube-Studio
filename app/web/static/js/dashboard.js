@@ -6,11 +6,15 @@
    STATE & GLOBALS
 ══════════════════════════════════════════════════════════ */
 let allVideos = [];
+let allChannels = [];
+let allNiches = [];
+let allAccounts = [];
 let currentFilter = 'all';
 
 const PAGE_META = {
     overview:      { title: 'Dashboard Tổng Quan',   sub: 'Theo dõi toàn bộ hệ thống AI YouTube Studio' },
     analytics:     { title: 'Số Liệu & Dự Đoán Tăng Trưởng', sub: 'Thống kê kênh thời gian thực & Mô hình dự đoán AI' },
+    trends:        { title: 'Google Trends & Bắt Trend AI', sub: 'Nhu cầu tìm kiếm thực tế — Bắc cầu sang ngách kênh & Thumbnail 1 giây' },
     create:        { title: 'Tạo Kịch Bản AI',       sub: 'Nhập chủ đề — Gemini sinh kịch bản tự động' },
     manual_studio: { title: 'Studio Lồng Tiếng & Hiệu Ứng AI', sub: 'Tải 1 video đã ghép (Google Flow, CapCut...) + Lời thoại, AI sẽ lồng tiếng đọc, SFX và phụ đề Shorts cực đẹp' },
     pipeline:      { title: 'Pipeline Sản Xuất',      sub: 'Quản lý danh sách video và tiến độ render' },
@@ -382,6 +386,8 @@ function switchTab(tabId) {
         initManualStudio();
     } else if (tabId === 'repurposer') {
         initRepurposerTab();
+    } else if (tabId === 'trends') {
+        initTrendsTab();
     }
 }
 
@@ -1216,18 +1222,54 @@ async function openVideoDetail(jobId) {
             <div class="detail-label" style="color:var(--accent-rose);">Lỗi</div>
             <div class="detail-value script-box" style="color:var(--accent-rose);">${esc(data.error_message)}</div>
         </div>` : ''}
-        ${data.status === 'RENDERED' && data.video_path ? `
+        ${(data.status === 'RENDERED' || data.status === 'PUBLISHED') && data.video_path ? `
         <div class="detail-row" style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.25);border-radius:8px;padding:14px;">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-                <span style="font-size:20px;">🎬</span>
-                <div>
-                    <div style="font-weight:700;color:var(--accent-green);font-size:13px;">Video Đã Sẵn Sàng!</div>
-                    <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">📂 ${esc(data.video_path)}</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:24px;">🎬</span>
+                    <div>
+                        <div style="font-weight:700;color:var(--accent-green);font-size:14px;">Video & Thumbnail Thị Trường 1 Giây</div>
+                        <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">📂 ${esc(data.video_path)}</div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <a href="/api/videos/${data.id}/download" target="_blank" class="btn btn-primary btn-sm">
+                        📥 Tải Video MP4
+                    </a>
                 </div>
             </div>
-            <a href="/api/videos/${data.id}/download" target="_blank" class="btn btn-primary btn-sm" style="width:100%;justify-content:center;">
-                📥 Tải Video Về Máy
-            </a>
+
+            <!-- Thumbnail High-CTR Preview & Download -->
+            <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:12px; margin-top:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+                    <span style="font-size:12.5px; font-weight:700; color:#facc15; display:flex; align-items:center; gap:6px;">
+                        <span>🖼️ Thumbnail High-CTR ("Thị Trường 1 Giây")</span>
+                    </span>
+                    <button class="btn btn-secondary btn-sm" onclick="promptRegenerateThumbnail(${data.id})" style="font-size:11px; padding:4px 9px;">
+                        ⚡ Tạo Lại Thumbnail Mới
+                    </button>
+                </div>
+                <div style="display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap;">
+                    <div style="flex:1.4; min-width:220px; text-align:center;">
+                        <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px; font-weight:600;">Chuẩn Ngang 16:9 (YouTube Standard)</div>
+                        <img src="/api/videos/${data.id}/thumbnail?aspect_ratio=16x9&t=${Date.now()}" onerror="this.style.display='none'" style="width:100%; border-radius:6px; border:1px solid rgba(255,255,255,0.15); box-shadow:0 4px 12px rgba(0,0,0,0.4);" alt="Thumbnail 16:9">
+                        <div style="margin-top:8px;">
+                            <a href="/api/videos/${data.id}/thumbnail?aspect_ratio=16x9" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px; padding:4px 10px;">
+                                📥 Tải Ảnh 16:9 HD
+                            </a>
+                        </div>
+                    </div>
+                    <div style="width:140px; text-align:center;">
+                        <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px; font-weight:600;">Dọc 9:16 (Shorts)</div>
+                        <img src="/api/videos/${data.id}/thumbnail?aspect_ratio=9x16&t=${Date.now()}" onerror="this.style.display='none'" style="max-height:180px; width:auto; border-radius:6px; border:1px solid rgba(255,255,255,0.15); box-shadow:0 4px 12px rgba(0,0,0,0.4);" alt="Thumbnail 9:16">
+                        <div style="margin-top:8px;">
+                            <a href="/api/videos/${data.id}/thumbnail?aspect_ratio=9x16" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px; padding:4px 10px;">
+                                📥 Tải Ảnh 9:16
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>` : ''}
         <div class="detail-row">
             <div class="detail-label">Nội Dung Lời Thoại</div>
@@ -2150,8 +2192,7 @@ function esc(str) {
 /* ═══════════════════════════════════════════════════════
    ACCOUNTS & CHANNELS MANAGEMENT
 ══════════════════════════════════════════════════════════ */
-let allAccounts = [];
-let allChannels = [];
+// allAccounts and allChannels hoisted to top
 let oauthPollTimer = null;
 
 async function fetchChannels() {
@@ -2178,6 +2219,9 @@ async function fetchChannels() {
 }
 
 function updateChannelDropdowns(channels) {
+    if (typeof updateTrendsChannelDropdown === 'function') {
+        updateTrendsChannelDropdown(channels);
+    }
     const sel = document.getElementById('input-channel');
     if (!sel) return;
     const currentVal = sel.value;
@@ -6015,7 +6059,7 @@ async function openInstantPreviewForJob(jobId) {
    NICHE INTELLIGENCE PROFILES CONTROLLER (HỒ SƠ NGÁCH KÊNH)
    ═══════════════════════════════════════════════════════════════ */
 
-let allNiches = [];
+// allNiches hoisted to top
 
 async function fetchNiches() {
     try {
@@ -6138,120 +6182,176 @@ function renderNichesGrid(niches) {
 }
 
 function openAddNicheModal() {
-    document.getElementById('niche-field-mode').value = 'add';
+    const modal = document.getElementById('modal-niche-editor');
+    if (!modal) {
+        console.error('Không tìm thấy element #modal-niche-editor');
+        return;
+    }
+
+    const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val;
+    };
+    const setText = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+    };
+
+    setVal('niche-field-mode', 'add');
     const tempId = `custom_${Date.now().toString(36)}`;
-    document.getElementById('niche-field-id').value = tempId;
-    document.getElementById('niche-modal-title').textContent = 'Tạo Hồ Sơ Ngách Mới';
-    document.getElementById('niche-modal-icon-badge').textContent = '✨';
+    setVal('niche-field-id', tempId);
+    setText('niche-modal-title', 'Tạo Hồ Sơ Ngách Mới');
+    setText('niche-modal-icon-badge', '✨');
 
-    document.getElementById('niche-input-name').value = '';
-    document.getElementById('niche-input-badge').value = '✨ Tùy Biến';
-    document.getElementById('niche-input-icon').value = '✨';
-    document.getElementById('niche-input-target-aud').value = 'Khán giả xem YouTube Shorts';
-    document.getElementById('niche-input-tone').value = 'Cuốn hút, sắc bén, kịch tính, nhịp điệu nhanh';
-    document.getElementById('niche-input-pacing').value = '2.5 - 3.2 giây/cảnh';
-    document.getElementById('niche-input-structure').value = 'Hook 3s -> Bóc trần tình tiết -> Điểm nhấn -> CTA & Infinite Loop';
-    document.getElementById('niche-input-hooks').value = "Curiosity Shock: 'Hầu hết mọi người không biết điều này...'\nThe Shock Law: 'Sự thật bất ngờ nhất là...'";
-    document.getElementById('niche-input-forbidden').value = "Chào mừng các bạn đã quay trở lại\nBạn có bao giờ tự hỏi\nTrong video hôm nay";
-    document.getElementById('niche-input-ctas').value = "Nhấn thích và theo dõi kênh để không bỏ lỡ phần tiếp theo... bởi vì...";
-    document.getElementById('niche-input-facts').value = "Kiểm chứng thông tin chính xác trước khi phát biểu";
+    setVal('niche-input-name', '');
+    setVal('niche-input-badge', '✨ Tùy Biến');
+    setVal('niche-input-icon', '✨');
+    setVal('niche-input-target-aud', 'Khán giả xem YouTube Shorts');
+    setVal('niche-input-tone', 'Cuốn hút, sắc bén, kịch tính, nhịp điệu nhanh');
+    setVal('niche-input-pacing', '2.5 - 3.2 giây/cảnh');
+    setVal('niche-input-structure', 'Hook 3s -> Bóc trần tình tiết -> Điểm nhấn -> CTA & Infinite Loop');
+    setVal('niche-input-hooks', "Curiosity Shock: 'Hầu hết mọi người không biết điều này...'\nThe Shock Law: 'Sự thật bất ngờ nhất là...'");
+    setVal('niche-input-forbidden', "Chào mừng các bạn đã quay trở lại\nBạn có bao giờ tự hỏi\nTrong video hôm nay");
+    setVal('niche-input-ctas', "Nhấn thích và theo dõi kênh để không bỏ lỡ phần tiếp theo... bởi vì...");
+    setVal('niche-input-facts', "Kiểm chứng thông tin chính xác trước khi phát biểu");
 
-    document.getElementById('niche-input-art-style').value = 'Dark Cinematic Noir & 35mm Photography';
-    document.getElementById('niche-input-palette').value = 'High contrast, dramatic shadows, vibrant accents';
-    document.getElementById('niche-input-angles').value = 'Extreme close-up, dramatic low-angle, cinematic tracking';
-    document.getElementById('niche-input-prefix').value = '8k vertical film still, dramatic volumetric lighting, 35mm photography';
-    document.getElementById('niche-input-suffix').value = 'photorealistic 9:16 vertical composition, razor-sharp focus, no watermark, no text';
-    document.getElementById('niche-input-negatives').value = 'blurry, low quality, deformed, cartoon, anime, watermark, text';
-    document.getElementById('niche-input-stock-kws').value = 'people walking street, cinematic city, dramatic sunset';
+    setVal('niche-input-art-style', 'Dark Cinematic Noir & 35mm Photography');
+    setVal('niche-input-palette', 'High contrast, dramatic shadows, vibrant accents');
+    setVal('niche-input-angles', 'Extreme close-up, dramatic low-angle, cinematic tracking');
+    setVal('niche-input-prefix', '8k vertical film still, dramatic volumetric lighting, 35mm photography');
+    setVal('niche-input-suffix', 'photorealistic 9:16 vertical composition, razor-sharp focus, no watermark, no text');
+    setVal('niche-input-negatives', 'blurry, low quality, deformed, cartoon, anime, watermark, text');
+    setVal('niche-input-stock-kws', 'people walking street, cinematic city, dramatic sunset');
 
-    document.getElementById('niche-input-font').value = 'Montserrat, sans-serif';
-    document.getElementById('niche-input-font-size').value = 40;
-    document.getElementById('niche-input-margin-v').value = 210;
-    document.getElementById('niche-color-primary').value = '#FFFFFF';
-    document.getElementById('niche-text-primary').value = '#FFFFFF';
-    document.getElementById('niche-color-highlight').value = '#FFE600';
-    document.getElementById('niche-text-highlight').value = '#FFE600';
-    document.getElementById('niche-color-outline').value = '#000000';
-    document.getElementById('niche-text-outline').value = '#000000';
+    setVal('niche-input-font', 'Montserrat, sans-serif');
+    setVal('niche-input-font-size', 40);
+    setVal('niche-input-margin-v', 210);
+    setVal('niche-color-primary', '#FFFFFF');
+    setVal('niche-text-primary', '#FFFFFF');
+    setVal('niche-color-highlight', '#FFE600');
+    setVal('niche-text-highlight', '#FFE600');
+    setVal('niche-color-outline', '#000000');
+    setVal('niche-text-outline', '#000000');
 
-    document.getElementById('niche-input-voice-en').value = 'en-US-AndrewNeural';
-    document.getElementById('niche-input-voice-vi').value = 'vi-VN-NamMinhNeural';
-    document.getElementById('niche-input-rate').value = '0%';
-    document.getElementById('niche-input-pitch').value = '0Hz';
-    document.getElementById('niche-input-bgm').value = 'dynamic upbeat cinematic, modern groove';
+    setVal('niche-input-voice-en', 'en-US-AndrewNeural');
+    setVal('niche-input-voice-vi', 'vi-VN-NamMinhNeural');
+    setVal('niche-input-rate', '0%');
+    setVal('niche-input-pitch', '0Hz');
+    setVal('niche-input-bgm', 'dynamic upbeat cinematic, modern groove');
 
-    document.getElementById('btn-delete-niche').style.display = 'none';
+    const delBtn = document.getElementById('btn-delete-niche');
+    if (delBtn) delBtn.style.display = 'none';
 
     switchNicheTab('script');
     updateNicheLiveSubtitlePreview();
-    document.getElementById('modal-niche-editor').classList.add('visible');
+    modal.classList.add('visible');
+    modal.style.display = 'flex';
 }
 
-function openEditNicheModal(nicheId) {
-    const n = allNiches.find(x => x.id === nicheId);
+async function openEditNicheModal(nicheId) {
+    const modal = document.getElementById('modal-niche-editor');
+    if (!modal) {
+        console.error('Không tìm thấy element #modal-niche-editor');
+        return;
+    }
+
+    if (!allNiches || allNiches.length === 0) {
+        await fetchNiches();
+    }
+    let n = (allNiches || []).find(x => x.id === nicheId);
+    if (!n) {
+        try {
+            const res = await apiGet(`/api/niches/${encodeURIComponent(nicheId)}`);
+            if (res && res.niche) n = res.niche;
+        } catch (e) {
+            console.warn('Fallback fetch niche failed:', e);
+        }
+    }
     if (!n) {
         showToast('Không tìm thấy thông tin hồ sơ ngách ' + nicheId, 'error');
         return;
     }
 
-    document.getElementById('niche-field-mode').value = 'edit';
-    document.getElementById('niche-field-id').value = n.id;
-    document.getElementById('niche-modal-title').textContent = `Chỉnh Sửa Khuôn Mẫu: ${n.name}`;
-    document.getElementById('niche-modal-icon-badge').textContent = n.icon || '🎯';
+    const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val;
+    };
+    const setText = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+    };
 
-    document.getElementById('niche-input-name').value = n.name || '';
-    document.getElementById('niche-input-badge').value = n.badge || '';
-    document.getElementById('niche-input-icon').value = n.icon || '🎯';
-    document.getElementById('niche-input-target-aud').value = n.target_audience || '';
+    setVal('niche-field-mode', 'edit');
+    setVal('niche-field-id', n.id);
+    setText('niche-modal-title', `Chỉnh Sửa Khuôn Mẫu: ${n.name}`);
+    setText('niche-modal-icon-badge', n.icon || '🎯');
+
+    setVal('niche-input-name', n.name || '');
+    setVal('niche-input-badge', n.badge || '');
+    setVal('niche-input-icon', n.icon || '🎯');
+    setVal('niche-input-target-aud', n.target_audience || '');
 
     const bp = n.script_blueprint || {};
-    document.getElementById('niche-input-tone').value = bp.tone_of_voice || '';
-    document.getElementById('niche-input-pacing').value = bp.pacing || '';
-    document.getElementById('niche-input-structure').value = bp.narrative_structure || '';
-    document.getElementById('niche-input-hooks').value = (bp.hook_formulas || []).join('\n');
-    document.getElementById('niche-input-forbidden').value = (bp.forbidden_words || []).join('\n');
-    document.getElementById('niche-input-ctas').value = (bp.cta_templates || []).join('\n');
-    document.getElementById('niche-input-facts').value = (bp.anti_hallucination_rules || []).join('\n');
+    setVal('niche-input-tone', bp.tone_of_voice || '');
+    setVal('niche-input-pacing', bp.pacing || '');
+    setVal('niche-input-structure', bp.narrative_structure || '');
+    setVal('niche-input-hooks', (bp.hook_formulas || []).join('\n'));
+    setVal('niche-input-forbidden', (bp.forbidden_words || []).join('\n'));
+    setVal('niche-input-ctas', (bp.cta_templates || []).join('\n'));
+    setVal('niche-input-facts', (bp.anti_hallucination_rules || []).join('\n'));
 
     const vis = n.visual_aesthetics || {};
-    document.getElementById('niche-input-art-style').value = vis.art_style || '';
-    document.getElementById('niche-input-palette').value = vis.color_palette || '';
-    document.getElementById('niche-input-angles').value = vis.camera_angles || '';
-    document.getElementById('niche-input-prefix').value = vis.master_prompt_prefix || '';
-    document.getElementById('niche-input-suffix').value = vis.master_prompt_suffix || '';
-    document.getElementById('niche-input-negatives').value = vis.negative_prompts || '';
-    document.getElementById('niche-input-stock-kws').value = (vis.stock_video_keywords || []).join(', ');
+    setVal('niche-input-art-style', vis.art_style || '');
+    setVal('niche-input-palette', vis.color_palette || '');
+    setVal('niche-input-angles', vis.camera_angles || '');
+    setVal('niche-input-prefix', vis.master_prompt_prefix || '');
+    setVal('niche-input-suffix', vis.master_prompt_suffix || '');
+    setVal('niche-input-negatives', vis.negative_prompts || '');
+    setVal('niche-input-stock-kws', (vis.stock_video_keywords || []).join(', '));
 
     const sub = n.subtitles || {};
-    document.getElementById('niche-input-font').value = sub.font_family || 'Montserrat, sans-serif';
-    document.getElementById('niche-input-font-size').value = sub.font_size || 40;
-    document.getElementById('niche-input-margin-v').value = sub.margin_bottom || 210;
-    document.getElementById('niche-color-primary').value = sub.primary_color || '#FFFFFF';
-    document.getElementById('niche-text-primary').value = sub.primary_color || '#FFFFFF';
-    document.getElementById('niche-color-highlight').value = sub.highlight_color || '#FFE600';
-    document.getElementById('niche-text-highlight').value = sub.highlight_color || '#FFE600';
-    document.getElementById('niche-color-outline').value = sub.outline_color || '#000000';
-    document.getElementById('niche-text-outline').value = sub.outline_color || '#000000';
+    setVal('niche-input-font', sub.font_family || 'Montserrat, sans-serif');
+    setVal('niche-input-font-size', sub.font_size || 40);
+    setVal('niche-input-margin-v', sub.margin_bottom || 210);
+    setVal('niche-color-primary', sub.primary_color || '#FFFFFF');
+    setVal('niche-text-primary', sub.primary_color || '#FFFFFF');
+    setVal('niche-color-highlight', sub.highlight_color || '#FFE600');
+    setVal('niche-text-highlight', sub.highlight_color || '#FFE600');
+    setVal('niche-color-outline', sub.outline_color || '#000000');
+    setVal('niche-text-outline', sub.outline_color || '#000000');
 
     const aud = n.audio || {};
-    document.getElementById('niche-input-voice-en').value = aud.preferred_voice_en || 'en-US-AndrewNeural';
-    document.getElementById('niche-input-voice-vi').value = aud.preferred_voice_vi || 'vi-VN-NamMinhNeural';
-    document.getElementById('niche-input-rate').value = aud.rate || '0%';
-    document.getElementById('niche-input-pitch').value = aud.pitch || '0Hz';
-    document.getElementById('niche-input-bgm').value = aud.bgm_vibe || '';
+    setVal('niche-input-voice-en', aud.preferred_voice_en || 'en-US-AndrewNeural');
+    setVal('niche-input-voice-vi', aud.preferred_voice_vi || 'vi-VN-NamMinhNeural');
+    setVal('niche-input-rate', aud.rate || '0%');
+    setVal('niche-input-pitch', aud.pitch || '0Hz');
+    setVal('niche-input-bgm', aud.bgm_vibe || '');
 
     // Show delete button only if not core niche
     const coreNiches = ['general', 'psychology', 'history_mystery', 'finance_wealth'];
-    document.getElementById('btn-delete-niche').style.display = coreNiches.includes(n.id) ? 'none' : 'block';
+    const delBtn = document.getElementById('btn-delete-niche');
+    if (delBtn) {
+        delBtn.style.display = coreNiches.includes(n.id) ? 'none' : 'block';
+    }
 
     switchNicheTab('script');
     updateNicheLiveSubtitlePreview();
-    document.getElementById('modal-niche-editor').classList.add('visible');
+    modal.classList.add('visible');
+    modal.style.display = 'flex';
 }
 
 function closeNicheModal() {
-    document.getElementById('modal-niche-editor').classList.remove('visible');
+    const modal = document.getElementById('modal-niche-editor');
+    if (modal) {
+        modal.classList.remove('visible');
+        modal.style.display = 'none';
+    }
 }
+
+// Bind functions to window explicitly for global accessibility
+window.openAddNicheModal = openAddNicheModal;
+window.openEditNicheModal = openEditNicheModal;
+window.closeNicheModal = closeNicheModal;
 
 function switchNicheTab(tabName) {
     document.querySelectorAll('.niche-modal-tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -6418,6 +6518,18 @@ function onChannelNicheSelectChanged(nicheId) {
 
     showToast(`🎯 Đã chọn ngách: ${n.badge || n.name} (Tự động tối ưu giọng đọc & visual)`, 'info');
 }
+
+// Global window bindings for Niche Profiles controller
+window.openAddNicheModal = openAddNicheModal;
+window.openEditNicheModal = openEditNicheModal;
+window.closeNicheModal = closeNicheModal;
+window.switchNicheTab = switchNicheTab;
+window.updateNicheLiveSubtitlePreview = updateNicheLiveSubtitlePreview;
+window.submitNicheForm = submitNicheForm;
+window.deleteCurrentNiche = deleteCurrentNiche;
+window.onChannelNicheSelectChanged = onChannelNicheSelectChanged;
+window.fetchNiches = fetchNiches;
+window.renderNichesGrid = renderNichesGrid;
 
 /* ═══════════════════════════════════════════════════════
    SMART LONG-TO-SHORTS REPURPOSER CONTROLLER
@@ -7194,6 +7306,361 @@ function closeRepurposedPlayerModal() {
     if (modal) modal.classList.remove('active');
 }
 
+/* ═══════════════════════════════════════════════════════
+   GOOGLE TRENDS & BẮT TREND AI TAB CONTROLLER
+══════════════════════════════════════════════════════════ */
+
+let _cachedTrendsData = [];
+let _isTrendsInitialized = false;
+
+function updateTrendsChannelDropdown(channels) {
+    const sel = document.getElementById('trends-channel');
+    if (!sel) return;
+    const currentVal = sel.value;
+    sel.innerHTML = '<option value="">-- Mặc định (hoặc nhập tự do) --</option>';
+    if (channels && channels.length > 0) {
+        channels.forEach(ch => {
+            const opt = document.createElement('option');
+            opt.value = ch.id;
+            opt.textContent = `${ch.title || ch.name || ch.id} (${ch.niche || 'Tổng hợp'})`;
+            sel.appendChild(opt);
+        });
+    }
+    if (currentVal && sel.querySelector(`option[value="${currentVal}"]`)) {
+        sel.value = currentVal;
+    } else if (channels && channels.length > 0) {
+        sel.value = channels[0].id;
+    }
+}
+
+function initTrendsTab() {
+    if (typeof allChannels !== 'undefined' && allChannels.length > 0) {
+        updateTrendsChannelDropdown(allChannels);
+    }
+    if (!_isTrendsInitialized) {
+        _isTrendsInitialized = true;
+        fetchLiveTrends();
+        setTimeout(() => {
+            generateTrendBridges();
+        }, 500);
+    }
+}
+
+async function fetchLiveTrends() {
+    const geo = document.getElementById('trends-geo')?.value || 'VN';
+    const listContainer = document.getElementById('trends-list-container') || document.getElementById('trends-live-list');
+    const spinner = document.getElementById('trends-loading-spinner');
+    const badge = document.getElementById('trends-count-badge');
+
+    if (spinner) spinner.style.display = 'block';
+    if (listContainer) {
+        listContainer.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: var(--text-muted);">
+                <div class="spinner" style="margin: 0 auto 12px; width: 28px; height: 28px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--accent-blue); border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+                Đang quét dữ liệu thời gian thực từ Google Trends (${geo})...
+            </div>
+        `;
+    }
+
+    try {
+        const res = await fetch(`/api/trends/live?geo=${geo}`);
+        const data = await res.json();
+
+        if (spinner) spinner.style.display = 'none';
+
+        if (data.status === 'success' && Array.isArray(data.trends) && data.trends.length > 0) {
+            _cachedTrendsData = data.trends;
+            if (badge) badge.textContent = `${data.trends.length} xu hướng`;
+            renderLiveTrends(_cachedTrendsData);
+        } else {
+            if (badge) badge.textContent = '0 xu hướng';
+            if (listContainer) {
+                listContainer.innerHTML = `
+                    <div style="text-align: center; padding: 30px; color: var(--accent-rose);">
+                        ⚠️ Không thể tải danh sách Google Trends. Vui lòng bấm "Làm Mới Xu Hướng" để thử lại.
+                    </div>
+                `;
+            }
+        }
+    } catch (err) {
+        if (spinner) spinner.style.display = 'none';
+        console.error('Error fetching live trends:', err);
+        if (listContainer) {
+            listContainer.innerHTML = `
+                <div style="text-align: center; padding: 30px; color: var(--accent-rose);">
+                    ❌ Lỗi kết nối Google Trends: ${err.message}
+                </div>
+            `;
+        }
+    }
+}
+
+function renderLiveTrends(trends) {
+    const listContainer = document.getElementById('trends-list-container') || document.getElementById('trends-live-list');
+    if (!listContainer) return;
+
+    if (!trends || trends.length === 0) {
+        listContainer.innerHTML = `
+            <div style="text-align: center; padding: 30px; color: var(--text-muted);">
+                Không có chủ đề nào khớp với bộ lọc.
+            </div>
+        `;
+        return;
+    }
+
+    listContainer.innerHTML = trends.map((item, idx) => {
+        const titleSafe = (item.title || item.query || '').replace(/'/g, "\'").replace(/"/g, '&quot;');
+        const newsItems = (item.news_items || []).slice(0, 2);
+        const approxVol = item.approx_traffic || item.traffic || 'Đang tăng mạnh';
+
+        return `
+            <div class="trend-card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.2s;" onmouseenter="this.style.borderColor='rgba(59,130,246,0.4)'; this.style.transform='translateY(-2px)'" onmouseleave="this.style.borderColor='rgba(255,255,255,0.08)'; this.style.transform='none'">
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 6px;">
+                        <span style="font-size: 11px; font-weight: 700; background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); border-radius: 12px; padding: 2px 8px;">
+                            #${idx + 1}
+                        </span>
+                        <span style="font-size: 11px; font-weight: 600; background: rgba(16,185,129,0.15); color: #34d399; border-radius: 4px; padding: 2px 6px;">
+                            🔥 ${escapeHtml(approxVol)}
+                        </span>
+                    </div>
+                    <h4 style="font-size: 14.5px; font-weight: 700; margin: 0 0 6px 0; color: #f8fafc; line-height: 1.4;">
+                        ${escapeHtml(item.title || item.query)}
+                    </h4>
+                    ${item.snippet ? `
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 8px 0; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                            ${escapeHtml(item.snippet)}
+                        </p>
+                    ` : ''}
+                    ${newsItems.length > 0 ? `
+                        <div style="border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 6px; margin-top: 6px;">
+                            ${newsItems.map(n => `
+                                <div style="font-size: 11px; color: #cbd5e1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px;">
+                                    📰 <a href="${escapeHtml(n.url)}" target="_blank" style="color: #93c5fd; text-decoration: none;">${escapeHtml(n.title)}</a>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                </div>
+                <div style="margin-top: 10px; display: flex; gap: 6px;">
+                    <button class="btn btn-primary btn-sm" style="flex: 1.2; font-size: 11.5px; padding: 6px 8px; display: flex; align-items: center; justify-content: center; gap: 4px; background: linear-gradient(135deg, #ef4444, #f97316); border: none;" onclick="generateTrendBridges('${titleSafe}')">
+                        ⚡ Bắc Cầu Sang Kênh
+                    </button>
+                    <button class="btn btn-secondary btn-sm" style="flex: 1; font-size: 11px; padding: 6px 8px;" onclick="quickCreateFromTrend('${titleSafe}', '', 'Google Trends')">
+                        🚀 Sản Xuất
+                    </button>
+                    <button class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 6px 8px;" title="Điền vào ô chủ đề" onclick="fillTopicToCreate('${titleSafe}')">
+                        ✍️ Sửa
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function filterTrendCards() {
+    const q = (document.getElementById('trends-search')?.value || '').toLowerCase().trim();
+    if (!q) {
+        renderLiveTrends(_cachedTrendsData);
+        return;
+    }
+    const filtered = _cachedTrendsData.filter(item => 
+        (item.title && item.title.toLowerCase().includes(q)) ||
+        (item.snippet && item.snippet.toLowerCase().includes(q))
+    );
+    renderLiveTrends(filtered);
+}
+
+async function generateTrendBridges(specificKeyword) {
+    const geo = document.getElementById('trends-geo')?.value || 'VN';
+    const channelId = document.getElementById('trends-channel')?.value || '';
+    const bridgeContainer = document.getElementById('bridge-list-container') || document.getElementById('trend-suggestions-results');
+    const spinner = document.getElementById('bridge-loading-spinner');
+    const btn = document.getElementById('btn-bridge-trends');
+
+    if (btn) btn.disabled = true;
+    if (spinner) spinner.style.display = 'block';
+
+    if (bridgeContainer) {
+        bridgeContainer.innerHTML = `
+            <div style="text-align: center; padding: 35px; color: var(--text-muted);">
+                <div class="spinner" style="margin: 0 auto 12px; width: 28px; height: 28px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--accent-purple); border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+                AI đang phân tích tâm lý số đông & bắc cầu từ Google Trends sang ngách kênh của bạn...
+            </div>
+        `;
+    }
+
+    try {
+        let url = `/api/trends/channel-suggestions?geo=${geo}`;
+        if (channelId) url += `&channel_id=${encodeURIComponent(channelId)}`;
+
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (spinner) spinner.style.display = 'none';
+
+        if (data.status === 'success' && Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+            renderTrendSuggestions(data.suggestions, data.niche);
+        } else {
+            if (bridgeContainer) {
+                bridgeContainer.innerHTML = `
+                    <div style="text-align: center; padding: 25px; color: var(--accent-rose);">
+                        ⚠️ Chưa sinh được ý tưởng bắt trend. Vui lòng bấm "⚡ Bắc Cầu Bắt Trend (AI)" để thử lại!
+                    </div>
+                `;
+            }
+        }
+    } catch (err) {
+        if (spinner) spinner.style.display = 'none';
+        console.error('Lỗi khi bắc cầu trend:', err);
+        if (bridgeContainer) {
+            bridgeContainer.innerHTML = `
+                <div style="text-align: center; padding: 25px; color: var(--accent-rose);">
+                    ❌ Lỗi: ${err.message}
+                </div>
+            `;
+        }
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+function renderTrendSuggestions(suggestions, niche) {
+    const container = document.getElementById('bridge-list-container') || document.getElementById('trend-suggestions-results');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 0 4px;">
+            <div style="font-size: 13px; font-weight: 700; color: #a5b4fc;">
+                🎯 5 Ý TƯỞNG VIRAL BẮT TREND CHO NGÁCH: <span style="color:#facc15;">${escapeHtml(niche || 'Tất cả')}</span>
+            </div>
+            <span style="font-size: 11px; color: var(--text-muted);">(Chuẩn 50% mở đầu & Thumb 1 Giây)</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+            ${suggestions.map((s, idx) => {
+                const topicSafe = (s.topic || s.viral_title || '').replace(/'/g, "\'").replace(/"/g, '&quot;');
+                const hookSafe = (s.hook_3s || s.hook || '').replace(/'/g, "\'").replace(/"/g, '&quot;');
+                const origSafe = (s.origin_trend || s.trending_source_keyword || 'Google Trends').replace(/'/g, "\'").replace(/"/g, '&quot;');
+
+                return `
+                    <div style="background: rgba(0,0,0,0.35); border: 1px solid rgba(168,85,247,0.3); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <span style="font-size: 11px; font-weight: 700; color: #c084fc;">Ý tưởng #${idx + 1}</span>
+                                <span style="font-size: 10px; color: #94a3b8; background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px;">🔥 Trend: ${escapeHtml(s.origin_trend || s.trending_source_keyword || 'Hot')}</span>
+                            </div>
+                            <div style="font-size: 14.5px; font-weight: 700; color: #f8fafc; margin-bottom: 6px; line-height: 1.35;">
+                                ${escapeHtml(s.viral_title || s.topic)}
+                            </div>
+                            <div style="font-size: 12px; color: #e2e8f0; margin-bottom: 6px; line-height: 1.4;">
+                                🎣 <strong style="color:#60a5fa;">Hook 3 Giây:</strong> "${escapeHtml(s.hook_3s || s.hook || '')}"
+                            </div>
+                            <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 8px; line-height: 1.35;">
+                                🌉 <strong style="color:#a7f3d0;">Góc nhìn tâm lý:</strong> ${escapeHtml(s.angle || s.why_viral || '')}
+                            </div>
+                            <div style="background: rgba(234,179,8,0.12); border: 1px dashed rgba(234,179,8,0.35); border-radius: 4px; padding: 6px 10px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 11px; color: #fde047; font-weight: 700;">🖼️ Thumbnail 1 Giây:</span>
+                                <span style="font-size: 12.5px; font-weight: 800; color: #ffffff; letter-spacing: 0.5px;">"${escapeHtml(s.thumbnail_text || 'SỰ THẬT TÀN KHỐC')}"</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 8px; margin-top: 4px;">
+                            <button class="btn btn-primary btn-sm" style="flex: 1.5; font-size: 11.5px; padding: 7px 10px; background: linear-gradient(135deg, #10b981, #059669); border: none; font-weight: 700;" onclick="quickCreateFromTrend('${topicSafe}', '${hookSafe}', '${origSafe}')">
+                                🚀 Sản Xuất Video Ngay
+                            </button>
+                            <button class="btn btn-secondary btn-sm" style="flex: 1; font-size: 11.5px; padding: 7px 10px;" onclick="fillTopicToCreate('${topicSafe}')">
+                                ✍️ Sửa Kịch Bản
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function fillTopicToCreate(topic) {
+    switchTab('create');
+    const topicInput = document.getElementById('input-topic');
+    if (topicInput) {
+        topicInput.value = topic;
+        topicInput.focus();
+        showToast('Đã điền chủ đề vào trình tạo kịch bản AI!', 'success');
+    }
+}
+
+async function quickCreateFromTrend(topic, hook, category) {
+    if (!confirm(`Bạn có muốn đưa chủ đề bắt trend sau vào Pipeline sản xuất ngay?
+
+"${topic}"`)) {
+        return;
+    }
+
+    const channelId = document.getElementById('trends-channel')?.value || '';
+    showToast('Đang gửi lệnh sản xuất video vào hàng đợi...', 'info');
+
+    try {
+        const res = await fetch('/api/trends/quick-create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                topic: topic,
+                hook: hook || '',
+                category: category || 'Google Trends',
+                channel_id: channelId || null,
+                aspect_ratio: '9:16'
+            })
+        });
+        const data = await res.json();
+        if (data.status === 'success' || data.job_id) {
+            showToast(`✅ Đã tạo Job #${data.job_id}! Chuyển sang Pipeline để theo dõi.`, 'success');
+            setTimeout(() => {
+                switchTab('pipeline');
+                if (typeof loadJobs === 'function') loadJobs();
+            }, 1000);
+        } else {
+            showToast(`Lỗi: ${data.message || 'Không thể tạo job'}`, 'error');
+        }
+    } catch (err) {
+        console.error('Error in quickCreateFromTrend:', err);
+        showToast(`❌ Lỗi kết nối: ${err.message}`, 'error');
+    }
+}
+
+// Aliases for compatibility
+window.fetchLiveTrends = fetchLiveTrends;
+window.refreshLiveTrends = fetchLiveTrends;
+window.generateTrendBridges = generateTrendBridges;
+window.fetchTrendSuggestions = generateTrendBridges;
+window.renderLiveTrends = renderLiveTrends;
+window.renderTrendSuggestions = renderTrendSuggestions;
+window.quickCreateFromTrend = quickCreateFromTrend;
+window.fillTopicToCreate = fillTopicToCreate;
 
 
 
+async function promptRegenerateThumbnail(jobId) {
+    const customText = prompt('Nhập chữ hiển thị trên Thumbnail (2-4 từ, IN HOA, cực kỳ kích thích tò mò):\n(Để trống nếu muốn AI tự tính toán theo kịch bản)', '');
+    if (customText === null) return; // user cancelled
+
+    showToast('Đang tạo lại Thumbnail độ tương phản cao...', 'info');
+    try {
+        const res = await fetch(`/api/videos/${jobId}/regenerate-thumbnail`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                custom_text: customText.trim() || null
+            })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            showToast('✅ Đã tạo lại Thumbnail thành công!', 'success');
+            if (typeof openJobDetailModal === 'function') {
+                openJobDetailModal(jobId);
+            }
+        } else {
+            showToast(`Lỗi: ${data.message || 'Không thể tạo lại thumbnail'}`, 'error');
+        }
+    } catch (err) {
+        showToast(`❌ Lỗi: ${err.message}`, 'error');
+    }
+}

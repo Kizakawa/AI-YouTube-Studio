@@ -30,7 +30,9 @@ wheels/
 *.zip
 *.rar
 *.7z
-credentials/client_secret.json
+credentials/client_secret*.json
+client_secret*.json
+xac_thuc_*.bat
 credentials/tokens/
 credentials/accounts/*
 !credentials/accounts/.gitkeep

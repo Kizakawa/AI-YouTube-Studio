@@ -132,19 +132,72 @@ class VideoPipeline:
                             visual_keyword=s.get("visual_keyword", ""),
                             media_path=s.get("media_path", ""),
                             media_type=s.get("media_type", "image"),
+                            audio_path=s.get("audio_path") or audio_p or "storage/temp/voiceover.mp3",
+                            audio_duration_ms=s.get("audio_duration_ms") or 3000,
                         ))
+
+                    # Đảm bảo video được lưu trữ vĩnh viễn trong storage/outputs/video_{self.job_id}.mp4
+                    import shutil
+                    outputs_dir = Path(settings.OUTPUT_DIR)
+                    outputs_dir.mkdir(parents=True, exist_ok=True)
+                    perm_video = str(outputs_dir / f"video_{self.job_id}.mp4")
+
+                    if video_p and Path(video_p).exists() and str(Path(video_p).resolve()) != str(Path(perm_video).resolve()):
+                        shutil.copy2(video_p, perm_video)
+                        video_p = perm_video
+                    elif not video_p or not Path(video_p).exists():
+                        if Path(perm_video).exists():
+                            video_p = perm_video
+
+                    # Step D2: Tạo bộ Thumbnail 1 giây chuẩn 16:9 và 9:16
+                    t_16x9 = None
+                    t_9x16 = None
+                    try:
+                        from app.services.thumbnail_service import ThumbnailService
+                        ts = ThumbnailService()
+                        base_img = next((s.media_path for s in scenes_list if s.media_path and s.media_path.endswith((".jpg", ".png", ".webp"))), None)
+                        thumb_results = ts.generate_viral_thumbnail(
+                            job_id=self.job_id,
+                            topic=title,
+                            viral_title=title,
+                            video_path=video_p,
+                            base_image_path=base_img,
+                            niche_id=getattr(self, "niche", "general") or "general",
+                        )
+                        t_16x9 = thumb_results.get("thumb_16x9")
+                        t_9x16 = thumb_results.get("thumb_9x16")
+                        logger.info(f"[Job {self.job_id}] 🎨 Đã tạo bộ Thumbnail 1 giây thành công: 16:9={t_16x9} | 9:16={t_9x16}")
+                    except Exception as ex_thumb:
+                        logger.warning(f"[Job {self.job_id}] Lỗi tạo Thumbnail trong LangGraph: {ex_thumb}")
 
                     render_job = RenderJobContract(
                         job_id=self.job_id,
                         title=title,
                         scenes=scenes_list,
                         full_audio_path=audio_p,
-                        total_duration_ms=dur_ms,
+                        total_audio_duration_ms=dur_ms or 30000,
                         subtitle_path=sub_p,
                         output_path=video_p,
+                        thumbnail_path=t_16x9,
+                        thumbnail_vertical_path=t_9x16,
                     )
+
+                    # Đồng bộ lại đường dẫn video vĩnh viễn & thumbnail vào Database
+                    try:
+                        with get_db() as db:
+                            j_rec = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
+                            if j_rec:
+                                j_rec.video_path = video_p
+                                if t_16x9:
+                                    j_rec.thumbnail_path = t_16x9
+                                if t_9x16:
+                                    j_rec.thumbnail_vertical_path = t_9x16
+                    except Exception as e_db:
+                        logger.warning(f"[Job {self.job_id}] Không thể cập nhật video_path/thumbnail vào DB: {e_db}")
+
                     self._save_render_manifest(render_job)
                     self._update_status(JobStatus.RENDERED)
+                    await self._report_progress("COMPLETED", f"🎉 Video #{self.job_id} đã hoàn tất và sẵn sàng phát hành!", percent=100)
                     return render_job
                 except Exception as e:
                     logger.warning(f"[Job {self.job_id}] LangGraph engine gặp sự cố ({e}), chuyển sang pipeline tuyến tính dự phòng...")
@@ -162,6 +215,29 @@ class VideoPipeline:
             await self._report_progress("AUDIO", "🎙️ Đang tạo giọng đọc AI Edge-TTS và đồng bộ phụ đề...", percent=15)
             enriched_scenes = await self._step_audio(script)
             full_audio_path, total_duration = await self._step_concat_audio(enriched_scenes)
+
+            # Tự động nhận diện chủ đề Viễn tưởng để gán Niche chuyên sâu & màu sắc phụ đề Cyber Cyan
+            from app.agents.scifi_visual_dispatcher_agent import SciFiVisualDispatcherAgent
+            scifi_agent = SciFiVisualDispatcherAgent()
+            is_scifi_video, scifi_conf, scifi_subgenre, _ = scifi_agent.detect_scifi_elements(
+                topic=script.title or getattr(self, "topic", "") or "",
+                narration=script.full_narration or "",
+                channel_niche=self.niche or "",
+            )
+            if is_scifi_video and (not self.niche or self.niche in ("general", "auto")):
+                self.niche = "scifi_future_tech"
+                logger.info(f"[Job {self.job_id}] 🚀 Tự động kích hoạt Niche 'scifi_future_tech' cho video viễn tưởng [{scifi_subgenre}]!")
+            elif (not self.niche or self.niche in ("general", "auto")):
+                from app.agents.wildlife_visual_dispatcher_agent import WildlifeVisualDispatcherAgent
+                w_agent = WildlifeVisualDispatcherAgent()
+                is_wl_video, _, wl_subg, _ = w_agent.detect_wildlife_elements(
+                    topic=script.title or getattr(self, "topic", "") or "",
+                    narration=script.full_narration or "",
+                    channel_niche=self.niche or "",
+                )
+                if is_wl_video:
+                    self.niche = "animal_rescue" if wl_subg == "animal_rescue_pets" else "wildlife_predators"
+                    logger.info(f"[Job {self.job_id}] 🦁 Tự động kích hoạt Niche '{self.niche}' cho video động vật hoang dã [{wl_subg}]!")
 
             # Tạo file phụ đề ASS Karaoke (word-level kinetic highlight theo Niche)
             subtitle_path = str(self.work_dir / "subtitles.ass")
@@ -182,6 +258,13 @@ class VideoPipeline:
             output_path = str(Path(settings.OUTPUT_DIR) / f"video_{self.job_id}.mp4")
             Path(settings.OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 
+            # Kiểm tra cờ viễn tưởng cho RenderJobContract
+            if not is_scifi_video:
+                scifi_scenes_count = sum(1 for s in media_scenes if getattr(s, "production_method", "") in ("TEXT_TO_VIDEO", "IMAGE_TO_VIDEO") or any(k in (getattr(s, "visual_keyword", "") or "").lower() for k in ["hố đen", "lỗ đen", "vũ trụ", "space", "cyberpunk", "alien", "robot", "quantum", "viễn tưởng"]))
+                if scifi_scenes_count >= max(1, len(media_scenes) // 2):
+                    is_scifi_video = True
+                    scifi_subgenre = "general_scifi_fantasy"
+
             render_job = RenderJobContract(
                 job_id=self.job_id,
                 title=script.title,
@@ -192,6 +275,8 @@ class VideoPipeline:
                 bgm_path=self._find_bgm(niche=self.niche),
                 sfx_dir="assets/sfx",  # Thư mục SFX cho chuyển cảnh (whoosh, hit, impact...)
                 output_path=output_path,
+                is_scifi=is_scifi_video,
+                scifi_subgenre=scifi_subgenre,
             )
 
             # Gọi VideoAgent render
@@ -201,8 +286,26 @@ class VideoPipeline:
             await self._report_progress("QA", "🔍 Đang kiểm định chất lượng video bằng ffprobe...", percent=95)
             self._step_qa(output_path)
 
-            self._update_status(JobStatus.RENDERED)
+            # ── Step D2: Tối ưu ảnh bìa Thumbnail ("Thị trường 1 giây" - 12:15 - 17:55) ──
+            try:
+                from app.services.thumbnail_service import ThumbnailService
+                ts = ThumbnailService()
+                thumb_results = ts.generate_viral_thumbnail(
+                    job_id=self.job_id,
+                    topic=script.title or getattr(self, "topic", ""),
+                    viral_title=getattr(script, "title", ""),
+                    video_path=output_path,
+                    base_image_path=next((s.media_path for s in media_scenes if s.media_path and s.media_path.endswith((".jpg", ".png"))), None),
+                    niche_id=self.niche or "general",
+                )
+                render_job.thumbnail_path = thumb_results.get("thumb_16x9")
+                render_job.thumbnail_vertical_path = thumb_results.get("thumb_9x16")
+                logger.info(f"[Job {self.job_id}] 🎨 Đã tạo bộ Thumbnail 1 giây thành công: 16:9={render_job.thumbnail_path} | 9:16={render_job.thumbnail_vertical_path}")
+            except Exception as ex_thumb:
+                logger.warning(f"[Job {self.job_id}] Lỗi tạo Thumbnail: {ex_thumb}")
+
             self._save_render_manifest(render_job)
+            self._update_status(JobStatus.RENDERED)
             await self._report_progress("COMPLETED", f"🎉 Video #{self.job_id} đã hoàn tất và sẵn sàng phát hành!", percent=100)
             logger.info(f"[Job {self.job_id}] Pipeline complete → {output_path}")
             return render_job
@@ -689,6 +792,16 @@ class VideoPipeline:
 
         if not clean:
             clean = topic_context or "dramatic scene"
+
+        # Tự động chuẩn hóa từ khóa nếu là chủ đề Động vật hoang dã
+        try:
+            from app.agents.wildlife_visual_dispatcher_agent import WildlifeVisualDispatcherAgent
+            w_agent = WildlifeVisualDispatcherAgent()
+            is_wl, _, subg, _ = w_agent.detect_wildlife_elements(topic=topic_context, narration=getattr(scene, 'narration', ''))
+            if is_wl:
+                clean = w_agent.sanitize_animal_query(clean, subgenre=subg)
+        except Exception:
+            pass
 
         # Nếu từ khóa quá ngắn (1 từ) và có topic_context, kết hợp để tránh trả về ảnh lạc đề
         if len(clean.split()) < 2 and topic_context and topic_context.lower() not in clean.lower():
@@ -1184,12 +1297,16 @@ class VideoPipeline:
                     job.scenes_json = updated_script.to_json_str()
 
     def _save_render_manifest(self, render_job: RenderJobContract):
-        """Lưu render manifest snapshot vào DB."""
+        """Lưu render manifest snapshot và thumbnail vào DB."""
         with get_db() as db:
             job = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
             if job:
                 job.render_manifest = render_job.model_dump_json()
                 job.video_path = render_job.output_path
+                if getattr(render_job, 'thumbnail_path', None):
+                    job.thumbnail_path = render_job.thumbnail_path
+                if getattr(render_job, 'thumbnail_vertical_path', None):
+                    job.thumbnail_vertical_path = render_job.thumbnail_vertical_path
 
     # ──────────────────────────────────────────
     # UTILITY HELPERS
@@ -1230,6 +1347,9 @@ class VideoPipeline:
             "history": ["deep_ambient", "history", "ancient"],
             "scifi": ["scifi_cyber", "cyber", "scifi", "tech"],
             "future": ["scifi_cyber", "cyber", "future"],
+            "space": ["scifi_cyber", "deep_ambient", "cyber"],
+            "cosmic": ["scifi_cyber", "deep_ambient"],
+            "cyberpunk": ["scifi_cyber", "cyber"],
             "horror": ["dark_suspense", "suspense", "dark", "horror"],
             "mystery": ["dark_suspense", "deep_ambient", "mystery"],
             "deep_sea": ["dark_suspense", "deep_ambient"],
@@ -1344,7 +1464,9 @@ class VideoPipeline:
                 Path(path).touch()
 
     def cleanup_temp(self):
-        """Xóa thư mục tạm sau khi pipeline hoàn tất."""
+        """Xóa thư mục tạm sau khi pipeline hoàn tất, bảo vệ thư mục storage/outputs."""
         if self.work_dir and self.work_dir.exists():
-            shutil.rmtree(self.work_dir, ignore_errors=True)
-            logger.info(f"[Job {self.job_id}] Đã dọn dẹp temp: {self.work_dir}")
+            w_str = str(self.work_dir).lower()
+            if "outputs" not in w_str and "thumbnails" not in w_str:
+                shutil.rmtree(self.work_dir, ignore_errors=True)
+                logger.info(f"[Job {self.job_id}] Đã dọn dẹp temp: {self.work_dir}")

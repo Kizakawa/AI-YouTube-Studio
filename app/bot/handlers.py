@@ -1258,8 +1258,33 @@ async def start_render_pipeline(
         pipeline = VideoPipeline(job_id=job_id, progress_callback=progress_cb)
         render_job = await pipeline.execute()
 
-        # Kiểm tra file MP4 hoàn chỉnh
+        # Kiểm tra file MP4 hoàn chỉnh với cơ chế tìm kiếm đa đường dẫn
         out_path = Path(render_job.output_path)
+        if not out_path.exists():
+            resolved_p = _resolve_video_file_path(job_id, render_job.output_path)
+            if resolved_p and resolved_p.exists():
+                out_path = resolved_p
+                render_job.output_path = str(out_path)
+
+        if not out_path.exists():
+            logger.error(f"❌ Không tìm thấy file video đầu ra cho Job #{job_id}: {render_job.output_path}")
+            target_chats = []
+            if chat_id:
+                target_chats.append(chat_id)
+            for gid in settings.get_allowed_group_ids():
+                if gid and gid not in target_chats:
+                    target_chats.append(gid)
+            for t_chat in target_chats:
+                try:
+                    await bot.send_message(
+                        chat_id=t_chat,
+                        text=f"⚠️ <b>Video #{job_id} đã dựng xong nhưng không tìm thấy file video MP4!</b>\nĐường dẫn: <code>{render_job.output_path}</code>",
+                        parse_mode="HTML"
+                    )
+                except Exception:
+                    pass
+            return
+
         if out_path.exists() and bot:
             size_mb = out_path.stat().st_size / (1024 * 1024)
 
@@ -1355,56 +1380,98 @@ async def start_render_pipeline(
                 caption = caption[:990] + "..."
 
             # Xác định các chat mục tiêu (chat cá nhân & các nhóm được cấp phép)
-            target_chats = set()
+            target_chats = []
             if chat_id:
-                target_chats.add(chat_id)
+                target_chats.append(chat_id)
             for gid in settings.get_allowed_group_ids():
-                if gid:
-                    target_chats.add(gid)
+                if gid and gid not in target_chats:
+                    target_chats.append(gid)
 
+            # 1. CẬP NHẬT TRẠNG THÁI TẢI VIDEO (KHÔNG BẮN ẢNH RỜI ĐỂ TRÁNH RÁC NHÓM)
+            thumb_p = getattr(render_job, "thumbnail_path", None)
+            if not thumb_p or not Path(thumb_p).exists():
+                thumb_p = getattr(render_job, "thumbnail_vertical_path", None)
+
+            if status_msg:
+                try:
+                    await safe_edit_text(status_msg, f"⚡ <b>Đang tải video #{job_id} ({size_mb:.1f} MB) vào nhóm...</b>")
+                except Exception:
+                    pass
+
+            # 2. UPLOAD DUY NHẤT 1 FILE VIDEO KÈM THUMBNAIL LÀM BÌA & NÚT THAO TÁC
+            cached_telegram_file_id = None
             for t_chat in target_chats:
                 sent_ok = False
+                thumb_f = open(thumb_p, "rb") if thumb_p and Path(thumb_p).exists() else None
                 if size_mb <= 49.0:
-                    try:
-                        with open(out_path, "rb") as vf:
-                            await bot.send_video(
-                                chat_id=t_chat,
-                                video=vf,
-                                caption=caption,
-                                parse_mode="HTML",
-                                reply_markup=post_render_markup,
-                                supports_streaming=True,
-                                read_timeout=180,
-                                write_timeout=180
-                            )
-                        sent_ok = True
-                    except Exception as ex_upload:
-                        logger.warning(f"send_video HTML thất bại tới chat {t_chat}: {ex_upload}, thử gửi lại không parse_mode...")
                         try:
-                            with open(out_path, "rb") as vf:
+                            if cached_telegram_file_id:
+                                # Chat thứ 2 trở đi gửi qua file_id chỉ mất 0.2s!
                                 await bot.send_video(
                                     chat_id=t_chat,
-                                    video=vf,
+                                    video=cached_telegram_file_id,
+                                    caption=caption,
+                                    parse_mode="HTML",
+                                    reply_markup=post_render_markup,
+                                    supports_streaming=True
+                                )
+                                sent_ok = True
+                            else:
+                                with open(out_path, "rb") as vf:
+                                    sent_msg = await bot.send_video(
+                                        chat_id=t_chat,
+                                        video=vf,
+                                        thumbnail=thumb_f,
+                                        caption=caption,
+                                        parse_mode="HTML",
+                                        reply_markup=post_render_markup,
+                                        supports_streaming=True,
+                                        read_timeout=300,
+                                        write_timeout=300
+                                    )
+                                    if sent_msg and sent_msg.video:
+                                        cached_telegram_file_id = sent_msg.video.file_id
+                                sent_ok = True
+                        except Exception as ex_upload:
+                            logger.warning(f"send_video HTML thất bại tới chat {t_chat}: {ex_upload}, thử gửi lại không parse_mode...")
+                        try:
+                            if cached_telegram_file_id:
+                                await bot.send_video(
+                                    chat_id=t_chat,
+                                    video=cached_telegram_file_id,
                                     caption=f"Video #{job_id}: {render_job.title}",
                                     reply_markup=post_render_markup,
-                                    supports_streaming=True,
-                                    read_timeout=180,
-                                    write_timeout=180
+                                    supports_streaming=True
                                 )
+                            else:
+                                with open(out_path, "rb") as vf:
+                                    sent_msg = await bot.send_video(
+                                        chat_id=t_chat,
+                                        video=vf,
+                                        caption=f"Video #{job_id}: {render_job.title}",
+                                        reply_markup=post_render_markup,
+                                        supports_streaming=True,
+                                        read_timeout=300,
+                                        write_timeout=300
+                                    )
+                                    if sent_msg and sent_msg.video:
+                                        cached_telegram_file_id = sent_msg.video.file_id
                             sent_ok = True
                         except Exception as ex_raw_vid:
                             logger.warning(f"send_video raw thất bại: {ex_raw_vid}, thử gửi dạng document...")
                             try:
                                 with open(out_path, "rb") as vf_doc:
-                                    await bot.send_document(
+                                    sent_doc = await bot.send_document(
                                         chat_id=t_chat,
                                         document=vf_doc,
                                         caption=caption,
                                         parse_mode="HTML",
                                         reply_markup=post_render_markup,
-                                        read_timeout=180,
-                                        write_timeout=180
+                                        read_timeout=300,
+                                        write_timeout=300
                                     )
+                                    if sent_doc and sent_doc.document:
+                                        cached_telegram_file_id = sent_doc.document.file_id
                                 sent_ok = True
                             except Exception as ex_doc:
                                 logger.error(f"send_document cũng thất bại tới chat {t_chat}: {ex_doc}")
@@ -2346,6 +2413,51 @@ async def _execute_channel_publish(update: Update, context: ContextTypes.DEFAULT
                     success_text += f"📁 **Thư mục kênh trên Drive:**\n👉 {folder_link}\n\n"
             success_text += "💡 Video đã được xuất bản Công khai (Public) thành công!"
             await safe_edit_text(status_wait, success_text)
+        elif pub_res.get("status") == "waiting_quota_reset":
+            # QuotaGuard kích hoạt: Dự án Google Cloud của kênh này đã dùng hết 10.000 điểm hôm nay
+            from app.services.quota_manager import QuotaManager
+            from app.bot.keyboards import get_quota_failover_keyboard
+
+            available = QuotaManager.get_available_channels(exclude_channel_id=channel_id)
+            auto_rotate = getattr(settings, "AUTO_ROTATE_CHANNELS_ON_QUOTA", False) or os.getenv("AUTO_ROTATE_CHANNELS_ON_QUOTA", "false").lower() in ("true", "1", "yes")
+
+            if auto_rotate and available:
+                # Chế độ tự động hoàn toàn: Tự động chuyển hướng sang kênh còn Quota nhiều nhất
+                best_channel = available[0]
+                target_new_id = best_channel["channel_id"]
+                target_new_name = best_channel["channel_name"]
+                logger.info(f"🔄 [AutoRotate] Kênh '{ch_name}' hết quota -> Tự động xoay sang kênh '{target_new_name}' ({target_new_id})")
+                await safe_edit_text(
+                    status_wait,
+                    f"🔄 **[TỰ ĐỘNG XOAY KÊNH]** Kênh `{ch_name}` đã hết hạn mức Quota hôm nay (0 điểm).\n"
+                    f"⚡ Hệ thống đang tự động chuyển hướng và xuất bản sang kênh `{target_new_name}` (còn {best_channel['remaining_units']:,} Quota)..."
+                )
+                with get_db() as db:
+                    db_job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                    if db_job:
+                        db_job.target_channel_id = target_new_id
+                await _execute_channel_publish(update, context, job_id, target_new_id, user)
+                return
+
+            if available:
+                avail_bullets = "\n".join([f"• <b>{c['channel_name']}</b>: <code>{c['remaining_units']:,} Quota</code>" for c in available])
+                failover_text = (
+                    f"⚠️ <b>HẠN MỨC YOUTUBE API CỦA KÊNH ĐÃ CHẠM TRẦN! (Task #{job_id})</b>\n\n"
+                    f"📺 <b>Kênh mục tiêu:</b> <code>{html.escape(ch_name)}</code>\n"
+                    f"🚨 Dự án Google Cloud <code>{html.escape(pub_agent.project_id)}</code> đã dùng hết 10.000 điểm hôm nay.\n\n"
+                    f"🔄 <b>TỰ ĐỘNG HÓA XOAY KÊNH (QUOTA-AWARE FAILOVER):</b>\n"
+                    f"Hệ thống phát hiện có <b>{len(available)} kênh khác đang còn sẵn API Quota</b>:\n"
+                    f"{avail_bullets}\n\n"
+                    f"👉 <i>Bấm nút bên dưới để chuyển kênh và đăng video ngay lập tức mà không phải chờ đến ngày mai!</i>"
+                )
+                failover_markup = get_quota_failover_keyboard(job_id, channel_id)
+                await safe_edit_text(status_wait, failover_text, reply_markup=failover_markup, parse_mode="HTML")
+            else:
+                err = pub_res.get("error", "Hết hạn mức Quota và không còn kênh dự phòng nào.")
+                fail_text = f"❌ **Đăng YouTube bị hoãn do hết Quota:** `{err}`"
+                if drive_link:
+                    fail_text += f"\n\n💾 Video đã được lưu trữ an toàn trên Google Drive:\n👉 {drive_link}"
+                await safe_edit_text(status_wait, fail_text)
         else:
             err = pub_res.get("error", "Lỗi không xác định")
             fail_text = f"❌ **Đăng YouTube thất bại:** `{err}`"
@@ -2620,6 +2732,37 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         channel_id = parts[2]
         await safe_query_answer(query, "⚡ Đang tiến hành xuất bản ngay...", show_alert=False)
         await _execute_channel_publish(update, context, job_id, channel_id, user)
+
+    elif data.startswith("rotate_publish_to:"):
+        parts = data.split(":")
+        job_id = int(parts[1])
+        new_channel_id = parts[2]
+        await safe_query_answer(query, "⚡ Đang tự động xoay kênh và đăng video...", show_alert=False)
+        with get_db() as db:
+            j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if j:
+                j.target_channel_id = new_channel_id
+        await _execute_channel_publish(update, context, job_id, new_channel_id, user)
+
+    elif data.startswith("wait_quota_job:"):
+        parts = data.split(":")
+        job_id = int(parts[1])
+        ch_id = parts[2]
+        await safe_query_answer(query, "⏰ Đã chuyển video vào hàng đợi Quota an toàn!", show_alert=False)
+        with get_db() as db:
+            j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if j:
+                j.status = "WAITING_QUOTA_RESET"
+                j.target_channel_id = ch_id
+        from app.services.quota_manager import get_next_reset_time
+        reset_time_str = get_next_reset_time().strftime("%H:%M ngày %d/%m/%Y")
+        await safe_reply(
+            update,
+            f"⏰ **ĐÃ CHUYỂN VIDEO #{job_id} VÀO HÀNG ĐỢI AN TOÀN!**\n\n"
+            f"📺 **Kênh:** `{ch_id}`\n"
+            f"⏳ Video sẽ tự động được hệ thống đăng lên YouTube sau khi Google nạp lại hạn mức Quota lúc **{reset_time_str}**.\n"
+            f"💡 Bạn không cần làm gì thêm, hệ thống sẽ tự động quét và xuất bản đúng giờ!"
+        )
 
 
     # 3. Góp ý chỉnh sửa kịch bản hoặc video
@@ -2994,6 +3137,27 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         success_text += f"\n📁 **Thư mục kênh trên Drive:** [Mở thư mục trên Drive]({folder_link})"
 
                 await safe_reply(update, success_text)
+            elif pub_res.get("status") == "waiting_quota_reset":
+                from app.services.quota_manager import QuotaManager
+                from app.bot.keyboards import get_quota_failover_keyboard
+
+                available = QuotaManager.get_available_channels(exclude_channel_id=channel_id)
+                if available:
+                    avail_bullets = "\n".join([f"• <b>{c['channel_name']}</b>: <code>{c['remaining_units']:,} Quota</code>" for c in available])
+                    failover_text = (
+                        f"⚠️ <b>HẠN MỨC YOUTUBE API CỦA KÊNH ĐÃ CHẠM TRẦN! (Task #{job_id})</b>\n\n"
+                        f"📺 <b>Kênh mục tiêu:</b> <code>{html.escape(ch_name)}</code>\n"
+                        f"🚨 Dự án Google Cloud <code>{html.escape(pub_agent.project_id)}</code> đã dùng hết 10.000 điểm hôm nay.\n\n"
+                        f"🔄 <b>TỰ ĐỘNG HÓA XOAY KÊNH (QUOTA-AWARE FAILOVER):</b>\n"
+                        f"Hệ thống phát hiện có <b>{len(available)} kênh khác đang còn sẵn API Quota</b>:\n"
+                        f"{avail_bullets}\n\n"
+                        f"👉 <i>Bấm nút bên dưới để chuyển kênh và đăng video ngay lập tức mà không phải chờ đến ngày mai!</i>"
+                    )
+                    failover_markup = get_quota_failover_keyboard(job_id, channel_id)
+                    await safe_reply(update, failover_text, reply_markup=failover_markup, parse_mode="HTML")
+                else:
+                    err = pub_res.get("error", "Hết Quota và không còn kênh dự phòng nào.")
+                    await safe_reply(update, f"❌ **LÊN LỊCH VIDEO #{job_id} BỊ HOÃN DO HẾT QUOTA:** `{err}`")
             else:
                 err = pub_res.get("error") or pub_res.get("message") or "Lỗi không xác định"
                 await safe_reply(
@@ -4913,4 +5077,138 @@ async def chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         markup = get_chat_brainstorm_keyboard(session_id)
         await safe_reply(update, f"🔥 **3 CÂU HOOK MỚI:**\n\n{msg}", reply_markup=markup)
+
+
+async def dispatch_rendered_video_to_telegram(job_id: int):
+    """
+    Tự động gửi video đã dựng thành công vào Telegram (dùng cho Web Studio, API, hoặc Background task).
+    - Bước 1: Bắn ngay Thumbnail HD + Báo cáo thông số trong 0.2s để người dùng biết kết quả ngay lập tức.
+    - Bước 2: Tải video lên chat đầu tiên, bắt file_id.
+    - Bước 3: Gửi qua các nhóm/chat khác bằng file_id chỉ trong 0.1s (tiết kiệm 70% thời gian).
+    """
+    from telegram import Bot, InlineKeyboardMarkup, InlineKeyboardButton
+    from config.settings import settings
+    from app.database.models import get_db, VideoJob
+
+    token = settings.TELEGRAM_BOT_TOKEN
+    if not token:
+        logger.debug(f"[TelegramDispatch] Không có TELEGRAM_BOT_TOKEN, bỏ qua gửi video #{job_id}")
+        return
+
+    with get_db() as db:
+        job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+        if not job:
+            return
+        title = job.title or job.topic or f"Video #{job_id}"
+        v_path = job.video_path
+        u_id = job.user_id
+        thumb_p = job.thumbnail_path or job.thumbnail_vertical_path
+
+    v_file = _resolve_video_file_path(job_id, v_path)
+    if not v_file or not v_file.exists():
+        logger.warning(f"[TelegramDispatch] Không tìm thấy file video #{job_id}: {v_path}")
+        return
+
+    size_bytes = v_file.stat().st_size
+    size_mb = size_bytes / (1024 * 1024)
+
+    # Xác định các chat nhận tin
+    target_chats = []
+    if u_id and u_id != 0:
+        target_chats.append(u_id)
+    for gid in settings.get_allowed_group_ids():
+        if gid and gid not in target_chats:
+            target_chats.append(gid)
+    if not target_chats:
+        for uid in settings.get_allowed_users().keys():
+            if uid and uid not in target_chats:
+                target_chats.append(uid)
+
+    if not target_chats:
+        return
+
+    # Đọc tunnel URL nếu có
+    tunnel_url = "http://localhost:8000"
+    try:
+        t_file = Path(settings.BASE_DIR) / "storage" / "tunnel_url.txt"
+        if t_file.exists():
+            tunnel_url = t_file.read_text(encoding="utf-8").strip() or tunnel_url
+    except Exception:
+        pass
+
+    # Keyboard thao tác
+    actions_markup = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("▶️ Xem Ngay Trên Web Studio", url=tunnel_url)
+        ],
+        [
+            InlineKeyboardButton("🚀 Đăng Lên YouTube", callback_data=f"publish_youtube:{job_id}"),
+            InlineKeyboardButton("⏰ Lên Lịch Tự Động", callback_data=f"schedule_youtube:{job_id}")
+        ],
+        [
+            InlineKeyboardButton("📋 Xem Danh Sách Video", callback_data="videos_page:1")
+        ]
+    ])
+
+    safe_title = html.escape(title)
+    quick_caption = (
+        f"🎉 <b>VIDEO #{job_id} ĐÃ HOÀN TẤT!</b>\n\n"
+        f"📌 <b>Tiêu đề:</b> {safe_title}\n"
+        f"📦 <b>Dung lượng:</b> {size_mb:.1f} MB (Chuẩn 1080x1920 9:16 Shorts)\n"
+        f"⚡ <i>Đang truyền file video gốc vào Telegram... Bạn có thể bấm xem ngay tức thì trên Web Studio bên dưới:</i>"
+    )
+
+    video_caption = (
+        f"🎬 <b>{safe_title}</b>\n\n"
+        f"🆔 <b>Task:</b> #{job_id}\n"
+        f"📦 <b>Dung lượng:</b> {size_mb:.1f} MB (Chuẩn 1080x1920 9:16 Shorts)\n"
+        f"👉 <i>Video đã sẵn sàng bên dưới để bạn xem thử hoặc lưu về máy!</i>"
+    )
+
+    async with Bot(token=token) as bot:
+        # Gửi DUY NHẤT 1 file video (nhúng thumbnail làm ảnh bìa) kèm nút thao tác
+        cached_file_id = None
+        for cid in target_chats:
+            thumb_f = open(thumb_p, "rb") if thumb_p and Path(thumb_p).exists() else None
+            try:
+                if cached_file_id:
+                    await bot.send_video(
+                        chat_id=cid,
+                        video=cached_file_id,
+                        caption=video_caption,
+                        parse_mode="HTML",
+                        reply_markup=actions_markup,
+                        supports_streaming=True
+                    )
+                else:
+                    with open(v_file, "rb") as vf:
+                        if size_mb <= 50.0:
+                            sent_msg = await bot.send_video(
+                                chat_id=cid,
+                                video=vf,
+                                thumbnail=thumb_f,
+                                caption=video_caption,
+                                parse_mode="HTML",
+                                reply_markup=actions_markup,
+                                supports_streaming=True,
+                                read_timeout=300,
+                                write_timeout=300
+                            )
+                            if sent_msg and sent_msg.video:
+                                cached_file_id = sent_msg.video.file_id
+                        else:
+                            sent_msg = await bot.send_document(
+                                chat_id=cid,
+                                document=vf,
+                                thumbnail=thumb_f,
+                                caption=video_caption,
+                                reply_markup=actions_markup,
+                                read_timeout=600,
+                                write_timeout=600
+                            )
+                            if sent_msg and sent_msg.document:
+                                cached_file_id = sent_msg.document.file_id
+            except Exception as ex_v:
+                logger.error(f"[TelegramDispatch] Lỗi gửi video #{job_id} tới {cid}: {ex_v}")
+
 

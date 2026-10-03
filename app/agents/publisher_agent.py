@@ -23,7 +23,7 @@ class PublisherAgent:
         # Quản lý Hạn mức Quota theo Google Cloud Project ID
         from app.services.quota_manager import QuotaManager, get_project_id_from_client_secret, COST_FULL_SHORTS, get_next_reset_time
         cs_path = self.channel_config.get("client_secret") or f"credentials/accounts/{self.account_name}/client_secret.json"
-        self.project_id = get_project_id_from_client_secret(cs_path)
+        self.project_id = QuotaManager.get_channel_project_id(self.channel_id)
         
         ch_token = f"credentials/channels/{self.channel_id}/youtube_token.json"
         acc_token = f"credentials/accounts/{self.account_name}/youtube_token.json"

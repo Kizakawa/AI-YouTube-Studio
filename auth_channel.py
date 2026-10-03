@@ -140,6 +140,18 @@ def authenticate_channel(channel_id: str):
 
         save_encrypted_json(token_file, token_dict)
 
+        # Đồng bộ vào thư mục tài khoản mẹ để tương thích hoàn toàn
+        for acc_folder in [acc_id, "account_2" if "2" in acc_id else acc_id, "account_3" if "3" in acc_id else acc_id]:
+            acc_dir = base_dir / "credentials" / "accounts" / acc_folder
+            if acc_dir.exists():
+                try:
+                    save_encrypted_json(acc_dir / "youtube_token.json", token_dict)
+                    b64_str = base64.b64encode(json.dumps(token_dict).encode("utf-8")).decode("utf-8")
+                    with open(acc_dir / "youtube_token_base64.txt", "w", encoding="utf-8") as f:
+                        f.write(b64_str)
+                except Exception:
+                    pass
+
         print("\n" + "=" * 68)
         print("🎉 XÁC THỰC THÀNH CÔNG VÀ ĐÃ LƯU TOKEN AN TOÀN (AES-256)!")
         print(f"   📺 Kênh YouTube đã cấp quyền: {real_yt_title or ch_name}")

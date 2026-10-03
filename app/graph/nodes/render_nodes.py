@@ -38,8 +38,8 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             "visual_keyword": m.get("visual_keyword", ""),
             "visual_prompt": m.get("visual_prompt"),   # ← Cần cho AI image context
             "estimated_seconds": max(float(m.get("estimated_seconds") or 3.0), 1.0),
-            "audio_duration_ms": a_info.get("audio_duration_ms") or a_info.get("duration_ms"),
-            "audio_path": a_info.get("audio_path", ""),
+            "audio_duration_ms": a_info.get("audio_duration_ms") or a_info.get("duration_ms") or int(max(float(m.get("estimated_seconds") or 3.0), 1.0) * 1000),
+            "audio_path": a_info.get("audio_path") or full_audio_path or "storage/temp/voiceover.mp3",
             "media_path": m.get("media_path", ""),
             "media_type": m.get("media_type", "image"),
             # Cinematic enhancement fields — cần cho Ken Burns & SFX
@@ -55,19 +55,34 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
     final_output = str(work_dir / f"final_shorts_{job_id}.mp4")
 
     title = state.get("title") or (state.get("script_data") or {}).get("title") or f"Shorts #{job_id}"
+    resolved_total_dur = int(total_audio_duration_ms or sum(s.audio_duration_ms for s in enriched_scenes))
 
     render_job = RenderJobContract(
         job_id=job_id,
         title=title,
         scenes=enriched_scenes,
-        full_audio_path=full_audio_path,
-        total_audio_duration_ms=total_audio_duration_ms,
+        full_audio_path=full_audio_path or (enriched_scenes[0].audio_path if enriched_scenes else ""),
+        total_audio_duration_ms=resolved_total_dur,
         subtitle_path=subtitle_path,
         output_path=final_output,
     )
 
     agent = VideoAgent()
     await agent.render(render_job)
+
+    # Đảm bảo video thành phẩm được lưu vĩnh viễn vào storage/outputs/video_{job_id}.mp4
+    # (Tránh trường hợp bị xóa mất khi dọn dẹp thư mục tạm work_dir)
+    import shutil
+    from config.settings import settings
+    outputs_dir = Path(settings.OUTPUT_DIR)
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    permanent_output = str(outputs_dir / f"video_{job_id}.mp4")
+
+    if Path(final_output).exists():
+        if str(Path(final_output).resolve()) != str(Path(permanent_output).resolve()):
+            shutil.copy2(final_output, permanent_output)
+            logger.info(f"[RenderNode] Đã bảo lưu video thành phẩm an toàn vào: {permanent_output}")
+        final_output = permanent_output
 
     return {
         "rendered_video_path": final_output,

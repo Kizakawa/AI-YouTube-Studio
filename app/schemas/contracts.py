@@ -72,8 +72,8 @@ class SceneContract(BaseModel):
     # ── Cinematic Enhancement Fields (Optional — sinh bởi ContentAgent hoặc để mặc định) ──
     camera_motion: Optional[str] = Field(
         default=None,
-        description="Loại chuyển động camera Ken Burns: 'zoom_in', 'zoom_out', 'pan_left', 'pan_right', 'pan_up', 'pan_down'. None = tự động xoay vòng.",
-        pattern=r"^(zoom_in|zoom_out|pan_left|pan_right|pan_up|pan_down)$"
+        description="Loại chuyển động camera: 'zoom_in', 'zoom_out', 'pan_left', 'pan_right', 'pan_up', 'pan_down', 'hyper_zoom', 'warp_zoom', 'cinematic_drift'. None = tự động xoay vòng.",
+        pattern=r"^(zoom_in|zoom_out|pan_left|pan_right|pan_up|pan_down|hyper_zoom|warp_zoom|cinematic_drift)$"
     )
     sfx_cue: Optional[str] = Field(
         default=None,
@@ -119,11 +119,11 @@ class SceneContract(BaseModel):
     def resolved_camera_motion(self) -> str:
         """
         Trả về camera_motion thực tế.
-        Nếu không set, tự động chọn theo scene_id (xoay vòng 6 loại để đa dạng).
+        Nếu không set, tự động chọn theo scene_id (xoay vòng các loại động lực cao).
         """
         if self.camera_motion:
             return self.camera_motion
-        motions = ["zoom_in", "zoom_out", "pan_left", "pan_right", "pan_up", "pan_down"]
+        motions = ["zoom_in", "hyper_zoom", "pan_left", "cinematic_drift", "zoom_out", "warp_zoom", "pan_right"]
         return motions[(self.scene_id - 1) % len(motions)]
 
 
@@ -147,6 +147,10 @@ class ScriptContract(BaseModel):
     viral_formula: Optional[str] = Field(
         default=None,
         description="Công thức viral áp dụng (Double Tap & Protect, Debate in Comments, Curiosity Part 2)"
+    )
+    thumbnail_text: Optional[str] = Field(
+        default=None,
+        description="2-4 từ in hoa cực to, tương phản cao gợi tò mò cho ảnh bìa (Thumbnail 1-second rule)"
     )
 
     @model_validator(mode="after")
@@ -237,6 +241,10 @@ class RenderJobContract(BaseModel):
     resolution_h: int = Field(default=1920)
     fps: int = Field(default=30)
     bgm_volume: float = Field(default=0.08, ge=0, le=1.0, description="Volume nhạc nền (0-1)")
+    is_scifi: bool = Field(default=False, description="Cờ nhận diện video viễn tưởng")
+    scifi_subgenre: Optional[str] = Field(default=None, description="Phân nhánh viễn tưởng (deep_space_cosmic, cyberpunk...)")
+    thumbnail_path: Optional[str] = Field(default=None, description="Đường dẫn ảnh bìa ngang 16:9")
+    thumbnail_vertical_path: Optional[str] = Field(default=None, description="Đường dẫn ảnh bìa dọc 9:16")
 
     @field_validator("scenes")
     @classmethod

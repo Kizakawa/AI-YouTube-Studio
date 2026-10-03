@@ -21,81 +21,84 @@ SCIFI_GENRE_KEYWORDS: Dict[str, List[str]] = {
         "vũ trụ", "hố đen", "lỗ đen", "thiên hà", "ngân hà", "tinh vân", "ngôi sao", "hành tinh",
         "tiểu hành tinh", "siêu tân tinh", "sao neutron", "chân trời sự kiện", "vật chất tối",
         "năng lượng tối", "không thời gian", "bẻ cong không gian", "vụ nổ big bang", "phi hành gia",
+        "hố trắng", "sao lùn", "hệ mặt trời", "sóng hấp dẫn", "vũ trụ vô tận", "kính viễn vọng",
         "black hole", "wormhole", "galaxy", "nebula", "supernova", "neutron star", "event horizon",
         "dark matter", "dark energy", "space-time", "cosmos", "universe", "deep space", "interstellar",
-        "astronaut", "orbit", "exoplanet", "cosmic ray", "quasar", "accretion disk"
+        "astronaut", "orbit", "exoplanet", "cosmic ray", "quasar", "pulsar", "accretion disk",
+        "gravitational lensing", "dyson sphere", "white hole", "james webb"
     ],
     "cyberpunk_futuristic": [
         "tương lai", "công nghệ cao", "thành phố tương lai", "cyberpunk", "người máy", "robot",
-        "trí tuệ nhân tạo", "ai", "cyborg", "android", "máy học", "công nghệ lượng tử", "máy tính lượng tử",
+        "trí tuệ nhân tạo", "ai", "agi", "cyborg", "android", "máy học", "công nghệ lượng tử", "máy tính lượng tử",
         "hình chiếu 3d", "hologram", "chip não", "neuralink", "thực tế ảo", "vr", "matrix", "mạng lượng tử",
+        "siêu trí tuệ", "robot hình người", "vũ khí năng lượng", "xe bay", "công nghệ nano",
         "futuristic", "cyberpunk", "robot", "android", "cyborg", "artificial intelligence", "quantum computing",
-        "hologram", "neural network", "simulation theory", "nanotechnology", "neon future", "flying car"
+        "hologram", "neural network", "simulation theory", "nanotechnology", "neon future", "flying car",
+        "exoskeleton", "singularity", "superintelligence", "synthetic human", "humanoid"
     ],
     "multiverse_time_travel": [
         "du hành thời gian", "cỗ máy thời gian", "nghịch lý thời gian", "thế giới song song", "đa vũ trụ",
         "chiều không gian thứ 4", "cổng không gian", "bước nhảy không gian", "vượt tốc độ ánh sáng",
-        "lỗ sâu", "vũ trụ song song", "nghịch lý ông nội", "dòng thời gian",
+        "lỗ sâu", "vũ trụ song song", "nghịch lý ông nội", "dòng thời gian", "bước nhảy lượng tử", "rối lượng tử",
         "time travel", "multiverse", "parallel universe", "wormhole", "warp speed", "hyperspace",
-        "quantum realm", "4th dimension", "time paradox", "portal", "quantum entanglement", "dyson sphere"
+        "quantum realm", "4th dimension", "time paradox", "portal", "quantum entanglement", "higher dimension", "timeline"
     ],
     "alien_extraterrestrial": [
-        "người ngoài hành tinh", "ufo", "đĩa bay", "văn minh ngoài trái đất", "sinh vật ngoài hành tinh",
+        "người ngoài hành tinh", "ufo", "uap", "đĩa bay", "văn minh ngoài trái đất", "sinh vật ngoài hành tinh",
         "phi thuyền", "tàu vũ trụ", "chiến hạm không gian", "sự sống ngoài trái đất", "thang kardashev",
         "văn minh loại 1", "văn minh loại 2", "văn minh loại 3", "tín hiệu vô tuyến vũ trụ", "nghịch lý fermi",
-        "alien", "extraterrestrial", "ufo", "uap", "alien civilization", "alien planet", "spaceship",
-        "starship", "mothership", "kardashev scale", "fermi paradox", "space anomaly", "alien contact"
+        "bộ lọc vĩ đại", "sao hỏa", "alien", "extraterrestrial", "ufo", "uap", "alien civilization", "alien planet",
+        "spaceship", "starship", "mothership", "kardashev scale", "fermi paradox", "space anomaly", "alien contact", "great filter"
     ],
     "general_scifi_fantasy": [
         "viễn tưởng", "khoa học viễn tưởng", "sci-fi", "scifi", "science fiction", "giả tưởng",
         "huyền bí", "kỳ ảo", "siêu nhiên", "siêu năng lực", "bảo bối tương lai", "vũ khí năng lượng",
-        "laser", "chùm tia năng lượng", "vũ trụ quan", "thế kỷ 22", "thế kỷ 30", "năm 3000"
+        "laser", "chùm tia năng lượng", "vũ trụ quan", "thế kỷ 22", "thế kỷ 30", "năm 3000", "thế giới ảo"
     ]
 }
 
 # ── KHO TỪ KHÓA TÌM VIDEO CHUYỂN ĐỘNG SẴN CÓ CHUẨN ĐIỆN ẢNH (CURATED STOCK VIDEO QUERIES) ──
 CURATED_SCIFI_STOCK_QUERIES: Dict[str, List[str]] = {
     "deep_space_cosmic": [
-        "black hole space",
-        "galaxy stars cosmos",
-        "deep space nebula",
-        "planet in space",
-        "cosmic energy motion",
-        "universe stars travel",
-        "space travel stars",
-        "stars nebula motion",
-        "earth from space"
+        "black hole space accretion disk",
+        "deep space galaxy nebula vertical",
+        "stars space travel flying",
+        "earth from orbit space station",
+        "supernova cosmic explosion stars",
+        "planet rings deep space motion",
+        "cosmic energy glowing stars"
     ],
     "cyberpunk_futuristic": [
-        "cyberpunk city night neon",
-        "futuristic technology motion",
-        "futuristic robot ai",
-        "hologram technology abstract",
-        "neon lights motion",
-        "future city traffic",
-        "abstract digital technology"
+        "cyberpunk city night neon vertical",
+        "futuristic neon traffic metropolis",
+        "hologram user interface hud digital",
+        "robot humanoid cyborg vertical",
+        "artificial intelligence data glowing network",
+        "futuristic laboratory sci fi technology",
+        "neon rain reflections street"
     ],
     "multiverse_time_travel": [
-        "warp speed tunnel stars",
-        "quantum abstract glowing energy",
-        "portal space time travel",
-        "hyperspace light motion",
-        "abstract energy tunnel",
-        "wormhole space motion"
+        "hyperspace warp tunnel stars",
+        "wormhole space time portal",
+        "quantum glowing energy particles",
+        "abstract light speed tunnel vertical",
+        "portal dimension energy swirl",
+        "time travel speed light motion"
     ],
     "alien_extraterrestrial": [
-        "spaceship traveling space",
-        "alien planet landscape",
-        "spacecraft flying stars",
-        "deep cosmos mystery",
-        "futuristic spaceship flight"
+        "spaceship flying through space",
+        "alien planet surface landscape",
+        "futuristic spacecraft landing",
+        "deep cosmos space anomaly",
+        "alien glowing bioluminescent landscape",
+        "ufo flying night sky mysterious"
     ],
     "general_scifi_fantasy": [
-        "sci fi energy motion",
-        "space nebula motion",
+        "sci fi energy motion 4k",
+        "space nebula motion vertical",
         "futuristic digital motion",
         "abstract glowing portal",
-        "cosmic light tunnel"
+        "cosmic light tunnel travel"
     ]
 }
 
@@ -205,21 +208,22 @@ class SciFiVisualDispatcherAgent:
     ) -> str:
         """
         Sinh câu lệnh Prompt điện ảnh 9:16 siêu thực dành riêng cho các mô hình AI Video
-        (Google Veo 3.1, Wan 2.1, Kling, Luma, Pika), ép chuyển động mạnh mẽ (High Dynamic Motion).
+        (Google Veo 3.1, Wan 2.1, Kling, Luma, Pika), ép chuyển động mạnh mẽ (High Dynamic Motion),
+        Unreal Engine 5 Octane render và ánh sáng tương phản rực rỡ.
         """
         clean_base = prompt.strip()
-        motion_prefix = "Cinematic 9:16 vertical motion video, 8k resolution, award-winning sci-fi cinematography, fluid dynamic camera movement"
+        motion_prefix = "Cinematic 9:16 vertical motion video, 8k resolution, award-winning sci-fi cinematography, fluid dynamic camera movement, Unreal Engine 5 Octane render"
 
         if subgenre == "deep_space_cosmic":
-            style_cues = "hyper-realistic cosmic phenomena, glowing volumetric accretion disk, warping space-time gravitational lensing, deep space dark aesthetic, photorealistic, 60fps fluid motion"
+            style_cues = "hyper-realistic black hole accretion disk with intense gravitational lensing, warping space-time, glowing cosmic gas and brilliant nebula dust, deep space dark void contrast, fluid dynamic 60fps camera drift, IMAX 70mm"
         elif subgenre == "cyberpunk_futuristic":
-            style_cues = "hyper-detailed futuristic cyberpunk aesthetic, glowing neon reflections on wet surfaces, flying vehicles moving through skyscrapers, atmospheric volumetric fog, 60fps"
+            style_cues = "hyper-detailed futuristic cyberpunk metropolis, glowing cyan and magenta neon reflections on wet streets, flying vehicles moving through skyscrapers, atmospheric volumetric fog, ray-traced reflections, 60fps fluid motion"
         elif subgenre == "multiverse_time_travel":
-            style_cues = "hyperspace portal opening, reality bending, shimmering quantum energy waves, glowing particle acceleration, mind-bending dimensional warp, 60fps"
+            style_cues = "hyperspace portal opening, reality bending, shimmering quantum energy waves, glowing hyper-speed particle acceleration, mind-bending dimensional warp, breathtaking cinematic VFX, 60fps"
         elif subgenre == "alien_extraterrestrial":
-            style_cues = "breathtaking alien planetary landscape, massive alien vessel hovering in skies, eerie bioluminescent atmosphere, cinematic scale, 60fps"
+            style_cues = "breathtaking alien planetary landscape, massive alien vessel hovering in skies, eerie bioluminescent atmosphere, twin moons in sky, cinematic scale, 60fps fluid motion"
         else:
-            style_cues = "epic visual effects, dramatic chiaroscuro lighting, intense motion, no blur, high definition 8k, 60fps"
+            style_cues = "epic visual effects, dramatic chiaroscuro lighting, intense motion, razor-sharp focus, high definition 8k, 60fps"
 
         return f"{motion_prefix}, {clean_base}, {style_cues}, no text, no watermark, vertical 9:16 format"
 
@@ -286,6 +290,21 @@ class SciFiVisualDispatcherAgent:
             elif user_pref == "ai_video":
                 chosen_method = "TEXT_TO_VIDEO"
 
+            # Chuỗi chuyển động camera viễn tưởng đa dạng
+            scifi_motions = ["hyper_zoom", "cinematic_drift", "zoom_out", "warp_zoom", "pan_left", "pan_right"]
+            chosen_motion = "hyper_zoom" if idx == 0 else scifi_motions[idx % len(scifi_motions)]
+
+            # Bản đồ SFX thực tế từ assets/sfx/ (hit, impact_sub, whoosh_fast, glitch, reveal, riser, sub_drop)
+            scifi_sfx_catalog = {
+                "deep_space_cosmic": ["impact_sub", "whoosh_fast", "sub_drop", "reveal", "riser", "whoosh_heavy"],
+                "cyberpunk_futuristic": ["impact_sub", "glitch", "whoosh_fast", "sub_drop", "riser", "glitch"],
+                "multiverse_time_travel": ["impact_sub", "glitch", "whoosh_fast", "sub_drop", "riser", "whoosh_heavy"],
+                "alien_extraterrestrial": ["impact_sub", "reveal", "whoosh_heavy", "sub_drop", "riser", "impact_sub"],
+                "general_scifi_fantasy": ["impact_sub", "whoosh_fast", "glitch", "reveal", "riser", "whoosh_heavy"],
+            }
+            sfx_seq = scifi_sfx_catalog.get(subgenre, scifi_sfx_catalog["general_scifi_fantasy"])
+            chosen_sfx = "impact_sub" if idx == 0 else sfx_seq[idx % len(sfx_seq)]
+
             return {
                 "is_scifi": True,
                 "subgenre": subgenre,
@@ -297,8 +316,8 @@ class SciFiVisualDispatcherAgent:
                 "search_queries": curated_queries,
                 "search_query": curated_queries[0] if curated_queries else kw,
                 "ai_prompt": ai_vid_prompt,
-                "camera_motion": "zoom_in" if idx % 2 == 0 else "pan_right",
-                "sfx_cue": "whoosh" if idx == 0 else "tension_riser"
+                "camera_motion": chosen_motion,
+                "sfx_cue": chosen_sfx
             }
 
         # ── NẾU KHÔNG PHẢI VIỄN TƯỞNG: Giữ nguyên cơ chế thông thường ──
@@ -356,6 +375,8 @@ class SciFiVisualDispatcherAgent:
                 sc_copy["reject_static_slideshow"] = True
                 sc_copy["is_scifi"] = True
                 sc_copy["subgenre"] = d_res.get("subgenre", main_subgenre)
+                sc_copy["camera_motion"] = d_res.get("camera_motion", "zoom_in")
+                sc_copy["sfx_cue"] = d_res.get("sfx_cue", "whoosh_fast")
                 dispatched_scenes.append(sc_copy)
             else:
                 dispatched_scenes.append(sc)

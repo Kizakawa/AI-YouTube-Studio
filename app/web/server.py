@@ -108,11 +108,13 @@ async def device_gatekeeper_middleware(request: Request, call_next):
         or path.startswith("/api/worker")
         or path.startswith("/api/render-complete")
         or "/start-auth" in path
-        or "/auth-start" in path
         or "/auth-status" in path
         or path in ("/", "/health", "/api/health", "/api/system/client-info", "/api/network-info", "/favicon.ico")
     ):
-        return await call_next(request)
+        resp = await call_next(request)
+        if path.startswith("/static"):
+            resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return resp
 
     client_ip = request.client.host if request.client else "127.0.0.1"
     forwarded = request.headers.get("x-forwarded-for")
@@ -585,6 +587,8 @@ async def get_video_pipeline(limit: int = 50) -> List[Dict[str, Any]]:
                 "drive_link": j.drive_link or "",
                 "youtube_id": j.youtube_video_id or "",
                 "video_path": j.video_path or "",
+                "thumbnail_path": getattr(j, "thumbnail_path", "") or "",
+                "thumbnail_vertical_path": getattr(j, "thumbnail_vertical_path", "") or "",
                 "quality_scores": j.quality_scores or "",
                 "created_at": j.created_at.strftime("%Y-%m-%d %H:%M") if j.created_at else "",
                 "scheduled_time": j.scheduled_time.strftime("%Y-%m-%d %H:%M") if j.scheduled_time else "",
@@ -623,6 +627,8 @@ async def get_video_detail(job_id: int) -> Dict[str, Any]:
             "scenes": scenes,
             "audio_duration_ms": job.audio_duration_ms or 0,
             "video_path": job.video_path or "",
+            "thumbnail_path": getattr(job, "thumbnail_path", "") or "",
+            "thumbnail_vertical_path": getattr(job, "thumbnail_vertical_path", "") or "",
             "drive_link": job.drive_link or "",
             "youtube_id": job.youtube_video_id or "",
             "created_at": job.created_at.strftime("%Y-%m-%d %H:%M") if job.created_at else "",
@@ -773,6 +779,253 @@ async def download_video(job_id: int):
         media_type="video/mp4",
         filename=filename,
     )
+
+# ─── Thumbnail Endpoints ───────────────────────────────────────────────────────
+
+@app.get("/api/videos/{job_id}/thumbnail")
+async def get_video_thumbnail(job_id: int, aspect_ratio: str = "16x9"):
+    """
+    Trả về file ảnh bìa (thumbnail) của video job.
+    Hỗ trợ aspect_ratio: '16x9' hoặc '9x16'.
+    Nếu chưa có, tự động tạo từ video rendered frame hoặc visual assets.
+    """
+    with get_db() as db:
+        job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Không tìm thấy video job")
+        
+        target_path = job.thumbnail_path if aspect_ratio != "9x16" else (job.thumbnail_vertical_path or job.thumbnail_path)
+        
+        if not target_path or not Path(target_path).exists():
+            # Tự động tạo nếu video_path tồn tại
+            if job.video_path and Path(job.video_path).exists():
+                try:
+                    from app.services.thumbnail_service import ThumbnailService
+                    thumb_service = ThumbnailService()
+                    custom_text = None
+                    if job.scenes_json:
+                        try:
+                            sdata = json.loads(job.scenes_json)
+                            custom_text = sdata.get("thumbnail_text")
+                        except Exception:
+                            pass
+                    res = thumb_service.generate_thumbnails(
+                        job_id=job.id,
+                        title=job.title or job.topic,
+                        video_path=job.video_path,
+                        custom_text=custom_text
+                    )
+                    job.thumbnail_path = res.get("16x9")
+                    job.thumbnail_vertical_path = res.get("9x16")
+                    db.commit()
+                    target_path = job.thumbnail_path if aspect_ratio != "9x16" else job.thumbnail_vertical_path
+                except Exception as e:
+                    logger.error(f"[Thumbnail] Auto-generation failed for job {job_id}: {e}")
+
+        if not target_path or not Path(target_path).exists():
+            raise HTTPException(status_code=404, detail="Ảnh bìa chưa được tạo cho video này")
+            
+        return FileResponse(
+            path=str(target_path),
+            media_type="image/jpeg",
+            filename=f"thumb_{job_id}_{aspect_ratio}.jpg"
+        )
+
+class GenerateThumbnailRequest(BaseModel):
+    custom_text: Optional[str] = None
+    frame_timestamp_s: float = 1.0
+
+@app.post("/api/videos/{job_id}/regenerate-thumbnail")
+@app.post("/api/videos/{job_id}/generate-thumbnail")
+async def regenerate_thumbnail(job_id: int, body: Optional[GenerateThumbnailRequest] = None):
+    """
+    Tạo hoặc tạo lại Thumbnail chuẩn 'Thị trường 1 giây' (chữ to, tương phản cao, gợi tò mò).
+    """
+    with get_db() as db:
+        job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Không tìm thấy video job")
+        if not job.video_path or not Path(job.video_path).exists():
+            raise HTTPException(status_code=400, detail="Cần render video trước khi tạo thumbnail từ frame")
+            
+        custom_txt = body.custom_text if body else None
+        ts = body.frame_timestamp_s if body else 1.0
+        
+        from app.services.thumbnail_service import ThumbnailService
+        thumb_service = ThumbnailService()
+        res = thumb_service.generate_thumbnails(
+            job_id=job.id,
+            title=job.title or job.topic,
+            video_path=job.video_path,
+            custom_text=custom_txt,
+            frame_timestamp_s=ts
+        )
+        job.thumbnail_path = res.get("16x9")
+        job.thumbnail_vertical_path = res.get("9x16")
+        db.commit()
+        return {
+            "success": True,
+            "job_id": job.id,
+            "thumbnail_16x9": res.get("16x9"),
+            "thumbnail_9x16": res.get("9x16"),
+            "hook_text": thumb_service.derive_curiosity_text(custom_txt or job.title or job.topic)
+        }
+
+# ─── Google Trends & Bắt Trend Endpoints ─────────────────────────────────────
+
+@app.get("/api/trends/live")
+async def get_live_trends(geo: str = "VN", limit: int = 15):
+    """
+    Lấy danh sách các chủ đề tìm kiếm nóng nhất từ Google Trends và Google News.
+    """
+    try:
+        from app.services.trend_analysis_service import TrendAnalysisService
+        svc = TrendAnalysisService()
+        trends = await asyncio.to_thread(svc.fetch_google_trends, geo=geo, limit=limit)
+        news = await asyncio.to_thread(svc.fetch_breaking_news, geo=geo, limit=limit)
+        return {
+            "status": "success",
+            "success": True,
+            "geo": geo,
+            "trends": trends,
+            "news": news
+        }
+    except Exception as e:
+        logger.error(f"[Trends API] Error fetching live trends: {e}")
+        return {"status": "error", "success": False, "error": str(e), "trends": [], "news": []}
+
+@app.get("/api/trends/channel-suggestions")
+async def get_channel_trend_suggestions(
+    channel_id: Optional[str] = None,
+    niche: Optional[str] = None,
+    geo: str = "VN",
+    count: int = 5
+):
+    """
+    Phân tích Google Trends và tự động bắc cầu (Trend-Jacking) sang ngách kênh.
+    Tạo các ý tưởng đánh trúng tâm lý số đông và có nhu cầu tìm kiếm cao.
+    """
+    try:
+        from app.services.trend_analysis_service import TrendAnalysisService
+        channels = settings.get_channels_config()
+        channel_niche = niche
+        language = "vi" if geo.upper() == "VN" else "en"
+        
+        if channel_id:
+            ch = next((c for c in channels if c.get("id") == channel_id), {})
+            if ch:
+                channel_niche = channel_niche or ch.get("niche")
+                language = ch.get("language") or language
+
+        channel_niche = channel_niche or "general"
+
+        svc = TrendAnalysisService()
+        suggestions = await asyncio.to_thread(
+            svc.bridge_trend_to_niche,
+            channel_niche=channel_niche,
+            geo=geo,
+            count=count,
+            language=language
+        )
+        return {
+            "status": "success",
+            "success": True,
+            "channel_id": channel_id,
+            "channel_niche": channel_niche,
+            "niche": channel_niche,
+            "geo": geo,
+            "suggestions": suggestions
+        }
+    except Exception as e:
+        logger.error(f"[Trends Suggestions API] Error: {e}")
+        return {"status": "error", "success": False, "error": str(e), "suggestions": []}
+
+class QuickCreateFromTrendRequest(BaseModel):
+    topic: str
+    channel_id: Optional[str] = "channel_maya"
+    language: Optional[str] = None
+    trend_keyword: Optional[str] = None
+    curiosity_hook: Optional[str] = None
+    hook: Optional[str] = None
+    category: Optional[str] = None
+    aspect_ratio: Optional[str] = "9:16"
+    director_notes: Optional[str] = None
+
+@app.post("/api/trends/quick-create")
+async def quick_create_from_trend(body: QuickCreateFromTrendRequest):
+    """
+    Tạo kịch bản viral tức thì từ ý tưởng bắt trend:
+    Áp dụng 5 quy tắc:
+    1. Chạm cảm xúc & nhu cầu số đông
+    2. Dùng số liệu thực tế giật mình
+    3. Tối ưu 50% thời lượng đầu (trailer + b-roll)
+    4. Text thumbnail 1 giây
+    """
+    try:
+        from app.agents.content_agent import ContentAgent
+        target_channel = body.channel_id or "channel_maya"
+        channels = settings.get_channels_config()
+        ch = next((c for c in channels if c.get("id") == target_channel), {})
+        channel_niche = ch.get("niche") or (body.category if body.category != "Google Trends" else "general")
+        channel_lang = body.language or ch.get("language") or "vi"
+
+        effective_hook = body.curiosity_hook or body.hook
+        notes = body.director_notes or ""
+        if body.trend_keyword:
+            notes += f" [Bắt trend từ Google Trends: '{body.trend_keyword}']"
+        if effective_hook:
+            notes += f" [Hook tò mò 1 giây: '{effective_hook}']"
+
+        agent = ContentAgent()
+        script, eval_report = await asyncio.to_thread(
+            agent.generate_best_script,
+            topic=body.topic,
+            channel_niche=channel_niche,
+            language=channel_lang,
+            director_notes=notes,
+            min_acceptable_score=8.0,
+            max_attempts=3
+        )
+
+        scores_summary = {
+            "overall": eval_report.overall_score if eval_report else 8.5,
+            "overall_score": eval_report.overall_score if eval_report else 8.5,
+            "passed": eval_report.passed if eval_report else True,
+            "hook": eval_report.hook_strength.score if eval_report else 8.5,
+            "pacing": eval_report.story_pacing.score if eval_report else 8.5,
+            "actionable_critiques": eval_report.actionable_critiques if eval_report else [],
+        }
+
+        with get_db() as db:
+            job = VideoJob(
+                user_id=0,
+                target_channel_id=body.channel_id,
+                topic=body.topic,
+                title=script.title,
+                script=script.full_narration,
+                description=script.description,
+                tags=",".join(script.tags),
+                scenes_json=script.to_json_str(),
+                status="SCRIPT_READY",
+                quality_scores=json.dumps(scores_summary, ensure_ascii=False) if eval_report else None
+            )
+            db.add(job)
+            db.flush()
+            job_id = job.id
+
+        return {
+            "success": True,
+            "job_id": job_id,
+            "title": script.title,
+            "hook": script.hook,
+            "thumbnail_text": getattr(script, "thumbnail_text", ""),
+            "scene_count": len(script.scenes),
+            "total_duration": script.total_estimated_duration,
+            "evaluation": scores_summary
+        }
+    except Exception as e:
+        logger.error(f"[QuickCreate Trend API] Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ─── Create Script (Web UI trigger) ──────────────────────────────────────────
 
@@ -1030,6 +1283,13 @@ def _run_web_render(job_id: int):
             pipeline = VideoPipeline(job_id=job_id)
             # [FIX #5] Tổng timeout 10 phút cho toàn pipeline
             await asyncio.wait_for(pipeline.execute(), timeout=600)
+
+            # Tự động gửi video hoàn tất vào Telegram cho Creator/Admin xem ngay
+            try:
+                from app.bot.handlers import dispatch_rendered_video_to_telegram
+                await dispatch_rendered_video_to_telegram(job_id)
+            except Exception as e_tg:
+                logger.warning(f"[Web Render] Không thể tự động gửi video #{job_id} vào Telegram: {e_tg}")
         except asyncio.TimeoutError:
             error_msg = "Pipeline render vượt quá thời gian cho phép (10 phút)"
             logger.error(f"[Web Render] Job #{job_id}: {error_msg}")

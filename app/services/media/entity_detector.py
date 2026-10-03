@@ -475,11 +475,34 @@ def clean_scene_search_query(raw_query: str, max_words: int = 3) -> str:
     """Làm sạch query tìm kiếm ảnh: loại bỏ toàn bộ từ rác kỹ thuật/nhiếp ảnh, giữ lại danh từ trọng tâm."""
     if not raw_query:
         return ""
-    words = re.sub(r'[^\w\s-]', ' ', raw_query).split()
-    clean = [w for w in words if w.lower() not in CAMERA_AND_STYLE_FLUFF and len(w) > 1]
+    # Loại bỏ tỉ lệ khung hình / độ phân giải trước (vd: "9:16", "16x9", "1080p", "60fps")
+    text = re.sub(r'\b\d+\s*[:x×/]\s*\d+\b', ' ', raw_query, flags=re.IGNORECASE)
+    text = re.sub(r'\b\d+\s*(?:p|k|fps|mm)\b', ' ', text, flags=re.IGNORECASE)
+    words = re.sub(r'[^\w\s-]', ' ', text).split()
+
+    def _is_junk(w: str) -> bool:
+        lw = w.lower()
+        return (
+            lw in CAMERA_AND_STYLE_FLUFF
+            or lw in _FORMAT_FLUFF
+            or len(w) <= 1
+            or lw.strip('-').isdigit()
+        )
+
+    clean = [w for w in words if not _is_junk(w)]
     if not clean:
-        clean = [w for w in words if len(w) > 1]
+        clean = [w for w in words if len(w) > 1 and not w.isdigit()]
     return " ".join(clean[:max_words]).strip()
+
+
+# Từ mô tả định dạng/khung hình — vô nghĩa với search engine stock (gây ra query rác kiểu "16 vertical")
+_FORMAT_FLUFF = {
+    "vertical", "horizontal", "landscape", "orientation", "aspect", "ratio", "format",
+    "fps", "hd", "uhd", "fullhd", "resolution", "high", "quality", "footage", "video",
+    "clip", "b-roll", "broll", "stock", "scene", "shorts", "short", "tiktok", "reels",
+    "frame", "framing", "composition", "slow", "motion", "slow-motion", "timelapse",
+    "camera", "drone", "pan", "zoom", "dolly", "tracking", "realistic", "hyper",
+}
 
 
 _INCONGRUENT_TAG_GROUPS = {
@@ -512,7 +535,15 @@ _INCONGRUENT_TAG_GROUPS = {
         "blueprint", "coat of arms", "postage stamp", "commemorative coin", "seal of",
         "flag of", "emblem of", "crest of", "location map", "locator map",
     ],
+    # Yếu tố con người / phòng thí nghiệm / mắt người lạc vào thế giới động vật & thiên nhiên
+    "human_medical_in_wildlife": [
+        "human eye", "human pupil", "human iris", "human face", "dna helix", "double helix",
+        "laboratory", "test tube", "doctor", "hospital", "stethoscope", "surgery",
+        "interrogation", "handshake", "businessman", "businesswoman", "pet collar",
+        "zoo cage", "bird in cage", "man holding bird",
+    ],
 }
+
 
 
 def _is_incongruent_stock_heuristic(title_or_alt: str, topic: str = "", narration: str = "") -> bool:

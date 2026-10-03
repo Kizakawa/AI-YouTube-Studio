@@ -242,15 +242,27 @@ class AIVideoAgent:
 
         # 4. DỰ PHÒNG CHẤT LƯỢNG CAO (Zero-Failure): Generative Motion Engine siêu thực
         temp_frame = str(out_p.parent / f"_t2v_frame_{scene_id:03d}.jpg")
-        mystic_prompt = f"Breathtaking mystical cinematography, {full_prompt}, glowing dynamic energy, 8k vertical video still, cinematic dark atmosphere"
+        try:
+            from app.agents.wildlife_visual_dispatcher_agent import WildlifeVisualDispatcherAgent
+            w_agent = WildlifeVisualDispatcherAgent()
+            is_wl, _, w_subg, _ = w_agent.detect_wildlife_elements(topic=full_prompt, narration=narration)
+            if is_wl:
+                gen_prompt = w_agent.build_cinematic_wildlife_prompt(full_prompt, subgenre=w_subg, scene_id=scene_id)
+                target_niche = "animal_rescue" if w_subg == "animal_rescue_pets" else "wildlife_predators"
+            else:
+                gen_prompt = f"Breathtaking mystical cinematography, {full_prompt}, glowing dynamic energy, 8k vertical video still, cinematic dark atmosphere"
+                target_niche = "cinematic"
+        except Exception:
+            gen_prompt = f"Breathtaking mystical cinematography, {full_prompt}, glowing dynamic energy, 8k vertical video still, cinematic dark atmosphere"
+            target_niche = "cinematic"
 
         generated_img = self.image_agent.generate_scene_image(
-            prompt=mystic_prompt,
+            prompt=gen_prompt,
             output_path=temp_frame,
             aspect_ratio="9:16",
-            niche="cinematic",
+            niche=target_niche,
             scene_id=scene_id,
-            visual_prompt=mystic_prompt,
+            visual_prompt=gen_prompt,
         )
 
         if generated_img and Path(generated_img).exists() and Path(generated_img).stat().st_size > 2000:
@@ -490,6 +502,19 @@ class AIVideoAgent:
                     if csq not in queries_to_try:
                         queries_to_try.append(csq)
 
+            # Tự động nạp bộ từ khóa kho động vật hoang dã chuyên dụng từ WildlifeVisualDispatcherAgent
+            try:
+                from app.agents.wildlife_visual_dispatcher_agent import WildlifeVisualDispatcherAgent
+                w_agent = WildlifeVisualDispatcherAgent()
+                is_wl, _, w_subg, _ = w_agent.detect_wildlife_elements(topic=prompt, narration=narration)
+                if is_wl:
+                    curated_wl_qs = w_agent.get_curated_video_search_queries(subgenre=w_subg, narration=narration)
+                    for cwq in curated_wl_qs:
+                        if cwq not in queries_to_try:
+                            queries_to_try.append(cwq)
+            except Exception:
+                pass
+
             cleaned_q = clean_scene_search_query(prompt, max_words=3)
             if cleaned_q and cleaned_q not in queries_to_try:
                 queries_to_try.append(cleaned_q)
@@ -517,7 +542,8 @@ class AIVideoAgent:
                         output_path=output_path,
                         width=1080,
                         height=1920,
-                        fps=30
+                        fps=30,
+                        is_scifi=is_scifi,
                     )
                     try:
                         Path(raw_temp).unlink(missing_ok=True)
@@ -538,6 +564,7 @@ class AIVideoAgent:
         duration_seconds: float,
         camera_motion: str = "zoom_in",
         is_hook: bool = False,
+        is_scifi: bool = True,
     ):
         """
         Dùng FFmpeg tạo video clip 1080x1920 30fps có chuyển động camera 3D mượt mà
@@ -552,5 +579,6 @@ class AIVideoAgent:
             fps=30,
             zoom_effect=True,
             camera_motion=camera_motion,
-            is_hook_scene=is_hook
+            is_hook_scene=is_hook,
+            is_scifi=is_scifi,
         )

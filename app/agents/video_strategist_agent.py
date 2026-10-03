@@ -146,6 +146,8 @@ class VideoStrategistAgent:
                     prop["search_queries"] = d_meta["search_queries"]
                     prop["search_query"] = d_meta["search_query"]
                     prop["ai_prompt"] = d_meta["ai_prompt"]
+                    prop["camera_motion"] = d_meta.get("camera_motion", "zoom_in")
+                    prop["sfx_cue"] = d_meta.get("sfx_cue", "whoosh_fast")
                     prop["is_scifi"] = True
                     prop["reject_static_slideshow"] = True
 
@@ -159,6 +161,8 @@ class VideoStrategistAgent:
                     strat["search_queries"] = d_meta["search_queries"]
                     strat["search_query"] = d_meta["search_query"]
                     strat["ai_prompt"] = d_meta["ai_prompt"]
+                    strat["camera_motion"] = d_meta.get("camera_motion", "zoom_in")
+                    strat["sfx_cue"] = d_meta.get("sfx_cue", "whoosh_fast")
                     strat["is_scifi"] = True
                     strat["reject_static_slideshow"] = True
 

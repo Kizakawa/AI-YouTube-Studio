@@ -145,10 +145,11 @@ class VideoJob(Base):
     progress_message = Column(String(255), nullable=True) # [NEW] Chi tiết bước đang thực hiện
     error_message = Column(Text, nullable=True)    # [NEW] Lưu traceback khi FAILED
 
-    # Đường dẫn file & lưu trữ
     video_path = Column(String(500), nullable=True)
     audio_path = Column(String(500), nullable=True)
     subtitle_path = Column(String(500), nullable=True)  # [NEW]
+    thumbnail_path = Column(String(500), nullable=True) # [NEW] Thumbnail ngang 16:9
+    thumbnail_vertical_path = Column(String(500), nullable=True) # [NEW] Thumbnail dọc 9:16
     drive_link = Column(String(500), nullable=True)
 
     # YouTube & Auto-Publish info
@@ -240,6 +241,8 @@ def init_db():
                     "quality_scores": "TEXT",
                     "is_auto_generated": "INTEGER DEFAULT 0",
                     "approval_deadline": "DATETIME",
+                    "thumbnail_path": "VARCHAR(500)",
+                    "thumbnail_vertical_path": "VARCHAR(500)",
                 }
                 for col_name, col_type in columns_to_add.items():
                     if col_name not in existing_columns:
@@ -249,6 +252,36 @@ def init_db():
                 logger.error(
                     f"❌ [DB Migration] Lỗi khi tự động nâng cấp schema SQLite: {migration_err}. "
                     f"Kiểm tra quyền truy cập file CSDL và dung lượng ổ cứng.",
+                    exc_info=True
+                )
+    elif engine.dialect.name == "postgresql":
+        with engine.connect() as conn:
+            try:
+                result = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='video_jobs'")).fetchall()
+                existing_columns = {row[0] for row in result}
+                columns_to_add = {
+                    "description": "TEXT",
+                    "scenes_json": "TEXT",
+                    "audio_duration_ms": "INTEGER",
+                    "render_manifest": "TEXT",
+                    "error_message": "TEXT",
+                    "subtitle_path": "VARCHAR(255)",
+                    "updated_at": "TIMESTAMP",
+                    "progress_percent": "INTEGER DEFAULT 0",
+                    "progress_message": "VARCHAR(255)",
+                    "quality_scores": "TEXT",
+                    "is_auto_generated": "INTEGER DEFAULT 0",
+                    "approval_deadline": "TIMESTAMP",
+                    "thumbnail_path": "VARCHAR(500)",
+                    "thumbnail_vertical_path": "VARCHAR(500)",
+                }
+                for col_name, col_type in columns_to_add.items():
+                    if col_name not in existing_columns:
+                        conn.execute(text(f"ALTER TABLE video_jobs ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+                conn.commit()
+            except Exception as migration_err:
+                logger.error(
+                    f"❌ [DB Migration] Lỗi khi tự động nâng cấp schema PostgreSQL: {migration_err}",
                     exc_info=True
                 )
 

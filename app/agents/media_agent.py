@@ -134,6 +134,19 @@ class MediaAgent:
     def search_openverse(self, query: str, per_page: int = 5) -> List[Dict]:
         return self._stock.search_openverse(query, per_page=per_page)
 
+    def search_best_photo(
+        self,
+        query: str,
+        used_urls: Optional[set] = None,
+        visual_analysis: Optional[Dict[str, Any]] = None,
+        narration: str = "",
+        topic: str = "",
+    ) -> Optional[Dict]:
+        """Ảnh tĩnh đa nguồn (Pexels + Pixabay + Openverse) được AI Vision tuyển chọn."""
+        return self._stock.search_best_photo(
+            query, used_urls=used_urls, visual_analysis=visual_analysis, narration=narration, topic=topic,
+        )
+
     def search_best_video_clip(
         self,
         query: str,

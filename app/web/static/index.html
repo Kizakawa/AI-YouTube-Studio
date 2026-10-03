@@ -12,7 +12,7 @@
     <noscript>
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
     </noscript>
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=3.2">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=4.0">
     <script>
         (function() {
             var isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
@@ -57,6 +57,11 @@
 
         <div class="nav-section-label">Sản Xuất</div>
         <ul class="nav-menu">
+            <li class="nav-item" data-tab="trends" id="nav-trends">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                <span>Google Trends & Bắt Trend</span>
+                <span class="nav-badge" style="background: linear-gradient(135deg, #ef4444, #f97316); color:#fff; font-weight:700;">HOT</span>
+            </li>
             <li class="nav-item" data-tab="create" id="nav-create">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                 <span>Tạo Kịch Bản AI</span>
@@ -299,6 +304,96 @@
                         <span class="qa-desc">Hoạt động Telegram</span>
                     </button>
                 </div>
+            </div>
+        </section>
+
+        <!-- ═══ TAB: GOOGLE TRENDS & BẮT TREND ═══ -->
+        <section class="tab-content" id="tab-trends">
+            <!-- Strategic Value Banner -->
+            <div class="panel-card" style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(249, 115, 22, 0.08)); border-color: rgba(239, 68, 68, 0.25); margin-bottom: 20px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                    <div>
+                        <div style="font-size:18px; font-weight:800; color:#f87171; display:flex; align-items:center; gap:8px;">
+                            <span>🔥 5 Trụ Cột Tối Ưu Triệu View & Bắt Trend</span>
+                            <span class="badge" style="background:#ef4444; color:#fff; font-size:11px;">MASTERCLASS</span>
+                        </div>
+                        <div style="font-size:12.5px; color:#cbd5e1; margin-top:4px;">
+                            Kết nối trực tiếp <strong>Google Trends RSS</strong>, tự động bắc cầu vào ngách kênh, tối ưu <strong>50% thời lượng đầu</strong>, lồng ghép <strong>số liệu thực tế</strong> và tạo thumbnail <strong>"Thị trường 1 giây"</strong>.
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <span class="badge badge-cyan" style="font-size:11px;">📈 Trends Thực Tế</span>
+                        <span class="badge badge-amber" style="font-size:11px;">⚡ Bắt Trend Nhanh</span>
+                        <span class="badge badge-purple" style="font-size:11px;">❤️ Chạm Cảm Xúc</span>
+                        <span class="badge badge-green" style="font-size:11px;">🎬 50% Đầu Dồn Dập</span>
+                        <span class="badge" style="background:#f59e0b; color:#000; font-weight:700; font-size:11px;">🖼️ Thumb 1 Giây</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controls & Channel Selection -->
+            <div class="panel-card" style="margin-bottom: 20px;">
+                <div class="form-row" style="align-items:flex-end; gap:16px;">
+                    <div class="form-group" style="flex:1; min-width:180px;">
+                        <label class="form-label" for="trends-geo">Khu Vực & Thị Trường</label>
+                        <select id="trends-geo" class="form-input" onchange="fetchLiveTrends()">
+                            <option value="VN" selected>🇻🇳 Việt Nam (trends.google.com/vn)</option>
+                            <option value="US">🇺🇸 Hoa Kỳ / Toàn Cầu (trends.google.com/us)</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex:2; min-width:220px;">
+                        <label class="form-label" for="trends-channel">Kênh Mục Tiêu & Ngách Nội Dung</label>
+                        <select id="trends-channel" class="form-input" onchange="generateTrendBridges()">
+                            <option value="">-- Đang nạp danh sách kênh... --</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <button class="btn btn-secondary" id="btn-reload-trends" onclick="fetchLiveTrends()">
+                            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                            Làm Mới Xu Hướng
+                        </button>
+                        <button class="btn btn-primary" id="btn-bridge-trends" onclick="generateTrendBridges()" style="background:linear-gradient(135deg,#ef4444,#f97316); border:none; font-weight:700;">
+                            ⚡ Bắc Cầu Bắt Trend (AI)
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Two-Column Workspace -->
+            <div style="display:grid; grid-template-columns: 1fr 1.25fr; gap:20px; align-items:start;">
+                
+                <!-- Left: Google Trends & Breaking News -->
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h3>📈 Xu Hướng Tìm Kiếm Nóng (Realtime)</h3>
+                        <span class="badge badge-amber" id="trends-count-badge">0 chủ đề</span>
+                    </div>
+                    <div id="trends-loading-spinner" style="text-align:center; padding:30px; display:none;">
+                        <span class="loading-spinner"></span>
+                        <div style="font-size:12px; color:var(--text-muted); margin-top:8px;">Đang quét Google Trends RSS...</div>
+                    </div>
+                    <div id="trends-list-container" style="display:flex; flex-direction:column; gap:10px; max-height:680px; overflow-y:auto; padding-right:4px;">
+                        <!-- filled by JS -->
+                    </div>
+                </div>
+
+                <!-- Right: AI Trend-Jacking Bridge Concepts -->
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h3>🚀 Ý Tưởng Bắt Trend Sang Kênh (Viral Concepts)</h3>
+                        <span class="badge badge-purple">Gemini Optimized</span>
+                    </div>
+                    <div id="bridge-loading-spinner" style="text-align:center; padding:30px; display:none;">
+                        <span class="loading-spinner"></span>
+                        <div style="font-size:12px; color:var(--text-muted); margin-top:8px;">AI đang phân tích tâm lý số đông & tạo concept...</div>
+                    </div>
+                    <div id="bridge-list-container" style="display:flex; flex-direction:column; gap:14px; max-height:680px; overflow-y:auto; padding-right:4px;">
+                        <div style="text-align:center; padding:40px 20px; color:var(--text-muted); font-size:13px;">
+                            Bấm nút <strong>"⚡ Bắc Cầu Bắt Trend (AI)"</strong> hoặc chọn 1 từ khoá xu hướng bên trái để AI tự động chuyển hóa thành ý tưởng video viral cho kênh của bạn!
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </section>
 
@@ -1736,6 +1831,7 @@ Ví dụ Căn Theo Mốc:
             </div>
         </div>
     </div>
+</div>
 <!-- MODAL: SCRIPT EDITOR (FULL CRUD ON SCENES & METADATA) -->
 <div class="modal-overlay" id="modal-script-editor" onclick="closeScriptEditor()">
     <div class="modal-card" onclick="event.stopPropagation()" style="max-width:820px; max-height:90vh; display:flex; flex-direction:column;">
@@ -2432,6 +2528,6 @@ Ví dụ Căn Theo Mốc:
 <div class="toast-container" id="toast-container"></div>
 
 <script src="/static/js/chart.min.js"></script>
-<script src="/static/js/dashboard.js?v=3.5"></script>
+<script src="/static/js/dashboard.js?v=4.1"></script>
 </body>
 </html>

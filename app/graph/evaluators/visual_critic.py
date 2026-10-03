@@ -55,6 +55,64 @@ class VisualCritic:
         except Exception:
             return False
 
+    # Ngưỡng Hamming (trên 64 bit) để coi 2 khung hình là "cùng 1 cảnh quay" dù bị nén/scale/crop khác nhau
+    _DUP_HAMMING = 6
+
+    @classmethod
+    def _media_signature(cls, media_path: str) -> List[str]:
+        """
+        Chữ ký thị giác của 1 cảnh: ảnh → 1 dHash; video → dHash của 3 khung hình (đầu / giữa / cuối).
+        Bỏ qua khung hình gần như đơn sắc (màn đen) vì mọi màn đen đều giống nhau → báo trùng giả.
+        """
+        import subprocess
+        import tempfile
+        p = Path(media_path)
+        if p.suffix.lower() not in (".mp4", ".mov", ".webm", ".mkv"):
+            if cls._is_solid_color_or_black(str(p)):
+                return []
+            h = cls._compute_image_hash(str(p))
+            return [h] if h else []
+
+        sig: List[str] = []
+        try:
+            from app.utils.ffmpeg_helper import get_duration_ms
+            dur = max(get_duration_ms(str(p)) / 1000.0, 0.6)
+        except Exception:
+            dur = 3.0
+        with tempfile.TemporaryDirectory() as td:
+            for i, t in enumerate((min(0.4, dur * 0.2), dur * 0.5, max(dur - 0.4, dur * 0.8))):
+                frame = str(Path(td) / f"f{i}.jpg")
+                try:
+                    subprocess.run(
+                        ["ffmpeg", "-v", "error", "-y", "-ss", f"{t:.2f}", "-i", str(p),
+                         "-frames:v", "1", "-vf", "scale=160:-1", frame],
+                        capture_output=True, timeout=15,
+                    )
+                    if Path(frame).exists() and not cls._is_solid_color_or_black(frame):
+                        h = cls._compute_image_hash(frame)
+                        if h:
+                            sig.append(h)
+                except Exception:
+                    continue
+        return sig
+
+    @classmethod
+    def _find_duplicate(cls, sig: List[str], seen: Dict[int, List[str]]) -> Optional[int]:
+        """Trả về scene_id bị trùng (nếu có). Video cần ≥ 2 khung khớp để tránh báo nhầm."""
+        if not sig:
+            return None
+        need = 1 if len(sig) == 1 else 2
+        for prev_id, prev_sig in seen.items():
+            if not prev_sig:
+                continue
+            hits = sum(
+                1 for h in sig
+                if any(sum(a != b for a, b in zip(h, ph)) <= cls._DUP_HAMMING for ph in prev_sig)
+            )
+            if hits >= min(need, len(prev_sig)):
+                return prev_id
+        return None
+
     def evaluate_media(
         self,
         scenes_media: List[Dict[str, Any]],
@@ -64,6 +122,7 @@ class VisualCritic:
         scene_scores: List[SceneVisualScore] = []
         failed_scene_ids: List[int] = []
         seen_hashes = {}
+        seen_signatures: Dict[int, List[str]] = {}
         issues_summary = []
 
         for item in scenes_media:
@@ -148,6 +207,20 @@ class VisualCritic:
                     valid_bitmap = False
                     issues.append(f"Lỗi đọc file ảnh với Pillow: {ex}")
                     failed_scene_ids.append(scene_id)
+
+            # 4b. Chống trùng lặp THỊ GIÁC giữa các cảnh (cả ảnh lẫn VIDEO, kể cả khác độ phân giải / bị nén lại)
+            try:
+                sig = self._media_signature(str(p))
+                dup_id = self._find_duplicate(sig, seen_signatures)
+                if dup_id is not None and not any("trùng lặp" in i for i in issues):
+                    issues.append(f"Hình ảnh/clip trùng lặp với Cảnh #{dup_id}")
+                    aes_score -= 4.0
+                    failed_scene_ids.append(scene_id)
+                    logger.warning(f"🔁 [VisualCritic] Cảnh {scene_id} trùng hình ảnh với Cảnh #{dup_id} → sẽ thay thế")
+                elif sig:
+                    seen_signatures[scene_id] = sig
+            except Exception as ex_dup:
+                logger.debug(f"[VisualCritic] Lỗi kiểm tra trùng cảnh {scene_id}: {ex_dup}")
 
             if issues:
                 issues_summary.append(f"Cảnh {scene_id}: {'; '.join(issues)}")

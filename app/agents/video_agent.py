@@ -80,11 +80,15 @@ class VideoAgent:
                 max(s.actual_duration_seconds, 1.0) + (transition_duration if idx < total_scenes - 1 else tail_buffer)
                 for idx, s in enumerate(job.scenes)
             ]
+            is_scifi_job = getattr(job, "is_scifi", False)
+            transition_choice = "scifi" if is_scifi_job else "fadeblack"
+            logger.info(f"[VideoAgent] Chuyển cảnh transition: '{transition_choice}' (Sci-Fi: {is_scifi_job})")
+
             concat_videos_with_xfade(
                 video_paths=scene_clips,
                 output_path=silent_video,
                 fps=job.fps,
-                transition="fadeblack",
+                transition=transition_choice,
                 transition_duration=transition_duration,
                 scene_durations_seconds=clip_durations,
             )
@@ -123,15 +127,20 @@ class VideoAgent:
                 # Tính timestamp bắt đầu từng scene (giây)
                 scene_timestamps = self._compute_scene_timestamps(job.scenes)
 
+                hit_sfx_name = "impact_sub" if is_scifi_job else "hit"
+                default_sfx_name = "whoosh_fast" if is_scifi_job else "whoosh"
+
                 sfx_out = str(work_dir / "muxed_with_sfx.mp4")
                 result_video = mix_sfx_transitions(
                     video_path=muxed_video,
                     output_path=sfx_out,
                     scene_timestamps_seconds=scene_timestamps,
                     sfx_dir=sfx_dir,
-                    default_sfx="whoosh",
+                    default_sfx=default_sfx_name,
                     sfx_cues=sfx_cues if sfx_cues else None,
-                    sfx_volume=0.35,
+                    sfx_volume=0.40 if is_scifi_job else 0.35,
+                    hit_sfx=hit_sfx_name,
+                    hit_volume=0.55 if is_scifi_job else 0.50,
                 )
                 # mix_sfx_transitions trả video gốc nếu không có SFX file
                 muxed_video = result_video
@@ -216,11 +225,12 @@ class VideoAgent:
 
             raw_type = (scene.media_type or "image").lower()
             is_video_file = bool(scene.media_path and scene.media_path.lower().endswith((".mp4", ".mov", ".webm", ".mkv")))
+            is_scifi_clip = getattr(job, "is_scifi", False) or (raw_type in ("ai_video", "t2v")) or ("scifi" in (getattr(scene, "visual_keyword", "") or "").lower())
 
             if raw_type in ("video", "ai_video", "i2v", "t2v") or is_video_file:
                 logger.info(
                     f"  Scene {scene.scene_id}: video ({raw_type}) → trim {duration:.1f}s"
-                    f"{' (🔥 HOOK VIDEO CLIP)' if is_hook else ''}"
+                    f"{' (🔥 HOOK VIDEO CLIP)' if is_hook else ''}{' [Sci-Fi Grading]' if is_scifi_clip else ''}"
                 )
                 trim_video(
                     input_path=scene.media_path,
@@ -229,11 +239,12 @@ class VideoAgent:
                     width=job.resolution_w,
                     height=job.resolution_h,
                     fps=job.fps,
+                    is_scifi=is_scifi_clip,
                 )
             elif raw_type in ("image", "ai_image", "photo", "documentary", "auto"):
                 logger.info(
                     f"  Scene {scene.scene_id}: image ({raw_type}) → Ken Burns [{motion}] {duration:.1f}s"
-                    f"{' (🔥 HOOK PUNCH-IN)' if is_hook else ''}"
+                    f"{' (🔥 HOOK PUNCH-IN)' if is_hook else ''}{' [Sci-Fi HDR Grading]' if is_scifi_clip else ''}"
                 )
                 image_to_video(
                     image_path=scene.media_path,
@@ -245,6 +256,7 @@ class VideoAgent:
                     zoom_effect=True,
                     camera_motion=motion,
                     is_hook_scene=is_hook,
+                    is_scifi=is_scifi_clip,
                 )
             else:
                 # Fallback graceful: log warning, render như image
@@ -261,6 +273,7 @@ class VideoAgent:
                     zoom_effect=True,
                     camera_motion=motion,
                     is_hook_scene=is_hook,
+                    is_scifi=is_scifi_clip,
                 )
 
             return scene.scene_id, clip_path

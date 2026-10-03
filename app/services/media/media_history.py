@@ -167,10 +167,22 @@ def extract_media_identity(url_or_path: str) -> Set[str]:
         identities.add(num_id)
         identities.add(f"pexels:{num_id}")
 
-    # Trích xuất Pixabay ID
-    m_pb = re.search(r'/(?:get/|videos/)?(\d+)', url_or_path)
-    if m_pb:
-        identities.add(f"pixabay:{m_pb.group(1)}")
+    # Pexels VIDEO: file tải về (videos.pexels.com/video-files/<id>/...) và trang web (pexels.com/video/<slug>-<id>/)
+    # → cùng 1 clip ở mọi độ phân giải / mọi dạng URL đều quy về 1 định danh pexels:<id>
+    m_pxv = re.search(r'/video-files/(\d+)/', url_or_path) or re.search(
+        r'pexels\.com/(?:[a-z-]+/)?(?:video|photo)/(?:[^/?#]*-)?(\d+)/?', url_or_path
+    )
+    if m_pxv:
+        identities.add(f"pexels:{m_pxv.group(1)}")
+
+    # Trích xuất Pixabay ID (trang web: pixabay.com/videos/<slug>-<id>/, CDN: cdn.pixabay.com/video/YYYY/MM/DD/<id>-<hash>_large.mp4)
+    if "pixabay.com" in url_or_path:
+        m_pb = (
+            re.search(r'cdn\.pixabay\.com/video/\d{4}/\d{2}/\d{2}/(\d+)-', url_or_path)
+            or re.search(r'pixabay\.com/(?:[a-z-]+/)?(?:videos|photos|illustrations|vectors)/(?:[^/?#]*-)?(\d+)/?', url_or_path)
+        )
+        if m_pb:
+            identities.add(f"pixabay:{m_pb.group(1)}")
 
     # Trích xuất Wikimedia filename
     m_wiki = re.search(r'/([^/]+\.(?:jpg|jpeg|png|webp|mp4))', clean_url, re.IGNORECASE)
@@ -185,7 +197,16 @@ def is_media_already_used(url_or_path: str, used_set: Set[str]) -> bool:
     if not url_or_path or not used_set:
         return False
     keys = extract_media_identity(url_or_path)
-    return any(k in used_set for k in keys)
+    if any(k in used_set for k in keys):
+        return True
+    # used_set có thể chỉ chứa URL thô (vd: used_pool_urls.add(url)) → so khớp cả định danh của phần tử đã dùng
+    canon = {k for k in keys if ":" in k and not k.startswith(("http", "wiki:"))}
+    if not canon:
+        return False
+    for u in used_set:
+        if isinstance(u, str) and u.startswith("http") and canon & extract_media_identity(u):
+            return True
+    return False
 
 
 def get_recent_media_urls(limit: int = 250) -> Set[str]:

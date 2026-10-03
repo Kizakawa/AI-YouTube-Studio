@@ -214,3 +214,92 @@ class QuotaManager:
             projects.add("bionic-client-509515-h2")
 
         return [QuotaManager.get_tracker(pid) for pid in sorted(projects)]
+
+    @staticmethod
+    def get_channel_project_id(channel_id: str) -> str:
+        """
+        Xác định chính xác Google Cloud Project ID sẽ bị Google trừ Quota khi upload kênh này.
+        Ưu tiên đọc client_id từ token thực tế của kênh, sau đó đối chiếu với các client_secret.
+        """
+        ch_token = os.path.join(settings.CREDENTIALS_DIR, "channels", channel_id, "youtube_token.json")
+        if os.path.exists(ch_token):
+            try:
+                from app.utils.security import load_encrypted_json
+                t_data = load_encrypted_json(ch_token)
+                tok_cid = t_data.get("client_id") if t_data else None
+                if tok_cid:
+                    # Quét tất cả client_secret.json để tìm project_id khớp với client_id
+                    acc_dir = Path(settings.CREDENTIALS_DIR) / "accounts"
+                    if acc_dir.exists():
+                        for acc in os.listdir(acc_dir):
+                            cs = acc_dir / acc / "client_secret.json"
+                            if cs.exists():
+                                try:
+                                    with open(cs, "r", encoding="utf-8") as f:
+                                        d = json.load(f)
+                                        info = d.get("installed") or d.get("web") or {}
+                                        if info.get("client_id") == tok_cid:
+                                            return info.get("project_id", "default_project")
+                                except Exception:
+                                    pass
+            except Exception as e:
+                logger.debug(f"Không thể giải mã token kênh {channel_id} để lấy project_id: {e}")
+
+        # Fallback: Đọc từ cấu hình channels.yaml
+        channels = settings.get_channels_config()
+        ch_cfg = next((c for c in channels if c.get("id") == channel_id), {})
+        acc_name = ch_cfg.get("google_account", "account_1")
+        cs_path = ch_cfg.get("client_secret") or f"credentials/accounts/{acc_name}/client_secret.json"
+        return get_project_id_from_client_secret(cs_path)
+
+    @staticmethod
+    def get_channel_quota_info(channel_id: str) -> Dict[str, Any]:
+        """Lấy thông tin chi tiết hạn mức Quota của một kênh cụ thể."""
+        channels = settings.get_channels_config()
+        ch_cfg = next((c for c in channels if c.get("id") == channel_id), {"id": channel_id, "name": channel_id})
+        acc_id = ch_cfg.get("google_account", "account_1")
+        ch_token = os.path.join(settings.CREDENTIALS_DIR, "channels", channel_id, "youtube_token.json")
+        has_token = os.path.exists(ch_token)
+
+        project_id = QuotaManager.get_channel_project_id(channel_id)
+        tracker = QuotaManager.get_tracker(project_id)
+        can_up = has_token and QuotaManager.can_upload(project_id)
+
+        return {
+            "channel_id": channel_id,
+            "channel_name": ch_cfg.get("name", channel_id),
+            "account_id": acc_id,
+            "project_id": project_id,
+            "has_token": has_token,
+            "used_units": tracker.get("used_units", 0),
+            "remaining_units": tracker.get("remaining_units", 0),
+            "upload_count": tracker.get("upload_count", 0),
+            "can_upload": can_up,
+            "next_reset_in": tracker.get("next_reset_in", "")
+        }
+
+    @staticmethod
+    def get_available_channels(exclude_channel_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Trả về danh sách các kênh ĐÃ CẤP QUYỀN OAUTH và CÒN ĐỦ HẠN MỨC QUOTA để upload video Shorts.
+        Sắp xếp ưu tiên kênh có Quota nhiều nhất lên đầu.
+        """
+        channels = settings.get_channels_config()
+        available = []
+        for ch in channels:
+            cid = ch.get("id")
+            if exclude_channel_id and cid == exclude_channel_id:
+                continue
+            info = QuotaManager.get_channel_quota_info(cid)
+            if info["can_upload"]:
+                available.append(info)
+
+        # Sắp xếp kênh theo số Quota còn lại nhiều nhất
+        available.sort(key=lambda x: x["remaining_units"], reverse=True)
+        return available
+
+    @staticmethod
+    def get_next_available_channel(current_channel_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Lấy kênh tối ưu tiếp theo để tự động xoay kênh khi kênh hiện tại hết Quota."""
+        avail = QuotaManager.get_available_channels(exclude_channel_id=current_channel_id)
+        return avail[0] if avail else None

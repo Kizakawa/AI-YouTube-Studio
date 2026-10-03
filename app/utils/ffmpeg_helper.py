@@ -15,7 +15,7 @@ import subprocess
 import json
 import logging
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Union
 
 logger = logging.getLogger(__name__)
 
@@ -222,20 +222,26 @@ def image_to_video(
     zoom_effect: bool = True,
     camera_motion: str = "zoom_in",
     is_hook_scene: bool = False,
+    is_scifi: bool = False,
 ) -> str:
     """
-    Biến 1 ảnh tĩnh → video MP4 với Ken Burns cinematic effect.
+    Biến 1 ảnh tĩnh → video MP4 với Ken Burns cinematic effect và bộ lọc thị giác viễn tưởng.
     
-    Hỗ trợ 6 loại chuyển động:
-      - zoom_in:   Zoom dần vào tâm ảnh (mặc định, cảm giác áp lực/sức mạnh)
-      - zoom_out:  Zoom ra xa (cảm giác khám phá/vĩ đại)
-      - pan_left:  Lướt từ phải sang trái (cinematic reveal)
-      - pan_right: Lướt từ trái sang phải
-      - pan_up:    Kéo từ dưới lên (climax/rising)
-      - pan_down:  Kéo từ trên xuống (tụt xuống/ominous)
+    Hỗ trợ các loại chuyển động:
+      - zoom_in:        Zoom dần vào tâm ảnh (mặc định, cảm giác áp lực/sức mạnh)
+      - zoom_out:       Zoom ra xa (cảm giác khám phá/vĩ đại)
+      - pan_left:       Lướt từ phải sang trái (cinematic reveal)
+      - pan_right:      Lướt từ trái sang phải
+      - pan_up:         Kéo từ dưới lên (climax/rising)
+      - pan_down:       Kéo từ trên xuống (tụt xuống/ominous)
+      - hyper_zoom:     Tăng tốc lao nhanh vào trung tâm (Warp speed / vượt chân trời sự kiện)
+      - warp_zoom:      Zoom động lực cao bước nhảy không gian
+      - cinematic_drift: Trôi dạt không trọng lực 3D (kết hợp panning ngang dọc và zoom chậm)
     
     Khi is_hook_scene=True: Áp dụng cú Punch-in Zoom kịch tính (1.05 -> 1.38)
     nhằm kích thích thị giác, khóa chặt sự chú ý của người xem trong 2.5s đầu.
+    Khi is_scifi=True: Tự động kích hoạt bộ lọc độ tương phản cao, làm rực sắc màu neon/sao vũ trụ
+    và tăng độ sắc nét chi tiết 8K (HDR Sci-Fi grading).
     Codec: H.264 + yuv420p (YouTube compatible).
     """
     # ── Chuẩn hóa ảnh bằng Pillow: chuyển sang RGB, scale về đúng tỷ lệ ──
@@ -274,6 +280,31 @@ def image_to_video(
             f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
             f"setsar=1,"
             f"fps={fps}"
+        )
+    elif camera_motion == "hyper_zoom":
+        # Lao nhanh siêu tốc vào tâm vũ trụ / warp speed
+        zoompan = (
+            f"zoompan=z='1.05+0.35*pow(min(on/{d}\\,1)\\,1.8)':"
+            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+            f"d={d}:s={width}x{height}:fps={fps},"
+            f"setsar=1"
+        )
+    elif camera_motion == "warp_zoom":
+        # Bước nhảy không thời gian
+        zoompan = (
+            f"zoompan=z='1.0+0.32*pow(min(on/{d}\\,1)\\,2.2)':"
+            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+            f"d={d}:s={width}x{height}:fps={fps},"
+            f"setsar=1"
+        )
+    elif camera_motion == "cinematic_drift":
+        # Trôi dạt 3D đa hướng không trọng lực
+        zoompan = (
+            f"zoompan=z='1.08+0.14*(1-pow(1-min(on/{d}\\,1)\\,2.5))':"
+            f"x='iw*0.06*(1-pow(1-min(on/{d}\\,1)\\,2.2))':"
+            f"y='ih*0.05*(1-pow(1-min(on/{d}\\,1)\\,2.2))':"
+            f"d={d}:s={width}x{height}:fps={fps},"
+            f"setsar=1"
         )
     elif camera_motion == "zoom_in":
         # P2.1: Cubic ease-out — Bắt đầu nhanh dứt khoát và giảm tốc mượt mà (chống giật cục)
@@ -341,10 +372,14 @@ def image_to_video(
             f"setsar=1"
         )
 
-    # Vignette filter — góc tối kiểu cinema, tạo chiều sâu, ảnh không bị "phẳng"
-    # 0.698 rad ≈ PI/4.5 — giá trị số thay vì PI (tránh lỗi trên một số phiên bản FFmpeg)
-    vignette_filter = "vignette=0.698"
-    vf_chain = f"{zoompan},{vignette_filter}"
+    # Hiệu ứng màu sắc và chiều sâu: Sci-Fi grading rực rỡ neon & tương phản cao
+    if is_scifi:
+        color_grading = "eq=contrast=1.14:saturation=1.22:brightness=0.01,unsharp=5:5:0.7:5:5:0.3"
+        vignette_filter = "vignette=0.72"
+        vf_chain = f"{zoompan},{color_grading},{vignette_filter}"
+    else:
+        vignette_filter = "vignette=0.698"
+        vf_chain = f"{zoompan},{vignette_filter}"
 
     args = [
         "-loop", "1",
@@ -386,22 +421,51 @@ def trim_video(
     width: int = 1080,
     height: int = 1920,
     fps: int = 30,
+    is_scifi: bool = False,
 ) -> str:
     """
     Cắt video Pexels về đúng duration cần thiết + scale/crop 9:16 + chuẩn hóa fps 30.
     Tự động lặp lại (stream_loop) nếu video stock ngắn hơn thời lượng lời thoại.
     Bỏ audio gốc của stock video.
+    Khi is_scifi=True: Áp dụng cinematic sci-fi grading (tăng tương phản và độ nét).
     """
-    args = [
-        "-stream_loop", "-1",
-        "-i", input_path,
-        "-t", str(duration_seconds),
-        "-vf", (
+    if is_scifi:
+        vf_chain = (
+            f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height},"
+            f"eq=contrast=1.08:saturation=1.16:brightness=0.01,"
+            f"unsharp=5:5:0.5:5:5:0.2,"
+            f"setsar=1,"
+            f"fps={fps}"
+        )
+    else:
+        vf_chain = (
             f"scale={width}:{height}:force_original_aspect_ratio=increase,"
             f"crop={width}:{height},"
             f"setsar=1,"
             f"fps={fps}"
-        ),
+        )
+
+    # Clip ngắn hơn lời thoại một chút (≤ 1.6x) → kéo dãn slow-motion nhẹ thay vì lặp lại (lặp rất dễ bị nhận ra)
+    loop_args = ["-stream_loop", "-1"]
+    try:
+        src_sec = get_duration_ms(input_path) / 1000.0
+        if 0.5 < src_sec < duration_seconds:
+            factor = duration_seconds / src_sec
+            if factor <= 1.6:
+                vf_chain = f"setpts={factor + 0.02:.4f}*PTS," + vf_chain
+                loop_args = []
+                logger.debug(f"[trim_video] Slow-motion x{factor:.2f} thay vì lặp clip ({src_sec:.1f}s → {duration_seconds:.1f}s)")
+            else:
+                logger.debug(f"[trim_video] Clip quá ngắn ({src_sec:.1f}s cho {duration_seconds:.1f}s) → buộc phải lặp")
+    except Exception:
+        pass
+
+    args = [
+        *loop_args,
+        "-i", input_path,
+        "-t", str(duration_seconds),
+        "-vf", vf_chain,
         "-c:v", "libx264",
         "-preset", "medium",
         "-crf", "18",
@@ -460,7 +524,7 @@ def concat_videos_with_xfade(
     video_paths: List[str],
     output_path: str,
     fps: int = 30,
-    transition: str = "fade",
+    transition: Union[str, List[str]] = "fade",
     transition_duration: float = 0.25,
     scene_durations_seconds: Optional[List[float]] = None,
 ) -> str:
@@ -471,7 +535,9 @@ def concat_videos_with_xfade(
         video_paths:             Danh sách clip MP4 đã chuẩn hóa (FPS, độ phân giải khớp nhau)
         output_path:             File MP4 output
         fps:                     FPS chuẩn (phải khớp với clips)
-        transition:              Loại xfade: 'fade', 'zoomin', 'wipeleft', 'slideright', 'dissolve'
+        transition:              Loại xfade: 'fade', 'zoomin', 'wipeleft', 'slideright', 'dissolve',
+                                 'scifi' (tự động luân chuyển các chuyển cảnh viễn tưởng đỉnh cao),
+                                 hoặc danh sách List[str] chuyển cảnh theo từng phân đoạn.
         transition_duration:     Thời lượng transition (giây), khuyến nghị 0.2-0.4s
         scene_durations_seconds: Thời lượng từng clip (giây) — cần để tính offset xfade.
                                  Nếu None, hàm tự probe bằng ffprobe.
@@ -491,6 +557,9 @@ def concat_videos_with_xfade(
 
     if len(video_paths) == 0:
         raise ValueError("concat_videos_with_xfade: video_paths rỗng")
+
+    # Danh mục chuyển cảnh viễn tưởng năng động (Dynamic Sci-Fi Transition Loop)
+    SCIFI_TRANSITIONS = ["zoomin", "pixelize", "hblur", "fadeblack", "dissolve", "circleopen"]
 
     # Lấy thời lượng từng clip nếu chưa cung cấp
     durations = []
@@ -527,9 +596,18 @@ def concat_videos_with_xfade(
         offset = max(cumulative + prev_dur - td, 0.0)
         cumulative += prev_dur - td
         next_label = f"vx{i}"
+
+        # Chọn kiểu transition cho nhát cắt này
+        if isinstance(transition, list) and transition:
+            t_choice = transition[(i - 1) % len(transition)]
+        elif transition in ("scifi", "scifi_cyber", "dynamic_scifi"):
+            t_choice = SCIFI_TRANSITIONS[(i - 1) % len(SCIFI_TRANSITIONS)]
+        else:
+            t_choice = transition
+
         filter_parts.append(
             f"[{current_label}][v{i}]xfade="
-            f"transition={transition}:"
+            f"transition={t_choice}:"
             f"duration={td:.3f}:"
             f"offset={offset:.3f}"
             f"[{next_label}]"

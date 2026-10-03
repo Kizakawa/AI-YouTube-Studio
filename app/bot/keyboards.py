@@ -318,28 +318,72 @@ def get_chat_brainstorm_keyboard(session_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 def get_publish_channel_keyboard(job_id: int) -> InlineKeyboardMarkup:
-    """Tạo bàn phím nút bấm chọn kênh YouTube mục tiêu khi xuất bản video Shorts"""
+    """Tạo bàn phím nút bấm chọn kênh YouTube mục tiêu kèm hiển thị hạn mức Quota thời gian thực"""
     import os
+    from app.services.quota_manager import QuotaManager
     channels = settings.get_channels_config()
     accounts = settings.get_accounts_config()
     acc_map = {a.get("id"): a.get("email_label") or a.get("email") or a.get("id") for a in accounts}
     keyboard = []
 
+    channel_items = []
     for ch in channels:
+        ch_id = ch.get("id", "")
+        info = QuotaManager.get_channel_quota_info(ch_id)
+        channel_items.append((ch, info))
+
+    # Ưu tiên các kênh đang có sẵn Quota và đã cấp quyền lên đầu danh sách
+    channel_items.sort(key=lambda x: (1 if x[1]["can_upload"] else 0, x[1]["remaining_units"]), reverse=True)
+
+    for ch, info in channel_items:
         ch_id = ch.get("id", "")
         ch_name = ch.get("name", ch_id)
         acc_id = ch.get("google_account", "account_1")
         acc_email = acc_map.get(acc_id, acc_id)
-        ch_token = os.path.join(settings.CREDENTIALS_DIR, "channels", ch_id, "youtube_token.json")
-        auth_status = "🟢" if os.path.exists(ch_token) else "⚠️"
+
+        if info["can_upload"]:
+            label = f"🟢⚡ {ch_name} [{info['remaining_units']:,} Quota]"
+        elif not info["has_token"]:
+            label = f"⚠️ {ch_name} [Chưa kết nối OAuth]"
+        else:
+            label = f"🔴⏳ {ch_name} [Hết Quota - Chờ 14:00]"
 
         keyboard.append([
             InlineKeyboardButton(
-                f"{auth_status} ⚡ Shorts: {ch_name} [{acc_email}]",
+                label,
                 callback_data=f"publish_to_channel:{job_id}:{ch_id}"
             )
         ])
 
+    keyboard.append([
+        InlineKeyboardButton("❌ Hủy Đăng", callback_data=f"cancel_publish:{job_id}")
+    ])
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_quota_failover_keyboard(job_id: int, current_channel_id: str) -> InlineKeyboardMarkup:
+    """Tạo bàn phím tự động xoay kênh thông minh (1-Click Failover) khi kênh hiện tại hết Quota API"""
+    from app.services.quota_manager import QuotaManager
+    available_channels = QuotaManager.get_available_channels(exclude_channel_id=current_channel_id)
+    keyboard = []
+
+    for ch in available_channels:
+        cid = ch["channel_id"]
+        cname = ch["channel_name"]
+        rem = ch["remaining_units"]
+        keyboard.append([
+            InlineKeyboardButton(
+                f"🚀 Xoay & Đăng Sang: {cname} ({rem:,} Quota)",
+                callback_data=f"rotate_publish_to:{job_id}:{cid}"
+            )
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton(
+            "⏰ Chờ Nạp Lại Quota (Tự Đăng Lúc 14:00)",
+            callback_data=f"wait_quota_job:{job_id}:{current_channel_id}"
+        )
+    ])
     keyboard.append([
         InlineKeyboardButton("❌ Hủy Đăng", callback_data=f"cancel_publish:{job_id}")
     ])
