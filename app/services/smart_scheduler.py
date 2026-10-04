@@ -30,39 +30,44 @@ MIN_SPACING_SECONDS = 12600
 # ──────────────────────────────────────────────────────────────────────────────
 # CẤU HÌNH CÁC KHUNG GIỜ VÀNG QUỐC TẾ (US & GLOBAL PEAKS) CHO YOUTUBE SHORTS
 # ──────────────────────────────────────────────────────────────────────────────
-# CẤU HÌNH CÁC KHUNG GIỜ VÀNG QUỐC TẾ (US & GLOBAL PEAKS) CHO YOUTUBE SHORTS
 # ──────────────────────────────────────────────────────────────────────────────
-# Căn lịch sớm hơn giờ vàng thực tế 30 - 60 phút để AI YouTube kịp render codec,
-# quét bản quyền và phân phối thử nghiệm (Seed Testing Phase) trước khi bước vào đỉnh:
-# 1. 12:30 UTC = 19:30 Tối VN = 08:30 AM EST (ĐÓN ĐẦU ĐỈNH VÀNG SỐ 1: Sáng Mỹ & Chiều Châu Âu)
-# 2. 22:30 UTC = 05:30 Sáng VN hôm sau = 17:30 PM EST (ĐÓN ĐẦU ĐỈNH GIẢI TRÍ TỐI MỸ: Tan sở & Ăn tối)
-# 3. 04:15 UTC = 11:15 Trưa VN = 00:15 AM EST (ĐÓN ĐẦU NGHỈ TRƯA & TIỀN LỆ 11:18)
+# CẤU HÌNH CÁC KHUNG GIỜ VÀNG QUỐC TẾ (US & EU PEAKS) CHO YOUTUBE SHORTS
+# ──────────────────────────────────────────────────────────────────────────────
+# Nguyên tắc vàng: Đăng trước đỉnh người xem 1 - 1.5 tiếng để YouTube AI kịp:
+# 1. Render phân giải dọc chuẩn, xử lý Content ID bản quyền & synthetic media check.
+# 2. Thử nghiệm tệp mẫu (Seed Testing Phase 100 - 500 impressions) cho khán giả bản địa.
+# 3. Thu thập tín hiệu giữ chân (Retention / Viewed vs Swiped Away) để bùng nổ đúng đỉnh!
+#
+# Thứ tự ưu tiên:
+# Rank 1: 21:00 UTC = 04:00 Sáng VN = 17:00 PM EDT (Đón đầu đỉnh Tối Mỹ 18:30 - 21:30)
+# Rank 2: 17:30 UTC = 00:30 Đêm VN = 13:30 PM EDT (Đón đầu chiều tan tầm Mỹ 15:00 & Tối Châu Âu 19:30)
+# Rank 3: 15:00 UTC = 22:00 Tối VN = 11:00 AM EDT (Đón đầu nghỉ trưa văn phòng Mỹ 12:00 - 13:30)
 GOLDEN_SLOTS_UTC = [
     {
-        "hour": 12,
-        "minute": 30,
-        "label_vn": "19:30 Tối",
-        "label_us": "08:30 AM EST (ĐÓN ĐẦU ĐỈNH VÀNG SỐ 1 — Sáng Mỹ & Chiều Châu Âu)",
-        "description": "Đăng sớm hơn đỉnh 20:30-22:00 45-60 phút để YouTube AI kịp render codec và phân phối thử nghiệm.",
-        "tag": "US_MORNING_PEAK",
+        "hour": 21,
+        "minute": 0,
+        "label_vn": "04:00 Sáng",
+        "label_us": "17:00 PM EST (ĐÓN ĐẦU ĐỈNH VÀNG SỐ 1 MỸ — Tan sở & Buổi tối)",
+        "description": "Đăng sớm trước đỉnh tối Mỹ (18:30-21:30 EST) 1.5 tiếng để thuật toán thử nghiệm tệp và sẵn sàng bùng nổ.",
+        "tag": "US_EVENING_PRIME",
         "rank": 1
     },
     {
-        "hour": 22,
+        "hour": 17,
         "minute": 30,
-        "label_vn": "05:30 Sáng",
-        "label_us": "17:30 PM EST (ĐÓN ĐẦU ĐỈNH GIẢI TRÍ TỐI MỸ — Tan sở & Ăn tối)",
-        "description": "Đăng sớm trước 18:30-20:00 EST 45-60 phút để video sẵn sàng ngay khi người Mỹ về nhà lướt Shorts.",
-        "tag": "US_EVENING_PRIME",
+        "label_vn": "00:30 Đêm",
+        "label_us": "13:30 PM EST (ĐÓN ĐẦU CHIỀU MỸ & GIỜ VÀNG TỐI CHÂU ÂU)",
+        "description": "Đón đầu giờ tan trường Mỹ (15:00 EST) và trùng đúng giờ vàng buổi tối 19:30 tại Châu Âu (Anh, Pháp, Đức).",
+        "tag": "US_AFTERNOON_EU_PRIME",
         "rank": 2
     },
     {
-        "hour": 4,
-        "minute": 15,
-        "label_vn": "11:15 Trưa",
-        "label_us": "00:15 AM EST (Nuôi view đêm Mỹ & Đón đầu sáng Châu Âu)",
-        "description": "Đón đầu trước giờ trưa (khung chuẩn video tiền nhiệm Why You're Terrified of Deep Water lúc 11:18).",
-        "tag": "GLOBAL_MORNING_PREP",
+        "hour": 15,
+        "minute": 0,
+        "label_vn": "22:00 Đêm",
+        "label_us": "11:00 AM EST (ĐÓN ĐẦU NGHỈ TRƯA VĂN PHÒNG MỸ)",
+        "description": "Đăng sớm 1 tiếng trước giờ ăn trưa (12:00-13:30 EST) của người dùng công sở và học sinh Mỹ.",
+        "tag": "US_LUNCH_PEAK",
         "rank": 3
     },
 ]
@@ -394,10 +399,10 @@ def get_next_available_golden_slot(
             if candidate_dt > min_allowed_time:
                 candidate_slots.append((candidate_dt, slot))
 
-        # Ưu tiên theo thứ hạng vàng:
-        # Rank 1: 20:00 Tối VN (Khuyên dùng nhất — Cố định hàng ngày)
-        # Rank 2: 06:00 Sáng VN (Đỉnh giải trí tối Mỹ 18:00-19:00 EST)
-        # Rank 3: 11:30 Trưa VN (Đón đầu phân phối & video tiền nhiệm 11:18)
+        # Ưu tiên theo thứ hạng vàng đón đầu giờ xem đỉnh:
+        # Rank 1: 04:00 Sáng VN (21:00 UTC = 17:00 EST — Đón đầu đỉnh tối lớn nhất tại Mỹ 18:30-21:30)
+        # Rank 2: 00:30 Đêm VN (17:30 UTC = 13:30 EST — Đón đầu chiều tan tầm Mỹ & tối Châu Âu 19:30)
+        # Rank 3: 22:00 Đêm VN (15:00 UTC = 11:00 EST — Đón đầu giờ nghỉ trưa Mỹ 12:00-13:30)
         candidate_slots.sort(key=lambda item: (
             item[1].get("rank", 99),
             item[0]

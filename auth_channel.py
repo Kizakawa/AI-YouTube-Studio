@@ -13,6 +13,7 @@ import json
 import base64
 from pathlib import Path
 import yaml
+from typing import Optional, List, Dict, Any, Tuple
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
@@ -41,7 +42,7 @@ def load_channels_config():
     with open(cfg_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
-def authenticate_channel(channel_id: str):
+def authenticate_channel(channel_id: str, account_id: Optional[str] = None):
     base_dir = Path(__file__).resolve().parent
     cfg = load_channels_config()
     if not cfg:
@@ -85,9 +86,9 @@ def authenticate_channel(channel_id: str):
         for ch in cfg.get("channels", []):
             if ch.get("id") == channel_id:
                 target_channel = ch
-                acc_id = ch.get("google_account", "account_1")
+                acc_id_cfg = ch.get("google_account", "account_1")
                 for acc in cfg.get("google_accounts", []):
-                    if acc.get("id") == acc_id:
+                    if acc.get("id") == acc_id_cfg:
                         target_account = acc
                         break
                 break
@@ -96,7 +97,8 @@ def authenticate_channel(channel_id: str):
         print(f"❌ Không tìm thấy kênh có ID '{channel_id}' trong config/channels.yaml!")
         return False
 
-    acc_id = target_account.get("id", "account_1") if target_account else "account_1"
+    # Ưu tiên account_id được truyền vào (cho phép xoay Project Quota)
+    acc_id = account_id or (target_account.get("id", "account_1") if target_account else "account_1")
     ch_name = target_channel.get("name", channel_id)
 
     # Tìm file client_secret
@@ -111,7 +113,7 @@ def authenticate_channel(channel_id: str):
     print("\n" + "=" * 68)
     print(f"🔐 BẮT ĐẦU XÁC THỰC YOUTUBE OAUTH CHO KÊNH:")
     print(f"   📺 Tên kênh: {ch_name} (ID: {channel_id})")
-    print(f"   👤 Tài khoản Google: {acc_id} ({target_account.get('email_label', 'N/A') if target_account else 'N/A'})")
+    print(f"   👤 Tài khoản Google / Project: {acc_id} (Dự án: {client_secret_file.parent.name})")
     print("=" * 68)
     print("👉 Trình duyệt web sẽ tự động mở ra.")
     print("👉 HÃY CHỌN ĐÚNG KÊNH YOUTUBE BẠN MUỐN KẾT NỐI KHI GOOGLE HỎI!")
@@ -158,17 +160,21 @@ def authenticate_channel(channel_id: str):
             print("   Vui lòng kiểm tra lại nếu video bị đăng nhầm kênh!")
             print("!" * 68 + "\n")
 
-        # Lưu token vào credentials/channels/{channel_id}/youtube_token.json (Mã hoá AES-256)
+        # Lưu token vào credentials/channels/{channel_id}/ (Mã hoá AES-256)
         ch_dir = base_dir / "credentials" / "channels" / channel_id
         ch_dir.mkdir(parents=True, exist_ok=True)
-        token_file = ch_dir / "youtube_token.json"
+        primary_token_file = ch_dir / "youtube_token.json"
+        acc_token_file = ch_dir / f"youtube_token_{acc_id}.json"
 
         from app.utils.security import save_encrypted_json
         token_dict = json.loads(creds.to_json())
         token_dict["channel_id"] = real_yt_id or channel_id
         token_dict["channel_title"] = real_yt_title or ch_name
 
-        save_encrypted_json(token_file, token_dict)
+        # 1. Lưu token theo mã dự án / account để xoay vòng Quota (Project Pool)
+        save_encrypted_json(acc_token_file, token_dict)
+        # 2. Cập nhật hoặc lưu token chính của kênh
+        save_encrypted_json(primary_token_file, token_dict)
 
         # Chỉ đồng bộ vào thư mục tài khoản mẹ nếu đây là kênh chính (kênh đầu tiên)
         # Tránh ghi đè token của kênh khác trong cùng một Gmail!
@@ -189,7 +195,8 @@ def authenticate_channel(channel_id: str):
         print(f"   📺 Kênh YouTube đã cấp quyền: {real_yt_title or ch_name}")
         print(f"   🆔 YouTube Channel ID: {real_yt_id or 'N/A'}")
         print(f"   👥 Số người đăng ký: {subs_count}")
-        print(f"   💾 Đường dẫn token: {token_file}")
+        print(f"   💾 Token Pool dự án: {acc_token_file}")
+        print(f"   💾 Token kênh chính: {primary_token_file}")
         print("=" * 68 + "\n")
         return True
     except Exception as e:
@@ -219,7 +226,33 @@ def main():
 
     if len(sys.argv) > 1:
         target_id = sys.argv[1].strip()
-        authenticate_channel(target_id)
+        target_acc = sys.argv[2].strip() if len(sys.argv) > 2 else None
+
+        if target_id in ("--all-channels", "--matrix", "all"):
+            from auth_all import main as auth_all_main
+            auth_all_main()
+            return
+
+        if target_acc in ("--all", "-a", "all"):
+            print("\n" + "═" * 68)
+            print(f"🔥 BẮT ĐẦU CẤP QUYỀN TOÀN BỘ 3 DỰ ÁN CHO KÊNH: {target_id}")
+            print("   Hệ thống sẽ lần lượt mở trình duyệt cho từng Dự án Google Cloud.")
+            print("   Bạn chỉ cần chọn đúng kênh và bấm 'Cho phép' (Allow) cho từng dự án.")
+            print("═" * 68 + "\n")
+            accounts = ["account_1", "acount_2", "accout3"]
+            success_count = 0
+            for idx, acc in enumerate(accounts, 1):
+                print(f"\n[Bước {idx}/3] Đang cấp quyền Dự án: {acc}...")
+                ok = authenticate_channel(target_id, acc)
+                if ok:
+                    success_count += 1
+            print("\n" + "=" * 68)
+            print(f"🎉 HOÀN TẤT LIÊN KẾT {success_count}/{len(accounts)} DỰ ÁN CHO KÊNH: {target_id}!")
+            print("   Kênh này hiện đã có Quota Pool đa dự án. Khi bất kỳ dự án nào chạm trần,")
+            print("   hệ thống sẽ tự động xoay sang dự án tiếp theo để tiếp tục xuất bản!")
+            print("=" * 68 + "\n")
+            return
+        authenticate_channel(target_id, target_acc)
         return
 
     # Nếu không truyền tham số, hiển thị danh sách để người dùng chọn
@@ -236,7 +269,19 @@ def main():
         choice = input("👉 Lựa chọn: ").strip()
         if choice.isdigit() and 1 <= int(choice) <= len(all_channels):
             selected = all_channels[int(choice) - 1]["id"]
-            authenticate_channel(selected)
+            print("\n👉 Chọn tài khoản / Dự án Google Cloud muốn cấp quyền cho kênh:")
+            print("  [0] Mặc định theo channels.yaml")
+            print("  [1] account_1 (Dự án: bionic-client-509515-h2)")
+            print("  [2] acount_2 (Dự án: ai-youtube-studio-509521)")
+            print("  [3] accout3 (Dự án: youtube-pool-02-510505)")
+            print("  [4] 🔥 CẤP QUYỀN CẢ 3 DỰ ÁN CÙNG LÚC (--all) để tự động xoay khi hết Quota")
+            acc_c = input("👉 Lựa chọn tài khoản [0-4, mặc định 0]: ").strip()
+            if acc_c in ("4", "--all", "all"):
+                for acc in ["account_1", "acount_2", "accout3"]:
+                    authenticate_channel(selected, acc)
+            else:
+                acc_map = {"1": "account_1", "2": "acount_2", "3": "accout3"}
+                authenticate_channel(selected, acc_map.get(acc_c))
         elif choice:
             authenticate_channel(choice)
     except (KeyboardInterrupt, EOFError):

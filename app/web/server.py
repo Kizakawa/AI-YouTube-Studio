@@ -2718,7 +2718,7 @@ class ChannelCreateRequest(BaseModel):
     language: Optional[str] = "en"
     preferred_voice: Optional[str] = "en-US-ChristopherNeural"
     visual_mode: Optional[str] = "auto"
-    publish_hour_utc: Optional[int] = 12
+    publish_hour_utc: Optional[int] = 21
     days: Optional[List[str]] = ["monday", "wednesday", "friday", "sunday"]
     google_account: Optional[str] = None
 
@@ -3459,7 +3459,7 @@ async def add_brand_channel(account_id: str, req: ChannelCreateRequest) -> Dict[
         "visual_mode": req.visual_mode or "auto",
         "preferred_voice": req.preferred_voice or "en-US-ChristopherNeural",
         "schedule": {
-            "publish_hour_utc": req.publish_hour_utc or 12,
+            "publish_hour_utc": req.publish_hour_utc or 21,
             "days": req.days or ["monday", "wednesday", "friday", "sunday"]
         }
     }
@@ -3507,7 +3507,7 @@ async def update_brand_channel(account_id: str, channel_id: str, req: ChannelCre
     channel["visual_mode"] = req.visual_mode or channel.get("visual_mode", "auto")
     channel["preferred_voice"] = req.preferred_voice or channel.get("preferred_voice", "en-US-ChristopherNeural")
     channel["schedule"] = {
-        "publish_hour_utc": req.publish_hour_utc or 12,
+        "publish_hour_utc": req.publish_hour_utc or 21,
         "days": req.days or ["monday", "wednesday", "friday", "sunday"]
     }
 

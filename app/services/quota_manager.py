@@ -216,11 +216,113 @@ class QuotaManager:
         return [QuotaManager.get_tracker(pid) for pid in sorted(projects)]
 
     @staticmethod
+    def get_channel_tokens_pool(channel_id: str) -> List[Dict[str, Any]]:
+        """
+        Quét toàn bộ danh sách các token OAuth liên kết với kênh này (Project Quota Pool).
+        Cho phép 1 kênh liên kết với nhiều Google Cloud Project để tự động xoay Project khi hết hạn mức.
+        """
+        ch_dir = Path(settings.CREDENTIALS_DIR) / "channels" / channel_id
+        if not ch_dir.exists():
+            return []
+
+        acc_dir = Path(settings.CREDENTIALS_DIR) / "accounts"
+        cid_map = {}
+        if acc_dir.exists():
+            for acc in os.listdir(acc_dir):
+                cs = acc_dir / acc / "client_secret.json"
+                if cs.exists():
+                    try:
+                        with open(cs, "r", encoding="utf-8") as f:
+                            d = json.load(f)
+                            info = d.get("installed") or d.get("web") or {}
+                            cid = info.get("client_id")
+                            pid = info.get("project_id")
+                            if cid and pid:
+                                cid_map[cid] = {"account_id": acc, "project_id": pid}
+                    except Exception:
+                        pass
+
+        from app.utils.security import load_encrypted_json
+        pool = []
+        seen_projects = set()
+
+        token_files = []
+        primary_tok = ch_dir / "youtube_token.json"
+        if primary_tok.exists():
+            token_files.append(primary_tok)
+
+        for p in ch_dir.glob("*.json"):
+            if p != primary_tok and ("token" in p.name or "youtube" in p.name):
+                token_files.append(p)
+        tokens_subdir = ch_dir / "tokens"
+        if tokens_subdir.exists():
+            for p in tokens_subdir.glob("*.json"):
+                token_files.append(p)
+
+        for tf in token_files:
+            try:
+                t_data = load_encrypted_json(tf)
+                if not t_data:
+                    continue
+                cid = t_data.get("client_id")
+                p_info = cid_map.get(cid, {"account_id": "unknown", "project_id": "default_project"})
+                pid = p_info["project_id"]
+                if pid in seen_projects:
+                    continue
+                seen_projects.add(pid)
+
+                tracker = QuotaManager.get_tracker(pid)
+                can_up = QuotaManager.can_upload(pid, required_units=COST_FULL_SHORTS)
+                pool.append({
+                    "token_file": str(tf),
+                    "project_id": pid,
+                    "account_id": p_info["account_id"],
+                    "client_id": cid,
+                    "used_units": tracker.get("used_units", 0),
+                    "remaining_units": tracker.get("remaining_units", 0),
+                    "upload_count": tracker.get("upload_count", 0),
+                    "can_upload": can_up,
+                })
+            except Exception as e:
+                logger.debug(f"Lỗi kiểm tra token {tf}: {e}")
+
+        # Sắp xếp token: token có can_upload=True và remaining_units cao nhất lên đầu
+        pool.sort(key=lambda x: (x["can_upload"], x["remaining_units"]), reverse=True)
+        return pool
+
+    @staticmethod
+    def get_active_token_for_channel(channel_id: str, required_units: int = COST_FULL_SHORTS) -> Tuple[Optional[str], str]:
+        """
+        Lấy file token và Google Cloud Project ID tối ưu nhất cho kênh.
+        Tự động XOAY PROJECT (Project Rotation) nếu project hiện tại hết quota và kênh có dự án dự phòng.
+        Nếu tất cả đều hết quota, trả về token chính để hệ thống đưa vào hàng đợi an toàn cho chính kênh đó.
+        """
+        pool = QuotaManager.get_channel_tokens_pool(channel_id)
+        if not pool:
+            def_token = os.path.join(settings.CREDENTIALS_DIR, "channels", channel_id, "youtube_token.json")
+            proj_id = QuotaManager.get_channel_project_id(channel_id)
+            return (def_token if os.path.exists(def_token) else None, proj_id)
+
+        # Ưu tiên token có thể upload
+        for item in pool:
+            if QuotaManager.can_upload(item["project_id"], required_units=required_units):
+                return (item["token_file"], item["project_id"])
+
+        # Nếu tất cả token đều hết quota, trả về token đầu tiên
+        return (pool[0]["token_file"], pool[0]["project_id"])
+
+    @staticmethod
     def get_channel_project_id(channel_id: str) -> str:
         """
-        Xác định chính xác Google Cloud Project ID sẽ bị Google trừ Quota khi upload kênh này.
-        Ưu tiên đọc client_id từ token thực tế của kênh, sau đó đối chiếu với các client_secret.
+        Xác định Google Cloud Project ID hiện tại của kênh.
+        Nếu kênh có nhiều token, ưu tiên Project đang còn Quota.
         """
+        ch_dir = Path(settings.CREDENTIALS_DIR) / "channels" / channel_id
+        if ch_dir.exists():
+            pool = QuotaManager.get_channel_tokens_pool(channel_id)
+            if pool:
+                return pool[0]["project_id"]
+
         ch_token = os.path.join(settings.CREDENTIALS_DIR, "channels", channel_id, "youtube_token.json")
         if os.path.exists(ch_token):
             try:
@@ -228,7 +330,6 @@ class QuotaManager:
                 t_data = load_encrypted_json(ch_token)
                 tok_cid = t_data.get("client_id") if t_data else None
                 if tok_cid:
-                    # Quét tất cả client_secret.json để tìm project_id khớp với client_id
                     acc_dir = Path(settings.CREDENTIALS_DIR) / "accounts"
                     if acc_dir.exists():
                         for acc in os.listdir(acc_dir):
@@ -258,12 +359,12 @@ class QuotaManager:
         channels = settings.get_channels_config()
         ch_cfg = next((c for c in channels if c.get("id") == channel_id), {"id": channel_id, "name": channel_id})
         acc_id = ch_cfg.get("google_account", "account_1")
-        ch_token = os.path.join(settings.CREDENTIALS_DIR, "channels", channel_id, "youtube_token.json")
-        has_token = os.path.exists(ch_token)
 
-        project_id = QuotaManager.get_channel_project_id(channel_id)
+        token_path, project_id = QuotaManager.get_active_token_for_channel(channel_id)
+        has_token = token_path is not None and os.path.exists(token_path)
         tracker = QuotaManager.get_tracker(project_id)
         can_up = has_token and QuotaManager.can_upload(project_id)
+        pool = QuotaManager.get_channel_tokens_pool(channel_id)
 
         return {
             "channel_id": channel_id,
@@ -271,6 +372,8 @@ class QuotaManager:
             "account_id": acc_id,
             "project_id": project_id,
             "has_token": has_token,
+            "token_file": token_path,
+            "pool_size": len(pool),
             "used_units": tracker.get("used_units", 0),
             "remaining_units": tracker.get("remaining_units", 0),
             "upload_count": tracker.get("upload_count", 0),

@@ -2414,50 +2414,24 @@ async def _execute_channel_publish(update: Update, context: ContextTypes.DEFAULT
             success_text += "💡 Video đã được xuất bản Công khai (Public) thành công!"
             await safe_edit_text(status_wait, success_text)
         elif pub_res.get("status") == "waiting_quota_reset":
-            # QuotaGuard kích hoạt: Dự án Google Cloud của kênh này đã dùng hết 10.000 điểm hôm nay
-            from app.services.quota_manager import QuotaManager
-            from app.bot.keyboards import get_quota_failover_keyboard
+            # QuotaGuard kích hoạt: Toàn bộ Dự án Google Cloud của kênh này đã dùng hết hạn mức hôm nay
+            from app.services.quota_manager import QuotaManager, get_next_reset_time
+            next_reset_str = get_next_reset_time().strftime("%H:%M ngày %d/%m/%Y")
+            pool = QuotaManager.get_channel_tokens_pool(channel_id)
 
-            available = QuotaManager.get_available_channels(exclude_channel_id=channel_id)
-            auto_rotate = getattr(settings, "AUTO_ROTATE_CHANNELS_ON_QUOTA", False) or os.getenv("AUTO_ROTATE_CHANNELS_ON_QUOTA", "false").lower() in ("true", "1", "yes")
-
-            if auto_rotate and available:
-                # Chế độ tự động hoàn toàn: Tự động chuyển hướng sang kênh còn Quota nhiều nhất
-                best_channel = available[0]
-                target_new_id = best_channel["channel_id"]
-                target_new_name = best_channel["channel_name"]
-                logger.info(f"🔄 [AutoRotate] Kênh '{ch_name}' hết quota -> Tự động xoay sang kênh '{target_new_name}' ({target_new_id})")
-                await safe_edit_text(
-                    status_wait,
-                    f"🔄 **[TỰ ĐỘNG XOAY KÊNH]** Kênh `{ch_name}` đã hết hạn mức Quota hôm nay (0 điểm).\n"
-                    f"⚡ Hệ thống đang tự động chuyển hướng và xuất bản sang kênh `{target_new_name}` (còn {best_channel['remaining_units']:,} Quota)..."
-                )
-                with get_db() as db:
-                    db_job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
-                    if db_job:
-                        db_job.target_channel_id = target_new_id
-                await _execute_channel_publish(update, context, job_id, target_new_id, user)
-                return
-
-            if available:
-                avail_bullets = "\n".join([f"• <b>{c['channel_name']}</b>: <code>{c['remaining_units']:,} Quota</code>" for c in available])
-                failover_text = (
-                    f"⚠️ <b>HẠN MỨC YOUTUBE API CỦA KÊNH ĐÃ CHẠM TRẦN! (Task #{job_id})</b>\n\n"
-                    f"📺 <b>Kênh mục tiêu:</b> <code>{html.escape(ch_name)}</code>\n"
-                    f"🚨 Dự án Google Cloud <code>{html.escape(pub_agent.project_id)}</code> đã dùng hết 10.000 điểm hôm nay.\n\n"
-                    f"🔄 <b>TỰ ĐỘNG HÓA XOAY KÊNH (QUOTA-AWARE FAILOVER):</b>\n"
-                    f"Hệ thống phát hiện có <b>{len(available)} kênh khác đang còn sẵn API Quota</b>:\n"
-                    f"{avail_bullets}\n\n"
-                    f"👉 <i>Bấm nút bên dưới để chuyển kênh và đăng video ngay lập tức mà không phải chờ đến ngày mai!</i>"
-                )
-                failover_markup = get_quota_failover_keyboard(job_id, channel_id)
-                await safe_edit_text(status_wait, failover_text, reply_markup=failover_markup, parse_mode="HTML")
-            else:
-                err = pub_res.get("error", "Hết hạn mức Quota và không còn kênh dự phòng nào.")
-                fail_text = f"❌ **Đăng YouTube bị hoãn do hết Quota:** `{err}`"
-                if drive_link:
-                    fail_text += f"\n\n💾 Video đã được lưu trữ an toàn trên Google Drive:\n👉 {drive_link}"
-                await safe_edit_text(status_wait, fail_text)
+            waiting_text = (
+                f"⏳ <b>HẠN MỨC DỰ ÁN GOOGLE CLOUD ĐÃ HẾT! (Task #{job_id})</b>\n\n"
+                f"📺 <b>Kênh mục tiêu:</b> <code>{html.escape(ch_name)}</code>\n"
+                f"🚨 Dự án Google Cloud <code>{html.escape(pub_agent.project_id)}</code> liên kết với kênh này đã dùng hết 10.000 điểm hôm nay.\n\n"
+                f"🔒 <b>HỆ THỐNG GIỮ NGUYÊN KÊNH:</b>\n"
+                f"Video <b>KHÔNG</b> bị chuyển sang kênh khác để đảm bảo đúng chủ đề nội dung (niche).\n"
+                f"Video đã được đưa vào hàng đợi an toàn và sẽ <b>tự động xuất bản lên {html.escape(ch_name)}</b> lúc <b>{next_reset_str}</b> (khi Google nạp lại Quota).\n\n"
+                f"💡 <i>Mẹo: Để đăng ngay mà không cần đợi, bạn có thể liên kết thêm Dự án Google Cloud dự phòng cho kênh {html.escape(ch_name)} bằng lệnh:</i>\n"
+                f"<code>python auth_channel.py {channel_id} account_1</code>"
+            )
+            if drive_link:
+                waiting_text += f"\n\n💾 Video đã lưu trữ an toàn trên Google Drive:\n👉 {drive_link}"
+            await safe_edit_text(status_wait, waiting_text, parse_mode="HTML")
         else:
             err = pub_res.get("error", "Lỗi không xác định")
             fail_text = f"❌ **Đăng YouTube thất bại:** `{err}`"
@@ -3138,26 +3112,20 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 await safe_reply(update, success_text)
             elif pub_res.get("status") == "waiting_quota_reset":
-                from app.services.quota_manager import QuotaManager
-                from app.bot.keyboards import get_quota_failover_keyboard
+                from app.services.quota_manager import QuotaManager, get_next_reset_time
+                next_reset_str = get_next_reset_time().strftime("%H:%M ngày %d/%m/%Y")
 
-                available = QuotaManager.get_available_channels(exclude_channel_id=channel_id)
-                if available:
-                    avail_bullets = "\n".join([f"• <b>{c['channel_name']}</b>: <code>{c['remaining_units']:,} Quota</code>" for c in available])
-                    failover_text = (
-                        f"⚠️ <b>HẠN MỨC YOUTUBE API CỦA KÊNH ĐÃ CHẠM TRẦN! (Task #{job_id})</b>\n\n"
-                        f"📺 <b>Kênh mục tiêu:</b> <code>{html.escape(ch_name)}</code>\n"
-                        f"🚨 Dự án Google Cloud <code>{html.escape(pub_agent.project_id)}</code> đã dùng hết 10.000 điểm hôm nay.\n\n"
-                        f"🔄 <b>TỰ ĐỘNG HÓA XOAY KÊNH (QUOTA-AWARE FAILOVER):</b>\n"
-                        f"Hệ thống phát hiện có <b>{len(available)} kênh khác đang còn sẵn API Quota</b>:\n"
-                        f"{avail_bullets}\n\n"
-                        f"👉 <i>Bấm nút bên dưới để chuyển kênh và đăng video ngay lập tức mà không phải chờ đến ngày mai!</i>"
-                    )
-                    failover_markup = get_quota_failover_keyboard(job_id, channel_id)
-                    await safe_reply(update, failover_text, reply_markup=failover_markup, parse_mode="HTML")
-                else:
-                    err = pub_res.get("error", "Hết Quota và không còn kênh dự phòng nào.")
-                    await safe_reply(update, f"❌ **LÊN LỊCH VIDEO #{job_id} BỊ HOÃN DO HẾT QUOTA:** `{err}`")
+                waiting_text = (
+                    f"⏳ <b>HẠN MỨC DỰ ÁN GOOGLE CLOUD ĐÃ HẾT! (Task #{job_id})</b>\n\n"
+                    f"📺 <b>Kênh mục tiêu:</b> <code>{html.escape(ch_name)}</code>\n"
+                    f"🚨 Dự án Google Cloud <code>{html.escape(pub_agent.project_id)}</code> liên kết với kênh này đã dùng hết 10.000 điểm hôm nay.\n\n"
+                    f"🔒 <b>HỆ THỐNG GIỮ NGUYÊN KÊNH:</b>\n"
+                    f"Video <b>KHÔNG</b> bị chuyển sang kênh khác để đảm bảo đúng chủ đề nội dung (niche).\n"
+                    f"Video đã được đưa vào hàng đợi an toàn và sẽ <b>tự động xuất bản lên {html.escape(ch_name)}</b> lúc <b>{next_reset_str}</b> (khi Google nạp lại Quota).\n\n"
+                    f"💡 <i>Mẹo: Để đăng ngay mà không cần đợi, bạn có thể liên kết thêm Dự án Google Cloud dự phòng cho kênh {html.escape(ch_name)} bằng lệnh:</i>\n"
+                    f"<code>python auth_channel.py {channel_id} account_1</code>"
+                )
+                await safe_reply(update, waiting_text, parse_mode="HTML")
             else:
                 err = pub_res.get("error") or pub_res.get("message") or "Lỗi không xác định"
                 await safe_reply(

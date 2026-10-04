@@ -21,12 +21,14 @@ class PublisherAgent:
         self.channel_name = self.channel_config.get("name", "YouTube Channel")
         self.account_name = self.channel_config.get("google_account", account_name)
 
-        # Quản lý Hạn mức Quota theo Google Cloud Project ID
+        # Quản lý Hạn mức Quota & Token từ Project Pool của kênh
         from app.services.quota_manager import QuotaManager, get_project_id_from_client_secret, COST_FULL_SHORTS, get_next_reset_time
-        cs_path = self.channel_config.get("client_secret") or f"credentials/accounts/{self.account_name}/client_secret.json"
-        self.project_id = QuotaManager.get_channel_project_id(self.channel_id)
         
-        ch_token = f"credentials/channels/{self.channel_id}/youtube_token.json"
+        # Tự động chọn token và Project ID tối ưu trong pool của kênh này
+        active_token, active_project_id = QuotaManager.get_active_token_for_channel(self.channel_id)
+        self.project_id = active_project_id
+        
+        ch_token = active_token or f"credentials/channels/{self.channel_id}/youtube_token.json"
         acc_token = f"credentials/accounts/{self.account_name}/youtube_token.json"
 
         # Kiểm tra xem kênh này có phải kênh đầu tiên (mặc định) của account không
@@ -50,7 +52,7 @@ class PublisherAgent:
 
         if self.channel_config.get("token_file") and os.path.exists(self.channel_config["token_file"]):
             self.token_file = self.channel_config["token_file"]
-        elif os.path.exists(ch_token):
+        elif ch_token and os.path.exists(ch_token):
             self.token_file = ch_token
         elif is_first_ch and os.path.exists(acc_token):
             # Chỉ kênh đầu tiên được kế thừa token cấp tài khoản cũ
@@ -160,14 +162,24 @@ class PublisherAgent:
             }
 
         # ──────────────────────────────────────────────────────────
-        # QUOTA GUARD: Kiểm tra hạn mức trước khi gọi API (Pre-flight check)
+        # QUOTA GUARD: Kiểm tra hạn mức & TỰ ĐỘNG XOAY PROJECT TRONG POOL CỦA KÊNH
         # ──────────────────────────────────────────────────────────
         from app.services.quota_manager import QuotaManager, COST_FULL_SHORTS, get_next_reset_time
+        
+        # Thử tìm token khác trong pool của kênh nếu dự án hiện tại hết quota
+        opt_token, opt_proj_id = QuotaManager.get_active_token_for_channel(self.channel_id, required_units=COST_FULL_SHORTS)
+        if opt_token and opt_token != self.token_file:
+            logger.info(f"🔄 [ProjectRotation] Kênh '{self.channel_name}' tự động xoay sang Dự án '{opt_proj_id}' ({opt_token}) còn Quota!")
+            self.token_file = opt_token
+            self.project_id = opt_proj_id
+            self._init_service()
+
         if not QuotaManager.can_upload(self.project_id, required_units=COST_FULL_SHORTS):
             next_reset_str = get_next_reset_time().strftime("%H:%M ngày %d/%m/%Y")
             quota_msg = (
-                f"Hạn mức YouTube API hôm nay của dự án '{self.project_id}' đã đạt giới hạn an toàn (gần chạm trần 10.000 units). "
-                f"Video đã được tự động lưu và chuyển vào hàng đợi an toàn, sẽ tự động đăng sau khi Google cấp hạn mức mới lúc {next_reset_str}."
+                f"Tất cả dự án Google Cloud của kênh '{self.channel_name}' đã đạt giới hạn an toàn hôm nay (dự án '{self.project_id}'). "
+                f"Video đã được tự động lưu và chuyển vào hàng đợi an toàn cho chính kênh '{self.channel_name}', "
+                f"sẽ tự động đăng sau khi Google cấp hạn mức mới lúc {next_reset_str}."
             )
             logger.warning(f"⚠️ [QuotaGuard] {quota_msg}")
             return {
@@ -241,9 +253,12 @@ class PublisherAgent:
             if req_tag.lower() not in [t.lower() for t in tag_list]:
                 tag_list.append(req_tag)
 
-        # Chuẩn hóa ngôn ngữ mặc định (Target US Audience)
-        target_lang = default_language or self.channel_config.get("language") or "en"
-        if not default_audio_language or default_audio_language.lower() == "en":
+        # Chuẩn hóa ngôn ngữ mặc định (Target US & Global Audience chuẩn BCP-47)
+        target_lang = default_language or self.channel_config.get("language") or "en-US"
+        if str(target_lang).lower() in ("en", "en-us", "english"):
+            target_lang = "en-US"
+            target_audio_lang = "en-US"
+        elif not default_audio_language or default_audio_language.lower() in ("en", "en-us"):
             target_audio_lang = "vi-VN" if str(target_lang).lower().startswith("vi") else "en-US"
         else:
             target_audio_lang = default_audio_language

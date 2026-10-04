@@ -166,7 +166,7 @@ def delete_account(account_id: str) -> Tuple[bool, str]:
     write_channels_yaml(cfg)
     return True, f"Đã xóa tài khoản '{account_id}' và các kênh liên kết"
 
-def add_channel(account_id: str, channel_id: str, name: str, niche: str, language: str = "en", visual_mode: str = "auto", preferred_voice: str = "en-US-ChristopherNeural", publish_hour_utc: int = 12, days: list = None) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+def add_channel(account_id: str, channel_id: str, name: str, niche: str, language: str = "en", visual_mode: str = "auto", preferred_voice: str = "en-US-ChristopherNeural", publish_hour_utc: int = 21, days: list = None) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """Thêm một kênh thương hiệu mới trực thuộc tài khoản Google."""
     clean_id = channel_id.strip().lower().replace(" ", "_")
     if not clean_id:
@@ -262,7 +262,7 @@ def update_channel(channel_id: str, name: str = None, niche: str = None, languag
             "language": flat_ch.get("language", "en"),
             "visual_mode": flat_ch.get("visual_mode", "auto"),
             "preferred_voice": flat_ch.get("preferred_voice", "en-US-ChristopherNeural"),
-            "schedule": {"publish_hour_utc": 12, "days": ["monday", "wednesday", "friday", "sunday"]}
+            "schedule": {"publish_hour_utc": 21, "days": ["monday", "wednesday", "friday", "sunday"]}
         }
         parent_account.setdefault("brand_channels", []).append(found_channel)
 
