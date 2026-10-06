@@ -24,53 +24,40 @@ US_TZ = US_EASTERN  # Alias để đảm bảo tương thích ngược
 # Giới hạn tối đa video trên mỗi kênh trong 1 ngày
 MAX_VIDEOS_PER_DAY = 2
 
-# Khoảng cách tối thiểu an toàn giữa 2 video (3.5 giờ = 12,600 giây) để thuật toán Shorts phân bổ
-MIN_SPACING_SECONDS = 12600
+# Khoảng cách tối thiểu an toàn giữa 2 video cùng kênh (6 giờ = 21,600 giây) để tránh tự bóp tương tác
+MIN_SPACING_SECONDS = 21600
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CẤU HÌNH CÁC KHUNG GIỜ VÀNG QUỐC TẾ (US & GLOBAL PEAKS) CHO YOUTUBE SHORTS
+# CẤU HÌNH 2 KHUNG GIỜ VÀNG QUỐC TẾ (US & GLOBAL PEAKS) TỐI ƯU 2 VIDEO / NGÀY
 # ──────────────────────────────────────────────────────────────────────────────
-# ──────────────────────────────────────────────────────────────────────────────
-# CẤU HÌNH CÁC KHUNG GIỜ VÀNG QUỐC TẾ (US & EU PEAKS) CHO YOUTUBE SHORTS
-# ──────────────────────────────────────────────────────────────────────────────
-# Nguyên tắc vàng: Đăng trước đỉnh người xem 1 - 1.5 tiếng để YouTube AI kịp:
-# 1. Render phân giải dọc chuẩn, xử lý Content ID bản quyền & synthetic media check.
-# 2. Thử nghiệm tệp mẫu (Seed Testing Phase 100 - 500 impressions) cho khán giả bản địa.
-# 3. Thu thập tín hiệu giữ chân (Retention / Viewed vs Swiped Away) để bùng nổ đúng đỉnh!
-#
-# Thứ tự ưu tiên:
-# Rank 1: 21:00 UTC = 04:00 Sáng VN = 17:00 PM EDT (Đón đầu đỉnh Tối Mỹ 18:30 - 21:30)
-# Rank 2: 17:30 UTC = 00:30 Đêm VN = 13:30 PM EDT (Đón đầu chiều tan tầm Mỹ 15:00 & Tối Châu Âu 19:30)
-# Rank 3: 15:00 UTC = 22:00 Tối VN = 11:00 AM EDT (Đón đầu nghỉ trưa văn phòng Mỹ 12:00 - 13:30)
+# Chuẩn hóa đúng 2 khung giờ đỉnh cao nhất trên YouTube Shorts:
+#   - Khung 1 (Sáng Mỹ / Tối VN): 13:00 UTC (20:00 tối VN = 09:00 AM EST)
+#     Đón đầu giờ thức dậy, đi làm/đi học tại Mỹ & giờ vàng giải trí tối tại Châu Á.
+#   - Khung 2 (Tối Mỹ / Sáng VN): 21:00 UTC (04:00 sáng VN = 17:00 PM EST)
+#     Đón đầu đỉnh xem tối lớn nhất tại Mỹ (18:30-21:30 EST) — giờ vàng số 1 toàn cầu.
+# Hai khung giờ này giãn cách đúng 8 tiếng ban ngày và 16 tiếng qua đêm:
+# Triệt tiêu 100% hiện tượng tự nuốt view (cannibalization), giúp cả 2 video đều đạt reach tối đa!
 GOLDEN_SLOTS_UTC = [
+    {
+        "hour": 13,
+        "minute": 0,
+        "label_vn": "20:00 Tối",
+        "label_us": "09:00 AM EST (ĐÓN ĐẦU ĐỈNH SÁNG MỸ & CHIỀU CHÂU ÂU)",
+        "description": "Đón đầu giờ đi làm/đi học buổi sáng tại Mỹ (09:00 EST), đầu giờ chiều Châu Âu (14:00-15:00) và giờ vàng buổi tối tại Việt Nam/Châu Á.",
+        "tag": "US_MORNING_EU_AFTERNOON",
+        "rank": 1
+    },
     {
         "hour": 21,
         "minute": 0,
         "label_vn": "04:00 Sáng",
         "label_us": "17:00 PM EST (ĐÓN ĐẦU ĐỈNH VÀNG SỐ 1 MỸ — Tan sở & Buổi tối)",
-        "description": "Đăng sớm trước đỉnh tối Mỹ (18:30-21:30 EST) 1.5 tiếng để thuật toán thử nghiệm tệp và sẵn sàng bùng nổ.",
+        "description": "Đăng sớm trước đỉnh tối Mỹ (18:30-21:30 EST) 1.5 tiếng để thuật toán thử nghiệm tệp và sẵn sàng bùng nổ đúng giờ vàng số 1 thế giới.",
         "tag": "US_EVENING_PRIME",
-        "rank": 1
-    },
-    {
-        "hour": 17,
-        "minute": 30,
-        "label_vn": "00:30 Đêm",
-        "label_us": "13:30 PM EST (ĐÓN ĐẦU CHIỀU MỸ & GIỜ VÀNG TỐI CHÂU ÂU)",
-        "description": "Đón đầu giờ tan trường Mỹ (15:00 EST) và trùng đúng giờ vàng buổi tối 19:30 tại Châu Âu (Anh, Pháp, Đức).",
-        "tag": "US_AFTERNOON_EU_PRIME",
         "rank": 2
     },
-    {
-        "hour": 15,
-        "minute": 0,
-        "label_vn": "22:00 Đêm",
-        "label_us": "11:00 AM EST (ĐÓN ĐẦU NGHỈ TRƯA VĂN PHÒNG MỸ)",
-        "description": "Đăng sớm 1 tiếng trước giờ ăn trưa (12:00-13:30 EST) của người dùng công sở và học sinh Mỹ.",
-        "tag": "US_LUNCH_PEAK",
-        "rank": 3
-    },
 ]
+
 
 WEEKDAY_VN_MAP = {
     0: "Thứ Hai",
@@ -86,9 +73,7 @@ WEEKDAY_VN_MAP = {
 def resolve_channel_family(channel_id: str) -> List[str]:
     """
     Tìm tất cả các ID và alias liên quan đến kênh này để chống trùng lịch chéo.
-    Ví dụ:
-    - 'ucsrjiil67qxidtxt70z-iwa' và 'UCsRjIIl67QxIDtXT70z-iwA'
-    - 'channel_psychology' và 'channel_maya'
+    Bao gồm: ID nội bộ, youtube_channel_id (UC...), handle (@...), và tên kênh.
     """
     if not channel_id:
         return ["default"]
@@ -96,8 +81,15 @@ def resolve_channel_family(channel_id: str) -> List[str]:
     canonical_map = {
         "channel_psychology": "channel_maya",
         "channel_maya": "channel_maya",
-        "ucsrjiil67qxidtxt70z-iwa": "ucsrjiil67qxidtxt70z-iwa",
-        "ucsjll67qxidtxt70z-iwa": "ucsrjiil67qxidtxt70z-iwa",
+        "uc1_lvpilxq-j4sfrqozfrkw": "channel_maya",
+        "ucsrjiil67qxidtxt70z-iwa": "ch_the_mysteries_of_the_world",
+        "ucsjll67qxidtxt70z-iwa": "ch_the_mysteries_of_the_world",
+        "ch_the_mysteries_of_the_world": "ch_the_mysteries_of_the_world",
+        "ch_paws_hearts_rescue": "ch_paws_hearts_rescue",
+        "ucv-2dyuqkx1u0cjqdmzdhta": "ch_paws_hearts_rescue",
+        "ch_wild_odyssey": "ch_wild_odyssey",
+        "uclsjhbvjjxi-j16vzxxs68a": "ch_wild_odyssey",
+        "@alternatehistorywhatif-e2x": "@alternatehistorywhatif-e2x",
     }
     cid_clean = channel_id.strip()
     cid_lower = cid_clean.lower()
@@ -113,15 +105,21 @@ def resolve_channel_family(channel_id: str) -> List[str]:
         channels = settings.get_channels_config()
         for ch in channels:
             curr_id = ch.get("id", "")
-            if curr_id.lower() in [f.lower() for f in family] or ch.get("handle", "").lower() in [f.lower() for f in family]:
-                family.add(curr_id)
-                family.add(curr_id.lower())
-                if ch.get("handle"):
-                    family.add(ch["handle"])
+            yt_id = ch.get("youtube_channel_id", "")
+            handle = ch.get("handle", "")
+            name = ch.get("name", "")
+            identifiers = [curr_id, yt_id, handle, name]
+
+            if any(ident and ident.lower() in [f.lower() for f in family] for ident in identifiers):
+                for ident in identifiers:
+                    if ident:
+                        family.add(ident)
+                        family.add(ident.lower())
     except Exception:
         pass
 
     return list(family)
+
 
 
 def sync_scheduled_jobs_status() -> int:
@@ -399,17 +397,13 @@ def get_next_available_golden_slot(
             if candidate_dt > min_allowed_time:
                 candidate_slots.append((candidate_dt, slot))
 
-        # Ưu tiên theo thứ hạng vàng đón đầu giờ xem đỉnh:
-        # Rank 1: 04:00 Sáng VN (21:00 UTC = 17:00 EST — Đón đầu đỉnh tối lớn nhất tại Mỹ 18:30-21:30)
-        # Rank 2: 00:30 Đêm VN (17:30 UTC = 13:30 EST — Đón đầu chiều tan tầm Mỹ & tối Châu Âu 19:30)
-        # Rank 3: 22:00 Đêm VN (15:00 UTC = 11:00 EST — Đón đầu giờ nghỉ trưa Mỹ 12:00-13:30)
-        candidate_slots.sort(key=lambda item: (
-            item[1].get("rank", 99),
-            item[0]
-        ))
+        # Sắp xếp các khe giờ ứng viên theo trình tự thời gian tự nhiên (từ sớm đến muộn trong ngày).
+        # Giúp các video được lên lịch nối tiếp mượt mà theo đúng thứ tự sản xuất,
+        # không bị đảo lộn thời gian (video làm sau lại đăng trước) hay dồn cục vào ban đêm.
+        candidate_slots.sort(key=lambda item: item[0])
 
         for candidate_dt, slot in candidate_slots:
-            # 1. Kiểm tra va chạm thời gian: Cách mọi video đã có ít nhất 3.5 giờ (12,600s)
+            # 1. Kiểm tra va chạm thời gian: Cách mọi video đã có ít nhất 6.0 giờ (21,600s)
             is_too_close = False
             for occ in occupied_slots_utc:
                 diff_seconds = abs((candidate_dt - occ).total_seconds())
@@ -418,6 +412,7 @@ def get_next_available_golden_slot(
                     break
             if is_too_close:
                 continue
+
 
             # 2. KIỂM TRA QUY TẮC "TỐI ĐA 2 VIDEO / 1 NGÀY":
             # Đếm số lượng video đã đặt trên cùng chu kỳ ngày của thị trường mục tiêu US EST/EDT
@@ -496,7 +491,7 @@ def get_channel_upcoming_schedule(channel_id: str = "channel_maya", limit: int =
 
 
 def get_golden_slots_overview() -> List[Dict[str, Any]]:
-    """Trả về bảng tổng hợp 4 khung giờ vàng Shorts để hiển thị trên Dashboard & Telegram."""
+    """Trả về bảng tổng hợp 2 khung giờ vàng Shorts tối ưu nhất (2 video/ngày) để hiển thị trên Dashboard & Telegram."""
     return [
         {
             "tag": s["tag"],

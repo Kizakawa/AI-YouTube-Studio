@@ -201,6 +201,7 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
 
         is_dark = any(w in narr_lower for w in ["sợ", "bí ẩn", "tối", "chết", "nguy hiểm", "bóng đêm", "abyss", "fear", "dark", "horror", "pressure", "nỗi sợ", "ác mộng", "rùng mình"])
         is_cosmic = any(w in narr_lower or w in topic_lower for w in ["vũ trụ", "hố đen", "lỗ đen", "không gian", "ngân hà", "space", "galaxy", "black hole", "cosmic", "wormhole"])
+        is_ocean = any(w in narr_lower or w in topic_lower for w in ["ocean", "sea", "biển", "abyss", "vực", "mariana", "thalassophobia", "bloop", "point nemo", "sâu thẳm", "sonar", "đại dương", "submarine", "tàu ngầm", "hải cẩu"])
         is_historical = bool(primary_entity) and entity_type in ("person", "civilization", "monument", "event", "historical_figure")
         is_face_or_portrait = any(w in narr_lower for w in ["khuôn mặt", "chân dung", "ánh mắt nhìn", "nụ cười quái dị", "tượng đá", "triết gia", "portrait", "face", "statue"])
 
@@ -220,6 +221,9 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
             if is_scifi:
                 q = scifi_agent.get_curated_video_search_queries(subgenre=subgenre, narration=narration)
                 ai_p = scifi_agent.create_cinematic_ai_video_prompt(topic or narration, subgenre=subgenre, scene_id=scene_id)
+            elif is_ocean:
+                q = ["deep sea submarine light", "dark underwater abyss", "ocean dark depths scuba", "deep ocean trench"]
+                ai_p = f"Cinematic 8k dramatic vertical hook shot of pitch black deep sea abyss, submarine spotlight beam penetrating the dark water, colossal shadow in distance, thalassophobia, 9:16"
             else:
                 q = ["cinematic dark mystery intro", "dramatic slow motion silhouette", "intense eye stare close up"]
                 ai_p = f"Cinematic 8k dramatic vertical hook shot of {topic or 'mystery'}, dark moody lighting, 9:16"

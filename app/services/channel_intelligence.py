@@ -319,7 +319,16 @@ def get_channel_existing_portfolio(channel_id: str) -> Dict[str, Any]:
 def _get_global_trends_directive(niche_id: str) -> str:
     """Cung cấp xu hướng Shorts toàn cầu 2026 thịnh hành nhất theo từng ngách cụ thể."""
     nid = (niche_id or "").lower()
-    if "mystery" in nid or "history" in nid:
+    if any(k in nid for k in ("deep_sea", "ocean", "thalassophobia", "bien_sau", "abyss")):
+        return """
+🌍 2026 GLOBAL VIRAL SHORTS TRENDS (DEEP SEA & THALASSOPHOBIA):
+1. Visceral Thalassophobia (Proven Top Winner on Channel): Piercing submarine headlight beams illuminating pitch-black abyssal void; colossal unidentifiable bio-shapes or dormant leviathans looming in the deep. Hook must challenge the viewer directly: 'If you have thalassophobia, swipe away immediately...'
+2. Classified Declassified Hydrophone Acoustics: Real sonar audio anomalies recorded by NOAA/US Navy (The Bloop, Upsweep, Julia, Train) with decibel comparisons to living blue whales. Hook: 'In 1997, hydrophones recorded this classified signal 3,000 miles across the Pacific...'
+3. The Mariana 11,000m Paradox & Abandoned Exploration: Why NASA and superpower nations abruptly ceased deep ocean trench exploration to look into space; underwater brine pools ('lakes beneath the ocean') where creatures die instantly upon entering. Hook: 'Here is the classified reason exploration was abruptly halted at 11,000 meters...'
+4. Point Nemo Isolation: The oceanic pole of inaccessibility where the closest humans are astronauts on the ISS orbiting 400km above.
+CRITICAL CONSTRAINT: STRICTLY FORBIDDEN: Generic river predators (e.g. Amazon caimans, snakes) or dry textbook history lectures. Stay 100% focused on visceral abyss fear, scale shock, classified sonar, and forbidden depths!
+"""
+    elif "mystery" in nid or "history" in nid:
         return """
 🌍 2026 GLOBAL VIRAL SHORTS TRENDS (MYSTERIES & ANOMALIES):
 1. Subterranean & Ocean Acoustic Anomalies: Declassified underwater hydrophone recordings (The Bloop, Julia, Upsweep, Train), Mariana acoustic anomalies with exact frequency stats. (CRITICAL: Pivot AWAY from repetitive generic 'what is at 1000m depth' lists!).

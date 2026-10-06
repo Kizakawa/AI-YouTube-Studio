@@ -99,5 +99,6 @@ audio:
 banned_lexicon: *id001
 target_wpm: 155
 monetization:
-  affiliate_enabled: true
+  affiliate_enabled: false
   affiliate_category: pet_care
+

@@ -23,12 +23,10 @@ class TestSystemWideUpgrade(unittest.TestCase):
             # MarginV an toàn trên khung 1920 (576 - 672px)
             self.assertTrue(576 <= sub_style["margin_v"] <= 672, f"Niche {nid} margin_v {sub_style['margin_v']} out of safe zone!")
             
-            # Affiliate chỉ bật cho animal_rescue
+            # Toàn bộ ngách đều tắt affiliate cho Shorts (đảm bảo không dính link rác, tập trung tương tác)
             monet = niche.get("monetization", {})
-            if nid == "animal_rescue":
-                self.assertTrue(monet.get("affiliate_enabled"))
-            else:
-                self.assertFalse(monet.get("affiliate_enabled", False), f"Niche {nid} should NOT have affiliate_enabled!")
+            self.assertFalse(monet.get("affiliate_enabled", False), f"Niche {nid} should NOT have affiliate_enabled!")
+
 
     def test_linter_strict_english_connectors(self):
         niche = get_niche("deep_sea_earth_mysteries")

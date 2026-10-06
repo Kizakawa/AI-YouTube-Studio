@@ -441,22 +441,40 @@ Target Language: {language} ({target_lang_display})
 ═══════════════════════════════════════════════════════════
 VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
 ═══════════════════════════════════════════════════════════
-1. ULTRA-FOCUSED DURATION (35 - 45 SECONDS TOTAL):
-   - Total spoken word count: strictly 80 to 115 words.
-   - Exact scene count: strictly 8 to 10 scenes.
-   - Pacing: 3.0 to 4.5 seconds per scene (8 to 12 words per scene).
-   - Fast visual cuts: NEVER drag a scene past 4.5 seconds. Rapid visual momentum prevents viewer swiping.
-   - Narrative Structure: Hook (Scene 1) -> Buildup & Tension (Scenes 2-4) -> Climax/Twist (Scenes 5-7) -> Seamless Loop Bridge (Scenes 8-10).
+1. ULTRA-FOCUSED DURATION (GOLDEN RETENTION TARGET 22 - 26s — APV > 100%):
+   - Real-world audience retention proves viewers watch ~23 to 27 seconds.
+   - For fast-paced high-retention niches (Deep Sea Mysteries, Psychology, Sci-Fi, Anomalies):
+     * TARGET DURATION: STRICTLY 22 TO 26 SECONDS TOTAL!
+     * Exact scene count: strictly 5 to 6 scenes.
+     * Total spoken word count: strictly 52 to 68 words (high density, zero fluff).
+     * Pacing: 3.5 to 4.2 seconds per scene (9 to 12 words per scene).
+     * Why: When a video is 24 seconds, viewers watching 23-26s achieve 95% - 110% APV (Looping), immediately breaking out of test batches into viral distribution!
+   - For narrative-driven emotional story niches (e.g. Animal Rescue journeys):
+     * TARGET DURATION: 35 TO 45 SECONDS TOTAL (7 to 8 scenes, 80 to 105 words).
+   - ESCALATING TENSION (CRITICAL TO PREVENT 6s - 10s DROP-OFF):
+     * Scene 1 (0-3s): Visceral Hook with personal stakes or forbidden warning.
+     * Scene 2 (3-7s): IMMEDIATE Shocking Evidence / Acoustic / Visual proof! (STRICTLY FORBIDDEN: NEVER lecture textbook history, founding dates, or slow background setup in Scene 2!).
+     * Scene 3 (7-12s): Escalating Scale Shock or Physical Terror ("At 11,000m, water pressure exceeds 1,000 atmospheres...").
+     * Scene 4-5 (12-20s): The Unexplained Anomaly or Psychological Twist.
+     * Final Scene (20-25s): Mind-Bending Climax + Seamless Infinite Loop Bridge back to Scene 1!
 
 2. 3-SECOND SHOCK ANGLE HOOK (SCENE 1) — CRITICAL TO PREVENT SWIPE-AWAY (>80% VIEWED):
-   - The first 2.5 seconds determines 100% of Shorts performance (Viewed vs Swiped away).
-   - SCENE 1 HOOK FORMULA (MUST CHOOSE 1 OF 3 CORE FORMULAS):
-     * Formula 1 (Urgent Danger / Warning): "If you ever see [X], TUYỆT ĐỐI KHÔNG làm [Y]..." / "If you notice this symbol, leave immediately..."
-     * Formula 2 (Pattern Interrupt / Elite Authority Secret): "The FBI interrogator trick that exposes any liar in seconds..." / "The forbidden rule 99% of people discover too late..."
-     * Formula 3 (Dark Paradox / Hidden Archive): "Why was this ancient chamber sealed with 12 layers of solid iron?" / "The classified reason scientists abruptly abandoned this ocean trench..."
-   - Never start with textbook definitions, greetings, or passive rhetorical questions ("Did you know...").
-   - Scene 1 spoken text MUST be strictly 6 to 10 words, delivered with high stakes and immediate urgency.
+   - The first 1.5 - 2.5 seconds determines 100% of Shorts performance (Viewed vs Swiped away).
+   - SCENE 1 HOOK FORMULAS (MUST CHOOSE 1 OF 4 CORE FORMULAS):
+     * Formula 1 (Personal Pain Point & Hidden Vulnerability - HIGHEST RETENTION):
+       Target personal insecurity, hidden exploitation, quiet anxiety, or counter-intuitive psychology using personal triggers ("You", "Your brain", "They"):
+       - "3 subtle signs they are JUST using your kindness..."
+       - "Stop trying to be confident. Do this instead..."
+       - "If you feel drained around them, you're being quietly manipulated..."
+       - "Your brain starts self-destructing the second you do this..."
+       - "He refused to let go until this happened..."
+     * Formula 2 (Urgent Danger / Warning): "If you ever see [X], TUYỆT ĐỐI KHÔNG làm [Y]..." / "If you notice this symbol, leave immediately..."
+     * Formula 3 (Pattern Interrupt / Elite Authority Secret): "The FBI interrogator trick that exposes any liar in seconds..." / "The forbidden rule 99% of people discover too late..."
+     * Formula 4 (Dark Paradox / Hidden Archive): "Why was this ancient chamber sealed with 12 layers of solid iron?" / "The classified reason scientists abruptly abandoned this ocean trench..."
+   - NEVER start with textbook definitions, greetings, or passive rhetorical questions ("Did you know...", "Welcome to...").
+   - Scene 1 spoken text MUST be strictly 6 to 8 words, delivered with high stakes, sharp rhythm, and immediate urgency.
    - Scene 1 visual_keyword & visual_prompt MUST be visually arresting, shocking, and intense.
+   - thumbnail_text MUST be strictly 3 to 5 words in ALL CAPS with 1 high-contrast emoji (e.g. "THEY'RE USING YOU 🚩", "STOP BEING CONFIDENT 🛑", "HE REFUSED TO LET GO 🥺", "DON'T TOUCH THIS 💀"). This text is rendered directly on Frame 0.0s as the massive Hook Headline Banner to stop the viewer's thumb from swiping away!
 
 3. SEAMLESS LOOP BRIDGE (INFINITE SHORTS LOOP — APV > 150%):
    - FORBIDDEN: NEVER narrate generic swiping triggers like "drop a comment below", "leave your thoughts", "follow for part 2", "subscribe for more". These cause viewers to swipe away before the video finishes!

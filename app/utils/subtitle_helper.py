@@ -66,6 +66,7 @@ YCbCr Matrix: None
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1,0,1,4.2,2.2,2,30,30,{margin_v},1
+Style: HookHeadlineBanner,{fontname},50,&H0000FFFF,&H00FFFFFF,&H00000000,&HD0050505,-1,0,0,0,100,100,2,0,3,3.0,0.0,8,30,30,320,1
 Style: PatternInterruptBadge,{fontname},30,&H00FFFFFF,&H00FFFFFF,&H0000E6FF&,&HC0101010,-1,0,0,0,100,100,2,0,3,1.8,0.0,8,40,40,280,1
 Style: CTABadge,{fontname},46,&H0000FFFF,&H00FFFFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,3.5,2.0,2,30,30,780,1
 Style: WatermarkStyle,Arial,28,&H30FFFFFF,&H30FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1.8,1.2,8,30,30,90,1
@@ -213,6 +214,7 @@ class SubtitleHelper:
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
         show_cta_badge: bool = False,
+        hook_title: Optional[str] = None,
     ) -> str:
         """
         Tạo nội dung file .ass chuẩn với karaoke word-level highlight.
@@ -346,12 +348,36 @@ class SubtitleHelper:
             else:
                 current_offset_ms += scene_duration_ms
 
-        # ── Kích hoạt Investigative Evidence Badge ở Scene 1 & Mid-Scene (Pattern Interrupt Vox / Magnates Media) ──
+        # ── Kích hoạt Hook Headline Banner ở Frame 0.0s - 2.8s (Tối đa hóa Viewed %, Giảm Swiped Away) ──
         if scenes:
             raw_niche = (niche_id or "").lower()
             full_txt = " ".join([s.narration for s in scenes]).lower()
             is_vi = any(c in full_txt for c in "àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ")
 
+            # Xử lý text Hook giật gân, tương phản cao trên khung hình đầu tiên
+            effective_hook = (hook_title or "").strip()
+            if not effective_hook and scenes:
+                # Fallback: Trích xuất 4-6 từ đầu tiên của Scene 1
+                words = re.sub(r'[^\w\s\d\?\!\,\.\-]', '', scenes[0].narration).split()
+                if words:
+                    effective_hook = " ".join(words[:6])
+
+            if effective_hook:
+                clean_hook = re.sub(r'#\w+', '', effective_hook).strip().upper()
+                # Khử bớt ký tự thừa, giới hạn hiển thị gọn gàng trên 1-2 dòng
+                clean_hook = re.sub(r'\s+', ' ', clean_hook)
+                if len(clean_hook) > 42:
+                    clean_hook = clean_hook[:39] + "..."
+
+                first_scene_dur_ms = scenes[0].audio_duration_ms or int(scenes[0].estimated_seconds * 1000)
+                banner_end_ms = min(2800, max(1800, first_scene_dur_ms))
+                banner_end_str = cls._ms_to_ass_time(banner_end_ms)
+                # Hiển thị ngay từ 0:00:00.00 để người lướt nhìn thấy ngay lập tức trước khi kịp quẹt
+                dialogue_lines.insert(0,
+                    f"Dialogue: 3,0:00:00.00,{banner_end_str},HookHeadlineBanner,,0,0,0,,{{\\fade(0,180)\\t(0,150,\\fscx105\\fscy105)}}{clean_hook}"
+                )
+
+            # Phù hiệu nhỏ hỗ trợ danh mục (PatternInterruptBadge) hiển thị song hành
             if "psychology" in raw_niche:
                 badge_title = "[ 🧠 TÂM LÝ ĐEN TỐI ]" if is_vi else "[ 🧠 MENTAL TRAP ]"
             elif any(k in raw_niche for k in ("deep_sea", "ocean")):
@@ -371,7 +397,7 @@ class SubtitleHelper:
             badge_end_ms = min(2600, max(1200, first_scene_dur_ms - 200))
             badge_start_str = cls._ms_to_ass_time(200)
             badge_end_str = cls._ms_to_ass_time(badge_end_ms)
-            dialogue_lines.insert(0,
+            dialogue_lines.insert(1,
                 f"Dialogue: 2,{badge_start_str},{badge_end_str},PatternInterruptBadge,,0,0,0,,{{\\fade(150,150)\\t(0,150,\\fscx106\\fscy106)}}{badge_title}"
             )
 
@@ -432,8 +458,9 @@ class SubtitleHelper:
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
         show_cta_badge: bool = False,
+        hook_title: Optional[str] = None,
     ) -> str:
-        """Tạo và lưu file .ass ra ổ đĩa, hỗ trợ Niche Profile & Watermark Credit."""
+        """Tạo và lưu file .ass ra ổ đĩa, hỗ trợ Niche Profile, Watermark Credit & Hook Headline Banner."""
         content = cls.build_ass_content(
             scenes,
             fontname=fontname,
@@ -445,6 +472,7 @@ class SubtitleHelper:
             niche_id=niche_id,
             credit_text=credit_text,
             show_cta_badge=show_cta_badge,
+            hook_title=hook_title,
         )
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:

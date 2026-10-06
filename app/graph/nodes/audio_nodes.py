@@ -50,9 +50,10 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
         output_path=full_audio_path
     )
 
-    # Tạo phụ đề ASS chuẩn Shorts với word-level karaoke highlight theo phong cách Niche Profile
+    # Tạo phụ đề ASS chuẩn Shorts với word-level karaoke highlight & Hook Headline Banner tương phản cao ở Frame 0
     channel_style = state.get("channel_style") or state.get("channel_niche") or "general"
-    SubtitleHelper.save_ass_file(scenes_objs, subtitle_path, niche_id=channel_style)
+    hook_banner_text = getattr(script, "thumbnail_text", None) or getattr(script, "title", None) or state.get("title")
+    SubtitleHelper.save_ass_file(scenes_objs, subtitle_path, niche_id=channel_style, hook_title=hook_banner_text)
 
     return {
         "scenes_audio": enriched_scenes,
