@@ -50,10 +50,25 @@ logger = logging.getLogger(__name__)
 _CHANNEL_LOCKS: Dict[str, threading.Lock] = {}
 _LOCKS_MUTEX = threading.Lock()
 
-# Trạng thái ghi nhớ nhắc nhở hàng ngày (tránh spam nhiều lần trong cùng 1 ngày)
-_LAST_REMINDER_DATE_STR: Optional[str] = None
-_LAST_AFTERNOON_REMINDER_DATE_STR: Optional[str] = None
-_DISMISSED_DATE_STR: Optional[str] = None
+# Tệp lưu trữ trạng thái nhắc nhở hàng ngày (bảo đảm không bị mất khi khởi động lại bot)
+_WATCHDOG_STATE_FILE = Path(settings.BASE_DIR) / "storage" / "autopilot_watchdog_state.json"
+
+
+def _load_watchdog_state() -> Dict[str, Any]:
+    try:
+        if _WATCHDOG_STATE_FILE.exists():
+            return json.loads(_WATCHDOG_STATE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _save_watchdog_state(state: Dict[str, Any]):
+    try:
+        _WATCHDOG_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _WATCHDOG_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"Lỗi lưu watchdog state: {e}")
 
 
 def _get_channel_lock(channel_id: str) -> threading.Lock:
@@ -534,49 +549,59 @@ async def run_autopilot_for_all_empty(user_id: int = 0, notify_telegram: bool = 
 
 def check_and_send_daily_reminders(bot=None, force: bool = False) -> Dict[str, Any]:
     """
-    Tiến trình Watchdog kiểm tra chủ động:
-    - Chạy định kỳ vào mỗi sáng (08:00 - 12:00 VN) và buổi chiều (14:00 - 17:00 VN).
-    - Quét xem có kênh nào hôm nay CHƯA CÓ VIDEO NÀO (0 video).
-    - Nếu có kênh trống: Gửi tin nhắn Telegram hỏi và nhắc nhở kèm nút bấm 1 chạm.
-    - Lưu lại cờ tránh gửi lặp lại trong ngày.
+    Tiến trình Watchdog kiểm tra & báo cáo theo LỊCH HẸN ĐỊNH KỲ:
+    - Ca Sáng (Morning Briefing): 09:00 - 09:30 VN (Lên kế hoạch đầu ngày cho 5 kênh).
+    - Ca Chiều (Afternoon Review): 16:30 - 17:00 VN (Rà soát trước khung giờ vàng 20:00 VN).
+    - Nếu có lưu ý cần chú ý (kênh chưa có lịch đăng hôm nay):
+      Gửi báo cáo và câu hỏi nhắc nhở trực tiếp vào NHÓM TELEGRAM kèm nút bấm 1 chạm.
+    - Trạng thái được lưu cố định vào tệp json để không bao giờ bị reset/spam khi khởi động lại bot.
     """
-    global _LAST_REMINDER_DATE_STR, _LAST_AFTERNOON_REMINDER_DATE_STR, _DISMISSED_DATE_STR
-
     now_vn = datetime.now(VN_TZ)
     today_date_str = now_vn.strftime("%Y-%m-%d")
     current_hour = now_vn.hour
+    current_minute = now_vn.minute
 
-    # Kiểm tra xem người dùng đã bấm 'Bỏ qua hôm nay' chưa
-    if not force and _DISMISSED_DATE_STR == today_date_str:
-        return {"notified": False, "reason": "Người dùng đã bỏ qua nhắc nhở hôm nay."}
+    state = _load_watchdog_state()
 
-    # Xác định khung giờ nhắc nhở:
-    # - Ca Sáng: 08:00 - 12:00 VN
-    # - Ca Chiều: 14:00 - 17:00 VN (chỉ nhắc nếu ca sáng chưa kích hoạt)
-    is_morning_window = (8 <= current_hour < 12)
-    is_afternoon_window = (14 <= current_hour < 17)
+    # Kiểm tra xem nhóm đã bấm 'Bỏ qua hôm nay' chưa
+    if not force and state.get("dismissed_date") == today_date_str:
+        return {"notified": False, "reason": "Nhóm đã bấm bỏ qua nhắc nhở hôm nay."}
+
+    # Định nghĩa lịch hẹn cố định trong ngày (Giờ Việt Nam):
+    # - Ca Sáng: 09:00 - 09:30 VN
+    # - Ca Chiều: 16:30 - 17:00 VN
+    is_morning_window = (current_hour == 9 and 0 <= current_minute <= 30)
+    is_afternoon_window = (current_hour == 16 and 30 <= current_minute <= 59) or (current_hour == 17 and current_minute == 0)
 
     if not force:
-        if is_morning_window and _LAST_REMINDER_DATE_STR == today_date_str:
-            return {"notified": False, "reason": "Đã gửi nhắc nhở buổi sáng hôm nay rồi."}
-        if is_afternoon_window and _LAST_AFTERNOON_REMINDER_DATE_STR == today_date_str:
-            return {"notified": False, "reason": "Đã gửi nhắc nhở buổi chiều hôm nay rồi."}
+        if is_morning_window and state.get("last_morning_date") == today_date_str:
+            return {"notified": False, "reason": "Đã gửi báo cáo ca sáng hôm nay rồi."}
+        if is_afternoon_window and state.get("last_afternoon_date") == today_date_str:
+            return {"notified": False, "reason": "Đã gửi báo cáo ca chiều hôm nay rồi."}
         if not (is_morning_window or is_afternoon_window):
-            return {"notified": False, "reason": f"Hiện tại ({now_vn.strftime('%H:%M')}) nằm ngoài khung giờ nhắc nhở (08:00-12:00 & 14:00-17:00)."}
+            return {"notified": False, "reason": f"Hiện tại ({now_vn.strftime('%H:%M')}) nằm ngoài khung giờ lịch hẹn báo cáo (09:00 và 16:30 VN)."}
 
     # Lấy thông tin trạng thái các kênh hôm nay
     summary = get_channel_today_summary()
     empty_channels = summary.get("empty_channels", [])
     scheduled_channels = summary.get("scheduled_channels", [])
 
-    if not empty_channels:
-        logger.debug(f"[AutoPilot Watchdog] Tất cả {summary['total_channels']} kênh hôm nay đã có lịch đăng. Không cần nhắc nhở.")
+    # Nếu tất cả các kênh hôm nay đã có lịch đăng đầy đủ:
+    if not empty_channels and not force:
+        logger.debug(f"[AutoPilot Watchdog] Tất cả {summary['total_channels']} kênh hôm nay đã có lịch đăng. Không có lưu ý cần gửi.")
+        # Vẫn cập nhật cờ ngày để không lặp lại kiểm tra
+        if is_morning_window:
+            state["last_morning_date"] = today_date_str
+            _save_watchdog_state(state)
+        elif is_afternoon_window:
+            state["last_afternoon_date"] = today_date_str
+            _save_watchdog_state(state)
         return {"notified": False, "reason": "Tất cả kênh hôm nay đã có lịch đăng đầy đủ."}
 
-    logger.info(f"📢 [AutoPilot Watchdog] Phát hiện {len(empty_channels)} kênh chưa có lịch hôm nay! Gửi thông báo nhắc nhở Telegram...")
+    logger.info(f"📢 [AutoPilot Watchdog] Phát hiện {len(empty_channels)} kênh cần chú ý hôm nay! Gửi báo cáo định kỳ vào Nhóm Telegram...")
 
     # Xây dựng nội dung báo cáo trực quan
-    period_title = "BUỔI SÁNG" if current_hour < 13 else "BUỔI CHIỀU"
+    period_title = "BUỔI SÁNG (09:00)" if current_hour < 13 else "BUỔI CHIỀU (16:30)"
     header_icon = "☀️" if current_hour < 13 else "🌇"
 
     report_lines = []
@@ -598,11 +623,12 @@ def check_and_send_daily_reminders(bot=None, force: bool = False) -> Dict[str, A
     channels_str = "\n".join(report_lines)
 
     alert_text = (
-        f"{header_icon} **BÁO CÁO KÊNH & NHẮC NHỞ DUY TRÌ TƯƠNG TÁC ({period_title} {summary['date_vn']})**\n\n"
-        f"📊 **Tình hình phát sóng 5 kênh của bạn hôm nay:**\n"
+        f"{header_icon} **BÁO CÁO KÊNH THEO LỊCH ĐỊNH KỲ ({period_title} - {summary['date_vn']})**\n\n"
+        f"📊 **Tình hình phát sóng các kênh của nhóm:**\n"
         f"{channels_str}\n\n"
-        f"⚠️ **Phát hiện {len(empty_channels)} kênh chưa có lịch phát sóng hôm nay!**\n"
-        f"💡 *Nếu hôm nay bạn bận rộn hoặc không kịp làm video, hãy bấm nút dưới đây để bot tự động làm từ A-Z (lên kịch bản, render và đặt lịch khung giờ vàng)!*"
+        f"⚠️ **LƯU Ý CẦN CHÚ Ý:**\n"
+        f"• Phát hiện **{len(empty_channels)} kênh chưa có lịch phát sóng** hôm nay!\n"
+        f"💡 *Nếu hôm nay cả nhóm bận hoặc chưa kịp dựng video, hãy bấm nút dưới đây để bot tự động sản xuất A-Z (lên kịch bản, render 1080p và đặt lịch đúng khung giờ vàng 20:00/04:00)!*"
     )
 
     # Xây dựng Inline Keyboard tiện lợi
@@ -612,7 +638,6 @@ def check_and_send_daily_reminders(bot=None, force: bool = False) -> Dict[str, A
         ]
     ]
 
-    # Thêm nút bấm cho từng kênh riêng lẻ
     for ech in empty_channels:
         cid = ech["channel_id"]
         cname = ech["channel_name"]
@@ -630,9 +655,10 @@ def check_and_send_daily_reminders(bot=None, force: bool = False) -> Dict[str, A
     send_telegram_broadcast(alert_text, inline_keyboard=inline_kb)
 
     if is_morning_window or force:
-        _LAST_REMINDER_DATE_STR = today_date_str
-    if is_afternoon_window:
-        _LAST_AFTERNOON_REMINDER_DATE_STR = today_date_str
+        state["last_morning_date"] = today_date_str
+    if is_afternoon_window or force:
+        state["last_afternoon_date"] = today_date_str
+    _save_watchdog_state(state)
 
     return {
         "notified": True,
@@ -643,8 +669,10 @@ def check_and_send_daily_reminders(bot=None, force: bool = False) -> Dict[str, A
 
 
 def dismiss_today_reminder():
-    """Đánh dấu người dùng đã bấm 'Bỏ qua hôm nay' để không làm phiền thêm trong ngày."""
-    global _DISMISSED_DATE_STR
+    """Đánh dấu nhóm đã bấm 'Bỏ qua hôm nay' để không làm phiền thêm trong ngày."""
     now_vn = datetime.now(VN_TZ)
-    _DISMISSED_DATE_STR = now_vn.strftime("%Y-%m-%d")
-    logger.info(f"[AutoPilot] Đã ghi nhận bỏ qua nhắc nhở cho ngày {_DISMISSED_DATE_STR}")
+    today_str = now_vn.strftime("%Y-%m-%d")
+    state = _load_watchdog_state()
+    state["dismissed_date"] = today_str
+    _save_watchdog_state(state)
+    logger.info(f"[AutoPilot] Đã ghi nhận bỏ qua nhắc nhở cho ngày {today_str}")

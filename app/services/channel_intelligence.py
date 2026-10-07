@@ -17,7 +17,7 @@ import asyncio
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Union
 
 import requests as http_requests
 
@@ -925,30 +925,44 @@ def run_network_kpi_audit() -> Dict[str, Any]:
 # 5. GỬI THÔNG BÁO VÀ NHẮC NHỞ TELEGRAM (TELEGRAM ALERT DISPATCHER)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def send_telegram_broadcast(text: str, inline_keyboard: Optional[List[List[Dict[str, str]]]] = None):
+def send_telegram_broadcast(
+    text: str,
+    inline_keyboard: Optional[List[List[Dict[str, str]]]] = None,
+    target_chat_ids: Optional[List[Union[int, str]]] = None,
+    prefer_groups: bool = True
+):
     """
-    Gửi tin nhắn thông báo/nhắc nhở khẩn cấp đến tất cả Admin/Creator qua Telegram REST API.
-    Không làm sập ứng dụng nếu mạng lỗi hoặc bot token chưa cấu hình.
+    Gửi tin nhắn thông báo/nhắc nhở/báo cáo đến Telegram.
+    ƯU TIÊN TUYỆT ĐỐI gửi vào Nhóm Telegram (ALLOWED_TELEGRAM_GROUPS) để cả nhóm cùng theo dõi và phối hợp.
+    Chỉ khi không có bất kỳ nhóm nào được cấu hình mới fallback gửi về tin nhắn riêng (DM) cho Admin/Creator.
     """
     token = settings.TELEGRAM_BOT_TOKEN
     if not token:
         logger.debug("[TelegramAlert] Không có TELEGRAM_BOT_TOKEN, bỏ qua gửi tin.")
         return
 
-    # Lấy danh sách ID người dùng nhận tin
+    # Lấy danh sách ID phòng chat nhận tin
     chat_ids = set()
-    # 1. Từ ALLOWED_TELEGRAM_USERS
-    for uid in settings.get_allowed_users().keys():
-        chat_ids.add(uid)
-
-    # 2. Từ SQLite Users
-    try:
-        with get_db() as db:
-            db_users = db.query(User).filter(User.telegram_id != 0).all()
-            for u in db_users:
-                chat_ids.add(u.telegram_id)
-    except Exception:
-        pass
+    if target_chat_ids:
+        for cid in target_chat_ids:
+            chat_ids.add(cid)
+    else:
+        # 1. Ưu tiên gửi vào các nhóm chat Telegram được cấp phép
+        allowed_groups = settings.get_allowed_group_ids()
+        if prefer_groups and allowed_groups:
+            for gid in allowed_groups:
+                chat_ids.add(gid)
+        else:
+            # 2. Fallback nếu chưa có nhóm: gửi cho Admin/Creator
+            for uid in settings.get_allowed_users().keys():
+                chat_ids.add(uid)
+            try:
+                with get_db() as db:
+                    db_users = db.query(User).filter(User.telegram_id != 0).all()
+                    for u in db_users:
+                        chat_ids.add(u.telegram_id)
+            except Exception:
+                pass
 
     if not chat_ids:
         return
@@ -1265,12 +1279,6 @@ class ChannelIntelligenceWorker:
                         if overdue_channels:
                             logger.info(f"[ChannelIntelligence] Có {len(overdue_channels)} kênh trễ hạn nhưng ENABLE_OVERDUE_AUTO_PRODUCTION đang tắt (False). Không tự sinh video.")
 
-                    # 3. Quét kiểm tra nhắc nhở kênh trống trong ngày (AutoPilot Watchdog)
-                    try:
-                        from app.services.autopilot_service import check_and_send_daily_reminders
-                        check_and_send_daily_reminders()
-                    except Exception as e_rem:
-                        logger.debug(f"[ChannelIntelligence] Kiểm tra nhắc nhở hàng ngày gặp lỗi nhẹ: {e_rem}")
 
                 except Exception as ex:
                     logger.error(f"[ChannelIntelligence] Lỗi chu kỳ worker: {ex}")

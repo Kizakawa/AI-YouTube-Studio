@@ -427,8 +427,8 @@ def main():
 
     if app.job_queue:
         app.job_queue.run_repeating(_auto_sync_scheduler, interval=60, first=10)
-        # Giám sát định kỳ nhắc nhở kênh trống (quét mỗi 20 phút)
-        app.job_queue.run_repeating(_auto_check_autopilot_reminder, interval=1200, first=15)
+        # Giám sát báo cáo & nhắc nhở kênh theo lịch cố định (09:00 & 16:30 VN - gửi thẳng vào nhóm)
+        app.job_queue.run_repeating(_auto_check_autopilot_reminder, interval=60, first=30)
 
     # Khởi động ChannelIntelligenceWorker ngầm (giám sát KPI, tự động tạo video cứu nguy khi trễ deadline)
     try:
