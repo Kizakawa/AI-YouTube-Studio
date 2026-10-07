@@ -259,23 +259,24 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         f"🎬 **AI YouTube Multi-Channel Studio đã sẵn sàng cho {scope_text}!**\n\n"
         f"{role_badge}\n\n"
-        f"👥 **Cơ chế làm việc nhóm & Web Dashboard:**\n"
-        f"• Mọi thành viên cùng ra lệnh, kịch bản hiển thị công khai trong nhóm.\n"
-        f"• Theo dõi toàn bộ hoạt động của admin qua Web Dashboard thời gian thực!\n\n"
+        f"👥 **Cơ chế vận hành đa kênh & Tự động hóa:**\n"
+        f"• Mọi thành viên cùng ra lệnh, kịch bản và tiến trình hiển thị công khai trong nhóm.\n"
+        f"• Tự động sản xuất video Shorts chuẩn viral, bám sát ngách từng kênh!\n\n"
         f"📌 **Các lệnh chính:**\n"
-        f"• `/web` - 🌐 Link Web Dashboard qua Wi-Fi (mở trên điện thoại & máy tính)\n"
+        f"• `/autopilot` - 🚀 **Tự động hóa kênh A-Z** (Ý tưởng viral ➔ Kịch bản 3s CTA hook ➔ Render 1080p ➔ Lên lịch khung giờ vàng)\n"
+        f"• `/schedule` - ⏰ Xem lịch công chiếu & 2 khung giờ vàng YouTube Shorts (20:00 & 04:00 VN)\n"
         f"• `/viral` - 🔥 Gợi ý 5 ý tưởng triệu view (Công thức giữ chân 160% Retention)\n"
-        f"• `/schedule` - ⏰ Xem lịch công chiếu & 2 khung giờ vàng YouTube Shorts (Mỹ & VN)\n"
+        f"• `/idea <chủ đề>` - Lên kịch bản AI ngay tức thì cho kênh đang chọn\n"
         f"• `/videos` - 📺 Xem danh sách tất cả video trong hệ thống (kèm nút xem/tải trực tiếp)\n"
         f"• `/get <id>` - 📥 Tải file video MP4 gửi thẳng vào tin nhắn Telegram để xem ngay\n"
-        f"• `/chat <nội dung>` - Thảo luận, phản biện và đồng sáng tạo kịch bản với Đạo diễn AI\n"
         f"• `/channels` - Xem và chuyển đổi kênh YouTube muốn sản xuất\n"
-        f"• `/idea <chủ đề>` - Lên kịch bản AI ngay tức thì cho kênh đang chọn\n"
         f"• `/render <job_id>` - Dựng video từ kịch bản đã duyệt\n"
         f"• `/queue` - Xem trạng thái hàng đợi render (FIFO)\n"
         f"• `/cancel <job_id>` - Hủy video đang chờ trong hàng đợi\n"
+        f"• `/kpi` - 📊 Báo cáo sức khỏe tiến độ và chỉ tiêu KPI các kênh\n"
+        f"• `/chat <nội dung>` - Thảo luận, phản biện và đồng sáng tạo kịch bản với Đạo diễn AI\n"
         f"• `/status` - Báo cáo số lượng video và trạng thái hệ thống\n\n"
-        f"👉 Gõ `/web`, `/viral`, `/schedule`, `/videos` hoặc `/idea` để bắt đầu sáng tạo video cùng nhóm!"
+        f"👉 Gõ `/autopilot`, `/viral`, `/schedule`, `/videos` hoặc `/idea` để bắt đầu sáng tạo video cùng nhóm!"
     )
     await safe_reply(update, welcome_text)
 
@@ -3311,19 +3312,9 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❌ **{user.first_name}** đã hủy video #{job_id}."
         )
 
-    # 6.1 Kiểm tra trạng thái Colab GPU Farm
-    elif data == "check_colab_status":
-        await colab_command(update, context)
-        return
-
-    elif data == "rotate_colab_node":
-        from app.services.colab_coordinator import colab_coordinator
-        colab_coordinator.rotate_to_next_node(reason="Người dùng chuyển trạm thủ công qua Bot Telegram")
-        await colab_command(update, context)
-        return
-
-    elif data == "colab_rotation_guide":
-        await colab_command(update, context)
+    # 6.1 Bỏ qua tương tác Colab (tính năng đã giản lược)
+    elif data in ("check_colab_status", "rotate_colab_node", "colab_rotation_guide"):
+        await safe_query_answer(query, text="Tính năng Colab đã được giản lược để tối ưu dự án.")
         return
 
     # 7. Xử lý toàn bộ các kịch bản đang chờ (Render Queue Batch)
@@ -3803,20 +3794,10 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "confirm_del_failed":
         await _handle_confirm_delete_failed_videos(update, context)
 
-    # 17. ĐIỀU PHỐI CỤM COLAB GPU CLUSTER (ROTATE, STATUS, GUIDE)
-    elif data.startswith("rotate_colab_node"):
-        await safe_query_answer(query, text="🔄 Đang chuyển trạm sang Node kế tiếp...")
-        from app.services.colab_coordinator import colab_coordinator
-        colab_coordinator.rotate_to_next_node(reason="Người dùng đổi trạm thủ công trên Telegram")
-        await colab_command(update, context)
-
-    elif data.startswith("check_colab_status"):
-        await safe_query_answer(query, text="📡 Đang quét trạng thái Google Drive...")
-        await colab_command(update, context)
-
-    elif data.startswith("colab_rotation_guide"):
-        await safe_query_answer(query)
-        await colab_command(update, context)
+    # 17. Bỏ qua cụm Colab GPU
+    elif data.startswith(("rotate_colab_node", "check_colab_status", "colab_rotation_guide")):
+        await safe_query_answer(query, text="Tính năng Colab đã được giản lược để tối ưu dự án.")
+        return
 
 
 async def _handle_confirm_delete_video(update: Update, context: ContextTypes.DEFAULT_TYPE, job_id: int):
@@ -4468,24 +4449,6 @@ async def get_video_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_video_file_handler(update, context, job_id)
 
 
-async def web_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gửi link truy cập Web Dashboard"""
-    if not is_authorized(update):
-        return
-    import os
-    port = int(os.getenv("PORT", 8000))
-    web_url = os.getenv("WEB_DASHBOARD_URL") or f"http://localhost:{port}"
-
-    msg = (
-        "🌐 **ĐỊA CHỈ TRUY CẬP WEB DASHBOARD:**\n\n"
-        f"👉 `{web_url}`\n\n"
-        "💡 Bạn có thể mở trực tiếp đường link trên bằng bất kỳ trình duyệt nào."
-    )
-    keyboard = [
-        [InlineKeyboardButton("💻 Mở Web Dashboard", url=web_url)]
-    ]
-    await safe_reply(update, msg, reply_markup=InlineKeyboardMarkup(keyboard))
-
 
 async def _show_schedule_view(update: Update, context: ContextTypes.DEFAULT_TYPE, channel_id: Optional[str] = None):
     """Hiển thị bảng phân bổ lịch phát sóng khe giờ vàng và danh sách video sắp công chiếu."""
@@ -4566,124 +4529,6 @@ async def schedule_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Lệnh xem lịch phát sóng & 4 khung giờ vàng YouTube Shorts: /schedule hoặc /lich, /lichdang"""
     await _show_schedule_view(update, context)
 
-
-async def colab_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Quản lý kết nối tới Google Colab GPU Farm: /colab [url]
-    - /colab: Xem trạng thái GPU, VRAM, tốc độ render.
-    - /colab <url>: Kết nối tới Cloudflare Tunnel URL từ Colab Pro+.
-    """
-    if not is_authorized(update):
-        return
-
-    if not getattr(settings, "ENABLE_COLAB", False):
-        from app.services.render_queue import get_render_queue
-        rq = get_render_queue()
-        status_text = (
-            "⚙️ <b>HỆ THỐNG DỰNG VIDEO AI NỘI BỘ (LOCAL ENGINE)</b>\n\n"
-            "✅ Tính năng Google Colab đã được tắt theo yêu cầu.\n"
-            "⚡ Toàn bộ video được render tự động 100% bằng <b>Local AI Render Pipeline</b>:\n"
-            "• Sử dụng <b>AI Image Generator (FLUX / SDXL / Imagen 3)</b> tạo hình ảnh bám sát kịch bản\n"
-            "• Tự động chọn lọc video/hình ảnh liên quan chính xác nội dung từng cảnh\n"
-            "• Xuất video chuẩn 1080x1920 (9:16 Shorts) kèm phụ đề động, hiệu ứng chuyển cảnh\n"
-            "• Gửi video trực tiếp về nhóm kèm nút tiếp thị liên kết Amazon & nút Đăng/Lên Lịch/Sửa/Xóa\n\n"
-            f"📊 <b>Trạng thái hàng đợi render hiện tại:</b>\n"
-            f"{rq.get_status_text()}"
-        )
-        await safe_reply(update, status_text, parse_mode="HTML")
-        return
-
-    from app.services.colab_coordinator import colab_coordinator
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
-    if not context.args:
-        wait_msg = await safe_reply(update, "🔍 Đang kết nối Trung tâm Điều phối Google Drive (`cluster_state.json`)...")
-        coord_state = colab_coordinator.sync_cluster_state()
-
-        active_node = coord_state.get("active_node", 1)
-        active_acc = coord_state.get("active_account", "pool1.studio@example.com")
-        queue_info = coord_state.get("queue_summary", {})
-        p_count = queue_info.get("pending_count", 0)
-        c_count = queue_info.get("completed_count", 0)
-        action_req = coord_state.get("action_required", {})
-        direct_url = action_req.get("direct_colab_url") or colab_coordinator.make_node_url(active_acc, active_node)
-
-        nodes_data = coord_state.get("cluster_nodes", {})
-        n1_st = nodes_data.get("1", {}).get("status", "IDLE")
-        n2_st = nodes_data.get("2", {}).get("status", "IDLE")
-        n3_st = nodes_data.get("3", {}).get("status", "IDLE")
-
-        icon_map = {"RUNNING": "🟢 Đang chạy", "IDLE": "⚪ Đang chờ", "COMPLETED": "✅ Xong", "QUOTA_EXHAUSTED": "🔴 Hết Quota"}
-
-        colab_keyboard = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(f"⚡ MỞ NODE {active_node} ({active_acc.split('@')[0]}) BẤM ĐỂ CHẠY", url=direct_url)
-            ],
-            [
-                InlineKeyboardButton(f"Node 1: {icon_map.get(n1_st, n1_st)}", url=colab_coordinator.make_node_url("pool1.studio@example.com", 1)),
-                InlineKeyboardButton(f"Node 2: {icon_map.get(n2_st, n2_st)}", url=colab_coordinator.make_node_url("pool2.studio@example.com", 2)),
-                InlineKeyboardButton(f"Node 3: {icon_map.get(n3_st, n3_st)}", url=colab_coordinator.make_node_url("pool3.studio@example.com", 3)),
-            ],
-            [
-                InlineKeyboardButton("🔄 Xoay Sang Node Tiếp Theo", callback_data="rotate_colab_node"),
-                InlineKeyboardButton("📡 Quét Trạng Thái Drive", callback_data="check_colab_status")
-            ],
-            [
-                InlineKeyboardButton("💡 Cơ Chế Điều Phối Drive", callback_data="colab_rotation_guide")
-            ]
-        ])
-
-        status_badge = "🟢 ĐANG CÓ WORKER HOẠT ĐỘNG" if any(st == "RUNNING" for st in [n1_st, n2_st, n3_st]) else "⚪ SẴN SÀNG NHẬN LỆNH"
-        action_desc = action_req.get("reason", "Hàng đợi ổn định")
-
-        text = (
-            f"🚀 <b>TRUNG TÂM ĐIỀU PHỐI COLAB GPU CLUSTER</b>\n"
-            f"<i>(Đồng bộ thời gian thực qua file <code>cluster_state.json</code> trên Google Drive)</i>\n\n"
-            f"📊 <b>Trạng thái cụm:</b> {status_badge}\n"
-            f"🎯 <b>Node ưu tiên hiện tại:</b> <b>Node {active_node}</b> (<code>{active_acc}</code>)\n"
-            f"📥 <b>Video kịch bản đang chờ render:</b> <b>{p_count} video</b>\n"
-            f"🎉 <b>Video đã hoàn thành trên Drive:</b> <b>{c_count} video</b>\n\n"
-            f"💡 <b>Hành động đề xuất:</b> {action_desc}\n\n"
-            f"👉 <b>Bấm nút bên dưới để mở Node {active_node} và ấn <i>Run all</i>:</b>\n"
-            f"<i>(Khi render xong, Colab sẽ tự ngắt kết nối để tiết kiệm 100% Compute Units!)</i>"
-        )
-        await safe_edit_text(wait_msg, text, reply_markup=colab_keyboard, parse_mode="HTML")
-        return
-
-    raw_url = context.args[0].strip()
-    match = re.search(r"https?://[^\s]+", raw_url)
-    if not match:
-        await safe_reply(update, "❌ URL không hợp lệ. Vui lòng nhập link dạng: `/colab https://...trycloudflare.com`")
-        return
-
-    target_url = match.group(0).rstrip("/")
-    wait_msg = await safe_reply(update, f"⏳ Đang bắt tay và kiểm tra cạc GPU tại: `{target_url}`...")
-
-    from app.services.colab_client import colab_client
-    prev_url = colab_client.worker_url
-    colab_client._custom_url = target_url
-    is_online, info = colab_client.check_health(timeout=5.0)
-
-    if is_online:
-        colab_client.set_worker_url(target_url)
-        gpu_name = info.get("gpu", "NVIDIA GPU")
-        text = (
-            f"🎉 **KẾT NỐI COLAB GPU FARM THÀNH CÔNG!**\n\n"
-            f"🎮 **Cạc đồ họa:** `{gpu_name}`\n"
-            f"⚡ **Tốc độ:** ~15-25 giây / video (NVENC Hardware Acceleration)\n"
-            f"🌐 **Đường truyền:** `{target_url}`\n"
-            f"💾 Đã lưu cấu hình vĩnh viễn vào hệ thống!\n\n"
-            f"👉 Giờ đây cả bạn và bạn của bạn gõ `/render` đều sẽ được tăng tốc siêu tốc!"
-        )
-    else:
-        colab_client._custom_url = prev_url
-        err = info.get("error", "Không phản hồi")
-        text = (
-            f"❌ **Không thể kết nối tới Colab GPU Worker:**\n\n"
-            f"Chi tiết: `{err}`\n\n"
-            f"⚠️ Hãy chắc chắn bạn đã bấm **Run All** trên Colab và chờ đến khi hiện link Cloudflare ở ô cuối cùng nhé!"
-        )
-    await safe_edit_text(wait_msg, text)
 
 
 async def kpi_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5042,16 +4887,15 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await _show_videos_list(update, context, page=1)
         return
 
-    # 3. Tự động nhận diện hỏi địa chỉ Web / phát Wi-Fi / link Dashboard
-    # Ví dụ: "link web", "vào web", "địa chỉ web", "mở web", "wifi web", "web dashboard"
-    is_asking_web = any(kw in lower_text for kw in [
-        "link web", "vào web", "vào dashboard", "dia chi web", "địa chỉ web",
-        "mở web", "mo web", "web dashboard", "xem web", "trang web",
-        "phát wifi", "phat wifi", "wifi web", "truy cập web", "truy cap web",
-        "web studio", "link dashboard"
+    # 3. Tự động nhận diện khẩu lệnh Tự động hóa / Auto-Pilot A-Z
+    # Ví dụ: "autopilot", "tự động hóa", "bật tự động", "chạy tự động", "lên lịch tự động"
+    is_asking_autopilot = any(kw in lower_text for kw in [
+        "autopilot", "auto pilot", "tự động hóa", "tu dong hoa",
+        "chạy tự động", "chay tu dong", "bật autopilot", "bat autopilot",
+        "lên lịch tự động", "len lich tu dong", "chế độ tự động", "che do tu dong"
     ])
-    if is_asking_web:
-        await web_command(update, context)
+    if is_asking_autopilot:
+        await autopilot_command(update, context)
         return
 
     with get_db() as db:

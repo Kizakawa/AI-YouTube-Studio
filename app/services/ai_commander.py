@@ -185,9 +185,9 @@ class AICommander:
                 "description": "Xem lịch phát sóng tự động các khe giờ vàng của kênh",
                 "parameters": {}
             },
-            "SHOW_WEB": {
-                "description": "Lấy link truy cập Web Dashboard Studio",
-                "parameters": {}
+            "AUTOPILOT": {
+                "description": "Tự động hóa hoàn toàn từ A-Z cho các kênh: lên ý tưởng viral, tạo kịch bản 3s CTA hook, render video 1080p và tự động lên lịch vào 2 khung giờ vàng YouTube Shorts",
+                "parameters": {"channel_id": "Mã kênh mục tiêu (tùy chọn)"}
             },
             "SEARCH_MEDIA": {
                 "description": "Tìm kiếm kho video/ảnh stock (Pexels, Pixabay, NASA) theo từ khóa",
@@ -200,10 +200,6 @@ class AICommander:
             "CHAT_ASSIST": {
                 "description": "Tư vấn nội dung, giải đáp thắc mắc, hướng dẫn sử dụng hoặc trò chuyện sáng tạo",
                 "parameters": {"answer": "Nội dung trả lời trực tiếp cho người dùng"}
-            },
-            "CONNECT_COLAB": {
-                "description": "Kết nối hoặc xem trạng thái Colab GPU Render Farm (NVIDIA GPU 20s/video)",
-                "parameters": {"url": "Đường dẫn Cloudflare Tunnel Colab (nếu có)"}
             }
         }
 
@@ -347,19 +343,16 @@ class AICommander:
                 "reply_message": f"Đang kích hoạt tiến trình dựng video cho Video #{job_id}..."
             }
 
-        # 4. Khẩu lệnh KẾT NỐI / TRẠNG THÁI COLAB GPU FARM
-        colab_url_match = re.search(r'(?:colab|gpu|render\s*farm)\s+(https?://[^\s]+)', q_lower)
-        if colab_url_match:
+        # 4. Khẩu lệnh TỰ ĐỘNG HÓA KÊNH (AUTOPILOT A-Z)
+        if any(kw in q_lower for kw in [
+            "autopilot", "auto pilot", "tự động hóa", "tu dong hoa",
+            "chạy tự động", "chay tu dong", "bật autopilot", "bat autopilot",
+            "lên lịch tự động", "len lich tu dong", "chế độ tự động", "che do tu dong"
+        ]):
             return {
-                "intent": "CONNECT_COLAB",
-                "parameters": {"url": colab_url_match.group(1)},
-                "reply_message": "Đang kết nối tới Colab GPU Farm..."
-            }
-        if any(kw in q_lower for kw in ["trạng thái colab", "trang thai colab", "colab bật chưa", "colab online không", "kiểm tra colab", "kiem tra colab", "xem colab", "colab gpu"]):
-            return {
-                "intent": "CONNECT_COLAB",
+                "intent": "AUTOPILOT",
                 "parameters": {},
-                "reply_message": "Đang kiểm tra kết nối tới Colab GPU Farm..."
+                "reply_message": "Đang mở bảng điều khiển Tự Động Hóa Kênh (Auto-Pilot A-Z)..."
             }
 
         # 5. Khẩu lệnh DANH SÁCH VIDEO
@@ -376,14 +369,6 @@ class AICommander:
                 "intent": "SHOW_STATUS",
                 "parameters": {},
                 "reply_message": "Đang tổng hợp trạng thái hệ thống..."
-            }
-
-        # 7. Khẩu lệnh LINK WEB DASHBOARD
-        if any(kw in q_lower for kw in ["link web", "vào web", "mở web", "địa chỉ web", "wifi web", "dashboard"]):
-            return {
-                "intent": "SHOW_WEB",
-                "parameters": {},
-                "reply_message": "Đang lấy địa chỉ phát sóng Web Dashboard và Wi-Fi..."
             }
 
         # 8. Khẩu lệnh KPI
@@ -750,11 +735,11 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON DUY NHẤT (không bọc tron
             return True
 
         # ──────────────────────────────────────────────────────────────────────
-        # I. INTENT: LINK WEB DASHBOARD & WI-FI
+        # I. INTENT: TỰ ĐỘNG HÓA KÊNH (AUTOPILOT A-Z)
         # ──────────────────────────────────────────────────────────────────────
-        elif intent == "SHOW_WEB":
-            from app.bot.handlers import web_command
-            await web_command(update, context)
+        elif intent == "AUTOPILOT":
+            from app.bot.handlers import autopilot_command
+            await autopilot_command(update, context)
             return True
 
         # ──────────────────────────────────────────────────────────────────────
@@ -786,16 +771,6 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON DUY NHẤT (không bọc tron
         elif intent == "VIRAL_IDEAS":
             from app.bot.handlers import viral_command
             await viral_command(update, context)
-            return True
-
-        # ──────────────────────────────────────────────────────────────────────
-        # M. INTENT: KẾT NỐI / TRẠNG THÁI COLAB GPU FARM
-        # ──────────────────────────────────────────────────────────────────────
-        elif intent == "CONNECT_COLAB":
-            from app.bot.handlers import colab_command
-            url = params.get("url")
-            context.args = [url] if url else []
-            await colab_command(update, context)
             return True
 
         # ──────────────────────────────────────────────────────────────────────
