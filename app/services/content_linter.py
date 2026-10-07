@@ -145,21 +145,21 @@ class ScriptValidationLinter:
             est_seconds = (total_words / target_wpm) * 60
             issues.append(
                 f"Script is too long ({total_words} words, ~{est_seconds:.1f}s at {target_wpm} WPM). "
-                f"Target limit: 80 to 115 words total to keep duration around 35-45 seconds for optimal viral retention."
+                f"Target limit: 50 to 115 words total for optimal viral retention (22-45 seconds)."
             )
-        # Quá ngắn (< 65 từ) -> Video dưới 25s không đủ độ sâu dẫn dắt nội dung
-        elif total_words < 65:
+        # Quá ngắn (< 45 từ) -> Video dưới 18s không đủ dẫn dắt nội dung
+        elif total_words < 45:
             issues.append(
                 f"Script is too short ({total_words} words). "
-                f"Minimum 65 words required for adequate storytelling depth (target 80-115 words, 35-45s)."
+                f"Minimum 45 words required for adequate storytelling depth (target 50-115 words, 22-45s)."
             )
 
-        # Số lượng scene: 8 đến 10 scene là nhịp tối ưu (3.0 - 4.5s/scene)
+        # Số lượng scene: 5 đến 10 scene là nhịp tối ưu cho Shorts (2.5 - 4.5s/scene)
         scene_count = len(script.scenes)
-        if scene_count < 6:
-            issues.append(f"Too few scenes ({scene_count}). Need 8 to 10 fast-paced scenes for 35-45s duration.")
+        if scene_count < 5:
+            issues.append(f"Too few scenes ({scene_count}). Need at least 5 fast-paced scenes for Shorts.")
         elif scene_count > 12:
-            issues.append(f"Too many scenes ({scene_count}). Limit to 8 to 10 focused scenes.")
+            issues.append(f"Too many scenes ({scene_count}). Limit to 5 to 10 focused scenes.")
 
         return issues, total_words
 
