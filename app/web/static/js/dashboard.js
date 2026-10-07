@@ -428,6 +428,7 @@ async function fetchAllData() {
         fetchNiches(),
         fetchVideos(),
         fetchHealth(),
+        fetchAutoPilotStatus(),
     ]);
 
     // Tự động phát hiện khi máy chủ bị tắt và tự tìm máy chủ mới trong mạng Wi-Fi
@@ -8386,3 +8387,180 @@ async function promptRegenerateThumbnail(jobId) {
         showToast(`❌ Lỗi: ${err.message}`, 'error');
     }
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ─── AUTOPILOT A-Z & CHANNEL TODAY SCHEDULE CONTROLLER ─────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+
+async function fetchAutoPilotStatus() {
+    const grid = document.getElementById('autopilot-channels-grid');
+    if (!grid) return;
+
+    try {
+        const res = await fetch('/api/autopilot/status');
+        const data = await res.json();
+        if (!data.success) {
+            grid.innerHTML = `<div style="color:var(--accent-red); padding:15px;">Lỗi tải dữ liệu Auto-Pilot: ${data.detail || 'Không xác định'}</div>`;
+            return;
+        }
+
+        renderAutoPilotChannels(data);
+    } catch (err) {
+        console.warn('Lỗi fetchAutoPilotStatus:', err);
+        grid.innerHTML = `<div style="color:var(--text-muted); padding:15px;">Không thể kết nối API Auto-Pilot.</div>`;
+    }
+}
+
+function renderAutoPilotChannels(summary) {
+    const grid = document.getElementById('autopilot-channels-grid');
+    if (!grid) return;
+
+    const channels = summary.channels || [];
+    if (!channels.length) {
+        grid.innerHTML = `<div style="color:var(--text-muted); padding:15px;">Chưa cấu hình kênh nào trong channels.yaml.</div>`;
+        return;
+    }
+
+    let html = '';
+    channels.forEach(ch => {
+        const isFull = ch.today_video_count >= 2;
+        const hasOne = ch.today_video_count === 1;
+        const isEmpty = ch.is_empty;
+        const pending = ch.pending_job;
+        const nextSlot = ch.next_golden_slot?.display_vn || '20:00 Tối Nay';
+
+        let badgeHtml = '';
+        let borderStyle = '';
+        if (isFull) {
+            badgeHtml = `<span class="badge" style="background:#10b981; color:#fff;">🟢 2/2 VIDEO (ĐỦ LỊCH)</span>`;
+            borderStyle = 'border-color: rgba(16, 185, 129, 0.4);';
+        } else if (hasOne) {
+            badgeHtml = `<span class="badge" style="background:#f59e0b; color:#000;">🟡 1/2 VIDEO</span>`;
+            borderStyle = 'border-color: rgba(245, 158, 11, 0.4);';
+        } else if (pending) {
+            badgeHtml = `<span class="badge" style="background:#6366f1; color:#fff;">⏳ ĐANG DỰNG (${pending.progress_percent || 0}%)</span>`;
+            borderStyle = 'border-color: rgba(99, 102, 241, 0.4);';
+        } else {
+            badgeHtml = `<span class="badge" style="background:#ef4444; color:#fff;">🔴 0 VIDEO (CHƯA CÓ LỊCH)</span>`;
+            borderStyle = 'border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.02);';
+        }
+
+        let videosListHtml = '';
+        if (ch.today_videos && ch.today_videos.length) {
+            videosListHtml = ch.today_videos.map(v => `
+                <div style="font-size:12px; color:var(--text-main); margin-top:4px; display:flex; justify-content:space-between; align-items:center;">
+                    <span>⏰ <strong>${v.time_vn}</strong>: ${escapeHtml((v.title || '').substring(0, 24))}...</span>
+                    ${v.shorts_url ? `<a href="${v.shorts_url}" target="_blank" style="color:var(--accent-blue); text-decoration:none; font-size:11px;">[Xem]</a>` : ''}
+                </div>
+            `).join('');
+        } else {
+            videosListHtml = `<div style="font-size:12px; color:var(--text-muted); font-style:italic; margin-top:4px;">Chưa có video nào hôm nay.</div>`;
+        }
+
+        let actionBtn = '';
+        if (isFull) {
+            actionBtn = `<button class="btn btn-secondary btn-sm" disabled style="opacity:0.6; width:100%;">Đã Đủ Lịch Hôm Nay</button>`;
+        } else if (pending) {
+            actionBtn = `<button class="btn btn-secondary btn-sm" disabled style="opacity:0.8; width:100%;">Đang Render #${pending.job_id}...</button>`;
+        } else {
+            const btnText = isEmpty ? '🚀 Chạy Auto-Pilot A-Z' : '➕ Auto-Pilot Thêm Video #2';
+            actionBtn = `
+                <button class="btn btn-primary btn-sm" onclick="runAutoPilotChannel('${ch.channel_id}', '${escapeHtml(ch.channel_name)}')" style="width:100%; font-weight:600;">
+                    ${btnText}
+                </button>
+            `;
+        }
+
+        html += `
+            <div class="panel-card" style="margin-bottom:0; padding:16px; ${borderStyle}">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;">
+                    <div>
+                        <strong style="font-size:14px; color:var(--text-bright); display:block;">${escapeHtml(ch.channel_name)}</strong>
+                        <span style="font-size:11.5px; color:var(--text-muted);">${escapeHtml(ch.handle || ch.channel_id)}</span>
+                    </div>
+                    ${badgeHtml}
+                </div>
+                <div style="margin-bottom:12px; background:rgba(0,0,0,0.15); padding:8px 10px; border-radius:6px;">
+                    <div style="font-size:11.5px; color:var(--text-muted); margin-bottom:2px;">Hôm nay (${summary.date_vn}):</div>
+                    ${videosListHtml}
+                </div>
+                <div style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">
+                    🎯 Khe giờ tiếp theo: <strong style="color:var(--accent-amber);">${escapeHtml(nextSlot)}</strong>
+                </div>
+                <div>
+                    ${actionBtn}
+                </div>
+            </div>
+        `;
+    });
+
+    grid.innerHTML = html;
+}
+
+async function runAutoPilotChannel(channelId, channelName) {
+    if (!confirm(`Bạn có chắc muốn kích hoạt Auto-Pilot A-Z cho kênh "${channelName}"?\n\nAI sẽ tự động: Lên kịch bản viral độc quyền -> Render video 1080p -> Lên lịch khung giờ vàng trống tiếp theo.`)) {
+        return;
+    }
+
+    showToast(`Đang khởi động Auto-Pilot cho kênh ${channelName}...`, 'info');
+    try {
+        const res = await fetch('/api/autopilot/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ channel_id: channelId })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast(`🚀 ${data.message}`, 'success');
+            setTimeout(fetchAutoPilotStatus, 1500);
+        } else {
+            showToast(`Lỗi: ${data.detail || data.error}`, 'error');
+        }
+    } catch (err) {
+        showToast(`❌ Lỗi kết nối: ${err.message}`, 'error');
+    }
+}
+
+async function runAutoPilotAll() {
+    if (!confirm('Bạn có chắc muốn chạy Auto-Pilot A-Z cho TẤT CẢ CÁC KÊNH chưa có lịch hôm nay?\n\nBot sẽ tự động quét các kênh trống và tuần tự sản xuất + lên lịch công chiếu.')) {
+        return;
+    }
+
+    showToast('Đang kích hoạt Auto-Pilot cho tất cả kênh trống...', 'info');
+    try {
+        const res = await fetch('/api/autopilot/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ all_empty: true })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast(`🔥 ${data.message}`, 'success');
+            setTimeout(fetchAutoPilotStatus, 1500);
+        } else {
+            showToast(`Lỗi: ${data.detail || data.error}`, 'error');
+        }
+    } catch (err) {
+        showToast(`❌ Lỗi kết nối: ${err.message}`, 'error');
+    }
+}
+
+async function sendAutoPilotReminderAlert() {
+    showToast('Đang quét và gửi thông báo nhắc nhở qua Telegram...', 'info');
+    try {
+        const res = await fetch('/api/autopilot/remind', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            if (data.result?.notified) {
+                showToast(`📢 Đã gửi báo cáo & nhắc nhở (${data.result.empty_count} kênh trống) tới Telegram!`, 'success');
+            } else {
+                showToast(`ℹ️ ${data.result?.reason || 'Không cần gửi nhắc nhở'}`, 'info');
+            }
+        } else {
+            showToast('Lỗi gửi nhắc nhở Telegram', 'error');
+        }
+    } catch (err) {
+        showToast(`❌ Lỗi: ${err.message}`, 'error');
+    }
+}
+

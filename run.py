@@ -15,7 +15,8 @@ from app.bot.handlers import (
     search_image_command, search_video_command,
     viral_command,
     videos_command, get_video_command, web_command, schedule_command,
-    kpi_command, colab_command, auto_resume_pending_jobs
+    kpi_command, colab_command, auto_resume_pending_jobs,
+    autopilot_command, autopilot_callback
 )
 from app.utils.ffmpeg_helper import is_ffmpeg_installed, get_ffmpeg_version
 
@@ -402,9 +403,11 @@ def main():
     app.add_handler(CommandHandler(["schedule", "lich", "lichdang", "lich_dang"], schedule_command))
     app.add_handler(CommandHandler(["kpi", "baocao", "tiendo", "report"], kpi_command))
     app.add_handler(CommandHandler(["colab", "gpu", "renderfarm"], colab_command))
+    app.add_handler(CommandHandler(["autopilot", "auto", "tudong", "autopilots"], autopilot_command))
     app.add_handler(CallbackQueryHandler(channel_callback, pattern=r"^(select_channel|manage_channel|pick_niche|set_niche|prompt_rename|add_tpl|prompt_custom_channel|pick_voice|set_voice|pick_lang|set_lang|pick_visual|set_visual|confirm_del_channel|do_del_channel|prompt_add_channel|back_channels|refresh_channels)"))
     app.add_handler(CallbackQueryHandler(video_callback, pattern=r"^(render_video|check_drive_render|render_local|publish_now|publish_youtube|publish_to_channel|force_publish_to_channel|rotate_publish_to|wait_quota_job|pick_publish_channel|schedule_to_channel|cancel_publish|feedback_video|edit_script|edit_lang|edit_voice|cancel_edit|delete_video|schedule|schedule_youtube|switch_lang|regenerate|cancel|process_all_pending|refresh_pending|retry_all_failed|apply_media|pick_viral_topic|refresh_viral_ideas|close_viral|send_video_file|videos_page|refresh_videos|refresh_schedule|approve_auto|auto_gen_kpi|refresh_kpi_report|approve_device|reject_device|confirm_del_vid|cancel_del_vid|confirm_del_failed|check_colab_status|colab_rotation_guide|rotate_colab_node|colab_cluster_menu|back_script_review)"))
     app.add_handler(CallbackQueryHandler(chat_callback, pattern=r"^(convert_chat|suggest_more|change_hooks):"))
+    app.add_handler(CallbackQueryHandler(autopilot_callback, pattern=r"^(autopilot_)"))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.Document.ALL, media_upload_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
 
@@ -421,10 +424,19 @@ def main():
         except Exception as e_s:
             logger.error(f"[AutoScheduler error]: {e_s}", exc_info=True)
 
+    async def _auto_check_autopilot_reminder(context):
+        try:
+            from app.services.autopilot_service import check_and_send_daily_reminders
+            check_and_send_daily_reminders(bot=context.bot)
+        except Exception as e_ar:
+            logger.error(f"[AutoPilot Watchdog error]: {e_ar}", exc_info=True)
+
     if app.job_queue:
         if getattr(settings, "ENABLE_COLAB", False):
             app.job_queue.run_repeating(_auto_check_drive_completed, interval=15, first=5)
         app.job_queue.run_repeating(_auto_sync_scheduler, interval=60, first=10)
+        # Giám sát định kỳ nhắc nhở kênh trống (quét mỗi 20 phút)
+        app.job_queue.run_repeating(_auto_check_autopilot_reminder, interval=1200, first=15)
 
     # Khởi động ChannelIntelligenceWorker ngầm (giám sát KPI, tự động tạo video cứu nguy khi trễ deadline)
     try:

@@ -4590,8 +4590,94 @@ async def approve_video_job(job_id: int, req: Optional[ApproveJobRequest] = None
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+# ─── AUTOPILOT A-Z & SMART SCHEDULE ENGINE API ──────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
+
+class RunAutoPilotPayload(BaseModel):
+    channel_id: Optional[str] = None
+    all_empty: Optional[bool] = False
+    target_slot_iso: Optional[str] = None
+
+@app.get("/api/autopilot/status")
+async def get_autopilot_status():
+    """
+    Lấy thông tin trạng thái phát sóng hôm nay của 5 kênh YouTube:
+    - Kênh nào đã có video (khung giờ nào), kênh nào CHƯA CÓ LỊCH (trống).
+    - Khe giờ vàng tiếp theo cho từng kênh.
+    """
+    try:
+        from app.services.autopilot_service import get_channel_today_summary
+        return get_channel_today_summary()
+    except Exception as e:
+        logger.error(f"Lỗi lấy trạng thái Auto-Pilot: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/autopilot/run")
+async def run_autopilot_endpoint(payload: RunAutoPilotPayload, background_tasks: BackgroundTasks):
+    """
+    Kích hoạt quy trình Auto-Pilot A-Z:
+    - Nếu all_empty=True: Tự động chạy tuần tự cho tất cả kênh chưa có video hôm nay.
+    - Nếu có channel_id: Tự động chạy cho kênh được chỉ định.
+    Quy trình chạy ngầm: Tự động sinh kịch bản viral -> Render 1080p -> Lên lịch khung giờ vàng YouTube Shorts.
+    """
+    try:
+        from app.services.autopilot_service import run_autopilot_pipeline_for_channel, run_autopilot_for_all_empty
+
+        def _bg_run_channel(cid: str, slot_iso: Optional[str]):
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(run_autopilot_pipeline_for_channel(cid, target_slot_iso=slot_iso, user_id=0, notify_telegram=True))
+            finally:
+                loop.close()
+
+        def _bg_run_all():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(run_autopilot_for_all_empty(user_id=0, notify_telegram=True))
+            finally:
+                loop.close()
+
+        if payload.all_empty:
+            background_tasks.add_task(_bg_run_all)
+            return {
+                "success": True,
+                "message": "Đã kích hoạt Auto-Pilot A-Z cho tất cả kênh trống hôm nay! Tiến trình đang chạy ngầm."
+            }
+        elif payload.channel_id:
+            background_tasks.add_task(_bg_run_channel, payload.channel_id, payload.target_slot_iso)
+            return {
+                "success": True,
+                "message": f"Đã kích hoạt Auto-Pilot A-Z cho kênh '{payload.channel_id}'! Tiến trình đang chạy ngầm."
+            }
+        else:
+            raise HTTPException(status_code=400, detail="Vui lòng cung cấp channel_id hoặc all_empty=true")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Lỗi kích hoạt Auto-Pilot: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/autopilot/remind")
+async def trigger_autopilot_reminder_endpoint():
+    """Chủ động kích hoạt quét báo cáo và gửi nhắc nhở kênh trống qua Telegram."""
+    try:
+        from app.services.autopilot_service import check_and_send_daily_reminders
+        res = check_and_send_daily_reminders(force=True)
+        return {
+            "success": True,
+            "result": res
+        }
+    except Exception as e:
+        logger.error(f"Lỗi gửi nhắc nhở Auto-Pilot: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 # ─── MANUAL STUDIO (GHÉP CẢNH TÙY CHỈNH) API ─────────────────────────────────
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 def _execute_manual_render(job_id: int, mode: str, video_path: Optional[str], script_text: str, scenes_items: list, config_item: Any):
     """Worker chạy ngầm cho tác vụ ghép / lồng tiếng video tùy chỉnh."""

@@ -277,12 +277,49 @@
                 </div>
             </div>
 
+            <!-- Auto-Pilot A-Z Studio & Today Schedule Monitor -->
+            <div class="panel-card" id="panel-autopilot" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.04), rgba(59, 130, 246, 0.05)); border: 1px solid rgba(16, 185, 129, 0.25); margin-bottom: 24px;">
+                <div class="panel-header" style="flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <h3 style="display:flex; align-items:center; gap:8px;">
+                            <span style="font-size:20px;">🚀</span> Auto-Pilot A-Z: Tự Động Hóa Kênh Toàn Diện
+                            <span class="badge" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; font-weight:700;">AI AUTONOMOUS</span>
+                        </h3>
+                        <p style="font-size:12.5px; color:var(--text-muted); margin-top:3px;">
+                            Sản xuất & Lên lịch từ A-Z: Chọn ý tưởng viral không trùng lặp → Viết kịch bản có 3s Subscriber Hook & Pinned Comment → Render 1080p → Đặt lịch đúng khung giờ vàng (20:00 VN hoặc 04:00 VN).
+                        </p>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                        <button class="btn btn-primary btn-sm" id="btn-autopilot-run-all" onclick="runAutoPilotAll()" style="background:linear-gradient(135deg, #ef4444, #f97316); border:none; font-weight:700;">
+                            🔥 Bật Cho Tất Cả Kênh Trống
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="sendAutoPilotReminderAlert()" title="Báo cáo tình hình và gửi nhắc nhở kênh trống qua Telegram">
+                            📢 Nhắc Nhở Telegram
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="fetchAutoPilotStatus()">
+                            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                            Làm Mới
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Status Grid for 5 Channels -->
+                <div id="autopilot-channels-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-top: 14px;">
+                    <div style="text-align:center; padding:20px; color:var(--text-muted);">Đang tải dữ liệu lịch đăng hôm nay...</div>
+                </div>
+            </div>
+
             <!-- Quick Actions -->
             <div class="panel-card">
                 <div class="panel-header">
                     <h3>🚀 Thao Tác Nhanh</h3>
                 </div>
                 <div class="quick-actions">
+                    <button class="quick-action-btn" id="qa-autopilot-all" onclick="runAutoPilotAll()" style="border-color:rgba(16, 185, 129, 0.4);">
+                        <span class="qa-icon">🚀</span>
+                        <span class="qa-label">Auto-Pilot Kênh Trống</span>
+                        <span class="qa-desc">Bù lịch đăng A-Z</span>
+                    </button>
                     <button class="quick-action-btn" id="qa-create" onclick="switchTab('create')">
                         <span class="qa-icon">✨</span>
                         <span class="qa-label">Tạo Kịch Bản Mới</span>

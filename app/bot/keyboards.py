@@ -553,3 +553,46 @@ def get_delete_failed_confirmation_keyboard(count: int) -> InlineKeyboardMarkup:
     ])
 
 
+def get_autopilot_keyboard(summary: Dict[str, Any]) -> InlineKeyboardMarkup:
+    """Bàn phím điều khiển hệ thống Auto-Pilot A-Z cho các kênh"""
+    keyboard = []
+    empty_channels = summary.get("empty_channels", [])
+    all_channels = summary.get("channels", [])
+
+    # 1. Hàng ưu tiên: Bật cho tất cả kênh trống
+    if empty_channels:
+        keyboard.append([
+            InlineKeyboardButton(
+                f"🔥 Bật Auto-Pilot Tất Cả Kênh Trống ({len(empty_channels)} Kênh)",
+                callback_data="autopilot_run_all"
+            )
+        ])
+
+    # 2. Hàng từng kênh trống
+    for ech in empty_channels:
+        cid = ech["channel_id"]
+        cname = ech["channel_name"].split(" - ")[0][:20]
+        keyboard.append([
+            InlineKeyboardButton(f"🚀 Chạy Auto-Pilot: {cname}", callback_data=f"autopilot_run_channel:{cid}")
+        ])
+
+    # 3. Kênh đã có 1 video nhưng chưa đủ 2 video tối đa/ngày
+    can_add_more = [c for c in all_channels if c["today_video_count"] == 1 and not c.get("pending_job")]
+    if can_add_more and not empty_channels:
+        for c in can_add_more:
+            cid = c["channel_id"]
+            cname = c["channel_name"].split(" - ")[0][:20]
+            keyboard.append([
+                InlineKeyboardButton(f"➕ Thêm Video #2: {cname}", callback_data=f"autopilot_run_channel:{cid}")
+            ])
+
+    # 4. Hàng tiện ích
+    keyboard.append([
+        InlineKeyboardButton("🔄 Làm Mới Trạng Thái", callback_data="autopilot_status"),
+        InlineKeyboardButton("📅 Xem Lịch Đăng", callback_data="refresh_schedule:default")
+    ])
+
+    return InlineKeyboardMarkup(keyboard)
+
+
+

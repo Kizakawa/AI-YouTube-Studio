@@ -4741,6 +4741,133 @@ async def kpi_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_reply(update, "\n".join(lines), reply_markup=markup)
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# HỆ THỐNG AUTO-PILOT KÊNH TOÀN DIỆN (A TO Z) & GIÁM SÁT NHẮC NHỞ
+# ──────────────────────────────────────────────────────────────────────────────
+
+async def autopilot_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Lệnh /autopilot hoặc /auto, /tudong:
+    Hệ thống Auto-Pilot A-Z: Tự động sản xuất từ kịch bản đến lên lịch đăng khung giờ vàng cho từng kênh.
+    Đặc biệt hỗ trợ tự động bù đắp video cho những ngày bận rộn.
+    """
+    await _show_autopilot_view(update, context)
+
+
+async def _show_autopilot_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Hiển thị bảng điều khiển Auto-Pilot và báo cáo tình trạng 5 kênh hôm nay."""
+    if not is_authorized(update):
+        return
+
+    from app.services.autopilot_service import get_channel_today_summary
+    from app.bot.keyboards import get_autopilot_keyboard
+
+    summary = await asyncio.to_thread(get_channel_today_summary)
+    empty_channels = summary.get("empty_channels", [])
+
+    lines = []
+    for ch in summary.get("channels", []):
+        cname = ch["channel_name"]
+        v_count = ch["today_video_count"]
+        p_job = ch.get("pending_job")
+        next_slot = ch.get("next_golden_slot", {}).get("display_vn", "")
+
+        if v_count >= 2:
+            times = ", ".join([v["time_vn"] for v in ch["today_videos"]])
+            lines.append(f"• 🟢 **{cname}**: `{v_count} video` ({times}) — Đủ chỉ tiêu")
+        elif v_count == 1:
+            times = ", ".join([v["time_vn"] for v in ch["today_videos"]])
+            lines.append(f"• 🟡 **{cname}**: `{v_count} video` ({times}) | Khe tiếp: `{next_slot}`")
+        elif p_job:
+            lines.append(f"• ⏳ **{cname}**: Đang dựng video (#{p_job['job_id']} - {p_job['progress_percent']}%)")
+        else:
+            lines.append(f"• 🔴 **{cname}**: **0 video (CHƯA CÓ LỊCH)**\n  ↳ _Khung giờ vàng đề xuất: {next_slot}_")
+
+    channels_str = "\n".join(lines)
+
+    status_alert = ""
+    if empty_channels:
+        status_alert = (
+            f"⚠️ **Có {len(empty_channels)} kênh chưa có video hôm nay!**\n"
+            f"💡 Bấm nút dưới để AI tự động làm từ A-Z (kịch bản + render + lên lịch đúng giờ vàng)!\n\n"
+        )
+    else:
+        status_alert = "🎉 **Tất cả các kênh hôm nay đều đã có video theo lịch chuẩn!**\n\n"
+
+    msg = (
+        f"🤖 **HỆ THỐNG AUTO-PILOT KÊNH TOÀN DIỆN (A TO Z)**\n"
+        f"📅 **Ngày hôm nay:** `{summary['date_vn']}` (Giờ VN)\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📊 **TÌNH TRẠNG 5 KÊNH CỦA BẠN:**\n"
+        f"{channels_str}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"{status_alert}"
+        f"⚡ **Quy trình Auto-Pilot tự động khi bạn bấm:**\n"
+        f"1. AI chọn ý tưởng viral độc quyền, chống trùng lặp.\n"
+        f"2. Sinh kịch bản 3s CTA hook + badge phụ đề + câu hỏi ghim bình luận.\n"
+        f"3. Tự động xếp vào khe giờ vàng trống (20:00 VN hoặc 04:00 VN).\n"
+        f"4. Render video 1080p, lồng tiếng, phụ đề động & tạo thumbnail 1 giây.\n"
+        f"5. Tự động đặt lịch YouTube Shorts & post bình luận ghim mồi đăng ký!"
+    )
+
+    markup = get_autopilot_keyboard(summary)
+    if update.callback_query and update.callback_query.message:
+        await safe_edit_text(update.callback_query.message, msg, reply_markup=markup)
+    else:
+        await safe_reply(update, msg, reply_markup=markup)
+
+
+async def autopilot_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Xử lý các tương tác nút bấm của hệ thống Auto-Pilot trên Telegram."""
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    user = update.effective_user
+    uid = user.id if user else 0
+
+    if data == "autopilot_status":
+        await _show_autopilot_view(update, context)
+        return
+
+    if data == "autopilot_dismiss":
+        from app.services.autopilot_service import dismiss_today_reminder
+        dismiss_today_reminder()
+        await safe_edit_text(
+            query.message,
+            "💤 **ĐÃ GHI NHẬN: BỎ QUA NHẮC NHỞ HÔM NAY!**\n\n"
+            "Bot sẽ không gửi thêm nhắc nhở nào trong ngày hôm nay để bạn tập trung làm việc.\n"
+            "Bạn có thể mở lại bất cứ lúc nào bằng lệnh `/autopilot`."
+        )
+        return
+
+    if data == "autopilot_run_all":
+        from app.services.autopilot_service import run_autopilot_for_all_empty
+        await safe_reply(
+            update,
+            "🚀 **ĐÃ KÍCH HOẠT AUTOPILOT CHO TẤT CẢ KÊNH TRỐNG!**\n\n"
+            "Bot đang tự động chạy quy trình A-Z ngầm. Video sẽ được render và lên lịch tự động theo thứ tự.\n"
+            "Bạn sẽ nhận được thông báo ngay khi từng kênh hoàn tất!"
+        )
+        asyncio.create_task(run_autopilot_for_all_empty(user_id=uid, notify_telegram=True))
+        return
+
+    if data.startswith("autopilot_run_channel:"):
+        cid = data.split(":", 1)[1]
+        from app.services.autopilot_service import run_autopilot_pipeline_for_channel
+        from config.settings import settings
+        channels = settings.get_channels_config()
+        ch_cfg = next((c for c in channels if c.get("id") == cid), {})
+        ch_name = ch_cfg.get("name", cid)
+
+        await safe_reply(
+            update,
+            f"🚀 **ĐÃ KÍCH HOẠT AUTOPILOT CHO KÊNH: `{ch_name}`!**\n\n"
+            f"Bot đang bắt đầu sản xuất kịch bản, render và xếp vào khe giờ vàng trống tiếp theo.\n"
+            f"Tiến trình đang chạy ngầm, bạn sẽ nhận được thông báo sau vài phút!"
+        )
+        asyncio.create_task(run_autopilot_pipeline_for_channel(channel_id=cid, user_id=uid, notify_telegram=True))
+        return
 
 
 async def chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

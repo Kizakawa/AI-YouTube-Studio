@@ -1265,6 +1265,13 @@ class ChannelIntelligenceWorker:
                         if overdue_channels:
                             logger.info(f"[ChannelIntelligence] Có {len(overdue_channels)} kênh trễ hạn nhưng ENABLE_OVERDUE_AUTO_PRODUCTION đang tắt (False). Không tự sinh video.")
 
+                    # 3. Quét kiểm tra nhắc nhở kênh trống trong ngày (AutoPilot Watchdog)
+                    try:
+                        from app.services.autopilot_service import check_and_send_daily_reminders
+                        check_and_send_daily_reminders()
+                    except Exception as e_rem:
+                        logger.debug(f"[ChannelIntelligence] Kiểm tra nhắc nhở hàng ngày gặp lỗi nhẹ: {e_rem}")
+
                 except Exception as ex:
                     logger.error(f"[ChannelIntelligence] Lỗi chu kỳ worker: {ex}")
 
