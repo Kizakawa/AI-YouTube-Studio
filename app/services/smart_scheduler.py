@@ -223,6 +223,16 @@ def process_waiting_quota_jobs() -> int:
                     logger.warning(f"[SmartScheduler] File video #{job_id} không tìm thấy tại {job_data['video_path']}")
                     continue
 
+                # Trích xuất pinned_comment từ scenes_json
+                pinned_comment = None
+                if job_data.get("scenes_json"):
+                    try:
+                        s_data = json.loads(job_data["scenes_json"]) if isinstance(job_data["scenes_json"], str) else job_data["scenes_json"]
+                        if isinstance(s_data, dict):
+                            pinned_comment = s_data.get("pinned_comment")
+                    except Exception:
+                        pass
+
                 logger.info(f"🚀 [SmartScheduler] Quota đã được nạp lại! Đang tự động xuất bản Video #{job_id} ('{job_data['title']}')...")
                 res = pub_agent.upload_video(
                     video_path=job_data["video_path"],
@@ -231,6 +241,8 @@ def process_waiting_quota_jobs() -> int:
                     tags=job_data["tags"].split(",") if job_data.get("tags") else None,
                     privacy_status="public",
                     default_language=ch_cfg.get("language", "en"),
+                    default_audio_language=ch_cfg.get("language", "en"),
+                    pinned_comment=pinned_comment,
                     topic=job_data.get("topic") or "",
                     script=job_data.get("scenes_json") or ""
                 )

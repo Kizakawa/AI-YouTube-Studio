@@ -338,42 +338,61 @@ class ContentAgent:
                     if any(w in all_text_lower for w in ["chim", "bird", "chó", "mèo", "pet", "animal", "rescue", "thú hoang", "cứu hộ"]):
                         # Ngách động vật / Cứu hộ
                         cta_options_en = [
-                            "Every life deserves love. Follow for more rescues",
-                            "Share this to help another innocent soul find a home",
-                            "Follow to support our daily rescue missions",
+                            "Subscribe right now to be the reason another terrified soul gets a second chance",
+                            "Subscribe to walk beside us on our daily mission to save innocent lives",
+                            "Every innocent life deserves love. Subscribe to help us rescue the next one",
                         ]
                         cta_options_vi = [
-                            "Mỗi sinh mệnh đều xứng đáng được yêu thương. Hãy cùng lan tỏa nhé",
-                            "Theo dõi kênh để đón xem những hành trình giải cứu tiếp theo",
-                            "Chia sẻ video để lan tỏa tình yêu thương đến động vật nhé",
+                            "Bấm Subscribe ngay để trao cho những sinh linh vô tội một cơ hội sống thứ hai",
+                            "Subscribe để đồng hành cùng chúng tôi trên hành trình hồi sinh những mảnh đời bất hạnh",
+                            "Mỗi sinh mệnh đều xứng đáng được yêu thương. Bấm Subscribe để cùng cứu thêm một bé nhé",
                         ]
-                    elif any(w in all_text_lower for w in ["ocean", "sea", "biển", "abyss", "vực", "mariana", "mystery", "bí ẩn", "history", "lịch sử", "what if"]):
-                        # Ngách Bí ẩn đại dương / Lịch sử giả tưởng
+                    elif any(w in all_text_lower for w in ["ocean", "sea", "biển", "abyss", "vực", "mariana", "mystery", "bí ẩn"]):
+                        # Ngách Bí ẩn đại dương / Khoa học
                         cta_options_en = [
-                            "What's your theory about this? Drop your thoughts below",
-                            "Follow to uncover what history books won't tell you",
-                            "Did this really happen? Tell me in the comments",
-                            "Follow for more unsolved mysteries of our world",
+                            "The classified truth goes even deeper. Subscribe before this disappears forever",
+                            "Subscribe to uncover Part 2 and see what they tried so hard to bury",
+                            "Subscribe to unlock the forbidden archive before it's deleted",
                         ]
                         cta_options_vi = [
-                            "Bạn nghĩ sự thật đằng sau là gì? Hãy bình luận bên dưới nhé",
-                            "Đăng ký kênh để khám phá những bí ẩn chưa có lời giải",
-                            "Liệu đây là sự thật hay huyền thoại? Hãy để lại ý kiến của bạn nhé",
+                            "Sự thật rùng mình nhất vẫn chưa được giải mã. Bấm Subscribe ngay để mở khóa phần tiếp theo",
+                            "Subscribe ngay để khám phá bí mật bị chôn giấu sâu dưới đáy vực",
+                            "Hồ sơ đen tối nhất về sự kiện này sẽ có trong phần hai. Bấm Subscribe để không bỏ lỡ",
+                        ]
+                    elif any(w in all_text_lower for w in ["history", "lịch sử", "what if", "chiến tranh", "war", "ancient"]):
+                        # Ngách Lịch sử / Giả tưởng
+                        cta_options_en = [
+                            "History was rewritten, but the truth survived. Subscribe to discover what really happened",
+                            "Subscribe to uncover the dark alternate timeline they never dared to teach you",
+                            "Subscribe for Part 2 before this untold story is erased again",
+                        ]
+                        cta_options_vi = [
+                            "Lịch sử đã bị viết lại, nhưng sự thật vẫn còn đó. Bấm Subscribe để khám phá điều bị lãng quên",
+                            "Subscribe để biết dòng thời gian bí mật mà họ không bao giờ muốn bạn thấy",
+                            "Bấm Subscribe để không bỏ lỡ khúc ngoặt lịch sử chấn động ở phần tiếp theo",
+                        ]
+                    elif any(w in all_text_lower for w in ["predator", "wildlife", "săn mồi", "hoang dã", "sư tử", "hổ", "cá mập", "shark"]):
+                        # Ngách Động vật săn mồi / Sinh tồn
+                        cta_options_en = [
+                            "The next apex predator is even more ruthless. Subscribe to enter the wild",
+                            "Subscribe to survive the next deadly apex predator encounter",
+                            "Subscribe to witness the rawest survival battles on the planet",
+                        ]
+                        cta_options_vi = [
+                            "Kẻ đi săn tiếp theo còn tàn khốc hơn gấp bội. Bấm Subscribe để bước vào lãnh địa sinh tồn",
+                            "Bấm Subscribe để chứng kiến những cuộc đối đầu sinh tử khốc liệt nhất hành tinh",
                         ]
                     else:
                         # Ngách Tâm lý học (Psychology) & Kỹ năng
                         cta_options_en = [
-                            "Save this video before your next debate",
-                            "Have you seen someone use this? Drop your thoughts below",
-                            "Follow to master psychological defense daily",
-                            "Save this to protect your peace of mind",
-                            "Which of these signs hit closest to home? Tell me below",
+                            "Subscribe to master what 99% will never see, before someone uses this on you",
+                            "Subscribe before you fall into this toxic psychological trap again",
+                            "Subscribe to decode the dark psychology laws and protect your mind daily",
                         ]
                         cta_options_vi = [
-                            "Lưu lại video này phòng khi bạn cần đến",
-                            "Bạn đã từng gặp chiêu tâm lý này chưa? Để lại bình luận nhé",
-                            "Follow kênh để làm chủ tâm lý và bảo vệ bản thân mỗi ngày",
-                            "Bạn nghĩ sao về điều này? Hãy chia sẻ bên dưới nhé",
+                            "Subscribe để nhìn thấu mọi chiêu trò thao túng trước khi bạn trở thành con mồi tiếp theo",
+                            "Bấm Subscribe để làm chủ tâm lý và bảo vệ bản thân trước những kẻ độc hại",
+                            "Subscribe ngay nếu bạn muốn trở thành người duy nhất nhìn thấu trò chơi tâm lý này",
                         ]
 
                     chosen_cta = random.choice(cta_options_vi if is_vi else cta_options_en)
@@ -456,7 +475,7 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
      * Scene 2 (3-7s): IMMEDIATE Shocking Evidence / Acoustic / Visual proof! (STRICTLY FORBIDDEN: NEVER lecture textbook history, founding dates, or slow background setup in Scene 2!).
      * Scene 3 (7-12s): Escalating Scale Shock or Physical Terror ("At 11,000m, water pressure exceeds 1,000 atmospheres...").
      * Scene 4-5 (12-20s): The Unexplained Anomaly or Psychological Twist.
-     * Final Scene (20-25s): Mind-Bending Climax + Seamless Infinite Loop Bridge back to Scene 1!
+     * Final Scene (20-25s): Mind-Bending Climax + High-Stakes Curiosity Subscribe Hook (Last 3-4s)!
 
 2. 3-SECOND SHOCK ANGLE HOOK (SCENE 1) — CRITICAL TO PREVENT SWIPE-AWAY (>80% VIEWED):
    - The first 1.5 - 2.5 seconds determines 100% of Shorts performance (Viewed vs Swiped away).
@@ -476,10 +495,15 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
    - Scene 1 visual_keyword & visual_prompt MUST be visually arresting, shocking, and intense.
    - thumbnail_text MUST be strictly 3 to 5 words in ALL CAPS with 1 high-contrast emoji (e.g. "THEY'RE USING YOU 🚩", "STOP BEING CONFIDENT 🛑", "HE REFUSED TO LET GO 🥺", "DON'T TOUCH THIS 💀"). This text is rendered directly on Frame 0.0s as the massive Hook Headline Banner to stop the viewer's thumb from swiping away!
 
-3. SEAMLESS LOOP BRIDGE (INFINITE SHORTS LOOP — APV > 150%):
-   - FORBIDDEN: NEVER narrate generic swiping triggers like "drop a comment below", "leave your thoughts", "follow for part 2", "subscribe for more". These cause viewers to swipe away before the video finishes!
-   - Engagement bait is driven by the provocative cliffhanger and the automated pinned comment, NOT by the voiceover begging for interaction.
-   - The final scene MUST act as a Seamless Loop Bridge that grammatically or conceptually flows directly back into Scene 1's hook. When the video repeats, the viewer doesn't realize it has looped until they are already several seconds into their second watch!
+3. HIGH-STAKES SUBSCRIBER CALL-TO-ACTION (FINAL SCENE 3s) & SEAMLESS LOOP BRIDGE:
+   - FORBIDDEN: Lazy generic begging ("Please like and subscribe to my channel"). That causes viewers to swipe away early!
+   - MANDATORY IN THE FINAL SCENE (Last 3-4s): Deliver a HIGH-STAKES CURIOSITY CLIFFHANGER OR PSYCHOLOGICAL SUBSCRIBER TRIGGER that gives viewers an urgent, compelling reason to click Subscribe before they scroll:
+     * Psychology / Mindset: "Subscribe to master what 99% will never see, before someone uses this on you." / "Subscribe để nhìn thấu mọi chiêu trò thao túng trước khi bạn trở thành con mồi tiếp theo."
+     * Deep Sea / Mysteries: "The classified truth goes even deeper. Subscribe before this disappears forever." / "Sự thật rùng mình nhất vẫn chưa được giải mã. Bấm Subscribe ngay để mở khóa phần tiếp theo."
+     * Animal Rescue: "Subscribe right now to be the reason another terrified soul gets a second chance at life." / "Bấm Subscribe để cùng chúng tôi trao cho những sinh linh vô tội một cơ hội sống thứ hai."
+     * History / What If: "History was rewritten, but the truth survived. Subscribe to discover what really happened." / "Lịch sử đã bị xóa sổ một phần. Subscribe để biết điều họ không bao giờ muốn bạn thấy."
+     * Wildlife / Apex Predators: "The next apex predator is even more ruthless. Subscribe to enter the untamed wild." / "Kẻ đi săn tiếp theo còn tàn khốc hơn gấp bội. Bấm Subscribe để bước vào lãnh địa sinh tồn."
+   - The final scene spoken narration must be punchy (8 to 12 words), delivering this high-tension hook while conceptually echoing back to Scene 1's mystery!
    - HARD GRAMMAR & COMPLETENESS RULE:
      * Spoken narration MUST be 100% grammatically complete with proper closing punctuation (period, exclamation, or question mark).
      * NEVER end the script with dangling prepositions or incomplete conjunctions like 'because', 'which', 'and', 'so', 'that', 'but', 'with', 'bởi vì', etc.
@@ -588,7 +612,7 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   ],
   "tags": ["shorts", "viral"],
   "description": "Engaging description with hashtags",
-  "pinned_comment": "Provocative engagement bait question + subscribe CTA for Part 2 (e.g. Do you believe something ancient is still down there? Comment your theory and Subscribe for Part 2! 👇)",
+  "pinned_comment": "High-converting engagement question + urgent Subscribe trigger for Part 2 with emojis (e.g. Which sign hit closest to home? 1, 2, or 3? Be honest 👇\\nSubscribe so you never fall into this trap again! 🧠)",
   "viral_formula": "Double Tap & Protect | Debate in Comments | Curiosity Part 2"
 }}
 """

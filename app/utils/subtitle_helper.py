@@ -213,7 +213,7 @@ class SubtitleHelper:
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
-        show_cta_badge: bool = False,
+        show_cta_badge: bool = True,
         hook_title: Optional[str] = None,
     ) -> str:
         """
@@ -423,11 +423,27 @@ class SubtitleHelper:
         if show_cta_badge and scenes and current_offset_ms > 3000:
             last_scene = scenes[-1]
             last_dur = last_scene.audio_duration_ms or int(last_scene.estimated_seconds * 1000)
-            cta_start_ms = max(0, current_offset_ms - min(last_dur, 4500))
+            cta_start_ms = max(0, current_offset_ms - min(last_dur, 3500))
             cta_end_ms = current_offset_ms
             full_text = " ".join([s.narration for s in scenes])
             is_vi = any(c in full_text.lower() for c in "àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ")
-            cta_text = "🔔 ĐĂNG KÝ KÊNH ĐÓN XEM PHẦN 2 🔔" if is_vi else "🔔 SUBSCRIBE FOR PART 2 🔔"
+            raw_niche = (niche_id or "").lower()
+
+            if "psychology" in raw_niche:
+                cta_text = "🧠 SUBSCRIBE ĐỂ KHÔNG BỊ THAO TÚNG 🔔" if is_vi else "🧠 SUBSCRIBE TO MASTER THE MIND 🔔"
+            elif any(k in raw_niche for k in ("rescue", "animal")):
+                cta_text = "🐾 BẤM SUBSCRIBE ĐỂ CỨU THÊM BÉ 🐾" if is_vi else "🐾 SUBSCRIBE TO SAVE A LIFE 🐾"
+            elif any(k in raw_niche for k in ("deep_sea", "ocean", "mystery")):
+                cta_text = "🌊 SUBSCRIBE ĐỂ MỞ KHÓA PHẦN 2 🔔" if is_vi else "🌊 SUBSCRIBE TO UNCOVER PART 2 🔔"
+            elif any(k in raw_niche for k in ("history", "what_if")):
+                cta_text = "📜 SUBSCRIBE ĐỂ BIẾT SỰ THẬT 🔔" if is_vi else "📜 SUBSCRIBE FOR THE UNTOLD TRUTH 🔔"
+            elif any(k in raw_niche for k in ("predator", "wildlife")):
+                cta_text = "🦁 SUBSCRIBE KHÁM PHÁ SINH TỒN 🔔" if is_vi else "🦁 SUBSCRIBE FOR APEX STORIES 🔔"
+            elif any(k in raw_niche for k in ("scifi", "tech")):
+                cta_text = "🚀 SUBSCRIBE ĐÓN XEM TƯƠNG LAI 🔔" if is_vi else "🚀 SUBSCRIBE TO UNLOCK FUTURE 🔔"
+            else:
+                cta_text = "🔔 ĐĂNG KÝ KÊNH ĐÓN XEM PHẦN 2 🔔" if is_vi else "🔔 SUBSCRIBE FOR PART 2 🔔"
+
             cta_start_str = cls._ms_to_ass_time(cta_start_ms)
             cta_end_str = cls._ms_to_ass_time(cta_end_ms)
             dialogue_lines.append(
@@ -457,7 +473,7 @@ class SubtitleHelper:
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
-        show_cta_badge: bool = False,
+        show_cta_badge: bool = True,
         hook_title: Optional[str] = None,
     ) -> str:
         """Tạo và lưu file .ass ra ổ đĩa, hỗ trợ Niche Profile, Watermark Credit & Hook Headline Banner."""
@@ -576,7 +592,7 @@ class SubtitleHelper:
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
-        show_cta_badge: bool = False,
+        show_cta_badge: bool = True,
     ) -> str:
         """
         Tạo nội dung file .ass từ mốc thời gian thực của giọng đọc (ASR/Whisper/Transcript).
@@ -690,7 +706,21 @@ class SubtitleHelper:
             cta_end_ms = effective_total_ms
             all_text_concat = " ".join([seg.get("text", "") for seg in timed_segments])
             is_vi = any(c in all_text_concat.lower() for c in "àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ")
-            cta_text = "🔔 ĐĂNG KÝ KÊNH ĐÓN XEM PHẦN 2 🔔" if is_vi else "🔔 SUBSCRIBE FOR PART 2 🔔"
+            raw_niche = (niche_id or "").lower()
+            if "psychology" in raw_niche:
+                cta_text = "🧠 SUBSCRIBE ĐỂ KHÔNG BỊ THAO TÚNG 🔔" if is_vi else "🧠 SUBSCRIBE TO MASTER THE MIND 🔔"
+            elif any(k in raw_niche for k in ("rescue", "animal")):
+                cta_text = "🐾 BẤM SUBSCRIBE ĐỂ CỨU THÊM BÉ 🐾" if is_vi else "🐾 SUBSCRIBE TO SAVE A LIFE 🐾"
+            elif any(k in raw_niche for k in ("deep_sea", "ocean", "mystery")):
+                cta_text = "🌊 SUBSCRIBE ĐỂ MỞ KHÓA PHẦN 2 🔔" if is_vi else "🌊 SUBSCRIBE TO UNCOVER PART 2 🔔"
+            elif any(k in raw_niche for k in ("history", "what_if")):
+                cta_text = "📜 SUBSCRIBE ĐỂ BIẾT SỰ THẬT 🔔" if is_vi else "📜 SUBSCRIBE FOR THE UNTOLD TRUTH 🔔"
+            elif any(k in raw_niche for k in ("predator", "wildlife")):
+                cta_text = "🦁 SUBSCRIBE KHÁM PHÁ SINH TỒN 🔔" if is_vi else "🦁 SUBSCRIBE FOR APEX STORIES 🔔"
+            elif any(k in raw_niche for k in ("scifi", "tech")):
+                cta_text = "🚀 SUBSCRIBE ĐÓN XEM TƯƠNG LAI 🔔" if is_vi else "🚀 SUBSCRIBE TO UNLOCK FUTURE 🔔"
+            else:
+                cta_text = "🔔 ĐĂNG KÝ KÊNH ĐÓN XEM PHẦN 2 🔔" if is_vi else "🔔 SUBSCRIBE FOR PART 2 🔔"
             cta_start_str = cls._ms_to_ass_time(cta_start_ms)
             cta_end_str = cls._ms_to_ass_time(cta_end_ms)
             dialogue_lines.append(

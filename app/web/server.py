@@ -2136,12 +2136,17 @@ async def publish_to_youtube(
             except Exception:
                 pass
         if not pinned_comment:
-            if ch_cfg.get("niche") in ("deep_sea_earth_mysteries", "history_mystery"):
-                pinned_comment = "What's your theory about this? Comment below and Subscribe for Part 2! 👇🌊"
-            elif ch_cfg.get("niche") == "psychology":
-                pinned_comment = "Did this hit close to home? Subscribe and comment which sign is most accurate! 👇🧠"
+            n_key = str(ch_cfg.get("niche") or "").lower()
+            if "psychology" in n_key:
+                pinned_comment = "Did this hit close to home? Which sign was most accurate? Drop your thoughts below 👇\n🔔 Subscribe to master dark psychology before someone uses it on you! 🧠"
+            elif any(k in n_key for k in ("rescue", "animal")):
+                pinned_comment = "Every innocent life deserves love ❤️ Would you have stopped to help? Comment below!\n🐾 Subscribe right now to help give more terrified animals a second chance! 🐾"
+            elif any(k in n_key for k in ("deep_sea", "mystery", "history")):
+                pinned_comment = "What is your theory about this? What are they really hiding? Drop it below 👇\n🌊 Subscribe to unlock Part 2 as soon as the classified archive drops! 🔥"
+            elif any(k in n_key for k in ("predator", "wildlife")):
+                pinned_comment = "Who is the true apex ruler of this realm? Drop your vote below 👇\n🦁 Subscribe for more untamed apex predator battles! 🦁"
             else:
-                pinned_comment = "What do you think about this? Comment below and subscribe for more! 👇"
+                pinned_comment = "Which moment shocked you the most? Drop your theory in the comments below 👇\n🔔 Subscribe so you don't miss Part 2 releasing next! 🔥"
 
         pub_res = pub_agent.upload_video(
             video_path=video_path,

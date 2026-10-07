@@ -325,14 +325,67 @@ class PublisherAgent:
             if target_thumb and os.path.exists(target_thumb):
                 uploaded_thumb = self.upload_thumbnail(video_id, target_thumb)
 
-            # ── 2. Tự động đăng bình luận mồi (Engagement Bait) ──
+            # ── 2. Tự động đăng bình luận mồi (Engagement Bait & Subscriber CTA) ──
             effective_comment = pinned_comment
+            if not effective_comment and script:
+                try:
+                    s_data = json.loads(script) if isinstance(script, str) else script
+                    if isinstance(s_data, dict):
+                        effective_comment = s_data.get("pinned_comment")
+                except Exception:
+                    pass
+
             if not effective_comment:
                 is_vn = str(target_lang).lower().startswith("vi")
-                if is_vn:
-                    effective_comment = "Bạn thấy chi tiết nào bất ngờ nhất? Hãy bình luận suy nghĩ của bạn bên dưới! 👇\nĐăng ký kênh để không bỏ lỡ video tiếp theo! 🔥"
+                raw_niche = (self.channel_config.get("niche") or "").lower()
+                if "psychology" in raw_niche:
+                    effective_comment = (
+                        "Bạn từng gặp chiêu tâm lý này ngoài đời chưa? Chia sẻ thật lòng bên dưới nhé 👇\n"
+                        "🔔 Bấm Subscribe để làm chủ tâm lý và bảo vệ bản thân mỗi ngày! 🧠"
+                        if is_vn else
+                        "Did this hit close to home? Which sign was the most accurate? Drop your thoughts below 👇\n"
+                        "🔔 Subscribe to master dark psychology before someone uses it on you! 🧠"
+                    )
+                elif any(k in raw_niche for k in ("rescue", "animal")):
+                    effective_comment = (
+                        "Bạn có tin mọi bé cưng đều xứng đáng có cơ hội sống thứ hai? Hãy để lại trái tim ❤️ bên dưới nhé!\n"
+                        "🐾 Bấm Subscribe để đồng hành cùng những hành trình giải cứu kỳ diệu tiếp theo! 🐾"
+                        if is_vn else
+                        "Every innocent life deserves love ❤️ Would you have stopped to help? Comment below!\n"
+                        "🐾 Subscribe right now to help give more terrified animals a second chance! 🐾"
+                    )
+                elif any(k in raw_niche for k in ("deep_sea", "ocean", "mystery")):
+                    effective_comment = (
+                        "Bạn nghĩ điều gì thực sự ẩn giấu sâu dưới đáy vực? Bình luận giả thuyết của bạn bên dưới 👇\n"
+                        "🌊 Bấm Subscribe ngay để không bỏ lỡ phần 2 hé lộ bí mật chấn động! 🔥"
+                        if is_vn else
+                        "What is your theory about this? What are they really hiding? Drop it below 👇\n"
+                        "🌊 Subscribe to unlock Part 2 as soon as the classified archive drops! 🔥"
+                    )
+                elif any(k in raw_niche for k in ("history", "what_if")):
+                    effective_comment = (
+                        "Nếu lịch sử diễn ra theo cách khác, thế giới hôm nay sẽ ra sao? Tranh luận ngay bên dưới 👇\n"
+                        "📜 Bấm Subscribe để khám phá những sự thật bị chôn vùi trong lịch sử! 📜"
+                        if is_vn else
+                        "What if this actually happened? Would the world be unrecognizable today? Debate below 👇\n"
+                        "📜 Subscribe to discover the dark history they never wanted you to see! 📜"
+                    )
+                elif any(k in raw_niche for k in ("predator", "wildlife")):
+                    effective_comment = (
+                        "Theo bạn ai là chúa tể thực sự trong cuộc chiến sinh tồn này? Để lại ý kiến bên dưới 👇\n"
+                        "🦁 Bấm Subscribe để tiếp tục bước vào lãnh địa sinh tồn khốc liệt nhất! 🦁"
+                        if is_vn else
+                        "Who is the true apex ruler of this realm? Drop your vote below 👇\n"
+                        "🦁 Subscribe for more untamed apex predator battles! 🦁"
+                    )
                 else:
-                    effective_comment = "Which moment shocked you the most? Drop your theory in the comments below! 👇\nSubscribe so you don't miss the next one! 🔥"
+                    effective_comment = (
+                        "Chi tiết nào khiến bạn bất ngờ nhất? Hãy bình luận suy nghĩ của bạn bên dưới 👇\n"
+                        "🔔 Đăng ký kênh (Subscribe) để đón xem phần tiếp theo! 🔥"
+                        if is_vn else
+                        "Which moment shocked you the most? Drop your theory in the comments below 👇\n"
+                        "🔔 Subscribe so you don't miss Part 2 releasing next! 🔥"
+                    )
 
             posted_comment_id = None
             if video_id and effective_comment:
