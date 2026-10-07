@@ -42,23 +42,21 @@ script_blueprint:
   - alien invasion
   - deep sea creature
 visual_aesthetics:
-  art_style: Dark Cinematic Noir & Chiaroscuro
-  camera_angles: Extreme close-up eye macro, Dutch angle, silhouette in shadows, low-angle
-    dramatic staring
-  color_palette: Obsidian black, desaturated cold cyan, sharp crimson accents, dramatic
-    shadows
-  master_prompt_prefix: dark cinematic film still, moody chiaroscuro lighting, psychological
-    thriller atmosphere, 35mm photography
-  master_prompt_suffix: extreme visual intensity, dramatic rim light, razor-sharp
-    focus, photorealistic vertical 9:16, no text, no watermark
-  negative_prompts: bright cartoon, 3d render, anime, smiling face, cheerful, overexposed,
-    colorful pastel, watermark, text
+  art_style: Modern Cinematic Psychological Drama & Thought-Provoking Editorial (Fincher / Nolan / A24 Aesthetic)
+  camera_angles: Cinematic macro eye dilation, dramatic over-the-shoulder conversation, wide architectural establishing shot, symmetrical framing, slow dolly push-in
+  color_palette: Rich cinematic contrast, warm amber key light, deep midnight navy, crisp architectural alabaster, vivid scarlet accents, dynamic natural lighting
+  master_prompt_prefix: masterpiece cinematic film still, modern psychological drama, vivid rich lighting, expressive storytelling composition, 35mm anamorphic photography
+  master_prompt_suffix: razor-sharp focus, dynamic atmospheric depth, vibrant cinematic color grading, photorealistic vertical 9:16, no text, no watermark
+  negative_prompts: blurry, low quality, cartoon, anime, 3d render, distorted faces, extra fingers, watermark, text
   stock_video_keywords:
-  - intense eye contact
-  - man in shadows
-  - whispering secret
-  - walking rain noir
-  - broken mirror reflection
+  - confident person walking city
+  - chess game strategic move
+  - two people intense conversation
+  - modern skyscraper glass reflections
+  - person thinking looking at view
+  - woman looking mirror reflection
+  - hands holding pocket watch
+  - crowd walking busy avenue
 subtitles:
   font_family: Montserrat, sans-serif
   font_weight: '900'

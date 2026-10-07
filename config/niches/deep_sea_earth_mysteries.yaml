@@ -42,27 +42,19 @@ script_blueprint:
   - Phân biệt rõ ràng giữa 'ghi nhận khoa học/sonar' và 'truyền thuyết quái vật biển
     bí ẩn'.
 visual_aesthetics:
-  art_style: Cinematic Abyssal Darkness & Bioluminescence HDR
-  color_palette: Abyssal midnight navy (#020617), deep obsidian black (#000000), bioluminescent
-    neon cyan (#38bdf8), piercing submarine spotlight amber (#f59e0b), ghostly aquatic
-    emerald (#10b981)
-  camera_angles: First-person submarine viewport, sweeping low-angle abyssal drone,
-    claustrophobic diver flashlight POV, sudden rapid macro zoom into glowing entity
-  master_prompt_prefix: masterpiece cinematic deep sea abyss film still, colossal
-    scale thalassophobia, submarine spotlight beam piercing through pitch-black dark
-    ocean water, floating underwater particles, intense claustrophobic tension, 8k
-    resolution vertical 9:16
-  master_prompt_suffix: hyper-realistic water caustics, dramatic volumetric fog light,
-    photorealistic, Unreal Engine 5 render, no text, no watermark
-  negative_prompts: sunny beach, cartoon, anime, bright daylight, tropical reef, smiling
-    person, plastic, low resolution, blurry, watermark, text
+  art_style: Cinematic Oceanographic Exploration & Bioluminescent Wonder (James Cameron / BBC Blue Planet HDR)
+  color_palette: Luminous oceanic sapphire, radiant bioluminescent cyan (#06b6d4), vivid coral emerald (#10b981), piercing submarine xenon amber (#f59e0b), deep abyssal midnight navy (#020617)
+  camera_angles: Sweeping submarine viewport gliding over illuminated trench, macro close-up glowing alien organism, epic underwater cave opening to sunlight, high-tech sonar HUD scan
+  master_prompt_prefix: masterpiece cinematic ocean exploration film still, crystalline water clarity, vibrant glowing bioluminescent flora and fauna, piercing high-power xenon submarine beams illuminating monumental underwater abyss, 8k vertical 9:16
+  master_prompt_suffix: hyper-realistic water caustics, radiant volumetric light rays, National Geographic 8k underwater cinematography, photorealistic vertical 9:16, no text, no watermark
+  negative_prompts: blurry, low resolution, cartoon, anime, plastic, distorted, watermark, text
   stock_video_keywords:
-  - deep sea submarine light
-  - dark ocean underwater abyss
-  - scuba diver dark cavern
-  - ocean storm dark waves
-  - underwater sonar radar
-  - deep trench creature darkness
+  - submarine exploration light beam
+  - bioluminescent jellyfish glowing
+  - deep ocean trench underwater
+  - diver exploring underwater cave
+  - majestic whale swimming deep blue
+  - underwater hydrothermal vent
 subtitles:
   font_family: Montserrat, Arial Black, sans-serif
   font_size: 42

@@ -41,11 +41,11 @@ def master_cinematic_prompt(raw_prompt: str, scene_id: int = 0, niche_id: str = 
     cleaned = re.sub(r'\b(watermark|logo|text|border|frame|subtitles)\b', '', cleaned, flags=re.IGNORECASE)
 
     if scene_id == 1:
-        prefix = "8k vertical dramatic frame: "
-        suffix = ", extreme visual intensity, dramatic chiaroscuro lighting, razor-sharp focus, award-winning cinematography, photorealistic 9:16 vertical composition, no watermark, no text, no border"
+        prefix = "8k vertical dramatic cinematic frame: "
+        suffix = ", extreme visual impact, vibrant cinematic lighting, rich colors, razor-sharp focus, award-winning cinematography, photorealistic 9:16 vertical composition, no watermark, no text, no border"
     else:
         prefix = "8k vertical film still: "
-        suffix = ", hyper-realistic details, dramatic volumetric lighting, 35mm cinematic photography, photorealistic 9:16 vertical composition, no watermark, no text, no border"
+        suffix = ", hyper-realistic details, rich atmospheric lighting, vivid color harmony, 35mm cinematic photography, photorealistic 9:16 vertical composition, no watermark, no text, no border"
 
     return f"{prefix}{cleaned}{suffix}"
 
@@ -216,7 +216,7 @@ class ImageAgent:
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
                     image_prompt = (
                         f"Ultra-high quality photorealistic 8k vertical 9:16 cinematic image, "
-                        f"award-winning photography, rich details, dramatic lighting, no text, no watermark: {prompt}"
+                        f"award-winning photography, rich details, vibrant cinematic lighting, vivid colors, no text, no watermark: {prompt}"
                     )
                     payload = {
                         "contents": [

@@ -44,24 +44,19 @@ script_blueprint:
   - gossip celebrity
   - drama
 visual_aesthetics:
-  art_style: Monochrome Classical Sculpture & Melancholic Nature
-  camera_angles: Dramatic slow tilt on cracked marble bust of Roman emperor, solitary
-    figure standing on windy misty cliff
-  color_palette: Stormy marble gray, muted alabaster white, charcoal black, deep somber
-    blue, antique bronze
-  master_prompt_prefix: breathtaking fine art photography, ancient Roman marble statue
-    of Marcus Aurelius with weathered cracks, misty stormy mountain cliff, dramatic
-    chiaroscuro
-  master_prompt_suffix: 35mm black and white monochrome aesthetic with subtle warm
-    bronze tone, hyper-detailed, vertical 9:16 cinematography, no watermark, no text
-  negative_prompts: neon colors, modern cars, bright cheerful party, cartoon, anime,
-    blurry, low resolution, watermark, text
+  art_style: Epic Classical Wisdom & Breathtaking Grand Cinema
+  camera_angles: Sweeping panoramic mountain vista at sunrise, low-angle ancient marble sculpture, thoughtful philosopher writing by warm sunlight, dramatic slow tracking shot
+  color_palette: Warm sunrise gold, deep Mediterranean blue, weathered alabaster marble, rich bronze, earthy olive green, natural ambient daylight
+  master_prompt_prefix: masterpiece cinematic fine art film still, timeless philosophical wisdom, golden sunbeams illuminating majestic scenery, 35mm anamorphic cinematography
+  master_prompt_suffix: hyper-detailed textures, breathtaking lighting, razor-sharp 8k, photorealistic vertical 9:16, no text, no watermark
+  negative_prompts: blurry, low quality, cartoon, anime, modern plastic, neon club, watermark, text
   stock_video_keywords:
-  - marble statue ancient
-  - man standing mountain fog
-  - rain hitting window glass
-  - candle flickering dark room
-  - ocean waves hitting rocks
+  - man standing mountain sunrise
+  - ancient marble temple ruins
+  - ocean waves crashing cliffs
+  - golden sunlight through trees
+  - person writing ancient book
+  - hourglass falling sand close up
 subtitles:
   font_family: Playfair Display, Georgia, serif
   font_weight: '700'

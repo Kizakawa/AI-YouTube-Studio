@@ -35,22 +35,19 @@ script_blueprint:
   - vulgarity
   - spam
 visual_aesthetics:
-  art_style: Dynamic High-Definition Realism & Cinema
-  camera_angles: Dynamic tracking shot, eye-level cinematic medium shot, vivid environmental
-    details
-  color_palette: Vibrant balanced tones, natural cinematic contrast, rich ambient
-    lighting
-  master_prompt_prefix: 8k vertical film still, dynamic composition, dramatic volumetric
-    lighting, 35mm cinematic photography
-  master_prompt_suffix: hyper-realistic details, razor-sharp focus, photorealistic
-    9:16 vertical composition, no watermark, no text
-  negative_prompts: blurry, low quality, deformed, watermark, text, signature, cartoon,
-    anime
+  art_style: Dynamic High-Definition Realism & Modern Cinematic Aesthetic
+  camera_angles: Dynamic tracking shot, eye-level cinematic medium shot, vivid environmental details, golden hour wide establishing shot
+  color_palette: Vibrant balanced tones, natural daylight contrast, warm golden hour accents, rich ambient cinematic lighting
+  master_prompt_prefix: 8k vertical film still, dynamic composition, vibrant natural cinematic lighting, 35mm photography
+  master_prompt_suffix: hyper-realistic details, razor-sharp focus, rich color saturation, photorealistic 9:16 vertical composition, no watermark, no text
+  negative_prompts: blurry, low quality, deformed, dark muddy tones, watermark, text, signature, cartoon, anime
   stock_video_keywords:
-  - people walking street
-  - dramatic sunset nature
-  - city timelapse night
-  - man thinking looking away
+  - people walking modern city
+  - cinematic golden hour landscape
+  - hands holding coffee cup morning
+  - person smiling look up sky
+  - modern architecture drone shot
+  - beautiful natural sunrise view
 subtitles:
   font_family: Montserrat, sans-serif
   font_weight: '900'

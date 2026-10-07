@@ -349,8 +349,8 @@ def build_image_prompt(raw_prompt: str, scene_id: int, niche_profile: Dict[str, 
     negative = visual.get("negative_prompts", "blurry, low quality, cartoon, watermark, text")
 
     if scene_id == 1:
-        # Cảnh Hook mở màn: Tăng cường độ thị giác
-        full_prompt = f"viral dramatic frame, {prefix}: {cleaned}, {suffix}, extreme visual intensity, razor-sharp focus"
+        # Cảnh Hook mở màn: Tăng cường độ thị giác với màu sắc sống động
+        full_prompt = f"viral dramatic cinematic hook, {prefix}: {cleaned}, {suffix}, extreme visual impact, razor-sharp focus, rich color depth"
     else:
         full_prompt = f"{prefix}: {cleaned}, {suffix}"
 

@@ -165,14 +165,14 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
   "tool_choice": "pexels_video_clip | ai_text_to_video | ai_image_to_video | real_archive_photo",
   "motion_level": "HIGH_MOTION | MEDIUM_MOTION | STATIC_DETAILED",
   "search_queries": [
-    "Truy vấn tiếng Anh 2-3 từ cụ thể cho thư viện video stock (vd: deep ocean abyss)",
-    "Truy vấn thay thế góc nhìn 2 (vd: dark underwater trench)",
-    "Truy vấn thay thế góc nhìn 3 (vd: gloomy water depth)"
+    "Truy vấn tiếng Anh 2-3 từ cụ thể, giàu tính hành động vật lý (vd: modern boardroom presentation / chess pieces falling / scientist looking microscope / golden hour city walk)",
+    "Truy vấn thay thế góc nhìn 2 với góc máy hoặc bối cảnh sinh động khác",
+    "Truy vấn thay thế góc nhìn 3 đặc tả chi tiết vật lý hoặc cảm xúc biểu cảm"
   ],
   "negative_cues": [
-    "Từ/khái niệm cấm không được xuất hiện (vd: swimming pool, sunny beach, smiling corporate people, modern office)"
+    "Từ/khái niệm cấm (vd: text overlay, watermark, blurry, low resolution, cartoon, distorted, muddy dark tones)"
   ],
-  "cinematic_ai_prompt": "Câu lệnh tiếng Anh chi tiết phong cách điện ảnh 8K tỷ lệ 9:16 dùng để sinh Video AI hoặc Ảnh AI nếu kho stock không có tư liệu đạt chuẩn"
+  "cinematic_ai_prompt": "Prompt tiếng Anh 8K dọc 9:16 giàu tính nghệ thuật điện ảnh, ánh sáng sống động (golden hour, crisp high-key, vivid neon, rich contrast), bố cục giàu chiều sâu, cấm hình ảnh tối mịt một màu."
 }}
 """
         res = self._call_gemini_json(prompt)
@@ -222,11 +222,11 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
                 q = scifi_agent.get_curated_video_search_queries(subgenre=subgenre, narration=narration)
                 ai_p = scifi_agent.create_cinematic_ai_video_prompt(topic or narration, subgenre=subgenre, scene_id=scene_id)
             elif is_ocean:
-                q = ["deep sea submarine light", "dark underwater abyss", "ocean dark depths scuba", "deep ocean trench"]
-                ai_p = f"Cinematic 8k dramatic vertical hook shot of pitch black deep sea abyss, submarine spotlight beam penetrating the dark water, colossal shadow in distance, thalassophobia, 9:16"
+                q = ["deep sea submarine light", "bioluminescent ocean creatures", "crystalline underwater dive", "deep ocean trench"]
+                ai_p = f"Cinematic 8k dramatic vertical hook shot of deep sea ocean exploration, submarine xenon beam illuminating vibrant bioluminescent wonder, majestic underwater vista, 9:16"
             else:
-                q = ["cinematic dark mystery intro", "dramatic slow motion silhouette", "intense eye stare close up"]
-                ai_p = f"Cinematic 8k dramatic vertical hook shot of {topic or 'mystery'}, dark moody lighting, 9:16"
+                q = ["cinematic intense hook intro", "dramatic slow motion cinematic", "expressive close up emotion"]
+                ai_p = f"Cinematic 8k dramatic vertical hook shot of {topic or 'visual hook'}, vivid atmospheric lighting, rich contrast, 9:16"
         elif is_historical and primary_entity and primary_entity.lower() in narr_lower:
             method = "REAL_ARCHIVE"
             tool = "real_archive_photo"
@@ -247,15 +247,15 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
             tool = "ai_image_to_video"
             motion = "STATIC_DETAILED"
             mood = "tense_mysterious"
-            q = ["dramatic character silhouette", "mysterious person face shadow", "thoughtful thinker portrait"]
-            ai_p = f"Cinematic 8k vertical portrait, highly detailed facial expression, dramatic chiaroscuro lighting, 9:16"
+            q = ["thoughtful thinker portrait", "expressive human emotion face", "focused eyes looking camera"]
+            ai_p = f"Cinematic 8k vertical portrait, highly detailed facial expression, crisp studio lighting, rich depth of field, 9:16"
         elif is_dark:
             method = "STOCK_FOOTAGE"
             tool = "pexels_video_clip"
             motion = "HIGH_MOTION"
             mood = "dark_ominous"
-            q = ["dark moody cinematic shadows", "eerie mysterious atmosphere", "dramatic storm night"]
-            ai_p = f"Cinematic dark moody atmosphere, dramatic volumetric chiaroscuro lighting, highly detailed 8k, 9:16"
+            q = ["dramatic cinematic shadows", "atmospheric tension scene", "dramatic storm sky"]
+            ai_p = f"Cinematic atmospheric tension scene, dramatic volumetric lighting, rich color contrast, highly detailed 8k, 9:16"
         else:
             method = "STOCK_FOOTAGE"
             tool = "pexels_video_clip"
@@ -272,7 +272,7 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
             "tool_choice": tool,
             "motion_level": motion,
             "search_queries": q,
-            "negative_cues": ["cartoon", "low quality", "blurry", "text overlay", "smiling corporate", "sunny beach"],
+            "negative_cues": ["cartoon", "low quality", "blurry", "text overlay", "distorted faces", "muddy dark tones"],
             "cinematic_ai_prompt": ai_p,
         }
 

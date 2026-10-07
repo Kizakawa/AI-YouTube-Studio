@@ -105,12 +105,12 @@ class ContentQualityCritic:
                 "Bạn đóng vai trò Đạo diễn Triệu View thẩm định xem bức ảnh này có phải là 'CÚ SỐC THỊ GIÁC' (Thumb-stopping Primal Hook) hay không:\n"
                 "  1. TIÊU CHUẨN ĐẠT (PASS - visual_quality >= 8.0):\n"
                 "     - Ảnh phải thể hiện được sự kịch tính cao, kích thích tò mò bản năng mãnh liệt liên quan đến câu chuyện:\n"
-                "       (Quy mô khổng lồ rợn ngợp / Vẻ đẹp mê hoặc hút hồn / Cận cảnh cực đại ánh mắt sắc lẹm hoặc biểu cảm căng thẳng / Hiểm họa sụp đổ cận kề / Ánh sáng chiaroscuro tương phản sắc nét).\n"
+                "       (Quy mô khổng lồ rợn ngợp / Vẻ đẹp mê hoặc hút hồn / Cận cảnh cực đại ánh mắt sắc lẹm hoặc biểu cảm căng thẳng / Hiểm họa sụp đổ cận kề / Ánh sáng điện ảnh tương phản sắc nét, màu sắc sống động).\n"
                 "  2. BẮT BUỘC ĐÁNH RỚT (FAIL - visual_quality < 6.0):\n"
                 "     - Ảnh đời thường phẳng lặng, văn phòng công sở tẻ nhạt, người ngồi gục mặt hoặc tư thế thụ động, phong cảnh không có điểm nhấn giật gân, ảnh stock vô hồn.\n"
                 "  3. HÀNH ĐỘNG KHI FAIL:\n"
                 "     - Đặt verdict = 'FAIL'.\n"
-                "     - Trong trường 'suggestion': Tự động suy luận từ nội dung kịch bản và viết một PROMPT ĐIỆN ẢNH PRIMAL HOOK MỚI CỰC KỲ KỊCH TÍNH (theo công thức: [Chủ thể gây sốc + góc máy macro/low-angle + ánh sáng chiaroscuro cinema]) để hệ thống tự động sinh lại ảnh mới ngay lập tức!"
+                "     - Trong trường 'suggestion': Tự động suy luận từ nội dung kịch bản và viết một PROMPT ĐIỆN ẢNH PRIMAL HOOK MỚI CỰC KỲ KỊCH TÍNH (theo công thức: [Chủ thể gây sốc + góc máy kịch tính macro/low-angle/wide + ánh sáng điện ảnh sống động chuẩn chủ đề]) để hệ thống tự động sinh lại ảnh mới ngay lập tức!"
             )
 
         prompt = f"""Bạn là chuyên gia thẩm định nội dung hình ảnh cho kênh YouTube Shorts chất lượng cao.

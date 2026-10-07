@@ -45,24 +45,19 @@ script_blueprint:
   - bitcoin
   - space rocket
 visual_aesthetics:
-  art_style: Baroque Oil Painting & Vintage Archival Cinema
-  camera_angles: Low-angle monumental ruin view, slow cinematic push into ancient
-    chamber, dusty golden beam lighting
-  color_palette: Warm amber gold, antique parchment, deep sepia, oxidized copper green,
-    torch flame glow
-  master_prompt_prefix: masterpiece cinematic history film still, Renaissance chiaroscuro
-    oil painting style, ancient dust particles floating in golden light, 35mm archival
-    footage
-  master_prompt_suffix: hyper-realistic ancient textures, dramatic torchlight shadows,
-    8k resolution, photorealistic vertical 9:16, no text, no watermark
-  negative_prompts: modern city, plastic, digital gadgets, neon light, cartoon, anime,
-    blurry, low resolution, watermark, text
+  art_style: Epic Historical Cinema & Archival Realism (BBC / Ridley Scott Aesthetic)
+  camera_angles: Grand sweeping aerial over ancient civilization, low-angle monumental temple entrance, golden dust rays illuminating ancient relic, dynamic close-up on historical artifact
+  color_palette: Warm Egyptian desert gold, rich terracotta, lapis lazuli royal blue, glowing amber torchfire, oxidized ancient bronze
+  master_prompt_prefix: masterpiece cinematic history film still, glorious golden desert sunlight, rich authentic archaeological detail, 35mm archival film aesthetic
+  master_prompt_suffix: hyper-detailed ancient stone and gold textures, grand scale cinematography, vibrant atmospheric lighting, photorealistic vertical 9:16, no watermark, no text
+  negative_prompts: modern city, plastic, digital gadgets, neon light, cartoon, anime, blurry, low resolution, watermark, text
   stock_video_keywords:
-  - ancient pyramid desert
-  - dust floating dark chamber
-  - old manuscript candle
-  - ancient stone carvings
-  - archeologist torch light
+  - ancient pyramid desert sunset
+  - archeologist holding torch relic
+  - golden ancient treasure artifact
+  - old parchment manuscript candle
+  - aerial view ancient ruins
+  - carved stone hieroglyphs wall
 subtitles:
   font_family: Cinzel, Georgia, serif
   font_weight: '800'

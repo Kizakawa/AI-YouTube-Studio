@@ -234,7 +234,7 @@ class SciFiVisualDispatcherAgent:
         elif subgenre == "alien_extraterrestrial":
             style_cues = "breathtaking alien planetary landscape, massive alien vessel hovering in skies, eerie bioluminescent atmosphere, twin moons in sky, cinematic scale, 60fps fluid motion"
         else:
-            style_cues = "epic visual effects, dramatic chiaroscuro lighting, intense motion, razor-sharp focus, high definition 8k, 60fps"
+            style_cues = "epic visual effects, dramatic volumetric lighting, vivid neon reflections, intense motion, razor-sharp focus, high definition 8k, 60fps"
 
         return f"{motion_prefix}, {clean_base}, {style_cues}, no text, no watermark, vertical 9:16 format"
 

@@ -310,7 +310,7 @@ TRIẾT LÝ NGHỆ THUẬT: ĐAN XEN ĐỈNH CAO GIỮA VIDEO ĐỘNG VÀ NGHỆ
 Người xem YouTube Shorts lướt qua cực nhanh (Swipe-away < 2s). Một video thuần ghép ảnh tĩnh nhạt nhẽo sẽ mất tương tác, nhưng một video lạm dụng stock footage đại trà, lặp đi lặp lại cũng sẽ khiến người xem nhàm chán!
 Đạo diễn xuất sắc là người biết:
 1. Đan xen chuẩn xác giữa VIDEO CHUYỂN ĐỘNG THỰC (B-Roll 60fps), VIDEO TỪ ẢNH CHỦ ĐỀ AI (Image-to-Video 3D Parallax 8K), VIDEO AI TRỰC TIẾP (Text-to-Video), và TƯ LIỆU LỊCH SỬ THẬT.
-2. Với các chủ đề TÂM LÝ HỌC (Psychology), KHẮC KỶ (Stoicism), THAO TÚNG (Dark Psychology), BÍ ẨN (Mysteries), TRIẾT HỌC: Kho stock video thường rất hạn chế, dễ trùng lặp và không thể hiện được chiều sâu ẩn dụ -> BẮT BUỘC ƯU TIÊN 'IMAGE_TO_VIDEO' (Sinh ảnh 8K Flux/Imagen với ánh sáng Chiaroscuro siêu thực, sau đó chuyển động 3D Camera / Parallax) chiếm 50% - 75% số cảnh!
+2. Với các chủ đề TÂM LÝ HỌC (Psychology), KHẮC KỶ (Stoicism), THAO TÚNG (Dark Psychology), BÍ ẨN (Mysteries), TRIẾT HỌC: Kho stock video thường rất hạn chế, dễ trùng lặp và không thể hiện được chiều sâu ẩn dụ -> BẮT BUỘC ƯU TIÊN 'IMAGE_TO_VIDEO' (Sinh ảnh 8K Flux/Imagen chuẩn phong cách điện ảnh hiện đại A24/Fincher, ánh sáng sắc nét, giàu chiều sâu và màu sắc biểu cảm, sau đó chuyển động 3D Camera / Parallax) chiếm 50% - 75% số cảnh!
 
 BẢN ĐỒ LỰA CHỌN CÔNG CỤ & Ý TƯỞNG (QUY TẮC BẮT BUỘC):
 
@@ -378,7 +378,7 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
             if "scene_proposals" in plan and isinstance(plan["scene_proposals"], list):
                 for p in plan["scene_proposals"]:
                     sq = p.get("search_query") or "cinematic"
-                    ap = p.get("ai_prompt") or f"Cinematic 8k dramatic vertical shot of {sq}, dramatic lighting, 9:16"
+                    ap = p.get("ai_prompt") or f"Cinematic 8k dramatic vertical film still of {sq}, rich atmospheric lighting, vivid contrast, 35mm photography, 9:16"
                     p["search_query"] = sq
                     p["ai_prompt"] = ap
 
@@ -521,7 +521,7 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
             elif is_psychology_or_philosophy and (idx == 0 or any(pc in text_all for pc in psychology_ai_cues)):
                 method = "IMAGE_TO_VIDEO"
                 tool = "imagen3_i2v"
-                rationale = "Chủ đề Tâm lý / Khắc kỷ: Tạo ảnh nghệ thuật 8K Chiaroscuro siêu nét theo chuẩn phong cách kênh, chuyển hóa thành video 3D Parallax mượt mà."
+                rationale = "Chủ đề Tâm lý / Khắc kỷ: Tạo ảnh nghệ thuật 8K điện ảnh giàu chiều sâu, biểu cảm sắc nét, chuyển hóa thành video 3D Parallax mượt mà."
 
             # Cảnh 1 Hook cho các chủ đề khác: Video B-Roll chuyển động mạnh để giữ chân khán giả
             elif idx == 0:

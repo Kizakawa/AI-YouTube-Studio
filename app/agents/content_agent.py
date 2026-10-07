@@ -509,18 +509,34 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
      * NEVER end the script with dangling prepositions or incomplete conjunctions like 'because', 'which', 'and', 'so', 'that', 'but', 'with', 'bởi vì', etc.
      * The video loops seamlessly through conceptual continuity (the ending thought naturally makes the viewer rethink the opening hook), NOT by cutting words in half!
 
-4. CONCRETE PHYSICAL STOCK QUERIES (NO ABSTRACT WORDS):
+4. CONCRETE PHYSICAL STOCK QUERIES (NO ABSTRACT WORDS & NO BORING DARK CLICHES):
    - stock_query is 2-3 English search words strictly for Pexels stock video/photo search.
    - HARD RULE: stock_query MUST be a CONCRETE, VISIBLE, PHYSICAL OBJECT, PERSON, OR ACTION.
    - STRICTLY FORBIDDEN abstract words: "psychology", "minimalism", "authority", "power", "wealth", "mindset", "discipline", "history", "secret", "truth".
-   - Examples:
-     * BAD: "psychology authority" → GOOD: "man wearing suit"
-     * BAD: "extreme minimalism" → GOOD: "worn leather sandals" or "empty wooden room"
-     * BAD: "greed power" → GOOD: "gold coins falling" or "hands holding cash"
-     * BAD: "ancient sacrifice" → GOOD: "mayan pyramid jungle" or "smoke rising altar"
+   - STRICTLY FORBIDDEN boring monotonous dark clichés: "man in shadows", "walking dark street", "sad person darkness", "dark moody rain", "pitch black".
+   - INSTEAD, USE VIVID, CREATIVE, REAL-WORLD METAPHORS & ACTIONS:
+     * Confidence / Power -> "confident businessman walking", "woman speaking stage", "eagle soaring mountain"
+     * Strategy / Manipulation -> "chess game hand move", "dominoes falling row", "hand signing contract"
+     * Time / Anxiety -> "hourglass sand falling", "golden pocket watch ticking", "coffee cup steam morning"
+     * Clarity / Truth -> "magnifying glass text", "light bulb illuminating", "sun rising over city"
+     * Human interaction -> "two people talking cafe", "handshake business deal", "crowd walking sunny street"
+     * Science / Discovery -> "scientist looking microscope", "dna glowing animation", "laboratory glassware test"
+     * Nature / Deep Sea -> "bioluminescent jellyfish glowing", "majestic whale swimming", "sunbeams through ocean surface"
 
-5. VISUAL PROMPT (FOR CINEMATIC AI IMAGE GENERATION):
-   - Format: Put the MAIN SUBJECT & ACTION FIRST: "[Focal Subject + Specific Micro-Action], [Environment & Setting], [Camera Angle: macro close-up / low-angle dolly], [Lighting: dramatic chiaroscuro / rim lighting / neon glow]"
+5. MASTER VISUAL DIRECTOR & CINEMATIC PROMPT (FOR AI IMAGERY & ARTWORK):
+   - As the Master Director of Photography, NEVER create flat, monotonous, or muddy dark images!
+   - Paint with light, rich color palettes, and cinematic depth appropriate to the topic's spirit:
+     * Golden Hour & Warm Sunlight: For breakthroughs, hope, ancient history, majestic landscapes, victory, morning routines.
+     * Crisp High-Key & Editorial Architectural Light: For modern psychology, business strategy, high intellect, clean minimalist spaces, boardroom interactions.
+     * Rich Cyberpunk / Vivid Neon: For cutting-edge AI, future tech, quantum computing, digital mindscapes.
+     * Cinematic Twilight / Deep Sapphire: For profound contemplation, cosmic wonders, serene ocean vistas.
+     * Bioluminescent Glow & Prismatic Caustics: For deep sea exploration, neuro-synapses firing, alien biology.
+     * Dramatic High-Contrast Spotlight: For tense psychological interrogations, unmasking deception, pivotal turning points.
+   - STRICT RULE: BANNED MONOTONOUS TROPES!
+     * NEVER default to "pitch-black alley", "man in shadows", "dark gloomy room with smoke", or "muddy chiaroscuro" unless the topic is explicitly about a midnight horror anomaly.
+     * Each scene MUST feel distinct in composition, color temperature, and perspective!
+   - Format: Put the MAIN SUBJECT & ACTION FIRST:
+     "[Focal Subject + Specific Micro-Action], [Environment & Setting], [Camera Angle: macro close-up / low-angle dolly / wide establishing shot], [Lighting & Color Grading: warm golden sunbeams / crisp studio editorial / vivid neon / crystalline water caustics]"
    - No literal metaphors: always illustrate the actual physical scene or observable behavior.
    - Every scene must be visually unique (no repeating subjects or camera angles).
 
@@ -537,19 +553,19 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
    
    A. THE 5 UNIVERSAL PRIMAL TRIGGERS:
       1. Scale Shock & Unseen Terror (Thalassophobia, Megalodon, colossal towering titan, cosmic abyss, gargantuan shadows dwarfing a human).
-      2. Magnetic Attraction & Mystery (Captivating femme fatale, alluring glance over shoulder, intense seductive gaze, high-fashion noir silhouette).
-      3. Psychological Threat & Micro-Expression (Extreme macro close-up of unblinking dilated pupil, sinister whisper in shadows, calculating smirk, knife behind back).
-      4. Imminent Catastrophe & Collapse (Burning empire ruins, shattered glass mid-explosion, venomous fangs dripping, crown tumbling on blood-stained marble).
-      5. Forbidden Wealth & Forbidden Power (Gleaming gold vault opening in pitch black, raining cash, dark billionaire aesthetic).
+      2. Magnetic Attraction & Mystery (Captivating charismatic presence, alluring glance over shoulder, high-fashion editorial styling, magnetic confidence).
+      3. Psychological Threat & Micro-Expression (Extreme macro close-up of unblinking dilated pupil, calculating smirk, subtle micro-twitch, intense gaze in crisp studio light).
+      4. Imminent Catastrophe & Collapse (Burning empire ruins, shattered glass mid-explosion, venomous fangs dripping, golden crown tumbling on sunlit marble).
+      5. Forbidden Wealth & Forbidden Power (Gleaming gold vault illuminated by warm spotlights, raining cash, modern high-stakes billionaire boardroom).
    
    B. DEDUCTION PROCESS FOR ANY TOPIC:
       Ask yourself: "If a viewer is scrolling at 0.1s speed, what shocking, high-tension visual metaphor related to '{topic}' will physically freeze their thumb?"
-      - Roman Empire -> Emperor's crown rolling down bloodied burning marble steps while shadowy barbarians loom.
-      - Quantum Entanglement -> A human eye splitting into two reality-bending dimensional portals with fractal light.
-      - Boeing Autopilot Stall -> Cockpit instrument alarms flashing red in darkness, pilot's white-knuckled grip on stick pulling up into storm clouds.
-      - Deep Ocean -> Tiny diver flashlight illuminating an impossibly massive ancient eye opening in the abyss.
-      - Seduction / Women -> Mesmerizing femme fatale staring piercingly over shoulder in dramatic chiaroscuro rim lighting.
-      - Dark Psychology / Liar -> Extreme macro unblinking cold gaze in an interrogation room with dark chiaroscuro shadows.
+      - Roman Empire -> Emperor's golden crown rolling down gleaming sunlit marble steps while soldiers advance.
+      - Quantum Entanglement -> A human eye splitting into two reality-bending dimensional portals with vibrant prismatic light.
+      - Boeing Autopilot Stall -> Cockpit instrument alarms flashing amber and red, pilot's white-knuckled grip on stick pulling up into storm clouds.
+      - Deep Ocean -> Submarine xenon spotlight revealing a magnificent bioluminescent leviathan gliding through crystalline sapphire depths.
+      - Seduction / Charisma -> Magnetic charismatic figure in sharp tailored suit making captivating, confident eye contact in sunlit modern architectural glass.
+      - Dark Psychology / Liar -> Extreme macro focus on human eye dilating, reflecting subtle truth on a sleek modern glass table with crisp studio lighting.
 
 8. PHYSICAL ACTION & SENSORY MAPPING (ALL SCENES MUST HAVE TANGIBLE SIGHTS):
    - CRITICAL FIDELITY FOR ANIMALS & NATURE (STRICT RULE):
@@ -561,13 +577,13 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
      * Overthinking / Mental pain -> Person staring at bathroom mirror running cold water over trembling hands in dim blue light.
      * Deception / Lying -> Close-up of throat swallowing nervously, twitching index finger tapping wristwatch.
      * Social Pressure / Insecurity -> Person fixing suit collar repeatedly in crowded hallway looking sideways.
-     * Sci-Fi / Space discovery -> Astronaut helmet visor reflecting dazzling blinding portal in pitch-black cosmos.
+     * Sci-Fi / Space discovery -> Astronaut helmet visor reflecting dazzling blinding portal amidst vibrant nebula starfield.
      * Power / Stoicism -> Person standing completely motionless in torrential rain while crowd rushes past in panic.
 
 9. DYNAMIC AUTONOMOUS MEDIA SELECTION (`media_type` PER SCENE):
    For EACH scene, act as the Master Director of Photography and autonomously decide what visual medium is objectively best suited for this exact moment:
    - 'ai_image': MANDATORY FOR PSYCHOLOGY, PHILOSOPHY, STOICISM, MINDSET, DARK PSYCHOLOGY, DEEP MYSTERIES, AND METAPHORS!
-     Stock video is repetitive, generic, and cannot portray deep psychological nuance. You MUST choose 'ai_image' for at least 50% - 75% of scenes (especially intense chiaroscuro portraits, piercing unblinking gaze, psychological metaphors, Stoic stone statues, shadowy mind landscapes). These are rendered with 8K Flux.1 / Imagen and dynamic 3D camera parallax motion!
+     Stock video is repetitive and generic for deep psychological nuance. You MUST choose 'ai_image' for at least 50% - 75% of scenes (expressive psychological micro-expressions, glowing neural networks, majestic statues under golden sunrise, mind palace architectural metaphors). These are rendered with 8K Flux.1 / Imagen and dynamic 3D camera parallax motion!
    - 'video': Real-world physical action, urban life, footsteps, hands, clock ticking, nature, or wildlife (searches real Pexels 9:16 Video B-Roll).
    - 'photo': Authentic high-resolution real-world still photography or modern realistic architecture.
    - 'documentary': Authentic historical figures (e.g. Einstein, Napoleon), real artifacts, or historical events (searches Wikimedia / historical archive).
