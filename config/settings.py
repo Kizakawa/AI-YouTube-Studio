@@ -37,6 +37,10 @@ class Settings:
     # Render Backend (Chế độ dựng video máy chủ cục bộ / Docker không phụ thuộc Colab)
     RENDER_BACKEND: str = os.getenv("RENDER_BACKEND", "local")  # "local", "auto"
     ENABLE_COLAB: bool = os.getenv("ENABLE_COLAB", "false").lower() in ("true", "1", "yes")
+
+    # Open Web Image Search (Tìm ảnh trên toàn mạng Internet & Bỏ qua rào cản bản quyền)
+    ENABLE_WEB_IMAGE_SEARCH: bool = os.getenv("ENABLE_WEB_IMAGE_SEARCH", "true").lower() in ("true", "1", "yes")
+    BYPASS_IMAGE_COPYRIGHT: bool = os.getenv("BYPASS_IMAGE_COPYRIGHT", "true").lower() in ("true", "1", "yes")
     
     # Defaults
     DEFAULT_TARGET_LANGUAGE: str = os.getenv("DEFAULT_TARGET_LANGUAGE", "en")

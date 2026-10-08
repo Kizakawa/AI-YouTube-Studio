@@ -135,32 +135,64 @@ class ImageAgent:
         except Exception as fb_err:
             logger.debug(f"[ImageAgent] Fallback ngắn cũng lỗi: {fb_err}")
 
-        # 4. Dự phòng ảnh thật HD từ Pexels Photo API (ảnh thật 9:16 sắc nét có kiểm định độ phù hợp và chống trùng)
-        pexels_img = self._try_pexels_photo_fallback(base_prompt, output_path, used_urls=used_urls, topic=topic)
-        if pexels_img and Path(pexels_img).exists() and Path(pexels_img).stat().st_size > 5000:
-            return pexels_img
+        # 4. Dự phòng ảnh thật HD từ Internet (Open Web + Wikipedia + Openverse + Pexels Photo)
+        web_stock_img = self._try_web_and_stock_photo_fallback(base_prompt, output_path, used_urls=used_urls, topic=topic)
+        if web_stock_img and Path(web_stock_img).exists() and Path(web_stock_img).stat().st_size > 5000:
+            return web_stock_img
 
         logger.warning(f"[ImageAgent] ⚠️ Không thể sinh ảnh cho Cảnh {scene_id} qua AI. Chuyển quyền cho Video/Media Fallback.")
         return None
 
-    def _try_pexels_photo_fallback(
+    def _try_web_and_stock_photo_fallback(
         self,
         query: str,
         output_path: str,
         used_urls: Optional[set] = None,
         topic: str = "",
     ) -> Optional[str]:
-        """Tải ảnh chân thực chất lượng cao từ Pexels Photo API khi các engine AI gặp sự cố."""
+        """Tải ảnh chân thực chất lượng cao từ Internet (Open Web + Wikipedia + Pexels) khi các engine AI gặp sự cố."""
         try:
             from app.services.media.stock_fetcher import StockFetcher
             from app.services.media.entity_detector import clean_scene_search_query
-            stock = StockFetcher()
+            from app.services.media.media_history import extract_media_identity, is_media_already_used
+
             clean_q = clean_scene_search_query(query, max_words=3)
             if topic and clean_q and clean_q.lower() not in topic.lower():
                 clean_topic = clean_scene_search_query(topic, max_words=2)
                 clean_q = f"{clean_topic} {clean_q}".strip()
 
-            target_query = clean_q or topic or "dramatic landscape"
+            target_query = clean_q or topic or "dramatic scene"
+
+            # 1. Thử tìm kiếm ảnh Open Web & Wikipedia trước (bao quát mọi chủ đề không rào cản bản quyền)
+            try:
+                from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
+                if web_image_search_enabled():
+                    fetcher = WebImageFetcher()
+                    web_images = fetcher.search_all(target_query, per_source=3)
+                    for item in web_images:
+                        img_url = item.get("url")
+                        if not img_url or is_media_already_used(img_url, used_urls or set()):
+                            continue
+                        try:
+                            headers = {
+                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                                "Referer": "https://www.google.com/",
+                            }
+                            res = requests.get(img_url, headers=headers, timeout=10)
+                            if res.status_code == 200 and len(res.content) > 5000:
+                                with open(output_path, "wb") as f:
+                                    f.write(res.content)
+                                if used_urls is not None:
+                                    used_urls.update(extract_media_identity(img_url))
+                                logger.info(f"[ImageAgent] 🌐 Tải ảnh thực tế thành công từ Open Web/Wiki ({item.get('source')}): '{target_query}' → {output_path}")
+                                return output_path
+                        except Exception as dl_err:
+                            logger.debug(f"[ImageAgent] Lỗi tải ảnh web {img_url[:60]}: {dl_err}")
+            except Exception as w_err:
+                logger.debug(f"[ImageAgent] Lỗi tìm ảnh Open Web: {w_err}")
+
+            # 2. Dự phòng sang kho Pexels
+            stock = StockFetcher()
             photos = stock.search_photos(
                 target_query,
                 per_page=3,
@@ -176,13 +208,22 @@ class ImageAgent:
                         with open(output_path, "wb") as f:
                             f.write(img_res.content)
                         if used_urls is not None:
-                            from app.services.media.media_history import extract_media_identity
                             used_urls.update(extract_media_identity(img_url))
                         logger.info(f"[ImageAgent] 📸 Tải ảnh HD thực tế thành công từ Pexels: '{target_query}' → {output_path}")
                         return output_path
         except Exception as e:
-            logger.debug(f"[ImageAgent] Pexels photo fallback error: {e}")
+            logger.debug(f"[ImageAgent] Photo fallback error: {e}")
         return None
+
+    def _try_pexels_photo_fallback(
+        self,
+        query: str,
+        output_path: str,
+        used_urls: Optional[set] = None,
+        topic: str = "",
+    ) -> Optional[str]:
+        """Tương thích ngược với các cuộc gọi cũ."""
+        return self._try_web_and_stock_photo_fallback(query, output_path, used_urls=used_urls, topic=topic)
 
     def _try_google_image_api(self, prompt: str, output_path: str, aspect_ratio: str = "9:16") -> Optional[str]:
         """

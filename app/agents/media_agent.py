@@ -100,6 +100,16 @@ class MediaAgent:
     def search_google_images(self, query: str, per_page: int = 3) -> List[Dict]:
         return self._archive.search_google_images(query, per_page=per_page)
 
+    def search_open_web_photos(self, query: str, per_page: int = 6) -> List[Dict]:
+        """Tìm kiếm ảnh trực tiếp từ toàn bộ mạng Internet (DDGS + Wikipedia + Commons)."""
+        try:
+            from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
+            if web_image_search_enabled():
+                return WebImageFetcher().search_all(query, per_source=max(2, per_page // 3))
+        except Exception as e:
+            logger.debug(f"[MediaAgent] search_open_web_photos error: {e}")
+        return []
+
     # ── DELEGATIONS SANG STOCK FETCHER ──
     def search_videos(self, query: str, per_page: int = 4, orientation: str = "portrait") -> List[Dict]:
         return self._stock.search_videos(query, per_page=per_page, orientation=orientation)
@@ -179,6 +189,16 @@ class MediaAgent:
             if u and u not in seen_urls and self._is_valid_image_url(u):
                 seen_urls.add(u)
                 combined.append(item)
+
+        # Open Web (DuckDuckGo Live Image Search) - bỏ qua rào cản bản quyền, phủ sóng ảnh thực tế
+        try:
+            from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
+            if web_image_search_enabled():
+                web_imgs = WebImageFetcher().search_open_web(query, per_page=per_page)
+                for wi in web_imgs:
+                    add_item(wi)
+        except Exception as e:
+            logger.debug(f"[MediaAgent] Open web search error: {e}")
 
         wiki_img = self.search_wikipedia_entity_image(query)
         if wiki_img:
@@ -415,6 +435,19 @@ If no real entities found, return empty array: []"""
                     used.update(extract_media_identity(wiki_img["url"]))
                     return wiki_img
 
+            # Thử Open Web search cho sự kiện/nhân vật lịch sử (vượt qua rào cản bản quyền)
+            try:
+                from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled, bypass_copyright_enabled
+                if web_image_search_enabled() and bypass_copyright_enabled():
+                    web_images = WebImageFetcher().search_open_web(f"{primary_q} history archive", per_page=4)
+                    for wi in web_images:
+                        wu = wi.get("url")
+                        if wu and not is_media_already_used(wu, used):
+                            used.update(extract_media_identity(wu))
+                            return wi
+            except Exception as e:
+                logger.debug(f"[MediaAgent] Historical open web search error: {e}")
+
             wiki_queries = [f'"{primary_q}"', primary_q]
             if fallback_q and fallback_q != primary_q:
                 wiki_queries.append(fallback_q)
@@ -451,8 +484,22 @@ If no real entities found, return empty array: []"""
                 used.update(extract_media_identity(best_clip["url"]))
                 return best_clip
 
-        # Thu thập ứng viên ảnh tĩnh từ Pexels & Wikimedia Commons
+        # Thu thập ứng viên ảnh tĩnh từ Open Web, Wikipedia, Pexels & Wikimedia Commons
         candidate_photos = []
+
+        # 1. Ưu tiên hàng đầu: Ảnh Open Web & Wikipedia thực tế toàn diện không giới hạn bản quyền
+        try:
+            from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
+            if web_image_search_enabled():
+                web_items = WebImageFetcher().search_all(primary_q or fallback_q, per_source=3)
+                for item in web_items:
+                    u = item.get("url")
+                    if u and not is_media_already_used(u, used) and not any(c.get("url") == u for c in candidate_photos):
+                        candidate_photos.append(item)
+        except Exception as e:
+            logger.debug(f"[MediaAgent] Candidate web photos error: {e}")
+
+        # 2. Ảnh từ Pexels
         if self.api_key:
             px_photos = self.search_photos(
                 primary_q or fallback_q,
@@ -464,8 +511,12 @@ If no real entities found, return empty array: []"""
             )
             candidate_photos.extend(px_photos)
 
+        # 3. Ảnh từ Wikimedia Commons
         commons_fallback = self.search_web_photos(primary_q or fallback_q, per_page=4)
-        candidate_photos.extend(commons_fallback)
+        for c in commons_fallback:
+            u = c.get("url")
+            if u and not is_media_already_used(u, used) and not any(x.get("url") == u for x in candidate_photos):
+                candidate_photos.append(c)
 
         if candidate_photos:
             try:

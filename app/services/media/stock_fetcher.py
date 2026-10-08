@@ -279,10 +279,12 @@ class StockFetcher:
         return []
 
     def search_openverse(self, query: str, per_page: int = 5) -> List[Dict]:
-        """Tìm kiếm ảnh Creative Commons trên Openverse API."""
+        """Tìm kiếm ảnh trên Openverse API (tôn trọng bypass_copyright nếu được bật)."""
         try:
+            from app.services.media.web_image_fetcher import bypass_copyright_enabled
             clean_q = clean_scene_search_query(query, max_words=3) or query
-            url = f"https://api.openverse.engineering/v1/images/?q={urllib.parse.quote(clean_q)}&page_size={per_page}&license_type=commercial"
+            license_filter = "" if bypass_copyright_enabled() else "&license_type=commercial"
+            url = f"https://api.openverse.org/v1/images/?q={urllib.parse.quote(clean_q)}&page_size={per_page}{license_filter}"
             res = requests.get(url, timeout=8, headers={"User-Agent": "AIYouTubeStudio/2.0"})
             if res.status_code == 200:
                 results_raw = res.json().get("results", [])
@@ -311,9 +313,8 @@ class StockFetcher:
         topic: str = "",
     ) -> Optional[Dict]:
         """
-        Tìm ảnh tĩnh HẤP DẪN NHẤT cho phân cảnh từ nhiều kho (Pexels + Pixabay + ảnh Internet có giấy phép:
-        Openverse/Flickr, Wikimedia Commons, Unsplash), sau đó để VisualCurationAgent (AI Vision) nhìn trực tiếp
-        và chọn ảnh tốt nhất.
+        Tìm ảnh tĩnh HẤP DẪN NHẤT cho phân cảnh từ nhiều kho (Internet Open Web, Wikipedia, Pexels + Pixabay + Openverse/Flickr, Wikimedia Commons, Unsplash),
+        sau đó để VisualCurationAgent (AI Vision) nhìn trực tiếp và chọn ảnh tốt nhất.
         """
         from app.services.media.media_history import (
             get_recent_media_urls, record_used_media, is_media_already_used, extract_media_identity,
@@ -350,11 +351,11 @@ class StockFetcher:
             if len(candidates) >= 8:
                 break
 
-        # Ảnh Internet có giấy phép thương mại (Openverse/Flickr, Wikimedia Commons, Unsplash) — xen kẽ vào pool
+        # Ảnh Internet toàn mạng (Open Web DDGS, Wikipedia, Commons, Openverse, Unsplash)
         web_fetcher = None
         stock_part = candidates[:]
         try:
-            from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
+            from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled, bypass_copyright_enabled
             if web_image_search_enabled():
                 web_fetcher = WebImageFetcher()
                 web_items = web_fetcher.search_all(queries[0], per_source=4)
@@ -363,13 +364,18 @@ class StockFetcher:
                 _add(web_items)
                 web_part = candidates[:]
                 candidates.clear()
-                # Xen kẽ stock / web để AI Vision thấy cả hai loại trong top ứng viên
-                for i in range(max(len(stock_part), len(web_part))):
-                    if i < len(stock_part):
-                        candidates.append(stock_part[i])
-                    if i < len(web_part):
-                        candidates.append(web_part[i])
-                logger.info(f"[StockFetcher] Pool ảnh '{queries[0]}': {before} stock + {len(web_part)} web có giấy phép")
+                # Nếu bypass copyright (hoặc web có ảnh), ưu tiên ảnh web thực tế lên ĐẦU danh sách
+                if bypass_copyright_enabled():
+                    candidates.extend(web_part)
+                    candidates.extend(stock_part)
+                else:
+                    # Xen kẽ stock / web để AI Vision thấy cả hai loại trong top ứng viên
+                    for i in range(max(len(stock_part), len(web_part))):
+                        if i < len(stock_part):
+                            candidates.append(stock_part[i])
+                        if i < len(web_part):
+                            candidates.append(web_part[i])
+                logger.info(f"[StockFetcher] Pool ảnh '{queries[0]}': {before} stock + {len(web_part)} web (bypass_copyright={bypass_copyright_enabled()})")
         except Exception as e:
             logger.debug(f"[StockFetcher] Lỗi nguồn ảnh web: {e}")
             if len(candidates) < len(stock_part):

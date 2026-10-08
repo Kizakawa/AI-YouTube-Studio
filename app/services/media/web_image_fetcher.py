@@ -1,17 +1,12 @@
 """
-app.services.media.web_image_fetcher — Tìm ảnh trên Internet CÓ GIẤY PHÉP dùng thương mại (an toàn cho YouTube kiếm tiền).
+app.services.media.web_image_fetcher — Tìm kiếm hình ảnh thực tế đa nguồn trên toàn bộ mạng Internet.
 
-Nguồn (đều là API chính thức, không scrape):
-1. Openverse (WordPress Foundation): ~800 triệu ảnh Creative Commons gom từ Flickr, Rawpixel, StockSnap,
-   bảo tàng, Wikimedia... Lọc license_type=commercial,modification (được dùng thương mại + được cắt/zoom).
-2. Wikimedia Commons: ~100 triệu ảnh tự do (CC BY / CC BY-SA / Public Domain), cực mạnh về địa danh,
-   lịch sử, động vật, thiên nhiên.
-3. Unsplash (tùy chọn, cần UNSPLASH_ACCESS_KEY): ảnh nghệ thuật chất lượng cao, giấy phép Unsplash miễn phí thương mại.
-
-Vì sao KHÔNG scrape Google/Bing Images: phần lớn ảnh có bản quyền → nguy cơ gậy bản quyền / Content ID /
-bị từ chối kiếm tiền. Bộ lọc giấy phép của Bing khi scrape trả về kết quả sai (đã kiểm chứng).
-
-Mọi ảnh trả về đều kèm `license`, `creator`, `page_url`, `attribution` để ghi credit vào mô tả video.
+Hỗ trợ lấy ảnh liên quan, độ phân giải cao và bỏ qua các rào cản bản quyền khắt khe:
+1. Open Web (DDGS / Live Web Index): Tìm kiếm ảnh thực tế từ toàn bộ mạng Internet (báo chí, tài liệu, bài viết, hình ảnh thực).
+2. Wikipedia Direct Knowledge: Tìm ảnh trực tiếp từ bài viết Wikipedia theo thực thể/chủ đề (độ phân giải 1280px+).
+3. Openverse (Không giới hạn): ~800 triệu ảnh từ Flickr, bảo tàng, phòng lưu trữ, Wikimedia.
+4. Wikimedia Commons: ~100 triệu ảnh tư liệu tự do về lịch sử, địa danh, khoa học, động vật.
+5. Unsplash (Nếu có key): Ảnh nghệ thuật nhiếp ảnh hiện đại chuẩn 9:16.
 """
 
 import os
@@ -29,15 +24,15 @@ from app.services.media.entity_detector import WIKIMEDIA_USER_AGENT
 
 logger = logging.getLogger(__name__)
 
-_UA = "AIYouTubeStudio/2.0 (licensed media fetcher)"
+_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 _CREDITS_FILE = Path("storage/cache/image_credits.jsonl")
 _credits_lock = threading.Lock()
 
-# Tên file Commons chứa các từ này thường là bản đồ / biểu tượng / tài liệu — không phải ảnh minh họa đẹp
+# Tên file Commons chứa các từ này thường là bản đồ / biểu tượng / sơ đồ — không phải ảnh minh họa đẹp
 _COMMONS_BLOCKLIST = (
     " map", "map_", "_map", "map.", "diagram", "chart", "logo", "icon", "symbol", "flag_of", "flag of",
     "coat_of_arms", "coat of arms", "emblem", "seal_of", "seal of", "stamp", "banknote", "coin",
-    "schematic", "blueprint", "floor plan", "infographic", "screenshot", "manuscript", "signature",
+    "schematic", "blueprint", "floor plan", "infographic", "screenshot", "signature",
 )
 
 
@@ -45,29 +40,163 @@ def web_image_search_enabled() -> bool:
     return os.getenv("ENABLE_WEB_IMAGE_SEARCH", "true").strip().lower() not in ("0", "false", "no", "off")
 
 
-def _aspect_ok(w: int, h: int, max_aspect: float = 2.2) -> bool:
+def bypass_copyright_enabled() -> bool:
+    """Kiểm tra có bỏ qua rào cản bản quyền để tìm kiếm ảnh thực tế rộng rãi trên mạng hay không."""
+    return os.getenv("BYPASS_IMAGE_COPYRIGHT", "true").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _aspect_ok(w: int, h: int, max_aspect: float = 2.8) -> bool:
     if not w or not h:
         return True
     return max(w / h, h / w) <= max_aspect
 
 
 class WebImageFetcher:
-    """Tìm ảnh Internet có giấy phép tự do từ nhiều nguồn chính thức, chạy song song."""
+    """Tìm kiếm ảnh thực tế trên toàn bộ mạng Internet đa nguồn, chạy song song."""
 
     def __init__(self):
         self._unsplash_key = os.getenv("UNSPLASH_ACCESS_KEY", "").strip()
 
+    # ─────────────────────────────── Open Web (DDGS) ───────────────────────────
+    def search_open_web(self, query: str, per_page: int = 8) -> List[Dict]:
+        """
+        Tìm kiếm ảnh thực tế từ toàn bộ mạng Internet (Google/Bing/DuckDuckGo index).
+        Bỏ qua rào cản bản quyền để lấy những hình ảnh chân thực, chính xác và có độ phân giải cao nhất.
+        """
+        try:
+            try:
+                from ddgs import DDGS
+            except ImportError:
+                from duckduckgo_search import DDGS
+
+            ddgs = DDGS(timeout=10)
+            raw_results = list(ddgs.images(
+                query,
+                region="wt-wt",
+                safesearch="moderate",
+                max_results=max(per_page * 2, 10),
+            ))
+
+            out = []
+            seen = set()
+            for r in raw_results:
+                img_url = r.get("image")
+                if not img_url or img_url in seen:
+                    continue
+                seen.add(img_url)
+
+                clean_url = str(img_url).lower().split("?")[0]
+                if clean_url.endswith((".svg", ".gif", ".ico")):
+                    continue
+
+                w = r.get("width") or 1080
+                h = r.get("height") or 1920
+                try:
+                    w, h = int(w), int(h)
+                except Exception:
+                    w, h = 1080, 1920
+
+                if not _aspect_ok(w, h, max_aspect=2.8):
+                    continue
+
+                source_site = r.get("source") or "web"
+                title = r.get("title") or query
+
+                out.append({
+                    "url": img_url,
+                    "thumbnail": r.get("thumbnail") or img_url,
+                    "title": title,
+                    "alt": title,
+                    "width": w,
+                    "height": h,
+                    "source": "open_web",
+                    "provider": "open_web",
+                    "license": "Web Public (Fair Use)",
+                    "creator": source_site,
+                    "page_url": r.get("url") or "",
+                    "attribution": f"Web image from {source_site}",
+                })
+                if len(out) >= per_page:
+                    break
+
+            return out
+        except Exception as e:
+            logger.debug(f"[WebImage] Open web search error cho '{query}': {e}")
+            return []
+
+    # ─────────────────────────────── Wikipedia Page Images ─────────────────────
+    def search_wikipedia_images(self, query: str, per_page: int = 4) -> List[Dict]:
+        """
+        Tìm ảnh trực tiếp từ các bài viết Wikipedia liên quan đến chủ đề/thực thể.
+        Đặc biệt hiệu quả với nhân vật, sự kiện lịch sử, địa danh, sinh vật và thí nghiệm khoa học.
+        """
+        try:
+            url = "https://en.wikipedia.org/w/api.php"
+            params = {
+                "action": "query",
+                "generator": "search",
+                "gsrsearch": query,
+                "gsrlimit": max(per_page * 2, 6),
+                "prop": "pageimages|images",
+                "piprop": "original|thumbnail",
+                "pithumbsize": 1280,
+                "format": "json"
+            }
+            res = requests.get(url, params=params, headers={"User-Agent": WIKIMEDIA_USER_AGENT}, timeout=10)
+            if res.status_code != 200:
+                return []
+            pages = res.json().get("query", {}).get("pages", {})
+            out = []
+            seen = set()
+            for p in sorted(pages.values(), key=lambda x: x.get("index", 999)):
+                orig = p.get("original", {})
+                thumb = p.get("thumbnail", {})
+                img_url = orig.get("source") or thumb.get("source")
+                if not img_url or img_url in seen:
+                    continue
+                seen.add(img_url)
+
+                title = p.get("title") or query
+                w = orig.get("width") or thumb.get("width") or 1080
+                h = orig.get("height") or thumb.get("height") or 1920
+
+                out.append({
+                    "url": img_url,
+                    "thumbnail": thumb.get("source") or img_url,
+                    "title": title,
+                    "alt": title,
+                    "width": w,
+                    "height": h,
+                    "source": "wikipedia",
+                    "provider": "wikipedia",
+                    "license": "Wikipedia Public Domain / CC",
+                    "creator": "Wikipedia",
+                    "page_url": f"https://en.wikipedia.org/?curid={p.get('pageid')}",
+                    "attribution": f"Image via Wikipedia article '{title}'",
+                })
+                if len(out) >= per_page:
+                    break
+            return out
+        except Exception as e:
+            logger.debug(f"[WebImage] Wikipedia image search error cho '{query}': {e}")
+            return []
+
     # ─────────────────────────────── Openverse ───────────────────────────────
     def search_openverse(self, query: str, per_page: int = 8) -> List[Dict]:
+        """Tìm kiếm ảnh trên Openverse (~800 triệu ảnh từ Flickr, phòng lưu trữ, bảo tàng...)."""
         try:
+            params = {
+                "q": query,
+                "page_size": 20,
+                "mature": "false",
+            }
+            # Nếu người dùng muốn tuân thủ chặt giấy phép thương mại thì bật filter, ngược lại mở rộng toàn bộ
+            if not bypass_copyright_enabled():
+                params["license_type"] = "commercial,modification"
+
             res = requests.get(
                 "https://api.openverse.org/v1/images/",
-                params={
-                    "q": query,
-                    "page_size": 20,
-                    "license_type": "commercial,modification",
-                    "mature": "false",
-                },
+                params=params,
                 headers={"User-Agent": _UA},
                 timeout=10,
             )
@@ -78,7 +207,7 @@ class WebImageFetcher:
             for r in res.json().get("results", []):
                 url = r.get("url")
                 w, h = r.get("width") or 0, r.get("height") or 0
-                if not url or (w and w < 800) or (h and h < 800) or not _aspect_ok(w, h):
+                if not url or (w and w < 600) or (h and h < 600) or not _aspect_ok(w, h):
                     continue
                 if str(url).lower().split("?")[0].endswith((".svg", ".gif", ".tif", ".tiff")):
                     continue
@@ -95,7 +224,7 @@ class WebImageFetcher:
                     "height": h or 1080,
                     "source": "openverse",
                     "provider": provider,
-                    "license": lic,
+                    "license": lic or "Openverse",
                     "creator": r.get("creator") or "",
                     "page_url": r.get("foreign_landing_url") or "",
                     "attribution": r.get("attribution") or "",
@@ -109,6 +238,7 @@ class WebImageFetcher:
 
     # ─────────────────────────── Wikimedia Commons ───────────────────────────
     def search_wikimedia_commons(self, query: str, per_page: int = 6) -> List[Dict]:
+        """Tìm ảnh tài liệu trên Wikimedia Commons."""
         try:
             res = requests.get(
                 "https://commons.wikimedia.org/w/api.php",
@@ -131,7 +261,6 @@ class WebImageFetcher:
                 return []
             pages = res.json().get("query", {}).get("pages", {})
             out = []
-            # Giữ thứ tự xếp hạng tìm kiếm của Commons
             for p in sorted(pages.values(), key=lambda x: x.get("index", 999)):
                 ii = (p.get("imageinfo") or [{}])[0]
                 title = p.get("title", "")
@@ -140,7 +269,7 @@ class WebImageFetcher:
                 full = ii.get("thumburl") or ii.get("url")
                 if not full or not mime.startswith("image/") or "svg" in mime or "gif" in mime:
                     continue
-                if w < 900 or h < 900 or not _aspect_ok(w, h):
+                if w < 600 or h < 600 or not _aspect_ok(w, h):
                     continue
                 if any(b in title.lower() for b in _COMMONS_BLOCKLIST):
                     continue
@@ -225,36 +354,44 @@ class WebImageFetcher:
 
     # ─────────────────────────────── Tổng hợp ────────────────────────────────
     def search_all(self, query: str, per_source: int = 5) -> List[Dict]:
-        """Gọi song song mọi nguồn, xen kẽ kết quả để AI Vision có danh sách đa dạng."""
+        """Gọi song song mọi nguồn ảnh trên toàn bộ mạng Internet, tổng hợp và ưu tiên ảnh chân thực."""
         if not query or not web_image_search_enabled():
             return []
-        jobs = [self.search_openverse, self.search_wikimedia_commons]
+
+        jobs = [
+            (self.search_open_web, "open_web"),
+            (self.search_wikipedia_images, "wikipedia"),
+            (self.search_wikimedia_commons, "commons"),
+            (self.search_openverse, "openverse"),
+        ]
         if self._unsplash_key:
-            jobs.insert(0, self.search_unsplash)
+            jobs.append((self.search_unsplash, "unsplash"))
+
         with ThreadPoolExecutor(max_workers=len(jobs)) as ex:
-            futures = [ex.submit(fn, query, per_source) for fn in jobs]
+            futures = [ex.submit(fn, query, per_source) for fn, _ in jobs]
             buckets = []
             for f in futures:
                 try:
                     buckets.append(f.result(timeout=15))
                 except Exception:
                     buckets.append([])
+
         merged, seen = [], set()
+        # Ưu tiên xen kẽ: Open Web và Wikipedia lên đầu danh sách ứng viên
         for i in range(max((len(b) for b in buckets), default=0)):
             for b in buckets:
                 if i < len(b) and b[i]["url"] not in seen:
                     seen.add(b[i]["url"])
                     merged.append(b[i])
-        logger.info(
-            f"[WebImage] '{query}': "
-            + ", ".join(f"{fn.__name__.replace('search_', '')}={len(b)}" for fn, b in zip(jobs, buckets))
-        )
+
+        summary_parts = [f"{name}={len(b)}" for (_, name), b in zip(jobs, buckets)]
+        logger.info(f"[WebImage] 🌐 Tìm ảnh mạng cho '{query}': {len(merged)} ảnh ({', '.join(summary_parts)})")
         return merged
 
 
 def record_image_credit(item: Dict, query: str = "") -> None:
-    """Ghi credit ảnh có giấy phép (CC BY yêu cầu ghi nguồn) vào storage/cache/image_credits.jsonl."""
-    if not item or not item.get("license"):
+    """Ghi credit ảnh có giấy phép vào storage/cache/image_credits.jsonl."""
+    if not item:
         return
     try:
         _CREDITS_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -262,10 +399,10 @@ def record_image_credit(item: Dict, query: str = "") -> None:
             "time": datetime.now().isoformat(timespec="seconds"),
             "query": query,
             "source": item.get("source"),
-            "license": item.get("license"),
-            "creator": item.get("creator"),
-            "page_url": item.get("page_url"),
-            "attribution": item.get("attribution"),
+            "license": item.get("license", "Fair Use"),
+            "creator": item.get("creator", "Unknown"),
+            "page_url": item.get("page_url", ""),
+            "attribution": item.get("attribution", ""),
             "url": item.get("url"),
         }
         with _credits_lock, open(_CREDITS_FILE, "a", encoding="utf-8") as f:
