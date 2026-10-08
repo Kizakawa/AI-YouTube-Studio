@@ -101,13 +101,15 @@ TRIỆT TIÊU TƯ DUY GHÉP ẢNH TĨNH: YouTube Shorts yêu cầu chuyển đ�
    - Áp dụng khi: Cảnh miêu tả HÀNH ĐỘNG đời thực, CHUYỂN ĐỘNG thực tế (con người bước đi trên phố, xe cộ tấp nập, bàn tay gõ phím, đồng hồ cát trôi, giọt mưa rơi, biển sóng cuộn, khói bốc lên...).
    - BẮT BUỘC: Cảnh 1 (Hook mở màn 3s đầu) PHẢI là STOCK_VIDEO chuyển động mạnh để khóa chặt người xem, chống lướt qua.
 
-2. 'AI_VIDEO' (Video AI ảo / Giả tưởng / Huyền bí / Siêu thực):
-   - Áp dụng khi: Chủ đề HUYỀN BÍ (bí ẩn vũ trụ, năng lượng tâm linh, thuyết âm mưu viễn tưởng, không gian 4 chiều, lỗ đen, sinh vật huyền bí, hiện tượng siêu nhiên), hoặc NỘI DUNG CHUNG CHUNG TRỪU TƯỢNG không có ngoài đời thực.
-   - Lý do: Thế giới giả tưởng và huyền bí không có ảnh hay video thật ngoài đời -> PHẢI dùng AI Video để tạo cảm giác choáng ngợp, kỳ ảo.
+2. 'AI_VIDEO' (Video AI ảo / Giả tưởng / Siêu thực thuần túy):
+   - Áp dụng khi: NĂNG LƯỢNG SIÊU THỰC thuần túy (cổng không gian ma mị, luồng năng lượng biến ảo, khói ma biến hình) hoặc cảnh hành động viễn tưởng không có trong thế giới thực.
+   - LƯU Ý ĐẶC BIỆT: Với chủ đề BÍ ẨN TỰ NHIÊN, BÍ ẨN ĐẠI DƯƠNG, QUÁI VẬT BIỂN TRUYỀN THUYẾT (Kraken, Megalodon, Tam giác quỷ Bermuda, quái vật Loch Ness, rãnh Mariana, UFO Roswell): KHÔNG ĐƯỢC lạm dụng vẽ AI mờ mịt! Trên mạng có rất nhiều tư liệu thực tế (tiêu bản bảo tàng, tranh khắc cổ thế kỷ 18, bản đồ sóng âm sonar, hóa thạch răng, ảnh thám hiểm đáy biển) -> HÃY ƯU TIÊN REAL_DOCUMENTARY hoặc STOCK_VIDEO để thuyết phục người xem.
 
-3. 'REAL_DOCUMENTARY' (Ảnh tư liệu lịch sử / Người thật):
-   - Áp dụng khi: Cảnh nhắc trực tiếp đến NHÂN VẬT CÓ THẬT (Einstein, Tesla, Napoleon, danh nhân...), SỰ KIỆN LỊCH SỬ có thật (Thế chiến, thảm họa Chernobyl...), CÔNG TRÌNH / DI TÍCH cổ có thật (Kim tự tháp Giza, Vạn lý trường thành, tượng Nhân sư...).
-   - Lý do: Khán giả cần thấy bằng chứng và nhân vật thật ngoài đời để tin tưởng (Authenticity).
+3. 'REAL_DOCUMENTARY' (Ảnh tư liệu lịch sử / Người thật / Bí ẩn có tư liệu mạng):
+   - Áp dụng khi:
+     * Nhắc trực tiếp đến NHÂN VẬT CÓ THẬT (Einstein, Tesla, Napoleon, danh nhân...), SỰ KIỆN LỊCH SỬ có thật (Thế chiến, thảm họa Chernobyl...), CÔNG TRÌNH / DI TÍCH cổ có thật (Kim tự tháp Giza, Vạn lý trường thành, tượng Nhân sư...).
+     * BÍ ẨN ĐẠI DƯƠNG, QUÁI VẬT BIỂN, TRUYỀN THUYẾT, HIỆN TƯỢNG TỰ NHIÊN (Tam giác quỷ, Kraken, Megalodon, rãnh Mariana...): Cần tư liệu thực tế (tiêu bản mực khổng lồ trôi dạt, tranh khắc gỗ thế kỷ 18, bản đồ dị thường sonar, hóa thạch răng Megalodon, ảnh vệ tinh). Kết hợp hiệu ứng Ken Burns 3D Deep Zoom biến ảnh tư liệu thành thước phim tài liệu Discovery chân thực!
+   - CHỈ ĐẠO CẤP DƯỚI QUA 'search_query': Đạo diễn PHẢI tự động suy nghĩ câu lệnh tìm kiếm tiếng Anh cụ thể 2-4 từ chỉ định cấp dưới tìm đúng ảnh tư liệu trên Google/Wikipedia (Ví dụ: 'giant squid specimen beach', '18th century kraken engraving', 'Bermuda triangle sonar map anomaly', 'megalodon tooth fossil comparison'). TUYỆT ĐỐI KHÔNG dùng từ vô nghĩa như 'cinematic'.
 
 4. 'AI_IMAGE' (Ảnh AI nghệ thuật điện ảnh 8K kết hợp 3D Parallax):
    - Áp dụng khi: Cảnh cần một bức tranh nghệ thuật điện ảnh tĩnh sâu sắc, concept art kịch tính, chân dung nhân vật giả tưởng cần cố định khuôn mặt không méo mó. Xen kẽ làm khoảng lặng sau các phân cảnh chuyển động nhanh.

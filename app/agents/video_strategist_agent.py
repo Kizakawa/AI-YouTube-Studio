@@ -326,8 +326,10 @@ BẢN ĐỒ LỰA CHỌN CÔNG CỤ & Ý TƯỞNG (QUY TẮC BẮT BUỘC):
 3. 'TEXT_TO_VIDEO' (Công cụ: 'wan_t2v' / 'ai_video_generative' - Sinh Video AI chuyển động trực tiếp):
    - Khi nào dùng: CHỈ KHI máy chủ CÓ backend video AI thật (xem NĂNG LỰC THẬT) và cảnh là PURE_FICTION / năng lượng siêu thực cần chuyển động (cổng không gian, luồng năng lượng tâm linh, khói ma mị biến hình). Hố đen / thiên hà / tinh vân là SCIENTIFIC_VISUALIZATION: kho đã có mô phỏng CGI chuyển động thật -> STOCK_FOOTAGE.
 
-4. 'REAL_ARCHIVE' (Công cụ: 'wikimedia_archive' / 'wikipedia' - Ảnh tư liệu lịch sử có thật 100%):
-   - Khi nào dùng: Nhắc trực tiếp đến NHÂN VẬT LỊCH SỬ CÓ THẬT (Einstein, Tesla, Napoleon, Julius Caesar...), SỰ KIỆN LỊCH SỬ (Thế chiến, Apollo 11, sụp đổ La Mã...), DI TÍCH LỊCH SỬ CỔ ĐẠI (Kim Tự Tháp Giza, Đấu trường Colosseum).
+4. 'REAL_ARCHIVE' (Công cụ: 'wikimedia_archive' / 'wikipedia' - Ảnh tư liệu lịch sử & tư liệu thực tế 100%):
+   - Khi nào dùng:
+     * Nhắc trực tiếp đến NHÂN VẬT LỊCH SỬ CÓ THẬT (Einstein, Tesla, Napoleon, Julius Caesar...), SỰ KIỆN LỊCH SỬ (Thế chiến, Apollo 11, sụp đổ La Mã...), DI TÍCH LỊCH SỬ CỔ ĐẠI (Kim Tự Tháp Giza, Đấu trường Colosseum).
+     * BÍ ẨN ĐẠI DƯƠNG / QUÁI VẬT BIỂN TRUYỀN THUYẾT / HIỆN TƯỢNG TỰ NHIÊN (Tam giác quỷ Bermuda, Kraken, mực khổng lồ, Megalodon, rãnh Mariana, quái vật Loch Ness, UFO Roswell...): BẮT BUỘC ĐẠO DIỄN CHỈ THỊ CẤP DƯỚI TÌM ẢNH TƯ LIỆU THỰC TẾ TRÊN MẠNG (tranh khắc gỗ cổ, tiêu bản bảo tàng, hóa thạch răng, bản đồ dị thường sonar, ảnh thám hiểm đáy biển) thay vì chỉ biết vẽ AI mờ mịt!
 
 QUY TẮC ĐAN XEN NHỊP ĐIỆU (RHYTHMIC WEAVING):
 - Với chủ đề Động vật hoang dã / Đời sống thực tế: 70% - 90% là STOCK_FOOTAGE.
@@ -337,7 +339,8 @@ QUY TẮC ĐAN XEN NHỊP ĐIỆU (RHYTHMIC WEAVING):
 PHÂN LOẠI BẢN CHẤT CẢNH (reality_class) — HỎI: "Thứ cần hiển thị có tồn tại và đã từng được QUAY chưa?":
 - REAL_FILMABLE: có thật, đã được quay (phi hành gia, tên lửa, kính thiên văn, robot công nghiệp, thành phố đêm, động vật) -> footage thật luôn thuyết phục hơn AI.
 - SCIENTIFIC_VISUALIZATION: có thật nhưng không quay được (hố đen, sao neutron, Big Bang, thiên hà) -> kho có sẵn nhiều mô phỏng CGI/NASA chất lượng cao.
-- PURE_FICTION: không tồn tại (người ngoài hành tinh, quả cầu Dyson, cỗ máy thời gian, thành phố năm 3000) -> kho stock KHÔNG thể có đúng hình, phải sinh AI.
+- DEEP_SEA_MYSTERY: bí ẩn đại dương, quái vật biển, rãnh Mariana, tam giác quỷ -> có tranh cổ, tiêu bản, bản đồ sonar -> ưu tiên REAL_ARCHIVE hoặc STOCK_FOOTAGE.
+- PURE_FICTION: hoàn toàn không tồn tại cả trong lịch sử lẫn nghiên cứu tự nhiên (người ngoài hành tinh, quả cầu Dyson, cỗ máy thời gian, thành phố năm 3000) -> kho stock KHÔNG thể có đúng hình, phải sinh AI.
 - ABSTRACT_CONCEPT: khái niệm trừu tượng (ý thức, thuyết mô phỏng, ẩn dụ tâm lý).
 LƯU Ý: phân loại theo Ý NGHĨA, không theo từ đơn lẻ ("brain" không phải AI; "Ai Cập" là Egypt; "corporate jungle" không phải rừng).
 
@@ -358,11 +361,11 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
   "scene_proposals": [
     {{
       "scene_id": 1,
-      "reality_class": "REAL_FILMABLE | SCIENTIFIC_VISUALIZATION | PURE_FICTION | ABSTRACT_CONCEPT",
+      "reality_class": "REAL_FILMABLE | SCIENTIFIC_VISUALIZATION | DEEP_SEA_MYSTERY | PURE_FICTION | ABSTRACT_CONCEPT",
       "production_method": "REAL_ARCHIVE | IMAGE_TO_VIDEO | TEXT_TO_VIDEO | STOCK_FOOTAGE",
       "tool": "wikimedia_archive | imagen3_i2v | wan_t2v | pexels_video_api",
       "rationale": "Giải thích chi tiết 1 câu vì sao chọn phương pháp & công cụ này cho cảnh này (bằng tiếng Việt)",
-      "search_query": "LUÔN ĐIỀN (kể cả cảnh AI, để dự phòng): 2-4 từ tiếng Anh CỤ THỂ mô tả đúng vật thể trong khung hình, cấm từ chung chung như 'cinematic'",
+      "search_query": "LUÔN ĐIỀN (kể cả cảnh AI, để dự phòng): 2-4 từ tiếng Anh CỤ THỂ CHỈ ĐỊNH CẤP DƯỚI TÌM KIẾM (ví dụ nếu nói về quái vật biển: 'giant squid specimen deep ocean', 'ancient sea monster engraving', 'ocean trench submarine sonar'; cấm từ chung chung như 'cinematic')",
       "ai_prompt": "Câu lệnh tiếng Anh chi tiết phong cách điện ảnh 8K 9:16 nếu là IMAGE_TO_VIDEO hoặc TEXT_TO_VIDEO",
       "camera_motion": "zoom_in | zoom_out | pan_left | pan_right | pan_up | pan_down",
       "sfx_cue": "whoosh | hit | tension_riser | cinematic_swell | heartbeat"
