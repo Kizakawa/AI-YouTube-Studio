@@ -427,15 +427,32 @@ async def run_autopilot_pipeline_for_channel(
                 )
 
         # ── Step 8: Gửi thông báo báo cáo chi tiết về Telegram ──
+        # ── Step 8: Gửi thông báo & UPLOAD VIDEO TRỰC TIẾP VÀO NHÓM TELEGRAM ──
         if notify_telegram:
-            from app.services.channel_intelligence import send_telegram_broadcast
+            from app.services.channel_intelligence import send_telegram_broadcast, send_telegram_video_broadcast
             
-            status_title = "🎉 **AUTOPILOT ĐÃ HOÀN TẤT A-Z & LÊN LỊCH THÀNH CÔNG!**"
+            status_title = "🎉 <b>AUTOPILOT ĐÃ HOÀN TẤT A-Z & LÊN LỊCH THÀNH CÔNG!</b>"
+            status_title_md = "🎉 **AUTOPILOT ĐÃ HOÀN TẤT A-Z & LÊN LỊCH THÀNH CÔNG!**"
             if pub_res.get("status") == "waiting_quota_reset":
-                status_title = "⏳ **AUTOPILOT ĐÃ DỰNG XONG (CHỜ RESET QUOTA UPLOAD)**"
+                status_title = "⏳ <b>AUTOPILOT ĐÃ DỰNG XONG (CHỜ RESET QUOTA UPLOAD)</b>"
+                status_title_md = "⏳ **AUTOPILOT ĐÃ DỰNG XONG (CHỜ RESET QUOTA UPLOAD)**"
+
+            caption_html = (
+                f"{status_title}\n\n"
+                f"📺 <b>Kênh:</b> {html.escape(ch_name)} (<code>{ch_handle or channel_id}</code>)\n"
+                f"🎬 <b>Tiêu đề:</b> <i>{html.escape(job.title)}</i>\n"
+                f"⏰ <b>Công chiếu:</b> 👉 <b>{display_vn}</b>\n"
+                f"🇺🇸 <i>({display_us})</i>\n"
+            )
+            if yt_shorts_url:
+                caption_html += f"\n⚡ <b>Link YouTube Shorts:</b>\n👉 {yt_shorts_url}\n"
+            if pinned_comment:
+                caption_html += f"\n💬 <b>Bình luận mồi:</b> <i>{html.escape(pinned_comment[:150])}</i>\n"
+            if drive_link:
+                caption_html += f"\n📂 <a href=\"{drive_link}\">Mở Google Drive</a>\n"
 
             alert_text = (
-                f"{status_title}\n\n"
+                f"{status_title_md}\n\n"
                 f"📺 **Kênh:** `{ch_name}` (`{ch_handle or channel_id}`)\n"
                 f"🎬 **Tiêu đề:** *{html.escape(job.title)}*\n"
                 f"⏰ **Giờ công chiếu:** 👉 **{display_vn}**\n"
@@ -460,7 +477,21 @@ async def run_autopilot_pipeline_for_channel(
                 {"text": "🔄 Làm Mới Auto-Pilot", "callback_data": "autopilot_status"}
             ])
 
-            send_telegram_broadcast(alert_text, inline_keyboard=inline_kb)
+            # Ưu tiên upload trực tiếp file video vào nhóm để người dùng xem thử
+            sent_video = False
+            if video_path and Path(video_path).exists():
+                try:
+                    sent_video = send_telegram_video_broadcast(
+                        video_path=video_path,
+                        caption=caption_html,
+                        inline_keyboard=inline_kb
+                    )
+                except Exception as ex_vid:
+                    logger.warning(f"[AutoPilot #{job_id}] Gửi video broadcast thất bại: {ex_vid}")
+
+            # Nếu không gửi được video (hoặc video_path không tồn tại), fallback gửi tin nhắn văn bản
+            if not sent_video:
+                send_telegram_broadcast(alert_text, inline_keyboard=inline_kb)
 
         return {
             "success": True,

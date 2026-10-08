@@ -1400,25 +1400,50 @@ async def start_render_pipeline(
                     pass
 
             # 2. UPLOAD DUY NHẤT 1 FILE VIDEO KÈM THUMBNAIL LÀM BÌA & NÚT THAO TÁC
+            # Kiểm tra kích thước file: Nếu > 49MB, tự động nén nhanh để gửi qua Telegram (giới hạn 50MB)
+            upload_vid_path = out_path
+            temp_tg_preview = None
+            if size_mb > 49.0:
+                try:
+                    import subprocess
+                    temp_dir = Path(settings.TEMP_DIR)
+                    temp_dir.mkdir(parents=True, exist_ok=True)
+                    temp_tg_preview = str(temp_dir / f"tg_preview_{job_id}.mp4")
+                    logger.info(f"File {size_mb:.1f}MB > 49MB, đang nén nhanh video cho Telegram (job #{job_id})...")
+                    cmd = [
+                        "ffmpeg", "-y", "-i", out_path,
+                        "-c:v", "libx264", "-crf", "28", "-preset", "veryfast",
+                        "-c:a", "copy", temp_tg_preview
+                    ]
+                    res_comp = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45)
+                    if res_comp.returncode == 0 and Path(temp_tg_preview).exists():
+                        upload_vid_path = temp_tg_preview
+                        preview_mb = Path(upload_vid_path).stat().st_size / (1024 * 1024)
+                        logger.info(f"Đã nén video preview Telegram thành công: {preview_mb:.1f}MB")
+                except Exception as ex_comp:
+                    logger.warning(f"Lỗi nén preview Telegram: {ex_comp}")
+
             cached_telegram_file_id = None
             for t_chat in target_chats:
                 sent_ok = False
-                thumb_f = open(thumb_p, "rb") if thumb_p and Path(thumb_p).exists() else None
-                if size_mb <= 49.0:
-                        try:
-                            if cached_telegram_file_id:
-                                # Chat thứ 2 trở đi gửi qua file_id chỉ mất 0.2s!
-                                await bot.send_video(
-                                    chat_id=t_chat,
-                                    video=cached_telegram_file_id,
-                                    caption=caption,
-                                    parse_mode="HTML",
-                                    reply_markup=post_render_markup,
-                                    supports_streaming=True
-                                )
-                                sent_ok = True
-                            else:
-                                with open(out_path, "rb") as vf:
+                curr_size_mb = Path(upload_vid_path).stat().st_size / (1024 * 1024)
+                if curr_size_mb <= 49.0:
+                    try:
+                        if cached_telegram_file_id:
+                            # Chat thứ 2 trở đi gửi qua file_id chỉ mất 0.2s!
+                            await bot.send_video(
+                                chat_id=t_chat,
+                                video=cached_telegram_file_id,
+                                caption=caption,
+                                parse_mode="HTML",
+                                reply_markup=post_render_markup,
+                                supports_streaming=True
+                            )
+                            sent_ok = True
+                        else:
+                            with open(upload_vid_path, "rb") as vf:
+                                thumb_f = open(thumb_p, "rb") if thumb_p and Path(thumb_p).exists() else None
+                                try:
                                     sent_msg = await bot.send_video(
                                         chat_id=t_chat,
                                         video=vf,
@@ -1432,9 +1457,15 @@ async def start_render_pipeline(
                                     )
                                     if sent_msg and sent_msg.video:
                                         cached_telegram_file_id = sent_msg.video.file_id
-                                sent_ok = True
-                        except Exception as ex_upload:
-                            logger.warning(f"send_video HTML thất bại tới chat {t_chat}: {ex_upload}, thử gửi lại không parse_mode...")
+                                    sent_ok = True
+                                finally:
+                                    if thumb_f:
+                                        try:
+                                            thumb_f.close()
+                                        except Exception:
+                                            pass
+                    except Exception as ex_upload:
+                        logger.warning(f"send_video HTML thất bại tới chat {t_chat}: {ex_upload}, thử gửi lại không parse_mode...")
                         try:
                             if cached_telegram_file_id:
                                 await bot.send_video(
@@ -1444,8 +1475,9 @@ async def start_render_pipeline(
                                     reply_markup=post_render_markup,
                                     supports_streaming=True
                                 )
+                                sent_ok = True
                             else:
-                                with open(out_path, "rb") as vf:
+                                with open(upload_vid_path, "rb") as vf:
                                     sent_msg = await bot.send_video(
                                         chat_id=t_chat,
                                         video=vf,
@@ -1457,11 +1489,11 @@ async def start_render_pipeline(
                                     )
                                     if sent_msg and sent_msg.video:
                                         cached_telegram_file_id = sent_msg.video.file_id
-                            sent_ok = True
+                                sent_ok = True
                         except Exception as ex_raw_vid:
                             logger.warning(f"send_video raw thất bại: {ex_raw_vid}, thử gửi dạng document...")
                             try:
-                                with open(out_path, "rb") as vf_doc:
+                                with open(upload_vid_path, "rb") as vf_doc:
                                     sent_doc = await bot.send_document(
                                         chat_id=t_chat,
                                         document=vf_doc,
@@ -1489,6 +1521,12 @@ async def start_render_pipeline(
                         await bot.send_message(chat_id=t_chat, text=fallback_msg, reply_markup=post_render_markup, parse_mode="HTML")
                     except Exception as ex_m:
                         logger.error(f"Không thể gửi tin nhắn thông báo video tới chat {t_chat}: {ex_m}")
+
+            if temp_tg_preview and Path(temp_tg_preview).exists():
+                try:
+                    os.remove(temp_tg_preview)
+                except Exception:
+                    pass
 
             # Xóa tin nhắn trạng thái chờ để nhóm không bị rác
             if status_msg:
