@@ -816,11 +816,13 @@ function renderPipelineTable(videos) {
         let actionButtons = '';
         if (v.status === 'SCRIPT_READY' || v.status === 'MEDIA_READY' || v.status === 'AUDIO_READY') {
             actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Chi tiết kịch bản">🔍</button>`;
+            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openStoryboardModal(${v.id})" title="Kiểm duyệt Storyboard & Đổi Media Pexels/AI" style="font-size:11px; color:#38bdf8; border-color:rgba(56,189,248,0.4);">🎞️ Storyboard</button>`;
             actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openInstantPreviewForJob(${v.id})" title="Xem trước video và phụ đề tức thì" style="font-size:11px; color:#f472b6; border-color:rgba(236,72,153,0.4);">👁️ Xem trước</button>`;
             actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openScriptEditor(${v.id})" title="Chỉnh sửa kịch bản" style="font-size:11px;">✏️ Sửa</button>`;
             actionButtons += `<button class="btn btn-primary btn-sm" onclick="triggerWebRender(${v.id})" title="Xuất Video" style="font-size:11px;">🚀 Render</button>`;
         } else if (v.status === 'FAILED') {
             actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openVideoDetail(${v.id})" title="Xem chi tiết lỗi">🔍</button>`;
+            actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openStoryboardModal(${v.id})" title="Kiểm duyệt Storyboard & Đổi Media Pexels/AI" style="font-size:11px; color:#38bdf8; border-color:rgba(56,189,248,0.4);">🎞️ Storyboard</button>`;
             actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openInstantPreviewForJob(${v.id})" title="Xem trước kịch bản" style="font-size:11px; color:#f472b6; border-color:rgba(236,72,153,0.4);">👁️ Xem trước</button>`;
             actionButtons += `<button class="btn btn-secondary btn-sm" onclick="openScriptEditor(${v.id})" title="Chỉnh sửa kịch bản" style="font-size:11px;">✏️ Sửa</button>`;
             actionButtons += `<button class="btn btn-primary btn-sm" onclick="triggerWebRender(${v.id})" title="Thử render lại" style="font-size:11px;background:var(--accent-amber);border-color:var(--accent-amber);">🔄 Thử lại</button>`;
@@ -1353,6 +1355,7 @@ async function openVideoDetail(jobId) {
             <div class="scenes-list" style="margin-top:8px;">${scenesHTML}</div>
         </div>` : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+            ${(data.status === 'SCRIPT_READY' || data.status === 'FAILED') ? `<button class="btn btn-secondary btn-sm" onclick="closeModal(); openStoryboardModal(${data.id});" style="color:#38bdf8; border-color:rgba(56,189,248,0.4); font-weight:600;">🎞️ Mở Storyboard Swapper</button>` : ''}
             ${(data.status === 'SCRIPT_READY' || data.status === 'FAILED') ? `<button class="btn btn-secondary btn-sm" onclick="closeModal(); openInstantPreviewForJob(${data.id});" style="color:#f472b6; border-color:rgba(236,72,153,0.4); font-weight:600;">👁️ Xem Trước Nhanh</button>` : ''}
             ${(data.status === 'SCRIPT_READY' || data.status === 'FAILED') ? `<button class="btn btn-primary btn-sm" onclick="closeModal(); triggerWebRender(${data.id});">🚀 ${data.status === 'FAILED' ? 'Thử Render Lại' : 'Bắt Đầu Render'}</button>` : ''}
             ${(data.status === 'SCRIPT_READY' || data.status === 'FAILED') ? `<button class="btn btn-secondary btn-sm" onclick="closeModal(); openScriptEditor(${data.id});">✏️ Chỉnh Sửa Kịch Bản</button>` : ''}
@@ -7000,6 +7003,41 @@ async function startRepurposerAnalysis() {
     }
 }
 
+function switchRepurposeViewMode(mode) {
+    const mashupContainer = document.getElementById('repurposer-mashup-container');
+    const momentsContainer = document.getElementById('repurposer-moments-container');
+    const mashupBtn = document.getElementById('repurpose-tab-mashup-btn');
+    const momentsBtn = document.getElementById('repurpose-tab-moments-btn');
+
+    if (mode === 'mashup') {
+        if (mashupContainer) mashupContainer.style.display = 'block';
+        if (momentsContainer) momentsContainer.style.display = 'none';
+        if (mashupBtn) {
+            mashupBtn.className = 'btn btn-primary';
+            mashupBtn.style.background = 'linear-gradient(135deg, #10b981, #06b6d4)';
+            mashupBtn.style.fontWeight = '800';
+        }
+        if (momentsBtn) {
+            momentsBtn.className = 'btn btn-secondary';
+            momentsBtn.style.background = '';
+            momentsBtn.style.fontWeight = '600';
+        }
+    } else {
+        if (mashupContainer) mashupContainer.style.display = 'none';
+        if (momentsContainer) momentsContainer.style.display = 'block';
+        if (mashupBtn) {
+            mashupBtn.className = 'btn btn-secondary';
+            mashupBtn.style.background = '';
+            mashupBtn.style.fontWeight = '600';
+        }
+        if (momentsBtn) {
+            momentsBtn.className = 'btn btn-primary';
+            momentsBtn.style.background = 'linear-gradient(135deg, #10b981, #06b6d4)';
+            momentsBtn.style.fontWeight = '800';
+        }
+    }
+}
+
 function renderRepurposerResults(data, originalSource) {
     const section = document.getElementById('repurposer-results-section');
     if (!section) return;
@@ -7007,6 +7045,7 @@ function renderRepurposerResults(data, originalSource) {
 
     const meta = data.metadata || {};
     const moments = data.moments || [];
+    const mashups = data.mashups || [];
 
     const thumbImg = document.getElementById('repurposer-video-thumb');
     if (thumbImg) {
@@ -7024,6 +7063,16 @@ function renderRepurposerResults(data, originalSource) {
         transEl.textContent = data.has_transcript 
             ? `Đã nạp ${data.transcript_count} dòng phụ đề chuẩn` 
             : 'Phân tích đa phương thức AI';
+    }
+
+    // Render Mashups
+    renderRepurposerMashups(mashups, originalSource);
+
+    // Switch view default: prioritize Mashup if available
+    if (mashups && mashups.length > 0) {
+        switchRepurposeViewMode('mashup');
+    } else {
+        switchRepurposeViewMode('moments');
     }
 
     const countBadge = document.getElementById('repurposer-moments-count');
@@ -7231,27 +7280,35 @@ function renderRepurposerResults(data, originalSource) {
 
             <!-- RENDER SHORT CONTROLS -->
             <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top:14px; margin-top:8px;">
-                <div style="display:grid; grid-template-columns: 1.2fr 1fr 0.8fr; gap:10px; margin-bottom:12px; font-size:12px;">
+                <div style="display:grid; grid-template-columns: 1.15fr 0.95fr 0.95fr 0.7fr; gap:8px; margin-bottom:12px; font-size:12px;">
                     <div>
                         <label style="font-size:11px; color:#94a3b8; font-weight:600;">Bố Cục 9:16:</label>
                         <select id="moment-layout-${idx}" class="form-select" style="font-size:11px; padding:4px 8px; height:auto;">
-                            <option value="smart_crop_full" selected>🚀 Fullscreen (Tự Xóa Logo)</option>
-                            <option value="blur_background">📺 Blur Box (Hộp Mờ 3 Tầng)</option>
-                            <option value="center_crop">🎯 Center Crop (Cắt Giữa)</option>
+                            <option value="smart_crop_full" selected>🚀 Fullscreen 9:16 (Xóa Logo TV, cận cảnh 100%)</option>
+                            <option value="center_crop">🎯 Center Crop 9:16 (Cắt giữa)</option>
+                            <option value="blur_background">⚠️ Blur Canvas (Khung 16:9 lọt thỏm)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:11px; color:#94a3b8; font-weight:600;">Tiêu Điểm Crop:</label>
+                        <select id="moment-focus-${idx}" class="form-select" style="font-size:11px; padding:4px 8px; height:auto;" title="Chọn vị trí người nói để tránh bị lệch mặt">
+                            <option value="center" selected>🎯 Giữa (Mặc định)</option>
+                            <option value="left">👈 Khung Trái (Khách)</option>
+                            <option value="right">👉 Khung Phải (MC)</option>
                         </select>
                     </div>
                     <div>
                         <label style="font-size:11px; color:#94a3b8; font-weight:600;">Âm Thanh:</label>
                         <select id="moment-audio-${idx}" class="form-select" style="font-size:11px; padding:4px 8px; height:auto;">
                             <option value="original" selected>🎵 Gốc + Lọc Anti-ID</option>
-                            <option value="ai_voiceover">🎙️ Lồng Tiếng AI + Ducking</option>
+                            <option value="ai_voiceover">🎙️ Thuyết minh AI (Đọc nội dung + Ducking)</option>
                         </select>
                     </div>
                     <div>
                         <label style="font-size:11px; color:#94a3b8; font-weight:600;">Phụ Đề:</label>
                         <div style="display:flex; align-items:center; gap:6px; height:28px;">
-                            <input type="checkbox" id="moment-sub-${idx}" checked style="cursor:pointer; transform:scale(1.1);">
-                            <span style="font-size:11px; color:#e2e8f0;">Safe Zone</span>
+                            <input type="checkbox" id="moment-sub-${idx}" checked style="cursor:pointer; transform:scale(1.2); accent-color:#10b981;">
+                            <span style="font-size:11px; color:#34d399; font-weight:700;">Kinetic ASS</span>
                         </div>
                     </div>
                 </div>
@@ -7343,6 +7400,7 @@ async function renderRepurposedMoment(idx, originalSource) {
     const titleInput = document.getElementById(`moment-title-${idx}`);
     const title = titleInput ? titleInput.value.trim() : m.title;
     const layout = document.getElementById(`moment-layout-${idx}`)?.value || 'smart_crop_full';
+    const cropFocus = document.getElementById(`moment-focus-${idx}`)?.value || 'center';
     const audioMode = document.getElementById(`moment-audio-${idx}`)?.value || 'original';
     const addSub = document.getElementById(`moment-sub-${idx}`)?.checked ?? true;
     const nicheId = currentRepurposeData.niche_id || 'general';
@@ -7370,6 +7428,7 @@ async function renderRepurposedMoment(idx, originalSource) {
                 title: title,
                 niche_id: nicheId,
                 layout_mode: layout,
+                crop_focus: cropFocus,
                 audio_mode: audioMode,
                 add_subtitles: addSub,
                 subtitle_text: m.transcript_snippet || m.title,
@@ -7412,6 +7471,232 @@ async function renderRepurposedMoment(idx, originalSource) {
             box.innerHTML = `
                 <button class="btn btn-primary" onclick="renderRepurposedMoment(${idx}, '${escapeHtml(originalSource)}')" style="width:100%; justify-content:center; background: #ef4444; font-size:12px;">
                     ❌ Thử Lại (Lỗi: ${escapeHtml(e.message)})
+                </button>
+            `;
+        }
+    }
+}
+
+function renderRepurposerMashups(mashups, originalSource) {
+    const mashupListEl = document.getElementById('repurposer-mashup-list');
+    const mashupCountEl = document.getElementById('repurposer-mashup-count');
+    if (mashupCountEl) mashupCountEl.textContent = `${mashups.length} Kịch bản Mashup`;
+    if (!mashupListEl) return;
+    mashupListEl.innerHTML = '';
+
+    if (!mashups || mashups.length === 0) {
+        mashupListEl.innerHTML = `
+            <div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px; background:rgba(0,0,0,0.2); border-radius:10px;">
+                Chưa có kịch bản Mashup nào được tạo cho video này.
+            </div>
+        `;
+        return;
+    }
+
+    mashups.forEach((m, idx) => {
+        const score = m.viral_score || 96;
+        const scoreBadge = `<span style="background: linear-gradient(135deg, #ef4444, #f59e0b); color:#fff; font-weight:800; font-size:12px; padding:4px 12px; border-radius:12px; box-shadow:0 2px 8px rgba(239,68,68,0.4);">🔥 ${score}/100 MASHUP VIRAL TOP</span>`;
+
+        let clipsHtml = '';
+        (m.clips || []).forEach((c, cIdx) => {
+            const roleColors = {
+                'HOOK': '#ef4444',
+                'SETUP': '#38bdf8',
+                'TENSION': '#f59e0b',
+                'CLIMAX': '#a855f7',
+                'LOOP': '#10b981'
+            };
+            const roleColor = roleColors[c.role] || '#10b981';
+            clipsHtml += `
+                <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.08); border-left: 3px solid ${roleColor}; border-radius: 8px; padding: 10px 14px; display: flex; flex-direction: column; gap: 4px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                        <span style="font-size:11px; font-weight:800; color:${roleColor};">
+                            #${c.clip_id || cIdx+1} [${c.role || 'CLIP'}] ${c.context_badge ? `· <span style="color:#f8fafc; font-weight:700;">${escapeHtml(c.context_badge)}</span>` : ''}
+                        </span>
+                        <span style="font-size:11px; color:#94a3b8; background:rgba(0,0,0,0.3); padding:2px 6px; border-radius:4px;">
+                            ⏱️ ${c.start_seconds}s - ${c.end_seconds}s (~${c.duration}s) · 🔍 ${c.zoom_punch || 1.20}x Zoom
+                        </span>
+                    </div>
+                    <div style="font-size:12px; color:#e2e8f0; font-style:italic;">
+                        "${escapeHtml(c.transcript_snippet || c.summary || '')}"
+                    </div>
+                    ${c.summary && c.summary !== c.transcript_snippet ? `<div style="font-size:11px; color:#94a3b8;">${escapeHtml(c.summary)}</div>` : ''}
+                </div>
+            `;
+        });
+
+        const card = document.createElement('div');
+        card.className = 'panel-card';
+        card.style.background = 'linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.9))';
+        card.style.border = '1px solid rgba(16, 185, 129, 0.35)';
+        card.style.borderRadius = '12px';
+        card.style.padding = '20px';
+
+        card.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                <div style="flex:1; min-width:280px;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+                        ${scoreBadge}
+                        <span style="background:rgba(16,185,129,0.15); color:#10b981; font-weight:700; font-size:11px; padding:3px 8px; border-radius:6px;">⚡ ${(m.clips || []).length} Lát cắt xfade</span>
+                        <span style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700; font-size:11px; padding:3px 8px; border-radius:6px;">⏱️ ~${m.total_duration || 50}s Tổng</span>
+                    </div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">Tiêu đề YouTube Shorts (Tối ưu CTR & Search):</label>
+                    <input type="text" id="mashup-title-${idx}" value="${escapeHtml(m.title)}" class="form-input" style="font-weight:700; font-size:14px; width:100%; color:#fff; background:rgba(0,0,0,0.4); border-color:rgba(16,185,129,0.4);" />
+                </div>
+            </div>
+
+            <!-- Story Arc Timeline -->
+            <div style="background:rgba(0,0,0,0.3); border-radius:8px; padding:10px 14px; margin-bottom:14px; border-left:3px solid #06b6d4;">
+                <div style="font-size:11px; color:#38bdf8; font-weight:700; margin-bottom:2px;">🧬 Cấu Trúc Nhịp Điệu Kịch Tính (Story Arc):</div>
+                <div style="font-size:12px; color:#f1f5f9;">${escapeHtml(m.story_arc || m.summary || '')}</div>
+            </div>
+
+            <!-- Micro-Clips List -->
+            <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
+                <div style="font-size:12px; font-weight:700; color:#e2e8f0; display:flex; align-items:center; gap:6px;">
+                    <span>🎞️</span> Trình tự lát cắt bóc tách từ video gốc (Ưu tiên cảnh hành động thực địa):
+                </div>
+                ${clipsHtml}
+            </div>
+
+            <!-- Mashup Controls -->
+            <div style="background:rgba(15,23,42,0.6); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:12px; margin-bottom:16px;">
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:10px;">
+                    <div>
+                        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">📐 Khung hình 9:16:</label>
+                        <select id="mashup-layout-${idx}" class="form-select" style="font-size:12px; padding:5px 8px; background:#0f172a;">
+                            <option value="smart_crop_full" selected>🚀 Smart Fullscreen 9:16 (Xóa sạch Logo TV, phóng to cận cảnh 100%)</option>
+                            <option value="center_crop">🎯 Center Crop 9:16 (Cắt chính giữa)</option>
+                            <option value="blur_background">⚠️ Blur Canvas (Khung 16:9 lọt thỏm - Không khuyên dùng)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">🎯 Tâm điểm Crop Focus:</label>
+                        <select id="mashup-focus-${idx}" class="form-select" style="font-size:12px; padding:5px 8px; background:#0f172a;">
+                            <option value="center" selected>Căn Giữa Tâm (Center Focus)</option>
+                            <option value="left">Khung Trái (Left Focus / Khách mời)</option>
+                            <option value="right">Khung Phải (Right Focus / Host MC)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">🎙️ Chế độ Audio:</label>
+                        <select id="mashup-audio-${idx}" class="form-select" style="font-size:12px; padding:5px 8px; background:#0f172a;">
+                            <option value="original" selected>🔊 Âm thanh gốc + BGM Ducking</option>
+                            <option value="ai_voiceover">🎙️ Thuyết minh AI (Đọc kịch bản từng phân cảnh + BGM)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">🎵 Nhạc Nền BGM Ducking:</label>
+                        <select id="mashup-bgm-${idx}" class="form-select" style="font-size:12px; padding:5px 8px; background:#0f172a;">
+                            <option value="suspense" ${m.bgm_mood === 'suspense' ? 'selected' : ''}>🤫 Dark Suspense (Hồi hộp)</option>
+                            <option value="epic" ${m.bgm_mood === 'epic' ? 'selected' : ''}>⚔️ Inspiring Epic (Hùng tráng)</option>
+                            <option value="chill" ${m.bgm_mood === 'chill' ? 'selected' : ''}>☕ Chill Ambient (Thư giãn)</option>
+                            <option value="cyber" ${m.bgm_mood === 'cyber' ? 'selected' : ''}>⚡ Sci-Fi Cyber (Công nghệ)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:#cbd5e1; border-top:1px solid rgba(255,255,255,0.06); padding-top:8px;">
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;" title="Bắt buộc giữ chân hơn 70% người xem Shorts lướt ở chế độ tắt tiếng">
+                        <input type="checkbox" id="mashup-sub-${idx}" checked style="accent-color:#10b981; transform:scale(1.15);" />
+                        <span style="font-weight:700; color:#34d399;">✨ Phụ đề Kinetic Karaoke ASS + Nhãn Bối Cảnh (Bắt Buộc)</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                        <input type="checkbox" id="mashup-sfx-${idx}" checked style="accent-color:#06b6d4;" />
+                        <span>💨 SFX Whoosh chuyển cảnh</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Action Render Box -->
+            <div id="mashup-render-box-${idx}">
+                <button class="btn btn-primary" onclick="renderRepurposedMashup(${idx}, '${escapeHtml(originalSource)}')" style="width:100%; justify-content:center; background:linear-gradient(135deg, #10b981, #06b6d4); font-weight:800; font-size:13.5px; padding:10px 16px; box-shadow:0 4px 14px rgba(16,185,129,0.3);">
+                    🔥 Nấu Lại Video Shorts Ngay (Render Multi-Clip Mashup)
+                </button>
+            </div>
+        `;
+        mashupListEl.appendChild(card);
+    });
+}
+
+async function renderRepurposedMashup(idx, originalSource) {
+    if (!currentRepurposeData || !currentRepurposeData.mashups || !currentRepurposeData.mashups[idx]) return;
+    const m = currentRepurposeData.mashups[idx];
+
+    const titleInput = document.getElementById(`mashup-title-${idx}`);
+    const title = titleInput ? titleInput.value.trim() : m.title;
+    const layout = document.getElementById(`mashup-layout-${idx}`)?.value || 'smart_crop_full';
+    const cropFocus = document.getElementById(`mashup-focus-${idx}`)?.value || 'center';
+    const audioMode = document.getElementById(`mashup-audio-${idx}`)?.value || 'original';
+    const addSub = document.getElementById(`mashup-sub-${idx}`)?.checked ?? true;
+    const enableSfx = document.getElementById(`mashup-sfx-${idx}`)?.checked ?? true;
+    const bgmMood = document.getElementById(`mashup-bgm-${idx}`)?.value || 'suspense';
+    const nicheId = currentRepurposeData.niche_id || 'general';
+    const mode = currentRepurposeData.mode || 'self_owned';
+
+    const box = document.getElementById(`mashup-render-box-${idx}`);
+    if (box) {
+        box.innerHTML = `
+            <div style="text-align:center; padding:12px; background:rgba(16,185,129,0.1); border-radius:8px; border:1px solid rgba(16,185,129,0.3);">
+                <div class="spinner" style="width:20px; height:20px; border-width:2px; margin:0 auto 8px auto;"></div>
+                <div style="font-size:12.5px; font-weight:700; color:#10b981;">⚡ Đang nấu lại Mashup Multi-Clip...</div>
+                <div style="font-size:11px; color:#94a3b8; margin-top:2px;">Bóc tách ${m.clips.length} lát cắt, ghép nối xfade, mix BGM & đốt phụ đề (10 - 20s)</div>
+            </div>
+        `;
+    }
+
+    try {
+        const res = await fetch('/api/repurposer/render-mashup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                source: originalSource,
+                clips: m.clips,
+                title: title,
+                niche_id: nicheId,
+                layout_mode: layout,
+                crop_focus: cropFocus,
+                audio_mode: audioMode,
+                add_subtitles: addSub,
+                enable_sfx: enableSfx,
+                bgm_mood: bgmMood,
+                mode: mode,
+                source_url: currentRepurposeData?.metadata?.webpage_url || (originalSource.startsWith('http') ? originalSource : ''),
+                author: currentRepurposeData?.metadata?.author || '',
+                channel_name: document.getElementById('repurposer-channel-select')?.options[document.getElementById('repurposer-channel-select')?.selectedIndex]?.text || '',
+                device_id: getDeviceId(),
+                device_name: getDeviceName()
+            })
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Lỗi khi render Mashup');
+        }
+
+        const data = await res.json();
+        showToast('🎉 Đã nấu lại Video Shorts Mashup 9:16 thành công!', 'success');
+
+        if (box) {
+            box.innerHTML = `
+                <div style="display:flex; gap:8px;">
+                    <button class="btn btn-primary" onclick="openRepurposedPlayer('${data.relative_url}', '${escapeHtml(title)}', '${data.filename || data.relative_url.split('/').pop()}')" style="flex:1; justify-content:center; background:#10b981; font-size:12px; font-weight:700;">
+                        ▶️ Xem Video Short Mashup
+                    </button>
+                    <a href="${data.relative_url}" download class="btn btn-secondary" style="font-size:12px; padding:6px 10px;" title="Tải về">
+                        ⬇️
+                    </a>
+                </div>
+            `;
+        }
+
+        loadRepurposerClips();
+    } catch (err) {
+        showToast('Lỗi: ' + err.message, 'error');
+        if (box) {
+            box.innerHTML = `
+                <button class="btn btn-primary" onclick="renderRepurposedMashup(${idx}, '${escapeHtml(originalSource)}')" style="width:100%; justify-content:center; background:linear-gradient(135deg, #10b981, #06b6d4); font-weight:700;">
+                    🔄 Thử Lại Nấu Video Mashup
                 </button>
             `;
         }
@@ -8561,6 +8846,408 @@ async function sendAutoPilotReminderAlert() {
         }
     } catch (err) {
         showToast(`❌ Lỗi: ${err.message}`, 'error');
+    }
+}
+/* ══════════════════════════════════════════════════════════════════════════════
+   1. FORMULA DECONSTRUCTOR & CLONER CONTROLLER (OPENMONTAGE STYLE)
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+let currentBlueprint = null;
+
+function switchCreatorMode(mode) {
+    const btnStd = document.getElementById('btn-mode-standard');
+    const btnClone = document.getElementById('btn-mode-clone');
+    const formStd = document.getElementById('create-script-form');
+    const formClone = document.getElementById('clone-formula-form');
+
+    if (mode === 'clone') {
+        if (btnStd) btnStd.classList.remove('active', 'btn-primary');
+        if (btnStd) btnStd.classList.add('btn-secondary');
+        if (btnClone) btnClone.classList.add('active', 'btn-primary');
+        if (btnClone) btnClone.classList.remove('btn-secondary');
+        if (formStd) formStd.style.display = 'none';
+        if (formClone) formClone.style.display = 'block';
+
+        // Tự động sao chép danh sách kênh sang selector của clone
+        const srcCh = document.getElementById('input-channel');
+        const tgtCh = document.getElementById('input-clone-channel');
+        if (srcCh && tgtCh && tgtCh.children.length <= 1) {
+            tgtCh.innerHTML = srcCh.innerHTML;
+        }
+    } else {
+        if (btnStd) btnStd.classList.add('active', 'btn-primary');
+        if (btnStd) btnStd.classList.remove('btn-secondary');
+        if (btnClone) btnClone.classList.remove('active', 'btn-primary');
+        if (btnClone) btnClone.classList.add('btn-secondary');
+        if (formStd) formStd.style.display = 'block';
+        if (formClone) formClone.style.display = 'none';
+    }
+}
+
+async function deconstructFormula() {
+    const urlInput = document.getElementById('input-clone-url');
+    const langSelect = document.getElementById('input-clone-source-lang');
+    const btn = document.getElementById('btn-deconstruct');
+    const val = urlInput ? urlInput.value.trim() : '';
+
+    if (!val) {
+        showToast('Vui lòng nhập đường link video hoặc đoạn transcript để giải phẫu.', 'error');
+        return;
+    }
+
+    const origText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner" style="display:inline-block;width:12px;height:12px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 0.6s linear infinite;margin-right:6px;"></span> Đang phân tích công thức viral...`;
+
+    try {
+        const res = await apiPost('/api/formula/deconstruct', {
+            url: val,
+            language: langSelect ? langSelect.value : 'en'
+        });
+
+        if (res && res.success && res.blueprint) {
+            currentBlueprint = res.blueprint;
+            renderBlueprintCard(res.blueprint, res.metadata);
+            showToast('✅ Đã giải mã thành công công thức & nhịp điệu video!', 'success');
+        } else {
+            showToast('Không thể giải phẫu video: ' + (res?.detail || 'Lỗi không xác định'), 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi giải phẫu công thức: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = origText;
+    }
+}
+
+function renderBlueprintCard(bp, meta) {
+    const card = document.getElementById('blueprint-display-card');
+    const targetBox = document.getElementById('clone-target-box');
+    if (!card) return;
+
+    card.style.display = 'block';
+    if (targetBox) targetBox.style.display = 'block';
+
+    const titleEl = document.getElementById('bp-video-title');
+    if (titleEl) titleEl.textContent = (meta && meta.title) || bp.title || 'Video Phân Tích';
+
+    const metricsEl = document.getElementById('bp-metrics');
+    if (metricsEl) metricsEl.textContent = `⏱️ ~${Math.round(bp.total_estimated_seconds || 50)}s · ~${bp.words_per_minute || 150} WPM · Nhịp ngắt: ~${bp.retention_curve?.pattern_interrupt_interval_seconds || 3.5}s`;
+
+    const badgeEl = document.getElementById('bp-badge-formula');
+    if (badgeEl) badgeEl.textContent = bp.viral_formula_summary ? `⚡ ${bp.viral_formula_summary.slice(0, 45)}...` : 'Cấu Trúc Viral';
+
+    const hookTypeEl = document.getElementById('bp-hook-type');
+    if (hookTypeEl) hookTypeEl.textContent = bp.hook_analysis?.hook_archetype || 'Curiosity Gap';
+
+    const hookTrigEl = document.getElementById('bp-hook-trigger');
+    if (hookTrigEl) hookTrigEl.textContent = bp.hook_analysis?.retention_trigger || (bp.hook_analysis?.text ? `"${bp.hook_analysis.text.slice(0, 70)}..."` : '—');
+
+    const loopEl = document.getElementById('bp-loop-phrase');
+    if (loopEl) loopEl.textContent = bp.loop_mechanism?.closing_phrase ? `"${bp.loop_mechanism.closing_phrase}" ➔ Nối liền về Hook` : 'Nối liền câu kết thúc về đầu video';
+
+    const beatsList = document.getElementById('bp-beats-list');
+    if (beatsList) {
+        beatsList.innerHTML = (bp.beats || []).map(b => `
+            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:6px 10px; font-size:11.5px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="badge ${b.role === 'HOOK' ? 'badge-rose' : (b.role === 'SEAMLESS_LOOP' ? 'badge-purple' : 'badge-cyan')}" style="font-size:10px; padding:1px 6px;">
+                        ${esc(b.role || 'SCENE')}
+                    </span>
+                    <span style="color:#e2e8f0;">${esc(b.story_function || 'Phân cảnh')}</span>
+                </div>
+                <div style="color:var(--text-muted); font-weight:700;">~${b.duration_seconds || 4}s</div>
+            </div>
+        `).join('');
+    }
+}
+
+async function generateFromFormula() {
+    if (!currentBlueprint) {
+        showToast('Vui lòng phân tích một video trước khi nhân bản kịch bản.', 'error');
+        return;
+    }
+
+    const topicInput = document.getElementById('input-clone-new-topic');
+    const chSelect = document.getElementById('input-clone-channel');
+    const langSelect = document.getElementById('input-clone-target-lang');
+    const btn = document.getElementById('btn-generate-cloned');
+
+    const topic = topicInput ? topicInput.value.trim() : '';
+    if (!topic) {
+        showToast('Vui lòng nhập chủ đề cho video mới.', 'error');
+        if (topicInput) topicInput.focus();
+        return;
+    }
+
+    const origText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner" style="display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 0.6s linear infinite;margin-right:8px;"></span> Đang nhân bản kịch bản chuẩn nhịp điệu...`;
+
+    try {
+        const res = await apiPost('/api/formula/generate', {
+            blueprint: currentBlueprint,
+            new_topic: topic,
+            channel_id: chSelect ? chSelect.value : 'channel_maya',
+            language: langSelect ? langSelect.value : 'en'
+        });
+
+        if (res && res.success && res.job_id) {
+            showToast('🎉 Đã tạo kịch bản nhân bản thành công! Đang mở Storyboard...', 'success');
+            // Mở trực tiếp Storyboard Swapper để người dùng duyệt media
+            openStoryboardModal(res.job_id);
+            fetchVideos();
+        } else {
+            showToast('Lỗi: ' + (res?.detail || 'Không thể tạo kịch bản'), 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi nhân bản kịch bản: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = origText;
+    }
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   2. STORYBOARD DIRECTOR & MEDIA SWAPPER GATE CONTROLLER
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+let currentStoryboardJobId = null;
+let targetUploadSceneId = null;
+
+async function openStoryboardModal(jobId) {
+    currentStoryboardJobId = jobId;
+    const modal = document.getElementById('modal-storyboard-swapper');
+    const grid = document.getElementById('storyboard-scenes-grid');
+    const titleEl = document.getElementById('storyboard-modal-title');
+    const badgeEl = document.getElementById('storyboard-job-badge');
+    const infoEl = document.getElementById('storyboard-footer-info');
+
+    if (!modal || !grid) return;
+
+    if (badgeEl) badgeEl.textContent = `Job #${jobId}`;
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-muted);"><span class="spinner" style="display:inline-block;width:24px;height:24px;border:3px solid var(--accent-cyan);border-top-color:transparent;border-radius:50%;animation:spin 0.6s linear infinite;margin-bottom:12px;"></span><br>Đang nạp Storyboard và tài nguyên phân cảnh...</div>`;
+    modal.classList.add('visible');
+
+    try {
+        const res = await apiGet(`/api/videos/${jobId}/storyboard`);
+        if (!res || !res.scenes) {
+            grid.innerHTML = `<div style="grid-column:1/-1;color:var(--accent-rose);text-align:center;padding:30px;">Không tìm thấy phân cảnh nào trong Job này.</div>`;
+            return;
+        }
+
+        if (titleEl) titleEl.textContent = res.title || `Job #${jobId}`;
+        if (infoEl) infoEl.innerHTML = `<span>📊 <strong>${res.scenes.length} phân cảnh</strong> · Kênh: <strong style="color:var(--accent-cyan);">${esc(res.target_channel_id || 'Chưa gán')}</strong> · Trạng thái: <strong style="color:#f59e0b;">${res.status}</strong></span>`;
+
+        renderStoryboardGrid(res.scenes, jobId);
+    } catch (e) {
+        grid.innerHTML = `<div style="grid-column:1/-1;color:var(--accent-rose);text-align:center;padding:30px;">Lỗi tải Storyboard: ${esc(e.message)}</div>`;
+    }
+}
+
+function closeStoryboardModal() {
+    const modal = document.getElementById('modal-storyboard-swapper');
+    if (modal) modal.classList.remove('visible');
+    currentStoryboardJobId = null;
+}
+
+function renderStoryboardGrid(scenes, jobId) {
+    const grid = document.getElementById('storyboard-scenes-grid');
+    if (!grid) return;
+
+    if (scenes.length === 0) {
+        grid.innerHTML = `<div style="grid-column:1/-1;color:var(--text-muted);text-align:center;padding:30px;">Chưa có phân cảnh nào.</div>`;
+        return;
+    }
+
+    grid.innerHTML = scenes.map((s) => {
+        const isVid = (s.media_type === 'video');
+        const hasMedia = s.has_media && s.media_url;
+
+        let badgeSource = '';
+        if (s.source === 'pexels_video') {
+            badgeSource = '<span class="badge badge-amber" style="font-size:10.5px;">🎥 Pexels 9:16 Video</span>';
+        } else if (s.source === 'pexels_photo') {
+            badgeSource = '<span class="badge badge-cyan" style="font-size:10.5px;">📸 Pexels Photo</span>';
+        } else if (s.source === 'ai_image') {
+            badgeSource = '<span class="badge badge-purple" style="font-size:10.5px;">✨ Ảnh AI 8K</span>';
+        } else if (s.source === 'ai_video') {
+            badgeSource = '<span class="badge" style="background:linear-gradient(135deg,#ec4899,#8b5cf6);color:#fff;font-size:10.5px;">🔮 AI Video Motion</span>';
+        } else if (s.source === 'user_upload') {
+            badgeSource = '<span class="badge badge-green" style="font-size:10.5px;">📁 Tải lên cá nhân</span>';
+        } else {
+            badgeSource = s.is_hook ? '<span class="badge badge-rose" style="font-size:10.5px;">⚡ Scene 1 Hook</span>' : '<span class="badge" style="font-size:10.5px;background:rgba(255,255,255,0.08);">⏳ Tự động khi Render</span>';
+        }
+
+        let mediaDisplay = '';
+        if (hasMedia) {
+            if (isVid) {
+                mediaDisplay = `<video src="${s.media_url}" controls muted loop playsinline style="width:100%;height:180px;object-fit:cover;border-radius:8px;background:#000;"></video>`;
+            } else {
+                mediaDisplay = `<div style="width:100%;height:180px;border-radius:8px;background:url('${s.media_url}') center/cover no-repeat;border:1px solid rgba(255,255,255,0.1);"></div>`;
+            }
+        } else {
+            mediaDisplay = `
+                <div style="width:100%;height:180px;border-radius:8px;background:linear-gradient(135deg,rgba(15,23,42,0.8),rgba(30,41,59,0.9));border:1px dashed rgba(255,255,255,0.15);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:12px;text-align:center;">
+                    <span style="font-size:26px;">${s.is_hook ? '🔥' : '🎬'}</span>
+                    <span style="font-size:11px;color:var(--text-muted);">Sẽ tự động tìm video 9:16 tốt nhất hoặc bấm nút bên dưới để chọn ngay</span>
+                </div>
+            `;
+        }
+
+        return `
+        <div class="card" id="storyboard-scene-card-${s.scene_id}" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;">
+            <!-- Scene Header -->
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <strong style="color:#fff;font-size:13px;">Cảnh ${s.scene_id}</strong>
+                    <span style="font-size:11px;color:var(--text-muted);">(~${Math.round(s.estimated_seconds)}s)</span>
+                </div>
+                ${badgeSource}
+            </div>
+
+            <!-- Media Preview -->
+            <div id="scene-media-preview-${s.scene_id}">
+                ${mediaDisplay}
+            </div>
+
+            <!-- Narration & Keywords -->
+            <div style="flex-grow:1;display:flex;flex-direction:column;gap:4px;">
+                <div style="font-size:12px;color:#f1f5f9;line-height:1.45;background:rgba(0,0,0,0.2);padding:8px 10px;border-radius:6px;border-left:3px solid var(--accent-cyan);">
+                    "${esc(s.narration)}"
+                </div>
+                <div style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px;margin-top:2px;">
+                    <span>🔍 Từ khóa:</span>
+                    <span style="color:#38bdf8;font-weight:600;">${esc(s.stock_query || s.visual_keyword || 'auto')}</span>
+                </div>
+            </div>
+
+            <!-- Swapper Toolbar -->
+            <div style="display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,0.06);padding-top:10px;">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="promptSwapMedia(${jobId}, ${s.scene_id}, 'pexels_video')" title="Tìm và thay thế bằng video Pexels 9:16 khác" style="flex:1;min-width:90px;font-size:11px;padding:4px 8px;border-color:rgba(245,158,11,0.4);color:#fbbf24;">
+                    🎥 Đổi Video
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="promptSwapMedia(${jobId}, ${s.scene_id}, 'ai_image')" title="Sinh ảnh AI 8K mới cho cảnh này" style="flex:1;min-width:80px;font-size:11px;padding:4px 8px;border-color:rgba(192,132,252,0.4);color:#c084fc;">
+                    ✨ Vẽ Lại AI
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="triggerStoryboardUpload(${jobId}, ${s.scene_id})" title="Tải file video hoặc ảnh từ máy tính lên" style="font-size:11px;padding:4px 8px;">
+                    📁 Tải File
+                </button>
+            </div>
+        </div>
+        `;
+    }).join('');
+}
+
+async function promptSwapMedia(jobId, sceneId, mode) {
+    let modeLabel = 'Video Pexels 9:16';
+    let defaultVal = '';
+    if (mode === 'pexels_video') {
+        modeLabel = 'Video chuyển động Pexels (9:16)';
+        defaultVal = prompt(`Nhập từ khóa tiếng Anh để tìm clip ${modeLabel} mới cho Cảnh ${sceneId}:\n(Ví dụ: lion running savanna, stormy ocean waves, dark neon city)`, '');
+    } else if (mode === 'ai_image') {
+        modeLabel = 'Ảnh AI điện ảnh 8K';
+        defaultVal = prompt(`Nhập Prompt mô tả hình ảnh AI mới cho Cảnh ${sceneId}:`, '');
+    } else {
+        defaultVal = prompt(`Nhập từ khóa tìm kiếm:`, '');
+    }
+
+    if (defaultVal === null) return; // User cancelled
+
+    const previewBox = document.getElementById(`scene-media-preview-${sceneId}`);
+    if (previewBox) {
+        previewBox.innerHTML = `<div style="height:180px;display:flex;align-items:center;justify-content:center;background:#000;border-radius:8px;color:#38bdf8;font-size:12px;"><span class="spinner" style="display:inline-block;width:14px;height:14px;border:2px solid #38bdf8;border-top-color:transparent;border-radius:50%;animation:spin 0.6s linear infinite;margin-right:6px;"></span> Đang tìm nạp & xử lý media mới...</div>`;
+    }
+
+    try {
+        const payload = { mode };
+        if (mode === 'ai_image') payload.custom_prompt = defaultVal.trim();
+        else payload.search_query = defaultVal.trim();
+
+        const res = await apiPost(`/api/videos/${jobId}/scenes/${sceneId}/swap`, payload);
+        if (res && res.success) {
+            showToast(`✅ Đã thay thế media Cảnh ${sceneId} thành công!`, 'success');
+            openStoryboardModal(jobId);
+        } else {
+            showToast(`Lỗi: ${res?.detail || 'Không thể đổi media'}`, 'error');
+            openStoryboardModal(jobId);
+        }
+    } catch (e) {
+        showToast(`Lỗi hoán đổi media: ${e.message}`, 'error');
+        openStoryboardModal(jobId);
+    }
+}
+
+function triggerStoryboardUpload(jobId, sceneId) {
+    targetUploadSceneId = sceneId;
+    const fileInput = document.getElementById('storyboard-upload-input');
+    if (fileInput) {
+        fileInput.value = '';
+        fileInput.click();
+    }
+}
+
+async function handleStoryboardFileSelected(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file || !currentStoryboardJobId || !targetUploadSceneId) return;
+
+    const sceneId = targetUploadSceneId;
+    const jobId = currentStoryboardJobId;
+
+    const previewBox = document.getElementById(`scene-media-preview-${sceneId}`);
+    if (previewBox) {
+        previewBox.innerHTML = `<div style="height:180px;display:flex;align-items:center;justify-content:center;background:#000;border-radius:8px;color:#10b981;font-size:12px;"><span class="spinner" style="display:inline-block;width:14px;height:14px;border:2px solid #10b981;border-top-color:transparent;border-radius:50%;animation:spin 0.6s linear infinite;margin-right:6px;"></span> Đang tải lên file cá nhân...</div>`;
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const res = await fetch(`/api/videos/${jobId}/scenes/${sceneId}/upload`, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        if (data && data.success) {
+            showToast(`✅ Đã tải lên file cho Cảnh ${sceneId} thành công!`, 'success');
+            openStoryboardModal(jobId);
+        } else {
+            showToast(`Lỗi upload: ${data.detail || 'Không thể tải file'}`, 'error');
+            openStoryboardModal(jobId);
+        }
+    } catch (e) {
+        showToast(`Lỗi tải lên file: ${e.message}`, 'error');
+        openStoryboardModal(jobId);
+    }
+}
+
+async function renderApprovedStoryboard() {
+    if (!currentStoryboardJobId) return;
+    const jobId = currentStoryboardJobId;
+    const btn = document.getElementById('btn-render-approved');
+
+    const origText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner" style="display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 0.6s linear infinite;margin-right:8px;"></span> Đang bắt đầu render...`;
+
+    try {
+        const res = await apiPost(`/api/videos/${jobId}/render-approved`, {});
+        if (res && res.success) {
+            showToast(`🚀 Video #${jobId} đã duyệt Storyboard và bắt đầu render hoàn chỉnh!`, 'success');
+            closeStoryboardModal();
+            switchTab('pipeline');
+            fetchVideos();
+        } else {
+            showToast(`Lỗi render: ${res?.detail || 'Không thể kích hoạt render'}`, 'error');
+        }
+    } catch (e) {
+        showToast(`Lỗi render: ${e.message}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origText;
+        }
     }
 }
 

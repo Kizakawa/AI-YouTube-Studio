@@ -190,6 +190,25 @@ class QuotaTracker(Base):
     last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class PublishedVideo(Base):
+    """Thư viện video đã đăng trên YouTube (đồng bộ từ YouTube + video do hệ thống đăng)."""
+    __tablename__ = "published_videos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    channel_id = Column(String(100), nullable=False, index=True)
+    youtube_video_id = Column(String(100), nullable=False, unique=True, index=True)
+    title = Column(String(500), nullable=True)
+    description = Column(Text, nullable=True)
+    published_at = Column(DateTime, nullable=True)
+    views = Column(Integer, default=0)
+    source = Column(String(30), default="system")   # 'system' | 'youtube_sync'
+    job_id = Column(Integer, nullable=True)
+    summary = Column(Text, nullable=True)           # Tóm tắt ngắn (AI hoặc fallback)
+    summary_is_ai = Column(Integer, default=0)
+    topic_tags = Column(Text, nullable=True)        # JSON list
+    topic_cluster = Column(String(150), nullable=True)
+    last_synced_at = Column(DateTime, default=datetime.utcnow)
+
 
 def log_activity(db, telegram_id: int, username: str, action_type: str, details: str, channel_id: str = None):
     """Hàm tiện ích ghi lại vết hành động của thành viên để theo dõi trên Web Dashboard.

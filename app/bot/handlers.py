@@ -4449,6 +4449,87 @@ async def get_video_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_video_file_handler(update, context, job_id)
 
 
+def _match_channel_from_text(text: str) -> Optional[Dict[str, Any]]:
+    """Tìm kênh được nhắc tên trong câu (so khớp không phân biệt hoa thường)."""
+    low = (text or "").lower()
+    try:
+        for ch in settings.get_channels_config():
+            name = (ch.get("name") or "").lower()
+            if name and (name in low or (ch.get("id") or "").lower() in low):
+                return ch
+    except Exception:
+        pass
+    return None
+
+
+_LIBRARY_INTENT_RE = re.compile(
+    r"(đã\s*(đăng|up|tải lên)\s*(những\s*|các\s*)?(video|clip|short)|đăng\s*(những|các)?\s*video\s*(nào|gì)|thư\s*viện\s*video|"
+    r"(có|làm)\s*video\s*(về|nào).*(chưa|rồi)|video\s*nào\s*(đã|rồi))",
+    re.IGNORECASE,
+)
+
+
+async def _send_library_answer(update: Update, query: str = "", channel: Optional[Dict[str, Any]] = None):
+    from app.services import video_library
+    await asyncio.to_thread(video_library.backfill_from_jobs)
+    ch_id = channel.get("id") if channel else ""
+    vids = await asyncio.to_thread(video_library.list_videos, ch_id, query, 200)
+    head = "📚 THƯ VIỆN VIDEO ĐÃ ĐĂNG"
+    if channel:
+        head += f" — {channel.get('name')}"
+    if query:
+        head += f" · tìm “{query}”"
+    head += f"\nTổng: {len(vids)} video"
+    await safe_reply(update, video_library.format_library_text(vids, head), parse_mode=None)
+
+
+async def library_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/library [tên kênh] [từ khóa] — xem video đã đăng; /library sync — đồng bộ từ YouTube."""
+    if not is_authorized(update):
+        return
+    args_text = " ".join(context.args or []).strip()
+
+    if args_text.lower() in ("sync", "dongbo", "đồng bộ"):
+        msg = await update.effective_message.reply_text("⏳ Đang đồng bộ danh sách video từ YouTube…")
+        from app.services import video_library
+        res = await asyncio.to_thread(video_library.sync_all)
+        if res.get("ok") is False:
+            await msg.edit_text(f"⚠️ {res.get('error')}")
+            return
+        lines = ["✅ Đồng bộ xong:"]
+        for c in res.get("channels", []):
+            if c.get("ok"):
+                lines.append(f"• {c['channel_id']}: +{c['added']} mới, {c['updated']} cập nhật")
+            else:
+                lines.append(f"• {c['channel_id']}: ⚠️ {c['error']}")
+        lines.append(f"📝 Đã tóm tắt {res.get('summarized', 0)} video")
+        await msg.edit_text("\n".join(lines))
+        return
+
+    channel = _match_channel_from_text(args_text)
+    query = args_text
+    if channel:
+        query = re.sub(re.escape(channel.get("name") or ""), "", query, flags=re.IGNORECASE).strip()
+    await _send_library_answer(update, query, channel)
+
+
+async def web_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gửi link truy cập Web Dashboard"""
+    if not is_authorized(update):
+        return
+    import os
+    port = int(os.getenv("PORT", 8000))
+    web_url = os.getenv("WEB_DASHBOARD_URL") or f"http://localhost:{port}"
+
+    msg = (
+        "🌐 **ĐỊA CHỈ TRUY CẬP WEB DASHBOARD:**\n\n"
+        f"👉 `{web_url}`\n\n"
+        "💡 Bạn có thể mở trực tiếp đường link trên bằng bất kỳ trình duyệt nào."
+    )
+    keyboard = [
+        [InlineKeyboardButton("💻 Mở Web Dashboard", url=web_url)]
+    ]
+    await safe_reply(update, msg, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def _show_schedule_view(update: Update, context: ContextTypes.DEFAULT_TYPE, channel_id: Optional[str] = None):
     """Hiển thị bảng phân bổ lịch phát sóng khe giờ vàng và danh sách video sắp công chiếu."""
@@ -4795,6 +4876,23 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     if not clean_text:
         await safe_reply(update, f"👋 Chào {user.first_name}! Bạn muốn cùng AI lên ý tưởng video gì hôm nay?")
         return
+
+    # Hỏi tự nhiên về video đã đăng → trả lời từ Thư Viện Video (không tốn quota AI)
+    if (
+        not any(k.startswith("awaiting_") for k in context.user_data.keys())
+        and _LIBRARY_INTENT_RE.search(clean_text)
+        and len(clean_text) < 160
+    ):
+        lib_channel = _match_channel_from_text(clean_text)
+        lib_query = ""
+        m_topic = re.search(r"video\s+về\s+(.+?)\s*(chưa|rồi|không|chưa\?|\?|$)", clean_text, re.IGNORECASE)
+        if m_topic:
+            lib_query = m_topic.group(1).strip()
+        try:
+            await _send_library_answer(update, lib_query, lib_channel)
+            return
+        except Exception as e_lib:
+            logger.warning(f"Library intent lỗi, chuyển sang chat thường: {e_lib}")
 
     # Xử lý nhập liệu tương tác cho kênh (đổi tên hoặc tạo kênh mới)
     if context.user_data.get("awaiting_rename"):

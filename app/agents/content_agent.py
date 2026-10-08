@@ -427,7 +427,9 @@ class ContentAgent:
         channel_niche: str = "general",
         language: str = "en",
         director_notes: Optional[str] = None,
-        cooldown_entities: Optional[List[str]] = None
+        cooldown_entities: Optional[List[str]] = None,
+        min_acceptable_score: Optional[float] = None,
+        **kwargs
     ) -> ScriptContract:
         """
         Sinh kịch bản video Shorts viral tối ưu thuật toán giữ chân (AVD > 80%, thời lượng vàng 35-45 giây, 8-10 cảnh).

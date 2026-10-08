@@ -100,6 +100,63 @@ class SceneContract(BaseModel):
         description="Lý do Visual Director chọn chiến lược và phương pháp thị giác này."
     )
 
+    @field_validator("camera_motion", mode="before")
+    @classmethod
+    def sanitize_camera_motion(cls, v: Optional[str]) -> Optional[str]:
+        if not v or not isinstance(v, str):
+            return None
+        v_clean = v.strip().lower()
+        if not v_clean or v_clean in ("none", "null", "auto"):
+            return None
+        allowed = {
+            "zoom_in", "zoom_out", "pan_left", "pan_right",
+            "pan_up", "pan_down", "hyper_zoom", "warp_zoom", "cinematic_drift"
+        }
+        if v_clean in allowed:
+            return v_clean
+        if "out" in v_clean:
+            return "zoom_out"
+        if "hyper" in v_clean or "warp" in v_clean or "speed" in v_clean or "fast" in v_clean or "whip" in v_clean:
+            return "hyper_zoom"
+        if "right" in v_clean:
+            return "pan_right"
+        if "left" in v_clean:
+            return "pan_left"
+        if "up" in v_clean:
+            return "pan_up"
+        if "down" in v_clean:
+            return "pan_down"
+        if "drift" in v_clean or "broll" in v_clean or "cinematic" in v_clean or "glide" in v_clean:
+            return "cinematic_drift"
+        if "pan" in v_clean:
+            return "pan_left"
+        if "zoom" in v_clean or "macro" in v_clean or "close" in v_clean or "focus" in v_clean:
+            return "zoom_in"
+        return "zoom_in"
+
+    @field_validator("media_type", mode="before")
+    @classmethod
+    def sanitize_media_type(cls, v: Optional[str]) -> Optional[str]:
+        if not v or not isinstance(v, str):
+            return None
+        v_clean = v.strip().lower()
+        if not v_clean or v_clean in ("none", "null"):
+            return None
+        allowed = {"image", "video", "ai_image", "ai_video", "i2v", "t2v", "photo", "documentary", "auto"}
+        if v_clean in allowed:
+            return v_clean
+        if "ai_video" in v_clean or "t2v" in v_clean or "i2v" in v_clean:
+            return "ai_video"
+        if "ai_image" in v_clean or "generated" in v_clean or "midjourney" in v_clean or "dalle" in v_clean:
+            return "ai_image"
+        if "video" in v_clean or "clip" in v_clean or "footage" in v_clean or "broll" in v_clean or "motion" in v_clean:
+            return "video"
+        if "image" in v_clean or "photo" in v_clean or "picture" in v_clean or "still" in v_clean:
+            return "image"
+        if "documentary" in v_clean or "archive" in v_clean:
+            return "documentary"
+        return "auto"
+
     @field_validator("narration")
     @classmethod
     def narration_must_not_be_stage_direction(cls, v: str) -> str:
@@ -162,6 +219,21 @@ class ScriptContract(BaseModel):
         else:
             self.description = self.description.strip()
         return self
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def sanitize_tags(cls, v):
+        if isinstance(v, str):
+            tags_list = [t.strip().lstrip("#") for t in v.split(",") if t.strip()]
+            return tags_list or ["shorts", "viral"]
+        if isinstance(v, list):
+            res = []
+            for t in v:
+                item = str(t).strip().lstrip("#")
+                if item:
+                    res.append(item)
+            return res or ["shorts", "viral"]
+        return ["shorts", "viral"]
 
     @field_validator("scenes")
     @classmethod

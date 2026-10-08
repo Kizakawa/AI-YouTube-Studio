@@ -535,10 +535,18 @@ class VideoPipeline:
 
                 media_path = ""
                 dur = scene.actual_duration_seconds
+
+                # ── ƯU TIÊN TUYỆT ĐỐI: NẾU PHÂN CẢNH ĐÃ CÓ MEDIA ĐƯỢC CHỌN TỪ STORYBOARD GATE ──
+                pre_media = getattr(scene, 'media_path', None)
+                if pre_media and Path(pre_media).exists() and self._is_valid_media_file(pre_media):
+                    media_path = str(Path(pre_media).resolve())
+                    used_asset_paths.add(media_path)
+                    logger.info(f"[Job {self.job_id}] Scene {scene.scene_id}: 🎯 Sử dụng Media đã duyệt trước từ Storyboard: {media_path}")
+
                 p_ai = v_analysis.get("cinematic_ai_prompt") or sc_strat.get("ai_prompt") or scene.visual_prompt or scene.visual_keyword
 
                 # 1. IMAGE_TO_VIDEO (Tạo video bám sát ảnh chủ đề 8K)
-                if prod_method == "IMAGE_TO_VIDEO":
+                if not media_path and prod_method == "IMAGE_TO_VIDEO":
                     ai_vid_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_i2v.mp4")
                     res_v = await ai_video_agent.generate_image_to_video(
                         prompt=p_ai,
@@ -556,7 +564,7 @@ class VideoPipeline:
                         used_asset_paths.add(res_v)
 
                 # 2. TEXT_TO_VIDEO (Sinh video AI trực tiếp kỳ ảo)
-                elif prod_method == "TEXT_TO_VIDEO":
+                elif not media_path and prod_method == "TEXT_TO_VIDEO":
                     ai_vid_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_t2v.mp4")
                     res_v = await ai_video_agent.generate_text_to_video(
                         prompt=p_ai,
@@ -586,6 +594,8 @@ class VideoPipeline:
                         sc_strat=sc_strat,
                         v_analysis=v_analysis,
                         topic=topic,
+                        channel_visual_mode=channel_visual_mode,
+                        channel_niche=channel_niche,
                     )
                     if media_path:
                         used_asset_paths.add(media_path)
@@ -842,6 +852,8 @@ class VideoPipeline:
         sc_strat: Optional[Dict[str, Any]] = None,
         v_analysis: Optional[Dict[str, Any]] = None,
         topic: str = "",
+        channel_visual_mode: str = "auto",
+        channel_niche: str = "general",
     ) -> str:
         """
         Tìm nạp media cho 1 scene với hệ thống phân cấp 7 tầng thông minh:
@@ -922,6 +934,11 @@ class VideoPipeline:
             prefer_video = True
             prefer_ai = False
             prefer_photo = False
+        elif channel_visual_mode in ("pexels_stock", "video") or channel_niche in ("animal_rescue", "wildlife_predators", "nature"):
+            # Các ngách thực tế / kênh cấu hình Stock: Ưu tiên video chuyển động thật 9:16
+            prefer_video = True
+            prefer_ai = False
+            prefer_photo = False
         elif strat_method == "REAL_ARCHIVE" or scene_pref == "documentary":
             prefer_photo = True
         elif strat_method in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO") or scene_pref == "video" or scene.scene_id == 1:
@@ -936,6 +953,7 @@ class VideoPipeline:
             else:
                 # Mặc định cho Shorts: Ưu tiên Full Video 9:16 động để giữ retention cao!
                 prefer_video = True
+
 
         # ── TẦNG 0.5: Ưu tiên AI Image nếu prefer_ai và KHÔNG PHẢI VIỄN TƯỞNG ──
         if not is_scifi_scene and prefer_ai and getattr(scene, 'visual_prompt', None) and len(scene.visual_prompt.strip()) > 15:

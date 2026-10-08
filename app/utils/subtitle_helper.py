@@ -774,6 +774,237 @@ class SubtitleHelper:
             f.write(content)
         return output_path
 
+    # ── Multi-Clip Viral Mashup Subtitles (Dual-Layer: Badges + Kinetic Captions) ──
+
+    @classmethod
+    def build_mashup_ass_content(
+        cls,
+        clips: List[Dict[str, Any]],
+        fontname: str = "Arial Black",
+        fontsize: int = 44,
+        margin_v: int = 580,
+        primary_color: Optional[str] = None,
+        secondary_color: Optional[str] = None,
+        outline_color: Optional[str] = None,
+        niche_id: Optional[str] = None,
+        credit_text: Optional[str] = None,
+        is_english: bool = True,
+    ) -> str:
+        """
+        Xây dựng phụ đề chuyên biệt cho kịch bản Nấu Lại Đa Phân Đoạn (Multi-Clip Mashup):
+        1. Layer 2: Chapter / Timeline Context Badges ở ĐỈNH MÀN HÌNH (MarginV=260, Alignment=8).
+           Hiển thị nhãn bối cảnh (ví dụ: '🚨 THE RESCUE AT 2:00 AM', '⏪ 3 HOURS EARLIER (FLASHBACK)')
+           giúp người xem nắm bắt ngay mạch thời gian đảo cảnh, chống loạn nhịp.
+        2. Layer 0: Kinetic Captions Karaoke giật từng từ ở ĐÁY MÀN HÌNH (MarginV=580, Alignment=2).
+           Font to, viền dày, chữ trắng quét sáng Vàng rực rỡ (Yellow Wipe) với Power Words đỏ/cam.
+           Đảm bảo 100% video luôn có phụ đề, cứu vãn 70%+ người xem lướt Shorts ở chế độ tắt tiếng.
+        """
+        eff_primary = primary_color or ASS_WHITE
+        eff_secondary = secondary_color or ASS_YELLOW
+        eff_outline = outline_color or ASS_BLACK
+        eff_back = "&H90000000"
+        eff_font = fontname or "Arial Black"
+        eff_size = fontsize or 44
+        eff_margin = margin_v or 580
+
+        if niche_id:
+            try:
+                from app.services.niche_manager import get_niche, get_niche_subtitle_style
+                niche_prof = get_niche(niche_id)
+                niche_sub = get_niche_subtitle_style(niche_prof)
+                eff_primary = primary_color or niche_sub.get("primary_ass", ASS_WHITE)
+                eff_secondary = secondary_color or niche_sub.get("secondary_ass", ASS_YELLOW)
+                eff_outline = outline_color or niche_sub.get("outline_ass", ASS_BLACK)
+                eff_font = fontname or niche_sub.get("fontname", "Arial Black")
+            except Exception:
+                pass
+
+        header = ASS_HEADER_TEMPLATE.format(
+            fontname=eff_font,
+            fontsize=eff_size,
+            primary=eff_primary,
+            secondary=eff_secondary,
+            outline=eff_outline,
+            back=eff_back,
+            margin_v=eff_margin,
+        )
+
+        # Bộ nhãn bối cảnh theo Role & Niche
+        default_badges_en = {
+            "HOOK": "🚨 [ COLD OPEN: THE CLIMAX ]",
+            "SETUP": "⏪ [ 3 HOURS EARLIER (FLASHBACK) ]",
+            "TENSION": "⏳ [ SEARCHING DEEP IN THE DARK ]",
+            "CLIMAX": "🎯 [ THE MIRACLE BREAKTHROUGH ]",
+            "LOOP": "🔁 [ AND THE MIRACLE LOOPS... ]",
+        }
+        default_badges_vi = {
+            "HOOK": "🚨 [ KHOẢNH KHẮC GIẢI CỨU CUỐI CÙNG ]",
+            "SETUP": "⏪ [ 3 GIỜ TRƯỚC ĐÓ - CÚ GỌI KHẨN CẤP ]",
+            "TENSION": "⏳ [ TÌM KIẾM TRONG BÓNG TỐI ]",
+            "CLIMAX": "🎯 [ PHÁT HIỆN CÚN CON KẸT DƯỚI GẦM ]",
+            "LOOP": "🔁 [ ĐIỀU KỲ DIỆU TIẾP NỐI ]",
+        }
+        default_badges = default_badges_en if is_english else default_badges_vi
+
+        default_narr_en = {
+            "HOOK": "THE EXACT MOMENT THEY WERE SAVED!",
+            "SETUP": "IT ALL STARTED WITH AN URGENT CALL.",
+            "TENSION": "CRAWLING DEEP UNDER THE COLD HOUSE...",
+            "CLIMAX": "HUDDLED TOGETHER IN THE DARKNESS!",
+            "LOOP": "WATCH THIS INCREDIBLE RESCUE AGAIN!",
+        }
+        default_narr_vi = {
+            "HOOK": "KHOẢNH KHẮC NÍN THỞ KHI ĐƯỢC GIẢI CỨU!",
+            "SETUP": "TẤT CẢ BẮT ĐẦU TỪ MỘT CUỘC GỌI KHẨN...",
+            "TENSION": "TRƯỜN SÂU DƯỚI GẦM NHÀ BĂNG GIÁ...",
+            "CLIMAX": "CÚN CON ĐANG CO RÚM VÌ ĐÓI RÉT!",
+            "LOOP": "THEO DÕI HÀNH TRÌNH TIẾP THEO NGAY!",
+        }
+        default_narrs = default_narr_en if is_english else default_narr_vi
+
+        dialogue_lines = []
+        current_timeline_ms = 0
+
+        for c_idx, c in enumerate(clips, 1):
+            st = max(0.0, float(c.get("start_seconds", 0.0)))
+            et = float(c.get("end_seconds", st + 4.0))
+            dur = max(0.8, et - st)
+            clip_dur_ms = int(dur * 1000)
+            clip_start_ms = current_timeline_ms
+            clip_end_ms = clip_start_ms + clip_dur_ms
+
+            role = str(c.get("role", "CLIP")).upper()
+
+            # ── 1. TOP TIMELINE CONTEXT BADGE (HIỂN THỊ 3.5S ĐẦU MỖI CLIP) ──
+            badge_text = c.get("context_badge") or default_badges.get(role, f"📍 [ PHÂN ĐOẠN #{c_idx} ]")
+            badge_dur_ms = min(3500, clip_dur_ms)
+            b_st_str = cls._ms_to_ass_time(clip_start_ms)
+            b_en_str = cls._ms_to_ass_time(clip_start_ms + badge_dur_ms)
+
+            badge_dialogue = (
+                f"Dialogue: 2,{b_st_str},{b_en_str},PatternInterruptBadge,,0,0,0,,"
+                r"{\fade(150,150)\an8\bord3.5\shad1.5\c&H00FFFFFF&\3c&H00101010&\4c&H90000000&}"
+                f"{badge_text}"
+            )
+            dialogue_lines.append(badge_dialogue)
+
+            # ── 2. BOTTOM KINETIC CAPTIONS (GIẬT TỪNG TỪ KARAOKE TOÀN THỜI LƯỢNG) ──
+            timed_trans = c.get("timed_transcript") or []
+            if timed_trans and len(timed_trans) > 0:
+                for seg in timed_trans:
+                    seg_text = cls.sanitize_subtitle_text(seg.get("text", ""))
+                    if not seg_text:
+                        continue
+                    seg_st = float(seg.get("start", st))
+                    seg_d = float(seg.get("duration", 2.0))
+                    rel_st_s = max(0.0, seg_st - st)
+                    s_ms = clip_start_ms + int(rel_st_s * 1000)
+                    d_ms = max(int(seg_d * 1000), 400)
+                    e_ms = min(s_ms + d_ms, clip_end_ms)
+
+                    chunks = cls.split_text_to_chunks(seg_text, max_words=3, max_chars=20)
+                    if not chunks:
+                        continue
+                    chunks = [ch.upper() for ch in chunks]
+                    total_ch = sum(len(ch) for ch in chunks)
+                    c_dur_list = [max(int((e_ms - s_ms) * (len(ch) / total_ch)), 300) for ch in chunks]
+
+                    c_st = s_ms
+                    for ch, ch_dur in zip(chunks, c_dur_list):
+                        c_en = min(c_st + ch_dur, clip_end_ms)
+                        words = ch.split()
+                        if not words:
+                            c_st = c_en
+                            continue
+                        w_chars = sum(len(w) for w in words)
+                        w_durs = [max(int(ch_dur * (len(w) / w_chars) / 10), 4) for w in words]
+                        tot_w = sum(w_durs)
+                        target_c = ch_dur // 10
+                        if w_durs:
+                            w_durs[-1] += (target_c - tot_w)
+                            w_durs[-1] = max(w_durs[-1], 3)
+                        k_text = cls._build_karaoke_text(words, w_durs, default_highlight=eff_secondary)
+                        dialogue_lines.append(
+                            f"Dialogue: 0,{cls._ms_to_ass_time(c_st)},{cls._ms_to_ass_time(c_en)},Karaoke,,0,0,0,,{k_text}"
+                        )
+                        c_st = c_en
+            else:
+                raw_text = c.get("transcript_snippet") or c.get("text") or c.get("summary") or ""
+                clean_text = cls.sanitize_subtitle_text(raw_text)
+                if not clean_text or len(clean_text.split()) < 2:
+                    clean_text = default_narrs.get(role, f"WATCH THIS SCENE #{c_idx}!")
+
+                chunks = cls.split_text_to_chunks(clean_text, max_words=3, max_chars=20)
+                if not chunks:
+                    chunks = [clean_text[:25]]
+                chunks = [ch.upper() for ch in chunks]
+
+                total_ch = sum(len(ch) for ch in chunks)
+                chunk_durs_ms = [max(int(clip_dur_ms * (len(ch) / total_ch)), 500) for ch in chunks]
+                diff = clip_dur_ms - sum(chunk_durs_ms)
+                if chunk_durs_ms:
+                    chunk_durs_ms[-1] = max(chunk_durs_ms[-1] + diff, 300)
+
+                c_st = clip_start_ms
+                for ch, ch_dur in zip(chunks, chunk_durs_ms):
+                    c_en = c_st + ch_dur
+                    words = ch.split()
+                    if not words:
+                        c_st = c_en
+                        continue
+                    w_chars = sum(len(w) for w in words)
+                    w_durs = [max(int(ch_dur * (len(w) / w_chars) / 10), 4) for w in words]
+                    tot_w = sum(w_durs)
+                    target_c = ch_dur // 10
+                    if w_durs:
+                        w_durs[-1] += (target_c - tot_w)
+                        w_durs[-1] = max(w_durs[-1], 3)
+
+                    k_text = cls._build_karaoke_text(words, w_durs, default_highlight=eff_secondary)
+                    dialogue_lines.append(
+                        f"Dialogue: 0,{cls._ms_to_ass_time(c_st)},{cls._ms_to_ass_time(c_en)},Karaoke,,0,0,0,,{k_text}"
+                    )
+                    c_st = c_en
+
+            current_timeline_ms += clip_dur_ms
+
+        # ── 3. WATERMARK CREDIT Ở ĐỈNH VIDEO ──
+        if credit_text and credit_text.strip():
+            clean_credit = credit_text.strip().replace("\n", " ")
+            credit_end_str = cls._ms_to_ass_time(current_timeline_ms)
+            dialogue_lines.insert(0,
+                f"Dialogue: 2,0:00:00.00,{credit_end_str},WatermarkStyle,,0,0,0,,{{\\fade(300,300)}}🎬 {clean_credit}"
+            )
+
+        return header + "\n".join(dialogue_lines) + "\n"
+
+    @classmethod
+    def save_mashup_ass_file(
+        cls,
+        clips: List[Dict[str, Any]],
+        output_path: str,
+        fontname: str = "Arial Black",
+        fontsize: int = 44,
+        margin_v: int = 580,
+        niche_id: Optional[str] = None,
+        credit_text: Optional[str] = None,
+        is_english: bool = True,
+    ) -> str:
+        """Tạo và lưu file .ass chuyên biệt cho kịch bản Multi-Clip Mashup ra ổ đĩa."""
+        content = cls.build_mashup_ass_content(
+            clips=clips,
+            fontname=fontname,
+            fontsize=fontsize,
+            margin_v=margin_v,
+            niche_id=niche_id,
+            credit_text=credit_text,
+            is_english=is_english,
+        )
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return output_path
+
     # ── SRT Generation (Legacy) ───────────────────────────────────────────
 
     @classmethod

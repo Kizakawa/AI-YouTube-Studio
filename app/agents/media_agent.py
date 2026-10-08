@@ -479,6 +479,7 @@ If no real entities found, return empty array: []"""
                 used_urls=used,
                 visual_analysis=v_analysis,
                 narration=scene_narration,
+                topic=topic,
             )
             if best_clip and best_clip.get("url") and not is_media_already_used(best_clip["url"], used):
                 used.update(extract_media_identity(best_clip["url"]))
