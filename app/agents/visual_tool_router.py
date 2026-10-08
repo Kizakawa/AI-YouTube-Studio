@@ -27,9 +27,17 @@ REAL_FILMABLE = "REAL_FILMABLE"
 SCIENTIFIC_VISUALIZATION = "SCIENTIFIC_VISUALIZATION"
 PURE_FICTION = "PURE_FICTION"
 ABSTRACT_CONCEPT = "ABSTRACT_CONCEPT"
+DEEP_SEA_MYSTERY = "DEEP_SEA_MYSTERY"
 
 # Từ khóa theo lớp bản chất (Anh + Việt). Cụm dài được ưu tiên, so khớp theo ranh giới từ.
 REALITY_KEYWORDS: Dict[str, List[str]] = {
+    DEEP_SEA_MYSTERY: [
+        "sea monster", "kraken", "megalodon", "colossal squid", "giant squid", "deep sea creature",
+        "abyssal trench", "mariana trench", "bermuda triangle", "loch ness", "leviathan", "underwater anomaly",
+        "sonar ping", "sonar anomaly", "sunken ship", "deep ocean", "abyss", "giant octopus",
+        "quái vật biển", "mực khổng lồ", "tam giác quỷ", "sinh vật biển sâu", "thủy quái", "rãnh mariana",
+        "đáy đại dương", "sóng siêu âm", "tàu đắm", "vực thẳm đại dương", "biển sâu"
+    ],
     REAL_FILMABLE: [
         "astronaut", "spacewalk", "space station", "iss", "rocket", "rocket launch", "launch pad", "spacex",
         "falcon 9", "starship launch", "earth from space", "earth from orbit", "satellite", "telescope",
@@ -61,7 +69,7 @@ REALITY_KEYWORDS: Dict[str, List[str]] = {
         "portal", "stargate", "warp drive", "hyperdrive", "cyborg army", "robot army", "robot uprising",
         "post-apocalyptic", "apocalypse", "year 3000", "future city", "futuristic city", "flying cars",
         "mars colony", "terraformed", "terraforming", "space colony", "laser weapon", "energy shield",
-        "teleport", "teleportation", "monster from", "kaiju", "dragon", "ufo",
+        "teleport", "teleportation", "kaiju", "dragon", "ufo",
         "người ngoài hành tinh", "sinh vật ngoài hành tinh", "văn minh ngoài hành tinh", "đĩa bay",
         "phi thuyền mẹ", "hạm đội", "chiến tranh không gian", "quả cầu dyson", "siêu cấu trúc",
         "cỗ máy thời gian", "du hành thời gian", "vũ trụ song song", "thế giới song song", "đa vũ trụ",
@@ -80,6 +88,7 @@ REALITY_KEYWORDS: Dict[str, List[str]] = {
 
 # Truy vấn bổ trợ theo lớp: giúp kho stock trả về đúng LOẠI hình (CGI mô phỏng, motion graphics...)
 CLASS_QUERY_HINTS: Dict[str, List[str]] = {
+    DEEP_SEA_MYSTERY: ["{subject} ocean deep sea", "underwater submarine exploration", "deep ocean abyss"],
     SCIENTIFIC_VISUALIZATION: ["{subject} animation", "{subject} 3d", "{subject} space"],
     ABSTRACT_CONCEPT: ["abstract particles glowing", "light tunnel motion", "glowing network abstract",
                        "digital particles flowing"],
@@ -149,9 +158,10 @@ class VisualToolRouter:
         if not scores:
             return ABSTRACT_CONCEPT, matched
 
-        # Hư cấu thắng khi ngang điểm: nếu khung hình cần thứ không tồn tại, footage thật không thể thay thế
-        priority = {PURE_FICTION: 3, SCIENTIFIC_VISUALIZATION: 2, REAL_FILMABLE: 1, ABSTRACT_CONCEPT: 0}
-        best = max(scores, key=lambda c: (scores[c], priority[c]))
+        # Ưu tiên theo mức độ đặc thù của chủ đề:
+        # DEEP_SEA_MYSTERY có từ khóa cụ thể (mực khổng lồ, tam giác quỷ, kraken) -> ưu tiên hơn PURE_FICTION chung chung
+        priority = {DEEP_SEA_MYSTERY: 4, PURE_FICTION: 3, SCIENTIFIC_VISUALIZATION: 2, REAL_FILMABLE: 1, ABSTRACT_CONCEPT: 0}
+        best = max(scores, key=lambda c: (scores[c], priority.get(c, 0)))
         return best, matched
 
     def route_scene(
@@ -197,6 +207,9 @@ class VisualToolRouter:
                 method, tool = "IMAGE_TO_VIDEO", "ai_image_motion"
                 why = ("thứ không tồn tại ngoài đời, kho stock không thể có đúng hình -> sinh ảnh AI + chuyển động "
                        "(chưa bật backend video AI thật)")
+        elif reality == DEEP_SEA_MYSTERY:
+            method, tool = "STOCK_FOOTAGE", "real_archive_photo"
+            why = "bí ẩn đại dương & quái vật biển -> ưu tiên tìm ảnh tư liệu mạng Open Web / Wikipedia (hóa thạch, tranh cổ, bản đồ sonar) kết hợp video chuyển động đại dương"
         elif reality == SCIENTIFIC_VISUALIZATION:
             method, tool = "STOCK_FOOTAGE", "nasa_pixabay_cgi"
             why = "có thật nhưng không quay được -> ưu tiên mô phỏng CGI/NASA có sẵn trong kho, AI là dự phòng"

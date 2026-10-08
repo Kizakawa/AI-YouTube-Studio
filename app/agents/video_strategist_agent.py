@@ -185,7 +185,7 @@ class VideoStrategistAgent:
         scifi_agent: Any,
     ) -> None:
         from app.agents.visual_tool_router import (
-            VisualToolRouter, PURE_FICTION, REAL_FILMABLE, REALITY_KEYWORDS,
+            VisualToolRouter, PURE_FICTION, REAL_FILMABLE, DEEP_SEA_MYSTERY, REALITY_KEYWORDS,
         )
         router = VisualToolRouter()
         true_t2v = router.caps.get("true_text_to_video", False)
@@ -226,7 +226,7 @@ class VideoStrategistAgent:
                     new_method = route["production_method"]
                     note = f" [AI trả phương pháp không hợp lệ '{method}' -> router]"
                 elif is_scifi_topic:
-                    keep_archive = method == "REAL_ARCHIVE" and reality == REAL_FILMABLE
+                    keep_archive = method == "REAL_ARCHIVE" and reality in (REAL_FILMABLE, DEEP_SEA_MYSTERY)
                     new_method = method if keep_archive else route["production_method"]
                     if not keep_archive:
                         t["tool"] = route["tool"]
