@@ -21,6 +21,45 @@ from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
+ACTIVE_GRAPH_RUNNERS: Dict[int, "GraphRunner"] = {}
+
+
+async def report_job_progress(job_id: int, stage: str, message: str, percent: int):
+    """
+    Phát tín hiệu tiến độ thời gian thực đa kênh:
+    - Nếu có LangGraph runner đang chạy -> gọi runner._report (đồng bộ tức thì cả SQLite DB và Telegram bot status message)
+    - Fallback -> cập nhật trực tiếp vào SQLite DB
+    """
+    if not job_id:
+        return
+    runner = ACTIVE_GRAPH_RUNNERS.get(job_id)
+    if runner:
+        await runner._report(stage, message, percent)
+    else:
+        try:
+            with get_db() as db:
+                jb = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                if jb:
+                    jb.progress_percent = percent
+                    jb.progress_message = message
+        except Exception:
+            pass
+
+
+def report_job_progress_sync(job_id: int, stage: str, message: str, percent: int):
+    """Gọi report_job_progress an toàn từ synchronous nodes mà không xung đột event loop."""
+    if not job_id:
+        return
+    import asyncio
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(report_job_progress(job_id, stage, message, percent))
+    except RuntimeError:
+        try:
+            asyncio.run(report_job_progress(job_id, stage, message, percent))
+        except Exception:
+            pass
+
 
 class GraphRunner:
     """Orchestrator thực thi LangGraph Video Workflow cho VideoJob."""
@@ -60,6 +99,13 @@ class GraphRunner:
 
     async def run(self) -> Dict[str, Any]:
         """Chạy toàn bộ quy trình sản xuất video bằng LangGraph."""
+        ACTIVE_GRAPH_RUNNERS[self.job_id] = self
+        try:
+            return await self._run_internal()
+        finally:
+            ACTIVE_GRAPH_RUNNERS.pop(self.job_id, None)
+
+    async def _run_internal(self) -> Dict[str, Any]:
         # 1. Nạp Job từ DB
         topic = ""
         title = ""
@@ -193,6 +239,13 @@ class GraphRunner:
 
     async def execute_edit(self, edit_request: EditRequest) -> Dict[str, Any]:
         """Thực thi chỉnh sửa vi mô (thay ảnh, sửa thoại, đổi giọng) bằng sub-graph."""
+        ACTIVE_GRAPH_RUNNERS[self.job_id] = self
+        try:
+            return await self._execute_edit_internal(edit_request)
+        finally:
+            ACTIVE_GRAPH_RUNNERS.pop(self.job_id, None)
+
+    async def _execute_edit_internal(self, edit_request: EditRequest) -> Dict[str, Any]:
         await self._report("EDIT_INIT", f"🛠️ Đang thực hiện chỉnh sửa: {edit_request.action_type}...", 10)
 
         with get_db() as db:

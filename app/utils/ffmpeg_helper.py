@@ -22,6 +22,47 @@ logger = logging.getLogger(__name__)
 FFMPEG_TIMEOUT = 300   # 5 phút max cho render
 FFPROBE_TIMEOUT = 10   # 10 giây max cho probe
 
+# ── MoneyPrinterTurbo Standard: Video Duration Safety Margin (+0.1s) ──
+# Bù đệm 100ms vào cảnh cuối để chống frame rounding truncation làm đứt âm thanh kết thúc
+VIDEO_DURATION_SAFETY_MARGIN: float = 0.1
+
+# ── MoneyPrinterTurbo Standard: BT.709 Color Space & Primaries Tagging ──
+# Khóa chặt color primaries, transfer characteristics và matrix coefficients về BT.709 (sRGB/HDTV)
+# Ngăn chặn YouTube & mobile browsers hiểu nhầm thành BT.601 dẫn đến màu sắc bị bợt nhạt, mất tương phản
+BT709_COLOR_ARGS: List[str] = [
+    "-colorspace", "bt709",
+    "-color_primaries", "bt709",
+    "-color_trc", "bt709",
+    "-color_range", "tv",
+]
+
+
+def build_atempo_filter(speed_ratio: float) -> str:
+    """
+    Sinh chuỗi filter FFmpeg 'atempo' chuẩn xác để đồng bộ thời lượng âm thanh không đổi cao độ (pitch).
+    Xử lý giới hạn 0.5 <= atempo <= 2.0 của FFmpeg bằng cách ghép chuỗi (chaining).
+    Lấy cảm hứng từ VoiceStudio Timed Speech Synchronization.
+    """
+    if speed_ratio <= 0:
+        return "anull"
+    ratio = float(speed_ratio)
+    # Nếu xấp xỉ 1.0 (độ lệch dưới 2%), không cần can thiệp
+    if abs(ratio - 1.0) < 0.02:
+        return "anull"
+
+    filters = []
+    # Xử lý trường hợp nén tốc độ > 2.0x (ví dụ: ratio=2.4 -> atempo=2.0,atempo=1.2)
+    while ratio > 2.0:
+        filters.append("atempo=2.0")
+        ratio /= 2.0
+    # Xử lý trường hợp kéo giãn tốc độ < 0.5x (ví dụ: ratio=0.4 -> atempo=0.5,atempo=0.8)
+    while ratio < 0.5:
+        filters.append("atempo=0.5")
+        ratio /= 0.5
+
+    filters.append(f"atempo={ratio:.4f}")
+    return ",".join(filters)
+
 
 def _ensure_ffmpeg_in_path():
     """
@@ -495,6 +536,7 @@ def image_to_video(
         "-bufsize", "24M",
         "-tune", "stillimage",   # Optimize encoder cho ảnh tĩnh (tăng tốc 20-40%)
         "-pix_fmt", "yuv420p",
+        *BT709_COLOR_ARGS,
         "-r", str(fps),
         "-an",
         output_path
@@ -582,6 +624,7 @@ def trim_video(
         "-maxrate", "16M",
         "-bufsize", "24M",
         "-pix_fmt", "yuv420p",
+        *BT709_COLOR_ARGS,
         "-r", str(fps),
         "-an",  # Bỏ audio gốc của stock video
         output_path
@@ -620,6 +663,7 @@ def concat_videos(
         "-maxrate", "16M",
         "-bufsize", "24M",
         "-pix_fmt", "yuv420p",
+        *BT709_COLOR_ARGS,
         "-r", str(fps),
     ] + fps_flag + [
         "-an",
@@ -735,6 +779,7 @@ def concat_videos_with_xfade(
         "-maxrate", "16M",
         "-bufsize", "24M",
         "-pix_fmt", "yuv420p",
+        *BT709_COLOR_ARGS,
         "-r", str(fps),
         "-an",
         output_path,
@@ -758,7 +803,7 @@ def mux_audio_video(
     audio_path: str,
     output_path: str,
     bgm_path: str = None,
-    bgm_volume: float = 0.08,
+    bgm_volume: float = 0.045,
     use_ducking: bool = True,
     normalize_loudness: bool = True,
 ) -> str:
@@ -769,6 +814,7 @@ def mux_audio_video(
       - Khi voice đang nói: BGM tự động giảm xuống ~15% volume
       - Khi voice im lặng: BGM tăng lại tự nhiên
       - Dùng sidechaincompress filter của FFmpeg (chuyên nghiệp, không hardcode)
+      - Tích hợp bộ lọc De-Harshing (lowpass=4200Hz, EQ gọt mid-high 3.2kHz) chống chói tai trên loa di động
 
     P2.3 Broadcast Audio Normalization (normalize_loudness=True):
       - Chuẩn YouTube Shorts EBU R128: loudnorm=I=-14:TP=-1.5:LRA=11
@@ -777,16 +823,12 @@ def mux_audio_video(
     Fallback: Nếu BGM ngắn hơn voice, tự động loop lại (aloop).
     """
     if bgm_path and Path(bgm_path).exists():
+        bgm_deharsh = "lowpass=f=4200,equalizer=f=3200:t=q:w=1.2:g=-6"
         if use_ducking:
             # ── Real Audio Ducking via sidechaincompress ──
-            # [1:a] = voice narration (sidechain trigger)
-            # [2:a] = BGM (bị duck khi voice nói)
-            # threshold=0.02: bắt đầu duck khi voice > -34dB
-            # ratio=4: giảm BGM còn ~25%
-            # attack=5ms, release=200ms: duck nhanh, recover chậm (tự nhiên)
             if normalize_loudness:
                 filter_complex = (
-                    f"[2:a]aloop=loop=-1:size=2000000000,volume={bgm_volume}[bgm_looped];"
+                    f"[2:a]aloop=loop=-1:size=2000000000,{bgm_deharsh},volume={bgm_volume}[bgm_looped];"
                     f"[bgm_looped][1:a]sidechaincompress="
                     f"threshold=0.02:ratio=4:attack=5:release=200:makeup=1[bgm_ducked];"
                     f"[1:a][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=2:weights='1 1'[amix_out];"
@@ -794,7 +836,7 @@ def mux_audio_video(
                 )
             else:
                 filter_complex = (
-                    f"[2:a]aloop=loop=-1:size=2000000000,volume={bgm_volume}[bgm_looped];"
+                    f"[2:a]aloop=loop=-1:size=2000000000,{bgm_deharsh},volume={bgm_volume}[bgm_looped];"
                     f"[bgm_looped][1:a]sidechaincompress="
                     f"threshold=0.02:ratio=4:attack=5:release=200:makeup=1[bgm_ducked];"
                     f"[1:a][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=2:weights='1 1'[aout]"
@@ -803,13 +845,13 @@ def mux_audio_video(
             # Simple mix: BGM ở volume cố định, không ducking
             if normalize_loudness:
                 filter_complex = (
-                    f"[2:a]volume={bgm_volume},aloop=loop=-1:size=2000000000[bgm];"
+                    f"[2:a]aloop=loop=-1:size=2000000000,{bgm_deharsh},volume={bgm_volume}[bgm];"
                     f"[1:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[amix_out];"
                     f"[amix_out]loudnorm=I=-14:TP=-1.5:LRA=11[aout]"
                 )
             else:
                 filter_complex = (
-                    f"[2:a]volume={bgm_volume},aloop=loop=-1:size=2000000000[bgm];"
+                    f"[2:a]aloop=loop=-1:size=2000000000,{bgm_deharsh},volume={bgm_volume}[bgm];"
                     f"[1:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
                 )
         args = [
@@ -1230,7 +1272,8 @@ def burn_subtitles(
         "-crf", "18",
         "-b:v", "12M",
         "-maxrate", "16M",
-        "-bufsize", "24M",
+        "-pix_fmt", "yuv420p",
+        *BT709_COLOR_ARGS,
         "-c:a", "copy",
         output_path
     ]
@@ -1278,6 +1321,9 @@ def validate_output(file_path: str) -> Dict:
             result["has_video"] = True
             result["resolution"] = f"{stream.get('width')}x{stream.get('height')}"
             result["codec_video"] = stream.get("codec_name", "unknown")
+            result["color_space"] = stream.get("colorspace") or stream.get("color_space", "unknown")
+            result["color_primaries"] = stream.get("color_primaries", "unknown")
+            result["color_trc"] = stream.get("color_transfer") or stream.get("color_trc", "unknown")
         elif stream.get("codec_type") == "audio":
             result["has_audio"] = True
             result["codec_audio"] = stream.get("codec_name", "unknown")

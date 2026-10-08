@@ -11,11 +11,32 @@ from app.utils.key_rotator import KeyRotator
 logger = logging.getLogger(__name__)
 
 
-def master_cinematic_prompt(raw_prompt: str, scene_id: int = 0, niche_id: str = "general") -> str:
+def master_cinematic_prompt(
+    raw_prompt: str,
+    scene_id: int = 0,
+    niche_id: str = "general",
+    character_anchor: Optional[str] = None,
+    setting_anchor: Optional[str] = None,
+) -> str:
     """
     Chuẩn hóa prompt cho AI tạo ảnh theo phong cách điện ảnh dọc 9:16 siêu thực.
-    Tự động áp dụng bộ quy tắc thị giác chuyên sâu từ Niche Intelligence Profile.
+    Tự động áp dụng bộ quy tắc thị giác chuyên sâu từ Niche Intelligence Profile & Seedance 2.0 Director.
+    Khóa nhận diện nhân vật (Cast Anchor) và bối cảnh (Setting Anchor) theo LocalMiniDrama Nano-Pipeline.
     """
+    try:
+        from app.services.media.seedance_director import SeedanceDirector
+        director = SeedanceDirector()
+        raw_prompt = director.enrich_with_physical_anchor(raw_prompt)
+        raw_prompt = director.inject_idle_business(raw_prompt)
+        if character_anchor or setting_anchor:
+            raw_prompt = director.bind_cast_to_prompt(
+                raw_prompt,
+                character_anchor=character_anchor,
+                setting_anchor=setting_anchor,
+            )
+    except Exception as e:
+        logger.debug(f"[master_cinematic_prompt] Seedance enrichment skipped: {e}")
+
     try:
         from app.services.niche_manager import get_niche, build_image_prompt
         if niche_id in ("general", "auto", ""):
@@ -33,6 +54,16 @@ def master_cinematic_prompt(raw_prompt: str, scene_id: int = 0, niche_id: str = 
 
         niche_profile = get_niche(niche_id)
         full_prompt, _ = build_image_prompt(raw_prompt, scene_id=scene_id, niche_profile=niche_profile)
+        if character_anchor or setting_anchor:
+            try:
+                from app.services.media.seedance_director import SeedanceDirector
+                full_prompt = SeedanceDirector().bind_cast_to_prompt(
+                    full_prompt,
+                    character_anchor=character_anchor,
+                    setting_anchor=setting_anchor,
+                )
+            except Exception:
+                pass
         return full_prompt
     except Exception:
         pass
@@ -47,13 +78,25 @@ def master_cinematic_prompt(raw_prompt: str, scene_id: int = 0, niche_id: str = 
         prefix = "8k vertical film still: "
         suffix = ", hyper-realistic details, dramatic volumetric lighting, 35mm cinematic photography, photorealistic 9:16 vertical composition, no watermark, no text, no border"
 
-    return f"{prefix}{cleaned}{suffix}"
+    base_res = f"{prefix}{cleaned}{suffix}"
+    if character_anchor or setting_anchor:
+        try:
+            from app.services.media.seedance_director import SeedanceDirector
+            base_res = SeedanceDirector().bind_cast_to_prompt(
+                base_res,
+                character_anchor=character_anchor,
+                setting_anchor=setting_anchor,
+            )
+        except Exception:
+            pass
+    return base_res
 
 
 class ImageAgent:
     """
     Agent sinh hình ảnh AI chất lượng cao chuẩn tỷ lệ dọc 9:16.
     Thích ứng phong cách động 100% theo prompt của AI Director cho bất kỳ chủ đề nào.
+    Tích hợp bộ khóa nhân vật & bối cảnh cố định (Cast & Setting Registry) từ LocalMiniDrama.
     """
 
     def __init__(self):
@@ -71,9 +114,32 @@ class ImageAgent:
         visual_prompt: Optional[str] = None,
         used_urls: Optional[set] = None,
         topic: str = "",
+        character_anchor: Optional[str] = None,
+        setting_anchor: Optional[str] = None,
+        **kwargs,
     ) -> Optional[str]:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         self._call_count += 1
+
+        # Trích xuất linh hoạt từ kwargs nếu caller truyền kiểu khác
+        niche = kwargs.get("style", niche)
+        visual_prompt = visual_prompt or kwargs.get("raw_prompt")
+        character_anchor = character_anchor or kwargs.get("cast_anchor")
+        setting_anchor = setting_anchor or kwargs.get("scene_anchor")
+
+        # Tự động trích xuất Cast & Setting Anchors nếu chưa được cung cấp trực tiếp
+        if not character_anchor and not setting_anchor and (topic or prompt):
+            try:
+                from app.services.media.seedance_director import SeedanceDirector
+                anchors = SeedanceDirector().extract_cast_and_scene_anchors(
+                    topic=topic or prompt,
+                    script_or_scenes=visual_prompt or prompt,
+                    niche_id=niche,
+                )
+                character_anchor = anchors.get("character_anchor")
+                setting_anchor = anchors.get("setting_anchor")
+            except Exception as e:
+                logger.debug(f"[ImageAgent] Auto cast extraction skipped: {e}")
 
         # Ưu tiên visual_prompt chi tiết từ AI Director
         base_prompt = (
@@ -82,10 +148,16 @@ class ImageAgent:
             else prompt.strip()
         )
 
-        anchored = master_cinematic_prompt(base_prompt, scene_id=scene_id, niche_id=niche)
+        anchored = master_cinematic_prompt(
+            base_prompt,
+            scene_id=scene_id,
+            niche_id=niche,
+            character_anchor=character_anchor,
+            setting_anchor=setting_anchor,
+        )
 
         # 1. ƯU TIÊN SỐ 1: Thử gọi trực tiếp công cụ tạo ảnh của Google (Gemini Flash/Pro Image)
-        google_res = self._try_google_image_api(base_prompt, output_path, aspect_ratio=aspect_ratio)
+        google_res = self._try_google_image_api(anchored, output_path, aspect_ratio=aspect_ratio)
         if google_res and Path(google_res).exists() and Path(google_res).stat().st_size > 5000:
             return google_res
 

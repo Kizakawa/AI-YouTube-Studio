@@ -22,8 +22,14 @@ from app.services.media.entity_detector import clean_scene_search_query
 logger = logging.getLogger(__name__)
 
 
+# ── MoneyPrinterTurbo Standard: 10px Dimension Tolerance ──
+# Bù sai số biên độ crop/nén video (ví dụ 1072x1916 hay 718x1278) để không bị lọc nhầm hoặc mất điểm tối ưu
+DIMENSION_TOLERANCE_PX: int = 10
+
+
 class StockFetcher:
     """Fetcher chuyên trách kết nối và trích xuất stock footage & photos chất lượng cao."""
+    DIMENSION_TOLERANCE_PX: int = DIMENSION_TOLERANCE_PX
 
     def __init__(self, api_key: Optional[str] = None):
         if api_key and api_key.strip() and api_key != "your_pexels_api_key_here":
@@ -413,6 +419,81 @@ class StockFetcher:
             used_urls.update(ids)
         return winner
 
+    @staticmethod
+    def format_video_candidate(v: Optional[Dict], query: str = "", used: Optional[set] = None) -> Optional[Dict]:
+        """Chuẩn hóa và trích xuất direct link MP4 chuẩn dọc 9:16 có độ phân giải tối ưu từ candidate."""
+        if not v:
+            return None
+        used_set = used if used is not None else set()
+        from app.services.media.media_history import is_media_already_used
+
+        if v.get("source") in ("nasa_video", "pixabay_video") and v.get("url"):
+            if not is_media_already_used(v["url"], used_set):
+                return {
+                    "url": v["url"],
+                    "title": v.get("title", f"Video: {query}"),
+                    "width": v.get("width", 1080),
+                    "height": v.get("height", 1920),
+                    "duration": v.get("duration", 0),
+                    "media_type": "video",
+                    "source": v.get("source", "video"),
+                    "thumbnail": v.get("thumbnail") or v.get("image", ""),
+                }
+            return None
+
+        def _res_score(vf):
+            h = vf.get("height", 0)
+            w = vf.get("width", 0)
+            # Ưu tiên số 1: Full HD dọc ~1080x1920 (dung sai 10px)
+            if abs(h - 1920) <= DIMENSION_TOLERANCE_PX and abs(w - 1080) <= (DIMENSION_TOLERANCE_PX * 2):
+                return 3000
+            # Ưu tiên số 2: HD dọc ~720x1280 (dung sai 10px)
+            elif abs(h - 1280) <= DIMENSION_TOLERANCE_PX:
+                return 2780
+            elif 1080 <= h < (1920 - DIMENSION_TOLERANCE_PX):
+                return 1500 + min(h, 1270)
+            elif 720 <= h < 1080:
+                return 500 + h
+            elif h > (1920 + DIMENSION_TOLERANCE_PX):
+                return 100 - h  # 4K ưu tiên thấp nhất vì quá nặng
+            return h
+
+        v_files = v.get("video_files", [])
+        portrait_files = [
+            vf for vf in v_files
+            if vf.get("width", 0) <= (vf.get("height", 0) + DIMENSION_TOLERANCE_PX) and (
+                str(vf.get("link", "")).endswith(".mp4") or "mp4" in str(vf.get("file_type", ""))
+            )
+        ]
+        files_to_check = portrait_files if portrait_files else v_files
+        hd_files = sorted(files_to_check, key=_res_score, reverse=True)
+        for best in hd_files:
+            link = best.get("link")
+            if link and not is_media_already_used(link, used_set):
+                return {
+                    "url": link,
+                    "title": f"Pexels Video: {v.get('url', query)}",
+                    "width": best.get("width", 1080),
+                    "height": best.get("height", 1920),
+                    "duration": v.get("duration", 0),
+                    "media_type": "video",
+                    "source": "pexels_video",
+                    "thumbnail": v.get("image", ""),
+                }
+        if v.get("url", "").endswith(".mp4"):
+            if not is_media_already_used(v["url"], used_set):
+                return {
+                    "url": v["url"],
+                    "title": v.get("title", f"Video: {query}"),
+                    "width": v.get("width", 1080),
+                    "height": v.get("height", 1920),
+                    "duration": v.get("duration", 0),
+                    "media_type": "video",
+                    "source": v.get("source", "video"),
+                    "thumbnail": v.get("thumbnail") or v.get("image", ""),
+                }
+        return None
+
     def search_best_video_clip(
         self,
         query: str,
@@ -593,14 +674,15 @@ class StockFetcher:
                     used_urls=used,
                 )
                 if winner and score >= 4.8:
-                    if winner.get("url"):
-                        record_used_media(winner["url"], query=query, source=winner.get("source", "curated_video"))
+                    formatted_winner = self.format_video_candidate(winner, query=query, used=used)
+                    if formatted_winner and formatted_winner.get("url"):
+                        record_used_media(formatted_winner["url"], query=query, source=formatted_winner.get("source", "curated_video"))
                         from app.services.media.media_history import extract_media_identity
-                        ids = extract_media_identity(winner["url"])
+                        ids = extract_media_identity(formatted_winner["url"])
                         used.update(ids)
                         if used_urls is not None:
                             used_urls.update(ids)
-                    return winner
+                        return formatted_winner
                 if should_ai:
                     est_res = _try_establishing_pass(f"AI Vision từ chối clip cụ thể ({str(rationale)[:80]})")
                     if est_res:
@@ -610,55 +692,16 @@ class StockFetcher:
             except Exception as e:
                 logger.debug(f"[StockFetcher] Lỗi khi gọi VisualCurationAgent: {e}")
 
-        # Tối ưu tốc độ: Ưu tiên Full HD (1080x1920) hoặc HD (720x1280) để tải nhanh gấp 5 lần
-        def _res_score(vf):
-            h = vf.get("height", 0)
-            if h == 1920:
-                return 1000
-            elif 1080 <= h < 1920:
-                return 800 + h
-            elif 720 <= h < 1080:
-                return 600 + h
-            elif h > 1920:
-                return 200 - h  # 4K ưu tiên thấp nhất
-            return h
-
         candidates_found = []
         for v in collected_candidates:
-            if v.get("source") in ("nasa_video", "pixabay_video") and v.get("url") and v["url"] not in used:
-                candidates_found.append(v)
-                continue
-
-            v_files = v.get("video_files", [])
-            portrait_files = [
-                vf for vf in v_files
-                if vf.get("width", 0) <= vf.get("height", 0) and (
-                    vf.get("link", "").endswith(".mp4") or "mp4" in vf.get("file_type", "")
-                )
-            ]
-            if portrait_files:
-                hd_files = sorted(portrait_files, key=_res_score, reverse=True)
-                for best in hd_files:
-                    link = best.get("link")
-                    from app.services.media.media_history import is_media_already_used
-                    if link and not is_media_already_used(link, used):
-                        candidates_found.append({
-                            "url": link,
-                            "title": f"Pexels Video: {v.get('url', query)}",
-                            "width": best.get("width", 1080),
-                            "height": best.get("height", 1920),
-                            "duration": v.get("duration", 0),
-                            "media_type": "video",
-                            "source": "pexels_video",
-                            "thumbnail": v.get("image", ""),
-                        })
-                        break
+            formatted = StockFetcher.format_video_candidate(v, query=query, used=used)
+            if formatted:
+                candidates_found.append(formatted)
             if len(candidates_found) >= 5:
                 break
 
         if candidates_found:
             import random
-            # Chọn ngẫu nhiên trong top 2-3 clips tốt nhất để luân phiên cảnh, tránh video nào cũng lấy clip đầu tiên
             top_pool = candidates_found[:min(len(candidates_found), 3)]
             chosen = random.choice(top_pool)
             if chosen.get("url"):
@@ -668,6 +711,7 @@ class StockFetcher:
                 used.update(ids)
                 if used_urls is not None:
                     used_urls.update(ids)
-            return chosen
+                return chosen
 
         return None
+

@@ -27,6 +27,7 @@ from app.utils.ffmpeg_helper import (
     mix_sfx_transitions,
     resolve_smart_sfx_cue,
     burn_subtitles,
+    VIDEO_DURATION_SAFETY_MARGIN,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,9 +77,11 @@ class VideoAgent:
             await report(f"🎬 Đang ghép nối các phân cảnh với hiệu ứng chuyển cảnh mượt...", 75)
             silent_video = str(work_dir / "concat_silent.mp4")
 
-            # Tính chính xác thời lượng từng clip (đã bù xfade overlap và tail buffer)
+            # Tính chính xác thời lượng từng clip (đã bù xfade overlap và tail buffer + MoneyPrinterTurbo safety margin)
             clip_durations = [
-                max(s.actual_duration_seconds, 1.0) + (transition_duration if idx < total_scenes - 1 else tail_buffer)
+                max(s.actual_duration_seconds, 1.0) + (
+                    transition_duration if idx < total_scenes - 1 else (tail_buffer + VIDEO_DURATION_SAFETY_MARGIN)
+                )
                 for idx, s in enumerate(job.scenes)
             ]
             is_scifi_job = getattr(job, "is_scifi", False)
@@ -217,11 +220,11 @@ class VideoAgent:
             clip_path = str(Path(work_dir) / f"clip_{scene.scene_id:03d}.mp4")
             base_dur = max(scene.actual_duration_seconds, 1.0)
             # Cảnh trước cảnh cuối bù thêm transition_duration để xfade không làm hụt video
-            # Cảnh cuối cùng đệm thêm tail_buffer để dứt câu hoàn toàn, không bao giờ ngắt cụt
+            # Cảnh cuối cùng đệm thêm tail_buffer + VIDEO_DURATION_SAFETY_MARGIN để dứt câu hoàn toàn, không bao giờ ngắt cụt
             if idx < total_scenes - 1:
                 duration = base_dur + transition_duration
             else:
-                duration = base_dur + tail_buffer
+                duration = base_dur + tail_buffer + VIDEO_DURATION_SAFETY_MARGIN
 
             is_hook = (scene.scene_id == 1)
             motion = "zoom_in" if is_hook else scene.resolved_camera_motion

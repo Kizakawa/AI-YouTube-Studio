@@ -132,38 +132,49 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     used_pool_urls = get_recent_media_urls(limit=150)
     job_id = state.get("job_id", 0)
 
-    sem = asyncio.Semaphore(4)
+    sem = asyncio.Semaphore(2)
+    completed_lock = asyncio.Lock()
+    completed_count = 0
+    total_scenes = len(script.scenes)
 
-    async def _fetch_one_scene(idx: int, scene) -> Dict[str, Any]:
-        async with sem:
-            media_path = ""
-            media_type = "image"
-            sq = getattr(scene, 'stock_query', None)
-            vp = getattr(scene, 'visual_prompt', None)
-            kw = scene.visual_keyword or ""
+    from app.graph.runner import report_job_progress
+    if job_id:
+        await report_job_progress(
+            job_id,
+            "MEDIA_FETCHING",
+            f"🎬 Bắt đầu thu thập & tạo tư liệu ({total_scenes} cảnh)...",
+            56
+        )
 
-            # ── Agent Phân tích Ngữ cảnh & Ý niệm Thị giác Chuyên sâu (VisualCurationAgent) ──
-            surround_text = " ".join([s.narration for s in script.scenes[max(0, idx - 1):min(len(script.scenes), idx + 2)]])
-            v_analysis = await asyncio.to_thread(
-                curator.analyze_scene_context,
-                narration=scene.narration,
-                topic=state.get("topic", ""),
-                scene_id=scene.scene_id,
-                total_scenes=len(script.scenes),
-                primary_entity=primary_entity,
-                entity_type=entity_type,
-                surrounding_context=surround_text,
-                channel_niche=state.get("channel_style", "cinematic"),
-            )
+    async def _fetch_one_scene_inner(idx: int, scene) -> Dict[str, Any]:
+        media_path = ""
+        media_type = "image"
+        sq = getattr(scene, 'stock_query', None)
+        vp = getattr(scene, 'visual_prompt', None)
+        kw = scene.visual_keyword or ""
 
-            # Lấy chiến lược và phương pháp do Video Strategist hoặc Visual Curation Agent chỉ định
-            sc_strat = strategy_map.get(scene.scene_id, {})
-            chosen_strategy = sc_strat.get("strategy", "STOCK_VIDEO")
-            prod_method = sc_strat.get("production_method") or v_analysis.get("production_method") or (
-                "IMAGE_TO_VIDEO" if chosen_strategy == "AI_IMAGE"
-                else ("TEXT_TO_VIDEO" if chosen_strategy == "AI_VIDEO"
-                else ("REAL_ARCHIVE" if chosen_strategy == "REAL_DOCUMENTARY" else "STOCK_FOOTAGE"))
-            )
+        # ── Agent Phân tích Ngữ cảnh & Ý niệm Thị giác Chuyên sâu (VisualCurationAgent) ──
+        surround_text = " ".join([s.narration for s in script.scenes[max(0, idx - 1):min(len(script.scenes), idx + 2)]])
+        v_analysis = await asyncio.to_thread(
+            curator.analyze_scene_context,
+            narration=scene.narration,
+            topic=state.get("topic", ""),
+            scene_id=scene.scene_id,
+            total_scenes=len(script.scenes),
+            primary_entity=primary_entity,
+            entity_type=entity_type,
+            surrounding_context=surround_text,
+            channel_niche=state.get("channel_style", "cinematic"),
+        )
+
+        # Lấy chiến lược và phương pháp do Video Strategist hoặc Visual Curation Agent chỉ định
+        sc_strat = strategy_map.get(scene.scene_id, {})
+        chosen_strategy = sc_strat.get("strategy", "STOCK_VIDEO")
+        prod_method = sc_strat.get("production_method") or v_analysis.get("production_method") or (
+            "IMAGE_TO_VIDEO" if chosen_strategy == "AI_IMAGE"
+            else ("TEXT_TO_VIDEO" if chosen_strategy == "AI_VIDEO"
+            else ("REAL_ARCHIVE" if chosen_strategy == "REAL_DOCUMENTARY" else "STOCK_FOOTAGE"))
+        )
 
         channel_visual_mode = state.get("visual_mode") or "auto"
         scene_media_pref = getattr(scene, 'media_type', None)
@@ -621,6 +632,25 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             "strategy_rationale": rationale,
         }
 
+    async def _fetch_one_scene(idx: int, scene) -> Dict[str, Any]:
+        async with sem:
+            res = await _fetch_one_scene_inner(idx, scene)
+            nonlocal completed_count
+            async with completed_lock:
+                completed_count += 1
+                cur_done = completed_count
+                cur_pct = min(64, 55 + int((cur_done / max(total_scenes, 1)) * 10))
+
+            if job_id:
+                from app.graph.runner import report_job_progress
+                await report_job_progress(
+                    job_id,
+                    "MEDIA_FETCHING",
+                    f"🎬 Đang thu thập/tạo tư liệu Cảnh {scene.scene_id} ({cur_done}/{total_scenes})...",
+                    cur_pct
+                )
+            return res
+
     tasks = [_fetch_one_scene(i, s) for i, s in enumerate(script.scenes)]
     scenes_media = list(await asyncio.gather(*tasks))
 
@@ -759,15 +789,8 @@ def node_content_quality_check(state: VideoWorkflowState) -> Dict[str, Any]:
     job_id = state.get("job_id", 0)
 
     if job_id:
-        try:
-            from app.database.models import get_db, VideoJob
-            with get_db() as db:
-                jb = db.query(VideoJob).filter(VideoJob.id == job_id).first()
-                if jb:
-                    jb.progress_percent = 72
-                    jb.progress_message = "🧠 Đang thẩm định tính phù hợp nội dung qua AI Vision..."
-        except Exception:
-            pass
+        from app.graph.runner import report_job_progress_sync
+        report_job_progress_sync(job_id, "CONTENT_EVAL", "🧠 Đang thẩm định tính phù hợp nội dung qua AI Vision...", 72)
 
     critic = ContentQualityCritic()
     report = critic.evaluate_content_quality(
@@ -849,16 +872,10 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
             continue
 
         if job_id:
-            try:
-                from app.database.models import get_db, VideoJob
-                with get_db() as db:
-                    jb = db.query(VideoJob).filter(VideoJob.id == job_id).first()
-                    if jb:
-                        fix_idx = failed_ids.index(scene_id) + 1 if scene_id in failed_ids else 1
-                        jb.progress_percent = min(85, 72 + int((fix_idx / max(len(failed_ids), 1)) * 14))
-                        jb.progress_message = f"🎯 Đang tối ưu lại tư liệu Cảnh {scene_id} ({fix_idx}/{len(failed_ids)})..."
-            except Exception:
-                pass
+            fix_idx = failed_ids.index(scene_id) + 1 if scene_id in failed_ids else 1
+            pct = min(85, 72 + int((fix_idx / max(len(failed_ids), 1)) * 14))
+            from app.graph.runner import report_job_progress_sync
+            report_job_progress_sync(job_id, "CONTENT_REFINING", f"🎯 Đang tối ưu lại tư liệu Cảnh {scene_id} ({fix_idx}/{len(failed_ids)})...", pct)
 
         kw = item.get("visual_keyword", "")
         narr = item.get("narration", "")

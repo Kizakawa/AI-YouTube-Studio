@@ -15,7 +15,7 @@ from app.bot.handlers import (
     search_image_command, search_video_command,
     viral_command,
     videos_command, get_video_command, web_command, schedule_command,
-    kpi_command, colab_command, auto_resume_pending_jobs
+    kpi_command, colab_command, auto_resume_pending_jobs, library_command
 )
 from app.utils.ffmpeg_helper import is_ffmpeg_installed, get_ffmpeg_version
 
@@ -400,6 +400,7 @@ def main():
     app.add_handler(CommandHandler(["get", "getvideo", "xem", "download", "tai_video"], get_video_command))
     app.add_handler(CommandHandler(["web", "dashboard", "wifi", "link"], web_command))
     app.add_handler(CommandHandler(["schedule", "lich", "lichdang", "lich_dang"], schedule_command))
+    app.add_handler(CommandHandler(["library", "dadang", "da_dang", "thuvien"], library_command))
     app.add_handler(CommandHandler(["kpi", "baocao", "tiendo", "report"], kpi_command))
     app.add_handler(CommandHandler(["colab", "gpu", "renderfarm"], colab_command))
     app.add_handler(CallbackQueryHandler(channel_callback, pattern=r"^(select_channel|manage_channel|pick_niche|set_niche|prompt_rename|add_tpl|prompt_custom_channel|pick_voice|set_voice|pick_lang|set_lang|pick_visual|set_visual|confirm_del_channel|do_del_channel|prompt_add_channel|back_channels|refresh_channels)"))

@@ -401,9 +401,21 @@
         <section class="tab-content" id="tab-create">
             <div class="panel-card">
                 <div class="panel-header">
-                    <h3>✨ Tạo Kịch Bản AI</h3>
-                    <span class="badge badge-purple">Powered by Gemini</span>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <h3>✨ Xưởng Kịch Bản AI</h3>
+                        <div class="creator-mode-tabs" style="display:inline-flex; gap:6px; background:rgba(0,0,0,0.3); padding:3px; border-radius:24px; border:1px solid rgba(255,255,255,0.08);">
+                            <button type="button" class="btn btn-sm btn-primary active" id="btn-mode-standard" onclick="switchCreatorMode('standard')" style="font-size:11.5px; padding:4px 12px; border-radius:20px;">
+                                ✨ Tạo Tự Do
+                            </button>
+                            <button type="button" class="btn btn-sm btn-secondary" id="btn-mode-clone" onclick="switchCreatorMode('clone')" style="font-size:11.5px; padding:4px 12px; border-radius:20px; color:#c084fc; border-color:rgba(192,132,252,0.3);">
+                                🧬 Nhân Bản Video Viral
+                            </button>
+                        </div>
+                    </div>
+                    <span class="badge badge-purple">Powered by Gemini & OpenMontage Architecture</span>
                 </div>
+
+                <!-- FORM 1: TẠO TỰ DO (STANDARD) -->
                 <div class="create-form" id="create-script-form">
                     <div class="form-row">
                         <div class="form-group" style="flex:3;">
@@ -443,9 +455,117 @@
                         </button>
                     </div>
                 </div>
+
+                <!-- FORM 2: NHÂN BẢN CẤU TRÚC VIRAL (FORMULA DECONSTRUCTOR) -->
+                <div class="create-form" id="clone-formula-form" style="display:none;">
+                    <div style="background:rgba(139,92,246,0.08); border:1px solid rgba(139,92,246,0.3); border-radius:10px; padding:14px; margin-bottom:16px;">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                            <span style="font-size:18px;">🧬</span>
+                            <strong style="color:#c084fc; font-size:13.5px;">Giải Mã Nhịp Điệu Video Triệu View (Formula Deconstructor)</strong>
+                        </div>
+                        <div style="font-size:12px; color:var(--text-secondary); line-height:1.5;">
+                            Dán đường link YouTube Shorts, TikTok hoặc đoạn phụ đề viral bất kỳ. AI sẽ tự động phân tích: <strong>Hook 3 giây đầu</strong>, <strong>nhịp ngắt thị giác (Pattern Interrupts)</strong>, <strong>đường cong cảm xúc (Retention Curve)</strong> và <strong>cầu nối lặp vô tận (Infinite Loop)</strong>, sau đó nhân bản thành kịch bản mới 100% nguyên bản trên chủ đề bạn yêu cầu!
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group" style="flex:3;">
+                            <label class="form-label" for="input-clone-url">Link YouTube Shorts / TikTok hoặc Transcript Video Tham Khảo <span class="required">*</span></label>
+                            <input type="text" id="input-clone-url" class="form-input" placeholder="https://www.youtube.com/shorts/... hoặc dán lời thoại" autocomplete="off">
+                        </div>
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label" for="input-clone-source-lang">Ngôn ngữ nguồn</label>
+                            <select id="input-clone-source-lang" class="form-input">
+                                <option value="en" selected>🇺🇸 Tiếng Anh (YouTube Shorts US)</option>
+                                <option value="vi">🇻🇳 Tiếng Việt</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom:12px;">
+                        <button type="button" class="btn btn-secondary btn-sm" id="btn-deconstruct" onclick="deconstructFormula()" style="background:linear-gradient(135deg,rgba(139,92,246,0.2),rgba(236,72,153,0.2)); border-color:rgba(139,92,246,0.4); color:#fff; font-weight:600; padding:8px 18px;">
+                            🔍 Phân Tích Công Thức & Nhịp Điệu Video Này
+                        </button>
+                    </div>
+
+                    <!-- Khu vực hiển thị Blueprint giải phẫu sau khi AI phân tích -->
+                    <div id="blueprint-display-card" style="display:none; background:rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.12); border-radius:10px; padding:16px; margin-bottom:16px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span class="badge badge-purple" id="bp-badge-formula">Cấu Trúc Viral</span>
+                                <strong id="bp-video-title" style="color:#f8fafc; font-size:13px;">—</strong>
+                            </div>
+                            <div style="font-size:11.5px; color:var(--text-muted);" id="bp-metrics">
+                                ⏱️ 0s · ~0 WPM
+                            </div>
+                        </div>
+
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px; margin-bottom:12px;">
+                            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:10px;">
+                                <div style="font-size:11px; color:#60a5fa; font-weight:700; margin-bottom:4px;">⚡ LOẠI HOOK (0-3 GIÂY)</div>
+                                <div id="bp-hook-type" style="font-size:12.5px; font-weight:600; color:#fff;">—</div>
+                                <div id="bp-hook-trigger" style="font-size:11px; color:var(--text-muted); margin-top:3px;">—</div>
+                            </div>
+                            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:10px;">
+                                <div style="font-size:11px; color:#f472b6; font-weight:700; margin-bottom:4px;">🔄 CẦU NỐI LẶP VÔ TẬN (LOOP)</div>
+                                <div id="bp-loop-phrase" style="font-size:12px; color:#fce7f3; font-style:italic;">—</div>
+                            </div>
+                        </div>
+
+                        <!-- Beats Timeline list -->
+                        <div style="font-size:11px; color:var(--text-muted); font-weight:700; margin-bottom:6px;">NHỊP ĐIỆU CÁC PHÂN CẢNH (BEATS PACING):</div>
+                        <div id="bp-beats-list" style="display:flex; flex-direction:column; gap:6px; max-height:180px; overflow-y:auto;"></div>
+                    </div>
+
+                    <!-- Bước 2: Nhập chủ đề mới để nhân bản theo Blueprint -->
+                    <div id="clone-target-box" style="display:none; border-top:1px solid rgba(255,255,255,0.08); padding-top:14px;">
+                        <div class="form-row">
+                            <div class="form-group" style="flex:3;">
+                                <label class="form-label" for="input-clone-new-topic">Chủ đề video MỚI của bạn <span class="required">*</span></label>
+                                <input type="text" id="input-clone-new-topic" class="form-input" placeholder="Ví dụ: Bí mật loài cá mập Greenland sống 400 năm trong băng giá" autocomplete="off">
+                            </div>
+                            <div class="form-group" style="flex:1;">
+                                <label class="form-label" for="input-clone-target-lang">Ngôn ngữ kịch bản mới</label>
+                                <select id="input-clone-target-lang" class="form-input">
+                                    <option value="en" selected>🇺🇸 English (Mặc định)</option>
+                                    <option value="vi">🇻🇳 Tiếng Việt</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group" style="flex:1;">
+                                <label class="form-label" for="input-clone-channel">Kênh mục tiêu</label>
+                                <select id="input-clone-channel" class="form-input">
+                                    <option value="">-- Đang tải danh sách kênh... --</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-primary btn-lg" id="btn-generate-cloned" onclick="generateFromFormula()" style="width:100%; justify-content:center; background:linear-gradient(135deg,#8b5cf6,#ec4899); border:none; font-weight:700; padding:12px; box-shadow:0 4px 18px rgba(139,92,246,0.35);">
+                            🚀 Sinh Kịch Bản Nguyên Bản Theo Công Thức Này
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Thư Viện Video Đã Đăng -->
+            <div id="topic-dup-warning" style="display:none; margin-bottom:14px; padding:12px 14px; border-radius:10px; background:rgba(251,191,36,0.10); border:1px solid rgba(251,191,36,0.45); color:#fde68a; font-size:13px; line-height:1.55;"></div>
+            <div class="panel-card" id="library-panel">
+                <div class="panel-header">
+                    <h3>📚 Video Đã Đăng Trên Kênh Này</h3>
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                        <span class="badge badge-purple" id="library-count">0 video</span>
+                        <input type="text" id="library-search" class="form-input" placeholder="🔍 Tìm chủ đề đã làm…" autocomplete="off" style="width:200px; padding:6px 10px; font-size:12px;">
+                        <button class="btn btn-secondary btn-sm" id="btn-library-sync" onclick="syncLibrary()">🔄 Đồng bộ YouTube</button>
+                    </div>
+                </div>
+                <div id="library-topics" style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0 10px;"></div>
+                <div id="library-list" style="display:flex; flex-direction:column; gap:8px; max-height:420px; overflow:auto;">
+                    <div style="color:var(--text-muted); font-size:13px;">Đang tải…</div>
+                </div>
             </div>
 
             <!-- Script Result -->
+
             <div class="panel-card" id="script-result-panel" style="display:none;">
                 <div class="panel-header">
                     <h3>📋 Kịch Bản Đã Tạo</h3>
@@ -1136,16 +1256,47 @@ Ví dụ Căn Theo Mốc:
                     </div>
                 </div>
 
-                <!-- Moments Container -->
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
-                    <h4 style="margin:0; font-size: 16px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
-                        <span>🔥</span> Các Phân Đoạn Triệu View Được Đề Xuất (AI Golden Highlights)
-                    </h4>
-                    <span id="repurposer-moments-count" class="badge" style="background: rgba(16,185,129,0.2); color:#10b981; border:1px solid rgba(16,185,129,0.4); font-size:12px;">0 Phân đoạn</span>
+                <!-- Mode Selector: Mashup Montage vs Single Moments -->
+                <div style="display:flex; gap:10px; margin-bottom:18px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px; flex-wrap:wrap;">
+                    <button id="repurpose-tab-mashup-btn" class="btn btn-primary" onclick="switchRepurposeViewMode('mashup')" style="background: linear-gradient(135deg, #10b981, #06b6d4); font-weight:800; font-size:13px; padding:8px 16px;">
+                        🔥 Nấu Lại Siêu Cấp: Multi-Clip Mashup (Mới)
+                    </button>
+                    <button id="repurpose-tab-moments-btn" class="btn btn-secondary" onclick="switchRepurposeViewMode('moments')" style="font-weight:600; font-size:13px; padding:8px 16px;">
+                        ✂️ Trích Đoạn Đơn (Single Highlights)
+                    </button>
                 </div>
 
-                <div id="repurposer-moments-list" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 18px;">
-                    <!-- Filled dynamically with moment cards -->
+                <!-- 3A. MASHUP MONTAGE SECTION -->
+                <div id="repurposer-mashup-container">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                        <div>
+                            <h4 style="margin:0; font-size: 16px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+                                <span>🎬</span> Kịch Bản Nấu Lại Đa Phân Đoạn (AI Multi-Clip Mashup)
+                            </h4>
+                            <p style="margin:3px 0 0 0; font-size:12px; color:var(--text-muted);">
+                                Tự động ghép nối 3–5 lát cắt kịch tính từ nhiều mốc thời gian, chèn SFX Whoosh, Zoom Punch và nhạc nền BGM ducking.
+                            </p>
+                        </div>
+                        <span id="repurposer-mashup-count" class="badge" style="background: rgba(16,185,129,0.2); color:#10b981; border:1px solid rgba(16,185,129,0.4); font-size:12px;">0 Kịch bản Mashup</span>
+                    </div>
+
+                    <div id="repurposer-mashup-list" style="display: flex; flex-direction: column; gap: 20px;">
+                        <!-- Filled dynamically with mashup cards -->
+                    </div>
+                </div>
+
+                <!-- 3B. SINGLE MOMENTS SECTION -->
+                <div id="repurposer-moments-container" style="display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                        <h4 style="margin:0; font-size: 16px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+                            <span>🔥</span> Các Phân Đoạn Triệu View Được Đề Xuất (AI Golden Highlights)
+                        </h4>
+                        <span id="repurposer-moments-count" class="badge" style="background: rgba(16,185,129,0.2); color:#10b981; border:1px solid rgba(16,185,129,0.4); font-size:12px;">0 Phân đoạn</span>
+                    </div>
+
+                    <div id="repurposer-moments-list" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 18px;">
+                        <!-- Filled dynamically with moment cards -->
+                    </div>
                 </div>
             </div>
 
@@ -1999,6 +2150,51 @@ Ví dụ Căn Theo Mốc:
     </div>
 </div>
 
+<!-- MODAL: STORYBOARD & MEDIA SWAPPER GATE (OPENMONTAGE STYLE) -->
+<div class="modal-overlay" id="modal-storyboard-swapper" onclick="closeStoryboardModal()">
+    <div class="modal-card" style="max-width:1100px; width:95%; max-height:90vh; display:flex; flex-direction:column; background:var(--bg-card); border-radius:14px; border:1px solid rgba(255,255,255,0.12); box-shadow:0 24px 60px rgba(0,0,0,0.6);" onclick="event.stopPropagation()">
+        <!-- Header -->
+        <div class="modal-header" style="flex-shrink:0; padding:16px 22px; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:12px;">
+                <span style="font-size:26px;">🎞️</span>
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <h3 id="storyboard-modal-title" style="margin:0; font-size:16px; font-weight:700; color:#fff;">Storyboard Director & Media Swapper</h3>
+                        <span class="badge badge-amber" id="storyboard-job-badge">Job #—</span>
+                    </div>
+                    <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">
+                        Kiểm duyệt từng phân cảnh, xem trước video/ảnh và đổi nguồn clip Pexels / AI trước khi render video hoàn chỉnh
+                    </div>
+                </div>
+            </div>
+            <button class="modal-close" onclick="closeStoryboardModal()">✕</button>
+        </div>
+
+        <!-- Body: Contact Sheet Grid -->
+        <div class="modal-body" style="flex-grow:1; overflow-y:auto; padding:20px; max-height:calc(90vh - 140px);">
+            <div id="storyboard-scenes-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(310px, 1fr)); gap:16px;">
+                <!-- Filled dynamically by JS -->
+            </div>
+        </div>
+
+        <!-- Hidden input for file uploads -->
+        <input type="file" id="storyboard-upload-input" style="display:none;" accept="video/mp4,video/quicktime,image/jpeg,image/png,image/webp" onchange="handleStoryboardFileSelected(event)">
+
+        <!-- Footer -->
+        <div class="modal-footer" style="flex-shrink:0; padding:14px 22px; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.25);">
+            <div id="storyboard-footer-info" style="font-size:12.5px; color:var(--text-secondary);">
+                <span>📊 Tổng: <strong>0 phân cảnh</strong></span>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center;">
+                <button class="btn btn-secondary" onclick="closeStoryboardModal()">✕ Đóng</button>
+                <button class="btn btn-primary" id="btn-render-approved" onclick="renderApprovedStoryboard()" style="background:linear-gradient(135deg,#10b981,#059669); border:none; font-weight:700; padding:9px 18px; box-shadow:0 4px 16px rgba(16,185,129,0.35);">
+                    🎬 Duyệt Storyboard & Render Video
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- MODAL: INSTANT PREVIEW PLAYER (REMOTION-STYLE LIVE SHORTS PREVIEW) -->
 <div class="modal-overlay" id="modal-instant-preview" onclick="closeInstantPreview()">
     <div class="modal-card instant-preview-modal-card" onclick="event.stopPropagation()">
@@ -2708,6 +2904,7 @@ Ví dụ Căn Theo Mốc:
 <div class="toast-container" id="toast-container"></div>
 
 <script src="/static/js/chart.min.js"></script>
-<script src="/static/js/dashboard.js?v=4.6"></script>
+<script src="/static/js/dashboard.js?v=4.7"></script>
+<script src="/static/js/library.js?v=1.0"></script>
 </body>
 </html>
