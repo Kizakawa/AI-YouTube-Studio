@@ -472,9 +472,18 @@ async def run_autopilot_pipeline_for_channel(
             inline_kb = []
             if yt_shorts_url:
                 inline_kb.append([{"text": "⚡ Mở YouTube Shorts", "url": yt_shorts_url}])
+            else:
+                inline_kb.append([
+                    {"text": "🚀 Đăng Ngay", "callback_data": f"publish_youtube:{job_id}"},
+                    {"text": "⏰ Đăng Theo Lịch", "callback_data": f"schedule_youtube:{job_id}"}
+                ])
+            inline_kb.append([
+                {"text": "✏️ Sửa Video", "callback_data": f"feedback_video:{job_id}"},
+                {"text": "🗑️ Xóa Video", "callback_data": f"delete_video:{job_id}"}
+            ])
             inline_kb.append([
                 {"text": "📅 Xem Toàn Bộ Lịch Đăng", "callback_data": f"schedule:{channel_id}"},
-                {"text": "🔄 Làm Mới Auto-Pilot", "callback_data": "autopilot_status"}
+                {"text": "🔄 Trạng Thái Auto-Pilot", "callback_data": "autopilot_status"}
             ])
 
             # Ưu tiên upload trực tiếp file video vào nhóm để người dùng xem thử
