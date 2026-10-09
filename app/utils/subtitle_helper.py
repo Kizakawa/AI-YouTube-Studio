@@ -789,6 +789,7 @@ class SubtitleHelper:
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
         is_english: bool = True,
+        is_voiceover: bool = False,
     ) -> str:
         """
         Xây dựng phụ đề chuyên biệt cho kịch bản Nấu Lại Đa Phân Đoạn (Multi-Clip Mashup):
@@ -890,7 +891,7 @@ class SubtitleHelper:
 
             # ── 2. BOTTOM KINETIC CAPTIONS (GIẬT TỪNG TỪ KARAOKE TOÀN THỜI LƯỢNG) ──
             timed_trans = c.get("timed_transcript") or []
-            if timed_trans and len(timed_trans) > 0:
+            if timed_trans and len(timed_trans) > 0 and not is_voiceover:
                 for seg in timed_trans:
                     seg_text = cls.sanitize_subtitle_text(seg.get("text", ""))
                     if not seg_text:
@@ -929,7 +930,7 @@ class SubtitleHelper:
                         )
                         c_st = c_en
             else:
-                raw_text = c.get("transcript_snippet") or c.get("text") or c.get("summary") or ""
+                raw_text = c.get("custom_voiceover_text") or c.get("transcript_snippet") or c.get("text") or c.get("summary") or ""
                 clean_text = cls.sanitize_subtitle_text(raw_text)
                 if not clean_text or len(clean_text.split()) < 2:
                     clean_text = default_narrs.get(role, f"WATCH THIS SCENE #{c_idx}!")
@@ -937,11 +938,12 @@ class SubtitleHelper:
                 chunks = cls.split_text_to_chunks(clean_text, max_words=3, max_chars=20)
                 if not chunks:
                     chunks = [clean_text[:25]]
-                chunks = [ch.upper() for ch in chunks]
-
+                # Nếu có voice_dur_ms thì phụ đề karaoke phân bổ theo thời gian đọc thật của voice, không bị kéo dãn lê thê
+                raw_voice_ms = c.get("voice_dur_ms")
+                sub_active_ms = min(clip_dur_ms, int(raw_voice_ms)) if raw_voice_ms and int(raw_voice_ms) > 300 else clip_dur_ms
                 total_ch = sum(len(ch) for ch in chunks)
-                chunk_durs_ms = [max(int(clip_dur_ms * (len(ch) / total_ch)), 500) for ch in chunks]
-                diff = clip_dur_ms - sum(chunk_durs_ms)
+                chunk_durs_ms = [max(int(sub_active_ms * (len(ch) / total_ch)), 400) for ch in chunks]
+                diff = sub_active_ms - sum(chunk_durs_ms)
                 if chunk_durs_ms:
                     chunk_durs_ms[-1] = max(chunk_durs_ms[-1] + diff, 300)
 
@@ -989,6 +991,7 @@ class SubtitleHelper:
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
         is_english: bool = True,
+        is_voiceover: bool = False,
     ) -> str:
         """Tạo và lưu file .ass chuyên biệt cho kịch bản Multi-Clip Mashup ra ổ đĩa."""
         content = cls.build_mashup_ass_content(
@@ -999,6 +1002,7 @@ class SubtitleHelper:
             niche_id=niche_id,
             credit_text=credit_text,
             is_english=is_english,
+            is_voiceover=is_voiceover,
         )
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:

@@ -298,6 +298,67 @@ def find_best_amazon_product(niche: str, title: str, topic: str = "", script: st
 # ═════════════════════════════════════════════════════════════════════════════
 # 3. TỰ ĐỘNG LỒNG GHÉP VÀO MÔ TẢ & BÌNH LUẬN GHI ĐIỂM (AUTO-ENRICHMENT)
 # ═════════════════════════════════════════════════════════════════════════════
+# 3. TỰ ĐỘNG LỒNG GHÉP KÊU GỌI ỦNG HỘ PAYPAL & KIẾM TIỀN (AUTO-ENRICHMENT)
+# ═════════════════════════════════════════════════════════════════════════════
+
+def build_paypal_donation_block(
+    channel_config: Optional[Dict[str, Any]] = None,
+    niche: str = "general",
+    paypal_url: Optional[str] = None
+) -> str:
+    """
+    Tự động xây dựng khối kêu gọi quyên góp / ủng hộ qua PayPal chuẩn cho YouTube Shorts & Video:
+    - Lấy link PayPal từ channel_config (paypal_url / donation_url) hoặc biến môi trường PAYPAL_DONATION_URL.
+    - Soạn thông điệp kêu gọi ủng hộ chân thành, truyền cảm hứng phù hợp với từng chủ đề (Niche).
+    - Hướng dẫn người xem Shorts bấm vào Bio kênh nếu link trong mô tả không click trực tiếp được trên mobile.
+    """
+    enable_donation = os.getenv("ENABLE_DONATION_CTA", "true").lower() in ("true", "1", "yes")
+    if channel_config and channel_config.get("enable_donation") is not None:
+        enable_donation = bool(channel_config.get("enable_donation"))
+
+    if not enable_donation:
+        return ""
+
+    cfg = channel_config or {}
+    url = (
+        paypal_url
+        or cfg.get("paypal_url")
+        or cfg.get("donation_url")
+        or cfg.get("monetization", {}).get("paypal_url")
+        or os.getenv("PAYPAL_DONATION_URL")
+        or os.getenv("PAYPAL_URL", "")
+    ).strip()
+
+    niche_lower = (niche or cfg.get("niche") or "").lower()
+
+    if any(k in niche_lower for k in ["rescue", "pet", "dog", "cat", "animal"]):
+        title_line = "💖 SUPPORT OUR RESCUE MISSIONS & VET CARE:"
+        desc_line = "🐾 Every donation helps provide emergency vet care, warm food & safe shelter for terrified rescue animals."
+        action_line = f"☕ Donate directly via PayPal: {url}" if url else "☕ Donate directly to our rescues: Tap channel icon ➔ PayPal link in Bio!"
+    elif any(k in niche_lower for k in ["wild", "predator", "nature"]):
+        title_line = "🌍 SUPPORT INDEPENDENT WILDLIFE EXPEDITIONS:"
+        desc_line = "🦁 Fuel our untamed wildlife documentary research, field conservation & survival storytelling."
+        action_line = f"☕ Support our work via PayPal: {url}" if url else "☕ Support our expeditions: Tap channel icon ➔ PayPal link in Bio!"
+    elif any(k in niche_lower for k in ["psychology", "mindset", "stoic"]):
+        title_line = "🧠 SUPPORT INDEPENDENT RESEARCH & CONTENT:"
+        desc_line = "☕ If our daily psychological deep-dives bring you value, consider buying us a coffee to keep this content free."
+        action_line = f"☕ Support via PayPal: {url}" if url else "☕ Buy us a coffee: Tap channel icon ➔ PayPal link in Bio!"
+    elif any(k in niche_lower for k in ["deep_sea", "ocean", "mystery", "history"]):
+        title_line = "🌊 SUPPORT UNCOVERING UNTOLD MYSTERIES:"
+        desc_line = "✨ Help fund our independent archival investigations into Earth's deepest secrets."
+        action_line = f"☕ Support our archive via PayPal: {url}" if url else "☕ Support our research: Tap channel icon ➔ PayPal link in Bio!"
+    else:
+        title_line = "💖 SUPPORT OUR INDEPENDENT CREATIVE WORK:"
+        desc_line = "☕ Every contribution helps us produce high-quality daily stories."
+        action_line = f"☕ Donate via PayPal: {url}" if url else "☕ Donate & Support: Tap channel icon ➔ PayPal link in Bio!"
+
+    footer_hint = "💡 (Mobile Shorts viewers: Tap channel icon ➔ Clickable PayPal link in Bio!)"
+
+    if url:
+        return f"{title_line}\n{desc_line}\n{action_line}\n{footer_hint}"
+    else:
+        return f"{title_line}\n{desc_line}\n{action_line}"
+
 
 def enrich_video_monetization(
     channel_config: Dict[str, Any],
@@ -305,87 +366,118 @@ def enrich_video_monetization(
     description: str = "",
     pinned_comment: Optional[str] = None,
     topic: str = "",
-    script: str = ""
-) -> Tuple[str, Optional[str], Dict[str, Any]]:
+    script: str = "",
+    enable_affiliate: Optional[bool] = None,
+    enable_donation: Optional[bool] = None,
+) -> Tuple[str, Optional[str], Optional[Dict[str, Any]]]:
     """
-    Tự động nâng cấp mô tả video và bình luận ghim với link Amazon Affiliate:
-    - Tìm sản phẩm chuẩn xác nhất dựa trên nội dung video.
-    - Chèn link sản phẩm + câu Disclaimer tuân thủ chính sách Amazon vào Mô tả.
-    - Gắn CTA dẫn tới sản phẩm vào Bình luận mồi (Pinned Comment) được ghim trên cùng.
+    Tự động nâng cấp mô tả video và bình luận ghim với:
+    1. Khối kêu gọi ủng hộ / quyên góp qua PayPal (Support / Donate).
+    2. Khối giới thiệu sản phẩm Amazon Affiliate chuẩn ngách (Featured Gear) kèm Store ID.
     
     Trả về: (enriched_description, enriched_pinned_comment, product_info)
     """
-    # ── BẢO VỆ AN TOÀN: Kiểm tra cấu hình cho phép gắn Affiliate ──
-    # Mặc định TẮT (False) để bảo vệ kênh không bị YouTube phạt spam link / hạn chế đề xuất Shorts
-    enable_affiliate = os.getenv("ENABLE_AMAZON_AFFILIATE", "false").lower() in ("true", "1", "yes")
-    channel_override = channel_config.get("enable_monetization")
-    if channel_override is not None:
-        enable_affiliate = bool(channel_override)
+    niche = channel_config.get("niche", "general")
 
-    if not enable_affiliate:
-        logger.info("[MonetizationEngine] Bỏ qua gắn Amazon Affiliate (chế độ bảo vệ an toàn: ENABLE_AMAZON_AFFILIATE=false)")
+    # 1. Xác định cờ bật/tắt Affiliate
+    if enable_affiliate is None:
+        enable_affiliate = os.getenv("ENABLE_AMAZON_AFFILIATE", "false").lower() in ("true", "1", "yes")
+        if channel_config.get("enable_monetization") is not None:
+            enable_affiliate = bool(channel_config.get("enable_monetization"))
+        elif channel_config.get("affiliate_enabled") is not None:
+            enable_affiliate = bool(channel_config.get("affiliate_enabled"))
+
+    # 2. Xác định cờ bật/tắt Kêu gọi ủng hộ PayPal
+    if enable_donation is None:
+        enable_donation = os.getenv("ENABLE_DONATION_CTA", "true").lower() in ("true", "1", "yes")
+        if channel_config.get("enable_donation") is not None:
+            enable_donation = bool(channel_config.get("enable_donation"))
+
+    # Nếu cả 2 đều tắt, trả về nguyên bản
+    if not enable_affiliate and not enable_donation:
+        logger.info("[MonetizationEngine] Bỏ qua monetization & donation (cả 2 đều tắt)")
         return description or "", pinned_comment, None
 
-    niche = channel_config.get("niche", "general")
-    tracking_tag = (
-        channel_config.get("amazon_tag")
-        or channel_config.get("monetization", {}).get("amazon_tag")
-        or os.getenv("AMAZON_ASSOCIATE_TAG", "")
-    ).strip()
-
-    product = find_best_amazon_product(niche=niche, title=title, topic=topic, script=script)
-    affiliate_url = build_amazon_url(product["asin"], tracking_tag)
-
-    # 1. Nâng cấp mô tả (Description)
     desc_base = (description or "").strip()
-    monetization_footer = (
-        f"\n\n📌 Featured Trend & Gear:\n"
-        f"👉 {product['name']} — {product['cta']}:\n"
-        f"🔗 Direct Link: {affiliate_url}\n"
-        f"💡 (Shorts viewers: Tap channel icon ➔ Clickable link in Bio!)\n\n"
-        f"{AMAZON_COMPLIANCE_DISCLAIMER}"
-    )
+    comment_base = (pinned_comment or "").strip()
+    product_info = None
 
-    # Tránh chèn trùng lặp nếu mô tả đã có link amazon này rồi
-    if product['asin'] not in desc_base and "amazon.com" not in desc_base:
+    footer_sections = []
+
+    # ── A. KHỐI KÊU GỌI ỦNG HỘ PAYPAL ──
+    donation_block = ""
+    if enable_donation:
+        donation_block = build_paypal_donation_block(channel_config=channel_config, niche=niche)
+        if donation_block and donation_block not in desc_base:
+            footer_sections.append(donation_block)
+
+    # ── B. KHỐI SẢN PHẨM AMAZON AFFILIATE ──
+    if enable_affiliate:
+        tracking_tag = (
+            channel_config.get("amazon_tag")
+            or channel_config.get("monetization", {}).get("amazon_tag")
+            or os.getenv("AMAZON_ASSOCIATE_TAG", "")
+        ).strip()
+        product = find_best_amazon_product(niche=niche, title=title, topic=topic, script=script)
+        affiliate_url = build_amazon_url(product["asin"], tracking_tag)
+        affiliate_block = (
+            f"📌 Featured Trend & Gear:\n"
+            f"👉 {product['name']} — {product['cta']}:\n"
+            f"🔗 Direct Link: {affiliate_url}\n"
+            f"💡 (Shorts viewers: Tap channel icon ➔ Clickable link in Bio!)\n\n"
+            f"{AMAZON_COMPLIANCE_DISCLAIMER}"
+        )
+        if product['asin'] not in desc_base and "amazon.com" not in desc_base:
+            footer_sections.append(affiliate_block)
+
+        product_info = {
+            "asin": product["asin"],
+            "name": product["name"],
+            "cta": product["cta"],
+            "affiliate_url": affiliate_url,
+            "tracking_tag": tracking_tag or "kizakawa-20"
+        }
+
+    # Ghép các khối vào mô tả
+    if footer_sections:
+        monetization_footer = "\n\n─────────────────────────\n".join(footer_sections)
         hashtag_match = re.search(r'(\s*(?:#[a-zA-Z0-9_]+\s*)+)$', desc_base)
         if hashtag_match:
             tags_part = hashtag_match.group(1).strip()
             text_part = desc_base[:hashtag_match.start()].strip()
-            enriched_desc = f"{text_part}{monetization_footer}\n\n{tags_part}".strip()
+            enriched_desc = f"{text_part}\n\n{monetization_footer}\n\n{tags_part}".strip()
         else:
-            enriched_desc = f"{desc_base}{monetization_footer}".strip()
+            enriched_desc = f"{desc_base}\n\n{monetization_footer}".strip()
     else:
         enriched_desc = desc_base
 
-    # 2. Nâng cấp bình luận ghim (Pinned Comment)
-    comment_base = (pinned_comment or "").strip()
-    if comment_base:
-        # Nếu đã có câu hỏi tương tác, gắn thêm gợi ý sản phẩm ngay bên dưới
-        if "amazon.com" not in comment_base and product['asin'] not in comment_base:
-            enriched_comment = (
-                f"{comment_base}\n\n"
-                f"✨ Trending Gear: {product['name']}\n"
-                f"👉 Link: {affiliate_url}\n"
-                f"🔗 (Or tap channel icon ➔ Link in Bio)"
-            )
-        else:
-            enriched_comment = comment_base
-    else:
-        # Nếu chưa có comment, tự sinh câu comment mồi hấp dẫn
-        enriched_comment = (
-            f"🔥 {product['cta']}!\n"
-            f"👉 {product['name']}: {affiliate_url}\n"
+    # Nâng cấp bình luận ghim (Pinned Comment)
+    paypal_url = (
+        channel_config.get("paypal_url")
+        or channel_config.get("donation_url")
+        or os.getenv("PAYPAL_DONATION_URL")
+        or ""
+    ).strip()
+
+    comment_additions = []
+    if enable_donation and paypal_url and "paypal" not in comment_base.lower():
+        comment_additions.append(f"💖 Support our mission directly via PayPal: {paypal_url}")
+
+    if enable_affiliate and product_info and "amazon.com" not in comment_base:
+        comment_additions.append(
+            f"✨ Trending Gear: {product_info['name']}\n"
+            f"👉 Link: {product_info['affiliate_url']}\n"
             f"🔗 (Or tap channel icon ➔ Link in Bio)"
         )
 
-    product_info = {
-        "asin": product["asin"],
-        "name": product["name"],
-        "cta": product["cta"],
-        "affiliate_url": affiliate_url,
-        "tracking_tag": tracking_tag or "kizakawa-20"
-    }
+    if comment_additions:
+        addon_str = "\n\n".join(comment_additions)
+        if comment_base:
+            enriched_comment = f"{comment_base}\n\n{addon_str}".strip()
+        else:
+            enriched_comment = addon_str.strip()
+    else:
+        enriched_comment = comment_base or None
 
     return enriched_desc, enriched_comment, product_info
 
@@ -396,7 +488,9 @@ def preview_monetization_bundle(
     description: str = "",
     pinned_comment: Optional[str] = None,
     topic: str = "",
-    script: str = ""
+    script: str = "",
+    enable_affiliate: Optional[bool] = None,
+    enable_donation: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
     Sinh gói xem trước (Preview Bundle) để hiển thị trực tiếp lên Web Studio hoặc Telegram Bot
@@ -408,7 +502,9 @@ def preview_monetization_bundle(
         description=description,
         pinned_comment=pinned_comment,
         topic=topic,
-        script=script
+        script=script,
+        enable_affiliate=enable_affiliate,
+        enable_donation=enable_donation,
     )
     return {
         "product": product_info,
@@ -471,23 +567,21 @@ def build_repurposed_video_description(
     author: str = "",
     mode: str = "self_owned",
     tracking_tag: str = "kizakawa-20",
+    paypal_url: str = "",
+    enable_affiliate: Optional[bool] = None,
+    enable_donation: bool = True,
 ) -> str:
     """
-    Tự động xây dựng mô tả YouTube Shorts hoàn chỉnh chuẩn Bản Quyền & Kiếm Tiền Amazon Affiliate (Store ID: kizakawa-20):
+    Tự động xây dựng mô tả YouTube Shorts hoàn chỉnh chuẩn Bản Quyền, Kêu Gọi Ủng Hộ & Kiếm Tiền:
     - Nội dung tiếng Anh hấp dẫn
     - Dẫn link video đầy đủ (Full Video / Original Source Link) giúp kéo view hoặc tôn trọng bản quyền tác giả
     - Điều khoản miễn trừ bản quyền Fair Use (Section 107 of the Copyright Act 1976)
     - Kêu gọi theo dõi kênh
-    - Khối gắn link sản phẩm Amazon chuẩn ngách KÈM STORE ID: kizakawa-20 (Đã kiểm tra còn tồn tại trên Amazon)
+    - Khối kêu gọi quyên góp / ủng hộ qua PayPal (Donation / Support)
+    - Khối gắn link sản phẩm Amazon chuẩn ngách KÈM STORE ID: kizakawa-20 (nếu bật affiliate)
     - Bộ Hashtags chuẩn SEO
     """
     tag = (tracking_tag or os.getenv("AMAZON_ASSOCIATE_TAG", "kizakawa-20") or "kizakawa-20").strip()
-    
-    # Tìm sản phẩm Amazon chuẩn ngách và gắn Store ID kizakawa-20
-    amazon_prod = find_best_amazon_product(niche=niche_id, title=title, topic=summary)
-    is_search = amazon_prod.get("is_search", False)
-    amazon_aff_url = build_amazon_url(amazon_prod["asin"], tag, is_search=is_search)
-    cta_label = "Search & shop on Amazon" if is_search else "Check price on Amazon"
     
     niche_tags = {
         "animal_rescue": "#AnimalRescue #RescueDog #Pets #Heartwarming #Shorts #AnimalLovers",
@@ -528,14 +622,34 @@ def build_repurposed_video_description(
     
     parts.append(channel_cta)
 
-    affiliate_block = f"""─────────────────────────
+    # 1. Khối kêu gọi ủng hộ qua PayPal (Donation / Support)
+    if enable_donation:
+        donation_block = build_paypal_donation_block(
+            channel_config={"paypal_url": paypal_url, "niche": niche_id, "name": channel_name},
+            niche=niche_id,
+            paypal_url=paypal_url
+        )
+        if donation_block:
+            parts.append(donation_block)
+
+    # 2. Khối sản phẩm Amazon Affiliate (chỉ gắn nếu được bật)
+    if enable_affiliate is None:
+        enable_affiliate = os.getenv("ENABLE_AMAZON_AFFILIATE", "false").lower() in ("true", "1", "yes")
+
+    if enable_affiliate:
+        amazon_prod = find_best_amazon_product(niche=niche_id, title=title, topic=summary)
+        is_search = amazon_prod.get("is_search", False)
+        amazon_aff_url = build_amazon_url(amazon_prod["asin"], tag, is_search=is_search)
+        cta_label = "Search & shop on Amazon" if is_search else "Check price on Amazon"
+        affiliate_block = f"""─────────────────────────
 🛒 FEATURED GEAR & SHOPPING (STORE ID: {tag}):
 👉 {amazon_prod['name']}
 🔗 {cta_label}: {amazon_aff_url}
 💡 {amazon_prod['cta']}
 ⚖️ (As an Amazon Associate I earn from qualifying purchases with Store ID: {tag})
 ─────────────────────────"""
-    parts.append(affiliate_block)
+        parts.append(affiliate_block)
+
     parts.append(niche_tags)
 
     return "\n\n".join(parts).strip()

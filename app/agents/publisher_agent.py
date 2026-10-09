@@ -206,7 +206,7 @@ class PublisherAgent:
                 clean_title = clean_title[:91].rstrip()
             clean_title = f"{clean_title} #Shorts"
 
-        # Tự động tối ưu hóa kiếm tiền qua Amazon Affiliate (CHỈ kích hoạt cho ngách có affiliate_enabled: True)
+        # Tự động tối ưu hóa kiếm tiền qua Amazon Affiliate & Kêu gọi ủng hộ PayPal
         prod_info = None
         desc_clean = description or ""
         niche_id = str(self.channel_config.get("niche") or "").lower()
@@ -220,7 +220,16 @@ class PublisherAgent:
         except Exception:
             pass
 
-        if affiliate_enabled:
+        donation_enabled = bool(
+            self.channel_config.get("paypal_url")
+            or self.channel_config.get("donation_url")
+            or os.getenv("PAYPAL_DONATION_URL")
+            or os.getenv("ENABLE_DONATION_CTA", "true").lower() in ("true", "1", "yes")
+        )
+        if self.channel_config.get("enable_donation") is not None:
+            donation_enabled = bool(self.channel_config.get("enable_donation"))
+
+        if affiliate_enabled or donation_enabled:
             try:
                 from app.services.monetization_engine import enrich_video_monetization
                 desc_clean, pinned_comment, prod_info = enrich_video_monetization(
@@ -229,14 +238,18 @@ class PublisherAgent:
                     description=desc_clean,
                     pinned_comment=pinned_comment,
                     topic=topic or "",
-                    script=script or ""
+                    script=script or "",
+                    enable_affiliate=affiliate_enabled,
+                    enable_donation=donation_enabled,
                 )
                 if prod_info:
                     logger.info(f"Đã tự động lồng ghép sản phẩm kiếm tiền Amazon cho ngách '{niche_id}': {prod_info.get('name')}")
+                if donation_enabled:
+                    logger.info(f"Đã tự động lồng ghép khối kêu gọi ủng hộ PayPal cho ngách '{niche_id}'")
             except Exception as ex:
                 logger.warning(f"Không thể áp dụng monetization_engine: {ex}")
         else:
-            logger.info(f"Ngách '{niche_id}' không bật affiliate -> Giữ mô tả sạch 100%")
+            logger.info(f"Ngách '{niche_id}' không bật affiliate hay donation -> Giữ mô tả sạch")
 
         # Đảm bảo description luôn có hashtag nhận diện Shorts
         shorts_hashtags = "#Shorts #shorts #viral #ytshorts"

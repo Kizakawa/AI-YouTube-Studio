@@ -3867,6 +3867,12 @@ class RepurposeRenderRequest(BaseModel):
     author: str = ""
     mode: str = "self_owned"
     crop_focus: str = "center"
+    mute_original: bool = False
+    voice_id: Optional[str] = None
+    custom_voiceover_text: Optional[str] = None
+    bgm_mood: Optional[str] = "none"
+    blur_watermark: bool = False
+    watermark_position: str = "top_right"
 
 class RepurposeMashupRenderRequest(BaseModel):
     source: str
@@ -3886,6 +3892,21 @@ class RepurposeMashupRenderRequest(BaseModel):
     source_url: str = ""
     author: str = ""
     mode: str = "self_owned"
+    mute_original: bool = False
+    voice_id: Optional[str] = None
+    blur_watermark: bool = False
+    watermark_position: str = "top_right"
+
+class RepurposeTranslateRequest(BaseModel):
+    text: str
+    niche_id: str = "general"
+
+@app.post("/api/repurposer/translate-text")
+def repurpose_translate_text(req: RepurposeTranslateRequest) -> Dict[str, Any]:
+    """Dịch nhanh kịch bản thuyết minh sang tiếng Anh viral chuẩn YouTube Shorts."""
+    from app.services.video_repurposer import repurposer_service
+    english_text = repurposer_service._ensure_english_narration(req.text, req.niche_id)
+    return {"success": True, "english_text": english_text}
 
 @app.get("/api/system/client-info")
 def get_client_system_info(request: Request) -> Dict[str, Any]:
@@ -4013,6 +4034,12 @@ def render_repurposed_clip(req: RepurposeRenderRequest, request: Request) -> Dic
             author=req.author,
             mode=req.mode,
             crop_focus=req.crop_focus,
+            mute_original=req.mute_original,
+            voice_id=req.voice_id,
+            custom_voiceover_text=req.custom_voiceover_text,
+            bgm_mood=req.bgm_mood,
+            blur_watermark=req.blur_watermark,
+            watermark_position=req.watermark_position,
         )
         return result
     except Exception as e:
@@ -4063,6 +4090,10 @@ def render_repurposed_mashup(req: RepurposeMashupRenderRequest, request: Request
             mode=req.mode,
             channel_name=req.channel_name,
             description=req.description,
+            mute_original=req.mute_original,
+            voice_id=req.voice_id,
+            blur_watermark=req.blur_watermark,
+            watermark_position=req.watermark_position,
         )
         return result
     except Exception as e:

@@ -7282,9 +7282,12 @@ function renderRepurposerResults(data, originalSource) {
             <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top:14px; margin-top:8px;">
                 <div style="display:grid; grid-template-columns: 1.15fr 0.95fr 0.95fr 0.7fr; gap:8px; margin-bottom:12px; font-size:12px;">
                     <div>
-                        <label style="font-size:11px; color:#94a3b8; font-weight:600;">Bố Cục 9:16:</label>
+                        <label style="font-size:11px; color:#94a3b8; font-weight:600;">Bố Cục Video:</label>
                         <select id="moment-layout-${idx}" class="form-select" style="font-size:11px; padding:4px 8px; height:auto;">
-                            <option value="smart_crop_full" selected>🚀 Fullscreen 9:16 (Xóa Logo TV, cận cảnh 100%)</option>
+                            <option value="strip_sandwich_clean_916" selected>✂️ Bóc tách video lõi giữa 9:16 (Xóa sạch Banner trên dưới)</option>
+                            <option value="strip_sandwich_square">⏹️ Bóc tách video vuông 1:1 (1080x1080 như Ảnh mẫu)</option>
+                            <option value="strip_sandwich_bokeh">🎨 Bóc tách video lõi giữa + Nền Bokeh 9:16</option>
+                            <option value="smart_crop_full">🚀 Smart Fullscreen 9:16 (Phóng to lấp đầy màn hình)</option>
                             <option value="center_crop">🎯 Center Crop 9:16 (Cắt giữa)</option>
                             <option value="blur_background">⚠️ Blur Canvas (Khung 16:9 lọt thỏm)</option>
                         </select>
@@ -7298,18 +7301,80 @@ function renderRepurposerResults(data, originalSource) {
                         </select>
                     </div>
                     <div>
-                        <label style="font-size:11px; color:#94a3b8; font-weight:600;">Âm Thanh:</label>
-                        <select id="moment-audio-${idx}" class="form-select" style="font-size:11px; padding:4px 8px; height:auto;">
-                            <option value="original" selected>🎵 Gốc + Lọc Anti-ID</option>
-                            <option value="ai_voiceover">🎙️ Thuyết minh AI (Đọc nội dung + Ducking)</option>
+                        <label style="font-size:11px; color:#94a3b8; font-weight:600;">Âm Thanh (100% US):</label>
+                        <select id="moment-audio-${idx}" class="form-select" onchange="toggleMomentVoiceoverPanel(${idx})" style="font-size:11px; padding:4px 8px; height:auto;">
+                            <option value="mute_original_voiceover" selected>🎙️ Tắt tiếng cũ + Lồng giọng Mỹ AI (Khuyên dùng)</option>
+                            <option value="original">🎵 Giữ âm thanh gốc (+ Anti-ID)</option>
+                            <option value="duck_original_voiceover">🎚️ Lồng giọng Mỹ AI + Giảm nhỏ tiếng cũ</option>
+                            <option value="mute">🔇 Tắt hoàn toàn âm thanh (Câm)</option>
                         </select>
                     </div>
                     <div>
-                        <label style="font-size:11px; color:#94a3b8; font-weight:600;">Phụ Đề:</label>
+                        <label style="font-size:11px; color:#94a3b8; font-weight:600;">Phụ Đề (English):</label>
                         <div style="display:flex; align-items:center; gap:6px; height:28px;">
                             <input type="checkbox" id="moment-sub-${idx}" checked style="cursor:pointer; transform:scale(1.2); accent-color:#10b981;">
                             <span style="font-size:11px; color:#34d399; font-weight:700;">Kinetic ASS</span>
                         </div>
+                    </div>
+                </div>
+
+                <!-- ANTI-WATERMARK LOGO REMOVAL TOOLBAR -->
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; padding:6px 12px; background:rgba(6, 182, 212, 0.08); border:1px solid rgba(6, 182, 212, 0.25); border-radius:6px; flex-wrap:wrap; gap:6px;">
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; margin:0;">
+                        <input type="checkbox" id="moment-delogo-${idx}" checked style="accent-color:#06b6d4; transform:scale(1.2);">
+                        <span style="font-size:11.5px; font-weight:700; color:#38bdf8;">✨ Làm mờ / Xóa Logo Watermark (KOHA DISCOVERY, v.v.)</span>
+                    </label>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span style="font-size:10.5px; color:#94a3b8;">Vị trí logo:</span>
+                        <select id="moment-delogo-pos-${idx}" class="form-select" style="font-size:10.5px; padding:2px 6px; width:auto; background:#0b1120; color:#f8fafc;">
+                            <option value="top_right" selected>Góc trên bên phải (Mặc định)</option>
+                            <option value="top_left">Góc trên bên trái</option>
+                            <option value="bottom_right">Góc dưới bên phải</option>
+                            <option value="bottom_left">Góc dưới bên trái</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- VOICEOVER STUDIO PANEL (HIỂN THỊ KHI CHỌN CHẾ ĐỘ LỒNG GIỌNG ĐỌC) -->
+                <div id="moment-voiceover-panel-${idx}" style="display:block; margin-bottom:12px; padding:10px 12px; background:rgba(15, 23, 42, 0.75); border:1px solid rgba(56, 189, 248, 0.3); border-radius:8px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:6px;">
+                        <span style="font-size:11.5px; font-weight:700; color:#38bdf8; display:flex; align-items:center; gap:6px;">
+                            <span>🎙️</span> Kịch bản giọng đọc Mỹ (US English Storytelling):
+                        </span>
+                        <div style="display:flex; gap:6px;">
+                            <button type="button" class="btn btn-secondary" onclick="translateMomentVoiceText(${idx})" style="font-size:10px; padding:2px 8px; background:rgba(6,182,212,0.15); color:#38bdf8; border:1px solid rgba(6,182,212,0.3); border-radius:4px; cursor:pointer;" title="Dịch kịch bản tiếng Việt sang tiếng Anh chuẩn YouTube">
+                                🇺🇸 Dịch sang Tiếng Anh
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="resetMomentVoiceText(${idx})" style="font-size:10px; padding:2px 8px; background:rgba(255,255,255,0.06); color:#cbd5e1; border:1px solid rgba(255,255,255,0.12); border-radius:4px; cursor:pointer;" title="Lấy lại văn bản tóm tắt phân đoạn">
+                                🔄 Lấy lại tóm tắt
+                            </button>
+                        </div>
+                    </div>
+                    <textarea id="moment-voicetext-${idx}" class="form-control" rows="3" style="width:100%; font-size:11.5px; line-height:1.45; background:#0b1120; color:#f8fafc; border:1px solid #334155; border-radius:6px; padding:6px 10px; resize:vertical;" placeholder="Nhập kịch bản thuyết minh tiếng Anh (nếu gõ tiếng Việt hệ thống sẽ tự động dịch sang tiếng Anh viral chuẩn YouTube)...">${escapeHtml(m.transcript_snippet || m.summary || m.hook_quote || m.title || '')}</textarea>
+                    
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:8px;">
+                        <div>
+                            <label style="font-size:10.5px; color:#94a3b8; display:block; margin-bottom:2px;">Chọn giọng đọc (100% US Neural Voices):</label>
+                            <select id="moment-voiceid-${idx}" class="form-select" style="font-size:11px; padding:3px 6px; background:#0b1120;">
+                                <option value="en-US-AndrewNeural" selected>🇺🇸 Andrew (US Male - Cuốn hút, chuẩn YouTube Host)</option>
+                                <option value="en-US-ChristopherNeural">🇺🇸 Christopher (US Male - Tài liệu, uy quyền)</option>
+                                <option value="en-US-GuyNeural">🇺🇸 Guy (US Male - Gay cấn, trinh thám)</option>
+                                <option value="en-US-JennyNeural">🇺🇸 Jenny (US Female - Cảm xúc, kịch tính)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:10.5px; color:#94a3b8; display:block; margin-bottom:2px;">Nhạc nền BGM đệm nhẹ:</label>
+                            <select id="moment-bgm-${idx}" class="form-select" style="font-size:11px; padding:3px 6px; background:#0b1120;">
+                                <option value="none" selected>🔇 Không nhạc nền (Chỉ giọng đọc sạch)</option>
+                                <option value="chill">☕ Chill Ambient (Êm đềm, ấm áp)</option>
+                                <option value="suspense">🤫 Dark Suspense (Hồi hộp, kịch tính)</option>
+                                <option value="epic">⚔️ Inspiring Epic (Hùng tráng)</option>
+                                <option value="cyber">⚡ Sci-Fi Cyber (Công nghệ hiện đại)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="font-size:10.5px; color:#34d399; margin-top:6px; display:flex; align-items:center; gap:5px;">
+                        <span>✨</span> Hệ thống sẽ <strong>tắt 100% âm thanh video cũ</strong>, đọc lời bình bằng <strong>100% tiếng Anh Mỹ</strong> và tự động tạo <strong>phụ đề Kinetic ASS tiếng Anh đồng bộ từng từ</strong>!
                     </div>
                 </div>
 
@@ -7393,15 +7458,71 @@ function copyRepurposerPackItem(idx, type, btnElement) {
     }
 }
 
+function toggleMomentVoiceoverPanel(idx) {
+    const audioMode = document.getElementById(`moment-audio-${idx}`)?.value || 'original';
+    const panel = document.getElementById(`moment-voiceover-panel-${idx}`);
+    if (!panel) return;
+    if (audioMode === 'mute_original_voiceover' || audioMode === 'duck_original_voiceover' || audioMode === 'ai_voiceover') {
+        panel.style.display = 'block';
+    } else {
+        panel.style.display = 'none';
+    }
+}
+
+function resetMomentVoiceText(idx) {
+    if (!currentRepurposeData || !currentRepurposeData.moments || !currentRepurposeData.moments[idx]) return;
+    const m = currentRepurposeData.moments[idx];
+    const el = document.getElementById(`moment-voicetext-${idx}`);
+    if (el) {
+        el.value = m.transcript_snippet || m.summary || m.hook_quote || m.title || '';
+        showToast('Đã đặt lại kịch bản theo tóm tắt AI!', 'info');
+    }
+}
+
+async function translateMomentVoiceText(idx) {
+    const el = document.getElementById(`moment-voicetext-${idx}`);
+    if (!el || !el.value.trim()) {
+        showToast('Chưa có nội dung để dịch!', 'warning');
+        return;
+    }
+    const nicheId = currentRepurposeData?.niche_id || 'general';
+    const oldText = el.value;
+    el.style.opacity = '0.5';
+    showToast('Đang dịch kịch bản sang Tiếng Anh US viral...', 'info');
+    try {
+        const res = await fetch('/api/repurposer/translate-text', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: oldText, niche_id: nicheId })
+        });
+        if (!res.ok) throw new Error('Lỗi máy chủ khi dịch');
+        const data = await res.json();
+        if (data.english_text) {
+            el.value = data.english_text;
+            showToast('✓ Đã chuyển sang Tiếng Anh chuẩn YouTube Mỹ!', 'success');
+        }
+    } catch (err) {
+        showToast('Lỗi dịch: ' + err.message, 'error');
+    } finally {
+        el.style.opacity = '1';
+    }
+}
+
 async function renderRepurposedMoment(idx, originalSource) {
     if (!currentRepurposeData || !currentRepurposeData.moments[idx]) return;
     const m = currentRepurposeData.moments[idx];
 
     const titleInput = document.getElementById(`moment-title-${idx}`);
     const title = titleInput ? titleInput.value.trim() : m.title;
-    const layout = document.getElementById(`moment-layout-${idx}`)?.value || 'smart_crop_full';
+    const layout = document.getElementById(`moment-layout-${idx}`)?.value || 'strip_sandwich_clean_916';
     const cropFocus = document.getElementById(`moment-focus-${idx}`)?.value || 'center';
-    const audioMode = document.getElementById(`moment-audio-${idx}`)?.value || 'original';
+    const audioMode = document.getElementById(`moment-audio-${idx}`)?.value || 'mute_original_voiceover';
+    const customVoiceText = document.getElementById(`moment-voicetext-${idx}`)?.value?.trim() || '';
+    const voiceId = document.getElementById(`moment-voiceid-${idx}`)?.value || 'en-US-AndrewNeural';
+    const bgmMood = document.getElementById(`moment-bgm-${idx}`)?.value || 'none';
+    const muteOriginal = (audioMode === 'mute_original_voiceover' || audioMode === 'mute');
+    const blurWatermark = document.getElementById(`moment-delogo-${idx}`)?.checked ?? false;
+    const watermarkPos = document.getElementById(`moment-delogo-pos-${idx}`)?.value || 'top_right';
     const addSub = document.getElementById(`moment-sub-${idx}`)?.checked ?? true;
     const nicheId = currentRepurposeData.niche_id || 'general';
     const mode = currentRepurposeData.mode || 'self_owned';
@@ -7411,8 +7532,8 @@ async function renderRepurposedMoment(idx, originalSource) {
         box.innerHTML = `
             <div style="text-align:center; padding:10px; background:rgba(16,185,129,0.1); border-radius:8px; border:1px solid rgba(16,185,129,0.3);">
                 <div class="spinner" style="width:18px; height:18px; border-width:2px; margin:0 auto 6px auto;"></div>
-                <div style="font-size:12px; font-weight:600; color:#10b981;">⚡ VAD & Smart 9:16 Render...</div>
-                <div style="font-size:10px; color:#94a3b8; margin-top:2px;">Cắt chuẩn giọng nói & lọc bản quyền (5 - 15s)</div>
+                <div style="font-size:12px; font-weight:600; color:#10b981;">⚡ VAD, Thuyết Minh US, Bóc Tách & Delogo...</div>
+                <div style="font-size:10px; color:#94a3b8; margin-top:2px;">Đang làm mờ logo, cắt khung hình sạch & tạo phụ đề ASS (5 - 15s)</div>
             </div>
         `;
     }
@@ -7430,9 +7551,15 @@ async function renderRepurposedMoment(idx, originalSource) {
                 layout_mode: layout,
                 crop_focus: cropFocus,
                 audio_mode: audioMode,
+                mute_original: muteOriginal,
+                voice_id: voiceId || null,
+                custom_voiceover_text: customVoiceText || null,
+                bgm_mood: bgmMood,
+                blur_watermark: blurWatermark,
+                watermark_position: watermarkPos,
                 add_subtitles: addSub,
-                subtitle_text: m.transcript_snippet || m.title,
-                timed_transcript: m.timed_transcript || null,
+                subtitle_text: customVoiceText || m.transcript_snippet || m.title,
+                timed_transcript: (audioMode === 'original' ? (m.timed_transcript || null) : null),
                 mode: mode,
                 source_url: currentRepurposeData?.metadata?.webpage_url || (originalSource.startsWith('http') ? originalSource : ''),
                 author: currentRepurposeData?.metadata?.author || '',
@@ -7563,11 +7690,14 @@ function renderRepurposerMashups(mashups, originalSource) {
             <div style="background:rgba(15,23,42,0.6); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:12px; margin-bottom:16px;">
                 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:10px;">
                     <div>
-                        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">📐 Khung hình 9:16:</label>
+                        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">📐 Bố Cục Video:</label>
                         <select id="mashup-layout-${idx}" class="form-select" style="font-size:12px; padding:5px 8px; background:#0f172a;">
-                            <option value="smart_crop_full" selected>🚀 Smart Fullscreen 9:16 (Xóa sạch Logo TV, phóng to cận cảnh 100%)</option>
+                            <option value="strip_sandwich_clean_916" selected>✂️ Bóc tách video lõi giữa 9:16 (Xóa sạch Banner trên dưới)</option>
+                            <option value="strip_sandwich_square">⏹️ Bóc tách video vuông 1:1 (1080x1080 như Ảnh mẫu)</option>
+                            <option value="strip_sandwich_bokeh">🎨 Bóc tách video lõi giữa + Nền Bokeh 9:16</option>
+                            <option value="smart_crop_full">🚀 Smart Fullscreen 9:16 (Phóng to lấp đầy màn hình)</option>
                             <option value="center_crop">🎯 Center Crop 9:16 (Cắt chính giữa)</option>
-                            <option value="blur_background">⚠️ Blur Canvas (Khung 16:9 lọt thỏm - Không khuyên dùng)</option>
+                            <option value="blur_background">⚠️ Blur Canvas (Khung 16:9 lọt thỏm)</option>
                         </select>
                     </div>
                     <div>
@@ -7579,10 +7709,21 @@ function renderRepurposerMashups(mashups, originalSource) {
                         </select>
                     </div>
                     <div>
-                        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">🎙️ Chế độ Audio:</label>
+                        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">🎙️ Chế độ Audio (100% US):</label>
                         <select id="mashup-audio-${idx}" class="form-select" style="font-size:12px; padding:5px 8px; background:#0f172a;">
-                            <option value="original" selected>🔊 Âm thanh gốc + BGM Ducking</option>
-                            <option value="ai_voiceover">🎙️ Thuyết minh AI (Đọc kịch bản từng phân cảnh + BGM)</option>
+                            <option value="mute_original_voiceover" selected>🎙️ Tắt tiếng gốc + Lồng giọng Mỹ AI (Khuyên dùng)</option>
+                            <option value="original">🔊 Âm thanh gốc + BGM Ducking</option>
+                            <option value="duck_original_voiceover">🎚️ Lồng giọng Mỹ AI + Giữ tiếng gốc nhỏ (Ducking)</option>
+                            <option value="mute">🔇 Tắt hoàn toàn âm thanh (Câm)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">🗣️ Giọng Đọc (100% US Neural):</label>
+                        <select id="mashup-voiceid-${idx}" class="form-select" style="font-size:12px; padding:5px 8px; background:#0f172a;">
+                            <option value="en-US-AndrewNeural" selected>🇺🇸 Andrew (US Male - YouTube chuẩn)</option>
+                            <option value="en-US-ChristopherNeural">🇺🇸 Christopher (US Male - Tài liệu)</option>
+                            <option value="en-US-GuyNeural">🇺🇸 Guy (US Male - Gay cấn)</option>
+                            <option value="en-US-JennyNeural">🇺🇸 Jenny (US Female - Kịch tính)</option>
                         </select>
                     </div>
                     <div>
@@ -7597,9 +7738,13 @@ function renderRepurposerMashups(mashups, originalSource) {
                 </div>
 
                 <div style="display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:#cbd5e1; border-top:1px solid rgba(255,255,255,0.06); padding-top:8px;">
-                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;" title="Bắt buộc giữ chân hơn 70% người xem Shorts lướt ở chế độ tắt tiếng">
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;" title="Làm mờ/xóa logo của kênh gốc">
+                        <input type="checkbox" id="mashup-delogo-${idx}" checked style="accent-color:#06b6d4; transform:scale(1.15);" />
+                        <span style="font-weight:700; color:#38bdf8;">✨ Xóa / Làm mờ Logo Watermark</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;" title="Bắt buộc giữ chân người xem Shorts">
                         <input type="checkbox" id="mashup-sub-${idx}" checked style="accent-color:#10b981; transform:scale(1.15);" />
-                        <span style="font-weight:700; color:#34d399;">✨ Phụ đề Kinetic Karaoke ASS + Nhãn Bối Cảnh (Bắt Buộc)</span>
+                        <span style="font-weight:700; color:#34d399;">✨ Phụ đề Kinetic ASS Tiếng Anh (Bắt Buộc)</span>
                     </label>
                     <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
                         <input type="checkbox" id="mashup-sfx-${idx}" checked style="accent-color:#06b6d4;" />
@@ -7625,9 +7770,12 @@ async function renderRepurposedMashup(idx, originalSource) {
 
     const titleInput = document.getElementById(`mashup-title-${idx}`);
     const title = titleInput ? titleInput.value.trim() : m.title;
-    const layout = document.getElementById(`mashup-layout-${idx}`)?.value || 'smart_crop_full';
+    const layout = document.getElementById(`mashup-layout-${idx}`)?.value || 'strip_sandwich_clean_916';
     const cropFocus = document.getElementById(`mashup-focus-${idx}`)?.value || 'center';
-    const audioMode = document.getElementById(`mashup-audio-${idx}`)?.value || 'original';
+    const audioMode = document.getElementById(`mashup-audio-${idx}`)?.value || 'mute_original_voiceover';
+    const voiceId = document.getElementById(`mashup-voiceid-${idx}`)?.value || 'en-US-AndrewNeural';
+    const muteOriginal = (audioMode === 'mute_original_voiceover' || audioMode === 'mute');
+    const blurWatermark = document.getElementById(`mashup-delogo-${idx}`)?.checked ?? false;
     const addSub = document.getElementById(`mashup-sub-${idx}`)?.checked ?? true;
     const enableSfx = document.getElementById(`mashup-sfx-${idx}`)?.checked ?? true;
     const bgmMood = document.getElementById(`mashup-bgm-${idx}`)?.value || 'suspense';
@@ -7639,8 +7787,8 @@ async function renderRepurposedMashup(idx, originalSource) {
         box.innerHTML = `
             <div style="text-align:center; padding:12px; background:rgba(16,185,129,0.1); border-radius:8px; border:1px solid rgba(16,185,129,0.3);">
                 <div class="spinner" style="width:20px; height:20px; border-width:2px; margin:0 auto 8px auto;"></div>
-                <div style="font-size:12.5px; font-weight:700; color:#10b981;">⚡ Đang nấu lại Mashup Multi-Clip...</div>
-                <div style="font-size:11px; color:#94a3b8; margin-top:2px;">Bóc tách ${m.clips.length} lát cắt, ghép nối xfade, mix BGM & đốt phụ đề (10 - 20s)</div>
+                <div style="font-size:12.5px; font-weight:700; color:#10b981;">⚡ Đang nấu lại Mashup Multi-Clip 100% US...</div>
+                <div style="font-size:11px; color:#94a3b8; margin-top:2px;">Bóc tách ${m.clips.length} lát cắt, xóa watermark, lồng giọng đọc Mỹ & đốt phụ đề ASS (10 - 20s)</div>
             </div>
         `;
     }
@@ -7657,6 +7805,10 @@ async function renderRepurposedMashup(idx, originalSource) {
                 layout_mode: layout,
                 crop_focus: cropFocus,
                 audio_mode: audioMode,
+                mute_original: muteOriginal,
+                voice_id: voiceId || null,
+                blur_watermark: blurWatermark,
+                watermark_position: 'top_right',
                 add_subtitles: addSub,
                 enable_sfx: enableSfx,
                 bgm_mood: bgmMood,

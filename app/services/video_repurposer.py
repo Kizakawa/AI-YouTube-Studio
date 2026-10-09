@@ -99,6 +99,82 @@ class VideoRepurposerService:
                 "video_path": file_path,
                 "video_id": Path(file_path).stem,
             }
+        return self.get_video_info(url_or_path)
+
+    @staticmethod
+    def _find_cookie_file() -> Optional[str]:
+        """Tìm file cookies.txt của YouTube nếu có trong dự án hoặc cấu hình."""
+        cookie_candidates = [
+            Path("cookies.txt"),
+            Path("youtube_cookies.txt"),
+            Path("config/cookies.txt"),
+            Path("config/youtube_cookies.txt"),
+            Path("assets/cookies.txt"),
+        ]
+        import os
+        env_cookie = os.getenv("YOUTUBE_COOKIES_PATH")
+        if env_cookie:
+            cookie_candidates.insert(0, Path(env_cookie))
+
+        for candidate in cookie_candidates:
+            if candidate.exists() and candidate.stat().st_size > 10:
+                return str(candidate.resolve())
+        return None
+
+    @classmethod
+    def _build_yt_dlp_opts(cls, base_opts: Optional[Dict[str, Any]] = None, client_combo: str = "ios_android") -> Dict[str, Any]:
+        """
+        Xây dựng cấu hình yt-dlp tối ưu chống chặn 'Sign in to confirm you're not a bot' từ YouTube:
+        1. Sử dụng player_client di động (ios, android, mweb) để bỏ qua kiểm tra token bot trên web.
+        2. Tự động nạp cookies.txt nếu có.
+        3. Tự động fallback linh hoạt các định dạng MP4.
+        """
+        opts: Dict[str, Any] = {
+            "quiet": True,
+            "no_warnings": True,
+        }
+        if client_combo == "ios_android":
+            opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": ["ios", "android", "mweb"],
+                    "player_skip": ["webpage", "configs"],
+                }
+            }
+        elif client_combo == "android_first":
+            opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": ["android", "ios"],
+                }
+            }
+        elif client_combo == "mweb_first":
+            opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": ["mweb", "android"],
+                }
+            }
+
+        cookie_path = cls._find_cookie_file()
+        if cookie_path:
+            opts["cookiefile"] = cookie_path
+
+        if base_opts:
+            for k, v in base_opts.items():
+                opts[k] = v
+
+        return opts
+
+    def get_video_info(self, url_or_path: str) -> Dict[str, Any]:
+        """Lấy metadata thông tin video từ đường dẫn local hoặc link YouTube (Bypass Bot-Check)."""
+        file_path = Path(url_or_path)
+        if file_path.exists():
+            return {
+                "source_type": "local",
+                "title": file_path.stem,
+                "duration_seconds": self._get_duration(str(file_path)),
+                "author": "Local File",
+                "thumbnail": "",
+                "video_id": Path(file_path).stem,
+            }
 
         video_id = extract_youtube_video_id(url_or_path)
         if not video_id:
@@ -106,23 +182,35 @@ class VideoRepurposerService:
 
         try:
             import yt_dlp
-            ydl_opts = {
-                "quiet": True,
-                "skip_download": True,
-                "no_warnings": True,
+            info = None
+            last_err = None
+            for combo in ["ios_android", "android_first", "mweb_first"]:
+                try:
+                    ydl_opts = self._build_yt_dlp_opts(
+                        base_opts={"skip_download": True},
+                        client_combo=combo
+                    )
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+                        if info:
+                            break
+                except Exception as ex:
+                    last_err = ex
+                    continue
+
+            if not info and last_err:
+                raise last_err
+
+            return {
+                "source_type": "youtube",
+                "title": info.get("title", f"YouTube Video {video_id}"),
+                "duration_seconds": float(info.get("duration", 0)),
+                "author": info.get("uploader", "YouTube Creator"),
+                "thumbnail": info.get("thumbnail", f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"),
+                "video_id": video_id,
+                "webpage_url": info.get("webpage_url", f"https://www.youtube.com/watch?v={video_id}"),
+                "description": info.get("description", "") or "",
             }
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
-                return {
-                    "source_type": "youtube",
-                    "title": info.get("title", f"YouTube Video {video_id}"),
-                    "duration_seconds": float(info.get("duration", 0)),
-                    "author": info.get("uploader", "YouTube Creator"),
-                    "thumbnail": info.get("thumbnail", f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"),
-                    "video_id": video_id,
-                    "webpage_url": info.get("webpage_url", f"https://www.youtube.com/watch?v={video_id}"),
-                    "description": info.get("description", "") or "",
-                }
         except Exception as e:
             logger.warning(f"Lỗi khi lấy metadata yt-dlp cho {video_id}: {e}")
             return {
@@ -486,6 +574,48 @@ class VideoRepurposerService:
             t = f"{t} #Shorts"
             
         return t
+
+    def _ensure_english_narration(self, text: str, niche_id: str = "general") -> str:
+        """
+        Đảm bảo văn bản lời thoại/thuyết minh 100% TIẾNG ANH (US English) để xuất khẩu kênh quốc tế.
+        Nếu phát hiện văn bản tiếng Việt: Tự động chuyển dịch sang tiếng Anh viral chuẩn YouTube Shorts.
+        """
+        from app.agents.voice_agent import VoiceAgent
+        clean = SubtitleHelper.sanitize_subtitle_text(text or "").strip()
+        if not clean:
+            cfg = self._NICHE_FALLBACK_CFG.get(niche_id, {})
+            return cfg.get("hook_quote", "Watch closely right here — this incredible moment changed everything!")
+
+        if not VoiceAgent._is_vietnamese(clean):
+            return clean
+
+        logger.info(f"🇺🇸 [Repurposer] Phát hiện văn bản tiếng Việt: '{clean[:40]}...'. Đang tự động chuyển ngữ sang Tiếng Anh...")
+        try:
+            from app.agents.content_agent import ContentAgent
+            ca = ContentAgent()
+            prompt = (
+                f"You are a professional viral YouTube Shorts copywriter.\n"
+                f"Translate and adapt this Vietnamese narration into conversational, high-retention AMERICAN ENGLISH "
+                f"for a YouTube Short in niche '{niche_id}'.\n\n"
+                f"Vietnamese text: \"{clean}\"\n\n"
+                f"STRICT RULES:\n"
+                f"1. Output ONLY the English narration text.\n"
+                f"2. Keep it punchy, emotional, and under 3 short sentences.\n"
+                f"3. Absolutely NO markdown quotes, no explanations, no Vietnamese characters."
+            )
+            translated = ca._call_api(prompt, timeout=12)
+            if translated and len(translated.strip()) > 5 and not VoiceAgent._is_vietnamese(translated):
+                english_res = SubtitleHelper.sanitize_subtitle_text(translated)
+                logger.info(f"🇺🇸 [Repurposer] Chuyển ngữ thành công: '{english_res[:50]}...'")
+                return english_res
+        except Exception as e:
+            logger.warning(f"[Repurposer] Lỗi gọi AI dịch tiếng Anh: {e}")
+
+        # Fallback bằng câu chuyện tiếng Anh hấp dẫn theo ngách
+        cfg = self._NICHE_FALLBACK_CFG.get(niche_id, {})
+        hook = cfg.get("hook_quote", "Watch closely right here — this incredible moment changed everything!")
+        summary = cfg.get("summary", "An unexpected turnaround in a dramatic situation.")
+        return f"{hook} {summary}"
 
     def _build_niche_fallback_moments(
         self,
@@ -1194,20 +1324,57 @@ Return ONLY a valid JSON list matching this schema:
                 return str(target_path)
 
             import yt_dlp
-            ydl_opts = {
-                "format": "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-                "outtmpl": str(target_path),
-                "quiet": True,
-                "no_warnings": True,
-                "merge_output_format": "mp4",
-            }
             watch_url = f"https://www.youtube.com/watch?v={video_id}" if len(video_id) == 11 else url_or_id
-            logger.info(f"Đang tải video từ YouTube: {watch_url}")
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([watch_url])
+            logger.info(f"Đang tải video từ YouTube (Bypass Bot-Check): {watch_url}")
 
-            if not target_path.exists():
-                raise FileNotFoundError(f"Tải video thất bại, không tìm thấy: {target_path}")
+            # Chiến lược tải đa tầng (Multi-tier Download Strategy chống chặn Bot)
+            download_configs = [
+                # Tier 1: Ưu tiên chất lượng cao nhất 1080p với client ios + android
+                {
+                    "client_combo": "ios_android",
+                    "format": "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                },
+                # Tier 2: Thử android-first với format tương thích cao
+                {
+                    "client_combo": "android_first",
+                    "format": "best[ext=mp4]/best",
+                },
+                # Tier 3: Client mweb hoặc fallback stream MP4 bất kỳ
+                {
+                    "client_combo": "mweb_first",
+                    "format": "18/best",
+                },
+            ]
+
+            download_success = False
+            last_download_err = None
+
+            for cfg in download_configs:
+                try:
+                    ydl_opts = self._build_yt_dlp_opts(
+                        base_opts={
+                            "format": cfg["format"],
+                            "outtmpl": str(target_path),
+                            "merge_output_format": "mp4",
+                        },
+                        client_combo=cfg["client_combo"]
+                    )
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([watch_url])
+
+                    if target_path.exists() and target_path.stat().st_size > 100 * 1024:
+                        download_success = True
+                        logger.info(f"✅ Tải video thành công bằng cấu hình {cfg['client_combo']} (kích thước: {target_path.stat().st_size} bytes)")
+                        break
+                except Exception as dl_err:
+                    last_download_err = dl_err
+                    logger.warning(f"Thử tải bằng {cfg['client_combo']} không thành công: {dl_err}. Đang chuyển cấu hình dự phòng...")
+
+            if not download_success or not target_path.exists():
+                raise RuntimeError(
+                    f"Không thể tải video từ YouTube ({video_id}). "
+                    f"YouTube yêu cầu xác thực hoặc giới hạn IP. Lỗi chi tiết: {last_download_err}"
+                )
 
             return str(target_path)
 
@@ -1236,26 +1403,44 @@ Return ONLY a valid JSON list matching this schema:
             return False
 
         # Xác định giọng đọc phù hợp
-        is_vn = VoiceAgent._is_vietnamese(clean_text)
-        if voice_override:
-            primary_voice = voice_override
-        elif is_vn:
-            primary_voice = "vi-VN-NamMinhNeural"
-        else:
-            primary_voice = VoiceAgent.get_persona_voice(niche_id=niche_id)
-
-        # Danh sách ứng viên dự phòng
-        candidate_voices = [primary_voice]
-        if is_vn:
-            for v in ["vi-VN-HoaiMyNeural", "vi-VN-NamMinhNeural"]:
-                if v not in candidate_voices:
-                    candidate_voices.append(v)
-        else:
+        # 🇺🇸 US Export Mode: Nếu đang bật chế độ xuất khẩu Hoa Kỳ (DISABLE_VIETNAMESE_VOICE),
+        # tự động chuyển dịch toàn bộ văn bản sang tiếng Anh và chỉ dùng US Neural Voice Personas
+        if VoiceAgent.DISABLE_VIETNAMESE_VOICE:
+            if VoiceAgent._is_vietnamese(clean_text):
+                clean_text = self._ensure_english_narration(clean_text, niche_id)
+            is_vn = False
+            if voice_override and not voice_override.lower().startswith("vi-"):
+                primary_voice = voice_override
+            else:
+                primary_voice = VoiceAgent.get_persona_voice(niche_id=niche_id)
+            candidate_voices = [primary_voice]
             for v in ["en-US-AndrewNeural", "en-US-GuyNeural", "en-US-ChristopherNeural", "en-US-JennyNeural"]:
                 if v not in candidate_voices:
                     candidate_voices.append(v)
+            tts_rate = "+12%"
+        else:
+            is_vn = VoiceAgent._is_vietnamese(clean_text)
+            if voice_override:
+                primary_voice = voice_override
+                if voice_override.lower().startswith("vi-"):
+                    is_vn = True
+                elif voice_override.lower().startswith("en-"):
+                    is_vn = False
+            elif is_vn:
+                primary_voice = "vi-VN-NamMinhNeural"
+            else:
+                primary_voice = VoiceAgent.get_persona_voice(niche_id=niche_id)
 
-        tts_rate = "+12%" if not is_vn else "+7%"
+            candidate_voices = [primary_voice]
+            if is_vn:
+                for v in ["vi-VN-NamMinhNeural", "vi-VN-HoaiMyNeural"]:
+                    if v not in candidate_voices:
+                        candidate_voices.append(v)
+            else:
+                for v in ["en-US-AndrewNeural", "en-US-GuyNeural", "en-US-ChristopherNeural", "en-US-JennyNeural"]:
+                    if v not in candidate_voices:
+                        candidate_voices.append(v)
+            tts_rate = "+12%" if not is_vn else "+7%"
 
         async def _do_gen():
             for v in candidate_voices:
@@ -1313,18 +1498,39 @@ Return ONLY a valid JSON list matching this schema:
         author: str = "",
         mode: str = "self_owned",
         crop_focus: str = "center",
+        mute_original: bool = False,
+        voice_id: Optional[str] = None,
+        custom_voiceover_text: Optional[str] = None,
+        bgm_mood: Optional[str] = None,
+        blur_watermark: bool = False,
+        watermark_position: str = "top_right",
     ) -> Dict[str, Any]:
         """
-        Cắt đoạn highlight, chuyển sang tỉ lệ dọc 9:16 (1080x1920) và đốt phụ đề Karaoke ASS chuẩn Niche Profile.
+        Cắt đoạn highlight, chuyển sang tỉ lệ dọc 9:16 (1080x1920) hoặc vuông 1:1, bóc tách sandwich banners,
+        làm mờ logo watermark và đốt phụ đề Karaoke ASS chuẩn Niche Profile.
         Tích hợp toàn diện:
         1. VAD Dead-Air Removal: Tự động dịch mốc cắt tới điểm bắt đầu giọng nói, triệt tiêu khoảng lặng ở 2s đầu.
-        2. Framing thông minh: smart_crop_full (fullscreen 9:16 không viền mờ, tự động triệt tiêu logo 4 góc).
-        3. Phụ đề Karaoke Dynamic: Kết nối trực tiếp mốc thời gian thực từng từ từ timed_transcript, Safe Zone Y=580.
-        4. Audio Envelope & Vocal Ducking: Bắt buộc áp dụng fade-in/out 0.25s chống clipping; hỗ trợ AI Voiceover mới.
+        2. Framing thông minh: smart_crop_full, strip_sandwich_square (bóc tách 1:1), strip_sandwich_clean_916, strip_sandwich_bokeh.
+        3. Phụ đề Karaoke Dynamic: Kết nối trực tiếp mốc thời gian thực từng từ từ timed_transcript hoặc sinh theo giọng đọc mới.
+        4. Audio Envelope & Vocal Ducking: Bắt buộc áp dụng fade-in/out 0.25s; hỗ trợ Tắt tiếng cũ + Lồng giọng đọc AI 100% US English.
         5. Pre-Flight QA Gate: Tự động kiểm tra LUFS, dead-air và độ đồng bộ trước khi bàn giao clip.
         """
         if not os.path.exists(source_video_path):
             raise FileNotFoundError(f"Không tìm thấy file nguồn: {source_video_path}")
+
+        from app.agents.voice_agent import VoiceAgent
+
+        # Nhận diện chế độ âm thanh
+        is_voiceover_mode = audio_mode in (
+            "mute_original_voiceover",
+            "ai_voiceover_mute",
+            "ai_voiceover",
+            "duck_original_voiceover",
+        )
+        should_mute_original = (
+            audio_mode in ("mute_original_voiceover", "ai_voiceover_mute", "mute")
+            or (audio_mode == "ai_voiceover" and mute_original)
+        )
 
         # 0. Tích hợp Voice Activity Detection (VAD) để loại bỏ dead-air ở đầu video
         speech_offset = detect_audio_speech_start(
@@ -1344,6 +1550,17 @@ Return ONLY a valid JSON list matching this schema:
 
         # Chuẩn hóa tiêu đề tiếng Anh viral
         clean_title = self._ensure_viral_english_title(title, niche_id)
+
+        # Xác định văn bản giọng đọc thuyết minh (dành cho chế độ lồng tiếng mới)
+        raw_voice_text = custom_voiceover_text or subtitle_text or title or ""
+        # 🇺🇸 US Export Mode: Tự động chuyển dịch sang tiếng Anh nếu phát hiện tiếng Việt
+        if VoiceAgent.DISABLE_VIETNAMESE_VOICE and VoiceAgent._is_vietnamese(raw_voice_text):
+            clean_voice_text = self._ensure_english_narration(raw_voice_text, niche_id)
+        else:
+            clean_voice_text = SubtitleHelper.sanitize_subtitle_text(raw_voice_text)
+
+        if not clean_voice_text or len(clean_voice_text.split()) < 2:
+            clean_voice_text = self._ensure_english_narration("", niche_id)
 
         # Tự động tạo mô tả video & bình luận ghim kèm link Store ID kizakawa-20 (Amazon Associates)
         from app.services.monetization_engine import (
@@ -1399,7 +1616,30 @@ Return ONLY a valid JSON list matching this schema:
             ass_path = SUBS_DIR / ass_filename
             ass_file_path = str(ass_path)
 
-            if timed_transcript and len(timed_transcript) > 0:
+            eff_margin_v = 200 if layout_mode == "strip_sandwich_square" else 580
+
+            if is_voiceover_mode:
+                # Khi lồng giọng đọc AI/Tự sinh: Phụ đề BẮT BUỘC phải khớp 100% với lời thuyết minh mới,
+                # KHÔNG dùng timed_transcript của video cũ (vì từ ngữ và thời điểm phát âm đã thay đổi hoàn toàn).
+                from app.schemas.contracts import SceneContract
+                logger.info(f"Tạo phụ đề Kinetic Karaoke ASS khớp giọng đọc mới: '{clean_voice_text[:40]}...'")
+                pseudo_scene = SceneContract(
+                    scene_id=1,
+                    narration=clean_voice_text,
+                    visual_keyword="viral highlight",
+                    audio_duration_ms=int(duration * 1000),
+                    estimated_seconds=min(max(float(duration), 1.0), 300.0),
+                )
+                SubtitleHelper.save_ass_file(
+                    scenes=[pseudo_scene],
+                    output_path=ass_file_path,
+                    fontname=fontname,
+                    fontsize=44,
+                    margin_v=eff_margin_v,
+                    niche_id=niche_id,
+                    credit_text=effective_credit,
+                )
+            elif timed_transcript and len(timed_transcript) > 0:
                 # GẮN KẾT TRỰC TIẾP TIMED TRANSCRIPT (MỐC THỜI GIAN THẬT TỪNG TỪ)
                 logger.info(f"Tạo phụ đề Karaoke ASS từ {len(timed_transcript)} timed segments chuẩn xác.")
                 SubtitleHelper.save_ass_from_timed_segments(
@@ -1409,7 +1649,7 @@ Return ONLY a valid JSON list matching this schema:
                     clip_start_offset=start_seconds,
                     fontname=fontname,
                     fontsize=44,
-                    margin_v=580,
+                    margin_v=eff_margin_v,
                     niche_id=niche_id,
                     credit_text=effective_credit,
                     show_cta_badge=False,
@@ -1429,7 +1669,7 @@ Return ONLY a valid JSON list matching this schema:
                     output_path=ass_file_path,
                     fontname=fontname,
                     fontsize=42,
-                    margin_v=580,
+                    margin_v=eff_margin_v,
                     niche_id=niche_id,
                     credit_text=effective_credit,
                 )
@@ -1449,23 +1689,32 @@ Return ONLY a valid JSON list matching this schema:
                     output_path=ass_file_path,
                     fontname=fontname,
                     fontsize=44,
-                    margin_v=580,
+                    margin_v=eff_margin_v,
                     niche_id=niche_id,
                     credit_text=effective_credit,
                 )
 
         # Kiểm tra xem video nguồn có audio stream không
         has_audio = False
+        # Probe audio & video stream
+        has_audio = False
+        is_source_vertical = True  # Mặc định ưu tiên layout dọc chuẩn video bánh kẹp TikTok/Shorts
         try:
             info = probe_file(source_video_path)
             if info and "streams" in info:
+                has_audio = any(s.get("codec_type") == "audio" for s in info["streams"])
                 for s in info["streams"]:
-                    if s.get("codec_type") == "audio":
-                        has_audio = True
+                    if s.get("codec_type") == "video":
+                        vw = int(s.get("width", 0))
+                        vh = int(s.get("height", 0))
+                        if vw > 0 and vh > 0:
+                            is_source_vertical = (vh >= vw)
                         break
         except Exception as e:
-            logger.warning(f"Lỗi probe audio stream: {e}")
+            logger.warning(f"Lỗi probe source stream: {e}")
             has_audio = True
+
+        sandwich_core = "crop=in_w:in_h*0.51:0:in_h*0.205" if is_source_vertical else "crop=in_h:in_h:(in_w-in_h)/2:0"
 
         # Chuẩn hóa crop_focus: 'center' (mặc định), 'left' (khách mời/khung trái), 'right' (MC/khung phải)
         focus = (crop_focus or "center").strip().lower()
@@ -1482,57 +1731,110 @@ Return ONLY a valid JSON list matching this schema:
             smart_crop_x = "(in_w-out_w)/2"
             center_crop_x = "(iw-ih*9/16)/2"
 
-        # 2. Xây dựng bộ lọc FFmpeg chuyển sang tỉ lệ dọc 9:16 (1080x1920) kèm biến đổi vân tay hình ảnh (Visual Transformative)
+        # 2. Xây dựng bộ lọc FFmpeg chuyển sang tỉ lệ dọc 9:16 (1080x1920) hoặc vuông 1:1, bóc tách sandwich & làm mờ logo
+        watermark_pos = (watermark_position or "top_right").lower()
+        if watermark_pos == "top_left":
+            wm_crop_x, wm_crop_y, wm_crop_w, wm_crop_h = "iw*0.02", "ih*0.02", "iw*0.38", "ih*0.11"
+            wm_ov_x, wm_ov_y = "W*0.02", "H*0.02"
+        elif watermark_pos == "bottom_right":
+            wm_crop_x, wm_crop_y, wm_crop_w, wm_crop_h = "iw*0.60", "ih*0.87", "iw*0.38", "ih*0.11"
+            wm_ov_x, wm_ov_y = "W*0.60", "H*0.87"
+        elif watermark_pos == "bottom_left":
+            wm_crop_x, wm_crop_y, wm_crop_w, wm_crop_h = "iw*0.02", "ih*0.87", "iw*0.38", "ih*0.11"
+            wm_ov_x, wm_ov_y = "W*0.02", "H*0.87"
+        else: # top_right
+            wm_crop_x, wm_crop_y, wm_crop_w, wm_crop_h = "iw*0.60", "ih*0.02", "iw*0.38", "ih*0.11"
+            wm_ov_x, wm_ov_y = "W*0.60", "H*0.02"
+
+        def _apply_watermark_and_sub(source_pad: str, dest_pad: str = "v") -> str:
+            segments = []
+            cur = source_pad
+            if blur_watermark:
+                segments.append(
+                    f"{cur}split[wm_in][wm_crp];"
+                    f"[wm_crp]crop={wm_crop_w}:{wm_crop_h}:{wm_crop_x}:{wm_crop_y},boxblur=18:5[wm_blured];"
+                    f"[wm_in][wm_blured]overlay={wm_ov_x}:{wm_ov_y}[v_wm_done]"
+                )
+                cur = "[v_wm_done]"
+
+            if ass_file_path and os.path.exists(ass_file_path):
+                escaped_ass = ass_file_path.replace("\\", "/").replace(":", "\\:")
+                segments.append(f"{cur}ass='{escaped_ass}'[{dest_pad}]")
+            else:
+                segments.append(f"{cur}null[{dest_pad}]")
+            return ";".join(segments)
+
         filter_parts = []
-        if layout_mode == "smart_crop_full":
-            # Smart Fullscreen 9:16: Phóng to 120% và crop theo crop_focus (1080x1920)
-            # Hoàn toàn lấp đầy màn hình, loại bỏ 100% logo/watermark ở 4 góc và viền mờ 3 tầng
+        if layout_mode == "strip_sandwich_square":
+            # ⏹️ Bóc tách video vuông 1:1 nguyên bản (Cắt bỏ 100% banner trên và footer phụ đề dưới, xuất 1080x1080)
+            v_core = (
+                f"[0:v]{sandwich_core},"
+                "scale=1080:1080,"
+                "eq=contrast=1.04:brightness=0.01:saturation=1.05[v_core_sq]"
+            )
+            filter_parts.append(v_core)
+            filter_parts.append(_apply_watermark_and_sub("[v_core_sq]", "v"))
+
+        elif layout_mode == "strip_sandwich_clean_916":
+            # ✂️ Bóc tách lõi giữa và phóng to lấp đầy 9:16 Shorts (1080x1920) không bị dính chữ của banner/phụ đề cũ
+            v_core = (
+                f"[0:v]{sandwich_core},"
+                "scale=1080*1.78:1920:force_original_aspect_ratio=increase,"
+                f"crop=1080:1920:{smart_crop_x}:(in_h-out_h)/2,"
+                "eq=contrast=1.04:brightness=0.01:saturation=1.05[v_core_916]"
+            )
+            filter_parts.append(v_core)
+            filter_parts.append(_apply_watermark_and_sub("[v_core_916]", "v"))
+
+        elif layout_mode == "strip_sandwich_bokeh":
+            # 🎨 Bóc tách lõi giữa đặt trên nền Bokeh Blur 9:16 sạch đẹp (1080x1920), triệt tiêu hoàn toàn viền chữ cũ
+            v_core = (
+                f"[0:v]{sandwich_core}[c_raw];"
+                "[c_raw]split[c_bg][c_fg];"
+                "[c_bg]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=15:3,scale=1080:1920[bg];"
+                "[c_fg]scale=1080:1080,eq=contrast=1.03:brightness=0.01:saturation=1.04[fg];"
+                "[bg][fg]overlay=0:(H-h)/2[v_core_bk]"
+            )
+            filter_parts.append(v_core)
+            filter_parts.append(_apply_watermark_and_sub("[v_core_bk]", "v"))
+
+        elif layout_mode == "smart_crop_full":
             v_smart = (
                 "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,"
                 f"crop=1080:1920:{smart_crop_x}:(in_h-out_h)/2,"
-                "eq=contrast=1.04:brightness=0.01:saturation=1.05"
+                "eq=contrast=1.04:brightness=0.01:saturation=1.05[v_core_sm]"
             )
-            if ass_file_path and os.path.exists(ass_file_path):
-                escaped_ass = ass_file_path.replace("\\", "/").replace(":", "\\:")
-                v_smart += f",ass='{escaped_ass}'"
-            filter_parts.append(f"{v_smart}[v]")
+            filter_parts.append(v_smart)
+            filter_parts.append(_apply_watermark_and_sub("[v_core_sm]", "v"))
+
         elif layout_mode == "center_crop":
-            v_crop = f"crop=ih*9/16:ih:{center_crop_x}:0,scale=1080:1920,eq=contrast=1.03:brightness=0.01:saturation=1.04"
-            if ass_file_path and os.path.exists(ass_file_path):
-                escaped_ass = ass_file_path.replace("\\", "/").replace(":", "\\:")
-                v_crop += f",ass='{escaped_ass}'"
-            filter_parts.append(f"[0:v]{v_crop}[v]")
+            v_crop = (
+                f"[0:v]crop=ih*9/16:ih:{center_crop_x}:0,scale=1080:1920,"
+                "eq=contrast=1.03:brightness=0.01:saturation=1.04[v_core_cc]"
+            )
+            filter_parts.append(v_crop)
+            filter_parts.append(_apply_watermark_and_sub("[v_core_cc]", "v"))
+
         else: # blur_background
-            # Tối ưu hóa siêu tốc (Fast Bokeh Blur): Cắt bỏ 8% mép ngoài chứa logo bản quyền TV trước khi đưa vào canvas mờ
             v_blur = (
                 "[0:v]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=12:2,scale=1080:1920[bg];"
                 "[0:v]crop=iw*0.92:ih*0.90:(iw-out_w)/2:(ih-out_h)/2,scale=1080:-2:flags=lanczos,eq=contrast=1.03:brightness=0.01:saturation=1.04[fg];"
+                "[bg][fg]overlay=(W-w)/2:(H-h)/2[v_core_bb]"
             )
-            if ass_file_path and os.path.exists(ass_file_path):
-                escaped_ass = ass_file_path.replace("\\", "/").replace(":", "\\:")
-                v_blur += f"[bg][fg]overlay=(W-w)/2:(H-h)/2,ass='{escaped_ass}'[v]"
-            else:
-                v_blur += "[bg][fg]overlay=(W-w)/2:(H-h)/2[v]"
             filter_parts.append(v_blur)
+            filter_parts.append(_apply_watermark_and_sub("[v_core_bb]", "v"))
 
         # Bộ lọc audio: Envelope Fade In/Out (0.25s) bắt buộc chống clipping/popping
         fade_out_st = max(0.0, duration - 0.3)
         extra_input_args = []
         voice_tmp_path = None
 
-        if audio_mode == "ai_voiceover":
+        if is_voiceover_mode:
             # Thuyết minh AI mới chuẩn VoiceStudio:
-            # 1. 🇺🇸 US Export Mode: Dùng giọng đọc Mỹ chuẩn từ Voice Persona Registry (tắt hoàn toàn giọng Việt)
+            # 1. 🎙️ Voice Persona Registry: Hỗ trợ cả giọng Việt và giọng Mỹ đa dạng theo lựa chọn
             # 2. ⏱️ Timed Speech Synchronization: Tự động co/giãn tốc độ qua atempo để khớp khít thời lượng video clip
-            # 3. 🎚️ Dynamic Sidechain Ducking: Nén âm thanh nền thông minh khi có tiếng nói và phục hồi khi nghỉ
+            # 3. 🔇 Tắt hoàn toàn âm thanh video cũ (should_mute_original) hoặc hạ nhỏ âm lượng (Ducking)
             try:
-                clean_voice_text = SubtitleHelper.sanitize_subtitle_text(subtitle_text or title or "")
-                if not clean_voice_text or len(clean_voice_text.split()) < 2:
-                    if description and len(description.split()) >= 2:
-                        clean_voice_text = SubtitleHelper.sanitize_subtitle_text(description[:220])
-                    else:
-                        clean_voice_text = SubtitleHelper.sanitize_subtitle_text(title or "Watch this incredible viral moment!")
-
                 voice_tmp_file = REPURPOSER_DIR / f"temp_voice_{Path(output_filename).stem}.mp3"
                 voice_tmp_path = str(voice_tmp_file)
                 temp_files.append(voice_tmp_file)
@@ -1541,42 +1843,74 @@ Return ONLY a valid JSON list matching this schema:
                     text=clean_voice_text,
                     output_path=voice_tmp_path,
                     niche_id=niche_id,
+                    voice_override=voice_id,
                 )
 
                 if voice_ok and os.path.exists(voice_tmp_path) and os.path.getsize(voice_tmp_path) > 800:
                     extra_input_args = ["-i", voice_tmp_path]
 
-                    # Tính toán tỷ lệ đồng bộ thời gian (Timed Speech Sync)
+                    # Tính toán tỷ lệ đồng bộ thời gian (Timed Speech Sync: Giữ nguyên 1.0x tự nhiên, không bao giờ kéo lê làm chậm giọng)
                     voice_dur_ms = get_duration_ms(voice_tmp_path)
                     voice_dur_s = (voice_dur_ms / 1000.0) if voice_dur_ms > 0 else duration
-                    speed_ratio = voice_dur_s / max(duration, 1.0)
-
-                    # Giới hạn an toàn tự nhiên và sinh bộ lọc atempo
-                    tempo_str = build_atempo_filter(speed_ratio)
+                    if voice_dur_s <= duration:
+                        tempo_str = "anull"
+                    else:
+                        speed_ratio = min(voice_dur_s / max(duration, 1.0), 1.25)
+                        tempo_str = build_atempo_filter(speed_ratio)
                     tempo_chain = f"{tempo_str}," if tempo_str != "anull" else ""
 
-                    if has_audio:
-                        # Dynamic Sidechain Vocal Ducking (VoiceStudio Standard):
-                        # Khi AI cất tiếng -> Nhạc nền tự chìm xuống mượt mà; khi AI nghỉ -> Nhạc nền tự phục hồi
-                        # QUAN TRỌNG: [voice_synced] cần tách thành 2 nhánh [v_sc][v_mix] bằng asplit=2
-                        # vì FFmpeg không cho phép 1 output pad kết nối vào 2 bộ lọc khác nhau.
-                        filter_parts.append(
-                            f"[1:a]{tempo_chain}volume=1.15,aresample=44100,aformat=channel_layouts=stereo,asplit=2[v_sc][v_mix];"
-                            f"[0:a]aresample=44100,aformat=channel_layouts=stereo[bg_clean];"
-                            f"[bg_clean][v_sc]sidechaincompress=threshold=0.03:ratio=7:attack=20:release=350[bg_ducked];"
-                            f"[bg_ducked][v_mix]amix=inputs=2:duration=first:dropout_transition=1,"
-                            f"afade=t=in:ss=0:d=0.25,afade=t=out:st={fade_out_st:.2f}:d=0.3[a]"
-                        )
+                    if should_mute_original:
+                        # 🔇 TẮT HOÀN TOÀN ÂM THANH GỐC: [0:a] bị triệt tiêu 100%!
+                        bgm_target = None
+                        if bgm_mood and bgm_mood not in ("none", "mute"):
+                            bgm_map = {
+                                "suspense": "assets/bgm/dark_suspense.wav",
+                                "epic": "assets/bgm/inspiring_epic.wav",
+                                "chill": "assets/bgm/chill_ambient.mp3",
+                                "cyber": "assets/bgm/scifi_cyber.wav",
+                            }
+                            cand_target = bgm_map.get(bgm_mood)
+                            if cand_target and os.path.exists(cand_target):
+                                bgm_target = cand_target
+
+                        if bgm_target:
+                            extra_input_args += ["-stream_loop", "-1", "-i", bgm_target]
+                            # Input 0: video, Input 1: voiceover mp3, Input 2: bgm audio
+                            filter_parts.append(
+                                f"[1:a]{tempo_chain}volume=1.20,aresample=44100,aformat=channel_layouts=stereo,apad=whole_dur={duration:.3f},atrim=0:{duration:.3f}[voice];"
+                                f"[2:a]lowpass=f=4200,equalizer=f=3200:t=q:w=1.2:g=-6,volume=0.035,aresample=44100,aformat=channel_layouts=stereo,atrim=0:{duration:.3f}[bgm];"
+                                f"[voice][bgm]amix=inputs=2:duration=first:dropout_transition=1,"
+                                f"afade=t=in:ss=0:d=0.25,afade=t=out:st={fade_out_st:.2f}:d=0.3[a]"
+                            )
+                        else:
+                            filter_parts.append(
+                                f"[1:a]{tempo_chain}volume=1.20,aresample=44100,aformat=channel_layouts=stereo,apad=whole_dur={duration:.3f},atrim=0:{duration:.3f},"
+                                f"afade=t=in:ss=0:d=0.25,afade=t=out:st={fade_out_st:.2f}:d=0.3[a]"
+                            )
+                        has_audio = True
                     else:
-                        filter_parts.append(
-                            f"[1:a]{tempo_chain}volume=1.15,aresample=44100,aformat=channel_layouts=stereo,"
-                            f"afade=t=in:ss=0:d=0.25,afade=t=out:st={fade_out_st:.2f}:d=0.3[a]"
-                        )
-                    has_audio = True
+                        # Chế độ Ducking: Giữ âm thanh gốc nhưng ép nhỏ khi có giọng nói
+                        if has_audio:
+                            filter_parts.append(
+                                f"[1:a]{tempo_chain}volume=1.15,aresample=44100,aformat=channel_layouts=stereo,apad=whole_dur={duration:.3f},atrim=0:{duration:.3f},asplit=2[v_sc][v_mix];"
+                                f"[0:a]aresample=44100,aformat=channel_layouts=stereo,atrim=0:{duration:.3f}[bg_clean];"
+                                f"[bg_clean][v_sc]sidechaincompress=threshold=0.03:ratio=7:attack=20:release=350[bg_ducked];"
+                                f"[bg_ducked][v_mix]amix=inputs=2:duration=first:dropout_transition=1,"
+                                f"afade=t=in:ss=0:d=0.25,afade=t=out:st={fade_out_st:.2f}:d=0.3[a]"
+                            )
+                        else:
+                            filter_parts.append(
+                                f"[1:a]{tempo_chain}volume=1.15,aresample=44100,aformat=channel_layouts=stereo,apad=whole_dur={duration:.3f},atrim=0:{duration:.3f},"
+                                f"afade=t=in:ss=0:d=0.25,afade=t=out:st={fade_out_st:.2f}:d=0.3[a]"
+                            )
+                        has_audio = True
             except Exception as e:
                 logger.warning(f"Lỗi tạo AI Voiceover: {e}, fallback sang original audio")
 
-        if not extra_input_args and has_audio:
+        elif audio_mode == "mute":
+            has_audio = False
+
+        if not extra_input_args and has_audio and audio_mode != "mute":
             # Chế độ Original: Anti-Content ID (micro pitch shift 1.5%) + Envelope Fade
             filter_parts.append(
                 f"[0:a]asetrate=44100*1.015,atempo=1/1.015,aresample=44100,"
@@ -1600,6 +1934,8 @@ Return ONLY a valid JSON list matching this schema:
         ]
         if has_audio:
             ffmpeg_args += ["-map", "[a]"]
+        else:
+            ffmpeg_args += ["-an"]
 
         ffmpeg_args += [
             "-c:v", "libx264",
@@ -1635,6 +1971,9 @@ Return ONLY a valid JSON list matching this schema:
             "niche_id": niche_id,
             "layout_mode": layout_mode,
             "audio_mode": audio_mode,
+            "mute_original": should_mute_original,
+            "voice_id": voice_id or "",
+            "voiceover_text": clean_voice_text if is_voiceover_mode else "",
             "title": clean_title,
             "subtitle_text": subtitle_text[:120],
             "description": description,
@@ -1710,33 +2049,59 @@ Return ONLY a valid JSON list matching this schema:
         mode: str = "self_owned",
         channel_name: str = "",
         description: str = "",
+        mute_original: bool = False,
+        voice_id: Optional[str] = None,
+        blur_watermark: bool = False,
+        watermark_position: str = "top_right",
     ) -> Dict[str, Any]:
         """
         Nấu lại video dạng Mashup Multi-Clip:
-        1. Trích xuất từng micro-clip với tỉ lệ 9:16 và zoom_punch động (Jump Cuts).
-        2. Tự động drop phụ đề cũ bằng cờ -sn (Lossless-Cut inspired).
-        3. Ghép nối liền mạch các clips không bị giật lag khung hình.
-        4. Chèn hiệu ứng SFX Whoosh tại điểm nhảy cảnh và nhạc nền BGM ducking xuyên suốt.
-        5. Đốt phụ đề Karaoke ASS chuẩn Safe Zone Y=580.
+        1. Trích xuất từng micro-clip với tỉ lệ 9:16 hoặc vuông 1:1, bóc tách sandwich banners.
+        2. Tự động làm mờ logo watermark (Anti-Watermark Blur) nếu được yêu cầu.
+        3. Drop phụ đề cũ bằng cờ -sn (Lossless-Cut inspired).
+        4. Ghép nối liền mạch các clips không bị giật lag khung hình.
+        5. Chèn hiệu ứng SFX Whoosh tại điểm nhảy cảnh và nhạc nền BGM ducking xuyên suốt.
+        6. Đốt phụ đề Karaoke ASS chuẩn Safe Zone (100% US English).
         """
         import shutil
         if not os.path.exists(source_video_path):
             raise FileNotFoundError(f"Không tìm thấy file nguồn: {source_video_path}")
 
+        from app.agents.voice_agent import VoiceAgent
+
         if not clips or len(clips) < 2:
             raise ValueError("Chế độ Mashup yêu cầu tối thiểu 2 phân đoạn micro-clips.")
 
-        # Probe audio stream
+        # Nhận diện chế độ âm thanh
+        is_voiceover_mode = audio_mode in (
+            "mute_original_voiceover",
+            "ai_voiceover_mute",
+            "ai_voiceover",
+            "duck_original_voiceover",
+        )
+        should_mute_original = (
+            audio_mode in ("mute_original_voiceover", "ai_voiceover_mute", "mute")
+            or (audio_mode == "ai_voiceover" and mute_original)
+        )
+
+        # Probe audio & video stream
         has_audio = False
+        is_source_vertical = True  # Mặc định ưu tiên layout dọc chuẩn video bánh kẹp TikTok/Shorts
         try:
             info = probe_file(source_video_path)
             if info and "streams" in info:
+                has_audio = any(s.get("codec_type") == "audio" for s in info["streams"])
                 for s in info["streams"]:
-                    if s.get("codec_type") == "audio":
-                        has_audio = True
+                    if s.get("codec_type") == "video":
+                        vw = int(s.get("width", 0))
+                        vh = int(s.get("height", 0))
+                        if vw > 0 and vh > 0:
+                            is_source_vertical = (vh >= vw)
                         break
         except Exception:
             has_audio = True
+
+        sandwich_core = "crop=in_w:in_h*0.51:0:in_h*0.205" if is_source_vertical else "crop=in_h:in_h:(in_w-in_h)/2:0"
 
         uid = uuid.uuid4().hex[:8]
         temp_files: List[Path] = []
@@ -1759,40 +2124,93 @@ Return ONLY a valid JSON list matching this schema:
                     smart_crop_x = "(in_w-out_w)/2"
                     center_crop_x = "(iw-ih*9/16)/2"
 
-                # ── BƯỚC 1: RENDER TỪNG MICRO-CLIP 9:16 VỚI ZOOM PUNCH VÀ DEAD-AIR FADE ──
+                watermark_pos = (watermark_position or "top_right").lower()
+                if watermark_pos == "top_left":
+                    wm_crop_x, wm_crop_y, wm_crop_w, wm_crop_h = "iw*0.02", "ih*0.02", "iw*0.38", "ih*0.11"
+                    wm_ov_x, wm_ov_y = "W*0.02", "H*0.02"
+                elif watermark_pos == "bottom_right":
+                    wm_crop_x, wm_crop_y, wm_crop_w, wm_crop_h = "iw*0.60", "ih*0.87", "iw*0.38", "ih*0.11"
+                    wm_ov_x, wm_ov_y = "W*0.60", "H*0.87"
+                elif watermark_pos == "bottom_left":
+                    wm_crop_x, wm_crop_y, wm_crop_w, wm_crop_h = "iw*0.02", "ih*0.87", "iw*0.38", "ih*0.11"
+                    wm_ov_x, wm_ov_y = "W*0.02", "H*0.87"
+                else: # top_right
+                    wm_crop_x, wm_crop_y, wm_crop_w, wm_crop_h = "iw*0.60", "ih*0.02", "iw*0.38", "ih*0.11"
+                    wm_ov_x, wm_ov_y = "W*0.60", "H*0.02"
+
+                def _apply_wm_filter(base_expr: str) -> str:
+                    if not blur_watermark:
+                        return f"{base_expr}[v]"
+                    return (
+                        f"{base_expr}[raw_c];"
+                        f"[raw_c]split[wm_in][wm_crp];"
+                        f"[wm_crp]crop={wm_crop_w}:{wm_crop_h}:{wm_crop_x}:{wm_crop_y},boxblur=18:5[wm_blured];"
+                        f"[wm_in][wm_blured]overlay={wm_ov_x}:{wm_ov_y}[v]"
+                    )
+
+                # ── BƯỚC 1: RENDER TỪNG MICRO-CLIP 9:16/1:1 VỚI ZOOM PUNCH VÀ DEAD-AIR FADE ──
                 for idx, c in enumerate(clips):
                     st = max(0.0, float(c.get("start_seconds", 0.0)))
                     et = float(c.get("end_seconds", st + 4.0))
                     dur = max(0.8, et - st)
-                    # Phóng to tối thiểu 1.20x để loại bỏ triệt để 100% logo nhà đài ở các góc mép
                     zoom = max(1.20, float(c.get("zoom_punch", 1.20)))
 
                     clip_out = REPURPOSER_DIR / f"temp_{uid}_c{idx}.mp4"
                     temp_files.append(clip_out)
 
-                    if layout_mode == "smart_crop_full":
-                        v_filter = (
+                    if layout_mode == "strip_sandwich_square":
+                        base_v = (
+                            f"[0:v]{sandwich_core},"
+                            "scale=1080:1080,"
+                            "eq=contrast=1.04:brightness=0.01:saturation=1.05"
+                        )
+                        v_filter = _apply_wm_filter(base_v)
+                    elif layout_mode == "strip_sandwich_clean_916":
+                        base_v = (
+                            f"[0:v]{sandwich_core},"
+                            f"scale=1080*{zoom:.2f}:1920*{zoom:.2f}:force_original_aspect_ratio=increase,"
+                            f"crop=1080:1920:{smart_crop_x}:(in_h-out_h)/2,"
+                            "eq=contrast=1.04:brightness=0.01:saturation=1.05"
+                        )
+                        v_filter = _apply_wm_filter(base_v)
+                    elif layout_mode == "strip_sandwich_bokeh":
+                        base_v = (
+                            f"[0:v]{sandwich_core}[mc_raw];"
+                            "[mc_raw]split[mc_bg][mc_fg];"
+                            "[mc_bg]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=15:3,scale=1080:1920[bg];"
+                            "[mc_fg]scale=1080:1080,eq=contrast=1.03:brightness=0.01:saturation=1.04[fg];"
+                            "[bg][fg]overlay=0:(H-h)/2"
+                        )
+                        v_filter = _apply_wm_filter(base_v)
+                    elif layout_mode == "smart_crop_full":
+                        base_v = (
                             f"[0:v]scale=1080*{zoom:.2f}:1920*{zoom:.2f}:force_original_aspect_ratio=increase,"
                             f"crop=1080:1920:{smart_crop_x}:(in_h-out_h)/2,"
-                            "eq=contrast=1.04:brightness=0.01:saturation=1.05[v]"
+                            "eq=contrast=1.04:brightness=0.01:saturation=1.05"
                         )
+                        v_filter = _apply_wm_filter(base_v)
                     elif layout_mode == "center_crop":
-                        v_filter = f"[0:v]crop=ih*9/16:ih:{center_crop_x}:0,scale=1080:1920,eq=contrast=1.03:brightness=0.01:saturation=1.04[v]"
+                        base_v = f"[0:v]crop=ih*9/16:ih:{center_crop_x}:0,scale=1080:1920,eq=contrast=1.03:brightness=0.01:saturation=1.04"
+                        v_filter = _apply_wm_filter(base_v)
                     else:  # blur_background
-                        # Cắt bỏ 8% mép ngoài chứa logo bản quyền TV trước khi đưa vào canvas mờ
-                        v_filter = (
+                        base_v = (
                             "[0:v]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=12:2,scale=1080:1920[bg];"
                             f"[0:v]crop=iw*0.92:ih*0.90:(iw-out_w)/2:(ih-out_h)/2,scale=1080*{zoom:.2f}:-2:flags=lanczos,eq=contrast=1.03:brightness=0.01:saturation=1.04[fg];"
-                            "[bg][fg]overlay=(W-w)/2:(H-h)/2[v]"
+                            "[bg][fg]overlay=(W-w)/2:(H-h)/2"
                         )
+                        v_filter = _apply_wm_filter(base_v)
 
                     fade_st = max(0.0, dur - 0.06)
                     voice_ok = False
                     voice_clip_file = None
 
-                    if audio_mode == "ai_voiceover":
-                        raw_narration = c.get("transcript_snippet") or c.get("summary") or c.get("text") or ""
-                        clean_narration = SubtitleHelper.sanitize_subtitle_text(raw_narration)
+                    if is_voiceover_mode:
+                        raw_narration = c.get("custom_voiceover_text") or c.get("transcript_snippet") or c.get("summary") or c.get("text") or ""
+                        # 🇺🇸 US Export Mode: Nếu phát hiện tiếng Việt, tự động chuyển dịch sang tiếng Anh viral
+                        if VoiceAgent.DISABLE_VIETNAMESE_VOICE and VoiceAgent._is_vietnamese(raw_narration):
+                            clean_narration = self._ensure_english_narration(raw_narration, niche_id)
+                        else:
+                            clean_narration = SubtitleHelper.sanitize_subtitle_text(raw_narration)
                         if not clean_narration or len(clean_narration.split()) < 2:
                             role = str(c.get("role", "CLIP")).upper()
                             default_narr_en = {
@@ -1810,25 +2228,35 @@ Return ONLY a valid JSON list matching this schema:
                             text=clean_narration,
                             output_path=str(voice_clip_file),
                             niche_id=niche_id,
+                            voice_override=voice_id,
                         )
 
                     if voice_ok and voice_clip_file and voice_clip_file.exists() and voice_clip_file.stat().st_size > 800:
                         v_dur_ms = get_duration_ms(str(voice_clip_file))
                         v_dur_s = (v_dur_ms / 1000.0) if v_dur_ms > 0 else dur
-                        speed_ratio = v_dur_s / max(dur, 0.8)
-                        tempo_str = build_atempo_filter(speed_ratio)
+                        c["voice_dur_ms"] = v_dur_ms
+
+                        if v_dur_s <= dur:
+                            tempo_str = "anull"
+                        else:
+                            speed_ratio = min(v_dur_s / max(dur, 0.8), 1.25)
+                            tempo_str = build_atempo_filter(speed_ratio)
                         tempo_chain = f"{tempo_str}," if tempo_str != "anull" else ""
 
-                        if has_audio:
+                        if should_mute_original or not has_audio:
+                            # 🔇 Tắt hoàn toàn âm thanh gốc, chỉ lấy âm thanh giọng đọc mới
                             a_filter = (
-                                f"[1:a]{tempo_chain}volume=1.20,aresample=44100,aformat=channel_layouts=stereo[v_voice];"
-                                f"[0:a]volume=0.12,aresample=44100,aformat=channel_layouts=stereo[v_amb];"
-                                f"[v_voice][v_amb]amix=inputs=2:duration=first:dropout_transition=1,"
+                                f"[1:a]{tempo_chain}volume=1.20,aresample=44100,aformat=channel_layouts=stereo,"
+                                f"apad=whole_dur={dur:.3f},atrim=0:{dur:.3f},"
                                 f"afade=t=in:ss=0:d=0.05,afade=t=out:st={fade_st:.2f}:d=0.05[a]"
                             )
                         else:
+                            # Chế độ Ducking: Giữ tiếng gốc nhỏ (ambient)
                             a_filter = (
                                 f"[1:a]{tempo_chain}volume=1.20,aresample=44100,aformat=channel_layouts=stereo,"
+                                f"apad=whole_dur={dur:.3f},atrim=0:{dur:.3f}[v_voice];"
+                                f"[0:a]volume=0.10,aresample=44100,aformat=channel_layouts=stereo,atrim=0:{dur:.3f}[v_amb];"
+                                f"[v_voice][v_amb]amix=inputs=2:duration=first:dropout_transition=1,"
                                 f"afade=t=in:ss=0:d=0.05,afade=t=out:st={fade_st:.2f}:d=0.05[a]"
                             )
 
@@ -1842,6 +2270,17 @@ Return ONLY a valid JSON list matching this schema:
                             "-filter_complex", f"{v_filter};{a_filter}",
                             "-map", "[v]",
                             "-map", "[a]",
+                        ]
+                    elif audio_mode == "mute":
+                        clip_cmd = [
+                            "-y",
+                            "-ss", f"{st:.3f}",
+                            "-t", f"{dur:.3f}",
+                            "-i", source_video_path,
+                            "-sn",
+                            "-filter_complex", f"{v_filter}",
+                            "-map", "[v]",
+                            "-an",
                         ]
                     else:
                         a_filter = f"[0:a]afade=t=in:ss=0:d=0.05,afade=t=out:st={fade_st:.2f}:d=0.05[a]"
@@ -1923,9 +2362,9 @@ Return ONLY a valid JSON list matching this schema:
                             break
 
                 temp_audio_video = REPURPOSER_DIR / f"temp_{uid}_bgm.mp4"
-                if bgm_target and os.path.exists(bgm_target):
+                if bgm_target and os.path.exists(bgm_target) and audio_mode != "mute":
                     temp_files.append(temp_audio_video)
-                    bgm_vol = 0.035 if audio_mode == "ai_voiceover" else 0.05
+                    bgm_vol = 0.035 if is_voiceover_mode else 0.05
                     # Bộ lọc Cinematic De-Harshing:
                     # 1. lowpass=f=4200: Cắt bỏ tần số cao sắc nhọn (>4.2kHz) gây chói tai và xé tiếng trên loa điện thoại
                     # 2. equalizer=f=3200: Giảm nhẹ dải 3.2kHz tạo cảm giác âm thanh ấm áp, êm dịu, chìm dưới giọng đọc
@@ -1990,15 +2429,17 @@ Return ONLY a valid JSON list matching this schema:
                     niche_sub = get_niche_subtitle_style(niche_profile)
                     fontname = niche_sub.get("fontname", "Arial Black")
 
+                    mashup_margin_v = 200 if layout_mode == "strip_sandwich_square" else 580
                     SubtitleHelper.save_mashup_ass_file(
                         clips=clips,
                         output_path=str(ass_path),
                         fontname=fontname,
                         fontsize=44,
-                        margin_v=580,
+                        margin_v=mashup_margin_v,
                         niche_id=niche_id,
                         credit_text=author or channel_name or None,
                         is_english=True,
+                        is_voiceover=is_voiceover_mode,
                     )
 
                     escaped_ass = str(ass_path).replace("\\", "/").replace(":", "\\:")
@@ -2062,6 +2503,8 @@ Return ONLY a valid JSON list matching this schema:
                     "niche_id": niche_id,
                     "layout_mode": layout_mode,
                     "audio_mode": audio_mode,
+                    "mute_original": should_mute_original,
+                    "voice_id": voice_id or "",
                     "title": clean_title,
                     "subtitle_text": full_summary[:120],
                     "description": description,
