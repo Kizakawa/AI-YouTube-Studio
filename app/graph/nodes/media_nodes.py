@@ -103,6 +103,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     media_dir = work_dir / "media"
     media_dir.mkdir(parents=True, exist_ok=True)
 
+    current_niche = state.get("niche") or state.get("channel_style") or state.get("channel_niche") or "general"
+    is_scifi_val = (current_niche == "scifi") or any(k in state.get("topic", "").lower() for k in ("scifi", "sci-fi", "alien", "cyborg", "viễn tưởng"))
+
     script = ScriptContract(**script_data)
     media_agent = MediaAgent()
     image_agent = ImageAgent()
@@ -310,6 +313,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     used_urls=used_pool_urls,
                     visual_analysis=v_analysis,
                     narration=scene.narration,
+                    niche=current_niche,
+                    is_scifi=is_scifi_val,
                 )
                 if res_vid and Path(res_vid).exists() and Path(res_vid).stat().st_size > 5000:
                     media_path = res_vid
@@ -356,6 +361,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     visual_analysis=v_analysis,
                     narration=scene.narration,
                     skip_stock_lookup=prefer_generation,
+                    niche=current_niche,
+                    is_scifi=is_scifi_val,
                 )
                 if res_vid and Path(res_vid).exists() and Path(res_vid).stat().st_size > 5000:
                     media_path = res_vid
@@ -524,6 +531,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     camera_motion=camera_motion,
                     visual_prompt=vp,
                     narration=scene.narration,
+                    niche=current_niche,
+                    is_scifi=is_scifi_val,
                 )
                 if res_v and Path(res_v).exists() and Path(res_v).stat().st_size > 5000:
                     media_path = res_v
@@ -696,6 +705,8 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
     image_agent = ImageAgent()
     media_agent = MediaAgent()
     ai_video_agent = AIVideoAgent()
+    current_niche = state.get("niche") or state.get("channel_style") or state.get("channel_niche") or "general"
+    is_scifi_val = (current_niche == "scifi") or any(k in state.get("topic", "").lower() for k in ("scifi", "sci-fi", "alien", "cyborg", "viễn tưởng"))
     logger.info(f"🔄 [LangGraph] Tự động sửa chữa media kỹ thuật cho các cảnh: {failed_ids} (Lần {retry_count})")
 
     for item in scenes_media:
@@ -733,6 +744,8 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             scene_id=scene_id,
                             visual_prompt=vp,
                             narration=narr,
+                            niche=current_niche,
+                            is_scifi=is_scifi_val,
                         )
                         if res_vid and Path(res_vid).exists() and Path(res_vid).stat().st_size > 5000:
                             item["media_path"] = res_vid
@@ -854,6 +867,8 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
     image_agent = ImageAgent()
     media_agent = MediaAgent()
     ai_video_agent = AIVideoAgent()
+    current_niche = state.get("niche") or state.get("channel_style") or state.get("channel_niche") or "general"
+    is_scifi_val = (current_niche == "scifi") or any(k in state.get("topic", "").lower() for k in ("scifi", "sci-fi", "alien", "cyborg", "viễn tưởng"))
 
     # Chủ đề thiên nhiên / địa danh có thật (rừng Amazon, biển sâu, sa mạc...): footage thật luôn được thử trước,
     # vì ảnh AI miễn phí thường vẽ sai loài (cá sấu thành gấu / báo) và không có bối cảnh thật.
@@ -927,6 +942,8 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
                     scene_id=scene_id,
                     visual_prompt=prompt_part,
                     narration=narr,
+                    niche=current_niche,
+                    is_scifi=is_scifi_val,
                 )
                 if res_v and Path(res_v).exists() and Path(res_v).stat().st_size > 5000:
                     item["media_path"] = res_v
@@ -947,6 +964,8 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
                     scene_id=scene_id,
                     visual_prompt=prompt_part,
                     narration=narr,
+                    niche=current_niche,
+                    is_scifi=is_scifi_val,
                 )
                 if res_v and Path(res_v).exists() and Path(res_v).stat().st_size > 5000:
                     item["media_path"] = res_v

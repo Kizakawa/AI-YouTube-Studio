@@ -29,9 +29,9 @@ script_blueprint:
   - Cảm ơn các bạn đã theo dõi
   - Lịch sử thế giới rất phong phú
   cta_templates:
-  - Bạn tin đây là trò lừa thế kỷ hay sự thật bị che giấu? Bình luận suy đoán của
-    bạn và đăng ký kênh đón xem phần tiếp theo.
-  - Nếu bạn cũng mê mẩn những bí ẩn lịch sử, nhấn thích và theo dõi kênh ngay.
+  - Empires crumble into dust, but the classified truth remains buried until now.
+  - The official records were rewritten, yet the stone monuments still whisper the real secret.
+  - History is written by the victors, but what they erased is the most dangerous truth of all.
   anti_hallucination_rules:
   - Phải trích dẫn đúng mốc niên đại, tên nhân vật, địa danh khảo cổ có thật (như
     Howard Carter, Tutankhamun, Pompeii, Göbekli Tepe).

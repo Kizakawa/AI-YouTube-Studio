@@ -991,6 +991,114 @@ def send_telegram_broadcast(
             logger.debug(f"[TelegramAlert] Lỗi gửi tin cho {cid}: {ex}")
 
 
+def send_telegram_video_broadcast(
+    video_path: str,
+    caption: str = "",
+    inline_keyboard: Optional[List[List[Dict[str, str]]]] = None,
+    target_chat_ids: Optional[List[Union[int, str]]] = None,
+    prefer_groups: bool = True
+) -> bool:
+    """
+    Gửi trực tiếp file video hoàn chỉnh (MP4) vào Telegram Group để người dùng xem thử.
+    Nếu file > 49MB, tự động nén nhanh trong vài giây bằng FFmpeg CRF 28 để đảm bảo dưới hạn mức 50MB của Telegram!
+    """
+    token = settings.TELEGRAM_BOT_TOKEN
+    if not token or not video_path or not Path(video_path).exists():
+        logger.debug(f"[TelegramVideoAlert] Không có token hoặc không tìm thấy file video: {video_path}")
+        return False
+
+    chat_ids = set()
+    if target_chat_ids:
+        for cid in target_chat_ids:
+            chat_ids.add(cid)
+    else:
+        allowed_groups = settings.get_allowed_group_ids()
+        if prefer_groups and allowed_groups:
+            for gid in allowed_groups:
+                chat_ids.add(gid)
+        else:
+            for uid in settings.get_allowed_users().keys():
+                chat_ids.add(uid)
+
+    if not chat_ids:
+        return False
+
+    # Kiểm tra kích thước file; nếu > 49MB nén nhanh bằng FFmpeg
+    upload_path = video_path
+    temp_compressed = None
+    try:
+        size_mb = Path(video_path).stat().st_size / (1024 * 1024)
+        if size_mb > 49.0:
+            import subprocess
+            temp_dir = Path(settings.TEMP_DIR)
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            temp_compressed = str(temp_dir / f"tg_preview_{Path(video_path).stem}.mp4")
+            cmd = [
+                "ffmpeg", "-y", "-i", video_path,
+                "-c:v", "libx264", "-crf", "28", "-preset", "veryfast",
+                "-c:a", "copy", temp_compressed
+            ]
+            logger.info(f"[TelegramVideoAlert] File {size_mb:.1f}MB > 49MB, đang nén nhanh video cho Telegram...")
+            res_comp = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45)
+            if res_comp.returncode == 0 and Path(temp_compressed).exists():
+                upload_path = temp_compressed
+                logger.info(f"[TelegramVideoAlert] Đã nén video thành công: {Path(upload_path).stat().st_size / (1024*1024):.1f}MB")
+    except Exception as ex_comp:
+        logger.warning(f"[TelegramVideoAlert] Lỗi khi nén video: {ex_comp}")
+
+    url = f"https://api.telegram.org/bot{token}/sendVideo"
+    cached_file_id = None
+    sent_any = False
+
+    for cid in chat_ids:
+        try:
+            data = {
+                "chat_id": cid,
+                "caption": caption[:1000] if caption else "",
+                "parse_mode": "HTML",
+                "supports_streaming": True
+            }
+            if inline_keyboard:
+                data["reply_markup"] = json.dumps({"inline_keyboard": inline_keyboard})
+
+            if cached_file_id:
+                # Chat thứ 2 trở đi gửi qua file_id chỉ mất 0.2s!
+                data["video"] = cached_file_id
+                r = http_requests.post(url, data=data, timeout=15)
+                if r.status_code == 200:
+                    sent_any = True
+            else:
+                with open(upload_path, "rb") as vf:
+                    r = http_requests.post(url, data=data, files={"video": vf}, timeout=180)
+                    if r.status_code == 200:
+                        sent_any = True
+                        res_json = r.json()
+                        v_obj = res_json.get("result", {}).get("video")
+                        if v_obj and v_obj.get("file_id"):
+                            cached_file_id = v_obj.get("file_id")
+                    elif r.status_code != 200:
+                        # Thử lại không parse_mode nếu có lỗi HTML tags
+                        data.pop("parse_mode", None)
+                        with open(upload_path, "rb") as vf2:
+                            r2 = http_requests.post(url, data=data, files={"video": vf2}, timeout=180)
+                            if r2.status_code == 200:
+                                sent_any = True
+                                res_json2 = r2.json()
+                                v_obj2 = res_json2.get("result", {}).get("video")
+                                if v_obj2 and v_obj2.get("file_id"):
+                                    cached_file_id = v_obj2.get("file_id")
+        except Exception as ex_send:
+            logger.debug(f"[TelegramVideoAlert] Lỗi gửi video cho {cid}: {ex_send}")
+
+    if temp_compressed and Path(temp_compressed).exists():
+        try:
+            os.remove(temp_compressed)
+        except Exception:
+            pass
+
+    return sent_any
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 6. TỰ ĐỘNG SẢN XUẤT VIDEO CHO KÊNH TRỄ 2 NGÀY (AUTO-GENERATION ENGINE)
 # ──────────────────────────────────────────────────────────────────────────────

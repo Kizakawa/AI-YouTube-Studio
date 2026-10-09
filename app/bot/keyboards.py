@@ -586,12 +586,39 @@ def get_autopilot_keyboard(summary: Dict[str, Any]) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(f"➕ Thêm Video #2: {cname}", callback_data=f"autopilot_run_channel:{cid}")
             ])
 
-    # 4. Hàng tiện ích
+    # 4. Hàng chỉ định chọn kênh bất kỳ
+    keyboard.append([
+        InlineKeyboardButton("🎯 Chỉ Định Chọn Kênh...", callback_data="autopilot_pick_channel")
+    ])
+
+    # 5. Hàng tiện ích
     keyboard.append([
         InlineKeyboardButton("🔄 Làm Mới Trạng Thái", callback_data="autopilot_status"),
         InlineKeyboardButton("📅 Xem Lịch Đăng", callback_data="refresh_schedule:default")
     ])
 
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_autopilot_channel_picker_keyboard() -> InlineKeyboardMarkup:
+    """Bàn phím cho phép người dùng chỉ định chọn bất kỳ kênh nào trong danh sách để chạy Auto-Pilot A-Z"""
+    from config.settings import settings
+    channels = settings.get_channels_config()
+    keyboard = []
+    for idx, ch in enumerate(channels, 1):
+        cid = ch.get("id", "")
+        cname = ch.get("name", cid)
+        handle = ch.get("handle", "")
+        short_name = cname.split(" - ")[0][:22]
+        label = f"{idx}. 🎯 {short_name}"
+        if handle:
+            label += f" ({handle})"
+        keyboard.append([
+            InlineKeyboardButton(label, callback_data=f"autopilot_run_channel:{cid}")
+        ])
+    keyboard.append([
+        InlineKeyboardButton("🔙 Quay Lại Bảng Auto-Pilot", callback_data="autopilot_status")
+    ])
     return InlineKeyboardMarkup(keyboard)
 
 

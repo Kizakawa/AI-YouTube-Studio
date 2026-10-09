@@ -452,6 +452,11 @@ def main():
             logger.warning("⚠️ [TELEGRAM CONFLICT] Đang có một tiến trình Bot khác chạy cùng lúc (local hoặc Render rolling deploy). Đang chờ kết nối ổn định...")
             return
 
+        # Bỏ qua các lỗi mạng chập chờn / Timed out tạm thời của Telegram (tránh bắn tin nhắn lỗi cộc lốc vào nhóm)
+        if any(ign in err_msg for ign in ["Timed out", "timed out", "NetworkError", "ReadTimeout", "ConnectTimeout"]):
+            logger.warning(f"⚠️ [TELEGRAM NETWORK] Kết nối tới Telegram bị gián đoạn/timeout tạm thời ({err_msg}). Đang tự động kết nối lại...")
+            return
+
         logger.error(f"⚠️ Lỗi Telegram xảy ra: {context.error}", exc_info=context.error)
         if update and update.effective_message:
             try:

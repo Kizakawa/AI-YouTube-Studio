@@ -132,7 +132,9 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
     refined_topic = (
         f"{topic}. LƯU Ý TỪ CRITIC: {'; '.join(critiques)}. "
         f"Cảnh 1 phải giật gân, cuốn hút tuyệt đối trong 3 giây đầu (5-8 từ, dùng nghịch lý/tâm lý nghịch đảo). "
-        f"Cảnh cuối bắt buộc kết thúc bằng từ nối lửng (...because... hoặc ...which is why...) tạo Seamless Loop và có câu gợi mở bấm Đăng ký xem Part 2."
+        f"Cảnh 2 và 3 (giây 4-12) bắt buộc tung bằng chứng/nghịch lý sốc (Micro-Hook), không kể lể dông dài. "
+        f"Cảnh cuối là một câu chốt đắt giá, khép lại trọn vẹn ngữ pháp nhưng nối tự nhiên vào câu Cảnh 1 (Seamless Infinite Loop). "
+        f"TUYỆT ĐỐI KHÔNG xin like, không nhắc 'Part 2', không kết thúc bằng từ lửng như 'because', 'which is why'."
     )
     if primary_entity and primary_entity.lower() not in refined_topic.lower():
         refined_topic = f"{refined_topic} (Focus on {primary_entity})"

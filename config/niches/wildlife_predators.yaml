@@ -34,12 +34,9 @@ script_blueprint:
   - Hãy ấn theo dõi kênh để biết thêm nhiều loài vật
   - Như các nhà khoa học đã nghiên cứu
   cta_templates:
-  - Theo bạn giữa Sư Tử và Hổ Siberia, ai mới là vua thực sự của rừng xanh? Bình luận
-    dự đoán của bạn và đăng ký kênh đón xem trận đối đầu tiếp theo.
-  - Nếu bạn cũng tôn kính sức mạnh tàn khốc của tự nhiên hoang dã, nhấn thích và theo
-    dõi kênh ngay.
-  - Lưu lại video này và đăng ký kênh để khám phá cỗ máy săn mồi đáng sợ nhất lịch
-    sử Trái Đất.
+  - In the brutal hierarchy of the wild, mercy is the only fatal mistake.
+  - One moment of hesitation is all it takes for the apex hunter to become the prey.
+  - When the final strike lands, the balance of nature remains absolute and unforgiving.
   anti_hallucination_rules:
   - Mọi thông số sinh học (tốc độ tối đa, lực cắn PSI, chiều dài móng vuốt, nồng độ
     độc tố LD50) phải chuẩn xác theo tài liệu sinh học động vật thực tế.
