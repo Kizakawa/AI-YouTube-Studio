@@ -6,57 +6,49 @@ class TestEntitySanitizer(unittest.TestCase):
     def setUp(self):
         self.agent = ContentAgent()
 
-    def test_wildlife_bird_entity_sanitizer(self):
-        """Kiểm tra kịch bản có chứa các ảo giác (human eye, dna helix) bị khử sạch khi làm về chim"""
-        fake_hallucinated_json = """
+    def test_non_destructive_script_parsing(self):
+        """Kiểm tra kịch bản giữ nguyên 100% quyết định thị giác của Agent, không bị ghi đè bởi từ khóa."""
+        vaccine_script_json = """
         {
-            "title": "Cảnh Chú Chim Đi Kiếm Ăn Nuôi Các Con",
-            "topic": "cảnh chú chim đi kiếm ăn nuôi các con",
-            "full_narration": "Chú chim mẹ bay đi tìm mồi trong rừng sâu để nuôi nấng bầy con thơ.",
+            "title": "Bí Ẩn Vắc-xin Đậu Bò Của Edward Jenner",
+            "topic": "Edward Jenner phát minh vắc xin đậu mùa từ đậu bò và dã thú",
+            "full_narration": "Bác sĩ Edward Jenner phát hiện những người vắt sữa bò không mắc bệnh đậu mùa.",
             "scenes": [
                 {
                     "scene_id": 1,
-                    "narration": "Chim mẹ sải cánh bay vào rừng già.",
-                    "stock_query": "bird flying forest",
-                    "visual_keyword": "bird flight",
-                    "visual_prompt": "Mother bird flying over forest canopy, 8k",
+                    "narration": "Bác sĩ Edward Jenner dùng kim tiêm dịch đậu bò vào cánh tay cậu bé.",
+                    "stock_query": "doctor syringe injection child",
+                    "visual_keyword": "doctor syringe injection",
+                    "visual_prompt": "18th century doctor carefully injecting a child with syringe, realistic lighting",
                     "media_type": "video",
-                    "estimated_seconds": 3.0
+                    "estimated_seconds": 3.5
                 },
                 {
                     "scene_id": 2,
-                    "narration": "Ánh mắt tập trung quan sát từng ngọn cỏ.",
-                    "stock_query": "human eye",
-                    "visual_keyword": "human pupil",
-                    "visual_prompt": "Extreme close-up of a human iris dilating with intense fear",
+                    "narration": "Người dân lo sợ thuốc sẽ biến con người thành quái thú hay dã thú trong rừng.",
+                    "stock_query": "angry mob with torches vintage",
+                    "visual_keyword": "angry mob vintage",
+                    "visual_prompt": "Colonial angry crowd with torches protesting outside clinic",
                     "media_type": "video",
-                    "estimated_seconds": 3.0
-                },
-                {
-                    "scene_id": 3,
-                    "narration": "Bản năng sinh tồn được khắc sâu trong bộ gen.",
-                    "stock_query": "dna helix",
-                    "visual_keyword": "dna double helix",
-                    "visual_prompt": "Glowing 3D DNA double helix structure rotating in void",
-                    "media_type": "video",
-                    "estimated_seconds": 3.0
+                    "estimated_seconds": 3.5
                 }
             ]
         }
         """
-        script = self.agent._parse_json_script(fake_hallucinated_json)
-        
-        # Kiểm tra scene 2: human eye đã được thay thế bằng mắt chim
-        sc2 = script.scenes[1]
-        self.assertNotIn("human eye", sc2.stock_query.lower())
-        self.assertNotIn("human iris", sc2.visual_prompt.lower())
-        self.assertIn("bird", sc2.stock_query.lower())
+        script = self.agent._parse_json_script(vaccine_script_json)
 
-        # Kiểm tra scene 3: dna helix đã được thay thế bằng chim con trong tổ
-        sc3 = script.scenes[2]
-        self.assertNotIn("dna helix", sc3.stock_query.lower())
-        self.assertNotIn("dna double helix", sc3.visual_prompt.lower())
-        self.assertIn("bird", sc3.stock_query.lower())
+        # Kiểm tra scene 1: giữ nguyên ngữ cảnh tiêm thuốc của bác sĩ, tuyệt đối KHÔNG bị biến thành thú rừng
+        sc1 = script.scenes[0]
+        self.assertEqual(sc1.stock_query, "doctor syringe injection child")
+        self.assertIn("doctor", sc1.visual_prompt.lower())
+        self.assertNotIn("wild animals in nature", sc1.stock_query.lower())
+        self.assertNotIn("wildlife habitat", sc1.visual_keyword.lower())
+
+        # Kiểm tra scene 2: giữ nguyên đám đông phẫn nộ, không bị ghi đè thành thú rừng chạy
+        sc2 = script.scenes[1]
+        self.assertEqual(sc2.stock_query, "angry mob with torches vintage")
+        self.assertIn("angry crowd", sc2.visual_prompt.lower())
+        self.assertNotIn("wild animals in nature", sc2.stock_query.lower())
 
     def test_channel_routing(self):
         """Kiểm tra điều hướng kênh thông minh theo chủ đề"""

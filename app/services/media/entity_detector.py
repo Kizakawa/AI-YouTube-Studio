@@ -535,18 +535,6 @@ _INCONGRUENT_TAG_GROUPS = {
         "blueprint", "coat of arms", "postage stamp", "commemorative coin", "seal of",
         "flag of", "emblem of", "crest of", "location map", "locator map",
     ],
-    # Yếu tố con người / phòng thí nghiệm / mắt người lạc vào thế giới động vật & thiên nhiên
-    "human_medical_in_wildlife": [
-        "human eye", "human pupil", "human iris", "human face", "dna helix", "double helix",
-        "laboratory", "test tube", "doctor", "hospital", "stethoscope", "surgery",
-        "interrogation", "handshake", "businessman", "businesswoman", "pet collar",
-        "zoo cage", "bird in cage", "man holding bird",
-    ],
-    # Động vật hoang dã / Thú săn mồi lạc quẻ nếu chủ đề là tâm lý học, AI, công nghệ, con người
-    "wild_predators": [
-        "wolf", "cougar", "mountain lion", "lion", "tiger", "bear", "cheetah", "leopard",
-        "hyena", "panther", "grizzly bear", "predator cat", "wild animal",
-    ],
 }
 
 

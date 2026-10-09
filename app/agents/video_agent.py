@@ -245,13 +245,15 @@ class VideoAgent:
 
             raw_type = (scene.media_type or "image").lower()
             is_video_file = bool(scene.media_path and scene.media_path.lower().endswith((".mp4", ".mov", ".webm", ".mkv")))
-            is_scifi_clip = getattr(job, "is_scifi", False) or (raw_type in ("ai_video", "t2v")) or ("scifi" in (getattr(scene, "visual_keyword", "") or "").lower())
             clip_niche = getattr(job, "niche", None)
+            is_scifi_clip = getattr(job, "is_scifi", False) or ("scifi" in str(clip_niche or "").lower()) or ("scifi" in (getattr(scene, "visual_keyword", "") or "").lower())
+            is_already_rendered = bool(scene.media_path and any(tag in Path(scene.media_path).name.lower() for tag in ("_i2v", "_t2v", "_pexels_fb", "clip_")))
 
             if raw_type in ("video", "ai_video", "i2v", "t2v") or is_video_file:
                 logger.info(
                     f"  Scene {scene.scene_id}: video ({raw_type}) → trim {duration:.1f}s"
-                    f"{' (🔥 HOOK VIDEO CLIP)' if is_hook else ''}{f' [{clip_niche} Grading]' if clip_niche else ''}"
+                    f"{' (🔥 HOOK VIDEO CLIP)' if is_hook else ''}"
+                    f"{' [Already Graded]' if is_already_rendered else f' [{clip_niche} Grading]' if clip_niche else ''}"
                 )
                 trim_video(
                     input_path=scene.media_path,
@@ -262,6 +264,7 @@ class VideoAgent:
                     fps=job.fps,
                     is_scifi=is_scifi_clip,
                     niche=clip_niche,
+                    apply_grading=(not is_already_rendered),
                 )
             elif raw_type in ("image", "ai_image", "photo", "documentary", "auto"):
                 logger.info(

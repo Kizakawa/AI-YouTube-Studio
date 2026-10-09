@@ -241,70 +241,72 @@ def get_niche_color_grading(niche: Optional[str] = None, is_scifi: bool = False)
 
     PROFILES = {
         "psychology": {
-            # Noir moody: tương phản cao, hơi desaturate nhẹ, bóng đen sâu, khuôn mặt sắc nét
-            "vf_filter": "eq=contrast=1.12:saturation=0.92:brightness=-0.02,unsharp=5:5:0.6:5:5:0.25",
-            "vignette": "vignette=0.74",
+            # Tâm lý học: tương phản vừa phải, sắc nét, giữ nguyên màu sắc tự nhiên
+            "vf_filter": "eq=contrast=1.06:saturation=1.08:brightness=0.01,unsharp=3:3:0.4:3:3:0.15",
+            "vignette": "vignette=0.35",
         },
         "deep_sea": {
-            # Vực thẳm đại dương: tương phản sâu, sắc cyan/blue vùng tối, tăng độ rõ vi mô
-            "vf_filter": "eq=contrast=1.15:saturation=1.10:brightness=-0.01,colorbalance=rs=-0.03:gs=0.02:bs=0.07,unsharp=5:5:0.7:5:5:0.25",
-            "vignette": "vignette=0.76",
+            # Vực thẳm đại dương: màu xanh biển sâu sống động, sáng rõ vi mô
+            "vf_filter": "eq=contrast=1.08:saturation=1.18:brightness=0.01,colorbalance=rs=-0.01:gs=0.02:bs=0.04,unsharp=3:3:0.5:3:3:0.20",
+            "vignette": "vignette=0.38",
         },
         "wildlife_predators": {
-            # National Geographic: màu sắc sống động, sắc nét từng sợi lông/nanh vuốt, tương phản kịch tính
-            "vf_filter": "eq=contrast=1.14:saturation=1.18:brightness=0.01,unsharp=5:5:0.8:5:5:0.30",
-            "vignette": "vignette=0.68",
+            # National Geographic: màu sắc sống động rực rỡ, sắc nét tự nhiên, khung hình sáng rõ
+            "vf_filter": "eq=contrast=1.06:saturation=1.20:brightness=0.02,unsharp=3:3:0.5:3:3:0.20",
+            "vignette": "",
         },
         "animal_rescue": {
-            # Cảm xúc ấm áp: ánh sáng vàng ấm nhẹ, tương phản mềm mại tự nhiên, tôn vinh ánh mắt động vật
-            "vf_filter": "eq=contrast=1.06:saturation=1.08:brightness=0.02,colorbalance=rs=0.04:gs=0.02:bs=-0.02,unsharp=5:5:0.5:5:5:0.20",
-            "vignette": "vignette=0.65",
+            # Cảm xúc ấm áp: ánh sáng vàng ấm nhẹ, màu sắc tươi tắn, không tối góc
+            "vf_filter": "eq=contrast=1.04:saturation=1.15:brightness=0.03,colorbalance=rs=0.02:gs=0.01:bs=-0.01,unsharp=3:3:0.4:3:3:0.15",
+            "vignette": "",
         },
         "history_mystery": {
-            # Cổ tích & Huyền bí: ánh vàng kim cổ kính (sepia/gold), tương phản điện ảnh cổ điển
-            "vf_filter": "eq=contrast=1.12:saturation=1.04:brightness=-0.01,colorbalance=rs=0.05:gs=0.03:bs=-0.04,unsharp=5:5:0.6:5:5:0.25",
-            "vignette": "vignette=0.74",
+            # Cổ tích & Huyền bí: ánh vàng kim ấm áp, giữ độ sáng và chi tiết kiến trúc/nhân vật
+            "vf_filter": "eq=contrast=1.06:saturation=1.12:brightness=0.01,colorbalance=rs=0.02:gs=0.01:bs=-0.01,unsharp=3:3:0.4:3:3:0.15",
+            "vignette": "vignette=0.32",
         },
         "horror": {
-            # Rùng rợn: ám xanh lạnh, độ bão hòa thấp, bóng đổ tối sẫm, viền đen dày
-            "vf_filter": "eq=contrast=1.18:saturation=0.82:brightness=-0.03,colorbalance=rs=-0.04:gs=0.03:bs=0.02,unsharp=5:5:0.8:5:5:0.30",
-            "vignette": "vignette=0.78",
+            # Rùng rợn: ám xanh lạnh nhẹ, tương phản kịch tính vừa phải
+            "vf_filter": "eq=contrast=1.10:saturation=0.96:brightness=0.00,colorbalance=rs=-0.02:gs=0.01:bs=0.02,unsharp=3:3:0.5:3:3:0.20",
+            "vignette": "vignette=0.42",
         },
         "scifi": {
-            # Viễn tưởng công nghệ cao: tương phản cao, neon rực rỡ, chi tiết sắc nét 8K
-            "vf_filter": "eq=contrast=1.14:saturation=1.22:brightness=0.01,unsharp=5:5:0.7:5:5:0.30",
-            "vignette": "vignette=0.72",
+            # Viễn tưởng công nghệ: neon rực rỡ, màu sắc punchy tươi sáng, chi tiết sắc nét
+            "vf_filter": "eq=contrast=1.08:saturation=1.22:brightness=0.02,unsharp=3:3:0.5:3:3:0.20",
+            "vignette": "vignette=0.30",
         },
         "luxury": {
-            # Sang trọng & Động lực: ánh vàng kim tinh tế, sắc nét cao cấp
-            "vf_filter": "eq=contrast=1.10:saturation=1.12:brightness=0.01,colorbalance=rs=0.03:gs=0.02:bs=-0.01,unsharp=5:5:0.6:5:5:0.25",
-            "vignette": "vignette=0.68",
+            # Sang trọng & Động lực: ánh vàng kim rạng rỡ, màu sắc cao cấp, độ sáng hoàn hảo
+            "vf_filter": "eq=contrast=1.05:saturation=1.16:brightness=0.02,colorbalance=rs=0.02:gs=0.01:bs=-0.01,unsharp=3:3:0.4:3:3:0.15",
+            "vignette": "",
         },
         "stoic": {
-            # Khắc kỷ / Triết học: tông đá hoa cương trầm lắng, tương phản dứt khoát
-            "vf_filter": "eq=contrast=1.10:saturation=0.90:brightness=-0.01,unsharp=5:5:0.6:5:5:0.25",
-            "vignette": "vignette=0.72",
+            # Khắc kỷ / Triết học: tông trầm tĩnh nhưng sáng rõ, tự nhiên
+            "vf_filter": "eq=contrast=1.06:saturation=1.06:brightness=0.01,unsharp=3:3:0.4:3:3:0.15",
+            "vignette": "vignette=0.32",
         },
         "health": {
-            # Sức khỏe & Sinh học: màu sắc tươi tắn, trong trẻo, năng lượng cao
-            "vf_filter": "eq=contrast=1.08:saturation=1.15:brightness=0.01,unsharp=5:5:0.6:5:5:0.25",
-            "vignette": "vignette=0.66",
+            # Sức khỏe & Sinh học: màu sắc tươi tắn, trong trẻo, căng tràn sức sống
+            "vf_filter": "eq=contrast=1.04:saturation=1.20:brightness=0.03,unsharp=3:3:0.4:3:3:0.15",
+            "vignette": "",
         },
         "general": {
-            # Mặc định cinema: tăng nhẹ tương phản, độ nét và vignette nhẹ
-            "vf_filter": "eq=contrast=1.08:saturation=1.06:brightness=0.00,unsharp=5:5:0.5:5:5:0.20",
-            "vignette": "vignette=0.68",
+            # Mặc định cinema: màu sắc tươi tắn, trong trẻo, tôn vinh ảnh web và ảnh AI gốc
+            "vf_filter": "eq=contrast=1.05:saturation=1.14:brightness=0.01,unsharp=3:3:0.4:3:3:0.15",
+            "vignette": "",
         },
     }
 
     cfg = PROFILES.get(niche_key, PROFILES["general"])
-    # Level 4 Magnates Media Hallmark: 35mm film grain texture (loại bỏ cảm giác nhựa AI, tạo chiều sâu phim nhựa)
-    grain_filter = "noise=c0s=7:c0f=t+u"
+    vf_filter = cfg["vf_filter"]
+    vignette = cfg.get("vignette", "")
+    full_filter = f"{vf_filter},{vignette}" if vignette else vf_filter
+
     return {
         "niche_key": niche_key,
-        "vf_filter": f"{cfg['vf_filter']},{grain_filter}",
-        "vignette": cfg["vignette"],
-        "full_filter": f"{cfg['vf_filter']},{grain_filter},{cfg['vignette']}",
+        "vf_filter": vf_filter,
+        "vignette": vignette,
+        "full_filter": full_filter,
     }
 
 
@@ -480,7 +482,10 @@ def image_to_video(
 
     # Hiệu ứng màu sắc điện ảnh và chiều sâu theo Niche Profile (100% Free Native FFmpeg Filter)
     grading = get_niche_color_grading(niche=niche, is_scifi=is_scifi)
-    vf_chain = f"{zoompan},{grading['vf_filter']},{grading['vignette']}"
+    vf_parts = [zoompan, grading['vf_filter']]
+    if grading.get("vignette"):
+        vf_parts.append(grading['vignette'])
+    vf_chain = ",".join(vf_parts)
 
     args = [
         "-loop", "1",
@@ -524,14 +529,28 @@ def trim_video(
     fps: int = 30,
     is_scifi: bool = False,
     niche: Optional[str] = None,
+    apply_grading: bool = True,
 ) -> str:
     """
     Cắt video Pexels về đúng duration cần thiết + scale/crop 9:16 + chuẩn hóa fps 30.
     Tự động lặp lại (stream_loop) nếu video stock ngắn hơn thời lượng lời thoại.
     Bỏ audio gốc của stock video.
     Áp dụng Cinematic Color Grading & Vignette chuẩn hóa theo từng Niche (100% Free Native FFmpeg Filter).
+    Tự động nhận diện và KHÔNG áp grading 2 lần nếu clip nguồn đã được render từ trước.
     """
-    grading = get_niche_color_grading(niche=niche, is_scifi=is_scifi)
+    # Tránh double-grading (nếu clip đã qua image_to_video hoặc trim_video trước đó)
+    input_filename = Path(input_path).name.lower()
+    is_already_rendered = any(tag in input_filename for tag in ("_i2v", "_t2v", "_pexels_fb", "clip_"))
+    should_grade = apply_grading and not is_already_rendered
+
+    grading_parts = []
+    if should_grade:
+        grading = get_niche_color_grading(niche=niche, is_scifi=is_scifi)
+        grading_parts.append(grading['vf_filter'])
+        if grading.get("vignette"):
+            grading_parts.append(grading['vignette'])
+
+    grading_chain = ("," + ",".join(grading_parts)) if grading_parts else ""
 
     # Level 4 Pattern Interrupt Vox/Magnates Style: Nếu clip dài >= 3.4s, tự động ngắt nhịp bằng cú Punch-in Snap (thu phóng 7% ở mốc giữa)
     if duration_seconds >= 3.4:
@@ -548,9 +567,8 @@ def trim_video(
     vf_chain = (
         f"scale={width}:{height}:force_original_aspect_ratio=increase,"
         f"crop={width}:{height}"
-        f"{crop_snap},"
-        f"{grading['vf_filter']},"
-        f"{grading['vignette']},"
+        f"{crop_snap}"
+        f"{grading_chain},"
         f"setsar=1,"
         f"fps={fps}"
     )

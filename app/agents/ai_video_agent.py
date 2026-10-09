@@ -130,6 +130,8 @@ class AIVideoAgent:
         used_urls: Optional[set] = None,
         visual_analysis: Optional[Dict[str, Any]] = None,
         narration: str = "",
+        niche: Optional[str] = None,
+        is_scifi: bool = False,
     ) -> Optional[str]:
         """
         PHƯƠNG PHÁP 1: IMAGE-TO-VIDEO (Tạo video phụ thuộc vào ảnh chủ đề).
@@ -153,7 +155,7 @@ class AIVideoAgent:
                 prompt=clean_prompt,
                 output_path=temp_ai_image,
                 aspect_ratio="9:16",
-                niche="cinematic",
+                niche=niche or "cinematic",
                 scene_id=scene_id,
                 visual_prompt=clean_prompt,
             )
@@ -169,6 +171,7 @@ class AIVideoAgent:
                     used_urls=used_urls,
                     visual_analysis=visual_analysis,
                     narration=narration,
+                    is_scifi=is_scifi,
                 )
                 if px_vid and Path(px_vid).exists() and Path(px_vid).stat().st_size > 10000:
                     logger.info(f"🎥 [AIVideoAgent] Cứu hộ thành công bằng Video Clip 9:16: {output_path}")
@@ -184,6 +187,8 @@ class AIVideoAgent:
                 duration_seconds=duration_seconds,
                 camera_motion=camera_motion,
                 is_hook=(scene_id == 1),
+                is_scifi=is_scifi,
+                niche=niche,
             )
 
             if Path(output_path).exists() and Path(output_path).stat().st_size > 5000:
@@ -211,6 +216,8 @@ class AIVideoAgent:
         visual_analysis: Optional[Dict[str, Any]] = None,
         narration: str = "",
         skip_stock_lookup: bool = False,
+        niche: Optional[str] = None,
+        is_scifi: bool = False,
     ) -> Optional[str]:
         """
         PHƯƠNG PHÁP 2: TEXT-TO-VIDEO (Tạo video AI trực tiếp từ mô tả).
@@ -246,6 +253,7 @@ class AIVideoAgent:
                 used_urls=used_urls,
                 visual_analysis=visual_analysis,
                 narration=narration,
+                is_scifi=is_scifi,
             )
         else:
             logger.info(f"🧭 [AIVideoAgent] Cảnh {scene_id} hư cấu thuần túy -> bỏ qua kho stock, sinh hình AI trực tiếp.")
@@ -263,17 +271,17 @@ class AIVideoAgent:
                 gen_prompt = w_agent.build_cinematic_wildlife_prompt(full_prompt, subgenre=w_subg, scene_id=scene_id)
                 target_niche = "animal_rescue" if w_subg == "animal_rescue_pets" else "wildlife_predators"
             else:
-                gen_prompt = f"Breathtaking mystical cinematography, {full_prompt}, glowing dynamic energy, 8k vertical video still, cinematic dark atmosphere"
-                target_niche = "cinematic"
+                gen_prompt = f"Breathtaking cinematography, {full_prompt}, dynamic lighting, vivid vibrant colors, 8k vertical video still, crisp clarity"
+                target_niche = niche or "cinematic"
         except Exception:
-            gen_prompt = f"Breathtaking mystical cinematography, {full_prompt}, glowing dynamic energy, 8k vertical video still, cinematic dark atmosphere"
-            target_niche = "cinematic"
+            gen_prompt = f"Breathtaking cinematography, {full_prompt}, dynamic lighting, vivid vibrant colors, 8k vertical video still, crisp clarity"
+            target_niche = niche or "cinematic"
 
         generated_img = self.image_agent.generate_scene_image(
             prompt=gen_prompt,
             output_path=temp_frame,
             aspect_ratio="9:16",
-            niche=target_niche,
+            niche=niche or target_niche,
             scene_id=scene_id,
             visual_prompt=gen_prompt,
         )
@@ -285,6 +293,8 @@ class AIVideoAgent:
                 duration_seconds=duration_seconds,
                 camera_motion=camera_motion,
                 is_hook=(scene_id == 1),
+                is_scifi=is_scifi,
+                niche=niche or target_niche,
             )
             if Path(output_path).exists() and Path(output_path).stat().st_size > 5000:
                 logger.info(f"🔮 [AIVideoAgent] ✅ Text-to-Video hoàn tất cho Cảnh {scene_id} → {output_path}")
@@ -408,6 +418,8 @@ class AIVideoAgent:
         duration_seconds: float = 3.5,
         camera_motion: str = "zoom_in",
         is_hook: bool = False,
+        niche: Optional[str] = None,
+        is_scifi: bool = False,
     ) -> Optional[str]:
         """Biến bất kỳ ảnh tư liệu lịch sử hoặc ảnh nghệ thuật nào thành video chuyển động 9:16 30fps."""
         if not Path(image_path).exists():
@@ -418,6 +430,8 @@ class AIVideoAgent:
             duration_seconds=duration_seconds,
             camera_motion=camera_motion,
             is_hook=is_hook,
+            is_scifi=is_scifi,
+            niche=niche,
         )
         if Path(output_path).exists() and Path(output_path).stat().st_size > 5000:
             return output_path
@@ -577,7 +591,8 @@ class AIVideoAgent:
         duration_seconds: float,
         camera_motion: str = "zoom_in",
         is_hook: bool = False,
-        is_scifi: bool = True,
+        is_scifi: bool = False,
+        niche: Optional[str] = None,
     ):
         """
         Dùng FFmpeg tạo video clip 1080x1920 30fps có chuyển động camera 3D mượt mà
@@ -594,4 +609,5 @@ class AIVideoAgent:
             camera_motion=camera_motion,
             is_hook_scene=is_hook,
             is_scifi=is_scifi,
+            niche=niche,
         )

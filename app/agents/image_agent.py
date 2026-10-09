@@ -99,7 +99,10 @@ class ImageAgent:
             import random
             seed = random.randint(1000, 999999)
             words = anchored.split()
-            compact_prompt = " ".join(words[:60])
+            if len(words) > 70:
+                compact_prompt = " ".join(words[:48] + words[-20:])
+            else:
+                compact_prompt = " ".join(words)
             encoded_prompt = urllib.parse.quote(compact_prompt)
 
             url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=768&height=1344&model=flux&nologo=true&seed={seed}"
@@ -122,7 +125,7 @@ class ImageAgent:
             import random
             seed = random.randint(1000, 999999)
             short_clean = " ".join(base_prompt.split()[:20])
-            prefix_fb = "viral dramatic 8k vertical" if scene_id == 1 else "photorealistic 8k vertical cinema"
+            prefix_fb = "vibrant dramatic 8k vertical, rich vivid colors" if scene_id == 1 else "photorealistic 8k vertical cinema, vibrant colorful lighting"
             p_encoded = urllib.parse.quote(f"{short_clean}, {prefix_fb}")
             url_fallback = f"https://image.pollinations.ai/prompt/{p_encoded}?width=768&height=1344&model=flux&nologo=true&seed={seed}"
             res = requests.get(url_fallback, headers={"User-Agent": f"AI-Shorts/{seed}"}, timeout=10)
