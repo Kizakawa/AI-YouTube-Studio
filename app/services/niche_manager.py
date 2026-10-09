@@ -307,7 +307,7 @@ def build_script_prompt_instructions(niche_profile: Dict[str, Any], language: st
 {forbidden_text}
 {banned_lex_text}
 
-5. MẪU CALL TO ACTION (CTA) & VÒNG LẶP VÔ TẬN (SEAMLESS INFINITE LOOP):
+5. MẪU CÂU CHỐT VÒNG LẶP VÔ TẬN (SEAMLESS INFINITE LOOP PUNCHLINE — KHÔNG XIN SUBSCRIBE / KHÔNG PART 2):
 {ctas_text}
 
 6. QUY TẮC DẪN CHỨNG & XÁC THỰC (ANTI-HALLUCINATION / RESEARCH RULES):

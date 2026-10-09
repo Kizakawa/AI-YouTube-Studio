@@ -33,12 +33,9 @@ script_blueprint:
   - Hãy like và subscribe ủng hộ trạm cứu hộ
   - Như chúng ta đã biết
   cta_templates:
-  - Hãy thả một trái tim ❤️ nếu bạn tin mọi chú chó mèo đều xứng đáng được yêu thương,
-    và đăng ký kênh theo dõi hành trình kỳ diệu tiếp theo.
-  - Bạn có sẵn sàng dang tay cưu mang một bé cưng như thế này không? Bình luận chia
-    sẻ và theo dõi kênh để lan tỏa tình yêu.
-  - Nhấn thích để gửi ngàn lời chúc bình an đến bé cưng dũng cảm này, và đăng ký kênh
-    đón xem phần 2.
+  - And for the first time in his shattered life, his heartbeat finally slowed to gentle peace.
+  - From freezing in the dark to wrapped in warm arms, every broken soul deserves a second chance.
+  - The road to healing was long and painful, but today, his eyes shine with pure unconditional love.
   anti_hallucination_rules:
   - Kịch bản phải tôn trọng phẩm giá và sự an toàn của động vật, không khuyến khích
     hành vi gây hại hay dàn dựng cứu trợ độc hại.

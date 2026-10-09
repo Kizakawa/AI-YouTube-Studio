@@ -31,11 +31,9 @@ script_blueprint:
   - The ocean is very big and deep
   - In this video
   cta_templates:
-  - Do you believe something ancient is still alive down there? Subscribe to unlock
-    the decoded Part 2 tomorrow.
-  - Would you dive 10,000 meters into the abyss? Subscribe and comment your theory
-    for Part 2.
-  - Subscribe before Part 2 drops tomorrow with the raw classified footage.
+  - And in the black abyss where light never reaches, the silence is louder than any living voice.
+  - Whatever is lurking ten thousand meters below, it has been waiting long before humanity arrived.
+  - The classified recording abruptly ends here, but what they heard next will never be released.
   anti_hallucination_rules:
   - Dựa trên các địa danh và hiện tượng có thật (Mariana Trench, Challenger Deep,
     Point Nemo, The Bloop 1997, Baltic Sea Anomaly, Kola Borehole).

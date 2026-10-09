@@ -4631,9 +4631,58 @@ async def kpi_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def autopilot_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Lệnh /autopilot hoặc /auto, /tudong:
-    Hệ thống Auto-Pilot A-Z: Tự động sản xuất từ kịch bản đến lên lịch đăng khung giờ vàng cho từng kênh.
-    Đặc biệt hỗ trợ tự động bù đắp video cho những ngày bận rộn.
+    - /autopilot : Mở bảng điều khiển Auto-Pilot chung
+    - /autopilot <tên_kênh hoặc ID hoặc số thứ tự> : Chỉ định chạy Auto-Pilot ngay cho 1 kênh cụ thể!
     """
+    if not is_authorized(update):
+        return
+
+    if context.args:
+        arg_query = " ".join(context.args).strip().lower()
+        from config.settings import settings
+        channels = settings.get_channels_config()
+
+        matched_ch = None
+        if arg_query.isdigit():
+            idx = int(arg_query) - 1
+            if 0 <= idx < len(channels):
+                matched_ch = channels[idx]
+
+        if not matched_ch:
+            for ch in channels:
+                cid = ch.get("id", "").lower()
+                cname = ch.get("name", "").lower()
+                handle = ch.get("handle", "").lower().lstrip("@")
+                niche = ch.get("niche", "").lower()
+                if (arg_query in cid or arg_query in cname or arg_query in handle or arg_query in niche or
+                    cid in arg_query or cname in arg_query):
+                    matched_ch = ch
+                    break
+
+        if matched_ch:
+            cid = matched_ch.get("id")
+            cname = matched_ch.get("name", cid)
+            uid = update.effective_user.id if update.effective_user else 0
+            from app.services.autopilot_service import run_autopilot_pipeline_for_channel
+            await safe_reply(
+                update,
+                f"🚀 **ĐÃ KÍCH HOẠT AUTOPILOT CHO KÊNH CHỈ ĐỊNH: `{cname}`!**\n\n"
+                f"Bot đang bắt đầu sản xuất kịch bản, render 1080p và xếp vào khe giờ vàng trống tiếp theo.\n"
+                f"Tiến trình đang chạy ngầm, bạn sẽ nhận được thông báo kèm video sau vài phút!"
+            )
+            asyncio.create_task(run_autopilot_pipeline_for_channel(channel_id=cid, user_id=uid, notify_telegram=True))
+            return
+        else:
+            await safe_reply(
+                update,
+                f"⚠️ Không tìm thấy kênh nào khớp với từ khóa: `{arg_query}`.\n"
+                f"👉 Vui lòng chọn một kênh từ danh sách bên dưới:"
+            )
+            from app.bot.keyboards import get_autopilot_channel_picker_keyboard
+            markup = get_autopilot_channel_picker_keyboard()
+            await safe_reply(update, "🎯 **DANH SÁCH CÁC KÊNH KHẢ DỤNG ĐỂ CHẠY AUTOPILOT:**", reply_markup=markup)
+            return
+
     await _show_autopilot_view(update, context)
 
 
@@ -4711,6 +4760,19 @@ async def autopilot_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if data == "autopilot_status":
         await _show_autopilot_view(update, context)
+        return
+
+    if data == "autopilot_pick_channel":
+        from app.bot.keyboards import get_autopilot_channel_picker_keyboard
+        markup = get_autopilot_channel_picker_keyboard()
+        text = (
+            "🎯 <b>CHỌN KÊNH CHỈ ĐỊNH ĐỂ CHẠY AUTO-PILOT A-Z</b>\n\n"
+            "Bấm chọn một kênh bên dưới để AI tự động lên kịch bản, render 1080p và xếp lịch vào khung giờ vàng trống tiếp theo của kênh đó:"
+        )
+        if query.message:
+            await safe_edit_text(query.message, text, reply_markup=markup, parse_mode="HTML")
+        else:
+            await safe_reply(update, text, reply_markup=markup, parse_mode="HTML")
         return
 
     if data == "autopilot_dismiss":

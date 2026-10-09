@@ -540,6 +540,12 @@ async def run_autopilot_for_all_empty(user_id: int = 0, notify_telegram: bool = 
     summary = get_channel_today_summary()
     empty_channels = summary.get("empty_channels", [])
 
+    # Lọc theo danh sách kênh chỉ định (nếu có cấu hình AUTOPILOT_ENABLED_CHANNELS)
+    from config.settings import settings
+    allowed_cids = settings.get_autopilot_enabled_channels()
+    if allowed_cids:
+        empty_channels = [c for c in empty_channels if c["channel_id"] in allowed_cids]
+
     if not empty_channels:
         msg = "✅ **TẤT CẢ CÁC KÊNH ĐÃ CÓ LỊCH PHÁT SÓNG ĐẦY ĐỦ HÔM NAY!**\n\nKhông có kênh nào bị bỏ trống."
         if notify_telegram:
@@ -687,7 +693,10 @@ def check_and_send_daily_reminders(bot=None, force: bool = False) -> Dict[str, A
         ])
 
     inline_kb.append([
-        {"text": "📅 Xem Lịch Đầy Đủ", "callback_data": "schedule:all"},
+        {"text": "🎯 Chỉ Định Chọn Kênh...", "callback_data": "autopilot_pick_channel"},
+        {"text": "📅 Xem Lịch Đầy Đủ", "callback_data": "schedule:all"}
+    ])
+    inline_kb.append([
         {"text": "💤 Hôm Nay Nghỉ (Bỏ Qua)", "callback_data": "autopilot_dismiss"}
     ])
 

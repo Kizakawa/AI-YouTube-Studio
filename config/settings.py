@@ -53,6 +53,7 @@ class Settings:
     ENABLE_OVERDUE_AUTO_PRODUCTION: bool = os.getenv("ENABLE_OVERDUE_AUTO_PRODUCTION", "false").lower() in ("true", "1", "yes")
     ENABLE_FALLBACK_AUTO_PUBLISH: bool = os.getenv("ENABLE_FALLBACK_AUTO_PUBLISH", "false").lower() in ("true", "1", "yes")
     AUTO_ROTATE_CHANNELS_ON_QUOTA: bool = os.getenv("AUTO_ROTATE_CHANNELS_ON_QUOTA", "false").lower() in ("true", "1", "yes")
+    AUTOPILOT_ENABLED_CHANNELS: str = os.getenv("AUTOPILOT_ENABLED_CHANNELS", "")
     
     # Storage Paths
     DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/storage/ai_youtube.db")
@@ -121,6 +122,14 @@ class Settings:
             if g_clean.lstrip("-").isdigit():
                 groups.append(int(g_clean))
         return groups
+
+    @classmethod
+    def get_autopilot_enabled_channels(cls) -> List[str]:
+        """Lấy danh sách ID các kênh được chỉ định bật Auto-Pilot (nếu để trống tức là áp dụng tất cả các kênh)"""
+        raw = getattr(cls, "AUTOPILOT_ENABLED_CHANNELS", "").strip()
+        if not raw:
+            return []
+        return [c.strip() for c in raw.split(",") if c.strip()]
 
     @classmethod
     def get_gemini_keys_pool(cls) -> List[str]:

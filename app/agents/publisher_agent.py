@@ -395,10 +395,10 @@ class PublisherAgent:
                 elif any(k in raw_niche for k in ("deep_sea", "ocean", "mystery")):
                     effective_comment = (
                         "Bạn nghĩ điều gì thực sự ẩn giấu sâu dưới đáy vực? Bình luận giả thuyết của bạn bên dưới 👇\n"
-                        "🌊 Bấm Subscribe ngay để không bỏ lỡ phần 2 hé lộ bí mật chấn động! 🔥"
+                        "🌊 Bấm Subscribe ngay để không bỏ lỡ những bí mật chấn động tiếp theo! 🔥"
                         if is_vn else
                         "What is your theory about this? What are they really hiding? Drop it below 👇\n"
-                        "🌊 Subscribe to unlock Part 2 as soon as the classified archive drops! 🔥"
+                        "🌊 Subscribe to uncover more classified deep sea secrets! 🔥"
                     )
                 elif any(k in raw_niche for k in ("history", "what_if")):
                     effective_comment = (
@@ -419,14 +419,38 @@ class PublisherAgent:
                 else:
                     effective_comment = (
                         "Chi tiết nào khiến bạn bất ngờ nhất? Hãy bình luận suy nghĩ của bạn bên dưới 👇\n"
-                        "🔔 Đăng ký kênh (Subscribe) để đón xem phần tiếp theo! 🔥"
+                        "🔔 Đăng ký kênh (Subscribe) để không bỏ lỡ video tiếp theo! 🔥"
                         if is_vn else
                         "Which moment shocked you the most? Drop your theory in the comments below 👇\n"
-                        "🔔 Subscribe so you don't miss Part 2 releasing next! 🔥"
+                        "🔔 Subscribe for more mind-bending stories! 🔥"
                     )
 
             posted_comment_id = None
             if video_id and effective_comment:
+                # Tự động bổ sung lời nhắc bấm vào Link trong Bio theo từng niche
+                is_vn = str(target_lang).lower().startswith("vi")
+                raw_niche = (self.channel_config.get("niche") or "").lower()
+                if "bio" not in effective_comment.lower():
+                    if any(k in raw_niche for k in ("rescue", "animal", "pet")):
+                        bio_cta = (
+                            "\n\n🐾 Đồ dùng & vật phẩm chăm sóc thú cưng: Bấm avatar kênh ➔ Link trong Bio! 🔗"
+                            if is_vn else
+                            "\n\n🐾 Best pet care essentials & gear: Tap channel icon ➔ Clickable link in Bio! 🔗"
+                        )
+                    elif "psychology" in raw_niche:
+                        bio_cta = (
+                            "\n\n📚 Sách & công cụ phát triển bản thân: Bấm avatar kênh ➔ Link trong Bio! 🔗"
+                            if is_vn else
+                            "\n\n📚 Top books & mindset tools: Tap channel icon ➔ Clickable link in Bio! 🔗"
+                        )
+                    else:
+                        bio_cta = (
+                            "\n\n✨ Khám phá thêm sản phẩm khuyên dùng: Bấm avatar kênh ➔ Link trong Bio! 🔗"
+                            if is_vn else
+                            "\n\n✨ Recommended essentials & gear: Tap channel icon ➔ Clickable link in Bio! 🔗"
+                        )
+                    effective_comment = f"{effective_comment.strip()}{bio_cta}"
+
                 comment_res = self.add_pinned_comment(video_id, effective_comment)
                 if comment_res:
                     posted_comment_id = comment_res.get("id")
