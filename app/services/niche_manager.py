@@ -24,6 +24,11 @@ NICHE_ALIASES: Dict[str, str] = {
     "mystery": "history_mystery",
     "history_mystery": "history_mystery",
     "lich_su": "history_mystery",
+    "alternate_history": "alternate_history",
+    "what_if": "alternate_history",
+    "whatif": "alternate_history",
+    "alt_history": "alternate_history",
+    "lich_su_gia_dinh": "alternate_history",
     "deep_sea": "deep_sea_earth_mysteries",
     "deep_sea_earth_mysteries": "deep_sea_earth_mysteries",
     "ocean": "deep_sea_earth_mysteries",
@@ -307,7 +312,7 @@ def build_script_prompt_instructions(niche_profile: Dict[str, Any], language: st
 {forbidden_text}
 {banned_lex_text}
 
-5. MẪU CÂU CHỐT VÒNG LẶP VÔ TẬN (SEAMLESS INFINITE LOOP PUNCHLINE — KHÔNG XIN SUBSCRIBE / KHÔNG PART 2):
+5. MẪU CÂU KÊU GỌI HÀNH ĐỘNG & CHỐT VIDEO (HIGH-CONVERTING CTA & CLOSING ENGAGEMENT):
 {ctas_text}
 
 6. QUY TẮC DẪN CHỨNG & XÁC THỰC (ANTI-HALLUCINATION / RESEARCH RULES):

@@ -73,28 +73,36 @@ Phong cách kênh: {channel_style}
 --- NỘI DUNG KỊCH BẢN ---
 {scenes_formatted}
 
---- BỘ QUY CHUẨN ĐÁNH GIÁ (Thang điểm 1 - 10) ---
-1. hook_strength: Cảnh 1 có đủ điện giật, đảo ngược định kiến hoặc tạo sự cấp bách tột cùng để ngăn người xem lướt qua (Swipe Away) trong 2.5s đầu không? (Cần >= 8.0).
-   - Đạt điểm cao: Áp dụng 1 trong 4 công thức: Cảnh báo khẩn cấp ("Nếu bạn thấy X, TUYỆT ĐỐI KHÔNG làm Y"), Đòn tâm lý cao thủ/FBI, Quy luật bóng tối, hoặc Cú sốc ngược đời. Lời thoại 5-8 từ, dứt khoát.
-   - Bị trừ nặng (< 6.0): Mở đầu kiểu sách giáo khoa, định nghĩa học thuật, bị động ("Để bắt kẻ nói dối...", "Trong tâm lý học..."), câu hỏi sáo rỗng ("Bạn có biết...").
-2. story_pacing: Nhịp điệu câu chuyện, mỗi cảnh ngắn gọn 8-12 từ (3.0-4.5s), toàn bộ video từ 35-45 giây (80-115 từ cho 8-10 cảnh), chuyển cảnh nhanh, cấu trúc Hook -> Buildup -> Climax -> Loop, không lê thê thừa thãi không? (Cần >= 8.0)
+--- BỘ QUY CHUẨN ĐÁNH GIÁ THUẬT TOÁN SHORTS (Thang điểm 1 - 10) ---
+1. hook_strength (Mục tiêu: Viewed > 75%, Swipe-Away < 25% trong nhóm thử nghiệm 100-300 người):
+   - Cảnh 1 có đủ sốc thị giác, đảo ngược định kiến hoặc tạo sự cấp bách tột cùng để khóa chặt ngón tay người xem trong 2.5s đầu không? (Cần >= 8.5).
+   - Đạt điểm cao: Lời thoại 5-8 từ dứt khoát theo 4 công thức (Cảnh báo nguy hiểm, Đòn tâm lý cao thủ, Quy luật bóng tối, Cú sốc ngược đời).
+   - Bị trừ nặng (< 5.0): Mở đầu sách giáo khoa, định nghĩa học thuật ("Để bắt kẻ nói dối...", "Trong tâm lý học..."), chào hỏi sáo rỗng ("Bạn có biết...", "Xin chào...").
+2. story_pacing (Mục tiêu: APV > 100% - Giữ chân trọn vẹn và kích thích xem lặp lại):
+   - Thời lượng vàng: 22 - 28 giây (50 - 68 từ cho 5-7 cảnh, 3.0-4.0s/cảnh). Với cứu hộ cho phép 30-38s (65-85 từ).
+   - Cảnh 2 & 3 (giây 4-12) bắt buộc tung Micro-Hook / bằng chứng vật lý sốc để triệt tiêu cú rơi rụng (Drop-off cliff).
+   - Video quá dài (> 90 từ / > 40s) hoặc lê thê bị trừ điểm vì làm APV tụt dưới 70%. (Cần >= 8.0)
 3. entity_coherence: Kịch bản và hình ảnh có bám chặt vào nhân vật/bối cảnh lịch sử thực tế không?
 4. visual_direction: Khả năng chỉ đạo hình ảnh & Đan xen công cụ linh hoạt (Anti-Slideshow & Tool Matching):
-   - Đạt điểm cao (>= 8.5): Từ khóa visual_keyword & stock_query có động từ hành động vật lý mạnh mẽ, giàu tính điện ảnh, định hướng rõ khi nào dùng Video B-roll thực tế, khi nào dùng Video AI kỳ ảo, khi nào dùng ảnh tư liệu lịch sử.
-   - Bị trừ nặng (< 6.0): Tư duy "ghép ảnh tĩnh" máy móc, dùng từ ngữ trừu tượng (psychology, success, happiness, minimalism) khiến video trở thành slideshow ảnh đơn điệu.
-5. viral_loop: Cảnh cuối có tạo vòng lặp mượt mà quay trở lại Cảnh 1 (Infinite Shorts Loop) với câu văn hoàn chỉnh ngữ pháp (không ngắt cụt từ nối lửng) không? (Cần >= 8.0)
+   - Đạt điểm cao (>= 8.5): Từ khóa visual_keyword & stock_query có hành động vật lý cụ thể, giàu tính điện ảnh, định hướng rõ Video B-roll thực tế, Video AI kỳ ảo, hoặc ảnh tư liệu lịch sử.
+   - Bị trừ nặng (< 6.0): Dùng từ ngữ trừu tượng (psychology, success, happiness, minimalism) khiến video biến thành slideshow ảnh tĩnh buồn ngủ.
+5. viral_loop (Mục tiêu: Kêu gọi hành động High-Converting CTA & Vòng lặp kích nổ Comment):
+   - Cảnh cuối BẮT BUỘC phải có lời kêu gọi đăng ký kênh (CTA) tự nhiên, gắn kết chặt chẽ với giá trị và chủ đề của kênh (High-Converting Niche CTA).
+   - Đạt điểm cao (>= 8.5): Lời kêu gọi đăng ký kênh được lồng ghép sắc bén, mang lại giá trị hoặc gợi tò mò mạnh mẽ (ví dụ: 'Subscribe now to master dark psychology before someone uses it on you', 'Đăng ký kênh để không bao giờ bị thao túng'), kết thúc câu hoàn chỉnh ngữ pháp.
+   - Bị trừ điểm (< 5.0): Cảnh cuối hoàn toàn thiếu vắng lời kêu gọi đăng ký kênh (thiếu CTA), hoặc lời kêu gọi quá sáo rỗng lạc quẻ.
 
 --- YÊU CẦU TRẢ VỀ ---
 Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với schema sau:
 {{
-  "hook_strength": {{"score": 8.5, "feedback": "Nhận xét chi tiết..."}},
-  "story_pacing": {{"score": 8.0, "feedback": "Nhận xét chi tiết..."}},
+  "hook_strength": {{"score": 8.5, "feedback": "Nhận xét chi tiết về khả năng đạt Viewed > 75%..."}},
+  "story_pacing": {{"score": 8.0, "feedback": "Nhận xét chi tiết về thời lượng và nhịp độ đạt APV > 100%..."}},
   "entity_coherence": {{"score": 9.0, "feedback": "Nhận xét chi tiết..."}},
   "visual_direction": {{"score": 8.5, "feedback": "Nhận xét chi tiết về nhịp điệu thị giác và công cụ phù hợp..."}},
-  "viral_loop": {{"score": 8.0, "feedback": "Nhận xét chi tiết..."}},
+  "viral_loop": {{"score": 8.5, "feedback": "Nhận xét chi tiết về lời kêu gọi đăng ký CTA và vòng lặp comment..."}},
   "actionable_critiques": [
-    "Chỉ đạo viết lại / bổ sung từ khóa hành động cho Cảnh X để dùng Video động...",
-    "Gợi ý công cụ & ý tưởng trực quan cho Cảnh Y..."
+    "Chỉ đạo viết lại Cảnh 1 để giật thumb-stopper đạt Viewed > 75%...",
+    "Rút gọn kịch bản về 22-28s để đạt APV > 100%...",
+    "Bổ sung hoặc tinh chỉnh lời kêu gọi đăng ký kênh (CTA) tự nhiên, sắc bén vào Cảnh cuối..."
   ]
 }}"""
 

@@ -74,6 +74,15 @@ class WorkerDispatcher:
                 "callback_url": effective_callback,
             }
 
+    @staticmethod
+    def _get_local_engine_name() -> str:
+        try:
+            from app.utils.ffmpeg_helper import detect_hardware_encoder
+            info = detect_hardware_encoder()
+            return f"FFmpeg Local ({info.get('display_name', 'GPU/CPU')})"
+        except Exception:
+            return "FFmpeg Local CPU / GPU"
+
     def get_workers_status(self) -> Dict[str, Any]:
         """Kiểm tra tổng hợp trạng thái các Worker GPU."""
         modal_configured = bool(os.getenv("MODAL_TOKEN_ID") and os.getenv("MODAL_TOKEN_SECRET"))
@@ -89,7 +98,7 @@ class WorkerDispatcher:
             },
             "local": {
                 "enabled": True,
-                "engine": "FFmpeg Local CPU / GPU",
+                "engine": self._get_local_engine_name(),
             }
         }
 

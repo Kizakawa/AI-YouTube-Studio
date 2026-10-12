@@ -133,33 +133,38 @@ class ScriptValidationLinter:
     ) -> Tuple[List[str], int]:
         """
         Kiểm tra số từ và tính toán nhịp đọc (Pacing):
-        Chuẩn vàng YouTube Shorts Viral (35 - 45s tại 150-160 WPM) là 80 đến 115 từ.
+        Chuẩn vàng YouTube Shorts Viral (22 - 28s tại 150-160 WPM) là 50 đến 72 từ (đạt APV > 100%).
+        Đối với ngách cứu hộ cảm xúc, cho phép 70 đến 95 từ (30 - 38s).
         """
         issues = []
         all_narrations = " ".join(s.narration for s in script.scenes if s.narration)
         words = re.findall(r'\b\w+\b', all_narrations)
         total_words = len(words)
 
-        # Quá dài (> 130 từ) -> Thời lượng vượt quá 50s, AVD sẽ tụt
-        if total_words > 130:
+        # Quá dài (> 90 từ đối với Shorts thường, > 115 từ đối với cứu hộ) -> Thời lượng vượt quá 35-45s, APV sẽ tụt dưới 100%
+        topic_str = getattr(script, "topic", "") or ""
+        is_rescue = any(k in f"{script.title} {topic_str}".lower() for k in ("rescue", "cứu hộ", "puppy", "dog", "cat", "pet"))
+        max_words = 105 if is_rescue else 85
+
+        if total_words > max_words:
             est_seconds = (total_words / target_wpm) * 60
             issues.append(
                 f"Script is too long ({total_words} words, ~{est_seconds:.1f}s at {target_wpm} WPM). "
-                f"Target limit: 50 to 115 words total for optimal viral retention (22-45 seconds)."
+                f"Target limit: strictly 50 to {max_words} words for APV > 100% (22-28s duration)."
             )
         # Quá ngắn (< 45 từ) -> Video dưới 18s không đủ dẫn dắt nội dung
         elif total_words < 45:
             issues.append(
                 f"Script is too short ({total_words} words). "
-                f"Minimum 45 words required for adequate storytelling depth (target 50-115 words, 22-45s)."
+                f"Minimum 45 words required for adequate storytelling depth (target 50-70 words, 22-28s)."
             )
 
-        # Số lượng scene: 5 đến 10 scene là nhịp tối ưu cho Shorts (2.5 - 4.5s/scene)
+        # Số lượng scene: 5 đến 7 scene là nhịp tối ưu cho Shorts (3.0 - 4.2s/scene)
         scene_count = len(script.scenes)
         if scene_count < 5:
             issues.append(f"Too few scenes ({scene_count}). Need at least 5 fast-paced scenes for Shorts.")
-        elif scene_count > 12:
-            issues.append(f"Too many scenes ({scene_count}). Limit to 5 to 10 focused scenes.")
+        elif scene_count > 9:
+            issues.append(f"Too many scenes ({scene_count}). Limit to 5 to 7 focused scenes (3.0-4.2s each).")
 
         return issues, total_words
 
@@ -233,13 +238,13 @@ class ScriptValidationLinter:
         if not is_valid:
             bullet_points = "\n".join(f"- {issue}" for issue in all_issues)
             retry_hint = (
-                f"CRITICAL QUALITY GATE VIOLATIONS DETECTED (MUST FIX):\n"
+                f"CRITICAL QUALITY GATE VIOLATIONS DETECTED (MUST FIX FOR YOUTUBE SHORTS TEST POOL):\n"
                 f"{bullet_points}\n\n"
                 f"ACTION REQUIRED:\n"
-                f"1. Ensure the final sentence is 100% grammatically complete. NEVER end with 'because', 'which', 'and', 'but', etc.\n"
-                f"2. Keep total word count strictly between 80 and 115 words (35-45s pacing at 155 WPM, 8-10 scenes).\n"
+                f"1. Ensure the final sentence is 100% grammatically complete and conceptually bridges into Scene 1's hook (Infinite Loop). NEVER end with 'because', 'which', 'and', 'but', etc.\n"
+                f"2. Keep total word count strictly between 50 and 70 words (22-28s pacing at 155 WPM, 5-7 scenes) to guarantee APV > 100% and break through the 100-300 test pool.\n"
                 f"3. Strictly avoid the forbidden concepts/terms listed above.\n"
-                f"4. Rewrite cleanly while preserving high retention hook, seamless loop, and cinematic intensity."
+                f"4. Rewrite cleanly while preserving high retention hook (Viewed > 75%), seamless loop, and cinematic intensity."
             )
 
         return LinterResult(

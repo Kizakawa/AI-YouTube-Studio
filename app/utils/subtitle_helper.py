@@ -66,8 +66,8 @@ YCbCr Matrix: None
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1,0,1,4.2,2.2,2,30,30,{margin_v},1
-Style: HookHeadlineBanner,{fontname},50,&H0000FFFF,&H00FFFFFF,&H00000000,&HD0050505,-1,0,0,0,100,100,2,0,3,3.0,0.0,8,30,30,320,1
-Style: PatternInterruptBadge,{fontname},30,&H00FFFFFF,&H00FFFFFF,&H0000E6FF&,&HC0101010,-1,0,0,0,100,100,2,0,3,1.8,0.0,8,40,40,280,1
+Style: HookHeadlineBanner,{fontname},52,&H0000FFFF,&H00FFFFFF,&H00000000,&HD0050505,-1,0,0,0,100,100,2,0,3,3.6,0.0,8,30,30,310,1
+Style: PatternInterruptBadge,{fontname},32,&H00FFFFFF,&H00FFFFFF,&H0000E6FF&,&HC0101010,-1,0,0,0,100,100,2,0,3,2.0,0.0,8,40,40,240,1
 Style: CTABadge,{fontname},46,&H0000FFFF,&H00FFFFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,3.5,2.0,2,30,30,780,1
 Style: WatermarkStyle,Arial,28,&H30FFFFFF,&H30FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1.8,1.2,8,30,30,90,1
 
@@ -273,75 +273,142 @@ class SubtitleHelper:
             if getattr(scene, "start_offset_ms", None) is not None:
                 current_offset_ms = scene.start_offset_ms
 
-            chunks = cls.split_text_to_chunks(scene.narration)
-            if not chunks:
-                if getattr(scene, "start_offset_ms", None) is not None:
-                    current_offset_ms = scene.start_offset_ms + scene_duration_ms
-                else:
-                    current_offset_ms += scene_duration_ms
-                continue
+            # Chọn màu sắc cho Power Words theo Niche
+            raw_niche = (niche_id or "").lower()
+            if "scifi" in raw_niche:
+                power_color = "&H00FFFF00"  # Neon Cyan
+            elif "rescue" in raw_niche:
+                power_color = "&H002080FF"  # Vivid Warm Amber / Orange
+            else:
+                power_color = "&H000000FF"  # Vivid Crimson Red (High Urgency & Dopamine)
 
-            # Chuyển ALL CAPS — phong cách phiếu phụ đề Shorts viral
-            chunks = [c.upper() for c in chunks]
+            word_timings = getattr(scene, "word_timings", None)
 
-            # Phân bổ thời lượng cho từng chunk theo tỷ lệ ký tự
-            total_chars = sum(len(c) for c in chunks)
-            chunk_durations_ms = []
-            for c in chunks:
-                ratio = len(c) / total_chars if total_chars > 0 else 1.0 / len(chunks)
-                dur = int(scene_duration_ms * ratio)
-                chunk_durations_ms.append(max(dur, 600))
+            if word_timings and len(word_timings) > 0:
+                # ── CHẾ ĐỘ 1: ĐỒNG BỘ CHÍNH XÁC THEO MỐC TỪNG TỪ CỦA GIỌNG ĐỌC AI ──
+                # Gom các từ thành từng chunk 2-4 từ (tối đa 24 ký tự) giữ trọn vẹn mốc thời gian thực tế
+                chunks_data = []
+                cur_words = []
+                cur_len = 0
+                for w_info in word_timings:
+                    w_text = w_info.get("word", "").strip().upper()
+                    if not w_text:
+                        continue
+                    candidate_len = cur_len + len(w_text) + (1 if cur_words else 0)
+                    should_break = (
+                        (len(cur_words) >= 4 or candidate_len > 24) and len(cur_words) >= 2
+                    ) or (
+                        w_text.endswith((".", "!", "?", ":", ";", "—")) and len(cur_words) >= 2
+                    )
+                    if should_break and cur_words:
+                        chunks_data.append(cur_words)
+                        cur_words = [{**w_info, "word": w_text}]
+                        cur_len = len(w_text)
+                    else:
+                        cur_words.append({**w_info, "word": w_text})
+                        cur_len = candidate_len
 
-            # Cân chỉnh lại tổng duration — giữ last chunk >= 300ms (tránh âm)
-            diff = scene_duration_ms - sum(chunk_durations_ms)
-            if chunk_durations_ms:
-                chunk_durations_ms[-1] = max(chunk_durations_ms[-1] + diff, 300)
+                if cur_words:
+                    chunks_data.append(cur_words)
 
-            chunk_start_ms = current_offset_ms
-            for chunk, chunk_dur_ms in zip(chunks, chunk_durations_ms):
-                chunk_end_ms = chunk_start_ms + chunk_dur_ms
-                words = chunk.split()
+                for chunk_idx, c_words in enumerate(chunks_data):
+                    chunk_start_ms = current_offset_ms + c_words[0]["start_ms"]
+                    chunk_end_ms = current_offset_ms + c_words[-1]["end_ms"]
 
-                # Phân bổ thời lượng theo từ (theo số ký tự của từng từ)
-                total_word_chars = sum(len(w) for w in words)
-                word_durations_cs = []
-                for w in words:
-                    ratio = len(w) / total_word_chars if total_word_chars > 0 else 1.0 / len(words)
-                    dur_cs = max(int(chunk_dur_ms * ratio / 10), 5)  # centiseconds, tối thiểu 5cs
-                    word_durations_cs.append(dur_cs)
+                    # Đệm chống giật hình: nếu chunk tiếp theo sát ngay (< 250ms), giữ chữ trên màn hình
+                    if chunk_idx < len(chunks_data) - 1:
+                        next_start_ms = current_offset_ms + chunks_data[chunk_idx + 1][0]["start_ms"]
+                        if next_start_ms > chunk_end_ms and (next_start_ms - chunk_end_ms) < 250:
+                            chunk_end_ms = next_start_ms
 
-                # Cân chỉnh tổng word duration bằng chunk duration
-                total_word_cs = sum(word_durations_cs)
-                chunk_cs = chunk_dur_ms // 10
-                if word_durations_cs:
-                    word_durations_cs[-1] += (chunk_cs - total_word_cs)
-                    word_durations_cs[-1] = max(word_durations_cs[-1], 5)
+                    # Đảm bảo chunk hiển thị tối thiểu 450ms
+                    if chunk_end_ms - chunk_start_ms < 450:
+                        chunk_end_ms = chunk_start_ms + 450
 
-                # Chọn màu sắc cho Power Words theo Niche
-                raw_niche = (niche_id or "").lower()
-                if "scifi" in raw_niche:
-                    power_color = "&H00FFFF00"  # Neon Cyan
-                elif "rescue" in raw_niche:
-                    power_color = "&H002080FF"  # Vivid Warm Amber / Orange
-                else:
-                    power_color = "&H000000FF"  # Vivid Crimson Red (High Urgency & Dopamine)
+                    words = [w["word"] for w in c_words]
+                    word_durations_cs = []
+                    for idx_w, w in enumerate(c_words):
+                        dur_cs = max(int(w.get("duration_ms", 200) / 10), 5)
+                        if idx_w < len(c_words) - 1:
+                            gap = c_words[idx_w + 1]["start_ms"] - w["end_ms"]
+                            if gap > 0:
+                                dur_cs += int(gap / 10)
+                        word_durations_cs.append(dur_cs)
 
-                karaoke_text = cls._build_karaoke_text(
-                    words,
-                    word_durations_cs,
-                    default_highlight=eff_secondary,
-                    power_color=power_color,
-                )
+                    karaoke_text = cls._build_karaoke_text(
+                        words,
+                        word_durations_cs,
+                        default_highlight=eff_secondary,
+                        power_color=power_color,
+                    )
 
-                start_str = cls._ms_to_ass_time(chunk_start_ms)
-                end_str = cls._ms_to_ass_time(chunk_end_ms)
+                    start_str = cls._ms_to_ass_time(chunk_start_ms)
+                    end_str = cls._ms_to_ass_time(chunk_end_ms)
 
-                # Dialogue: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-                dialogue_lines.append(
-                    f"Dialogue: 0,{start_str},{end_str},Karaoke,,0,0,0,,{karaoke_text}"
-                )
+                    dialogue_lines.append(
+                        f"Dialogue: 0,{start_str},{end_str},Karaoke,,0,0,0,,{karaoke_text}"
+                    )
+            else:
+                # ── CHẾ ĐỘ 2: FALLBACK PHÂN BỔ KÝ TỰ (Khi không có word_timings) ──
+                chunks = cls.split_text_to_chunks(scene.narration)
+                if not chunks:
+                    if getattr(scene, "start_offset_ms", None) is not None:
+                        current_offset_ms = scene.start_offset_ms + scene_duration_ms
+                    else:
+                        current_offset_ms += scene_duration_ms
+                    continue
 
-                chunk_start_ms = chunk_end_ms
+                # Chuyển ALL CAPS — phong cách phiếu phụ đề Shorts viral
+                chunks = [c.upper() for c in chunks]
+
+                # Phân bổ thời lượng cho từng chunk theo tỷ lệ ký tự
+                total_chars = sum(len(c) for c in chunks)
+                chunk_durations_ms = []
+                for c in chunks:
+                    ratio = len(c) / total_chars if total_chars > 0 else 1.0 / len(chunks)
+                    dur = int(scene_duration_ms * ratio)
+                    chunk_durations_ms.append(max(dur, 600))
+
+                # Cân chỉnh lại tổng duration — giữ last chunk >= 300ms (tránh âm)
+                diff = scene_duration_ms - sum(chunk_durations_ms)
+                if chunk_durations_ms:
+                    chunk_durations_ms[-1] = max(chunk_durations_ms[-1] + diff, 300)
+
+                chunk_start_ms = current_offset_ms
+                for chunk, chunk_dur_ms in zip(chunks, chunk_durations_ms):
+                    chunk_end_ms = chunk_start_ms + chunk_dur_ms
+                    words = chunk.split()
+
+                    # Phân bổ thời lượng theo từ (theo số ký tự của từng từ)
+                    total_word_chars = sum(len(w) for w in words)
+                    word_durations_cs = []
+                    for w in words:
+                        ratio = len(w) / total_word_chars if total_word_chars > 0 else 1.0 / len(words)
+                        dur_cs = max(int(chunk_dur_ms * ratio / 10), 5)  # centiseconds, tối thiểu 5cs
+                        word_durations_cs.append(dur_cs)
+
+                    # Cân chỉnh tổng word duration bằng chunk duration
+                    total_word_cs = sum(word_durations_cs)
+                    chunk_cs = chunk_dur_ms // 10
+                    if word_durations_cs:
+                        word_durations_cs[-1] += (chunk_cs - total_word_cs)
+                        word_durations_cs[-1] = max(word_durations_cs[-1], 5)
+
+                    karaoke_text = cls._build_karaoke_text(
+                        words,
+                        word_durations_cs,
+                        default_highlight=eff_secondary,
+                        power_color=power_color,
+                    )
+
+                    start_str = cls._ms_to_ass_time(chunk_start_ms)
+                    end_str = cls._ms_to_ass_time(chunk_end_ms)
+
+                    dialogue_lines.append(
+                        f"Dialogue: 0,{start_str},{end_str},Karaoke,,0,0,0,,{karaoke_text}"
+                    )
+
+                    chunk_start_ms = chunk_end_ms
 
             if getattr(scene, "start_offset_ms", None) is not None:
                 current_offset_ms = scene.start_offset_ms + scene_duration_ms
@@ -374,7 +441,7 @@ class SubtitleHelper:
                 banner_end_str = cls._ms_to_ass_time(banner_end_ms)
                 # Hiển thị ngay từ 0:00:00.00 để người lướt nhìn thấy ngay lập tức trước khi kịp quẹt
                 dialogue_lines.insert(0,
-                    f"Dialogue: 3,0:00:00.00,{banner_end_str},HookHeadlineBanner,,0,0,0,,{{\\fade(0,180)\\t(0,150,\\fscx105\\fscy105)}}{clean_hook}"
+                    f"Dialogue: 3,0:00:00.00,{banner_end_str},HookHeadlineBanner,,0,0,0,,{{\\fade(0,180)\\t(0,110,\\fscx112\\fscy112)\\t(110,230,\\fscx100\\fscy100)}}{clean_hook}"
                 )
 
             # Phù hiệu nhỏ hỗ trợ danh mục (PatternInterruptBadge) hiển thị song hành
@@ -419,30 +486,31 @@ class SubtitleHelper:
                     )
                     break
 
-        # ── Kích hoạt Visual CTA Banner ở phân cảnh cuối (Chỉ bật khi show_cta_badge=True, không làm gãy Infinite Loop) ──
+        # ── Kích hoạt Visual CTA Banner ở phân cảnh cuối (Chỉ bật khi show_cta_badge=True) ──
         if show_cta_badge and scenes and current_offset_ms > 3000:
             last_scene = scenes[-1]
             last_dur = last_scene.audio_duration_ms or int(last_scene.estimated_seconds * 1000)
-            cta_start_ms = max(0, current_offset_ms - min(last_dur, 3500))
+            cta_dur = max(min(last_dur, 4500), 3000)
+            cta_start_ms = max(0, current_offset_ms - cta_dur)
             cta_end_ms = current_offset_ms
             full_text = " ".join([s.narration for s in scenes])
             is_vi = any(c in full_text.lower() for c in "àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ")
             raw_niche = (niche_id or "").lower()
 
             if "psychology" in raw_niche:
-                cta_text = "🧠 SUBSCRIBE ĐỂ KHÔNG BỊ THAO TÚNG 🔔" if is_vi else "🧠 SUBSCRIBE TO MASTER THE MIND 🔔"
+                cta_text = "🧠 BẤM ĐĂNG KÝ ĐỂ KHÔNG BỊ THAO TÚNG 🔔" if is_vi else "🧠 SUBSCRIBE TO MASTER THE MIND 🔔"
             elif any(k in raw_niche for k in ("rescue", "animal")):
-                cta_text = "🐾 BẤM SUBSCRIBE ĐỂ CỨU THÊM BÉ 🐾" if is_vi else "🐾 SUBSCRIBE TO SAVE A LIFE 🐾"
+                cta_text = "🐾 BẤM ĐĂNG KÝ ĐỂ CỨU THÊM BÉ 🐾" if is_vi else "🐾 SUBSCRIBE TO SAVE INNOCENT LIVES 🐾"
             elif any(k in raw_niche for k in ("deep_sea", "ocean", "mystery")):
-                cta_text = "🌊 SUBSCRIBE ĐỂ MỞ KHÓA PHẦN 2 🔔" if is_vi else "🌊 SUBSCRIBE TO UNCOVER PART 2 🔔"
+                cta_text = "🌊 ĐĂNG KÝ KÊNH ĐÓN XEM BÍ ẨN TIẾP THEO 🔔" if is_vi else "🌊 SUBSCRIBE TO UNCOVER PART 2 🔔"
             elif any(k in raw_niche for k in ("history", "what_if")):
-                cta_text = "📜 SUBSCRIBE ĐỂ BIẾT SỰ THẬT 🔔" if is_vi else "📜 SUBSCRIBE FOR THE UNTOLD TRUTH 🔔"
+                cta_text = "📜 ĐĂNG KÝ KÊNH ĐỂ BIẾT SỰ THẬT 🔔" if is_vi else "📜 SUBSCRIBE FOR THE UNTOLD TRUTH 🔔"
             elif any(k in raw_niche for k in ("predator", "wildlife")):
-                cta_text = "🦁 SUBSCRIBE KHÁM PHÁ SINH TỒN 🔔" if is_vi else "🦁 SUBSCRIBE FOR APEX STORIES 🔔"
+                cta_text = "🦁 ĐĂNG KÝ KÊNH KHÁM PHÁ SINH TỒN 🔔" if is_vi else "🦁 SUBSCRIBE FOR APEX STORIES 🔔"
             elif any(k in raw_niche for k in ("scifi", "tech")):
-                cta_text = "🚀 SUBSCRIBE ĐÓN XEM TƯƠNG LAI 🔔" if is_vi else "🚀 SUBSCRIBE TO UNLOCK FUTURE 🔔"
+                cta_text = "🚀 ĐĂNG KÝ KÊNH ĐÓN XEM TƯƠNG LAI 🔔" if is_vi else "🚀 SUBSCRIBE TO UNLOCK FUTURE 🔔"
             else:
-                cta_text = "🔔 ĐĂNG KÝ KÊNH ĐÓN XEM PHẦN 2 🔔" if is_vi else "🔔 SUBSCRIBE FOR PART 2 🔔"
+                cta_text = "🔔 ĐĂNG KÝ KÊNH ĐỂ XEM TIẾP VIDEO MỚI 🔔" if is_vi else "🔔 SUBSCRIBE FOR DAILY HIGH-RETENTION STORIES 🔔"
 
             cta_start_str = cls._ms_to_ass_time(cta_start_ms)
             cta_end_str = cls._ms_to_ass_time(cta_end_ms)
@@ -523,38 +591,13 @@ class SubtitleHelper:
             if getattr(scene, "start_offset_ms", None) is not None:
                 current_offset_ms = scene.start_offset_ms
 
-            chunks = cls.split_text_to_chunks(scene.narration)
-            if not chunks:
-                current_offset_ms += scene_duration_ms
-                continue
-
-            chunks = [c.upper() for c in chunks]
-            total_chars = sum(len(c) for c in chunks)
-            chunk_durations_ms = []
-            for c in chunks:
-                ratio = len(c) / total_chars if total_chars > 0 else 1.0 / len(chunks)
-                dur = int(scene_duration_ms * ratio)
-                chunk_durations_ms.append(max(dur, 600))
-
-            diff = scene_duration_ms - sum(chunk_durations_ms)
-            if chunk_durations_ms:
-                chunk_durations_ms[-1] = max(chunk_durations_ms[-1] + diff, 300)
-
-            chunk_start_ms = current_offset_ms
-            for chunk, chunk_dur_ms in zip(chunks, chunk_durations_ms):
-                words = chunk.split()
-                total_word_chars = sum(len(w) for w in words)
-                word_durations_cs = []
-                for w in words:
-                    ratio = len(w) / total_word_chars if total_word_chars > 0 else 1.0 / len(words)
-                    dur_cs = max(int(chunk_dur_ms * ratio / 10), 5)
-                    word_durations_cs.append(dur_cs)
-
-                word_offset_ms = 0
-                for w, dur_cs in zip(words, word_durations_cs):
+            word_timings = getattr(scene, "word_timings", None)
+            if word_timings and len(word_timings) > 0:
+                for w_info in word_timings:
+                    w = w_info.get("word", "").strip()
                     clean_word = re.sub(r'[^\w\d]', '', w.upper())
                     if clean_word in POWER_WORDS:
-                        word_ts_s = (chunk_start_ms + word_offset_ms) / 1000.0
+                        word_ts_s = (current_offset_ms + w_info.get("start_ms", 0)) / 1000.0
                         if word_ts_s - last_ts_s >= min_interval_s and word_ts_s >= 0.5:
                             if any(k in clean_word for k in ("NGUY", "HIỂM", "CHẾT", "DANGER", "DEADLY", "KILL", "TỬ")):
                                 sfx_name = "impact_sub"
@@ -570,9 +613,57 @@ class SubtitleHelper:
                                 vol = 0.20
                             cues.append((round(word_ts_s, 2), sfx_name, vol))
                             last_ts_s = word_ts_s
-                    word_offset_ms += dur_cs * 10
+            else:
+                chunks = cls.split_text_to_chunks(scene.narration)
+                if not chunks:
+                    current_offset_ms += scene_duration_ms
+                    continue
 
-                chunk_start_ms += chunk_dur_ms
+                chunks = [c.upper() for c in chunks]
+                total_chars = sum(len(c) for c in chunks)
+                chunk_durations_ms = []
+                for c in chunks:
+                    ratio = len(c) / total_chars if total_chars > 0 else 1.0 / len(chunks)
+                    dur = int(scene_duration_ms * ratio)
+                    chunk_durations_ms.append(max(dur, 600))
+
+                diff = scene_duration_ms - sum(chunk_durations_ms)
+                if chunk_durations_ms:
+                    chunk_durations_ms[-1] = max(chunk_durations_ms[-1] + diff, 300)
+
+                chunk_start_ms = current_offset_ms
+                for chunk, chunk_dur_ms in zip(chunks, chunk_durations_ms):
+                    words = chunk.split()
+                    total_word_chars = sum(len(w) for w in words)
+                    word_durations_cs = []
+                    for w in words:
+                        ratio = len(w) / total_word_chars if total_word_chars > 0 else 1.0 / len(words)
+                        dur_cs = max(int(chunk_dur_ms * ratio / 10), 5)
+                        word_durations_cs.append(dur_cs)
+
+                    word_offset_ms = 0
+                    for w, dur_cs in zip(words, word_durations_cs):
+                        clean_word = re.sub(r'[^\w\d]', '', w.upper())
+                        if clean_word in POWER_WORDS:
+                            word_ts_s = (chunk_start_ms + word_offset_ms) / 1000.0
+                            if word_ts_s - last_ts_s >= min_interval_s and word_ts_s >= 0.5:
+                                if any(k in clean_word for k in ("NGUY", "HIỂM", "CHẾT", "DANGER", "DEADLY", "KILL", "TỬ")):
+                                    sfx_name = "impact_sub"
+                                    vol = 0.24
+                                elif any(k in clean_word for k in ("BẪY", "DỐI", "THAO", "TÚNG", "LIES", "TRAP", "MISTAKE")):
+                                    sfx_name = "glitch"
+                                    vol = 0.22
+                                elif any(k in clean_word for k in ("BÍ", "MẬT", "SỰ", "THẬT", "SECRET", "TRUTH")):
+                                    sfx_name = "reveal"
+                                    vol = 0.22
+                                else:
+                                    sfx_name = "whoosh_fast"
+                                    vol = 0.20
+                                cues.append((round(word_ts_s, 2), sfx_name, vol))
+                                last_ts_s = word_ts_s
+                        word_offset_ms += dur_cs * 10
+
+                    chunk_start_ms += chunk_dur_ms
 
             current_offset_ms += scene_duration_ms
 
@@ -700,27 +791,28 @@ class SubtitleHelper:
 
         effective_total_ms = int(total_duration_sec * 1000) if total_duration_sec > 0 else max_seen_end_ms
 
-        # ── Kích hoạt Visual CTA Banner ở 3.5s cuối (Layer 1, MarginV=780 tránh đè Subtitle) ──
+        # ── Kích hoạt Visual CTA Banner ở 3.5s - 4.5s cuối (Layer 1, MarginV=780 tránh đè Subtitle) ──
         if show_cta_badge and effective_total_ms > 4000:
-            cta_start_ms = max(0, effective_total_ms - 3500)
+            cta_dur = min(4000, max(2500, int(effective_total_ms * 0.18)))
+            cta_start_ms = max(0, effective_total_ms - cta_dur)
             cta_end_ms = effective_total_ms
             all_text_concat = " ".join([seg.get("text", "") for seg in timed_segments])
             is_vi = any(c in all_text_concat.lower() for c in "àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ")
             raw_niche = (niche_id or "").lower()
             if "psychology" in raw_niche:
-                cta_text = "🧠 SUBSCRIBE ĐỂ KHÔNG BỊ THAO TÚNG 🔔" if is_vi else "🧠 SUBSCRIBE TO MASTER THE MIND 🔔"
+                cta_text = "🧠 BẤM ĐĂNG KÝ ĐỂ KHÔNG BỊ THAO TÚNG 🔔" if is_vi else "🧠 SUBSCRIBE TO MASTER THE MIND 🔔"
             elif any(k in raw_niche for k in ("rescue", "animal")):
-                cta_text = "🐾 BẤM SUBSCRIBE ĐỂ CỨU THÊM BÉ 🐾" if is_vi else "🐾 SUBSCRIBE TO SAVE A LIFE 🐾"
+                cta_text = "🐾 BẤM ĐĂNG KÝ ĐỂ CỨU THÊM BÉ 🐾" if is_vi else "🐾 SUBSCRIBE TO SAVE INNOCENT LIVES 🐾"
             elif any(k in raw_niche for k in ("deep_sea", "ocean", "mystery")):
-                cta_text = "🌊 SUBSCRIBE ĐỂ MỞ KHÓA PHẦN 2 🔔" if is_vi else "🌊 SUBSCRIBE TO UNCOVER PART 2 🔔"
+                cta_text = "🌊 ĐĂNG KÝ KÊNH ĐÓN XEM BÍ ẨN TIẾP THEO 🔔" if is_vi else "🌊 SUBSCRIBE TO UNCOVER PART 2 🔔"
             elif any(k in raw_niche for k in ("history", "what_if")):
-                cta_text = "📜 SUBSCRIBE ĐỂ BIẾT SỰ THẬT 🔔" if is_vi else "📜 SUBSCRIBE FOR THE UNTOLD TRUTH 🔔"
+                cta_text = "📜 ĐĂNG KÝ KÊNH ĐỂ BIẾT SỰ THẬT 🔔" if is_vi else "📜 SUBSCRIBE FOR THE UNTOLD TRUTH 🔔"
             elif any(k in raw_niche for k in ("predator", "wildlife")):
-                cta_text = "🦁 SUBSCRIBE KHÁM PHÁ SINH TỒN 🔔" if is_vi else "🦁 SUBSCRIBE FOR APEX STORIES 🔔"
+                cta_text = "🦁 ĐĂNG KÝ KÊNH KHÁM PHÁ SINH TỒN 🔔" if is_vi else "🦁 SUBSCRIBE FOR APEX STORIES 🔔"
             elif any(k in raw_niche for k in ("scifi", "tech")):
-                cta_text = "🚀 SUBSCRIBE ĐÓN XEM TƯƠNG LAI 🔔" if is_vi else "🚀 SUBSCRIBE TO UNLOCK FUTURE 🔔"
+                cta_text = "🚀 ĐĂNG KÝ KÊNH ĐÓN XEM TƯƠNG LAI 🔔" if is_vi else "🚀 SUBSCRIBE TO UNLOCK FUTURE 🔔"
             else:
-                cta_text = "🔔 ĐĂNG KÝ KÊNH ĐÓN XEM PHẦN 2 🔔" if is_vi else "🔔 SUBSCRIBE FOR PART 2 🔔"
+                cta_text = "🔔 ĐĂNG KÝ KÊNH ĐỂ XEM TIẾP VIDEO MỚI 🔔" if is_vi else "🔔 SUBSCRIBE FOR DAILY HIGH-RETENTION STORIES 🔔"
             cta_start_str = cls._ms_to_ass_time(cta_start_ms)
             cta_end_str = cls._ms_to_ass_time(cta_end_ms)
             dialogue_lines.append(

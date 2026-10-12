@@ -273,8 +273,10 @@ class QuotaManager:
 
                 tracker = QuotaManager.get_tracker(pid)
                 can_up = QuotaManager.can_upload(pid, required_units=COST_FULL_SHORTS)
+                is_primary = (Path(tf).resolve() == primary_tok.resolve())
                 pool.append({
                     "token_file": str(tf),
+                    "is_primary": is_primary,
                     "project_id": pid,
                     "account_id": p_info["account_id"],
                     "client_id": cid,
@@ -286,8 +288,11 @@ class QuotaManager:
             except Exception as e:
                 logger.debug(f"Lỗi kiểm tra token {tf}: {e}")
 
-        # Sắp xếp token: token có can_upload=True và remaining_units cao nhất lên đầu
-        pool.sort(key=lambda x: (x["can_upload"], x["remaining_units"]), reverse=True)
+        # Sắp xếp token: 
+        # 1. can_upload = True lên đầu
+        # 2. Ưu tiên Token chính (is_primary) nếu còn quota để đảm bảo tính ổn định cao nhất
+        # 3. Sau đó mới đến remaining_units cao nhất
+        pool.sort(key=lambda x: (x["can_upload"], x.get("is_primary", False), x["remaining_units"]), reverse=True)
         return pool
 
     @staticmethod

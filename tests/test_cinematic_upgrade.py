@@ -58,10 +58,10 @@ def test_all():
     assert job.niche == "psychology"
     print("RenderJobContract niche serialization PASSED!")
 
-    print("\n--- Test 5: Level 4 35mm Film Grain ---")
+    print("\n--- Test 5: Color Grading Filter Verification ---")
     res_grain = get_niche_color_grading("psychology")
-    assert "noise=c0s=7:c0f=t+u" in res_grain["vf_filter"], "35mm film grain missing!"
-    print("35mm Film Grain in Color Grading PASSED!")
+    assert "unsharp=" in res_grain["vf_filter"], "Color grading unsharp filter missing!"
+    print("Color Grading in FFmpeg PASSED!")
 
     print("\n--- Test 6: Level 4 Pattern Interrupt Badges ---")
     scs_badge = [

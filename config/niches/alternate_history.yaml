@@ -1,0 +1,73 @@
+id: alternate_history
+name: Lịch Sử Giả Định & "What If?" (Alternate History & Paradoxes)
+badge: ⏳ Alternate History & What If?
+icon: ⏳
+description: Khám phá các dòng thời gian song song, những bước ngoặt lịch sử bị đảo ngược (What If?), và thế giới sẽ ra sao nếu các sự kiện lớn diễn ra khác đi.
+target_audience: Khán giả Mỹ và toàn cầu đam mê lịch sử, khoa học viễn tưởng, câu hỏi giả định và bí ẩn thời gian (18-45 tuổi).
+script_blueprint:
+  tone_of_voice: Hồi hộp, sử thi, giọng kể tài liệu điện ảnh (Christopher Nolan / Dan Carlin), tạo cảm giác rùng mình trước sự mong manh của dòng thời gian.
+  pacing: Siêu nhanh 155 WPM, 2.5 - 3.2 giây/cảnh, nhịp điệu dồn dập, cao trào thắt mở.
+  hook_formulas:
+  - 'Temporal Paradox Shock: ''What if one single second changed the entire course of human history?'''
+  - 'Fallen Empire Twist: ''What if the Roman Empire never collapsed, and ruled the modern world today?'''
+  - 'The Saved Library: ''What if the Library of Alexandria was never burned, and humanity was 1,000 years ahead?'''
+  - 'Divergent Timeline: ''In our world, this battle ended. But in a terrifying alternate reality, history took another path...'''
+  - 'The Fragile Domino: ''A tiny mistake in 1914 almost created a world you would not recognize today...'''
+  narrative_structure: Shock Hook (Bước ngoặt giả định) -> Bằng chứng lịch sử thực tế -> Điểm rẽ nhánh (The Divergence Point) -> Hậu quả giả định chấn động -> Triết lý mở & CTA vòng lặp (Infinite Loop)
+  forbidden_words:
+  - Welcome back to our channel
+  - Today we will talk about
+  - Thank you for watching
+  - Don't forget to like and subscribe
+  - Chào mừng các bạn đã quay trở lại
+  cta_templates:
+  - One different choice rewrote reality. Subscribe to unlock the untold alternate timelines humanity never lived.
+  - History hung by a single thread, and our world almost never existed. Subscribe so you never miss what almost was.
+  - The past you know is only one possible reality. Follow to uncover the darkest paths history almost took.
+  anti_hallucination_rules:
+  - Phải dựa trên các sự kiện, nhân vật và trận đánh lịch sử có thật (Rome, Alexandria, Thế chiến, Cách mạng Công nghiệp), chỉ phân nhánh giả thuyết một cách logic, thuyết phục.
+  - Phân tích hậu quả theo logic chính trị, quân sự và công nghệ thực tế.
+  banned_lexicon: &banned_words
+  - buy now
+  - link in bio
+  - discount code
+  - click here to buy
+  - cheap price
+visual_aesthetics:
+  art_style: Epic Alternate Reality Cinema & Neoclassical Retro-Futurism (Ridley Scott / Christopher Nolan aesthetic)
+  camera_angles: Grand sweeping aerial over divergent civilization, dramatic low-angle of historical figures facing temporal storm, golden hour lightning split, dynamic close-up on antique hourglass cracking with glowing quantum particles
+  color_palette: Fiery amber gold, deep twilight royal blue, electric cyan lightning, burnished antique bronze, atmospheric smoke
+  master_prompt_prefix: masterpiece alternate history cinema still, breathtaking timeline divergence, dramatic chiaroscuro lighting, 70mm IMAX film aesthetic
+  master_prompt_suffix: hyper-detailed textures of ancient stone and retro-futuristic machinery, epic atmosphere, photorealistic vertical 9:16, no watermark, no text
+  negative_prompts: modern plastic gadgets, cartoon, anime, 3d render, blurry, low resolution, watermark, text, signature
+  stock_video_keywords:
+  - ancient army battlefield dramatic sky
+  - giant zeppelin airship over metropolis
+  - glowing antique hourglass sand time
+  - dramatic storm lightning over ancient ruins
+  - old vintage map compass candlelight
+subtitles:
+  font_family: Cinzel, Georgia, serif
+  font_weight: '800'
+  font_size: 40
+  primary_color: '#FFF5E6'
+  highlight_color: '#00E5FF'
+  accent_color: '#FFB300'
+  outline_color: '#0A0F1D'
+  outline_width: 3
+  margin_bottom: 600
+audio:
+  preferred_voice_en: en-US-ChristopherNeural
+  preferred_voice_vi: vi-VN-NamMinhNeural
+  rate: -2%
+  pitch: -2Hz
+  bgm_vibe: deep cinematic ticking clock, ominous orchestral brass, slow thunderous war drums
+  sfx_cues:
+  - clock_tick_accelerating
+  - temporal_boom
+  - lightning_crack
+banned_lexicon: *banned_words
+target_wpm: 155
+monetization:
+  affiliate_enabled: false
+  model: adsense_high_cpm_clean_metadata

@@ -10,6 +10,7 @@ from typing import Optional, Dict, List
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,27 @@ class PublisherAgent:
                 self.init_error = f"File token rỗng hoặc không giải mã được: {self.token_file}"
                 logger.warning(f"Chưa tìm thấy youtube_token hợp lệ cho '{self.token_file}'")
         except Exception as e:
+            # Nếu đang dùng token phụ mà bị lỗi invalid_grant / expired, thử fallback ngay về token chính
+            primary_tok = os.path.join(settings.CREDENTIALS_DIR, "channels", self.channel_id, "youtube_token.json")
+            if self.token_file != primary_tok and os.path.exists(primary_tok):
+                logger.warning(f"⚠️ Token phụ '{self.token_file}' bị lỗi ({e}). Đang tự động fallback về token chính '{primary_tok}'...")
+                self.token_file = primary_tok
+                try:
+                    from app.utils.security import load_encrypted_json, save_encrypted_json
+                    token_data = load_encrypted_json(primary_tok)
+                    if token_data:
+                        creds = Credentials.from_authorized_user_info(token_data)
+                        if creds.expired and creds.refresh_token:
+                            from google.auth.transport.requests import Request
+                            creds.refresh(Request())
+                            save_encrypted_json(primary_tok, json.loads(creds.to_json()))
+                        self.service = build("youtube", "v3", credentials=creds)
+                        self.init_error = None
+                        logger.info(f"✅ Đã fallback kết nối thành công qua token chính cho '{self.channel_name}'!")
+                        return
+                except Exception as fb_err:
+                    logger.error(f"Fallback token chính cũng thất bại: {fb_err}")
+
             self.init_error = str(e)
             logger.error(f"Lỗi khởi tạo YouTube API cho '{self.channel_name}': {e}")
 
@@ -389,45 +411,35 @@ class PublisherAgent:
             if not effective_comment:
                 is_vn = str(target_lang).lower().startswith("vi")
                 raw_niche = (self.channel_config.get("niche") or "").lower()
-                if "psychology" in raw_niche:
+                if any(k in raw_niche for k in ("history", "what_if", "alternate_history")):
                     effective_comment = (
-                        "Bạn từng gặp chiêu tâm lý này ngoài đời chưa? Chia sẻ thật lòng bên dưới nhé 👇\n"
-                        "🔔 Bấm Subscribe để làm chủ tâm lý và bảo vệ bản thân mỗi ngày! 🧠"
+                        "Nếu đứng ở vị trí của họ, bạn sẽ đưa ra quyết định gì? Liệu lịch sử có rẽ sang hướng khác không? Tranh luận ngay bên dưới 👇"
                         if is_vn else
-                        "Did this hit close to home? Which sign was the most accurate? Drop your thoughts below 👇\n"
-                        "🔔 Subscribe to master dark psychology before someone uses it on you! 🧠"
+                        "What would you have done if you stood in their shoes? Would history be completely different? Debate below 👇"
                     )
-                elif any(k in raw_niche for k in ("rescue", "animal")):
+                elif "psychology" in raw_niche:
                     effective_comment = (
-                        "Bạn có tin mọi bé cưng đều xứng đáng có cơ hội sống thứ hai? Hãy để lại trái tim ❤️ bên dưới nhé!\n"
-                        "🐾 Bấm Subscribe để đồng hành cùng những hành trình giải cứu kỳ diệu tiếp theo! 🐾"
+                        "Bạn đã từng gặp ai có dấu hiệu số 2 trong đời thực chưa? Chia sẻ thật lòng bên dưới nhé 👇"
                         if is_vn else
-                        "Every innocent life deserves love ❤️ Would you have stopped to help? Comment below!\n"
-                        "🐾 Subscribe right now to help give more terrified animals a second chance! 🐾"
+                        "Have you ever encountered someone who showed sign #2 in real life? Tell me your story below 👇"
                     )
-                elif any(k in raw_niche for k in ("deep_sea", "ocean", "mystery")):
+                elif any(k in raw_niche for k in ("rescue", "animal", "pet")):
                     effective_comment = (
-                        "Bạn nghĩ điều gì thực sự ẩn giấu sâu dưới đáy vực? Bình luận giả thuyết của bạn bên dưới 👇\n"
-                        "🌊 Bấm Subscribe ngay để không bỏ lỡ những bí mật chấn động tiếp theo! 🔥"
+                        "Nếu là bạn, bạn có dừng lại giúp chú cún này không? 🥺 Link ủng hộ trạm cứu hộ mình đã ghim ở đầu kênh/bio nhé! ❤️"
                         if is_vn else
-                        "What is your theory about this? What are they really hiding? Drop it below 👇\n"
-                        "🌊 Subscribe to uncover more classified deep sea secrets! 🔥"
-                    )
-                elif any(k in raw_niche for k in ("history", "what_if")):
-                    effective_comment = (
-                        "Nếu lịch sử diễn ra theo cách khác, thế giới hôm nay sẽ ra sao? Tranh luận ngay bên dưới 👇\n"
-                        "📜 Bấm Subscribe để khám phá những sự thật bị chôn vùi trong lịch sử! 📜"
-                        if is_vn else
-                        "What if this actually happened? Would the world be unrecognizable today? Debate below 👇\n"
-                        "📜 Subscribe to discover the dark history they never wanted you to see! 📜"
+                        "If you were there, would you have stopped to help this poor baby? 🥺 Our rescue support link is pinned at the top of our channel bio! ❤️"
                     )
                 elif any(k in raw_niche for k in ("predator", "wildlife")):
                     effective_comment = (
-                        "Theo bạn ai là chúa tể thực sự trong cuộc chiến sinh tồn này? Để lại ý kiến bên dưới 👇\n"
-                        "🦁 Bấm Subscribe để tiếp tục bước vào lãnh địa sinh tồn khốc liệt nhất! 🦁"
+                        "Theo bạn con người có cơ hội sống sót nào trước dã thú này không? Để lại suy nghĩ bên dưới 👇"
                         if is_vn else
-                        "Who is the true apex ruler of this realm? Drop your vote below 👇\n"
-                        "🦁 Subscribe for more untamed apex predator battles! 🦁"
+                        "Could any human survive 10 seconds against this apex predator? Drop your survival strategy below 👇"
+                    )
+                elif any(k in raw_niche for k in ("deep_sea", "ocean", "abyss", "mariana")):
+                    effective_comment = (
+                        "Theo bạn, có thật sự có sinh vật khổng lồ ở đáy 11.000m không? Để lại giả thuyết của bạn bên dưới 👇"
+                        if is_vn else
+                        "Do you believe colossal creatures are truly hiding at 11,000 meters in the pitch black abyss? Drop your theory below 👇"
                     )
                 else:
                     effective_comment = (
@@ -440,33 +452,14 @@ class PublisherAgent:
 
             posted_comment_id = None
             if video_id and effective_comment:
-                # Tự động bổ sung lời nhắc bấm vào Link trong Bio theo từng niche
-                is_vn = str(target_lang).lower().startswith("vi")
-                raw_niche = (self.channel_config.get("niche") or "").lower()
-                if "bio" not in effective_comment.lower():
-                    if any(k in raw_niche for k in ("rescue", "animal", "pet")):
-                        bio_cta = (
-                            "\n\n🐾 Đồ dùng & vật phẩm chăm sóc thú cưng: Bấm avatar kênh ➔ Link trong Bio! 🔗"
-                            if is_vn else
-                            "\n\n🐾 Best pet care essentials & gear: Tap channel icon ➔ Clickable link in Bio! 🔗"
-                        )
-                    elif "psychology" in raw_niche:
-                        bio_cta = (
-                            "\n\n📚 Sách & công cụ phát triển bản thân: Bấm avatar kênh ➔ Link trong Bio! 🔗"
-                            if is_vn else
-                            "\n\n📚 Top books & mindset tools: Tap channel icon ➔ Clickable link in Bio! 🔗"
-                        )
-                    else:
-                        bio_cta = (
-                            "\n\n✨ Khám phá thêm sản phẩm khuyên dùng: Bấm avatar kênh ➔ Link trong Bio! 🔗"
-                            if is_vn else
-                            "\n\n✨ Recommended essentials & gear: Tap channel icon ➔ Clickable link in Bio! 🔗"
-                        )
-                    effective_comment = f"{effective_comment.strip()}{bio_cta}"
-
-                comment_res = self.add_pinned_comment(video_id, effective_comment)
-                if comment_res:
-                    posted_comment_id = comment_res.get("id")
+                # Nếu video được lên lịch hoặc đang private, không đăng comment ngay (vì YouTube API sẽ báo lỗi 403 Forbidden).
+                # Bình luận mồi đã được lưu vào hợp đồng và sẽ tự động được ghim bởi sync_channel_pinned_comments khi video công chiếu.
+                if schedule_time_iso or str(privacy_status).lower() != "public":
+                    logger.info(f"⏳ [PublisherAgent] Video {video_id} đang ở chế độ hẹn giờ/riêng tư. Bình luận mồi đã được lưu và sẽ tự động đăng ngay khi video công chiếu.")
+                else:
+                    comment_res = self.add_pinned_comment(video_id, effective_comment)
+                    if comment_res:
+                        posted_comment_id = comment_res.get("id")
 
             # Ghi nhận tiêu hao Quota vào database
             try:
@@ -597,4 +590,159 @@ class PublisherAgent:
         except Exception as e:
             logger.warning(f"📸 [PublisherAgent] Không thể upload custom thumbnail ({thumbnail_path}): {e}")
             return False
+
+    def ensure_pinned_comment(self, video_id: str, comment_text: Optional[str] = None) -> Optional[Dict]:
+        """
+        Kiểm tra và đăng bình luận mồi (Pinned Comment Bait) của chính chủ kênh cho video nếu video đã ở trạng thái PUBLIC
+        và tác giả chưa có bình luận nào trên video.
+        """
+        if not self.service or not video_id:
+            return None
+
+        try:
+            # 1. Kiểm tra trạng thái video
+            v_res = self.service.videos().list(part="status,snippet", id=video_id).execute()
+            items = v_res.get("items", [])
+            if not items:
+                logger.warning(f"💬 [PublisherAgent] Video {video_id} không tồn tại trên YouTube.")
+                return None
+
+            v_item = items[0]
+            privacy_status = v_item.get("status", {}).get("privacyStatus", "public")
+            if privacy_status.lower() != "public":
+                logger.info(f"💬 [PublisherAgent] Video {video_id} đang ở trạng thái {privacy_status}. Chỉ đăng bình luận mồi khi video đã PUBLIC.")
+                return None
+
+            # 2. Lấy thông tin kênh của chính mình để nhận diện author
+            my_channel_id = None
+            try:
+                ch_me = self.service.channels().list(part="id", mine=True).execute()
+                ch_items = ch_me.get("items", [])
+                if ch_items:
+                    my_channel_id = ch_items[0].get("id")
+            except Exception:
+                my_channel_id = self.channel_config.get("youtube_channel_id")
+
+            # 3. Kiểm tra xem tác giả (kênh này) đã có bình luận nào trên video chưa
+            has_author_comment = False
+            try:
+                threads_res = self.service.commentThreads().list(
+                    part="snippet",
+                    videoId=video_id,
+                    maxResults=20
+                ).execute()
+                for t in threads_res.get("items", []):
+                    top_c = t.get("snippet", {}).get("topLevelComment", {}).get("snippet", {})
+                    author_cid = top_c.get("authorChannelId", {}).get("value")
+                    if my_channel_id and author_cid == my_channel_id:
+                        has_author_comment = True
+                        break
+            except Exception as chk_e:
+                logger.debug(f"Không thể kiểm tra commentThreads của video {video_id}: {chk_e}")
+
+            if has_author_comment:
+                logger.info(f"💬 [PublisherAgent] Video {video_id} đã có bình luận của kênh tác giả. Bỏ qua.")
+                return None
+
+            # 4. Xác định nội dung bình luận mồi chuẩn theo niche và ngôn ngữ
+            effective_comment = comment_text
+            if not effective_comment:
+                v_title = v_item.get("snippet", {}).get("title", "")
+                is_vn = any("\u0100" <= c <= "\u1EF9" for c in v_title) or str(self.channel_config.get("language", "")).lower().startswith("vi")
+                raw_niche = (self.channel_config.get("niche") or "").lower()
+
+                if any(k in raw_niche for k in ("history", "what_if", "alternate_history")):
+                    effective_comment = (
+                        "Nếu đứng ở vị trí của họ, bạn sẽ đưa ra quyết định gì? Liệu lịch sử có rẽ sang hướng khác không? Tranh luận ngay bên dưới 👇"
+                        if is_vn else
+                        "What would you have done if you stood in their shoes? Would history be completely different? Debate below 👇"
+                    )
+                elif "psychology" in raw_niche:
+                    effective_comment = (
+                        "Bạn đã từng gặp ai có dấu hiệu số 2 trong đời thực chưa? Chia sẻ thật lòng bên dưới nhé 👇"
+                        if is_vn else
+                        "Have you ever encountered someone who showed sign #2 in real life? Tell me your story below 👇"
+                    )
+                elif any(k in raw_niche for k in ("rescue", "animal", "pet")):
+                    effective_comment = (
+                        "Nếu là bạn, bạn có dừng lại giúp chú cún này không? 🥺 Link ủng hộ trạm cứu hộ mình đã ghim ở đầu kênh/bio nhé! ❤️"
+                        if is_vn else
+                        "If you were there, would you have stopped to help this poor baby? 🥺 Our rescue support link is pinned at the top of our channel bio! ❤️"
+                    )
+                elif any(k in raw_niche for k in ("predator", "wildlife")):
+                    effective_comment = (
+                        "Theo bạn con người có cơ hội sống sót nào trước dã thú này không? Để lại suy nghĩ bên dưới 👇"
+                        if is_vn else
+                        "Could any human survive 10 seconds against this apex predator? Drop your survival strategy below 👇"
+                    )
+                elif any(k in raw_niche for k in ("deep_sea", "ocean", "abyss", "mariana")):
+                    effective_comment = (
+                        "Theo bạn, có thật sự có sinh vật khổng lồ ở đáy 11.000m không? Để lại giả thuyết của bạn bên dưới 👇"
+                        if is_vn else
+                        "Do you believe colossal creatures are truly hiding at 11,000 meters in the pitch black abyss? Drop your theory below 👇"
+                    )
+                else:
+                    effective_comment = (
+                        "Chi tiết nào khiến bạn bất ngờ nhất? Hãy bình luận suy nghĩ của bạn bên dưới 👇\n🔔 Đăng ký kênh (Subscribe) để không bỏ lỡ video tiếp theo! 🔥"
+                        if is_vn else
+                        "Which moment shocked you the most? Drop your theory in the comments below 👇\n🔔 Subscribe for more mind-bending stories! 🔥"
+                    )
+
+            # 5. Đăng bình luận
+            return self.add_pinned_comment(video_id, effective_comment)
+        except Exception as e:
+            logger.warning(f"💬 [PublisherAgent] Lỗi khi ensure_pinned_comment cho {video_id}: {e}")
+            return None
+
+    def sync_channel_pinned_comments(self, limit: int = 10) -> List[Dict]:
+        """
+        Quét danh sách các video đã xuất bản gần nhất của kênh và tự động bổ sung bình luận mồi nếu còn thiếu.
+        Sử dụng uploads playlist (tiết kiệm quota API: 1 unit).
+        """
+        if not self.service:
+            return []
+
+        results = []
+        try:
+            # Lấy uploads playlist ID
+            ch_res = self.service.channels().list(part="contentDetails", mine=True).execute()
+            items = ch_res.get("items", [])
+            if not items and self.channel_id:
+                ch_res = self.service.channels().list(part="contentDetails", id=self.channel_config.get("youtube_channel_id", self.channel_id)).execute()
+                items = ch_res.get("items", [])
+
+            if not items:
+                logger.warning(f"💬 [PublisherAgent] Không lấy được thông tin kênh '{self.channel_name}' để sync comments.")
+                return []
+
+            uploads_id = items[0].get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads")
+            if not uploads_id:
+                return []
+
+            # Quét các video gần nhất
+            pl_res = self.service.playlistItems().list(
+                part="snippet,status",
+                playlistId=uploads_id,
+                maxResults=min(limit, 50)
+            ).execute()
+
+            for it in pl_res.get("items", []):
+                vid = it.get("snippet", {}).get("resourceId", {}).get("videoId")
+                v_title = it.get("snippet", {}).get("title", "")
+                p_status = it.get("status", {}).get("privacyStatus", "public")
+                if not vid or p_status.lower() != "public":
+                    continue
+
+                res = self.ensure_pinned_comment(vid)
+                if res:
+                    results.append({
+                        "video_id": vid,
+                        "title": v_title,
+                        "comment_id": res.get("id"),
+                        "comment_text": res.get("snippet", {}).get("topLevelComment", {}).get("snippet", {}).get("textOriginal", "")
+                    })
+        except Exception as e:
+            logger.warning(f"💬 [PublisherAgent] Lỗi khi sync_channel_pinned_comments ({self.channel_name}): {e}")
+
+        return results
 

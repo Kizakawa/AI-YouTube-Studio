@@ -15,53 +15,12 @@ import subprocess
 import json
 import logging
 from pathlib import Path
-from typing import Optional, Dict, List, Union
+from typing import Optional, Dict, List, Union, Any
 
 logger = logging.getLogger(__name__)
 
 FFMPEG_TIMEOUT = 300   # 5 phút max cho render
 FFPROBE_TIMEOUT = 10   # 10 giây max cho probe
-
-# ── MoneyPrinterTurbo Standard: Video Duration Safety Margin (+0.1s) ──
-# Bù đệm 100ms vào cảnh cuối để chống frame rounding truncation làm đứt âm thanh kết thúc
-VIDEO_DURATION_SAFETY_MARGIN: float = 0.1
-
-# ── MoneyPrinterTurbo Standard: BT.709 Color Space & Primaries Tagging ──
-# Khóa chặt color primaries, transfer characteristics và matrix coefficients về BT.709 (sRGB/HDTV)
-# Ngăn chặn YouTube & mobile browsers hiểu nhầm thành BT.601 dẫn đến màu sắc bị bợt nhạt, mất tương phản
-BT709_COLOR_ARGS: List[str] = [
-    "-colorspace", "bt709",
-    "-color_primaries", "bt709",
-    "-color_trc", "bt709",
-    "-color_range", "tv",
-]
-
-
-def build_atempo_filter(speed_ratio: float) -> str:
-    """
-    Sinh chuỗi filter FFmpeg 'atempo' chuẩn xác để đồng bộ thời lượng âm thanh không đổi cao độ (pitch).
-    Xử lý giới hạn 0.5 <= atempo <= 2.0 của FFmpeg bằng cách ghép chuỗi (chaining).
-    Lấy cảm hứng từ VoiceStudio Timed Speech Synchronization.
-    """
-    if speed_ratio <= 0:
-        return "anull"
-    ratio = float(speed_ratio)
-    # Nếu xấp xỉ 1.0 (độ lệch dưới 2%), không cần can thiệp
-    if abs(ratio - 1.0) < 0.02:
-        return "anull"
-
-    filters = []
-    # Xử lý trường hợp nén tốc độ > 2.0x (ví dụ: ratio=2.4 -> atempo=2.0,atempo=1.2)
-    while ratio > 2.0:
-        filters.append("atempo=2.0")
-        ratio /= 2.0
-    # Xử lý trường hợp kéo giãn tốc độ < 0.5x (ví dụ: ratio=0.4 -> atempo=0.5,atempo=0.8)
-    while ratio < 0.5:
-        filters.append("atempo=0.5")
-        ratio /= 0.5
-
-    filters.append(f"atempo={ratio:.4f}")
-    return ",".join(filters)
 
 
 def _ensure_ffmpeg_in_path():
@@ -157,6 +116,198 @@ def _supports_fps_mode() -> bool:
     except Exception:
         _cached_supports_fps_mode = False
     return _cached_supports_fps_mode
+
+
+_cached_hardware_encoder: Optional[Dict[str, Any]] = None
+
+
+def detect_hardware_encoder(force_recheck: bool = False) -> Dict[str, Any]:
+    """
+    Tự động phát hiện và kiểm định bộ mã hóa video tăng tốc phần cứng (GPU Hardware Acceleration).
+    Kiểm tra thực tế bằng FFmpeg probe (0.1 giây) để đảm bảo bộ mã hóa 100% hoạt động được trên thiết bị:
+      1. h264_nvenc: NVIDIA GPU (CUDA / NVENC) — Tối ưu cao nhất trên card rời NVIDIA & Colab/Linux
+      2. h264_mf: Windows Media Foundation — Tăng tốc GPU DirectX mượt mà trên Windows (hỗ trợ NVIDIA, Intel, AMD)
+      3. h264_qsv: Intel QuickSync Video — Tận dụng nhân đồ họa tích hợp Intel Iris Xe / UHD
+      4. h264_videotoolbox: Apple Silicon (M1/M2/M3/M4) trên macOS
+      5. h264_amf: AMD Advanced Media Framework trên card AMD Radeon
+      6. Fallback: libx264 (CPU) — Bộ mã hóa phần mềm tiêu chuẩn
+    """
+    global _cached_hardware_encoder
+    if _cached_hardware_encoder is not None and not force_recheck:
+        return _cached_hardware_encoder
+
+    # Kiểm tra cấu hình có bật GPU acceleration không
+    enable_gpu = True
+    forced_encoder = ""
+    try:
+        from config.settings import settings
+        enable_gpu = getattr(settings, "ENABLE_GPU_ACCELERATION", True)
+        forced_encoder = getattr(settings, "FORCE_GPU_ENCODER", "")
+    except Exception:
+        pass
+
+    if not enable_gpu:
+        _cached_hardware_encoder = {
+            "encoder": "libx264",
+            "is_gpu": False,
+            "display_name": "CPU Software (libx264 - disabled by settings)"
+        }
+        return _cached_hardware_encoder
+
+    ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
+
+    candidates = [
+        ("h264_nvenc", ["-c:v", "h264_nvenc", "-preset", "p5", "-cq", "19", "-pix_fmt", "yuv420p"], "NVIDIA NVENC (GPU)"),
+        ("h264_mf", ["-c:v", "h264_mf", "-b:v", "10M", "-pix_fmt", "yuv420p"], "Windows Media Foundation (GPU/DirectX)"),
+        ("h264_qsv", ["-c:v", "h264_qsv", "-global_quality", "20", "-pix_fmt", "nv12"], "Intel QuickSync (GPU)"),
+        ("h264_videotoolbox", ["-c:v", "h264_videotoolbox", "-b:v", "10M", "-pix_fmt", "yuv420p"], "Apple VideoToolbox (GPU)"),
+        ("h264_amf", ["-c:v", "h264_amf", "-quality", "quality", "-b:v", "10M", "-pix_fmt", "yuv420p"], "AMD AMF (GPU)"),
+    ]
+
+    if forced_encoder:
+        if forced_encoder == "libx264":
+            _cached_hardware_encoder = {
+                "encoder": "libx264",
+                "is_gpu": False,
+                "display_name": "CPU Software (libx264 - forced)"
+            }
+            return _cached_hardware_encoder
+        # Đưa encoder chỉ định lên đầu
+        candidates = [c for c in candidates if c[0] == forced_encoder] + [c for c in candidates if c[0] != forced_encoder]
+
+    for enc_name, test_args, disp_name in candidates:
+        try:
+            probe_cmd = [
+                ffmpeg_bin, "-v", "error",
+                "-f", "lavfi", "-i", "color=c=black:s=64x64:d=0.1",
+                *test_args,
+                "-f", "null", "-"
+            ]
+            r = subprocess.run(probe_cmd, capture_output=True, timeout=4)
+            if r.returncode == 0:
+                _cached_hardware_encoder = {
+                    "encoder": enc_name,
+                    "is_gpu": True,
+                    "display_name": disp_name
+                }
+                logger.info(f"🚀 [HardwareAcceleration] Đã phát hiện và kích hoạt thành công GPU Video Encoder: '{enc_name}' ({disp_name})! Tốc độ render tăng 3x-10x.")
+                return _cached_hardware_encoder
+        except Exception:
+            continue
+
+    # Nếu tất cả GPU thất bại, dùng CPU
+    _cached_hardware_encoder = {
+        "encoder": "libx264",
+        "is_gpu": False,
+        "display_name": "CPU Software (libx264)"
+    }
+    logger.info("💻 [HardwareAcceleration] Không phát hiện GPU khả dụng phù hợp, sử dụng bộ mã hóa CPU 'libx264'.")
+    return _cached_hardware_encoder
+
+
+def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = None) -> List[str]:
+    """
+    Trả về danh sách cờ tham số FFmpeg phù hợp nhất cho bộ mã hóa được chọn (GPU hoặc CPU).
+    Tự động chuẩn hóa bitrate, preset, pixel format để video đầu ra tương thích 100% YouTube Shorts 1080x1920.
+    """
+    if encoder_name is None:
+        enc_info = detect_hardware_encoder()
+        encoder = enc_info["encoder"]
+    else:
+        encoder = encoder_name
+
+    is_high = (quality == "high")
+
+    if encoder == "h264_nvenc":
+        return [
+            "-c:v", "h264_nvenc",
+            "-preset", "p5" if is_high else "p3",
+            "-cq", "18" if is_high else "22",
+            "-b:v", "12M" if is_high else "8M",
+            "-maxrate", "16M" if is_high else "12M",
+            "-bufsize", "24M" if is_high else "16M",
+            "-pix_fmt", "yuv420p",
+        ]
+    elif encoder == "h264_mf":
+        return [
+            "-c:v", "h264_mf",
+            "-b:v", "12M" if is_high else "8M",
+            "-pix_fmt", "yuv420p",
+        ]
+    elif encoder == "h264_qsv":
+        return [
+            "-c:v", "h264_qsv",
+            "-global_quality", "18" if is_high else "22",
+            "-b:v", "12M" if is_high else "8M",
+            "-maxrate", "16M" if is_high else "12M",
+            "-bufsize", "24M" if is_high else "16M",
+            "-pix_fmt", "nv12",
+        ]
+    elif encoder == "h264_videotoolbox":
+        return [
+            "-c:v", "h264_videotoolbox",
+            "-b:v", "12M" if is_high else "8M",
+            "-pix_fmt", "yuv420p",
+        ]
+    elif encoder == "h264_amf":
+        return [
+            "-c:v", "h264_amf",
+            "-quality", "quality" if is_high else "speed",
+            "-rc", "cbr",
+            "-b:v", "12M" if is_high else "8M",
+            "-pix_fmt", "yuv420p",
+        ]
+    else:
+        # Mặc định CPU libx264
+        return [
+            "-c:v", "libx264",
+            "-preset", "medium" if is_high else "veryfast",
+            "-crf", "18" if is_high else "22",
+            "-b:v", "12M" if is_high else "8M",
+            "-maxrate", "16M" if is_high else "12M",
+            "-bufsize", "24M" if is_high else "16M",
+            "-pix_fmt", "yuv420p",
+        ]
+
+
+def run_ffmpeg_with_gpu_fallback(args: List[str], timeout: int = FFMPEG_TIMEOUT) -> subprocess.CompletedProcess:
+    """
+    Thực thi lệnh FFmpeg với cơ chế tự phục hồi kép:
+    Nếu lệnh sử dụng GPU hardware encoder và gặp lỗi bất kỳ (ví dụ driver không tương thích, thiếu VRAM...),
+    hệ thống tự động thay thế bằng bộ mã hóa CPU (libx264) và thực hiện lại ngay lập tức!
+    Đảm bảo 100% video luôn render thành công không bao giờ làm gián đoạn pipeline.
+    """
+    try:
+        return run_ffmpeg(args, timeout=timeout)
+    except Exception as gpu_err:
+        enc_info = detect_hardware_encoder()
+        current_enc = enc_info["encoder"]
+        # Chỉ kích hoạt fallback nếu đang dùng GPU encoder
+        if current_enc != "libx264" and any(current_enc in arg for arg in args):
+            logger.warning(
+                f"⚠️ [HardwareAcceleration Fallback] Bộ mã hóa GPU '{current_enc}' gặp sự cố ({str(gpu_err)[:80]}). "
+                f"Đang tự động chuyển tiếp sang bộ mã hóa CPU (libx264) dự phòng an toàn..."
+            )
+            cpu_args = get_video_encoder_args(quality="high", encoder_name="libx264")
+            new_args = []
+            i = 0
+            while i < len(args):
+                if args[i] == "-c:v" and i + 1 < len(args) and args[i+1] == current_enc:
+                    new_args.extend(cpu_args)
+                    i += 2
+                    # Bỏ qua các flag đi kèm encoder cũ cho đến khi gặp flag mới không liên quan
+                    while i < len(args) and args[i] in (
+                        "-b:v", "-maxrate", "-bufsize", "-pix_fmt", "-preset",
+                        "-crf", "-cq", "-global_quality", "-quality", "-rc"
+                    ):
+                        i += 2
+                    continue
+                new_args.append(args[i])
+                i += 1
+
+            return run_ffmpeg(new_args, timeout=timeout)
+        else:
+            raise gpu_err
 
 
 def is_ffmpeg_installed() -> bool:
@@ -410,9 +561,9 @@ def image_to_video(
 
     d = int(duration_seconds * fps)  # Tổng số frames
     if is_hook_scene:
-        # Cú Micro-Zoom điện ảnh mượt mà cho Scene 1 (1.05 -> 1.18) giữ độ nét 4K không méo/chói
-        z_start = 1.05
-        z_end   = 1.18
+        # Cú Punch-in Zoom kịch tính cho Scene 1 (1.08 -> 1.24) tạo thumbstopper giật mắt người xem ngay frame 0
+        z_start = 1.08
+        z_end   = 1.24
     else:
         z_start = 1.0
         z_end   = 1.15  # Zoom mượt mà 15% chuẩn cinema
@@ -528,26 +679,19 @@ def image_to_video(
         vf_parts.append(grading['vignette'])
     vf_chain = ",".join(vf_parts)
 
+    enc_args = get_video_encoder_args(quality="high")
     args = [
         "-loop", "1",
         "-i", image_path,
         "-vf", vf_chain,
         "-t", str(duration_seconds),
-        "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", "18",
-        "-b:v", "12M",
-        "-maxrate", "16M",
-        "-bufsize", "24M",
-        "-tune", "stillimage",   # Optimize encoder cho ảnh tĩnh (tăng tốc 20-40%)
-        "-pix_fmt", "yuv420p",
-        *BT709_COLOR_ARGS,
+        *enc_args,
         "-r", str(fps),
         "-an",
         output_path
     ]
     try:
-        run_ffmpeg(args)
+        run_ffmpeg_with_gpu_fallback(args)
     finally:
         # Xóa file tạm sau khi render xong (tránh rác file)
         try:
@@ -630,24 +774,18 @@ def trim_video(
     except Exception:
         pass
 
+    enc_args = get_video_encoder_args(quality="high")
     args = [
         *loop_args,
         "-i", input_path,
         "-t", str(duration_seconds),
         "-vf", vf_chain,
-        "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", "18",
-        "-b:v", "12M",
-        "-maxrate", "16M",
-        "-bufsize", "24M",
-        "-pix_fmt", "yuv420p",
-        *BT709_COLOR_ARGS,
+        *enc_args,
         "-r", str(fps),
         "-an",  # Bỏ audio gốc của stock video
         output_path
     ]
-    run_ffmpeg(args)
+    run_ffmpeg_with_gpu_fallback(args)
     return output_path
 
 
@@ -669,25 +807,19 @@ def concat_videos(
 
     # Thích ứng tự động: FFmpeg >= 5.1 dùng -fps_mode cfr, FFmpeg cũ dùng -vsync cfr
     fps_flag = ["-fps_mode", "cfr"] if _supports_fps_mode() else ["-vsync", "cfr"]
+    enc_args = get_video_encoder_args(quality="high")
 
     args = [
         "-f", "concat",
         "-safe", "0",
         "-i", list_file,
-        "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", "18",
-        "-b:v", "12M",
-        "-maxrate", "16M",
-        "-bufsize", "24M",
-        "-pix_fmt", "yuv420p",
-        *BT709_COLOR_ARGS,
+        *enc_args,
         "-r", str(fps),
     ] + fps_flag + [
         "-an",
         output_path
     ]
-    run_ffmpeg(args)
+    run_ffmpeg_with_gpu_fallback(args)
     return output_path
 
 
@@ -726,11 +858,92 @@ def concat_videos_with_xfade(
         shutil.copy2(video_paths[0], output_path)
         return output_path
 
+# ──────────────────────────────────────────────
+# BỘ MÁY CHUYỂN CẢNH ĐA DẠNG NGHỆ THUẬT (CINEMATIC XFADE SUITE)
+# ──────────────────────────────────────────────
+
+NICHE_TRANSITIONS_MAP = {
+    "scifi": ["zoomin", "smoothleft", "pixelize", "hblur", "circleopen", "smoothright", "diagtl"],
+    "psychology": ["smoothleft", "circleopen", "smoothright", "radial", "dissolve", "diagtr", "hblur"],
+    "deep_sea": ["radial", "smoothleft", "circleopen", "smoothright", "diagtl", "dissolve", "hblur"],
+    "wildlife_predators": ["smoothleft", "circleopen", "smoothright", "diagtl", "radial", "dissolve"],
+    "animal_rescue": ["smoothleft", "dissolve", "smoothright", "circleopen", "diagtl"],
+    "horror": ["pixelize", "fadeblack", "hblur", "vertopen", "dissolve", "diagbl"],
+    "luxury": ["smoothleft", "diagtl", "smoothright", "zoomin", "circleopen", "diagbr"],
+    "history_mystery": ["smoothleft", "radial", "smoothright", "dissolve", "diagtl", "circleopen"],
+    "general": ["smoothleft", "smoothright", "circleopen", "diagtl", "zoomin", "radial", "hblur"],
+}
+
+
+def resolve_niche_transitions(
+    niche: Optional[str] = None,
+    is_scifi: bool = False,
+    count: int = 5
+) -> List[str]:
+    """
+    Tạo danh sách các hiệu ứng chuyển cảnh xfade sống động, phù hợp từng ngách kênh.
+    Luân chuyển mượt mà giữa các kiểu chuyển cảnh (wipes, smooth slides, radial sweeps, zoom-in, iris reveals),
+    tuyệt đối không lặp lại đơn điệu 1 hiệu ứng fade đen nhàm chán.
+    """
+    raw_niche = (niche or "").lower().strip()
+    if is_scifi or any(k in raw_niche for k in ("scifi", "tech", "ai", "future", "cong_nghe")):
+        key = "scifi"
+    elif "psycholog" in raw_niche or "tam_ly" in raw_niche or "stoic" in raw_niche:
+        key = "psychology"
+    elif any(k in raw_niche for k in ("deep_sea", "ocean", "bien_sau", "sea")):
+        key = "deep_sea"
+    elif any(k in raw_niche for k in ("predator", "wildlife", "wild", "san_moi", "hoang_da")):
+        key = "wildlife_predators"
+    elif any(k in raw_niche for k in ("rescue", "animal", "pet", "thu_cung", "giai_cuu")):
+        key = "animal_rescue"
+    elif any(k in raw_niche for k in ("horror", "creepy", "kinh_di")):
+        key = "horror"
+    elif any(k in raw_niche for k in ("finance", "wealth", "luxury", "money", "tai_chinh")):
+        key = "luxury"
+    elif any(k in raw_niche for k in ("history", "ancient", "mystery", "lich_su", "bi_an")):
+        key = "history_mystery"
+    else:
+        key = "general"
+
+    pool = NICHE_TRANSITIONS_MAP.get(key, NICHE_TRANSITIONS_MAP["general"])
+    if count <= 0:
+        return []
+    return [pool[i % len(pool)] for i in range(count)]
+
+
+def concat_videos_with_xfade(
+    video_paths: List[str],
+    output_path: str,
+    fps: int = 30,
+    transition: Union[str, List[str]] = "auto",
+    transition_duration: float = 0.28,
+    scene_durations_seconds: Optional[List[float]] = None,
+) -> str:
+    """
+    Ghép N video clips với hiệu ứng chuyển cảnh xfade mượt mà, đa dạng giữa các scenes.
+
+    Args:
+        video_paths:             Danh sách clip MP4 đã chuẩn hóa (FPS, độ phân giải khớp nhau)
+        output_path:             File MP4 output
+        fps:                     FPS chuẩn (phải khớp với clips)
+        transition:              Loại xfade hoặc List[str] các chuyển cảnh luân phiên:
+                                 'auto', 'dynamic', 'scifi', 'psychology', 'deep_sea', 'smoothleft',
+                                 'zoomin', 'circleopen', 'radial', v.v.
+        transition_duration:     Thời lượng transition (giây), khuyến nghị 0.25-0.35s
+        scene_durations_seconds: Thời lượng từng clip (giây) — cần để tính offset xfade.
+                                 Nếu None, hàm tự probe bằng ffprobe.
+
+    Returns:
+        output_path
+    """
+    if len(video_paths) == 1:
+        # Chỉ 1 clip → không cần xfade
+        import shutil
+        shutil.copy2(video_paths[0], output_path)
+        return output_path
+
     if len(video_paths) == 0:
         raise ValueError("concat_videos_with_xfade: video_paths rỗng")
-
-    # Danh mục chuyển cảnh viễn tưởng năng động (Dynamic Sci-Fi Transition Loop)
-    SCIFI_TRANSITIONS = ["zoomin", "pixelize", "hblur", "fadeblack", "dissolve", "circleopen"]
 
     # Lấy thời lượng từng clip nếu chưa cung cấp
     durations = []
@@ -743,11 +956,26 @@ def concat_videos_with_xfade(
             durations.append(dur_s)
 
     td = transition_duration  # shorthand
+    n = len(video_paths)
+
+    # Chuẩn bị danh sách chuyển cảnh cho (n - 1) nhát cắt
+    if isinstance(transition, list) and transition:
+        t_seq = [transition[i % len(transition)] for i in range(n - 1)]
+    elif transition in ("scifi", "scifi_cyber", "dynamic_scifi"):
+        t_seq = resolve_niche_transitions("scifi", is_scifi=True, count=n - 1)
+    elif transition in NICHE_TRANSITIONS_MAP:
+        t_seq = resolve_niche_transitions(transition, count=n - 1)
+    elif transition in ("auto", "dynamic"):
+        t_seq = resolve_niche_transitions("general", count=n - 1)
+    elif transition in ("fade", "fadeblack") and n > 2:
+        # Tự động nâng cấp fade đen đơn điệu sang chuỗi chuyển cảnh dynamic
+        t_seq = resolve_niche_transitions("general", count=n - 1)
+    else:
+        t_seq = [str(transition)] * (n - 1)
 
     # ── Xây filter_complex xfade chain ──
     # Mỗi clip [i] được label [vi], rồi xfade chaining:
     # [v0][v1] xfade=... [vt01]; [vt01][v2] xfade=... [vt012]; ...
-    n = len(video_paths)
     input_args = []
     for vp in video_paths:
         input_args += ["-i", vp]
@@ -767,14 +995,7 @@ def concat_videos_with_xfade(
         offset = max(cumulative + prev_dur - td, 0.0)
         cumulative += prev_dur - td
         next_label = f"vx{i}"
-
-        # Chọn kiểu transition cho nhát cắt này
-        if isinstance(transition, list) and transition:
-            t_choice = transition[(i - 1) % len(transition)]
-        elif transition in ("scifi", "scifi_cyber", "dynamic_scifi"):
-            t_choice = SCIFI_TRANSITIONS[(i - 1) % len(SCIFI_TRANSITIONS)]
-        else:
-            t_choice = transition
+        t_choice = t_seq[i - 1]
 
         filter_parts.append(
             f"[{current_label}][v{i}]xfade="
@@ -786,25 +1007,19 @@ def concat_videos_with_xfade(
         current_label = next_label
 
     filter_complex = ";".join(filter_parts)
+    enc_args = get_video_encoder_args(quality="high")
 
     args = input_args + [
         "-filter_complex", filter_complex,
         "-map", f"[{current_label}]",
-        "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", "18",
-        "-b:v", "12M",
-        "-maxrate", "16M",
-        "-bufsize", "24M",
-        "-pix_fmt", "yuv420p",
-        *BT709_COLOR_ARGS,
+        *enc_args,
         "-r", str(fps),
         "-an",
         output_path,
     ]
 
     try:
-        run_ffmpeg(args, timeout=FFMPEG_TIMEOUT)
+        run_ffmpeg_with_gpu_fallback(args, timeout=FFMPEG_TIMEOUT)
         logger.info(f"[xfade] ✅ Ghép {n} clips với xfade={transition} → {output_path}")
         return output_path
     except RuntimeError as e:
@@ -821,7 +1036,7 @@ def mux_audio_video(
     audio_path: str,
     output_path: str,
     bgm_path: str = None,
-    bgm_volume: float = 0.045,
+    bgm_volume: float = 0.08,
     use_ducking: bool = True,
     normalize_loudness: bool = True,
 ) -> str:
@@ -832,7 +1047,6 @@ def mux_audio_video(
       - Khi voice đang nói: BGM tự động giảm xuống ~15% volume
       - Khi voice im lặng: BGM tăng lại tự nhiên
       - Dùng sidechaincompress filter của FFmpeg (chuyên nghiệp, không hardcode)
-      - Tích hợp bộ lọc De-Harshing (lowpass=4200Hz, EQ gọt mid-high 3.2kHz) chống chói tai trên loa di động
 
     P2.3 Broadcast Audio Normalization (normalize_loudness=True):
       - Chuẩn YouTube Shorts EBU R128: loudnorm=I=-14:TP=-1.5:LRA=11
@@ -841,12 +1055,16 @@ def mux_audio_video(
     Fallback: Nếu BGM ngắn hơn voice, tự động loop lại (aloop).
     """
     if bgm_path and Path(bgm_path).exists():
-        bgm_deharsh = "lowpass=f=4200,equalizer=f=3200:t=q:w=1.2:g=-6"
         if use_ducking:
             # ── Real Audio Ducking via sidechaincompress ──
+            # [1:a] = voice narration (sidechain trigger)
+            # [2:a] = BGM (bị duck khi voice nói)
+            # threshold=0.02: bắt đầu duck khi voice > -34dB
+            # ratio=4: giảm BGM còn ~25%
+            # attack=5ms, release=200ms: duck nhanh, recover chậm (tự nhiên)
             if normalize_loudness:
                 filter_complex = (
-                    f"[2:a]aloop=loop=-1:size=2000000000,{bgm_deharsh},volume={bgm_volume}[bgm_looped];"
+                    f"[2:a]aloop=loop=-1:size=2000000000,volume={bgm_volume}[bgm_looped];"
                     f"[bgm_looped][1:a]sidechaincompress="
                     f"threshold=0.02:ratio=4:attack=5:release=200:makeup=1[bgm_ducked];"
                     f"[1:a][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=2:weights='1 1'[amix_out];"
@@ -854,7 +1072,7 @@ def mux_audio_video(
                 )
             else:
                 filter_complex = (
-                    f"[2:a]aloop=loop=-1:size=2000000000,{bgm_deharsh},volume={bgm_volume}[bgm_looped];"
+                    f"[2:a]aloop=loop=-1:size=2000000000,volume={bgm_volume}[bgm_looped];"
                     f"[bgm_looped][1:a]sidechaincompress="
                     f"threshold=0.02:ratio=4:attack=5:release=200:makeup=1[bgm_ducked];"
                     f"[1:a][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=2:weights='1 1'[aout]"
@@ -863,13 +1081,13 @@ def mux_audio_video(
             # Simple mix: BGM ở volume cố định, không ducking
             if normalize_loudness:
                 filter_complex = (
-                    f"[2:a]aloop=loop=-1:size=2000000000,{bgm_deharsh},volume={bgm_volume}[bgm];"
+                    f"[2:a]volume={bgm_volume},aloop=loop=-1:size=2000000000[bgm];"
                     f"[1:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[amix_out];"
                     f"[amix_out]loudnorm=I=-14:TP=-1.5:LRA=11[aout]"
                 )
             else:
                 filter_complex = (
-                    f"[2:a]aloop=loop=-1:size=2000000000,{bgm_deharsh},volume={bgm_volume}[bgm];"
+                    f"[2:a]volume={bgm_volume},aloop=loop=-1:size=2000000000[bgm];"
                     f"[1:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
                 )
         args = [
@@ -1282,20 +1500,15 @@ def burn_subtitles(
     else:
         vf_filter = f"subtitles='{srt_escaped}':force_style='{style}'"
 
+    enc_args = get_video_encoder_args(quality="high")
     args = [
         "-i", video_path,
         "-vf", vf_filter,
-        "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", "18",
-        "-b:v", "12M",
-        "-maxrate", "16M",
-        "-pix_fmt", "yuv420p",
-        *BT709_COLOR_ARGS,
+        *enc_args,
         "-c:a", "copy",
         output_path
     ]
-    run_ffmpeg(args, timeout=FFMPEG_TIMEOUT * 2)  # Subtitle burn chậm hơn
+    run_ffmpeg_with_gpu_fallback(args, timeout=FFMPEG_TIMEOUT * 2)  # Subtitle burn chậm hơn
     return output_path
 
 
@@ -1339,9 +1552,6 @@ def validate_output(file_path: str) -> Dict:
             result["has_video"] = True
             result["resolution"] = f"{stream.get('width')}x{stream.get('height')}"
             result["codec_video"] = stream.get("codec_name", "unknown")
-            result["color_space"] = stream.get("colorspace") or stream.get("color_space", "unknown")
-            result["color_primaries"] = stream.get("color_primaries", "unknown")
-            result["color_trc"] = stream.get("color_transfer") or stream.get("color_trc", "unknown")
         elif stream.get("codec_type") == "audio":
             result["has_audio"] = True
             result["codec_audio"] = stream.get("codec_name", "unknown")

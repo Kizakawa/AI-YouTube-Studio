@@ -38,6 +38,10 @@ class Settings:
     RENDER_BACKEND: str = os.getenv("RENDER_BACKEND", "local")  # "local", "auto"
     ENABLE_COLAB: bool = os.getenv("ENABLE_COLAB", "false").lower() in ("true", "1", "yes")
 
+    # Hardware Acceleration / GPU Video Rendering (Tăng tốc render video bằng GPU)
+    ENABLE_GPU_ACCELERATION: bool = os.getenv("ENABLE_GPU_ACCELERATION", "true").lower() in ("true", "1", "yes")
+    FORCE_GPU_ENCODER: str = os.getenv("FORCE_GPU_ENCODER", "")  # "auto", "h264_nvenc", "h264_mf", "h264_qsv", "libx264"
+
     # Open Web Image Search (Tìm ảnh trên toàn mạng Internet & Bỏ qua rào cản bản quyền)
     ENABLE_WEB_IMAGE_SEARCH: bool = os.getenv("ENABLE_WEB_IMAGE_SEARCH", "true").lower() in ("true", "1", "yes")
     BYPASS_IMAGE_COPYRIGHT: bool = os.getenv("BYPASS_IMAGE_COPYRIGHT", "true").lower() in ("true", "1", "yes")

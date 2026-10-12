@@ -485,12 +485,14 @@ class ManualStudioService:
         if config.subtitle_enabled and any(sc.narration.strip() for sc in valid_scenes):
             update_progress(90, "Đang tạo và gắn phụ đề Karaoke phong cách Shorts...")
             ass_path = str(temp_dir / "subtitles.ass")
+            hook_banner_text = getattr(config, "hook_title", None) or (scene_contracts[0].narration[:35] if scene_contracts else None)
             SubtitleHelper.save_ass_file(
                 scenes=scene_contracts,
                 output_path=ass_path,
                 fontname=config.subtitle_font,
                 fontsize=config.subtitle_font_size,
-                margin_v=config.subtitle_margin_v
+                margin_v=config.subtitle_margin_v,
+                hook_title=hook_banner_text,
             )
 
             try:
@@ -994,12 +996,14 @@ class ManualStudioService:
         if config.subtitle_enabled and has_sub_text:
             update_progress(88, "Đang tạo phụ đề Karaoke Shorts (ASS)...")
             ass_path = str(temp_dir / "subtitles.ass")
+            hook_banner_text = getattr(config, "hook_title", None) or (scene_contracts[0].narration[:35] if scene_contracts else None)
             SubtitleHelper.save_ass_file(
                 scenes=scene_contracts,
                 output_path=ass_path,
                 fontname=config.subtitle_font,
                 fontsize=config.subtitle_font_size,
-                margin_v=config.subtitle_margin_v
+                margin_v=config.subtitle_margin_v,
+                hook_title=hook_banner_text,
             )
 
             try:
