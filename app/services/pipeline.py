@@ -105,6 +105,19 @@ class VideoPipeline:
         Raise exception + set status FAILED nếu thất bại.
         """
         try:
+            # [FIX] Kiểm tra dung lượng đĩa trước khi bắt đầu render — tránh crash giữa chừng do đĩa đầy
+            import shutil as _shutil
+            _temp_dir_for_check = Path(settings.TEMP_DIR)
+            _temp_dir_for_check.mkdir(parents=True, exist_ok=True)
+            _free_gb = _shutil.disk_usage(str(_temp_dir_for_check)).free / (1024 ** 3)
+            if _free_gb < 2.0:
+                raise RuntimeError(
+                    f"💾 Không đủ dung lượng đĩa (đang còn {_free_gb:.1f}GB). "
+                    f"Yêu cầu tối thiểu 2GB cho thư mục temp để dựng video. "
+                    f"Vui lòng xóa các file cũ trong '{settings.TEMP_DIR}' hoặc '{settings.OUTPUT_DIR}'."
+                )
+            logger.info(f"[Job {self.job_id}] ✅ Kiểm tra disk OK: {_free_gb:.1f}GB trống.")
+
             # Tạo thư mục làm việc riêng cho job
             self.work_dir = Path(settings.TEMP_DIR) / f"job_{self.job_id}"
             self.work_dir.mkdir(parents=True, exist_ok=True)
@@ -204,7 +217,21 @@ class VideoPipeline:
                     await self._report_progress("COMPLETED", f"🎉 Video #{self.job_id} đã hoàn tất và sẵn sàng phát hành!", percent=100)
                     return render_job
                 except Exception as e:
-                    logger.warning(f"[Job {self.job_id}] LangGraph engine gặp sự cố ({e}), chuyển sang pipeline tuyến tính dự phòng...")
+                    _lg_err_msg = (
+                        f"⚠️ [Job {self.job_id}] LangGraph engine gặp sự cố: {e}\n"
+                        f"Hệ thống tự động chuyển sang pipeline tuyến tính dự phòng..."
+                    )
+                    logger.warning(_lg_err_msg)
+                    # [FIX] Gửi alert Telegram để thông báo LangGraph đang có vấn đề
+                    try:
+                        from app.services.channel_intelligence import send_telegram_broadcast
+                        send_telegram_broadcast(
+                            f"🚨 **[HỆ THốNG CẢNH BÁO]** LangGraph Multi-Agent Engine gặp lỗi cho Job #{self.job_id}!\n"
+                            f"`{str(e)[:200]}`\n\n"
+                            f"_↳ Đang tự động chuyển sang Linear Pipeline dự phòng. Kiểm tra log server ngay!_"
+                        )
+                    except Exception:
+                        pass  # Không làm gán đoạn pipeline dự phòng nếu alert thất bại
 
             # ── Step A: Load script từ DB ──
             script = self._load_script_from_db()

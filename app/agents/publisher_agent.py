@@ -68,6 +68,45 @@ class PublisherAgent:
         self.init_error = None
         self._init_service()
 
+    def _refresh_token_with_retry(self, creds) -> bool:
+        """
+        [FIX] Refresh OAuth token với retry 3 lần + exponential backoff.
+        - Phân biệt lỗi permanent (invalid_grant → cần re-auth) vs tạm thời (mạng → retry).
+        - Trả về True nếu refresh thành công, False nếu thất bại.
+        """
+        from google.auth.transport.requests import Request
+        from google.auth.exceptions import TransportError
+
+        PERMANENT_ERRORS = ("invalid_grant", "Token has been expired or revoked", "unauthorized_client")
+        MAX_RETRIES = 3
+
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                creds.refresh(Request())
+                return True
+            except Exception as refresh_err:
+                err_str = str(refresh_err)
+                # Lỗi permanent: token bị thu hồi → không retry, báo người dùng re-auth
+                if any(p in err_str for p in PERMANENT_ERRORS):
+                    self.init_error = f"invalid_grant: {err_str}"
+                    logger.error(
+                        f"🔑 [TokenRefresh] Phiên OAuth của '{self.channel_name}' đã bị thu hồi vĩnh viễn. "
+                        f"Vui lòng chạy 'python auth_channel.py {self.channel_id}' để cấp quyền lại."
+                    )
+                    return False
+                # Lỗi tạm thời (mạng, timeout, 5xx) → retry với backoff
+                wait_sec = 2 ** attempt  # 2s, 4s, 8s
+                logger.warning(
+                    f"⚠️ [TokenRefresh] Lần thử {attempt}/{MAX_RETRIES} refresh token '{self.channel_name}' "
+                    f"thất bại ({err_str[:80]}). Thử lại sau {wait_sec}s..."
+                )
+                if attempt < MAX_RETRIES:
+                    time.sleep(wait_sec)
+
+        self.init_error = f"Không thể refresh token sau {MAX_RETRIES} lần thử."
+        logger.error(f"[TokenRefresh] Đã thử {MAX_RETRIES} lần nhưng không thể refresh token cho '{self.channel_name}'.")
+        return False
+
     def _init_service(self):
         """Khởi tạo YouTube v3 client qua OAuth credentials"""
         if not self.token_file:
@@ -91,15 +130,18 @@ class PublisherAgent:
                     creds = Credentials.from_authorized_user_info(token_data)
 
             if creds:
-                # Tự động refresh token nếu hết hạn
+                # [FIX] Tự động refresh token nếu hết hạn — dùng retry có backoff
                 if creds.expired and creds.refresh_token:
-                    from google.auth.transport.requests import Request
-                    creds.refresh(Request())
-                    # Lưu lại token đã refresh được mã hoá AES-256
-                    if os.path.exists(self.token_file):
-                        from app.utils.security import save_encrypted_json
-                        save_encrypted_json(self.token_file, json.loads(creds.to_json()))
-                        logger.info(f"Đã tự động refresh & lưu mã hoá AES-256 YouTube token cho '{self.channel_name}'")
+                    refresh_ok = self._refresh_token_with_retry(creds)
+                    if refresh_ok:
+                        # Lưu lại token đã refresh được mã hoá AES-256
+                        if self.token_file and os.path.exists(self.token_file):
+                            from app.utils.security import save_encrypted_json
+                            save_encrypted_json(self.token_file, json.loads(creds.to_json()))
+                            logger.info(f"✅ Đã tự động refresh & lưu mã hoá AES-256 YouTube token cho '{self.channel_name}'")
+                    else:
+                        # init_error đã được set bên trong _refresh_token_with_retry
+                        return
 
                 self.service = build("youtube", "v3", credentials=creds)
                 self.init_error = None
@@ -290,9 +332,9 @@ class PublisherAgent:
                 tag_list.append(req_tag)
 
         # Chuẩn hóa ngôn ngữ mặc định (Target US & Global Audience chuẩn BCP-47)
-        target_lang = default_language or self.channel_config.get("language") or "en-US"
+        target_lang = default_language or self.channel_config.get("language") or "en"
         if str(target_lang).lower() in ("en", "en-us", "english"):
-            target_lang = "en-US"
+            target_lang = "en"
             target_audio_lang = "en-US"
         elif not default_audio_language or default_audio_language.lower() in ("en", "en-us"):
             target_audio_lang = "vi-VN" if str(target_lang).lower().startswith("vi") else "en-US"
@@ -542,14 +584,16 @@ class PublisherAgent:
                 "video_id": None
             }
 
-    def add_pinned_comment(self, video_id: str, comment_text: str) -> Optional[Dict]:
+    def add_pinned_comment(self, video_id: str, comment_text: str, retry_on_spam: bool = True) -> Optional[Dict]:
         """
         Tự động đăng bình luận mồi (Engagement Bait Comment) của chính chủ kênh lên video mới upload.
         Bình luận của tác giả giúp kích thích khán giả comment trả lời và đẩy thời lượng xem trung bình (APV) lên >160%.
+        [FIX] Thêm retry sau 300s nếu bị spam filter chặn (403/commentDisabled).
         """
         if not self.service or not video_id or not comment_text:
             return None
-        try:
+
+        def _do_comment() -> Optional[Dict]:
             body = {
                 "snippet": {
                     "videoId": video_id,
@@ -560,15 +604,45 @@ class PublisherAgent:
                     }
                 }
             }
-            res = self.service.commentThreads().insert(
-                part="snippet",
-                body=body
-            ).execute()
+            return self.service.commentThreads().insert(part="snippet", body=body).execute()
+
+        SPAM_ERRORS = ("forbidden", "403", "commentsDisabled", "processingFailure", "commentTextTooLong")
+        PERMANENT_ERRORS = ("commentsDisabled", "commentTextTooLong", "videoNotFound")
+
+        try:
+            res = _do_comment()
             comment_id = res.get("id")
-            logger.info(f"💬 [PublisherAgent] ✅ Đã tự động đăng bình luận mồi lên video {video_id}: '{comment_text[:40]}...' (Comment ID: {comment_id})")
+            logger.info(
+                f"💬 [PublisherAgent] ✅ Đã đăng bình luận mồi lên video {video_id}: "
+                f"'{comment_text[:40]}...' (Comment ID: {comment_id})"
+            )
             return res
         except Exception as e:
-            logger.warning(f"💬 [PublisherAgent] Không thể tự động post bình luận mồi lên video {video_id}: {e}")
+            err_str = str(e).lower()
+            # Lỗi vĩnh viễn: kênh tắt comment, nội dung quá dài
+            if any(p.lower() in err_str for p in PERMANENT_ERRORS):
+                logger.warning(
+                    f"💬 [PublisherAgent] Comment bị chặn vĩnh viễn trên video {video_id}: {e}"
+                )
+                return None
+            # Lỗi tạm thời (spam filter YouTube thường chặn comment ngay sau upload)
+            if retry_on_spam and any(p.lower() in err_str for p in SPAM_ERRORS):
+                logger.warning(
+                    f"💬 [PublisherAgent] Comment bị spam filter chặn cho video {video_id}. "
+                    f"Tự động thử lại sau 300 giây... ({e})"
+                )
+                time.sleep(300)  # Chờ 5 phút cho YouTube xử lý xong video
+                try:
+                    res = _do_comment()
+                    comment_id = res.get("id")
+                    logger.info(
+                        f"💬 [PublisherAgent] ✅ Retry thành công! Đã đăng comment mồi sau 5 phút (Comment ID: {comment_id})"
+                    )
+                    return res
+                except Exception as e2:
+                    logger.warning(f"💬 [PublisherAgent] Retry comment vẫn thất bại cho video {video_id}: {e2}")
+                    return None
+            logger.warning(f"💬 [PublisherAgent] Không thể đăng bình luận mồi lên video {video_id}: {e}")
             return None
 
     def upload_thumbnail(self, video_id: str, thumbnail_path: str) -> bool:

@@ -391,6 +391,26 @@ def suggest_channel_topics(
     if exclude_additional:
         all_existing.extend(exclude_additional)
 
+    # [FIX Phase 2] Thêm các topic đã dùng gần đây từ UsedTopic DB (60 ngày) vào exclusion list
+    try:
+        from app.database.models import UsedTopic, get_db
+        from datetime import timedelta
+        cutoff = datetime.utcnow() - timedelta(days=60)
+        with get_db() as _db:
+            recent_used = _db.query(UsedTopic).filter(
+                UsedTopic.channel_id == channel_id,
+                UsedTopic.used_at >= cutoff
+            ).order_by(UsedTopic.used_at.desc()).limit(100).all()
+            db_used_topics = [u.topic_text for u in recent_used]
+        if db_used_topics:
+            all_existing.extend(db_used_topics)
+            logger.debug(
+                f"[TopicSuggester] Đã tải {len(db_used_topics)} topic gần đây từ DB deduplication "
+                f"cho kênh {channel_id} (60 ngày qua)."
+            )
+    except Exception as _dedup_err:
+        logger.debug(f"[TopicSuggester] Không thể tải UsedTopic từ DB: {_dedup_err}")
+
     # Xây dựng danh sách video cũ để AI né tránh
     clean_existing_prompt = "\n".join([f"- \"{t}\"" for t in all_existing[:15]])
     if not clean_existing_prompt:

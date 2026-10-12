@@ -44,11 +44,17 @@ def should_refine_script(state: VideoWorkflowState) -> Literal["refine_script", 
     script_eval = state.get("script_eval", {})
     passed = script_eval.get("passed", True)
     retry_count = state.get("script_retry_count", 0)
+    evaluated_by = script_eval.get("evaluated_by", "ai")
 
     if not passed and retry_count < 2:
         logger.info(f"🔄 [ConditionalEdge] Kịch bản chưa đạt (Score: {script_eval.get('overall_score')}/10). Quay lại node_refine_script!")
         return "refine_script"
-    
+
+    # [P1-FIX-4] Nếu pass nhưng chỉ qua heuristic fallback (API lỗi) — ép retry 1 lần với AI thật
+    if passed and evaluated_by == "heuristic" and retry_count == 0:
+        logger.warning("⚠️ [ConditionalEdge] Script PASS nhưng qua heuristic fallback (API lỗi). Buộc retry với AI thật!")
+        return "refine_script"
+
     logger.info("✅ [ConditionalEdge] Kịch bản đã đạt chuẩn chất lượng. Tiếp tục sang node_generate_audio!")
     return "generate_audio"
 
@@ -73,11 +79,12 @@ def should_refine_content(state: VideoWorkflowState) -> Literal["refine_content"
     passed = content_eval.get("passed", True)
     content_retry = state.get("content_retry_count", 0)
 
-    if not passed and content_retry < 1:
+    # [P2-UPG-3] Tăng retry từ 1 lên 2 — AI Vision hay bị 429 lần đầu
+    if not passed and content_retry < 2:
         failed_count = len(content_eval.get("failed_scene_ids", []))
         logger.info(
             f"🔄 [ConditionalEdge] AI Vision phát hiện {failed_count} cảnh có nội dung chưa phù hợp "
-            f"(Score: {content_eval.get('overall_score')}/10). Chuyển sang node_refine_content!"
+            f"(Score: {content_eval.get('overall_score')}/10, Retry: {content_retry}/2). Chuyển sang node_refine_content!"
         )
         return "refine_content"
 

@@ -24,6 +24,7 @@ AVAILABLE_MODELS = [
 def build_language_integrity_instruction(language: str) -> str:
     lang_clean = (language or "en").strip().lower()
     is_vi = lang_clean.startswith("vi")
+    is_pt = lang_clean.startswith("pt")
     if is_vi:
         return """
 ═══════════════════════════════════════════════════════════════════
@@ -38,6 +39,25 @@ def build_language_integrity_instruction(language: str) -> str:
   * 'title' MUST be in VIETNAMESE (click-through optimized, CTR > 10%, under 60 chars with emojis).
   * DO NOT add suffixes like '- VN', '- VI', '(Việt Nam)'.
 - NEVER mix languages (e.g. Vietnamese narration with English title or vice-versa).
+═══════════════════════════════════════════════════════════════════
+"""
+    elif is_pt:
+        return """
+═══════════════════════════════════════════════════════════════════
+🌐 CRITICAL LANGUAGE INTEGRITY: 100% PORTUGUÊS BRASILEIRO (pt-BR)
+═══════════════════════════════════════════════════════════════════
+- TARGET SCRIPT LANGUAGE: BRAZILIAN PORTUGUESE ('pt-BR').
+- SPOKEN NARRATION REQUIREMENT:
+  * 'hook', 'full_narration', and 'narration' in EVERY scene MUST be written 100% in natural, dramatic, colloquial BRAZILIAN PORTUGUESE (português do Brasil).
+  * Even if the topic, director notes, or niche instructions are in English, you MUST TRANSLATE and write ALL narration in BRAZILIAN PORTUGUESE.
+  * Use vocabulary and expressions natural to Brazil: 'incrível', 'absurdo', 'impressionante', 'brutalmente', NOT European Portuguese.
+  * STRICTLY FORBIDDEN: Do NOT output English or European Portuguese narration.
+- TITLE REQUIREMENT:
+  * 'title' MUST be 100% in BRAZILIAN PORTUGUESE (click-through optimized, CTR > 10%, under 60 chars with emojis).
+  * DO NOT add suffixes like '- PT', '- BR', '(Brasil)'.
+  * Titles must be punchy, dramatic and appeal to Brazilian curiosity (use 'isso' triggers, 'quem diria', 'o que ninguem te contou').
+- thumbnail_text MUST also be in PORTUGUESE BRASILEIRO (3-5 words ALL CAPS + 1 emoji).
+- NEVER mix languages (e.g. Portuguese narration with English title or vice-versa).
 ═══════════════════════════════════════════════════════════════════
 """
     else:
@@ -362,7 +382,13 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
         niche_profile = get_niche(channel_niche)
         niche_instructions = build_script_prompt_instructions(niche_profile, language=language)
         lang_instruction = build_language_integrity_instruction(language)
-        target_lang_display = "TIẾNG VIỆT" if str(language).lower().startswith("vi") else "ENGLISH"
+        lang_clean = (language or "en").strip().lower()
+        if lang_clean.startswith("vi"):
+            target_lang_display = "TIẾNG VIỆT"
+        elif lang_clean.startswith("pt"):
+            target_lang_display = "PORTUGUÊS BRASILEIRO"
+        else:
+            target_lang_display = "ENGLISH"
 
         prompt = f"""You are an elite YouTube Shorts director and viral retention engineer for the channel '{niche_profile.get('name')}' (niche: '{channel_niche}').
 Topic: '{topic}'

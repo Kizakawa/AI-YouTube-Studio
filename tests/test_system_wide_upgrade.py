@@ -126,6 +126,7 @@ class TestSystemWideUpgrade(unittest.TestCase):
             "language": "en"
         }
         agent = PublisherAgent(channel_config=cfg_quota)
+        agent.project_id = "test_mock_project_quota_fallback"
         
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
             dummy_video = Path(td) / "test_video.mp4"

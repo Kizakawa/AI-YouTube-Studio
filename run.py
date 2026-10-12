@@ -19,6 +19,7 @@ from app.bot.handlers import (
     autopilot_command, autopilot_callback, library_command
 )
 from app.utils.ffmpeg_helper import is_ffmpeg_installed, get_ffmpeg_version
+from app.utils.log_config import configure_logging
 
 def get_network_info():
     """Lấy thông tin mạng để hiển thị URL truy cập Web Dashboard"""
@@ -59,14 +60,12 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-# Cấu hình logging
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
+# [Phase 3] Cau hinh logging tap trung — thay the logging.basicConfig()
+from app.utils.log_config import configure_logging
+configure_logging(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    log_format=os.getenv("LOG_FORMAT", "console")
 )
-# Tắt log spam getUpdates của httpx để màn hình console sạch sẽ, dễ nhìn
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 logger = logging.getLogger("AI-YouTube")
 

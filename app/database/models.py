@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from pathlib import Path
 from datetime import datetime
@@ -35,10 +36,12 @@ def create_configured_engine(raw_url: str):
             eng = create_engine(
                 driver_url,
                 echo=False,
-                pool_size=10,
-                max_overflow=20,
-                pool_pre_ping=True,
-                pool_recycle=300,
+                pool_size=5,           # Giảm từ 10 → 5 (Supabase Free cho phép max 10 connections)
+                max_overflow=10,       # Giảm từ 20 → 10 cho an toàn
+                pool_pre_ping=True,    # Tự kiểm tra connection sống/chết trước mỗi query
+                pool_recycle=1800,     # [FIX] Tăng từ 300 → 1800s (Supabase đóng idle >600s)
+                pool_timeout=30,       # [FIX] Fail-fast sau 30s nếu không lấy được connection
+                connect_args={"connect_timeout": 10},  # [FIX] TCP timeout 10s thay mặc định 120s
             )
             # Test ping connection
             with eng.connect() as test_conn:
@@ -208,6 +211,55 @@ class PublishedVideo(Base):
     topic_tags = Column(Text, nullable=True)        # JSON list
     topic_cluster = Column(String(150), nullable=True)
     last_synced_at = Column(DateTime, default=datetime.utcnow)
+
+
+class UsedTopic(Base):
+    """
+    [FIX Phase 2] Bảng lưu lịch sử chủ đề đã dùng — tránh tạo video trùng nội dung.
+    Topic được hash SHA-256 trước khi lưu để lookup O(1) và không phụ thuộc ngôn ngữ.
+    """
+    __tablename__ = "used_topics"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    channel_id = Column(String(100), nullable=False, index=True)
+    topic_hash = Column(String(64), nullable=False, index=True)  # SHA-256 hex digest
+    topic_text = Column(Text, nullable=False)
+    niche = Column(String(100), nullable=True)
+    job_id = Column(Integer, nullable=True)   # Tham chiếu đến VideoJob nếu có
+    used_at = Column(DateTime, default=datetime.utcnow)
+
+    @staticmethod
+    def hash_topic(topic: str) -> str:
+        """Tạo SHA-256 hash của topic (đã normalize lowercase, strip whitespace)."""
+        normalized = topic.strip().lower()
+        return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def is_duplicate(cls, db, channel_id: str, topic: str, lookback_days: int = 60) -> bool:
+        """
+        Kiểm tra xem topic này đã được dùng trong `lookback_days` ngày qua cho kênh này chưa.
+        Mặc định lookback 60 ngày — YouTube thường phạt duplicate content trong 90 ngày.
+        """
+        from datetime import timedelta
+        cutoff = datetime.utcnow() - timedelta(days=lookback_days)
+        topic_hash = cls.hash_topic(topic)
+        return db.query(cls).filter(
+            cls.channel_id == channel_id,
+            cls.topic_hash == topic_hash,
+            cls.used_at >= cutoff
+        ).first() is not None
+
+    @classmethod
+    def register(cls, db, channel_id: str, topic: str, niche: str = None, job_id: int = None):
+        """Ghi nhận topic đã dùng vào database (gọi sau khi VideoJob được tạo thành công)."""
+        entry = cls(
+            channel_id=channel_id,
+            topic_hash=cls.hash_topic(topic),
+            topic_text=topic.strip(),
+            niche=niche,
+            job_id=job_id,
+        )
+        db.add(entry)
 
 
 def log_activity(db, telegram_id: int, username: str, action_type: str, details: str, channel_id: str = None):

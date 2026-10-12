@@ -197,19 +197,21 @@ def verify_amazon_product_alive(asin: str, timeout: float = 3.5) -> bool:
 # 2. BỘ TẠO LINK AFFILIATE AMAZON CHUẨN XÁC
 # ═════════════════════════════════════════════════════════════════════════════
 
-def build_amazon_url(asin_or_search: str, tracking_tag: str = "", is_search: bool = False) -> str:
+def build_amazon_url(asin_or_search: str, tracking_tag: str = "", is_search: bool = False, market_domain: str = "www.amazon.com") -> str:
     """
     Sinh đường link Amazon Affiliate hợp lệ kèm mã định danh theo dõi (Tracking Tag).
-    - Link trực tiếp ASIN: https://www.amazon.com/dp/{asin}?tag={tag}
-    - Link tìm kiếm Smart Search: https://www.amazon.com/s?k={query}&tag={tag}
+    - Link trực tiếp ASIN: https://{market_domain}/dp/{asin}?tag={tag}
+    - Link tìm kiếm Smart Search: https://{market_domain}/s?k={query}&tag={tag}
+    - market_domain: 'www.amazon.com' (US), 'www.amazon.com.br' (Brazil), etc.
     """
     tag = (tracking_tag or os.getenv("AMAZON_ASSOCIATE_TAG", "kizakawa-20")).strip()
     if not tag:
         tag = "kizakawa-20"
 
+    domain = market_domain.rstrip("/")
     if is_search:
-        return f"https://www.amazon.com/s?k={quote_plus(asin_or_search)}&tag={tag}"
-    return f"https://www.amazon.com/dp/{asin_or_search}?tag={tag}"
+        return f"https://{domain}/s?k={quote_plus(asin_or_search)}&tag={tag}"
+    return f"https://{domain}/dp/{asin_or_search}?tag={tag}"
 
 
 def find_best_amazon_product(niche: str, title: str, topic: str = "", script: str = "") -> Dict[str, Any]:
@@ -412,21 +414,48 @@ def enrich_video_monetization(
             footer_sections.append(donation_block)
 
     # ── B. KHỐI SẢN PHẨM AMAZON AFFILIATE ──
+    is_pt = str(channel_config.get("language", "")).lower().startswith("pt") or str(channel_config.get("default_language", "")).lower().startswith("pt")
     if enable_affiliate:
-        tracking_tag = (
-            channel_config.get("amazon_tag")
-            or channel_config.get("monetization", {}).get("amazon_tag")
-            or os.getenv("AMAZON_ASSOCIATE_TAG", "")
-        ).strip()
+        # [FIX] Chọn đúng Amazon market domain và associate tag theo thị trường
+        if is_pt:
+            # Kênh tiếng Bồ Đào Nha → dùng Amazon Brazil để phát sinh hoa hồng hợp lệ
+            market_domain = "www.amazon.com.br"
+            tracking_tag = (
+                channel_config.get("amazon_br_tag")
+                or channel_config.get("amazon_tag")
+                or channel_config.get("monetization", {}).get("amazon_br_tag")
+                or os.getenv("AMAZON_BR_ASSOCIATE_TAG", "")
+                or os.getenv("AMAZON_ASSOCIATE_TAG", "")
+            ).strip()
+        else:
+            market_domain = "www.amazon.com"
+            tracking_tag = (
+                channel_config.get("amazon_tag")
+                or channel_config.get("monetization", {}).get("amazon_tag")
+                or os.getenv("AMAZON_ASSOCIATE_TAG", "")
+            ).strip()
         product = find_best_amazon_product(niche=niche, title=title, topic=topic, script=script)
-        affiliate_url = build_amazon_url(product["asin"], tracking_tag)
-        affiliate_block = (
-            f"📌 Featured Trend & Gear:\n"
-            f"👉 {product['name']} — {product['cta']}:\n"
-            f"🔗 Direct Link: {affiliate_url}\n"
-            f"💡 (Shorts viewers: Tap channel icon ➔ Clickable link in Bio!)\n\n"
-            f"{AMAZON_COMPLIANCE_DISCLAIMER}"
-        )
+        affiliate_url = build_amazon_url(product["asin"], tracking_tag, market_domain=market_domain)
+        if is_pt:
+            disclaimer = (
+                "⚖️ Aviso de Afiliado: Como associado da Amazon, posso receber comissões por compras qualificadas "
+                "sem nenhum custo adicional para você."
+            )
+            affiliate_block = (
+                f"📌 Equipamento & Livros Recomendados:\n"
+                f"👉 {product['name']}:\n"
+                f"🔗 Link Oficial: {affiliate_url}\n"
+                f"💡 (Toque no ícone do canal para acessar o link na bio!)\n\n"
+                f"{disclaimer}"
+            )
+        else:
+            affiliate_block = (
+                f"📌 Featured Trend & Gear:\n"
+                f"👉 {product['name']} — {product['cta']}:\n"
+                f"🔗 Direct Link: {affiliate_url}\n"
+                f"💡 (Shorts viewers: Tap channel icon ➔ Clickable link in Bio!)\n\n"
+                f"{AMAZON_COMPLIANCE_DISCLAIMER}"
+            )
         if product['asin'] not in desc_base and "amazon.com" not in desc_base:
             footer_sections.append(affiliate_block)
 
@@ -435,7 +464,8 @@ def enrich_video_monetization(
             "name": product["name"],
             "cta": product["cta"],
             "affiliate_url": affiliate_url,
-            "tracking_tag": tracking_tag or "kizakawa-20"
+            "tracking_tag": tracking_tag or "kizakawa-20",
+            "market_domain": market_domain
         }
 
     # Ghép các khối vào mô tả
@@ -461,14 +491,24 @@ def enrich_video_monetization(
 
     comment_additions = []
     if enable_donation and paypal_url and "paypal" not in comment_base.lower():
-        comment_additions.append(f"💖 Support our mission directly via PayPal: {paypal_url}")
+        if is_pt:
+            comment_additions.append(f"💖 Apoie o canal diretamente pelo PayPal: {paypal_url}")
+        else:
+            comment_additions.append(f"💖 Support our mission directly via PayPal: {paypal_url}")
 
     if enable_affiliate and product_info and "amazon.com" not in comment_base:
-        comment_additions.append(
-            f"✨ Trending Gear: {product_info['name']}\n"
-            f"👉 Link: {product_info['affiliate_url']}\n"
-            f"🔗 (Or tap channel icon ➔ Link in Bio)"
-        )
+        if is_pt:
+            comment_additions.append(
+                f"✨ Equipamento Recomendado: {product_info['name']}\n"
+                f"👉 Link Oficial: {product_info['affiliate_url']}\n"
+                f"🔗 (Ou toque no ícone do canal para ver o link na bio)"
+            )
+        else:
+            comment_additions.append(
+                f"✨ Trending Gear: {product_info['name']}\n"
+                f"👉 Link: {product_info['affiliate_url']}\n"
+                f"🔗 (Or tap channel icon ➔ Link in Bio)"
+            )
 
     if comment_additions:
         addon_str = "\n\n".join(comment_additions)

@@ -108,8 +108,8 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
 
         total_keys = max(len(self.rotator.keys), 1)
         models = [
-            "gemini-flash-lite-latest",
-            "gemini-flash-latest",
+            "gemini-flash-latest",       # [P3-VIS-1] Flash trước — script là nền tảng toàn bộ video
+            "gemini-flash-lite-latest",  # Fallback nhẹ hơn nếu quota hết
         ]
         for attempt in range(total_keys):
             key = self.rotator.get_key()
@@ -241,6 +241,7 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
             visual_direction=ScriptCriteriaScore(score=vis_score, feedback="Từ khóa hình ảnh đã được chuẩn hóa"),
             viral_loop=ScriptCriteriaScore(score=loop_score, feedback="Cảnh kết nối"),
             overall_score=overall,
-            passed=overall >= 7.8,
+            passed=overall >= 8.0,  # [P1-FIX-3] Đồng nhất với ngưỡng AI evaluator (7.8 → 8.0)
             actionable_critiques=critiques,
+            evaluated_by="heuristic",  # [P1-FIX-4] Đánh dấu là fallback không phải AI thật
         )

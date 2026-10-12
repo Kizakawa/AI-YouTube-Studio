@@ -154,8 +154,9 @@ class VideoRepurposerService:
         """
         try:
             from youtube_transcript_api import YouTubeTranscriptApi
+            clean_vid = extract_youtube_video_id(video_id) or video_id.strip()
             ytt = YouTubeTranscriptApi()
-            transcript_list = ytt.list(video_id)
+            transcript_list = ytt.list(clean_vid)
             
             clean_target = (target_lang or "en").strip().lower()
             if clean_target.startswith("vi"):

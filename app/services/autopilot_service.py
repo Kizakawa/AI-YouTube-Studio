@@ -46,9 +46,10 @@ from app.services.smart_scheduler import (
 
 logger = logging.getLogger(__name__)
 
-# Khóa chống va chạm (tránh việc cùng lúc chạy 2 autopilot trên cùng 1 kênh)
-_CHANNEL_LOCKS: Dict[str, threading.Lock] = {}
-_LOCKS_MUTEX = threading.Lock()
+# [FIX] Dùng asyncio.Lock thay threading.Lock để tránh race condition trong async context.
+# threading.Lock không block asyncio coroutines → 2 coroutines có thể chạy song song cùng 1 kênh.
+_CHANNEL_ASYNC_LOCKS: Dict[str, asyncio.Lock] = {}
+_LOCKS_MUTEX = threading.Lock()  # Chỉ dùng cho việc tạo lock mới (thread-safe dict access)
 
 # Tệp lưu trữ trạng thái nhắc nhở hàng ngày (bảo đảm không bị mất khi khởi động lại bot)
 _WATCHDOG_STATE_FILE = Path(settings.BASE_DIR) / "storage" / "autopilot_watchdog_state.json"
@@ -71,11 +72,16 @@ def _save_watchdog_state(state: Dict[str, Any]):
         logger.warning(f"Lỗi lưu watchdog state: {e}")
 
 
-def _get_channel_lock(channel_id: str) -> threading.Lock:
+def _get_channel_lock(channel_id: str) -> asyncio.Lock:
+    """
+    [FIX] Lấy asyncio.Lock của kênh (tạo mới nếu chưa tồn tại).
+    asyncio.Lock đảm bảo chỉ 1 coroutine giữ lock tại một thời điểm, tránh upload trùng lặp.
+    Lưu ý: asyncio.Lock phải được tạo trong event loop đang chạy.
+    """
     with _LOCKS_MUTEX:
-        if channel_id not in _CHANNEL_LOCKS:
-            _CHANNEL_LOCKS[channel_id] = threading.Lock()
-        return _CHANNEL_LOCKS[channel_id]
+        if channel_id not in _CHANNEL_ASYNC_LOCKS:
+            _CHANNEL_ASYNC_LOCKS[channel_id] = asyncio.Lock()
+        return _CHANNEL_ASYNC_LOCKS[channel_id]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -219,13 +225,15 @@ async def run_autopilot_pipeline_for_channel(
     6. Backup Google Drive & gửi báo cáo hoàn tất qua Telegram.
     """
     lock = _get_channel_lock(channel_id)
-    if not lock.acquire(blocking=False):
+    # [FIX] Dùng asyncio.Lock — kiểm tra trước, sau đó "async with" tự động release kể cả khi exception
+    if lock.locked():
         return {
             "success": False,
             "error": f"Kênh '{channel_id}' đang trong tiến trình Auto-Pilot khác. Vui lòng chờ hoàn tất!"
         }
 
-    try:
+    async with lock:
+     try:
         from app.services.channel_manager import get_channel
         ch_cfg = get_channel(channel_id) or {}
         if not ch_cfg:
@@ -289,6 +297,53 @@ async def run_autopilot_pipeline_for_channel(
             logger.error(f"[AutoPilot] Lỗi sinh kịch bản cho {channel_id}: {e_script}", exc_info=True)
             return {"success": False, "error": f"Lỗi sinh kịch bản: {e_script}"}
 
+        # ── [FIX] Step 3.5: Quality Gate — Chấm điểm kịch bản, rewrite nếu điểm < 70 ──
+        try:
+            from app.services.quality_evaluator import QualityEvaluator
+            _qa = QualityEvaluator()
+            _max_rewrites = 2
+            for _rewrite_attempt in range(_max_rewrites + 1):
+                _script_dict = script.to_dict() if hasattr(script, "to_dict") else {"title": script.title, "scenes": [{"scene_id": i+1, "narration": s.narration} for i, s in enumerate(getattr(script, "scenes", []))]}
+                _qa_result = await asyncio.to_thread(
+                    _qa.evaluate_script, _script_dict, topic_str, ch_niche, ch_lang
+                )
+                _qa_score = _qa_result.get("score", 80)
+                _qa_passed = _qa_result.get("passed", True)
+                logger.info(
+                    f"[AutoPilot #{channel_id}] 📊 Script QA Lần {_rewrite_attempt + 1}: "
+                    f"Score={_qa_score}/100 | {'✅ ĐẠT' if _qa_passed else '❌ CHƯA ĐẠT'}"
+                )
+                if _qa_passed or _rewrite_attempt >= _max_rewrites:
+                    if not _qa_passed:
+                        logger.warning(
+                            f"[AutoPilot #{channel_id}] Kịch bản vẫn chưa đạt sau {_max_rewrites} lần rewrite "
+                            f"(score={_qa_score}). Tiếp tục với kịch bản hiện tại."
+                        )
+                    break
+                # Rewrite script với feedback từ QA làm director notes bổ sung
+                _weaknesses = "; ".join(_qa_result.get("weaknesses", []))
+                _rewrite_notes = (
+                    f"{director_notes} "
+                    f"[Rewrite #{_rewrite_attempt + 1}] Kịch bản trước đạt {_qa_score}/100. "
+                    f"Cần cải thiện: {_weaknesses}. "
+                    f"Tăng cường hook 3 giây đầu, nhịp kịch tính và CTA cuối."
+                )
+                logger.info(f"[AutoPilot] 🔄 Tự động rewrite kịch bản lần {_rewrite_attempt + 1}...")
+                try:
+                    script = await asyncio.to_thread(
+                        agent.generate_script,
+                        topic=topic_str,
+                        channel_niche=ch_niche,
+                        language=ch_lang,
+                        director_notes=_rewrite_notes,
+                        cooldown_entities=cooldown_ents
+                    )
+                except Exception as _rw_err:
+                    logger.warning(f"[AutoPilot] Lỗi rewrite kịch bản: {_rw_err}. Dùng kịch bản cũ.")
+                    break
+        except Exception as _qa_err:
+            logger.warning(f"[AutoPilot] QualityEvaluator gặp lỗi (không chặn pipeline): {_qa_err}")
+
         # ── Step 4: Tạo VideoJob trong Database ──
         with get_db() as db:
             job = VideoJob(
@@ -323,6 +378,14 @@ async def run_autopilot_pipeline_for_channel(
                 register_job_entities(channel_id, script, job_id=job_id)
             except Exception as e_ent:
                 logger.debug(f"[AutoPilot] Không thể đăng ký cooldown entities: {e_ent}")
+
+            # [FIX Phase 2] Ghi nhận topic đã dùng vào DB deduplication table
+            try:
+                from app.database.models import UsedTopic
+                UsedTopic.register(db, channel_id=channel_id, topic=topic_str, niche=ch_niche, job_id=job_id)
+                logger.debug(f"[AutoPilot] ✅ Đã ghi nhận topic '{topic_str[:50]}' vào lịch sử deduplication.")
+            except Exception as e_dedup:
+                logger.debug(f"[AutoPilot] Không thể ghi nhận used topic: {e_dedup}")
 
         # ── Step 5: Render Video Pipeline (LangGraph / Local Render Engine) ──
         logger.info(f"[AutoPilot #{job_id}] 🎬 Bắt đầu render video cho kênh '{ch_name}'...")
@@ -516,15 +579,14 @@ async def run_autopilot_pipeline_for_channel(
             "status": "SCHEDULED" if pub_res.get("status") == "success" else pub_res.get("status")
         }
 
-    except Exception as ex:
+     except Exception as ex:
         logger.error(f"[AutoPilot] Thất bại khi chạy quy trình cho kênh {channel_id}: {ex}", exc_info=True)
         return {
             "success": False,
             "channel_id": channel_id,
             "error": str(ex)
         }
-    finally:
-        lock.release()
+    # asyncio.Lock tự động release khi thoát khỏi "async with lock:" block
 
 
 # ──────────────────────────────────────────────────────────────────────────────

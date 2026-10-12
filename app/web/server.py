@@ -228,6 +228,38 @@ def on_startup():
     import threading as _threading
     _threading.Thread(target=_library_sync_loop, daemon=True, name="video-library-sync").start()
 
+    # [Phase 3 Fix 11] Quota Reset Auto-Requeue: Tu dong chuyen QUOTA_EXCEEDED -> PENDING sau khi Google reset quota luc 14:00 VN
+    def _quota_reset_watcher():
+        import time as _t
+        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+        VN_TZ = _tz(+_td(hours=7))
+        _last_cycle = None
+        while True:
+            try:
+                _t.sleep(300)  # Kiem tra moi 5 phut
+                from app.services.quota_manager import get_current_cycle_id
+                _cycle = get_current_cycle_id()
+                if _last_cycle is not None and _cycle != _last_cycle:
+                    # Quota da reset! Chuyen tat ca job QUOTA_EXCEEDED ve PENDING
+                    with get_db() as _db:
+                        _stuck = _db.query(VideoJob).filter(
+                            VideoJob.status == "QUOTA_EXCEEDED"
+                        ).all()
+                        for _j in _stuck:
+                            _j.status = "PENDING"
+                            _j.progress_message = "Quota da reset, gia han xu ly tu dong."
+                        if _stuck:
+                            logger.info(
+                                "[QuotaWatcher] Quota da reset (chu ky %s). "
+                                "Da tu dong chuyen %d job QUOTA_EXCEEDED -> PENDING.",
+                                _cycle, len(_stuck)
+                            )
+                _last_cycle = _cycle
+            except Exception as _e:
+                logger.warning("[QuotaWatcher] Loi theo doi quota reset: %s", _e)
+
+    _threading.Thread(target=_quota_reset_watcher, daemon=True, name="quota-reset-watcher").start()
+
 # ─── Serve UI ─────────────────────────────────────────────────────────────────
 
 _cached_index_html: Optional[str] = None
@@ -251,9 +283,75 @@ def serve_dashboard():
     )
 
 @app.api_route("/health", methods=["GET", "HEAD"])
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 async def health_check():
-    """Endpoint kiểm tra sức khỏe hệ thống (cho Render, UptimeRobot, Docker)"""
-    return {"status": "ok", "app": "AI YouTube Multi-Channel Studio"}
+    """
+    [Phase 3] Production-grade health check.
+    Kiem tra: DB connectivity, disk space, autopilot state, pending jobs.
+    Tra ve HTTP 503 neu DB down (de Render / UptimeRobot phat hien outage).
+    """
+    import shutil as _shutil
+    from datetime import datetime as _dt, timezone as _tz
+
+    result: Dict[str, Any] = {
+        "status": "ok",
+        "app": "AI YouTube Multi-Channel Studio v2.0",
+        "ts": _dt.now(_tz.utc).isoformat(),
+        "checks": {}
+    }
+    http_status = 200
+
+    # ── 1. Database ping ────────────────────────────────────────
+    try:
+        from sqlalchemy import text as _text
+        with get_db() as _db:
+            _db.execute(_text("SELECT 1"))
+        result["checks"]["database"] = {"status": "ok"}
+    except Exception as _e:
+        result["checks"]["database"] = {"status": "error", "detail": str(_e)[:120]}
+        result["status"] = "degraded"
+        http_status = 503
+
+    # ── 2. Disk space (warn < 10 GB free) ───────────────────────
+    try:
+        _usage = _shutil.disk_usage(str(BASE_DIR))
+        _free_gb = _usage.free / (1024 ** 3)
+        _total_gb = _usage.total / (1024 ** 3)
+        disk_ok = _free_gb >= 10.0
+        result["checks"]["disk"] = {
+            "status": "ok" if disk_ok else "warn",
+            "free_gb": round(_free_gb, 1),
+            "total_gb": round(_total_gb, 1),
+        }
+        if not disk_ok and result["status"] == "ok":
+            result["status"] = "warn"
+    except Exception as _e:
+        result["checks"]["disk"] = {"status": "unknown", "detail": str(_e)[:80]}
+
+    # ── 3. Pending / rendering jobs ─────────────────────────────
+    try:
+        with get_db() as _db:
+            _pending  = _db.query(VideoJob).filter(VideoJob.status.in_(["PENDING", "SCRIPT_READY"])).count()
+            _render   = _db.query(VideoJob).filter(VideoJob.status == "RENDERING").count()
+        result["checks"]["jobs"] = {"pending": _pending, "rendering": _render}
+    except Exception:
+        result["checks"]["jobs"] = {"status": "unknown"}
+
+    # ── 4. Autopilot service state ──────────────────────────────
+    try:
+        from app.services.autopilot_service import AutopilotService
+        _ap = AutopilotService()
+        result["checks"]["autopilot"] = {
+            "running_channels": list(getattr(_ap, "_running", {}).keys()),
+        }
+    except Exception:
+        result["checks"]["autopilot"] = {"status": "unknown"}
+
+    return Response(
+        content=json.dumps(result, ensure_ascii=False),
+        media_type="application/json",
+        status_code=http_status,
+    )
 
 @app.get("/api/network-info")
 async def get_network_info_endpoint():

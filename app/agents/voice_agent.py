@@ -23,8 +23,62 @@ class VoiceAgent:
       4. Concat tất cả scene audio → 1 file full_narration.mp3 cho FFmpeg.
     """
 
-    def __init__(self, default_voice: str = None):
+    # ── Đa thị trường: Mặc định bật bảo vệ US channels (triệt tiêu giọng Việt trừ khi chỉ định) ──
+    DISABLE_VIETNAMESE_VOICE: bool = True
+
+    US_VOICE_PERSONAS: Dict[str, str] = {
+        "default": "en-US-AndrewNeural",              # Warm, engaging, versatile YouTube host
+        "authority": "en-US-ChristopherNeural",       # Documentary, tech, business, executive
+        "deep_history": "en-US-EricNeural",           # Stoic, philosopher, emperor, deep baritone
+        "detective": "en-US-GuyNeural",               # Gritty, noir, crime, investigative
+        "storyteller_female": "en-US-JennyNeural",    # Emotional, young woman, drama
+        "conversational": "en-US-BrianNeural",        # Friendly, casual, modern Shorts
+        "energetic": "en-US-RogerNeural",             # Fast-paced, punchy hook
+    }
+
+    @classmethod
+    def get_persona_voice(
+        cls,
+        archetype: Optional[str] = None,
+        niche_id: Optional[str] = None,
+        is_dialogue: bool = False,
+    ) -> str:
+        """
+        Ánh xạ nhân vật (Cast Archetype) và ngách (Niche) sang Giọng đọc Mỹ chuẩn (US Neural Voice Persona).
+        Lấy cảm hứng từ VoiceStudio Voice Design & Cast Registry.
+        """
+        arch = (archetype or "").lower()
+        niche = (niche_id or "").lower()
+
+        # 1. Khớp theo Hình mẫu nhân vật (Cast Archetype)
+        if any(k in arch for k in ["tesla", "einstein", "marcus", "caesar", "monarch", "elder", "philosopher"]):
+            return cls.US_VOICE_PERSONAS["deep_history"]
+        if any(k in arch for k in ["detective", "investigator", "noir", "cop"]):
+            return cls.US_VOICE_PERSONAS["detective"]
+        if any(k in arch for k in ["hacker", "netrunner", "tech", "specialist", "executive", "ceo", "commander"]):
+            return cls.US_VOICE_PERSONAS["authority"]
+        if any(k in arch for k in ["woman", "girl", "lady", "cleopatra", "female"]):
+            return cls.US_VOICE_PERSONAS["storyteller_female"]
+
+        # 2. Khớp theo Chủ đề Ngách (Niche Profile)
+        if any(k in niche for k in ["scifi", "tech", "future"]):
+            return cls.US_VOICE_PERSONAS["authority"]
+        if any(k in niche for k in ["histor", "stoic", "deep_sea", "mystery"]):
+            return cls.US_VOICE_PERSONAS["deep_history"]
+        if any(k in niche for k in ["animal", "rescue", "pets"]):
+            return cls.US_VOICE_PERSONAS["storyteller_female"] if is_dialogue else cls.US_VOICE_PERSONAS["conversational"]
+        if any(k in niche for k in ["wildlife", "predators"]):
+            return cls.US_VOICE_PERSONAS["deep_history"]
+
+        # 3. Mặc định giọng nam Mỹ tự nhiên cuốn hút
+        return cls.US_VOICE_PERSONAS["default"]
+
+    def __init__(self, default_voice: str = None, disable_vietnamese: Optional[bool] = None):
         self.default_voice = default_voice or settings.DEFAULT_TTS_VOICE
+        if disable_vietnamese is not None:
+            self.DISABLE_VIETNAMESE_VOICE = disable_vietnamese
+        elif self.default_voice and self.default_voice.lower().startswith("vi-"):
+            self.DISABLE_VIETNAMESE_VOICE = False
 
     @staticmethod
     def _is_vietnamese(text: str) -> bool:
@@ -160,10 +214,37 @@ class VoiceAgent:
                             raise RuntimeError("Audio file empty or incomplete")
                     except Exception as err_tts:
                         last_err = err_tts
+                        # Nếu gặp NoAudioReceived, thử ngay CLI fallback không chờ retry
+                        if "NoAudioReceived" in str(type(err_tts).__name__) or "No audio" in str(err_tts):
+                            try:
+                                import shutil, subprocess
+                                edge_cli = shutil.which("edge-tts") or str(Path(sys.executable).parent / "edge-tts.exe")
+                                cmd = [edge_cli, "--text", clean_text, "--voice", c_voice, "--write-media", scene_audio_path]
+                                res = subprocess.run(cmd, capture_output=True, timeout=25)
+                                if res.returncode == 0 and Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024:
+                                    safe_voice = c_voice
+                                    success = True
+                                    logger.info(f"Scene {scene.scene_id}: ✅ Tạo audio thành công qua CLI fallback ({c_voice})")
+                                    break
+                            except Exception:
+                                pass
                         logger.warning(f"Scene {scene.scene_id}: Lỗi TTS '{c_voice}' (lần {attempt+1}/3): {err_tts}")
-                        await asyncio.sleep(1.0 * (attempt + 1))
+                        await asyncio.sleep(0.5)
                 if success:
                     break
+
+            if not success:
+                # Fallback cứu hộ: Chạy edge-tts CLI với tiến trình SSL handshake độc lập
+                try:
+                    import shutil, subprocess
+                    edge_cli = shutil.which("edge-tts") or str(Path(sys.executable).parent / "edge-tts.exe")
+                    cmd = [edge_cli, "--text", clean_text, "--voice", safe_voice, "--write-media", scene_audio_path]
+                    res = subprocess.run(cmd, capture_output=True, timeout=25)
+                    if res.returncode == 0 and Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024:
+                        success = True
+                        logger.info(f"Scene {scene.scene_id}: ✅ Tạo audio thành công qua CLI fallback ({Path(scene_audio_path).stat().st_size:,} bytes)")
+                except Exception as ex_cli:
+                    logger.debug(f"Scene {scene.scene_id}: CLI fallback error: {ex_cli}")
 
             if not success:
                 raise last_err or RuntimeError(f"Không thể sinh audio cho cảnh {scene.scene_id}")

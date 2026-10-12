@@ -83,15 +83,28 @@ def resolve_channel_family(channel_id: str) -> List[str]:
         "channel_psychology": "channel_maya",
         "channel_maya": "channel_maya",
         "uc1_lvpilxq-j4sfrqozfrkw": "channel_maya",
-        "ucsrjiil67qxidtxt70z-iwa": "ch_the_mysteries_of_the_world",
-        "ucsjll67qxidtxt70z-iwa": "ch_the_mysteries_of_the_world",
-        "ch_the_mysteries_of_the_world": "ch_the_mysteries_of_the_world",
+        "uc1lvpilxq-j4sfrqozfrkw": "channel_maya",
+        "@vv1n-oe9gs": "channel_maya",
+        "ucsrjiil67qxidtxt70z-iwa": "ucsrjiil67qxidtxt70z-iwa",
+        "ucsjll67qxidtxt70z-iwa": "ucsrjiil67qxidtxt70z-iwa",
+        "ch_the_mysteries_of_the_world": "ucsrjiil67qxidtxt70z-iwa",
+        "@themysteriesoftheworld-f3w": "ucsrjiil67qxidtxt70z-iwa",
+        "ucsjriil67qxidtxt70z-iwa": "ucsrjiil67qxidtxt70z-iwa",
         "ch_paws_hearts_rescue": "ch_paws_hearts_rescue",
         "ucv-2dyuqkx1u0cjqdmzdhta": "ch_paws_hearts_rescue",
+        "@pawsandheartsrescue": "ch_paws_hearts_rescue",
         "ch_wild_odyssey": "ch_wild_odyssey",
         "uclsjhbvjjxi-j16vzxxs68a": "ch_wild_odyssey",
+        "@wildodysseyhq": "ch_wild_odyssey",
+        "ch_odisseia_selvagem": "ch_odisseia_selvagem",
+        "ucpbqs4h5qugpu3hcqjg-p9w": "ch_odisseia_selvagem",
+        "@odisseiaselvagemoficial": "ch_odisseia_selvagem",
+        "ch_misterios_do_mundo": "ch_misterios_do_mundo",
+        "ucvfonq9jcpvvze8e1cgng": "ch_misterios_do_mundo",
+        "@misteriosdomundo-tv": "ch_misterios_do_mundo",
         "@alternatehistorywhatif-e2x": "@alternatehistorywhatif-e2x",
     }
+
     cid_clean = channel_id.strip()
     cid_lower = cid_clean.lower()
 

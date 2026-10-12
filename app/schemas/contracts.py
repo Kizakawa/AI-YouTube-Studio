@@ -76,8 +76,8 @@ class SceneContract(BaseModel):
     # ── Cinematic Enhancement Fields (Optional — sinh bởi ContentAgent hoặc để mặc định) ──
     camera_motion: Optional[str] = Field(
         default=None,
-        description="Loại chuyển động camera: 'zoom_in', 'zoom_out', 'pan_left', 'pan_right', 'pan_up', 'pan_down', 'hyper_zoom', 'warp_zoom', 'cinematic_drift'. None = tự động xoay vòng.",
-        pattern=r"^(zoom_in|zoom_out|pan_left|pan_right|pan_up|pan_down|hyper_zoom|warp_zoom|cinematic_drift)$"
+        description="Loại chuyển động camera: 'zoom_in', 'zoom_out', 'pan_left', 'pan_right', 'pan_up', 'pan_down', 'hyper_zoom', 'warp_zoom', 'cinematic_drift', 'nod_loop', 'satirical_nod', 'head_nod'. None = tự động xoay vòng.",
+        pattern=r"^(zoom_in|zoom_out|pan_left|pan_right|pan_up|pan_down|hyper_zoom|warp_zoom|cinematic_drift|nod_loop|satirical_nod|head_nod)$"
     )
     sfx_cue: Optional[str] = Field(
         default=None,
@@ -114,10 +114,13 @@ class SceneContract(BaseModel):
             return None
         allowed = {
             "zoom_in", "zoom_out", "pan_left", "pan_right",
-            "pan_up", "pan_down", "hyper_zoom", "warp_zoom", "cinematic_drift"
+            "pan_up", "pan_down", "hyper_zoom", "warp_zoom", "cinematic_drift",
+            "nod_loop", "satirical_nod", "head_nod"
         }
         if v_clean in allowed:
             return v_clean
+        if "nod" in v_clean:
+            return "nod_loop"
         if "out" in v_clean:
             return "zoom_out"
         if "hyper" in v_clean or "warp" in v_clean or "speed" in v_clean or "fast" in v_clean or "whip" in v_clean:

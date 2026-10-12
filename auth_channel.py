@@ -50,18 +50,44 @@ def authenticate_channel(channel_id: str, account_id: Optional[str] = None):
 
     # Chuẩn hoá alias cho các kênh
     alias_map = {
-        "ucsrjiil67qxidtxt70z-iwa": "ch_the_mysteries_of_the_world",
-        "the_mysteries": "ch_the_mysteries_of_the_world",
-        "mysteries": "ch_the_mysteries_of_the_world",
+        # Kênh Psychology of the world (account_1)
         "maya": "channel_maya",
         "psychology": "channel_maya",
+        "uc1_lvpilxq-j4sfrqozfrkw": "channel_maya",
+        "@vv1n-oe9gs": "channel_maya",
+        # Kênh The mysteries of the world (account_1) — ID thực tế là chuỗi dài này
+        "the_mysteries": "ucsrjiil67qxidtxt70z-iwa",
+        "mysteries": "ucsrjiil67qxidtxt70z-iwa",
+        "mystery": "ucsrjiil67qxidtxt70z-iwa",
+        "ch_the_mysteries_of_the_world": "ucsrjiil67qxidtxt70z-iwa",
+        "ucsrjiil67qxidtxt70z-iwa": "ucsrjiil67qxidtxt70z-iwa",  # keep as-is
+        "@themysteriesoftheworld-f3w": "ucsrjiil67qxidtxt70z-iwa",
+        # Kênh Paws & Hearts Rescue (acount_2)
         "paws": "ch_paws_hearts_rescue",
         "rescue": "ch_paws_hearts_rescue",
+        "@pawsandheartsrescue": "ch_paws_hearts_rescue",
+        # Kênh Wild Odyssey (acount_2)
         "wild": "ch_wild_odyssey",
         "odyssey": "ch_wild_odyssey",
+        "@wildodysseyhq": "ch_wild_odyssey",
+        # Kênh Odisseia Selvagem (acount_2)
+        "odisseia": "ch_odisseia_selvagem",
+        "odisseia_selvagem": "ch_odisseia_selvagem",
+        "ch_odisseia": "ch_odisseia_selvagem",
+        "ucpbqs4h5qugpu3hcqjg-p9w": "ch_odisseia_selvagem",
+        "@odisseiaselvagemoficial": "ch_odisseia_selvagem",
+        # Kênh Mistérios do Mundo (acount_2)
+        "misterios": "ch_misterios_do_mundo",
+        "misterios_do_mundo": "ch_misterios_do_mundo",
+        "ch_misterios": "ch_misterios_do_mundo",
+        "ucvfonq9jcpvvze8e1cgng": "ch_misterios_do_mundo",
+        "ucvfonq9jcpvvvze8e1cgnng": "ch_misterios_do_mundo",  # typo variant
+        "@misteriosdomundo-tv": "ch_misterios_do_mundo",
+        # Kênh cũ
         "whatif": "@alternatehistorywhatif-e2x",
         "history": "@alternatehistorywhatif-e2x",
     }
+
     channel_id = alias_map.get(channel_id.lower(), channel_id)
 
     # Tìm thông tin kênh và tài khoản Google tương ứng

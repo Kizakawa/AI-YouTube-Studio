@@ -363,7 +363,7 @@ TRẢ VỀ DUY NHẤT một chuỗi JSON (không markdown, không giải thích)
                 media_path=media_path,
                 relevance_score=max(1.0, min(10.0, relevance)),
                 entity_accuracy_score=max(1.0, min(10.0, entity_acc)),
-                historical_fidelity_score=max(1.0, min(10.0, entity_acc)),
+                historical_fidelity_score=max(1.0, min(10.0, float(res.get("historical_fidelity", entity_acc)))),
                 visual_quality_score=max(1.0, min(10.0, vis_quality)),
                 scene_overall=round(scene_overall, 1),
                 verdict=verdict,

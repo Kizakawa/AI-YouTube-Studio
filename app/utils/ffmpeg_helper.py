@@ -408,7 +408,9 @@ def get_niche_color_grading(niche: Optional[str] = None, is_scifi: bool = False)
     """
     raw_niche = (niche or "").lower().strip()
 
-    if "psycholog" in raw_niche or "tam_ly" in raw_niche:
+    if any(k in raw_niche for k in ("satirical", "comic", "cham_biem", "hoat_hinh_tam_ly")):
+        niche_key = "comic_satire"
+    elif "psycholog" in raw_niche or "tam_ly" in raw_niche:
         niche_key = "psychology"
     elif any(k in raw_niche for k in ("deep_sea", "ocean", "bien_sau", "sea")):
         niche_key = "deep_sea"
@@ -432,6 +434,11 @@ def get_niche_color_grading(niche: Optional[str] = None, is_scifi: bool = False)
         niche_key = "general"
 
     PROFILES = {
+        "comic_satire": {
+            # Hoạt họa 2D & Truyện tranh châm biếm: nét mực sắc nét, tương phản sạch sẽ, tôn vinh nét vẽ 2D
+            "vf_filter": "eq=contrast=1.08:saturation=1.05:brightness=0.01,unsharp=3:3:0.6:3:3:0.25",
+            "vignette": "",
+        },
         "psychology": {
             # Tâm lý học: tương phản vừa phải, sắc nét, giữ nguyên màu sắc tự nhiên
             "vf_filter": "eq=contrast=1.06:saturation=1.08:brightness=0.01,unsharp=3:3:0.4:3:3:0.15",
@@ -597,6 +604,16 @@ def image_to_video(
             f"d={d}:s={width}x{height}:fps={fps},"
             f"setsar=1"
         )
+    elif camera_motion in ("nod_loop", "satirical_nod", "head_nod"):
+        # Chuyển động Gật Đầu Hoạt Họa Châm Biếm (Comic Nodding Loop):
+        # Trục Y gập xuống và nảy lên theo chu kỳ hình sin nhịp nhàng (~1.7 cú gật/giây) kết hợp zoom chậm
+        zoompan = (
+            f"zoompan=z='1.08+0.05*(1-pow(1-min(on/{d}\\,1)\\,2.0))':"
+            f"x='iw/2-(iw/zoom/2)':"
+            f"y='(ih/2-(ih/zoom/2)) + (ih*0.024)*pow(sin(on*0.35)\\,2)':"
+            f"d={d}:s={width}x{height}:fps={fps},"
+            f"setsar=1"
+        )
     elif camera_motion == "cinematic_drift":
         # Trôi dạt 3D đa hướng không trọng lực
         zoompan = (
@@ -698,6 +715,106 @@ def image_to_video(
             Path(norm_path).unlink(missing_ok=True)
         except Exception:
             pass
+    return output_path
+
+
+def multi_pose_loop_to_video(
+    image_paths: List[str],
+    duration_seconds: float,
+    output_path: str,
+    width: int = 1080,
+    height: int = 1920,
+    fps: int = 30,
+    switch_interval: float = 0.28,
+    niche: Optional[str] = None,
+) -> str:
+    """
+    Biến 2 hoặc nhiều ảnh dáng điệu (poses) của cùng 1 nhân vật 2D thành video hoạt họa cử động liên tục
+    (Head nodding, talking mouth, sighing, mask switching) theo phong cách truyện tranh comic / Én / Tuyết Bích.
+    - image_paths: Danh sách 2+ ảnh pose (Pose A: ngẩng đầu/mặt nạ, Pose B: cúi gật đầu/tháo mặt nạ...)
+    - switch_interval: Tần số đảo khung hình (mặc định 0.28s ~ 3.5 fps tạo nhịp gật đầu tự nhiên)
+    - Tự động loop xen kẽ cho đến khi đạt đủ duration_seconds của lời thoại.
+    """
+    if not image_paths or len(image_paths) == 1:
+        single_img = image_paths[0] if image_paths else ""
+        return image_to_video(
+            image_path=single_img,
+            duration_seconds=duration_seconds,
+            output_path=output_path,
+            width=width,
+            height=height,
+            fps=fps,
+            camera_motion="nod_loop",
+            niche=niche,
+        )
+
+    # Chuẩn hóa kích thước từng ảnh về 1080x1920
+    from PIL import Image
+    import uuid as _uuid
+    temp_dir = Path(output_path).parent / f"_pose_temp_{_uuid.uuid4().hex[:6]}"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    norm_paths = []
+    for idx, p in enumerate(image_paths):
+        dest = str(temp_dir / f"p_{idx:02d}.jpg")
+        try:
+            with Image.open(p) as im:
+                im_rgb = im.convert("RGB")
+                im_resized = im_rgb.resize((width, height), Image.LANCZOS)
+                im_resized.save(dest, "JPEG", quality=95)
+                norm_paths.append(dest)
+        except Exception:
+            continue
+
+    if not norm_paths:
+        return image_to_video(image_paths[0], duration_seconds, output_path, width, height, fps, camera_motion="nod_loop", niche=niche)
+
+    # Tạo file danh sách concat lặp lại cho FFmpeg
+    concat_txt = str(temp_dir / "concat_list.txt")
+    total_time = 0.0
+    with open(concat_txt, "w", encoding="utf-8") as f:
+        while total_time < duration_seconds + 0.5:
+            for p in norm_paths:
+                f.write(f"file '{Path(p).resolve().as_posix()}'\n")
+                f.write(f"duration {switch_interval}\n")
+                total_time += switch_interval
+        # FFmpeg concat demuxer requires the last file repeated once
+        f.write(f"file '{Path(norm_paths[-1]).resolve().as_posix()}'\n")
+
+    # Render video mượt mà từ chuỗi pose
+    grading = get_niche_color_grading(niche=niche, is_scifi=False)
+    vf_parts = [
+        f"scale={width}:{height}:force_original_aspect_ratio=decrease",
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
+        f"fps={fps}",
+        grading['vf_filter']
+    ]
+    if grading.get("vignette"):
+        vf_parts.append(grading['vignette'])
+
+    args = [
+        "-f", "concat",
+        "-safe", "0",
+        "-i", concat_txt,
+        "-vf", ",".join(vf_parts),
+        "-t", str(duration_seconds),
+        "-c:v", "libx264",
+        "-preset", "fast",
+        "-crf", "18",
+        "-pix_fmt", "yuv420p",
+        *BT709_COLOR_ARGS,
+        "-r", str(fps),
+        "-an",
+        output_path
+    ]
+    try:
+        run_ffmpeg(args)
+    finally:
+        try:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        except Exception:
+            pass
+
     return output_path
 
 

@@ -27,6 +27,7 @@ class ScriptEvaluationReport(BaseModel):
     overall_score: float = Field(description="Điểm trung bình có trọng số (1-10)")
     passed: bool = Field(description="Đạt chuẩn chất lượng (>= 8.0/10)")
     actionable_critiques: List[str] = Field(default_factory=list, description="Hướng dẫn cụ thể để viết lại nếu chưa đạt")
+    evaluated_by: str = Field(default="ai", description="ai | heuristic — nguồn định giá: AI thật hay fallback hếp dẫn")
 
 
 class SceneVisualScore(BaseModel):

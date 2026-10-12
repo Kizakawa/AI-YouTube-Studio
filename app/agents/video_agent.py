@@ -20,6 +20,7 @@ from typing import List, Optional
 from app.schemas.contracts import RenderJobContract, SceneContract
 from app.utils.ffmpeg_helper import (
     image_to_video,
+    multi_pose_loop_to_video,
     trim_video,
     concat_videos,
     concat_videos_with_xfade,
@@ -284,6 +285,21 @@ class VideoAgent:
                     is_scifi=is_scifi_clip,
                     niche=clip_niche,
                     apply_grading=(not is_already_rendered),
+                )
+            elif raw_type in ("comic_anim", "multi_pose", "2d_loop") or getattr(scene, "pose_images", None):
+                pose_list = getattr(scene, "pose_images", None) or [scene.media_path]
+                logger.info(
+                    f"  Scene {scene.scene_id}: Hoạt họa đa khung hình ({len(pose_list)} poses) → multi_pose_loop_to_video {duration:.1f}s"
+                )
+                multi_pose_loop_to_video(
+                    image_paths=pose_list,
+                    duration_seconds=duration,
+                    output_path=clip_path,
+                    width=job.resolution_w,
+                    height=job.resolution_h,
+                    fps=job.fps,
+                    switch_interval=0.28,
+                    niche=clip_niche,
                 )
             elif raw_type in ("image", "ai_image", "photo", "documentary", "auto"):
                 logger.info(
