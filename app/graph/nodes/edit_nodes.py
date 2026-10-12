@@ -130,7 +130,8 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
                 for s in scenes_audio
             ]
             total_audio_duration_ms = await voice_agent.concat_scene_audio(scenes_objs, full_audio_path)
-            SubtitleHelper.save_ass_file(scenes_objs, subtitle_path)
+            hook_banner_text = script_data.get("thumbnail_text") or script_data.get("hook") or script_data.get("title")
+            SubtitleHelper.save_ass_file(scenes_objs, subtitle_path, hook_title=hook_banner_text)
 
     # ── Action 3: Đổi giọng đọc (toàn bộ video) ──
     elif action_type == "change_voice":
@@ -171,7 +172,8 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
         subtitle_path = str(work_dir / "subtitles.ass")
         total_audio_duration_ms = await voice_agent.concat_scene_audio(enriched_scenes, full_audio_path)
         channel_style = state.get("channel_style") or "general"
-        SubtitleHelper.save_ass_file(enriched_scenes, subtitle_path, niche_id=channel_style)
+        hook_banner_text = script_data.get("thumbnail_text") or script_data.get("hook") or script_data.get("title")
+        SubtitleHelper.save_ass_file(enriched_scenes, subtitle_path, niche_id=channel_style, hook_title=hook_banner_text)
 
     # ── Action 4: Đổi ngôn ngữ toàn bộ kịch bản & giọng lồng tiếng ──
     elif action_type == "change_language":
@@ -265,7 +267,8 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
         subtitle_path = str(work_dir / "subtitles.ass")
         total_audio_duration_ms = await voice_agent.concat_scene_audio(enriched, full_audio_path)
         channel_style = state.get("channel_style") or "general"
-        SubtitleHelper.save_ass_file(enriched, subtitle_path, niche_id=channel_style)
+        hook_banner_text = script_data.get("thumbnail_text") or script_data.get("hook") or script_data.get("title")
+        SubtitleHelper.save_ass_file(enriched, subtitle_path, niche_id=channel_style, hook_title=hook_banner_text)
 
     return {
         "script_data": script_data,

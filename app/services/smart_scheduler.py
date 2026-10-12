@@ -29,31 +29,32 @@ MIN_SPACING_SECONDS = 21600
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CẤU HÌNH 2 KHUNG GIỜ VÀNG QUỐC TẾ (US & GLOBAL PEAKS) TỐI ƯU 2 VIDEO / NGÀY
+# ĐÃ TỐI ƯU HÓA: ĐĂNG SỚM HƠN ĐỈNH VÀNG 60 - 90 PHÚT ĐỂ THUẬT TOÁN KỊP PHÂN PHỐI
 # ──────────────────────────────────────────────────────────────────────────────
-# Chuẩn hóa đúng 2 khung giờ đỉnh cao nhất trên YouTube Shorts:
-#   - Khung 1 (Sáng Mỹ / Tối VN): 13:00 UTC (20:00 tối VN = 09:00 AM EST)
-#     Đón đầu giờ thức dậy, đi làm/đi học tại Mỹ & giờ vàng giải trí tối tại Châu Á.
-#   - Khung 2 (Tối Mỹ / Sáng VN): 21:00 UTC (04:00 sáng VN = 17:00 PM EST)
-#     Đón đầu đỉnh xem tối lớn nhất tại Mỹ (18:30-21:30 EST) — giờ vàng số 1 toàn cầu.
-# Hai khung giờ này giãn cách đúng 8 tiếng ban ngày và 16 tiếng qua đêm:
-# Triệt tiêu 100% hiện tượng tự nuốt view (cannibalization), giúp cả 2 video đều đạt reach tối đa!
+#   - Khung 1 (Đón đầu đỉnh Trưa Mỹ): 15:00 UTC (22:00 đêm VN = 11:00 AM EDT / 08:00 AM PDT)
+#     Đăng sớm 60 phút trước giờ nghỉ trưa ăn uống & lướt Shorts của người Mỹ (12:00 - 13:30 EDT).
+#     Lúc 22:00 VN, người xem Việt Nam đã giảm dần và đi ngủ -> Tránh tuyệt đối việc bị dính view VN.
+#   - Khung 2 (Đón đầu đỉnh Tối Mỹ #1 Thế Giới): 21:30 UTC (04:30 sáng VN = 17:30 PM EDT / 14:30 PM PDT)
+#     Đăng sớm 90 phút trước đỉnh giải trí tối lớn nhất tại Mỹ (19:00 - 22:00 EDT).
+#     Lúc 04:30 sáng VN, 100% người dùng VN đang ngủ say -> 100% nhóm test ban đầu là người Mỹ bản địa.
+# Giãn cách: 6.5 tiếng ban ngày & 17.5 tiếng qua đêm (thoả mãn MIN_SPACING >= 6 tiếng, triệt tiêu nuốt view).
 GOLDEN_SLOTS_UTC = [
     {
-        "hour": 13,
+        "hour": 15,
         "minute": 0,
-        "label_vn": "20:00 Tối",
-        "label_us": "09:00 AM EST (ĐÓN ĐẦU ĐỈNH SÁNG MỸ & CHIỀU CHÂU ÂU)",
-        "description": "Đón đầu giờ đi làm/đi học buổi sáng tại Mỹ (09:00 EST), đầu giờ chiều Châu Âu (14:00-15:00) và giờ vàng buổi tối tại Việt Nam/Châu Á.",
-        "tag": "US_MORNING_EU_AFTERNOON",
+        "label_vn": "22:00 Đêm",
+        "label_us": "11:00 AM EDT / 08:00 AM PDT (ĐÓN ĐẦU ĐỈNH TRƯA MỸ)",
+        "description": "Đăng sớm trước giờ nghỉ trưa Mỹ 60 phút để YouTube xử lý độ nét, phụ đề và kiểm thử tệp; bùng nổ đúng giờ ăn trưa (12:00-13:30).",
+        "tag": "US_LUNCH_LEAD",
         "rank": 1
     },
     {
         "hour": 21,
-        "minute": 0,
-        "label_vn": "04:00 Sáng",
-        "label_us": "17:00 PM EST (ĐÓN ĐẦU ĐỈNH VÀNG SỐ 1 MỸ — Tan sở & Buổi tối)",
-        "description": "Đăng sớm trước đỉnh tối Mỹ (18:30-21:30 EST) 1.5 tiếng để thuật toán thử nghiệm tệp và sẵn sàng bùng nổ đúng giờ vàng số 1 thế giới.",
-        "tag": "US_EVENING_PRIME",
+        "minute": 30,
+        "label_vn": "04:30 Sáng",
+        "label_us": "17:30 PM EDT / 14:30 PM PDT (ĐÓN ĐẦU ĐỈNH TỐI VÀNG MỸ #1)",
+        "description": "Đăng sớm trước đỉnh tối Mỹ (19:00-22:00 EDT) 90 phút để video index từ khóa và đón trọn đỉnh lướt Shorts lớn nhất toàn cầu khi người Mỹ tan sở về nhà.",
+        "tag": "US_EVENING_LEAD",
         "rank": 2
     },
 ]
@@ -130,6 +131,7 @@ def sync_scheduled_jobs_status() -> int:
     """
     now_utc = datetime.now(timezone.utc)
     updated_count = 0
+    just_published_jobs = []
     try:
         with get_db() as db:
             scheduled_jobs = db.query(VideoJob).filter(
@@ -144,12 +146,50 @@ def sync_scheduled_jobs_status() -> int:
                 if st <= now_utc:
                     job.status = "PUBLISHED"
                     updated_count += 1
+                    just_published_jobs.append({
+                        "id": job.id,
+                        "youtube_video_id": job.youtube_video_id,
+                        "target_channel_id": job.target_channel_id,
+                        "scenes_json": job.scenes_json,
+                        "title": job.title or "",
+                    })
                     logger.info(
                         f"🔄 [SmartScheduler] Video #{job.id} ('{job.title[:30] if job.title else job.id}...') "
                         f"đã qua giờ hẹn ({st.strftime('%Y-%m-%d %H:%M UTC')}) -> Chuyển status = PUBLISHED."
                     )
     except Exception as e:
         logger.warning(f"Lỗi khi đồng bộ trạng thái SCHEDULED jobs: {e}")
+
+    # Tự động ghim bình luận mồi (Pinned Comment Bait) cho các video vừa chuyển sang công khai
+    if just_published_jobs:
+        try:
+            import json
+            from app.agents.publisher_agent import PublisherAgent
+            from app.services.channel_manager import get_channel
+            for p_info in just_published_jobs:
+                v_id = p_info.get("youtube_video_id")
+                if not v_id:
+                    continue
+                ch_id = p_info.get("target_channel_id")
+                ch_cfg = get_channel(ch_id) or {}
+                if not ch_cfg:
+                    continue
+                p_agent = PublisherAgent(channel_config=ch_cfg)
+                if not p_agent.service:
+                    continue
+
+                p_comment = None
+                if p_info.get("scenes_json"):
+                    try:
+                        s_data = json.loads(p_info["scenes_json"]) if isinstance(p_info["scenes_json"], str) else p_info["scenes_json"]
+                        if isinstance(s_data, dict):
+                            p_comment = s_data.get("pinned_comment")
+                    except Exception:
+                        pass
+
+                p_agent.ensure_pinned_comment(v_id, p_comment)
+        except Exception as bait_err:
+            logger.warning(f"Lỗi khi tự động post bình luận mồi cho video vừa công chiếu: {bait_err}")
 
     # Tự động quét và xả hàng đợi các video chờ nạp lại Quota
     try:

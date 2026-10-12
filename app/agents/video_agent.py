@@ -23,6 +23,7 @@ from app.utils.ffmpeg_helper import (
     trim_video,
     concat_videos,
     concat_videos_with_xfade,
+    resolve_niche_transitions,
     mux_audio_video,
     mix_sfx_transitions,
     resolve_smart_sfx_cue,
@@ -82,14 +83,18 @@ class VideoAgent:
                 for idx, s in enumerate(job.scenes)
             ]
             is_scifi_job = getattr(job, "is_scifi", False)
-            transition_choice = "scifi" if is_scifi_job else "fadeblack"
-            logger.info(f"[VideoAgent] Chuyển cảnh transition: '{transition_choice}' (Sci-Fi: {is_scifi_job})")
+            transition_sequence = resolve_niche_transitions(
+                niche=job.niche,
+                is_scifi=is_scifi_job,
+                count=max(total_scenes - 1, 1)
+            )
+            logger.info(f"[VideoAgent] Dynamic transitions ({len(transition_sequence)} cuts): {transition_sequence}")
 
             concat_videos_with_xfade(
                 video_paths=scene_clips,
                 output_path=silent_video,
                 fps=job.fps,
-                transition=transition_choice,
+                transition=transition_sequence,
                 transition_duration=transition_duration,
                 scene_durations_seconds=clip_durations,
             )
@@ -122,7 +127,7 @@ class VideoAgent:
             hit_sfx_name = "impact_sub" if is_heavy_hit_niche else "hit"
             default_sfx_name = "whoosh_fast" if is_scifi_job else "whoosh"
 
-            # 1. Tự động phân tích ngữ nghĩa và cảm xúc để chọn SFX chuẩn cho từng chuyển cảnh
+            # 1. Tự động phân tích ngữ nghĩa, cảm xúc và loại chuyển cảnh để chọn SFX chuẩn cho từng cut
             total_sc = len(job.scenes)
             resolved_sfx_cues = []
             for i, s in enumerate(job.scenes[1:], start=1):
@@ -134,6 +139,17 @@ class VideoAgent:
                         total_scenes=total_sc,
                         niche=job.niche,
                     )
+                    # Nếu cue là whoosh mặc định, đồng bộ với hiệu ứng chuyển cảnh thị giác
+                    if cue == "whoosh" and i - 1 < len(transition_sequence):
+                        t_type = transition_sequence[i - 1]
+                        if t_type in ("zoomin", "hblur"):
+                            cue = "whoosh_fast"
+                        elif t_type == "pixelize":
+                            cue = "glitch"
+                        elif t_type in ("circleopen", "radial"):
+                            cue = "reveal"
+                        elif t_type in ("smoothleft", "smoothright", "diagtl", "diagtr"):
+                            cue = "whoosh_fast"
                 resolved_sfx_cues.append(cue)
 
             # 2. Level 4 Multi-Layer Foley: Trích xuất các mốc xuất hiện của Power Words để đánh Micro-SFX

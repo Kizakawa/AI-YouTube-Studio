@@ -257,15 +257,13 @@ class ContentAgent:
             if not sc.get("media_type"):
                 sc["media_type"] = "auto"
 
-        # ── 2. ĐẢM BẢO PHÂN CẢNH CUỐI KHÉP LẠI GỌN GÀNG, KHÔNG DÍNH TỪ LỬNG VÀ KHÔNG XIN XỎ SÁO RỖNG ──
+        # ── 2. ĐẢM BẢO PHÂN CẢNH CUỐI KHÉP LẠI GỌN GÀNG, KHÔNG DÍNH TỪ LỬNG ──
         if scenes and isinstance(scenes, list):
             last_scene = scenes[-1]
             if isinstance(last_scene, dict):
                 last_narr = last_scene.get("narration", "").strip()
                 # Loại bỏ các đuôi nối lửng lơ như "because...", "which is why..."
                 clean_narr = re.sub(r'[\s\.\,\-\—\…]+(?:because|which|and|so|that|but|with|or|while|as|if|bởi vì|cho nên)[\s\.\,\-\—\…]*$', '', last_narr, flags=re.IGNORECASE)
-                # Loại bỏ các câu xin xỏ sáo rỗng phá hỏng loop nếu có
-                clean_narr = re.sub(r'\s*(?:subscribe and follow for part 2|subscribe for part 2|follow for part 2|tap twice to|double tap to|đón xem phần 2|bấm đăng ký để đón xem phần 2)[^\.]*\.?', '', clean_narr, flags=re.IGNORECASE)
                 clean_narr = clean_narr.strip().rstrip(".,-—…")
                 if clean_narr and not clean_narr.endswith((".", "!", "?")):
                     clean_narr += "."
@@ -289,6 +287,47 @@ class ContentAgent:
                 raw_data["thumbnail_text"] = ThumbnailService().derive_curiosity_text(topic=raw_data.get("topic", ""), viral_title=raw_data.get("title", ""))
             except Exception:
                 raw_data["thumbnail_text"] = "SỰ THẬT TÀN KHỐC!"
+
+        # ── 3. BÌNH LUẬN MỒI GHIM ĐẦU TRANG (PINNED COMMENT BAIT) TỐI ƯU TƯƠNG TÁC ──
+        if "pinned_comment" not in raw_data or not str(raw_data.get("pinned_comment", "")).strip():
+            comb = f"{str(raw_data.get('topic', ''))} {str(raw_data.get('title', ''))}".lower()
+            is_vn = any("\u0100" <= c <= "\u1EF9" for c in comb)
+            if any(k in comb for k in ("rescue", "chó", "mèo", "pet", "cứu hộ", "puppy", "kitten", "animal")):
+                raw_data["pinned_comment"] = (
+                    "Nếu là bạn, bạn có dừng lại giúp chú cún này không? 🥺 Link ủng hộ trạm cứu hộ mình đã ghim ở đầu kênh nhé! ❤️"
+                    if is_vn else
+                    "If you were there, would you have stopped to help this poor baby? 🥺 Our rescue support link is pinned at the top of our channel bio! ❤️"
+                )
+            elif any(k in comb for k in ("tâm lý", "psychology", "manipulat", "thao túng", "mindset", "gaslight", "liar", "dark psychology", "tội phạm", "killer")):
+                raw_data["pinned_comment"] = (
+                    "Bạn đã từng gặp ai có dấu hiệu số 2 trong đời thực chưa? Chia sẻ thật lòng bên dưới nhé 👇"
+                    if is_vn else
+                    "Have you ever encountered someone who showed sign #2 in real life? Tell me your story below 👇"
+                )
+            elif any(k in comb for k in ("lịch sử", "history", "what if", "thế chiến", "war", "rockefeller", "conqueror")):
+                raw_data["pinned_comment"] = (
+                    "Nếu đứng ở vị trí của họ, bạn sẽ đưa ra quyết định gì? Liệu lịch sử có rẽ sang hướng khác không? Tranh luận ngay bên dưới 👇"
+                    if is_vn else
+                    "What would you have done if you stood in their shoes? Would history be completely different? Debate below 👇"
+                )
+            elif any(k in comb for k in ("deep sea", "biển sâu", "ocean", "đại dương", "mariana", "kraken", "abyss")):
+                raw_data["pinned_comment"] = (
+                    "Theo bạn, có thật sự có sinh vật khổng lồ ở đáy 11.000m không? Để lại giả thuyết của bạn bên dưới 👇"
+                    if is_vn else
+                    "Do you believe colossal creatures are truly hiding at 11,000 meters in the pitch black abyss? Drop your theory below 👇"
+                )
+            elif any(k in comb for k in ("săn mồi", "predator", "wildlife", "dã thú", "báo", "sư tử", "hổ", "cheetah", "leopard", "eagle")):
+                raw_data["pinned_comment"] = (
+                    "Theo bạn con người có cơ hội sống sót nào trước dã thú này không? Để lại suy nghĩ bên dưới 👇"
+                    if is_vn else
+                    "Could any human survive 10 seconds against this apex predator? Drop your thoughts below 👇"
+                )
+            else:
+                raw_data["pinned_comment"] = (
+                    "Chi tiết nào khiến bạn bất ngờ nhất? Hãy để lại bình luận của bạn bên dưới nhé 👇"
+                    if is_vn else
+                    "Which moment shocked you the most? Drop your thoughts in the comments below 👇"
+                )
 
         return ScriptContract(**raw_data)
 
@@ -330,24 +369,28 @@ Target Language: {language} ({target_lang_display})
 {director_block}
 {niche_instructions}
 ═══════════════════════════════════════════════════════════
-VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
+YOUTUBE SHORTS TEST FUNNEL & VIRAL RETENTION ENGINE (BEAT THE 100-300 TEST POOL)
+YouTube tests every new Short on a cold batch of 100-300 viewers.
+- IF Viewed > 75% & APV > 100% -> 🚀 EXPLODES TO 10,000 - 100,000+ VIEWS!
+- IF Swiped Away > 40% OR APV < 60% -> 🛑 DISTRIBUTION KILLED IMMEDIATELY (0-15 VIEWS)!
+Every script you write MUST engineer these 2 metrics with mathematical precision:
 ═══════════════════════════════════════════════════════════
 1. ULTRA-FOCUSED DURATION (GOLDEN RETENTION TARGET 22 - 25s — APV > 100%):
-   - Real-world audience retention proves viewers watch ~22 to 27 seconds.
-   - For fast-paced high-retention niches (Deep Sea Mysteries, Psychology, Sci-Fi, Wildlife, History):
+   - Real-world audience retention proves viewers watch ~22 to 27 seconds before fatigue.
+   - For fast-paced high-retention niches (Deep Sea Mysteries, Psychology, Sci-Fi, Wildlife, History What-If):
      * TARGET DURATION: STRICTLY 22 TO 25 SECONDS TOTAL!
      * Exact scene count: strictly 5 to 6 scenes.
      * Total spoken word count: strictly 50 to 62 words (high density, zero fluff).
      * Pacing: 3.5 to 4.2 seconds per scene (9 to 11 words per scene).
-     * Why: When a video is 22-24 seconds, viewers watching 23-26s achieve 95% - 120% APV (Looping), immediately breaking out of test batches into viral distribution!
+     * Why: When a video is 22-24 seconds, viewers watching 24-28s achieve 105% - 130% APV (Looping), immediately triggering the algorithm to blast the video out of the test pool into mass distribution!
    - For narrative-driven emotional story niches (e.g. Animal Rescue journeys):
-     * TARGET DURATION: 35 TO 42 SECONDS TOTAL (6 to 7 scenes, 75 to 90 words).
-   - ESCALATING TENSION (CRITICAL TO PREVENT 6s - 12s DROP-OFF):
-     * Scene 1 (0-3s): Visceral Hook with personal stakes or forbidden warning.
+     * TARGET DURATION: 30 TO 38 SECONDS TOTAL (6 to 7 scenes, 65 to 85 words).
+   - ESCALATING TENSION (CRITICAL TO ELIMINATE 6s - 12s DROP-OFF CLIFF):
+     * Scene 1 (0-3s): Visceral Hook with personal stakes or forbidden warning (Viewed > 75%).
      * Scene 2 (3-7s): IMMEDIATE MICRO-HOOK — Visceral physical proof, acoustic shock, or sudden anomaly! (STRICTLY FORBIDDEN: NEVER lecture textbook history, founding dates, or slow background setup in Scene 2!).
      * Scene 3 (7-12s): ESCALATION & THE PARADOX — The danger magnifies or a counter-intuitive twist strikes ("At 11,000m, water pressure exceeds 1,000 atmospheres...").
      * Scene 4-5 (12-18s): The Climax / Psychological Unmasking / Turning point.
-     * Final Scene (18-24s): Mind-Bending Climax & Seamless Infinite Loop Bridge!
+     * Final Scene (18-24s): Mind-Bending Climax, Organic Discussion Prompt & Seamless Infinite Loop Bridge!
 
 2. 3-SECOND SHOCK ANGLE HOOK (SCENE 1) — CRITICAL TO PREVENT SWIPE-AWAY (>80% VIEWED):
    - The first 1.5 - 2.5 seconds determines 100% of Shorts performance (Viewed vs Swiped away).
@@ -367,22 +410,37 @@ VIRAL RETENTION ALGORITHM — CORE RULES (AVD > 80%)
    - Scene 1 visual_keyword & visual_prompt MUST be visually arresting, shocking, and intense.
    - thumbnail_text MUST be strictly 3 to 5 words in ALL CAPS with 1 high-contrast emoji (e.g. "THEY'RE USING YOU 🚩", "STOP BEING CONFIDENT 🛑", "HE REFUSED TO LET GO 🥺", "DON'T TOUCH THIS 💀"). This text is rendered directly on Frame 0.0s as the massive Hook Headline Banner to stop the viewer's thumb from swiping away!
 
-3. SEAMLESS INFINITE LOOP BRIDGE (FINAL SCENE 3s) — ZERO CHEAP CTAS:
-   - STRICTLY FORBIDDEN IN SPOKEN NARRATION:
-     * NEVER say "Subscribe for part 2", "Follow for part 2", "Tap twice", "Double tap", "Drop your thoughts below", "Like and subscribe", "Share this video".
-     * These cheap begging CTAs instantly alert the viewer that the video is over, triggering a 90% SWIPE-AWAY rate in the last 3 seconds!
-   - MANDATORY FINAL SCENE PUNCHLINE (THE INFINITE LOOP):
-     * The final sentence must deliver a powerful philosophical closure, paradoxical punchline, or shocking lingering truth with 100% complete grammar.
-     * It MUST conceptually or grammatically flow right back into Scene 1's opening hook, so when YouTube Shorts auto-replays, the viewer stays watching without realizing the video restarted!
-     * Examples of High-Retention Loop Endings:
-       - Psychology: "A real ally respects your quiet boundaries. A parasite only respects what they can take from you." -> (Loops back to Scene 1: "Never watch people when you are struggling...")
-       - Deep Sea: "And in the black abyss where light never reaches, the silence is louder than any living voice." -> (Loops back to Scene 1: "Scientists recorded this at 11,000 meters...")
-       - Wildlife: "In the brutal hierarchy of the wild, mercy is the only fatal mistake." -> (Loops back to Scene 1: "One false step against this apex predator...")
-       - Animal Rescue: "And for the first time in his shattered life, his heartbeat finally slowed to peace." -> (Loops back to Scene 1: "He was frozen solid in the freezing snow...")
+3. HIGH-CONVERTING CALL TO ACTION (CTA) & CLOSING ENGAGEMENT (FINAL SCENE 3-4s):
+   - MANDATORY CALL TO ACTION (CTA) IN THE FINAL SCENE:
+     * The final scene MUST conclude with a high-converting, natural Call To Action (CTA) tailored to the channel niche to convert viewers into subscribers and followers!
+     * DO NOT use robotic, passive begging (e.g. "Xin hãy like và subscribe kênh của mình nhé").
+     * DO use sharp, high-value, curiosity- or benefit-driven subscription triggers:
+       - Psychology / Mindset:
+         * VI: "Đăng ký kênh để làm chủ tâm lý và không bao giờ bị thao túng." / "Bấm đăng ký để luôn nhìn thấu ý đồ của người khác."
+         * EN: "Subscribe now to master dark psychology before someone uses it on you." / "Follow to stay one step ahead of the manipulators."
+       - Animal Rescue:
+         * VI: "Hãy bấm đăng ký kênh để cùng chúng tôi cứu thêm nhiều sinh mệnh tội nghiệp."
+         * EN: "Subscribe right now to help give more terrified animals a second chance."
+       - Deep Sea / Earth Mysteries:
+         * VI: "Đăng ký kênh để tiếp tục lặn xuống những bí ẩn tăm tối nhất của đại dương."
+         * EN: "Subscribe to uncover what lurks in the black abyss next."
+       - History / True Crime:
+         * VI: "Đăng ký kênh để khám phá những sự thật lịch sử chưa từng được tiết lộ."
+         * EN: "Subscribe so you never miss the hidden truth behind history."
+       - Wildlife / Survival:
+         * VI: "Đăng ký kênh để chứng kiến những trận chiến sinh tồn tàn khốc nhất."
+         * EN: "Subscribe for more brutal rules of apex survival."
+       - Sci-Fi / Tech:
+         * VI: "Đăng ký kênh để đón đầu tương lai công nghệ tiếp theo."
+         * EN: "Subscribe to witness the future before it arrives."
+       - General / Curiosity:
+         * VI: "Đăng ký kênh để không bỏ lỡ những sự thật chấn động mỗi ngày."
+         * EN: "Subscribe now so you never miss another incredible story."
+   - SEAMLESS CONCEPTUAL CONTINUITY (THE INFINITE LOOP):
+     * Combine the CTA with an intriguing question or conceptual punchline that naturally connects back to Scene 1's hook.
    - HARD GRAMMAR & COMPLETENESS RULE:
      * Spoken narration MUST be 100% grammatically complete with proper closing punctuation (period, exclamation, or question mark).
      * NEVER end the script with dangling prepositions or incomplete conjunctions like 'because', 'which', 'and', 'so', 'that', 'but', 'with', 'bởi vì', etc.
-     * The video loops seamlessly through conceptual continuity (the ending thought naturally makes the viewer rethink the opening hook), NOT by cutting words in half!
 
 4. CONCRETE PHYSICAL STOCK QUERIES (NO ABSTRACT WORDS & NO BORING DARK CLICHES):
    - stock_query is 2-3 English search words strictly for Pexels stock video/photo search.
@@ -503,7 +561,7 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   ],
   "tags": ["shorts", "viral"],
   "description": "Engaging description with hashtags",
-  "pinned_comment": "High-converting engagement question with emojis (e.g. Which sign hit closest to home? 1, 2, or 3? Be honest 👇\\nTap follow so you never fall into this trap again! 🧠)",
+  "pinned_comment": "Irresistible open-ended bait question in {target_lang_display} posted by channel owner to pin at top of comments (e.g. 'Bạn đã từng gặp ai có dấu hiệu số 2 trong đời thực chưa? Chia sẻ thật lòng bên dưới nhé 👇' for psychology; 'Nếu là bạn, bạn có dừng lại giúp chú cún này không? 🥺 Link ủng hộ trạm cứu hộ mình ghim ở đây nhé!' for rescue; 'Theo bạn, có thật sự có sinh vật khổng lồ ở đáy 11.000m không? Để lại giả thuyết của bạn bên dưới 👇' for mystery)",
   "viral_formula": "Seamless Infinite Loop | Micro-Hook Escalation | Pattern Interrupt"
 }}
 """

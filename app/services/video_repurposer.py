@@ -26,7 +26,14 @@ from config.settings import settings
 from app.agents.content_agent import ContentAgent
 from app.services.niche_manager import get_niche, get_niche_subtitle_style
 from app.utils.subtitle_helper import SubtitleHelper, ASS_WHITE, ASS_YELLOW, ASS_BLACK
-from app.utils.ffmpeg_helper import run_ffmpeg, probe_file, get_duration_ms, detect_audio_speech_start
+from app.utils.ffmpeg_helper import (
+    run_ffmpeg,
+    run_ffmpeg_with_gpu_fallback,
+    get_video_encoder_args,
+    probe_file,
+    get_duration_ms,
+    detect_audio_speech_start,
+)
 from app.services.repurposer_qa import preflight_repurpose_qa
 
 logger = logging.getLogger(__name__)
@@ -1006,7 +1013,7 @@ OUTPUT MUST BE A STRICT JSON ARRAY ONLY (No markdown formatting around json, no 
                     margin_v=580,
                     niche_id=niche_id,
                     credit_text=effective_credit,
-                    show_cta_badge=False,
+                    show_cta_badge=True,
                 )
             elif subtitle_text.strip():
                 clean_sub = SubtitleHelper.sanitize_subtitle_text(subtitle_text)
@@ -1138,10 +1145,9 @@ OUTPUT MUST BE A STRICT JSON ARRAY ONLY (No markdown formatting around json, no 
         if has_audio:
             ffmpeg_args += ["-map", "[a]"]
 
+        enc_args = get_video_encoder_args(quality="fast")
         ffmpeg_args += [
-            "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-crf", "22",
+            *enc_args,
             "-c:a", "aac",
             "-b:a", "192k",
             "-ar", "44100",
@@ -1150,7 +1156,7 @@ OUTPUT MUST BE A STRICT JSON ARRAY ONLY (No markdown formatting around json, no 
 
         logger.info(f"[{device_name} ({client_ip})] Đang render Short 9:16 ({layout_mode}, {audio_mode}): {output_path_str}")
         with _render_semaphore:
-            run_ffmpeg(ffmpeg_args, timeout=240)
+            run_ffmpeg_with_gpu_fallback(ffmpeg_args, timeout=240)
 
         if not os.path.exists(output_path_str):
             raise RuntimeError(f"Render Short thất bại, không tìm thấy file: {output_path_str}")

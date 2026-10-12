@@ -4,7 +4,7 @@ import subprocess
 import json
 import re
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import edge_tts
 from config.settings import settings
 from app.schemas.contracts import SceneContract, AudioSegment
@@ -85,6 +85,7 @@ class VoiceAgent:
 
             # Checkpoint: Chỉ tái sử dụng audio từ trước nếu file audio > 1KB VÀ metadata khớp chính xác cả text lẫn voice
             cache_valid = False
+            words_meta_path = str(Path(output_dir) / f"scene_{scene.scene_id:03d}.words.jsonl")
             if Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024 and meta_path.exists():
                 try:
                     meta = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -92,10 +93,14 @@ class VoiceAgent:
                         duration_ms = meta.get("duration_ms") or self._get_audio_duration_ms(scene_audio_path)
                         if duration_ms > 0:
                             cache_valid = True
-                            logger.info(f"Scene {scene.scene_id}: Tái sử dụng audio hợp lệ từ checkpoint ({duration_ms}ms, voice={safe_voice})")
+                            cached_words = meta.get("word_timings")
+                            if not cached_words and Path(words_meta_path).exists():
+                                cached_words = self._parse_words_jsonl(words_meta_path)
+                            logger.info(f"Scene {scene.scene_id}: Tái sử dụng audio hợp lệ từ checkpoint ({duration_ms}ms, voice={safe_voice}, {len(cached_words or [])} words)")
                             enriched = scene.model_copy(update={
                                 "audio_path": scene_audio_path,
                                 "audio_duration_ms": duration_ms,
+                                "word_timings": cached_words if cached_words else None,
                             })
                             enriched_scenes.append(enriched)
                 except Exception as ex:
@@ -109,6 +114,8 @@ class VoiceAgent:
                 logger.info(f"Scene {scene.scene_id}: Lời thoại hoặc giọng đọc đã đổi. Xóa audio cũ để tạo mới...")
                 try:
                     Path(scene_audio_path).unlink(missing_ok=True)
+                    if Path(words_meta_path).exists():
+                        Path(words_meta_path).unlink(missing_ok=True)
                 except Exception:
                     pass
 
@@ -137,8 +144,14 @@ class VoiceAgent:
                             clean_text = scene.narration.strip() or "..."
                         # Tốc độ đọc chuẩn hóa 160-175 WPM (rate: +12% cho Tiếng Anh, +7% cho Tiếng Việt) dồn dập, tự nhiên, chống tụt retention
                         tts_rate = rate or ("+7%" if c_voice.startswith("vi-") else "+12%")
-                        communicate = edge_tts.Communicate(clean_text, c_voice, rate=tts_rate)
-                        await communicate.save(scene_audio_path)
+                        try:
+                            communicate = edge_tts.Communicate(clean_text, c_voice, rate=tts_rate, boundary="WordBoundary")
+                            await communicate.save(scene_audio_path, metadata_fname=words_meta_path)
+                        except Exception as e_bound:
+                            logger.debug(f"Scene {scene.scene_id}: boundary WordBoundary fallback: {e_bound}")
+                            communicate = edge_tts.Communicate(clean_text, c_voice, rate=tts_rate)
+                            await communicate.save(scene_audio_path)
+
                         if Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024:
                             safe_voice = c_voice
                             success = True
@@ -158,29 +171,63 @@ class VoiceAgent:
             # Đo duration thực bằng ffprobe
             duration_ms = self._get_audio_duration_ms(scene_audio_path)
 
+            # Đọc word-level timings chính xác từ file metadata
+            word_timings = self._parse_words_jsonl(words_meta_path)
+
             # Lưu metadata để xác minh checkpoint trong tương lai
             try:
                 meta_path.write_text(json.dumps({
                     "narration": scene.narration,
                     "voice": safe_voice,
                     "duration_ms": duration_ms,
+                    "word_timings": word_timings,
                 }, ensure_ascii=False), encoding="utf-8")
             except Exception as ex:
                 logger.debug(f"Scene {scene.scene_id}: Lỗi ghi cache metadata: {ex}")
 
-            # Enriched scene với actual timing
+            # Enriched scene với actual timing và word-level timings
             enriched = scene.model_copy(update={
                 "audio_path": scene_audio_path,
                 "audio_duration_ms": duration_ms,
+                "word_timings": word_timings if word_timings else None,
             })
             enriched_scenes.append(enriched)
 
             logger.info(
-                f"Scene {scene.scene_id}: audio={duration_ms}ms (voice={safe_voice}) "
+                f"Scene {scene.scene_id}: audio={duration_ms}ms ({len(word_timings)} words, voice={safe_voice}) "
                 f"(estimated={scene.estimated_seconds}s, actual={duration_ms/1000:.1f}s)"
             )
 
         return enriched_scenes
+
+    @staticmethod
+    def _parse_words_jsonl(words_file_path: str) -> List[Dict[str, Any]]:
+        """Đọc và trích xuất mốc thời gian từng từ từ file JSONL sinh bởi Edge-TTS."""
+        p = Path(words_file_path)
+        if not p.exists() or p.stat().st_size == 0:
+            return []
+        words = []
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                for line in f:
+                    line_s = line.strip()
+                    if not line_s:
+                        continue
+                    item = json.loads(line_s)
+                    if item.get("type") == "WordBoundary":
+                        start_ms = int(item.get("offset", 0) / 10000)
+                        dur_ms = int(item.get("duration", 0) / 10000)
+                        text = item.get("text", "").strip()
+                        if text:
+                            words.append({
+                                "word": text,
+                                "start_ms": start_ms,
+                                "end_ms": start_ms + dur_ms,
+                                "duration_ms": dur_ms,
+                            })
+        except Exception as e:
+            logger.debug(f"Lỗi parse words jsonl {words_file_path}: {e}")
+        return words
 
     async def concat_scene_audio(
         self,
@@ -189,6 +236,9 @@ class VoiceAgent:
     ) -> int:
         """
         Ghép tất cả scene audio thành 1 file MP3 liên tục.
+        Đảm bảo ĐỒNG BỘ TUYỆT ĐỐI (Bit-for-bit Deterministic Timeline):
+        Tổng thời lượng đúng chính xác bằng tổng thời lượng từng scene + tail silence đệm.
+        Tuyệt đối KHÔNG áp dụng silenceremove toàn cục làm co ngắn audio gây lệch phụ đề và video cut.
         Trả về total_duration_ms.
         """
         # Tạo file silence 0.6s để làm đệm kết thúc (giúp giọng đọc dứt câu trọn vẹn, không ngắt đột ngột)
@@ -220,7 +270,7 @@ class VoiceAgent:
                 safe_tail = Path(tail_silence_path).resolve().as_posix().replace("'", "'\\''")
                 f.write(f"file '{safe_tail}'\n")
 
-        # FFmpeg concat demuxer an toàn qua run_ffmpeg
+        # FFmpeg concat demuxer an toàn qua run_ffmpeg (giữ nguyên timestamp chuẩn hóa)
         run_ffmpeg([
             "-f", "concat",
             "-safe", "0",
@@ -229,19 +279,8 @@ class VoiceAgent:
             output_path
         ])
 
-        # Áp dụng bộ lọc Pacing silenceremove an toàn (chỉ cắt khoảng lặng > 0.3s, giữ đệm thở tự nhiên 0.1-0.15s)
-        try:
-            import shutil
-            from app.utils.ffmpeg_helper import trim_audio_silence
-            trimmed_temp = str(Path(output_path).parent / "narration_trimmed.mp3")
-            if trim_audio_silence(output_path, trimmed_temp, silence_duration=0.3, silence_threshold_db=-40.0):
-                shutil.move(trimmed_temp, output_path)
-                logger.info("[Pacing] ✅ Đã tối ưu nhịp thở silenceremove cho full narration audio")
-        except Exception as e_trim:
-            logger.debug(f"[Pacing] Bỏ qua silenceremove: {e_trim}")
-
         total_ms = get_duration_ms(output_path)
-        logger.info(f"Full narration audio: {total_ms}ms ({total_ms/1000:.1f}s)")
+        logger.info(f"Full narration audio (perfect deterministic sync): {total_ms}ms ({total_ms/1000:.1f}s)")
         return total_ms
 
     async def generate_full_narration(

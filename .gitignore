@@ -38,6 +38,7 @@ credentials/accounts/*
 !credentials/accounts/.gitkeep
 credentials/channels/*
 !credentials/channels/.gitkeep
+credentials/revoked_backup/
 tokens/
 *.token.json
 *.pem

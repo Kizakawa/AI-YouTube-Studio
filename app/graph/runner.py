@@ -172,6 +172,8 @@ class GraphRunner:
                     j.scenes_json = json.dumps(s_data, ensure_ascii=False)
                     j.title = s_data.get("title", j.title)
                     j.description = s_data.get("description", j.description)
+                    if s_data.get("full_narration"):
+                        j.script = s_data["full_narration"]
                 
                 # Tổng hợp điểm số chất lượng từ 4 Graders
                 scores_summary = {

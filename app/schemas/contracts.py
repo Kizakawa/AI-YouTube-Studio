@@ -9,7 +9,7 @@ Chiến lược Scene Timing: "Audio-First"
 """
 import json
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pathlib import Path
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -64,6 +64,10 @@ class SceneContract(BaseModel):
     audio_path: Optional[str] = Field(default=None, description="Đường dẫn file MP3 của riêng scene này")
     audio_duration_ms: Optional[int] = Field(default=None, ge=0, description="Thời lượng thực tế (ms) sau TTS")
     start_offset_ms: Optional[int] = Field(default=None, description="Offset bắt đầu cố định (ms) trong timeline video nếu có")
+    word_timings: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Danh sách mốc thời gian từng từ [{'word': str, 'start_ms': int, 'end_ms': int, 'duration_ms': int}]"
+    )
 
     # --- Populated bởi MediaAgent/ImageAgent (Step C) ---
     media_path: Optional[str] = Field(default=None, description="Đường dẫn file ảnh/video nền cho scene")

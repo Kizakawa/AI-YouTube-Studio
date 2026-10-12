@@ -29,9 +29,9 @@ script_blueprint:
   - Cảm ơn các bạn đã theo dõi
   - Lịch sử thế giới rất phong phú
   cta_templates:
-  - Empires crumble into dust, but the classified truth remains buried until now.
-  - The official records were rewritten, yet the stone monuments still whisper the real secret.
-  - History is written by the victors, but what they erased is the most dangerous truth of all.
+  - Empires crumble into dust, but the truth remains buried. Subscribe to uncover what history erased.
+  - The official records were rewritten, yet the stone monuments still whisper the real secret. Subscribe so you never miss the untold truth.
+  - History is written by the victors, but what they erased is the most dangerous truth. Follow to unmask the hidden archives.
   anti_hallucination_rules:
   - Phải trích dẫn đúng mốc niên đại, tên nhân vật, địa danh khảo cổ có thật (như
     Howard Carter, Tutankhamun, Pompeii, Göbekli Tepe).

@@ -41,22 +41,35 @@ class DriveAgent:
                     creds = Credentials.from_authorized_user_info(token_data)
 
             if creds:
-                self.service = build("drive", "v3", credentials=creds)
+                srv = build("drive", "v3", credentials=creds)
                 try:
-                    self.service.files().list(pageSize=1, fields="files(id)").execute()
+                    srv.files().list(pageSize=1, fields="files(id)").execute()
+                    self.service = srv
                     logger.info(f"Google Drive API đã kết nối thành công cho '{self.account_name}'")
                 except Exception as ex_test:
-                    if "invalid_grant" in str(ex_test) and self.account_name == "account_1":
-                        logger.warning(f"⚠️ Token '{self.account_name}' bị invalid_grant, tự động chuyển sang 'account_2'...")
-                        self.account_name = "account_2"
-                        self.token_path = "credentials/accounts/account_2/drive_token.json"
-                        self._init_service()
-                        return
+                    self.service = None
+                    if "invalid_grant" in str(ex_test):
+                        if self.account_name == "account_1":
+                            logger.warning(f"⚠️ Token '{self.account_name}' bị invalid_grant, tự động chuyển sang 'account_2'...")
+                            self.account_name = "account_2"
+                            self.token_path = "credentials/accounts/account_2/drive_token.json"
+                            self._init_service()
+                            return
+                        elif self.account_name == "account_2":
+                            logger.warning(f"⚠️ Token '{self.account_name}' bị invalid_grant, tự động chuyển sang 'account_3'...")
+                            self.account_name = "account_3"
+                            self.token_path = "credentials/accounts/account_3/drive_token.json"
+                            self._init_service()
+                            return
+                        else:
+                            logger.error(f"⚠️ Tất cả token Google Drive đều đã hết hạn hoặc bị thu hồi (invalid_grant). Hãy chạy 'python auth_google.py drive' để cấp lại quyền.")
                     else:
                         raise ex_test
             else:
+                self.service = None
                 logger.warning(f"Chưa tìm thấy drive_token hợp lệ cho '{self.account_name}'")
         except Exception as e:
+            self.service = None
             logger.error(f"Lỗi khởi tạo Google Drive API cho '{self.account_name}': {e}")
 
     @staticmethod

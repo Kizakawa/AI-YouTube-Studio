@@ -31,9 +31,9 @@ script_blueprint:
   - The ocean is very big and deep
   - In this video
   cta_templates:
-  - And in the black abyss where light never reaches, the silence is louder than any living voice.
-  - Whatever is lurking ten thousand meters below, it has been waiting long before humanity arrived.
-  - The classified recording abruptly ends here, but what they heard next will never be released.
+  - And in the black abyss where light never reaches, the silence is louder than any living voice. Subscribe to uncover what lurks in the deep.
+  - Whatever is lurking ten thousand meters below, it has been waiting long before humanity arrived. Subscribe to unlock the next classified anomaly.
+  - The classified recording abruptly ends here. Subscribe to uncover the truth they tried to seal away.
   anti_hallucination_rules:
   - Dựa trên các địa danh và hiện tượng có thật (Mariana Trench, Challenger Deep,
     Point Nemo, The Bloop 1997, Baltic Sea Anomaly, Kola Borehole).

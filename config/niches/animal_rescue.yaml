@@ -33,9 +33,9 @@ script_blueprint:
   - Hãy like và subscribe ủng hộ trạm cứu hộ
   - Như chúng ta đã biết
   cta_templates:
-  - And for the first time in his shattered life, his heartbeat finally slowed to gentle peace.
-  - From freezing in the dark to wrapped in warm arms, every broken soul deserves a second chance.
-  - The road to healing was long and painful, but today, his eyes shine with pure unconditional love.
+  - From freezing in the dark to warm arms, every broken soul deserves love. Subscribe right now to help give more terrified animals a second chance.
+  - And for the first time, his heartbeat slowed to gentle peace. Subscribe to help us save more innocent lives.
+  - The road to healing was long, but today his eyes shine with hope. Follow right now to support our rescue journey.
   anti_hallucination_rules:
   - Kịch bản phải tôn trọng phẩm giá và sự an toàn của động vật, không khuyến khích
     hành vi gây hại hay dàn dựng cứu trợ độc hại.
