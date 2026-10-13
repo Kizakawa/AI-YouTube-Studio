@@ -882,15 +882,188 @@ function renderPipelineTable(videos) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   CREATE SCRIPT
+   CREATE SCRIPT & SMART AI IDEA STUDIO
 ══════════════════════════════════════════════════════════ */
-function fillQuickTopic(topic) {
+let _lastSmartChannelIdeas = [];
+
+function fillQuickTopic(topic, directorNotes = '') {
     const input = document.getElementById('input-topic');
     if (!input) return;
     input.value = topic;
     input.focus();
     input.style.borderColor = 'var(--accent-cyan)';
     setTimeout(() => { input.style.borderColor = ''; }, 1200);
+
+    if (directorNotes) {
+        const notesEl = document.getElementById('input-director-notes');
+        if (notesEl) {
+            notesEl.value = directorNotes;
+            notesEl.style.borderColor = '#38bdf8';
+            setTimeout(() => { notesEl.style.borderColor = ''; }, 1200);
+        }
+    }
+}
+
+async function fetchSmartChannelIdeas() {
+    const channelSel = document.getElementById('input-channel');
+    const channelId = channelSel ? channelSel.value : '';
+    if (!channelId) {
+        showToast('⚠️ Vui lòng chọn kênh mục tiêu trước khi gợi ý ý tưởng!', 'warning');
+        return;
+    }
+
+    const btn = document.getElementById('btn-suggest-channel-ideas');
+    const loadingEl = document.getElementById('channel-ideas-loading');
+    const gridEl = document.getElementById('channel-ideas-grid');
+    const dnaBar = document.getElementById('channel-dna-summary-bar');
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="loading-spinner"></span> Đang phân tích DNA kênh...`;
+    }
+    if (loadingEl) loadingEl.style.display = 'block';
+    if (gridEl) gridEl.style.display = 'none';
+
+    try {
+        const data = await apiGet(`/api/channels/${encodeURIComponent(channelId)}/topics/suggest?count=5`);
+        if (loadingEl) loadingEl.style.display = 'none';
+        if (!data || !Array.isArray(data.ideas) || data.ideas.length === 0) {
+            showToast('⚠️ Chưa lấy được gợi ý ý tưởng cho kênh này.', 'warning');
+            return;
+        }
+        _lastSmartChannelIdeas = data.ideas;
+        renderSmartChannelIdeas(data);
+        showToast(`✅ Đã sinh ${data.ideas.length} ý tưởng độc quyền chuẩn ngôn ngữ (${data.language || 'en'})!`, 'success');
+    } catch (e) {
+        if (loadingEl) loadingEl.style.display = 'none';
+        showToast('Lỗi khi phân tích ý tưởng kênh: ' + e.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `✨ Gợi Ý 5 Ý Tưởng Triệu View Cho Kênh Này`;
+        }
+    }
+}
+
+function renderSmartChannelIdeas(data) {
+    const dnaBar = document.getElementById('channel-dna-summary-bar');
+    const gridEl = document.getElementById('channel-ideas-grid');
+    if (!gridEl) return;
+
+    if (dnaBar) {
+        const topV = data.top_performer;
+        const flopV = data.flop_performer;
+        const satList = Array.isArray(data.saturated_concepts) ? data.saturated_concepts : [];
+        const langBadge = (data.language || 'en').toUpperCase();
+        dnaBar.style.display = 'block';
+        dnaBar.innerHTML = `
+            <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between;">
+                <div>
+                    <span class="badge badge-blue" style="margin-right:6px;">🌐 Ngôn ngữ: ${escapeHtml(langBadge)}</span>
+                    <span class="badge badge-purple" style="margin-right:6px;">🎯 Ngách: ${escapeHtml(data.niche || 'general')}</span>
+                    <span style="color:#94a3b8;">Đã xuất bản: <strong style="color:#fff;">${data.published_count || 0} video</strong></span>
+                </div>
+                ${topV ? `<div style="color:#34d399; font-size:11.5px;">🏆 <strong>Top 1 DNA:</strong> "${escapeHtml(topV.title)}" (<strong>${(topV.views || 0).toLocaleString()} views</strong>)</div>` : ''}
+            </div>
+            ${satList.length > 0 ? `
+                <div style="margin-top:6px; padding-top:6px; border-top:1px dashed rgba(255,255,255,0.1); color:#fca5a5; font-size:11.5px;">
+                    🚫 <strong>Khái niệm đã bão hòa (AI tự động né tránh):</strong> ${satList.map(k => `<code style="background:rgba(239,68,68,0.15); color:#fecaca; padding:1px 6px; border-radius:4px; margin-right:4px;">${escapeHtml(k)}</code>`).join('')}
+                </div>
+            ` : ''}
+        `;
+    }
+
+    const ideas = data.ideas || [];
+    gridEl.style.display = 'grid';
+    gridEl.innerHTML = ideas.map((item, idx) => {
+        const titleTxt = item.viral_title || item.topic || `Ý tưởng #${idx + 1}`;
+        const hookTxt = item.hook_3s || item.hook || '';
+        const thumbTxt = item.thumbnail_text || 'WATCH TILL END';
+        const retTxt = item.predicted_retention || '85% - 92%';
+        const whyTxt = item.why_viral || '';
+        const fixTxt = item.fixes_flaw || '';
+        const formulaTxt = item.viral_formula || 'Winning DNA';
+
+        return `
+            <div style="background:rgba(15,23,42,0.75); border:1px solid rgba(59,130,246,0.28); border-radius:10px; padding:13px; display:flex; flex-direction:column; justify-content:space-between; gap:10px;">
+                <div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap;">
+                        <span class="badge badge-purple" style="font-size:10.5px;">#${idx + 1} · ${escapeHtml(formulaTxt)}</span>
+                        <span class="badge badge-green" style="font-size:10.5px;">📈 Retention: ${escapeHtml(retTxt)}</span>
+                    </div>
+                    <div style="font-weight:700; font-size:13.5px; color:#f8fafc; line-height:1.35; margin-bottom:6px;">
+                        ${escapeHtml(titleTxt)}
+                    </div>
+                    ${hookTxt ? `
+                        <div style="font-size:11.5px; color:#93c5fd; background:rgba(59,130,246,0.08); border-left:3px solid #3b82f6; padding:6px 8px; border-radius:4px; margin-bottom:6px; line-height:1.4;">
+                            <strong>⚡ Hook 0-3s:</strong> "${escapeHtml(hookTxt)}"
+                        </div>
+                    ` : ''}
+                    <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; font-size:11px;">
+                        <span style="color:#fde047; font-weight:700;">🖼️ Thumb:</span>
+                        <code style="background:rgba(234,179,8,0.18); color:#fef08a; font-weight:800; padding:2px 6px; border-radius:4px;">${escapeHtml(thumbTxt)}</code>
+                    </div>
+                    ${whyTxt ? `<div style="font-size:11.5px; color:#cbd5e1; line-height:1.35; margin-bottom:4px;">💡 <strong>Vì sao thắng:</strong> ${escapeHtml(whyTxt)}</div>` : ''}
+                    ${fixTxt ? `<div style="font-size:11px; color:#6ee7b7; line-height:1.35;">🛠️ <strong>Khắc phục flop:</strong> ${escapeHtml(fixTxt)}</div>` : ''}
+                </div>
+                <div style="display:flex; gap:6px; margin-top:4px;">
+                    <button type="button" class="btn btn-secondary btn-sm" style="flex:1; font-size:11.5px; padding:6px 8px;" onclick="applySmartIdeaToCreator(${idx}, false)">
+                        🎯 Nạp Vào Ô Chủ Đề
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm" style="flex:1.2; font-size:11.5px; padding:6px 8px; background:linear-gradient(135deg,#3b82f6,#8b5cf6); border:none; font-weight:700;" onclick="applySmartIdeaToCreator(${idx}, true)">
+                        🚀 Tạo Kịch Bản Ngay
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function applySmartIdeaToCreator(idx, autoGenerate = false) {
+    const idea = _lastSmartChannelIdeas[idx];
+    if (!idea) return;
+
+    const topicInput = document.getElementById('input-topic');
+    const notesInput = document.getElementById('input-director-notes');
+
+    const bestTopic = idea.viral_title || idea.topic || '';
+    const notesParts = [];
+    if (idea.topic && idea.viral_title && idea.topic !== idea.viral_title) {
+        notesParts.push(`Triển khai cốt truyện: ${idea.topic}`);
+    }
+    if (idea.hook_3s || idea.hook) {
+        notesParts.push(`Bắt buộc dùng câu Hook 0-3s: "${idea.hook_3s || idea.hook}"`);
+    }
+    if (idea.thumbnail_text) {
+        notesParts.push(`Chữ Thumbnail 1 giây: "${idea.thumbnail_text}"`);
+    }
+    if (idea.pinned_comment) {
+        notesParts.push(`Câu hỏi ghim bình luận: "${idea.pinned_comment}"`);
+    }
+    if (idea.fixes_flaw) {
+        notesParts.push(`Lưu ý chống flop: ${idea.fixes_flaw}`);
+    }
+
+    if (topicInput) {
+        topicInput.value = bestTopic;
+        topicInput.style.borderColor = '#10b981';
+        setTimeout(() => { topicInput.style.borderColor = ''; }, 1500);
+    }
+    if (notesInput) {
+        notesInput.value = notesParts.join(' | ');
+        notesInput.style.borderColor = '#38bdf8';
+        setTimeout(() => { notesInput.style.borderColor = ''; }, 1500);
+    }
+
+    if (typeof checkTopicDuplication === 'function') {
+        checkTopicDuplication(bestTopic);
+    }
+
+    if (autoGenerate) {
+        createScript();
+    } else {
+        showToast('🎯 Đã nạp Tiêu đề + Hook 3s + Chỉ đạo đạo diễn vào khung soạn kịch bản!', 'success');
+    }
 }
 
 async function createScript() {
@@ -906,19 +1079,26 @@ async function createScript() {
                 inputTopic.style.boxShadow = '';
             }, 2000);
         }
-        showToast('⚠️ Vui lòng nhập chủ đề video (hoặc bấm chọn gợi ý nhanh bên dưới)!', 'warning');
+        showToast('⚠️ Vui lòng nhập chủ đề video (hoặc bấm "✨ Gợi Ý 5 Ý Tưởng Triệu View" ở trên)!', 'warning');
         return;
     }
 
     const channel = document.getElementById('input-channel').value;
     const language = document.getElementById('input-language').value;
+    const directorNotesEl = document.getElementById('input-director-notes');
+    const director_notes = directorNotesEl ? directorNotesEl.value.trim() : '';
 
     const btn = document.getElementById('btn-create-script');
     btn.disabled = true;
     btn.innerHTML = `<span class="loading-spinner"></span> Đang phân tích & tạo kịch bản...`;
 
     try {
-        const result = await apiPost('/api/scripts/create', { topic, channel_id: channel, language });
+        const result = await apiPost('/api/scripts/create', {
+            topic,
+            channel_id: channel,
+            language,
+            director_notes: director_notes || undefined
+        });
 
         if (!result) { return; }
 
@@ -2411,13 +2591,24 @@ function updateChannelDropdowns(channels) {
         if (selectedCh && selectedCh.language) {
             const langSel = document.getElementById('input-language');
             if (langSel) {
-                langSel.value = selectedCh.language.toLowerCase().startsWith('vi') ? 'vi' : 'en';
+                const rawLang = selectedCh.language.toLowerCase();
+                if (rawLang.startsWith('vi')) {
+                    langSel.value = 'vi';
+                } else if (rawLang.startsWith('pt')) {
+                    langSel.value = 'pt-BR';
+                } else {
+                    langSel.value = 'en';
+                }
             }
         }
     };
 
     sel.onchange = () => {
         syncChannelLanguage(sel.value);
+        const gridEl = document.getElementById('channel-ideas-grid');
+        const dnaBar = document.getElementById('channel-dna-summary-bar');
+        if (gridEl) gridEl.style.display = 'none';
+        if (dnaBar) dnaBar.style.display = 'none';
     };
 
     if (sel.value) {
@@ -3742,25 +3933,38 @@ function renderAnalyticsUI(data) {
 
     // 3. Videos Table
     const tbody = document.getElementById('analytics-videos-tbody');
+    const avgViewsVal = data.avg_views || 300;
+    const chNiche = data.channel_niche || 'general';
     if (tbody) {
         tbody.innerHTML = '';
         const vids = data.videos || [];
         if (vids.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px;">Chưa tìm thấy video nào trên kênh</td></tr>';
         } else {
+            const subEl = document.getElementById('analytics-winning-subtitle');
+            if (subEl && vids[0]) {
+                subEl.innerHTML = `Các chủ đề và câu Hook 3s có xác suất giữ chân &gt;85% được học từ DNA video Top #1 <strong>"${escapeHtml(vids[0].title)}" (${vids[0].views_text})</strong> và lọc bỏ khái niệm bão hòa`;
+            }
             vids.forEach((v, idx) => {
                 const tr = document.createElement('tr');
                 const rankBadge = idx === 0
                     ? '<span class="rank-badge-gold">#1 TOP</span>'
-                    : (idx === 1 ? '<span class="rank-badge-silver">#2</span>' : '<span class="rank-badge-bronze">#3</span>');
+                    : (idx === 1 ? '<span class="rank-badge-silver">#2</span>' : (idx === 2 ? '<span class="rank-badge-bronze">#3</span>' : `<span class="badge" style="background:rgba(255,255,255,0.06);">#${idx + 1}</span>`));
 
-                const aiBadge = idx === 0
-                    ? '<span class="badge badge-green">🔥 Winning Angle: Tâm lý + Tài phiệt</span><div style="font-size:11.5px;color:var(--text-muted);margin-top:4px;">Chủ đề khơi gợi tò mò cực đại. Khuyên nhân bản thêm 3 góc nhìn khác.</div>'
-                    : (idx === 1
-                        ? '<span class="badge badge-blue">⭐ Chủ đề Lãnh đạo</span><div style="font-size:11.5px;color:var(--text-muted);margin-top:4px;">Tỷ lệ xem đều đặn, phù hợp khán giả trung niên.</div>'
-                        : '<span class="badge badge-purple">💡 Thủ thuật Tâm lý</span><div style="font-size:11.5px;color:var(--text-muted);margin-top:4px;">Hook mạnh về nói dối, cần tăng tốc độ nhịp ở 3 giây đầu.</div>'
-                    );
+                const vNum = v.views_num || 0;
+                const hasNumber = /\d/.test(v.title || '');
+                let aiBadge = '';
+                if (idx === 0) {
+                    aiBadge = `<span class="badge badge-green">🔥 Winning DNA (+${Math.max(10, Math.round(((vNum - avgViewsVal) / Math.max(avgViewsVal, 1)) * 100))}% vs TB)</span><div style="font-size:11.5px;color:var(--text-muted);margin-top:4px;">${hasNumber ? 'Có con số mỏ neo cụ thể & tương phản mạnh.' : 'Hook chạm đúng tò mò bản năng của tệp khán giả.'} Khuyên nhân bản cấu trúc nhịp điệu này sang chủ đề mới.</div>`;
+                } else if (vNum >= avgViewsVal) {
+                    aiBadge = `<span class="badge badge-blue">⭐ Giữ Chân Ổn Định (Trên TB Kênh)</span><div style="font-size:11.5px;color:var(--text-muted);margin-top:4px;">Tỷ lệ vượt ngưỡng Swipe-away tốt trong ngách <code>${escapeHtml(chNiche)}</code>.</div>`;
+                } else if (vNum < avgViewsVal * 0.45) {
+                    aiBadge = `<span class="badge" style="background:rgba(239,68,68,0.18);color:#fca5a5;">⚠️ Cảnh Báo Bão Hòa / Hook Chậm</span><div style="font-size:11.5px;color:var(--text-muted);margin-top:4px;">Views thấp hơn kỳ vọng do lặp lại từ khóa cũ hoặc thiếu cú sốc thị giác/thính giác ở 2 giây đầu.</div>`;
+                } else {
+                    aiBadge = `<span class="badge badge-purple">💡 Tiềm Năng Tối Ưu CTR</span><div style="font-size:11.5px;color:var(--text-muted);margin-top:4px;">Chủ đề tốt, cần đẩy nhanh tốc độ lời thoại (+6%) và thêm con số cụ thể vào tiêu đề.</div>`;
+                }
 
+                const cloneTitleSafe = (v.title || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
                 tr.innerHTML = `
                     <td style="text-align:center;">${rankBadge}</td>
                     <td>
@@ -3775,9 +3979,12 @@ function renderAnalyticsUI(data) {
                     </td>
                     <td>${aiBadge}</td>
                     <td>
-                        <a href="${v.url}" target="_blank" class="btn btn-secondary btn-sm" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:12px;">
-                            Xem Shorts ↗
-                        </a>
+                        <div style="display:flex;flex-direction:column;gap:5px;">
+                            <a href="${v.url}" target="_blank" class="btn btn-secondary btn-sm" style="display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:4px 8px;font-size:11.5px;">
+                                Xem Shorts ↗
+                            </a>
+                            ${idx === 0 ? `<button type="button" class="btn btn-primary btn-sm" style="padding:4px 8px;font-size:11px;background:linear-gradient(135deg,#8b5cf6,#3b82f6);border:none;" onclick="applyTopicToCreate('Nhân bản DNA từ video Top 1: ${cloneTitleSafe}', 'Giữ cấu trúc nhịp điệu của video #1 nhưng triển khai trên thực thể/bối cảnh mới 100%')">🧬 Nhân Bản DNA</button>` : ''}
+                        </div>
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -3838,29 +4045,101 @@ function renderForecastCards(stages) {
     });
 }
 
+let _lastAnalyticsRecommendedTopics = [];
+
 function renderRecommendedTopics(topics) {
     const container = document.getElementById('recommended-topics-container');
     if (!container) return;
     container.innerHTML = '';
+    _lastAnalyticsRecommendedTopics = Array.isArray(topics) ? topics : [];
 
-    topics.forEach(t => {
+    _lastAnalyticsRecommendedTopics.forEach((t, idx) => {
         const card = document.createElement('div');
         card.className = 'topic-rec-card';
+        const titleTxt = t.viral_title || t.topic || `Chủ đề đề xuất #${idx + 1}`;
+        const hookTxt = t.hook_3s || t.hook || '';
+        const topicDetail = t.topic || '';
+        const thumbTxt = t.thumbnail_text || '';
+        const retTxt = t.predicted_retention || '86% - 93%';
+        const whyTxt = t.why_viral || '';
+        const fixTxt = t.fixes_flaw || '';
+        const scoreVal = t.potential_score || 9.6;
+        const targetViews = t.target_views || '40K - 180K';
+
         card.innerHTML = `
             <div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                    <span class="badge badge-blue">🎯 Điểm tiềm năng: ${t.potential_score}/10</span>
-                    <span style="font-size:11.5px;color:var(--text-muted);">Kỳ vọng: <strong>${t.target_views}</strong></span>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+                    <span class="badge badge-blue">🎯 Điểm tiềm năng: ${scoreVal}/10</span>
+                    <span class="badge badge-green" style="font-size:10.5px;">📈 Retention: ${escapeHtml(retTxt)}</span>
+                    <span style="font-size:11.5px;color:var(--text-muted);">Kỳ vọng: <strong>${escapeHtml(targetViews)}</strong></span>
                 </div>
-                <div class="topic-hook-text">"${escapeHtml(t.hook)}"</div>
-                <div style="font-size:12px;color:var(--text-secondary);margin-top:6px;">👉 ${escapeHtml(t.topic)}</div>
+                <div style="font-weight:700;font-size:14px;color:#f8fafc;margin-bottom:6px;line-height:1.35;">${escapeHtml(titleTxt)}</div>
+                <div class="topic-hook-text" style="font-size:12px;color:#93c5fd;margin-bottom:6px;">⚡ <strong>Hook 0-3s:</strong> "${escapeHtml(hookTxt)}"</div>
+                ${thumbTxt ? `<div style="font-size:11.5px;color:#fde047;margin-bottom:6px;">🖼️ <strong>Thumb 1s:</strong> <code style="background:rgba(234,179,8,0.18);color:#fef08a;padding:1px 6px;border-radius:4px;font-weight:700;">${escapeHtml(thumbTxt)}</code></div>` : ''}
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">👉 <strong>Cốt truyện:</strong> ${escapeHtml(topicDetail)}</div>
+                ${whyTxt ? `<div style="font-size:11.5px;color:#a7f3d0;margin-top:5px;">💡 <strong>Vì sao thắng:</strong> ${escapeHtml(whyTxt)}</div>` : ''}
+                ${fixTxt ? `<div style="font-size:11px;color:#fca5a5;margin-top:3px;">🛡️ <strong>Chống Flop:</strong> ${escapeHtml(fixTxt)}</div>` : ''}
             </div>
-            <button class="btn btn-primary btn-sm" style="width:100%;margin-top:8px;" onclick="applyTopicToCreate('${escapeHtml(t.topic)}', '${escapeHtml(t.hook)}')">
-                🎬 Tạo Kịch Bản Với Chủ Đề Này
+            <button class="btn btn-primary btn-sm" style="width:100%;margin-top:10px;" onclick="applyAnalyticsTopicByIdx(${idx})">
+                🎬 Nạp Chủ Đề & Hook Này Vào Xưởng Kịch Bản
             </button>
         `;
         container.appendChild(card);
     });
+}
+
+function applyAnalyticsTopicByIdx(idx) {
+    const t = _lastAnalyticsRecommendedTopics[idx];
+    if (!t) return;
+    const titleOrTopic = t.viral_title || t.topic || '';
+    const hookTxt = t.hook_3s || t.hook || '';
+    const notesParts = [];
+    if (t.topic && t.viral_title && t.topic !== t.viral_title) {
+        notesParts.push(`Triển khai cốt truyện: ${t.topic}`);
+    }
+    if (hookTxt) notesParts.push(`Bắt buộc dùng câu Hook 0-3s: "${hookTxt}"`);
+    if (t.thumbnail_text) notesParts.push(`Chữ Thumbnail 1 giây: "${t.thumbnail_text}"`);
+    if (t.fixes_flaw) notesParts.push(`Lưu ý chống flop: ${t.fixes_flaw}`);
+    applyTopicToCreate(titleOrTopic, notesParts.join(' | '));
+}
+
+async function generateFreshAnalyticsTopics() {
+    const chId = currentAnalyticsChannelId || document.getElementById('analytics-channel-select')?.value || '';
+    if (!chId) {
+        showToast('⚠️ Vui lòng chọn kênh phân tích trước!', 'warning');
+        return;
+    }
+    const btn = document.getElementById('btn-analytics-live-ideas');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="loading-spinner"></span> AI đang phân tích DNA kênh...`;
+    }
+    try {
+        const res = await apiGet(`/api/channels/${encodeURIComponent(chId)}/topics/suggest?count=5`);
+        if (res && Array.isArray(res.ideas) && res.ideas.length > 0) {
+            const mapped = res.ideas.map(item => ({
+                viral_title: item.viral_title || item.topic,
+                topic: item.topic || item.viral_title,
+                hook: item.hook_3s || item.hook || '',
+                hook_3s: item.hook_3s || item.hook || '',
+                thumbnail_text: item.thumbnail_text || '',
+                predicted_retention: item.predicted_retention || '87% - 94%',
+                why_viral: item.why_viral || '',
+                fixes_flaw: item.fixes_flaw || '',
+                potential_score: 9.8,
+                target_views: '50K - 220K'
+            }));
+            renderRecommendedTopics(mapped);
+            showToast(`✅ Đã sinh 5 ý tưởng mới chuẩn ngôn ngữ (${res.language || 'en'}) từ Gemini AI!`, 'success');
+        }
+    } catch (e) {
+        showToast('Lỗi sinh ý tưởng AI: ' + e.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `✨ AI Sinh Thêm 5 Ý Tưởng Độc Quyền (Live Gemini)`;
+        }
+    }
 }
 
 async function onForecastRateChange() {
@@ -3887,14 +4166,31 @@ async function onForecastRateChange() {
     }
 }
 
-function applyTopicToCreate(topic, hook) {
+function applyTopicToCreate(topic, hookOrNotes = '') {
     switchTab('create');
-    const topicInput = document.getElementById('prompt-topic');
-    if (topicInput) {
-        topicInput.value = `${topic} (Hook: ${hook})`;
-        topicInput.focus();
-        showToast('Đã nạp chủ đề được AI đề xuất vào ô tạo kịch bản!', 'success');
+    if (typeof currentAnalyticsChannelId !== 'undefined' && currentAnalyticsChannelId) {
+        const chSel = document.getElementById('input-channel');
+        if (chSel && chSel.querySelector(`option[value="${currentAnalyticsChannelId}"]`)) {
+            chSel.value = currentAnalyticsChannelId;
+            if (typeof chSel.onchange === 'function') chSel.onchange();
+        }
     }
+    const topicInput = document.getElementById('input-topic') || document.getElementById('prompt-topic');
+    const notesInput = document.getElementById('input-director-notes');
+    if (topicInput) {
+        topicInput.value = topic;
+        topicInput.focus();
+        topicInput.style.borderColor = '#10b981';
+        setTimeout(() => { topicInput.style.borderColor = ''; }, 1500);
+    }
+    if (notesInput && hookOrNotes) {
+        notesInput.value = hookOrNotes.includes('Hook') || hookOrNotes.includes('Triển khai')
+            ? hookOrNotes
+            : `Bắt buộc dùng câu Hook 0-3s: "${hookOrNotes}"`;
+        notesInput.style.borderColor = '#38bdf8';
+        setTimeout(() => { notesInput.style.borderColor = ''; }, 1500);
+    }
+    showToast('🎯 Đã nạp chủ đề & chỉ đạo đạo diễn vào Xưởng Kịch Bản!', 'success');
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -8323,6 +8619,7 @@ async function deleteCurrentRepurposedPlayerClip() {
 
 let _cachedTrendsData = [];
 let _isTrendsInitialized = false;
+let _lastTrendBridgeSuggestions = [];
 
 function updateTrendsChannelDropdown(channels) {
     const sel = document.getElementById('trends-channel');
@@ -8333,7 +8630,8 @@ function updateTrendsChannelDropdown(channels) {
         channels.forEach(ch => {
             const opt = document.createElement('option');
             opt.value = ch.id;
-            opt.textContent = `${ch.title || ch.name || ch.id} (${ch.niche || 'Tổng hợp'})`;
+            const langTag = (ch.language || 'en').toUpperCase();
+            opt.textContent = `${ch.title || ch.name || ch.id} (${ch.niche || 'Tổng hợp'} · ${langTag})`;
             sel.appendChild(opt);
         });
     }
@@ -8344,21 +8642,36 @@ function updateTrendsChannelDropdown(channels) {
     }
 }
 
+function onTrendsChannelChange() {
+    const channelId = document.getElementById('trends-channel')?.value || '';
+    const geoSel = document.getElementById('trends-geo');
+    if (channelId && typeof allChannels !== 'undefined' && Array.isArray(allChannels) && geoSel) {
+        const ch = allChannels.find(c => c.id === channelId);
+        if (ch && ch.language) {
+            const langLow = ch.language.toLowerCase();
+            const targetGeo = langLow.startsWith('pt') ? 'BR' : (langLow.startsWith('vi') ? 'VN' : 'US');
+            if (geoSel.value !== targetGeo) {
+                geoSel.value = targetGeo;
+                fetchLiveTrends();
+            }
+        }
+    }
+    generateTrendBridges();
+}
+
 function initTrendsTab() {
     if (typeof allChannels !== 'undefined' && allChannels.length > 0) {
         updateTrendsChannelDropdown(allChannels);
     }
     if (!_isTrendsInitialized) {
         _isTrendsInitialized = true;
+        onTrendsChannelChange();
         fetchLiveTrends();
-        setTimeout(() => {
-            generateTrendBridges();
-        }, 500);
     }
 }
 
 async function fetchLiveTrends() {
-    const geo = document.getElementById('trends-geo')?.value || 'VN';
+    const geo = document.getElementById('trends-geo')?.value || 'US';
     const listContainer = document.getElementById('trends-list-container') || document.getElementById('trends-live-list');
     const spinner = document.getElementById('trends-loading-spinner');
     const badge = document.getElementById('trends-count-badge');
@@ -8420,7 +8733,7 @@ function renderLiveTrends(trends) {
     }
 
     listContainer.innerHTML = trends.map((item, idx) => {
-        const titleSafe = (item.title || item.query || '').replace(/'/g, "\'").replace(/"/g, '&quot;');
+        const titleSafe = (item.title || item.query || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
         const newsItems = (item.news_items || []).slice(0, 2);
         const approxVol = item.approx_traffic || item.traffic || 'Đang tăng mạnh';
 
@@ -8482,10 +8795,11 @@ function filterTrendCards() {
     renderLiveTrends(filtered);
 }
 
-async function generateTrendBridges(specificKeyword) {
-    const geo = document.getElementById('trends-geo')?.value || 'VN';
+async function generateTrendBridges(specificKeyword = '') {
+    const geo = document.getElementById('trends-geo')?.value || 'US';
     const channelId = document.getElementById('trends-channel')?.value || '';
     const bridgeContainer = document.getElementById('bridge-list-container') || document.getElementById('trend-suggestions-results');
+    const bannerEl = document.getElementById('bridge-portfolio-banner');
     const spinner = document.getElementById('bridge-loading-spinner');
     const btn = document.getElementById('btn-bridge-trends');
 
@@ -8496,22 +8810,40 @@ async function generateTrendBridges(specificKeyword) {
         bridgeContainer.innerHTML = `
             <div style="text-align: center; padding: 35px; color: var(--text-muted);">
                 <div class="spinner" style="margin: 0 auto 12px; width: 28px; height: 28px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--accent-purple); border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
-                AI đang phân tích tâm lý số đông & bắc cầu từ Google Trends sang ngách kênh của bạn...
+                AI đang bắc cầu xu hướng ${specificKeyword ? `<strong>"${escapeHtml(specificKeyword)}"</strong>` : `Google Trends (${geo})`} sang ngách & ngôn ngữ kênh của bạn...
             </div>
         `;
     }
 
     try {
-        let url = `/api/trends/channel-suggestions?geo=${geo}`;
+        let url = `/api/trends/channel-suggestions?geo=${encodeURIComponent(geo)}`;
         if (channelId) url += `&channel_id=${encodeURIComponent(channelId)}`;
+        if (specificKeyword) url += `&keyword=${encodeURIComponent(specificKeyword)}`;
 
         const res = await fetch(url);
         const data = await res.json();
 
         if (spinner) spinner.style.display = 'none';
 
+        if (bannerEl) {
+            const satList = Array.isArray(data.saturated_concepts) ? data.saturated_concepts : [];
+            const langBadge = (data.language || 'en').toUpperCase();
+            bannerEl.style.display = 'block';
+            bannerEl.innerHTML = `
+                <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; align-items:center;">
+                    <div>
+                        <span class="badge badge-blue" style="margin-right:6px;">🌐 Ngôn ngữ đích: ${escapeHtml(langBadge)}</span>
+                        <span class="badge badge-purple">🎯 Ngách: ${escapeHtml(data.niche || 'general')}</span>
+                    </div>
+                    ${data.top_performer ? `<div style="color:#34d399; font-size:11.5px;">🏆 <strong>Top 1 Kênh:</strong> ${escapeHtml(data.top_performer)}</div>` : ''}
+                </div>
+                ${satList.length > 0 ? `<div style="margin-top:5px; color:#fca5a5; font-size:11px;">🚫 <strong>Đang khóa chống bão hòa:</strong> ${satList.map(k => `<code style="background:rgba(239,68,68,0.15); padding:1px 5px; border-radius:4px; margin-right:4px;">${escapeHtml(k)}</code>`).join('')}</div>` : ''}
+            `;
+        }
+
         if (data.status === 'success' && Array.isArray(data.suggestions) && data.suggestions.length > 0) {
-            renderTrendSuggestions(data.suggestions, data.niche);
+            _lastTrendBridgeSuggestions = data.suggestions;
+            renderTrendSuggestions(data.suggestions, data.niche, data.language);
         } else {
             if (bridgeContainer) {
                 bridgeContainer.innerHTML = `
@@ -8536,29 +8868,31 @@ async function generateTrendBridges(specificKeyword) {
     }
 }
 
-function renderTrendSuggestions(suggestions, niche) {
+function renderTrendSuggestions(suggestions, niche, language = 'en') {
     const container = document.getElementById('bridge-list-container') || document.getElementById('trend-suggestions-results');
     if (!container) return;
 
     container.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 0 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 0 4px; flex-wrap:wrap; gap:6px;">
             <div style="font-size: 13px; font-weight: 700; color: #a5b4fc;">
-                🎯 5 Ý TƯỞNG VIRAL BẮT TREND CHO NGÁCH: <span style="color:#facc15;">${escapeHtml(niche || 'Tất cả')}</span>
+                🎯 5 CONCEPT BẮT TREND NGÁCH: <span style="color:#facc15;">${escapeHtml(niche || 'Tất cả')}</span> · <span style="color:#38bdf8;">${escapeHtml((language || 'en').toUpperCase())}</span>
             </div>
-            <span style="font-size: 11px; color: var(--text-muted);">(Chuẩn 50% mở đầu & Thumb 1 Giây)</span>
+            <span style="font-size: 11px; color: var(--text-muted);">(Chuẩn Hook 3s & Chống Trùng Lặp)</span>
         </div>
         <div style="display: flex; flex-direction: column; gap: 12px;">
             ${suggestions.map((s, idx) => {
-                const topicSafe = (s.topic || s.viral_title || '').replace(/'/g, "\'").replace(/"/g, '&quot;');
-                const hookSafe = (s.hook_3s || s.hook || '').replace(/'/g, "\'").replace(/"/g, '&quot;');
-                const origSafe = (s.origin_trend || s.trending_source_keyword || 'Google Trends').replace(/'/g, "\'").replace(/"/g, '&quot;');
+                const retTxt = s.predicted_retention || '85% - 92%';
+                const fixTxt = s.fixes_flaw || '';
 
                 return `
                     <div style="background: rgba(0,0,0,0.35); border: 1px solid rgba(168,85,247,0.3); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between;">
                         <div>
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                                <span style="font-size: 11px; font-weight: 700; color: #c084fc;">Ý tưởng #${idx + 1}</span>
-                                <span style="font-size: 10px; color: #94a3b8; background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px;">🔥 Trend: ${escapeHtml(s.origin_trend || s.trending_source_keyword || 'Hot')}</span>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap:wrap; gap:6px;">
+                                <span style="font-size: 11px; font-weight: 700; color: #c084fc;">Ý tưởng #${idx + 1} · ${escapeHtml(s.viral_formula || 'Trend-Jacking')}</span>
+                                <div style="display:flex; gap:6px; align-items:center;">
+                                    <span class="badge badge-green" style="font-size:10px;">📈 Retention: ${escapeHtml(retTxt)}</span>
+                                    <span style="font-size: 10px; color: #94a3b8; background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px;">🔥 Trend: ${escapeHtml(s.origin_trend || s.trending_source_keyword || 'Hot')}</span>
+                                </div>
                             </div>
                             <div style="font-size: 14.5px; font-weight: 700; color: #f8fafc; margin-bottom: 6px; line-height: 1.35;">
                                 ${escapeHtml(s.viral_title || s.topic)}
@@ -8566,20 +8900,21 @@ function renderTrendSuggestions(suggestions, niche) {
                             <div style="font-size: 12px; color: #e2e8f0; margin-bottom: 6px; line-height: 1.4;">
                                 🎣 <strong style="color:#60a5fa;">Hook 3 Giây:</strong> "${escapeHtml(s.hook_3s || s.hook || '')}"
                             </div>
-                            <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 8px; line-height: 1.35;">
-                                🌉 <strong style="color:#a7f3d0;">Góc nhìn tâm lý:</strong> ${escapeHtml(s.angle || s.why_viral || '')}
+                            <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 6px; line-height: 1.35;">
+                                🌉 <strong style="color:#a7f3d0;">Vì sao bùng nổ:</strong> ${escapeHtml(s.angle || s.why_viral || '')}
                             </div>
+                            ${fixTxt ? `<div style="font-size: 11.5px; color: #fca5a5; margin-bottom: 8px; line-height: 1.35;">🛡️ <strong>Chống Flop:</strong> ${escapeHtml(fixTxt)}</div>` : ''}
                             <div style="background: rgba(234,179,8,0.12); border: 1px dashed rgba(234,179,8,0.35); border-radius: 4px; padding: 6px 10px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
                                 <span style="font-size: 11px; color: #fde047; font-weight: 700;">🖼️ Thumbnail 1 Giây:</span>
-                                <span style="font-size: 12.5px; font-weight: 800; color: #ffffff; letter-spacing: 0.5px;">"${escapeHtml(s.thumbnail_text || 'SỰ THẬT TÀN KHỐC')}"</span>
+                                <span style="font-size: 12.5px; font-weight: 800; color: #ffffff; letter-spacing: 0.5px;">"${escapeHtml(s.thumbnail_text || 'WATCH THIS')}"</span>
                             </div>
                         </div>
                         <div style="display: flex; gap: 8px; margin-top: 4px;">
-                            <button class="btn btn-primary btn-sm" style="flex: 1.5; font-size: 11.5px; padding: 7px 10px; background: linear-gradient(135deg, #10b981, #059669); border: none; font-weight: 700;" onclick="quickCreateFromTrend('${topicSafe}', '${hookSafe}', '${origSafe}')">
+                            <button class="btn btn-primary btn-sm" style="flex: 1.5; font-size: 11.5px; padding: 7px 10px; background: linear-gradient(135deg, #10b981, #059669); border: none; font-weight: 700;" onclick="applyTrendBridgeIdea(${idx}, 'produce')">
                                 🚀 Sản Xuất Video Ngay
                             </button>
-                            <button class="btn btn-secondary btn-sm" style="flex: 1; font-size: 11.5px; padding: 7px 10px;" onclick="fillTopicToCreate('${topicSafe}')">
-                                ✍️ Sửa Kịch Bản
+                            <button class="btn btn-secondary btn-sm" style="flex: 1; font-size: 11.5px; padding: 7px 10px;" onclick="applyTrendBridgeIdea(${idx}, 'edit')">
+                                ✍️ Nạp Vào Xưởng Kịch Bản
                             </button>
                         </div>
                     </div>
@@ -8589,14 +8924,56 @@ function renderTrendSuggestions(suggestions, niche) {
     `;
 }
 
-function fillTopicToCreate(topic) {
+function applyTrendBridgeIdea(idx, mode = 'edit') {
+    const s = _lastTrendBridgeSuggestions[idx];
+    if (!s) return;
+    const titleOrTopic = s.viral_title || s.topic || '';
+    const hookTxt = s.hook_3s || s.hook || '';
+    const origTrend = s.origin_trend || s.trending_source_keyword || 'Google Trends';
+
+    if (mode === 'produce') {
+        quickCreateFromTrend(titleOrTopic, hookTxt, origTrend);
+        return;
+    }
+
+    const trendsCh = document.getElementById('trends-channel')?.value || '';
+    const notesParts = [];
+    if (s.topic && s.viral_title && s.topic !== s.viral_title) {
+        notesParts.push(`Triển khai cốt truyện: ${s.topic}`);
+    }
+    if (hookTxt) notesParts.push(`Bắt buộc dùng câu Hook 0-3s: "${hookTxt}"`);
+    if (s.thumbnail_text) notesParts.push(`Chữ Thumbnail 1 giây: "${s.thumbnail_text}"`);
+    if (s.pinned_comment) notesParts.push(`Câu hỏi ghim bình luận: "${s.pinned_comment}"`);
+    if (s.fixes_flaw) notesParts.push(`Lưu ý chống flop: ${s.fixes_flaw}`);
+
+    fillTopicToCreate(titleOrTopic, notesParts.join(' | '), trendsCh);
+}
+
+function fillTopicToCreate(topic, directorNotes = '', channelId = '') {
     switchTab('create');
+    if (channelId) {
+        const chSel = document.getElementById('input-channel');
+        if (chSel && chSel.querySelector(`option[value="${channelId}"]`)) {
+            chSel.value = channelId;
+            if (typeof chSel.onchange === 'function') chSel.onchange();
+        }
+    }
     const topicInput = document.getElementById('input-topic');
     if (topicInput) {
         topicInput.value = topic;
         topicInput.focus();
-        showToast('Đã điền chủ đề vào trình tạo kịch bản AI!', 'success');
+        topicInput.style.borderColor = '#10b981';
+        setTimeout(() => { topicInput.style.borderColor = ''; }, 1500);
     }
+    if (directorNotes) {
+        const notesInput = document.getElementById('input-director-notes');
+        if (notesInput) {
+            notesInput.value = directorNotes;
+            notesInput.style.borderColor = '#38bdf8';
+            setTimeout(() => { notesInput.style.borderColor = ''; }, 1500);
+        }
+    }
+    showToast('🎯 Đã nạp chủ đề & chỉ đạo đạo diễn vào trình tạo kịch bản AI!', 'success');
 }
 
 async function quickCreateFromTrend(topic, hook, category) {

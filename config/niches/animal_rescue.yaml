@@ -9,20 +9,21 @@ target_audience: Hàng trăm triệu người yêu động vật toàn cầu, ph
 script_blueprint:
   tone_of_voice: Truyền cảm, ấm áp, thắt nghẹn ở phần đầu và vỡ òa xúc động ở phần
     kết, chạm thẳng vào trái tim người xem, kích hoạt phản xạ đồng cảm tức thì.
-  pacing: Nhịp điệu xúc động sâu sắc, thời lượng tối ưu 45 - 55 giây (8 - 10 cảnh, 115 - 140 từ), cao trào thắt mở chạm tới trái tim người xem để đạt AWT tối đa.
+  pacing: Nhịp điệu xúc động sâu sắc, thời lượng vàng 45 - 56 giây (8 - 10 cảnh, 100 - 140 từ), đủ 4 giai đoạn chuyển hóa cảm xúc để đạt AWT > 45s và tỷ lệ chuyển đổi Subscribe cao nhất (như video 2,282 views / +32 subs).
   hook_formulas:
-  - 'Relief Transformation: ''The exact second this terrified rescue dog realized he was finally safe, everything changed...'''
-  - 'The Trembling Eye Contact: ''The exact moment she stopped shaking and dared to look into the rescuer\''s eyes, his heart melted...'''
-  - 'Miracle Second Chance: ''The vet said he had less than 24 hours to live, but this puppy had a reason to fight...'''
-  - 'Unconditional Trust: ''He hid inside this concrete pipe for 3 days refusing to look at anyone, until one gentle touch changed everything...'''
-  - 'The Breakthrough Moment: ''He wouldn\''t let anyone touch him for months. But watch what happens when he hears her voice...'''
-  narrative_structure: Ánh mắt sợ hãi e dè (Hook 0-5s) -> Bàn tay kiên nhẫn và thức ăn ấm áp tiếp cận (5-15s) -> Khoảnh khắc tan chảy nhận ra mình được yêu thương (15-30s) -> Sự lột xác rực rỡ và nụ cười hạnh phúc (Payoff 30-50s) -> Infinite Loop thiêng liêng.
+  - 'Refused To Let Go (Proven 2,282 Views & +32 Subs): ''He refused to let go of the rescuer''s hand until this heartbreaking truth came out...'''
+  - 'Relief Transformation (Proven 1,205 Views & 94.8% APV): ''The exact second this terrified rescue dog realized he was finally safe, everything changed...'''
+  - 'The Trembling Eye Contact: ''The exact moment she stopped shaking and dared to look into the rescuer''s eyes, his heart melted...'''
+  - 'Miracle Second Chance: ''Everyone walked past this silent cardboard box, until a faint whimper stopped one stranger in his tracks...'''
+  - 'The Breakthrough Moment: ''He wouldn''t let anyone touch him for weeks. Watch what happens the second he feels a warm blanket...'''
+  narrative_structure: Khoảnh khắc nghịch lý gây tò mò hoặc từ chối buông tay (Hook 0-5s) -> Bàn tay kiên nhẫn và hơi ấm tiếp cận (5-15s, Mid-Video Re-Hook Cảnh 4) -> Khoảnh khắc tan chảy nhận ra mình được yêu thương (15-35s) -> Sự lột xác rực rỡ, khỏe mạnh chạy nhảy dưới nắng ấm (Payoff bắt buộc Cảnh 6-9) -> Lời kêu gọi nhân văn & Infinite Loop.
   forbidden_words:
   - Chào mừng các bạn đến với kênh yêu thú cưng
   - Hôm nay mình sẽ kể cho các bạn nghe
   - Động vật là bạn của con người
   - Hãy like và subscribe ủng hộ trạm cứu hộ
   - Như chúng ta đã biết
+  - Welcome back to our channel
   cta_templates:
   - From freezing in the dark to warm arms, every broken soul deserves love. Subscribe right now to help give more terrified animals a second chance.
   - And for the first time, his heartbeat slowed to gentle peace. Subscribe to help us save more innocent lives.
@@ -30,8 +31,8 @@ script_blueprint:
   anti_hallucination_rules:
   - Kịch bản phải tôn trọng phẩm giá và sự an toàn của động vật, không khuyến khích
     hành vi gây hại hay dàn dựng cứu trợ độc hại.
-  - Mô tả chân thực các triệu chứng phục hồi thú y (suy dinh dưỡng, hạ thân nhiệt,
-    chấn thương, hồi sinh).
+  - TUYỆT ĐỐI KHÔNG đặt tiêu đề bi lụy/tuyệt vọng đơn thuần (như 'Frozen Puppy Found in Rain', 'Shivering Puppy Tied In Rain') mà thiếu vế hứa hẹn sự chuyển hóa/kỳ tích ('Until This Happened', 'The Moment He Realized He Was Safe').
+  - BẮT BUỘC phải có phân cảnh Payoff phục hồi khỏe mạnh, hạnh phúc ở nửa cuối video (tối thiểu 8 cảnh, 100-140 từ).
   banned_lexicon: &id001
   - hunting trophy
   - slaughterhouse
@@ -74,7 +75,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-JennyNeural
   preferred_voice_vi: vi-VN-HoaiMyNeural
-  rate: -2%
+  rate: +3%
   pitch: 0Hz
   bgm_vibe: emotional acoustic piano into soaring orchestral violin, heartwarming,
     tears of joy, gentle hopeful warmth
@@ -85,7 +86,7 @@ audio:
   - tail_wag_thump
   - chime_miracle
 banned_lexicon: *id001
-target_wpm: 155
+target_wpm: 150
 monetization:
   affiliate_enabled: false
   affiliate_category: pet_care

@@ -129,44 +129,100 @@ class ScriptValidationLinter:
     def check_pacing_and_length(
         cls,
         script: ScriptContract,
-        target_wpm: int = 155
+        target_wpm: int = 155,
+        niche_id: str = ""
     ) -> Tuple[List[str], int]:
         """
         Kiểm tra số từ và tính toán nhịp đọc (Pacing):
-        Chuẩn vàng YouTube Shorts có Payoff vượt ngưỡng 10k-50k view (35 - 48s tại 150-165 WPM) là 85 đến 125 từ.
-        Cho phép linh hoạt 7 đến 10 phân cảnh (mỗi cảnh 3.5 - 5.0s).
+        - Chuẩn vàng YouTube Shorts có Payoff vượt ngưỡng 10k-50k view (35 - 48s tại 150-165 WPM) là 80 đến 130 từ (7 - 10 cảnh).
+        - Riêng ngách animal_rescue (Paws & Hearts Rescue): dữ liệu thực nghiệm chứng minh video đạt 1,200 - 2,280 views & +32 subs
+          nằm ở vùng 45 - 56 giây (90 - 145 từ, 8 - 10 cảnh) để đủ 4 giai đoạn chuyển hóa cảm xúc (4-Stage Transformation Arc).
         """
         issues = []
         all_narrations = " ".join(s.narration for s in script.scenes if s.narration)
         words = re.findall(r'\b\w+\b', all_narrations)
         total_words = len(words)
 
-        # Quá dài (> 135 từ) -> Thời lượng vượt quá 52s, dễ gây mỏi người xem Shorts
         topic_str = getattr(script, "topic", "") or ""
-        is_rescue = any(k in f"{script.title} {topic_str}".lower() for k in ("rescue", "cứu hộ", "puppy", "dog", "cat", "pet"))
+        nid_lower = (niche_id or "").lower()
+        is_rescue = ("rescue" in nid_lower or "animal" in nid_lower) or any(
+            k in f"{script.title} {topic_str}".lower() for k in ("rescue", "cứu hộ", "puppy", "kitten", "stray dog", "abandoned")
+        )
+        min_words = 85 if is_rescue else 72
         max_words = 145 if is_rescue else 135
+        target_range_str = "95 to 135 words (42-55s 4-Stage Transformation Arc)" if is_rescue else "85 to 125 words (35-48s 4-Beat Payoff Arc)"
 
         if total_words > max_words:
             est_seconds = (total_words / target_wpm) * 60
             issues.append(
                 f"Script is too long ({total_words} words, ~{est_seconds:.1f}s at {target_wpm} WPM). "
-                f"Target limit: strictly 85 to {max_words} words for flexible 35-48s duration with Payoff."
+                f"Target limit: strictly {target_range_str}."
             )
-        # Quá ngắn (< 40 từ) -> Video dưới 16s không đủ chiều sâu để cung cấp Payoff
-        elif total_words < 40:
+        elif total_words < min_words:
+            est_seconds = (total_words / target_wpm) * 60
             issues.append(
-                f"Script is too short ({total_words} words). "
-                f"Minimum 40 words required for adequate storytelling depth (target 85-125 words, 35-48s with Payoff)."
+                f"Script is too short ({total_words} words, ~{est_seconds:.1f}s) — lacks depth for Mid-Video Re-Hook & Payoff! "
+                f"Minimum {min_words} words required (target {target_range_str})."
             )
 
-        # Số lượng scene: 7 đến 10 scene là nhịp tối ưu cho Shorts 35-48s (3.5 - 5.0s/scene)
+        # Số lượng scene: 7 đến 10 scene là nhịp tối ưu cho Shorts 35-52s (3.5 - 5.0s/scene)
         scene_count = len(script.scenes)
-        if scene_count < 5:
-            issues.append(f"Too few scenes ({scene_count}). Need at least 5 scenes for Shorts (target 7 to 10 scenes for 35-48s).")
+        min_scenes = 7 if is_rescue else 6
+        if scene_count < min_scenes:
+            issues.append(
+                f"Too few scenes ({scene_count}). Need at least {min_scenes} scenes for visual pacing and Payoff (target 7 to 10 scenes)."
+            )
         elif scene_count > 12:
-            issues.append(f"Too many scenes ({scene_count}). Limit to 7 to 10 focused scenes (3.5-5.0s each) for 35-48s duration.")
+            issues.append(
+                f"Too many scenes ({scene_count}). Limit to 7 to 10 focused scenes (3.5-5.0s each) for optimal visual retention."
+            )
 
         return issues, total_words
+
+    @classmethod
+    def check_retention_hooks_and_title(
+        cls,
+        script: ScriptContract,
+        niche_profile: Dict[str, Any]
+    ) -> List[str]:
+        """
+        Kiểm tra chất lượng Hook 3s đầu (Cảnh 1), Mid-Video Re-Hook (Cảnh 3-4) và Tiêu đề:
+        1. Cảnh 1 không được quá dài (> 18 từ) làm chậm nhịp mở đầu gây Swipe-Away.
+        2. Chặn tiêu đề bi lụy/tuyệt vọng thuần túy trên kênh Animal Rescue (ví dụ: 'Frozen Puppy Found in Rain')
+           mà thiếu mồi câu tò mò / hứa hẹn sự chuyển hóa (Until, Moment, Refused, Realized, Saved, Safe...).
+        """
+        issues = []
+        niche_id = str(niche_profile.get("id", "")).lower()
+
+        if script.scenes:
+            s1_narr = (script.scenes[0].narration or "").strip()
+            s1_words = re.findall(r'\b\w+\b', s1_narr)
+            if len(s1_words) > 18:
+                issues.append(
+                    f"Scene 1 hook is too long ({len(s1_words)} words). Keep Scene 1 between 5 and 14 punchy words "
+                    f"for an instant 3-second thumb-stopper (Viewed > 75%)."
+                )
+            elif len(s1_words) < 3:
+                issues.append(
+                    f"Scene 1 hook is too fragmented ({len(s1_words)} words). Must be a complete 5-12 word curiosity/danger hook."
+                )
+
+        # Kiểm tra tiêu đề kênh Animal Rescue tránh rơi vào bẫy bi lụy đơn thuần không có curiosity/payoff
+        if "rescue" in niche_id or "animal" in niche_id:
+            title_lower = (script.title or "").lower()
+            bleak_only_terms = ("frozen", "shivering", "starving", "tied in rain", "dying", "paralyzed", "bleeding")
+            transformation_cues = (
+                "until", "finally", "moment", "realized", "refused", "saved", "safe",
+                "miracle", "changed", "never", "watch what", "wait for", "heart", "love"
+            )
+            if any(b in title_lower for b in bleak_only_terms) and not any(t in title_lower for t in transformation_cues):
+                issues.append(
+                    f"Bleak/passive rescue title detected ('{script.title}'). Purely depressing titles get swiped away! "
+                    f"Reframe the title around a curiosity gap or emotional breakthrough (e.g., 'He Refused to Let Go Until...', "
+                    f"'The Exact Moment This Shivering Puppy Realized He Was Safe')."
+                )
+
+        return issues
 
     @classmethod
     def check_entity_cooldown(
@@ -215,6 +271,7 @@ class ScriptValidationLinter:
         Trả về LinterResult với is_valid=True nếu đạt toàn bộ tiêu chuẩn.
         """
         all_issues: List[str] = []
+        niche_id = str(niche_profile.get("id", "")).lower()
 
         # 1. Trailing connector check
         conn_issues = cls.check_trailing_connectors(script)
@@ -224,11 +281,15 @@ class ScriptValidationLinter:
         lex_issues, banned_detected = cls.check_banned_lexicon(script, niche_profile)
         all_issues.extend(lex_issues)
 
-        # 3. Pacing & length check
-        pac_issues, word_count = cls.check_pacing_and_length(script, target_wpm)
+        # 3. Pacing & length check (Niche-aware)
+        pac_issues, word_count = cls.check_pacing_and_length(script, target_wpm, niche_id=niche_id)
         all_issues.extend(pac_issues)
 
-        # 4. Entity cooldown check
+        # 4. Retention hooks & title check
+        hook_issues = cls.check_retention_hooks_and_title(script, niche_profile)
+        all_issues.extend(hook_issues)
+
+        # 5. Entity cooldown check
         ent_issues, ent_detected = cls.check_entity_cooldown(script, cooldown_entities)
         all_issues.extend(ent_issues)
 
@@ -236,15 +297,23 @@ class ScriptValidationLinter:
 
         retry_hint = None
         if not is_valid:
+            is_rescue = "rescue" in niche_id or "animal" in niche_id
+            word_target_instruction = (
+                "Keep total word count strictly between 95 and 135 words (42-55s pacing at 150 WPM, 8-10 scenes) "
+                "to deliver the full 4-Stage Emotional Transformation Arc (Trauma -> Gentle Contact -> Healing -> Joyful Payoff)."
+                if is_rescue else
+                "Keep total word count strictly between 85 and 125 words (35-48s pacing at 155 WPM, 7-10 scenes) "
+                "with a 3s Hook (Scene 1), 12s Mid-Video Re-Hook Twist (Scene 4), and deep Payoff Reveal (Scenes 5-7)."
+            )
             bullet_points = "\n".join(f"- {issue}" for issue in all_issues)
             retry_hint = (
-                f"CRITICAL QUALITY GATE VIOLATIONS DETECTED (MUST FIX FOR YOUTUBE SHORTS TEST POOL):\n"
+                f"CRITICAL QUALITY GATE VIOLATIONS DETECTED (MUST FIX FOR YOUTUBE SHORTS RETENTION):\n"
                 f"{bullet_points}\n\n"
                 f"ACTION REQUIRED:\n"
-                f"1. Ensure the final sentence is 100% grammatically complete and conceptually bridges into Scene 1's hook (Infinite Loop). NEVER end with 'because', 'which', 'and', 'but', etc.\n"
-                f"2. Keep total word count strictly between 50 and 70 words (22-28s pacing at 155 WPM, 5-7 scenes) to guarantee APV > 100% and break through the 100-300 test pool.\n"
-                f"3. Strictly avoid the forbidden concepts/terms listed above.\n"
-                f"4. Rewrite cleanly while preserving high retention hook (Viewed > 75%), seamless loop, and cinematic intensity."
+                f"1. Ensure the final sentence is 100% grammatically complete, includes a natural value-driven CTA, and conceptually bridges into Scene 1's hook (Infinite Loop). NEVER end with 'because', 'which', 'and', 'but', etc.\n"
+                f"2. {word_target_instruction}\n"
+                f"3. Strictly avoid all forbidden concepts/terms and repetitive channel entities listed above.\n"
+                f"4. Rewrite cleanly while preserving an electric 5-12 word Scene 1 hook (Viewed > 75%), a mid-video pattern interrupt at Scene 4, and an unforgettable Payoff."
             )
 
         return LinterResult(

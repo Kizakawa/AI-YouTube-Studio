@@ -8,38 +8,38 @@ target_audience: Khán giả 18-35 tuổi muốn tự vệ tâm lý, đọc vị
   các mối quan hệ xã hội.
 script_blueprint:
   tone_of_voice: Thâm sâu, sắc bén, cảnh báo, khơi gợi bản năng phòng thủ và tò mò,
-    trực diện không vòng vo.
-  pacing: Siêu nhanh 155 WPM, 2.5 - 3.2 giây/cảnh, nhịp điệu dồn dập, cao trào dồn
-    nén.
+    trực diện không vòng vo (Cold, authoritative, insightful & mysterious).
+  pacing: Thời lượng vàng 35 - 45 giây (7 - 9 cảnh, 85 - 120 từ, 3.5 - 4.8 giây/cảnh). Cảnh 1 là Hook 3s (5-10 từ), Cảnh 4 là Mid-Video Re-Hook (giây 12-15) lật ngược nhận thức, Cảnh 5-7 là Payoff đòn tâm lý thực chiến.
   hook_formulas:
-  - 'Urgent Warning: ''Nếu ai đó làm điều này với bạn, ĐỪNG BAO GIỜ...'''
-  - 'The Counter-Intuitive Shock: ''Kẻ nguy hiểm nhất trong phòng luôn giả vờ...'''
-  - 'The Dark Psychological Law: ''Quy luật tâm lý đen tối nhất mà 99% không nhận
-    ra là...'''
-  - 'Elite Interrogation Tactic: ''Cách chuyên gia đọc vị kẻ nói dối trong đúng 3
-    giây...'''
-  narrative_structure: Hook (3s cắt đà lướt) -> Dấu hiệu bóc trần ngầm (3 Signs) ->
-    Phân tích hiệu ứng tâm lý học -> Lời khuyên tự vệ -> CTA kích hoạt tranh luận
-    & Vòng lặp vô tận (Infinite Loop)
+  - 'Direct Personal Threat Hook (Proven 514-941 Views): ''3 signs someone is secretly using you — and how to flip the script instantly...'''
+  - 'Forbidden Behavioral Anomaly (Proven 941 Views): ''Why manipulators and liars always do THIS with their eyes in the first 5 seconds...'''
+  - 'High-Status Frame Control (Proven 156% APV): ''Never react when someone disrespects you in public. Instead, use this 3-second trap...'''
+  - 'Deadliest Social Trap: ''The deadliest psychological trap in any room is always disguised as kindness...'''
+  narrative_structure: Hook (3s cắt đà lướt) -> Mid-Video Re-Hook & Dấu hiệu bóc trần ngầm (Cảnh 2-4) -> Payoff phân tích hiệu ứng tâm lý & Vũ khí tự vệ thực chiến (Cảnh 5-7) -> CTA kích hoạt tranh luận & Vòng lặp vô tận (Infinite Loop)
   forbidden_words:
   - Chào mừng các bạn đã quay trở lại
   - Bạn có bao giờ tự hỏi
   - Trong video hôm nay tôi sẽ chia sẻ
   - Hãy like và subscribe kênh của mình nhé
   - Theo định nghĩa tâm lý học
+  - Welcome back to our channel
+  - In today's video
+  - Did you know that
   cta_templates:
   - A real ally respects your boundaries. Subscribe now to master dark psychology before someone uses it on you.
   - The moment you stop reacting to their games, their illusion of power crumbles. Follow to stay one step ahead of the manipulators.
   - Once you recognize this psychological pattern, you will never be trapped again. Subscribe to protect your mind.
   anti_hallucination_rules:
   - Luôn gắn liền với hiện tượng tâm lý học có thật (Dunning-Kruger, Gaslighting,
-    Pavlov, Body language FBI, Dark Triad).
+    Pavlov, Body language FBI, Dark Triad, Halo Effect, Cognitive Dissonance).
   - Không đưa ra lời khuyên y tế tâm thần cực đoan.
   banned_lexicon: &id001
   - astrology horoscope
   - magic crystal
   - alien invasion
   - deep sea creature
+  - football
+  - soccer
 visual_aesthetics:
   art_style: Modern Cinematic Psychological Drama & Thought-Provoking Editorial (Fincher / Nolan / A24 Aesthetic)
   camera_angles: Dramatic low-angle tension, high-angle surveillance perspective, intimate over-the-shoulder confrontation, Dutch angle psychological unease, dynamic macro focus racking, crisp depth of field
@@ -68,7 +68,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: -4%
+  rate: +7%
   pitch: -2Hz
   bgm_vibe: dark suspense cello, low ambient drone, tension riser
   sfx_cues:

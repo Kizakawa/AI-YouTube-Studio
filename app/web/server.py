@@ -1070,23 +1070,43 @@ async def get_channel_trend_suggestions(
     channel_id: Optional[str] = None,
     niche: Optional[str] = None,
     geo: str = "VN",
-    count: int = 5
+    count: int = 5,
+    keyword: Optional[str] = None
 ):
     """
     Phân tích Google Trends và tự động bắc cầu (Trend-Jacking) sang ngách kênh.
-    Tạo các ý tưởng đánh trúng tâm lý số đông và có nhu cầu tìm kiếm cao.
+    Tạo các ý tưởng đánh trúng tâm lý số đông, đúng ngôn ngữ kênh và chống trùng lặp nội dung cũ.
     """
     try:
         from app.services.trend_analysis_service import TrendAnalysisService
+        from app.services.channel_intelligence import (
+            get_channel_existing_portfolio,
+            extract_saturated_channel_concepts,
+        )
         channels = settings.get_channels_config()
         channel_niche = niche
-        language = "vi" if geo.upper() == "VN" else "en"
-        
+        language = "vi" if geo.upper() == "VN" else ("pt-BR" if geo.upper() == "BR" else "en")
+        channel_name = ""
+        existing_titles: List[str] = []
+        saturated_concepts: List[str] = []
+        top_performer_summary = ""
+
         if channel_id:
             ch = next((c for c in channels if c.get("id") == channel_id), {})
             if ch:
                 channel_niche = channel_niche or ch.get("niche")
                 language = ch.get("language") or language
+                channel_name = ch.get("name") or channel_id
+            try:
+                portfolio = await asyncio.to_thread(get_channel_existing_portfolio, channel_id)
+                existing_titles = portfolio.get("all_titles", [])
+                vids_ranked = portfolio.get("videos_with_views", [])
+                saturated_concepts = extract_saturated_channel_concepts(existing_titles, vids_ranked)
+                if vids_ranked:
+                    top_v = vids_ranked[0]
+                    top_performer_summary = f"'{top_v.get('title')}' ({top_v.get('views', 0):,} views)"
+            except Exception as port_err:
+                logger.debug(f"Portfolio lookup skipped in trend suggestions: {port_err}")
 
         channel_niche = channel_niche or "general"
 
@@ -1094,6 +1114,11 @@ async def get_channel_trend_suggestions(
         suggestions = await asyncio.to_thread(
             svc.bridge_trend_to_niche,
             channel_niche=channel_niche,
+            channel_name=channel_name,
+            existing_titles=existing_titles,
+            saturated_concepts=saturated_concepts,
+            top_performer_summary=top_performer_summary,
+            specific_keyword=keyword,
             geo=geo,
             count=count,
             language=language
@@ -1102,9 +1127,13 @@ async def get_channel_trend_suggestions(
             "status": "success",
             "success": True,
             "channel_id": channel_id,
+            "channel_name": channel_name,
             "channel_niche": channel_niche,
             "niche": channel_niche,
+            "language": language,
             "geo": geo,
+            "saturated_concepts": saturated_concepts,
+            "top_performer": top_performer_summary,
             "suggestions": suggestions
         }
     except Exception as e:
@@ -4929,12 +4958,15 @@ async def get_channel_live_analytics(channel_id: str):
         total_videos=len(stats.get("videos", [])),
         avg_views=stats.get("avg_views", 300),
         daily_uploads=1.0,
-        niche=channel.get("niche", "history_mystery")
+        niche=channel.get("niche", "history_mystery"),
+        language=channel.get("language", "en"),
+        channel_id=channel_id
     )
 
     stats["forecast"] = forecast
     stats["channel_id"] = channel_id
     stats["channel_niche"] = channel.get("niche", "history_mystery")
+    stats["channel_language"] = channel.get("language", "en")
     return stats
 
 @app.post("/api/analytics/forecast")
@@ -4957,7 +4989,9 @@ async def calculate_forecast_endpoint(req: ForecastRequest):
         total_videos=total_vids,
         avg_views=avg_views,
         daily_uploads=req.daily_uploads or 1.0,
-        niche=channel.get("niche", "history_mystery")
+        niche=channel.get("niche", "history_mystery"),
+        language=channel.get("language", "en"),
+        channel_id=req.channel_id
     )
     return {
         "success": True,
@@ -4972,14 +5006,32 @@ async def calculate_forecast_endpoint(req: ForecastRequest):
 @app.get("/api/channels/{channel_id}/topics/suggest")
 async def suggest_channel_topics_endpoint(channel_id: str, count: int = 5):
     """
-    Gợi ý ý tưởng video Shorts độc lạ cho kênh, chống trùng lặp 100% với video cũ.
+    Gợi ý ý tưởng video Shorts độc lạ cho kênh dựa trên phân tích DNA Top Performer & Flop,
+    chống trùng lặp 100% với video cũ và tự động khớp ngôn ngữ kênh.
     """
     try:
-        from app.services.channel_intelligence import suggest_channel_topics
-        ideas = suggest_channel_topics(channel_id=channel_id, count=count)
+        from app.services.channel_intelligence import (
+            suggest_channel_topics,
+            get_channel_existing_portfolio,
+            extract_saturated_channel_concepts,
+        )
+        portfolio = await asyncio.to_thread(get_channel_existing_portfolio, channel_id)
+        ideas = await asyncio.to_thread(suggest_channel_topics, channel_id=channel_id, count=count)
+        vids_ranked = portfolio.get("videos_with_views", [])
+        saturated = extract_saturated_channel_concepts(portfolio.get("all_titles", []), vids_ranked)
+        top_video = vids_ranked[0] if vids_ranked else None
+        flop_video = vids_ranked[-1] if len(vids_ranked) > 1 else None
+
         return {
             "success": True,
             "channel_id": channel_id,
+            "channel_name": portfolio.get("channel_name", channel_id),
+            "niche": portfolio.get("niche", "general"),
+            "language": portfolio.get("language", "en"),
+            "published_count": portfolio.get("published_count", 0),
+            "saturated_concepts": saturated,
+            "top_performer": top_video,
+            "flop_performer": flop_video,
             "count": len(ideas),
             "ideas": ideas
         }

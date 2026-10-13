@@ -5,15 +5,15 @@ icon: ⏳
 description: Khám phá các dòng thời gian song song, những bước ngoặt lịch sử bị đảo ngược (What If?), và thế giới sẽ ra sao nếu các sự kiện lớn diễn ra khác đi.
 target_audience: Khán giả Mỹ và toàn cầu đam mê lịch sử, khoa học viễn tưởng, câu hỏi giả định và bí ẩn thời gian (18-45 tuổi).
 script_blueprint:
-  tone_of_voice: Hồi hộp, sử thi, giọng kể tài liệu điện ảnh (Christopher Nolan / Dan Carlin), tạo cảm giác rùng mình trước sự mong manh của dòng thời gian.
-  pacing: Siêu nhanh 155 WPM, 2.5 - 3.2 giây/cảnh, nhịp điệu dồn dập, cao trào thắt mở.
+  tone_of_voice: "Hồi hộp, sử thi, giọng kể tài liệu điện ảnh (Christopher Nolan / Dan Carlin), tạo cảm giác rùng mình trước sự mong manh của dòng thời gian."
+  pacing: "Thời lượng vàng 35 - 45 giây (7 - 9 cảnh, 85 - 120 từ, 3.5 - 4.8 giây/cảnh). Cảnh 1 là Hook 3s giả định chấn động, Cảnh 4 (giây 12-15) là Mid-Video Re-Hook (Điểm rẽ nhánh lịch sử), Cảnh 5-7 là Payoff bản đồ thế giới bị viết lại."
   hook_formulas:
-  - 'Temporal Paradox Shock: ''What if one single second changed the entire course of human history?'''
-  - 'Fallen Empire Twist: ''What if the Roman Empire never collapsed, and ruled the modern world today?'''
+  - 'Fallen Empire Twist (Proven Top Winner): ''What if the Roman Empire never collapsed, and ruled the modern world today?'''
+  - 'Mightiest Armies Clash (Proven 136 Views): ''When history''s mightiest unstoppable army made one fatal mistake, the map of the world changed forever...'''
   - 'The Saved Library: ''What if the Library of Alexandria was never burned, and humanity was 1,000 years ahead?'''
-  - 'Divergent Timeline: ''In our world, this battle ended. But in a terrifying alternate reality, history took another path...'''
-  - 'The Fragile Domino: ''A tiny mistake in 1914 almost created a world you would not recognize today...'''
-  narrative_structure: Shock Hook (Bước ngoặt giả định) -> Bằng chứng lịch sử thực tế -> Điểm rẽ nhánh (The Divergence Point) -> Hậu quả giả định chấn động -> Triết lý mở & CTA vòng lặp (Infinite Loop)
+  - 'The 1-Second Glitch: ''In 1914, a driver took one wrong turn — and accidentally erased four empires from existence...'''
+  - 'Untold Superpower: ''What if the Mongol Empire never retreated from Europe in 1242?'''
+  narrative_structure: "Shock Hook (Bước ngoặt đế chế/chiến dịch lịch sử 3s) -> Bằng chứng lịch sử thực tế -> Mid-Video Re-Hook (Cảnh 4 - Điểm rẽ nhánh đảo ngược định mệnh ở giây 12) -> Payoff (Thế giới hiện đại bị biến đổi hoàn toàn ở Cảnh 5-7) -> Câu hỏi tranh luận & CTA vòng lặp (Infinite Loop)"
   forbidden_words:
   - Welcome back to our channel
   - Today we will talk about
@@ -25,21 +25,29 @@ script_blueprint:
   - History hung by a single thread, and our world almost never existed. Subscribe so you never miss what almost was.
   - The past you know is only one possible reality. Follow to uncover the darkest paths history almost took.
   anti_hallucination_rules:
-  - Phải dựa trên các sự kiện, nhân vật và trận đánh lịch sử có thật (Rome, Alexandria, Thế chiến, Cách mạng Công nghiệp), chỉ phân nhánh giả thuyết một cách logic, thuyết phục.
-  - Phân tích hậu quả theo logic chính trị, quân sự và công nghệ thực tế.
+  - Phải dựa trên các đế chế, sự kiện, nhân vật và trận đánh lịch sử có thật (Rome, Alexandria, Napoleon, Alexander Đại Đế, Đế quốc Mông Cổ, Thế chiến), chỉ phân nhánh giả thuyết một cách logic, thuyết phục.
+  - TUYỆT ĐỐI KHÔNG làm nội dung về tiêm chích y tế (inject/vaccine), thuyết âm mưu y khoa hiện đại, hay mẹo tâm lý học cá nhân.
   banned_lexicon: &banned_words
   - buy now
   - link in bio
   - discount code
   - click here to buy
   - cheap price
+  - inject
+  - vaccine
+  - syringe
+  - needle
+  - pandemic virus
+  - burn the evidence
+  - narcissist
+  - gaslighting
 visual_aesthetics:
   art_style: Epic Alternate Reality Cinema & Neoclassical Retro-Futurism (Ridley Scott / Christopher Nolan aesthetic)
   camera_angles: Grand sweeping aerial over divergent civilization, dramatic low-angle of historical figures facing temporal storm, golden hour lightning split, dynamic close-up on antique hourglass cracking with glowing quantum particles
   color_palette: Fiery amber gold, deep twilight royal blue, electric cyan lightning, burnished antique bronze, atmospheric smoke
   master_prompt_prefix: masterpiece alternate history cinema still, breathtaking timeline divergence, dramatic chiaroscuro lighting, 70mm IMAX film aesthetic
   master_prompt_suffix: hyper-detailed textures of ancient stone and retro-futuristic machinery, epic atmosphere, photorealistic vertical 9:16, no watermark, no text
-  negative_prompts: modern plastic gadgets, cartoon, anime, 3d render, blurry, low resolution, watermark, text, signature
+  negative_prompts: modern plastic gadgets, syringe, hospital, medical needle, cartoon, anime, 3d render, blurry, low resolution, watermark, text, signature
   stock_video_keywords:
   - ancient army battlefield dramatic sky
   - giant zeppelin airship over metropolis
@@ -59,7 +67,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: -2%
+  rate: +7%
   pitch: -2Hz
   bgm_vibe: deep cinematic ticking clock, ominous orchestral brass, slow thunderous war drums
   sfx_cues:

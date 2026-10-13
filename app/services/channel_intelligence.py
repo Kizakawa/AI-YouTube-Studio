@@ -477,22 +477,21 @@ def get_channel_existing_portfolio(channel_id: str) -> Dict[str, Any]:
 def _get_global_trends_directive(niche_id: str) -> str:
     """Cung cấp xu hướng Shorts toàn cầu 2026 thịnh hành nhất theo từng ngách cụ thể."""
     nid = (niche_id or "").lower()
-    if any(k in nid for k in ("deep_sea", "ocean", "thalassophobia", "bien_sau", "abyss")):
+    if any(k in nid for k in ("deep_sea", "ocean", "thalassophobia", "bien_sau", "abyss", "mysteries")):
         return """
-🌍 2026 GLOBAL VIRAL SHORTS TRENDS (DEEP SEA & THALASSOPHOBIA):
-1. Visceral Thalassophobia (Proven Top Winner on Channel): Piercing submarine headlight beams illuminating pitch-black abyssal void; colossal unidentifiable bio-shapes looming in the deep. Hook must challenge the viewer directly: 'If you have thalassophobia, swipe away immediately...'
-2. Classified Declassified Hydrophone Acoustics: Real sonar audio anomalies recorded by NOAA/US Navy (The Bloop, Upsweep, Julia, Train) with decibel comparisons to living blue whales. Hook: 'In 1997, deep hydrophones recorded this classified signal 3,000 miles across the Pacific...'
-3. Underwater Toxic Lakes & Brine Pools: Subsea brine lakes beneath the ocean floor where salinity and methane instantly preserve or kill organisms, creating underwater shorelines. Hook: 'Deep beneath the ocean floor lies a toxic lake where creatures perish the second they touch the water...'
-4. Point Nemo Isolation: The oceanic pole of inaccessibility where the closest humans are astronauts on the ISS orbiting 400km above.
-CRITICAL CONSTRAINT: STRICTLY FORBIDDEN: Generic repetitive depth lists or dry textbook lectures. Ensure continuous exploration of new depth zones, hydrophone acoustic anomalies, toxic brine pools, and instinctive thalassophobia triggers.
+🌍 2026 GLOBAL VIRAL SHORTS TRENDS (MYSTERIES OF THE WORLD, SENSORY PARADOXES & DEEP ANOMALIES):
+1. Human Sensory & Biological Blind Spots (Proven Breakout on Channel - 140 to 190 Views, 89% APV): Why your eyes are biologically blind to 99% of reality; why the human mind starts hallucinating inside the world's quietest room (Orfield Anechoic Chamber) in 15 minutes; the Phantom Limb / Capgras neural paradox.
+2. Instinctive Thalassophobia & Unexplained Acoustic Signals (Proven #1 Winner - 1,242 Views): Why human DNA carries a primal fear of dark water; NOAA's classified hydrophone recordings (The Bloop, Julia, Upsweep).
+3. Sealed Subterranean Vaults & Forbidden Ecosystems: Movile Cave (sealed for 5.5 million years breathing toxic sulfur), Lake Vostok beneath 4km of Antarctic ice, Derinkuyu underground city.
+CRITICAL ANTI-CANNIBALIZATION CONSTRAINT: STRICTLY FORBIDDEN to use the overused phrase "11,000m", "11,000 meters", or "Mariana Trench"! Pivot to human sensory anomalies, sealed subterranean ecosystems, and acoustic mysteries!
 """
     elif any(k in nid for k in ("alternate_history", "what_if", "timeline", "temporal")):
         return """
 🌍 2026 GLOBAL VIRAL SHORTS TRENDS (ALTERNATE HISTORY & WHAT IF?):
-1. Massive Geopolitical & Imperial Turning Points: What if the Roman Empire never collapsed? What if the Library of Alexandria was preserved with 500,000 lost scrolls? What if the Mongol hordes did not retreat after Vienna?
+1. Massive Geopolitical & Imperial Turning Points (Proven Channel Winners): What if the Roman Empire never collapsed? What if the Library of Alexandria was preserved with 500,000 lost scrolls? What if the Mongol hordes did not retreat after Vienna?
 2. 1-Second Glitches That Rewrote History: The missed telegram before Pearl Harbor; the single wrong turn in Sarajevo in 1914; Alexander the Great surviving his fever at age 32.
-3. Financial & Industrial Titans Alternate Wealth: How Rockefeller turned an execution order into $400B; what if Mansa Musa's gold economy crashed Mediterranean trade permanently?
-STRICT CONSTRAINT: Strictly 100% historical counter-factual scenarios ("What If..."). ZERO psychology advice, ZERO modern medical/vaccine conspiracy, ZERO generic motivational talk!
+3. Mightiest Armies & Tactical Blunders: When history's most unstoppable armies collapsed from one single decision.
+STRICT CONSTRAINT: Strictly 100% historical counter-factual scenarios ("What If...") and empire clashes. ZERO psychology advice, ZERO modern medical/vaccine/injection topics, ZERO generic motivational talk!
 Hook Formula: 'What if one single second completely erased the modern world we know today?'
 """
     elif "mystery" in nid or "history" in nid:
@@ -506,26 +505,26 @@ Hook Formula: 'In [Year], archaeologists uncovered a sealed chamber that officia
     elif "animal" in nid or "rescue" in nid or "pet" in nid:
         return """
 🌍 2026 GLOBAL VIRAL SHORTS TRENDS (ANIMAL RESCUE & EMOTIONAL HEALING):
-1. 4-Phase Transformation Arc: Heartwarming transformation from trembling fear to ecstatic breakthrough (From hiding in silence to daring to make eye contact -> First gentle touch of human warmth -> Glowing recovery & joyous sprint in sunlight).
-2. The Breakthrough Moment: Stories where the pet stopped trembling and dared to rest its head on the rescuer's hand.
-3. Emotional Salvation: Highlighting unconditional loyalty and the sheer joy of finding a forever home.
-CRITICAL CONSTRAINT: STRICTLY FORBIDDEN: Overly gruesome, hopeless or depressing titles ('paralyzed street cat', 'shivering in rain for 7 days'). Khán giả lướt Shorts tìm kiếm hy vọng và sự chữa lành. Focus on hope, transformation, and unconditional love!
-Hook Formula: 'The exact second this terrified rescue dog realized he was finally safe...'
+1. Curiosity + Refusal To Give Up (Proven #1 Channel Winner - 2,282 Views & +32 Subs): 'He Refused to Let Go Until This Happened...' — Combining an intriguing opening mystery with a 50-second 4-stage emotional transformation arc.
+2. The Exact Breakthrough Moment (Proven #2 Winner - 1,205 Views & 94.8% APV): The exact second a terrified rescue puppy stopped shaking and dared to rest its head on the rescuer's hand.
+3. Joyful Recovery Payoff (45-56s): Full emotional journey from abandonment -> gentle rescue -> veterinary healing -> joyous sprint in a sunlit meadow.
+CRITICAL CONSTRAINT: STRICTLY FORBIDDEN to use bleak/depressing-only titles ('Frozen Puppy Found in Rain', 'Shivering Puppy Tied In Rain'). Every title MUST contain a curiosity gap or promise of transformation ('Until This Happened', 'The Exact Moment He Realized He Was Safe')!
+Hook Formula: 'He refused to let go of the rescuer's hand until they looked inside the box...'
 """
     elif "wildlife" in nid or "predator" in nid or "nature" in nid:
         return """
 🌍 2026 GLOBAL VIRAL SHORTS TRENDS (WILDLIFE & APEX PREDATORS):
-1. Extreme Asymmetric Combat Biomechanics: Orcas using tonic immobility on Great White Sharks; Honey Badger venom neurotoxin immunity vs Black Mamba & Lion Prides; Jaguar skull-crushing bite vs Black Caiman.
-2. Sensory Superpowers & Strike Physics: Cheetah elastic spine 70 mph acceleration in 3 seconds; Peregrine Falcon 240 mph air-dive aerodynamics; Mantis Shrimp cavitation bubble punch.
-STRICT NEGATIVE CONSTRAINT: Strictly 100% biological animal predator behaviors. ZERO space facts, zero deep sea fantasy, zero psychology! Keep audience bucket clean!
-Hook Formula: 'Why even a 15-foot Great White Shark turns and flees the instant an Orca enters the bay...'
+1. Head-to-Head Apex Predator Duels (Proven #1 Breakout Formula - 214 Views on Debut): Green Anaconda vs. Black Caiman; Orca vs. Great White Shark; Honey Badger vs. Lion Pride; Siberian Tiger vs. Grizzly Bear.
+2. Extreme Asymmetric Combat Biomechanics: Jaguar 1,500 PSI skull-crushing bite vs. armored caiman; Mantis Shrimp cavitation punch; Peregrine Falcon 240 mph dive physics.
+STRICT NEGATIVE CONSTRAINT: Strictly 100% biological animal predator behaviors and head-to-head matchups. ZERO sports/football teams (NO 'Bayern'), zero space facts, zero psychology!
+Hook Formula: 'Green Anaconda vs. Black Caiman — when these two river monsters collide, only one leaves alive...'
 """
     else:  # psychology / dark psychology / self-mastery
         return """
 🌍 2026 GLOBAL VIRAL SHORTS TRENDS (DARK PSYCHOLOGY & HUMAN BEHAVIOR):
-1. Stealth Dark Triad Detection: Micro-expressions of covert envy, conversational gaslighting traps, sudden eye pupil dilation when lying.
-2. High-Status Unblinking Silence: How calm, deliberate non-reaction flips power dynamics during public disrespect or pressure.
-3. Micro-Behavioral Tell Guides: '3 physical tells someone secretly resents your success', 'The 2-second shoulder freeze that reveals guilt'.
+1. Criminal & Manipulator Micro-Expressions (Proven 941-View Winner): Why serial killers and covert manipulators smile or freeze their eyes in specific high-stress moments.
+2. Personal Threat & Social Traps (Proven 514-View & 156% APV Winner): '3 Signs They're JUST Using You', 'The Deadliest Trap in Any Room'.
+3. High-Status Unblinking Silence: How calm, deliberate non-reaction flips power dynamics during public disrespect or interrogation.
 Hook Formula: 'If someone does this within the first 5 seconds of speaking to you, pay close attention...'
 """
 
@@ -769,58 +768,58 @@ Return ONLY a valid JSON array of objects with the following structure:
 
 def _get_curated_niche_fallbacks(niche_id: str, lang: str = "en") -> List[Dict[str, Any]]:
     """Kho ý tưởng dự phòng chất lượng cao cho từng ngách."""
-    if "mystery" in niche_id or "history" in niche_id:
+    if "mystery" in niche_id or "history" in niche_id or "deep_sea" in niche_id:
         return [
             {
                 "topic": "The 3 Underwater Sounds Recorded in Deep Oceans Science Can't Explain",
                 "title": "3 Deep Ocean Sounds Science CANNOT Explain 🌊📻 #Shorts",
                 "hook": "In 1997, oceanic sensors detected this terrifying subterranean creature sound...",
-                "angle": "The Bloop, Julia sound, Mariana acoustic anomalies",
-                "pinned_comment": "Do you believe there are unknown titanic leviathans in the abyss? 👇",
+                "angle": "The Bloop, Julia sound, acoustic anomalies across 3,000 miles",
+                "pinned_comment": "Do you believe there are unknown titanic leviathans in the deep? 👇",
                 "viral_formula": "Debate in Comments",
                 "predicted_retention": "160% - 170%",
                 "why_viral": "Ăn theo video 1.2K views 'Why You're Terrified of Deep Water' — khai thác âm thanh bí ẩn đại dương",
-                "fixes_flaw": "Khắc phục bão hòa hình ảnh đại dương bằng cách chuyển trọng tâm sang giải mã tệp âm thanh bí ẩn (The Bloop/Julia) có tần số thực nghiệm, giữ chân người nghe bằng thính giác.",
+                "fixes_flaw": "Khắc phục bão hòa hình ảnh 11,000m bằng cách chuyển trọng tâm sang giải mã tệp âm thanh bí ẩn (The Bloop/Julia) có tần số thực nghiệm, giữ chân người nghe bằng thính giác.",
                 "trend_alignment": "Đón đầu trào lưu Subterranean Acoustic Anomalies 2026 (âm thanh bí ẩn đáy đại dương thu hút hàng triệu lượt bàn tán toàn cầu)."
             },
             {
-                "topic": "The Real Reason Why Nobody is Allowed to Dive Under the Sphinx",
-                "title": "Why Divers Are BANNED Under The Great Sphinx 📜👁️ #Shorts",
-                "hook": "Under the right paw of the Sphinx lies a secret sealed underground chamber...",
-                "angle": "Acoustic seismology findings, Hall of Records, Egyptian secrecy",
-                "pinned_comment": "What do you think is hidden under the Sphinx? Drop your theories 👇",
+                "topic": "The Sealed Cave System Cut Off From Sunlight For 5.5 Million Years",
+                "title": "The Cave Sealed For 5,500,000 Years! 🕳️👁️ #Shorts",
+                "hook": "When scientists opened Movile Cave, they found creatures breathing pure toxic gas...",
+                "angle": "Movile Cave chemosynthesis, blind translucent species, zero oxygen survival",
+                "pinned_comment": "Would you dare step inside a cave sealed for 5 million years? 👇",
                 "viral_formula": "Curiosity Part 2",
                 "predicted_retention": "155% - 165%",
-                "why_viral": "Bí ẩn Ai Cập cổ đại muôn thuở kích thích người xem xem hết video",
-                "fixes_flaw": "Cắt đứt chuỗi 5 video đại dương liên tiếp gây topic fatigue, đổi sang chủ đề hầm ngầm cấm kỵ Ai Cập cổ đại để làm mới luồng phân phối của thuật toán.",
-                "trend_alignment": "Bí mật khảo cổ và mật thất bị niêm phong (Sealed Ancient Chambers) - chủ đề muôn thuở đứng đầu bảng xếp hạng tò mò toàn cầu."
+                "why_viral": "Bí ẩn hệ sinh thái bị phong tỏa hàng triệu năm kích thích tò mò khoa học cực mạnh",
+                "fixes_flaw": "Cắt đứt chuỗi video rãnh Mariana gây topic fatigue, đổi sang chủ đề hang động độc tố bị niêm phong để làm mới luồng phân phối của thuật toán.",
+                "trend_alignment": "Khám phá hệ sinh thái ngầm dị biệt trên Trái Đất (Forbidden Subterranean Ecosystems)."
             },
             {
-                "topic": "The Medieval Manuscript That Predicted Modern Technology in 1290",
-                "title": "The 1290 Monk Who PREDICTED Airplanes & Submarines 📜⚡ #Shorts",
-                "hook": "In 1290, a Franciscan friar wrote down machines that horrified the Church...",
-                "angle": "Roger Bacon prophecy, banned scientific texts, mechanical foresight",
-                "pinned_comment": "Was this divine inspiration or forbidden lost technology? 👇",
+                "topic": "Why Your Brain Fabricates Fake Memories Every Single Day",
+                "title": "Your Memory Is Lying To You Right Now 🧠⚡ #Shorts",
+                "hook": "Half of your vivid childhood memories never actually happened — here is why...",
+                "angle": "Mandela effect neurology, memory reconstruction glitch, sensory illusion",
+                "pinned_comment": "Have you ever remembered something vividly that never happened? 👇",
                 "viral_formula": "Debate in Comments",
                 "predicted_retention": "150% - 160%",
-                "why_viral": "Nghịch lý thời gian lịch sử khơi gợi sự tò mò tri thức cực cao",
-                "fixes_flaw": "Đa dạng hóa kho nội dung, chuyển từ bí ẩn biển sâu sang nghịch lý tiên tri lịch sử có tài liệu xác thực, kích thích tranh luận mạnh trong comment.",
-                "trend_alignment": "Nghịch lý thời gian và văn bản cổ tiên tri công nghệ (Historical Time Glitches & Prophecies)."
+                "why_viral": "Tiếp nối thành công của 'Your Eyes Are Biologically Blind' (140 views) & 'Absolute Silence' (190 views)",
+                "fixes_flaw": "Đánh trực diện vào giác quan và não bộ của chính người xem (Second-person sensory hook), đạt tỷ lệ Viewed > 75%.",
+                "trend_alignment": "Nghịch lý giác quan và ảo giác sinh học con người (Human Sensory Glitches)."
             }
         ]
     elif "animal" in niche_id or "rescue" in niche_id or "pet" in niche_id:
         return [
             {
-                "topic": "The Abandoned Golden Retriever Puppy Who Waited In The Freezing Rain For 48 Hours",
-                "title": "He Waited 48 Hours In The Freezing Rain... 💔🐾 #Shorts",
-                "hook": "He was dumped on this empty road, but still believed his owners would return...",
-                "angle": "Heartbreaking loyalty, trembling eyes, miracle rescue, glorious adoption transformation",
-                "pinned_comment": "Drop a ❤️ if you believe every stray animal deserves love! 👇",
+                "topic": "The Stray Puppy Who Refused To Let Go Of The Rescuer's Sleeve Until They Followed Him",
+                "title": "He Refused To Let Go Until They Followed Him 🥺🐾 #Shorts",
+                "hook": "This stray puppy bit onto a stranger's coat and refused to let go for a heartbreaking reason...",
+                "angle": "Urgent plea for help, leading rescuer to trapped littermates, full joyful adoption recovery",
+                "pinned_comment": "Drop a ❤️ if you believe every stray animal deserves a miracle! 👇",
                 "viral_formula": "Emotional Rollercoaster & Tears to Joy",
                 "predicted_retention": "170% - 185%",
-                "why_viral": "Đánh trúng lòng trắc ẩn tột cùng, người xem thả tim và bình luận cầu phúc cực kỳ mạnh",
-                "fixes_flaw": "Tạo cao trào thị giác và cảm xúc đối nghịch cực đại (giữa sự lạnh lẽo bơ vơ và vòng tay ấm áp), giải quyết nhược điểm video mở đầu quá nhẹ nhàng.",
-                "trend_alignment": "Cấu trúc biến đổi 3 giai đoạn (Before & After Emotional Transformation) đạt tỷ lệ thả tim và chia sẻ cao nhất YouTube Shorts."
+                "why_viral": "Nhân bản trực tiếp công thức video #1 của kênh 'He Refused to Let Go Until This Happened' (2,282 views, +32 subs)",
+                "fixes_flaw": "Thay thế các tiêu đề bi lụy đơn thuần ('Frozen Puppy in Rain') bằng mồi câu tò mò chủ động ('He Refused To Let Go Until...'), kéo dài thời lượng 50-55s có Payoff hạnh phúc.",
+                "trend_alignment": "Cấu trúc biến đổi 4 giai đoạn (4-Stage Emotional Transformation Arc) đạt tỷ lệ chuyển đổi Subscribe cao nhất."
             },
             {
                 "topic": "The Exact Moment An Abused Shelter Dog Realizes He Will Never Be Hurt Again",
@@ -830,8 +829,8 @@ def _get_curated_niche_fallbacks(niche_id: str, lang: str = "en") -> List[Dict[s
                 "pinned_comment": "Have you ever rescued an animal? Tell us their name below! 👇",
                 "viral_formula": "Double Tap & Healing Empathy",
                 "predicted_retention": "165% - 175%",
-                "why_viral": "Video chữa lành tâm hồn, tỷ lệ lưu lại (Save/Share) cao nhất trong các thể loại Shorts",
-                "fixes_flaw": "Tập trung vào vi biểu cảm ánh mắt sợ hãi chuyển sang tin tưởng của thú cưng, khắc phục sự dàn trải nội dung, kéo dài thời gian giữ chân (AVD > 85%).",
+                "why_viral": "Nhân bản công thức video #2 của kênh (1,205 views, 94.8% APV) — chữa lành tâm hồn",
+                "fixes_flaw": "Tập trung vào vi biểu cảm ánh mắt sợ hãi chuyển sang tin tưởng của thú cưng, kéo dài thời gian giữ chân (AVD > 45s).",
                 "trend_alignment": "Nội dung chữa lành tâm hồn (Healing & Empathy) có tỷ lệ lưu lại (Save) cao nhất trên nền tảng."
             },
             {
@@ -843,7 +842,7 @@ def _get_curated_niche_fallbacks(niche_id: str, lang: str = "en") -> List[Dict[s
                 "viral_formula": "Debate in Comments & Heroic Miracle",
                 "predicted_retention": "160% - 170%",
                 "why_viral": "Câu chuyện động vật cứu nhau luôn đạt triệu view nhờ tính kỳ tích phi thường",
-                "fixes_flaw": "Tạo tình huống khẩn cấp giật gân (nguy hiểm giao thông) ngay giây đầu tiên, chặn đứng tỷ lệ lướt qua (Swipe Away Rate).",
+                "fixes_flaw": "Tạo tình huống khẩn cấp giật gân ngay giây đầu tiên, chặn đứng tỷ lệ lướt qua (Swipe Away Rate).",
                 "trend_alignment": "Kỳ tích động vật cứu nhau xuyên loài (Cross-species rescue miracle) luôn chạm mốc triệu view thế giới."
             }
         ]

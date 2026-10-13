@@ -6,17 +6,15 @@ target_audience: Khán giả quốc tế mê mẩn bí ẩn đại dương, thá
   học kỳ dị, hiện tượng siêu nhiên tự nhiên và các câu chuyện rùng mình kích thích
   trí tò mò.
 script_blueprint:
-  tone_of_voice: Kỳ bí, rùng mình (Eerie), giật gân, nhịp thở dồn dập như đang ngồi
-    trong tàu lặn tiến vào bóng tối rãnh Mariana, khiến người xem lạnh gáy nhưng không
-    thể rời mắt.
-  pacing: Thời lượng tối ưu 38 - 48 giây (7 - 9 cảnh, 95 - 125 từ), nhịp điệu bí ẩn dồn dập, đẩy mạnh AWT qua mốc 25 giây để kích hoạt phân phối YouTube Shorts.
-  narrative_structure: Hook sợ hãi nguyên thủy 3s -> Dẫn chứng khoa học / Sonar âm thanh rợn người -> Hiện tượng bất thường đáy biển -> Cú sốc nhận thức / Giác quan con người -> Infinite Seamless Loop
+  tone_of_voice: "Kỳ bí, rùng mình (Eerie), giật gân, nhịp thở dồn dập đánh trực diện vào giác quan và nỗi sợ nguyên thủy của người xem, khiến họ lạnh gáy nhưng không thể rời mắt."
+  pacing: 'Thời lượng tối ưu 36 - 46 giây (7 - 9 cảnh, 85 - 120 từ), nhịp điệu bí ẩn dồn dập. Cảnh 1 là Hook 3s trực diện, Cảnh 4 là Mid-Video Re-Hook lật mở cơ chế khoa học kỳ dị, Cảnh 5-7 là Payoff giải mã chấn động.'
+  narrative_structure: 'Hook nghịch lý giác quan / nỗi sợ nguyên thủy 3s -> Dẫn chứng khoa học / Hiện tượng vật lý kỳ dị -> Mid-Video Re-Hook (Cảnh 4 - Bằng chứng thực nghiệm không ngờ tới) -> Cú sốc nhận thức giải mã toàn bộ bí ẩn (Payoff Cảnh 5-7) -> Infinite Seamless Loop'
   hook_formulas:
-  - 'Instinctive Thalassophobia: ''Your brain has a terrifying biological reason to fear open deep water. Here is what your senses are trying to warn you...'''
-  - 'Classified Hydrophone Recording: ''In 1997, deep ocean sensors detected a classified sound 3,000 miles across the Pacific. It was 10 times louder than any known creature...'''
-  - 'Underwater Brine Lakes: ''Deep beneath the ocean floor lies an underwater toxic lake where sea creatures die instantly upon entering...'''
-  - 'Point Nemo Isolation: ''You are closer to astronauts orbiting in space than any human being on Earth when you reach this oceanic coordinate...'''
-  - 'Abyssal Pressure Shock: ''Under 1,000 atmospheres of crushing pressure where human steel crumbles, deep probes detected an unexplainable rhythmic heartbeat...'''
+  - 'Instinctive Phobia Hook (Proven 1,242 Views): ''Your brain has a terrifying biological reason to fear dark water — here is what your instincts know...'''
+  - 'Sensory Paradox Hook (Proven 190 Views): ''Inside the world''s quietest room, the human mind starts hallucinating in less than 15 minutes...'''
+  - 'Biological Blind Spot (Proven 140 Views): ''Your eyes are biologically blind to 99% of reality — and your brain is fabricating what you see right now...'''
+  - 'Classified Hydrophone Recording: ''In 1997, oceanic sensors recorded a classified acoustic anomaly 3,000 miles across the Pacific...'''
+  - 'Subterranean Forbidden Zone: ''Deep inside this sealed cave system, scientists discovered an ecosystem cut off from sunlight for 5 million years...'''
   forbidden_words:
   - Welcome back to our channel
   - Today we will explore
@@ -24,27 +22,34 @@ script_blueprint:
   - The ocean is very big and deep
   - In this video
   cta_templates:
-  - And in the black abyss where light never reaches, the silence is louder than any living voice. Subscribe to uncover what lurks in the deep.
-  - Whatever is lurking ten thousand meters below, it has been waiting long before humanity arrived. Subscribe to unlock the next classified anomaly.
-  - The classified recording abruptly ends here. Subscribe to uncover the truth they tried to seal away.
+  - And in the places where human senses fail, reality is stranger than nightmare. Subscribe to uncover the next unexplained phenomenon.
+  - What your eyes see is only a fraction of what hides in the dark. Subscribe to unlock the world's strangest mysteries.
+  - The official investigation abruptly ends here. Subscribe to uncover the anomalies science still cannot explain.
   anti_hallucination_rules:
-  - Dựa trên các địa danh và hiện tượng có thật (Mariana Trench, Challenger Deep,
-    Point Nemo, The Bloop 1997, Baltic Sea Anomaly, Kola Borehole).
-  - Phân biệt rõ ràng giữa 'ghi nhận khoa học/sonar' và 'truyền thuyết quái vật biển
-    bí ẩn'.
+  - Dựa trên các hiện tượng khoa học, giác quan sinh học và địa danh có thật (Anechoic Chamber, Biological Blind Spot, Point Nemo, The Bloop 1997, Movile Cave, Lake Vostok, Hal Saflieni, Kola Borehole).
+  - NGHIÊM CẤM LẶP LẠI CỤM TỪ '11,000m', '11,000 meters', hoặc 'Mariana Trench' vốn đã bị bão hòa trên kênh — hãy chủ động xoay vòng sang bí ẩn giác quan con người, hầm ngầm bị phong tỏa, âm thanh tần số lạ và dị thường địa chất!
+  - Phân biệt rõ ràng giữa 'ghi nhận khoa học/thực nghiệm' và 'giả thuyết'.
+  banned_lexicon: &id001
+  - 11,000m
+  - 11000m
+  - 11,000 meters
+  - football
+  - soccer
+  - cryptocurrency
+banned_lexicon: *id001
 visual_aesthetics:
-  art_style: Cinematic Oceanographic Exploration & Bioluminescent Wonder (James Cameron / BBC Blue Planet HDR)
-  color_palette: Luminous oceanic sapphire, radiant bioluminescent cyan (#06b6d4), vivid coral emerald (#10b981), piercing submarine xenon amber (#f59e0b), deep abyssal midnight navy (#020617)
-  camera_angles: Sweeping submarine viewport gliding over illuminated trench, macro close-up glowing alien organism, epic underwater cave opening to sunlight, high-tech sonar HUD scan
-  master_prompt_prefix: masterpiece cinematic ocean exploration film still, crystalline water clarity, vibrant glowing bioluminescent flora and fauna, piercing high-power xenon submarine beams illuminating monumental underwater abyss, 8k vertical 9:16
-  master_prompt_suffix: hyper-realistic water caustics, radiant volumetric light rays, National Geographic 8k underwater cinematography, photorealistic vertical 9:16, no text, no watermark
+  art_style: Cinematic Mystery Exploration, Sensory Sci-Documentary & Bioluminescent Wonder (BBC Horizon / James Cameron HDR)
+  color_palette: Luminous oceanic sapphire, radiant bioluminescent cyan (#06b6d4), vivid coral emerald (#10b981), piercing xenon amber (#f59e0b), deep abyssal midnight navy (#020617)
+  camera_angles: Sweeping viewport gliding over mysterious cavern, macro close-up human pupil dilating in darkness, epic subterranean chamber opening to light beam, high-tech acoustic frequency HUD scan
+  master_prompt_prefix: masterpiece cinematic mystery documentary film still, crystalline clarity, dramatic volumetric light beams piercing deep shadow, high-contrast scientific realism, 8k vertical 9:16
+  master_prompt_suffix: hyper-realistic textures, radiant volumetric light rays, National Geographic 8k cinematography, photorealistic vertical 9:16, no text, no watermark
   negative_prompts: blurry, low resolution, cartoon, anime, plastic, distorted, watermark, text
   stock_video_keywords:
   - submarine exploration light beam
   - bioluminescent jellyfish glowing
-  - deep ocean trench underwater
-  - diver exploring underwater cave
-  - majestic whale swimming deep blue
+  - deep cave exploration light rays
+  - human eye macro pupil dilating
+  - sound wave frequency visualizer dark
   - underwater hydrothermal vent
 subtitles:
   font_family: Montserrat, Arial Black, sans-serif
@@ -56,7 +61,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-BrianNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: +3%
+  rate: +5%
   pitch: -2Hz
-  bgm_vibe: deep ambient sub-bass drone, eerie metallic submarine groaning, low sonar
+  bgm_vibe: deep ambient sub-bass drone, eerie acoustic resonance, low sonar
     ping, tense orchestral heartbeat

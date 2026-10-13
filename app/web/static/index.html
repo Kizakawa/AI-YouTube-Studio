@@ -374,13 +374,14 @@
                     <div class="form-group" style="flex:1; min-width:180px;">
                         <label class="form-label" for="trends-geo">Khu Vực & Thị Trường</label>
                         <select id="trends-geo" class="form-input" onchange="fetchLiveTrends()">
-                            <option value="VN" selected>🇻🇳 Việt Nam (trends.google.com/vn)</option>
-                            <option value="US">🇺🇸 Hoa Kỳ / Toàn Cầu (trends.google.com/us)</option>
+                            <option value="US" selected>🇺🇸 Hoa Kỳ / Toàn Cầu (trends.google.com/us)</option>
+                            <option value="BR">🇧🇷 Brazil (trends.google.com/br)</option>
+                            <option value="VN">🇻🇳 Việt Nam (trends.google.com/vn)</option>
                         </select>
                     </div>
                     <div class="form-group" style="flex:2; min-width:220px;">
                         <label class="form-label" for="trends-channel">Kênh Mục Tiêu & Ngách Nội Dung</label>
-                        <select id="trends-channel" class="form-input" onchange="generateTrendBridges()">
+                        <select id="trends-channel" class="form-input" onchange="onTrendsChannelChange()">
                             <option value="">-- Đang nạp danh sách kênh... --</option>
                         </select>
                     </div>
@@ -418,15 +419,16 @@
                 <div class="panel-card">
                     <div class="panel-header">
                         <h3>🚀 Ý Tưởng Bắt Trend Sang Kênh (Viral Concepts)</h3>
-                        <span class="badge badge-purple">Gemini Optimized</span>
+                        <span class="badge badge-purple">Gemini Anti-Flop Engine</span>
                     </div>
+                    <div id="bridge-portfolio-banner" style="display:none; margin-bottom:12px; padding:10px 12px; border-radius:10px; background:rgba(59,130,246,0.08); border:1px solid rgba(59,130,246,0.25); font-size:12px; line-height:1.5;"></div>
                     <div id="bridge-loading-spinner" style="text-align:center; padding:30px; display:none;">
                         <span class="loading-spinner"></span>
-                        <div style="font-size:12px; color:var(--text-muted); margin-top:8px;">AI đang phân tích tâm lý số đông & tạo concept...</div>
+                        <div style="font-size:12px; color:var(--text-muted); margin-top:8px;">AI đang phân tích tâm lý số đông & đối chiếu lịch sử kênh...</div>
                     </div>
                     <div id="bridge-list-container" style="display:flex; flex-direction:column; gap:14px; max-height:680px; overflow-y:auto; padding-right:4px;">
                         <div style="text-align:center; padding:40px 20px; color:var(--text-muted); font-size:13px;">
-                            Bấm nút <strong>"⚡ Bắc Cầu Bắt Trend (AI)"</strong> hoặc chọn 1 từ khoá xu hướng bên trái để AI tự động chuyển hóa thành ý tưởng video viral cho kênh của bạn!
+                            Bấm nút <strong>"⚡ Bắc Cầu Bắt Trend (AI)"</strong> hoặc chọn 1 từ khoá xu hướng bên trái để AI tự động chuyển hóa thành ý tưởng video viral chuẩn ngôn ngữ kênh của bạn!
                         </div>
                     </div>
                 </div>
@@ -449,39 +451,89 @@
                             </button>
                         </div>
                     </div>
-                    <span class="badge badge-purple">Powered by Gemini & OpenMontage Architecture</span>
+                    <span class="badge badge-purple">Powered by Gemini & Anti-Flop Retention Engine</span>
                 </div>
 
                 <!-- FORM 1: TẠO TỰ DO (STANDARD) -->
                 <div class="create-form" id="create-script-form">
                     <div class="form-row">
-                        <div class="form-group" style="flex:3;">
-                            <label class="form-label" for="input-topic">Chủ đề video <span class="required">*</span></label>
-                            <input type="text" id="input-topic" class="form-input" placeholder="Ví dụ: 3 bí ẩn tâm lý đen tối bạn cần biết" autocomplete="off">
-                            <div class="quick-topic-pills" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; align-items:center;">
-                                <span style="font-size:11px; color:var(--text-muted); font-weight:600;">💡 Gợi ý nhanh:</span>
-                                <button type="button" class="btn-chip" onclick="fillQuickTopic('3 Dark Psychology Tricks You Must Know')" style="font-size:11px; padding:3px 9px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#94a3b8; cursor:pointer; transition:all 0.2s;" onmouseover="this.style.color='#fff'; this.style.borderColor='var(--accent-cyan)'" onmouseout="this.style.color='#94a3b8'; this.style.borderColor='rgba(255,255,255,0.12)'">🔥 3 Dark Psychology Tricks</button>
-                                <button type="button" class="btn-chip" onclick="fillQuickTopic('What Lies at the Deepest Ocean Trench')" style="font-size:11px; padding:3px 9px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#94a3b8; cursor:pointer; transition:all 0.2s;" onmouseover="this.style.color='#fff'; this.style.borderColor='var(--accent-cyan)'" onmouseout="this.style.color='#94a3b8'; this.style.borderColor='rgba(255,255,255,0.12)'">🌊 Deepest Ocean Trench</button>
-                                <button type="button" class="btn-chip" onclick="fillQuickTopic('The Most Brutal Apex Predator in Nature')" style="font-size:11px; padding:3px 9px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#94a3b8; cursor:pointer; transition:all 0.2s;" onmouseover="this.style.color='#fff'; this.style.borderColor='var(--accent-cyan)'" onmouseout="this.style.color='#94a3b8'; this.style.borderColor='rgba(255,255,255,0.12)'">🦅 Brutal Apex Predator</button>
-                                <button type="button" class="btn-chip" onclick="fillQuickTopic('Heartwarming Stray Dog Rescue Transformation')" style="font-size:11px; padding:3px 9px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#94a3b8; cursor:pointer; transition:all 0.2s;" onmouseover="this.style.color='#fff'; this.style.borderColor='var(--accent-cyan)'" onmouseout="this.style.color='#94a3b8'; this.style.borderColor='rgba(255,255,255,0.12)'">🐾 Dog Rescue Story</button>
-                            </div>
-                        </div>
-                        <div class="form-group" style="flex:1;">
-                            <label class="form-label" for="input-language">Ngôn ngữ</label>
-                            <select id="input-language" class="form-input">
-                                <option value="en" selected>🇺🇸 English (Mặc định)</option>
-                                <option value="vi">🇻🇳 Tiếng Việt</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group" style="flex:1;">
+                        <div class="form-group" style="flex:2;">
                             <label class="form-label" for="input-channel">Kênh mục tiêu & Gmail quản lý</label>
                             <select id="input-channel" class="form-input">
                                 <option value="">-- Đang tải danh sách kênh & Gmail... --</option>
                             </select>
                         </div>
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label" for="input-language">Ngôn ngữ xuất bản</label>
+                            <select id="input-language" class="form-input">
+                                <option value="en" selected>🇺🇸 English (US/Global)</option>
+                                <option value="pt-BR">🇧🇷 Português (Brasil)</option>
+                                <option value="vi">🇻🇳 Tiếng Việt</option>
+                            </select>
+                        </div>
                     </div>
+
+                    <!-- BẢNG GỢI Ý Ý TƯỞNG THÔNG MINH THEO DNA KÊNH (AI IDEA STUDIO) -->
+                    <div id="channel-ai-idea-studio" style="margin: 10px 0 16px; padding: 14px 16px; border-radius: 12px; background: linear-gradient(135deg, rgba(16,185,129,0.07), rgba(59,130,246,0.08), rgba(139,92,246,0.08)); border: 1px solid rgba(59,130,246,0.28);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                            <div>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="font-size:18px;">🧠</span>
+                                    <strong style="color:#f8fafc; font-size:14px;">Trợ Lý Gợi Ý Ý Tưởng Độc Quyền Theo DNA Kênh (Anti-Flop & Anti-Duplicate)</strong>
+                                    <span class="badge badge-green" style="font-size:10.5px;">Retention &gt; 85%</span>
+                                </div>
+                                <div style="font-size:12px; color:var(--text-secondary); margin-top:3px;">
+                                    AI tự động đối chiếu <strong>Video Top 1</strong>, loại bỏ các <strong>Chủ đề đã bão hòa</strong> trên kênh và đề xuất 5 ý tưởng mới kèm Hook 3s + chữ Thumbnail.
+                                </div>
+                            </div>
+                            <div style="display:flex; gap:8px; align-items:center;">
+                                <button type="button" class="btn btn-primary btn-sm" id="btn-suggest-channel-ideas" onclick="fetchSmartChannelIdeas()" style="background:linear-gradient(135deg,#10b981,#3b82f6); border:none; font-weight:700; padding:8px 14px; box-shadow:0 4px 14px rgba(16,185,129,0.25);">
+                                    ✨ Gợi Ý 5 Ý Tưởng Triệu View Cho Kênh Này
+                                </button>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="switchTab('trends')" style="font-size:11.5px; padding:7px 12px;">
+                                    🔥 Bắt Trend Google
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Banner tóm tắt DNA Kênh & Chủ đề bão hòa -->
+                        <div id="channel-dna-summary-bar" style="display:none; margin-top:12px; padding:10px 12px; border-radius:8px; background:rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.08); font-size:12px; line-height:1.5;"></div>
+
+                        <!-- Spinner khi đang phân tích -->
+                        <div id="channel-ideas-loading" style="display:none; text-align:center; padding:22px 10px;">
+                            <span class="loading-spinner"></span>
+                            <div style="font-size:12px; color:#93c5fd; margin-top:8px;">AI đang quét lịch sử video của kênh, lọc khái niệm bão hòa và thiết kế 5 ý tưởng đột phá...</div>
+                        </div>
+
+                        <!-- Danh sách 5 thẻ ý tưởng -->
+                        <div id="channel-ideas-grid" style="display:none; grid-template-columns:repeat(auto-fit, minmax(290px, 1fr)); gap:12px; margin-top:12px;"></div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label" for="input-topic">Chủ đề video / Tiêu đề mục tiêu <span class="required">*</span></label>
+                            <input type="text" id="input-topic" class="form-input" placeholder="Nhập chủ đề hoặc bấm '✨ Gợi Ý 5 Ý Tưởng Triệu View' ở trên để nạp tự động..." autocomplete="off">
+                            <div class="quick-topic-pills" id="quick-topic-pills-bar" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; align-items:center;">
+                                <span style="font-size:11px; color:var(--text-muted); font-weight:600;">💡 Công thức thắng lợi theo ngách:</span>
+                                <button type="button" class="btn-chip" onclick="fillQuickTopic('The 4-Second Silence Trick That Forces Anyone to Respect You', 'Hook 0-3s: The next time someone interrupts you, stare at their forehead and count to four in dead silence. | Thumbnail: COUNT TO 4...')" style="font-size:11px; padding:3px 9px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#94a3b8; cursor:pointer; transition:all 0.2s;">🧠 Dark Psych: 4-Second Silence</button>
+                                <button type="button" class="btn-chip" onclick="fillQuickTopic('Why Sound Drops to Zero at 3,600 Meters Under Antarctica (Lake Vostok)', 'Hook 0-3s: At 3,600 meters beneath the Antarctic ice sheet, sonar did not just fade—something absorbed it completely. | Thumbnail: 3,600M ICE ANOMALY')" style="font-size:11px; padding:3px 9px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#94a3b8; cursor:pointer; transition:all 0.2s;">🌊 Deep Earth: 3,600m Lake Vostok</button>
+                                <button type="button" class="btn-chip" onclick="fillQuickTopic('Por Que Até a Onça Recua Diante de 100 Queixadas Furiosos na Amazônia', 'Hook 0-3s: Um único queixada é presa fácil, mas quando 100 batem os dentes juntos na mata fechada, o caçador vira a caça em 3 segundos. | Thumbnail: 100 CONTRA 1!')" style="font-size:11px; padding:3px 9px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#94a3b8; cursor:pointer; transition:all 0.2s;">🐆 Wild BR: 100 Queixadas vs Onça</button>
+                                <button type="button" class="btn-chip" onclick="fillQuickTopic('Wait For the Moment This Paralyzed Street Puppy Realizes His Wheelchair Works', 'Hook 0-3s: He dragged his back legs through alley mud for 4 months—watch his ears the exact second the wheels touch the grass. | Thumbnail: HIS FIRST RUN!')" style="font-size:11px; padding:3px 9px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#94a3b8; cursor:pointer; transition:all 0.2s;">🐾 Paws: Puppy First Wheelchair Run</button>
+                                <button type="button" class="btn-chip" onclick="fillQuickTopic('What If the Library of Alexandria Never Burned Down? (Mars by 1650)', 'Hook 0-3s: Look at your smartphone—if one fire in 48 BC had been stopped, humans would have landed on Mars by the year 1650. | Thumbnail: MARS IN 1650?!')" style="font-size:11px; padding:3px 9px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#94a3b8; cursor:pointer; transition:all 0.2s;">⏳ What If: Library of Alexandria</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label" for="input-director-notes" style="display:flex; justify-content:space-between; align-items:center;">
+                                <span>🎬 Chỉ Đạo Đạo Diễn AI (Hook 3s đầu, Chữ Thumbnail, Công thức giữ chân - Tùy chọn)</span>
+                                <span style="font-size:11px; color:#38bdf8; font-weight:500;">Tự động điền khi chọn Ý tưởng AI</span>
+                            </label>
+                            <textarea id="input-director-notes" class="form-input" rows="2" placeholder="Ví dụ: Hook 3s đầu mở bằng con số cụ thể; nhịp cắt cảnh 3.5 giây/scene; câu hỏi ghim bình luận gây tranh luận..." style="resize:vertical; min-height:54px; font-size:12.5px;"></textarea>
+                        </div>
+                    </div>
+
                     <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:8px;">
                         <button class="btn btn-primary btn-lg" id="btn-create-script" onclick="createScript()" style="flex:2; min-width:240px;">
                             <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
@@ -514,6 +566,7 @@
                             <label class="form-label" for="input-clone-source-lang">Ngôn ngữ nguồn</label>
                             <select id="input-clone-source-lang" class="form-input">
                                 <option value="en" selected>🇺🇸 Tiếng Anh (YouTube Shorts US)</option>
+                                <option value="pt-BR">🇧🇷 Português (Brasil)</option>
                                 <option value="vi">🇻🇳 Tiếng Việt</option>
                             </select>
                         </div>
@@ -565,6 +618,7 @@
                                 <label class="form-label" for="input-clone-target-lang">Ngôn ngữ kịch bản mới</label>
                                 <select id="input-clone-target-lang" class="form-input">
                                     <option value="en" selected>🇺🇸 English (Mặc định)</option>
+                                    <option value="pt-BR">🇧🇷 Português (Brasil)</option>
                                     <option value="vi">🇻🇳 Tiếng Việt</option>
                                 </select>
                             </div>
@@ -1552,15 +1606,18 @@ Ví dụ Căn Theo Mốc:
 
             <!-- 5. TOP VIRAL RECOMMENDED TOPICS -->
             <div class="panel-card">
-                <div class="panel-header">
+                <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div>
                         <h3 style="display:flex; align-items:center; gap:8px;">
-                            <span>💡</span> Top Chủ Đề AI Đề Xuất Để Nhân Bản Video "Bùng Nổ" (Winning Angles)
+                            <span>💡</span> Top Chủ Đề AI Đề Xuất Để Nhân Bản Video "Bùng Nổ" (Winning Angles & Anti-Flop)
                         </h3>
-                        <p style="font-size:12.5px; color:var(--text-muted); margin-top:3px;">
-                            Các chủ đề và câu Hook có xác suất viral cao nhất được học từ video 471 views của bạn
+                        <p id="analytics-winning-subtitle" style="font-size:12.5px; color:var(--text-muted); margin-top:3px;">
+                            Các chủ đề và câu Hook 3s có xác suất giữ chân &gt;85% được cá nhân hóa theo ngách và ngôn ngữ của kênh đang chọn
                         </p>
                     </div>
+                    <button type="button" class="btn btn-primary btn-sm" id="btn-analytics-live-ideas" onclick="generateFreshAnalyticsTopics()" style="background:linear-gradient(135deg,#10b981,#3b82f6); border:none; font-weight:700; padding:8px 14px;">
+                        ✨ AI Sinh Thêm 5 Ý Tưởng Độc Quyền (Live Gemini)
+                    </button>
                 </div>
                 <div id="recommended-topics-container" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:14px; margin-top:10px;">
                     <!-- Dynamic topic cards -->

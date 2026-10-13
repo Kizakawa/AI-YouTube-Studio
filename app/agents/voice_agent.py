@@ -130,6 +130,40 @@ class VoiceAgent:
             return "en-US-AndrewNeural"
         return voice
 
+    @staticmethod
+    def resolve_optimal_tts_rate(voice: str, niche: Optional[str] = None, explicit_rate: Optional[str] = None) -> str:
+        """
+        Xác định tốc độ đọc TTS tối ưu (Retention-Calibrated Pacing) theo từng ngách và giọng đọc:
+        - animal_rescue (JennyNeural): +3% (ấm áp, lắng đọng cảm xúc, giữ trọn 45-55s cho 4 giai đoạn chuyển hóa).
+        - deep_sea_earth_mysteries (BrianNeural): +5% (bí ẩn, rùng mình, có nhịp nhấn).
+        - psychology / wildlife_predators / alternate_history: +8% (sắc bén, cuốn hút, rõ chữ, không bị vội như +12%).
+        """
+        if explicit_rate:
+            return explicit_rate
+
+        nid = (niche or "").strip().lower()
+        if nid:
+            try:
+                from app.services.niche_manager import get_niche
+                profile = get_niche(nid)
+                audio_cfg = profile.get("audio", {})
+                cfg_rate = audio_cfg.get("tts_rate") or audio_cfg.get("rate")
+                if cfg_rate and isinstance(cfg_rate, str) and cfg_rate.endswith("%"):
+                    return cfg_rate
+            except Exception:
+                pass
+
+        v_low = (voice or "").lower()
+        if "rescue" in nid or "animal" in nid or "jenny" in v_low or "hoaimy" in v_low:
+            return "+3%"
+        if "deep_sea" in nid or "mystery" in nid or "brian" in v_low:
+            return "+5%"
+        if v_low.startswith("vi-"):
+            return "+6%"
+        if v_low.startswith("pt-"):
+            return "+7%"
+        return "+8%"
+
     # ──────────────────────────────────────────
     # PUBLIC API — Gọi từ Pipeline Orchestrator
     # ──────────────────────────────────────────
@@ -140,6 +174,7 @@ class VoiceAgent:
         output_dir: str,
         voice: str = None,
         rate: Optional[str] = None,
+        niche: Optional[str] = None,
     ) -> List[SceneContract]:
         """
         Sinh MP3 cho từng scene. Trả về list SceneContract đã enriched
@@ -219,7 +254,7 @@ class VoiceAgent:
                 for c_voice in candidate_voices:
                     for attempt in range(3):
                         try:
-                            tts_rate = rate or ("+7%" if c_voice.startswith("vi-") else ("+9%" if c_voice.startswith("pt-") else "+12%"))
+                            tts_rate = self.resolve_optimal_tts_rate(c_voice, niche=niche, explicit_rate=rate)
                             try:
                                 communicate = edge_tts.Communicate(clean_text, c_voice, rate=tts_rate, boundary="WordBoundary")
                                 await communicate.save(scene_audio_path, metadata_fname=words_meta_path)

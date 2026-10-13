@@ -198,15 +198,17 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
         narr1 = scene1.get("narration", "").lower()
         words1 = narr1.split()
         has_hook_words = any(w in narr1 for w in [
-            "bí mật", "sự thật", "không ai biết", "kinh hoàng", "nguy hiểm", "thực sự", 
-            "secret", "never", "truth", "shocking", "why", "if you", "swipe", "classified", 
-            "tại sao", "đừng", "vực sâu", "abyss", "terrified", "fear"
+            "bí mật", "sự thật", "không ai biết", "kinh hoàng", "nguy hiểm", "thực sự",
+            "secret", "never", "truth", "shocking", "why", "if you", "swipe", "classified",
+            "tại sao", "đừng", "vực sâu", "abyss", "terrified", "fear", "refused", "until",
+            "moment", "signs", "what if", "vs", "only", "second", "realized", "stop", "trap",
+            "blind", "silence"
         ])
         is_short_hook = len(words1) <= 12
         hook_score = 9.0 if (has_hook_words and is_short_hook) else (7.5 if has_hook_words or is_short_hook else 6.0)
 
-        # Kiểm tra nhịp điệu (khoảng 80 - 115 từ cho 8-10 cảnh, thời lượng vàng 35-45s)
-        pace_score = 8.5 if 70 <= total_words <= 125 and 6 <= scene_count <= 12 else 6.5
+        # Kiểm tra nhịp điệu (khoảng 75 - 140 từ cho 6-11 cảnh, thời lượng vàng 35-55s có Payoff)
+        pace_score = 8.5 if 75 <= total_words <= 140 and 6 <= scene_count <= 11 else 6.5
 
         # Kiểm tra thực thể
         ent_score = 8.5
@@ -216,12 +218,12 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
 
         vis_score = 8.5
 
-        # Kiểm tra vòng lặp vô tận (Seamless Loop) ở cảnh cuối
+        # Kiểm tra vòng lặp vô tận (Seamless Loop) & CTA ở cảnh cuối
         last_scene = scenes[-1] if scenes else {}
         last_narr = last_scene.get("narration", "").strip().lower()
         has_loop_context = any(w in last_narr for w in [
             "which leads to", "that's how", "it all started", "this is why", "all began",
-            "chính là lý do", "bắt đầu từ", "và đó là lúc", "và tất cả"
+            "subscribe", "follow", "comment", "chính là lý do", "bắt đầu từ", "đăng ký", "theo dõi"
         ]) or (len(last_narr.split()) >= 4 and last_narr[-1:] in (".", "!", "?"))
         loop_score = 8.5 if has_loop_context else 7.0
 
@@ -229,11 +231,11 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
 
         critiques = []
         if hook_score < 8.0:
-            critiques.append("Cảnh 1 cần mở đầu giật gân, tạo sự tò mò sốc hoặc tâm lý nghịch đảo trong 3 giây đầu (dưới 8-10 từ).")
+            critiques.append("Cảnh 1 cần mở đầu giật gân, tạo sự tò mò sốc hoặc tâm lý nghịch đảo trong 3 giây đầu (5-12 từ).")
         if pace_score < 8.0:
-            critiques.append("Độ dài kịch bản chưa tối ưu cho Shorts (cần khoảng 80-115 từ chia đều cho 8-10 cảnh, tổng thời lượng 35-45 giây để tối đa tỷ lệ xem hết AVD).")
+            critiques.append("Độ dài kịch bản chưa tối ưu cho Shorts (cần khoảng 85-130 từ chia đều cho 7-10 cảnh, tổng thời lượng 35-52 giây có Mid-Video Re-Hook ở Cảnh 4 và Payoff ở Cảnh 5-8).")
         if loop_score < 8.0:
-            critiques.append("Cảnh cuối cần kết nối ý niệm mượt mà quay trở lại Cảnh 1 (Seamless Loop) và đảm bảo câu văn hoàn chỉnh ngữ pháp.")
+            critiques.append("Cảnh cuối cần kết hợp CTA tự nhiên, kết nối ý niệm mượt mà quay trở lại Cảnh 1 (Seamless Loop) và đảm bảo câu văn hoàn chỉnh ngữ pháp.")
 
         return ScriptEvaluationReport(
             hook_strength=ScriptCriteriaScore(score=hook_score, feedback="Đánh giá theo độ hấp dẫn của hook cảnh 1"),

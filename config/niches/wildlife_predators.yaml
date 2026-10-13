@@ -13,34 +13,46 @@ script_blueprint:
     và tôn kính trước sự tàn khốc hoàn hảo của mẹ thiên nhiên.
   pacing: Siêu cuốn hút, thời lượng tối ưu 38 - 48 giây (7 - 9 cảnh, 95 - 125 từ), nhịp điệu dồn dập, đẩy thời lượng giữ chân AWT > 25s để kích hoạt thuật toán Shorts.
   hook_formulas:
+  - 'Head-to-Head Apex Duel (Proven #1 Breakout Formula): ''Green Anaconda vs. Black Caiman — when these two river monsters collide, only one leaves alive...'''
   - 'Asymmetric Duel: ''Why even a 15-foot Great White Shark will turn and flee the exact second an Orca enters the bay...'''
-  - 'Bite Force Terrifying: ''With a bone-crushing 4,000 PSI bite force, this creature shatters armored shells like potato chips...'''
+  - 'Bite Force Terrifying: ''With a bone-crushing 1,500 PSI bite force, the Jaguar does something no other big cat dares to do...'''
   - 'The 240MPH Strike: ''In the next 3 seconds, a peregrine falcon will dive at 240 miles per hour. Here is the terrifying physics of that impact...'''
-  - 'Immunity Shock: ''A single drop of this venom dissolves organs in minutes, but this predator eats it like a midday snack...'''
-  - 'Apex Stalker: ''You will never hear this predator moving across the snow until it is already in mid-air above you...'''
-  narrative_structure: Hook sinh tử cận kề (3s) -> Chiến thuật rình mồi giấu mình
-    im ắng -> Cú bứt phá bùng nổ tốc độ kinh hoàng -> Thông số lực sát thương đỉnh
-    cao -> Quy luật tàn nhẫn của chuỗi thức ăn & Infinite Loop
+  - 'Immunity Shock: ''A single drop of King Cobra venom kills an elephant, yet the Honey Badger sleeps it off like a nap...'''
+  narrative_structure: "Hook đối đầu sinh tử cụ thể giữa 2 loài săn mồi (3s) -> So sánh vũ khí sinh học & cơ học sát thương -> Mid-Video Re-Hook (Cảnh 4 - Đòn đánh quyết định lật ngược thế cờ) -> Kết cục tàn khốc của kẻ chiến thắng (Payoff Cảnh 5-7) -> Câu hỏi bầu chọn kẻ mạnh nhất & Infinite Loop"
   forbidden_words:
   - Chào mừng các bạn đến với thế giới động vật
   - Hôm nay chúng ta sẽ tìm hiểu về loài
   - Thiên nhiên thật kỳ diệu phải không các bạn
   - Hãy ấn theo dõi kênh để biết thêm nhiều loài vật
   - Như các nhà khoa học đã nghiên cứu
+  - Welcome back to our channel
+  - In today's video
   cta_templates:
-  - In the brutal hierarchy of the wild, mercy is the only fatal mistake. Subscribe for more apex rules of survival.
+  - Who wins this ultimate apex duel? Drop your vote in the comments and subscribe for daily predator matchups.
   - One moment of hesitation is all it takes for the apex hunter to become the prey. Subscribe so you never miss another clash.
-  - When the final strike lands, nature remains unforgiving. Follow now to witness the most dangerous creatures on Earth.
+  - Quem vence esse duelo mortal na selva? Comente abaixo e inscreva-se no canal!
   anti_hallucination_rules:
   - Mọi thông số sinh học (tốc độ tối đa, lực cắn PSI, chiều dài móng vuốt, nồng độ
     độc tố LD50) phải chuẩn xác theo tài liệu sinh học động vật thực tế.
   - Không phóng đại phi thực tế hay tạo ra các cuộc đối đầu phản tự nhiên.
+  - TUYỆT ĐỐI KHÔNG gắn tên câu lạc bộ bóng đá (Bayern, Real Madrid...), thể thao hay chính trị vào tiêu đề/kịch bản động vật.
   banned_lexicon: &id001
   - pet salon
   - dog leash
   - office cubicle
   - supermarket
   - fashion show
+  - bayern
+  - football
+  - soccer
+  - stadium
+  - fifa
+  - champions league
+  - ronaldo
+  - messi
+  - galaxy
+  - black hole
+  - narcissist
 visual_aesthetics:
   art_style: Epic BBC Earth Wildlife Cinema & Hyper-Detailed High-Speed Action
   camera_angles: Low-angle dynamic tracking shot at predator eye level, slow-motion
@@ -54,7 +66,7 @@ visual_aesthetics:
   master_prompt_suffix: hyper-realistic animal anatomy, razor-sharp fur and claw details,
     motion blur background, photorealistic vertical 9:16, no text, no watermark
   negative_prompts: zoo cage, human, collar, domestic, friendly pet, cartoon, 3d render,
-    anime, blurry, low resolution, watermark, text
+    anime, blurry, low resolution, watermark, text, soccer ball, stadium
   stock_video_keywords:
   - lion stalking savanna grass
   - cheetah running full speed slow motion
@@ -76,7 +88,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: -1%
+  rate: +7%
   pitch: -2Hz
   bgm_vibe: primal tribal drums, accelerating heartbeat bass, intense suspense thriller
     orchestral, epic crescendo

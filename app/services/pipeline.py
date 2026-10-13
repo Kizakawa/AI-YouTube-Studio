@@ -401,6 +401,7 @@ class VideoPipeline:
             scenes=script.scenes,
             output_dir=audio_dir,
             voice=voice,
+            niche=getattr(self, "niche", None),
         )
 
     async def _step_concat_audio(self, scenes: List[SceneContract]) -> Tuple[str, int]:

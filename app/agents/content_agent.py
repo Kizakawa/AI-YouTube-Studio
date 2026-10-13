@@ -331,17 +331,17 @@ class ContentAgent:
                     if is_vn else
                     "What would you have done if you stood in their shoes? Would history be completely different? Debate below 👇"
                 )
-            elif any(k in comb for k in ("deep sea", "biển sâu", "ocean", "đại dương", "mariana", "kraken", "abyss")):
+            elif any(k in comb for k in ("deep sea", "biển sâu", "ocean", "đại dương", "mystery", "bí ẩn", "abyss", "blind", "silence")):
                 raw_data["pinned_comment"] = (
-                    "Theo bạn, có thật sự có sinh vật khổng lồ ở đáy 11.000m không? Để lại giả thuyết của bạn bên dưới 👇"
+                    "Bạn đã bao giờ trải qua hiện tượng kỳ lạ này ngoài đời thực chưa? Để lại câu chuyện của bạn bên dưới 👇"
                     if is_vn else
-                    "Do you believe colossal creatures are truly hiding at 11,000 meters in the pitch black abyss? Drop your theory below 👇"
+                    "Have you ever experienced this eerie phenomenon in real life? Drop your thoughts below 👇"
                 )
-            elif any(k in comb for k in ("săn mồi", "predator", "wildlife", "dã thú", "báo", "sư tử", "hổ", "cheetah", "leopard", "eagle")):
+            elif any(k in comb for k in ("săn mồi", "predator", "wildlife", "dã thú", "báo", "sư tử", "hổ", "cheetah", "leopard", "eagle", "onça", "sucuri")):
                 raw_data["pinned_comment"] = (
-                    "Theo bạn con người có cơ hội sống sót nào trước dã thú này không? Để lại suy nghĩ bên dưới 👇"
+                    "Theo bạn kẻ săn mồi nào sẽ chiến thắng trong cuộc đối đầu sinh tử này? Để lại bình chọn bên dưới 👇"
                     if is_vn else
-                    "Could any human survive 10 seconds against this apex predator? Drop your thoughts below 👇"
+                    "Who wins this ultimate apex duel in the wild? Drop your vote below 👇"
                 )
             else:
                 raw_data["pinned_comment"] = (
@@ -364,9 +364,9 @@ class ContentAgent:
         **kwargs
     ) -> ScriptContract:
         """
-        Sinh kịch bản video Shorts viral tối ưu thuật toán giữ chân (AVD > 80%, thời lượng vàng 35-45 giây, 8-10 cảnh).
-        Nhịp cảnh dồn dập (3.0-4.5s/cảnh), Hook 3s đầu đảo ngược định kiến / cảnh báo sốc, vòng lặp vô tận (Infinite Shorts Loop).
-        Đã tích hợp ghi chú đạo diễn (director_notes) và chuyển đổi ý niệm trừu tượng thành hành vi vật lý cụ thể (Physical Action Mapping).
+        Sinh kịch bản video Shorts viral tối ưu thuật toán giữ chân (AVD > 80%, thời lượng vàng 35-55 giây, 7-10 cảnh).
+        Nhịp cảnh dồn dập (3.5-5.0s/cảnh), Hook 3s đầu đảo ngược định kiến, Mid-Video Re-Hook ở Cảnh 4 (giây 12-15),
+        Payoff sâu sắc ở Cảnh 5-8 và vòng lặp vô tận (Infinite Shorts Loop).
         """
         director_block = ""
         if director_notes and len(director_notes.strip()) > 3:
@@ -391,6 +391,10 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
         else:
             target_lang_display = "ENGLISH"
 
+        is_rescue = "rescue" in (channel_niche or "").lower() or "animal" in (channel_niche or "").lower()
+        duration_spec = "45 ĐẾN 56 GIÂY (8 ĐẾN 10 PHÂN CẢNH, STRICTLY 95 ĐẾN 135 TỪ)" if is_rescue else "35 ĐẾN 48 GIÂY (7 ĐẾN 10 PHÂN CẢNH, STRICTLY 85 ĐẾN 125 TỪ)"
+        word_range_en = "95 to 135 words (45-56s 4-Stage Transformation Arc, 8-10 scenes)" if is_rescue else "85 to 125 words (35-48s 4-Beat Payoff Arc, 7-10 scenes)"
+
         prompt = f"""You are an elite YouTube Shorts director and viral retention engineer for the channel '{niche_profile.get('name')}' (niche: '{channel_niche}').
 Topic: '{topic}'
 Target Language: {language} ({target_lang_display})
@@ -400,34 +404,37 @@ Target Language: {language} ({target_lang_display})
 ═══════════════════════════════════════════════════════════
 YOUTUBE SHORTS TEST FUNNEL & VIRAL RETENTION ENGINE (VƯỢT NGƯỠNG 10,000 – 50,000+ VIEWS)
 YouTube đánh giá video Shorts qua 2 vòng thử thách:
-- Vòng 1 (100 - 300 test pool): Cần Viewed > 75% để không bị chết yểu ngay lập tức.
-- Vòng 2 (Vượt 10,000 - 50,000 view để lên 100k - 1M view): Thuật toán đòi hỏi TỔNG THỜI LƯỢNG XEM TÍCH LŨY (Total Watch Time) + TÍN HIỆU GIÁ TRỊ CAO (Lưu video / Bookmark, Chia sẻ / Share, Bình luận).
-  * Video quá ngắn (20-25s) thiếu chiều sâu và không có "Payoff", người xem lướt qua xem xong trôi tuột không đọng lại gì -> Bị kẹt cứng ở ngưỡng 10k-30k view!
-  * Video đạt CHUẨN VÀNG THỜI LƯỢNG LINH HOẠT (35 – 48 GIÂY) kết hợp CÚ BẺ KHÓA PAYOFF ĐỈNH CAO tạo ra Watch Time gấp đôi, kích hoạt phản xạ Lưu & Chia sẻ -> Bứt phá vượt ngưỡng 50k - 500k+ views!
+- Vòng 1 (100 - 300 test pool): Cần Viewed > 75% (Swipe-Away < 25%) nhờ Hook 3s đầu + Tiêu đề kích thích tò mò.
+- Vòng 2 (Vượt 10,000 - 50,000 view để lên 100k - 1M view): Thuật toán đòi hỏi TỔNG THỜI LƯỢNG XEM TÍCH LŨY (Total Watch Time) + TÍN HIỆU GIÁ TRỊ CAO (Lưu video / Bookmark, Chia sẻ / Share, Bình luận, Đăng ký kênh).
+  * Video quá ngắn (20-25s) thiếu chiều sâu và không có "Payoff", người xem xem xong trôi tuột -> Bị kẹt cứng ở Seed Pool!
+  * Video đạt CHUẨN VÀNG THỜI LƯỢNG ({duration_spec}) kết hợp MID-VIDEO RE-HOOK Ở GIÂY 12 (CẢNH 4) và CÚ BẺ KHÓA PAYOFF ĐỈNH CAO (CẢNH 5-8) tạo ra Watch Time tối đa và chuyển đổi Subscribe bùng nổ!
 ═══════════════════════════════════════════════════════════
-1. THỜI LƯỢNG LINH HOẠT (35 – 48 GIÂY) & CẤU TRÚC 4 NHỊP VÀNG CÓ PAYOFF:
-   - THỜI LƯỢNG MỤC TIÊU: LINH HOẠT TỪ 35 ĐẾN 48 GIÂY TOÀN VIDEO.
-   - SỐ LƯỢNG PHÂN CẢNH (SCENES): 7 ĐẾN 10 PHÂN CẢNH (mỗi cảnh trung bình 3.5 – 5.0 giây).
-   - TỔNG SỐ TỪ THOẠI (WORD COUNT): STRICTLY 85 ĐẾN 125 TỪ (khoảng 150-165 WPM, súc tích, nhịp điệu dồn dập, tuyệt đối không chêm từ thừa).
-
-   - CẤU TRÚC 4 NHỊP BẮT BUỘC ĐỂ GIỮ CHÂN & VƯỢT TRẦN VIEW:
-     * NHỊP 1: HOOK ĐỘT PHÁ (0 - 3s — Cảnh 1):
-       Cắt đà lướt (Thumb-Stopper), nêu bật nghịch lý nhức nhối, lời cảnh báo đanh thép hoặc câu hỏi hóc búa (Viewed > 75%).
-     * NHỊP 2: BÓC TÁCH MÂU THUẪN & BẰNG CHỨNG LEO THANG (3 - 20s — Cảnh 2 đến 4):
-       Cung cấp 2-3 dấu hiệu nhận biết cụ thể, dữ kiện khoa học/tâm lý thực chứng. Chuyển cảnh dồn dập mỗi 3-4s với hành động vật lý rõ ràng để triệt tiêu cú rơi rụng 6s-12s.
-     * NHỊP 3: THE HIGH-VALUE PAYOFF — CÚ GIẢI THOÁT & GIÁ TRỊ CỐT LÕI (20 - 38s — Cảnh 5 đến 7):
-       [QUAN TRỌNG NHẤT ĐỂ VƯỢT NGƯỠNG 10K - 50K VIEW]
-       - ĐÂY LÀ PHẦN THƯỞNG CHO NGƯỜI XEM (THE PAYOFF): Tuyệt đối không để video kết thúc lửng lơ hoặc chỉ liệt kê hời hợt!
+1. THỜI LƯỢNG CHUẨN VÀNG & CẤU TRÚC 4 NHỊP GIỮ CHÂN (target: {word_range_en}):
+   - THỜI LƯỢNG & SỐ TỪ BẮT BUỘC: {duration_spec}.
+   - CẤU TRÚC 4 NHỊP BẮT BUỘC ĐỂ TRIỆT TIÊU RƠI RỤNG (DROP-OFF) & BỨT PHÁ VIEW:
+     * NHỊP 1: 3-SECOND THUMB-STOPPER HOOK (0 - 3.5s — Cảnh 1):
+       Cắt đà lướt tức thì, nêu bật nghịch lý nhức nhối, đối đầu sinh tử cụ thể (A vs. B), lời cảnh báo trực diện ("You", "Your brain", "They") hoặc khoảnh khắc nghịch lý gây tò mò ("He refused to let go until...").
+     * NHỊP 2: ESCALATION & 12-SECOND MID-VIDEO RE-HOOK (3.5 - 18s — Cảnh 2 đến Cảnh 4):
+       [CHỐT CHẶN CHỐNG RƠI RỤNG Ở GIÂY 12-15]:
+       - Cảnh 2 & 3 đưa ngay dữ kiện/hành động vật lý cụ thể.
+       - Đặc biệt tại CẢNH 4 (~giây 12-15): BẮT BUỘC tung một "Mid-Video Re-Hook / Pattern Interrupt Twist" ("Nhưng đó chưa phải điều đáng sợ nhất...", "Until a hidden camera revealed the real reason...", "But in one single second, the hunter became the prey...") để khóa chặt người xem đi tiếp vào nửa sau của video!
+     * NHỊP 3: THE HIGH-VALUE PAYOFF — CÚ GIẢI THOÁT & GIÁ TRỊ CỐT LÕI (18 - 40s — Cảnh 5 đến Cảnh 7/8):
+       [QUAN TRỌNG NHẤT ĐỂ VƯỢT NGƯỠNG 10K - 50K VIEW & CHUYỂN ĐỔI SUBSCRIBER]
+       - ĐÂY LÀ PHẦN THƯỞNG CHO NGƯỜI XEM (THE PAYOFF): Tuyệt đối không để video kết thúc lửng lơ hoặc cắt cụt trước khi giải quyết vấn đề!
        - BẮT BUỘC cung cấp:
-         1. The Revelation (Bản chất ngầm thực sự): Lật tẩy động cơ sâu kín, quy luật tâm lý bị che giấu hoặc giải mã hiện tượng mà 99% mọi người hiểu sai.
-         2. The Actionable Counter-Move (Chiến lược phản đòn / Giải pháp thực chiến): Hướng dẫn chính xác cách hóa giải, ứng xử hoặc phòng thủ ("Khoảnh khắc bạn giữ im lặng và nhìn thẳng vào mắt họ, trò chơi thao túng sụp đổ ngay lập tức...").
-         3. Emotional Catharsis: Khiến người xem ồ lên nhận ra chân lý, cảm thấy video cực kỳ giá trị -> Thôi thúc bấm LƯU (Bookmark/Save) và bấm THÍCH (Like) ngay lập tức!
-     * NHỊP 4: CALL TO ACTION & SEAMLESS INFINITE LOOP (38 - 48s — Cảnh 8 đến 10):
+         1. Với Psychology / Mysteries / Alternate History: Lật tẩy bản chất ngầm (The Revelation) + Đòn phản công thực chiến (Actionable Counter-Move) hoặc toàn cảnh thế giới/giác quan bị đảo lộn.
+         2. Với Animal Rescue: Phải thể hiện trọn vẹn màn lột xác cảm xúc (Healing & Joyful Transformation) — từ sợ hãi đến khoảnh khắc dám chạm vào tay người cứu hộ và chạy nhảy hạnh phúc dưới ánh nắng.
+         3. Với Wildlife Predators: Phân định rõ đòn kết liễu cơ sinh học (PSI, tốc độ, chiến thuật) và kẻ chiến thắng cuối cùng trong cuộc đối đầu.
+     * NHỊP 4: CALL TO ACTION & SEAMLESS INFINITE LOOP (Cảnh cuối):
        - Kêu gọi đăng ký kênh (High-Converting Niche CTA) ngắn gọn, tự nhiên, gắn chặt với giá trị kênh.
        - Câu kết thúc trọn vẹn ngữ pháp, đồng thời nối mượt mà quay trở lại câu Hook ở Cảnh 1 tạo vòng lặp vô tận (Infinite Looping APV).
 
-2. 3-SECOND SHOCK ANGLE HOOK (SCENE 1) — CRITICAL TO PREVENT SWIPE-AWAY (>80% VIEWED):
+2. 3-SECOND SHOCK ANGLE HOOK (SCENE 1) & HIGH-CTR TITLE RULES:
    - The first 1.5 - 2.5 seconds determines 100% of Shorts performance (Viewed vs Swiped away).
+   - HIGH-CTR TITLE MANDATE (LEARNED FROM CHANNEL ANALYTICS):
+     * NEVER write bleak/depressing-only titles for Animal Rescue (FORBIDDEN: "Frozen Puppy Found in Rain", "Shivering Puppy Tied In Rain"). ALWAYS build a curiosity/transformation gap (WINNING FORMULA: "He Refused to Let Go Until This Happened 🥺❤️", "The Exact Moment He Realized He Was Finally Safe 🐾").
+     * NEVER write vague generic titles for Wildlife (FORBIDDEN: "Invisible Monsters Waiting To Strike") or mix sports/off-niche words ("Bayern"). ALWAYS name the specific apex predators or duel ("Green Anaconda vs. Black Caiman: Brutal River Duel! 🐍🐊", "Why Lions REFUSE to Fight The Honey Badger 🦡🦁").
+     * NEVER repeat saturated numbers like "11,000m" on Mysteries; use visceral second-person sensory/fear hooks ("Your Eyes Are Biologically Blind! 👁️", "Why Your Mind Snaps In Absolute Silence 🧠").
    - SCENE 1 HOOK FORMULAS (MUST CHOOSE 1 OF 4 CORE FORMULAS):
      * Formula 1 (Personal Pain Point & Hidden Vulnerability - HIGHEST RETENTION):
        Target personal insecurity, hidden exploitation, quiet anxiety, or counter-intuitive psychology using personal triggers ("You", "Your brain", "They"):
@@ -436,13 +443,13 @@ YouTube đánh giá video Shorts qua 2 vòng thử thách:
        - "If you feel drained around them, you're being quietly manipulated..."
        - "Your brain starts self-destructing the second you do this..."
        - "He refused to let go until this happened..."
-     * Formula 2 (Urgent Danger / Warning): "If you ever see [X], TUYỆT ĐỐI KHÔNG làm [Y]..." / "If you notice this symbol, leave immediately..."
+     * Formula 2 (Apex Duel / Urgent Danger): "When a 20-foot Anaconda ambushes a Black Caiman, only one survives..." / "If you notice this symbol, leave immediately..."
      * Formula 3 (Pattern Interrupt / Elite Authority Secret): "The FBI interrogator trick that exposes any liar in seconds..." / "The forbidden rule 99% of people discover too late..."
-     * Formula 4 (Dark Paradox / Hidden Archive): "Why was this ancient chamber sealed with 12 layers of solid iron?" / "The classified reason scientists abruptly abandoned this ocean trench..."
+     * Formula 4 (Dark Paradox / Counterfactual Twist): "What if the Roman Empire never fell, and ruled our modern world today?"
    - NEVER start with textbook definitions, greetings, or passive rhetorical questions ("Did you know...", "Welcome to...").
-   - Scene 1 spoken text MUST be strictly 6 to 8 words, delivered with high stakes, sharp rhythm, and immediate urgency.
+   - Scene 1 spoken text MUST be strictly 5 to 12 words, delivered with high stakes, sharp rhythm, and immediate urgency.
    - Scene 1 visual_keyword & visual_prompt MUST be visually arresting, shocking, and intense.
-   - thumbnail_text MUST be strictly 3 to 5 words in ALL CAPS with 1 high-contrast emoji (e.g. "THEY'RE USING YOU 🚩", "STOP BEING CONFIDENT 🛑", "HE REFUSED TO LET GO 🥺", "DON'T TOUCH THIS 💀"). This text is rendered directly on Frame 0.0s as the massive Hook Headline Banner to stop the viewer's thumb from swiping away!
+   - thumbnail_text MUST be strictly 3 to 5 words in ALL CAPS with 1 high-contrast emoji (e.g. "THEY'RE USING YOU 🚩", "ANACONDA VS CAIMAN 🐍", "HE REFUSED TO LET GO 🥺", "ROME NEVER FELL? 🏛️"). This text is rendered directly on Frame 0.0s as the massive Hook Headline Banner to stop the viewer's thumb from swiping away!
 
 3. HIGH-CONVERTING CALL TO ACTION (CTA) & CLOSING ENGAGEMENT (FINAL SCENE 3-4s):
    - MANDATORY CALL TO ACTION (CTA) IN THE FINAL SCENE:

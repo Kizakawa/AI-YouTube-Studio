@@ -226,12 +226,13 @@ Respond ONLY in valid JSON:
                 hook_score = min(10.0, hook_score + 1.5)
                 strengths.append("Cảnh 1 có yếu tố kích thích trí tò mò hoặc nghịch lý.")
 
-        # 2. Kiểm tra Niche fit
+        # 2. Kiểm tra Niche fit & Chặn rò rỉ lệch ngách (Off-Niche Contamination)
         niche_kw_map = {
-            "wildlife_predators": ["onça", "mordida", "predador", "selva", "anaconda", "feroz", "caça", "animal"] if is_pt else ["predator", "hunt", "bite", "kill", "lethal", "jaw", "beast", "wild", "lion", "tiger", "bear", "jaguar", "eagle", "attack", "speed"],
-            "deep_sea_earth_mysteries": ["mistério", "oceano", "profundidade", "abismo", "ciência", "criatura"] if is_pt else ["mystery", "ocean", "deep", "abyss", "creature", "unexplained", "strange", "bizarre", "scientists", "trench", "sea", "ancient"],
-            "psychology": ["mind", "manipulation", "psychology", "brain", "trick", "dark", "secret", "people", "behavior", "lie", "sign", "control", "habit"],
-            "animal_rescue": ["rescue", "puppy", "dog", "cat", "kitten", "saved", "heartbreaking", "miracle", "abandoned", "safe", "love", "trauma", "box"]
+            "wildlife_predators": ["onça", "mordida", "predador", "selva", "anaconda", "feroz", "caça", "animal", "sucuri", "jacaré"] if is_pt else ["predator", "hunt", "bite", "kill", "lethal", "jaw", "beast", "wild", "lion", "tiger", "bear", "jaguar", "eagle", "attack", "speed", "orca", "shark", "anaconda", "caiman", "badger"],
+            "deep_sea_earth_mysteries": ["mistério", "oceano", "profundidade", "abismo", "ciência", "criatura", "olhos", "silêncio"] if is_pt else ["mystery", "ocean", "deep", "abyss", "creature", "unexplained", "strange", "bizarre", "scientists", "sea", "ancient", "blind", "silence", "brain", "senses", "terrified"],
+            "psychology": ["mind", "manipulation", "psychology", "brain", "trick", "dark", "secret", "people", "behavior", "lie", "sign", "control", "habit", "respect", "trap", "smile"],
+            "animal_rescue": ["rescue", "puppy", "dog", "cat", "kitten", "saved", "heartbreaking", "miracle", "abandoned", "safe", "love", "trauma", "gentle", "healed"],
+            "alternate_history": ["empire", "rome", "roman", "history", "what if", "timeline", "ancient", "war", "battle", "civilization", "century", "world", "army", "alexandria", "mongol"]
         }
         target_keywords = niche_kw_map.get(channel_niche, ["video", "fact", "world", "secret"])
         matched_kw = [kw for kw in target_keywords if kw in full_text.lower() or kw in title.lower()]
@@ -242,7 +243,24 @@ Respond ONLY in valid JSON:
             niche_score = 8.5
             strengths.append(f"Khớp từ khóa ngách: {', '.join(matched_kw)}")
         else:
-            niche_score = 7.5
+            niche_score = 7.0
+            issues.append(f"Thiếu từ khóa đặc trưng của ngách {channel_niche}.")
+
+        # Kiểm tra từ khóa lệch ngách nghiêm trọng (Bayern/bóng đá trên kênh động vật, tiêm chích trên kênh lịch sử)
+        combined_lower = f"{title} {full_text}".lower()
+        if channel_niche == "wildlife_predators" and any(bad in combined_lower for bad in ("bayern", "football", "soccer", "stadium", "fifa")):
+            niche_score = max(3.0, niche_score - 5.0)
+            issues.append("Vi phạm nghiêm trọng: Rò rỉ chủ đề bóng đá/thể thao vào kênh động vật hoang dã.")
+        if channel_niche == "alternate_history" and any(bad in combined_lower for bad in ("inject", "vaccine", "syringe", "burn the evidence")):
+            niche_score = max(3.0, niche_score - 5.0)
+            issues.append("Vi phạm nghiêm trọng: Rò rỉ chủ đề y tế/tiêm chích lệch khỏi lịch sử giả định.")
+        if channel_niche == "animal_rescue":
+            title_l = title.lower()
+            if any(b in title_l for b in ("frozen", "shivering", "starving", "tied in rain")) and not any(
+                t in title_l for t in ("until", "finally", "moment", "realized", "refused", "saved", "safe", "miracle", "heart")
+            ):
+                hook_score = max(4.0, hook_score - 3.0)
+                issues.append("Tiêu đề cứu hộ quá bi lụy, thiếu mồi câu chuyển hóa hy vọng (Until/Moment/Safe).")
 
         # 3. Kiểm tra Ngôn ngữ
         if is_pt:
@@ -258,22 +276,22 @@ Respond ONLY in valid JSON:
             lang_score = 9.5
             strengths.append("Ngôn ngữ tự nhiên, mạch lạc, chuẩn văn phong YouTube Shorts.")
 
-        # 4. Kiểm tra Retention & CTA
+        # 4. Kiểm tra Retention, Mid-Video Re-Hook & Payoff Depth
         num_scenes = len(scenes)
         total_words = len(full_text.split())
-        if 4 <= num_scenes <= 8:
-            retention_score += 1.0
-            strengths.append(f"Cấu trúc {num_scenes} cảnh chuyển đổi nhịp nhàng (30-50s).")
-        elif num_scenes < 4:
-            retention_score -= 1.5
-            issues.append(f"Số cảnh quá ít ({num_scenes} cảnh), video dễ bị đơn điệu.")
+        if 6 <= num_scenes <= 11 and 72 <= total_words <= 145:
+            retention_score += 1.2
+            strengths.append(f"Cấu trúc {num_scenes} cảnh ({total_words} từ) đạt chuẩn vàng 35-55s có Payoff sâu.")
+        elif num_scenes < 6 or total_words < 70:
+            retention_score -= 2.0
+            issues.append(f"Kịch bản quá ngắn ({num_scenes} cảnh, {total_words} từ), thiếu chiều sâu Payoff.")
 
         # Kiểm tra CTA cảnh cuối
         if scenes:
             last_scene = scenes[-1].get("narration", "")
-            if any(cta_word in last_scene.lower() for cta_word in ["comente", "inscreva", "você", "acha", "opinião", "?", "deixe"]):
-                retention_score = min(10.0, retention_score + 1.0)
-                strengths.append("Cảnh cuối có CTA tương tác cao để thúc đẩy bình luận.")
+            if any(cta_word in last_scene.lower() for cta_word in ["comente", "inscreva", "você", "acha", "opinião", "?", "deixe", "subscribe", "follow", "comment", "đăng ký", "bình luận"]):
+                retention_score = min(10.0, retention_score + 0.8)
+                strengths.append("Cảnh cuối có CTA tương tác & chuyển đổi Subscribe.")
 
         total_score = int((hook_score * 0.30 + niche_score * 0.25 + lang_score * 0.25 + retention_score * 0.20) * 10)
         passed = total_score >= 80
