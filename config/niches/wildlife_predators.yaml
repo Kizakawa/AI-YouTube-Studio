@@ -11,19 +11,13 @@ target_audience: Khán giả toàn cầu đam mê thế giới động vật hoa
 script_blueprint:
   tone_of_voice: Trầm hùng, dồn dập, sắc bén, kích thích adrenaline tột độ, uy lực
     và tôn kính trước sự tàn khốc hoàn hảo của mẹ thiên nhiên.
-  pacing: Siêu nhanh 155 WPM, 2.5 - 3.2 giây/cảnh, nhịp điệu dồn dập, cao trào dồn
-    nén.
+  pacing: Siêu cuốn hút, thời lượng tối ưu 38 - 48 giây (7 - 9 cảnh, 95 - 125 từ), nhịp điệu dồn dập, đẩy thời lượng giữ chân AWT > 25s để kích hoạt thuật toán Shorts.
   hook_formulas:
-  - 'Lethal Fact Shock: ''A lion\''s roar can freeze its prey\''s muscles from 5 miles
-    away... but that\''s not its deadliest weapon.'''
-  - 'Survival Countdown: ''In the next 3 seconds, one of these two apex predators
-    will make a fatal mistake...'''
-  - 'Apex Rule of Law: ''There is one creature in the deep ocean that even the Great
-    White Shark refuses to fight alone...'''
-  - 'Bite Force Terrifying: ''With a bone-crushing 4,000 PSI bite force, nothing escapes
-    this prehistoric jaws once locked...'''
-  - 'Ghost of the Savanna: ''You will never see the leopard stalking you until it\''s
-    already 2 feet behind your back...'''
+  - 'Asymmetric Duel: ''Why even a 15-foot Great White Shark will turn and flee the exact second an Orca enters the bay...'''
+  - 'Bite Force Terrifying: ''With a bone-crushing 4,000 PSI bite force, this creature shatters armored shells like potato chips...'''
+  - 'The 240MPH Strike: ''In the next 3 seconds, a peregrine falcon will dive at 240 miles per hour. Here is the terrifying physics of that impact...'''
+  - 'Immunity Shock: ''A single drop of this venom dissolves organs in minutes, but this predator eats it like a midday snack...'''
+  - 'Apex Stalker: ''You will never hear this predator moving across the snow until it is already in mid-air above you...'''
   narrative_structure: Hook sinh tử cận kề (3s) -> Chiến thuật rình mồi giấu mình
     im ắng -> Cú bứt phá bùng nổ tốc độ kinh hoàng -> Thông số lực sát thương đỉnh
     cao -> Quy luật tàn nhẫn của chuỗi thức ăn & Infinite Loop

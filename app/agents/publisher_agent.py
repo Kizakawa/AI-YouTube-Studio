@@ -341,6 +341,28 @@ class PublisherAgent:
         else:
             target_audio_lang = default_audio_language
 
+        # Chống đăng trùng lặp tiêu đề video (Anti-Duplicate Upload Guard)
+        try:
+            from app.database.models import get_db, VideoJob
+            with get_db() as db:
+                recent_dup = db.query(VideoJob).filter(
+                    VideoJob.target_channel_id == self.channel_id,
+                    VideoJob.status.in_(["PUBLISHED", "SCHEDULED"]),
+                    VideoJob.youtube_video_id.isnot(None),
+                    VideoJob.title.in_([title, clean_title])
+                ).first()
+                if recent_dup and recent_dup.youtube_video_id:
+                    logger.warning(f"⚠️ [Publisher] Video '{clean_title}' đã được đăng trước đó trên kênh '{self.channel_name}' (ID: {recent_dup.youtube_video_id}). Chặn upload trùng lặp!")
+                    return {
+                        "video_id": recent_dup.youtube_video_id,
+                        "url": f"https://youtube.com/shorts/{recent_dup.youtube_video_id}",
+                        "title": clean_title,
+                        "status": "already_published",
+                        "project_id": self.project_id
+                    }
+        except Exception as e_dup:
+            logger.debug(f"[Publisher] Kiểm tra trùng lặp: {e_dup}")
+
         body = {
             "snippet": {
                 "title": clean_title[:100],

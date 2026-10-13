@@ -147,11 +147,46 @@ def test_autonomous_logical_reasoning_schema():
     print("✅ Test 5 PASSED: Agent autonomously reasons narrative conflict before generating visual prompt!\n")
 
 
+def test_flexible_duration_and_payoff_linter():
+    print("=== Test 6: Flexible Duration (35-48s) & High-Value Payoff Validation ===")
+    from app.services.content_linter import ScriptValidationLinter
+    from app.schemas.contracts import ScriptContract, SceneContract
+    
+    # Kịch bản 38 giây chuẩn mực: 8 cảnh, 98 từ, có Payoff sâu sắc
+    script = ScriptContract(
+        title="3 Hidden Signs Of Covert Envy 🚩",
+        hook="A real enemy attacks you openly, but an envious friend smiles while destroying your ladder.",
+        full_narration="A real enemy attacks you openly, but an envious friend smiles while destroying your ladder. First, they praise you with backhanded compliments designed to plant quiet self-doubt. Second, notice how their enthusiasm evaporates the moment you announce a major victory. But here is the critical psychological unmasking: envy cannot withstand genuine indifference. The moment you stop seeking their validation and starve their drama, their illusion of control collapses completely. Silence is your sharpest shield. Subscribe now to master dark psychology before someone uses it on you.",
+        thumbnail_text="SIGNS OF ENVY 🚩",
+        scenes=[
+            SceneContract(scene_id=1, narration="A real enemy attacks you openly, but an envious friend smiles while destroying your ladder.", visual_keyword="tense dinner party", estimated_seconds=4.5),
+            SceneContract(scene_id=2, narration="First, they praise you with backhanded compliments designed to plant quiet self-doubt.", visual_keyword="whispering colleague", estimated_seconds=4.0),
+            SceneContract(scene_id=3, narration="Second, notice how their enthusiasm evaporates the moment you announce a major victory.", visual_keyword="forced polite smile", estimated_seconds=4.5),
+            SceneContract(scene_id=4, narration="They observe your milestones silently, waiting for the slightest mistake.", visual_keyword="person watching crowd", estimated_seconds=4.0),
+            SceneContract(scene_id=5, narration="But here is the critical psychological unmasking: envy cannot withstand genuine indifference.", visual_keyword="calm stoic person", estimated_seconds=5.0),
+            SceneContract(scene_id=6, narration="The moment you stop seeking their validation and starve their drama, their illusion of control collapses completely.", visual_keyword="walking away confident", estimated_seconds=5.5),
+            SceneContract(scene_id=7, narration="Silence is your sharpest shield against toxic manipulation.", visual_keyword="focused chess player", estimated_seconds=4.0),
+            SceneContract(scene_id=8, narration="Subscribe now to master dark psychology before someone uses it on you.", visual_keyword="modern skyscraper view", estimated_seconds=4.5),
+        ],
+        tags=["psychology", "shorts", "envy"],
+        description="Master dark psychology and detect covert envy before it destroys you #shorts",
+    )
+    
+    niche = get_niche("psychology")
+    res = ScriptValidationLinter.lint(script, niche_profile=niche)
+    print(f"  Linter result: is_valid={res.is_valid}, total_words={res.total_words}, issues={res.issues}")
+    assert res.is_valid, f"35-48s script failed linter: {res.issues}"
+    assert 85 <= res.total_words <= 125, f"Word count {res.total_words} not in target range 85-125!"
+    
+    print("✅ Test 6 PASSED: Flexible duration (35-48s) with Payoff passes quality linter with flying colors!\n")
+
+
 if __name__ == "__main__":
     test_dynamic_font_scaling_no_clipping()
     test_clean_base_image_priority()
     test_emoji_tofu_glyph_cleansing()
     test_anti_lazy_ai_face_rules()
     test_autonomous_logical_reasoning_schema()
-    print("🎉 ALL 5 VIRAL THUMBNAIL & REASONING TESTS PASSED 100%!")
+    test_flexible_duration_and_payoff_linter()
+    print("🎉 ALL 6 VIRAL THUMBNAIL, REASONING & PAYOFF TESTS PASSED 100%!")
 

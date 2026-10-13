@@ -9,21 +9,14 @@ script_blueprint:
   tone_of_voice: Kỳ bí, rùng mình (Eerie), giật gân, nhịp thở dồn dập như đang ngồi
     trong tàu lặn tiến vào bóng tối rãnh Mariana, khiến người xem lạnh gáy nhưng không
     thể rời mắt.
-  pacing: Siêu nhanh 155 WPM, 2.5 - 3.2 giây/cảnh, nhịp điệu dồn dập, cao trào dồn
-    nén.
-  narrative_structure: Hook cảnh báo sợ hãi 3s -> Dẫn chứng sự thật rợn tóc gáy ->
-    Cao trào phát hiện không xác định -> Lời mời xem Phần 2 & Infinite Seamless Loop
+  pacing: Thời lượng tối ưu 38 - 48 giây (7 - 9 cảnh, 95 - 125 từ), nhịp điệu bí ẩn dồn dập, đẩy mạnh AWT qua mốc 25 giây để kích hoạt phân phối YouTube Shorts.
+  narrative_structure: Hook sợ hãi nguyên thủy 3s -> Dẫn chứng khoa học / Sonar âm thanh rợn người -> Hiện tượng bất thường đáy biển -> Cú sốc nhận thức / Giác quan con người -> Infinite Seamless Loop
   hook_formulas:
-  - 'Reverse Psychology Thalassophobia: ''If you have thalassophobia or fear the dark
-    unknown, swipe away right now...'''
-  - 'NASA Ocean Paradox: ''NASA began exploring the ocean before space. Here is why
-    they abruptly fled in 1970...'''
-  - 'Classified Sonar Anomaly: ''The classified 1997 US Navy sonar audio that was
-    10 times louder than a blue whale...'''
-  - 'Scale Shock Mariana Trench: ''At 11,000 meters below, where sunlight has never
-    reached, cameras captured something massive moving...'''
-  - 'Point Nemo Warning: ''You are closer to astronauts in space than any human being
-    when you reach this spot on Earth...'''
+  - 'Instinctive Thalassophobia: ''Your brain has a terrifying biological reason to fear open deep water. Here is what your senses are trying to warn you...'''
+  - 'Classified Hydrophone Recording: ''In 1997, deep ocean sensors detected a classified sound 3,000 miles across the Pacific. It was 10 times louder than any known creature...'''
+  - 'Underwater Brine Lakes: ''Deep beneath the ocean floor lies an underwater toxic lake where sea creatures die instantly upon entering...'''
+  - 'Point Nemo Isolation: ''You are closer to astronauts orbiting in space than any human being on Earth when you reach this oceanic coordinate...'''
+  - 'Abyssal Pressure Shock: ''Under 1,000 atmospheres of crushing pressure where human steel crumbles, deep probes detected an unexplainable rhythmic heartbeat...'''
   forbidden_words:
   - Welcome back to our channel
   - Today we will explore

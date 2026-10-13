@@ -9,23 +9,14 @@ target_audience: Hàng trăm triệu người yêu động vật toàn cầu, ph
 script_blueprint:
   tone_of_voice: Truyền cảm, ấm áp, thắt nghẹn ở phần đầu và vỡ òa xúc động ở phần
     kết, chạm thẳng vào trái tim người xem, kích hoạt phản xạ đồng cảm tức thì.
-  pacing: Siêu nhanh 155 WPM, 2.5 - 3.2 giây/cảnh, nhịp điệu dồn dập, cao trào dồn
-    nén.
+  pacing: Nhịp điệu xúc động sâu sắc, thời lượng tối ưu 45 - 55 giây (8 - 10 cảnh, 115 - 140 từ), cao trào thắt mở chạm tới trái tim người xem để đạt AWT tối đa.
   hook_formulas:
-  - 'Heartbreaking Abandonment: ''They dumped him in the freezing rain, assuming no
-    one would ever look inside this soaked cardboard box...'''
-  - 'The Trembling Eye Contact: ''The exact moment she stopped shaking and dared to
-    look into the rescuer\''s eyes, everything changed...'''
-  - 'Compassion Trigger: ''Hundreds of people walked past this wounded stray puppy
-    without stopping, until one stranger heard a faint heartbeat...'''
-  - 'Miracle Second Chance: ''The vet said he had less than 24 hours to live, but
-    this puppy had a reason to fight...'''
-  - 'Unspoken Betrayal: ''He waited at the empty roadside for 3 whole days, not knowing
-    his owners were never coming back...'''
-  narrative_structure: Cảnh báo xót xa / Ánh mắt run rẩy bị bỏ rơi (Hook 3s) -> Bàn
-    tay cứu trợ ấm áp chạm vào nỗi sợ hãi -> Quá trình điều trị kiên cường & Miếng
-    ăn đầu tiên -> Màn lột xác kỳ diệu sau 60 ngày -> Lời kêu gọi bảo vệ động vật
-    & Infinite Loop
+  - 'Relief Transformation: ''The exact second this terrified rescue dog realized he was finally safe, everything changed...'''
+  - 'The Trembling Eye Contact: ''The exact moment she stopped shaking and dared to look into the rescuer\''s eyes, his heart melted...'''
+  - 'Miracle Second Chance: ''The vet said he had less than 24 hours to live, but this puppy had a reason to fight...'''
+  - 'Unconditional Trust: ''He hid inside this concrete pipe for 3 days refusing to look at anyone, until one gentle touch changed everything...'''
+  - 'The Breakthrough Moment: ''He wouldn\''t let anyone touch him for months. But watch what happens when he hears her voice...'''
+  narrative_structure: Ánh mắt sợ hãi e dè (Hook 0-5s) -> Bàn tay kiên nhẫn và thức ăn ấm áp tiếp cận (5-15s) -> Khoảnh khắc tan chảy nhận ra mình được yêu thương (15-30s) -> Sự lột xác rực rỡ và nụ cười hạnh phúc (Payoff 30-50s) -> Infinite Loop thiêng liêng.
   forbidden_words:
   - Chào mừng các bạn đến với kênh yêu thú cưng
   - Hôm nay mình sẽ kể cho các bạn nghe

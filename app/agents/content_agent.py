@@ -397,28 +397,33 @@ Target Language: {language} ({target_lang_display})
 {director_block}
 {niche_instructions}
 ═══════════════════════════════════════════════════════════
-YOUTUBE SHORTS TEST FUNNEL & VIRAL RETENTION ENGINE (BEAT THE 100-300 TEST POOL)
-YouTube tests every new Short on a cold batch of 100-300 viewers.
-- IF Viewed > 75% & APV > 100% -> 🚀 EXPLODES TO 10,000 - 100,000+ VIEWS!
-- IF Swiped Away > 40% OR APV < 60% -> 🛑 DISTRIBUTION KILLED IMMEDIATELY (0-15 VIEWS)!
-Every script you write MUST engineer these 2 metrics with mathematical precision:
+YOUTUBE SHORTS TEST FUNNEL & VIRAL RETENTION ENGINE (VƯỢT NGƯỠNG 10,000 – 50,000+ VIEWS)
+YouTube đánh giá video Shorts qua 2 vòng thử thách:
+- Vòng 1 (100 - 300 test pool): Cần Viewed > 75% để không bị chết yểu ngay lập tức.
+- Vòng 2 (Vượt 10,000 - 50,000 view để lên 100k - 1M view): Thuật toán đòi hỏi TỔNG THỜI LƯỢNG XEM TÍCH LŨY (Total Watch Time) + TÍN HIỆU GIÁ TRỊ CAO (Lưu video / Bookmark, Chia sẻ / Share, Bình luận).
+  * Video quá ngắn (20-25s) thiếu chiều sâu và không có "Payoff", người xem lướt qua xem xong trôi tuột không đọng lại gì -> Bị kẹt cứng ở ngưỡng 10k-30k view!
+  * Video đạt CHUẨN VÀNG THỜI LƯỢNG LINH HOẠT (35 – 48 GIÂY) kết hợp CÚ BẺ KHÓA PAYOFF ĐỈNH CAO tạo ra Watch Time gấp đôi, kích hoạt phản xạ Lưu & Chia sẻ -> Bứt phá vượt ngưỡng 50k - 500k+ views!
 ═══════════════════════════════════════════════════════════
-1. ULTRA-FOCUSED DURATION (GOLDEN RETENTION TARGET 22 - 25s — APV > 100%):
-   - Real-world audience retention proves viewers watch ~22 to 27 seconds before fatigue.
-   - For fast-paced high-retention niches (Deep Sea Mysteries, Psychology, Sci-Fi, Wildlife, History What-If):
-     * TARGET DURATION: STRICTLY 22 TO 25 SECONDS TOTAL!
-     * Exact scene count: strictly 5 to 6 scenes.
-     * Total spoken word count: strictly 50 to 62 words (high density, zero fluff).
-     * Pacing: 3.5 to 4.2 seconds per scene (9 to 11 words per scene).
-     * Why: When a video is 22-24 seconds, viewers watching 24-28s achieve 105% - 130% APV (Looping), immediately triggering the algorithm to blast the video out of the test pool into mass distribution!
-   - For narrative-driven emotional story niches (e.g. Animal Rescue journeys):
-     * TARGET DURATION: 30 TO 38 SECONDS TOTAL (6 to 7 scenes, 65 to 85 words).
-   - ESCALATING TENSION (CRITICAL TO ELIMINATE 6s - 12s DROP-OFF CLIFF):
-     * Scene 1 (0-3s): Visceral Hook with personal stakes or forbidden warning (Viewed > 75%).
-     * Scene 2 (3-7s): IMMEDIATE MICRO-HOOK — Visceral physical proof, acoustic shock, or sudden anomaly! (STRICTLY FORBIDDEN: NEVER lecture textbook history, founding dates, or slow background setup in Scene 2!).
-     * Scene 3 (7-12s): ESCALATION & THE PARADOX — The danger magnifies or a counter-intuitive twist strikes ("At 11,000m, water pressure exceeds 1,000 atmospheres...").
-     * Scene 4-5 (12-18s): The Climax / Psychological Unmasking / Turning point.
-     * Final Scene (18-24s): Mind-Bending Climax, Organic Discussion Prompt & Seamless Infinite Loop Bridge!
+1. THỜI LƯỢNG LINH HOẠT (35 – 48 GIÂY) & CẤU TRÚC 4 NHỊP VÀNG CÓ PAYOFF:
+   - THỜI LƯỢNG MỤC TIÊU: LINH HOẠT TỪ 35 ĐẾN 48 GIÂY TOÀN VIDEO.
+   - SỐ LƯỢNG PHÂN CẢNH (SCENES): 7 ĐẾN 10 PHÂN CẢNH (mỗi cảnh trung bình 3.5 – 5.0 giây).
+   - TỔNG SỐ TỪ THOẠI (WORD COUNT): STRICTLY 85 ĐẾN 125 TỪ (khoảng 150-165 WPM, súc tích, nhịp điệu dồn dập, tuyệt đối không chêm từ thừa).
+
+   - CẤU TRÚC 4 NHỊP BẮT BUỘC ĐỂ GIỮ CHÂN & VƯỢT TRẦN VIEW:
+     * NHỊP 1: HOOK ĐỘT PHÁ (0 - 3s — Cảnh 1):
+       Cắt đà lướt (Thumb-Stopper), nêu bật nghịch lý nhức nhối, lời cảnh báo đanh thép hoặc câu hỏi hóc búa (Viewed > 75%).
+     * NHỊP 2: BÓC TÁCH MÂU THUẪN & BẰNG CHỨNG LEO THANG (3 - 20s — Cảnh 2 đến 4):
+       Cung cấp 2-3 dấu hiệu nhận biết cụ thể, dữ kiện khoa học/tâm lý thực chứng. Chuyển cảnh dồn dập mỗi 3-4s với hành động vật lý rõ ràng để triệt tiêu cú rơi rụng 6s-12s.
+     * NHỊP 3: THE HIGH-VALUE PAYOFF — CÚ GIẢI THOÁT & GIÁ TRỊ CỐT LÕI (20 - 38s — Cảnh 5 đến 7):
+       [QUAN TRỌNG NHẤT ĐỂ VƯỢT NGƯỠNG 10K - 50K VIEW]
+       - ĐÂY LÀ PHẦN THƯỞNG CHO NGƯỜI XEM (THE PAYOFF): Tuyệt đối không để video kết thúc lửng lơ hoặc chỉ liệt kê hời hợt!
+       - BẮT BUỘC cung cấp:
+         1. The Revelation (Bản chất ngầm thực sự): Lật tẩy động cơ sâu kín, quy luật tâm lý bị che giấu hoặc giải mã hiện tượng mà 99% mọi người hiểu sai.
+         2. The Actionable Counter-Move (Chiến lược phản đòn / Giải pháp thực chiến): Hướng dẫn chính xác cách hóa giải, ứng xử hoặc phòng thủ ("Khoảnh khắc bạn giữ im lặng và nhìn thẳng vào mắt họ, trò chơi thao túng sụp đổ ngay lập tức...").
+         3. Emotional Catharsis: Khiến người xem ồ lên nhận ra chân lý, cảm thấy video cực kỳ giá trị -> Thôi thúc bấm LƯU (Bookmark/Save) và bấm THÍCH (Like) ngay lập tức!
+     * NHỊP 4: CALL TO ACTION & SEAMLESS INFINITE LOOP (38 - 48s — Cảnh 8 đến 10):
+       - Kêu gọi đăng ký kênh (High-Converting Niche CTA) ngắn gọn, tự nhiên, gắn chặt với giá trị kênh.
+       - Câu kết thúc trọn vẹn ngữ pháp, đồng thời nối mượt mà quay trở lại câu Hook ở Cảnh 1 tạo vòng lặp vô tận (Infinite Looping APV).
 
 2. 3-SECOND SHOCK ANGLE HOOK (SCENE 1) — CRITICAL TO PREVENT SWIPE-AWAY (>80% VIEWED):
    - The first 1.5 - 2.5 seconds determines 100% of Shorts performance (Viewed vs Swiped away).
@@ -573,17 +578,18 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   "title": "Viral YouTube Shorts Title with Emojis",
   "primary_entity": "Full official name of main person/figure or null",
   "hook": "The opening 3-second hook sentence",
-  "full_narration": "Complete spoken text without stage directions (strictly 50-62 words for fast-paced, 75-90 for rescue)",
+  "full_narration": "Complete spoken text without stage directions (strictly 85-125 words, flexible 35-48s duration with deep payoff)",
   "thumbnail_text": "2-4 TỪ IN HOA CỰC TO GỢI TÒ MÒ CHO ẢNH BÌA",
   "scenes": [
     {{
       "scene_id": 1,
       "visual_reasoning": "Tư duy logic đạo diễn: Phân tích mâu thuẫn kịch bản và lý giải cách chuyển hóa thành hành động/hình ảnh tương tác cụ thể",
-      "narration": "Spoken sentence for this scene (6-10 words)",
+      "narration": "Spoken sentence for this scene (9-13 words, 7 to 10 scenes total for 35-48s duration)",
       "visual_keyword": "concrete search keywords",
       "visual_prompt": "Cinematic visual description: subject + camera angle + lighting + background",
       "stock_query": "concrete physical nouns",
       "media_type": "video | ai_image | photo | documentary",
+      "estimated_seconds": 4.0
     }}
   ],
   "tags": ["shorts", "viral"],
@@ -674,7 +680,7 @@ HARD RETENTION RULES:
    - Scene 1 spoken text must use an urgent warning, elite interrogation tactic, dark law, or counter-intuitive shock (5-8 words strictly).
    - Scene 1 visual_prompt MUST be a high-tension Primal Visual Hook deduced dynamically from the topic (e.g. scale shock, magnetic attraction, psychological threat, catastrophe). Format: "[Subject + action], [camera angle], [lighting], [environment]"
    - Scene 1 visual_keyword & stock_query MUST be concrete physical nouns (2-3 words).
-2. Fast-paced, punchy, concise sentences: strictly 22-25 seconds total for fast-paced (50-62 words, 5-6 scenes), or 35-42s for rescue/story (75-90 words).
+2. Flexible 35-48s duration with High-Value Payoff: strictly 85-125 words total across 7-10 scenes (3.5-5.0s each), delivering a deeply satisfying resolution and actionable takeaway before the closing CTA.
 3. NO ABSTRACT stock_query: 2-3 English CONCRETE PHYSICAL NOUNS only for Pexels.
    NO "psychology", "minimalism", "authority", "power". Use physical objects/actions only.
 4. SEAMLESS LOOP BRIDGE (INFINITE SHORTS LOOP): The final scene MUST seamlessly bridge back into Scene 1's opening hook with complete grammatical closure. NEVER use generic CTAs like "drop a comment below", "follow for part 2", or "tap twice" in spoken narration. NEVER end with dangling prepositions or conjunctions like 'because', 'which', 'and', 'but', etc. Ensure the script ends with a complete standalone sentence!
@@ -687,11 +693,11 @@ HARD RETENTION RULES:
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
   "hook": "The opening 3-second hook sentence",
-  "full_narration": "The full spoken text without any stage directions (strictly 50-62 words for fast-paced, 75-90 for story)",
+  "full_narration": "The full spoken text without any stage directions (strictly 85-125 words for flexible 35-48s with deep payoff)",
   "scenes": [
     {{
       "scene_id": 1,
-      "narration": "Text spoken in this scene (6-10 words)",
+      "narration": "Text spoken in this scene (9-13 words, 7-10 scenes total)",
       "visual_keyword": "concrete search keywords",
       "visual_prompt": "Detailed cinematic scene: subject + camera angle + lighting + environment",
       "stock_query": "concrete physical nouns",

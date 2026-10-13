@@ -97,16 +97,16 @@ NHIỆM VỤ TỐI THƯỢNG: Cực đại hóa tỷ lệ giữ chân khán gi�
 Nếu một cảnh đã có 'media_type' cụ thể do người dùng chỉ định khác 'auto', hãy ưu tiên tôn trọng mong muốn đó.
 
 ══════════════════════════════════════════════════════════════════════════════
-I. CẤU TRÚC GIỮ CHÂN 4 NHỊP VÀNG (GOLDEN RETENTION ARCHITECTURE: 22 - 28s — APV > 100%)
+I. CẤU TRÚC GIỮ CHÂN 4 NHỊP VÀNG (FLEXIBLE 35 - 48s ARCHITECTURE — VƯỢT NGƯỠNG 10K-50K VIEW)
 ══════════════════════════════════════════════════════════════════════════════
 1. BEAT 1: HOOK ĐỘT PHÁ (0 - 3s — MỤC TIÊU VIEWED > 75%, SWIPED AWAY < 25%):
    Cảnh 1 BẮT BUỘC là cú sốc thị giác (cận cảnh macro góc hiểm, chuyển động punch-in gia tốc, độ tương phản cao) kết hợp âm thanh va chạm mạnh tại t=0.0s để khóa chặt ngón tay người xem ngay frame đầu tiên.
-2. BEAT 2: BẰNG CHỨNG SỐC & MICRO-HOOK (3 - 10s — CHỐNG RƠI RỤNG 6s-12s):
-   Không kể lể dông dài! Đưa khán giả vào sâu bằng hình ảnh có tính xác thực cao (tư liệu lịch sử thật, chuyển động b-roll thực tế, cận cảnh chi tiết dị thường).
-3. BEAT 3: LEO THANG XUNG ĐỘT & CAO TRÀO (10 - 18s):
-   Cứ mỗi 2.5 - 3.5 giây phải có một điểm ngắt thị giác (Visual Pattern Interrupt) — chuyển góc máy, nhịp cắt dồn dập, đẩy kịch tính lên đỉnh điểm.
-4. BEAT 4: CÂU HỎI MỒI & VÒNG LẶP LIÊN TỤC (18 - 25s — MỤC TIÊU APV > 100% & KÍCH NỔ COMMENT):
-   Kết thúc bằng một câu hỏi gợi tranh luận gay gắt (Organic Prompt) và một khung hình ám ảnh dẫn dắt người xem quay ngược trở lại câu Hook ở Cảnh 1 (Infinite Looping Retention).
+2. BEAT 2: BẰNG CHỨNG SỐC & DẤU HIỆU LEO THANG (3 - 20s — CHỐNG RƠI RỤNG 6s-12s):
+   Bóc tách 2-3 dấu hiệu nhận biết, chuyển cảnh liên tục mỗi 3-4s với hành động vật lý và b-roll sống động.
+3. BEAT 3: THE HIGH-VALUE PAYOFF — CÚ LẬT MẶT & GIẢI PHÁP THỰC CHIẾN (20 - 38s):
+   Cao trào giải mã sự thật và vũ khí phản đòn. Hình ảnh đặc tả khoảnh khắc lật ngược thế cờ, chi tiết đắt giá hoặc tương tác then chốt mang tính biểu tượng cao.
+4. BEAT 4: CALL TO ACTION & VÒNG LẶP LIÊN TỤC (38 - 48s — KÍCH NỔ COMMENT & LƯU VIDEO):
+   Lời kêu gọi đăng ký kênh tự nhiên + một câu kết thúc ám ảnh nối mượt mà quay trở lại câu Hook ở Cảnh 1 (Infinite Looping Retention).
 
 ══════════════════════════════════════════════════════════════════════════════
 II. BẢN ĐỒ CHIẾN LƯỢC & PHÂN CÔNG CẤP DƯỚI (DELEGATION PROTOCOL)

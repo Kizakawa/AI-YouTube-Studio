@@ -133,38 +133,38 @@ class ScriptValidationLinter:
     ) -> Tuple[List[str], int]:
         """
         Kiểm tra số từ và tính toán nhịp đọc (Pacing):
-        Chuẩn vàng YouTube Shorts Viral (22 - 28s tại 150-160 WPM) là 50 đến 72 từ (đạt APV > 100%).
-        Đối với ngách cứu hộ cảm xúc, cho phép 70 đến 95 từ (30 - 38s).
+        Chuẩn vàng YouTube Shorts có Payoff vượt ngưỡng 10k-50k view (35 - 48s tại 150-165 WPM) là 85 đến 125 từ.
+        Cho phép linh hoạt 7 đến 10 phân cảnh (mỗi cảnh 3.5 - 5.0s).
         """
         issues = []
         all_narrations = " ".join(s.narration for s in script.scenes if s.narration)
         words = re.findall(r'\b\w+\b', all_narrations)
         total_words = len(words)
 
-        # Quá dài (> 90 từ đối với Shorts thường, > 115 từ đối với cứu hộ) -> Thời lượng vượt quá 35-45s, APV sẽ tụt dưới 100%
+        # Quá dài (> 135 từ) -> Thời lượng vượt quá 52s, dễ gây mỏi người xem Shorts
         topic_str = getattr(script, "topic", "") or ""
         is_rescue = any(k in f"{script.title} {topic_str}".lower() for k in ("rescue", "cứu hộ", "puppy", "dog", "cat", "pet"))
-        max_words = 105 if is_rescue else 85
+        max_words = 145 if is_rescue else 135
 
         if total_words > max_words:
             est_seconds = (total_words / target_wpm) * 60
             issues.append(
                 f"Script is too long ({total_words} words, ~{est_seconds:.1f}s at {target_wpm} WPM). "
-                f"Target limit: strictly 50 to {max_words} words for APV > 100% (22-28s duration)."
+                f"Target limit: strictly 85 to {max_words} words for flexible 35-48s duration with Payoff."
             )
-        # Quá ngắn (< 45 từ) -> Video dưới 18s không đủ dẫn dắt nội dung
-        elif total_words < 45:
+        # Quá ngắn (< 40 từ) -> Video dưới 16s không đủ chiều sâu để cung cấp Payoff
+        elif total_words < 40:
             issues.append(
                 f"Script is too short ({total_words} words). "
-                f"Minimum 45 words required for adequate storytelling depth (target 50-70 words, 22-28s)."
+                f"Minimum 40 words required for adequate storytelling depth (target 85-125 words, 35-48s with Payoff)."
             )
 
-        # Số lượng scene: 5 đến 7 scene là nhịp tối ưu cho Shorts (3.0 - 4.2s/scene)
+        # Số lượng scene: 7 đến 10 scene là nhịp tối ưu cho Shorts 35-48s (3.5 - 5.0s/scene)
         scene_count = len(script.scenes)
         if scene_count < 5:
-            issues.append(f"Too few scenes ({scene_count}). Need at least 5 fast-paced scenes for Shorts.")
-        elif scene_count > 9:
-            issues.append(f"Too many scenes ({scene_count}). Limit to 5 to 7 focused scenes (3.0-4.2s each).")
+            issues.append(f"Too few scenes ({scene_count}). Need at least 5 scenes for Shorts (target 7 to 10 scenes for 35-48s).")
+        elif scene_count > 12:
+            issues.append(f"Too many scenes ({scene_count}). Limit to 7 to 10 focused scenes (3.5-5.0s each) for 35-48s duration.")
 
         return issues, total_words
 

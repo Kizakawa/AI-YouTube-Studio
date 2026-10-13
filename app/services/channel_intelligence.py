@@ -322,27 +322,37 @@ def _get_global_trends_directive(niche_id: str) -> str:
     if any(k in nid for k in ("deep_sea", "ocean", "thalassophobia", "bien_sau", "abyss")):
         return """
 🌍 2026 GLOBAL VIRAL SHORTS TRENDS (DEEP SEA & THALASSOPHOBIA):
-1. Visceral Thalassophobia (Proven Top Winner on Channel): Piercing submarine headlight beams illuminating pitch-black abyssal void; colossal unidentifiable bio-shapes or dormant leviathans looming in the deep. Hook must challenge the viewer directly: 'If you have thalassophobia, swipe away immediately...'
-2. Classified Declassified Hydrophone Acoustics: Real sonar audio anomalies recorded by NOAA/US Navy (The Bloop, Upsweep, Julia, Train) with decibel comparisons to living blue whales. Hook: 'In 1997, hydrophones recorded this classified signal 3,000 miles across the Pacific...'
-3. The Mariana 11,000m Paradox & Abandoned Exploration: Why NASA and superpower nations abruptly ceased deep ocean trench exploration to look into space; underwater brine pools ('lakes beneath the ocean') where creatures die instantly upon entering. Hook: 'Here is the classified reason exploration was abruptly halted at 11,000 meters...'
+1. Visceral Thalassophobia (Proven Top Winner on Channel): Piercing submarine headlight beams illuminating pitch-black abyssal void; colossal unidentifiable bio-shapes looming in the deep. Hook must challenge the viewer directly: 'If you have thalassophobia, swipe away immediately...'
+2. Classified Declassified Hydrophone Acoustics: Real sonar audio anomalies recorded by NOAA/US Navy (The Bloop, Upsweep, Julia, Train) with decibel comparisons to living blue whales. Hook: 'In 1997, deep hydrophones recorded this classified signal 3,000 miles across the Pacific...'
+3. Underwater Toxic Lakes & Brine Pools: Subsea brine lakes beneath the ocean floor where salinity and methane instantly preserve or kill organisms, creating underwater shorelines. Hook: 'Deep beneath the ocean floor lies a toxic lake where creatures perish the second they touch the water...'
 4. Point Nemo Isolation: The oceanic pole of inaccessibility where the closest humans are astronauts on the ISS orbiting 400km above.
-CRITICAL CONSTRAINT: STRICTLY FORBIDDEN: Generic river predators (e.g. Amazon caimans, snakes) or dry textbook history lectures. Stay 100% focused on visceral abyss fear, scale shock, classified sonar, and forbidden depths!
+CRITICAL CONSTRAINT: STRICTLY FORBIDDEN: Repetitive '11,000 meters depth' generic lists! Do not reuse the phrase '11,000m' or '11,000 meters'. Diversify into acoustic sonar, brine pools, and sensory thalassophobia!
+"""
+    elif any(k in nid for k in ("alternate_history", "what_if", "timeline", "temporal")):
+        return """
+🌍 2026 GLOBAL VIRAL SHORTS TRENDS (ALTERNATE HISTORY & WHAT IF?):
+1. Massive Geopolitical & Imperial Turning Points: What if the Roman Empire never collapsed? What if the Library of Alexandria was preserved with 500,000 lost scrolls? What if the Mongol hordes did not retreat after Vienna?
+2. 1-Second Glitches That Rewrote History: The missed telegram before Pearl Harbor; the single wrong turn in Sarajevo in 1914; Alexander the Great surviving his fever at age 32.
+3. Financial & Industrial Titans Alternate Wealth: How Rockefeller turned an execution order into $400B; what if Mansa Musa's gold economy crashed Mediterranean trade permanently?
+STRICT CONSTRAINT: Strictly 100% historical counter-factual scenarios ("What If..."). ZERO psychology advice, ZERO modern medical/vaccine conspiracy, ZERO generic motivational talk!
+Hook Formula: 'What if one single second completely erased the modern world we know today?'
 """
     elif "mystery" in nid or "history" in nid:
         return """
 🌍 2026 GLOBAL VIRAL SHORTS TRENDS (MYSTERIES & ANOMALIES):
-1. Subterranean & Ocean Acoustic Anomalies: Declassified underwater hydrophone recordings (The Bloop, Julia, Upsweep, Train), Mariana acoustic anomalies with exact frequency stats. (CRITICAL: Pivot AWAY from repetitive generic 'what is at 1000m depth' lists!).
+1. Subterranean & Historical Acoustic Anomalies: Ancient acoustic resonance chambers (Kailasa, Hal Saflieni Hypogeum, Puma Punku), declassified signals with exact frequency stats.
 2. Forbidden Architecture & Sealed Vaults: Underground secrets beneath the Sphinx's right paw, Derinkuyu subterranean ventilation mysteries, Vatican secret vault micro-documents.
-3. Glitches in Historical Reality: Prophecies with eerie modern precision (Roger Bacon 1290 machines), ancient precision masonry acoustic resonance (Kailasa, Puma Punku).
-Hook Formula: 'In [Year], deep sonar sensors picked up this classified acoustic signal...'
+3. Glitches in Historical Reality: Prophecies with eerie modern precision (Roger Bacon 1290 machines), ancient astronomical alignments.
+Hook Formula: 'In [Year], archaeologists uncovered a sealed chamber that official records erased...'
 """
     elif "animal" in nid or "rescue" in nid or "pet" in nid:
         return """
 🌍 2026 GLOBAL VIRAL SHORTS TRENDS (ANIMAL RESCUE & EMOTIONAL HEALING):
-1. 3-Phase Transformation Arc: High-contrast emotional rollercoaster (Abandoned/shivering in freezing rain -> First tentative warm meal & soft blanket -> Healthy glowing coat & joyful adoption leap).
-2. Emergency Cross-Species Miracles: Stray dogs protecting tiny kittens, maternal animal instincts across species.
-3. Unconditional Loyalty Testimonials: Stories where the rescued pet repays human kindness or stays vigilant beside their savior.
-Hook Formula: 'He had completely given up on living... until a stranger stopped their car.'
+1. 4-Phase Transformation Arc: Heartwarming transformation from trembling fear to ecstatic breakthrough (From hiding in silence to daring to make eye contact -> First gentle touch of human warmth -> Glowing recovery & joyous sprint in sunlight).
+2. The Breakthrough Moment: Stories where the pet stopped trembling and dared to rest its head on the rescuer's hand.
+3. Emotional Salvation: Highlighting unconditional loyalty and the sheer joy of finding a forever home.
+CRITICAL CONSTRAINT: STRICTLY FORBIDDEN: Overly gruesome, hopeless or depressing titles ('paralyzed street cat', 'shivering in rain for 7 days'). Khán giả lướt Shorts tìm kiếm hy vọng và sự chữa lành. Focus on hope, transformation, and unconditional love!
+Hook Formula: 'The exact second this terrified rescue dog realized he was finally safe...'
 """
     elif "wildlife" in nid or "predator" in nid or "nature" in nid:
         return """
@@ -350,7 +360,7 @@ Hook Formula: 'He had completely given up on living... until a stranger stopped 
 1. Extreme Asymmetric Combat Biomechanics: Orcas using tonic immobility on Great White Sharks; Honey Badger venom neurotoxin immunity vs Black Mamba & Lion Prides; Jaguar skull-crushing bite vs Black Caiman.
 2. Sensory Superpowers & Strike Physics: Cheetah elastic spine 70 mph acceleration in 3 seconds; Peregrine Falcon 240 mph air-dive aerodynamics; Mantis Shrimp cavitation bubble punch.
 STRICT NEGATIVE CONSTRAINT: Strictly 100% biological animal predator behaviors. ZERO space facts, zero deep sea fantasy, zero psychology! Keep audience bucket clean!
-Hook Formula: 'This 20-pound creature has zero fear of an entire pride of lions... and here is why.'
+Hook Formula: 'Why even a 15-foot Great White Shark turns and flees the instant an Orca enters the bay...'
 """
     else:  # psychology / dark psychology / self-mastery
         return """

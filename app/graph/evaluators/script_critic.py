@@ -78,10 +78,11 @@ Phong cách kênh: {channel_style}
    - Cảnh 1 có đủ sốc thị giác, đảo ngược định kiến hoặc tạo sự cấp bách tột cùng để khóa chặt ngón tay người xem trong 2.5s đầu không? (Cần >= 8.5).
    - Đạt điểm cao: Lời thoại 5-8 từ dứt khoát theo 4 công thức (Cảnh báo nguy hiểm, Đòn tâm lý cao thủ, Quy luật bóng tối, Cú sốc ngược đời).
    - Bị trừ nặng (< 5.0): Mở đầu sách giáo khoa, định nghĩa học thuật ("Để bắt kẻ nói dối...", "Trong tâm lý học..."), chào hỏi sáo rỗng ("Bạn có biết...", "Xin chào...").
-2. story_pacing (Mục tiêu: APV > 100% - Giữ chân trọn vẹn và kích thích xem lặp lại):
-   - Thời lượng vàng: 22 - 28 giây (50 - 68 từ cho 5-7 cảnh, 3.0-4.0s/cảnh). Với cứu hộ cho phép 30-38s (65-85 từ).
-   - Cảnh 2 & 3 (giây 4-12) bắt buộc tung Micro-Hook / bằng chứng vật lý sốc để triệt tiêu cú rơi rụng (Drop-off cliff).
-   - Video quá dài (> 90 từ / > 40s) hoặc lê thê bị trừ điểm vì làm APV tụt dưới 70%. (Cần >= 8.0)
+2. story_pacing (Mục tiêu: Đạt thời lượng 35 - 48s có Payoff sâu sắc để vượt trần 10k - 50k view):
+   - Thời lượng vàng linh hoạt: 35 - 48 giây (85 - 125 từ, 7 - 10 cảnh, 3.5 - 5.0s/cảnh).
+   - YẾU TỐ PAYOFF BẮT BUỘC (Cảnh 5-7): Phải cung cấp giải pháp thực chiến, bản chất ngầm thực sự bị che giấu hoặc bài học đắt giá giải tỏa tò mò của Hook, tạo giá trị cao thôi thúc người xem Lưu (Save) và Chia sẻ (Share).
+   - Cảnh 2 & 3 (giây 4-15) bắt buộc tung Micro-Hook / bằng chứng vật lý sốc để triệt tiêu cú rơi rụng (Drop-off cliff).
+   - Bị trừ điểm (< 6.0): Kịch bản quá ngắn (< 30s / < 45 từ) hời hợt thiếu Payoff, hoặc quá dài lê thê (> 55s / > 140 từ). (Cần >= 8.0)
 3. entity_coherence: Kịch bản và hình ảnh có bám chặt vào nhân vật/bối cảnh lịch sử thực tế không?
 4. visual_direction: Khả năng chỉ đạo hình ảnh & Đan xen công cụ linh hoạt (Anti-Slideshow & Tool Matching):
    - Đạt điểm cao (>= 8.5): Từ khóa visual_keyword & stock_query có hành động vật lý cụ thể, giàu tính điện ảnh, định hướng rõ Video B-roll thực tế, Video AI kỳ ảo, hoặc ảnh tư liệu lịch sử.
@@ -95,13 +96,13 @@ Phong cách kênh: {channel_style}
 Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với schema sau:
 {{
   "hook_strength": {{"score": 8.5, "feedback": "Nhận xét chi tiết về khả năng đạt Viewed > 75%..."}},
-  "story_pacing": {{"score": 8.0, "feedback": "Nhận xét chi tiết về thời lượng và nhịp độ đạt APV > 100%..."}},
+  "story_pacing": {{"score": 8.0, "feedback": "Nhận xét chi tiết về thời lượng 35-48s và yếu tố Payoff đạt chuẩn..."}},
   "entity_coherence": {{"score": 9.0, "feedback": "Nhận xét chi tiết..."}},
   "visual_direction": {{"score": 8.5, "feedback": "Nhận xét chi tiết về nhịp điệu thị giác và công cụ phù hợp..."}},
   "viral_loop": {{"score": 8.5, "feedback": "Nhận xét chi tiết về lời kêu gọi đăng ký CTA và vòng lặp comment..."}},
   "actionable_critiques": [
     "Chỉ đạo viết lại Cảnh 1 để giật thumb-stopper đạt Viewed > 75%...",
-    "Rút gọn kịch bản về 22-28s để đạt APV > 100%...",
+    "Bổ sung cú bẻ khóa Payoff (giải pháp thực chiến / bản chất ngầm) và giữ thời lượng chuẩn 35-48s...",
     "Bổ sung hoặc tinh chỉnh lời kêu gọi đăng ký kênh (CTA) tự nhiên, sắc bén vào Cảnh cuối..."
   ]
 }}"""
