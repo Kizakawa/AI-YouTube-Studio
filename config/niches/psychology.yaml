@@ -42,19 +42,18 @@ script_blueprint:
   - deep sea creature
 visual_aesthetics:
   art_style: Modern Cinematic Psychological Drama & Thought-Provoking Editorial (Fincher / Nolan / A24 Aesthetic)
-  camera_angles: Cinematic macro eye dilation, dramatic over-the-shoulder conversation, wide architectural establishing shot, symmetrical framing, slow dolly push-in
+  camera_angles: Dramatic low-angle tension, high-angle surveillance perspective, intimate over-the-shoulder confrontation, Dutch angle psychological unease, dynamic macro focus racking, crisp depth of field
   color_palette: Rich cinematic contrast, warm amber key light, deep midnight navy, crisp architectural alabaster, vivid scarlet accents, dynamic natural lighting
   master_prompt_prefix: masterpiece cinematic film still, modern psychological drama, vivid rich lighting, expressive storytelling composition, 35mm anamorphic photography
   master_prompt_suffix: razor-sharp focus, dynamic atmospheric depth, vibrant cinematic color grading, photorealistic vertical 9:16, no text, no watermark
-  negative_prompts: blurry, low quality, cartoon, anime, 3d render, distorted faces, extra fingers, watermark, text
+  negative_prompts: macro eye, eyeball close up, dark muddy face, blurry silhouette, generic portrait, statue head, blurry, low quality, cartoon, anime, 3d render, distorted faces, extra fingers, watermark, text
   stock_video_keywords:
   - confident person walking city
-  - chess game strategic move
   - two people intense conversation
   - modern skyscraper glass reflections
   - person thinking looking at view
   - woman looking mirror reflection
-  - hands holding pocket watch
+  - person writing in notebook
   - crowd walking busy avenue
 subtitles:
   font_family: Montserrat, sans-serif

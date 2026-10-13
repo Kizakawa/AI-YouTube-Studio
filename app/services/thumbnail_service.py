@@ -135,38 +135,68 @@ class ThumbnailService:
             im = enh_con.enhance(1.12)
 
             draw = ImageDraw.Draw(im)
-            font_size = 85 if aspect_ratio == "16:9" else 105
-            font = None
-            if self.font_path:
-                try:
-                    font = ImageFont.truetype(self.font_path, font_size)
-                except Exception:
-                    font = ImageFont.load_default()
-            else:
-                font = ImageFont.load_default()
+            # Loại bỏ emoji khỏi text_hook để tránh lỗi hiển thị ô vuông (tofu glyph) trên các font TTF
+            clean_text_hook = re.sub(r'[^\w\s\?!.,:;\'"-]+', '', text_hook).strip()
+            if not clean_text_hook:
+                clean_text_hook = text_hook.strip()
 
-            pal = THUMBNAIL_PALETTES.get(palette_key, THUMBNAIL_PALETTES["yellow_danger"])
-            text_color = pal["text"]
-            stroke_color = pal["stroke"]
-            accent_color = pal.get("accent", (255, 50, 50))
-
-            # Tự động chia dòng nếu text dài quá 3 từ
-            words = text_hook.strip().upper().split()
+            # Tự động chia dòng nếu text dài
+            words = clean_text_hook.upper().split()
             lines = []
             if len(words) <= 3:
                 lines = [" ".join(words)]
             elif len(words) == 4:
                 lines = [" ".join(words[:2]), " ".join(words[2:])]
-            else:
+            elif len(words) <= 6:
                 lines = [" ".join(words[:3]), " ".join(words[3:])]
+            else:
+                lines = [" ".join(words[:2]), " ".join(words[2:4]), " ".join(words[4:])]
 
-            # Tính toán vị trí hiển thị (vị trí 1/3 phía trên hoặc giữa để không bị che bởi thanh thời lượng YouTube ở góc dưới)
-            line_heights = []
+            # Dynamic font auto-fit: Đảm bảo 100% dòng chữ nằm gọn trong 82% chiều rộng khung hình (chống tràn viền)
+            max_allowed_w = int(target_w * 0.82)
+            init_font_size = 85 if aspect_ratio == "16:9" else 95
+
+            font = None
             line_widths = []
-            for line in lines:
-                bbox = draw.textbbox((0, 0), line, font=font, stroke_width=8)
-                line_widths.append(bbox[2] - bbox[0])
-                line_heights.append(bbox[3] - bbox[1])
+            line_heights = []
+
+            for f_size in range(init_font_size, 38, -3):
+                if self.font_path:
+                    try:
+                        cand_font = ImageFont.truetype(self.font_path, f_size)
+                    except Exception:
+                        cand_font = ImageFont.load_default()
+                else:
+                    cand_font = ImageFont.load_default()
+
+                temp_widths = []
+                temp_heights = []
+                too_wide = False
+                for line in lines:
+                    bbox = draw.textbbox((0, 0), line, font=cand_font, stroke_width=8)
+                    w = bbox[2] - bbox[0]
+                    h = bbox[3] - bbox[1]
+                    temp_widths.append(w)
+                    temp_heights.append(h)
+                    if w > max_allowed_w:
+                        too_wide = True
+                        break
+
+                if not too_wide:
+                    font = cand_font
+                    line_widths = temp_widths
+                    line_heights = temp_heights
+                    break
+
+            if not font:
+                font = cand_font
+                line_widths = temp_widths
+                line_heights = temp_heights
+
+            pal = THUMBNAIL_PALETTES.get(palette_key, THUMBNAIL_PALETTES["yellow_danger"])
+            text_color = pal["text"]
+            stroke_color = pal["stroke"]
+            accent_color = pal.get("accent", (255, 50, 50))
 
             total_text_h = sum(line_heights) + (len(lines) - 1) * 15
             start_y = int(target_h * 0.18) if aspect_ratio == "16:9" else int(target_h * 0.22)
@@ -267,12 +297,20 @@ class ThumbnailService:
         """
         text_hook = self.derive_curiosity_text(topic=topic, viral_title=viral_title, niche_id=niche_id)
 
-        # Lựa chọn ảnh gốc: Ưu tiên frame video sắc nét, hoặc ảnh AI có sẵn
-        extracted_frame = None
-        if video_path and os.path.exists(video_path):
-            extracted_frame = self.extract_video_frame(video_path, timestamp_sec=2.0)
+        # Lựa chọn ảnh gốc: Ưu tiên ảnh gốc sạch (Clean Image) chất lượng cao không dính subtitle/header!
+        chosen_base = None
+        if base_image_path and os.path.exists(str(base_image_path)):
+            chosen_base = str(base_image_path)
+        elif video_path and os.path.exists(video_path):
+            # Kiểm tra xem có ảnh _theme_frame gốc trong thư mục temp không
+            v_dir = Path(video_path).parent
+            theme_frames = sorted(v_dir.glob("_theme_frame_*.jpg"))
+            if theme_frames and theme_frames[0].exists():
+                chosen_base = str(theme_frames[0])
+            else:
+                # Nếu buộc phải trích xuất từ video, lấy frame tại 0.04s (trước khi bất kỳ phụ đề hay banner nào xuất hiện)
+                chosen_base = self.extract_video_frame(video_path, timestamp_sec=0.04)
 
-        chosen_base = extracted_frame or base_image_path
         if not chosen_base or not os.path.exists(chosen_base):
             # Nếu không có ảnh, tạo nền gradient tối sang trọng
             bg = Image.new("RGB", (1280, 720), color=(15, 18, 28))
@@ -317,11 +355,17 @@ class ThumbnailService:
         """
         text_hook = custom_text or self.derive_curiosity_text(topic=title, viral_title=title, niche_id=niche_id)
 
-        extracted_frame = None
-        if video_path and os.path.exists(video_path):
-            extracted_frame = self.extract_video_frame(video_path, timestamp_sec=frame_timestamp_s)
+        chosen_base = None
+        if background_image_path and os.path.exists(str(background_image_path)):
+            chosen_base = str(background_image_path)
+        elif video_path and os.path.exists(video_path):
+            v_dir = Path(video_path).parent
+            theme_frames = sorted(v_dir.glob("_theme_frame_*.jpg"))
+            if theme_frames and theme_frames[0].exists():
+                chosen_base = str(theme_frames[0])
+            else:
+                chosen_base = self.extract_video_frame(video_path, timestamp_sec=frame_timestamp_s if frame_timestamp_s < 0.2 else 0.04)
 
-        chosen_base = extracted_frame or (str(background_image_path) if background_image_path else None)
         if not chosen_base or not os.path.exists(chosen_base):
             bg = Image.new("RGB", (1280, 720), color=(15, 18, 28))
             chosen_base = str(self.output_dir / f"temp_base_{job_id}.jpg")

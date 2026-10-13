@@ -57,26 +57,141 @@ class WebImageFetcher:
     def __init__(self):
         self._unsplash_key = os.getenv("UNSPLASH_ACCESS_KEY", "").strip()
 
-    # ─────────────────────────────── Open Web (DDGS) ───────────────────────────
+    # ─────────────────────────────── Open Web (Bing trực tiếp + DDGS) ───────────────────────────
+    _engine_block_until: Dict[str, float] = {}
+
+    @classmethod
+    def _engine_ok(cls, name: str) -> bool:
+        import time as _t
+        return _t.time() >= cls._engine_block_until.get(name, 0)
+
+    @classmethod
+    def _engine_fail(cls, name: str, minutes: int = 2) -> None:
+        import time as _t
+        cls._engine_block_until[name] = _t.time() + minutes * 60
+        logger.warning(f"[WebImage] Nguồn '{name}' lỗi/timeout → tạm ngắt {minutes} phút, dùng nguồn khác.")
+
+    @staticmethod
+    def _raw_bing_images(query: str, limit: int = 35) -> List[Dict]:
+        """Bing Images qua endpoint async (HTML) — không cần key, nhanh, trả kèm kích thước ảnh."""
+        import html as _html
+        import re as _re
+        from urllib.parse import urlparse
+        res = requests.get(
+            "https://www.bing.com/images/async",
+            params={"q": query, "first": 0, "count": min(limit, 35), "mmasync": 1, "adlt": "moderate"},
+            headers={"User-Agent": _UA, "Accept-Language": "en-US,en;q=0.9"},
+            timeout=10,
+        )
+        if res.status_code != 200:
+            raise RuntimeError(f"Bing HTTP {res.status_code}")
+        out = []
+        for chunk in res.text.split('class="iusc"')[1:]:
+            m = _re.search(r'\bm="(\{[^"]+\})"', chunk)
+            if not m:
+                continue
+            try:
+                d = json.loads(_html.unescape(m.group(1)))
+            except Exception:
+                continue
+            size = _re.search(r'nowrap[^>]*>\s*(\d+)\s*(?:x|×|&#215;)\s*(\d+)', chunk)
+            purl = d.get("purl") or ""
+            out.append({
+                "image": d.get("murl"),
+                "thumbnail": d.get("turl"),
+                "title": _html.unescape(d.get("t") or ""),
+                "width": int(size.group(1)) if size else 0,
+                "height": int(size.group(2)) if size else 0,
+                "source": urlparse(purl).netloc.replace("www.", "") if purl else "web",
+                "url": purl,
+            })
+        return out
+
+    @staticmethod
+    def _raw_ddgs_images(query: str, limit: int = 15) -> List[Dict]:
+        try:
+            from ddgs import DDGS
+        except ImportError:
+            from duckduckgo_search import DDGS
+        return list(DDGS(timeout=8).images(query, region="wt-wt", safesearch="moderate", max_results=limit))
+
+    @staticmethod
+    def _raw_serper_images(query: str, limit: int = 20) -> List[Dict]:
+        """Google Images qua Serper.dev (API chính thức, cần SERPER_API_KEY) — ổn định, không bị chặn như cào web."""
+        key = os.getenv("SERPER_API_KEY", "").strip()
+        if not key:
+            return []
+        res = requests.post(
+            "https://google.serper.dev/images",
+            headers={"X-API-KEY": key, "Content-Type": "application/json"},
+            json={"q": query, "num": min(limit, 30)},
+            timeout=12,
+        )
+        if res.status_code != 200:
+            raise RuntimeError(f"Serper HTTP {res.status_code}: {res.text[:120]}")
+        out = []
+        for r in res.json().get("images", []):
+            out.append({
+                "image": r.get("imageUrl"),
+                "thumbnail": r.get("thumbnailUrl") or r.get("imageUrl"),
+                "title": r.get("title") or "",
+                "width": r.get("imageWidth") or 0,
+                "height": r.get("imageHeight") or 0,
+                "source": r.get("domain") or r.get("source") or "web",
+                "url": r.get("link") or "",
+            })
+        return out
+
+    @staticmethod
+    def _looks_relevant(raw: List[Dict], query: str) -> bool:
+        """
+        Nguồn cào miễn phí khi bị giới hạn thường trả kết quả RÁC (vd: tìm "kraken" ra xe máy / nước ngọt).
+        Nếu < 30% tiêu đề chứa từ khóa chính của truy vấn → coi như nguồn đang hỏng.
+        """
+        from app.services.media.image_quality import subject_terms
+        generic = {"concept", "art", "movie", "scene", "dark", "fantasy", "close", "photo", "historical",
+                   "the", "giant", "attacking", "hunting", "soaring", "flying", "eye", "eyes"}
+        terms = [t for t in subject_terms(query) if t not in generic]
+        if not terms or not raw:
+            return bool(raw)
+        sample = raw[:15]
+        hits = sum(1 for r in sample if any(t in (r.get("title") or "").lower().replace("-", " ") for t in terms))
+        return hits / len(sample) >= 0.3
+
     def search_open_web(self, query: str, per_page: int = 8) -> List[Dict]:
         """
-        Tìm kiếm ảnh thực tế từ toàn bộ mạng Internet (Google/Bing/DuckDuckGo index).
+        Tìm kiếm ảnh thực tế từ toàn bộ mạng Internet (Bing / DuckDuckGo index).
         Bỏ qua rào cản bản quyền để lấy những hình ảnh chân thực, chính xác và có độ phân giải cao nhất.
+        Thứ tự nguồn: OPEN_WEB_ENGINES (mặc định "serper,ddgs,bing"; serper chỉ chạy khi có SERPER_API_KEY).
+        Nguồn lỗi / trả kết quả rác bị ngắt tạm 10 phút.
         """
-        try:
+        from app.services.media.image_quality import is_watermark_risk
+
+        raw_results: List[Dict] = []
+        engines = [e.strip() for e in os.getenv("OPEN_WEB_ENGINES", "serper,ddgs,bing").split(",") if e.strip()]
+        for eng in engines:
+            if not self._engine_ok(eng):
+                continue
+            if eng == "serper" and not os.getenv("SERPER_API_KEY", "").strip():
+                continue
             try:
-                from ddgs import DDGS
-            except ImportError:
-                from duckduckgo_search import DDGS
+                if eng == "serper":
+                    raw_results = self._raw_serper_images(query, limit=20)
+                elif eng == "bing":
+                    raw_results = self._raw_bing_images(query, limit=35)
+                elif eng == "ddgs":
+                    raw_results = self._raw_ddgs_images(query, limit=max(per_page * 3, 15))
+                if raw_results and not self._looks_relevant(raw_results, query):
+                    logger.info(f"[WebImage] {eng} trả kết quả không liên quan cho '{query}' → bỏ qua")
+                    raw_results = []
+                    continue
+                if raw_results:
+                    break
+            except Exception as e:
+                logger.debug(f"[WebImage] {eng} lỗi cho '{query}': {e}")
+                self._engine_fail(eng)
 
-            ddgs = DDGS(timeout=10)
-            raw_results = list(ddgs.images(
-                query,
-                region="wt-wt",
-                safesearch="moderate",
-                max_results=max(per_page * 2, 10),
-            ))
-
+        try:
             out = []
             seen = set()
             for r in raw_results:
@@ -102,7 +217,7 @@ class WebImageFetcher:
                 source_site = r.get("source") or "web"
                 title = r.get("title") or query
 
-                out.append({
+                item = {
                     "url": img_url,
                     "thumbnail": r.get("thumbnail") or img_url,
                     "title": title,
@@ -115,7 +230,11 @@ class WebImageFetcher:
                     "creator": source_site,
                     "page_url": r.get("url") or "",
                     "attribution": f"Web image from {source_site}",
-                })
+                }
+                # Bỏ ảnh từ trang stock trả phí / bán tranh in (luôn dính watermark) và ảnh quá nhỏ
+                if is_watermark_risk(item) or min(w, h) < 450:
+                    continue
+                out.append(item)
                 if len(out) >= per_page:
                     break
 
@@ -129,30 +248,52 @@ class WebImageFetcher:
         """
         Tìm ảnh trực tiếp từ các bài viết Wikipedia liên quan đến chủ đề/thực thể.
         Đặc biệt hiệu quả với nhân vật, sự kiện lịch sử, địa danh, sinh vật và thí nghiệm khoa học.
+
+        query nên là TÊN THỰC THỂ (vd: "wedge-tailed eagle"). Tra cứu đúng tiêu đề bài trước,
+        sau đó mới full-text search và chỉ giữ bài có tiêu đề khớp từ khóa (tránh kết quả rác kiểu
+        "eagle flying sky" → "San Antonio Airport", "Area 51").
         """
         try:
+            from app.services.media.image_quality import subject_terms
             url = "https://en.wikipedia.org/w/api.php"
-            params = {
+            terms = subject_terms(query)
+            base = {
                 "action": "query",
-                "generator": "search",
-                "gsrsearch": query,
-                "gsrlimit": max(per_page * 2, 6),
-                "prop": "pageimages|images",
+                "prop": "pageimages",
                 "piprop": "original|thumbnail",
                 "pithumbsize": 1280,
-                "format": "json"
+                "format": "json",
+                "redirects": 1,
             }
-            res = requests.get(url, params=params, headers={"User-Agent": WIKIMEDIA_USER_AGENT}, timeout=10)
-            if res.status_code != 200:
-                return []
-            pages = res.json().get("query", {}).get("pages", {})
+            pages: List[Dict] = []
+            # 1. Tra đúng tiêu đề bài (kèm redirect: "mantis shrimp" → "Mantis shrimp")
+            res = requests.get(url, params={**base, "titles": query.strip()[:250]},
+                               headers={"User-Agent": WIKIMEDIA_USER_AGENT}, timeout=10)
+            if res.status_code == 200:
+                for p in res.json().get("query", {}).get("pages", {}).values():
+                    if "missing" not in p and (p.get("original") or p.get("thumbnail")):
+                        pages.append({**p, "index": 0})
+            # 2. Full-text search, chỉ giữ bài có tiêu đề chứa từ khóa chủ thể
+            if len(pages) < per_page:
+                res = requests.get(url, params={
+                    **base, "generator": "search", "gsrsearch": query, "gsrlimit": max(per_page * 2, 6),
+                }, headers={"User-Agent": WIKIMEDIA_USER_AGENT}, timeout=10)
+                if res.status_code == 200:
+                    need = max(1, -(-len(terms) * 2 // 3)) if terms else 0  # ≥ 2/3 số từ khóa chủ thể
+                    for p in res.json().get("query", {}).get("pages", {}).values():
+                        t = (p.get("title") or "").lower().replace("-", " ")
+                        if terms and sum(1 for term in terms if term in t) < need:
+                            continue
+                        pages.append(p)
             out = []
             seen = set()
-            for p in sorted(pages.values(), key=lambda x: x.get("index", 999)):
+            for p in sorted(pages, key=lambda x: x.get("index", 999)):
                 orig = p.get("original", {})
                 thumb = p.get("thumbnail", {})
                 img_url = orig.get("source") or thumb.get("source")
                 if not img_url or img_url in seen:
+                    continue
+                if str(img_url).lower().split("?")[0].endswith((".svg", ".gif", ".tif", ".tiff")):
                     continue
                 seen.add(img_url)
 
@@ -353,28 +494,54 @@ class WebImageFetcher:
             pass
 
     # ─────────────────────────────── Tổng hợp ────────────────────────────────
-    def search_all(self, query: str, per_source: int = 5) -> List[Dict]:
-        """Gọi song song mọi nguồn ảnh trên toàn bộ mạng Internet, tổng hợp và ưu tiên ảnh chân thực."""
+    def search_all(
+        self,
+        query: str,
+        per_source: int = 5,
+        subject: Optional[str] = None,
+        extra_queries: Optional[List[str]] = None,
+        creature_mode: bool = False,
+    ) -> List[Dict]:
+        """
+        Gọi song song mọi nguồn ảnh trên toàn bộ mạng Internet, tổng hợp và ưu tiên ảnh chân thực.
+
+        subject: tên chủ thể ngắn (vd: "wedge-tailed eagle"). Wikipedia / Commons / Openverse khớp từ khóa
+        kiểu AND nên dùng tên chủ thể sẽ chính xác hơn nhiều so với truy vấn mô tả dài.
+        """
         if not query or not web_image_search_enabled():
             return []
 
+        subject = (subject or "").strip()
+        entity_q = subject or query
         jobs = [
-            (self.search_open_web, "open_web"),
-            (self.search_wikipedia_images, "wikipedia"),
-            (self.search_wikimedia_commons, "commons"),
-            (self.search_openverse, "openverse"),
+            (self.search_open_web, "open_web", query),
+            (self.search_wikimedia_commons, "commons", entity_q),
+            (self.search_openverse, "openverse", entity_q),
         ]
+        # Wikipedia chỉ hữu ích khi tra theo TÊN THỰC THỂ; truy vấn mô tả dài trả về bài rác
+        if subject or len(query.split()) <= 3:
+            jobs.insert(1, (self.search_wikipedia_images, "wikipedia", entity_q))
         if self._unsplash_key:
-            jobs.append((self.search_unsplash, "unsplash"))
+            jobs.append((self.search_unsplash, "unsplash", query))
+        # Truy vấn bổ sung chỉ chạy trên Open Web (vd: quái vật → "kraken concept art", "Pirates of the Caribbean kraken")
+        for i, xq in enumerate(q for q in (extra_queries or []) if q and q != query):
+            jobs.append((self.search_open_web, f"open_web+{i + 1}", xq))
 
         with ThreadPoolExecutor(max_workers=len(jobs)) as ex:
-            futures = [ex.submit(fn, query, per_source) for fn, _ in jobs]
+            futures = [ex.submit(fn, q, per_source) for fn, _, q in jobs]
             buckets = []
             for f in futures:
                 try:
                     buckets.append(f.result(timeout=15))
                 except Exception:
                     buckets.append([])
+
+        # Open web quá ít kết quả với truy vấn dài → thử lại bằng tên chủ thể
+        if subject and subject.lower() != query.lower() and len(buckets[0]) < 3:
+            try:
+                buckets[0] = buckets[0] + self.search_open_web(subject, per_source)
+            except Exception:
+                pass
 
         merged, seen = [], set()
         # Ưu tiên xen kẽ: Open Web và Wikipedia lên đầu danh sách ứng viên
@@ -384,8 +551,20 @@ class WebImageFetcher:
                     seen.add(b[i]["url"])
                     merged.append(b[i])
 
-        summary_parts = [f"{name}={len(b)}" for (_, name), b in zip(jobs, buckets)]
-        logger.info(f"[WebImage] 🌐 Tìm ảnh mạng cho '{query}': {len(merged)} ảnh ({', '.join(summary_parts)})")
+        # Lọc watermark / ảnh nhỏ và xếp hạng theo chủ thể + bố cục dọc + độ phân giải
+        try:
+            from app.services.media.image_quality import prefilter_candidates
+            merged = prefilter_candidates(
+                merged, subject=subject or query, limit=max(12, per_source * 3), creature_mode=creature_mode,
+                max_per_source=8 if creature_mode else 5,
+            )
+        except Exception as e:
+            logger.debug(f"[WebImage] prefilter lỗi: {e}")
+
+        summary_parts = [f"{name}={len(b)}" for (_, name, _), b in zip(jobs, buckets)]
+        logger.info(
+            f"[WebImage] 🌐 Tìm ảnh mạng cho '{query}' (subject='{subject}'): {len(merged)} ảnh ({', '.join(summary_parts)})"
+        )
         return merged
 
 

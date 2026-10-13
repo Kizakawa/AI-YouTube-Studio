@@ -31,6 +31,53 @@ AVAILABLE_MODELS = [
     "gemini-flash-latest",
 ]
 
+# Giới hạn số lệnh Gemini Vision chạy đồng thời (8 cảnh × nhiều kênh song song dễ gây 429 hàng loạt)
+import threading as _threading
+import os as _os
+_VISION_SEM = _threading.BoundedSemaphore(max(1, int(_os.getenv("VISION_CONCURRENCY", "2") or 2)))
+
+_GENERIC_SUBJECTS = {
+    "", "scene", "visual", "image", "photo", "thing", "things", "something", "people", "world",
+    "reality", "life", "truth", "story", "moment", "time", "way", "fact", "facts",
+}
+
+
+def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any]:
+    """Đảm bảo truy vấn đầu tiên chứa ĐÚNG chủ thể (loài / tên riêng) và luôn có 1 truy vấn chỉ gồm chủ thể."""
+    subject = (subject or "").strip()
+    if not subject or subject.lower() in _GENERIC_SUBJECTS:
+        return res
+    from app.services.media.image_quality import subject_terms
+    terms = subject_terms(subject)
+    queries = [q for q in (res.get("search_queries") or []) if isinstance(q, str) and q.strip()]
+
+    def _has_subject(q: str) -> bool:
+        ql = q.lower().replace("-", " ")
+        return bool(terms) and all(t in ql for t in terms)
+
+    fixed: List[str] = []
+    for q in queries:
+        if not _has_subject(q):
+            q = f"{subject} {q}" if len(q.split()) <= 3 else subject
+        if q not in fixed:
+            fixed.append(q)
+    if subject not in fixed:
+        fixed.insert(1 if fixed else 0, subject)
+    res["search_queries"] = fixed[:4]
+    res["subject"] = subject
+    return res
+
+
+def _apply_creature_mode(res: Dict[str, Any], narration: str = "", topic: str = "") -> Dict[str, Any]:
+    """Quái vật / sinh vật huyền thoại → bật chế độ tìm concept art / cảnh phim thay vì ảnh chụp thật."""
+    from app.services.media.image_quality import is_creature_subject, creature_queries
+    subject = str(res.get("subject") or "").strip()
+    if subject and is_creature_subject(subject, narration, topic):
+        res["creature_mode"] = True
+        res["creature_queries"] = creature_queries(subject)
+        logger.info(f"🐙 [VisualCuration] Chế độ QUÁI VẬT cho '{subject}': {res['creature_queries']}")
+    return res
+
 
 class VisualCurationAgent:
     """
@@ -64,6 +111,7 @@ class VisualCurationAgent:
         for mime, b64 in (images or []):
             parts.append({"inline_data": {"mime_type": mime, "data": b64}})
 
+        conn_errors = 0
         for attempt in range(max_attempts or total_keys * 2):
             key = self.rotator.get_key()
             if not key:
@@ -92,6 +140,14 @@ class VisualCurationAgent:
                         self.rotator.rotate_key()
                         key_failed = True
                         break
+                except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                    # Mất mạng / DNS lỗi: thử tiếp mọi key × model chỉ làm treo pipeline hàng giờ
+                    conn_errors += 1
+                    logger.debug(f"[VisualCurationAgent] Network error on {model}: {e}")
+                    if conn_errors >= 2:
+                        logger.warning("[VisualCurationAgent] Mất kết nối tới Gemini → bỏ qua, dùng heuristic.")
+                        return None
+                    continue
                 except Exception as e:
                     logger.debug(f"[VisualCurationAgent] Gemini call error on {model}: {e}")
                     continue
@@ -156,18 +212,29 @@ THÔNG TIN ĐẦU VÀO:
 - Lời thoại phân cảnh: "{narration}"
 - Ngữ cảnh xung quanh: "{surrounding_context}"
 
+QUY TẮC TẠO TRUY VẤN TÌM ẢNH/VIDEO (CỰC KỲ QUAN TRỌNG — sai chủ thể = video bị chê "ảnh không liên quan"):
+- "subject" = CHỦ THỂ hình ảnh cụ thể nhất mà lời thoại nhắc tới, bằng tiếng Anh, GIỮ NGUYÊN tên loài / giống / tên riêng / tên địa danh / tên sự kiện.
+  vd: "wedge-tailed eagle" (KHÔNG được rút thành "eagle"), "peacock mantis shrimp", "golden retriever puppy", "Mariana Trench", "Napoleon Bonaparte".
+  Nếu lời thoại là khái niệm trừu tượng, hãy chọn vật thể/con người/bối cảnh cụ thể nhìn thấy được thể hiện khái niệm đó (vd: "person staring at mirror").
+  Nếu lời thoại cảnh này bị cắt giữa câu, lấy chủ thể từ Ngữ cảnh xung quanh / Chủ đề video.
+  Quái vật / sinh vật huyền thoại GIỮ NGUYÊN TÊN (vd: "kraken", "megalodon", "Loch Ness monster"), KHÔNG đổi thành con vật thật ("giant octopus", "shark").
+- search_queries[0] BẮT BUỘC chứa nguyên văn "subject" + 1-2 từ hành động/góc máy (3-5 từ). vd: "wedge-tailed eagle hunting", "mantis shrimp eyes close up".
+- search_queries[1], [2] cũng phải chứa "subject" hoặc tên gọi khác của chính nó (vd: "Aquila audax"). CẤM truy vấn chung chung không có chủ thể ("colorful marine life", "cinematic b roll", "majestic sky").
+- KHÔNG dùng tính từ trống rỗng (majestic, cinematic, aesthetic, beautiful, epic) trong truy vấn.
+
 HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
 {{
   "mood": "Tâm trạng chủ đạo (dark_ominous | tense_mysterious | epic_heroic | vibrant_energetic | melancholy_thoughtful | scientific_curiosity)",
   "narrative_subtext": "Ngụ ý và cảm xúc sâu xa mà phân cảnh này muốn truyền tải (1-2 câu tiếng Việt)",
   "visual_metaphor": "Mô tả bối cảnh điện ảnh cụ thể mà khán giả nên nhìn thấy trên màn hình 9:16 (tiếng Anh & tiếng Việt)",
+  "subject": "Chủ thể cụ thể bằng tiếng Anh, giữ nguyên tên loài/tên riêng (vd: wedge-tailed eagle)",
   "production_method": "STOCK_FOOTAGE | TEXT_TO_VIDEO | IMAGE_TO_VIDEO | REAL_ARCHIVE",
   "tool_choice": "pexels_video_clip | ai_text_to_video | ai_image_to_video | real_archive_photo",
   "motion_level": "HIGH_MOTION | MEDIUM_MOTION | STATIC_DETAILED",
   "search_queries": [
-    "Truy vấn tiếng Anh 2-3 từ cụ thể, giàu tính hành động vật lý (vd: modern boardroom presentation / chess pieces falling / scientist looking microscope / golden hour city walk)",
-    "Truy vấn thay thế góc nhìn 2 với góc máy hoặc bối cảnh sinh động khác",
-    "Truy vấn thay thế góc nhìn 3 đặc tả chi tiết vật lý hoặc cảm xúc biểu cảm"
+    "<subject> + hành động/góc máy, 3-5 từ tiếng Anh (vd: wedge-tailed eagle hunting)",
+    "<subject> + bối cảnh hoặc góc nhìn khác (vd: wedge-tailed eagle soaring)",
+    "<subject> + đặc tả chi tiết (vd: wedge-tailed eagle eye close up)"
   ],
   "negative_cues": [
     "Từ/khái niệm cấm (vd: text overlay, watermark, blurry, low resolution, cartoon, distorted, muddy dark tones)"
@@ -177,14 +244,30 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
 """
         res = self._call_gemini_json(prompt)
         if res and "search_queries" in res and res.get("visual_metaphor"):
+            from app.services.media.image_quality import extract_subject
+            subj = str(res.get("subject") or "").strip() or extract_subject(narration, primary_entity)
+            res = _enforce_subject_queries(res, subj)
+            res = _apply_creature_mode(res, narration, topic)
             logger.info(
-                f"🎬 [VisualCuration] Cảnh {scene_id} [{res.get('production_method')} / {res.get('tool_choice')}]: "
-                f"{res.get('narrative_subtext', '')[:60]}..."
+                f"🎬 [VisualCuration] Cảnh {scene_id} [{res.get('production_method')} / {res.get('tool_choice')}] "
+                f"subject='{res.get('subject', '')}' queries={res.get('search_queries', [])[:3]}"
             )
             return res
 
         # Heuristic fallback an toàn nếu Gemini tạm ngưng
-        return self._heuristic_scene_analysis(narration, topic, primary_entity, entity_type, scene_id, total_scenes)
+        res = self._heuristic_scene_analysis(narration, topic, primary_entity, entity_type, scene_id, total_scenes)
+        from app.services.media.image_quality import extract_subject
+        subj = extract_subject(narration, primary_entity)
+        if not subj or subj.lower() in _GENERIC_SUBJECTS:
+            # Cảnh bị cắt giữa câu ("High above,") → lấy chủ thể từ ngữ cảnh xung quanh
+            subj = extract_subject(surrounding_context) if surrounding_context else ""
+        if subj and subj.lower() not in _GENERIC_SUBJECTS and res.get("production_method") != "REAL_ARCHIVE":
+            generic = list(res.get("search_queries") or [])
+            res["search_queries"] = [subj, f"{subj} close up"] + generic[:1]
+            res["subject"] = subj
+            res = _apply_creature_mode(res, narration, topic)
+            logger.info(f"🎬 [VisualCuration] Cảnh {scene_id} (heuristic) subject='{subj}' queries={res['search_queries']}")
+        return res
 
     def _heuristic_scene_analysis(
         self,
@@ -346,6 +429,21 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
         mood = va.get("mood", "cinematic")
         metaphor = va.get("visual_metaphor", "")
         negative_cues = va.get("negative_cues", [])
+        subject = str(va.get("subject") or "").strip()
+        subject_rule = (
+            f"\nCHỦ THỂ BẮT BUỘC PHẢI THẤY RÕ TRONG ẢNH: \"{subject}\". "
+            f"Ảnh không có chủ thể này, hoặc sai loài/sai giống/sai nhân vật (vd: đại bàng đầu trắng thay vì đại bàng đuôi nêm) -> relevance tối đa 3.\n"
+            if subject else ""
+        )
+        if va.get("creature_mode"):
+            subject_rule += (
+                f"\nĐÂY LÀ QUÁI VẬT / SINH VẬT HUYỀN THOẠI (\"{subject}\") — không có ảnh chụp thật đẹp.\n"
+                f"- ƯU TIÊN: cảnh phim CGI, concept art điện ảnh, digital art u tối, tranh khắc cổ đầy ám ảnh; "
+                f"quái vật KHỔNG LỒ, RÙNG RỢN, quy mô áp đảo (vd: xúc tu khổng lồ nhấn chìm tàu), ánh sáng kịch tính.\n"
+                f"- appeal cao nhất cho ảnh khiến người xem nổi da gà ngay khung đầu tiên.\n"
+                f"- Hoạt hình dễ thương, chibi, đồ chơi, mô hình, hoá trang, bánh kem, ảnh con vật thật bình thường nhỏ bé "
+                f"(vd: con bạch tuộc trong bể cá) -> relevance tối đa 4.\n"
+            )
 
         meta_lines = []
         for img_no, (orig_idx, _) in enumerate(indexed):
@@ -366,13 +464,14 @@ PHÂN CẢNH:
 - Ý niệm thị giác: "{metaphor}"
 - Không khí (mood): "{mood}"
 - Yếu tố cấm kỵ: {json.dumps(negative_cues, ensure_ascii=False)}
-
+{subject_rule}
 THÔNG TIN ỨNG VIÊN:
 {chr(10).join(meta_lines)}
 
 TIÊU CHÍ CHẤM (mỗi ứng viên):
 1. relevance (0-10): Hình ảnh có thể hiện đúng chủ thể/hành động/cảm xúc của lời thoại không? Lạc đề, sai thời đại, sai thể loại -> dưới 4.
-2. appeal (0-10): Sức hút thị giác giữ chân người xem: chủ thể rõ ràng, bố cục mạnh, ánh sáng điện ảnh, màu sắc ấn tượng, sắc nét, có chiều sâu/cảm xúc. Ảnh nhạt nhòa, mờ, chung chung, stock sến, có chữ/watermark -> dưới 5.
+2. appeal (0-10): Sức hút thị giác giữ chân người xem: chủ thể rõ ràng, bố cục mạnh, ánh sáng điện ảnh, màu sắc ấn tượng, sắc nét, có chiều sâu/cảm xúc. Ảnh nhạt nhòa, mờ, chung chung, stock sến -> dưới 5.
+   Ảnh có WATERMARK, logo trang web, chữ chèn, vòng tròn đỏ (red circle), mũi tên chỉ trỏ kiểu thumbnail YouTube, khung viền, ảnh ghép collage -> appeal tối đa 2.
 3. Ưu tiên bố cục dọc hoặc chủ thể nằm giữa (dễ cắt 9:16).
 
 TRẢ VỀ JSON DUY NHẤT:
@@ -384,13 +483,14 @@ TRẢ VỀ JSON DUY NHẤT:
 }}
 Nếu KHÔNG ảnh nào có relevance >= 5 -> đặt best_image = -1 và reject_all = true.
 """
-        res = self._call_gemini_json(
-            prompt,
-            timeout=25,
-            images=[t for _, t in indexed],
-            models=["gemini-flash-latest", "gemini-flash-lite-latest"],
-            max_attempts=3,
-        )
+        with _VISION_SEM:
+            res = self._call_gemini_json(
+                prompt,
+                timeout=25,
+                images=[t for _, t in indexed],
+                models=["gemini-flash-latest", "gemini-flash-lite-latest"],
+                max_attempts=max(3, len(self.rotator.keys)),
+            )
         if not res:
             return None
 
@@ -760,7 +860,7 @@ TRẢ VỀ JSON DUY NHẤT:
                 "item": c,
                 "description": desc or "photograph",
             })
-            if len(pool) >= 8:
+            if len(pool) >= 10:
                 break
 
         if not pool:
@@ -773,6 +873,7 @@ TRẢ VỀ JSON DUY NHẤT:
             topic=topic or visual_keyword,
             visual_analysis=visual_analysis,
             kind="photo",
+            max_candidates=10,
         )
         if vision is not None:
             v_idx, v_score, v_rat = vision
@@ -855,8 +956,10 @@ TRẢ VỀ JSON DUY NHẤT:
             return None, 0.0, "Không có ảnh ứng viên.", True
 
         from app.services.media.entity_detector import is_incongruent_stock_image
+        from app.services.media.image_quality import heuristic_score, subject_terms, is_watermark_risk
         negative_cues = [nc.lower() for nc in visual_analysis.get("negative_cues", [])]
         queries = [q.lower() for q in visual_analysis.get("search_queries", [])]
+        terms = subject_terms(visual_analysis.get("subject"))
 
         best_item = None
         best_score = -1.0
@@ -865,12 +968,18 @@ TRẢ VỀ JSON DUY NHẤT:
             desc = p.get("description", "").lower()
             if any(nc in desc for nc in negative_cues) or is_incongruent_stock_image(desc, topic=topic, narration=narration):
                 continue
+            if is_watermark_risk(p["item"]):
+                continue
 
-            score = 5.0
-            for q in queries:
-                for w in q.split():
-                    if len(w) > 3 and w in desc:
-                        score += 1.5
+            if terms:
+                # Điểm chất lượng metadata: khớp chủ thể + ảnh dọc + độ phân giải + không watermark
+                score = p["item"].get("_hscore") or heuristic_score({**p["item"], "description": desc}, terms)
+            else:
+                score = 5.0
+                for q in queries:
+                    for w in q.split():
+                        if len(w) > 3 and w in desc:
+                            score += 1.5
 
             if score > best_score:
                 best_score = score

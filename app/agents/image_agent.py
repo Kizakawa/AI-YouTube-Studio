@@ -103,6 +103,8 @@ class ImageAgent:
         keys = settings.get_gemini_keys_pool()
         self.rotator = KeyRotator(keys) if keys else None
         self._call_count = 0
+        # Nguồn thực tế của ảnh gần nhất (cloudflare_flux2 / gemini_image / web_fallback ...) để báo cáo
+        self.last_source: str = ""
 
     def generate_scene_image(
         self,
@@ -114,32 +116,11 @@ class ImageAgent:
         visual_prompt: Optional[str] = None,
         used_urls: Optional[set] = None,
         topic: str = "",
-        character_anchor: Optional[str] = None,
-        setting_anchor: Optional[str] = None,
-        **kwargs,
+        premium: Optional[bool] = None,
     ) -> Optional[str]:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         self._call_count += 1
-
-        # Trích xuất linh hoạt từ kwargs nếu caller truyền kiểu khác
-        niche = kwargs.get("style", niche)
-        visual_prompt = visual_prompt or kwargs.get("raw_prompt")
-        character_anchor = character_anchor or kwargs.get("cast_anchor")
-        setting_anchor = setting_anchor or kwargs.get("scene_anchor")
-
-        # Tự động trích xuất Cast & Setting Anchors nếu chưa được cung cấp trực tiếp
-        if not character_anchor and not setting_anchor and (topic or prompt):
-            try:
-                from app.services.media.seedance_director import SeedanceDirector
-                anchors = SeedanceDirector().extract_cast_and_scene_anchors(
-                    topic=topic or prompt,
-                    script_or_scenes=visual_prompt or prompt,
-                    niche_id=niche,
-                )
-                character_anchor = anchors.get("character_anchor")
-                setting_anchor = anchors.get("setting_anchor")
-            except Exception as e:
-                logger.debug(f"[ImageAgent] Auto cast extraction skipped: {e}")
+        self.last_source = ""
 
         # Ưu tiên visual_prompt chi tiết từ AI Director
         base_prompt = (
@@ -152,67 +133,26 @@ class ImageAgent:
             base_prompt,
             scene_id=scene_id,
             niche_id=niche,
-            character_anchor=character_anchor,
-            setting_anchor=setting_anchor,
         )
 
-        # 1. ƯU TIÊN SỐ 1: Thử gọi trực tiếp công cụ tạo ảnh của Google (Gemini Flash/Pro Image)
-        google_res = self._try_google_image_api(anchored, output_path, aspect_ratio=aspect_ratio)
-        if google_res and Path(google_res).exists() and Path(google_res).stat().st_size > 5000:
-            return google_res
+        # 1. Chuỗi engine AI (Cloudflare FLUX → Gemini Image → Pollinations có key), có circuit breaker.
+        #    Cảnh Hook (scene 1) được ưu tiên engine cao cấp nếu đã bật.
+        from app.services.media.image_engines import generate_image
+        is_premium = (scene_id == 1) if premium is None else bool(premium)
+        ai_path, engine_info = generate_image(anchored, output_path, premium=is_premium)
+        if ai_path and Path(ai_path).exists() and Path(ai_path).stat().st_size > 5000:
+            self.last_source = engine_info
+            return ai_path
 
-        # 2. ƯU TIÊN SỐ 2: Thử sinh ảnh AI qua Hugging Face Serverless Inference (FLUX.1-schnell / SDXL không watermark)
-        hf_res = self._try_huggingface_image_api(anchored, output_path)
-        if hf_res and Path(hf_res).exists() and Path(hf_res).stat().st_size > 5000:
-            return hf_res
+        logger.warning(
+            f"[ImageAgent] ⚠️ Cảnh {scene_id}: KHÔNG sinh được ảnh AI ({engine_info}) → dùng ảnh web/stock dự phòng "
+            f"(nguy cơ lạc đề). Prompt: '{base_prompt[:80]}'"
+        )
 
-        # 3. DỰ PHÒNG CHẤT LƯỢNG CAO: Thử sinh ảnh bằng Pollinations với prompt tối ưu (chuẩn 9:16 HD 768x1344)
-        try:
-            import random
-            seed = random.randint(1000, 999999)
-            words = anchored.split()
-            if len(words) > 70:
-                compact_prompt = " ".join(words[:48] + words[-20:])
-            else:
-                compact_prompt = " ".join(words)
-            encoded_prompt = urllib.parse.quote(compact_prompt)
-
-            url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=768&height=1344&model=flux&nologo=true&seed={seed}"
-            headers = {
-                "User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AI-Shorts-Studio/{seed}"
-            }
-
-            res = requests.get(url, headers=headers, timeout=14)
-            if res.status_code == 200 and len(res.content) > 5000:
-                with open(output_path, "wb") as f:
-                    f.write(res.content)
-                self._sanitize_ai_image(output_path)
-                logger.info(f"[ImageAgent] ✅ AI Image generated via Flux ({len(res.content):,} bytes) → {output_path}")
-                return output_path
-        except Exception as e:
-            logger.warning(f"[ImageAgent] Lỗi Pollinations: {e}")
-
-        # 3. Fallback: Thử với prompt ngắn gọn thuần túy nếu prompt dài bị nghẽn
-        try:
-            import random
-            seed = random.randint(1000, 999999)
-            short_clean = " ".join(base_prompt.split()[:20])
-            prefix_fb = "vibrant dramatic 8k vertical, rich vivid colors" if scene_id == 1 else "photorealistic 8k vertical cinema, vibrant colorful lighting"
-            p_encoded = urllib.parse.quote(f"{short_clean}, {prefix_fb}")
-            url_fallback = f"https://image.pollinations.ai/prompt/{p_encoded}?width=768&height=1344&model=flux&nologo=true&seed={seed}"
-            res = requests.get(url_fallback, headers={"User-Agent": f"AI-Shorts/{seed}"}, timeout=10)
-            if res.status_code == 200 and len(res.content) > 5000:
-                with open(output_path, "wb") as f:
-                    f.write(res.content)
-                self._sanitize_ai_image(output_path)
-                logger.info(f"[ImageAgent] ✅ AI Image fallback generated → {output_path}")
-                return output_path
-        except Exception as fb_err:
-            logger.debug(f"[ImageAgent] Fallback ngắn cũng lỗi: {fb_err}")
-
-        # 4. Dự phòng ảnh thật HD từ Internet (Open Web + Wikipedia + Openverse + Pexels Photo)
+        # 2. Dự phòng ảnh thật HD từ Internet (Open Web + Wikipedia + Openverse + Pexels Photo)
         web_stock_img = self._try_web_and_stock_photo_fallback(base_prompt, output_path, used_urls=used_urls, topic=topic)
         if web_stock_img and Path(web_stock_img).exists() and Path(web_stock_img).stat().st_size > 5000:
+            self.last_source = "web_fallback"
             return web_stock_img
 
         logger.warning(f"[ImageAgent] ⚠️ Không thể sinh ảnh cho Cảnh {scene_id} qua AI. Chuyển quyền cho Video/Media Fallback.")
@@ -231,12 +171,37 @@ class ImageAgent:
             from app.services.media.entity_detector import clean_scene_search_query
             from app.services.media.media_history import extract_media_identity, is_media_already_used
 
-            clean_q = clean_scene_search_query(query, max_words=3)
+            # Giữ tới 5 từ để không làm mất tên thực thể (vd "mantis shrimp" + "eyes")
+            clean_q = clean_scene_search_query(query, max_words=5)
             if topic and clean_q and clean_q.lower() not in topic.lower():
                 clean_topic = clean_scene_search_query(topic, max_words=2)
                 clean_q = f"{clean_topic} {clean_q}".strip()
 
             target_query = clean_q or topic or "dramatic scene"
+            landscape_backup: Optional[bytes] = None
+            landscape_backup_url = ""
+
+            def _accept(content: bytes, url: str, label: str) -> bool:
+                """Ưu tiên ảnh dọc; ảnh ngang chỉ giữ làm dự phòng cuối cùng."""
+                nonlocal landscape_backup, landscape_backup_url
+                try:
+                    from PIL import Image
+                    import io as _io
+                    with Image.open(_io.BytesIO(content)) as im:
+                        w, h = im.size
+                    if w / max(h, 1) > 0.9:
+                        if landscape_backup is None:
+                            landscape_backup, landscape_backup_url = content, url
+                        logger.debug(f"[ImageAgent] Bỏ qua ảnh ngang {w}x{h} từ {label} (giữ làm dự phòng)")
+                        return False
+                except Exception:
+                    return False
+                with open(output_path, "wb") as f:
+                    f.write(content)
+                if used_urls is not None:
+                    used_urls.update(extract_media_identity(url))
+                logger.info(f"[ImageAgent] 🌐 Ảnh dự phòng từ {label}: '{target_query}' → {output_path}")
+                return True
 
             # 1. Thử tìm kiếm ảnh Open Web & Wikipedia trước (bao quát mọi chủ đề không rào cản bản quyền)
             try:
@@ -255,18 +220,14 @@ class ImageAgent:
                             }
                             res = requests.get(img_url, headers=headers, timeout=10)
                             if res.status_code == 200 and len(res.content) > 5000:
-                                with open(output_path, "wb") as f:
-                                    f.write(res.content)
-                                if used_urls is not None:
-                                    used_urls.update(extract_media_identity(img_url))
-                                logger.info(f"[ImageAgent] 🌐 Tải ảnh thực tế thành công từ Open Web/Wiki ({item.get('source')}): '{target_query}' → {output_path}")
-                                return output_path
+                                if _accept(res.content, img_url, f"Open Web/Wiki ({item.get('source')})"):
+                                    return output_path
                         except Exception as dl_err:
                             logger.debug(f"[ImageAgent] Lỗi tải ảnh web {img_url[:60]}: {dl_err}")
             except Exception as w_err:
                 logger.debug(f"[ImageAgent] Lỗi tìm ảnh Open Web: {w_err}")
 
-            # 2. Dự phòng sang kho Pexels
+            # 2. Dự phòng sang kho Pexels (đã lọc portrait)
             stock = StockFetcher()
             photos = stock.search_photos(
                 target_query,
@@ -280,12 +241,17 @@ class ImageAgent:
                 if img_url:
                     img_res = requests.get(img_url, timeout=12)
                     if img_res.status_code == 200 and len(img_res.content) > 5000:
-                        with open(output_path, "wb") as f:
-                            f.write(img_res.content)
-                        if used_urls is not None:
-                            used_urls.update(extract_media_identity(img_url))
-                        logger.info(f"[ImageAgent] 📸 Tải ảnh HD thực tế thành công từ Pexels: '{target_query}' → {output_path}")
-                        return output_path
+                        if _accept(img_res.content, img_url, "Pexels"):
+                            return output_path
+
+            # 3. Cuối cùng mới dùng ảnh ngang (renderer sẽ crop tâm)
+            if landscape_backup is not None:
+                with open(output_path, "wb") as f:
+                    f.write(landscape_backup)
+                if used_urls is not None:
+                    used_urls.update(extract_media_identity(landscape_backup_url))
+                logger.warning(f"[ImageAgent] ⚠️ Chỉ tìm được ảnh NGANG cho '{target_query}' → dùng tạm (sẽ bị crop).")
+                return output_path
         except Exception as e:
             logger.debug(f"[ImageAgent] Photo fallback error: {e}")
         return None
@@ -299,117 +265,6 @@ class ImageAgent:
     ) -> Optional[str]:
         """Tương thích ngược với các cuộc gọi cũ."""
         return self._try_web_and_stock_photo_fallback(query, output_path, used_urls=used_urls, topic=topic)
-
-    def _try_google_image_api(self, prompt: str, output_path: str, aspect_ratio: str = "9:16") -> Optional[str]:
-        """
-        Gọi trực tiếp công cụ tạo ảnh chính hãng của Google (Gemini Flash/Pro Image).
-        Hỗ trợ các model mới nhất của Google:
-        - gemini-2.5-flash-image
-        - gemini-3.1-flash-image
-        - gemini-3-pro-image
-        Tự động xoay vòng qua danh sách API Key của người dùng.
-        """
-        if not self.rotator or not self.rotator.has_keys:
-            return None
-
-        import base64
-
-        models_to_try = [
-            "gemini-2.5-flash-image",
-            "gemini-3.1-flash-image",
-            "gemini-3-pro-image",
-            "gemini-3.1-flash-lite-image",
-        ]
-
-        total_keys = len(self.rotator.keys)
-        for _ in range(min(total_keys, 3)):
-            api_key = self.rotator.get_key()
-            if not api_key:
-                break
-
-            for model in models_to_try:
-                try:
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-                    image_prompt = (
-                        f"Ultra-high quality photorealistic 8k vertical 9:16 cinematic image, "
-                        f"award-winning photography, rich details, vibrant cinematic lighting, vivid colors, no text, no watermark: {prompt}"
-                    )
-                    payload = {
-                        "contents": [
-                            {
-                                "parts": [
-                                    {"text": image_prompt}
-                                ]
-                            }
-                        ],
-                        "generationConfig": {
-                            "responseMimeType": "image/jpeg"
-                        }
-                    }
-                    headers = {"Content-Type": "application/json"}
-                    res = requests.post(url, json=payload, headers=headers, timeout=25)
-
-                    if res.status_code == 200:
-                        data = res.json()
-                        candidates = data.get("candidates", [])
-                        if candidates:
-                            parts = candidates[0].get("content", {}).get("parts", [])
-                            for part in parts:
-                                inline = part.get("inlineData") or part.get("inline_data")
-                                if inline and inline.get("data"):
-                                    img_data = base64.b64decode(inline["data"])
-                                    if len(img_data) > 5000:
-                                        with open(output_path, "wb") as f:
-                                            f.write(img_data)
-                                        logger.info(f"✨ [ImageAgent] ✅ Google Image ({model}) thành công: {output_path} ({len(img_data):,} bytes)")
-                                        return output_path
-                    elif res.status_code == 429:
-                        logger.debug(f"[ImageAgent] Google Image {model} 429 (Cần bật Google Cloud Billing Pay-As-You-Go để kích hoạt quota ảnh Google).")
-                        break
-                    else:
-                        logger.debug(f"[ImageAgent] Google Image {model} status {res.status_code}: {res.text[:120]}")
-                except Exception as e:
-                    logger.debug(f"[ImageAgent] Lỗi khi gọi Google Image {model}: {e}")
-
-            # Thử key tiếp theo nếu key hiện tại hết quota
-            self.rotator.rotate_key()
-
-        return None
-
-    def _try_huggingface_image_api(self, prompt: str, output_path: str) -> Optional[str]:
-        """
-        Sinh ảnh AI siêu thực trực tiếp qua Hugging Face Serverless Inference API.
-        Ưu tiên các checkpoint hàng đầu thế giới:
-        - black-forest-labs/FLUX.1-schnell (Siêu thực, không watermark)
-        - stabilityai/stable-diffusion-xl-base-1.0
-        """
-        token = getattr(settings, 'HUGGINGFACE_TOKEN', '') or os.getenv("HUGGINGFACE_TOKEN", "") or os.getenv("HF_TOKEN", "")
-        if not token or token == "your_hf_token_here":
-            return None
-
-        models_to_try = [
-            "black-forest-labs/FLUX.1-schnell",
-            "stabilityai/stable-diffusion-xl-base-1.0",
-        ]
-        headers = {"Authorization": f"Bearer {token.strip()}"}
-
-        for model in models_to_try:
-            api_url = f"https://api-inference.huggingface.co/models/{model}"
-            try:
-                payload = {"inputs": prompt}
-                res = requests.post(api_url, headers=headers, json=payload, timeout=30)
-                if res.status_code == 200 and len(res.content) > 5000:
-                    with open(output_path, "wb") as f:
-                        f.write(res.content)
-                    logger.info(f"✨ [ImageAgent] ✅ Hugging Face ({model}) thành công: {output_path} ({len(res.content):,} bytes)")
-                    return output_path
-                elif res.status_code == 503:
-                    logger.debug(f"[ImageAgent] Hugging Face model {model} đang khởi động (503), chuyển model tiếp...")
-                else:
-                    logger.debug(f"[ImageAgent] Hugging Face {model} trả về mã {res.status_code}")
-            except Exception as e:
-                logger.debug(f"[ImageAgent] Lỗi Hugging Face {model}: {e}")
-        return None
 
     def _sanitize_ai_image(self, image_path: str) -> None:
         """

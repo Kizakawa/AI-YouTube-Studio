@@ -307,6 +307,18 @@ def main():
     keys = settings.get_gemini_keys_pool()
     print(f"   -> Cụm Google Ultra: Đã nạp {len(keys)} Gemini API Key(s) vào pool.")
 
+    # Trạng thái engine sinh ảnh AI (đọc cấu hình, không tốn quota)
+    try:
+        from app.services.media.image_engines import health_check
+        img_status = health_check(live=False)
+        ready = [k for k, v in img_status.items() if v == "sẵn sàng"]
+        print(f"   -> Engine sinh ảnh AI sẵn sàng: {', '.join(ready) if ready else 'KHÔNG CÓ'}")
+        if not ready:
+            print("   -> [CẢNH BÁO] Mọi cảnh AI sẽ dùng ảnh web/stock (dễ lạc đề). "
+                  "Thêm CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN vào .env để bật FLUX miễn phí.")
+    except Exception as img_err:
+        print(f"   -> [CẢNH BÁO] Không kiểm tra được engine ảnh: {img_err}")
+
     # 4. Kiểm tra chế độ chạy
     disable_polling = (
         "--web-only" in sys.argv or "--web" in sys.argv or "--no-bot" in sys.argv

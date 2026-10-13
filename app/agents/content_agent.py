@@ -515,18 +515,20 @@ Every script you write MUST engineer these 2 metrics with mathematical precision
    A. THE 5 UNIVERSAL PRIMAL TRIGGERS:
       1. Scale Shock & Unseen Terror (Thalassophobia, Megalodon, colossal towering titan, cosmic abyss, gargantuan shadows dwarfing a human).
       2. Magnetic Attraction & Mystery (Captivating charismatic presence, alluring glance over shoulder, high-fashion editorial styling, magnetic confidence).
-      3. Psychological Threat & Micro-Expression (Extreme macro close-up of unblinking dilated pupil, calculating smirk, subtle micro-twitch, intense gaze in crisp studio light).
+      3. Psychological Conflict & Visceral Tension (Deduce the invisible friction between facade and reality; strictly ban lazy dark faces, isolated eye close-ups, and repetitive canned tropes).
       4. Imminent Catastrophe & Collapse (Burning empire ruins, shattered glass mid-explosion, venomous fangs dripping, golden crown tumbling on sunlit marble).
       5. Forbidden Wealth & Forbidden Power (Gleaming gold vault illuminated by warm spotlights, raining cash, modern high-stakes billionaire boardroom).
    
-   B. DEDUCTION PROCESS FOR ANY TOPIC:
-      Ask yourself: "If a viewer is scrolling at 0.1s speed, what shocking, high-tension visual metaphor related to '{topic}' will physically freeze their thumb?"
-      - Roman Empire -> Emperor's golden crown rolling down gleaming sunlit marble steps while soldiers advance.
-      - Quantum Entanglement -> A human eye splitting into two reality-bending dimensional portals with vibrant prismatic light.
-      - Boeing Autopilot Stall -> Cockpit instrument alarms flashing amber and red, pilot's white-knuckled grip on stick pulling up into storm clouds.
-      - Deep Ocean -> Submarine xenon spotlight revealing a magnificent bioluminescent leviathan gliding through crystalline sapphire depths.
-      - Seduction / Charisma -> Magnetic charismatic figure in sharp tailored suit making captivating, confident eye contact in sunlit modern architectural glass.
-      - Dark Psychology / Liar -> Extreme macro focus on human eye dilating, reflecting subtle truth on a sleek modern glass table with crisp studio lighting.
+   B. HỆ THỐNG TƯ DUY LOGIC SUY LUẬN ĐỘC LẬP (FIRST-PRINCIPLES AUTONOMOUS DEDUCTION):
+      Đạo diễn AI PHẢI tư duy logic tự thân từ kịch bản, TUYỆT ĐỐI KHÔNG dùng từ khóa đóng đinh hay sao chép mẫu cố định:
+      1. Bước 1 - Phân tích Mâu thuẫn Nhân quả (Causal Conflict Analysis):
+         Đọc kỹ kịch bản của '{topic}'. Tự đặt câu hỏi: "Mâu thuẫn ngầm lớn nhất ở đây là gì? Ai đang che giấu điều gì? Đâu là sự bất thường khiến não bộ người xem lập tức giật mình?".
+      2. Bước 2 - Suy Luận Chuyển Hóa Thành Tương Tác Vật Lý Cụ Thể (Physical Embodiment Reasoning):
+         Không ai có thể "chụp ảnh một khái niệm trừu tượng". Hãy tự suy luận một hành vi vi mô, một tương tác giữa 2 chủ thể, hoặc một vật chứng vật lý cụ thể trong đời thực để chứng minh mâu thuẫn đó.
+         Mỗi chủ đề phải sinh ra một bối cảnh và tương tác hoàn toàn mới mẻ, độc nhất, bám sát nội dung kịch bản đó!
+      3. Bước 3 - Bố Cục Quang Học Điện Ảnh (Optical Hierarchy & Cinematic Lighting):
+         - Luôn thiết lập ánh sáng tương phản điện ảnh (Key Light rọi rõ nét chủ thể, Rim Light viền sáng tách chủ thể khỏi nền tối).
+         - Chủ thể phải sắc nét, sống động, ánh sáng ấm hoặc tương phản rõ rệt. CẤM TUYỆT ĐỐI khuôn mặt tối màu vô hồn, cấm cận cảnh mắt trần trụi, cấm tượng đá vô tri!
 
 8. PHYSICAL ACTION & SENSORY MAPPING (ALL SCENES MUST HAVE TANGIBLE SIGHTS):
    - CRITICAL FIDELITY FOR ANIMALS & NATURE (STRICT RULE):
@@ -534,12 +536,9 @@ Every script you write MUST engineer these 2 metrics with mathematical precision
      * 100% of scenes MUST directly show the REAL LIVING ANIMAL, its chicks/cubs, hunting, feeding, nesting, and wild habitat!
      * NEVER hallucinate human equipment (cameras, film rolls, darkrooms), cameramen, or human organs (human eye, DNA helix) when the topic is about animals!
      * All 'stock_query' and 'visual_keyword' MUST be concrete animal terms (e.g. 'mother bird feeding chicks', 'baby birds in nest', 'eagle flying across storm', 'hawk diving')!
-   - In EVERY scene, translate abstract psychological thoughts or conceptual science into PHYSICAL BEHAVIORS a camera can film:
-     * Overthinking / Mental pain -> Person staring at bathroom mirror running cold water over trembling hands in dim blue light.
-     * Deception / Lying -> Close-up of throat swallowing nervously, twitching index finger tapping wristwatch.
-     * Social Pressure / Insecurity -> Person fixing suit collar repeatedly in crowded hallway looking sideways.
-     * Sci-Fi / Space discovery -> Astronaut helmet visor reflecting dazzling blinding portal amidst vibrant nebula starfield.
-     * Power / Stoicism -> Person standing completely motionless in torrential rain while crowd rushes past in panic.
+   - In EVERY scene, use autonomous logical deduction to translate abstract thoughts or emotions into OBSERVABLE PHYSICAL BEHAVIORS:
+     * Dựa trên cốt truyện cụ thể, đạo diễn tự suy luận hành vi hoặc tương tác vật lý chân thực nhất (người run rẩy, cử chỉ lén lút, phản ứng né tránh, ánh nhìn bất an, hành động che đậy).
+     * Tuyệt đối không lặp lại khuôn mẫu cũ hay từ khóa sáo rỗng.
 
 9. DYNAMIC AUTONOMOUS MEDIA SELECTION (`media_type` PER SCENE):
    For EACH scene, act as the Master Director of Photography and autonomously decide what visual medium is objectively best suited for this exact moment:
@@ -579,12 +578,12 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   "scenes": [
     {{
       "scene_id": 1,
+      "visual_reasoning": "Tư duy logic đạo diễn: Phân tích mâu thuẫn kịch bản và lý giải cách chuyển hóa thành hành động/hình ảnh tương tác cụ thể",
       "narration": "Spoken sentence for this scene (6-10 words)",
       "visual_keyword": "concrete search keywords",
       "visual_prompt": "Cinematic visual description: subject + camera angle + lighting + background",
       "stock_query": "concrete physical nouns",
       "media_type": "video | ai_image | photo | documentary",
-      "estimated_seconds": 3.0
     }}
   ],
   "tags": ["shorts", "viral"],

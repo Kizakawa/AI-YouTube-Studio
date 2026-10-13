@@ -560,7 +560,9 @@ def image_to_video(
             scale_factor = 1.30 if is_hook_scene else 1.25
             scale_w = int(width * scale_factor)
             scale_h = int(height * scale_factor)
-            im_resized = im.resize((scale_w, scale_h), Image.LANCZOS)
+            # KHÔNG resize thẳng (ảnh ngang sẽ bị bóp méo) → crop 9:16 bám chủ thể / nền mờ nếu ảnh nhỏ
+            from app.services.media.image_quality import prepare_vertical
+            im_resized = prepare_vertical(im, scale_w, scale_h, max_upscale=2.0 * scale_factor)
             im_resized.save(norm_path, "JPEG", quality=95)
             image_path = norm_path
     except Exception as e:

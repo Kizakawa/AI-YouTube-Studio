@@ -435,16 +435,16 @@ If no real entities found, return empty array: []"""
                     used.update(extract_media_identity(wiki_img["url"]))
                     return wiki_img
 
-            # Thử Open Web search cho sự kiện/nhân vật lịch sử (vượt qua rào cản bản quyền)
+            # Open Web + Commons cho sự kiện/nhân vật lịch sử → gom pool, lọc watermark, để Vision chọn
+            # (trước đây lấy luôn kết quả đầu tiên → hay dính ảnh sai / watermark)
+            hist_pool: List[Dict] = []
             try:
                 from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled, bypass_copyright_enabled
                 if web_image_search_enabled() and bypass_copyright_enabled():
-                    web_images = WebImageFetcher().search_open_web(f"{primary_q} history archive", per_page=4)
-                    for wi in web_images:
+                    for wi in WebImageFetcher().search_open_web(f"{primary_q} historical photo", per_page=5):
                         wu = wi.get("url")
                         if wu and not is_media_already_used(wu, used):
-                            used.update(extract_media_identity(wu))
-                            return wi
+                            hist_pool.append(wi)
             except Exception as e:
                 logger.debug(f"[MediaAgent] Historical open web search error: {e}")
 
@@ -458,8 +458,30 @@ If no real entities found, return empty array: []"""
                     u = c.get("url")
                     if u and not is_media_already_used(u, used) and self._is_valid_image_url(u):
                         if not is_incongruent_stock_image(c.get("title", ""), topic=topic, narration=scene_narration):
-                            used.update(extract_media_identity(u))
-                            return c
+                            if not any(x.get("url") == u for x in hist_pool):
+                                hist_pool.append(c)
+                if len(hist_pool) >= 10:
+                    break
+
+            if hist_pool:
+                from app.services.media.image_quality import prefilter_candidates
+                hist_pool = prefilter_candidates(hist_pool, subject=primary_q, limit=10)
+            if hist_pool:
+                win, rejected = None, False
+                try:
+                    from app.agents.visual_curation_agent import VisualCurationAgent
+                    va_hist = {**(v_analysis or {}), "subject": primary_q}
+                    win, score, rationale, rejected = VisualCurationAgent().curate_candidate_photos(
+                        candidates=hist_pool, visual_analysis=va_hist, narration=scene_narration,
+                        topic=topic, visual_keyword=primary_q, used_urls=used,
+                    )
+                except Exception as e:
+                    logger.debug(f"[MediaAgent] Historical curation error: {e}")
+                if not win and not rejected:
+                    win = hist_pool[0]
+                if win and win.get("url"):
+                    used.update(extract_media_identity(win["url"]))
+                    return win
 
         motion_keywords = {
             "walk", "walking", "run", "running", "moving", "movement", "crowd", "people", "city", "street",
@@ -487,12 +509,19 @@ If no real entities found, return empty array: []"""
 
         # Thu thập ứng viên ảnh tĩnh từ Open Web, Wikipedia, Pexels & Wikimedia Commons
         candidate_photos = []
+        from app.services.media.image_quality import extract_subject, prefilter_candidates
+        scene_subject = (
+            str((v_analysis or {}).get("subject") or "").strip()
+            or primary_entity
+            or extract_subject(scene_narration)
+        )
 
         # 1. Ưu tiên hàng đầu: Ảnh Open Web & Wikipedia thực tế toàn diện không giới hạn bản quyền
         try:
             from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
             if web_image_search_enabled():
-                web_items = WebImageFetcher().search_all(primary_q or fallback_q, per_source=3)
+                web_q = ((v_analysis or {}).get("search_queries") or [None])[0] or primary_q or fallback_q
+                web_items = WebImageFetcher().search_all(web_q, per_source=3, subject=scene_subject)
                 for item in web_items:
                     u = item.get("url")
                     if u and not is_media_already_used(u, used) and not any(c.get("url") == u for c in candidate_photos):
@@ -519,6 +548,10 @@ If no real entities found, return empty array: []"""
             if u and not is_media_already_used(u, used) and not any(x.get("url") == u for x in candidate_photos):
                 candidate_photos.append(c)
 
+        if candidate_photos:
+            candidate_photos = prefilter_candidates(candidate_photos, subject=scene_subject or primary_q, limit=12)
+            if scene_subject and v_analysis is not None and not v_analysis.get("subject"):
+                v_analysis = {**v_analysis, "subject": scene_subject}
         if candidate_photos:
             try:
                 from app.agents.visual_curation_agent import VisualCurationAgent

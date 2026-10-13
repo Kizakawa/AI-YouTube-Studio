@@ -360,11 +360,12 @@ def build_image_prompt(raw_prompt: str, scene_id: int, niche_profile: Dict[str, 
     suffix = visual.get("master_prompt_suffix", "photorealistic 9:16 vertical composition, no watermark, no text")
     negative = visual.get("negative_prompts", "blurry, low quality, cartoon, watermark, text")
 
+    # Chủ thể cảnh đứng ĐẦU prompt: FLUX/Gemini ưu tiên token xuất hiện sớm, prefix phong cách dài sẽ làm "loãng" chủ thể.
     if scene_id == 1:
         # Cảnh Hook mở màn: Tăng cường độ thị giác với màu sắc sống động
-        full_prompt = f"viral dramatic cinematic hook, {prefix}: {cleaned}, {suffix}, extreme visual impact, razor-sharp focus, rich color depth"
+        full_prompt = f"{cleaned}. Style: viral dramatic cinematic hook, {prefix}, {suffix}, extreme visual impact, razor-sharp focus, rich color depth"
     else:
-        full_prompt = f"{prefix}: {cleaned}, {suffix}"
+        full_prompt = f"{cleaned}. Style: {prefix}, {suffix}"
 
     return full_prompt, negative
 

@@ -10,6 +10,7 @@ Bao gồm:
 """
 import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import Dict, Any, List
 
@@ -149,6 +150,13 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             56
         )
 
+    async def _fetch_one_scene(idx: int, scene) -> Dict[str, Any]:
+        media_path = ""
+        media_type = "image"
+        sq = getattr(scene, 'stock_query', None)
+        vp = getattr(scene, 'visual_prompt', None)
+        kw = scene.visual_keyword or ""
+
     async def _fetch_one_scene_inner(idx: int, scene) -> Dict[str, Any]:
         media_path = ""
         media_type = "image"
@@ -210,6 +218,39 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 dur = max(float(sc_audio["audio_duration_ms"]) / 1000.0, 1.0)
 
         logger.info(f"🎯 [Scene {scene.scene_id}] Phương pháp: '{prod_method}' | Strategy: '{chosen_strategy}' ({rationale[:60]}...)")
+
+        # ══════════════════════════════════════════════════════════════════════
+        # QUÁI VẬT / SINH VẬT HUYỀN THOẠI: kho video stock không có kraken/megalodon thật
+        # → ưu tiên ảnh concept art / cảnh phim rùng rợn trên mạng (Vision chọn), Ken Burns khi render
+        # ══════════════════════════════════════════════════════════════════════
+        creature_first = os.getenv("CREATURE_ART_FIRST", "true").strip().lower() not in ("0", "false", "no", "off")
+        if (
+            creature_first and v_analysis.get("creature_mode") and prod_method != "REAL_ARCHIVE"
+            and channel_visual_mode not in ("imagen_ai", "ai_image")
+        ):
+            try:
+                creature_photo = await asyncio.to_thread(
+                    media_agent.search_best_photo,
+                    (v_analysis.get("creature_queries") or [search_query])[0],
+                    used_pool_urls,
+                    v_analysis,
+                    scene.narration,
+                    state.get("topic", ""),
+                )
+                if creature_photo and creature_photo.get("url"):
+                    out_img = str(media_dir / f"scene_{scene.scene_id:03d}_creature.jpg")
+                    await asyncio.to_thread(media_agent.download_file, creature_photo["url"], out_img)
+                    if Path(out_img).exists() and Path(out_img).stat().st_size > 3000:
+                        used_pool_urls.add(creature_photo["url"])
+                        media_path = out_img
+                        media_type = "image"
+                        prod_method = chosen_strategy = "CREATURE_ART"
+                        logger.info(
+                            f"Scene {scene.scene_id}: 🐙 [Quái vật] {creature_photo.get('source')} "
+                            f"điểm {creature_photo.get('curation_score', '-')}: {str(creature_photo.get('title', ''))[:50]}"
+                        )
+            except Exception as e:
+                logger.debug(f"Scene {scene.scene_id}: Creature art search error: {e}")
 
         # ══════════════════════════════════════════════════════════════════════
         # PHƯƠNG PHÁP 1: REAL_ARCHIVE (Tư liệu lịch sử thật 100%)
@@ -641,9 +682,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             "strategy_rationale": rationale,
         }
 
-    async def _fetch_one_scene(idx: int, scene) -> Dict[str, Any]:
+    async def _guarded_fetch(idx: int, scene) -> Dict[str, Any]:
         async with sem:
-            res = await _fetch_one_scene_inner(idx, scene)
+            res = await _fetch_one_scene(idx, scene)
             nonlocal completed_count
             async with completed_lock:
                 completed_count += 1
@@ -660,8 +701,25 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 )
             return res
 
-    tasks = [_fetch_one_scene(i, s) for i, s in enumerate(script.scenes)]
+    tasks = [_guarded_fetch(i, s) for i, s in enumerate(script.scenes)]
     scenes_media = list(await asyncio.gather(*tasks))
+
+    # Báo cáo nguồn hình ảnh từng cảnh để kiểm tra chất lượng (storage/temp/job_x/visual_report.json)
+    try:
+        import json as _json
+        report = [
+            {
+                "scene_id": m.get("scene_id"),
+                "file": Path(m.get("media_path") or "").name,
+                "media_type": m.get("media_type"),
+                "production_method": m.get("production_method"),
+                "narration": (m.get("narration") or "")[:120],
+            }
+            for m in scenes_media
+        ]
+        (work_dir / "visual_report.json").write_text(_json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as rep_err:
+        logger.debug(f"Không ghi được visual_report.json: {rep_err}")
 
     return {
         "scenes_media": scenes_media,
@@ -928,6 +986,8 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
                         item["media_type"] = "video"
                         replaced = True
                         logger.info(f"Scene {scene_id}: ✅ Thay thế thành công bằng Video Clip Pexels: '{query_part}'")
+                    else:
+                        Path(out_v).unlink(missing_ok=True)  # dọn file tải hỏng (0 byte)
             except Exception as ex_v:
                 logger.debug(f"Scene {scene_id}: Video replacement error: {ex_v}")
 
@@ -1019,19 +1079,25 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
                     prompt = f"Authentic cinematic documentary photography: {refined_prompt}, sharp focus 8k"
 
                 res = await asyncio.to_thread(
-                    image_agent.generate_scene_image,
-                    prompt,
-                    ai_path,
-                    "9:16",
-                    "cinematic",
-                    scene_id,
-                    refined_prompt,
+                    lambda: image_agent.generate_scene_image(
+                        prompt=prompt,
+                        output_path=ai_path,
+                        aspect_ratio="9:16",
+                        niche=current_niche,
+                        scene_id=scene_id,
+                        visual_prompt=refined_prompt,
+                        topic=state.get("topic", ""),
+                        premium=True,  # Ảnh đã bị AI Vision chấm trượt → dùng engine tốt nhất hiện có
+                    )
                 )
                 if res and Path(res).exists() and Path(res).stat().st_size > 2000:
                     item["media_path"] = res
                     item["media_type"] = "image"
                     replaced = True
-                    logger.info(f"Scene {scene_id}: ✅ Thay bằng ảnh AI với prompt tinh chỉnh từ AI Vision")
+                    logger.info(
+                        f"Scene {scene_id}: ✅ Thay bằng ảnh với prompt tinh chỉnh từ AI Vision "
+                        f"(nguồn: {image_agent.last_source or 'không rõ'})"
+                    )
             except Exception as e:
                 logger.warning(f"Scene {scene_id}: Content refine AI generation error: {e}")
 
