@@ -55,18 +55,20 @@ class TestSystemWideUpgrade(unittest.TestCase):
 
     def test_linter_approves_perfect_script(self):
         niche = get_niche("deep_sea_earth_mysteries")
-        # Script concise ~70 words: fits the 50-85 word linter window
+        # Script fits the 72-135 word linter window (4-Beat Payoff Arc, ~92 words)
         scenes_good = [
-            SceneContract(scene_id=1, narration="What if the ocean hides something truly impossible?", visual_keyword="ocean", estimated_seconds=3.0),
-            SceneContract(scene_id=2, narration="Navy sonar detected a massive acoustic signal in 1997.", visual_keyword="sonar", estimated_seconds=3.5),
-            SceneContract(scene_id=3, narration="It was louder than any known creature on Earth.", visual_keyword="whale", estimated_seconds=3.5),
-            SceneContract(scene_id=4, narration="Scientists rushed to decode the frequency, then recordings vanished.", visual_keyword="scientists", estimated_seconds=3.5),
-            SceneContract(scene_id=5, narration="Naval vessels were ordered back with no official explanation.", visual_keyword="sub", estimated_seconds=3.5),
-            SceneContract(scene_id=6, narration="What do you think is hiding in that trench? The mystery remains.", visual_keyword="abyss", estimated_seconds=3.5),
+            SceneContract(scene_id=1, narration="What if the ocean abyss hides something truly impossible?", visual_keyword="ocean", estimated_seconds=3.0),
+            SceneContract(scene_id=2, narration="Navy sonar detected a massive underwater acoustic signal back in 1997.", visual_keyword="sonar", estimated_seconds=3.5),
+            SceneContract(scene_id=3, narration="It was measured to be vastly louder than any known creature on Earth.", visual_keyword="whale", estimated_seconds=3.5),
+            SceneContract(scene_id=4, narration="Specialized oceanographic scientists rushed to the location to decode the frequency.", visual_keyword="scientists", estimated_seconds=3.5),
+            SceneContract(scene_id=5, narration="The hydrophone telemetry recordings were abruptly locked away inside classified vaults.", visual_keyword="classified", estimated_seconds=3.5),
+            SceneContract(scene_id=6, narration="Naval vessels were ordered to turn back immediately without any official explanation.", visual_keyword="sub", estimated_seconds=3.5),
+            SceneContract(scene_id=7, narration="To this day no marine biologist has been allowed near those coordinates.", visual_keyword="ocean", estimated_seconds=3.5),
+            SceneContract(scene_id=8, narration="What do you think is hiding in that trench? The mystery remains unsolved.", visual_keyword="abyss", estimated_seconds=3.5),
         ]
         script_good = ScriptContract(
             title="Classified Deep Sea Sonar",
-            hook="What if the ocean hides something truly impossible?",
+            hook="What if the ocean abyss hides something truly impossible?",
             full_narration=" ".join(s.narration for s in scenes_good),
             scenes=scenes_good,
             tags=["shorts", "mystery"]
