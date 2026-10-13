@@ -324,11 +324,17 @@ class StockFetcher:
         used = set(used_urls) if used_urls else set()
         used.update(get_recent_media_urls(limit=150))
 
+        from app.services.media.image_quality import extract_subject, prefilter_candidates
+        va = visual_analysis or {}
+        subject = str(va.get("subject") or "").strip() or extract_subject(narration or query)
+
         queries: List[str] = []
-        for q in (visual_analysis or {}).get("search_queries", [])[:2]:
+        for q in va.get("search_queries", [])[:2]:
             if q and q not in queries:
                 queries.append(q)
-        cq = clean_scene_search_query(query, max_words=3)
+        if subject and subject not in queries:
+            queries.append(subject)
+        cq = clean_scene_search_query(query, max_words=5)
         if cq and cq not in queries:
             queries.append(cq)
         if not queries:
@@ -345,10 +351,14 @@ class StockFetcher:
                     continue
                 candidates.append(it)
 
-        for q in queries[:2]:
+        creature_mode = bool(va.get("creature_mode"))
+        creature_qs = [q for q in (va.get("creature_queries") or []) if q]
+        # Quái vật: kho stock chỉ tra theo tên (Pixabay có tranh minh hoạ), còn lại dựa vào Open Web
+        stock_queries = ([subject] if subject else queries[:1]) if creature_mode else queries[:3]
+        for q in stock_queries:
             _add(self.search_photos(q, per_page=4, orientation="portrait", topic=topic, narration=narration, used_urls=used))
             _add(self.search_pixabay_photos(q, per_page=4))
-            if len(candidates) >= 8:
+            if len(candidates) >= 10:
                 break
 
         # Ảnh Internet toàn mạng (Open Web DDGS, Wikipedia, Commons, Openverse, Unsplash)
@@ -358,7 +368,13 @@ class StockFetcher:
             from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled, bypass_copyright_enabled
             if web_image_search_enabled():
                 web_fetcher = WebImageFetcher()
-                web_items = web_fetcher.search_all(queries[0], per_source=4)
+                if creature_mode and creature_qs:
+                    web_items = web_fetcher.search_all(
+                        creature_qs[0], per_source=5, subject=subject,
+                        extra_queries=creature_qs[1:], creature_mode=True,
+                    )
+                else:
+                    web_items = web_fetcher.search_all(queries[0], per_source=4, subject=subject)
                 stock_part, before = candidates[:], len(candidates)
                 candidates.clear()
                 _add(web_items)
@@ -375,24 +391,33 @@ class StockFetcher:
                             candidates.append(stock_part[i])
                         if i < len(web_part):
                             candidates.append(web_part[i])
-                logger.info(f"[StockFetcher] Pool ảnh '{queries[0]}': {before} stock + {len(web_part)} web (bypass_copyright={bypass_copyright_enabled()})")
+                logger.info(f"[StockFetcher] Pool ảnh '{queries[0]}' (subject='{subject}'): {before} stock + {len(web_part)} web (bypass_copyright={bypass_copyright_enabled()})")
         except Exception as e:
             logger.debug(f"[StockFetcher] Lỗi nguồn ảnh web: {e}")
             if len(candidates) < len(stock_part):
                 candidates[:] = stock_part
 
         if len(candidates) < 4:
-            _add(self.search_openverse(queries[0], per_page=5))
+            _add(self.search_openverse(subject or queries[0], per_page=5))
+
+        # Lọc watermark/ảnh nhỏ + xếp hạng theo chủ thể, bố cục dọc, độ phân giải (thứ tự trên chỉ còn là tie-breaker)
+        candidates = prefilter_candidates(
+            candidates, subject=subject or queries[0], limit=12,
+            creature_mode=creature_mode, max_per_source=8 if creature_mode else 5,
+        )
 
         if not candidates:
             return None
+
+        if subject and not va.get("subject"):
+            va = {**va, "subject": subject}
 
         winner = None
         try:
             from app.agents.visual_curation_agent import VisualCurationAgent
             winner, score, rationale, should_ai = VisualCurationAgent().curate_candidate_photos(
                 candidates=candidates,
-                visual_analysis=visual_analysis,
+                visual_analysis=va or None,
                 narration=narration or query,
                 topic=topic,
                 visual_keyword=query,
@@ -571,8 +596,8 @@ class StockFetcher:
                 theme_fallbacks.extend(["space galaxy", "universe stars", "nebula space", "planet in space"])
             if any(w in combined_text for w in ["cyberpunk", "tech", "technology", "neon", "ai", "robot"]):
                 theme_fallbacks.extend(["cyberpunk city", "neon technology", "futuristic city", "computer code"])
-            if any(w in combined_text for w in ["mind", "brain", "think", "alone", "dark", "shadow", "stress"]):
-                theme_fallbacks.extend(["dark silhouette", "person thinking", "shadow in dark", "alone night"])
+            if any(w in combined_text for w in ["mind", "brain", "think", "psychology", "alone", "stress"]):
+                theme_fallbacks.extend(["person intense expression", "two people conversation", "dramatic lighting portrait", "person walking city street"])
 
             for tf in theme_fallbacks:
                 videos = self.search_videos(tf, per_page=4, orientation="portrait")

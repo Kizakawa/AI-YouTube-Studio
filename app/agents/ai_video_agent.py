@@ -149,7 +149,7 @@ class AIVideoAgent:
 
             temp_ai_image = str(out_p.parent / f"_theme_frame_{scene_id:03d}.jpg")
             if "8k" not in clean_prompt.lower() and "cinematic" not in clean_prompt.lower():
-                clean_prompt = f"Cinematic photorealistic 8k, {clean_prompt}, sharp details, volumetric lighting, vertical 9:16 composition"
+                clean_prompt = f"{clean_prompt}, cinematic photorealistic, sharp details, volumetric lighting, vertical 9:16 composition"
 
             generated_img = self.image_agent.generate_scene_image(
                 prompt=clean_prompt,

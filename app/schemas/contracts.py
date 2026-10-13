@@ -87,6 +87,10 @@ class SceneContract(BaseModel):
         default=None,
         description="Prompt chi tiết cho AI image generation theo phong cách dark cinematic (dùng thay visual_keyword khi cần ảnh AI). Ví dụ: 'dramatic dark cinematic portrait Vladimir Putin 1990s cold war era, volumetric fog, film grain'."
     )
+    visual_reasoning: Optional[str] = Field(
+        default=None,
+        description="Lập luận tư duy logic của đạo diễn: Phân tích mâu thuẫn câu chuyện và lý giải cách chuyển hóa thành hình ảnh/hành động tương tác cụ thể."
+    )
     visual_strategy: Optional[str] = Field(
         default=None,
         description="Chiến lược do Visual Director phê duyệt: REAL_DOCUMENTARY, STOCK_VIDEO, AI_VIDEO, AI_IMAGE."

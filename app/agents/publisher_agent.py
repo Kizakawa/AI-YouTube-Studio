@@ -310,33 +310,39 @@ class PublisherAgent:
             max_upload_retries = 3
             last_upload_err = None
 
-            for upload_attempt in range(1, max_upload_retries + 1):
-                try:
-                    # Nâng chunksize lên 8 MB (chuẩn khuyến nghị Google API) giúp giảm số request từ 45 -> 5 chunks, tăng tốc và tránh đứt session
-                    media = MediaFileUpload(
-                        video_path,
-                        mimetype="video/mp4",
-                        chunksize=8 * 1024 * 1024,
-                        resumable=True
-                    )
+            import socket
+            old_socket_timeout = socket.getdefaulttimeout()
+            socket.setdefaulttimeout(180)  # Tăng thời gian chờ socket lên 180s tránh đứt kết nối khi mạng gia đình lag
 
-                    request = self.service.videos().insert(
-                        part="snippet,status",
-                        body=body,
-                        media_body=media
-                    )
+            try:
+                for upload_attempt in range(1, max_upload_retries + 1):
+                    try:
+                        # Adaptive chunksize: 4MB -> 2MB -> 1MB nếu mạng chập chờn, giúp gói tin nhỏ dễ xuyên qua mạng lag
+                        chunk_mb = 4 if upload_attempt == 1 else (2 if upload_attempt == 2 else 1)
+                        media = MediaFileUpload(
+                            video_path,
+                            mimetype="video/mp4",
+                            chunksize=chunk_mb * 1024 * 1024,
+                            resumable=True
+                        )
 
-                    response = None
-                    while response is None:
-                        status, response = request.next_chunk()
-                        if status:
-                            progress = int(status.progress() * 100)
-                            logger.info(f"[{self.channel_name}] Đang upload video lên YouTube: {progress}% (Lần thử {upload_attempt}/{max_upload_retries})")
+                        request = self.service.videos().insert(
+                            part="snippet,status",
+                            body=body,
+                            media_body=media
+                        )
 
-                    if response and response.get("id"):
-                        break
-                except Exception as up_err:
-                    last_upload_err = up_err
+                        response = None
+                        while response is None:
+                            status, response = request.next_chunk()
+                            if status:
+                                progress = int(status.progress() * 100)
+                                logger.info(f"[{self.channel_name}] Đang upload video lên YouTube: {progress}% (Lần thử {upload_attempt}/{max_upload_retries})")
+
+                        if response and response.get("id"):
+                            break
+                    except Exception as up_err:
+                        last_upload_err = up_err
                     err_str = str(up_err)
                     # Nếu là lỗi quota thì không retry lặp vô ích mà ném tiếp xuống QuotaGuard
                     if "quotaExceeded" in err_str or "exceeded your quota" in err_str:
@@ -359,6 +365,8 @@ class PublisherAgent:
                         continue
                     else:
                         raise up_err
+            finally:
+                socket.setdefaulttimeout(old_socket_timeout)
 
             if not response or not response.get("id"):
                 raise last_upload_err or RuntimeError("Upload kết thúc mà không nhận được video_id từ YouTube.")

@@ -156,6 +156,11 @@ class VisualToolRouter:
                 scores[cls] = 2.0 * len(v_hits) + 1.0 * len(n_hits)
 
         if not scores:
+            # Không khớp từ khóa đặc thù nào → đa số là chủ thể đời thường (chó, mèo, con người, đồ vật)
+            # nên tìm đúng stock_query/keyword của cảnh, KHÔNG gán truy vấn "abstract particles" chung chung.
+            # Chỉ coi là trừu tượng khi cảnh hoàn toàn không có mô tả hình.
+            if visual_text.strip():
+                return REAL_FILMABLE, matched
             return ABSTRACT_CONCEPT, matched
 
         # Ưu tiên theo mức độ đặc thù của chủ đề:

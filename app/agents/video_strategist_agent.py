@@ -360,9 +360,9 @@ III. ĐẠO DIỄN CHỈ THỊ & PHÂN CÔNG NHIỆM VỤ CHO CẤP DƯỚI (DEL
 
 3. BỘ PHẬN HỌA SĨ AI ĐIỆN ẢNH & CHUYỂN ĐỘNG 3D ('IMAGE_TO_VIDEO' / 'TEXT_TO_VIDEO'):
    - KHI NÀO GIAO VIỆC: 
-     * Chủ đề TÂM LÝ HỌC, KHẮC KỶ, ẨN DỤ TƯ DUY: Cần đặc tả ánh mắt, khuôn mặt, biểu cảm sắc lạnh, tượng đá Marcus Aurelius, không gian tâm trí.
+     * Chủ đề CẦN ẨN DỤ NGHỆ THUẬT & TƯ DUY ĐIỆN ẢNH: Đạo diễn sử dụng tư duy logic bóc tách mâu thuẫn câu chuyện, chuyển hóa thành một hành động hoặc chi tiết thị giác kịch tính độc nhất phù hợp với nội dung đó, có ánh sáng tương phản điện ảnh (Chiaroscuro, Rim light), cấm tạo khuôn mặt tối màu đơn điệu hay cận cảnh mắt đơn độc thiếu bối cảnh.
      * Cảnh viễn tưởng PURE_FICTION hoặc cảnh cao trào cần thấy trực tiếp quái vật trồi lên khỏi mặt nước xé toạc màn đêm.
-   - LỆNH CHỈ ĐẠO CHO CẤP DƯỚI ('ai_prompt'): Viết câu lệnh tiếng Anh điện ảnh 8K 9:16 chi tiết về ánh sáng (dramatic rim light, chiaroscuro), góc máy (extreme close-up, low-angle), chi tiết bề mặt (weathered skin, 35mm film grain).
+   - LỆNH CHỈ ĐẠO CHO CẤP DƯỚI ('ai_prompt'): Viết câu lệnh tiếng Anh điện ảnh 8K 9:16 chi tiết do Đạo diễn tự suy luận logic bám sát kịch bản, làm rõ ánh sáng (dramatic rim light, chiaroscuro), góc máy (extreme close-up, low-angle), chi tiết bề mặt (weathered skin, 35mm film grain).
 
 ══════════════════════════════════════════════════════════════════════════════
 IV. CHỈ ĐẠO MÁY QUAY & ÂM THANH (CINEMATOGRAPHY & SOUND DESIGN)
@@ -409,13 +409,14 @@ HÃY XUẤT RA JSON DUY NHẤT THEO SCHEMA:
   "scene_proposals": [
     {{
       "scene_id": 1,
+      "visual_reasoning": "Tư duy logic đạo diễn: Phân tích mâu thuẫn kịch bản và lý giải cách chuyển hóa thành hình ảnh/hành động kịch tính cụ thể",
       "retention_beat": "HOOK_0_3S | SETUP_3_15S | ESCALATION_15_45S | CLIMAX_LOOP_45_60S",
       "reality_class": "REAL_FILMABLE | DEEP_SEA_MYSTERY | SCIENTIFIC_VISUALIZATION | PURE_FICTION | ABSTRACT_CONCEPT",
       "production_method": "REAL_ARCHIVE | STOCK_FOOTAGE | IMAGE_TO_VIDEO | TEXT_TO_VIDEO",
       "tool": "wikimedia_archive | pexels_video_api | imagen3_i2v | wan_t2v",
       "rationale": "Giải thích chi tiết 1 câu vì sao chọn phương pháp & công cụ này cho cảnh này (bằng tiếng Việt)",
       "search_query": "2-4 từ tiếng Anh CỤ THỂ CHỈ ĐỊNH CẤP DƯỚI TÌM KIẾM (ví dụ: 'colossal giant squid specimen', '18th century kraken engraving', 'deep ocean submarine lights'; cấm từ chung chung như 'cinematic')",
-      "ai_prompt": "Câu lệnh tiếng Anh chi tiết phong cách điện ảnh 8K 9:16 (dành cho AI hoặc dự phòng nếu kho stock thiếu)",
+      "ai_prompt": "Câu lệnh tiếng Anh chi tiết phong cách điện ảnh 8K 9:16 do Đạo diễn tự sáng tạo logic theo kịch bản (dành cho AI hoặc dự phòng nếu kho stock thiếu)",
       "camera_motion": "hyper_zoom | zoom_in | zoom_out | cinematic_drift | pan_left | pan_right",
       "sfx_cue": "impact_sub | sub_drop | whoosh_fast | tension_riser | heartbeat"
     }}

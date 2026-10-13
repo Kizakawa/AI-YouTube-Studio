@@ -122,7 +122,11 @@ II. BẢN ĐỒ CHIẾN LƯỢC & PHÂN CÔNG CẤP DƯỚI (DELEGATION PROTOCOL
    - Chỉ đạo cấp dưới qua 'search_query': từ khóa b-roll khí quyển (Ví dụ: 'deep ocean submarine abyss', 'stormy ocean waves night', 'hourglass sand falling').
 
 3. 'AI_IMAGE' (Ảnh AI nghệ thuật điện ảnh 8K kết hợp 3D Parallax):
-   - Áp dụng khi: Chủ đề TÂM LÝ HỌC, KHẮC KỶ, ẨN DỤ TƯ DUY cần đặc tả ánh mắt, khuôn mặt, biểu cảm sắc lạnh, tượng đá Marcus Aurelius, không gian tâm trí. Hoặc concept art kịch tính cần cố định khuôn mặt không méo mó.
+   - NGUYÊN LÝ TƯ DUY LOGIC CỦA ĐẠO DIỄN (CHỦ ĐỘNG SUY LUẬN THEO NỘI DUNG KỊCH BẢN, TUYỆT ĐỐI KHÔNG DÙNG MẪU TỪ KHÓA ĐÓNG ĐINH):
+     * Bước 1: Đọc hiểu kịch bản và phân tích: "Đâu là mâu thuẫn ngầm, điểm bất thường hoặc cảm xúc cốt lõi của cảnh này?"
+     * Bước 2: Chuyển đổi logic ngữ nghĩa sang hình ảnh cụ thể: Tự suy luận một tình huống/hành động tương tác cụ thể trong thế giới thực hoặc ẩn dụ điện ảnh phản ánh đúng nội dung (ví dụ: hành vi lén lút, sự đối đầu giữa 2 nhân vật, ánh nhìn lật tẩy, một vật chứng bị giấu kín, một khoảnh khắc sụp đổ).
+     * Bước 3: Tạo khoảng trống tò mò (Visual Curiosity Gap): Bức ảnh phải khiến người xem đặt câu hỏi: "Tại sao lại như vậy? Ai đang làm gì?".
+     * BẮT BUỘC TUÂN THỦ NGUYÊN TẮC QUANG HỌC: Chủ thể phải có ánh sáng định hình rõ ràng (Key Light & Rim Light), có độ tương phản cao để nổi bật trên nền tối. CẤM tạo ảnh mặt người tối màu vô hồn, cấm cận cảnh mắt đơn độc thiếu bối cảnh!
 
 4. 'AI_VIDEO' (Video AI ảo / Giả tưởng / Siêu thực thuần túy):
    - Áp dụng khi: NĂNG LƯỢNG SIÊU THỰC thuần túy (cổng không gian ma mị, luồng năng lượng biến ảo, khói ma biến hình) hoặc cảnh hành động viễn tưởng không có trong thế giới thực.
@@ -141,10 +145,11 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
   "scenes_strategy": [
     {{
       "scene_id": 1,
+      "visual_reasoning": "Tư duy logic đạo diễn: Phân tích mâu thuẫn kịch bản và cách chuyển dịch thành hình ảnh kịch tính",
       "strategy": "REAL_DOCUMENTARY | STOCK_VIDEO | AI_VIDEO | AI_IMAGE",
       "rationale": "Giải thích ngắn gọn 1 câu vì sao chọn chiến lược này (bằng tiếng Việt)",
       "search_query": "Từ khóa tiếng Anh 2-3 từ để tìm tư liệu nếu là REAL_DOCUMENTARY hoặc STOCK_VIDEO",
-      "ai_prompt": "Câu lệnh tiếng Anh chi tiết 9:16 phong cách điện ảnh nếu là AI_VIDEO hoặc AI_IMAGE",
+      "ai_prompt": "Câu lệnh tiếng Anh chi tiết 9:16 phong cách điện ảnh do Đạo diễn tự sáng tạo theo logic kịch bản nếu là AI_VIDEO hoặc AI_IMAGE",
       "camera_motion": "zoom_in | zoom_out | pan_left | pan_right | pan_up | pan_down",
       "sfx_cue": "whoosh | hit | tension_riser | cinematic_swell | heartbeat"
     }}
@@ -188,9 +193,9 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
 
         motion_cues = {
             "walk", "run", "running", "moving", "movement", "crowd", "people", "city", "street",
-            "traffic", "night", "dark", "shadow", "silhouette", "rain", "storm", "fire", "water", "sea",
-            "clock", "time", "hourglass", "hands", "typing", "money", "cash", "brain", "mind",
-            "looking", "staring", "whisper", "talking", "smoke", "candle", "door", "window", "alone"
+            "traffic", "rain", "storm", "fire", "water", "sea",
+            "clock", "time", "hourglass", "hands", "typing", "money", "cash",
+            "looking", "staring", "whisper", "talking", "smoke", "candle", "door", "window"
         }
 
         fantasy_cues = {
