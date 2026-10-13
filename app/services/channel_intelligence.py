@@ -49,6 +49,10 @@ def _normalize_text_for_similarity(text: str) -> str:
         return ""
     # Chuyển chữ thường
     clean = text.lower()
+    # Chuẩn hóa số có dấu phẩy: ví dụ 11,000 -> 11000
+    clean = re.sub(r"(\d+)\s*,\s*(\d+)", r"\1\2", clean)
+    # Chuẩn hóa đơn vị đo lường: ví dụ 11000 meters / 11000 meter -> 11000m
+    clean = re.sub(r"(\d+)\s*(?:meters|meter|m)\b", r"\1m", clean)
     # Loại bỏ emoji và ký tự đặc biệt
     clean = re.sub(r"[^\w\s]", " ", clean, flags=re.UNICODE)
     # Loại bỏ các từ dừng thông dụng trong tiêu đề Shorts
@@ -56,11 +60,67 @@ def _normalize_text_for_similarity(text: str) -> str:
         "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with",
         "is", "are", "this", "that", "why", "how", "what", "signs", "sign",
         "video", "shorts", "viral", "psychology", "mystery", "history",
+        "they", "them", "their", "you", "your", "when", "into", "from",
+        "was", "were", "been", "have", "has", "had", "will", "would", "could",
         "những", "các", "và", "của", "là", "trong", "về", "dấu", "hiệu",
         "bí", "ẩn", "tâm", "lý", "thế", "giới"
     }
-    tokens = [w.strip() for w in clean.split() if len(w.strip()) >= 3 and w.strip() not in stop_words]
+    tokens = [w.strip() for w in clean.split() if len(w.strip()) >= 2 and w.strip() not in stop_words]
     return " ".join(tokens)
+
+
+def extract_saturated_channel_concepts(existing_titles: List[str], min_frequency: int = 2) -> List[str]:
+    """
+    Tác nhân tự động nhận diện các cụm từ, thực thể hoặc chủ đề con bị bão hòa (Fatigued / Saturated Concepts)
+    dựa trên lịch sử phát sóng thực tế của kênh, mà KHÔNG CẦN hardcode bất kỳ từ khóa nào.
+    
+    Phát hiện:
+    - Các n-gram (2-3 từ) hoặc thực thể xuất hiện lặp lại >= min_frequency lần trong các video gần đây.
+    - Các định lượng / số đo / địa danh lặp lại.
+    - Trả về danh sách các khái niệm đang bị bão hòa để Agent chủ động chuyển hướng góc nhìn mới.
+    """
+    if not existing_titles or len(existing_titles) < 2:
+        return []
+    
+    from collections import Counter
+    
+    normalized_titles = [_normalize_text_for_similarity(t) for t in existing_titles[:25]]
+    phrase_counts = Counter()
+    
+    for norm in normalized_titles:
+        words = norm.split()
+        seen_in_title = set()
+        
+        # 1-gram: Các từ có độ dài >= 4 hoặc các token có chứa số/đơn vị (11000m, 4000psi, etc.)
+        for w in words:
+            if len(w) >= 4 and not w.isdigit():
+                seen_in_title.add(w)
+            elif any(c.isdigit() for c in w):
+                seen_in_title.add(w)
+                
+        # 2-grams
+        for i in range(len(words) - 1):
+            bg = f"{words[i]} {words[i+1]}"
+            seen_in_title.add(bg)
+            
+        # 3-grams
+        for i in range(len(words) - 2):
+            tg = f"{words[i]} {words[i+1]} {words[i+2]}"
+            seen_in_title.add(tg)
+            
+        for phrase in seen_in_title:
+            phrase_counts[phrase] += 1
+            
+    saturated = [p for p, count in phrase_counts.items() if count >= min_frequency]
+    saturated.sort(key=lambda x: (len(x.split()), len(x)), reverse=True)
+    
+    clean_saturated = []
+    for item in saturated:
+        if not any(item != other and item in other for other in clean_saturated):
+            clean_saturated.append(item)
+            
+    return clean_saturated[:8]
+
 
 
 def check_idea_similarity(
@@ -326,7 +386,7 @@ def _get_global_trends_directive(niche_id: str) -> str:
 2. Classified Declassified Hydrophone Acoustics: Real sonar audio anomalies recorded by NOAA/US Navy (The Bloop, Upsweep, Julia, Train) with decibel comparisons to living blue whales. Hook: 'In 1997, deep hydrophones recorded this classified signal 3,000 miles across the Pacific...'
 3. Underwater Toxic Lakes & Brine Pools: Subsea brine lakes beneath the ocean floor where salinity and methane instantly preserve or kill organisms, creating underwater shorelines. Hook: 'Deep beneath the ocean floor lies a toxic lake where creatures perish the second they touch the water...'
 4. Point Nemo Isolation: The oceanic pole of inaccessibility where the closest humans are astronauts on the ISS orbiting 400km above.
-CRITICAL CONSTRAINT: STRICTLY FORBIDDEN: Repetitive '11,000 meters depth' generic lists! Do not reuse the phrase '11,000m' or '11,000 meters'. Diversify into acoustic sonar, brine pools, and sensory thalassophobia!
+CRITICAL CONSTRAINT: STRICTLY FORBIDDEN: Generic repetitive depth lists or dry textbook lectures. Ensure continuous exploration of new depth zones, hydrophone acoustic anomalies, toxic brine pools, and instinctive thalassophobia triggers.
 """
     elif any(k in nid for k in ("alternate_history", "what_if", "timeline", "temporal")):
         return """
@@ -459,6 +519,23 @@ Mandate: Each new idea MUST actively solve these weaknesses!
 
     global_trends_prompt = _get_global_trends_directive(niche_id)
 
+    # Tác nhân tự động nhận diện các cụm từ, số đo hoặc chủ đề đang bị bão hòa
+    saturated_concepts = extract_saturated_channel_concepts(all_existing, min_frequency=2)
+    saturation_prompt = ""
+    if saturated_concepts:
+        sat_str = ", ".join([f"\"{c}\"" for c in saturated_concepts])
+        saturation_prompt = f"""
+═══════════════════════════════════════════════════════════
+🚨 AUTONOMOUS REPETITION & CONCEPT FATIGUE WARNING (DETECTED FROM RECENT UPLOADS):
+The following specific sub-topics, numbers, entities, or phrasing have appeared repeatedly on this channel:
+[{sat_str}]
+
+AUTONOMOUS AGENT MANDATE:
+YouTube's recommendation algorithm aggressively penalizes channels that repeatedly publish videos revolving around the same recurring numbers, locations, or phrasing (Topic Cannibalization).
+You must AUTONOMOUSLY PIVOT to completely fresh, unvisited premises, alternative entities, or different mechanisms in '{niche_id}'.
+DO NOT center any candidate around these fatigued terms!
+"""
+
     prompt = f"""You are the Master Creative Director and Viral Algorithm Strategist for YouTube Shorts channel '{channel_name}'.
 Niche: '{niche_profile.get('name')}' ({niche_id})
 Target Language: {lang}
@@ -477,6 +554,8 @@ CRITICAL MANDATE:
 {flop_prompt}
 ═══════════════════════════════════════════════════════════
 {global_trends_prompt}
+═══════════════════════════════════════════════════════════
+{saturation_prompt}
 ═══════════════════════════════════════════════════════════
 🎯 OBJECTIVE:
 Generate exactly {count + 2} completely unique, high-retention Shorts concepts tailored specifically to '{channel_name}'.
@@ -528,6 +607,17 @@ Return ONLY a valid JSON array of objects with the following structure:
                 cand_title = cand.get("title", "")
                 cand_topic = cand.get("topic", "")
                 
+                # Tự động loại bỏ ứng viên nếu vẫn lặp lại các khái niệm đang bị bão hòa của kênh
+                has_fatigued_term = False
+                norm_cand = _normalize_text_for_similarity(f"{cand_title} {cand_topic}")
+                for sat_term in saturated_concepts:
+                    if sat_term in norm_cand:
+                        has_fatigued_term = True
+                        logger.info(f"[AutonomousFatigueGuard] Bỏ qua ý tưởng '{cand_title}' vì chứa khái niệm đang bị bão hòa '{sat_term}' (tự động nhận diện từ lịch sử kênh)!")
+                        break
+                if has_fatigued_term:
+                    continue
+
                 # Kiểm tra trùng lặp với kho video cũ
                 is_dup_title, score_title, match_t = check_idea_similarity(cand_title, all_existing, similarity_threshold=0.38)
                 is_dup_topic, score_topic, match_p = check_idea_similarity(cand_topic, all_existing, similarity_threshold=0.38)
