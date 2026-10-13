@@ -99,6 +99,15 @@ def route_entry_point(state: VideoWorkflowState) -> Literal["execute_edit", "res
     return "research_and_entity"
 
 
+def route_after_edit(state: VideoWorkflowState) -> Literal["render_video", "__end__"]:
+    """Nếu chỉ đổi tiêu đề (metadata) thì kết thúc ngay, không cần render lại toàn bộ video."""
+    edit_req = state.get("edit_request") or {}
+    if state.get("current_step") == "TITLE_EDITED" or edit_req.get("action_type") == "edit_title":
+        logger.info("⚡ [ConditionalEdge] Đã cập nhật tiêu đề xong — bỏ qua render lại video.")
+        return "__end__"
+    return "render_video"
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # GRAPH BUILDER
 # ──────────────────────────────────────────────────────────────────────────────
@@ -179,7 +188,14 @@ def create_video_workflow_graph() -> StateGraph:
     builder.add_edge("evaluate_video", END)
 
     # ── Luồng Chỉnh sửa vi mô (Edit Sub-Graph) ──
-    builder.add_edge("execute_edit", "render_video")
+    builder.add_conditional_edges(
+        "execute_edit",
+        route_after_edit,
+        {
+            "render_video": "render_video",
+            "__end__": END,
+        }
+    )
 
     return builder.compile()
 

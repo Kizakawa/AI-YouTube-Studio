@@ -75,8 +75,18 @@ class VideoAgent:
             tail_buffer = 0.6
             total_scenes = len(job.scenes)
 
-            logger.info(f"[VideoAgent] Job {job.job_id}: Ghép {len(scene_clips)} clips (xfade {transition_duration}s, tail buffer {tail_buffer}s)...")
-            await report(f"🎬 Đang ghép nối các phân cảnh với hiệu ứng chuyển cảnh mượt...", 75)
+            has_subtitle = bool(job.subtitle_path and Path(job.subtitle_path).exists())
+            sfx_dir = job.sfx_dir or DEFAULT_SFX_DIR
+
+            logger.info(
+                f"[VideoAgent] Job {job.job_id}: Ghép {len(scene_clips)} clips "
+                f"(xfade {transition_duration}s, tail buffer {tail_buffer}s"
+                f"{', Single-Pass Subtitle Burn' if has_subtitle else ''})..."
+            )
+            await report(
+                f"🎬 Đang ghép nối phân cảnh chuyển động mượt{' & ép phụ đề Karaoke ASS 1080p' if has_subtitle else ''}...",
+                76
+            )
             silent_video = str(work_dir / "concat_silent.mp4")
 
             # Tính chính xác thời lượng từng clip (đã bù xfade overlap và tail buffer + MoneyPrinterTurbo safety margin)
@@ -101,20 +111,14 @@ class VideoAgent:
                 transition=transition_sequence,
                 transition_duration=transition_duration,
                 scene_durations_seconds=clip_durations,
+                subtitle_path=job.subtitle_path if has_subtitle else None,
             )
 
-            # ── Step 3: Mux audio (voice + optional BGM với Audio Ducking) ──
+            # ── Step 3: Mux audio (voice + optional BGM với Audio Ducking, -c:v copy) ──
             logger.info(f"[VideoAgent] Job {job.job_id}: Ghép audio narration + BGM (Audio Ducking)...")
-            await report(f"🎵 Đang hòa âm giọng đọc AI và nhạc nền (Audio Ducking tự động)...", 82)
+            await report(f"🎵 Đang hòa âm giọng đọc AI và nhạc nền (Audio Ducking tự động)...", 84)
 
-            has_subtitle = job.subtitle_path and Path(job.subtitle_path).exists()
-            sfx_dir = job.sfx_dir or DEFAULT_SFX_DIR
-
-            # Xác định tên file intermediate cho mux → sfx → subtitle
-            if has_subtitle:
-                muxed_video = str(work_dir / "muxed_no_sub.mp4")
-            else:
-                muxed_video = str(work_dir / "muxed.mp4")
+            muxed_video = str(work_dir / "muxed.mp4")
 
             mux_audio_video(
                 video_path=silent_video,
@@ -125,7 +129,7 @@ class VideoAgent:
                 use_ducking=True,  # Bật Audio Ducking thực sự qua sidechaincompress
             )
 
-            # ── Step 4: Mix SFX đa tầng (Multi-layer Sound Design Level 4) ──
+            # ── Step 4: Mix SFX đa tầng (Multi-layer Sound Design Level 4, -c:v copy) ──
             raw_niche = (job.niche or "").lower()
             is_heavy_hit_niche = is_scifi_job or any(k in raw_niche for k in ("psychology", "deep_sea", "wildlife", "horror", "mystery"))
             hit_sfx_name = "impact_sub" if is_heavy_hit_niche else "hit"
@@ -164,7 +168,7 @@ class VideoAgent:
 
             if sfx_dir_exists or resolved_sfx_cues or micro_sfx_cues:
                 logger.info(f"[VideoAgent] Job {job.job_id}: Mix Multi-layer SFX transitions từ {sfx_dir} (Niche: {job.niche})...")
-                await report(f"🔊 Đang thiết kế âm thanh đa tầng Level 4 (Bass Impact, Foley & Riser)...", 86)
+                await report(f"🔊 Đang thiết kế âm thanh đa tầng Level 4 (Bass Impact, Foley & Riser)...", 92)
 
                 # Tính timestamp bắt đầu từng scene (giây)
                 scene_timestamps = self._compute_scene_timestamps(job.scenes)
@@ -182,28 +186,13 @@ class VideoAgent:
                     hit_volume=0.55 if is_heavy_hit_niche else 0.50,
                     micro_sfx_cues=micro_sfx_cues if micro_sfx_cues else None,
                 )
-                # mix_sfx_transitions trả video gốc nếu không có SFX file
                 muxed_video = result_video
 
-            # ── Step 5: Burn ASS/SRT subtitles ──
-            if has_subtitle:
-                logger.info(f"[VideoAgent] Job {job.job_id}: Burn-in subtitles ({job.subtitle_path})...")
-                sub_ext = Path(job.subtitle_path).suffix.lower()
-                await report(
-                    f"✍️ Đang ép phụ đề {'Karaoke ASS' if sub_ext == '.ass' else 'SRT'} chuẩn YouTube 1080p...",
-                    90
-                )
-                burn_subtitles(
-                    video_path=muxed_video,
-                    srt_path=job.subtitle_path,
-                    output_path=job.output_path,
-                )
-            else:
-                # Không có subtitle: copy video muxed ra output cuối
-                import shutil
-                shutil.copy2(muxed_video, job.output_path)
+            # Copy video hoàn chỉnh (đã có xfade + subtitles + audio ducking + SFX) ra output cuối
+            import shutil
+            shutil.copy2(muxed_video, job.output_path)
 
-            logger.info(f"[VideoAgent] Job {job.job_id}: ✅ Render hoàn tất → {job.output_path}")
+            logger.info(f"[VideoAgent] Job {job.job_id}: ✅ Render hoàn tất (Single-Pass High Fidelity) → {job.output_path}")
             return job.output_path
 
         finally:

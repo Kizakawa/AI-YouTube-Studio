@@ -77,6 +77,24 @@ def node_generate_script(state: VideoWorkflowState) -> Dict[str, Any]:
         director_notes=director_notes
     )
 
+    # Chống trùng lặp tiêu đề với kho video cũ của kênh
+    target_channel_id = state.get("target_channel_id", "")
+    if target_channel_id:
+        try:
+            from app.services.channel_intelligence import ensure_unique_title
+            unique_title, was_dup, dup_match = ensure_unique_title(
+                candidate_title=script.title,
+                channel_id=target_channel_id,
+                topic=topic,
+                language=language,
+                similarity_threshold=0.40
+            )
+            if was_dup:
+                logger.info(f"🛡️ [LangGraph] Đổi tiêu đề trùng lặp: '{script.title}' -> '{unique_title}' (Trùng: '{dup_match}')")
+                script.title = unique_title
+        except Exception as _e_dup:
+            logger.debug(f"[LangGraph] Lỗi kiểm tra trùng tiêu đề: {_e_dup}")
+
     script_dict = script.to_dict()
     return {
         "script_data": script_dict,
@@ -116,7 +134,7 @@ def node_evaluate_script(state: VideoWorkflowState) -> Dict[str, Any]:
 
 
 def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
-    """Node 4: Tự động sửa chữa kịch bản dựa trên nhận xét của Critic."""
+    """Node 4: Tự động tinh chỉnh phẫu thuật (Surgical Refinement) kịch bản dựa trên nhận xét của Critic."""
     script_data = state.get("script_data", {})
     script_eval = state.get("script_eval", {})
     retry_count = state.get("script_retry_count", 0) + 1
@@ -125,26 +143,42 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
     channel_style = state.get("channel_style", "general")
     primary_entity = state.get("primary_entity")
     language = state.get("language", "en")
+    director_notes = state.get("director_notes")
 
     logger.info(f"🔄 [LangGraph] Tự động tinh chỉnh kịch bản lần {retry_count} theo nhận xét: {critiques}")
-    
-    # Bổ sung lời khuyên của Critic vào yêu cầu kịch bản
-    refined_topic = (
-        f"{topic}. LƯU Ý TỪ CRITIC: {'; '.join(critiques)}. "
-        f"Cảnh 1 phải giật gân, cuốn hút tuyệt đối trong 3 giây đầu (5-8 từ, dùng nghịch lý/tâm lý nghịch đảo). "
-        f"Cảnh 2 và 3 (giây 4-12) bắt buộc tung bằng chứng/nghịch lý sốc (Micro-Hook), không kể lể dông dài. "
-        f"Cảnh cuối là một câu chốt đắt giá, kết hợp câu hỏi mở và lời kêu gọi đăng ký kênh tự nhiên, sắc bén (High-Converting Niche CTA). "
-        f"Câu kết phải hoàn chỉnh 100% ngữ pháp, không bao giờ kết thúc bằng từ lửng như 'because', 'which is why'."
+
+    feedback_text = (
+        f"Sửa chữa chính xác các điểm yếu sau từ Critic: {'; '.join(critiques)}. "
+        f"Đảm bảo Cảnh 1 giật gân trong 3 giây đầu (6-8 từ), Cảnh 2-4 triển khai bằng chứng nhanh, "
+        f"Cảnh 5-7 có Payoff giá trị cao, và Cảnh cuối kết thúc trọn vẹn ngữ pháp kèm lời kêu gọi đăng ký kênh tự nhiên."
     )
-    if primary_entity and primary_entity.lower() not in refined_topic.lower():
-        refined_topic = f"{refined_topic} (Focus on {primary_entity})"
-    
+    if primary_entity:
+        feedback_text += f" Giữ vững trọng tâm vào nhân vật/thực thể chính: {primary_entity}."
+
     content_agent = ContentAgent()
-    new_script = content_agent.generate_script(
-        topic=refined_topic,
-        channel_niche=channel_style,
-        language=language
-    )
+    new_script = None
+    if script_data and script_data.get("scenes"):
+        try:
+            current_contract = ScriptContract(**script_data)
+            new_script = content_agent.refine_script(
+                current_script=current_contract,
+                feedback=feedback_text,
+                channel_niche=channel_style,
+                language=language,
+                director_notes=director_notes,
+            )
+        except Exception as e_ref:
+            logger.warning(f"[LangGraph] refine_script lỗi ({e_ref}), chuyển sang generate_script có định hướng...")
+
+    if new_script is None:
+        refined_topic = f"{topic} (Focus on {primary_entity})" if (primary_entity and primary_entity.lower() not in topic.lower()) else topic
+        combined_notes = f"{director_notes or ''}\n[CRITIC REVISION]: {feedback_text}".strip()
+        new_script = content_agent.generate_script(
+            topic=refined_topic,
+            channel_niche=channel_style,
+            language=language,
+            director_notes=combined_notes,
+        )
 
     script_dict = new_script.to_dict() if hasattr(new_script, "to_dict") else new_script.model_dump()
     return {
@@ -153,3 +187,4 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
         "current_step": "SCRIPT_REFINED",
         "progress_message": f"Đã tinh chỉnh kịch bản theo nhận xét (Lần {retry_count})",
     }
+

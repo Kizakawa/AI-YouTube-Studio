@@ -313,18 +313,18 @@ TRẢ VỀ DUY NHẤT một chuỗi JSON (không markdown, không giải thích)
             topic: Chủ đề video.
             max_ai_checks: Số lượng scene tối đa dùng AI Vision.
         """
+        from concurrent.futures import ThreadPoolExecutor
+
         rel_agent = MediaRelevanceAgent()
         scene_scores: List[SceneContentScore] = []
         failed_scene_ids: List[int] = []
         ai_checked = 0
 
-        for item in scenes_media:
+        def _eval_one(item: Dict[str, Any]):
             scene_id = item.get("scene_id", 0)
             media_path = item.get("media_path", "")
             visual_keyword = item.get("visual_keyword", "")
             narration = item.get("narration", "")
-
-            # Gọi MediaRelevanceAgent để thẩm định
             res = rel_agent.evaluate_media(
                 media_path=media_path,
                 narration=narration,
@@ -333,6 +333,14 @@ TRẢ VỀ DUY NHẤT một chuỗi JSON (không markdown, không giải thích)
                 scene_id=scene_id,
                 primary_entity=primary_entity,
             )
+            return item, res
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            eval_results = list(pool.map(_eval_one, scenes_media))
+
+        for item, res in eval_results:
+            scene_id = item.get("scene_id", 0)
+            media_path = item.get("media_path", "")
 
             if res.get("ai_evaluated"):
                 ai_checked += 1
@@ -343,13 +351,13 @@ TRẢ VỀ DUY NHẤT một chuỗi JSON (không markdown, không giải thích)
             scene_overall = float(res.get("overall_score") or (relevance * 0.45 + entity_acc * 0.3 + vis_quality * 0.25))
             verdict = res.get("verdict", "PASS" if scene_overall >= 7.0 else "FAIL")
             issues = res.get("issues", [])
-            
+
             # Đóng gói chỉ đạo thay thế thông minh: Tool + Query + Ý tưởng sáng tạo
             rec_tool = res.get("recommended_tool", "")
             rep_q = res.get("replacement_query", "")
             ref_p = res.get("refined_prompt", "")
             idea = res.get("creative_idea", "")
-            
+
             if rec_tool and rep_q:
                 suggestion = f"[{rec_tool}] {rep_q} | {ref_p} | {idea}".strip(" |")
             else:

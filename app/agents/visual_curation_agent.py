@@ -43,7 +43,7 @@ _GENERIC_SUBJECTS = {
 
 
 def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any]:
-    """Đảm bảo truy vấn đầu tiên chứa ĐÚNG chủ thể (loài / tên riêng) và luôn có 1 truy vấn chỉ gồm chủ thể."""
+    """Đảm bảo truy vấn đầu tiên chứa ĐÚNG chủ thể (loài / tên riêng) và luôn có bộ truy vấn Google Images chuyên sâu."""
     subject = (subject or "").strip()
     if not subject or subject.lower() in _GENERIC_SUBJECTS:
         return res
@@ -65,6 +65,20 @@ def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any
         fixed.insert(1 if fixed else 0, subject)
     res["search_queries"] = fixed[:4]
     res["subject"] = subject
+
+    # Chuẩn hóa google_image_queries (truy vấn chuyên biệt cho Google Images như thanh tìm kiếm Gemini)
+    g_queries = [q.strip() for q in (res.get("google_image_queries") or []) if isinstance(q, str) and q.strip()]
+    fixed_g: List[str] = []
+    for gq in g_queries:
+        if not _has_subject(gq):
+            gq = f'"{subject}" {gq}'
+        if gq not in fixed_g:
+            fixed_g.append(gq)
+    if not fixed_g:
+        primary_action = fixed[0] if fixed else subject
+        fixed_g.append(f"{primary_action} high resolution photograph")
+        fixed_g.append(f'"{subject}" real documentary photo')
+    res["google_image_queries"] = fixed_g[:3]
     return res
 
 
@@ -86,8 +100,10 @@ class VisualCurationAgent:
     """
 
     def __init__(self):
+        import requests
         keys = settings.get_gemini_keys_pool()
         self.rotator = KeyRotator(keys) if keys else None
+        self.session = requests.Session()
 
     def _call_gemini_json(
         self,
@@ -128,7 +144,7 @@ class VisualCurationAgent:
                     }
                 }
                 try:
-                    res = requests.post(url, json=payload, timeout=timeout)
+                    res = self.session.post(url, json=payload, timeout=timeout)
                     if res.status_code == 200:
                         data = res.json()
                         candidates = data.get("candidates", [])
@@ -137,7 +153,7 @@ class VisualCurationAgent:
                             if raw_text:
                                 return json.loads(raw_text)
                     elif res.status_code in (429, 403):
-                        self.rotator.rotate_key()
+                        self.rotator.rotate_key(cooldown_sec=45.0 if res.status_code == 429 else 180.0)
                         key_failed = True
                         break
                 except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
@@ -158,8 +174,93 @@ class VisualCurationAgent:
         return None
 
     # ──────────────────────────────────────────────────────────────────────────
-    # PHASE 1: PHÂN TÍCH NGỮ CẢNH & Ý NIỆM THỊ GIÁC (CONTEXTUAL SCENE ANALYSIS)
+    # PHASE 1: PHÂN TÍCH NGỮ CẢNH & Ý NIỆM THỊ GIÁC (BATCH & SINGLE SCENE)
     # ──────────────────────────────────────────────────────────────────────────
+
+    def analyze_scenes_batch(
+        self,
+        scenes: List[Dict[str, Any]],
+        topic: str = "",
+        primary_entity: Optional[str] = None,
+        entity_type: str = "general",
+        channel_niche: str = "general",
+    ) -> Dict[int, Dict[str, Any]]:
+        """
+        Phân tích đồng loạt toàn bộ các phân cảnh trong 1 lần gọi Gemini duy nhất:
+        - Tiết kiệm ~85% số lệnh gọi LLM, giảm độ trễ và tránh lỗi 429 Quota.
+        - Nhìn tổng thể mạch truyện để đảm bảo KHÔNG trùng lặp truy vấn tìm kiếm hoặc góc máy giữa các cảnh liền kề.
+        """
+        if not scenes:
+            return {}
+
+        from app.services.media.image_quality import extract_subject
+        scenes_payload = []
+        for idx, s in enumerate(scenes):
+            scenes_payload.append({
+                "scene_id": s.get("scene_id", idx + 1),
+                "narration": s.get("narration", ""),
+                "visual_keyword": s.get("visual_keyword", ""),
+                "stock_query": s.get("stock_query", ""),
+                "visual_prompt": s.get("visual_prompt", ""),
+            })
+
+        prompt = f"""
+Bạn là Tổng Đạo Diễn Nghệ Thuật & Chuyên Gia Tìm Kiếm Hình Ảnh Google (Cinematographer & Google Search Visual Grounding Director) cho YouTube Shorts.
+Hãy phân tích ĐỒNG LOẠT toàn bộ {len(scenes_payload)} phân cảnh của video dưới đây để lập hồ sơ thị giác và truy vấn tìm kiếm chuẩn xác như Gemini trên thanh Google Search.
+
+THÔNG TIN VIDEO:
+- Chủ đề: "{topic}"
+- Niche kênh: "{channel_niche}"
+- Thực thể chính: "{primary_entity or 'Không có'}" (Loại: {entity_type})
+- Danh sách phân cảnh:
+{json.dumps(scenes_payload, ensure_ascii=False, indent=2)}
+
+QUY TẮC QUAN TRỌNG:
+1. Đa dạng hóa thị giác toàn cục: Các phân cảnh liền kề TUYỆT ĐỐI KHÔNG được trùng lặp search_queries, google_image_queries hay góc máy.
+2. "subject": Chủ thể hình ảnh cụ thể bằng tiếng Anh cho từng cảnh (giữ nguyên tên loài/tên riêng/địa danh/hiện tượng). Nếu câu thoại bị ngắt giữa chừng, suy luận chủ thể từ mạch truyện chung.
+3. "production_method": Chọn 1 trong ['STOCK_FOOTAGE', 'TEXT_TO_VIDEO', 'IMAGE_TO_VIDEO', 'REAL_ARCHIVE']. Cảnh 1 ưu tiên 'STOCK_FOOTAGE'.
+4. "tool_choice": Chọn 1 trong ['pexels_video_clip', 'ai_text_to_video', 'ai_image_to_video', 'real_archive_photo'].
+5. "search_queries": Mảng 3 cụm từ tìm kiếm ngắn cho kho stock (3-5 từ tiếng Anh), chứa chủ thể + hành động/góc máy.
+6. "google_image_queries": Mảng 2 câu truy vấn tìm ảnh chuyên sâu trên Google Images (4-8 từ tiếng Anh), viết chính xác như cách chuyên gia dùng Google Images để tìm ảnh chụp thực tế/tài liệu báo chí/khoa học đắt giá nhất cho câu thoại đó (vd: '"peacock mantis shrimp" compound eyes macro photograph', '"Mariana Trench" deep sea submersible expedition photo').
+
+TRẢ VỀ JSON DUY NHẤT THEO ĐỊNH DẠNG:
+{{
+  "scenes_analysis": [
+    {{
+      "scene_id": 1,
+      "mood": "dark_ominous | tense_mysterious | epic_heroic | vibrant_energetic | melancholy_thoughtful | scientific_curiosity",
+      "narrative_subtext": "Ngụ ý cảm xúc của cảnh (1 câu ngắn)",
+      "visual_metaphor": "Mô tả hình ảnh cụ thể trên màn hình 9:16",
+      "subject": "Chủ thể cụ thể bằng tiếng Anh",
+      "production_method": "STOCK_FOOTAGE | TEXT_TO_VIDEO | IMAGE_TO_VIDEO | REAL_ARCHIVE",
+      "tool_choice": "pexels_video_clip | ai_text_to_video | ai_image_to_video | real_archive_photo",
+      "motion_level": "HIGH_MOTION | MEDIUM_MOTION | STATIC_DETAILED",
+      "search_queries": ["query 1", "query 2", "query 3"],
+      "google_image_queries": ["exact entity + specific feature/context real photograph", "exact entity + documentary/scientific context photo"],
+      "negative_cues": ["text overlay", "watermark", "blurry", "cartoon"],
+      "cinematic_ai_prompt": "Detailed 8K vertical 9:16 photorealistic prompt in English"
+    }}
+  ]
+}}
+"""
+        res = self._call_gemini_json(prompt, timeout=22)
+        result_map: Dict[int, Dict[str, Any]] = {}
+        if res and isinstance(res.get("scenes_analysis"), list):
+            for item in res["scenes_analysis"]:
+                if not isinstance(item, dict):
+                    continue
+                sid = item.get("scene_id")
+                if sid is None:
+                    continue
+                sc_orig = next((x for x in scenes_payload if x["scene_id"] == sid), {})
+                narr = sc_orig.get("narration", "")
+                subj = str(item.get("subject") or "").strip() or extract_subject(narr, primary_entity)
+                item = _enforce_subject_queries(item, subj)
+                item = _apply_creature_mode(item, narr, topic)
+                result_map[int(sid)] = item
+            if result_map:
+                logger.info(f"⚡ [VisualCuration] Đã phân tích đồng loạt {len(result_map)}/{len(scenes_payload)} cảnh trong 1 lệnh gọi!")
+        return result_map
 
     def analyze_scene_context(
         self,
@@ -176,7 +277,7 @@ class VisualCurationAgent:
         Phân tích chuyên sâu ngữ cảnh và cảm xúc của phân cảnh:
         - Đọc hiểu hàm ý (subtext), không dịch thô từ khóa bề mặt.
         - Đánh giá hoàn cảnh: lúc nào nên dùng Full Video chuyển động thực, lúc nào tạo Full Video bằng AI, lúc nào ghép ảnh tĩnh nghệ thuật.
-        - Tạo 3-4 truy vấn tìm kiếm chuyên biệt cho stock video (2-3 từ tiếng Anh).
+        - Tạo 3-4 truy vấn tìm kiếm chuyên biệt cho stock video (2-3 từ tiếng Anh) và google_image_queries cho Google Images.
         - Tạo prompt AI 9:16 sắc nét để sẵn sàng fallback.
         """
         prompt = f"""
@@ -219,7 +320,7 @@ QUY TẮC TẠO TRUY VẤN TÌM ẢNH/VIDEO (CỰC KỲ QUAN TRỌNG — sai ch�
   Nếu lời thoại cảnh này bị cắt giữa câu, lấy chủ thể từ Ngữ cảnh xung quanh / Chủ đề video.
   Quái vật / sinh vật huyền thoại GIỮ NGUYÊN TÊN (vd: "kraken", "megalodon", "Loch Ness monster"), KHÔNG đổi thành con vật thật ("giant octopus", "shark").
 - search_queries[0] BẮT BUỘC chứa nguyên văn "subject" + 1-2 từ hành động/góc máy (3-5 từ). vd: "wedge-tailed eagle hunting", "mantis shrimp eyes close up".
-- search_queries[1], [2] cũng phải chứa "subject" hoặc tên gọi khác của chính nó (vd: "Aquila audax"). CẤM truy vấn chung chung không có chủ thể ("colorful marine life", "cinematic b roll", "majestic sky").
+- google_image_queries: 2 câu truy vấn chuyên sâu để tìm trên Google Images (4-8 từ tiếng Anh), kết hợp tên chính xác của chủ thể + chi tiết giải phẫu/bối cảnh thực tế/nhiếp ảnh tài liệu (vd: '"wedge-tailed eagle" talons hunting wild australia photograph', '"peacock mantis shrimp" compound eyes macro photo').
 - KHÔNG dùng tính từ trống rỗng (majestic, cinematic, aesthetic, beautiful, epic) trong truy vấn.
 
 HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
@@ -236,6 +337,10 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
     "<subject> + bối cảnh hoặc góc nhìn khác (vd: wedge-tailed eagle soaring)",
     "<subject> + đặc tả chi tiết (vd: wedge-tailed eagle eye close up)"
   ],
+  "google_image_queries": [
+    "<subject> + chi tiết cụ thể trong lời thoại + photograph/documentary photo",
+    "<subject> + bối cảnh khoa học/tự nhiên/lịch sử chính xác"
+  ],
   "negative_cues": [
     "Từ/khái niệm cấm (vd: text overlay, watermark, blurry, low resolution, cartoon, distorted, muddy dark tones)"
   ],
@@ -250,7 +355,7 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
             res = _apply_creature_mode(res, narration, topic)
             logger.info(
                 f"🎬 [VisualCuration] Cảnh {scene_id} [{res.get('production_method')} / {res.get('tool_choice')}] "
-                f"subject='{res.get('subject', '')}' queries={res.get('search_queries', [])[:3]}"
+                f"subject='{res.get('subject', '')}' google_queries={res.get('google_image_queries', [])[:2]}"
             )
             return res
 
@@ -264,6 +369,7 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
         if subj and subj.lower() not in _GENERIC_SUBJECTS and res.get("production_method") != "REAL_ARCHIVE":
             generic = list(res.get("search_queries") or [])
             res["search_queries"] = [subj, f"{subj} close up"] + generic[:1]
+            res["google_image_queries"] = [f'"{subj}" high resolution photograph', f"{subj} close up real photo"]
             res["subject"] = subj
             res = _apply_creature_mode(res, narration, topic)
             logger.info(f"🎬 [VisualCuration] Cảnh {scene_id} (heuristic) subject='{subj}' queries={res['search_queries']}")
@@ -454,7 +560,7 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
             meta_lines.append(f"- Ảnh #{img_no}: nguồn={c.get('source', 'stock')}, bố cục={orient}, mô tả='{desc}'")
 
         prompt = f"""
-Bạn là Giám Đốc Hình Ảnh (Director of Photography) cho kênh YouTube Shorts triệu view.
+Bạn là Giám Đốc Hình Ảnh (Director of Photography) kiêm Chuyên Gia Tìm Kiếm Google Images cho kênh YouTube Shorts triệu view.
 Bạn được xem {len(indexed)} ảnh thumbnail của các {'video clip' if kind == 'video' else 'bức ảnh'} ứng viên (theo đúng thứ tự Ảnh #0, #1, ...).
 Hãy NHÌN KỸ từng ảnh và chọn ứng viên vừa ĐÚNG NỘI DUNG vừa HẤP DẪN THỊ GIÁC NHẤT cho phân cảnh.
 
@@ -473,12 +579,14 @@ TIÊU CHÍ CHẤM (mỗi ứng viên):
 2. appeal (0-10): Sức hút thị giác giữ chân người xem: chủ thể rõ ràng, bố cục mạnh, ánh sáng điện ảnh, màu sắc ấn tượng, sắc nét, có chiều sâu/cảm xúc. Ảnh nhạt nhòa, mờ, chung chung, stock sến -> dưới 5.
    Ảnh có WATERMARK, logo trang web, chữ chèn, vòng tròn đỏ (red circle), mũi tên chỉ trỏ kiểu thumbnail YouTube, khung viền, ảnh ghép collage -> appeal tối đa 2.
 3. Ưu tiên bố cục dọc hoặc chủ thể nằm giữa (dễ cắt 9:16).
+4. refined_google_query: Nếu tất cả ảnh hiện tại đều chưa hoàn hảo (dưới 7 điểm) hoặc bị lạc đề (vd: tìm con tôm tít lại ra món tôm nấu chín), hãy viết 1 câu truy vấn tiếng Anh chuẩn Google Images (4-8 từ, có thể kèm từ khóa loại trừ như -food -cartoon) để tìm lại đúng bức ảnh thực tế đắt giá nhất.
 
 TRẢ VỀ JSON DUY NHẤT:
 {{
   "scores": [{{"image": 0, "relevance": 8.0, "appeal": 7.5}}],
   "best_image": 0,
   "rationale": "1 câu giải thích vì sao chọn (hoặc vì sao từ chối tất cả)",
+  "refined_google_query": "exact subject + specific visual context high resolution photo",
   "reject_all": false
 }}
 Nếu KHÔNG ảnh nào có relevance >= 5 -> đặt best_image = -1 và reject_all = true.
@@ -502,20 +610,26 @@ Nếu KHÔNG ảnh nào có relevance >= 5 -> đặt best_image = -1 và reject_
                     score_map[img_no] = (float(s.get("relevance", 0) or 0), float(s.get("appeal", 0) or 0))
 
             rationale = str(res.get("rationale", ""))[:200]
+            refined_q = str(res.get("refined_google_query") or "").strip()
+            if isinstance(visual_analysis, dict) and refined_q:
+                visual_analysis["_refined_google_query"] = refined_q
+
             if res.get("reject_all") or int(res.get("best_image", -1)) < 0:
-                logger.info(f"👁️ [VisionCuration] Từ chối toàn bộ {len(indexed)} ứng viên {kind}: {rationale}")
+                logger.info(f"👁️ [VisionCuration] Từ chối toàn bộ {len(indexed)} ứng viên {kind}: {rationale} (refined_q='{refined_q}')")
                 return -1, 0.0, rationale
 
-            # Chọn theo điểm tổng hợp (60% liên quan + 40% hấp dẫn), bắt buộc relevance >= 5
-            best_img, best_combined = -1, -1.0
+            # Xếp hạng toàn bộ ứng viên đạt chuẩn (relevance >= 5.0) theo điểm tổng hợp (60% liên quan + 40% hấp dẫn)
+            ranked_valid: List[Tuple[float, int]] = []
             for img_no, (rel, app) in score_map.items():
                 if rel < 5.0:
                     continue
                 combined = 0.6 * rel + 0.4 * app
-                if combined > best_combined:
-                    best_img, best_combined = img_no, combined
+                ranked_valid.append((combined, img_no))
+            ranked_valid.sort(reverse=True)
 
-            if best_img < 0:
+            if ranked_valid:
+                best_combined, best_img = ranked_valid[0]
+            else:
                 suggested = int(res.get("best_image", -1))
                 if 0 <= suggested < len(indexed) and suggested not in score_map:
                     best_img, best_combined = suggested, 6.0
@@ -524,6 +638,16 @@ Nếu KHÔNG ảnh nào có relevance >= 5 -> đặt best_image = -1 và reject_
                     return -1, 0.0, rationale
 
             orig_idx = indexed[best_img][0]
+            # Lưu danh sách ứng viên dự phòng đã qua kiểm duyệt Vision (phòng khi server ảnh #1 chặn tải 403)
+            if len(ranked_valid) > 1 and isinstance(pool[orig_idx], dict):
+                alt_urls = []
+                for _, alt_img_no in ranked_valid[1:4]:
+                    alt_cand = pool[indexed[alt_img_no][0]]
+                    if alt_cand.get("url"):
+                        alt_urls.append(alt_cand["url"])
+                if alt_urls:
+                    pool[orig_idx]["_vision_alternates"] = alt_urls
+
             rel, app = score_map.get(best_img, (best_combined, best_combined))
             logger.info(
                 f"👁️ [VisionCuration] ✅ Chọn {kind} #{orig_idx} ({pool[orig_idx].get('source', 'stock')}) | "
@@ -867,8 +991,9 @@ TRẢ VỀ JSON DUY NHẤT:
             return None, 3.0, "Không có ứng viên ảnh nào khả dụng.", True
 
         # AI VISION: Nhìn trực tiếp ảnh để chọn bức vừa đúng nội dung vừa hấp dẫn nhất
+        vision_pool = [{**p["item"], "description": p["description"]} for p in pool]
         vision = self.vision_rank_candidates(
-            [{**p["item"], "description": p["description"]} for p in pool],
+            vision_pool,
             narration=narration,
             topic=topic or visual_keyword,
             visual_analysis=visual_analysis,
@@ -877,8 +1002,52 @@ TRẢ VỀ JSON DUY NHẤT:
         )
         if vision is not None:
             v_idx, v_score, v_rat = vision
+            refined_q = str((visual_analysis or {}).get("_refined_google_query") or "").strip()
+
+            # Nếu toàn bộ ảnh đầu tiên bị từ chối hoặc điểm thấp (< 6.4), tự động dùng refined_google_query tìm lại trên Google Images!
+            if (v_idx < 0 or v_score < 6.4) and refined_q:
+                try:
+                    from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
+                    from app.services.media.image_quality import prefilter_candidates
+                    if web_image_search_enabled():
+                        logger.info(f"🔎 [VisionCuration] Tự động tinh chỉnh truy vấn Google Images: '{refined_q}'")
+                        existing_urls = {p["item"].get("url") for p in pool} | set(used)
+                        fresh_google = [
+                            it for it in WebImageFetcher().search_open_web(refined_q, per_page=8)
+                            if it.get("url") and it["url"] not in existing_urls
+                        ]
+                        fresh_google = prefilter_candidates(
+                            fresh_google,
+                            subject=(visual_analysis or {}).get("subject") or refined_q,
+                            limit=8,
+                            creature_mode=bool((visual_analysis or {}).get("creature_mode")),
+                        )
+                        if fresh_google:
+                            fresh_vpool = [{**it, "description": it.get("title") or it.get("alt") or refined_q} for it in fresh_google]
+                            vision2 = self.vision_rank_candidates(
+                                fresh_vpool,
+                                narration=narration,
+                                topic=topic or visual_keyword,
+                                visual_analysis=visual_analysis,
+                                kind="photo",
+                                max_candidates=8,
+                            )
+                            if vision2 is not None:
+                                v2_idx, v2_score, v2_rat = vision2
+                                if v2_idx >= 0 and v2_score > v_score:
+                                    winner_item = fresh_google[v2_idx]
+                                    if fresh_vpool[v2_idx].get("_vision_alternates"):
+                                        winner_item["_vision_alternates"] = fresh_vpool[v2_idx]["_vision_alternates"]
+                                    winner_item["curation_score"] = max(v2_score, 6.2)
+                                    winner_item["curation_rationale"] = f"[Vision Refined Google] {v2_rat}"
+                                    return winner_item, max(v2_score, 6.2), v2_rat, False
+                except Exception as e:
+                    logger.debug(f"[VisionCuration] Refined Google search error: {e}")
+
             if v_idx >= 0:
                 winner_item = pool[v_idx]["item"]
+                if vision_pool[v_idx].get("_vision_alternates"):
+                    winner_item["_vision_alternates"] = vision_pool[v_idx]["_vision_alternates"]
                 winner_item["curation_score"] = max(v_score, 6.0)
                 winner_item["curation_rationale"] = f"[Vision] {v_rat}"
                 return winner_item, max(v_score, 6.0), v_rat, False

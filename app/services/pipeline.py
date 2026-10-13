@@ -141,6 +141,8 @@ class VideoPipeline:
                     scenes_audio = state.get("scenes_audio", [])
                     audio_map = {s.get("scene_id"): s for s in scenes_audio if isinstance(s, dict)}
                     for s in state.get("scenes_media", []):
+                        if not isinstance(s, dict):
+                            continue
                         sc_id = s.get("scene_id", 1)
                         a_info = audio_map.get(sc_id, {})
                         scenes_list.append(SceneContract(

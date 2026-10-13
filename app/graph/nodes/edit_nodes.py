@@ -50,6 +50,35 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
     subtitle_path = state.get("subtitle_path", "")
     total_audio_duration_ms = state.get("total_audio_duration_ms", 0)
 
+    # ── Action 0: Đổi tiêu đề video ──
+    if action_type == "edit_title":
+        new_title = edit_req.get("new_title") or edit_req.get("new_text")
+        if new_title:
+            new_title = new_title.strip().strip('"\'')
+            state["title"] = new_title
+            if script_data:
+                script_data["title"] = new_title
+            if state.get("job_id"):
+                from app.database.models import get_db, VideoJob
+                with get_db() as db:
+                    j = db.query(VideoJob).filter(VideoJob.id == state["job_id"]).first()
+                    if j:
+                        j.title = new_title
+                        if j.scenes_json:
+                            try:
+                                sj = json.loads(j.scenes_json)
+                                sj["title"] = new_title
+                                j.scenes_json = json.dumps(sj, ensure_ascii=False)
+                            except Exception:
+                                pass
+            logger.info(f"✅ [Edit] Đã cập nhật tiêu đề Video #{state.get('job_id')} thành: '{new_title}'")
+            return {
+                "script_data": script_data,
+                "title": new_title,
+                "current_step": "TITLE_EDITED",
+                "progress_message": f"Đã cập nhật tiêu đề mới: {new_title}",
+            }
+
     # ── Action 1: Thay thế media của 1 cảnh cụ thể ──
     if action_type == "replace_media" and scene_id:
         new_query = edit_req.get("new_media_query")
@@ -103,16 +132,27 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
             audio_dir.mkdir(parents=True, exist_ok=True)
             clean_text = new_text.strip()
             scene_audio_path = str(audio_dir / f"scene_{scene_id:03d}.mp3")
-            
-            communicate = edge_tts.Communicate(clean_text, voice_agent.default_voice)
-            await communicate.save(scene_audio_path)
-            new_dur = voice_agent._get_audio_duration_ms(scene_audio_path)
+            words_meta_path = str(audio_dir / f"scene_{scene_id:03d}.words.jsonl")
+            safe_voice = voice_agent._resolve_safe_voice(clean_text, voice_agent.default_voice)
+            tts_rate = "+7%" if safe_voice.startswith("vi-") else ("+9%" if safe_voice.startswith("pt-") else "+12%")
+
+            try:
+                communicate = edge_tts.Communicate(clean_text, safe_voice, rate=tts_rate, boundary="WordBoundary")
+                await communicate.save(scene_audio_path, metadata_fname=words_meta_path)
+            except Exception:
+                communicate = edge_tts.Communicate(clean_text, safe_voice, rate=tts_rate)
+                await communicate.save(scene_audio_path)
+
+            new_dur = await asyncio.to_thread(voice_agent._get_audio_duration_ms, scene_audio_path)
+            new_word_timings = voice_agent._parse_words_jsonl(words_meta_path)
 
             for sa in scenes_audio:
                 if sa.get("scene_id") == scene_id:
                     sa["narration"] = clean_text
                     sa["duration_ms"] = new_dur
+                    sa["audio_duration_ms"] = new_dur
                     sa["audio_path"] = scene_audio_path
+                    sa["word_timings"] = new_word_timings if new_word_timings else None
                     break
 
             # Tạo lại toàn bộ audio concat & ASS Karaoke
@@ -125,13 +165,15 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
                     visual_keyword=s.get("visual_keyword", "documentary"),
                     audio_path=s.get("audio_path", ""),
                     audio_duration_ms=s.get("duration_ms") or s.get("audio_duration_ms", 3000),
+                    word_timings=s.get("word_timings"),
                     estimated_seconds=3.0,
                 )
                 for s in scenes_audio
             ]
             total_audio_duration_ms = await voice_agent.concat_scene_audio(scenes_objs, full_audio_path)
+            channel_style = state.get("channel_style") or "general"
             hook_banner_text = script_data.get("thumbnail_text") or script_data.get("hook") or script_data.get("title")
-            SubtitleHelper.save_ass_file(scenes_objs, subtitle_path, hook_title=hook_banner_text)
+            SubtitleHelper.save_ass_file(scenes_objs, subtitle_path, niche_id=channel_style, hook_title=hook_banner_text)
 
     # ── Action 3: Đổi giọng đọc (toàn bộ video) ──
     elif action_type == "change_voice":
@@ -147,6 +189,7 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
                 visual_keyword=s.get("visual_keyword", "documentary"),
                 audio_path=s.get("audio_path", ""),
                 audio_duration_ms=s.get("duration_ms") or s.get("audio_duration_ms", 3000),
+                word_timings=s.get("word_timings"),
                 estimated_seconds=3.0,
             )
             for s in scenes_audio
@@ -178,8 +221,16 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
     # ── Action 4: Đổi ngôn ngữ toàn bộ kịch bản & giọng lồng tiếng ──
     elif action_type == "change_language":
         from app.agents.content_agent import ContentAgent
-        target_lang = (edit_req.get("new_language") or edit_req.get("new_text") or "en").lower().strip()
-        target_lang = "vi" if "vi" in target_lang else "en"
+        raw_lang = (edit_req.get("new_language") or edit_req.get("new_text") or "en").lower().strip()
+        if "vi" in raw_lang:
+            target_lang = "vi"
+            lang_name = "Vietnamese"
+        elif "pt" in raw_lang or "portug" in raw_lang or "brazil" in raw_lang:
+            target_lang = "pt-BR"
+            lang_name = "Brazilian Portuguese"
+        else:
+            target_lang = "en"
+            lang_name = "English"
 
         ca = ContentAgent()
         try:
@@ -205,7 +256,7 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
         channel_style = state.get("channel_style") or "general"
         revised = ca.refine_script(
             current_script=current_script,
-            feedback=f"Translate and fully rewrite the script into {'Vietnamese' if target_lang == 'vi' else 'English'}. Keep the viral hook, structure, and pacing.",
+            feedback=f"Translate and fully rewrite the script into {lang_name}. Keep the viral hook, structure, and pacing.",
             channel_niche=channel_style,
             language=target_lang
         )
@@ -232,7 +283,12 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
         # Chọn giọng chuẩn theo ngôn ngữ mới
         req_voice = edit_req.get("new_voice_id")
         if not req_voice:
-            req_voice = "vi-VN-NamMinhNeural" if target_lang == "vi" else "en-US-AndrewNeural"
+            if target_lang == "vi":
+                req_voice = "vi-VN-NamMinhNeural"
+            elif target_lang == "pt-BR":
+                req_voice = "pt-BR-AntonioNeural"
+            else:
+                req_voice = "en-US-AndrewNeural"
 
         voice_agent = VoiceAgent(default_voice=req_voice)
         audio_dir = work_dir / "audio"

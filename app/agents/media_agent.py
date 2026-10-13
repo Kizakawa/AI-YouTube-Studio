@@ -34,7 +34,34 @@ from app.services.media.entity_detector import (
 from app.services.media.stock_fetcher import StockFetcher
 from app.services.media.archive_fetcher import ArchiveFetcher
 
+import threading as _threading
+
 logger = logging.getLogger(__name__)
+
+_download_fallback_lock = _threading.Lock()
+_download_fallback_registry: Dict[str, Dict[str, Any]] = {}
+
+
+def register_download_fallbacks(winner: Optional[Dict[str, Any]], candidates: Optional[List[Dict[str, Any]]] = None) -> None:
+    """Lưu thông tin Referer (page_url) và danh sách URL dự phòng (Vision-ranked alternates) cho ảnh được chọn."""
+    if not winner or not winner.get("url"):
+        return
+    u = winner["url"]
+    alts: List[str] = list(winner.get("_vision_alternates") or [])
+    if not alts and candidates:
+        for c in candidates:
+            cu = c.get("url")
+            if cu and cu != u and cu not in alts:
+                alts.append(cu)
+            if len(alts) >= 3:
+                break
+    with _download_fallback_lock:
+        if len(_download_fallback_registry) > 500:
+            _download_fallback_registry.clear()
+        _download_fallback_registry[u] = {
+            "referer": winner.get("page_url") or "",
+            "alternates": alts[:3],
+        }
 
 
 class MediaAgent:
@@ -480,6 +507,7 @@ If no real entities found, return empty array: []"""
                 if not win and not rejected:
                     win = hist_pool[0]
                 if win and win.get("url"):
+                    register_download_fallbacks(win, hist_pool)
                     used.update(extract_media_identity(win["url"]))
                     return win
 
@@ -507,7 +535,7 @@ If no real entities found, return empty array: []"""
                 used.update(extract_media_identity(best_clip["url"]))
                 return best_clip
 
-        # Thu thập ứng viên ảnh tĩnh từ Open Web, Wikipedia, Pexels & Wikimedia Commons
+        # Thu thập ứng viên ảnh tĩnh từ Google Images / Open Web, Wikipedia, Pexels & Wikimedia Commons
         candidate_photos = []
         from app.services.media.image_quality import extract_subject, prefilter_candidates
         scene_subject = (
@@ -516,12 +544,23 @@ If no real entities found, return empty array: []"""
             or extract_subject(scene_narration)
         )
 
-        # 1. Ưu tiên hàng đầu: Ảnh Open Web & Wikipedia thực tế toàn diện không giới hạn bản quyền
+        # 1. Ưu tiên hàng đầu: Ảnh Google Images & Wikipedia thực tế toàn diện
         try:
             from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
             if web_image_search_enabled():
-                web_q = ((v_analysis or {}).get("search_queries") or [None])[0] or primary_q or fallback_q
-                web_items = WebImageFetcher().search_all(web_q, per_source=3, subject=scene_subject)
+                google_qs = [q for q in ((v_analysis or {}).get("google_image_queries") or []) if q]
+                web_q = (
+                    (google_qs[0] if google_qs else None)
+                    or ((v_analysis or {}).get("search_queries") or [None])[0]
+                    or primary_q
+                    or fallback_q
+                )
+                web_items = WebImageFetcher().search_all(
+                    web_q,
+                    per_source=4,
+                    subject=scene_subject,
+                    extra_queries=google_qs[1:] if len(google_qs) > 1 else None,
+                )
                 for item in web_items:
                     u = item.get("url")
                     if u and not is_media_already_used(u, used) and not any(c.get("url") == u for c in candidate_photos):
@@ -572,6 +611,7 @@ If no real entities found, return empty array: []"""
                 if winner_photo and score >= 6.0 and not should_ai:
                     u = winner_photo.get("url")
                     if u and not is_media_already_used(u, used):
+                        register_download_fallbacks(winner_photo, candidate_photos)
                         used.update(extract_media_identity(u))
                         return winner_photo
                 elif should_ai:
@@ -584,6 +624,7 @@ If no real entities found, return empty array: []"""
                     if u and not is_media_already_used(u, used):
                         alt_desc = p.get("alt") or p.get("title", "")
                         if not is_incongruent_stock_image(alt_desc, topic=topic, narration=scene_narration):
+                            register_download_fallbacks(p, candidate_photos)
                             used.update(extract_media_identity(u))
                             return p
 
@@ -637,56 +678,97 @@ If no real entities found, return empty array: []"""
         return all_results[:per_page]
 
     def download_file(self, url: str, output_path: str, max_retries: int = 3) -> str:
-        """Tải file media về máy tính với stream, timeout an toàn, retry backoff và kiểm định bitmap raster bằng Pillow."""
-        headers = {
-            "User-Agent": (
-                WIKIMEDIA_USER_AGENT
-                if any(domain in url for domain in ["wikimedia.org", "wikipedia.org"])
-                else "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-            )
-        }
+        """
+        Tải file media về máy tính với stream, Referer thông minh chống chặn hotlink (403),
+        tự động chuyển sang ứng viên dự phòng đã qua Vision kiểm duyệt nếu URL chính lỗi,
+        và kiểm định bitmap raster bằng Pillow.
+        """
+        from urllib.parse import urlparse
+
+        with _download_fallback_lock:
+            fb_info = _download_fallback_registry.get(url) or {}
+        referer_override = fb_info.get("referer") or ""
+        alt_urls: List[str] = list(fb_info.get("alternates") or [])
+
+        urls_to_try = [url] + [au for au in alt_urls if au and au != url]
+        ext = Path(output_path).suffix.lower()
+        is_image_target = ext in [".jpg", ".jpeg", ".png", ".webp"]
 
         last_err = None
-        for attempt in range(max_retries):
-            try:
-                res = requests.get(url, headers=headers, stream=True, timeout=25)
-                if res.status_code == 429:
-                    sleep_time = 1.5 * (attempt + 1)
-                    logger.warning(f"Rate limited (429) khi tải {url[:60]}... Đợi {sleep_time}s")
-                    time.sleep(sleep_time)
-                    continue
-                res.raise_for_status()
-                with open(output_path, "wb") as f:
-                    for chunk in res.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                break
-            except Exception as e:
-                last_err = e
-                if attempt < max_retries - 1:
-                    time.sleep(1.0)
-                else:
-                    raise last_err
+        for idx_u, target_u in enumerate(urls_to_try):
+            parsed = urlparse(target_u)
+            origin_ref = f"{parsed.scheme}://{parsed.netloc}/" if parsed.scheme and parsed.netloc else ""
+            ref = referer_override if (idx_u == 0 and referer_override) else origin_ref
 
-        ext = Path(output_path).suffix.lower()
-        if ext in [".jpg", ".jpeg", ".png", ".webp"]:
-            try:
-                from PIL import Image
-                with Image.open(output_path) as im:
-                    im.verify()
+            headers = {
+                "User-Agent": (
+                    WIKIMEDIA_USER_AGENT
+                    if any(domain in target_u for domain in ["wikimedia.org", "wikipedia.org"])
+                    else "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+                ),
+                "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8" if is_image_target else "*/*",
+            }
+            if ref and not any(domain in target_u for domain in ["wikimedia.org", "wikipedia.org", "pexels.com", "pixabay.com"]):
+                headers["Referer"] = ref
 
-                with Image.open(output_path) as im:
-                    w, h = im.size
-                    if w < 250 or h < 250 or max(w / h, h / w) > 2.8:
-                        raise ValueError(f"Ảnh không đạt chuẩn kích thước/tỷ lệ ({w}x{h}, aspect={max(w/h, h/w):.2f})")
-                    if im.mode not in ("RGB",):
-                        rgb_im = im.convert("RGB")
-                        save_fmt = "JPEG" if ext in [".jpg", ".jpeg"] else "PNG"
-                        rgb_im.save(output_path, format=save_fmt, quality=95)
-            except Exception as e:
+            downloaded_ok = False
+            tries_for_url = max_retries if idx_u == 0 else min(2, max_retries)
+            for attempt in range(tries_for_url):
                 try:
-                    Path(output_path).unlink(missing_ok=True)
-                except Exception:
-                    pass
-                raise ValueError(f"File tải về không phải ảnh bitmap raster hợp lệ ({e}): {url}")
+                    res = requests.get(target_u, headers=headers, stream=True, timeout=20)
+                    if res.status_code == 429:
+                        sleep_time = 1.5 * (attempt + 1)
+                        logger.warning(f"Rate limited (429) khi tải {target_u[:60]}... Đợi {sleep_time}s")
+                        time.sleep(sleep_time)
+                        continue
+                    if res.status_code in (403, 401) and "Referer" in headers:
+                        # Thử bỏ Referer nếu server chặn cross-referer
+                        headers.pop("Referer", None)
+                        res = requests.get(target_u, headers=headers, stream=True, timeout=15)
+                    res.raise_for_status()
+                    with open(output_path, "wb") as f:
+                        for chunk in res.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    downloaded_ok = True
+                    break
+                except Exception as e:
+                    last_err = e
+                    if attempt < tries_for_url - 1:
+                        time.sleep(0.8)
 
+            if not downloaded_ok:
+                if idx_u + 1 < len(urls_to_try):
+                    logger.info(f"[MediaAgent] Tải URL chính thất bại ({last_err}) → thử ứng viên dự phòng #{idx_u + 1}")
+                continue
+
+            if is_image_target:
+                try:
+                    from PIL import Image
+                    with Image.open(output_path) as im:
+                        im.verify()
+
+                    with Image.open(output_path) as im:
+                        w, h = im.size
+                        if w < 250 or h < 250 or max(w / h, h / w) > 2.8:
+                            raise ValueError(f"Ảnh không đạt chuẩn kích thước/tỷ lệ ({w}x{h}, aspect={max(w/h, h/w):.2f})")
+                        if im.mode not in ("RGB",):
+                            rgb_im = im.convert("RGB")
+                            save_fmt = "JPEG" if ext in [".jpg", ".jpeg"] else "PNG"
+                            rgb_im.save(output_path, format=save_fmt, quality=95)
+                    return output_path
+                except Exception as e:
+                    last_err = ValueError(f"File tải về không phải ảnh bitmap raster hợp lệ ({e}): {target_u}")
+                    try:
+                        Path(output_path).unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    if idx_u + 1 < len(urls_to_try):
+                        logger.info(f"[MediaAgent] Ảnh chính không hợp lệ ({e}) → thử ứng viên dự phòng #{idx_u + 1}")
+                        continue
+                    raise last_err
+            else:
+                return output_path
+
+        if last_err:
+            raise last_err
         return output_path

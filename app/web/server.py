@@ -751,9 +751,10 @@ async def get_video_detail(job_id: int) -> Dict[str, Any]:
         }
 
 class EditVideoPayload(BaseModel):
-    action_type: str  # "replace_media", "edit_text", "change_voice", "remix_bgm"
+    action_type: str  # "replace_media", "edit_text", "change_voice", "remix_bgm", "edit_title"
     scene_id: Optional[int] = None
     new_text: Optional[str] = None
+    new_title: Optional[str] = None
     new_media_query: Optional[str] = None
     new_voice_id: Optional[str] = None
 
@@ -765,12 +766,38 @@ async def edit_video_endpoint(job_id: int, payload: EditVideoPayload, background
         action_type=payload.action_type,
         scene_id=payload.scene_id,
         new_text=payload.new_text,
+        new_title=payload.new_title,
         new_media_query=payload.new_media_query,
         new_voice_id=payload.new_voice_id
     )
     runner = GraphRunner(job_id=job_id)
     background_tasks.add_task(runner.execute_edit, req)
     return {"status": "ok", "message": f"Đang thực hiện chỉnh sửa '{payload.action_type}' cho Video #{job_id}"}
+
+
+class UpdateTitlePayload(BaseModel):
+    title: str
+
+@app.patch("/api/videos/{job_id}/title")
+async def update_video_title_endpoint(job_id: int, payload: UpdateTitlePayload):
+    """Cập nhật tiêu đề video nhanh (tức thì trong DB và scenes_json)."""
+    new_t = payload.title.strip()
+    if not new_t:
+        raise HTTPException(status_code=400, detail="Tiêu đề không được để trống")
+    with get_db() as db:
+        job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy VideoJob #{job_id}")
+        job.title = new_t
+        if job.scenes_json:
+            try:
+                import json as _json
+                sj = _json.loads(job.scenes_json)
+                sj["title"] = new_t
+                job.scenes_json = _json.dumps(sj, ensure_ascii=False)
+            except Exception:
+                pass
+    return {"status": "ok", "job_id": job_id, "title": new_t}
 
 # ─── Edit Script & Scenes (Pre-render) ────────────────────────────────────────
 

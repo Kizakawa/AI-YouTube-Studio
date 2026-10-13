@@ -172,6 +172,87 @@ def check_idea_similarity(
     return is_duplicate, round(max_score, 3), best_match
 
 
+def ensure_unique_title(
+    candidate_title: str,
+    channel_id: str,
+    topic: str = "",
+    language: str = "en",
+    similarity_threshold: float = 0.40
+) -> Tuple[str, bool, Optional[str]]:
+    """
+    Kiểm tra và đảm bảo tiêu đề video độc bản 100%, không bị trùng lặp với bất kỳ video nào trong quá khứ của kênh.
+    Nếu phát hiện tương đồng >= similarity_threshold:
+    Tự động gọi Gemini AI để biến tấu một tiêu đề hoàn toàn mới lạ (đổi góc nhìn, giữ nguyên chủ đề).
+    Trả về: (final_title: str, was_duplicate: bool, matched_previous_title: Optional[str])
+    """
+    if not candidate_title:
+        return candidate_title, False, None
+
+    portfolio = get_channel_existing_portfolio(channel_id)
+    existing_titles = portfolio.get("existing_titles", [])
+    if not existing_titles:
+        return candidate_title, False, None
+
+    clean_cand = candidate_title.strip()
+    is_dup, score, matched = check_idea_similarity(clean_cand, existing_titles, similarity_threshold=similarity_threshold)
+    if not is_dup:
+        return candidate_title, False, None
+
+    logger.warning(
+        f"[AntiDuplication] ⚠️ Phát hiện tiêu đề trùng lặp: '{clean_cand}' "
+        f"(tương đồng {score:.2f} với '{matched}'). Đang tự động đổi tiêu đề độc bản mới..."
+    )
+
+    # Dùng Gemini AI để sinh tiêu đề độc bản mới
+    keys = settings.get_gemini_keys_pool()
+    if keys:
+        from app.utils.key_rotator import KeyRotator
+        import requests
+        rotator = KeyRotator(keys)
+        prompt = f"""You are an elite YouTube Shorts copywriter.
+The channel already has a video with this title:
+"{matched}"
+
+A new video was drafted with a title that is TOO SIMILAR:
+"{clean_cand}"
+Topic: "{topic or clean_cand}"
+Target language: {language}
+
+TASK:
+Write ONE completely new, fresh, high-CTR YouTube Shorts title for this topic.
+Requirements:
+1. MUST NOT use the same sentence structure or key hook words as "{matched}".
+2. Approach from a different high-urgency angle (e.g. survival secret, terrifying anomaly, counter-intuitive twist, forbidden discovery).
+3. Under 50 characters, punchy, includes 1-2 impactful emojis.
+4. Output ONLY the new title as raw text, no quotes, no markdown, no explanation.
+"""
+        for _ in range(min(len(keys), 3)):
+            key = rotator.get_key()
+            if not key:
+                break
+            for model in ["gemini-flash-lite-latest", "gemini-flash-latest"]:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+                payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                try:
+                    res = requests.post(url, json=payload, timeout=12)
+                    if res.status_code == 200:
+                        text = res.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+                        text = text.replace('"', '').replace("'", '').strip()
+                        if text and len(text) > 5 and not check_idea_similarity(text, [matched], similarity_threshold=0.45)[0]:
+                            logger.info(f"[AntiDuplication] ✅ Đã đổi tiêu đề thành công: '{clean_cand}' -> '{text}'")
+                            return text, True, matched
+                    elif res.status_code in (429, 403):
+                        rotator.rotate_key()
+                        break
+                except Exception:
+                    pass
+            rotator.rotate_key()
+
+    # Fallback nếu AI bận: thêm góc nhìn đặc tả khác biệt
+    fallback_title = f"{clean_cand.split('?')[0].strip()} — The Hidden Truth! 💀" if "?" in clean_cand else f"Secret Behind {clean_cand} ⚠️"
+    return fallback_title, True, matched
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 2. THU THẬP DANH MỤC VIDEO & TOP PERFORMER CỦA KÊNH
 # ──────────────────────────────────────────────────────────────────────────────
@@ -180,13 +261,22 @@ def get_channel_existing_portfolio(channel_id: str) -> Dict[str, Any]:
     """
     Thu thập toàn bộ dữ liệu lịch sử nội dung của kênh từ 2 nguồn:
     1. YouTube Live Stats (các video đã công chiếu thực tế trên YouTube).
-    2. SQLite VideoJob (các video đã được tạo trong hệ thống).
+    2. SQLite VideoJob & PublishedVideo (các video đã được tạo trong hệ thống qua toàn bộ danh sách alias của kênh).
     """
+    from app.services.smart_scheduler import resolve_channel_family
+    family_ids = resolve_channel_family(channel_id)
+    fam_lowers = [f.lower() for f in family_ids]
+
     cfg_channels = settings.get_channels_config()
-    target_cfg = next((c for c in cfg_channels if c.get("id") == channel_id), None)
+    target_cfg = next(
+        (c for c in cfg_channels if any(
+            ident and str(ident).lower() in fam_lowers
+            for ident in (c.get("id"), c.get("youtube_channel_id"), c.get("handle"), c.get("name"))
+        )),
+        None
+    )
     if not target_cfg:
-        # Fallback thử tìm theo handle hoặc name
-        target_cfg = next((c for c in cfg_channels if c.get("handle") == channel_id or c.get("name") == channel_id), {
+        target_cfg = next((c for c in cfg_channels if c.get("id") == channel_id or c.get("handle") == channel_id or c.get("name") == channel_id), {
             "id": channel_id,
             "name": channel_id,
             "niche": "psychology",
@@ -290,11 +380,11 @@ def get_channel_existing_portfolio(channel_id: str) -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"[Portfolio] Lỗi lấy stats YouTube cho {channel_id}: {e}")
 
-    # B. Lấy dữ liệu từ SQLite DB
+    # B. Lấy dữ liệu từ SQLite DB (Toàn bộ họ kênh / alias)
     try:
         with get_db() as db:
             jobs = db.query(VideoJob).filter(
-                VideoJob.target_channel_id == channel_id
+                VideoJob.target_channel_id.in_(family_ids)
             ).order_by(VideoJob.created_at.desc()).all()
 
             for j in jobs:
@@ -302,6 +392,14 @@ def get_channel_existing_portfolio(channel_id: str) -> Dict[str, Any]:
                     existing_titles.append(j.title)
                 if j.topic and j.topic not in existing_topics:
                     existing_topics.append(j.topic)
+
+            from app.database.models import PublishedVideo
+            pub_vids = db.query(PublishedVideo).filter(
+                PublishedVideo.channel_id.in_(family_ids)
+            ).all()
+            for pv in pub_vids:
+                if pv.title and pv.title not in existing_titles:
+                    existing_titles.append(pv.title)
 
             # Lấy mốc thời gian video mới nhất
             # Ưu tiên video có trạng thái hoàn tất (RENDERED, SCHEDULED, PUBLISHED, AWAITING_APPROVAL)
@@ -466,9 +564,11 @@ def suggest_channel_topics(
         from app.database.models import UsedTopic, get_db
         from datetime import timedelta
         cutoff = datetime.utcnow() - timedelta(days=60)
+        from app.services.smart_scheduler import resolve_channel_family
+        family_ids = resolve_channel_family(channel_id)
         with get_db() as _db:
             recent_used = _db.query(UsedTopic).filter(
-                UsedTopic.channel_id == channel_id,
+                UsedTopic.channel_id.in_(family_ids),
                 UsedTopic.used_at >= cutoff
             ).order_by(UsedTopic.used_at.desc()).limit(100).all()
             db_used_topics = [u.topic_text for u in recent_used]

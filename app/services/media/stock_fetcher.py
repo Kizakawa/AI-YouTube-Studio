@@ -367,26 +367,31 @@ class StockFetcher:
             if len(candidates) >= 10:
                 break
 
-        # Ảnh Internet toàn mạng (Open Web DDGS, Wikipedia, Commons, Openverse, Unsplash)
+        # Ảnh Internet toàn mạng (Google Images, Wikipedia, Commons, Openverse, Unsplash)
         web_fetcher = None
         stock_part = candidates[:]
         try:
             from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled, bypass_copyright_enabled
             if web_image_search_enabled():
                 web_fetcher = WebImageFetcher()
+                google_qs = [q for q in (va.get("google_image_queries") or []) if q]
                 if creature_mode and creature_qs:
                     web_items = web_fetcher.search_all(
                         creature_qs[0], per_source=5, subject=subject,
                         extra_queries=creature_qs[1:], creature_mode=True,
                     )
                 else:
-                    web_items = web_fetcher.search_all(queries[0], per_source=4, subject=subject)
+                    primary_web_q = google_qs[0] if google_qs else queries[0]
+                    extra_web_qs = (google_qs[1:] + queries[:2]) if google_qs else queries[1:2]
+                    web_items = web_fetcher.search_all(
+                        primary_web_q, per_source=5, subject=subject, extra_queries=extra_web_qs,
+                    )
                 stock_part, before = candidates[:], len(candidates)
                 candidates.clear()
                 _add(web_items)
                 web_part = candidates[:]
                 candidates.clear()
-                # Nếu bypass copyright (hoặc web có ảnh), ưu tiên ảnh web thực tế lên ĐẦU danh sách
+                # Nếu bypass copyright (hoặc web có ảnh), ưu tiên ảnh Google/Web thực tế lên ĐẦU danh sách
                 if bypass_copyright_enabled():
                     candidates.extend(web_part)
                     candidates.extend(stock_part)
@@ -409,7 +414,7 @@ class StockFetcher:
         # Lọc watermark/ảnh nhỏ + xếp hạng theo chủ thể, bố cục dọc, độ phân giải (thứ tự trên chỉ còn là tie-breaker)
         candidates = prefilter_candidates(
             candidates, subject=subject or queries[0], limit=12,
-            creature_mode=creature_mode, max_per_source=8 if creature_mode else 5,
+            creature_mode=creature_mode, max_per_source=8 if creature_mode else 6,
         )
 
         if not candidates:
@@ -436,6 +441,11 @@ class StockFetcher:
             logger.debug(f"[StockFetcher] Lỗi curate ảnh: {e}")
 
         winner = winner or candidates[0]
+        try:
+            from app.agents.media_agent import register_download_fallbacks
+            register_download_fallbacks(winner, candidates)
+        except Exception:
+            pass
         record_used_media(winner["url"], query=query, source=winner.get("source", "stock_photo"))
         if winner.get("license"):
             try:

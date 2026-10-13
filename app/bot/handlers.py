@@ -1099,6 +1099,21 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             director_notes=director_notes
         )
 
+        # Kiểm tra và bảo vệ chống trùng lặp tiêu đề với toàn bộ kho video của kênh
+        from app.services.channel_intelligence import ensure_unique_title
+        unique_title, was_dup, dup_match = ensure_unique_title(
+            candidate_title=script.title,
+            channel_id=channel_id,
+            topic=clean_topic,
+            language=channel_lang,
+            similarity_threshold=0.40
+        )
+        dedup_notice = ""
+        if was_dup:
+            logger.info(f"[Handlers] 🛡️ Đã khử trùng tiêu đề cho Video: '{script.title}' -> '{unique_title}' (Trùng với '{dup_match}')")
+            script.title = unique_title
+            dedup_notice = f"🛡️ **Khử trùng tiêu đề:** Đổi từ ~\"{dup_match}\"~ ➔ *\"{unique_title}\"*\n\n"
+
         # Lưu vào Database — dùng context manager
         with get_db() as db:
             job = VideoJob(
@@ -1119,6 +1134,19 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             log_activity(db, user.id, user.username, "SCRIPT_CREATED",
                          f"Kịch bản #{job_id} đã hoàn thành: '{script.title}'",
                          channel_id=channel_id)
+
+            # Củng cố bộ nhớ chống trùng lặp UsedTopic
+            try:
+                from app.database.models import UsedTopic
+                db.add(UsedTopic(
+                    channel_id=channel_id,
+                    topic_hash=UsedTopic.hash_topic(clean_topic),
+                    topic_text=clean_topic,
+                    niche=channel_niche,
+                    job_id=job_id,
+                ))
+            except Exception:
+                pass
 
         # Soạn nội dung thông báo cho nhóm
         scenes_preview = "\n".join([
@@ -2096,6 +2124,10 @@ async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_reply(
             update,
             "💡 **Cú pháp chỉnh sửa thông minh (LangGraph Multi-Agent):**\n\n"
+            "0. **Sửa tiêu đề video nhanh (không render lại):**\n"
+            "`/edit <job_id> title <tiêu_đề_mới>`\n"
+            "   _Ví dụ:_ `/edit 316 title What Lurks In Mariana Trench? 💀`\n"
+            "   _Ví dụ:_ `/edit 316 tieude Bí Ẩn Đáy Vực 11,000m 🌊`\n\n"
             "1. **Đổi ngôn ngữ kịch bản & giọng đọc (EN ↔ VI):**\n"
             "`/edit <job_id> lang <vi|en>`\n"
             "   _Ví dụ:_ `/edit 27 lang vi` (Dịch sang Tiếng Việt & lồng tiếng Việt)\n"
@@ -2118,6 +2150,42 @@ async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     job_id = int(context.args[0])
     sub_cmd = context.args[1].lower()
+
+    # ── 0. Đổi TIÊU ĐỀ video trực tiếp (Title Edit) ──
+    if sub_cmd in ("title", "tieude", "tieu_de", "name", "ten") and len(context.args) >= 3:
+        new_title = " ".join(context.args[2:]).strip().strip('"\'')
+        if not new_title:
+            await safe_reply(update, "❌ Vui lòng nhập tiêu đề mới. Ví dụ: `/edit 316 title Bí Ẩn Đáy Vực 11,000m 🌊`")
+            return
+
+        with get_db() as db:
+            j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if not j:
+                await safe_reply(update, f"❌ Không tìm thấy VideoJob #{job_id}")
+                return
+            old_title = j.title or j.topic
+            j.title = new_title
+            if j.scenes_json:
+                try:
+                    import json as _json
+                    sj = _json.loads(j.scenes_json)
+                    sj["title"] = new_title
+                    j.scenes_json = _json.dumps(sj, ensure_ascii=False)
+                except Exception:
+                    pass
+            log_activity(db, update.effective_user.id, update.effective_user.username, "EDIT_TITLE",
+                         f"Đổi tiêu đề Video #{job_id}: '{old_title}' -> '{new_title}'", channel_id=j.target_channel_id)
+
+        markup = get_video_post_render_keyboard(job_id, is_republish=True)
+        await safe_reply(
+            update,
+            f"✅ **ĐÃ ĐỔI TIÊU ĐỀ VIDEO #{job_id} THÀNH CÔNG!**\n\n"
+            f"📌 **Tiêu đề mới:** `{new_title}`\n"
+            f"_(Tiêu đề cũ: ~{old_title}~_\n\n"
+            f"🚀 Tiêu đề này sẽ được áp dụng trực tiếp khi xuất bản lên YouTube Shorts.",
+            reply_markup=markup
+        )
+        return
 
     # ── 1. Đổi ngôn ngữ toàn bộ kịch bản & giọng lồng tiếng qua LangGraph ──
     if sub_cmd in ("lang", "language", "ngonngu") and len(context.args) >= 3:
@@ -2790,8 +2858,9 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_reply(
             update,
             f"✍️ **BẢNG ĐIỀU KHIỂN CHỈNH SỬA VIDEO #{job_id}**\n\n"
-            f"⚡ **Thao tác nhanh 1 chạm:** Chọn các nút bên dưới để chuyển ngôn ngữ (Anh ↔ Việt) hoặc đổi giọng đọc Nam/Nữ tức thì.\n\n"
-            f"📝 **Hoặc gõ lệnh `/edit` chi tiết:**\n"
+            f"⚡ **Thao tác nhanh 1 chạm:** Chọn các nút bên dưới để đổi tiêu đề, chuyển ngôn ngữ hoặc đổi giọng đọc Nam/Nữ tức thì.\n\n"
+            f"📝 **Các lệnh `/edit` có sẵn:**\n"
+            f"• `/edit {job_id} title <tiêu đề mới>` : Sửa tiêu đề video nhanh (không render lại)\n"
             f"• `/edit {job_id} lang vi` : Chuyển kịch bản & lồng tiếng sang Tiếng Việt\n"
             f"• `/edit {job_id} lang en` : Chuyển kịch bản & lồng tiếng sang Tiếng Anh\n"
             f"• `/edit {job_id} voice nam|nu` : Đổi giọng đọc Nam hoặc Nữ\n"
@@ -2799,6 +2868,23 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• `/edit {job_id} <góp ý>` : Chỉnh sửa nội dung kịch bản (VD: _Sửa hook giật gân hơn_)\n"
             f"• `/edit {job_id} scene <số> <từ khóa>` : Đổi hình ảnh/video của 1 cảnh",
             reply_markup=markup
+        )
+
+    # 3.0 Đổi tiêu đề video qua nút bấm
+    elif data.startswith("prompt_edit_title:"):
+        job_id = int(data.split(":")[1])
+        curr_title = "Chưa có"
+        with get_db() as db:
+            j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if j and j.title:
+                curr_title = j.title
+        await safe_reply(
+            update,
+            f"✏️ **HƯỚNG DẪN ĐỔI TIÊU ĐỀ CHO VIDEO #{job_id}**\n\n"
+            f"📌 **Tiêu đề hiện tại:**\n`{curr_title}`\n\n"
+            f"👉 Để đổi sang tiêu đề mới, bạn chỉ cần copy dòng lệnh bên dưới, sửa tiêu đề theo ý muốn và gửi vào đây:\n\n"
+            f"`/edit {job_id} title Tiêu đề mới hấp dẫn của bạn 💀`\n\n"
+            f"⚡ Hệ thống sẽ cập nhật ngay tức thì vào kịch bản & thông tin xuất bản YouTube Shorts (không mất công render lại!)."
         )
 
     # 3.1 Đổi ngôn ngữ qua nút bấm nhanh

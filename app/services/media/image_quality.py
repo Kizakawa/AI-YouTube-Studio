@@ -213,46 +213,69 @@ def creature_queries(subject: str) -> List[str]:
     return qs
 
 
+# Các tên miền báo chí khoa học / bách khoa / bảo tàng uy tín trên Google Images
+_AUTHORITATIVE_DOMAINS = (
+    "wikipedia.org", "wikimedia.org", "nationalgeographic", "britannica.com", "smithsonianmag",
+    "nature.com", "science.org", "scientificamerican", "bbc.co", "bbc.com", "nasa.gov", "noaa.gov",
+    "nhm.ac.uk", "australian.museum", "audubon.org", "livescience.com", "newscientist.com",
+    "theguardian.com", "nytimes.com", "reuters.com", "apnews.com", "flickr.com", "inaturalist.org",
+    "ebird.org", "fishbase", "animaldiversity", "arkive", "Montereybayaquarium", "oceana.org",
+)
+
+
 def heuristic_score(item: Dict, terms: Iterable[str], creature_mode: bool = False) -> float:
     """Điểm 0-10 ước lượng độ hấp dẫn + liên quan của ảnh dựa trên metadata (không cần AI)."""
     terms = list(terms or [])
     w, h = _dims(item)
     score = 4.0
 
-    # Bố cục: Shorts cần ảnh dọc
+    # Bố cục: Shorts cần ảnh dọc hoặc ảnh độ phân giải cao đủ để crop 9:16 sắc nét
     if w and h:
         ratio = w / h
         if ratio <= 0.8:
             score += 1.5
         elif ratio <= 1.25:
-            score += 1.0
-        elif ratio >= 2.0:
+            score += 1.1
+        elif ratio <= 1.65 and min(w, h) >= 900:
+            score += 0.4
+        elif ratio >= 2.1:
             score -= 1.0
         short_side = min(w, h)
         if short_side >= 1080:
             score += 1.5
         elif short_side >= 720:
-            score += 0.8
+            score += 0.9
         elif short_side < 500:
             score -= 2.0
 
-    # Tiêu đề / mô tả khớp chủ thể
-    text = _norm_text(f"{item.get('title') or ''} {item.get('alt') or ''} {item.get('description') or ''}")
+    # Tiêu đề / mô tả / URL bài viết khớp chủ thể
+    text = _norm_text(
+        f"{item.get('title') or ''} {item.get('alt') or ''} "
+        f"{item.get('description') or ''} {item.get('page_url') or ''}"
+    )
     if not text and "/photo/" in (item.get("url") or ""):
         m = re.search(r"/photo/([a-zA-Z0-9-]+)-\d+/?", item.get("url", ""))
         text = _norm_text(m.group(1)) if m else ""
+
+    frac = 0.0
     if terms:
         hits = sum(1 for t in terms if re.search(rf"\b{re.escape(t)}s?\b", text))
         frac = hits / len(terms)
         # Khớp ĐỦ chủ thể (cả bổ ngữ loài/tên riêng) quan trọng hơn khớp một phần ("eagle" ≠ "wedge-tailed eagle")
-        score += 4.0 * frac * frac
+        score += 4.2 * frac * frac
         if hits == 0 and text:
             score -= 2.0
 
-    # Nguồn ảnh sạch (không watermark, chất lượng nhiếp ảnh)
+    # Nguồn ảnh sạch & độ tin cậy thực tế (Google Images / Wikipedia / Bảo tàng / Nhiếp ảnh)
     src = (item.get("source") or "").lower()
-    if src in ("pexels", "pexels_photo", "pixabay", "unsplash") and not creature_mode:
+    blob_domain = f"{item.get('creator') or ''} {item.get('page_url') or ''} {item.get('url') or ''}".lower()
+    if src in ("google_images", "wikipedia", "wikimedia_commons") and frac >= 0.5:
+        score += 0.8
+    elif src in ("pexels", "pexels_photo", "pixabay", "unsplash") and not creature_mode:
         score += 0.5
+
+    if any(dom in blob_domain for dom in _AUTHORITATIVE_DOMAINS):
+        score += 0.6
 
     padded = f" {text} "
     if creature_mode:
@@ -350,11 +373,58 @@ def _saliency_center_x(im, crop_w: int) -> int:
     return int((best_x + win / 2) / scale)
 
 
+def _saliency_center_y(im, crop_h: int) -> int:
+    """Tìm vị trí cửa sổ crop (theo trục dọc) chứa nhiều chi tiết nhất, ưu tiên vùng 1/3 trên (đầu/mặt chủ thể)."""
+    from PIL import ImageFilter
+
+    w, h = im.size
+    small_h = 256
+    scale = small_h / h
+    small = im.convert("L").resize((max(1, int(w * scale)), small_h))
+    edges = small.filter(ImageFilter.FIND_EDGES)
+    px = edges.load()
+    sw, sh = edges.size
+    x0, x1 = int(sw * 0.04), int(sw * 0.96)
+    row = [0.0] * sh
+    for y in range(sh):
+        s = 0
+        for x in range(x0, x1, 2):
+            s += px[x, y]
+        row[y] = s
+    # Ưu tiên vùng trọng tâm 38% từ đỉnh ảnh (tránh cắt mất đầu nhân vật/động vật)
+    focal_y = sh * 0.38
+    for y in range(sh):
+        d = abs(y - focal_y) / (sh * 0.62)
+        row[y] *= max(0.55, 1.0 - 0.35 * d)
+    win = max(1, int(crop_h * scale))
+    if win >= sh:
+        return h // 2
+    cur = sum(row[:win])
+    best, best_y = cur, 0
+    for y in range(1, sh - win + 1):
+        cur += row[y + win - 1] - row[y - 1]
+        if cur > best:
+            best, best_y = cur, y
+    return int((best_y + win / 2) / scale)
+
+
+def _enhance_visual_clarity(im):
+    """Tăng nhẹ độ sắc nét vi mô (micro-sharpness) và độ tương phản để ảnh web/stock rực rỡ chuẩn Full HD."""
+    from PIL import ImageEnhance
+    try:
+        im = ImageEnhance.Sharpness(im).enhance(1.08)
+        im = ImageEnhance.Contrast(im).enhance(1.04)
+    except Exception:
+        pass
+    return im
+
+
 def prepare_vertical(im, target_w: int, target_h: int, max_upscale: float = 2.0):
     """
     Đưa ảnh bất kỳ về khung target_w×target_h KHÔNG kéo giãn:
     - Tỷ lệ gần đúng → cover-crop chính giữa.
-    - Ảnh ngang đủ lớn → cover-crop bám theo vùng nhiều chi tiết nhất (saliency).
+    - Ảnh cao hơn 9:16 → cover-crop dọc bám theo vùng chi tiết/khuôn mặt (_saliency_center_y).
+    - Ảnh ngang đủ lớn → cover-crop ngang bám theo vùng nhiều chi tiết nhất (_saliency_center_x).
     - Ảnh ngang quá nhỏ (crop sẽ vỡ hạt) → nền mờ phóng to + ảnh gốc sắc nét ở giữa.
     """
     from PIL import Image, ImageFilter, ImageEnhance
@@ -366,13 +436,14 @@ def prepare_vertical(im, target_w: int, target_h: int, max_upscale: float = 2.0)
     src_ratio = w / h
 
     if abs(src_ratio - target_ratio) / target_ratio < 0.04:
-        return im.resize((target_w, target_h), Image.LANCZOS)
+        return _enhance_visual_clarity(im.resize((target_w, target_h), Image.LANCZOS))
 
     if src_ratio < target_ratio:
-        # Ảnh cao/hẹp hơn 9:16 → cắt bớt trên/dưới (giữ phần trên một chút: mặt/đầu chủ thể)
+        # Ảnh cao/hẹp hơn 9:16 → cắt bớt trên/dưới theo saliency dọc (bảo toàn mặt/đầu chủ thể)
         new_h = int(w / target_ratio)
-        top = max(0, int((h - new_h) * 0.4))
-        return im.crop((0, top, w, top + new_h)).resize((target_w, target_h), Image.LANCZOS)
+        cy = _saliency_center_y(im, new_h)
+        top = min(max(0, cy - new_h // 2), h - new_h)
+        return _enhance_visual_clarity(im.crop((0, top, w, top + new_h)).resize((target_w, target_h), Image.LANCZOS))
 
     # Ảnh rộng hơn 9:16
     crop_w = int(h * target_ratio)
@@ -380,7 +451,7 @@ def prepare_vertical(im, target_w: int, target_h: int, max_upscale: float = 2.0)
     if upscale <= max_upscale or src_ratio < 1.0:
         cx = _saliency_center_x(im, crop_w)
         left = min(max(0, cx - crop_w // 2), w - crop_w)
-        return im.crop((left, 0, left + crop_w, h)).resize((target_w, target_h), Image.LANCZOS)
+        return _enhance_visual_clarity(im.crop((left, 0, left + crop_w, h)).resize((target_w, target_h), Image.LANCZOS))
 
     # Ảnh nhỏ & rất ngang: nền mờ + foreground rõ nét (zoom nhẹ 1.12 để chiếm nhiều diện tích hơn)
     bg_scale = max(target_w / w, target_h / h)
@@ -391,7 +462,7 @@ def prepare_vertical(im, target_w: int, target_h: int, max_upscale: float = 2.0)
     bg = ImageEnhance.Brightness(bg).enhance(0.55)
     fg_w = int(target_w * 1.12)
     fg_h = int(h * fg_w / w)
-    fg = im.resize((fg_w, fg_h), Image.LANCZOS)
+    fg = _enhance_visual_clarity(im.resize((fg_w, fg_h), Image.LANCZOS))
     fl = (fg_w - target_w) // 2
     fg = fg.crop((fl, 0, fl + target_w, fg_h))
     bg.paste(fg, (0, (target_h - fg_h) // 2))

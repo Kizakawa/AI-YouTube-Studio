@@ -88,6 +88,7 @@ class ContentAgent:
         keys = settings.get_gemini_keys_pool()
         self.rotator = KeyRotator(keys)
         self.conversations: Dict[str, List[Dict[str, str]]] = {}
+        self.session = requests.Session()
 
     def _call_api(self, prompt: str, json_mode: bool = False, timeout: int = 20, max_total_seconds: int = 60) -> str:
         """
@@ -139,7 +140,7 @@ class ContentAgent:
 
                 try:
                     attempts += 1
-                    r = requests.post(url, json=payload, timeout=timeout)
+                    r = self.session.post(url, json=payload, timeout=timeout)
                     if r.status_code == 200:
                         data = r.json()
                         candidates = data.get("candidates", [])
@@ -152,7 +153,7 @@ class ContentAgent:
                                 return full_text
                     elif r.status_code in (429, 403):
                         logger.warning(f"⚠️ Key {key[:8]}... gặp mã {r.status_code} ({model}). Xoay ngay sang key tiếp theo...")
-                        self.rotator.rotate_key()
+                        self.rotator.rotate_key(cooldown_sec=45.0 if r.status_code == 429 else 180.0)
                         key_failed_quota = True
                         break  # Bỏ qua các model còn lại của key đã hết quota, chuyển sang key mới ngay
                     elif r.status_code == 503 and json_mode:
@@ -164,7 +165,7 @@ class ContentAgent:
                                 "contents": [{"parts": [{"text": prompt}]}],
                                 "safetySettings": safety_settings,
                             }
-                            r_fb = requests.post(url, json=fallback_payload, timeout=timeout)
+                            r_fb = self.session.post(url, json=fallback_payload, timeout=timeout)
                             if r_fb.status_code == 200:
                                 data = r_fb.json()
                                 candidates = data.get("candidates", [])
@@ -554,47 +555,52 @@ YouTube đánh giá video Shorts qua 2 vòng thử thách:
    - 'documentary': Authentic historical figures (e.g. Einstein, Napoleon), real artifacts, or historical events (searches Wikimedia / historical archive).
    DO NOT default all scenes to one single type! Intelligently vary and balance media types across scenes for maximum viewer engagement.
 
-10. NỘI DUNG CHẠM CẢM XÚC & NỖI LÒNG SỐ ĐÔNG (EMOTIONAL RESONANCE & STORYTELLING):
-   - Đánh trúng 1 trong 4 cảm xúc cực mạnh của số đông: Nỗi đau/sự bất công thầm kín, nỗi sợ bị tụt hậu (FOMO), khát khao khẳng định giá trị bản thân, hoặc sự tò mò chấn động trước bí mật bị che giấu.
-   - BẮT BUỘC LỒNG GHÉP ÍT NHẤT 1-2 CON SỐ CỤ THỂ GÂY SỐC:
-     * Ví dụ: "97% mọi người đều mắc bẫy này...", "Chỉ trong 3 giây tiếp theo...", "Ở độ tuổi 25-35...", "Lực cắn 4,000 PSI...", "Chỉ 0.01% người nhận ra sự thật...".
-     * Con số cụ thể tạo tính xác thực tức thì và thôi miên não bộ người xem tiếp tục theo dõi.
-   - Cấu trúc kể chuyện lôi cuốn (Narrative Arc): Mở đầu bằng nỗi đau/nghịch lý số đông -> Cú ngoặt bất ngờ (Twist) -> Giải pháp chạm đáy cảm xúc -> Kết nối vòng lặp vô tận (Infinite Loop).
+10. NỘI DUNG CÓ CHIỀU SÂU TRI THỨC & CHẠM CẢM XÚC SỐ ĐÔNG (FACT-DENSE STORYTELLING & ANTI-FLUFF):
+   - TUYỆT ĐỐI CẤM CÂU ĐỆM RỖNG TUẾCH (ZERO-FLUFF POLICY): Cấm các câu câu giờ vô nghĩa kiểu "Bạn có bao giờ tự hỏi...", "Sự thật tiếp theo sẽ khiến bạn sốc...", "Họ luôn giấu bạn điều này...". Mỗi câu thoại (9-13 từ) PHẢI chứa ít nhất 1 dữ kiện thực tế, cơ chế hoạt động ("tại sao/như thế nào"), tên hiện tượng/thí nghiệm/địa danh cụ thể, hoặc hành vi tâm lý sắc bén.
+   - Đánh trúng 1 trong 4 cảm xúc cực mạnh của số đông: Nỗi đau/sự bất công thầm kín, nỗi sợ bị tụt hậu (FOMO), khát khao khẳng định giá trị bản thân, hoặc sự tò mò chấn động trước cơ chế tự nhiên/lịch sử có thật.
+   - BẮT BUỘC LỒNG GHÉP ÍT NHẤT 1-2 CON SỐ ĐO LƯỜNG XÁC THỰC:
+     * Ví dụ: "Gia tốc cú đấm đạt 10,000G làm sôi nước xung quanh...", "Ở độ sâu 10,994m dưới rãnh Mariana...", "Sải cánh dài tới 2.84 mét...", "93% giao tiếp bị lộ qua vi biểu cảm trong 0.2 giây đầu...".
+   - Cấu trúc kể chuyện lôi cuốn (Narrative Arc): Mở đầu bằng nghịch lý/dữ kiện chấn động -> Giải thích cơ chế khoa học/lịch sử/tâm lý đằng sau -> Cú ngoặt bất ngờ (Twist) -> Kết nối vòng lặp vô tận (Infinite Loop).
+   - KHÔNG cắt vụn cụm danh từ chủ ngữ giữa 2 cảnh (mỗi cảnh phải là một mệnh đề hoàn chỉnh để hệ thống tìm kiếm hình ảnh nhận diện chính xác chủ thể).
 
 11. TỐI ƯU 50% THỜI LƯỢNG ĐẦU & NHỊP BIÊN TẬP NHANH (THE 50% FRONTLOAD RULE):
    - 50% thời lượng đầu (Scenes 1 đến 3) quyết định 90% sự thành bại của video Shorts.
-   - Cảnh 1 đóng vai trò như một đoạn Micro-Trailer giật gân, hé lộ ngay hình ảnh hoặc khoảnh khắc kịch tính nhất của video.
-   - Nhịp biên tập (Pacing) của các cảnh trong 50% đầu phải cực nhanh: mỗi cảnh chỉ từ 2.0 - 3.2 giây.
-   - Cắt cảnh phụ (B-roll / Chuyển cảnh) dồn dập mỗi 3-5 giây để giữ dopamine người xem ở mức cao nhất, triệt tiêu tỷ lệ swipe-away.
+   - Cảnh 1 đóng vai trò như một đoạn Micro-Trailer giật gân, hé lộ ngay hình ảnh hoặc dữ kiện kịch tính nhất của video.
+   - Nhịp biên tập (Pacing) của các cảnh trong 50% đầu phải cực nhanh: mỗi cảnh chỉ từ 2.2 - 3.4 giây.
 
 12. TỐI ƯU ẢNH BÌA THỊ TRƯỜNG 1 GIÂY (THUMBNAIL HOOK TEXT):
    - Trường "thumbnail_text" TRẢ VỀ DUY NHẤT 2-4 TỪ IN HOA CỰC TO, GIẬT GÂN, TƯƠNG PHẢN CAO.
-   - Không lặp lại nguyên văn tiêu đề mà khơi gợi câu hỏi chưa có lời đáp (Ví dụ: 'SỰ THẬT TÀN KHỐC!', 'ĐỪNG LÀM ĐIỀU NÀY!', '0.01% BIẾT ĐIỀU NÀY', 'CÚ SỐC THỊ GIÁC').
+   - Không lặp lại nguyên văn tiêu đề mà khơi gợi câu hỏi chưa có lời đáp (Ví dụ: 'SỰ THẬT TÀN KHỐC!', 'CÚ ĐẤM 10,000G!', '0.01% BIẾT ĐIỀU NÀY', 'BÍ MẬT ĐÁY VỰC').
+
+13. CHUẨN HÓA TRUY VẤN GOOGLE IMAGES CHO TỪNG CẢNH (`visual_keyword` & `stock_query`):
+   - `visual_keyword` được dùng trực tiếp để truy vấn Google Images & Wikipedia như thanh tìm kiếm thông minh của Gemini:
+     * BẮT BUỘC viết bằng tiếng Anh (4-7 từ), chứa TÊN CHÍNH XÁC của chủ thể/loài/nhân vật/hiện tượng + ĐẶC ĐIỂM HÌNH ẢNH CỤ THỂ được nhắc đến trong đúng câu thoại đó (vd: `"peacock mantis shrimp compound eyes macro"`, `"wedge-tailed eagle talons hunting kangaroo"`, `"Antikythera mechanism bronze gears artifact"`).
+     * TUYỆT ĐỐI KHÔNG lặp lại cùng một `visual_keyword` hoặc `stock_query` ở các cảnh liền kề; mỗi cảnh phải khai thác một góc chụp/chi tiết khác nhau của chủ đề.
 
 ═══════════════════════════════════════════════════════════
 OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
 ═══════════════════════════════════════════════════════════
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
-  "primary_entity": "Full official name of main person/figure or null",
+  "primary_entity": "Full official name of main person/figure/species or null",
   "hook": "The opening 3-second hook sentence",
-  "full_narration": "Complete spoken text without stage directions (strictly 85-125 words, flexible 35-48s duration with deep payoff)",
+  "full_narration": "Complete spoken text without stage directions (strictly 85-125 words, flexible 35-48s duration with deep factual payoff)",
   "thumbnail_text": "2-4 TỪ IN HOA CỰC TO GỢI TÒ MÒ CHO ẢNH BÌA",
   "scenes": [
     {{
       "scene_id": 1,
       "visual_reasoning": "Tư duy logic đạo diễn: Phân tích mâu thuẫn kịch bản và lý giải cách chuyển hóa thành hành động/hình ảnh tương tác cụ thể",
-      "narration": "Spoken sentence for this scene (9-13 words, 7 to 10 scenes total for 35-48s duration)",
-      "visual_keyword": "concrete search keywords",
+      "narration": "Spoken sentence for this scene (9-13 words, complete clause, fact-dense, 7 to 10 scenes total)",
+      "visual_keyword": "exact entity + specific scene detail for Google Images search (4-7 English words)",
       "visual_prompt": "Cinematic visual description: subject + camera angle + lighting + background",
-      "stock_query": "concrete physical nouns",
+      "stock_query": "concrete physical nouns + action for 9:16 stock video (3-5 English words)",
       "media_type": "video | ai_image | photo | documentary",
       "estimated_seconds": 4.0
     }}
   ],
   "tags": ["shorts", "viral"],
   "description": "Engaging description with hashtags",
-  "pinned_comment": "Irresistible open-ended bait question in {target_lang_display} posted by channel owner to pin at top of comments (e.g. 'Bạn đã từng gặp ai có dấu hiệu số 2 trong đời thực chưa? Chia sẻ thật lòng bên dưới nhé 👇' for psychology; 'Nếu là bạn, bạn có dừng lại giúp chú cún này không? 🥺 Link ủng hộ trạm cứu hộ mình ghim ở đây nhé!' for rescue; 'Theo bạn, có thật sự có sinh vật khổng lồ ở đáy 11.000m không? Để lại giả thuyết của bạn bên dưới 👇' for mystery)",
+  "pinned_comment": "Irresistible open-ended bait question in {target_lang_display} posted by channel owner to pin at top of comments",
   "viral_formula": "Seamless Infinite Loop | Micro-Hook Escalation | Pattern Interrupt"
 }}
 """
@@ -653,25 +659,36 @@ Rewrite immediately addressing ALL violations above!
         current_script: ScriptContract,
         feedback: str,
         channel_niche: str = "general",
-        language: str = "en"
+        language: str = "en",
+        director_notes: Optional[str] = None,
     ) -> ScriptContract:
         """
-        Tiếp thu góp ý của người dùng/nhóm để tinh chỉnh kịch bản hiện tại chuẩn viral.
+        Tiếp thu góp ý của người dùng/Critic để tinh chỉnh phẫu thuật (Surgical Refinement) kịch bản hiện tại chuẩn viral.
         """
         lang_instruction = build_language_integrity_instruction(language)
-        target_lang_display = "TIẾNG VIỆT" if str(language).lower().startswith("vi") else "ENGLISH"
+        lang_clean = str(language or "en").strip().lower()
+        if lang_clean.startswith("vi"):
+            target_lang_display = "TIẾNG VIỆT"
+        elif lang_clean.startswith("pt"):
+            target_lang_display = "PORTUGUÊS BRASILEIRO"
+        else:
+            target_lang_display = "ENGLISH"
+
+        director_block = ""
+        if director_notes and len(director_notes.strip()) > 3:
+            director_block = f"\nCREATOR DIRECTOR NOTES (MUST PRESERVE):\n\"{director_notes.strip()}\"\n"
 
         prompt = f"""
 You are an elite viral YouTube Shorts director and cinematographer.
-We have an existing script, but the creator and team provided specific feedback/revisions:
+We have an existing script, and our Quality Critic / Creator provided specific surgical revisions:
 
-USER FEEDBACK:
+CRITIQUE & REVISION FEEDBACK:
 "{feedback}"
-
+{director_block}
 CURRENT SCRIPT:
 {current_script.model_dump_json(indent=2)}
 
-REFINE the script strictly adhering to the user's feedback.
+SURGICALLY REFINE the script strictly addressing the feedback above while preserving the strengths, core entity, and narrative soul of the existing script.
 Target Language: {language} ({target_lang_display})
 {lang_instruction}
 
@@ -683,31 +700,34 @@ HARD RETENTION RULES:
 2. Flexible 35-48s duration with High-Value Payoff: strictly 85-125 words total across 7-10 scenes (3.5-5.0s each), delivering a deeply satisfying resolution and actionable takeaway before the closing CTA.
 3. NO ABSTRACT stock_query: 2-3 English CONCRETE PHYSICAL NOUNS only for Pexels.
    NO "psychology", "minimalism", "authority", "power". Use physical objects/actions only.
-4. SEAMLESS LOOP BRIDGE (INFINITE SHORTS LOOP): The final scene MUST seamlessly bridge back into Scene 1's opening hook with complete grammatical closure. NEVER use generic CTAs like "drop a comment below", "follow for part 2", or "tap twice" in spoken narration. NEVER end with dangling prepositions or conjunctions like 'because', 'which', 'and', 'but', etc. Ensure the script ends with a complete standalone sentence!
+4. SEAMLESS LOOP BRIDGE (INFINITE SHORTS LOOP) & HIGH-CONVERTING CTA: The final scene MUST conclude with a natural niche CTA and complete grammatical closure that connects back to Scene 1. NEVER end with dangling prepositions or conjunctions like 'because', 'which', 'and', 'but', etc. Ensure the script ends with a complete standalone sentence!
 5. NO LITERAL METAPHORS in visual_prompt: show the actual phenomenon, not metaphorical words.
 6. NO DUPLICATE SCENES: every visual_prompt must describe a visually distinct subject and setting.
 7. LANGUAGE INTEGRITY (100% STRICT):
-   - The entire revised script (title, hook, full_narration, and scene narration) MUST be 100% in {target_lang_display}.
-   - Even if the current script or user feedback is in another language, TRANSLATE and output strictly in {target_lang_display}!
+   - The entire revised script (title, hook, full_narration, thumbnail_text, and scene narration) MUST be 100% in {target_lang_display}.
+   - Even if the current script or feedback is in another language, TRANSLATE and output strictly in {target_lang_display}!
 8. Return ONLY valid JSON:
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
+  "primary_entity": "Full official name of main person/figure or null",
   "hook": "The opening 3-second hook sentence",
   "full_narration": "The full spoken text without any stage directions (strictly 85-125 words for flexible 35-48s with deep payoff)",
+  "thumbnail_text": "2-4 TỪ IN HOA CỰC TO GỢI TÒ MÒ CHO ẢNH BÌA",
   "scenes": [
     {{
       "scene_id": 1,
+      "visual_reasoning": "Tư duy logic đạo diễn cho cảnh này",
       "narration": "Text spoken in this scene (9-13 words, 7-10 scenes total)",
       "visual_keyword": "concrete search keywords",
       "visual_prompt": "Detailed cinematic scene: subject + camera angle + lighting + environment",
       "stock_query": "concrete physical nouns",
       "media_type": "video | ai_image | photo | documentary",
-      "estimated_seconds": 3.0
+      "estimated_seconds": 3.8
     }}
   ],
   "tags": ["tag1", "tag2", "shorts"],
   "description": "Engaging description with hashtags",
-  "pinned_comment": "Provocative engagement bait question for pinned comment (e.g. Which sign hit closest to home? 1, 2, or 3? Be honest 👇)",
+  "pinned_comment": "Provocative engagement bait question for pinned comment in {target_lang_display}",
   "viral_formula": "Seamless Infinite Loop | Micro-Hook Escalation | Pattern Interrupt"
 }}
 """

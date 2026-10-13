@@ -25,11 +25,15 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
     total_audio_duration_ms = state.get("total_audio_duration_ms", 0)
 
     # Ghép metadata media và audio cho từng scene
-    audio_map = {s["scene_id"]: s for s in scenes_audio}
+    audio_map = {s.get("scene_id"): s for s in scenes_audio if isinstance(s, dict) and s.get("scene_id")}
     enriched_scenes = []
 
     for m in scenes_media:
-        sc_id = m["scene_id"]
+        if not isinstance(m, dict):
+            continue
+        sc_id = m.get("scene_id")
+        if not sc_id:
+            continue
         a_info = audio_map.get(sc_id, {})
         
         sc_dict = {
@@ -40,6 +44,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             "estimated_seconds": max(float(m.get("estimated_seconds") or 3.0), 1.0),
             "audio_duration_ms": a_info.get("audio_duration_ms") or a_info.get("duration_ms") or int(max(float(m.get("estimated_seconds") or 3.0), 1.0) * 1000),
             "audio_path": a_info.get("audio_path") or full_audio_path or "storage/temp/voiceover.mp3",
+            "word_timings": a_info.get("word_timings") or m.get("word_timings"),
             "media_path": m.get("media_path", ""),
             "media_type": m.get("media_type", "image"),
             # Cinematic enhancement fields — cần cho Ken Burns & SFX
@@ -61,7 +66,9 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
     from config.settings import settings
     from app.services.pipeline import VideoPipeline
     niche = state.get("channel_style") or state.get("niche") or "general"
-    bgm_path = VideoPipeline.find_bgm_for_niche(niche)
+    topic_lower = (state.get("topic") or title or "").lower()
+    is_scifi = bool(state.get("is_scifi")) or (niche == "scifi") or any(k in topic_lower for k in ("scifi", "sci-fi", "alien", "cyborg", "viễn tưởng", "quantum"))
+    bgm_path = VideoPipeline.find_bgm_for_niche(niche, is_scifi=is_scifi, scifi_subgenre=state.get("scifi_subgenre", "general_scifi"))
     sfx_dir = str(Path(settings.BASE_DIR) / "assets" / "sfx")
 
     render_job = RenderJobContract(
@@ -73,6 +80,8 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
         subtitle_path=subtitle_path,
         bgm_path=bgm_path,
         niche=niche,
+        is_scifi=is_scifi,
+        scifi_subgenre=state.get("scifi_subgenre", "general_scifi"),
         sfx_dir=sfx_dir,
         output_path=final_output,
     )

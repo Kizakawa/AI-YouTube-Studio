@@ -73,13 +73,20 @@ class WebImageFetcher:
 
     @staticmethod
     def _raw_bing_images(query: str, limit: int = 35) -> List[Dict]:
-        """Bing Images qua endpoint async (HTML) — không cần key, nhanh, trả kèm kích thước ảnh."""
+        """Bing Images qua endpoint async (HTML) — ưu tiên ảnh độ phân giải lớn (imagesize-large), trả kèm kích thước & thumbnail CDN."""
         import html as _html
         import re as _re
         from urllib.parse import urlparse
         res = requests.get(
             "https://www.bing.com/images/async",
-            params={"q": query, "first": 0, "count": min(limit, 35), "mmasync": 1, "adlt": "moderate"},
+            params={
+                "q": query,
+                "first": 0,
+                "count": min(limit, 35),
+                "mmasync": 1,
+                "adlt": "moderate",
+                "qft": "+filterui:imagesize-large",
+            },
             headers={"User-Agent": _UA, "Accept-Language": "en-US,en;q=0.9"},
             timeout=10,
         )
@@ -143,105 +150,265 @@ class WebImageFetcher:
         return out
 
     @staticmethod
+    def _raw_google_images(query: str, limit: int = 35) -> List[Dict]:
+        """
+        Tìm kiếm trực tiếp trên Google Images (chế độ ảnh lớn tbs=isz:l) như thanh tìm kiếm Google/Gemini:
+        - Ưu tiên Google Custom Search API nếu có GOOGLE_SEARCH_API_KEY + GOOGLE_SEARCH_CX.
+        - Trích xuất trực tiếp từ dữ liệu nhúng AF_initDataCallback của Google Images:
+          + URL ảnh gốc độ phân giải cao (full-res original image URL) kèm kích thước thực (width, height).
+          + URL thumbnail trên máy chủ Google (encrypted-tbn0.gstatic.com) để Gemini Vision luôn đọc được 100% không bị chặn 403/Cloudflare.
+          + Tiêu đề bài viết gốc và tên miền nguồn (source domain, page_url) để chấm điểm ngữ cảnh & gửi Referer khi tải.
+        """
+        import html as _html
+        import re as _re
+        from urllib.parse import urlparse
+
+        out: List[Dict] = []
+        seen_urls = set()
+
+        # 1. Nếu có Google Custom Search API Key chính thức thì lấy thêm từ API
+        g_key = os.getenv("GOOGLE_SEARCH_API_KEY", "").strip()
+        g_cx = os.getenv("GOOGLE_SEARCH_CX", "").strip()
+        if g_key and g_cx and g_key != "your_google_search_api_key":
+            try:
+                res_api = requests.get(
+                    "https://www.googleapis.com/customsearch/v1",
+                    params={
+                        "key": g_key,
+                        "cx": g_cx,
+                        "q": query,
+                        "searchType": "image",
+                        "imgSize": "xlarge",
+                        "num": min(limit, 10),
+                        "safe": "active",
+                    },
+                    timeout=8,
+                )
+                if res_api.status_code == 200:
+                    for item in res_api.json().get("items", []):
+                        link = item.get("link")
+                        if not link or link in seen_urls:
+                            continue
+                        seen_urls.add(link)
+                        img_meta = item.get("image") or {}
+                        ctx_link = img_meta.get("contextLink") or item.get("displayLink") or ""
+                        out.append({
+                            "image": link,
+                            "thumbnail": img_meta.get("thumbnailLink") or link,
+                            "title": item.get("title") or item.get("snippet") or query,
+                            "width": int(img_meta.get("width") or 1280),
+                            "height": int(img_meta.get("height") or 720),
+                            "source": (item.get("displayLink") or "google").replace("www.", ""),
+                            "url": ctx_link,
+                        })
+            except Exception as e:
+                logger.debug(f"[WebImage] Google CSE fallback: {e}")
+
+        # 2. Truy vấn trực tiếp Google Images (tbm=isch & tbs=isz:l ưu tiên ảnh độ phân giải lớn)
+        headers = {
+            "User-Agent": _UA,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Cookie": "CONSENT=YES+cb.20230531-04-p0.en+FX+908;",
+        }
+        res = requests.get(
+            "https://www.google.com/search",
+            params={
+                "q": query,
+                "tbm": "isch",
+                "tbs": "isz:l",
+                "hl": "en",
+                "gl": "us",
+                "safe": "active",
+                "ijn": "0",
+            },
+            headers=headers,
+            timeout=10,
+        )
+        if res.status_code != 200:
+            if out:
+                return out
+            raise RuntimeError(f"Google Images HTTP {res.status_code}")
+
+        # Giải mã các ký tự escape trong khối dữ liệu JSON nhúng của Google Images
+        text = (
+            res.text
+            .replace("\\u003d", "=")
+            .replace("\\u0026", "&")
+            .replace("\\u003c", "<")
+            .replace("\\u003e", ">")
+            .replace("\\/", "/")
+            .replace('\\"', '"')
+        )
+
+        # Mẫu dữ liệu chuẩn trong AF_initDataCallback của Google Images:
+        # ["https://encrypted-tbn0.gstatic.com/images?q=tbn:...", thumb_h, thumb_w], ["https://full-res-url...", orig_h, orig_w]
+        pair_pattern = _re.compile(
+            r'\[\s*"(https://encrypted-tbn0\.gstatic\.com/images\?[^"]+)"\s*,\s*(\d+)\s*,\s*(\d+)\s*\]'
+            r'\s*,\s*\[\s*"(https?://(?!encrypted-tbn0\.gstatic\.com)[^"\s]+)"\s*,\s*(\d+)\s*,\s*(\d+)\s*\]'
+        )
+        meta_2003_pattern = _re.compile(
+            r'"2003"\s*:\s*\[\s*null\s*,\s*"[^"]*"\s*,\s*"(https?://[^"]+)"\s*,\s*"([^"]{2,220})"'
+        )
+
+        for m in pair_pattern.finditer(text):
+            thumb_url = m.group(1)
+            orig_url = m.group(4)
+            # Lưu ý: Google Images lưu [url, height, width] (chiều cao trước, chiều rộng sau)
+            orig_h = int(m.group(5) or 0)
+            orig_w = int(m.group(6) or 0)
+
+            if not orig_url or orig_url in seen_urls:
+                continue
+            low_u = orig_url.lower()
+            if any(bad in low_u for bad in ("gstatic.com", "google.com/images", "googleapis.com", "favicon", ".svg", ".gif", ".ico")):
+                continue
+            seen_urls.add(orig_url)
+
+            # Tìm thông tin trang đích & tiêu đề ngay phía sau cặp ảnh trong cấu trúc cây JSON của Google
+            tail = text[m.end(): m.end() + 1400]
+            page_url = ""
+            title = ""
+            m_meta = meta_2003_pattern.search(tail)
+            if m_meta:
+                page_url = m_meta.group(1)
+                title = _html.unescape(m_meta.group(2))
+            else:
+                # Fallback tìm cặp (page_url, title) gần nhất trong phạm vi 900 ký tự
+                m_alt = _re.search(r'"(https?://(?!encrypted-tbn0\.gstatic\.com)[^"]+)"\s*,\s*"([^"\n]{4,180})"', tail[:900])
+                if m_alt:
+                    page_url = m_alt.group(1)
+                    title = _html.unescape(m_alt.group(2))
+
+            domain = urlparse(page_url or orig_url).netloc.replace("www.", "") or "google_web"
+            out.append({
+                "image": orig_url,
+                "thumbnail": thumb_url or orig_url,
+                "title": title or query,
+                "width": orig_w or 1280,
+                "height": orig_h or 720,
+                "source": domain,
+                "url": page_url,
+                "engine": "google_images",
+            })
+            if len(out) >= limit:
+                break
+
+        if not out and "/httpservice/retry/enablejs" in res.text:
+            raise RuntimeError("Google Images yêu cầu JS challenge (chuyển sang Serper/Bing/DDGS)")
+        return out
+
+    @staticmethod
     def _looks_relevant(raw: List[Dict], query: str) -> bool:
         """
         Nguồn cào miễn phí khi bị giới hạn thường trả kết quả RÁC (vd: tìm "kraken" ra xe máy / nước ngọt).
-        Nếu < 30% tiêu đề chứa từ khóa chính của truy vấn → coi như nguồn đang hỏng.
+        Nếu < 25% tiêu đề chứa từ khóa chính của truy vấn → coi như nguồn đang hỏng.
         """
         from app.services.media.image_quality import subject_terms
-        generic = {"concept", "art", "movie", "scene", "dark", "fantasy", "close", "photo", "historical",
-                   "the", "giant", "attacking", "hunting", "soaring", "flying", "eye", "eyes"}
+        generic = {"concept", "art", "movie", "scene", "dark", "fantasy", "close", "photo", "photograph",
+                   "historical", "the", "giant", "attacking", "hunting", "soaring", "flying", "eye", "eyes",
+                   "high", "resolution", "real", "authentic", "documentary"}
         terms = [t for t in subject_terms(query) if t not in generic]
         if not terms or not raw:
             return bool(raw)
         sample = raw[:15]
-        hits = sum(1 for r in sample if any(t in (r.get("title") or "").lower().replace("-", " ") for t in terms))
-        return hits / len(sample) >= 0.3
+        hits = sum(
+            1 for r in sample
+            if any(
+                t in f"{r.get('title') or ''} {r.get('url') or ''} {r.get('image') or ''}".lower().replace("-", " ")
+                for t in terms
+            )
+        )
+        return hits / len(sample) >= 0.25
 
     def search_open_web(self, query: str, per_page: int = 8) -> List[Dict]:
         """
-        Tìm kiếm ảnh thực tế từ toàn bộ mạng Internet (Bing / DuckDuckGo index).
-        Bỏ qua rào cản bản quyền để lấy những hình ảnh chân thực, chính xác và có độ phân giải cao nhất.
-        Thứ tự nguồn: OPEN_WEB_ENGINES (mặc định "serper,ddgs,bing"; serper chỉ chạy khi có SERPER_API_KEY).
-        Nguồn lỗi / trả kết quả rác bị ngắt tạm 10 phút.
+        Tìm kiếm ảnh thực tế từ toàn bộ mạng Internet với ưu tiên số 1 là Google Images (như Gemini trên Google Search),
+        kết hợp Serper / Bing / DuckDuckGo.
+        Thứ tự nguồn: OPEN_WEB_ENGINES (mặc định "google,serper,bing,ddgs").
         """
         from app.services.media.image_quality import is_watermark_risk
 
-        raw_results: List[Dict] = []
-        engines = [e.strip() for e in os.getenv("OPEN_WEB_ENGINES", "serper,ddgs,bing").split(",") if e.strip()]
+        out: List[Dict] = []
+        seen = set()
+        engines = [e.strip() for e in os.getenv("OPEN_WEB_ENGINES", "google,serper,bing,ddgs").split(",") if e.strip()]
+
         for eng in engines:
             if not self._engine_ok(eng):
                 continue
             if eng == "serper" and not os.getenv("SERPER_API_KEY", "").strip():
                 continue
             try:
-                if eng == "serper":
-                    raw_results = self._raw_serper_images(query, limit=20)
+                raw_results: List[Dict] = []
+                if eng == "google":
+                    raw_results = self._raw_google_images(query, limit=max(per_page * 4, 30))
+                elif eng == "serper":
+                    raw_results = self._raw_serper_images(query, limit=25)
                 elif eng == "bing":
                     raw_results = self._raw_bing_images(query, limit=35)
                 elif eng == "ddgs":
                     raw_results = self._raw_ddgs_images(query, limit=max(per_page * 3, 15))
+
                 if raw_results and not self._looks_relevant(raw_results, query):
-                    logger.info(f"[WebImage] {eng} trả kết quả không liên quan cho '{query}' → bỏ qua")
-                    raw_results = []
+                    logger.info(f"[WebImage] {eng} trả kết quả ít liên quan cho '{query}' → thử nguồn kế tiếp")
                     continue
-                if raw_results:
+
+                for r in raw_results:
+                    img_url = r.get("image")
+                    if not img_url or img_url in seen:
+                        continue
+                    seen.add(img_url)
+
+                    clean_url = str(img_url).lower().split("?")[0]
+                    if clean_url.endswith((".svg", ".gif", ".ico")):
+                        continue
+
+                    w = r.get("width") or 1080
+                    h = r.get("height") or 1920
+                    try:
+                        w, h = int(w), int(h)
+                    except Exception:
+                        w, h = 1080, 1920
+
+                    if not _aspect_ok(w, h, max_aspect=2.8):
+                        continue
+
+                    source_site = r.get("source") or "web"
+                    title = r.get("title") or query
+                    engine_tag = "google_images" if eng in ("google", "serper") else "open_web"
+
+                    item = {
+                        "url": img_url,
+                        "thumbnail": r.get("thumbnail") or img_url,
+                        "fallback_url": r.get("thumbnail") if (r.get("thumbnail") and "gstatic.com" in str(r.get("thumbnail"))) else "",
+                        "title": title,
+                        "alt": title,
+                        "width": w,
+                        "height": h,
+                        "source": engine_tag,
+                        "provider": eng,
+                        "license": "Web Public (Fair Use)",
+                        "creator": source_site,
+                        "page_url": r.get("url") or "",
+                        "attribution": f"Web image from {source_site} (via {eng})",
+                    }
+                    # Bỏ ảnh từ trang stock trả phí / bán tranh in (luôn dính watermark) và ảnh quá nhỏ
+                    if is_watermark_risk(item) or min(w, h) < 450:
+                        continue
+                    out.append(item)
+                    if len(out) >= per_page:
+                        break
+
+                if len(out) >= max(4, per_page // 2):
                     break
             except Exception as e:
                 logger.debug(f"[WebImage] {eng} lỗi cho '{query}': {e}")
-                self._engine_fail(eng)
+                self._engine_fail(eng, minutes=1 if eng == "google" else 2)
 
-        try:
-            out = []
-            seen = set()
-            for r in raw_results:
-                img_url = r.get("image")
-                if not img_url or img_url in seen:
-                    continue
-                seen.add(img_url)
-
-                clean_url = str(img_url).lower().split("?")[0]
-                if clean_url.endswith((".svg", ".gif", ".ico")):
-                    continue
-
-                w = r.get("width") or 1080
-                h = r.get("height") or 1920
-                try:
-                    w, h = int(w), int(h)
-                except Exception:
-                    w, h = 1080, 1920
-
-                if not _aspect_ok(w, h, max_aspect=2.8):
-                    continue
-
-                source_site = r.get("source") or "web"
-                title = r.get("title") or query
-
-                item = {
-                    "url": img_url,
-                    "thumbnail": r.get("thumbnail") or img_url,
-                    "title": title,
-                    "alt": title,
-                    "width": w,
-                    "height": h,
-                    "source": "open_web",
-                    "provider": "open_web",
-                    "license": "Web Public (Fair Use)",
-                    "creator": source_site,
-                    "page_url": r.get("url") or "",
-                    "attribution": f"Web image from {source_site}",
-                }
-                # Bỏ ảnh từ trang stock trả phí / bán tranh in (luôn dính watermark) và ảnh quá nhỏ
-                if is_watermark_risk(item) or min(w, h) < 450:
-                    continue
-                out.append(item)
-                if len(out) >= per_page:
-                    break
-
-            return out
-        except Exception as e:
-            logger.debug(f"[WebImage] Open web search error cho '{query}': {e}")
-            return []
+        return out
 
     # ─────────────────────────────── Wikipedia Page Images ─────────────────────
     def search_wikipedia_images(self, query: str, per_page: int = 4) -> List[Dict]:
@@ -514,7 +681,7 @@ class WebImageFetcher:
         subject = (subject or "").strip()
         entity_q = subject or query
         jobs = [
-            (self.search_open_web, "open_web", query),
+            (self.search_open_web, "google_web", query),
             (self.search_wikimedia_commons, "commons", entity_q),
             (self.search_openverse, "openverse", entity_q),
         ]
@@ -523,9 +690,13 @@ class WebImageFetcher:
             jobs.insert(1, (self.search_wikipedia_images, "wikipedia", entity_q))
         if self._unsplash_key:
             jobs.append((self.search_unsplash, "unsplash", query))
-        # Truy vấn bổ sung chỉ chạy trên Open Web (vd: quái vật → "kraken concept art", "Pirates of the Caribbean kraken")
-        for i, xq in enumerate(q for q in (extra_queries or []) if q and q != query):
-            jobs.append((self.search_open_web, f"open_web+{i + 1}", xq))
+
+        # Tự động bổ sung truy vấn Google Search chuẩn Gemini (neo chặt chủ thể + nhiếp ảnh thực tế)
+        auto_extra = list(extra_queries or [])
+        if not auto_extra and subject and subject.lower() != query.lower():
+            auto_extra.append(f'"{subject}" real photograph')
+        for i, xq in enumerate(q for q in auto_extra[:2] if q and q != query):
+            jobs.append((self.search_open_web, f"google_web+{i + 1}", xq))
 
         with ThreadPoolExecutor(max_workers=len(jobs)) as ex:
             futures = [ex.submit(fn, q, per_source) for fn, _, q in jobs]
@@ -544,7 +715,7 @@ class WebImageFetcher:
                 pass
 
         merged, seen = [], set()
-        # Ưu tiên xen kẽ: Open Web và Wikipedia lên đầu danh sách ứng viên
+        # Ưu tiên xen kẽ: Google Web và Wikipedia lên đầu danh sách ứng viên
         for i in range(max((len(b) for b in buckets), default=0)):
             for b in buckets:
                 if i < len(b) and b[i]["url"] not in seen:
@@ -556,7 +727,7 @@ class WebImageFetcher:
             from app.services.media.image_quality import prefilter_candidates
             merged = prefilter_candidates(
                 merged, subject=subject or query, limit=max(12, per_source * 3), creature_mode=creature_mode,
-                max_per_source=8 if creature_mode else 5,
+                max_per_source=8 if creature_mode else 7,
             )
         except Exception as e:
             logger.debug(f"[WebImage] prefilter lỗi: {e}")

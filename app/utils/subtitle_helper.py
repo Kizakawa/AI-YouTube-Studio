@@ -47,7 +47,14 @@ POWER_WORDS = {
     # Các âm tiết cốt lõi đơn để khớp phụ đề từng từ (Syllable Level Matching)
     "BÍ", "MẬT", "NGUY", "HIỂM", "CẢNH", "BÁO", "TỬ", "THẦN", "SỰ", "THẬT",
     "DỐI", "TRÁ", "THAO", "TÚNG", "KINH", "HOÀNG", "QUÁI", "VẬT", "ÁC", "MỘNG",
-    "SỢ", "HÃI", "MẮC", "KẸT"
+    "SỢ", "HÃI", "MẮC", "KẸT",
+    # Brazilian Portuguese (pt-BR) Power Words
+    "NUNCA", "JAMAIS", "SEMPRE", "SEGREDO", "SEGREDOS", "PERIGO", "PERIGOSO",
+    "MORTAL", "VERDADE", "CHOCANTE", "MONSTRO", "ASSASSINO", "ERRO", "AVISO",
+    "PARE", "ATAQUE", "FATAL", "PREDADOR", "MEDO", "TERROR", "IMPOSSÍVEL",
+    "INCRÍVEL", "ABSURDO", "VENENO", "MISTÉRIO", "ESCONDIDO", "REVELADO",
+    "MENTIRA", "MANIPULAÇÃO", "SOMBRIO", "SANGUE", "MORTE", "REGRA", "REGRAS",
+    "SOBREVIVER", "PROIBIDO", "CUIDADO", "URGENTE",
 }
 
 # ── ASS Style template ────────────────────────────────────────────────────
@@ -192,11 +199,15 @@ class SubtitleHelper:
         parts = []
         for i, (word, dur_cs) in enumerate(zip(words, word_durations_cs)):
             clean_word = re.sub(r'[^\w\d]', '', word.upper())
-            is_power_word = clean_word in POWER_WORDS
+            has_shock_number = bool(re.search(r'\d', word)) and ("%" in word or len(clean_word) >= 2)
+            is_power_word = (clean_word in POWER_WORDS) or has_shock_number
 
             if is_power_word:
-                # Power Word: đổi màu highlight thành power_color rực rỡ, rồi reset về default_highlight
-                parts.append(f"{{\\kf{dur_cs}\\1c{norm_power}\\b1}}{word}{{\\1c{norm_highlight}}}")
+                # Power Word / Shock Statistic: đổi màu highlight + phóng nhẹ 110% tạo hiệu ứng Kinetic Pop
+                parts.append(
+                    f"{{\\kf{dur_cs}\\1c{norm_power}\\fscx110\\fscy110\\b1}}{word}"
+                    f"{{\\1c{norm_highlight}\\fscx100\\fscy100}}"
+                )
             else:
                 parts.append(f"{{\\kf{dur_cs}}}{word}")
         return " ".join(parts)

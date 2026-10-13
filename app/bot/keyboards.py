@@ -287,6 +287,9 @@ def get_video_edit_options_keyboard(job_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton("⏰ Lên Lịch Tự Động (Shorts)", callback_data=f"schedule_youtube:{job_id}"),
         ],
         [
+            InlineKeyboardButton("✏️ Đổi Tiêu Đề Video", callback_data=f"prompt_edit_title:{job_id}"),
+        ],
+        [
             InlineKeyboardButton("🇺🇸 Chuyển Sang Tiếng Anh", callback_data=f"edit_lang:{job_id}:en"),
             InlineKeyboardButton("🇻🇳 Chuyển Sang Tiếng Việt", callback_data=f"edit_lang:{job_id}:vi"),
         ],
