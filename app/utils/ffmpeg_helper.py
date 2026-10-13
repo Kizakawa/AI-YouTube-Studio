@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 FFMPEG_TIMEOUT = 300   # 5 phút max cho render
 FFPROBE_TIMEOUT = 10   # 10 giây max cho probe
+VIDEO_DURATION_SAFETY_MARGIN = 0.1  # Đệm an toàn chống ngắt cụt audio/video cuối câu (0.1 giây)
 
 
 def _ensure_ffmpeg_in_path():

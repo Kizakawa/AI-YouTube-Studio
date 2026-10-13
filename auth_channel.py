@@ -199,8 +199,13 @@ def authenticate_channel(channel_id: str, account_id: Optional[str] = None):
 
         # 1. Lưu token theo mã dự án / account để xoay vòng Quota (Project Pool)
         save_encrypted_json(acc_token_file, token_dict)
-        # 2. Cập nhật hoặc lưu token chính của kênh
-        save_encrypted_json(primary_token_file, token_dict)
+        # 2. Cập nhật token chính nếu chưa có, hoặc nếu đang xác thực tài khoản chính của kênh
+        is_main_account = target_account and (acc_id == target_account.get("id"))
+        if not primary_token_file.exists() or is_main_account:
+            save_encrypted_json(primary_token_file, token_dict)
+            logger.info(f"Đã cập nhật token chính {primary_token_file.name}")
+        else:
+            logger.info(f"Kênh đã có token chính, lưu thêm token dự án pool: {acc_token_file.name}")
 
         # Chỉ đồng bộ vào thư mục tài khoản mẹ nếu đây là kênh chính (kênh đầu tiên)
         # Tránh ghi đè token của kênh khác trong cùng một Gmail!
@@ -261,14 +266,14 @@ def main():
 
         if target_acc in ("--all", "-a", "all"):
             print("\n" + "═" * 68)
-            print(f"🔥 BẮT ĐẦU CẤP QUYỀN TOÀN BỘ 3 DỰ ÁN CHO KÊNH: {target_id}")
+            print(f"🔥 BẮT ĐẦU CẤP QUYỀN CÁC DỰ ÁN CHO KÊNH: {target_id}")
             print("   Hệ thống sẽ lần lượt mở trình duyệt cho từng Dự án Google Cloud.")
             print("   Bạn chỉ cần chọn đúng kênh và bấm 'Cho phép' (Allow) cho từng dự án.")
             print("═" * 68 + "\n")
-            accounts = ["account_1", "acount_2", "accout3"]
+            accounts = ["account_1", "project_pool_2"]
             success_count = 0
             for idx, acc in enumerate(accounts, 1):
-                print(f"\n[Bước {idx}/3] Đang cấp quyền Dự án: {acc}...")
+                print(f"\n[Bước {idx}/{len(accounts)}] Đang cấp quyền Dự án: {acc}...")
                 ok = authenticate_channel(target_id, acc)
                 if ok:
                     success_count += 1
@@ -298,15 +303,16 @@ def main():
             print("\n👉 Chọn tài khoản / Dự án Google Cloud muốn cấp quyền cho kênh:")
             print("  [0] Mặc định theo channels.yaml")
             print("  [1] account_1 (Dự án: bionic-client-509515-h2)")
-            print("  [2] acount_2 (Dự án: ai-youtube-studio-509521)")
-            print("  [3] accout3 (Dự án: youtube-pool-02-510505)")
-            print("  [4] 🔥 CẤP QUYỀN CẢ 3 DỰ ÁN CÙNG LÚC (--all) để tự động xoay khi hết Quota")
-            acc_c = input("👉 Lựa chọn tài khoản [0-4, mặc định 0]: ").strip()
-            if acc_c in ("4", "--all", "all"):
-                for acc in ["account_1", "acount_2", "accout3"]:
+            print("  [2] project_pool_2 (Dự án mới: effective-cacao-511414-q3 ── Thêm 10.000 Quota/ngày)")
+            print("  [3] acount_2 (Tài khoản Google thứ 2)")
+            print("  [4] accout3 (Tài khoản Google thứ 3)")
+            print("  [all] 🔥 CẤP QUYỀN CẢ DỰ ÁN CHÍNH & DỰ ÁN POOL để tự động xoay Quota")
+            acc_c = input("👉 Lựa chọn tài khoản [0-4, all, mặc định 0]: ").strip()
+            if acc_c in ("all", "--all", "5"):
+                for acc in ["account_1", "project_pool_2"]:
                     authenticate_channel(selected, acc)
             else:
-                acc_map = {"1": "account_1", "2": "acount_2", "3": "accout3"}
+                acc_map = {"1": "account_1", "2": "project_pool_2", "3": "acount_2", "4": "accout3"}
                 authenticate_channel(selected, acc_map.get(acc_c))
         elif choice:
             authenticate_channel(choice)

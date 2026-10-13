@@ -10,7 +10,7 @@ Smart Golden Slot Scheduler — Thuật toán tính toán và phân bổ khe gi�
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Tuple, Dict, Any, List, Optional
+from typing import Tuple, Dict, Any, List, Optional, Set
 from app.database.models import get_db, VideoJob
 
 logger = logging.getLogger(__name__)
@@ -567,4 +567,96 @@ def get_golden_slots_overview() -> List[Dict[str, Any]]:
         }
         for s in GOLDEN_SLOTS_UTC
     ]
+
+
+def find_channel_golden_slot_avoiding_collisions(
+    channel_id: str,
+    preferred_utc_hour: int,
+    preferred_utc_minute: int = 0,
+    golden_weekdays: Optional[Set[int]] = None,
+    min_hours_between_videos: float = 6.0,
+    target_start_date: Optional[datetime] = None
+) -> Tuple[datetime, str, str]:
+    """
+    Tính khung giờ vàng tiếp theo cho kênh, bắt đầu từ ngày mai (hoặc ngày chỉ định).
+    ĐẶC BIỆT TUÂN THỦ:
+    - Nếu ngày mai đã có video lên lịch/xuất bản -> tự động đẩy tiếp sang ngày kế tiếp.
+    - Giãn cách tối thiểu min_hours_between_videos (mặc định 6 tiếng) chống nuốt view.
+    - Tự động nhận diện Channel Family để không bị va chạm chéo.
+
+    Returns:
+        (slot_utc_datetime, slot_iso_str, display_vn_str)
+    """
+    sync_scheduled_jobs_status()
+    now_utc = datetime.now(timezone.utc)
+    
+    if target_start_date is None:
+        start_d = (now_utc + timedelta(days=1)).date()
+    elif isinstance(target_start_date, datetime):
+        start_d = target_start_date.date()
+    else:
+        start_d = target_start_date
+
+    channel_family = resolve_channel_family(channel_id)
+    occupied_slots_utc: List[datetime] = []
+
+    try:
+        with get_db() as db:
+            jobs = db.query(VideoJob).filter(
+                VideoJob.target_channel_id.in_(channel_family),
+                VideoJob.status.in_(["SCHEDULED", "PUBLISHED"]),
+                VideoJob.scheduled_time.isnot(None)
+            ).all()
+
+            for j in jobs:
+                if j.scheduled_time:
+                    st = j.scheduled_time
+                    if st.tzinfo is None:
+                        st = st.replace(tzinfo=timezone.utc)
+                    occupied_slots_utc.append(st)
+    except Exception as e:
+        logger.warning(f"Lỗi khi đọc occupied slots cho {channel_id}: {e}")
+
+    # Duyệt tối đa 30 ngày tiếp theo để tìm khe giờ trống
+    min_spacing_sec = min_hours_between_videos * 3600
+
+    for delta in range(30):
+        target_day = start_d + timedelta(days=delta)
+        if golden_weekdays is not None and target_day.weekday() not in golden_weekdays:
+            continue
+
+        candidate_dt = datetime(
+            year=target_day.year,
+            month=target_day.month,
+            day=target_day.day,
+            hour=preferred_utc_hour,
+            minute=preferred_utc_minute,
+            second=0,
+            tzinfo=timezone.utc
+        )
+
+        if candidate_dt <= now_utc + timedelta(minutes=30):
+            continue
+
+        # Kiểm tra khoảng cách với mọi video đã có
+        collision = False
+        for occ in occupied_slots_utc:
+            diff_sec = abs((candidate_dt - occ).total_seconds())
+            if diff_sec < min_spacing_sec:
+                collision = True
+                break
+
+        if not collision:
+            slot_iso = candidate_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            cand_vn = candidate_dt.astimezone(VN_TZ)
+            w_name = WEEKDAY_VN_MAP.get(cand_vn.weekday(), "Ngày")
+            disp_vn = f"{cand_vn.strftime('%H:%M')} {w_name}, {cand_vn.strftime('%d/%m/%Y')} (Giờ VN)"
+            logger.info(f"✅ [SmartSlot] Kênh {channel_id} đã chọn slot vàng: {disp_vn} ({slot_iso})")
+            return candidate_dt, slot_iso, disp_vn
+
+    # Fallback an toàn nếu lịch kín 30 ngày
+    fallback_dt = now_utc + timedelta(days=2, hours=preferred_utc_hour)
+    fallback_iso = fallback_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    fb_vn = fallback_dt.astimezone(VN_TZ).strftime("%H:%M %d/%m/%Y (Giờ VN)")
+    return fallback_dt, fallback_iso, fb_vn
 

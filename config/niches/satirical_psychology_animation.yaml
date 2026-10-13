@@ -1,0 +1,70 @@
+id: satirical_psychology_animation
+name: Tâm Lý Học Đời Thường & Châm Biếm Thức Tỉnh (Hoạt Họa 2D)
+badge: 🎭 Tâm Lý Châm Biếm & Thức Tỉnh
+icon: 🎭
+description: Bóc trần thói đời, bệnh làm hài lòng người khác (people pleaser), thao túng tâm lý ngầm và những nghịch lý cuộc sống bằng phong cách hoạt hình 2D tối giản, sâu cay.
+target_audience: Gen Z, dân văn phòng 18-35 tuổi, những người đang chịu áp lực công việc, kiệt quệ cảm xúc vì cả nể và bị đối xử bất công.
+script_blueprint:
+  tone_of_voice: Sắc sảo, thấu hiểu, châm biếm nhẹ nhàng, nói trúng tim đen, thức tỉnh nhận thức chứ không giảng đạo lý suông.
+  pacing: Chậm rãi thấm thía 120 - 128 WPM, 2.8 - 3.5 giây/cảnh, có khoảng lặng thở phào.
+  hook_formulas:
+  - 'Bạn có bao giờ tự hỏi: Tại sao bạn càng ngoan ngoãn, người khác lại càng đối xử tệ với bạn?'
+  - 'Càng cố gắng sống tích cực, bạn càng dễ phát điên. Đây là cái bẫy tâm lý mà 90% người trẻ đang dính phải...'
+  - '3 câu nói cửa miệng của những kẻ thao túng tâm lý mà bạn vẫn ngây thơ nghĩ họ tốt với mình...'
+  - 'Nghịch lý của sự tử tế: Tại sao người càng biết điều lại càng là người chịu nhiều thiệt thòi nhất?'
+  narrative_structure: Hook đập tan ảo tưởng -> Tái hiện tình huống đời thường bất công -> Bóc trần cơ chế tâm lý ngầm -> Cú chốt thức tỉnh giải thoát bản thân -> CTA bảo vệ chính mình.
+  forbidden_words:
+  - Cố lên bạn nhé
+  - Cuộc sống này tươi đẹp lắm
+  - Hãy luôn mỉm cười
+  - Đăng ký kênh ủng hộ mình
+  cta_templates:
+  - Nếu bạn đã chán làm người tốt để chịu thiệt, lưu video này lại và học cách nói Không từ hôm nay.
+  - Nhấn theo dõi để tỉnh táo hơn mỗi ngày và không bao giờ để ai thao túng bạn nữa.
+  anti_hallucination_rules:
+  - Dựa trên các hiện tượng tâm lý học hành vi thực tế (People Pleaser, Toxic Positivity, Gaslighting, Boundary Setting).
+  - Không vẽ hoa lá sến súa, tập trung vào nhân vật tối giản và hành động đời thường.
+  banned_lexicon: &id001
+  - fairy tale
+  - magical castle
+  - monster beast
+  - supercar luxury
+  - war battlefield
+visual_aesthetics:
+  art_style: Minimalist 2D Dark Satirical Comic & Relatable Webtoon Line-Art
+  camera_angles: Eye-level relatable framing, dramatic macro crop on tired eyes, isolated center framing in empty office or dark bedroom
+  color_palette: Muted slate gray, pale paper white, warm desk lamp yellow, crimson psychological accent
+  master_prompt_prefix: "Minimalist 2D satirical comic art, simple expressive character line-art, dark relatable webtoon illustration, "
+  master_prompt_suffix: ", clean bold outlines, muted atmospheric lighting, deep emotional resonance, 9:16 vertical composition, no watermark, no text"
+  negative_prompts: photorealistic, 35mm photograph, 3d hyperrealism, furry, glossy plastic, blurry, low resolution, watermark, text
+  stock_video_keywords:
+  - exhausted office worker night
+  - person looking in mirror thoughtful
+  - tired person walking city rain
+  - clock ticking fast empty room
+subtitles:
+  font_family: Montserrat, Arial, sans-serif
+  font_weight: '800'
+  font_size: 40
+  primary_color: '#FFFFFF'
+  highlight_color: '#FFD700'
+  accent_color: '#FF4D4D'
+  outline_color: '#000000'
+  outline_width: 3.8
+  margin_bottom: 580
+audio:
+  preferred_voice_en: en-US-BrianNeural
+  preferred_voice_vi: vi-VN-NamMinhNeural
+  secondary_voice_vi: vi-VN-HoaiMyNeural
+  rate: -2%
+  pitch: -1Hz
+  bgm_vibe: thoughtful melancholic acoustic piano, subtle dark lofi ambient pulse, ironic reflective guitar
+  sfx_cues:
+  - subtle_clock_tick
+  - deep_sub_drop
+  - gentle_sigh
+  - dramatic_glitch
+banned_lexicon: *id001
+target_wpm: 125
+monetization:
+  affiliate_enabled: false

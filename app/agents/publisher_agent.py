@@ -398,28 +398,28 @@ class PublisherAgent:
                             break
                     except Exception as up_err:
                         last_upload_err = up_err
-                    err_str = str(up_err)
-                    # Nếu là lỗi quota thì không retry lặp vô ích mà ném tiếp xuống QuotaGuard
-                    if "quotaExceeded" in err_str or "exceeded your quota" in err_str:
-                        raise up_err
+                        err_str = str(up_err)
+                        # Nếu là lỗi quota thì không retry lặp vô ích mà n麼m tiếp xuống QuotaGuard
+                        if "quotaExceeded" in err_str or "exceeded your quota" in err_str:
+                            raise up_err
 
-                    # Xử lý các lỗi mạng hoặc session upload bị đứt giữa chừng (410 Gone, timeout, connection reset, 5xx)
-                    is_recoverable = (
-                        "410" in err_str
-                        or "Gone" in err_str
-                        or any(code in err_str for code in ["500", "502", "503", "504"])
-                        or any(k in err_str.lower() for k in ["timeout", "connection reset", "broken pipe", "remotely closed"])
-                    )
-                    if is_recoverable and upload_attempt < max_upload_retries:
-                        wait_sec = upload_attempt * 3
-                        logger.warning(
-                            f"⚠️ [UploadRetry] Session tải video bị ngắt ({err_str[:90]}...). "
-                            f"Khởi tạo phiên mới và thử lại lần {upload_attempt + 1}/{max_upload_retries} sau {wait_sec}s..."
+                        # Xử lý các lỗi mạng hoặc session upload bị đứt giữa chừng
+                        is_recoverable = (
+                            "410" in err_str
+                            or "Gone" in err_str
+                            or any(code in err_str for code in ["500", "502", "503", "504"])
+                            or any(k in err_str.lower() for k in ["timeout", "connection reset", "broken pipe", "remotely closed"])
                         )
-                        time.sleep(wait_sec)
-                        continue
-                    else:
-                        raise up_err
+                        if is_recoverable and upload_attempt < max_upload_retries:
+                            wait_sec = upload_attempt * 3
+                            logger.warning(
+                                f"⚠️ [UploadRetry] Session tải video bị ngắt ({err_str[:90]}...). "
+                                f"Khởi tạo phiên mới và thử lại lần {upload_attempt + 1}/{max_upload_retries} sau {wait_sec}s..."
+                            )
+                            time.sleep(wait_sec)
+                            continue
+                        else:
+                            raise up_err
             finally:
                 socket.setdefaulttimeout(old_socket_timeout)
 

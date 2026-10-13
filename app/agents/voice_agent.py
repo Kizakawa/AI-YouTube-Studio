@@ -82,25 +82,44 @@ class VoiceAgent:
 
     @staticmethod
     def _is_vietnamese(text: str) -> bool:
-        """Kiểm tra văn bản có chứa ký tự tiếng Việt có dấu hay không."""
+        """
+        Kiểm tra văn bản có phải tiếng Việt hay không.
+        Phải phân biệt với tiếng Bồ Đào Nha (pt-BR) và các ngôn ngữ Latin khác
+        (vốn cũng có các ký tự như à, á, ã, é, ê, í, ó, ú).
+        """
         import re
-        vn_pattern = r'[àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ]'
-        return bool(re.search(vn_pattern, text, re.IGNORECASE))
+        # Các ký tự đặc trưng riêng biệt chỉ có trong tiếng Việt
+        vn_unique_pattern = r'[ơớờởỡợưứừửữựđĐăắằẳẵặâấầẩẫậêếềểễệôốồổỗộ]'
+        if re.search(vn_unique_pattern, text):
+            # Kiểm tra thêm nếu có từ tiếng Bồ Đào Nha phổ biến thì không phải tiếng Việt
+            pt_words = {"não", "você", "com", "uma", "um", "para", "que", "dos", "das", "selvagem", "amazônia", "mistério"}
+            words = set(re.findall(r'\b\w+\b', text.lower()))
+            if len(words.intersection(pt_words)) >= 2:
+                return False
+            return True
+        return False
 
     def _resolve_safe_voice(self, text: str, requested_voice: Optional[str] = None) -> str:
         """
         Bảo vệ khớp ngôn ngữ - giọng đọc:
+        - Nếu giọng chỉ định là tiếng Bồ Đào Nha (pt-), Tây Ban Nha (es-), Pháp (fr-)... -> Giữ nguyên tuyệt đối.
         - Nếu văn bản tiếng Việt mà giọng đọc tiếng Anh -> tự động chuyển sang giọng Việt chuẩn (vi-VN-NamMinhNeural).
         - Nếu văn bản tiếng Anh mà giọng đọc tiếng Việt -> tự động chuyển sang giọng Mỹ chuẩn (en-US-AndrewNeural).
         """
         voice = requested_voice or self.default_voice
+        voice_lower = voice.lower()
+
+        # Không can thiệp nếu là giọng đọc các ngôn ngữ quốc tế khác (pt-BR, es, fr, de, ja, ko...)
+        if voice_lower.startswith(("pt-", "es-", "fr-", "de-", "it-", "ja-", "ko-", "zh-")):
+            return voice
+
         is_vn_text = self._is_vietnamese(text)
-        is_vn_voice = voice.lower().startswith("vi-")
+        is_vn_voice = voice_lower.startswith("vi-")
 
         if is_vn_text and not is_vn_voice:
             logger.warning(
                 f"⚠️ Phát hiện văn bản tiếng Việt ('{text[:30]}...') nhưng giọng đọc chỉ định là '{voice}' (tiếng Anh). "
-                f"Tự động chuyển sang 'vi-VN-NamMinhNeural' để tránh giọng đọc ngọng / phát âm bồi dị hợm!"
+                f"Tự động chuyển sang 'vi-VN-NamMinhNeural' để tránh giọng đọc ngọng!"
             )
             return "vi-VN-NamMinhNeural"
         elif not is_vn_text and is_vn_voice:

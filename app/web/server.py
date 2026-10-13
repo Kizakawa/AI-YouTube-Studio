@@ -2894,6 +2894,18 @@ async def oauth_callback(
                 pass
 
             succ_msg = f"Đã kết nối {service.upper()} thành công cho tài khoản '{account_id}'!"
+            if account_id == "project_pool_2" and service == "youtube":
+                # Tự động đồng bộ token pool này vào tất cả các kênh để kích hoạt Quota 20.000
+                ch_base = base_dir / "credentials" / "channels"
+                if ch_base.exists():
+                    for ch_folder in ch_base.iterdir():
+                        if ch_folder.is_dir():
+                            pool_tok_file = ch_folder / "youtube_token_project_pool_2.json"
+                            try:
+                                save_encrypted_json(pool_tok_file, token_dict_to_save)
+                                logger.info(f"✅ Đã đồng bộ token pool 2 (effective-cacao) vào kênh: {ch_folder.name}")
+                            except Exception as e_sync:
+                                logger.warning(f"Lỗi đồng bộ token pool vào {ch_folder.name}: {e_sync}")
             _oauth_sessions[session_key] = {
                 "status": "success",
                 "message": succ_msg
