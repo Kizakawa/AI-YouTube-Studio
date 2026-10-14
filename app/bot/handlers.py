@@ -1275,10 +1275,11 @@ async def start_render_pipeline(
             icon = icons.get(stage, "⏳")
             p_bar = render_progress_bar(percent) if percent > 0 else "[▱▱▱▱▱▱▱▱▱▱] 0%"
             prefix = "🔄 [TỰ ĐỘNG TIẾP TỤC] " if is_auto_resume else ""
+            safe_progress_msg = str(msg).replace("_", " ")
             display_text = (
                 f"🎬 **{prefix}TIẾN TRÌNH RENDER (Task #{job_id})**\n\n"
                 f"📊 **Tiến độ:** `{p_bar}`\n\n"
-                f"{icon} {msg}"
+                f"{icon} {safe_progress_msg}"
             )
             await safe_edit_text(status_msg, display_text)
 
@@ -1428,28 +1429,61 @@ async def start_render_pipeline(
                     pass
 
             # 2. UPLOAD DUY NHẤT 1 FILE VIDEO KÈM THUMBNAIL LÀM BÌA & NÚT THAO TÁC
-            # Kiểm tra kích thước file: Nếu > 49MB, tự động nén nhanh để gửi qua Telegram (giới hạn 50MB)
+            # Kiểm tra kích thước file: Nếu > 12MB, tự động nén nhanh bản preview nhẹ (~4-6MB) cho Telegram
+            # để tránh lỗi đứt kết nối httpx.ReadError sau 10 phút render (file gốc out_path vẫn giữ nguyên 100% cho YouTube)
             upload_vid_path = out_path
             temp_tg_preview = None
-            if size_mb > 49.0:
+            if size_mb > 12.0:
                 try:
                     import subprocess
                     temp_dir = Path(settings.TEMP_DIR)
                     temp_dir.mkdir(parents=True, exist_ok=True)
                     temp_tg_preview = str(temp_dir / f"tg_preview_{job_id}.mp4")
-                    logger.info(f"File {size_mb:.1f}MB > 49MB, đang nén nhanh video cho Telegram (job #{job_id})...")
+                    logger.info(f"File {size_mb:.1f}MB > 12MB, đang tạo bản preview tối ưu cho Telegram (job #{job_id})...")
                     cmd = [
-                        "ffmpeg", "-y", "-i", out_path,
-                        "-c:v", "libx264", "-crf", "28", "-preset", "veryfast",
+                        "ffmpeg", "-y", "-i", str(out_path),
+                        "-c:v", "libx264", "-crf", "26", "-preset", "veryfast", "-movflags", "+faststart",
                         "-c:a", "copy", temp_tg_preview
                     ]
                     res_comp = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45)
                     if res_comp.returncode == 0 and Path(temp_tg_preview).exists():
                         upload_vid_path = temp_tg_preview
                         preview_mb = Path(upload_vid_path).stat().st_size / (1024 * 1024)
-                        logger.info(f"Đã nén video preview Telegram thành công: {preview_mb:.1f}MB")
+                        logger.info(f"Đã nén video preview Telegram thành công: {preview_mb:.1f}MB (gốc {size_mb:.1f}MB)")
                 except Exception as ex_comp:
                     logger.warning(f"Lỗi nén preview Telegram: {ex_comp}")
+
+            def _sync_requests_send_video(target_chat_id, vid_path_str, thumb_path_str, cap_html, markup_obj, cached_fid=None):
+                import requests as _req
+                import json as _json
+                url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendVideo"
+                data = {
+                    "chat_id": str(target_chat_id),
+                    "caption": cap_html,
+                    "parse_mode": "HTML",
+                    "supports_streaming": "true",
+                }
+                if markup_obj:
+                    data["reply_markup"] = _json.dumps(markup_obj.to_dict())
+                if cached_fid:
+                    data["video"] = cached_fid
+                    r = _req.post(url, data=data, timeout=60)
+                else:
+                    with open(vid_path_str, "rb") as vf_sync:
+                        files = {"video": (f"video_{job_id}.mp4", vf_sync, "video/mp4")}
+                        tf_sync = open(thumb_path_str, "rb") if thumb_path_str and Path(thumb_path_str).exists() else None
+                        if tf_sync:
+                            files["thumbnail"] = ("thumb.jpg", tf_sync, "image/jpeg")
+                        try:
+                            r = _req.post(url, data=data, files=files, timeout=180)
+                        finally:
+                            if tf_sync:
+                                tf_sync.close()
+                if r.status_code == 200:
+                    res_j = r.json()
+                    if res_j.get("ok"):
+                        return True, ((res_j.get("result") or {}).get("video") or {}).get("file_id")
+                raise RuntimeError(f"HTTP {r.status_code}: {r.text[:200]}")
 
             cached_telegram_file_id = None
             for t_chat in target_chats:
@@ -1493,33 +1527,24 @@ async def start_render_pipeline(
                                         except Exception:
                                             pass
                     except Exception as ex_upload:
-                        logger.warning(f"send_video HTML thất bại tới chat {t_chat}: {ex_upload}, thử gửi lại không parse_mode...")
+                        logger.warning(f"send_video (httpx) thất bại tới chat {t_chat}: {ex_upload}, chuyển sang kết nối HTTP trực tiếp (requests fallback)...")
                         try:
-                            if cached_telegram_file_id:
-                                await bot.send_video(
-                                    chat_id=t_chat,
-                                    video=cached_telegram_file_id,
-                                    caption=f"Video #{job_id}: {render_job.title}",
-                                    reply_markup=post_render_markup,
-                                    supports_streaming=True
-                                )
+                            ok_sync, fid_sync = await asyncio.to_thread(
+                                _sync_requests_send_video,
+                                t_chat,
+                                str(upload_vid_path),
+                                str(thumb_p) if thumb_p else None,
+                                caption,
+                                post_render_markup,
+                                cached_telegram_file_id,
+                            )
+                            if ok_sync:
+                                if fid_sync:
+                                    cached_telegram_file_id = fid_sync
                                 sent_ok = True
-                            else:
-                                with open(upload_vid_path, "rb") as vf:
-                                    sent_msg = await bot.send_video(
-                                        chat_id=t_chat,
-                                        video=vf,
-                                        caption=f"Video #{job_id}: {render_job.title}",
-                                        reply_markup=post_render_markup,
-                                        supports_streaming=True,
-                                        read_timeout=300,
-                                        write_timeout=300
-                                    )
-                                    if sent_msg and sent_msg.video:
-                                        cached_telegram_file_id = sent_msg.video.file_id
-                                sent_ok = True
-                        except Exception as ex_raw_vid:
-                            logger.warning(f"send_video raw thất bại: {ex_raw_vid}, thử gửi dạng document...")
+                                logger.info(f"✅ Đã gửi video #{job_id} tới chat {t_chat} thành công qua requests fallback!")
+                        except Exception as ex_req_fb:
+                            logger.warning(f"requests fallback thất bại tới chat {t_chat}: {ex_req_fb}, thử gửi dạng document...")
                             try:
                                 with open(upload_vid_path, "rb") as vf_doc:
                                     sent_doc = await bot.send_document(
@@ -5398,6 +5423,29 @@ async def dispatch_rendered_video_to_telegram(job_id: int):
         f"👉 <i>Video đã sẵn sàng bên dưới để bạn xem thử hoặc lưu về máy!</i>"
     )
 
+    upload_v_file = v_file
+    temp_dispatch_preview = None
+    if size_mb > 12.0:
+        try:
+            import subprocess
+            temp_dir = Path(settings.TEMP_DIR)
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            temp_dispatch_preview = temp_dir / f"tg_dispatch_preview_{job_id}.mp4"
+            res_c = subprocess.run(
+                [
+                    "ffmpeg", "-y", "-i", str(v_file),
+                    "-c:v", "libx264", "-crf", "26", "-preset", "veryfast", "-movflags", "+faststart",
+                    "-c:a", "copy", str(temp_dispatch_preview),
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=45,
+            )
+            if res_c.returncode == 0 and temp_dispatch_preview.exists():
+                upload_v_file = temp_dispatch_preview
+        except Exception as ex_c:
+            logger.debug(f"[TelegramDispatch] Lỗi nén preview #{job_id}: {ex_c}")
+
     async with Bot(token=token) as bot:
         # Gửi DUY NHẤT 1 file video (nhúng thumbnail làm ảnh bìa) kèm nút thao tác
         cached_file_id = None
@@ -5414,8 +5462,9 @@ async def dispatch_rendered_video_to_telegram(job_id: int):
                         supports_streaming=True
                     )
                 else:
-                    with open(v_file, "rb") as vf:
-                        if size_mb <= 50.0:
+                    curr_mb = Path(upload_v_file).stat().st_size / (1024 * 1024)
+                    with open(upload_v_file, "rb") as vf:
+                        if curr_mb <= 50.0:
                             sent_msg = await bot.send_video(
                                 chat_id=cid,
                                 video=vf,
@@ -5442,6 +5491,48 @@ async def dispatch_rendered_video_to_telegram(job_id: int):
                             if sent_msg and sent_msg.document:
                                 cached_file_id = sent_msg.document.file_id
             except Exception as ex_v:
-                logger.error(f"[TelegramDispatch] Lỗi gửi video #{job_id} tới {cid}: {ex_v}")
+                logger.warning(f"[TelegramDispatch] Lỗi httpx gửi video #{job_id} tới {cid}: {ex_v}, chuyển sang requests fallback...")
+                try:
+                    import requests as _req
+                    import json as _json
+                    def _dispatch_req_fb():
+                        url = f"https://api.telegram.org/bot{token}/sendVideo"
+                        data = {
+                            "chat_id": str(cid),
+                            "caption": video_caption,
+                            "parse_mode": "HTML",
+                            "supports_streaming": "true",
+                            "reply_markup": _json.dumps(actions_markup.to_dict()),
+                        }
+                        if cached_file_id:
+                            data["video"] = cached_file_id
+                            return _req.post(url, data=data, timeout=60)
+                        with open(upload_v_file, "rb") as vf_s:
+                            files = {"video": (f"video_{job_id}.mp4", vf_s, "video/mp4")}
+                            tf_s = open(thumb_p, "rb") if thumb_p and Path(thumb_p).exists() else None
+                            if tf_s:
+                                files["thumbnail"] = ("thumb.jpg", tf_s, "image/jpeg")
+                            try:
+                                return _req.post(url, data=data, files=files, timeout=180)
+                            finally:
+                                if tf_s:
+                                    tf_s.close()
+                    r_fb = await asyncio.to_thread(_dispatch_req_fb)
+                    if r_fb.status_code == 200 and r_fb.json().get("ok"):
+                        fid = ((r_fb.json().get("result") or {}).get("video") or {}).get("file_id")
+                        if fid:
+                            cached_file_id = fid
+                except Exception as ex_fb:
+                    logger.error(f"[TelegramDispatch] requests fallback cũng thất bại cho #{job_id} tới {cid}: {ex_fb}")
+            finally:
+                if thumb_f:
+                    try:
+                        thumb_f.close()
+                    except Exception:
+                        pass
 
-
+    if temp_dispatch_preview and temp_dispatch_preview.exists():
+        try:
+            temp_dispatch_preview.unlink(missing_ok=True)
+        except Exception:
+            pass
