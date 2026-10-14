@@ -3,11 +3,21 @@ import logging
 import subprocess
 import json
 import re
+import sys
+import time
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 import edge_tts
 from config.settings import settings
 from app.schemas.contracts import SceneContract, AudioSegment
+
+# Đảm bảo Sec-MS-GEC-Version luôn ở chuẩn v2+ kể cả khi tiến trình cũ chưa nạp lại constants mới
+try:
+    import edge_tts.constants as _edge_const
+    if getattr(_edge_const, "SEC_MS_GEC_VERSION", "").startswith("1-"):
+        _edge_const.SEC_MS_GEC_VERSION = "2-" + _edge_const.SEC_MS_GEC_VERSION[2:]
+except Exception:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +35,8 @@ class VoiceAgent:
 
     # ── Đa thị trường: Mặc định bật bảo vệ US channels (triệt tiêu giọng Việt trừ khi chỉ định) ──
     DISABLE_VIETNAMESE_VOICE: bool = True
+    _edge_ws_blocked_until: float = 0.0
+    _edge_403_streak: int = 0
 
     US_VOICE_PERSONAS: Dict[str, str] = {
         "default": "en-US-AndrewNeural",              # Warm, engaging, versatile YouTube host
@@ -272,6 +284,8 @@ class VoiceAgent:
                                 cached_words = meta.get("word_timings")
                                 if not cached_words and Path(words_meta_path).exists():
                                     cached_words = self._parse_words_jsonl(words_meta_path, max_duration_ms=duration_ms)
+                                if not cached_words:
+                                    cached_words = self._synthesize_word_timings(scene.narration, duration_ms)
                                 logger.info(
                                     f"Scene {scene.scene_id}: Tái sử dụng audio hợp lệ từ checkpoint "
                                     f"({duration_ms}ms, voice={safe_voice}, rate={expected_rate}, {len(cached_words or [])} words)"
@@ -315,67 +329,86 @@ class VoiceAgent:
                 if not clean_text or len(clean_text) < 2:
                     clean_text = scene.narration.strip() or "..."
 
-                for c_voice in candidate_voices:
-                    for attempt in range(3):
-                        try:
-                            tts_rate = self.resolve_optimal_tts_rate(c_voice, niche=niche, explicit_rate=rate)
+                # Nếu Bing Edge-TTS đang bị chặn 403 trong cửa sổ cooldown -> bỏ qua vòng lặp WebSocket để tránh treo 2 phút/cảnh
+                ws_circuit_open = time.time() < VoiceAgent._edge_ws_blocked_until
+                if not ws_circuit_open:
+                    for c_voice in candidate_voices:
+                        for attempt in range(2):
                             try:
-                                communicate = edge_tts.Communicate(clean_text, c_voice, rate=tts_rate, boundary="WordBoundary")
-                                await communicate.save(scene_audio_path, metadata_fname=words_meta_path)
-                            except Exception as e_bound:
-                                logger.debug(f"Scene {scene.scene_id}: boundary WordBoundary fallback: {e_bound}")
-                                communicate = edge_tts.Communicate(clean_text, c_voice, rate=tts_rate)
-                                await communicate.save(scene_audio_path)
-
-                            if Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024:
-                                safe_voice = c_voice
-                                success = True
-                                break
-                            else:
-                                raise RuntimeError("Audio file empty or incomplete")
-                        except Exception as err_tts:
-                            last_err = err_tts
-                            err_str = f"{type(err_tts).__name__}: {err_tts}"
-                            is_403_or_ws = any(
-                                k in err_str
-                                for k in ("NoAudioReceived", "No audio", "403", "Invalid response status", "WSServerHandshakeError", "ClientResponseError")
-                            )
-                            if is_403_or_ws:
+                                tts_rate = self.resolve_optimal_tts_rate(c_voice, niche=niche, explicit_rate=rate)
                                 try:
-                                    import shutil, subprocess
-                                    edge_cli = shutil.which("edge-tts") or str(Path(sys.executable).parent / "edge-tts.exe")
-                                    cmd = [edge_cli, "--text", clean_text, "--voice", c_voice, f"--rate={tts_rate}", "--write-media", scene_audio_path]
-                                    res = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, timeout=25)
-                                    if res.returncode == 0 and Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024:
-                                        safe_voice = c_voice
-                                        success = True
-                                        logger.info(f"Scene {scene.scene_id}: ✅ Tạo audio thành công qua CLI fallback ({c_voice})")
-                                        break
-                                except Exception:
-                                    pass
-                            backoff_s = (1.2 * (attempt + 1)) if is_403_or_ws else 0.6
-                            logger.warning(f"Scene {scene.scene_id}: Lỗi TTS '{c_voice}' (lần {attempt+1}/3, nghỉ {backoff_s:.1f}s): {err_tts}")
-                            await asyncio.sleep(backoff_s)
-                    if success:
-                        break
+                                    communicate = edge_tts.Communicate(clean_text, c_voice, rate=tts_rate, boundary="WordBoundary")
+                                    await communicate.save(scene_audio_path, metadata_fname=words_meta_path)
+                                except TypeError:
+                                    communicate = edge_tts.Communicate(clean_text, c_voice, rate=tts_rate)
+                                    await communicate.save(scene_audio_path)
 
-                # Cứu hộ khẩn cấp qua Google Translate TTS HTTP MP3 nếu toàn bộ Edge-TTS WebSocket & CLI bị Bing chặn 403 tạm thời
+                                if Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024:
+                                    safe_voice = c_voice
+                                    success = True
+                                    VoiceAgent._edge_403_streak = 0
+                                    VoiceAgent._edge_ws_blocked_until = 0.0
+                                    break
+                                else:
+                                    raise RuntimeError("Audio file empty or incomplete")
+                            except Exception as err_tts:
+                                last_err = err_tts
+                                err_str = f"{type(err_tts).__name__}: {err_tts}"
+                                is_403 = "403" in err_str or "Invalid response status" in err_str
+                                is_no_audio = "NoAudioReceived" in err_str or "No audio" in err_str
+
+                                if is_403:
+                                    VoiceAgent._edge_403_streak += 1
+                                    if VoiceAgent._edge_403_streak >= 2:
+                                        VoiceAgent._edge_ws_blocked_until = time.time() + 45.0
+                                        logger.warning(
+                                            f"Scene {scene.scene_id}: Edge-TTS WebSocket trả mã 403 liên tiếp ({VoiceAgent._edge_403_streak} lần) "
+                                            f"-> Mở Circuit Breaker 45s và chuyển nhanh sang Google HTTP TTS."
+                                        )
+                                        ws_circuit_open = True
+                                        break
+                                elif is_no_audio and attempt == 0:
+                                    try:
+                                        import shutil
+                                        edge_cli = shutil.which("edge-tts") or str(Path(sys.executable).parent / "edge-tts.exe")
+                                        cmd = [edge_cli, "--text", clean_text, "--voice", c_voice, f"--rate={tts_rate}", "--write-media", scene_audio_path]
+                                        res = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, timeout=20)
+                                        if res.returncode == 0 and Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024:
+                                            safe_voice = c_voice
+                                            success = True
+                                            logger.info(f"Scene {scene.scene_id}: ✅ Tạo audio thành công qua CLI fallback ({c_voice})")
+                                            break
+                                    except Exception:
+                                        pass
+
+                                backoff_s = 0.8 * (attempt + 1)
+                                logger.warning(f"Scene {scene.scene_id}: Lỗi TTS '{c_voice}' (lần {attempt+1}/2, nghỉ {backoff_s:.1f}s): {err_tts}")
+                                await asyncio.sleep(backoff_s)
+                        if success or ws_circuit_open:
+                            break
+
+                # Cứu hộ khẩn cấp qua Google Translate TTS HTTP MP3 nếu Edge-TTS bị Bing chặn 403 tạm thời
                 if not success:
                     try:
                         import requests as _req
                         from urllib.parse import quote as _quote
                         tl = "vi" if safe_voice.startswith("vi-") else ("pt" if safe_voice.startswith("pt-") else "en")
-                        gtts_url = f"https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl={tl}&q={_quote(clean_text[:200])}"
-                        r_tts = await asyncio.to_thread(
-                            _req.get,
-                            gtts_url,
-                            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
-                            timeout=15,
-                        )
-                        if r_tts.status_code == 200 and len(r_tts.content) > 1024:
-                            Path(scene_audio_path).write_bytes(r_tts.content)
+                        chunks = self._split_text_chunks(clean_text, max_chars=190)
+                        audio_bytes = bytearray()
+                        for chunk in chunks:
+                            gtts_url = f"https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl={tl}&q={_quote(chunk)}"
+                            r_tts = await asyncio.to_thread(
+                                _req.get,
+                                gtts_url,
+                                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+                                timeout=15,
+                            )
+                            if r_tts.status_code == 200 and len(r_tts.content) > 256:
+                                audio_bytes.extend(r_tts.content)
+                        if len(audio_bytes) > 1024:
+                            Path(scene_audio_path).write_bytes(bytes(audio_bytes))
                             success = True
-                            logger.info(f"Scene {scene.scene_id}: 🛡️ Đã cứu hộ audio thành công qua Google HTTP TTS ({tl}, {len(r_tts.content):,} bytes)")
+                            logger.info(f"Scene {scene.scene_id}: 🛡️ Đã cứu hộ audio thành công qua Google HTTP TTS ({tl}, {len(audio_bytes):,} bytes)")
                     except Exception as ex_gtts:
                         logger.debug(f"Scene {scene.scene_id}: Google HTTP TTS fallback error: {ex_gtts}")
 
@@ -388,8 +421,10 @@ class VoiceAgent:
                 # Đo duration thực bằng ffprobe (non-blocking) sau khi đã cắt khoảng lặng đuôi
                 duration_ms = await asyncio.to_thread(self._get_audio_duration_ms, scene_audio_path)
 
-                # Đọc word-level timings chính xác từ file metadata (kẹp biên an toàn theo duration_ms)
+                # Đọc word-level timings chính xác từ file metadata (hoặc nội suy thông minh nếu dùng fallback HTTP TTS)
                 word_timings = self._parse_words_jsonl(words_meta_path, max_duration_ms=duration_ms)
+                if not word_timings and duration_ms > 0:
+                    word_timings = self._synthesize_word_timings(scene.narration, duration_ms)
 
                 # Lưu metadata để xác minh checkpoint trong tương lai
                 try:
@@ -418,6 +453,62 @@ class VoiceAgent:
 
         enriched_scenes = list(await asyncio.gather(*[_process_single_scene(sc) for sc in scenes]))
         return enriched_scenes
+
+    @staticmethod
+    def _split_text_chunks(text: str, max_chars: int = 190) -> List[str]:
+        """Chia văn bản dài thành các đoạn <= max_chars theo ranh giới câu/từ cho HTTP TTS fallback."""
+        words = (text or "").split()
+        if not words:
+            return ["..."]
+        chunks: List[str] = []
+        current: List[str] = []
+        cur_len = 0
+        for w in words:
+            add_len = len(w) + (1 if current else 0)
+            if current and cur_len + add_len > max_chars:
+                chunks.append(" ".join(current))
+                current = [w]
+                cur_len = len(w)
+            else:
+                current.append(w)
+                cur_len += add_len
+        if current:
+            chunks.append(" ".join(current))
+        return chunks
+
+    @staticmethod
+    def _synthesize_word_timings(text: str, duration_ms: int) -> List[Dict[str, Any]]:
+        """
+        Nội suy mốc thời gian từng từ (Proportional Phonetic/Punctuation Weighting)
+        khi dùng Google HTTP TTS fallback hoặc khi thiếu WordBoundary từ Edge-TTS.
+        Đảm bảo phụ đề Karaoke từng từ luôn hoạt động mượt 100% (không bao giờ bị 0 words).
+        """
+        raw_words = [w.strip() for w in (text or "").split() if w.strip()]
+        if not raw_words or duration_ms <= 0:
+            return []
+        usable_ms = max(200, duration_ms - 40)
+        weights: List[float] = []
+        for w in raw_words:
+            clean_len = max(1, len(re.sub(r"[^\w]", "", w)))
+            pause_bonus = 2.2 if w.endswith((".", "!", "?", "…")) else (1.1 if w.endswith((",", ";", ":", "—", "-")) else 0.0)
+            weights.append(float(clean_len) + pause_bonus + 1.5)
+        total_weight = sum(weights) or 1.0
+        timings: List[Dict[str, Any]] = []
+        cursor_ms = 0
+        for idx, (w, weight) in enumerate(zip(raw_words, weights)):
+            if idx == len(raw_words) - 1:
+                end_ms = usable_ms
+            else:
+                end_ms = min(usable_ms, cursor_ms + max(60, int(round(usable_ms * (weight / total_weight)))))
+            dur = max(40, end_ms - cursor_ms)
+            timings.append({
+                "word": w,
+                "start_ms": cursor_ms,
+                "end_ms": cursor_ms + dur,
+                "duration_ms": dur,
+            })
+            cursor_ms = cursor_ms + dur
+        return timings
 
     @staticmethod
     def _parse_words_jsonl(words_file_path: str, max_duration_ms: Optional[int] = None) -> List[Dict[str, Any]]:
