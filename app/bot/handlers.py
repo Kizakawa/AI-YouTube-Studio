@@ -51,7 +51,23 @@ _INFLIGHT_ACTIONS: Dict[str, float] = {}      # key -> timestamp bắt đầu ch
 _ACTION_COOLDOWNS: Dict[str, float] = {}      # key -> timestamp hết hạn cooldown sau khi chạy xong
 
 
-def _try_acquire_action(key: str, max_inflight_sec: float = 120.0, debounce_sec: float = 4.0) -> bool:
+class _ActionPermit:
+    """Cho phép dùng kết quả _try_acquire_action vừa như bool (`if not acquired:`) vừa unpack 2 giá trị (`acquired, wait = ...`)."""
+    __slots__ = ("acquired", "wait_sec")
+
+    def __init__(self, acquired: bool, wait_sec: float = 0.0):
+        self.acquired = bool(acquired)
+        self.wait_sec = float(wait_sec)
+
+    def __bool__(self) -> bool:
+        return self.acquired
+
+    def __iter__(self):
+        yield self.acquired
+        yield self.wait_sec
+
+
+def _try_acquire_action(key: str, max_inflight_sec: float = 120.0, debounce_sec: float = 4.0) -> _ActionPermit:
     """
     Kiểm tra và khóa tác vụ để chống spam click khi mạng hoặc AI có độ trễ:
     - Nếu tác vụ cùng `key` đang chạy (chưa quá `max_inflight_sec`) -> từ chối ngay (return False).
@@ -68,13 +84,13 @@ def _try_acquire_action(key: str, max_inflight_sec: float = 120.0, debounce_sec:
             _ACTION_COOLDOWNS.pop(k, None)
 
         if key in _INFLIGHT_ACTIONS:
-            return False
+            return _ActionPermit(False, max(0.0, max_inflight_sec - (now - _INFLIGHT_ACTIONS[key])))
         if key in _ACTION_COOLDOWNS and now < _ACTION_COOLDOWNS[key]:
-            return False
+            return _ActionPermit(False, max(0.0, _ACTION_COOLDOWNS[key] - now))
 
         _INFLIGHT_ACTIONS[key] = now
         _ACTION_COOLDOWNS[key] = now + debounce_sec
-        return True
+        return _ActionPermit(True, 0.0)
 
 
 def _release_action(key: str, post_cooldown_sec: float = 5.0):
@@ -128,16 +144,24 @@ async def safe_reply(update: Update, text: str, reply_markup=None, parse_mode="M
     if len(text) > 4000:
         text = text[:3980] + "\n\n...(nội dung còn tiếp)"
 
-    # 1. Thử gửi với định dạng yêu cầu
-    try:
-        if update.message:
-            return await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
-        elif update.callback_query and getattr(update.callback_query, "message", None) and hasattr(update.callback_query.message, "reply_text"):
-            return await update.callback_query.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
-        elif update.effective_chat:
-            return await update.effective_chat.send_message(text, reply_markup=reply_markup, parse_mode=parse_mode)
-    except Exception as e:
-        logger.warning(f"Lỗi gửi tin nhắn parse_mode={parse_mode} ({e}), fallback sang Plain Text...")
+    # 1. Thử gửi với định dạng yêu cầu (có retry 1 lần nếu lỗi mạng tạm thời httpx.ReadError/ConnectError)
+    for attempt in range(2):
+        try:
+            if update.message:
+                return await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+            elif update.callback_query and getattr(update.callback_query, "message", None) and hasattr(update.callback_query.message, "reply_text"):
+                return await update.callback_query.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+            elif update.effective_chat:
+                return await update.effective_chat.send_message(text, reply_markup=reply_markup, parse_mode=parse_mode)
+            break
+        except Exception as e:
+            err_cls = type(e).__name__
+            is_net_err = any(k in err_cls or k in str(e) for k in ("ReadError", "ConnectError", "TimedOut", "NetworkError", "RemoteProtocolError"))
+            if attempt == 0 and is_net_err:
+                await asyncio.sleep(0.6)
+                continue
+            logger.warning(f"Lỗi gửi tin nhắn parse_mode={parse_mode} ({err_cls}: {e}), fallback sang Plain Text...")
+            break
 
     # 2. Fallback sang Plain Text không định dạng
     plain = re.sub(r'[*_`\[\]()<>]', '', text)
@@ -159,35 +183,42 @@ async def safe_reply(update: Update, text: str, reply_markup=None, parse_mode="M
 
 
 async def safe_edit_text(message, text: str, reply_markup=None, parse_mode="Markdown"):
-    """Edit tin nhắn an toàn với fallback toàn diện"""
+    """Edit tin nhắn an toàn với fallback toàn diện (retry giữ nguyên định dạng nếu đứt kết nối tạm thời)"""
     if not message or not text:
         return None
 
     if len(text) > 4000:
         text = text[:3980] + "\n\n...(nội dung còn tiếp)"
 
-    try:
-        return await message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
-    except Exception as e:
-        err_str = str(e)
-        if "Message is not modified" in err_str:
-            return message
-
-        logger.warning(f"Lỗi edit_text parse_mode={parse_mode} ({e}), fallback sang Plain Text...")
-        plain = re.sub(r'[*_`\[\]()<>]', '', text)
+    for attempt in range(2):
         try:
-            return await message.edit_text(plain, reply_markup=reply_markup)
-        except Exception as e2:
-            if "Message is not modified" in str(e2):
+            return await message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+        except Exception as e:
+            err_str = str(e)
+            if "Message is not modified" in err_str:
                 return message
-            logger.error(f"Fallback edit_text thất bại ({e2}), gửi tin nhắn mới thay thế...")
-            try:
-                if hasattr(message, "reply_text"):
-                    return await message.reply_text(plain, reply_markup=reply_markup)
-                elif hasattr(message, "chat") and hasattr(message.chat, "send_message"):
-                    return await message.chat.send_message(plain, reply_markup=reply_markup)
-            except Exception:
-                return None
+            err_cls = type(e).__name__
+            is_net_err = any(k in err_cls or k in err_str for k in ("ReadError", "ConnectError", "TimedOut", "NetworkError", "RemoteProtocolError"))
+            if attempt == 0 and is_net_err:
+                await asyncio.sleep(0.6)
+                continue
+            logger.warning(f"Lỗi edit_text parse_mode={parse_mode} ({err_cls}: {e}), fallback sang Plain Text...")
+            break
+
+    plain = re.sub(r'[*_`\[\]()<>]', '', text)
+    try:
+        return await message.edit_text(plain, reply_markup=reply_markup)
+    except Exception as e2:
+        if "Message is not modified" in str(e2):
+            return message
+        logger.error(f"Fallback edit_text thất bại ({e2}), gửi tin nhắn mới thay thế...")
+        try:
+            if hasattr(message, "reply_text"):
+                return await message.reply_text(plain, reply_markup=reply_markup)
+            elif hasattr(message, "chat") and hasattr(message.chat, "send_message"):
+                return await message.chat.send_message(plain, reply_markup=reply_markup)
+        except Exception:
+            return None
 
 
 async def safe_query_answer(query, text: str = None, show_alert: bool = False):

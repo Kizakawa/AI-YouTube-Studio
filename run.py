@@ -465,7 +465,7 @@ def main():
             return
 
         # Bỏ qua các lỗi mạng chập chờn / Timed out tạm thời của Telegram (tránh bắn tin nhắn lỗi cộc lốc vào nhóm)
-        if any(ign in err_msg for ign in ["Timed out", "timed out", "NetworkError", "ReadTimeout", "ConnectTimeout"]):
+        if any(ign in err_msg for ign in ["Timed out", "timed out", "NetworkError", "ReadTimeout", "ConnectTimeout", "ReadError", "RemoteProtocolError"]):
             logger.warning(f"⚠️ [TELEGRAM NETWORK] Kết nối tới Telegram bị gián đoạn/timeout tạm thời ({err_msg}). Đang tự động kết nối lại...")
             return
 

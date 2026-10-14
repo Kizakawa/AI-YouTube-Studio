@@ -1,4 +1,5 @@
 import urllib.request
+import urllib.error
 import re
 import json
 import logging
@@ -52,9 +53,18 @@ def fetch_channel_live_stats(channel_handle_or_url: str) -> Dict[str, Any]:
     }
 
     try:
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=12) as resp:
-            html = resp.read().decode("utf-8", errors="ignore")
+        html = ""
+        last_err = None
+        for attempt in range(2):
+            try:
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    html = resp.read().decode("utf-8", errors="ignore")
+                break
+            except (TimeoutError, urllib.error.URLError) as err:
+                last_err = err
+        if not html and last_err is not None:
+            raise last_err
 
         m = re.search(r"var ytInitialData = ({.*?});</script>", html)
         if not m:
@@ -153,7 +163,7 @@ def fetch_channel_live_stats(channel_handle_or_url: str) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error(f"Lỗi khi lấy stats kênh {channel_handle_or_url}: {e}", exc_info=True)
+        logger.warning(f"Tạm thời chưa lấy được stats kênh {channel_handle_or_url}: {e}")
         return {
             "success": False,
             "error": str(e)
