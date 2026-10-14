@@ -435,17 +435,8 @@ class ContentAgent:
                         best_idx = idx_w
 
             if best_idx is None:
-                # Fallback tách ở điểm giữa nếu không dính từ treo
-                mid = max(4, min(len(words) - 3, prefer_word_idx))
-                for offset in (0, 1, -1, 2, -2):
-                    cand = mid + offset
-                    if 3 <= cand <= len(words) - 3:
-                        pw = re.sub(r'[^\w]', '', words[cand - 1]).lower()
-                        if pw not in _dangling_end:
-                            best_idx = cand
-                            break
-
-            if best_idx is None:
+                # Tuyệt đối KHÔNG cắt mù ở giữa câu nếu không có dấu phẩy/liên từ tự nhiên,
+                # tránh hiện tượng câu thoại bị chặt đứt ngang ("Notice how every glowing remark." / "Always carries...")
                 return None
 
             left_part = " ".join(words[:best_idx]).strip().rstrip(",;:-—– ")
@@ -461,12 +452,6 @@ class ContentAgent:
             return left_part, right_part
 
         if scenes and isinstance(scenes, list):
-            camera_modifiers = [
-                ("extreme close up macro", "Extreme macro close-up shot, razor-sharp focus, "),
-                ("low angle dynamic", "Dramatic low-angle tracking shot, intense depth, "),
-                ("cinematic tracking motion", "Dynamic over-the-shoulder tracking perspective, "),
-                ("wide atmospheric reveal", "Sweeping wide-angle cinematic reveal, volumetric light, "),
-            ]
             paced_scenes: List[Dict[str, Any]] = []
             for idx_sc, sc in enumerate(scenes):
                 if not isinstance(sc, dict):
@@ -475,22 +460,19 @@ class ContentAgent:
                 w_list = narr_str.split()
                 w_count = len(w_list)
 
-                # Cảnh 1 (Hook): Nếu >= 8 từ (~2.5s+) -> Tách ngay thành 2 cảnh chớp nhoáng (~1.6s/cảnh)
-                # Cảnh thân: Nếu >= 11 từ (hoặc >= 9 từ khi tổng cảnh hiện tại < 9) và tổng cảnh chưa vượt 12 -> Tách đôi!
+                # Chỉ tách câu khi câu thực sự dài VÀ có dấu ngắt câu/liên từ tự nhiên (được kiểm tra bởi _split_long_narration)
                 should_split = (
-                    (idx_sc == 0 and w_count >= 8)
-                    or (idx_sc > 0 and w_count >= 11 and len(paced_scenes) + (len(scenes) - idx_sc) < 12)
-                    or (idx_sc > 0 and w_count >= 9 and len(paced_scenes) + (len(scenes) - idx_sc) < 9)
+                    (idx_sc == 0 and w_count >= 10)
+                    or (idx_sc > 0 and w_count >= 13 and len(paced_scenes) + (len(scenes) - idx_sc) < 9)
                 )
-                target_pref = 5 if idx_sc == 0 else max(5, w_count // 2)
+                target_pref = 5 if idx_sc == 0 else max(6, w_count // 2)
                 split_res = _split_long_narration(narr_str, target_pref) if should_split else None
 
                 if split_res:
                     left_narr, right_narr = split_res
-                    mod_kw, mod_vp = camera_modifiers[len(paced_scenes) % len(camera_modifiers)]
                     sc_first = dict(sc)
                     sc_first["narration"] = left_narr
-                    sc_first["estimated_seconds"] = round(max(1.6, len(left_narr.split()) / 3.2), 1)
+                    sc_first["estimated_seconds"] = round(max(1.8, len(left_narr.split()) / 2.8), 1)
                     sc_first["highlight_words"] = _auto_extract_scene_highlights(left_narr)
 
                     sc_second = dict(sc)
@@ -507,16 +489,16 @@ class ContentAgent:
                         if len(re.sub(r'[^\w]', '', w)) >= 5
                         and re.sub(r'[^\w]', '', w).lower() not in banned_abstract
                     ]
-                    extra_focus = " ".join(right_nouns[:2]) if right_nouns else mod_kw.split()[0]
-                    sc_second["visual_keyword"] = f"{base_vk} {extra_focus}".strip()[:65]
-                    sc_second["stock_query"] = f"{base_sq.split()[0]} {extra_focus}".strip()[:40] if base_sq else extra_focus
-                    sc_second["visual_prompt"] = f"{mod_vp}{base_vp}"
-                    sc_second["estimated_seconds"] = round(max(1.6, len(right_narr.split()) / 3.2), 1)
+                    extra_focus = " ".join(right_nouns[:2]) if right_nouns else ""
+                    sc_second["visual_keyword"] = f"{base_vk} {extra_focus}".strip()[:65] if extra_focus else base_vk
+                    sc_second["stock_query"] = base_sq
+                    sc_second["visual_prompt"] = base_vp
+                    sc_second["estimated_seconds"] = round(max(1.8, len(right_narr.split()) / 2.8), 1)
 
                     paced_scenes.append(sc_first)
                     paced_scenes.append(sc_second)
                 else:
-                    sc["estimated_seconds"] = round(max(1.6, min(3.2, w_count / 3.2)), 1)
+                    sc["estimated_seconds"] = round(max(1.8, min(3.8, w_count / 2.8)), 1)
                     paced_scenes.append(sc)
 
             # Đánh lại số thứ tự scene_id chuẩn xác 1..N và làm giàu highlight_words / camera_motion / sfx_cue

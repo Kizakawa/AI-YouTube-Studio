@@ -92,30 +92,41 @@ class WebImageFetcher:
 
     @staticmethod
     def _raw_bing_images(query: str, limit: int = 35) -> List[Dict]:
-        """Bing Images qua endpoint async (HTML) — ép chuẩn quốc tế en-US, ưu tiên ảnh lớn (imagesize-large), kèm CDN fallback 1080p."""
+        """Bing Images qua endpoint async (HTML) — dùng primp (Chrome TLS fingerprint) để tránh bị Bing chặn TLS trả kết quả rác nội địa."""
         import html as _html
         import re as _re
         from urllib.parse import urlparse
-        safe_mode = "off" if bypass_copyright_enabled() else "moderate"
-        res = requests.get(
-            "https://www.bing.com/images/async",
-            params={
-                "q": query,
-                "first": 0,
-                "count": min(limit, 35),
-                "mmasync": 1,
-                "adlt": safe_mode,
-            },
-            headers={
-                "User-Agent": _UA,
-                "Accept-Language": "en-US,en;q=0.9",
-            },
-            timeout=9,
-        )
-        if res.status_code != 200:
-            raise RuntimeError(f"Bing HTTP {res.status_code}")
+        params = {
+            "q": query,
+            "first": "0",
+            "count": str(min(limit, 35)),
+            "mmasync": "1",
+        }
+        text = ""
+        try:
+            import primp
+            client = primp.Client(timeout=9)
+            r_p = client.get("https://www.bing.com/images/async", params=params)
+            if r_p.status_code == 200 and "iusc" in r_p.text:
+                text = r_p.text
+        except Exception:
+            pass
+        if not text:
+            safe_mode = "off" if bypass_copyright_enabled() else "moderate"
+            res = requests.get(
+                "https://www.bing.com/images/async",
+                params={**params, "adlt": safe_mode},
+                headers={
+                    "User-Agent": _UA,
+                    "Accept-Language": "en-US,en;q=0.9",
+                },
+                timeout=9,
+            )
+            if res.status_code != 200:
+                raise RuntimeError(f"Bing HTTP {res.status_code}")
+            text = res.text
         out = []
-        for chunk in res.text.split("iusc")[1:]:
+        for chunk in text.split("iusc")[1:]:
             m = _re.search(r'\bm="(\{[^"]+\})"', chunk)
             if not m:
                 continue
@@ -184,7 +195,6 @@ class WebImageFetcher:
             raise RuntimeError(f"ArtStation HTTP {res.status_code}")
         data = res.json().get("data") or []
         if len(data) < 3 and len(short_q.split()) > 1:
-            # Thử lại với 1-2 từ khóa cốt lõi nhất (vd: "kraken monster" hoặc "kraken")
             core_q = cls._concise_art_query(query, max_words=2)
             if core_q and core_q != short_q:
                 res2 = requests.get(
@@ -199,10 +209,16 @@ class WebImageFetcher:
         out: List[Dict] = []
         seen = set()
         for item in data:
-            cover = item.get("smaller_square_cover_url") or item.get("cover_url") or ""
+            # Ưu tiên cover_url (không vuông) làm fallback_url để tránh viền mờ trên dưới của smaller_square (400x400)
+            cover = item.get("cover_url") or item.get("smaller_square_cover_url") or ""
             if not cover or not cover.startswith("http"):
                 continue
-            # Chuyển URL thumbnail vuông của ArtStation sang bản full-res '/large/' (1920p-4K)
+            medium_url = _re.sub(
+                r"/(smaller_square|small|micro_square|square)/",
+                "/medium/",
+                cover,
+                count=1,
+            )
             full_url = _re.sub(
                 r"/(smaller_square|medium|small|micro_square|square|\d+)/",
                 "/large/",
@@ -216,8 +232,8 @@ class WebImageFetcher:
             permalink = item.get("permalink") or item.get("url") or "https://www.artstation.com"
             out.append({
                 "image": full_url,
-                "thumbnail": cover,
-                "fallback_url": cover,
+                "thumbnail": medium_url,
+                "fallback_url": medium_url,
                 "title": f"{title} - ArtStation 8K Concept Art ({short_q})",
                 "width": 1920,
                 "height": 1080,
@@ -508,7 +524,7 @@ class WebImageFetcher:
             elif eng == "google":
                 raw_results = self._raw_google_images(query, limit=max(per_page * 4, 30))
 
-            if raw_results and eng not in ("artstation", "wallhaven") and not self._looks_relevant(raw_results, query):
+            if raw_results and not self._looks_relevant(raw_results, query):
                 logger.info(f"[WebImage] {eng} trả kết quả ít liên quan cho '{query}' → bỏ qua")
                 return []
 
@@ -570,10 +586,10 @@ class WebImageFetcher:
         preferred_engines: Optional[List[str]] = None,
     ) -> List[Dict]:
         """
-        Tìm kiếm ảnh đa luồng song song chuẩn Google Search (Bing HD + ArtStation 4K + DDGS + Wallhaven 4K + Serper/Google).
+        Tìm kiếm ảnh đa luồng song song chuẩn Google Search (Bing HD + DDGS + Wallhaven 4K + Serper/Google).
         Ưu tiên thứ tự động cơ tìm kiếm do AI Agent (VisualCurationAgent) chỉ định qua preferred_engines.
         """
-        default_engines = "bing,artstation,ddgs,wallhaven,serper,google"
+        default_engines = "bing,ddgs,wallhaven,serper,google"
         env_engines = [e.strip() for e in os.getenv("OPEN_WEB_ENGINES", default_engines).split(",") if e.strip()]
         if preferred_engines:
             valid_pref = [e.strip().lower() for e in preferred_engines if isinstance(e, str) and e.strip()]
@@ -585,8 +601,8 @@ class WebImageFetcher:
             if self._engine_ok(e) and not (e == "serper" and not os.getenv("SERPER_API_KEY", "").strip())
         ]
         if not active_engines:
-            # Nếu toàn bộ bị tạm ngắt, mở lại bing + artstation + ddgs ngay lập tức
-            active_engines = ["bing", "artstation", "ddgs", "wallhaven"]
+            # Nếu toàn bộ bị tạm ngắt, mở lại bing + ddgs + wallhaven ngay lập tức
+            active_engines = ["bing", "ddgs", "wallhaven"]
             for e in active_engines:
                 self._engine_block_until.pop(e, None)
 

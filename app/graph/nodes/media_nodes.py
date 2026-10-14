@@ -963,13 +963,14 @@ def node_content_quality_check(state: VideoWorkflowState) -> Dict[str, Any]:
 
     skip_redundant = os.getenv("SKIP_REDUNDANT_VISION_CRITIC", "true").strip().lower() not in ("0", "false", "no", "off")
     valid_scenes = [m for m in scenes_media if isinstance(m, dict)]
-    already_curated_count = sum(
-        1 for m in valid_scenes
-        if m.get("vision_curated") or m.get("production_method") in ("GEMINI_SEARCH_3D", "CREATURE_ART")
-    )
-    if skip_redundant and valid_scenes and already_curated_count >= max(1, int(len(valid_scenes) * 0.6)):
+    uncurated_scenes = [
+        m for m in valid_scenes
+        if not (m.get("vision_curated") or m.get("production_method") in ("GEMINI_SEARCH_3D", "CREATURE_ART"))
+    ]
+    already_curated_count = len(valid_scenes) - len(uncurated_scenes)
+    if skip_redundant and valid_scenes and not uncurated_scenes:
         logger.info(
-            f"⚡ [ContentQualityCritic] Bỏ qua thẩm định Vision lần 2 vì {already_curated_count}/{len(valid_scenes)} cảnh "
+            f"⚡ [ContentQualityCritic] Bỏ qua thẩm định Vision lần 2 vì 100% ({already_curated_count}/{len(valid_scenes)}) cảnh "
             f"đã được Gemini Vision tuyển chọn trực tiếp ở bước Search!"
         )
         return {
@@ -982,8 +983,15 @@ def node_content_quality_check(state: VideoWorkflowState) -> Dict[str, Any]:
             },
             "current_step": "CONTENT_QUALITY_CHECKED",
             "progress_percent": 75,
-            "progress_message": f"Thẩm định nội dung AI: 9.0/10 (Đã duyệt trực tiếp qua Gemini Vision Search)",
+            "progress_message": f"Thẩm định nội dung AI: 9.0/10 (Đã duyệt trực tiếp 100% cảnh qua Gemini Vision Search)",
         }
+
+    scenes_to_check = uncurated_scenes if (skip_redundant and already_curated_count > 0 and uncurated_scenes) else scenes_media
+    if skip_redundant and already_curated_count > 0 and uncurated_scenes:
+        logger.info(
+            f"🔎 [ContentQualityCritic] Đã duyệt {already_curated_count}/{len(valid_scenes)} cảnh ở bước Search "
+            f"→ Kiểm tra tập trung {len(uncurated_scenes)} cảnh fallback chưa qua Vision!"
+        )
 
     if job_id:
         from app.graph.runner import report_job_progress_sync
@@ -991,7 +999,7 @@ def node_content_quality_check(state: VideoWorkflowState) -> Dict[str, Any]:
 
     critic = ContentQualityCritic()
     report = critic.evaluate_content_quality(
-        scenes_media=scenes_media,
+        scenes_media=scenes_to_check,
         primary_entity=primary_entity,
         topic=state.get("topic", ""),
         max_ai_checks=10,

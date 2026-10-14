@@ -348,12 +348,14 @@ class StockFetcher:
 
         candidates: List[Dict] = []
 
+        congruence_topic = f"{topic} {query}".strip()
+
         def _add(items: List[Dict]):
             for it in items:
                 u = it.get("url")
                 if not u or is_media_already_used(u, used) or any(c.get("url") == u for c in candidates):
                     continue
-                if is_incongruent_stock_image(it.get("alt") or it.get("title") or "", topic=topic or query, narration=narration):
+                if is_incongruent_stock_image(it.get("alt") or it.get("title") or "", topic=congruence_topic, narration=narration):
                     continue
                 candidates.append(it)
 
@@ -395,7 +397,7 @@ class StockFetcher:
         if len(candidates) < 4 or not bypass_copyright:
             stock_queries = ([subject] if subject else queries[:1]) if creature_mode else queries[:2]
             for q in stock_queries:
-                _add(self.search_photos(q, per_page=4, orientation="portrait", topic=topic, narration=narration, used_urls=used))
+                _add(self.search_photos(q, per_page=4, orientation="portrait", topic=f"{congruence_topic} {q}".strip(), narration=narration, used_urls=used))
                 _add(self.search_pixabay_photos(q, per_page=4))
                 if len(candidates) >= 12:
                     break
@@ -644,7 +646,7 @@ class StockFetcher:
                 from app.services.media.query_broadener import conflicts_with_topic_biome
                 if (
                     v_url and not is_media_already_used(v_url, used)
-                    and not is_incongruent_stock_image(v_desc, topic=query, narration=narration)
+                    and not is_incongruent_stock_image(v_desc, topic=f"{topic} {q_try}".strip(), narration=narration)
                     and not conflicts_with_topic_biome(v_desc, topic)
                 ):
                     if v not in collected_candidates:
@@ -665,7 +667,7 @@ class StockFetcher:
                     from app.services.media.query_broadener import conflicts_with_topic_biome
                     if (
                         pv_url and not is_media_already_used(pv_url, used)
-                        and not is_incongruent_stock_image(pv_desc, topic=query, narration=narration)
+                        and not is_incongruent_stock_image(pv_desc, topic=f"{topic} {q_try}".strip(), narration=narration)
                         and not conflicts_with_topic_biome(pv_desc, topic)
                     ):
                         if pv not in collected_candidates:

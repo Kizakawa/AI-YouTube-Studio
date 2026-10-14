@@ -258,6 +258,8 @@ class PollinationsEngine(BaseEngine):
                 if r.status_code == 200 and len(r.content) >= 5000:
                     return r.content
                 last_err = f"flux(try {attempt_idx+1}): HTTP {r.status_code}"
+                if r.status_code == 402 and not self.key:
+                    break
                 if r.status_code in (429, 502, 503, 504):
                     time.sleep(1.2)
             except Exception as e:
