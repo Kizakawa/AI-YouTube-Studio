@@ -174,15 +174,20 @@ class ImageAgent:
             )
             from app.agents.media_agent import MediaAgent
 
-            # Loại bỏ các cụm boilerplate của AI prompt (8k vertical film still, photorealistic, no watermark...)
+            # Loại bỏ các cụm boilerplate và thuật ngữ góc máy của AI prompt (Macro shot, Wide-angle, Breathtaking cinematography...)
             stripped_q = re.sub(
-                r"\b(8k|4k|vertical|film still|dramatic|cinematic|frame|photorealistic|hyper-realistic|composition|no watermark|no text|no border|award-winning|35mm|lighting|details)\b",
+                r"\b(8k|4k|vertical|film still|dramatic|cinematic|cinematography|breathtaking|macro|wide-angle|wide angle|low-angle|low angle|high-angle|high angle|close-up|close up|closeup|extreme|shot|shots|angle|frame|photorealistic|hyper-realistic|hyperrealistic|composition|no watermark|no text|no border|award-winning|35mm|lighting|details|volumetric|bokeh|portrait|view|perspective|lens|moody|atmospheric|tracking|panning|establishing|shallow|depth of field)\b",
                 " ",
                 query or "",
                 flags=re.IGNORECASE,
             )
-            # Chỉ giữ từ tiếng Anh ASCII sạch để tránh ghép nhầm từ tiếng Việt từ topic
-            ascii_words = [w for w in re.findall(r"[A-Za-z]{3,}", stripped_q) if w.lower() not in ("the", "and", "with", "from", "into", "shot", "view")]
+            # Chỉ giữ từ tiếng Anh ASCII sạch có nghĩa để tránh ghép nhầm từ rác góc máy hoặc tiếng Việt
+            _stop_fb = {
+                "the", "and", "with", "from", "into", "onto", "that", "this", "their", "your",
+                "for", "are", "was", "were", "has", "have", "had", "not", "but", "over", "under",
+                "through", "between", "around", "about", "while", "where", "when", "who",
+            }
+            ascii_words = [w for w in re.findall(r"[A-Za-z]{3,}", stripped_q) if w.lower() not in _stop_fb]
             clean_q = " ".join(ascii_words[:6]) or clean_scene_search_query(stripped_q, max_words=5)
 
             core_monster = extract_core_creature(query, topic)

@@ -133,7 +133,7 @@ class AIVideoAgent:
         Săn ảnh BẮT MẮT, CÂU VIEW chuẩn Gemini Search (Bing HD + ArtStation 4K + Wallhaven 4K + DDGS + Gemini Vision Curation).
         Không yêu cầu ảnh chụp thật 100% — ưu tiên CGI, Movie Still, Concept Art 8K, Nhiếp ảnh kịch tính.
         """
-        if os.getenv("SEARCH_FIRST_VISUAL_MODE", "true").strip().lower() in ("0", "false", "no", "off"):
+        if os.getenv("SEARCH_FIRST_VISUAL_MODE", "false").strip().lower() not in ("1", "true", "yes", "on"):
             return None
         try:
             import re as _re
@@ -155,9 +155,16 @@ class AIVideoAgent:
                 if core_m:
                     search_q = f"giant {core_m} {subj_extracted}".strip()
                 elif subj_extracted:
-                    search_q = f"{subj_extracted} cinematic 8k"
+                    search_q = f"{subj_extracted} cinematic"
                 else:
-                    words = [w for w in _re.findall(r"[A-Za-z]{3,}", search_q) if w.lower() not in ("vertical", "film", "still", "cinematic", "photorealistic", "shot", "frame")]
+                    words = [
+                        w for w in _re.findall(r"[A-Za-z]{3,}", search_q)
+                        if w.lower() not in (
+                            "vertical", "film", "still", "cinematic", "cinematography", "breathtaking",
+                            "photorealistic", "hyperrealistic", "shot", "shots", "frame", "macro",
+                            "wide", "angle", "low", "high", "close", "extreme", "dramatic", "lighting",
+                        )
+                    ]
                     search_q = " ".join(words[:6])
 
             if is_creature_subject(search_q, narration=narration, topic=prompt) and not va.get("creature_mode"):

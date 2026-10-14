@@ -243,21 +243,26 @@ class PollinationsEngine(BaseEngine):
         return os.getenv("POLLINATIONS_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
 
     def generate(self, prompt: str, seed: int) -> bytes:
-        enc = urllib.parse.quote(prompt[:900])
         headers = {"User-Agent": "Mozilla/5.0"}
         if self.key:
             headers["Authorization"] = f"Bearer {self.key}"
-        # Ưu tiên thử model flux (15s), nếu nghẽn mạng tự động chuyển tức thì sang turbo (~7s, 100% miễn phí không cần key)
+        # Pollinations: model=flux hoạt động miễn phí ổn định (turbo trả HTTP 402).
+        # Thử lần 1 với prompt đầy đủ (<=500 ký tự, timeout 25s), lần 2 với prompt rút gọn (<=240 ký tự, seed mới) nếu nghẽn mạng.
         last_err = ""
-        for model_name, t_out in (("flux", 15), ("turbo", 22)):
-            url = f"https://image.pollinations.ai/prompt/{enc}?width={GEN_W}&height={GEN_H}&model={model_name}&nologo=true&seed={seed}"
+        for attempt_idx, (max_len, t_out) in enumerate(((500, 25), (240, 28))):
+            enc = urllib.parse.quote(prompt[:max_len].strip())
+            cur_seed = seed + attempt_idx * 17
+            url = f"https://image.pollinations.ai/prompt/{enc}?width={GEN_W}&height={GEN_H}&model=flux&nologo=true&seed={cur_seed}"
             try:
                 r = requests.get(url, headers=headers, timeout=t_out)
                 if r.status_code == 200 and len(r.content) >= 5000:
                     return r.content
-                last_err = f"{model_name}: HTTP {r.status_code}"
+                last_err = f"flux(try {attempt_idx+1}): HTTP {r.status_code}"
+                if r.status_code in (429, 502, 503, 504):
+                    time.sleep(1.2)
             except Exception as e:
-                last_err = f"{model_name}: {type(e).__name__}"
+                last_err = f"flux(try {attempt_idx+1}): {type(e).__name__}"
+                time.sleep(0.8)
                 continue
         raise EngineError(f"Pollinations thất bại ({last_err})")
 

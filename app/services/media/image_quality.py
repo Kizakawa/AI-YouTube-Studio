@@ -68,6 +68,12 @@ _STOPWORDS = {
     "above", "below", "beneath", "high", "deep", "far", "away", "inside", "outside", "behind",
     "beyond", "now", "today", "yet", "once", "ago", "soon", "later", "first", "last", "next",
     "suddenly", "finally", "instead", "imagine", "meet",
+    # Thuật ngữ góc máy / nhiếp ảnh ở đầu AI prompt — tuyệt đối không được trích thành chủ thể ("Macro shot", "Wide-angle cinematic shot")
+    "macro", "shot", "shots", "wide", "angle", "wide-angle", "low-angle", "high-angle", "low",
+    "close", "close-up", "closeup", "extreme", "cinematic", "cinematography", "breathtaking",
+    "dramatic", "photorealistic", "hyperrealistic", "hyper-realistic", "vertical", "portrait",
+    "frame", "still", "view", "perspective", "lens", "lighting", "bokeh", "volumetric",
+    "tracking", "panning", "aerial", "establishing", "moody", "atmospheric", "film", "scene",
 }
 
 _NUMBER_WORDS = {

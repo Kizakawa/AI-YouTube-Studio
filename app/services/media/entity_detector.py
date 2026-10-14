@@ -296,14 +296,15 @@ FORBIDDEN_ENTITY_NOISE = {
 }
 
 CAMERA_AND_STYLE_FLUFF = {
-    "cinematic", "lighting", "dramatic", "hyperrealistic", "photorealistic", "8k", "4k",
-    "ultra-sharp", "ultra", "sharp", "shot", "on", "35mm", "film", "imax", "anamorphic",
-    "lens", "macro", "extreme", "close-up", "close", "up", "wide-angle", "wide", "angle",
+    "cinematic", "cinematography", "breathtaking", "lighting", "dramatic", "hyperrealistic", "photorealistic", "8k", "4k",
+    "ultra-sharp", "ultra", "sharp", "shot", "shots", "on", "35mm", "film", "imax", "anamorphic",
+    "lens", "macro", "extreme", "close-up", "closeup", "close", "up", "wide-angle", "wide", "angle",
+    "low-angle", "high-angle", "low", "high", "view", "perspective", "shallow",
     "volumetric", "fog", "atmospheric", "masterpiece", "award-winning", "award", "winning",
     "portrait", "still", "render", "unreal", "engine", "octane", "vray", "style", "depth",
     "of", "field", "bokeh", "studio", "photography", "photo", "image", "picture",
     "vintage", "dark", "moody", "high-end", "prestigious", "editorial", "forbes", "aesthetic",
-    "detailed", "hyper-detailed", "unrealengine", "octanerender",
+    "detailed", "hyper-detailed", "unrealengine", "octanerender", "tracking", "panning", "establishing",
     # Từ ngữ trừu tượng/tâm lý gây nhiễu search engine hình ảnh thực
     "anxiety", "confident", "confidence", "psychology", "hacks", "secrets", "mindset",
     "subconscious", "spotlight", "effect", "theory", "concept", "tricks", "habits"
@@ -524,10 +525,16 @@ _INCONGRUENT_TAG_GROUPS = {
         "drinking beer", "cheering concert", "confetti party", "cocktail bar", "pub party",
         "rave party", "club party", "party celebration",
     ],
-    # Làm đẹp / Thời trang / Selfie
+    # Làm đẹp / Thời trang / Selfie / Đồ lót / Ảnh kỳ quặc (NSFW/Bizarre stock)
     "glamour_selfie": [
         "fashion model", "runway", "makeup tutorial", "selfie", "posing for camera",
-        "influencer posing",
+        "influencer posing", "lingerie", "bikini", "underwear", "bra", "panties",
+        "swimsuit", "shopping cart", "boudoir",
+    ],
+    # Hóa trang / Mặt nạ quái vật giả tạo (tránh lọt vào video tâm lý học / đời sống)
+    "costume_monster": [
+        "eerie creature", "mask and claws", "halloween mask", "horror mask", "cosplay",
+        "clown mask", "zombie makeup", "monster costume",
     ],
     # Đồ họa / Sơ đồ / Bản đồ / Tiền tệ (Wikimedia)
     "wikimedia_diagrams": [

@@ -271,7 +271,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # TỐI ƯU TỐC ĐỘ: Giữ nguyên file ảnh tĩnh ở bước Fetch để VideoAgent._prepare_scene_clips
         # render 3D Ken Burns ĐÚNG 1 LẦN DUY NHẤT (kèm bù thời lượng xfade), giảm 50% thời gian FFmpeg!
         # ══════════════════════════════════════════════════════════════════════
-        search_first = os.getenv("SEARCH_FIRST_VISUAL_MODE", "true").strip().lower() not in ("0", "false", "no", "off")
+        search_first = os.getenv("SEARCH_FIRST_VISUAL_MODE", "false").strip().lower() in ("1", "true", "yes", "on")
         creature_first = os.getenv("CREATURE_ART_FIRST", "true").strip().lower() not in ("0", "false", "no", "off")
         tier0_searched = False
         if (
