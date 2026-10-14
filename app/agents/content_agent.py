@@ -86,7 +86,7 @@ class ContentAgent:
     def _call_api(self, prompt: str, json_mode: bool = False, timeout: int = 20, max_total_seconds: int = 60) -> str:
         """
         Gọi trực tiếp Gemini REST API theo chiến lược ưu tiên Model mạnh nhất trước:
-        1. Thử các model Flagship (gemini-3.6-flash, gemini-3.5-flash, gemini-3-flash-preview) qua toàn bộ pool API Keys.
+        1. Thử các model Flagship (gemini-3.8-flash, gemini-3.5-flash, gemini-3.6-flash, gemini-3-flash-preview) qua toàn bộ pool API Keys.
         2. Khi một cặp (Key, Model) gặp 429, chỉ đánh dấu cooldown cho cặp đó để thử Key khác hoặc tự động hạ bậc xuống dòng Flash-Lite.
         """
         import time

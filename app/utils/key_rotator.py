@@ -10,13 +10,14 @@ logger = logging.getLogger(__name__)
 # Ưu tiên các model Flagship Reasoning & Multimodal mạnh nhất có Free Tier ổn định trước,
 # khi hết hạn mức (429) hoặc quá tải (503) mới hạ dần xuống dòng Flash-Lite thông lượng cao.
 GEMINI_PRIORITY_MODELS: List[str] = [
-    "gemini-3.6-flash",          # Tier 1 (#1): Flagship 3.6 Flash (Reasoning + Vision mạnh nhất Free Tier)
+    "gemini-3.8-flash",          # Tier 1 (#1): Flagship 3.8 Flash mới nhất (Reasoning + Vision thế hệ mới)
     "gemini-3.5-flash",          # Tier 1 (#2): Flagship 3.5 Flash (Reasoning + Vision cực mạnh Free Tier)
-    "gemini-3-flash-preview",    # Tier 1 (#3): Gemini 3.0 Flash Reasoning
-    "gemini-flash-latest",       # Tier 1 (#4): Alias Flash chính thức
-    "gemini-3.5-flash-lite",     # Tier 2 (#5): Bản 3.5 Flash-Lite (Fallback khi toàn bộ Tier 1 hết quota)
-    "gemini-3.1-flash-lite",     # Tier 2 (#6): Bản 3.1 Flash-Lite
-    "gemini-flash-lite-latest",  # Tier 3 (#7): Fallback cuối siêu tốc, hạn mức dồi dào nhất
+    "gemini-3.6-flash",          # Tier 1 (#3): Flagship 3.6 Flash (Fallback tương thích ngược)
+    "gemini-3-flash-preview",    # Tier 1 (#4): Gemini 3.0 Flash Reasoning
+    "gemini-flash-latest",       # Tier 1 (#5): Alias Flash chính thức
+    "gemini-3.5-flash-lite",     # Tier 2 (#6): Bản 3.5 Flash-Lite (Fallback khi toàn bộ Tier 1 hết quota)
+    "gemini-3.1-flash-lite",     # Tier 2 (#7): Bản 3.1 Flash-Lite
+    "gemini-flash-lite-latest",  # Tier 3 (#8): Fallback cuối siêu tốc, hạn mức dồi dào nhất
 ]
 
 

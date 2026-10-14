@@ -2,6 +2,7 @@
 python-telegram-bot>=21.0
 
 # AI & LLM (Gemini API & LangGraph Multi-Agent)
+google-genai>=1.0.0
 google-generativeai>=0.8.0
 langgraph>=0.2.0
 langchain-core>=0.3.0

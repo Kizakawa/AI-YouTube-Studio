@@ -186,7 +186,7 @@ def _parse_cloudflare(r: requests.Response) -> bytes:
 class GeminiImageEngine(BaseEngine):
     name = "gemini_image"
     premium = True
-    MODELS = ["gemini-3-pro-image", "gemini-3.1-flash-image", "gemini-3.1-flash-lite-image", "gemini-2.5-flash-image"]
+    MODELS = ["gemini-3.1-flash-image", "gemini-3.1-flash-lite-image", "gemini-2.5-flash-image", "gemini-3-pro-image"]
 
     def __init__(self):
         try:
