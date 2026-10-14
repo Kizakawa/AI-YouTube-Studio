@@ -580,9 +580,9 @@ def image_to_video(
     z_step  = (z_end - z_start) / max(d, 1)
 
     # Level 4 Pattern Interrupt: Cú Optical Punch-in Ramp mượt mà (tăng 5% trong 5 frames tại 46% thời lượng)
-    # Ngắt nhịp nhận thức mỗi 3-4 giây phong cách Vox/Magnates Media mà không gây giật khung hình
+    # Ngắt nhịp nhận thức mỗi 1.5-2 giây phong cách Vox/Magnates/Crayo mà không gây giật khung hình
     mid_snap_frame = int(d * 0.46)
-    snap_expr = f"+0.05*min(max((on-{mid_snap_frame})/5\\,0)\\,1)" if (duration_seconds >= 3.2 and not is_hook_scene) else ""
+    snap_expr = f"+0.05*min(max((on-{mid_snap_frame})/5\\,0)\\,1)" if (duration_seconds >= 2.5 and not is_hook_scene) else ""
 
     if not zoom_effect:
         zoompan = (
@@ -858,9 +858,9 @@ def trim_video(
 
     grading_chain = ("," + ",".join(grading_parts)) if grading_parts else ""
 
-    # Level 4 Pattern Interrupt Vox/Magnates Style: Nếu clip dài >= 3.4s, tự động ngắt nhịp bằng cú Punch-in Snap (thu phóng 7% ở mốc giữa)
-    if duration_seconds >= 3.4:
-        snap_t = duration_seconds * 0.46
+    # Level 4 Pattern Interrupt Vox/Magnates/Crayo Style: Nếu clip dài >= 2.6s, tự động ngắt nhịp bằng cú Punch-in Snap (thu phóng 7% ở mốc giữa ~1.5s)
+    if duration_seconds >= 2.6:
+        snap_t = duration_seconds * 0.48
         crop_snap = (
             f",crop=w='if(gte(t\\,{snap_t:.2f})\\,{width}*0.93\\,{width})':"
             f"h='if(gte(t\\,{snap_t:.2f})\\,{height}*0.93\\,{height})':"
@@ -1147,41 +1147,45 @@ def mux_audio_video(
 
     Fallback: Nếu BGM ngắn hơn voice, tự động loop lại (aloop).
     """
+    # Chuỗi lọc Studio Vocal Presence EQ (lọc ù trầm < 85Hz + tăng độ sáng dải cao +2.2dB giúp giọng đọc AI sắc nét trên loa điện thoại)
+    vocal_eq = "highpass=f=85,treble=g=2.2"
+
     if bgm_path and Path(bgm_path).exists():
         if use_ducking:
-            # ── Real Audio Ducking via sidechaincompress ──
-            # [1:a] = voice narration (sidechain trigger)
+            # ── Real Audio Ducking via sidechaincompress + Vocal Presence EQ ──
+            # [1:a] = voice narration (được lọc EQ làm rõ nét + dùng làm sidechain trigger)
             # [2:a] = BGM (bị duck khi voice nói)
-            # threshold=0.02: bắt đầu duck khi voice > -34dB
-            # ratio=4: giảm BGM còn ~25%
-            # attack=5ms, release=200ms: duck nhanh, recover chậm (tự nhiên)
             if normalize_loudness:
                 filter_complex = (
+                    f"[1:a]{vocal_eq},asplit=2[v_sc][v_mix];"
                     f"[2:a]aloop=loop=-1:size=2000000000,volume={bgm_volume}[bgm_looped];"
-                    f"[bgm_looped][1:a]sidechaincompress="
+                    f"[bgm_looped][v_sc]sidechaincompress="
                     f"threshold=0.02:ratio=4:attack=5:release=200:makeup=1[bgm_ducked];"
-                    f"[1:a][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=2:weights='1 1'[amix_out];"
+                    f"[v_mix][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=2:weights='1 1'[amix_out];"
                     f"[amix_out]loudnorm=I=-14:TP=-1.5:LRA=11[aout]"
                 )
             else:
                 filter_complex = (
+                    f"[1:a]{vocal_eq},asplit=2[v_sc][v_mix];"
                     f"[2:a]aloop=loop=-1:size=2000000000,volume={bgm_volume}[bgm_looped];"
-                    f"[bgm_looped][1:a]sidechaincompress="
+                    f"[bgm_looped][v_sc]sidechaincompress="
                     f"threshold=0.02:ratio=4:attack=5:release=200:makeup=1[bgm_ducked];"
-                    f"[1:a][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=2:weights='1 1'[aout]"
+                    f"[v_mix][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=2:weights='1 1'[aout]"
                 )
         else:
             # Simple mix: BGM ở volume cố định, không ducking
             if normalize_loudness:
                 filter_complex = (
+                    f"[1:a]{vocal_eq}[v_eq];"
                     f"[2:a]volume={bgm_volume},aloop=loop=-1:size=2000000000[bgm];"
-                    f"[1:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[amix_out];"
+                    f"[v_eq][bgm]amix=inputs=2:duration=first:dropout_transition=2[amix_out];"
                     f"[amix_out]loudnorm=I=-14:TP=-1.5:LRA=11[aout]"
                 )
             else:
                 filter_complex = (
+                    f"[1:a]{vocal_eq}[v_eq];"
                     f"[2:a]volume={bgm_volume},aloop=loop=-1:size=2000000000[bgm];"
-                    f"[1:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+                    f"[v_eq][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
                 )
         args = [
             "-i", video_path,
@@ -1202,7 +1206,7 @@ def mux_audio_video(
             args = [
                 "-i", video_path,
                 "-i", audio_path,
-                "-filter_complex", "[1:a]loudnorm=I=-14:TP=-1.5:LRA=11[aout]",
+                "-filter_complex", f"[1:a]{vocal_eq},loudnorm=I=-14:TP=-1.5:LRA=11[aout]",
                 "-map", "0:v",
                 "-map", "[aout]",
                 "-c:v", "copy",

@@ -23,45 +23,45 @@ from app.schemas.contracts import SceneContract
 ASS_WHITE       = "&H00FFFFFF"   # Trắng sáng — màu chữ mặc định (chưa highlight)
 ASS_YELLOW      = "&H0000FFFF"   # Vàng tươi rực #FFFF00 — từ đang đọc (karaoke active)
 ASS_RED         = "&H000000FF"   # Đỏ rực — từ đã đọc xong (karaoke past)
+ASS_NEON_GREEN  = "&H0033FF33"   # Xanh lá Neon (#33FF33) — chuẩn Submagic/Crayo cho Con Số / Thống Kê
+ASS_CRIMSON     = "&H002222FF"   # Đỏ Crimson rực (#FF2222) — cho Từ Khóa Nguy Hiểm / Xung Đột / Cảnh Báo
+ASS_CYAN        = "&H00FFFF00"   # Xanh Cyan Điện (#00FFFF) — cho Từ Khóa Bí Mật / Sự Thật / Giải Mã
 ASS_BLACK       = "&H00000000"   # Đen — viền chữ (tương phản cao trên mọi nền)
 ASS_SHADOW      = "&HA0000000"   # Đen 63% trong suốt — shadow mềm mại
 
-# ── Bộ từ khóa cảm xúc mạnh kích thích thị giác (Hypnotic Power Words) ─────
-POWER_WORDS = {
-    # English Power Words (Emotional triggers, Psychology, Rescue, Wildlife, Mystery, History, Tech)
-    "NEVER", "ALWAYS", "SECRET", "SECRETS", "DANGER", "DANGEROUS", "DEADLY",
-    "TRUTH", "SHOCKING", "DISASTER", "MONSTER", "KILLER", "MISTAKE", "WHY",
-    "WARNING", "STOP", "DESTROY", "ATTACK", "FATAL", "PREDATOR", "FEAR",
-    "TERRIFYING", "HORROR", "TRAPPED", "ABSOLUTELY", "INSANE", "IMPOSSIBLE",
-    "UNBELIEVABLE", "BEAST", "LETHAL", "POISON", "VENOM", "MYSTERY", "DISCOVERED",
-    "HIDDEN", "REVEALED", "LIES", "DECEPTION", "DARK", "BLOOD", "WAR", "DEATH",
-    "RULE", "RULES", "LAW", "ESCAPE", "SURVIVE", "SURVIVAL", "URGENT",
-    "NARCISSIST", "PSYCHOPATH", "MANIPULATE", "MANIPULATION", "HUMILIATE", "SILENCE",
-    "STARE", "SHATTERS", "BROKEN", "STARVING", "ABANDONED", "MIRACLE", "RESCUED",
-    "WHEELCHAIR", "FROZEN", "TREMBLING", "HEARTBREAKING", "ABYSS", "KRAKEN",
-    "LEVIATHAN", "SONAR", "CRUSHING", "HARVESTED", "VORTEX", "NIGHTMARE", "NIGHTMARES",
-    "AMBUSH", "ARMOR", "BITE", "SKULL", "CLAWS", "APEX", "EMPIRE", "EXECUTION",
-    "FORBIDDEN", "CLASSIFIED", "COLLAPSE", "BILLION", "TRILLION", "INSTANTLY",
-    # Vietnamese Power Words (Từ kích hoạt cảm xúc mạnh & Giữ chân người xem)
-    "ĐỪNG", "KHÔNG", "BAO GIỜ", "BÍ MẬT", "NGUY HIỂM", "CHẾT", "TỬ THẦN",
-    "SỰ THẬT", "SỐC", "KINH HOÀNG", "CẢNH BÁO", "DỪNG LẠI", "TIÊU DIỆT",
-    "TẤN CÔNG", "SÁT THỦ", "QUÁI VẬT", "ÁC MỘNG", "SỢ HÃI", "HOẢNG LOẠN",
-    "MẮC KẸT", "TUYỆT ĐỐI", "ĐIÊN RỒ", "BẤT KHẢ THI", "KHÔNG THỂ TIN",
-    "DÃ THÚ", "NỌC ĐỘC", "BÍ ẨN", "HÉ LỘ", "DỐI TRÁ", "THAO TÚNG", "ĐEN TỐI",
-    "MÁU", "CHIẾN TRANH", "ĐỘT NHIÊN", "KHỔNG LỒ", "ĐÁNG SỢ", "KHỦNG KHIẾP",
-    "TRỪNG PHẠT", "BẪY", "HẬU QUẢ", "BÍ TRUYỀN", "BẤT NGỜ", "CẤM", "SINH TỒN",
-    # Các âm tiết cốt lõi đơn để khớp phụ đề từng từ (Syllable Level Matching)
-    "BÍ", "MẬT", "NGUY", "HIỂM", "CẢNH", "BÁO", "TỬ", "THẦN", "SỰ", "THẬT",
-    "DỐI", "TRÁ", "THAO", "TÚNG", "KINH", "HOÀNG", "QUÁI", "VẬT", "ÁC", "MỘNG",
-    "SỢ", "HÃI", "MẮC", "KẸT",
-    # Brazilian Portuguese (pt-BR) Power Words
-    "NUNCA", "JAMAIS", "SEMPRE", "SEGREDO", "SEGREDOS", "PERIGO", "PERIGOSO",
-    "MORTAL", "VERDADE", "CHOCANTE", "MONSTRO", "ASSASSINO", "ERRO", "AVISO",
-    "PARE", "ATAQUE", "FATAL", "PREDADOR", "MEDO", "TERROR", "IMPOSSÍVEL",
-    "INCRÍVEL", "ABSURDO", "VENENO", "MISTÉRIO", "ESCONDIDO", "REVELADO",
-    "MENTIRA", "MANIPULAÇÃO", "SOMBRIO", "SANGUE", "MORTE", "REGRA", "REGRAS",
-    "SOBREVIVER", "PROIBIDO", "CUIDADO", "URGENTE",
+# ── Phân tầng ngữ nghĩa 3 màu chuẩn Submagic / Hormozi (Semantic 3-Color Pop) ──
+DANGER_POWER_WORDS = {
+    "NEVER", "DANGER", "DANGEROUS", "DEADLY", "DISASTER", "MONSTER", "KILLER",
+    "MISTAKE", "WARNING", "STOP", "DESTROY", "ATTACK", "FATAL", "PREDATOR", "FEAR",
+    "TERRIFYING", "HORROR", "TRAPPED", "BEAST", "LETHAL", "POISON", "VENOM",
+    "LIES", "DECEPTION", "DARK", "BLOOD", "WAR", "DEATH", "NARCISSIST", "PSYCHOPATH",
+    "MANIPULATE", "MANIPULATION", "HUMILIATE", "SHATTERS", "BROKEN", "STARVING",
+    "ABANDONED", "FROZEN", "TREMBLING", "HEARTBREAKING", "CRUSHING", "NIGHTMARE",
+    "NIGHTMARES", "AMBUSH", "BITE", "SKULL", "CLAWS", "EXECUTION", "COLLAPSE",
+    "ĐỪNG", "KHÔNG", "NGUY", "HIỂM", "CHẾT", "TỬ", "THẦN", "SỐC", "KINH", "HOÀNG",
+    "CẢNH", "BÁO", "DỪNG", "TIÊU", "DIỆT", "TẤN", "CÔNG", "SÁT", "THỦ", "QUÁI",
+    "VẬT", "ÁC", "MỘNG", "SỢ", "HÃI", "MẮC", "KẸT", "DỐI", "TRÁ", "THAO", "TÚNG",
+    "MÁU", "BẪY", "CẤM", "NUNCA", "JAMAIS", "PERIGO", "PERIGOSO", "MORTAL",
+    "MONSTRO", "ASSASSINO", "ERRO", "AVISO", "PARE", "ATAQUE", "FATAL", "PREDADOR",
+    "MEDO", "TERROR", "VENENO", "MENTIRA", "SANGUE", "MORTE", "PROIBIDO", "CUIDADO",
 }
+
+PAYOFF_POWER_WORDS = {
+    "ALWAYS", "SECRET", "SECRETS", "TRUTH", "SHOCKING", "WHY", "ABSOLUTELY",
+    "INSANE", "IMPOSSIBLE", "UNBELIEVABLE", "MYSTERY", "DISCOVERED", "HIDDEN",
+    "REVEALED", "RULE", "RULES", "LAW", "ESCAPE", "SURVIVE", "SURVIVAL", "URGENT",
+    "SILENCE", "STARE", "MIRACLE", "RESCUED", "ABYSS", "KRAKEN", "LEVIATHAN",
+    "SONAR", "VORTEX", "ARMOR", "APEX", "EMPIRE", "FORBIDDEN", "CLASSIFIED",
+    "BILLION", "TRILLION", "INSTANTLY",
+    "BÍ", "MẬT", "SỰ", "THẬT", "TUYỆT", "ĐỐI", "ĐIÊN", "RỒ", "HÉ", "LỘ",
+    "ĐỘT", "NHIÊN", "KHỔNG", "LỒ", "BẤT", "NGỜ", "SINH", "TỒN",
+    "SEMPRE", "SEGREDO", "SEGREDOS", "VERDADE", "CHOCANTE", "IMPOSSÍVEL",
+    "INCRÍVEL", "ABSURDO", "MISTÉRIO", "ESCONDIDO", "REVELADO", "REGRA", "REGRAS",
+    "SOBREVIVER", "URGENTE",
+}
+
+# ── Bộ từ khóa cảm xúc mạnh kích thích thị giác (Hypnotic Power Words) ─────
+POWER_WORDS = DANGER_POWER_WORDS | PAYOFF_POWER_WORDS
 
 # ── ASS Style template ────────────────────────────────────────────────────
 # Thứ tự field: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour,
@@ -83,6 +83,7 @@ Style: HookHeadlineBanner,{fontname},52,&H0000FFFF,&H00FFFFFF,&H00000000,&HD0050
 Style: PatternInterruptBadge,{fontname},32,&H00FFFFFF,&H00FFFFFF,&H0000E6FF&,&HC0101010,-1,0,0,0,100,100,2,0,3,2.0,0.0,8,40,40,240,1
 Style: CTABadge,{fontname},46,&H0000FFFF,&H00FFFFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,3.5,2.0,2,30,30,780,1
 Style: WatermarkStyle,Arial,28,&H30FFFFFF,&H30FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1.8,1.2,8,30,30,90,1
+Style: RetentionProgressBar,Arial,20,&H0000FFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0.0,0.0,7,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -120,11 +121,11 @@ class SubtitleHelper:
         return f"{hours:02d}:{minutes:02d}:{seconds:02d},{millis:03d}"
 
     @classmethod
-    def split_text_to_chunks(cls, text: str, max_words: int = 4, max_chars: int = 24) -> List[str]:
+    def split_text_to_chunks(cls, text: str, max_words: int = 3, max_chars: int = 20) -> List[str]:
         """
-        Chia một đoạn văn bản thành các cụm từ ngắn gọn (2-4 từ, tối đa 24 ký tự),
-        chuẩn phong cách phụ đề Shorts hiện đại: hiển thị 1 dòng duy nhất, không rớt dòng,
-        nhịp điệu thay đổi nhanh cuốn hút thị giác.
+        Chia một đoạn văn bản thành các cụm từ siêu ngắn gọn (2-3 từ, tối đa 20 ký tự),
+        chuẩn phong cách phụ đề Submagic / Hormozi / Crayo hiện đại: hiển thị 1 dòng duy nhất,
+        nhịp nhảy chữ nhanh bám sát mắt người xem, ngăn đọc trước giọng đọc.
         """
         text = text.strip()
         # Normalize whitespace: collapse \n, \t, multiple spaces thành space đơn
@@ -200,30 +201,43 @@ class SubtitleHelper:
         scene_highlights: Optional[set] = None,
     ) -> str:
         """
-        P2.2: Tạo chuỗi ASS kinetic karaoke với {\\kf} fluid tags theo từng từ.
-        Kết hợp:
-          1. Từ khóa ngữ cảnh do AI Director chọn riêng cho từng cảnh (scene.highlight_words)
-          2. Mọi con số thống kê / đo lường (100-FOOT, 4-SECOND, 1,500, 99%, 6)
-          3. Bộ từ điển cảm xúc mạnh POWER_WORDS
+        P2.2 + Submagic/Crayo 3-Color Semantic Highlighting:
+        Tạo chuỗi ASS kinetic karaoke với {\\kf} fluid tags + 3 tầng màu ngữ nghĩa:
+          - Tầng 1 (Số liệu / Thống kê / Đo lường: 10,000G, 99%, 3, 0.2s): Xanh lá Neon (&H0033FF33&) + Pop 116%
+          - Tầng 2 (Nguy hiểm / Đe dọa / Xung đột: DEADLY, TRAP, KILL, CHẾT, BẪY): Đỏ Crimson (&H002222FF&) + Pop 115%
+          - Tầng 3 (Bí mật / Giải mã / Từ khóa Đạo diễn: SECRET, TRUTH, RESCUED): Xanh Cyan / Niche Power Color + Pop 114%
         """
         norm_power = power_color if power_color.endswith("&") else f"{power_color}&"
         norm_highlight = default_highlight if default_highlight.endswith("&") else f"{default_highlight}&"
+        norm_green = f"{ASS_NEON_GREEN}&"
+        norm_crimson = f"{ASS_CRIMSON}&"
+        norm_cyan = f"{ASS_CYAN}&"
         custom_set = scene_highlights or set()
 
         parts = []
         for i, (word, dur_cs) in enumerate(zip(words, word_durations_cs)):
             clean_word = re.sub(r'[^\w\d]', '', word.upper())
             has_shock_number = bool(re.search(r'\d', word))
-            is_power_word = (
-                (clean_word in POWER_WORDS)
-                or (clean_word in custom_set)
-                or has_shock_number
-            )
+            is_danger = clean_word in DANGER_POWER_WORDS
+            is_payoff = (clean_word in PAYOFF_POWER_WORDS) or (clean_word in custom_set)
 
-            if is_power_word:
-                # Power Word / Context Highlight / Shock Statistic: đổi màu highlight + phóng 112% tạo hiệu ứng Kinetic Pop
+            if has_shock_number:
+                # Tầng 1: Con số thống kê / đo lường -> Xanh lá Neon Submagic + Phóng 116%
                 parts.append(
-                    f"{{\\kf{dur_cs}\\1c{norm_power}\\fscx112\\fscy112\\b1}}{word}"
+                    f"{{\\kf{dur_cs}\\1c{norm_green}\\fscx116\\fscy116\\b1}}{word}"
+                    f"{{\\1c{norm_highlight}\\fscx100\\fscy100}}"
+                )
+            elif is_danger:
+                # Tầng 2: Từ khóa Nguy hiểm / Xung đột -> Đỏ Crimson + Phóng 115%
+                parts.append(
+                    f"{{\\kf{dur_cs}\\1c{norm_crimson}\\fscx115\\fscy115\\b1}}{word}"
+                    f"{{\\1c{norm_highlight}\\fscx100\\fscy100}}"
+                )
+            elif is_payoff:
+                # Tầng 3: Từ khóa Sự thật / Giải mã / Highlight của cảnh -> Cyan Điện (&H00FFFF00&) hoặc Amber Cứu hộ + Phóng 114%
+                chosen_payoff_color = norm_power if "2080FF" in norm_power else norm_cyan
+                parts.append(
+                    f"{{\\kf{dur_cs}\\1c{chosen_payoff_color}\\fscx114\\fscy114\\b1}}{word}"
                     f"{{\\1c{norm_highlight}\\fscx100\\fscy100}}"
                 )
             else:
@@ -324,7 +338,7 @@ class SubtitleHelper:
                         continue
                     candidate_len = cur_len + len(w_text) + (1 if cur_words else 0)
                     should_break = (
-                        (len(cur_words) >= 4 or candidate_len > 24) and len(cur_words) >= 2
+                        (len(cur_words) >= 3 or candidate_len > 20) and len(cur_words) >= 2
                     ) or (
                         w_text.endswith((".", "!", "?", ":", ";", "—")) and len(cur_words) >= 2
                     )
@@ -438,6 +452,23 @@ class SubtitleHelper:
                 current_offset_ms = scene.start_offset_ms + scene_duration_ms
             else:
                 current_offset_ms += scene_duration_ms
+
+        # ── Kích hoạt Thanh Tiến Trình Giữ Chân (Crayo / Vsub Top Retention Progress Bar) ──
+        if scenes and current_offset_ms > 2000:
+            total_dur_ms = max(current_offset_ms, 1)
+            step_ms = 250  # Cập nhật mỗi 250ms tạo hiệu ứng thanh tiến trình chạy mượt ở đỉnh khung hình (y=0..8px)
+            t_cur = 0
+            while t_cur < total_dur_ms:
+                t_next = min(t_cur + step_ms, total_dur_ms)
+                progress_ratio = min(1.0, max(0.03, t_next / total_dur_ms))
+                bar_w = int(1080 * progress_ratio)
+                bar_start_str = cls._ms_to_ass_time(t_cur)
+                bar_end_str = cls._ms_to_ass_time(t_next)
+                dialogue_lines.append(
+                    f"Dialogue: 4,{bar_start_str},{bar_end_str},RetentionProgressBar,,0,0,0,,"
+                    f"{{\\p1\\pos(0,0)\\c&H0000E6FF&\\1a&H18&\\bord0\\shad0}}m 0 0 l {bar_w} 0 l {bar_w} 8 l 0 8{{\\p0}}"
+                )
+                t_cur = t_next
 
         # ── Kích hoạt Hook Headline Banner ở Frame 0.0s - 2.8s (Đã khử sạch Emoji lỗi ô vuông □) ──
         if scenes:

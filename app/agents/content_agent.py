@@ -549,6 +549,49 @@ class ContentAgent:
         raw_data["full_narration"] = " ".join(s.get("narration", "") for s in scenes if isinstance(s, dict))
         if "hook" not in raw_data or not raw_data["hook"]:
             raw_data["hook"] = scenes[0].get("narration", "") if scenes and isinstance(scenes[0], dict) else raw_data.get("title", "")
+
+        # ── 2.9. OPUSCLIP / VIDIQ VIRAL CTR TITLE TOURNAMENT (ĐẤU TRƯỜNG TIÊU ĐỀ TỐI ƯU CTR) ──
+        raw_variants = raw_data.get("title_variants")
+        candidates: List[str] = []
+        if raw_data.get("title"):
+            candidates.append(str(raw_data["title"]).strip())
+        if isinstance(raw_variants, list):
+            for v in raw_variants:
+                if v and str(v).strip() and str(v).strip() not in candidates:
+                    candidates.append(str(v).strip())
+        if len(candidates) >= 2:
+            def _score_title_ctr(t_str: str) -> float:
+                score = 50.0
+                clean_t = re.sub(r'#\w+', '', t_str).strip()
+                c_len = len(clean_t)
+                # Chiều dài vàng trên Shorts Shelf Mobile: 26 - 56 ký tự (không bị cắt '...')
+                if 26 <= c_len <= 56:
+                    score += 20.0
+                elif c_len > 65:
+                    score -= 15.0
+                # Chứa con số / dữ kiện định lượng / đối đầu trực diện
+                if re.search(r'\d', clean_t):
+                    score += 12.0
+                if re.search(r'\b(vs\.?|versus|hay|or)\b', clean_t, flags=re.IGNORECASE):
+                    score += 10.0
+                # Chứa từ khóa kích hoạt tò mò / cảnh báo (Curiosity Gap & Threat Triggers)
+                ctr_triggers = (
+                    "why", "never", "secret", "truth", "sign", "until", "mistake", "hidden", "actually",
+                    "tại sao", "đừng", "bí mật", "sự thật", "dấu hiệu", "cho đến khi", "sai lầm", "ẩn giấu",
+                    "por que", "nunca", "segredo", "verdade", "erro", "jamais"
+                )
+                t_low = clean_t.lower()
+                if any(k in t_low for k in ctr_triggers):
+                    score += 14.0
+                if "?" in clean_t or "!" in clean_t:
+                    score += 5.0
+                return score
+
+            best_title = max(candidates, key=_score_title_ctr)
+            if best_title != raw_data.get("title"):
+                logger.info(f"[ContentAgent] 🎯 CTR Title Tournament chọn tiêu đề tối ưu: '{best_title}' (thay cho '{raw_data.get('title')}')")
+                raw_data["title"] = best_title
+
         if "tags" not in raw_data or not raw_data["tags"]:
             raw_data["tags"] = ["shorts", "viral"]
         elif isinstance(raw_data["tags"], str):
@@ -615,7 +658,7 @@ class ContentAgent:
     ) -> str:
         """
         Hệ thống Trí nhớ Ngữ cảnh Kênh & Tự thích nghi Đa Kênh (Context-Aware Episodic Memory & Zero-Shot Multi-Niche Synthesis):
-        1. Truy vấn nhanh (< 5ms) từ Database cục bộ (`PublishedVideo`, `VideoJob`) để lấy:
+        1. Truy vấn nhanh (< 5ms) từ Database cục bộ (`PublishedVideo`, `VideoJob`) + Live YouTube Channel Cache để lấy:
            - Top 3 video thắng lớn nhất của kênh/ngách (giúp Agent học cú pháp Hook & tâm lý khán giả thực tế).
            - 8 tiêu đề gần nhất đã sản xuất (chống lặp góc tiếp cận, câu mở đầu và từ khóa bão hòa).
         2. Kích hoạt giao thức Zero-Shot Multi-Niche Synthesis khi mở rộng ra bất kỳ kênh/ngách mới nào.
@@ -629,15 +672,19 @@ class ContentAgent:
             from app.services.smart_scheduler import resolve_channel_family
 
             target_ids: List[str] = []
-            if channel_id:
+            matched_handle: Optional[str] = None
+            niche_low = (channel_niche or "").strip().lower()
+            for ch in settings.get_channels_config():
+                cid = ch.get("id")
+                ch_niche = str(ch.get("niche") or "").strip().lower()
+                if (channel_id and cid == channel_id) or (not channel_id and ch_niche == niche_low):
+                    if cid:
+                        target_ids.extend(resolve_channel_family(cid))
+                    if not matched_handle and ch.get("youtube_handle"):
+                        matched_handle = str(ch.get("youtube_handle")).strip()
+
+            if channel_id and not target_ids:
                 target_ids.extend(resolve_channel_family(channel_id))
-            else:
-                niche_low = (channel_niche or "").strip().lower()
-                for ch in settings.get_channels_config():
-                    if str(ch.get("niche") or "").strip().lower() == niche_low:
-                        cid = ch.get("id")
-                        if cid:
-                            target_ids.extend(resolve_channel_family(cid))
 
             if target_ids:
                 unique_ids = list(dict.fromkeys(target_ids))
@@ -674,6 +721,37 @@ class ContentAgent:
                     for rj in rec_jobs:
                         if rj.title and rj.title.strip() not in recent_titles:
                             recent_titles.append(rj.title.strip())
+
+            # Closed-Loop Live YouTube Winner DNA Sync: Nếu DB cục bộ chưa cập nhật đủ top_winners,
+            # tự động đồng bộ từ thống kê kênh YouTube thực tế (có bộ nhớ đệm TTL 30 phút chống chậm pipeline)
+            if not top_winners and matched_handle:
+                import time as _time
+                cache_attr = "_live_yt_winner_cache"
+                cache_store = getattr(self.__class__, cache_attr, None)
+                if cache_store is None:
+                    cache_store = {}
+                    setattr(self.__class__, cache_attr, cache_store)
+                now_ts = _time.time()
+                cached_entry = cache_store.get(matched_handle)
+                if not cached_entry or (now_ts - cached_entry.get("ts", 0)) > 1800:
+                    try:
+                        from app.services.youtube_analytics import fetch_channel_live_stats
+                        live_res = fetch_channel_live_stats(matched_handle)
+                        if live_res.get("success") and live_res.get("videos"):
+                            cache_store[matched_handle] = {"ts": now_ts, "videos": live_res["videos"]}
+                            cached_entry = cache_store[matched_handle]
+                    except Exception:
+                        pass
+                if cached_entry and cached_entry.get("videos"):
+                    for v_info in cached_entry["videos"][:3]:
+                        v_title = str(v_info.get("title") or "").strip()
+                        v_views = int(v_info.get("views_num") or 0)
+                        if v_title and v_views >= 50:
+                            top_winners.append(f'  * "{v_title}" ({v_views:,} live YouTube views)')
+                    for v_info in cached_entry["videos"][:8]:
+                        v_title = str(v_info.get("title") or "").strip()
+                        if v_title and v_title not in recent_titles:
+                            recent_titles.append(v_title)
 
             if len(recent_titles) >= 2:
                 from app.services.channel_intelligence import extract_saturated_channel_concepts
@@ -935,7 +1013,12 @@ YouTube đánh giá video Shorts qua 2 vòng thử thách:
 OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
 ═══════════════════════════════════════════════════════════
 {{
-  "title": "Viral YouTube Shorts Title with Emojis",
+  "title": "Viral YouTube Shorts Title with Emojis (28-55 chars)",
+  "title_variants": [
+    "Variant 1: Curiosity Gap / Paradox Hook (28-55 chars)",
+    "Variant 2: Direct Warning / Specific Number Hook (28-55 chars)",
+    "Variant 3: Extreme Contrast / A vs B Hook (28-55 chars)"
+  ],
   "primary_entity": "Full official name of main person/figure/species or null",
   "hook": "The opening 3-second hook sentence",
   "full_narration": "Complete spoken text without stage directions (strictly 85-125 words, 35-46s duration with deep factual payoff and zero spoken Subscribe CTA)",
