@@ -1044,27 +1044,37 @@ class VideoPipeline:
                 prefer_video = True
 
 
-        # ── TẦNG 0: CHẾ ĐỘ QUÁI VẬT / THỦY QUÁI / KINH DỊ RÙNG RỢN (CREATURE HORROR MODE) ──
+        # ── TẦNG 0 (ƯU TIÊN TUYỆT ĐỐI): GEMINI GOOGLE SEARCH + VISION CURATION + 3D MOTION ──
+        # Phụ thuộc vào kết quả tìm kiếm Google Images bắt mắt để câu view (CGI, Concept Art 8K,
+        # Movie Scene, Dramatic HD, Dark Horror) do Gemini Vision trực tiếp chấm chọn + Chuyển động 3D!
+        search_first = os.getenv("SEARCH_FIRST_VISUAL_MODE", "true").strip().lower() not in ("0", "false", "no", "off")
         creature_first = os.getenv("CREATURE_ART_FIRST", "true").strip().lower() not in ("0", "false", "no", "off")
+        is_creature = bool(v_analysis and v_analysis.get("creature_mode"))
         if (
-            creature_first
-            and v_analysis
-            and v_analysis.get("creature_mode")
+            (search_first or (creature_first and is_creature))
             and channel_visual_mode not in ("imagen_ai", "ai_image")
         ):
             try:
-                c_query = (v_analysis.get("creature_queries") or [getattr(scene, 'stock_query', None) or scene.visual_keyword or topic])[0]
-                creature_photo = await asyncio.to_thread(
+                va_dict = v_analysis or {}
+                g_queries = (
+                    (va_dict.get("creature_queries") if is_creature else None)
+                    or va_dict.get("google_image_queries")
+                    or va_dict.get("search_queries")
+                    or [getattr(scene, 'stock_query', None) or scene.visual_keyword or topic]
+                )
+                c_query = next((q for q in g_queries if q), getattr(scene, 'stock_query', None) or scene.visual_keyword or topic)
+                searched_photo = await asyncio.to_thread(
                     self._media_agent.search_best_photo,
                     c_query,
                     used_pool_urls or used_asset_paths or set(),
-                    v_analysis,
+                    va_dict,
                     scene.narration,
                     topic,
                 )
-                if creature_photo and creature_photo.get("url"):
-                    c_url = creature_photo["url"]
-                    out_img = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_creature.jpg")
+                if searched_photo and searched_photo.get("url"):
+                    c_url = searched_photo["url"]
+                    tag_suffix = "creature" if is_creature else "gsearch"
+                    out_img = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_{tag_suffix}.jpg")
                     await asyncio.to_thread(self._media_agent.download_file, c_url, out_img)
                     if Path(out_img).exists() and Path(out_img).stat().st_size > 3000 and self._is_valid_image_file(out_img):
                         ids = extract_media_identity(c_url)
@@ -1073,11 +1083,12 @@ class VideoPipeline:
                         if used_asset_paths is not None:
                             used_asset_paths.update(ids)
                             used_asset_paths.add(out_img)
-                        record_used_media(c_url, query=c_query, source=creature_photo.get("source", "creature_web"), media_path=out_img)
+                        record_used_media(c_url, query=c_query, source=searched_photo.get("source", "google_search"), media_path=out_img)
+                        badge = "🐙 [Quái vật Rùng Rợn 3D]" if is_creature else "🔎 [Gemini Search 3D]"
                         try:
                             from app.agents.ai_video_agent import AIVideoAgent
                             ai_vid_agent = AIVideoAgent()
-                            anim_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_creature_3d.mp4")
+                            anim_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_{tag_suffix}_3d.mp4")
                             res_anim = await asyncio.to_thread(
                                 ai_vid_agent.animate_thematic_image,
                                 image_path=out_img,
@@ -1091,14 +1102,14 @@ class VideoPipeline:
                             if res_anim and Path(res_anim).exists() and Path(res_anim).stat().st_size > 5000:
                                 if used_asset_paths is not None:
                                     used_asset_paths.add(res_anim)
-                                logger.info(f"Scene {scene.scene_id}: 🐙 [Quái vật Rùng Rợn 3D] {creature_photo.get('source')}: {str(creature_photo.get('title', ''))[:50]}")
+                                logger.info(f"Scene {scene.scene_id}: {badge} {searched_photo.get('source')}: {str(searched_photo.get('title', ''))[:55]}")
                                 return res_anim
                         except Exception as ex_c_anim:
-                            logger.debug(f"Scene {scene.scene_id}: Creature 3D animation error: {ex_c_anim}")
-                        logger.info(f"Scene {scene.scene_id}: 🐙 [Quái vật Rùng Rợn] {creature_photo.get('source')}: {str(creature_photo.get('title', ''))[:50]}")
+                            logger.debug(f"Scene {scene.scene_id}: Gemini Search 3D animation error: {ex_c_anim}")
+                        logger.info(f"Scene {scene.scene_id}: {badge} {searched_photo.get('source')}: {str(searched_photo.get('title', ''))[:55]}")
                         return out_img
             except Exception as e_cr:
-                logger.debug(f"Scene {scene.scene_id}: Creature horror search error: {e_cr}")
+                logger.debug(f"Scene {scene.scene_id}: Gemini Search visual error: {e_cr}")
 
         # ── TẦNG 0.5: Ưu tiên AI Image nếu prefer_ai và KHÔNG PHẢI VIỄN TƯỞNG ──
         if not is_scifi_scene and prefer_ai and getattr(scene, 'visual_prompt', None) and len(scene.visual_prompt.strip()) > 15:

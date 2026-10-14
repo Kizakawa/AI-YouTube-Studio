@@ -238,34 +238,44 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         logger.info(f"🎯 [Scene {scene.scene_id}] Phương pháp: '{prod_method}' | Strategy: '{chosen_strategy}' ({rationale[:60]}...)")
 
         # ══════════════════════════════════════════════════════════════════════
-        # QUÁI VẬT / SINH VẬT HUYỀN THOẠI & KINH DỊ: kho video stock không có kraken/megalodon thật
-        # → ưu tiên ảnh Movie CGI / ArtStation Dark Horror / Thalassophobia rùng rợn trên mạng (Vision chọn) + chuyển động 3D
+        # TẦNG 0 (ƯU TIÊN TUYỆT ĐỐI): GEMINI GOOGLE SEARCH + VISION CURATION + 3D MOTION
+        # Phụ thuộc vào kết quả tìm kiếm Google Images bắt mắt để câu view (CGI, Concept Art 8K,
+        # Movie Scene, Dramatic HD, Dark Horror) do Gemini Vision trực tiếp chấm chọn + Chuyển động 3D!
         # ══════════════════════════════════════════════════════════════════════
+        search_first = os.getenv("SEARCH_FIRST_VISUAL_MODE", "true").strip().lower() not in ("0", "false", "no", "off")
         creature_first = os.getenv("CREATURE_ART_FIRST", "true").strip().lower() not in ("0", "false", "no", "off")
         if (
-            creature_first and v_analysis.get("creature_mode")
+            (search_first or (creature_first and v_analysis.get("creature_mode")))
             and channel_visual_mode not in ("imagen_ai", "ai_image")
         ):
             try:
-                creature_photo = await asyncio.to_thread(
+                g_queries = (
+                    (v_analysis.get("creature_queries") if v_analysis.get("creature_mode") else None)
+                    or v_analysis.get("google_image_queries")
+                    or v_analysis.get("search_queries")
+                    or [search_query or sq or kw]
+                )
+                primary_g_query = next((q for q in g_queries if q), search_query or sq or kw)
+                searched_photo = await asyncio.to_thread(
                     media_agent.search_best_photo,
-                    (v_analysis.get("creature_queries") or [search_query])[0],
+                    primary_g_query,
                     used_pool_urls,
                     v_analysis,
                     scene.narration,
                     state.get("topic", ""),
                 )
-                if creature_photo and creature_photo.get("url"):
-                    out_img = str(media_dir / f"scene_{scene.scene_id:03d}_creature.jpg")
-                    await asyncio.to_thread(media_agent.download_file, creature_photo["url"], out_img)
+                if searched_photo and searched_photo.get("url"):
+                    tag_suffix = "creature" if v_analysis.get("creature_mode") else "gsearch"
+                    out_img = str(media_dir / f"scene_{scene.scene_id:03d}_{tag_suffix}.jpg")
+                    await asyncio.to_thread(media_agent.download_file, searched_photo["url"], out_img)
                     if Path(out_img).exists() and Path(out_img).stat().st_size > 3000:
-                        used_pool_urls.add(creature_photo["url"])
+                        used_pool_urls.add(searched_photo["url"])
                         media_path = out_img
                         media_type = "image"
-                        prod_method = chosen_strategy = "CREATURE_ART"
-                        # Chuyển hóa ngay bức ảnh quái vật rùng rợn thành Video Clip chuyển động 3D Ken Burns kịch tính
+                        prod_method = chosen_strategy = "CREATURE_ART" if v_analysis.get("creature_mode") else "GEMINI_SEARCH_3D"
+                        # Chuyển hóa ngay bức ảnh Google Search bắt mắt thành Video Clip chuyển động 3D Ken Burns kịch tính
                         try:
-                            anim_vid = str(media_dir / f"scene_{scene.scene_id:03d}_creature_3d.mp4")
+                            anim_vid = str(media_dir / f"scene_{scene.scene_id:03d}_{tag_suffix}_3d.mp4")
                             res_anim = await asyncio.to_thread(
                                 ai_video_agent.animate_thematic_image,
                                 image_path=out_img,
@@ -280,13 +290,14 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 media_path = res_anim
                                 media_type = "video"
                         except Exception as ex_c_anim:
-                            logger.debug(f"Scene {scene.scene_id}: Creature 3D animation fallback to static image: {ex_c_anim}")
+                            logger.debug(f"Scene {scene.scene_id}: Gemini Search 3D animation fallback to static image: {ex_c_anim}")
+                        badge = "🐙 [Quái vật Rùng Rợn]" if v_analysis.get("creature_mode") else "🔎 [Gemini Search 3D]"
                         logger.info(
-                            f"Scene {scene.scene_id}: 🐙 [Quái vật Rùng Rợn] {creature_photo.get('source')} "
-                            f"điểm {creature_photo.get('curation_score', '-')}: {str(creature_photo.get('title', ''))[:50]}"
+                            f"Scene {scene.scene_id}: {badge} {searched_photo.get('source')} "
+                            f"điểm {searched_photo.get('curation_score', '-')}: {str(searched_photo.get('title', ''))[:55]}"
                         )
             except Exception as e:
-                logger.debug(f"Scene {scene.scene_id}: Creature art search error: {e}")
+                logger.debug(f"Scene {scene.scene_id}: Gemini Search visual error: {e}")
 
         # ══════════════════════════════════════════════════════════════════════
         # PHƯƠNG PHÁP 1: REAL_ARCHIVE (Tư liệu lịch sử thật 100%)

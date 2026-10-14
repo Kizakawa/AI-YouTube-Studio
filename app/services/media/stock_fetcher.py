@@ -359,62 +359,51 @@ class StockFetcher:
 
         creature_mode = bool(va.get("creature_mode"))
         creature_qs = [q for q in (va.get("creature_queries") or []) if q]
-        # Quái vật: kho stock chỉ tra theo tên (Pixabay có tranh minh hoạ), còn lại dựa vào Open Web
-        stock_queries = ([subject] if subject else queries[:1]) if creature_mode else queries[:3]
-        for q in stock_queries:
-            _add(self.search_photos(q, per_page=4, orientation="portrait", topic=topic, narration=narration, used_urls=used))
-            _add(self.search_pixabay_photos(q, per_page=4))
-            if len(candidates) >= 10:
-                break
+        bypass_copyright = True
 
-        # Ảnh Internet toàn mạng (Google Images, Wikipedia, Commons, Openverse, Unsplash)
+        # 1. ƯU TIÊN SỐ 1: Săn ảnh trực tiếp trên Google Images / Bing HD (Chuẩn Gemini Search)
         web_fetcher = None
-        stock_part = candidates[:]
         try:
             from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled, bypass_copyright_enabled
+            bypass_copyright = bypass_copyright_enabled()
             if web_image_search_enabled():
                 web_fetcher = WebImageFetcher()
                 google_qs = [q for q in (va.get("google_image_queries") or []) if q]
                 if creature_mode and creature_qs:
                     web_items = web_fetcher.search_all(
-                        creature_qs[0], per_source=5, subject=subject,
+                        creature_qs[0], per_source=8, subject=subject,
                         extra_queries=creature_qs[1:], creature_mode=True,
                     )
                 else:
                     primary_web_q = google_qs[0] if google_qs else queries[0]
-                    extra_web_qs = (google_qs[1:] + queries[:2]) if google_qs else queries[1:2]
+                    extra_web_qs = (google_qs[1:] + queries[:2]) if google_qs else queries[1:3]
                     web_items = web_fetcher.search_all(
-                        primary_web_q, per_source=5, subject=subject, extra_queries=extra_web_qs,
+                        primary_web_q, per_source=8, subject=subject, extra_queries=extra_web_qs,
                     )
-                stock_part, before = candidates[:], len(candidates)
-                candidates.clear()
                 _add(web_items)
-                web_part = candidates[:]
-                candidates.clear()
-                # Nếu bypass copyright (hoặc web có ảnh), ưu tiên ảnh Google/Web thực tế lên ĐẦU danh sách
-                if bypass_copyright_enabled():
-                    candidates.extend(web_part)
-                    candidates.extend(stock_part)
-                else:
-                    # Xen kẽ stock / web để AI Vision thấy cả hai loại trong top ứng viên
-                    for i in range(max(len(stock_part), len(web_part))):
-                        if i < len(stock_part):
-                            candidates.append(stock_part[i])
-                        if i < len(web_part):
-                            candidates.append(web_part[i])
-                logger.info(f"[StockFetcher] Pool ảnh '{queries[0]}' (subject='{subject}'): {before} stock + {len(web_part)} web (bypass_copyright={bypass_copyright_enabled()})")
+                logger.info(
+                    f"[StockFetcher] 🔎 Gemini Google Search '{queries[0]}' (subject='{subject}'): "
+                    f"{len(candidates)} ảnh web bắt mắt (creature={creature_mode}, bypass_copyright={bypass_copyright})"
+                )
         except Exception as e:
             logger.debug(f"[StockFetcher] Lỗi nguồn ảnh web: {e}")
-            if len(candidates) < len(stock_part):
-                candidates[:] = stock_part
+
+        # 2. Chỉ gọi Pexels / Pixabay / Openverse làm phao cứu sinh khi Google Images trả về quá ít (< 4 ảnh) hoặc tắt bypass_copyright
+        if len(candidates) < 4 or not bypass_copyright:
+            stock_queries = ([subject] if subject else queries[:1]) if creature_mode else queries[:2]
+            for q in stock_queries:
+                _add(self.search_photos(q, per_page=4, orientation="portrait", topic=topic, narration=narration, used_urls=used))
+                _add(self.search_pixabay_photos(q, per_page=4))
+                if len(candidates) >= 12:
+                    break
 
         if len(candidates) < 4:
             _add(self.search_openverse(subject or queries[0], per_page=5))
 
-        # Lọc watermark/ảnh nhỏ + xếp hạng theo chủ thể, bố cục dọc, độ phân giải (thứ tự trên chỉ còn là tie-breaker)
+        # Lọc watermark/ảnh nhỏ + xếp hạng theo độ bắt mắt, chủ thể, bố cục dọc, độ phân giải
         candidates = prefilter_candidates(
             candidates, subject=subject or queries[0], limit=12,
-            creature_mode=creature_mode, max_per_source=8 if creature_mode else 6,
+            creature_mode=creature_mode, max_per_source=12 if (creature_mode or bypass_copyright) else 6,
         )
 
         if not candidates:

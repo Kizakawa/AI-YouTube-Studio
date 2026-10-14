@@ -678,19 +678,22 @@ class WebImageFetcher:
         creature_mode: bool = False,
     ) -> List[Dict]:
         """
-        Gọi song song mọi nguồn ảnh trên toàn bộ mạng Internet, tổng hợp và ưu tiên ảnh bắt mắt, hot-trend.
+        Gọi song song các luồng tìm kiếm ảnh trên Internet (Google Images + Bing HD + DDGS),
+        tổng hợp và ưu tiên hình ảnh BẮT MẮT, CÂU VIEW, ĐIỆN ẢNH 8K (chuẩn Gemini Search).
 
-        - Khi creature_mode=True (quái vật, thủy quái, thực thể kinh dị): TẬP TRUNG 100% vào Google Images / Bing / Open Web
-          với các truy vấn Movie CGI, ArtStation Dark Horror, Thalassophobia/Megalophobia; loại bỏ Wikimedia Commons /
-          Openverse / Wikipedia để không bị lọt ảnh hóa thạch răng bảo tàng hay tranh khắc gỗ thế kỷ 18.
-        - Khi bypass_copyright_enabled()=True: Ưu tiên tuyệt đối Google Images + truy vấn điện ảnh 8K sắc nét.
+        - Khi bypass_copyright_enabled()=True (mặc định) hoặc creature_mode=True:
+          TẬP TRUNG 100% vào Google Images / Bing HD / Open Web với bộ truy vấn đa góc độ
+          (Cinematic 8K, Movie CGI Scene, Concept Art, Dramatic Viral HD, Dark Horror);
+          LOẠI BỎ hoàn toàn Wikipedia / Wikimedia Commons / Openverse để không bị lọt ảnh
+          tư liệu bách khoa khô khan, hóa thạch bảo tàng hay tranh khắc gỗ cũ.
         """
         if not query or not web_image_search_enabled():
             return []
 
         subject = (subject or "").strip()
         entity_q = subject or query
-        open_web_per_page = max(per_source, 8) if (creature_mode or bypass_copyright_enabled()) else per_source
+        use_pure_google_search = creature_mode or bypass_copyright_enabled()
+        open_web_per_page = max(per_source, 10) if use_pure_google_search else per_source
 
         jobs = [
             (self.search_open_web, "google_web", query, open_web_per_page),
@@ -703,29 +706,31 @@ class WebImageFetcher:
                 auto_extra = creature_queries(subject or query)
             for i, xq in enumerate(q for q in auto_extra[:3] if q and q.lower() != query.lower()):
                 jobs.append((self.search_open_web, f"google_creature+{i + 1}", xq, open_web_per_page))
+        elif use_pure_google_search:
+            # Chế độ Gemini Search (Không cần ảnh thật, chỉ cần BẮT MẮT, CÂU VIEW, SẮC NÉT 8K):
+            # Chạy song song nhiều truy vấn Google Images đa phong cách (CGI, Movie Still, Concept Art, Dramatic Photo)
+            base_target = subject or query
+            default_eye_catching = [
+                f"{base_target} cinematic 8k concept art",
+                f"{base_target} movie scene dramatic HD",
+                f"{query} stunning viral high resolution",
+            ]
+            for dq in default_eye_catching:
+                if len(auto_extra) >= 3:
+                    break
+                if dq.lower() != query.lower() and dq not in auto_extra:
+                    auto_extra.append(dq)
+            for i, xq in enumerate(q for q in auto_extra[:3] if q and q.lower() != query.lower()):
+                jobs.append((self.search_open_web, f"google_web+{i + 1}", xq, open_web_per_page))
         else:
-            if bypass_copyright_enabled():
-                # Ưu tiên thêm truy vấn Google Images điện ảnh / viral chất lượng cao trước các kho lưu trữ công cộng
-                if not auto_extra and subject:
-                    auto_extra.append(f"{subject} cinematic 8k high resolution")
-                    if subject.lower() != query.lower():
-                        auto_extra.append(f'"{subject}" dramatic photography')
-                for i, xq in enumerate(q for q in auto_extra[:2] if q and q.lower() != query.lower()):
-                    jobs.append((self.search_open_web, f"google_web+{i + 1}", xq, open_web_per_page))
-                # Chỉ giữ Wikipedia/Commons với số lượng nhỏ làm nguồn phụ trợ cho nhân vật/sự kiện thực tế
-                if subject or len(query.split()) <= 3:
-                    jobs.append((self.search_wikipedia_images, "wikipedia", entity_q, min(per_source, 3)))
-                jobs.append((self.search_wikimedia_commons, "commons", entity_q, min(per_source, 3)))
-            else:
-                if subject or len(query.split()) <= 3:
-                    jobs.append((self.search_wikipedia_images, "wikipedia", entity_q, per_source))
-                jobs.append((self.search_wikimedia_commons, "commons", entity_q, per_source))
-                jobs.append((self.search_openverse, "openverse", entity_q, per_source))
-                if not auto_extra and subject and subject.lower() != query.lower():
-                    auto_extra.append(f'"{subject}" real photograph')
-                for i, xq in enumerate(q for q in auto_extra[:2] if q and q != query):
-                    jobs.append((self.search_open_web, f"google_web+{i + 1}", xq, per_source))
-
+            if subject or len(query.split()) <= 3:
+                jobs.append((self.search_wikipedia_images, "wikipedia", entity_q, per_source))
+            jobs.append((self.search_wikimedia_commons, "commons", entity_q, per_source))
+            jobs.append((self.search_openverse, "openverse", entity_q, per_source))
+            if not auto_extra and subject and subject.lower() != query.lower():
+                auto_extra.append(f'"{subject}" dramatic photography')
+            for i, xq in enumerate(q for q in auto_extra[:2] if q and q != query):
+                jobs.append((self.search_open_web, f"google_web+{i + 1}", xq, per_source))
             if self._unsplash_key:
                 jobs.append((self.search_unsplash, "unsplash", query, per_source))
 
@@ -738,31 +743,35 @@ class WebImageFetcher:
                 except Exception:
                     buckets.append([])
 
-        # Open web quá ít kết quả với truy vấn dài → thử lại bằng tên chủ thể
+        # Open web quá ít kết quả với truy vấn dài → thử lại bằng tên chủ thể + từ khóa bắt mắt
         if subject and subject.lower() != query.lower() and len(buckets[0]) < 3:
             try:
-                fallback_q = f"{subject} terrifying monster dark art" if creature_mode else subject
+                fallback_q = (
+                    f"{subject} terrifying monster dark art"
+                    if creature_mode
+                    else f"{subject} cinematic 8k dramatic"
+                )
                 buckets[0] = buckets[0] + self.search_open_web(fallback_q, open_web_per_page)
             except Exception:
                 pass
 
         merged, seen = [], set()
-        # Đưa toàn bộ ứng viên từ Google Web / Open Web lên đầu trước khi ghép các nguồn phụ
+        # Đưa toàn bộ ứng viên từ Google Web / Open Web lên đầu
         for b in buckets:
             for item in b:
                 if item.get("url") and item["url"] not in seen:
                     seen.add(item["url"])
                     merged.append(item)
 
-        # Lọc watermark / ảnh nhỏ và xếp hạng theo chủ thể + bố cục dọc + độ phân giải + độ rùng rợn/hot-trend
+        # Lọc watermark / ảnh nhỏ và xếp hạng theo độ bắt mắt + chủ thể + bố cục dọc + độ phân giải
         try:
             from app.services.media.image_quality import prefilter_candidates
             merged = prefilter_candidates(
                 merged,
                 subject=subject or query,
-                limit=max(14, per_source * 3),
+                limit=max(16, per_source * 3),
                 creature_mode=creature_mode,
-                max_per_source=12 if (creature_mode or bypass_copyright_enabled()) else 7,
+                max_per_source=16 if use_pure_google_search else 7,
             )
         except Exception as e:
             logger.debug(f"[WebImage] prefilter lỗi: {e}")

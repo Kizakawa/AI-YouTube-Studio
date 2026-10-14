@@ -456,43 +456,41 @@ If no real entities found, return empty array: []"""
             or (primary_entity and entity_type in ("person", "civilization", "monument", "event", "historical_figure"))
         )
         if is_historical and not prefer_video:
-            wiki_img = self.search_wikipedia_entity_image(primary_q)
-            if wiki_img and wiki_img.get("url") and not is_media_already_used(wiki_img["url"], used):
-                if not (entity_type == "person" and self._is_noisy_entity_file(wiki_img.get("title", ""), wiki_img["url"])):
-                    used.update(extract_media_identity(wiki_img["url"]))
-                    return wiki_img
-
-            # Open Web + Commons cho sự kiện/nhân vật lịch sử → gom pool, lọc watermark, để Vision chọn
-            # (trước đây lấy luôn kết quả đầu tiên → hay dính ảnh sai / watermark)
+            # Ưu tiên Google Images + Gemini Vision chọn bức ảnh bắt mắt nhất (không lấy mù quáng ảnh Wikipedia đầu tiên)
             hist_pool: List[Dict] = []
             try:
                 from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled, bypass_copyright_enabled
                 if web_image_search_enabled() and bypass_copyright_enabled():
-                    for wi in WebImageFetcher().search_open_web(f"{primary_q} historical photo", per_page=5):
+                    for wi in WebImageFetcher().search_all(primary_q, per_source=6, subject=primary_q):
                         wu = wi.get("url")
                         if wu and not is_media_already_used(wu, used):
                             hist_pool.append(wi)
             except Exception as e:
                 logger.debug(f"[MediaAgent] Historical open web search error: {e}")
 
-            wiki_queries = [f'"{primary_q}"', primary_q]
-            if fallback_q and fallback_q != primary_q:
-                wiki_queries.append(fallback_q)
+            wiki_img = self.search_wikipedia_entity_image(primary_q)
+            if wiki_img and wiki_img.get("url") and not is_media_already_used(wiki_img["url"], used):
+                if not (entity_type == "person" and self._is_noisy_entity_file(wiki_img.get("title", ""), wiki_img["url"])):
+                    hist_pool.append(wiki_img)
 
-            for wq in wiki_queries:
-                commons = self.search_web_photos(wq, per_page=4, filter_entity_noise=(entity_type == "person"))
-                for c in commons:
-                    u = c.get("url")
-                    if u and not is_media_already_used(u, used) and self._is_valid_image_url(u):
-                        if not is_incongruent_stock_image(c.get("title", ""), topic=topic, narration=scene_narration):
-                            if not any(x.get("url") == u for x in hist_pool):
-                                hist_pool.append(c)
-                if len(hist_pool) >= 10:
-                    break
+            if len(hist_pool) < 4:
+                wiki_queries = [f'"{primary_q}"', primary_q]
+                if fallback_q and fallback_q != primary_q:
+                    wiki_queries.append(fallback_q)
+                for wq in wiki_queries:
+                    commons = self.search_web_photos(wq, per_page=4, filter_entity_noise=(entity_type == "person"))
+                    for c in commons:
+                        u = c.get("url")
+                        if u and not is_media_already_used(u, used) and self._is_valid_image_url(u):
+                            if not is_incongruent_stock_image(c.get("title", ""), topic=topic, narration=scene_narration):
+                                if not any(x.get("url") == u for x in hist_pool):
+                                    hist_pool.append(c)
+                    if len(hist_pool) >= 10:
+                        break
 
             if hist_pool:
                 from app.services.media.image_quality import prefilter_candidates
-                hist_pool = prefilter_candidates(hist_pool, subject=primary_q, limit=10)
+                hist_pool = prefilter_candidates(hist_pool, subject=primary_q, limit=10, max_per_source=10)
             if hist_pool:
                 win, rejected = None, False
                 try:
@@ -535,7 +533,7 @@ If no real entities found, return empty array: []"""
                 used.update(extract_media_identity(best_clip["url"]))
                 return best_clip
 
-        # Thu thập ứng viên ảnh tĩnh từ Google Images / Open Web, Wikipedia, Pexels & Wikimedia Commons
+        # Thu thập ứng viên ảnh tĩnh từ Google Images / Open Web (ưu tiên tuyệt đối)
         candidate_photos = []
         from app.services.media.image_quality import extract_subject, prefilter_candidates
         scene_subject = (
@@ -544,7 +542,7 @@ If no real entities found, return empty array: []"""
             or extract_subject(scene_narration)
         )
 
-        # 1. Ưu tiên hàng đầu: Ảnh Google Images & Wikipedia thực tế toàn diện
+        # 1. Ưu tiên hàng đầu: Ảnh Google Images / Bing HD bắt mắt câu view (Gemini Search)
         try:
             from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
             if web_image_search_enabled():
@@ -557,9 +555,10 @@ If no real entities found, return empty array: []"""
                 )
                 web_items = WebImageFetcher().search_all(
                     web_q,
-                    per_source=4,
+                    per_source=6,
                     subject=scene_subject,
                     extra_queries=google_qs[1:] if len(google_qs) > 1 else None,
+                    creature_mode=bool((v_analysis or {}).get("creature_mode")),
                 )
                 for item in web_items:
                     u = item.get("url")
@@ -568,27 +567,33 @@ If no real entities found, return empty array: []"""
         except Exception as e:
             logger.debug(f"[MediaAgent] Candidate web photos error: {e}")
 
-        # 2. Ảnh từ Pexels
-        if self.api_key:
-            px_photos = self.search_photos(
-                primary_q or fallback_q,
-                per_page=4,
-                orientation="portrait",
-                topic=topic,
-                narration=scene_narration,
-                used_urls=used,
-            )
-            candidate_photos.extend(px_photos)
+        # 2. Chỉ gọi Pexels / Wikimedia Commons khi Google Search trả về ít hơn 4 ảnh
+        if len(candidate_photos) < 4:
+            if self.api_key:
+                px_photos = self.search_photos(
+                    primary_q or fallback_q,
+                    per_page=4,
+                    orientation="portrait",
+                    topic=topic,
+                    narration=scene_narration,
+                    used_urls=used,
+                )
+                candidate_photos.extend(px_photos)
 
-        # 3. Ảnh từ Wikimedia Commons
-        commons_fallback = self.search_web_photos(primary_q or fallback_q, per_page=4)
-        for c in commons_fallback:
-            u = c.get("url")
-            if u and not is_media_already_used(u, used) and not any(x.get("url") == u for x in candidate_photos):
-                candidate_photos.append(c)
+            commons_fallback = self.search_web_photos(primary_q or fallback_q, per_page=4)
+            for c in commons_fallback:
+                u = c.get("url")
+                if u and not is_media_already_used(u, used) and not any(x.get("url") == u for x in candidate_photos):
+                    candidate_photos.append(c)
 
         if candidate_photos:
-            candidate_photos = prefilter_candidates(candidate_photos, subject=scene_subject or primary_q, limit=12)
+            candidate_photos = prefilter_candidates(
+                candidate_photos,
+                subject=scene_subject or primary_q,
+                limit=12,
+                creature_mode=bool((v_analysis or {}).get("creature_mode")),
+                max_per_source=12,
+            )
             if scene_subject and v_analysis is not None and not v_analysis.get("subject"):
                 v_analysis = {**v_analysis, "subject": scene_subject}
         if candidate_photos:

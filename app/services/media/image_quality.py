@@ -331,10 +331,10 @@ def heuristic_score(item: Dict, terms: Iterable[str], creature_mode: bool = Fals
     if terms:
         hits = sum(1 for t in terms if re.search(rf"\b{re.escape(t)}s?\b", text))
         frac = hits / len(terms)
-        # Khớp ĐỦ chủ thể (cả bổ ngữ loài/tên riêng) quan trọng hơn khớp một phần ("eagle" ≠ "wedge-tailed eagle")
-        score += 4.2 * frac * frac
+        # Thưởng điểm khớp chủ thể nhưng không phạt nặng các bức ảnh nghệ thuật/CGI có tiêu đề ẩn dụ từ Google Search
+        score += 3.6 * frac
         if hits == 0 and text:
-            score -= 2.0
+            score -= 0.8
 
     src = (item.get("source") or "").lower()
     blob_domain = f"{item.get('creator') or ''} {item.get('page_url') or ''} {item.get('url') or ''}".lower()
@@ -343,37 +343,39 @@ def heuristic_score(item: Dict, terms: Iterable[str], creature_mode: bool = Fals
     # Thưởng điểm cho nguồn Hot-Trend / Điện ảnh / Viral (ArtStation, Pinterest, Reddit, Wallpaper 8K, Movie Stills)
     is_hot_domain = any(dom in blob_domain for dom in _HOT_TREND_DOMAINS)
     hot_cue_hits = sum(1 for c in _HOT_TREND_CUES if f" {c} " in padded)
+    epic_cue_hits = sum(1 for c in _CREATURE_BONUS_CUES if f" {c} " in padded)
 
     if creature_mode:
         # Chế độ Quái Vật / Kinh Dị: Ưu tiên tuyệt đối Google Images + ArtStation / Movie CGI / Thalassophobia
-        if src == "google_images":
-            score += 1.2
+        if src in ("google_images", "open_web"):
+            score += 1.3
         if is_hot_domain:
             score += 1.4
         # Trừ điểm Wikipedia/Wikimedia/Bảo tàng trong creature_mode vì hay trả về tranh khắc gỗ cũ hoặc hóa thạch răng
         if src in ("wikipedia", "wikimedia_commons", "openverse") or any(
             d in blob_domain for d in ("wikimedia.org", "wikipedia.org", "nhm.ac.uk", "smithsonian", "fishbase", "inaturalist")
         ):
-            score -= 1.5
-        bonus = sum(1 for c in _CREATURE_BONUS_CUES if f" {c} " in padded)
-        score += min(2.6, 0.75 * bonus)
+            score -= 1.8
+        score += min(2.6, 0.75 * epic_cue_hits)
         if any(f" {c} " in padded for c in _CREATURE_PENALTY_CUES):
             score = min(score - 5.5, 3.5)
     else:
-        # Chế độ thường nhưng ưu tiên ảnh đẹp, bắt trend, sắc nét trên Google Images
-        if src == "google_images" and frac >= 0.4:
-            score += 1.1
-        elif src in ("wikipedia", "wikimedia_commons") and frac >= 0.5:
-            score += 0.5
+        # Chế độ Gemini Search (Không cần ảnh thật 100%, chỉ cần BẮT MẮT, CÂU VIEW, ĐIỆN ẢNH 8K):
+        if src in ("google_images", "open_web"):
+            score += 1.3
         elif src in ("pexels", "pexels_photo", "pixabay", "unsplash"):
-            score += 0.4
+            score += 0.2
+        elif src in ("wikipedia", "wikimedia_commons", "openverse"):
+            score -= 0.6
 
         if is_hot_domain:
-            score += 0.9
+            score += 1.2
         if hot_cue_hits > 0:
-            score += min(1.2, 0.45 * hot_cue_hits)
+            score += min(1.6, 0.55 * hot_cue_hits)
+        if epic_cue_hits > 0:
+            score += min(1.2, 0.4 * epic_cue_hits)
         if any(dom in blob_domain for dom in _AUTHORITATIVE_DOMAINS):
-            score += 0.5
+            score += 0.4
         if any(f" {c} " in padded for c in _SOFT_TITLE_CUES):
             score -= 2.0
 
