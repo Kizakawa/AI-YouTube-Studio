@@ -294,16 +294,22 @@ def build_script_prompt_instructions(niche_profile: Dict[str, Any], language: st
     target_aud = niche_profile.get("target_audience", "Đại chúng người xem Shorts")
     blueprint = niche_profile.get("script_blueprint", {})
 
-    tone = blueprint.get("tone_of_voice", "Cuốn hút, sắc bén, nhịp điệu nhanh")
-    pacing = "1.8 - 2.5 giây/cảnh (8 - 10 phân cảnh siêu tốc, 6 - 9 từ/cảnh, 22 - 30 giây tổng — CẤM VIẾT DÀI LÊ THÊ)"
-    structure = "Hook 1.8s (4-7 từ) -> Leo thang & Mid-Video Re-Hook giây 8 -> Payoff đắt giá -> Cầu nối Vòng lặp Vô tận (Zero Spoken Subscribe CTA)"
+    tone = blueprint.get("tone_of_voice", "Cuốn hút, sắc bén, giàu chiều sâu thực chiến")
+    pacing = blueprint.get(
+        "pacing",
+        "Thời lượng vàng 32 - 42 giây (8 - 9 phân cảnh trọn câu, 88 - 118 từ tổng, 10 - 14 từ/cảnh ~ 3.5 - 4.5 giây/cảnh)",
+    )
+    structure = blueprint.get(
+        "narrative_structure",
+        "Act 1: Hook 2.5s (5-8 từ) -> Act 2: Ví dụ câu nói đời thực / Bằng chứng lịch sử cụ thể (Cảnh 2-3) -> Act 3: Giải phẫu cơ chế ngầm & Mid-Video Twist (Cảnh 4-5) -> Act 4: Đòn phản công / Hóa giải thực chiến (Cảnh 6-7) -> Act 5: Cú chốt & Vòng lặp Vô tận (Cảnh 8-9, Zero Spoken Subscribe CTA)",
+    )
     hooks = blueprint.get("hook_formulas", [])
     forbidden = blueprint.get("forbidden_words", [])
     banned_lex = niche_profile.get("banned_lexicon") or blueprint.get("banned_lexicon", [])
     ctas = blueprint.get("cta_templates", [])
     anti_hallucination = blueprint.get("anti_hallucination_rules", [])
 
-    hooks_text = "\n".join(f"      - {h}" for h in hooks) if hooks else "      - 1.8s Pattern Interrupt Hook (4-7 words)"
+    hooks_text = "\n".join(f"      - {h}" for h in hooks) if hooks else "      - 2.5s Pattern Interrupt Hook (5-8 words)"
     forbidden_text = "\n".join(f"      * KHÔNG ĐƯỢC DÙNG: \"{w}\"" for w in forbidden) if forbidden else "      * Tránh lời mở đầu sáo rỗng"
     banned_lex_text = "\n".join(f"      * STRICTLY FORBIDDEN VOCABULARY/CONCEPTS: \"{w}\"" for w in banned_lex) if banned_lex else ""
     ctas_text = "\n".join(f"      - {c}" for c in ctas) if ctas else "      - Câu hỏi mở kích thích tranh luận ở Pinned Comment"
@@ -316,10 +322,11 @@ def build_script_prompt_instructions(niche_profile: Dict[str, Any], language: st
 1. KHÁN GIẢ MỤC TIÊU (TARGET AUDIENCE):
    {target_aud}
 
-2. GIỌNG ĐIỆU ĐẶC TRƯNG & NHỊP CẮT CẢNH (TONE OF VOICE & RAPID PACING):
+2. GIỌNG ĐIỆU ĐẶC TRƯNG, THỜI LƯỢNG VÀNG & CẤU TRÚC 5 HỒI (TONE, DEPTH & 5-ACT ARC):
    - Giọng điệu: {tone}
-   - Nhịp cắt cảnh: {pacing}
-   - Cấu trúc tự sự: {structure}
+   - Thời lượng & Nhịp cảnh: {pacing}
+   - Cấu trúc tự sự 5 hồi: {structure}
+   - YÊU CẦU CHIỀU SÂU BẮT BUỘC: Tuyệt đối KHÔNG viết chung chung bề nổi! Phải có (1) Ví dụ câu nói/tình huống cụ thể ngoài đời thực hoặc dẫn chứng lịch sử/khoa học xác thực, (2) Phân tích cơ chế tại sao nó thao túng/tác động đến não bộ, và (3) Đòn phản công / Cách hóa giải cụ thể từng lời nói hoặc hành động để người xem áp dụng được ngay.
 
 3. CÔNG THỨC HOOK 2.5 GIÂY ĐẦU DÀNH RIÊNG CHO NGÁCH NÀY (SCENE 1 HOOK BLUEPRINT):
 {hooks_text}
@@ -404,19 +411,19 @@ def hex_to_ass_color(hex_str: str, alpha: int = 0) -> str:
 def get_niche_subtitle_style(niche_profile: Dict[str, Any]) -> Dict[str, Any]:
     """
     Trả về bộ mã màu và font chữ đã chuyển đổi cho ASS Subtitles từ hồ sơ ngách.
-    Chuẩn hóa MarginV: 576 - 672px trên khung 1080x1920 để không bị che bởi Shorts UI.
+    Chuẩn hóa MarginV: 560 - 860px trên khung 1080x1920 (mặc định 720px vùng tâm điểm mắt người xem chuẩn @MasteringMindControl).
     """
     sub_cfg = niche_profile.get("subtitles", {})
-    primary_hex = sub_cfg.get("primary_color", "#FFFFFF")
-    highlight_hex = sub_cfg.get("highlight_color", "#FFE600")
+    primary_hex = sub_cfg.get("primary_color", "#9E9E9E")
+    highlight_hex = sub_cfg.get("highlight_color", "#FFFFFF")
     outline_hex = sub_cfg.get("outline_color", "#000000")
-    raw_font = sub_cfg.get("font_family") or "Montserrat, sans-serif"
-    font_family = raw_font.split(",")[0].strip() or "Montserrat"
-    font_size = int(sub_cfg.get("font_size", 42))
+    raw_font = sub_cfg.get("font_family") or "Arial Black, Montserrat, sans-serif"
+    font_family = raw_font.split(",")[0].strip() or "Arial Black"
+    font_size = int(sub_cfg.get("font_size", 44))
     
-    raw_margin = int(sub_cfg.get("margin_bottom", 600))
-    # Chuẩn hóa an toàn trong khoảng 576 - 672 px (mặc định 600)
-    margin_v = raw_margin if 576 <= raw_margin <= 672 else 600
+    raw_margin = int(sub_cfg.get("margin_bottom", 720))
+    # Chuẩn hóa an toàn trong khoảng 560 - 860 px (mặc định 720px vùng trung tâm dưới cằm chủ thể, hoàn toàn tránh UI Shorts)
+    margin_v = raw_margin if 560 <= raw_margin <= 860 else 720
 
     return {
         "fontname": font_family,

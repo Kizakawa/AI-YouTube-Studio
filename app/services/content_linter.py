@@ -133,47 +133,42 @@ class ScriptValidationLinter:
         niche_id: str = ""
     ) -> Tuple[List[str], int]:
         """
-        Kiểm tra số từ và tính toán nhịp đọc (Ultra-Fast Viral Pacing — Chống Dài Lê Thê):
-        - Chuẩn vàng YouTube Shorts tốc độ cao (22 - 30s tại 185-200 WPM) là 52 đến 95 từ (7 - 11 cảnh, 1.8 - 2.5s/cảnh).
-        - Riêng ngách animal_rescue (Paws & Hearts Rescue): 26 - 34 giây (60 - 108 từ, 8 - 11 cảnh) để đủ 4 giai đoạn chuyển hóa cảm xúc mà vẫn gọn gàng, không rề rà.
+        Kiểm tra số từ và tính toán nhịp đọc (Chuẩn Chiều Sâu 32 - 42s — Đủ Ví Dụ Thật + Cơ Chế + Đòn Phản Công):
+        - Chuẩn vàng YouTube Shorts (32 - 42s tại ~170 WPM tự nhiên +0%) là 88 đến 118 từ (8 - 9 cảnh trọn câu, 3.5 - 4.5s/cảnh).
+        - Cho phép biên độ linh hoạt từ 75 đến 128 từ để LLM triển khai đủ 5 hồi (Hook -> Ví dụ đời thực -> Cơ chế ngầm -> Đòn hóa giải -> Loop).
         """
         issues = []
         all_narrations = " ".join(s.narration for s in script.scenes if s.narration)
         words = re.findall(r'\b\w+\b', all_narrations)
         total_words = len(words)
 
-        topic_str = getattr(script, "topic", "") or ""
-        nid_lower = (niche_id or "").lower()
-        is_rescue = ("rescue" in nid_lower or "animal" in nid_lower) or any(
-            k in f"{script.title} {topic_str}".lower() for k in ("rescue", "cứu hộ", "puppy", "kitten", "stray dog", "abandoned")
-        )
-        min_words = 58 if is_rescue else 50
-        max_words = 108 if is_rescue else 98
-        target_range_str = "68 to 95 words (26-34s High-Velocity Transformation Arc)" if is_rescue else "60 to 85 words (22-30s Ultra-Fast Payoff Arc)"
+        min_words = 75
+        max_words = 128
+        target_range_str = "88 to 118 words (32-42s High-Depth 5-Act Arc across 8-9 complete-sentence scenes of 10-14 words each)"
 
         if total_words > max_words:
-            est_seconds = (total_words / target_wpm) * 60
+            est_seconds = (total_words / max(target_wpm, 165)) * 60
             issues.append(
-                f"Script is too long and dragging ({total_words} words, ~{est_seconds:.1f}s at {target_wpm} WPM). "
-                f"Cut filler immediately! Target limit: strictly {target_range_str} (6-9 words per scene)."
+                f"Script is too long ({total_words} words, ~{est_seconds:.1f}s). "
+                f"Tighten to strictly {target_range_str}."
             )
         elif total_words < min_words:
-            est_seconds = (total_words / target_wpm) * 60
+            est_seconds = (total_words / max(target_wpm, 165)) * 60
             issues.append(
-                f"Script is too short ({total_words} words, ~{est_seconds:.1f}s) — lacks depth for Mid-Video Re-Hook & Payoff! "
-                f"Minimum {min_words} words required (target {target_range_str})."
+                f"Script is too thin and superficial ({total_words} words, ~{est_seconds:.1f}s) — lacks concrete real-life example and actionable counter-move! "
+                f"Expand to at least {min_words} words (target {target_range_str})."
             )
 
-        # Số lượng scene: 7 đến 12 scene là nhịp tối ưu cho Shorts 22-32s (1.8 - 2.5s/scene)
+        # Số lượng scene: 7 đến 10 scene trọn câu là nhịp tối ưu cho Shorts 32-42s (3.5 - 4.5s/scene)
         scene_count = len(script.scenes)
         min_scenes = 7
         if scene_count < min_scenes:
             issues.append(
-                f"Too few scenes ({scene_count}). Need at least {min_scenes} rapid scenes for visual pacing and Payoff (target 8 to 11 scenes, 1.8-2.5s each)."
+                f"Too few scenes ({scene_count}). Need 8 to 9 complete-sentence scenes (minimum {min_scenes}) to cover Hook, Real-Life Example, Mechanism, Counter-Move, and Loop."
             )
-        elif scene_count > 12:
+        elif scene_count > 11:
             issues.append(
-                f"Too many scenes ({scene_count}). Limit to 8 to 11 rapid scenes (1.8-2.5s each) so the video never drags."
+                f"Too many scenes ({scene_count}). Keep between 8 and 10 complete-sentence scenes (10-14 words each) so sentences are never chopped in half."
             )
 
         return issues, total_words
