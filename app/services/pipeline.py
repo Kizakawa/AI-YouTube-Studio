@@ -149,10 +149,15 @@ class VideoPipeline:
                             scene_id=sc_id,
                             narration=s.get("narration") or a_info.get("narration") or " ",
                             visual_keyword=s.get("visual_keyword", ""),
+                            visual_prompt=s.get("visual_prompt"),
                             media_path=s.get("media_path", ""),
                             media_type=s.get("media_type", "image"),
                             audio_path=s.get("audio_path") or a_info.get("audio_path") or audio_p or "",
                             audio_duration_ms=s.get("audio_duration_ms") or a_info.get("audio_duration_ms") or a_info.get("duration_ms") or 0,
+                            camera_motion=s.get("camera_motion") or a_info.get("camera_motion"),
+                            sfx_cue=s.get("sfx_cue") or a_info.get("sfx_cue"),
+                            highlight_words=s.get("highlight_words") or a_info.get("highlight_words"),
+                            overlay_badge=s.get("overlay_badge") or a_info.get("overlay_badge"),
                         ))
 
                     # Đảm bảo video được lưu trữ vĩnh viễn trong storage/outputs/video_{self.job_id}.mp4
@@ -175,13 +180,14 @@ class VideoPipeline:
                         from app.services.thumbnail_service import ThumbnailService
                         ts = ThumbnailService()
                         base_img = next((s.media_path for s in scenes_list if s.media_path and s.media_path.endswith((".jpg", ".png", ".webp"))), None)
+                        resolved_niche_id = state.get("channel_style") or getattr(self, "niche", None) or "general"
                         thumb_results = ts.generate_viral_thumbnail(
                             job_id=self.job_id,
                             topic=title,
                             viral_title=title,
                             video_path=video_p,
                             base_image_path=base_img,
-                            niche_id=getattr(self, "niche", "general") or "general",
+                            niche_id=resolved_niche_id,
                         )
                         t_16x9 = thumb_results.get("thumb_16x9")
                         t_9x16 = thumb_results.get("thumb_9x16")
@@ -1423,33 +1429,46 @@ class VideoPipeline:
         return None
 
     @staticmethod
-    def find_bgm_for_niche(niche: Optional[str] = None) -> Optional[str]:
+    def find_bgm_for_niche(
+        niche: Optional[str] = None,
+        is_scifi: bool = False,
+        scifi_subgenre: Optional[str] = None,
+        **kwargs,
+    ) -> Optional[str]:
         """
         P2.4: Tìm file nhạc nền phù hợp theo Niche (Sound Design Automation) hoặc fallback về mặc định:
+        - animal_rescue, wholesome -> chill_ambient / emotional / gentle
+        - wildlife_predators, survival, sport -> dark_suspense / inspiring_epic
         - luxury, motivation, finance -> inspiring_epic / energetic
-        - psychology, philosophy, history -> deep_ambient / thoughtful
+        - psychology, philosophy, history, alternate_history -> deep_ambient / thoughtful
         - scifi, tech, future -> scifi_cyber / futuristic
-        - horror, mystery, deep_sea -> dark_suspense / eerie
+        - horror, mystery, deep_sea, crime -> dark_suspense / eerie
         - default / chill / general -> chill_ambient
         """
         bgm_dir = Path(settings.BASE_DIR) / "assets" / "bgm"
         if not bgm_dir.exists():
             return None
 
-        # Niche keyword mapping
+        # Niche keyword mapping (hỗ trợ đầy đủ 5 kênh hiện tại + mở rộng đa ngách + scifi subgenres)
         niche_keywords = {
+            "rescue": ["chill_ambient", "emotional", "piano", "warm", "chill", "ambient"],
+            "animal": ["chill_ambient", "emotional", "chill", "ambient"],
+            "wildlife": ["dark_suspense", "inspiring_epic", "suspense", "epic", "percussion"],
+            "predator": ["dark_suspense", "inspiring_epic", "suspense", "dark"],
             "luxury": ["inspiring_epic", "epic", "motivation", "luxury"],
             "motivation": ["inspiring_epic", "epic", "motivation"],
-            "finance": ["inspiring_epic", "wealth", "finance"],
-            "psychology": ["deep_ambient", "ambient", "psychology"],
+            "finance": ["inspiring_epic", "wealth", "finance", "deep_ambient"],
+            "psychology": ["deep_ambient", "ambient", "psychology", "dark_suspense"],
             "philosophy": ["deep_ambient", "thoughtful", "ambient"],
-            "history": ["deep_ambient", "history", "ancient"],
-            "scifi": ["scifi_cyber", "cyber", "scifi", "tech"],
+            "stoic": ["deep_ambient", "thoughtful", "ambient"],
+            "history": ["deep_ambient", "history", "ancient", "inspiring_epic"],
+            "scifi": ["scifi_cyber", "cyber", "scifi", "tech", "deep_ambient"],
             "future": ["scifi_cyber", "cyber", "future"],
             "space": ["scifi_cyber", "deep_ambient", "cyber"],
-            "cosmic": ["scifi_cyber", "deep_ambient"],
+            "cosmic": ["dark_suspense", "scifi_cyber", "deep_ambient"],
             "cyberpunk": ["scifi_cyber", "cyber"],
             "horror": ["dark_suspense", "suspense", "dark", "horror"],
+            "crime": ["dark_suspense", "suspense", "deep_ambient"],
             "mystery": ["dark_suspense", "deep_ambient", "mystery"],
             "deep_sea": ["dark_suspense", "deep_ambient"],
             "general": ["chill_ambient", "chill", "ambient"],
@@ -1463,27 +1482,38 @@ class VideoPipeline:
         if not all_bgms:
             return None
 
+        target_keys: List[str] = []
+
+        # 0. Nếu cờ is_scifi bật, ưu tiên tìm theo scifi_subgenre trước
+        if is_scifi:
+            sub_low = str(scifi_subgenre or "").lower()
+            if any(k in sub_low for k in ("horror", "dystop", "alien", "invasion")):
+                target_keys.extend(["dark_suspense", "scifi_cyber", "suspense", "cyber"])
+            else:
+                target_keys.extend(["scifi_cyber", "cyber", "scifi", "deep_ambient"])
+
         # 1. Tìm theo từ khóa niche
         if niche:
             clean_niche = str(niche).lower().replace("-", "_")
-            target_keys = []
             for k, keys in niche_keywords.items():
                 if k in clean_niche:
-                    target_keys.extend(keys)
-            
-            # Khớp file BGM
-            for key in target_keys:
-                for f in all_bgms:
-                    if key in f.stem.lower():
-                        logger.info(f"🎵 BGM khớp Niche '{niche}' → {f.name}")
-                        return str(f)
+                    for kw_item in keys:
+                        if kw_item not in target_keys:
+                            target_keys.append(kw_item)
+
+        # Khớp file BGM
+        for key in target_keys:
+            for f in all_bgms:
+                if key in f.stem.lower():
+                    logger.info(f"🎵 BGM khớp Niche '{niche}' (is_scifi={is_scifi}) → {f.name}")
+                    return str(f)
 
         # 2. Fallback: file đầu tiên có sẵn
         return str(all_bgms[0])
 
-    def _find_bgm(self, niche: Optional[str] = None) -> Optional[str]:
+    def _find_bgm(self, niche: Optional[str] = None, **kwargs) -> Optional[str]:
         effective_niche = niche or getattr(self, "niche", None)
-        return self.find_bgm_for_niche(effective_niche)
+        return self.find_bgm_for_niche(effective_niche, **kwargs)
 
     @staticmethod
     def _is_valid_media_file(path_str: str) -> bool:
