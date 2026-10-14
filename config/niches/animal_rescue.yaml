@@ -11,11 +11,19 @@ script_blueprint:
     kết, chạm thẳng vào trái tim người xem, kích hoạt phản xạ đồng cảm tức thì.
   pacing: Nhịp điệu xúc động sâu sắc, thời lượng vàng 45 - 56 giây (8 - 10 cảnh, 100 - 140 từ), đủ 4 giai đoạn chuyển hóa cảm xúc để đạt AWT > 45s và tỷ lệ chuyển đổi Subscribe cao nhất (như video 2,282 views / +32 subs).
   hook_formulas:
-  - 'Refused To Let Go (Proven 2,282 Views & +32 Subs): ''He refused to let go of the rescuer''s hand until this heartbreaking truth came out...'''
-  - 'Relief Transformation (Proven 1,205 Views & 94.8% APV): ''The exact second this terrified rescue dog realized he was finally safe, everything changed...'''
-  - 'The Trembling Eye Contact: ''The exact moment she stopped shaking and dared to look into the rescuer''s eyes, his heart melted...'''
-  - 'Miracle Second Chance: ''Everyone walked past this silent cardboard box, until a faint whimper stopped one stranger in his tracks...'''
-  - 'The Breakthrough Moment: ''He wouldn''t let anyone touch him for weeks. Watch what happens the second he feels a warm blanket...'''
+  - 'Refused To Let Go (Proven #1 Winner 2,282 Views & +32 Subs): ''He refused to let go of the rescuer''s hand until this heartbreaking truth came out...'''
+  - 'Relief Transformation (Proven #2 Winner 1,205 Views & 94.8% APV): ''The exact second this terrified rescue dog realized he was finally safe, everything changed...'''
+  - 'Day 1 vs Day 30 Emotional Payoff (Cuddle & Rescue 20.6M Formula): ''Nobody recognized this trembling stray dog 30 days after one kind stranger stopped his car...'''
+  - 'The First Tail Wag Breakthrough: ''He spent 3 years hiding in the corner of the shelter, until a little girl sat silently outside his kennel...'''
+  - 'Saved Mother Gratitude: ''This stray mama dog led a rescuer half a mile into the rain — and what he found inside the drain pipe broke him...'''
+  viral_topic_bank_2026:
+  - "He Refused To Stop Hugging The Rescuer Who Pulled Him Out Of The Storm"
+  - "The Exact Second This Stray Mama Dog Realized Her Puppies Were Safe"
+  - "Everyone Walked Past The Senior Shelter Dog Until One Man Read His Sign"
+  - "Terrified Stray Puppy Fell Asleep In A Rescuer's Warm Hands For The First Time"
+  - "Watch How This Rescued Golden Retriever Reacts The First Time He Sees A Bed"
+  - "She Guarded Her Injured Brother In The Rain Until Help Finally Arrived"
+  - "Day 1 vs Day 30: The Stray Dog Nobody Wanted To Touch"
   narrative_structure: Khoảnh khắc nghịch lý gây tò mò hoặc từ chối buông tay (Hook 0-5s) -> Bàn tay kiên nhẫn và hơi ấm tiếp cận (5-15s, Mid-Video Re-Hook Cảnh 4) -> Khoảnh khắc tan chảy nhận ra mình được yêu thương (15-35s) -> Sự lột xác rực rỡ, khỏe mạnh chạy nhảy dưới nắng ấm (Payoff bắt buộc Cảnh 6-9) -> Lời kêu gọi nhân văn & Infinite Loop.
   forbidden_words:
   - Chào mừng các bạn đến với kênh yêu thú cưng
@@ -75,7 +83,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-JennyNeural
   preferred_voice_vi: vi-VN-HoaiMyNeural
-  rate: +3%
+  rate: +9%
   pitch: 0Hz
   bgm_vibe: emotional acoustic piano into soaring orchestral violin, heartwarming,
     tears of joy, gentle hopeful warmth
@@ -85,7 +93,7 @@ audio:
   - riser
   - whoosh_fast
 banned_lexicon: *id001
-target_wpm: 150
+target_wpm: 160
 monetization:
   affiliate_enabled: false
   affiliate_category: pet_care

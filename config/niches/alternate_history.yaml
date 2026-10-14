@@ -8,11 +8,20 @@ script_blueprint:
   tone_of_voice: "Hồi hộp, sử thi, giọng kể tài liệu điện ảnh (Christopher Nolan / Dan Carlin), tạo cảm giác rùng mình trước sự mong manh của dòng thời gian."
   pacing: "Thời lượng vàng 35 - 45 giây (7 - 9 cảnh, 85 - 120 từ, 3.5 - 4.8 giây/cảnh). Cảnh 1 là Hook 3s giả định chấn động, Cảnh 4 (giây 12-15) là Mid-Video Re-Hook (Điểm rẽ nhánh lịch sử), Cảnh 5-7 là Payoff bản đồ thế giới bị viết lại."
   hook_formulas:
-  - 'Fallen Empire Twist (Proven Top Winner): ''What if the Roman Empire never collapsed, and ruled the modern world today?'''
-  - 'Mightiest Armies Clash (Proven 136 Views): ''When history''s mightiest unstoppable army made one fatal mistake, the map of the world changed forever...'''
-  - 'The Saved Library: ''What if the Library of Alexandria was never burned, and humanity was 1,000 years ahead?'''
-  - 'The 1-Second Glitch: ''In 1914, a driver took one wrong turn — and accidentally erased four empires from existence...'''
-  - 'Untold Superpower: ''What if the Mongol Empire never retreated from Europe in 1242?'''
+  - '1-Minute Historical Butterfly Effect (Finances for Everyone 3.0M Formula): ''In 1983, one Soviet officer refused to press a red button for 4 minutes — and saved 6 billion lives...'''
+  - 'Mightiest Armies Fatal Flaw (Proven #1 Winner 136 Views): ''When history''s mightiest unstoppable army made one fatal mistake, the map of the world changed forever...'''
+  - 'Empire Wealth Flip (Proven #2 Winner 62 Views): ''How one ruthless decision turned a doomed oil empire into a $400 billion monopoly overnight...'''
+  - 'The Wrong Turn of 1914: ''In 1914, a chauffeur took one wrong turn down a side street — and accidentally erased four empires from existence...'''
+  - 'The Saved Ancient Supercomputer: ''What if the Library of Alexandria never burned, and the Industrial Revolution started in 100 AD?'''
+  viral_topic_bank_2026:
+  - "How One Wrong Turn By A Driver In 1914 Erased Four Empires Forever"
+  - "What If The Titanic Never Hit The Iceberg? The Dark Truth Nobody Tells You"
+  - "How A 15-Minute Rainstorm At Waterloo Ended Napoleon's Empire"
+  - "The Man Who Refused To Launch A Nuclear Strike In 1962 Inside Submarine B-59"
+  - "What If The Roman Empire Discovered Steam Engines 1,800 Years Early?"
+  - "How The 1815 Tambora Volcano Eruption Created A Year Without A Summer"
+  - "What If Lincoln Cancelled His Theater Trip On April 14, 1865?"
+  - "How One Unlocked Gate In 1453 Ended The 1,000-Year Byzantine Empire"
   narrative_structure: "Shock Hook (Bước ngoặt đế chế/chiến dịch lịch sử 3s) -> Bằng chứng lịch sử thực tế -> Mid-Video Re-Hook (Cảnh 4 - Điểm rẽ nhánh đảo ngược định mệnh ở giây 12) -> Payoff (Thế giới hiện đại bị biến đổi hoàn toàn ở Cảnh 5-7) -> Câu hỏi tranh luận & CTA vòng lặp (Infinite Loop)"
   forbidden_words:
   - Welcome back to our channel
@@ -67,7 +76,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: +7%
+  rate: +13%
   pitch: -2Hz
   bgm_vibe: deep cinematic ticking clock, ominous orchestral brass, slow thunderous war drums
   sfx_cues:
@@ -76,7 +85,7 @@ audio:
   - reveal
   - whoosh_heavy
 banned_lexicon: *banned_words
-target_wpm: 155
+target_wpm: 165
 monetization:
   affiliate_enabled: false
   model: adsense_high_cpm_clean_metadata

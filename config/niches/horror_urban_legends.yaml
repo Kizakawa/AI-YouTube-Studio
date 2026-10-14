@@ -43,23 +43,18 @@ script_blueprint:
   - romantic comedy
   - sunny beach
 visual_aesthetics:
-  art_style: Analog VHS Horror & Found Footage Creepy Noir
-  camera_angles: Creepy peep-hole view, distorted fisheye lens, shaky handheld night-vision
-    camera, shadow lurking in hallway
-  color_palette: Sickly green night vision, blood crimson, decrepit mold black, pale
-    ghostly white
-  master_prompt_prefix: creepy horror analog VHS still, found footage aesthetic, dark
-    hallway with terrifying shadow silhouette, grainy 1990s videotape distortion
-  master_prompt_suffix: eerie volumetric mist, disturbing uncanny atmosphere, vertical
-    9:16 cinematography, hyper-detailed, no text, no watermark
-  negative_prompts: sunny daylight, cheerful, colorful, smiling, anime, cartoon, 3d
-    render, watermark, text
+  art_style: Terrifying Eldritch Creature Horror, Analog VHS Found Footage & Dark Nightmare Cinema
+  camera_angles: Creepy peep-hole view, shaky handheld night-vision camera catching monstrous silhouette, extreme low-angle terrifying creature towering in fog, flashlight beam freezing on glowing eyes in dark hallway
+  color_palette: Sickly green night vision, blood crimson, abyssal pitch black, pale ghostly white, eerie cold moonlight
+  master_prompt_prefix: terrifying horror movie still, spine-chilling creature silhouette with glowing eyes lurking in darkness, eerie found footage & dark concept art aesthetic, intense dread
+  master_prompt_suffix: eerie volumetric fog, disturbing uncanny valley horror atmosphere, vertical 9:16 8k cinematography, hyper-detailed, no text, no watermark
+  negative_prompts: sunny daylight, cheerful, colorful, smiling, cute cartoon, chibi, watermark, text
   stock_video_keywords:
-  - creepy dark hallway
-  - shadow figure standing door
-  - old analog tv static
-  - flashlight in dark forest
-  - foggy cemetery night
+  - terrifying monster shadow in dark hallway
+  - creepy figure standing in fog night
+  - old analog tv static horror
+  - flashlight beam in pitch black forest
+  - glowing eyes in darkness horror
 subtitles:
   font_family: Creepster, Montserrat, Impact, sans-serif
   font_weight: '900'
@@ -73,7 +68,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: -6%
+  rate: +12%
   pitch: -4Hz
   bgm_vibe: eerie dark horror ambient drone, jump-scare screech, disturbing metallic
     scraping
@@ -82,6 +77,6 @@ audio:
   - door_slam
   - heartbeat_intense
 banned_lexicon: *id001
-target_wpm: 155
+target_wpm: 165
 monetization:
   affiliate_enabled: false

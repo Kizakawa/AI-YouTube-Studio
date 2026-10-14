@@ -11,10 +11,20 @@ script_blueprint:
     trực diện không vòng vo (Cold, authoritative, insightful & mysterious).
   pacing: Thời lượng vàng 35 - 45 giây (7 - 9 cảnh, 85 - 120 từ, 3.5 - 4.8 giây/cảnh). Cảnh 1 là Hook 3s (5-10 từ), Cảnh 4 là Mid-Video Re-Hook (giây 12-15) lật ngược nhận thức, Cảnh 5-7 là Payoff đòn tâm lý thực chiến.
   hook_formulas:
-  - 'Direct Personal Threat Hook (Proven 514-941 Views): ''3 signs someone is secretly using you — and how to flip the script instantly...'''
-  - 'Forbidden Behavioral Anomaly (Proven 941 Views): ''Why manipulators and liars always do THIS with their eyes in the first 5 seconds...'''
-  - 'High-Status Frame Control (Proven 156% APV): ''Never react when someone disrespects you in public. Instead, use this 3-second trap...'''
-  - 'Deadliest Social Trap: ''The deadliest psychological trap in any room is always disguised as kindness...'''
+  - 'Courtroom / Interrogation Micro-Expression (Proven #1 Winner 941 Views): ''Why serial killers and sociopaths always smile in court — and the 1 micro-expression that gives them away...'''
+  - 'Instant Situational Counter-Move (Learnt Behavioral 1.33M Formula): ''If someone interrupts you mid-sentence to assert dominance, never raise your voice. Do this for 4 seconds instead...'''
+  - 'FBI Polygraph / Eye-Tracking Paradox: ''Why pathological liars never look away when lying — they actually lock eyes 70% longer to check if you bought it...'''
+  - 'The Narcissist Mirror Trap: ''Why a narcissist will suddenly act like the victim the exact second you stop reacting to their anger...'''
+  - 'Covert Boundary Test: ''The 1-sentence compliment manipulators use in the first 60 seconds to test how easy you are to control...'''
+  viral_topic_bank_2026:
+  - "Why Sociopaths Never Blink When They Lie To Your Face"
+  - "If Someone Insults You Disguised As A Joke, Ask This 4-Word Question"
+  - "Why FBI Interrogators Watch Your Feet, Never Your Eyes"
+  - "The 4-Second Silence Trick That Makes Arrogant People Panic"
+  - "Why Narcissists Always Ruin Your Birthday And Special Days"
+  - "How To Spot A Fake Friend By How They React To Your Good News"
+  - "Why Guilty People Always Repeat Your Question Before Answering"
+  - "The Psychological Trap Behind People Who Are 'Too Nice' Too Fast"
   narrative_structure: Hook (3s cắt đà lướt) -> Mid-Video Re-Hook & Dấu hiệu bóc trần ngầm (Cảnh 2-4) -> Payoff phân tích hiệu ứng tâm lý & Vũ khí tự vệ thực chiến (Cảnh 5-7) -> CTA kích hoạt tranh luận & Vòng lặp vô tận (Infinite Loop)
   forbidden_words:
   - Chào mừng các bạn đã quay trở lại
@@ -68,7 +78,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: +7%
+  rate: +14%
   pitch: -2Hz
   bgm_vibe: dark suspense cello, low ambient drone, tension riser
   sfx_cues:
@@ -77,6 +87,6 @@ audio:
   - riser
   - reveal
 banned_lexicon: *id001
-target_wpm: 155
+target_wpm: 168
 monetization:
   affiliate_enabled: false

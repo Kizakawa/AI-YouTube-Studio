@@ -446,9 +446,9 @@ def get_niche_color_grading(niche: Optional[str] = None, is_scifi: bool = False)
             "vignette": "vignette=0.35",
         },
         "deep_sea": {
-            # Vực thẳm đại dương: màu xanh biển sâu sống động, sáng rõ vi mô
-            "vf_filter": "eq=contrast=1.08:saturation=1.18:brightness=0.01,colorbalance=rs=-0.01:gs=0.02:bs=0.04,unsharp=3:3:0.5:3:3:0.20",
-            "vignette": "vignette=0.38",
+            # Vực thẳm đại dương & Quái vật biển sâu (Thalassophobia): tương phản sâu lạnh gáy, xanh vực thẳm sắc lạnh, vignette dày ám ảnh
+            "vf_filter": "eq=contrast=1.16:saturation=1.12:brightness=-0.02,colorbalance=rs=-0.04:gs=0.01:bs=0.07,unsharp=3:3:0.65:3:3:0.25",
+            "vignette": "vignette=0.48",
         },
         "wildlife_predators": {
             # National Geographic: màu sắc sống động rực rỡ, sắc nét tự nhiên, khung hình sáng rõ
@@ -466,9 +466,9 @@ def get_niche_color_grading(niche: Optional[str] = None, is_scifi: bool = False)
             "vignette": "vignette=0.32",
         },
         "horror": {
-            # Rùng rợn: ám xanh lạnh nhẹ, tương phản kịch tính vừa phải
-            "vf_filter": "eq=contrast=1.10:saturation=0.96:brightness=0.00,colorbalance=rs=-0.02:gs=0.01:bs=0.02,unsharp=3:3:0.5:3:3:0.20",
-            "vignette": "vignette=0.42",
+            # Rùng rợn & Quái vật kinh dị: tương phản gai góc, bóng tối sâu thẳm, ám lạnh điện ảnh, vignette siết chặt
+            "vf_filter": "eq=contrast=1.20:saturation=0.90:brightness=-0.03,colorbalance=rs=-0.03:gs=-0.01:bs=0.05,unsharp=3:3:0.70:3:3:0.25",
+            "vignette": "vignette=0.52",
         },
         "scifi": {
             # Viễn tưởng công nghệ: neon rực rỡ, màu sắc punchy tươi sáng, chi tiết sắc nét
@@ -579,10 +579,20 @@ def image_to_video(
         z_end   = 1.15  # Zoom mượt mà 15% chuẩn cinema
     z_step  = (z_end - z_start) / max(d, 1)
 
-    # Level 4 Pattern Interrupt: Cú Optical Punch-in Ramp mượt mà (tăng 5% trong 5 frames tại 46% thời lượng)
-    # Ngắt nhịp nhận thức mỗi 1.5-2 giây phong cách Vox/Magnates/Crayo mà không gây giật khung hình
-    mid_snap_frame = int(d * 0.46)
-    snap_expr = f"+0.05*min(max((on-{mid_snap_frame})/5\\,0)\\,1)" if (duration_seconds >= 2.5 and not is_hook_scene) else ""
+    # Level 5 Multi-Shot Beat Cut Engine (1.6s-1.8s Pacing):
+    # Biến 1 cảnh 3.5s-5.5s thành chuỗi 2-3 cú nhảy góc máy (Wide -> Medium Punch-In -> Close-Up)
+    # giúp phá vỡ hoàn toàn cảm giác "AI slideshow" và giữ chân người xem qua mốc 3s đầu & giữa video.
+    mid_snap_frame = int(d * 0.45)
+    second_snap_frame = int(d * 0.74)
+    if duration_seconds >= 4.2:
+        snap_expr = (
+            f"+0.08*min(max((on-{mid_snap_frame})/4\\,0)\\,1)"
+            f"+0.06*min(max((on-{second_snap_frame})/4\\,0)\\,1)"
+        )
+    elif duration_seconds >= 2.2:
+        snap_expr = f"+0.08*min(max((on-{mid_snap_frame})/4\\,0)\\,1)"
+    else:
+        snap_expr = ""
 
     if not zoom_effect:
         zoompan = (
@@ -611,27 +621,27 @@ def image_to_video(
         # Chuyển động Gật Đầu Hoạt Họa Châm Biếm (Comic Nodding Loop):
         # Trục Y gập xuống và nảy lên theo chu kỳ hình sin nhịp nhàng (~1.7 cú gật/giây) kết hợp zoom chậm
         zoompan = (
-            f"zoompan=z='1.08+0.05*(1-pow(1-min(on/{d}\\,1)\\,2.0))':"
+            f"zoompan=z='1.08+0.05*(1-pow(1-min(on/{d}\\,1)\\,2.0)){snap_expr}':"
             f"x='iw/2-(iw/zoom/2)':"
             f"y='(ih/2-(ih/zoom/2)) + (ih*0.024)*pow(sin(on*0.35)\\,2)':"
             f"d={d}:s={width}x{height}:fps={fps},"
             f"setsar=1"
         )
     elif camera_motion == "cinematic_drift":
-        # Trôi dạt 3D đa hướng không trọng lực
+        # Trôi dạt 3D đa hướng không trọng lực + Multi-shot beat cut
         zoompan = (
-            f"zoompan=z='1.08+0.14*(1-pow(1-min(on/{d}\\,1)\\,2.5))':"
+            f"zoompan=z='1.08+0.12*(1-pow(1-min(on/{d}\\,1)\\,2.5)){snap_expr}':"
             f"x='iw*0.06*(1-pow(1-min(on/{d}\\,1)\\,2.2))':"
             f"y='ih*0.05*(1-pow(1-min(on/{d}\\,1)\\,2.2))':"
             f"d={d}:s={width}x{height}:fps={fps},"
             f"setsar=1"
         )
     elif camera_motion == "zoom_in":
-        # P2.1: Cubic ease-out — Bắt đầu nhanh dứt khoát và giảm tốc mượt mà
+        # P2.1: Cubic ease-out — Bắt đầu nhanh dứt khoát và giảm tốc mượt mà + Multi-shot beat cut
         if is_hook_scene:
-            # Punch-in kịch tính cho Scene 1 (0-3s) tạo thumbstopper giật mắt người xem
+            # Punch-in kịch tính cho Scene 1 (0-3s) tạo thumbstopper giật mắt người xem ngay frame 0 + beat cut ở 1.5s
             zoompan = (
-                f"zoompan=z='{z_start}+({z_end}-{z_start})*(1-pow(1-min(on/{d}\\,1)\\,3))':"
+                f"zoompan=z='{z_start}+({z_end}-{z_start})*(1-pow(1-min(on/{d}\\,1)\\,3)){snap_expr}':"
                 f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
                 f"d={d}:s={width}x{height}:fps={fps},"
                 f"setsar=1"
@@ -652,33 +662,33 @@ def image_to_video(
             f"setsar=1"
         )
     elif camera_motion == "pan_left":
-        # 3D Dolly-Pan: Pan ngang từ phải sang trái kết hợp zoom tiến nhẹ (1.12 -> 1.18) tạo chiều sâu
+        # 3D Dolly-Pan: Pan ngang từ phải sang trái kết hợp zoom tiến nhẹ + Multi-shot beat cut
         zoompan = (
-            f"zoompan=z='1.12+0.06*(1-pow(1-min(on/{d}\\,1)\\,2.2))':"
+            f"zoompan=z='1.12+0.06*(1-pow(1-min(on/{d}\\,1)\\,2.2)){snap_expr}':"
             f"x='iw*0.10*pow(1-min(on/{d}\\,1)\\,2.4)':y='ih/2-(ih/zoom/2)':"
             f"d={d}:s={width}x{height}:fps={fps},"
             f"setsar=1"
         )
     elif camera_motion == "pan_right":
-        # 3D Dolly-Pan: Pan ngang từ trái sang phải kết hợp zoom tiến nhẹ (1.12 -> 1.18)
+        # 3D Dolly-Pan: Pan ngang từ trái sang phải kết hợp zoom tiến nhẹ + Multi-shot beat cut
         zoompan = (
-            f"zoompan=z='1.12+0.06*(1-pow(1-min(on/{d}\\,1)\\,2.2))':"
+            f"zoompan=z='1.12+0.06*(1-pow(1-min(on/{d}\\,1)\\,2.2)){snap_expr}':"
             f"x='iw*0.10*(1-pow(1-min(on/{d}\\,1)\\,2.4))':y='ih/2-(ih/zoom/2)':"
             f"d={d}:s={width}x{height}:fps={fps},"
             f"setsar=1"
         )
     elif camera_motion == "pan_up":
-        # 3D Crane-Up: Pan dọc từ dưới lên trên kết hợp zoom tiến nhẹ (1.12 -> 1.18)
+        # 3D Crane-Up: Pan dọc từ dưới lên trên kết hợp zoom tiến nhẹ + Multi-shot beat cut
         zoompan = (
-            f"zoompan=z='1.12+0.06*(1-pow(1-min(on/{d}\\,1)\\,2.2))':"
+            f"zoompan=z='1.12+0.06*(1-pow(1-min(on/{d}\\,1)\\,2.2)){snap_expr}':"
             f"x='iw/2-(iw/zoom/2)':y='ih*0.10*pow(1-min(on/{d}\\,1)\\,2.4)':"
             f"d={d}:s={width}x{height}:fps={fps},"
             f"setsar=1"
         )
     elif camera_motion == "pan_down":
-        # 3D Crane-Down: Pan dọc từ trên xuống dưới kết hợp zoom tiến nhẹ (1.12 -> 1.18)
+        # 3D Crane-Down: Pan dọc từ trên xuống dưới kết hợp zoom tiến nhẹ + Multi-shot beat cut
         zoompan = (
-            f"zoompan=z='1.12+0.06*(1-pow(1-min(on/{d}\\,1)\\,2.2))':"
+            f"zoompan=z='1.12+0.06*(1-pow(1-min(on/{d}\\,1)\\,2.2)){snap_expr}':"
             f"x='iw/2-(iw/zoom/2)':y='ih*0.10*(1-pow(1-min(on/{d}\\,1)\\,2.4))':"
             f"d={d}:s={width}x{height}:fps={fps},"
             f"setsar=1"
@@ -858,12 +868,23 @@ def trim_video(
 
     grading_chain = ("," + ",".join(grading_parts)) if grading_parts else ""
 
-    # Level 4 Pattern Interrupt Vox/Magnates/Crayo Style: Nếu clip dài >= 2.6s, tự động ngắt nhịp bằng cú Punch-in Snap (thu phóng 7% ở mốc giữa ~1.5s)
-    if duration_seconds >= 2.6:
-        snap_t = duration_seconds * 0.48
+    # Level 5 Multi-Shot Beat Cut cho Stock Video (1.6s-1.8s Pacing):
+    # - Nếu clip >= 4.2s: Cắt 3 góc máy (0-45%: Góc rộng 100%, 45-74%: Góc trung 89%, 74-100%: Cận cảnh 82%)
+    # - Nếu clip >= 2.2s: Cắt 2 góc máy (0-46%: Góc rộng 100%, 46-100%: Cận cảnh 89%)
+    if duration_seconds >= 4.2:
+        t1 = duration_seconds * 0.45
+        t2 = duration_seconds * 0.74
         crop_snap = (
-            f",crop=w='if(gte(t\\,{snap_t:.2f})\\,{width}*0.93\\,{width})':"
-            f"h='if(gte(t\\,{snap_t:.2f})\\,{height}*0.93\\,{height})':"
+            f",crop=w='if(gte(t\\,{t2:.2f})\\,{width}*0.82\\,if(gte(t\\,{t1:.2f})\\,{width}*0.89\\,{width}))':"
+            f"h='if(gte(t\\,{t2:.2f})\\,{height}*0.82\\,if(gte(t\\,{t1:.2f})\\,{height}*0.89\\,{height}))':"
+            f"x='(in_w-out_w)/2':y='(in_h-out_h)/2',"
+            f"scale={width}:{height}"
+        )
+    elif duration_seconds >= 2.2:
+        snap_t = duration_seconds * 0.46
+        crop_snap = (
+            f",crop=w='if(gte(t\\,{snap_t:.2f})\\,{width}*0.89\\,{width})':"
+            f"h='if(gte(t\\,{snap_t:.2f})\\,{height}*0.89\\,{height})':"
             f"x='(in_w-out_w)/2':y='(in_h-out_h)/2',"
             f"scale={width}:{height}"
         )

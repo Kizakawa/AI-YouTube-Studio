@@ -137,16 +137,20 @@ class VoiceAgent:
     @staticmethod
     def resolve_optimal_tts_rate(voice: str, niche: Optional[str] = None, explicit_rate: Optional[str] = None) -> str:
         """
-        Xác định tốc độ đọc TTS tối ưu (Retention-Calibrated Pacing) theo từng ngách và giọng đọc:
-        - animal_rescue / wholesome / stoicism (JennyNeural): +3% (ấm áp, lắng đọng cảm xúc).
-        - deep_sea_earth_mysteries / space / horror / crime (BrianNeural): +5% (bí ẩn, rùng mình, có nhịp nhấn).
-        - psychology / wildlife_predators / alternate_history / finance / tech: +8% (sắc bén, cuốn hút, rõ chữ).
-        - sports / gaming / hype: +10% (nhịp độ dồn dập, kịch tính).
+        Xác định tốc độ đọc TTS tối ưu (Retention-Calibrated High-Pacing cho YouTube Shorts ~160-175 WPM):
+        - animal_rescue / wholesome (JennyNeural / HoaiMyNeural): +9% (truyền cảm, ấm áp nhưng nhịp gọn, không lê thê).
+        - deep_sea_earth_mysteries / horror / crime / history / stoicism: +12% (dồn dập, rùng mình, cuốn người nghe ngay giây đầu).
+        - psychology / wildlife_predators / alternate_history / finance / tech / scifi / general: +14% (sắc bén, hiện đại, giữ chân cực cao).
+        - sports / gaming / hype: +16% (nhịp độ cao trào).
         """
         if explicit_rate:
             return explicit_rate
 
         nid = (niche or "").strip().lower()
+        v_low = (voice or "").lower()
+        is_gentle_niche = any(k in nid for k in ("rescue", "animal", "wholesome", "satirical")) or "jenny" in v_low or "hoaimy" in v_low
+        min_floor = 9 if is_gentle_niche else 11
+
         if nid:
             try:
                 from app.services.niche_manager import get_niche
@@ -155,22 +159,26 @@ class VoiceAgent:
                     audio_cfg = profile.get("audio", {})
                     cfg_rate = audio_cfg.get("tts_rate") or audio_cfg.get("rate")
                     if cfg_rate and isinstance(cfg_rate, str) and cfg_rate.endswith("%"):
-                        return cfg_rate
+                        try:
+                            val = int(cfg_rate.replace("%", "").replace("+", "").strip())
+                            if val >= min_floor:
+                                return f"+{val}%"
+                        except Exception:
+                            pass
             except Exception:
                 pass
 
-        v_low = (voice or "").lower()
-        if any(k in nid for k in ("rescue", "animal", "wholesome", "stoic", "philosophy")) or "jenny" in v_low or "hoaimy" in v_low:
-            return "+3%"
-        if any(k in nid for k in ("deep_sea", "mystery", "ocean", "space", "cosmos", "horror", "crime", "noir")) or "brian" in v_low:
-            return "+5%"
+        if is_gentle_niche:
+            return "+9%"
+        if any(k in nid for k in ("deep_sea", "mystery", "ocean", "space", "cosmos", "horror", "creepy", "crime", "noir", "histor", "stoic", "philosophy")):
+            return "+12%"
         if any(k in nid for k in ("sport", "gaming", "hype", "anime")):
-            return "+10%"
+            return "+16%"
         if v_low.startswith("vi-"):
-            return "+6%"
+            return "+10%"
         if v_low.startswith("pt-"):
-            return "+7%"
-        return "+8%"
+            return "+12%"
+        return "+14%"
 
     # ──────────────────────────────────────────
     # PUBLIC API — Gọi từ Pipeline Orchestrator
@@ -188,7 +196,7 @@ class VoiceAgent:
         Sinh MP3 cho từng scene. Trả về list SceneContract đã enriched
         với audio_path và audio_duration_ms.
         Tích hợp Metadata Verification để bảo vệ cache: chỉ tái sử dụng nếu
-        cả nội dung lời thoại (narration) và giọng đọc (voice) khớp chính xác 100%.
+        nội dung lời thoại (narration), giọng đọc (voice) và tốc độ (rate) khớp chính xác 100%.
         """
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         sem = asyncio.Semaphore(2)
@@ -203,20 +211,26 @@ class VoiceAgent:
                 words_meta_path = str(Path(output_dir) / f"scene_{scene.scene_id:03d}.words.jsonl")
 
                 safe_voice = self._resolve_safe_voice(scene.narration, voice or self.default_voice)
+                expected_rate = self.resolve_optimal_tts_rate(safe_voice, niche=niche, explicit_rate=rate)
 
-                # Checkpoint: Chỉ tái sử dụng audio từ trước nếu file audio > 1KB VÀ metadata khớp chính xác cả text lẫn voice
+                # Checkpoint: Chỉ tái sử dụng audio từ trước nếu file audio > 1KB VÀ metadata khớp chính xác text, voice, rate và đã qua mastering v2
                 if Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024 and meta_path.exists():
                     try:
                         meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                        if meta.get("narration") == scene.narration and meta.get("voice") == safe_voice:
+                        if (
+                            meta.get("narration") == scene.narration
+                            and meta.get("voice") == safe_voice
+                            and meta.get("rate") == expected_rate
+                            and meta.get("mastered_v2") is True
+                        ):
                             duration_ms = meta.get("duration_ms") or await asyncio.to_thread(self._get_audio_duration_ms, scene_audio_path)
                             if duration_ms > 0:
                                 cached_words = meta.get("word_timings")
                                 if not cached_words and Path(words_meta_path).exists():
-                                    cached_words = self._parse_words_jsonl(words_meta_path)
+                                    cached_words = self._parse_words_jsonl(words_meta_path, max_duration_ms=duration_ms)
                                 logger.info(
                                     f"Scene {scene.scene_id}: Tái sử dụng audio hợp lệ từ checkpoint "
-                                    f"({duration_ms}ms, voice={safe_voice}, {len(cached_words or [])} words)"
+                                    f"({duration_ms}ms, voice={safe_voice}, rate={expected_rate}, {len(cached_words or [])} words)"
                                 )
                                 return scene.model_copy(update={
                                     "audio_path": scene_audio_path,
@@ -226,9 +240,9 @@ class VoiceAgent:
                     except Exception as ex:
                         logger.debug(f"Scene {scene.scene_id}: Lỗi đọc cache metadata: {ex}")
 
-                # Cache không hợp lệ hoặc lời thoại / giọng đọc đã đổi -> xóa file cũ
+                # Cache không hợp lệ hoặc lời thoại / giọng đọc / tốc độ đã đổi -> xóa file cũ
                 if Path(scene_audio_path).exists():
-                    logger.info(f"Scene {scene.scene_id}: Lời thoại hoặc giọng đọc đã đổi. Xóa audio cũ để tạo mới...")
+                    logger.info(f"Scene {scene.scene_id}: Lời thoại, giọng đọc hoặc tốc độ ({expected_rate}) đã đổi. Xóa audio cũ để tạo mới...")
                     try:
                         Path(scene_audio_path).unlink(missing_ok=True)
                         if Path(words_meta_path).exists():
@@ -324,17 +338,22 @@ class VoiceAgent:
                 if not success:
                     raise last_err or RuntimeError(f"Không thể sinh audio cho cảnh {scene.scene_id}")
 
-                # Đo duration thực bằng ffprobe (non-blocking)
+                # Hậu kỳ âm thanh Broadcast Voice Mastering (EQ ấm dày + Compressor + Cắt khoảng lặng thừa cuối câu)
+                await asyncio.to_thread(self._master_and_trim_scene_audio, scene_audio_path)
+
+                # Đo duration thực bằng ffprobe (non-blocking) sau khi đã cắt khoảng lặng đuôi
                 duration_ms = await asyncio.to_thread(self._get_audio_duration_ms, scene_audio_path)
 
-                # Đọc word-level timings chính xác từ file metadata
-                word_timings = self._parse_words_jsonl(words_meta_path)
+                # Đọc word-level timings chính xác từ file metadata (kẹp biên an toàn theo duration_ms)
+                word_timings = self._parse_words_jsonl(words_meta_path, max_duration_ms=duration_ms)
 
                 # Lưu metadata để xác minh checkpoint trong tương lai
                 try:
                     meta_path.write_text(json.dumps({
                         "narration": scene.narration,
                         "voice": safe_voice,
+                        "rate": expected_rate,
+                        "mastered_v2": True,
                         "duration_ms": duration_ms,
                         "word_timings": word_timings,
                     }, ensure_ascii=False), encoding="utf-8")
@@ -357,7 +376,7 @@ class VoiceAgent:
         return enriched_scenes
 
     @staticmethod
-    def _parse_words_jsonl(words_file_path: str) -> List[Dict[str, Any]]:
+    def _parse_words_jsonl(words_file_path: str, max_duration_ms: Optional[int] = None) -> List[Dict[str, Any]]:
         """Đọc và trích xuất mốc thời gian từng từ từ file JSONL sinh bởi Edge-TTS."""
         p = Path(words_file_path)
         if not p.exists() or p.stat().st_size == 0:
@@ -373,17 +392,71 @@ class VoiceAgent:
                     if item.get("type") == "WordBoundary":
                         start_ms = int(item.get("offset", 0) / 10000)
                         dur_ms = int(item.get("duration", 0) / 10000)
+                        end_ms = start_ms + dur_ms
+                        if max_duration_ms and max_duration_ms > 0:
+                            if start_ms >= max_duration_ms:
+                                start_ms = max(0, max_duration_ms - 80)
+                            if end_ms > max_duration_ms:
+                                end_ms = max_duration_ms
+                                dur_ms = max(40, end_ms - start_ms)
                         text = item.get("text", "").strip()
                         if text:
                             words.append({
                                 "word": text,
                                 "start_ms": start_ms,
-                                "end_ms": start_ms + dur_ms,
+                                "end_ms": end_ms,
                                 "duration_ms": dur_ms,
                             })
         except Exception as e:
             logger.debug(f"Lỗi parse words jsonl {words_file_path}: {e}")
         return words
+
+    @staticmethod
+    def _master_and_trim_scene_audio(file_path: str) -> None:
+        """
+        Broadcast Voice Mastering & Dead-Air Elimination cho từng phân cảnh:
+        - Áp dụng EQ Podcast/Radio (Highpass 80Hz khử ù + Warmth +2.2dB @ 130Hz + Presence +1.8dB @ 4.2kHz)
+          kết hợp Compressor nhẹ (-18dB, ratio 2.4) để giọng đọc dày, uy lực và nổi bật trên loa điện thoại.
+        - Chỉ cắt khoảng lặng chết ở CUỐI câu (trailing silence > -45dB) bằng kỹ thuật areverse -> silenceremove -> areverse
+          và giữ lại 50ms đuôi tự nhiên (apad=pad_dur=0.05).
+        - KHÔNG cắt đầu câu (0.0ms) để mốc thời gian WordBoundary (start_ms/end_ms) khớp 100% đến từng mili-giây!
+        """
+        p = Path(file_path)
+        if not p.exists() or p.stat().st_size <= 1024:
+            return
+        tmp_out = str(p.with_suffix(".mastered.mp3"))
+        af_chain = (
+            "highpass=f=80,"
+            "equalizer=f=130:width_type=q:width=1.2:g=2.2,"
+            "equalizer=f=4200:width_type=q:width=1.5:g=1.8,"
+            "acompressor=threshold=-18dB:ratio=2.4:attack=15:release=180:makeup=1.5dB,"
+            "areverse,silenceremove=start_periods=1:start_duration=0.04:start_threshold=-45dB,areverse,"
+            "apad=pad_dur=0.05"
+        )
+        try:
+            from app.utils.ffmpeg_helper import run_ffmpeg, get_duration_ms
+            orig_dur = get_duration_ms(file_path)
+            run_ffmpeg([
+                "-i", file_path,
+                "-af", af_chain,
+                "-ar", "24000",
+                "-ac", "1",
+                "-c:a", "libmp3lame",
+                "-b:a", "128k",
+                tmp_out,
+            ], timeout=25)
+            new_dur = get_duration_ms(tmp_out)
+            # Đảm bảo file mastered hợp lệ và không làm cụt lời thoại (chỉ cắt tối đa ~600ms khoảng lặng thừa)
+            if Path(tmp_out).exists() and Path(tmp_out).stat().st_size > 1024 and new_dur >= max(400, orig_dur - 750):
+                Path(tmp_out).replace(p)
+            else:
+                Path(tmp_out).unlink(missing_ok=True)
+        except Exception as e:
+            logger.debug(f"[VoiceAgent] Bỏ qua mastering '{file_path}' (giữ nguyên file gốc): {e}")
+            try:
+                Path(tmp_out).unlink(missing_ok=True)
+            except Exception:
+                pass
 
     async def concat_scene_audio(
         self,
@@ -407,6 +480,7 @@ class VoiceAgent:
                 "-i", "anullsrc=r=24000:cl=mono",
                 "-t", "0.15",
                 "-c:a", "libmp3lame",
+                "-b:a", "128k",
                 tail_silence_path
             ])
             has_tail = Path(tail_silence_path).exists()

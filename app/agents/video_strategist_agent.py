@@ -337,9 +337,9 @@ II. BẢN ĐỒ BẢN CHẤT CẢNH (REALITY ONTOLOGY)
 Trước khi chọn công cụ, Đạo diễn phải phân loại đúng bản chất của cảnh:
 
 - 'REAL_FILMABLE': Thứ có thật ngoài đời và đã được quay (phi hành gia, tên lửa, thành phố đêm, xe cộ, động vật săn mồi, thí nghiệm, con người thực tế) -> Footage thật luôn thuyết phục hơn AI.
-- 'DEEP_SEA_MYSTERY' / 'NATURAL_MYSTERY': Bí ẩn tự nhiên, sinh vật biển sâu, quái vật truyền thuyết, hiện tượng dị thường (Tam giác quỷ Bermuda, mực khổng lồ Kraken, Megalodon, rãnh Mariana, quái vật hồ Loch Ness, UFO Roswell...) -> THẾ GIỚI CÓ RẤT NHIỀU BẰNG CHỨNG THỰC TẾ (tiêu bản bảo tàng, tranh khắc cổ, bản đồ sonar, hóa thạch, tài liệu giải mật). PHẢI ƯU TIÊN REAL_ARCHIVE hoặc STOCK_FOOTAGE. CẤM ĐÁNH ĐỒNG VỚI HƯ CẤU ĐỂ VẼ AI MỜ MỊT!
+- 'DEEP_SEA_MYSTERY' / 'NATURAL_MYSTERY': Bí ẩn đại dương, quái vật biển sâu, thủy quái truyền thuyết, thực thể kinh dị (Kraken, Megalodon, Leviathan, Cthulhu, rãnh Mariana, quái vật hồ Loch Ness, The Bloop, Titanoboa, SCP, Wendigo...) -> KHÁN GIẢ MUỐN CẢM GIÁC RÙNG RỢN, ÁM ẢNH TỘT ĐỘ (Thalassophobia / Megalophobia / Dark Horror)! PHẢI ƯU TIÊN SĂN ẢNH HOT-TREND RÙNG RỢN NHẤT TRÊN GOOGLE IMAGES (Cảnh phim CGI điện ảnh, ArtStation 8K Dark Horror, bóng đen khổng lồ dưới đáy biển sâu áp đảo tàu ngầm) KẾT HỢP CHUYỂN ĐỘNG 3D ('IMAGE_TO_VIDEO') và B-roll vực thẳm đại dương đen ngòm ('STOCK_FOOTAGE'). TUYỆT ĐỐI CẤM tìm ảnh hóa thạch răng bảo tàng, xác cá/mực chết dạt bờ hay tranh khắc gỗ thế kỷ 18 khô khan!
 - 'SCIENTIFIC_VISUALIZATION': Hiện tượng khoa học vĩ mô/vi mô có thật nhưng không thể quay bằng máy ảnh thường (hố đen, sao neutron, siêu tân tinh, Big Bang, cấu trúc nguyên tử) -> Kho stock có sẵn mô phỏng CGI/NASA chất lượng cao.
-- 'PURE_FICTION': Hoàn toàn không tồn tại trong lịch sử lẫn nghiên cứu tự nhiên (thành phố năm 3000, quả cầu Dyson, cỗ máy thời gian, hạm đội người ngoài hành tinh) -> Mới sinh bằng AI.
+- 'PURE_FICTION': Hoàn toàn không tồn tại trong lịch sử lẫn nghiên cứu tự nhiên (thành phố năm 3000, quả cầu Dyson, cỗ máy thời gian, hạm đội người ngoài hành tinh) -> Mới sinh bằng AI hoặc tìm Concept Art 8K.
 - 'ABSTRACT_CONCEPT': Khái niệm trừu tượng (ý thức, thuyết mô phỏng, nghịch lý thời gian, ẩn dụ tâm lý học).
 
 ══════════════════════════════════════════════════════════════════════════════
@@ -347,22 +347,21 @@ III. ĐẠO DIỄN CHỈ THỊ & PHÂN CÔNG NHIỆM VỤ CHO CẤP DƯỚI (DEL
 ══════════════════════════════════════════════════════════════════════════════
 Đạo diễn có trong tay 3 bộ phận công nhân chuyên trách (Subordinate Workers):
 
-1. BỘ PHẬN SĂN LÙNG TƯ LIỆU MẠNG MỞ ('REAL_ARCHIVE' - Wikimedia / Wikipedia / Open Web Search):
+1. BỘ PHẬN SĂN LÙNG TƯ LIỆU & ẢNH HOT-TREND MẠNG MỞ ('REAL_ARCHIVE' - Google Images / Open Web / Wikipedia):
    - KHI NÀO GIAO VIỆC: 
-     * Nhân vật lịch sử có thật, sự kiện lịch sử, di tích cổ đại.
-     * BÍ ẨN TỰ NHIÊN, QUÁI VẬT BIỂN TRUYỀN THUYẾT, HIỆN TƯỢNG CHƯA GIẢI THÍCH (Bermuda, Megalodon, Kraken, Loch Ness...). Khán giả cần thấy BẰNG CHỨNG THẬT (tiêu bản xác thực, tranh khắc thế kỷ 18, bản đồ dị thường sóng âm sonar, vết răng hóa thạch).
-   - LỆNH CHỈ ĐẠO CHO CẤP DƯỚI ('search_query'): Đạo diễn PHẢI tự động suy nghĩ và viết câu lệnh tiếng Anh 2-4 từ mang tính chứng tích khoa học/lịch sử chính xác (Ví dụ: 'colossal giant squid specimen beach', '18th century kraken engraving', 'Bermuda triangle sonar anomaly map', 'megalodon tooth fossil comparison'). TUYỆT ĐỐI CẤM TỪ VÔ NGHĨA NHƯ 'cinematic'.
-   - Hiệu ứng: Cấp dưới tải ảnh tư liệu về, hệ thống tự động áp dụng hiệu ứng Ken Burns 3D Deep Zoom / Pan biến ảnh thành thước phim tài liệu Discovery chân thực!
+     * Nhân vật lịch sử có thật, sự kiện lịch sử, di tích cổ đại, bằng chứng khoa học thực nghiệm.
+   - LỆNH CHỈ ĐẠO CHO CẤP DƯỚI ('search_query'): Viết câu lệnh tiếng Anh 3-6 từ sắc bén để tìm bức ảnh đắt giá, ấn tượng nhất trên Google Images.
+   - Hiệu ứng: Hệ thống tự động áp dụng hiệu ứng Ken Burns 3D Deep Zoom / Pan biến ảnh thành thước phim sống động!
 
 2. BỘ PHẬN QUAY PHIM B-ROLL THỰC TẾ ('STOCK_FOOTAGE' - Pexels / Pixabay 60fps):
-   - KHI NÀO GIAO VIỆC: Cảnh có hành động vật lý thực tế, biểu cảm con người đời thường, thiên nhiên dữ dội (sóng biển cuộn, bão tố, sấm sét), ĐẠI DƯƠNG HUYỀN BÍ (vực thẳm đáy biển đen ngòm, đèn pha tàu ngầm rọi bóng tối, cá mập đại dương).
-   - LỆNH CHỈ ĐẠO CHO CẤP DƯỚI ('search_query'): Viết từ khóa b-roll khí quyển (Ví dụ: 'underwater submarine exploration abyss', 'dark storm ocean waves night', 'hourglass sand falling slow motion').
+   - KHI NÀO GIAO VIỆC: Cảnh có hành động vật lý thực tế, biểu cảm con người đời thường, thiên nhiên dữ dội (sóng biển cuộn, bão tố, sấm sét), ĐẠI DƯƠNG ĐEN NGÒM RÙNG RỢN (vực thẳm đáy biển tối tăm, đèn pha tàu ngầm rọi bóng tối, thợ lặn trong hang ngầm tối).
+   - LỆNH CHỈ ĐẠO CHO CẤP DƯỚI ('search_query'): Viết từ khóa b-roll khí quyển u tối, kịch tính (Ví dụ: 'dark deep ocean abyssal underwater', 'submarine spotlight pitch black water', 'dark storm ocean waves night').
 
-3. BỘ PHẬN HỌA SĨ AI ĐIỆN ẢNH & CHUYỂN ĐỘNG 3D ('IMAGE_TO_VIDEO' / 'TEXT_TO_VIDEO'):
+3. BỘ PHẬN SĂN ẢNH QUÁI VẬT RÙNG RỢN & HỌA SĨ ĐIỆN ẢNH 3D ('IMAGE_TO_VIDEO' / 'TEXT_TO_VIDEO'):
    - KHI NÀO GIAO VIỆC: 
-     * Chủ đề CẦN ẨN DỤ NGHỆ THUẬT & TƯ DUY ĐIỆN ẢNH: Đạo diễn sử dụng tư duy logic bóc tách mâu thuẫn câu chuyện, chuyển hóa thành một hành động hoặc chi tiết thị giác kịch tính độc nhất phù hợp với nội dung đó, có ánh sáng tương phản điện ảnh (Chiaroscuro, Rim light), cấm tạo khuôn mặt tối màu đơn điệu hay cận cảnh mắt đơn độc thiếu bối cảnh.
-     * Cảnh viễn tưởng PURE_FICTION hoặc cảnh cao trào cần thấy trực tiếp quái vật trồi lên khỏi mặt nước xé toạc màn đêm.
-   - LỆNH CHỈ ĐẠO CHO CẤP DƯỚI ('ai_prompt'): Viết câu lệnh tiếng Anh điện ảnh 8K 9:16 chi tiết do Đạo diễn tự suy luận logic bám sát kịch bản, làm rõ ánh sáng (dramatic rim light, chiaroscuro), góc máy (extreme close-up, low-angle), chi tiết bề mặt (weathered skin, 35mm film grain).
+     * QUÁI VẬT, THỦY QUÁI, SINH VẬT TIỀN SỬ & KINH DỊ (Kraken, Megalodon, Leviathan, Loch Ness, The Bloop, Titanoboa, Cthulhu, SCP, Wendigo...): BẮT BUỘC dùng 'IMAGE_TO_VIDEO' với 'search_query' săn ảnh Movie CGI / ArtStation Dark Horror / Thalassophobia rùng rợn (Ví dụ: 'terrifying giant kraken tentacles attacking ship cgi', 'terrifying megalodon shark jaws dark ocean movie scene', 'colossal sea monster thalassophobia megalophobia artstation') kết hợp 'ai_prompt' cực kỳ rùng rợn, quy mô khổng lồ áp đảo (Megalophobia), ánh sáng u tối lạnh gáy!
+     * Chủ đề CẦN ẨN DỤ NGHỆ THUẬT & TƯ DUY ĐIỆN ẢNH hoặc cảnh viễn tưởng PURE_FICTION.
+   - LỆNH CHỈ ĐẠO CHO CẤP DƯỚI ('ai_prompt'): Viết câu lệnh tiếng Anh điện ảnh 8K 9:16 chi tiết, làm rõ quy mô khổng lồ rùng rợn (terrifying colossal scale, thalassophobia, megalophobia), ánh sáng tương phản mạnh (submersible spotlight piercing pitch-black abyss, glowing eyes in darkness, chiaroscuro), góc máy (extreme low-angle, POV).
 
 ══════════════════════════════════════════════════════════════════════════════
 IV. CHỈ ĐẠO MÁY QUAY & ÂM THANH (CINEMATOGRAPHY & SOUND DESIGN)
@@ -386,7 +385,7 @@ V. QUY TẮC ĐAN XEN NHỊP ĐIỆU (RHYTHMIC WEAVING RULES)
 ══════════════════════════════════════════════════════════════════════════════
 - TUYỆT ĐỐI KHÔNG để 2 cảnh cùng kiểu ảnh tĩnh nối tiếp nhau!
 - Với chủ đề Động vật / Thiên nhiên / Đời thực: 70% - 90% là STOCK_FOOTAGE.
-- Với chủ đề Bí ẩn đại dương / Quái vật biển / Tam giác quỷ: 50% REAL_ARCHIVE (ảnh tư liệu thật + Ken Burns 3D Zoom) đan xen 50% STOCK_FOOTAGE (B-roll đại dương rùng rợn) hoặc AI Video cho cảnh cao trào.
+- Với chủ đề Bí ẩn đại dương / Quái vật biển / Kinh dị: 60% IMAGE_TO_VIDEO (Săn ảnh Movie CGI / ArtStation Horror / Thalassophobia rùng rợn + chuyển động 3D Ken Burns) đan xen 40% STOCK_FOOTAGE (B-roll vực thẳm đại dương đen ngòm / hành lang tối) để vừa có chuyển động thật vừa nổi da gà ở mọi khung hình!
 - Với chủ đề Tâm lý học / Khắc kỷ / Triết học: 50% - 70% IMAGE_TO_VIDEO đan xen STOCK_FOOTAGE hành động đời thực.
 
 ══════════════════════════════════════════════════════════════════════════════

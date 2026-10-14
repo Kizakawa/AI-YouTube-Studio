@@ -13,11 +13,20 @@ script_blueprint:
     và tôn kính trước sự tàn khốc hoàn hảo của mẹ thiên nhiên.
   pacing: Siêu cuốn hút, thời lượng tối ưu 38 - 48 giây (7 - 9 cảnh, 95 - 125 từ), nhịp điệu dồn dập, đẩy thời lượng giữ chân AWT > 25s để kích hoạt thuật toán Shorts.
   hook_formulas:
-  - 'Head-to-Head Apex Duel (Proven #1 Breakout Formula): ''Green Anaconda vs. Black Caiman — when these two river monsters collide, only one leaves alive...'''
-  - 'Asymmetric Duel: ''Why even a 15-foot Great White Shark will turn and flee the exact second an Orca enters the bay...'''
-  - 'Bite Force Terrifying: ''With a bone-crushing 1,500 PSI bite force, the Jaguar does something no other big cat dares to do...'''
-  - 'The 240MPH Strike: ''In the next 3 seconds, a peregrine falcon will dive at 240 miles per hour. Here is the terrifying physics of that impact...'''
-  - 'Immunity Shock: ''A single drop of King Cobra venom kills an elephant, yet the Honey Badger sleeps it off like a nap...'''
+  - 'Counter-Intuitive Apex Fear (Nature Lens 7.0M Formula): ''This is why 1,000-pound Caimans are terrified the second a Jaguar steps into the water...'''
+  - 'Physics-Defying Survival (FleshlyPaws 12.7M Formula): ''When a Leopard leaps from a 50-foot tree branch, here is how it survives the impact without breaking a single bone...'''
+  - 'Asymmetric Ocean Terror: ''Why even a 15-foot Great White Shark will abandon its hunting ground the exact second a lone Orca appears...'''
+  - 'Bite Force Skull-Piercer: ''With a bone-crushing 1,500 PSI bite force, the Jaguar ignores the throat and pierces straight through the skull...'''
+  - 'Venom Immunity Shock: ''A single bite from a King Cobra drops an elephant in 3 hours — yet the Honey Badger wakes up and finishes its meal...'''
+  viral_topic_bank_2026:
+  - "This Is Why Caimans Are Terrified Of Jaguars In Deep Water"
+  - "Why Even A 20-Foot Great White Shark Flees From A Single Orca"
+  - "How A Snow Leopard Survives A 60-Foot Vertical Cliff Fall While Hunting"
+  - "Why African Lions Never Mess With A Fully Grown Nile Hippo"
+  - "Honey Badger vs King Cobra: How It Sleeps Off Lethal Neurotoxin"
+  - "Harpy Eagle vs Howler Monkey: 530 PSI Talons That Crush Bone Instantly"
+  - "Secretary Bird vs Black Mamba: The 195-Newton Stomp In 15 Milliseconds"
+  - "Why A Pack Of Giant River Otters Can Drive A Jaguar Out Of Its Territory"
   narrative_structure: "Hook đối đầu sinh tử cụ thể giữa 2 loài săn mồi (3s) -> So sánh vũ khí sinh học & cơ học sát thương -> Mid-Video Re-Hook (Cảnh 4 - Đòn đánh quyết định lật ngược thế cờ) -> Kết cục tàn khốc của kẻ chiến thắng (Payoff Cảnh 5-7) -> Câu hỏi bầu chọn kẻ mạnh nhất & Infinite Loop"
   forbidden_words:
   - Chào mừng các bạn đến với thế giới động vật
@@ -91,7 +100,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: +7%
+  rate: +14%
   pitch: -2Hz
   bgm_vibe: primal tribal drums, accelerating heartbeat bass, intense suspense thriller
     orchestral, epic crescendo
@@ -102,6 +111,6 @@ audio:
   - whoosh_fast
   - riser
 banned_lexicon: *id001
-target_wpm: 155
+target_wpm: 168
 monetization:
   affiliate_enabled: false

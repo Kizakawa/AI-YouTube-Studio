@@ -43,11 +43,11 @@ _GENERIC_SUBJECTS = {
 
 
 def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any]:
-    """Đảm bảo truy vấn đầu tiên chứa ĐÚNG chủ thể (loài / tên riêng) và luôn có bộ truy vấn Google Images chuyên sâu."""
+    """Đảm bảo truy vấn đầu tiên chứa ĐÚNG chủ thể (loài / tên riêng) và luôn có bộ truy vấn Google Images Hot-Trend / Điện ảnh chuyên sâu."""
     subject = (subject or "").strip()
     if not subject or subject.lower() in _GENERIC_SUBJECTS:
         return res
-    from app.services.media.image_quality import subject_terms
+    from app.services.media.image_quality import subject_terms, is_creature_subject, creature_queries
     terms = subject_terms(subject)
     queries = [q for q in (res.get("search_queries") or []) if isinstance(q, str) and q.strip()]
 
@@ -66,7 +66,15 @@ def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any
     res["search_queries"] = fixed[:4]
     res["subject"] = subject
 
-    # Chuẩn hóa google_image_queries (truy vấn chuyên biệt cho Google Images như thanh tìm kiếm Gemini)
+    # Nếu là chủ thể Quái vật / Thủy quái / Kinh dị -> ưu tiên truy vấn CGI / ArtStation Dark Horror rùng rợn
+    if is_creature_subject(subject):
+        c_qs = creature_queries(subject)
+        res["google_image_queries"] = c_qs[:3]
+        res["creature_mode"] = True
+        res["creature_queries"] = c_qs
+        return res
+
+    # Chuẩn hóa google_image_queries (truy vấn chuyên biệt cho Google Images: Hot-Trend, 8K, Điện ảnh, Bắt mắt)
     g_queries = [q.strip() for q in (res.get("google_image_queries") or []) if isinstance(q, str) and q.strip()]
     fixed_g: List[str] = []
     for gq in g_queries:
@@ -76,20 +84,31 @@ def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any
             fixed_g.append(gq)
     if not fixed_g:
         primary_action = fixed[0] if fixed else subject
-        fixed_g.append(f"{primary_action} high resolution photograph")
-        fixed_g.append(f'"{subject}" real documentary photo')
+        fixed_g.append(f"{primary_action} cinematic 8k high resolution")
+        fixed_g.append(f'"{subject}" dramatic viral photography')
     res["google_image_queries"] = fixed_g[:3]
     return res
 
 
 def _apply_creature_mode(res: Dict[str, Any], narration: str = "", topic: str = "") -> Dict[str, Any]:
-    """Quái vật / sinh vật huyền thoại → bật chế độ tìm concept art / cảnh phim thay vì ảnh chụp thật."""
-    from app.services.media.image_quality import is_creature_subject, creature_queries
+    """Quái vật / sinh vật huyền thoại / thực thể kinh dị → bật chế độ tìm Movie CGI / ArtStation Dark Horror / Thalassophobia rùng rợn."""
+    from app.services.media.image_quality import is_creature_subject, creature_queries, _CREATURE_WORDS, _norm_text
     subject = str(res.get("subject") or "").strip()
-    if subject and is_creature_subject(subject, narration, topic):
+    if is_creature_subject(subject, narration, topic):
+        # Nếu subject hiện tại quá chung chung (vd: "ocean", "ship", "submarine") nhưng câu thoại/topic nói về quái vật cụ thể,
+        # lấy tên quái vật làm subject tìm kiếm để ảnh ra đúng quái vật rùng rợn
+        norm_subj = f" {_norm_text(subject)} "
+        if not subject or not any(f" {w} " in norm_subj for w in _CREATURE_WORDS):
+            ctx = f" {_norm_text(narration)} {_norm_text(topic)} "
+            matched_monster = next((w for w in _CREATURE_WORDS if f" {w} " in ctx), "")
+            if matched_monster:
+                subject = matched_monster
+                res["subject"] = subject
+        c_qs = creature_queries(subject or "terrifying deep sea monster")
         res["creature_mode"] = True
-        res["creature_queries"] = creature_queries(subject)
-        logger.info(f"🐙 [VisualCuration] Chế độ QUÁI VẬT cho '{subject}': {res['creature_queries']}")
+        res["creature_queries"] = c_qs
+        res["google_image_queries"] = c_qs[:3]
+        logger.info(f"🐙 [VisualCuration] Chế độ QUÁI VẬT RÙNG RỢN cho '{subject}': {res['creature_queries']}")
     return res
 
 
@@ -221,7 +240,7 @@ QUY TẮC QUAN TRỌNG:
 3. "production_method": Chọn 1 trong ['STOCK_FOOTAGE', 'TEXT_TO_VIDEO', 'IMAGE_TO_VIDEO', 'REAL_ARCHIVE']. Cảnh 1 ưu tiên 'STOCK_FOOTAGE'.
 4. "tool_choice": Chọn 1 trong ['pexels_video_clip', 'ai_text_to_video', 'ai_image_to_video', 'real_archive_photo'].
 5. "search_queries": Mảng 3 cụm từ tìm kiếm ngắn cho kho stock (3-5 từ tiếng Anh), chứa chủ thể + hành động/góc máy.
-6. "google_image_queries": Mảng 2 câu truy vấn tìm ảnh chuyên sâu trên Google Images (4-8 từ tiếng Anh), viết chính xác như cách chuyên gia dùng Google Images để tìm ảnh chụp thực tế/tài liệu báo chí/khoa học đắt giá nhất cho câu thoại đó (vd: '"peacock mantis shrimp" compound eyes macro photograph', '"Mariana Trench" deep sea submersible expedition photo').
+6. "google_image_queries": Mảng 2 câu truy vấn tìm ảnh chuyên sâu trên Google Images (4-8 từ tiếng Anh), ưu tiên hình ảnh HOT-TREND, BẮT MẮT, ĐIỆN ẢNH 8K (không ngại bản quyền: Movie CGI Stills, ArtStation 8K, Dramatic Photography). ĐẶC BIỆT: Nếu chủ đề là Quái vật / Thủy quái / Bí ẩn biển sâu / Kinh dị (Kraken, Megalodon, Leviathan, Loch Ness, The Bloop, Cthulhu, Titanoboa, SCP, Wendigo...), BẮT BUỘC viết truy vấn săn ảnh RÙNG RỢN, ÁM ẢNH TỘT ĐỘ (Thalassophobia, Megalophobia, terrifying movie CGI scene, dark eldritch horror ArtStation), TUYỆT ĐỐI KHÔNG tìm ảnh hóa thạch răng bảo tàng hay tranh khắc gỗ cũ!
 
 TRẢ VỀ JSON DUY NHẤT THEO ĐỊNH DẠNG:
 {{
@@ -236,7 +255,7 @@ TRẢ VỀ JSON DUY NHẤT THEO ĐỊNH DẠNG:
       "tool_choice": "pexels_video_clip | ai_text_to_video | ai_image_to_video | real_archive_photo",
       "motion_level": "HIGH_MOTION | MEDIUM_MOTION | STATIC_DETAILED",
       "search_queries": ["query 1", "query 2", "query 3"],
-      "google_image_queries": ["exact entity + specific feature/context real photograph", "exact entity + documentary/scientific context photo"],
+      "google_image_queries": ["exact entity + specific feature/context cinematic 8k or terrifying CGI", "exact entity + dramatic viral photography or dark horror artstation"],
       "negative_cues": ["text overlay", "watermark", "blurry", "cartoon"],
       "cinematic_ai_prompt": "Detailed 8K vertical 9:16 photorealistic prompt in English"
     }}
@@ -295,11 +314,11 @@ QUY TẮC ĐÁNH GIÁ CÔNG CỤ THEO HOÀN CẢNH:
 2. 'TEXT_TO_VIDEO' (Công cụ: ai_text_to_video - Full Video do AI sinh trực tiếp):
    - Áp dụng khi: Cảnh mang tính HUYỀN BÍ, VŨ TRỤ TRỪU TƯỢNG, SIÊU THỰC (lỗ đen bẻ cong không thời gian, cổng không gian ánh sáng, luồng năng lượng tâm linh, khói ma mị biến hình, hố sâu tâm lý vô tận) — những thứ KHÔNG CÓ THẬT ngoài đời thực.
 
-3. 'IMAGE_TO_VIDEO' (Công cụ: ai_image_to_video - Tạo ảnh AI 8K rồi chuyển động 3D Ken Burns):
-   - Áp dụng khi: Cảnh cần ĐẶC TẢ CHI TIẾT TĨNH CHÂN THỰC TUYỆT ĐỐI (chân dung 1 triết gia giả tưởng, sinh vật huyền thoại có khuôn mặt cố định, cổ vật huyền bí, bản đồ cổ) mà nếu sinh video AI trực tiếp sẽ bị méo mặt hoặc dị dạng chi tiết.
+3. 'IMAGE_TO_VIDEO' (Công cụ: ai_image_to_video - Săn ảnh Hot-Trend / CGI 8K trên Google Images hoặc tạo ảnh AI 8K rồi chuyển động 3D Ken Burns):
+   - Áp dụng khi: Cảnh về QUÁI VẬT, THỦY QUÁI, THỰC THỂ KINH DỊ (Kraken, Megalodon, Leviathan, Loch Ness, The Bloop, Cthulhu, Titanoboa, SCP, Wendigo...) cần hình ảnh CGI / ArtStation Dark Horror / Thalassophobia rùng rợn nhất kèm chuyển động 3D, hoặc cảnh cần ĐẶC TẢ CHI TIẾT TĨNH CHÂN THỰC TUYỆT ĐỐI.
 
 4. 'REAL_ARCHIVE' (Công cụ: real_archive_photo - Ảnh tư liệu lịch sử thật 100%):
-   - Áp dụng khi: Nhắc trực tiếp đến NHÂN VẬT LỊCH SỬ CÓ THẬT (Einstein, Tesla, Napoleon...), SỰ KIỆN LỊCH SỬ (Thế chiến, Apollo...), DI TÍCH LỊCH SỬ CỔ ĐẠI (Kim Tự Tháp, Vạn Lý Trường Thành). Cần bằng chứng lịch sử xác thực, cấm dùng AI giả mạo.
+   - Áp dụng khi: Nhắc trực tiếp đến NHÂN VẬT LỊCH SỬ CÓ THẬT (Einstein, Tesla, Napoleon...), SỰ KIỆN LỊCH SỬ (Thế chiến, Apollo...), DI TÍCH LỊCH SỬ CỔ ĐẠI (Kim Tự Tháp, Vạn Lý Trường Thành).
 
 TỶ LỆ VÀNG CHO VIDEO VIRAL (KHOA HỌC / TÂM LÝ / BÍ ẨN):
 - Ít nhất 60% - 75% các cảnh phải là FULL VIDEO CHUYỂN ĐỘNG (STOCK_FOOTAGE hoặc TEXT_TO_VIDEO).
@@ -320,8 +339,7 @@ QUY TẮC TẠO TRUY VẤN TÌM ẢNH/VIDEO (CỰC KỲ QUAN TRỌNG — sai ch�
   Nếu lời thoại cảnh này bị cắt giữa câu, lấy chủ thể từ Ngữ cảnh xung quanh / Chủ đề video.
   Quái vật / sinh vật huyền thoại GIỮ NGUYÊN TÊN (vd: "kraken", "megalodon", "Loch Ness monster"), KHÔNG đổi thành con vật thật ("giant octopus", "shark").
 - search_queries[0] BẮT BUỘC chứa nguyên văn "subject" + 1-2 từ hành động/góc máy (3-5 từ). vd: "wedge-tailed eagle hunting", "mantis shrimp eyes close up".
-- google_image_queries: 2 câu truy vấn chuyên sâu để tìm trên Google Images (4-8 từ tiếng Anh), kết hợp tên chính xác của chủ thể + chi tiết giải phẫu/bối cảnh thực tế/nhiếp ảnh tài liệu (vd: '"wedge-tailed eagle" talons hunting wild australia photograph', '"peacock mantis shrimp" compound eyes macro photo').
-- KHÔNG dùng tính từ trống rỗng (majestic, cinematic, aesthetic, beautiful, epic) trong truy vấn.
+- google_image_queries: 2 câu truy vấn chuyên sâu để tìm trên Google Images (4-8 từ tiếng Anh), ưu tiên hình ảnh HOT-TREND, BẮT MẮT, ĐIỆN ẢNH 8K. ĐẶC BIỆT với Quái vật / Thủy quái / Kinh dị: BẮT BUỘC dùng từ khóa săn ảnh RÙNG RỢN, ÁM ẢNH (vd: '"kraken" terrifying giant monster tentacles attacking ship cgi', '"megalodon" terrifying giant shark jaws deep dark ocean movie scene', '"leviathan" thalassophobia megalophobia dark horror artstation'). TUYỆT ĐỐI CẤM tìm ảnh hóa thạch răng bảo tàng hay tranh khắc gỗ cũ!
 
 HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
 {{
@@ -338,8 +356,8 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
     "<subject> + đặc tả chi tiết (vd: wedge-tailed eagle eye close up)"
   ],
   "google_image_queries": [
-    "<subject> + chi tiết cụ thể trong lời thoại + photograph/documentary photo",
-    "<subject> + bối cảnh khoa học/tự nhiên/lịch sử chính xác"
+    "<subject> + chi tiết cụ thể trong lời thoại + cinematic 8k / terrifying movie CGI",
+    "<subject> + bối cảnh ấn tượng / thalassophobia horror artstation"
   ],
   "negative_cues": [
     "Từ/khái niệm cấm (vd: text overlay, watermark, blurry, low resolution, cartoon, distorted, muddy dark tones)"
@@ -411,8 +429,8 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
                 q = scifi_agent.get_curated_video_search_queries(subgenre=subgenre, narration=narration)
                 ai_p = scifi_agent.create_cinematic_ai_video_prompt(topic or narration, subgenre=subgenre, scene_id=scene_id)
             elif is_ocean:
-                q = ["deep sea submarine light", "bioluminescent ocean creatures", "crystalline underwater dive", "deep ocean trench"]
-                ai_p = f"Cinematic 8k dramatic vertical hook shot of deep sea ocean exploration, submarine xenon beam illuminating vibrant bioluminescent wonder, majestic underwater vista, 9:16"
+                q = ["dark deep ocean abyssal underwater", "submarine spotlight pitch black water", "terrifying deep sea creature silhouette", "deep ocean trench"]
+                ai_p = f"Masterpiece terrifying thalassophobia vertical hook shot of deep sea abyss exploration, submarine xenon beam illuminating colossal shadow in pitch-black water, 8k, 9:16"
             else:
                 q = ["cinematic intense hook intro", "dramatic slow motion cinematic", "expressive close up emotion"]
                 ai_p = f"Cinematic 8k dramatic vertical hook shot of {topic or 'visual hook'}, vivid atmospheric lighting, rich contrast, 9:16"
@@ -543,12 +561,13 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
         )
         if va.get("creature_mode"):
             subject_rule += (
-                f"\nĐÂY LÀ QUÁI VẬT / SINH VẬT HUYỀN THOẠI (\"{subject}\") — không có ảnh chụp thật đẹp.\n"
-                f"- ƯU TIÊN: cảnh phim CGI, concept art điện ảnh, digital art u tối, tranh khắc cổ đầy ám ảnh; "
-                f"quái vật KHỔNG LỒ, RÙNG RỢN, quy mô áp đảo (vd: xúc tu khổng lồ nhấn chìm tàu), ánh sáng kịch tính.\n"
-                f"- appeal cao nhất cho ảnh khiến người xem nổi da gà ngay khung đầu tiên.\n"
-                f"- Hoạt hình dễ thương, chibi, đồ chơi, mô hình, hoá trang, bánh kem, ảnh con vật thật bình thường nhỏ bé "
-                f"(vd: con bạch tuộc trong bể cá) -> relevance tối đa 4.\n"
+                f"\nĐÂY LÀ CHẾ ĐỘ QUÁI VẬT / THỦY QUÁI / KINH DỊ RÙNG RỢN (\"{subject}\"):\n"
+                f"- ƯU TIÊN TUYỆT ĐỐI (chấm appeal 9-10): Cảnh phim CGI điện ảnh, ArtStation 8K Dark Horror, Thalassophobia / Megalophobia; "
+                f"quái vật KHỔNG LỒ, RÙNG RỢN, ÁM ẢNH, quy mô áp đảo (vd: bóng đen khổng lồ dưới đáy biển sâu trước đèn pha tàu ngầm, "
+                f"hàm răng/xúc tu khổng lồ nhấn chìm tàu, đôi mắt phát sáng trong bóng tối).\n"
+                f"- LOẠI BỎ NGAY (chấm relevance <= 2, appeal <= 2): Ảnh hóa thạch răng/xương trong bảo tàng, xác cá/mực chết dạt bờ, "
+                f"bản vẽ khắc gỗ đen trắng cổ điển khô khan, bản đồ, biểu đồ, hoạt hình dễ thương, chibi, đồ chơi, mô hình, "
+                f"hoặc ảnh con vật thật bình thường nhỏ bé trong bể cá!\n"
             )
 
         meta_lines = []

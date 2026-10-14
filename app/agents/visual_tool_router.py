@@ -86,9 +86,13 @@ REALITY_KEYWORDS: Dict[str, List[str]] = {
     ],
 }
 
-# Truy vấn bổ trợ theo lớp: giúp kho stock trả về đúng LOẠI hình (CGI mô phỏng, motion graphics...)
+# Truy vấn bổ trợ theo lớp: giúp kho stock / Google Images trả về đúng LOẠI hình (CGI rùng rợn, Thalassophobia, motion graphics...)
 CLASS_QUERY_HINTS: Dict[str, List[str]] = {
-    DEEP_SEA_MYSTERY: ["{subject} ocean deep sea", "underwater submarine exploration", "deep ocean abyss"],
+    DEEP_SEA_MYSTERY: [
+        "{subject} terrifying giant monster dark ocean cgi",
+        "{subject} thalassophobia megalophobia horror artstation",
+        "dark deep ocean abyss submarine spotlight",
+    ],
     SCIENTIFIC_VISUALIZATION: ["{subject} animation", "{subject} 3d", "{subject} space"],
     ABSTRACT_CONCEPT: ["abstract particles glowing", "light tunnel motion", "glowing network abstract",
                        "digital particles flowing"],
@@ -213,8 +217,8 @@ class VisualToolRouter:
                 why = ("thứ không tồn tại ngoài đời, kho stock không thể có đúng hình -> sinh ảnh AI + chuyển động "
                        "(chưa bật backend video AI thật)")
         elif reality == DEEP_SEA_MYSTERY:
-            method, tool = "STOCK_FOOTAGE", "real_archive_photo"
-            why = "bí ẩn đại dương & quái vật biển -> ưu tiên tìm ảnh tư liệu mạng Open Web / Wikipedia (hóa thạch, tranh cổ, bản đồ sonar) kết hợp video chuyển động đại dương"
+            method, tool = "IMAGE_TO_VIDEO", "creature_horror_art"
+            why = "bí ẩn đại dương & quái vật biển -> ưu tiên săn ảnh Movie CGI / ArtStation Dark Horror / Thalassophobia rùng rợn kết hợp chuyển động 3D và B-roll vực thẳm"
         elif reality == SCIENTIFIC_VISUALIZATION:
             method, tool = "STOCK_FOOTAGE", "nasa_pixabay_cgi"
             why = "có thật nhưng không quay được -> ưu tiên mô phỏng CGI/NASA có sẵn trong kho, AI là dự phòng"

@@ -77,6 +77,7 @@ class WebImageFetcher:
         import html as _html
         import re as _re
         from urllib.parse import urlparse
+        safe_mode = "off" if bypass_copyright_enabled() else "moderate"
         res = requests.get(
             "https://www.bing.com/images/async",
             params={
@@ -84,7 +85,7 @@ class WebImageFetcher:
                 "first": 0,
                 "count": min(limit, 35),
                 "mmasync": 1,
-                "adlt": "moderate",
+                "adlt": safe_mode,
                 "qft": "+filterui:imagesize-large",
             },
             headers={"User-Agent": _UA, "Accept-Language": "en-US,en;q=0.9"},
@@ -120,7 +121,8 @@ class WebImageFetcher:
             from ddgs import DDGS
         except ImportError:
             from duckduckgo_search import DDGS
-        return list(DDGS(timeout=8).images(query, region="wt-wt", safesearch="moderate", max_results=limit))
+        safe_mode = "off" if bypass_copyright_enabled() else "moderate"
+        return list(DDGS(timeout=8).images(query, region="wt-wt", safesearch=safe_mode, max_results=limit))
 
     @staticmethod
     def _raw_serper_images(query: str, limit: int = 20) -> List[Dict]:
@@ -165,6 +167,7 @@ class WebImageFetcher:
 
         out: List[Dict] = []
         seen_urls = set()
+        safe_mode = "off" if bypass_copyright_enabled() else "active"
 
         # 1. Nếu có Google Custom Search API Key chính thức thì lấy thêm từ API
         g_key = os.getenv("GOOGLE_SEARCH_API_KEY", "").strip()
@@ -180,7 +183,7 @@ class WebImageFetcher:
                         "searchType": "image",
                         "imgSize": "xlarge",
                         "num": min(limit, 10),
-                        "safe": "active",
+                        "safe": safe_mode,
                     },
                     timeout=8,
                 )
@@ -222,7 +225,7 @@ class WebImageFetcher:
                 "tbs": "isz:l",
                 "hl": "en",
                 "gl": "us",
-                "safe": "active",
+                "safe": safe_mode,
                 "ijn": "0",
             },
             headers=headers,
@@ -308,9 +311,14 @@ class WebImageFetcher:
         Nếu < 25% tiêu đề chứa từ khóa chính của truy vấn → coi như nguồn đang hỏng.
         """
         from app.services.media.image_quality import subject_terms
-        generic = {"concept", "art", "movie", "scene", "dark", "fantasy", "close", "photo", "photograph",
-                   "historical", "the", "giant", "attacking", "hunting", "soaring", "flying", "eye", "eyes",
-                   "high", "resolution", "real", "authentic", "documentary"}
+        generic = {
+            "concept", "art", "movie", "scene", "dark", "fantasy", "close", "photo", "photograph",
+            "historical", "the", "giant", "attacking", "hunting", "soaring", "flying", "eye", "eyes",
+            "high", "resolution", "real", "authentic", "documentary", "terrifying", "horror", "scary",
+            "creepy", "nightmare", "thalassophobia", "megalophobia", "eldritch", "artstation", "cgi",
+            "8k", "4k", "unreal", "engine", "lurking", "darkness", "abyss", "abyssal", "colossal",
+            "cinematic", "still", "monster", "creature", "ocean", "sea", "deep", "underwater",
+        }
         terms = [t for t in subject_terms(query) if t not in generic]
         if not terms or not raw:
             return bool(raw)
@@ -670,36 +678,59 @@ class WebImageFetcher:
         creature_mode: bool = False,
     ) -> List[Dict]:
         """
-        Gọi song song mọi nguồn ảnh trên toàn bộ mạng Internet, tổng hợp và ưu tiên ảnh chân thực.
+        Gọi song song mọi nguồn ảnh trên toàn bộ mạng Internet, tổng hợp và ưu tiên ảnh bắt mắt, hot-trend.
 
-        subject: tên chủ thể ngắn (vd: "wedge-tailed eagle"). Wikipedia / Commons / Openverse khớp từ khóa
-        kiểu AND nên dùng tên chủ thể sẽ chính xác hơn nhiều so với truy vấn mô tả dài.
+        - Khi creature_mode=True (quái vật, thủy quái, thực thể kinh dị): TẬP TRUNG 100% vào Google Images / Bing / Open Web
+          với các truy vấn Movie CGI, ArtStation Dark Horror, Thalassophobia/Megalophobia; loại bỏ Wikimedia Commons /
+          Openverse / Wikipedia để không bị lọt ảnh hóa thạch răng bảo tàng hay tranh khắc gỗ thế kỷ 18.
+        - Khi bypass_copyright_enabled()=True: Ưu tiên tuyệt đối Google Images + truy vấn điện ảnh 8K sắc nét.
         """
         if not query or not web_image_search_enabled():
             return []
 
         subject = (subject or "").strip()
         entity_q = subject or query
-        jobs = [
-            (self.search_open_web, "google_web", query),
-            (self.search_wikimedia_commons, "commons", entity_q),
-            (self.search_openverse, "openverse", entity_q),
-        ]
-        # Wikipedia chỉ hữu ích khi tra theo TÊN THỰC THỂ; truy vấn mô tả dài trả về bài rác
-        if subject or len(query.split()) <= 3:
-            jobs.insert(1, (self.search_wikipedia_images, "wikipedia", entity_q))
-        if self._unsplash_key:
-            jobs.append((self.search_unsplash, "unsplash", query))
+        open_web_per_page = max(per_source, 8) if (creature_mode or bypass_copyright_enabled()) else per_source
 
-        # Tự động bổ sung truy vấn Google Search chuẩn Gemini (neo chặt chủ thể + nhiếp ảnh thực tế)
+        jobs = [
+            (self.search_open_web, "google_web", query, open_web_per_page),
+        ]
+
         auto_extra = list(extra_queries or [])
-        if not auto_extra and subject and subject.lower() != query.lower():
-            auto_extra.append(f'"{subject}" real photograph')
-        for i, xq in enumerate(q for q in auto_extra[:2] if q and q != query):
-            jobs.append((self.search_open_web, f"google_web+{i + 1}", xq))
+        if creature_mode:
+            if not auto_extra:
+                from app.services.media.image_quality import creature_queries
+                auto_extra = creature_queries(subject or query)
+            for i, xq in enumerate(q for q in auto_extra[:3] if q and q.lower() != query.lower()):
+                jobs.append((self.search_open_web, f"google_creature+{i + 1}", xq, open_web_per_page))
+        else:
+            if bypass_copyright_enabled():
+                # Ưu tiên thêm truy vấn Google Images điện ảnh / viral chất lượng cao trước các kho lưu trữ công cộng
+                if not auto_extra and subject:
+                    auto_extra.append(f"{subject} cinematic 8k high resolution")
+                    if subject.lower() != query.lower():
+                        auto_extra.append(f'"{subject}" dramatic photography')
+                for i, xq in enumerate(q for q in auto_extra[:2] if q and q.lower() != query.lower()):
+                    jobs.append((self.search_open_web, f"google_web+{i + 1}", xq, open_web_per_page))
+                # Chỉ giữ Wikipedia/Commons với số lượng nhỏ làm nguồn phụ trợ cho nhân vật/sự kiện thực tế
+                if subject or len(query.split()) <= 3:
+                    jobs.append((self.search_wikipedia_images, "wikipedia", entity_q, min(per_source, 3)))
+                jobs.append((self.search_wikimedia_commons, "commons", entity_q, min(per_source, 3)))
+            else:
+                if subject or len(query.split()) <= 3:
+                    jobs.append((self.search_wikipedia_images, "wikipedia", entity_q, per_source))
+                jobs.append((self.search_wikimedia_commons, "commons", entity_q, per_source))
+                jobs.append((self.search_openverse, "openverse", entity_q, per_source))
+                if not auto_extra and subject and subject.lower() != query.lower():
+                    auto_extra.append(f'"{subject}" real photograph')
+                for i, xq in enumerate(q for q in auto_extra[:2] if q and q != query):
+                    jobs.append((self.search_open_web, f"google_web+{i + 1}", xq, per_source))
+
+            if self._unsplash_key:
+                jobs.append((self.search_unsplash, "unsplash", query, per_source))
 
         with ThreadPoolExecutor(max_workers=len(jobs)) as ex:
-            futures = [ex.submit(fn, q, per_source) for fn, _, q in jobs]
+            futures = [ex.submit(fn, q, ps) for fn, _, q, ps in jobs]
             buckets = []
             for f in futures:
                 try:
@@ -710,31 +741,36 @@ class WebImageFetcher:
         # Open web quá ít kết quả với truy vấn dài → thử lại bằng tên chủ thể
         if subject and subject.lower() != query.lower() and len(buckets[0]) < 3:
             try:
-                buckets[0] = buckets[0] + self.search_open_web(subject, per_source)
+                fallback_q = f"{subject} terrifying monster dark art" if creature_mode else subject
+                buckets[0] = buckets[0] + self.search_open_web(fallback_q, open_web_per_page)
             except Exception:
                 pass
 
         merged, seen = [], set()
-        # Ưu tiên xen kẽ: Google Web và Wikipedia lên đầu danh sách ứng viên
-        for i in range(max((len(b) for b in buckets), default=0)):
-            for b in buckets:
-                if i < len(b) and b[i]["url"] not in seen:
-                    seen.add(b[i]["url"])
-                    merged.append(b[i])
+        # Đưa toàn bộ ứng viên từ Google Web / Open Web lên đầu trước khi ghép các nguồn phụ
+        for b in buckets:
+            for item in b:
+                if item.get("url") and item["url"] not in seen:
+                    seen.add(item["url"])
+                    merged.append(item)
 
-        # Lọc watermark / ảnh nhỏ và xếp hạng theo chủ thể + bố cục dọc + độ phân giải
+        # Lọc watermark / ảnh nhỏ và xếp hạng theo chủ thể + bố cục dọc + độ phân giải + độ rùng rợn/hot-trend
         try:
             from app.services.media.image_quality import prefilter_candidates
             merged = prefilter_candidates(
-                merged, subject=subject or query, limit=max(12, per_source * 3), creature_mode=creature_mode,
-                max_per_source=8 if creature_mode else 7,
+                merged,
+                subject=subject or query,
+                limit=max(14, per_source * 3),
+                creature_mode=creature_mode,
+                max_per_source=12 if (creature_mode or bypass_copyright_enabled()) else 7,
             )
         except Exception as e:
             logger.debug(f"[WebImage] prefilter lỗi: {e}")
 
-        summary_parts = [f"{name}={len(b)}" for (_, name, _), b in zip(jobs, buckets)]
+        summary_parts = [f"{name}={len(b)}" for (_, name, _, _), b in zip(jobs, buckets)]
         logger.info(
-            f"[WebImage] 🌐 Tìm ảnh mạng cho '{query}' (subject='{subject}'): {len(merged)} ảnh ({', '.join(summary_parts)})"
+            f"[WebImage] 🌐 Tìm ảnh mạng cho '{query}' (subject='{subject}', creature={creature_mode}): "
+            f"{len(merged)} ảnh ({', '.join(summary_parts)})"
         )
         return merged
 

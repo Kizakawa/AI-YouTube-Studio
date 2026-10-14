@@ -238,12 +238,12 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         logger.info(f"🎯 [Scene {scene.scene_id}] Phương pháp: '{prod_method}' | Strategy: '{chosen_strategy}' ({rationale[:60]}...)")
 
         # ══════════════════════════════════════════════════════════════════════
-        # QUÁI VẬT / SINH VẬT HUYỀN THOẠI: kho video stock không có kraken/megalodon thật
-        # → ưu tiên ảnh concept art / cảnh phim rùng rợn trên mạng (Vision chọn), Ken Burns khi render
+        # QUÁI VẬT / SINH VẬT HUYỀN THOẠI & KINH DỊ: kho video stock không có kraken/megalodon thật
+        # → ưu tiên ảnh Movie CGI / ArtStation Dark Horror / Thalassophobia rùng rợn trên mạng (Vision chọn) + chuyển động 3D
         # ══════════════════════════════════════════════════════════════════════
         creature_first = os.getenv("CREATURE_ART_FIRST", "true").strip().lower() not in ("0", "false", "no", "off")
         if (
-            creature_first and v_analysis.get("creature_mode") and prod_method != "REAL_ARCHIVE"
+            creature_first and v_analysis.get("creature_mode")
             and channel_visual_mode not in ("imagen_ai", "ai_image")
         ):
             try:
@@ -263,8 +263,26 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         media_path = out_img
                         media_type = "image"
                         prod_method = chosen_strategy = "CREATURE_ART"
+                        # Chuyển hóa ngay bức ảnh quái vật rùng rợn thành Video Clip chuyển động 3D Ken Burns kịch tính
+                        try:
+                            anim_vid = str(media_dir / f"scene_{scene.scene_id:03d}_creature_3d.mp4")
+                            res_anim = await asyncio.to_thread(
+                                ai_video_agent.animate_thematic_image,
+                                image_path=out_img,
+                                output_path=anim_vid,
+                                duration_seconds=dur,
+                                camera_motion=camera_motion or ("hyper_zoom" if idx == 0 else "zoom_in"),
+                                is_hook=(idx == 0),
+                                niche=current_niche,
+                                is_scifi=is_scifi_val,
+                            )
+                            if res_anim and Path(res_anim).exists() and Path(res_anim).stat().st_size > 5000:
+                                media_path = res_anim
+                                media_type = "video"
+                        except Exception as ex_c_anim:
+                            logger.debug(f"Scene {scene.scene_id}: Creature 3D animation fallback to static image: {ex_c_anim}")
                         logger.info(
-                            f"Scene {scene.scene_id}: 🐙 [Quái vật] {creature_photo.get('source')} "
+                            f"Scene {scene.scene_id}: 🐙 [Quái vật Rùng Rợn] {creature_photo.get('source')} "
                             f"điểm {creature_photo.get('curation_score', '-')}: {str(creature_photo.get('title', ''))[:50]}"
                         )
             except Exception as e:

@@ -10,11 +10,20 @@ script_blueprint:
   pacing: 'Thời lượng tối ưu 36 - 46 giây (7 - 9 cảnh, 85 - 120 từ), nhịp điệu bí ẩn dồn dập. Cảnh 1 là Hook 3s trực diện, Cảnh 4 là Mid-Video Re-Hook lật mở cơ chế khoa học kỳ dị, Cảnh 5-7 là Payoff giải mã chấn động.'
   narrative_structure: 'Hook nghịch lý giác quan / nỗi sợ nguyên thủy 3s -> Dẫn chứng khoa học / Hiện tượng vật lý kỳ dị -> Mid-Video Re-Hook (Cảnh 4 - Bằng chứng thực nghiệm không ngờ tới) -> Cú sốc nhận thức giải mã toàn bộ bí ẩn (Payoff Cảnh 5-7) -> Infinite Seamless Loop'
   hook_formulas:
-  - 'Instinctive Phobia Hook (Proven 1,242 Views): ''Your brain has a terrifying biological reason to fear dark water — here is what your instincts know...'''
-  - 'Sensory Paradox Hook (Proven 190 Views): ''Inside the world''s quietest room, the human mind starts hallucinating in less than 15 minutes...'''
-  - 'Biological Blind Spot (Proven 140 Views): ''Your eyes are biologically blind to 99% of reality — and your brain is fabricating what you see right now...'''
-  - 'Classified Hydrophone Recording: ''In 1997, oceanic sensors recorded a classified acoustic anomaly 3,000 miles across the Pacific...'''
-  - 'Subterranean Forbidden Zone: ''Deep inside this sealed cave system, scientists discovered an ecosystem cut off from sunlight for 5 million years...'''
+  - 'Instinctive Phobia Hook (Proven #1 Winner 1,242 Views): ''Your brain has a terrifying biological reason to fear dark water — here is what your instincts know...'''
+  - 'Sensory Paradox Hook (Proven #2 Winner 190 Views): ''Inside the world''s quietest room, the human mind starts hallucinating in less than 15 minutes...'''
+  - 'Biological Blind Spot (Proven #3 Winner 140 Views): ''Your eyes are biologically blind to 99% of reality — and your brain is fabricating what you see right now...'''
+  - 'Body vs Extreme Earth Physics (Zack D. Films 16.5M Formula): ''What happens to the human body if a deep-sea diving bell loses pressure for 0.1 seconds...'''
+  - 'Subterranean Forbidden Zone: ''Deep inside Movile Cave, scientists unsealed an underground ecosystem cut off from sunlight for 5.5 million years...'''
+  viral_topic_bank_2026:
+  - "Why Deep Sea Divers Never Look Up At The Surface At Night"
+  - "What Happens To Your Brain After 45 Minutes In Zero Light And Zero Sound"
+  - "Why Commercial Airplanes Are Forbidden From Flying Over This Ocean Grid"
+  - "The Terrifying Reason Scientists Sealed The Kola Superdeep Borehole At 40,230 Feet"
+  - "Why Your Body Freezes In Sleep Paralysis And What Your Brain Is Hiding"
+  - "Inside Movile Cave: Sealed From Earth's Atmosphere For 5.5 Million Years"
+  - "Why Saturation Divers Live At The Bottom Of The Sea For 28 Days Straight"
+  - "The 1997 Upsweep Sound That Still Echoes From The Pacific Seafloor"
   forbidden_words:
   - Welcome back to our channel
   - Today we will explore
@@ -39,19 +48,19 @@ script_blueprint:
   - cryptocurrency
 banned_lexicon: *id001
 visual_aesthetics:
-  art_style: Cinematic Mystery Exploration, Sensory Sci-Documentary & Bioluminescent Wonder (BBC Horizon / James Cameron HDR)
-  color_palette: Luminous oceanic sapphire, radiant bioluminescent cyan (#06b6d4), vivid coral emerald (#10b981), piercing xenon amber (#f59e0b), deep abyssal midnight navy (#020617)
-  camera_angles: Sweeping viewport gliding over mysterious cavern, macro close-up human pupil dilating in darkness, epic subterranean chamber opening to light beam, high-tech acoustic frequency HUD scan
-  master_prompt_prefix: masterpiece cinematic mystery documentary film still, crystalline clarity, dramatic volumetric light beams piercing deep shadow, high-contrast scientific realism, 8k vertical 9:16
-  master_prompt_suffix: hyper-realistic textures, radiant volumetric light rays, National Geographic 8k cinematography, photorealistic vertical 9:16, no text, no watermark
-  negative_prompts: blurry, low resolution, cartoon, anime, plastic, distorted, watermark, text
+  art_style: Terrifying Thalassophobia, Abyssal Leviathan Horror & High-Contrast Sci-Mystery Cinema (James Cameron / Underwater / Lovecraftian 8K CGI)
+  color_palette: Abyssal pitch black (#020617), eerie bioluminescent cyan (#06b6d4), blood-red sonar warning (#ef4444), piercing submersible xenon beam (#f59e0b), crushing midnight navy
+  camera_angles: Submersible cockpit POV staring at colossal silhouette in pitch-black water, extreme megalophobia scale next to tiny diver, macro close-up human pupil dilating in terror, sonar radar HUD detecting massive anomaly
+  master_prompt_prefix: masterpiece terrifying thalassophobia cinematic film still, colossal shadow lurking in pitch-black abyssal ocean, dramatic submersible spotlight piercing murky deep water, spine-chilling megalophobia scale, 8k vertical 9:16
+  master_prompt_suffix: hyper-realistic wet skin and bioluminescent textures, ominous volumetric light rays, eerie horror atmosphere, Unreal Engine 5 & IMAX 8k cinematography, vertical 9:16, no text, no watermark
+  negative_prompts: sunny beach, cheerful coral reef, cute dolphins, bright daylight, cartoon, anime, plastic, blurry, low resolution, watermark, text
   stock_video_keywords:
-  - submarine exploration light beam
-  - bioluminescent jellyfish glowing
-  - deep cave exploration light rays
-  - human eye macro pupil dilating
-  - sound wave frequency visualizer dark
-  - underwater hydrothermal vent
+  - dark deep ocean abyssal underwater
+  - submarine spotlight in pitch black water
+  - giant tentacle monster silhouette underwater
+  - terrifying deep sea creature bioluminescent
+  - sonar radar screen anomaly dark
+  - underwater cave diver flashlight darkness
 subtitles:
   font_family: Montserrat, Arial Black, sans-serif
   font_size: 42
@@ -62,7 +71,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-BrianNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: +5%
+  rate: +12%
   pitch: -2Hz
   bgm_vibe: deep ambient sub-bass drone, eerie acoustic resonance, low sonar
     ping, tense orchestral heartbeat

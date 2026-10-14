@@ -32,9 +32,9 @@ WILDLIFE_SUBGENRES: Dict[str, List[str]] = {
     ],
     "ocean_marine_wildlife": [
         "cá voi", "whale", "cá heo", "dolphin", "cá mập", "shark", "bạch tuộc", "octopus",
-        "mực khổng lồ", "giant squid", "rùa biển", "sea turtle", "san hô", "coral reef",
-        "chim cánh cụt", "penguin", "hải cẩu", "seal", "sư tử biển", "sea lion", "đáy biển",
-        "đại dương", "biển sâu", "deep sea", "marine life", "orca", "cá voi sát thủ"
+        "rùa biển", "sea turtle", "san hô", "coral reef",
+        "chim cánh cụt", "penguin", "hải cẩu", "seal", "sư tử biển", "sea lion",
+        "marine life", "orca", "cá voi sát thủ"
     ],
     "african_savanna_safari": [
         "voi", "elephant", "hươu cao cổ", "giraffe", "ngựa vằn", "zebra", "hà mã", "hippo",
@@ -48,6 +48,19 @@ WILDLIFE_SUBGENRES: Dict[str, List[str]] = {
         "thú cưng", "pet rescue", "shelter", "trạm cứu hộ"
     ]
 }
+
+# Các từ khóa Quái vật / Thủy quái / Kinh dị / Bí ẩn biển sâu — TUYỆT ĐỐI KHÔNG đưa vào chế độ thiên nhiên tươi sáng
+MONSTER_AND_HORROR_EXCLUSIONS: Tuple[str, ...] = (
+    "kraken", "megalodon", "leviathan", "cthulhu", "monster", "monsters", "quái vật", "thủy quái",
+    "quái thú", "sea monster", "sea serpent", "giant squid", "colossal squid", "mực khổng lồ",
+    "magnapinna", "bigfin squid", "loch ness", "nessie", "bloop", "the bloop", "titanoboa",
+    "mosasaurus", "liopleurodon", "dunkleosteus", "helicoprion", "livyatan", "plesiosaur",
+    "thalassophobia", "megalophobia", "abyss", "abyssal", "vực thẳm", "rãnh mariana",
+    "mariana trench", "point nemo", "horror", "terrifying", "creepy", "nightmare", "cryptid",
+    "scp", "wendigo", "skinwalker", "siren head", "backrooms", "slenderman", "the rake",
+    "eldritch", "kaiju", "godzilla", "chupacabra", "mothman", "kinh dị", "rùng rợn", "ám ảnh",
+    "ác mộng", "ma quái", "tâm linh", "creepypasta", "urban legend",
+)
 
 # ── KHO TỪ KHÓA TÌM VIDEO PEXELS 9:16 ĐỘNG VẬT HOANG DÃ CHUẨN XÁC ──
 CURATED_WILDLIFE_STOCK_QUERIES: Dict[str, List[str]] = {
@@ -113,7 +126,17 @@ class WildlifeVisualDispatcherAgent:
         Nhận diện xem ngữ cảnh có thuộc đề tài Động vật hoang dã / Thiên nhiên không.
         Trả về: (is_wildlife, confidence_score, subgenre, detected_keywords)
         """
+        niche_lower = (channel_niche or "").lower().strip()
+        # Không bao giờ kích hoạt chế độ thiên nhiên BBC cho các ngách kinh dị, bí ẩn biển sâu, lịch sử hoặc sci-fi
+        if any(k in niche_lower for k in ("horror", "deep_sea", "mystery", "mysteries", "history", "scifi", "psychology", "stoic")):
+            return False, 0.0, "none", []
+
         combined_text = f"{topic} {narration} {visual_keyword} {visual_prompt} {channel_niche}".lower()
+        # Nếu chủ đề hoặc lời thoại chứa từ khóa quái vật / thủy quái / kinh dị -> nhường quyền cho Creature Horror Mode
+        for excl in MONSTER_AND_HORROR_EXCLUSIONS:
+            if re.search(rf"(?:\b|\s|^){re.escape(excl)}(?:\b|\s|$)", combined_text, re.IGNORECASE):
+                return False, 0.0, "none", []
+
         detected_keywords: List[str] = []
         genre_scores: Dict[str, int] = {k: 0 for k in self.subgenres}
 

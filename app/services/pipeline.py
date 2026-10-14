@@ -122,6 +122,30 @@ class VideoPipeline:
             self.work_dir = Path(settings.TEMP_DIR) / f"job_{self.job_id}"
             self.work_dir.mkdir(parents=True, exist_ok=True)
 
+            # ── [HARD NICHE FIREWALL] Tự động phát hiện & điều hướng nếu Job bị gán nhầm kênh ──
+            try:
+                from app.services.niche_manager import validate_channel_niche_alignment
+                with get_db() as _db:
+                    _j = _db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
+                    if _j and _j.target_channel_id:
+                        _check = validate_channel_niche_alignment(
+                            channel_id=_j.target_channel_id,
+                            title=_j.title or "",
+                            topic=_j.topic or "",
+                            script=_j.full_narration or "",
+                        )
+                        if not _check.get("passed", True) and _check.get("suggested_channel_id"):
+                            _old_ch = _j.target_channel_id
+                            _new_ch = _check["suggested_channel_id"]
+                            _j.target_channel_id = _new_ch
+                            _db.commit()
+                            logger.warning(
+                                f"🛡️ [HardNicheFirewall] Job #{self.job_id} ('{_j.title or _j.topic}') "
+                                f"lệch ngách trên '{_old_ch}' -> Đã tự động chuyển sang kênh đúng ngách '{_new_ch}'!"
+                            )
+            except Exception as _e_fw:
+                logger.debug(f"[Job {self.job_id}] Niche firewall pre-check warning: {_e_fw}")
+
             # ── [NEW] Ưu tiên điều phối qua LangGraph Multi-Agent Engine với 5 Bộ Graders ──
             if getattr(settings, 'USE_LANGGRAPH', True):
                 try:
@@ -1019,6 +1043,62 @@ class VideoPipeline:
                 # Mặc định cho Shorts: Ưu tiên Full Video 9:16 động để giữ retention cao!
                 prefer_video = True
 
+
+        # ── TẦNG 0: CHẾ ĐỘ QUÁI VẬT / THỦY QUÁI / KINH DỊ RÙNG RỢN (CREATURE HORROR MODE) ──
+        creature_first = os.getenv("CREATURE_ART_FIRST", "true").strip().lower() not in ("0", "false", "no", "off")
+        if (
+            creature_first
+            and v_analysis
+            and v_analysis.get("creature_mode")
+            and channel_visual_mode not in ("imagen_ai", "ai_image")
+        ):
+            try:
+                c_query = (v_analysis.get("creature_queries") or [getattr(scene, 'stock_query', None) or scene.visual_keyword or topic])[0]
+                creature_photo = await asyncio.to_thread(
+                    self._media_agent.search_best_photo,
+                    c_query,
+                    used_pool_urls or used_asset_paths or set(),
+                    v_analysis,
+                    scene.narration,
+                    topic,
+                )
+                if creature_photo and creature_photo.get("url"):
+                    c_url = creature_photo["url"]
+                    out_img = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_creature.jpg")
+                    await asyncio.to_thread(self._media_agent.download_file, c_url, out_img)
+                    if Path(out_img).exists() and Path(out_img).stat().st_size > 3000 and self._is_valid_image_file(out_img):
+                        ids = extract_media_identity(c_url)
+                        if used_pool_urls is not None:
+                            used_pool_urls.update(ids)
+                        if used_asset_paths is not None:
+                            used_asset_paths.update(ids)
+                            used_asset_paths.add(out_img)
+                        record_used_media(c_url, query=c_query, source=creature_photo.get("source", "creature_web"), media_path=out_img)
+                        try:
+                            from app.agents.ai_video_agent import AIVideoAgent
+                            ai_vid_agent = AIVideoAgent()
+                            anim_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_creature_3d.mp4")
+                            res_anim = await asyncio.to_thread(
+                                ai_vid_agent.animate_thematic_image,
+                                image_path=out_img,
+                                output_path=anim_path,
+                                duration_seconds=scene.actual_duration_seconds,
+                                camera_motion=sc_strat.get("camera_motion", "zoom_in") if sc_strat else ("hyper_zoom" if scene.scene_id == 1 else "zoom_in"),
+                                is_hook=(scene.scene_id == 1),
+                                niche=channel_niche,
+                                is_scifi=is_scifi_scene,
+                            )
+                            if res_anim and Path(res_anim).exists() and Path(res_anim).stat().st_size > 5000:
+                                if used_asset_paths is not None:
+                                    used_asset_paths.add(res_anim)
+                                logger.info(f"Scene {scene.scene_id}: 🐙 [Quái vật Rùng Rợn 3D] {creature_photo.get('source')}: {str(creature_photo.get('title', ''))[:50]}")
+                                return res_anim
+                        except Exception as ex_c_anim:
+                            logger.debug(f"Scene {scene.scene_id}: Creature 3D animation error: {ex_c_anim}")
+                        logger.info(f"Scene {scene.scene_id}: 🐙 [Quái vật Rùng Rợn] {creature_photo.get('source')}: {str(creature_photo.get('title', ''))[:50]}")
+                        return out_img
+            except Exception as e_cr:
+                logger.debug(f"Scene {scene.scene_id}: Creature horror search error: {e_cr}")
 
         # ── TẦNG 0.5: Ưu tiên AI Image nếu prefer_ai và KHÔNG PHẢI VIỄN TƯỞNG ──
         if not is_scifi_scene and prefer_ai and getattr(scene, 'visual_prompt', None) and len(scene.visual_prompt.strip()) > 15:

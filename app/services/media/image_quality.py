@@ -32,11 +32,24 @@ _HARD_TITLE_CUES = (
     "framed print", "art print", "for sale", "buy now",
 )
 
-# Tiêu đề chứa các cụm này → trừ điểm (thường không phải ảnh chụp thực tế đẹp)
+# Tiêu đề chứa các cụm này → trừ điểm (thường không phải ảnh điện ảnh / thực tế đẹp)
 _SOFT_TITLE_CUES = (
-    "illustration", "cartoon", "drawing", "sketch", "download", "logo", "icon",
-    "infographic", "diagram", "chart", "map of", "meme", "quote", "text", "anime",
-    "3d render", "toy", "figurine", "lego", "plush", "costume", "tattoo",
+    "cartoon", "drawing", "sketch", "download", "logo", "icon",
+    "infographic", "diagram", "chart", "map of", "meme", "quote", "text",
+    "toy", "figurine", "lego", "plush", "costume", "tattoo",
+)
+
+# Nguồn & từ khóa Hot-Trend / Điện ảnh / Viral giúp hình ảnh bắt mắt hơn trên Shorts
+_HOT_TREND_DOMAINS = (
+    "artstation.com", "artstation", "deviantart.com", "deviantart", "pinterest", "pinimg.com",
+    "redd.it", "reddit.com", "wallhaven", "uhdpaper", "hdqwalls", "behance.net", "imdb.com",
+    "tmdb.org", "ytimg.com", "cgsociety", "cara.app", "alphacoders", "peakpx", "wallpaperflare",
+)
+
+_HOT_TREND_CUES = (
+    "cinematic", "movie scene", "film still", "artstation", "unreal engine", "octane render",
+    "8k", "4k", "concept art", "dark fantasy", "thalassophobia", "megalophobia", "wallpaper",
+    "masterpiece", "vfx", "cgi", "dramatic", "photorealistic", "hyperrealistic", "imax",
 )
 
 _STOPWORDS = {
@@ -142,37 +155,64 @@ def _dims(item: Dict) -> tuple:
         return 0, 0
 
 
-# ─────────────────────────────── Chế độ quái vật / sinh vật huyền thoại ───────────────────────────────
-# Những chủ thể KHÔNG có (hoặc gần như không có) ảnh chụp thật đẹp → ảnh hấp dẫn nhất trên mạng là
-# concept art, cảnh phim CGI, digital art u tối (vd: Kraken trong "Cướp biển vùng Caribe").
+# ─────────────────────────────── Chế độ quái vật / sinh vật huyền thoại & kinh dị ───────────────────────────────
+# Những chủ thể quái vật, thủy quái, sinh vật tiền sử hoặc thực thể kinh dị → ảnh rùng rợn, ám ảnh nhất là
+# cảnh phim CGI (The Meg, Underwater, Pirates of the Caribbean), ArtStation dark horror, Thalassophobia/Megalophobia art.
 _CREATURE_WORDS = (
     "kraken", "leviathan", "megalodon", "sea serpent", "sea monster", "cthulhu", "godzilla",
-    "loch ness", "nessie", "bloop", "mothman", "wendigo", "chupacabra", "bigfoot", "sasquatch",
-    "yeti", "skinwalker", "behemoth", "basilisk", "giant squid",
-    "colossal squid", "monster", "cryptid", "demon", "lusca", "jormungandr", "charybdis",
-    "scylla", "tiamat", "ningen", "kaiju", "werewolf", "vampire", "ghost ship",
-    "abyssal creature", "eldritch", "mermaid", "thunderbird", "jersey devil", "dogman",
+    "loch ness", "nessie", "bloop", "the bloop", "mothman", "wendigo", "chupacabra", "bigfoot", "sasquatch",
+    "yeti", "skinwalker", "behemoth", "basilisk", "giant squid", "colossal squid",
+    "magnapinna", "bigfin squid", "monster", "monsters", "cryptid", "demon", "lusca", "jormungandr",
+    "charybdis", "scylla", "tiamat", "ningen", "kaiju", "werewolf", "vampire", "ghost ship",
+    "abyssal creature", "deep sea creature", "deep sea monster", "eldritch", "mermaid", "siren",
+    "thunderbird", "jersey devil", "dogman", "titanoboa", "mosasaurus", "liopleurodon",
+    "dunkleosteus", "helicoprion", "livyatan", "sarcosuchus", "plesiosaur", "kronosaurus",
+    "basilosaurus", "megalania", "smilodon", "terror bird", "gorgonopsid", "arthropleura",
+    "scp", "siren head", "backrooms", "slenderman", "the rake", "crawler", "pale crawler",
+    "shadow person", "doppelganger", "analog horror", "thalassophobia", "megalophobia",
+    "anglerfish", "goblin shark", "frilled shark", "vampire squid", "giant isopod", "oarfish",
+    "gulper eel", "viperfish", "black swallower", "tentacle", "tentacles",
 )
 # Tên có chữ "monster"/"dragon" nhưng là động vật THẬT → không bật chế độ quái vật
 _REAL_ANIMAL_EXCEPTIONS = ("gila monster", "komodo dragon", "sea dragon", "dragonfish", "dragonfly")
 
-# Cảnh phim nổi tiếng cho từng quái vật — Bing/DDG trả về still phim chất lượng cao
+# Cảnh phim & ArtStation horror cực kỳ rùng rợn cho từng quái vật
 _CREATURE_FILM_REFS = {
-    "kraken": "kraken pirates movie",
-    "megalodon": "megalodon movie scene",
-    "godzilla": "Godzilla movie scene",
-    "loch ness": "Loch Ness monster",
-    "cthulhu": "Cthulhu rising from the sea art",
-    "leviathan": "leviathan sea monster art",
-    "sea serpent": "giant sea serpent attacking ship",
-    "mothman": "mothman cryptid art",
-    "wendigo": "wendigo horror art",
+    "kraken": "terrifying giant kraken tentacles attacking ship dark ocean movie cgi",
+    "megalodon": "terrifying giant megalodon shark jaws lurking deep dark ocean movie scene",
+    "godzilla": "Godzilla terrifying giant monster dark storm movie scene 8k",
+    "loch ness": "terrifying loch ness monster dark underwater silhouette thalassophobia art",
+    "nessie": "terrifying loch ness monster dark underwater silhouette thalassophobia art",
+    "cthulhu": "terrifying Cthulhu eldritch horror rising dark ocean megalophobia artstation",
+    "leviathan": "terrifying colossal leviathan sea monster dark abyss thalassophobia artstation",
+    "sea serpent": "terrifying giant sea serpent monster dark ocean thalassophobia art",
+    "sea monster": "terrifying giant sea monster lurking beneath boat thalassophobia artstation",
+    "bloop": "the bloop terrifying colossal deep sea monster thalassophobia megalophobia",
+    "giant squid": "terrifying colossal giant squid tentacles attacking submarine dark ocean cgi",
+    "colossal squid": "terrifying colossal squid deep dark abyssal ocean monster artstation",
+    "magnapinna": "bigfin magnapinna squid eerie deep sea ROV footage horror",
+    "bigfin squid": "bigfin magnapinna squid eerie deep sea ROV footage horror",
+    "titanoboa": "terrifying giant titanoboa snake monster dark jungle movie cgi",
+    "mosasaurus": "terrifying giant mosasaurus underwater jaws Jurassic World scene",
+    "dunkleosteus": "terrifying giant dunkleosteus armored predator dark ocean artstation",
+    "helicoprion": "terrifying helicoprion spiral saw jaw shark dark ocean art",
+    "livyatan": "terrifying livyatan melvillei giant whale monster vs megalodon art",
+    "mothman": "terrifying mothman glowing red eyes dark night horror artstation",
+    "wendigo": "terrifying wendigo antler skull monster dark forest horror artstation",
+    "skinwalker": "terrifying skinwalker creature night vision horror found footage",
+    "siren head": "terrifying siren head giant monster dark fog horror trevor henderson",
+    "scp": "terrifying scp monster containment breach dark horror artstation",
+    "backrooms": "terrifying backrooms entity found footage analog horror",
+    "anglerfish": "terrifying deep sea anglerfish glowing lure pitch black abyss",
+    "goblin shark": "terrifying deep sea goblin shark protruding jaws pitch black water",
 }
 
 _CREATURE_BONUS_CUES = (
     "concept art", "art", "artstation", "digital art", "cgi", "movie", "film", "scene", "dark",
-    "horror", "terrifying", "scary", "creepy", "attack", "attacking", "giant", "wallpaper",
-    "render", "fantasy", "epic", "monster", "beast", "rising",
+    "horror", "terrifying", "scary", "creepy", "nightmare", "thalassophobia", "megalophobia",
+    "eldritch", "abyss", "abyssal", "lurking", "silhouette", "shadow", "glowing eyes",
+    "attack", "attacking", "giant", "colossal", "massive", "wallpaper", "render", "unreal engine",
+    "fantasy", "epic", "monster", "beast", "rising", "deep sea", "underwater",
 )
 
 _CREATURE_PENALTY_CUES = (
@@ -180,11 +220,15 @@ _CREATURE_PENALTY_CUES = (
     "coloring", "logo", "icon", "meme", "chart", "diagram", "infographic", "sticker", "emoji",
     "clipart", "kids", "baby", "funny", "cosplay", "halloween decoration", "cake",
     "caught on camera", "spotted in real life", "top 10", "top 5", "reaction", "thumbnail",
+    # Chặn ảnh hóa thạch khô khan, răng bảo tàng, xác chết dạt bờ hoặc bản khắc gỗ thế kỷ 18 kém rùng rợn
+    "fossil", "tooth", "teeth", "jawbone", "skeleton", "bone", "bones", "skull", "museum",
+    "exhibit", "specimen", "preserved", "jar", "engraving", "woodcut", "stamp", "coin",
+    "statue", "sculpture", "map", "book cover", "novel", "washed ashore", "beached",
 )
 
 
 def is_creature_subject(subject: Optional[str], narration: str = "", topic: str = "") -> bool:
-    """True nếu chủ thể là quái vật / sinh vật huyền thoại (ảnh đẹp nhất là concept art / cảnh phim)."""
+    """True nếu chủ thể hoặc ngữ cảnh là quái vật / thủy quái / thực thể kinh dị (ưu tiên CGI / dark horror art)."""
     import os
     if os.getenv("CREATURE_ART_MODE", "true").strip().lower() in ("0", "false", "no", "off"):
         return False
@@ -193,33 +237,59 @@ def is_creature_subject(subject: Optional[str], narration: str = "", topic: str 
         return False
     if any(f" {w} " in subj for w in _CREATURE_WORDS):
         return True
-    # Chủ thể chung chung nhưng lời thoại/chủ đề nói rõ về quái vật huyền thoại
+    # Kiểm tra cả lời thoại và chủ đề: nếu nói về quái vật, thủy quái, vực thẳm kinh dị hoặc thực thể ám ảnh
     ctx = f" {_norm_text(narration)} {_norm_text(topic)} "
-    strong = ("kraken", "sea monster", "leviathan", "megalodon", "cryptid", "cthulhu", "sea serpent", "kaiju")
-    return any(f" {w} " in ctx for w in strong)
+    if any(f" {w} " in ctx for w in _CREATURE_WORDS):
+        return True
+    raw_ctx = f"{subject or ''} {narration or ''} {topic or ''}".lower()
+    vi_horror_cues = (
+        "quái vật", "thủy quái", "quái thú", "sinh vật biển sâu", "mực khổng lồ",
+        "rùng rợn", "kinh dị", "ác mộng", "vực thẳm", "huyền thoại biển",
+    )
+    return any(cue in raw_ctx for cue in vi_horror_cues)
 
 
 def creature_queries(subject: str) -> List[str]:
-    """Truy vấn tìm ảnh quái vật kịch tính: concept art, cảnh phim, dark fantasy."""
+    """Truy vấn tìm ảnh quái vật cực kỳ rùng rợn, ám ảnh: Thalassophobia, Megalophobia, Movie CGI, Dark Eldritch ArtStation."""
     import os
     subject = (subject or "").strip()
     if not subject:
         return []
-    qs = [f"{subject} concept art", f"{subject} dark fantasy art"]
+    norm = f" {_norm_text(subject)} "
+    is_marine = any(
+        k in norm
+        for k in (
+            "kraken", "megalodon", "leviathan", "cthulhu", "loch ness", "nessie", "bloop",
+            "squid", "sea", "ocean", "abyss", "shark", "whale", "mosasaurus", "liopleurodon",
+            "dunkleosteus", "helicoprion", "livyatan", "anglerfish", "oarfish", "thalassophobia",
+        )
+    )
+    qs: List[str] = []
     if os.getenv("CREATURE_ALLOW_MOVIE_STILLS", "true").strip().lower() not in ("0", "false", "no", "off"):
-        norm = f" {_norm_text(subject)} "
         ref = next((v for k, v in _CREATURE_FILM_REFS.items() if f" {k} " in norm), None)
-        qs.insert(1, ref or f"{subject} movie scene")
-    return qs
+        if ref:
+            qs.append(ref)
+        else:
+            qs.append(f"{subject} terrifying horror movie scene cgi")
+
+    if is_marine:
+        qs.append(f"{subject} terrifying thalassophobia megalophobia giant monster dark ocean")
+        qs.append(f"{subject} dark abyssal sea monster artstation 8k")
+    else:
+        qs.append(f"{subject} terrifying dark horror monster artstation 8k")
+        qs.append(f"{subject} creepy nightmare creature lurking in darkness")
+
+    qs.append(f"{subject} dark eldritch horror concept art")
+    return qs[:4]
 
 
-# Các tên miền báo chí khoa học / bách khoa / bảo tàng uy tín trên Google Images
+# Các tên miền báo chí khoa học / bách khoa / bảo tàng uy tín trên Google Images (dùng cho chủ thể khoa học/lịch sử thường)
 _AUTHORITATIVE_DOMAINS = (
     "wikipedia.org", "wikimedia.org", "nationalgeographic", "britannica.com", "smithsonianmag",
     "nature.com", "science.org", "scientificamerican", "bbc.co", "bbc.com", "nasa.gov", "noaa.gov",
     "nhm.ac.uk", "australian.museum", "audubon.org", "livescience.com", "newscientist.com",
     "theguardian.com", "nytimes.com", "reuters.com", "apnews.com", "flickr.com", "inaturalist.org",
-    "ebird.org", "fishbase", "animaldiversity", "arkive", "Montereybayaquarium", "oceana.org",
+    "ebird.org", "fishbase", "animaldiversity", "arkive", "montereybayaquarium", "oceana.org",
 )
 
 
@@ -237,7 +307,7 @@ def heuristic_score(item: Dict, terms: Iterable[str], creature_mode: bool = Fals
         elif ratio <= 1.25:
             score += 1.1
         elif ratio <= 1.65 and min(w, h) >= 900:
-            score += 0.4
+            score += 0.5
         elif ratio >= 2.1:
             score -= 1.0
         short_side = min(w, h)
@@ -266,26 +336,47 @@ def heuristic_score(item: Dict, terms: Iterable[str], creature_mode: bool = Fals
         if hits == 0 and text:
             score -= 2.0
 
-    # Nguồn ảnh sạch & độ tin cậy thực tế (Google Images / Wikipedia / Bảo tàng / Nhiếp ảnh)
     src = (item.get("source") or "").lower()
     blob_domain = f"{item.get('creator') or ''} {item.get('page_url') or ''} {item.get('url') or ''}".lower()
-    if src in ("google_images", "wikipedia", "wikimedia_commons") and frac >= 0.5:
-        score += 0.8
-    elif src in ("pexels", "pexels_photo", "pixabay", "unsplash") and not creature_mode:
-        score += 0.5
-
-    if any(dom in blob_domain for dom in _AUTHORITATIVE_DOMAINS):
-        score += 0.6
-
     padded = f" {text} "
+
+    # Thưởng điểm cho nguồn Hot-Trend / Điện ảnh / Viral (ArtStation, Pinterest, Reddit, Wallpaper 8K, Movie Stills)
+    is_hot_domain = any(dom in blob_domain for dom in _HOT_TREND_DOMAINS)
+    hot_cue_hits = sum(1 for c in _HOT_TREND_CUES if f" {c} " in padded)
+
     if creature_mode:
-        # Quái vật: concept art / CGI / cảnh phim là ĐIỂM CỘNG; hoạt hình dễ thương / đồ chơi là điểm trừ
+        # Chế độ Quái Vật / Kinh Dị: Ưu tiên tuyệt đối Google Images + ArtStation / Movie CGI / Thalassophobia
+        if src == "google_images":
+            score += 1.2
+        if is_hot_domain:
+            score += 1.4
+        # Trừ điểm Wikipedia/Wikimedia/Bảo tàng trong creature_mode vì hay trả về tranh khắc gỗ cũ hoặc hóa thạch răng
+        if src in ("wikipedia", "wikimedia_commons", "openverse") or any(
+            d in blob_domain for d in ("wikimedia.org", "wikipedia.org", "nhm.ac.uk", "smithsonian", "fishbase", "inaturalist")
+        ):
+            score -= 1.5
         bonus = sum(1 for c in _CREATURE_BONUS_CUES if f" {c} " in padded)
-        score += min(2.0, 0.7 * bonus)
+        score += min(2.6, 0.75 * bonus)
         if any(f" {c} " in padded for c in _CREATURE_PENALTY_CUES):
-            score -= 3.0
-    elif any(f" {c} " in padded for c in _SOFT_TITLE_CUES):
-        score -= 2.0
+            score = min(score - 5.5, 3.5)
+    else:
+        # Chế độ thường nhưng ưu tiên ảnh đẹp, bắt trend, sắc nét trên Google Images
+        if src == "google_images" and frac >= 0.4:
+            score += 1.1
+        elif src in ("wikipedia", "wikimedia_commons") and frac >= 0.5:
+            score += 0.5
+        elif src in ("pexels", "pexels_photo", "pixabay", "unsplash"):
+            score += 0.4
+
+        if is_hot_domain:
+            score += 0.9
+        if hot_cue_hits > 0:
+            score += min(1.2, 0.45 * hot_cue_hits)
+        if any(dom in blob_domain for dom in _AUTHORITATIVE_DOMAINS):
+            score += 0.5
+        if any(f" {c} " in padded for c in _SOFT_TITLE_CUES):
+            score -= 2.0
+
     return round(max(0.0, min(10.0, score)), 2)
 
 
