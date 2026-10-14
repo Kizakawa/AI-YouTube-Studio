@@ -360,6 +360,33 @@ class ContentAgent:
                         else:
                             last_sc["narration"] = "And that hidden mechanism starts the cycle all over."
 
+        # ── 2.4. KHỬ PHẾ PHẨM MỞ ĐẦU CẢNH 1 (ZERO-DELAY HOOK SANITIZER - FRAME 0.0s) ──
+        # Tuyệt đối không cho phép câu mở đầu lãng phí 0.8s đầu tiên vào các cụm từ sáo rỗng ("Stop scrolling!", "Did you know...", "Bạn có biết...").
+        if scenes and isinstance(scenes, list) and isinstance(scenes[0], dict):
+            raw_h1 = str(scenes[0].get("narration") or "").strip()
+            if raw_h1:
+                _dead_hook_prefix = re.compile(
+                    r'^(?:stop\s+scrolling(?:\s+right\s+now)?[\!\.\,\s\-—]*|'
+                    r'wait\s+for\s+it[\!\.\,\s\-—]*|'
+                    r'watch\s+till\s+the\s+end[\!\.\,\s\-—]*|'
+                    r'did\s+you\s+know(?:\s+that)?[\?\!\.\,\s\-—]*|'
+                    r'have\s+you\s+ever\s+wondered(?:\s+why|\s+how)?[\?\!\.\,\s\-—]*|'
+                    r'here\s+is\s+(?:a\s+fun\s+fact|why|what\s+happens)[\:\!\.\,\s\-—]*|'
+                    r'in\s+this\s+video[\,\s\-—]*|'
+                    r'bạn\s+có\s+biết(?:\s+rằng|\s+là)?[\?\!\.\,\s\-—]*|'
+                    r'đừng\s+lướt\s+qua(?:\s+nhé|\s+video\s+này)?[\!\.\,\s\-—]*|'
+                    r'hôm\s+nay\s+chúng\s+ta\s+sẽ\s+tìm\s+hiểu[\:\!\.\,\s\-—]*|'
+                    r'você\s+sabia(?:\s+que)?[\?\!\.\,\s\-—]*|'
+                    r'pare\s+de\s+rolar(?:\s+agora)?[\!\.\,\s\-—]*|'
+                    r'espere\s+até\s+o\s+final[\!\.\,\s\-—]*)+',
+                    re.IGNORECASE
+                )
+                cleaned_h1 = _dead_hook_prefix.sub('', raw_h1).strip()
+                if cleaned_h1 and len(cleaned_h1.split()) >= 3:
+                    if cleaned_h1[0].islower():
+                        cleaned_h1 = cleaned_h1[0].upper() + cleaned_h1[1:]
+                    scenes[0]["narration"] = cleaned_h1
+
         # ── 2.5. TỰ ĐỘNG CHIA NHỊP CẮT CẢNH SIÊU TỐC (ULTRA-FAST SCENE PACING SPLITTER: 1.8s - 2.5s/CẢNH) ──
         # Đảm bảo Cảnh 1 Hook <= 7 từ (~1.5s - 2.0s) và các cảnh thân <= 10 từ (~1.8s - 2.5s), triệt tiêu cảm giác dài lê thê
         def _split_long_narration(text: str, prefer_word_idx: int) -> Optional[tuple]:
