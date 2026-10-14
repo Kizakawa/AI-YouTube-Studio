@@ -188,7 +188,11 @@ def make_colab_account_url(email: str = "pool1.studio@example.com", node_num: in
 
 COLAB_PRO_URL = make_colab_node_url("pool1.studio@example.com", 1)
 
-def get_script_review_keyboard(job_id: int, current_lang: Optional[str] = None) -> InlineKeyboardMarkup:
+def get_script_review_keyboard(
+    job_id: int,
+    current_lang: Optional[str] = None,
+    is_rendering: bool = False,
+) -> InlineKeyboardMarkup:
     """Bàn phím Bước 1: Khi kịch bản vừa tạo xong, tinh gọn, chuẩn SaaS cao cấp"""
     if current_lang and current_lang.lower().startswith("vi"):
         switch_btn = InlineKeyboardButton("🇺🇸 Đổi Sang Tiếng Anh", callback_data=f"switch_lang:{job_id}:en")
@@ -197,10 +201,19 @@ def get_script_review_keyboard(job_id: int, current_lang: Optional[str] = None) 
     else:
         switch_btn = InlineKeyboardButton("🌐 Đổi Ngôn Ngữ (VI/EN)", callback_data=f"switch_lang:{job_id}:toggle")
 
+    if is_rendering:
+        render_btn = InlineKeyboardButton(
+            f"⏳ Đang dựng Video #{job_id}... (Gõ /queue)",
+            callback_data=f"render_video_locked:{job_id}",
+        )
+    else:
+        render_btn = InlineKeyboardButton(
+            "🎬 DUYỆT & DỰNG VIDEO NGAY",
+            callback_data=f"render_video:{job_id}",
+        )
+
     keyboard = [
-        [
-            InlineKeyboardButton("🎬 DUYỆT & DỰNG VIDEO NGAY", callback_data=f"render_video:{job_id}"),
-        ],
+        [render_btn],
         [
             InlineKeyboardButton("✍️ Góp Ý Sửa", callback_data=f"edit_script:{job_id}"),
             switch_btn,

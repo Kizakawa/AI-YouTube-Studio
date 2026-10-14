@@ -46,10 +46,9 @@ from app.services.smart_scheduler import (
 
 logger = logging.getLogger(__name__)
 
-# [FIX] Dùng asyncio.Lock thay threading.Lock để tránh race condition trong async context.
-# threading.Lock không block asyncio coroutines → 2 coroutines có thể chạy song song cùng 1 kênh.
-_CHANNEL_ASYNC_LOCKS: Dict[str, asyncio.Lock] = {}
-_LOCKS_MUTEX = threading.Lock()  # Chỉ dùng cho việc tạo lock mới (thread-safe dict access)
+# Thread-safe cross-event-loop lock cho từng kênh và cho tác vụ chạy toàn bộ kênh trống
+_ACTIVE_AUTOPILOT_CHANNELS: set[str] = set()
+_LOCKS_MUTEX = threading.Lock()
 
 # Tệp lưu trữ trạng thái nhắc nhở hàng ngày (bảo đảm không bị mất khi khởi động lại bot)
 _WATCHDOG_STATE_FILE = Path(settings.BASE_DIR) / "storage" / "autopilot_watchdog_state.json"
@@ -72,16 +71,19 @@ def _save_watchdog_state(state: Dict[str, Any]):
         logger.warning(f"Lỗi lưu watchdog state: {e}")
 
 
-def _get_channel_lock(channel_id: str) -> asyncio.Lock:
-    """
-    [FIX] Lấy asyncio.Lock của kênh (tạo mới nếu chưa tồn tại).
-    asyncio.Lock đảm bảo chỉ 1 coroutine giữ lock tại một thời điểm, tránh upload trùng lặp.
-    Lưu ý: asyncio.Lock phải được tạo trong event loop đang chạy.
-    """
+def _try_acquire_channel_autopilot(channel_id: str) -> bool:
+    """Đánh dấu kênh đang chạy Auto-Pilot (an toàn giữa nhiều thread/event loop)."""
     with _LOCKS_MUTEX:
-        if channel_id not in _CHANNEL_ASYNC_LOCKS:
-            _CHANNEL_ASYNC_LOCKS[channel_id] = asyncio.Lock()
-        return _CHANNEL_ASYNC_LOCKS[channel_id]
+        if channel_id in _ACTIVE_AUTOPILOT_CHANNELS:
+            return False
+        _ACTIVE_AUTOPILOT_CHANNELS.add(channel_id)
+        return True
+
+
+def _release_channel_autopilot(channel_id: str) -> None:
+    """Giải phóng khóa Auto-Pilot của kênh."""
+    with _LOCKS_MUTEX:
+        _ACTIVE_AUTOPILOT_CHANNELS.discard(channel_id)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -224,15 +226,13 @@ async def run_autopilot_pipeline_for_channel(
     5. Đặt lịch YouTube Shorts (status.publishAt) & post pinned comment.
     6. Backup Google Drive & gửi báo cáo hoàn tất qua Telegram.
     """
-    lock = _get_channel_lock(channel_id)
-    # [FIX] Dùng asyncio.Lock — kiểm tra trước, sau đó "async with" tự động release kể cả khi exception
-    if lock.locked():
+    if not _try_acquire_channel_autopilot(channel_id):
         return {
             "success": False,
             "error": f"Kênh '{channel_id}' đang trong tiến trình Auto-Pilot khác. Vui lòng chờ hoàn tất!"
         }
 
-    async with lock:
+    if True:
      try:
         from app.services.channel_manager import get_channel
         ch_cfg = get_channel(channel_id) or {}
@@ -586,7 +586,8 @@ async def run_autopilot_pipeline_for_channel(
             "channel_id": channel_id,
             "error": str(ex)
         }
-    # asyncio.Lock tự động release khi thoát khỏi "async with lock:" block
+     finally:
+        _release_channel_autopilot(channel_id)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -599,56 +600,67 @@ async def run_autopilot_for_all_empty(user_id: int = 0, notify_telegram: bool = 
     Nếu kênh nào chưa có video hôm nay (is_empty == True),
     tự động chạy quy trình Auto-Pilot A-Z tuần tự cho kênh đó.
     """
-    summary = get_channel_today_summary()
-    empty_channels = summary.get("empty_channels", [])
-
-    # Lọc theo danh sách kênh chỉ định (nếu có cấu hình AUTOPILOT_ENABLED_CHANNELS)
-    from config.settings import settings
-    allowed_cids = settings.get_autopilot_enabled_channels()
-    if allowed_cids:
-        empty_channels = [c for c in empty_channels if c["channel_id"] in allowed_cids]
-
-    if not empty_channels:
-        msg = "✅ **TẤT CẢ CÁC KÊNH ĐÃ CÓ LỊCH PHÁT SÓNG ĐẦY ĐỦ HÔM NAY!**\n\nKhông có kênh nào bị bỏ trống."
-        if notify_telegram:
-            from app.services.channel_intelligence import send_telegram_broadcast
-            send_telegram_broadcast(msg)
+    if not _try_acquire_channel_autopilot("__ALL_EMPTY__"):
         return {
-            "success": True,
-            "message": "Tất cả kênh hôm nay đã có video, không cần sản xuất thêm.",
+            "success": False,
+            "message": "Tiến trình Auto-Pilot cho các kênh trống đang chạy rồi, vui lòng chờ hoàn tất!",
             "processed_count": 0,
-            "results": []
+            "results": [],
         }
 
-    logger.info(f"🔥 [AutoPilot All] Bắt đầu chạy tự động cho {len(empty_channels)} kênh trống hôm nay...")
-    
-    if notify_telegram:
-        from app.services.channel_intelligence import send_telegram_broadcast
-        ch_names = ", ".join([f"`{c['channel_name']}`" for c in empty_channels])
-        start_msg = (
-            f"🚀 **ĐÃ KÍCH HOẠT AUTOPILOT CHO {len(empty_channels)} KÊNH TRỐNG HÔM NAY!**\n\n"
-            f"Các kênh đang sản xuất: {ch_names}\n"
-            f"🤖 *Hệ thống đang tiến hành sinh kịch bản viral, render video 1080p và tự động lên lịch khung giờ vàng...*"
-        )
-        send_telegram_broadcast(start_msg)
+    try:
+        summary = get_channel_today_summary()
+        empty_channels = summary.get("empty_channels", [])
 
-    results = []
-    for ech in empty_channels:
-        cid = ech["channel_id"]
-        res = await run_autopilot_pipeline_for_channel(
-            channel_id=cid,
-            user_id=user_id,
-            notify_telegram=notify_telegram
-        )
-        results.append(res)
-        # Giãn cách 3 giây giữa các kênh
-        await asyncio.sleep(3)
+        # Lọc theo danh sách kênh chỉ định (nếu có cấu hình AUTOPILOT_ENABLED_CHANNELS)
+        from config.settings import settings
+        allowed_cids = settings.get_autopilot_enabled_channels()
+        if allowed_cids:
+            empty_channels = [c for c in empty_channels if c["channel_id"] in allowed_cids]
 
-    return {
-        "success": True,
-        "processed_count": len(results),
-        "results": results
-    }
+        if not empty_channels:
+            msg = "✅ **TẤT CẢ CÁC KÊNH ĐÃ CÓ LỊCH PHÁT SÓNG ĐẦY ĐỦ HÔM NAY!**\n\nKhông có kênh nào bị bỏ trống."
+            if notify_telegram:
+                from app.services.channel_intelligence import send_telegram_broadcast
+                send_telegram_broadcast(msg)
+            return {
+                "success": True,
+                "message": "Tất cả kênh hôm nay đã có video, không cần sản xuất thêm.",
+                "processed_count": 0,
+                "results": []
+            }
+
+        logger.info(f"🔥 [AutoPilot All] Bắt đầu chạy tự động cho {len(empty_channels)} kênh trống hôm nay...")
+        
+        if notify_telegram:
+            from app.services.channel_intelligence import send_telegram_broadcast
+            ch_names = ", ".join([f"`{c['channel_name']}`" for c in empty_channels])
+            start_msg = (
+                f"🚀 **ĐÃ KÍCH HOẠT AUTOPILOT CHO {len(empty_channels)} KÊNH TRỐNG HÔM NAY!**\n\n"
+                f"Các kênh đang sản xuất: {ch_names}\n"
+                f"🤖 *Hệ thống đang tiến hành sinh kịch bản viral, render video 1080p và tự động lên lịch khung giờ vàng...*"
+            )
+            send_telegram_broadcast(start_msg)
+
+        results = []
+        for ech in empty_channels:
+            cid = ech["channel_id"]
+            res = await run_autopilot_pipeline_for_channel(
+                channel_id=cid,
+                user_id=user_id,
+                notify_telegram=notify_telegram
+            )
+            results.append(res)
+            # Giãn cách 3 giây giữa các kênh
+            await asyncio.sleep(3)
+
+        return {
+            "success": True,
+            "processed_count": len(results),
+            "results": results
+        }
+    finally:
+        _release_channel_autopilot("__ALL_EMPTY__")
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -384,6 +384,7 @@ def main():
         ApplicationBuilder()
         .token(settings.TELEGRAM_BOT_TOKEN)
         .post_init(auto_resume_pending_jobs)
+        .concurrent_updates(True)
         .read_timeout(120)
         .write_timeout(120)
         .connect_timeout(60)

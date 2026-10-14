@@ -38,9 +38,79 @@ from app.agents.content_agent import ContentAgent
 from app.schemas.contracts import ScriptContract
 from app.services.render_queue import get_render_queue
 from app.services import channel_manager
+import threading
 
 logger = logging.getLogger(__name__)
 content_agent = ContentAgent()
+
+# ──────────────────────────────────────────────────────────────────────────────
+# HỆ THỐNG CHỐNG SPAM CLICK / CHỐNG NHÂN BẢN TÁC VỤ KHI DELAY MẠNG (ANTI-SPAM GUARD)
+# ──────────────────────────────────────────────────────────────────────────────
+_ACTION_LOCK_MUTEX = threading.Lock()
+_INFLIGHT_ACTIONS: Dict[str, float] = {}      # key -> timestamp bắt đầu chạy
+_ACTION_COOLDOWNS: Dict[str, float] = {}      # key -> timestamp hết hạn cooldown sau khi chạy xong
+
+
+def _try_acquire_action(key: str, max_inflight_sec: float = 120.0, debounce_sec: float = 4.0) -> bool:
+    """
+    Kiểm tra và khóa tác vụ để chống spam click khi mạng hoặc AI có độ trễ:
+    - Nếu tác vụ cùng `key` đang chạy (chưa quá `max_inflight_sec`) -> từ chối ngay (return False).
+    - Nếu tác vụ cùng `key` vừa mới bấm/hoàn tất trong vòng `debounce_sec` -> từ chối ngay (return False).
+    """
+    now = time.time()
+    with _ACTION_LOCK_MUTEX:
+        # Dọn các khóa cũ đã hết hạn
+        expired_inf = [k for k, ts in _INFLIGHT_ACTIONS.items() if now - ts > max_inflight_sec]
+        for k in expired_inf:
+            _INFLIGHT_ACTIONS.pop(k, None)
+        expired_cd = [k for k, exp_ts in _ACTION_COOLDOWNS.items() if now > exp_ts]
+        for k in expired_cd:
+            _ACTION_COOLDOWNS.pop(k, None)
+
+        if key in _INFLIGHT_ACTIONS:
+            return False
+        if key in _ACTION_COOLDOWNS and now < _ACTION_COOLDOWNS[key]:
+            return False
+
+        _INFLIGHT_ACTIONS[key] = now
+        _ACTION_COOLDOWNS[key] = now + debounce_sec
+        return True
+
+
+def _release_action(key: str, post_cooldown_sec: float = 5.0):
+    """Giải phóng khóa in-flight và giữ cooldown ngắn để chặn các cú click bị dồn toa (buffered clicks)."""
+    now = time.time()
+    with _ACTION_LOCK_MUTEX:
+        _INFLIGHT_ACTIONS.pop(key, None)
+        if post_cooldown_sec > 0:
+            _ACTION_COOLDOWNS[key] = max(_ACTION_COOLDOWNS.get(key, 0.0), now + post_cooldown_sec)
+
+
+def _find_recent_duplicate_job(channel_id: str, topic: str, window_seconds: int = 240) -> Optional[int]:
+    """Kiểm tra xem chủ đề này vừa mới được tạo VideoJob trong vài phút gần đây chưa (chống tạo đúp nhiều video)."""
+    if not topic:
+        return None
+    norm_topic = re.sub(r"\s+", " ", topic.strip().lower())
+    now_utc = datetime.utcnow()
+    try:
+        with get_db() as db:
+            recent_jobs = (
+                db.query(VideoJob)
+                .filter(VideoJob.target_channel_id == channel_id)
+                .order_by(VideoJob.id.desc())
+                .limit(10)
+                .all()
+            )
+            for j in recent_jobs:
+                if not j.created_at or j.status == "FAILED":
+                    continue
+                age_sec = abs((now_utc - j.created_at.replace(tzinfo=None)).total_seconds())
+                j_top = re.sub(r"\s+", " ", (j.topic or "").strip().lower())
+                if age_sec <= window_seconds and j_top == norm_topic:
+                    return j.id
+    except Exception as e:
+        logger.debug(f"Lỗi kiểm tra duplicate job: {e}")
+    return None
 
 
 async def safe_reply(update: Update, text: str, reply_markup=None, parse_mode="Markdown"):
@@ -1053,169 +1123,193 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     clean_topic = re.sub(r'[\s\d]*\d{1,2}:\d{2}\s*$', '', clean_topic).strip()
 
     user = update.effective_user
-
-    # Kiểm tra xem có kênh được chỉ định tạm thời từ AI Commander không
-    override_ch_id = context.user_data.pop("target_channel_id", None) if context and context.user_data else None
-
-    # Lấy kênh đang hoạt động và tự động điều hướng nếu chủ đề lệch ngách
-    with get_db() as db:
-        db_user = db.query(User).filter(User.telegram_id == user.id).first()
-        active_id = override_ch_id or (db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_maya")
-        
-        # Tự động phát hiện và chuyển đúng kênh nếu chủ đề lệch ngách (Ví dụ: chim muông -> Wild Odyssey)
-        channel_id, switch_reason = detect_best_channel_for_topic(clean_topic, active_id)
-
-        if db_user:
-            db_user.last_active = datetime.utcnow()
-            if not db_user.active_channel_id:
-                db_user.active_channel_id = channel_id
-
-        log_activity(db, user.id, user.username, "CMD_IDEA",
-                     f"Yêu cầu lên ý tưởng video: '{clean_topic}'", channel_id=channel_id)
-
-    # Lấy cấu hình niche & ngôn ngữ từ kênh (ưu tiên cờ ngôn ngữ explicit nếu có)
-    ch = channel_manager.get_channel(channel_id) or {}
-    channel_name = ch.get("name") or channel_id
-    channel_niche = ch.get("niche") or "history_mystery"
-    channel_lang = explicit_lang or ch.get("language") or "en"
-    lang_display = "🇻🇳 Tiếng Việt" if channel_lang.lower().startswith("vi") else "🇺🇸 Tiếng Anh"
-
-    notes_info = f"\n🎯 **Hướng đạo diễn:** _{director_notes}_" if director_notes else ""
-    switch_info = f"\n💡 *{switch_reason}*" if switch_reason else ""
-    status_msg = await safe_reply(
-        update,
-        f"🤖 **{user.first_name}** vừa yêu cầu lên ý tưởng: *\"{clean_topic}\"*{notes_info}{switch_info}\n"
-        f"📺 Kênh: `{channel_name}` ({channel_niche}) | 🌐 Ngôn ngữ: **{lang_display}**\n"
-        f"⏳ Đang kích hoạt Gemini AI biên soạn kịch bản..."
-    )
+    idea_lock_key = f"idea_cmd:{user.id if user else 0}"
+    if not _try_acquire_action(idea_lock_key, max_inflight_sec=90.0, debounce_sec=5.0):
+        await safe_reply(
+            update,
+            "⏳ **Hệ thống đang biên soạn kịch bản cho yêu cầu trước của bạn rồi!**\n"
+            "Vui lòng đợi vài giây để AI hoàn tất, bạn không cần bấm/gửi lại nhiều lần nhé."
+        )
+        return
 
     try:
-        # ContentAgent tạo kịch bản và tự động chấm điểm qua ScriptCritic (tự tinh chỉnh nếu chưa đạt)
-        script, eval_report = await asyncio.to_thread(
-            content_agent.generate_best_script,
-            topic=clean_topic,
-            channel_niche=channel_niche,
-            language=channel_lang,
-            director_notes=director_notes
-        )
+        # Kiểm tra xem có kênh được chỉ định tạm thời từ AI Commander không
+        override_ch_id = context.user_data.pop("target_channel_id", None) if context and context.user_data else None
 
-        # Kiểm tra và bảo vệ chống trùng lặp tiêu đề với toàn bộ kho video của kênh
-        from app.services.channel_intelligence import ensure_unique_title
-        unique_title, was_dup, dup_match = ensure_unique_title(
-            candidate_title=script.title,
-            channel_id=channel_id,
-            topic=clean_topic,
-            language=channel_lang,
-            similarity_threshold=0.40
-        )
-        dedup_notice = ""
-        if was_dup:
-            logger.info(f"[Handlers] 🛡️ Đã khử trùng tiêu đề cho Video: '{script.title}' -> '{unique_title}' (Trùng với '{dup_match}')")
-            script.title = unique_title
-            dedup_notice = f"🛡️ **Khử trùng tiêu đề:** Đổi từ ~\"{dup_match}\"~ ➔ *\"{unique_title}\"*\n\n"
-
-        # Lưu vào Database — dùng context manager
+        # Lấy kênh đang hoạt động và tự động điều hướng nếu chủ đề lệch ngách
         with get_db() as db:
-            job = VideoJob(
-                user_id=user.id,
-                target_channel_id=channel_id,
-                topic=clean_topic,
-                title=script.title,
-                script=script.full_narration,
-                description=script.description,
-                tags=",".join(script.tags),
-                scenes_json=script.to_json_str(),   # Lưu structured data
-                status="SCRIPT_READY"
+            db_user = db.query(User).filter(User.telegram_id == user.id).first()
+            active_id = override_ch_id or (db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_maya")
+            
+            # Tự động phát hiện và chuyển đúng kênh nếu chủ đề lệch ngách (Ví dụ: chim muông -> Wild Odyssey)
+            channel_id, switch_reason = detect_best_channel_for_topic(clean_topic, active_id)
+
+            if db_user:
+                db_user.last_active = datetime.utcnow()
+                if not db_user.active_channel_id:
+                    db_user.active_channel_id = channel_id
+
+            log_activity(db, user.id, user.username, "CMD_IDEA",
+                         f"Yêu cầu lên ý tưởng video: '{clean_topic}'", channel_id=channel_id)
+
+        # Chống tạo đúp nhiều VideoJob nếu người dùng bấm/gửi trùng cùng 1 chủ đề trong 4 phút gần nhất
+        dup_job_id = _find_recent_duplicate_job(channel_id, clean_topic, window_seconds=240)
+        if dup_job_id:
+            ch_dup = channel_manager.get_channel(channel_id) or {}
+            ch_lang_dup = explicit_lang or ch_dup.get("language") or "en"
+            await safe_reply(
+                update,
+                f"🛡️ **Chống tạo trùng:** Chủ đề *\"{clean_topic}\"* vừa mới được tạo ở **Task #{dup_job_id}**!\n"
+                f"👉 Bạn có thể bấm nút bên dưới để duyệt & dựng ngay **Task #{dup_job_id}** mà không cần tạo lại:",
+                reply_markup=get_script_review_keyboard(dup_job_id, current_lang=ch_lang_dup),
             )
-            db.add(job)
-            db.flush()  # Lấy job.id trước commit
-            job_id = job.id
+            return
 
-            log_activity(db, user.id, user.username, "SCRIPT_CREATED",
-                         f"Kịch bản #{job_id} đã hoàn thành: '{script.title}'",
-                         channel_id=channel_id)
+        # Lấy cấu hình niche & ngôn ngữ từ kênh (ưu tiên cờ ngôn ngữ explicit nếu có)
+        ch = channel_manager.get_channel(channel_id) or {}
+        channel_name = ch.get("name") or channel_id
+        channel_niche = ch.get("niche") or "history_mystery"
+        channel_lang = explicit_lang or ch.get("language") or "en"
+        lang_display = "🇻🇳 Tiếng Việt" if channel_lang.lower().startswith("vi") else "🇺🇸 Tiếng Anh"
 
-            # Củng cố bộ nhớ chống trùng lặp UsedTopic
+        notes_info = f"\n🎯 **Hướng đạo diễn:** _{director_notes}_" if director_notes else ""
+        switch_info = f"\n💡 *{switch_reason}*" if switch_reason else ""
+        status_msg = await safe_reply(
+            update,
+            f"🤖 **{user.first_name}** vừa yêu cầu lên ý tưởng: *\"{clean_topic}\"*{notes_info}{switch_info}\n"
+            f"📺 Kênh: `{channel_name}` ({channel_niche}) | 🌐 Ngôn ngữ: **{lang_display}**\n"
+            f"⏳ Đang kích hoạt Gemini AI biên soạn kịch bản..."
+        )
+
+        try:
+            # ContentAgent tạo kịch bản và tự động chấm điểm qua ScriptCritic (tự tinh chỉnh nếu chưa đạt)
+            script, eval_report = await asyncio.to_thread(
+                content_agent.generate_best_script,
+                topic=clean_topic,
+                channel_niche=channel_niche,
+                language=channel_lang,
+                director_notes=director_notes
+            )
+
+            # Kiểm tra và bảo vệ chống trùng lặp tiêu đề với toàn bộ kho video của kênh
+            from app.services.channel_intelligence import ensure_unique_title
+            unique_title, was_dup, dup_match = ensure_unique_title(
+                candidate_title=script.title,
+                channel_id=channel_id,
+                topic=clean_topic,
+                language=channel_lang,
+                similarity_threshold=0.40
+            )
+            dedup_notice = ""
+            if was_dup:
+                logger.info(f"[Handlers] 🛡️ Đã khử trùng tiêu đề cho Video: '{script.title}' -> '{unique_title}' (Trùng với '{dup_match}')")
+                script.title = unique_title
+                dedup_notice = f"🛡️ **Khử trùng tiêu đề:** Đổi từ ~\"{dup_match}\"~ ➔ *\"{unique_title}\"*\n\n"
+
+            # Lưu vào Database — dùng context manager
+            with get_db() as db:
+                job = VideoJob(
+                    user_id=user.id,
+                    target_channel_id=channel_id,
+                    topic=clean_topic,
+                    title=script.title,
+                    script=script.full_narration,
+                    description=script.description,
+                    tags=",".join(script.tags),
+                    scenes_json=script.to_json_str(),   # Lưu structured data
+                    status="SCRIPT_READY"
+                )
+                db.add(job)
+                db.flush()  # Lấy job.id trước commit
+                job_id = job.id
+
+                log_activity(db, user.id, user.username, "SCRIPT_CREATED",
+                             f"Kịch bản #{job_id} đã hoàn thành: '{script.title}'",
+                             channel_id=channel_id)
+
+                # Củng cố bộ nhớ chống trùng lặp UsedTopic
+                try:
+                    from app.database.models import UsedTopic
+                    db.add(UsedTopic(
+                        channel_id=channel_id,
+                        topic_hash=UsedTopic.hash_topic(clean_topic),
+                        topic_text=clean_topic,
+                        niche=channel_niche,
+                        job_id=job_id,
+                    ))
+                except Exception:
+                    pass
+
+            # Soạn nội dung thông báo cho nhóm
+            scenes_preview = "\n".join([
+                f"• Cảnh {s.scene_id}: {s.narration[:65]}..."
+                for s in script.scenes[:3]
+            ])
+
+            score_text = ""
+            if eval_report:
+                overall = eval_report.overall_score
+                hook_s = eval_report.hook_strength.score
+                pacing_s = eval_report.story_pacing.score
+                vis_s = getattr(eval_report, 'visual_direction', None)
+                vis_score = vis_s.score if vis_s else 8.5
+                badge = "🏆 Xuất sắc" if overall >= 8.5 else "✅ Đạt chuẩn Viral"
+                score_text = (
+                    f"📊 **ĐÁNH GIÁ CHẤT LƯỢNG (AI Editorial Critic):** `{overall:.1f}/10` {badge}\n"
+                    f"• ⚡ Hook 3s: `{hook_s:.1f}/10` | ⏱️ Nhịp độ: `{pacing_s:.1f}/10` | 👁️ Thị giác: `{vis_score:.1f}/10`\n\n"
+                )
+
+            notes_display = f"🎯 **Đạo diễn:** _{director_notes}_\n\n" if director_notes else ""
+            pinned_display = f"💬 **Bình luận mồi ghim Top (Pinned Bait):**\n> _{script.pinned_comment}_\n\n" if getattr(script, "pinned_comment", None) else ""
+            formula_display = f"⚡ **Công thức Viral:** `{script.viral_formula}`\n" if getattr(script, "viral_formula", None) else ""
+
+            # Tự động trích xuất đề xuất kiếm tiền Amazon Affiliate từ MonetizationEngine
+            monetization_card = ""
             try:
-                from app.database.models import UsedTopic
-                db.add(UsedTopic(
-                    channel_id=channel_id,
-                    topic_hash=UsedTopic.hash_topic(clean_topic),
-                    topic_text=clean_topic,
-                    niche=channel_niche,
-                    job_id=job_id,
-                ))
+                from app.services.monetization_engine import find_best_amazon_product, build_amazon_url
+                channel_cfg = next((c for c in settings.get_channels_config() if c.get("id") == channel_id), {})
+                tag = channel_cfg.get("amazon_tag") or os.getenv("AMAZON_ASSOCIATE_TAG", "kizakawa-20")
+                best_prod = find_best_amazon_product(niche=channel_niche, title=script.title, topic=clean_topic)
+                aff_link = build_amazon_url(best_prod["asin"], tag)
+                monetization_card = (
+                    f"🛒 **ĐỀ XUẤT KIẾM TIỀN (AMAZON AFFILIATE):**\n"
+                    f"• Sản phẩm AI khớp: `{best_prod['name']}`\n"
+                    f"• Link tự động gán: {aff_link}\n"
+                    f"• Tag theo dõi: `{tag}`\n\n"
+                )
             except Exception:
                 pass
 
-        # Soạn nội dung thông báo cho nhóm
-        scenes_preview = "\n".join([
-            f"• Cảnh {s.scene_id}: {s.narration[:65]}..."
-            for s in script.scenes[:3]
-        ])
-
-        score_text = ""
-        if eval_report:
-            overall = eval_report.overall_score
-            hook_s = eval_report.hook_strength.score
-            pacing_s = eval_report.story_pacing.score
-            vis_s = getattr(eval_report, 'visual_direction', None)
-            vis_score = vis_s.score if vis_s else 8.5
-            badge = "🏆 Xuất sắc" if overall >= 8.5 else "✅ Đạt chuẩn Viral"
-            score_text = (
-                f"📊 **ĐÁNH GIÁ CHẤT LƯỢNG (AI Editorial Critic):** `{overall:.1f}/10` {badge}\n"
-                f"• ⚡ Hook 3s: `{hook_s:.1f}/10` | ⏱️ Nhịp độ: `{pacing_s:.1f}/10` | 👁️ Thị giác: `{vis_score:.1f}/10`\n\n"
+            reply_content = (
+                f"🎬 **KỊCH BẢN ĐÃ HOÀN THÀNH (Task #{job_id})**\n\n"
+                f"{score_text}"
+                f"📌 **Tiêu đề đề xuất:** {script.title}\n"
+                f"🔥 **Hook 3 giây đầu:** \"{script.hook}\"\n\n"
+                f"{formula_display}"
+                f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
+                f"{monetization_card}"
+                f"{pinned_display}"
+                f"{notes_display}"
+                f"⏱️ **Ước lượng:** ~{script.total_estimated_duration:.0f}s | {len(script.scenes)} cảnh\n"
+                f"🗣️ **Người tạo:** {user.first_name} | 📺 **Kênh:** `{channel_name}` ({channel_niche}) | 🌐 **Ngôn ngữ:** {lang_display}\n\n"
+                f"👉 Cả nhóm hãy xem kịch bản, bấm **DUYỆT & DỰNG VIDEO NGAY** bên dưới để máy chủ tự động sản xuất Shorts!"
             )
 
-        notes_display = f"🎯 **Đạo diễn:** _{director_notes}_\n\n" if director_notes else ""
-        pinned_display = f"💬 **Bình luận mồi ghim Top (Pinned Bait):**\n> _{script.pinned_comment}_\n\n" if getattr(script, "pinned_comment", None) else ""
-        formula_display = f"⚡ **Công thức Viral:** `{script.viral_formula}`\n" if getattr(script, "viral_formula", None) else ""
+            review_markup = get_script_review_keyboard(job_id, current_lang=channel_lang)
+            if status_msg:
+                await safe_edit_text(status_msg, reply_content, reply_markup=review_markup)
+            else:
+                await safe_reply(update, reply_content, reply_markup=review_markup)
 
-        # Tự động trích xuất đề xuất kiếm tiền Amazon Affiliate từ MonetizationEngine
-        monetization_card = ""
-        try:
-            from app.services.monetization_engine import find_best_amazon_product, build_amazon_url
-            channel_cfg = next((c for c in settings.get_channels_config() if c.get("id") == channel_id), {})
-            tag = channel_cfg.get("amazon_tag") or os.getenv("AMAZON_ASSOCIATE_TAG", "kizakawa-20")
-            best_prod = find_best_amazon_product(niche=channel_niche, title=script.title, topic=clean_topic)
-            aff_link = build_amazon_url(best_prod["asin"], tag)
-            monetization_card = (
-                f"🛒 **ĐỀ XUẤT KIẾM TIỀN (AMAZON AFFILIATE):**\n"
-                f"• Sản phẩm AI khớp: `{best_prod['name']}`\n"
-                f"• Link tự động gán: {aff_link}\n"
-                f"• Tag theo dõi: `{tag}`\n\n"
-            )
-        except Exception:
-            pass
-
-        reply_content = (
-            f"🎬 **KỊCH BẢN ĐÃ HOÀN THÀNH (Task #{job_id})**\n\n"
-            f"{score_text}"
-            f"📌 **Tiêu đề đề xuất:** {script.title}\n"
-            f"🔥 **Hook 3 giây đầu:** \"{script.hook}\"\n\n"
-            f"{formula_display}"
-            f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
-            f"{monetization_card}"
-            f"{pinned_display}"
-            f"{notes_display}"
-            f"⏱️ **Ước lượng:** ~{script.total_estimated_duration:.0f}s | {len(script.scenes)} cảnh\n"
-            f"🗣️ **Người tạo:** {user.first_name} | 📺 **Kênh:** `{channel_name}` ({channel_niche}) | 🌐 **Ngôn ngữ:** {lang_display}\n\n"
-            f"👉 Cả nhóm hãy xem kịch bản, bấm **DUYỆT & DỰNG VIDEO NGAY** bên dưới để máy chủ tự động sản xuất Shorts!"
-        )
-
-        review_markup = get_script_review_keyboard(job_id, current_lang=channel_lang)
-        if status_msg:
-            await safe_edit_text(status_msg, reply_content, reply_markup=review_markup)
-        else:
-            await safe_reply(update, reply_content, reply_markup=review_markup)
-
-    except Exception as e:
-        logger.error(f"Lỗi khi tạo kịch bản: {e}", exc_info=True)
-        err_text = f"❌ Có lỗi xảy ra khi tạo kịch bản: `{e}`"
-        if status_msg:
-            await safe_edit_text(status_msg, err_text)
-        else:
-            await safe_reply(update, err_text)
+        except Exception as e:
+            logger.error(f"Lỗi khi tạo kịch bản: {e}", exc_info=True)
+            err_text = f"❌ Có lỗi xảy ra khi tạo kịch bản: `{e}`"
+            if status_msg:
+                await safe_edit_text(status_msg, err_text)
+            else:
+                await safe_reply(update, err_text)
+    finally:
+        _release_action(idea_lock_key, post_cooldown_sec=5.0)
 
 
 async def start_render_pipeline(
@@ -1685,6 +1779,7 @@ async def _enqueue_render(update: Update, context: ContextTypes.DEFAULT_TYPE, jo
     """
     Đưa yêu cầu render vào hàng đợi FIFO thay vì chạy trực tiếp.
     Nếu máy đang rảnh → render ngay. Nếu đang bận → xếp hàng chờ.
+    Chống trùng lặp: Nếu job_id đã đang render hoặc đã nằm trong hàng đợi thì bỏ qua.
     """
     rq = get_render_queue()
     chat_id = update.effective_chat.id if update.effective_chat else None
@@ -1693,13 +1788,28 @@ async def _enqueue_render(update: Update, context: ContextTypes.DEFAULT_TYPE, jo
     async def do_render():
         await _execute_render_task(update, context, job_id, user_name)
 
-    # Thêm vào queue
+    # Thêm vào queue (RenderQueue.enqueue tự động chống trùng lặp job_id)
     queue_item = await rq.enqueue(
         job_id=job_id,
         user_name=user_name,
         chat_id=chat_id,
         render_func=do_render,
     )
+
+    if getattr(queue_item, "is_duplicate", False):
+        if update.callback_query:
+            await safe_query_answer(
+                update.callback_query,
+                f"⏳ Video #{job_id} đã nằm trong hàng đợi hoặc đang được dựng rồi!",
+                show_alert=True,
+            )
+        else:
+            await safe_reply(
+                update,
+                f"⏳ **Video #{job_id} đã nằm trong hàng đợi hoặc đang được dựng rồi!**\n"
+                f"💡 Gõ `/queue` để xem tiến độ hiện tại.",
+            )
+        return
 
     # Thông báo trạng thái hàng đợi
     if rq.queue_size == 0 and rq.is_busy:
@@ -2409,11 +2519,31 @@ async def render_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _execute_channel_publish(update: Update, context: ContextTypes.DEFAULT_TYPE, job_id: int, channel_id: str, user):
     """Thực thi đăng tải video lên YouTube Shorts và Google Drive"""
+    pub_lock_key = f"publish_job:{job_id}"
+    acquired = _try_acquire_action(pub_lock_key, max_inflight_sec=180.0, debounce_sec=10.0)
+    if not acquired:
+        if update.callback_query:
+            await safe_query_answer(
+                update.callback_query,
+                f"⏳ Video #{job_id} đang được đăng lên YouTube, vui lòng chờ!",
+                show_alert=True,
+            )
+        else:
+            await safe_reply(update, f"⏳ Video #{job_id} đang được đăng lên YouTube, vui lòng chờ giây lát!")
+        return
+
     try:
         with get_db() as db:
             job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
             if not job or not job.video_path or not os.path.exists(job.video_path):
                 await safe_reply(update, f"❌ File video #{job_id} chưa sẵn sàng để xuất bản.")
+                return
+            if job.status == "PUBLISHED" and job.youtube_video_id:
+                await safe_reply(
+                    update,
+                    f"ℹ️ **Video #{job_id} đã được đăng lên YouTube trước đó!**\n"
+                    f"👉 https://www.youtube.com/shorts/{job.youtube_video_id}"
+                )
                 return
             video_path = job.video_path
             video_title = job.title or job.topic
@@ -2578,6 +2708,8 @@ async def _execute_channel_publish(update: Update, context: ContextTypes.DEFAULT
     except Exception as e:
         logger.error(f"Lỗi khi đăng YouTube Video #{job_id}: {e}", exc_info=True)
         await safe_reply(update, f"❌ Lỗi khi xuất bản Video #{job_id}: `{e}`")
+    finally:
+        _release_action(pub_lock_key, post_cooldown_sec=8.0)
 
 
 async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2585,29 +2717,71 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Xử lý nút bấm trên kịch bản & video: Duyệt Dựng / Đăng YouTube / Góp Ý Sửa / Lên Lịch / Tạo Lại / Hủy
     """
     query = update.callback_query
-    await safe_query_answer(query)
-    data = query.data
-    user = query.from_user
+    data = query.data if query else ""
+    user = query.from_user if query else update.effective_user
 
-    # 1. Duyệt kịch bản & Render video trực tiếp bằng máy chủ nội bộ
+    # 0. Nút đã khóa khi video đang dựng hoặc nằm trong hàng đợi
+    if data.startswith("render_video_locked:"):
+        job_id = int(data.split(":")[1])
+        await safe_query_answer(
+            query,
+            f"⏳ Video #{job_id} đang được dựng hoặc đã nằm trong hàng đợi rồi! Gõ /queue để xem tiến độ.",
+            show_alert=True,
+        )
+        return
+
+    # 1. Duyệt kịch bản & Render video trực tiếp bằng máy chủ nội bộ (chống spam click tuyệt đối)
     if data.startswith("render_video:"):
         job_id = int(data.split(":")[1])
-        with get_db() as db:
-            j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
-            j_title = j.title or j.topic if j else f"Video #{job_id}"
+        rq = get_render_queue()
+        btn_lock_key = f"render_btn:{job_id}"
+        acquired = _try_acquire_action(btn_lock_key, max_inflight_sec=30.0, debounce_sec=8.0)
+        if not acquired or rq.find_active_item(job_id) is not None:
+            await safe_query_answer(
+                query,
+                f"⏳ Video #{job_id} đã nằm trong hàng đợi hoặc đang được dựng rồi! Không cần bấm lại.",
+                show_alert=True,
+            )
+            if query and query.message:
+                try:
+                    await query.message.edit_reply_markup(
+                        reply_markup=get_script_review_keyboard(job_id, is_rendering=True)
+                    )
+                except Exception:
+                    pass
+            return
 
-        user_name = user.first_name if user else "Creator"
-        await safe_reply(
-            update,
-            f"🚀 <b>ĐÃ DUYỆT! BẮT ĐẦU DỰNG VIDEO #{job_id}...</b>\n\n"
-            f"🎬 <b>Tiêu đề:</b> <i>{j_title}</i>\n"
-            f"⚡ Hệ thống AI đang tự động: Sinh giọng đọc chuẩn, chọn & tạo hình ảnh bám sát kịch bản, làm phụ đề động và kết xuất video 1080x1920.\n"
-            f"⏳ Video sẽ tự động gửi về nhóm ngay khi hoàn thành!",
-            parse_mode="HTML"
-        )
-        await _enqueue_render(update, context, job_id, user_name)
+        await safe_query_answer(query, f"🎬 Đã nhận lệnh dựng Video #{job_id}!", show_alert=False)
+        if query and query.message:
+            try:
+                await query.message.edit_reply_markup(
+                    reply_markup=get_script_review_keyboard(job_id, is_rendering=True)
+                )
+            except Exception:
+                pass
 
-    elif data.startswith("colab_cluster_menu:"):
+        try:
+            with get_db() as db:
+                j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                j_title = j.title or j.topic if j else f"Video #{job_id}"
+
+            user_name = user.first_name if user else "Creator"
+            await safe_reply(
+                update,
+                f"🚀 <b>ĐÃ DUYỆT! BẮT ĐẦU DỰNG VIDEO #{job_id}...</b>\n\n"
+                f"🎬 <b>Tiêu đề:</b> <i>{j_title}</i>\n"
+                f"⚡ Hệ thống AI đang tự động: Sinh giọng đọc chuẩn, chọn & tạo hình ảnh bám sát kịch bản, làm phụ đề động và kết xuất video 1080x1920.\n"
+                f"⏳ Video sẽ tự động gửi về nhóm ngay khi hoàn thành!",
+                parse_mode="HTML"
+            )
+            await _enqueue_render(update, context, job_id, user_name)
+        finally:
+            _release_action(btn_lock_key, post_cooldown_sec=8.0)
+        return
+
+    await safe_query_answer(query)
+
+    if data.startswith("colab_cluster_menu:"):
         job_id = int(data.split(":")[1])
         markup = get_script_review_keyboard(job_id)
         msg_text = (
@@ -3119,11 +3293,23 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts = data.split(":")
         job_id = int(parts[1])
         channel_id = parts[2]
+        sched_lock_key = f"schedule_job:{job_id}"
+        acquired = _try_acquire_action(sched_lock_key, max_inflight_sec=180.0, debounce_sec=10.0)
+        if not acquired:
+            await safe_reply(update, f"⏳ Video #{job_id} đang trong quá trình lên lịch, vui lòng chờ giây lát!")
+            return
         try:
             with get_db() as db:
                 job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
                 if not job or not job.video_path or not os.path.exists(job.video_path):
                     await safe_reply(update, f"❌ File video #{job_id} chưa sẵn sàng để xuất bản.")
+                    return
+                if job.status in ("SCHEDULED", "PUBLISHED") and job.youtube_video_id:
+                    await safe_reply(
+                        update,
+                        f"ℹ️ **Video #{job_id} đã được lên lịch/đăng trước đó!**\n"
+                        f"👉 https://www.youtube.com/shorts/{job.youtube_video_id}"
+                    )
                     return
                 video_path = job.video_path
                 video_title = job.title or job.topic
@@ -3296,155 +3482,174 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Lỗi khi lên lịch YouTube Video #{job_id}: {e}", exc_info=True)
             await safe_reply(update, f"❌ Lỗi khi lên lịch Video #{job_id}: `{e}`")
+        finally:
+            _release_action(sched_lock_key, post_cooldown_sec=8.0)
 
     # 5.1 Đổi ngôn ngữ kịch bản 1-Click (Tiếng Việt <-> Tiếng Anh)
     elif data.startswith("switch_lang:"):
         parts = data.split(":")
         job_id = int(parts[1])
         target_lang = parts[2] if len(parts) > 2 else "toggle"
-
-        with get_db() as db:
-            job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
-            if not job or not job.scenes_json:
-                await safe_reply(update, f"❌ Không tìm thấy kịch bản cho Job #{job_id}")
-                return
-            channel_id = job.target_channel_id or "channel_maya"
-            current_script_json = job.scenes_json
-
-        from app.agents.voice_agent import VoiceAgent
-        from app.schemas.contracts import ScriptContract
-        current_script = ScriptContract.from_json_str(current_script_json)
-
-        if target_lang == "toggle":
-            is_vn = VoiceAgent._is_vietnamese(current_script.full_narration or current_script.hook)
-            target_lang = "en" if is_vn else "vi"
-
-        target_lang_display = "🇻🇳 Tiếng Việt" if target_lang == "vi" else "🇺🇸 Tiếng Anh"
-        ch = channel_manager.get_channel(channel_id) or {}
-        channel_niche = ch.get("niche") or "general"
-        channel_name = ch.get("name") or channel_id
-
-        wait_m = await safe_reply(
-            update,
-            f"🌐 **{user.first_name}** yêu cầu chuyển đổi toàn bộ kịch bản Task #{job_id} sang **{target_lang_display}**...\n"
-            f"⏳ Gemini AI đang dịch và tái cấu trúc lời thoại chuẩn viral..."
-        )
+        lang_lock_key = f"script_op:{job_id}"
+        acquired = _try_acquire_action(lang_lock_key, max_inflight_sec=90.0, debounce_sec=5.0)
+        if not acquired:
+            await safe_reply(update, f"⏳ Kịch bản #{job_id} đang được AI xử lý, vui lòng chờ giây lát!")
+            return
 
         try:
-            prompt_directive = (
-                f"TRANSLATE AND REWRITE THIS ENTIRE SCRIPT STRICTLY TO {target_lang_display.upper()} ('{target_lang}'). "
-                f"Every spoken scene narration, hook, full_narration, and title MUST be 100% in {target_lang}. "
-                f"Maintain the exact viral hooks, pacing, and seamless infinite loop."
-            )
-            revised_script = await asyncio.to_thread(
-                content_agent.refine_script,
-                current_script=current_script,
-                feedback=prompt_directive,
-                channel_niche=channel_niche,
-                language=target_lang
-            )
-
             with get_db() as db:
-                db_job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
-                if db_job:
-                    db_job.title = revised_script.title
-                    db_job.script = revised_script.full_narration
-                    db_job.description = revised_script.description
-                    db_job.tags = ",".join(revised_script.tags)
-                    db_job.scenes_json = revised_script.to_json_str()
-                    db_job.status = "SCRIPT_READY"
-                    log_activity(db, user.id, user.first_name, "SWITCH_LANG",
-                                 f"Chuyển kịch bản #{job_id} sang {target_lang_display}: '{revised_script.title}'",
-                                 channel_id=channel_id)
+                job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                if not job or not job.scenes_json:
+                    await safe_reply(update, f"❌ Không tìm thấy kịch bản cho Job #{job_id}")
+                    return
+                channel_id = job.target_channel_id or "channel_maya"
+                current_script_json = job.scenes_json
 
-            scenes_preview = "\n".join([
-                f"• Cảnh {s.scene_id}: {s.narration[:65]}..."
-                for s in revised_script.scenes[:3]
-            ])
-            markup = get_script_review_keyboard(job_id, current_lang=target_lang)
+            from app.agents.voice_agent import VoiceAgent
+            from app.schemas.contracts import ScriptContract
+            current_script = ScriptContract.from_json_str(current_script_json)
 
-            reply_text = (
-                f"🎬 **KỊCH BẢN ĐÃ CHUYỂN SANG {target_lang_display.upper()} (Task #{job_id})**\n\n"
-                f"📌 **Tiêu đề:** {revised_script.title}\n"
-                f"🔥 **Hook 3 giây đầu:** \"{revised_script.hook}\"\n\n"
-                f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
-                f"⏱️ **Ước lượng:** ~{revised_script.total_estimated_duration:.0f}s | {len(revised_script.scenes)} cảnh\n"
-                f"🗣️ **Người đổi:** {user.first_name} | 📺 **Kênh:** `{channel_name}` | 🌐 **Ngôn ngữ:** {target_lang_display}\n\n"
-                f"👉 Cả nhóm hãy xem kịch bản, bấm **DUYỆT & DỰNG VIDEO NGAY** bên dưới để máy chủ tự động sản xuất Shorts!"
+            if target_lang == "toggle":
+                is_vn = VoiceAgent._is_vietnamese(current_script.full_narration or current_script.hook)
+                target_lang = "en" if is_vn else "vi"
+
+            target_lang_display = "🇻🇳 Tiếng Việt" if target_lang == "vi" else "🇺🇸 Tiếng Anh"
+            ch = channel_manager.get_channel(channel_id) or {}
+            channel_niche = ch.get("niche") or "general"
+            channel_name = ch.get("name") or channel_id
+
+            wait_m = await safe_reply(
+                update,
+                f"🌐 **{user.first_name}** yêu cầu chuyển đổi toàn bộ kịch bản Task #{job_id} sang **{target_lang_display}**...\n"
+                f"⏳ Gemini AI đang dịch và tái cấu trúc lời thoại chuẩn viral..."
             )
-            await safe_edit_text(wait_m, reply_text, reply_markup=markup)
-        except Exception as ex:
-            logger.error(f"Lỗi chuyển ngôn ngữ kịch bản #{job_id}: {ex}", exc_info=True)
-            await safe_edit_text(wait_m, f"❌ Lỗi khi chuyển đổi ngôn ngữ: `{ex}`")
+
+            try:
+                prompt_directive = (
+                    f"TRANSLATE AND REWRITE THIS ENTIRE SCRIPT STRICTLY TO {target_lang_display.upper()} ('{target_lang}'). "
+                    f"Every spoken scene narration, hook, full_narration, and title MUST be 100% in {target_lang}. "
+                    f"Maintain the exact viral hooks, pacing, and seamless infinite loop."
+                )
+                revised_script = await asyncio.to_thread(
+                    content_agent.refine_script,
+                    current_script=current_script,
+                    feedback=prompt_directive,
+                    channel_niche=channel_niche,
+                    language=target_lang
+                )
+
+                with get_db() as db:
+                    db_job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                    if db_job:
+                        db_job.title = revised_script.title
+                        db_job.script = revised_script.full_narration
+                        db_job.description = revised_script.description
+                        db_job.tags = ",".join(revised_script.tags)
+                        db_job.scenes_json = revised_script.to_json_str()
+                        db_job.status = "SCRIPT_READY"
+                        log_activity(db, user.id, user.first_name, "SWITCH_LANG",
+                                     f"Chuyển kịch bản #{job_id} sang {target_lang_display}: '{revised_script.title}'",
+                                     channel_id=channel_id)
+
+                scenes_preview = "\n".join([
+                    f"• Cảnh {s.scene_id}: {s.narration[:65]}..."
+                    for s in revised_script.scenes[:3]
+                ])
+                markup = get_script_review_keyboard(job_id, current_lang=target_lang)
+
+                reply_text = (
+                    f"🎬 **KỊCH BẢN ĐÃ CHUYỂN SANG {target_lang_display.upper()} (Task #{job_id})**\n\n"
+                    f"📌 **Tiêu đề:** {revised_script.title}\n"
+                    f"🔥 **Hook 3 giây đầu:** \"{revised_script.hook}\"\n\n"
+                    f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
+                    f"⏱️ **Ước lượng:** ~{revised_script.total_estimated_duration:.0f}s | {len(revised_script.scenes)} cảnh\n"
+                    f"🗣️ **Người đổi:** {user.first_name} | 📺 **Kênh:** `{channel_name}` | 🌐 **Ngôn ngữ:** {target_lang_display}\n\n"
+                    f"👉 Cả nhóm hãy xem kịch bản, bấm **DUYỆT & DỰNG VIDEO NGAY** bên dưới để máy chủ tự động sản xuất Shorts!"
+                )
+                await safe_edit_text(wait_m, reply_text, reply_markup=markup)
+            except Exception as ex:
+                logger.error(f"Lỗi chuyển ngôn ngữ kịch bản #{job_id}: {ex}", exc_info=True)
+                await safe_edit_text(wait_m, f"❌ Lỗi khi chuyển đổi ngôn ngữ: `{ex}`")
+        finally:
+            _release_action(lang_lock_key, post_cooldown_sec=3.0)
 
     # 5. Tạo lại kịch bản từ đầu
     elif data.startswith("regenerate:"):
         job_id = int(data.split(":")[1])
-        with get_db() as db:
-            job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
-            if not job:
-                await safe_reply(update, f"❌ Không tìm thấy VideoJob #{job_id}")
-                return
-            channel_id = job.target_channel_id or "channel_maya"
-            topic = job.topic or job.title or "Viral Concept"
-            # Nhận diện ngôn ngữ hiện tại của job
-            from app.agents.voice_agent import VoiceAgent
-            is_vn = VoiceAgent._is_vietnamese(job.script or job.scenes_json or "")
-            current_lang = "vi" if is_vn else "en"
-
-        ch = channel_manager.get_channel(channel_id) or {}
-        channel_name = ch.get("name") or channel_id
-        channel_niche = ch.get("niche") or "general"
-        lang_display = "🇻🇳 Tiếng Việt" if current_lang == "vi" else "🇺🇸 Tiếng Anh"
-
-        wait_m = await safe_reply(
-            update,
-            f"🔄 **{user.first_name}** yêu cầu tạo lại kịch bản mới cho Task #{job_id}...\n"
-            f"📌 Chủ đề: *\"{topic}\"*\n"
-            f"📺 Kênh: `{channel_name}` | 🌐 Ngôn ngữ: **{lang_display}**\n"
-            f"⏳ Gemini AI đang viết lại kịch bản với góc nhìn mới..."
-        )
+        regen_lock_key = f"script_op:{job_id}"
+        acquired = _try_acquire_action(regen_lock_key, max_inflight_sec=90.0, debounce_sec=5.0)
+        if not acquired:
+            await safe_reply(update, f"⏳ Kịch bản #{job_id} đang được AI tái tạo, vui lòng chờ giây lát!")
+            return
 
         try:
-            new_script, eval_report = await asyncio.to_thread(
-                content_agent.generate_best_script,
-                topic=topic,
-                channel_niche=channel_niche,
-                language=current_lang
-            )
-
             with get_db() as db:
-                db_job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
-                if db_job:
-                    db_job.title = new_script.title
-                    db_job.script = new_script.full_narration
-                    db_job.description = new_script.description
-                    db_job.tags = ",".join(new_script.tags)
-                    db_job.scenes_json = new_script.to_json_str()
-                    db_job.status = "SCRIPT_READY"
-                    log_activity(db, user.id, user.first_name, "REGENERATE_SCRIPT",
-                                 f"Đã tạo lại kịch bản #{job_id}: '{new_script.title}'",
-                                 channel_id=channel_id)
+                job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                if not job:
+                    await safe_reply(update, f"❌ Không tìm thấy VideoJob #{job_id}")
+                    return
+                channel_id = job.target_channel_id or "channel_maya"
+                topic = job.topic or job.title or "Viral Concept"
+                # Nhận diện ngôn ngữ hiện tại của job
+                from app.agents.voice_agent import VoiceAgent
+                is_vn = VoiceAgent._is_vietnamese(job.script or job.scenes_json or "")
+                current_lang = "vi" if is_vn else "en"
 
-            scenes_preview = "\n".join([
-                f"• Cảnh {s.scene_id}: {s.narration[:65]}..."
-                for s in new_script.scenes[:3]
-            ])
-            markup = get_script_review_keyboard(job_id, current_lang=current_lang)
+            ch = channel_manager.get_channel(channel_id) or {}
+            channel_name = ch.get("name") or channel_id
+            channel_niche = ch.get("niche") or "general"
+            lang_display = "🇻🇳 Tiếng Việt" if current_lang == "vi" else "🇺🇸 Tiếng Anh"
 
-            reply_text = (
-                f"🎬 **KỊCH BẢN ĐÃ TÁI TẠO XONG (Task #{job_id})**\n\n"
-                f"📌 **Tiêu đề mới:** {new_script.title}\n"
-                f"🔥 **Hook 3 giây đầu:** \"{new_script.hook}\"\n\n"
-                f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
-                f"⏱️ **Ước lượng:** ~{new_script.total_estimated_duration:.0f}s | {len(new_script.scenes)} cảnh\n"
-                f"🗣️ **Người tạo:** {user.first_name} | 📺 **Kênh:** `{channel_name}` | 🌐 **Ngôn ngữ:** {lang_display}\n\n"
-                f"👉 Cả nhóm hãy xem kịch bản, bấm **DUYỆT & DỰNG VIDEO NGAY** bên dưới để máy chủ tự động sản xuất Shorts!"
+            wait_m = await safe_reply(
+                update,
+                f"🔄 **{user.first_name}** yêu cầu tạo lại kịch bản mới cho Task #{job_id}...\n"
+                f"📌 Chủ đề: *\"{topic}\"*\n"
+                f"📺 Kênh: `{channel_name}` | 🌐 Ngôn ngữ: **{lang_display}**\n"
+                f"⏳ Gemini AI đang viết lại kịch bản với góc nhìn mới..."
             )
-            await safe_edit_text(wait_m, reply_text, reply_markup=markup)
-        except Exception as ex:
-            logger.error(f"Lỗi tái tạo kịch bản #{job_id}: {ex}", exc_info=True)
-            await safe_edit_text(wait_m, f"❌ Lỗi khi tạo lại kịch bản: `{ex}`")
+
+            try:
+                new_script, eval_report = await asyncio.to_thread(
+                    content_agent.generate_best_script,
+                    topic=topic,
+                    channel_niche=channel_niche,
+                    language=current_lang
+                )
+
+                with get_db() as db:
+                    db_job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                    if db_job:
+                        db_job.title = new_script.title
+                        db_job.script = new_script.full_narration
+                        db_job.description = new_script.description
+                        db_job.tags = ",".join(new_script.tags)
+                        db_job.scenes_json = new_script.to_json_str()
+                        db_job.status = "SCRIPT_READY"
+                        log_activity(db, user.id, user.first_name, "REGENERATE_SCRIPT",
+                                     f"Đã tạo lại kịch bản #{job_id}: '{new_script.title}'",
+                                     channel_id=channel_id)
+
+                scenes_preview = "\n".join([
+                    f"• Cảnh {s.scene_id}: {s.narration[:65]}..."
+                    for s in new_script.scenes[:3]
+                ])
+                markup = get_script_review_keyboard(job_id, current_lang=current_lang)
+
+                reply_text = (
+                    f"🎬 **KỊCH BẢN ĐÃ TÁI TẠO XONG (Task #{job_id})**\n\n"
+                    f"📌 **Tiêu đề mới:** {new_script.title}\n"
+                    f"🔥 **Hook 3 giây đầu:** \"{new_script.hook}\"\n\n"
+                    f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
+                    f"⏱️ **Ước lượng:** ~{new_script.total_estimated_duration:.0f}s | {len(new_script.scenes)} cảnh\n"
+                    f"🗣️ **Người tạo:** {user.first_name} | 📺 **Kênh:** `{channel_name}` | 🌐 **Ngôn ngữ:** {lang_display}\n\n"
+                    f"👉 Cả nhóm hãy xem kịch bản, bấm **DUYỆT & DỰNG VIDEO NGAY** bên dưới để máy chủ tự động sản xuất Shorts!"
+                )
+                await safe_edit_text(wait_m, reply_text, reply_markup=markup)
+            except Exception as ex:
+                logger.error(f"Lỗi tái tạo kịch bản #{job_id}: {ex}", exc_info=True)
+                await safe_edit_text(wait_m, f"❌ Lỗi khi tạo lại kịch bản: `{ex}`")
+        finally:
+            _release_action(regen_lock_key, post_cooldown_sec=3.0)
 
     # 6. Hủy bỏ
     elif data.startswith("cancel:"):
@@ -3468,58 +3673,74 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 7. Xử lý toàn bộ các kịch bản đang chờ (Render Queue Batch)
     elif data == "process_all_pending":
-        with get_db() as db:
-            pending_jobs = db.query(VideoJob).filter(
-                VideoJob.status == "SCRIPT_READY"
-            ).order_by(VideoJob.id.asc()).all()
-
-        if not pending_jobs:
-            await safe_reply(update, "⚠️ Không còn kịch bản nào đang ở trạng thái chờ render.")
+        batch_lock_key = "batch_process_all_pending"
+        acquired = _try_acquire_action(batch_lock_key, max_inflight_sec=30.0, debounce_sec=8.0)
+        if not acquired:
+            await safe_reply(update, "⏳ Đang đưa các kịch bản vào hàng đợi, vui lòng không bấm lặp lại!")
             return
+        try:
+            with get_db() as db:
+                pending_jobs = db.query(VideoJob).filter(
+                    VideoJob.status == "SCRIPT_READY"
+                ).order_by(VideoJob.id.asc()).all()
 
-        user_name = user.first_name if user else "Creator"
-        enqueued_count = 0
-        for j in pending_jobs:
-            await _enqueue_render(update, context, j.id, user_name)
-            enqueued_count += 1
+            if not pending_jobs:
+                await safe_reply(update, "⚠️ Không còn kịch bản nào đang ở trạng thái chờ render.")
+                return
 
-        await safe_reply(
-            update,
-            f"🚀 **ĐÃ ĐƯA {enqueued_count} VIDEO VÀO HÀNG ĐỢI RENDER!**\n\n"
-            f"Các video sẽ được hệ thống dựng tuần tự (1 video tại một thời điểm để bảo vệ phần cứng máy).\n"
-            f"Gõ `/queue` để theo dõi tiến trình!"
-        )
+            user_name = user.first_name if user else "Creator"
+            enqueued_count = 0
+            for j in pending_jobs:
+                await _enqueue_render(update, context, j.id, user_name)
+                enqueued_count += 1
+
+            await safe_reply(
+                update,
+                f"🚀 **ĐÃ ĐƯA {enqueued_count} VIDEO VÀO HÀNG ĐỢI RENDER!**\n\n"
+                f"Các video sẽ được hệ thống dựng tuần tự (1 video tại một thời điểm để bảo vệ phần cứng máy).\n"
+                f"Gõ `/queue` để theo dõi tiến trình!"
+            )
+        finally:
+            _release_action(batch_lock_key, post_cooldown_sec=5.0)
 
     # 7.5 Khôi phục và đưa toàn bộ video bị lỗi FAILED vào hàng đợi render lại
     elif data == "retry_all_failed":
-        with get_db() as db:
-            failed_jobs = db.query(VideoJob).filter(
-                VideoJob.status == "FAILED"
-            ).order_by(VideoJob.id.asc()).all()
+        retry_lock_key = "batch_retry_all_failed"
+        acquired = _try_acquire_action(retry_lock_key, max_inflight_sec=30.0, debounce_sec=8.0)
+        if not acquired:
+            await safe_reply(update, "⏳ Đang khôi phục các video lỗi vào hàng đợi, vui lòng chờ giây lát!")
+            return
+        try:
+            with get_db() as db:
+                failed_jobs = db.query(VideoJob).filter(
+                    VideoJob.status == "FAILED"
+                ).order_by(VideoJob.id.asc()).all()
 
-            if not failed_jobs:
-                await safe_reply(update, "⚠️ Không còn video nào ở trạng thái lỗi.")
-                return
+                if not failed_jobs:
+                    await safe_reply(update, "⚠️ Không còn video nào ở trạng thái lỗi.")
+                    return
 
-            recovered_ids = []
-            for j in failed_jobs:
-                j.status = "SCRIPT_READY"
-                j.error_message = None
-                j.progress_percent = 0
-                j.progress_message = "Đã khôi phục từ lệnh retry và chuẩn bị render lại"
-                log_activity(db, user.id, user.username, "RETRY_FAILED_JOB", f"Khôi phục Video #{j.id} về SCRIPT_READY")
-                recovered_ids.append(j.id)
+                recovered_ids = []
+                for j in failed_jobs:
+                    j.status = "SCRIPT_READY"
+                    j.error_message = None
+                    j.progress_percent = 0
+                    j.progress_message = "Đã khôi phục từ lệnh retry và chuẩn bị render lại"
+                    log_activity(db, user.id, user.username, "RETRY_FAILED_JOB", f"Khôi phục Video #{j.id} về SCRIPT_READY")
+                    recovered_ids.append(j.id)
 
-        user_name = user.first_name if user else "Creator"
-        for j_id in recovered_ids:
-            await _enqueue_render(update, context, j_id, user_name)
+            user_name = user.first_name if user else "Creator"
+            for j_id in recovered_ids:
+                await _enqueue_render(update, context, j_id, user_name)
 
-        await safe_reply(
-            update,
-            f"🔄 **ĐÃ KHÔI PHỤC VÀ ĐƯA {len(recovered_ids)} VIDEO LỖI VÀO HÀNG ĐỢI RENDER!**\n\n"
-            f"⚡ Hệ thống tự động tái sử dụng phân cảnh và giọng đọc đã có từ trước để render cực nhanh.\n"
-            f"Gõ `/queue` để theo dõi tiến trình!"
-        )
+            await safe_reply(
+                update,
+                f"🔄 **ĐÃ KHÔI PHỤC VÀ ĐƯA {len(recovered_ids)} VIDEO LỖI VÀO HÀNG ĐỢI RENDER!**\n\n"
+                f"⚡ Hệ thống tự động tái sử dụng phân cảnh và giọng đọc đã có từ trước để render cực nhanh.\n"
+                f"Gõ `/queue` để theo dõi tiến trình!"
+            )
+        finally:
+            _release_action(retry_lock_key, post_cooldown_sec=5.0)
 
     # 8. Làm mới danh sách tác vụ chờ
     elif data == "refresh_pending":
@@ -3632,6 +3853,29 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         channel_niche = ch.get("niche") or "psychology"
         channel_lang = ch.get("language") or "en"
 
+        viral_lock_key = f"pick_viral:{channel_id}:{idx}"
+        acquired = _try_acquire_action(viral_lock_key, max_inflight_sec=90.0, debounce_sec=8.0)
+        if not acquired:
+            await safe_reply(
+                update,
+                f"⏳ **Hệ thống đang tạo kịch bản cho ý tưởng #{idx+1} rồi!**\n"
+                f"💡 Vui lòng chờ 15–30 giây để Gemini AI hoàn tất, không cần bấm lại nhiều lần."
+            )
+            return
+
+        dup_job_id = _find_recent_duplicate_job(channel_id, topic, window_seconds=300)
+        if dup_job_id:
+            _release_action(viral_lock_key, post_cooldown_sec=2.0)
+            review_markup = get_script_review_keyboard(dup_job_id)
+            await safe_reply(
+                update,
+                f"♻️ **Ý tưởng #{idx+1} vừa được tạo ở Task #{dup_job_id}!**\n\n"
+                f"📌 **Chủ đề:** {topic}\n\n"
+                f"👉 Hệ thống tự động chặn tạo kịch bản trùng lặp do bấm nhiều lần. Bạn có thể bấm **🎬 DUYỆT & DỰNG VIDEO NGAY** bên dưới:",
+                reply_markup=review_markup
+            )
+            return
+
         status_msg = await safe_reply(
             update,
             f"🎬 **{user.first_name}** đã chọn ý tưởng #{idx+1}: *\"{topic}\"*\n"
@@ -3713,10 +3957,16 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await safe_edit_text(status_msg, f"❌ Có lỗi xảy ra khi tạo kịch bản: `{e}`")
             else:
                 await safe_reply(update, f"❌ Có lỗi xảy ra khi tạo kịch bản: `{e}`")
+        finally:
+            _release_action(viral_lock_key, post_cooldown_sec=5.0)
 
     # 9. Làm mới 5 ý tưởng viral
     elif data.startswith("refresh_viral_ideas:"):
         channel_id = data.split(":")[1] if ":" in data else "channel_maya"
+        ref_lock_key = f"refresh_viral:{channel_id}"
+        acquired = _try_acquire_action(ref_lock_key, max_inflight_sec=45.0, debounce_sec=5.0)
+        if not acquired:
+            return
         ch = channel_manager.get_channel(channel_id) or {}
         channel_name = ch.get("name") or channel_id
         channel_niche = ch.get("niche") or "psychology"
@@ -3786,6 +4036,8 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await safe_edit_text(query.message, full_text, reply_markup=markup)
         except Exception as e:
             logger.error(f"Lỗi khi làm mới ý tưởng viral: {e}")
+        finally:
+            _release_action(ref_lock_key, post_cooldown_sec=3.0)
 
     # 10. Đóng menu ý tưởng viral
     elif data == "close_viral":
@@ -3854,20 +4106,28 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 13. Kích hoạt thủ công tạo video cứu nguy KPI
     elif data.startswith("auto_gen_kpi:"):
         cid = data.split(":")[1]
-        from app.services.channel_intelligence import trigger_auto_generation_for_overdue_channel
-        status_msg = await safe_reply(update, f"⏳ Đang kích hoạt AI sản xuất video cứu tương tác cho kênh `{cid}`...")
-        res = await asyncio.to_thread(trigger_auto_generation_for_overdue_channel, cid, grace_hours=4.0, force=True)
-        if res.get("success"):
-            await safe_edit_text(
-                status_msg,
-                f"🚀 **ĐÃ BẮT ĐẦU SẢN XUẤT VIDEO CỨU NGUY (Task #{res['job_id']})**\n\n"
-                f"📺 **Kênh:** `{cid}`\n"
-                f"🎬 **Tiêu đề:** *{res['title']}*\n"
-                f"⏱️ **Hạn chót duyệt:** 4 tiếng kể từ khi render xong.\n\n"
-                f"Gõ `/queue` để theo dõi tiến độ render!"
-            )
-        else:
-            await safe_edit_text(status_msg, f"⚠️ {res.get('message', 'Không thể khởi động tác vụ.')}")
+        kpi_lock_key = f"auto_gen_kpi:{cid}"
+        acquired = _try_acquire_action(kpi_lock_key, max_inflight_sec=120.0, debounce_sec=10.0)
+        if not acquired:
+            await safe_reply(update, f"⏳ Đang sản xuất video cứu nguy cho kênh `{cid}`, vui lòng không bấm lặp lại!")
+            return
+        try:
+            from app.services.channel_intelligence import trigger_auto_generation_for_overdue_channel
+            status_msg = await safe_reply(update, f"⏳ Đang kích hoạt AI sản xuất video cứu tương tác cho kênh `{cid}`...")
+            res = await asyncio.to_thread(trigger_auto_generation_for_overdue_channel, cid, grace_hours=4.0, force=True)
+            if res.get("success"):
+                await safe_edit_text(
+                    status_msg,
+                    f"🚀 **ĐÃ BẮT ĐẦU SẢN XUẤT VIDEO CỨU NGUY (Task #{res['job_id']})**\n\n"
+                    f"📺 **Kênh:** `{cid}`\n"
+                    f"🎬 **Tiêu đề:** *{res['title']}*\n"
+                    f"⏱️ **Hạn chót duyệt:** 4 tiếng kể từ khi render xong.\n\n"
+                    f"Gõ `/queue` để theo dõi tiến độ render!"
+                )
+            else:
+                await safe_edit_text(status_msg, f"⚠️ {res.get('message', 'Không thể khởi động tác vụ.')}")
+        finally:
+            _release_action(kpi_lock_key, post_cooldown_sec=5.0)
 
     # 14. Làm mới báo cáo KPI
     elif data == "refresh_kpi_report":
@@ -4944,17 +5204,17 @@ async def _show_autopilot_view(update: Update, context: ContextTypes.DEFAULT_TYP
 async def autopilot_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Xử lý các tương tác nút bấm của hệ thống Auto-Pilot trên Telegram."""
     query = update.callback_query
-    await query.answer()
-
-    data = query.data
+    data = query.data if query else ""
     user = update.effective_user
     uid = user.id if user else 0
 
     if data == "autopilot_status":
+        await safe_query_answer(query)
         await _show_autopilot_view(update, context)
         return
 
     if data == "autopilot_pick_channel":
+        await safe_query_answer(query)
         from app.bot.keyboards import get_autopilot_channel_picker_keyboard
         markup = get_autopilot_channel_picker_keyboard()
         text = (
@@ -4968,6 +5228,7 @@ async def autopilot_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     if data == "autopilot_dismiss":
+        await safe_query_answer(query)
         from app.services.autopilot_service import dismiss_today_reminder
         dismiss_today_reminder()
         await safe_edit_text(
@@ -4979,31 +5240,57 @@ async def autopilot_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     if data == "autopilot_run_all":
-        from app.services.autopilot_service import run_autopilot_for_all_empty
-        await safe_reply(
-            update,
-            "🚀 **ĐÃ KÍCH HOẠT AUTOPILOT CHO TẤT CẢ KÊNH TRỐNG!**\n\n"
-            "Bot đang tự động chạy quy trình A-Z ngầm. Video sẽ được render và lên lịch tự động theo thứ tự.\n"
-            "Bạn sẽ nhận được thông báo ngay khi từng kênh hoàn tất!"
-        )
-        asyncio.create_task(run_autopilot_for_all_empty(user_id=uid, notify_telegram=True))
+        ap_all_key = "autopilot_run_all"
+        acquired = _try_acquire_action(ap_all_key, max_inflight_sec=30.0, debounce_sec=15.0)
+        if not acquired:
+            await safe_query_answer(
+                query,
+                "⏳ Tiến trình Auto-Pilot cho các kênh trống đã được kích hoạt! Không cần bấm lại.",
+                show_alert=True,
+            )
+            return
+        await safe_query_answer(query, "🚀 Đã kích hoạt Auto-Pilot!", show_alert=False)
+        try:
+            from app.services.autopilot_service import run_autopilot_for_all_empty
+            await safe_reply(
+                update,
+                "🚀 **ĐÃ KÍCH HOẠT AUTOPILOT CHO TẤT CẢ KÊNH TRỐNG!**\n\n"
+                "Bot đang tự động chạy quy trình A-Z ngầm. Video sẽ được render và lên lịch tự động theo thứ tự.\n"
+                "Bạn sẽ nhận được thông báo ngay khi từng kênh hoàn tất!"
+            )
+            asyncio.create_task(run_autopilot_for_all_empty(user_id=uid, notify_telegram=True))
+        finally:
+            _release_action(ap_all_key, post_cooldown_sec=15.0)
         return
 
     if data.startswith("autopilot_run_channel:"):
         cid = data.split(":", 1)[1]
-        from app.services.autopilot_service import run_autopilot_pipeline_for_channel
-        from config.settings import settings
-        channels = settings.get_channels_config()
-        ch_cfg = next((c for c in channels if c.get("id") == cid), {})
-        ch_name = ch_cfg.get("name", cid)
+        ap_ch_key = f"autopilot_run_channel:{cid}"
+        acquired = _try_acquire_action(ap_ch_key, max_inflight_sec=30.0, debounce_sec=15.0)
+        if not acquired:
+            await safe_query_answer(
+                query,
+                f"⏳ Kênh {cid} đã được kích hoạt Auto-Pilot rồi! Không cần bấm lại.",
+                show_alert=True,
+            )
+            return
+        await safe_query_answer(query, f"🚀 Đã kích hoạt Auto-Pilot cho kênh {cid}!", show_alert=False)
+        try:
+            from app.services.autopilot_service import run_autopilot_pipeline_for_channel
+            from config.settings import settings
+            channels = settings.get_channels_config()
+            ch_cfg = next((c for c in channels if c.get("id") == cid), {})
+            ch_name = ch_cfg.get("name", cid)
 
-        await safe_reply(
-            update,
-            f"🚀 **ĐÃ KÍCH HOẠT AUTOPILOT CHO KÊNH: `{ch_name}`!**\n\n"
-            f"Bot đang bắt đầu sản xuất kịch bản, render và xếp vào khe giờ vàng trống tiếp theo.\n"
-            f"Tiến trình đang chạy ngầm, bạn sẽ nhận được thông báo sau vài phút!"
-        )
-        asyncio.create_task(run_autopilot_pipeline_for_channel(channel_id=cid, user_id=uid, notify_telegram=True))
+            await safe_reply(
+                update,
+                f"🚀 **ĐÃ KÍCH HOẠT AUTOPILOT CHO KÊNH: `{ch_name}`!**\n\n"
+                f"Bot đang bắt đầu sản xuất kịch bản, render và xếp vào khe giờ vàng trống tiếp theo.\n"
+                f"Tiến trình đang chạy ngầm, bạn sẽ nhận được thông báo sau vài phút!"
+            )
+            asyncio.create_task(run_autopilot_pipeline_for_channel(channel_id=cid, user_id=uid, notify_telegram=True))
+        finally:
+            _release_action(ap_ch_key, post_cooldown_sec=15.0)
         return
 
 
@@ -5037,20 +5324,29 @@ async def chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
     prompt = " ".join(context.args)
+    norm_p = " ".join(prompt.lower().split())[:100]
+    chat_lock_key = f"chat_cmd:{user.id}:{norm_p}"
+    acquired = _try_acquire_action(chat_lock_key, max_inflight_sec=90.0, debounce_sec=6.0)
+    if not acquired:
+        await safe_reply(update, "⏳ AI Tổng Quản đang xử lý yêu cầu vừa rồi của bạn, vui lòng chờ giây lát!")
+        return
 
-    with get_db() as db:
-        db_user = db.query(User).filter(User.telegram_id == user.id).first()
-        channels = settings.get_channels_config()
-        default_ch = channels[0].get("id") if channels else "channel_maya"
-        channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else default_ch
-        if db_user:
-            db_user.last_active = datetime.utcnow()
-        log_activity(db, user.id, user.username, "AI_COMMAND", f"Lệnh tự nhiên: '{prompt[:50]}...'", channel_id=channel_id)
+    try:
+        with get_db() as db:
+            db_user = db.query(User).filter(User.telegram_id == user.id).first()
+            channels = settings.get_channels_config()
+            default_ch = channels[0].get("id") if channels else "channel_maya"
+            channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else default_ch
+            if db_user:
+                db_user.last_active = datetime.utcnow()
+            log_activity(db, user.id, user.username, "AI_COMMAND", f"Lệnh tự nhiên: '{prompt[:50]}...'", channel_id=channel_id)
 
-    status_msg = await safe_reply(update, f"🧠 **{user.first_name}**: *\"{prompt}\"*\n\n⏳ *AI Tổng Quản đang phân tích ngữ cảnh và điều phối...*")
+        status_msg = await safe_reply(update, f"🧠 **{user.first_name}**: *\"{prompt}\"*\n\n⏳ *AI Tổng Quản đang phân tích ngữ cảnh và điều phối...*")
 
-    from app.services.ai_commander import ai_commander
-    await ai_commander.process_and_execute(update, context, prompt, status_message=status_msg)
+        from app.services.ai_commander import ai_commander
+        await ai_commander.process_and_execute(update, context, prompt, status_message=status_msg)
+    finally:
+        _release_action(chat_lock_key, post_cooldown_sec=4.0)
 
 
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5207,19 +5503,29 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await autopilot_command(update, context)
         return
 
-    with get_db() as db:
-        db_user = db.query(User).filter(User.telegram_id == user.id).first()
-        channels = settings.get_channels_config()
-        default_ch = channels[0].get("id") if channels else "channel_maya"
-        channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else default_ch
-        if db_user:
-            db_user.last_active = datetime.utcnow()
-        log_activity(db, user.id, user.username, "AI_NATURAL_TEXT", f"Trao đổi tự nhiên: '{clean_text[:50]}...'", channel_id=channel_id)
+    norm_txt = " ".join(clean_text.lower().split())[:100]
+    txt_lock_key = f"text_msg:{user.id}:{norm_txt}"
+    acquired = _try_acquire_action(txt_lock_key, max_inflight_sec=90.0, debounce_sec=6.0)
+    if not acquired:
+        await safe_reply(update, "⏳ AI Tổng Quản đang xử lý tin nhắn vừa rồi của bạn, vui lòng chờ giây lát!")
+        return
 
-    status_msg = await safe_reply(update, f"🧠 *AI Tổng Quản đang tiếp nhận:* \"{clean_text}\"...")
+    try:
+        with get_db() as db:
+            db_user = db.query(User).filter(User.telegram_id == user.id).first()
+            channels = settings.get_channels_config()
+            default_ch = channels[0].get("id") if channels else "channel_maya"
+            channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else default_ch
+            if db_user:
+                db_user.last_active = datetime.utcnow()
+            log_activity(db, user.id, user.username, "AI_NATURAL_TEXT", f"Trao đổi tự nhiên: '{clean_text[:50]}...'", channel_id=channel_id)
 
-    from app.services.ai_commander import ai_commander
-    await ai_commander.process_and_execute(update, context, clean_text, status_message=status_msg)
+        status_msg = await safe_reply(update, f"🧠 *AI Tổng Quản đang tiếp nhận:* \"{clean_text}\"...")
+
+        from app.services.ai_commander import ai_commander
+        await ai_commander.process_and_execute(update, context, clean_text, status_message=status_msg)
+    finally:
+        _release_action(txt_lock_key, post_cooldown_sec=4.0)
 
 
 async def chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5227,94 +5533,109 @@ async def chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Xử lý nút bấm: Chốt kịch bản từ đoạn chat / Gợi ý thêm góc nhìn / Đổi hook
     """
     query = update.callback_query
-    await safe_query_answer(query)
-    data = query.data
-    user = query.from_user
+    data = query.data if query else ""
+    user = query.from_user if query else update.effective_user
 
     if data.startswith("convert_chat:"):
         session_id = data.split(":")[1]
-        
-        with get_db() as db:
-            db_user = db.query(User).filter(User.telegram_id == user.id).first()
-            channels = settings.get_channels_config()
-            default_ch = channels[0].get("id") if channels else "channel_maya"
-            channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else default_ch
-            if channel_id == "channel_psychology":
-                channel_id = "channel_maya"
-
-        channel_niche = "psychology"
-        channel_lang = "en"
-        channels = settings.get_channels_config()
-        for ch in channels:
-            if ch.get("id") == channel_id:
-                channel_niche = ch.get("niche", "general")
-                channel_lang = ch.get("language", "en")
-                break
-
-        wait_msg = await safe_reply(
-            update,
-            f"🎬 **{user.first_name}** vừa bấm **Chốt Kịch Bản**!\n"
-            f"⏳ Gemini AI đang tổng hợp toàn bộ thảo luận thành kịch bản phân cảnh chuẩn cho kênh `{channel_id}`..."
-        )
+        conv_lock_key = f"convert_chat:{session_id}"
+        acquired = _try_acquire_action(conv_lock_key, max_inflight_sec=90.0, debounce_sec=10.0)
+        if not acquired:
+            await safe_query_answer(
+                query,
+                "⏳ Hệ thống đang tổng hợp kịch bản từ đoạn chat này rồi! Vui lòng chờ giây lát.",
+                show_alert=True,
+            )
+            return
+        await safe_query_answer(query, "🎬 Đang tổng hợp kịch bản...", show_alert=False)
 
         try:
-            script: ScriptContract = await asyncio.to_thread(
-                content_agent.convert_discussion_to_script,
-                session_id=session_id,
-                channel_niche=channel_niche,
-                language=channel_lang
-            )
-
             with get_db() as db:
-                job = VideoJob(
-                    user_id=user.id,
-                    target_channel_id=channel_id,
-                    topic=script.title,
-                    title=script.title,
-                    script=script.full_narration,
-                    description=script.description,
-                    tags=",".join(script.tags),
-                    scenes_json=script.to_json_str(),
-                    status="SCRIPT_READY"
-                )
-                db.add(job)
-                db.flush()
-                job_id = job.id
+                db_user = db.query(User).filter(User.telegram_id == user.id).first()
+                channels = settings.get_channels_config()
+                default_ch = channels[0].get("id") if channels else "channel_maya"
+                channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else default_ch
+                if channel_id == "channel_psychology":
+                    channel_id = "channel_maya"
 
-                log_activity(db, user.id, user.username, "CONVERT_CHAT_SCRIPT",
-                             f"Kịch bản #{job_id} được chốt từ thảo luận: '{script.title}'",
-                             channel_id=channel_id)
+            channel_niche = "psychology"
+            channel_lang = "en"
+            channels = settings.get_channels_config()
+            for ch in channels:
+                if ch.get("id") == channel_id:
+                    channel_niche = ch.get("niche", "general")
+                    channel_lang = ch.get("language", "en")
+                    break
 
-            scenes_preview = "\n".join([
-                f"• Cảnh {s.scene_id}: {s.narration[:60]}... _(Tìm: {s.visual_keyword})_"
-                for s in script.scenes[:3]
-            ])
-
-            reply_content = (
-                f"🎉 **ĐÃ TỔNG HỢP XONG KỊCH BẢN SẢN XUẤT (Task #{job_id})**\n\n"
-                f"📌 **Tiêu đề:** {script.title}\n"
-                f"🔥 **Hook 3 giây đầu:** \"{script.hook}\"\n\n"
-                f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
-                f"⏱️ **Ước lượng:** ~{script.total_estimated_duration:.0f}s | {len(script.scenes)} cảnh\n"
-                f"📺 **Kênh:** `{channel_id}` | 🗣️ **Người chốt:** {user.first_name}\n\n"
-                f"👉 Bấm **🎬 DUYỆT & DỰNG VIDEO NGAY** bên dưới để hệ thống AI tự động sản xuất Shorts 1080x1920!"
+            wait_msg = await safe_reply(
+                update,
+                f"🎬 **{user.first_name}** vừa bấm **Chốt Kịch Bản**!\n"
+                f"⏳ Gemini AI đang tổng hợp toàn bộ thảo luận thành kịch bản phân cảnh chuẩn cho kênh `{channel_id}`..."
             )
 
-            review_markup = get_script_review_keyboard(job_id)
-            if wait_msg:
-                await safe_edit_text(wait_msg, reply_content, reply_markup=review_markup)
-            else:
-                await safe_reply(update, reply_content, reply_markup=review_markup)
+            try:
+                script: ScriptContract = await asyncio.to_thread(
+                    content_agent.convert_discussion_to_script,
+                    session_id=session_id,
+                    channel_niche=channel_niche,
+                    language=channel_lang
+                )
 
-        except Exception as e:
-            logger.error(f"Lỗi khi convert chat thành script: {e}", exc_info=True)
-            err_text = f"❌ Không thể tổng hợp kịch bản: `{e}`"
-            if wait_msg:
-                await safe_edit_text(wait_msg, err_text)
-            else:
-                await safe_reply(update, err_text)
+                with get_db() as db:
+                    job = VideoJob(
+                        user_id=user.id,
+                        target_channel_id=channel_id,
+                        topic=script.title,
+                        title=script.title,
+                        script=script.full_narration,
+                        description=script.description,
+                        tags=",".join(script.tags),
+                        scenes_json=script.to_json_str(),
+                        status="SCRIPT_READY"
+                    )
+                    db.add(job)
+                    db.flush()
+                    job_id = job.id
 
-    elif data.startswith("suggest_more:"):
+                    log_activity(db, user.id, user.username, "CONVERT_CHAT_SCRIPT",
+                                 f"Kịch bản #{job_id} được chốt từ thảo luận: '{script.title}'",
+                                 channel_id=channel_id)
+
+                scenes_preview = "\n".join([
+                    f"• Cảnh {s.scene_id}: {s.narration[:60]}... _(Tìm: {s.visual_keyword})_"
+                    for s in script.scenes[:3]
+                ])
+
+                reply_content = (
+                    f"🎉 **ĐÃ TỔNG HỢP XONG KỊCH BẢN SẢN XUẤT (Task #{job_id})**\n\n"
+                    f"📌 **Tiêu đề:** {script.title}\n"
+                    f"🔥 **Hook 3 giây đầu:** \"{script.hook}\"\n\n"
+                    f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
+                    f"⏱️ **Ước lượng:** ~{script.total_estimated_duration:.0f}s | {len(script.scenes)} cảnh\n"
+                    f"📺 **Kênh:** `{channel_id}` | 🗣️ **Người chốt:** {user.first_name}\n\n"
+                    f"👉 Bấm **🎬 DUYỆT & DỰNG VIDEO NGAY** bên dưới để hệ thống AI tự động sản xuất Shorts 1080x1920!"
+                )
+
+                review_markup = get_script_review_keyboard(job_id)
+                if wait_msg:
+                    await safe_edit_text(wait_msg, reply_content, reply_markup=review_markup)
+                else:
+                    await safe_reply(update, reply_content, reply_markup=review_markup)
+
+            except Exception as e:
+                logger.error(f"Lỗi khi convert chat thành script: {e}", exc_info=True)
+                err_text = f"❌ Không thể tổng hợp kịch bản: `{e}`"
+                if wait_msg:
+                    await safe_edit_text(wait_msg, err_text)
+                else:
+                    await safe_reply(update, err_text)
+        finally:
+            _release_action(conv_lock_key, post_cooldown_sec=5.0)
+        return
+
+    await safe_query_answer(query)
+
+    if data.startswith("suggest_more:"):
         session_id = data.split(":")[1]
         msg = await asyncio.to_thread(
             content_agent.chat_brainstorm,

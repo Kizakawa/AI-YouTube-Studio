@@ -36,6 +36,7 @@ class RenderQueueItem:
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    is_duplicate: bool = False
 
 
 class RenderQueue:
@@ -82,6 +83,16 @@ class RenderQueue:
         """Video đang render hiện tại."""
         return self._current_item
 
+    def find_active_item(self, job_id: int) -> Optional[RenderQueueItem]:
+        """Kiểm tra xem job_id có đang được render hoặc đang chờ trong hàng đợi không."""
+        if self._current_item and self._current_item.job_id == job_id:
+            return self._current_item
+        for item_tuple in list(self._queue._queue):
+            item = item_tuple[0]
+            if item.job_id == job_id and item.status == QueueItemStatus.WAITING:
+                return item
+        return None
+
     def get_queue_snapshot(self) -> List[RenderQueueItem]:
         """Snapshot toàn bộ hàng đợi (đang chờ + đang render)."""
         items = []
@@ -105,18 +116,25 @@ class RenderQueue:
         notify_func: Optional[Callable[[str], Awaitable[None]]] = None,
     ) -> RenderQueueItem:
         """
-        Thêm 1 video vào hàng đợi render.
-        
-        Args:
-            job_id: ID của VideoJob trong DB
-            user_name: Tên người yêu cầu
-            chat_id: Telegram chat ID (để gửi thông báo)
-            render_func: Async function thực hiện render (đã bind sẵn tham số)
-            notify_func: Async function gửi thông báo trạng thái (nhận str message)
-        
-        Returns:
-            RenderQueueItem với thông tin vị trí trong hàng đợi
+        Thêm 1 video vào hàng đợi render (tự động chặn trùng lặp nếu job_id đang chờ hoặc đang render).
         """
+        existing = self.find_active_item(job_id)
+        if existing is not None:
+            logger.info(
+                f"🛡️ [RenderQueue Anti-Spam] Video #{job_id} đã có trong hàng đợi/đang render "
+                f"(status={existing.status}, pos=#{existing.position}) — bỏ qua yêu cầu trùng lặp!"
+            )
+            return RenderQueueItem(
+                job_id=existing.job_id,
+                user_name=existing.user_name,
+                chat_id=existing.chat_id,
+                status=existing.status,
+                position=existing.position,
+                queued_at=existing.queued_at,
+                started_at=existing.started_at,
+                is_duplicate=True,
+            )
+
         self._position_counter += 1
         
         # Tính vị trí thực tế trong hàng đợi
@@ -164,6 +182,20 @@ class RenderQueue:
                 except asyncio.TimeoutError:
                     logger.info("🏭 RenderQueue Worker: Hàng đợi trống 30s, tạm nghỉ")
                     break
+
+                # Chốt chặn an toàn: nếu job vừa mới render xong trong vòng 5 phút qua thì bỏ qua tránh render đúp
+                recently_done = any(
+                    h.job_id == item.job_id
+                    and h.status == QueueItemStatus.COMPLETED
+                    and h.finished_at
+                    and (datetime.utcnow() - h.finished_at).total_seconds() < 300
+                    for h in self._history[-10:]
+                )
+                if recently_done:
+                    logger.info(f"🛡️ [RenderQueue] Video #{item.job_id} vừa hoàn tất render gần đây — bỏ qua bản trùng lặp trong hàng đợi!")
+                    item.status = QueueItemStatus.CANCELLED
+                    self._queue.task_done()
+                    continue
 
                 # Cập nhật trạng thái
                 item.status = QueueItemStatus.RENDERING

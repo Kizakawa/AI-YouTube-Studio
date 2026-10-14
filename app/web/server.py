@@ -1161,9 +1161,24 @@ async def quick_create_from_trend(body: QuickCreateFromTrendRequest):
     3. Tối ưu 50% thời lượng đầu (trailer + b-roll)
     4. Text thumbnail 1 giây
     """
+    from app.bot.handlers import _try_acquire_action, _release_action, _find_recent_duplicate_job
+    target_channel = body.channel_id or "channel_maya"
+    norm_topic = " ".join((body.topic or "").lower().split())[:100]
+    lock_key = f"web_quick_create:{target_channel}:{norm_topic}"
+    acquired = _try_acquire_action(lock_key, max_inflight_sec=90.0, debounce_sec=8.0)
+    if not acquired:
+        raise HTTPException(status_code=429, detail="Đang tạo kịch bản cho chủ đề này, vui lòng chờ 15–30 giây và không bấm lặp lại!")
+
+    dup_job_id = _find_recent_duplicate_job(target_channel, body.topic, window_seconds=180)
+    if dup_job_id:
+        _release_action(lock_key, post_cooldown_sec=2.0)
+        raise HTTPException(
+            status_code=409,
+            detail=f"Kịch bản cho chủ đề này vừa được tạo ở Task #{dup_job_id}. Không cần tạo lặp lại!"
+        )
+
     try:
         from app.agents.content_agent import ContentAgent
-        target_channel = body.channel_id or "channel_maya"
         channels = settings.get_channels_config()
         ch = next((c for c in channels if c.get("id") == target_channel), {})
         channel_niche = ch.get("niche") or (body.category if body.category != "Google Trends" else "general")
@@ -1223,9 +1238,13 @@ async def quick_create_from_trend(body: QuickCreateFromTrendRequest):
             "total_duration": script.total_estimated_duration,
             "evaluation": scores_summary
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[QuickCreate Trend API] Error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        _release_action(lock_key, post_cooldown_sec=5.0)
 
 # ─── Thư Viện Video Đã Đăng (Published Video Library) ───────────────────────
 
@@ -1283,6 +1302,21 @@ async def create_script_from_web(body: CreateScriptRequest) -> Dict[str, Any]:
     Tạo kịch bản AI trực tiếp từ Web Studio:
     Tự động chấm điểm qua ScriptCritic và lặp lại tái tạo cho đến khi đạt chuẩn viral (>= 8.0/10) mới hiển thị.
     """
+    from app.bot.handlers import _try_acquire_action, _release_action, _find_recent_duplicate_job
+    norm_topic = " ".join((body.topic or "").lower().split())[:100]
+    lock_key = f"web_create_script:{body.channel_id}:{norm_topic}"
+    acquired = _try_acquire_action(lock_key, max_inflight_sec=90.0, debounce_sec=8.0)
+    if not acquired:
+        raise HTTPException(status_code=429, detail="Đang tạo kịch bản cho chủ đề này, vui lòng chờ 15–30 giây và không bấm lặp lại!")
+
+    dup_job_id = _find_recent_duplicate_job(body.channel_id, body.topic, window_seconds=180)
+    if dup_job_id:
+        _release_action(lock_key, post_cooldown_sec=2.0)
+        raise HTTPException(
+            status_code=409,
+            detail=f"Kịch bản cho chủ đề này vừa được tạo ở Task #{dup_job_id}. Không cần tạo lặp lại!"
+        )
+
     try:
         from app.agents.content_agent import ContentAgent
         channels = settings.get_channels_config()
@@ -1366,9 +1400,13 @@ async def create_script_from_web(body: CreateScriptRequest) -> Dict[str, Any]:
             ],
             "eval": eval_data
         }
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         raise HTTPException(status_code=500, detail=f"Lỗi tạo kịch bản: {str(e)}\n{traceback.format_exc()}")
+    finally:
+        _release_action(lock_key, post_cooldown_sec=5.0)
 
 
 # ─── FORMULA DECONSTRUCTOR (Nhân bản nhịp điệu video viral) ───────────────────
