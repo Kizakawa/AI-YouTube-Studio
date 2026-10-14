@@ -687,6 +687,8 @@ class ContentAgent:
             if channel_id and not target_ids:
                 target_ids.extend(resolve_channel_family(channel_id))
 
+            from app.services.channel_intelligence import is_off_niche_video_title, extract_saturated_channel_concepts
+
             if target_ids:
                 unique_ids = list(dict.fromkeys(target_ids))
                 with get_db() as db:
@@ -694,11 +696,11 @@ class ContentAgent:
                         db.query(PublishedVideo)
                         .filter(PublishedVideo.channel_id.in_(unique_ids), PublishedVideo.views >= 80)
                         .order_by(PublishedVideo.views.desc())
-                        .limit(4)
+                        .limit(6)
                         .all()
                     )
                     for r in top_Rows:
-                        if r.title:
+                        if r.title and not is_off_niche_video_title(r.title, niche_low):
                             top_winners.append(f'  * "{r.title.strip()}" ({r.views:,} views)')
 
                     rec_pub = (
@@ -744,10 +746,10 @@ class ContentAgent:
                     except Exception:
                         pass
                 if cached_entry and cached_entry.get("videos"):
-                    for v_info in cached_entry["videos"][:3]:
+                    for v_info in cached_entry["videos"][:5]:
                         v_title = str(v_info.get("title") or "").strip()
                         v_views = int(v_info.get("views_num") or 0)
-                        if v_title and v_views >= 50:
+                        if v_title and v_views >= 20 and not is_off_niche_video_title(v_title, niche_low):
                             top_winners.append(f'  * "{v_title}" ({v_views:,} live YouTube views)')
                     for v_info in cached_entry["videos"][:8]:
                         v_title = str(v_info.get("title") or "").strip()
@@ -755,7 +757,6 @@ class ContentAgent:
                             recent_titles.append(v_title)
 
             if len(recent_titles) >= 2:
-                from app.services.channel_intelligence import extract_saturated_channel_concepts
                 saturated_terms = extract_saturated_channel_concepts(recent_titles, min_frequency=2)
         except Exception as ex_mem:
             logger.debug(f"[ContentAgent] Không thể đọc episodic memory cho {channel_niche}: {ex_mem}")

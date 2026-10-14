@@ -171,6 +171,76 @@ class Settings:
     _cached_accounts: Optional[List[Dict]] = None
     _channels_mtime: float = 0.0
 
+    _CANONICAL_CHANNEL_DEFAULTS: Dict[str, Dict[str, str]] = {
+        "ch_dark_psychology": {
+            "name": "Shadow Mind",
+            "niche": "dark_psychology_self_mastery",
+            "language": "en",
+            "preferred_voice": "en-US-ChristopherNeural",
+        },
+        "ch_deep_sea": {
+            "name": "Abyssal Secrets",
+            "niche": "deep_sea_earth_mysteries",
+            "language": "en",
+            "preferred_voice": "en-US-GuyNeural",
+        },
+        "ch_heart_rescue": {
+            "name": "Paws of Hope",
+            "niche": "heartwarming_animal_rescue",
+            "language": "en",
+            "preferred_voice": "en-US-AriaNeural",
+        },
+        "ch_wild_odyssey": {
+            "name": "Wild Odyssey",
+            "niche": "wildlife_predators",
+            "language": "en",
+            "preferred_voice": "en-US-EricNeural",
+        },
+        "ch_alternate_history": {
+            "name": "Temporal Shift",
+            "niche": "alternate_history_what_if",
+            "language": "en",
+            "preferred_voice": "en-US-RogerNeural",
+        },
+        "ch_odisseia_selvagem": {
+            "name": "Odisseia Selvagem",
+            "niche": "wildlife_predators",
+            "language": "pt-BR",
+            "preferred_voice": "pt-BR-AntonioNeural",
+        },
+        "ch_misterios_do_mundo": {
+            "name": "Mistérios do Mundo",
+            "niche": "deep_sea_earth_mysteries",
+            "language": "pt-BR",
+            "preferred_voice": "pt-BR-AntonioNeural",
+        },
+    }
+
+    @classmethod
+    def _heal_channel_dict(cls, ch: Dict) -> Dict:
+        """Tự động phục hồi metadata chuẩn nếu kênh bị mất niche/language hoặc lỗi font tên kênh."""
+        if not isinstance(ch, dict):
+            return ch
+        cid = str(ch.get("id") or "").strip()
+        defaults = cls._CANONICAL_CHANNEL_DEFAULTS.get(cid)
+        name_val = str(ch.get("name") or "")
+        if "\ufffd" in name_val and defaults:
+            ch["name"] = defaults["name"]
+        if defaults:
+            if not str(ch.get("niche") or "").strip():
+                ch["niche"] = defaults["niche"]
+            if cid in ("ch_odisseia_selvagem", "ch_misterios_do_mundo"):
+                if not str(ch.get("language") or "").lower().startswith("pt"):
+                    ch["language"] = defaults["language"]
+                if not str(ch.get("preferred_voice") or "").lower().startswith("pt-"):
+                    ch["preferred_voice"] = defaults["preferred_voice"]
+            else:
+                if not str(ch.get("language") or "").strip():
+                    ch["language"] = defaults["language"]
+                if not str(ch.get("preferred_voice") or "").strip():
+                    ch["preferred_voice"] = defaults["preferred_voice"]
+        return ch
+
     @classmethod
     def get_channels_config(cls) -> List[Dict]:
         """Tải cấu hình các kênh YouTube từ file YAML (kết quả được lưu cache in-memory)"""
@@ -190,8 +260,13 @@ class Settings:
                 return cls._cached_channels
             with open(cls.CHANNELS_CONFIG_FILE, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
-                cls._cached_channels = data.get("channels", []) if data else []
-                cls._cached_accounts = data.get("google_accounts", []) if data else []
+                raw_channels = data.get("channels", []) if data else []
+                cls._cached_channels = [cls._heal_channel_dict(c) for c in raw_channels]
+                raw_accounts = data.get("google_accounts", []) if data else []
+                for acc in raw_accounts:
+                    if isinstance(acc, dict) and isinstance(acc.get("brand_channels"), list):
+                        acc["brand_channels"] = [cls._heal_channel_dict(bc) for bc in acc["brand_channels"]]
+                cls._cached_accounts = raw_accounts
                 cls._channels_mtime = mtime
                 return cls._cached_channels
         except Exception:
@@ -214,12 +289,8 @@ class Settings:
             mtime = cls.CHANNELS_CONFIG_FILE.stat().st_mtime
             if cls._cached_accounts is not None and mtime == cls._channels_mtime:
                 return cls._cached_accounts
-            with open(cls.CHANNELS_CONFIG_FILE, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-                cls._cached_channels = data.get("channels", []) if data else []
-                cls._cached_accounts = data.get("google_accounts", []) if data else []
-                cls._channels_mtime = mtime
-                return cls._cached_accounts
+            cls.get_channels_config()
+            return cls._cached_accounts or []
         except Exception:
             return cls._cached_accounts or []
 

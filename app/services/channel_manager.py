@@ -96,7 +96,7 @@ def get_accounts_enriched() -> List[Dict[str, Any]]:
     enriched = []
     for acc in raw_accounts:
         acc_id = acc.get("id", "")
-        brand_channels = acc.get("brand_channels", [])
+        brand_channels = [settings._heal_channel_dict(dict(b)) for b in acc.get("brand_channels", [])]
         for bch in brand_channels:
             cid = bch.get("id", "")
             bch["youtube_connected"] = _is_valid_token_file(base_dir / "credentials" / "channels" / cid / "youtube_token.json") or _is_valid_token_file(base_dir / "credentials" / "accounts" / acc_id / "youtube_token.json")
@@ -117,7 +117,7 @@ def get_accounts_enriched() -> List[Dict[str, Any]]:
 def get_flat_channels() -> List[Dict[str, Any]]:
     """Trả về danh sách phẳng tất cả các kênh YouTube."""
     cfg = read_channels_yaml()
-    return cfg.get("channels", [])
+    return [settings._heal_channel_dict(dict(c)) for c in cfg.get("channels", [])]
 
 LEGACY_CHANNEL_ALIASES: Dict[str, str] = {
     "channel_maya": "ch_psychology_of_the_world",

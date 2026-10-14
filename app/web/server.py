@@ -3059,7 +3059,9 @@ def _write_channels_yaml(data: Dict[str, Any]) -> bool:
     try:
         with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True, sort_keys=False, indent=2)
-        settings._cached_channels = None  # Reset in-memory cache
+        settings._cached_channels = None
+        settings._cached_accounts = None
+        settings._channels_mtime = 0.0
         return True
     except Exception as e:
         logger.error(f"Lỗi ghi channels.yaml: {e}")
@@ -3149,15 +3151,18 @@ async def get_accounts_and_channels() -> Dict[str, Any]:
         for idx, bch in enumerate(raw_bchannels):
             bch_id = bch.get("id", "")
             ch_token_file = base_dir / "credentials" / "channels" / str(bch_id) / "youtube_token.json"
-            has_own = ch_token_file.exists()
+            has_own = False
             ch_title = None
-            if has_own:
+            if ch_token_file.exists():
                 try:
-                    ch_title = load_encrypted_json(ch_token_file).get("channel_title")
+                    ch_tok = load_encrypted_json(ch_token_file)
+                    if ch_tok.get("token") or ch_tok.get("refresh_token"):
+                        has_own = True
+                        ch_title = ch_tok.get("channel_title")
                 except Exception:
                     pass
             is_conn = has_own or (idx == 0 and token_status["youtube_connected"])
-            bch_copy = dict(bch)
+            bch_copy = dict(settings._heal_channel_dict(dict(bch)))
             bch_copy["has_own_token"] = has_own
             bch_copy["youtube_connected"] = is_conn
             bch_copy["token_channel_title"] = ch_title
@@ -3169,7 +3174,7 @@ async def get_accounts_and_channels() -> Dict[str, Any]:
             "drive_storage": acc.get("drive_storage", "2 TB Google One"),
             "youtube_quota_daily": acc.get("youtube_quota_daily", 10000),
             "has_client_secret": token_status["has_client_secret"],
-            "youtube_connected": token_status["youtube_connected"],
+            "youtube_connected": token_status["youtube_connected"] or any(b.get("youtube_connected") for b in enriched_bchannels),
             "drive_connected": token_status["drive_connected"],
             "brand_channels": enriched_bchannels,
             "channels_count": len(enriched_bchannels)
@@ -3905,15 +3910,20 @@ async def update_brand_channel(account_id: str, channel_id: str, req: ChannelCre
     if not channel:
         raise HTTPException(status_code=404, detail="Không tìm thấy kênh cần sửa")
 
-    channel["name"] = req.name.strip()
-    channel["niche"] = (req.niche or "").strip()
-    channel["language"] = (req.language or "en").strip()
+    if req.name and req.name.strip():
+        channel["name"] = req.name.strip()
+    if req.niche and req.niche.strip():
+        channel["niche"] = req.niche.strip()
+    if req.language and req.language.strip():
+        channel["language"] = req.language.strip()
     channel["visual_mode"] = req.visual_mode or channel.get("visual_mode", "auto")
-    channel["preferred_voice"] = req.preferred_voice or channel.get("preferred_voice", "en-US-ChristopherNeural")
+    if req.preferred_voice and req.preferred_voice.strip():
+        channel["preferred_voice"] = req.preferred_voice.strip()
     channel["schedule"] = {
         "publish_hour_utc": req.publish_hour_utc or 21,
         "days": req.days or ["monday", "wednesday", "friday", "sunday"]
     }
+    settings._heal_channel_dict(channel)
 
     target_account_id = req.google_account or account_id
     if target_account_id != account_id:
@@ -3927,11 +3937,12 @@ async def update_brand_channel(account_id: str, channel_id: str, req: ChannelCre
     for fc in flat_channels:
         if fc.get("id") == channel_id:
             fc["name"] = channel["name"]
-            fc["niche"] = channel["niche"]
-            fc["language"] = channel["language"]
-            fc["preferred_voice"] = channel["preferred_voice"]
+            fc["niche"] = channel.get("niche", fc.get("niche", ""))
+            fc["language"] = channel.get("language", fc.get("language", "en"))
+            fc["preferred_voice"] = channel.get("preferred_voice", fc.get("preferred_voice", "en-US-ChristopherNeural"))
             fc["visual_mode"] = channel["visual_mode"]
             fc["google_account"] = target_account_id
+            settings._heal_channel_dict(fc)
 
     _write_channels_yaml(cfg)
 

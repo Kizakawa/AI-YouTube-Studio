@@ -116,6 +116,16 @@ class VoiceAgent:
             "são", "isso", "até", "mas", "nas", "nos", "dos", "das", "onça",
             "oceano", "mistério", "ciência", "metros", "selva", "amazônia", "pantanal",
             "sucuri", "jacaré", "quando", "apenas", "fundo", "água", "águas",
+            "eles", "elas", "nunca", "jamais", "deveriam", "caminho", "coração",
+            "cerrado", "abismo", "puxa", "tudo", "baixo", "inteiros", "marinha",
+            "gravou", "ninguém", "explica", "batalha", "duelo", "floresta",
+            "sobrevive", "rainha", "fantasma", "contra", "sozinha", "bando",
+            "ariranha", "lobo", "tatu", "fossa", "navios", "buraco", "engole",
+            "olham", "noite", "cérebro", "cientistas", "segredo", "verdade",
+            "perigo", "mortal", "ataque", "veneno", "predador", "garras",
+            "força", "mordida", "quase", "porque", "seu", "sua", "seus", "suas",
+            "este", "esta", "esse", "essa", "muito", "todos", "todas", "depois",
+            "antes", "agora", "sempre", "onde", "quem",
         }
         words = set(re.findall(r'\b\w+\b', t_low))
         if len(words.intersection(pt_words)) >= 2:
@@ -231,6 +241,9 @@ class VoiceAgent:
         """
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         sem = asyncio.Semaphore(2)
+        # Xác định giọng đọc đồng nhất trên toàn bộ kịch bản (tránh trường hợp 1 câu ngắn bị nhận diện lệch ngôn ngữ)
+        full_script_text = " ".join(getattr(s, "narration", "") or "" for s in scenes)
+        global_safe_voice = self._resolve_safe_voice(full_script_text, voice or self.default_voice)
 
         async def _process_single_scene(scene: SceneContract) -> SceneContract:
             async with sem:
@@ -241,7 +254,7 @@ class VoiceAgent:
                 meta_path = Path(output_dir) / f"scene_{scene.scene_id:03d}.meta.json"
                 words_meta_path = str(Path(output_dir) / f"scene_{scene.scene_id:03d}.words.jsonl")
 
-                safe_voice = self._resolve_safe_voice(scene.narration, voice or self.default_voice)
+                safe_voice = self._resolve_safe_voice(scene.narration, global_safe_voice)
                 expected_rate = self.resolve_optimal_tts_rate(safe_voice, niche=niche, explicit_rate=rate)
 
                 # Checkpoint: Chỉ tái sử dụng audio từ trước nếu file audio > 1KB VÀ metadata khớp chính xác text, voice, rate và đã qua mastering v3

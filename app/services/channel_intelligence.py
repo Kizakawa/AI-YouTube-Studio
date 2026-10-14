@@ -257,6 +257,49 @@ Requirements:
 # 2. THU THẬP DANH MỤC VIDEO & TOP PERFORMER CỦA KÊNH
 # ──────────────────────────────────────────────────────────────────────────────
 
+def is_off_niche_video_title(title: str, niche_id: str) -> bool:
+    """
+    Phát hiện các video bị đăng nhầm ngách trong lịch sử kênh (ví dụ: video bóng đá / tâm lý học
+    trên kênh động vật hoang dã hoặc bí ẩn đại dương; hoặc video y tế / tâm lý trên kênh lịch sử)
+    để KHÔNG BAO GIỜ lấy làm mẫu Winner Cloner hay gợi ý chủ đề tương tự.
+    """
+    if not title:
+        return False
+    t_low = title.lower()
+    n_low = (niche_id or "").lower()
+
+    # Từ khóa bóng đá / thể thao (ngoại lai với cả 7 kênh hiện tại)
+    football_terms = ("bayern", "rondo", "football", "futebol", "passes que destru", "soccer", "champions league", "messi", "ronaldo")
+    if any(k in t_low for k in football_terms):
+        return True
+
+    if "wildlife" in n_low or "predator" in n_low:
+        # Kênh động vật săn mồi: cấm các tiêu đề tâm lý học xã hội / con người / vũ trụ
+        off_wildlife = (
+            "smart people", "loud idiots", "narcissist", "manipulat", "gaslight",
+            "sociopath", "serial killer", "lie to you", "using you", "interrogat",
+            "black hole", "galaxy", "solar system"
+        )
+        if any(k in t_low for k in off_wildlife):
+            return True
+
+    elif "alternate" in n_low or "history" in n_low:
+        # Kênh lịch sử giả định: cấm các tiêu đề tâm lý học cá nhân hoặc tiêm chủng/y tế hiện đại
+        off_history = (
+            "smart people", "loud idiots", "using you", "narcissist", "manipulat",
+            "vaccine", "injection", "deltoid", "shoulder muscle", "doctor"
+        )
+        if any(k in t_low for k in off_history):
+            return True
+
+    elif "deep_sea" in n_low or "myster" in n_low:
+        off_mystery = ("smart people", "loud idiots", "using you", "narcissist")
+        if any(k in t_low for k in off_mystery):
+            return True
+
+    return False
+
+
 def get_channel_existing_portfolio(channel_id: str) -> Dict[str, Any]:
     """
     Thu thập toàn bộ dữ liệu lịch sử nội dung của kênh từ 2 nguồn:
@@ -339,14 +382,16 @@ def get_channel_existing_portfolio(channel_id: str) -> Dict[str, Any]:
                 if audit_vids_parsed:
                     # Sắp xếp lượt xem giảm dần
                     audit_vids_parsed.sort(key=lambda x: x["views_num"], reverse=True)
-                    # Video đỉnh cao (views >= 100 hoặc video top 1 có views > 20)
-                    for pv in audit_vids_parsed:
-                        if pv["views_num"] >= 100 or (pv["views_num"] == audit_vids_parsed[0]["views_num"] and pv["views_num"] > 20):
+                    on_niche_vids = [pv for pv in audit_vids_parsed if not is_off_niche_video_title(pv["title"], channel_niche)]
+                    best_on_niche_views = on_niche_vids[0]["views_num"] if on_niche_vids else 0
+                    # Video đỉnh cao (views >= 100 hoặc video đúng ngách top 1 có views > 15)
+                    for pv in on_niche_vids:
+                        if pv["views_num"] >= 100 or (pv["views_num"] == best_on_niche_views and pv["views_num"] > 15):
                             if pv not in top_performers:
                                 top_performers.append(pv)
-                    # Video flop (views <= 25 hoặc nhóm views thấp nhất kênh cần né tránh)
+                    # Video flop hoặc video lệch ngách (cần tuyệt đối né tránh lặp lại)
                     for pv in reversed(audit_vids_parsed):
-                        if pv["views_num"] <= 25 and pv not in flop_videos and pv not in top_performers:
+                        if (pv["views_num"] <= 25 or is_off_niche_video_title(pv["title"], channel_niche)) and pv not in flop_videos and pv not in top_performers:
                             flop_videos.append(pv)
     except Exception as e:
         logger.warning(f"[Portfolio] Lỗi đọc channel_audit_latest.json cho {channel_id}: {e}")
@@ -361,7 +406,8 @@ def get_channel_existing_portfolio(channel_id: str) -> Dict[str, Any]:
                 if t and t not in existing_titles:
                     existing_titles.append(t)
                 v_num = vid.get("views_num", 0)
-                if vid.get("is_top_performer") or v_num >= 300:
+                off_niche = is_off_niche_video_title(t, channel_niche)
+                if not off_niche and (vid.get("is_top_performer") or v_num >= 300):
                     top_obj = {
                         "title": t,
                         "views_num": v_num,
@@ -370,7 +416,7 @@ def get_channel_existing_portfolio(channel_id: str) -> Dict[str, Any]:
                     }
                     if not any(x["title"] == t for x in top_performers):
                         top_performers.append(top_obj)
-                elif v_num < 30 and not any(x["title"] == t for x in flop_videos):
+                elif (v_num < 30 or off_niche) and not any(x["title"] == t for x in flop_videos):
                     flop_videos.append({
                         "title": t,
                         "views_num": v_num,

@@ -89,6 +89,37 @@ def create_configured_engine(raw_url: str):
         except Exception:
             pass
 
+    try:
+        import sqlite3
+        local_sqlite_path = Path(db_clean_path).resolve() if db_clean_path else (Path(settings.BASE_DIR) / "storage" / "ai_youtube.db")
+        if local_sqlite_path.exists():
+            with sqlite3.connect(str(local_sqlite_path)) as s_conn:
+                cur = s_conn.cursor()
+                cur.execute("PRAGMA table_info(video_jobs)")
+                s_cols = {r[1] for r in cur.fetchall()}
+                if s_cols:
+                    for c_name, c_type in {
+                        "description": "TEXT",
+                        "scenes_json": "TEXT",
+                        "audio_duration_ms": "INTEGER",
+                        "render_manifest": "TEXT",
+                        "error_message": "TEXT",
+                        "subtitle_path": "VARCHAR(255)",
+                        "updated_at": "DATETIME",
+                        "progress_percent": "INTEGER DEFAULT 0",
+                        "progress_message": "VARCHAR(255)",
+                        "quality_scores": "TEXT",
+                        "is_auto_generated": "INTEGER DEFAULT 0",
+                        "approval_deadline": "DATETIME",
+                        "thumbnail_path": "VARCHAR(500)",
+                        "thumbnail_vertical_path": "VARCHAR(500)",
+                    }.items():
+                        if c_name not in s_cols:
+                            cur.execute(f"ALTER TABLE video_jobs ADD COLUMN {c_name} {c_type}")
+                    s_conn.commit()
+    except Exception:
+        pass
+
     return eng, db_url
 
 Base = declarative_base()
