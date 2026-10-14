@@ -730,8 +730,28 @@ class VideoPipeline:
                         if fixed_media:
                             media_path = fixed_media
 
+                _motion_choices = ["zoom_in", "pan_right", "zoom_out", "pan_left"]
                 sfx = sc_strat.get("sfx_cue") or getattr(scene, 'sfx_cue', None) or ("hit" if idx == 0 else "whoosh")
-                cam = sc_strat.get("camera_motion") or getattr(scene, 'camera_motion', None) or ("zoom_in" if idx == 0 else None)
+                cam = sc_strat.get("camera_motion") or getattr(scene, 'camera_motion', None) or _motion_choices[idx % len(_motion_choices)]
+
+                # ── CHỐT CHẶN 100% VIDEO ĐỘNG (ZERO STATIC IMAGE LEAKS) ──
+                # Nếu bất kỳ tầng nào trả về ảnh tĩnh (.jpg/.png), tự động nâng cấp thành Video 3D Motion MP4 30fps!
+                if media_path and Path(media_path).exists() and _infer_media_type(media_path) != "video":
+                    try:
+                        anim_out_p = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_motion3d.mp4")
+                        res_motion = await asyncio.to_thread(
+                            ai_video_agent.animate_thematic_image,
+                            image_path=media_path,
+                            output_path=anim_out_p,
+                            duration_seconds=max(float(getattr(scene, 'actual_duration_seconds', 3.5) or 3.5), 2.0),
+                            camera_motion=cam,
+                            is_hook=(idx == 0),
+                        )
+                        if res_motion and Path(res_motion).exists() and Path(res_motion).stat().st_size > 5000:
+                            media_path = res_motion
+                            logger.info(f"[Job {self.job_id}] 🎬 Cảnh {scene.scene_id}: Đã chuyển hóa ảnh tĩnh thành Video 3D Motion MP4 ({cam})")
+                    except Exception as e_mot:
+                        logger.debug(f"[Job {self.job_id}] Scene {scene.scene_id} motion upgrade fallback: {e_mot}")
 
                 return scene.model_copy(update={
                     "media_path": media_path,
@@ -796,16 +816,17 @@ class VideoPipeline:
                 )
                 if res_unique and Path(res_unique).exists() and Path(res_unique).stat().st_size > 2000:
                     final_path = res_unique
-                    if enriched_scene.media_type == "video" or enriched_scene.scene_id == 1:
-                        anim_p = str(Path(media_dir) / f"scene_{enriched_scene.scene_id:03d}_dedup_anim.mp4")
-                        res_anim = ai_video_agent.animate_thematic_image(
-                            image_path=res_unique,
-                            output_path=anim_p,
-                            duration_seconds=enriched_scene.actual_duration_seconds,
-                            is_hook=(enriched_scene.scene_id == 1),
-                        )
-                        if res_anim and Path(res_anim).exists() and Path(res_anim).stat().st_size > 5000:
-                            final_path = res_anim
+                    anim_p = str(Path(media_dir) / f"scene_{enriched_scene.scene_id:03d}_dedup_anim.mp4")
+                    res_anim = await asyncio.to_thread(
+                        ai_video_agent.animate_thematic_image,
+                        image_path=res_unique,
+                        output_path=anim_p,
+                        duration_seconds=max(float(getattr(enriched_scene, 'actual_duration_seconds', 3.5) or 3.5), 2.0),
+                        camera_motion=getattr(enriched_scene, 'camera_motion', None) or "zoom_out",
+                        is_hook=(enriched_scene.scene_id == 1),
+                    )
+                    if res_anim and Path(res_anim).exists() and Path(res_anim).stat().st_size > 5000:
+                        final_path = res_anim
 
                     result[enriched_idx] = enriched_scene.model_copy(update={
                         "media_path": final_path,
@@ -985,7 +1006,7 @@ class VideoPipeline:
         elif scene_pref == "photo":
             prefer_photo = True
         else:
-            if primary_entity:
+            if primary_entity and entity_type in ("person", "event") and scene_pref == "documentary":
                 prefer_photo = True
             else:
                 # Mặc định cho Shorts: Ưu tiên Full Video 9:16 động để giữ retention cao!

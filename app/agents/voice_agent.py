@@ -183,10 +183,13 @@ class VoiceAgent:
         cả nội dung lời thoại (narration) và giọng đọc (voice) khớp chính xác 100%.
         """
         Path(output_dir).mkdir(parents=True, exist_ok=True)
-        sem = asyncio.Semaphore(3)
+        sem = asyncio.Semaphore(2)
 
         async def _process_single_scene(scene: SceneContract) -> SceneContract:
             async with sem:
+                # Giãn nhẹ nhịp mở WebSocket tránh bị Bing Edge-TTS chặn 403 khi bắn đồng loạt 10-12 cảnh
+                if scene.scene_id > 1:
+                    await asyncio.sleep(0.18 * ((scene.scene_id - 1) % 3))
                 scene_audio_path = str(Path(output_dir) / f"scene_{scene.scene_id:03d}.mp3")
                 meta_path = Path(output_dir) / f"scene_{scene.scene_id:03d}.meta.json"
                 words_meta_path = str(Path(output_dir) / f"scene_{scene.scene_id:03d}.words.jsonl")
@@ -230,22 +233,17 @@ class VoiceAgent:
                 last_err = None
                 candidate_voices = [safe_voice]
                 if safe_voice.startswith("vi-"):
-                    if "HoaiMy" in safe_voice:
-                        candidate_voices.append("vi-VN-NamMinhNeural")
-                    else:
-                        candidate_voices.append("vi-VN-HoaiMyNeural")
+                    for v_alt in ("vi-VN-NamMinhNeural", "vi-VN-HoaiMyNeural"):
+                        if v_alt not in candidate_voices:
+                            candidate_voices.append(v_alt)
                 elif safe_voice.startswith("pt-"):
-                    if "Antonio" in safe_voice:
-                        candidate_voices.append("pt-BR-FranciscaNeural")
-                    else:
-                        candidate_voices.append("pt-BR-AntonioNeural")
+                    for v_alt in ("pt-BR-AntonioNeural", "pt-BR-FranciscaNeural", "pt-BR-ThalitaMultilingualNeural"):
+                        if v_alt not in candidate_voices:
+                            candidate_voices.append(v_alt)
                 else:
-                    if "Andrew" in safe_voice:
-                        candidate_voices.extend(["en-US-GuyNeural", "en-US-ChristopherNeural"])
-                    elif "Guy" in safe_voice:
-                        candidate_voices.extend(["en-US-AndrewNeural", "en-US-ChristopherNeural"])
-                    else:
-                        candidate_voices.extend(["en-US-GuyNeural", "en-US-AndrewNeural"])
+                    for v_alt in ("en-US-AndrewNeural", "en-US-BrianNeural", "en-US-ChristopherNeural", "en-US-GuyNeural", "en-US-AriaNeural"):
+                        if v_alt not in candidate_voices:
+                            candidate_voices.append(v_alt)
 
                 clean_text = re.sub(r'^[^\w\s\(\)]+', '', scene.narration).strip()
                 if not clean_text or len(clean_text) < 2:
@@ -271,11 +269,16 @@ class VoiceAgent:
                                 raise RuntimeError("Audio file empty or incomplete")
                         except Exception as err_tts:
                             last_err = err_tts
-                            if "NoAudioReceived" in str(type(err_tts).__name__) or "No audio" in str(err_tts):
+                            err_str = f"{type(err_tts).__name__}: {err_tts}"
+                            is_403_or_ws = any(
+                                k in err_str
+                                for k in ("NoAudioReceived", "No audio", "403", "Invalid response status", "WSServerHandshakeError", "ClientResponseError")
+                            )
+                            if is_403_or_ws:
                                 try:
                                     import shutil, subprocess
                                     edge_cli = shutil.which("edge-tts") or str(Path(sys.executable).parent / "edge-tts.exe")
-                                    cmd = [edge_cli, "--text", clean_text, "--voice", c_voice, "--write-media", scene_audio_path]
+                                    cmd = [edge_cli, "--text", clean_text, "--voice", c_voice, f"--rate={tts_rate}", "--write-media", scene_audio_path]
                                     res = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, timeout=25)
                                     if res.returncode == 0 and Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024:
                                         safe_voice = c_voice
@@ -284,22 +287,31 @@ class VoiceAgent:
                                         break
                                 except Exception:
                                     pass
-                            logger.warning(f"Scene {scene.scene_id}: Lỗi TTS '{c_voice}' (lần {attempt+1}/3): {err_tts}")
-                            await asyncio.sleep(0.5)
+                            backoff_s = (1.2 * (attempt + 1)) if is_403_or_ws else 0.6
+                            logger.warning(f"Scene {scene.scene_id}: Lỗi TTS '{c_voice}' (lần {attempt+1}/3, nghỉ {backoff_s:.1f}s): {err_tts}")
+                            await asyncio.sleep(backoff_s)
                     if success:
                         break
 
+                # Cứu hộ khẩn cấp qua Google Translate TTS HTTP MP3 nếu toàn bộ Edge-TTS WebSocket & CLI bị Bing chặn 403 tạm thời
                 if not success:
                     try:
-                        import shutil, subprocess
-                        edge_cli = shutil.which("edge-tts") or str(Path(sys.executable).parent / "edge-tts.exe")
-                        cmd = [edge_cli, "--text", clean_text, "--voice", safe_voice, "--write-media", scene_audio_path]
-                        res = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, timeout=25)
-                        if res.returncode == 0 and Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024:
+                        import requests as _req
+                        from urllib.parse import quote as _quote
+                        tl = "vi" if safe_voice.startswith("vi-") else ("pt" if safe_voice.startswith("pt-") else "en")
+                        gtts_url = f"https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl={tl}&q={_quote(clean_text[:200])}"
+                        r_tts = await asyncio.to_thread(
+                            _req.get,
+                            gtts_url,
+                            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+                            timeout=15,
+                        )
+                        if r_tts.status_code == 200 and len(r_tts.content) > 1024:
+                            Path(scene_audio_path).write_bytes(r_tts.content)
                             success = True
-                            logger.info(f"Scene {scene.scene_id}: ✅ Tạo audio thành công qua CLI fallback ({Path(scene_audio_path).stat().st_size:,} bytes)")
-                    except Exception as ex_cli:
-                        logger.debug(f"Scene {scene.scene_id}: CLI fallback error: {ex_cli}")
+                            logger.info(f"Scene {scene.scene_id}: 🛡️ Đã cứu hộ audio thành công qua Google HTTP TTS ({tl}, {len(r_tts.content):,} bytes)")
+                    except Exception as ex_gtts:
+                        logger.debug(f"Scene {scene.scene_id}: Google HTTP TTS fallback error: {ex_gtts}")
 
                 if not success:
                     raise last_err or RuntimeError(f"Không thể sinh audio cho cảnh {scene.scene_id}")

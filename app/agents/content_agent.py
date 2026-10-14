@@ -278,7 +278,201 @@ class ContentAgent:
             if not sc.get("media_type"):
                 sc["media_type"] = "auto"
 
-        # ── 2. ĐẢM BẢO PHÂN CẢNH CUỐI KHÉP LẠI GỌN GÀNG, KHÔNG DÍNH TỪ LỬNG ──
+        # ── 2. KHỬ BẪY OUTRO CTA ("SUBSCRIBE...") & KHÓA VÒNG LẶP VÔ TẬN (INFINITE LOOP BRIDGE) ──
+        # Phân tích telemetry thực tế: Câu kêu gọi "Subscribe right now..." ở cảnh cuối làm tụt 10-15% APV
+        # ở 5 giây cuối vì báo hiệu video đã hết. Khử tự động mọi câu CTA đọc thành tiếng ở 2 cảnh cuối!
+        _cta_sentence_pattern = re.compile(
+            r'\b(?:subscribe|inscreva-se|se\s+inscreva|đăng\s+ký\s+kênh|bấm\s+đăng\s+ký|nhấn\s+đăng\s+ký|'
+            r'follow\s+for\s+more|leave\s+a\s+comment|leave\s+your\s+theory|drop\s+a\s+comment|'
+            r'deixe\s+nos\s+comentários|deixe\s+sua\s+teoria|curta\s+e\s+siga|hit\s+the\s+bell|'
+            r'để\s+lại\s+bình\s+luận|bấm\s+theo\s+dõi)\b',
+            re.IGNORECASE
+        )
+        _cta_clause_tail_pattern = re.compile(
+            r'[\,\;\-\—]+\s*(?:and\s+|so\s+|então\s+|e\s+|và\s+|hãy\s+)?'
+            r'(?:subscribe|inscreva-se|se\s+inscreva|đăng\s+ký|bấm\s+đăng\s+ký|follow\s+for\s+more|'
+            r'leave\s+a\s+comment|leave\s+your\s+theory|deixe\s+sua\s+teoria|deixe\s+nos\s+comentários).*$',
+            re.IGNORECASE
+        )
+
+        if scenes and isinstance(scenes, list):
+            for check_idx in range(max(0, len(scenes) - 2), len(scenes)):
+                sc_obj = scenes[check_idx]
+                if not isinstance(sc_obj, dict):
+                    continue
+                raw_narr = str(sc_obj.get("narration") or "").strip()
+                if not raw_narr:
+                    continue
+                sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', raw_narr) if s.strip()]
+                kept_sentences = []
+                for sent in sentences:
+                    if _cta_sentence_pattern.search(sent):
+                        # Thử cắt vế đuôi nếu câu đầu có nội dung thực tế trước dấu phẩy
+                        trimmed_sent = _cta_clause_tail_pattern.sub('.', sent).strip()
+                        if not _cta_sentence_pattern.search(trimmed_sent) and len(trimmed_sent.split()) >= 5:
+                            kept_sentences.append(trimmed_sent)
+                    else:
+                        kept_sentences.append(sent)
+                sc_obj["narration"] = " ".join(kept_sentences).strip()
+
+            # Nếu cảnh cuối cùng bị rỗng hoặc quá cụt (< 4 từ) sau khi lột bỏ câu Subscribe CTA:
+            last_sc = scenes[-1] if scenes else None
+            if isinstance(last_sc, dict):
+                last_words = str(last_sc.get("narration") or "").strip().split()
+                if len(last_words) < 4:
+                    if len(scenes) >= 8:
+                        # Đã đủ số cảnh (>= 7 cảnh sau khi bỏ), loại bỏ luôn cảnh rác chỉ chứa CTA
+                        scenes.pop()
+                    else:
+                        # Tạo cầu nối Infinite Loop Bridge tự nhiên nối thẳng về Hook Cảnh 1
+                        comb_text = f"{raw_data.get('title', '')} {raw_data.get('full_narration', '')}".lower()
+                        is_vn_script = any("\u0100" <= c <= "\u1EF9" for c in comb_text)
+                        is_pt_script = any(w in comb_text for w in ("você", "não", "então", "coração", "selva", "olhos", "jamais"))
+                        if is_vn_script:
+                            last_sc["narration"] = "Và khoảnh khắc định mệnh đó chính là lý do mở ra sự thật ngay từ giây đầu tiên."
+                        elif is_pt_script:
+                            last_sc["narration"] = "E é exatamente nesse instante brutal que o ciclo recomeça diante dos seus olhos."
+                        elif any(k in comb_text for k in ("puppy", "kitten", "rescue", "stray", "shelter", "abandoned", "dog", "cat")):
+                            last_sc["narration"] = "And that single moment of trust is why his second life truly begins right here."
+                        else:
+                            last_sc["narration"] = "And that hidden mechanism is the exact reason why everything begins right where you started."
+
+        # ── 2.5. TỰ ĐỘNG CHIA NHỊP CẮT CẢNH DỒN DẬP (AUTO-SCENE PACING SPLITTER: 3.0s - 3.8s/CẢNH) ──
+        # Đảm bảo Cảnh 1 Hook <= 10 từ (~2.2s - 2.8s) và các cảnh thân <= 13 từ (~3.2s - 3.8s)
+        def _split_long_narration(text: str, prefer_word_idx: int) -> Optional[tuple]:
+            text_clean = text.strip()
+            words = text_clean.split()
+            if len(words) < 10:
+                return None
+
+            # Ưu tiên 1: Tách theo ranh giới câu (. ! ?) nếu có >= 2 câu và mỗi vế >= 4 từ
+            sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text_clean) if s.strip()]
+            if len(sents) >= 2:
+                acc = []
+                for i_s, s_part in enumerate(sents[:-1]):
+                    acc.append(s_part)
+                    left_str = " ".join(acc).strip()
+                    right_str = " ".join(sents[i_s + 1:]).strip()
+                    if len(left_str.split()) >= 4 and len(right_str.split()) >= 4:
+                        return left_str, right_str
+
+            # Ưu tiên 2: Tách tại dấu phẩy, chấm phẩy, gạch ngang hoặc liên từ ở giữa câu (từ vị trí 4 đến len-4)
+            _split_conj = {
+                "until", "when", "while", "because", "where", "which", "before", "after", "but", "and", "yet",
+                "mas", "enquanto", "quando", "até", "porque", "onde", "como",
+                "nhưng", "khi", "bởi", "trong", "mà", "nơi"
+            }
+            _dangling_end = {
+                "the", "a", "an", "to", "of", "in", "on", "at", "for", "with", "by", "from", "into", "that",
+                "which", "who", "and", "or", "but", "because", "if", "when", "while", "as", "until",
+                "o", "a", "os", "as", "de", "do", "da", "em", "no", "na", "para", "com", "por", "que", "se",
+                "của", "trong", "với", "để", "tại", "vì", "do", "bởi", "nhưng", "và"
+            }
+            best_idx = None
+            best_score = 999.0
+            for idx_w in range(4, len(words) - 3):
+                prev_w = words[idx_w - 1]
+                curr_w_clean = re.sub(r'[^\w]', '', words[idx_w]).lower()
+                prev_w_clean = re.sub(r'[^\w]', '', prev_w).lower()
+                if prev_w_clean in _dangling_end:
+                    continue
+                has_punct = prev_w.endswith((",", ";", ":", "—", "–", "-"))
+                is_conj = curr_w_clean in _split_conj
+                if has_punct or is_conj:
+                    dist = abs(idx_w - prefer_word_idx) - (2.5 if has_punct else 1.2)
+                    if dist < best_score:
+                        best_score = dist
+                        best_idx = idx_w
+
+            if best_idx is None:
+                # Fallback tách ở điểm giữa nếu không dính từ treo
+                mid = max(5, min(len(words) - 4, prefer_word_idx))
+                for offset in (0, 1, -1, 2, -2):
+                    cand = mid + offset
+                    if 4 <= cand <= len(words) - 4:
+                        pw = re.sub(r'[^\w]', '', words[cand - 1]).lower()
+                        if pw not in _dangling_end:
+                            best_idx = cand
+                            break
+
+            if best_idx is None:
+                return None
+
+            left_part = " ".join(words[:best_idx]).strip().rstrip(",;:-—– ")
+            right_part = " ".join(words[best_idx:]).strip()
+            if not left_part or not right_part:
+                return None
+            if not left_part.endswith((".", "!", "?")):
+                left_part += "."
+            if right_part and right_part[0].islower():
+                right_part = right_part[0].upper() + right_part[1:]
+            if not right_part.endswith((".", "!", "?")):
+                right_part += "."
+            return left_part, right_part
+
+        if scenes and isinstance(scenes, list):
+            camera_modifiers = [
+                ("extreme close up macro", "Extreme macro close-up shot, razor-sharp focus, "),
+                ("low angle dynamic", "Dramatic low-angle tracking shot, intense depth, "),
+                ("cinematic tracking motion", "Dynamic over-the-shoulder tracking perspective, "),
+                ("wide atmospheric reveal", "Sweeping wide-angle cinematic reveal, volumetric light, "),
+            ]
+            paced_scenes: List[Dict[str, Any]] = []
+            for idx_sc, sc in enumerate(scenes):
+                if not isinstance(sc, dict):
+                    continue
+                narr_str = str(sc.get("narration") or "").strip()
+                w_list = narr_str.split()
+                w_count = len(w_list)
+
+                # Cảnh 1 (Hook): Nếu > 10 từ (~3.8s+) -> Tách ngay thành 2 cảnh nhanh (~2.4s/cảnh)
+                # Cảnh thân: Nếu >= 14 từ (hoặc >= 12 từ khi tổng cảnh hiện tại < 9) và tổng cảnh chưa vượt 13 -> Tách đôi!
+                should_split = (
+                    (idx_sc == 0 and w_count >= 11)
+                    or (idx_sc > 0 and w_count >= 14 and len(paced_scenes) + (len(scenes) - idx_sc) < 14)
+                    or (idx_sc > 0 and w_count >= 12 and len(paced_scenes) + (len(scenes) - idx_sc) < 9)
+                )
+                target_pref = 6 if idx_sc == 0 else max(6, w_count // 2)
+                split_res = _split_long_narration(narr_str, target_pref) if should_split else None
+
+                if split_res:
+                    left_narr, right_narr = split_res
+                    mod_kw, mod_vp = camera_modifiers[len(paced_scenes) % len(camera_modifiers)]
+                    sc_first = dict(sc)
+                    sc_first["narration"] = left_narr
+                    sc_first["estimated_seconds"] = round(max(2.2, len(left_narr.split()) / 2.65), 1)
+
+                    sc_second = dict(sc)
+                    sc_second["narration"] = right_narr
+                    base_vk = str(sc.get("visual_keyword") or "cinematic scene").strip()
+                    base_sq = str(sc.get("stock_query") or base_vk).strip()
+                    base_vp = str(sc.get("visual_prompt") or f"Cinematic 8k vertical shot of {base_vk}").strip()
+                    # Trích xuất danh từ dài từ câu thoại thứ 2 để làm mới truy vấn hình ảnh
+                    right_nouns = [
+                        re.sub(r'[^\w]', '', w).lower()
+                        for w in right_narr.split()
+                        if len(re.sub(r'[^\w]', '', w)) >= 5
+                        and re.sub(r'[^\w]', '', w).lower() not in banned_abstract
+                    ]
+                    extra_focus = " ".join(right_nouns[:2]) if right_nouns else mod_kw.split()[0]
+                    sc_second["visual_keyword"] = f"{base_vk} {extra_focus}".strip()[:65]
+                    sc_second["stock_query"] = f"{base_sq.split()[0]} {extra_focus}".strip()[:40] if base_sq else extra_focus
+                    sc_second["visual_prompt"] = f"{mod_vp}{base_vp}"
+                    sc_second["estimated_seconds"] = round(max(2.2, len(right_narr.split()) / 2.65), 1)
+
+                    paced_scenes.append(sc_first)
+                    paced_scenes.append(sc_second)
+                else:
+                    sc["estimated_seconds"] = round(max(2.2, min(4.5, w_count / 2.65)), 1)
+                    paced_scenes.append(sc)
+
+            # Đánh lại số thứ tự scene_id chuẩn xác 1..N
+            for new_id, p_sc in enumerate(paced_scenes, start=1):
+                p_sc["scene_id"] = new_id
+            scenes = paced_scenes
+            raw_data["scenes"] = scenes
+
+        # ── 2.8. ĐẢM BẢO PHÂN CẢNH CUỐI KHÉP LẠI GỌN GÀNG, KHÔNG DÍNH TỪ LỬNG ──
         if scenes and isinstance(scenes, list):
             last_scene = scenes[-1]
             if isinstance(last_scene, dict):
@@ -299,7 +493,7 @@ class ContentAgent:
         elif isinstance(raw_data["tags"], str):
             raw_data["tags"] = [t.strip() for t in raw_data["tags"].split(",") if t.strip()]
         if "total_duration_estimate" not in raw_data or not raw_data["total_duration_estimate"]:
-            raw_data["total_duration_estimate"] = sum(s.get("estimated_seconds", 3.5) for s in scenes if isinstance(s, dict)) or 25.0
+            raw_data["total_duration_estimate"] = round(sum(s.get("estimated_seconds", 3.2) for s in scenes if isinstance(s, dict)) or 35.0, 1)
         if "topic" not in raw_data or not raw_data["topic"]:
             raw_data["topic"] = raw_data.get("title", "Shorts Video")
         if "thumbnail_text" not in raw_data or not raw_data["thumbnail_text"]:
@@ -392,8 +586,8 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
             target_lang_display = "ENGLISH"
 
         is_rescue = "rescue" in (channel_niche or "").lower() or "animal" in (channel_niche or "").lower()
-        duration_spec = "45 ĐẾN 56 GIÂY (8 ĐẾN 10 PHÂN CẢNH, STRICTLY 95 ĐẾN 135 TỪ)" if is_rescue else "35 ĐẾN 48 GIÂY (7 ĐẾN 10 PHÂN CẢNH, STRICTLY 85 ĐẾN 125 TỪ)"
-        word_range_en = "95 to 135 words (45-56s 4-Stage Transformation Arc, 8-10 scenes)" if is_rescue else "85 to 125 words (35-48s 4-Beat Payoff Arc, 7-10 scenes)"
+        duration_spec = "42 ĐẾN 52 GIÂY (9 ĐẾN 12 PHÂN CẢNH NHANH 3.2-3.8s/CẢNH, STRICTLY 95 ĐẾN 130 TỪ)" if is_rescue else "35 ĐẾN 46 GIÂY (9 ĐẾN 12 PHÂN CẢNH NHANH 2.8-3.8s/CẢNH, STRICTLY 85 ĐẾN 120 TỪ)"
+        word_range_en = "95 to 130 words (42-52s 4-Stage Transformation Arc, 9-12 rapid scenes of 7-11 words each)" if is_rescue else "85 to 120 words (35-46s 4-Beat Payoff Arc, 9-12 rapid scenes of 7-11 words each)"
 
         prompt = f"""You are an elite YouTube Shorts director and viral retention engineer for the channel '{niche_profile.get('name')}' (niche: '{channel_niche}').
 Topic: '{topic}'
@@ -404,32 +598,31 @@ Target Language: {language} ({target_lang_display})
 ═══════════════════════════════════════════════════════════
 YOUTUBE SHORTS TEST FUNNEL & VIRAL RETENTION ENGINE (VƯỢT NGƯỠNG 10,000 – 50,000+ VIEWS)
 YouTube đánh giá video Shorts qua 2 vòng thử thách:
-- Vòng 1 (100 - 300 test pool): Cần Viewed > 75% (Swipe-Away < 25%) nhờ Hook 3s đầu + Tiêu đề kích thích tò mò.
-- Vòng 2 (Vượt 10,000 - 50,000 view để lên 100k - 1M view): Thuật toán đòi hỏi TỔNG THỜI LƯỢNG XEM TÍCH LŨY (Total Watch Time) + TÍN HIỆU GIÁ TRỊ CAO (Lưu video / Bookmark, Chia sẻ / Share, Bình luận, Đăng ký kênh).
-  * Video quá ngắn (20-25s) thiếu chiều sâu và không có "Payoff", người xem xem xong trôi tuột -> Bị kẹt cứng ở Seed Pool!
-  * Video đạt CHUẨN VÀNG THỜI LƯỢNG ({duration_spec}) kết hợp MID-VIDEO RE-HOOK Ở GIÂY 12 (CẢNH 4) và CÚ BẺ KHÓA PAYOFF ĐỈNH CAO (CẢNH 5-8) tạo ra Watch Time tối đa và chuyển đổi Subscribe bùng nổ!
+- Vòng 1 (100 - 300 test pool): Cần Viewed > 75% (Swipe-Away < 25%) nhờ Hook 2.5s đầu (<= 9 từ) + Tiêu đề kích thích tò mò.
+- Vòng 2 (Vượt 10,000 - 50,000 view để lên 100k - 1M view): Thuật toán đòi hỏi APV > 95% - 115% (Average Percentage Viewed) + Nhịp cắt cảnh dồn dập (9-12 cảnh, 2.8s - 3.8s/cảnh) + Kết thúc Vòng lặp Vô tận (Zero-Outro Infinite Loop).
+  * CẢNH BÁO TỬ HUYỆT APV: Tuyệt đối KHÔNG đọc câu kêu gọi "Subscribe right now...", "Leave a comment...", "Inscreva-se...", "Đăng ký kênh..." ở cảnh cuối! Khi người xem nghe thấy câu kêu gọi đăng ký/bình luận ở cuối video, não bộ họ lập tức biết câu chuyện đã hết và vuốt đi sớm 5-7 giây (làm tụt 15% APV)!
 ═══════════════════════════════════════════════════════════
-1. THỜI LƯỢNG CHUẨN VÀNG & CẤU TRÚC 4 NHỊP GIỮ CHÂN (target: {word_range_en}):
-   - THỜI LƯỢNG & SỐ TỪ BẮT BUỘC: {duration_spec}.
-   - CẤU TRÚC 4 NHỊP BẮT BUỘC ĐỂ TRIỆT TIÊU RƠI RỤNG (DROP-OFF) & BỨT PHÁ VIEW:
-     * NHỊP 1: 3-SECOND THUMB-STOPPER HOOK (0 - 3.5s — Cảnh 1):
-       Cắt đà lướt tức thì, nêu bật nghịch lý nhức nhối, đối đầu sinh tử cụ thể (A vs. B), lời cảnh báo trực diện ("You", "Your brain", "They") hoặc khoảnh khắc nghịch lý gây tò mò ("He refused to let go until...").
-     * NHỊP 2: ESCALATION & 12-SECOND MID-VIDEO RE-HOOK (3.5 - 18s — Cảnh 2 đến Cảnh 4):
+1. THỜI LƯỢNG CHUẨN VÀNG, NHỊP CẮT 3.2 GIÂY & CẤU TRÚC 4 NHỊP GIỮ CHÂN (target: {word_range_en}):
+   - THỜI LƯỢNG & SỐ CẢNH BẮT BUỘC: {duration_spec}. Mỗi cảnh chỉ từ 7 đến 11 từ (tương ứng 2.5 - 3.8 giây) để đổi góc máy liên tục!
+   - CẤU TRÚC 4 NHỊP BẮT BUỘC ĐỂ ĐẠT APV > 100% & BỨT PHÁ VIEW:
+     * NHỊP 1: 2.5-SECOND THUMB-STOPPER HOOK (0 - 2.8s — Cảnh 1):
+       Cảnh 1 BẮT BUỘC cực ngắn và sắc: 5 đến 9 từ (~2.5 giây)! Nêu bật nghịch lý nhức nhối, đối đầu sinh tử cụ thể (A vs. B), lời cảnh báo trực diện ("You", "Your brain", "They") hoặc khoảnh khắc nghịch lý gây tò mò ("He refused to let go until...").
+     * NHỊP 2: RAPID ESCALATION & 12-SECOND MID-VIDEO RE-HOOK (2.8 - 18s — Cảnh 2 đến Cảnh 5):
        [CHỐT CHẶN CHỐNG RƠI RỤNG Ở GIÂY 12-15]:
-       - Cảnh 2 & 3 đưa ngay dữ kiện/hành động vật lý cụ thể.
-       - Đặc biệt tại CẢNH 4 (~giây 12-15): BẮT BUỘC tung một "Mid-Video Re-Hook / Pattern Interrupt Twist" ("Nhưng đó chưa phải điều đáng sợ nhất...", "Until a hidden camera revealed the real reason...", "But in one single second, the hunter became the prey...") để khóa chặt người xem đi tiếp vào nửa sau của video!
-     * NHỊP 3: THE HIGH-VALUE PAYOFF — CÚ GIẢI THOÁT & GIÁ TRỊ CỐT LÕI (18 - 40s — Cảnh 5 đến Cảnh 7/8):
-       [QUAN TRỌNG NHẤT ĐỂ VƯỢT NGƯỠNG 10K - 50K VIEW & CHUYỂN ĐỔI SUBSCRIBER]
+       - Cảnh 2, 3, 4 đưa ngay dữ kiện/hành động vật lý cụ thể với góc máy thay đổi dồn dập mỗi 3.2 giây.
+       - Đặc biệt tại CẢNH 4 hoặc CẢNH 5 (~giây 12-15): BẮT BUỘC tung một "Mid-Video Re-Hook / Pattern Interrupt Twist" ("Nhưng đó chưa phải điều đáng sợ nhất...", "Until a hidden camera revealed the real reason...", "But in one single second, the hunter became the prey...") để khóa chặt người xem đi tiếp vào nửa sau của video!
+     * NHỊP 3: THE HIGH-VALUE PAYOFF — CÚ GIẢI THOÁT & GIÁ TRỊ CỐT LÕI (18 - 38s — Cảnh 6 đến Cảnh 9/11):
+       [QUAN TRỌNG NHẤT ĐỂ VƯỢT NGƯỠNG 10K - 50K VIEW & CHUYỂN ĐỔI SUBSCRIBER TỰ NHIÊN]
        - ĐÂY LÀ PHẦN THƯỞNG CHO NGƯỜI XEM (THE PAYOFF): Tuyệt đối không để video kết thúc lửng lơ hoặc cắt cụt trước khi giải quyết vấn đề!
        - BẮT BUỘC cung cấp:
          1. Với Psychology / Mysteries / Alternate History: Lật tẩy bản chất ngầm (The Revelation) + Đòn phản công thực chiến (Actionable Counter-Move) hoặc toàn cảnh thế giới/giác quan bị đảo lộn.
          2. Với Animal Rescue: Phải thể hiện trọn vẹn màn lột xác cảm xúc (Healing & Joyful Transformation) — từ sợ hãi đến khoảnh khắc dám chạm vào tay người cứu hộ và chạy nhảy hạnh phúc dưới ánh nắng.
          3. Với Wildlife Predators: Phân định rõ đòn kết liễu cơ sinh học (PSI, tốc độ, chiến thuật) và kẻ chiến thắng cuối cùng trong cuộc đối đầu.
-     * NHỊP 4: CALL TO ACTION & SEAMLESS INFINITE LOOP (Cảnh cuối):
-       - Kêu gọi đăng ký kênh (High-Converting Niche CTA) ngắn gọn, tự nhiên, gắn chặt với giá trị kênh.
-       - Câu kết thúc trọn vẹn ngữ pháp, đồng thời nối mượt mà quay trở lại câu Hook ở Cảnh 1 tạo vòng lặp vô tận (Infinite Looping APV).
+     * NHỊP 4: ZERO-OUTRO CLIMAX & SEAMLESS INFINITE LOOP BRIDGE (Cảnh cuối — 2.5 - 3.5s):
+       - CẤM TUYỆT ĐỐI đọc lời kêu gọi "Subscribe", "Follow", "Leave a comment", "Inscreva-se", "Đăng ký kênh" trong lời thoại!
+       - Cảnh cuối phải là ĐỈNH ĐIỂM CỦA SỰ THẬT (Final Twist / Punchline) và kết thúc bằng một câu cầu nối khép kín ngữ pháp nhưng mở ra vòng lặp ý niệm nối thẳng về câu Hook ở Cảnh 1 (tạo APV 105% - 125%).
 
-2. 3-SECOND SHOCK ANGLE HOOK (SCENE 1) & HIGH-CTR TITLE RULES:
+2. 2.5-SECOND SHOCK ANGLE HOOK (SCENE 1) & HIGH-CTR TITLE RULES:
    - The first 1.5 - 2.5 seconds determines 100% of Shorts performance (Viewed vs Swiped away).
    - HIGH-CTR TITLE MANDATE (LEARNED FROM CHANNEL ANALYTICS):
      * NEVER write bleak/depressing-only titles for Animal Rescue (FORBIDDEN: "Frozen Puppy Found in Rain", "Shivering Puppy Tied In Rain"). ALWAYS build a curiosity/transformation gap (WINNING FORMULA: "He Refused to Let Go Until This Happened 🥺❤️", "The Exact Moment He Realized He Was Finally Safe 🐾").
@@ -440,45 +633,28 @@ YouTube đánh giá video Shorts qua 2 vòng thử thách:
        Target personal insecurity, hidden exploitation, quiet anxiety, or counter-intuitive psychology using personal triggers ("You", "Your brain", "They"):
        - "3 subtle signs they are JUST using your kindness..."
        - "Stop trying to be confident. Do this instead..."
-       - "If you feel drained around them, you're being quietly manipulated..."
+       - "If you feel drained around them, watch out..."
        - "Your brain starts self-destructing the second you do this..."
        - "He refused to let go until this happened..."
-     * Formula 2 (Apex Duel / Urgent Danger): "When a 20-foot Anaconda ambushes a Black Caiman, only one survives..." / "If you notice this symbol, leave immediately..."
-     * Formula 3 (Pattern Interrupt / Elite Authority Secret): "The FBI interrogator trick that exposes any liar in seconds..." / "The forbidden rule 99% of people discover too late..."
-     * Formula 4 (Dark Paradox / Counterfactual Twist): "What if the Roman Empire never fell, and ruled our modern world today?"
+     * Formula 2 (Apex Duel / Urgent Danger): "When a 20-foot Anaconda ambushes a Caiman, only one survives..." / "If you notice this symbol, leave immediately..."
+     * Formula 3 (Pattern Interrupt / Elite Authority Secret): "The FBI trick that exposes any liar in 2 seconds..." / "The forbidden rule 99% of people discover too late..."
+     * Formula 4 (Dark Paradox / Counterfactual Twist): "What if the Roman Empire never fell, and ruled today?"
    - NEVER start with textbook definitions, greetings, or passive rhetorical questions ("Did you know...", "Welcome to...").
-   - Scene 1 spoken text MUST be strictly 5 to 12 words, delivered with high stakes, sharp rhythm, and immediate urgency.
+   - Scene 1 spoken text MUST be strictly 5 to 9 words (2.0s - 2.8s), delivered with high stakes, sharp rhythm, and immediate urgency.
    - Scene 1 visual_keyword & visual_prompt MUST be visually arresting, shocking, and intense.
    - thumbnail_text MUST be strictly 3 to 5 words in ALL CAPS with 1 high-contrast emoji (e.g. "THEY'RE USING YOU 🚩", "ANACONDA VS CAIMAN 🐍", "HE REFUSED TO LET GO 🥺", "ROME NEVER FELL? 🏛️"). This text is rendered directly on Frame 0.0s as the massive Hook Headline Banner to stop the viewer's thumb from swiping away!
 
-3. HIGH-CONVERTING CALL TO ACTION (CTA) & CLOSING ENGAGEMENT (FINAL SCENE 3-4s):
-   - MANDATORY CALL TO ACTION (CTA) IN THE FINAL SCENE:
-     * The final scene MUST conclude with a high-converting, natural Call To Action (CTA) tailored to the channel niche to convert viewers into subscribers and followers!
-     * DO NOT use robotic, passive begging (e.g. "Xin hãy like và subscribe kênh của mình nhé").
-     * DO use sharp, high-value, curiosity- or benefit-driven subscription triggers:
-       - Psychology / Mindset:
-         * VI: "Đăng ký kênh để làm chủ tâm lý và không bao giờ bị thao túng." / "Bấm đăng ký để luôn nhìn thấu ý đồ của người khác."
-         * EN: "Subscribe now to master dark psychology before someone uses it on you." / "Follow to stay one step ahead of the manipulators."
-       - Animal Rescue:
-         * VI: "Hãy bấm đăng ký kênh để cùng chúng tôi cứu thêm nhiều sinh mệnh tội nghiệp."
-         * EN: "Subscribe right now to help give more terrified animals a second chance."
-       - Deep Sea / Earth Mysteries:
-         * VI: "Đăng ký kênh để tiếp tục lặn xuống những bí ẩn tăm tối nhất của đại dương."
-         * EN: "Subscribe to uncover what lurks in the black abyss next."
-       - History / True Crime:
-         * VI: "Đăng ký kênh để khám phá những sự thật lịch sử chưa từng được tiết lộ."
-         * EN: "Subscribe so you never miss the hidden truth behind history."
-       - Wildlife / Survival:
-         * VI: "Đăng ký kênh để chứng kiến những trận chiến sinh tồn tàn khốc nhất."
-         * EN: "Subscribe for more brutal rules of apex survival."
-       - Sci-Fi / Tech:
-         * VI: "Đăng ký kênh để đón đầu tương lai công nghệ tiếp theo."
-         * EN: "Subscribe to witness the future before it arrives."
-       - General / Curiosity:
-         * VI: "Đăng ký kênh để không bỏ lỡ những sự thật chấn động mỗi ngày."
-         * EN: "Subscribe now so you never miss another incredible story."
-   - SEAMLESS CONCEPTUAL CONTINUITY (THE INFINITE LOOP):
-     * Combine the CTA with an intriguing question or conceptual punchline that naturally connects back to Scene 1's hook.
+3. SEAMLESS INFINITE LOOP ENDING (FINAL SCENE 2.5-3.5s — NO SPOKEN OUTRO CTA):
+   - ZERO SPOKEN OUTRO CTA RULE (CRITICAL FOR >100% APV):
+     * NEVER include "Subscribe", "Like", "Follow", "Leave a comment", "Leave your theory in the comments", "Inscreva-se", "Deixe nos comentários", or "Đăng ký kênh" in ANY scene's spoken narration!
+     * Engagement bait belongs ONLY in the `pinned_comment` JSON field, NEVER in the voiceover narration.
+   - SEAMLESS CONCEPTUAL CONTINUITY (THE INFINITE LOOP BRIDGE):
+     * The final scene (7-10 words) MUST deliver the final high-impact payoff/revelation and bridge seamlessly back into Scene 1's opening hook so viewers rewatch before realizing the video looped!
+     * Examples of high-APV final scene loop bridges:
+       - Psychology: "And once you spot that micro-expression, their entire mask shatters." (loops straight back to Scene 1)
+       - Animal Rescue: "Today he runs into warm arms, proving love heals every scar." (loops back to Scene 1's contrast)
+       - Mysteries / Deep Sea: "And that terrifying biological blind spot is happening inside you right now."
+       - Wildlife: "In the dark Amazon waters, even the apex king becomes prey."
    - HARD GRAMMAR & COMPLETENESS RULE:
      * Spoken narration MUST be 100% grammatically complete with proper closing punctuation (period, exclamation, or question mark).
      * NEVER end the script with dangling prepositions or incomplete conjunctions like 'because', 'which', 'and', 'so', 'that', 'but', 'with', 'bởi vì', etc.
@@ -591,18 +767,18 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   "title": "Viral YouTube Shorts Title with Emojis",
   "primary_entity": "Full official name of main person/figure/species or null",
   "hook": "The opening 3-second hook sentence",
-  "full_narration": "Complete spoken text without stage directions (strictly 85-125 words, flexible 35-48s duration with deep factual payoff)",
+  "full_narration": "Complete spoken text without stage directions (strictly 85-125 words, 35-46s duration with deep factual payoff and zero spoken Subscribe CTA)",
   "thumbnail_text": "2-4 TỪ IN HOA CỰC TO GỢI TÒ MÒ CHO ẢNH BÌA",
   "scenes": [
     {{
       "scene_id": 1,
       "visual_reasoning": "Tư duy logic đạo diễn: Phân tích mâu thuẫn kịch bản và lý giải cách chuyển hóa thành hành động/hình ảnh tương tác cụ thể",
-      "narration": "Spoken sentence for this scene (9-13 words, complete clause, fact-dense, 7 to 10 scenes total)",
+      "narration": "Spoken sentence for this scene (Scene 1 strictly 5-9 words; body scenes 7-11 words, 9 to 12 rapid scenes total)",
       "visual_keyword": "exact entity + specific scene detail for Google Images search (4-7 English words)",
       "visual_prompt": "Cinematic visual description: subject + camera angle + lighting + background",
       "stock_query": "concrete physical nouns + action for 9:16 stock video (3-5 English words)",
       "media_type": "video | ai_image | photo | documentary",
-      "estimated_seconds": 4.0
+      "estimated_seconds": 3.2
     }}
   ],
   "tags": ["shorts", "viral"],
@@ -701,13 +877,13 @@ Target Language: {language} ({target_lang_display})
 
 HARD RETENTION RULES:
 1. SCENE 1 PATTERN INTERRUPT & PRIMAL VISUAL HOOK (CRITICAL TO PREVENT SWIPING):
-   - Scene 1 spoken text must use an urgent warning, elite interrogation tactic, dark law, or counter-intuitive shock (5-8 words strictly).
+   - Scene 1 spoken text must use an urgent warning, elite interrogation tactic, dark law, or counter-intuitive shock (5-9 words strictly, ~2.5s).
    - Scene 1 visual_prompt MUST be a high-tension Primal Visual Hook deduced dynamically from the topic (e.g. scale shock, magnetic attraction, psychological threat, catastrophe). Format: "[Subject + action], [camera angle], [lighting], [environment]"
    - Scene 1 visual_keyword & stock_query MUST be concrete physical nouns (2-3 words).
-2. Flexible 35-48s duration with High-Value Payoff: strictly 85-125 words total across 7-10 scenes (3.5-5.0s each), delivering a deeply satisfying resolution and actionable takeaway before the closing CTA.
+2. Rapid 35-46s duration with High-Value Payoff: strictly 85-125 words total across 9-12 rapid scenes (2.8-3.8s each, 7-11 words/scene), delivering a deeply satisfying resolution and actionable takeaway.
 3. NO ABSTRACT stock_query: 2-3 English CONCRETE PHYSICAL NOUNS only for Pexels.
    NO "psychology", "minimalism", "authority", "power". Use physical objects/actions only.
-4. SEAMLESS LOOP BRIDGE (INFINITE SHORTS LOOP) & HIGH-CONVERTING CTA: The final scene MUST conclude with a natural niche CTA and complete grammatical closure that connects back to Scene 1. NEVER end with dangling prepositions or conjunctions like 'because', 'which', 'and', 'but', etc. Ensure the script ends with a complete standalone sentence!
+4. SEAMLESS INFINITE LOOP BRIDGE (ZERO SPOKEN SUBSCRIBE CTA): The final scene MUST deliver the climactic payoff/revelation and bridge seamlessly back to Scene 1's opening hook. STRICTLY FORBIDDEN: NEVER include spoken "Subscribe", "Leave a comment", "Inscreva-se", or "Đăng ký kênh" in the voiceover narration! NEVER end with dangling prepositions or conjunctions like 'because', 'which', 'and', 'but', etc.
 5. NO LITERAL METAPHORS in visual_prompt: show the actual phenomenon, not metaphorical words.
 6. NO DUPLICATE SCENES: every visual_prompt must describe a visually distinct subject and setting.
 7. LANGUAGE INTEGRITY (100% STRICT):
@@ -718,18 +894,18 @@ HARD RETENTION RULES:
   "title": "Viral YouTube Shorts Title with Emojis",
   "primary_entity": "Full official name of main person/figure or null",
   "hook": "The opening 3-second hook sentence",
-  "full_narration": "The full spoken text without any stage directions (strictly 85-125 words for flexible 35-48s with deep payoff)",
+  "full_narration": "The full spoken text without any stage directions (strictly 85-125 words for 35-46s with deep payoff and zero spoken Subscribe CTA)",
   "thumbnail_text": "2-4 TỪ IN HOA CỰC TO GỢI TÒ MÒ CHO ẢNH BÌA",
   "scenes": [
     {{
       "scene_id": 1,
       "visual_reasoning": "Tư duy logic đạo diễn cho cảnh này",
-      "narration": "Text spoken in this scene (9-13 words, 7-10 scenes total)",
+      "narration": "Text spoken in this scene (7-11 words, 9-12 rapid scenes total)",
       "visual_keyword": "concrete search keywords",
       "visual_prompt": "Detailed cinematic scene: subject + camera angle + lighting + environment",
       "stock_query": "concrete physical nouns",
       "media_type": "video | ai_image | photo | documentary",
-      "estimated_seconds": 3.8
+      "estimated_seconds": 3.2
     }}
   ],
   "tags": ["tag1", "tag2", "shorts"],

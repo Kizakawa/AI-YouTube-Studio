@@ -198,14 +198,23 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
         channel_visual_mode = state.get("visual_mode") or "auto"
         scene_media_pref = getattr(scene, 'media_type', None)
+        is_historical_niche = any(h in str(current_niche).lower() for h in ("history", "historical", "documentary", "crime"))
 
         # Tôn trọng tuyệt đối chế độ hình ảnh của kênh (imagen_ai) hoặc chỉ định cảnh (ai_image)
-        if channel_visual_mode in ("imagen_ai", "ai_image") and prod_method != "REAL_ARCHIVE":
+        if channel_visual_mode in ("imagen_ai", "ai_image") and (prod_method != "REAL_ARCHIVE" or not is_historical_niche):
             prod_method = "IMAGE_TO_VIDEO"
             chosen_strategy = "AI_IMAGE"
         elif scene_media_pref == "ai_image":
             prod_method = "IMAGE_TO_VIDEO"
             chosen_strategy = "AI_IMAGE"
+        elif (prod_method == "REAL_ARCHIVE" or chosen_strategy == "REAL_DOCUMENTARY") and not is_historical_niche:
+            # Ngăn chặn lỗi nhận nhầm tên loài động vật / sinh vật ("Sucuri-verde", "Tardigrade") thành nhân vật lịch sử tải ảnh tĩnh
+            if any(w in str(current_niche).lower() for w in ("wildlife", "animal", "rescue", "predator", "nature")):
+                prod_method = "STOCK_FOOTAGE"
+                chosen_strategy = "STOCK_VIDEO"
+            else:
+                prod_method = "IMAGE_TO_VIDEO"
+                chosen_strategy = "AI_IMAGE"
 
         tool = sc_strat.get("tool", "")
         rationale = v_analysis.get("narrative_subtext") or sc_strat.get("rationale", "")

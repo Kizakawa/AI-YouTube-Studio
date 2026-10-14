@@ -286,18 +286,18 @@ def build_script_prompt_instructions(niche_profile: Dict[str, Any], language: st
     blueprint = niche_profile.get("script_blueprint", {})
 
     tone = blueprint.get("tone_of_voice", "Cuốn hút, sắc bén, nhịp điệu nhanh")
-    pacing = blueprint.get("pacing", "2.5 - 3.2 giây/cảnh")
-    structure = blueprint.get("narrative_structure", "Hook 3s -> Bóc tách chi tiết -> Điểm nhấn -> CTA & Infinite Loop")
+    pacing = "2.8 - 3.8 giây/cảnh (9 - 12 phân cảnh nhanh, 7 - 11 từ/cảnh)"
+    structure = "Hook 2.5s (5-9 từ) -> Leo thang & Mid-Video Re-Hook giây 12 -> Payoff đắt giá -> Cầu nối Vòng lặp Vô tận (Zero Spoken Subscribe CTA)"
     hooks = blueprint.get("hook_formulas", [])
     forbidden = blueprint.get("forbidden_words", [])
     banned_lex = niche_profile.get("banned_lexicon") or blueprint.get("banned_lexicon", [])
     ctas = blueprint.get("cta_templates", [])
     anti_hallucination = blueprint.get("anti_hallucination_rules", [])
 
-    hooks_text = "\n".join(f"      - {h}" for h in hooks) if hooks else "      - 3s Pattern Interrupt Hook"
+    hooks_text = "\n".join(f"      - {h}" for h in hooks) if hooks else "      - 2.5s Pattern Interrupt Hook (5-9 words)"
     forbidden_text = "\n".join(f"      * KHÔNG ĐƯỢC DÙNG: \"{w}\"" for w in forbidden) if forbidden else "      * Tránh lời mở đầu sáo rỗng"
     banned_lex_text = "\n".join(f"      * STRICTLY FORBIDDEN VOCABULARY/CONCEPTS: \"{w}\"" for w in banned_lex) if banned_lex else ""
-    ctas_text = "\n".join(f"      - {c}" for c in ctas) if ctas else "      - Nhấn thích và theo dõi kênh"
+    ctas_text = "\n".join(f"      - {c}" for c in ctas) if ctas else "      - Câu hỏi mở kích thích tranh luận ở Pinned Comment"
     facts_text = "\n".join(f"      * {rule}" for rule in anti_hallucination) if anti_hallucination else "      * Kiểm chứng tính chính xác"
 
     return f"""
@@ -307,19 +307,22 @@ def build_script_prompt_instructions(niche_profile: Dict[str, Any], language: st
 1. KHÁN GIẢ MỤC TIÊU (TARGET AUDIENCE):
    {target_aud}
 
-2. GIỌNG ĐIỆU ĐẶC TRƯNG (TONE OF VOICE & PACING):
+2. GIỌNG ĐIỆU ĐẶC TRƯNG & NHỊP CẮT CẢNH (TONE OF VOICE & RAPID PACING):
    - Giọng điệu: {tone}
    - Nhịp cắt cảnh: {pacing}
    - Cấu trúc tự sự: {structure}
 
-3. CÔNG THỨC HOOK 3 GIÂY ĐẦU DÀNH RIÊNG CHO NGÁCH NÀY (SCENE 1 HOOK BLUEPRINT):
+3. CÔNG THỨC HOOK 2.5 GIÂY ĐẦU DÀNH RIÊNG CHO NGÁCH NÀY (SCENE 1 HOOK BLUEPRINT):
 {hooks_text}
 
 4. BỘ TỪ KHÓA BỊ CẤM TUYỆT ĐỐI (STRICTLY FORBIDDEN CLICHÉS & OUT-OF-NICHE CONCEPTS):
 {forbidden_text}
 {banned_lex_text}
 
-5. MẪU CÂU KÊU GỌI HÀNH ĐỘNG & CHỐT VIDEO (HIGH-CONVERTING CTA & CLOSING ENGAGEMENT):
+5. QUY TẮC KẾT VIDEO VÒNG LẶP VÔ TẬN (ZERO SPOKEN OUTRO CTA — INFINITE LOOP BRIDGE):
+   - CẤM TUYỆT ĐỐI đọc câu kêu gọi "Subscribe", "Inscreva-se", "Leave a comment", "Đăng ký kênh" trong lời thoại `narration` của cảnh cuối (vì làm tụt 15% APV ở 5 giây cuối)!
+   - Cảnh cuối BẮT BUỘC khép lại bằng cú chốt Payoff đắt giá và bắc cầu ý niệm nối mượt về câu Hook ở Cảnh 1.
+   - Gợi ý mồi tương tác (CHỈ đặt vào trường `pinned_comment`, KHÔNG đưa vào `narration`):
 {ctas_text}
 
 6. QUY TẮC DẪN CHỨNG & XÁC THỰC (ANTI-HALLUCINATION / RESEARCH RULES):

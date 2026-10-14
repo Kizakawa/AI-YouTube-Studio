@@ -165,16 +165,16 @@ class ScriptValidationLinter:
                 f"Minimum {min_words} words required (target {target_range_str})."
             )
 
-        # Số lượng scene: 7 đến 10 scene là nhịp tối ưu cho Shorts 35-52s (3.5 - 5.0s/scene)
+        # Số lượng scene: 8 đến 14 scene là nhịp tối ưu cho Shorts 35-52s (2.8 - 3.8s/scene)
         scene_count = len(script.scenes)
-        min_scenes = 7 if is_rescue else 6
+        min_scenes = 8 if is_rescue else 7
         if scene_count < min_scenes:
             issues.append(
-                f"Too few scenes ({scene_count}). Need at least {min_scenes} scenes for visual pacing and Payoff (target 7 to 10 scenes)."
+                f"Too few scenes ({scene_count}). Need at least {min_scenes} rapid scenes for visual pacing and Payoff (target 9 to 13 scenes, 2.8-3.8s each)."
             )
-        elif scene_count > 12:
+        elif scene_count > 14:
             issues.append(
-                f"Too many scenes ({scene_count}). Limit to 7 to 10 focused scenes (3.5-5.0s each) for optimal visual retention."
+                f"Too many scenes ({scene_count}). Limit to 9 to 14 rapid scenes (2.8-3.8s each) for optimal visual retention."
             )
 
         return issues, total_words
@@ -187,8 +187,9 @@ class ScriptValidationLinter:
     ) -> List[str]:
         """
         Kiểm tra chất lượng Hook 3s đầu (Cảnh 1), Mid-Video Re-Hook (Cảnh 3-4) và Tiêu đề:
-        1. Cảnh 1 không được quá dài (> 18 từ) làm chậm nhịp mở đầu gây Swipe-Away.
-        2. Chặn tiêu đề bi lụy/tuyệt vọng thuần túy trên kênh Animal Rescue (ví dụ: 'Frozen Puppy Found in Rain')
+        1. Cảnh 1 không được quá dài (> 12 từ) làm chậm nhịp mở đầu gây Swipe-Away.
+        2. Cảnh cuối tuyệt đối không được chứa câu đọc "Subscribe right now..." gây tụt 15% APV.
+        3. Chặn tiêu đề bi lụy/tuyệt vọng thuần túy trên kênh Animal Rescue (ví dụ: 'Frozen Puppy Found in Rain')
            mà thiếu mồi câu tò mò / hứa hẹn sự chuyển hóa (Until, Moment, Refused, Realized, Saved, Safe...).
         """
         issues = []
@@ -197,14 +198,21 @@ class ScriptValidationLinter:
         if script.scenes:
             s1_narr = (script.scenes[0].narration or "").strip()
             s1_words = re.findall(r'\b\w+\b', s1_narr)
-            if len(s1_words) > 18:
+            if len(s1_words) > 12:
                 issues.append(
-                    f"Scene 1 hook is too long ({len(s1_words)} words). Keep Scene 1 between 5 and 14 punchy words "
-                    f"for an instant 3-second thumb-stopper (Viewed > 75%)."
+                    f"Scene 1 hook is too long ({len(s1_words)} words). Keep Scene 1 between 5 and 9 punchy words "
+                    f"(~2.5s) for an instant thumb-stopper (Viewed > 75%)."
                 )
             elif len(s1_words) < 3:
                 issues.append(
-                    f"Scene 1 hook is too fragmented ({len(s1_words)} words). Must be a complete 5-12 word curiosity/danger hook."
+                    f"Scene 1 hook is too fragmented ({len(s1_words)} words). Must be a complete 5-9 word curiosity/danger hook."
+                )
+
+            last_narr = (script.scenes[-1].narration or "").strip().lower()
+            if re.search(r'\b(?:subscribe|inscreva-se|se inscreva|đăng ký kênh|bấm đăng ký|leave a comment|leave your theory)\b', last_narr):
+                issues.append(
+                    "Final scene contains a spoken 'Subscribe / Leave a comment' outro CTA which causes a 15% APV drop-off. "
+                    "Replace with a Seamless Infinite Loop Bridge that connects directly back to Scene 1."
                 )
 
         # Kiểm tra tiêu đề kênh Animal Rescue tránh rơi vào bẫy bi lụy đơn thuần không có curiosity/payoff
