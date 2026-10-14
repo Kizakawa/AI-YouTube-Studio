@@ -28,7 +28,7 @@ ASS_SHADOW      = "&HA0000000"   # Đen 63% trong suốt — shadow mềm mại
 
 # ── Bộ từ khóa cảm xúc mạnh kích thích thị giác (Hypnotic Power Words) ─────
 POWER_WORDS = {
-    # English Power Words (Emotional triggers & High retention)
+    # English Power Words (Emotional triggers, Psychology, Rescue, Wildlife, Mystery, History, Tech)
     "NEVER", "ALWAYS", "SECRET", "SECRETS", "DANGER", "DANGEROUS", "DEADLY",
     "TRUTH", "SHOCKING", "DISASTER", "MONSTER", "KILLER", "MISTAKE", "WHY",
     "WARNING", "STOP", "DESTROY", "ATTACK", "FATAL", "PREDATOR", "FEAR",
@@ -36,6 +36,12 @@ POWER_WORDS = {
     "UNBELIEVABLE", "BEAST", "LETHAL", "POISON", "VENOM", "MYSTERY", "DISCOVERED",
     "HIDDEN", "REVEALED", "LIES", "DECEPTION", "DARK", "BLOOD", "WAR", "DEATH",
     "RULE", "RULES", "LAW", "ESCAPE", "SURVIVE", "SURVIVAL", "URGENT",
+    "NARCISSIST", "PSYCHOPATH", "MANIPULATE", "MANIPULATION", "HUMILIATE", "SILENCE",
+    "STARE", "SHATTERS", "BROKEN", "STARVING", "ABANDONED", "MIRACLE", "RESCUED",
+    "WHEELCHAIR", "FROZEN", "TREMBLING", "HEARTBREAKING", "ABYSS", "KRAKEN",
+    "LEVIATHAN", "SONAR", "CRUSHING", "HARVESTED", "VORTEX", "NIGHTMARE", "NIGHTMARES",
+    "AMBUSH", "ARMOR", "BITE", "SKULL", "CLAWS", "APEX", "EMPIRE", "EXECUTION",
+    "FORBIDDEN", "CLASSIFIED", "COLLAPSE", "BILLION", "TRILLION", "INSTANTLY",
     # Vietnamese Power Words (Từ kích hoạt cảm xúc mạnh & Giữ chân người xem)
     "ĐỪNG", "KHÔNG", "BAO GIỜ", "BÍ MẬT", "NGUY HIỂM", "CHẾT", "TỬ THẦN",
     "SỰ THẬT", "SỐC", "KINH HOÀNG", "CẢNH BÁO", "DỪNG LẠI", "TIÊU DIỆT",
@@ -173,6 +179,17 @@ class SubtitleHelper:
 
     # ── ASS Generation ────────────────────────────────────────────────────
 
+    @staticmethod
+    def _strip_ass_unsupported_emojis(text: str) -> str:
+        """
+        Loại bỏ các Emoji màu (Astral Plane / Dingbats) không được font Arial Black / Montserrat hỗ trợ trong libass,
+        ngăn chặn triệt để lỗi hiển thị ô vuông rỗng (Tofu box □) trên màn hình video.
+        """
+        if not text:
+            return ""
+        cleaned = re.sub(r'[\U00010000-\U0010ffff\u2600-\u27bf\ufe0f]', '', text)
+        return re.sub(r'\s+', ' ', cleaned).strip()
+
     @classmethod
     def _build_karaoke_text(
         cls,
@@ -180,32 +197,33 @@ class SubtitleHelper:
         word_durations_cs: List[int],
         default_highlight: str = "&H0000FFFF",
         power_color: str = "&H000000FF",
+        scene_highlights: Optional[set] = None,
     ) -> str:
         """
         P2.2: Tạo chuỗi ASS kinetic karaoke với {\\kf} fluid tags theo từng từ.
-
-        Cú pháp: {\\kfN} (centiseconds) đứng trước mỗi từ.
-        - Trước khi đọc: từ hiển thị bằng SecondaryColour (trắng cơ sở)
-        - Khi đọc đến: hiệu ứng {\\kf} quét màu mượt mà (fluid wipe) từ trái sang phải,
-          chuyển sang PrimaryColour (vàng/highlight rực rỡ).
-        Tự động nhận diện và làm nổi bật các Power Words bằng màu sắc kích thích thị giác
-        (Crimson Red / Neon Accent) tạo cảm giác thôi miên (Hypnotic Kinetic Typography).
-        FFmpeg burn_subtitles với libass render chuyển động mượt mà điện ảnh (không giật cục).
+        Kết hợp:
+          1. Từ khóa ngữ cảnh do AI Director chọn riêng cho từng cảnh (scene.highlight_words)
+          2. Mọi con số thống kê / đo lường (100-FOOT, 4-SECOND, 1,500, 99%, 6)
+          3. Bộ từ điển cảm xúc mạnh POWER_WORDS
         """
-        # Chuẩn hóa cú pháp màu ASS (luôn kết thúc bằng &)
         norm_power = power_color if power_color.endswith("&") else f"{power_color}&"
         norm_highlight = default_highlight if default_highlight.endswith("&") else f"{default_highlight}&"
+        custom_set = scene_highlights or set()
 
         parts = []
         for i, (word, dur_cs) in enumerate(zip(words, word_durations_cs)):
             clean_word = re.sub(r'[^\w\d]', '', word.upper())
-            has_shock_number = bool(re.search(r'\d', word)) and ("%" in word or len(clean_word) >= 2)
-            is_power_word = (clean_word in POWER_WORDS) or has_shock_number
+            has_shock_number = bool(re.search(r'\d', word))
+            is_power_word = (
+                (clean_word in POWER_WORDS)
+                or (clean_word in custom_set)
+                or has_shock_number
+            )
 
             if is_power_word:
-                # Power Word / Shock Statistic: đổi màu highlight + phóng nhẹ 110% tạo hiệu ứng Kinetic Pop
+                # Power Word / Context Highlight / Shock Statistic: đổi màu highlight + phóng 112% tạo hiệu ứng Kinetic Pop
                 parts.append(
-                    f"{{\\kf{dur_cs}\\1c{norm_power}\\fscx110\\fscy110\\b1}}{word}"
+                    f"{{\\kf{dur_cs}\\1c{norm_power}\\fscx112\\fscy112\\b1}}{word}"
                     f"{{\\1c{norm_highlight}\\fscx100\\fscy100}}"
                 )
             else:
@@ -230,16 +248,7 @@ class SubtitleHelper:
         """
         Tạo nội dung file .ass chuẩn với karaoke word-level highlight.
         Tự động nạp font và màu sắc từ Niche Profile nếu niche_id được cung cấp.
-
-        Mỗi chunk (2-4 từ) = 1 dialogue entry.
-        Mỗi từ trong chunk có {\\kf} tag để highlight lần lượt.
-        Kích thước font: 42px.
-        Lề đáy: 580px (Safe Zone chuẩn YouTube Shorts: cách đáy ~30.2%, hoàn toàn không bị che bởi tiêu đề, tên kênh, nút Subscribe).
-
-        Returns:
-            Chuỗi nội dung ASS hoàn chỉnh.
         """
-        # Nếu có niche_id, tự động lấy cấu hình phụ đề từ Niche Profile
         eff_primary = primary_color or ASS_WHITE
         eff_secondary = secondary_color or ASS_YELLOW
         eff_outline = outline_color or ASS_BLACK
@@ -293,11 +302,19 @@ class SubtitleHelper:
             else:
                 power_color = "&H000000FF"  # Vivid Crimson Red (High Urgency & Dopamine)
 
+            # Trích xuất bộ từ khóa ngữ cảnh do AI Director chọn cho riêng cảnh này
+            raw_hl = getattr(scene, "highlight_words", None) or []
+            scene_hl_set = set()
+            for hw in raw_hl:
+                for token in str(hw).upper().split():
+                    cleaned_tok = re.sub(r'[^\w\d]', '', token)
+                    if len(cleaned_tok) >= 2:
+                        scene_hl_set.add(cleaned_tok)
+
             word_timings = getattr(scene, "word_timings", None)
 
             if word_timings and len(word_timings) > 0:
                 # ── CHẾ ĐỘ 1: ĐỒNG BỘ CHÍNH XÁC THEO MỐC TỪNG TỪ CỦA GIỌNG ĐỌC AI ──
-                # Gom các từ thành từng chunk 2-4 từ (tối đa 24 ký tự) giữ trọn vẹn mốc thời gian thực tế
                 chunks_data = []
                 cur_words = []
                 cur_len = 0
@@ -351,6 +368,7 @@ class SubtitleHelper:
                         word_durations_cs,
                         default_highlight=eff_secondary,
                         power_color=power_color,
+                        scene_highlights=scene_hl_set,
                     )
 
                     start_str = cls._ms_to_ass_time(chunk_start_ms)
@@ -369,10 +387,7 @@ class SubtitleHelper:
                         current_offset_ms += scene_duration_ms
                     continue
 
-                # Chuyển ALL CAPS — phong cách phiếu phụ đề Shorts viral
                 chunks = [c.upper() for c in chunks]
-
-                # Phân bổ thời lượng cho từng chunk theo tỷ lệ ký tự
                 total_chars = sum(len(c) for c in chunks)
                 chunk_durations_ms = []
                 for c in chunks:
@@ -380,7 +395,6 @@ class SubtitleHelper:
                     dur = int(scene_duration_ms * ratio)
                     chunk_durations_ms.append(max(dur, 600))
 
-                # Cân chỉnh lại tổng duration — giữ last chunk >= 300ms (tránh âm)
                 diff = scene_duration_ms - sum(chunk_durations_ms)
                 if chunk_durations_ms:
                     chunk_durations_ms[-1] = max(chunk_durations_ms[-1] + diff, 300)
@@ -390,15 +404,13 @@ class SubtitleHelper:
                     chunk_end_ms = chunk_start_ms + chunk_dur_ms
                     words = chunk.split()
 
-                    # Phân bổ thời lượng theo từ (theo số ký tự của từng từ)
                     total_word_chars = sum(len(w) for w in words)
                     word_durations_cs = []
                     for w in words:
                         ratio = len(w) / total_word_chars if total_word_chars > 0 else 1.0 / len(words)
-                        dur_cs = max(int(chunk_dur_ms * ratio / 10), 5)  # centiseconds, tối thiểu 5cs
+                        dur_cs = max(int(chunk_dur_ms * ratio / 10), 5)
                         word_durations_cs.append(dur_cs)
 
-                    # Cân chỉnh tổng word duration bằng chunk duration
                     total_word_cs = sum(word_durations_cs)
                     chunk_cs = chunk_dur_ms // 10
                     if word_durations_cs:
@@ -410,6 +422,7 @@ class SubtitleHelper:
                         word_durations_cs,
                         default_highlight=eff_secondary,
                         power_color=power_color,
+                        scene_highlights=scene_hl_set,
                     )
 
                     start_str = cls._ms_to_ass_time(chunk_start_ms)
@@ -426,50 +439,51 @@ class SubtitleHelper:
             else:
                 current_offset_ms += scene_duration_ms
 
-        # ── Kích hoạt Hook Headline Banner ở Frame 0.0s - 2.8s (Tối đa hóa Viewed %, Giảm Swiped Away) ──
+        # ── Kích hoạt Hook Headline Banner ở Frame 0.0s - 2.8s (Đã khử sạch Emoji lỗi ô vuông □) ──
         if scenes:
             raw_niche = (niche_id or "").lower()
             full_txt = " ".join([s.narration for s in scenes]).lower()
             is_vi = any(c in full_txt for c in "àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ")
 
-            # Xử lý text Hook giật gân, tương phản cao trên khung hình đầu tiên
             effective_hook = (hook_title or "").strip()
             if not effective_hook and scenes:
-                # Fallback: Trích xuất 4-6 từ đầu tiên của Scene 1
                 words = re.sub(r'[^\w\s\d\?\!\,\.\-]', '', scenes[0].narration).split()
                 if words:
                     effective_hook = " ".join(words[:6])
 
             if effective_hook:
                 clean_hook = re.sub(r'#\w+', '', effective_hook).strip().upper()
-                # Khử bớt ký tự thừa, giới hạn hiển thị gọn gàng trên 1-2 dòng
-                clean_hook = re.sub(r'\s+', ' ', clean_hook)
+                clean_hook = cls._strip_ass_unsupported_emojis(clean_hook)
                 if len(clean_hook) > 42:
-                    clean_hook = clean_hook[:39] + "..."
+                    clean_hook = clean_hook[:39].rstrip() + "..."
 
-                first_scene_dur_ms = scenes[0].audio_duration_ms or int(scenes[0].estimated_seconds * 1000)
-                banner_end_ms = min(2800, max(1800, first_scene_dur_ms))
-                banner_end_str = cls._ms_to_ass_time(banner_end_ms)
-                # Hiển thị ngay từ 0:00:00.00 để người lướt nhìn thấy ngay lập tức trước khi kịp quẹt
-                dialogue_lines.insert(0,
-                    f"Dialogue: 3,0:00:00.00,{banner_end_str},HookHeadlineBanner,,0,0,0,,{{\\fade(0,180)\\t(0,110,\\fscx112\\fscy112)\\t(110,230,\\fscx100\\fscy100)}}{clean_hook}"
-                )
+                if clean_hook:
+                    first_scene_dur_ms = scenes[0].audio_duration_ms or int(scenes[0].estimated_seconds * 1000)
+                    banner_end_ms = min(2800, max(1800, first_scene_dur_ms))
+                    banner_end_str = cls._ms_to_ass_time(banner_end_ms)
+                    dialogue_lines.insert(0,
+                        f"Dialogue: 3,0:00:00.00,{banner_end_str},HookHeadlineBanner,,0,0,0,,{{\\fade(0,180)\\t(0,110,\\fscx112\\fscy112)\\t(110,230,\\fscx100\\fscy100)}}{clean_hook}"
+                    )
 
-            # Phù hiệu nhỏ hỗ trợ danh mục (PatternInterruptBadge) hiển thị song hành
-            if "psychology" in raw_niche:
-                badge_title = "[ 🧠 TÂM LÝ ĐEN TỐI ]" if is_vi else "[ 🧠 MENTAL TRAP ]"
+            # Phù hiệu danh mục (PatternInterruptBadge): ưu tiên nhãn ngữ cảnh từ AI Director (scenes[0].overlay_badge),
+            # và sử dụng ký tự HUD sắc nét [ // ... // ] thay cho Emoji bị lỗi ô vuông □ trong Arial Black
+            custom_open_badge = cls._strip_ass_unsupported_emojis(getattr(scenes[0], "overlay_badge", "") or "")
+            if custom_open_badge:
+                badge_title = f"[ // {custom_open_badge.upper()} // ]"
+            elif "psychology" in raw_niche:
+                badge_title = "[ // TÂM LÝ ĐEN TỐI // ]" if is_vi else "[ // MENTAL TRAP // ]"
             elif any(k in raw_niche for k in ("deep_sea", "ocean")):
-                badge_title = "[ 🌊 VỰC THẲM BÍ ẨN ]" if is_vi else "[ 🌊 UNCHARTED ABYSS ]"
+                badge_title = "[ // VỰC THẲM BÍ ẨN // ]" if is_vi else "[ // UNCHARTED ABYSS // ]"
             elif any(k in raw_niche for k in ("predator", "wildlife")):
-                badge_title = "[ 🦁 QUY LUẬT SĂN MỒI ]" if is_vi else "[ 🦁 APEX PREDATOR ]"
+                badge_title = "[ // ĐỐI ĐẦU SINH TỬ // ]" if is_vi else "[ // APEX DUEL // ]"
             elif any(k in raw_niche for k in ("rescue", "animal")):
-                badge_title = "[ 🐾 HỒ SƠ CỨU HỘ ]" if is_vi else "[ 🐾 RESCUE ARCHIVE ]"
-            elif any(k in raw_niche for k in ("history", "mystery")):
-                badge_title = "[ 📜 TÀI LIỆU MẬT ]" if is_vi else "[ 📜 CLASSIFIED FILE ]"
+                badge_title = "[ // HỒ SƠ CỨU HỘ // ]" if is_vi else "[ // RESCUE ARCHIVE // ]"
+            elif any(k in raw_niche for k in ("history", "mystery", "alternate")):
+                badge_title = "[ // TÀI LIỆU MẬT // ]" if is_vi else "[ // CLASSIFIED FILE // ]"
             elif "horror" in raw_niche:
-                badge_title = "[ ⚠️ CHUYỆN KINH DỊ ]" if is_vi else "[ ⚠️ URBAN LEGEND ]"
+                badge_title = "[ // HỒ SƠ KINH DỊ // ]" if is_vi else "[ // URBAN LEGEND // ]"
             else:
-                badge_title = "[ ⚠️ ĐIỀU CHƯA BIẾT ]" if is_vi else "[ ⚠️ CRITICAL NOTICE ]"
+                badge_title = "[ // ĐIỀU CHƯA BIẾT // ]" if is_vi else "[ // CRITICAL FILE // ]"
 
             first_scene_dur_ms = scenes[0].audio_duration_ms or int(scenes[0].estimated_seconds * 1000)
             badge_end_ms = min(2600, max(1200, first_scene_dur_ms - 200))
@@ -479,23 +493,47 @@ class SubtitleHelper:
                 f"Dialogue: 2,{badge_start_str},{badge_end_str},PatternInterruptBadge,,0,0,0,,{{\\fade(150,150)\\t(0,150,\\fscx106\\fscy106)}}{badge_title}"
             )
 
-            # Mid-video evidence stamp nếu phân cảnh sau có từ khóa chứng thực
-            evidence_kw = ("bằng chứng", "sự thật", "dấu hiệu", "nghiên cứu", "quy tắc", "evidence", "truth", "sign", "proof", "rule")
-            for idx, sc in enumerate(scenes[1:], start=2):
+            # Mid-video Pattern Interrupt Stamp (Giây 12-18s):
+            # 1. Ưu tiên cảnh có overlay_badge do AI Director đặt ở giữa video
+            # 2. Nếu không, khớp từ khóa bằng chứng/bước ngoặt
+            # 3. Nếu vẫn không có, tự động kích hoạt tại Cảnh 4 (hoặc cảnh chính giữa) để chống rơi rụng người xem ở giây 14!
+            mid_stamp_added = False
+            evidence_kw = ("bằng chứng", "sự thật", "dấu hiệu", "nghiên cứu", "quy tắc", "nhưng", "bất ngờ", "evidence", "truth", "sign", "proof", "rule", "until", "however", "suddenly", "yet")
+            for idx, sc in enumerate(scenes[2:], start=3):
+                sc_badge = cls._strip_ass_unsupported_emojis(getattr(sc, "overlay_badge", "") or "")
                 sc_txt = sc.narration.lower()
-                if any(k in sc_txt for k in evidence_kw):
+                if sc_badge or any(k in sc_txt for k in evidence_kw):
                     sc_start_ms = getattr(sc, "start_offset_ms", None)
                     if sc_start_ms is None:
                         sc_start_ms = sum(s.audio_duration_ms or int(s.estimated_seconds * 1000) for s in scenes[:idx-1])
                     sc_dur = sc.audio_duration_ms or int(sc.estimated_seconds * 1000)
-                    stamp_end_ms = sc_start_ms + min(2200, sc_dur)
+                    stamp_end_ms = sc_start_ms + min(2400, sc_dur)
                     stamp_start_str = cls._ms_to_ass_time(sc_start_ms + 100)
                     stamp_end_str = cls._ms_to_ass_time(stamp_end_ms)
-                    stamp_title = f"[ 🔍 BẰNG CHỨNG #{idx} ]" if is_vi else f"[ 🔍 EVIDENCE #{idx} ]"
+                    if sc_badge:
+                        stamp_title = f"[ // {sc_badge.upper()} // ]"
+                    else:
+                        stamp_title = "[ // BƯỚC NGOẶT // ]" if is_vi else "[ // THE TURNING POINT // ]"
                     dialogue_lines.append(
                         f"Dialogue: 2,{stamp_start_str},{stamp_end_str},PatternInterruptBadge,,0,0,0,,{{\\fade(150,150)\\t(0,150,\\fscx105\\fscy105)}}{stamp_title}"
                     )
+                    mid_stamp_added = True
                     break
+
+            if not mid_stamp_added and len(scenes) >= 4:
+                mid_idx = min(3, len(scenes) // 2)  # Cảnh 4 (0-indexed = 3) ~ giây 12-15
+                sc = scenes[mid_idx]
+                sc_start_ms = getattr(sc, "start_offset_ms", None)
+                if sc_start_ms is None:
+                    sc_start_ms = sum(s.audio_duration_ms or int(s.estimated_seconds * 1000) for s in scenes[:mid_idx])
+                sc_dur = sc.audio_duration_ms or int(sc.estimated_seconds * 1000)
+                stamp_end_ms = sc_start_ms + min(2400, sc_dur)
+                stamp_start_str = cls._ms_to_ass_time(sc_start_ms + 100)
+                stamp_end_str = cls._ms_to_ass_time(stamp_end_ms)
+                stamp_title = "[ // SỰ THẬT NGẦM // ]" if is_vi else "[ // THE HIDDEN TWIST // ]"
+                dialogue_lines.append(
+                    f"Dialogue: 2,{stamp_start_str},{stamp_end_str},PatternInterruptBadge,,0,0,0,,{{\\fade(150,150)\\t(0,150,\\fscx105\\fscy105)}}{stamp_title}"
+                )
 
         # ── Kích hoạt Visual CTA Banner ở phân cảnh cuối (Chỉ bật khi show_cta_badge=True) ──
         if show_cta_badge and scenes and current_offset_ms > 3000:
@@ -602,21 +640,28 @@ class SubtitleHelper:
             if getattr(scene, "start_offset_ms", None) is not None:
                 current_offset_ms = scene.start_offset_ms
 
+            scene_highlights = set()
+            for hw in (getattr(scene, "highlight_words", None) or []):
+                for tok in str(hw).split():
+                    cl_tok = re.sub(r'[^\w\d]', '', tok.upper())
+                    if len(cl_tok) >= 2:
+                        scene_highlights.add(cl_tok)
+
             word_timings = getattr(scene, "word_timings", None)
             if word_timings and len(word_timings) > 0:
                 for w_info in word_timings:
                     w = w_info.get("word", "").strip()
                     clean_word = re.sub(r'[^\w\d]', '', w.upper())
-                    if clean_word in POWER_WORDS:
+                    if clean_word in POWER_WORDS or clean_word in scene_highlights:
                         word_ts_s = (current_offset_ms + w_info.get("start_ms", 0)) / 1000.0
                         if word_ts_s - last_ts_s >= min_interval_s and word_ts_s >= 0.5:
-                            if any(k in clean_word for k in ("NGUY", "HIỂM", "CHẾT", "DANGER", "DEADLY", "KILL", "TỬ")):
+                            if any(k in clean_word for k in ("NGUY", "HIỂM", "CHẾT", "DANGER", "DEADLY", "KILL", "TỬ", "DESTROY", "CRASH", "DOOM")):
                                 sfx_name = "impact_sub"
                                 vol = 0.24
-                            elif any(k in clean_word for k in ("BẪY", "DỐI", "THAO", "TÚNG", "LIES", "TRAP", "MISTAKE")):
+                            elif any(k in clean_word for k in ("BẪY", "DỐI", "THAO", "TÚNG", "LIES", "TRAP", "MISTAKE", "SCAM", "ILLUSION")):
                                 sfx_name = "glitch"
                                 vol = 0.22
-                            elif any(k in clean_word for k in ("BÍ", "MẬT", "SỰ", "THẬT", "SECRET", "TRUTH")):
+                            elif any(k in clean_word for k in ("BÍ", "MẬT", "SỰ", "THẬT", "SECRET", "TRUTH", "HIDDEN", "FORBIDDEN")):
                                 sfx_name = "reveal"
                                 vol = 0.22
                             else:
@@ -655,16 +700,16 @@ class SubtitleHelper:
                     word_offset_ms = 0
                     for w, dur_cs in zip(words, word_durations_cs):
                         clean_word = re.sub(r'[^\w\d]', '', w.upper())
-                        if clean_word in POWER_WORDS:
+                        if clean_word in POWER_WORDS or clean_word in scene_highlights:
                             word_ts_s = (chunk_start_ms + word_offset_ms) / 1000.0
                             if word_ts_s - last_ts_s >= min_interval_s and word_ts_s >= 0.5:
-                                if any(k in clean_word for k in ("NGUY", "HIỂM", "CHẾT", "DANGER", "DEADLY", "KILL", "TỬ")):
+                                if any(k in clean_word for k in ("NGUY", "HIỂM", "CHẾT", "DANGER", "DEADLY", "KILL", "TỬ", "DESTROY", "CRASH", "DOOM")):
                                     sfx_name = "impact_sub"
                                     vol = 0.24
-                                elif any(k in clean_word for k in ("BẪY", "DỐI", "THAO", "TÚNG", "LIES", "TRAP", "MISTAKE")):
+                                elif any(k in clean_word for k in ("BẪY", "DỐI", "THAO", "TÚNG", "LIES", "TRAP", "MISTAKE", "SCAM", "ILLUSION")):
                                     sfx_name = "glitch"
                                     vol = 0.22
-                                elif any(k in clean_word for k in ("BÍ", "MẬT", "SỰ", "THẬT", "SECRET", "TRUTH")):
+                                elif any(k in clean_word for k in ("BÍ", "MẬT", "SỰ", "THẬT", "SECRET", "TRUTH", "HIDDEN", "FORBIDDEN")):
                                     sfx_name = "reveal"
                                     vol = 0.22
                                 else:
@@ -811,19 +856,19 @@ class SubtitleHelper:
             is_vi = any(c in all_text_concat.lower() for c in "àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ")
             raw_niche = (niche_id or "").lower()
             if "psychology" in raw_niche:
-                cta_text = "🧠 BẤM ĐĂNG KÝ ĐỂ KHÔNG BỊ THAO TÚNG 🔔" if is_vi else "🧠 SUBSCRIBE TO MASTER THE MIND 🔔"
+                cta_text = "[ BẤM ĐĂNG KÝ ĐỂ KHÔNG BỊ THAO TÚNG ]" if is_vi else "[ SUBSCRIBE TO MASTER THE MIND ]"
             elif any(k in raw_niche for k in ("rescue", "animal")):
-                cta_text = "🐾 BẤM ĐĂNG KÝ ĐỂ CỨU THÊM BÉ 🐾" if is_vi else "🐾 SUBSCRIBE TO SAVE INNOCENT LIVES 🐾"
+                cta_text = "[ BẤM ĐĂNG KÝ ĐỂ CỨU THÊM BÉ ]" if is_vi else "[ SUBSCRIBE TO SAVE INNOCENT LIVES ]"
             elif any(k in raw_niche for k in ("deep_sea", "ocean", "mystery")):
-                cta_text = "🌊 ĐĂNG KÝ KÊNH ĐÓN XEM BÍ ẨN TIẾP THEO 🔔" if is_vi else "🌊 SUBSCRIBE TO UNCOVER PART 2 🔔"
+                cta_text = "[ ĐĂNG KÝ KÊNH ĐÓN XEM BÍ ẨN TIẾP THEO ]" if is_vi else "[ SUBSCRIBE TO UNCOVER PART 2 ]"
             elif any(k in raw_niche for k in ("history", "what_if")):
-                cta_text = "📜 ĐĂNG KÝ KÊNH ĐỂ BIẾT SỰ THẬT 🔔" if is_vi else "📜 SUBSCRIBE FOR THE UNTOLD TRUTH 🔔"
+                cta_text = "[ ĐĂNG KÝ KÊNH ĐỂ BIẾT SỰ THẬT ]" if is_vi else "[ SUBSCRIBE FOR THE UNTOLD TRUTH ]"
             elif any(k in raw_niche for k in ("predator", "wildlife")):
-                cta_text = "🦁 ĐĂNG KÝ KÊNH KHÁM PHÁ SINH TỒN 🔔" if is_vi else "🦁 SUBSCRIBE FOR APEX STORIES 🔔"
+                cta_text = "[ ĐĂNG KÝ KÊNH KHÁM PHÁ SINH TỒN ]" if is_vi else "[ SUBSCRIBE FOR APEX STORIES ]"
             elif any(k in raw_niche for k in ("scifi", "tech")):
-                cta_text = "🚀 ĐĂNG KÝ KÊNH ĐÓN XEM TƯƠNG LAI 🔔" if is_vi else "🚀 SUBSCRIBE TO UNLOCK FUTURE 🔔"
+                cta_text = "[ ĐĂNG KÝ KÊNH ĐÓN XEM TƯƠNG LAI ]" if is_vi else "[ SUBSCRIBE TO UNLOCK FUTURE ]"
             else:
-                cta_text = "🔔 ĐĂNG KÝ KÊNH ĐỂ XEM TIẾP VIDEO MỚI 🔔" if is_vi else "🔔 SUBSCRIBE FOR DAILY HIGH-RETENTION STORIES 🔔"
+                cta_text = "[ ĐĂNG KÝ KÊNH ĐỂ XEM TIẾP VIDEO MỚI ]" if is_vi else "[ SUBSCRIBE FOR DAILY HIGH-RETENTION STORIES ]"
             cta_start_str = cls._ms_to_ass_time(cta_start_ms)
             cta_end_str = cls._ms_to_ass_time(cta_end_ms)
             dialogue_lines.append(
@@ -832,10 +877,10 @@ class SubtitleHelper:
 
         # ── Watermark Credit ở đỉnh video (Layer 2) ──
         if credit_text and credit_text.strip():
-            clean_credit = credit_text.strip().replace("\n", " ")
+            clean_credit = cls._strip_ass_unsupported_emojis(credit_text.strip().replace("\n", " "))
             credit_end_str = cls._ms_to_ass_time(effective_total_ms if effective_total_ms > 0 else 60000)
             dialogue_lines.insert(0,
-                f"Dialogue: 2,0:00:00.00,{credit_end_str},WatermarkStyle,,0,0,0,,{{\\fade(300,300)}}🎬 {clean_credit}"
+                f"Dialogue: 2,0:00:00.00,{credit_end_str},WatermarkStyle,,0,0,0,,{{\\fade(300,300)}}// {clean_credit}"
             )
 
         return header + "\n".join(dialogue_lines) + "\n"

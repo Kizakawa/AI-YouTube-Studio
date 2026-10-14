@@ -23,14 +23,16 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
     audio_dir.mkdir(parents=True, exist_ok=True)
 
     preferred_voice = state.get("preferred_voice")
+    channel_style = state.get("channel_style") or state.get("channel_niche") or "general"
     script = ScriptContract(**script_data)
     voice_agent = VoiceAgent()
 
-    # Sinh audio cho từng cảnh qua VoiceAgent với preferred_voice từ channel
+    # Sinh audio cho từng cảnh qua VoiceAgent với preferred_voice và niche pacing từ channel
     scenes_objs = await voice_agent.generate_per_scene_audio(
         scenes=script.scenes,
         output_dir=str(audio_dir),
-        voice=preferred_voice
+        voice=preferred_voice,
+        niche=channel_style,
     )
 
     enriched_scenes = [
@@ -51,7 +53,6 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
     )
 
     # Tạo phụ đề ASS chuẩn Shorts với word-level karaoke highlight & Hook Headline Banner tương phản cao ở Frame 0 (tắt CTA badge cuối video để bảo toàn Infinite Loop)
-    channel_style = state.get("channel_style") or state.get("channel_niche") or "general"
     hook_banner_text = getattr(script, "thumbnail_text", None) or getattr(script, "title", None) or state.get("title")
     SubtitleHelper.save_ass_file(scenes_objs, subtitle_path, niche_id=channel_style, hook_title=hook_banner_text, show_cta_badge=False)
 

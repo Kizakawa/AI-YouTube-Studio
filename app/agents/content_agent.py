@@ -278,6 +278,52 @@ class ContentAgent:
             if not sc.get("media_type"):
                 sc["media_type"] = "auto"
 
+        def _auto_extract_scene_highlights(narration_text: str) -> List[str]:
+            """Tự động trích xuất 1-2 từ khóa đắt giá nhất (số liệu, từ viết hoa, động từ/danh từ mạnh) từ câu thoại của cảnh."""
+            if not narration_text:
+                return []
+            _stop = {
+                "the", "and", "that", "this", "with", "from", "your", "have", "they", "their",
+                "what", "when", "where", "which", "while", "into", "about", "there", "these",
+                "those", "would", "could", "should", "because", "until", "after", "before",
+                "under", "over", "between", "through", "during", "without", "within", "along",
+                "những", "trong", "không", "được", "chúng", "nhưng", "người", "khiến", "chính",
+                "você", "para", "como", "mais", "pelo", "pela", "isso", "está", "quando",
+            }
+            tokens = narration_text.split()
+            picked: List[str] = []
+            # 1. Ưu tiên tuyệt đối các con số / thống kê / đơn vị đo lường
+            for tok in tokens:
+                cl = re.sub(r'[^\w\d%]', '', tok).upper()
+                if cl and any(c.isdigit() for c in cl) and cl not in picked:
+                    picked.append(cl)
+                    if len(picked) >= 2:
+                        return picked
+            # 2. Ưu tiên các từ trong POWER_WORDS hoặc từ mang sắc thái mạnh >= 5 ký tự
+            try:
+                from app.utils.subtitle_helper import POWER_WORDS as _PW
+            except Exception:
+                _PW = set()
+            for tok in tokens:
+                cl = re.sub(r'[^\w\d]', '', tok).upper()
+                if len(cl) >= 4 and cl in _PW and cl not in picked:
+                    picked.append(cl)
+                    if len(picked) >= 2:
+                        return picked
+            # 3. Nếu chưa có, chọn từ nội dung dài nhất (>= 5 ký tự, không thuộc stop_words)
+            candidates = []
+            for tok in tokens:
+                cl = re.sub(r'[^\w\d]', '', tok)
+                if len(cl) >= 5 and cl.lower() not in _stop:
+                    candidates.append(cl.upper())
+            candidates.sort(key=len, reverse=True)
+            for cand in candidates:
+                if cand not in picked:
+                    picked.append(cand)
+                    if len(picked) >= 2:
+                        break
+            return picked[:2]
+
         # ── 2. KHỬ BẪY OUTRO CTA ("SUBSCRIBE...") & KHÓA VÒNG LẶP VÔ TẬN (INFINITE LOOP BRIDGE) ──
         # Phân tích telemetry thực tế: Câu kêu gọi "Subscribe right now..." ở cảnh cuối làm tụt 10-15% APV
         # ở 5 giây cuối vì báo hiệu video đã hết. Khử tự động mọi câu CTA đọc thành tiếng ở 2 cảnh cuối!
@@ -441,9 +487,12 @@ class ContentAgent:
                     sc_first = dict(sc)
                     sc_first["narration"] = left_narr
                     sc_first["estimated_seconds"] = round(max(2.2, len(left_narr.split()) / 2.65), 1)
+                    sc_first["highlight_words"] = _auto_extract_scene_highlights(left_narr)
 
                     sc_second = dict(sc)
                     sc_second["narration"] = right_narr
+                    sc_second["overlay_badge"] = None
+                    sc_second["highlight_words"] = _auto_extract_scene_highlights(right_narr)
                     base_vk = str(sc.get("visual_keyword") or "cinematic scene").strip()
                     base_sq = str(sc.get("stock_query") or base_vk).strip()
                     base_vp = str(sc.get("visual_prompt") or f"Cinematic 8k vertical shot of {base_vk}").strip()
@@ -466,9 +515,21 @@ class ContentAgent:
                     sc["estimated_seconds"] = round(max(2.2, min(4.5, w_count / 2.65)), 1)
                     paced_scenes.append(sc)
 
-            # Đánh lại số thứ tự scene_id chuẩn xác 1..N
+            # Đánh lại số thứ tự scene_id chuẩn xác 1..N và làm giàu highlight_words / camera_motion / sfx_cue
+            _motion_cycle = ["zoom_in_fast", "ken_burns_zoom_out", "pan_right", "ken_burns_zoom_in", "pan_left"]
             for new_id, p_sc in enumerate(paced_scenes, start=1):
                 p_sc["scene_id"] = new_id
+                if not p_sc.get("highlight_words"):
+                    p_sc["highlight_words"] = _auto_extract_scene_highlights(str(p_sc.get("narration") or ""))
+                if not p_sc.get("camera_motion"):
+                    p_sc["camera_motion"] = "zoom_in_fast" if new_id == 1 else _motion_cycle[(new_id - 1) % len(_motion_cycle)]
+                if not p_sc.get("sfx_cue"):
+                    if new_id == 1:
+                        p_sc["sfx_cue"] = "impact_boom"
+                    elif new_id == 4:
+                        p_sc["sfx_cue"] = "riser_tension"
+                    else:
+                        p_sc["sfx_cue"] = "whoosh_fast"
             scenes = paced_scenes
             raw_data["scenes"] = scenes
 
@@ -546,6 +607,110 @@ class ContentAgent:
 
         return ScriptContract(**raw_data)
 
+    def _build_channel_context_memory(
+        self,
+        channel_niche: str,
+        topic: str,
+        channel_id: Optional[str] = None,
+    ) -> str:
+        """
+        Hệ thống Trí nhớ Ngữ cảnh Kênh & Tự thích nghi Đa Kênh (Context-Aware Episodic Memory & Zero-Shot Multi-Niche Synthesis):
+        1. Truy vấn nhanh (< 5ms) từ Database cục bộ (`PublishedVideo`, `VideoJob`) để lấy:
+           - Top 3 video thắng lớn nhất của kênh/ngách (giúp Agent học cú pháp Hook & tâm lý khán giả thực tế).
+           - 8 tiêu đề gần nhất đã sản xuất (chống lặp góc tiếp cận, câu mở đầu và từ khóa bão hòa).
+        2. Kích hoạt giao thức Zero-Shot Multi-Niche Synthesis khi mở rộng ra bất kỳ kênh/ngách mới nào.
+        """
+        top_winners: List[str] = []
+        recent_titles: List[str] = []
+        saturated_terms: List[str] = []
+
+        try:
+            from app.database.models import get_db, PublishedVideo, VideoJob
+            from app.services.smart_scheduler import resolve_channel_family
+
+            target_ids: List[str] = []
+            if channel_id:
+                target_ids.extend(resolve_channel_family(channel_id))
+            else:
+                niche_low = (channel_niche or "").strip().lower()
+                for ch in settings.get_channels_config():
+                    if str(ch.get("niche") or "").strip().lower() == niche_low:
+                        cid = ch.get("id")
+                        if cid:
+                            target_ids.extend(resolve_channel_family(cid))
+
+            if target_ids:
+                unique_ids = list(dict.fromkeys(target_ids))
+                with get_db() as db:
+                    top_Rows = (
+                        db.query(PublishedVideo)
+                        .filter(PublishedVideo.channel_id.in_(unique_ids), PublishedVideo.views >= 80)
+                        .order_by(PublishedVideo.views.desc())
+                        .limit(4)
+                        .all()
+                    )
+                    for r in top_Rows:
+                        if r.title:
+                            top_winners.append(f'  * "{r.title.strip()}" ({r.views:,} views)')
+
+                    rec_pub = (
+                        db.query(PublishedVideo)
+                        .filter(PublishedVideo.channel_id.in_(unique_ids))
+                        .order_by(PublishedVideo.published_at.desc())
+                        .limit(10)
+                        .all()
+                    )
+                    for rp in rec_pub:
+                        if rp.title and rp.title.strip() not in recent_titles:
+                            recent_titles.append(rp.title.strip())
+
+                    rec_jobs = (
+                        db.query(VideoJob)
+                        .filter(VideoJob.target_channel_id.in_(unique_ids))
+                        .order_by(VideoJob.created_at.desc())
+                        .limit(10)
+                        .all()
+                    )
+                    for rj in rec_jobs:
+                        if rj.title and rj.title.strip() not in recent_titles:
+                            recent_titles.append(rj.title.strip())
+
+            if len(recent_titles) >= 2:
+                from app.services.channel_intelligence import extract_saturated_channel_concepts
+                saturated_terms = extract_saturated_channel_concepts(recent_titles, min_frequency=2)
+        except Exception as ex_mem:
+            logger.debug(f"[ContentAgent] Không thể đọc episodic memory cho {channel_niche}: {ex_mem}")
+
+        memory_sections = [
+            "═══════════════════════════════════════════════════════════",
+            "🧠 AUTONOMOUS CHANNEL MEMORY & CONTEXT-AWARE COGNITIVE ENGINE:",
+        ]
+        if top_winners:
+            memory_sections.append(
+                "🏆 PROVEN VIRAL WINNERS ON THIS CHANNEL (Study why this audience clicked & watched, then replicate the curiosity tension with a FRESH angle):\n"
+                + "\n".join(top_winners[:3])
+            )
+        if recent_titles:
+            memory_sections.append(
+                "🚫 RECENTLY PRODUCED VIDEOS ON THIS CHANNEL (DO NOT repeat these exact titles, opening hook sentences, or examples):\n"
+                + "\n".join(f'  - "{t}"' for t in recent_titles[:8])
+            )
+        if saturated_terms:
+            memory_sections.append(
+                f"⚠️ SATURATED CONCEPTS ON THIS CHANNEL (Avoid overusing these repeated words/stats): {', '.join(saturated_terms[:6])}"
+            )
+
+        memory_sections.append(
+            f"""🌐 ZERO-SHOT MULTI-NICHE COGNITIVE ADAPTATION (Niche: '{channel_niche}' | Topic: '{topic}'):
+- Even when scaling to brand-new channels or custom sub-niches, autonomously deduce the target audience's #1 psychological trigger (e.g. Fear of Deception, Awe of Unseen Scale, Empathy & Moral Justice, Survival Instinct, or Forbidden Status/Wealth).
+- SCENE-LEVEL AUDIO-VISUAL DIRECTION (MANDATORY FOR EVERY SCENE):
+  1. `highlight_words`: Pick 1-2 most emotionally or factually explosive words/numbers directly from that scene's `narration` (e.g. ["BLIND", "0.2"], ["4,000", "CRUSHED"], ["BETRAYED"]). Our subtitle engine will render these exact words in glowing Neon Cyan/Yellow and trigger synchronized micro-SFX foley!
+  2. `overlay_badge`: Provide a clean, NO-EMOJI uppercase broadcast HUD stamp (2-4 words in brackets, e.g. "[ // HIDDEN SIGN #1 // ]", "[ // 12-SECOND TWIST // ]", "[ // FATAL MISTAKE // ]") on Scene 1 and Scene 4/5 (the 12-second Mid-Video Re-Hook) to reset viewer attention. Set `null` on other scenes.
+  3. `camera_motion`: Dynamically vary camera movement across consecutive scenes (`"zoom_in_fast"` for Scene 1 Hook & climax, alternating `"ken_burns_zoom_out"`, `"pan_right"`, `"ken_burns_zoom_in"`, `"pan_left"`).
+  4. `sfx_cue`: Choose the exact sound design cue matching the scene's emotion (`"impact_boom"`, `"whoosh_heavy"`, `"riser_tension"`, `"heartbeat_thump"`, `"glitch"`, `"reveal"`)."""
+        )
+        memory_sections.append("═══════════════════════════════════════════════════════════")
+        return "\n".join(memory_sections)
 
     def generate_script(
         self,
@@ -577,6 +742,11 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
         niche_profile = get_niche(channel_niche)
         niche_instructions = build_script_prompt_instructions(niche_profile, language=language)
         lang_instruction = build_language_integrity_instruction(language)
+        channel_memory_block = self._build_channel_context_memory(
+            channel_niche=channel_niche,
+            topic=topic,
+            channel_id=kwargs.get("channel_id"),
+        )
         lang_clean = (language or "en").strip().lower()
         if lang_clean.startswith("vi"):
             target_lang_display = "TIẾNG VIỆT"
@@ -594,6 +764,7 @@ Topic: '{topic}'
 Target Language: {language} ({target_lang_display})
 {lang_instruction}
 {director_block}
+{channel_memory_block}
 {niche_instructions}
 ═══════════════════════════════════════════════════════════
 YOUTUBE SHORTS TEST FUNNEL & VIRAL RETENTION ENGINE (VƯỢT NGƯỠNG 10,000 – 50,000+ VIEWS)
@@ -778,6 +949,10 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
       "visual_prompt": "Cinematic visual description: subject + camera angle + lighting + background",
       "stock_query": "concrete physical nouns + action for 9:16 stock video (3-5 English words)",
       "media_type": "video | ai_image | photo | documentary",
+      "camera_motion": "zoom_in_fast | ken_burns_zoom_out | pan_right | ken_burns_zoom_in | pan_left",
+      "sfx_cue": "impact_boom | whoosh_heavy | riser_tension | heartbeat_thump | glitch | reveal",
+      "highlight_words": ["WORD1", "WORD2"],
+      "overlay_badge": "[ // HIDDEN SIGN #1 // ] or null",
       "estimated_seconds": 3.2
     }}
   ],
@@ -905,6 +1080,10 @@ HARD RETENTION RULES:
       "visual_prompt": "Detailed cinematic scene: subject + camera angle + lighting + environment",
       "stock_query": "concrete physical nouns",
       "media_type": "video | ai_image | photo | documentary",
+      "camera_motion": "zoom_in_fast | ken_burns_zoom_out | pan_right | ken_burns_zoom_in | pan_left",
+      "sfx_cue": "impact_boom | whoosh_heavy | riser_tension | heartbeat_thump | glitch | reveal",
+      "highlight_words": ["WORD1", "WORD2"],
+      "overlay_badge": "[ // HIDDEN SIGN #1 // ] or null",
       "estimated_seconds": 3.2
     }}
   ],

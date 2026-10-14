@@ -69,16 +69,17 @@ def node_generate_script(state: VideoWorkflowState) -> Dict[str, Any]:
     if primary_entity and primary_entity.lower() not in topic.lower():
         topic = f"{topic} (Focus on {primary_entity})"
 
+    target_channel_id = state.get("target_channel_id", "")
     content_agent = ContentAgent()
     script: ScriptContract = content_agent.generate_script(
         topic=topic,
         channel_niche=channel_style,
         language=language,
-        director_notes=director_notes
+        director_notes=director_notes,
+        channel_id=target_channel_id,
     )
 
     # Chống trùng lặp tiêu đề với kho video cũ của kênh
-    target_channel_id = state.get("target_channel_id", "")
     if target_channel_id:
         try:
             from app.services.channel_intelligence import ensure_unique_title
@@ -144,13 +145,14 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
     primary_entity = state.get("primary_entity")
     language = state.get("language", "en")
     director_notes = state.get("director_notes")
+    target_channel_id = state.get("target_channel_id", "")
 
     logger.info(f"🔄 [LangGraph] Tự động tinh chỉnh kịch bản lần {retry_count} theo nhận xét: {critiques}")
 
     feedback_text = (
         f"Sửa chữa chính xác các điểm yếu sau từ Critic: {'; '.join(critiques)}. "
-        f"Đảm bảo Cảnh 1 giật gân trong 3 giây đầu (6-8 từ), Cảnh 2-4 triển khai bằng chứng nhanh, "
-        f"Cảnh 5-7 có Payoff giá trị cao, và Cảnh cuối kết thúc trọn vẹn ngữ pháp kèm lời kêu gọi đăng ký kênh tự nhiên."
+        f"Đảm bảo Cảnh 1 giật gân trong 2.5 giây đầu (5-9 từ), Cảnh 4 có Mid-Video Re-Hook, "
+        f"Cảnh 5-9 có Payoff giá trị cao, và Cảnh cuối kết thúc bằng cầu nối Vòng lặp Vô tận (Zero Spoken Subscribe CTA)."
     )
     if primary_entity:
         feedback_text += f" Giữ vững trọng tâm vào nhân vật/thực thể chính: {primary_entity}."
@@ -178,6 +180,7 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
             channel_niche=channel_style,
             language=language,
             director_notes=combined_notes,
+            channel_id=target_channel_id,
         )
 
     script_dict = new_script.to_dict() if hasattr(new_script, "to_dict") else new_script.model_dump()

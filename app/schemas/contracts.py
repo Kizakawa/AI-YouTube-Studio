@@ -107,6 +107,38 @@ class SceneContract(BaseModel):
         default=None,
         description="Lý do Visual Director chọn chiến lược và phương pháp thị giác này."
     )
+    highlight_words: Optional[List[str]] = Field(
+        default=None,
+        description="1-2 từ khóa đắt giá nhất trong câu thoại của cảnh này (do AI chọn theo ngữ cảnh câu chuyện) để tự động phóng to 112% và tô màu nổi bật trên phụ đề."
+    )
+    overlay_badge: Optional[str] = Field(
+        default=None,
+        description="Nhãn thị giác ngắn gọn (2-4 từ IN HOA, không chứa emoji) hiển thị trên đỉnh màn hình ở Cảnh 1 (Hook) hoặc Cảnh 4-5 (Mid-Video Twist)."
+    )
+
+    @field_validator("highlight_words", mode="before")
+    @classmethod
+    def sanitize_highlight_words(cls, v: Any) -> Optional[List[str]]:
+        if not v:
+            return None
+        if isinstance(v, str):
+            items = [w.strip() for w in v.replace(";", ",").split(",") if w.strip()]
+            return items[:3] if items else None
+        if isinstance(v, list):
+            items = [str(w).strip() for w in v if str(w).strip()]
+            return items[:3] if items else None
+        return None
+
+    @field_validator("overlay_badge", mode="before")
+    @classmethod
+    def sanitize_overlay_badge(cls, v: Any) -> Optional[str]:
+        if not v or not isinstance(v, str):
+            return None
+        import re
+        # Lọc bỏ toàn bộ Emoji ngoài mặt phẳng BMP để tránh lỗi ô vuông (Tofu box) trong libass
+        clean = re.sub(r'[\U00010000-\U0010ffff\u2600-\u27bf\ufe0f]', '', v).strip()
+        clean = re.sub(r'^[\[\(\s\/\-_|:]+|[\]\)\s\/\-_|:]+$', '', clean).strip().upper()
+        return clean[:32] if clean else None
 
     @field_validator("camera_motion", mode="before")
     @classmethod

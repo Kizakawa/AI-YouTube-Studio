@@ -60,15 +60,19 @@ class VoiceAgent:
         if any(k in arch for k in ["woman", "girl", "lady", "cleopatra", "female"]):
             return cls.US_VOICE_PERSONAS["storyteller_female"]
 
-        # 2. Khớp theo Chủ đề Ngách (Niche Profile)
-        if any(k in niche for k in ["scifi", "tech", "future"]):
+        # 2. Khớp theo Chủ đề Ngách (Niche Profile - hỗ trợ mở rộng không giới hạn ngách mới)
+        if any(k in niche for k in ["scifi", "tech", "future", "ai", "finance", "money", "business", "crypto", "wealth", "economy", "luxury"]):
             return cls.US_VOICE_PERSONAS["authority"]
-        if any(k in niche for k in ["histor", "stoic", "deep_sea", "mystery"]):
+        if any(k in niche for k in ["crime", "noir", "detective", "heist", "mafia", "thriller", "conspiracy"]):
+            return cls.US_VOICE_PERSONAS["detective"]
+        if any(k in niche for k in ["histor", "stoic", "deep_sea", "mystery", "space", "cosmos", "universe", "myth", "philosophy"]):
             return cls.US_VOICE_PERSONAS["deep_history"]
-        if any(k in niche for k in ["animal", "rescue", "pets"]):
+        if any(k in niche for k in ["animal", "rescue", "pets", "wholesome", "emotional", "kindness"]):
             return cls.US_VOICE_PERSONAS["storyteller_female"] if is_dialogue else cls.US_VOICE_PERSONAS["conversational"]
-        if any(k in niche for k in ["wildlife", "predators"]):
+        if any(k in niche for k in ["wildlife", "predators", "survival", "nature", "combat"]):
             return cls.US_VOICE_PERSONAS["deep_history"]
+        if any(k in niche for k in ["sport", "gaming", "anime", "fitness", "gym", "hype", "cars"]):
+            return cls.US_VOICE_PERSONAS["energetic"]
 
         # 3. Mặc định giọng nam Mỹ tự nhiên cuốn hút
         return cls.US_VOICE_PERSONAS["default"]
@@ -134,9 +138,10 @@ class VoiceAgent:
     def resolve_optimal_tts_rate(voice: str, niche: Optional[str] = None, explicit_rate: Optional[str] = None) -> str:
         """
         Xác định tốc độ đọc TTS tối ưu (Retention-Calibrated Pacing) theo từng ngách và giọng đọc:
-        - animal_rescue (JennyNeural): +3% (ấm áp, lắng đọng cảm xúc, giữ trọn 45-55s cho 4 giai đoạn chuyển hóa).
-        - deep_sea_earth_mysteries (BrianNeural): +5% (bí ẩn, rùng mình, có nhịp nhấn).
-        - psychology / wildlife_predators / alternate_history: +8% (sắc bén, cuốn hút, rõ chữ, không bị vội như +12%).
+        - animal_rescue / wholesome / stoicism (JennyNeural): +3% (ấm áp, lắng đọng cảm xúc).
+        - deep_sea_earth_mysteries / space / horror / crime (BrianNeural): +5% (bí ẩn, rùng mình, có nhịp nhấn).
+        - psychology / wildlife_predators / alternate_history / finance / tech: +8% (sắc bén, cuốn hút, rõ chữ).
+        - sports / gaming / hype: +10% (nhịp độ dồn dập, kịch tính).
         """
         if explicit_rate:
             return explicit_rate
@@ -146,18 +151,21 @@ class VoiceAgent:
             try:
                 from app.services.niche_manager import get_niche
                 profile = get_niche(nid)
-                audio_cfg = profile.get("audio", {})
-                cfg_rate = audio_cfg.get("tts_rate") or audio_cfg.get("rate")
-                if cfg_rate and isinstance(cfg_rate, str) and cfg_rate.endswith("%"):
-                    return cfg_rate
+                if str(profile.get("id") or "").strip().lower() == nid:
+                    audio_cfg = profile.get("audio", {})
+                    cfg_rate = audio_cfg.get("tts_rate") or audio_cfg.get("rate")
+                    if cfg_rate and isinstance(cfg_rate, str) and cfg_rate.endswith("%"):
+                        return cfg_rate
             except Exception:
                 pass
 
         v_low = (voice or "").lower()
-        if "rescue" in nid or "animal" in nid or "jenny" in v_low or "hoaimy" in v_low:
+        if any(k in nid for k in ("rescue", "animal", "wholesome", "stoic", "philosophy")) or "jenny" in v_low or "hoaimy" in v_low:
             return "+3%"
-        if "deep_sea" in nid or "mystery" in nid or "brian" in v_low:
+        if any(k in nid for k in ("deep_sea", "mystery", "ocean", "space", "cosmos", "horror", "crime", "noir")) or "brian" in v_low:
             return "+5%"
+        if any(k in nid for k in ("sport", "gaming", "hype", "anime")):
+            return "+10%"
         if v_low.startswith("vi-"):
             return "+6%"
         if v_low.startswith("pt-"):
@@ -389,7 +397,7 @@ class VoiceAgent:
         Tuyệt đối KHÔNG áp dụng silenceremove toàn cục làm co ngắn audio gây lệch phụ đề và video cut.
         Trả về total_duration_ms.
         """
-        # Tạo file silence 0.6s để làm đệm kết thúc (giúp giọng đọc dứt câu trọn vẹn, không ngắt đột ngột)
+        # Tạo file silence cực ngắn 0.15s (150ms) để nối Seamless Infinite Loop liền mạch sang Cảnh 1 mà không bị khoảng lặng chết
         from app.utils.ffmpeg_helper import run_ffmpeg, get_duration_ms
         tail_silence_path = str(Path(output_path).parent / "tail_silence.mp3")
         has_tail = False
@@ -397,7 +405,7 @@ class VoiceAgent:
             run_ffmpeg([
                 "-f", "lavfi",
                 "-i", "anullsrc=r=24000:cl=mono",
-                "-t", "0.6",
+                "-t", "0.15",
                 "-c:a", "libmp3lame",
                 tail_silence_path
             ])
