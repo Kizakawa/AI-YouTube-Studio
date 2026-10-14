@@ -47,17 +47,18 @@ def build_language_integrity_instruction(language: str) -> str:
 🌐 CRITICAL LANGUAGE INTEGRITY: 100% PORTUGUÊS BRASILEIRO (pt-BR)
 ═══════════════════════════════════════════════════════════════════
 - TARGET SCRIPT LANGUAGE: BRAZILIAN PORTUGUESE ('pt-BR').
-- SPOKEN NARRATION REQUIREMENT:
-  * 'hook', 'full_narration', and 'narration' in EVERY scene MUST be written 100% in natural, dramatic, colloquial BRAZILIAN PORTUGUESE (português do Brasil).
-  * Even if the topic, director notes, or niche instructions are in English, you MUST TRANSLATE and write ALL narration in BRAZILIAN PORTUGUESE.
-  * Use vocabulary and expressions natural to Brazil: 'incrível', 'absurdo', 'impressionante', 'brutalmente', NOT European Portuguese.
-  * STRICTLY FORBIDDEN: Do NOT output English or European Portuguese narration.
+- SPOKEN NARRATION & ON-SCREEN HUD REQUIREMENT:
+  * 'hook', 'full_narration', 'narration', 'overlay_badge', 'thumbnail_text', 'description', and 'pinned_comment' in EVERY scene MUST be written 100% in natural, dramatic, colloquial BRAZILIAN PORTUGUESE (português do Brasil).
+  * Even if the topic, director notes, or niche instructions are in English, you MUST TRANSLATE and write ALL narration and badges in BRAZILIAN PORTUGUESE.
+  * Use vocabulary and expressions natural to Brazil: 'onça-pintada', 'sucuri', 'jacaré', 'incrível', 'absurdo', 'impressionante', 'jamais', NOT European Portuguese.
+  * STRICTLY FORBIDDEN: Do NOT output English or European Portuguese spoken narration.
+  * ZERO SPOKEN OUTRO CTA: NEVER say 'Inscreva-se', 'Curta', or 'Deixe nos comentários' inside any scene's spoken `narration`! Put engagement questions ONLY in `pinned_comment`, and end the final scene's `narration` with a seamless Infinite Loop Bridge back to Scene 1!
+- VISUAL SEARCH & AI PROMPT REQUIREMENT (CRITICAL FOR PEXELS / PIXABAY / FLUX):
+  * 'visual_keyword', 'visual_prompt', and 'stock_query' MUST ALWAYS BE IN CONCRETE ENGLISH (e.g., "jaguar hunting caiman river", "deep ocean sonar submarine", "giant river otter amazon") so stock video APIs (Pexels/Pixabay) and AI image generators return 100% accurate visuals!
 - TITLE REQUIREMENT:
   * 'title' MUST be 100% in BRAZILIAN PORTUGUESE (click-through optimized, CTR > 10%, under 60 chars with emojis).
   * DO NOT add suffixes like '- PT', '- BR', '(Brasil)'.
-  * Titles must be punchy, dramatic and appeal to Brazilian curiosity (use 'isso' triggers, 'quem diria', 'o que ninguem te contou').
-- thumbnail_text MUST also be in PORTUGUESE BRASILEIRO (3-5 words ALL CAPS + 1 emoji).
-- NEVER mix languages (e.g. Portuguese narration with English title or vice-versa).
+- thumbnail_text MUST also be in PORTUGUÊS BRASILEIRO (3-5 words ALL CAPS + 1 emoji).
 ═══════════════════════════════════════════════════════════════════
 """
     else:
@@ -372,12 +373,12 @@ class ContentAgent:
                     else:
                         # Tạo cầu nối Infinite Loop Bridge tự nhiên nối thẳng về Hook Cảnh 1
                         comb_text = f"{raw_data.get('title', '')} {raw_data.get('full_narration', '')}".lower()
-                        is_vn_script = any("\u0100" <= c <= "\u1EF9" for c in comb_text)
-                        is_pt_script = any(w in comb_text for w in ("você", "não", "então", "coração", "selva", "olhos", "jamais"))
-                        if is_vn_script:
-                            last_sc["narration"] = "Và khoảnh khắc đó mở ra sự thật từ đầu."
-                        elif is_pt_script:
+                        is_pt_script = any(w in comb_text for w in ("você", "não", "então", "coração", "selva", "olhos", "jamais", "oceano", "onça", "sucuri", "jacaré", "ciência", "mistério"))
+                        is_vn_script = bool(re.search(r'[ơớờởỡợưứừửữựđăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]', comb_text)) and not is_pt_script
+                        if is_pt_script:
                             last_sc["narration"] = "E nesse instante o ciclo recomeça diante de você."
+                        elif is_vn_script:
+                            last_sc["narration"] = "Và khoảnh khắc đó mở ra sự thật từ đầu."
                         elif any(k in comb_text for k in ("puppy", "kitten", "rescue", "stray", "shelter", "abandoned", "dog", "cat")):
                             last_sc["narration"] = "And that moment of trust starts his new life."
                         else:

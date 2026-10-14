@@ -15,11 +15,12 @@ from app.database.models import get_db, VideoJob
 
 logger = logging.getLogger(__name__)
 
-# Múi giờ Việt Nam (UTC+7) và Múi giờ bờ Đông Mỹ (New York - tự động DST: EDT UTC-4 hoặc EST UTC-5)
+# Múi giờ Việt Nam (UTC+7), Múi giờ bờ Đông Mỹ (New York - EDT/EST) và Múi giờ Brazil (Brasília/São Paulo - BRT UTC-3)
 from zoneinfo import ZoneInfo
 VN_TZ = timezone(timedelta(hours=7))
 US_EASTERN = ZoneInfo("America/New_York")
 US_TZ = US_EASTERN  # Alias để đảm bảo tương thích ngược
+BR_TZ = ZoneInfo("America/Sao_Paulo")  # Giờ chuẩn Brazil (BRT = UTC-3)
 
 # Giới hạn tối đa video trên mỗi kênh trong 1 ngày
 MAX_VIDEOS_PER_DAY = 2
@@ -31,13 +32,6 @@ MIN_SPACING_SECONDS = 21600
 # CẤU HÌNH 2 KHUNG GIỜ VÀNG QUỐC TẾ (US & GLOBAL PEAKS) TỐI ƯU 2 VIDEO / NGÀY
 # ĐÃ TỐI ƯU HÓA: ĐĂNG SỚM HƠN ĐỈNH VÀNG 60 - 90 PHÚT ĐỂ THUẬT TOÁN KỊP PHÂN PHỐI
 # ──────────────────────────────────────────────────────────────────────────────
-#   - Khung 1 (Đón đầu đỉnh Trưa Mỹ): 15:00 UTC (22:00 đêm VN = 11:00 AM EDT / 08:00 AM PDT)
-#     Đăng sớm 60 phút trước giờ nghỉ trưa ăn uống & lướt Shorts của người Mỹ (12:00 - 13:30 EDT).
-#     Lúc 22:00 VN, người xem Việt Nam đã giảm dần và đi ngủ -> Tránh tuyệt đối việc bị dính view VN.
-#   - Khung 2 (Đón đầu đỉnh Tối Mỹ #1 Thế Giới): 21:30 UTC (04:30 sáng VN = 17:30 PM EDT / 14:30 PM PDT)
-#     Đăng sớm 90 phút trước đỉnh giải trí tối lớn nhất tại Mỹ (19:00 - 22:00 EDT).
-#     Lúc 04:30 sáng VN, 100% người dùng VN đang ngủ say -> 100% nhóm test ban đầu là người Mỹ bản địa.
-# Giãn cách: 6.5 tiếng ban ngày & 17.5 tiếng qua đêm (thoả mãn MIN_SPACING >= 6 tiếng, triệt tiêu nuốt view).
 GOLDEN_SLOTS_UTC = [
     {
         "hour": 15,
@@ -59,13 +53,45 @@ GOLDEN_SLOTS_UTC = [
     },
 ]
 
+# ──────────────────────────────────────────────────────────────────────────────
+# CẤU HÌNH 2 KHUNG GIỜ VÀNG THỊ TRƯỜNG BRAZIL (BRT = UTC-3) CHO KÊNH pt-BR
+# ──────────────────────────────────────────────────────────────────────────────
+#   - Khung 1 (Đón đầu Đỉnh Trưa Brazil - Horário de Almoço 11:30 - 13:30 BRT):
+#     Base 13:30 UTC (10:30 AM BRT = 20:30 Tối VN) -> Đăng sớm 60p trước giờ ăn trưa Brazil.
+#   - Khung 2 (Đón đầu Đỉnh Tối Vàng Brazil - Horário Nobre 19:00 - 22:30 BRT):
+#     Base 21:00 UTC (18:00 PM BRT = 04:00 Sáng VN) -> Đăng sớm 60-90p trước đỉnh tối Brazil.
+BRAZIL_GOLDEN_SLOTS_UTC = [
+    {
+        "hour": 13,
+        "minute": 30,
+        "label_vn": "20:30 Tối",
+        "label_us": "10:30 AM BRT (ĐÓN ĐẦU ĐỈNH TRƯA BRAZIL - HORÁRIO DE ALMOÇO)",
+        "description": "Đăng sớm 60 phút trước giờ nghỉ trưa tại São Paulo/Brasília (11:30-13:30 BRT) để thuật toán YouTube Brazil phân phối đúng tệp pt-BR.",
+        "tag": "BR_LUNCH_LEAD",
+        "rank": 1
+    },
+    {
+        "hour": 21,
+        "minute": 0,
+        "label_vn": "04:00 Sáng",
+        "label_us": "18:00 PM BRT (ĐÓN ĐẦU ĐỈNH TỐI VÀNG BRAZIL - HORÁRIO NOBRE #1)",
+        "description": "Đăng sớm 60-90 phút trước giờ vàng giải trí buổi tối lớn nhất Brazil (19:00-22:30 BRT), lúc 100% người dùng VN đang ngủ say.",
+        "tag": "BR_EVENING_LEAD",
+        "rank": 2
+    },
+]
+
 # Độ lệch thông minh theo từng kênh (phút) để chống trùng khớp giây xuất bản (Bot Footprint)
-# trên các kênh dùng chung Google Account, đồng thời vẫn giữ 100% trong vùng đón đầu 60-90p trước Giờ Vàng Mỹ:
+# trên các kênh dùng chung Google Account:
+#   [US Channels]
 #   - Alternate History: -30p -> 14:30 UTC (21:30 VN) & 20:45 UTC (03:45 VN)
 #   - Psychology:        -15p -> 14:45 UTC (21:45 VN) & 21:00 UTC (04:00 VN)
 #   - Mysteries:          +0p -> 15:00 UTC (22:00 VN) & 21:15 UTC (04:15 VN)
 #   - Paws & Hearts:     +15p -> 15:15 UTC (22:15 VN) & 21:30 UTC (04:30 VN)
 #   - Wild Odyssey:      +30p -> 15:30 UTC (22:30 VN) & 21:45 UTC (04:45 VN)
+#   [Brazil pt-BR Channels - cùng tài khoản acccount4, giãn cách 45 phút]
+#   - Odisseia Selvagem:  +0p -> 13:30 UTC (10:30 BRT / 20:30 VN) & 21:00 UTC (18:00 BRT / 04:00 VN)
+#   - Mistérios do Mundo:+45p -> 14:15 UTC (11:15 BRT / 21:15 VN) & 21:45 UTC (18:45 BRT / 04:45 VN)
 CHANNEL_STAGGER_MINUTES: Dict[str, int] = {
     "@alternatehistorywhatif-e2x": -30,
     "ch_psychology_of_the_world": -15,
@@ -79,7 +105,43 @@ CHANNEL_STAGGER_MINUTES: Dict[str, int] = {
     "@pawsandheartsrescue": 15,
     "ch_wild_odyssey": 30,
     "@wildodysseyhq": 30,
+    "ch_odisseia_selvagem": 0,
+    "@odisseiaselvagemoficial": 0,
+    "ucpbqs4h5qugpu3hcqjg-p9w": 0,
+    "ch_misterios_do_mundo": 45,
+    "@misteriosdomundo-tv": 45,
+    "ucvfonq9jcpvvze8e1cgnng": 45,
+    "ucvfonq9jcpvvze8e1cgng": 45,
 }
+
+
+def is_brazil_channel(channel_id: str) -> bool:
+    """Kiểm tra xem kênh có thuộc thị trường Brazil (pt-BR) hay không."""
+    if not channel_id:
+        return False
+    br_ids = {
+        "ch_odisseia_selvagem",
+        "@odisseiaselvagemoficial",
+        "ucpbqs4h5qugpu3hcqjg-p9w",
+        "ch_misterios_do_mundo",
+        "@misteriosdomundo-tv",
+        "ucvfonq9jcpvvze8e1cgnng",
+        "ucvfonq9jcpvvze8e1cgng",
+    }
+    cid_low = channel_id.strip().lower()
+    if cid_low in br_ids:
+        return True
+    for fam in resolve_channel_family(channel_id):
+        if fam.lower() in br_ids:
+            return True
+    try:
+        from app.services.channel_manager import get_channel
+        cfg = get_channel(channel_id) or {}
+        if str(cfg.get("language") or "").lower().startswith("pt"):
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def get_channel_stagger_minutes(channel_id: str) -> int:
@@ -321,6 +383,9 @@ def process_waiting_quota_jobs() -> int:
                     except Exception:
                         pass
 
+                raw_lang = str(ch_cfg.get("language") or "en")
+                def_lang = "pt" if raw_lang.lower().startswith("pt") else raw_lang
+                def_audio_lang = "pt-BR" if raw_lang.lower().startswith("pt") else raw_lang
                 logger.info(f"🚀 [SmartScheduler] Quota đã được nạp lại! Đang tự động xuất bản Video #{job_id} ('{job_data['title']}')...")
                 res = pub_agent.upload_video(
                     video_path=job_data["video_path"],
@@ -328,8 +393,8 @@ def process_waiting_quota_jobs() -> int:
                     description=job_data["description"] or "",
                     tags=job_data["tags"].split(",") if job_data.get("tags") else None,
                     privacy_status="public",
-                    default_language=ch_cfg.get("language", "en"),
-                    default_audio_language=ch_cfg.get("language", "en"),
+                    default_language=def_lang,
+                    default_audio_language=def_audio_lang,
                     pinned_comment=pinned_comment,
                     topic=job_data.get("topic") or "",
                     script=job_data.get("scenes_json") or ""
@@ -431,20 +496,9 @@ def get_next_available_golden_slot(
 ) -> Tuple[datetime, str, str, str]:
     """
     Tính toán khe giờ vàng tiếp theo còn trống cho kênh.
-    Đảm bảo:
-    - Bắt đầu từ 4 khung giờ vàng quốc tế lớn nhất.
-    - Tránh va chạm thời gian (< 3.5 giờ) với bất kỳ video nào đã lên lịch hoặc vừa đăng.
-    - Ánh xạ đầy đủ kênh và alias.
-
-    Returns:
-        (slot_utc_datetime, slot_iso_str, display_vn, display_us)
-        Ví dụ:
-        (
-            datetime(2026, 9, 27, 23, 0, tzinfo=timezone.utc),
-            "2026-09-27T23:00:00Z",
-            "06:00 Sáng Thứ Hai, 28/09/2026 (Giờ VN)",
-            "6:00 PM EST (GIỜ VÀNG LỚN NHẤT MỸ — Tan sở & Buổi tối)"
-        )
+    Tự động phân luồng múi giờ & khung giờ vàng theo thị trường mục tiêu:
+    - Thị trường Mỹ (US Channels - EDT/EST): GOLDEN_SLOTS_UTC
+    - Thị trường Brazil (pt-BR Channels - BRT UTC-3): BRAZIL_GOLDEN_SLOTS_UTC
     """
     # 0. Đồng bộ các video đã qua giờ hẹn trước khi tính toán
     sync_scheduled_jobs_status()
@@ -454,6 +508,9 @@ def get_next_available_golden_slot(
 
     # 1. Tìm tất cả alias của kênh này để quét occupied slots
     channel_family = resolve_channel_family(channel_id)
+    is_br = is_brazil_channel(channel_id)
+    active_slots_pool = BRAZIL_GOLDEN_SLOTS_UTC if is_br else GOLDEN_SLOTS_UTC
+    target_tz = BR_TZ if is_br else US_EASTERN
 
     occupied_slots_utc = []
     with get_db() as db:
@@ -472,12 +529,10 @@ def get_next_available_golden_slot(
                 if st >= (now_utc - timedelta(hours=48)):
                     occupied_slots_utc.append(st)
 
-    logger.debug(f"[SmartScheduler] Kênh {channel_id} (Family: {channel_family}) hiện có {len(occupied_slots_utc)} khe giờ đã đặt lịch.")
+    logger.debug(f"[SmartScheduler] Kênh {channel_id} (Family: {channel_family}, Brazil={is_br}) hiện có {len(occupied_slots_utc)} khe giờ đã đặt lịch.")
 
     # 2. Duyệt tìm khe giờ trống bắt đầu từ ngày hôm nay đến 45 ngày tiếp theo
     # Áp dụng triệt để: TỐI ĐA 2 VIDEO / NGÀY / KÊNH
-    # Ưu tiên 2 đỉnh cao nhất: Buổi tối Mỹ (23:00 UTC = 06:00 VN) & Buổi sáng Mỹ (13:00 UTC = 20:00 VN)
-    # Tự động chèn khe dự phòng nếu trùng (17:30 UTC = 00:30 VN hoặc 03:00 UTC = 10:00 VN)
     start_date = now_utc.date()
     stagger_minutes = get_channel_stagger_minutes(channel_id)
     for day_offset in range(45):
@@ -485,7 +540,7 @@ def get_next_available_golden_slot(
 
         # Tạo danh sách các khe giờ vàng trong ngày (đã cộng độ lệch pha theo từng kênh)
         candidate_slots = []
-        for slot in GOLDEN_SLOTS_UTC:
+        for slot in active_slots_pool:
             base_dt = datetime(
                 year=target_date.year,
                 month=target_date.month,
@@ -500,8 +555,6 @@ def get_next_available_golden_slot(
                 candidate_slots.append((candidate_dt, slot))
 
         # Sắp xếp các khe giờ ứng viên theo trình tự thời gian tự nhiên (từ sớm đến muộn trong ngày).
-        # Giúp các video được lên lịch nối tiếp mượt mà theo đúng thứ tự sản xuất,
-        # không bị đảo lộn thời gian (video làm sau lại đăng trước) hay dồn cục vào ban đêm.
         candidate_slots.sort(key=lambda item: item[0])
 
         for candidate_dt, slot in candidate_slots:
@@ -515,15 +568,14 @@ def get_next_available_golden_slot(
             if is_too_close:
                 continue
 
-
             # 2. KIỂM TRA QUY TẮC "TỐI ĐA 2 VIDEO / 1 NGÀY":
-            # Đếm số lượng video đã đặt trên cùng chu kỳ ngày của thị trường mục tiêu US EST/EDT
-            target_us_date = candidate_dt.astimezone(US_EASTERN).date()
-            us_day_count = sum(1 for occ in occupied_slots_utc if occ.astimezone(US_EASTERN).date() == target_us_date)
+            # Đếm số lượng video đã đặt trên cùng chu kỳ ngày của thị trường mục tiêu (US EDT/EST hoặc Brazil BRT)
+            target_market_date = candidate_dt.astimezone(target_tz).date()
+            market_day_count = sum(1 for occ in occupied_slots_utc if occ.astimezone(target_tz).date() == target_market_date)
 
-            if us_day_count >= MAX_VIDEOS_PER_DAY:
+            if market_day_count >= MAX_VIDEOS_PER_DAY:
                 logger.debug(
-                    f"[SmartScheduler] Ngày {target_us_date} (US) đã có đủ {us_day_count} video "
+                    f"[SmartScheduler] Ngày {target_market_date} ({'BR' if is_br else 'US'}) đã có đủ {market_day_count} video "
                     f"(đạt giới hạn tối đa {MAX_VIDEOS_PER_DAY} video/ngày) -> Chuyển sang ngày tiếp theo."
                 )
                 continue
@@ -531,13 +583,14 @@ def get_next_available_golden_slot(
             # 3. TÌM THẤY KHE GIỜ VÀNG TRỐNG TỐI ƯU THỎA MÃN MỌI ĐIỀU KIỆN!
             slot_iso = candidate_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-            # Chuyển đổi sang giờ Việt Nam & giờ Mỹ thực tế để hiển thị
+            # Chuyển đổi sang giờ Việt Nam & giờ Mỹ/Brazil thực tế để hiển thị
             candidate_vn = candidate_dt.astimezone(VN_TZ)
-            candidate_us = candidate_dt.astimezone(US_EASTERN)
+            candidate_market = candidate_dt.astimezone(target_tz)
             weekday_name = WEEKDAY_VN_MAP.get(candidate_vn.weekday(), "Ngày")
             vn_period = "Đêm" if candidate_vn.hour >= 18 else "Sáng"
             display_vn = f"{candidate_vn.strftime('%H:%M')} {vn_period} {weekday_name}, {candidate_vn.strftime('%d/%m/%Y')} (Giờ VN)"
-            display_us = f"{candidate_us.strftime('%I:%M %p %Z')} — {slot['label_us']}"
+            tz_label = "BRT" if is_br else candidate_market.strftime('%Z')
+            display_us = f"{candidate_market.strftime('%I:%M %p')} {tz_label} — {slot['label_us']}"
 
             logger.info(
                 f"🎯 [SmartScheduler] Đã xếp lịch tối ưu (Tối đa 2 video/ngày, lệch pha {stagger_minutes:+d}p) cho kênh {channel_id}: "
@@ -558,6 +611,8 @@ def get_channel_upcoming_schedule(channel_id: str = "channel_maya", limit: int =
     sync_scheduled_jobs_status()
     now_utc = datetime.now(timezone.utc)
     channel_family = resolve_channel_family(channel_id)
+    is_br = is_brazil_channel(channel_id)
+    active_slots_pool = BRAZIL_GOLDEN_SLOTS_UTC if is_br else GOLDEN_SLOTS_UTC
     results = []
 
     with get_db() as db:
@@ -575,12 +630,12 @@ def get_channel_upcoming_schedule(channel_id: str = "channel_maya", limit: int =
             st_vn = st.astimezone(VN_TZ)
             weekday_name = WEEKDAY_VN_MAP.get(st_vn.weekday(), "")
 
-            # Tìm label US tương ứng (chấp nhận biên độ lệch pha +-45 phút)
-            slot_label_us = "Giờ hẹn YouTube"
+            # Tìm label US/BR tương ứng (chấp nhận biên độ lệch pha +-60 phút)
+            slot_label_us = "Giờ hẹn YouTube (Brazil BRT)" if is_br else "Giờ hẹn YouTube"
             st_mins = st.hour * 60 + st.minute
-            for s in GOLDEN_SLOTS_UTC:
+            for s in active_slots_pool:
                 s_mins = s["hour"] * 60 + s["minute"]
-                if abs(st_mins - s_mins) <= 45:
+                if abs(st_mins - s_mins) <= 60:
                     slot_label_us = s["label_us"]
                     break
 

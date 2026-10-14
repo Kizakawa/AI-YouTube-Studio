@@ -40,51 +40,47 @@ CHANNEL_ID      = "ch_misterios_do_mundo"
 CHANNEL_NAME    = "Mistérios do Mundo"
 CHANNEL_NICHE   = "deep_sea_earth_mysteries"
 CHANNEL_LANG    = "pt-BR"
-GOOGLE_ACCOUNT  = "acount_2"
+GOOGLE_ACCOUNT  = "acccount4"
 PREFERRED_VOICE = "pt-BR-AntonioNeural"
 CHANNEL_HANDLE  = "@misteriosdomundo-tv"
 AMAZON_TAG      = "kizakawa-20"
 
-# ── KHUNG GIỜ VÀNG BRAZIL ──────────────────────────────────────────────────────
-# 22:00 BRT = 01:00 UTC (ngày hôm sau)
-# Khung cuối tối — người Brazil xem trước khi ngủ (mysteries, deep sea, paranormal)
-# Staggered 2 giờ so với Odisseia Selvagem (23:00 UTC) để tránh cạnh tranh nội bộ
+# ── KHUNG GIỜ VÀNG BRAZIL (BRT = UTC-3) ────────────────────────────────────────
+# Khung 1 (Đón đầu Đỉnh Trưa Brazil, lệch pha +45p): 14:15 UTC = 11:15 BRT (21:15 Tối VN)
+# Khung 2 (Đón đầu Đỉnh Tối Vàng Brazil, lệch pha +45p): 21:45 UTC = 18:45 BRT (04:45 Sáng VN)
 BRT = timezone(timedelta(hours=-3))
 UTC = timezone.utc
 
-from app.services.smart_scheduler import find_channel_golden_slot_avoiding_collisions
+from app.services.smart_scheduler import get_next_available_golden_slot
 
 
 # ── BỂ CHỦ ĐỀ VIRAL pt-BR — Deep Sea & Earth Mysteries ───────────────────────
 VIRAL_TOPIC_POOL = [
-    "A NASA Encontrou um Oceano Escondido Debaixo da Antártica — E Algo Se Move Lá Dentro",
-    "O Som Mais Aterrorizante Já Gravado no Fundo do Oceano — Cientistas Não Sabem Explicar",
-    "O Buraco no Fundo do Mar Que Puxa Tudo Para Dentro — Até Submarinos Desaparecem",
-    "A Criatura de 11km de Profundidade Que Deveria Ser Impossível Segundo a Ciência",
-    "Por Que o Triângulo das Bermudas Faz Aviões Desaparecer Sem Deixar Um Único Rastro?",
-    "O Rio Que Ferve e Mata Tudo Que Entra: O Mistério Mais Perturbador da Amazônia Peruana",
-    "A Tempestade Eterna Que Dura 160 Anos Sem Parar na Venezuela — E Ninguém Sabe Por Quê",
-    "Os 14 Sons Inexplicáveis Gravados no Fundo do Oceano Desde 1997 — O Que Está Lá Embaixo?",
-    "A Cidade Submersa Descoberta Por Acidente no Litoral do Brasil — Milhares de Anos Escondida",
-    "A Praia Que Desaparece e Reaparece Toda Semana no Brasil — Fenômeno Que Desafia a Física",
+    "O Som Mais Aterrorizante Já Gravado no Ponto Nemo — E a Ciência Escondeu! 🌊😱",
+    "Por Que os Cientistas Desligaram os Microfones no Fundo do Oceano Pacífico? 🎧🌊",
+    "Ilha da Queimada Grande: Por Que a Marinha do Brasil Proíbe Qualquer Humano de Pisar Lá? 🐍🚫",
+    "O Rio Que Ferve a 93°C no Coração da Amazônia — Tudo Que Cai Lá Dentro Cozinha Vivo! 🔥🌿",
+    "A Caverna Selada Há 5 Milhões de Anos Onde Criaturas Vivem Sem Oxigênio e Sem Luz! 🕳️🧬",
+    "Por Que Seus Olhos São Biologicamente Cegos Para 99% do Que Está Ao Seu Redor? 👁️🧠",
+    "A Sala Mais Silenciosa do Mundo Onde Ninguém Aguenta Ficar 15 Minutos Sem Alucinar! 🔇🧠",
+    "O Lago Subterrâneo Selado Debaixo de 4 Km de Gelo na Antártica — Algo Vive Lá! ❄️🌊",
+    "A Tempestade Eterna Que Relampeja 28 Vezes Por Minuto Há 160 Anos na América do Sul! ⚡🌩️",
+    "Por Que Mergulhadores de Mar Profundo Nunca Olham Para a Superfície à Noite? 🤿🌑",
 ]
 
 
 async def main(custom_topic: str = None, dry_run: bool = False):
-    SCHEDULE_SLOT_UTC, SCHEDULE_SLOT_ISO, DISPLAY_VN = find_channel_golden_slot_avoiding_collisions(
+    SCHEDULE_SLOT_UTC, SCHEDULE_SLOT_ISO, DISPLAY_VN, DISPLAY_BR_LABEL = get_next_available_golden_slot(
         channel_id=CHANNEL_ID,
-        preferred_utc_hour=1,
-        preferred_utc_minute=0,
-        min_hours_between_videos=6.0
+        min_lead_minutes=20
     )
     _t_brt = SCHEDULE_SLOT_UTC.astimezone(BRT)
-    DISPLAY_BRT = f"{_t_brt.strftime('%H:%M')} ngày {_t_brt.strftime('%d/%m/%Y')} (Giờ Brasília/BRT) | {DISPLAY_VN}"
+    DISPLAY_BRT = f"{_t_brt.strftime('%H:%M')} BRT ngày {_t_brt.strftime('%d/%m/%Y')} ({DISPLAY_BR_LABEL}) | {DISPLAY_VN}"
     _t_utc_str = SCHEDULE_SLOT_UTC.strftime("%Y-%m-%d %H:%M UTC")
 
     print("=" * 75)
     print(f"🌟 KÊNH: {CHANNEL_NAME} ({CHANNEL_ID})")
     print(f"🌎 Thị trường: Brazil | Ngôn ngữ: Português (pt-BR)")
-    print(f"⏰ KHUNG GIỜ VÀNG BRAZIL: {DISPLAY_BRT} ({_t_utc_str})")
     print(f"⏰ KHUNG GIỜ VÀNG BRAZIL: {DISPLAY_BRT} ({_t_utc_str})")
     print(f"🎙 Giọng đọc: {PREFERRED_VOICE}")
     print(f"🛒 Amazon Affiliate Tag: {AMAZON_TAG}")
@@ -95,12 +91,15 @@ async def main(custom_topic: str = None, dry_run: bool = False):
 
     from app.agents.content_agent import ContentAgent
     from app.services.quality_evaluator import QualityEvaluator
+    from app.services.channel_intelligence import get_winner_cloner_blueprint
     agent = ContentAgent()
     evaluator = QualityEvaluator()
 
     # ── BƯỚC 1: TẠO & ĐÁNH GIÁ CHẤM ĐIỂM KỊCH BẢN CHO ĐẾN KHI ĐẠT CHUẨN ────────
     print("\n[1/5] 📝 BƯỚC 1: Xây dựng & Đánh giá kịch bản viral Mysteries pt-BR...")
-    topic = custom_topic or random.choice(VIRAL_TOPIC_POOL)
+    cloner_bp = get_winner_cloner_blueprint(channel_id=CHANNEL_ID, niche_id=CHANNEL_NICHE)
+    fresh_sequels = cloner_bp.get("fresh_sequel_topics") or []
+    topic = custom_topic or (fresh_sequels[0] if fresh_sequels else random.choice(VIRAL_TOPIC_POOL))
     print(f"   -> Chủ đề chọn: {topic}")
 
     script = None
@@ -113,16 +112,17 @@ async def main(custom_topic: str = None, dry_run: bool = False):
             topic=topic,
             channel_niche=CHANNEL_NICHE,
             language=CHANNEL_LANG,
+            channel_id=CHANNEL_ID,
             director_notes=(
-                "Canal Mistérios do Mundo - Brasil. Público: brasileiros curiosos sobre mistérios, "
-                "oceano profundo, fenômenos naturais inexplicáveis e conspirações científicas. "
-                "Arquitetura 4-beat retention em português brasileiro coloquial. "
-                "GANCHO (0-3s): fato chocante ou pergunta que desafia a ciência (ex: 'Isso não faz sentido'). "
-                "DESENVOLVIMENTO: contextualização científica acessível + tensão crescente. "
-                "VIRADA/CLÍMAX: revelação surpreendente que muda a percepção do espectador. "
-                "CTA (últimos 3s): pergunta aberta para comentários (ex: 'Você acredita nisso?') + inscrição. "
-                "Tom: suspenseful, misterioso, dramático. Voz grave e pausada. "
-                "NUNCA use inglês no roteiro - apenas português do Brasil fluente."
+                "Canal Mistérios do Mundo - Brasil (Winner comprovado: 'Sons bizarros do fundo do oceano que ninguém explica!' com 1.435 views e 50 likes). "
+                "Público: brasileiros fascinados por anomalias acústicas do oceano, lugares proibidos no Brasil/Amazônia e paradoxos sensoriais humanos. "
+                "Arquitetura 4-beat retention ultrarrápida (8-10 cenas de 6-9 palavras cada, 22-30 segundos) em português brasileiro fluente. "
+                "GANCHO (Cena 1, 1.8s, 4-7 palavras): anomalia chocante em 2ª pessoa ('Seus olhos...', 'O som gravado...') que desafia a ciência. "
+                "RE-HOOK (Cena 4, ~10s): reviravolta assustadora ('Mas o que os cientistas descobriram depois gelou a sala.'). "
+                "PAYOFF & CLÍMAX (Cenas 5-8): explicação científica sombria e revelação final concreta. "
+                "PONTE DE LOOP INFINITO (Última cena — ZERO CTA FALADO): NUNCA diga 'Inscreva-se' ou 'Deixe nos comentários' na narração! "
+                "Feche a última cena com uma frase que se conecta diretamente ao gancho da Cena 1. "
+                "IMPORTANTE: 'visual_keyword', 'visual_prompt' e 'stock_query' DEVEM estar em INGLÊS concreto para busca no Pexels."
             )
         )
 

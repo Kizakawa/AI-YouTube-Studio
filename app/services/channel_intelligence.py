@@ -530,6 +530,146 @@ Hook Formula: 'If someone does this within the first 5 seconds of speaking to yo
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# 2.5. BỘ NHÂN BẢN QUÁN QUÂN & PHÁT HIỆN SERIES PART 2 (WINNER CLONER ENGINE)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def get_winner_cloner_blueprint(
+    channel_id: str,
+    niche_id: Optional[str] = None,
+    portfolio: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Phân tích video quán quân (Outlier Winner) của kênh để trích xuất:
+    1. Cấu trúc cú pháp tiêu đề chiến thắng (Winner Title Syntax Pattern).
+    2. Danh sách chủ đề 'Sister Sequel / Part 2' nhân bản cơ chế tâm lý của video thắng lớn
+       nhưng đổi sang thực thể/tình huống mới 100% (đã lọc chống trùng lặp qua check_idea_similarity).
+    3. Danh sách chủ đề chưa từng dùng từ `viral_topic_bank_2026` của Niche YAML.
+    """
+    port = portfolio or get_channel_existing_portfolio(channel_id)
+    eff_niche = (niche_id or port.get("channel_niche") or "psychology").lower()
+    existing_titles = list(port.get("existing_titles") or []) + list(port.get("existing_topics") or [])
+    top_performers = port.get("top_performers") or []
+
+    niche_prof = get_niche(eff_niche)
+    blueprint_cfg = niche_prof.get("script_blueprint") or {}
+    yaml_topic_bank = list(blueprint_cfg.get("viral_topic_bank_2026") or [])
+
+    winner_title = top_performers[0]["title"] if top_performers else ""
+    winner_views = top_performers[0].get("views_num", 0) if top_performers else 0
+
+    # Kho Sister Sequel theo từng mẫu Winner thực tế của 7 kênh (5 US + 2 Brazil pt-BR)
+    sequel_templates: List[str] = []
+    w_low = winner_title.lower()
+    is_pt = (
+        str(port.get("channel_lang") or "").lower().startswith("pt")
+        or str(channel_id).lower() in ("ch_odisseia_selvagem", "ch_misterios_do_mundo", "@odisseiaselvagemoficial", "@misteriosdomundo-tv")
+    )
+
+    if is_pt:
+        if "wildlife" in eff_niche or "predator" in eff_niche or "odisseia" in str(channel_id).lower():
+            sequel_templates = [
+                "Ariranha vs Jacaré no Pantanal: O Bando Sanguinário Que Até a Onça Respeita! 🦦🐊",
+                "Onça-Pintada vs Jacaré-Açu: A Mordida de 1.500 PSI Que Perfura Crânios na Água! 🐆💥",
+                "Harpia Brasileira: A Águia Monstruosa Com Garras do Tamanho de um Urso Pardo! 🦅🔥",
+                "Piranha-Preta vs Poraquê de 860 Volts: O Duelo Mais Letal dos Rios da Amazônia! ⚡🐟",
+                "Sucuri Gigante de 8 Metros vs Jacaré-Açu: Quem Domina as Águas da Amazônia? 🐍🐊",
+                "Texugo-do-Mel vs Orgulho de Leões: O Animal Que Não Sente Medo e Nem Veneno! 🦡🦁",
+                "Orca vs Tubarão-Branco: O Golpe Cirúrgico Que Faz o Rei do Mar Fugir em Pânico! 🐋🦈",
+            ]
+        else:
+            # Mistérios do Mundo (Winner: "Sons bizarros do fundo do oceano que ninguém explica! 🌊😱" - 1,435 views, 50 likes)
+            sequel_templates = [
+                "O Som Mais Aterrorizante Já Gravado no Ponto Nemo — E a Ciência Escondeu! 🌊😱",
+                "Por Que os Cientistas Desligaram os Microfones no Fundo do Oceano Pacífico? 🎧🌊",
+                "Ilha da Queimada Grande: Por Que a Marinha do Brasil Proíbe Qualquer Humano de Pisar Lá? 🐍🚫",
+                "O Rio Que Ferve a 93°C no Coração da Amazônia — Tudo Que Cai Lá Dentro Cozinha Vivo! 🔥🌿",
+                "A Caverna Selada Há 5 Milhões de Anos Onde Criaturas Vivem Sem Oxigênio e Sem Luz! 🕳️🧬",
+                "Por Que Seus Olhos São Biologicamente Cegos Para 99% do Que Está Ao Seu Redor? 👁️🧠",
+                "A Sala Mais Silenciosa do Mundo Onde Ninguém Aguenta Ficar 15 Minutos Sem Alucinar! 🔇🧠",
+            ]
+        yaml_topic_bank = []
+    elif "psychology" in eff_niche:
+        if "serial killer" in w_low or "court" in w_low or "smile" in w_low:
+            sequel_templates = [
+                "Why Sociopaths Never Blink When They Lie Under Oath",
+                "Why FBI Interrogators Watch Your Feet Instead Of Your Eyes",
+                "Why Guilty Suspects Always Repeat Your Question Before Answering",
+            ]
+        elif "using you" in w_low or "sign" in w_low:
+            sequel_templates = [
+                "If Someone Insults You Disguised As A Joke, Ask This 4-Word Question",
+                "The 4-Second Silence Trick That Makes Arrogant People Panic",
+                "How To Spot A Fake Friend By How They React To Your Good News",
+            ]
+        else:
+            sequel_templates = yaml_topic_bank[:5]
+    elif "rescue" in eff_niche or "animal" in eff_niche:
+        if "refused to let go" in w_low or "terrified" in w_low:
+            sequel_templates = [
+                "He Refused To Stop Hugging The Rescuer Who Pulled Him Out Of The Storm",
+                "The Exact Second This Stray Mama Dog Realized Her Puppies Were Safe",
+                "Terrified Stray Puppy Fell Asleep In A Rescuer's Warm Hands For The First Time",
+                "Everyone Walked Past The Senior Shelter Dog Until One Man Read His Sign",
+            ]
+        else:
+            sequel_templates = yaml_topic_bank[:5]
+    elif "deep_sea" in eff_niche or "myster" in eff_niche:
+        if "terrified of deep water" in w_low or "silence" in w_low or "blind" in w_low:
+            sequel_templates = [
+                "Why Deep Sea Divers Never Look Up At The Surface At Night",
+                "What Happens To Your Brain After 45 Minutes In Zero Light And Zero Sound",
+                "Why Your Body Freezes In Sleep Paralysis And What Your Brain Is Hiding",
+                "The Terrifying Reason Scientists Sealed The Kola Superdeep Borehole At 40,230 Feet",
+            ]
+        else:
+            sequel_templates = yaml_topic_bank[:5]
+    elif "wildlife" in eff_niche or "predator" in eff_niche:
+        sequel_templates = [
+            "This Is Why Caimans Are Terrified Of Jaguars In Deep Water",
+            "Why Even A 20-Foot Great White Shark Flees From A Single Orca",
+            "How A Snow Leopard Survives A 60-Foot Vertical Cliff Fall While Hunting",
+            "Honey Badger vs King Cobra: How It Sleeps Off Lethal Neurotoxin",
+        ]
+    elif "alternate" in eff_niche or "history" in eff_niche:
+        sequel_templates = [
+            "How One Wrong Turn By A Driver In 1914 Erased Four Empires Forever",
+            "The Man Who Refused To Launch A Nuclear Strike In 1962 Inside Submarine B-59",
+            "How A 15-Minute Rainstorm At Waterloo Ended Napoleon's Empire",
+            "What If The Titanic Never Hit The Iceberg? The Dark Truth Nobody Tells You",
+        ]
+
+    # Gộp sequel_templates + yaml_topic_bank và lọc chống trùng lặp với lịch sử kênh
+    fresh_candidates: List[str] = []
+    for cand in sequel_templates + yaml_topic_bank:
+        if not cand or cand in fresh_candidates:
+            continue
+        is_dup, _, _ = check_idea_similarity(cand, existing_titles, similarity_threshold=0.38)
+        if not is_dup:
+            fresh_candidates.append(cand)
+
+    prompt_directive = ""
+    if winner_title:
+        prompt_directive = (
+            f"🔥 WINNER CLONER DIRECTIVE (Top Channel Winner: \"{winner_title}\" — {winner_views:,} views):\n"
+            f"  - Replicate the exact high-stakes curiosity tension, 2nd-person visceral framing, and 4-beat payoff of this winner.\n"
+            f"  - Recommended 'Part 2 / Sister Sequel' angles ready for production: "
+            + "; ".join(f'"{c}"' for c in fresh_candidates[:3])
+        )
+    elif fresh_candidates:
+        prompt_directive = (
+            f"🔥 2026 MILLION-VIEW TOPIC BANK RECOMMENDATIONS:\n  - "
+            + "\n  - ".join(f'"{c}"' for c in fresh_candidates[:4])
+        )
+
+    return {
+        "winner_title": winner_title,
+        "winner_views": winner_views,
+        "fresh_sequel_topics": fresh_candidates,
+        "prompt_directive": prompt_directive,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # 3. GỢI Ý Ý TƯỞNG THÔNG MINH CHO TỪNG KÊNH (CHANNEL TOPIC SUGGESTER)
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -585,6 +725,9 @@ def suggest_channel_topics(
     if not clean_existing_prompt:
         clean_existing_prompt = "(Chưa có video nào — đây là video khởi đầu của kênh!)"
 
+    winner_blueprint = get_winner_cloner_blueprint(channel_id, niche_id=niche_id, portfolio=portfolio)
+    winner_cloner_prompt = winner_blueprint.get("prompt_directive") or ""
+
     # Xây dựng dữ liệu Top Performers làm hình mẫu lan toả
     top_performer_prompt = ""
     if top_performers:
@@ -597,7 +740,10 @@ def suggest_channel_topics(
 {chr(10).join(top_lines)}
 Winning Mechanism: High-curiosity primal trigger, instant pattern interrupt, urgent psychological or existential stakes.
 Your new ideas MUST inherit this winning emotional DNA without copying the same subject!
+{winner_cloner_prompt}
 """
+    elif winner_cloner_prompt:
+        top_performer_prompt = f"\n{winner_cloner_prompt}\n"
 
     # Xây dựng dữ liệu Flop Videos và các cạm bẫy cần tránh
     flop_prompt = ""

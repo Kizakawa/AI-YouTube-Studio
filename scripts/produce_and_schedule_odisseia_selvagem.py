@@ -40,50 +40,47 @@ CHANNEL_ID      = "ch_odisseia_selvagem"
 CHANNEL_NAME    = "Odisseia Selvagem"
 CHANNEL_NICHE   = "wildlife_predators"
 CHANNEL_LANG    = "pt-BR"
-GOOGLE_ACCOUNT  = "acount_2"
+GOOGLE_ACCOUNT  = "acccount4"
 PREFERRED_VOICE = "pt-BR-AntonioNeural"
 CHANNEL_HANDLE  = "@odisseiaselvagemoficial"
 AMAZON_TAG      = "kizakawa-20"
 
-# ── KHUNG GIỜ VÀNG BRAZIL ──────────────────────────────────────────────────────
-# Brasilia Time (BRT) = UTC-3
-# Peak YouTube engagement Brazil: 20:00 BRT = 23:00 UTC
+# ── KHUNG GIỜ VÀNG BRAZIL (BRT = UTC-3) ────────────────────────────────────────
+# Khung 1 (Đón đầu Đỉnh Trưa Brazil): 13:30 UTC = 10:30 BRT (20:30 Tối VN)
+# Khung 2 (Đón đầu Đỉnh Tối Vàng Brazil): 21:00 UTC = 18:00 BRT (04:00 Sáng VN)
 BRT = timezone(timedelta(hours=-3))
 UTC = timezone.utc
 
-from app.services.smart_scheduler import find_channel_golden_slot_avoiding_collisions
+from app.services.smart_scheduler import get_next_available_golden_slot
 
 
 # ── BỂ CHỦ ĐỀ VIRAL pt-BR — Wildlife Predators ────────────────────────────────
 VIRAL_TOPIC_POOL = [
-    "Ariranha Gigante Ataca Jacaré de 3 Metros no Pantanal — E Vence Com Tática Militar",
-    "Onça-Pintada Mergulha de 5 Metros e Arrasta Jacaré Para Fora d'Água Com 1.500 PSI",
-    "Sucuri de 8 Metros Engole Capivara INTEIRA ao Vivo no Pantanal — 60 Quilos em Uma Bocada",
-    "Harpia: A Águia Brasileira Que Caça Macacos a 80km/h no Dossel Amazônico",
-    "Onça-Negra: O Fantasma Invisível Que Ninguém Vê Até Ser Tarde Demais",
-    "Piranha Vermelha: A Verdade Brutal Sobre o Peixe Mais Temido do Brasil",
-    "Cobra-Coral vs Gambá: A Batalha de Veneno Que a Ciência Nunca Esperava",
-    "Lobo-Guará vs Tatu-Canastra: A Luta Mais Rara do Cerrado Brasileiro",
-    "Jacaré-Açu de 5 Metros vs Sucuri: Quem Vence o Duelo Mais Brutal da Amazônia?",
-    "Boto-Cor-de-Rosa: O Predador Inteligente Que Engana os Peixes Com Som",
+    "Ariranha vs Jacaré no Pantanal: O Bando Sanguinário Que Até a Onça Respeita! 🦦🐊",
+    "Onça-Pintada vs Jacaré-Açu: A Mordida de 1.500 PSI Que Perfura Crânios na Água! 🐆💥",
+    "Harpia Brasileira: A Águia Monstruosa Com Garras do Tamanho de um Urso Pardo! 🦅🔥",
+    "Piranha-Preta vs Poraquê de 860 Volts: O Duelo Mais Letal dos Rios da Amazônia! ⚡🐟",
+    "Sucuri Gigante de 8 Metros vs Jacaré-Açu: Quem Domina as Águas da Amazônia? 🐍🐊",
+    "Texugo-do-Mel vs Orgulho de Leões: O Animal Que Não Sente Medo e Nem Veneno! 🦡🦁",
+    "Orca vs Tubarão-Branco: O Golpe Cirúrgico Que Faz o Rei do Mar Fugir em Pânico! 🐋🦈",
+    "Onça-Negra: O Fantasma Invisível da Amazônia Que Ataca no Escuro Absoluto! 🐆🌑",
+    "Cobra-Coral vs Muçurana: A Serpente Brasileira Imune ao Veneno Mais Mortal! 🐍⚡",
+    "Boto-Cor-de-Rosa vs Piranhas: A Tática de Sonar Que Domina o Rio Amazonas! 🐬🌊",
 ]
 
 
 async def main(custom_topic: str = None, dry_run: bool = False):
-    SCHEDULE_SLOT_UTC, SCHEDULE_SLOT_ISO, DISPLAY_VN = find_channel_golden_slot_avoiding_collisions(
+    SCHEDULE_SLOT_UTC, SCHEDULE_SLOT_ISO, DISPLAY_VN, DISPLAY_BR_LABEL = get_next_available_golden_slot(
         channel_id=CHANNEL_ID,
-        preferred_utc_hour=23,
-        preferred_utc_minute=0,
-        min_hours_between_videos=6.0
+        min_lead_minutes=20
     )
     _t_brt = SCHEDULE_SLOT_UTC.astimezone(BRT)
-    DISPLAY_BRT = f"{_t_brt.strftime('%H:%M')} ngày {_t_brt.strftime('%d/%m/%Y')} (Giờ Brasília/BRT) | {DISPLAY_VN}"
+    DISPLAY_BRT = f"{_t_brt.strftime('%H:%M')} BRT ngày {_t_brt.strftime('%d/%m/%Y')} ({DISPLAY_BR_LABEL}) | {DISPLAY_VN}"
     _t_utc_str = SCHEDULE_SLOT_UTC.strftime("%Y-%m-%d %H:%M UTC")
 
     print("=" * 75)
     print(f"🌟 KÊNH: {CHANNEL_NAME} ({CHANNEL_ID})")
     print(f"🌎 Thị trường: Brazil | Ngôn ngữ: Português (pt-BR)")
-    print(f"⏰ KHUNG GIỜ VÀNG BRAZIL: {DISPLAY_BRT} ({_t_utc_str})")
     print(f"⏰ KHUNG GIỜ VÀNG BRAZIL: {DISPLAY_BRT} ({_t_utc_str})")
     print(f"🎙 Giọng đọc: {PREFERRED_VOICE}")
     print(f"🛒 Amazon Affiliate Tag: {AMAZON_TAG}")
@@ -94,12 +91,15 @@ async def main(custom_topic: str = None, dry_run: bool = False):
 
     from app.agents.content_agent import ContentAgent
     from app.services.quality_evaluator import QualityEvaluator
+    from app.services.channel_intelligence import get_winner_cloner_blueprint
     agent = ContentAgent()
     evaluator = QualityEvaluator()
 
     # ── BƯỚC 1: TẠO & ĐÁNH GIÁ CHẤM ĐIỂM KỊCH BẢN CHO ĐẾN KHI ĐẠT CHUẨN ────────
     print("\n[1/5] 📝 BƯỚC 1: Xây dựng & Đánh giá kịch bản viral pt-BR...")
-    topic = custom_topic or random.choice(VIRAL_TOPIC_POOL)
+    cloner_bp = get_winner_cloner_blueprint(channel_id=CHANNEL_ID, niche_id=CHANNEL_NICHE)
+    fresh_sequels = cloner_bp.get("fresh_sequel_topics") or []
+    topic = custom_topic or (fresh_sequels[0] if fresh_sequels else random.choice(VIRAL_TOPIC_POOL))
     print(f"   -> Chủ đề chọn: {topic}")
 
     script = None
@@ -112,15 +112,16 @@ async def main(custom_topic: str = None, dry_run: bool = False):
             topic=topic,
             channel_niche=CHANNEL_NICHE,
             language=CHANNEL_LANG,
+            channel_id=CHANNEL_ID,
             director_notes=(
-                "Canal Odisseia Selvagem - Brasil. Público: brasileiros fãs de natureza selvagem. "
-                "Arquitetura 4-beat retention em português brasileiro coloquial. "
-                "GANCHO (0-3s): estatística ou fato chocante sobre o predador. "
-                "DESENVOLVIMENTO: comparação com outros predadores, mordida ou técnica de caça única. "
-                "CLÍMAX: momento de ataque real ou comportamento mortal. "
-                "CTA (últimos 3s): pergunta de engajamento para comentários + pedir inscrição. "
-                "Tom: intenso, dramático, científico mas acessível. "
-                "NUNCA use inglês no roteiro - apenas português do Brasil fluente."
+                "Canal Odisseia Selvagem - Brasil. Público: brasileiros apaixonados por predadores da Amazônia, Pantanal e vida selvagem. "
+                "Arquitetura 4-beat retention ultrarrápida (8-10 cenas de 6-9 palavras cada, 22-30 segundos) em português brasileiro fluente. "
+                "GANCHO (Cena 1, 1.8s, 4-7 palavras): duelo direto (Predador A vs. Predador B) ou estatística mortal imediata (1.500 PSI, 860 Volts). "
+                "RE-HOOK (Cena 4, ~10s): reviravolta biomecânica inesperada ('Mas é na água escura que tudo muda.'). "
+                "PAYOFF & CLÍMAX (Cenas 5-8): golpe fatal cirúrgico e quem vence o confronto. "
+                "PONTE DE LOOP INFINITO (Última cena — ZERO CTA FALADO): NUNCA diga 'Inscreva-se' ou 'Deixe nos comentários' na narração! "
+                "Feche a última cena com uma revelação brutal que se conecta diretamente ao gancho da Cena 1. "
+                "IMPORTANTE: 'visual_keyword', 'visual_prompt' e 'stock_query' DEVEM estar em INGLÊS concreto para busca no Pexels."
             )
         )
 

@@ -73,3 +73,4 @@ Before staging any files, review and optimize all modified files:
 4. **Final Verification & Reporting**:
    - Verify clean status and latest commit hash via `git log -n 1 --oneline`.
    - Include the commit hash (e.g., `` `abc1234` ``) in your final Vietnamese summary to the user so they know their code is already optimized, merged, and live on GitHub.
+

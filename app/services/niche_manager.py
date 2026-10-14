@@ -442,6 +442,8 @@ NICHE_EXCLUSIVE_SIGNATURES: Dict[str, Tuple[List[str], str]] = {
             "deep ocean", "ocean floor", "sea monster", "sonar recorded", "hydrophone",
             "antarctic ice", "subterranean cave", "giant squid", "colossal squid",
             "ocean deadliest", "ocean's deadliest", "abyssal", "quái vật biển", "đáy đại dương",
+            "fossa das marianas", "fundo do oceano", "fundo do mar", "triângulo das bermudas",
+            "oceano escondido", "ponto nemo", "buraco negro que engole navios",
         ],
         "ch_the_mysteries_of_the_world",
     ),
@@ -450,6 +452,8 @@ NICHE_EXCLUSIVE_SIGNATURES: Dict[str, Tuple[List[str], str]] = {
             "jaguar vs", "caiman vs", "anaconda vs", "honey badger", "komodo dragon",
             "apex predator", "bite force", "harpy eagle", "giant river otter",
             "great white shark vs", "crocodile attack",
+            "onça-pintada", "onça vs", "sucuri vs", "sucuri de", "jacaré-açu", "ariranha",
+            "harpia", "lobo-guará", "tatu-canastra", "piranha",
         ],
         "ch_wild_odyssey",
     ),
@@ -540,6 +544,14 @@ def validate_channel_niche_alignment(
                 if re.search(rf"(?<![\w]){re.escape(kw)}(?![\w])", combined_head)
             ]
             if matched_foreign:
+                # Nếu đang ở kênh Brazil (pt-BR), gợi ý sang kênh Brazil tương ứng
+                cid_low = str(channel_id or "").lower()
+                is_br = cid_low in ("ch_odisseia_selvagem", "ch_misterios_do_mundo", "@odisseiaselvagemoficial", "@misteriosdomundo-tv")
+                if is_br:
+                    if other_niche == "wildlife_predators":
+                        suggested_ch = "ch_odisseia_selvagem"
+                    elif other_niche == "deep_sea_earth_mysteries":
+                        suggested_ch = "ch_misterios_do_mundo"
                 return {
                     "passed": False,
                     "channel_niche": channel_niche,

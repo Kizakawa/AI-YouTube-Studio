@@ -279,19 +279,19 @@ Respond ONLY in valid JSON:
         # 4. Kiểm tra Retention, Mid-Video Re-Hook & Payoff Depth
         num_scenes = len(scenes)
         total_words = len(full_text.split())
-        if 6 <= num_scenes <= 11 and 72 <= total_words <= 145:
+        if 6 <= num_scenes <= 12 and 55 <= total_words <= 145:
             retention_score += 1.2
-            strengths.append(f"Cấu trúc {num_scenes} cảnh ({total_words} từ) đạt chuẩn vàng 35-55s có Payoff sâu.")
-        elif num_scenes < 6 or total_words < 70:
+            strengths.append(f"Cấu trúc {num_scenes} cảnh ({total_words} từ) đạt chuẩn nhịp cắt nhanh có Payoff sâu.")
+        elif num_scenes < 6 or total_words < 50:
             retention_score -= 2.0
             issues.append(f"Kịch bản quá ngắn ({num_scenes} cảnh, {total_words} từ), thiếu chiều sâu Payoff.")
 
-        # Kiểm tra CTA cảnh cuối
+        # Kiểm tra kết thúc Infinite Loop Bridge (Zero Spoken Subscribe CTA)
         if scenes:
             last_scene = scenes[-1].get("narration", "")
-            if any(cta_word in last_scene.lower() for cta_word in ["comente", "inscreva", "você", "acha", "opinião", "?", "deixe", "subscribe", "follow", "comment", "đăng ký", "bình luận"]):
+            if not any(cta_word in last_scene.lower() for cta_word in ["inscreva-se", "se inscreva", "subscribe", "đăng ký kênh"]):
                 retention_score = min(10.0, retention_score + 0.8)
-                strengths.append("Cảnh cuối có CTA tương tác & chuyển đổi Subscribe.")
+                strengths.append("Cảnh cuối tuân thủ chuẩn Zero-Outro Infinite Loop Bridge (giữ APV > 100%).")
 
         total_score = int((hook_score * 0.30 + niche_score * 0.25 + lang_score * 0.25 + retention_score * 0.20) * 10)
         passed = total_score >= 80

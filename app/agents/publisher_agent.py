@@ -227,6 +227,53 @@ class PublisherAgent:
             }
 
         # ──────────────────────────────────────────────────────────
+        # 1. PRE-UPLOAD VIDEO INTEGRITY GUARD (CHẶN TUYỆT ĐỐI LỖI P0D / FILE RỖNG)
+        # ──────────────────────────────────────────────────────────
+        try:
+            f_size = os.path.getsize(video_path)
+            if f_size < 150 * 1024:
+                err_p0d = f"🛡️ [IntegrityGuard] Chặn upload: File video quá nhỏ hoặc bị hỏng ({f_size} bytes < 150KB): {video_path}"
+                logger.error(err_p0d)
+                return {"status": "failed", "error": err_p0d, "message": err_p0d, "video_id": None}
+
+            from app.utils.ffmpeg_helper import get_duration_ms
+            vid_dur_ms = get_duration_ms(video_path)
+            if vid_dur_ms > 0 and vid_dur_ms < 8000:
+                err_short = f"🛡️ [IntegrityGuard] Chặn upload: Thời lượng video quá ngắn ({vid_dur_ms/1000:.1f}s < 8s, nguy cơ lỗi P0D): {video_path}"
+                logger.error(err_short)
+                return {"status": "failed", "error": err_short, "message": err_short, "video_id": None}
+        except Exception as e_probe:
+            logger.debug(f"[IntegrityGuard] Probe check warning: {e_probe}")
+
+        # ──────────────────────────────────────────────────────────
+        # 2. HARD NICHE FIREWALL (CHẶN TUYỆT ĐỐI NHIỄM CHÉO NGÁCH KÊNH)
+        # ──────────────────────────────────────────────────────────
+        try:
+            from app.services.niche_manager import validate_channel_niche_alignment
+            niche_check = validate_channel_niche_alignment(
+                channel_id=self.channel_id,
+                title=title,
+                topic=topic,
+                script=script,
+            )
+            if not niche_check.get("passed", True):
+                fw_msg = (
+                    f"🛡️ [HardNicheFirewall] CHẶN UPLOAD LỆCH NGÁCH trên kênh '{self.channel_name}' ({self.channel_id}): "
+                    f"{niche_check.get('reason')} "
+                    f"(Kênh gợi ý đúng ngách: {niche_check.get('suggested_channel_id') or 'N/A'})"
+                )
+                logger.error(fw_msg)
+                return {
+                    "status": "failed",
+                    "error": fw_msg,
+                    "message": fw_msg,
+                    "video_id": None,
+                    "suggested_channel_id": niche_check.get("suggested_channel_id"),
+                }
+        except Exception as e_fw:
+            logger.debug(f"[HardNicheFirewall] Check warning: {e_fw}")
+
+        # ──────────────────────────────────────────────────────────
         # QUOTA GUARD: Kiểm tra hạn mức & TỰ ĐỘNG XOAY PROJECT TRONG POOL CỦA KÊNH
         # ──────────────────────────────────────────────────────────
         from app.services.quota_manager import QuotaManager, COST_FULL_SHORTS, get_next_reset_time
@@ -332,35 +379,44 @@ class PublisherAgent:
             if req_tag.lower() not in [t.lower() for t in tag_list]:
                 tag_list.append(req_tag)
 
-        # Chuẩn hóa ngôn ngữ mặc định (Target US & Global Audience chuẩn BCP-47)
-        target_lang = default_language or self.channel_config.get("language") or "en"
-        if str(target_lang).lower() in ("en", "en-us", "english"):
-            target_lang = "en"
-            target_audio_lang = "en-US"
-        elif not default_audio_language or default_audio_language.lower() in ("en", "en-us"):
-            target_audio_lang = "vi-VN" if str(target_lang).lower().startswith("vi") else "en-US"
+        # Chuẩn hóa ngôn ngữ mặc định (Target US, Brazil pt-BR & Global Audience chuẩn BCP-47)
+        cfg_lang = str(self.channel_config.get("language") or "").strip()
+        if cfg_lang.lower().startswith("pt") or (default_language and str(default_language).lower().startswith("pt")):
+            target_lang = "pt"
+            target_audio_lang = "pt-BR"
         else:
-            target_audio_lang = default_audio_language
+            target_lang = default_language or cfg_lang or "en"
+            if str(target_lang).lower() in ("en", "en-us", "english"):
+                target_lang = "en"
+                target_audio_lang = "en-US"
+            elif not default_audio_language or default_audio_language.lower() in ("en", "en-us"):
+                target_audio_lang = "vi-VN" if str(target_lang).lower().startswith("vi") else "en-US"
+            else:
+                target_audio_lang = default_audio_language
 
-        # Chống đăng trùng lặp tiêu đề video (Anti-Duplicate Upload Guard)
+        # Chống đăng trùng lặp tiêu đề video (Anti-Duplicate Upload Guard across Channel Family)
         try:
             from app.database.models import get_db, VideoJob
+            from app.services.smart_scheduler import resolve_channel_family
+            fam_ids = resolve_channel_family(self.channel_id)
+            norm_cand = re.sub(r'#shorts\b|\W+', '', clean_title.lower())
             with get_db() as db:
-                recent_dup = db.query(VideoJob).filter(
-                    VideoJob.target_channel_id == self.channel_id,
+                recent_jobs = db.query(VideoJob).filter(
+                    VideoJob.target_channel_id.in_(fam_ids),
                     VideoJob.status.in_(["PUBLISHED", "SCHEDULED"]),
                     VideoJob.youtube_video_id.isnot(None),
-                    VideoJob.title.in_([title, clean_title])
-                ).first()
-                if recent_dup and recent_dup.youtube_video_id:
-                    logger.warning(f"⚠️ [Publisher] Video '{clean_title}' đã được đăng trước đó trên kênh '{self.channel_name}' (ID: {recent_dup.youtube_video_id}). Chặn upload trùng lặp!")
-                    return {
-                        "video_id": recent_dup.youtube_video_id,
-                        "url": f"https://youtube.com/shorts/{recent_dup.youtube_video_id}",
-                        "title": clean_title,
-                        "status": "already_published",
-                        "project_id": self.project_id
-                    }
+                ).order_by(VideoJob.id.desc()).limit(40).all()
+                for rj in recent_jobs:
+                    rj_norm = re.sub(r'#shorts\b|\W+', '', (rj.title or "").lower())
+                    if rj_norm and norm_cand and (rj_norm == norm_cand or rj.title in (title, clean_title)):
+                        logger.warning(f"⚠️ [Publisher] Video '{clean_title}' đã được đăng trước đó trên kênh '{self.channel_name}' (ID: {rj.youtube_video_id}). Chặn upload trùng lặp!")
+                        return {
+                            "video_id": rj.youtube_video_id,
+                            "url": f"https://youtube.com/shorts/{rj.youtube_video_id}",
+                            "title": clean_title,
+                            "status": "already_published",
+                            "project_id": self.project_id
+                        }
         except Exception as e_dup:
             logger.debug(f"[Publisher] Kiểm tra trùng lặp: {e_dup}")
 

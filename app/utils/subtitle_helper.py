@@ -44,6 +44,8 @@ DANGER_POWER_WORDS = {
     "MÁU", "BẪY", "CẤM", "NUNCA", "JAMAIS", "PERIGO", "PERIGOSO", "MORTAL",
     "MONSTRO", "ASSASSINO", "ERRO", "AVISO", "PARE", "ATAQUE", "FATAL", "PREDADOR",
     "MEDO", "TERROR", "VENENO", "MENTIRA", "SANGUE", "MORTE", "PROIBIDO", "CUIDADO",
+    "BRUTAL", "LETAL", "ONÇA", "SUCURI", "JACARÉ", "ARIRANHA", "HARPIA", "PIRANHA",
+    "ABISMO", "ESCURIDÃO", "CRÂNIO", "MORDIDA", "GARRAS", "FERVENTE", "ATERRORIZANTE",
 }
 
 PAYOFF_POWER_WORDS = {
@@ -57,7 +59,8 @@ PAYOFF_POWER_WORDS = {
     "ĐỘT", "NHIÊN", "KHỔNG", "LỒ", "BẤT", "NGỜ", "SINH", "TỒN",
     "SEMPRE", "SEGREDO", "SEGREDOS", "VERDADE", "CHOCANTE", "IMPOSSÍVEL",
     "INCRÍVEL", "ABSURDO", "MISTÉRIO", "ESCONDIDO", "REVELADO", "REGRA", "REGRAS",
-    "SOBREVIVER", "URGENTE",
+    "SOBREVIVER", "URGENTE", "AMAZÔNIA", "PANTANAL", "OCEANO", "CIÊNCIA", "MILAGRE",
+    "INEXPLICÁVEL", "GIGANTE", "COLOSSAL", "PROFUNDO", "SOM", "MISTÉRIOS",
 }
 
 # ── Bộ từ khóa cảm xúc mạnh kích thích thị giác (Hypnotic Power Words) ─────
@@ -377,6 +380,7 @@ class SubtitleHelper:
                                 dur_cs += int(gap / 10)
                         word_durations_cs.append(dur_cs)
 
+                    chunk_pop_tag = r"{\t(0,65,\fscx107\fscy107)\t(65,160,\fscx100\fscy100)}"
                     karaoke_text = cls._build_karaoke_text(
                         words,
                         word_durations_cs,
@@ -389,7 +393,7 @@ class SubtitleHelper:
                     end_str = cls._ms_to_ass_time(chunk_end_ms)
 
                     dialogue_lines.append(
-                        f"Dialogue: 0,{start_str},{end_str},Karaoke,,0,0,0,,{karaoke_text}"
+                        f"Dialogue: 0,{start_str},{end_str},Karaoke,,0,0,0,,{chunk_pop_tag}{karaoke_text}"
                     )
             else:
                 # ── CHẾ ĐỘ 2: FALLBACK PHÂN BỔ KÝ TỰ (Khi không có word_timings) ──
@@ -431,6 +435,7 @@ class SubtitleHelper:
                         word_durations_cs[-1] += (chunk_cs - total_word_cs)
                         word_durations_cs[-1] = max(word_durations_cs[-1], 5)
 
+                    chunk_pop_tag = r"{\t(0,65,\fscx107\fscy107)\t(65,160,\fscx100\fscy100)}"
                     karaoke_text = cls._build_karaoke_text(
                         words,
                         word_durations_cs,
@@ -443,7 +448,7 @@ class SubtitleHelper:
                     end_str = cls._ms_to_ass_time(chunk_end_ms)
 
                     dialogue_lines.append(
-                        f"Dialogue: 0,{start_str},{end_str},Karaoke,,0,0,0,,{karaoke_text}"
+                        f"Dialogue: 0,{start_str},{end_str},Karaoke,,0,0,0,,{chunk_pop_tag}{karaoke_text}"
                     )
 
                     chunk_start_ms = chunk_end_ms
@@ -474,7 +479,18 @@ class SubtitleHelper:
         if scenes:
             raw_niche = (niche_id or "").lower()
             full_txt = " ".join([s.narration for s in scenes]).lower()
-            is_vi = any(c in full_txt for c in "àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ")
+            # Phân biệt chuẩn xác Tiếng Việt (vi), Tiếng Bồ Đào Nha Brazil (pt-BR) và Tiếng Anh (en):
+            # Tránh lỗi nhận nhầm các dấu á, é, í, ó, ú, ã, ê, ô của tiếng Bồ Đào Nha thành tiếng Việt!
+            vn_exclusive_re = re.compile(r'[ơớờởỡợưứừửữựđăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]')
+            pt_words = {
+                "não", "você", "uma", "para", "com", "mais", "pelo", "pela", "está",
+                "são", "isso", "até", "mas", "nas", "nos", "dos", "das", "onça",
+                "oceano", "mistério", "ciência", "metros", "selva", "amazônia", "pantanal",
+                "sucuri", "jacaré", "quando", "apenas", "fundo", "água", "águas",
+            }
+            txt_words = set(re.findall(r'\b\w+\b', full_txt))
+            is_pt = ("ç" in full_txt or "õ" in full_txt or "ã" in full_txt or len(txt_words & pt_words) >= 2) and not bool(vn_exclusive_re.search(full_txt))
+            is_vi = bool(vn_exclusive_re.search(full_txt)) and not is_pt
 
             effective_hook = (hook_title or "").strip()
             if not effective_hook and scenes:
@@ -502,19 +518,19 @@ class SubtitleHelper:
             if custom_open_badge:
                 badge_title = f"[ // {custom_open_badge.upper()} // ]"
             elif "psychology" in raw_niche:
-                badge_title = "[ // TÂM LÝ ĐEN TỐI // ]" if is_vi else "[ // MENTAL TRAP // ]"
+                badge_title = "[ // TÂM LÝ ĐEN TỐI // ]" if is_vi else ("[ // MENTE SOMBRIA // ]" if is_pt else "[ // MENTAL TRAP // ]")
             elif any(k in raw_niche for k in ("deep_sea", "ocean")):
-                badge_title = "[ // VỰC THẲM BÍ ẨN // ]" if is_vi else "[ // UNCHARTED ABYSS // ]"
+                badge_title = "[ // VỰC THẲM BÍ ẨN // ]" if is_vi else ("[ // ABISMO OCULTO // ]" if is_pt else "[ // UNCHARTED ABYSS // ]")
             elif any(k in raw_niche for k in ("predator", "wildlife")):
-                badge_title = "[ // ĐỐI ĐẦU SINH TỬ // ]" if is_vi else "[ // APEX DUEL // ]"
+                badge_title = "[ // ĐỐI ĐẦU SINH TỬ // ]" if is_vi else ("[ // DUELO MORTAL // ]" if is_pt else "[ // APEX DUEL // ]")
             elif any(k in raw_niche for k in ("rescue", "animal")):
-                badge_title = "[ // HỒ SƠ CỨU HỘ // ]" if is_vi else "[ // RESCUE ARCHIVE // ]"
+                badge_title = "[ // HỒ SƠ CỨU HỘ // ]" if is_vi else ("[ // RESGATE REAL // ]" if is_pt else "[ // RESCUE ARCHIVE // ]")
             elif any(k in raw_niche for k in ("history", "mystery", "alternate")):
-                badge_title = "[ // TÀI LIỆU MẬT // ]" if is_vi else "[ // CLASSIFIED FILE // ]"
+                badge_title = "[ // TÀI LIỆU MẬT // ]" if is_vi else ("[ // ARQUIVO SECRETO // ]" if is_pt else "[ // CLASSIFIED FILE // ]")
             elif "horror" in raw_niche:
-                badge_title = "[ // HỒ SƠ KINH DỊ // ]" if is_vi else "[ // URBAN LEGEND // ]"
+                badge_title = "[ // HỒ SƠ KINH DỊ // ]" if is_vi else ("[ // LENDA URBANA // ]" if is_pt else "[ // URBAN LEGEND // ]")
             else:
-                badge_title = "[ // ĐIỀU CHƯA BIẾT // ]" if is_vi else "[ // CRITICAL FILE // ]"
+                badge_title = "[ // ĐIỀU CHƯA BIẾT // ]" if is_vi else ("[ // ARQUIVO CRÍTICO // ]" if is_pt else "[ // CRITICAL FILE // ]")
 
             first_scene_dur_ms = scenes[0].audio_duration_ms or int(scenes[0].estimated_seconds * 1000)
             badge_end_ms = min(2600, max(1200, first_scene_dur_ms - 200))
@@ -524,34 +540,57 @@ class SubtitleHelper:
                 f"Dialogue: 2,{badge_start_str},{badge_end_str},PatternInterruptBadge,,0,0,0,,{{\\fade(150,150)\\t(0,150,\\fscx106\\fscy106)}}{badge_title}"
             )
 
-            # Mid-video Pattern Interrupt Stamp (Giây 12-18s):
-            # 1. Ưu tiên cảnh có overlay_badge do AI Director đặt ở giữa video
-            # 2. Nếu không, khớp từ khóa bằng chứng/bước ngoặt
-            # 3. Nếu vẫn không có, tự động kích hoạt tại Cảnh 4 (hoặc cảnh chính giữa) để chống rơi rụng người xem ở giây 14!
-            mid_stamp_added = False
-            evidence_kw = ("bằng chứng", "sự thật", "dấu hiệu", "nghiên cứu", "quy tắc", "nhưng", "bất ngờ", "evidence", "truth", "sign", "proof", "rule", "until", "however", "suddenly", "yet")
-            for idx, sc in enumerate(scenes[2:], start=3):
+            # Mid-video & Climax Pattern Interrupt + Quantitative Stat Card Engine (Giây 10-16s và Giây 22-32s):
+            # 1. Tự động trích xuất con số/thống kê định lượng trong lời thoại (3,700 PSI, 11,000 METERS, 95%, $400B...) thành Stat Card
+            # 2. Hoặc ưu tiên overlay_badge do AI Director đặt / từ khóa bước ngoặt
+            # 3. Đặt tối đa 2 phù hiệu HUD cách nhau >= 7.5 giây để phá điểm rơi rụng ở giữa và cao trào video
+            stamps_added = 0
+            last_stamp_ms = badge_end_ms
+            evidence_kw = (
+                "bằng chứng", "sự thật", "dấu hiệu", "nghiên cứu", "quy tắc", "nhưng", "bất ngờ",
+                "evidence", "truth", "sign", "proof", "rule", "until", "however", "suddenly", "yet",
+                "verdade", "prova", "sinal", "estudo", "regra", "mas", "porém", "até que", "de repente", "cientistas", "ninguém",
+            )
+            stat_regex = re.compile(
+                r'(\$?\d[\d,\.]*\s*(?:%|percent|por cento|psi|mph|km/h|km\b|meters|metros|metro|m\b|feet|ft|tons|toneladas|kg|quilos|lbs|pound|pounds|billion|bilhões|million|milhões|trillion|b\b|m\b|milliseconds|seconds|segundos|sec|ms|hours|horas|days|dias|years|anos|°c|°f|graus|db|decibels|decibéis|x\b))',
+                re.IGNORECASE,
+            )
+            for idx, sc in enumerate(scenes[1:], start=2):
+                if stamps_added >= 2:
+                    break
+                sc_start_ms = getattr(sc, "start_offset_ms", None)
+                if sc_start_ms is None:
+                    sc_start_ms = sum(s.audio_duration_ms or int(s.estimated_seconds * 1000) for s in scenes[:idx-1])
+                if sc_start_ms - last_stamp_ms < 4000:
+                    continue
+
                 sc_badge = cls._strip_ass_unsupported_emojis(getattr(sc, "overlay_badge", "") or "")
                 sc_txt = sc.narration.lower()
-                if sc_badge or any(k in sc_txt for k in evidence_kw):
-                    sc_start_ms = getattr(sc, "start_offset_ms", None)
-                    if sc_start_ms is None:
-                        sc_start_ms = sum(s.audio_duration_ms or int(s.estimated_seconds * 1000) for s in scenes[:idx-1])
+                stat_match = stat_regex.search(sc.narration)
+
+                if sc_badge or stat_match or any(k in sc_txt for k in evidence_kw):
                     sc_dur = sc.audio_duration_ms or int(sc.estimated_seconds * 1000)
                     stamp_end_ms = sc_start_ms + min(2400, sc_dur)
                     stamp_start_str = cls._ms_to_ass_time(sc_start_ms + 100)
                     stamp_end_str = cls._ms_to_ass_time(stamp_end_ms)
                     if sc_badge:
                         stamp_title = f"[ // {sc_badge.upper()} // ]"
+                    elif stat_match:
+                        raw_stat = stat_match.group(1).strip().upper()
+                        prefix = "DỮ LIỆU" if is_vi else ("DADOS" if is_pt else "DATA")
+                        stamp_title = f"[ // {prefix}: {raw_stat} // ]"
                     else:
-                        stamp_title = "[ // BƯỚC NGOẶT // ]" if is_vi else "[ // THE TURNING POINT // ]"
+                        if stamps_added == 0:
+                            stamp_title = "[ // BƯỚC NGOẶT // ]" if is_vi else ("[ // A REVIRAVOLTA // ]" if is_pt else "[ // THE TURNING POINT // ]")
+                        else:
+                            stamp_title = "[ // SỰ THẬT CUỐI CÙNG // ]" if is_vi else ("[ // REVELAÇÃO FINAL // ]" if is_pt else "[ // THE FINAL REVEAL // ]")
                     dialogue_lines.append(
-                        f"Dialogue: 2,{stamp_start_str},{stamp_end_str},PatternInterruptBadge,,0,0,0,,{{\\fade(150,150)\\t(0,150,\\fscx105\\fscy105)}}{stamp_title}"
+                        f"Dialogue: 2,{stamp_start_str},{stamp_end_str},PatternInterruptBadge,,0,0,0,,{{\\fade(150,150)\\t(0,140,\\fscx108\\fscy108)\\t(140,260,\\fscx100\\fscy100)}}{stamp_title}"
                     )
-                    mid_stamp_added = True
-                    break
+                    stamps_added += 1
+                    last_stamp_ms = stamp_end_ms
 
-            if not mid_stamp_added and len(scenes) >= 4:
+            if stamps_added == 0 and len(scenes) >= 4:
                 mid_idx = min(3, len(scenes) // 2)  # Cảnh 4 (0-indexed = 3) ~ giây 12-15
                 sc = scenes[mid_idx]
                 sc_start_ms = getattr(sc, "start_offset_ms", None)
@@ -561,9 +600,9 @@ class SubtitleHelper:
                 stamp_end_ms = sc_start_ms + min(2400, sc_dur)
                 stamp_start_str = cls._ms_to_ass_time(sc_start_ms + 100)
                 stamp_end_str = cls._ms_to_ass_time(stamp_end_ms)
-                stamp_title = "[ // SỰ THẬT NGẦM // ]" if is_vi else "[ // THE HIDDEN TWIST // ]"
+                stamp_title = "[ // SỰ THẬT NGẦM // ]" if is_vi else ("[ // O SEGREDO OCULTO // ]" if is_pt else "[ // THE HIDDEN TWIST // ]")
                 dialogue_lines.append(
-                    f"Dialogue: 2,{stamp_start_str},{stamp_end_str},PatternInterruptBadge,,0,0,0,,{{\\fade(150,150)\\t(0,150,\\fscx105\\fscy105)}}{stamp_title}"
+                    f"Dialogue: 2,{stamp_start_str},{stamp_end_str},PatternInterruptBadge,,0,0,0,,{{\\fade(150,150)\\t(0,140,\\fscx108\\fscy108)\\t(140,260,\\fscx100\\fscy100)}}{stamp_title}"
                 )
 
         # ── Kích hoạt Visual CTA Banner ở phân cảnh cuối (Chỉ bật khi show_cta_badge=True) ──
@@ -573,24 +612,26 @@ class SubtitleHelper:
             cta_dur = max(min(last_dur, 4500), 3000)
             cta_start_ms = max(0, current_offset_ms - cta_dur)
             cta_end_ms = current_offset_ms
-            full_text = " ".join([s.narration for s in scenes])
-            is_vi = any(c in full_text.lower() for c in "àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ")
+            full_text = " ".join([s.narration for s in scenes]).lower()
+            vn_exclusive_re = re.compile(r'[ơớờởỡợưứừửữựđăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]')
+            is_pt = ("ç" in full_text or "õ" in full_text or "ã" in full_text) and not bool(vn_exclusive_re.search(full_text))
+            is_vi = bool(vn_exclusive_re.search(full_text)) and not is_pt
             raw_niche = (niche_id or "").lower()
 
             if "psychology" in raw_niche:
-                cta_text = "🧠 BẤM ĐĂNG KÝ ĐỂ KHÔNG BỊ THAO TÚNG 🔔" if is_vi else "🧠 SUBSCRIBE TO MASTER THE MIND 🔔"
+                cta_text = "BẤM ĐĂNG KÝ ĐỂ KHÔNG BỊ THAO TÚNG" if is_vi else ("INSCREVA-SE PARA DOMINAR A MENTE" if is_pt else "SUBSCRIBE TO MASTER THE MIND")
             elif any(k in raw_niche for k in ("rescue", "animal")):
-                cta_text = "🐾 BẤM ĐĂNG KÝ ĐỂ CỨU THÊM BÉ 🐾" if is_vi else "🐾 SUBSCRIBE TO SAVE INNOCENT LIVES 🐾"
+                cta_text = "BẤM ĐĂNG KÝ ĐỂ CỨU THÊM BÉ" if is_vi else ("INSCREVA-SE PARA SALVAR VIDAS" if is_pt else "SUBSCRIBE TO SAVE INNOCENT LIVES")
             elif any(k in raw_niche for k in ("deep_sea", "ocean", "mystery")):
-                cta_text = "🌊 ĐĂNG KÝ KÊNH ĐÓN XEM BÍ ẨN TIẾP THEO 🔔" if is_vi else "🌊 SUBSCRIBE TO UNCOVER PART 2 🔔"
+                cta_text = "ĐĂNG KÝ KÊNH ĐÓN XEM BÍ ẨN TIẾP THEO" if is_vi else ("INSCREVA-SE PARA DESVENDAR A PARTE 2" if is_pt else "SUBSCRIBE TO UNCOVER PART 2")
             elif any(k in raw_niche for k in ("history", "what_if")):
-                cta_text = "📜 ĐĂNG KÝ KÊNH ĐỂ BIẾT SỰ THẬT 🔔" if is_vi else "📜 SUBSCRIBE FOR THE UNTOLD TRUTH 🔔"
+                cta_text = "ĐĂNG KÝ KÊNH ĐỂ BIẾT SỰ THẬT" if is_vi else ("INSCREVA-SE PARA A VERDADE OCULTA" if is_pt else "SUBSCRIBE FOR THE UNTOLD TRUTH")
             elif any(k in raw_niche for k in ("predator", "wildlife")):
-                cta_text = "🦁 ĐĂNG KÝ KÊNH KHÁM PHÁ SINH TỒN 🔔" if is_vi else "🦁 SUBSCRIBE FOR APEX STORIES 🔔"
+                cta_text = "ĐĂNG KÝ KÊNH KHÁM PHÁ SINH TỒN" if is_vi else ("INSCREVA-SE NA ODISSEIA SELVAGEM" if is_pt else "SUBSCRIBE FOR APEX STORIES")
             elif any(k in raw_niche for k in ("scifi", "tech")):
-                cta_text = "🚀 ĐĂNG KÝ KÊNH ĐÓN XEM TƯƠNG LAI 🔔" if is_vi else "🚀 SUBSCRIBE TO UNLOCK FUTURE 🔔"
+                cta_text = "ĐĂNG KÝ KÊNH ĐÓN XEM TƯƠNG LAI" if is_vi else ("INSCREVA-SE PARA O FUTURO" if is_pt else "SUBSCRIBE TO UNLOCK FUTURE")
             else:
-                cta_text = "🔔 ĐĂNG KÝ KÊNH ĐỂ XEM TIẾP VIDEO MỚI 🔔" if is_vi else "🔔 SUBSCRIBE FOR DAILY HIGH-RETENTION STORIES 🔔"
+                cta_text = "ĐĂNG KÝ KÊNH ĐỂ XEM TIẾP VIDEO MỚI" if is_vi else ("INSCREVA-SE PARA NOVOS MISTÉRIOS" if is_pt else "SUBSCRIBE FOR DAILY HIGH-RETENTION STORIES")
 
             cta_start_str = cls._ms_to_ass_time(cta_start_ms)
             cta_end_str = cls._ms_to_ass_time(cta_end_ms)
