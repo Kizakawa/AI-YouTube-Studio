@@ -184,7 +184,7 @@ async def main(custom_topic: str = None, dry_run: bool = False):
         "language": CHANNEL_LANG,
         "google_account": GOOGLE_ACCOUNT,
         "amazon_tag": AMAZON_TAG,
-        "affiliate_enabled": True,
+        "affiliate_enabled": False,
         "enable_donation": False
     }
 
@@ -195,7 +195,7 @@ async def main(custom_topic: str = None, dry_run: bool = False):
         pinned_comment=pinned_comment_base,
         topic=topic,
         script=script.full_narration,
-        enable_affiliate=True,
+        enable_affiliate=False,
         enable_donation=False
     )
 

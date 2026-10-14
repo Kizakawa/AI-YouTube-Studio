@@ -281,15 +281,16 @@ class PublisherAgent:
             from app.services.niche_manager import get_niche
             niche_prof = get_niche(niche_id)
             monet_cfg = niche_prof.get("monetization", {})
-            affiliate_enabled = bool(monet_cfg.get("affiliate_enabled", False) or self.channel_config.get("affiliate_enabled", False))
+            affiliate_enabled = bool(
+                monet_cfg.get("affiliate_enabled", False)
+                or self.channel_config.get("affiliate_enabled", False)
+                or self.channel_config.get("enable_monetization", False)
+            )
         except Exception:
             pass
 
         donation_enabled = bool(
-            self.channel_config.get("paypal_url")
-            or self.channel_config.get("donation_url")
-            or os.getenv("PAYPAL_DONATION_URL")
-            or os.getenv("ENABLE_DONATION_CTA", "true").lower() in ("true", "1", "yes")
+            os.getenv("ENABLE_DONATION_CTA", "false").lower() in ("true", "1", "yes")
         )
         if self.channel_config.get("enable_donation") is not None:
             donation_enabled = bool(self.channel_config.get("enable_donation"))

@@ -253,7 +253,7 @@ async def produce_channel_video(channel_key: str, custom_topic: str = None, dry_
         "language": ch_lang,
         "google_account": cfg["google_account"],
         "amazon_tag": amazon_tag,
-        "affiliate_enabled": True,
+        "affiliate_enabled": False,
         "enable_donation": False
     }
 
@@ -264,7 +264,7 @@ async def produce_channel_video(channel_key: str, custom_topic: str = None, dry_
         pinned_comment=pinned_comment_base,
         topic=topic,
         script=script.full_narration,
-        enable_affiliate=True,
+        enable_affiliate=False,
         enable_donation=False
     )
 

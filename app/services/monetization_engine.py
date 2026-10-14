@@ -389,9 +389,9 @@ def enrich_video_monetization(
         elif channel_config.get("affiliate_enabled") is not None:
             enable_affiliate = bool(channel_config.get("affiliate_enabled"))
 
-    # 2. Xác định cờ bật/tắt Kêu gọi ủng hộ PayPal
+    # 2. Xác định cờ bật/tắt Kêu gọi ủng hộ PayPal (Mặc định FALSE cho Shorts để giữ sạch Description & Pinned Comment)
     if enable_donation is None:
-        enable_donation = os.getenv("ENABLE_DONATION_CTA", "true").lower() in ("true", "1", "yes")
+        enable_donation = os.getenv("ENABLE_DONATION_CTA", "false").lower() in ("true", "1", "yes")
         if channel_config.get("enable_donation") is not None:
             enable_donation = bool(channel_config.get("enable_donation"))
 
@@ -572,13 +572,27 @@ def build_repurposed_pinned_comment(
     author: str = "",
     channel_name: str = "",
     tracking_tag: str = "kizakawa-20",
+    enable_affiliate: Optional[bool] = None,
 ) -> str:
     """
     Tự động xây dựng Bình luận ghim (Pinned Comment) cho Shorts tái chế:
-    - Dẫn link xem bản đầy đủ của video gốc
-    - Giới thiệu sản phẩm hữu ích kèm Store ID Amazon kizakawa-20 trực tiếp (Đã kiểm tra còn tồn tại)
-    - Kêu gọi theo dõi kênh
+    - Mặc định tắt chèn link Amazon không bấm được để tối ưu tỷ lệ bình luận (Comment Rate).
+    - Chỉ chèn sản phẩm khi enable_affiliate=True hoặc ENABLE_AMAZON_AFFILIATE=true.
     """
+    if enable_affiliate is None:
+        enable_affiliate = os.getenv("ENABLE_AMAZON_AFFILIATE", "false").lower() in ("true", "1", "yes")
+
+    niche_question = {
+        "animal_rescue": "From 1 to 10, how much did this rescue transformation warm your heart? Drop a ❤️ in the comments! 👇🐾",
+        "wildlife_predators": "Which predator do you think takes the crown here? Drop your vote in the comments! 👇🦁",
+        "psychology": "Have you ever experienced this psychological tactic in real life? Share your story below! 👇🧠",
+        "deep_sea_earth_mysteries": "What is your theory on this unexplained phenomenon? Drop your thoughts in the comments! 👇🌊",
+        "alternate_history": "How different would the world be today if this actually happened? Drop your theory below! 👇⏳",
+    }.get(niche_id, "What stood out to you the most in this clip? Let us know in the comments! 👇🔥")
+
+    if not enable_affiliate:
+        return niche_question
+
     tag = (tracking_tag or os.getenv("AMAZON_ASSOCIATE_TAG", "kizakawa-20") or "kizakawa-20").strip()
     amazon_prod = find_best_amazon_product(niche=niche_id, title=title)
     is_search = amazon_prod.get("is_search", False)
@@ -587,7 +601,7 @@ def build_repurposed_pinned_comment(
 
     creator_name = author or channel_name
     creator_tag = f"by {creator_name} " if creator_name else ""
-    full_story_line = f"📌 Watch the full story {creator_tag}here: {source_url}" if source_url else "📌 Watch and subscribe for daily incredible highlights! ❤️"
+    full_story_line = f"📌 Watch the full story {creator_tag}here: {source_url}" if source_url else niche_question
 
     comment = (
         f"{full_story_line}\n\n"
@@ -609,7 +623,7 @@ def build_repurposed_video_description(
     tracking_tag: str = "kizakawa-20",
     paypal_url: str = "",
     enable_affiliate: Optional[bool] = None,
-    enable_donation: bool = True,
+    enable_donation: bool = False,
 ) -> str:
     """
     Tự động xây dựng mô tả YouTube Shorts hoàn chỉnh chuẩn Bản Quyền, Kêu Gọi Ủng Hộ & Kiếm Tiền:

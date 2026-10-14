@@ -46,9 +46,9 @@ class Settings:
     ENABLE_WEB_IMAGE_SEARCH: bool = os.getenv("ENABLE_WEB_IMAGE_SEARCH", "true").lower() in ("true", "1", "yes")
     BYPASS_IMAGE_COPYRIGHT: bool = os.getenv("BYPASS_IMAGE_COPYRIGHT", "true").lower() in ("true", "1", "yes")
 
-    # Kiếm tiền & Quyên góp ủng hộ (Monetization & PayPal Donations)
+    # Kiếm tiền & Quyên góp ủng hộ (Monetization & PayPal Donations — Mặc định FALSE cho Shorts vì link ngoài không click được)
     PAYPAL_DONATION_URL: str = os.getenv("PAYPAL_DONATION_URL", "")
-    ENABLE_DONATION_CTA: bool = os.getenv("ENABLE_DONATION_CTA", "true").lower() in ("true", "1", "yes")
+    ENABLE_DONATION_CTA: bool = os.getenv("ENABLE_DONATION_CTA", "false").lower() in ("true", "1", "yes")
     AMAZON_ASSOCIATE_TAG: str = os.getenv("AMAZON_ASSOCIATE_TAG", "kizakawa-20")
     ENABLE_AMAZON_AFFILIATE: bool = os.getenv("ENABLE_AMAZON_AFFILIATE", "false").lower() in ("true", "1", "yes")
 

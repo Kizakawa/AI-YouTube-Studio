@@ -64,7 +64,7 @@ def upload_job_311():
         "language": "pt-BR",
         "google_account": "acount_2",
         "amazon_tag": "kizakawa-20",
-        "affiliate_enabled": True,
+        "affiliate_enabled": False,
         "enable_donation": False
     }
 
@@ -87,7 +87,7 @@ def upload_job_311():
         pinned_comment=pinned_comment_base,
         topic=topic,
         script=base_desc,
-        enable_affiliate=True,
+        enable_affiliate=False,
         enable_donation=False
     )
 
@@ -168,7 +168,7 @@ def upload_job_312():
         "language": "pt-BR",
         "google_account": "acount_2",
         "amazon_tag": "kizakawa-20",
-        "affiliate_enabled": True,
+        "affiliate_enabled": False,
         "enable_donation": False
     }
 
@@ -191,7 +191,7 @@ def upload_job_312():
         pinned_comment=pinned_comment_base,
         topic=topic,
         script=base_desc,
-        enable_affiliate=True,
+        enable_affiliate=False,
         enable_donation=False
     )
 
