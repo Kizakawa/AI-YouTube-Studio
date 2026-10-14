@@ -62,7 +62,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: +13%
+  rate: +21%
   pitch: 0Hz
   bgm_vibe: dynamic upbeat cinematic, modern groove, subtle suspense
   sfx_cues:
@@ -70,6 +70,6 @@ audio:
   - hit
   - swell
 banned_lexicon: *id001
-target_wpm: 165
+target_wpm: 190
 monetization:
   affiliate_enabled: false

@@ -71,8 +71,8 @@ class VideoAgent:
             scene_clips = await asyncio.to_thread(self._prepare_scene_clips, job.scenes, str(work_dir), job)
 
             # ── Step 2: Concat tất cả scenes → 1 video silent với xfade transition ──
-            transition_duration = 0.3
-            tail_buffer = 0.6
+            transition_duration = 0.18
+            tail_buffer = 0.15
             total_scenes = len(job.scenes)
 
             has_subtitle = bool(job.subtitle_path and Path(job.subtitle_path).exists())
@@ -170,7 +170,7 @@ class VideoAgent:
 
             # 2. Level 4 Multi-Layer Foley: Trích xuất các mốc xuất hiện của Power Words để đánh Micro-SFX
             from app.utils.subtitle_helper import SubtitleHelper
-            micro_sfx_cues = SubtitleHelper.extract_power_word_cues(job.scenes, min_interval_s=2.6)
+            micro_sfx_cues = SubtitleHelper.extract_power_word_cues(job.scenes, min_interval_s=1.8)
 
             sfx_dir_exists = Path(sfx_dir).exists()
 
@@ -226,8 +226,8 @@ class VideoAgent:
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         total_scenes = len(scenes)
-        transition_duration = 0.3
-        tail_buffer = 0.6
+        transition_duration = 0.18
+        tail_buffer = 0.15
 
         def _render_one(idx: int, scene: SceneContract) -> tuple[int, str]:
             """Render 1 scene clip, trả về (scene_id, clip_path)."""

@@ -75,34 +75,34 @@ Phong cách kênh: {channel_style}
 
 --- BỘ QUY CHUẨN ĐÁNH GIÁ THUẬT TOÁN SHORTS (Thang điểm 1 - 10) ---
 1. hook_strength (Mục tiêu: Viewed > 75%, Swipe-Away < 25% trong nhóm thử nghiệm 100-300 người):
-   - Cảnh 1 có đủ sốc thị giác, đảo ngược định kiến hoặc tạo sự cấp bách tột cùng để khóa chặt ngón tay người xem trong 2.5s đầu không? (Cần >= 8.5).
-   - Đạt điểm cao: Lời thoại 5-8 từ dứt khoát theo 4 công thức (Cảnh báo nguy hiểm, Đòn tâm lý cao thủ, Quy luật bóng tối, Cú sốc ngược đời).
+   - Cảnh 1 có đủ sốc thị giác, đảo ngược định kiến hoặc tạo sự cấp bách tột cùng để khóa chặt ngón tay người xem trong 1.8s đầu không? (Cần >= 8.5).
+   - Đạt điểm cao: Lời thoại 4-7 từ dứt khoát theo 4 công thức (Cảnh báo nguy hiểm, Đòn tâm lý cao thủ, Quy luật bóng tối, Cú sốc ngược đời).
    - Bị trừ nặng (< 5.0): Mở đầu sách giáo khoa, định nghĩa học thuật ("Để bắt kẻ nói dối...", "Trong tâm lý học..."), chào hỏi sáo rỗng ("Bạn có biết...", "Xin chào...").
-2. story_pacing (Mục tiêu: Đạt thời lượng 35 - 48s với nhịp cắt cảnh nhanh 2.8 - 3.8s/cảnh và có Payoff sâu sắc để vượt trần 10k - 50k view):
-   - Thời lượng vàng linh hoạt: 35 - 48 giây (85 - 130 từ, 8 - 13 phân cảnh nhanh, 7 - 11 từ/cảnh, 2.8 - 3.8s/cảnh).
-   - YẾU TỐ PAYOFF BẮT BUỘC (Cảnh 6-10): Phải cung cấp giải pháp thực chiến, bản chất ngầm thực sự bị che giấu hoặc bài học đắt giá giải tỏa tò mò của Hook, tạo giá trị cao thôi thúc người xem Lưu (Save) và Chia sẻ (Share).
-   - Cảnh 2, 3, 4 (giây 3-15) bắt buộc tung Micro-Hook / bằng chứng vật lý sốc để triệt tiêu cú rơi rụng (Drop-off cliff).
-   - Bị trừ điểm (< 6.0): Kịch bản quá ngắn (< 30s / < 45 từ) hời hợt thiếu Payoff, hoặc quá ít cảnh (< 7 cảnh làm nhịp cắt chậm > 5s/cảnh). (Cần >= 8.0)
+2. story_pacing (Mục tiêu: Đạt thời lượng cô đọng 22 - 32s với nhịp cắt cảnh siêu tốc 1.8 - 2.5s/cảnh, KHÔNG DÀI LÊ THÊ và có Payoff sâu sắc để vượt trần 10k - 50k view):
+   - Thời lượng vàng siêu tốc: 22 - 32 giây (60 - 95 từ, 8 - 11 phân cảnh nhanh, 6 - 9 từ/cảnh, 1.8 - 2.5s/cảnh).
+   - YẾU TỐ PAYOFF BẮT BUỘC (Cảnh 5-8): Phải cung cấp giải pháp thực chiến, bản chất ngầm thực sự bị che giấu hoặc bài học đắt giá giải tỏa tò mò của Hook, tạo giá trị cao thôi thúc người xem Lưu (Save) và Chia sẻ (Share).
+   - Cảnh 2, 3, 4 (giây 2-10) bắt buộc tung Micro-Hook / bằng chứng vật lý sốc để triệt tiêu cú rơi rụng (Drop-off cliff).
+   - Bị trừ điểm (< 6.0): Kịch bản quá dài lê thê (> 105 từ / > 36s khiến người xem mất kiên nhẫn), quá ngắn (< 48 từ) thiếu Payoff, hoặc quá ít cảnh (< 7 cảnh làm nhịp cắt chậm). (Cần >= 8.0)
 3. entity_coherence: Kịch bản và hình ảnh có bám chặt vào nhân vật/bối cảnh lịch sử thực tế không?
 4. visual_direction: Khả năng chỉ đạo hình ảnh & Đan xen công cụ linh hoạt (Anti-Slideshow & Tool Matching):
    - Đạt điểm cao (>= 8.5): Từ khóa visual_keyword & stock_query có hành động vật lý cụ thể, giàu tính điện ảnh, định hướng rõ Video B-roll thực tế, Video AI kỳ ảo, hoặc ảnh tư liệu lịch sử.
    - Bị trừ nặng (< 6.0): Dùng từ ngữ trừu tượng (psychology, success, happiness, minimalism) khiến video biến thành slideshow ảnh tĩnh buồn ngủ.
-5. viral_loop (Mục tiêu: Seamless Infinite Loop đạt APV > 105% — CẤM câu kêu gọi Subscribe đọc thành tiếng ở cuối video):
+5. viral_loop (Mục tiêu: Seamless Infinite Loop đạt APV > 110% — CẤM câu kêu gọi Subscribe đọc thành tiếng ở cuối video):
    - Cảnh cuối BẮT BUỘC phải khép lại bằng cú chốt Payoff ấn tượng và bắc cầu ý niệm nối mượt quay trở lại câu Hook ở Cảnh 1 (Seamless Infinite Loop), câu văn hoàn chỉnh ngữ pháp.
-   - Đạt điểm cao (>= 8.5): Cảnh cuối ngắn gọn (7-10 từ), nối liền mạch vào Cảnh 1 và KHÔNG chứa các câu đuôi báo hiệu kết thúc như "Subscribe right now...", "Leave a comment...", "Inscreva-se...", "Đăng ký kênh...".
+   - Đạt điểm cao (>= 8.5): Cảnh cuối ngắn gọn (6-8 từ), nối liền mạch vào Cảnh 1 và KHÔNG chứa các câu đuôi báo hiệu kết thúc như "Subscribe right now...", "Leave a comment...", "Inscreva-se...", "Đăng ký kênh...".
    - Bị trừ điểm (< 5.0): Cảnh cuối chứa câu xin Subscribe/Comment dài dòng làm tụt APV, hoặc câu kết bị cắt cụt ngữ pháp.
 
 --- YÊU CẦU TRẢ VỀ ---
 Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với schema sau:
 {{
-  "hook_strength": {{"score": 8.5, "feedback": "Nhận xét chi tiết về khả năng đạt Viewed > 75% (Cảnh 1 ngắn gọn 5-9 từ)..."}},
-  "story_pacing": {{"score": 8.5, "feedback": "Nhận xét chi tiết về nhịp cắt nhanh 8-13 cảnh (2.8-3.8s/cảnh) và yếu tố Payoff..."}},
+  "hook_strength": {{"score": 8.5, "feedback": "Nhận xét chi tiết về khả năng đạt Viewed > 75% (Cảnh 1 ngắn gọn 4-7 từ)..."}},
+  "story_pacing": {{"score": 8.5, "feedback": "Nhận xét chi tiết về nhịp cắt siêu tốc 8-11 cảnh (1.8-2.5s/cảnh, 60-95 từ) và yếu tố Payoff..."}},
   "entity_coherence": {{"score": 9.0, "feedback": "Nhận xét chi tiết..."}},
   "visual_direction": {{"score": 8.5, "feedback": "Nhận xét chi tiết về nhịp điệu thị giác và công cụ phù hợp..."}},
   "viral_loop": {{"score": 8.5, "feedback": "Nhận xét chi tiết về cầu nối Seamless Infinite Loop (không dính bẫy Subscribe outro)..."}},
   "actionable_critiques": [
-    "Chỉ đạo viết lại Cảnh 1 (5-9 từ) để giật thumb-stopper đạt Viewed > 75%...",
-    "Chia nhỏ các câu dài thành 9-12 phân cảnh nhanh (2.8-3.8s/cảnh) và giữ cú bẻ khóa Payoff sâu sắc...",
+    "Chỉ đạo viết lại Cảnh 1 (4-7 từ) để giật thumb-stopper đạt Viewed > 75%...",
+    "Cắt gọn từ thừa, chia thành 8-10 phân cảnh siêu tốc (1.8-2.5s/cảnh, 6-9 từ/cảnh) và giữ cú bẻ khóa Payoff...",
     "Khử câu kêu gọi Subscribe ở cuối và thay bằng câu cầu nối Seamless Loop nối thẳng về Cảnh 1..."
   ]
 }}"""
@@ -204,11 +204,11 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
             "moment", "signs", "what if", "vs", "only", "second", "realized", "stop", "trap",
             "blind", "silence"
         ])
-        is_short_hook = len(words1) <= 10
+        is_short_hook = len(words1) <= 8
         hook_score = 9.0 if (has_hook_words and is_short_hook) else (7.5 if has_hook_words or is_short_hook else 6.0)
 
-        # Kiểm tra nhịp điệu (khoảng 75 - 140 từ cho 7-14 cảnh nhanh 2.8-3.8s/cảnh, thời lượng vàng 35-52s có Payoff)
-        pace_score = 8.8 if 75 <= total_words <= 140 and 7 <= scene_count <= 14 else 6.5
+        # Kiểm tra nhịp điệu (khoảng 50 - 108 từ cho 7-12 cảnh nhanh 1.8-2.5s/cảnh, thời lượng vàng 22-32s không dài lê thê)
+        pace_score = 8.8 if 50 <= total_words <= 108 and 7 <= scene_count <= 12 else 6.5
 
         # Kiểm tra thực thể
         ent_score = 8.5
@@ -229,9 +229,9 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
 
         critiques = []
         if hook_score < 8.0:
-            critiques.append("Cảnh 1 cần mở đầu giật gân, tạo sự tò mò sốc hoặc tâm lý nghịch đảo trong 2.5 giây đầu (5-9 từ).")
+            critiques.append("Cảnh 1 cần mở đầu giật gân, tạo sự tò mò sốc hoặc tâm lý nghịch đảo trong 1.8 giây đầu (4-7 từ).")
         if pace_score < 8.0:
-            critiques.append("Độ dài kịch bản chưa tối ưu cho Shorts (cần khoảng 85-130 từ chia đều cho 8-13 cảnh nhanh 2.8-3.8s/cảnh, tổng thời lượng 35-50 giây có Mid-Video Re-Hook và Payoff).")
+            critiques.append("Độ dài kịch bản chưa tối ưu cho Shorts (cần 60-95 từ chia đều cho 8-11 cảnh siêu tốc 1.8-2.5s/cảnh, tổng thời lượng 22-32 giây, không viết dài lê thê).")
         if loop_score < 8.0:
             critiques.append("Cảnh cuối không được đọc câu kêu gọi Subscribe làm tụt APV; cần kết nối ý niệm mượt mà quay trở lại Cảnh 1 (Seamless Loop).")
 

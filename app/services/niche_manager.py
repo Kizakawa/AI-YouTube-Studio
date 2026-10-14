@@ -199,11 +199,20 @@ def get_niche(niche_id: Optional[str] = None) -> Dict[str, Any]:
 
 def get_channel_niche(channel_id: str) -> Dict[str, Any]:
     """
-    Lấy hồ sơ ngách chuyên sâu cho một kênh YouTube cụ thể.
+    Lấy hồ sơ ngách chuyên sâu cho một kênh YouTube cụ thể (hỗ trợ cả alias như channel_maya, ucsrjiil67qxidtxt70z-iwa).
     Đọc từ channels.yaml để tìm niche ID, sau đó nạp profile.
     """
     from app.services.channel_manager import get_channel
     ch = get_channel(channel_id)
+    if not ch and channel_id:
+        try:
+            from app.services.smart_scheduler import resolve_channel_family
+            for alias_id in resolve_channel_family(channel_id):
+                ch = get_channel(alias_id)
+                if ch:
+                    break
+        except Exception:
+            pass
     if not ch:
         return get_niche("general")
 
@@ -286,15 +295,15 @@ def build_script_prompt_instructions(niche_profile: Dict[str, Any], language: st
     blueprint = niche_profile.get("script_blueprint", {})
 
     tone = blueprint.get("tone_of_voice", "Cuốn hút, sắc bén, nhịp điệu nhanh")
-    pacing = "2.8 - 3.8 giây/cảnh (9 - 12 phân cảnh nhanh, 7 - 11 từ/cảnh)"
-    structure = "Hook 2.5s (5-9 từ) -> Leo thang & Mid-Video Re-Hook giây 12 -> Payoff đắt giá -> Cầu nối Vòng lặp Vô tận (Zero Spoken Subscribe CTA)"
+    pacing = "1.8 - 2.5 giây/cảnh (8 - 10 phân cảnh siêu tốc, 6 - 9 từ/cảnh, 22 - 30 giây tổng — CẤM VIẾT DÀI LÊ THÊ)"
+    structure = "Hook 1.8s (4-7 từ) -> Leo thang & Mid-Video Re-Hook giây 8 -> Payoff đắt giá -> Cầu nối Vòng lặp Vô tận (Zero Spoken Subscribe CTA)"
     hooks = blueprint.get("hook_formulas", [])
     forbidden = blueprint.get("forbidden_words", [])
     banned_lex = niche_profile.get("banned_lexicon") or blueprint.get("banned_lexicon", [])
     ctas = blueprint.get("cta_templates", [])
     anti_hallucination = blueprint.get("anti_hallucination_rules", [])
 
-    hooks_text = "\n".join(f"      - {h}" for h in hooks) if hooks else "      - 2.5s Pattern Interrupt Hook (5-9 words)"
+    hooks_text = "\n".join(f"      - {h}" for h in hooks) if hooks else "      - 1.8s Pattern Interrupt Hook (4-7 words)"
     forbidden_text = "\n".join(f"      * KHÔNG ĐƯỢC DÙNG: \"{w}\"" for w in forbidden) if forbidden else "      * Tránh lời mở đầu sáo rỗng"
     banned_lex_text = "\n".join(f"      * STRICTLY FORBIDDEN VOCABULARY/CONCEPTS: \"{w}\"" for w in banned_lex) if banned_lex else ""
     ctas_text = "\n".join(f"      - {c}" for c in ctas) if ctas else "      - Câu hỏi mở kích thích tranh luận ở Pinned Comment"
@@ -420,3 +429,133 @@ def get_niche_subtitle_style(niche_profile: Dict[str, Any]) -> Dict[str, Any]:
         "highlight_hex": highlight_hex,
         "outline_hex": outline_hex,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HARD NICHE FIREWALL (CHỐNG NHIỄM CHÉO NGÁCH TUYỆT ĐỐI)
+# ─────────────────────────────────────────────────────────────────────────────
+
+NICHE_EXCLUSIVE_SIGNATURES: Dict[str, Tuple[List[str], str]] = {
+    "deep_sea_earth_mysteries": (
+        [
+            "kraken", "leviathan", "megalodon", "mariana trench", "bermuda triangle",
+            "deep ocean", "ocean floor", "sea monster", "sonar recorded", "hydrophone",
+            "antarctic ice", "subterranean cave", "giant squid", "colossal squid",
+            "ocean deadliest", "ocean's deadliest", "abyssal", "quái vật biển", "đáy đại dương",
+        ],
+        "ch_the_mysteries_of_the_world",
+    ),
+    "wildlife_predators": (
+        [
+            "jaguar vs", "caiman vs", "anaconda vs", "honey badger", "komodo dragon",
+            "apex predator", "bite force", "harpy eagle", "giant river otter",
+            "great white shark vs", "crocodile attack",
+        ],
+        "ch_wild_odyssey",
+    ),
+    "animal_rescue": (
+        [
+            "stray puppy", "stray kitten", "abandoned puppy", "abandoned dog",
+            "rescue dog", "rescuer", "shelter dog", "matted fur", "adopted dog",
+        ],
+        "ch_paws_hearts_rescue",
+    ),
+    "psychology": (
+        [
+            "narcissist", "gaslighting", "psychopath", "sociopath", "dark psychology",
+            "body language", "micro-expression", "pathological liar", "fbi profiler",
+        ],
+        "ch_psychology_of_the_world",
+    ),
+    "alternate_history": (
+        [
+            "roman empire never", "library of alexandria", "mongol empire",
+            "alternate history", "what if history", "archduke franz ferdinand",
+        ],
+        "@alternatehistorywhatif-e2x",
+    ),
+}
+
+
+def validate_channel_niche_alignment(
+    channel_id: str,
+    title: str = "",
+    topic: str = "",
+    script: str = "",
+) -> Dict[str, Any]:
+    """
+    Tường lửa Ngách Cứng (Hard Niche Firewall):
+    Kiểm tra xem tiêu đề/chủ đề/kịch bản có thuộc đúng ngách của `channel_id` hay không.
+    - Phát hiện vi phạm `banned_lexicon` của ngách.
+    - Phát hiện hiện tượng gán nhầm video của ngách khác (ví dụ bài Đại dương gán nhầm vào kênh Tâm lý).
+    Trả về:
+      {
+        "passed": bool,
+        "channel_niche": str,
+        "detected_niche": Optional[str],
+        "suggested_channel_id": Optional[str],
+        "reason": str
+      }
+    """
+    profile = get_channel_niche(channel_id)
+    channel_niche = str(profile.get("id") or "general").strip().lower()
+    if channel_niche == "general":
+        return {
+            "passed": True,
+            "channel_niche": channel_niche,
+            "detected_niche": None,
+            "suggested_channel_id": None,
+            "reason": "General channel allows all niches.",
+        }
+
+    combined_head = f"{title or ''} {topic or ''}".lower()
+    combined_full = f"{combined_head} {(script or '')[:600]}".lower()
+
+    # 1. Kiểm tra banned_lexicon trong tiêu đề và chủ đề
+    banned_list = profile.get("banned_lexicon") or profile.get("script_blueprint", {}).get("banned_lexicon", [])
+    for banned_term in banned_list:
+        bt = str(banned_term).strip().lower()
+        if bt and len(bt) >= 3 and re.search(rf"(?<![\w]){re.escape(bt)}(?![\w])", combined_head):
+            return {
+                "passed": False,
+                "channel_niche": channel_niche,
+                "detected_niche": "banned_lexicon",
+                "suggested_channel_id": None,
+                "reason": f"Tiêu đề/Chủ đề chứa từ khóa bị cấm tuyệt đối ('{bt}') đối với ngách '{channel_niche}'.",
+            }
+
+    # 2. Kiểm tra xem tiêu đề/chủ đề có mang dấu hiệu đặc trưng độc quyền của ngách khác không
+    own_keywords, _ = NICHE_EXCLUSIVE_SIGNATURES.get(channel_niche, ([], ""))
+    has_own_signature = any(
+        re.search(rf"(?<![\w]){re.escape(kw)}(?![\w])", combined_full)
+        for kw in own_keywords
+    )
+
+    if not has_own_signature:
+        for other_niche, (sig_keywords, suggested_ch) in NICHE_EXCLUSIVE_SIGNATURES.items():
+            if other_niche == channel_niche:
+                continue
+            matched_foreign = [
+                kw for kw in sig_keywords
+                if re.search(rf"(?<![\w]){re.escape(kw)}(?![\w])", combined_head)
+            ]
+            if matched_foreign:
+                return {
+                    "passed": False,
+                    "channel_niche": channel_niche,
+                    "detected_niche": other_niche,
+                    "suggested_channel_id": suggested_ch,
+                    "reason": (
+                        f"Phát hiện lệch ngách (Cross-Niche Contamination): Nội dung chứa dấu hiệu của ngách "
+                        f"'{other_niche}' ({', '.join(matched_foreign[:2])}) nhưng đang định đăng lên kênh ngách '{channel_niche}'."
+                    ),
+                }
+
+    return {
+        "passed": True,
+        "channel_niche": channel_niche,
+        "detected_niche": channel_niche,
+        "suggested_channel_id": channel_id,
+        "reason": "OK",
+    }
+

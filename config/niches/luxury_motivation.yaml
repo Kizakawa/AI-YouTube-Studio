@@ -72,7 +72,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: +14%
+  rate: +21%
   pitch: -1Hz
   bgm_vibe: epic motivational cinematic drums, triumphant brass swell, driving bass
     hit
@@ -81,6 +81,6 @@ audio:
   - heavy_gong
   - whoosh_fast
 banned_lexicon: *id001
-target_wpm: 168
+target_wpm: 190
 monetization:
   affiliate_enabled: false

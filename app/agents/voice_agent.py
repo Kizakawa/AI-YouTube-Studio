@@ -93,9 +93,8 @@ class VoiceAgent:
         """
         import re
         # Các ký tự đặc trưng riêng biệt chỉ có trong tiếng Việt
-        vn_unique_pattern = r'[ơớờởỡợưứừửữựđĐăắằẳẵặâấầẩẫậêếềểễệôốồổỗộ]'
+        vn_unique_pattern = r'[ơớờởỡợưứừửữựđĐăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]'
         if re.search(vn_unique_pattern, text):
-            # Kiểm tra thêm nếu có từ tiếng Bồ Đào Nha phổ biến thì không phải tiếng Việt
             pt_words = {"não", "você", "com", "uma", "um", "para", "que", "dos", "das", "selvagem", "amazônia", "mistério"}
             words = set(re.findall(r'\b\w+\b', text.lower()))
             if len(words.intersection(pt_words)) >= 2:
@@ -103,15 +102,47 @@ class VoiceAgent:
             return True
         return False
 
+    @staticmethod
+    def _is_portuguese(text: str) -> bool:
+        """
+        Kiểm tra văn bản có phải tiếng Bồ Đào Nha (pt-BR) hay không.
+        """
+        import re
+        if VoiceAgent._is_vietnamese(text):
+            return False
+        t_low = text.lower()
+        pt_words = {
+            "não", "você", "uma", "para", "com", "mais", "pelo", "pela", "está",
+            "são", "isso", "até", "mas", "nas", "nos", "dos", "das", "onça",
+            "oceano", "mistério", "ciência", "metros", "selva", "amazônia", "pantanal",
+            "sucuri", "jacaré", "quando", "apenas", "fundo", "água", "águas",
+        }
+        words = set(re.findall(r'\b\w+\b', t_low))
+        if len(words.intersection(pt_words)) >= 2:
+            return True
+        if ("ç" in t_low or "õ" in t_low or "ã" in t_low) and len(words.intersection(pt_words)) >= 1:
+            return True
+        return False
+
     def _resolve_safe_voice(self, text: str, requested_voice: Optional[str] = None) -> str:
         """
         Bảo vệ khớp ngôn ngữ - giọng đọc:
-        - Nếu giọng chỉ định là tiếng Bồ Đào Nha (pt-), Tây Ban Nha (es-), Pháp (fr-)... -> Giữ nguyên tuyệt đối.
+        - Nếu văn bản là tiếng Bồ Đào Nha (pt-BR) mà giọng đọc không phải pt-* -> tự động chuyển sang 'pt-BR-AntonioNeural'.
+        - Nếu giọng chỉ định là các ngôn ngữ quốc tế khác (es-, fr-, de-...) -> Giữ nguyên.
         - Nếu văn bản tiếng Việt mà giọng đọc tiếng Anh -> tự động chuyển sang giọng Việt chuẩn (vi-VN-NamMinhNeural).
         - Nếu văn bản tiếng Anh mà giọng đọc tiếng Việt -> tự động chuyển sang giọng Mỹ chuẩn (en-US-AndrewNeural).
         """
         voice = requested_voice or self.default_voice
         voice_lower = voice.lower()
+
+        is_pt_text = self._is_portuguese(text)
+        is_pt_voice = voice_lower.startswith("pt-")
+        if is_pt_text and not is_pt_voice:
+            logger.warning(
+                f"⚠️ Phát hiện văn bản tiếng Bồ Đào Nha pt-BR ('{text[:30]}...') nhưng giọng đọc chỉ định là '{voice}'. "
+                f"Tự động chuyển sang 'pt-BR-AntonioNeural' để đọc chuẩn bản ngữ Brazil!"
+            )
+            return "pt-BR-AntonioNeural"
 
         # Không can thiệp nếu là giọng đọc các ngôn ngữ quốc tế khác (pt-BR, es, fr, de, ja, ko...)
         if voice_lower.startswith(("pt-", "es-", "fr-", "de-", "it-", "ja-", "ko-", "zh-")):
@@ -137,11 +168,11 @@ class VoiceAgent:
     @staticmethod
     def resolve_optimal_tts_rate(voice: str, niche: Optional[str] = None, explicit_rate: Optional[str] = None) -> str:
         """
-        Xác định tốc độ đọc TTS tối ưu (Retention-Calibrated High-Pacing cho YouTube Shorts ~160-175 WPM):
-        - animal_rescue / wholesome (JennyNeural / HoaiMyNeural): +9% (truyền cảm, ấm áp nhưng nhịp gọn, không lê thê).
-        - deep_sea_earth_mysteries / horror / crime / history / stoicism: +12% (dồn dập, rùng mình, cuốn người nghe ngay giây đầu).
-        - psychology / wildlife_predators / alternate_history / finance / tech / scifi / general: +14% (sắc bén, hiện đại, giữ chân cực cao).
-        - sports / gaming / hype: +16% (nhịp độ cao trào).
+        Xác định tốc độ đọc TTS tối ưu (Ultra-Fast Viral Shorts Pacing ~185-200 WPM, chống cảm giác dài lê thê):
+        - animal_rescue / wholesome (JennyNeural / HoaiMyNeural): +16% (truyền cảm nhưng nhịp nhanh, dứt khoát, không lê thê).
+        - deep_sea_earth_mysteries / horror / crime / history / stoicism: +20% (dồn dập, nghẹt thở, cuốn người nghe ngay giây đầu).
+        - psychology / wildlife_predators / alternate_history / finance / tech / scifi / general: +21% (sắc bén, tốc độ cao chuẩn Zack D. Films).
+        - sports / gaming / hype: +24% (nhịp độ cao trào).
         """
         if explicit_rate:
             return explicit_rate
@@ -149,7 +180,7 @@ class VoiceAgent:
         nid = (niche or "").strip().lower()
         v_low = (voice or "").lower()
         is_gentle_niche = any(k in nid for k in ("rescue", "animal", "wholesome", "satirical")) or "jenny" in v_low or "hoaimy" in v_low
-        min_floor = 9 if is_gentle_niche else 11
+        min_floor = 16 if is_gentle_niche else 19
 
         if nid:
             try:
@@ -169,16 +200,16 @@ class VoiceAgent:
                 pass
 
         if is_gentle_niche:
-            return "+9%"
-        if any(k in nid for k in ("deep_sea", "mystery", "ocean", "space", "cosmos", "horror", "creepy", "crime", "noir", "histor", "stoic", "philosophy")):
-            return "+12%"
-        if any(k in nid for k in ("sport", "gaming", "hype", "anime")):
             return "+16%"
+        if any(k in nid for k in ("deep_sea", "mystery", "ocean", "space", "cosmos", "horror", "creepy", "crime", "noir", "histor", "stoic", "philosophy")):
+            return "+20%"
+        if any(k in nid for k in ("sport", "gaming", "hype", "anime")):
+            return "+24%"
         if v_low.startswith("vi-"):
-            return "+10%"
+            return "+18%"
         if v_low.startswith("pt-"):
-            return "+12%"
-        return "+14%"
+            return "+19%"
+        return "+21%"
 
     # ──────────────────────────────────────────
     # PUBLIC API — Gọi từ Pipeline Orchestrator
@@ -213,7 +244,7 @@ class VoiceAgent:
                 safe_voice = self._resolve_safe_voice(scene.narration, voice or self.default_voice)
                 expected_rate = self.resolve_optimal_tts_rate(safe_voice, niche=niche, explicit_rate=rate)
 
-                # Checkpoint: Chỉ tái sử dụng audio từ trước nếu file audio > 1KB VÀ metadata khớp chính xác text, voice, rate và đã qua mastering v2
+                # Checkpoint: Chỉ tái sử dụng audio từ trước nếu file audio > 1KB VÀ metadata khớp chính xác text, voice, rate và đã qua mastering v3
                 if Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024 and meta_path.exists():
                     try:
                         meta = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -221,7 +252,7 @@ class VoiceAgent:
                             meta.get("narration") == scene.narration
                             and meta.get("voice") == safe_voice
                             and meta.get("rate") == expected_rate
-                            and meta.get("mastered_v2") is True
+                            and meta.get("mastered_v3") is True
                         ):
                             duration_ms = meta.get("duration_ms") or await asyncio.to_thread(self._get_audio_duration_ms, scene_audio_path)
                             if duration_ms > 0:
@@ -353,7 +384,7 @@ class VoiceAgent:
                         "narration": scene.narration,
                         "voice": safe_voice,
                         "rate": expected_rate,
-                        "mastered_v2": True,
+                        "mastered_v3": True,
                         "duration_ms": duration_ms,
                         "word_timings": word_timings,
                     }, ensure_ascii=False), encoding="utf-8")
@@ -414,11 +445,11 @@ class VoiceAgent:
     @staticmethod
     def _master_and_trim_scene_audio(file_path: str) -> None:
         """
-        Broadcast Voice Mastering & Dead-Air Elimination cho từng phân cảnh:
+        Broadcast Voice Mastering & Ultra-Tight Dead-Air Elimination cho từng phân cảnh:
         - Áp dụng EQ Podcast/Radio (Highpass 80Hz khử ù + Warmth +2.2dB @ 130Hz + Presence +1.8dB @ 4.2kHz)
           kết hợp Compressor nhẹ (-18dB, ratio 2.4) để giọng đọc dày, uy lực và nổi bật trên loa điện thoại.
-        - Chỉ cắt khoảng lặng chết ở CUỐI câu (trailing silence > -45dB) bằng kỹ thuật areverse -> silenceremove -> areverse
-          và giữ lại 50ms đuôi tự nhiên (apad=pad_dur=0.05).
+        - Cắt sát khoảng lặng chết & hơi thở thừa ở CUỐI câu (trailing silence > -36dB) bằng areverse -> silenceremove -> areverse,
+          KHÔNG chèn apad ở cuối để chuyển cảnh nối tiếp (J-cut) dồn dập tức thì, triệt tiêu hoàn toàn cảm giác lê thê!
         - KHÔNG cắt đầu câu (0.0ms) để mốc thời gian WordBoundary (start_ms/end_ms) khớp 100% đến từng mili-giây!
         """
         p = Path(file_path)
@@ -430,8 +461,7 @@ class VoiceAgent:
             "equalizer=f=130:width_type=q:width=1.2:g=2.2,"
             "equalizer=f=4200:width_type=q:width=1.5:g=1.8,"
             "acompressor=threshold=-18dB:ratio=2.4:attack=15:release=180:makeup=1.5dB,"
-            "areverse,silenceremove=start_periods=1:start_duration=0.04:start_threshold=-45dB,areverse,"
-            "apad=pad_dur=0.05"
+            "areverse,silenceremove=start_periods=1:start_duration=0.02:start_threshold=-36dB,areverse"
         )
         try:
             from app.utils.ffmpeg_helper import run_ffmpeg, get_duration_ms
@@ -446,8 +476,8 @@ class VoiceAgent:
                 tmp_out,
             ], timeout=25)
             new_dur = get_duration_ms(tmp_out)
-            # Đảm bảo file mastered hợp lệ và không làm cụt lời thoại (chỉ cắt tối đa ~600ms khoảng lặng thừa)
-            if Path(tmp_out).exists() and Path(tmp_out).stat().st_size > 1024 and new_dur >= max(400, orig_dur - 750):
+            # Đảm bảo file mastered hợp lệ và không làm cụt lời thoại (cho phép cắt tối đa ~950ms khoảng lặng đuôi thừa)
+            if Path(tmp_out).exists() and Path(tmp_out).stat().st_size > 1024 and new_dur >= max(350, orig_dur - 950):
                 Path(tmp_out).replace(p)
             else:
                 Path(tmp_out).unlink(missing_ok=True)
@@ -470,7 +500,7 @@ class VoiceAgent:
         Tuyệt đối KHÔNG áp dụng silenceremove toàn cục làm co ngắn audio gây lệch phụ đề và video cut.
         Trả về total_duration_ms.
         """
-        # Tạo file silence cực ngắn 0.15s (150ms) để nối Seamless Infinite Loop liền mạch sang Cảnh 1 mà không bị khoảng lặng chết
+        # Tạo file silence cực ngắn 0.04s (40ms) để nối Seamless Infinite Loop liền mạch sang Cảnh 1 mà không bị khoảng lặng chết
         from app.utils.ffmpeg_helper import run_ffmpeg, get_duration_ms
         tail_silence_path = str(Path(output_path).parent / "tail_silence.mp3")
         has_tail = False
@@ -478,7 +508,7 @@ class VoiceAgent:
             run_ffmpeg([
                 "-f", "lavfi",
                 "-i", "anullsrc=r=24000:cl=mono",
-                "-t", "0.15",
+                "-t", "0.04",
                 "-c:a", "libmp3lame",
                 "-b:a", "128k",
                 tail_silence_path

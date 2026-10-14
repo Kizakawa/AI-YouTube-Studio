@@ -83,7 +83,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-JennyNeural
   preferred_voice_vi: vi-VN-HoaiMyNeural
-  rate: +9%
+  rate: +16%
   pitch: 0Hz
   bgm_vibe: emotional acoustic piano into soaring orchestral violin, heartwarming,
     tears of joy, gentle hopeful warmth
@@ -93,7 +93,7 @@ audio:
   - riser
   - whoosh_fast
 banned_lexicon: *id001
-target_wpm: 160
+target_wpm: 182
 monetization:
   affiliate_enabled: false
   affiliate_category: pet_care

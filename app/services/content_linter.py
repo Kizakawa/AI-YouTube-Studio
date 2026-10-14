@@ -129,14 +129,13 @@ class ScriptValidationLinter:
     def check_pacing_and_length(
         cls,
         script: ScriptContract,
-        target_wpm: int = 155,
+        target_wpm: int = 185,
         niche_id: str = ""
     ) -> Tuple[List[str], int]:
         """
-        Kiểm tra số từ và tính toán nhịp đọc (Pacing):
-        - Chuẩn vàng YouTube Shorts có Payoff vượt ngưỡng 10k-50k view (35 - 48s tại 150-165 WPM) là 80 đến 130 từ (7 - 10 cảnh).
-        - Riêng ngách animal_rescue (Paws & Hearts Rescue): dữ liệu thực nghiệm chứng minh video đạt 1,200 - 2,280 views & +32 subs
-          nằm ở vùng 45 - 56 giây (90 - 145 từ, 8 - 10 cảnh) để đủ 4 giai đoạn chuyển hóa cảm xúc (4-Stage Transformation Arc).
+        Kiểm tra số từ và tính toán nhịp đọc (Ultra-Fast Viral Pacing — Chống Dài Lê Thê):
+        - Chuẩn vàng YouTube Shorts tốc độ cao (22 - 30s tại 185-200 WPM) là 52 đến 95 từ (7 - 11 cảnh, 1.8 - 2.5s/cảnh).
+        - Riêng ngách animal_rescue (Paws & Hearts Rescue): 26 - 34 giây (60 - 108 từ, 8 - 11 cảnh) để đủ 4 giai đoạn chuyển hóa cảm xúc mà vẫn gọn gàng, không rề rà.
         """
         issues = []
         all_narrations = " ".join(s.narration for s in script.scenes if s.narration)
@@ -148,15 +147,15 @@ class ScriptValidationLinter:
         is_rescue = ("rescue" in nid_lower or "animal" in nid_lower) or any(
             k in f"{script.title} {topic_str}".lower() for k in ("rescue", "cứu hộ", "puppy", "kitten", "stray dog", "abandoned")
         )
-        min_words = 85 if is_rescue else 72
-        max_words = 145 if is_rescue else 135
-        target_range_str = "95 to 135 words (42-55s 4-Stage Transformation Arc)" if is_rescue else "85 to 125 words (35-48s 4-Beat Payoff Arc)"
+        min_words = 58 if is_rescue else 50
+        max_words = 108 if is_rescue else 98
+        target_range_str = "68 to 95 words (26-34s High-Velocity Transformation Arc)" if is_rescue else "60 to 85 words (22-30s Ultra-Fast Payoff Arc)"
 
         if total_words > max_words:
             est_seconds = (total_words / target_wpm) * 60
             issues.append(
-                f"Script is too long ({total_words} words, ~{est_seconds:.1f}s at {target_wpm} WPM). "
-                f"Target limit: strictly {target_range_str}."
+                f"Script is too long and dragging ({total_words} words, ~{est_seconds:.1f}s at {target_wpm} WPM). "
+                f"Cut filler immediately! Target limit: strictly {target_range_str} (6-9 words per scene)."
             )
         elif total_words < min_words:
             est_seconds = (total_words / target_wpm) * 60
@@ -165,16 +164,16 @@ class ScriptValidationLinter:
                 f"Minimum {min_words} words required (target {target_range_str})."
             )
 
-        # Số lượng scene: 8 đến 14 scene là nhịp tối ưu cho Shorts 35-52s (2.8 - 3.8s/scene)
+        # Số lượng scene: 7 đến 12 scene là nhịp tối ưu cho Shorts 22-32s (1.8 - 2.5s/scene)
         scene_count = len(script.scenes)
-        min_scenes = 8 if is_rescue else 7
+        min_scenes = 7
         if scene_count < min_scenes:
             issues.append(
-                f"Too few scenes ({scene_count}). Need at least {min_scenes} rapid scenes for visual pacing and Payoff (target 9 to 13 scenes, 2.8-3.8s each)."
+                f"Too few scenes ({scene_count}). Need at least {min_scenes} rapid scenes for visual pacing and Payoff (target 8 to 11 scenes, 1.8-2.5s each)."
             )
-        elif scene_count > 14:
+        elif scene_count > 12:
             issues.append(
-                f"Too many scenes ({scene_count}). Limit to 9 to 14 rapid scenes (2.8-3.8s each) for optimal visual retention."
+                f"Too many scenes ({scene_count}). Limit to 8 to 11 rapid scenes (1.8-2.5s each) so the video never drags."
             )
 
         return issues, total_words
@@ -186,8 +185,8 @@ class ScriptValidationLinter:
         niche_profile: Dict[str, Any]
     ) -> List[str]:
         """
-        Kiểm tra chất lượng Hook 3s đầu (Cảnh 1), Mid-Video Re-Hook (Cảnh 3-4) và Tiêu đề:
-        1. Cảnh 1 không được quá dài (> 12 từ) làm chậm nhịp mở đầu gây Swipe-Away.
+        Kiểm tra chất lượng Hook 2s đầu (Cảnh 1), Mid-Video Re-Hook (Cảnh 3-4) và Tiêu đề:
+        1. Cảnh 1 không được quá dài (> 10 từ) làm chậm nhịp mở đầu gây Swipe-Away.
         2. Cảnh cuối tuyệt đối không được chứa câu đọc "Subscribe right now..." gây tụt 15% APV.
         3. Chặn tiêu đề bi lụy/tuyệt vọng thuần túy trên kênh Animal Rescue (ví dụ: 'Frozen Puppy Found in Rain')
            mà thiếu mồi câu tò mò / hứa hẹn sự chuyển hóa (Until, Moment, Refused, Realized, Saved, Safe...).
@@ -198,14 +197,14 @@ class ScriptValidationLinter:
         if script.scenes:
             s1_narr = (script.scenes[0].narration or "").strip()
             s1_words = re.findall(r'\b\w+\b', s1_narr)
-            if len(s1_words) > 12:
+            if len(s1_words) > 10:
                 issues.append(
-                    f"Scene 1 hook is too long ({len(s1_words)} words). Keep Scene 1 between 5 and 9 punchy words "
-                    f"(~2.5s) for an instant thumb-stopper (Viewed > 75%)."
+                    f"Scene 1 hook is too long ({len(s1_words)} words). Keep Scene 1 between 4 and 7 punchy words "
+                    f"(~1.8s) for an instant thumb-stopper (Viewed > 75%)."
                 )
             elif len(s1_words) < 3:
                 issues.append(
-                    f"Scene 1 hook is too fragmented ({len(s1_words)} words). Must be a complete 5-9 word curiosity/danger hook."
+                    f"Scene 1 hook is too fragmented ({len(s1_words)} words). Must be a complete 4-7 word curiosity/danger hook."
                 )
 
             last_narr = (script.scenes[-1].narration or "").strip().lower()
@@ -282,7 +281,7 @@ class ScriptValidationLinter:
         script: ScriptContract,
         niche_profile: Dict[str, Any],
         cooldown_entities: Optional[List[str]] = None,
-        target_wpm: int = 155
+        target_wpm: int = 185
     ) -> LinterResult:
         """
         Hàm thẩm định tổng thể (Quality Gate).
@@ -317,11 +316,11 @@ class ScriptValidationLinter:
         if not is_valid:
             is_rescue = "rescue" in niche_id or "animal" in niche_id
             word_target_instruction = (
-                "Keep total word count strictly between 95 and 135 words (42-55s pacing at 150 WPM, 8-10 scenes) "
-                "to deliver the full 4-Stage Emotional Transformation Arc (Trauma -> Gentle Contact -> Healing -> Joyful Payoff)."
+                "Keep total word count strictly between 68 and 95 words (26-34s fast pacing at 185 WPM, 8-11 scenes, 6-9 words/scene) "
+                "to deliver the full 4-Stage Emotional Transformation Arc without dragging."
                 if is_rescue else
-                "Keep total word count strictly between 85 and 125 words (35-48s pacing at 155 WPM, 7-10 scenes) "
-                "with a 3s Hook (Scene 1), 12s Mid-Video Re-Hook Twist (Scene 4), and deep Payoff Reveal (Scenes 5-7)."
+                "Keep total word count strictly between 60 and 85 words (22-30s ultra-fast pacing at 185 WPM, 8-10 scenes, 6-9 words/scene) "
+                "with a 1.8s Hook (Scene 1, 4-7 words), 8s Mid-Video Re-Hook Twist (Scene 4), and deep Payoff Reveal (Scenes 5-8)."
             )
             bullet_points = "\n".join(f"- {issue}" for issue in all_issues)
             retry_hint = (
@@ -331,7 +330,7 @@ class ScriptValidationLinter:
                 f"1. Ensure the final sentence is 100% grammatically complete, contains ZERO spoken 'Subscribe/Comment' outro CTAs, and conceptually bridges straight back into Scene 1's hook (Seamless Infinite Loop). NEVER end with 'because', 'which', 'and', 'but', etc.\n"
                 f"2. {word_target_instruction}\n"
                 f"3. Strictly avoid all forbidden concepts/terms and repetitive channel entities listed above.\n"
-                f"4. Rewrite cleanly while preserving an electric 5-10 word Scene 1 hook (Viewed > 75%), a mid-video pattern interrupt at Scene 4, and an unforgettable Payoff."
+                f"4. Rewrite cleanly while preserving an electric 4-7 word Scene 1 hook (Viewed > 75%), a mid-video pattern interrupt at Scene 4, and an unforgettable Payoff."
             )
 
         return LinterResult(

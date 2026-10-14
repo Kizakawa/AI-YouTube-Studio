@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 FFMPEG_TIMEOUT = 300   # 5 phút max cho render
 FFPROBE_TIMEOUT = 10   # 10 giây max cho probe
-VIDEO_DURATION_SAFETY_MARGIN = 0.1  # Đệm an toàn chống ngắt cụt audio/video cuối câu (0.1 giây)
+VIDEO_DURATION_SAFETY_MARGIN = 0.05  # Đệm an toàn chống ngắt cụt audio/video cuối câu (0.05 giây)
 
 
 def _ensure_ffmpeg_in_path():
@@ -571,26 +571,26 @@ def image_to_video(
 
     d = max(int(duration_seconds * fps) + 2, fps)  # Tổng số frames (+2 frame đệm an toàn cho -t)
     if is_hook_scene:
-        # Cú Punch-in Zoom kịch tính cho Scene 1 (1.08 -> 1.24) tạo thumbstopper giật mắt người xem ngay frame 0
+        # Cú Punch-in Zoom kịch tính cho Scene 1 (1.08 -> 1.28) tạo thumbstopper giật mắt người xem ngay frame 0
         z_start = 1.08
-        z_end   = 1.24
+        z_end   = 1.28
     else:
-        z_start = 1.0
-        z_end   = 1.15  # Zoom mượt mà 15% chuẩn cinema
+        z_start = 1.02
+        z_end   = 1.20  # Zoom nhanh 20% giàu năng lượng, chống cảm giác ảnh đứng yên
     z_step  = (z_end - z_start) / max(d, 1)
 
-    # Level 5 Multi-Shot Beat Cut Engine (1.6s-1.8s Pacing):
-    # Biến 1 cảnh 3.5s-5.5s thành chuỗi 2-3 cú nhảy góc máy (Wide -> Medium Punch-In -> Close-Up)
-    # giúp phá vỡ hoàn toàn cảm giác "AI slideshow" và giữ chân người xem qua mốc 3s đầu & giữa video.
-    mid_snap_frame = int(d * 0.45)
-    second_snap_frame = int(d * 0.74)
-    if duration_seconds >= 4.2:
+    # Level 6 Ultra-Fast Multi-Shot Beat Cut Engine (0.9s-1.2s Pacing):
+    # Biến 1 cảnh 1.8s-3.0s thành chuỗi 2-3 cú nhảy góc máy chớp nhoáng (Wide -> Medium Punch-In -> Extreme Close-Up)
+    # giúp nhịp hình ảnh dồn dập từng giây, triệt tiêu 100% cảm giác chậm hay dài lê thê.
+    mid_snap_frame = int(d * 0.42)
+    second_snap_frame = int(d * 0.72)
+    if duration_seconds >= 2.5:
         snap_expr = (
-            f"+0.08*min(max((on-{mid_snap_frame})/4\\,0)\\,1)"
-            f"+0.06*min(max((on-{second_snap_frame})/4\\,0)\\,1)"
+            f"+0.09*min(max((on-{mid_snap_frame})/3\\,0)\\,1)"
+            f"+0.07*min(max((on-{second_snap_frame})/3\\,0)\\,1)"
         )
-    elif duration_seconds >= 2.2:
-        snap_expr = f"+0.08*min(max((on-{mid_snap_frame})/4\\,0)\\,1)"
+    elif duration_seconds >= 1.4:
+        snap_expr = f"+0.09*min(max((on-{mid_snap_frame})/3\\,0)\\,1)"
     else:
         snap_expr = ""
 
@@ -880,25 +880,25 @@ def trim_video(
 
     grading_chain = ("," + ",".join(grading_parts)) if grading_parts else ""
 
-    # Level 5 Multi-Shot Beat Cut cho Stock Video (1.6s-1.8s Pacing):
-    # - Nếu clip >= 4.2s: Cắt 3 góc máy (0-45%: Góc rộng 100%, 45-74%: Góc trung 89%, 74-100%: Cận cảnh 82%)
-    # - Nếu clip >= 2.2s: Cắt 2 góc máy (0-46%: Góc rộng 100%, 46-100%: Cận cảnh 89%)
+    # Level 6 Ultra-Fast Multi-Shot Beat Cut cho Stock Video (0.9s-1.2s Pacing):
+    # - Nếu clip >= 2.5s: Cắt 3 góc máy nhanh (0-40%: Góc rộng 100%, 40-70%: Góc trung 88%, 70-100%: Cận cảnh 80%)
+    # - Nếu clip >= 1.4s: Cắt 2 góc máy nhanh (0-45%: Góc rộng 100%, 45-100%: Cận cảnh 88%)
     if is_already_rendered:
         crop_snap = ""
-    elif duration_seconds >= 4.2:
-        t1 = duration_seconds * 0.45
-        t2 = duration_seconds * 0.74
+    elif duration_seconds >= 2.5:
+        t1 = duration_seconds * 0.40
+        t2 = duration_seconds * 0.70
         crop_snap = (
-            f",crop=w='if(gte(t\\,{t2:.2f})\\,{width}*0.82\\,if(gte(t\\,{t1:.2f})\\,{width}*0.89\\,{width}))':"
-            f"h='if(gte(t\\,{t2:.2f})\\,{height}*0.82\\,if(gte(t\\,{t1:.2f})\\,{height}*0.89\\,{height}))':"
+            f",crop=w='if(gte(t\\,{t2:.2f})\\,{width}*0.80\\,if(gte(t\\,{t1:.2f})\\,{width}*0.88\\,{width}))':"
+            f"h='if(gte(t\\,{t2:.2f})\\,{height}*0.80\\,if(gte(t\\,{t1:.2f})\\,{height}*0.88\\,{height}))':"
             f"x='(in_w-out_w)/2':y='(in_h-out_h)/2',"
             f"scale={width}:{height}"
         )
-    elif duration_seconds >= 2.2:
-        snap_t = duration_seconds * 0.46
+    elif duration_seconds >= 1.4:
+        snap_t = duration_seconds * 0.45
         crop_snap = (
-            f",crop=w='if(gte(t\\,{snap_t:.2f})\\,{width}*0.89\\,{width})':"
-            f"h='if(gte(t\\,{snap_t:.2f})\\,{height}*0.89\\,{height})':"
+            f",crop=w='if(gte(t\\,{snap_t:.2f})\\,{width}*0.88\\,{width})':"
+            f"h='if(gte(t\\,{snap_t:.2f})\\,{height}*0.88\\,{height})':"
             f"x='(in_w-out_w)/2':y='(in_h-out_h)/2',"
             f"scale={width}:{height}"
         )
