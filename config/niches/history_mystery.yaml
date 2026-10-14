@@ -71,7 +71,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-GuyNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: +31%
+  rate: +0%
   pitch: -3Hz
   bgm_vibe: epic orchestral mystery, ancient chanting, slow booming timpani drum
   sfx_cues:
@@ -79,6 +79,6 @@ audio:
   - stone_door_creak
   - cinematic_swell
 banned_lexicon: *id001
-target_wpm: 190
+target_wpm: 145
 monetization:
   affiliate_enabled: false

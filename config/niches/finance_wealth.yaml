@@ -73,7 +73,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: +33%
+  rate: +0%
   pitch: 0Hz
   bgm_vibe: confident modern synthwave bass, sleek lo-fi tech groove, punchy kick
   sfx_cues:
@@ -81,6 +81,6 @@ audio:
   - sub_bass_drop
   - digital_click
 banned_lexicon: *id001
-target_wpm: 190
+target_wpm: 145
 monetization:
   affiliate_enabled: false

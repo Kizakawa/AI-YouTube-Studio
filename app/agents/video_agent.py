@@ -28,7 +28,6 @@ from app.utils.ffmpeg_helper import (
     resolve_niche_transitions,
     mux_audio_video,
     mix_sfx_transitions,
-    resolve_smart_sfx_cue,
     burn_subtitles,
     VIDEO_DURATION_SAFETY_MARGIN,
 )
@@ -115,51 +114,21 @@ class VideoAgent:
                 subtitle_path=job.subtitle_path if has_subtitle else None,
             )
 
-            # ── Step 3 & 4: Chuẩn bị SFX cues trước để quyết định có chạy loudnorm ở bước mux_audio_video hay gộp vào bước cuối ──
-            from app.utils.ffmpeg_helper import _find_sfx_file
-            raw_niche = (job.niche or "").lower()
-            is_heavy_hit_niche = is_scifi_job or any(
-                k in raw_niche for k in ("psychology", "deep_sea", "wildlife", "predator", "horror", "mystery", "history", "what_if", "alternate")
-            )
-            hit_sfx_name = "impact_sub" if is_heavy_hit_niche else "hit"
-            default_sfx_name = "whoosh_fast" if is_scifi_job else "whoosh"
-
-            # 1. Tự động phân tích ngữ nghĩa, cảm xúc và loại chuyển cảnh để chọn SFX chuẩn cho từng cut
-            total_sc = len(job.scenes)
+            # ── Step 3 & 4: Ghép audio narration + BGM (tắt các hiệu ứng âm thanh SFX ngớ ngẩn/gây nhiễu mặc định) ──
+            enable_sfx = bool(getattr(job, "enable_sfx", False))
+            will_mix_sfx = False
             resolved_sfx_cues = []
-            sfx_dir_path_check = Path(sfx_dir)
-            for i, s in enumerate(job.scenes[1:], start=1):
-                cue = s.sfx_cue
-                if (
-                    not cue
-                    or cue.lower() in ("whoosh", "default", "none", "auto")
-                    or (sfx_dir_path_check.exists() and not _find_sfx_file(sfx_dir_path_check, cue))
-                ):
-                    cue = resolve_smart_sfx_cue(
-                        narration=s.narration,
-                        scene_idx=i,
-                        total_scenes=total_sc,
-                        niche=job.niche,
-                    )
-                    # Nếu cue là whoosh mặc định, đồng bộ với hiệu ứng chuyển cảnh thị giác
-                    if cue == "whoosh" and i - 1 < len(transition_sequence):
-                        t_type = transition_sequence[i - 1]
-                        if t_type in ("zoomin", "hblur"):
-                            cue = "whoosh_fast"
-                        elif t_type == "pixelize":
-                            cue = "glitch"
-                        elif t_type in ("circleopen", "radial"):
-                            cue = "reveal"
-                        elif t_type in ("smoothleft", "smoothright", "diagtl", "diagtr"):
-                            cue = "whoosh_fast"
-                resolved_sfx_cues.append(cue)
 
-            # 2. Level 4 Multi-Layer Foley: Trích xuất các mốc xuất hiện của Power Words để đánh Micro-SFX
-            from app.utils.subtitle_helper import SubtitleHelper
-            micro_sfx_cues = SubtitleHelper.extract_power_word_cues(job.scenes, min_interval_s=1.8)
-
-            sfx_dir_exists = Path(sfx_dir).exists()
-            will_mix_sfx = bool(sfx_dir_exists or resolved_sfx_cues or micro_sfx_cues)
+            if enable_sfx and Path(sfx_dir).exists():
+                from app.utils.ffmpeg_helper import _find_sfx_file
+                sfx_dir_path_check = Path(sfx_dir)
+                for s in job.scenes[1:]:
+                    cue = (s.sfx_cue or "").strip()
+                    if cue and cue.lower() not in ("whoosh", "default", "none", "auto", "off", "mute") and _find_sfx_file(sfx_dir_path_check, cue):
+                        resolved_sfx_cues.append(cue)
+                    else:
+                        resolved_sfx_cues.append("none")
+                will_mix_sfx = any(c != "none" for c in resolved_sfx_cues)
 
             logger.info(f"[VideoAgent] Job {job.job_id}: Ghép audio narration + BGM (Audio Ducking)...")
             await report(f"🎵 Đang hòa âm giọng đọc AI và nhạc nền (Audio Ducking tự động)...", 84)
@@ -177,24 +146,22 @@ class VideoAgent:
             )
 
             if will_mix_sfx:
-                logger.info(f"[VideoAgent] Job {job.job_id}: Mix Multi-layer SFX transitions từ {sfx_dir} (Niche: {job.niche})...")
-                await report(f"🔊 Đang thiết kế âm thanh đa tầng Level 4 (Bass Impact, Foley & Riser)...", 92)
+                logger.info(f"[VideoAgent] Job {job.job_id}: Mix custom SFX transitions từ {sfx_dir}...")
+                await report(f"🔊 Đang ghép hiệu ứng âm thanh chuyển cảnh...", 92)
 
-                # Tính timestamp bắt đầu từng scene (giây)
                 scene_timestamps = self._compute_scene_timestamps(job.scenes)
-
                 sfx_out = str(work_dir / "muxed_with_sfx.mp4")
                 result_video = mix_sfx_transitions(
                     video_path=muxed_video,
                     output_path=sfx_out,
                     scene_timestamps_seconds=scene_timestamps,
                     sfx_dir=sfx_dir,
-                    default_sfx=default_sfx_name,
-                    sfx_cues=resolved_sfx_cues if resolved_sfx_cues else None,
-                    sfx_volume=0.42 if is_heavy_hit_niche else 0.38,
-                    hit_sfx=hit_sfx_name,
-                    hit_volume=0.55 if is_heavy_hit_niche else 0.50,
-                    micro_sfx_cues=micro_sfx_cues if micro_sfx_cues else None,
+                    default_sfx="none",
+                    sfx_cues=resolved_sfx_cues,
+                    sfx_volume=0.20,
+                    hit_sfx="none",
+                    hit_volume=0.0,
+                    micro_sfx_cues=None,
                 )
                 muxed_video = result_video
 

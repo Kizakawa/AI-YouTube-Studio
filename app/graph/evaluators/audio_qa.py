@@ -95,10 +95,10 @@ class AudioQA:
             passed = False
             feedback_items.append(f"Vượt quá giới hạn YouTube Shorts ({duration_sec:.1f}s > 60s)")
 
-        if wpm < 140:
+        if wpm < 115:
             pacing_rating = "TOO_SLOW"
-            feedback_items.append(f"Tốc độ đọc hơi chậm ({wpm:.0f} WPM), chuẩn Viral Shorts hiện đại là 165-235 WPM")
-        elif wpm > 245:
+            feedback_items.append(f"Tốc độ đọc hơi chậm ({wpm:.0f} WPM), chuẩn tự nhiên là 130-165 WPM")
+        elif wpm > 185:
             pacing_rating = "TOO_FAST"
             feedback_items.append(f"Tốc độ đọc quá nhanh ({wpm:.0f} WPM), người xem không kịp nghe")
 

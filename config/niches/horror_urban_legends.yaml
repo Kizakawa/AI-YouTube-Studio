@@ -68,7 +68,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: +31%
+  rate: +0%
   pitch: -4Hz
   bgm_vibe: eerie dark horror ambient drone, jump-scare screech, disturbing metallic
     scraping
@@ -77,6 +77,6 @@ audio:
   - door_slam
   - heartbeat_intense
 banned_lexicon: *id001
-target_wpm: 190
+target_wpm: 145
 monetization:
   affiliate_enabled: false

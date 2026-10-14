@@ -199,20 +199,15 @@ class VoiceAgent:
     @staticmethod
     def resolve_optimal_tts_rate(voice: str, niche: Optional[str] = None, explicit_rate: Optional[str] = None) -> str:
         """
-        Xác định tốc độ đọc TTS tối ưu (Hyper-Retention Viral Shorts Pacing ~200-230 WPM, dồn dập cuốn hút):
-        - animal_rescue / wholesome (JennyNeural / HoaiMyNeural): +26% (truyền cảm nhưng nhịp nhanh, dứt khoát).
-        - deep_sea_earth_mysteries / horror / crime / history / stoicism: +31% (dồn dập, nghẹt thở, khóa chặt người nghe).
-        - psychology / wildlife_predators / alternate_history / finance / tech / scifi / general: +33% (tốc độ cao chuẩn Zack D. Films / MrBeast Shorts).
-        - sports / gaming / hype: +36% (nhịp độ cao trào cực đại).
+        Xác định tốc độ đọc TTS tự nhiên, rõ chữ (~140-155 WPM):
+        - Mặc định về tốc độ chuẩn bình thường (+0%) cho mọi ngôn ngữ và ngách kênh để người nghe dễ theo dõi.
+        - Nếu cấu hình ngách có chỉ định rate trong ngưỡng tự nhiên (-10% đến +8%) thì tôn trọng,
+          bỏ qua các mức tăng tốc quá nhanh (+20%..+36%) cũ.
         """
         if explicit_rate:
             return explicit_rate
 
         nid = (niche or "").strip().lower()
-        v_low = (voice or "").lower()
-        is_gentle_niche = any(k in nid for k in ("rescue", "animal", "wholesome", "satirical")) or "jenny" in v_low or "hoaimy" in v_low
-        min_floor = 26 if is_gentle_niche else 30
-
         if nid:
             try:
                 from app.services.niche_manager import get_niche
@@ -223,24 +218,14 @@ class VoiceAgent:
                     if cfg_rate and isinstance(cfg_rate, str) and cfg_rate.endswith("%"):
                         try:
                             val = int(cfg_rate.replace("%", "").replace("+", "").strip())
-                            if val >= min_floor:
-                                return f"+{val}%"
+                            if -10 <= val <= 8:
+                                return f"{val:+d}%"
                         except Exception:
                             pass
             except Exception:
                 pass
 
-        if is_gentle_niche:
-            return "+26%"
-        if any(k in nid for k in ("deep_sea", "mystery", "ocean", "space", "cosmos", "horror", "creepy", "crime", "noir", "histor", "stoic", "philosophy")):
-            return "+31%"
-        if any(k in nid for k in ("sport", "gaming", "hype", "anime")):
-            return "+36%"
-        if v_low.startswith("vi-"):
-            return "+29%"
-        if v_low.startswith("pt-"):
-            return "+30%"
-        return "+33%"
+        return "+0%"
 
     # ──────────────────────────────────────────
     # PUBLIC API — Gọi từ Pipeline Orchestrator
@@ -278,7 +263,7 @@ class VoiceAgent:
                 safe_voice = self._resolve_safe_voice(scene.narration, global_safe_voice)
                 expected_rate = self.resolve_optimal_tts_rate(safe_voice, niche=niche, explicit_rate=rate)
 
-                # Checkpoint: Chỉ tái sử dụng audio từ trước nếu file audio > 1KB VÀ metadata khớp chính xác text, voice, rate và đã qua mastering v4
+                # Checkpoint: Chỉ tái sử dụng audio từ trước nếu file audio > 1KB VÀ metadata khớp chính xác text, voice, rate và đã qua mastering v5
                 if Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024 and meta_path.exists():
                     try:
                         meta = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -286,7 +271,7 @@ class VoiceAgent:
                             meta.get("narration") == scene.narration
                             and meta.get("voice") == safe_voice
                             and meta.get("rate") == expected_rate
-                            and meta.get("mastered_v4") is True
+                            and meta.get("mastered_v5") is True
                         ):
                             duration_ms = meta.get("duration_ms") or await asyncio.to_thread(self._get_audio_duration_ms, scene_audio_path)
                             if duration_ms > 0:
@@ -443,7 +428,7 @@ class VoiceAgent:
                         "narration": scene.narration,
                         "voice": safe_voice,
                         "rate": expected_rate,
-                        "mastered_v4": True,
+                        "mastered_v5": True,
                         "duration_ms": duration_ms,
                         "word_timings": word_timings,
                     }, ensure_ascii=False), encoding="utf-8")
@@ -560,26 +545,27 @@ class VoiceAgent:
     @staticmethod
     def _master_and_trim_scene_audio(file_path: str, is_http_fallback: bool = False) -> None:
         """
-        Broadcast Voice Mastering & Ultra-Tight Dead-Air Elimination cho từng phân cảnh:
-        - Nếu là audio cứu hộ từ Google HTTP TTS (tốc độ gốc 1.0x chậm), tự động tăng tốc atempo=1.32 (+32%).
-        - Áp dụng EQ Podcast/Radio (Highpass 80Hz khử ù + Warmth +2.2dB @ 130Hz + Presence +1.8dB @ 4.2kHz)
-          kết hợp Compressor nhẹ (-18dB, ratio 2.4) để giọng đọc dày, uy lực và nổi bật trên loa điện thoại.
-        - Cắt sát khoảng lặng chết & hơi thở thừa ở CUỐI câu (trailing silence > -32dB) bằng areverse -> silenceremove -> areverse,
-          KHÔNG chèn apad ở cuối để chuyển cảnh nối tiếp (J-cut) dồn dập tức thì, triệt tiêu hoàn toàn cảm giác lê thê!
-        - KHÔNG cắt đầu câu (0.0ms) trên Edge-TTS để mốc thời gian WordBoundary (start_ms/end_ms) khớp 100% đến từng mili-giây!
+        Broadcast Voice Mastering & Natural Pacing cho từng phân cảnh:
+        - Nếu là audio cứu hộ từ Google HTTP TTS, giữ tốc độ tự nhiên (atempo=1.05).
+        - Áp dụng EQ Podcast/Radio (Highpass 80Hz khử ù + Warmth +2.0dB @ 130Hz + Presence +1.5dB @ 4.2kHz)
+          kết hợp Compressor nhẹ (-18dB, ratio 2.2) để giọng đọc ấm, rõ chữ và tự nhiên.
+        - Chỉ cắt khoảng lặng chết quá dài ở cuối câu (<-42dB) và giữ đệm nghỉ tự nhiên 80ms (apad=pad_dur=0.08)
+          để các câu không bị dính sát hay tạo cảm giác đọc vội.
+        - KHÔNG cắt đầu câu (0.0ms) trên Edge-TTS để mốc thời gian WordBoundary (start_ms/end_ms) khớp 100%.
         """
         p = Path(file_path)
         if not p.exists() or p.stat().st_size <= 1024:
             return
         tmp_out = str(p.with_suffix(".mastered.mp3"))
-        tempo_prefix = "atempo=1.32,silenceremove=start_periods=1:start_duration=0.01:start_threshold=-34dB," if is_http_fallback else ""
+        tempo_prefix = "atempo=1.05,silenceremove=start_periods=1:start_duration=0.02:start_threshold=-40dB," if is_http_fallback else ""
         af_chain = (
             f"{tempo_prefix}"
             "highpass=f=80,"
-            "equalizer=f=130:width_type=q:width=1.2:g=2.2,"
-            "equalizer=f=4200:width_type=q:width=1.5:g=1.8,"
-            "acompressor=threshold=-18dB:ratio=2.4:attack=15:release=180:makeup=1.5dB,"
-            "areverse,silenceremove=start_periods=1:start_duration=0.01:start_threshold=-32dB,areverse"
+            "equalizer=f=130:width_type=q:width=1.2:g=2.0,"
+            "equalizer=f=4200:width_type=q:width=1.5:g=1.5,"
+            "acompressor=threshold=-18dB:ratio=2.2:attack=15:release=180:makeup=1.2dB,"
+            "areverse,silenceremove=start_periods=1:start_duration=0.02:start_threshold=-42dB,areverse,"
+            "apad=pad_dur=0.08"
         )
         try:
             from app.utils.ffmpeg_helper import run_ffmpeg, get_duration_ms

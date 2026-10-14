@@ -134,7 +134,7 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
             scene_audio_path = str(audio_dir / f"scene_{scene_id:03d}.mp3")
             words_meta_path = str(audio_dir / f"scene_{scene_id:03d}.words.jsonl")
             safe_voice = voice_agent._resolve_safe_voice(clean_text, voice_agent.default_voice)
-            tts_rate = "+7%" if safe_voice.startswith("vi-") else ("+9%" if safe_voice.startswith("pt-") else "+12%")
+            tts_rate = "+0%"
 
             try:
                 communicate = edge_tts.Communicate(clean_text, safe_voice, rate=tts_rate, boundary="WordBoundary")

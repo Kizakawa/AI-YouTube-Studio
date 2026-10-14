@@ -49,7 +49,7 @@ class ManualSceneItem(BaseModel):
     narration: str = ""
     camera_motion: str = "zoom_in"  # zoom_in, zoom_out, pan_left, pan_right, pan_up, pan_down
     transition: str = "fade"        # fade, zoomin, wipeleft, slideright, dissolve
-    sfx_cue: Optional[str] = "auto" # Tên SFX cụ thể, 'none' (tắt), hoặc 'auto'/'ai' (AI tự chọn từ kho)
+    sfx_cue: Optional[str] = "none" # Tên SFX cụ thể, 'none' (tắt), hoặc 'auto'/'ai' (AI tự chọn từ kho)
     manual_duration_seconds: Optional[float] = None  # Nếu không có lời thoại thì dùng thời lượng này
 
 
@@ -67,7 +67,7 @@ class ManualStudioConfig(BaseModel):
     subtitle_margin_v: int = 210
     transition_type: str = "fade"
     transition_duration: float = 0.25
-    use_sfx: bool = True
+    use_sfx: bool = False
     timing_mode: str = "auto"  # "auto" (AI tự căn nhịp) hoặc "timestamps" (căn theo mốc thời gian 00-10: ...)
 
 

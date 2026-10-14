@@ -129,7 +129,7 @@ class ScriptValidationLinter:
     def check_pacing_and_length(
         cls,
         script: ScriptContract,
-        target_wpm: int = 185,
+        target_wpm: int = 145,
         niche_id: str = ""
     ) -> Tuple[List[str], int]:
         """
