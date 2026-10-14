@@ -553,31 +553,15 @@ class ContentAgent:
 
             vp1 = str(sc1.get("visual_prompt") or "").strip()
             if "jaw-dropping" not in vp1.lower() and "frame-0" not in vp1.lower():
-                if any(k in comb_ctx for k in ("puppy", "kitten", "rescue", "stray", "shelter", "abandoned", "dog", "cat", "filhote", "resgate")):
-                    wow_prefix = (
-                        "JAW-DROPPING FRAME-0 HOOK (EMOTIONAL EYE-CONTACT): Extreme close-up of shivering rescued animal "
-                        "with glistening expressive eyes looking straight into the camera lens reaching a tiny paw toward a warm human hand under golden rim light — "
-                    )
-                elif any(k in comb_ctx for k in ("anaconda", "caiman", "jaguar", "crocodile", "lion", "tiger", "eagle", "badger", "predator", "snake", "shark", "orca", "wolf", "onça", "sucuri", "jacaré", "ariranha", "águia")):
-                    wow_prefix = (
-                        "JAW-DROPPING FRAME-0 HOOK (EXTREME MACRO ACTION): Apex predator mid-strike with jaws or talons wide open, "
-                        "water droplets and debris exploding in mid-air, piercing glowing predator eyes locked directly on camera, high-contrast rim lighting — "
-                    )
-                elif any(k in comb_ctx for k in ("ocean", "abyss", "deep sea", "trench", "submarine", "bloop", "kraken", "megalodon", "oceano", "abismo", "fossa")):
-                    wow_prefix = (
-                        "JAW-DROPPING FRAME-0 HOOK (MEGALOPHOBIA SCALE SHOCK): Colossal glowing abyssal silhouette dwarfing a tiny submarine xenon spotlight "
-                        "in crystal-sharp bioluminescent contrast — "
-                    )
-                elif any(k in comb_ctx for k in ("rome", "empire", "war", "history", "ancient", "emperor", "library", "ww2", "napoleon", "império")):
-                    wow_prefix = (
-                        "JAW-DROPPING FRAME-0 HOOK (MONUMENTAL SPECTACLE): Breathtaking low-angle colossal counterfactual monument "
-                        "under dramatic storm clouds and vivid golden sunbeams — "
-                    )
-                else:
-                    wow_prefix = (
-                        "JAW-DROPPING FRAME-0 HOOK (HIGH-CONTRAST PARADOX): Razor-sharp extreme close-up with intense eye contact "
-                        "under dramatic golden split-lighting and vivid cinematic depth — "
-                    )
+                core_subj = (
+                    str(raw_data.get("primary_entity") or sc1.get("stock_query") or sc1.get("visual_keyword") or "").strip()
+                )
+                subj_clause = f" of {core_subj}" if core_subj else ""
+                wow_prefix = (
+                    f"JAW-DROPPING FRAME-0 HOOK (SCROLL-STOPPING VISUAL IMPACT): "
+                    f"Razor-sharp high-contrast cinematic shot{subj_clause} at peak dramatic action "
+                    f"with intense focal depth and vivid rim lighting — "
+                )
                 sc1["visual_prompt"] = f"{wow_prefix}{vp1}"
 
         # ── 2.8. ĐẢM BẢO PHÂN CẢNH CUỐI KHÉP LẠI GỌN GÀNG, KHÔNG DÍNH TỪ LỬNG ──

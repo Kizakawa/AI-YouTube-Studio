@@ -369,21 +369,24 @@ class StockFetcher:
             if web_image_search_enabled():
                 web_fetcher = WebImageFetcher()
                 google_qs = [q for q in (va.get("google_image_queries") or []) if q]
+                pref_engines = va.get("preferred_engines")
                 if creature_mode and creature_qs:
                     web_items = web_fetcher.search_all(
                         creature_qs[0], per_source=8, subject=subject,
                         extra_queries=creature_qs[1:], creature_mode=True,
+                        preferred_engines=pref_engines,
                     )
                 else:
                     primary_web_q = google_qs[0] if google_qs else queries[0]
                     extra_web_qs = (google_qs[1:] + queries[:2]) if google_qs else queries[1:3]
                     web_items = web_fetcher.search_all(
-                        primary_web_q, per_source=8, subject=subject, extra_queries=extra_web_qs,
+                        primary_web_q, per_source=8, subject=subject,
+                        extra_queries=extra_web_qs, preferred_engines=pref_engines,
                     )
                 _add(web_items)
                 logger.info(
                     f"[StockFetcher] 🔎 Gemini Google Search '{queries[0]}' (subject='{subject}'): "
-                    f"{len(candidates)} ảnh web bắt mắt (creature={creature_mode}, bypass_copyright={bypass_copyright})"
+                    f"{len(candidates)} ảnh web bắt mắt (paradigm={va.get('visual_paradigm', 'auto')}, creature={creature_mode})"
                 )
         except Exception as e:
             logger.debug(f"[StockFetcher] Lỗi nguồn ảnh web: {e}")

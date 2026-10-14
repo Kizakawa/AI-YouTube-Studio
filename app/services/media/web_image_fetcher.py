@@ -567,13 +567,23 @@ class WebImageFetcher:
             self._engine_fail(eng, minutes=15 if eng == "google" else 2)
             return []
 
-    def search_open_web(self, query: str, per_page: int = 10) -> List[Dict]:
+    def search_open_web(
+        self,
+        query: str,
+        per_page: int = 10,
+        preferred_engines: Optional[List[str]] = None,
+    ) -> List[Dict]:
         """
         Tìm kiếm ảnh đa luồng song song chuẩn Google Search (Bing HD + ArtStation 4K + DDGS + Wallhaven 4K + Serper/Google).
-        Trả về tập ứng viên đa dạng gồm cả CGI điện ảnh, Concept Art 8K, Wallpaper 4K và ảnh thực tế sắc nét.
+        Ưu tiên thứ tự động cơ tìm kiếm do AI Agent (VisualCurationAgent) chỉ định qua preferred_engines.
         """
         default_engines = "bing,artstation,ddgs,wallhaven,serper,google"
-        engines = [e.strip() for e in os.getenv("OPEN_WEB_ENGINES", default_engines).split(",") if e.strip()]
+        env_engines = [e.strip() for e in os.getenv("OPEN_WEB_ENGINES", default_engines).split(",") if e.strip()]
+        if preferred_engines:
+            valid_pref = [e.strip().lower() for e in preferred_engines if isinstance(e, str) and e.strip()]
+            engines = valid_pref + [e for e in env_engines if e not in valid_pref]
+        else:
+            engines = env_engines
         active_engines = [
             e for e in engines
             if self._engine_ok(e) and not (e == "serper" and not os.getenv("SERPER_API_KEY", "").strip())
@@ -870,16 +880,11 @@ class WebImageFetcher:
         subject: Optional[str] = None,
         extra_queries: Optional[List[str]] = None,
         creature_mode: bool = False,
+        preferred_engines: Optional[List[str]] = None,
     ) -> List[Dict]:
         """
-        Gọi song song các luồng tìm kiếm ảnh trên Internet (Google Images + Bing HD + DDGS),
-        tổng hợp và ưu tiên hình ảnh BẮT MẮT, CÂU VIEW, ĐIỆN ẢNH 8K (chuẩn Gemini Search).
-
-        - Khi bypass_copyright_enabled()=True (mặc định) hoặc creature_mode=True:
-          TẬP TRUNG 100% vào Google Images / Bing HD / Open Web với bộ truy vấn đa góc độ
-          (Cinematic 8K, Movie CGI Scene, Concept Art, Dramatic Viral HD, Dark Horror);
-          LOẠI BỎ hoàn toàn Wikipedia / Wikimedia Commons / Openverse để không bị lọt ảnh
-          tư liệu bách khoa khô khan, hóa thạch bảo tàng hay tranh khắc gỗ cũ.
+        Gọi song song các luồng tìm kiếm ảnh trên Internet (Bing HD + ArtStation 4K + Wallhaven 4K + DDGS + Google),
+        tuân theo chỉ đạo ngữ nghĩa (extra_queries & preferred_engines) từ VisualCurationAgent.
         """
         if not query or not web_image_search_enabled():
             return []
@@ -889,8 +894,11 @@ class WebImageFetcher:
         use_pure_google_search = creature_mode or bypass_copyright_enabled()
         open_web_per_page = max(per_source, 8) if use_pure_google_search else per_source
 
+        def _open_web_with_pref(q_str: str, pp: int) -> List[Dict]:
+            return self.search_open_web(q_str, per_page=pp, preferred_engines=preferred_engines)
+
         jobs = [
-            (self.search_open_web, "google_web", query, open_web_per_page),
+            (_open_web_with_pref, "google_web", query, open_web_per_page),
         ]
 
         auto_extra = list(extra_queries or [])
@@ -899,22 +907,17 @@ class WebImageFetcher:
                 from app.services.media.image_quality import creature_queries
                 auto_extra = creature_queries(subject or query)
             for i, xq in enumerate(q for q in auto_extra[:1] if q and q.lower() != query.lower()):
-                jobs.append((self.search_open_web, f"google_creature+{i + 1}", xq, open_web_per_page))
+                jobs.append((_open_web_with_pref, f"google_creature+{i + 1}", xq, open_web_per_page))
         elif use_pure_google_search:
-            # Chế độ Gemini Search (Không cần ảnh thật, chỉ cần BẮT MẮT, CÂU VIEW, SẮC NÉT 8K):
-            # Chạy song song 2 truy vấn Google Images tinh gọn (16 ứng viên tốc độ cao trong < 0.9s, tránh nghẽn băng thông)
-            base_target = subject or query
-            default_eye_catching = [
-                f"{base_target} cinematic 8k concept art",
-                f"{base_target} movie scene dramatic HD",
-            ]
-            for dq in default_eye_catching:
-                if len(auto_extra) >= 2:
-                    break
-                if dq.lower() != query.lower() and dq not in auto_extra:
-                    auto_extra.append(dq)
+            # Chế độ Gemini Search: Ưu tiên tuyệt đối các truy vấn extra_queries do AI Agent sinh ra
+            if not auto_extra:
+                base_target = subject or query
+                auto_extra = [
+                    f"{base_target} cinematic 8k concept art",
+                    f"{base_target} movie scene dramatic HD",
+                ]
             for i, xq in enumerate(q for q in auto_extra[:1] if q and q.lower() != query.lower()):
-                jobs.append((self.search_open_web, f"google_web+{i + 1}", xq, open_web_per_page))
+                jobs.append((_open_web_with_pref, f"google_web+{i + 1}", xq, open_web_per_page))
         else:
             if subject or len(query.split()) <= 3:
                 jobs.append((self.search_wikipedia_images, "wikipedia", entity_q, per_source))
@@ -923,7 +926,7 @@ class WebImageFetcher:
             if not auto_extra and subject and subject.lower() != query.lower():
                 auto_extra.append(f'"{subject}" dramatic photography')
             for i, xq in enumerate(q for q in auto_extra[:1] if q and q != query):
-                jobs.append((self.search_open_web, f"google_web+{i + 1}", xq, per_source))
+                jobs.append((_open_web_with_pref, f"google_web+{i + 1}", xq, per_source))
             if self._unsplash_key:
                 jobs.append((self.search_unsplash, "unsplash", query, per_source))
 
@@ -945,7 +948,7 @@ class WebImageFetcher:
                     if creature_mode
                     else f"{subject} cinematic 8k dramatic"
                 )
-                buckets[0] = buckets[0] + self.search_open_web(fallback_q, open_web_per_page)
+                buckets[0] = buckets[0] + _open_web_with_pref(fallback_q, open_web_per_page)
             except Exception:
                 pass
 

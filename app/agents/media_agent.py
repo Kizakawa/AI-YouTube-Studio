@@ -556,6 +556,7 @@ If no real entities found, return empty array: []"""
                     subject=scene_subject,
                     extra_queries=google_qs[1:] if len(google_qs) > 1 else None,
                     creature_mode=bool((v_analysis or {}).get("creature_mode")),
+                    preferred_engines=(v_analysis or {}).get("preferred_engines"),
                 )
                 for item in web_items:
                     u = item.get("url")

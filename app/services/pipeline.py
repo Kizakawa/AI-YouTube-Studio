@@ -588,11 +588,11 @@ class VideoPipeline:
                 prod_method = sc_strat.get("production_method") or v_analysis.get("production_method", "STOCK_FOOTAGE")
                 scene_pref = getattr(scene, 'media_type', None)
 
-                # ── Kiểm tra phân cảnh Viễn Tưởng qua SciFiVisualDispatcherAgent ──
+                # ── Kiểm tra phân cảnh Viễn Tưởng (Ưu tiên phán đoán AI Agent, chỉ dùng từ khóa khi AI offline) ──
                 from app.agents.scifi_visual_dispatcher_agent import SciFiVisualDispatcherAgent
                 scifi_agent = SciFiVisualDispatcherAgent()
-                is_scifi_scene = sc_strat.get("is_scifi") or False
-                if not is_scifi_scene:
+                is_scifi_scene = bool(sc_strat.get("is_scifi"))
+                if not is_scifi_scene and v_analysis.get("analysis_source") != "ai":
                     is_scifi_scene, _, _, _ = scifi_agent.detect_scifi_elements(
                         topic=topic,
                         narration=scene.narration,
@@ -995,8 +995,8 @@ class VideoPipeline:
         prefer_photo = False
 
         from app.agents.scifi_visual_dispatcher_agent import SciFiVisualDispatcherAgent
-        is_scifi_scene = (sc_strat or {}).get("is_scifi") or False
-        if not is_scifi_scene:
+        is_scifi_scene = bool((sc_strat or {}).get("is_scifi"))
+        if not is_scifi_scene and (v_analysis or {}).get("analysis_source") != "ai":
             is_scifi_scene, _, _, _ = SciFiVisualDispatcherAgent().detect_scifi_elements(
                 narration=scene.narration,
                 visual_keyword=scene.visual_keyword or "",

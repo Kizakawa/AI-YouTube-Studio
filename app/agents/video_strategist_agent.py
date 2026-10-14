@@ -126,30 +126,35 @@ class VideoStrategistAgent:
                 final_plan["scifi_subgenre"] = subgenre
 
         # 4. CHỦ ĐỀ THIÊN NHIÊN / ĐỊA DANH CÓ THẬT -> ƯU TIÊN FOOTAGE THẬT
-        # Ảnh AI miễn phí vẽ sai loài và không có bối cảnh thật (video cá sấu Amazon ra gấu / báo / người đứng trên nước).
-        # Cảnh AI được chuyển sang STOCK_FOOTAGE; nếu kho stock không có clip đạt chuẩn, pipeline vẫn tự rơi về AI.
+        # TÔN TRỌNG PHÁN ĐOÁN NGỮ NGHĨA CỦA AI STRATEGIST: Nếu plan_source == 'ai', chỉ chuyển sang STOCK_FOOTAGE
+        # khi chính AI phân loại cảnh đó là REAL_FILMABLE. Chỉ dùng từ khóa is_real_world_nature_topic khi AI offline (heuristic).
         if final_plan and not is_scifi_topic:
             try:
                 from app.services.media.query_broadener import is_real_world_nature_topic
-                # Chỉ xét CHỦ ĐỀ: lời thoại hay có ẩn dụ ("corporate jungle") dễ kích hoạt nhầm cho video tâm lý.
-                if is_real_world_nature_topic(topic):
+                is_nature_fallback = (plan_source != "ai") and is_real_world_nature_topic(topic)
+                if is_nature_fallback or plan_source == "ai":
                     switched = 0
                     scene_by_id = {s.get("scene_id"): s for s in scenes}
                     for key in ("scenes_strategy", "scene_proposals"):
                         for strat in final_plan.get(key) or []:
-                            if strat.get("production_method") in ("IMAGE_TO_VIDEO", "TEXT_TO_VIDEO"):
+                            # Khi AI đã phân tích, chỉ chuyển nếu AI xác nhận cảnh là REAL_FILMABLE
+                            should_switch = (
+                                (plan_source == "ai" and strat.get("reality_class") == "REAL_FILMABLE" and channel_niche in ("wildlife_predators", "animal_rescue", "nature"))
+                                or (is_nature_fallback and strat.get("production_method") in ("IMAGE_TO_VIDEO", "TEXT_TO_VIDEO"))
+                            )
+                            if should_switch and strat.get("production_method") in ("IMAGE_TO_VIDEO", "TEXT_TO_VIDEO"):
                                 sc = scene_by_id.get(strat.get("scene_id"), {})
                                 strat["production_method"] = "STOCK_FOOTAGE"
                                 strat["strategy"] = "STOCK_VIDEO"
                                 strat["tool"] = "pexels_video_api"
                                 if sc.get("stock_query") and strat.get("search_query") in (None, "", "cinematic"):
                                     strat["search_query"] = sc["stock_query"]
-                                strat["rationale"] = "Chủ đề thiên nhiên có thật: ưu tiên footage thật, AI chỉ là dự phòng."
+                                strat["rationale"] = "Chủ đề thiên nhiên đời thực (REAL_FILMABLE): ưu tiên footage thật, AI chỉ là dự phòng."
                                 if key == "scenes_strategy":
                                     switched += 1
                     if switched:
                         final_plan["real_footage_priority"] = True
-                        logger.info(f"🌿 [VideoStrategist] Chủ đề thiên nhiên có thật -> chuyển {switched} cảnh AI sang footage thật (AI là dự phòng).")
+                        logger.info(f"🌿 [VideoStrategist] REAL_FILMABLE -> chuyển {switched} cảnh sang footage thật.")
             except Exception as e:
                 logger.debug(f"[VideoStrategist] Nature real-footage enforcement error: {e}")
 
@@ -399,7 +404,7 @@ HÃY XUẤT RA JSON DUY NHẤT THEO SCHEMA:
       "production_method": "REAL_ARCHIVE | STOCK_FOOTAGE | IMAGE_TO_VIDEO | TEXT_TO_VIDEO",
       "tool": "wikimedia_archive | pexels_video_api | imagen3_i2v | wan_t2v",
       "rationale": "Giải thích chi tiết 1 câu vì sao chọn phương pháp & công cụ này cho cảnh này (bằng tiếng Việt)",
-      "search_query": "2-4 từ tiếng Anh CỤ THỂ CHỈ ĐỊNH CẤP DƯỚI TÌM KIẾM (ví dụ: 'colossal giant squid specimen', '18th century kraken engraving', 'deep ocean submarine lights'; cấm từ chung chung như 'cinematic')",
+      "search_query": "3-6 từ tiếng Anh CỤ THỂ CHỈ ĐỊNH CẤP DƯỚI TÌM KIẾM (ví dụ: 'giant kraken tentacles crushing ship cgi', 'roman emperor julius caesar portrait', 'harpy eagle swooping talons close up'; cấm từ chung chung như 'cinematic' hoặc ảnh hóa thạch/tranh khắc gỗ cũ)",
       "ai_prompt": "Câu lệnh tiếng Anh chi tiết phong cách điện ảnh 8K 9:16 do Đạo diễn tự sáng tạo logic theo kịch bản (dành cho AI hoặc dự phòng nếu kho stock thiếu)",
       "camera_motion": "hyper_zoom | zoom_in | zoom_out | cinematic_drift | pan_left | pan_right",
       "sfx_cue": "impact_sub | sub_drop | whoosh_fast | tension_riser | heartbeat"
