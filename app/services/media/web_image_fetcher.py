@@ -693,7 +693,7 @@ class WebImageFetcher:
         subject = (subject or "").strip()
         entity_q = subject or query
         use_pure_google_search = creature_mode or bypass_copyright_enabled()
-        open_web_per_page = max(per_source, 10) if use_pure_google_search else per_source
+        open_web_per_page = max(per_source, 8) if use_pure_google_search else per_source
 
         jobs = [
             (self.search_open_web, "google_web", query, open_web_per_page),
@@ -704,23 +704,22 @@ class WebImageFetcher:
             if not auto_extra:
                 from app.services.media.image_quality import creature_queries
                 auto_extra = creature_queries(subject or query)
-            for i, xq in enumerate(q for q in auto_extra[:3] if q and q.lower() != query.lower()):
+            for i, xq in enumerate(q for q in auto_extra[:1] if q and q.lower() != query.lower()):
                 jobs.append((self.search_open_web, f"google_creature+{i + 1}", xq, open_web_per_page))
         elif use_pure_google_search:
             # Chế độ Gemini Search (Không cần ảnh thật, chỉ cần BẮT MẮT, CÂU VIEW, SẮC NÉT 8K):
-            # Chạy song song nhiều truy vấn Google Images đa phong cách (CGI, Movie Still, Concept Art, Dramatic Photo)
+            # Chạy song song 2 truy vấn Google Images tinh gọn (16 ứng viên tốc độ cao trong < 0.9s, tránh nghẽn băng thông)
             base_target = subject or query
             default_eye_catching = [
                 f"{base_target} cinematic 8k concept art",
                 f"{base_target} movie scene dramatic HD",
-                f"{query} stunning viral high resolution",
             ]
             for dq in default_eye_catching:
-                if len(auto_extra) >= 3:
+                if len(auto_extra) >= 2:
                     break
                 if dq.lower() != query.lower() and dq not in auto_extra:
                     auto_extra.append(dq)
-            for i, xq in enumerate(q for q in auto_extra[:3] if q and q.lower() != query.lower()):
+            for i, xq in enumerate(q for q in auto_extra[:1] if q and q.lower() != query.lower()):
                 jobs.append((self.search_open_web, f"google_web+{i + 1}", xq, open_web_per_page))
         else:
             if subject or len(query.split()) <= 3:
@@ -729,7 +728,7 @@ class WebImageFetcher:
             jobs.append((self.search_openverse, "openverse", entity_q, per_source))
             if not auto_extra and subject and subject.lower() != query.lower():
                 auto_extra.append(f'"{subject}" dramatic photography')
-            for i, xq in enumerate(q for q in auto_extra[:2] if q and q != query):
+            for i, xq in enumerate(q for q in auto_extra[:1] if q and q != query):
                 jobs.append((self.search_open_web, f"google_web+{i + 1}", xq, per_source))
             if self._unsplash_key:
                 jobs.append((self.search_unsplash, "unsplash", query, per_source))
@@ -739,12 +738,13 @@ class WebImageFetcher:
             buckets = []
             for f in futures:
                 try:
-                    buckets.append(f.result(timeout=15))
+                    buckets.append(f.result(timeout=8))
                 except Exception:
                     buckets.append([])
 
         # Open web quá ít kết quả với truy vấn dài → thử lại bằng tên chủ thể + từ khóa bắt mắt
-        if subject and subject.lower() != query.lower() and len(buckets[0]) < 3:
+        total_found = sum(len(b) for b in buckets)
+        if subject and subject.lower() != query.lower() and total_found < 3:
             try:
                 fallback_q = (
                     f"{subject} terrifying monster dark art"

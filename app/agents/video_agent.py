@@ -241,7 +241,7 @@ class VideoAgent:
                 duration = base_dur + tail_buffer + VIDEO_DURATION_SAFETY_MARGIN
 
             is_hook = (scene.scene_id == 1)
-            motion = "zoom_in" if is_hook else scene.resolved_camera_motion
+            motion = (scene.camera_motion if scene.camera_motion in ("hyper_zoom", "warp_zoom", "zoom_in") else "zoom_in") if is_hook else scene.resolved_camera_motion
 
             # Kiểm tra media_path tồn tại trước khi render
             media_ok = scene.media_path and Path(scene.media_path).exists()
@@ -264,7 +264,7 @@ class VideoAgent:
             is_video_file = bool(scene.media_path and scene.media_path.lower().endswith((".mp4", ".mov", ".webm", ".mkv")))
             clip_niche = getattr(job, "niche", None)
             is_scifi_clip = getattr(job, "is_scifi", False) or ("scifi" in str(clip_niche or "").lower()) or ("scifi" in (getattr(scene, "visual_keyword", "") or "").lower())
-            is_already_rendered = bool(scene.media_path and any(tag in Path(scene.media_path).name.lower() for tag in ("_i2v", "_t2v", "_pexels_fb", "clip_")))
+            is_already_rendered = bool(scene.media_path and any(tag in Path(scene.media_path).name.lower() for tag in ("_i2v", "_t2v", "_pexels_fb", "clip_", "_gsearch_3d", "_creature_3d", "_motion3d", "_anim", "_fb_motion")))
 
             if raw_type in ("video", "ai_video", "i2v", "t2v") or is_video_file:
                 logger.info(

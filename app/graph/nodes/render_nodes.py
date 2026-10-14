@@ -24,13 +24,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
     target_channel_id = state.get("target_channel_id", "default")
     total_audio_duration_ms = state.get("total_audio_duration_ms", 0)
 
-    # Ghép metadata media và audio cho từng scene & ĐẢM BẢO 100% VIDEO CHUYỂN ĐỘNG (ZERO STATIC IMAGE LEAKS)
-    import asyncio
-    from app.agents.ai_video_agent import AIVideoAgent
-    ai_video_agent = AIVideoAgent()
-    niche_for_motion = state.get("channel_style") or state.get("niche") or "general"
-    topic_lower_mot = (state.get("topic") or state.get("title") or "").lower()
-    is_scifi_mot = bool(state.get("is_scifi")) or (niche_for_motion == "scifi") or any(k in topic_lower_mot for k in ("scifi", "sci-fi", "alien", "cyborg", "viễn tưởng", "quantum"))
+    # Ghép metadata media và audio cho từng scene (VideoAgent._prepare_scene_clips sẽ render song song 3D Ken Burns cho mọi ảnh tĩnh đúng 1 lần duy nhất)
     _motion_cycle = ["zoom_in", "pan_right", "zoom_out", "pan_left"]
 
     audio_map = {s.get("scene_id"): s for s in scenes_audio if isinstance(s, dict) and s.get("scene_id")}
@@ -44,36 +38,9 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             continue
         a_info = audio_map.get(sc_id, {})
         dur_ms = a_info.get("audio_duration_ms") or a_info.get("duration_ms") or int(max(float(m.get("estimated_seconds") or 3.0), 1.0) * 1000)
-        dur_sec = max(float(dur_ms) / 1000.0, 2.0)
-        cam_motion = m.get("camera_motion") or _motion_cycle[idx_m % len(_motion_cycle)]
+        cam_motion = m.get("camera_motion") or ("hyper_zoom" if sc_id == 1 else _motion_cycle[idx_m % len(_motion_cycle)])
         cur_media_path = str(m.get("media_path") or "")
         cur_media_type = str(m.get("media_type") or "image")
-
-        # Nếu cảnh đang là ảnh tĩnh (.jpg/.png/.webp hoặc media_type != 'video'), nâng cấp ngay thành Video 3D Motion MP4 30fps!
-        if cur_media_path and Path(cur_media_path).exists() and (
-            cur_media_type != "video" or Path(cur_media_path).suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")
-        ):
-            try:
-                anim_mp4_path = str(work_dir / "media" / f"scene_{sc_id:03d}_motion3d.mp4")
-                Path(anim_mp4_path).parent.mkdir(parents=True, exist_ok=True)
-                res_anim = await asyncio.to_thread(
-                    ai_video_agent.animate_thematic_image,
-                    image_path=cur_media_path,
-                    output_path=anim_mp4_path,
-                    duration_seconds=dur_sec,
-                    camera_motion=cam_motion,
-                    is_hook=(sc_id == 1),
-                    niche=niche_for_motion,
-                    is_scifi=is_scifi_mot,
-                )
-                if res_anim and Path(res_anim).exists() and Path(res_anim).stat().st_size > 5000:
-                    cur_media_path = res_anim
-                    cur_media_type = "video"
-                    m["media_path"] = cur_media_path
-                    m["media_type"] = "video"
-                    logger.info(f"[RenderNode] 🎬 Cảnh {sc_id}: Đã nâng cấp ảnh tĩnh thành Video 3D Motion MP4 ({dur_sec:.1f}s, {cam_motion})")
-            except Exception as ex_mot:
-                logger.debug(f"[RenderNode] Scene {sc_id} motion upgrade fallback: {ex_mot}")
 
         sc_dict = {
             "scene_id": sc_id,

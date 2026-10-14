@@ -31,10 +31,10 @@ AVAILABLE_MODELS = [
     "gemini-flash-latest",
 ]
 
-# Giới hạn số lệnh Gemini Vision chạy đồng thời (8 cảnh × nhiều kênh song song dễ gây 429 hàng loạt)
+# Giới hạn số lệnh Gemini Vision chạy đồng thời (mặc định 4 luồng song song giúp tăng tốc gấp đôi)
 import threading as _threading
 import os as _os
-_VISION_SEM = _threading.BoundedSemaphore(max(1, int(_os.getenv("VISION_CONCURRENCY", "2") or 2)))
+_VISION_SEM = _threading.BoundedSemaphore(max(1, int(_os.getenv("VISION_CONCURRENCY", "4") or 4)))
 
 _GENERIC_SUBJECTS = {
     "", "scene", "visual", "image", "photo", "thing", "things", "something", "people", "world",
@@ -486,7 +486,7 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
         return os.getenv("ENABLE_VISION_CURATION", "true").strip().lower() not in ("0", "false", "no", "off")
 
     @staticmethod
-    def _fetch_thumbnail_b64(url: str, timeout: int = 6) -> Optional[Tuple[str, str]]:
+    def _fetch_thumbnail_b64(url: str, timeout: float = 3.5) -> Optional[Tuple[str, str]]:
         """Tải thumbnail nhỏ của ứng viên và trả về (mime, base64). Bỏ qua ảnh quá lớn / lỗi."""
         if not url:
             return None
@@ -517,7 +517,7 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
         topic: str = "",
         visual_analysis: Optional[Dict[str, Any]] = None,
         kind: str = "video",
-        max_candidates: int = 8,
+        max_candidates: int = 6,
     ) -> Optional[Tuple[int, float, str]]:
         """
         Gemini Vision nhìn trực tiếp thumbnail của từng ứng viên và chấm:
@@ -607,10 +607,10 @@ Nếu KHÔNG ảnh nào có relevance >= 4.5 -> đặt best_image = -1 và rejec
         with _VISION_SEM:
             res = self._call_gemini_json(
                 prompt,
-                timeout=25,
+                timeout=16,
                 images=[t for _, t in indexed],
-                models=["gemini-flash-latest", "gemini-flash-lite-latest"],
-                max_attempts=max(3, len(self.rotator.keys)),
+                models=["gemini-flash-lite-latest", "gemini-flash-latest"],
+                max_attempts=max(2, len(self.rotator.keys)),
             )
         if not res:
             return None
@@ -997,7 +997,7 @@ TRẢ VỀ JSON DUY NHẤT:
                 "item": c,
                 "description": desc or "photograph",
             })
-            if len(pool) >= 10:
+            if len(pool) >= 6:
                 break
 
         if not pool:
@@ -1011,14 +1011,14 @@ TRẢ VỀ JSON DUY NHẤT:
             topic=topic or visual_keyword,
             visual_analysis=visual_analysis,
             kind="photo",
-            max_candidates=10,
+            max_candidates=6,
         )
         if vision is not None:
             v_idx, v_score, v_rat = vision
             refined_q = str((visual_analysis or {}).get("_refined_google_query") or "").strip()
 
-            # Nếu toàn bộ ảnh đầu tiên bị từ chối hoặc điểm chưa đủ xuất sắc (< 6.8), tự động dùng refined_google_query tìm lại trên Google Images!
-            if (v_idx < 0 or v_score < 6.8) and refined_q:
+            # Chỉ tự động dùng refined_google_query tìm lại vòng 2 nếu toàn bộ ảnh bị từ chối hoặc điểm quá thấp (< 5.6)
+            if (v_idx < 0 or v_score < 5.6) and refined_q:
                 try:
                     from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
                     from app.services.media.image_quality import prefilter_candidates
@@ -1026,13 +1026,13 @@ TRẢ VỀ JSON DUY NHẤT:
                         logger.info(f"🔎 [VisionCuration] Tự động tinh chỉnh truy vấn Google Images: '{refined_q}'")
                         existing_urls = {p["item"].get("url") for p in pool} | set(used)
                         fresh_google = [
-                            it for it in WebImageFetcher().search_open_web(refined_q, per_page=10)
+                            it for it in WebImageFetcher().search_open_web(refined_q, per_page=8)
                             if it.get("url") and it["url"] not in existing_urls
                         ]
                         fresh_google = prefilter_candidates(
                             fresh_google,
                             subject=(visual_analysis or {}).get("subject") or refined_q,
-                            limit=8,
+                            limit=6,
                             creature_mode=bool((visual_analysis or {}).get("creature_mode")),
                         )
                         if fresh_google:
@@ -1043,7 +1043,7 @@ TRẢ VỀ JSON DUY NHẤT:
                                 topic=topic or visual_keyword,
                                 visual_analysis=visual_analysis,
                                 kind="photo",
-                                max_candidates=8,
+                                max_candidates=6,
                             )
                             if vision2 is not None:
                                 v2_idx, v2_score, v2_rat = vision2

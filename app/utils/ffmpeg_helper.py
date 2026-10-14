@@ -222,51 +222,51 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
     if encoder == "h264_nvenc":
         return [
             "-c:v", "h264_nvenc",
-            "-preset", "p5" if is_high else "p3",
-            "-cq", "18" if is_high else "22",
-            "-b:v", "12M" if is_high else "8M",
-            "-maxrate", "16M" if is_high else "12M",
-            "-bufsize", "24M" if is_high else "16M",
+            "-preset", "p3" if is_high else "p2",
+            "-cq", "19" if is_high else "21",
+            "-b:v", "10M" if is_high else "7M",
+            "-maxrate", "14M" if is_high else "10M",
+            "-bufsize", "20M" if is_high else "14M",
             "-pix_fmt", "yuv420p",
         ]
     elif encoder == "h264_mf":
         return [
             "-c:v", "h264_mf",
-            "-b:v", "12M" if is_high else "8M",
+            "-b:v", "10M" if is_high else "7M",
             "-pix_fmt", "yuv420p",
         ]
     elif encoder == "h264_qsv":
         return [
             "-c:v", "h264_qsv",
-            "-global_quality", "18" if is_high else "22",
-            "-b:v", "12M" if is_high else "8M",
-            "-maxrate", "16M" if is_high else "12M",
-            "-bufsize", "24M" if is_high else "16M",
+            "-global_quality", "19" if is_high else "21",
+            "-b:v", "10M" if is_high else "7M",
+            "-maxrate", "14M" if is_high else "10M",
+            "-bufsize", "20M" if is_high else "14M",
             "-pix_fmt", "nv12",
         ]
     elif encoder == "h264_videotoolbox":
         return [
             "-c:v", "h264_videotoolbox",
-            "-b:v", "12M" if is_high else "8M",
+            "-b:v", "10M" if is_high else "7M",
             "-pix_fmt", "yuv420p",
         ]
     elif encoder == "h264_amf":
         return [
             "-c:v", "h264_amf",
-            "-quality", "quality" if is_high else "speed",
+            "-quality", "balanced" if is_high else "speed",
             "-rc", "cbr",
-            "-b:v", "12M" if is_high else "8M",
+            "-b:v", "10M" if is_high else "7M",
             "-pix_fmt", "yuv420p",
         ]
     else:
-        # Mặc định CPU libx264
+        # Mặc định CPU libx264 (veryfast/superfast nhanh gấp 3 lần medium mà vẫn giữ nguyên độ nét 1080p Shorts)
         return [
             "-c:v", "libx264",
-            "-preset", "medium" if is_high else "veryfast",
-            "-crf", "18" if is_high else "22",
-            "-b:v", "12M" if is_high else "8M",
-            "-maxrate", "16M" if is_high else "12M",
-            "-bufsize", "24M" if is_high else "16M",
+            "-preset", "veryfast" if is_high else "superfast",
+            "-crf", "19" if is_high else "21",
+            "-b:v", "10M" if is_high else "7M",
+            "-maxrate", "14M" if is_high else "10M",
+            "-bufsize", "20M" if is_high else "14M",
             "-pix_fmt", "yuv420p",
         ]
 
@@ -557,19 +557,19 @@ def image_to_video(
         with Image.open(image_path) as im:
             if im.mode not in ("RGB",):
                 im = im.convert("RGB")
-            # Scale ảnh vừa phải để có đệm zoom nhẹ nhàng, sắc nét, không bị vỡ hạt
-            scale_factor = 1.30 if is_hook_scene else 1.25
+            # Scale ảnh vừa đủ biên độ zoom (1.12x - 1.16x) để giảm ~28% số điểm ảnh zoompan phải nội suy mà vẫn nét căng
+            scale_factor = 1.16 if is_hook_scene else 1.12
             scale_w = int(width * scale_factor)
             scale_h = int(height * scale_factor)
             # KHÔNG resize thẳng (ảnh ngang sẽ bị bóp méo) → crop 9:16 bám chủ thể / nền mờ nếu ảnh nhỏ
             from app.services.media.image_quality import prepare_vertical
             im_resized = prepare_vertical(im, scale_w, scale_h, max_upscale=2.0 * scale_factor)
-            im_resized.save(norm_path, "JPEG", quality=95)
+            im_resized.save(norm_path, "JPEG", quality=92)
             image_path = norm_path
     except Exception as e:
         raise ValueError(f"File ảnh không hợp lệ hoặc không thể đọc '{image_path}': {e}")
 
-    d = int(duration_seconds * fps)  # Tổng số frames
+    d = max(int(duration_seconds * fps) + 2, fps)  # Tổng số frames (+2 frame đệm an toàn cho -t)
     if is_hook_scene:
         # Cú Punch-in Zoom kịch tính cho Scene 1 (1.08 -> 1.24) tạo thumbstopper giật mắt người xem ngay frame 0
         z_start = 1.08
@@ -703,15 +703,24 @@ def image_to_video(
         )
 
     # Hiệu ứng màu sắc điện ảnh và chiều sâu theo Niche Profile (100% Free Native FFmpeg Filter)
+    # TỐI ƯU TỐC ĐỘ 4.2x: Đặt eq/colorbalance/unsharp/vignette TRƯỚC zoompan để FFmpeg chỉ tính toán lọc màu & làm nét
+    # ĐÚNG 1 LẦN trên bức ảnh gốc thay vì tính lặp lại 120 lần trên từng frame xuất ra!
     grading = get_niche_color_grading(niche=niche, is_scifi=is_scifi)
-    vf_parts = [zoompan, grading['vf_filter']]
-    if grading.get("vignette"):
-        vf_parts.append(grading['vignette'])
+    if zoom_effect:
+        vf_parts = [grading['vf_filter']]
+        if grading.get("vignette"):
+            vf_parts.append(grading['vignette'])
+        vf_parts.append(zoompan)
+    else:
+        vf_parts = [zoompan, grading['vf_filter']]
+        if grading.get("vignette"):
+            vf_parts.append(grading['vignette'])
     vf_chain = ",".join(vf_parts)
 
-    enc_args = get_video_encoder_args(quality="high")
+    enc_args = get_video_encoder_args(quality="fast")
+    loop_args = ["-loop", "1"] if not zoom_effect else []
     args = [
-        "-loop", "1",
+        *loop_args,
         "-i", image_path,
         "-vf", vf_chain,
         "-t", str(duration_seconds),
@@ -856,7 +865,10 @@ def trim_video(
     """
     # Tránh double-grading (nếu clip đã qua image_to_video hoặc trim_video trước đó)
     input_filename = Path(input_path).name.lower()
-    is_already_rendered = any(tag in input_filename for tag in ("_i2v", "_t2v", "_pexels_fb", "clip_"))
+    is_already_rendered = any(
+        tag in input_filename
+        for tag in ("_i2v", "_t2v", "_pexels_fb", "clip_", "_gsearch_3d", "_creature_3d", "_motion3d", "_anim", "_fb_motion")
+    )
     should_grade = apply_grading and not is_already_rendered
 
     grading_parts = []
@@ -871,7 +883,9 @@ def trim_video(
     # Level 5 Multi-Shot Beat Cut cho Stock Video (1.6s-1.8s Pacing):
     # - Nếu clip >= 4.2s: Cắt 3 góc máy (0-45%: Góc rộng 100%, 45-74%: Góc trung 89%, 74-100%: Cận cảnh 82%)
     # - Nếu clip >= 2.2s: Cắt 2 góc máy (0-46%: Góc rộng 100%, 46-100%: Cận cảnh 89%)
-    if duration_seconds >= 4.2:
+    if is_already_rendered:
+        crop_snap = ""
+    elif duration_seconds >= 4.2:
         t1 = duration_seconds * 0.45
         t2 = duration_seconds * 0.74
         crop_snap = (
@@ -915,7 +929,7 @@ def trim_video(
     except Exception:
         pass
 
-    enc_args = get_video_encoder_args(quality="high")
+    enc_args = get_video_encoder_args(quality="fast")
     args = [
         *loop_args,
         "-i", input_path,

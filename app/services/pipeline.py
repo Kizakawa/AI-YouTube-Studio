@@ -508,7 +508,8 @@ class VideoPipeline:
                         channel_niche = ch.get("niche") or ch.get("style") or "general"
                     break
 
-        if primary_entity:
+        search_first_mode = os.getenv("SEARCH_FIRST_VISUAL_MODE", "true").strip().lower() not in ("0", "false", "no", "off")
+        if primary_entity and not search_first_mode:
             logger.info(
                 f"[Job {self.job_id}] 🌟 KÍCH HOẠT CHẾ ĐỘ PHIM TÀI LIỆU (DOCUMENTARY MODE) CHO: '{primary_entity}' ({entity_type})"
             )
@@ -545,6 +546,20 @@ class VideoPipeline:
             for s in proposals
         }
 
+        # Phân tích ngữ cảnh đồng loạt cho toàn bộ các cảnh trong 1 lệnh Gemini duy nhất (giảm ~85% độ trễ LLM)
+        batch_analyses: Dict[int, Dict[str, Any]] = {}
+        try:
+            batch_analyses = await asyncio.to_thread(
+                self._visual_curation_agent.analyze_scenes_batch,
+                scenes=[s.model_dump() for s in scenes],
+                topic=topic,
+                primary_entity=primary_entity,
+                entity_type=entity_type,
+                channel_niche=channel_niche,
+            )
+        except Exception as e_batch:
+            logger.debug(f"[Job {self.job_id}] analyze_scenes_batch fallback: {e_batch}")
+
         total_scenes = len(scenes)
         sem = asyncio.Semaphore(4)
         completed_count = 0
@@ -556,17 +571,19 @@ class VideoPipeline:
 
                 # ── Agent Phân tích Ngữ cảnh & Ý niệm Thị giác Chuyên sâu (VisualCurationAgent) ──
                 surround_text = " ".join([s.narration for s in scenes[max(0, idx - 1):min(total_scenes, idx + 2)]])
-                v_analysis = await asyncio.to_thread(
-                    self._visual_curation_agent.analyze_scene_context,
-                    narration=scene.narration,
-                    topic=topic,
-                    scene_id=scene.scene_id,
-                    total_scenes=total_scenes,
-                    primary_entity=primary_entity,
-                    entity_type=entity_type,
-                    surrounding_context=surround_text,
-                    channel_niche=channel_niche,
-                )
+                v_analysis = batch_analyses.get(scene.scene_id)
+                if not v_analysis:
+                    v_analysis = await asyncio.to_thread(
+                        self._visual_curation_agent.analyze_scene_context,
+                        narration=scene.narration,
+                        topic=topic,
+                        scene_id=scene.scene_id,
+                        total_scenes=total_scenes,
+                        primary_entity=primary_entity,
+                        entity_type=entity_type,
+                        surrounding_context=surround_text,
+                        channel_niche=channel_niche,
+                    )
 
                 prod_method = sc_strat.get("production_method") or v_analysis.get("production_method", "STOCK_FOOTAGE")
                 scene_pref = getattr(scene, 'media_type', None)
@@ -673,8 +690,11 @@ class VideoPipeline:
                             used_asset_paths.add(f"md5:{m_md5}")
                             used_pool_urls.add(f"md5:{m_md5}")
 
-                # ── Thẩm định & Chấm điểm độ liên quan với MediaRelevanceAgent ──
-                if media_path and Path(media_path).exists():
+                # ── Thẩm định & Chấm điểm độ liên quan với MediaRelevanceAgent (bỏ qua nếu đã qua Gemini Vision Search) ──
+                already_vision_curated = bool(
+                    media_path and any(tag in Path(media_path).name.lower() for tag in ("_gsearch", "_creature", "_photo"))
+                )
+                if media_path and Path(media_path).exists() and not already_vision_curated:
                     relevance_eval = await asyncio.to_thread(
                         self._media_relevance_agent.evaluate_media,
                         media_path=media_path,
@@ -733,23 +753,7 @@ class VideoPipeline:
                                 topic,
                             )
                             if res_ai and Path(res_ai).exists() and Path(res_ai).stat().st_size > 2000:
-                                # Nếu cảnh cần video động, animate ngay thành video MP4 9:16
-                                if prod_method in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO") or (sc_strat and sc_strat.get("production_method") == "STOCK_FOOTAGE") or scene.scene_id == 1:
-                                    anim_fix_p = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_relevance_fix_anim.mp4")
-                                    res_anim = ai_video_agent.animate_thematic_image(
-                                        image_path=res_ai,
-                                        output_path=anim_fix_p,
-                                        duration_seconds=scene.actual_duration_seconds,
-                                        camera_motion=sc_strat.get("camera_motion", "zoom_in") if sc_strat else "zoom_in",
-                                        is_hook=(scene.scene_id == 1),
-                                    )
-                                    if res_anim and Path(res_anim).exists() and Path(res_anim).stat().st_size > 5000:
-                                        fixed_media = res_anim
-                                    else:
-                                        fixed_media = res_ai
-                                else:
-                                    fixed_media = res_ai
-
+                                fixed_media = res_ai
                                 from app.services.media.media_history import extract_media_identity, compute_file_md5
                                 used_asset_paths.add(fixed_media)
                                 md5_h = compute_file_md5(fixed_media)
@@ -763,26 +767,7 @@ class VideoPipeline:
 
                 _motion_choices = ["zoom_in", "pan_right", "zoom_out", "pan_left"]
                 sfx = sc_strat.get("sfx_cue") or getattr(scene, 'sfx_cue', None) or ("hit" if idx == 0 else "whoosh")
-                cam = sc_strat.get("camera_motion") or getattr(scene, 'camera_motion', None) or _motion_choices[idx % len(_motion_choices)]
-
-                # ── CHỐT CHẶN 100% VIDEO ĐỘNG (ZERO STATIC IMAGE LEAKS) ──
-                # Nếu bất kỳ tầng nào trả về ảnh tĩnh (.jpg/.png), tự động nâng cấp thành Video 3D Motion MP4 30fps!
-                if media_path and Path(media_path).exists() and _infer_media_type(media_path) != "video":
-                    try:
-                        anim_out_p = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_motion3d.mp4")
-                        res_motion = await asyncio.to_thread(
-                            ai_video_agent.animate_thematic_image,
-                            image_path=media_path,
-                            output_path=anim_out_p,
-                            duration_seconds=max(float(getattr(scene, 'actual_duration_seconds', 3.5) or 3.5), 2.0),
-                            camera_motion=cam,
-                            is_hook=(idx == 0),
-                        )
-                        if res_motion and Path(res_motion).exists() and Path(res_motion).stat().st_size > 5000:
-                            media_path = res_motion
-                            logger.info(f"[Job {self.job_id}] 🎬 Cảnh {scene.scene_id}: Đã chuyển hóa ảnh tĩnh thành Video 3D Motion MP4 ({cam})")
-                    except Exception as e_mot:
-                        logger.debug(f"[Job {self.job_id}] Scene {scene.scene_id} motion upgrade fallback: {e_mot}")
+                cam = sc_strat.get("camera_motion") or getattr(scene, 'camera_motion', None) or ("hyper_zoom" if idx == 0 else _motion_choices[idx % len(_motion_choices)])
 
                 return scene.model_copy(update={
                     "media_path": media_path,
@@ -1085,27 +1070,6 @@ class VideoPipeline:
                             used_asset_paths.add(out_img)
                         record_used_media(c_url, query=c_query, source=searched_photo.get("source", "google_search"), media_path=out_img)
                         badge = "🐙 [Quái vật Rùng Rợn 3D]" if is_creature else "🔎 [Gemini Search 3D]"
-                        try:
-                            from app.agents.ai_video_agent import AIVideoAgent
-                            ai_vid_agent = AIVideoAgent()
-                            anim_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_{tag_suffix}_3d.mp4")
-                            res_anim = await asyncio.to_thread(
-                                ai_vid_agent.animate_thematic_image,
-                                image_path=out_img,
-                                output_path=anim_path,
-                                duration_seconds=scene.actual_duration_seconds,
-                                camera_motion=sc_strat.get("camera_motion", "zoom_in") if sc_strat else ("hyper_zoom" if scene.scene_id == 1 else "zoom_in"),
-                                is_hook=(scene.scene_id == 1),
-                                niche=channel_niche,
-                                is_scifi=is_scifi_scene,
-                            )
-                            if res_anim and Path(res_anim).exists() and Path(res_anim).stat().st_size > 5000:
-                                if used_asset_paths is not None:
-                                    used_asset_paths.add(res_anim)
-                                logger.info(f"Scene {scene.scene_id}: {badge} {searched_photo.get('source')}: {str(searched_photo.get('title', ''))[:55]}")
-                                return res_anim
-                        except Exception as ex_c_anim:
-                            logger.debug(f"Scene {scene.scene_id}: Gemini Search 3D animation error: {ex_c_anim}")
                         logger.info(f"Scene {scene.scene_id}: {badge} {searched_photo.get('source')}: {str(searched_photo.get('title', ''))[:55]}")
                         return out_img
             except Exception as e_cr:

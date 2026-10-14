@@ -26,12 +26,16 @@ def node_research_and_entity(state: VideoWorkflowState) -> Dict[str, Any]:
         tags=[]
     )
     
+    import os
+    search_first = os.getenv("SEARCH_FIRST_VISUAL_MODE", "true").strip().lower() not in ("0", "false", "no", "off")
     entity_media_pool = []
-    if ent_name:
+    if ent_name and not search_first:
         logger.info(f"🌟 [LangGraph] Nhận diện thực thể chính: '{ent_name}' ({ent_type}). Kích hoạt Documentary Mode!")
         media_agent = MediaAgent()
         entity_media_pool = media_agent.fetch_entity_media_pool(ent_name, ent_type, count=15)
         logger.info(f"📸 [LangGraph] Đã thu thập sẵn {len(entity_media_pool)} ảnh tư liệu cho '{ent_name}'")
+    elif ent_name:
+        logger.info(f"⚡ [LangGraph] Nhận diện thực thể chính: '{ent_name}' ({ent_type}) — ưu tiên Gemini Search trực tiếp theo từng cảnh (bỏ qua tải trước kho Wiki chậm)")
 
     return {
         "primary_entity": ent_name,
