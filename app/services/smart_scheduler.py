@@ -50,14 +50,49 @@ GOLDEN_SLOTS_UTC = [
     },
     {
         "hour": 21,
-        "minute": 30,
-        "label_vn": "04:30 Sáng",
-        "label_us": "17:30 PM EDT / 14:30 PM PDT (ĐÓN ĐẦU ĐỈNH TỐI VÀNG MỸ #1)",
+        "minute": 15,
+        "label_vn": "04:15 Sáng",
+        "label_us": "17:15 PM EDT / 14:15 PM PDT (ĐÓN ĐẦU ĐỈNH TỐI VÀNG MỸ #1)",
         "description": "Đăng sớm trước đỉnh tối Mỹ (19:00-22:00 EDT) 90 phút để video index từ khóa và đón trọn đỉnh lướt Shorts lớn nhất toàn cầu khi người Mỹ tan sở về nhà.",
         "tag": "US_EVENING_LEAD",
         "rank": 2
     },
 ]
+
+# Độ lệch thông minh theo từng kênh (phút) để chống trùng khớp giây xuất bản (Bot Footprint)
+# trên các kênh dùng chung Google Account, đồng thời vẫn giữ 100% trong vùng đón đầu 60-90p trước Giờ Vàng Mỹ:
+#   - Alternate History: -30p -> 14:30 UTC (21:30 VN) & 20:45 UTC (03:45 VN)
+#   - Psychology:        -15p -> 14:45 UTC (21:45 VN) & 21:00 UTC (04:00 VN)
+#   - Mysteries:          +0p -> 15:00 UTC (22:00 VN) & 21:15 UTC (04:15 VN)
+#   - Paws & Hearts:     +15p -> 15:15 UTC (22:15 VN) & 21:30 UTC (04:30 VN)
+#   - Wild Odyssey:      +30p -> 15:30 UTC (22:30 VN) & 21:45 UTC (04:45 VN)
+CHANNEL_STAGGER_MINUTES: Dict[str, int] = {
+    "@alternatehistorywhatif-e2x": -30,
+    "ch_psychology_of_the_world": -15,
+    "channel_maya": -15,
+    "channel_psychology": -15,
+    "@vv1n-oe9gs": -15,
+    "ch_the_mysteries_of_the_world": 0,
+    "@themysteriesoftheworld-f3w": 0,
+    "ucsrjiil67qxidtxt70z-iwa": 0,
+    "ch_paws_hearts_rescue": 15,
+    "@pawsandheartsrescue": 15,
+    "ch_wild_odyssey": 30,
+    "@wildodysseyhq": 30,
+}
+
+
+def get_channel_stagger_minutes(channel_id: str) -> int:
+    """Trả về số phút dịch chuyển lệch pha của kênh để tránh 2 kênh cùng Google Account đăng trùng giây."""
+    if not channel_id:
+        return 0
+    cid = channel_id.strip().lower()
+    if cid in CHANNEL_STAGGER_MINUTES:
+        return CHANNEL_STAGGER_MINUTES[cid]
+    for fam_id in resolve_channel_family(channel_id):
+        if fam_id.lower() in CHANNEL_STAGGER_MINUTES:
+            return CHANNEL_STAGGER_MINUTES[fam_id.lower()]
+    return 0
 
 
 WEEKDAY_VN_MAP = {
@@ -444,13 +479,14 @@ def get_next_available_golden_slot(
     # Ưu tiên 2 đỉnh cao nhất: Buổi tối Mỹ (23:00 UTC = 06:00 VN) & Buổi sáng Mỹ (13:00 UTC = 20:00 VN)
     # Tự động chèn khe dự phòng nếu trùng (17:30 UTC = 00:30 VN hoặc 03:00 UTC = 10:00 VN)
     start_date = now_utc.date()
+    stagger_minutes = get_channel_stagger_minutes(channel_id)
     for day_offset in range(45):
         target_date = start_date + timedelta(days=day_offset)
 
-        # Tạo danh sách các khe giờ vàng trong ngày
+        # Tạo danh sách các khe giờ vàng trong ngày (đã cộng độ lệch pha theo từng kênh)
         candidate_slots = []
         for slot in GOLDEN_SLOTS_UTC:
-            candidate_dt = datetime(
+            base_dt = datetime(
                 year=target_date.year,
                 month=target_date.month,
                 day=target_date.day,
@@ -459,6 +495,7 @@ def get_next_available_golden_slot(
                 second=0,
                 tzinfo=timezone.utc
             )
+            candidate_dt = base_dt + timedelta(minutes=stagger_minutes)
             if candidate_dt > min_allowed_time:
                 candidate_slots.append((candidate_dt, slot))
 
@@ -494,14 +531,16 @@ def get_next_available_golden_slot(
             # 3. TÌM THẤY KHE GIỜ VÀNG TRỐNG TỐI ƯU THỎA MÃN MỌI ĐIỀU KIỆN!
             slot_iso = candidate_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-            # Chuyển đổi sang giờ Việt Nam để hiển thị
+            # Chuyển đổi sang giờ Việt Nam & giờ Mỹ thực tế để hiển thị
             candidate_vn = candidate_dt.astimezone(VN_TZ)
+            candidate_us = candidate_dt.astimezone(US_EASTERN)
             weekday_name = WEEKDAY_VN_MAP.get(candidate_vn.weekday(), "Ngày")
-            display_vn = f"{slot['label_vn']} {weekday_name}, {candidate_vn.strftime('%d/%m/%Y')} (Giờ VN)"
-            display_us = slot["label_us"]
+            vn_period = "Đêm" if candidate_vn.hour >= 18 else "Sáng"
+            display_vn = f"{candidate_vn.strftime('%H:%M')} {vn_period} {weekday_name}, {candidate_vn.strftime('%d/%m/%Y')} (Giờ VN)"
+            display_us = f"{candidate_us.strftime('%I:%M %p %Z')} — {slot['label_us']}"
 
             logger.info(
-                f"🎯 [SmartScheduler] Đã xếp lịch tối ưu (Tối đa 2 video/ngày) cho kênh {channel_id}: "
+                f"🎯 [SmartScheduler] Đã xếp lịch tối ưu (Tối đa 2 video/ngày, lệch pha {stagger_minutes:+d}p) cho kênh {channel_id}: "
                 f"{display_vn} ({slot_iso}) — {display_us}"
             )
             return candidate_dt, slot_iso, display_vn, display_us
@@ -536,10 +575,12 @@ def get_channel_upcoming_schedule(channel_id: str = "channel_maya", limit: int =
             st_vn = st.astimezone(VN_TZ)
             weekday_name = WEEKDAY_VN_MAP.get(st_vn.weekday(), "")
 
-            # Tìm label US tương ứng
+            # Tìm label US tương ứng (chấp nhận biên độ lệch pha +-45 phút)
             slot_label_us = "Giờ hẹn YouTube"
+            st_mins = st.hour * 60 + st.minute
             for s in GOLDEN_SLOTS_UTC:
-                if s["hour"] == st.hour and abs(s["minute"] - st.minute) <= 15:
+                s_mins = s["hour"] * 60 + s["minute"]
+                if abs(st_mins - s_mins) <= 45:
                     slot_label_us = s["label_us"]
                     break
 

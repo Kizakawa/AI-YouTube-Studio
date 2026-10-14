@@ -56,14 +56,14 @@ CHANNELS_CONFIG = {
         "preferred_voice": "en-US-AndrewNeural",
         "handle": "@vv1n-oe9gs",
         "amazon_tag": "kizakawa-20",
-        "publish_hour_utc": 13,
+        "publish_hour_utc": 21,
         "director_notes": (
             "Target channel Psychology of the world. High-retention 4-beat dark psychology arc: "
             "HOOK (0-3s): Chilling psychological truth or covert manipulation sign that immediately creates urgency. "
             "DEVELOPMENT: Explain the hidden behavioral mechanism using relatable real-life scenarios. "
             "CLIMAX: The devastating reveal of how people fall into the psychological trap. "
-            "CTA (last 3s): Compelling open question prompting viewers to comment their experiences + subscribe. "
-            "Tone: authorative, hypnotic, analytical, gripping. Strict English only."
+            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
+            "Tone: authoritative, hypnotic, analytical, gripping. Strict English only."
         ),
         "topics": [
             "The Dark Psychology Trick People Use to Make You Trust Them Instantly",
@@ -83,13 +83,13 @@ CHANNELS_CONFIG = {
         "preferred_voice": "en-US-JennyNeural",
         "handle": "@pawsandheartsrescue",
         "amazon_tag": "kizakawa-20",
-        "publish_hour_utc": 12,
+        "publish_hour_utc": 21,
         "director_notes": (
             "Target channel Paws & Hearts Rescue. Tear-jerking emotional animal rescue arc: "
             "HOOK (0-3s): Heartbreaking visual of an abandoned trembling animal in distress. "
             "DEVELOPMENT: Gentle human approach, rescuer builds trust through gentle whispers and food. "
             "CLIMAX: Miraculous medical recovery and emotional transformation to pure happiness and gratitude. "
-            "CTA (last 3s): Heartfelt question to viewers if they would have stopped to save this soul + subscribe. "
+            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
             "Tone: compassionate, deeply emotional, heartwarming, uplifting."
         ),
         "topics": [
@@ -109,20 +109,20 @@ CHANNELS_CONFIG = {
         "preferred_voice": "en-US-ChristopherNeural",
         "handle": "@wildodysseyhq",
         "amazon_tag": "kizakawa-20",
-        "publish_hour_utc": 12,
+        "publish_hour_utc": 21,
         "director_notes": (
             "Target channel Wild Odyssey. Intense 4-beat wildlife predator action: "
-            "HOOK (0-3s): Shocking lethal stat or predatory feat that defies belief. "
+            "HOOK (0-3s): Shocking lethal stat or predatory feat naming the exact predator or 1v1 matchup. "
             "DEVELOPMENT: Compare bite force, razor claws, ambush speed vs other apex beasts. "
             "CLIMAX: The devastating strike or ruthless hunting sequence. "
-            "CTA (last 3s): Who would win battle question to explode comments + subscribe. "
+            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
             "Tone: cinematic, adrenaline-pumping, dramatic, nature documentary style."
         ),
         "topics": [
-            "Anaconda vs Black Caiman: The Deadliest Swamp Ambush Ever Recorded",
-            "Harpy Eagle: The Talon Grip That Can Crush A Monkey Skull Instantly",
-            "Giant River Otter: Why Even The Most Dangerous Predators Flee From This Pack",
-            "The 1,500 PSI Bite: Why Big Cats Fear The Jaguar Above All",
+            "Green Anaconda vs Black Caiman: The Deadliest Swamp Ambush Ever Recorded",
+            "Harpy Eagle vs Sloth: The Talon Grip That Crushes Bone Instantly",
+            "Giant River Otter Pack vs Jaguar: Why Even Apex Cats Flee The River",
+            "1,500 PSI Jaguar Bite vs Caiman Armor: How One Strike Ends The Fight",
         ],
         "default_tags": ["shorts", "wildlife", "predators", "bigcats", "nature", "apexpredator", "jaguar", "animals", "documentary", "viral"],
     },
@@ -135,35 +135,40 @@ CHANNELS_CONFIG = {
         "preferred_voice": "en-US-BrianNeural",
         "handle": "@Themysteriesoftheworld-f3w",
         "amazon_tag": "kizakawa-20",
-        "publish_hour_utc": 21,  # 17:00 PM EST — Golden prime slot, staggered from channel_maya
+        "publish_hour_utc": 15,  # Staggered Golden Slot
         "director_notes": (
             "Target channel The mysteries of the world. Spine-chilling deep sea & earth mystery arc: "
-            "HOOK (0-3s): Terrifying stat or suppressed fact about the deep ocean/earth that immediately creates dread. "
+            "HOOK (0-3s): Terrifying stat or suppressed fact about a specific historical/oceanic anomaly. "
             "DEVELOPMENT: Reveal the impossible scale or danger of the phenomenon with real scientific or historical grounding. "
             "CLIMAX: The unsettling implication — what it means for humanity if this is real. "
-            "CTA (last 3s): Open question about what the viewer thinks is down there + subscribe for Part 2. "
+            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
             "Tone: suspenseful, dark, conspiratorial, fear-inducing, documentary-style. Strict English only."
         ),
         "topics": [
-            "The 11,000m Deep Ocean Recording Scientists Were Ordered To Delete",
-            "What NASA Found at the Bottom of the Mariana Trench That Changed Everything",
-            "The Bermuda Triangle: The Real Explanation No Government Wants You to Know",
-            "5 Places on Earth That Are Completely Off-Limits — And Why",
-            "The Giant Squid Signal They Picked Up From 8,000 Meters Down",
-            "What Lives in Absolute Darkness at 10,000 Meters — And It's Not What You Think",
+            "The 52-Hertz Whale Signal Recorded Moving Beneath The Pacific Ocean",
+            "The 2,000-Year-Old Antikythera Mechanism That Rewrote Human History",
+            "The Bermuda Triangle: The Methane Gas Eruption No Ship Can Survive",
+            "5 Restricted Islands on Earth Where Humans Are Strictly Forbidden To Land",
+            "The Giant Squid Sonar Echo Picked Up Beneath Arctic Ice",
+            "Why Explorers Found Tropical Fossils Buried Under 2 Miles Of Antarctic Ice",
         ],
-        "default_tags": ["shorts", "mystery", "deepocean", "marianatrench", "conspiracy", "unexplained", "bermudatriangle", "deepsea", "creepy", "viral"],
+        "default_tags": ["shorts", "mystery", "deepocean", "unexplained", "bermudatriangle", "deepsea", "archaeology", "creepy", "viral"],
     }
 }
 
 
-def get_schedule_slot(publish_hour_utc: int) -> datetime:
-    """Tính slot đăng bài tiếp theo: ngày mai lúc publish_hour_utc."""
-    now_utc = datetime.now(timezone.utc)
-    candidate = now_utc.replace(hour=publish_hour_utc, minute=0, second=0, microsecond=0)
-    if candidate <= now_utc + timedelta(hours=2):
-        candidate += timedelta(days=1)
-    return candidate
+def get_schedule_slot(publish_hour_utc: int, channel_id: str = "") -> datetime:
+    """Tính slot giờ vàng tiếp theo có lệch pha chống trùng lặp."""
+    try:
+        from app.services.smart_scheduler import get_next_available_golden_slot
+        slot_dt, _, _, _ = get_next_available_golden_slot(channel_id or "channel_maya")
+        return slot_dt
+    except Exception:
+        now_utc = datetime.now(timezone.utc)
+        candidate = now_utc.replace(hour=publish_hour_utc, minute=0, second=0, microsecond=0)
+        if candidate <= now_utc + timedelta(hours=2):
+            candidate += timedelta(days=1)
+        return candidate
 
 
 async def produce_channel_video(channel_key: str, custom_topic: str = None, dry_run: bool = False):
@@ -175,7 +180,7 @@ async def produce_channel_video(channel_key: str, custom_topic: str = None, dry_
     voice = cfg["preferred_voice"]
     amazon_tag = cfg["amazon_tag"]
 
-    SCHEDULE_SLOT_UTC = get_schedule_slot(cfg["publish_hour_utc"])
+    SCHEDULE_SLOT_UTC = get_schedule_slot(cfg["publish_hour_utc"], ch_id)
     SCHEDULE_SLOT_ISO = SCHEDULE_SLOT_UTC.strftime("%Y-%m-%dT%H:%M:%SZ")
     VN_TZ = timezone(timedelta(hours=7))
     dt_vn = SCHEDULE_SLOT_UTC.astimezone(VN_TZ)
