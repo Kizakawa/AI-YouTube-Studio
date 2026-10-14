@@ -15,14 +15,11 @@ import logging
 import re
 from typing import Dict, List, Any, Optional
 from config.settings import settings
-from app.utils.key_rotator import KeyRotator
+from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
 
 logger = logging.getLogger(__name__)
 
-AVAILABLE_MODELS = [
-    "gemini-flash-lite-latest",
-    "gemini-flash-latest",
-]
+AVAILABLE_MODELS = list(GEMINI_PRIORITY_MODELS)
 
 
 class VisualDirectorAgent:

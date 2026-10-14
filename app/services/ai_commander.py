@@ -20,7 +20,7 @@ from telegram import Update, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from config.settings import settings
-from app.utils.key_rotator import KeyRotator
+from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
 from app.database.models import get_db, User, VideoJob, log_activity
 from app.services import channel_manager
 from app.bot.keyboards import (
@@ -31,11 +31,7 @@ from app.bot.keyboards import (
 
 logger = logging.getLogger(__name__)
 
-AVAILABLE_MODELS = [
-    "gemini-flash-lite-latest",
-    "gemini-3.5-flash-lite",
-    "gemini-3.1-flash-lite",
-]
+AVAILABLE_MODELS = list(GEMINI_PRIORITY_MODELS)
 
 
 def delete_video_job(job_id: int, user_id: int = 0, username: str = "Creator") -> Tuple[bool, str, Dict[str, Any]]:
@@ -474,33 +470,28 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON DUY NHẤT (không bọc tron
             }
         }
 
-        # Gọi Gemini qua KeyRotator
-        start_time = time.monotonic()
-        for _ in range(len(self.rotator.keys) * 2 or 2):
-            key = self.rotator.get_key()
-            if not key:
-                break
-            for model in AVAILABLE_MODELS:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-                try:
-                    resp = requests.post(url, json=payload, timeout=12)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        candidates = data.get("candidates", [])
-                        if candidates:
-                            raw_text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                            # Parse JSON
-                            clean_json = raw_text.strip()
-                            if clean_json.startswith("```"):
-                                clean_json = re.sub(r"^```(?:json)?\n?", "", clean_json)
-                                clean_json = re.sub(r"\n?```$", "", clean_json)
-                            parsed = json.loads(clean_json.strip())
-                            if "intent" in parsed:
-                                return parsed
-                    elif resp.status_code in [429, 403]:
-                        break  # Key hết quota, chuyển sang key kế tiếp
-                except Exception as e:
-                    logger.debug(f"Gemini LLM Intent parsing error with {model}: {e}")
+        # Gọi Gemini qua KeyRotator ưu tiên Model mạnh nhất trước
+        for model, key in self.rotator.iter_best_model_key_pairs(AVAILABLE_MODELS):
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            try:
+                resp = requests.post(url, json=payload, timeout=12)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        raw_text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                        clean_json = raw_text.strip()
+                        if clean_json.startswith("```"):
+                            clean_json = re.sub(r"^```(?:json)?\n?", "", clean_json)
+                            clean_json = re.sub(r"\n?```$", "", clean_json)
+                        parsed = json.loads(clean_json.strip())
+                        if "intent" in parsed:
+                            return parsed
+                elif resp.status_code in (429, 403, 404, 503):
+                    self.rotator.mark_model_rate_limited(key, model, status_code=resp.status_code, error_text=resp.text[:250])
+                    continue
+            except Exception as e:
+                logger.debug(f"Gemini LLM Intent parsing error with {model}: {e}")
 
         # Fallback an toàn nếu LLM lỗi mạng
         return {

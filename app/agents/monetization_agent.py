@@ -15,7 +15,7 @@ import logging
 import re
 from typing import Dict, Any, List, Optional, Tuple
 from config.settings import settings
-from app.utils.key_rotator import KeyRotator
+from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
 from app.services.monetization_engine import (
     find_best_amazon_product,
     build_amazon_url,
@@ -25,10 +25,7 @@ from app.services.monetization_engine import (
 
 logger = logging.getLogger(__name__)
 
-AVAILABLE_MODELS = [
-    "gemini-flash-lite-latest",
-    "gemini-flash-latest",
-]
+AVAILABLE_MODELS = list(GEMINI_PRIORITY_MODELS)
 
 
 class MonetizationAgent:
@@ -41,46 +38,35 @@ class MonetizationAgent:
         self.rotator = KeyRotator(keys) if keys else None
 
     def _call_gemini(self, prompt: str, timeout: int = 20) -> Optional[str]:
-        """Gọi Gemini REST API với KeyRotator và timeout an toàn."""
+        """Gọi Gemini REST API với KeyRotator ưu tiên Model mạnh nhất trước."""
         if not self.rotator:
             return None
 
         import requests
-        total_keys = max(len(self.rotator.keys), 1)
-
-        for attempt in range(total_keys * 2):
-            key = self.rotator.get_key()
-            if not key:
-                return None
-
-            key_failed = False
-            for model in AVAILABLE_MODELS:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-                payload = {
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {
-                        "temperature": 0.4,
-                        "maxOutputTokens": 1024,
-                    }
+        for model, key in self.rotator.iter_best_model_key_pairs(AVAILABLE_MODELS):
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.4,
+                    "maxOutputTokens": 1024,
                 }
-                try:
-                    resp = requests.post(url, json=payload, timeout=timeout)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        candidates = data.get("candidates", [])
-                        if candidates:
-                            parts = candidates[0].get("content", {}).get("parts", [])
-                            if parts:
-                                return parts[0].get("text", "")
-                    elif resp.status_code in (429, 403):
-                        key_failed = True
-                        break
-                except Exception as e:
-                    logger.debug(f"MonetizationAgent: Lỗi kết nối {model} (key: ...{key[-6:]}): {e}")
+            }
+            try:
+                resp = requests.post(url, json=payload, timeout=timeout)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts:
+                            return parts[0].get("text", "")
+                elif resp.status_code in (429, 403, 404, 503):
+                    self.rotator.mark_model_rate_limited(key, model, status_code=resp.status_code, error_text=resp.text[:250])
                     continue
-
-            if key_failed:
-                self.rotator.mark_failed(key)
+            except Exception as e:
+                logger.debug(f"MonetizationAgent: Lỗi kết nối {model} (key: ...{key[-6:]}): {e}")
+                continue
 
         return None
 

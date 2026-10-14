@@ -22,14 +22,11 @@ from typing import Dict, List, Any, Optional, Tuple
 from pathlib import Path
 
 from config.settings import settings
-from app.utils.key_rotator import KeyRotator
+from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
 
 logger = logging.getLogger(__name__)
 
-AVAILABLE_MODELS = [
-    "gemini-flash-lite-latest",
-    "gemini-flash-latest",
-]
+AVAILABLE_MODELS = list(GEMINI_PRIORITY_MODELS)
 
 # Giới hạn số lệnh Gemini Vision chạy đồng thời (mặc định 4 luồng song song giúp tăng tốc gấp đôi)
 import threading as _threading
@@ -140,62 +137,49 @@ class VisualCurationAgent:
         max_attempts: Optional[int] = None,
     ) -> Optional[Dict[str, Any]]:
         """
-        Gọi Gemini API trả về JSON với KeyRotator và fallback an toàn.
+        Gọi Gemini API trả về JSON với KeyRotator ưu tiên Model mạnh nhất trước.
         images: danh sách (mime_type, base64_data) để gửi kèm (Gemini Vision).
         """
         if not self.rotator:
             return None
 
         import requests
-        total_keys = max(len(self.rotator.keys), 1)
-
         parts: List[Dict[str, Any]] = [{"text": prompt}]
         for mime, b64 in (images or []):
             parts.append({"inline_data": {"mime_type": mime, "data": b64}})
 
         conn_errors = 0
-        for attempt in range(max_attempts or total_keys * 2):
-            key = self.rotator.get_key()
-            if not key:
-                return None
-
-            key_failed = False
-            for model in (models or AVAILABLE_MODELS):
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-                payload = {
-                    "contents": [{"parts": parts}],
-                    "generationConfig": {
-                        "temperature": 0.2,
-                        "responseMimeType": "application/json",
-                    }
+        for model, key in self.rotator.iter_best_model_key_pairs(models or AVAILABLE_MODELS, max_total_attempts=max_attempts):
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            payload = {
+                "contents": [{"parts": parts}],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "responseMimeType": "application/json",
                 }
-                try:
-                    res = self.session.post(url, json=payload, timeout=timeout)
-                    if res.status_code == 200:
-                        data = res.json()
-                        candidates = data.get("candidates", [])
-                        if candidates:
-                            raw_text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                            if raw_text:
-                                return json.loads(raw_text)
-                    elif res.status_code in (429, 403):
-                        self.rotator.rotate_key(cooldown_sec=45.0 if res.status_code == 429 else 180.0)
-                        key_failed = True
-                        break
-                except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-                    # Mất mạng / DNS lỗi: thử tiếp mọi key × model chỉ làm treo pipeline hàng giờ
-                    conn_errors += 1
-                    logger.debug(f"[VisualCurationAgent] Network error on {model}: {e}")
-                    if conn_errors >= 2:
-                        logger.warning("[VisualCurationAgent] Mất kết nối tới Gemini → bỏ qua, dùng heuristic.")
-                        return None
+            }
+            try:
+                res = self.session.post(url, json=payload, timeout=timeout)
+                if res.status_code == 200:
+                    data = res.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        raw_text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                        if raw_text:
+                            return json.loads(raw_text)
+                elif res.status_code in (429, 403, 404, 503):
+                    self.rotator.mark_model_rate_limited(key, model, status_code=res.status_code, error_text=res.text[:250])
                     continue
-                except Exception as e:
-                    logger.debug(f"[VisualCurationAgent] Gemini call error on {model}: {e}")
-                    continue
-
-            if not key_failed:
-                self.rotator.rotate_key()
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                conn_errors += 1
+                logger.debug(f"[VisualCurationAgent] Network error on {model}: {e}")
+                if conn_errors >= 2:
+                    logger.warning("[VisualCurationAgent] Mất kết nối tới Gemini → bỏ qua, dùng heuristic.")
+                    return None
+                continue
+            except Exception as e:
+                logger.debug(f"[VisualCurationAgent] Gemini call error on {model}: {e}")
+                continue
 
         return None
 
@@ -609,7 +593,7 @@ Nếu KHÔNG ảnh nào có relevance >= 4.5 -> đặt best_image = -1 và rejec
                 prompt,
                 timeout=16,
                 images=[t for _, t in indexed],
-                models=["gemini-flash-lite-latest", "gemini-flash-latest"],
+                models=AVAILABLE_MODELS,
                 max_attempts=max(2, len(self.rotator.keys)),
             )
         if not res:

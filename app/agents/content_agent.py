@@ -5,20 +5,12 @@ import time
 import re
 from typing import Dict, List, Any, Optional
 from config.settings import settings
-from app.utils.key_rotator import KeyRotator
+from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
 from app.schemas.contracts import ScriptContract
 
 logger = logging.getLogger(__name__)
 
-AVAILABLE_MODELS = [
-    "gemini-flash-lite-latest",      # Bản Lite siêu tốc, ổn định, thông lượng cao nhất
-    "gemini-3.5-flash-lite",         # Bản 3.5 Lite mới nhất
-    "gemini-3.1-flash-lite",         # Bản 3.1 Lite
-    "gemini-3-flash-preview",        # Bản 3.0 Preview
-    "gemini-flash-latest",           # Bản Flash tổng hợp
-    "gemini-3.5-flash",              # Model 3.5 Flash
-    "gemini-pro-latest",             # Pro (thử cuối để tránh kẹt 429)
-]
+AVAILABLE_MODELS = list(GEMINI_PRIORITY_MODELS)
 
 
 def build_language_integrity_instruction(language: str) -> str:
@@ -93,15 +85,14 @@ class ContentAgent:
 
     def _call_api(self, prompt: str, json_mode: bool = False, timeout: int = 20, max_total_seconds: int = 60) -> str:
         """
-        Gọi trực tiếp Gemini REST API với timeout nghiêm ngặt và xoay key thông minh.
-        Khi một API Key bị 429 (hết quota) hoặc 403 (cấm), hệ thống xoay ngay sang key tiếp theo
-        thay vì lãng phí thời gian thử các model khác với cùng key đã hết quota.
+        Gọi trực tiếp Gemini REST API theo chiến lược ưu tiên Model mạnh nhất trước:
+        1. Thử các model Flagship (gemini-3.6-flash, gemini-3.5-flash, gemini-3-flash-preview) qua toàn bộ pool API Keys.
+        2. Khi một cặp (Key, Model) gặp 429, chỉ đánh dấu cooldown cho cặp đó để thử Key khác hoặc tự động hạ bậc xuống dòng Flash-Lite.
         """
         import time
         start_time = time.monotonic()
         total_keys = max(len(self.rotator.keys), 1)
         attempts = 0
-        max_attempts = max(total_keys * 2, 4)
 
         safety_settings = [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
@@ -110,7 +101,7 @@ class ContentAgent:
             {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
         ]
 
-        for attempt in range(max_attempts):
+        for model, key in self.rotator.iter_best_model_key_pairs(AVAILABLE_MODELS):
             elapsed = time.monotonic() - start_time
             if elapsed >= max_total_seconds:
                 raise RuntimeError(
@@ -118,87 +109,72 @@ class ContentAgent:
                     f"(đã thử {attempts} requests trong {elapsed:.1f}s)"
                 )
 
-            key = self.rotator.get_key()
-            if not key:
-                raise ValueError("Không có API Key nào hoạt động trong pool!")
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "safetySettings": safety_settings,
+            }
+            if json_mode:
+                payload["generationConfig"] = {"responseMimeType": "application/json"}
 
-            key_failed_quota = False
-            for model in AVAILABLE_MODELS:
-                elapsed = time.monotonic() - start_time
-                if elapsed >= max_total_seconds:
-                    raise RuntimeError(
-                        f"Gemini API: Vượt tổng timeout {max_total_seconds}s "
-                        f"(đã thử {attempts} requests trong {elapsed:.1f}s)"
-                    )
-
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-                payload = {
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "safetySettings": safety_settings,
-                }
-                if json_mode:
-                    payload["generationConfig"] = {"responseMimeType": "application/json"}
-
-                try:
-                    attempts += 1
-                    r = self.session.post(url, json=payload, timeout=timeout)
-                    if r.status_code == 200:
-                        data = r.json()
-                        candidates = data.get("candidates", [])
-                        if candidates:
-                            parts = candidates[0].get("content", {}).get("parts", [])
-                            texts = [p.get("text", "") for p in parts if isinstance(p, dict) and "text" in p]
-                            full_text = "".join(texts).strip()
-                            if full_text:
-                                logger.info(f"✅ Gemini API ({model}) thành công với key {key[:8]}... trong {time.monotonic()-start_time:.1f}s")
-                                return full_text
-                    elif r.status_code in (429, 403):
-                        logger.warning(f"⚠️ Key {key[:8]}... gặp mã {r.status_code} ({model}). Xoay ngay sang key tiếp theo...")
-                        self.rotator.rotate_key(cooldown_sec=45.0 if r.status_code == 429 else 180.0)
-                        key_failed_quota = True
-                        break  # Bỏ qua các model còn lại của key đã hết quota, chuyển sang key mới ngay
-                    elif r.status_code == 503 and json_mode:
-                        # Fallback: Thử lại không dùng responseMimeType (tránh 503 trên engine structured JSON)
-                        logger.info(f"Gemini API ({model}) gặp 503 với structured output, thử lại chế độ raw JSON...")
-                        time.sleep(0.5)
-                        try:
-                            fallback_payload = {
-                                "contents": [{"parts": [{"text": prompt}]}],
-                                "safetySettings": safety_settings,
-                            }
-                            r_fb = self.session.post(url, json=fallback_payload, timeout=timeout)
-                            if r_fb.status_code == 200:
-                                data = r_fb.json()
-                                candidates = data.get("candidates", [])
-                                if candidates:
-                                    parts = candidates[0].get("content", {}).get("parts", [])
-                                    texts = [p.get("text", "") for p in parts if isinstance(p, dict) and "text" in p]
-                                    full_text = "".join(texts).strip()
-                                    if full_text:
-                                        logger.info(f"✅ Gemini API ({model}) thành công qua fallback raw JSON trong {time.monotonic()-start_time:.1f}s")
-                                        return full_text
-                        except Exception as e_fb:
-                            logger.debug(f"Fallback raw JSON lỗi: {e_fb}")
-                        continue
-                    elif r.status_code == 503:
-                        logger.warning(f"⚠️ Model {model} đang quá tải tạm thời (503). Chuyển sang model tiếp theo...")
-                        continue
-                    else:
-                        err_msg = ""
-                        try:
-                            err_msg = r.json().get("error", {}).get("message", "")[:80]
-                        except Exception:
-                            err_msg = r.text[:80]
-                        logger.warning(f"Gemini API ({model}) trả lỗi {r.status_code} với key {key[:8]}...: {err_msg}")
-                        continue
-                except Exception as e:
-                    logger.warning(f"Lỗi kết nối Gemini API ({model}) với key {key[:8]}...: {e}")
-                    time.sleep(0.5)
+            try:
+                attempts += 1
+                r = self.session.post(url, json=payload, timeout=timeout)
+                if r.status_code == 200:
+                    data = r.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        texts = [p.get("text", "") for p in parts if isinstance(p, dict) and "text" in p]
+                        full_text = "".join(texts).strip()
+                        if full_text:
+                            logger.info(f"✅ Gemini API ({model}) thành công với key {key[:8]}... trong {time.monotonic()-start_time:.1f}s")
+                            return full_text
+                elif r.status_code in (429, 403, 404):
+                    err_txt = r.text[:300]
+                    logger.warning(f"⚠️ ({model}) trên key {key[:8]}... gặp mã {r.status_code}. Chuyển tiếp ứng viên (Key/Model) kế tiếp...")
+                    self.rotator.mark_model_rate_limited(key, model, status_code=r.status_code, error_text=err_txt)
                     continue
-
-            # Nếu key chưa bị rotate do 429, xoay sang key tiếp theo sau khi đã thử các model
-            if not key_failed_quota:
-                self.rotator.rotate_key()
+                elif r.status_code == 503 and json_mode:
+                    # Fallback: Thử lại không dùng responseMimeType (tránh 503 trên engine structured JSON)
+                    logger.info(f"Gemini API ({model}) gặp 503 với structured output, thử lại chế độ raw JSON...")
+                    time.sleep(0.4)
+                    try:
+                        fallback_payload = {
+                            "contents": [{"parts": [{"text": prompt}]}],
+                            "safetySettings": safety_settings,
+                        }
+                        r_fb = self.session.post(url, json=fallback_payload, timeout=timeout)
+                        if r_fb.status_code == 200:
+                            data = r_fb.json()
+                            candidates = data.get("candidates", [])
+                            if candidates:
+                                parts = candidates[0].get("content", {}).get("parts", [])
+                                texts = [p.get("text", "") for p in parts if isinstance(p, dict) and "text" in p]
+                                full_text = "".join(texts).strip()
+                                if full_text:
+                                    logger.info(f"✅ Gemini API ({model}) thành công qua fallback raw JSON trong {time.monotonic()-start_time:.1f}s")
+                                    return full_text
+                    except Exception as e_fb:
+                        logger.debug(f"Fallback raw JSON lỗi: {e_fb}")
+                    self.rotator.mark_model_rate_limited(key, model, status_code=503)
+                    continue
+                elif r.status_code == 503:
+                    logger.warning(f"⚠️ Model {model} đang quá tải tạm thời (503). Chuyển sang model tiếp theo...")
+                    self.rotator.mark_model_rate_limited(key, model, status_code=503)
+                    continue
+                else:
+                    err_msg = ""
+                    try:
+                        err_msg = r.json().get("error", {}).get("message", "")[:80]
+                    except Exception:
+                        err_msg = r.text[:80]
+                    logger.warning(f"Gemini API ({model}) trả lỗi {r.status_code} với key {key[:8]}...: {err_msg}")
+                    continue
+            except Exception as e:
+                logger.warning(f"Lỗi kết nối Gemini API ({model}) với key {key[:8]}...: {e}")
+                time.sleep(0.3)
+                continue
 
         raise RuntimeError(
             f"Đã thử tất cả {attempts} requests qua {total_keys} keys và "

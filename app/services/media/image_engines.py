@@ -186,7 +186,7 @@ def _parse_cloudflare(r: requests.Response) -> bytes:
 class GeminiImageEngine(BaseEngine):
     name = "gemini_image"
     premium = True
-    MODELS = ["gemini-3.1-flash-image", "gemini-3.1-flash-lite-image", "gemini-3-pro-image", "gemini-2.5-flash-image"]
+    MODELS = ["gemini-3-pro-image", "gemini-3.1-flash-image", "gemini-3.1-flash-lite-image", "gemini-2.5-flash-image"]
 
     def __init__(self):
         try:
@@ -209,8 +209,9 @@ class GeminiImageEngine(BaseEngine):
         }
         last = ""
         quota_hits = 0
-        for key in random.sample(self.keys, len(self.keys)):
-            for model in self.MODELS:
+        shuffled_keys = random.sample(self.keys, len(self.keys))
+        for model in self.MODELS:
+            for key in shuffled_keys:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
                 r = requests.post(url, json=payload, timeout=90)
                 if r.status_code == 200:
@@ -224,10 +225,12 @@ class GeminiImageEngine(BaseEngine):
                 last = f"{model}: HTTP {r.status_code} {r.text[:100]}"
                 if r.status_code == 429:
                     quota_hits += 1
-                    break   # key này hết quota → đổi key
-                if r.status_code == 404:
+                    if "limit: 0" in r.text:
+                        break  # Model này không mở Free Tier -> chuyển sang model kế tiếp ngay
                     continue
-        raise EngineError(f"Gemini Image thất bại ({last})", fatal=quota_hits >= len(self.keys))
+                if r.status_code == 404:
+                    break  # Model đã ngừng hỗ trợ -> chuyển sang model kế tiếp ngay
+        raise EngineError(f"Gemini Image thất bại ({last})", fatal=quota_hits >= len(self.keys) * len(self.MODELS))
 
 
 class PollinationsEngine(BaseEngine):

@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Request, Depends, Query, Body
 from pydantic import BaseModel
 
 from config.settings import settings
+from app.utils.key_rotator import GEMINI_PRIORITY_MODELS
 from app.database.models import get_db, VideoJob, ActivityLog, User, log_activity
 from app.services.device_auth import is_local_ip
 
@@ -168,13 +169,7 @@ async def get_system_stats():
         },
         "gemini_api": {
             "total_keys_in_pool": len(settings.get_gemini_keys_pool()),
-            "priority": [
-                "gemini-pro-latest",
-                "gemini-1.5-pro",
-                "gemini-flash-latest",
-                "gemini-1.5-flash",
-                "gemini-flash-lite-latest"
-            ]
+            "priority": list(GEMINI_PRIORITY_MODELS)
         }
     }
 

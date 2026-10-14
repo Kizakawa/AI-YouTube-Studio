@@ -264,7 +264,7 @@ class MediaAgent:
 
     def ai_detect_entities(self, text: str) -> List[Dict]:
         """Dùng Gemini API nhận diện thực thể trong văn bản khi heuristic không chắc chắn."""
-        from app.utils.key_rotator import KeyRotator
+        from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
         keys = settings.get_gemini_keys_pool()
         if not keys:
             return []
@@ -277,37 +277,27 @@ Text: "{text}"
 
 If no real entities found, return empty array: []"""
 
-        models = ["gemini-flash-lite-latest", "gemini-flash-latest"]
-        total_keys = max(len(rotator.keys), 1)
-        for _ in range(total_keys * 2):
-            key = rotator.get_key()
-            if not key:
-                break
-            key_failed = False
-            for model in models:
-                try:
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-                    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-                    r = requests.post(url, json=payload, timeout=12)
-                    if r.status_code == 200:
-                        data = r.json()
-                        candidates = data.get("candidates", [])
-                        if candidates:
-                            raw = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "[]").strip()
-                            start = raw.find("[")
-                            end = raw.rfind("]")
-                            if start != -1 and end != -1:
-                                raw = raw[start:end+1]
-                            return json.loads(raw)
-                    elif r.status_code in (429, 403):
-                        rotator.rotate_key()
-                        key_failed = True
-                        break
-                except Exception as e:
-                    logger.debug(f"AI entity detection ({model}): {e}")
+        for model, key in rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS):
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+                payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                r = requests.post(url, json=payload, timeout=12)
+                if r.status_code == 200:
+                    data = r.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        raw = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "[]").strip()
+                        start = raw.find("[")
+                        end = raw.rfind("]")
+                        if start != -1 and end != -1:
+                            raw = raw[start:end+1]
+                        return json.loads(raw)
+                elif r.status_code in (429, 403, 404, 503):
+                    rotator.mark_model_rate_limited(key, model, status_code=r.status_code, error_text=r.text[:250])
                     continue
-            if not key_failed:
-                rotator.rotate_key()
+            except Exception as e:
+                logger.debug(f"AI entity detection ({model}): {e}")
+                continue
 
         return []
 

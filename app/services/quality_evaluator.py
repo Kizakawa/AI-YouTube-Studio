@@ -153,40 +153,46 @@ Respond ONLY in valid JSON:
 }}
 """
         import requests
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}"
-            headers = {"Content-Type": "application/json"}
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"}
-            }
-            resp = requests.post(url, headers=headers, json=payload, timeout=20)
-            if resp.status_code == 200:
-                data = resp.json()
-                content = data["candidates"][0]["content"]["parts"][0]["text"]
-                result = json.loads(content)
-                total = int(result.get("total_score", 0))
-                if total == 0:
-                    h = float(result.get("hook_score", 8.0))
-                    n = float(result.get("niche_score", 8.0))
-                    l = float(result.get("language_score", 8.0))
-                    r = float(result.get("retention_score", 8.0))
-                    total = int((h * 3.0 + n * 2.5 + l * 2.5 + r * 2.0) * 10 / 10)
-                passed = total >= 80
-                return {
-                    "passed": passed,
-                    "score": total,
-                    "hook_score": float(result.get("hook_score", 8.0)),
-                    "niche_score": float(result.get("niche_score", 8.0)),
-                    "language_score": float(result.get("language_score", 8.0)),
-                    "retention_score": float(result.get("retention_score", 8.0)),
-                    "verdict": "APROVADO (ĐẠT)" if passed else "REPROVADO (CẦN TỐI ƯU)",
-                    "feedback": result.get("critique", "Roteiro analisado por IA."),
-                    "strengths": result.get("strengths", []),
-                    "weaknesses": result.get("weaknesses", []),
-                }
-        except Exception as e:
-            logger.warning(f"[QualityEvaluator] Lỗi gọi Gemini chấm điểm kịch bản: {e}")
+        from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
+        rotator = KeyRotator(keys)
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"}
+        }
+        for model, k_use in rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS, max_total_attempts=6):
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={k_use}"
+                resp = requests.post(url, headers=headers, json=payload, timeout=20)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    content = data["candidates"][0]["content"]["parts"][0]["text"]
+                    result = json.loads(content)
+                    total = int(result.get("total_score", 0))
+                    if total == 0:
+                        h = float(result.get("hook_score", 8.0))
+                        n = float(result.get("niche_score", 8.0))
+                        l = float(result.get("language_score", 8.0))
+                        r = float(result.get("retention_score", 8.0))
+                        total = int((h * 3.0 + n * 2.5 + l * 2.5 + r * 2.0) * 10 / 10)
+                    passed = total >= 80
+                    return {
+                        "passed": passed,
+                        "score": total,
+                        "hook_score": float(result.get("hook_score", 8.0)),
+                        "niche_score": float(result.get("niche_score", 8.0)),
+                        "language_score": float(result.get("language_score", 8.0)),
+                        "retention_score": float(result.get("retention_score", 8.0)),
+                        "verdict": "APROVADO (ĐẠT)" if passed else "REPROVADO (CẦN TỐI ƯU)",
+                        "feedback": result.get("critique", "Roteiro analisado por IA."),
+                        "strengths": result.get("strengths", []),
+                        "weaknesses": result.get("weaknesses", []),
+                    }
+                elif resp.status_code in (429, 403, 404, 503):
+                    rotator.mark_model_rate_limited(k_use, model, status_code=resp.status_code, error_text=resp.text[:250])
+                    continue
+            except Exception as e:
+                logger.warning(f"[QualityEvaluator] Lỗi gọi Gemini ({model}) chấm điểm kịch bản: {e}")
         return None
 
     def _heuristic_evaluate_script(

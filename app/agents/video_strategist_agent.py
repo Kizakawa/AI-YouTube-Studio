@@ -21,14 +21,11 @@ import json
 import logging
 from typing import Dict, Any, List, Optional
 from config.settings import settings
-from app.utils.key_rotator import KeyRotator
+from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
 
 logger = logging.getLogger(__name__)
 
-AVAILABLE_MODELS = [
-    "gemini-flash-lite-latest",
-    "gemini-flash-latest",
-]
+AVAILABLE_MODELS = list(GEMINI_PRIORITY_MODELS)
 
 
 class VideoStrategistAgent:
@@ -42,46 +39,34 @@ class VideoStrategistAgent:
         self.rotator = KeyRotator(keys) if keys else None
 
     def _call_gemini(self, prompt: str, timeout: int = 20) -> Optional[str]:
-        """Gọi Gemini REST API với KeyRotator và timeout an toàn."""
+        """Gọi Gemini REST API với KeyRotator ưu tiên Model mạnh nhất trước."""
         if not self.rotator:
             return None
 
         import requests
-        total_keys = max(len(self.rotator.keys), 1)
-
-        for attempt in range(total_keys * 2):
-            key = self.rotator.get_key()
-            if not key:
-                return None
-
-            key_failed = False
-            for model in AVAILABLE_MODELS:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-                payload = {
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {
-                        "temperature": 0.35,
-                        "responseMimeType": "application/json",
-                    }
+        for model, key in self.rotator.iter_best_model_key_pairs(AVAILABLE_MODELS):
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.35,
+                    "responseMimeType": "application/json",
                 }
-                try:
-                    res = requests.post(url, json=payload, timeout=timeout)
-                    if res.status_code == 200:
-                        data = res.json()
-                        candidates = data.get("candidates", [])
-                        if candidates:
-                            text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                            return text
-                    elif res.status_code in (429, 403):
-                        self.rotator.rotate_key()
-                        key_failed = True
-                        break
-                except Exception as e:
-                    logger.debug(f"[VideoStrategist] Gemini call error on {model}: {e}")
+            }
+            try:
+                res = requests.post(url, json=payload, timeout=timeout)
+                if res.status_code == 200:
+                    data = res.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                        return text
+                elif res.status_code in (429, 403, 404, 503):
+                    self.rotator.mark_model_rate_limited(key, model, status_code=res.status_code, error_text=res.text[:250])
                     continue
-
-            if not key_failed:
-                self.rotator.rotate_key()
+            except Exception as e:
+                logger.debug(f"[VideoStrategist] Gemini call error on {model}: {e}")
+                continue
 
         return None
 

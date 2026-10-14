@@ -226,27 +226,23 @@ Requirements:
 3. Under 50 characters, punchy, includes 1-2 impactful emojis.
 4. Output ONLY the new title as raw text, no quotes, no markdown, no explanation.
 """
-        for _ in range(min(len(keys), 3)):
-            key = rotator.get_key()
-            if not key:
-                break
-            for model in ["gemini-flash-lite-latest", "gemini-flash-latest"]:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-                payload = {"contents": [{"parts": [{"text": prompt}]}]}
-                try:
-                    res = requests.post(url, json=payload, timeout=12)
-                    if res.status_code == 200:
-                        text = res.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
-                        text = text.replace('"', '').replace("'", '').strip()
-                        if text and len(text) > 5 and not check_idea_similarity(text, [matched], similarity_threshold=0.45)[0]:
-                            logger.info(f"[AntiDuplication] ✅ Đã đổi tiêu đề thành công: '{clean_cand}' -> '{text}'")
-                            return text, True, matched
-                    elif res.status_code in (429, 403):
-                        rotator.rotate_key()
-                        break
-                except Exception:
-                    pass
-            rotator.rotate_key()
+        from app.utils.key_rotator import GEMINI_PRIORITY_MODELS
+        for model, key in rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS, max_total_attempts=6):
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            payload = {"contents": [{"parts": [{"text": prompt}]}]}
+            try:
+                res = requests.post(url, json=payload, timeout=12)
+                if res.status_code == 200:
+                    text = res.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+                    text = text.replace('"', '').replace("'", '').strip()
+                    if text and len(text) > 5 and not check_idea_similarity(text, [matched], similarity_threshold=0.45)[0]:
+                        logger.info(f"[AntiDuplication] ✅ Đã đổi tiêu đề thành công ({model}): '{clean_cand}' -> '{text}'")
+                        return text, True, matched
+                elif res.status_code in (429, 403, 404, 503):
+                    rotator.mark_model_rate_limited(key, model, status_code=res.status_code, error_text=res.text[:250])
+                    continue
+            except Exception:
+                pass
 
     # Fallback nếu AI bận: thêm góc nhìn đặc tả khác biệt
     fallback_title = f"{clean_cand.split('?')[0].strip()} — The Hidden Truth! 💀" if "?" in clean_cand else f"Secret Behind {clean_cand} ⚠️"

@@ -23,15 +23,12 @@ from typing import Dict, Any, Optional, List
 
 import requests
 from config.settings import settings
-from app.utils.key_rotator import KeyRotator
+from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
 from app.services.media.entity_detector import is_incongruent_stock_image
 
 logger = logging.getLogger(__name__)
 
-VISION_MODELS = [
-    "gemini-flash-lite-latest",
-    "gemini-flash-latest",
-]
+VISION_MODELS = list(GEMINI_PRIORITY_MODELS)
 
 
 class MediaRelevanceAgent:
@@ -247,81 +244,73 @@ HÃY TRẢ VỀ DUY NHẤT MỘT ĐỐI TƯỢNG JSON (Không kèm markdown ```j
   "creative_idea": "Gợi ý 1 câu ý tưởng hình ảnh độc đáo, đan xen linh hoạt thay thế tư duy ghép ảnh tĩnh"
 }}"""
 
-        total_keys = max(len(self.rotator.keys), 1)
-        for _ in range(min(total_keys * 2, 4)):
-            key = self.rotator.get_key()
-            if not key:
-                break
-
-            for model in VISION_MODELS:
-                try:
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-                    payload = {
-                        "contents": [{
-                            "parts": [
-                                {"inline_data": {"mime_type": img_obj["mime_type"], "data": img_obj["data"]}},
-                                {"text": prompt}
-                            ]
-                        }],
-                        "generationConfig": {
-                            "temperature": 0.2,
-                            "maxOutputTokens": 600,
-                            "responseMimeType": "application/json",
-                        }
+        for model, key in self.rotator.iter_best_model_key_pairs(VISION_MODELS):
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+                payload = {
+                    "contents": [{
+                        "parts": [
+                            {"inline_data": {"mime_type": img_obj["mime_type"], "data": img_obj["data"]}},
+                            {"text": prompt}
+                        ]
+                    }],
+                    "generationConfig": {
+                        "temperature": 0.2,
+                        "maxOutputTokens": 600,
+                        "responseMimeType": "application/json",
                     }
-                    r = requests.post(url, json=payload, timeout=20)
-                    if r.status_code == 200:
-                        data = r.json()
-                        candidates = data.get("candidates", [])
-                        if not candidates:
-                            continue
-                        raw = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                        raw = raw.strip()
-                        if "```" in raw:
-                            raw = re.sub(r"^```(?:json)?\s*", "", raw)
-                            raw = re.sub(r"\s*```$", "", raw)
-                        start = raw.find("{")
-                        end = raw.rfind("}")
-                        if start != -1 and end != -1:
-                            raw = raw[start:end + 1]
+                }
+                r = requests.post(url, json=payload, timeout=20)
+                if r.status_code == 200:
+                    data = r.json()
+                    candidates = data.get("candidates", [])
+                    if not candidates:
+                        continue
+                    raw = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                    raw = raw.strip()
+                    if "```" in raw:
+                        raw = re.sub(r"^```(?:json)?\s*", "", raw)
+                        raw = re.sub(r"\s*```$", "", raw)
+                    start = raw.find("{")
+                    end = raw.rfind("}")
+                    if start != -1 and end != -1:
+                        raw = raw[start:end + 1]
 
-                        parsed = json.loads(raw)
-                        rel = float(parsed.get("relevance", 7.0))
-                        ent = float(parsed.get("entity_accuracy", 7.0))
-                        mod = float(parsed.get("modality_fitness", 8.0))
-                        vis = float(parsed.get("visual_quality", 7.0))
-                        ov = float(parsed.get("overall_score") or (rel * 0.35 + ent * 0.25 + mod * 0.20 + vis * 0.20))
-                        verdict = parsed.get("verdict", "PASS" if ov >= 7.0 else "FAIL").upper()
-                        is_rel = (verdict == "PASS" and rel >= 6.8)
+                    parsed = json.loads(raw)
+                    rel = float(parsed.get("relevance", 7.0))
+                    ent = float(parsed.get("entity_accuracy", 7.0))
+                    mod = float(parsed.get("modality_fitness", 8.0))
+                    vis = float(parsed.get("visual_quality", 7.0))
+                    ov = float(parsed.get("overall_score") or (rel * 0.35 + ent * 0.25 + mod * 0.20 + vis * 0.20))
+                    verdict = parsed.get("verdict", "PASS" if ov >= 7.0 else "FAIL").upper()
+                    is_rel = (verdict == "PASS" and rel >= 6.8)
 
-                        result = {
-                            "relevance": round(rel, 1),
-                            "entity_accuracy": round(ent, 1),
-                            "modality_fitness": round(mod, 1),
-                            "visual_quality": round(vis, 1),
-                            "overall_score": round(ov, 1),
-                            "is_relevant": is_rel,
-                            "verdict": "PASS" if is_rel else "FAIL",
-                            "issues": parsed.get("issues", []),
-                            "recommended_tool": parsed.get("recommended_tool") or ("pexels_video" if is_video else "ai_video"),
-                            "replacement_query": parsed.get("replacement_query") or visual_keyword,
-                            "refined_prompt": parsed.get("refined_prompt") or f"Cinematic {visual_keyword}, 8k",
-                            "creative_idea": parsed.get("creative_idea", ""),
-                            "ai_evaluated": True,
-                        }
-                        logger.info(
-                            f"🧠 [MediaRelevanceAgent] Cảnh {scene_id} ({'Video' if is_video else 'Ảnh'}): "
-                            f"Điểm={ov}/10 (Rel={rel}, Mod={mod}, Vis={vis}) -> {result['verdict']}"
-                        )
-                        return result
-                    elif r.status_code in (429, 403):
-                        self.rotator.rotate_key()
-                        break
-                except Exception as ex:
-                    logger.debug(f"[MediaRelevanceAgent] Lỗi khi gọi Gemini Vision ({model}): {ex}")
+                    result = {
+                        "relevance": round(rel, 1),
+                        "entity_accuracy": round(ent, 1),
+                        "modality_fitness": round(mod, 1),
+                        "visual_quality": round(vis, 1),
+                        "overall_score": round(ov, 1),
+                        "is_relevant": is_rel,
+                        "verdict": "PASS" if is_rel else "FAIL",
+                        "issues": parsed.get("issues", []),
+                        "recommended_tool": parsed.get("recommended_tool") or ("pexels_video" if is_video else "ai_video"),
+                        "replacement_query": parsed.get("replacement_query") or visual_keyword,
+                        "refined_prompt": parsed.get("refined_prompt") or f"Cinematic {visual_keyword}, 8k",
+                        "creative_idea": parsed.get("creative_idea", ""),
+                        "ai_evaluated": True,
+                    }
+                    logger.info(
+                        f"🧠 [MediaRelevanceAgent] Cảnh {scene_id} ({'Video' if is_video else 'Ảnh'}): "
+                        f"Điểm={ov}/10 (Rel={rel}, Mod={mod}, Vis={vis}) -> {result['verdict']}"
+                    )
+                    return result
+                elif r.status_code in (429, 403, 404, 503):
+                    self.rotator.mark_model_rate_limited(key, model, status_code=r.status_code, error_text=r.text[:250])
                     continue
-
-            self.rotator.rotate_key()
+            except Exception as ex:
+                logger.debug(f"[MediaRelevanceAgent] Lỗi khi gọi Gemini Vision ({model}): {ex}")
+                continue
 
         return None
 

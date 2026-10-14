@@ -107,50 +107,37 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
   ]
 }}"""
 
-        total_keys = max(len(self.rotator.keys), 1)
-        models = [
-            "gemini-flash-latest",       # [P3-VIS-1] Flash trước — script là nền tảng toàn bộ video
-            "gemini-flash-lite-latest",  # Fallback nhẹ hơn nếu quota hết
-        ]
-        for attempt in range(total_keys):
-            key = self.rotator.get_key()
-            if not key:
-                break
-            key_quota_failed = False
-            for model in models:
-                try:
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-                    payload = {
-                        "contents": [{"parts": [{"text": prompt}]}]
-                    }
-                    r = requests.post(url, json=payload, timeout=25)
-                    if r.status_code in (429, 403):
-                        logger.warning(f"ScriptCritic: Model {model} bị giới hạn ({r.status_code}), xoay key ngay...")
-                        self.rotator.rotate_key()
-                        key_quota_failed = True
-                        break
-
-                    if r.status_code == 200:
-                        data = r.json()
-                        candidates = data.get("candidates", [])
-                        if candidates:
-                            raw = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "{}")
-                            raw = raw.strip()
-                            if "```" in raw:
-                                raw = re.sub(r"^```(?:json)?\s*", "", raw)
-                                raw = re.sub(r"\s*```$", "", raw)
-                            start = raw.find("{")
-                            end = raw.rfind("}")
-                            if start != -1 and end != -1:
-                                raw = raw[start:end+1]
-                            parsed = json.loads(raw)
-                            return self._build_report(parsed)
-                except Exception as e:
-                    logger.warning(f"ScriptCritic ({model}) error: {e}")
+        from app.utils.key_rotator import GEMINI_PRIORITY_MODELS
+        for model, key in self.rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS):
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}]
+                }
+                r = requests.post(url, json=payload, timeout=25)
+                if r.status_code in (429, 403, 404, 503):
+                    logger.warning(f"ScriptCritic: Model {model} trên key {key[:8]}... gặp mã {r.status_code}, chuyển ứng viên kế tiếp...")
+                    self.rotator.mark_model_rate_limited(key, model, status_code=r.status_code, error_text=r.text[:250])
                     continue
 
-            if not key_quota_failed:
-                self.rotator.rotate_key()
+                if r.status_code == 200:
+                    data = r.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        raw = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "{}")
+                        raw = raw.strip()
+                        if "```" in raw:
+                            raw = re.sub(r"^```(?:json)?\s*", "", raw)
+                            raw = re.sub(r"\s*```$", "", raw)
+                        start = raw.find("{")
+                        end = raw.rfind("}")
+                        if start != -1 and end != -1:
+                            raw = raw[start:end+1]
+                        parsed = json.loads(raw)
+                        return self._build_report(parsed)
+            except Exception as e:
+                logger.warning(f"ScriptCritic ({model}) error: {e}")
+                continue
 
         return self._heuristic_evaluate(script_data, primary_entity)
 
