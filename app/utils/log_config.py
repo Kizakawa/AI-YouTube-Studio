@@ -101,6 +101,27 @@ def configure_logging(level: str = "INFO", log_format: Optional[str] = None) -> 
 
     root.addHandler(handler)
 
+    # Ghi đồng thời toàn bộ log terminal ra file storage/logs/app.log (Rotating 10MB x 3) để theo dõi & chẩn đoán lỗi thời gian thực
+    try:
+        from logging.handlers import RotatingFileHandler
+        from pathlib import Path
+        log_dir = Path("storage/logs")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        file_handler = RotatingFileHandler(
+            log_dir / "app.log",
+            maxBytes=10 * 1024 * 1024,
+            backupCount=3,
+            encoding="utf-8",
+        )
+        file_handler.setLevel(level_val)
+        file_handler.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)-8s %(name)s -- %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        ))
+        root.addHandler(file_handler)
+    except Exception:
+        pass
+
     # Tat spam log thu vien thu 3
     for noisy_lib in ("httpx", "httpcore", "urllib3",
                       "googleapiclient.discovery", "google.auth",
@@ -108,7 +129,7 @@ def configure_logging(level: str = "INFO", log_format: Optional[str] = None) -> 
         logging.getLogger(noisy_lib).setLevel(logging.WARNING)
 
     logging.getLogger("AI-YouTube").info(
-        "[LogConfig] Structured logging ON (format=%s, level=%s).", fmt, level
+        "[LogConfig] Structured logging ON (format=%s, level=%s, file=storage/logs/app.log).", fmt, level
     )
 
 

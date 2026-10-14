@@ -122,6 +122,7 @@ class VideoPipeline:
             self.work_dir = Path(settings.TEMP_DIR) / f"job_{self.job_id}"
             self.work_dir.mkdir(parents=True, exist_ok=True)
 
+            render_succeeded = False
             # ── [HARD NICHE FIREWALL] Tự động phát hiện & điều hướng nếu Job bị gán nhầm kênh ──
             try:
                 from app.services.niche_manager import validate_channel_niche_alignment
@@ -247,6 +248,7 @@ class VideoPipeline:
                     self._save_render_manifest(render_job)
                     self._update_status(JobStatus.RENDERED)
                     await self._report_progress("COMPLETED", f"🎉 Video #{self.job_id} đã hoàn tất và sẵn sàng phát hành!", percent=100)
+                    render_succeeded = True
                     return render_job
                 except Exception as e:
                     _lg_err_msg = (
@@ -379,6 +381,7 @@ class VideoPipeline:
             self._update_status(JobStatus.RENDERED)
             await self._report_progress("COMPLETED", f"🎉 Video #{self.job_id} đã hoàn tất và sẵn sàng phát hành!", percent=100)
             logger.info(f"[Job {self.job_id}] Pipeline complete → {output_path}")
+            render_succeeded = True
             return render_job
 
         except Exception as e:
@@ -387,11 +390,12 @@ class VideoPipeline:
             await self._report_progress("ERROR", f"❌ Quá trình dựng video thất bại: {e}")
             raise
         finally:
-            # Dọn dẹp temp files khi hoàn thành (thành công hoặc thất bại)
-            try:
-                self.cleanup_temp()
-            except Exception as cleanup_err:
-                logger.warning(f"[Job {self.job_id}] Lỗi cleanup temp: {cleanup_err}")
+            # Chỉ xóa thư mục tạm khi job đã hoàn thành thành công (giữ lại audio & media cache nếu lỗi để retry tức thì!)
+            if render_succeeded:
+                try:
+                    self.cleanup_temp()
+                except Exception as cleanup_err:
+                    logger.warning(f"[Job {self.job_id}] Lỗi cleanup temp: {cleanup_err}")
 
     # ──────────────────────────────────────────
     # STEP IMPLEMENTATIONS
@@ -621,12 +625,24 @@ class VideoPipeline:
                 media_path = ""
                 dur = scene.actual_duration_seconds
 
-                # ── ƯU TIÊN TUYỆT ĐỐI: NẾU PHÂN CẢNH ĐÃ CÓ MEDIA ĐƯỢC CHỌN TỪ STORYBOARD GATE ──
+                # ── ƯU TIÊN TUYỆT ĐỐI: NẾU PHÂN CẢNH ĐÃ CÓ MEDIA ĐƯỢC CHỌN TỪ STORYBOARD HOẶC CACHE TRƯỚC ĐÓ ──
                 pre_media = getattr(scene, 'media_path', None)
                 if pre_media and Path(pre_media).exists() and self._is_valid_media_file(pre_media):
                     media_path = str(Path(pre_media).resolve())
                     used_asset_paths.add(media_path)
                     logger.info(f"[Job {self.job_id}] Scene {scene.scene_id}: 🎯 Sử dụng Media đã duyệt trước từ Storyboard: {media_path}")
+                else:
+                    cached_candidates = sorted(
+                        Path(media_dir).glob(f"scene_{scene.scene_id:03d}_*"),
+                        key=lambda p: p.stat().st_mtime if p.exists() else 0,
+                        reverse=True,
+                    )
+                    for cand_p in cached_candidates:
+                        if cand_p.is_file() and cand_p.stat().st_size > 3000 and self._is_valid_media_file(str(cand_p)):
+                            media_path = str(cand_p.resolve())
+                            used_asset_paths.add(media_path)
+                            logger.info(f"[Job {self.job_id}] Scene {scene.scene_id}: ⚡ Tái sử dụng Media đã tải sẵn trong cache: {cand_p.name}")
+                            break
 
                 p_ai = v_analysis.get("cinematic_ai_prompt") or sc_strat.get("ai_prompt") or scene.visual_prompt or scene.visual_keyword
 

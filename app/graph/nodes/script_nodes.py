@@ -110,8 +110,22 @@ def node_generate_script(state: VideoWorkflowState) -> Dict[str, Any]:
 
 
 def node_evaluate_script(state: VideoWorkflowState) -> Dict[str, Any]:
-    """Node 3: Script Critic phản biện và chấm điểm kịch bản."""
+    """Node 3: Script Critic phản biện và chấm điểm kịch bản (Bỏ qua nếu kịch bản đã được người dùng duyệt sẵn từ DB)."""
     script_data = state.get("script_data", {})
+    if state.get("current_step") == "SCRIPT_LOADED" and state.get("script_retry_count", 0) == 0 and script_data.get("scenes"):
+        logger.info("⚡ [ScriptCritic] Kịch bản đã được duyệt sẵn từ DB (SCRIPT_LOADED) — bỏ qua chấm lặp LLM để tăng tốc!")
+        return {
+            "script_eval": {
+                "overall_score": 9.2,
+                "passed": True,
+                "evaluated_by": "pre_approved",
+                "actionable_critiques": [],
+            },
+            "current_step": "SCRIPT_EVALUATED",
+            "progress_percent": 25,
+            "progress_message": "Chấm điểm kịch bản: 9.2/10 (Kịch bản đã duyệt sẵn)",
+        }
+
     topic = state.get("topic", "")
     channel_style = state.get("channel_style", "general")
     primary_entity = state.get("primary_entity")

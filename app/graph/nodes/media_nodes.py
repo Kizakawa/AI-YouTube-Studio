@@ -239,6 +239,32 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         logger.info(f"🎯 [Scene {scene.scene_id}] Phương pháp: '{prod_method}' | Strategy: '{chosen_strategy}' ({rationale[:60]}...)")
 
         # ══════════════════════════════════════════════════════════════════════
+        # TẦNG -1 (REUSE CACHE): NẾU ĐÃ CÓ FILE MEDIA HỢP LỆ TỪ STORYBOARD HOẶC LẦN CHẠY TRƯỚC
+        # ══════════════════════════════════════════════════════════════════════
+        if state.get("media_retry_count", 0) == 0 and state.get("content_retry_count", 0) == 0:
+            pre_m = getattr(scene, "media_path", None)
+            if pre_m and Path(pre_m).exists() and Path(pre_m).stat().st_size > 3000:
+                media_path = str(Path(pre_m).resolve())
+                media_type = "video" if media_path.lower().endswith((".mp4", ".mov", ".webm")) else "image"
+                vision_curated = True
+                prod_method = chosen_strategy = "CACHED_MEDIA"
+                logger.info(f"Scene {scene.scene_id}: ⚡ Tái sử dụng Media có sẵn: {Path(media_path).name}")
+            else:
+                cached_files = sorted(
+                    media_dir.glob(f"scene_{scene.scene_id:03d}_*"),
+                    key=lambda p: p.stat().st_mtime if p.exists() else 0,
+                    reverse=True,
+                )
+                for cf in cached_files:
+                    if cf.is_file() and cf.stat().st_size > 3000 and cf.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp", ".mp4"):
+                        media_path = str(cf.resolve())
+                        media_type = "video" if cf.suffix.lower() == ".mp4" else "image"
+                        vision_curated = True
+                        prod_method = chosen_strategy = "CACHED_MEDIA"
+                        logger.info(f"Scene {scene.scene_id}: ⚡ Tái sử dụng Media đã tải trong cache: {cf.name}")
+                        break
+
+        # ══════════════════════════════════════════════════════════════════════
         # TẦNG 0 (ƯU TIÊN TUYỆT ĐỐI): GEMINI GOOGLE SEARCH + VISION CURATION + 3D MOTION
         # Phụ thuộc vào kết quả tìm kiếm Google Images bắt mắt để câu view (CGI, Concept Art 8K,
         # Movie Scene, Dramatic HD, Dark Horror) do Gemini Vision trực tiếp chấm chọn.
@@ -249,7 +275,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         creature_first = os.getenv("CREATURE_ART_FIRST", "true").strip().lower() not in ("0", "false", "no", "off")
         tier0_searched = False
         if (
-            (search_first or (creature_first and v_analysis.get("creature_mode")))
+            not media_path
+            and (search_first or (creature_first and v_analysis.get("creature_mode")))
             and channel_visual_mode not in ("imagen_ai", "ai_image")
         ):
             try:

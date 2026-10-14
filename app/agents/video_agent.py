@@ -13,6 +13,7 @@ Luồng render nâng cấp (v2):
 """
 import asyncio
 import logging
+import os
 import shutil
 from pathlib import Path
 from typing import List, Optional

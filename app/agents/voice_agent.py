@@ -11,13 +11,22 @@ import edge_tts
 from config.settings import settings
 from app.schemas.contracts import SceneContract, AudioSegment
 
-# Đảm bảo Sec-MS-GEC-Version luôn ở chuẩn v2+ kể cả khi tiến trình cũ chưa nạp lại constants mới
-try:
-    import edge_tts.constants as _edge_const
-    if getattr(_edge_const, "SEC_MS_GEC_VERSION", "").startswith("1-"):
-        _edge_const.SEC_MS_GEC_VERSION = "2-" + _edge_const.SEC_MS_GEC_VERSION[2:]
-except Exception:
-    pass
+# Đảm bảo Sec-MS-GEC-Version luôn ở chuẩn v2+ trên cả constants, drm và communicate
+def _ensure_edge_tts_v2_token() -> None:
+    try:
+        import edge_tts.constants as _edge_const
+        ver = getattr(_edge_const, "SEC_MS_GEC_VERSION", "")
+        if ver.startswith("1-"):
+            new_ver = "2-" + ver[2:]
+            _edge_const.SEC_MS_GEC_VERSION = new_ver
+            for mod_name in ("edge_tts.drm", "edge_tts.communicate"):
+                mod = sys.modules.get(mod_name)
+                if mod and hasattr(mod, "SEC_MS_GEC_VERSION"):
+                    setattr(mod, "SEC_MS_GEC_VERSION", new_ver)
+    except Exception:
+        pass
+
+_ensure_edge_tts_v2_token()
 
 logger = logging.getLogger(__name__)
 
