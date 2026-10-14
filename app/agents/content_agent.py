@@ -498,17 +498,60 @@ class ContentAgent:
                 p_sc["scene_id"] = new_id
                 if not p_sc.get("highlight_words"):
                     p_sc["highlight_words"] = _auto_extract_scene_highlights(str(p_sc.get("narration") or ""))
-                if not p_sc.get("camera_motion"):
-                    p_sc["camera_motion"] = "zoom_in_fast" if new_id == 1 else _motion_cycle[(new_id - 1) % len(_motion_cycle)]
-                if not p_sc.get("sfx_cue"):
-                    if new_id == 1:
-                        p_sc["sfx_cue"] = "impact_boom"
-                    elif new_id == 4:
-                        p_sc["sfx_cue"] = "riser_tension"
-                    else:
-                        p_sc["sfx_cue"] = "whoosh_fast"
+                if new_id == 1:
+                    p_sc["camera_motion"] = "hyper_zoom"
+                    p_sc["sfx_cue"] = "impact_boom"
+                else:
+                    if not p_sc.get("camera_motion"):
+                        p_sc["camera_motion"] = _motion_cycle[(new_id - 1) % len(_motion_cycle)]
+                    if not p_sc.get("sfx_cue"):
+                        p_sc["sfx_cue"] = "riser_tension" if new_id == 4 else "whoosh_fast"
             scenes = paced_scenes
             raw_data["scenes"] = scenes
+
+        # ── 2.7. SCENE 1 "WOW-FACTOR" OPENING VISUAL & THUMB-STOPPER HOOK AMPLIFIER (FRAME 0.0s) ──
+        # Khung hình 0.0s quyết định 85% Tỉ lệ ở lại xem (Viewed vs. Swiped Away).
+        # Tuyệt đối khử các từ khóa tĩnh/thụ động ở Cảnh 1 và bơm hiệu ứng thị giác choáng ngợp (Scale Shock / Mid-Action / Eye-Contact).
+        if scenes and isinstance(scenes, list) and isinstance(scenes[0], dict):
+            sc1 = scenes[0]
+            comb_ctx = f"{raw_data.get('title', '')} {sc1.get('narration', '')} {sc1.get('visual_keyword', '')}".lower()
+            _passive_hook_words = r'\b(?:standing|sitting|sleeping|resting|calm|peaceful|empty|still|waiting|walking\s+slowly|idle)\b'
+            for q_field in ("stock_query", "visual_keyword"):
+                val_q = str(sc1.get(q_field) or "").strip()
+                if val_q:
+                    cleaned_q = re.sub(_passive_hook_words, "", val_q, flags=re.IGNORECASE)
+                    cleaned_q = re.sub(r'\s+', ' ', cleaned_q).strip()
+                    if cleaned_q:
+                        sc1[q_field] = cleaned_q
+
+            vp1 = str(sc1.get("visual_prompt") or "").strip()
+            if "jaw-dropping" not in vp1.lower() and "frame-0" not in vp1.lower():
+                if any(k in comb_ctx for k in ("puppy", "kitten", "rescue", "stray", "shelter", "abandoned", "dog", "cat", "filhote", "resgate")):
+                    wow_prefix = (
+                        "JAW-DROPPING FRAME-0 HOOK (EMOTIONAL EYE-CONTACT): Extreme close-up of shivering rescued animal "
+                        "with glistening expressive eyes looking straight into the camera lens reaching a tiny paw toward a warm human hand under golden rim light — "
+                    )
+                elif any(k in comb_ctx for k in ("anaconda", "caiman", "jaguar", "crocodile", "lion", "tiger", "eagle", "badger", "predator", "snake", "shark", "orca", "wolf", "onça", "sucuri", "jacaré", "ariranha", "águia")):
+                    wow_prefix = (
+                        "JAW-DROPPING FRAME-0 HOOK (EXTREME MACRO ACTION): Apex predator mid-strike with jaws or talons wide open, "
+                        "water droplets and debris exploding in mid-air, piercing glowing predator eyes locked directly on camera, high-contrast rim lighting — "
+                    )
+                elif any(k in comb_ctx for k in ("ocean", "abyss", "deep sea", "trench", "submarine", "bloop", "kraken", "megalodon", "oceano", "abismo", "fossa")):
+                    wow_prefix = (
+                        "JAW-DROPPING FRAME-0 HOOK (MEGALOPHOBIA SCALE SHOCK): Colossal glowing abyssal silhouette dwarfing a tiny submarine xenon spotlight "
+                        "in crystal-sharp bioluminescent contrast — "
+                    )
+                elif any(k in comb_ctx for k in ("rome", "empire", "war", "history", "ancient", "emperor", "library", "ww2", "napoleon", "império")):
+                    wow_prefix = (
+                        "JAW-DROPPING FRAME-0 HOOK (MONUMENTAL SPECTACLE): Breathtaking low-angle colossal counterfactual monument "
+                        "under dramatic storm clouds and vivid golden sunbeams — "
+                    )
+                else:
+                    wow_prefix = (
+                        "JAW-DROPPING FRAME-0 HOOK (HIGH-CONTRAST PARADOX): Razor-sharp extreme close-up with intense eye contact "
+                        "under dramatic golden split-lighting and vivid cinematic depth — "
+                    )
+                sc1["visual_prompt"] = f"{wow_prefix}{vp1}"
 
         # ── 2.8. ĐẢM BẢO PHÂN CẢNH CUỐI KHÉP LẠI GỌN GÀNG, KHÔNG DÍNH TỪ LỬNG ──
         if scenes and isinstance(scenes, list):
@@ -522,10 +565,12 @@ class ContentAgent:
                     clean_narr += "."
                 last_scene["narration"] = clean_narr
 
-        # Cập nhật lại full_narration để đồng bộ 100% với các scene
+        # Cập nhật lại full_narration & hook để đồng bộ 100% với Cảnh 1 đã tối ưu nhịp
         raw_data["full_narration"] = " ".join(s.get("narration", "") for s in scenes if isinstance(s, dict))
-        if "hook" not in raw_data or not raw_data["hook"]:
-            raw_data["hook"] = scenes[0].get("narration", "") if scenes and isinstance(scenes[0], dict) else raw_data.get("title", "")
+        if scenes and isinstance(scenes[0], dict) and scenes[0].get("narration"):
+            raw_data["hook"] = str(scenes[0]["narration"]).strip()
+        elif "hook" not in raw_data or not raw_data["hook"]:
+            raw_data["hook"] = raw_data.get("title", "")
 
         # ── 2.9. OPUSCLIP / VIDIQ VIRAL CTR TITLE TOURNAMENT (ĐẤU TRƯỜNG TIÊU ĐỀ TỐI ƯU CTR) ──
         raw_variants = raw_data.get("title_variants")

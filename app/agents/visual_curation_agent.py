@@ -85,11 +85,19 @@ def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any
         if gq not in fixed_g:
             fixed_g.append(gq)
     primary_action = " ".join((fixed[0] if fixed else short_subj).split()[:5])
-    default_clickbait_qs = [
-        f"{primary_action} cinematic 8k concept art",
-        f"{short_subj} movie scene dramatic HD",
-        f"{short_subj} dramatic viral photography",
-    ]
+    is_hook = bool(res.get("is_hook_scene") or res.get("scene_id") == 1)
+    if is_hook:
+        default_clickbait_qs = [
+            f"{primary_action} extreme close up dramatic 8k",
+            f"{short_subj} epic movie cgi scene HD",
+            f"{short_subj} breathtaking viral action photography",
+        ]
+    else:
+        default_clickbait_qs = [
+            f"{primary_action} cinematic 8k concept art",
+            f"{short_subj} movie scene dramatic HD",
+            f"{short_subj} dramatic viral photography",
+        ]
     for dq in default_clickbait_qs:
         if len(fixed_g) >= 3:
             break
@@ -283,12 +291,15 @@ TRẢ VỀ JSON DUY NHẤT THEO ĐỊNH DẠNG:
                 sid = item.get("scene_id")
                 if sid is None:
                     continue
+                sid_int = int(sid)
+                item["scene_id"] = sid_int
+                item["is_hook_scene"] = (sid_int == 1)
                 sc_orig = next((x for x in scenes_payload if x["scene_id"] == sid), {})
                 narr = sc_orig.get("narration", "")
                 subj = str(item.get("subject") or "").strip() or extract_subject(narr, primary_entity)
                 item = _enforce_subject_queries(item, subj)
                 item = _apply_creature_mode(item, narr, topic)
-                result_map[int(sid)] = item
+                result_map[sid_int] = item
             if result_map:
                 logger.info(f"⚡ [VisualCuration] Đã phân tích đồng loạt {len(result_map)}/{len(scenes_payload)} cảnh trong 1 lệnh gọi!")
         return result_map
@@ -355,6 +366,8 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
         res = self._call_gemini_json(prompt)
         if res and "search_queries" in res and res.get("visual_metaphor"):
             from app.services.media.image_quality import extract_subject
+            res["scene_id"] = int(scene_id)
+            res["is_hook_scene"] = (int(scene_id) == 1)
             subj = str(res.get("subject") or "").strip() or extract_subject(narration, primary_entity)
             res = _enforce_subject_queries(res, subj)
             res = _apply_creature_mode(res, narration, topic)
@@ -366,6 +379,8 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
 
         # Heuristic fallback an toàn nếu Gemini tạm ngưng
         res = self._heuristic_scene_analysis(narration, topic, primary_entity, entity_type, scene_id, total_scenes)
+        res["scene_id"] = int(scene_id)
+        res["is_hook_scene"] = (int(scene_id) == 1)
         from app.services.media.image_quality import extract_subject
         subj = extract_subject(narration, primary_entity)
         if not subj or subj.lower() in _GENERIC_SUBJECTS:
@@ -480,29 +495,43 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
         return os.getenv("ENABLE_VISION_CURATION", "true").strip().lower() not in ("0", "false", "no", "off")
 
     @staticmethod
-    def _fetch_thumbnail_b64(url: str, timeout: float = 3.5) -> Optional[Tuple[str, str]]:
-        """Tải thumbnail nhỏ của ứng viên và trả về (mime, base64). Bỏ qua ảnh quá lớn / lỗi."""
-        if not url:
+    def _fetch_thumbnail_b64(url: str, timeout: float = 4.0, fallback_url: str = "") -> Optional[Tuple[str, str]]:
+        """Tải thumbnail của ứng viên, nén nhẹ về <=512px JPEG trong RAM và trả về (mime, base64) cho Gemini Vision."""
+        if not url and not fallback_url:
             return None
         import base64
+        import io as _io
         import requests
-        try:
-            ua = "Mozilla/5.0 AIYouTubeStudio/2.0"
-            if "wikimedia.org" in url or "wikipedia.org" in url:
-                from app.services.media.entity_detector import WIKIMEDIA_USER_AGENT
-                ua = WIKIMEDIA_USER_AGENT
-            res = requests.get(url, timeout=timeout, headers={"User-Agent": ua})
-            if res.status_code != 200 or not res.content:
-                return None
-            data = res.content
-            if len(data) < 1500 or len(data) > 2_500_000:
-                return None
-            mime = (res.headers.get("Content-Type") or "image/jpeg").split(";")[0].strip()
-            if not mime.startswith("image/"):
-                mime = "image/jpeg"
-            return mime, base64.b64encode(data).decode("ascii")
-        except Exception:
-            return None
+        urls = [u for u in (url, fallback_url) if u]
+        for target_u in urls:
+            try:
+                ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+                if "wikimedia.org" in target_u or "wikipedia.org" in target_u:
+                    from app.services.media.entity_detector import WIKIMEDIA_USER_AGENT
+                    ua = WIKIMEDIA_USER_AGENT
+                res = requests.get(target_u, timeout=timeout, headers={"User-Agent": ua, "Accept": "image/*,*/*;q=0.8"})
+                if res.status_code != 200 or not res.content:
+                    continue
+                data = res.content
+                if len(data) < 1500 or len(data) > 6_000_000:
+                    continue
+                try:
+                    from PIL import Image
+                    with Image.open(_io.BytesIO(data)) as im:
+                        im = im.convert("RGB")
+                        im.thumbnail((512, 512))
+                        buf = _io.BytesIO()
+                        im.save(buf, format="JPEG", quality=82)
+                        return "image/jpeg", base64.b64encode(buf.getvalue()).decode("ascii")
+                except Exception:
+                    if len(data) <= 1_500_000:
+                        mime = (res.headers.get("Content-Type") or "image/jpeg").split(";")[0].strip()
+                        if not mime.startswith("image/"):
+                            mime = "image/jpeg"
+                        return mime, base64.b64encode(data).decode("ascii")
+            except Exception:
+                continue
+        return None
 
     def vision_rank_candidates(
         self,
@@ -511,7 +540,7 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
         topic: str = "",
         visual_analysis: Optional[Dict[str, Any]] = None,
         kind: str = "video",
-        max_candidates: int = 6,
+        max_candidates: int = 8,
     ) -> Optional[Tuple[int, float, str]]:
         """
         Gemini Vision nhìn trực tiếp thumbnail của từng ứng viên và chấm:
@@ -530,13 +559,22 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
 
         pool = candidates[:max_candidates]
         with ThreadPoolExecutor(max_workers=min(8, len(pool))) as ex:
-            thumbs = list(ex.map(lambda c: self._fetch_thumbnail_b64(c.get("thumbnail", "")), pool))
+            thumbs = list(
+                ex.map(
+                    lambda c: self._fetch_thumbnail_b64(
+                        c.get("thumbnail") or c.get("url", ""),
+                        fallback_url=c.get("fallback_url") or c.get("url", ""),
+                    ),
+                    pool,
+                )
+            )
 
         indexed = [(i, t) for i, t in enumerate(thumbs) if t]
         if len(indexed) < 1:
             return None
 
         va = visual_analysis or {}
+        is_hook_scene = bool(va.get("is_hook_scene") or va.get("scene_id") == 1)
         mood = va.get("mood", "cinematic")
         metaphor = va.get("visual_metaphor", "")
         negative_cues = va.get("negative_cues", [])
@@ -547,6 +585,13 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
             f"3D Render, tranh kỹ thuật số siêu thực hay nhiếp ảnh kịch tính ĐỀU ĐƯỢC KHUYẾN KHÍCH miễn là CỰC KỲ BẮT MẮT ĐỂ CÂU VIEW và khớp chủ đề!\n"
             if subject else ""
         )
+        if is_hook_scene:
+            subject_rule += (
+                f"\n🔥 QUY TẮC SỐNG CÒN CHO CẢNH 1 (FRAME 0.0s WOW HOOK — QUYẾT ĐỊNH 85% TỶ LỆ Ở LẠI XEM):\n"
+                f"- Đây là hình ảnh mở màn giây 0.0s! Hình ảnh BẮT BUỘC phải đạt hiệu ứng 'WOW' choáng ngợp ngay lập tức: "
+                f"cận cảnh cực nét (Extreme Close-Up), khoảnh khắc hành động bùng nổ (Mid-Action Strike/Splash), tương phản quy mô khổng lồ (Megalophobia/Scale Shock), hoặc ánh mắt/biểu cảm trực diện đầy kịch tính.\n"
+                f"- KHẮT KHE TUYỆT ĐỐI: Nếu ảnh/video bị tối mù, mờ nhòe, chủ thể ở quá xa/nhỏ bé, góc quay tĩnh nhàm chán, hoặc màu sắc nhạt nhòa -> BẮT BUỘC chấm appeal <= 4.0! Chỉ chấm appeal >= 7.5 cho hình ảnh thực sự xuất sắc, giữ chân ngón tay người xem!\n"
+            )
         if va.get("creature_mode"):
             subject_rule += (
                 f"\nĐÂY LÀ CHẾ ĐỘ QUÁI VẬT / THỦY QUÁI / KINH DỊ RÙNG RỢN (\"{subject}\"):\n"
@@ -625,18 +670,28 @@ Nếu KHÔNG ảnh nào có relevance >= 4.5 -> đặt best_image = -1 và rejec
                 logger.info(f"👁️ [VisionCuration] Từ chối toàn bộ {len(indexed)} ứng viên {kind}: {rationale} (refined_q='{refined_q}')")
                 return -1, 0.0, rationale
 
-            # Xếp hạng toàn bộ ứng viên đạt chuẩn (relevance >= 4.5) theo điểm tổng hợp ưu tiên ĐỘ BẮT MẮT CÂU VIEW (55% hấp dẫn + 45% liên quan)
+            # Xếp hạng ứng viên: Với Cảnh 1 (Hook Frame 0.0s), ưu tiên 68% ĐỘ WOW/APPEAL và yêu cầu appeal >= 7.2
+            min_rel = 5.2 if is_hook_scene else 4.5
+            min_app = 7.2 if is_hook_scene else 0.0
+            rel_weight = 0.32 if is_hook_scene else 0.45
+            app_weight = 0.68 if is_hook_scene else 0.55
+
             ranked_valid: List[Tuple[float, int]] = []
             for img_no, (rel, app) in score_map.items():
-                if rel < 4.5:
+                if rel < min_rel or app < min_app:
                     continue
-                combined = 0.45 * rel + 0.55 * app
+                combined = rel_weight * rel + app_weight * app
                 ranked_valid.append((combined, img_no))
             ranked_valid.sort(reverse=True)
 
             if ranked_valid:
                 best_combined, best_img = ranked_valid[0]
             else:
+                if is_hook_scene:
+                    logger.info(
+                        f"👁️ [VisionCuration] 🔥 Cảnh 1 (WOW Hook Gate): Không ứng viên {kind} nào đạt chuẩn WOW (rel>={min_rel}, appeal>={min_app}): {rationale}"
+                    )
+                    return -1, 0.0, f"[Hook WOW Gate < {min_app}] {rationale}"
                 suggested = int(res.get("best_image", -1))
                 if 0 <= suggested < len(indexed) and suggested not in score_map:
                     best_img, best_combined = suggested, 6.0
@@ -1019,10 +1074,12 @@ TRẢ VỀ JSON DUY NHẤT:
         )
         if vision is not None:
             v_idx, v_score, v_rat = vision
+            is_hook_photo = bool((visual_analysis or {}).get("is_hook_scene") or (visual_analysis or {}).get("scene_id") == 1)
             refined_q = str((visual_analysis or {}).get("_refined_google_query") or "").strip()
+            min_accept_score = 7.3 if is_hook_photo else 5.6
 
-            # Chỉ tự động dùng refined_google_query tìm lại vòng 2 nếu toàn bộ ảnh bị từ chối hoặc điểm quá thấp (< 5.6)
-            if (v_idx < 0 or v_score < 5.6) and refined_q:
+            # Với Cảnh 1 (Hook), nếu điểm < 7.3 (chưa đủ WOW), lập tức kích hoạt tìm kiếm vòng 2 với refined_google_query
+            if (v_idx < 0 or v_score < min_accept_score) and refined_q:
                 try:
                     from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
                     from app.services.media.image_quality import prefilter_candidates
@@ -1061,7 +1118,7 @@ TRẢ VỀ JSON DUY NHẤT:
                 except Exception as e:
                     logger.debug(f"[VisionCuration] Refined Google search error: {e}")
 
-            if v_idx >= 0:
+            if v_idx >= 0 and (not is_hook_photo or v_score >= 7.0):
                 winner_item = pool[v_idx]["item"]
                 if vision_pool[v_idx].get("_vision_alternates"):
                     winner_item["_vision_alternates"] = vision_pool[v_idx]["_vision_alternates"]

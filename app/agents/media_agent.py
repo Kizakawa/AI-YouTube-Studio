@@ -710,7 +710,7 @@ If no real entities found, return empty array: []"""
                 ),
                 "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8" if is_image_target else "*/*",
             }
-            if ref and not any(domain in target_u for domain in ["wikimedia.org", "wikipedia.org", "pexels.com", "pixabay.com"]):
+            if ref and not any(domain in target_u for domain in ["wikimedia.org", "wikipedia.org", "pexels.com", "pixabay.com", "bing.net", "gstatic.com"]):
                 headers["Referer"] = ref
 
             downloaded_ok = False

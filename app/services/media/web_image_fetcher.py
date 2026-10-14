@@ -132,7 +132,7 @@ class WebImageFetcher:
             murl = d.get("murl") or ""
             turl = d.get("turl") or ""
             # Nâng cấp turl trên CDN Bing lên độ phân giải cao làm phao cứu sinh 100% không bao giờ lỗi 403
-            hi_turl = f"{turl}&w=1080&h=1920&c=7&rs=1&pid=ImgDetMain" if (turl and "tse" in turl and "&w=" not in turl) else turl
+            hi_turl = f"{turl}&w=1080&h=1920&c=7&rs=1&pid=ImgDetMain" if (turl and "bing.net" in turl and "&w=" not in turl) else turl
             out.append({
                 "image": murl,
                 "thumbnail": turl or murl,
@@ -157,7 +157,12 @@ class WebImageFetcher:
         for r in raw:
             turl = r.get("thumbnail") or ""
             if turl and not r.get("fallback_url"):
-                r["fallback_url"] = turl
+                hi_turl = (
+                    f"{turl}&w=1080&h=1920&c=7&rs=1"
+                    if ("bing.net" in turl and "&w=" not in turl)
+                    else turl
+                )
+                r["fallback_url"] = hi_turl
             r["engine"] = "ddgs"
         return raw
 

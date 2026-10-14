@@ -1035,12 +1035,20 @@ class VideoPipeline:
         search_first = os.getenv("SEARCH_FIRST_VISUAL_MODE", "true").strip().lower() not in ("0", "false", "no", "off")
         creature_first = os.getenv("CREATURE_ART_FIRST", "true").strip().lower() not in ("0", "false", "no", "off")
         is_creature = bool(v_analysis and v_analysis.get("creature_mode"))
+        is_hook_video_priority = (
+            scene.scene_id == 1
+            and not is_creature
+            and (channel_visual_mode in ("stock_footage", "pexels_stock", "video") or channel_niche in ("wildlife_predators", "animal_rescue"))
+        )
         if (
             (search_first or (creature_first and is_creature))
             and channel_visual_mode not in ("imagen_ai", "ai_image")
+            and not is_hook_video_priority
         ):
             try:
-                va_dict = v_analysis or {}
+                va_dict = dict(v_analysis or {})
+                va_dict["scene_id"] = scene.scene_id
+                va_dict["is_hook_scene"] = (scene.scene_id == 1)
                 g_queries = (
                     (va_dict.get("creature_queries") if is_creature else None)
                     or va_dict.get("google_image_queries")
@@ -1062,16 +1070,28 @@ class VideoPipeline:
                     out_img = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_{tag_suffix}.jpg")
                     await asyncio.to_thread(self._media_agent.download_file, c_url, out_img)
                     if Path(out_img).exists() and Path(out_img).stat().st_size > 3000 and self._is_valid_image_file(out_img):
-                        ids = extract_media_identity(c_url)
-                        if used_pool_urls is not None:
-                            used_pool_urls.update(ids)
-                        if used_asset_paths is not None:
-                            used_asset_paths.update(ids)
-                            used_asset_paths.add(out_img)
-                        record_used_media(c_url, query=c_query, source=searched_photo.get("source", "google_search"), media_path=out_img)
-                        badge = "🐙 [Quái vật Rùng Rợn 3D]" if is_creature else "🔎 [Gemini Search 3D]"
-                        logger.info(f"Scene {scene.scene_id}: {badge} {searched_photo.get('source')}: {str(searched_photo.get('title', ''))[:55]}")
-                        return out_img
+                        if scene.scene_id == 1:
+                            from app.services.media.image_quality import assess_image_wow_factor
+                            wow_info = assess_image_wow_factor(out_img)
+                            v_score = float(searched_photo.get("vision_score") or 0.0)
+                            if not wow_info.get("is_wow", True) and not is_creature and v_score < 7.2:
+                                logger.info(
+                                    f"Scene 1: ⚠️ Ảnh web chưa đạt ngưỡng WOW bitmap (score={wow_info.get('wow_score')}/10, "
+                                    f"lum={wow_info.get('luminance')}, contrast={wow_info.get('contrast')}) → Chuyển sang Video Hành Động / AI 8K Masterpiece!"
+                                )
+                                Path(out_img).unlink(missing_ok=True)
+                                out_img = ""
+                        if out_img and Path(out_img).exists():
+                            ids = extract_media_identity(c_url)
+                            if used_pool_urls is not None:
+                                used_pool_urls.update(ids)
+                            if used_asset_paths is not None:
+                                used_asset_paths.update(ids)
+                                used_asset_paths.add(out_img)
+                            record_used_media(c_url, query=c_query, source=searched_photo.get("source", "google_search"), media_path=out_img)
+                            badge = "🐙 [Quái vật Rùng Rợn 3D]" if is_creature else "🔎 [Gemini Search 3D]"
+                            logger.info(f"Scene {scene.scene_id}: {badge} {searched_photo.get('source')}: {str(searched_photo.get('title', ''))[:55]}")
+                            return out_img
             except Exception as e_cr:
                 logger.debug(f"Scene {scene.scene_id}: Gemini Search visual error: {e_cr}")
 

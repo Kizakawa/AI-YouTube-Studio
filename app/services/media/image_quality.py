@@ -23,6 +23,7 @@ WATERMARK_DOMAINS = (
     "featurepics", "colourbox", "superstock", "masterfile", "photocase", "eyeem",
     "redbubble", "teepublic", "zazzle", "etsy", "society6", "cafepress", "displate",
     "img.freepik.com/premium-", "freepik.com/premium-", "craiyon.com", "media.craiyon.com",
+    "nightcafe.studio", "images.nightcafe.studio", "deepdreamgenerator", "artbreeder.com",
 )
 
 # Tiêu đề chứa các cụm này gần như chắc chắn là ảnh stock có watermark / clipart / sản phẩm
@@ -574,18 +575,113 @@ def _saliency_center_y(im, crop_h: int) -> int:
     return int((best_y + win / 2) / scale)
 
 
-def _enhance_visual_clarity(im):
-    """Tăng nhẹ độ sắc nét vi mô (micro-sharpness) và độ tương phản để ảnh web/stock rực rỡ chuẩn Full HD."""
-    from PIL import ImageEnhance
+def _enhance_visual_clarity(im, is_hook_scene: bool = False):
+    """
+    Tăng độ sắc nét vi mô (micro-sharpness), độ tương phản và độ bão hòa màu:
+    - Với Cảnh 1 (is_hook_scene=True): Tự động cứu sáng nếu ảnh gốc quá tối (< 72 lum),
+      kích màu HDR (+16% Color), tương phản (+10% Contrast) và độ nét (+22% Sharpness)
+      để tạo hiệu ứng thị giác 'WOW' ngay ở Frame 0.0s.
+    """
+    from PIL import ImageEnhance, ImageStat
     try:
-        im = ImageEnhance.Sharpness(im).enhance(1.08)
-        im = ImageEnhance.Contrast(im).enhance(1.04)
+        if is_hook_scene:
+            lum_stat = ImageStat.Stat(im.convert("L"))
+            mean_lum = float(lum_stat.mean[0]) if lum_stat.mean else 100.0
+            if mean_lum < 72.0:
+                lift = min(1.36, max(1.06, 80.0 / max(mean_lum, 26.0)))
+                im = ImageEnhance.Brightness(im).enhance(lift)
+            im = ImageEnhance.Color(im).enhance(1.16)
+            im = ImageEnhance.Contrast(im).enhance(1.10)
+            im = ImageEnhance.Sharpness(im).enhance(1.22)
+        else:
+            im = ImageEnhance.Sharpness(im).enhance(1.08)
+            im = ImageEnhance.Contrast(im).enhance(1.04)
     except Exception:
         pass
     return im
 
 
-def prepare_vertical(im, target_w: int, target_h: int, max_upscale: float = 2.0):
+def assess_image_wow_factor(image_path: str) -> Dict[str, float]:
+    """
+    Kiểm định chất lượng thị giác 'WOW' thực tế của file ảnh bitmap (0.0 - 10.0):
+    Đo độ sáng sau khi nâng HDR Cảnh 1 (luminance), độ tương phản (contrast stddev),
+    độ chi tiết biên (edge sharpness) và độ rực màu.
+    Hỗ trợ cả phong cách Chiaroscuro / Dark Abyssal (nền tối sâu nhưng có điểm nhấn sáng rực).
+    """
+    from PIL import Image, ImageStat, ImageFilter
+    try:
+        with Image.open(image_path) as im:
+            rgb = im.convert("RGB")
+            w, h = rgb.size
+            small = _enhance_visual_clarity(rgb.resize((180, 320), Image.BILINEAR), is_hook_scene=True)
+            gray = small.convert("L")
+            g_stat = ImageStat.Stat(gray)
+            mean_lum = float(g_stat.mean[0])
+            std_con = float(g_stat.stddev[0])
+            hist = gray.histogram()
+            total_px = max(1, sum(hist))
+            # Điểm sáng 5% đỉnh (p95) để nhận diện mắt phát sáng / rim light trong cảnh biển sâu / kinh dị
+            cum = 0
+            p95_lum = 255
+            for val in range(255, -1, -1):
+                cum += hist[val]
+                if cum >= total_px * 0.05:
+                    p95_lum = val
+                    break
+
+            edges = gray.filter(ImageFilter.FIND_EDGES)
+            edge_energy = float(ImageStat.Stat(edges).mean[0])
+
+            rgb_stat = ImageStat.Stat(small)
+            r_m, g_m, b_m = rgb_stat.mean[:3]
+            color_spread = max(abs(r_m - g_m), abs(g_m - b_m), abs(r_m - b_m)) + sum(rgb_stat.stddev[:3]) / 3.0
+
+            score = 5.4
+            if 45.0 <= mean_lum <= 200.0:
+                score += 1.2
+            elif mean_lum >= 25.0 and p95_lum >= 95:
+                # Phong cách Dark Fantasy / Thalassophobia có điểm nhấn sáng (glowing eyes / storm lightning)
+                score += 0.9
+            elif mean_lum < 18.0 or mean_lum > 240.0:
+                score -= 2.5
+            else:
+                score -= 0.4
+
+            if std_con >= 42.0 or (std_con >= 30.0 and p95_lum >= 110):
+                score += 1.5
+            elif std_con >= 26.0:
+                score += 0.8
+            elif std_con < 16.0:
+                score -= 2.0
+
+            if edge_energy >= 20.0:
+                score += 1.3
+            elif edge_energy >= 12.0:
+                score += 0.7
+            elif edge_energy < 7.5:
+                score -= 1.8
+
+            if color_spread >= 55.0:
+                score += 1.0
+            elif color_spread < 24.0:
+                score -= 0.6
+
+            if min(w, h) >= 720:
+                score += 0.6
+
+            final_score = round(max(0.0, min(10.0, score)), 2)
+            return {
+                "wow_score": final_score,
+                "is_wow": final_score >= 6.5,
+                "luminance": round(mean_lum, 1),
+                "contrast": round(std_con, 1),
+                "sharpness": round(edge_energy, 1),
+            }
+    except Exception:
+        return {"wow_score": 5.0, "is_wow": False, "luminance": 0.0, "contrast": 0.0, "sharpness": 0.0}
+
+
+def prepare_vertical(im, target_w: int, target_h: int, max_upscale: float = 2.0, is_hook_scene: bool = False):
     """
     Đưa ảnh bất kỳ về khung target_w×target_h KHÔNG kéo giãn:
     - Tỷ lệ gần đúng → cover-crop chính giữa.
@@ -602,14 +698,17 @@ def prepare_vertical(im, target_w: int, target_h: int, max_upscale: float = 2.0)
     src_ratio = w / h
 
     if abs(src_ratio - target_ratio) / target_ratio < 0.04:
-        return _enhance_visual_clarity(im.resize((target_w, target_h), Image.LANCZOS))
+        return _enhance_visual_clarity(im.resize((target_w, target_h), Image.LANCZOS), is_hook_scene=is_hook_scene)
 
     if src_ratio < target_ratio:
         # Ảnh cao/hẹp hơn 9:16 → cắt bớt trên/dưới theo saliency dọc (bảo toàn mặt/đầu chủ thể)
         new_h = int(w / target_ratio)
         cy = _saliency_center_y(im, new_h)
         top = min(max(0, cy - new_h // 2), h - new_h)
-        return _enhance_visual_clarity(im.crop((0, top, w, top + new_h)).resize((target_w, target_h), Image.LANCZOS))
+        return _enhance_visual_clarity(
+            im.crop((0, top, w, top + new_h)).resize((target_w, target_h), Image.LANCZOS),
+            is_hook_scene=is_hook_scene,
+        )
 
     # Ảnh rộng hơn 9:16
     crop_w = int(h * target_ratio)
@@ -617,7 +716,10 @@ def prepare_vertical(im, target_w: int, target_h: int, max_upscale: float = 2.0)
     if upscale <= max_upscale or src_ratio < 1.0:
         cx = _saliency_center_x(im, crop_w)
         left = min(max(0, cx - crop_w // 2), w - crop_w)
-        return _enhance_visual_clarity(im.crop((left, 0, left + crop_w, h)).resize((target_w, target_h), Image.LANCZOS))
+        return _enhance_visual_clarity(
+            im.crop((left, 0, left + crop_w, h)).resize((target_w, target_h), Image.LANCZOS),
+            is_hook_scene=is_hook_scene,
+        )
 
     # Ảnh nhỏ & rất ngang: nền mờ + foreground rõ nét (zoom nhẹ 1.12 để chiếm nhiều diện tích hơn)
     bg_scale = max(target_w / w, target_h / h)
@@ -628,7 +730,7 @@ def prepare_vertical(im, target_w: int, target_h: int, max_upscale: float = 2.0)
     bg = ImageEnhance.Brightness(bg).enhance(0.55)
     fg_w = int(target_w * 1.12)
     fg_h = int(h * fg_w / w)
-    fg = _enhance_visual_clarity(im.resize((fg_w, fg_h), Image.LANCZOS))
+    fg = _enhance_visual_clarity(im.resize((fg_w, fg_h), Image.LANCZOS), is_hook_scene=is_hook_scene)
     fl = (fg_w - target_w) // 2
     fg = fg.crop((fl, 0, fl + target_w, fg_h))
     bg.paste(fg, (0, (target_h - fg_h) // 2))
