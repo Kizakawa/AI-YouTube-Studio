@@ -32,28 +32,40 @@ def create_configured_engine(raw_url: str):
         driver_url = db_url
         if driver_url.startswith("postgresql://"):
             driver_url = "postgresql+psycopg2://" + driver_url[len("postgresql://"):]
-        try:
-            eng = create_engine(
-                driver_url,
-                echo=False,
-                pool_size=5,           # Giảm từ 10 → 5 (Supabase Free cho phép max 10 connections)
-                max_overflow=10,       # Giảm từ 20 → 10 cho an toàn
-                pool_pre_ping=True,    # Tự kiểm tra connection sống/chết trước mỗi query
-                pool_recycle=1800,     # [FIX] Tăng từ 300 → 1800s (Supabase đóng idle >600s)
-                pool_timeout=30,       # [FIX] Fail-fast sau 30s nếu không lấy được connection
-                connect_args={"connect_timeout": 10},  # [FIX] TCP timeout 10s thay mặc định 120s
-            )
-            # Test ping connection
-            with eng.connect() as test_conn:
-                test_conn.execute(text("SELECT 1"))
-            logger.info("✅ [Database] Đã kết nối thành công tới PostgreSQL Cloud!")
-            return eng, db_url
-        except Exception as ex:
-            logger.warning(
-                f"⚠️ [Database] Không thể kết nối PostgreSQL ({ex}). "
-                f"Tự động chuyển về SQLite cục bộ (storage/ai_youtube.db) an toàn..."
-            )
-            db_url = f"sqlite:///{settings.BASE_DIR}/storage/ai_youtube.db"
+        last_pg_err = None
+        for pg_attempt in range(1, 4):
+            try:
+                eng = create_engine(
+                    driver_url,
+                    echo=False,
+                    pool_size=5,           # Giảm từ 10 → 5 (Supabase Free cho phép max 10 connections)
+                    max_overflow=10,       # Giảm từ 20 → 10 cho an toàn
+                    pool_pre_ping=True,    # Tự kiểm tra connection sống/chết trước mỗi query
+                    pool_recycle=1800,     # [FIX] Tăng từ 300 → 1800s (Supabase đóng idle >600s)
+                    pool_timeout=30,       # [FIX] Fail-fast sau 30s nếu không lấy được connection
+                    connect_args={
+                        "connect_timeout": 10,
+                        "keepalives": 1,
+                        "keepalives_idle": 30,
+                        "keepalives_interval": 10,
+                        "keepalives_count": 5,
+                    },
+                )
+                # Test ping connection
+                with eng.connect() as test_conn:
+                    test_conn.execute(text("SELECT 1"))
+                logger.info("✅ [Database] Đã kết nối thành công tới PostgreSQL Cloud!")
+                return eng, db_url
+            except Exception as ex:
+                last_pg_err = ex
+                if pg_attempt < 3:
+                    import time as _time
+                    _time.sleep(0.8 * pg_attempt)
+        logger.warning(
+            f"⚠️ [Database] Không thể kết nối PostgreSQL sau 3 lần thử ({last_pg_err}). "
+            f"Tự động chuyển về SQLite cục bộ (storage/ai_youtube.db) an toàn..."
+        )
+        db_url = f"sqlite:///{settings.BASE_DIR}/storage/ai_youtube.db"
 
     # SQLite Configuration
     db_clean_path = db_url.split("sqlite:///")[-1]
@@ -355,4 +367,37 @@ def init_db():
                     f"❌ [DB Migration] Lỗi khi tự động nâng cấp schema PostgreSQL: {migration_err}",
                     exc_info=True
                 )
+
+    # Luôn đồng bộ schema cho cả file SQLite dự phòng (storage/ai_youtube.db) để nếu rớt mạng sang SQLite không bao giờ lỗi thiếu cột
+    try:
+        import sqlite3
+        local_sqlite_path = Path(settings.BASE_DIR) / "storage" / "ai_youtube.db"
+        if local_sqlite_path.exists():
+            with sqlite3.connect(str(local_sqlite_path)) as s_conn:
+                cur = s_conn.cursor()
+                cur.execute("PRAGMA table_info(video_jobs)")
+                s_cols = {r[1] for r in cur.fetchall()}
+                if s_cols:
+                    for c_name, c_type in {
+                        "description": "TEXT",
+                        "scenes_json": "TEXT",
+                        "audio_duration_ms": "INTEGER",
+                        "render_manifest": "TEXT",
+                        "error_message": "TEXT",
+                        "subtitle_path": "VARCHAR(255)",
+                        "updated_at": "DATETIME",
+                        "progress_percent": "INTEGER DEFAULT 0",
+                        "progress_message": "VARCHAR(255)",
+                        "quality_scores": "TEXT",
+                        "is_auto_generated": "INTEGER DEFAULT 0",
+                        "approval_deadline": "DATETIME",
+                        "thumbnail_path": "VARCHAR(500)",
+                        "thumbnail_vertical_path": "VARCHAR(500)",
+                    }.items():
+                        if c_name not in s_cols:
+                            cur.execute(f"ALTER TABLE video_jobs ADD COLUMN {c_name} {c_type}")
+                    s_conn.commit()
+    except Exception:
+        pass
+
 

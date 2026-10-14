@@ -66,11 +66,13 @@ CHANNELS_CONFIG = {
             "Tone: authoritative, hypnotic, analytical, gripping. Strict English only."
         ),
         "topics": [
-            "The Dark Psychology Trick People Use to Make You Trust Them Instantly",
-            "Why Narcissists Never Apologize (The Chilling Psychological Truth)",
-            "How to Spot a Manipulator in 30 Seconds Just by Watching Their Eyes",
-            "The Psychological Reason Why Pathological Liars Look Straight into Your Face",
-            "How Toxic People Test Your Boundaries Before Controlling You",
+            "Why Sociopaths Never Blink When They Lie To Your Face",
+            "If Someone Insults You Disguised As A Joke, Ask This 4-Word Question",
+            "Why FBI Interrogators Watch Your Feet, Never Your Eyes",
+            "The 4-Second Silence Trick That Makes Arrogant People Panic",
+            "Why Narcissists Always Ruin Your Birthday And Special Days",
+            "How To Spot A Fake Friend By How They React To Your Good News",
+            "Why Guilty People Always Repeat Your Question Before Answering",
         ],
         "default_tags": ["shorts", "psychology", "darkpsychology", "manipulation", "mindset", "bodylanguage", "humanbehavior", "lies", "viral"],
     },
@@ -86,17 +88,19 @@ CHANNELS_CONFIG = {
         "publish_hour_utc": 21,
         "director_notes": (
             "Target channel Paws & Hearts Rescue. Tear-jerking emotional animal rescue arc: "
-            "HOOK (0-3s): Heartbreaking visual of an abandoned trembling animal in distress. "
-            "DEVELOPMENT: Gentle human approach, rescuer builds trust through gentle whispers and food. "
-            "CLIMAX: Miraculous medical recovery and emotional transformation to pure happiness and gratitude. "
+            "HOOK (0-3s): Curiosity + Refusal to let go or trembling eye contact ('He refused to let go until...'). "
+            "DEVELOPMENT: Gentle human approach, rescuer builds trust through gentle whispers and warm blanket. "
+            "CLIMAX: Miraculous Day 1 vs Day 30 recovery and joyful sprint in sunlit meadow. "
             "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
             "Tone: compassionate, deeply emotional, heartwarming, uplifting."
         ),
         "topics": [
-            "Traumatized Golden Retriever Refused To Leave The Drain Pipe Until A Rescuer Did This",
-            "Shivering Puppy Tied To A Park Bench In Heavy Rain Finally Hears A Gentle Voice",
-            "Terrified Stray Kitten Hiding Under Car Engine Gets A Second Chance At Life",
-            "Nobody Wanted To Touch This Scared Orphan Dog Until One Loving Woman Stepped Forward",
+            "He Refused To Stop Hugging The Rescuer Who Pulled Him Out Of The Storm",
+            "The Exact Second This Stray Mama Dog Realized Her Puppies Were Safe",
+            "Everyone Walked Past The Senior Shelter Dog Until One Man Read His Sign",
+            "Terrified Stray Puppy Fell Asleep In A Rescuer's Warm Hands For The First Time",
+            "Watch How This Rescued Golden Retriever Reacts The First Time He Sees A Bed",
+            "She Guarded Her Injured Brother In The Rain Until Help Finally Arrived",
         ],
         "default_tags": ["shorts", "animalrescue", "rescuedog", "puppy", "dog", "pets", "heartwarming", "faithinhumanity", "transformation", "animals"],
     },
@@ -112,17 +116,19 @@ CHANNELS_CONFIG = {
         "publish_hour_utc": 21,
         "director_notes": (
             "Target channel Wild Odyssey. Intense 4-beat wildlife predator action: "
-            "HOOK (0-3s): Shocking lethal stat or predatory feat naming the exact predator or 1v1 matchup. "
-            "DEVELOPMENT: Compare bite force, razor claws, ambush speed vs other apex beasts. "
+            "HOOK (0-3s): Counter-intuitive apex fear or shocking lethal stat naming the exact predator or 1v1 matchup. "
+            "DEVELOPMENT: Compare bite force (PSI), razor claws, ambush speed vs other apex beasts. "
             "CLIMAX: The devastating strike or ruthless hunting sequence. "
             "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
             "Tone: cinematic, adrenaline-pumping, dramatic, nature documentary style."
         ),
         "topics": [
-            "Green Anaconda vs Black Caiman: The Deadliest Swamp Ambush Ever Recorded",
-            "Harpy Eagle vs Sloth: The Talon Grip That Crushes Bone Instantly",
-            "Giant River Otter Pack vs Jaguar: Why Even Apex Cats Flee The River",
-            "1,500 PSI Jaguar Bite vs Caiman Armor: How One Strike Ends The Fight",
+            "This Is Why Caimans Are Terrified Of Jaguars In Deep Water",
+            "Why Even A 20-Foot Great White Shark Flees From A Single Orca",
+            "How A Snow Leopard Survives A 60-Foot Vertical Cliff Fall While Hunting",
+            "Honey Badger vs King Cobra: How It Sleeps Off Lethal Neurotoxin",
+            "Harpy Eagle vs Howler Monkey: 530 PSI Talons That Crush Bone Instantly",
+            "Secretary Bird vs Black Mamba: The 195-Newton Stomp In 15 Milliseconds",
         ],
         "default_tags": ["shorts", "wildlife", "predators", "bigcats", "nature", "apexpredator", "jaguar", "animals", "documentary", "viral"],
     },
@@ -137,23 +143,105 @@ CHANNELS_CONFIG = {
         "amazon_tag": "kizakawa-20",
         "publish_hour_utc": 15,  # Staggered Golden Slot
         "director_notes": (
-            "Target channel The mysteries of the world. Spine-chilling deep sea & earth mystery arc: "
-            "HOOK (0-3s): Terrifying stat or suppressed fact about a specific historical/oceanic anomaly. "
-            "DEVELOPMENT: Reveal the impossible scale or danger of the phenomenon with real scientific or historical grounding. "
-            "CLIMAX: The unsettling implication — what it means for humanity if this is real. "
+            "Target channel The mysteries of the world. Spine-chilling deep sea & sensory mystery arc: "
+            "HOOK (0-3s): Visceral 2nd-person biological/sensory phobia ('Your brain', 'Your eyes') or forbidden subterranean anomaly. "
+            "DEVELOPMENT: Reveal the impossible scale or danger of the phenomenon with real scientific grounding. "
+            "CLIMAX: The unsettling implication — what happens to the human body or mind inside this anomaly. "
             "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
-            "Tone: suspenseful, dark, conspiratorial, fear-inducing, documentary-style. Strict English only."
+            "Tone: suspenseful, dark, eerie, fear-inducing, documentary-style. Strict English only."
         ),
         "topics": [
-            "The 52-Hertz Whale Signal Recorded Moving Beneath The Pacific Ocean",
-            "The 2,000-Year-Old Antikythera Mechanism That Rewrote Human History",
-            "The Bermuda Triangle: The Methane Gas Eruption No Ship Can Survive",
-            "5 Restricted Islands on Earth Where Humans Are Strictly Forbidden To Land",
-            "The Giant Squid Sonar Echo Picked Up Beneath Arctic Ice",
-            "Why Explorers Found Tropical Fossils Buried Under 2 Miles Of Antarctic Ice",
+            "Why Deep Sea Divers Never Look Up At The Surface At Night",
+            "What Happens To Your Brain After 45 Minutes In Zero Light And Zero Sound",
+            "Why Commercial Airplanes Are Forbidden From Flying Over This Ocean Grid",
+            "The Terrifying Reason Scientists Sealed The Kola Superdeep Borehole At 40,230 Feet",
+            "Why Your Body Freezes In Sleep Paralysis And What Your Brain Is Hiding",
+            "Inside Movile Cave: Sealed From Earth's Atmosphere For 5.5 Million Years",
         ],
-        "default_tags": ["shorts", "mystery", "deepocean", "unexplained", "bermudatriangle", "deepsea", "archaeology", "creepy", "viral"],
-    }
+        "default_tags": ["shorts", "mystery", "deepocean", "unexplained", "thalassophobia", "deepsea", "science", "creepy", "viral"],
+    },
+    "@alternatehistorywhatif-e2x": {
+        "id": "@alternatehistorywhatif-e2x",
+        "name": "Alternate History & \"What If?",
+        "niche": "alternate_history",
+        "language": "en",
+        "google_account": "accout3",
+        "preferred_voice": "en-US-GuyNeural",
+        "handle": "@alternatehistorywhatif-e2x",
+        "amazon_tag": "kizakawa-20",
+        "publish_hour_utc": 20,
+        "director_notes": (
+            "Target channel Alternate History & What If. Epic counterfactual history & 1-minute butterfly effect arc: "
+            "HOOK (0-3s): The exact 1-minute historical turning point or fatal blunder that rewrote the world map. "
+            "DEVELOPMENT: Historical proof and what happened in real timeline vs counterfactual timeline. "
+            "CLIMAX: How the modern world today would be completely unrecognizable. "
+            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
+            "Tone: cinematic, gripping, Christopher Nolan / Dan Carlin style. Strict English only."
+        ),
+        "topics": [
+            "How One Wrong Turn By A Driver In 1914 Erased Four Empires Forever",
+            "The Man Who Refused To Launch A Nuclear Strike In 1962 Inside Submarine B-59",
+            "How A 15-Minute Rainstorm At Waterloo Ended Napoleon's Empire",
+            "What If The Titanic Never Hit The Iceberg? The Dark Truth Nobody Tells You",
+            "What If The Roman Empire Discovered Steam Engines 1,800 Years Early?",
+            "How One Unlocked Gate In 1453 Ended The 1,000-Year Byzantine Empire",
+        ],
+        "default_tags": ["shorts", "alternatehistory", "whatif", "history", "empires", "timeline", "documentary", "viral"],
+    },
+    "ch_odisseia_selvagem": {
+        "id": "ch_odisseia_selvagem",
+        "name": "Odisseia Selvagem",
+        "niche": "wildlife_predators",
+        "language": "pt-BR",
+        "google_account": "acccount4",
+        "preferred_voice": "pt-BR-AntonioNeural",
+        "handle": "@odisseiaselvagemoficial",
+        "amazon_tag": "kizakawa-20",
+        "publish_hour_utc": 21,
+        "director_notes": (
+            "Target channel Odisseia Selvagem (Brazilian Portuguese). Intense 4-beat wildlife predator action in Pantanal/Amazonia/Cerrado: "
+            "HOOK (0-3s): Shocking 1v1 apex duel or counter-intuitive survival feat in Portuguese (strictly 5-9 words). "
+            "DEVELOPMENT: Real biomechanics, bite force (PSI), ambush speed, and terrain advantage. "
+            "CLIMAX: The decisive strike or unexpected escape. "
+            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
+            "Tone: dramatic, fast-paced, National Geographic Brasil style. Strict Brazilian Portuguese (pt-BR) only."
+        ),
+        "topics": [
+            "Por Que Até o Jacaré-Açu Foge Quando um Bando de Ariranhas Entra no Rio",
+            "Onça-Pintada vs Queixada: O Erro Fatal Que Transforma o Predador em Presa",
+            "Harpia Brasileira vs Bicho-Preguiça: A Garra de 500 PSI Que Esmaga Ossos",
+            "Surucucu-Pico-de-Jaca vs Mussurana: A Cobra Imune ao Veneno Mais Letal",
+            "Poraquê da Amazônia vs Caimão: A Descarga de 860 Volts Debaixo D'Água",
+        ],
+        "default_tags": ["shorts", "animais", "natureza", "vidaanimal", "pantanal", "amazonia", "predadores", "curiosidades", "viral"],
+    },
+    "ch_misterios_do_mundo": {
+        "id": "ch_misterios_do_mundo",
+        "name": "Mistérios do Mundo",
+        "niche": "deep_sea_earth_mysteries",
+        "language": "pt-BR",
+        "google_account": "acccount4",
+        "preferred_voice": "pt-BR-AntonioNeural",
+        "handle": "@misteriosdomundo-tv",
+        "amazon_tag": "kizakawa-20",
+        "publish_hour_utc": 22,
+        "director_notes": (
+            "Target channel Mistérios do Mundo (Brazilian Portuguese). Spine-chilling deep sea & sensory acoustic mystery arc: "
+            "HOOK (0-3s): Visceral acoustic/oceanic anomaly or forbidden scientific recording in Portuguese (strictly 5-9 words). "
+            "DEVELOPMENT: Real depth measurements (meters), sonar data, or biological terror. "
+            "CLIMAX: The unsettling scientific implication that remains unexplained. "
+            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
+            "Tone: suspenseful, dark, eerie documentary style. Strict Brazilian Portuguese (pt-BR) only."
+        ),
+        "topics": [
+            "O Som a 10.994 Metros na Fossa das Marianas Que Fez Cientistas Desligarem o Sonar",
+            "Por Que Mergulhadores Profundos Nunca Olham Para a Superfície à Noite",
+            "O Lago Subterrâneo Selado Há 5 Milhões de Anos Onde Nada Deveria Viver",
+            "O Que Acontece Com Seu Cérebro Após 45 Minutos na Câmara Mais Silenciosa do Mundo",
+            "A Parede Submarina Gigante Que o Satélite Encontrou e Depois Apagou do Mapa",
+        ],
+        "default_tags": ["shorts", "misterios", "oceano", "curiosidades", "bizarro", "ciência", "fatosdesconhecidos", "fundodomar", "viral"],
+    },
 }
 
 
@@ -194,12 +282,26 @@ async def produce_channel_video(channel_key: str, custom_topic: str = None, dry_
 
     from app.agents.content_agent import ContentAgent
     from app.services.quality_evaluator import QualityEvaluator
+    from app.services.channel_intelligence import get_winner_cloner_blueprint, check_idea_similarity, get_channel_existing_portfolio
     agent = ContentAgent()
     evaluator = QualityEvaluator()
 
-    # ── BƯỚC 1: TẠO VÀ ĐÁNH GIÁ CHẤM ĐIỂM KỊCH BẢN ──────────────────────────────
+    # ── BƯỚC 1: TẠO VÀ ĐÁNH GIÁ CHẤM ĐIỂM KỊCH BẢN (TÍCH HỢP WINNER CLONER) ─────────
     print(f"\n[1/5] 📝 BƯỚC 1: Xây dựng & Đánh giá kịch bản viral cho {ch_name}...")
-    topic = custom_topic or random.choice(cfg["topics"])
+    if custom_topic:
+        topic = custom_topic
+    else:
+        try:
+            wb = get_winner_cloner_blueprint(ch_id, niche_id=ch_niche)
+            fresh_pool = wb.get("fresh_sequel_topics") or []
+            if fresh_pool:
+                topic = fresh_pool[0]
+                if wb.get("winner_title"):
+                    print(f"   🏆 [Winner Cloner] Nhân bản từ quán quân '{wb['winner_title']}' ({wb['winner_views']} views)")
+            else:
+                topic = random.choice(cfg["topics"])
+        except Exception:
+            topic = random.choice(cfg["topics"])
     print(f"   -> Chủ đề chọn: {topic}")
 
     script = None

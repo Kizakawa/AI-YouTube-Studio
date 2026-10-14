@@ -34,8 +34,28 @@ def write_channels_yaml(data: Dict[str, Any]) -> bool:
         logger.error(f"Lỗi ghi channels.yaml: {e}")
         return False
 
-def check_account_tokens(account_id: str) -> Dict[str, Any]:
-    """Kiểm tra sự tồn tại và tính hợp lệ của token trong credentials/accounts/{account_id}/"""
+def _is_valid_token_file(file_path: Path) -> bool:
+    """Kiểm tra file token OAuth2 (hỗ trợ cả JSON thuần và JSON mã hóa Fernet)."""
+    if not file_path.exists() or file_path.stat().st_size < 10:
+        return False
+    try:
+        from app.utils.security import load_encrypted_json
+        tok = load_encrypted_json(file_path)
+        if isinstance(tok, dict) and (tok.get("token") or tok.get("refresh_token")):
+            return True
+    except Exception:
+        pass
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            tok = json.load(f)
+            if isinstance(tok, dict) and (tok.get("token") or tok.get("refresh_token")):
+                return True
+    except Exception:
+        pass
+    return False
+
+def check_account_tokens(account_id: str, brand_channels: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    """Kiểm tra sự tồn tại và tính hợp lệ của token trong credentials/accounts/{account_id}/ và credentials/channels/{channel_id}/"""
     base_dir = Path(settings.BASE_DIR)
     acc_dir = base_dir / "credentials" / "accounts" / account_id
 
@@ -49,26 +69,18 @@ def check_account_tokens(account_id: str) -> Dict[str, Any]:
             has_client_secret = True
 
     yt_token_path = acc_dir / "youtube_token.json"
-    youtube_connected = False
-    if yt_token_path.exists():
-        try:
-            with open(yt_token_path, "r", encoding="utf-8") as f:
-                tok = json.load(f)
-                if tok.get("token") or tok.get("refresh_token"):
-                    youtube_connected = True
-        except Exception:
-            pass
+    youtube_connected = _is_valid_token_file(yt_token_path)
+
+    # Nếu các kênh con đã xác thực ở cấp kênh (credentials/channels/{channel_id}/youtube_token.json), ghi nhận kết nối
+    if not youtube_connected and brand_channels:
+        for bch in brand_channels:
+            cid = bch.get("id")
+            if cid and _is_valid_token_file(base_dir / "credentials" / "channels" / cid / "youtube_token.json"):
+                youtube_connected = True
+                break
 
     drive_token_path = acc_dir / "drive_token.json"
-    drive_connected = False
-    if drive_token_path.exists():
-        try:
-            with open(drive_token_path, "r", encoding="utf-8") as f:
-                tok = json.load(f)
-                if tok.get("token") or tok.get("refresh_token"):
-                    drive_connected = True
-        except Exception:
-            pass
+    drive_connected = _is_valid_token_file(drive_token_path)
 
     return {
         "has_client_secret": has_client_secret,
@@ -80,11 +92,15 @@ def get_accounts_enriched() -> List[Dict[str, Any]]:
     """Trả về danh sách tài khoản Google kèm trạng thái token và các kênh con."""
     cfg = read_channels_yaml()
     raw_accounts = cfg.get("google_accounts", [])
+    base_dir = Path(settings.BASE_DIR)
     enriched = []
     for acc in raw_accounts:
         acc_id = acc.get("id", "")
-        token_info = check_account_tokens(acc_id)
         brand_channels = acc.get("brand_channels", [])
+        for bch in brand_channels:
+            cid = bch.get("id", "")
+            bch["youtube_connected"] = _is_valid_token_file(base_dir / "credentials" / "channels" / cid / "youtube_token.json") or _is_valid_token_file(base_dir / "credentials" / "accounts" / acc_id / "youtube_token.json")
+        token_info = check_account_tokens(acc_id, brand_channels=brand_channels)
         enriched.append({
             "id": acc_id,
             "email_label": acc.get("email_label", ""),
@@ -103,18 +119,42 @@ def get_flat_channels() -> List[Dict[str, Any]]:
     cfg = read_channels_yaml()
     return cfg.get("channels", [])
 
+LEGACY_CHANNEL_ALIASES: Dict[str, str] = {
+    "channel_maya": "ch_psychology_of_the_world",
+    "channel_psychology": "ch_psychology_of_the_world",
+    "ucsrjiil67qxidtxt70z-iwa": "ch_the_mysteries_of_the_world",
+    "channel_whatif": "@alternatehistorywhatif-e2x",
+    "ucpbqs4h5qugpu3hcqjg-p9w": "ch_odisseia_selvagem",
+    "@odisseiaselvagemoficial": "ch_odisseia_selvagem",
+    "ucvfonq9jcpvvze8e1cgnng": "ch_misterios_do_mundo",
+    "ucvfonq9jcpvvze8e1cgng": "ch_misterios_do_mundo",
+    "@misteriosdomundo-tv": "ch_misterios_do_mundo",
+}
+
 def get_channel(channel_id: str) -> Optional[Dict[str, Any]]:
-    """Tìm thông tin kênh theo channel_id trong cả flat list và brand_channels."""
+    """Tìm thông tin kênh theo channel_id, youtube_channel_id, handle hoặc alias trong cả flat list và brand_channels."""
+    if not channel_id:
+        return None
+    raw_id = str(channel_id).strip()
+    mapped_id = LEGACY_CHANNEL_ALIASES.get(raw_id.lower(), raw_id)
+    target_lowers = {raw_id.lower(), mapped_id.lower()}
+
     cfg = read_channels_yaml()
     for c in cfg.get("channels", []):
-        if c.get("id") == channel_id:
-            # Tìm thêm thông tin chi tiết trong brand_channels nếu có
+        c_idents = {
+            str(c.get("id") or "").strip().lower(),
+            str(c.get("youtube_channel_id") or "").strip().lower(),
+            str(c.get("handle") or "").strip().lower(),
+            str(c.get("name") or "").strip().lower(),
+        }
+        if target_lowers & c_idents:
+            cid = c.get("id")
             acc_id = c.get("google_account")
             if acc_id:
                 for a in cfg.get("google_accounts", []):
                     if a.get("id") == acc_id:
                         for bc in a.get("brand_channels", []):
-                            if bc.get("id") == channel_id:
+                            if bc.get("id") == cid:
                                 merged = {**c, **bc}
                                 merged["google_account"] = acc_id
                                 return merged
