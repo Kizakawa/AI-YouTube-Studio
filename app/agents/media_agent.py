@@ -427,7 +427,7 @@ If no real entities found, return empty array: []"""
             channel_niche=niche,
         )
 
-        v_analysis = visual_analysis
+        v_analysis = dict(visual_analysis) if visual_analysis else None
         if not v_analysis and scene_narration:
             try:
                 from app.agents.visual_curation_agent import VisualCurationAgent
@@ -442,6 +442,9 @@ If no real entities found, return empty array: []"""
                 )
             except Exception as e:
                 logger.debug(f"[MediaAgent] Context analysis fallback: {e}")
+        if v_analysis is not None:
+            v_analysis["scene_id"] = scene_id
+            v_analysis["is_hook_scene"] = (scene_id == 1)
 
         logger.info(
             f"[MediaAgent] Scene {scene_id} Search: intent='{intent}' | "
@@ -492,14 +495,14 @@ If no real entities found, return empty array: []"""
                 win, rejected = None, False
                 try:
                     from app.agents.visual_curation_agent import VisualCurationAgent
-                    va_hist = {**(v_analysis or {}), "subject": primary_q}
+                    va_hist = {**(v_analysis or {}), "subject": primary_q, "scene_id": scene_id, "is_hook_scene": (scene_id == 1)}
                     win, score, rationale, rejected = VisualCurationAgent().curate_candidate_photos(
                         candidates=hist_pool, visual_analysis=va_hist, narration=scene_narration,
                         topic=topic, visual_keyword=primary_q, used_urls=used,
                     )
                 except Exception as e:
                     logger.debug(f"[MediaAgent] Historical curation error: {e}")
-                if not win and not rejected:
+                if not win and not rejected and scene_id != 1:
                     win = hist_pool[0]
                 if win and win.get("url"):
                     register_download_fallbacks(win, hist_pool)
@@ -603,6 +606,8 @@ If no real entities found, return empty array: []"""
                     topic=topic or primary_q,
                     scene_id=scene_id,
                 )
+                v_analysis["scene_id"] = scene_id
+                v_analysis["is_hook_scene"] = (scene_id == 1)
                 winner_photo, score, rationale, should_ai = curator.curate_candidate_photos(
                     candidates=candidate_photos,
                     visual_analysis=v_analysis,
@@ -611,25 +616,27 @@ If no real entities found, return empty array: []"""
                     visual_keyword=visual_keyword or primary_q,
                     used_urls=used,
                 )
-                if winner_photo and score >= 6.0 and not should_ai:
+                min_p_score = 7.0 if scene_id == 1 else 6.0
+                if winner_photo and score >= min_p_score and not should_ai:
                     u = winner_photo.get("url")
                     if u and not is_media_already_used(u, used):
                         register_download_fallbacks(winner_photo, candidate_photos)
                         used.update(extract_media_identity(u))
                         return winner_photo
-                elif should_ai:
-                    logger.info(f"[MediaAgent] VisualCurationAgent từ chối stock photos ({rationale}), ưu tiên chuyển AI Media.")
+                elif should_ai or scene_id == 1:
+                    logger.info(f"[MediaAgent] VisualCurationAgent từ chối ảnh chưa đủ WOW ({rationale}), chuyển sang 8K AI Masterpiece.")
             except Exception as e:
                 logger.debug(f"[MediaAgent] VisualCurationAgent candidate photos error: {e}")
-                # Dự phòng heuristic nếu Agent lỗi
-                for p in candidate_photos:
-                    u = p.get("url")
-                    if u and not is_media_already_used(u, used):
-                        alt_desc = p.get("alt") or p.get("title", "")
-                        if not is_incongruent_stock_image(alt_desc, topic=topic, narration=scene_narration):
-                            register_download_fallbacks(p, candidate_photos)
-                            used.update(extract_media_identity(u))
-                            return p
+                if scene_id != 1:
+                    # Dự phòng heuristic nếu Agent lỗi (không áp dụng mù quáng cho Cảnh 1 Hook)
+                    for p in candidate_photos:
+                        u = p.get("url")
+                        if u and not is_media_already_used(u, used):
+                            alt_desc = p.get("alt") or p.get("title", "")
+                            if not is_incongruent_stock_image(alt_desc, topic=topic, narration=scene_narration):
+                                register_download_fallbacks(p, candidate_photos)
+                                used.update(extract_media_identity(u))
+                                return p
 
         if self.api_key and not should_try_video:
             target_query = stock_query or fallback_q

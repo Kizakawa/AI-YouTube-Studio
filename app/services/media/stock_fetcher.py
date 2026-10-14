@@ -415,7 +415,9 @@ class StockFetcher:
         if subject and not va.get("subject"):
             va = {**va, "subject": subject}
 
+        is_hook_photo = bool(va.get("is_hook_scene") or va.get("scene_id") == 1)
         winner = None
+        score = 0.0
         try:
             from app.agents.visual_curation_agent import VisualCurationAgent
             winner, score, rationale, should_ai = VisualCurationAgent().curate_candidate_photos(
@@ -426,13 +428,21 @@ class StockFetcher:
                 visual_keyword=query,
                 used_urls=used,
             )
-            if not winner and should_ai:
-                logger.info(f"[StockFetcher] Agent từ chối ảnh stock cho '{query}' ({rationale}) → để pipeline sinh ảnh AI.")
+            if winner is not None:
+                winner["vision_score"] = float(score or 0.0)
+            if not winner and (should_ai or is_hook_photo):
+                logger.info(
+                    f"[StockFetcher] {'🔥 Cảnh 1 Hook' if is_hook_photo else 'Agent'} từ chối ảnh chưa đủ WOW cho '{query}' "
+                    f"({rationale}) → chuyển sang sinh 8K AI Masterpiece / Video!"
+                )
                 return None
         except Exception as e:
             logger.debug(f"[StockFetcher] Lỗi curate ảnh: {e}")
 
-        winner = winner or candidates[0]
+        if not winner:
+            if is_hook_photo:
+                return None
+            winner = candidates[0]
         try:
             from app.agents.media_agent import register_download_fallbacks
             register_download_fallbacks(winner, candidates)
@@ -542,12 +552,14 @@ class StockFetcher:
         recent_history = get_recent_media_urls(limit=150)
         used.update(recent_history)
 
+        is_hook_vid = bool((visual_analysis or {}).get("is_hook_scene") or (visual_analysis or {}).get("scene_id") == 1)
         clean_q = clean_scene_search_query(query, max_words=3)
         words = clean_q.split() if clean_q else query.split()
 
         # Thang truy vấn: cụ thể -> đồng nghĩa phổ biến (caiman -> crocodile) -> cảnh toàn đúng bối cảnh
+        # CẤM TUYỆT ĐỐI dùng cảnh toàn (establishing shot rừng/sông trống rỗng) cho Cảnh 1 (Hook 0.0s)!
         ladder = build_query_ladder(query, narration=narration, topic=topic)
-        establishing = [] if _establishing_pass else ladder["establishing"]
+        establishing = [] if (_establishing_pass or is_hook_vid) else ladder["establishing"]
 
         candidate_queries: List[str] = []
 
@@ -668,7 +680,7 @@ class StockFetcher:
             if est_res:
                 return est_res
 
-        if not collected_candidates:
+        if not collected_candidates and not is_hook_vid:
             combined_text = f"{query} {narration} {clean_q}".lower()
             theme_fallbacks = []
             if any(w in combined_text for w in ["animal", "wildlife", "bird", "lion", "tiger", "leopard", "cheetah", "chim", "báo", "sư tử", "hổ", "động vật", "thú"]):
@@ -706,7 +718,8 @@ class StockFetcher:
                     narration=narration or query,
                     used_urls=used,
                 )
-                if winner and score >= 4.8:
+                min_vid_score = 7.2 if is_hook_vid else 4.8
+                if winner and score >= min_vid_score:
                     formatted_winner = self.format_video_candidate(winner, query=query, used=used)
                     if formatted_winner and formatted_winner.get("url"):
                         record_used_media(formatted_winner["url"], query=query, source=formatted_winner.get("source", "curated_video"))
@@ -716,14 +729,21 @@ class StockFetcher:
                         if used_urls is not None:
                             used_urls.update(ids)
                         return formatted_winner
-                if should_ai:
-                    est_res = _try_establishing_pass(f"AI Vision từ chối clip cụ thể ({str(rationale)[:80]})")
-                    if est_res:
-                        return est_res
-                    logger.info(f"[StockFetcher] VisualCurationAgent từ chối stock video ({rationale}), chuyển sang AI Video.")
+                if should_ai or is_hook_vid:
+                    if not is_hook_vid:
+                        est_res = _try_establishing_pass(f"AI Vision từ chối clip cụ thể ({str(rationale)[:80]})")
+                        if est_res:
+                            return est_res
+                    logger.info(
+                        f"[StockFetcher] {'🔥 Cảnh 1 Hook' if is_hook_vid else 'VisualCurationAgent'} từ chối stock video chưa đủ WOW "
+                        f"(score={score:.1f} < {min_vid_score}, {rationale}) → chuyển sang 8K AI Masterpiece!"
+                    )
                     return None
             except Exception as e:
                 logger.debug(f"[StockFetcher] Lỗi khi gọi VisualCurationAgent: {e}")
+
+        if is_hook_vid:
+            return None
 
         candidates_found = []
         for v in collected_candidates:

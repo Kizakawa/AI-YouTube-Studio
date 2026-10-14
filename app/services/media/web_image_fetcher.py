@@ -105,21 +105,17 @@ class WebImageFetcher:
                 "count": min(limit, 35),
                 "mmasync": 1,
                 "adlt": safe_mode,
-                "mkt": "en-US",
-                "setlang": "en-us",
-                "qft": "+filterui:imagesize-large",
             },
             headers={
                 "User-Agent": _UA,
                 "Accept-Language": "en-US,en;q=0.9",
-                "Cookie": "SRCHHPGUSR=ADLT=OFF&CW=1920&CH=1080;",
             },
             timeout=9,
         )
         if res.status_code != 200:
             raise RuntimeError(f"Bing HTTP {res.status_code}")
         out = []
-        for chunk in res.text.split('class="iusc"')[1:]:
+        for chunk in res.text.split("iusc")[1:]:
             m = _re.search(r'\bm="(\{[^"]+\})"', chunk)
             if not m:
                 continue

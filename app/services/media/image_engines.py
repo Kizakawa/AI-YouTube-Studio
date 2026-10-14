@@ -240,17 +240,26 @@ class PollinationsEngine(BaseEngine):
         self.key = os.getenv("POLLINATIONS_API_KEY", "").strip()
 
     def configured(self) -> bool:
-        return bool(self.key)
+        return os.getenv("POLLINATIONS_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
 
     def generate(self, prompt: str, seed: int) -> bytes:
         enc = urllib.parse.quote(prompt[:900])
-        url = f"https://image.pollinations.ai/prompt/{enc}?width={GEN_W}&height={GEN_H}&model=flux&nologo=true&seed={seed}"
-        r = requests.get(url, headers={"Authorization": f"Bearer {self.key}"}, timeout=90)
-        if r.status_code in (401, 402, 403):
-            raise EngineError(f"Pollinations {r.status_code}: key sai hoặc hết Pollen", fatal=True)
-        if r.status_code != 200 or len(r.content) < 5000:
-            raise EngineError(f"Pollinations HTTP {r.status_code}")
-        return r.content
+        headers = {"User-Agent": "Mozilla/5.0"}
+        if self.key:
+            headers["Authorization"] = f"Bearer {self.key}"
+        # Ưu tiên thử model flux (15s), nếu nghẽn mạng tự động chuyển tức thì sang turbo (~7s, 100% miễn phí không cần key)
+        last_err = ""
+        for model_name, t_out in (("flux", 15), ("turbo", 22)):
+            url = f"https://image.pollinations.ai/prompt/{enc}?width={GEN_W}&height={GEN_H}&model={model_name}&nologo=true&seed={seed}"
+            try:
+                r = requests.get(url, headers=headers, timeout=t_out)
+                if r.status_code == 200 and len(r.content) >= 5000:
+                    return r.content
+                last_err = f"{model_name}: HTTP {r.status_code}"
+            except Exception as e:
+                last_err = f"{model_name}: {type(e).__name__}"
+                continue
+        raise EngineError(f"Pollinations thất bại ({last_err})")
 
 
 _ENGINE_CLASSES = {

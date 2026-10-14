@@ -1108,9 +1108,8 @@ class VideoPipeline:
                 return True
 
         if (
-            (search_first or (creature_first and is_creature))
+            (search_first or (creature_first and is_creature) or scene.scene_id == 1)
             and channel_visual_mode not in ("imagen_ai", "ai_image")
-            and not is_hook_video_priority
         ):
             try:
                 va_dict = dict(v_analysis or {})
