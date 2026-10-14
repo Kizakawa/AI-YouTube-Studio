@@ -587,17 +587,19 @@ def image_to_video(
             scale_h = int(height * scale_factor)
             # KHÔNG resize thẳng (ảnh ngang sẽ bị bóp méo) → crop 9:16 bám chủ thể / nền mờ nếu ảnh nhỏ
             from app.services.media.image_quality import prepare_vertical
-            im_resized = prepare_vertical(im, scale_w, scale_h, max_upscale=2.0 * scale_factor)
-            im_resized.save(norm_path, "JPEG", quality=90)
+            im_resized = prepare_vertical(
+                im, scale_w, scale_h, max_upscale=2.0 * scale_factor, is_hook_scene=is_hook_scene
+            )
+            im_resized.save(norm_path, "JPEG", quality=94 if is_hook_scene else 90)
             image_path = norm_path
     except Exception as e:
         raise ValueError(f"File ảnh không hợp lệ hoặc không thể đọc '{image_path}': {e}")
 
     d = max(int(duration_seconds * fps) + 2, fps)  # Tổng số frames (+2 frame đệm an toàn cho -t)
     if is_hook_scene:
-        # Cú Punch-in Zoom kịch tính cho Scene 1 (1.08 -> 1.28) tạo thumbstopper giật mắt người xem ngay frame 0
+        # Cú Punch-in Shockwave Zoom kịch tính cho Scene 1 (1.08 -> 1.34) tạo thumbstopper giật mắt người xem ngay frame 0
         z_start = 1.08
-        z_end   = 1.28
+        z_end   = 1.34
     else:
         z_start = 1.02
         z_end   = 1.20  # Zoom nhanh 20% giàu năng lượng, chống cảm giác ảnh đứng yên
@@ -606,17 +608,26 @@ def image_to_video(
     # Level 6 Ultra-Fast Multi-Shot Beat Cut Engine (0.9s-1.2s Pacing):
     # Biến 1 cảnh 1.8s-3.0s thành chuỗi 2-3 cú nhảy góc máy chớp nhoáng (Wide -> Medium Punch-In -> Extreme Close-Up)
     # giúp nhịp hình ảnh dồn dập từng giây, triệt tiêu 100% cảm giác chậm hay dài lê thê.
-    mid_snap_frame = int(d * 0.42)
-    second_snap_frame = int(d * 0.72)
-    if duration_seconds >= 2.5:
+    if is_hook_scene:
+        # Scene 1 Hook: Luôn kích hoạt 2 nhịp giật ống kính cực nhanh (34% và 68% thời lượng) bất kể câu hook ngắn 1.5s hay 2.5s
+        mid_snap_frame = int(d * 0.34)
+        second_snap_frame = int(d * 0.68)
         snap_expr = (
-            f"+0.09*min(max((on-{mid_snap_frame})/3\\,0)\\,1)"
-            f"+0.07*min(max((on-{second_snap_frame})/3\\,0)\\,1)"
+            f"+0.10*min(max((on-{mid_snap_frame})/2.5\\,0)\\,1)"
+            f"+0.08*min(max((on-{second_snap_frame})/2.5\\,0)\\,1)"
         )
-    elif duration_seconds >= 1.4:
-        snap_expr = f"+0.09*min(max((on-{mid_snap_frame})/3\\,0)\\,1)"
     else:
-        snap_expr = ""
+        mid_snap_frame = int(d * 0.42)
+        second_snap_frame = int(d * 0.72)
+        if duration_seconds >= 2.5:
+            snap_expr = (
+                f"+0.09*min(max((on-{mid_snap_frame})/3\\,0)\\,1)"
+                f"+0.07*min(max((on-{second_snap_frame})/3\\,0)\\,1)"
+            )
+        elif duration_seconds >= 1.4:
+            snap_expr = f"+0.09*min(max((on-{mid_snap_frame})/3\\,0)\\,1)"
+        else:
+            snap_expr = ""
 
     if not zoom_effect:
         zoompan = (
@@ -626,9 +637,9 @@ def image_to_video(
             f"fps={fps}"
         )
     elif camera_motion == "hyper_zoom":
-        # Lao nhanh siêu tốc vào tâm vũ trụ / warp speed
+        # Lao nhanh siêu tốc vào tâm vũ trụ / warp speed (+ beat-cut snap cho Scene 1 Hook)
         zoompan = (
-            f"zoompan=z='1.05+0.35*pow(min(on/{d}\\,1)\\,1.8)':"
+            f"zoompan=z='1.06+0.34*pow(min(on/{d}\\,1)\\,1.6){snap_expr if is_hook_scene else ''}':"
             f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
             f"d={d}:s={width}x{height}:fps={fps},"
             f"setsar=1"
@@ -743,6 +754,12 @@ def image_to_video(
             vf_parts.append(clean_vf_filter)
         if grading.get("vignette"):
             vf_parts.append(grading['vignette'])
+
+    if is_hook_scene:
+        # 0.22s Optical Impact Pop (Frame 0.0s Flash & Contrast Punch) tạo cú nổ thị giác ngay mili-giây đầu tiên
+        vf_parts.append(
+            "eq=brightness='0.06*max(0\\,1-t/0.22)':contrast='1.05+0.09*max(0\\,1-t/0.22)':saturation='1.10':eval=frame"
+        )
     vf_chain = ",".join(vf_parts)
 
     enc_args = get_video_encoder_args(quality="intermediate")
@@ -871,6 +888,102 @@ def multi_pose_loop_to_video(
 # CHECKPOINT B: Cắt + Ghép N clips
 # ──────────────────────────────────────────────
 
+def find_hook_peak_action_offset(input_path: str, target_duration: float) -> float:
+    """
+    Quét siêu tốc (4fps @ 90x160 RGB24 trong ~0.12s) 12 giây đầu của stock video clip
+    để tìm đúng khoảnh khắc có chuyển động kịch tính nhất (Peak Action Energy) + Frame 0 sáng rõ.
+    Giúp Scene 1 (0.0s) nhảy thẳng vào pha hành động bùng nổ thay vì 1-2 giây lia máy tĩnh ở đầu video stock.
+    """
+    try:
+        src_sec = get_duration_ms(input_path) / 1000.0
+        if src_sec <= target_duration + 0.6:
+            return 0.0
+
+        scan_sec = min(src_sec, 12.0)
+        sample_fps = 4
+        w, h = 90, 160
+        frame_bytes = w * h * 3
+
+        cmd = [
+            get_ffmpeg_cmd(),
+            "-v", "quiet",
+            "-i", input_path,
+            "-t", f"{scan_sec:.1f}",
+            "-vf", f"fps={sample_fps},scale={w}:{h}",
+            "-f", "rawvideo",
+            "-pix_fmt", "rgb24",
+            "-",
+        ]
+        res = subprocess.run(cmd, capture_output=True, timeout=6)
+        raw = res.stdout or b""
+        n_frames = len(raw) // frame_bytes
+        win_frames = max(int(target_duration * sample_fps), 4)
+        if n_frames <= win_frames + 1:
+            return 0.0
+
+        from PIL import Image, ImageChops, ImageStat
+        lums: List[float] = []
+        contrasts: List[float] = []
+        motions: List[float] = []
+        prev_g = None
+
+        for i in range(n_frames):
+            chunk = raw[i * frame_bytes : (i + 1) * frame_bytes]
+            im = Image.frombytes("RGB", (w, h), chunk)
+            g = im.convert("L")
+            st = ImageStat.Stat(g)
+            lums.append(float(st.mean[0]))
+            contrasts.append(float(st.stddev[0]))
+            if prev_g is not None:
+                diff = ImageChops.difference(g, prev_g)
+                motions.append(float(ImageStat.Stat(diff).mean[0]))
+            else:
+                motions.append(0.0)
+            prev_g = g
+
+        if len(motions) > 1:
+            motions[0] = motions[1]
+
+        def _score_window(start_idx: int) -> float:
+            f0_lum = lums[start_idx]
+            f0_con = contrasts[start_idx]
+            # Phạt nặng nếu Frame 0 tối đen (< 50) hoặc cháy trắng (> 220) hoặc mờ phẳng (< 25)
+            if f0_lum < 50.0 or f0_lum > 220.0 or f0_con < 25.0:
+                penalty = -25.0
+            else:
+                penalty = 0.0
+            early_end = min(start_idx + 3, n_frames)
+            win_end = min(start_idx + win_frames, n_frames)
+            early_motion = sum(motions[start_idx:early_end]) / max(early_end - start_idx, 1)
+            win_motion = sum(motions[start_idx:win_end]) / max(win_end - start_idx, 1)
+            f0_quality = min(f0_con / 52.0, 1.35) + (0.25 if 62.0 <= f0_lum <= 195.0 else 0.0)
+            return early_motion * 1.70 + win_motion * 1.15 + f0_quality * 7.5 + penalty
+
+        base_score = _score_window(0)
+        best_idx = 0
+        best_score = base_score
+        max_start_idx = n_frames - win_frames
+
+        for idx in range(1, max_start_idx + 1):
+            sc = _score_window(idx)
+            if sc > best_score:
+                best_score = sc
+                best_idx = idx
+
+        # Chỉ dịch điểm cắt nếu cửa sổ mới có độ kịch tính vượt trội (>= +12% hoặc đầu video gốc quá tĩnh/tối)
+        if best_idx > 0 and (best_score >= base_score * 1.12 or lums[0] < 55.0 or motions[0] < 3.5):
+            seek_sec = round(best_idx / float(sample_fps), 2)
+            if seek_sec + target_duration <= src_sec + 0.15:
+                logger.info(
+                    f"  ⚡ [Hook Peak-Action Seek] Tự động tua qua {seek_sec:.2f}s đầu tĩnh → "
+                    f"bắt đầu ngay đỉnh hành động (MotionScore {base_score:.1f} → {best_score:.1f})"
+                )
+                return seek_sec
+    except Exception as e:
+        logger.debug(f"[find_hook_peak_action_offset] Bỏ qua quét peak action: {e}")
+    return 0.0
+
+
 def trim_video(
     input_path: str,
     duration_seconds: float,
@@ -881,6 +994,7 @@ def trim_video(
     is_scifi: bool = False,
     niche: Optional[str] = None,
     apply_grading: bool = True,
+    is_hook_scene: bool = False,
 ) -> str:
     """
     Cắt video Pexels về đúng duration cần thiết + scale/crop 9:16 + chuẩn hóa fps 30.
@@ -888,6 +1002,9 @@ def trim_video(
     Bỏ audio gốc của stock video.
     Áp dụng Cinematic Color Grading & Vignette chuẩn hóa theo từng Niche (100% Free Native FFmpeg Filter).
     Tự động nhận diện và KHÔNG áp grading 2 lần nếu clip nguồn đã được render từ trước.
+    Đặc biệt cho Scene 1 (is_hook_scene=True):
+    - Quét Peak-Action Smart Seek để bỏ qua 1-2s đầu tĩnh, nhảy thẳng vào khoảnh khắc cao trào ngay Frame 0.0s.
+    - Kích hoạt 3-Stage Shockwave Multi-Shot Cut + 0.22s Optical Impact Pop.
     """
     # Tránh double-grading (nếu clip đã qua image_to_video hoặc trim_video trước đó)
     input_filename = Path(input_path).name.lower()
@@ -903,14 +1020,29 @@ def trim_video(
         grading_parts.append(grading['vf_filter'])
         if grading.get("vignette"):
             grading_parts.append(grading['vignette'])
+        if is_hook_scene:
+            # 0.22s Optical Impact Pop (Frame 0.0s Flash & Contrast Punch) cho video mở đầu
+            grading_parts.append(
+                "eq=brightness='0.06*max(0\\,1-t/0.22)':contrast='1.05+0.09*max(0\\,1-t/0.22)':saturation='1.10':eval=frame"
+            )
 
     grading_chain = ("," + ",".join(grading_parts)) if grading_parts else ""
 
     # Level 6 Ultra-Fast Multi-Shot Beat Cut cho Stock Video (0.9s-1.2s Pacing):
+    # - Nếu là Scene 1 (is_hook_scene): Luôn cắt 3 góc máy dồn dập (0-34%: 100%, 34-68%: 87%, 68-100%: 76%) kể cả câu hook ngắn 1.5s
     # - Nếu clip >= 2.5s: Cắt 3 góc máy nhanh (0-40%: Góc rộng 100%, 40-70%: Góc trung 88%, 70-100%: Cận cảnh 80%)
     # - Nếu clip >= 1.4s: Cắt 2 góc máy nhanh (0-45%: Góc rộng 100%, 45-100%: Cận cảnh 88%)
     if is_already_rendered:
         crop_snap = ""
+    elif is_hook_scene:
+        t1 = duration_seconds * 0.34
+        t2 = duration_seconds * 0.68
+        crop_snap = (
+            f",crop=w='if(gte(t\\,{t2:.2f})\\,{width}*0.76\\,if(gte(t\\,{t1:.2f})\\,{width}*0.87\\,{width}))':"
+            f"h='if(gte(t\\,{t2:.2f})\\,{height}*0.76\\,if(gte(t\\,{t1:.2f})\\,{height}*0.87\\,{height}))':"
+            f"x='(in_w-out_w)/2':y='(in_h-out_h)/2',"
+            f"scale={width}:{height}"
+        )
     elif duration_seconds >= 2.5:
         t1 = duration_seconds * 0.40
         t2 = duration_seconds * 0.70
@@ -940,11 +1072,17 @@ def trim_video(
         f"fps={fps}"
     )
 
+    seek_args: List[str] = []
+    if is_hook_scene and not is_already_rendered:
+        seek_sec = find_hook_peak_action_offset(input_path, duration_seconds)
+        if seek_sec >= 0.25:
+            seek_args = ["-ss", f"{seek_sec:.2f}"]
+
     # Clip ngắn hơn lời thoại một chút (≤ 1.6x) → kéo dãn slow-motion nhẹ thay vì lặp lại (lặp rất dễ bị nhận ra)
-    loop_args = ["-stream_loop", "-1"]
+    loop_args = ["-stream_loop", "-1"] if not seek_args else []
     try:
         src_sec = get_duration_ms(input_path) / 1000.0
-        if 0.5 < src_sec < duration_seconds:
+        if not seek_args and 0.5 < src_sec < duration_seconds:
             factor = duration_seconds / src_sec
             if factor <= 1.6:
                 vf_chain = f"setpts={factor + 0.02:.4f}*PTS," + vf_chain
@@ -958,6 +1096,7 @@ def trim_video(
     enc_args = get_video_encoder_args(quality="intermediate")
     args = [
         *loop_args,
+        *seek_args,
         "-i", input_path,
         "-t", str(duration_seconds),
         "-vf", vf_chain,

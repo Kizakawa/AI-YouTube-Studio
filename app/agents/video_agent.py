@@ -283,6 +283,7 @@ class VideoAgent:
                     is_scifi=is_scifi_clip,
                     niche=clip_niche,
                     apply_grading=(not is_already_rendered),
+                    is_hook_scene=is_hook,
                 )
             elif raw_type in ("comic_anim", "multi_pose", "2d_loop") or getattr(scene, "pose_images", None):
                 pose_list = getattr(scene, "pose_images", None) or [scene.media_path]
