@@ -8,8 +8,11 @@ Smart Golden Slot Scheduler — Thuật toán tính toán và phân bổ khe gi�
 - Tương thích 100% với YouTube Data API v3 (status.publishAt).
 """
 
+import json
 import logging
+import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Tuple, Dict, Any, List, Optional, Set
 from app.database.models import get_db, VideoJob
 

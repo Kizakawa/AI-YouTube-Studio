@@ -2,6 +2,7 @@
 app.graph.nodes.script_nodes — Các Node xử lý Kịch bản & Tinh chỉnh tự động trong LangGraph.
 """
 import logging
+import os
 from pathlib import Path
 from typing import Dict, Any
 

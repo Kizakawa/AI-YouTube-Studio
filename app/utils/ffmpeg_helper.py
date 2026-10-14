@@ -10,6 +10,7 @@ Render Checkpoints:
   D: validate_output()    — QA tự động bằng ffprobe
 """
 import os
+import re
 import shutil
 import subprocess
 import json
@@ -867,7 +868,6 @@ def multi_pose_loop_to_video(
         "-vf", ",".join(vf_parts),
         "-t", str(duration_seconds),
         *enc_args,
-        *BT709_COLOR_ARGS,
         "-r", str(fps),
         "-an",
         output_path
@@ -905,7 +905,7 @@ def find_hook_peak_action_offset(input_path: str, target_duration: float) -> flo
         frame_bytes = w * h * 3
 
         cmd = [
-            get_ffmpeg_cmd(),
+            shutil.which("ffmpeg") or "ffmpeg",
             "-v", "quiet",
             "-i", input_path,
             "-t", f"{scan_sec:.1f}",

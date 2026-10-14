@@ -7,9 +7,11 @@ Luồng chính:
 Mỗi bước ghi checkpoint vào DB. Nếu crash → resume từ checkpoint cuối.
 """
 import asyncio
-import logging
-import shutil
 import json
+import logging
+import os
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Optional, List, Tuple, Callable, Awaitable, Dict, Set, Any
 

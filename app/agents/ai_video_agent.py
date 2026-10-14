@@ -12,14 +12,16 @@ Hỗ trợ 2 phương pháp sản xuất cốt lõi:
    - Thử nghiệm qua mô hình Video AI ngoại vi (HuggingFace / Fal / Pollinations), tự động dự phòng sang Motion Engine.
    - Áp dụng khi: Hiện tượng siêu nhiên, năng lượng huyền bí, vũ trụ 4D, lỗ đen, khói sương trừu tượng.
 """
+import asyncio
+import base64
 import logging
 import os
 import re
-import asyncio
 import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional, Dict, Any
+import requests
 
 from app.agents.image_agent import ImageAgent
 from app.utils.ffmpeg_helper import image_to_video, run_ffmpeg, trim_video

@@ -153,8 +153,8 @@ Respond ONLY in valid JSON:
 }}
 """
         import requests
-        from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
-        rotator = KeyRotator(keys)
+        from app.utils.key_rotator import GEMINI_PRIORITY_MODELS
+        rotator = self.rotator
         headers = {"Content-Type": "application/json"}
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
