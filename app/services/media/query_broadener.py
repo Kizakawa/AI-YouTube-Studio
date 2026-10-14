@@ -198,7 +198,17 @@ def build_query_ladder(query: str, narration: str = "", topic: str = "") -> Dict
 
 
 def is_real_world_nature_topic(topic: str = "", narration: str = "") -> bool:
-    """Chủ đề thiên nhiên / địa danh có thật -> nên ưu tiên footage thật thay vì ảnh AI tự vẽ."""
+    """
+    Chủ đề thiên nhiên / địa danh có thật -> nên ưu tiên footage thật thay vì ảnh AI tự vẽ.
+    Lưu ý: Nếu chủ đề là Quái vật thần thoại / Thủy quái / Sinh vật huyền bí (Kraken, Leviathan, Megalodon, Thủy quái...)
+    thì KHÔNG phải thiên nhiên quay phim thật trên Pexels -> trả về False để ưu tiên CGI / ArtStation 8K.
+    """
+    try:
+        from app.services.media.image_quality import is_creature_subject
+        if is_creature_subject("", narration=narration, topic=topic):
+            return False
+    except Exception:
+        pass
     return bool(detect_biomes(topic, narration))
 
 

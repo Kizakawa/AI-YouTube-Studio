@@ -72,8 +72,27 @@ class WebImageFetcher:
         logger.warning(f"[WebImage] Nguồn '{name}' lỗi/timeout → tạm ngắt {minutes} phút, dùng nguồn khác.")
 
     @staticmethod
+    def _concise_art_query(query: str, max_words: int = 3) -> str:
+        """Rút gọn truy vấn dài thành 2-3 từ khóa chủ thể cốt lõi cho ArtStation / Wallhaven API."""
+        import re as _re
+        fluff = {
+            "cinematic", "8k", "4k", "concept", "art", "artstation", "movie", "scene", "cgi",
+            "still", "dramatic", "hd", "stunning", "viral", "high", "resolution", "wallpaper",
+            "photography", "photo", "terrifying", "scary", "creepy", "nightmare", "thalassophobia",
+            "megalophobia", "eldritch", "unreal", "engine", "render", "masterpiece", "hyperrealistic",
+            "photorealistic", "vertical", "the", "and", "with", "from", "into", "under", "over",
+        }
+        words = [
+            w for w in _re.findall(r"[A-Za-z0-9]+", (query or "").lower())
+            if len(w) > 2 and w not in fluff
+        ]
+        if not words:
+            return (query or "").strip()
+        return " ".join(words[:max_words])
+
+    @staticmethod
     def _raw_bing_images(query: str, limit: int = 35) -> List[Dict]:
-        """Bing Images qua endpoint async (HTML) — ưu tiên ảnh độ phân giải lớn (imagesize-large), trả kèm kích thước & thumbnail CDN."""
+        """Bing Images qua endpoint async (HTML) — ép chuẩn quốc tế en-US, ưu tiên ảnh lớn (imagesize-large), kèm CDN fallback 1080p."""
         import html as _html
         import re as _re
         from urllib.parse import urlparse
@@ -86,10 +105,16 @@ class WebImageFetcher:
                 "count": min(limit, 35),
                 "mmasync": 1,
                 "adlt": safe_mode,
+                "mkt": "en-US",
+                "setlang": "en-us",
                 "qft": "+filterui:imagesize-large",
             },
-            headers={"User-Agent": _UA, "Accept-Language": "en-US,en;q=0.9"},
-            timeout=10,
+            headers={
+                "User-Agent": _UA,
+                "Accept-Language": "en-US,en;q=0.9",
+                "Cookie": "SRCHHPGUSR=ADLT=OFF&CW=1920&CH=1080;",
+            },
+            timeout=9,
         )
         if res.status_code != 200:
             raise RuntimeError(f"Bing HTTP {res.status_code}")
@@ -104,25 +129,157 @@ class WebImageFetcher:
                 continue
             size = _re.search(r'nowrap[^>]*>\s*(\d+)\s*(?:x|×|&#215;)\s*(\d+)', chunk)
             purl = d.get("purl") or ""
+            murl = d.get("murl") or ""
+            turl = d.get("turl") or ""
+            # Nâng cấp turl trên CDN Bing lên độ phân giải cao làm phao cứu sinh 100% không bao giờ lỗi 403
+            hi_turl = f"{turl}&w=1080&h=1920&c=7&rs=1&pid=ImgDetMain" if (turl and "tse" in turl and "&w=" not in turl) else turl
             out.append({
-                "image": d.get("murl"),
-                "thumbnail": d.get("turl"),
+                "image": murl,
+                "thumbnail": turl or murl,
+                "fallback_url": hi_turl or turl,
                 "title": _html.unescape(d.get("t") or ""),
-                "width": int(size.group(1)) if size else 0,
-                "height": int(size.group(2)) if size else 0,
-                "source": urlparse(purl).netloc.replace("www.", "") if purl else "web",
+                "width": int(size.group(1)) if size else 1080,
+                "height": int(size.group(2)) if size else 1920,
+                "source": urlparse(purl).netloc.replace("www.", "") if purl else "bing_web",
                 "url": purl,
+                "engine": "bing",
             })
         return out
 
     @staticmethod
-    def _raw_ddgs_images(query: str, limit: int = 15) -> List[Dict]:
+    def _raw_ddgs_images(query: str, limit: int = 20) -> List[Dict]:
         try:
             from ddgs import DDGS
         except ImportError:
             from duckduckgo_search import DDGS
         safe_mode = "off" if bypass_copyright_enabled() else "moderate"
-        return list(DDGS(timeout=8).images(query, region="wt-wt", safesearch=safe_mode, max_results=limit))
+        raw = list(DDGS(timeout=8).images(query, region="us-en", safesearch=safe_mode, max_results=limit))
+        for r in raw:
+            turl = r.get("thumbnail") or ""
+            if turl and not r.get("fallback_url"):
+                r["fallback_url"] = turl
+            r["engine"] = "ddgs"
+        return raw
+
+    @classmethod
+    def _raw_artstation_images(cls, query: str, limit: int = 18) -> List[Dict]:
+        """ArtStation API v2 — Kho tác phẩm 3D Render, Concept Art 8K, Dark Fantasy, Quái vật CGI đỉnh cao thế giới."""
+        import re as _re
+        short_q = cls._concise_art_query(query, max_words=3)
+        if not short_q:
+            return []
+        headers = {
+            "User-Agent": _UA,
+            "Accept": "application/json, text/plain, */*",
+            "Referer": "https://www.artstation.com/search",
+        }
+        res = requests.get(
+            "https://www.artstation.com/api/v2/search/projects.json",
+            params={"query": short_q, "page": 1, "per_page": min(limit, 24), "sorting": "relevance"},
+            headers=headers,
+            timeout=8,
+        )
+        if res.status_code != 200:
+            raise RuntimeError(f"ArtStation HTTP {res.status_code}")
+        data = res.json().get("data") or []
+        if len(data) < 3 and len(short_q.split()) > 1:
+            # Thử lại với 1-2 từ khóa cốt lõi nhất (vd: "kraken monster" hoặc "kraken")
+            core_q = cls._concise_art_query(query, max_words=2)
+            if core_q and core_q != short_q:
+                res2 = requests.get(
+                    "https://www.artstation.com/api/v2/search/projects.json",
+                    params={"query": core_q, "page": 1, "per_page": min(limit, 24), "sorting": "relevance"},
+                    headers=headers,
+                    timeout=7,
+                )
+                if res2.status_code == 200:
+                    data = data + (res2.json().get("data") or [])
+
+        out: List[Dict] = []
+        seen = set()
+        for item in data:
+            cover = item.get("smaller_square_cover_url") or item.get("cover_url") or ""
+            if not cover or not cover.startswith("http"):
+                continue
+            # Chuyển URL thumbnail vuông của ArtStation sang bản full-res '/large/' (1920p-4K)
+            full_url = _re.sub(
+                r"/(smaller_square|medium|small|micro_square|square|\d+)/",
+                "/large/",
+                cover,
+                count=1,
+            )
+            if full_url in seen:
+                continue
+            seen.add(full_url)
+            title = (item.get("title") or short_q).strip()
+            permalink = item.get("permalink") or item.get("url") or "https://www.artstation.com"
+            out.append({
+                "image": full_url,
+                "thumbnail": cover,
+                "fallback_url": cover,
+                "title": f"{title} - ArtStation 8K Concept Art ({short_q})",
+                "width": 1920,
+                "height": 1080,
+                "source": "artstation.com",
+                "url": permalink,
+                "engine": "artstation",
+            })
+            if len(out) >= limit:
+                break
+        return out
+
+    @classmethod
+    def _raw_wallhaven_images(cls, query: str, limit: int = 16) -> List[Dict]:
+        """Wallhaven API v1 — Kho hình nền 2K/4K/8K điện ảnh, siêu nét, không bao giờ có watermark."""
+        short_q = cls._concise_art_query(query, max_words=2)
+        if not short_q:
+            return []
+        res = requests.get(
+            "https://wallhaven.cc/api/v1/search",
+            params={"q": short_q, "sorting": "relevance", "purity": "100", "page": 1},
+            headers={"User-Agent": _UA},
+            timeout=8,
+        )
+        if res.status_code != 200:
+            raise RuntimeError(f"Wallhaven HTTP {res.status_code}")
+        data = res.json().get("data") or []
+        if len(data) < 2 and len(short_q.split()) > 1:
+            first_word = short_q.split()[0]
+            if len(first_word) > 3 and first_word not in ("giant", "dark", "deep"):
+                res2 = requests.get(
+                    "https://wallhaven.cc/api/v1/search",
+                    params={"q": first_word, "sorting": "relevance", "purity": "100", "page": 1},
+                    headers={"User-Agent": _UA},
+                    timeout=7,
+                )
+                if res2.status_code == 200:
+                    data = data + (res2.json().get("data") or [])
+
+        out: List[Dict] = []
+        seen = set()
+        for item in data:
+            full_url = item.get("path") or ""
+            if not full_url or full_url in seen:
+                continue
+            seen.add(full_url)
+            thumbs = item.get("thumbs") or {}
+            thumb_url = thumbs.get("large") or thumbs.get("original") or full_url
+            w = int(item.get("dimension_x") or 1920)
+            h = int(item.get("dimension_y") or 1080)
+            out.append({
+                "image": full_url,
+                "thumbnail": thumb_url,
+                "fallback_url": thumb_url,
+                "title": f"{short_q} 4K Ultra HD Wallpaper ({item.get('category', 'digital art')})",
+                "width": w,
+                "height": h,
+                "source": "wallhaven.cc",
+                "url": item.get("url") or "https://wallhaven.cc",
+                "engine": "wallhaven",
+            })
+            if len(out) >= limit:
+                break
+        return out
 
     @staticmethod
     def _raw_serper_images(query: str, limit: int = 20) -> List[Dict]:
@@ -143,11 +300,13 @@ class WebImageFetcher:
             out.append({
                 "image": r.get("imageUrl"),
                 "thumbnail": r.get("thumbnailUrl") or r.get("imageUrl"),
+                "fallback_url": r.get("thumbnailUrl") or "",
                 "title": r.get("title") or "",
                 "width": r.get("imageWidth") or 0,
                 "height": r.get("imageHeight") or 0,
                 "source": r.get("domain") or r.get("source") or "web",
                 "url": r.get("link") or "",
+                "engine": "serper",
             })
         return out
 
@@ -156,10 +315,7 @@ class WebImageFetcher:
         """
         Tìm kiếm trực tiếp trên Google Images (chế độ ảnh lớn tbs=isz:l) như thanh tìm kiếm Google/Gemini:
         - Ưu tiên Google Custom Search API nếu có GOOGLE_SEARCH_API_KEY + GOOGLE_SEARCH_CX.
-        - Trích xuất trực tiếp từ dữ liệu nhúng AF_initDataCallback của Google Images:
-          + URL ảnh gốc độ phân giải cao (full-res original image URL) kèm kích thước thực (width, height).
-          + URL thumbnail trên máy chủ Google (encrypted-tbn0.gstatic.com) để Gemini Vision luôn đọc được 100% không bị chặn 403/Cloudflare.
-          + Tiêu đề bài viết gốc và tên miền nguồn (source domain, page_url) để chấm điểm ngữ cảnh & gửi Referer khi tải.
+        - Trích xuất trực tiếp từ dữ liệu nhúng AF_initDataCallback của Google Images.
         """
         import html as _html
         import re as _re
@@ -198,11 +354,13 @@ class WebImageFetcher:
                         out.append({
                             "image": link,
                             "thumbnail": img_meta.get("thumbnailLink") or link,
+                            "fallback_url": img_meta.get("thumbnailLink") or "",
                             "title": item.get("title") or item.get("snippet") or query,
                             "width": int(img_meta.get("width") or 1280),
                             "height": int(img_meta.get("height") or 720),
                             "source": (item.get("displayLink") or "google").replace("www.", ""),
                             "url": ctx_link,
+                            "engine": "google_images",
                         })
             except Exception as e:
                 logger.debug(f"[WebImage] Google CSE fallback: {e}")
@@ -229,14 +387,13 @@ class WebImageFetcher:
                 "ijn": "0",
             },
             headers=headers,
-            timeout=10,
+            timeout=8,
         )
         if res.status_code != 200:
             if out:
                 return out
             raise RuntimeError(f"Google Images HTTP {res.status_code}")
 
-        # Giải mã các ký tự escape trong khối dữ liệu JSON nhúng của Google Images
         text = (
             res.text
             .replace("\\u003d", "=")
@@ -247,8 +404,6 @@ class WebImageFetcher:
             .replace('\\"', '"')
         )
 
-        # Mẫu dữ liệu chuẩn trong AF_initDataCallback của Google Images:
-        # ["https://encrypted-tbn0.gstatic.com/images?q=tbn:...", thumb_h, thumb_w], ["https://full-res-url...", orig_h, orig_w]
         pair_pattern = _re.compile(
             r'\[\s*"(https://encrypted-tbn0\.gstatic\.com/images\?[^"]+)"\s*,\s*(\d+)\s*,\s*(\d+)\s*\]'
             r'\s*,\s*\[\s*"(https?://(?!encrypted-tbn0\.gstatic\.com)[^"\s]+)"\s*,\s*(\d+)\s*,\s*(\d+)\s*\]'
@@ -260,7 +415,6 @@ class WebImageFetcher:
         for m in pair_pattern.finditer(text):
             thumb_url = m.group(1)
             orig_url = m.group(4)
-            # Lưu ý: Google Images lưu [url, height, width] (chiều cao trước, chiều rộng sau)
             orig_h = int(m.group(5) or 0)
             orig_w = int(m.group(6) or 0)
 
@@ -271,7 +425,6 @@ class WebImageFetcher:
                 continue
             seen_urls.add(orig_url)
 
-            # Tìm thông tin trang đích & tiêu đề ngay phía sau cặp ảnh trong cấu trúc cây JSON của Google
             tail = text[m.end(): m.end() + 1400]
             page_url = ""
             title = ""
@@ -280,7 +433,6 @@ class WebImageFetcher:
                 page_url = m_meta.group(1)
                 title = _html.unescape(m_meta.group(2))
             else:
-                # Fallback tìm cặp (page_url, title) gần nhất trong phạm vi 900 ký tự
                 m_alt = _re.search(r'"(https?://(?!encrypted-tbn0\.gstatic\.com)[^"]+)"\s*,\s*"([^"\n]{4,180})"', tail[:900])
                 if m_alt:
                     page_url = m_alt.group(1)
@@ -290,6 +442,7 @@ class WebImageFetcher:
             out.append({
                 "image": orig_url,
                 "thumbnail": thumb_url or orig_url,
+                "fallback_url": thumb_url or "",
                 "title": title or query,
                 "width": orig_w or 1280,
                 "height": orig_h or 720,
@@ -301,14 +454,14 @@ class WebImageFetcher:
                 break
 
         if not out and "/httpservice/retry/enablejs" in res.text:
-            raise RuntimeError("Google Images yêu cầu JS challenge (chuyển sang Serper/Bing/DDGS)")
+            raise RuntimeError("Google Images yêu cầu JS challenge (chuyển sang Bing HD/ArtStation/DDGS/Wallhaven)")
         return out
 
     @staticmethod
     def _looks_relevant(raw: List[Dict], query: str) -> bool:
         """
         Nguồn cào miễn phí khi bị giới hạn thường trả kết quả RÁC (vd: tìm "kraken" ra xe máy / nước ngọt).
-        Nếu < 25% tiêu đề chứa từ khóa chính của truy vấn → coi như nguồn đang hỏng.
+        Nếu < 20% tiêu đề chứa từ khóa chính của truy vấn → coi như nguồn đang hỏng.
         """
         from app.services.media.image_quality import subject_terms
         generic = {
@@ -330,92 +483,128 @@ class WebImageFetcher:
                 for t in terms
             )
         )
-        return hits / len(sample) >= 0.25
+        return hits / len(sample) >= 0.20
 
-    def search_open_web(self, query: str, per_page: int = 8) -> List[Dict]:
-        """
-        Tìm kiếm ảnh thực tế từ toàn bộ mạng Internet với ưu tiên số 1 là Google Images (như Gemini trên Google Search),
-        kết hợp Serper / Bing / DuckDuckGo.
-        Thứ tự nguồn: OPEN_WEB_ENGINES (mặc định "google,serper,bing,ddgs").
-        """
+    def _run_single_open_engine(self, eng: str, query: str, per_page: int) -> List[Dict]:
+        """Chạy 1 engine tìm kiếm ảnh đơn lẻ và chuẩn hóa kết quả."""
         from app.services.media.image_quality import is_watermark_risk
+        if not self._engine_ok(eng):
+            return []
+        if eng == "serper" and not os.getenv("SERPER_API_KEY", "").strip():
+            return []
+        try:
+            raw_results: List[Dict] = []
+            if eng == "bing":
+                raw_results = self._raw_bing_images(query, limit=35)
+            elif eng == "artstation":
+                raw_results = self._raw_artstation_images(query, limit=max(per_page * 2, 14))
+            elif eng == "ddgs":
+                raw_results = self._raw_ddgs_images(query, limit=max(per_page * 3, 20))
+            elif eng == "wallhaven":
+                raw_results = self._raw_wallhaven_images(query, limit=max(per_page * 2, 12))
+            elif eng == "serper":
+                raw_results = self._raw_serper_images(query, limit=25)
+            elif eng == "google":
+                raw_results = self._raw_google_images(query, limit=max(per_page * 4, 30))
 
-        out: List[Dict] = []
-        seen = set()
-        engines = [e.strip() for e in os.getenv("OPEN_WEB_ENGINES", "google,serper,bing,ddgs").split(",") if e.strip()]
+            if raw_results and eng not in ("artstation", "wallhaven") and not self._looks_relevant(raw_results, query):
+                logger.info(f"[WebImage] {eng} trả kết quả ít liên quan cho '{query}' → bỏ qua")
+                return []
 
-        for eng in engines:
-            if not self._engine_ok(eng):
-                continue
-            if eng == "serper" and not os.getenv("SERPER_API_KEY", "").strip():
-                continue
-            try:
-                raw_results: List[Dict] = []
-                if eng == "google":
-                    raw_results = self._raw_google_images(query, limit=max(per_page * 4, 30))
-                elif eng == "serper":
-                    raw_results = self._raw_serper_images(query, limit=25)
-                elif eng == "bing":
-                    raw_results = self._raw_bing_images(query, limit=35)
-                elif eng == "ddgs":
-                    raw_results = self._raw_ddgs_images(query, limit=max(per_page * 3, 15))
-
-                if raw_results and not self._looks_relevant(raw_results, query):
-                    logger.info(f"[WebImage] {eng} trả kết quả ít liên quan cho '{query}' → thử nguồn kế tiếp")
+            items: List[Dict] = []
+            for r in raw_results:
+                img_url = r.get("image")
+                if not img_url:
+                    continue
+                clean_url = str(img_url).lower().split("?")[0]
+                if clean_url.endswith((".svg", ".gif", ".ico")):
                     continue
 
-                for r in raw_results:
-                    img_url = r.get("image")
-                    if not img_url or img_url in seen:
-                        continue
-                    seen.add(img_url)
+                w = r.get("width") or 1080
+                h = r.get("height") or 1920
+                try:
+                    w, h = int(w), int(h)
+                except Exception:
+                    w, h = 1080, 1920
 
-                    clean_url = str(img_url).lower().split("?")[0]
-                    if clean_url.endswith((".svg", ".gif", ".ico")):
-                        continue
+                if not _aspect_ok(w, h, max_aspect=2.8):
+                    continue
 
-                    w = r.get("width") or 1080
-                    h = r.get("height") or 1920
-                    try:
-                        w, h = int(w), int(h)
-                    except Exception:
-                        w, h = 1080, 1920
+                source_site = r.get("source") or "web"
+                title = r.get("title") or query
+                thumb = r.get("thumbnail") or img_url
+                fb_url = r.get("fallback_url") or (thumb if thumb != img_url else "")
+                engine_tag = "google_images" if eng in ("google", "serper", "bing", "artstation", "wallhaven") else "open_web"
 
-                    if not _aspect_ok(w, h, max_aspect=2.8):
-                        continue
-
-                    source_site = r.get("source") or "web"
-                    title = r.get("title") or query
-                    engine_tag = "google_images" if eng in ("google", "serper") else "open_web"
-
-                    item = {
-                        "url": img_url,
-                        "thumbnail": r.get("thumbnail") or img_url,
-                        "fallback_url": r.get("thumbnail") if (r.get("thumbnail") and "gstatic.com" in str(r.get("thumbnail"))) else "",
-                        "title": title,
-                        "alt": title,
-                        "width": w,
-                        "height": h,
-                        "source": engine_tag,
-                        "provider": eng,
-                        "license": "Web Public (Fair Use)",
-                        "creator": source_site,
-                        "page_url": r.get("url") or "",
-                        "attribution": f"Web image from {source_site} (via {eng})",
-                    }
-                    # Bỏ ảnh từ trang stock trả phí / bán tranh in (luôn dính watermark) và ảnh quá nhỏ
-                    if is_watermark_risk(item) or min(w, h) < 450:
-                        continue
-                    out.append(item)
-                    if len(out) >= per_page:
-                        break
-
-                if len(out) >= max(4, per_page // 2):
+                item = {
+                    "url": img_url,
+                    "thumbnail": thumb,
+                    "fallback_url": fb_url,
+                    "title": title,
+                    "alt": title,
+                    "width": w,
+                    "height": h,
+                    "source": engine_tag,
+                    "provider": eng,
+                    "license": "Web Public (Fair Use)",
+                    "creator": source_site,
+                    "page_url": r.get("url") or "",
+                    "attribution": f"Web image from {source_site} (via {eng})",
+                }
+                if is_watermark_risk(item) or min(w, h) < 420:
+                    continue
+                items.append(item)
+                if len(items) >= max(per_page, 8):
                     break
-            except Exception as e:
-                logger.debug(f"[WebImage] {eng} lỗi cho '{query}': {e}")
-                self._engine_fail(eng, minutes=1 if eng == "google" else 2)
+            return items
+        except Exception as e:
+            logger.debug(f"[WebImage] {eng} lỗi cho '{query}': {e}")
+            self._engine_fail(eng, minutes=15 if eng == "google" else 2)
+            return []
 
+    def search_open_web(self, query: str, per_page: int = 10) -> List[Dict]:
+        """
+        Tìm kiếm ảnh đa luồng song song chuẩn Google Search (Bing HD + ArtStation 4K + DDGS + Wallhaven 4K + Serper/Google).
+        Trả về tập ứng viên đa dạng gồm cả CGI điện ảnh, Concept Art 8K, Wallpaper 4K và ảnh thực tế sắc nét.
+        """
+        default_engines = "bing,artstation,ddgs,wallhaven,serper,google"
+        engines = [e.strip() for e in os.getenv("OPEN_WEB_ENGINES", default_engines).split(",") if e.strip()]
+        active_engines = [
+            e for e in engines
+            if self._engine_ok(e) and not (e == "serper" and not os.getenv("SERPER_API_KEY", "").strip())
+        ]
+        if not active_engines:
+            # Nếu toàn bộ bị tạm ngắt, mở lại bing + artstation + ddgs ngay lập tức
+            active_engines = ["bing", "artstation", "ddgs", "wallhaven"]
+            for e in active_engines:
+                self._engine_block_until.pop(e, None)
+
+        # Chạy song song tối đa 4 nguồn mạnh nhất để tổng thời gian luôn < 1.2s
+        parallel_batch = active_engines[:4]
+        buckets: List[List[Dict]] = []
+        with ThreadPoolExecutor(max_workers=len(parallel_batch)) as ex:
+            futures = [ex.submit(self._run_single_open_engine, eng, query, per_page) for eng in parallel_batch]
+            for f in futures:
+                try:
+                    buckets.append(f.result(timeout=9))
+                except Exception:
+                    buckets.append([])
+
+        # Trộn xen kẽ (round-robin) giữa các nguồn (Bing HD, ArtStation 8K, DDGS, Wallhaven 4K) để Gemini Vision có đủ góc nhìn
+        out: List[Dict] = []
+        seen = set()
+        max_len = max((len(b) for b in buckets), default=0)
+        target_limit = max(per_page, 12)
+        for idx in range(max_len):
+            for b in buckets:
+                if idx < len(b):
+                    it = b[idx]
+                    u = it.get("url")
+                    if u and u not in seen:
+                        seen.add(u)
+                        out.append(it)
+                        if len(out) >= target_limit:
+                            return out
         return out
 
     # ─────────────────────────────── Wikipedia Page Images ─────────────────────

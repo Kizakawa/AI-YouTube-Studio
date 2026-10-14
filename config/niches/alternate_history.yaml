@@ -76,7 +76,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: +20%
+  rate: +31%
   pitch: -2Hz
   bgm_vibe: deep cinematic ticking clock, ominous orchestral brass, slow thunderous war drums
   sfx_cues:

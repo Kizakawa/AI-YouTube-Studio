@@ -73,7 +73,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-BrianNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: +21%
+  rate: +33%
   pitch: 0Hz
   bgm_vibe: futuristic synth pulse, cyberpunk electronic arpeggio, deep bass riser
   sfx_cues:

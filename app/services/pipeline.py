@@ -630,43 +630,7 @@ class VideoPipeline:
 
                 p_ai = v_analysis.get("cinematic_ai_prompt") or sc_strat.get("ai_prompt") or scene.visual_prompt or scene.visual_keyword
 
-                # 1. IMAGE_TO_VIDEO (Tạo video bám sát ảnh chủ đề 8K)
-                if not media_path and prod_method == "IMAGE_TO_VIDEO":
-                    ai_vid_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_i2v.mp4")
-                    res_v = await ai_video_agent.generate_image_to_video(
-                        prompt=p_ai,
-                        output_path=ai_vid_path,
-                        duration_seconds=dur,
-                        scene_id=scene.scene_id,
-                        camera_motion=sc_strat.get("camera_motion", "zoom_in"),
-                        visual_prompt=scene.visual_prompt,
-                        used_urls=used_asset_paths,
-                        visual_analysis=v_analysis,
-                        narration=scene.narration,
-                    )
-                    if res_v and Path(res_v).exists():
-                        media_path = res_v
-                        used_asset_paths.add(res_v)
-
-                # 2. TEXT_TO_VIDEO (Sinh video AI trực tiếp kỳ ảo)
-                elif not media_path and prod_method == "TEXT_TO_VIDEO":
-                    ai_vid_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_t2v.mp4")
-                    res_v = await ai_video_agent.generate_text_to_video(
-                        prompt=p_ai,
-                        output_path=ai_vid_path,
-                        duration_seconds=dur,
-                        scene_id=scene.scene_id,
-                        camera_motion=sc_strat.get("camera_motion", "zoom_in"),
-                        visual_prompt=scene.visual_prompt,
-                        used_urls=used_asset_paths,
-                        visual_analysis=v_analysis,
-                        narration=scene.narration,
-                    )
-                    if res_v and Path(res_v).exists():
-                        media_path = res_v
-                        used_asset_paths.add(res_v)
-
-                # 3. Fallback hoặc các phương pháp REAL_ARCHIVE, STOCK_FOOTAGE
+                # 1. ƯU TIÊN SỐ 1: Tải Media qua _fetch_scene_media (Tầng 0: Gemini Google Search ảnh tĩnh -> VideoAgent render 1 lần song song)
                 if not media_path:
                     media_path = await self._fetch_scene_media(
                         scene=scene,
@@ -689,6 +653,42 @@ class VideoPipeline:
                         if m_md5:
                             used_asset_paths.add(f"md5:{m_md5}")
                             used_pool_urls.add(f"md5:{m_md5}")
+
+                # 2. Dự phòng IMAGE_TO_VIDEO / TEXT_TO_VIDEO nếu _fetch_scene_media chưa lấy được file
+                if not media_path and prod_method == "IMAGE_TO_VIDEO":
+                    ai_vid_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_i2v.mp4")
+                    res_v = await ai_video_agent.generate_image_to_video(
+                        prompt=p_ai,
+                        output_path=ai_vid_path,
+                        duration_seconds=dur,
+                        scene_id=scene.scene_id,
+                        camera_motion=sc_strat.get("camera_motion", "zoom_in"),
+                        visual_prompt=scene.visual_prompt,
+                        used_urls=used_asset_paths,
+                        visual_analysis=v_analysis,
+                        narration=scene.narration,
+                        skip_web_search=True,
+                    )
+                    if res_v and Path(res_v).exists():
+                        media_path = res_v
+                        used_asset_paths.add(res_v)
+                elif not media_path and prod_method == "TEXT_TO_VIDEO":
+                    ai_vid_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_t2v.mp4")
+                    res_v = await ai_video_agent.generate_text_to_video(
+                        prompt=p_ai,
+                        output_path=ai_vid_path,
+                        duration_seconds=dur,
+                        scene_id=scene.scene_id,
+                        camera_motion=sc_strat.get("camera_motion", "zoom_in"),
+                        visual_prompt=scene.visual_prompt,
+                        used_urls=used_asset_paths,
+                        visual_analysis=v_analysis,
+                        narration=scene.narration,
+                        skip_web_search=True,
+                    )
+                    if res_v and Path(res_v).exists():
+                        media_path = res_v
+                        used_asset_paths.add(res_v)
 
                 # ── Thẩm định & Chấm điểm độ liên quan với MediaRelevanceAgent (bỏ qua nếu đã qua Gemini Vision Search) ──
                 already_vision_curated = bool(
@@ -1161,27 +1161,6 @@ class VideoPipeline:
                         used_asset_paths.update(ids)
                         used_asset_paths.add(output)
                     record_used_media(cand_url, query=scene.visual_keyword or topic, source=c_src, media_path=output)
-
-                    # ── NÂNG CẤP ĐỘNG: Nếu cảnh cần video mà chỉ tải được ảnh tĩnh, chuyển hóa ngay thành Video Clip 3D MP4 ──
-                    if prefer_video and c_type != "video":
-                        try:
-                            from app.agents.ai_video_agent import AIVideoAgent
-                            ai_vid_agent = AIVideoAgent()
-                            anim_path = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_{c_src}_anim.mp4")
-                            res_anim = ai_vid_agent.animate_thematic_image(
-                                image_path=output,
-                                output_path=anim_path,
-                                duration_seconds=scene.actual_duration_seconds,
-                                camera_motion=sc_strat.get("camera_motion", "zoom_in") if sc_strat else "zoom_in",
-                                is_hook=(scene.scene_id == 1),
-                            )
-                            if res_anim and Path(res_anim).exists() and Path(res_anim).stat().st_size > 5000:
-                                logger.info(f"Scene {scene.scene_id}: 🎬 Đã nâng cấp ảnh {c_src} thành Video Clip chuyển động 3D MP4: {anim_path}")
-                                if used_asset_paths is not None:
-                                    used_asset_paths.add(anim_path)
-                                return anim_path
-                        except Exception as ex_anim:
-                            logger.debug(f"Scene {scene.scene_id} animation error: {ex_anim}")
 
                     logger.info(
                         f"Scene {scene.scene_id}: ✅ Tải thành công từ {c_src}: "

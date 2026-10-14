@@ -210,6 +210,7 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
     """
     Trả về danh sách cờ tham số FFmpeg phù hợp nhất cho bộ mã hóa được chọn (GPU hoặc CPU).
     Tự động chuẩn hóa bitrate, preset, pixel format để video đầu ra tương thích 100% YouTube Shorts 1080x1920.
+    Hỗ trợ chế độ 'intermediate' siêu tốc (ultrafast CRF 18) cho các clip trung gian trước khi ghép xfade.
     """
     if encoder_name is None:
         enc_info = detect_hardware_encoder()
@@ -217,7 +218,29 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
     else:
         encoder = encoder_name
 
+    # Chế độ intermediate (dùng cho _prepare_scene_clips trước khi ghép xfade):
+    # Ưu tiên tốc độ giải mã/mã hóa cực đại + CRF 18 giữ nguyên chất lượng ảnh gốc, giới hạn 2 threads/worker để chạy 8 workers song song không nghẽn CPU/GPU queue.
+    if quality == "intermediate":
+        if encoder == "h264_nvenc":
+            return [
+                "-c:v", "h264_nvenc",
+                "-preset", "p1",
+                "-cq", "18",
+                "-pix_fmt", "yuv420p",
+            ]
+        return [
+            "-threads", "2",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-crf", "18",
+            "-pix_fmt", "yuv420p",
+        ]
+
     is_high = (quality == "high")
+
+    # Trên máy nhiều nhân CPU (>= 8 luồng), libx264 superfast nhanh hơn và nét hơn h264_mf (Windows Media Foundation CBR)
+    if encoder == "h264_mf" and (os.cpu_count() or 4) >= 8:
+        encoder = "libx264"
 
     if encoder == "h264_nvenc":
         return [
@@ -259,10 +282,10 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
             "-pix_fmt", "yuv420p",
         ]
     else:
-        # Mặc định CPU libx264 (veryfast/superfast nhanh gấp 3 lần medium mà vẫn giữ nguyên độ nét 1080p Shorts)
+        # Mặc định CPU libx264 (superfast nhanh hơn veryfast ~35% trên hệ thống đa nhân mà vẫn giữ nguyên độ nét 1080p Shorts)
         return [
             "-c:v", "libx264",
-            "-preset", "veryfast" if is_high else "superfast",
+            "-preset", "superfast",
             "-crf", "19" if is_high else "21",
             "-b:v", "10M" if is_high else "7M",
             "-maxrate", "14M" if is_high else "10M",
@@ -557,14 +580,15 @@ def image_to_video(
         with Image.open(image_path) as im:
             if im.mode not in ("RGB",):
                 im = im.convert("RGB")
-            # Scale ảnh vừa đủ biên độ zoom (1.12x - 1.16x) để giảm ~28% số điểm ảnh zoompan phải nội suy mà vẫn nét căng
-            scale_factor = 1.16 if is_hook_scene else 1.12
+            # Scale ảnh 1.0x - 1.04x (prepare_vertical đã làm nét UnsharpMask chuẩn 1080x1920)
+            # giúp giảm ~25% số điểm ảnh zoompan phải nội suy mỗi frame mà vẫn giữ nguyên độ nét 1080p
+            scale_factor = 1.04 if is_hook_scene else 1.0
             scale_w = int(width * scale_factor)
             scale_h = int(height * scale_factor)
             # KHÔNG resize thẳng (ảnh ngang sẽ bị bóp méo) → crop 9:16 bám chủ thể / nền mờ nếu ảnh nhỏ
             from app.services.media.image_quality import prepare_vertical
             im_resized = prepare_vertical(im, scale_w, scale_h, max_upscale=2.0 * scale_factor)
-            im_resized.save(norm_path, "JPEG", quality=92)
+            im_resized.save(norm_path, "JPEG", quality=90)
             image_path = norm_path
     except Exception as e:
         raise ValueError(f"File ảnh không hợp lệ hoặc không thể đọc '{image_path}': {e}")
@@ -703,21 +727,25 @@ def image_to_video(
         )
 
     # Hiệu ứng màu sắc điện ảnh và chiều sâu theo Niche Profile (100% Free Native FFmpeg Filter)
-    # TỐI ƯU TỐC ĐỘ 4.2x: Đặt eq/colorbalance/unsharp/vignette TRƯỚC zoompan để FFmpeg chỉ tính toán lọc màu & làm nét
-    # ĐÚNG 1 LẦN trên bức ảnh gốc thay vì tính lặp lại 120 lần trên từng frame xuất ra!
+    # TỐI ƯU TỐC ĐỘ: Đặt eq/colorbalance/vignette TRƯỚC zoompan để FFmpeg chỉ tính toán lọc màu
+    # ĐÚNG 1 LẦN trên bức ảnh gốc, và loại bỏ unsharp trùng lặp vì prepare_vertical đã làm nét ảnh!
     grading = get_niche_color_grading(niche=niche, is_scifi=is_scifi)
+    import re as _re
+    clean_vf_filter = _re.sub(r",?unsharp=[^,]+", "", grading["vf_filter"]).strip(",")
     if zoom_effect:
-        vf_parts = [grading['vf_filter']]
+        vf_parts = [clean_vf_filter] if clean_vf_filter else []
         if grading.get("vignette"):
             vf_parts.append(grading['vignette'])
         vf_parts.append(zoompan)
     else:
-        vf_parts = [zoompan, grading['vf_filter']]
+        vf_parts = [zoompan]
+        if clean_vf_filter:
+            vf_parts.append(clean_vf_filter)
         if grading.get("vignette"):
             vf_parts.append(grading['vignette'])
     vf_chain = ",".join(vf_parts)
 
-    enc_args = get_video_encoder_args(quality="fast")
+    enc_args = get_video_encoder_args(quality="intermediate")
     loop_args = ["-loop", "1"] if not zoom_effect else []
     args = [
         *loop_args,
@@ -783,7 +811,7 @@ def multi_pose_loop_to_video(
             with Image.open(p) as im:
                 im_rgb = im.convert("RGB")
                 im_resized = im_rgb.resize((width, height), Image.LANCZOS)
-                im_resized.save(dest, "JPEG", quality=95)
+                im_resized.save(dest, "JPEG", quality=92)
                 norm_paths.append(dest)
         except Exception:
             continue
@@ -814,16 +842,14 @@ def multi_pose_loop_to_video(
     if grading.get("vignette"):
         vf_parts.append(grading['vignette'])
 
+    enc_args = get_video_encoder_args(quality="intermediate")
     args = [
         "-f", "concat",
         "-safe", "0",
         "-i", concat_txt,
         "-vf", ",".join(vf_parts),
         "-t", str(duration_seconds),
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "18",
-        "-pix_fmt", "yuv420p",
+        *enc_args,
         *BT709_COLOR_ARGS,
         "-r", str(fps),
         "-an",
@@ -929,7 +955,7 @@ def trim_video(
     except Exception:
         pass
 
-    enc_args = get_video_encoder_args(quality="fast")
+    enc_args = get_video_encoder_args(quality="intermediate")
     args = [
         *loop_args,
         "-i", input_path,

@@ -87,18 +87,18 @@ class AudioQA:
             passed = False
             feedback_items.append(f"Audio bị thiếu cho cảnh: {', '.join(missing_scenes)}")
 
-        if duration_sec < 32.0:
+        if duration_sec < 26.0:
             pacing_rating = "TOO_SHORT"
-            feedback_items.append(f"Thời lượng hơi ngắn cho Shorts ({duration_sec:.1f}s, chuẩn vàng 35s - 55s để đạt AVD >= 28s)")
+            feedback_items.append(f"Thời lượng hơi ngắn cho Shorts ({duration_sec:.1f}s, chuẩn vàng 28s - 55s để giữ chân cao)")
         elif duration_sec > 65.0:
             pacing_rating = "TOO_LONG"
             passed = False
             feedback_items.append(f"Vượt quá giới hạn YouTube Shorts ({duration_sec:.1f}s > 60s)")
 
-        if wpm < 115:
+        if wpm < 140:
             pacing_rating = "TOO_SLOW"
-            feedback_items.append(f"Tốc độ đọc hơi chậm ({wpm:.0f} WPM), có thể gây buồn ngủ")
-        elif wpm > 185:
+            feedback_items.append(f"Tốc độ đọc hơi chậm ({wpm:.0f} WPM), chuẩn Viral Shorts hiện đại là 165-235 WPM")
+        elif wpm > 245:
             pacing_rating = "TOO_FAST"
             feedback_items.append(f"Tốc độ đọc quá nhanh ({wpm:.0f} WPM), người xem không kịp nghe")
 

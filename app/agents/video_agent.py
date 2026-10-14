@@ -114,22 +114,7 @@ class VideoAgent:
                 subtitle_path=job.subtitle_path if has_subtitle else None,
             )
 
-            # ── Step 3: Mux audio (voice + optional BGM với Audio Ducking, -c:v copy) ──
-            logger.info(f"[VideoAgent] Job {job.job_id}: Ghép audio narration + BGM (Audio Ducking)...")
-            await report(f"🎵 Đang hòa âm giọng đọc AI và nhạc nền (Audio Ducking tự động)...", 84)
-
-            muxed_video = str(work_dir / "muxed.mp4")
-
-            mux_audio_video(
-                video_path=silent_video,
-                audio_path=job.full_audio_path,
-                output_path=muxed_video,
-                bgm_path=job.bgm_path,
-                bgm_volume=job.bgm_volume,
-                use_ducking=True,  # Bật Audio Ducking thực sự qua sidechaincompress
-            )
-
-            # ── Step 4: Mix SFX đa tầng (Multi-layer Sound Design Level 4, -c:v copy) ──
+            # ── Step 3 & 4: Chuẩn bị SFX cues trước để quyết định có chạy loudnorm ở bước mux_audio_video hay gộp vào bước cuối ──
             from app.utils.ffmpeg_helper import _find_sfx_file
             raw_niche = (job.niche or "").lower()
             is_heavy_hit_niche = is_scifi_job or any(
@@ -173,8 +158,24 @@ class VideoAgent:
             micro_sfx_cues = SubtitleHelper.extract_power_word_cues(job.scenes, min_interval_s=1.8)
 
             sfx_dir_exists = Path(sfx_dir).exists()
+            will_mix_sfx = bool(sfx_dir_exists or resolved_sfx_cues or micro_sfx_cues)
 
-            if sfx_dir_exists or resolved_sfx_cues or micro_sfx_cues:
+            logger.info(f"[VideoAgent] Job {job.job_id}: Ghép audio narration + BGM (Audio Ducking)...")
+            await report(f"🎵 Đang hòa âm giọng đọc AI và nhạc nền (Audio Ducking tự động)...", 84)
+
+            muxed_video = str(work_dir / "muxed.mp4")
+
+            mux_audio_video(
+                video_path=silent_video,
+                audio_path=job.full_audio_path,
+                output_path=muxed_video,
+                bgm_path=job.bgm_path,
+                bgm_volume=job.bgm_volume,
+                use_ducking=True,  # Bật Audio Ducking thực sự qua sidechaincompress
+                normalize_loudness=(not will_mix_sfx),  # Chỉ chuẩn hóa loudnorm 1 lần duy nhất ở bước cuối cùng
+            )
+
+            if will_mix_sfx:
                 logger.info(f"[VideoAgent] Job {job.job_id}: Mix Multi-layer SFX transitions từ {sfx_dir} (Niche: {job.niche})...")
                 await report(f"🔊 Đang thiết kế âm thanh đa tầng Level 4 (Bass Impact, Foley & Riser)...", 92)
 
@@ -338,8 +339,8 @@ class VideoAgent:
             return scene.scene_id, clip_path
 
         # ── Chạy song song với ThreadPoolExecutor ──
-        # FFmpeg mỗi process dùng 1 core — safe cho multi-thread
-        max_workers = min(len(scenes), 4)  # Tối đa 4 worker để tránh OOM
+        # Mỗi worker dùng 2 threads (-threads 2) ở chế độ intermediate → chạy 8 workers song song trên CPU 16 luồng cực nhanh
+        max_workers = min(len(scenes), max(4, min(8, (os.cpu_count() or 8) // 2)))
         results: dict[int, str] = {}
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:

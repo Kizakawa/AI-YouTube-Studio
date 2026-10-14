@@ -43,24 +43,31 @@ _download_fallback_registry: Dict[str, Dict[str, Any]] = {}
 
 
 def register_download_fallbacks(winner: Optional[Dict[str, Any]], candidates: Optional[List[Dict[str, Any]]] = None) -> None:
-    """Lưu thông tin Referer (page_url) và danh sách URL dự phòng (Vision-ranked alternates) cho ảnh được chọn."""
+    """Lưu thông tin Referer (page_url), CDN fallback_url của ảnh chính, và danh sách URL dự phòng (Vision-ranked alternates)."""
     if not winner or not winner.get("url"):
         return
     u = winner["url"]
-    alts: List[str] = list(winner.get("_vision_alternates") or [])
-    if not alts and candidates:
+    alts: List[str] = []
+    # Ưu tiên số 1: Bản sao độ phân giải cao trên CDN (Bing/ArtStation/Wallhaven/Google) của chính bức ảnh thắng cuộc
+    fb_u = winner.get("fallback_url") or winner.get("thumbnail")
+    if fb_u and fb_u != u:
+        alts.append(fb_u)
+    for va in winner.get("_vision_alternates") or []:
+        if va and va != u and va not in alts:
+            alts.append(va)
+    if candidates:
         for c in candidates:
-            cu = c.get("url")
-            if cu and cu != u and cu not in alts:
-                alts.append(cu)
-            if len(alts) >= 3:
+            for cu in (c.get("url"), c.get("fallback_url")):
+                if cu and cu != u and cu not in alts:
+                    alts.append(cu)
+            if len(alts) >= 6:
                 break
     with _download_fallback_lock:
         if len(_download_fallback_registry) > 500:
             _download_fallback_registry.clear()
         _download_fallback_registry[u] = {
             "referer": winner.get("page_url") or "",
-            "alternates": alts[:3],
+            "alternates": alts[:6],
         }
 
 

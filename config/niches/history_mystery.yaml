@@ -71,7 +71,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-GuyNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: +20%
+  rate: +31%
   pitch: -3Hz
   bgm_vibe: epic orchestral mystery, ancient chanting, slow booming timpani drum
   sfx_cues:

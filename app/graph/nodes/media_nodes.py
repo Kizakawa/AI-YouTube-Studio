@@ -247,11 +247,13 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # ══════════════════════════════════════════════════════════════════════
         search_first = os.getenv("SEARCH_FIRST_VISUAL_MODE", "true").strip().lower() not in ("0", "false", "no", "off")
         creature_first = os.getenv("CREATURE_ART_FIRST", "true").strip().lower() not in ("0", "false", "no", "off")
+        tier0_searched = False
         if (
             (search_first or (creature_first and v_analysis.get("creature_mode")))
             and channel_visual_mode not in ("imagen_ai", "ai_image")
         ):
             try:
+                tier0_searched = True
                 g_queries = (
                     (v_analysis.get("creature_queries") if v_analysis.get("creature_mode") else None)
                     or v_analysis.get("google_image_queries")
@@ -345,8 +347,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 except Exception as e:
                     logger.debug(f"Scene {scene.scene_id}: Doc search error: {e}")
 
-            # C. Ảnh Internet có giấy phép (Openverse/Flickr, Commons, Unsplash) + stock do AI Vision tuyển chọn
-            if not media_path:
+            # C. Ảnh Internet có giấy phép (Openverse/Flickr, Commons, Unsplash) + stock do AI Vision tuyển chọn (nếu chưa tìm ở Tier 0)
+            if not media_path and not tier0_searched:
                 try:
                     best_photo = await asyncio.to_thread(
                         media_agent.search_best_photo,
@@ -391,6 +393,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     narration=scene.narration,
                     niche=current_niche,
                     is_scifi=is_scifi_val,
+                    skip_web_search=tier0_searched,
                 )
                 if res_vid and Path(res_vid).exists() and Path(res_vid).stat().st_size > 5000:
                     media_path = res_vid
@@ -439,6 +442,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     skip_stock_lookup=prefer_generation,
                     niche=current_niche,
                     is_scifi=is_scifi_val,
+                    skip_web_search=tier0_searched,
                 )
                 if res_vid and Path(res_vid).exists() and Path(res_vid).stat().st_size > 5000:
                     media_path = res_vid
@@ -525,6 +529,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         used_urls=used_pool_urls,
                         visual_analysis=v_analysis,
                         narration=scene.narration,
+                        skip_web_search=tier0_searched,
                     )
                     if res_vid and Path(res_vid).exists() and Path(res_vid).stat().st_size > 5000:
                         media_path = res_vid
@@ -609,6 +614,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     narration=scene.narration,
                     niche=current_niche,
                     is_scifi=is_scifi_val,
+                    skip_web_search=tier0_searched,
                 )
                 if res_v and Path(res_v).exists() and Path(res_v).stat().st_size > 5000:
                     media_path = res_v
@@ -645,8 +651,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             except Exception as e_fb_ai:
                 logger.debug(f"Scene {scene.scene_id}: AI image fallback error: {e_fb_ai}")
 
-        # Fallback 4: Ảnh tĩnh HD đa nguồn (Pexels + Pixabay + Openverse) do AI Vision tuyển chọn
-        if not media_path:
+        # Fallback 4: Ảnh tĩnh HD đa nguồn (Pexels + Pixabay + Openverse) do AI Vision tuyển chọn (nếu chưa tìm ở Tier 0)
+        if not media_path and not tier0_searched:
             try:
                 clean_q = search_query or sq or kw
                 best_photo = await asyncio.to_thread(
@@ -1062,8 +1068,42 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
 
         logger.info(f"🎯 [Scene {scene_id} Fix] Tool chỉ định: '{rec_tool or 'auto'}' | Query: '{query_part}' | Idea: '{idea_part[:40]}'")
 
+        # ── HÀNH ĐỘNG 0 (ƯU TIÊN TUYỆT ĐỐI CHO QUÁI VẬT / GEMINI SEARCH): Tìm ảnh 8K chuẩn Google Search + Vision Curation ──
+        from app.services.media.image_quality import is_creature_subject, creature_queries
+        is_creature_fix = is_creature_subject(query_part or kw, narration=narr, topic=state.get("topic", ""))
+        search_first_fix = os.getenv("SEARCH_FIRST_VISUAL_MODE", "true").strip().lower() not in ("0", "false", "no", "off")
+        if not replaced and (is_creature_fix or (search_first_fix and rec_tool not in ("pexels_video", "wikimedia_archive"))):
+            try:
+                va_fix = None
+                target_fix_q = query_part or kw
+                if is_creature_fix:
+                    c_qs = creature_queries(target_fix_q, topic=state.get("topic", ""), narration=narr)
+                    va_fix = {"subject": target_fix_q, "creature_mode": True, "creature_queries": c_qs, "google_image_queries": c_qs[:3]}
+                    if c_qs:
+                        target_fix_q = c_qs[0]
+                best_p = await asyncio.to_thread(
+                    media_agent.search_best_photo,
+                    target_fix_q,
+                    None,
+                    va_fix,
+                    narr,
+                    state.get("topic", ""),
+                )
+                if best_p and best_p.get("url"):
+                    out_p = str(media_dir / f"scene_{scene_id:03d}_content_fix_gsearch.jpg")
+                    await asyncio.to_thread(media_agent.download_file, best_p["url"], out_p)
+                    if Path(out_p).exists() and Path(out_p).stat().st_size > 3000:
+                        item["media_path"] = out_p
+                        item["media_type"] = "image"
+                        item["vision_curated"] = True
+                        item["production_method"] = "CREATURE_ART" if is_creature_fix else "GEMINI_SEARCH_3D"
+                        replaced = True
+                        logger.info(f"Scene {scene_id}: ✅ Thay thế thành công bằng Ảnh 8K Multi-Engine ({best_p.get('source')}): '{target_fix_q}'")
+            except Exception as ex_gp:
+                logger.debug(f"Scene {scene_id}: Multi-Engine Search fix error: {ex_gp}")
+
         # ── HÀNH ĐỘNG 1: Nếu chỉ định pexels_video hoặc cảnh cần chuyển động B-roll ──
-        if (
+        if not replaced and (
             rec_tool == "pexels_video"
             or (not rec_tool and item.get("production_method") in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO"))
             or (is_nature_topic and rec_tool != "wikimedia_archive")

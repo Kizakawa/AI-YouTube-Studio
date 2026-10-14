@@ -22,6 +22,7 @@ WATERMARK_DOMAINS = (
     "bigstockphoto", "agefotostock", "canstockphoto", "pond5", "storyblocks", "vecteezy",
     "featurepics", "colourbox", "superstock", "masterfile", "photocase", "eyeem",
     "redbubble", "teepublic", "zazzle", "etsy", "society6", "cafepress", "displate",
+    "img.freepik.com/premium-", "freepik.com/premium-", "craiyon.com", "media.craiyon.com",
 )
 
 # Tiêu đề chứa các cụm này gần như chắc chắn là ảnh stock có watermark / clipart / sản phẩm
@@ -29,7 +30,7 @@ _HARD_TITLE_CUES = (
     "stock photo", "stock image", "stock picture", "premium photo", "premium vector",
     "royalty free", "royalty-free", "vector", "clipart", "clip art", "coloring page",
     "colouring", "t-shirt", "tshirt", "sticker", "mug ", "poster print", "canvas print",
-    "framed print", "art print", "for sale", "buy now",
+    "framed print", "art print", "for sale", "buy now", "watermarked",
 )
 
 # Tiêu đề chứa các cụm này → trừ điểm (thường không phải ảnh điện ảnh / thực tế đẹp)
@@ -44,6 +45,7 @@ _HOT_TREND_DOMAINS = (
     "artstation.com", "artstation", "deviantart.com", "deviantart", "pinterest", "pinimg.com",
     "redd.it", "reddit.com", "wallhaven", "uhdpaper", "hdqwalls", "behance.net", "imdb.com",
     "tmdb.org", "ytimg.com", "cgsociety", "cara.app", "alphacoders", "peakpx", "wallpaperflare",
+    "img.freepik.com/free-",
 )
 
 _HOT_TREND_CUES = (
@@ -176,35 +178,35 @@ _CREATURE_WORDS = (
 # Tên có chữ "monster"/"dragon" nhưng là động vật THẬT → không bật chế độ quái vật
 _REAL_ANIMAL_EXCEPTIONS = ("gila monster", "komodo dragon", "sea dragon", "dragonfish", "dragonfly")
 
-# Cảnh phim & ArtStation horror cực kỳ rùng rợn cho từng quái vật
+# Cảnh phim & ArtStation horror cực kỳ rùng rợn cho từng quái vật (giữ ngắn gọn 5-7 từ để tối ưu công cụ tìm kiếm)
 _CREATURE_FILM_REFS = {
-    "kraken": "terrifying giant kraken tentacles attacking ship dark ocean movie cgi",
-    "megalodon": "terrifying giant megalodon shark jaws lurking deep dark ocean movie scene",
-    "godzilla": "Godzilla terrifying giant monster dark storm movie scene 8k",
-    "loch ness": "terrifying loch ness monster dark underwater silhouette thalassophobia art",
-    "nessie": "terrifying loch ness monster dark underwater silhouette thalassophobia art",
-    "cthulhu": "terrifying Cthulhu eldritch horror rising dark ocean megalophobia artstation",
-    "leviathan": "terrifying colossal leviathan sea monster dark abyss thalassophobia artstation",
-    "sea serpent": "terrifying giant sea serpent monster dark ocean thalassophobia art",
-    "sea monster": "terrifying giant sea monster lurking beneath boat thalassophobia artstation",
-    "bloop": "the bloop terrifying colossal deep sea monster thalassophobia megalophobia",
-    "giant squid": "terrifying colossal giant squid tentacles attacking submarine dark ocean cgi",
-    "colossal squid": "terrifying colossal squid deep dark abyssal ocean monster artstation",
-    "magnapinna": "bigfin magnapinna squid eerie deep sea ROV footage horror",
-    "bigfin squid": "bigfin magnapinna squid eerie deep sea ROV footage horror",
-    "titanoboa": "terrifying giant titanoboa snake monster dark jungle movie cgi",
-    "mosasaurus": "terrifying giant mosasaurus underwater jaws Jurassic World scene",
-    "dunkleosteus": "terrifying giant dunkleosteus armored predator dark ocean artstation",
-    "helicoprion": "terrifying helicoprion spiral saw jaw shark dark ocean art",
-    "livyatan": "terrifying livyatan melvillei giant whale monster vs megalodon art",
-    "mothman": "terrifying mothman glowing red eyes dark night horror artstation",
-    "wendigo": "terrifying wendigo antler skull monster dark forest horror artstation",
-    "skinwalker": "terrifying skinwalker creature night vision horror found footage",
-    "siren head": "terrifying siren head giant monster dark fog horror trevor henderson",
-    "scp": "terrifying scp monster containment breach dark horror artstation",
-    "backrooms": "terrifying backrooms entity found footage analog horror",
-    "anglerfish": "terrifying deep sea anglerfish glowing lure pitch black abyss",
-    "goblin shark": "terrifying deep sea goblin shark protruding jaws pitch black water",
+    "kraken": "giant kraken attacking ship movie cgi",
+    "megalodon": "giant megalodon shark jaws dark ocean",
+    "godzilla": "Godzilla giant monster storm movie scene",
+    "loch ness": "loch ness monster dark underwater thalassophobia",
+    "nessie": "loch ness monster dark underwater thalassophobia",
+    "cthulhu": "Cthulhu eldritch monster rising dark ocean",
+    "leviathan": "colossal leviathan sea monster dark abyss",
+    "sea serpent": "giant sea serpent monster dark ocean",
+    "sea monster": "giant sea monster lurking beneath boat",
+    "bloop": "the bloop colossal deep sea monster",
+    "giant squid": "giant kraken squid tentacles attacking ship",
+    "colossal squid": "colossal squid deep dark abyssal monster",
+    "magnapinna": "bigfin magnapinna squid deep sea horror",
+    "bigfin squid": "bigfin magnapinna squid deep sea horror",
+    "titanoboa": "giant titanoboa snake monster jungle cgi",
+    "mosasaurus": "giant mosasaurus underwater jaws movie scene",
+    "dunkleosteus": "giant dunkleosteus armored predator dark ocean",
+    "helicoprion": "helicoprion spiral jaw shark dark ocean",
+    "livyatan": "livyatan giant whale monster dark ocean",
+    "mothman": "mothman glowing red eyes dark horror",
+    "wendigo": "wendigo antler skull monster dark forest",
+    "skinwalker": "skinwalker creature night horror found footage",
+    "siren head": "siren head giant monster dark fog",
+    "scp": "scp monster containment breach dark horror",
+    "backrooms": "backrooms entity found footage analog horror",
+    "anglerfish": "deep sea anglerfish glowing lure abyss",
+    "goblin shark": "deep sea goblin shark jaws abyss",
 }
 
 _CREATURE_BONUS_CUES = (
@@ -226,6 +228,18 @@ _CREATURE_PENALTY_CUES = (
     "statue", "sculpture", "map", "book cover", "novel", "washed ashore", "beached",
 )
 
+# Thứ tự ưu tiên nhận diện tên quái vật đặc trưng (ưu tiên tên riêng trước các từ chung như "tentacle", "monster")
+_SPECIFIC_CREATURES = (
+    "kraken", "leviathan", "megalodon", "cthulhu", "godzilla", "loch ness", "nessie",
+    "bloop", "jormungandr", "charybdis", "scylla", "lusca", "tiamat", "ningen", "kaiju",
+    "mothman", "wendigo", "chupacabra", "bigfoot", "sasquatch", "yeti", "skinwalker",
+    "behemoth", "basilisk", "titanoboa", "mosasaurus", "liopleurodon", "dunkleosteus",
+    "helicoprion", "livyatan", "sarcosuchus", "plesiosaur", "kronosaurus", "basilosaurus",
+    "siren head", "slenderman", "backrooms", "scp", "magnapinna", "bigfin squid",
+    "colossal squid", "giant squid", "anglerfish", "goblin shark", "frilled shark",
+    "vampire squid", "oarfish", "gulper eel", "viperfish", "sea serpent", "sea monster",
+)
+
 
 def is_creature_subject(subject: Optional[str], narration: str = "", topic: str = "") -> bool:
     """True nếu chủ thể hoặc ngữ cảnh là quái vật / thủy quái / thực thể kinh dị (ưu tiên CGI / dark horror art)."""
@@ -245,41 +259,96 @@ def is_creature_subject(subject: Optional[str], narration: str = "", topic: str 
     vi_horror_cues = (
         "quái vật", "thủy quái", "quái thú", "sinh vật biển sâu", "mực khổng lồ",
         "rùng rợn", "kinh dị", "ác mộng", "vực thẳm", "huyền thoại biển",
+        "người đi biển", "thần thoại",
     )
     return any(cue in raw_ctx for cue in vi_horror_cues)
 
 
-def creature_queries(subject: str) -> List[str]:
-    """Truy vấn tìm ảnh quái vật cực kỳ rùng rợn, ám ảnh: Thalassophobia, Megalophobia, Movie CGI, Dark Eldritch ArtStation."""
+def extract_core_creature(*texts: str) -> str:
+    """Trích xuất tên quái vật/sinh vật cốt lõi từ subject, narration hoặc topic (ưu tiên tên riêng như kraken, leviathan)."""
+    combined_norm = " " + " ".join(_norm_text(t) for t in texts if t) + " "
+    if any(f" {x} " in combined_norm for x in _REAL_ANIMAL_EXCEPTIONS):
+        return ""
+    for c in _SPECIFIC_CREATURES:
+        if f" {c} " in combined_norm:
+            return c
+    raw_low = " ".join((t or "").lower() for t in texts if t)
+    if any(k in raw_low for k in ("thủy quái", "mực khổng lồ", "bạch tuộc khổng lồ", "quái vật biển", "người đi biển")):
+        return "kraken"
+    if any(k in combined_norm for k in (" tentacle ", " tentacles ", " suction ", " ship ", " sailor ", " whirlpool ")):
+        if any(k in raw_low for k in ("quái vật", "thần thoại", "biển", "đại dương", "ocean", "sea", "abyss")):
+            return "kraken"
+    for w in _CREATURE_WORDS:
+        if f" {w} " in combined_norm and w not in ("monster", "monsters", "tentacle", "tentacles"):
+            return w
+    return ""
+
+
+def creature_queries(subject: str, topic: str = "", narration: str = "") -> List[str]:
+    """
+    Truy vấn tìm ảnh quái vật cực kỳ rùng rợn, ám ảnh (4-7 từ ngắn gọn để Bing/DDGS/ArtStation/Wallhaven trả kết quả chuẩn xác nhất).
+    """
     import os
     subject = (subject or "").strip()
-    if not subject:
-        return []
-    norm = f" {_norm_text(subject)} "
+    core = extract_core_creature(subject, narration, topic)
+    norm_all = f" {_norm_text(subject)} {_norm_text(narration)} {_norm_text(topic)} "
+
+    # Trích 1-2 từ khóa bối cảnh/bộ phận đặc tả của phân cảnh (vd: tentacles, ship, eye, whirlpool, abyss)
+    scene_focus_words = []
+    focus_candidates = (
+        "tentacles", "tentacle", "ship", "eye", "eyes", "jaws", "teeth", "whirlpool",
+        "shipwreck", "submarine", "diver", "sailor", "storm", "abyss", "silhouette",
+    )
+    subj_norm = f" {_norm_text(subject)} {_norm_text(narration)} "
+    for fw in focus_candidates:
+        if f" {fw} " in subj_norm and fw not in (core or ""):
+            scene_focus_words.append(fw)
+        if len(scene_focus_words) >= 2:
+            break
+    focus_str = " ".join(scene_focus_words)
+
+    base_creature = core or " ".join(subject_terms(subject)[:3]) or "giant sea monster"
     is_marine = any(
-        k in norm
+        k in norm_all
         for k in (
             "kraken", "megalodon", "leviathan", "cthulhu", "loch ness", "nessie", "bloop",
             "squid", "sea", "ocean", "abyss", "shark", "whale", "mosasaurus", "liopleurodon",
             "dunkleosteus", "helicoprion", "livyatan", "anglerfish", "oarfish", "thalassophobia",
+            "ship", "sailor", "biển", "đại dương", "thủy quái",
         )
     )
+
     qs: List[str] = []
+    prefix_giant = "" if base_creature.lower().startswith(("giant ", "colossal ")) else "giant "
+    # 1. Truy vấn gắn trực tiếp hành động/chi tiết của phân cảnh + tên quái vật cốt lõi (4-6 từ)
+    if focus_str:
+        qs.append(f"{prefix_giant}{base_creature} {focus_str} cinematic cgi")
     if os.getenv("CREATURE_ALLOW_MOVIE_STILLS", "true").strip().lower() not in ("0", "false", "no", "off"):
-        ref = next((v for k, v in _CREATURE_FILM_REFS.items() if f" {k} " in norm), None)
-        if ref:
+        ref = _CREATURE_FILM_REFS.get(core) or next(
+            (v for k, v in _CREATURE_FILM_REFS.items() if f" {k} " in norm_all), None
+        )
+        if ref and ref not in qs:
             qs.append(ref)
-        else:
-            qs.append(f"{subject} terrifying horror movie scene cgi")
 
+    # 2. Truy vấn ArtStation / Concept Art 8K ngắn gọn (5-6 từ)
     if is_marine:
-        qs.append(f"{subject} terrifying thalassophobia megalophobia giant monster dark ocean")
-        qs.append(f"{subject} dark abyssal sea monster artstation 8k")
+        q_art = f"{prefix_giant}{base_creature} {scene_focus_words[0] if scene_focus_words else 'ocean'} monster artstation"
+        q_thal = f"{base_creature} sea monster thalassophobia 8k"
+        for q in (q_art, q_thal):
+            if q not in qs:
+                qs.append(q)
     else:
-        qs.append(f"{subject} terrifying dark horror monster artstation 8k")
-        qs.append(f"{subject} creepy nightmare creature lurking in darkness")
+        q_art = f"terrifying {base_creature} {focus_str} horror artstation".strip()
+        q_dark = f"{base_creature} monster dark horror cgi"
+        for q in (q_art, q_dark):
+            if q not in qs:
+                qs.append(q)
 
-    qs.append(f"{subject} dark eldritch horror concept art")
+    # 3. Truy vấn cô đọng 2-3 từ cho ArtStation / Wallhaven API
+    short_q = f"{base_creature} monster" if "monster" not in base_creature else base_creature
+    if short_q not in qs:
+        qs.append(short_q)
+
     return qs[:4]
 
 
@@ -306,8 +375,8 @@ def heuristic_score(item: Dict, terms: Iterable[str], creature_mode: bool = Fals
             score += 1.5
         elif ratio <= 1.25:
             score += 1.1
-        elif ratio <= 1.65 and min(w, h) >= 900:
-            score += 0.5
+        elif ratio <= 1.85 and min(w, h) >= 900:
+            score += 0.8
         elif ratio >= 2.1:
             score -= 1.0
         short_side = min(w, h)
@@ -350,7 +419,7 @@ def heuristic_score(item: Dict, terms: Iterable[str], creature_mode: bool = Fals
         if src in ("google_images", "open_web"):
             score += 1.3
         if is_hot_domain:
-            score += 1.4
+            score += 1.8
         # Trừ điểm Wikipedia/Wikimedia/Bảo tàng trong creature_mode vì hay trả về tranh khắc gỗ cũ hoặc hóa thạch răng
         if src in ("wikipedia", "wikimedia_commons", "openverse") or any(
             d in blob_domain for d in ("wikimedia.org", "wikipedia.org", "nhm.ac.uk", "smithsonian", "fishbase", "inaturalist")
@@ -369,7 +438,7 @@ def heuristic_score(item: Dict, terms: Iterable[str], creature_mode: bool = Fals
             score -= 0.6
 
         if is_hot_domain:
-            score += 1.2
+            score += 1.5
         if hot_cue_hits > 0:
             score += min(1.6, 0.55 * hot_cue_hits)
         if epic_cue_hits > 0:
@@ -390,7 +459,7 @@ def prefilter_candidates(
     creature_mode: bool = False,
 ) -> List[Dict]:
     """
-    Loại ảnh watermark/quá nhỏ, chấm heuristic rồi sắp xếp giảm dần (giữ đa dạng nguồn).
+    Loại ảnh watermark/quá nhỏ, chấm heuristic rồi sắp xếp giảm dần (giữ đa dạng nguồn & tên miền).
     Gắn '_hscore' vào từng item để các bước sau dùng khi Vision không khả dụng.
     """
     terms = subject_terms(subject)
@@ -414,13 +483,17 @@ def prefilter_candidates(
 
     out: List[Dict] = []
     per_src: Dict[str, int] = {}
+    per_domain: Dict[str, int] = {}
     overflow: List[Dict] = []
     for it in kept:
         src = it.get("source") or "?"
-        if per_src.get(src, 0) >= max_per_source:
+        dom = (it.get("creator") or it.get("provider") or src).lower()
+        # Giới hạn tối đa 3 ảnh trên cùng 1 tên miền (vd: artstation.com, wallhaven.cc, deviantart.com) ở lượt đầu
+        if per_src.get(src, 0) >= max_per_source or per_domain.get(dom, 0) >= 3:
             overflow.append(it)
             continue
         per_src[src] = per_src.get(src, 0) + 1
+        per_domain[dom] = per_domain.get(dom, 0) + 1
         out.append(it)
         if len(out) >= limit:
             break

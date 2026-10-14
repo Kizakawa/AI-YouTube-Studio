@@ -46,20 +46,21 @@ def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any
         return res
     from app.services.media.image_quality import subject_terms, is_creature_subject, creature_queries
     terms = subject_terms(subject)
+    short_subj = " ".join(terms[:4]) if len(subject.split()) > 4 else subject
     queries = [q for q in (res.get("search_queries") or []) if isinstance(q, str) and q.strip()]
 
     def _has_subject(q: str) -> bool:
         ql = q.lower().replace("-", " ")
-        return bool(terms) and all(t in ql for t in terms)
+        return bool(terms) and any(t in ql for t in terms[:2])
 
     fixed: List[str] = []
     for q in queries:
         if not _has_subject(q):
-            q = f"{subject} {q}" if len(q.split()) <= 3 else subject
+            q = f"{short_subj} {q}" if len(q.split()) <= 3 else short_subj
         if q not in fixed:
             fixed.append(q)
-    if subject not in fixed:
-        fixed.insert(1 if fixed else 0, subject)
+    if short_subj not in fixed:
+        fixed.insert(1 if fixed else 0, short_subj)
     res["search_queries"] = fixed[:4]
     res["subject"] = subject
 
@@ -71,19 +72,23 @@ def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any
         res["creature_queries"] = c_qs
         return res
 
-    # Chuẩn hóa google_image_queries (truy vấn chuyên biệt cho Google Images: Hot-Trend, 8K, Điện ảnh, Bắt mắt câu view)
-    g_queries = [q.strip() for q in (res.get("google_image_queries") or []) if isinstance(q, str) and q.strip()]
+    # Chuẩn hóa google_image_queries (4-7 từ tiếng Anh tinh gọn, không đóng ngoặc kép cụm dài làm nghẽn công cụ tìm kiếm)
+    g_queries = [q.replace('"', "").strip() for q in (res.get("google_image_queries") or []) if isinstance(q, str) and q.strip()]
     fixed_g: List[str] = []
     for gq in g_queries:
         if not _has_subject(gq):
-            gq = f'"{subject}" {gq}'
+            gq = f"{short_subj} {gq}"
+        # Giới hạn tối đa 8 từ để Bing/DDGS/ArtStation trả kết quả chính xác nhất
+        gq_words = gq.split()
+        if len(gq_words) > 8:
+            gq = " ".join(gq_words[:8])
         if gq not in fixed_g:
             fixed_g.append(gq)
-    primary_action = fixed[0] if fixed else subject
+    primary_action = " ".join((fixed[0] if fixed else short_subj).split()[:5])
     default_clickbait_qs = [
         f"{primary_action} cinematic 8k concept art",
-        f'"{subject}" movie scene dramatic HD',
-        f'"{subject}" stunning viral high resolution',
+        f"{short_subj} movie scene dramatic HD",
+        f"{short_subj} dramatic viral photography",
     ]
     for dq in default_clickbait_qs:
         if len(fixed_g) >= 3:
@@ -96,19 +101,24 @@ def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any
 
 def _apply_creature_mode(res: Dict[str, Any], narration: str = "", topic: str = "") -> Dict[str, Any]:
     """Quái vật / sinh vật huyền thoại / thực thể kinh dị → bật chế độ tìm Movie CGI / ArtStation Dark Horror / Thalassophobia rùng rợn."""
-    from app.services.media.image_quality import is_creature_subject, creature_queries, _CREATURE_WORDS, _norm_text
+    from app.services.media.image_quality import (
+        is_creature_subject, creature_queries, extract_core_creature, _SPECIFIC_CREATURES, _norm_text,
+    )
     subject = str(res.get("subject") or "").strip()
     if is_creature_subject(subject, narration, topic):
-        # Nếu subject hiện tại quá chung chung (vd: "ocean", "ship", "submarine") nhưng câu thoại/topic nói về quái vật cụ thể,
-        # lấy tên quái vật làm subject tìm kiếm để ảnh ra đúng quái vật rùng rợn
+        core_monster = extract_core_creature(subject, narration, topic)
         norm_subj = f" {_norm_text(subject)} "
-        if not subject or not any(f" {w} " in norm_subj for w in _CREATURE_WORDS):
-            ctx = f" {_norm_text(narration)} {_norm_text(topic)} "
-            matched_monster = next((w for w in _CREATURE_WORDS if f" {w} " in ctx), "")
-            if matched_monster:
-                subject = matched_monster
+        # Nếu phân cảnh đang nói về tàu thuyền, xúc tu, mắt khổng lồ, xoáy nước hay đáy vực trong video về quái vật (vd Kraken),
+        # gắn tên quái vật cốt lõi vào subject để mọi cảnh đều hiển thị hình ảnh quái vật hoành tráng thay vì tàu gỗ/nước biển thường!
+        if core_monster and f" {core_monster} " not in norm_subj:
+            if not any(f" {sp} " in norm_subj for sp in _SPECIFIC_CREATURES):
+                subject = f"giant {core_monster} {subject}".strip() if subject else f"giant {core_monster}"
                 res["subject"] = subject
-        c_qs = creature_queries(subject or "terrifying deep sea monster")
+        elif not subject:
+            subject = f"giant {core_monster}" if core_monster else "terrifying deep sea monster"
+            res["subject"] = subject
+
+        c_qs = creature_queries(subject, topic=topic, narration=narration)
         res["creature_mode"] = True
         res["creature_queries"] = c_qs
         res["google_image_queries"] = c_qs[:3]
@@ -969,20 +979,30 @@ TRẢ VỀ JSON DUY NHẤT:
                 topic=topic or visual_keyword,
             )
 
-        # Trích xuất mô tả ảnh đầy đủ để gửi cho LLM Agent thẩm định toàn diện
+        # Trích xuất mô tả ảnh đầy đủ và đảm bảo đa dạng tên miền (tối đa 2 ảnh/domain ở lượt đầu) để Gemini Vision có 8 góc nhìn tốt nhất
         pool = []
+        overflow_pool = []
+        domain_counts: Dict[str, int] = {}
         for c in valid:
             desc = c.get("title") or c.get("alt") or ""
             if not desc and "/photo/" in c.get("url", ""):
                 m = re.search(r'/photo/([a-zA-Z0-9-]+)-\d+/?', c.get("url", ""))
                 if m:
                     desc = m.group(1).replace("-", " ")
-            pool.append({
+            dom = (c.get("creator") or c.get("provider") or c.get("source") or "web").lower()
+            entry = {
                 "item": c,
                 "description": desc or "photograph",
-            })
-            if len(pool) >= 6:
+            }
+            if domain_counts.get(dom, 0) < 2:
+                domain_counts[dom] = domain_counts.get(dom, 0) + 1
+                pool.append(entry)
+            else:
+                overflow_pool.append(entry)
+            if len(pool) >= 8:
                 break
+        if len(pool) < 8:
+            pool.extend(overflow_pool[: 8 - len(pool)])
 
         if not pool:
             return None, 3.0, "Không có ứng viên ảnh nào khả dụng.", True
@@ -995,7 +1015,7 @@ TRẢ VỀ JSON DUY NHẤT:
             topic=topic or visual_keyword,
             visual_analysis=visual_analysis,
             kind="photo",
-            max_candidates=6,
+            max_candidates=8,
         )
         if vision is not None:
             v_idx, v_score, v_rat = vision

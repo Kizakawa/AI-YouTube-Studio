@@ -128,20 +128,44 @@ class AIVideoAgent:
         narration: str = "",
     ) -> Optional[str]:
         """
-        Săn ảnh BẮT MẮT, CÂU VIEW chuẩn Gemini Search (Google Images + Bing HD + Gemini Vision Curation).
+        Săn ảnh BẮT MẮT, CÂU VIEW chuẩn Gemini Search (Bing HD + ArtStation 4K + Wallhaven 4K + DDGS + Gemini Vision Curation).
         Không yêu cầu ảnh chụp thật 100% — ưu tiên CGI, Movie Still, Concept Art 8K, Nhiếp ảnh kịch tính.
         """
         if os.getenv("SEARCH_FIRST_VISUAL_MODE", "true").strip().lower() in ("0", "false", "no", "off"):
             return None
         try:
+            import re as _re
             from app.agents.media_agent import MediaAgent
-            va = visual_analysis or {}
+            from app.services.media.image_quality import (
+                extract_core_creature, is_creature_subject, creature_queries, extract_subject,
+            )
+            va = dict(visual_analysis or {})
             g_queries = (
                 [q for q in (va.get("creature_queries") or []) if q]
                 or [q for q in (va.get("google_image_queries") or []) if q]
                 or [q for q in (va.get("search_queries") or []) if q]
             )
             search_q = (g_queries[0] if g_queries else None) or str(va.get("subject") or "").strip() or prompt
+            # Nếu search_q là một câu prompt AI dài (> 8 từ), rút gọn về chủ thể cốt lõi để không làm nghẽn công cụ tìm kiếm
+            if len(search_q.split()) > 8:
+                core_m = extract_core_creature(search_q, narration, prompt)
+                subj_extracted = extract_subject(narration or search_q, max_words=5)
+                if core_m:
+                    search_q = f"giant {core_m} {subj_extracted}".strip()
+                elif subj_extracted:
+                    search_q = f"{subj_extracted} cinematic 8k"
+                else:
+                    words = [w for w in _re.findall(r"[A-Za-z]{3,}", search_q) if w.lower() not in ("vertical", "film", "still", "cinematic", "photorealistic", "shot", "frame")]
+                    search_q = " ".join(words[:6])
+
+            if is_creature_subject(search_q, narration=narration, topic=prompt) and not va.get("creature_mode"):
+                c_qs = creature_queries(search_q, topic=prompt, narration=narration)
+                va["creature_mode"] = True
+                va["creature_queries"] = c_qs
+                va["google_image_queries"] = c_qs[:3]
+                if c_qs:
+                    search_q = c_qs[0]
+
             m_agent = MediaAgent()
             best_photo = m_agent.search_best_photo(
                 query=search_q,
@@ -179,6 +203,7 @@ class AIVideoAgent:
         narration: str = "",
         niche: Optional[str] = None,
         is_scifi: bool = False,
+        skip_web_search: bool = False,
     ) -> Optional[str]:
         """
         PHƯƠNG PHÁP 1: IMAGE-TO-VIDEO (Tạo video phụ thuộc vào ảnh chủ đề).
@@ -191,8 +216,8 @@ class AIVideoAgent:
         target_img_path = source_image_path
         created_temp = False
 
-        # Nếu chưa có ảnh nguồn: Ưu tiên số 1 tìm ảnh BẮT MẮT CÂU VIEW từ Google Images (Gemini Search)
-        if not target_img_path or not Path(target_img_path).exists():
+        # Nếu chưa có ảnh nguồn và chưa tìm kiếm web ở bước trước: Tìm ảnh từ Google Images (Gemini Search)
+        if (not target_img_path or not Path(target_img_path).exists()) and not skip_web_search:
             clean_prompt = visual_prompt or prompt
             temp_search_image = str(out_p.parent / f"_gsearch_frame_{scene_id:03d}.jpg")
             searched_img = await asyncio.to_thread(
@@ -216,27 +241,29 @@ class AIVideoAgent:
             if "8k" not in clean_prompt.lower() and "cinematic" not in clean_prompt.lower():
                 clean_prompt = f"{clean_prompt}, cinematic photorealistic, sharp details, volumetric lighting, vertical 9:16 composition"
 
-            generated_img = self.image_agent.generate_scene_image(
-                prompt=clean_prompt,
-                output_path=temp_ai_image,
-                aspect_ratio="9:16",
-                niche=niche or "cinematic",
-                scene_id=scene_id,
-                visual_prompt=clean_prompt,
+            generated_img = await asyncio.to_thread(
+                self.image_agent.generate_scene_image,
+                clean_prompt,
+                temp_ai_image,
+                "9:16",
+                niche or "cinematic",
+                scene_id,
+                clean_prompt,
             )
             if generated_img and Path(generated_img).exists() and Path(generated_img).stat().st_size > 2000:
                 target_img_path = generated_img
                 created_temp = True
             else:
                 logger.info(f"Scene {scene_id}: Sinh ảnh AI không thành công, thử cứu hộ bằng Pexels Video B-Roll...")
-                px_vid = self._try_pexels_video_clip(
+                px_vid = await asyncio.to_thread(
+                    self._try_pexels_video_clip,
                     clean_prompt,
                     output_path,
                     duration_seconds,
-                    used_urls=used_urls,
-                    visual_analysis=visual_analysis,
-                    narration=narration,
-                    is_scifi=is_scifi,
+                    used_urls,
+                    visual_analysis,
+                    narration,
+                    is_scifi,
                 )
                 if px_vid and Path(px_vid).exists() and Path(px_vid).stat().st_size > 10000:
                     logger.info(f"🎥 [AIVideoAgent] Cứu hộ thành công bằng Video Clip 9:16: {output_path}")
@@ -244,16 +271,17 @@ class AIVideoAgent:
                 logger.warning(f"Scene {scene_id}: Không thể sinh ảnh chủ đề cho Image-to-Video.")
                 return None
 
-        # Chuyển hóa ảnh chủ đề thành video MP4 1080x1920 với chuyển động 3D chân thực
+        # Chuyển hóa ảnh chủ đề thành video MP4 1080x1920 với chuyển động 3D chân thực (chạy trong thread pool)
         try:
-            self._render_cinematic_motion(
-                image_path=target_img_path,
-                output_path=output_path,
-                duration_seconds=duration_seconds,
-                camera_motion=camera_motion,
-                is_hook=(scene_id == 1),
-                is_scifi=is_scifi,
-                niche=niche,
+            await asyncio.to_thread(
+                self._render_cinematic_motion,
+                target_img_path,
+                output_path,
+                duration_seconds + 0.22,
+                camera_motion,
+                (scene_id == 1),
+                is_scifi,
+                niche,
             )
 
             if Path(output_path).exists() and Path(output_path).stat().st_size > 5000:
@@ -283,6 +311,7 @@ class AIVideoAgent:
         skip_stock_lookup: bool = False,
         niche: Optional[str] = None,
         is_scifi: bool = False,
+        skip_web_search: bool = False,
     ) -> Optional[str]:
         """
         PHƯƠNG PHÁP 2: TEXT-TO-VIDEO (Tạo video AI trực tiếp từ mô tả).
@@ -300,51 +329,54 @@ class AIVideoAgent:
             return output_path
 
         # 2. Thử gọi API Video AI ngoại vi nếu có cấu hình (HuggingFace Wan2.1 / Fal)
-        external_res = self._try_external_video_api(full_prompt, output_path, duration_seconds)
+        external_res = await asyncio.to_thread(self._try_external_video_api, full_prompt, output_path, duration_seconds)
         if external_res and Path(external_res).exists() and Path(external_res).stat().st_size > 10000:
             logger.info(f"🔮 [AIVideoAgent] ✅ Text-to-Video API ngoại vi hoàn tất: {output_path}")
             return output_path
 
-        # 3. ƯU TIÊN SỐ 3: Săn ảnh BẮT MẮT CÂU VIEW từ Google Images (Gemini Search + Vision) + Chuyển động 3D
-        temp_search_frame = str(out_p.parent / f"_t2v_gsearch_{scene_id:03d}.jpg")
-        searched_frame = await asyncio.to_thread(
-            self._try_gemini_search_image,
-            full_prompt,
-            temp_search_frame,
-            scene_id,
-            used_urls,
-            visual_analysis,
-            narration,
-        )
-        if searched_frame and Path(searched_frame).exists() and Path(searched_frame).stat().st_size > 3000:
-            self._render_cinematic_motion(
-                image_path=searched_frame,
-                output_path=output_path,
-                duration_seconds=duration_seconds,
-                camera_motion=camera_motion,
-                is_hook=(scene_id == 1),
-                is_scifi=is_scifi,
-                niche=niche or "cinematic",
+        # 3. ƯU TIÊN SỐ 3: Săn ảnh BẮT MẮT CÂU VIEW từ Google Images (Gemini Search + Vision) + Chuyển động 3D (nếu chưa tìm ở Tier 0)
+        if not skip_web_search:
+            temp_search_frame = str(out_p.parent / f"_t2v_gsearch_{scene_id:03d}.jpg")
+            searched_frame = await asyncio.to_thread(
+                self._try_gemini_search_image,
+                full_prompt,
+                temp_search_frame,
+                scene_id,
+                used_urls,
+                visual_analysis,
+                narration,
             )
-            try:
-                Path(temp_search_frame).unlink(missing_ok=True)
-            except Exception:
-                pass
-            if Path(output_path).exists() and Path(output_path).stat().st_size > 5000:
-                logger.info(f"🔎 [AIVideoAgent] ✅ Gemini Search + 3D Motion hoàn tất cho Cảnh {scene_id} → {output_path}")
-                return output_path
+            if searched_frame and Path(searched_frame).exists() and Path(searched_frame).stat().st_size > 3000:
+                await asyncio.to_thread(
+                    self._render_cinematic_motion,
+                    searched_frame,
+                    output_path,
+                    duration_seconds + 0.22,
+                    camera_motion,
+                    (scene_id == 1),
+                    is_scifi,
+                    niche or "cinematic",
+                )
+                try:
+                    Path(temp_search_frame).unlink(missing_ok=True)
+                except Exception:
+                    pass
+                if Path(output_path).exists() and Path(output_path).stat().st_size > 5000:
+                    logger.info(f"🔎 [AIVideoAgent] ✅ Gemini Search + 3D Motion hoàn tất cho Cảnh {scene_id} → {output_path}")
+                    return output_path
 
         # 4. Tìm Video Clip B-Roll 9:16 chuyển động thực tế từ Pexels Video
         pexels_vid = None
         if not skip_stock_lookup:
-            pexels_vid = self._try_pexels_video_clip(
+            pexels_vid = await asyncio.to_thread(
+                self._try_pexels_video_clip,
                 full_prompt,
                 output_path,
                 duration_seconds,
-                used_urls=used_urls,
-                visual_analysis=visual_analysis,
-                narration=narration,
-                is_scifi=is_scifi,
+                used_urls,
+                visual_analysis,
+                narration,
+                is_scifi,
             )
         if pexels_vid and Path(pexels_vid).exists() and Path(pexels_vid).stat().st_size > 10000:
             logger.info(f"🎥 [AIVideoAgent] ✅ Pexels Video Clip 9:16 chuyển động hoàn tất: {output_path}")
@@ -366,24 +398,26 @@ class AIVideoAgent:
             gen_prompt = f"Breathtaking cinematography, {full_prompt}, dynamic lighting, vivid vibrant colors, 8k vertical video still, crisp clarity"
             target_niche = niche or "cinematic"
 
-        generated_img = self.image_agent.generate_scene_image(
-            prompt=gen_prompt,
-            output_path=temp_frame,
-            aspect_ratio="9:16",
-            niche=niche or target_niche,
-            scene_id=scene_id,
-            visual_prompt=gen_prompt,
+        generated_img = await asyncio.to_thread(
+            self.image_agent.generate_scene_image,
+            gen_prompt,
+            temp_frame,
+            "9:16",
+            niche or target_niche,
+            scene_id,
+            gen_prompt,
         )
 
         if generated_img and Path(generated_img).exists() and Path(generated_img).stat().st_size > 2000:
-            self._render_cinematic_motion(
-                image_path=generated_img,
-                output_path=output_path,
-                duration_seconds=duration_seconds,
-                camera_motion=camera_motion,
-                is_hook=(scene_id == 1),
-                is_scifi=is_scifi,
-                niche=niche or target_niche,
+            await asyncio.to_thread(
+                self._render_cinematic_motion,
+                generated_img,
+                output_path,
+                duration_seconds + 0.22,
+                camera_motion,
+                (scene_id == 1),
+                is_scifi,
+                niche or target_niche,
             )
             if Path(output_path).exists() and Path(output_path).stat().st_size > 5000:
                 logger.info(f"🔮 [AIVideoAgent] ✅ Text-to-Video hoàn tất cho Cảnh {scene_id} → {output_path}")
@@ -586,11 +620,12 @@ class AIVideoAgent:
         used_urls: Optional[set] = None,
         visual_analysis: Optional[Dict[str, Any]] = None,
         narration: str = "",
+        is_scifi: bool = False,
     ) -> Optional[str]:
         """
         Tìm kiếm và tải video clip 9:16 chất lượng cao từ Pexels Video cho các chủ đề viễn tưởng / chuyển động.
         Sử dụng search_queries từ visual_analysis (2-3 từ ngắn gọn) thay vì AI prompt dài dòng.
-        Tự động cắt đúng thời lượng (trim_video) để ráp nối mượt mà vào video hoàn chỉnh.
+        Tải trực tiếp file video gốc để VideoAgent._prepare_scene_clips cắt và chỉnh màu đồng loạt 1 lần duy nhất.
         Đảm bảo không trùng lặp URL với các phân cảnh khác.
         """
         try:
@@ -608,11 +643,11 @@ class AIVideoAgent:
             # Tự động nạp bộ từ khóa kho viễn tưởng chuyên dụng từ SciFiVisualDispatcherAgent
             from app.agents.scifi_visual_dispatcher_agent import SciFiVisualDispatcherAgent
             scifi_agent = SciFiVisualDispatcherAgent()
-            is_scifi, conf, subgenre, _ = scifi_agent.detect_scifi_elements(
+            det_scifi, conf, subgenre, _ = scifi_agent.detect_scifi_elements(
                 topic=prompt,
                 narration=narration,
             )
-            if is_scifi:
+            if det_scifi or is_scifi:
                 curated_scifi_qs = scifi_agent.get_curated_video_search_queries(subgenre=subgenre, narration=narration)
                 for csq in curated_scifi_qs:
                     if csq not in queries_to_try:
@@ -649,26 +684,11 @@ class AIVideoAgent:
                     break
             if best_vid and best_vid.get("url") and best_vid["url"] not in used:
                 cand_url = best_vid["url"]
-                raw_temp = str(Path(output_path).parent / f"_raw_px_{Path(output_path).stem}.mp4")
-                media_agent.download_file(cand_url, raw_temp)
-                if Path(raw_temp).exists() and Path(raw_temp).stat().st_size > 10000:
-                    trim_video(
-                        input_path=raw_temp,
-                        duration_seconds=duration_seconds,
-                        output_path=output_path,
-                        width=1080,
-                        height=1920,
-                        fps=30,
-                        is_scifi=is_scifi,
-                    )
-                    try:
-                        Path(raw_temp).unlink(missing_ok=True)
-                    except Exception:
-                        pass
-                    if Path(output_path).exists() and Path(output_path).stat().st_size > 10000:
-                        used.add(cand_url)
-                        logger.info(f"🎥 [AIVideoAgent] ✅ Pexels Full Video Clip 9:16 ({duration_seconds:.1f}s) sẵn sàng: {output_path}")
-                        return output_path
+                media_agent.download_file(cand_url, output_path)
+                if Path(output_path).exists() and Path(output_path).stat().st_size > 10000:
+                    used.add(cand_url)
+                    logger.info(f"🎥 [AIVideoAgent] ✅ Pexels Video Clip 9:16 tải xong (sẽ trim+grade ở bước Render): {output_path}")
+                    return output_path
         except Exception as e:
             logger.debug(f"[AIVideoAgent] _try_pexels_video_clip error: {e}")
         return None

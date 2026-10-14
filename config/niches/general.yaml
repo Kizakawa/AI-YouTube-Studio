@@ -62,7 +62,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: +21%
+  rate: +33%
   pitch: 0Hz
   bgm_vibe: dynamic upbeat cinematic, modern groove, subtle suspense
   sfx_cues:

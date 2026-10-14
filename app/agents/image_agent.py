@@ -165,93 +165,67 @@ class ImageAgent:
         used_urls: Optional[set] = None,
         topic: str = "",
     ) -> Optional[str]:
-        """Tải ảnh chân thực chất lượng cao từ Internet (Open Web + Wikipedia + Pexels) khi các engine AI gặp sự cố."""
+        """Tải ảnh bắt mắt chất lượng cao từ Internet (Bing HD + ArtStation 4K + Wallhaven 4K + DDGS + Vision Curation) và crop dọc 9:16 thông minh."""
         try:
             from app.services.media.stock_fetcher import StockFetcher
             from app.services.media.entity_detector import clean_scene_search_query
-            from app.services.media.media_history import extract_media_identity, is_media_already_used
-
-            # Giữ tới 5 từ để không làm mất tên thực thể (vd "mantis shrimp" + "eyes")
-            clean_q = clean_scene_search_query(query, max_words=5)
-            if topic and clean_q and clean_q.lower() not in topic.lower():
-                clean_topic = clean_scene_search_query(topic, max_words=2)
-                clean_q = f"{clean_topic} {clean_q}".strip()
-
-            target_query = clean_q or topic or "dramatic scene"
-            landscape_backup: Optional[bytes] = None
-            landscape_backup_url = ""
-
-            def _accept(content: bytes, url: str, label: str) -> bool:
-                """Ưu tiên ảnh dọc; ảnh ngang chỉ giữ làm dự phòng cuối cùng."""
-                nonlocal landscape_backup, landscape_backup_url
-                try:
-                    from PIL import Image
-                    import io as _io
-                    with Image.open(_io.BytesIO(content)) as im:
-                        w, h = im.size
-                    if w / max(h, 1) > 0.9:
-                        if landscape_backup is None:
-                            landscape_backup, landscape_backup_url = content, url
-                        logger.debug(f"[ImageAgent] Bỏ qua ảnh ngang {w}x{h} từ {label} (giữ làm dự phòng)")
-                        return False
-                except Exception:
-                    return False
-                with open(output_path, "wb") as f:
-                    f.write(content)
-                if used_urls is not None:
-                    used_urls.update(extract_media_identity(url))
-                logger.info(f"[ImageAgent] 🌐 Ảnh dự phòng từ {label}: '{target_query}' → {output_path}")
-                return True
-
-            # 1. Thử tìm kiếm ảnh Open Web & Wikipedia trước (bao quát mọi chủ đề không rào cản bản quyền)
-            try:
-                from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
-                if web_image_search_enabled():
-                    fetcher = WebImageFetcher()
-                    web_images = fetcher.search_all(target_query, per_source=3)
-                    for item in web_images:
-                        img_url = item.get("url")
-                        if not img_url or is_media_already_used(img_url, used_urls or set()):
-                            continue
-                        try:
-                            headers = {
-                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                                "Referer": "https://www.google.com/",
-                            }
-                            res = requests.get(img_url, headers=headers, timeout=10)
-                            if res.status_code == 200 and len(res.content) > 5000:
-                                if _accept(res.content, img_url, f"Open Web/Wiki ({item.get('source')})"):
-                                    return output_path
-                        except Exception as dl_err:
-                            logger.debug(f"[ImageAgent] Lỗi tải ảnh web {img_url[:60]}: {dl_err}")
-            except Exception as w_err:
-                logger.debug(f"[ImageAgent] Lỗi tìm ảnh Open Web: {w_err}")
-
-            # 2. Dự phòng sang kho Pexels (đã lọc portrait)
-            stock = StockFetcher()
-            photos = stock.search_photos(
-                target_query,
-                per_page=3,
-                orientation="portrait",
-                topic=topic,
-                used_urls=used_urls,
+            from app.services.media.image_quality import (
+                extract_core_creature, is_creature_subject, creature_queries, prepare_vertical,
             )
-            for photo in photos:
-                img_url = photo.get("url")
-                if img_url:
-                    img_res = requests.get(img_url, timeout=12)
-                    if img_res.status_code == 200 and len(img_res.content) > 5000:
-                        if _accept(img_res.content, img_url, "Pexels"):
-                            return output_path
+            from app.agents.media_agent import MediaAgent
 
-            # 3. Cuối cùng mới dùng ảnh ngang (renderer sẽ crop tâm)
-            if landscape_backup is not None:
-                with open(output_path, "wb") as f:
-                    f.write(landscape_backup)
-                if used_urls is not None:
-                    used_urls.update(extract_media_identity(landscape_backup_url))
-                logger.warning(f"[ImageAgent] ⚠️ Chỉ tìm được ảnh NGANG cho '{target_query}' → dùng tạm (sẽ bị crop).")
-                return output_path
+            # Loại bỏ các cụm boilerplate của AI prompt (8k vertical film still, photorealistic, no watermark...)
+            stripped_q = re.sub(
+                r"\b(8k|4k|vertical|film still|dramatic|cinematic|frame|photorealistic|hyper-realistic|composition|no watermark|no text|no border|award-winning|35mm|lighting|details)\b",
+                " ",
+                query or "",
+                flags=re.IGNORECASE,
+            )
+            # Chỉ giữ từ tiếng Anh ASCII sạch để tránh ghép nhầm từ tiếng Việt từ topic
+            ascii_words = [w for w in re.findall(r"[A-Za-z]{3,}", stripped_q) if w.lower() not in ("the", "and", "with", "from", "into", "shot", "view")]
+            clean_q = " ".join(ascii_words[:6]) or clean_scene_search_query(stripped_q, max_words=5)
+
+            core_monster = extract_core_creature(query, topic)
+            if core_monster and core_monster not in clean_q.lower():
+                clean_q = f"giant {core_monster} {clean_q}".strip()
+
+            target_query = clean_q or "dramatic cinematic scene"
+            is_creature = is_creature_subject(target_query, narration=query, topic=topic)
+            va_hint = None
+            if is_creature:
+                c_qs = creature_queries(target_query, topic=topic, narration=query)
+                va_hint = {
+                    "subject": target_query,
+                    "creature_mode": True,
+                    "creature_queries": c_qs,
+                    "google_image_queries": c_qs[:3],
+                }
+
+            stock = StockFetcher()
+            best = stock.search_best_photo(
+                target_query,
+                used_urls=used_urls,
+                visual_analysis=va_hint,
+                narration=query,
+                topic=topic,
+            )
+            if best and best.get("url"):
+                m_agent = MediaAgent()
+                m_agent.download_file(best["url"], output_path)
+                p = Path(output_path)
+                if p.exists() and p.stat().st_size > 3000:
+                    try:
+                        from PIL import Image
+                        with Image.open(output_path) as im:
+                            v_im = prepare_vertical(im, 1080, 1920)
+                            v_im.save(output_path, format="JPEG", quality=94)
+                    except Exception:
+                        pass
+                    logger.info(
+                        f"[ImageAgent] 🌐 Ảnh Web 8K (Vision Curated) từ {best.get('source')}: "
+                        f"'{target_query}' → {output_path}"
+                    )
+                    return output_path
         except Exception as e:
             logger.debug(f"[ImageAgent] Photo fallback error: {e}")
         return None
