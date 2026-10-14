@@ -195,7 +195,8 @@ class ScriptValidationLinter:
         niche_id = str(niche_profile.get("id", "")).lower()
 
         if script.scenes:
-            s1_narr = (script.scenes[0].narration or "").strip()
+            s1 = script.scenes[0]
+            s1_narr = (s1.narration or "").strip()
             s1_words = re.findall(r'\b\w+\b', s1_narr)
             if len(s1_words) > 10:
                 issues.append(
@@ -205,6 +206,14 @@ class ScriptValidationLinter:
             elif len(s1_words) < 3:
                 issues.append(
                     f"Scene 1 hook is too fragmented ({len(s1_words)} words). Must be a complete 4-7 word curiosity/danger hook."
+                )
+
+            # Kiểm toán từ khóa hình ảnh Cảnh 1 (cấm quá chung chung < 2 từ hoặc chứa từ tĩnh)
+            s1_vk = (s1.visual_keyword or "").strip()
+            if len(s1_vk.split()) < 2:
+                issues.append(
+                    f"Scene 1 visual_keyword ('{s1_vk}') is too vague for a Frame-0 WOW visual. "
+                    f"Provide 3-6 specific English words naming the exact subject and dramatic action."
                 )
 
             last_narr = (script.scenes[-1].narration or "").strip().lower()

@@ -1040,6 +1040,55 @@ class VideoPipeline:
             and not is_creature
             and (channel_visual_mode in ("stock_footage", "pexels_stock", "video") or channel_niche in ("wildlife_predators", "animal_rescue"))
         )
+        def _audit_scene1_media_wow(candidate_path: str, v_score_hint: float = 0.0) -> bool:
+            """
+            Chốt chặn kiểm định bắt buộc cho MỌI tài nguyên Cảnh 1 (cả Ảnh lẫn Video):
+            - Nếu là Ảnh: Đo trực tiếp độ sáng, tương phản, độ sắc nét viền bằng assess_image_wow_factor.
+            - Nếu là Video (.mp4/.mov): Trích xuất đúng khung hình tại điểm Peak-Action (Frame 0.0s sau khi cắt)
+              và chấm điểm assess_image_wow_factor. Nếu video bị mờ, mù sương, tối đen hoặc phẳng lỳ -> Bác bỏ ngay!
+            """
+            if scene.scene_id != 1 or is_creature:
+                return True
+            try:
+                from app.services.media.image_quality import assess_image_wow_factor
+                ext_low = Path(candidate_path).suffix.lower()
+                if ext_low in (".mp4", ".mov", ".webm", ".mkv"):
+                    from app.utils.ffmpeg_helper import find_hook_peak_action_offset, get_ffmpeg_cmd
+                    import subprocess
+                    seek_s = find_hook_peak_action_offset(candidate_path, max(scene.actual_duration_seconds, 1.8))
+                    probe_jpg = f"{candidate_path}_frame0_probe.jpg"
+                    try:
+                        cmd = [
+                            get_ffmpeg_cmd(), "-y", "-v", "quiet",
+                            "-ss", f"{seek_s:.2f}", "-i", candidate_path,
+                            "-frames:v", "1", "-q:v", "2", probe_jpg
+                        ]
+                        subprocess.run(cmd, capture_output=True, timeout=5)
+                        if Path(probe_jpg).exists() and Path(probe_jpg).stat().st_size > 1000:
+                            wow_info = assess_image_wow_factor(probe_jpg)
+                            if not wow_info.get("is_wow", True):
+                                logger.info(
+                                    f"Scene 1: ⚠️ Video ứng viên không đạt chuẩn WOW tại Frame 0 "
+                                    f"(score={wow_info.get('wow_score')}/10, lum={wow_info.get('luminance')}, "
+                                    f"contrast={wow_info.get('contrast')}) → Bác bỏ để lấy Visual 8K đỉnh cao hơn!"
+                                )
+                                return False
+                    finally:
+                        Path(probe_jpg).unlink(missing_ok=True)
+                    return True
+                else:
+                    wow_info = assess_image_wow_factor(candidate_path)
+                    if not wow_info.get("is_wow", True) and v_score_hint < 7.2:
+                        logger.info(
+                            f"Scene 1: ⚠️ Ảnh ứng viên chưa đạt ngưỡng WOW bitmap (score={wow_info.get('wow_score')}/10, "
+                            f"lum={wow_info.get('luminance')}, contrast={wow_info.get('contrast')}) → Bác bỏ!"
+                        )
+                        return False
+                    return True
+            except Exception as _e_aud:
+                logger.debug(f"Scene 1 WOW audit skipped: {_e_aud}")
+                return True
+
         if (
             (search_first or (creature_first and is_creature))
             and channel_visual_mode not in ("imagen_ai", "ai_image")
@@ -1070,17 +1119,10 @@ class VideoPipeline:
                     out_img = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_{tag_suffix}.jpg")
                     await asyncio.to_thread(self._media_agent.download_file, c_url, out_img)
                     if Path(out_img).exists() and Path(out_img).stat().st_size > 3000 and self._is_valid_image_file(out_img):
-                        if scene.scene_id == 1:
-                            from app.services.media.image_quality import assess_image_wow_factor
-                            wow_info = assess_image_wow_factor(out_img)
-                            v_score = float(searched_photo.get("vision_score") or 0.0)
-                            if not wow_info.get("is_wow", True) and not is_creature and v_score < 7.2:
-                                logger.info(
-                                    f"Scene 1: ⚠️ Ảnh web chưa đạt ngưỡng WOW bitmap (score={wow_info.get('wow_score')}/10, "
-                                    f"lum={wow_info.get('luminance')}, contrast={wow_info.get('contrast')}) → Chuyển sang Video Hành Động / AI 8K Masterpiece!"
-                                )
-                                Path(out_img).unlink(missing_ok=True)
-                                out_img = ""
+                        v_score = float(searched_photo.get("vision_score") or 0.0)
+                        if not _audit_scene1_media_wow(out_img, v_score_hint=v_score):
+                            Path(out_img).unlink(missing_ok=True)
+                            out_img = ""
                         if out_img and Path(out_img).exists():
                             ids = extract_media_identity(c_url)
                             if used_pool_urls is not None:
@@ -1118,8 +1160,8 @@ class VideoPipeline:
             except Exception as e:
                 logger.warning(f"Scene {scene.scene_id} AI Image error: {e}")
 
-        # ── TẦNG 1: SEMANTIC POOL MATCH (DOCUMENTARY MODE) ──
-        if primary_entity and entity_media_pool:
+        # ── TẦNG 1: SEMANTIC POOL MATCH (DOCUMENTARY MODE - Bắt buộc qua cổng WOW nếu là Cảnh 1) ──
+        if primary_entity and entity_media_pool and scene.scene_id != 1:
             best_pool_photo = match_best_pool_photo(
                 scene_narration=scene.narration,
                 scene_kw=f"{scene.visual_keyword or ''} {getattr(scene, 'stock_query', '') or ''}",
@@ -1174,19 +1216,23 @@ class VideoPipeline:
                 output = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_{c_src}{ext}")
                 await asyncio.to_thread(self._media_agent.download_file, cand_url, output)
                 if Path(output).exists() and Path(output).stat().st_size > 3000 and self._is_valid_media_file(output):
-                    ids = extract_media_identity(cand_url)
-                    if used_pool_urls is not None:
-                        used_pool_urls.update(ids)
-                    if used_asset_paths is not None:
-                        used_asset_paths.update(ids)
-                        used_asset_paths.add(output)
-                    record_used_media(cand_url, query=scene.visual_keyword or topic, source=c_src, media_path=output)
+                    if not _audit_scene1_media_wow(output):
+                        Path(output).unlink(missing_ok=True)
+                        output = ""
+                    if output and Path(output).exists():
+                        ids = extract_media_identity(cand_url)
+                        if used_pool_urls is not None:
+                            used_pool_urls.update(ids)
+                        if used_asset_paths is not None:
+                            used_asset_paths.update(ids)
+                            used_asset_paths.add(output)
+                        record_used_media(cand_url, query=scene.visual_keyword or topic, source=c_src, media_path=output)
 
-                    logger.info(
-                        f"Scene {scene.scene_id}: ✅ Tải thành công từ {c_src}: "
-                        f"{cand.get('title', '')[:50]}"
-                    )
-                    return output
+                        logger.info(
+                            f"Scene {scene.scene_id}: ✅ Tải thành công từ {c_src}: "
+                            f"{cand.get('title', '')[:50]}"
+                        )
+                        return output
         except Exception as ex:
             logger.warning(f"Scene {scene.scene_id}: Multi-source search error: {ex}")
 

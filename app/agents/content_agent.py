@@ -592,6 +592,51 @@ class ContentAgent:
                     clean_narr += "."
                 last_scene["narration"] = clean_narr
 
+        # ── 2.85. VIRAL HOOK RETENTION TOURNAMENT (ĐẤU TRƯỜNG HOOK 0.0s TỐI ƯU STAY-TO-WATCH >= 75%) ──
+        if scenes and isinstance(scenes[0], dict):
+            hook_candidates: List[str] = []
+            for h_cand in [scenes[0].get("narration"), raw_data.get("hook"), *(raw_data.get("hook_variants") or [])]:
+                if h_cand and isinstance(h_cand, str):
+                    hc = h_cand.strip()
+                    if hc and hc not in hook_candidates:
+                        hook_candidates.append(hc)
+            if len(hook_candidates) >= 2:
+                def _score_hook_retention(h_str: str) -> float:
+                    h_score = 50.0
+                    words_h = re.findall(r'\b\w+\b', h_str)
+                    w_len = len(words_h)
+                    # Độ dài vàng cho Hook 0.0s (4 - 8 từ ~ 1.4s - 2.2s): Đủ 1 nhịp thở dứt khoát
+                    if 4 <= w_len <= 8:
+                        h_score += 22.0
+                    elif w_len > 10 or w_len < 3:
+                        h_score -= 20.0
+                    # Chứa số liệu / tốc độ / lực cắn / thời gian cụ thể
+                    if re.search(r'\d', h_str):
+                        h_score += 18.0
+                    # Chứa động từ hành động mạnh / nghịch lý / sinh tồn (EN / VI / PT)
+                    power_hook_words = (
+                        "never", "deadly", "crush", "swallow", "silent", "seconds", "freeze", "blind", "strike", "bite",
+                        "venom", "paradox", "impossible", "mistake", "alive", "shivering", "refused", "terror", "abyss",
+                        "tử thần", "ngay lập tức", "nghịch lý", "cắn", "nuốt", "đóng băng", "run rẩy", "tuyệt đối", "bí mật",
+                        "jamais", "mortal", "esmagar", "engolir", "silêncio", "segundos", "erro", "impossível", "veneno", "abismo"
+                    )
+                    h_low = h_str.lower()
+                    if any(pw in h_low for pw in power_hook_words):
+                        h_score += 16.0
+                    # Phạt nặng nếu mở đầu bằng câu hỏi sáo rỗng hoặc từ đệm yếu
+                    if re.match(r'^(?:stop scrolling|did you know|have you ever|bạn có biết|você sabia)', h_low):
+                        h_score -= 35.0
+                    return h_score
+
+                best_hook = max(hook_candidates, key=_score_hook_retention)
+                if best_hook != scenes[0].get("narration") and 3 <= len(re.findall(r'\b\w+\b', best_hook)) <= 9:
+                    logger.info(
+                        f"[ContentAgent] 🔥 Hook Retention Tournament chọn Hook 0.0s mạnh nhất: "
+                        f"'{best_hook}' (thay cho '{scenes[0].get('narration')}')"
+                    )
+                    scenes[0]["narration"] = best_hook
+                    scenes[0]["highlight_words"] = _auto_extract_scene_highlights(best_hook)
+
         # Cập nhật lại full_narration & hook để đồng bộ 100% với Cảnh 1 đã tối ưu nhịp
         raw_data["full_narration"] = " ".join(s.get("narration", "") for s in scenes if isinstance(s, dict))
         if scenes and isinstance(scenes[0], dict) and scenes[0].get("narration"):
@@ -1085,6 +1130,11 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   ],
   "primary_entity": "Full official name of main person/figure/species or null",
   "hook": "The opening 1.8-second hook sentence (4-7 words)",
+  "hook_variants": [
+    "Hook Variant 1: Shocking Number / Speed / Force Metric (4-7 words)",
+    "Hook Variant 2: Life-or-Death Paradox / Counter-Intuitive Threat (4-7 words)",
+    "Hook Variant 3: Immediate Sensory Strike / Emotional Eye-Contact (4-7 words)"
+  ],
   "full_narration": "Complete spoken text without stage directions (strictly 60-88 words, 22-30s ultra-fast duration with deep factual payoff and zero spoken Subscribe CTA)",
   "thumbnail_text": "2-4 TỪ IN HOA CỰC TO GỢI TÒ MÒ CHO ẢNH BÌA",
   "scenes": [
