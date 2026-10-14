@@ -152,21 +152,21 @@ def test_flexible_duration_and_payoff_linter():
     from app.services.content_linter import ScriptValidationLinter
     from app.schemas.contracts import ScriptContract, SceneContract
     
-    # Kịch bản 38 giây chuẩn mực: 8 cảnh, 98 từ, có Payoff sâu sắc
+    # Kịch bản 38 giây chuẩn mực: 8 cảnh, ~95 từ, có Hook 8 từ, Payoff sâu sắc và Seamless Infinite Loop
     script = ScriptContract(
         title="3 Hidden Signs Of Covert Envy 🚩",
-        hook="A real enemy attacks you openly, but an envious friend smiles while destroying your ladder.",
-        full_narration="A real enemy attacks you openly, but an envious friend smiles while destroying your ladder. First, they praise you with backhanded compliments designed to plant quiet self-doubt. Second, notice how their enthusiasm evaporates the moment you announce a major victory. But here is the critical psychological unmasking: envy cannot withstand genuine indifference. The moment you stop seeking their validation and starve their drama, their illusion of control collapses completely. Silence is your sharpest shield. Subscribe now to master dark psychology before someone uses it on you.",
+        hook="An envious friend smiles while destroying your ladder.",
+        full_narration="An envious friend smiles while destroying your ladder. First, they praise you with backhanded compliments designed to plant quiet self-doubt. Second, notice how their enthusiasm evaporates the moment you announce a major victory. They observe your milestones silently, waiting for the slightest mistake to expose. But here is the critical psychological unmasking: envy cannot withstand genuine indifference. The moment you stop seeking their validation and starve their drama, their illusion of control collapses completely. Silence is your sharpest shield against toxic manipulation. And that cold indifference is why their hidden mask shatters right before your eyes.",
         thumbnail_text="SIGNS OF ENVY 🚩",
         scenes=[
-            SceneContract(scene_id=1, narration="A real enemy attacks you openly, but an envious friend smiles while destroying your ladder.", visual_keyword="tense dinner party", estimated_seconds=4.5),
+            SceneContract(scene_id=1, narration="An envious friend smiles while destroying your ladder.", visual_keyword="tense dinner party", estimated_seconds=3.0),
             SceneContract(scene_id=2, narration="First, they praise you with backhanded compliments designed to plant quiet self-doubt.", visual_keyword="whispering colleague", estimated_seconds=4.0),
             SceneContract(scene_id=3, narration="Second, notice how their enthusiasm evaporates the moment you announce a major victory.", visual_keyword="forced polite smile", estimated_seconds=4.5),
-            SceneContract(scene_id=4, narration="They observe your milestones silently, waiting for the slightest mistake.", visual_keyword="person watching crowd", estimated_seconds=4.0),
+            SceneContract(scene_id=4, narration="They observe your milestones silently, waiting for the slightest mistake to expose.", visual_keyword="person watching crowd", estimated_seconds=4.0),
             SceneContract(scene_id=5, narration="But here is the critical psychological unmasking: envy cannot withstand genuine indifference.", visual_keyword="calm stoic person", estimated_seconds=5.0),
             SceneContract(scene_id=6, narration="The moment you stop seeking their validation and starve their drama, their illusion of control collapses completely.", visual_keyword="walking away confident", estimated_seconds=5.5),
             SceneContract(scene_id=7, narration="Silence is your sharpest shield against toxic manipulation.", visual_keyword="focused chess player", estimated_seconds=4.0),
-            SceneContract(scene_id=8, narration="Subscribe now to master dark psychology before someone uses it on you.", visual_keyword="modern skyscraper view", estimated_seconds=4.5),
+            SceneContract(scene_id=8, narration="And that cold indifference is why their hidden mask shatters right before your eyes.", visual_keyword="shattered mirror reflection", estimated_seconds=3.5),
         ],
         tags=["psychology", "shorts", "envy"],
         description="Master dark psychology and detect covert envy before it destroys you #shorts",

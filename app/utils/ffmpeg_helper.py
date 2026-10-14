@@ -1292,8 +1292,24 @@ def _find_sfx_file(sfx_dir_path: Path, name: str) -> Optional[str]:
 
     # 3. Khớp tiền tố hoặc chứa stem (vd: "whoosh" khớp "whoosh_01.mp3")
     for f in files:
-        if stem in f.stem.lower():
+        if stem in f.stem.lower() or f.stem.lower() in stem:
             return str(f)
+
+    # 4. Ánh xạ ngữ nghĩa thông minh từ các tên cue mô tả trong Niche YAML sang file vật lý có sẵn
+    semantic_aliases = [
+        (("heartbeat", "boom", "thunder", "growl", "strike", "attack", "explosion", "crash", "slam", "thump", "impact"), "impact_sub"),
+        (("riser", "tension", "swell", "clock", "tick", "build", "suspense"), "riser"),
+        (("reveal", "chime", "miracle", "magic", "ding", "bell", "spark", "piano"), "reveal"),
+        (("glitch", "error", "static", "shock", "snap", "crack", "lightning"), "glitch"),
+        (("abyss", "drop", "deep", "sonar", "sub_drop"), "sub_drop"),
+        (("fast", "swipe", "whip", "cut"), "whoosh_fast"),
+        (("heavy", "wind", "wave", "storm"), "whoosh_heavy"),
+    ]
+    for keywords, target_stem in semantic_aliases:
+        if any(k in stem for k in keywords):
+            for f in files:
+                if f.stem.lower() == target_stem:
+                    return str(f)
 
     return None
 

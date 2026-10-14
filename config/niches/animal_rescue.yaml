@@ -25,9 +25,9 @@ script_blueprint:
   - Như chúng ta đã biết
   - Welcome back to our channel
   cta_templates:
-  - From freezing in the dark to warm arms, every broken soul deserves love. Subscribe right now to help give more terrified animals a second chance.
-  - And for the first time, his heartbeat slowed to gentle peace. Subscribe to help us save more innocent lives.
-  - The road to healing was long, but today his eyes shine with hope. Follow right now to support our rescue journey.
+  - Look at his eyes at the end compared to the first second 🥺❤️ What would you name this brave little survivor? 👇
+  - If you walked past that box in the rain, would you have stopped to help? Drop a ❤️ in the comments to wish him the happiest life! 👇
+  - Have you ever adopted or rescued a stray pet? Share their transformation story in the comments below! 🐾👇
   anti_hallucination_rules:
   - Kịch bản phải tôn trọng phẩm giá và sự an toàn của động vật, không khuyến khích
     hành vi gây hại hay dàn dựng cứu trợ độc hại.
@@ -80,11 +80,10 @@ audio:
   bgm_vibe: emotional acoustic piano into soaring orchestral violin, heartwarming,
     tears of joy, gentle hopeful warmth
   sfx_cues:
-  - heartbeat_soft
-  - dog_whimper
-  - gentle_piano_swell
-  - tail_wag_thump
-  - chime_miracle
+  - hit
+  - reveal
+  - riser
+  - whoosh_fast
 banned_lexicon: *id001
 target_wpm: 150
 monetization:

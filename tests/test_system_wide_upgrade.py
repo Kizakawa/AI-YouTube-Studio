@@ -1,10 +1,14 @@
 import unittest
+import sys
 import os
 import json
 import tempfile
 import shutil
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+sys.stdout.reconfigure(encoding='utf-8')
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.schemas.contracts import ScriptContract, SceneContract
 from app.services.content_linter import ScriptValidationLinter

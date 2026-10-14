@@ -272,7 +272,7 @@ class VideoPipeline:
                     self.niche = "animal_rescue" if wl_subg == "animal_rescue_pets" else "wildlife_predators"
                     logger.info(f"[Job {self.job_id}] 🦁 Tự động kích hoạt Niche '{self.niche}' cho video động vật hoang dã [{wl_subg}]!")
 
-            # Tạo file phụ đề ASS Karaoke (word-level kinetic highlight theo Niche & Hook Headline Banner)
+            # Tạo file phụ đề ASS Karaoke (word-level kinetic highlight theo Niche & Hook Headline Banner, tắt CTA badge cuối video để bảo toàn Infinite Loop)
             subtitle_path = str(self.work_dir / "subtitles.ass")
             hook_banner_text = getattr(script, "thumbnail_text", None) or getattr(script, "hook", None) or getattr(script, "title", None)
             SubtitleHelper.save_ass_file(
@@ -280,7 +280,7 @@ class VideoPipeline:
                 subtitle_path,
                 niche_id=self.niche,
                 hook_title=hook_banner_text,
-                show_cta_badge=True,
+                show_cta_badge=False,
             )
 
             self._save_audio_metadata(full_audio_path, total_duration, enriched_scenes)
@@ -313,6 +313,7 @@ class VideoPipeline:
                 total_audio_duration_ms=total_duration,
                 subtitle_path=subtitle_path,
                 bgm_path=self._find_bgm(niche=self.niche),
+                niche=self.niche or "general",
                 sfx_dir="assets/sfx",  # Thư mục SFX cho chuyển cảnh (whoosh, hit, impact...)
                 output_path=output_path,
                 is_scifi=is_scifi_video,

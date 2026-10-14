@@ -1,4 +1,4 @@
-﻿"""
+"""
 app.graph.evaluators.audio_qa — Bộ kiểm định chất lượng âm thanh & nhịp điệu giọng đọc.
 
 Kiểm tra:
@@ -87,9 +87,9 @@ class AudioQA:
             passed = False
             feedback_items.append(f"Audio bị thiếu cho cảnh: {', '.join(missing_scenes)}")
 
-        if duration_sec < 25.0:
+        if duration_sec < 32.0:
             pacing_rating = "TOO_SHORT"
-            feedback_items.append(f"Thời lượng hơi ngắn cho Shorts ({duration_sec:.1f}s, khuyến nghị >= 35s)")
+            feedback_items.append(f"Thời lượng hơi ngắn cho Shorts ({duration_sec:.1f}s, chuẩn vàng 35s - 55s để đạt AVD >= 28s)")
         elif duration_sec > 65.0:
             pacing_rating = "TOO_LONG"
             passed = False

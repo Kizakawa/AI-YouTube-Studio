@@ -28,14 +28,15 @@ script_blueprint:
   - Welcome back to our channel
   - In today's video
   cta_templates:
-  - Who wins this ultimate apex duel? Drop your vote in the comments and subscribe for daily predator matchups.
-  - One moment of hesitation is all it takes for the apex hunter to become the prey. Subscribe so you never miss another clash.
-  - Quem vence esse duelo mortal na selva? Comente abaixo e inscreva-se no canal!
+  - In a 1v1 ambush with no escape, who takes the crown? Drop your vote in the comments below! 🦁👇
+  - Could any land predator survive a direct strike from this beast? Comment your pick for the ultimate apex hunter! 👇
+  - Quem vence esse duelo mortal na selva? Deixe seu palpite nos comentários! 👇
   anti_hallucination_rules:
   - Mọi thông số sinh học (tốc độ tối đa, lực cắn PSI, chiều dài móng vuốt, nồng độ
     độc tố LD50) phải chuẩn xác theo tài liệu sinh học động vật thực tế.
   - Không phóng đại phi thực tế hay tạo ra các cuộc đối đầu phản tự nhiên.
-  - TUYỆT ĐỐI KHÔNG gắn tên câu lạc bộ bóng đá (Bayern, Real Madrid...), thể thao hay chính trị vào tiêu đề/kịch bản động vật.
+  - TUYỆT ĐỐI KHÔNG gắn tên câu lạc bộ bóng đá (Bayern, Real Madrid...), thể thao, tâm lý học con người hay chính trị vào tiêu đề/kịch bản động vật.
+  - BẮT BUỘC đặt tên cụ thể của loài thú săn mồi hoặc cặp đối đầu (A vs. B) ngay trên tiêu đề, cấm tiêu đề chung chung như 'Invisible Monsters'.
   banned_lexicon: &id001
   - pet salon
   - dog leash
@@ -53,6 +54,8 @@ script_blueprint:
   - galaxy
   - black hole
   - narcissist
+  - gaslighting
+  - loud idiots
 visual_aesthetics:
   art_style: Epic BBC Earth Wildlife Cinema & Hyper-Detailed High-Speed Action
   camera_angles: Low-angle dynamic tracking shot at predator eye level, slow-motion
@@ -93,11 +96,11 @@ audio:
   bgm_vibe: primal tribal drums, accelerating heartbeat bass, intense suspense thriller
     orchestral, epic crescendo
   sfx_cues:
-  - predator_growl_deep
-  - heartbeat_heavy
-  - whoosh_strike
-  - heavy_impact_hit
-  - water_splash_explosion
+  - impact_sub
+  - hit
+  - whoosh_heavy
+  - whoosh_fast
+  - riser
 banned_lexicon: *id001
 target_wpm: 155
 monetization:

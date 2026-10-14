@@ -26,9 +26,9 @@ script_blueprint:
   - In today's video
   - Did you know that
   cta_templates:
-  - A real ally respects your boundaries. Subscribe now to master dark psychology before someone uses it on you.
-  - The moment you stop reacting to their games, their illusion of power crumbles. Follow to stay one step ahead of the manipulators.
-  - Once you recognize this psychological pattern, you will never be trapped again. Subscribe to protect your mind.
+  - "Have you ever caught someone using Sign #2 on you in real life? How did you react? 👇"
+  - "Which of these manipulation tactics is the hardest to spot before it's too late? Drop your thoughts below 👇"
+  - "Do you think cold silence is more powerful than arguing back? Share your experience below 👇"
   anti_hallucination_rules:
   - Luôn gắn liền với hiện tượng tâm lý học có thật (Dunning-Kruger, Gaslighting,
     Pavlov, Body language FBI, Dark Triad, Halo Effect, Cognitive Dissonance).
@@ -48,13 +48,13 @@ visual_aesthetics:
   master_prompt_suffix: razor-sharp focus, dynamic atmospheric depth, vibrant cinematic color grading, photorealistic vertical 9:16, no text, no watermark
   negative_prompts: macro eye, eyeball close up, dark muddy face, blurry silhouette, generic portrait, statue head, blurry, low quality, cartoon, anime, 3d render, distorted faces, extra fingers, watermark, text
   stock_video_keywords:
-  - confident person walking city
-  - two people intense conversation
-  - modern skyscraper glass reflections
-  - person thinking looking at view
-  - woman looking mirror reflection
-  - person writing in notebook
-  - crowd walking busy avenue
+  - chess grandmaster hand moving piece
+  - two people intense confrontation
+  - shattered mirror reflection face
+  - polygraph lie detector needle
+  - hand crushing paper under table
+  - stopwatch ticking close up
+  - interrogation room dramatic light
 subtitles:
   font_family: Montserrat, sans-serif
   font_weight: '900'
@@ -72,9 +72,10 @@ audio:
   pitch: -2Hz
   bgm_vibe: dark suspense cello, low ambient drone, tension riser
   sfx_cues:
-  - whoosh
-  - heartbeat
-  - tension_riser
+  - impact_sub
+  - glitch
+  - riser
+  - reveal
 banned_lexicon: *id001
 target_wpm: 155
 monetization:

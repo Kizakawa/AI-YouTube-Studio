@@ -22,17 +22,18 @@ script_blueprint:
   - The ocean is very big and deep
   - In this video
   cta_templates:
-  - And in the places where human senses fail, reality is stranger than nightmare. Subscribe to uncover the next unexplained phenomenon.
-  - What your eyes see is only a fraction of what hides in the dark. Subscribe to unlock the world's strangest mysteries.
-  - The official investigation abruptly ends here. Subscribe to uncover the anomalies science still cannot explain.
+  - Would you dare stay inside that pitch-black silent chamber for 15 minutes for $10,000? Why or why not? 👇
+  - Do you think scientists are hiding what the sonar actually recorded, or have we barely scratched the surface? Drop your theory below 👇
+  - Which of these unexplained anomalies creeps you out the most? Let's discuss in the comments 👇
   anti_hallucination_rules:
-  - Dựa trên các hiện tượng khoa học, giác quan sinh học và địa danh có thật (Anechoic Chamber, Biological Blind Spot, Point Nemo, The Bloop 1997, Movile Cave, Lake Vostok, Hal Saflieni, Kola Borehole).
+  - Dựa trên các hiện tượng khoa học, giác quan sinh học và địa danh có thật (Anechoic Chamber, Biological Blind Spot, Point Nemo, The Bloop 1997, Movile Cave, Lake Vostok, Hal Saflieni, Kola Borehole, Derinkuyu).
   - NGHIÊM CẤM LẶP LẠI CỤM TỪ '11,000m', '11,000 meters', hoặc 'Mariana Trench' vốn đã bị bão hòa trên kênh — hãy chủ động xoay vòng sang bí ẩn giác quan con người, hầm ngầm bị phong tỏa, âm thanh tần số lạ và dị thường địa chất!
   - Phân biệt rõ ràng giữa 'ghi nhận khoa học/thực nghiệm' và 'giả thuyết'.
   banned_lexicon: &id001
   - 11,000m
   - 11000m
   - 11,000 meters
+  - mariana trench
   - football
   - soccer
   - cryptocurrency

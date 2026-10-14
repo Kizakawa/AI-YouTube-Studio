@@ -224,7 +224,7 @@ class SubtitleHelper:
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
-        show_cta_badge: bool = True,
+        show_cta_badge: bool = False,
         hook_title: Optional[str] = None,
     ) -> str:
         """
@@ -552,7 +552,7 @@ class SubtitleHelper:
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
-        show_cta_badge: bool = True,
+        show_cta_badge: bool = False,
         hook_title: Optional[str] = None,
     ) -> str:
         """Tạo và lưu file .ass ra ổ đĩa, hỗ trợ Niche Profile, Watermark Credit & Hook Headline Banner."""
@@ -694,7 +694,7 @@ class SubtitleHelper:
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
-        show_cta_badge: bool = True,
+        show_cta_badge: bool = False,
     ) -> str:
         """
         Tạo nội dung file .ass từ mốc thời gian thực của giọng đọc (ASR/Whisper/Transcript).
@@ -855,7 +855,7 @@ class SubtitleHelper:
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
-        show_cta_badge: bool = True,
+        show_cta_badge: bool = False,
     ) -> str:
         """Tạo và lưu file .ass từ timed_segments ra ổ đĩa."""
         content = cls.build_ass_from_timed_segments(

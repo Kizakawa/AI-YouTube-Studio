@@ -230,6 +230,16 @@ class ScriptValidationLinter:
                     f"'The Exact Moment This Shivering Puppy Realized He Was Safe')."
                 )
 
+        # Kiểm tra tiêu đề kênh Wildlife Predators tránh chung chung mơ hồ ('Invisible Monsters Waiting To Strike')
+        if "wildlife" in niche_id or "predator" in niche_id:
+            title_lower = (script.title or "").lower()
+            vague_wildlife_titles = ("invisible monsters", "unstoppable survivers", "unstoppable survivors", "prehistoric apex predators")
+            if any(v in title_lower for v in vague_wildlife_titles):
+                issues.append(
+                    f"Vague/generic wildlife title detected ('{script.title}'). Always name the specific apex predator or 1v1 matchup "
+                    f"(e.g., 'Green Anaconda vs. Black Caiman', 'Why 6 Lions Backed Down From 1 Honey Badger')."
+                )
+
         return issues
 
     @classmethod
@@ -318,10 +328,10 @@ class ScriptValidationLinter:
                 f"CRITICAL QUALITY GATE VIOLATIONS DETECTED (MUST FIX FOR YOUTUBE SHORTS RETENTION):\n"
                 f"{bullet_points}\n\n"
                 f"ACTION REQUIRED:\n"
-                f"1. Ensure the final sentence is 100% grammatically complete, includes a natural value-driven CTA, and conceptually bridges into Scene 1's hook (Infinite Loop). NEVER end with 'because', 'which', 'and', 'but', etc.\n"
+                f"1. Ensure the final sentence is 100% grammatically complete, contains ZERO spoken 'Subscribe/Comment' outro CTAs, and conceptually bridges straight back into Scene 1's hook (Seamless Infinite Loop). NEVER end with 'because', 'which', 'and', 'but', etc.\n"
                 f"2. {word_target_instruction}\n"
                 f"3. Strictly avoid all forbidden concepts/terms and repetitive channel entities listed above.\n"
-                f"4. Rewrite cleanly while preserving an electric 5-12 word Scene 1 hook (Viewed > 75%), a mid-video pattern interrupt at Scene 4, and an unforgettable Payoff."
+                f"4. Rewrite cleanly while preserving an electric 5-10 word Scene 1 hook (Viewed > 75%), a mid-video pattern interrupt at Scene 4, and an unforgettable Payoff."
             )
 
         return LinterResult(

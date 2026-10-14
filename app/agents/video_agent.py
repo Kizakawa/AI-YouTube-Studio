@@ -130,17 +130,25 @@ class VideoAgent:
             )
 
             # ── Step 4: Mix SFX đa tầng (Multi-layer Sound Design Level 4, -c:v copy) ──
+            from app.utils.ffmpeg_helper import _find_sfx_file
             raw_niche = (job.niche or "").lower()
-            is_heavy_hit_niche = is_scifi_job or any(k in raw_niche for k in ("psychology", "deep_sea", "wildlife", "horror", "mystery"))
+            is_heavy_hit_niche = is_scifi_job or any(
+                k in raw_niche for k in ("psychology", "deep_sea", "wildlife", "predator", "horror", "mystery", "history", "what_if", "alternate")
+            )
             hit_sfx_name = "impact_sub" if is_heavy_hit_niche else "hit"
             default_sfx_name = "whoosh_fast" if is_scifi_job else "whoosh"
 
             # 1. Tự động phân tích ngữ nghĩa, cảm xúc và loại chuyển cảnh để chọn SFX chuẩn cho từng cut
             total_sc = len(job.scenes)
             resolved_sfx_cues = []
+            sfx_dir_path_check = Path(sfx_dir)
             for i, s in enumerate(job.scenes[1:], start=1):
                 cue = s.sfx_cue
-                if not cue or cue.lower() in ("whoosh", "default", "none", "auto"):
+                if (
+                    not cue
+                    or cue.lower() in ("whoosh", "default", "none", "auto")
+                    or (sfx_dir_path_check.exists() and not _find_sfx_file(sfx_dir_path_check, cue))
+                ):
                     cue = resolve_smart_sfx_cue(
                         narration=s.narration,
                         scene_idx=i,

@@ -329,13 +329,13 @@ class ContentAgent:
                         is_vn_script = any("\u0100" <= c <= "\u1EF9" for c in comb_text)
                         is_pt_script = any(w in comb_text for w in ("você", "não", "então", "coração", "selva", "olhos", "jamais"))
                         if is_vn_script:
-                            last_sc["narration"] = "Và khoảnh khắc định mệnh đó chính là lý do mở ra sự thật ngay từ giây đầu tiên."
+                            last_sc["narration"] = "Và khoảnh khắc đó mở ra sự thật từ đầu."
                         elif is_pt_script:
-                            last_sc["narration"] = "E é exatamente nesse instante brutal que o ciclo recomeça diante dos seus olhos."
+                            last_sc["narration"] = "E nesse instante o ciclo recomeça diante de você."
                         elif any(k in comb_text for k in ("puppy", "kitten", "rescue", "stray", "shelter", "abandoned", "dog", "cat")):
-                            last_sc["narration"] = "And that single moment of trust is why his second life truly begins right here."
+                            last_sc["narration"] = "And that moment of trust starts his new life."
                         else:
-                            last_sc["narration"] = "And that hidden mechanism is the exact reason why everything begins right where you started."
+                            last_sc["narration"] = "And that hidden mechanism starts the cycle all over."
 
         # ── 2.5. TỰ ĐỘNG CHIA NHỊP CẮT CẢNH DỒN DẬP (AUTO-SCENE PACING SPLITTER: 3.0s - 3.8s/CẢNH) ──
         # Đảm bảo Cảnh 1 Hook <= 10 từ (~2.2s - 2.8s) và các cảnh thân <= 13 từ (~3.2s - 3.8s)
