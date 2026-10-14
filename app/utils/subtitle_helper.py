@@ -20,28 +20,32 @@ from app.schemas.contracts import SceneContract
 
 # ── Màu sắc ASS (ABGR hex, bắt đầu bằng &H) ──────────────────────────────
 # ASS format: &HAABBGGRR (alpha, blue, green, red)
-ASS_WHITE       = "&H00FFFFFF"   # Trắng sáng — màu chữ mặc định (chưa highlight)
-ASS_YELLOW      = "&H0000FFFF"   # Vàng tươi rực #FFFF00 — từ đang đọc (karaoke active)
-ASS_RED         = "&H000000FF"   # Đỏ rực — từ đã đọc xong (karaoke past)
+ASS_WHITE       = "&H00FFFFFF"   # Trắng tinh khiết — màu chữ đã đọc/đang đọc chuẩn @MasteringMindControl
+ASS_DIM_SILVER  = "&H009E9E9E"   # Bạc xám trầm (#9E9E9E) — màu chữ sắp đọc (tạo hiệu ứng sáng dần từng từ)
+ASS_YELLOW      = "&H0000FFFF"   # Vàng tươi rực #FFFF00 — từ khóa nhấn mạnh / Payoff
+ASS_RED         = "&H000000FF"   # Đỏ rực — từ khóa nguy hiểm
 ASS_NEON_GREEN  = "&H0033FF33"   # Xanh lá Neon (#33FF33) — chuẩn Submagic/Crayo cho Con Số / Thống Kê
 ASS_CRIMSON     = "&H002222FF"   # Đỏ Crimson rực (#FF2222) — cho Từ Khóa Nguy Hiểm / Xung Đột / Cảnh Báo
 ASS_CYAN        = "&H00FFFF00"   # Xanh Cyan Điện (#00FFFF) — cho Từ Khóa Bí Mật / Sự Thật / Giải Mã
 ASS_BLACK       = "&H00000000"   # Đen — viền chữ (tương phản cao trên mọi nền)
-ASS_SHADOW      = "&HA0000000"   # Đen 63% trong suốt — shadow mềm mại
+ASS_SHADOW      = "&HA8000000"   # Đen 66% trong suốt — shadow sâu điện ảnh
 
-# ── Phân tầng ngữ nghĩa 3 màu chuẩn Submagic / Hormozi (Semantic 3-Color Pop) ──
+# ── Phân tầng ngữ nghĩa 3 màu chuẩn @MasteringMindControl / Submagic (Semantic Pop) ──
 DANGER_POWER_WORDS = {
     "NEVER", "DANGER", "DANGEROUS", "DEADLY", "DISASTER", "MONSTER", "KILLER",
     "MISTAKE", "WARNING", "STOP", "DESTROY", "ATTACK", "FATAL", "PREDATOR", "FEAR",
     "TERRIFYING", "HORROR", "TRAPPED", "BEAST", "LETHAL", "POISON", "VENOM",
     "LIES", "DECEPTION", "DARK", "BLOOD", "WAR", "DEATH", "NARCISSIST", "PSYCHOPATH",
-    "MANIPULATE", "MANIPULATION", "HUMILIATE", "SHATTERS", "BROKEN", "STARVING",
+    "MANIPULATE", "MANIPULATION", "MANIPULATORS", "HUMILIATE", "SHATTERS", "BROKEN", "STARVING",
     "ABANDONED", "FROZEN", "TREMBLING", "HEARTBREAKING", "CRUSHING", "NIGHTMARE",
     "NIGHTMARES", "AMBUSH", "BITE", "SKULL", "CLAWS", "EXECUTION", "COLLAPSE",
+    "ISOLATION", "GASLIGHTING", "CONTROL", "CONTROLS", "CRITICIZE", "DEPEND", "DEPENDENCE",
+    "GUILTY", "ADDICTED", "ANXIETY", "DOUBT", "LEASH", "TRAP", "ULTIMATUM", "ABUSE",
     "ĐỪNG", "KHÔNG", "NGUY", "HIỂM", "CHẾT", "TỬ", "THẦN", "SỐC", "KINH", "HOÀNG",
     "CẢNH", "BÁO", "DỪNG", "TIÊU", "DIỆT", "TẤN", "CÔNG", "SÁT", "THỦ", "QUÁI",
     "VẬT", "ÁC", "MỘNG", "SỢ", "HÃI", "MẮC", "KẸT", "DỐI", "TRÁ", "THAO", "TÚNG",
-    "MÁU", "BẪY", "CẤM", "NUNCA", "JAMAIS", "PERIGO", "PERIGOSO", "MORTAL",
+    "MÁU", "BẪY", "CẤM", "CÔ", "LẬP", "KIỂM", "SOÁT",
+    "NUNCA", "JAMAIS", "PERIGO", "PERIGOSO", "MORTAL",
     "MONSTRO", "ASSASSINO", "ERRO", "AVISO", "PARE", "ATAQUE", "FATAL", "PREDADOR",
     "MEDO", "TERROR", "VENENO", "MENTIRA", "SANGUE", "MORTE", "PROIBIDO", "CUIDADO",
     "BRUTAL", "LETAL", "ONÇA", "SUCURI", "JACARÉ", "ARIRANHA", "HARPIA", "PIRANHA",
@@ -52,11 +56,13 @@ PAYOFF_POWER_WORDS = {
     "ALWAYS", "SECRET", "SECRETS", "TRUTH", "SHOCKING", "WHY", "ABSOLUTELY",
     "INSANE", "IMPOSSIBLE", "UNBELIEVABLE", "MYSTERY", "DISCOVERED", "HIDDEN",
     "REVEALED", "RULE", "RULES", "LAW", "ESCAPE", "SURVIVE", "SURVIVAL", "URGENT",
-    "SILENCE", "STARE", "MIRACLE", "RESCUED", "ABYSS", "KRAKEN", "LEVIATHAN",
+    "SILENCE", "SILENT", "STARE", "MIRACLE", "RESCUED", "ABYSS", "KRAKEN", "LEVIATHAN",
     "SONAR", "VORTEX", "ARMOR", "APEX", "EMPIRE", "FORBIDDEN", "CLASSIFIED",
-    "BILLION", "TRILLION", "INSTANTLY",
+    "BILLION", "TRILLION", "INSTANTLY", "GAMBIT", "FAVOR", "ENEMIES", "ALLIES",
+    "PAVLOVIAN", "TRIGGER", "TRIGGERS", "REINFORCEMENT", "MIRRORING", "VERIFY",
+    "REALITY", "POWER", "FREEDOM", "BOUNDARIES", "TRUST", "CERTAINTY", "MIND",
     "BÍ", "MẬT", "SỰ", "THẬT", "TUYỆT", "ĐỐI", "ĐIÊN", "RỒ", "HÉ", "LỘ",
-    "ĐỘT", "NHIÊN", "KHỔNG", "LỒ", "BẤT", "NGỜ", "SINH", "TỒN",
+    "ĐỘT", "NHIÊN", "KHỔNG", "LỒ", "BẤT", "NGỜ", "SINH", "TỒN", "IM", "LẶNG",
     "SEMPRE", "SEGREDO", "SEGREDOS", "VERDADE", "CHOCANTE", "IMPOSSÍVEL",
     "INCRÍVEL", "ABSURDO", "MISTÉRIO", "ESCONDIDO", "REVELADO", "REGRA", "REGRAS",
     "SOBREVIVER", "URGENTE", "AMAZÔNIA", "PANTANAL", "OCEANO", "CIÊNCIA", "MILAGRE",
@@ -81,7 +87,7 @@ YCbCr Matrix: None
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1,0,1,4.2,2.2,2,30,30,{margin_v},1
+Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1.2,0,1,4.6,2.8,2,40,40,{margin_v},1
 Style: HookHeadlineBanner,{fontname},52,&H0000FFFF,&H00FFFFFF,&H00000000,&HD0050505,-1,0,0,0,100,100,2,0,3,3.6,0.0,8,30,30,310,1
 Style: PatternInterruptBadge,{fontname},32,&H00FFFFFF,&H00FFFFFF,&H0000E6FF&,&HC0101010,-1,0,0,0,100,100,2,0,3,2.0,0.0,8,40,40,240,1
 Style: CTABadge,{fontname},46,&H0000FFFF,&H00FFFFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,3.5,2.0,2,30,30,780,1
@@ -127,7 +133,7 @@ class SubtitleHelper:
     def split_text_to_chunks(cls, text: str, max_words: int = 3, max_chars: int = 20) -> List[str]:
         """
         Chia một đoạn văn bản thành các cụm từ siêu ngắn gọn (2-3 từ, tối đa 20 ký tự),
-        chuẩn phong cách phụ đề Submagic / Hormozi / Crayo hiện đại: hiển thị 1 dòng duy nhất,
+        chuẩn phong cách phụ đề @MasteringMindControl / Submagic / Hormozi:
         nhịp nhảy chữ nhanh bám sát mắt người xem, ngăn đọc trước giọng đọc.
         """
         text = text.strip()
@@ -199,16 +205,18 @@ class SubtitleHelper:
         cls,
         words: List[str],
         word_durations_cs: List[int],
-        default_highlight: str = "&H0000FFFF",
+        default_highlight: str = "&H00FFFFFF",
         power_color: str = "&H000000FF",
         scene_highlights: Optional[set] = None,
     ) -> str:
         """
-        P2.2 + Submagic/Crayo 3-Color Semantic Highlighting:
-        Tạo chuỗi ASS kinetic karaoke với {\\kf} fluid tags + 3 tầng màu ngữ nghĩa:
-          - Tầng 1 (Số liệu / Thống kê / Đo lường: 10,000G, 99%, 3, 0.2s): Xanh lá Neon (&H0033FF33&) + Pop 116%
-          - Tầng 2 (Nguy hiểm / Đe dọa / Xung đột: DEADLY, TRAP, KILL, CHẾT, BẪY): Đỏ Crimson (&H002222FF&) + Pop 115%
-          - Tầng 3 (Bí mật / Giải mã / Từ khóa Đạo diễn: SECRET, TRUTH, RESCUED): Xanh Cyan / Niche Power Color + Pop 114%
+        @MasteringMindControl 2-Line Stacked Kinetic Impact Typography + 3-Color Semantic Highlighting:
+        - Tự động xếp chồng 2 dòng (Line 1 dẫn nhịp -> Line 2 \\N phóng đại từ khóa trọng tâm 122%-126%)
+          như phong cách @MasteringMindControl ("THAT'S WHY \\N SILENCE", "FIRST, \\N THEY CRITICIZE").
+        - Hiệu ứng sáng dần từng từ (Silver-Grey -> Crisp Pure White) kết hợp 3 tầng màu ngữ nghĩa:
+          * Tầng 1 (Số liệu / Thống kê): Xanh lá Neon (&H0033FF33&) + Pop 124%
+          * Tầng 2 (Nguy hiểm / Thao túng / Xung đột): Đỏ Crimson (&H002222FF&) + Pop 124%
+          * Tầng 3 (Bí mật / Hiệu ứng Tâm lý / Giải mã): Xanh Cyan / Vàng Gold + Pop 122%
         """
         norm_power = power_color if power_color.endswith("&") else f"{power_color}&"
         norm_highlight = default_highlight if default_highlight.endswith("&") else f"{default_highlight}&"
@@ -217,34 +225,69 @@ class SubtitleHelper:
         norm_cyan = f"{ASS_CYAN}&"
         custom_set = scene_highlights or set()
 
+        n_words = len(words)
+        split_after_idx = -1
+        focal_idx = n_words - 1
+        lead_transition_words = {"FIRST", "SECOND", "THIRD", "THEN", "SAY", "STOP", "WAIT", "LOOK", "NEVER", "NOW"}
+
+        if n_words == 2:
+            split_after_idx = 0
+            w0_clean = re.sub(r'[^\w\d]', '', words[0].upper())
+            if words[0].endswith((",", ":", "—", "!")) or w0_clean in lead_transition_words:
+                focal_idx = 0
+            else:
+                focal_idx = 1
+        elif n_words == 3:
+            w0_clean = re.sub(r'[^\w\d]', '', words[0].upper())
+            if words[0].endswith((",", ":", "—", "!")) or w0_clean in lead_transition_words:
+                split_after_idx = 0  # vd: "FIRST, \N THEY CRITICIZE"
+                focal_idx = 0
+            else:
+                split_after_idx = 1  # vd: "THAT'S WHY \N SILENCE"
+                focal_idx = 2
+        elif n_words >= 4:
+            split_after_idx = (n_words // 2) - 1
+            focal_idx = n_words - 1
+
         parts = []
         for i, (word, dur_cs) in enumerate(zip(words, word_durations_cs)):
             clean_word = re.sub(r'[^\w\d]', '', word.upper())
             has_shock_number = bool(re.search(r'\d', word))
             is_danger = clean_word in DANGER_POWER_WORDS
             is_payoff = (clean_word in PAYOFF_POWER_WORDS) or (clean_word in custom_set)
+            is_focal = (i == focal_idx and n_words >= 2)
 
             if has_shock_number:
-                # Tầng 1: Con số thống kê / đo lường -> Xanh lá Neon Submagic + Phóng 116%
-                parts.append(
-                    f"{{\\kf{dur_cs}\\1c{norm_green}\\fscx116\\fscy116\\b1}}{word}"
+                token_str = (
+                    f"{{\\kf{dur_cs}\\1c{norm_green}\\fscx124\\fscy124\\b1}}{word}"
                     f"{{\\1c{norm_highlight}\\fscx100\\fscy100}}"
                 )
             elif is_danger:
-                # Tầng 2: Từ khóa Nguy hiểm / Xung đột -> Đỏ Crimson + Phóng 115%
-                parts.append(
-                    f"{{\\kf{dur_cs}\\1c{norm_crimson}\\fscx115\\fscy115\\b1}}{word}"
+                token_str = (
+                    f"{{\\kf{dur_cs}\\1c{norm_crimson}\\fscx124\\fscy124\\b1}}{word}"
                     f"{{\\1c{norm_highlight}\\fscx100\\fscy100}}"
                 )
             elif is_payoff:
-                # Tầng 3: Từ khóa Sự thật / Giải mã / Highlight của cảnh -> Cyan Điện (&H00FFFF00&) hoặc Amber Cứu hộ + Phóng 114%
                 chosen_payoff_color = norm_power if "2080FF" in norm_power else norm_cyan
-                parts.append(
-                    f"{{\\kf{dur_cs}\\1c{chosen_payoff_color}\\fscx114\\fscy114\\b1}}{word}"
+                token_str = (
+                    f"{{\\kf{dur_cs}\\1c{chosen_payoff_color}\\fscx122\\fscy122\\b1}}{word}"
                     f"{{\\1c{norm_highlight}\\fscx100\\fscy100}}"
                 )
+            elif is_focal:
+                # Từ trọng tâm ở dòng 2 (hoặc từ mở nhịp dòng 1) được phóng đại 122% chuẩn @MasteringMindControl
+                token_str = (
+                    f"{{\\kf{dur_cs}\\1c{norm_highlight}\\fscx122\\fscy122\\b1}}{word}"
+                    f"{{\\fscx100\\fscy100}}"
+                )
             else:
-                parts.append(f"{{\\kf{dur_cs}}}{word}")
+                token_str = f"{{\\kf{dur_cs}}}{word}"
+
+            parts.append(token_str)
+
+        if 0 <= split_after_idx < len(parts) - 1:
+            line1 = " ".join(parts[: split_after_idx + 1])
+            line2 = " ".join(parts[split_after_idx + 1 :])
+            return f"{line1}\\N{line2}"
         return " ".join(parts)
 
     @classmethod
@@ -252,8 +295,8 @@ class SubtitleHelper:
         cls,
         scenes: List[SceneContract],
         fontname: str = "Arial Black",
-        fontsize: int = 42,
-        margin_v: int = 580,
+        fontsize: int = 44,
+        margin_v: int = 720,
         primary_color: Optional[str] = None,
         secondary_color: Optional[str] = None,
         outline_color: Optional[str] = None,
@@ -263,11 +306,11 @@ class SubtitleHelper:
         hook_title: Optional[str] = None,
     ) -> str:
         """
-        Tạo nội dung file .ass chuẩn với karaoke word-level highlight.
+        Tạo nội dung file .ass chuẩn với 2-Line Stacked Kinetic Impact & karaoke word-level highlight.
         Tự động nạp font và màu sắc từ Niche Profile nếu niche_id được cung cấp.
         """
-        eff_primary = primary_color or ASS_WHITE
-        eff_secondary = secondary_color or ASS_YELLOW
+        eff_primary = primary_color or ASS_DIM_SILVER
+        eff_secondary = secondary_color or ASS_WHITE
         eff_outline = outline_color or ASS_BLACK
         eff_font = fontname
         eff_size = fontsize
@@ -278,21 +321,21 @@ class SubtitleHelper:
                 from app.services.niche_manager import get_niche, get_niche_subtitle_style
                 niche_prof = get_niche(niche_id)
                 niche_sub = get_niche_subtitle_style(niche_prof)
-                eff_primary = primary_color or niche_sub.get("primary_ass", ASS_WHITE)
-                eff_secondary = secondary_color or niche_sub.get("secondary_ass", ASS_YELLOW)
+                eff_primary = primary_color or niche_sub.get("primary_ass", ASS_DIM_SILVER)
+                eff_secondary = secondary_color or niche_sub.get("secondary_ass", ASS_WHITE)
                 eff_outline = outline_color or niche_sub.get("outline_ass", ASS_BLACK)
-                if not fontname or fontname == "Arial":
-                    eff_font = niche_sub.get("fontname", "Arial")
-                eff_size = fontsize if fontsize != 42 else niche_sub.get("fontsize", 42)
-                eff_margin = margin_v if margin_v != 580 else niche_sub.get("margin_v", 580)
+                if not fontname or fontname in ("Arial", "Arial Black"):
+                    eff_font = niche_sub.get("fontname", "Arial Black")
+                eff_size = fontsize if fontsize not in (42, 44) else niche_sub.get("fontsize", 44)
+                eff_margin = margin_v if margin_v not in (580, 720) else niche_sub.get("margin_v", 720)
             except Exception as e:
                 pass
 
         header = ASS_HEADER_TEMPLATE.format(
             fontname=eff_font,
             fontsize=eff_size,
-            primary=eff_secondary,     # PrimaryColour = màu highlight sau khi đọc (Vàng tươi/Gold/Neon)
-            secondary=eff_primary,     # SecondaryColour = màu mặc định trước khi đọc (Trắng sáng)
+            primary=eff_secondary,     # PrimaryColour = màu highlight sau khi đọc (Trắng sáng #FFFFFF / Vàng)
+            secondary=eff_primary,     # SecondaryColour = màu mặc định trước khi đọc (Bạc xám #9E9E9E)
             outline=eff_outline,
             back=ASS_SHADOW,
             margin_v=eff_margin,

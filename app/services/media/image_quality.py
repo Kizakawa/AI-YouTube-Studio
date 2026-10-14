@@ -360,6 +360,75 @@ def creature_queries(subject: str, topic: str = "", narration: str = "") -> List
     return qs[:4]
 
 
+# ─────────────────────────────── Chế độ Tâm Lý Học Đen Tối / Seinen Noir (@MasteringMindControl) ───────────────────────────────
+_PSYCHOLOGY_NOIR_CUES = (
+    "psychology", "dark psychology", "mind control", "manipulation", "manipulator", "manipulators",
+    "gaslight", "gaslighting", "narcissist", "narcissistic", "sociopath", "psychopath",
+    "micro expression", "micro expressions", "silent treatment", "love bombing",
+    "intermittent reinforcement", "pavlovian", "ben franklin effect", "isolation gambit",
+    "emotional mirroring", "false choice", "pratfall effect", "cognitive dissonance",
+    "tâm lý", "thao túng", "đọc vị", "ngôn ngữ cơ thể", "im lặng", "ái kỷ",
+)
+
+_PSYCHOLOGY_NOIR_BONUS_CUES = (
+    "noir", "monochrome", "black and white", "johan", "liebert", "monster anime", "seinen",
+    "psychological", "thriller", "shadow", "shadows", "silhouette", "chiaroscuro",
+    "cold gaze", "intense eyes", "dark aesthetic", "cinematic", "mystery",
+)
+
+_CHEESY_CORPORATE_PENALTY_CUES = (
+    "happy business", "office team", "cheerful", "thumbs up", "corporate meeting",
+    "smiling coworker", "handshake deal", "customer service", "call center", "stock photo smile",
+)
+
+
+def is_psychology_noir_subject(subject: Optional[str], narration: str = "", topic: str = "", channel_niche: str = "") -> bool:
+    """True nếu chủ đề, kênh hoặc phân cảnh thuộc Tâm lý học đen tối / Thao túng tâm lý / Đọc vị hành vi."""
+    raw_ctx = f"{subject or ''} {narration or ''} {topic or ''} {channel_niche or ''}".lower()
+    return any(cue in raw_ctx for cue in _PSYCHOLOGY_NOIR_CUES)
+
+
+def psychology_noir_queries(subject: str, topic: str = "", narration: str = "") -> List[str]:
+    """
+    Sinh bộ truy vấn Google Images / Bing HD / Wallhaven chuẩn phong cách @MasteringMindControl
+    (Dark Psychological Thriller / Monochrome Seinen Noir / Chiaroscuro Shadow Aesthetic)
+    bám sát hành động và cảm xúc cụ thể của từng câu thoại.
+    """
+    ctx = f"{subject or ''} {narration or ''} {topic or ''}".lower()
+    qs: List[str] = []
+
+    if any(k in ctx for k in ("silence", "silent", "argument", "confront", "enemy", "enemies", "ally", "allies", "favor", "distance", "im lặng")):
+        qs.extend([
+            "two people tense silence monochrome anime noir",
+            "monster anime johan liebert confrontation scene",
+            "dark psychology two people shadow silhouette noir",
+        ])
+    elif any(k in ctx for k in ("smile", "smirk", "charm", "disguise", "familiar", "mirror", "love bomb", "friend", "kind", "cười", "mặt nạ")):
+        qs.extend([
+            "johan liebert monster cold smile dark psychology",
+            "psychological thriller subtle smirk monochrome anime",
+            "two faced mask shadow dark psychology art",
+        ])
+    elif any(k in ctx for k in ("isolat", "shrink", "alone", "depend", "trap", "leash", "guilt", "guilty", "anxiet", "doubt", "cô lập", "bẫy")):
+        qs.extend([
+            "person isolated in dark shadows monochrome anime noir",
+            "seinen psychological thriller lonely shadow silhouette",
+            "dark psychology manipulation shadow aesthetic",
+        ])
+    else:
+        qs.extend([
+            "johan liebert monster intense cold eyes monochrome",
+            "seinen psychological thriller cold gaze close up",
+            "chiaroscuro noir portrait intense cold eyes",
+        ])
+
+    clean_subj = " ".join(subject_terms(subject)[:3])
+    if clean_subj and clean_subj not in ("person", "people", "man", "woman", "mind", "brain"):
+        qs.insert(0, f"{clean_subj} dark psychological noir monochrome")
+
+    return list(dict.fromkeys(qs))[:4]
+
+
 # Các tên miền báo chí khoa học / bách khoa / bảo tàng uy tín trên Google Images (dùng cho chủ thể khoa học/lịch sử thường)
 _AUTHORITATIVE_DOMAINS = (
     "wikipedia.org", "wikimedia.org", "nationalgeographic", "britannica.com", "smithsonianmag",
@@ -421,6 +490,7 @@ def heuristic_score(item: Dict, terms: Iterable[str], creature_mode: bool = Fals
     is_hot_domain = any(dom in blob_domain for dom in _HOT_TREND_DOMAINS)
     hot_cue_hits = sum(1 for c in _HOT_TREND_CUES if f" {c} " in padded)
     epic_cue_hits = sum(1 for c in _CREATURE_BONUS_CUES if f" {c} " in padded)
+    noir_cue_hits = sum(1 for c in _PSYCHOLOGY_NOIR_BONUS_CUES if f" {c} " in padded)
 
     if creature_mode:
         # Chế độ Quái Vật / Kinh Dị: Ưu tiên tuyệt đối Google Images + ArtStation / Movie CGI / Thalassophobia
@@ -451,8 +521,12 @@ def heuristic_score(item: Dict, terms: Iterable[str], creature_mode: bool = Fals
             score += min(1.6, 0.55 * hot_cue_hits)
         if epic_cue_hits > 0:
             score += min(1.2, 0.4 * epic_cue_hits)
+        if noir_cue_hits > 0:
+            score += min(1.6, 0.55 * noir_cue_hits)
         if any(dom in blob_domain for dom in _AUTHORITATIVE_DOMAINS):
             score += 0.4
+        if any(f" {c} " in padded for c in _CHEESY_CORPORATE_PENALTY_CUES):
+            score -= 2.5
         if any(f" {c} " in padded for c in _SOFT_TITLE_CUES):
             score -= 2.0
 

@@ -1,31 +1,38 @@
 id: psychology
-name: Tâm Lý Học Hành Vi & Thao Túng Tâm Lý
+name: Tâm Lý Học Đen Tối & Giải Mã Thao Túng (Mastering Mind Control Style)
 badge: 🧠 Tâm Lý Học
 icon: 🧠
-description: Chuyên sâu về tâm lý học hành vi, đọc vị ngôn ngữ cơ thể, bóc trần thủ
-  thuật thao túng (Gaslighting, Love bombing) và bí mật giao tiếp ngầm.
-target_audience: Khán giả 18-35 tuổi muốn tự vệ tâm lý, đọc vị đối phương và làm chủ
-  các mối quan hệ xã hội.
+description: Chuyên sâu về tâm lý học hành vi, giải mã đòn thao túng ngầm (The Isolation Gambit,
+  Reverse Gaslighting, Intermittent Reinforcement, Pavlovian Triggers, Ben Franklin Effect),
+  đọc vị vi biểu cảm và phản đòn tâm lý thực chiến chuẩn phong cách @MasteringMindControl.
+target_audience: Khán giả 18-35 tuổi muốn nhận diện thao túng ngầm, tự vệ tâm lý, đọc vị đối phương
+  và làm chủ quyền lực tĩnh lặng trong các mối quan hệ xã hội.
 script_blueprint:
-  tone_of_voice: Thâm sâu, sắc bén, cảnh báo, khơi gợi bản năng phòng thủ và tò mò,
-    trực diện không vòng vo (Cold, authoritative, insightful & mysterious).
-  pacing: Thời lượng vàng 35 - 45 giây (7 - 9 cảnh, 85 - 120 từ, 3.5 - 4.8 giây/cảnh). Cảnh 1 là Hook 3s (5-10 từ), Cảnh 4 là Mid-Video Re-Hook (giây 12-15) lật ngược nhận thức, Cảnh 5-7 là Payoff đòn tâm lý thực chiến.
+  tone_of_voice: Trầm tĩnh, sắc lạnh như dao mổ, uy quyền, trực diện không một từ thừa
+    (Calm, surgical, authoritative, dark noir psychological insight — @MasteringMindControl signature).
+  pacing: Thời lượng cô đọng 22 - 28 giây (7 - 9 phân cảnh chớp nhoáng, 60 - 80 từ, 2.0 - 2.6 giây/cảnh).
+    Câu ngắn nhịp Staccato ("A word. A face. A sound. You don't think—you just react.").
+    Cảnh 1 là Trích dẫn Thao túng / Phản xạ Vô thức (1.8s), Cảnh 2-4 giải phẫu cơ chế 3 bước ("First... Then... Eventually..."),
+    Cảnh 5-6 định danh Hiệu ứng Tâm lý & Mệnh đề Đối lập ("Love expands your world. Control shrinks it."),
+    Cảnh 7-8 là Đòn Phản Công Thực Chiến (Verbal Counter-Move / Mental Drill) nối vòng lặp vô tận về Cảnh 1.
   hook_formulas:
-  - 'Courtroom / Interrogation Micro-Expression (Proven #1 Winner 941 Views): ''Why serial killers and sociopaths always smile in court — and the 1 micro-expression that gives them away...'''
-  - 'Instant Situational Counter-Move (Learnt Behavioral 1.33M Formula): ''If someone interrupts you mid-sentence to assert dominance, never raise your voice. Do this for 4 seconds instead...'''
-  - 'FBI Polygraph / Eye-Tracking Paradox: ''Why pathological liars never look away when lying — they actually lock eyes 70% longer to check if you bought it...'''
-  - 'The Narcissist Mirror Trap: ''Why a narcissist will suddenly act like the victim the exact second you stop reacting to their anger...'''
-  - 'Covert Boundary Test: ''The 1-sentence compliment manipulators use in the first 60 seconds to test how easy you are to control...'''
+  - 'The Covert Quote Dissection (@MasteringMindControl #1 Formula): ''"Your friends don''t understand you. You only need me." Sounds caring—until your circle disappears.'''
+  - 'Subconscious Trigger / Invisible Leash: ''A word. A face. A sound. Your heart races before you even think. That is the invisible leash.'''
+  - 'Named Psychological Gambit / Effect: ''Do a favor for an enemy, and your brain tricks you into liking them. It is called the Ben Franklin Effect.'''
+  - 'Guilt & Boundary Trap: ''If you feel guilty for saying no, you are already inside their manipulation trap.'''
+  - 'Instant Verbal Counter-Move: ''When a manipulator twists your words, never defend yourself. Say these 6 calm words instead...'''
   viral_topic_bank_2026:
-  - "Why Sociopaths Never Blink When They Lie To Your Face"
-  - "If Someone Insults You Disguised As A Joke, Ask This 4-Word Question"
-  - "Why FBI Interrogators Watch Your Feet, Never Your Eyes"
-  - "The 4-Second Silence Trick That Makes Arrogant People Panic"
-  - "Why Narcissists Always Ruin Your Birthday And Special Days"
-  - "How To Spot A Fake Friend By How They React To Your Good News"
-  - "Why Guilty People Always Repeat Your Question Before Answering"
-  - "The Psychological Trap Behind People Who Are 'Too Nice' Too Fast"
-  narrative_structure: Hook (3s cắt đà lướt) -> Mid-Video Re-Hook & Dấu hiệu bóc trần ngầm (Cảnh 2-4) -> Payoff phân tích hiệu ứng tâm lý & Vũ khí tự vệ thực chiến (Cảnh 5-7) -> CTA kích hoạt tranh luận & Vòng lặp vô tận (Infinite Loop)
+  - "The Isolation Gambit: How Control Slowly Shrinks Your World"
+  - "Reverse Gaslighting: How to Reclaim Your Reality Without Arguing"
+  - "The Ben Franklin Effect: How One Small Favor Turns Enemies Into Allies"
+  - "The Invisible Leash: How Pavlovian Triggers Control Your Mind Before You Think"
+  - "The False Choice Trap: How Strategic Ultimatums Steal Your Freedom"
+  - "Why Manipulators Use Intermittent Reinforcement to Keep You Addicted"
+  - "The Psychology of Emotional Mirroring: Why Familiarity Is the Best Disguise"
+  - "Why the Silent Treatment Creates Panic — And How to Break Its Power"
+  - "The Psychology of Suggestive Gaslighting: Repeated Doubt Reshapes Certainty"
+  - "How Covert Narcissists Weaponize Vulnerability to Bypass Your Boundaries"
+  narrative_structure: "Beat 1: Trích dẫn thao túng / Kích hoạt vô thức (0-3s) -> Beat 2: Giải phẫu chuỗi 3 bước 'First... Then... Eventually...' (3-11s) -> Beat 3: Định danh Hiệu ứng Tâm lý & Mệnh đề Đối lập đắt giá (11-18s) -> Beat 4: Đòn Phản Công Thực Chiến (Verbal Counter-Move) & Cầu nối Vòng lặp Vô tận (18-26s)"
   forbidden_words:
   - Chào mừng các bạn đã quay trở lại
   - Bạn có bao giờ tự hỏi
@@ -36,13 +43,15 @@ script_blueprint:
   - In today's video
   - Did you know that
   cta_templates:
-  - "Have you ever caught someone using Sign #2 on you in real life? How did you react? 👇"
-  - "Which of these manipulation tactics is the hardest to spot before it's too late? Drop your thoughts below 👇"
-  - "Do you think cold silence is more powerful than arguing back? Share your experience below 👇"
+  - "Have you ever caught someone using the Isolation Gambit or Sign #2 on you? How did you respond? 👇"
+  - "Which of these covert manipulation tactics is the hardest to spot before it's too late? Drop your thoughts below 👇"
+  - "Have you ever felt the 'Invisible Leash' trigger in a relationship? Share your experience below 👇"
   anti_hallucination_rules:
-  - Luôn gắn liền với hiện tượng tâm lý học có thật (Dunning-Kruger, Gaslighting,
-    Pavlov, Body language FBI, Dark Triad, Halo Effect, Cognitive Dissonance).
-  - Không đưa ra lời khuyên y tế tâm thần cực đoan.
+  - Luôn gắn liền với hiệu ứng/cơ chế tâm lý học có thật (The Isolation Gambit, Ben Franklin Effect,
+    Classical Conditioning / Pavlovian Triggers, Intermittent Reinforcement, Cognitive Dissonance,
+    Suggestive Gaslighting, Emotional Mirroring, Pratfall Effect, Double Bind / False Choice Trap).
+  - Mỗi kịch bản phải cung cấp ít nhất 1 mệnh đề đối lập sắc bén (ví dụ "Love expands your world — control shrinks it")
+    và 1 đòn tự vệ/ứng dụng thực tế (Drill / Counter-phrase).
   banned_lexicon: &id001
   - astrology horoscope
   - magic crystal
@@ -51,42 +60,42 @@ script_blueprint:
   - football
   - soccer
 visual_aesthetics:
-  art_style: Modern Cinematic Psychological Drama & Thought-Provoking Editorial (Fincher / Nolan / A24 Aesthetic)
-  camera_angles: Dramatic low-angle tension, high-angle surveillance perspective, intimate over-the-shoulder confrontation, Dutch angle psychological unease, dynamic macro focus racking, crisp depth of field
-  color_palette: Rich cinematic contrast, warm amber key light, deep midnight navy, crisp architectural alabaster, vivid scarlet accents, dynamic natural lighting
-  master_prompt_prefix: masterpiece cinematic film still, modern psychological drama, vivid rich lighting, expressive storytelling composition, 35mm anamorphic photography
-  master_prompt_suffix: razor-sharp focus, dynamic atmospheric depth, vibrant cinematic color grading, photorealistic vertical 9:16, no text, no watermark
-  negative_prompts: macro eye, eyeball close up, dark muddy face, blurry silhouette, generic portrait, statue head, blurry, low quality, cartoon, anime, 3d render, distorted faces, extra fingers, watermark, text
+  art_style: Dark Psychological Noir & Monochrome Seinen Thriller Aesthetic (@MasteringMindControl / Monster / Chiaroscuro Noir Style)
+  camera_angles: Extreme close-up psychological gaze, half-face shadow framing, tense two-person profile confrontation in silence, low-angle cold authority portrait, silhouette in doorway shadow
+  color_palette: Monochrome charcoal and silver-white chiaroscuro noir, deep obsidian shadows, stark ivory highlights, floating atmospheric film dust particles
+  master_prompt_prefix: masterpiece dark psychological thriller art, monochrome noir aesthetic, high-contrast chiaroscuro lighting, intense micro-expression, seinen psychological anime & cinematic noir film still, floating dust particles
+  master_prompt_suffix: stark silver and charcoal contrast, razor-sharp eyes and facial expression, moody atmospheric depth, vertical 9:16 composition, no text, no watermark
+  negative_prompts: bright cheerful corporate office, smiling stock photo business people, colorful cartoon, chibi, blurry, low quality, distorted faces, extra fingers, watermark, text
   stock_video_keywords:
-  - chess grandmaster hand moving piece
-  - two people intense confrontation
-  - shattered mirror reflection face
-  - polygraph lie detector needle
-  - hand crushing paper under table
-  - stopwatch ticking close up
-  - interrogation room dramatic light
+  - chess grandmaster hand moving piece dark
+  - two people tense silence confrontation shadow
+  - man cold expression shadow portrait
+  - silhouette walking dark corridor
+  - broken mirror reflection face dark
+  - pocket watch swinging hypnotic dark
+  - rain window silhouette thinking night
 subtitles:
-  font_family: Montserrat, sans-serif
+  font_family: Arial Black, Montserrat, sans-serif
   font_weight: '900'
-  font_size: 40
-  primary_color: '#FFFFFF'
-  highlight_color: '#FFE600'
-  accent_color: '#FF3366'
+  font_size: 46
+  primary_color: '#9E9E9E'
+  highlight_color: '#FFFFFF'
+  accent_color: '#FF2A2A'
   outline_color: '#000000'
-  outline_width: 3
-  margin_bottom: 600
+  outline_width: 4
+  margin_bottom: 780
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: +0%
-  pitch: -2Hz
-  bgm_vibe: dark suspense cello, low ambient drone, tension riser
+  rate: +24%
+  pitch: -3Hz
+  bgm_vibe: dark suspense cello, low ambient psychological drone, minimalist noir tension
   sfx_cues:
   - impact_sub
   - glitch
   - riser
   - reveal
 banned_lexicon: *id001
-target_wpm: 145
+target_wpm: 175
 monetization:
   affiliate_enabled: false

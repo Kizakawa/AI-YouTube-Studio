@@ -667,6 +667,41 @@ class ContentAgent:
                     "Which moment shocked you the most? Drop your thoughts in the comments below 👇"
                 )
 
+        # ── 4. MINI-EBOOK DESCRIPTION BREAKDOWN (CHUẨN SEO & GIÁ TRỊ LƯU TRỮ @MasteringMindControl) ──
+        raw_desc = str(raw_data.get("description") or "").strip()
+        if len(raw_desc) < 180 and raw_data.get("scenes"):
+            sc_list = raw_data.get("scenes") or []
+            title_str = str(raw_data.get("title") or "").strip()
+            hook_str = str(raw_data.get("hook") or (sc_list[0].get("narration", "") if sc_list else "")).strip()
+            comb_text = f"{title_str} {hook_str}".lower()
+            is_vn_desc = any("\u0100" <= c <= "\u1EF9" for c in comb_text)
+            mid_idx = max(1, len(sc_list) // 2)
+            act2_str = str(sc_list[min(2, len(sc_list) - 1)].get("narration", "")).strip() if len(sc_list) > 2 else ""
+            act3_str = str(sc_list[mid_idx].get("narration", "")).strip() if len(sc_list) > mid_idx else ""
+            act4_str = str(sc_list[max(0, len(sc_list) - 2)].get("narration", "")).strip() if len(sc_list) >= 2 else ""
+            tags_list = [f"#{str(t).lstrip('#').replace(' ', '')}" for t in (raw_data.get("tags") or ["shorts", "psychology", "mindset"]) if str(t).strip()]
+            tags_line = " ".join(dict.fromkeys(tags_list + ["#shorts", "#psychology", "#darkpsychology", "#selfmastery"]))
+            if is_vn_desc:
+                raw_data["description"] = (
+                    f"{title_str}\n\n"
+                    f"⚡ {hook_str}\n\n"
+                    f"🧠 3 ĐIỂM CỐT LÕI TRONG VIDEO:\n"
+                    f"1️⃣ Dấu hiệu nhận diện: {act2_str}\n"
+                    f"2️⃣ Cơ chế tâm lý ngầm: {act3_str}\n"
+                    f"3️⃣ Đòn hóa giải thực chiến: {act4_str}\n\n"
+                    f"{raw_desc}\n\n{tags_line}"
+                ).strip()
+            else:
+                raw_data["description"] = (
+                    f"{title_str}\n\n"
+                    f"⚡ {hook_str}\n\n"
+                    f"🧠 KEY PSYCHOLOGICAL BREAKDOWN:\n"
+                    f"• The Hidden Pattern: {act2_str}\n"
+                    f"• The Neurological Mechanism: {act3_str}\n"
+                    f"• Tactical Counter-Move: {act4_str}\n\n"
+                    f"{raw_desc}\n\n{tags_line}"
+                ).strip()
+
         return ScriptContract(**raw_data)
 
     def _build_channel_context_memory(
@@ -888,24 +923,24 @@ YouTube Shorts rewards TWO metrics simultaneously:
    - YOU MUST EXECUTE ALL 5 ACTS IN ORDER across 8 to 9 scenes:
 
      * ACT 1 — THE VISCERAL HOOK (Scene 1 | 0.0 – 2.5s | 5 to 8 words):
-       - Deliver an immediate, personal, high-stakes truth, warning, or apex conflict ("That sweet compliment is a loaded weapon.", "Never ignore this four-second silence in conversation.", "A twenty-foot Anaconda ambushes a Black Caiman.").
+       - Deliver an immediate, personal, high-stakes truth, covert manipulation quote, or staccato sensory cue ("That sweet compliment is a loaded weapon.", "A word. A face. You just react.", "Never ignore this four-second silence in conversation.").
        - No greetings, no textbook definitions, no passive "Did you know?" questions.
 
-     * ACT 2 — REAL-LIFE VERBAL EXAMPLE OR HISTORICAL/PHYSICAL PROOF (Scenes 2 – 3 | 2.5 – 11s | 10 to 14 words per scene):
+     * ACT 2 — 3-STEP COVERT ESCALATION OR HISTORICAL/PHYSICAL PROOF (Scenes 2 – 3 | 2.5 – 11s | 10 to 14 words per scene):
        - [CRITICAL DEPTH RULE — SHOW, DON'T GENERALIZE]:
-         * For Psychology / Manipulation / Relationships / Stoicism: You MUST include an EXACT real-life spoken quote or micro-behavior that viewers immediately recognize from their own life (e.g., 'They say things like, "You are actually so smart when you try," with a warm smile.') OR anchor it in a specific historical figure/experiment (e.g. Cesare Borgia, FBI interrogation room, Pavlovian conditioning).
+         * For Psychology / Manipulation / Relationships / Stoicism (@MasteringMindControl Formula): Show the 3-step covert escalation ("First, they criticize your closest friends. Then, they create quiet distance...") OR include an EXACT real-life spoken quote viewers immediately recognize ('They say, "You are too sensitive," or "Did that really happen?"').
          * For Mysteries / Deep Sea / History: Cite the exact year, depth in meters, location, or physical anomaly recorded by researchers.
          * For Wildlife / Animal Rescue: Depict the exact physical strike, bite force (PSI), or the trembling moment of first human touch.
 
-     * ACT 3 — THE HIDDEN BRAIN MECHANISM & MID-VIDEO TWIST (Scenes 4 – 5 | 11 – 21s | 10 to 14 words per scene):
-       - Explain the hidden neurological, psychological, or biological mechanism (*WHY* it works: e.g., how backhanded praise spikes dopamine first so your brain swallows the hidden insult without defending itself).
-       - At Scene 4 or 5 (~12–15s mark), drop a sharp Pattern Interrupt Twist ("But the real trap is what happens to your nervous system next.") and set `overlay_badge` to a short uppercase tag like `"[ // THE REAL TRAP // ]"`.
+     * ACT 3 — NAMED PSYCHOLOGICAL GAMBIT / BRAIN MECHANISM & MID-VIDEO TWIST (Scenes 4 – 5 | 11 – 21s | 10 to 14 words per scene):
+       - Name the exact psychological principle or gambit (*The Isolation Gambit*, *The Ben Franklin Effect*, *The Invisible Leash / Pavlovian Conditioning*, *Suggestive Gaslighting*, *Intermittent Reinforcement*) and explain *WHY* it hijacks the brain (dopamine/cortisol loop, cognitive dissonance).
+       - Drop a razor-sharp aphoristic contrast ("Love expands your world—control shrinks it.", "Calm breaks control; silence exposes intent.") and set `overlay_badge` to a short uppercase tag like `"[ // THE ISOLATION GAMBIT // ]"` or `"[ // THE REAL TRAP // ]"`.
 
      * ACT 4 — THE SURGICAL COUNTER-MOVE / SAVE-WORTHY PAYOFF (Scenes 6 – 7 | 21 – 33s | 10 to 14 words per scene):
        - [THE #1 REASON VIEWERS SAVE & SHARE YOUR VIDEO]:
          * Give the viewer a concrete, practical, word-for-word Counter-Move or behavioral defense they can use today!
-         * Example for Psychology: 'Next time someone slips a barbed compliment, hold eye contact for three seconds and ask calmly, "What exactly do you mean by that?"'
-         * Explain why the counter-move works: 'Forcing them to explain the hidden insult in plain daylight destroys their power instantly.'
+         * Example for Psychology: 'Next time someone tries to rewrite your memory, stay calm and say: "Let us stick to what we can verify."'
+         * Explain why the counter-move works: 'Holding four seconds of silent eye contact forces them to hear their own manipulation.'
          * For Wildlife / Rescue / Mysteries: Deliver the decisive biomechanical climax, the full joyful transformation, or the scientific revelation that resolves Scene 1's mystery.
 
      * ACT 5 — CLIMAX REVELATION & SEAMLESS INFINITE LOOP BRIDGE (Scene 8 or 9 | 33 – 40s | 9 to 13 words):
@@ -946,26 +981,26 @@ YouTube Shorts rewards TWO metrics simultaneously:
 
 4. CONCRETE HUMAN & PHYSICAL VISUAL QUERIES (NO LITERAL PROP METAPHORS!):
    - `visual_keyword` (4-7 English words) and `stock_query` (3-4 English words) drive Google Images and Pexels 9:16 Video search.
-   - CRITICAL ANTI-METAPHOR RULE FOR PSYCHOLOGY / HUMAN TOPICS:
+   - CRITICAL ANTI-METAPHOR & DARK PSYCHOLOGICAL NOIR RULE FOR PSYCHOLOGY TOPICS (@MasteringMindControl Aesthetic):
      * When the narration uses a figure of speech ("velvet praise", "hidden barb", "loaded weapon", "invisible cage", "pulling strings", "waiting for the blade to drop"), NEVER put literal objects (`knife`, `blade`, `dagger`, `needles`, `velvet glove`, `puppet strings`, `cage`, `mask`, `shield`) in `visual_keyword`, `stock_query`, or `visual_prompt`!
-     * ALWAYS translate psychological metaphors into REAL HUMAN INTERACTIONS, FACIAL EXPRESSIONS, AND SETTINGS:
-       - "loaded compliment / velvet praise" -> `visual_keyword`: `"man giving fake smile conversation office"`, `stock_query`: `"two people talking office"`
-       - "hidden barb / subtle insult" -> `visual_keyword`: `"woman looking doubtful tense cafe conversation"`, `stock_query`: `"two people talking cafe"`
-       - "pulling strings / steering your move" -> `visual_keyword`: `"confident man moving chess piece dark room"`, `stock_query`: `"person playing chess"`
-       - "4-second silence counter-move" -> `visual_keyword`: `"calm man locking eyes intense stare portrait"`, `stock_query`: `"serious man looking camera"`
+     * NEVER use cheesy corporate stock photo queries (`"happy office workers"`, `"business handshake"`, `"smiling colleagues"`).
+     * ALWAYS translate psychological dynamics into HIGH-CONTRAST DARK NOIR / CHIAROSCURO HUMAN EXPRESSIONS OR SEINEN PSYCHOLOGICAL THRILLER IMAGERY:
+       - "loaded compliment / covert manipulation" -> `visual_keyword`: `"man cold calculating smirk noir shadow"`, `stock_query`: `"man serious gaze dark"`
+       - "gaslighting / self-doubt" -> `visual_keyword`: `"woman anxious expression dark chiaroscuro room"`, `stock_query`: `"woman stressed dark room"`
+       - "isolation gambit / silent control" -> `visual_keyword`: `"two people silent tension noir shadow"`, `stock_query`: `"couple silent tension"`
+       - "4-second silence counter-move" -> `visual_keyword`: `"calm man unblinking stare chiaroscuro portrait"`, `stock_query`: `"intense eye contact portrait"`
    - STRICTLY FORBIDDEN abstract words: "psychology", "minimalism", "authority", "power", "wealth", "mindset", "discipline", "history", "secret", "truth".
 
 5. MASTER VISUAL DIRECTOR & CINEMATIC PROMPT (FOR AI IMAGERY & ARTWORK):
    - As the Master Director of Photography, NEVER create flat, monotonous, or muddy dark images!
    - Paint with light, rich color palettes, and cinematic depth appropriate to the topic's spirit:
+     * Dark Psychological Noir & Chiaroscuro Silver-Black (@MasteringMindControl Style): For psychology, manipulation, dark human behavior, stoicism — razor-sharp monochrome/desaturated silver-noir contrast, venetian blind shadow lines, dramatic rim light on eyes, floating film dust particles.
      * Golden Hour & Warm Sunlight: For breakthroughs, hope, ancient history, majestic landscapes, victory, morning routines.
-     * Crisp High-Key & Editorial Architectural Light: For modern psychology, business strategy, high intellect, clean minimalist spaces, boardroom interactions.
      * Rich Cyberpunk / Vivid Neon: For cutting-edge AI, future tech, quantum computing, digital mindscapes.
      * Cinematic Twilight / Deep Sapphire: For profound contemplation, cosmic wonders, serene ocean vistas.
      * Bioluminescent Glow & Prismatic Caustics: For deep sea exploration, neuro-synapses firing, alien biology.
-     * Dramatic High-Contrast Spotlight: For tense psychological interrogations, unmasking deception, pivotal turning points.
    - Format: Put the MAIN SUBJECT & ACTION FIRST:
-     "[Focal Subject + Specific Micro-Action], [Environment & Setting], [Camera Angle: macro close-up / low-angle dolly / wide establishing shot], [Lighting & Color Grading: warm golden sunbeams / crisp studio editorial / vivid neon / crystalline water caustics]"
+     "[Focal Subject + Specific Micro-Action], [Environment & Setting], [Camera Angle: macro close-up / low-angle dolly / wide establishing shot], [Lighting & Color Grading: chiaroscuro silver-noir / warm golden sunbeams / vivid neon / crystalline water caustics]"
    - Every scene must be visually unique (no repeating subjects or camera angles).
 
 6. TITLE & LANGUAGE INTEGRITY (100% STRICT ENFORCEMENT):

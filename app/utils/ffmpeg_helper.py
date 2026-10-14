@@ -435,7 +435,7 @@ def get_niche_color_grading(niche: Optional[str] = None, is_scifi: bool = False)
 
     if any(k in raw_niche for k in ("satirical", "comic", "cham_biem", "hoat_hinh_tam_ly")):
         niche_key = "comic_satire"
-    elif "psycholog" in raw_niche or "tam_ly" in raw_niche:
+    elif any(k in raw_niche for k in ("psycholog", "tam_ly", "mind_control", "dark_psych", "manipulation")):
         niche_key = "psychology"
     elif any(k in raw_niche for k in ("deep_sea", "ocean", "bien_sau", "sea")):
         niche_key = "deep_sea"
@@ -465,18 +465,20 @@ def get_niche_color_grading(niche: Optional[str] = None, is_scifi: bool = False)
             "vignette": "",
         },
         "psychology": {
-            # Tâm lý học: tương phản vừa phải, sắc nét, giữ nguyên màu sắc tự nhiên
-            "vf_filter": "eq=contrast=1.06:saturation=1.08:brightness=0.01,unsharp=3:3:0.4:3:3:0.15",
-            "vignette": "vignette=0.35",
+            # @MasteringMindControl Signature Monochrome Silver-Noir & Chiaroscuro:
+            # Khử bão hòa màu lòe loẹt về tông Đen-Trắng Ánh Bạc (saturation=0.18), tương phản sâu (1.24),
+            # nét vẽ/ánh mắt sắc như dao cạo (unsharp), hạt bụi phim điện ảnh (noise=alls=4) và vignette hút tâm (0.45)
+            "vf_filter": "eq=contrast=1.24:saturation=0.18:brightness=-0.03,colorbalance=rs=-0.02:gs=-0.01:bs=0.04,unsharp=5:5:0.75:3:3:0.25,noise=alls=4:allf=t+u",
+            "vignette": "vignette=0.45",
         },
         "deep_sea": {
             # Vực thẳm đại dương & Quái vật biển sâu (Thalassophobia): tương phản sâu lạnh gáy, xanh vực thẳm sắc lạnh, vignette dày ám ảnh
-            "vf_filter": "eq=contrast=1.16:saturation=1.12:brightness=-0.02,colorbalance=rs=-0.04:gs=0.01:bs=0.07,unsharp=3:3:0.65:3:3:0.25",
+            "vf_filter": "eq=contrast=1.18:saturation=1.14:brightness=-0.02,colorbalance=rs=-0.04:gs=0.01:bs=0.07,unsharp=3:3:0.70:3:3:0.25",
             "vignette": "vignette=0.48",
         },
         "wildlife_predators": {
             # National Geographic: màu sắc sống động rực rỡ, sắc nét tự nhiên, khung hình sáng rõ
-            "vf_filter": "eq=contrast=1.06:saturation=1.20:brightness=0.02,unsharp=3:3:0.5:3:3:0.20",
+            "vf_filter": "eq=contrast=1.08:saturation=1.22:brightness=0.02,unsharp=3:3:0.55:3:3:0.20",
             "vignette": "",
         },
         "animal_rescue": {
@@ -486,12 +488,12 @@ def get_niche_color_grading(niche: Optional[str] = None, is_scifi: bool = False)
         },
         "history_mystery": {
             # Cổ tích & Huyền bí: ánh vàng kim ấm áp, giữ độ sáng và chi tiết kiến trúc/nhân vật
-            "vf_filter": "eq=contrast=1.06:saturation=1.12:brightness=0.01,colorbalance=rs=0.02:gs=0.01:bs=-0.01,unsharp=3:3:0.4:3:3:0.15",
-            "vignette": "vignette=0.32",
+            "vf_filter": "eq=contrast=1.10:saturation=1.12:brightness=0.01,colorbalance=rs=0.02:gs=0.01:bs=-0.01,unsharp=3:3:0.5:3:3:0.20",
+            "vignette": "vignette=0.35",
         },
         "horror": {
             # Rùng rợn & Quái vật kinh dị: tương phản gai góc, bóng tối sâu thẳm, ám lạnh điện ảnh, vignette siết chặt
-            "vf_filter": "eq=contrast=1.20:saturation=0.90:brightness=-0.03,colorbalance=rs=-0.03:gs=-0.01:bs=0.05,unsharp=3:3:0.70:3:3:0.25",
+            "vf_filter": "eq=contrast=1.22:saturation=0.85:brightness=-0.03,colorbalance=rs=-0.03:gs=-0.01:bs=0.05,unsharp=3:3:0.75:3:3:0.25,noise=alls=3:allf=t+u",
             "vignette": "vignette=0.52",
         },
         "scifi": {
@@ -505,9 +507,9 @@ def get_niche_color_grading(niche: Optional[str] = None, is_scifi: bool = False)
             "vignette": "",
         },
         "stoic": {
-            # Khắc kỷ / Triết học: tông trầm tĩnh nhưng sáng rõ, tự nhiên
-            "vf_filter": "eq=contrast=1.06:saturation=1.06:brightness=0.01,unsharp=3:3:0.4:3:3:0.15",
-            "vignette": "vignette=0.32",
+            # Khắc kỷ / Triết học: tông trầm tĩnh Chiaroscuro bán đơn sắc sang trọng, chiều sâu triết gia
+            "vf_filter": "eq=contrast=1.18:saturation=0.42:brightness=-0.02,colorbalance=rs=-0.01:gs=-0.01:bs=0.03,unsharp=5:5:0.65:3:3:0.20,noise=alls=3:allf=t+u",
+            "vignette": "vignette=0.40",
         },
         "health": {
             # Sức khỏe & Sinh học: màu sắc tươi tắn, trong trẻo, căng tràn sức sống
@@ -516,7 +518,7 @@ def get_niche_color_grading(niche: Optional[str] = None, is_scifi: bool = False)
         },
         "general": {
             # Mặc định cinema: màu sắc tươi tắn, trong trẻo, tôn vinh ảnh web và ảnh AI gốc
-            "vf_filter": "eq=contrast=1.05:saturation=1.14:brightness=0.01,unsharp=3:3:0.4:3:3:0.15",
+            "vf_filter": "eq=contrast=1.06:saturation=1.14:brightness=0.01,unsharp=3:3:0.45:3:3:0.15",
             "vignette": "",
         },
     }

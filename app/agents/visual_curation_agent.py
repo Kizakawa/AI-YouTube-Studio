@@ -170,19 +170,45 @@ def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any
     return res
 
 
-def _apply_creature_mode(res: Dict[str, Any], narration: str = "", topic: str = "") -> Dict[str, Any]:
+def _apply_creature_mode(res: Dict[str, Any], narration: str = "", topic: str = "", channel_niche: str = "") -> Dict[str, Any]:
     """
-    Dự phòng ngoại tuyến (Offline Heuristic Fallback):
-    Nếu kết quả ĐÃ được AI Agent phân tích (analysis_source == 'ai'), tuyệt đối giữ nguyên quyết định của AI!
-    Chỉ kích hoạt bộ từ khóa dự phòng khi mất kết nối LLM hoặc AI bỏ trống hoàn toàn google_image_queries.
+    Bổ sung chế độ thị giác chuyên biệt:
+    1. Nếu là chủ đề Tâm lý học / Thao túng tâm lý (@MasteringMindControl Dark Psychological Noir):
+       - Đảm bảo preferred_engines có ["bing", "wallhaven", "ddgs"].
+       - Bổ sung truy vấn Monochrome Noir / Seinen Psychological Thriller nếu AI chưa có hoặc khi chạy fallback.
+    2. Dự phòng ngoại tuyến (Offline Heuristic Fallback) cho Quái vật / Sinh vật huyền bí (creature_mode).
     """
+    from app.services.media.image_quality import (
+        is_creature_subject, creature_queries, extract_core_creature, _SPECIFIC_CREATURES, _norm_text,
+        is_psychology_noir_subject, psychology_noir_queries,
+    )
+    subject = str(res.get("subject") or "").strip()
+
+    # Chế độ @MasteringMindControl Dark Psychological Noir & Seinen Thriller
+    if is_psychology_noir_subject(subject, narration, topic, channel_niche):
+        res["psychology_noir_mode"] = True
+        engines = list(res.get("preferred_engines") or [])
+        for eng in ("bing", "wallhaven", "ddgs"):
+            if eng not in engines:
+                engines.append(eng)
+        res["preferred_engines"] = engines[:3]
+        noir_qs = psychology_noir_queries(subject, narration=narration, topic=topic)
+        if res.get("analysis_source") == "ai" and res.get("google_image_queries"):
+            existing_g = list(res.get("google_image_queries") or [])
+            # Đảm bảo có ít nhất 1 truy vấn mang chất Dark Noir / Seinen Thriller đặc trưng của @MasteringMindControl
+            if not any( any(k in q.lower() for k in ("noir", "monochrome", "chiaroscuro", "seinen", "thriller", "shadow")) for q in existing_g ):
+                existing_g = existing_g[:2] + noir_qs[:2]
+            res["google_image_queries"] = existing_g[:4]
+            return res
+        else:
+            res["google_image_queries"] = noir_qs[:4]
+            res["search_queries"] = noir_qs[:3]
+            logger.info(f"🎭 [VisualCuration Noir] Chế độ DARK PSYCHOLOGICAL NOIR cho '{subject or topic[:30]}': {noir_qs[:3]}")
+            return res
+
     if res.get("analysis_source") == "ai" and res.get("google_image_queries"):
         return res
 
-    from app.services.media.image_quality import (
-        is_creature_subject, creature_queries, extract_core_creature, _SPECIFIC_CREATURES, _norm_text,
-    )
-    subject = str(res.get("subject") or "").strip()
     if is_creature_subject(subject, narration, topic):
         core_monster = extract_core_creature(subject, narration, topic)
         norm_subj = f" {_norm_text(subject)} "
@@ -316,7 +342,7 @@ NHIỆM VỤ TƯ DUY ĐẠO DIỄN TỰ HÀNH (AUTONOMOUS SEMANTIC REASONING):
    - CHỈ ĐẶT "core_visual_entity" khi video nói về 1 sinh vật, động vật, nhân vật lịch sử hoặc vật thể cụ thể xuyên suốt (vd: "harpy eagle", "julius caesar", "giant kraken").
    - NẾU video thuộc chủ đề Tâm lý học (Psychology), Hành vi con người, Mối quan hệ, Triết học, Tài chính, Phát triển bản thân: BẮT BUỘC đặt `"core_visual_entity": ""` (chuỗi rỗng)! TUYỆT ĐỐI CẤM bịa ra ẩn dụ trừu tượng kiểu "manipulative puppet master", "toxic trap", "mind prison" làm core_visual_entity vì công cụ tìm ảnh sẽ trả về ảnh quái vật/rối gỗ/lồng sắt kỳ quặc không liên quan!
 2. Xác định "visual_paradigm" (Bản chất thị giác của từng cảnh dựa trên ngữ nghĩa chủ đề):
-   - "CINEMATIC_REALISM": Tâm lý học, thao túng tâm lý, ngôn ngữ cơ thể, cảm xúc con người, giao tiếp xã hội, tội phạm, tài chính, triết học đời sống → ưu tiên ảnh chụp điện ảnh chân thực về biểu cảm/hành động con người (Movie Still, Dramatic Portrait, Moody Cinematic Photography), dùng động cơ ["bing", "ddgs"]. CẤM dùng "artstation" cho chủ đề tâm lý/đời sống!
+   - "CINEMATIC_REALISM": Tâm lý học, thao túng tâm lý, ngôn ngữ cơ thể, cảm xúc con người, giao tiếp xã hội, tội phạm, tài chính, triết học đời sống → ưu tiên phong cách **Dark Psychological Noir & Monochrome Seinen Thriller** (chuẩn kênh @MasteringMindControl: chân dung bóng tối chiaroscuro tương phản cao, cảnh đối mặt im lặng căng thẳng giữa 2 người, hoặc minh họa Seinen Psychological Thriller đen trắng sắc lạnh như Monster / Johan Liebert / noir shadow portrait), dùng động cơ ["bing", "wallhaven", "ddgs"]. TUYỆT ĐỐI CẤM ảnh văn phòng công sở cười tươi giả tạo (cheesy corporate stock photo)!
    - "REAL_WORLD_ACTION": Động vật hoang dã có thật, thiên nhiên có thật, giải cứu động vật, hành động vật lý đời thực → ưu tiên nhiếp ảnh kịch tính & footage thật ["bing", "ddgs"].
    - "HISTORICAL_ARCHIVE": Nhân vật lịch sử có thật, sự kiện lịch sử, cổ vật/di tích thật → ưu tiên tư liệu lịch sử & tranh/ảnh chân thực ["bing", "ddgs"].
    - "SCIENTIFIC_3D": Vũ trụ, thiên văn, giải phẫu, vi sinh, vật lý lượng tử → ưu tiên mô phỏng 3D khoa học & NASA ["bing", "ddgs", "wallhaven"].
@@ -324,7 +350,7 @@ NHIỆM VỤ TƯ DUY ĐẠO DIỄN TỰ HÀNH (AUTONOMOUS SEMANTIC REASONING):
    - "STYLIZED_ANIMATION": Hoạt hình 2D châm biếm, minh họa.
 3. Chọn "preferred_engines": Mảng động cơ tìm kiếm phù hợp nhất cho cảnh đó từ ["bing", "ddgs", "wallhaven", "artstation"].
 4. Thiết kế "search_queries" và "google_image_queries" (3 câu truy vấn ngắn gọn 3-6 từ tiếng Anh cho mỗi cảnh):
-   - Mô tả TRỰC TIẾP hình ảnh con người/vật thể/hành động đời thực cần thấy trên màn hình (vd: "man giving fake charming smile", "woman looking anxious dark room", "two people whispering office").
+   - Mô tả TRỰC TIẾP hình ảnh con người/vật thể/hành động đời thực hoặc khung hình Dark Noir/Seinen Thriller cần thấy trên màn hình (vd: "man cold calculating gaze shadow", "two people silent tension dark room", "monochrome noir psychological thriller portrait").
    - TUYỆT ĐỐI CẤM đưa thuật ngữ góc máy/nhiếp ảnh ("Macro shot", "Wide-angle", "Close-up", "Low-angle", "Breathtaking cinematography") vào `search_queries` hoặc `google_image_queries`!
    - TUYỆT ĐỐI CẤM đưa từ khóa ẩn dụ trừu tượng ("puppet master", "mental trap", "invisible cage") vào câu tìm kiếm khi video nói về tâm lý con người!
    - Các phân cảnh liền kề KHÔNG được trùng lặp truy vấn.
@@ -338,7 +364,7 @@ TRẢ VỀ JSON DUY NHẤT THEO ĐỊNH DẠNG:
       "scene_id": 1,
       "core_visual_entity": "Thực thể vật lý cụ thể hoặc ''",
       "visual_paradigm": "CINEMATIC_REALISM | REAL_WORLD_ACTION | HISTORICAL_ARCHIVE | SCIENTIFIC_3D | CGI_CONCEPT_ART | STYLIZED_ANIMATION",
-      "preferred_engines": ["bing", "ddgs"],
+      "preferred_engines": ["bing", "wallhaven", "ddgs"],
       "mood": "dark_ominous | tense_mysterious | epic_heroic | vibrant_energetic | melancholy_thoughtful | scientific_curiosity",
       "narrative_subtext": "Ngụ ý cảm xúc của cảnh (1 câu ngắn)",
       "visual_metaphor": "Mô tả hình ảnh cụ thể, chân thực trên màn hình 9:16",
@@ -348,12 +374,12 @@ TRẢ VỀ JSON DUY NHẤT THEO ĐỊNH DẠNG:
       "motion_level": "HIGH_MOTION | MEDIUM_MOTION | STATIC_DETAILED",
       "search_queries": ["concrete visual query 1", "concrete visual query 2", "concrete visual query 3"],
       "google_image_queries": [
-        "concrete subject + specific human expression/action + dramatic film still (4-6 words)",
-        "concrete subject + realistic setting + moody lighting (4-6 words)",
-        "concrete subject + emotional context + cinematic photo (4-6 words)"
+        "concrete subject + specific human expression/action + noir film still (4-6 words)",
+        "concrete subject + dark chiaroscuro shadow portrait (4-6 words)",
+        "concrete subject + monochrome psychological thriller aesthetic (4-6 words)"
       ],
-      "negative_cues": ["text overlay", "watermark", "blurry", "unrelated monster", "lingerie", "nsfw"],
-      "cinematic_ai_prompt": "Detailed 8K vertical 9:16 photorealistic prompt in English describing the exact scene, subject expression, environment, and lighting"
+      "negative_cues": ["text overlay", "watermark", "blurry", "unrelated monster", "lingerie", "nsfw", "happy office stock photo"],
+      "cinematic_ai_prompt": "Detailed 8K vertical 9:16 photorealistic noir prompt in English describing the exact scene, subject expression, chiaroscuro lighting, and atmosphere"
     }}
   ]
 }}
@@ -381,7 +407,7 @@ TRẢ VỀ JSON DUY NHẤT THEO ĐỊNH DẠNG:
                 narr = sc_orig.get("narration", "")
                 subj = str(item.get("subject") or item.get("core_visual_entity") or "").strip() or extract_subject(narr, primary_entity)
                 item = _enforce_subject_queries(item, subj)
-                item = _apply_creature_mode(item, narr, topic)
+                item = _apply_creature_mode(item, narr, topic, channel_niche=channel_niche)
                 result_map[sid_int] = item
             if result_map:
                 logger.info(
@@ -420,20 +446,20 @@ THÔNG TIN ĐẦU VÀO:
 NHIỆM VỤ TƯ DUY ĐẠO DIỄN TỰ HÀNH:
 1. "core_visual_entity": CHỈ ĐẶT khi video nói về 1 sinh vật, động vật, nhân vật lịch sử hoặc vật thể cụ thể (vd: "harpy eagle", "julius caesar", "giant kraken"). Nếu video nói về Tâm lý học, Hành vi con người, Mối quan hệ, Triết học, Tài chính -> BẮT BUỘC để chuỗi rỗng `""`! CẤM bịa ra cụm từ ẩn dụ kiểu "manipulative puppet master" hay "toxic trap".
 2. "visual_paradigm": Chọn đúng bản chất thị giác của cảnh:
-   - "CINEMATIC_REALISM": Tâm lý học, thao túng tâm lý, cảm xúc con người, giao tiếp xã hội, tội phạm, đời sống -> ưu tiên ảnh chụp điện ảnh chân thực ["bing", "ddgs"].
+   - "CINEMATIC_REALISM": Tâm lý học, thao túng tâm lý, cảm xúc con người, giao tiếp xã hội, tội phạm, đời sống -> ưu tiên phong cách **Dark Psychological Noir & Monochrome Seinen Thriller** (chân dung chiaroscuro bóng tối, đối mặt im lặng căng thẳng, hoặc minh họa Seinen Thriller đen trắng sắc lạnh kiểu @MasteringMindControl) ["bing", "wallhaven", "ddgs"].
    - "REAL_WORLD_ACTION": Động vật hoang dã thật, thiên nhiên thật, hành động đời thực -> ["bing", "ddgs"].
    - "HISTORICAL_ARCHIVE": Nhân vật/sự kiện lịch sử có thật -> ["bing", "ddgs"].
    - "SCIENTIFIC_3D": Vũ trụ, thiên văn, giải phẫu, tế bào, vật lý -> ["bing", "ddgs", "wallhaven"].
    - "CGI_CONCEPT_ART": CHỈ DÙNG CHO thần thoại, quái vật, kinh dị siêu nhiên, viễn tưởng -> ["artstation", "bing", "wallhaven", "ddgs"].
    - "STYLIZED_ANIMATION": Hoạt hình 2D châm biếm, minh họa.
 3. "preferred_engines": Chọn thứ tự động cơ tìm kiếm phù hợp nhất từ ["bing", "ddgs", "wallhaven", "artstation"].
-4. "search_queries" & "google_image_queries": 3 câu truy vấn 3-6 từ tiếng Anh mô tả TRỰC TIẾP hình ảnh con người/sự vật thật cần hiển thị. CẤM đưa thuật ngữ góc máy ("Macro shot", "Wide-angle", "Close-up", "Breathtaking cinematography") hoặc ẩn dụ trừu tượng vào câu tìm kiếm!
+4. "search_queries" & "google_image_queries": 3 câu truy vấn 3-6 từ tiếng Anh mô tả TRỰC TIẾP hình ảnh con người/sự vật thật hoặc khung hình Dark Noir/Seinen Thriller cần hiển thị. CẤM đưa thuật ngữ góc máy ("Macro shot", "Wide-angle", "Close-up", "Breathtaking cinematography") hoặc ẩn dụ trừu tượng vào câu tìm kiếm!
 
 HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
 {{
   "core_visual_entity": "Thực thể vật lý cụ thể hoặc ''",
   "visual_paradigm": "CINEMATIC_REALISM | REAL_WORLD_ACTION | HISTORICAL_ARCHIVE | SCIENTIFIC_3D | CGI_CONCEPT_ART | STYLIZED_ANIMATION",
-  "preferred_engines": ["bing", "ddgs"],
+  "preferred_engines": ["bing", "wallhaven", "ddgs"],
   "mood": "dark_ominous | tense_mysterious | epic_heroic | vibrant_energetic | melancholy_thoughtful | scientific_curiosity",
   "narrative_subtext": "Ngụ ý và cảm xúc sâu xa mà phân cảnh này muốn truyền tải (1-2 câu tiếng Việt)",
   "visual_metaphor": "Mô tả bối cảnh điện ảnh chân thực, khớp nội dung trên màn hình 9:16",
@@ -447,14 +473,14 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
     "concrete subject + expression (3-5 từ tiếng Anh)"
   ],
   "google_image_queries": [
-    "concrete subject + specific scene action + cinematic film still (4-6 từ tiếng Anh)",
-    "concrete subject + dramatic expression + moody photography (4-6 từ tiếng Anh)",
-    "concrete subject + realistic context + HD (4-6 từ tiếng Anh)"
+    "concrete subject + specific scene action + noir film still (4-6 từ tiếng Anh)",
+    "concrete subject + dramatic expression + chiaroscuro shadow portrait (4-6 từ tiếng Anh)",
+    "concrete subject + monochrome psychological thriller aesthetic (4-6 từ tiếng Anh)"
   ],
   "negative_cues": [
-    "text overlay, watermark, blurry, low resolution, unrelated monster, lingerie, nsfw"
+    "text overlay, watermark, blurry, low resolution, unrelated monster, lingerie, nsfw, happy office stock photo"
   ],
-  "cinematic_ai_prompt": "Detailed 8K vertical 9:16 cinematic photorealistic prompt in English, dramatic lighting, vivid contrast, scroll-stopping visual impact."
+  "cinematic_ai_prompt": "Detailed 8K vertical 9:16 cinematic photorealistic noir prompt in English, dramatic chiaroscuro lighting, vivid contrast, scroll-stopping visual impact."
 }}
 """
         res = self._call_gemini_json(prompt)
@@ -465,7 +491,7 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
             res["analysis_source"] = "ai"
             subj = str(res.get("subject") or res.get("core_visual_entity") or "").strip() or extract_subject(narration, primary_entity)
             res = _enforce_subject_queries(res, subj)
-            res = _apply_creature_mode(res, narration, topic)
+            res = _apply_creature_mode(res, narration, topic, channel_niche=channel_niche)
             logger.info(
                 f"🎬 [VisualCuration AI] Cảnh {scene_id} [{res.get('visual_paradigm')} / {res.get('production_method')}] "
                 f"entity='{res.get('core_visual_entity', '')}' subject='{res.get('subject', '')}' "
@@ -487,7 +513,7 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
             res["search_queries"] = [subj, f"{subj} close up"] + generic[:1]
             res["google_image_queries"] = [f'"{subj}" high resolution photograph', f"{subj} close up real photo"]
             res["subject"] = subj
-            res = _apply_creature_mode(res, narration, topic)
+            res = _apply_creature_mode(res, narration, topic, channel_niche=channel_niche)
             logger.info(f"🎬 [VisualCuration] Cảnh {scene_id} (heuristic) subject='{subj}' queries={res['search_queries']}")
         return res
 
