@@ -516,23 +516,46 @@ def get_next_available_golden_slot(
     target_tz = BR_TZ if is_br else US_EASTERN
 
     occupied_slots_utc = []
+    cutoff_48h = now_utc - timedelta(hours=48)
     with get_db() as db:
         scheduled_jobs = db.query(VideoJob).filter(
             VideoJob.target_channel_id.in_(channel_family),
             VideoJob.status.in_(["SCHEDULED", "PUBLISHED"]),
-            VideoJob.scheduled_time.isnot(None)
         ).all()
 
         for j in scheduled_jobs:
-            if j.scheduled_time:
-                st = j.scheduled_time
+            st = j.scheduled_time
+            if not st and j.status == "PUBLISHED" and j.youtube_video_id:
+                st = j.updated_at or j.created_at
+            if st:
                 if st.tzinfo is None:
                     st = st.replace(tzinfo=timezone.utc)
                 # Chỉ tính các slot đã đăng hoặc lên lịch trong vòng 48h qua hoặc trong tương lai
-                if st >= (now_utc - timedelta(hours=48)):
+                if st >= cutoff_48h:
                     occupied_slots_utc.append(st)
 
-    logger.debug(f"[SmartScheduler] Kênh {channel_id} (Family: {channel_family}, Brazil={is_br}) hiện có {len(occupied_slots_utc)} khe giờ đã đặt lịch.")
+        # Bổ sung cả các video đã xuất bản thực tế từ bảng PublishedVideo (bao gồm upload trực tiếp / youtube_sync)
+        try:
+            from app.database.models import PublishedVideo
+            recent_pvs = db.query(PublishedVideo).filter(
+                PublishedVideo.channel_id.in_(channel_family)
+            ).order_by(PublishedVideo.id.desc()).limit(30).all()
+            for pv in recent_pvs:
+                pv_dt = pv.published_at
+                if isinstance(pv_dt, str) and pv_dt.strip():
+                    try:
+                        pv_dt = datetime.fromisoformat(pv_dt.replace("Z", "+00:00"))
+                    except Exception:
+                        pv_dt = None
+                if isinstance(pv_dt, datetime):
+                    if pv_dt.tzinfo is None:
+                        pv_dt = pv_dt.replace(tzinfo=timezone.utc)
+                    if pv_dt >= cutoff_48h and not any(abs((pv_dt - ex).total_seconds()) < 120 for ex in occupied_slots_utc):
+                        occupied_slots_utc.append(pv_dt)
+        except Exception as e_pv:
+            logger.debug(f"[SmartScheduler] Không thể quét PublishedVideo cho {channel_id}: {e_pv}")
+
+    logger.debug(f"[SmartScheduler] Kênh {channel_id} (Family: {channel_family}, Brazil={is_br}) hiện có {len(occupied_slots_utc)} khe giờ đã đặt lịch/xuất bản.")
 
     # 2. Duyệt tìm khe giờ trống bắt đầu từ ngày hôm nay đến 45 ngày tiếp theo
     # Áp dụng triệt để: TỐI ĐA 2 VIDEO / NGÀY / KÊNH

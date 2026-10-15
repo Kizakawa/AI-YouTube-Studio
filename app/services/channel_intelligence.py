@@ -188,15 +188,23 @@ def ensure_unique_title(
     if not candidate_title:
         return candidate_title, False, None
 
+    clean_cand = re.sub(
+        r'^(?:(?:hook|title|tiêu\s*đề)\s*)?(?:variant|option|ver|version|biến\s*thể)\s*#?\d+\s*(?:\([^)]*\))?\s*[:\-–—]\s*',
+        '',
+        candidate_title.strip(),
+        flags=re.IGNORECASE,
+    ).strip()
+    if not clean_cand:
+        clean_cand = candidate_title.strip()
+
     portfolio = get_channel_existing_portfolio(channel_id)
     existing_titles = portfolio.get("existing_titles", [])
     if not existing_titles:
-        return candidate_title, False, None
+        return clean_cand, False, None
 
-    clean_cand = candidate_title.strip()
     is_dup, score, matched = check_idea_similarity(clean_cand, existing_titles, similarity_threshold=similarity_threshold)
     if not is_dup:
-        return candidate_title, False, None
+        return clean_cand, False, None
 
     logger.warning(
         f"[AntiDuplication] ⚠️ Phát hiện tiêu đề trùng lặp: '{clean_cand}' "
@@ -1573,7 +1581,7 @@ def trigger_auto_generation_for_overdue_channel(
             topic=topic_str,
             channel_niche=niche_id,
             language=lang,
-            director_notes="Kịch bản được kích hoạt tự động theo cơ chế cứu tương tác kênh. Nhịp độ dồn dập, hook cắt đà lướt cực mạnh, CTA bám sát kịch bản.",
+            director_notes="Kịch bản kích hoạt tự động cứu tương tác kênh. Chuẩn 5-Act 32-42s Golden Depth (88-118 từ, 8-9 cảnh trọn ý): mở đầu khẳng định sắc lẹm, có ví dụ câu nói thật + cơ chế não bộ + chiêu phản đòn cụ thể, kết thúc Seamless Loop nối về Cảnh 1 (tuyệt đối không đọc CTA Subscribe).",
             cooldown_entities=cooldown_ents
         )
     except Exception as e:

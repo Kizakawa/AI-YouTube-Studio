@@ -302,15 +302,21 @@ class PublisherAgent:
                 "project_id": self.project_id
             }
 
-        # Khử hậu tố kênh/quốc gia rò rỉ (ví dụ " - Maya Leader VN" hay " - VN")
+        # Khử tiền tố Variant / Option rò rỉ từ LLM và hậu tố kênh/quốc gia (ví dụ "Variant 1: ...", " - Maya Leader VN")
+        clean_title = re.sub(
+            r'^(?:(?:hook|title|tiêu\s*đề)\s*)?(?:variant|option|ver|version|biến\s*thể)\s*#?\d+\s*(?:\([^)]*\))?\s*[:\-–—]\s*',
+            '',
+            (title or "").strip(),
+            flags=re.IGNORECASE,
+        ).strip()
         clean_title = re.sub(
             r'[\[\(\s\-_|:]+[\w\s]*?\b(?:VN|VI|Vietnamese|Vietnam)\b.*$',
             '',
-            title,
+            clean_title,
             flags=re.IGNORECASE
         ).strip()
         if not clean_title:
-            clean_title = title
+            clean_title = (title or "Shorts Video").strip()
 
         # Đảm bảo video được gắn cờ và phân loại 100% là YouTube Shorts
         if "#shorts" not in clean_title.lower():
@@ -325,16 +331,15 @@ class PublisherAgent:
         
         affiliate_enabled = False
         try:
-            from app.services.niche_manager import get_niche
-            niche_prof = get_niche(niche_id)
-            monet_cfg = niche_prof.get("monetization", {})
-            affiliate_enabled = bool(
-                monet_cfg.get("affiliate_enabled", False)
-                or self.channel_config.get("affiliate_enabled", False)
-                or self.channel_config.get("enable_monetization", False)
-            )
+            ch_monet = self.channel_config.get("enable_monetization")
+            ch_aff = self.channel_config.get("affiliate_enabled")
+            env_aff = os.getenv("ENABLE_AFFILIATE_LINKS", "false").lower() in ("true", "1", "yes")
+            if ch_monet is False or ch_aff is False:
+                affiliate_enabled = False
+            elif ch_monet is True or ch_aff is True or env_aff:
+                affiliate_enabled = True
         except Exception:
-            pass
+            affiliate_enabled = False
 
         donation_enabled = bool(
             os.getenv("ENABLE_DONATION_CTA", "false").lower() in ("true", "1", "yes")
@@ -362,7 +367,7 @@ class PublisherAgent:
             except Exception as ex:
                 logger.warning(f"Không thể áp dụng monetization_engine: {ex}")
         else:
-            logger.info(f"Ngách '{niche_id}' không bật affiliate hay donation -> Giữ mô tả sạch")
+            logger.info(f"Ngách '{niche_id}' không bật affiliate hay donation -> Giữ mô tả sạch tối ưu phân phối Shorts Feed")
 
         # Đảm bảo description luôn có hashtag nhận diện Shorts
         shorts_hashtags = "#Shorts #shorts #viral #ytshorts"
@@ -394,10 +399,11 @@ class PublisherAgent:
             else:
                 target_audio_lang = default_audio_language
 
-        # Chống đăng trùng lặp tiêu đề video (Anti-Duplicate Upload Guard across Channel Family)
+        # Chống đăng trùng lặp tiêu đề video (Anti-Duplicate Upload Guard across Channel Family + Semantic Similarity)
         try:
-            from app.database.models import get_db, VideoJob
+            from app.database.models import get_db, VideoJob, PublishedVideo
             from app.services.smart_scheduler import resolve_channel_family
+            from app.services.channel_intelligence import check_idea_similarity
             fam_ids = resolve_channel_family(self.channel_id)
             norm_cand = re.sub(r'#shorts\b|\W+', '', clean_title.lower())
             with get_db() as db:
@@ -407,12 +413,37 @@ class PublisherAgent:
                     VideoJob.youtube_video_id.isnot(None),
                 ).order_by(VideoJob.id.desc()).limit(40).all()
                 for rj in recent_jobs:
-                    rj_norm = re.sub(r'#shorts\b|\W+', '', (rj.title or "").lower())
-                    if rj_norm and norm_cand and (rj_norm == norm_cand or rj.title in (title, clean_title)):
-                        logger.warning(f"⚠️ [Publisher] Video '{clean_title}' đã được đăng trước đó trên kênh '{self.channel_name}' (ID: {rj.youtube_video_id}). Chặn upload trùng lặp!")
+                    rj_title = rj.title or ""
+                    rj_norm = re.sub(r'#shorts\b|\W+', '', rj_title.lower())
+                    is_sim, sim_score, _ = check_idea_similarity(clean_title, [rj_title], similarity_threshold=0.58)
+                    if rj_norm and norm_cand and (rj_norm == norm_cand or rj_title in (title, clean_title) or is_sim):
+                        logger.warning(
+                            f"⚠️ [Publisher] Video '{clean_title}' trùng lặp ({sim_score:.2f}) với video đã đăng '{rj_title}' "
+                            f"trên kênh '{self.channel_name}' (ID: {rj.youtube_video_id}). Chặn upload trùng lặp!"
+                        )
                         return {
                             "video_id": rj.youtube_video_id,
                             "url": f"https://youtube.com/shorts/{rj.youtube_video_id}",
+                            "title": clean_title,
+                            "status": "already_published",
+                            "project_id": self.project_id
+                        }
+                recent_pvs = db.query(PublishedVideo).filter(
+                    PublishedVideo.channel_id.in_(fam_ids),
+                    PublishedVideo.youtube_video_id.isnot(None),
+                ).order_by(PublishedVideo.id.desc()).limit(30).all()
+                for pv in recent_pvs:
+                    pv_title = pv.title or ""
+                    pv_norm = re.sub(r'#shorts\b|\W+', '', pv_title.lower())
+                    is_sim_pv, sim_pv_score, _ = check_idea_similarity(clean_title, [pv_title], similarity_threshold=0.58)
+                    if pv_norm and norm_cand and (pv_norm == norm_cand or is_sim_pv):
+                        logger.warning(
+                            f"⚠️ [Publisher] Video '{clean_title}' trùng lặp ({sim_pv_score:.2f}) với PublishedVideo '{pv_title}' "
+                            f"trên kênh '{self.channel_name}' (ID: {pv.youtube_video_id}). Chặn upload trùng lặp!"
+                        )
+                        return {
+                            "video_id": pv.youtube_video_id,
+                            "url": f"https://youtube.com/shorts/{pv.youtube_video_id}",
                             "title": clean_title,
                             "status": "already_published",
                             "project_id": self.project_id

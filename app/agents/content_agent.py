@@ -518,11 +518,41 @@ class ContentAgent:
                 last_scene["narration"] = clean_narr
 
         # ── 2.85. VIRAL HOOK RETENTION TOURNAMENT (ĐẤU TRƯỜNG HOOK 0.0s TỐI ƯU STAY-TO-WATCH >= 75%) ──
+        def _strip_variant_prefix(val: str) -> str:
+            if not val or not isinstance(val, str):
+                return ""
+            cleaned = re.sub(
+                r'^(?:(?:hook|title|tiêu\s*đề)\s*)?(?:variant|option|ver|version|biến\s*thể| mẫu)\s*#?\d+\s*(?:\([^)]*\))?\s*[:\-–—]\s*',
+                '',
+                val.strip(),
+                flags=re.IGNORECASE,
+            ).strip()
+            return cleaned.strip('"\'')
+
+        if raw_data.get("title"):
+            raw_data["title"] = _strip_variant_prefix(str(raw_data["title"]))
+        if isinstance(raw_data.get("title_variants"), list):
+            raw_data["title_variants"] = [
+                _strip_variant_prefix(str(v))
+                for v in raw_data["title_variants"]
+                if v and _strip_variant_prefix(str(v))
+            ]
+        if raw_data.get("hook"):
+            raw_data["hook"] = _strip_variant_prefix(str(raw_data["hook"]))
+        if isinstance(raw_data.get("hook_variants"), list):
+            raw_data["hook_variants"] = [
+                _strip_variant_prefix(str(v))
+                for v in raw_data["hook_variants"]
+                if v and _strip_variant_prefix(str(v))
+            ]
+
         if scenes and isinstance(scenes[0], dict):
+            if scenes[0].get("narration"):
+                scenes[0]["narration"] = _strip_variant_prefix(str(scenes[0]["narration"]))
             hook_candidates: List[str] = []
             for h_cand in [scenes[0].get("narration"), raw_data.get("hook"), *(raw_data.get("hook_variants") or [])]:
                 if h_cand and isinstance(h_cand, str):
-                    hc = h_cand.strip()
+                    hc = _strip_variant_prefix(h_cand)
                     if hc and hc not in hook_candidates:
                         hook_candidates.append(hc)
             if len(hook_candidates) >= 2:
@@ -530,10 +560,10 @@ class ContentAgent:
                     h_score = 50.0
                     words_h = re.findall(r'\b\w+\b', h_str)
                     w_len = len(words_h)
-                    # Độ dài vàng cho Hook 0.0s (4 - 8 từ ~ 1.4s - 2.2s): Đủ 1 nhịp thở dứt khoát
-                    if 4 <= w_len <= 8:
+                    # Độ dài vàng cho Hook 0.0s (5 - 10 từ ~ 1.8s - 2.6s): Đủ 1 câu khẳng định sắc lẹm
+                    if 5 <= w_len <= 10:
                         h_score += 22.0
-                    elif w_len > 10 or w_len < 3:
+                    elif w_len > 12 or w_len < 4:
                         h_score -= 20.0
                     # Chứa số liệu / tốc độ / lực cắn / thời gian cụ thể
                     if re.search(r'\d', h_str):
@@ -542,22 +572,33 @@ class ContentAgent:
                     power_hook_words = (
                         "never", "deadly", "crush", "swallow", "silent", "seconds", "freeze", "blind", "strike", "bite",
                         "venom", "paradox", "impossible", "mistake", "alive", "shivering", "refused", "terror", "abyss",
+                        "weapon", "trap", "manipulat", "narcissist", "toxic", "lie", "liar", "secret", "warning",
                         "tử thần", "ngay lập tức", "nghịch lý", "cắn", "nuốt", "đóng băng", "run rẩy", "tuyệt đối", "bí mật",
                         "jamais", "mortal", "esmagar", "engolir", "silêncio", "segundos", "erro", "impossível", "veneno", "abismo"
                     )
-                    h_low = h_str.lower()
+                    h_low = h_str.lower().strip()
                     if any(pw in h_low for pw in power_hook_words):
                         h_score += 16.0
-                    # Phạt nặng nếu mở đầu bằng câu hỏi sáo rỗng hoặc từ đệm yếu
-                    if re.match(r'^(?:stop scrolling|did you know|have you ever|bạn có biết|você sabia)', h_low):
-                        h_score -= 35.0
+                    # Phạt nặng nếu mở đầu bằng câu hỏi thụ động Yes/No hoặc câu hỏi sáo rỗng làm tụt Stayed-to-Watch
+                    if re.match(
+                        r'^(?:stop scrolling|did you know|have you ever|did they|did you|do you|why did|what did|what roared|what made|is it|are you|can you|bạn có biết|você sabia)\b',
+                        h_low,
+                    ):
+                        h_score -= 38.0
+                    if h_str.strip().endswith("?"):
+                        h_score -= 18.0
                     return h_score
 
+                current_sc1 = str(scenes[0].get("narration") or "").strip()
                 best_hook = max(hook_candidates, key=_score_hook_retention)
-                if best_hook != scenes[0].get("narration") and 3 <= len(re.findall(r'\b\w+\b', best_hook)) <= 9:
+                if (
+                    best_hook != current_sc1
+                    and 4 <= len(re.findall(r'\b\w+\b', best_hook)) <= 10
+                    and _score_hook_retention(best_hook) >= _score_hook_retention(current_sc1) + 6.0
+                ):
                     logger.info(
                         f"[ContentAgent] 🔥 Hook Retention Tournament chọn Hook 0.0s mạnh nhất: "
-                        f"'{best_hook}' (thay cho '{scenes[0].get('narration')}')"
+                        f"'{best_hook}' (thay cho '{current_sc1}')"
                     )
                     scenes[0]["narration"] = best_hook
                     scenes[0]["highlight_words"] = _auto_extract_scene_highlights(best_hook)
@@ -573,21 +614,22 @@ class ContentAgent:
         raw_variants = raw_data.get("title_variants")
         candidates: List[str] = []
         if raw_data.get("title"):
-            candidates.append(str(raw_data["title"]).strip())
+            candidates.append(_strip_variant_prefix(str(raw_data["title"])))
         if isinstance(raw_variants, list):
             for v in raw_variants:
-                if v and str(v).strip() and str(v).strip() not in candidates:
-                    candidates.append(str(v).strip())
+                v_clean = _strip_variant_prefix(str(v)) if v else ""
+                if v_clean and v_clean not in candidates:
+                    candidates.append(v_clean)
         if len(candidates) >= 2:
             def _score_title_ctr(t_str: str) -> float:
                 score = 50.0
-                clean_t = re.sub(r'#\w+', '', t_str).strip()
+                clean_t = re.sub(r'#\w+', '', _strip_variant_prefix(t_str)).strip()
                 c_len = len(clean_t)
                 # Chiều dài vàng trên Shorts Shelf Mobile: 26 - 56 ký tự (không bị cắt '...')
                 if 26 <= c_len <= 56:
                     score += 20.0
-                elif c_len > 65:
-                    score -= 15.0
+                elif c_len > 60:
+                    score -= 22.0
                 # Chứa con số / dữ kiện định lượng / đối đầu trực diện
                 if re.search(r'\d', clean_t):
                     score += 12.0
@@ -595,7 +637,7 @@ class ContentAgent:
                     score += 10.0
                 # Chứa từ khóa kích hoạt tò mò / cảnh báo (Curiosity Gap & Threat Triggers)
                 ctr_triggers = (
-                    "why", "never", "secret", "truth", "sign", "until", "mistake", "hidden", "actually",
+                    "why", "never", "secret", "truth", "sign", "until", "mistake", "hidden", "actually", "refused",
                     "tại sao", "đừng", "bí mật", "sự thật", "dấu hiệu", "cho đến khi", "sai lầm", "ẩn giấu",
                     "por que", "nunca", "segredo", "verdade", "erro", "jamais"
                 )
@@ -1043,18 +1085,18 @@ YouTube Shorts rewards TWO metrics simultaneously:
 OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
 ═══════════════════════════════════════════════════════════
 {{
-  "title": "Viral YouTube Shorts Title with Emojis (28-55 chars)",
+  "title": "Viral YouTube Shorts Title with Emojis (28-55 chars, NO 'Variant' prefix)",
   "title_variants": [
-    "Variant 1: Curiosity Gap / Paradox Hook (28-55 chars)",
-    "Variant 2: Direct Warning / Specific Number Hook (28-55 chars)",
-    "Variant 3: Extreme Contrast / Counter-Move Hook (28-55 chars)"
+    "Alternative High-CTR Curiosity Gap Title with Emoji (28-55 chars, NO 'Variant' prefix)",
+    "Alternative Direct Warning / Numbered Title with Emoji (28-55 chars, NO 'Variant' prefix)",
+    "Alternative Extreme Contrast / Counter-Move Title with Emoji (28-55 chars, NO 'Variant' prefix)"
   ],
   "primary_entity": "Full official name of main historical person/species or null (null for general psychology topics)",
-  "hook": "The opening 2.2-second hook sentence (5-8 words)",
+  "hook": "The opening 2.2-second declarative hook sentence (5-8 words, NO passive questions)",
   "hook_variants": [
-    "Hook Variant 1: Personal Warning / Pain Point Hook (5-8 words)",
-    "Hook Variant 2: Counter-Intuitive Psychological Paradox (5-8 words)",
-    "Hook Variant 3: Immediate Behavioral Test Hook (5-8 words)"
+    "Declarative personal warning or pain-point hook sentence (5-8 words)",
+    "Counter-intuitive psychological or physical paradox hook sentence (5-8 words)",
+    "Immediate behavioral test or high-stakes action hook sentence (5-8 words)"
   ],
   "full_narration": "Complete spoken text without stage directions (strictly 88-118 words, 32-42s golden depth with Real-Life Example, Mechanism, Actionable Counter-Move, and zero spoken Subscribe CTA)",
   "thumbnail_text": "2-4 TỪ IN HOA CỰC TO GỢI TÒ MÒ CHO ẢNH BÌA",

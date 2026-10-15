@@ -281,7 +281,10 @@ async def run_autopilot_pipeline_for_channel(
 
         director_notes = (
             f"Kịch bản Auto-Pilot A-Z phát hành vào khung giờ vàng {display_vn}. "
-            f"Bắt buộc: 3 giây cuối có câu mồi kích thích tò mò đăng ký kênh và câu hỏi ghim bình luận."
+            f"Chuẩn 5-Act 32-42s Golden Depth (88-118 từ, 8-9 cảnh trọn ý). "
+            f"Bắt buộc: (1) Cảnh 1 mở đầu bằng câu khẳng định/cảnh báo sắc lẹm, CẤM mở đầu bằng câu hỏi Yes/No thụ động; "
+            f"(2) Có câu nói trích dẫn đời thực (Real-life verbal quote), giải mã cơ chế não bộ (Brain mechanism) và chiêu phản đòn cụ thể (Surgical counter-move); "
+            f"(3) Cảnh cuối dùng Seamless Infinite Loop nối mượt về Cảnh 1, TUYỆT ĐỐI KHÔNG đọc lời kêu gọi Subscribe/Like bằng giọng đọc (chỉ đặt câu hỏi tranh luận ở trường pinned_comment)."
         )
 
         try:
@@ -326,7 +329,7 @@ async def run_autopilot_pipeline_for_channel(
                     f"{director_notes} "
                     f"[Rewrite #{_rewrite_attempt + 1}] Kịch bản trước đạt {_qa_score}/100. "
                     f"Cần cải thiện: {_weaknesses}. "
-                    f"Tăng cường hook 3 giây đầu, nhịp kịch tính và CTA cuối."
+                    f"Đảm bảo đủ 8-9 cảnh (88-118 từ), hook khẳng định 3s đầu sắc bén và kết thúc Seamless Loop không đọc CTA."
                 )
                 logger.info(f"[AutoPilot] 🔄 Tự động rewrite kịch bản lần {_rewrite_attempt + 1}...")
                 try:
