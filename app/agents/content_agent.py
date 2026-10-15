@@ -131,7 +131,7 @@ class ContentAgent:
                             logger.info(f"✅ Gemini API ({model}) thành công với key {key[:8]}... trong {time.monotonic()-start_time:.1f}s")
                             return full_text
                 elif r.status_code in (429, 403, 404):
-                    err_txt = r.text[:300]
+                    err_txt = r.text[:800]
                     logger.warning(f"⚠️ ({model}) trên key {key[:8]}... gặp mã {r.status_code}. Chuyển tiếp ứng viên (Key/Model) kế tiếp...")
                     self.rotator.mark_model_rate_limited(key, model, status_code=r.status_code, error_text=err_txt)
                     continue

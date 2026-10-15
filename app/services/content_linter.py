@@ -180,14 +180,22 @@ class ScriptValidationLinter:
         niche_profile: Dict[str, Any]
     ) -> List[str]:
         """
-        Kiểm tra chất lượng Hook 2s đầu (Cảnh 1), Mid-Video Re-Hook (Cảnh 3-4) và Tiêu đề:
-        1. Cảnh 1 không được quá dài (> 10 từ) làm chậm nhịp mở đầu gây Swipe-Away.
-        2. Cảnh cuối tuyệt đối không được chứa câu đọc "Subscribe right now..." gây tụt 15% APV.
-        3. Chặn tiêu đề bi lụy/tuyệt vọng thuần túy trên kênh Animal Rescue (ví dụ: 'Frozen Puppy Found in Rain')
-           mà thiếu mồi câu tò mò / hứa hẹn sự chuyển hóa (Until, Moment, Refused, Realized, Saved, Safe...).
+        Kiểm tra chất lượng Kịch Bản Chuẩn 5-Act 32–42s (88–118 từ, 8–9 cảnh trọn câu):
+        1. Cảnh 1 (Hook 0–2.5s): 100% mở đầu bằng câu khẳng định/cảnh báo sắc bén (5–8 từ, tối đa 10 từ),
+           TUYỆT ĐỐI KHÔNG dùng câu hỏi Yes/No yếu ('Did you know...?', 'Have you ever...?', 'Do you...?', dấu '?').
+        2. Phải có dấu hiệu Ví dụ / Câu nói đời thực hoặc số liệu/cơ chế cụ thể (tránh lý thuyết suông chung chung).
+        3. Toàn bộ các cảnh tuyệt đối không được chứa câu đọc xin Subscribe / Comment gây tụt 15% APV.
+        4. Không để lọt tiền tố 'Variant 1:' vào tiêu đề, và chặn tiêu đề bi lụy/chung chung.
         """
         issues = []
         niche_id = str(niche_profile.get("id", "")).lower()
+
+        # Kiểm tra rò rỉ tiền tố Variant trên Title
+        raw_title = (script.title or "").strip()
+        if re.match(r"^(?:variant|option|title)\s*#?\d*\s*[:\-]", raw_title, flags=re.I):
+            issues.append(
+                f"Title contains internal prefix leakage ('{raw_title}'). Output ONLY the clean viral title without 'Variant 1:'."
+            )
 
         if script.scenes:
             s1 = script.scenes[0]
@@ -195,27 +203,57 @@ class ScriptValidationLinter:
             s1_words = re.findall(r'\b\w+\b', s1_narr)
             if len(s1_words) > 10:
                 issues.append(
-                    f"Scene 1 hook is too long ({len(s1_words)} words). Keep Scene 1 between 4 and 7 punchy words "
-                    f"(~1.8s) for an instant thumb-stopper (Viewed > 75%)."
+                    f"Scene 1 hook is too long ({len(s1_words)} words). Keep Scene 1 between 5 and 8 punchy words "
+                    f"(max 10 words, ~2.0s) for an instant thumb-stopper (Viewed > 75%)."
                 )
             elif len(s1_words) < 3:
                 issues.append(
-                    f"Scene 1 hook is too fragmented ({len(s1_words)} words). Must be a complete 4-7 word curiosity/danger hook."
+                    f"Scene 1 hook is too fragmented ({len(s1_words)} words). Must be a complete 5-8 word declarative warning/revelation hook."
                 )
 
-            # Kiểm toán từ khóa hình ảnh Cảnh 1 (cấm quá chung chung < 2 từ hoặc chứa từ tĩnh)
+            # CẤM câu hỏi Yes/No yếu ở Cảnh 1 (trừ ngách Alternate History cho phép 'What if...')
+            is_what_if_niche = "what_if" in niche_id or "alternate_history" in niche_id
+            weak_yes_no_pattern = re.compile(
+                r"^(?:did you|do you|have you|are you|can you|would you|could you|is it|was it|why do|why did|what did|"
+                r"bạn có biết|bạn đã bao giờ|có bao giờ bạn|bạn có đang|phải chăng|"
+                r"você sabia|você já)\b",
+                re.IGNORECASE,
+            )
+            if weak_yes_no_pattern.search(s1_narr) or ("?" in s1_narr and not (is_what_if_niche and s1_narr.lower().startswith("what if"))):
+                issues.append(
+                    f"Scene 1 hook uses a weak question ('{s1_narr}'). "
+                    f"100% of Scene 1 hooks MUST be a sharp declarative statement or warning (NO '?' or Yes/No questions like 'Have you ever...' / 'Do you...')."
+                )
+
+            # Kiểm toán từ khóa hình ảnh Cảnh 1 (cấm quá chung chung < 2 từ)
             s1_vk = (s1.visual_keyword or "").strip()
             if len(s1_vk.split()) < 2:
                 issues.append(
                     f"Scene 1 visual_keyword ('{s1_vk}') is too vague for a Frame-0 WOW visual. "
-                    f"Provide 3-6 specific English words naming the exact subject and dramatic action."
+                    f"Provide 4-6 specific English words naming the exact concrete subject and physical action."
                 )
 
-            last_narr = (script.scenes[-1].narration or "").strip().lower()
-            if re.search(r'\b(?:subscribe|inscreva-se|se inscreva|đăng ký kênh|bấm đăng ký|leave a comment|leave your theory)\b', last_narr):
+            # CẤM đọc câu xin Subscribe / Comment ở BẤT KỲ cảnh nào (đặc biệt là cảnh cuối)
+            cta_regex = re.compile(
+                r'\b(?:subscribe|inscreva-se|se inscreva|đăng ký kênh|bấm đăng ký|nhấn đăng ký|leave a comment|drop a comment|comment below|like and follow)\b',
+                re.IGNORECASE,
+            )
+            for sc in script.scenes:
+                sc_narr = (sc.narration or "").strip()
+                if cta_regex.search(sc_narr):
+                    issues.append(
+                        f"Scene {sc.scene_id} contains a spoken 'Subscribe / Comment' CTA ('{sc_narr}') which causes a 15% APV drop-off. "
+                        f"Remove all spoken CTAs and end with a Seamless Infinite Loop Bridge that connects directly back to Scene 1."
+                    )
+
+            # Kiểm tra mỗi scene thân bài không bị cắt câu quá ngắn (< 4 từ) gây cảm giác giật cục
+            short_body_scenes = [
+                sc.scene_id for sc in script.scenes[1:-1]
+                if len(re.findall(r'\b\w+\b', sc.narration or "")) < 5
+            ]
+            if len(short_body_scenes) >= 2:
                 issues.append(
-                    "Final scene contains a spoken 'Subscribe / Leave a comment' outro CTA which causes a 15% APV drop-off. "
-                    "Replace with a Seamless Infinite Loop Bridge that connects directly back to Scene 1."
+                    f"Body scenes {short_body_scenes} are fragmented (< 5 words). Each scene in the 5-Act 32-42s structure must be 1 complete sentence of 10-14 words."
                 )
 
         # Kiểm tra tiêu đề kênh Animal Rescue tránh rơi vào bẫy bi lụy đơn thuần không có curiosity/payoff
@@ -285,7 +323,7 @@ class ScriptValidationLinter:
         script: ScriptContract,
         niche_profile: Dict[str, Any],
         cooldown_entities: Optional[List[str]] = None,
-        target_wpm: int = 185
+        target_wpm: int = 170
     ) -> LinterResult:
         """
         Hàm thẩm định tổng thể (Quality Gate).
@@ -318,23 +356,24 @@ class ScriptValidationLinter:
 
         retry_hint = None
         if not is_valid:
-            is_rescue = "rescue" in niche_id or "animal" in niche_id
             word_target_instruction = (
-                "Keep total word count strictly between 68 and 95 words (26-34s fast pacing at 185 WPM, 8-11 scenes, 6-9 words/scene) "
-                "to deliver the full 4-Stage Emotional Transformation Arc without dragging."
-                if is_rescue else
-                "Keep total word count strictly between 60 and 85 words (22-30s ultra-fast pacing at 185 WPM, 8-10 scenes, 6-9 words/scene) "
-                "with a 1.8s Hook (Scene 1, 4-7 words), 8s Mid-Video Re-Hook Twist (Scene 4), and deep Payoff Reveal (Scenes 5-8)."
+                "Keep total word count strictly between 88 and 118 words (32-42s High-Depth 5-Act Arc at natural +0% speed, "
+                "across 8 to 9 complete-sentence scenes of 10-14 words each, with Scene 1 being a 5-8 word declarative warning/revelation hook)."
             )
             bullet_points = "\n".join(f"- {issue}" for issue in all_issues)
             retry_hint = (
-                f"CRITICAL QUALITY GATE VIOLATIONS DETECTED (MUST FIX FOR YOUTUBE SHORTS RETENTION):\n"
+                f"CRITICAL QUALITY GATE VIOLATIONS DETECTED (MUST FIX FOR YOUTUBE SHORTS 5-ACT RETENTION):\n"
                 f"{bullet_points}\n\n"
                 f"ACTION REQUIRED:\n"
-                f"1. Ensure the final sentence is 100% grammatically complete, contains ZERO spoken 'Subscribe/Comment' outro CTAs, and conceptually bridges straight back into Scene 1's hook (Seamless Infinite Loop). NEVER end with 'because', 'which', 'and', 'but', etc.\n"
+                f"1. Follow the strict 5-Act 32-42s Architecture:\n"
+                f"   - Act 1 (Scene 1, 5-8 words): Sharp declarative statement or warning hook (100% NO '?' or weak Yes/No questions).\n"
+                f"   - Act 2 (Scenes 2-3): Concrete real-life quote, behavior, or factual scenario.\n"
+                f"   - Act 3 (Scenes 4-5): Hidden brain/neuroscience or physical mechanism.\n"
+                f"   - Act 4 (Scenes 6-7): Actionable counter-move, exact response phrase, or decisive twist.\n"
+                f"   - Act 5 (Scene 8/9): Seamless Infinite Loop Bridge connecting straight back into Scene 1 (ZERO spoken 'Subscribe/Comment' CTAs).\n"
                 f"2. {word_target_instruction}\n"
-                f"3. Strictly avoid all forbidden concepts/terms and repetitive channel entities listed above.\n"
-                f"4. Rewrite cleanly while preserving an electric 4-7 word Scene 1 hook (Viewed > 75%), a mid-video pattern interrupt at Scene 4, and an unforgettable Payoff."
+                f"3. Every scene MUST be 100% grammatically complete — NEVER chop a sentence across scenes or end on 'because', 'which', 'and', 'but'.\n"
+                f"4. Strictly avoid all forbidden concepts/terms and repetitive channel entities listed above."
             )
 
         return LinterResult(

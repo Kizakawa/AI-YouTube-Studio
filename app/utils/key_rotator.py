@@ -11,13 +11,14 @@ logger = logging.getLogger(__name__)
 # khi hết hạn mức (429) hoặc quá tải (503) mới hạ dần xuống dòng Flash-Lite thông lượng cao.
 GEMINI_PRIORITY_MODELS: List[str] = [
     "gemini-3.8-flash",          # Tier 1 (#1): Flagship 3.8 Flash mới nhất (Reasoning + Vision thế hệ mới)
-    "gemini-3.5-flash",          # Tier 1 (#2): Flagship 3.5 Flash (Reasoning + Vision cực mạnh Free Tier)
-    "gemini-3.6-flash",          # Tier 1 (#3): Flagship 3.6 Flash (Fallback tương thích ngược)
-    "gemini-3-flash-preview",    # Tier 1 (#4): Gemini 3.0 Flash Reasoning
-    "gemini-flash-latest",       # Tier 1 (#5): Alias Flash chính thức
-    "gemini-3.5-flash-lite",     # Tier 2 (#6): Bản 3.5 Flash-Lite (Fallback khi toàn bộ Tier 1 hết quota)
-    "gemini-3.1-flash-lite",     # Tier 2 (#7): Bản 3.1 Flash-Lite
-    "gemini-flash-lite-latest",  # Tier 3 (#8): Fallback cuối siêu tốc, hạn mức dồi dào nhất
+    "gemini-3.7-flash",          # Tier 1 (#2): Flagship 3.7 Flash (Reasoning + Vision tốc độ cao)
+    "gemini-3.5-flash",          # Tier 1 (#3): Flagship 3.5 Flash (Reasoning + Vision cực mạnh Free Tier)
+    "gemini-3.6-flash",          # Tier 1 (#4): Flagship 3.6 Flash (Fallback tương thích ngược)
+    "gemini-3-flash-preview",    # Tier 1 (#5): Gemini 3.0 Flash Reasoning
+    "gemini-flash-latest",       # Tier 1 (#6): Alias Flash chính thức
+    "gemini-3.5-flash-lite",     # Tier 2 (#7): Bản 3.5 Flash-Lite (Multimodal Vision + JSON siêu tốc, quota dồi dào)
+    "gemini-3.1-flash-lite",     # Tier 2 (#8): Bản 3.1 Flash-Lite
+    "gemini-flash-lite-latest",  # Tier 3 (#9): Fallback cuối siêu tốc, hạn mức dồi dào nhất
 ]
 
 
@@ -124,28 +125,39 @@ class KeyRotator:
         cooldown_sec: Optional[float] = None,
     ) -> None:
         """
-        Đánh dấu hạn mức riêng cho từng cặp (key, model) thay vì khóa toàn bộ key:
-        - Nếu 404 hoặc 'limit: 0' (model không mở Free Tier / đã ngừng hỗ trợ): khóa model trên mọi key 1 giờ.
-        - Nếu 429 (hết quota model đó trên key hiện tại): khóa cặp (key, model) 90s-1800s để xoay sang key khác hoặc hạ xuống model nhẹ hơn.
-        - Nếu 503 (model đang quá tải trên server Google): tạm né model đó 25s.
+        Đánh dấu hạn mức riêng cho từng cặp (key, model) và tự động khóa toàn model (*:model)
+        khi phát hiện cạn quota ngày (Free Tier Daily Quota) hoặc khi >= 2 key liên tiếp báo 429 trên cùng model:
+        - Nếu 404, 'limit: 0', 'free_tier_requests', hoặc 'retry in Xh/Xm': khóa model trên mọi key 30–60 phút.
+        - Nếu 429 lặp lại trên >= 2 key của cùng model: khóa model 180s để chuyển ngay sang model kế tiếp.
+        - Nếu 503 (model đang quá tải trên server Google): tạm né model đó 45s.
         - Nếu 403 (key bị từ chối quyền): khóa toàn bộ key 180s.
         """
+        import re as _re
         now = time.monotonic()
         err_low = (error_text or "").lower()
         with self._global_lock:
-            if status_code == 404 or "limit: 0" in err_low or "no longer available" in err_low:
+            if (
+                status_code == 404
+                or "limit: 0" in err_low
+                or "no longer available" in err_low
+                or "generate_content_free_tier_requests" in err_low
+                or "perday" in err_low
+                or bool(_re.search(r"retry in \d+\s*[hm]", err_low))
+            ):
                 self._model_cooldowns[f"*:{model}"] = now + (cooldown_sec or 3600.0)
             elif status_code == 503:
-                self._model_cooldowns[f"*:{model}"] = now + (cooldown_sec or 25.0)
+                self._model_cooldowns[f"*:{model}"] = now + (cooldown_sec or 45.0)
             elif status_code == 403 or "api_key_invalid" in err_low:
                 self._global_cooldowns[key] = now + (cooldown_sec or 180.0)
             else:
-                # 429 Quota Exceeded cho riêng model này trên key này
-                if "perday" in err_low or "retry in 1" in err_low or "retry in 2" in err_low:
-                    wait_s = cooldown_sec or 1800.0
-                else:
-                    wait_s = cooldown_sec or 90.0
+                wait_s = cooldown_sec or 120.0
                 self._model_cooldowns[f"{key}:{model}"] = now + wait_s
+                # Nếu >= 2 key trong pool đã bị 429 trên cùng model này, khóa luôn *:model 180s để chuyển sang model kế tiếp ngay
+                active_key_locks = sum(
+                    1 for k in self.keys if self._model_cooldowns.get(f"{k}:{model}", 0.0) > now
+                )
+                if active_key_locks >= 2:
+                    self._model_cooldowns[f"*:{model}"] = now + 180.0
 
     def iter_best_model_key_pairs(
         self,
@@ -156,13 +168,13 @@ class KeyRotator:
         Bộ sinh (generator) thông minh theo chiến lược:
         1. Ưu tiên tuyệt đối Model tốt nhất trong danh sách (`GEMINI_PRIORITY_MODELS`).
         2. Với mỗi Model từ mạnh nhất -> yếu hơn, thử qua các API Key đang còn hạn mức cho Model đó.
-        3. Khi tất cả Key đều hết hạn mức ở Model mạnh, tự động hạ xuống Model tiếp theo ngay lập tức.
+        3. Ngay khi phát hiện Model bị khóa toàn cục (`*:model`), lập tức ngắt vòng lặp key để nhảy sang Model kế tiếp!
         """
         if not self.keys:
             return
         model_list = list(models) if models else list(GEMINI_PRIORITY_MODELS)
         n_keys = len(self.keys)
-        limit = max_total_attempts or max(n_keys * len(model_list), 6)
+        limit = max_total_attempts or max(n_keys * len(model_list), 10)
         yielded = 0
 
         for model in model_list:
@@ -176,6 +188,9 @@ class KeyRotator:
             for offset in range(n_keys):
                 if yielded >= limit:
                     return
+                # Kiểm tra lại khóa *:model sau mỗi lần yield (nếu key vừa thử báo hết quota ngày của model thì nhảy sang model tiếp theo ngay)
+                if self._model_cooldowns.get(f"*:{model}", 0.0) > time.monotonic():
+                    break
                 idx = (start_idx + offset) % n_keys
                 candidate_key = self.keys[idx]
                 if not self.is_model_available(candidate_key, model):

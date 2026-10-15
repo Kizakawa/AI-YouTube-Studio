@@ -81,6 +81,9 @@ class WebImageFetcher:
             "photography", "photo", "terrifying", "scary", "creepy", "nightmare", "thalassophobia",
             "megalophobia", "eldritch", "unreal", "engine", "render", "masterpiece", "hyperrealistic",
             "photorealistic", "vertical", "the", "and", "with", "from", "into", "under", "over",
+            "chiaroscuro", "noir", "monochrome", "seinen", "thriller", "aesthetic", "portrait",
+            "shadow", "shadows", "silhouette", "lighting", "realistic", "shot", "frame", "digital",
+            "illustration", "psychological", "manipulation", "manipulative",
         }
         words = [
             w for w in _re.findall(r"[A-Za-z0-9]+", (query or "").lower())
@@ -91,31 +94,87 @@ class WebImageFetcher:
         return " ".join(words[:max_words])
 
     @staticmethod
-    def _raw_bing_images(query: str, limit: int = 35) -> List[Dict]:
-        """Bing Images qua endpoint async (HTML) — dùng primp (Chrome TLS fingerprint) để tránh bị Bing chặn TLS trả kết quả rác nội địa."""
+    def _get_primp_client(timeout: int = 9):
+        """Khởi tạo primp Client giả lập TLS Chrome chuẩn xác (tương thích cả primp 1.x và 2.x)."""
+        import primp
+        for imp in ("chrome", "edge", None):
+            try:
+                return primp.Client(impersonate=imp, timeout=timeout) if imp else primp.Client(timeout=timeout)
+            except Exception:
+                continue
+        return primp.Client(timeout=timeout)
+
+    @classmethod
+    def _raw_bing_images(cls, query: str, limit: int = 35) -> List[Dict]:
+        """Bing Images qua endpoint async (HTML) — dùng primp (Chrome TLS fingerprint) + ưu tiên ảnh độ phân giải lớn (imagesize-large)."""
         import html as _html
         import re as _re
         from urllib.parse import urlparse
-        params = {
+        safe_mode = "off" if bypass_copyright_enabled() else "moderate"
+
+        def _parse_bing_html(html_text: str) -> List[Dict]:
+            parsed: List[Dict] = []
+            seen_m = set()
+            for chunk in html_text.split("iusc")[1:]:
+                m = _re.search(r'\bm="(\{[^"]+\})"', chunk)
+                if not m:
+                    continue
+                try:
+                    d = json.loads(_html.unescape(m.group(1)))
+                except Exception:
+                    continue
+                size = _re.search(r'nowrap[^>]*>\s*(\d+)\s*(?:x|×|&#215;)\s*(\d+)', chunk)
+                purl = d.get("purl") or ""
+                murl = d.get("murl") or ""
+                turl = d.get("turl") or ""
+                if not murl or murl in seen_m:
+                    continue
+                seen_m.add(murl)
+                hi_turl = f"{turl}&w=1080&h=1920&c=7&rs=1&pid=ImgDetMain" if (turl and "bing.net" in turl and "&w=" not in turl) else turl
+                parsed.append({
+                    "image": murl,
+                    "thumbnail": turl or murl,
+                    "fallback_url": hi_turl or turl,
+                    "title": _html.unescape(d.get("t") or ""),
+                    "width": int(size.group(1)) if size else 1080,
+                    "height": int(size.group(2)) if size else 1920,
+                    "source": urlparse(purl).netloc.replace("www.", "") if purl else "bing_web",
+                    "url": purl,
+                    "engine": "bing",
+                })
+            return parsed
+
+        out: List[Dict] = []
+        base_params = {
             "q": query,
             "first": "0",
             "count": str(min(limit, 35)),
             "mmasync": "1",
         }
-        text = ""
         try:
-            import primp
-            client = primp.Client(timeout=9)
-            r_p = client.get("https://www.bing.com/images/async", params=params)
-            if r_p.status_code == 200 and "iusc" in r_p.text:
-                text = r_p.text
+            client = cls._get_primp_client(timeout=9)
+            # Ưu tiên lọc ảnh kích thước lớn (large HD) như Google tbs=isz:l
+            r_large = client.get(
+                "https://www.bing.com/images/async",
+                params={**base_params, "qft": "+filterui:imagesize-large"},
+            )
+            if r_large.status_code == 200 and "iusc" in r_large.text:
+                out.extend(_parse_bing_html(r_large.text))
+            if len(out) < 10:
+                r_all = client.get("https://www.bing.com/images/async", params=base_params)
+                if r_all.status_code == 200 and "iusc" in r_all.text:
+                    seen_u = {x["image"] for x in out}
+                    for item in _parse_bing_html(r_all.text):
+                        if item["image"] not in seen_u:
+                            seen_u.add(item["image"])
+                            out.append(item)
         except Exception:
             pass
-        if not text:
-            safe_mode = "off" if bypass_copyright_enabled() else "moderate"
+
+        if not out:
             res = requests.get(
                 "https://www.bing.com/images/async",
-                params={**params, "adlt": safe_mode},
+                params={**base_params, "adlt": safe_mode},
                 headers={
                     "User-Agent": _UA,
                     "Accept-Language": "en-US,en;q=0.9",
@@ -124,34 +183,8 @@ class WebImageFetcher:
             )
             if res.status_code != 200:
                 raise RuntimeError(f"Bing HTTP {res.status_code}")
-            text = res.text
-        out = []
-        for chunk in text.split("iusc")[1:]:
-            m = _re.search(r'\bm="(\{[^"]+\})"', chunk)
-            if not m:
-                continue
-            try:
-                d = json.loads(_html.unescape(m.group(1)))
-            except Exception:
-                continue
-            size = _re.search(r'nowrap[^>]*>\s*(\d+)\s*(?:x|×|&#215;)\s*(\d+)', chunk)
-            purl = d.get("purl") or ""
-            murl = d.get("murl") or ""
-            turl = d.get("turl") or ""
-            # Nâng cấp turl trên CDN Bing lên độ phân giải cao làm phao cứu sinh 100% không bao giờ lỗi 403
-            hi_turl = f"{turl}&w=1080&h=1920&c=7&rs=1&pid=ImgDetMain" if (turl and "bing.net" in turl and "&w=" not in turl) else turl
-            out.append({
-                "image": murl,
-                "thumbnail": turl or murl,
-                "fallback_url": hi_turl or turl,
-                "title": _html.unescape(d.get("t") or ""),
-                "width": int(size.group(1)) if size else 1080,
-                "height": int(size.group(2)) if size else 1920,
-                "source": urlparse(purl).netloc.replace("www.", "") if purl else "bing_web",
-                "url": purl,
-                "engine": "bing",
-            })
-        return out
+            out = _parse_bing_html(res.text)
+        return out[:limit]
 
     @staticmethod
     def _raw_ddgs_images(query: str, limit: int = 20) -> List[Dict]:
@@ -175,7 +208,7 @@ class WebImageFetcher:
 
     @classmethod
     def _raw_artstation_images(cls, query: str, limit: int = 18) -> List[Dict]:
-        """ArtStation API v2 — Kho tác phẩm 3D Render, Concept Art 8K, Dark Fantasy, Quái vật CGI đỉnh cao thế giới."""
+        """ArtStation API v2 — Kho tác phẩm 3D Render, Concept Art 8K, Dark Fantasy, Quái vật CGI đỉnh cao thế giới (dùng primp vượt Cloudflare)."""
         import re as _re
         short_q = cls._concise_art_query(query, max_words=3)
         if not short_q:
@@ -185,26 +218,38 @@ class WebImageFetcher:
             "Accept": "application/json, text/plain, */*",
             "Referer": "https://www.artstation.com/search",
         }
-        res = requests.get(
-            "https://www.artstation.com/api/v2/search/projects.json",
-            params={"query": short_q, "page": 1, "per_page": min(limit, 24), "sorting": "relevance"},
-            headers=headers,
-            timeout=8,
-        )
-        if res.status_code != 200:
-            raise RuntimeError(f"ArtStation HTTP {res.status_code}")
-        data = res.json().get("data") or []
-        if len(data) < 3 and len(short_q.split()) > 1:
-            core_q = cls._concise_art_query(query, max_words=2)
-            if core_q and core_q != short_q:
-                res2 = requests.get(
-                    "https://www.artstation.com/api/v2/search/projects.json",
-                    params={"query": core_q, "page": 1, "per_page": min(limit, 24), "sorting": "relevance"},
-                    headers=headers,
-                    timeout=7,
-                )
-                if res2.status_code == 200:
-                    data = data + (res2.json().get("data") or [])
+        data = []
+        try:
+            client = cls._get_primp_client(timeout=8)
+            r_p = client.get(
+                "https://www.artstation.com/api/v2/search/projects.json",
+                params={"query": short_q, "page": 1, "per_page": min(limit, 24), "sorting": "relevance"},
+                headers=headers,
+            )
+            if r_p.status_code == 200:
+                data = r_p.json().get("data") or []
+                if len(data) < 3 and len(short_q.split()) > 1:
+                    core_q = cls._concise_art_query(query, max_words=2)
+                    if core_q and core_q != short_q:
+                        r_p2 = client.get(
+                            "https://www.artstation.com/api/v2/search/projects.json",
+                            params={"query": core_q, "page": 1, "per_page": min(limit, 24), "sorting": "relevance"},
+                            headers=headers,
+                        )
+                        if r_p2.status_code == 200:
+                            data = data + (r_p2.json().get("data") or [])
+        except Exception:
+            pass
+        if not data:
+            res = requests.get(
+                "https://www.artstation.com/api/v2/search/projects.json",
+                params={"query": short_q, "page": 1, "per_page": min(limit, 24), "sorting": "relevance"},
+                headers=headers,
+                timeout=8,
+            )
+            if res.status_code != 200:
+                raise RuntimeError(f"ArtStation HTTP {res.status_code}")
+            data = res.json().get("data") or []
 
         out: List[Dict] = []
         seen = set()
@@ -488,6 +533,9 @@ class WebImageFetcher:
             "creepy", "nightmare", "thalassophobia", "megalophobia", "eldritch", "artstation", "cgi",
             "8k", "4k", "unreal", "engine", "lurking", "darkness", "abyss", "abyssal", "colossal",
             "cinematic", "still", "monster", "creature", "ocean", "sea", "deep", "underwater",
+            "chiaroscuro", "noir", "monochrome", "seinen", "thriller", "aesthetic", "portrait",
+            "shadow", "shadows", "silhouette", "lighting", "realistic", "shot", "frame", "digital",
+            "illustration", "wallpaper", "photography", "photorealistic",
         }
         terms = [t for t in subject_terms(query) if t not in generic]
         if not terms or not raw:

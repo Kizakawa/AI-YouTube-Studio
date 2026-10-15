@@ -46,7 +46,7 @@ _SOFT_TITLE_CUES = (
 _HOT_TREND_DOMAINS = (
     "artstation.com", "artstation", "deviantart.com", "deviantart", "pinterest", "pinimg.com",
     "redd.it", "reddit.com", "wallhaven", "uhdpaper", "hdqwalls", "behance.net", "imdb.com",
-    "tmdb.org", "ytimg.com", "cgsociety", "cara.app", "alphacoders", "peakpx", "wallpaperflare",
+    "tmdb.org", "cgsociety", "cara.app", "alphacoders", "peakpx", "wallpaperflare",
     "img.freepik.com/free-",
 )
 
@@ -68,12 +68,15 @@ _STOPWORDS = {
     "above", "below", "beneath", "high", "deep", "far", "away", "inside", "outside", "behind",
     "beyond", "now", "today", "yet", "once", "ago", "soon", "later", "first", "last", "next",
     "suddenly", "finally", "instead", "imagine", "meet",
-    # Thuật ngữ góc máy / nhiếp ảnh ở đầu AI prompt — tuyệt đối không được trích thành chủ thể ("Macro shot", "Wide-angle cinematic shot")
+    # Thuật ngữ góc máy / nhiếp ảnh / phong cách ở đầu hoặc cuối AI prompt — tuyệt đối không được trích thành chủ thể
     "macro", "shot", "shots", "wide", "angle", "wide-angle", "low-angle", "high-angle", "low",
     "close", "close-up", "closeup", "extreme", "cinematic", "cinematography", "breathtaking",
     "dramatic", "photorealistic", "hyperrealistic", "hyper-realistic", "vertical", "portrait",
     "frame", "still", "view", "perspective", "lens", "lighting", "bokeh", "volumetric",
     "tracking", "panning", "aerial", "establishing", "moody", "atmospheric", "film", "scene",
+    "noir", "chiaroscuro", "monochrome", "seinen", "thriller", "aesthetic", "shadow", "shadows",
+    "silhouette", "dark", "realistic", "photography", "photo", "image", "picture", "wallpaper",
+    "art", "illustration", "digital", "render",
 }
 
 _NUMBER_WORDS = {
@@ -391,40 +394,40 @@ def is_psychology_noir_subject(subject: Optional[str], narration: str = "", topi
 def psychology_noir_queries(subject: str, topic: str = "", narration: str = "") -> List[str]:
     """
     Sinh bộ truy vấn Google Images / Bing HD / Wallhaven chuẩn phong cách @MasteringMindControl
-    (Dark Psychological Thriller / Monochrome Seinen Noir / Chiaroscuro Shadow Aesthetic)
-    bám sát hành động và cảm xúc cụ thể của từng câu thoại.
+    (Dark Psychological Thriller / Monochrome Seinen Noir)
+    bám sát hành động và cảm xúc cụ thể của từng câu thoại (KHÔNG chèn từ khóa học thuật nhiếp ảnh như 'chiaroscuro' làm lệch kết quả).
     """
     ctx = f"{subject or ''} {narration or ''} {topic or ''}".lower()
     qs: List[str] = []
 
     if any(k in ctx for k in ("silence", "silent", "argument", "confront", "enemy", "enemies", "ally", "allies", "favor", "distance", "im lặng")):
         qs.extend([
-            "two people tense silence monochrome anime noir",
-            "monster anime johan liebert confrontation scene",
-            "dark psychology two people shadow silhouette noir",
+            "two people tense silence argument dark room",
+            "johan liebert monster anime confrontation scene",
+            "two people silent tension psychological thriller",
         ])
-    elif any(k in ctx for k in ("smile", "smirk", "charm", "disguise", "familiar", "mirror", "love bomb", "friend", "kind", "cười", "mặt nạ")):
+    elif any(k in ctx for k in ("smile", "smirk", "charm", "disguise", "familiar", "mirror", "love bomb", "friend", "kind", "compliment", "cười", "mặt nạ")):
         qs.extend([
-            "johan liebert monster cold smile dark psychology",
-            "psychological thriller subtle smirk monochrome anime",
-            "two faced mask shadow dark psychology art",
+            "narcissist fake smile cold gaze psychology",
+            "johan liebert monster cold smile anime",
+            "man subtle calculating smirk dark thriller",
         ])
     elif any(k in ctx for k in ("isolat", "shrink", "alone", "depend", "trap", "leash", "guilt", "guilty", "anxiet", "doubt", "cô lập", "bẫy")):
         qs.extend([
-            "person isolated in dark shadows monochrome anime noir",
-            "seinen psychological thriller lonely shadow silhouette",
-            "dark psychology manipulation shadow aesthetic",
+            "person sitting alone dark room anxiety",
+            "seinen anime character alone in dark room",
+            "gaslighting emotional manipulation dark psychology",
         ])
     else:
         qs.extend([
-            "johan liebert monster intense cold eyes monochrome",
-            "seinen psychological thriller cold gaze close up",
-            "chiaroscuro noir portrait intense cold eyes",
+            "johan liebert monster intense cold eyes",
+            "intense eye contact psychological thriller",
+            "man cold unblinking stare dark room",
         ])
 
-    clean_subj = " ".join(subject_terms(subject)[:3])
+    clean_subj = " ".join(subject_terms(subject)[:4])
     if clean_subj and clean_subj not in ("person", "people", "man", "woman", "mind", "brain"):
-        qs.insert(0, f"{clean_subj} dark psychological noir monochrome")
+        qs.insert(0, f"{clean_subj} psychological thriller")
 
     return list(dict.fromkeys(qs))[:4]
 
@@ -477,14 +480,19 @@ def heuristic_score(item: Dict, terms: Iterable[str], creature_mode: bool = Fals
     if terms:
         hits = sum(1 for t in terms if re.search(rf"\b{re.escape(t)}s?\b", text))
         frac = hits / len(terms)
-        # Thưởng điểm khớp chủ thể nhưng không phạt nặng các bức ảnh nghệ thuật/CGI có tiêu đề ẩn dụ từ Google Search
-        score += 3.6 * frac
+        score += 3.8 * frac
         if hits == 0 and text:
-            score -= 0.8
+            score -= 1.5
 
     src = (item.get("source") or "").lower()
     blob_domain = f"{item.get('creator') or ''} {item.get('page_url') or ''} {item.get('url') or ''}".lower()
     padded = f" {text} "
+
+    # Phạt ảnh thumbnail YouTube (ytimg.com) vì 90% có chữ clickbait đè giữa ảnh, và phạt bài hướng dẫn chụp ảnh / prompt catalog
+    if "ytimg.com" in blob_domain or "youtube.com/watch" in blob_domain:
+        score -= 1.8
+    if any(tut in padded for tut in (" portrait photography ", " photography tips ", " how to shoot ", " promptden ", " lighting tutorial ", " camera settings ")):
+        score -= 2.2
 
     # Thưởng điểm cho nguồn Hot-Trend / Điện ảnh / Viral (ArtStation, Pinterest, Reddit, Wallpaper 8K, Movie Stills)
     is_hot_domain = any(dom in blob_domain for dom in _HOT_TREND_DOMAINS)
@@ -507,24 +515,25 @@ def heuristic_score(item: Dict, terms: Iterable[str], creature_mode: bool = Fals
         if any(f" {c} " in padded for c in _CREATURE_PENALTY_CUES):
             score = min(score - 5.5, 3.5)
     else:
-        # Chế độ Gemini Search (Không cần ảnh thật 100%, chỉ cần BẮT MẮT, CÂU VIEW, ĐIỆN ẢNH 8K):
         if src in ("google_images", "open_web"):
-            score += 1.3
+            score += 1.1
         elif src in ("pexels", "pexels_photo", "pixabay", "unsplash"):
-            score += 0.2
+            score += 0.3
         elif src in ("wikipedia", "wikimedia_commons", "openverse"):
             score -= 0.6
 
-        if is_hot_domain:
-            score += 1.5
-        if hot_cue_hits > 0:
-            score += min(1.6, 0.55 * hot_cue_hits)
-        if epic_cue_hits > 0:
-            score += min(1.2, 0.4 * epic_cue_hits)
-        if noir_cue_hits > 0:
-            score += min(1.6, 0.55 * noir_cue_hits)
+        # Chỉ thưởng điểm style/domain khi ảnh thực sự khớp ít nhất 1 từ khóa chủ thể (tránh ảnh lạc đề chỉ khớp từ khóa style)
+        has_subject_match = (frac > 0.0) or (not terms)
+        if is_hot_domain and has_subject_match:
+            score += 1.2
+        if hot_cue_hits > 0 and has_subject_match:
+            score += min(1.3, 0.45 * hot_cue_hits)
+        if epic_cue_hits > 0 and has_subject_match:
+            score += min(1.0, 0.35 * epic_cue_hits)
+        if noir_cue_hits > 0 and has_subject_match:
+            score += min(1.2, 0.45 * noir_cue_hits)
         if any(dom in blob_domain for dom in _AUTHORITATIVE_DOMAINS):
-            score += 0.4
+            score += 0.5
         if any(f" {c} " in padded for c in _CHEESY_CORPORATE_PENALTY_CUES):
             score -= 2.5
         if any(f" {c} " in padded for c in _SOFT_TITLE_CUES):
