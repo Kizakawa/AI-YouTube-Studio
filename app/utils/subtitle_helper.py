@@ -92,7 +92,6 @@ Style: HookHeadlineBanner,{fontname},52,&H0000FFFF,&H00FFFFFF,&H00000000,&HD0050
 Style: PatternInterruptBadge,{fontname},32,&H00FFFFFF,&H00FFFFFF,&H0000E6FF&,&HC0101010,-1,0,0,0,100,100,2,0,3,2.0,0.0,8,40,40,240,1
 Style: CTABadge,{fontname},46,&H0000FFFF,&H00FFFFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,3.5,2.0,2,30,30,780,1
 Style: WatermarkStyle,Arial,28,&H30FFFFFF,&H30FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1.8,1.2,8,30,30,90,1
-Style: RetentionProgressBar,Arial,20,&H0000FFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0.0,0.0,7,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -500,23 +499,6 @@ class SubtitleHelper:
                 current_offset_ms = scene.start_offset_ms + scene_duration_ms
             else:
                 current_offset_ms += scene_duration_ms
-
-        # ── Kích hoạt Thanh Tiến Trình Giữ Chân (Crayo / Vsub Top Retention Progress Bar) ──
-        if scenes and current_offset_ms > 2000:
-            total_dur_ms = max(current_offset_ms, 1)
-            step_ms = 250  # Cập nhật mỗi 250ms tạo hiệu ứng thanh tiến trình chạy mượt ở đỉnh khung hình (y=0..8px)
-            t_cur = 0
-            while t_cur < total_dur_ms:
-                t_next = min(t_cur + step_ms, total_dur_ms)
-                progress_ratio = min(1.0, max(0.03, t_next / total_dur_ms))
-                bar_w = int(1080 * progress_ratio)
-                bar_start_str = cls._ms_to_ass_time(t_cur)
-                bar_end_str = cls._ms_to_ass_time(t_next)
-                dialogue_lines.append(
-                    f"Dialogue: 4,{bar_start_str},{bar_end_str},RetentionProgressBar,,0,0,0,,"
-                    f"{{\\p1\\pos(0,0)\\c&H0000E6FF&\\1a&H18&\\bord0\\shad0}}m 0 0 l {bar_w} 0 l {bar_w} 8 l 0 8{{\\p0}}"
-                )
-                t_cur = t_next
 
         # ── Kích hoạt Hook Headline Banner ở Frame 0.0s - 2.8s (Đã khử sạch Emoji lỗi ô vuông □) ──
         if scenes:
