@@ -578,175 +578,61 @@ def image_to_video(
     import uuid as _uuid
     _uid = _uuid.uuid4().hex[:8]
     norm_path = str(Path(output_path).parent / f"_norm_{_uid}.jpg")
+    enable_zoompan = bool(
+        zoom_effect
+        and os.getenv("ENABLE_KEN_BURNS_ZOOM", "false").strip().lower() in ("1", "true", "yes", "on")
+    )
     try:
         from PIL import Image
         with Image.open(image_path) as im:
             if im.mode not in ("RGB",):
                 im = im.convert("RGB")
-            # Scale ảnh 1.0x - 1.04x (prepare_vertical đã làm nét UnsharpMask chuẩn 1080x1920)
-            # giúp giảm ~25% số điểm ảnh zoompan phải nội suy mỗi frame mà vẫn giữ nguyên độ nét 1080p
-            scale_factor = 1.04 if is_hook_scene else 1.0
+            # Mặc định giữ khung hình chuẩn 1.0x (1080x1920) tĩnh sắc nét để triệt tiêu 100% hiện tượng rung/giật pixel của zoompan;
+            # nếu người dùng chủ động bật ENABLE_KEN_BURNS_ZOOM=true thì upscale 2.0x để nội suy mượt mà
+            scale_factor = 2.0 if enable_zoompan else 1.0
             scale_w = int(width * scale_factor)
             scale_h = int(height * scale_factor)
-            # KHÔNG resize thẳng (ảnh ngang sẽ bị bóp méo) → crop 9:16 bám chủ thể / nền mờ nếu ảnh nhỏ
             from app.services.media.image_quality import prepare_vertical
             im_resized = prepare_vertical(
                 im, scale_w, scale_h, max_upscale=2.0 * scale_factor, is_hook_scene=is_hook_scene
             )
-            im_resized.save(norm_path, "JPEG", quality=94 if is_hook_scene else 90)
+            im_resized.save(norm_path, "JPEG", quality=94 if is_hook_scene else 92)
             image_path = norm_path
     except Exception as e:
         raise ValueError(f"File ảnh không hợp lệ hoặc không thể đọc '{image_path}': {e}")
 
-    d = max(int(duration_seconds * fps) + 2, fps)  # Tổng số frames (+2 frame đệm an toàn cho -t)
-    if is_hook_scene:
-        # Cú Punch-in Shockwave Zoom kịch tính cho Scene 1 (1.08 -> 1.34) tạo thumbstopper giật mắt người xem ngay frame 0
-        z_start = 1.08
-        z_end   = 1.34
-    else:
-        z_start = 1.02
-        z_end   = 1.20  # Zoom nhanh 20% giàu năng lượng, chống cảm giác ảnh đứng yên
-    z_step  = (z_end - z_start) / max(d, 1)
+    d = max(int(duration_seconds * fps) + 2, fps)
+    z_start = 1.00
+    z_end = 1.05
 
-    # Level 6 Ultra-Fast Multi-Shot Beat Cut Engine (0.9s-1.2s Pacing):
-    # Biến 1 cảnh 1.8s-3.0s thành chuỗi 2-3 cú nhảy góc máy chớp nhoáng (Wide -> Medium Punch-In -> Extreme Close-Up)
-    # giúp nhịp hình ảnh dồn dập từng giây, triệt tiêu 100% cảm giác chậm hay dài lê thê.
-    if is_hook_scene:
-        # Scene 1 Hook: Luôn kích hoạt 2 nhịp giật ống kính cực nhanh (34% và 68% thời lượng) bất kể câu hook ngắn 1.5s hay 2.5s
-        mid_snap_frame = int(d * 0.34)
-        second_snap_frame = int(d * 0.68)
-        snap_expr = (
-            f"+0.10*min(max((on-{mid_snap_frame})/2.5\\,0)\\,1)"
-            f"+0.08*min(max((on-{second_snap_frame})/2.5\\,0)\\,1)"
-        )
-    else:
-        mid_snap_frame = int(d * 0.42)
-        second_snap_frame = int(d * 0.72)
-        if duration_seconds >= 2.5:
-            snap_expr = (
-                f"+0.09*min(max((on-{mid_snap_frame})/3\\,0)\\,1)"
-                f"+0.07*min(max((on-{second_snap_frame})/3\\,0)\\,1)"
-            )
-        elif duration_seconds >= 1.4:
-            snap_expr = f"+0.09*min(max((on-{mid_snap_frame})/3\\,0)\\,1)"
-        else:
-            snap_expr = ""
-
-    if not zoom_effect:
+    # Mặc định tắt zoompan để hình ảnh đứng vững, sắc nét 100%, không bao giờ bị rung/giật khung hình
+    if not enable_zoompan:
         zoompan = (
             f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
             f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
             f"setsar=1,"
             f"fps={fps}"
         )
-    elif camera_motion == "hyper_zoom":
-        # Lao nhanh siêu tốc vào tâm vũ trụ / warp speed (+ beat-cut snap cho Scene 1 Hook)
-        zoompan = (
-            f"zoompan=z='1.06+0.34*pow(min(on/{d}\\,1)\\,1.6){snap_expr if is_hook_scene else ''}':"
-            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-            f"d={d}:s={width}x{height}:fps={fps},"
-            f"setsar=1"
-        )
-    elif camera_motion == "warp_zoom":
-        # Bước nhảy không thời gian
-        zoompan = (
-            f"zoompan=z='1.0+0.32*pow(min(on/{d}\\,1)\\,2.2)':"
-            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-            f"d={d}:s={width}x{height}:fps={fps},"
-            f"setsar=1"
-        )
-    elif camera_motion in ("nod_loop", "satirical_nod", "head_nod"):
-        # Chuyển động Gật Đầu Hoạt Họa Châm Biếm (Comic Nodding Loop):
-        # Trục Y gập xuống và nảy lên theo chu kỳ hình sin nhịp nhàng (~1.7 cú gật/giây) kết hợp zoom chậm
-        zoompan = (
-            f"zoompan=z='1.08+0.05*(1-pow(1-min(on/{d}\\,1)\\,2.0)){snap_expr}':"
-            f"x='iw/2-(iw/zoom/2)':"
-            f"y='(ih/2-(ih/zoom/2)) + (ih*0.024)*pow(sin(on*0.35)\\,2)':"
-            f"d={d}:s={width}x{height}:fps={fps},"
-            f"setsar=1"
-        )
-    elif camera_motion == "cinematic_drift":
-        # Trôi dạt 3D đa hướng không trọng lực + Multi-shot beat cut
-        zoompan = (
-            f"zoompan=z='1.08+0.12*(1-pow(1-min(on/{d}\\,1)\\,2.5)){snap_expr}':"
-            f"x='iw*0.06*(1-pow(1-min(on/{d}\\,1)\\,2.2))':"
-            f"y='ih*0.05*(1-pow(1-min(on/{d}\\,1)\\,2.2))':"
-            f"d={d}:s={width}x{height}:fps={fps},"
-            f"setsar=1"
-        )
-    elif camera_motion == "zoom_in":
-        # P2.1: Cubic ease-out — Bắt đầu nhanh dứt khoát và giảm tốc mượt mà + Multi-shot beat cut
-        if is_hook_scene:
-            # Punch-in kịch tính cho Scene 1 (0-3s) tạo thumbstopper giật mắt người xem ngay frame 0 + beat cut ở 1.5s
-            zoompan = (
-                f"zoompan=z='{z_start}+({z_end}-{z_start})*(1-pow(1-min(on/{d}\\,1)\\,3)){snap_expr}':"
-                f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-                f"d={d}:s={width}x{height}:fps={fps},"
-                f"setsar=1"
-            )
-        else:
-            zoompan = (
-                f"zoompan=z='{z_start}+({z_end}-{z_start})*(1-pow(1-min(on/{d}\\,1)\\,2.8)){snap_expr}':"
-                f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-                f"d={d}:s={width}x{height}:fps={fps},"
-                f"setsar=1"
-            )
     elif camera_motion == "zoom_out":
-        # P2.1: Cubic ease-out từ z_end thu nhỏ dần về z_start (khám phá chiều sâu)
         zoompan = (
-            f"zoompan=z='{z_end}-({z_end}-{z_start})*(1-pow(1-min(on/{d}\\,1)\\,2.8))':"
+            f"zoompan=z='{z_end}-({z_end}-{z_start})*(on/{d})':"
             f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-            f"d={d}:s={width}x{height}:fps={fps},"
-            f"setsar=1"
-        )
-    elif camera_motion == "pan_left":
-        # 3D Dolly-Pan: Pan ngang từ phải sang trái kết hợp zoom tiến nhẹ + Multi-shot beat cut
-        zoompan = (
-            f"zoompan=z='1.12+0.06*(1-pow(1-min(on/{d}\\,1)\\,2.2)){snap_expr}':"
-            f"x='iw*0.10*pow(1-min(on/{d}\\,1)\\,2.4)':y='ih/2-(ih/zoom/2)':"
-            f"d={d}:s={width}x{height}:fps={fps},"
-            f"setsar=1"
-        )
-    elif camera_motion == "pan_right":
-        # 3D Dolly-Pan: Pan ngang từ trái sang phải kết hợp zoom tiến nhẹ + Multi-shot beat cut
-        zoompan = (
-            f"zoompan=z='1.12+0.06*(1-pow(1-min(on/{d}\\,1)\\,2.2)){snap_expr}':"
-            f"x='iw*0.10*(1-pow(1-min(on/{d}\\,1)\\,2.4))':y='ih/2-(ih/zoom/2)':"
-            f"d={d}:s={width}x{height}:fps={fps},"
-            f"setsar=1"
-        )
-    elif camera_motion == "pan_up":
-        # 3D Crane-Up: Pan dọc từ dưới lên trên kết hợp zoom tiến nhẹ + Multi-shot beat cut
-        zoompan = (
-            f"zoompan=z='1.12+0.06*(1-pow(1-min(on/{d}\\,1)\\,2.2)){snap_expr}':"
-            f"x='iw/2-(iw/zoom/2)':y='ih*0.10*pow(1-min(on/{d}\\,1)\\,2.4)':"
-            f"d={d}:s={width}x{height}:fps={fps},"
-            f"setsar=1"
-        )
-    elif camera_motion == "pan_down":
-        # 3D Crane-Down: Pan dọc từ trên xuống dưới kết hợp zoom tiến nhẹ + Multi-shot beat cut
-        zoompan = (
-            f"zoompan=z='1.12+0.06*(1-pow(1-min(on/{d}\\,1)\\,2.2)){snap_expr}':"
-            f"x='iw/2-(iw/zoom/2)':y='ih*0.10*(1-pow(1-min(on/{d}\\,1)\\,2.4))':"
             f"d={d}:s={width}x{height}:fps={fps},"
             f"setsar=1"
         )
     else:
-        # Fallback: zoom_in cubic ease-out với Smooth Punch-in Ramp
         zoompan = (
-            f"zoompan=z='{z_start}+({z_end}-{z_start})*(1-pow(1-min(on/{d}\\,1)\\,2.8)){snap_expr}':"
+            f"zoompan=z='{z_start}+({z_end}-{z_start})*(on/{d})':"
             f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
             f"d={d}:s={width}x{height}:fps={fps},"
             f"setsar=1"
         )
 
     # Hiệu ứng màu sắc điện ảnh và chiều sâu theo Niche Profile (100% Free Native FFmpeg Filter)
-    # TỐI ƯU TỐC ĐỘ: Đặt eq/colorbalance/vignette TRƯỚC zoompan để FFmpeg chỉ tính toán lọc màu
-    # ĐÚNG 1 LẦN trên bức ảnh gốc, và loại bỏ unsharp trùng lặp vì prepare_vertical đã làm nét ảnh!
     grading = get_niche_color_grading(niche=niche, is_scifi=is_scifi)
     import re as _re
     clean_vf_filter = _re.sub(r",?unsharp=[^,]+", "", grading["vf_filter"]).strip(",")
-    if zoom_effect:
+    if enable_zoompan:
         vf_parts = [clean_vf_filter] if clean_vf_filter else []
         if grading.get("vignette"):
             vf_parts.append(grading['vignette'])
@@ -758,15 +644,10 @@ def image_to_video(
         if grading.get("vignette"):
             vf_parts.append(grading['vignette'])
 
-    if is_hook_scene:
-        # 0.22s Optical Impact Pop (Frame 0.0s Flash & Contrast Punch) tạo cú nổ thị giác ngay mili-giây đầu tiên
-        vf_parts.append(
-            "eq=brightness='0.06*max(0\\,1-t/0.22)':contrast='1.05+0.09*max(0\\,1-t/0.22)':saturation='1.10':eval=frame"
-        )
     vf_chain = ",".join(vf_parts)
 
     enc_args = get_video_encoder_args(quality="intermediate")
-    loop_args = ["-loop", "1"] if not zoom_effect else []
+    loop_args = ["-loop", "1"] if not enable_zoompan else []
     args = [
         *loop_args,
         "-i", image_path,
@@ -799,90 +680,20 @@ def multi_pose_loop_to_video(
     niche: Optional[str] = None,
 ) -> str:
     """
-    Biến 2 hoặc nhiều ảnh dáng điệu (poses) của cùng 1 nhân vật 2D thành video hoạt họa cử động liên tục
-    (Head nodding, talking mouth, sighing, mask switching) theo phong cách truyện tranh comic / Én / Tuyết Bích.
-    - image_paths: Danh sách 2+ ảnh pose (Pose A: ngẩng đầu/mặt nạ, Pose B: cúi gật đầu/tháo mặt nạ...)
-    - switch_interval: Tần số đảo khung hình (mặc định 0.28s ~ 3.5 fps tạo nhịp gật đầu tự nhiên)
-    - Tự động loop xen kẽ cho đến khi đạt đủ duration_seconds của lời thoại.
+    Render ảnh tĩnh mượt mà không nhấp nháy/giật khung hình.
     """
-    if not image_paths or len(image_paths) == 1:
-        single_img = image_paths[0] if image_paths else ""
-        return image_to_video(
-            image_path=single_img,
-            duration_seconds=duration_seconds,
-            output_path=output_path,
-            width=width,
-            height=height,
-            fps=fps,
-            camera_motion="nod_loop",
-            niche=niche,
-        )
-
-    # Chuẩn hóa kích thước từng ảnh về 1080x1920
-    from PIL import Image
-    import uuid as _uuid
-    temp_dir = Path(output_path).parent / f"_pose_temp_{_uuid.uuid4().hex[:6]}"
-    temp_dir.mkdir(parents=True, exist_ok=True)
-
-    norm_paths = []
-    for idx, p in enumerate(image_paths):
-        dest = str(temp_dir / f"p_{idx:02d}.jpg")
-        try:
-            with Image.open(p) as im:
-                im_rgb = im.convert("RGB")
-                im_resized = im_rgb.resize((width, height), Image.LANCZOS)
-                im_resized.save(dest, "JPEG", quality=92)
-                norm_paths.append(dest)
-        except Exception:
-            continue
-
-    if not norm_paths:
-        return image_to_video(image_paths[0], duration_seconds, output_path, width, height, fps, camera_motion="nod_loop", niche=niche)
-
-    # Tạo file danh sách concat lặp lại cho FFmpeg
-    concat_txt = str(temp_dir / "concat_list.txt")
-    total_time = 0.0
-    with open(concat_txt, "w", encoding="utf-8") as f:
-        while total_time < duration_seconds + 0.5:
-            for p in norm_paths:
-                f.write(f"file '{Path(p).resolve().as_posix()}'\n")
-                f.write(f"duration {switch_interval}\n")
-                total_time += switch_interval
-        # FFmpeg concat demuxer requires the last file repeated once
-        f.write(f"file '{Path(norm_paths[-1]).resolve().as_posix()}'\n")
-
-    # Render video mượt mà từ chuỗi pose
-    grading = get_niche_color_grading(niche=niche, is_scifi=False)
-    vf_parts = [
-        f"scale={width}:{height}:force_original_aspect_ratio=decrease",
-        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
-        f"fps={fps}",
-        grading['vf_filter']
-    ]
-    if grading.get("vignette"):
-        vf_parts.append(grading['vignette'])
-
-    enc_args = get_video_encoder_args(quality="intermediate")
-    args = [
-        "-f", "concat",
-        "-safe", "0",
-        "-i", concat_txt,
-        "-vf", ",".join(vf_parts),
-        "-t", str(duration_seconds),
-        *enc_args,
-        "-r", str(fps),
-        "-an",
-        output_path
-    ]
-    try:
-        run_ffmpeg(args)
-    finally:
-        try:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-        except Exception:
-            pass
-
-    return output_path
+    single_img = image_paths[0] if image_paths else ""
+    return image_to_video(
+        image_path=single_img,
+        duration_seconds=duration_seconds,
+        output_path=output_path,
+        width=width,
+        height=height,
+        fps=fps,
+        zoom_effect=False,
+        camera_motion="zoom_in",
+        niche=niche,
+    )
 
 
 
@@ -1022,53 +833,12 @@ def trim_video(
         grading_parts.append(grading['vf_filter'])
         if grading.get("vignette"):
             grading_parts.append(grading['vignette'])
-        if is_hook_scene:
-            # 0.22s Optical Impact Pop (Frame 0.0s Flash & Contrast Punch) cho video mở đầu
-            grading_parts.append(
-                "eq=brightness='0.06*max(0\\,1-t/0.22)':contrast='1.05+0.09*max(0\\,1-t/0.22)':saturation='1.10':eval=frame"
-            )
 
     grading_chain = ("," + ",".join(grading_parts)) if grading_parts else ""
-
-    # Level 6 Ultra-Fast Multi-Shot Beat Cut cho Stock Video (0.9s-1.2s Pacing):
-    # - Nếu là Scene 1 (is_hook_scene): Luôn cắt 3 góc máy dồn dập (0-34%: 100%, 34-68%: 87%, 68-100%: 76%) kể cả câu hook ngắn 1.5s
-    # - Nếu clip >= 2.5s: Cắt 3 góc máy nhanh (0-40%: Góc rộng 100%, 40-70%: Góc trung 88%, 70-100%: Cận cảnh 80%)
-    # - Nếu clip >= 1.4s: Cắt 2 góc máy nhanh (0-45%: Góc rộng 100%, 45-100%: Cận cảnh 88%)
-    if is_already_rendered:
-        crop_snap = ""
-    elif is_hook_scene:
-        t1 = duration_seconds * 0.34
-        t2 = duration_seconds * 0.68
-        crop_snap = (
-            f",crop=w='if(gte(t\\,{t2:.2f})\\,{width}*0.76\\,if(gte(t\\,{t1:.2f})\\,{width}*0.87\\,{width}))':"
-            f"h='if(gte(t\\,{t2:.2f})\\,{height}*0.76\\,if(gte(t\\,{t1:.2f})\\,{height}*0.87\\,{height}))':"
-            f"x='(in_w-out_w)/2':y='(in_h-out_h)/2',"
-            f"scale={width}:{height}"
-        )
-    elif duration_seconds >= 2.5:
-        t1 = duration_seconds * 0.40
-        t2 = duration_seconds * 0.70
-        crop_snap = (
-            f",crop=w='if(gte(t\\,{t2:.2f})\\,{width}*0.80\\,if(gte(t\\,{t1:.2f})\\,{width}*0.88\\,{width}))':"
-            f"h='if(gte(t\\,{t2:.2f})\\,{height}*0.80\\,if(gte(t\\,{t1:.2f})\\,{height}*0.88\\,{height}))':"
-            f"x='(in_w-out_w)/2':y='(in_h-out_h)/2',"
-            f"scale={width}:{height}"
-        )
-    elif duration_seconds >= 1.4:
-        snap_t = duration_seconds * 0.45
-        crop_snap = (
-            f",crop=w='if(gte(t\\,{snap_t:.2f})\\,{width}*0.88\\,{width})':"
-            f"h='if(gte(t\\,{snap_t:.2f})\\,{height}*0.88\\,{height})':"
-            f"x='(in_w-out_w)/2':y='(in_h-out_h)/2',"
-            f"scale={width}:{height}"
-        )
-    else:
-        crop_snap = ""
 
     vf_chain = (
         f"scale={width}:{height}:force_original_aspect_ratio=increase,"
         f"crop={width}:{height}"
-        f"{crop_snap}"
         f"{grading_chain},"
         f"setsar=1,"
         f"fps={fps}"
@@ -1150,15 +920,15 @@ def concat_videos(
 # ──────────────────────────────────────────────
 
 NICHE_TRANSITIONS_MAP = {
-    "scifi": ["zoomin", "smoothleft", "pixelize", "hblur", "circleopen", "smoothright", "diagtl"],
-    "psychology": ["smoothleft", "circleopen", "smoothright", "radial", "dissolve", "diagtr", "hblur"],
-    "deep_sea": ["radial", "smoothleft", "circleopen", "smoothright", "diagtl", "dissolve", "hblur"],
-    "wildlife_predators": ["smoothleft", "circleopen", "smoothright", "diagtl", "radial", "dissolve"],
-    "animal_rescue": ["smoothleft", "dissolve", "smoothright", "circleopen", "diagtl"],
-    "horror": ["pixelize", "fadeblack", "hblur", "vertopen", "dissolve", "diagbl"],
-    "luxury": ["smoothleft", "diagtl", "smoothright", "zoomin", "circleopen", "diagbr"],
-    "history_mystery": ["smoothleft", "radial", "smoothright", "dissolve", "diagtl", "circleopen"],
-    "general": ["smoothleft", "smoothright", "circleopen", "diagtl", "zoomin", "radial", "hblur"],
+    "scifi": ["dissolve", "smoothleft", "fade", "smoothright"],
+    "psychology": ["dissolve", "fade", "smoothleft", "smoothright"],
+    "deep_sea": ["dissolve", "fade", "smoothleft", "smoothright"],
+    "wildlife_predators": ["dissolve", "smoothleft", "fade", "smoothright"],
+    "animal_rescue": ["dissolve", "fade", "smoothleft", "smoothright"],
+    "horror": ["fadeblack", "dissolve", "fade"],
+    "luxury": ["dissolve", "smoothleft", "fade", "smoothright"],
+    "history_mystery": ["dissolve", "fade", "smoothleft", "smoothright"],
+    "general": ["dissolve", "fade", "smoothleft", "smoothright"],
 }
 
 
