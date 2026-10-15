@@ -118,7 +118,7 @@ def _find_recent_duplicate_job(channel_id: str, topic: str, window_seconds: int 
                 .all()
             )
             for j in recent_jobs:
-                if not j.created_at or j.status == "FAILED":
+                if not j.created_at or str(j.status or "").upper() in ("FAILED", "CANCELLED", "DELETED"):
                     continue
                 age_sec = abs((now_utc - j.created_at.replace(tzinfo=None)).total_seconds())
                 j_top = re.sub(r"\s+", " ", (j.topic or "").strip().lower())
@@ -1369,22 +1369,38 @@ def _mark_video_dispatched(job_id: int, chat_id: int) -> None:
         pass
 
 
-def _is_job_already_completed_in_db(job_id: int) -> tuple[bool, Optional[str]]:
+class _CompletedJobResult:
+    """Cho phép dùng kết quả _is_job_already_completed_in_db vừa như bool vừa unpack 2 giá trị `(already_done, existing_mp4)`."""
+    __slots__ = ("completed", "video_path")
+
+    def __init__(self, completed: bool, video_path: Optional[str] = None):
+        self.completed = bool(completed)
+        self.video_path = video_path
+
+    def __bool__(self) -> bool:
+        return self.completed
+
+    def __iter__(self):
+        yield self.completed
+        yield self.video_path
+
+
+def _is_job_already_completed_in_db(job_id: int) -> _CompletedJobResult:
     """Kiểm tra xem VideoJob đã dựng xong (RENDERED/SCHEDULED/PUBLISHED) và có file MP4 trên đĩa chưa."""
     try:
         with get_db() as db:
             jb = db.query(VideoJob).filter(VideoJob.id == int(job_id)).first()
             if not jb:
-                return False, None
+                return _CompletedJobResult(False, None)
             st = str(jb.status or "").upper()
             v_path = jb.video_path
         if st in ("RENDERED", "SCHEDULED", "PUBLISHED", "WAITING_QUOTA_RESET"):
             resolved = _resolve_video_file_path(int(job_id), v_path)
             if resolved and resolved.exists() and resolved.stat().st_size > 100_000:
-                return True, str(resolved)
+                return _CompletedJobResult(True, str(resolved))
     except Exception:
         pass
-    return False, None
+    return _CompletedJobResult(False, None)
 
 
 async def start_render_pipeline(
@@ -2801,7 +2817,8 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 1. Duyệt kịch bản & Render video trực tiếp bằng máy chủ nội bộ (chống spam click tuyệt đối)
     if data.startswith("render_video:"):
         job_id = int(data.split(":")[1])
-        if _is_job_already_completed_in_db(job_id):
+        already_done, existing_mp4 = _is_job_already_completed_in_db(job_id)
+        if already_done and existing_mp4:
             await safe_query_answer(
                 query,
                 f"✅ Video #{job_id} đã được dựng hoàn tất rồi! Không cần dựng lại.",
