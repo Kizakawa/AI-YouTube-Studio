@@ -1785,6 +1785,7 @@ async def auto_resume_pending_jobs(application):
         default_chat_id = allowed_groups[0] if allowed_groups else None
         rq = get_render_queue()
 
+        from datetime import timedelta
         unfinished_jobs = []
         cutoff = datetime.utcnow() - timedelta(hours=3)
         with get_db() as db:
