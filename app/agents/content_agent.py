@@ -1379,6 +1379,9 @@ HARD RULES:
         director_notes: Optional[str] = None,
         min_acceptable_score: float = 8.0,
         max_attempts: int = 3,
+        cooldown_entities: Optional[List[str]] = None,
+        channel_id: Optional[str] = None,
+        **kwargs,
     ) -> tuple:
         """
         Quy trình biên soạn cao cấp: Tạo kịch bản -> Tự động chấm điểm bằng ScriptCritic.
@@ -1394,7 +1397,10 @@ HARD RULES:
             topic=topic,
             channel_niche=channel_niche,
             language=language,
-            director_notes=director_notes
+            director_notes=director_notes,
+            cooldown_entities=cooldown_entities,
+            channel_id=channel_id,
+            **kwargs,
         )
 
         try:
@@ -1419,6 +1425,14 @@ HARD RULES:
             f"Bắt đầu quy trình tự động tái tạo đến khi đạt chuẩn (Tối đa {max_attempts} lần thử)..."
         )
 
+        lang_low = str(language or "en").lower()
+        if lang_low.startswith("vi"):
+            target_lang_note = "QUAN TRỌNG: NGÔN NGỮ KỊCH BẢN BẮT BUỘC LÀ 100% TIẾNG VIỆT. Toàn bộ lời thoại và tiêu đề phải viết bằng Tiếng Việt chuẩn."
+        elif lang_low.startswith("pt"):
+            target_lang_note = "CRITICAL: TARGET SCRIPT LANGUAGE IS 100% BRAZILIAN PORTUGUESE (PORTUGUÊS DO BRASIL). All rewritten narration, hook, and title MUST be in natural Brazilian Portuguese."
+        else:
+            target_lang_note = "CRITICAL: TARGET SCRIPT LANGUAGE IS 100% ENGLISH. All rewritten narration, hook, and title MUST be in natural English."
+
         for attempt in range(1, max_attempts + 1):
             critiques_list = list(best_eval.actionable_critiques) if best_eval.actionable_critiques else []
 
@@ -1426,15 +1440,10 @@ HARD RULES:
             if best_eval.hook_strength.score < 8.0:
                 critiques_list.insert(0, f"Cảnh 1 Hook bị trừ nặng ({best_eval.hook_strength.score:.1f}/10): {best_eval.hook_strength.feedback}. Bắt buộc thay thế bằng hook giật gân, đảo ngược định kiến hoặc cảnh báo cấp bách trong 5-8 từ.")
             if best_eval.story_pacing.score < 8.0:
-                critiques_list.append(f"Nhịp điệu chưa chuẩn ({best_eval.story_pacing.score:.1f}/10): {best_eval.story_pacing.feedback}. Điều chỉnh lời thoại strictly 80-115 từ cho toàn bộ video, 3.0-4.5s/cảnh, 8-10 cảnh.")
+                critiques_list.append(f"Nhịp điệu chưa chuẩn ({best_eval.story_pacing.score:.1f}/10): {best_eval.story_pacing.feedback}. Điều chỉnh lời thoại strictly 88-118 từ cho toàn bộ video, 3.5-4.5s/cảnh, 8-9 cảnh.")
             if getattr(best_eval, "visual_direction", None) and best_eval.visual_direction.score < 8.0:
                 critiques_list.append(f"Thị giác yếu ({best_eval.visual_direction.score:.1f}/10): Cấm từ ngữ trừu tượng. visual_keyword và stock_query phải là danh từ/hành động vật lý cụ thể.")
 
-            target_lang_note = (
-                "CRITICAL: TARGET SCRIPT LANGUAGE IS 100% ENGLISH. All rewritten narration, hook, and title MUST be in natural English."
-                if not str(language).lower().startswith("vi")
-                else "QUAN TRỌNG: NGÔN NGỮ KỊCH BẢN BẮT BUỘC LÀ 100% TIẾNG VIỆT. Toàn bộ lời thoại và tiêu đề phải viết bằng Tiếng Việt chuẩn."
-            )
             directive = (
                 f"KỊCH BẢN TRƯỚC ĐÓ ĐẠT ĐIỂM KÉM ({best_eval.overall_score:.1f}/10). {target_lang_note} "
                 f"CHỈ ĐẠO BẮT BUỘC SỬA ĐỂ ĐẠT CHUẨN VIRAL: " + " | ".join(critiques_list)
@@ -1447,16 +1456,21 @@ HARD RULES:
                         current_script=best_script,
                         feedback=directive,
                         channel_niche=channel_niche,
-                        language=language
+                        language=language,
+                        director_notes=director_notes,
                     )
                 else:
                     # Lần thử cuối cùng: Tái tạo kịch bản từ đầu với góc nhìn sốc và sắc bén hơn
                     refreshed_topic = f"{topic} (Shocking perspective, intense curiosity loop)"
+                    merged_notes = f"{director_notes or ''}\nMUST FIX: {'; '.join(critiques_list[:3])}".strip()
                     candidate_script = self.generate_script(
                         topic=refreshed_topic,
                         channel_niche=channel_niche,
                         language=language,
-                        director_notes=f"MUST FIX: {'; '.join(critiques_list[:3])}"
+                        director_notes=merged_notes,
+                        cooldown_entities=cooldown_entities,
+                        channel_id=channel_id,
+                        **kwargs,
                     )
 
                 candidate_eval = critic.evaluate_script(
@@ -1536,11 +1550,13 @@ HARD RULES:
             f"Tiến hành tối ưu tự động để vừa thỏa mãn góp ý, vừa đạt điểm chất lượng cao..."
         )
 
-        target_lang_note = (
-            "CRITICAL: TARGET SCRIPT LANGUAGE IS 100% ENGLISH. All rewritten narration, hook, and title MUST be in natural English."
-            if not str(language).lower().startswith("vi")
-            else "QUAN TRỌNG: NGÔN NGỮ KỊCH BẢN BẮT BUỘC LÀ 100% TIẾNG VIỆT. Toàn bộ lời thoại và tiêu đề phải viết bằng Tiếng Việt chuẩn."
-        )
+        lang_low = str(language or "en").lower()
+        if lang_low.startswith("vi"):
+            target_lang_note = "QUAN TRỌNG: NGÔN NGỮ KỊCH BẢN BẮT BUỘC LÀ 100% TIẾNG VIỆT. Toàn bộ lời thoại và tiêu đề phải viết bằng Tiếng Việt chuẩn."
+        elif lang_low.startswith("pt"):
+            target_lang_note = "CRITICAL: TARGET SCRIPT LANGUAGE IS 100% BRAZILIAN PORTUGUESE (PORTUGUÊS DO BRASIL). All rewritten narration, hook, and title MUST be in natural Brazilian Portuguese."
+        else:
+            target_lang_note = "CRITICAL: TARGET SCRIPT LANGUAGE IS 100% ENGLISH. All rewritten narration, hook, and title MUST be in natural English."
 
         for attempt in range(1, max_attempts + 1):
             critiques_list = list(best_eval.actionable_critiques) if best_eval.actionable_critiques else []

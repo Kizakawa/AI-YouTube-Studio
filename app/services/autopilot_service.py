@@ -265,16 +265,20 @@ async def run_autopilot_pipeline_for_channel(
             slot_dt, slot_iso, display_vn, display_us = get_next_available_golden_slot(channel_id)
 
         # ── Step 2: Chọn ý tưởng viral mới nhất chống trùng lặp ──
-        from app.services.channel_intelligence import suggest_channel_topics
-        topics = await asyncio.to_thread(suggest_channel_topics, channel_id, count=1)
+        from app.services.channel_intelligence import suggest_channel_topics, ensure_unique_title
+        topics = await asyncio.to_thread(suggest_channel_topics, channel_id, count=3)
         if not topics:
             return {"success": False, "error": f"Không thể tạo ý tưởng viral mới cho kênh {ch_name}."}
 
         best_topic = topics[0]
         topic_str = best_topic.get("topic", "High Retention Shorts")
         title_str = best_topic.get("title", f"Video_{datetime.utcnow().strftime('%Y%m%d_%H%M')}")
+        topic_angle = best_topic.get("angle", "")
+        topic_hook = best_topic.get("hook", "")
+        topic_pinned = best_topic.get("pinned_comment", "")
+        topic_fixes = best_topic.get("fixes_flaw", "")
 
-        # ── Step 3: Tạo kịch bản chuẩn viral với Entity Cooldown & 3s CTA Hook ──
+        # ── Step 3: Tạo kịch bản chuẩn viral với Entity Cooldown, ScriptCritic & 5-Act Depth ──
         from app.services.entity_tracker import get_channel_cooldown_entities, register_job_entities
         from app.agents.content_agent import ContentAgent
 
@@ -284,20 +288,27 @@ async def run_autopilot_pipeline_for_channel(
         director_notes = (
             f"Kịch bản Auto-Pilot A-Z phát hành vào khung giờ vàng {display_vn}. "
             f"Chuẩn 5-Act 32-42s Golden Depth (88-118 từ, 8-9 cảnh trọn ý). "
+            f"Góc khai thác triệu view: {topic_angle}. "
+            f"Gợi ý Hook mở đầu: '{topic_hook}'. "
+            f"Khắc phục nhược điểm cũ: {topic_fixes}. "
             f"Bắt buộc: (1) Cảnh 1 mở đầu bằng câu khẳng định/cảnh báo sắc lẹm, CẤM mở đầu bằng câu hỏi Yes/No thụ động; "
-            f"(2) Có câu nói trích dẫn đời thực (Real-life verbal quote), giải mã cơ chế não bộ (Brain mechanism) và chiêu phản đòn cụ thể (Surgical counter-move); "
+            f"(2) Có câu nói trích dẫn đời thực (Real-life verbal quote) hoặc chi tiết định lượng cụ thể, giải mã cơ chế ngầm (Mechanism) và chiêu phản đòn/cao trào cụ thể (Surgical counter-move / Climax); "
             f"(3) Cảnh cuối dùng Seamless Infinite Loop nối mượt về Cảnh 1, TUYỆT ĐỐI KHÔNG đọc lời kêu gọi Subscribe/Like bằng giọng đọc (chỉ đặt câu hỏi tranh luận ở trường pinned_comment)."
         )
 
         try:
-            script = await asyncio.to_thread(
-                agent.generate_script,
+            script_res = await asyncio.to_thread(
+                agent.generate_best_script,
                 topic=topic_str,
                 channel_niche=ch_niche,
                 language=ch_lang,
                 director_notes=director_notes,
-                cooldown_entities=cooldown_ents
+                min_acceptable_score=8.2,
+                max_attempts=2,
+                cooldown_entities=cooldown_ents,
+                channel_id=channel_id,
             )
+            script = script_res[0] if isinstance(script_res, tuple) else script_res
         except Exception as e_script:
             logger.error(f"[AutoPilot] Lỗi sinh kịch bản cho {channel_id}: {e_script}", exc_info=True)
             return {"success": False, "error": f"Lỗi sinh kịch bản: {e_script}"}
@@ -341,13 +352,34 @@ async def run_autopilot_pipeline_for_channel(
                         channel_niche=ch_niche,
                         language=ch_lang,
                         director_notes=_rewrite_notes,
-                        cooldown_entities=cooldown_ents
+                        cooldown_entities=cooldown_ents,
+                        channel_id=channel_id,
                     )
                 except Exception as _rw_err:
                     logger.warning(f"[AutoPilot] Lỗi rewrite kịch bản: {_rw_err}. Dùng kịch bản cũ.")
                     break
         except Exception as _qa_err:
             logger.warning(f"[AutoPilot] QualityEvaluator gặp lỗi (không chặn pipeline): {_qa_err}")
+
+        # Đảm bảo tiêu đề độc bản 100% và có bình luận mồi chuẩn
+        try:
+            unique_title, _, _ = await asyncio.to_thread(
+                ensure_unique_title,
+                script.title or title_str,
+                channel_id,
+                topic_str,
+                ch_lang,
+            )
+            if unique_title:
+                script.title = unique_title
+        except Exception as _ut_err:
+            logger.debug(f"[AutoPilot] ensure_unique_title warning: {_ut_err}")
+
+        if not getattr(script, "pinned_comment", None) and topic_pinned:
+            try:
+                script.pinned_comment = topic_pinned
+            except Exception:
+                pass
 
         # ── Step 4: Tạo VideoJob trong Database ──
         with get_db() as db:
@@ -369,6 +401,7 @@ async def run_autopilot_pipeline_for_channel(
             db.add(job)
             db.flush()
             job_id = job.id
+            initial_job_title = job.title
 
             log_activity(
                 db,
@@ -414,6 +447,22 @@ async def run_autopilot_pipeline_for_channel(
         if not video_path or not Path(video_path).exists():
             raise RuntimeError(f"Render pipeline kết thúc nhưng không tìm thấy file video tại: {video_path}")
 
+        # Đọc lại dữ liệu mới nhất của Job từ DB (sau khi LangGraph có thể đã tinh chỉnh kịch bản/tiêu đề)
+        latest_title = script.title or initial_job_title
+        latest_desc = script.description or ""
+        latest_tags = list(script.tags) if script.tags else []
+        latest_topic = topic_str
+        latest_scenes_json = script.to_json_str()
+        with get_db() as db_read:
+            j_latest = db_read.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if j_latest:
+                latest_title = j_latest.title or latest_title
+                latest_desc = j_latest.description or latest_desc
+                if j_latest.tags:
+                    latest_tags = [t.strip() for t in j_latest.tags.split(",") if t.strip()]
+                latest_topic = j_latest.topic or latest_topic
+                latest_scenes_json = j_latest.scenes_json or latest_scenes_json
+
         # ── Step 6: Lên lịch phát sóng tự động lên YouTube Shorts (status.publishAt) ──
         logger.info(f"[AutoPilot #{job_id}] 📤 Đang lên lịch công chiếu lên YouTube Shorts vào {display_vn}...")
         from app.agents.publisher_agent import PublisherAgent
@@ -421,10 +470,10 @@ async def run_autopilot_pipeline_for_channel(
         pub_agent = PublisherAgent(channel_config=ch_cfg)
 
         # Trích xuất bình luận mồi (pinned_comment) từ kịch bản
-        pinned_comment = None
+        pinned_comment = getattr(script, "pinned_comment", None) or topic_pinned
         try:
-            s_dict = json.loads(job.scenes_json) if isinstance(job.scenes_json, str) else job.scenes_json
-            if isinstance(s_dict, dict):
+            s_dict = json.loads(latest_scenes_json) if isinstance(latest_scenes_json, str) else latest_scenes_json
+            if isinstance(s_dict, dict) and s_dict.get("pinned_comment"):
                 pinned_comment = s_dict.get("pinned_comment")
         except Exception:
             pass
@@ -432,16 +481,16 @@ async def run_autopilot_pipeline_for_channel(
         pub_res = await asyncio.to_thread(
             pub_agent.upload_video,
             video_path=video_path,
-            title=job.title or script.title,
-            description=job.description or script.description,
-            tags=job.tags.split(",") if job.tags else script.tags,
+            title=latest_title,
+            description=latest_desc,
+            tags=latest_tags,
             privacy_status="private",
             schedule_time_iso=slot_iso,
             default_language=ch_lang,
             default_audio_language=ch_lang,
             pinned_comment=pinned_comment,
-            topic=job.topic or topic_str,
-            script=job.scenes_json or "",
+            topic=latest_topic,
+            script=latest_scenes_json or "",
         )
 
         drive_link = None
@@ -452,7 +501,7 @@ async def run_autopilot_pipeline_for_channel(
             drive_res = await asyncio.to_thread(
                 drive_agent.upload_video,
                 video_path,
-                job.title,
+                latest_title,
                 channel_name=ch_name
             )
             if isinstance(drive_res, dict):
@@ -508,7 +557,7 @@ async def run_autopilot_pipeline_for_channel(
             caption_html = (
                 f"{status_title}\n\n"
                 f"📺 <b>Kênh:</b> {html.escape(ch_name)} (<code>{ch_handle or channel_id}</code>)\n"
-                f"🎬 <b>Tiêu đề:</b> <i>{html.escape(job.title)}</i>\n"
+                f"🎬 <b>Tiêu đề:</b> <i>{html.escape(latest_title)}</i>\n"
                 f"⏰ <b>Công chiếu:</b> 👉 <b>{display_vn}</b>\n"
                 f"🇺🇸 <i>({display_us})</i>\n"
             )
@@ -522,7 +571,7 @@ async def run_autopilot_pipeline_for_channel(
             alert_text = (
                 f"{status_title_md}\n\n"
                 f"📺 **Kênh:** `{ch_name}` (`{ch_handle or channel_id}`)\n"
-                f"🎬 **Tiêu đề:** *{html.escape(job.title)}*\n"
+                f"🎬 **Tiêu đề:** *{html.escape(latest_title)}*\n"
                 f"⏰ **Giờ công chiếu:** 👉 **{display_vn}**\n"
                 f"🇺🇸 *({display_us})*\n\n"
                 f"⚡ **Link YouTube Shorts (Đã khóa hẹn giờ):**\n"
@@ -575,7 +624,7 @@ async def run_autopilot_pipeline_for_channel(
             "job_id": job_id,
             "channel_id": channel_id,
             "channel_name": ch_name,
-            "title": job.title,
+            "title": latest_title,
             "scheduled_time_vn": display_vn,
             "scheduled_time_iso": slot_iso,
             "youtube_video_id": yt_id,
@@ -666,6 +715,84 @@ async def run_autopilot_for_all_empty(user_id: int = 0, notify_telegram: bool = 
         }
     finally:
         _release_channel_autopilot("__ALL_EMPTY__")
+
+
+async def run_autopilot_target_per_channel(
+    target_videos_per_channel: int = 2,
+    channel_ids: Optional[List[str]] = None,
+    user_id: int = 0,
+    notify_telegram: bool = True,
+) -> Dict[str, Any]:
+    """
+    Rà soát toàn bộ các kênh và tự động sản xuất + đặt lịch khung giờ vàng
+    để mỗi kênh đạt đủ `target_videos_per_channel` (mặc định 2 video/kênh/ngày).
+    Ưu tiên lấp đầy video thứ 1 cho các kênh đang 0 video trước, sau đó lấp đầy video thứ 2 cho toàn bộ các kênh.
+    """
+    if not _try_acquire_channel_autopilot("__TARGET_BATCH__"):
+        return {
+            "success": False,
+            "message": "Tiến trình Auto-Pilot Batch đang chạy rồi, vui lòng chờ hoàn tất!",
+            "processed_count": 0,
+            "results": [],
+        }
+
+    try:
+        summary = get_channel_today_summary()
+        channels_list = summary.get("channels", [])
+        if channel_ids:
+            channels_list = [c for c in channels_list if c["channel_id"] in channel_ids]
+
+        # Xây dựng hàng đợi theo từng vòng (Round 1: kênh có 0 video -> 1 video; Round 2: kênh có 1 video -> 2 video)
+        production_plan: List[Tuple[str, str, int]] = []
+        for round_idx in range(1, target_videos_per_channel + 1):
+            for ch in channels_list:
+                curr_count = int(ch.get("today_video_count", 0))
+                if curr_count < round_idx:
+                    production_plan.append((ch["channel_id"], ch["channel_name"], round_idx))
+
+        if not production_plan:
+            return {
+                "success": True,
+                "message": f"Tất cả kênh đã đủ {target_videos_per_channel} video/ngày hôm nay!",
+                "processed_count": 0,
+                "results": [],
+            }
+
+        logger.info(
+            f"🔥 [AutoPilot Target={target_videos_per_channel}/kênh] "
+            f"Bắt đầu sản xuất tổng cộng {len(production_plan)} video cho {len(channels_list)} kênh..."
+        )
+
+        if notify_telegram:
+            from app.services.channel_intelligence import send_telegram_broadcast
+            plan_desc = ", ".join([f"`{name}` (#{r_idx})" for _, name, r_idx in production_plan])
+            send_telegram_broadcast(
+                f"🚀 **KÍCH HOẠT CHIẾN DỊCH BỨT PHÁ VIEW ({target_videos_per_channel} VIDEO / KÊNH)!**\n\n"
+                f"📋 **Tổng số video cần sản xuất & lên lịch hôm nay:** `{len(production_plan)} video`\n"
+                f"🎯 **Thứ tự ưu tiên:** {plan_desc}\n"
+                f"🤖 *Hệ thống đang tổng hợp chủ đề Winner Cloner, viết kịch bản 5-Act 32-42s qua ScriptCritic, dựng 1080p và khóa lịch Giờ Vàng...*"
+            )
+
+        results = []
+        for idx, (cid, cname, round_idx) in enumerate(production_plan, start=1):
+            logger.info(
+                f"🎬 [{idx}/{len(production_plan)}] Đang sản xuất video thứ #{round_idx} trong ngày cho kênh '{cname}' ({cid})..."
+            )
+            res = await run_autopilot_pipeline_for_channel(
+                channel_id=cid,
+                user_id=user_id,
+                notify_telegram=notify_telegram,
+            )
+            results.append(res)
+            await asyncio.sleep(3)
+
+        return {
+            "success": True,
+            "processed_count": len(results),
+            "results": results,
+        }
+    finally:
+        _release_channel_autopilot("__TARGET_BATCH__")
 
 
 # ──────────────────────────────────────────────────────────────────────────────

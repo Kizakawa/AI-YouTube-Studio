@@ -5192,6 +5192,7 @@ class RunAutoPilotPayload(BaseModel):
     channel_id: Optional[str] = None
     all_empty: Optional[bool] = False
     target_slot_iso: Optional[str] = None
+    target_videos_per_channel: Optional[int] = None
 
 @app.get("/api/autopilot/status")
 async def get_autopilot_status():
@@ -5211,12 +5212,17 @@ async def get_autopilot_status():
 async def run_autopilot_endpoint(payload: RunAutoPilotPayload, background_tasks: BackgroundTasks):
     """
     Kích hoạt quy trình Auto-Pilot A-Z:
+    - Nếu target_videos_per_channel > 0: Tự động sản xuất & lên lịch đủ N video/kênh/ngày cho tất cả kênh.
     - Nếu all_empty=True: Tự động chạy tuần tự cho tất cả kênh chưa có video hôm nay.
     - Nếu có channel_id: Tự động chạy cho kênh được chỉ định.
     Quy trình chạy ngầm: Tự động sinh kịch bản viral -> Render 1080p -> Lên lịch khung giờ vàng YouTube Shorts.
     """
     try:
-        from app.services.autopilot_service import run_autopilot_pipeline_for_channel, run_autopilot_for_all_empty
+        from app.services.autopilot_service import (
+            run_autopilot_pipeline_for_channel,
+            run_autopilot_for_all_empty,
+            run_autopilot_target_per_channel,
+        )
 
         def _bg_run_channel(cid: str, slot_iso: Optional[str]):
             loop = asyncio.new_event_loop()
@@ -5234,7 +5240,21 @@ async def run_autopilot_endpoint(payload: RunAutoPilotPayload, background_tasks:
             finally:
                 loop.close()
 
-        if payload.all_empty:
+        def _bg_run_target(target_cnt: int):
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(run_autopilot_target_per_channel(target_videos_per_channel=target_cnt, user_id=0, notify_telegram=True))
+            finally:
+                loop.close()
+
+        if payload.target_videos_per_channel and payload.target_videos_per_channel > 0:
+            background_tasks.add_task(_bg_run_target, int(payload.target_videos_per_channel))
+            return {
+                "success": True,
+                "message": f"Đã kích hoạt chiến dịch Auto-Pilot {payload.target_videos_per_channel} video/kênh cho toàn bộ hệ thống!"
+            }
+        elif payload.all_empty:
             background_tasks.add_task(_bg_run_all)
             return {
                 "success": True,
@@ -5247,7 +5267,7 @@ async def run_autopilot_endpoint(payload: RunAutoPilotPayload, background_tasks:
                 "message": f"Đã kích hoạt Auto-Pilot A-Z cho kênh '{payload.channel_id}'! Tiến trình đang chạy ngầm."
             }
         else:
-            raise HTTPException(status_code=400, detail="Vui lòng cung cấp channel_id hoặc all_empty=true")
+            raise HTTPException(status_code=400, detail="Vui lòng cung cấp channel_id, all_empty=true hoặc target_videos_per_channel")
     except HTTPException:
         raise
     except Exception as e:

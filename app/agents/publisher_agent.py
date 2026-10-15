@@ -645,8 +645,41 @@ class PublisherAgent:
             err_str = str(e)
             # Bắt mã lỗi 403 quotaExceeded từ Google API
             if "quotaExceeded" in err_str or "exceeded your quota" in err_str:
-                from app.services.quota_manager import QuotaManager, get_next_reset_time
+                from app.services.quota_manager import QuotaManager, COST_FULL_SHORTS, get_next_reset_time
                 QuotaManager.mark_exhausted(self.project_id)
+
+                # Tự động xoay sang dự án dự phòng khác trong Pool của kênh (nếu có) trước khi đưa vào hàng đợi
+                alt_token, alt_proj_id = QuotaManager.get_active_token_for_channel(
+                    self.channel_id, required_units=COST_FULL_SHORTS
+                )
+                if (
+                    alt_token
+                    and alt_proj_id != self.project_id
+                    and QuotaManager.can_upload(alt_proj_id, required_units=COST_FULL_SHORTS)
+                ):
+                    logger.info(
+                        f"🔄 [QuotaFallbackRotation] Dự án '{self.project_id}' báo hết quota trên Google! "
+                        f"Tự động xoay sang Dự án dự phòng '{alt_proj_id}' ({alt_token}) và thử upload lại ngay..."
+                    )
+                    self.token_file = alt_token
+                    self.project_id = alt_proj_id
+                    self._init_service()
+                    if self.service:
+                        return self.upload_video(
+                            video_path=video_path,
+                            title=title,
+                            description=description,
+                            tags=tags,
+                            privacy_status=privacy_status,
+                            schedule_time_iso=schedule_time_iso,
+                            default_language=default_language,
+                            default_audio_language=default_audio_language,
+                            pinned_comment=pinned_comment,
+                            thumbnail_path=thumbnail_path,
+                            topic=topic,
+                            script=script,
+                        )
+
                 next_reset_str = get_next_reset_time().strftime("%H:%M ngày %d/%m/%Y")
                 
                 # Đóng gói an toàn toàn bộ video + metadata + phụ đề vào file .zip để người dùng tải về up tay
