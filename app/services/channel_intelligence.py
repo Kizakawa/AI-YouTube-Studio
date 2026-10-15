@@ -1265,12 +1265,14 @@ def calculate_channel_kpi(channel_id: str) -> Dict[str, Any]:
         color = "red"
         urgency = "critical"
 
-    # Kiểm tra xem kênh có job nào đang trong luồng sản xuất hoặc chờ duyệt không
+    # Kiểm tra xem kênh có job nào đang trong luồng sản xuất hoặc chờ duyệt không (chỉ tính trong 3 giờ gần nhất)
     pending_job = None
+    recent_cutoff = datetime.utcnow() - timedelta(hours=3)
     with get_db() as db:
         job = db.query(VideoJob).filter(
             VideoJob.target_channel_id == channel_id,
-            VideoJob.status.in_(["RENDERING", "SCRIPT_READY", "RENDERED", "AWAITING_APPROVAL"])
+            VideoJob.status.in_(["RENDERING", "SCRIPT_READY", "RENDERED", "AWAITING_APPROVAL"]),
+            VideoJob.created_at >= recent_cutoff,
         ).order_by(VideoJob.created_at.desc()).first()
 
         if job:
