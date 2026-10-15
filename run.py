@@ -1,8 +1,23 @@
 import os
 import sys
+import site
 import time
 import threading
 import logging
+
+# Tự động nạp thư viện từ Python gốc (C:\Python\Lib\site-packages hoặc sys.base_prefix)
+# khi IDE tự động kích hoạt môi trường ảo (.venv) rỗng làm thiếu thư viện telegram/fastapi
+try:
+    import telegram  # noqa: F401
+except ModuleNotFoundError:
+    _candidate_site_dirs = [
+        os.path.join(getattr(sys, "base_prefix", ""), "Lib", "site-packages"),
+        r"C:\Python\Lib\site-packages",
+    ]
+    for _sdir in _candidate_site_dirs:
+        if _sdir and os.path.isdir(_sdir) and _sdir not in sys.path:
+            site.addsitedir(_sdir)
+
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 from config.settings import settings
 from app.database import init_db
