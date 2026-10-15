@@ -1343,6 +1343,50 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _release_action(idea_lock_key, post_cooldown_sec=5.0)
 
 
+# Bộ nhớ chống gửi trùng video vào nhóm Telegram: (job_id, int(chat_id)) -> timestamp
+_DISPATCHED_VIDEO_CHAT_TS: dict[tuple[int, int], float] = {}
+_AUTO_RESUME_INITIALIZED: bool = False
+
+
+def _is_video_already_dispatched(job_id: int, chat_id: int, ttl_sec: float = 1800.0) -> bool:
+    """Kiểm tra xem video #job_id đã được gửi tới chat_id trong khoảng thời gian gần đây chưa."""
+    try:
+        key = (int(job_id), int(chat_id))
+    except Exception:
+        return False
+    now_ts = time.monotonic()
+    last_ts = _DISPATCHED_VIDEO_CHAT_TS.get(key)
+    if last_ts is not None and (now_ts - last_ts) < ttl_sec:
+        return True
+    return False
+
+
+def _mark_video_dispatched(job_id: int, chat_id: int) -> None:
+    """Đánh dấu video #job_id đã gửi thành công tới chat_id."""
+    try:
+        _DISPATCHED_VIDEO_CHAT_TS[(int(job_id), int(chat_id))] = time.monotonic()
+    except Exception:
+        pass
+
+
+def _is_job_already_completed_in_db(job_id: int) -> tuple[bool, Optional[str]]:
+    """Kiểm tra xem VideoJob đã dựng xong (RENDERED/SCHEDULED/PUBLISHED) và có file MP4 trên đĩa chưa."""
+    try:
+        with get_db() as db:
+            jb = db.query(VideoJob).filter(VideoJob.id == int(job_id)).first()
+            if not jb:
+                return False, None
+            st = str(jb.status or "").upper()
+            v_path = jb.video_path
+        if st in ("RENDERED", "SCHEDULED", "PUBLISHED", "WAITING_QUOTA_RESET"):
+            resolved = _resolve_video_file_path(int(job_id), v_path)
+            if resolved and resolved.exists() and resolved.stat().st_size > 100_000:
+                return True, str(resolved)
+    except Exception:
+        pass
+    return False, None
+
+
 async def start_render_pipeline(
     bot,
     chat_id: Optional[int],
@@ -1357,6 +1401,12 @@ async def start_render_pipeline(
     1. Khi người dùng bấm duyệt trên Telegram (truyền update).
     2. Khi bot tự động khôi phục (Auto-Resume) khi khởi động lại (dùng bot + chat_id).
     """
+    # Chốt chặn an toàn: Nếu job đã dựng xong trước đó rồi thì không dựng lại và không gửi đúp
+    already_done, existing_mp4 = _is_job_already_completed_in_db(job_id)
+    if already_done and existing_mp4:
+        logger.info(f"🛡️ [start_render_pipeline] Video #{job_id} đã hoàn tất từ trước ({existing_mp4}) — bỏ qua dựng lặp lại!")
+        return
+
     status_text = (
         f"🔄 **[TỰ ĐỘNG LÀM TIẾP]** Bot đang tiếp tục dựng Video #{job_id} chưa hoàn thành!\n"
         f"⏳ Đang nạp pipeline render 9:16 Shorts (Audio + Media + Subtitles)..."
@@ -1425,10 +1475,13 @@ async def start_render_pipeline(
             logger.error(f"❌ Không tìm thấy file video đầu ra cho Job #{job_id}: {render_job.output_path}")
             target_chats = []
             if chat_id:
-                target_chats.append(chat_id)
+                try:
+                    target_chats.append(int(chat_id))
+                except Exception:
+                    pass
             for gid in settings.get_allowed_group_ids():
-                if gid and gid not in target_chats:
-                    target_chats.append(gid)
+                if gid and int(gid) not in target_chats:
+                    target_chats.append(int(gid))
             for t_chat in target_chats:
                 try:
                     await bot.send_message(
@@ -1534,15 +1587,22 @@ async def start_render_pipeline(
             if len(caption) > 1000:
                 caption = caption[:990] + "..."
 
-            # Xác định các chat mục tiêu (chat cá nhân & các nhóm được cấp phép)
-            target_chats = []
+            # Xác định các chat mục tiêu (chuẩn hóa int để không bao giờ gửi trùng cùng 1 nhóm)
+            target_chats: list[int] = []
             if chat_id:
-                target_chats.append(chat_id)
+                try:
+                    target_chats.append(int(chat_id))
+                except Exception:
+                    pass
             for gid in settings.get_allowed_group_ids():
-                if gid and gid not in target_chats:
-                    target_chats.append(gid)
+                try:
+                    gid_int = int(gid)
+                    if gid_int and gid_int not in target_chats:
+                        target_chats.append(gid_int)
+                except Exception:
+                    pass
 
-            # 1. CẬP NHẬT TRẠNG THÁI TẢI VIDEO (KHÔNG BẮN ẢNH RỜI ĐỂ TRÁNH RÁC NHÓM)
+            # 1. CẬP NHẬT TRẠNG THÁI TẢI VIDEO
             thumb_p = getattr(render_job, "thumbnail_path", None)
             if not thumb_p or not Path(thumb_p).exists():
                 thumb_p = getattr(render_job, "thumbnail_vertical_path", None)
@@ -1553,21 +1613,20 @@ async def start_render_pipeline(
                 except Exception:
                     pass
 
-            # 2. UPLOAD DUY NHẤT 1 FILE VIDEO KÈM THUMBNAIL LÀM BÌA & NÚT THAO TÁC
-            # Kiểm tra kích thước file: Nếu > 12MB, tự động nén nhanh bản preview nhẹ (~4-6MB) cho Telegram
-            # để tránh lỗi đứt kết nối httpx.ReadError sau 10 phút render (file gốc out_path vẫn giữ nguyên 100% cho YouTube)
+            # 2. UPLOAD DUY NHẤT 1 FILE VIDEO QUA KẾT NỐI HTTP MỚI TRỰC TIẾP (CHỐNG LỖI HTTPX READ TIMEOUT GỬI ĐÚP 2 LẦN!)
+            # Nếu > 8MB, nén nhanh bản preview nhẹ (~3-5MB) cho Telegram giúp gửi chỉ mất 3-5s (file gốc out_path giữ nguyên 100% cho YouTube)
             upload_vid_path = out_path
             temp_tg_preview = None
-            if size_mb > 12.0:
+            if size_mb > 8.0:
                 try:
                     import subprocess
                     temp_dir = Path(settings.TEMP_DIR)
                     temp_dir.mkdir(parents=True, exist_ok=True)
                     temp_tg_preview = str(temp_dir / f"tg_preview_{job_id}.mp4")
-                    logger.info(f"File {size_mb:.1f}MB > 12MB, đang tạo bản preview tối ưu cho Telegram (job #{job_id})...")
+                    logger.info(f"File {size_mb:.1f}MB > 8MB, đang tạo bản preview tối ưu cho Telegram (job #{job_id})...")
                     cmd = [
                         "ffmpeg", "-y", "-i", str(out_path),
-                        "-c:v", "libx264", "-crf", "26", "-preset", "veryfast", "-movflags", "+faststart",
+                        "-c:v", "libx264", "-crf", "27", "-preset", "superfast", "-movflags", "+faststart",
                         "-c:a", "copy", temp_tg_preview
                     ]
                     res_comp = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45)
@@ -1592,7 +1651,7 @@ async def start_render_pipeline(
                     data["reply_markup"] = _json.dumps(markup_obj.to_dict())
                 if cached_fid:
                     data["video"] = cached_fid
-                    r = _req.post(url, data=data, timeout=60)
+                    r = _req.post(url, data=data, timeout=45)
                 else:
                     with open(vid_path_str, "rb") as vf_sync:
                         files = {"video": (f"video_{job_id}.mp4", vf_sync, "video/mp4")}
@@ -1600,7 +1659,7 @@ async def start_render_pipeline(
                         if tf_sync:
                             files["thumbnail"] = ("thumb.jpg", tf_sync, "image/jpeg")
                         try:
-                            r = _req.post(url, data=data, files=files, timeout=180)
+                            r = _req.post(url, data=data, files=files, timeout=120)
                         finally:
                             if tf_sync:
                                 tf_sync.close()
@@ -1612,80 +1671,32 @@ async def start_render_pipeline(
 
             cached_telegram_file_id = None
             for t_chat in target_chats:
+                if _is_video_already_dispatched(job_id, t_chat):
+                    logger.info(f"🛡️ [Anti-Duplicate Video] Video #{job_id} đã được gửi tới chat {t_chat} trước đó — bỏ qua gửi trùng!")
+                    continue
+
                 sent_ok = False
                 curr_size_mb = Path(upload_vid_path).stat().st_size / (1024 * 1024)
                 if curr_size_mb <= 49.0:
                     try:
-                        if cached_telegram_file_id:
-                            # Chat thứ 2 trở đi gửi qua file_id chỉ mất 0.2s!
-                            await bot.send_video(
-                                chat_id=t_chat,
-                                video=cached_telegram_file_id,
-                                caption=caption,
-                                parse_mode="HTML",
-                                reply_markup=post_render_markup,
-                                supports_streaming=True
-                            )
+                        # Dùng kết nối HTTP trực tiếp làm phương thức DUY NHẤT để tránh lỗi httpx stale socket gửi đúp 2 lần
+                        ok_sync, fid_sync = await asyncio.to_thread(
+                            _sync_requests_send_video,
+                            t_chat,
+                            str(upload_vid_path),
+                            str(thumb_p) if thumb_p else None,
+                            caption,
+                            post_render_markup,
+                            cached_telegram_file_id,
+                        )
+                        if ok_sync:
+                            if fid_sync:
+                                cached_telegram_file_id = fid_sync
                             sent_ok = True
-                        else:
-                            with open(upload_vid_path, "rb") as vf:
-                                thumb_f = open(thumb_p, "rb") if thumb_p and Path(thumb_p).exists() else None
-                                try:
-                                    sent_msg = await bot.send_video(
-                                        chat_id=t_chat,
-                                        video=vf,
-                                        thumbnail=thumb_f,
-                                        caption=caption,
-                                        parse_mode="HTML",
-                                        reply_markup=post_render_markup,
-                                        supports_streaming=True,
-                                        read_timeout=300,
-                                        write_timeout=300
-                                    )
-                                    if sent_msg and sent_msg.video:
-                                        cached_telegram_file_id = sent_msg.video.file_id
-                                    sent_ok = True
-                                finally:
-                                    if thumb_f:
-                                        try:
-                                            thumb_f.close()
-                                        except Exception:
-                                            pass
-                    except Exception as ex_upload:
-                        logger.warning(f"send_video (httpx) thất bại tới chat {t_chat}: {ex_upload}, chuyển sang kết nối HTTP trực tiếp (requests fallback)...")
-                        try:
-                            ok_sync, fid_sync = await asyncio.to_thread(
-                                _sync_requests_send_video,
-                                t_chat,
-                                str(upload_vid_path),
-                                str(thumb_p) if thumb_p else None,
-                                caption,
-                                post_render_markup,
-                                cached_telegram_file_id,
-                            )
-                            if ok_sync:
-                                if fid_sync:
-                                    cached_telegram_file_id = fid_sync
-                                sent_ok = True
-                                logger.info(f"✅ Đã gửi video #{job_id} tới chat {t_chat} thành công qua requests fallback!")
-                        except Exception as ex_req_fb:
-                            logger.warning(f"requests fallback thất bại tới chat {t_chat}: {ex_req_fb}, thử gửi dạng document...")
-                            try:
-                                with open(upload_vid_path, "rb") as vf_doc:
-                                    sent_doc = await bot.send_document(
-                                        chat_id=t_chat,
-                                        document=vf_doc,
-                                        caption=caption,
-                                        parse_mode="HTML",
-                                        reply_markup=post_render_markup,
-                                        read_timeout=300,
-                                        write_timeout=300
-                                    )
-                                    if sent_doc and sent_doc.document:
-                                        cached_telegram_file_id = sent_doc.document.file_id
-                                sent_ok = True
-                            except Exception as ex_doc:
-                                logger.error(f"send_document cũng thất bại tới chat {t_chat}: {ex_doc}")
+                            _mark_video_dispatched(job_id, t_chat)
+                            logger.info(f"✅ Đã gửi duy nhất 1 bản video #{job_id} tới chat {t_chat} thành công!")
+                    except Exception as ex_req_fb:
+                        logger.error(f"Gửi video #{job_id} tới chat {t_chat} thất bại: {ex_req_fb}")
 
                 if not sent_ok:
                     fallback_msg = (
@@ -1697,6 +1708,7 @@ async def start_render_pipeline(
                     )
                     try:
                         await bot.send_message(chat_id=t_chat, text=fallback_msg, reply_markup=post_render_markup, parse_mode="HTML")
+                        _mark_video_dispatched(job_id, t_chat)
                     except Exception as ex_m:
                         logger.error(f"Không thể gửi tin nhắn thông báo video tới chat {t_chat}: {ex_m}")
 
@@ -1740,23 +1752,35 @@ async def _execute_render_task(update: Update, context: ContextTypes.DEFAULT_TYP
 async def auto_resume_pending_jobs(application):
     """
     Tự động kiểm tra và làm tiếp các video đang làm dở khi bot khởi động lại.
-    - Tìm các video có status 'RENDERING' (bị ngắt giữa chừng khi tắt bot)
-      hoặc 'SCRIPT_READY' đang chờ dựng.
-    - Gửi thông báo đến nhóm Telegram và tự động đưa vào hàng đợi render.
+    - Chỉ chạy DUY NHẤT 1 LẦN khi khởi động tiến trình (không chạy lại khi polling reconnect).
+    - Bỏ qua các video đã có trong RenderQueue hoặc đã hoàn tất trên ổ đĩa.
     """
+    global _AUTO_RESUME_INITIALIZED
+    if _AUTO_RESUME_INITIALIZED:
+        logger.debug("Auto-Resume: Đã chạy khi khởi động, bỏ qua khi polling reconnect.")
+        return
+    _AUTO_RESUME_INITIALIZED = True
+
     from app.services.render_queue import get_render_queue
     from config.settings import settings
 
     try:
         allowed_groups = settings.get_allowed_group_ids()
         default_chat_id = allowed_groups[0] if allowed_groups else None
+        rq = get_render_queue()
 
         unfinished_jobs = []
         with get_db() as db:
-            # Chỉ tìm các job thực sự bị gián đoạn giữa chừng khi đang RENDERING
             stuck_rendering = db.query(VideoJob).filter(VideoJob.status == "RENDERING").order_by(VideoJob.id.asc()).all()
 
             for j in stuck_rendering:
+                if rq.find_active_item(j.id) is not None:
+                    continue
+                resolved = _resolve_video_file_path(j.id, j.video_path)
+                if resolved and resolved.exists() and resolved.stat().st_size > 100_000:
+                    j.status = "RENDERED"
+                    j.video_path = str(resolved)
+                    continue
                 unfinished_jobs.append({
                     "id": j.id,
                     "title": j.title or j.topic or f"Video #{j.id}",
@@ -1769,7 +1793,6 @@ async def auto_resume_pending_jobs(application):
             return
 
         logger.info(f"Auto-Resume: Phát hiện {len(unfinished_jobs)} video làm dở — Bắt đầu tự động dựng tiếp!")
-        rq = get_render_queue()
 
         for j_info in unfinished_jobs:
             job_id = j_info["id"]
@@ -1791,7 +1814,6 @@ async def auto_resume_pending_jobs(application):
                 except Exception as ex_notify:
                     logger.warning(f"Không thể gửi thông báo auto-resume tới chat {target_chat}: {ex_notify}")
 
-            # Đưa vào hàng đợi render tự động
             async def make_task(jid=job_id, t_chat=target_chat):
                 await start_render_pipeline(application.bot, t_chat, jid, user_name="Auto-Resume System", is_auto_resume=True)
 
@@ -1809,9 +1831,24 @@ async def auto_resume_pending_jobs(application):
 async def _enqueue_render(update: Update, context: ContextTypes.DEFAULT_TYPE, job_id: int, user_name: str):
     """
     Đưa yêu cầu render vào hàng đợi FIFO thay vì chạy trực tiếp.
-    Nếu máy đang rảnh → render ngay. Nếu đang bận → xếp hàng chờ.
-    Chống trùng lặp: Nếu job_id đã đang render hoặc đã nằm trong hàng đợi thì bỏ qua.
+    Chống trùng lặp: Nếu job_id đã hoàn thành trên đĩa, đang render, hoặc đã nằm trong hàng đợi thì bỏ qua.
     """
+    already_done, existing_mp4 = _is_job_already_completed_in_db(job_id)
+    if already_done and existing_mp4:
+        if update.callback_query:
+            await safe_query_answer(
+                update.callback_query,
+                f"✅ Video #{job_id} đã được dựng hoàn tất rồi! Không cần dựng lại.",
+                show_alert=True,
+            )
+        else:
+            await safe_reply(
+                update,
+                f"✅ **Video #{job_id} đã được dựng hoàn tất trước đó rồi!**\n"
+                f"📂 Đường dẫn: `{existing_mp4}`",
+            )
+        return
+
     rq = get_render_queue()
     chat_id = update.effective_chat.id if update.effective_chat else None
 
@@ -2764,6 +2801,14 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 1. Duyệt kịch bản & Render video trực tiếp bằng máy chủ nội bộ (chống spam click tuyệt đối)
     if data.startswith("render_video:"):
         job_id = int(data.split(":")[1])
+        if _is_job_already_completed_in_db(job_id):
+            await safe_query_answer(
+                query,
+                f"✅ Video #{job_id} đã được dựng hoàn tất rồi! Không cần dựng lại.",
+                show_alert=True,
+            )
+            return
+
         rq = get_render_queue()
         btn_lock_key = f"render_btn:{job_id}"
         acquired = _try_acquire_action(btn_lock_key, max_inflight_sec=30.0, debounce_sec=8.0)
@@ -5722,17 +5767,17 @@ async def dispatch_rendered_video_to_telegram(job_id: int):
     size_bytes = v_file.stat().st_size
     size_mb = size_bytes / (1024 * 1024)
 
-    # Xác định các chat nhận tin
+    # Xác định các chat nhận tin (chuẩn hóa sang int để chống trùng lặp str/int)
     target_chats = []
-    if u_id and u_id != 0:
-        target_chats.append(u_id)
+    if u_id and int(u_id) != 0:
+        target_chats.append(int(u_id))
     for gid in settings.get_allowed_group_ids():
-        if gid and gid not in target_chats:
-            target_chats.append(gid)
+        if gid and int(gid) not in target_chats:
+            target_chats.append(int(gid))
     if not target_chats:
         for uid in settings.get_allowed_users().keys():
-            if uid and uid not in target_chats:
-                target_chats.append(uid)
+            if uid and int(uid) not in target_chats:
+                target_chats.append(int(uid))
 
     if not target_chats:
         return
@@ -5761,13 +5806,6 @@ async def dispatch_rendered_video_to_telegram(job_id: int):
     ])
 
     safe_title = html.escape(title)
-    quick_caption = (
-        f"🎉 <b>VIDEO #{job_id} ĐÃ HOÀN TẤT!</b>\n\n"
-        f"📌 <b>Tiêu đề:</b> {safe_title}\n"
-        f"📦 <b>Dung lượng:</b> {size_mb:.1f} MB (Chuẩn 1080x1920 9:16 Shorts)\n"
-        f"⚡ <i>Đang truyền file video gốc vào Telegram... Bạn có thể bấm xem ngay tức thì trên Web Studio bên dưới:</i>"
-    )
-
     video_caption = (
         f"🎬 <b>{safe_title}</b>\n\n"
         f"🆔 <b>Task:</b> #{job_id}\n"
@@ -5777,7 +5815,7 @@ async def dispatch_rendered_video_to_telegram(job_id: int):
 
     upload_v_file = v_file
     temp_dispatch_preview = None
-    if size_mb > 12.0:
+    if size_mb > 8.0:
         try:
             import subprocess
             temp_dir = Path(settings.TEMP_DIR)
@@ -5786,7 +5824,7 @@ async def dispatch_rendered_video_to_telegram(job_id: int):
             res_c = subprocess.run(
                 [
                     "ffmpeg", "-y", "-i", str(v_file),
-                    "-c:v", "libx264", "-crf", "26", "-preset", "veryfast", "-movflags", "+faststart",
+                    "-c:v", "libx264", "-crf", "27", "-preset", "superfast", "-movflags", "+faststart",
                     "-c:a", "copy", str(temp_dispatch_preview),
                 ],
                 stdout=subprocess.DEVNULL,
@@ -5798,90 +5836,47 @@ async def dispatch_rendered_video_to_telegram(job_id: int):
         except Exception as ex_c:
             logger.debug(f"[TelegramDispatch] Lỗi nén preview #{job_id}: {ex_c}")
 
-    async with Bot(token=token) as bot:
-        # Gửi DUY NHẤT 1 file video (nhúng thumbnail làm ảnh bìa) kèm nút thao tác
-        cached_file_id = None
-        for cid in target_chats:
-            thumb_f = open(thumb_p, "rb") if thumb_p and Path(thumb_p).exists() else None
-            try:
-                if cached_file_id:
-                    await bot.send_video(
-                        chat_id=cid,
-                        video=cached_file_id,
-                        caption=video_caption,
-                        parse_mode="HTML",
-                        reply_markup=actions_markup,
-                        supports_streaming=True
-                    )
-                else:
-                    curr_mb = Path(upload_v_file).stat().st_size / (1024 * 1024)
-                    with open(upload_v_file, "rb") as vf:
-                        if curr_mb <= 50.0:
-                            sent_msg = await bot.send_video(
-                                chat_id=cid,
-                                video=vf,
-                                thumbnail=thumb_f,
-                                caption=video_caption,
-                                parse_mode="HTML",
-                                reply_markup=actions_markup,
-                                supports_streaming=True,
-                                read_timeout=300,
-                                write_timeout=300
-                            )
-                            if sent_msg and sent_msg.video:
-                                cached_file_id = sent_msg.video.file_id
-                        else:
-                            sent_msg = await bot.send_document(
-                                chat_id=cid,
-                                document=vf,
-                                thumbnail=thumb_f,
-                                caption=video_caption,
-                                reply_markup=actions_markup,
-                                read_timeout=600,
-                                write_timeout=600
-                            )
-                            if sent_msg and sent_msg.document:
-                                cached_file_id = sent_msg.document.file_id
-            except Exception as ex_v:
-                logger.warning(f"[TelegramDispatch] Lỗi httpx gửi video #{job_id} tới {cid}: {ex_v}, chuyển sang requests fallback...")
-                try:
-                    import requests as _req
-                    import json as _json
-                    def _dispatch_req_fb():
-                        url = f"https://api.telegram.org/bot{token}/sendVideo"
-                        data = {
-                            "chat_id": str(cid),
-                            "caption": video_caption,
-                            "parse_mode": "HTML",
-                            "supports_streaming": "true",
-                            "reply_markup": _json.dumps(actions_markup.to_dict()),
-                        }
-                        if cached_file_id:
-                            data["video"] = cached_file_id
-                            return _req.post(url, data=data, timeout=60)
-                        with open(upload_v_file, "rb") as vf_s:
-                            files = {"video": (f"video_{job_id}.mp4", vf_s, "video/mp4")}
-                            tf_s = open(thumb_p, "rb") if thumb_p and Path(thumb_p).exists() else None
-                            if tf_s:
-                                files["thumbnail"] = ("thumb.jpg", tf_s, "image/jpeg")
-                            try:
-                                return _req.post(url, data=data, files=files, timeout=180)
-                            finally:
-                                if tf_s:
-                                    tf_s.close()
-                    r_fb = await asyncio.to_thread(_dispatch_req_fb)
-                    if r_fb.status_code == 200 and r_fb.json().get("ok"):
-                        fid = ((r_fb.json().get("result") or {}).get("video") or {}).get("file_id")
-                        if fid:
-                            cached_file_id = fid
-                except Exception as ex_fb:
-                    logger.error(f"[TelegramDispatch] requests fallback cũng thất bại cho #{job_id} tới {cid}: {ex_fb}")
-            finally:
-                if thumb_f:
+    import requests as _req
+    import json as _json
+    cached_file_id = None
+    for cid in target_chats:
+        if _is_video_already_dispatched(job_id, cid):
+            logger.info(f"🛡️ [TelegramDispatch] Bỏ qua gửi trùng Video #{job_id} tới chat {cid}")
+            continue
+        _mark_video_dispatched(job_id, cid)
+        try:
+            def _dispatch_req_upload(target_cid=cid, fid=cached_file_id):
+                url = f"https://api.telegram.org/bot{token}/sendVideo"
+                data = {
+                    "chat_id": str(target_cid),
+                    "caption": video_caption,
+                    "parse_mode": "HTML",
+                    "supports_streaming": "true",
+                    "reply_markup": _json.dumps(actions_markup.to_dict()),
+                }
+                if fid:
+                    data["video"] = fid
+                    return _req.post(url, data=data, timeout=60)
+                with open(upload_v_file, "rb") as vf_s:
+                    files = {"video": (f"video_{job_id}.mp4", vf_s, "video/mp4")}
+                    tf_s = open(thumb_p, "rb") if thumb_p and Path(thumb_p).exists() else None
+                    if tf_s:
+                        files["thumbnail"] = ("thumb.jpg", tf_s, "image/jpeg")
                     try:
-                        thumb_f.close()
-                    except Exception:
-                        pass
+                        return _req.post(url, data=data, files=files, timeout=180)
+                    finally:
+                        if tf_s:
+                            tf_s.close()
+
+            r_fb = await asyncio.to_thread(_dispatch_req_upload)
+            if r_fb.status_code == 200 and r_fb.json().get("ok"):
+                fid = ((r_fb.json().get("result") or {}).get("video") or {}).get("file_id")
+                if fid:
+                    cached_file_id = fid
+            else:
+                logger.warning(f"[TelegramDispatch] Telegram API trả lỗi cho #{job_id} tới {cid}: {r_fb.text[:200]}")
+        except Exception as ex_fb:
+            logger.error(f"[TelegramDispatch] Lỗi gửi video #{job_id} tới {cid}: {ex_fb}")
 
     if temp_dispatch_preview and temp_dispatch_preview.exists():
         try:

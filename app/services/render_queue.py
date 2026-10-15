@@ -183,16 +183,16 @@ class RenderQueue:
                     logger.info("🏭 RenderQueue Worker: Hàng đợi trống 30s, tạm nghỉ")
                     break
 
-                # Chốt chặn an toàn: nếu job vừa mới render xong trong vòng 5 phút qua thì bỏ qua tránh render đúp
+                # Chốt chặn an toàn: nếu job đã render xong trong vòng 24 giờ qua thì bỏ qua tránh render đúp
                 recently_done = any(
                     h.job_id == item.job_id
                     and h.status == QueueItemStatus.COMPLETED
                     and h.finished_at
-                    and (datetime.utcnow() - h.finished_at).total_seconds() < 300
-                    for h in self._history[-10:]
+                    and (datetime.utcnow() - h.finished_at).total_seconds() < 86400
+                    for h in self._history
                 )
                 if recently_done:
-                    logger.info(f"🛡️ [RenderQueue] Video #{item.job_id} vừa hoàn tất render gần đây — bỏ qua bản trùng lặp trong hàng đợi!")
+                    logger.info(f"🛡️ [RenderQueue] Video #{item.job_id} đã hoàn tất render trước đó — bỏ qua bản trùng lặp trong hàng đợi!")
                     item.status = QueueItemStatus.CANCELLED
                     self._queue.task_done()
                     continue
