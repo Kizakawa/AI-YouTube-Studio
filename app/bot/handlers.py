@@ -1786,10 +1786,25 @@ async def auto_resume_pending_jobs(application):
         rq = get_render_queue()
 
         unfinished_jobs = []
+        cutoff = datetime.utcnow() - timedelta(hours=3)
         with get_db() as db:
-            stuck_rendering = db.query(VideoJob).filter(VideoJob.status == "RENDERING").order_by(VideoJob.id.asc()).all()
+            candidates = (
+                db.query(VideoJob)
+                .filter(VideoJob.status.in_(["RENDERING", "AUDIO_READY", "MEDIA_READY", "SCRIPT_READY"]))
+                .order_by(VideoJob.id.asc())
+                .all()
+            )
 
-            for j in stuck_rendering:
+            for j in candidates:
+                ref_time = (j.updated_at or j.created_at or datetime.utcnow()).replace(tzinfo=None)
+                if ref_time < cutoff:
+                    continue
+                is_interrupted = j.status in ("RENDERING", "AUDIO_READY", "MEDIA_READY") or (
+                    j.status == "SCRIPT_READY"
+                    and (j.progress_message or "").startswith("Đã khôi phục sau khi")
+                )
+                if not is_interrupted:
+                    continue
                 if rq.find_active_item(j.id) is not None:
                     continue
                 resolved = _resolve_video_file_path(j.id, j.video_path)
@@ -1797,6 +1812,7 @@ async def auto_resume_pending_jobs(application):
                     j.status = "RENDERED"
                     j.video_path = str(resolved)
                     continue
+                j.status = "RENDERING"
                 unfinished_jobs.append({
                     "id": j.id,
                     "title": j.title or j.topic or f"Video #{j.id}",

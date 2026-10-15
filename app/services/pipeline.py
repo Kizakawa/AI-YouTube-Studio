@@ -125,6 +125,7 @@ class VideoPipeline:
             self.work_dir.mkdir(parents=True, exist_ok=True)
 
             render_succeeded = False
+            self._update_status(JobStatus.RENDERING, "Đang khởi tạo tiến trình dựng video...")
             # ── [HARD NICHE FIREWALL] Tự động phát hiện & điều hướng nếu Job bị gán nhầm kênh ──
             try:
                 from app.services.niche_manager import validate_channel_niche_alignment

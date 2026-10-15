@@ -166,16 +166,26 @@ def on_startup():
     except Exception as e:
         print(f"Warning during startup DB check: {e}")
 
-    # [FIX #7] Khôi phục jobs bị kẹt ở RENDERING khi restart (web-only mode)
+    # [FIX #7] Chỉ đưa về SCRIPT_READY các job treo quá 3 giờ; các job mới bị ngắt (< 3 giờ) giữ ở RENDERING để Auto-Resume tự động dựng tiếp
     try:
+        from datetime import timedelta
+        cutoff = datetime.utcnow() - timedelta(hours=3)
         with get_db() as db:
-            stuck_jobs = db.query(VideoJob).filter(VideoJob.status == "RENDERING").all()
+            stuck_jobs = db.query(VideoJob).filter(
+                VideoJob.status.in_(["RENDERING", "AUDIO_READY", "MEDIA_READY"])
+            ).all()
+            stale_count = 0
             for j in stuck_jobs:
-                j.status = "SCRIPT_READY"
-                j.progress_percent = 0
-                j.progress_message = "Đã khôi phục sau khi Web Dashboard khởi động lại"
-            if stuck_jobs:
-                logger.info(f"[Startup Recovery] Đã khôi phục {len(stuck_jobs)} video bị kẹt về SCRIPT_READY")
+                ref_time = (j.updated_at or j.created_at or datetime.utcnow()).replace(tzinfo=None)
+                if ref_time >= cutoff:
+                    j.status = "RENDERING"
+                else:
+                    j.status = "SCRIPT_READY"
+                    j.progress_percent = 0
+                    j.progress_message = "Đã khôi phục về SCRIPT_READY (tác vụ cũ quá 3 giờ)"
+                    stale_count += 1
+            if stale_count:
+                logger.info(f"[Startup Recovery] Đã khôi phục {stale_count} video treo quá 3h về SCRIPT_READY")
     except Exception as e:
         logger.warning(f"Lỗi recover stuck jobs on startup: {e}")
 

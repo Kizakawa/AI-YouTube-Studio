@@ -51,19 +51,35 @@ def get_network_info():
     }
 
 def recover_stuck_jobs():
-    """Tự động khôi phục các video bị gián đoạn do tắt bot đột ngột khi đang render và cảnh báo các job lỗi tồn đọng"""
+    """Tự động phân loại các video bị gián đoạn khi khởi động lại:
+    - Nếu mới bị ngắt trong vòng 3 giờ gần đây: Giữ trạng thái RENDERING để Auto-Resume tự động dựng tiếp.
+    - Nếu đã treo quá 3 giờ: Đưa về SCRIPT_READY để tránh kẹt hàng đợi.
+    """
     try:
+        from datetime import datetime, timedelta
         from app.database.models import get_db, VideoJob, log_activity
+        cutoff = datetime.utcnow() - timedelta(hours=3)
         with get_db() as db:
-            # 1. Chỉ khôi phục các job thực sự bị ngắt giữa chừng khi đang RENDERING
-            stuck_jobs = db.query(VideoJob).filter(VideoJob.status == "RENDERING").all()
+            stuck_jobs = db.query(VideoJob).filter(
+                VideoJob.status.in_(["RENDERING", "AUDIO_READY", "MEDIA_READY"])
+            ).all()
+            recent_resume_ids = []
+            stale_reset_ids = []
             for j in stuck_jobs:
-                j.status = "SCRIPT_READY"
-                j.progress_percent = 0
-                j.progress_message = "Đã khôi phục sau khi hệ thống khởi động lại"
-                log_activity(db, 0, "System", "RECOVER_JOB", f"Khôi phục Video #{j.id} về SCRIPT_READY")
-            if stuck_jobs:
-                print(f"   -> [Khôi phục] Đã tự động khôi phục {len(stuck_jobs)} video bị gián đoạn về trạng thái sẵn sàng.")
+                ref_time = (j.updated_at or j.created_at or datetime.utcnow()).replace(tzinfo=None)
+                if ref_time >= cutoff:
+                    j.status = "RENDERING"
+                    recent_resume_ids.append(j.id)
+                else:
+                    j.status = "SCRIPT_READY"
+                    j.progress_percent = 0
+                    j.progress_message = "Đã khôi phục về SCRIPT_READY (tác vụ cũ quá 3 giờ)"
+                    log_activity(db, 0, "System", "RECOVER_JOB", f"Khôi phục Video #{j.id} (quá 3h) về SCRIPT_READY")
+                    stale_reset_ids.append(j.id)
+            if recent_resume_ids:
+                print(f"   -> [Auto-Resume] Phát hiện {len(recent_resume_ids)} video đang dựng dở ({recent_resume_ids}) -> Sẽ tự động dựng tiếp ngay khi Bot khởi động!")
+            if stale_reset_ids:
+                print(f"   -> [Khôi phục] Đã đưa {len(stale_reset_ids)} video treo quá 3h về trạng thái sẵn sàng.")
     except Exception as e:
         print(f"   -> ⚠️ Lỗi khôi phục jobs: {e}")
 
