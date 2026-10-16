@@ -390,9 +390,9 @@ class PublisherAgent:
             target_lang = "pt"
             target_audio_lang = "pt-BR"
         else:
-            target_lang = default_language or cfg_lang or "en"
+            target_lang = default_language or cfg_lang or "en-US"
             if str(target_lang).lower() in ("en", "en-us", "english"):
-                target_lang = "en"
+                target_lang = "en-US"
                 target_audio_lang = "en-US"
             elif not default_audio_language or default_audio_language.lower() in ("en", "en-us"):
                 target_audio_lang = "vi-VN" if str(target_lang).lower().startswith("vi") else "en-US"
