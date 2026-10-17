@@ -1,0 +1,70 @@
+name: 📊 7x Daily YouTube Channel & Video Smart Audit
+
+on:
+  schedule:
+    # 7 khung giờ/ngày theo giờ Việt Nam (UTC+7):
+    # 00:00 VN (17:00 UTC), 06:00 VN (23:00 UTC), 09:00 VN (02:00 UTC),
+    # 12:00 VN (05:00 UTC), 15:00 VN (08:00 UTC), 18:00 VN (11:00 UTC), 21:00 VN (14:00 UTC)
+    - cron: '0 2,5,8,11,14,17,23 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  smart-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 🐍 Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: ⚡ Install Lightweight Audit Dependencies
+        run: |
+          pip install --quiet pyyaml requests cryptography google-api-python-client google-auth google-auth-httplib2 pydantic pydantic-settings python-dotenv sqlalchemy
+
+      - name: 🔐 Restore Encrypted YouTube Channel Credentials & Config
+        env:
+          YT_CLOUD_CREDENTIALS_B64: ${{ secrets.YT_CLOUD_CREDENTIALS_B64 }}
+        run: |
+          python -c "
+          import os, base64, io, zipfile
+          b64 = os.environ.get('YT_CLOUD_CREDENTIALS_B64', '').strip()
+          if not b64:
+              raise RuntimeError('Missing YT_CLOUD_CREDENTIALS_B64 secret')
+          raw = base64.b64decode(b64)
+          with zipfile.ZipFile(io.BytesIO(raw), 'r') as zf:
+              zf.extractall('.')
+          print('Restored credentials and channels.yaml successfully.')
+          "
+
+      - name: 🚀 Run 7x Daily Smart Audit + Gemini Strategist + Telegram Push
+        env:
+          PYTHONIOENCODING: utf-8
+          GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ALLOWED_TELEGRAM_USERS: ${{ secrets.ALLOWED_TELEGRAM_USERS }}
+          ALLOWED_TELEGRAM_GROUPS: ${{ secrets.ALLOWED_TELEGRAM_GROUPS }}
+          ENCRYPTION_MASTER_KEY: ${{ secrets.ENCRYPTION_MASTER_KEY }}
+        run: |
+          python scripts/cloud_channel_audit.py
+
+      - name: 💾 Save Audit History & Latest Report to Shared Cloud Memory
+        run: |
+          git config user.name "Antigravity Cloud Auditor"
+          git config user.email "actions@github.com"
+          git add reports/LATEST_AUDIT_REPORT.md reports/audit_state.json
+          if ! git diff --staged --quiet; then
+            git commit -m "chore(audit): update 7x daily channel report [skip ci]"
+            git pull --rebase origin main || true
+            git push origin main
+          fi
