@@ -709,80 +709,40 @@ class VideoPipeline:
                         media_path = res_v
                         used_asset_paths.add(res_v)
 
-                # ── Thẩm định & Chấm điểm độ liên quan với MediaRelevanceAgent (bỏ qua nếu đã qua Gemini Vision Search) ──
-                already_vision_curated = bool(
-                    media_path and any(tag in Path(media_path).name.lower() for tag in ("_gsearch", "_creature", "_photo"))
-                )
-                if media_path and Path(media_path).exists() and not already_vision_curated:
-                    relevance_eval = await asyncio.to_thread(
-                        self._media_relevance_agent.evaluate_media,
-                        media_path=media_path,
-                        narration=scene.narration,
-                        visual_keyword=scene.visual_keyword or "",
-                        topic=topic,
-                        scene_id=scene.scene_id,
-                        primary_entity=primary_entity,
-                        production_method=prod_method,
-                    )
-                    if not relevance_eval.get("is_relevant", True) and relevance_eval.get("verdict") == "FAIL":
-                        logger.warning(
-                            f"[Job {self.job_id}] ⚠️ Cảnh {scene.scene_id} media chưa đạt chuẩn nội dung "
-                            f"(Score: {relevance_eval.get('overall_score')}/10). Vấn đề: {relevance_eval.get('issues')}. "
-                            f"Tự động sửa chữa theo gợi ý: '{relevance_eval.get('replacement_query')}'..."
-                        )
-                        fix_query = relevance_eval.get("replacement_query") or scene.visual_keyword or topic
-                        fixed_media = None
-
-                        # Ưu tiên tìm video nếu phương pháp cần video hoặc cảnh cần chuyển động
-                        if prod_method in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO") or scene.scene_id == 1:
-                            best_vid = await asyncio.to_thread(
-                                self._media_agent.search_best_video_clip,
+                # ── Kiểm tra ĐỘ SẮC NÉT & ĐỘ PHÂN GIẢI (Đã loại bỏ bước kiểm tra độ liên quan MediaRelevanceAgent) ──
+                if media_path and Path(media_path).exists() and _infer_media_type(media_path) == "image":
+                    try:
+                        from PIL import Image
+                        from app.graph.evaluators.visual_critic import VisualCritic
+                        is_blurry_or_small = False
+                        with Image.open(media_path) as _im:
+                            _w, _h = _im.size
+                            if _w < 400 or _h < 400:
+                                is_blurry_or_small = True
+                        if not is_blurry_or_small:
+                            _sharp = VisualCritic._measure_sharpness(media_path)
+                            if _sharp < 5.8:
+                                is_blurry_or_small = True
+                        if is_blurry_or_small:
+                            logger.warning(f"[Job {self.job_id}] ⚠️ Cảnh {scene.scene_id} ảnh thiếu độ sắc nét/độ phân giải -> Tự động tải lại ảnh sắc nét mới...")
+                            fix_query = scene.visual_keyword or topic
+                            best_p = await asyncio.to_thread(
+                                self._media_agent.search_best_photo,
                                 fix_query,
                                 used_pool_urls,
                                 v_analysis,
                                 scene.narration,
-                            )
-                            if best_vid and best_vid.get("url"):
-                                cand_url = best_vid["url"]
-                                new_v_p = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_relevance_fix.mp4")
-                                await asyncio.to_thread(self._media_agent.download_file, cand_url, new_v_p)
-                                if Path(new_v_p).exists() and Path(new_v_p).stat().st_size > 5000:
-                                    fixed_media = new_v_p
-                                    from app.services.media.media_history import extract_media_identity, record_used_media
-                                    ids = extract_media_identity(cand_url)
-                                    used_pool_urls.update(ids)
-                                    used_asset_paths.update(ids)
-                                    used_asset_paths.add(new_v_p)
-                                    record_used_media(cand_url, query=fix_query, source="relevance_fix", media_path=new_v_p)
-                                    logger.info(f"[Job {self.job_id}] ✅ Đã thay thế Cảnh {scene.scene_id} bằng video clip chuẩn: {fix_query}")
-
-                        # Nếu chưa tìm được video, thử sinh ảnh AI chất lượng cao từ refined_prompt
-                        if not fixed_media:
-                            fix_prompt = relevance_eval.get("refined_prompt") or p_ai or f"Cinematic photorealistic 8k vertical shot of {fix_query}, {topic}"
-                            new_img_p = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_relevance_fix.jpg")
-                            res_ai = await asyncio.to_thread(
-                                self._image_agent.generate_scene_image,
-                                fix_prompt,
-                                new_img_p,
-                                "9:16",
-                                "cinematic",
-                                scene.scene_id,
-                                fix_prompt,
-                                used_asset_paths,
                                 topic,
                             )
-                            if res_ai and Path(res_ai).exists() and Path(res_ai).stat().st_size > 2000:
-                                fixed_media = res_ai
-                                from app.services.media.media_history import extract_media_identity, compute_file_md5
-                                used_asset_paths.add(fixed_media)
-                                md5_h = compute_file_md5(fixed_media)
-                                if md5_h:
-                                    used_asset_paths.add(f"md5:{md5_h}")
-                                    used_pool_urls.add(f"md5:{md5_h}")
-                                logger.info(f"[Job {self.job_id}] ✅ Đã thay thế Cảnh {scene.scene_id} bằng ảnh/video AI chuẩn xác từ đạo diễn")
-
-                        if fixed_media:
-                            media_path = fixed_media
+                            if best_p and best_p.get("url"):
+                                new_img_p = str(Path(media_dir) / f"scene_{scene.scene_id:03d}_sharp_fix.jpg")
+                                await asyncio.to_thread(self._media_agent.download_file, best_p["url"], new_img_p)
+                                if Path(new_img_p).exists() and Path(new_img_p).stat().st_size > 3000 and self._is_valid_image_file(new_img_p):
+                                    media_path = new_img_p
+                                    used_pool_urls.add(best_p["url"])
+                                    used_asset_paths.add(new_img_p)
+                    except Exception as _e_sh:
+                        logger.debug(f"[Job {self.job_id}] Sharpness check skipped for Scene {scene.scene_id}: {_e_sh}")
 
                 _motion_choices = ["zoom_in", "pan_right", "zoom_out", "pan_left"]
                 sfx = sc_strat.get("sfx_cue") or getattr(scene, 'sfx_cue', None) or ("hit" if idx == 0 else "whoosh")

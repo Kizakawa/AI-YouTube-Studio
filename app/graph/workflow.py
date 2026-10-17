@@ -59,36 +59,17 @@ def should_refine_script(state: VideoWorkflowState) -> Literal["refine_script", 
     return "generate_audio"
 
 
-def should_refine_media(state: VideoWorkflowState) -> Literal["refine_media", "content_quality_check"]:
-    """Điều hướng: Nếu có cảnh media bị lỗi KỸ THUẬT -> Sửa lại. Nếu OK -> chuyển sang AI Vision check."""
+def should_refine_media(state: VideoWorkflowState) -> Literal["refine_media", "render_video"]:
+    """Điều hướng: Kiểm tra độ sắc nét, độ phân giải & kỹ thuật media. Nếu lỗi -> Sửa lại. Nếu đạt -> Render video ngay!"""
     media_eval = state.get("media_eval", {})
     passed = media_eval.get("passed", True)
     retry_count = state.get("media_retry_count", 0)
 
     if not passed and retry_count < 2:
-        logger.info(f"🔄 [ConditionalEdge] Media có cảnh lỗi kỹ thuật ({len(media_eval.get('failed_scene_ids', []))} cảnh). Chuyển sang node_refine_media!")
+        logger.info(f"🔄 [ConditionalEdge] Media có cảnh chưa đạt độ sắc nét/kỹ thuật ({len(media_eval.get('failed_scene_ids', []))} cảnh). Chuyển sang node_refine_media!")
         return "refine_media"
 
-    logger.info("✅ [ConditionalEdge] Media đạt chuẩn kỹ thuật. Chuyển sang ContentQualityCritic AI Vision!")
-    return "content_quality_check"
-
-
-def should_refine_content(state: VideoWorkflowState) -> Literal["refine_content", "render_video"]:
-    """Điều hướng: Nếu AI Vision phát hiện ảnh không phù hợp nội dung -> Sửa lại."""
-    content_eval = state.get("content_quality_eval", {})
-    passed = content_eval.get("passed", True)
-    content_retry = state.get("content_retry_count", 0)
-
-    # [P2-UPG-3] Tăng retry từ 1 lên 2 — AI Vision hay bị 429 lần đầu
-    if not passed and content_retry < 2:
-        failed_count = len(content_eval.get("failed_scene_ids", []))
-        logger.info(
-            f"🔄 [ConditionalEdge] AI Vision phát hiện {failed_count} cảnh có nội dung chưa phù hợp "
-            f"(Score: {content_eval.get('overall_score')}/10, Retry: {content_retry}/2). Chuyển sang node_refine_content!"
-        )
-        return "refine_content"
-
-    logger.info("✅ [ConditionalEdge] Nội dung media đạt chuẩn AI Vision. Tiến hành render video!")
+    logger.info("✅ [ConditionalEdge] Media đạt chuẩn độ sắc nét & kỹ thuật. Tiến hành render video ngay!")
     return "render_video"
 
 
@@ -113,7 +94,7 @@ def route_after_edit(state: VideoWorkflowState) -> Literal["render_video", "__en
 # ──────────────────────────────────────────────────────────────────────────────
 
 def create_video_workflow_graph() -> StateGraph:
-    """Khởi tạo và biên dịch đồ thị LangGraph Video Engine."""
+    """Khởi tạo và biên dịch đồ thị LangGraph Video Engine (Bỏ qua node kiểm tra liên quan, chỉ kiểm tra độ sắc nét & kỹ thuật)."""
     builder = StateGraph(VideoWorkflowState)
 
     # Thêm các Nodes
@@ -127,8 +108,6 @@ def create_video_workflow_graph() -> StateGraph:
     builder.add_node("fetch_media", node_fetch_media)
     builder.add_node("evaluate_media", node_evaluate_media)
     builder.add_node("refine_media", node_refine_media)
-    builder.add_node("content_quality_check", node_content_quality_check)
-    builder.add_node("refine_content", node_refine_content)
     builder.add_node("render_video", node_render_video)
     builder.add_node("evaluate_video", node_evaluate_video)
     builder.add_node("execute_edit", node_execute_edit)
@@ -160,28 +139,17 @@ def create_video_workflow_graph() -> StateGraph:
     builder.add_edge("evaluate_audio", "visual_director")
     builder.add_edge("visual_director", "fetch_media")
 
-    # ── Tầng 1: Kiểm tra KỸ THUẬT media (VisualCritic rule-based) ──
+    # ── Kiểm tra ĐỘ SẮC NÉT & KỸ THUẬT media (VisualCritic) -> Render trực tiếp ──
     builder.add_edge("fetch_media", "evaluate_media")
     builder.add_conditional_edges(
         "evaluate_media",
         should_refine_media,
         {
             "refine_media": "refine_media",
-            "content_quality_check": "content_quality_check",
-        }
-    )
-    builder.add_edge("refine_media", "evaluate_media")  # Vòng lặp sửa file kỹ thuật
-
-    # ── Tầng 2: Kiểm tra NỘI DUNG media (ContentQualityCritic AI Vision) ──
-    builder.add_conditional_edges(
-        "content_quality_check",
-        should_refine_content,
-        {
-            "refine_content": "refine_content",
             "render_video": "render_video",
         }
     )
-    builder.add_edge("refine_content", "content_quality_check")  # Vòng lặp sửa nội dung
+    builder.add_edge("refine_media", "evaluate_media")  # Vòng lặp sửa file mờ/lỗi kỹ thuật
 
     # ── Luồng Render & VideoQA ──
     builder.add_edge("render_video", "evaluate_video")

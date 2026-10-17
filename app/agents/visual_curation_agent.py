@@ -1147,6 +1147,50 @@ TRẢ VỀ JSON DUY NHẤT:
         heur_incong = _is_incongruent_stock_heuristic(media_desc, topic=topic, narration=narration)
         return heur_incong, (3.0 if heur_incong else 7.0), "Heuristic keyword fallback"
 
+    @staticmethod
+    def _inspect_candidate_sharpness(cand: Dict[str, Any], timeout: float = 4.0) -> Optional[Dict[str, Any]]:
+        """
+        Tải thử ảnh ứng viên và đo trực tiếp ĐỘ SẮC NÉT BIÊN CẠNH (Edge Sharpness), ĐỘ PHÂN GIẢI & TƯƠNG PHẢN bằng PIL.
+        Loại bỏ ngay ảnh mờ nhòe (sharpness < 6.0), ảnh quá nhỏ (< 400px) hoặc ảnh hỏng/đơn sắc.
+        """
+        import io as _io
+        import requests
+        from PIL import Image, ImageFilter, ImageStat
+
+        urls = [u for u in (cand.get("url"), cand.get("fallback_url"), cand.get("thumbnail")) if u]
+        ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+        for target_u in urls:
+            try:
+                headers = {"User-Agent": ua, "Accept": "image/*,*/*;q=0.8"}
+                if cand.get("page_url"):
+                    headers["Referer"] = str(cand["page_url"])
+                res = requests.get(target_u, timeout=timeout, headers=headers)
+                if res.status_code != 200 or not res.content or len(res.content) < 2500:
+                    continue
+                with Image.open(_io.BytesIO(res.content)) as im:
+                    w, h = im.size
+                    if min(w, h) < 400 or max(w / max(h, 1), h / max(w, 1)) > 2.6:
+                        continue
+                    gray = im.convert("L").resize((256, 256), Image.Resampling.BILINEAR)
+                    g_stat = ImageStat.Stat(gray)
+                    std_con = float(g_stat.stddev[0])
+                    if std_con < 12.0:
+                        continue
+                    edges = gray.filter(ImageFilter.FIND_EDGES)
+                    sharpness = float(ImageStat.Stat(edges).mean[0])
+                    if sharpness < 5.8:
+                        continue
+                    return {
+                        "width": w,
+                        "height": h,
+                        "sharpness": round(sharpness, 2),
+                        "contrast": round(std_con, 2),
+                        "verified_url": target_u,
+                    }
+            except Exception:
+                continue
+        return None
+
     def curate_candidate_photos(
         self,
         candidates: List[Dict[str, Any]],
@@ -1157,219 +1201,64 @@ TRẢ VỀ JSON DUY NHẤT:
         used_urls: Optional[set] = None,
     ) -> Tuple[Optional[Dict[str, Any]], float, str, bool]:
         """
-        Đánh giá và tuyển chọn ảnh chụp tĩnh (Pexels, Wikimedia, Openverse):
-        Agent LLM phân tích ngữ nghĩa của các ảnh ứng viên, phát hiện thể loại lạc đề,
-        chọn ra ảnh tốt nhất hoặc từ chối toàn bộ nếu lạc đề để kích hoạt sinh Ảnh AI.
+        Tuyển chọn ảnh trực tiếp dựa trên THỨ HẠNG TOP SEARCH GOOGLE IMAGES + KIỂM ĐỊNH ĐỘ SẮC NÉT & ĐỘ PHÂN GIẢI:
+        - Đã bỏ bước kiểm tra độ liên quan bằng AI Vision/LLM (tránh từ chối nhầm ảnh đẹp từ Google Images và tiết kiệm 10-15s/cảnh).
+        - Đo trực tiếp độ sắc nét biên cạnh (sharpness), độ phân giải thực tế (width x height) và độ tương phản của Top ứng viên.
         """
+        from concurrent.futures import ThreadPoolExecutor
+
         used = used_urls or set()
         valid = [c for c in candidates if c.get("url") and c.get("url") not in used]
         if not valid:
             return None, 0.0, "Không có ứng viên ảnh nào khả dụng.", True
 
-        if not visual_analysis:
-            visual_analysis = self.analyze_scene_context(
-                narration=narration or visual_keyword,
-                topic=topic or visual_keyword,
+        top_pool = valid[:6]
+        with ThreadPoolExecutor(max_workers=min(6, len(top_pool))) as ex:
+            metrics_list = list(ex.map(self._inspect_candidate_sharpness, top_pool))
+
+        scored_sharp: List[Tuple[float, int, Dict[str, Any]]] = []
+        for idx, (cand, m) in enumerate(zip(top_pool, metrics_list)):
+            if not m:
+                continue
+            w, h = m["width"], m["height"]
+            sharpness = m["sharpness"]
+            contrast = m["contrast"]
+            g_rank = int(cand.get("_google_rank") or 999)
+            h_score = float(cand.get("_hscore") or 7.0)
+
+            # Điểm tổng hợp: Độ sắc nét + Độ phân giải HD/4K + Thứ hạng Top Search Google Images
+            res_bonus = 1.4 if min(w, h) >= 1000 else (1.0 if min(w, h) >= 720 else 0.4)
+            sharp_bonus = min(2.4, sharpness / 10.0)
+            rank_bonus = 1.5 if g_rank <= 3 else (1.1 if g_rank <= 8 else (0.6 if g_rank <= 15 else 0.0))
+            total_score = min(9.9, round(4.8 + res_bonus + sharp_bonus + rank_bonus + (h_score * 0.12), 2))
+            scored_sharp.append((total_score, -idx, {**cand, "_sharp_metrics": m}))
+
+        if scored_sharp:
+            scored_sharp.sort(reverse=True)
+            best_score, _, winner_item = scored_sharp[0]
+            m = winner_item.pop("_sharp_metrics", {})
+            alt_urls = [
+                item.get("url")
+                for _, _, item in scored_sharp[1:5]
+                if item.get("url") and item.get("url") != winner_item.get("url")
+            ]
+            if alt_urls:
+                winner_item["_vision_alternates"] = alt_urls
+            g_rank = int(winner_item.get("_google_rank") or 999)
+            rank_str = f"Top #{g_rank} Google Images" if g_rank < 900 else winner_item.get("source", "web")
+            rationale = (
+                f"[{rank_str} · Sắc nét đạt chuẩn] Độ nét={m.get('sharpness')}, "
+                f"Tương phản={m.get('contrast')}, Độ phân giải={m.get('width')}x{m.get('height')}px"
             )
+            winner_item["curation_score"] = best_score
+            winner_item["curation_rationale"] = rationale
+            logger.info(f"📸 [SharpnessCuration] ✅ Chọn ảnh {rank_str} | Điểm độ nét: {best_score}/10 | {rationale}")
+            return winner_item, best_score, rationale, False
 
-        # Trích xuất mô tả ảnh đầy đủ và đảm bảo đa dạng tên miền (tối đa 2 ảnh/domain ở lượt đầu) để Gemini Vision có 8 góc nhìn tốt nhất
-        pool = []
-        overflow_pool = []
-        domain_counts: Dict[str, int] = {}
-        for c in valid:
-            desc = c.get("title") or c.get("alt") or ""
-            if not desc and "/photo/" in c.get("url", ""):
-                m = re.search(r'/photo/([a-zA-Z0-9-]+)-\d+/?', c.get("url", ""))
-                if m:
-                    desc = m.group(1).replace("-", " ")
-            dom = (c.get("creator") or c.get("provider") or c.get("source") or "web").lower()
-            entry = {
-                "item": c,
-                "description": desc or "photograph",
-            }
-            if domain_counts.get(dom, 0) < 2:
-                domain_counts[dom] = domain_counts.get(dom, 0) + 1
-                pool.append(entry)
-            else:
-                overflow_pool.append(entry)
-            if len(pool) >= 8:
-                break
-        if len(pool) < 8:
-            pool.extend(overflow_pool[: 8 - len(pool)])
-
-        if not pool:
-            return None, 3.0, "Không có ứng viên ảnh nào khả dụng.", True
-
-        # AI VISION: Nhìn trực tiếp ảnh để chọn bức vừa đúng nội dung vừa hấp dẫn nhất
-        vision_pool = [{**p["item"], "description": p["description"]} for p in pool]
-        vision = self.vision_rank_candidates(
-            vision_pool,
-            narration=narration,
-            topic=topic or visual_keyword,
-            visual_analysis=visual_analysis,
-            kind="photo",
-            max_candidates=8,
-        )
-        if vision is not None:
-            v_idx, v_score, v_rat = vision
-            is_hook_photo = bool((visual_analysis or {}).get("is_hook_scene") or (visual_analysis or {}).get("scene_id") == 1)
-            refined_q = str((visual_analysis or {}).get("_refined_google_query") or "").strip()
-            min_accept_score = 7.4 if is_hook_photo else 6.6
-
-            # Nếu điểm chưa đạt chuẩn (hoặc bị từ chối), lập tức kích hoạt tìm kiếm vòng 2 với refined_google_query
-            if (v_idx < 0 or v_score < min_accept_score) and refined_q:
-                try:
-                    from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
-                    from app.services.media.image_quality import prefilter_candidates
-                    if web_image_search_enabled():
-                        logger.info(f"🔎 [VisionCuration] Tự động tinh chỉnh truy vấn Google Images: '{refined_q}'")
-                        existing_urls = {p["item"].get("url") for p in pool} | set(used)
-                        fresh_google = [
-                            it for it in WebImageFetcher().search_open_web(refined_q, per_page=8)
-                            if it.get("url") and it["url"] not in existing_urls
-                        ]
-                        fresh_google = prefilter_candidates(
-                            fresh_google,
-                            subject=(visual_analysis or {}).get("subject") or refined_q,
-                            limit=6,
-                            creature_mode=bool((visual_analysis or {}).get("creature_mode")),
-                        )
-                        if fresh_google:
-                            fresh_vpool = [{**it, "description": it.get("title") or it.get("alt") or refined_q} for it in fresh_google]
-                            vision2 = self.vision_rank_candidates(
-                                fresh_vpool,
-                                narration=narration,
-                                topic=topic or visual_keyword,
-                                visual_analysis=visual_analysis,
-                                kind="photo",
-                                max_candidates=6,
-                            )
-                            if vision2 is not None:
-                                v2_idx, v2_score, v2_rat = vision2
-                                if v2_idx >= 0 and v2_score >= (7.0 if is_hook_photo else 6.5) and v2_score > v_score:
-                                    winner_item = fresh_google[v2_idx]
-                                    if fresh_vpool[v2_idx].get("_vision_alternates"):
-                                        winner_item["_vision_alternates"] = fresh_vpool[v2_idx]["_vision_alternates"]
-                                    winner_item["curation_score"] = max(v2_score, 6.5)
-                                    winner_item["curation_rationale"] = f"[Vision Refined Google] {v2_rat}"
-                                    return winner_item, max(v2_score, 6.5), v2_rat, False
-                except Exception as e:
-                    logger.debug(f"[VisionCuration] Refined Google search error: {e}")
-
-            min_final_photo_score = 7.0 if is_hook_photo else 6.5
-            if v_idx >= 0 and v_score >= min_final_photo_score:
-                winner_item = pool[v_idx]["item"]
-                if vision_pool[v_idx].get("_vision_alternates"):
-                    winner_item["_vision_alternates"] = vision_pool[v_idx]["_vision_alternates"]
-                winner_item["curation_score"] = max(v_score, 6.5)
-                winner_item["curation_rationale"] = f"[Vision] {v_rat}"
-                return winner_item, max(v_score, 6.5), v_rat, False
-            return None, 0.0, f"[Vision Rejected < {min_final_photo_score}] {v_rat}", True
-
-        pool = pool[:6]
-
-        mood = visual_analysis.get("mood", "cinematic")
-        metaphor = visual_analysis.get("visual_metaphor", "")
-        negative_cues = visual_analysis.get("negative_cues", [])
-
-        prompt = f"""
-Bạn là Tổng Đạo Diễn Hình Ảnh & Giám Khảo Tuyển Chọn Tư Liệu (Visual Curation Director) cho YouTube Shorts.
-Nhiệm vụ: Duyệt qua các bức ảnh ứng viên từ kho tư liệu và LỰA CHỌN DUY NHẤT 1 ẢNH phù hợp nhất với tinh thần phân cảnh.
-
-BỐI CẢNH PHÂN CẢNH:
-- Chủ đề video: "{topic}"
-- Lời thoại (Narration): "{narration}"
-- Từ khóa thị giác (Visual Keyword): "{visual_keyword or metaphor}"
-- Không khí (Mood): "{mood}"
-- Yếu tố cấm kỵ (Negative Cues): {json.dumps(negative_cues, ensure_ascii=False)}
-
-DANH SÁCH ẢNH ỨNG VIÊN CÓ SẴN TỪ KHO TƯ LIỆU:
-{json.dumps([{"index": i, "description": p["description"][:120], "source": p["item"].get("source", "stock")} for i, p in enumerate(pool)], ensure_ascii=False, indent=2)}
-
-QUY TẮC TUYỂN CHỌN:
-1. Ảnh phải phù hợp ngữ cảnh, thời đại và không khí của phân cảnh.
-2. TUYỆT ĐỐI KHÔNG CHỌN ảnh lạc quẻ, sai lệch thời đại (ví dụ: ảnh người hiện đại/công sở/tiệc tùng/quán cafe trong bối cảnh vũ trụ, lịch sử cổ đại, triết học; hoặc sơ đồ/biểu đồ/tem thư/bản đồ không hợp kịch bản).
-3. Nếu có ứng viên đạt chuẩn (điểm >= 6.0/10) -> winner_index = index của ứng viên đó.
-4. NẾU TẤT CẢ ỨNG VIÊN ĐỀU KHÔNG LIÊN QUAN, LẠC ĐỀ HOẶC PHÁ HỎNG BỐI CẢNH (Tất cả < 6.0) -> Trả về winner_index = -1 và should_fallback_to_ai = true để hệ thống tự động sinh Ảnh AI kỳ ảo độc bản.
-
-TRẢ VỀ JSON DUY NHẤT:
-{{
-  "winner_index": 0,
-  "confidence_score": 8.0,
-  "rationale": "Giải thích ngắn gọn 1 câu vì sao chọn (hoặc vì sao từ chối toàn bộ)",
-  "should_fallback_to_ai": false
-}}
-"""
-        agent_dec = self._call_gemini_json(prompt)
-        if agent_dec:
-            w_idx = agent_dec.get("winner_index", -1)
-            score = float(agent_dec.get("confidence_score", 0.0))
-            rationale = agent_dec.get("rationale", "")
-            fallback_ai = bool(agent_dec.get("should_fallback_to_ai", False))
-
-            if w_idx >= 0 and w_idx < len(pool) and score >= 6.0 and not fallback_ai:
-                winner_item = pool[w_idx]["item"]
-                winner_item["curation_score"] = score
-                winner_item["curation_rationale"] = rationale
-                logger.info(
-                    f"📸 [VisualCuration] ✅ Đã tuyển chọn Ảnh: '{pool[w_idx]['description'][:50]}' | "
-                    f"Điểm: {score}/10 | {rationale}"
-                )
-                return winner_item, score, rationale, False
-            else:
-                logger.info(
-                    f"📸 [VisualCuration] ⚠️ Agent từ chối các ảnh stock (Score: {score}/10 | {rationale}). "
-                    f"Tự động chuyển hướng sang AI Image Generation!"
-                )
-                return None, score, rationale, True
-
-        # Heuristic curation dự phòng khi Gemini không phản hồi
-        return self._heuristic_curate_photos(pool, visual_analysis, topic=topic, narration=narration)
-
-    def _heuristic_curate_photos(
-        self,
-        pool: List[Dict[str, Any]],
-        visual_analysis: Dict[str, Any],
-        topic: str = "",
-        narration: str = "",
-    ) -> Tuple[Optional[Dict[str, Any]], float, str, bool]:
-        """Lọc và chấm điểm ảnh bằng heuristic, loại bỏ negative cues."""
-        if not pool:
-            return None, 0.0, "Không có ảnh ứng viên.", True
-
-        from app.services.media.entity_detector import is_incongruent_stock_image
-        from app.services.media.image_quality import heuristic_score, subject_terms, is_watermark_risk
-        negative_cues = [nc.lower() for nc in visual_analysis.get("negative_cues", [])]
-        queries = [q.lower() for q in visual_analysis.get("search_queries", [])]
-        terms = subject_terms(visual_analysis.get("subject"))
-
-        best_item = None
-        best_score = -1.0
-
-        for p in pool:
-            desc = p.get("description", "").lower()
-            if any(nc in desc for nc in negative_cues) or is_incongruent_stock_image(desc, topic=topic, narration=narration):
-                continue
-            if is_watermark_risk(p["item"]):
-                continue
-
-            if terms:
-                # Điểm chất lượng metadata: khớp chủ thể + ảnh dọc + độ phân giải + không watermark
-                score = p["item"].get("_hscore") or heuristic_score({**p["item"], "description": desc}, terms)
-            else:
-                score = 5.0
-                for q in queries:
-                    for w in q.split():
-                        if len(w) > 3 and w in desc:
-                            score += 1.5
-
-            if score > best_score:
-                best_score = score
-                best_item = p["item"]
-
-        if best_item and best_score >= 6.0:
-            best_item["curation_score"] = best_score
-            best_item["curation_rationale"] = "Khớp từ khóa ngữ cảnh qua bộ lọc heuristic"
-            return best_item, best_score, "Heuristic pass", False
-
-        return None, 4.0, "Tất cả ảnh ứng viên đều dính negative cues hoặc không đủ liên quan", True
+        # Nếu các server chặn tải kiểm thử nhanh (timeout), lấy ngay ứng viên Top #1 Google Images có metadata tốt nhất
+        fallback_winner = valid[0]
+        fb_score = float(fallback_winner.get("_hscore") or 7.5)
+        fb_rat = "Chọn trực tiếp Top #1 Google Images (bỏ qua bước kiểm tra độ liên quan)"
+        fallback_winner["curation_score"] = fb_score
+        fallback_winner["curation_rationale"] = fb_rat
+        return fallback_winner, fb_score, fb_rat, False
