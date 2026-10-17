@@ -173,9 +173,9 @@ Score strictly from 1.0 to 10.0 in JSON format:
 Return ONLY valid JSON:
 {{"entity_match_score": 8.5, "motion_action_score": 9.0, "clean_frame_score": 8.0, "reason": "..."}}"""
 
-    models = ["gemini-3-flash-preview", "gemini-2.5-flash-lite", "gemini-flash-latest"]
-    for key in keys:
-        for model_name in models[:2]:
+    models = ["gemini-2.5-flash-lite", "gemini-flash-latest", "gemini-3-flash-preview"]
+    for key in keys[:4]:
+        for model_name in models:
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
                 payload = {
@@ -188,7 +188,7 @@ Return ONLY valid JSON:
                         }
                     ]
                 }
-                resp = requests.post(url, json=payload, timeout=18)
+                resp = requests.post(url, json=payload, timeout=12)
                 if resp.status_code == 200:
                     cands = resp.json().get("candidates", [])
                     if cands:
@@ -278,33 +278,35 @@ Return ONLY valid JSON:
         raw_keys = getattr(settings, "GEMINI_API_KEYS_RAW", "") or os.getenv("GEMINI_API_KEYS", "")
         keys = [k.strip() for k in raw_keys.split(",") if k.strip().startswith("AIza")]
 
-    for key in keys:
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={key}"
-            resp = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=12)
-            if resp.status_code == 200:
-                cands = resp.json().get("candidates", [])
-                if cands:
-                    txt = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", []))
-                    m = re.search(r"\{.*\}", txt, re.DOTALL)
-                    if m:
-                        data = json.loads(m.group(0))
-                        raw_queries = [
-                            re.sub(r"[^a-zA-Z0-9\s]", " ", str(q)).strip()
-                            for q in (data.get("search_queries") or [])
-                            if str(q).strip()
-                        ]
-                        valid_queries = [re.sub(r"\s+", " ", q) for q in raw_queries if len(q.split()) >= 2][:2]
-                        fx = str(data.get("atmosphere_fx") or niche or "action").lower()
-                        climax_desc = str(data.get("climax_description") or topic).strip()
-                        if valid_queries:
-                            return {
-                                "climax_description": climax_desc,
-                                "search_queries": valid_queries,
-                                "atmosphere_fx": fx,
-                            }
-        except Exception as e:
-            logger.debug(f"[HookVideoNode] Script climax analysis fallback: {e}")
+    models = ["gemini-2.5-flash-lite", "gemini-flash-latest", "gemini-3-flash-preview"]
+    for key in keys[:4]:
+        for model_name in models:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
+                resp = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=10)
+                if resp.status_code == 200:
+                    cands = resp.json().get("candidates", [])
+                    if cands:
+                        txt = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", []))
+                        m = re.search(r"\{.*\}", txt, re.DOTALL)
+                        if m:
+                            data = json.loads(m.group(0))
+                            raw_queries = [
+                                re.sub(r"[^a-zA-Z0-9\s]", " ", str(q)).strip()
+                                for q in (data.get("search_queries") or [])
+                                if str(q).strip()
+                            ]
+                            valid_queries = [re.sub(r"\s+", " ", q) for q in raw_queries if len(q.split()) >= 2][:2]
+                            fx = str(data.get("atmosphere_fx") or niche or "action").lower()
+                            climax_desc = str(data.get("climax_description") or topic).strip()
+                            if valid_queries:
+                                return {
+                                    "climax_description": climax_desc,
+                                    "search_queries": valid_queries,
+                                    "atmosphere_fx": fx,
+                                }
+            except Exception as e:
+                logger.debug(f"[HookVideoNode] Script climax analysis fallback ({model_name}): {e}")
 
     # Fallback tự động từ từ khóa kịch bản nếu API bận
     combined_text = f"{topic} {hook_narration} {visual_keyword} {niche}".lower()
