@@ -173,46 +173,49 @@ Score strictly from 1.0 to 10.0 in JSON format:
 Return ONLY valid JSON:
 {{"entity_match_score": 8.5, "motion_action_score": 9.0, "clean_frame_score": 8.0, "reason": "..."}}"""
 
-    models = ["gemini-2.5-flash-lite"]
-    for key in keys[:2]:
-        for model_name in models:
-            try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
-                payload = {
-                    "contents": [
-                        {
-                            "parts": [
-                                {"text": prompt},
-                                {"inline_data": {"mime_type": "image/jpeg", "data": contact_b64}},
-                            ]
+    from app.utils.key_rotator import KeyRotator
+    rotator = KeyRotator(keys)
+    for model_name, key in rotator.iter_best_model_key_pairs(max_total_attempts=3):
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
+            payload = {
+                "contents": [
+                    {
+                        "parts": [
+                            {"text": prompt},
+                            {"inline_data": {"mime_type": "image/jpeg", "data": contact_b64}},
+                        ]
+                    }
+                ]
+            }
+            resp = requests.post(url, json=payload, timeout=7)
+            if resp.status_code == 200:
+                cands = resp.json().get("candidates", [])
+                if cands:
+                    txt = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", []))
+                    m = re.search(r"\{.*\}", txt, re.DOTALL)
+                    if m:
+                        data = json.loads(m.group(0))
+                        e_score = float(data.get("entity_match_score", 5.0))
+                        m_score = float(data.get("motion_action_score", 5.0))
+                        c_score = float(data.get("clean_frame_score", 5.0))
+                        overall = round(e_score * 0.45 + m_score * 0.35 + c_score * 0.20, 2)
+                        passed = (overall >= 7.0) and (e_score >= 6.8) and (c_score >= 6.5) and (m_score >= 6.5)
+                        return {
+                            "video_path": video_path,
+                            "entity_match_score": e_score,
+                            "motion_action_score": m_score,
+                            "clean_frame_score": c_score,
+                            "overall_score": overall,
+                            "passed": passed,
+                            "reason": data.get("reason", ""),
                         }
-                    ]
-                }
-                resp = requests.post(url, json=payload, timeout=5)
-                if resp.status_code == 200:
-                    cands = resp.json().get("candidates", [])
-                    if cands:
-                        txt = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", []))
-                        m = re.search(r"\{.*\}", txt, re.DOTALL)
-                        if m:
-                            data = json.loads(m.group(0))
-                            e_score = float(data.get("entity_match_score", 5.0))
-                            m_score = float(data.get("motion_action_score", 5.0))
-                            c_score = float(data.get("clean_frame_score", 5.0))
-                            overall = round(e_score * 0.45 + m_score * 0.35 + c_score * 0.20, 2)
-                            passed = (overall >= 7.0) and (e_score >= 6.8) and (c_score >= 6.5) and (m_score >= 6.5)
-                            return {
-                                "video_path": video_path,
-                                "entity_match_score": e_score,
-                                "motion_action_score": m_score,
-                                "clean_frame_score": c_score,
-                                "overall_score": overall,
-                                "passed": passed,
-                                "reason": data.get("reason", ""),
-                            }
-            except Exception as e:
-                logger.debug(f"[HookVideoNode] Gemini Vision score error ({model_name}): {e}")
-                continue
+            elif resp.status_code in (429, 403, 404, 503):
+                rotator.mark_model_rate_limited(key, model_name, status_code=resp.status_code, error_text=resp.text[:300])
+        except Exception as e:
+            rotator.mark_model_rate_limited(key, model_name, status_code=503, error_text=str(e))
+            logger.debug(f"[HookVideoNode] Gemini Vision score error ({model_name}): {e}")
+            continue
 
     # Fallback chấm điểm Chuyển Động Quang Học & Độ Nét Cục Bộ (khi Gemini Vision chạm rate-limit sau bước fetch_media)
     return _verify_video_motion_and_clarity_local(video_path)
@@ -344,35 +347,38 @@ Return ONLY valid JSON:
         raw_keys = getattr(settings, "GEMINI_API_KEYS_RAW", "") or os.getenv("GEMINI_API_KEYS", "")
         keys = [k.strip() for k in raw_keys.split(",") if k.strip().startswith("AIza")]
 
-    models = ["gemini-2.5-flash-lite"]
-    for key in keys[:2]:
-        for model_name in models:
-            try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
-                resp = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=5)
-                if resp.status_code == 200:
-                    cands = resp.json().get("candidates", [])
-                    if cands:
-                        txt = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", []))
-                        m = re.search(r"\{.*\}", txt, re.DOTALL)
-                        if m:
-                            data = json.loads(m.group(0))
-                            raw_queries = [
-                                re.sub(r"[^a-zA-Z0-9\s]", " ", str(q)).strip()
-                                for q in (data.get("search_queries") or [])
-                                if str(q).strip()
-                            ]
-                            valid_queries = [re.sub(r"\s+", " ", q) for q in raw_queries if len(q.split()) >= 2][:2]
-                            fx = str(data.get("atmosphere_fx") or niche or "action").lower()
-                            climax_desc = str(data.get("climax_description") or topic).strip()
-                            if valid_queries:
-                                return {
-                                    "climax_description": climax_desc,
-                                    "search_queries": valid_queries,
-                                    "atmosphere_fx": fx,
-                                }
-            except Exception as e:
-                logger.debug(f"[HookVideoNode] Script climax analysis fallback ({model_name}): {e}")
+    from app.utils.key_rotator import KeyRotator
+    rotator = KeyRotator(keys)
+    for model_name, key in rotator.iter_best_model_key_pairs(max_total_attempts=3):
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
+            resp = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=7)
+            if resp.status_code == 200:
+                cands = resp.json().get("candidates", [])
+                if cands:
+                    txt = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", []))
+                    m = re.search(r"\{.*\}", txt, re.DOTALL)
+                    if m:
+                        data = json.loads(m.group(0))
+                        raw_queries = [
+                            re.sub(r"[^a-zA-Z0-9\s]", " ", str(q)).strip()
+                            for q in (data.get("search_queries") or [])
+                            if str(q).strip()
+                        ]
+                        valid_queries = [re.sub(r"\s+", " ", q) for q in raw_queries if len(q.split()) >= 2][:2]
+                        fx = str(data.get("atmosphere_fx") or niche or "action").lower()
+                        climax_desc = str(data.get("climax_description") or topic).strip()
+                        if valid_queries:
+                            return {
+                                "climax_description": climax_desc,
+                                "search_queries": valid_queries,
+                                "atmosphere_fx": fx,
+                            }
+            elif resp.status_code in (429, 403, 404, 503):
+                rotator.mark_model_rate_limited(key, model_name, status_code=resp.status_code, error_text=resp.text[:300])
+        except Exception as e:
+            rotator.mark_model_rate_limited(key, model_name, status_code=503, error_text=str(e))
+            logger.debug(f"[HookVideoNode] Script climax analysis fallback ({model_name}): {e}")
 
     # Fallback tự động từ từ khóa kịch bản nếu API bận
     combined_text = f"{topic} {hook_narration} {visual_keyword} {niche}".lower()
