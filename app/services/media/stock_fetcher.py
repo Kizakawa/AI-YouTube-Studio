@@ -448,6 +448,19 @@ class StockFetcher:
         try:
             from app.agents.media_agent import register_download_fallbacks
             register_download_fallbacks(winner, candidates)
+            distinct_alts: List[str] = []
+            win_u = winner.get("url")
+            win_fb = winner.get("fallback_url")
+            for va_u in (winner.get("_vision_alternates") or []):
+                if va_u and va_u not in (win_u, win_fb) and not is_media_already_used(va_u, used) and va_u not in distinct_alts:
+                    distinct_alts.append(va_u)
+            for c in candidates:
+                cu = c.get("url")
+                if cu and cu not in (win_u, win_fb) and not is_media_already_used(cu, used) and cu not in distinct_alts:
+                    distinct_alts.append(cu)
+                if len(distinct_alts) >= 4:
+                    break
+            winner["alternate_urls"] = distinct_alts[:4]
         except Exception:
             pass
         record_used_media(winner["url"], query=query, source=winner.get("source", "stock_photo"))

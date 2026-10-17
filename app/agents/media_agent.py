@@ -55,13 +55,22 @@ def register_download_fallbacks(winner: Optional[Dict[str, Any]], candidates: Op
     for va in winner.get("_vision_alternates") or []:
         if va and va != u and va not in alts:
             alts.append(va)
+    distinct_urls: List[str] = []
+    for va in winner.get("_vision_alternates") or []:
+        if va and va not in (u, fb_u) and va not in distinct_urls:
+            distinct_urls.append(va)
     if candidates:
         for c in candidates:
-            for cu in (c.get("url"), c.get("fallback_url")):
-                if cu and cu != u and cu not in alts:
-                    alts.append(cu)
-            if len(alts) >= 6:
+            cu = c.get("url")
+            if cu and cu not in (u, fb_u) and cu not in distinct_urls:
+                distinct_urls.append(cu)
+            for cu_all in (c.get("url"), c.get("fallback_url")):
+                if cu_all and cu_all != u and cu_all not in alts:
+                    alts.append(cu_all)
+            if len(alts) >= 6 and len(distinct_urls) >= 4:
                 break
+    if distinct_urls and not winner.get("alternate_urls"):
+        winner["alternate_urls"] = distinct_urls[:4]
     with _download_fallback_lock:
         if len(_download_fallback_registry) > 500:
             _download_fallback_registry.clear()

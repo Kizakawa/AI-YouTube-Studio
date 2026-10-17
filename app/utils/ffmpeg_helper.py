@@ -669,6 +669,174 @@ def image_to_video(
     return output_path
 
 
+def render_opening_hook_multi_cut(
+    image_paths: List[str],
+    duration_seconds: float,
+    output_path: str,
+    width: int = 1080,
+    height: int = 1920,
+    fps: int = 30,
+    min_cuts: int = 3,
+    is_scifi: bool = False,
+    niche: Optional[str] = None,
+) -> str:
+    """
+    Render cảnh mở đầu (Scene 1 Hook) với ÍT NHẤT 3 LẦN CHUYỂN CẢNH (4 shots độc lập, ~0.85s–1.1s/shot)
+    mà KHÔNG cần cắt vụn câu thoại TTS.
+    - Nếu có 2–4 ảnh thật khác nhau (từ alternate_urls / pose_images): chuyển cảnh dồn dập qua từng ảnh thật.
+    - Nếu thiếu đủ 4 ảnh (chỉ có 1–3 ảnh): tự động điền các slot còn thiếu bằng các góc cắt Saliency/Camera
+      độc lập (Wide 1.0x -> Upper-Third Eye Close-Up 1.28x -> Action Counter-Angle 1.38x -> Extreme Focal Punch-In 1.52x)
+      để đảm bảo 100% khởi đầu video luôn có ít nhất 3 nhát cắt chuyển cảnh thị giác rõ nét.
+    """
+    import re as _re
+    import uuid as _uuid
+    from PIL import Image, ImageEnhance
+    from app.services.media.image_quality import prepare_vertical
+
+    valid_paths = [
+        p for p in (image_paths or [])
+        if p and Path(p).exists() and Path(p).stat().st_size > 1000
+    ]
+    if not valid_paths:
+        raise ValueError("render_opening_hook_multi_cut: Không có file ảnh hợp lệ cho Scene 1 Hook")
+
+    # Nếu cảnh quá ngắn (< 1.4s), fallback về image_to_video tiêu chuẩn
+    n_shots = max(min_cuts + 1, 4)
+    if duration_seconds < 1.4:
+        return image_to_video(
+            image_path=valid_paths[0],
+            duration_seconds=duration_seconds,
+            output_path=output_path,
+            width=width,
+            height=height,
+            fps=fps,
+            zoom_effect=False,
+            is_hook_scene=True,
+            is_scifi=is_scifi,
+            niche=niche,
+        )
+
+    uid = _uuid.uuid4().hex[:8]
+    parent_dir = Path(output_path).parent
+    temp_files: List[str] = []
+
+    # 4 góc máy điện ảnh (zoom_factor, center_x_ratio, center_y_ratio, contrast_boost)
+    CAMERA_ANGLES = [
+        (1.00, 0.50, 0.50, 1.00),  # Shot 1 (0.0s): Toàn cảnh 9:16 sắc nét (Establishing Hook)
+        (1.28, 0.50, 0.34, 1.04),  # Cut #1 (~0.85s): Cận cảnh 1/3 trên (Mắt/Khuôn mặt/Chủ thể chính)
+        (1.38, 0.38, 0.52, 1.06),  # Cut #2 (~1.70s): Góc máy trung cảnh lệch trục (Dynamic Counter-Shot)
+        (1.52, 0.56, 0.40, 1.08),  # Cut #3 (~2.60s): Đặc tả cực cận cao trào (Extreme Focal Punch-In)
+    ]
+
+    def _crop_camera_angle(base_img: Image.Image, zoom: float, cx_ratio: float, cy_ratio: float, contrast: float) -> Image.Image:
+        if zoom <= 1.01:
+            return base_img.copy()
+        bw, bh = base_img.size
+        cw = max(int(round(bw / zoom)), 320)
+        ch = max(int(round(bh / zoom)), 568)
+        cx = int(round(bw * cx_ratio))
+        cy = int(round(bh * cy_ratio))
+        left = max(0, min(bw - cw, cx - cw // 2))
+        top = max(0, min(bh - ch, cy - ch // 2))
+        cropped = base_img.crop((left, top, left + cw, top + ch)).resize((width, height), Image.LANCZOS)
+        if abs(contrast - 1.0) > 0.01:
+            cropped = ImageEnhance.Contrast(cropped).enhance(contrast)
+        return cropped
+
+    try:
+        # Bước 1: Chuẩn hóa toàn bộ các ảnh gốc sang khung 9:16 (1080x1920)
+        base_images: List[Image.Image] = []
+        for p in valid_paths[:n_shots]:
+            try:
+                with Image.open(p) as im:
+                    if im.mode != "RGB":
+                        im = im.convert("RGB")
+                    norm_im = prepare_vertical(im, width, height, max_upscale=3.8, is_hook_scene=True)
+                    base_images.append(norm_im)
+            except Exception as ex_im:
+                logger.debug(f"[render_opening_hook_multi_cut] Lỗi đọc ảnh '{p}': {ex_im}")
+
+        if not base_images:
+            raise ValueError(f"Không thể chuẩn hóa bất kỳ ảnh nào từ {valid_paths}")
+
+        # Bước 2: Tạo đủ 4 khung hình độc lập (3 nhát cắt chuyển cảnh trong Scene 1)
+        shot_paths: List[str] = []
+        for idx in range(n_shots):
+            angle = CAMERA_ANGLES[idx % len(CAMERA_ANGLES)]
+            if idx < len(base_images):
+                # Đây là ảnh thật mới hoàn toàn -> giữ nguyên khung 9:16 hoặc nhích nhẹ tiêu cự nếu có đủ 4 ảnh
+                src_im = base_images[idx]
+                if len(base_images) >= n_shots and idx > 0:
+                    subtle_zoom = 1.0 + (idx * 0.03)
+                    shot_im = _crop_camera_angle(src_im, subtle_zoom, angle[1], angle[2], 1.02)
+                else:
+                    shot_im = src_im
+            else:
+                # Nếu thiếu ảnh thật thứ idx+1 -> cắt góc máy cận cảnh/trung cảnh kịch tính từ ảnh gốc
+                src_im = base_images[idx % len(base_images)]
+                shot_im = _crop_camera_angle(src_im, angle[0], angle[1], angle[2], angle[3])
+
+            shot_file = str(parent_dir / f"_hook_shot_{uid}_{idx}.jpg")
+            shot_im.save(shot_file, "JPEG", quality=94)
+            temp_files.append(shot_file)
+            shot_paths.append(shot_file)
+
+        # Bước 3: Phân bổ thời lượng 4 shots theo nhịp tăng tốc giữ chân người xem (24% - 24% - 25% - 27%)
+        weights = [0.24, 0.24, 0.25, 0.27]
+        if n_shots != 4:
+            weights = [1.0 / n_shots] * n_shots
+        shot_durs: List[float] = []
+        elapsed = 0.0
+        for i in range(n_shots):
+            if i < n_shots - 1:
+                sd = round(max(0.35, duration_seconds * weights[i]), 3)
+                shot_durs.append(sd)
+                elapsed += sd
+            else:
+                shot_durs.append(round(max(0.35, duration_seconds - elapsed), 3))
+
+        # Bước 4: Ghép 4 shots bằng 1 lệnh FFmpeg filter_complex duy nhất + Niche Color Grading
+        grading = get_niche_color_grading(niche=niche, is_scifi=is_scifi)
+        clean_vf_filter = _re.sub(r",?unsharp=[^,]+", "", grading["vf_filter"]).strip(",")
+        post_filters = [f"scale={width}:{height}", "setsar=1", f"fps={fps}"]
+        if clean_vf_filter:
+            post_filters.append(clean_vf_filter)
+        if grading.get("vignette"):
+            post_filters.append(grading["vignette"])
+        post_chain = ",".join(post_filters)
+
+        input_args: List[str] = []
+        concat_inputs: List[str] = []
+        for i, (sp, sd) in enumerate(zip(shot_paths, shot_durs)):
+            input_args.extend(["-loop", "1", "-t", f"{sd:.3f}", "-i", sp])
+            concat_inputs.append(f"[{i}:v]")
+
+        filter_complex = f"{''.join(concat_inputs)}concat=n={n_shots}:v=1:a=0,{post_chain}[vout]"
+        enc_args = get_video_encoder_args(quality="intermediate")
+        args = [
+            *input_args,
+            "-filter_complex", filter_complex,
+            "-map", "[vout]",
+            "-t", f"{duration_seconds:.3f}",
+            *enc_args,
+            "-r", str(fps),
+            "-an",
+            output_path,
+        ]
+        logger.info(
+            f"  ⚡ [Hook Multi-Cut Render] {n_shots} shots ({n_shots - 1} nhát cắt chuyển cảnh: "
+            f"{'s -> '.join(f'{d:.2f}' for d in shot_durs)}s) từ {len(base_images)} ảnh gốc"
+        )
+        run_ffmpeg_with_gpu_fallback(args)
+        return output_path
+    finally:
+        for tf in temp_files:
+            try:
+                Path(tf).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+
 def multi_pose_loop_to_video(
     image_paths: List[str],
     duration_seconds: float,
@@ -680,18 +848,16 @@ def multi_pose_loop_to_video(
     niche: Optional[str] = None,
 ) -> str:
     """
-    Render ảnh tĩnh mượt mà không nhấp nháy/giật khung hình.
+    Render chuỗi đa khung hình (pose_images) với tối thiểu 3 nhát cắt chuyển cảnh sắc nét.
     """
-    single_img = image_paths[0] if image_paths else ""
-    return image_to_video(
-        image_path=single_img,
+    return render_opening_hook_multi_cut(
+        image_paths=image_paths,
         duration_seconds=duration_seconds,
         output_path=output_path,
         width=width,
         height=height,
         fps=fps,
-        zoom_effect=False,
-        camera_motion="zoom_in",
+        min_cuts=3,
         niche=niche,
     )
 
@@ -852,12 +1018,14 @@ def trim_video(
 
     # Clip ngắn hơn lời thoại một chút (≤ 1.6x) → kéo dãn slow-motion nhẹ thay vì lặp lại (lặp rất dễ bị nhận ra)
     loop_args = ["-stream_loop", "-1"] if not seek_args else []
+    pts_prefix = ""
     try:
         src_sec = get_duration_ms(input_path) / 1000.0
         if not seek_args and 0.5 < src_sec < duration_seconds:
             factor = duration_seconds / src_sec
             if factor <= 1.6:
-                vf_chain = f"setpts={factor + 0.02:.4f}*PTS," + vf_chain
+                pts_prefix = f"setpts={factor + 0.02:.4f}*PTS,"
+                vf_chain = pts_prefix + vf_chain
                 loop_args = []
                 logger.debug(f"[trim_video] Slow-motion x{factor:.2f} thay vì lặp clip ({src_sec:.1f}s → {duration_seconds:.1f}s)")
             else:
@@ -866,17 +1034,53 @@ def trim_video(
         pass
 
     enc_args = get_video_encoder_args(quality="intermediate")
-    args = [
-        *loop_args,
-        *seek_args,
-        "-i", input_path,
-        "-t", str(duration_seconds),
-        "-vf", vf_chain,
-        *enc_args,
-        "-r", str(fps),
-        "-an",  # Bỏ audio gốc của stock video
-        output_path
-    ]
+    if is_hook_scene and duration_seconds >= 1.8:
+        t1 = round(duration_seconds * 0.24, 3)
+        t2 = round(duration_seconds * 0.48, 3)
+        t3 = round(duration_seconds * 0.73, 3)
+        t4 = round(duration_seconds, 3)
+        cw1, ch1 = max(2, (int(width / 1.26) // 2) * 2), max(2, (int(height / 1.26) // 2) * 2)
+        cw2, ch2 = max(2, (int(width / 1.16) // 2) * 2), max(2, (int(height / 1.16) // 2) * 2)
+        cw3, ch3 = max(2, (int(width / 1.38) // 2) * 2), max(2, (int(height / 1.38) // 2) * 2)
+        filter_complex = (
+            f"[0:v]{pts_prefix}scale={width}:{height}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height},setsar=1,fps={fps},split=4[v0][v1][v2][v3];"
+            f"[v0]trim=0:{t1},setpts=PTS-STARTPTS[s0];"
+            f"[v1]trim={t1}:{t2},setpts=PTS-STARTPTS,"
+            f"crop={cw1}:{ch1}:(iw-ow)*0.50:(ih-oh)*0.34,scale={width}:{height},setsar=1[s1];"
+            f"[v2]trim={t2}:{t3},setpts=PTS-STARTPTS,"
+            f"crop={cw2}:{ch2}:(iw-ow)*0.36:(ih-oh)*0.52,scale={width}:{height},setsar=1[s2];"
+            f"[v3]trim={t3}:{t4},setpts=PTS-STARTPTS,"
+            f"crop={cw3}:{ch3}:(iw-ow)*0.56:(ih-oh)*0.38,scale={width}:{height},setsar=1[s3];"
+            f"[s0][s1][s2][s3]concat=n=4:v=1:a=0{grading_chain},setsar=1,fps={fps}[vout]"
+        )
+        args = [
+            *loop_args,
+            *seek_args,
+            "-i", input_path,
+            "-filter_complex", filter_complex,
+            "-map", "[vout]",
+            "-t", str(duration_seconds),
+            *enc_args,
+            "-r", str(fps),
+            "-an",
+            output_path,
+        ]
+        logger.info(
+            f"  ⚡ [Hook Video Multi-Cut] 4 shots (3 nhát cắt góc máy: 0s -> {t1:.2f}s -> {t2:.2f}s -> {t3:.2f}s -> {t4:.2f}s)"
+        )
+    else:
+        args = [
+            *loop_args,
+            *seek_args,
+            "-i", input_path,
+            "-t", str(duration_seconds),
+            "-vf", vf_chain,
+            *enc_args,
+            "-r", str(fps),
+            "-an",  # Bỏ audio gốc của stock video
+            output_path
+        ]
     run_ffmpeg_with_gpu_fallback(args)
     return output_path
 

@@ -21,6 +21,7 @@ from typing import List, Optional
 from app.schemas.contracts import RenderJobContract, SceneContract
 from app.utils.ffmpeg_helper import (
     image_to_video,
+    render_opening_hook_multi_cut,
     multi_pose_loop_to_video,
     trim_video,
     concat_videos,
@@ -253,25 +254,27 @@ class VideoAgent:
                     apply_grading=(not is_already_rendered),
                     is_hook_scene=is_hook,
                 )
-            elif raw_type in ("comic_anim", "multi_pose", "2d_loop") or getattr(scene, "pose_images", None):
+            elif is_hook or raw_type in ("comic_anim", "multi_pose", "2d_loop") or getattr(scene, "pose_images", None):
                 pose_list = getattr(scene, "pose_images", None) or [scene.media_path]
                 logger.info(
-                    f"  Scene {scene.scene_id}: Hoạt họa đa khung hình ({len(pose_list)} poses) → multi_pose_loop_to_video {duration:.1f}s"
+                    f"  Scene {scene.scene_id}: ⚡ HOOK MULTI-CUT ({len(pose_list)} ảnh gốc → 4 shots / 3 nhát cắt chuyển cảnh) "
+                    f"{duration:.1f}s{f' [{clip_niche} Grading]' if clip_niche else ''}"
                 )
-                multi_pose_loop_to_video(
+                render_opening_hook_multi_cut(
                     image_paths=pose_list,
                     duration_seconds=duration,
                     output_path=clip_path,
                     width=job.resolution_w,
                     height=job.resolution_h,
                     fps=job.fps,
-                    switch_interval=0.28,
+                    min_cuts=3,
+                    is_scifi=is_scifi_clip,
                     niche=clip_niche,
                 )
             elif raw_type in ("image", "ai_image", "photo", "documentary", "auto"):
                 logger.info(
                     f"  Scene {scene.scene_id}: image ({raw_type}) → Ken Burns [{motion}] {duration:.1f}s"
-                    f"{' (🔥 HOOK PUNCH-IN)' if is_hook else ''}{f' [{clip_niche} Grading]' if clip_niche else ''}"
+                    f"{f' [{clip_niche} Grading]' if clip_niche else ''}"
                 )
                 image_to_video(
                     image_path=scene.media_path,

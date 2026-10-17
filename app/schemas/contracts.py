@@ -72,6 +72,10 @@ class SceneContract(BaseModel):
     # --- Populated bởi MediaAgent/ImageAgent (Step C) ---
     media_path: Optional[str] = Field(default=None, description="Đường dẫn file ảnh/video nền cho scene")
     media_type: Optional[str] = Field(default=None, pattern=r"^(image|video|ai_image|ai_video|i2v|t2v|photo|documentary|auto)$")
+    pose_images: Optional[List[str]] = Field(
+        default=None,
+        description="Danh sách đường dẫn các ảnh chuyển cảnh nhanh cho Cảnh 1 (Opening Multi-Cut Hook >= 3 cuts) hoặc hoạt họa multi-pose",
+    )
 
     # ── Cinematic Enhancement Fields (Optional — sinh bởi ContentAgent hoặc để mặc định) ──
     camera_motion: Optional[str] = Field(

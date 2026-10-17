@@ -168,6 +168,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         media_path = ""
         media_type = "image"
         vision_curated = False
+        hook_alternate_urls: List[str] = []
         sq = getattr(scene, 'stock_query', None)
         vp = getattr(scene, 'visual_prompt', None)
         kw = scene.visual_keyword or ""
@@ -305,6 +306,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         media_path = out_img
                         media_type = "image"
                         vision_curated = True
+                        hook_alternate_urls = list(searched_photo.get("alternate_urls") or [])
                         prod_method = chosen_strategy = "CREATURE_ART" if v_analysis.get("creature_mode") else "GEMINI_SEARCH_3D"
                         if idx == 0 and (not camera_motion or camera_motion == "zoom_in"):
                             camera_motion = "hyper_zoom"
@@ -370,6 +372,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             used_pool_urls.add(cand_url)
                             media_path = output
                             media_type = "image"
+                            hook_alternate_urls = list(candidate_media.get("alternate_urls") or [])
                             logger.info(f"Scene {scene.scene_id}: 📸 [Tư liệu thật] Tải từ {c_src}: {candidate_media.get('title', '')[:40]}")
                 except Exception as e:
                     logger.debug(f"Scene {scene.scene_id}: Doc search error: {e}")
@@ -393,6 +396,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             used_pool_urls.add(best_photo["url"])
                             media_path = output
                             media_type = "image"
+                            hook_alternate_urls = list(best_photo.get("alternate_urls") or [])
                             logger.info(
                                 f"Scene {scene.scene_id}: 📸 [Tư liệu web có giấy phép] {src} "
                                 f"điểm {best_photo.get('curation_score', '-')}: {str(best_photo.get('title', ''))[:45]}"
@@ -622,6 +626,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         used_pool_urls.add(cand_url)
                         media_path = output
                         media_type = c_type
+                        if c_type == "image":
+                            hook_alternate_urls = list(candidate_media.get("alternate_urls") or [])
             except Exception:
                 pass
 
@@ -700,6 +706,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         media_path = out_img
                         media_type = "image"
                         vision_curated = True
+                        hook_alternate_urls = list(best_photo.get("alternate_urls") or [])
                         logger.info(
                             f"Scene {scene.scene_id}: 📸 Ảnh tuyển chọn ({src}) "
                             f"điểm {best_photo.get('curation_score', '-')}: {str(best_photo.get('title', ''))[:50]}"
@@ -736,10 +743,38 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             media_path = out_g
             media_type = "image"
 
+        # ── HOOK MULTI-CUT (3 LẦN CHUYỂN CẢNH TRONG KHỞI ĐẦU VIDEO - SCENE 1) ──
+        # Nếu Scene 1 là ảnh tĩnh, tải thêm tối đa 3 ảnh ứng viên chất lượng cao (alternate_urls)
+        # để tạo đủ 4 góc máy / 4 khung hình thật (3 nhát cắt chuyển cảnh dồn dập trong 3–4s đầu).
+        pose_images: List[str] = []
+        if scene.scene_id == 1 and media_path and media_type == "image":
+            pose_images = [media_path]
+            for alt_idx, alt_url in enumerate(hook_alternate_urls):
+                if len(pose_images) >= 4:
+                    break
+                if not alt_url or alt_url in used_pool_urls:
+                    continue
+                alt_out = str(media_dir / f"scene_001_hook_cut{len(pose_images) + 1}.jpg")
+                try:
+                    await asyncio.to_thread(media_agent.download_file, alt_url, alt_out)
+                    if Path(alt_out).exists() and Path(alt_out).stat().st_size > 3000:
+                        used_pool_urls.add(alt_url)
+                        pose_images.append(alt_out)
+                    else:
+                        Path(alt_out).unlink(missing_ok=True)
+                except Exception:
+                    Path(alt_out).unlink(missing_ok=True)
+            if len(pose_images) > 1:
+                logger.info(
+                    f"Scene 1: ⚡ [Hook Multi-Cut] Đã chuẩn bị {len(pose_images)} khung hình thật độc lập "
+                    f"(đảm bảo ≥3 lần chuyển cảnh dồn dập ngay mở đầu video)"
+                )
+
         return {
             "scene_id": scene.scene_id,
             "media_path": media_path,
             "media_type": media_type,
+            "pose_images": pose_images if pose_images else None,
             "vision_curated": vision_curated,
             "visual_keyword": scene.visual_keyword,
             "visual_prompt": getattr(scene, 'visual_prompt', None),
@@ -1116,6 +1151,8 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
         narr = item.get("narration", "")
         raw_suggestion = suggestions.get(scene_id, kw)
         replaced = False
+        fix_alt_urls: List[str] = []
+        old_pose_images: List[str] = list(item.get("pose_images") or [])
 
         # Phân tích chỉ đạo: [recommended_tool] query | prompt | creative_idea
         rec_tool = ""
@@ -1167,6 +1204,7 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
                         item["media_type"] = "image"
                         item["vision_curated"] = True
                         item["production_method"] = "CREATURE_ART" if is_creature_fix else "GEMINI_SEARCH_3D"
+                        fix_alt_urls = list(best_p.get("alternate_urls") or [])
                         replaced = True
                         logger.info(f"Scene {scene_id}: ✅ Thay thế thành công bằng Ảnh 8K Multi-Engine ({best_p.get('source')}): '{target_fix_q}'")
             except Exception as ex_gp:
@@ -1273,6 +1311,8 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
                         used_fix_urls.add(cand_url)
                         item["media_path"] = out
                         item["media_type"] = c_type
+                        if c_type == "image":
+                            fix_alt_urls = list(cand.get("alternate_urls") or [])
                         replaced = True
                         logger.info(f"Scene {scene_id}: ✅ Thay thế thành công tư liệu thật từ {c_src}")
             except Exception as ex_wiki:
@@ -1318,6 +1358,32 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
                 logger.warning(f"Scene {scene_id}: Content refine AI generation error: {e}")
 
         if replaced:
+            if scene_id == 1:
+                if item.get("media_type") == "image" and item.get("media_path"):
+                    new_poses: List[str] = [item["media_path"]]
+                    for alt_u in fix_alt_urls:
+                        if len(new_poses) >= 4:
+                            break
+                        if not alt_u or alt_u in used_fix_urls:
+                            continue
+                        alt_p = str(media_dir / f"scene_001_content_fix_hook_{len(new_poses) + 1}.jpg")
+                        try:
+                            await asyncio.to_thread(media_agent.download_file, alt_u, alt_p)
+                            if Path(alt_p).exists() and Path(alt_p).stat().st_size > 3000:
+                                used_fix_urls.add(alt_u)
+                                new_poses.append(alt_p)
+                            else:
+                                Path(alt_p).unlink(missing_ok=True)
+                        except Exception:
+                            Path(alt_p).unlink(missing_ok=True)
+                    for old_p in old_pose_images:
+                        if len(new_poses) >= 4:
+                            break
+                        if old_p and old_p not in new_poses and Path(old_p).exists():
+                            new_poses.append(old_p)
+                    item["pose_images"] = new_poses
+                else:
+                    item["pose_images"] = None
             logger.info(f"  📝 Chỉ đạo AI Vision đã áp dụng hoàn tất: '{clean_sugg[:60]}'")
         else:
             logger.warning(f"  ❌ Scene {scene_id}: Không thể tìm tư liệu thay thế phù hợp")
