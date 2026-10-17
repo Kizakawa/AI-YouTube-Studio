@@ -969,7 +969,46 @@ Return ONLY a valid JSON array of objects with the following structure:
 
 def _get_curated_niche_fallbacks(niche_id: str, lang: str = "en") -> List[Dict[str, Any]]:
     """Kho ý tưởng dự phòng chất lượng cao cho từng ngách."""
-    if "mystery" in niche_id or "history" in niche_id or "deep_sea" in niche_id:
+    if "history" in niche_id or "what_if" in niche_id:
+        return [
+            {
+                "topic": "Vasili Arkhipov and the 1962 Soviet Submarine B-59 Nuclear Torpedo Veto",
+                "title": "One Man Refused The Order To End The World ☢️🚢 #Shorts",
+                "hook": "On October 27, 1962, two Soviet captains voted to fire a nuclear torpedo at the US Navy.",
+                "angle": "Submarine B-59 depth charges, 3-officer launch protocol, Vasili Arkhipov's lone veto",
+                "pinned_comment": "If Vasili Arkhipov hadn't been on board B-59 that day, would civilization still exist? 👇",
+                "viral_formula": "Debate in Comments",
+                "predicted_retention": "165% - 175%",
+                "why_viral": "Khoảnh khắc lịch sử một con người ngăn chặn Thế chiến 3 chỉ bằng 1 lá phiếu phủ quyết",
+                "fixes_flaw": "Tập trung vào khoảnh khắc căng thẳng nghẹt thở trong tàu ngầm B-59 năm 1962.",
+                "trend_alignment": "Lịch sử bước ngoặt & What-If (Historical Single-Second Turning Points)."
+            },
+            {
+                "topic": "Stanislav Petrov and the 1983 Soviet Nuclear Early-Warning False Alarm",
+                "title": "28 Minutes From WW3: The Man Who Disobeyed Protocol 🚨🌍 #Shorts",
+                "hook": "In 1983, Soviet satellites flashed five incoming American nuclear missiles in red.",
+                "angle": "Oko satellite sunlight glitch, protocol demanded immediate retaliation, Petrov's gut instinct",
+                "pinned_comment": "Would you have trusted your gut over a military computer screen? 👇",
+                "viral_formula": "Debate in Comments",
+                "predicted_retention": "160% - 170%",
+                "why_viral": "Quyết định sinh tử của Stanislav Petrov trái lệnh máy tính cứu cả nhân loại năm 1983",
+                "fixes_flaw": "Đánh thẳng vào tâm lý nghẹt thở của 1 quyết định lịch sử có thật 100%.",
+                "trend_alignment": "Lịch sử chiến tranh lạnh & quyết định định mệnh."
+            },
+            {
+                "topic": "The Wrong Turn in Sarajevo (1914) That Triggered World War I",
+                "title": "How One Wrong Turn Started World War I 🚗💥 #Shorts",
+                "hook": "World War One started because a chauffeur made one wrong turn onto a quiet street.",
+                "angle": "Archduke Franz Ferdinand surviving the first bomb, Leopold Lojka's wrong turn right in front of Gavrilo Princip",
+                "pinned_comment": "What is the craziest domino effect in human history? Debate below 👇",
+                "viral_formula": "Curiosity Part 2",
+                "predicted_retention": "155% - 165%",
+                "why_viral": "Hiệu ứng cánh bướm lịch sử kinh điển nhất thế kỷ 20",
+                "fixes_flaw": "Mở đầu bằng nghịch lý lịch sử cực kỳ cụ thể (một cú rẽ nhầm xe hơi).",
+                "trend_alignment": "Hiệu ứng cánh bướm lịch sử (Historical Butterfly Effect)."
+            }
+        ]
+    elif "mystery" in niche_id or "deep_sea" in niche_id:
         return [
             {
                 "topic": "The 3 Underwater Sounds Recorded in Deep Oceans Science Can't Explain",

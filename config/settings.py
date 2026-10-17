@@ -132,7 +132,8 @@ class Settings:
                     keys.append(k_clean)
         elif cls.GEMINI_API_KEY_SINGLE:
             keys.append(cls.GEMINI_API_KEY_SINGLE.strip())
-        return keys
+        aiza_keys = [k for k in keys if k.startswith("AIza")]
+        return aiza_keys if aiza_keys else keys
 
     @classmethod
     def get_pexels_keys_pool(cls) -> List[str]:

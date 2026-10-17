@@ -173,6 +173,7 @@ class ContentAgent:
                     continue
             except Exception as e:
                 logger.warning(f"Lỗi kết nối Gemini API ({model}) với key {key[:8]}...: {e}")
+                self.rotator.mark_model_rate_limited(key, model, status_code=503, error_text=str(e))
                 time.sleep(0.3)
                 continue
 

@@ -284,6 +284,10 @@ class UsedTopic(Base):
         Mặc định lookback 60 ngày — YouTube thường phạt duplicate content trong 90 ngày.
         """
         from datetime import timedelta
+        try:
+            cls.__table__.create(bind=engine, checkfirst=True)
+        except Exception:
+            pass
         cutoff = datetime.utcnow() - timedelta(days=lookback_days)
         topic_hash = cls.hash_topic(topic)
         return db.query(cls).filter(
@@ -295,6 +299,10 @@ class UsedTopic(Base):
     @classmethod
     def register(cls, db, channel_id: str, topic: str, niche: str = None, job_id: int = None):
         """Ghi nhận topic đã dùng vào database (gọi sau khi VideoJob được tạo thành công)."""
+        try:
+            cls.__table__.create(bind=engine, checkfirst=True)
+        except Exception:
+            pass
         entry = cls(
             channel_id=channel_id,
             topic_hash=cls.hash_topic(topic),
@@ -302,7 +310,9 @@ class UsedTopic(Base):
             niche=niche,
             job_id=job_id,
         )
-        db.add(entry)
+        with db.begin_nested():
+            db.add(entry)
+            db.flush()
 
 
 def log_activity(db, telegram_id: int, username: str, action_type: str, details: str, channel_id: str = None):
