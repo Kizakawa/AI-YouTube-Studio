@@ -22,6 +22,7 @@ from app.graph.nodes import (
     node_fetch_media,
     node_evaluate_media,
     node_refine_media,
+    node_produce_and_score_hook_video,
     node_render_video,
     node_evaluate_video,
     node_execute_edit,
@@ -54,8 +55,8 @@ def should_refine_script(state: VideoWorkflowState) -> Literal["refine_script", 
     return "generate_audio"
 
 
-def should_refine_media(state: VideoWorkflowState) -> Literal["refine_media", "render_video"]:
-    """Điều hướng: Kiểm tra độ sắc nét, độ phân giải & kỹ thuật media. Nếu lỗi -> Sửa lại. Nếu đạt -> Render video ngay!"""
+def should_refine_media(state: VideoWorkflowState) -> Literal["refine_media", "produce_hook_video"]:
+    """Điều hướng: Kiểm tra độ sắc nét, độ phân giải & kỹ thuật media. Nếu lỗi -> Sửa lại. Nếu đạt -> Sang Node dựng & chấm điểm riêng Cảnh 1 Hook Video!"""
     media_eval = state.get("media_eval", {})
     passed = media_eval.get("passed", True)
     retry_count = state.get("media_retry_count", 0)
@@ -64,8 +65,8 @@ def should_refine_media(state: VideoWorkflowState) -> Literal["refine_media", "r
         logger.info(f"🔄 [ConditionalEdge] Media có cảnh chưa đạt độ sắc nét/kỹ thuật ({len(media_eval.get('failed_scene_ids', []))} cảnh). Chuyển sang node_refine_media!")
         return "refine_media"
 
-    logger.info("✅ [ConditionalEdge] Media đạt chuẩn độ sắc nét & kỹ thuật. Tiến hành render video ngay!")
-    return "render_video"
+    logger.info("✅ [ConditionalEdge] Media đạt chuẩn độ sắc nét & kỹ thuật. Chuyển sang node_produce_and_score_hook_video (Cảnh 1)!")
+    return "produce_hook_video"
 
 
 def route_entry_point(state: VideoWorkflowState) -> Literal["execute_edit", "research_and_entity"]:
@@ -89,7 +90,7 @@ def route_after_edit(state: VideoWorkflowState) -> Literal["render_video", "__en
 # ──────────────────────────────────────────────────────────────────────────────
 
 def create_video_workflow_graph() -> StateGraph:
-    """Khởi tạo và biên dịch đồ thị LangGraph Video Engine (Bỏ qua node kiểm tra liên quan, chỉ kiểm tra độ sắc nét & kỹ thuật)."""
+    """Khởi tạo và biên dịch đồ thị LangGraph Video Engine."""
     builder = StateGraph(VideoWorkflowState)
 
     # Thêm các Nodes
@@ -103,6 +104,7 @@ def create_video_workflow_graph() -> StateGraph:
     builder.add_node("fetch_media", node_fetch_media)
     builder.add_node("evaluate_media", node_evaluate_media)
     builder.add_node("refine_media", node_refine_media)
+    builder.add_node("produce_hook_video", node_produce_and_score_hook_video)
     builder.add_node("render_video", node_render_video)
     builder.add_node("evaluate_video", node_evaluate_video)
     builder.add_node("execute_edit", node_execute_edit)
@@ -134,19 +136,20 @@ def create_video_workflow_graph() -> StateGraph:
     builder.add_edge("evaluate_audio", "visual_director")
     builder.add_edge("visual_director", "fetch_media")
 
-    # ── Kiểm tra ĐỘ SẮC NÉT & KỸ THUẬT media (VisualCritic) -> Render trực tiếp ──
+    # ── Kiểm tra ĐỘ SẮC NÉT & KỸ THUẬT media (VisualCritic) -> Node Hook Video chuyên biệt -> Merge & Lồng tiếng ──
     builder.add_edge("fetch_media", "evaluate_media")
     builder.add_conditional_edges(
         "evaluate_media",
         should_refine_media,
         {
             "refine_media": "refine_media",
-            "render_video": "render_video",
+            "produce_hook_video": "produce_hook_video",
         }
     )
     builder.add_edge("refine_media", "evaluate_media")  # Vòng lặp sửa file mờ/lỗi kỹ thuật
 
-    # ── Luồng Render & VideoQA ──
+    # ── Node Chuyên Biệt Cảnh 1 Hook Video -> Merge với phần còn lại & Lồng tiếng cuối cùng (render_video) -> VideoQA ──
+    builder.add_edge("produce_hook_video", "render_video")
     builder.add_edge("render_video", "evaluate_video")
     builder.add_edge("evaluate_video", END)
 

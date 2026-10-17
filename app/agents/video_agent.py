@@ -234,9 +234,16 @@ class VideoAgent:
             is_video_file = bool(scene.media_path and scene.media_path.lower().endswith((".mp4", ".mov", ".webm", ".mkv")))
             clip_niche = getattr(job, "niche", None)
             is_scifi_clip = getattr(job, "is_scifi", False) or ("scifi" in str(clip_niche or "").lower()) or ("scifi" in (getattr(scene, "visual_keyword", "") or "").lower())
-            is_already_rendered = bool(scene.media_path and any(tag in Path(scene.media_path).name.lower() for tag in ("_i2v", "_t2v", "_pexels_fb", "clip_", "_gsearch_3d", "_creature_3d", "_motion3d", "_anim", "_fb_motion")))
+            is_already_rendered = bool(scene.media_path and any(tag in Path(scene.media_path).name.lower() for tag in ("_i2v", "_t2v", "_pexels_fb", "clip_", "_gsearch_3d", "_creature_3d", "_motion3d", "_anim", "_fb_motion", "hook_motion_")))
 
-            if raw_type in ("video", "ai_video", "i2v", "t2v") or is_video_file:
+            if raw_type == "hook_ready_video" or (scene.media_path and Path(scene.media_path).name.lower().startswith("hook_motion_")):
+                logger.info(
+                    f"  Scene {scene.scene_id}: 🎯 HOOK READY VIDEO ({Path(scene.media_path).name}) → "
+                    f"nhận trực tiếp từ HookVideoNode để merge với phần còn lại ({duration:.1f}s)"
+                )
+                if os.path.abspath(scene.media_path) != os.path.abspath(clip_path):
+                    shutil.copy2(scene.media_path, clip_path)
+            elif raw_type in ("video", "ai_video", "i2v", "t2v") or is_video_file:
                 logger.info(
                     f"  Scene {scene.scene_id}: video ({raw_type}) → trim {duration:.1f}s"
                     f"{' (🔥 HOOK VIDEO CLIP)' if is_hook else ''}"

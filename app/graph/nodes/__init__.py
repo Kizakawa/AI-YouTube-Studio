@@ -18,6 +18,9 @@ from app.graph.nodes.render_nodes import (
     node_render_video,
     node_evaluate_video,
 )
+from app.graph.nodes.hook_video_node import (
+    node_produce_and_score_hook_video,
+)
 from app.graph.nodes.edit_nodes import (
     node_execute_edit,
 )
@@ -33,6 +36,7 @@ __all__ = [
     "node_fetch_media",
     "node_evaluate_media",
     "node_refine_media",
+    "node_produce_and_score_hook_video",
     "node_render_video",
     "node_evaluate_video",
     "node_execute_edit",

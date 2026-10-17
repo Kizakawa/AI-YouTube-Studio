@@ -134,10 +134,11 @@ class VideoWorkflowState(TypedDict, total=False):
     # Bước 2.5: Đạo diễn Thị giác (Visual Director Agent)
     visual_plan: Optional[Dict[str, Any]]  # VisualPlanReport dict
     
-    # Bước 3: Hình ảnh / Video (Media)
+    # Bước 3: Hình ảnh / Video (Media) & Node chuyên biệt Cảnh 1 Hook Video
     scenes_media: List[Dict[str, Any]]
     media_eval: Optional[Dict[str, Any]]  # VisualEvaluationReport (kiểm tra độ sắc nét & độ phân giải)
     media_retry_count: int
+    hook_video_eval: Optional[Dict[str, Any]]  # Báo cáo chấm điểm & dựng riêng Cảnh 1 Hook Video
     
     # Bước 4: Video thành phẩm (Render & QA)
     rendered_video_path: Optional[str]
