@@ -257,9 +257,14 @@ Respond ONLY in valid JSON:
         if channel_niche == "wildlife_predators" and any(bad in combined_lower for bad in ("bayern", "football", "soccer", "stadium", "fifa")):
             niche_score = max(3.0, niche_score - 5.0)
             issues.append("Vi phạm nghiêm trọng: Rò rỉ chủ đề bóng đá/thể thao vào kênh động vật hoang dã.")
-        if channel_niche == "alternate_history" and any(bad in combined_lower for bad in ("inject", "vaccine", "syringe", "burn the evidence")):
-            niche_score = max(3.0, niche_score - 5.0)
-            issues.append("Vi phạm nghiêm trọng: Rò rỉ chủ đề y tế/tiêm chích lệch khỏi lịch sử giả định.")
+        if channel_niche == "alternate_history":
+            if any(bad in combined_lower for bad in ("inject", "vaccine", "syringe", "burn the evidence", "serial killer", "ted bundy", "btk killer", "gaslighting", "narcissist", "bloodbath", "execution order")):
+                niche_score = max(3.0, niche_score - 5.0)
+                issues.append("Vi phạm nghiêm trọng: Rò rỉ chủ đề nhạy cảm/lệch ngách (y tế, tội phạm, tâm lý học hoặc từ khóa bạo lực bị bóp phân phối) vào kênh Lịch sử Giả định.")
+            title_l = title.lower()
+            if not any(cf in combined_lower for cf in ("what if", "if ", "would ", "never ", "almost ", "timeline", "alternate")):
+                hook_score = max(4.5, hook_score - 2.5)
+                issues.append("Thiếu cấu trúc giả thuyết 'What If / Counterfactual' đặc trưng của ngách Lịch sử Giả định (dễ biến thành bài giảng sử khô khan).")
         if channel_niche == "animal_rescue":
             title_l = title.lower()
             if any(b in title_l for b in ("frozen", "shivering", "starving", "tied in rain")) and not any(

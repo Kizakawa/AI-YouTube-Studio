@@ -543,11 +543,11 @@ CRITICAL ANTI-CANNIBALIZATION CONSTRAINT: STRICTLY FORBIDDEN to use the overused
     elif any(k in nid for k in ("alternate_history", "what_if", "timeline", "temporal")):
         return """
 🌍 2026 GLOBAL VIRAL SHORTS TRENDS (ALTERNATE HISTORY & WHAT IF?):
-1. Massive Geopolitical & Imperial Turning Points (Proven Channel Winners): What if the Roman Empire never collapsed? What if the Library of Alexandria was preserved with 500,000 lost scrolls? What if the Mongol hordes did not retreat after Vienna?
-2. 1-Second Glitches That Rewrote History: The missed telegram before Pearl Harbor; the single wrong turn in Sarajevo in 1914; Alexander the Great surviving his fever at age 32.
-3. Mightiest Armies & Tactical Blunders: When history's most unstoppable armies collapsed from one single decision.
-STRICT CONSTRAINT: Strictly 100% historical counter-factual scenarios ("What If...") and empire clashes. ZERO psychology advice, ZERO modern medical/vaccine/injection topics, ZERO generic motivational talk!
-Hook Formula: 'What if one single second completely erased the modern world we know today?'
+1. Explicit "What If...?" Counterfactual Titles + Modern Reality Anchor: Viewers swipe away from dry textbook history titles ("How A Rainstorm Saved Europe" got 8 views). Every title MUST lead with a high-curiosity "What If...?" question or terrifying butterfly paradox ("What If the Library of Alexandria Never Burned?", "What If the Titanic Never Hit the Iceberg?").
+2. 2nd-Person Modern Reality Hook (0-3s): Anchor the ancient turning point directly to the viewer's life in 2026 ("Look at your smartphone — if one fire in 48 BC had been stopped, human beings would have landed on Mars by 1650").
+3. 3-Stage Butterfly Domino Effect (Mid-Video Re-Hook at 12s): Show step-by-step how 1 changed decision rewrites borders, languages, and technology to prevent the 13-second retention drop-off.
+STRICT CONSTRAINT: Strictly 100% historical counter-factual scenarios ("What If...") and empire turning points. ZERO psychology advice, ZERO true-crime/serial killer topics, ZERO modern medical/vaccine/injection topics, ZERO violent clickbait words ("Bloodbath", "Execution Order", "Wiped Out")!
+Hook Formula: 'Look at the world around you — if one single decision in [Year] went the other way, today you would...'
 """
     elif "mystery" in nid or "history" in nid:
         return """
@@ -687,10 +687,11 @@ def get_winner_cloner_blueprint(
         ]
     elif "alternate" in eff_niche or "history" in eff_niche:
         sequel_templates = [
-            "How One Wrong Turn By A Driver In 1914 Erased Four Empires Forever",
-            "The Man Who Refused To Launch A Nuclear Strike In 1962 Inside Submarine B-59",
-            "How A 15-Minute Rainstorm At Waterloo Ended Napoleon's Empire",
-            "What If The Titanic Never Hit The Iceberg? The Dark Truth Nobody Tells You",
+            "What If The Library Of Alexandria Never Burned Down? (300-Year Tech Leap)",
+            "What If The Titanic Never Hit The Iceberg In 1912? The Dark Paradox",
+            "What If Genghis Khan's Mongol Army Invaded Western Europe In 1242?",
+            "What If Vasili Arkhipov Pressed The Nuclear Button Inside Submarine B-59?",
+            "What If The Roman Empire Industrialized Steam Engines 1,800 Years Early?",
         ]
 
     # Gộp sequel_templates + yaml_topic_bank và lọc chống trùng lặp với lịch sử kênh

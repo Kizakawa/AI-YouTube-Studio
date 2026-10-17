@@ -178,10 +178,16 @@ class Settings:
             "preferred_voice": "en-US-EricNeural",
         },
         "ch_alternate_history": {
-            "name": "Temporal Shift",
-            "niche": "alternate_history_what_if",
+            "name": 'Alternate History & "What If?"',
+            "niche": "alternate_history",
             "language": "en",
-            "preferred_voice": "en-US-RogerNeural",
+            "preferred_voice": "en-US-ChristopherNeural",
+        },
+        "@alternatehistorywhatif-e2x": {
+            "name": 'Alternate History & "What If?"',
+            "niche": "alternate_history",
+            "language": "en",
+            "preferred_voice": "en-US-ChristopherNeural",
         },
         "ch_odisseia_selvagem": {
             "name": "Odisseia Selvagem",
@@ -205,8 +211,11 @@ class Settings:
         cid = str(ch.get("id") or "").strip()
         defaults = cls._CANONICAL_CHANNEL_DEFAULTS.get(cid)
         name_val = str(ch.get("name") or "")
-        if "\ufffd" in name_val and defaults:
+        if ("\ufffd" in name_val or name_val.endswith('"What If?')) and defaults:
             ch["name"] = defaults["name"]
+        yt_title_val = str(ch.get("youtube_title") or "")
+        if yt_title_val.endswith('"What If?') and defaults:
+            ch["youtube_title"] = defaults["name"]
         if defaults:
             if not str(ch.get("niche") or "").strip():
                 ch["niche"] = defaults["niche"]

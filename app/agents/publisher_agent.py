@@ -451,12 +451,20 @@ class PublisherAgent:
         except Exception as e_dup:
             logger.debug(f"[Publisher] Kiểm tra trùng lặp: {e_dup}")
 
+        raw_niche_cat = str(self.channel_config.get("niche") or "").lower()
+        if any(k in raw_niche_cat for k in ("history", "what_if", "alternate", "mystery", "deep_sea", "psych", "science", "edu")):
+            yt_category_id = "27"  # Education (chuẩn thuật toán phân phối kênh Lịch sử / Khoa học / Tâm lý Edutainment)
+        elif any(k in raw_niche_cat for k in ("animal", "rescue", "pet", "wildlife", "predator", "nature")):
+            yt_category_id = "15"  # Pets & Animals (chuẩn thuật toán phân phối kênh Động vật / Dã thú)
+        else:
+            yt_category_id = "22"  # People & Blogs
+
         body = {
             "snippet": {
                 "title": clean_title[:100],
                 "description": desc_clean[:5000],
                 "tags": tag_list[:20],
-                "categoryId": "22",  # People & Blogs / Shorts
+                "categoryId": yt_category_id,
                 "defaultLanguage": target_lang,
                 "defaultAudioLanguage": target_audio_lang,
             },
