@@ -89,12 +89,15 @@ def _breaker(name: str) -> _Breaker:
 # ──────────────────────────────────────────────────────────────────────────────
 # Hậu xử lý: đưa mọi ảnh về đúng khung dọc 9:16 mà KHÔNG kéo giãn
 # ──────────────────────────────────────────────────────────────────────────────
-def fit_vertical(img_bytes: bytes, out_path: str) -> Tuple[int, int]:
-    """Crop tâm về 9:16 rồi resize Lanczos lên 1080x1920. Trả về kích thước gốc."""
+def fit_vertical(img_bytes: bytes, out_path: str, strip_bottom_px: int = 0) -> Tuple[int, int]:
+    """Crop bỏ dải watermark đáy (nếu có), căn tâm về 9:16 rồi resize Lanczos lên 1080x1920. Trả về kích thước gốc."""
     from PIL import Image
 
     with Image.open(io.BytesIO(img_bytes)) as im:
         im = im.convert("RGB")
+        orig_w, orig_h = im.size
+        if strip_bottom_px > 0 and orig_h > strip_bottom_px * 4:
+            im = im.crop((0, 0, orig_w, orig_h - strip_bottom_px))
         w, h = im.size
         target_ratio = TARGET_W / TARGET_H
         if abs((w / h) - target_ratio) > 0.01:
@@ -108,7 +111,7 @@ def fit_vertical(img_bytes: bytes, out_path: str) -> Tuple[int, int]:
                 im = im.crop((0, top, w, top + new_h))
         im = im.resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
         im.save(out_path, "JPEG", quality=94)
-        return w, h
+        return orig_w, orig_h
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -322,7 +325,7 @@ def generate_image(prompt: str, out_path: str, premium: bool = False, seed: Opti
                 raw = eng.generate(prompt, seed)
             if not raw or len(raw) < 5000:
                 raise EngineError("ảnh rỗng/quá nhỏ")
-            ow, oh = fit_vertical(raw, out_path)
+            ow, oh = fit_vertical(raw, out_path, strip_bottom_px=56 if eng.name == "pollinations" else 0)
             br.ok()
             logger.info(f"🎨 [ImageEngine] ✅ {eng.name} ({ow}x{oh} → 1080x1920, {time.time() - t0:.1f}s) → {out_path}")
             return out_path, eng.name

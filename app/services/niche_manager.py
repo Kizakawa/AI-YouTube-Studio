@@ -419,7 +419,8 @@ def get_niche_subtitle_style(niche_profile: Dict[str, Any]) -> Dict[str, Any]:
     outline_hex = sub_cfg.get("outline_color", "#000000")
     raw_font = sub_cfg.get("font_family") or "Arial Black, Montserrat, sans-serif"
     font_family = raw_font.split(",")[0].strip() or "Arial Black"
-    font_size = int(sub_cfg.get("font_size", 44))
+    raw_fs = int(sub_cfg.get("font_size", 68))
+    font_size = raw_fs if raw_fs >= 62 else 68
     
     raw_margin = int(sub_cfg.get("margin_bottom", 720))
     # Chuẩn hóa an toàn trong khoảng 560 - 860 px (mặc định 720px vùng trung tâm dưới cằm chủ thể, hoàn toàn tránh UI Shorts)

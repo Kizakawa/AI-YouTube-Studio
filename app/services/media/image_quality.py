@@ -15,8 +15,8 @@ import os
 import re
 from typing import Dict, Iterable, List, Optional
 
-# ─────────────────────────────── Watermark / stock risk ───────────────────────────────
-# Domain ảnh stock trả phí (ảnh preview luôn có watermark) hoặc trang bán tranh in
+# ─────────────────────────────── Watermark / stock / fake prop / poster risk ───────────────────────────────
+# Domain ảnh stock trả phí (luôn có watermark) HOẶC trang AI chất lượng thấp / bán đồ in ấn
 WATERMARK_DOMAINS = (
     "shutterstock", "alamy", "istockphoto", "gettyimages", "dreamstime", "depositphotos",
     "123rf", "stock.adobe", "adobestock", "fineartamerica", "pixels.com", "vectorstock",
@@ -25,35 +25,60 @@ WATERMARK_DOMAINS = (
     "redbubble", "teepublic", "zazzle", "etsy", "society6", "cafepress", "displate",
     "img.freepik.com/premium-", "freepik.com/premium-", "craiyon.com", "media.craiyon.com",
     "nightcafe.studio", "images.nightcafe.studio", "deepdreamgenerator", "artbreeder.com",
+    "furaffinity.net", "wattpad.com", "newgrounds.com",
+    # Chặn các trang code, slide thuyết trình, tài liệu học thuật, biểu đồ và hướng dẫn nhiếp ảnh lạc đề
+    "kaggle.com", "slideshare.net", "scribd.com", "researchgate.net", "academia.edu",
+    "chegg.com", "coursehero.com", "quizlet.com", "github.com", "stackoverflow.com",
+    "towardsdatascience.com", "analyticsvidhya.com", "promptden.com", "eartohear",
+    "qaqooking", "about.com", "fity.club", "designbundles.net",
 )
 
-# Tiêu đề chứa các cụm này gần như chắc chắn là ảnh stock có watermark / clipart / sản phẩm
+# Tiêu đề / URL chứa các cụm này là ảnh stock watermark / mô hình nhựa bảo tàng ("trông đểu") / poster chữ / game khối vuông / biểu đồ code
 _HARD_TITLE_CUES = (
     "stock photo", "stock image", "stock picture", "premium photo", "premium vector",
     "royalty free", "royalty-free", "vector", "clipart", "clip art", "coloring page",
     "colouring", "t-shirt", "tshirt", "sticker", "mug ", "poster print", "canvas print",
     "framed print", "art print", "for sale", "buy now", "watermarked",
+    "movie poster", "new poster", "official poster", "teaser poster", "poster for",
+    # Chặn mô hình cao su/nhựa, tượng bảo tàng, đồ chơi, thú nhồi bông làm ảnh trông giả ("đểu")
+    "animatronic", "animatronics", "prop ", "movie prop", "replica", "mannequin", "puppet",
+    "wax figure", "museum exhibit", "exhibition", "theme park ride", "universal studios ride",
+    "action figure", "toy ", "toys", "figurine", "lego", "plush", "stuffed animal", "taxidermy",
+    "costume", "cosplay", "inflatable", "statue", "sculpture",
+    "minecraft", "roblox", "fortnite",
+    # Chặn ảnh chụp màn hình code, biểu đồ thống kê, sơ đồ kỹ thuật và slide bài giảng
+    "k-means", "kmeans", "clustering", "python notebook", "jupyter", "matplotlib",
+    "histogram", "bar chart", "pie chart", "scatter plot", "flowchart", "schematic",
+    "cross-section", "cross section", "infographic", "worksheet", "slide ", "slideshare",
+    "radar absorbing", "damaged zones",
 )
 
-# Tiêu đề chứa các cụm này → trừ điểm (thường không phải ảnh điện ảnh / thực tế đẹp)
+# Tiêu đề chứa các cụm này → trừ điểm mạnh (tranh vẽ tay 2D phẳng, đồ chơi, sơ đồ, chữ chèn)
 _SOFT_TITLE_CUES = (
-    "cartoon", "drawing", "sketch", "download", "logo", "icon",
-    "infographic", "diagram", "chart", "map of", "meme", "quote", "text",
-    "toy", "figurine", "lego", "plush", "costume", "tattoo",
+    "cartoon", "drawing", "sketch", "watercolor", "pencil", "comic", "manga", "chibi",
+    "download", "logo", "icon", "infographic", "diagram", "chart", "map of", "meme",
+    "quote", "text", "tattoo", "museum", "exhibit", "specimen", "fossil", "skeleton",
+    "poster", "dvd cover", "book cover",
 )
 
-# Nguồn & từ khóa Hot-Trend / Điện ảnh / Viral giúp hình ảnh bắt mắt hơn trên Shorts
+# Nguồn Điện Ảnh 4K/8K & Siêu Phẩm Thị Giác Viral trên mạng (ArtStation, Pinterest, Wallhaven, 4K UHD, IMDb, Báo điện ảnh)
 _HOT_TREND_DOMAINS = (
-    "artstation.com", "artstation", "deviantart.com", "deviantart", "pinterest", "pinimg.com",
-    "redd.it", "reddit.com", "wallhaven", "uhdpaper", "hdqwalls", "behance.net", "imdb.com",
-    "tmdb.org", "cgsociety", "cara.app", "alphacoders", "peakpx", "wallpaperflare",
-    "img.freepik.com/free-",
+    "artstation.com", "cdna.artstation.com", "cdnb.artstation.com",
+    "pinimg.com", "pinterest.com", "wallhaven.cc", "w.wallhaven.cc", "th.wallhaven.cc",
+    "hdqwalls.com", "images.hdqwalls.com", "alphacoders.com", "images.alphacoders.com",
+    "wallpaperflare.com", "c4.wallpaperflare.com", "uhdpaper.com", "peakpx.com", "wallhere.com",
+    "imdb.com", "media-amazon.com", "tmdb.org", "image.tmdb.org", "film-grab.com",
+    "shotdeck.com", "fancaps.net", "moviestillsdb.com", "collider.com", "screenrant.com", "srcdn.com",
+    "variety.com", "hollywoodreporter.com", "empireonline.com", "indiewire.com", "ign.com",
+    "polygon.com", "bloody-disgusting.com", "denofgeek.com", "slashfilm.com", "rogerebert.com",
+    "rottentomatoes.com", "fandango.com", "futurecdn.net", "gamesradar.com",
+    "redd.it", "i.redd.it", "reddit.com", "nationalgeographic.com", "bbc.co.uk", "bbc.com",
 )
 
 _HOT_TREND_CUES = (
-    "cinematic", "movie scene", "film still", "artstation", "unreal engine", "octane render",
-    "8k", "4k", "concept art", "dark fantasy", "thalassophobia", "megalophobia", "wallpaper",
-    "masterpiece", "vfx", "cgi", "dramatic", "photorealistic", "hyperrealistic", "imax",
+    "8k", "4k", "uhd", "imax", "vfx", "cgi", "unreal engine", "octane render", "photorealistic",
+    "hyperrealistic", "movie scene", "movie still", "film still", "cinematic", "epic",
+    "thalassophobia", "megalophobia", "artstation", "masterpiece", "roaring", "attack",
 )
 
 _STOPWORDS = {
@@ -68,7 +93,7 @@ _STOPWORDS = {
     "above", "below", "beneath", "high", "deep", "far", "away", "inside", "outside", "behind",
     "beyond", "now", "today", "yet", "once", "ago", "soon", "later", "first", "last", "next",
     "suddenly", "finally", "instead", "imagine", "meet",
-    # Thuật ngữ góc máy / nhiếp ảnh / phong cách ở đầu hoặc cuối AI prompt — tuyệt đối không được trích thành chủ thể
+    # Thuật ngữ góc máy / nhiếp ảnh / phong cách / template ở đầu hoặc cuối AI prompt — tuyệt đối không được trích thành chủ thể
     "macro", "shot", "shots", "wide", "angle", "wide-angle", "low-angle", "high-angle", "low",
     "close", "close-up", "closeup", "extreme", "cinematic", "cinematography", "breathtaking",
     "dramatic", "photorealistic", "hyperrealistic", "hyper-realistic", "vertical", "portrait",
@@ -77,6 +102,13 @@ _STOPWORDS = {
     "noir", "chiaroscuro", "monochrome", "seinen", "thriller", "aesthetic", "shadow", "shadows",
     "silhouette", "dark", "realistic", "photography", "photo", "image", "picture", "wallpaper",
     "art", "illustration", "digital", "render",
+    "jaw", "dropping", "jaw-dropping", "scroll", "stopping", "scroll-stopping", "visual",
+    "impact", "hook", "detailed", "prompt", "english", "national", "geographic", "bbc",
+    "planet", "earth", "documentary", "majestic", "aspect", "ratio", "resolution", "sharp",
+    "vivid", "contrast", "dynamic", "golden", "hour", "imax", "live", "action", "live-action",
+    "beautiful", "vibrant", "stunning", "epic", "4k", "8k", "razor", "focal", "depth", "rim",
+    "peak", "ultra", "retention", "youtube", "shorts", "masterpiece", "award", "winning",
+    "generation", "generate", "generated", "during", "ai",
 }
 
 _NUMBER_WORDS = {
@@ -122,6 +154,53 @@ def subject_terms(subject: Optional[str]) -> List[str]:
     return [w for w in _norm_text(subject).split() if len(w) > 2 and w not in _STOPWORDS]
 
 
+_PROMPT_BOILERPLATE_RE = re.compile(
+    r"(?:"
+    r"jaw[\s\-]*dropping(?:\s+frame[\s\-]*0)?(?:\s+hook)?|"
+    r"scroll[\s\-]*stopping(?:\s+visual)?(?:\s+impact)?|"
+    r"ultra[\s\-]*high\s+retention(?:\s+youtube\s+shorts)?(?:\s+hook\s+frame)?|"
+    r"detailed(?:\s+8k|\s+4k)?(?:\s+vertical)?(?:\s+9:16)?(?:\s+photorealistic)?(?:\s+live[\s\-]*action)?(?:\s+imax)?(?:\s+movie\s+still)?(?:\s+cinematic)?(?:\s+scene)?(?:\s+prompt)?(?:\s+in\s+english)?|"
+    r"national\s+geographic(?:\s+underwater|\s+marine|\s+wildlife)?(?:\s+documentary|\s+photograph|\s+photography)?|"
+    r"bbc\s+planet\s+earth(?:\s+epic)?(?:\s+wildlife)?(?:\s+documentary)?|"
+    r"razor[\s\-]*sharp\s+high[\s\-]*contrast\s+cinematic\s+shot(?:\s+of)?|"
+    r"at\s+peak\s+dramatic\s+action(?:\s+with\s+intense\s+focal\s+depth)?(?:\s+and\s+vivid\s+rim\s+lighting)?|"
+    r"9:16\s+aspect\s+ratio|8k\s+resolution|4k\s+resolution|aspect\s+ratio|resolution|"
+    r"no\s+watermark|no\s+text|no\s+border|award[\s\-]*winning\s+cinematography"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def clean_search_query_from_prompt(
+    raw_query: str,
+    narration: str = "",
+    topic: str = "",
+    max_words: int = 6,
+) -> str:
+    """
+    Làm sạch hoàn toàn một chuỗi câu lệnh (có thể là AI visual_prompt dài bị truyền nhầm)
+    thành câu truy vấn tìm ảnh Google/Bing tự nhiên (4-6 từ chỉ chứa chủ thể + hành động thật).
+    Triệt tiêu 100% lỗi rò rỉ 'JAW DROPPING HOOK', 'Detailed prompt English', 'National Geographic documentary'...
+    """
+    cleaned = _PROMPT_BOILERPLATE_RE.sub(" ", raw_query or "")
+    terms = [
+        w for w in re.findall(r"[A-Za-z]{3,}", cleaned)
+        if w.lower() not in _STOPWORDS
+    ]
+    res = " ".join(terms[:max_words]).strip()
+    if len(res.split()) < 2 and narration:
+        narr_terms = [
+            w for w in re.findall(r"[A-Za-z]{3,}", narration)
+            if w.lower() not in _STOPWORDS and w.lower() not in _NUMBER_WORDS
+        ]
+        res = " ".join(narr_terms[:max_words]).strip()
+    core = extract_core_creature(raw_query, narration, topic)
+    if core and core not in res.lower():
+        res = f"{core} {res}".strip()
+        res = " ".join(res.split()[:max_words])
+    return res or "dramatic documentary photograph"
+
+
 def extract_subject(narration: str, primary_entity: Optional[str] = None, max_words: int = 4) -> str:
     """
     Trích cụm danh từ CHỦ THỂ từ lời thoại tiếng Anh (heuristic, không cần LLM).
@@ -132,7 +211,8 @@ def extract_subject(narration: str, primary_entity: Optional[str] = None, max_wo
         return primary_entity.strip()
     if not narration:
         return ""
-    tokens = re.findall(r"[A-Za-z][A-Za-z'\-]*", narration)
+    cleaned_narr = _PROMPT_BOILERPLATE_RE.sub(" ", narration)
+    tokens = re.findall(r"[A-Za-z][A-Za-z'\-]*", cleaned_narr)
     phrase: List[str] = []
     for i, tok in enumerate(tokens):
         lw = tok.lower().strip("'")
@@ -153,9 +233,11 @@ def extract_subject(narration: str, primary_entity: Optional[str] = None, max_wo
 
 
 def is_watermark_risk(item: Dict) -> bool:
-    """True nếu ảnh gần như chắc chắn có watermark / là clipart / ảnh sản phẩm in ấn."""
+    """True nếu ảnh có watermark / là clipart / poster quảng cáo phim có chữ / tranh fan-art."""
     blob = " ".join(str(item.get(k) or "") for k in ("url", "page_url", "creator", "thumbnail")).lower()
     if any(d in blob for d in WATERMARK_DOMAINS):
+        return True
+    if any(p in blob for p in ("-poster.", "_poster.", "-poster-", "_poster_", "/posters/", "movie-poster", "new-poster", "poster-for")):
         return True
     title = f" {(item.get('title') or '')} {(item.get('alt') or '')} ".lower()
     return any(c in title for c in _HARD_TITLE_CUES)
@@ -181,6 +263,9 @@ _CREATURE_WORDS = (
     "thunderbird", "jersey devil", "dogman", "titanoboa", "mosasaurus", "liopleurodon",
     "dunkleosteus", "helicoprion", "livyatan", "sarcosuchus", "plesiosaur", "kronosaurus",
     "basilosaurus", "megalania", "smilodon", "terror bird", "gorgonopsid", "arthropleura",
+    "t rex", "tyrannosaurus", "spinosaurus", "indominus", "giganotosaurus", "velociraptor",
+    "allosaurus", "dinosaur", "dinosaurs", "dragon", "hydra", "cerberus", "fenrir", "minotaur",
+    "king kong", "kong",
     "scp", "siren head", "backrooms", "slenderman", "the rake", "crawler", "pale crawler",
     "shadow person", "doppelganger", "analog horror", "thalassophobia", "megalophobia",
     "anglerfish", "goblin shark", "frilled shark", "vampire squid", "giant isopod", "oarfish",
@@ -189,43 +274,46 @@ _CREATURE_WORDS = (
 # Tên có chữ "monster"/"dragon" nhưng là động vật THẬT → không bật chế độ quái vật
 _REAL_ANIMAL_EXCEPTIONS = ("gila monster", "komodo dragon", "sea dragon", "dragonfish", "dragonfly")
 
-# Cảnh phim & ArtStation horror cực kỳ rùng rợn cho từng quái vật (giữ ngắn gọn 5-7 từ để tối ưu công cụ tìm kiếm)
+# Truy vấn Top Google Images bổ trợ theo từng quái vật cụ thể
 _CREATURE_FILM_REFS = {
-    "kraken": "giant kraken attacking ship movie cgi",
-    "megalodon": "giant megalodon shark jaws dark ocean",
-    "godzilla": "Godzilla giant monster storm movie scene",
-    "loch ness": "loch ness monster dark underwater thalassophobia",
-    "nessie": "loch ness monster dark underwater thalassophobia",
-    "cthulhu": "Cthulhu eldritch monster rising dark ocean",
-    "leviathan": "colossal leviathan sea monster dark abyss",
-    "sea serpent": "giant sea serpent monster dark ocean",
-    "sea monster": "giant sea monster lurking beneath boat",
-    "bloop": "the bloop colossal deep sea monster",
-    "giant squid": "giant kraken squid tentacles attacking ship",
-    "colossal squid": "colossal squid deep dark abyssal monster",
-    "magnapinna": "bigfin magnapinna squid deep sea horror",
-    "bigfin squid": "bigfin magnapinna squid deep sea horror",
-    "titanoboa": "giant titanoboa snake monster jungle cgi",
-    "mosasaurus": "giant mosasaurus underwater jaws movie scene",
-    "dunkleosteus": "giant dunkleosteus armored predator dark ocean",
-    "helicoprion": "helicoprion spiral jaw shark dark ocean",
-    "livyatan": "livyatan giant whale monster dark ocean",
-    "mothman": "mothman glowing red eyes dark horror",
-    "wendigo": "wendigo antler skull monster dark forest",
-    "skinwalker": "skinwalker creature night horror found footage",
-    "siren head": "siren head giant monster dark fog",
-    "scp": "scp monster containment breach dark horror",
-    "backrooms": "backrooms entity found footage analog horror",
-    "anglerfish": "deep sea anglerfish glowing lure abyss",
-    "goblin shark": "deep sea goblin shark jaws abyss",
+    "kraken": "giant kraken monster attacking ship",
+    "megalodon": "giant megalodon shark attacking submarine",
+    "godzilla": "Godzilla King of the Monsters giant monster",
+    "loch ness": "giant Loch Ness monster underwater",
+    "nessie": "giant Loch Ness monster underwater",
+    "cthulhu": "giant Cthulhu monster ocean",
+    "leviathan": "giant leviathan sea monster underwater",
+    "sea serpent": "giant sea serpent monster ocean",
+    "sea monster": "giant sea monster deep ocean thalassophobia",
+    "bloop": "the bloop giant sea monster",
+    "giant squid": "giant squid attacking ship underwater",
+    "colossal squid": "colossal squid deep sea monster",
+    "magnapinna": "bigfin squid magnapinna deep sea ROV footage",
+    "bigfin squid": "bigfin squid magnapinna deep sea ROV footage",
+    "titanoboa": "giant titanoboa snake",
+    "mosasaurus": "Jurassic World Mosasaurus giant underwater",
+    "t rex": "Tyrannosaurus rex Jurassic World roaring",
+    "tyrannosaurus": "Tyrannosaurus rex Jurassic World roaring",
+    "spinosaurus": "Spinosaurus dinosaur giant predator",
+    "indominus": "Indominus rex Jurassic World",
+    "dunkleosteus": "giant Dunkleosteus prehistoric fish",
+    "helicoprion": "Helicoprion prehistoric shark",
+    "livyatan": "Livyatan melvillei giant whale",
+    "mothman": "terrifying Mothman glowing red eyes",
+    "wendigo": "terrifying Wendigo monster dark forest",
+    "skinwalker": "terrifying skinwalker monster",
+    "siren head": "giant Siren Head monster",
+    "scp": "SCP terrifying monster containment",
+    "backrooms": "Backrooms found footage monster",
+    "anglerfish": "deep sea anglerfish glowing",
+    "goblin shark": "deep sea goblin shark jaws",
 }
 
 _CREATURE_BONUS_CUES = (
-    "concept art", "art", "artstation", "digital art", "cgi", "movie", "film", "scene", "dark",
-    "horror", "terrifying", "scary", "creepy", "nightmare", "thalassophobia", "megalophobia",
-    "eldritch", "abyss", "abyssal", "lurking", "silhouette", "shadow", "glowing eyes",
-    "attack", "attacking", "giant", "colossal", "massive", "wallpaper", "render", "unreal engine",
-    "fantasy", "epic", "monster", "beast", "rising", "deep sea", "underwater",
+    "movie", "movie scene", "movie still", "film", "vfx", "cgi", "8k", "4k", "photorealistic",
+    "hyperrealistic", "imax", "underwater", "the meg", "godzilla", "jurassic", "kraken",
+    "leviathan", "thalassophobia", "megalophobia", "colossal", "giant", "massive", "roaring",
+    "terrifying", "dark", "deep sea", "ocean", "monster", "creature", "attack", "jaws",
 )
 
 _CREATURE_PENALTY_CUES = (
@@ -233,10 +321,12 @@ _CREATURE_PENALTY_CUES = (
     "coloring", "logo", "icon", "meme", "chart", "diagram", "infographic", "sticker", "emoji",
     "clipart", "kids", "baby", "funny", "cosplay", "halloween decoration", "cake",
     "caught on camera", "spotted in real life", "top 10", "top 5", "reaction", "thumbnail",
-    # Chặn ảnh hóa thạch khô khan, răng bảo tàng, xác chết dạt bờ hoặc bản khắc gỗ thế kỷ 18 kém rùng rợn
+    # Chặn mô hình cao su/nhựa bảo tàng ("trông đểu"), tranh khắc gỗ cổ, hóa thạch xương khô, game khối vuông
+    "animatronic", "animatronics", "prop", "replica", "mannequin", "puppet", "wax figure",
+    "minecraft", "roblox", "subnautica", "ark survival", "sketch", "pencil drawing",
     "fossil", "tooth", "teeth", "jawbone", "skeleton", "bone", "bones", "skull", "museum",
-    "exhibit", "specimen", "preserved", "jar", "engraving", "woodcut", "stamp", "coin",
-    "statue", "sculpture", "map", "book cover", "novel", "washed ashore", "beached",
+    "exhibit", "exhibition", "specimen", "preserved", "jar", "engraving", "woodcut", "stamp", "coin",
+    "statue", "sculpture", "map", "book cover", "dvd cover", "washed ashore", "beached",
 )
 
 # Thứ tự ưu tiên nhận diện tên quái vật đặc trưng (ưu tiên tên riêng trước các từ chung như "tentacle", "monster")
@@ -246,6 +336,8 @@ _SPECIFIC_CREATURES = (
     "mothman", "wendigo", "chupacabra", "bigfoot", "sasquatch", "yeti", "skinwalker",
     "behemoth", "basilisk", "titanoboa", "mosasaurus", "liopleurodon", "dunkleosteus",
     "helicoprion", "livyatan", "sarcosuchus", "plesiosaur", "kronosaurus", "basilosaurus",
+    "t rex", "tyrannosaurus", "spinosaurus", "indominus", "giganotosaurus", "velociraptor",
+    "allosaurus", "dinosaur", "dragon", "hydra", "cerberus", "fenrir", "minotaur", "king kong",
     "siren head", "slenderman", "backrooms", "scp", "magnapinna", "bigfin squid",
     "colossal squid", "giant squid", "anglerfish", "goblin shark", "frilled shark",
     "vampire squid", "oarfish", "gulper eel", "viperfish", "sea serpent", "sea monster",
@@ -253,7 +345,7 @@ _SPECIFIC_CREATURES = (
 
 
 def is_creature_subject(subject: Optional[str], narration: str = "", topic: str = "") -> bool:
-    """True nếu chủ thể hoặc ngữ cảnh là quái vật / thủy quái / thực thể kinh dị (ưu tiên CGI / dark horror art)."""
+    """True nếu chủ thể hoặc ngữ cảnh là quái vật / thủy quái / khủng long / thực thể kinh dị."""
     import os
     if os.getenv("CREATURE_ART_MODE", "true").strip().lower() in ("0", "false", "no", "off"):
         return False
@@ -262,28 +354,31 @@ def is_creature_subject(subject: Optional[str], narration: str = "", topic: str 
         return False
     if any(f" {w} " in subj for w in _CREATURE_WORDS):
         return True
-    # Kiểm tra cả lời thoại và chủ đề: nếu nói về quái vật, thủy quái, vực thẳm kinh dị hoặc thực thể ám ảnh
     ctx = f" {_norm_text(narration)} {_norm_text(topic)} "
     if any(f" {w} " in ctx for w in _CREATURE_WORDS):
         return True
     raw_ctx = f"{subject or ''} {narration or ''} {topic or ''}".lower()
     vi_horror_cues = (
         "quái vật", "thủy quái", "quái thú", "sinh vật biển sâu", "mực khổng lồ",
-        "rùng rợn", "kinh dị", "ác mộng", "vực thẳm", "huyền thoại biển",
-        "người đi biển", "thần thoại",
+        "khủng long", "bạo chúa", "rồng", "rùng rợn", "kinh dị", "ác mộng",
+        "vực thẳm", "huyền thoại biển", "người đi biển", "thần thoại",
     )
     return any(cue in raw_ctx for cue in vi_horror_cues)
 
 
 def extract_core_creature(*texts: str) -> str:
-    """Trích xuất tên quái vật/sinh vật cốt lõi từ subject, narration hoặc topic (ưu tiên tên riêng như kraken, leviathan)."""
+    """Trích xuất tên quái vật/sinh vật cốt lõi từ subject, narration hoặc topic (ưu tiên tên riêng như kraken, leviathan, t rex)."""
     combined_norm = " " + " ".join(_norm_text(t) for t in texts if t) + " "
     if any(f" {x} " in combined_norm for x in _REAL_ANIMAL_EXCEPTIONS):
         return ""
     for c in _SPECIFIC_CREATURES:
         if f" {c} " in combined_norm:
-            return c
+            return "t-rex" if c == "t rex" else c
     raw_low = " ".join((t or "").lower() for t in texts if t)
+    if any(k in raw_low for k in ("khủng long bạo chúa", "bạo chúa")):
+        return "t-rex"
+    if "khủng long" in raw_low:
+        return "dinosaur"
     if any(k in raw_low for k in ("thủy quái", "mực khổng lồ", "bạch tuộc khổng lồ", "quái vật biển", "người đi biển")):
         return "kraken"
     if any(k in combined_norm for k in (" tentacle ", " tentacles ", " suction ", " ship ", " sailor ", " whirlpool ")):
@@ -291,24 +386,23 @@ def extract_core_creature(*texts: str) -> str:
             return "kraken"
     for w in _CREATURE_WORDS:
         if f" {w} " in combined_norm and w not in ("monster", "monsters", "tentacle", "tentacles"):
-            return w
+            return "t-rex" if w == "t rex" else w
     return ""
 
 
 def creature_queries(subject: str, topic: str = "", narration: str = "") -> List[str]:
     """
-    Truy vấn tìm ảnh quái vật cực kỳ rùng rợn, ám ảnh (4-7 từ ngắn gọn để Bing/DDGS/ArtStation/Wallhaven trả kết quả chuẩn xác nhất).
+    Sinh bộ truy vấn TOP SEARCH GOOGLE IMAGES bám sát ĐÚNG tên quái vật/chủ thể mà người dùng tìm kiếm
+    (không bao giờ tự ý đổi sang tên bộ phim của quái vật khác).
     """
-    import os
     subject = (subject or "").strip()
     core = extract_core_creature(subject, narration, topic)
     norm_all = f" {_norm_text(subject)} {_norm_text(narration)} {_norm_text(topic)} "
 
-    # Trích 1-2 từ khóa bối cảnh/bộ phận đặc tả của phân cảnh (vd: tentacles, ship, eye, whirlpool, abyss)
     scene_focus_words = []
     focus_candidates = (
         "tentacles", "tentacle", "ship", "eye", "eyes", "jaws", "teeth", "whirlpool",
-        "shipwreck", "submarine", "diver", "sailor", "storm", "abyss", "silhouette",
+        "shipwreck", "submarine", "diver", "sailor", "storm", "abyss", "roaring", "glowing",
     )
     subj_norm = f" {_norm_text(subject)} {_norm_text(narration)} "
     for fw in focus_candidates:
@@ -325,40 +419,33 @@ def creature_queries(subject: str, topic: str = "", narration: str = "") -> List
             "kraken", "megalodon", "leviathan", "cthulhu", "loch ness", "nessie", "bloop",
             "squid", "sea", "ocean", "abyss", "shark", "whale", "mosasaurus", "liopleurodon",
             "dunkleosteus", "helicoprion", "livyatan", "anglerfish", "oarfish", "thalassophobia",
-            "ship", "sailor", "biển", "đại dương", "thủy quái",
+            "ship", "sailor", "biển", "đại dương", "thủy quái", "mariana", "vực",
         )
     )
 
     qs: List[str] = []
-    prefix_giant = "" if base_creature.lower().startswith(("giant ", "colossal ")) else "giant "
-    # 1. Truy vấn gắn trực tiếp hành động/chi tiết của phân cảnh + tên quái vật cốt lõi (4-6 từ)
-    if focus_str:
-        qs.append(f"{prefix_giant}{base_creature} {focus_str} cinematic cgi")
-    if os.getenv("CREATURE_ALLOW_MOVIE_STILLS", "true").strip().lower() not in ("0", "false", "no", "off"):
-        ref = _CREATURE_FILM_REFS.get(core) or next(
-            (v for k, v in _CREATURE_FILM_REFS.items() if f" {k} " in norm_all), None
-        )
-        if ref and ref not in qs:
-            qs.append(ref)
+    # 1. Truy vấn Top Search Google Images trực diện đúng chủ thể
+    ref = _CREATURE_FILM_REFS.get(core) or _CREATURE_FILM_REFS.get(core.replace("-", " "))
+    if ref:
+        qs.append(ref)
 
-    # 2. Truy vấn ArtStation / Concept Art 8K ngắn gọn (5-6 từ)
     if is_marine:
-        q_art = f"{prefix_giant}{base_creature} {scene_focus_words[0] if scene_focus_words else 'ocean'} monster artstation"
-        q_thal = f"{base_creature} sea monster thalassophobia 8k"
-        for q in (q_art, q_thal):
-            if q not in qs:
-                qs.append(q)
+        candidates = [
+            f"giant {base_creature} sea monster" if "monster" not in base_creature else f"giant {base_creature}",
+            f"{base_creature} {focus_str} underwater monster".strip() if focus_str else f"{base_creature} attacking ship ocean",
+            f"{base_creature}",
+        ]
     else:
-        q_art = f"terrifying {base_creature} {focus_str} horror artstation".strip()
-        q_dark = f"{base_creature} monster dark horror cgi"
-        for q in (q_art, q_dark):
-            if q not in qs:
-                qs.append(q)
+        candidates = [
+            f"giant {base_creature} {focus_str} roaring".strip(),
+            f"{base_creature} movie scene",
+            f"{base_creature}",
+        ]
 
-    # 3. Truy vấn cô đọng 2-3 từ cho ArtStation / Wallhaven API
-    short_q = f"{base_creature} monster" if "monster" not in base_creature else base_creature
-    if short_q not in qs:
-        qs.append(short_q)
+    for cq in candidates:
+        cq_clean = re.sub(r"\s+", " ", cq).strip()
+        if cq_clean and cq_clean.lower() not in [x.lower() for x in qs]:
+            qs.append(cq_clean)
 
     return qs[:4]
 
@@ -448,23 +535,26 @@ def heuristic_score(item: Dict, terms: Iterable[str], creature_mode: bool = Fals
     w, h = _dims(item)
     score = 4.0
 
-    # Bố cục: Shorts cần ảnh dọc hoặc ảnh độ phân giải cao đủ để crop 9:16 sắc nét
+    # Bố cục: Cảnh phim điện ảnh thật (Movie Still / Film Frame) hầu hết là khung ngang 16:9 hoặc 2.39:1 CinemaScope!
+    # Ảnh dọc trong kết quả tìm kiếm phim thường là Poster quảng cáo hoặc Wallpaper điện thoại nên không được ưu tiên hơn khung hình phim ngang.
     if w and h:
         ratio = w / h
-        if ratio <= 0.8:
+        if 1.3 <= ratio <= 2.45 and min(w, h) >= 500:
             score += 1.5
-        elif ratio <= 1.25:
-            score += 1.1
-        elif ratio <= 1.85 and min(w, h) >= 900:
-            score += 0.8
-        elif ratio >= 2.1:
-            score -= 1.0
+        elif ratio <= 0.8:
+            score += 0.6 if creature_mode else 1.2
+        elif ratio < 1.3:
+            score += 1.0
+        elif ratio > 2.45:
+            score -= 0.8
         short_side = min(w, h)
-        if short_side >= 1080:
+        if short_side >= 1000:
             score += 1.5
-        elif short_side >= 720:
-            score += 0.9
-        elif short_side < 500:
+        elif short_side >= 680:
+            score += 1.1
+        elif short_side >= 500:
+            score += 0.6
+        else:
             score -= 2.0
 
     # Tiêu đề / mô tả / URL bài viết khớp chủ thể
@@ -494,6 +584,18 @@ def heuristic_score(item: Dict, terms: Iterable[str], creature_mode: bool = Fals
     if any(tut in padded for tut in (" portrait photography ", " photography tips ", " how to shoot ", " promptden ", " lighting tutorial ", " camera settings ")):
         score -= 2.2
 
+    # Thưởng điểm mạnh cho thứ hạng TOP SEARCH GOOGLE IMAGES (_google_rank từ 1..25)
+    g_rank = int(item.get("_google_rank") or 999)
+    if item.get("provider") == "google" or src == "google_images":
+        if g_rank <= 3:
+            score += 2.6
+        elif g_rank <= 8:
+            score += 2.0
+        elif g_rank <= 15:
+            score += 1.4
+        elif g_rank <= 25:
+            score += 0.8
+
     # Thưởng điểm cho nguồn Hot-Trend / Điện ảnh / Viral (ArtStation, Pinterest, Reddit, Wallpaper 8K, Movie Stills)
     is_hot_domain = any(dom in blob_domain for dom in _HOT_TREND_DOMAINS)
     hot_cue_hits = sum(1 for c in _HOT_TREND_CUES if f" {c} " in padded)
@@ -501,22 +603,26 @@ def heuristic_score(item: Dict, terms: Iterable[str], creature_mode: bool = Fals
     noir_cue_hits = sum(1 for c in _PSYCHOLOGY_NOIR_BONUS_CUES if f" {c} " in padded)
 
     if creature_mode:
-        # Chế độ Quái Vật / Kinh Dị: Ưu tiên tuyệt đối Google Images + ArtStation / Movie CGI / Thalassophobia
-        if src in ("google_images", "open_web"):
-            score += 1.3
+        # Chế độ Quái Vật / Kinh Dị: Ưu tiên tuyệt đối Top Search Google Images
+        if src == "google_images":
+            score += 1.5
+        elif src == "open_web":
+            score += 0.8
         if is_hot_domain:
-            score += 1.8
+            score += 1.4
         # Trừ điểm Wikipedia/Wikimedia/Bảo tàng trong creature_mode vì hay trả về tranh khắc gỗ cũ hoặc hóa thạch răng
         if src in ("wikipedia", "wikimedia_commons", "openverse") or any(
             d in blob_domain for d in ("wikimedia.org", "wikipedia.org", "nhm.ac.uk", "smithsonian", "fishbase", "inaturalist")
         ):
-            score -= 1.8
-        score += min(2.6, 0.75 * epic_cue_hits)
+            score -= 2.2
+        score += min(2.2, 0.65 * epic_cue_hits)
         if any(f" {c} " in padded for c in _CREATURE_PENALTY_CUES):
             score = min(score - 5.5, 3.5)
     else:
-        if src in ("google_images", "open_web"):
-            score += 1.1
+        if src == "google_images":
+            score += 1.5
+        elif src == "open_web":
+            score += 0.8
         elif src in ("pexels", "pexels_photo", "pixabay", "unsplash"):
             score += 0.3
         elif src in ("wikipedia", "wikimedia_commons", "openverse"):
@@ -546,11 +652,11 @@ def prefilter_candidates(
     candidates: List[Dict],
     subject: Optional[str] = None,
     limit: int = 12,
-    max_per_source: int = 5,
+    max_per_source: int = 12,
     creature_mode: bool = False,
 ) -> List[Dict]:
     """
-    Loại ảnh watermark/quá nhỏ, chấm heuristic rồi sắp xếp giảm dần (giữ đa dạng nguồn & tên miền).
+    Loại ảnh watermark/quá nhỏ, chấm điểm ưu tiên TOP SEARCH GOOGLE IMAGES rồi sắp xếp giảm dần.
     Gắn '_hscore' vào từng item để các bước sau dùng khi Vision không khả dụng.
     """
     terms = subject_terms(subject)
@@ -570,7 +676,7 @@ def prefilter_candidates(
         it["_order"] = idx
         kept.append(it)
 
-    kept.sort(key=lambda x: (-x["_hscore"], x["_order"]))
+    kept.sort(key=lambda x: (-x["_hscore"], int(x.get("_google_rank") or 999), x["_order"]))
 
     out: List[Dict] = []
     per_src: Dict[str, int] = {}
@@ -579,8 +685,7 @@ def prefilter_candidates(
     for it in kept:
         src = it.get("source") or "?"
         dom = (it.get("creator") or it.get("provider") or src).lower()
-        # Giới hạn tối đa 3 ảnh trên cùng 1 tên miền (vd: artstation.com, wallhaven.cc, deviantart.com) ở lượt đầu
-        if per_src.get(src, 0) >= max_per_source or per_domain.get(dom, 0) >= 3:
+        if per_src.get(src, 0) >= max_per_source or per_domain.get(dom, 0) >= 4:
             overflow.append(it)
             continue
         per_src[src] = per_src.get(src, 0) + 1
@@ -771,13 +876,12 @@ def assess_image_wow_factor(image_path: str) -> Dict[str, float]:
         return {"wow_score": 5.0, "is_wow": False, "luminance": 0.0, "contrast": 0.0, "sharpness": 0.0}
 
 
-def prepare_vertical(im, target_w: int, target_h: int, max_upscale: float = 2.0, is_hook_scene: bool = False):
+def prepare_vertical(im, target_w: int, target_h: int, max_upscale: float = 3.8, is_hook_scene: bool = False):
     """
-    Đưa ảnh bất kỳ về khung target_w×target_h KHÔNG kéo giãn:
+    Đưa ảnh bất kỳ về khung dọc 9:16 (target_w×target_h) FULL MÀN HÌNH KHÔNG KÉO GIÃN:
     - Tỷ lệ gần đúng → cover-crop chính giữa.
     - Ảnh cao hơn 9:16 → cover-crop dọc bám theo vùng chi tiết/khuôn mặt (_saliency_center_y).
-    - Ảnh ngang đủ lớn → cover-crop ngang bám theo vùng nhiều chi tiết nhất (_saliency_center_x).
-    - Ảnh ngang quá nhỏ (crop sẽ vỡ hạt) → nền mờ phóng to + ảnh gốc sắc nét ở giữa.
+    - Ảnh ngang (chiều cao >= 420px và tỷ lệ <= 2.15) → LUÔN cover-crop full màn hình 9:16 bám theo vùng chủ thể (_saliency_center_x) + làm nét Lanczos, triệt tiêu hoàn toàn 2 dải viền xám mờ!
     """
     from PIL import Image, ImageFilter, ImageEnhance
 
@@ -800,18 +904,18 @@ def prepare_vertical(im, target_w: int, target_h: int, max_upscale: float = 2.0,
             is_hook_scene=is_hook_scene,
         )
 
-    # Ảnh rộng hơn 9:16
-    crop_w = int(h * target_ratio)
-    upscale = target_h / h
-    if upscale <= max_upscale or src_ratio < 1.0:
+    # Ảnh rộng hơn 9:16: Ưu tiên tuyệt đối crop dọc full màn hình 9:16 bám theo chủ thể (saliency)
+    crop_w = max(1, int(h * target_ratio))
+    upscale = target_h / max(1, h)
+    if upscale <= max(max_upscale, 3.8) or (h >= 420 and src_ratio <= 2.15) or src_ratio < 1.0:
         cx = _saliency_center_x(im, crop_w)
-        left = min(max(0, cx - crop_w // 2), w - crop_w)
+        left = min(max(0, cx - crop_w // 2), max(0, w - crop_w))
         return _enhance_visual_clarity(
             im.crop((left, 0, left + crop_w, h)).resize((target_w, target_h), Image.LANCZOS),
             is_hook_scene=is_hook_scene,
         )
 
-    # Ảnh nhỏ & rất ngang: nền mờ + foreground rõ nét (zoom nhẹ 1.12 để chiếm nhiều diện tích hơn)
+    # Chỉ dùng nền mờ khi ảnh thực sự là dải banner siêu dẹt (src_ratio > 2.15) và quá bé (h < 420px)
     bg_scale = max(target_w / w, target_h / h)
     bg = im.resize((int(w * bg_scale) + 1, int(h * bg_scale) + 1), Image.LANCZOS)
     bl = (bg.width - target_w) // 2

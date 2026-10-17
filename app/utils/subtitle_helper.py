@@ -87,9 +87,9 @@ YCbCr Matrix: None
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1.2,0,1,4.6,2.8,2,40,40,{margin_v},1
-Style: HookHeadlineBanner,{fontname},52,&H0000FFFF,&H00FFFFFF,&H00000000,&HD0050505,-1,0,0,0,100,100,2,0,3,3.6,0.0,8,30,30,310,1
-Style: PatternInterruptBadge,{fontname},32,&H00FFFFFF,&H00FFFFFF,&H0000E6FF&,&HC0101010,-1,0,0,0,100,100,2,0,3,2.0,0.0,8,40,40,240,1
+Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1.2,0,1,5.2,3.0,2,40,40,{margin_v},1
+Style: HookHeadlineBanner,{fontname},60,&H0000FFFF,&H00FFFFFF,&H00000000,&HD0050505,-1,0,0,0,100,100,2,0,3,4.0,0.0,8,30,30,310,1
+Style: PatternInterruptBadge,{fontname},38,&H00FFFFFF,&H00FFFFFF,&H0000E6FF&,&HC0101010,-1,0,0,0,100,100,2,0,3,2.4,0.0,8,40,40,240,1
 Style: CTABadge,{fontname},46,&H0000FFFF,&H00FFFFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,3.5,2.0,2,30,30,780,1
 Style: WatermarkStyle,Arial,28,&H30FFFFFF,&H30FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1.8,1.2,8,30,30,90,1
 
@@ -135,7 +135,7 @@ class SubtitleHelper:
         chuẩn phong cách phụ đề @MasteringMindControl / Submagic / Hormozi:
         nhịp nhảy chữ nhanh bám sát mắt người xem, ngăn đọc trước giọng đọc.
         """
-        text = text.strip()
+        text = cls.sanitize_subtitle_text(text)
         # Normalize whitespace: collapse \n, \t, multiple spaces thành space đơn
         import re as _re
         text = _re.sub(r'\s+', ' ', text).strip()
@@ -168,16 +168,26 @@ class SubtitleHelper:
     @staticmethod
     def sanitize_subtitle_text(text: str) -> str:
         """
-        Khử toàn bộ chuỗi rác template, placeholder, âm thanh tự sinh YouTube:
-        - Loại bỏ [Music], [Âm nhạc], [Applause], [Tiếng cười], (Laughter), v.v.
+        Khử toàn bộ chuỗi rác template, placeholder, stage tags ([LOOP], [HOOK]), âm thanh tự sinh YouTube:
+        - Loại bỏ [Music], [Âm nhạc], [Applause], [Tiếng cười], [LOOP], [HOOK], [ACT 1], v.v.
         - Loại bỏ placeholder dạng {hook_quote}, {default_...}, v.v.
         - Loại bỏ từ khóa dummy: lorem ipsum, placeholder, scene X
         """
         if not text:
             return ""
-        # Loại bỏ các tag âm thanh [Music], [Âm nhạc], [Applause], ...
-        t = re.sub(r'\[(?:Music|Âm nhạc|Applause|Laughter|Tiếng cười|Vỗ tay|Cheering|SFX|Audio)\]', '', text, flags=re.IGNORECASE)
-        t = re.sub(r'\((?:Music|Âm nhạc|Applause|Laughter|Tiếng cười|Vỗ tay|Cheering|SFX|Audio)\)', '', t, flags=re.IGNORECASE)
+        # Loại bỏ các tag chỉ dẫn đạo diễn / âm thanh [LOOP], [HOOK], [Music], [Âm nhạc], [Applause], ...
+        t = re.sub(
+            r'\[(?:Music|Âm nhạc|Applause|Laughter|Tiếng cười|Vỗ tay|Cheering|SFX|Audio|LOOP|HOOK|ACT\s*\d*|SCENE\s*\d*|PAUSE|BEAT|SILENCE|WHISPER|INTRO|OUTRO|END)[^\]]*\]',
+            '',
+            text,
+            flags=re.IGNORECASE,
+        )
+        t = re.sub(
+            r'\((?:Music|Âm nhạc|Applause|Laughter|Tiếng cười|Vỗ tay|Cheering|SFX|Audio|LOOP|HOOK|PAUSE|BEAT|SILENCE|WHISPER)\)',
+            '',
+            t,
+            flags=re.IGNORECASE,
+        )
         # Loại bỏ các biến placeholder dạng {hook_quote}, {default_...}
         t = re.sub(r'\{[^{}]*\}', '', t)
         # Loại bỏ các từ khóa dummy/rác
@@ -294,7 +304,7 @@ class SubtitleHelper:
         cls,
         scenes: List[SceneContract],
         fontname: str = "Arial Black",
-        fontsize: int = 44,
+        fontsize: int = 68,
         margin_v: int = 720,
         primary_color: Optional[str] = None,
         secondary_color: Optional[str] = None,
@@ -312,7 +322,7 @@ class SubtitleHelper:
         eff_secondary = secondary_color or ASS_WHITE
         eff_outline = outline_color or ASS_BLACK
         eff_font = fontname
-        eff_size = fontsize
+        eff_size = fontsize if fontsize >= 62 else 68
         eff_margin = margin_v
 
         if niche_id:
@@ -325,7 +335,7 @@ class SubtitleHelper:
                 eff_outline = outline_color or niche_sub.get("outline_ass", ASS_BLACK)
                 if not fontname or fontname in ("Arial", "Arial Black"):
                     eff_font = niche_sub.get("fontname", "Arial Black")
-                eff_size = fontsize if fontsize not in (42, 44) else niche_sub.get("fontsize", 44)
+                eff_size = fontsize if fontsize not in (42, 44, 68) and fontsize >= 62 else niche_sub.get("fontsize", 68)
                 eff_margin = margin_v if margin_v not in (580, 720) else niche_sub.get("margin_v", 720)
             except Exception as e:
                 pass
@@ -378,7 +388,9 @@ class SubtitleHelper:
                 cur_words = []
                 cur_len = 0
                 for w_info in word_timings:
-                    w_text = w_info.get("word", "").strip().upper()
+                    raw_w = w_info.get("word", "").strip()
+                    raw_w = re.sub(r'\[?(?:LOOP|HOOK|ACT\d*|SCENE\d*|PAUSE|BEAT|SILENCE|WHISPER)\]?', '', raw_w, flags=re.IGNORECASE).strip()
+                    w_text = raw_w.upper()
                     if not w_text:
                         continue
                     candidate_len = cur_len + len(w_text) + (1 if cur_words else 0)
@@ -680,8 +692,8 @@ class SubtitleHelper:
         scenes: List[SceneContract],
         output_path: str,
         fontname: str = "Arial Black",
-        fontsize: int = 42,
-        margin_v: int = 580,
+        fontsize: int = 68,
+        margin_v: int = 720,
         primary_color: Optional[str] = None,
         secondary_color: Optional[str] = None,
         outline_color: Optional[str] = None,
@@ -829,8 +841,8 @@ class SubtitleHelper:
         total_duration_sec: float = 0.0,
         clip_start_offset: float = 0.0,
         fontname: str = "Arial Black",
-        fontsize: int = 42,
-        margin_v: int = 580,
+        fontsize: int = 68,
+        margin_v: int = 720,
         primary_color: Optional[str] = None,
         secondary_color: Optional[str] = None,
         outline_color: Optional[str] = None,
@@ -843,13 +855,13 @@ class SubtitleHelper:
         - Trích xuất từng câu/cụm từ có mốc start và duration thực.
         - Khử hoàn toàn chuỗi rác template (placeholder sanitizer).
         - Phân chia thành cụm từ ngắn (2-4 từ) và gắn tag karaoke {\\kf} theo từng từ.
-        - Căn chuẩn Safe Zone 30-35% từ đáy (margin_v=580), chống va chạm layer với CTA badge.
+        - Căn chuẩn Safe Zone 30-35% từ đáy (margin_v=720), chống va chạm layer với CTA badge.
         """
         eff_primary = primary_color or ASS_WHITE
         eff_secondary = secondary_color or ASS_YELLOW
         eff_outline = outline_color or ASS_BLACK
         eff_font = fontname
-        eff_size = fontsize
+        eff_size = fontsize if fontsize >= 62 else 68
         eff_margin = margin_v
 
         if niche_id:
@@ -862,8 +874,8 @@ class SubtitleHelper:
                 eff_outline = outline_color or niche_sub.get("outline_ass", ASS_BLACK)
                 if not fontname or fontname == "Arial":
                     eff_font = niche_sub.get("fontname", "Arial")
-                eff_size = fontsize if fontsize != 42 else niche_sub.get("fontsize", 42)
-                eff_margin = margin_v if margin_v != 580 else niche_sub.get("margin_v", 580)
+                eff_size = fontsize if fontsize not in (42, 44, 68) and fontsize >= 62 else niche_sub.get("fontsize", 68)
+                eff_margin = margin_v if margin_v not in (580, 720) else niche_sub.get("margin_v", 720)
             except Exception:
                 pass
 
@@ -990,8 +1002,8 @@ class SubtitleHelper:
         total_duration_sec: float = 0.0,
         clip_start_offset: float = 0.0,
         fontname: str = "Arial",
-        fontsize: int = 42,
-        margin_v: int = 580,
+        fontsize: int = 68,
+        margin_v: int = 720,
         primary_color: Optional[str] = None,
         secondary_color: Optional[str] = None,
         outline_color: Optional[str] = None,
@@ -1026,8 +1038,8 @@ class SubtitleHelper:
         cls,
         clips: List[Dict[str, Any]],
         fontname: str = "Arial Black",
-        fontsize: int = 44,
-        margin_v: int = 580,
+        fontsize: int = 68,
+        margin_v: int = 720,
         primary_color: Optional[str] = None,
         secondary_color: Optional[str] = None,
         outline_color: Optional[str] = None,
@@ -1041,7 +1053,7 @@ class SubtitleHelper:
         1. Layer 2: Chapter / Timeline Context Badges ở ĐỈNH MÀN HÌNH (MarginV=260, Alignment=8).
            Hiển thị nhãn bối cảnh (ví dụ: '🚨 THE RESCUE AT 2:00 AM', '⏪ 3 HOURS EARLIER (FLASHBACK)')
            giúp người xem nắm bắt ngay mạch thời gian đảo cảnh, chống loạn nhịp.
-        2. Layer 0: Kinetic Captions Karaoke giật từng từ ở ĐÁY MÀN HÌNH (MarginV=580, Alignment=2).
+        2. Layer 0: Kinetic Captions Karaoke giật từng từ ở ĐÁY MÀN HÌNH (MarginV=720, Alignment=2).
            Font to, viền dày, chữ trắng quét sáng Vàng rực rỡ (Yellow Wipe) với Power Words đỏ/cam.
            Đảm bảo 100% video luôn có phụ đề, cứu vãn 70%+ người xem lướt Shorts ở chế độ tắt tiếng.
         """
@@ -1050,8 +1062,8 @@ class SubtitleHelper:
         eff_outline = outline_color or ASS_BLACK
         eff_back = "&H90000000"
         eff_font = fontname or "Arial Black"
-        eff_size = fontsize or 44
-        eff_margin = margin_v or 580
+        eff_size = fontsize if (fontsize and fontsize >= 62) else 68
+        eff_margin = margin_v or 720
 
         if niche_id:
             try:
@@ -1062,6 +1074,7 @@ class SubtitleHelper:
                 eff_secondary = secondary_color or niche_sub.get("secondary_ass", ASS_YELLOW)
                 eff_outline = outline_color or niche_sub.get("outline_ass", ASS_BLACK)
                 eff_font = fontname or niche_sub.get("fontname", "Arial Black")
+                eff_size = fontsize if (fontsize and fontsize not in (42, 44, 68) and fontsize >= 62) else niche_sub.get("fontsize", 68)
             except Exception:
                 pass
 
@@ -1231,8 +1244,8 @@ class SubtitleHelper:
         clips: List[Dict[str, Any]],
         output_path: str,
         fontname: str = "Arial Black",
-        fontsize: int = 44,
-        margin_v: int = 580,
+        fontsize: int = 68,
+        margin_v: int = 720,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
         is_english: bool = True,

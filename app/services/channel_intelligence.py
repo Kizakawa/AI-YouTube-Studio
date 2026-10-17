@@ -252,8 +252,13 @@ Requirements:
             except Exception:
                 pass
 
-    # Fallback nếu AI bận: thêm góc nhìn đặc tả khác biệt
-    fallback_title = f"{clean_cand.split('?')[0].strip()} — The Hidden Truth! 💀" if "?" in clean_cand else f"Secret Behind {clean_cand} ⚠️"
+    # Fallback nếu AI bận: gắn hậu tố tự nhiên (không ghép "Secret Behind" trước một câu mệnh lệnh gây sai ngữ pháp!)
+    base_clean = clean_cand.rstrip(".! ")
+    fallback_title = (
+        f"{clean_cand.split('?')[0].strip()} — The Hidden Truth! 💀"
+        if "?" in clean_cand
+        else f"{base_clean} (The Hidden Truth) ⚠️"
+    )
     return fallback_title, True, matched
 
 

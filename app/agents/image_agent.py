@@ -171,30 +171,25 @@ class ImageAgent:
             from app.services.media.entity_detector import clean_scene_search_query
             from app.services.media.image_quality import (
                 extract_core_creature, is_creature_subject, creature_queries, prepare_vertical,
+                clean_search_query_from_prompt,
             )
             from app.agents.media_agent import MediaAgent
 
-            # Loại bỏ các cụm boilerplate và thuật ngữ góc máy của AI prompt (Macro shot, Wide-angle, Breathtaking cinematography...)
-            stripped_q = re.sub(
-                r"\b(8k|4k|vertical|film still|dramatic|cinematic|cinematography|breathtaking|macro|wide-angle|wide angle|low-angle|low angle|high-angle|high angle|close-up|close up|closeup|extreme|shot|shots|angle|frame|photorealistic|hyper-realistic|hyperrealistic|composition|no watermark|no text|no border|award-winning|35mm|lighting|details|volumetric|bokeh|portrait|view|perspective|lens|moody|atmospheric|tracking|panning|establishing|shallow|depth of field)\b",
-                " ",
+            # Lọc sạch 100% các cụm boilerplate của AI prompt ("JAW-DROPPING FRAME-0 HOOK", "Detailed prompt in English", "National Geographic...")
+            clean_q = clean_search_query_from_prompt(
                 query or "",
-                flags=re.IGNORECASE,
+                narration="",
+                topic=topic,
+                max_words=6,
             )
-            # Chỉ giữ từ tiếng Anh ASCII sạch có nghĩa để tránh ghép nhầm từ rác góc máy hoặc tiếng Việt
-            _stop_fb = {
-                "the", "and", "with", "from", "into", "onto", "that", "this", "their", "your",
-                "for", "are", "was", "were", "has", "have", "had", "not", "but", "over", "under",
-                "through", "between", "around", "about", "while", "where", "when", "who",
-            }
-            ascii_words = [w for w in re.findall(r"[A-Za-z]{3,}", stripped_q) if w.lower() not in _stop_fb]
-            clean_q = " ".join(ascii_words[:6]) or clean_scene_search_query(stripped_q, max_words=5)
+            if not clean_q:
+                clean_q = clean_scene_search_query(query or topic or "", max_words=5)
 
             core_monster = extract_core_creature(query, topic)
             if core_monster and core_monster not in clean_q.lower():
                 clean_q = f"giant {core_monster} {clean_q}".strip()
 
-            target_query = clean_q or "dramatic cinematic scene"
+            target_query = clean_q or "dramatic documentary photography"
             is_creature = is_creature_subject(target_query, narration=query, topic=topic)
             va_hint = None
             if is_creature:

@@ -136,7 +136,7 @@ class VideoPipeline:
                             channel_id=_j.target_channel_id,
                             title=_j.title or "",
                             topic=_j.topic or "",
-                            script=_j.full_narration or "",
+                            script=_j.script or "",
                         )
                         if not _check.get("passed", True) and _check.get("suggested_channel_id"):
                             _old_ch = _j.target_channel_id

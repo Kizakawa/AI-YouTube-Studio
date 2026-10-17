@@ -140,6 +140,7 @@ class AIVideoAgent:
             from app.agents.media_agent import MediaAgent
             from app.services.media.image_quality import (
                 extract_core_creature, is_creature_subject, creature_queries, extract_subject,
+                clean_search_query_from_prompt,
             )
             va = dict(visual_analysis or {})
             g_queries = (
@@ -147,25 +148,23 @@ class AIVideoAgent:
                 or [q for q in (va.get("google_image_queries") or []) if q]
                 or [q for q in (va.get("search_queries") or []) if q]
             )
-            search_q = (g_queries[0] if g_queries else None) or str(va.get("subject") or "").strip() or prompt
-            # Nếu search_q là một câu prompt AI dài (> 8 từ), rút gọn về chủ thể cốt lõi để không làm nghẽn công cụ tìm kiếm
-            if len(search_q.split()) > 8:
-                core_m = extract_core_creature(search_q, narration, prompt)
-                subj_extracted = extract_subject(narration or search_q, max_words=5)
+            raw_search_q = (g_queries[0] if g_queries else None) or str(va.get("subject") or "").strip() or prompt
+            # Luôn lọc sạch prompt boilerplate ("JAW-DROPPING FRAME-0 HOOK", "Detailed prompt in English", "9:16 aspect ratio"...)
+            search_q = clean_search_query_from_prompt(
+                raw_search_q,
+                narration=narration,
+                topic=prompt,
+                max_words=6,
+            )
+            if len(search_q.split()) > 8 or not search_q:
+                core_m = extract_core_creature(raw_search_q, narration, prompt)
+                subj_extracted = extract_subject(narration or raw_search_q, max_words=5)
                 if core_m:
                     search_q = f"giant {core_m} {subj_extracted}".strip()
                 elif subj_extracted:
-                    search_q = f"{subj_extracted} cinematic"
+                    search_q = f"{subj_extracted} photography"
                 else:
-                    words = [
-                        w for w in _re.findall(r"[A-Za-z]{3,}", search_q)
-                        if w.lower() not in (
-                            "vertical", "film", "still", "cinematic", "cinematography", "breathtaking",
-                            "photorealistic", "hyperrealistic", "shot", "shots", "frame", "macro",
-                            "wide", "angle", "low", "high", "close", "extreme", "dramatic", "lighting",
-                        )
-                    ]
-                    search_q = " ".join(words[:6])
+                    search_q = clean_search_query_from_prompt(narration or prompt, max_words=5)
 
             if is_creature_subject(search_q, narration=narration, topic=prompt) and not va.get("creature_mode"):
                 c_qs = creature_queries(search_q, topic=prompt, narration=narration)

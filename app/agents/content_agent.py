@@ -493,29 +493,45 @@ class ContentAgent:
                         sc1[q_field] = cleaned_q
 
             vp1 = str(sc1.get("visual_prompt") or "").strip()
-            if "jaw-dropping" not in vp1.lower() and "frame-0" not in vp1.lower():
+            # Đặt chủ thể cụ thể lên ĐẦU câu prompt (để nếu fallback sang tìm kiếm ảnh thì từ đầu luôn là danh từ thật,
+            # tuyệt đối không chèn "JAW-DROPPING FRAME-0 HOOK" lên đầu làm hỏng truy vấn Google Images!)
+            if "high-contrast" not in vp1.lower() and "rim lighting" not in vp1.lower():
                 core_subj = (
                     str(raw_data.get("primary_entity") or sc1.get("stock_query") or sc1.get("visual_keyword") or "").strip()
                 )
-                subj_clause = f" of {core_subj}" if core_subj else ""
-                wow_prefix = (
-                    f"JAW-DROPPING FRAME-0 HOOK (SCROLL-STOPPING VISUAL IMPACT): "
-                    f"Razor-sharp high-contrast cinematic shot{subj_clause} at peak dramatic action "
-                    f"with intense focal depth and vivid rim lighting — "
-                )
-                sc1["visual_prompt"] = f"{wow_prefix}{vp1}"
+                lead_subj = f"{core_subj}: " if (core_subj and core_subj.lower() not in vp1.lower()) else ""
+                sc1["visual_prompt"] = (
+                    f"{lead_subj}{vp1}, peak dramatic action, razor-sharp high-contrast cinematic photography, "
+                    f"intense focal depth, vivid rim lighting"
+                ).strip(", ")
 
-        # ── 2.8. ĐẢM BẢO PHÂN CẢNH CUỐI KHÉP LẠI GỌN GÀNG, KHÔNG DÍNH TỪ LỬNG ──
+        # ── 2.8. ĐẢM BẢO MỌI PHÂN CẢNH SẠCH TAG ĐẠO DIỄN ([LOOP], [HOOK]) & KHÔNG DÍNH TỪ LỬNG ĐA NGÔN NGỮ ──
         if scenes and isinstance(scenes, list):
-            last_scene = scenes[-1]
-            if isinstance(last_scene, dict):
-                last_narr = last_scene.get("narration", "").strip()
-                # Loại bỏ các đuôi nối lửng lơ như "because...", "which is why..."
-                clean_narr = re.sub(r'[\s\.\,\-\—\…]+(?:because|which|and|so|that|but|with|or|while|as|if|bởi vì|cho nên)[\s\.\,\-\—\…]*$', '', last_narr, flags=re.IGNORECASE)
-                clean_narr = clean_narr.strip().rstrip(".,-—…")
-                if clean_narr and not clean_narr.endswith((".", "!", "?")):
-                    clean_narr += "."
-                last_scene["narration"] = clean_narr
+            _stage_tag_re = re.compile(
+                r'\[(?:LOOP|HOOK|ACT\s*\d*|SCENE\s*\d*|PAUSE|BEAT|SILENCE|WHISPER|INTRO|OUTRO|END)[^\]]*\]',
+                re.IGNORECASE,
+            )
+            _dangling_end_re = re.compile(
+                r'[\s\.\,\-\—\…]+(?:because|which|and|so|that|but|with|or|while|as|if|since|although|though|where|'
+                r'of|to|for|from|in|on|at|by|into|onto|until|his|her|their|its|my|your|our|'
+                r'que|de|do|da|dos|das|pois|porque|para|com|em|no|na|nos|nas|mas|ou|quando|onde|'
+                r'bởi vì|cho nên|nhưng|hoặc|của|với| tại|trong)[\s\.\,\-\—\…]*$',
+                re.IGNORECASE,
+            )
+            for idx_s, sc_obj in enumerate(scenes):
+                if not isinstance(sc_obj, dict):
+                    continue
+                s_narr = str(sc_obj.get("narration") or "").strip()
+                s_narr = _stage_tag_re.sub("", s_narr)
+                s_narr = re.sub(r'\s+', ' ', s_narr).strip()
+                # Khử các từ nối/giới từ/tính từ sở hữu bị cắt cụt ở cuối câu
+                while _dangling_end_re.search(s_narr):
+                    s_narr = _dangling_end_re.sub("", s_narr).strip()
+                if idx_s == len(scenes) - 1:
+                    s_narr = s_narr.rstrip(".,-—…")
+                    if s_narr and not s_narr.endswith((".", "!", "?")):
+                        s_narr += "."
+                sc_obj["narration"] = s_narr
 
         # ── 2.85. VIRAL HOOK RETENTION TOURNAMENT (ĐẤU TRƯỜNG HOOK 0.0s TỐI ƯU STAY-TO-WATCH >= 75%) ──
         def _strip_variant_prefix(val: str) -> str:

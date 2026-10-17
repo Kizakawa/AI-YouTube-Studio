@@ -873,28 +873,44 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
     is_scifi_val = (current_niche == "scifi") or any(k in state.get("topic", "").lower() for k in ("scifi", "sci-fi", "alien", "cyborg", "viễn tưởng"))
     logger.info(f"🔄 [LangGraph] Tự động sửa chữa media kỹ thuật cho các cảnh: {failed_ids} (Lần {retry_count})")
 
+    from app.services.media.media_history import get_recent_media_urls
+    from app.services.media.image_quality import clean_search_query_from_prompt
+    used_refine_urls = get_recent_media_urls(limit=150)
+    for _m in scenes_media:
+        if isinstance(_m, dict) and _m.get("source_url"):
+            used_refine_urls.add(_m["source_url"])
+
     for item in scenes_media:
         if item.get("scene_id") in failed_ids:
             scene_id = item["scene_id"]
             kw = item.get("visual_keyword", "")
             narr = item.get("narration", "")
             vp = item.get("visual_prompt", None)
+            clean_kw_q = clean_search_query_from_prompt(kw or vp or "", narration=narr, topic=state.get("topic", ""), max_words=6) or kw
             is_video = item.get("media_type") == "video" or item.get("production_method") in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO")
             replaced = False
 
             # Nếu cảnh ban đầu là video -> Cố gắng giữ nguyên định dạng video chuyển động
             if is_video:
                 try:
-                    best_v = await asyncio.to_thread(media_agent.search_best_video_clip, kw, None, None, narr, state.get("topic", ""))
-                    if best_v and best_v.get("url"):
+                    best_v = await asyncio.to_thread(
+                        media_agent.search_best_video_clip,
+                        clean_kw_q,
+                        used_refine_urls,
+                        None,
+                        narr,
+                        state.get("topic", ""),
+                    )
+                    if best_v and best_v.get("url") and best_v["url"] not in used_refine_urls:
                         cand_url = best_v["url"]
                         out_v = str(media_dir / f"scene_{scene_id:03d}_refined_video.mp4")
                         await asyncio.to_thread(media_agent.download_file, cand_url, out_v)
                         if Path(out_v).exists() and Path(out_v).stat().st_size > 10000:
+                            used_refine_urls.add(cand_url)
                             item["media_path"] = out_v
                             item["media_type"] = "video"
                             replaced = True
-                            logger.info(f"Scene {scene_id}: ✅ Sửa lỗi kỹ thuật bằng Video Clip Pexels mới: '{kw}'")
+                            logger.info(f"Scene {scene_id}: ✅ Sửa lỗi kỹ thuật bằng Video Clip Pexels mới: '{clean_kw_q}'")
                 except Exception as ex_v:
                     logger.debug(f"Scene {scene_id}: Video refine error: {ex_v}")
 
@@ -902,11 +918,12 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     try:
                         ai_v_path = str(media_dir / f"scene_{scene_id:03d}_refined_i2v.mp4")
                         res_vid = await ai_video_agent.generate_image_to_video(
-                            prompt=vp or kw,
+                            prompt=vp or clean_kw_q,
                             output_path=ai_v_path,
                             duration_seconds=_scene_audio_duration(work_dir, scene_id),
                             scene_id=scene_id,
                             visual_prompt=vp,
+                            used_urls=used_refine_urls,
                             narration=narr,
                             niche=current_niche,
                             is_scifi=is_scifi_val,
@@ -922,15 +939,18 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
             # Nếu là ảnh hoặc video dự phòng chưa thành công: sinh ảnh AI điện ảnh chất lượng cao
             if not replaced:
                 ai_img_path = str(media_dir / f"scene_{scene_id:03d}_refined.jpg")
-                fallback_kw = f"Dramatic cinematic photorealistic shot of {primary_entity or kw}, {kw}, 8k sharp focus"
+                fallback_kw = f"Dramatic cinematic photorealistic shot of {primary_entity or clean_kw_q}, {clean_kw_q}, 8k sharp focus"
                 res_img = await asyncio.to_thread(
-                    image_agent.generate_scene_image,
-                    fallback_kw,
-                    ai_img_path,
-                    "9:16",
-                    "cinematic",
-                    scene_id,
-                    vp,
+                    lambda: image_agent.generate_scene_image(
+                        prompt=fallback_kw,
+                        output_path=ai_img_path,
+                        aspect_ratio="9:16",
+                        niche="cinematic",
+                        scene_id=scene_id,
+                        visual_prompt=vp,
+                        used_urls=used_refine_urls,
+                        topic=state.get("topic", ""),
+                    )
                 )
                 if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 2000:
                     item["media_path"] = res_img
@@ -1065,7 +1085,15 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
     # Chủ đề thiên nhiên / địa danh có thật (rừng Amazon, biển sâu, sa mạc...): footage thật luôn được thử trước,
     # vì ảnh AI miễn phí thường vẽ sai loài (cá sấu thành gấu / báo) và không có bối cảnh thật.
     from app.services.media.query_broadener import is_real_world_nature_topic
+    from app.services.media.media_history import get_recent_media_urls
+    from app.services.media.image_quality import (
+        is_creature_subject, creature_queries, clean_search_query_from_prompt,
+    )
     is_nature_topic = is_real_world_nature_topic(state.get("topic", ""))
+    used_fix_urls = get_recent_media_urls(limit=150)
+    for _m in scenes_media:
+        if isinstance(_m, dict) and _m.get("source_url"):
+            used_fix_urls.add(_m["source_url"])
     
     logger.info(
         f"🔄 [ContentRefine] Tự sửa nội dung cho {len(failed_ids)} cảnh "
@@ -1097,19 +1125,25 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
             clean_sugg = raw_suggestion[raw_suggestion.find("]") + 1:].strip()
 
         parts = [p.strip() for p in clean_sugg.split("|")]
-        query_part = parts[0] if len(parts) > 0 and parts[0] else kw
+        raw_query_part = parts[0] if len(parts) > 0 and parts[0] else kw
         prompt_part = parts[1] if len(parts) > 1 and parts[1] else clean_sugg
         idea_part = parts[2] if len(parts) > 2 else ""
+
+        query_part = clean_search_query_from_prompt(
+            raw_query_part or kw,
+            narration=narr,
+            topic=state.get("topic", ""),
+            max_words=6,
+        ) or clean_scene_search_query(raw_query_part or kw, max_words=5)
 
         logger.info(f"🎯 [Scene {scene_id} Fix] Tool chỉ định: '{rec_tool or 'auto'}' | Query: '{query_part}' | Idea: '{idea_part[:40]}'")
 
         # ── HÀNH ĐỘNG 0 (ƯU TIÊN TUYỆT ĐỐI CHO QUÁI VẬT / GEMINI SEARCH): Tìm ảnh 8K chuẩn Google Search + Vision Curation ──
-        from app.services.media.image_quality import is_creature_subject, creature_queries
         is_creature_fix = is_creature_subject(query_part or kw, narration=narr, topic=state.get("topic", ""))
         search_first_fix = os.getenv("SEARCH_FIRST_VISUAL_MODE", "true").strip().lower() not in ("0", "false", "no", "off")
         if not replaced and (is_creature_fix or (search_first_fix and rec_tool not in ("pexels_video", "wikimedia_archive"))):
             try:
-                va_fix = None
+                va_fix = {"subject": query_part}
                 target_fix_q = query_part or kw
                 if is_creature_fix:
                     c_qs = creature_queries(target_fix_q, topic=state.get("topic", ""), narration=narr)
@@ -1119,15 +1153,16 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
                 best_p = await asyncio.to_thread(
                     media_agent.search_best_photo,
                     target_fix_q,
-                    None,
+                    used_fix_urls,
                     va_fix,
                     narr,
                     state.get("topic", ""),
                 )
-                if best_p and best_p.get("url"):
+                if best_p and best_p.get("url") and best_p["url"] not in used_fix_urls:
                     out_p = str(media_dir / f"scene_{scene_id:03d}_content_fix_gsearch.jpg")
                     await asyncio.to_thread(media_agent.download_file, best_p["url"], out_p)
                     if Path(out_p).exists() and Path(out_p).stat().st_size > 3000:
+                        used_fix_urls.add(best_p["url"])
                         item["media_path"] = out_p
                         item["media_type"] = "image"
                         item["vision_curated"] = True
@@ -1144,12 +1179,20 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
             or (is_nature_topic and rec_tool != "wikimedia_archive")
         ):
             try:
-                best_v = await asyncio.to_thread(media_agent.search_best_video_clip, query_part or kw, None, None, narr, state.get("topic", ""))
-                if best_v and best_v.get("url"):
+                best_v = await asyncio.to_thread(
+                    media_agent.search_best_video_clip,
+                    query_part or kw,
+                    used_fix_urls,
+                    None,
+                    narr,
+                    state.get("topic", ""),
+                )
+                if best_v and best_v.get("url") and best_v["url"] not in used_fix_urls:
                     cand_u = best_v["url"]
                     out_v = str(media_dir / f"scene_{scene_id:03d}_content_fix_pexels.mp4")
                     await asyncio.to_thread(media_agent.download_file, cand_u, out_v)
                     if Path(out_v).exists() and Path(out_v).stat().st_size > 10000:
+                        used_fix_urls.add(cand_u)
                         item["media_path"] = out_v
                         item["media_type"] = "video"
                         replaced = True
@@ -1169,6 +1212,7 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
                     duration_seconds=_scene_audio_duration(work_dir, scene_id),
                     scene_id=scene_id,
                     visual_prompt=prompt_part,
+                    used_urls=used_fix_urls,
                     narration=narr,
                     niche=current_niche,
                     is_scifi=is_scifi_val,
@@ -1191,6 +1235,7 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
                     duration_seconds=_scene_audio_duration(work_dir, scene_id),
                     scene_id=scene_id,
                     visual_prompt=prompt_part,
+                    used_urls=used_fix_urls,
                     narration=narr,
                     niche=current_niche,
                     is_scifi=is_scifi_val,
@@ -1213,10 +1258,11 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
                     stock_query=query_part,
                     primary_entity=primary_entity,
                     scene_id=scene_id,
+                    used_urls=used_fix_urls,
                     prefer_video=False,
                     prefer_photo=True,
                 )
-                if cand and cand.get("url"):
+                if cand and cand.get("url") and cand["url"] not in used_fix_urls:
                     cand_url = cand["url"]
                     c_src = cand.get("source", "fix")
                     c_type = cand.get("media_type", "image")
@@ -1224,6 +1270,7 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
                     out = str(media_dir / f"scene_{scene_id:03d}_content_fix_{c_src}{ext}")
                     await asyncio.to_thread(media_agent.download_file, cand_url, out)
                     if Path(out).exists() and Path(out).stat().st_size > 3000:
+                        used_fix_urls.add(cand_url)
                         item["media_path"] = out
                         item["media_type"] = c_type
                         replaced = True
@@ -1254,6 +1301,7 @@ async def node_refine_content(state: VideoWorkflowState) -> Dict[str, Any]:
                         niche=current_niche,
                         scene_id=scene_id,
                         visual_prompt=refined_prompt,
+                        used_urls=used_fix_urls,
                         topic=state.get("topic", ""),
                         premium=True,  # Ảnh đã bị AI Vision chấm trượt → dùng engine tốt nhất hiện có
                     )

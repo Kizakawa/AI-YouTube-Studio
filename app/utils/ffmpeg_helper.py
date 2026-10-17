@@ -594,7 +594,7 @@ def image_to_video(
             scale_h = int(height * scale_factor)
             from app.services.media.image_quality import prepare_vertical
             im_resized = prepare_vertical(
-                im, scale_w, scale_h, max_upscale=2.0 * scale_factor, is_hook_scene=is_hook_scene
+                im, scale_w, scale_h, max_upscale=3.8 * scale_factor, is_hook_scene=is_hook_scene
             )
             im_resized.save(norm_path, "JPEG", quality=94 if is_hook_scene else 92)
             image_path = norm_path

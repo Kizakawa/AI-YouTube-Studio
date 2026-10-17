@@ -18,16 +18,25 @@ from app.schemas.contracts import ScriptContract, SceneContract
 
 logger = logging.getLogger(__name__)
 
-# Danh sách từ nối lửng lơ trong tiếng Anh tuyệt đối không được đứng cuối câu/kịch bản
+# Danh sách từ nối / giới từ / đại từ sở hữu lửng lơ (EN + PT + VI) tuyệt đối không được đứng cuối câu/kịch bản
 TRAILING_ENGLISH_CONNECTORS = [
     "because", "which", "and", "so", "that", "but", "with",
-    "or", "while", "as", "if", "since", "although", "though", "where"
+    "or", "while", "as", "if", "since", "although", "though", "where",
+    "of", "to", "for", "from", "in", "on", "at", "by", "into", "onto", "until",
+    "his", "her", "their", "its", "my", "your", "our", "the", "a", "an",
+    "que", "de", "do", "da", "dos", "das", "pois", "porque", "para", "com",
+    "em", "no", "na", "nos", "nas", "mas", "ou", "quando", "onde",
 ]
 
 # Regex nhận diện đuôi câu kết thúc bằng từ nối đơn độc hoặc dấu ba chấm lửng
 TRAILING_CONNECTOR_PATTERN = re.compile(
     r'\b(?:' + '|'.join(TRAILING_ENGLISH_CONNECTORS) + r')\s*(?:[\.\,\-\—\…]+|\.{2,})*$',
     re.IGNORECASE
+)
+
+STAGE_TAG_PATTERN = re.compile(
+    r'\[(?:LOOP|HOOK|ACT\s*\d*|SCENE\s*\d*|PAUSE|BEAT|SILENCE|WHISPER|INTRO|OUTRO|END)[^\]]*\]',
+    re.IGNORECASE,
 )
 
 
@@ -49,35 +58,44 @@ class ScriptValidationLinter:
     @classmethod
     def check_trailing_connectors(cls, script: ScriptContract) -> List[str]:
         """
-        Kiểm tra toàn bộ phân cảnh và câu kết của kịch bản xem có bị cắt cụt lửng lơ không.
+        Kiểm tra toàn bộ phân cảnh và câu kết của kịch bản xem có bị cắt cụt lửng lơ hoặc sót nhãn [LOOP] không.
         """
         errors = []
         scenes = script.scenes or []
         if not scenes:
             return ["Script has no scenes."]
 
+        for sc in scenes:
+            raw_sc_text = (sc.narration or "").strip()
+            if STAGE_TAG_PATTERN.search(raw_sc_text):
+                tag_found = STAGE_TAG_PATTERN.search(raw_sc_text).group(0)
+                errors.append(
+                    f"Scene {sc.scene_id} narration contains raw stage direction tag '{tag_found}'. "
+                    f"Never include bracketed stage tags like [LOOP] or [HOOK] in spoken narration."
+                )
+
         # 1. Kiểm tra cảnh cuối cùng (quan trọng nhất đối với Infinite Shorts Loop)
         last_scene = scenes[-1]
-        last_text = (last_scene.narration or "").strip()
+        last_text = STAGE_TAG_PATTERN.sub("", (last_scene.narration or "")).strip()
         
         # Bỏ dấu chấm than, chấm hỏi cuối câu nếu có
         cleaned_last = re.sub(r'[\s\.\!\?]+$', '', last_text)
         if TRAILING_CONNECTOR_PATTERN.search(cleaned_last):
             match = TRAILING_CONNECTOR_PATTERN.search(cleaned_last).group(0).strip(" .,-—…")
             errors.append(
-                f"Scene {last_scene.scene_id} (Final Scene) ends abruptly on an incomplete connector '{match}'. "
-                f"Full sentences are required. Do NOT leave trailing prepositions or conjunctions."
+                f"Scene {last_scene.scene_id} (Final Scene) ends abruptly on an incomplete word '{match}'. "
+                f"Full sentences are required. Do NOT leave trailing prepositions, possessives, or conjunctions."
             )
 
         # 2. Kiểm tra từng scene riêng lẻ xem có scene nào bị cắt cụt không
         for sc in scenes[:-1]:
-            sc_text = (sc.narration or "").strip()
+            sc_text = STAGE_TAG_PATTERN.sub("", (sc.narration or "")).strip()
             cleaned_sc = re.sub(r'[\s\.\!\?]+$', '', sc_text)
             if TRAILING_CONNECTOR_PATTERN.search(cleaned_sc):
                 match = TRAILING_CONNECTOR_PATTERN.search(cleaned_sc).group(0).strip(" .,-—…")
                 errors.append(
-                    f"Scene {sc.scene_id} narration ends on a dangling connector '{match}'. "
-                    f"Each scene must be a grammatically coherent clause."
+                    f"Scene {sc.scene_id} narration ends on a dangling word '{match}'. "
+                    f"Each scene must be a grammatically complete clause."
                 )
 
         return errors
