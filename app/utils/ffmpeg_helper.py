@@ -795,12 +795,15 @@ def render_opening_hook_multi_cut(
             else:
                 shot_durs.append(round(max(0.35, duration_seconds - elapsed), 3))
 
-        # Bước 4: Ghép 4 shots bằng 1 lệnh FFmpeg filter_complex duy nhất + Niche Color Grading
+        # Bước 4: Ghép 4 shots bằng 1 lệnh FFmpeg filter_complex duy nhất + Niche Color Grading + Live Motion FX (Đề xuất 2)
         grading = get_niche_color_grading(niche=niche, is_scifi=is_scifi)
         clean_vf_filter = _re.sub(r",?unsharp=[^,]+", "", grading["vf_filter"]).strip(",")
+        live_fx = get_hook_live_fx_filter(niche=niche, is_scifi=is_scifi, width=width, height=height)
         post_filters = [f"scale={width}:{height}", "setsar=1", f"fps={fps}"]
         if clean_vf_filter:
             post_filters.append(clean_vf_filter)
+        if live_fx:
+            post_filters.append(live_fx)
         if grading.get("vignette"):
             post_filters.append(grading["vignette"])
         post_chain = ",".join(post_filters)
@@ -824,8 +827,8 @@ def render_opening_hook_multi_cut(
             output_path,
         ]
         logger.info(
-            f"  ⚡ [Hook Multi-Cut Render] {n_shots} shots ({n_shots - 1} nhát cắt chuyển cảnh: "
-            f"{'s -> '.join(f'{d:.2f}' for d in shot_durs)}s) từ {len(base_images)} ảnh gốc"
+            f"  ⚡ [Hook Multi-Cut + Live FX Render] {n_shots} shots ({n_shots - 1} nhát cắt: "
+            f"{'s -> '.join(f'{d:.2f}' for d in shot_durs)}s | Niche FX: {niche or 'default'}) từ {len(base_images)} ảnh gốc"
         )
         run_ffmpeg_with_gpu_fallback(args)
         return output_path
@@ -835,6 +838,59 @@ def render_opening_hook_multi_cut(
                 Path(tf).unlink(missing_ok=True)
             except Exception:
                 pass
+
+
+def get_hook_live_fx_filter(
+    niche: Optional[str] = None,
+    is_scifi: bool = False,
+    width: int = 1080,
+    height: int = 1920,
+) -> str:
+    """
+    Bộ lọc Hiệu Ứng Chuyển Động Thực (Live Particle / Lửa / Khói / Sóng Âm / Heartbeat Glitch)
+    phủ trực tiếp lên Cảnh 1 (4 ảnh Google Top Search cắt nhanh) cho nhóm kênh Lịch Sử, Tâm Lý, Bí Ẩn:
+    - Lịch sử / Chiến tranh (history, alternate_history):
+      Rung chấn nhẹ (Camera Shake) + Chớp lửa bập bùng (Fire Flicker) + Khói/Hạt bụi động (Smoke Grain).
+    - Bí ẩn / Đại dương (mystery, mysteries, scifi):
+      Trôi nổi đáy sâu (Deep Drift) + Quét tia Sonar chớp sáng (Sonar Pulse Sweep) + Hạt bụi nước (Floating Particles).
+    - Tâm lý (psychology, selfhelp):
+      Nhiễu sóng thần kinh (Chromatic Aberration RGB Shift) + Nhịp đập thị giác (Heartbeat Pulse).
+    """
+    n_low = (niche or "").lower()
+    if any(k in n_low for k in ("history", "war", "lịch sử", "chiến tranh", "alternate")):
+        # Rung chấn Camera Shake + Chớp lửa ấm bập bùng + Khói chuyển động
+        return (
+            f"colorbalance=rs=0.07:gs=0.02:bs=-0.04,"
+            f"crop=iw-16:ih-16:'8+5*sin(28*t)':'8+5*cos(23*t)',"
+            f"scale={width}:{height},setsar=1,"
+            f"eq=brightness='0.028*sin(15*t)':contrast=1.06:saturation=1.10:eval=frame,"
+            f"noise=alls=13:allf=t+u"
+        )
+    if any(k in n_low for k in ("psych", "tâm lý", "selfhelp", "mind", "brain")):
+        # Nhịp đập thị giác (Heartbeat Pulse ~2Hz) + Nhiễu sóng thần kinh (Chromatic Glitch)
+        return (
+            f"rgbashift=rh=5:bh=-5:rv=2:bv=-2,"
+            f"crop=iw-14:ih-14:'7+4*sin(18*t)':'7+3*cos(18*t)',"
+            f"scale={width}:{height},setsar=1,"
+            f"eq=brightness='0.032*sin(12.5*t)':contrast=1.07:eval=frame,"
+            f"noise=alls=9:allf=t+u"
+        )
+    if is_scifi or any(k in n_low for k in ("myster", "bí ẩn", "ocean", "space", "scifi")):
+        # Hạt bụi nước trôi nổi + Quét tia Sonar / Ánh sáng chớp động
+        return (
+            f"colorbalance=bs=0.07:gs=0.03,"
+            f"crop=iw-12:ih-12:'6+3*sin(7*t)':'6+4*cos(5*t)',"
+            f"scale={width}:{height},setsar=1,"
+            f"eq=brightness='0.030*sin(9*t)':contrast=1.06:eval=frame,"
+            f"noise=alls=12:allf=t+u"
+        )
+    # Mặc định cho các kênh khác khi dùng ảnh tĩnh ở Hook: rung động nhẹ + hạt phim sống động
+    return (
+        f"crop=iw-10:ih-10:'5+3*sin(14*t)':'5+3*cos(11*t)',"
+        f"scale={width}:{height},setsar=1,"
+        f"eq=brightness='0.02*sin(10*t)':contrast=1.04:eval=frame,"
+        f"noise=alls=8:allf=t+u"
+    )
 
 
 def multi_pose_loop_to_video(
@@ -974,16 +1030,17 @@ def trim_video(
     niche: Optional[str] = None,
     apply_grading: bool = True,
     is_hook_scene: bool = False,
+    fair_use_transform: bool = True,
 ) -> str:
     """
-    Cắt video Pexels về đúng duration cần thiết + scale/crop 9:16 + chuẩn hóa fps 30.
+    Cắt video Pexels / YouTube Action về đúng duration cần thiết + scale/crop 9:16 + chuẩn hóa fps 30.
     Tự động lặp lại (stream_loop) nếu video stock ngắn hơn thời lượng lời thoại.
     Bỏ audio gốc của stock video.
     Áp dụng Cinematic Color Grading & Vignette chuẩn hóa theo từng Niche (100% Free Native FFmpeg Filter).
-    Tự động nhận diện và KHÔNG áp grading 2 lần nếu clip nguồn đã được render từ trước.
     Đặc biệt cho Scene 1 (is_hook_scene=True):
     - Quét Peak-Action Smart Seek để bỏ qua 1-2s đầu tĩnh, nhảy thẳng vào khoảnh khắc cao trào ngay Frame 0.0s.
-    - Kích hoạt 3-Stage Shockwave Multi-Shot Cut + 0.22s Optical Impact Pop.
+    - Biến đổi chống bản quyền tự động (Fair Use 100%): Lật ngang khung hình (hflip), phóng nhẹ 108%,
+      cắt thành các đoạn ngắn chuyển góc máy dồn dập và phủ bộ lọc màu điện ảnh.
     """
     # Tránh double-grading (nếu clip đã qua image_to_video hoặc trim_video trước đó)
     input_filename = Path(input_path).name.lower()
@@ -1035,16 +1092,17 @@ def trim_video(
 
     enc_args = get_video_encoder_args(quality="intermediate")
     if is_hook_scene and duration_seconds >= 1.8:
-        t1 = round(duration_seconds * 0.24, 3)
-        t2 = round(duration_seconds * 0.48, 3)
-        t3 = round(duration_seconds * 0.73, 3)
+        t1 = round(duration_seconds * 0.28, 3)
+        t2 = round(duration_seconds * 0.56, 3)
+        t3 = round(duration_seconds * 0.80, 3)
         t4 = round(duration_seconds, 3)
-        cw1, ch1 = max(2, (int(width / 1.26) // 2) * 2), max(2, (int(height / 1.26) // 2) * 2)
+        zw, zh = ((int(width * 1.08) // 2) * 2), ((int(height * 1.08) // 2) * 2)
+        cw1, ch1 = max(2, (int(width / 1.24) // 2) * 2), max(2, (int(height / 1.24) // 2) * 2)
         cw2, ch2 = max(2, (int(width / 1.16) // 2) * 2), max(2, (int(height / 1.16) // 2) * 2)
-        cw3, ch3 = max(2, (int(width / 1.38) // 2) * 2), max(2, (int(height / 1.38) // 2) * 2)
+        cw3, ch3 = max(2, (int(width / 1.36) // 2) * 2), max(2, (int(height / 1.36) // 2) * 2)
+        fair_use_prefix = f"hflip,scale={zw}:{zh}:force_original_aspect_ratio=increase,crop={width}:{height}," if fair_use_transform else f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},"
         filter_complex = (
-            f"[0:v]{pts_prefix}scale={width}:{height}:force_original_aspect_ratio=increase,"
-            f"crop={width}:{height},setsar=1,fps={fps},split=4[v0][v1][v2][v3];"
+            f"[0:v]{pts_prefix}{fair_use_prefix}setsar=1,fps={fps},split=4[v0][v1][v2][v3];"
             f"[v0]trim=0:{t1},setpts=PTS-STARTPTS[s0];"
             f"[v1]trim={t1}:{t2},setpts=PTS-STARTPTS,"
             f"crop={cw1}:{ch1}:(iw-ow)*0.50:(ih-oh)*0.34,scale={width}:{height},setsar=1[s1];"
@@ -1067,7 +1125,7 @@ def trim_video(
             output_path,
         ]
         logger.info(
-            f"  ⚡ [Hook Video Multi-Cut] 4 shots (3 nhát cắt góc máy: 0s -> {t1:.2f}s -> {t2:.2f}s -> {t3:.2f}s -> {t4:.2f}s)"
+            f"  ⚡ [Hook Video Multi-Cut + Fair-Use 108% hflip] 4 shots (3 nhát cắt: 0s -> {t1:.2f}s -> {t2:.2f}s -> {t3:.2f}s -> {t4:.2f}s)"
         )
     else:
         args = [
