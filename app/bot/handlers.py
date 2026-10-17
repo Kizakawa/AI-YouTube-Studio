@@ -1560,15 +1560,11 @@ async def start_render_pipeline(
                         q_data = json.loads(jb.quality_scores) if isinstance(jb.quality_scores, str) else (jb.quality_scores or {})
                         sc = q_data.get("script_critic") or {}
                         vc = q_data.get("visual_critic") or {}
-                        cqc = q_data.get("content_quality_critic") or {}
                         aq = q_data.get("audio_qa") or {}
-                        cqc_score = cqc.get("overall_score")
-                        cqc_line = f" 🧠 Nội dung (AI Vision Critic): `{cqc_score}/10`\n" if cqc_score is not None else ""
                         scores_text = (
-                            f"\n📊 **Báo cáo Thẩm định 5 Bộ AI Graders:**\n"
+                            f"\n📊 **Báo cáo Thẩm định 4 Bộ AI Graders:**\n"
                             f" ⭐ Kịch bản (Script Critic): `{sc.get('overall_score', 8.5)}/10`\n"
-                            f" 🖼️ Kỹ thuật Media (Visual Critic): `{vc.get('overall_score', 9.0)}/10`\n"
-                            f"{cqc_line}"
+                            f" 🖼️ Độ sắc nét & Kỹ thuật Media (Visual Critic): `{vc.get('overall_score', 9.0)}/10`\n"
                             f" 🎙️ Giọng đọc (Audio QA): `{aq.get('words_per_minute', 145)} WPM ({aq.get('pacing_rating', 'PERFECT')})`\n"
                             f" 🎬 Kỹ thuật Render (Video QA): `1080x1920 30fps (Đạt)`\n"
                         )
@@ -2891,21 +2887,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await safe_query_answer(query)
 
-    if data.startswith("colab_cluster_menu:"):
-        job_id = int(data.split(":")[1])
-        markup = get_script_review_keyboard(job_id)
-        msg_text = (
-            f"🎬 <b>HỆ THỐNG DỰNG VIDEO AI NỘI BỘ (Task #{job_id})</b>\n\n"
-            f"💡 Hệ thống hiện tại đang sử dụng động cơ AI Render Nội Bộ (Local Native Engine) "
-            f"kết hợp AI Image Generator và kho tài nguyên chất lượng cao, không phụ thuộc Google Colab.\n\n"
-            f"👉 Bấm <b>🎬 DUYỆT & DỰNG VIDEO NGAY</b> bên dưới để sản xuất Shorts!"
-        )
-        if query and query.message:
-            await query.message.edit_text(msg_text, reply_markup=markup, parse_mode="HTML")
-        else:
-            await safe_reply(update, msg_text, reply_markup=markup, parse_mode="HTML")
-
-    elif data.startswith("back_script_review:"):
+    if data.startswith("back_script_review:"):
         job_id = int(data.split(":")[1])
         markup = get_script_review_keyboard(job_id)
         msg_text = (
@@ -2917,95 +2899,8 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await safe_reply(update, msg_text, reply_markup=markup, parse_mode="HTML")
 
-    elif data.startswith("check_drive_render:"):
+    elif data.startswith(("render_local:", "check_drive_render:")):
         job_id = int(data.split(":")[1])
-        from app.services.colab_queue_service import check_and_import_completed_video
-
-        wait_m = await safe_reply(update, f"🔍 Đang quét tìm video #{job_id} từ thư mục Google Drive...")
-        ok, local_p, d_link = check_and_import_completed_video(job_id)
-        if ok:
-            chat_id = update.effective_chat.id if update.effective_chat else None
-            bot = context.bot
-            from app.services.monetization_engine import find_best_amazon_product, build_amazon_url
-            with get_db() as db:
-                jb = db.query(VideoJob).filter(VideoJob.id == job_id).first()
-                v_title = jb.title or jb.topic if jb else f"Video #{job_id}"
-                ch_id = jb.target_channel_id if jb else None
-
-            aff_prod = find_best_amazon_product(ch_id or "", v_title, jb.topic if jb else "", jb.script if jb else "")
-            aff_url = build_amazon_url(aff_prod["asin"])
-            aff_name = aff_prod.get("name", "Sản phẩm đề xuất")
-            aff_cta = aff_prod.get("cta", "")
-            post_markup = get_video_post_render_keyboard(job_id, affiliate_url=aff_url, affiliate_name=aff_name)
-
-            safe_title = html.escape(str(v_title))
-            safe_aff_name = html.escape(str(aff_name))
-            safe_aff_cta = html.escape(str(aff_cta))
-            aff_url_esc = html.escape(str(aff_url))
-            size_mb = os.path.getsize(local_p) / (1024 * 1024) if os.path.exists(local_p) else 0
-            drive_str = f'<a href="{d_link}">Mở file gốc trên Drive</a>' if d_link else "Đã lưu an toàn"
-            cap = (
-                f"🎉 <b>VIDEO #{job_id} ĐÃ RENDER HOÀN TẤT &amp; ĐÃ GỬI VỀ NHÓM!</b>\n\n"
-                f"📌 <b>Tiêu đề:</b> {safe_title}\n"
-                f"📦 <b>Dung lượng:</b> {size_mb:.1f} MB\n"
-                f"⚡ <b>Công nghệ:</b> GPU NVENC P2 Tăng Tốc (1080x1920 30fps)\n"
-                f"☁️ <b>Google Drive:</b> {drive_str}\n\n"
-                f"🛒 <b>SẢN PHẨM TIẾP THỊ LIÊN KẾT (AFFILIATE):</b>\n"
-                f"• <b>Sản phẩm:</b> {safe_aff_name}\n"
-                f"• <b>Gợi ý:</b> <i>{safe_aff_cta}</i>\n"
-                f"👉 <b>Link mua ngay:</b> <a href=\"{aff_url_esc}\">{aff_url_esc}</a>\n\n"
-                f"👉 Bấm <b>Đăng Ngay</b>, <b>Lên Lịch</b>, <b>Sửa</b> hoặc <b>Xóa</b> bên dưới:"
-            )
-            if len(cap) > 1000:
-                cap = cap[:990] + "..."
-            sent_video = False
-            if size_mb <= 49.0 and os.path.exists(local_p) and chat_id and bot:
-                try:
-                    with open(local_p, "rb") as vf:
-                        await bot.send_video(
-                            chat_id=chat_id,
-                            video=vf,
-                            caption=cap,
-                            parse_mode="HTML",
-                            reply_markup=post_markup,
-                            supports_streaming=True,
-                            read_timeout=180,
-                            write_timeout=180
-                        )
-                    sent_video = True
-                    try:
-                        await wait_m.delete()
-                    except Exception:
-                        pass
-                except Exception as ex_v:
-                    logger.warning(f"Lỗi gửi file video: {ex_v}")
-                    try:
-                        with open(local_p, "rb") as vf_doc:
-                            await bot.send_document(
-                                chat_id=chat_id,
-                                document=vf_doc,
-                                caption=cap,
-                                parse_mode="HTML",
-                                reply_markup=post_markup,
-                                read_timeout=180,
-                                write_timeout=180
-                            )
-                        sent_video = True
-                        try:
-                            await wait_m.delete()
-                        except Exception:
-                            pass
-                    except Exception as ex_d:
-                        logger.warning(f"Lỗi gửi document video: {ex_d}")
-
-            if not sent_video:
-                await safe_edit_text(wait_m, cap, reply_markup=post_markup, parse_mode="HTML")
-        else:
-            await safe_edit_text(wait_m, f"⏳ {local_p}\n\n👉 Vui lòng đợi vài giây để Colab Pro+ render xong rồi bấm thử lại!")
-
-    elif data.startswith("render_local:"):
-        job_id = int(data.split(":")[1])
-        await safe_reply(update, f"💻 Đang chuyển Video #{job_id} sang chế độ render bằng CPU máy chủ (chậm 10-15 phút)...")
         await _enqueue_render(update, context, job_id, user.first_name)
 
     # 2. Đăng lên YouTube & Google Drive sau khi xem video
@@ -3776,11 +3671,6 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❌ **{user.first_name}** đã hủy video #{job_id}."
         )
 
-    # 6.1 Bỏ qua tương tác Colab (tính năng đã giản lược)
-    elif data in ("check_colab_status", "rotate_colab_node", "colab_rotation_guide"):
-        await safe_query_answer(query, text="Tính năng Colab đã được giản lược để tối ưu dự án.")
-        return
-
     # 7. Xử lý toàn bộ các kịch bản đang chờ (Render Queue Batch)
     elif data == "process_all_pending":
         batch_lock_key = "batch_process_all_pending"
@@ -4313,11 +4203,6 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "confirm_del_failed":
         await _handle_confirm_delete_failed_videos(update, context)
 
-    # 17. Bỏ qua cụm Colab GPU
-    elif data.startswith(("rotate_colab_node", "check_colab_status", "colab_rotation_guide")):
-        await safe_query_answer(query, text="Tính năng Colab đã được giản lược để tối ưu dự án.")
-        return
-
 
 async def _handle_confirm_delete_video(update: Update, context: ContextTypes.DEFAULT_TYPE, job_id: int):
     """Xử lý khi người dùng ấn nút [XÁC NHẬN XÓA] video cụ thể"""
@@ -4657,15 +4542,6 @@ def _resolve_video_file_path(job_id: int, recorded_path: Optional[str] = None) -
         except Exception:
             pass
 
-    # Tự động đồng bộ từ Google Drive nếu máy chủ chưa có file cục bộ
-    try:
-        from app.services.colab_queue_service import check_and_import_completed_video
-        ok, local_p, _ = check_and_import_completed_video(job_id)
-        if ok and local_p and os.path.exists(local_p) and os.path.getsize(local_p) > 1000:
-            return Path(local_p)
-    except Exception:
-        pass
-
     return None
 
 
@@ -4830,17 +4706,17 @@ async def send_video_file_handler(update: Update, context: ContextTypes.DEFAULT_
                 f"📌 **Tiêu đề:** {title}\n"
                 f"📺 **Kênh:** `{channel_id}`\n"
                 f"🔗 **Link Google Drive:** {d_link}\n\n"
-                f"👉 Bấm nút bên dưới để mở xem hoặc tải video từ kho lưu trữ Google Drive 20TB!",
+                f"👉 Bấm nút bên dưới để mở xem hoặc tải video từ kho lưu trữ Google Drive!",
                 reply_markup=actions_markup
             )
             return
 
         await safe_reply(
             update,
-            f"⚠️ **Không tìm thấy tệp video của Job #{job_id} trên máy chủ hoặc Google Drive!**\n\n"
+            f"⚠️ **Không tìm thấy tệp video của Job #{job_id} trên máy chủ!**\n\n"
             f"• Trạng thái trong DB: `{status}`\n"
             f"• Đường dẫn dự kiến: `{recorded_path or 'storage/outputs/video_' + str(job_id) + '.mp4'}`\n"
-            f"Có thể video đang được Colab xử lý hoặc chưa bấm chạy. Bạn có thể render lại bằng cách gõ `/render {job_id}`."
+            f"Bạn có thể render lại bằng cách gõ `/render {job_id}`."
         )
         return
 

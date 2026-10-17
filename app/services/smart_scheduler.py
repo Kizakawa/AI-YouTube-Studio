@@ -310,14 +310,6 @@ def sync_scheduled_jobs_status() -> int:
     except Exception as qe:
         logger.debug(f"Lỗi khi xử lý hàng đợi quota: {qe}")
 
-    # ──────────────────────────────────────────────────────────────────
-    # COLAB WATCHDOG TIMER: Phát hiện và khôi phục job bị treo trên Colab
-    # ──────────────────────────────────────────────────────────────────
-    try:
-        updated_count += watchdog_colab_stuck_jobs()
-    except Exception as we:
-        logger.debug(f"Lỗi khi chạy Colab Watchdog: {we}")
-
     return updated_count
 
 
@@ -422,74 +414,6 @@ def process_waiting_quota_jobs() -> int:
         logger.warning(f"Lỗi khi xử lý waiting_quota_jobs: {ex}")
 
     return processed_count
-
-
-def watchdog_colab_stuck_jobs(timeout_minutes: Optional[int] = None) -> int:
-    """
-    Quét và tự động xử lý các VideoJob bị kẹt ở trạng thái PENDING_COLAB.
-    Vì Colab Pro+ hỗ trợ chạy ngầm 24h, thời gian timeout mặc định được thiết lập an toàn
-    (mặc định 60 phút, hoặc lấy từ settings.COLAB_TIMEOUT_MINUTES).
-
-    Quy trình kiểm tra 2 bước:
-    1. Kiểm tra xem trên Google Drive đã có file video_{job_id}.mp4 hoàn thành chưa.
-       Nếu đã có -> tự động import về và kiểm định VideoQA, chuyển RENDERED!
-    2. Nếu chưa có file và thời gian kẹt > timeout_minutes:
-       -> Tự động chuyển về SCRIPT_READY để hàng đợi Local có thể render dự phòng,
-          không làm kẹt SmartScheduler và Dashboard.
-    """
-    from config.settings import settings
-    if timeout_minutes is None:
-        timeout_minutes = getattr(settings, "COLAB_TIMEOUT_MINUTES", 60)
-
-    recovered_count = 0
-    now_utc = datetime.utcnow()
-    cutoff_time = now_utc - timedelta(minutes=timeout_minutes)
-
-    try:
-        from app.services.colab_queue_service import check_and_import_completed_video
-    except Exception:
-        check_and_import_completed_video = None
-
-    try:
-        with get_db() as db:
-            stuck_jobs = db.query(VideoJob).filter(
-                VideoJob.status == "PENDING_COLAB",
-                (VideoJob.updated_at < cutoff_time) | (VideoJob.updated_at.is_(None))
-            ).all()
-
-            if not stuck_jobs:
-                return 0
-
-            for job in stuck_jobs:
-                jid = job.id
-                # Bước 1: Thử import nếu thực ra Colab đã làm xong trên Drive
-                if check_and_import_completed_video:
-                    try:
-                        ok_imp, _, _ = check_and_import_completed_video(jid)
-                        if ok_imp:
-                            logger.info(f"🎉 [ColabWatchdog] Job #{jid} đã xong trên Drive -> Import thành công!")
-                            recovered_count += 1
-                            continue
-                    except Exception as e_imp:
-                        logger.debug(f"[ColabWatchdog] Thử import job #{jid} chưa thành công: {e_imp}")
-
-                # Bước 2: Quá timeout mà vẫn chưa có video -> Giải phóng về SCRIPT_READY
-                job.status = "SCRIPT_READY"
-                job.progress_percent = 20
-                job.progress_message = (
-                    f"Colab Pro+ không phản hồi sau {timeout_minutes} phút. "
-                    f"Tự động chuyển về hàng đợi để sẵn sàng render dự phòng."
-                )
-                recovered_count += 1
-                logger.warning(
-                    f"⏰ [ColabWatchdog] Job #{jid} kẹt ở PENDING_COLAB > {timeout_minutes}m. "
-                    f"Đã tự động phục hồi về SCRIPT_READY."
-                )
-
-    except Exception as e:
-        logger.warning(f"Lỗi khi chạy watchdog_colab_stuck_jobs: {e}")
-
-    return recovered_count
 
 
 

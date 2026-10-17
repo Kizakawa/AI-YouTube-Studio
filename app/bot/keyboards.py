@@ -158,36 +158,6 @@ def get_visual_selection_keyboard(channel_id: str) -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(keyboard)
 
-import urllib.parse
-
-COLAB_NODES = {
-    1: {"id": "1n2wi-ZuXZpx_5OfLE20qctkGRIPikDoL", "name": "Node 1", "file": "colab_gpu_worker.ipynb"},
-    2: {"id": "1e1Wd972RIFIPm7lotcsUY5_Je9rqvf3f", "name": "Node 2", "file": "colab_worker_node2.ipynb"},
-    3: {"id": "1-gDTr-ZncnsHkXKQMtqcSOPk8Cu4OOn4", "name": "Node 3", "file": "colab_worker_node3.ipynb"},
-}
-COLAB_NOTEBOOK_ID = COLAB_NODES[1]["id"]
-COLAB_DRIVE_URL = f"https://colab.research.google.com/drive/{COLAB_NOTEBOOK_ID}"
-
-def make_colab_node_url(email: str = "pool1.studio@example.com", node_num: int = 1) -> str:
-    """
-    Tạo link mở Google Colab với tài khoản Google chỉ định:
-    - Nếu đúng tài khoản: mở thẳng Colab.
-    - Nếu chưa đăng nhập hoặc đang ở tài khoản khác: Google hiển thị trang đăng nhập tài khoản này (điền sẵn email) rồi tự chuyển vào Colab.
-    - Tuyệt đối không dẫn ra Google Drive hay văng lỗi GapiError.
-    """
-    import urllib.parse
-    node = COLAB_NODES.get(node_num, COLAB_NODES[1])
-    target_email = email or "pool1.studio@example.com"
-    colab_raw = f"https://colab.research.google.com/drive/{node['id']}"
-    encoded = urllib.parse.quote(colab_raw, safe="")
-    return f"https://accounts.google.com/AccountChooser?Email={target_email}&continue={encoded}"
-
-def make_colab_account_url(email: str = "pool1.studio@example.com", node_num: int = 1) -> str:
-    """Tương thích ngược: tạo link mở Colab node chỉ định"""
-    return make_colab_node_url(email, node_num)
-
-COLAB_PRO_URL = make_colab_node_url("pool1.studio@example.com", 1)
-
 def get_script_review_keyboard(
     job_id: int,
     current_lang: Optional[str] = None,
@@ -224,26 +194,6 @@ def get_script_review_keyboard(
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
-
-def get_colab_wait_keyboard(job_id: int) -> InlineKeyboardMarkup:
-    """Tương thích ngược: Bàn phím điều hướng render trực tiếp"""
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("🎬 Dựng Video Ngay", callback_data=f"render_video:{job_id}"),
-            InlineKeyboardButton("❌ Hủy Bỏ", callback_data=f"cancel:{job_id}"),
-        ]
-    ])
-
-def get_colab_cluster_menu_keyboard(job_id: int) -> InlineKeyboardMarkup:
-    """Tương thích ngược: Quay lại menu kịch bản"""
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("🎬 Dựng Video Ngay", callback_data=f"render_video:{job_id}"),
-        ],
-        [
-            InlineKeyboardButton("⬅️ Quay Lại", callback_data=f"back_script_review:{job_id}"),
-        ]
-    ])
 
 get_video_review_keyboard = get_script_review_keyboard
 

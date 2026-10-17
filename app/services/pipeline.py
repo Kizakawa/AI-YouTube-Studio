@@ -28,7 +28,6 @@ from app.agents.media_agent import (
     clean_scene_search_query,
 )
 from app.agents.image_agent import ImageAgent
-from app.agents.media_relevance_agent import MediaRelevanceAgent
 from app.agents.visual_curation_agent import VisualCurationAgent
 from app.utils.subtitle_helper import SubtitleHelper
 from config.settings import settings
@@ -68,7 +67,6 @@ class VideoPipeline:
         self._voice_agent = VoiceAgent()
         self._media_agent = MediaAgent()
         self._image_agent = ImageAgent()
-        self._media_relevance_agent = MediaRelevanceAgent()
         self._visual_curation_agent = VisualCurationAgent()
 
     async def _report_progress(self, stage: str, message: str, percent: int = 0):

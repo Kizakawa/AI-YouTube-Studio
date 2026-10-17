@@ -34,9 +34,8 @@ class Settings:
     GOOGLE_SEARCH_API_KEY: str = os.getenv("GOOGLE_SEARCH_API_KEY", "")
     GOOGLE_SEARCH_CX: str = os.getenv("GOOGLE_SEARCH_CX", "")
 
-    # Render Backend (Chế độ dựng video máy chủ cục bộ / Docker không phụ thuộc Colab)
-    RENDER_BACKEND: str = os.getenv("RENDER_BACKEND", "local")  # "local", "auto"
-    ENABLE_COLAB: bool = os.getenv("ENABLE_COLAB", "false").lower() in ("true", "1", "yes")
+    # Render Backend (Chế độ dựng video máy chủ cục bộ / Docker)
+    RENDER_BACKEND: str = os.getenv("RENDER_BACKEND", "local")
 
     # Hardware Acceleration / GPU Video Rendering (Tăng tốc render video bằng GPU)
     ENABLE_GPU_ACCELERATION: bool = os.getenv("ENABLE_GPU_ACCELERATION", "true").lower() in ("true", "1", "yes")
@@ -85,25 +84,6 @@ class Settings:
             db_clean_path = cls.DATABASE_URL.split("sqlite:///")[-1]
             if db_clean_path:
                 Path(db_clean_path).resolve().parent.mkdir(parents=True, exist_ok=True)
-
-    @classmethod
-    def set_colab_url(cls, url: str) -> bool:
-        """Cập nhật Colab Worker URL trong runtime và tự động lưu vào file .env"""
-        import re
-        clean_url = url.strip().rstrip("/")
-        cls.COLAB_WORKER_URL = clean_url
-        os.environ["COLAB_WORKER_URL"] = clean_url
-        env_file = cls.BASE_DIR / ".env"
-        try:
-            content = env_file.read_text(encoding="utf-8") if env_file.exists() else ""
-            if "COLAB_WORKER_URL=" in content:
-                new_content = re.sub(r'COLAB_WORKER_URL=.*', f'COLAB_WORKER_URL="{clean_url}"', content)
-            else:
-                new_content = content.rstrip() + f'\nCOLAB_WORKER_URL="{clean_url}"\n'
-            env_file.write_text(new_content, encoding="utf-8")
-            return True
-        except Exception as e:
-            return False
 
     @classmethod
     def get_allowed_users(cls) -> Dict[int, str]:

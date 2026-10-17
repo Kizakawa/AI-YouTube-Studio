@@ -48,31 +48,6 @@ class VisualEvaluationReport(BaseModel):
     summary: str = ""
 
 
-class SceneContentScore(BaseModel):
-    """Đánh giá NỘI DUNG hình ảnh bằng AI Vision cho từng cảnh."""
-    scene_id: int
-    media_path: str
-    relevance_score: float = Field(ge=1.0, le=10.0, description="Ảnh có khớp với lời thoại không?")
-    entity_accuracy_score: float = Field(ge=1.0, le=10.0, description="Nhân vật/sự vật có đúng không?")
-    historical_fidelity_score: float = Field(ge=1.0, le=10.0, description="Bối cảnh, trang phục có phù hợp thời đại?")
-    visual_quality_score: float = Field(ge=1.0, le=10.0, description="Chất lượng nghệ thuật, bố cục, màu sắc")
-    scene_overall: float = Field(description="Điểm tổng có trọng số (1-10)")
-    verdict: str = Field(description="PASS | FAIL | MARGINAL")
-    issues: List[str] = Field(default_factory=list)
-    replacement_suggestion: str = Field(default="", description="Từ khoá tìm ảnh thay thế nếu FAIL")
-    ai_evaluated: bool = Field(default=False, description="Có được AI Vision chấm hay chỉ heuristic?")
-
-
-class ContentQualityReport(BaseModel):
-    """Báo cáo thẩm định nội dung hình ảnh bằng AI Vision toàn bộ video."""
-    scene_scores: List[SceneContentScore] = Field(default_factory=list)
-    overall_score: float = 0.0
-    failed_scene_ids: List[int] = Field(default_factory=list)
-    passed: bool = True
-    ai_scenes_checked: int = Field(default=0, description="Số cảnh đã phân tích bằng AI Vision")
-    summary: str = ""
-
-
 class AudioEvaluationReport(BaseModel):
     total_duration_ms: int = 0
     total_words: int = 0
@@ -161,10 +136,8 @@ class VideoWorkflowState(TypedDict, total=False):
     
     # Bước 3: Hình ảnh / Video (Media)
     scenes_media: List[Dict[str, Any]]
-    media_eval: Optional[Dict[str, Any]]  # VisualEvaluationReport (kiểm tra kỹ thuật)
-    content_quality_eval: Optional[Dict[str, Any]]  # ContentQualityReport (AI Vision đánh giá nội dung)
+    media_eval: Optional[Dict[str, Any]]  # VisualEvaluationReport (kiểm tra độ sắc nét & độ phân giải)
     media_retry_count: int
-    content_retry_count: int
     
     # Bước 4: Video thành phẩm (Render & QA)
     rendered_video_path: Optional[str]

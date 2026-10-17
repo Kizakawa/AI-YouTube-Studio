@@ -1634,12 +1634,9 @@ def trigger_auto_generation_for_overdue_channel(
         except Exception as e_reg:
             logger.debug(f"Không thể ghi nhận thực thể cooldown: {e_reg}")
 
-    # 4. Tự động đóng gói và đẩy kịch bản lên Google Drive cho Colab GPU Farm (tránh OOM làm sập server Render)
+    # 4. Gửi thông báo Telegram để duyệt và render trực tiếp bằng Local Hardware Engine
     def _background_render_worker(jid: int, ch_name: str, ch_id: str, deadl: datetime):
         try:
-            from app.services.colab_queue_service import push_job_to_drive_queue
-            ok_push, msg_push, d_link = push_job_to_drive_queue(jid)
-            
             with get_db() as _db:
                 _j = _db.query(VideoJob).filter(VideoJob.id == jid).first()
                 video_title = _j.title if _j else "Video Shorts"
@@ -1648,26 +1645,20 @@ def trigger_auto_generation_for_overdue_channel(
             alert_text = (
                 f"🚨 **CẢNH BÁO TỤT TƯƠNG TÁC KÊNH: `{ch_name}`**\n\n"
                 f"⚠️ Kênh này đã trễ lịch đăng bài!\n"
-                f"🤖 **AI Guardian đã tự động tạo kịch bản và đẩy lên Google Drive cho Colab GPU:**\n"
+                f"🤖 **AI Guardian đã tự động tạo kịch bản sẵn sàng:**\n"
                 f"🎬 **Tiêu đề:** *{video_title}*\n"
-                f"☁️ **Google Drive:** {d_link or 'Đã lưu hàng đợi render'}\n"
                 f"⏱️ **Hạn chót duyệt:** `{deadl.strftime('%H:%M %d/%m/2026')}` (còn ~{grace_str} tiếng)\n\n"
-                f"👉 Bấm nút bên dưới để mở Colab GPU render nhanh 20s hoặc duyệt nội dung:"
+                f"👉 Bấm nút bên dưới để duyệt và dựng video ngay:"
             )
-            from app.bot.keyboards import make_colab_node_url
-            colab_url = make_colab_node_url("pool1.studio@example.com", 1)
             inline_kb = [
                 [
-                    {"text": f"⚡ Mở Colab Render (#{jid})", "url": colab_url},
-                    {"text": f"📥 Quét Video Từ Drive (#{jid})", "callback_data": f"check_drive_render:{jid}"}
-                ],
-                [
+                    {"text": f"🎬 Duyệt & Dựng Ngay (#{jid})", "callback_data": f"render_video:{jid}"},
                     {"text": f"❌ Huỷ bỏ (#{jid})", "callback_data": f"approve_auto:{jid}:cancel"}
                 ]
             ]
             send_telegram_broadcast(alert_text, inline_keyboard=inline_kb)
         except Exception as ex:
-            logger.error(f"[AutoGeneration] Lỗi đẩy task lên Colab queue #{jid}: {ex}", exc_info=True)
+            logger.error(f"[AutoGeneration] Lỗi gửi thông báo #{jid}: {ex}", exc_info=True)
 
     render_thread = threading.Thread(
         target=_background_render_worker,

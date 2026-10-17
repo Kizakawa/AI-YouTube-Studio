@@ -148,7 +148,7 @@ def get_channel_today_summary(channel_id: Optional[str] = None) -> Dict[str, Any
             recent_pending_cutoff = datetime.utcnow() - timedelta(hours=3)
             pending_job_rec = db.query(VideoJob).filter(
                 VideoJob.target_channel_id.in_(family),
-                VideoJob.status.in_(["SCRIPT_READY", "AUDIO_READY", "RENDERING", "PENDING_COLAB", "AWAITING_APPROVAL"]),
+                VideoJob.status.in_(["SCRIPT_READY", "AUDIO_READY", "RENDERING", "AWAITING_APPROVAL"]),
                 VideoJob.created_at >= recent_pending_cutoff,
             ).order_by(VideoJob.id.desc()).first()
 

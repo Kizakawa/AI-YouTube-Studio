@@ -54,30 +54,11 @@ def cmd_stats(args):
         user = db.query(User).filter(User.telegram_id == 0).first()
         active_ch = user.active_channel_id if user else "channel_1"
 
-    # Drive count
-    pending_drive = 0
-    completed_drive = 0
-    try:
-        from app.agents.drive_agent import DriveAgent
-        da = DriveAgent()
-        pending_drive = len(da.list_pending_tasks())
-        completed_drive = len(da.list_completed_videos())
-    except Exception as e:
-        pending_drive = f"Lỗi ({e})"
-
-    # Colab status
-    from app.services.colab_client import colab_client
-    is_colab, c_info = colab_client.check_health(timeout=1.0)
-
     stats = {
         "timestamp": datetime.utcnow().isoformat(),
         "total_jobs": total,
         "status_breakdown": counts,
         "active_channel": active_ch,
-        "colab_gpu_online": is_colab,
-        "colab_gpu_name": c_info.get("gpu") if is_colab else None,
-        "drive_pending_tasks": pending_drive,
-        "drive_completed_videos": completed_drive,
         "gemini_keys_count": len(settings.get_gemini_keys_pool()),
         "agent_api_key": settings.AGENT_API_KEY
     }
@@ -90,15 +71,12 @@ def cmd_stats(args):
         print("=" * 65)
         print(f"📊 Tổng số VideoJob: {total}")
         print(f"   • SCRIPT_READY : {counts.get('SCRIPT_READY', 0)}")
-        print(f"   • PENDING_COLAB: {counts.get('PENDING_COLAB', 0)}")
         print(f"   • RENDERING    : {counts.get('RENDERING', 0)}")
         print(f"   • RENDERED     : {counts.get('RENDERED', 0)}")
         print(f"   • PUBLISHED    : {counts.get('PUBLISHED', 0)}")
         print(f"   • FAILED       : {counts.get('FAILED', 0)}")
         print(f"   • DRAFT        : {counts.get('DRAFT', 0)}")
         print("-" * 65)
-        print(f"☁️ Google Drive Farm: {pending_drive} task chờ | {completed_drive} video xong")
-        print(f"⚡ Colab GPU Farm   : {'🟢 ONLINE (' + str(c_info.get('gpu')) + ')' if is_colab else '⚪ Offline'}")
         print(f"📺 Kênh hoạt động   : {active_ch}")
         print(f"🔑 Gemini Keys Pool : {len(settings.get_gemini_keys_pool())} keys")
         print(f"🛡️ Agent Secret Key : {settings.AGENT_API_KEY}")
@@ -197,52 +175,6 @@ def cmd_create(args):
         log_activity(db, 0, "Agent CLI", "AGENT_CLI_CREATE", f"Tạo VideoJob #{job_id}: {contract.title}")
 
     print(f"✅ Đã tạo thành công VideoJob #{job_id}: '{contract.title}'")
-
-    if args.auto_drive:
-        from app.services.colab_queue_service import push_job_to_drive_queue
-        ok, msg, d_link = push_job_to_drive_queue(job_id)
-        if ok:
-            print(f"🚀 Đã tự động đẩy lên Google Drive: {d_link}")
-        else:
-            print(f"⚠️ Lỗi đẩy Drive: {msg}")
-
-
-def cmd_push_drive(args):
-    """Đẩy task kịch bản vào hàng đợi Google Drive"""
-    from app.services.colab_queue_service import push_job_to_drive_queue
-    ok, msg, d_link = push_job_to_drive_queue(args.job_id)
-    if ok:
-        print(f"✅ THÀNH CÔNG: Đã đẩy VideoJob #{args.job_id} vào Drive pending: {d_link}")
-    else:
-        print(f"❌ THẤT BẠI: {msg}")
-
-
-def cmd_check_drive(args):
-    """Kiểm tra và tải video đã xong từ Google Drive"""
-    from app.services.colab_queue_service import check_and_import_completed_video
-    ok, local_p, d_link = check_and_import_completed_video(args.job_id)
-    if ok:
-        print(f"🎉 THÀNH CÔNG: Video #{args.job_id} đã tải về local: {local_p}")
-        print(f"☁️ Link Drive: {d_link}")
-    else:
-        print(f"ℹ️ {local_p}")
-
-
-def cmd_scan_drive(args):
-    """Quét và nhập tất cả video đã render xong từ Drive"""
-    with get_db() as db:
-        jobs = db.query(VideoJob).filter(VideoJob.status.in_(["PENDING_COLAB", "RENDERING", "SCRIPT_READY"])).all()
-        ids = [j.id for j in jobs]
-
-    print(f"🔍 Đang quét Drive cho {len(ids)} jobs đang chờ: {ids}...")
-    from app.services.colab_queue_service import check_and_import_completed_video
-    imported = 0
-    for j_id in ids:
-        ok, local_p, d_link = check_and_import_completed_video(j_id)
-        if ok:
-            print(f"  ✅ Đã nhập Video #{j_id}: {local_p}")
-            imported += 1
-    print(f"✨ Hoàn tất quét Drive: Đã nhập {imported}/{len(ids)} video.")
 
 
 def cmd_publish(args):
@@ -345,7 +277,7 @@ def cmd_reset_stuck(args):
     cutoff = datetime.utcnow() - timedelta(minutes=args.minutes)
     with get_db() as db:
         stuck = db.query(VideoJob).filter(
-            VideoJob.status.in_(["RENDERING", "PENDING_COLAB"]),
+            VideoJob.status == "RENDERING",
             VideoJob.updated_at < cutoff
         ).all()
         ids = [j.id for j in stuck]
@@ -379,18 +311,6 @@ def main():
     p_create.add_argument("--topic", type=str, required=True, help="Chủ đề video")
     p_create.add_argument("--channel", type=str, help="ID kênh đích")
     p_create.add_argument("--lang", type=str, help="Ngôn ngữ ('en' hoặc 'vi')")
-    p_create.add_argument("--auto-drive", action="store_true", help="Tự động đẩy vào Drive sau khi tạo")
-
-    # push-drive
-    p_push = subparsers.add_parser("push-drive", help="Đẩy kịch bản vào Drive pending")
-    p_push.add_argument("job_id", type=int, help="ID của VideoJob")
-
-    # check-drive
-    p_chk = subparsers.add_parser("check-drive", help="Kiểm tra video hoàn thành trên Drive")
-    p_chk.add_argument("job_id", type=int, help="ID của VideoJob")
-
-    # scan-drive
-    subparsers.add_parser("scan-drive", help="Quét và nhập tất cả video đã xong từ Drive")
 
     # publish
     p_pub = subparsers.add_parser("publish", help="Đăng video lên YouTube Shorts")
@@ -425,9 +345,6 @@ def main():
         "jobs": cmd_jobs,
         "job": cmd_job,
         "create": cmd_create,
-        "push-drive": cmd_push_drive,
-        "check-drive": cmd_check_drive,
-        "scan-drive": cmd_scan_drive,
         "publish": cmd_publish,
         "retry": cmd_retry,
         "cancel": cmd_cancel,

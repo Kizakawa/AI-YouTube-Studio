@@ -105,7 +105,6 @@ async def device_gatekeeper_middleware(request: Request, call_next):
         or path.startswith("/media")
         or path.startswith("/api/auth")
         or path.startswith("/api/oauth")
-        or path.startswith("/api/colab")
         or path.startswith("/api/worker")
         or path.startswith("/api/render-complete")
         or "/start-auth" in path
@@ -2010,120 +2009,14 @@ async def health_check() -> Dict[str, Any]:
     }
 
 
-# ─── Colab GPU Farm Multi-Account Endpoints ─────────────────────────────────
-
-COLAB_SHARED_NOTEBOOK_ID = "1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo"
-COLAB_SHARED_FOLDER_ID = "1J4pW7WNwFvIKpNjMqW8qkdOMf4gXTDC0"
-COLAB_BASE_URL = f"https://colab.research.google.com/drive/{COLAB_SHARED_NOTEBOOK_ID}"
-
-import urllib.parse
-
-def make_account_chooser_url(email: str, base_url: str = COLAB_BASE_URL) -> str:
-    """Tạo URL Google AccountChooser để ép trình duyệt chọn đúng tài khoản Google mong muốn."""
-    target = f"{base_url}?authuser={email}"
-    enc = urllib.parse.quote(target, safe="")
-    return f"https://accounts.google.com/AccountChooser?Email={email}&continue={enc}"
-
-COLAB_ACCOUNTS = [
-    {
-        "id": "account_1",
-        "name": "Tài khoản 1 (Chính)",
-        "email": "pool1.studio@example.com",
-        "storage": "20 TB Google One",
-        "role": "Thư mục Render Farm gốc & Lưu trữ",
-        "badge": "Host 20TB",
-        "badge_color": "green",
-        "is_primary": True,
-        "colab_url": make_account_chooser_url("pool1.studio@example.com")
-    },
-    {
-        "id": "acount_2",
-        "name": "Tài khoản 2 (Dự phòng 1)",
-        "email": "pool2.studio@example.com",
-        "storage": "2 TB Google One",
-        "role": "Worker GPU xoay vòng (Đã cấp quyền Editor)",
-        "badge": "Dự phòng 1",
-        "badge_color": "blue",
-        "is_primary": False,
-        "colab_url": make_account_chooser_url("pool2.studio@example.com")
-    },
-    {
-        "id": "accout3",
-        "name": "Tài khoản 3 (Dự phòng 2)",
-        "email": "pool3.studio@example.com",
-        "storage": "2 TB Google One",
-        "role": "Worker GPU xoay vòng (Đã cấp quyền Editor)",
-        "badge": "Dự phòng 2",
-        "badge_color": "purple",
-        "is_primary": False,
-        "colab_url": make_account_chooser_url("pool3.studio@example.com")
-    }
-]
-
-@app.get("/api/colab/farm-status")
-async def get_colab_farm_status() -> Dict[str, Any]:
-    return {"success": True, "colab_disabled": True, "online": False, "message": "Đã tắt tính năng Google Colab, render cục bộ 100%"}
-
-async def _old_get_colab_farm_status() -> Dict[str, Any]:
-    from app.services.colab_client import colab_client
-    is_online, info = colab_client.check_health(timeout=1.5)
-    
-    pending_count = 0
-    try:
-        with get_db() as db:
-            pending_count = db.query(VideoJob).filter(VideoJob.status.in_(["SCRIPT_READY", "RENDERING", "PENDING_COLAB"])).count()
-    except Exception:
-        pass
-
-    return {
-        "success": True,
-        "online": is_online,
-        "gpu": info.get("gpu", "NVIDIA GPU") if is_online else None,
-        "worker_url": colab_client.worker_url,
-        "shared_notebook_id": COLAB_SHARED_NOTEBOOK_ID,
-        "shared_notebook_url": COLAB_BASE_URL,
-        "shared_folder_id": COLAB_SHARED_FOLDER_ID,
-        "pending_count": pending_count,
-        "nodes": [
-            {
-                "node_num": 1,
-                "name": "Node 1 (Chính)",
-                "id": "1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo",
-                "url": make_account_chooser_url("pool1.studio@example.com", "https://colab.research.google.com/drive/1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo"),
-                "desc": "Worker GPU mặc định"
-            },
-            {
-                "node_num": 2,
-                "name": "Node 2 (Chạy song song)",
-                "id": "10kBAHrC_dfubSfBUhU1yBK_9z8FruGK7",
-                "url": make_account_chooser_url("pool1.studio@example.com", "https://colab.research.google.com/drive/10kBAHrC_dfubSfBUhU1yBK_9z8FruGK7"),
-                "desc": "Colab Pro+ chạy đồng thời không xung đột"
-            },
-            {
-                "node_num": 3,
-                "name": "Node 3 (Chạy song song)",
-                "id": "1ubdsL5iN0cPal4hP4LllhVjKSs_QGl6u",
-                "url": make_account_chooser_url("pool1.studio@example.com", "https://colab.research.google.com/drive/1ubdsL5iN0cPal4hP4LllhVjKSs_QGl6u"),
-                "desc": "Colab Pro+ chạy đồng thời không xung đột"
-            }
-        ],
-        "accounts": COLAB_ACCOUNTS,
-        "rotation_strategy": {
-            "title": "Cơ chế Render Song Song Colab Pro+ & Xoay Vòng Tài Khoản",
-            "description": "Colab Pro+ cho phép chạy nhiều GPU độc lập. Mở Node 1 cho video thứ nhất và Node 2 cho video thứ hai trong tab mới để render song song không bao giờ xung đột."
-        }
-    }
-
-
-# ─── Worker Webhook Callback & Dispatch Endpoints (P1.2 Architecture) ────────
+# ─── Worker Webhook Callback & Dispatch Endpoints ────────────────────────────
 
 @app.post("/api/worker/callback")
-@app.post("/api/colab/callback")
 @app.post("/api/render-complete")
 async def worker_render_callback(request: Request) -> Dict[str, Any]:
     """
-    Webhook tiếp nhận kết quả hoàn thành từ GPU Worker (Modal, Colab, RunPod).
-    Tự động cập nhật VideoJob sang RENDERED ngay lập tức mà không cần polling Drive.
+    Webhook tiếp nhận kết quả hoàn thành từ Worker.
+    Tự động cập nhật VideoJob sang RENDERED ngay lập tức.
     """
     try:
         body = await request.json()
@@ -2152,11 +2045,11 @@ async def worker_render_callback(request: Request) -> Dict[str, Any]:
             if drive_link:
                 job.drive_link = drive_link
             job.progress_percent = 100
-            job.progress_message = f"🎉 Video đã render hoàn tất trên GPU Worker ({render_time}s)!"
+            job.progress_message = f"🎉 Video đã render hoàn tất ({render_time}s)!"
             job.error_message = None
 
             log_activity(db, job.user_id or 0, "System", "WORKER_RENDER_COMPLETE",
-                         f"GPU Worker hoàn tất render Video #{job_id} trong {render_time}s: {drive_link or video_path}",
+                         f"Hoàn tất render Video #{job_id} trong {render_time}s: {drive_link or video_path}",
                          channel_id=job.target_channel_id)
 
             logger.info(f"✅ [Worker Callback] VideoJob #{job_id} đã cập nhật thành công sang RENDERED.")
@@ -2165,7 +2058,7 @@ async def worker_render_callback(request: Request) -> Dict[str, Any]:
             try:
                 from app.services.channel_intelligence import send_telegram_broadcast
                 notify_text = (
-                    f"🎉 **VIDEO #{job_id} ĐÃ RENDER XONG TRÊN GPU WORKER!**\n\n"
+                    f"🎉 **VIDEO #{job_id} ĐÃ RENDER XONG!**\n\n"
                     f"🎬 **Tiêu đề:** `{job.title or job.topic}`\n"
                     f"⚡ **Thời gian render:** {render_time}s\n"
                     f"📺 **Kênh:** `{job.target_channel_id}`\n"
@@ -2179,9 +2072,9 @@ async def worker_render_callback(request: Request) -> Dict[str, Any]:
         else:
             job.status = "FAILED"
             job.error_message = error_msg or "Worker báo lỗi không xác định"
-            job.progress_message = f"❌ GPU Worker render thất bại: {job.error_message}"
+            job.progress_message = f"❌ Render thất bại: {job.error_message}"
             log_activity(db, job.user_id or 0, "System", "WORKER_RENDER_FAILED",
-                         f"GPU Worker thất bại khi render Video #{job_id}: {error_msg}",
+                         f"Thất bại khi render Video #{job_id}: {error_msg}",
                          channel_id=job.target_channel_id)
             logger.warning(f"❌ [Worker Callback] VideoJob #{job_id} render thất bại: {error_msg}")
 
@@ -2194,7 +2087,7 @@ async def worker_render_callback(request: Request) -> Dict[str, Any]:
 
 @app.post("/api/worker/dispatch/{job_id}")
 async def dispatch_job_to_worker(job_id: int) -> Dict[str, Any]:
-    """Điều phối tác vụ render của VideoJob sang GPU Worker."""
+    """Điều phối tác vụ render của VideoJob sang Local Render Pipeline."""
     from app.services.worker_dispatcher import worker_dispatcher
     ok, msg, worker_type = worker_dispatcher.dispatch_job(job_id)
     return {
@@ -2207,75 +2100,9 @@ async def dispatch_job_to_worker(job_id: int) -> Dict[str, Any]:
 
 @app.get("/api/worker/status")
 async def get_worker_status_api() -> Dict[str, Any]:
-    """Trả về trạng thái chi tiết của toàn bộ hệ thống GPU Workers (Colab, Modal, Local)."""
+    """Trả về trạng thái chi tiết của hệ thống Local Hardware Render."""
     from app.services.worker_dispatcher import worker_dispatcher
     return worker_dispatcher.get_workers_status()
-
-
-@app.post("/api/colab/send-telegram-guide")
-async def send_colab_telegram_guide(request: Request) -> Dict[str, Any]:
-    return {"success": False, "message": "Tính năng Colab đã được tắt. Hệ thống render cục bộ bằng FFmpeg."}
-
-async def _old_send_colab_telegram_guide(request: Request) -> Dict[str, Any]:
-    """
-    Gửi link Colab và hướng dẫn mở đúng tài khoản về Telegram của người dùng.
-    Hỗ trợ gửi cho 1 tài khoản cụ thể hoặc toàn bộ danh sách 3 tài khoản.
-    """
-    body = {}
-    try:
-        body = await request.json()
-    except Exception:
-        pass
-    
-    acc_id = body.get("account_id", "all")
-    selected_acc = next((a for a in COLAB_ACCOUNTS if a["id"] == acc_id), None)
-    
-    from app.services.channel_intelligence import send_telegram_broadcast
-    
-    if selected_acc:
-        msg = (
-            f"🚀 **ĐỀ XUẤT MỞ COLAB GPU FARM — {selected_acc['name'].upper()}**\n\n"
-            f"🎯 **Tài khoản mục tiêu:** `{selected_acc['email']}`\n"
-            f"📦 **Gói Drive:** {selected_acc['storage']} ({selected_acc['role']})\n"
-            f"🔗 **Link Colab 1-chạm:**\n{selected_acc['colab_url']}\n\n"
-            f"🧭 **HƯỚNG DẪN 3 BƯỚC MỞ ĐÚNG TÀI KHOẢN:**\n"
-            f"1️⃣ **Mở link:** Bấm nút bên dưới để mở Colab. Link đã kèm `?authuser={selected_acc['email']}` để Google tự chọn profile này.\n"
-            f"2️⃣ **Kiểm tra Avatar:** Nhìn góc trên bên phải màn hình Colab:\n"
-            f"   • Nếu đúng email `{selected_acc['email']}`: Sẵn sàng!\n"
-            f"   • Nếu hiện email khác: Nhấp vào avatar ➡️ Chọn `{selected_acc['email']}` (hoặc bấm Thêm tài khoản).\n"
-            f"3️⃣ **Bấm Chạy tất cả:** Vào menu **Runtime** ➡️ Chọn **Run all** (hoặc nhấn `Ctrl + F9`) ➡️ Bấm Cho phép Drive.\n\n"
-            f"✨ **Bật xong bạn có thể thoát tab hoặc tắt màn hình!** GPU Colab sẽ tự quét hàng đợi Drive và render video 20 giây/video."
-        )
-        inline_kb = [
-            [{"text": f"🚀 Mở Colab ({selected_acc['name']})", "url": selected_acc["colab_url"]}],
-            [{"text": "🔄 Quét lại kết nối GPU", "callback_data": "check_colab_status"}]
-        ]
-    else:
-        msg = (
-            f"🚀 **TRẠM RENDER COLAB GPU FARM — XOAY VÒNG 3 TÀI KHOẢN**\n\n"
-            f"Giải pháp render video siêu tốc 20s/video, tự động xoay tài khoản khi chạm hạn mức GPU miễn phí của Google Colab.\n\n"
-            f"📌 **DANH SÁCH 3 TÀI KHOẢN GPU:**\n"
-            f"1️⃣ **Tài khoản 1 (Chính):** `pool1.studio@example.com` (20 TB)\n"
-            f"2️⃣ **Tài khoản 2 (Dự phòng 1):** `pool2.studio@example.com` (2 TB)\n"
-            f"3️⃣ **Tài khoản 3 (Dự phòng 2):** `pool3.studio@example.com` (2 TB)\n\n"
-            f"💡 **HƯỚNG DẪN XOAY TÀI KHOẢN KHI HẾT QUOTA:**\n"
-            f"• Bạn mở Tài khoản 1 chạy trước.\n"
-            f"• Khi Colab báo *'Cannot connect to GPU backend'* (hết hạn mức trong ngày), bạn chỉ cần mở nút **Tài khoản 2** và bấm **Run all**.\n"
-            f"• Cả 3 tài khoản đều chung thư mục Google Drive `/AI_YouTube_RenderFarm/` nên video vẫn tiếp tục render bình thường!\n\n"
-            f"👇 Chọn tài khoản bạn muốn mở ngay bên dưới:"
-        )
-        inline_kb = [
-            [{"text": "🚀 Mở Acc 1: giangnguyenviet38 (20TB)", "url": COLAB_ACCOUNTS[0]["colab_url"]}],
-            [{"text": "🚀 Mở Acc 2: tonyabcd1234567890 (2TB)", "url": COLAB_ACCOUNTS[1]["colab_url"]}],
-            [{"text": "🚀 Mở Acc 3: maychuvv1n1 (2TB)", "url": COLAB_ACCOUNTS[2]["colab_url"]}],
-            [{"text": "🔄 Quét lại kết nối GPU", "callback_data": "check_colab_status"}]
-        ]
-        
-    try:
-        send_telegram_broadcast(msg, inline_keyboard=inline_kb)
-        return {"success": True, "message": "Đã gửi link Colab và hướng dẫn mở tài khoản về Telegram thành công!"}
-    except Exception as e:
-        return {"success": False, "message": f"Lỗi gửi Telegram: {str(e)}"}
 
 
 # ─── Upload to Google Drive ───────────────────────────────────────────────────

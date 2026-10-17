@@ -77,8 +77,6 @@ async def get_system_stats():
     """
     Trả về toàn bộ bức tranh trạng thái của hệ thống trong 1 API duy nhất:
     - Số lượng video theo từng trạng thái (SCRIPT_READY, RENDERING, PUBLISHED, FAILED,...)
-    - Tình trạng Colab GPU Farm và các Node song song
-    - Số tác vụ đang chờ trong Google Drive
     - Kênh đang hoạt động và danh sách cấu hình
     - Số lượng API Keys khả dụng
     """
@@ -92,30 +90,13 @@ async def get_system_stats():
         total_jobs = len(all_jobs)
         published_count = status_counts.get("PUBLISHED", 0)
         rendered_count = status_counts.get("RENDERED", 0)
-        rendering_count = status_counts.get("RENDERING", 0) + status_counts.get("PENDING_COLAB", 0)
+        rendering_count = status_counts.get("RENDERING", 0)
         failed_count = status_counts.get("FAILED", 0)
         script_ready_count = status_counts.get("SCRIPT_READY", 0)
 
         # Lấy user active channel
         user = db.query(User).filter(User.telegram_id == 0).first()
         active_channel_id = user.active_channel_id if user else "channel_1"
-
-    # Kiểm tra Colab GPU
-    from app.services.colab_client import colab_client
-    is_colab_online, colab_info = colab_client.check_health(timeout=1.0)
-
-    # Đếm Drive queue
-    pending_drive_count = 0
-    completed_drive_count = 0
-    try:
-        from app.agents.drive_agent import DriveAgent
-        da = DriveAgent()
-        p_files = da.list_pending_tasks()
-        pending_drive_count = len(p_files)
-        c_files = da.list_completed_videos()
-        completed_drive_count = len(c_files)
-    except Exception as e:
-        logger.debug(f"Agent stats Drive error: {e}")
 
     # Lấy thông tin kênh
     channels_cfg = settings.get_channels_config()
@@ -131,36 +112,6 @@ async def get_system_stats():
             "script_ready": script_ready_count,
             "failed": failed_count,
             "status_breakdown": status_counts
-        },
-        "colab_gpu": {
-            "online": is_colab_online,
-            "gpu": colab_info.get("gpu", "NVIDIA GPU") if is_colab_online else None,
-            "worker_url": colab_client.worker_url,
-            "cluster_nodes": [
-                {
-                    "node": 1,
-                    "name": "Node 1 (Mặc định)",
-                    "id": "1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo",
-                    "url": "https://colab.research.google.com/drive/1Ud-gsXBteHJATziinfVOCMNAndXzK2Qo"
-                },
-                {
-                    "node": 2,
-                    "name": "Node 2 (Chạy song song)",
-                    "id": "10kBAHrC_dfubSfBUhU1yBK_9z8FruGK7",
-                    "url": "https://colab.research.google.com/drive/10kBAHrC_dfubSfBUhU1yBK_9z8FruGK7"
-                },
-                {
-                    "node": 3,
-                    "name": "Node 3 (Chạy song song)",
-                    "id": "1ubdsL5iN0cPal4hP4LllhVjKSs_QGl6u",
-                    "url": "https://colab.research.google.com/drive/1ubdsL5iN0cPal4hP4LllhVjKSs_QGl6u"
-                }
-            ]
-        },
-        "drive_farm": {
-            "folder_name": "AI_YouTube_RenderFarm",
-            "pending_tasks_in_drive": pending_drive_count,
-            "completed_videos_in_drive": completed_drive_count
         },
         "channels": {
             "active_channel_id": active_channel_id,
@@ -331,32 +282,23 @@ async def create_new_job(req: CreateJobRequest):
         job_id = job.id
         log_activity(db, 0, "AI Agent", "AGENT_CREATE_JOB", f"Tạo tự động VideoJob #{job_id}: {title}", channel_id=channel_id)
 
-    res_drive = None
-    if req.auto_push_drive:
-        from app.services.colab_queue_service import push_job_to_drive_queue
-        ok, msg, d_link = push_job_to_drive_queue(job_id)
-        res_drive = {"success": ok, "message": msg, "drive_link": d_link}
-
     return {
         "success": True,
         "job_id": job_id,
         "title": title,
         "channel_id": channel_id,
-        "status": "PENDING_COLAB" if req.auto_push_drive else "SCRIPT_READY",
-        "drive_push": res_drive
+        "status": "SCRIPT_READY",
     }
 
 
 class JobActionRequest(BaseModel):
-    action: str  # "push_drive", "check_drive", "publish", "retry", "cancel", "delete"
+    action: str  # "publish", "retry", "cancel", "delete"
 
 
 @agent_router.post("/jobs/{job_id}/action")
 async def execute_job_action(job_id: int, req: JobActionRequest):
     """
     Thực thi hành động ngay lập tức lên 1 VideoJob:
-    - push_drive: Đóng gói và đẩy task lên Google Drive pending/
-    - check_drive: Quét kiểm tra video đã xong từ Drive và tải về
     - publish: Xuất bản video lên YouTube Shorts
     - retry: Đưa trạng thái về SCRIPT_READY để làm lại
     - cancel: Đánh dấu Hủy (FAILED)
@@ -364,17 +306,7 @@ async def execute_job_action(job_id: int, req: JobActionRequest):
     """
     act = req.action.lower().strip()
 
-    if act == "push_drive":
-        from app.services.colab_queue_service import push_job_to_drive_queue
-        ok, msg, d_link = push_job_to_drive_queue(job_id)
-        return {"success": ok, "action": act, "message": msg, "drive_link": d_link}
-
-    elif act == "check_drive":
-        from app.services.colab_queue_service import check_and_import_completed_video
-        ok, local_p, d_link = check_and_import_completed_video(job_id)
-        return {"success": ok, "action": act, "local_video": local_p, "drive_link": d_link}
-
-    elif act == "retry":
+    if act == "retry":
         with get_db() as db:
             j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
             if not j:
@@ -450,60 +382,7 @@ async def execute_job_action(job_id: int, req: JobActionRequest):
         raise HTTPException(status_code=400, detail=f"Hành động '{act}' không hợp lệ.")
 
 
-# ─── 4. QUẢN LÝ GOOGLE DRIVE RENDER FARM ────────────────────────────────────
-
-@agent_router.get("/drive/files")
-async def list_drive_files():
-    """Liệt kê toàn bộ file trong các thư mục của Google Drive Render Farm"""
-    try:
-        from app.agents.drive_agent import DriveAgent
-        da = DriveAgent()
-        p_files = da.list_pending_tasks()
-        c_files = da.list_completed_videos()
-        return {
-            "success": True,
-            "pending_tasks": p_files,
-            "completed_videos": c_files,
-            "counts": {
-                "pending": len(p_files),
-                "completed": len(c_files)
-            }
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-@agent_router.post("/drive/scan-import")
-async def scan_and_import_all():
-    """
-    Quét tự động thư mục completed/ trên Drive và nhập toàn bộ video đã render vào database.
-    """
-    imported = []
-    failed = []
-
-    with get_db() as db:
-        waiting_jobs = db.query(VideoJob).filter(
-            VideoJob.status.in_(["PENDING_COLAB", "RENDERING", "SCRIPT_READY"])
-        ).all()
-        job_ids = [j.id for j in waiting_jobs]
-
-    from app.services.colab_queue_service import check_and_import_completed_video
-    for j_id in job_ids:
-        ok, local_p, d_link = check_and_import_completed_video(j_id)
-        if ok:
-            imported.append({"job_id": j_id, "video_path": local_p, "drive_link": d_link})
-        else:
-            failed.append({"job_id": j_id, "reason": local_p})
-
-    return {
-        "success": True,
-        "scanned_jobs_count": len(job_ids),
-        "imported_count": len(imported),
-        "imported_jobs": imported
-    }
-
-
-# ─── 5. KÊNH & HỆ THỐNG ─────────────────────────────────────────────────────
+# ─── 4. KÊNH & HỆ THỐNG ─────────────────────────────────────────────────────
 
 @agent_router.get("/channels")
 async def list_channels():
@@ -562,11 +441,11 @@ async def get_activity_logs(limit: int = Query(default=30, ge=1, le=100)):
 
 @agent_router.post("/system/reset-stuck-jobs")
 async def reset_stuck_jobs(threshold_minutes: int = Query(default=30, ge=5)):
-    """Khôi phục các jobs bị treo ở RENDERING hoặc PENDING_COLAB quá thời gian quy định"""
+    """Khôi phục các jobs bị treo ở RENDERING quá thời gian quy định"""
     cutoff = datetime.utcnow() - timedelta(minutes=threshold_minutes)
     with get_db() as db:
         stuck = db.query(VideoJob).filter(
-            VideoJob.status.in_(["RENDERING", "PENDING_COLAB"]),
+            VideoJob.status == "RENDERING",
             VideoJob.updated_at < cutoff
         ).all()
 

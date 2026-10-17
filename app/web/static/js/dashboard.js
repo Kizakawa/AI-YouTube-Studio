@@ -531,14 +531,6 @@ function setHealth(id, ok, msg) {
     span.style.color = ok ? 'var(--accent-green)' : 'var(--accent-amber)';
 }
 
-/* =======================================================
-   LOCAL RENDER ENGINE (Colab feature disabled)
-======================================================= */
-function openColabFarmModal() {
-    showToast('Hệ thống render cục bộ (Local FFmpeg Hardware Acceleration) 100% không dùng Google Colab.', 'info');
-}
-function closeColabFarmModal() {}
-
 /* ═══════════════════════════════════════════════════════
    TOKEN HEALTH MONITOR (Part 4)
 ══════════════════════════════════════════════════════════ */

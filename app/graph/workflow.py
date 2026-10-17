@@ -2,10 +2,7 @@
 app.graph.workflow — Xây dựng StateGraph đa tác nhân hoàn chỉnh bằng LangGraph.
 
 Tích hợp:
-- 5 Bộ Grader / QA độc lập: ScriptCritic, VisualCritic, ContentQualityCritic (AI Vision), AudioQA, VideoQA.
-- 2 Tầng đánh giá Media:
-  1. VisualCritic (rule-based): Kiểm tra kỹ thuật file, resolution, hash, ảnh đen.
-  2. ContentQualityCritic (AI Vision): Phân tích NỘI DUNG ảnh — độ liên quan, entity accuracy, bối cảnh lịch sử.
+- 4 Bộ Grader / QA độc lập: ScriptCritic, VisualCritic (kiểm tra độ sắc nét & độ phân giải), AudioQA, VideoQA.
 - Vòng lặp phản biện & tự sửa chữa (Self-Correction Loops) ở mọi tầng.
 - Khả năng kích hoạt sub-graph chỉnh sửa vi mô (Granular Edit).
 """
@@ -25,8 +22,6 @@ from app.graph.nodes import (
     node_fetch_media,
     node_evaluate_media,
     node_refine_media,
-    node_content_quality_check,
-    node_refine_content,
     node_render_video,
     node_evaluate_video,
     node_execute_edit,
