@@ -174,8 +174,8 @@ Return ONLY valid JSON:
 {{"entity_match_score": 8.5, "motion_action_score": 9.0, "clean_frame_score": 8.0, "reason": "..."}}"""
 
     models = ["gemini-3-flash-preview", "gemini-flash-latest", "gemini-2.5-flash-lite"]
-    for key in keys[:3]:
-        for model_name in models:
+    for key in list(reversed(keys))[:6]:
+        for model_name in models[:2]:
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
                 payload = {
@@ -278,7 +278,7 @@ Return ONLY valid JSON:
     if not keys and hasattr(settings, "get_gemini_keys"):
         keys = [k for k in settings.get_gemini_keys() if k.startswith("AIza")]
 
-    for key in keys[:2]:
+    for key in list(reversed(keys))[:5]:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={key}"
             resp = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=12)
