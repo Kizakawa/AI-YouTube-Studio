@@ -225,6 +225,7 @@ class GraphRunner:
                 scores_summary = {
                     "script_critic": final_state.get("script_eval"),
                     "visual_critic": final_state.get("media_eval"),
+                    "hook_video_grader": final_state.get("hook_video_eval"),
                     "audio_qa": final_state.get("audio_eval"),
                     "video_qa": final_state.get("video_eval"),
                 }
