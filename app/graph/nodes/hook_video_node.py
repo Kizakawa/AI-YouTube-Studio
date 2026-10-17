@@ -200,7 +200,7 @@ Return ONLY valid JSON:
                             m_score = float(data.get("motion_action_score", 5.0))
                             c_score = float(data.get("clean_frame_score", 5.0))
                             overall = round(e_score * 0.45 + m_score * 0.35 + c_score * 0.20, 2)
-                            passed = (overall >= 7.4) and (e_score >= 7.0) and (c_score >= 6.5) and (m_score >= 7.0)
+                            passed = (overall >= 7.0) and (e_score >= 6.8) and (c_score >= 6.5) and (m_score >= 6.5)
                             return {
                                 "video_path": video_path,
                                 "entity_match_score": e_score,
@@ -273,39 +273,38 @@ Return ONLY valid JSON:
   "atmosphere_fx": "action"
 }}"""
 
-    try:
-        from app.services.KeyManager import key_manager
-        from google import genai
-        from google.genai import types
+    raw_keys = getattr(settings, "GEMINI_API_KEYS_RAW", "") or os.getenv("GEMINI_API_KEYS", "")
+    keys = [k.strip() for k in raw_keys.split(",") if k.strip().startswith("AIza")]
+    if not keys and hasattr(settings, "get_gemini_keys"):
+        keys = [k for k in settings.get_gemini_keys() if k.startswith("AIza")]
 
-        key_info = key_manager.get_key("gemini")
-        if key_info and key_info.get("key"):
-            client = genai.Client(api_key=key_info["key"])
-            resp = client.models.generate_content(
-                model="gemini-3-flash-preview",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.2,
-                    response_mime_type="application/json",
-                ),
-            )
-            data = json.loads((resp.text or "").strip())
-            raw_queries = [
-                re.sub(r"[^a-zA-Z0-9\s]", " ", str(q)).strip()
-                for q in (data.get("search_queries") or [])
-                if str(q).strip()
-            ]
-            valid_queries = [re.sub(r"\s+", " ", q) for q in raw_queries if len(q.split()) >= 2][:2]
-            fx = str(data.get("atmosphere_fx") or niche or "action").lower()
-            climax_desc = str(data.get("climax_description") or topic).strip()
-            if valid_queries:
-                return {
-                    "climax_description": climax_desc,
-                    "search_queries": valid_queries,
-                    "atmosphere_fx": fx,
-                }
-    except Exception as e:
-        logger.debug(f"[HookVideoNode] Script climax analysis fallback: {e}")
+    for key in keys[:2]:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={key}"
+            resp = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=12)
+            if resp.status_code == 200:
+                cands = resp.json().get("candidates", [])
+                if cands:
+                    txt = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", []))
+                    m = re.search(r"\{.*\}", txt, re.DOTALL)
+                    if m:
+                        data = json.loads(m.group(0))
+                        raw_queries = [
+                            re.sub(r"[^a-zA-Z0-9\s]", " ", str(q)).strip()
+                            for q in (data.get("search_queries") or [])
+                            if str(q).strip()
+                        ]
+                        valid_queries = [re.sub(r"\s+", " ", q) for q in raw_queries if len(q.split()) >= 2][:2]
+                        fx = str(data.get("atmosphere_fx") or niche or "action").lower()
+                        climax_desc = str(data.get("climax_description") or topic).strip()
+                        if valid_queries:
+                            return {
+                                "climax_description": climax_desc,
+                                "search_queries": valid_queries,
+                                "atmosphere_fx": fx,
+                            }
+        except Exception as e:
+            logger.debug(f"[HookVideoNode] Script climax analysis fallback: {e}")
 
     # Fallback tự động từ từ khóa kịch bản nếu API bận
     combined_text = f"{topic} {hook_narration} {visual_keyword} {niche}".lower()
