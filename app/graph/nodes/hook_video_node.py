@@ -153,10 +153,10 @@ def _score_hook_video_candidate_with_gemini(
     2. motion_action_score (1-10): Có chuyển động thực kịch tính, không phải màn hình tĩnh hay người ngồi nói chuyện (talking head).
     3. clean_frame_score (1-10): Khung hình sạch, không bị chữ phụ đề lớn của kênh khác đè giữa màn hình.
     """
-    raw_keys = getattr(settings, "GEMINI_API_KEYS_RAW", "") or os.getenv("GEMINI_API_KEYS", "")
-    keys = [k.strip() for k in raw_keys.split(",") if k.strip().startswith("AIza")]
-    if not keys and hasattr(settings, "get_gemini_keys"):
-        keys = [k for k in settings.get_gemini_keys() if k.startswith("AIza")]
+    keys = settings.get_gemini_keys_pool() if hasattr(settings, "get_gemini_keys_pool") else []
+    if not keys:
+        raw_keys = getattr(settings, "GEMINI_API_KEYS_RAW", "") or os.getenv("GEMINI_API_KEYS", "")
+        keys = [k.strip() for k in raw_keys.split(",") if k.strip().startswith("AIza")]
 
     prompt = f"""You are a strict YouTube Shorts Hook Video Quality Grader.
 Evaluate this 3-frame sequence extracted from a candidate opening hook video for:
@@ -173,8 +173,8 @@ Score strictly from 1.0 to 10.0 in JSON format:
 Return ONLY valid JSON:
 {{"entity_match_score": 8.5, "motion_action_score": 9.0, "clean_frame_score": 8.0, "reason": "..."}}"""
 
-    models = ["gemini-3-flash-preview", "gemini-flash-latest", "gemini-2.5-flash-lite"]
-    for key in list(reversed(keys))[:6]:
+    models = ["gemini-3-flash-preview", "gemini-2.5-flash-lite", "gemini-flash-latest"]
+    for key in keys:
         for model_name in models[:2]:
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
@@ -273,12 +273,12 @@ Return ONLY valid JSON:
   "atmosphere_fx": "action"
 }}"""
 
-    raw_keys = getattr(settings, "GEMINI_API_KEYS_RAW", "") or os.getenv("GEMINI_API_KEYS", "")
-    keys = [k.strip() for k in raw_keys.split(",") if k.strip().startswith("AIza")]
-    if not keys and hasattr(settings, "get_gemini_keys"):
-        keys = [k for k in settings.get_gemini_keys() if k.startswith("AIza")]
+    keys = settings.get_gemini_keys_pool() if hasattr(settings, "get_gemini_keys_pool") else []
+    if not keys:
+        raw_keys = getattr(settings, "GEMINI_API_KEYS_RAW", "") or os.getenv("GEMINI_API_KEYS", "")
+        keys = [k.strip() for k in raw_keys.split(",") if k.strip().startswith("AIza")]
 
-    for key in list(reversed(keys))[:5]:
+    for key in keys:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={key}"
             resp = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=12)
