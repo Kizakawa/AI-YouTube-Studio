@@ -305,7 +305,7 @@ class VideoPipeline:
                     self.niche = "animal_rescue" if wl_subg == "animal_rescue_pets" else "wildlife_predators"
                     logger.info(f"[Job {self.job_id}] 🦁 Tự động kích hoạt Niche '{self.niche}' cho video động vật hoang dã [{wl_subg}]!")
 
-            # Tạo file phụ đề ASS Karaoke (word-level kinetic highlight theo Niche & Hook Headline Banner, tắt CTA badge cuối video để bảo toàn Infinite Loop)
+            # Tạo file phụ đề ASS Karaoke (word-level kinetic highlight theo Niche, Hook Headline Banner & Visual CTA Banner cuối video)
             subtitle_path = str(self.work_dir / "subtitles.ass")
             hook_banner_text = getattr(script, "thumbnail_text", None) or getattr(script, "hook", None) or getattr(script, "title", None)
             SubtitleHelper.save_ass_file(
@@ -313,7 +313,7 @@ class VideoPipeline:
                 subtitle_path,
                 niche_id=self.niche,
                 hook_title=hook_banner_text,
-                show_cta_badge=False,
+                show_cta_badge=True,
             )
 
             self._save_audio_metadata(full_audio_path, total_duration, enriched_scenes)

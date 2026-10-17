@@ -1014,7 +1014,7 @@ OUTPUT MUST BE A STRICT JSON ARRAY ONLY (No markdown formatting around json, no 
                     margin_v=580,
                     niche_id=niche_id,
                     credit_text=effective_credit,
-                    show_cta_badge=False,
+                    show_cta_badge=True,
                 )
             elif subtitle_text.strip():
                 clean_sub = SubtitleHelper.sanitize_subtitle_text(subtitle_text)
@@ -1034,7 +1034,7 @@ OUTPUT MUST BE A STRICT JSON ARRAY ONLY (No markdown formatting around json, no 
                     margin_v=580,
                     niche_id=niche_id,
                     credit_text=effective_credit,
-                    show_cta_badge=False,
+                    show_cta_badge=True,
                 )
             else:
                 ass_file_path = None

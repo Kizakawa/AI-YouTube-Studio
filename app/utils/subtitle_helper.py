@@ -90,7 +90,7 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1.2,0,1,5.2,3.0,2,40,40,{margin_v},1
 Style: HookHeadlineBanner,{fontname},60,&H0000FFFF,&H00FFFFFF,&H00000000,&HD0050505,-1,0,0,0,100,100,2,0,3,4.0,0.0,8,30,30,310,1
 Style: PatternInterruptBadge,{fontname},38,&H00FFFFFF,&H00FFFFFF,&H0000E6FF&,&HC0101010,-1,0,0,0,100,100,2,0,3,2.4,0.0,8,40,40,240,1
-Style: CTABadge,{fontname},46,&H0000FFFF,&H00FFFFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,3.5,2.0,2,30,30,780,1
+Style: CTABadge,{fontname},40,&H0000FFFF,&H00FFFFFF,&H00000000,&HC8080808,-1,0,0,0,100,100,1.4,0,1,4.2,2.2,2,30,30,465,1
 Style: WatermarkStyle,Arial,28,&H30FFFFFF,&H30FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1.8,1.2,8,30,30,90,1
 
 [Events]
@@ -300,6 +300,53 @@ class SubtitleHelper:
         return " ".join(parts)
 
     @classmethod
+    def _build_visual_cta_banner_text(cls, raw_niche: str, is_vi: bool, is_pt: bool) -> str:
+        """
+        Tạo nội dung dòng chữ kêu gọi hành động (Visual CTA Banner 2 dòng) ở cuối mỗi video:
+        - Kêu gọi đồng thời cả 3 hành động: LIKE + COMMENT + SUBSCRIBE bằng thị giác (thay vì đọc trong lời thoại,
+          giúp giữ nguyên 100% Seamless Infinite Loop của giọng đọc mà vẫn đẩy mạnh tương tác).
+        - Phối 3 màu nổi bật (Vàng Gold + Xanh Neon + Đỏ Crimson) ở dòng 1 và câu hỏi kích thích bình luận ở dòng 2.
+        """
+        niche_l = (raw_niche or "").lower()
+        if is_vi:
+            line1 = r"{\1c&H0000FFFF&}[ ★ BẤM THÍCH  {\1c&H0033FF33&}•  BÌNH LUẬN  {\1c&H002222FF&}•  ĐĂNG KÝ KÊNH ★ ]"
+            if "psychology" in niche_l:
+                line2 = r"{\1c&H00FFFFFF&\fs32}▼ ĐỂ LẠI Ý KIẾN & ĐĂNG KÝ ĐỂ KHÔNG BỊ THAO TÚNG ▼"
+            elif any(k in niche_l for k in ("predator", "wildlife")):
+                line2 = r"{\1c&H00FFFFFF&\fs32}▼ KẺ NÀO THẮNG? BÌNH LUẬN & ĐĂNG KÝ NGAY ▼"
+            elif any(k in niche_l for k in ("deep_sea", "ocean", "mystery")):
+                line2 = r"{\1c&H00FFFFFF&\fs32}▼ BÌNH LUẬN GIẢ THUYẾT & ĐĂNG KÝ XEM PHẦN 2 ▼"
+            elif any(k in niche_l for k in ("history", "what_if", "alternate")):
+                line2 = r"{\1c&H00FFFFFF&\fs32}▼ BẠN NGHĨ SAO? BÌNH LUẬN & ĐĂNG KÝ KÊNH ▼"
+            else:
+                line2 = r"{\1c&H00FFFFFF&\fs32}▼ BÌNH LUẬN BÊN DƯỚI & ĐĂNG KÝ ĐÓN XEM TIẾP ▼"
+        elif is_pt:
+            line1 = r"{\1c&H0000FFFF&}[ ★ CURTA  {\1c&H0033FF33&}•  COMENTE  {\1c&H002222FF&}•  INSCREVA-SE ★ ]"
+            if "psychology" in niche_l:
+                line2 = r"{\1c&H00FFFFFF&\fs32}▼ COMENTE SUA OPINIÃO E INSCREVA-SE NO CANAL ▼"
+            elif any(k in niche_l for k in ("predator", "wildlife")):
+                line2 = r"{\1c&H00FFFFFF&\fs32}▼ QUEM VENCE? COMENTE ABAIXO E INSCREVA-SE ▼"
+            elif any(k in niche_l for k in ("deep_sea", "ocean", "mystery")):
+                line2 = r"{\1c&H00FFFFFF&\fs32}▼ QUAL SUA TEORIA? COMENTE E INSCREVA-SE ▼"
+            elif any(k in niche_l for k in ("history", "what_if", "alternate")):
+                line2 = r"{\1c&H00FFFFFF&\fs32}▼ O QUE ACONTECERIA? COMENTE E INSCREVA-SE ▼"
+            else:
+                line2 = r"{\1c&H00FFFFFF&\fs32}▼ DEIXE SEU COMENTÁRIO E INSCREVA-SE AGORA ▼"
+        else:
+            line1 = r"{\1c&H0000FFFF&}[ ★ LIKE  {\1c&H0033FF33&}•  COMMENT  {\1c&H002222FF&}•  SUBSCRIBE ★ ]"
+            if "psychology" in niche_l:
+                line2 = r"{\1c&H00FFFFFF&\fs32}▼ DROP YOUR THOUGHTS & SUBSCRIBE FOR MORE ▼"
+            elif any(k in niche_l for k in ("predator", "wildlife")):
+                line2 = r"{\1c&H00FFFFFF&\fs32}▼ WHO WINS? COMMENT BELOW & SUBSCRIBE ▼"
+            elif any(k in niche_l for k in ("deep_sea", "ocean", "mystery")):
+                line2 = r"{\1c&H00FFFFFF&\fs32}▼ COMMENT YOUR THEORY & SUBSCRIBE FOR PART 2 ▼"
+            elif any(k in niche_l for k in ("history", "what_if", "alternate")):
+                line2 = r"{\1c&H00FFFFFF&\fs32}▼ WHAT WOULD HAPPEN? COMMENT & SUBSCRIBE ▼"
+            else:
+                line2 = r"{\1c&H00FFFFFF&\fs32}▼ DROP A COMMENT & SUBSCRIBE FOR DAILY SHORTS ▼"
+        return f"{line1}\\N{line2}"
+
+    @classmethod
     def build_ass_content(
         cls,
         scenes: List[SceneContract],
@@ -311,7 +358,7 @@ class SubtitleHelper:
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
-        show_cta_badge: bool = False,
+        show_cta_badge: bool = True,
         hook_title: Optional[str] = None,
     ) -> str:
         """
@@ -642,38 +689,31 @@ class SubtitleHelper:
                     f"Dialogue: 2,{stamp_start_str},{stamp_end_str},PatternInterruptBadge,,0,0,0,,{{\\fade(150,150)\\t(0,140,\\fscx108\\fscy108)\\t(140,260,\\fscx100\\fscy100)}}{stamp_title}"
                 )
 
-        # ── Kích hoạt Visual CTA Banner ở phân cảnh cuối (Chỉ bật khi show_cta_badge=True) ──
+        # ── Kích hoạt Visual CTA Banner (Like + Comment + Subscribe) ở phân cảnh cuối ──
         if show_cta_badge and scenes and current_offset_ms > 3000:
             last_scene = scenes[-1]
             last_dur = last_scene.audio_duration_ms or int(last_scene.estimated_seconds * 1000)
-            cta_dur = max(min(last_dur, 4500), 3000)
+            cta_dur = max(min(last_dur, 4200), 3200)
             cta_start_ms = max(0, current_offset_ms - cta_dur)
             cta_end_ms = current_offset_ms
             full_text = " ".join([s.narration for s in scenes]).lower()
             vn_exclusive_re = re.compile(r'[ơớờởỡợưứừửữựđăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]')
-            is_pt = ("ç" in full_text or "õ" in full_text or "ã" in full_text) and not bool(vn_exclusive_re.search(full_text))
+            pt_words = {
+                "não", "você", "uma", "para", "com", "mais", "pelo", "pela", "está",
+                "são", "isso", "até", "mas", "nas", "nos", "dos", "das", "onça",
+                "oceano", "mistério", "ciência", "metros", "selva", "amazônia", "pantanal",
+                "sucuri", "jacaré", "quando", "apenas", "fundo", "água", "águas",
+            }
+            txt_words = set(re.findall(r'\b\w+\b', full_text))
+            is_pt = ("ç" in full_text or "õ" in full_text or "ã" in full_text or len(txt_words & pt_words) >= 2) and not bool(vn_exclusive_re.search(full_text))
             is_vi = bool(vn_exclusive_re.search(full_text)) and not is_pt
             raw_niche = (niche_id or "").lower()
 
-            if "psychology" in raw_niche:
-                cta_text = "BẤM ĐĂNG KÝ ĐỂ KHÔNG BỊ THAO TÚNG" if is_vi else ("INSCREVA-SE PARA DOMINAR A MENTE" if is_pt else "SUBSCRIBE TO MASTER THE MIND")
-            elif any(k in raw_niche for k in ("rescue", "animal")):
-                cta_text = "BẤM ĐĂNG KÝ ĐỂ CỨU THÊM BÉ" if is_vi else ("INSCREVA-SE PARA SALVAR VIDAS" if is_pt else "SUBSCRIBE TO SAVE INNOCENT LIVES")
-            elif any(k in raw_niche for k in ("deep_sea", "ocean", "mystery")):
-                cta_text = "ĐĂNG KÝ KÊNH ĐÓN XEM BÍ ẨN TIẾP THEO" if is_vi else ("INSCREVA-SE PARA DESVENDAR A PARTE 2" if is_pt else "SUBSCRIBE TO UNCOVER PART 2")
-            elif any(k in raw_niche for k in ("history", "what_if")):
-                cta_text = "ĐĂNG KÝ KÊNH ĐỂ BIẾT SỰ THẬT" if is_vi else ("INSCREVA-SE PARA A VERDADE OCULTA" if is_pt else "SUBSCRIBE FOR THE UNTOLD TRUTH")
-            elif any(k in raw_niche for k in ("predator", "wildlife")):
-                cta_text = "ĐĂNG KÝ KÊNH KHÁM PHÁ SINH TỒN" if is_vi else ("INSCREVA-SE NA ODISSEIA SELVAGEM" if is_pt else "SUBSCRIBE FOR APEX STORIES")
-            elif any(k in raw_niche for k in ("scifi", "tech")):
-                cta_text = "ĐĂNG KÝ KÊNH ĐÓN XEM TƯƠNG LAI" if is_vi else ("INSCREVA-SE PARA O FUTURO" if is_pt else "SUBSCRIBE TO UNLOCK FUTURE")
-            else:
-                cta_text = "ĐĂNG KÝ KÊNH ĐỂ XEM TIẾP VIDEO MỚI" if is_vi else ("INSCREVA-SE PARA NOVOS MISTÉRIOS" if is_pt else "SUBSCRIBE FOR DAILY HIGH-RETENTION STORIES")
-
+            cta_text = cls._build_visual_cta_banner_text(raw_niche, is_vi, is_pt)
             cta_start_str = cls._ms_to_ass_time(cta_start_ms)
             cta_end_str = cls._ms_to_ass_time(cta_end_ms)
             dialogue_lines.append(
-                f"Dialogue: 1,{cta_start_str},{cta_end_str},CTABadge,,0,0,0,,{{\\fade(250,150)\\t(0,250,\\fscx110\\fscy110)\\t(250,500,\\fscx100\\fscy100)}}{cta_text}"
+                f"Dialogue: 1,{cta_start_str},{cta_end_str},CTABadge,,0,0,0,,{{\\fade(200,150)\\t(0,180,\\fscx108\\fscy108)\\t(180,360,\\fscx100\\fscy100)}}{cta_text}"
             )
 
         # ── Kích hoạt Watermark / Credit tác giả trên đỉnh video nếu có ──
@@ -699,7 +739,7 @@ class SubtitleHelper:
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
-        show_cta_badge: bool = False,
+        show_cta_badge: bool = True,
         hook_title: Optional[str] = None,
     ) -> str:
         """Tạo và lưu file .ass ra ổ đĩa, hỗ trợ Niche Profile, Watermark Credit & Hook Headline Banner."""
@@ -848,7 +888,7 @@ class SubtitleHelper:
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
-        show_cta_badge: bool = False,
+        show_cta_badge: bool = True,
     ) -> str:
         """
         Tạo nội dung file .ass từ mốc thời gian thực của giọng đọc (ASR/Whisper/Transcript).
@@ -956,32 +996,21 @@ class SubtitleHelper:
 
         effective_total_ms = int(total_duration_sec * 1000) if total_duration_sec > 0 else max_seen_end_ms
 
-        # ── Kích hoạt Visual CTA Banner ở 3.5s - 4.5s cuối (Layer 1, MarginV=780 tránh đè Subtitle) ──
+        # ── Kích hoạt Visual CTA Banner (Like + Comment + Subscribe) ở 3.5s - 4.2s cuối (MarginV=465 tránh đè Subtitle) ──
         if show_cta_badge and effective_total_ms > 4000:
-            cta_dur = min(4000, max(2500, int(effective_total_ms * 0.18)))
+            cta_dur = min(4000, max(2800, int(effective_total_ms * 0.16)))
             cta_start_ms = max(0, effective_total_ms - cta_dur)
             cta_end_ms = effective_total_ms
-            all_text_concat = " ".join([seg.get("text", "") for seg in timed_segments])
-            is_vi = any(c in all_text_concat.lower() for c in "àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ")
+            all_text_concat = " ".join([seg.get("text", "") for seg in timed_segments]).lower()
+            vn_exclusive_re = re.compile(r'[ơớờởỡợưứừửữựđăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]')
+            is_pt = ("ç" in all_text_concat or "õ" in all_text_concat or "ã" in all_text_concat) and not bool(vn_exclusive_re.search(all_text_concat))
+            is_vi = bool(vn_exclusive_re.search(all_text_concat)) and not is_pt
             raw_niche = (niche_id or "").lower()
-            if "psychology" in raw_niche:
-                cta_text = "[ BẤM ĐĂNG KÝ ĐỂ KHÔNG BỊ THAO TÚNG ]" if is_vi else "[ SUBSCRIBE TO MASTER THE MIND ]"
-            elif any(k in raw_niche for k in ("rescue", "animal")):
-                cta_text = "[ BẤM ĐĂNG KÝ ĐỂ CỨU THÊM BÉ ]" if is_vi else "[ SUBSCRIBE TO SAVE INNOCENT LIVES ]"
-            elif any(k in raw_niche for k in ("deep_sea", "ocean", "mystery")):
-                cta_text = "[ ĐĂNG KÝ KÊNH ĐÓN XEM BÍ ẨN TIẾP THEO ]" if is_vi else "[ SUBSCRIBE TO UNCOVER PART 2 ]"
-            elif any(k in raw_niche for k in ("history", "what_if")):
-                cta_text = "[ ĐĂNG KÝ KÊNH ĐỂ BIẾT SỰ THẬT ]" if is_vi else "[ SUBSCRIBE FOR THE UNTOLD TRUTH ]"
-            elif any(k in raw_niche for k in ("predator", "wildlife")):
-                cta_text = "[ ĐĂNG KÝ KÊNH KHÁM PHÁ SINH TỒN ]" if is_vi else "[ SUBSCRIBE FOR APEX STORIES ]"
-            elif any(k in raw_niche for k in ("scifi", "tech")):
-                cta_text = "[ ĐĂNG KÝ KÊNH ĐÓN XEM TƯƠNG LAI ]" if is_vi else "[ SUBSCRIBE TO UNLOCK FUTURE ]"
-            else:
-                cta_text = "[ ĐĂNG KÝ KÊNH ĐỂ XEM TIẾP VIDEO MỚI ]" if is_vi else "[ SUBSCRIBE FOR DAILY HIGH-RETENTION STORIES ]"
+            cta_text = cls._build_visual_cta_banner_text(raw_niche, is_vi, is_pt)
             cta_start_str = cls._ms_to_ass_time(cta_start_ms)
             cta_end_str = cls._ms_to_ass_time(cta_end_ms)
             dialogue_lines.append(
-                f"Dialogue: 1,{cta_start_str},{cta_end_str},CTABadge,,0,0,0,,{{\\fade(250,150)\\t(0,250,\\fscx110\\fscy110)\\t(250,500,\\fscx100\\fscy100)}}{cta_text}"
+                f"Dialogue: 1,{cta_start_str},{cta_end_str},CTABadge,,0,0,0,,{{\\fade(200,150)\\t(0,180,\\fscx108\\fscy108)\\t(180,360,\\fscx100\\fscy100)}}{cta_text}"
             )
 
         # ── Watermark Credit ở đỉnh video (Layer 2) ──
@@ -1009,7 +1038,7 @@ class SubtitleHelper:
         outline_color: Optional[str] = None,
         niche_id: Optional[str] = None,
         credit_text: Optional[str] = None,
-        show_cta_badge: bool = False,
+        show_cta_badge: bool = True,
     ) -> str:
         """Tạo và lưu file .ass từ timed_segments ra ổ đĩa."""
         content = cls.build_ass_from_timed_segments(

@@ -52,9 +52,9 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
         output_path=full_audio_path
     )
 
-    # Tạo phụ đề ASS chuẩn Shorts với word-level karaoke highlight & Hook Headline Banner tương phản cao ở Frame 0 (tắt CTA badge cuối video để bảo toàn Infinite Loop)
+    # Tạo phụ đề ASS chuẩn Shorts với word-level karaoke highlight, Hook Headline Banner ở Frame 0 & Visual CTA Banner (Like + Comment + Subscribe) ở cảnh cuối
     hook_banner_text = getattr(script, "thumbnail_text", None) or getattr(script, "title", None) or state.get("title")
-    SubtitleHelper.save_ass_file(scenes_objs, subtitle_path, niche_id=channel_style, hook_title=hook_banner_text, show_cta_badge=False)
+    SubtitleHelper.save_ass_file(scenes_objs, subtitle_path, niche_id=channel_style, hook_title=hook_banner_text, show_cta_badge=True)
 
     return {
         "scenes_audio": enriched_scenes,
