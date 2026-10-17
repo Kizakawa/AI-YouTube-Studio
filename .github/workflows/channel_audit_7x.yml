@@ -1,8 +1,8 @@
-name: 📊 7x Daily YouTube Channel & Video Smart Audit
+name: 📊 7x Daily Standalone Channel Audit
 
 on:
   schedule:
-    # 7 khung giờ/ngày theo giờ Việt Nam (UTC+7):
+    # 7 khung giờ cố định mỗi ngày theo giờ Việt Nam (UTC+7):
     # 00:00 VN (17:00 UTC), 06:00 VN (23:00 UTC), 09:00 VN (02:00 UTC),
     # 12:00 VN (05:00 UTC), 15:00 VN (08:00 UTC), 18:00 VN (11:00 UTC), 21:00 VN (14:00 UTC)
     - cron: '0 2,5,8,11,14,17,23 * * *'
@@ -12,15 +12,21 @@ permissions:
   contents: write
 
 jobs:
-  smart-audit:
+  standalone-audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
 
     steps:
-      - name: 📥 Checkout Repository
+      - name: 📥 Checkout Standalone Auditor
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          sparse-checkout: |
+            tools/standalone_auditor
+
+      - name: 🔄 Restore Previous Audit State (from isolated audit-logs branch)
+        run: |
+          git fetch origin audit-logs:audit-logs || true
+          git checkout audit-logs -- tools/standalone_auditor/.audit_state.json 2>/dev/null || true
 
       - name: 🐍 Set up Python 3.11
         uses: actions/setup-python@v5
@@ -28,26 +34,22 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: ⚡ Install Lightweight Audit Dependencies
+      - name: ⚡ Install Minimal Standalone Dependencies
         run: |
-          pip install --quiet pyyaml requests cryptography google-api-python-client google-auth google-auth-httplib2 pydantic pydantic-settings python-dotenv sqlalchemy
+          pip install --quiet pyyaml requests cryptography google-api-python-client google-auth google-auth-httplib2
 
-      - name: 🔐 Restore Encrypted YouTube Channel Credentials & Config
+      - name: 🔐 Unpack Encrypted YouTube Channel Credentials
         env:
           YT_CLOUD_CREDENTIALS_B64: ${{ secrets.YT_CLOUD_CREDENTIALS_B64 }}
         run: |
           python -c "
           import os, base64, io, zipfile
-          b64 = os.environ.get('YT_CLOUD_CREDENTIALS_B64', '').strip()
-          if not b64:
-              raise RuntimeError('Missing YT_CLOUD_CREDENTIALS_B64 secret')
-          raw = base64.b64decode(b64)
+          raw = base64.b64decode(os.environ['YT_CLOUD_CREDENTIALS_B64'].strip())
           with zipfile.ZipFile(io.BytesIO(raw), 'r') as zf:
               zf.extractall('.')
-          print('Restored credentials and channels.yaml successfully.')
           "
 
-      - name: 🚀 Run 7x Daily Smart Audit + Gemini Strategist + Telegram Push
+      - name: 🚀 Run Standalone Audit & Send to Telegram Group
         env:
           PYTHONIOENCODING: utf-8
           GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
@@ -56,15 +58,14 @@ jobs:
           ALLOWED_TELEGRAM_GROUPS: ${{ secrets.ALLOWED_TELEGRAM_GROUPS }}
           ENCRYPTION_MASTER_KEY: ${{ secrets.ENCRYPTION_MASTER_KEY }}
         run: |
-          python scripts/cloud_channel_audit.py
+          python tools/standalone_auditor/run_audit.py
 
-      - name: 💾 Save Audit History & Latest Report to Shared Cloud Memory
+      - name: 💾 Save State to Isolated `audit-logs` Branch (Zero impact on `main`)
         run: |
-          git config user.name "Antigravity Cloud Auditor"
+          git config user.name "Standalone Auditor"
           git config user.email "actions@github.com"
-          git add reports/LATEST_AUDIT_REPORT.md reports/audit_state.json
-          if ! git diff --staged --quiet; then
-            git commit -m "chore(audit): update 7x daily channel report [skip ci]"
-            git pull --rebase origin main || true
-            git push origin main
-          fi
+          git checkout --orphan temp-audit-branch
+          git rm -rf --cached . >/dev/null 2>&1 || true
+          git add -f tools/standalone_auditor/.audit_state.json tools/standalone_auditor/LATEST_AUDIT_REPORT.md
+          git commit -m "chore(audit-logs): snapshot channel audit state [skip ci]"
+          git push origin HEAD:refs/heads/audit-logs --force
