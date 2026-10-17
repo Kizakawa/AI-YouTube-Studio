@@ -84,7 +84,7 @@ def _download_yt_action_candidates(
     cand_dir.mkdir(parents=True, exist_ok=True)
     downloaded: List[str] = []
 
-    for q_idx, q in enumerate(queries):
+    for q_idx, q in enumerate(queries[:1]):
         if len(downloaded) >= max_candidates:
             break
         out_tmpl = str(cand_dir / f"yt_hook_cand_{q_idx}_%(id)s.%(ext)s")
@@ -94,7 +94,7 @@ def _download_yt_action_candidates(
             "--no-playlist",
             "--no-warnings",
             "--quiet",
-            "--socket-timeout", "8",
+            "--socket-timeout", "6",
             "--max-filesize", "25M",
             "--download-sections", "*00:00-00:12",
             "-f", "bestvideo[height>=720][height<=1080][ext=mp4]/best[height>=720][ext=mp4]/best[ext=mp4]",
@@ -106,7 +106,7 @@ def _download_yt_action_candidates(
                 cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                timeout=18,
+                timeout=11,
                 check=False,
             )
             for mp4 in sorted(cand_dir.glob(f"yt_hook_cand_{q_idx}_*.mp4")):
@@ -132,7 +132,7 @@ def _extract_contact_sheet_b64(video_path: str, work_dir: Path, idx: int) -> Opt
         str(sheet_path),
     ]
     try:
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10, check=False)
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8, check=False)
         if sheet_path.exists() and sheet_path.stat().st_size > 5_000:
             return base64.b64encode(sheet_path.read_bytes()).decode("ascii")
     except Exception as e:
@@ -173,8 +173,8 @@ Score strictly from 1.0 to 10.0 in JSON format:
 Return ONLY valid JSON:
 {{"entity_match_score": 8.5, "motion_action_score": 9.0, "clean_frame_score": 8.0, "reason": "..."}}"""
 
-    models = ["gemini-2.5-flash-lite", "gemini-flash-latest", "gemini-3-flash-preview"]
-    for key in keys[:4]:
+    models = ["gemini-2.5-flash-lite"]
+    for key in keys[:2]:
         for model_name in models:
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
@@ -188,7 +188,7 @@ Return ONLY valid JSON:
                         }
                     ]
                 }
-                resp = requests.post(url, json=payload, timeout=12)
+                resp = requests.post(url, json=payload, timeout=5)
                 if resp.status_code == 200:
                     cands = resp.json().get("candidates", [])
                     if cands:
@@ -344,12 +344,12 @@ Return ONLY valid JSON:
         raw_keys = getattr(settings, "GEMINI_API_KEYS_RAW", "") or os.getenv("GEMINI_API_KEYS", "")
         keys = [k.strip() for k in raw_keys.split(",") if k.strip().startswith("AIza")]
 
-    models = ["gemini-2.5-flash-lite", "gemini-flash-latest", "gemini-3-flash-preview"]
-    for key in keys[:4]:
+    models = ["gemini-2.5-flash-lite"]
+    for key in keys[:2]:
         for model_name in models:
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
-                resp = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=10)
+                resp = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=5)
                 if resp.status_code == 200:
                     cands = resp.json().get("candidates", [])
                     if cands:
