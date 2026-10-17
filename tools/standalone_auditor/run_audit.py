@@ -3,9 +3,11 @@ tools/standalone_auditor/run_audit.py — Công cụ Báo cáo Kênh Độc lậ
 
 Đặc điểm thiết kế:
 - TÁCH BIỆT HOÀN TOÀN với hệ thống code chính (`app/`, `config/`, `database/`).
-- Không import bất kỳ module nào của hệ thống làm video để tránh phụ thuộc hoặc xung đột khi sửa code chính.
-- Chỉ dùng thư viện chuẩn + `requests`, `pyyaml`, `cryptography`, `google-api-python-client`.
-- Tự giải mã token OAuth, tự quét YouTube Data API v3, tự gọi Gemini REST API phân tích và bắn thẳng vào Nhóm Telegram.
+- Tích hợp kép:
+  1. YouTube Data API v3 (Thời gian thực): Views, Velocity (views/h), Likes, Like/View %, Comments, Lịch hẹn SCHEDULED.
+  2. YouTube Analytics API v2 (Chuyên sâu): Thời lượng xem trung bình (AVD - giây), Tỷ lệ xem trung bình (APV %),
+     Tỷ lệ Ở lại xem (Stay-to-Watch / Viewed %) & Tỷ lệ Bỏ qua / Vuốt đi (Swiped Away %).
+- Tự động gọi Gemini 3 Flash phân tích Ưu/Nhược điểm & Đề xuất cải thiện theo chuẩn KPI 10.000 Views và gửi vào Nhóm Telegram.
 """
 
 import os
@@ -19,7 +21,7 @@ import hashlib
 import logging
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 
 import requests
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -36,7 +38,6 @@ VN_TZ = timezone(timedelta(hours=7))
 AES_PREFIX = b"AES256GCM:"
 DEFAULT_MASTER_KEY_HEX = "27e6b92fef27250bcec8629328c7060bce3da29a9edf98e3d00f63092ff2ba0a"
 
-# File lưu trạng thái tạm để tính độ lệch (Delta) giữa các ca kiểm tra
 STATE_PATH = Path(os.getenv("AUDIT_STATE_PATH", str(ROOT_DIR / "tools" / "standalone_auditor" / ".audit_state.json")))
 REPORT_PATH = Path(os.getenv("AUDIT_REPORT_PATH", str(ROOT_DIR / "tools" / "standalone_auditor" / "LATEST_AUDIT_REPORT.md")))
 
@@ -78,8 +79,8 @@ def _decrypt_token_file(file_path: Path) -> Optional[Dict[str, Any]]:
         return None
 
 
-def _build_youtube_service(channel_cfg: Dict[str, Any], acc_id: str):
-    """Khởi tạo kết nối YouTube Data API v3 hoàn toàn độc lập."""
+def _build_youtube_services(channel_cfg: Dict[str, Any], acc_id: str) -> Tuple[Any, Any, Optional[str]]:
+    """Khởi tạo đồng thời YouTube Data API v3 và YouTube Analytics API v2 hoàn toàn độc lập."""
     cid = channel_cfg.get("id", "default")
     candidates = [
         channel_cfg.get("token_file"),
@@ -88,19 +89,95 @@ def _build_youtube_service(channel_cfg: Dict[str, Any], acc_id: str):
     ]
     token_path = next((Path(p) for p in candidates if p and Path(p).exists()), None)
     if not token_path:
-        return None, f"Thiếu file token cho kênh {cid}"
+        return None, None, f"Thiếu file token cho kênh {cid}"
 
     token_data = _decrypt_token_file(token_path)
     if not token_data:
-        return None, f"Không đọc được dữ liệu token của {cid}"
+        return None, None, f"Không đọc được dữ liệu token của {cid}"
 
     try:
         creds = Credentials.from_authorized_user_info(token_data)
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())
-        return build("youtube", "v3", credentials=creds), None
+        yt_data = build("youtube", "v3", credentials=creds)
+        try:
+            yt_analytics = build("youtubeAnalytics", "v2", credentials=creds)
+        except Exception:
+            yt_analytics = None
+        return yt_data, yt_analytics, None
     except Exception as e:
-        return None, str(e)
+        return None, None, str(e)
+
+
+def _fetch_analytics_metrics(yta_service: Any) -> Tuple[Dict[str, Any], Dict[str, Dict[str, float]]]:
+    """
+    Truy vấn YouTube Analytics API v2 trong 28 ngày gần nhất:
+    - Trả về (channel_metrics, video_metrics_map):
+      + avd_sec: Thời lượng xem trung bình (giây)
+      + apv_pct: Tỷ lệ phần trăm xem trung bình (%)
+      + stay_pct: Tỷ lệ ở lại xem (Viewed / Stay-to-Watch %)
+      + swipe_pct: Tỷ lệ bỏ qua / vuốt đi (Swiped Away %)
+    """
+    ch_summary = {"avd_sec": 0.0, "apv_pct": 0.0, "stay_pct": 0.0, "swipe_pct": 0.0, "has_data": False}
+    vid_map: Dict[str, Dict[str, float]] = {}
+    if not yta_service:
+        return ch_summary, vid_map
+
+    end_date = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
+    start_date = (datetime.now(timezone.utc) - timedelta(days=28)).strftime("%Y-%m-%d")
+
+    # 1. Chỉ số trung bình toàn kênh
+    try:
+        c_rep = yta_service.reports().query(
+            ids="channel==MINE",
+            startDate=start_date,
+            endDate=end_date,
+            metrics="views,engagedViews,averageViewDuration,averageViewPercentage",
+        ).execute()
+        rows = c_rep.get("rows", [])
+        if rows and rows[0]:
+            views, engaged, avd, apv = rows[0]
+            if views and float(views) > 0:
+                stay = round(min(100.0, (float(engaged) / float(views)) * 100.0), 1)
+                swipe = round(max(0.0, 100.0 - stay), 1)
+                ch_summary = {
+                    "avd_sec": round(float(avd or 0.0), 1),
+                    "apv_pct": round(float(apv or 0.0), 1),
+                    "stay_pct": stay,
+                    "swipe_pct": swipe,
+                    "has_data": True,
+                }
+    except Exception as e:
+        logger.debug(f"Analytics channel query error: {e}")
+
+    # 2. Chỉ số chi tiết từng video (Top 30 video trong 28 ngày)
+    try:
+        v_rep = yta_service.reports().query(
+            ids="channel==MINE",
+            startDate=start_date,
+            endDate=end_date,
+            metrics="views,engagedViews,averageViewDuration,averageViewPercentage",
+            dimensions="video",
+            sort="-views",
+            maxResults=30,
+        ).execute()
+        for r in v_rep.get("rows", []):
+            vid_id, v_views, v_engaged, v_avd, v_apv = r[0], float(r[1] or 0), float(r[2] or 0), float(r[3] or 0), float(r[4] or 0)
+            if v_views > 0:
+                v_stay = round(min(100.0, (v_engaged / v_views) * 100.0), 1)
+                v_swipe = round(max(0.0, 100.0 - v_stay), 1)
+                vid_map[vid_id] = {
+                    "yta_views": int(v_views),
+                    "engaged_views": int(v_engaged),
+                    "avd_sec": round(v_avd, 1),
+                    "apv_pct": round(v_apv, 1),
+                    "stay_pct": v_stay,
+                    "swipe_pct": v_swipe,
+                }
+    except Exception as e:
+        logger.debug(f"Analytics video query error: {e}")
+
+    return ch_summary, vid_map
 
 
 def _parse_iso(iso_str: str) -> Optional[datetime]:
@@ -113,7 +190,7 @@ def _parse_iso(iso_str: str) -> Optional[datetime]:
 
 
 def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
-    """Quét toàn bộ 7 kênh YouTube."""
+    """Quét toàn bộ 7 kênh YouTube (Data API v3 + Analytics API v2)."""
     cfg_path = ROOT_DIR / "config" / "channels.yaml"
     with open(cfg_path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
@@ -137,12 +214,14 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
             cname = ch.get("name", cid)
             lang = ch.get("language", "en")
 
-            srv, err = _build_youtube_service(ch, acc_id)
+            srv, yta, err = _build_youtube_services(ch, acc_id)
             if not srv:
                 channels_data.append({"id": cid, "name": cname, "language": lang, "error": err})
                 continue
 
             try:
+                ch_analytics, vid_analytics_map = _fetch_analytics_metrics(yta)
+
                 c_res = srv.channels().list(mine=True, part="snippet,statistics,contentDetails").execute()
                 items = c_res.get("items", [])
                 if not items:
@@ -156,15 +235,11 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
                 total_videos = int(stats.get("videoCount", 0))
                 uploads_pl = item.get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads")
 
-                prev_ch = prev_channels.get(cid, {})
-                delta_views = total_views - int(prev_ch["views"]) if "views" in prev_ch else 0
-                delta_subs = total_subs - int(prev_ch["subs"]) if "subs" in prev_ch else 0
-
-                pl_items = srv.playlistItems().list(playlistId=uploads_pl, part="contentDetails", maxResults=12).execute().get("items", [])
+                pl_items = srv.playlistItems().list(playlistId=uploads_pl, part="contentDetails", maxResults=15).execute().get("items", [])
                 vids = [x["contentDetails"]["videoId"] for x in pl_items]
                 v_details = srv.videos().list(id=",".join(vids), part="snippet,statistics,status").execute().get("items", []) if vids else []
 
-                recent_72h, all_public, scheduled_queue, unscheduled_private = [], [], [], []
+                recent_72h, all_public, scheduled_queue, top_analytics_videos = [], [], [], []
                 for v in v_details:
                     vid = v["id"]
                     snip = v.get("snippet", {})
@@ -184,14 +259,15 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
                     prev_v = prev_videos.get(vid, {})
                     dv_views = views - int(prev_v["views"]) if "views" in prev_v else 0
 
+                    # Ghép chỉ số Retention & Tỷ lệ bỏ qua từ YouTube Analytics API v2
+                    ya = vid_analytics_map.get(vid, {})
+
                     new_videos_state[vid] = {"views": views, "likes": likes, "privacy": privacy}
 
                     if privacy == "private" and sched_at_str:
                         sched_dt = _parse_iso(sched_at_str)
                         sched_vn = sched_dt.astimezone(VN_TZ).strftime("%H:%M %d/%m/%Y") if sched_dt else sched_at_str
                         scheduled_queue.append({"id": vid, "title": title, "publish_at_utc": sched_at_str, "publish_at_vn": sched_vn})
-                    elif privacy == "private":
-                        unscheduled_private.append({"id": vid, "title": title})
                     elif privacy == "public":
                         pub_dt = _parse_iso(pub_at_str)
                         age_h = max(0.2, (now_utc - pub_dt).total_seconds() / 3600.0) if pub_dt else 999.0
@@ -207,13 +283,23 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
                             "comments": comments,
                             "like_rate_pct": like_rate,
                             "views_per_hour": round(views / age_h, 1),
+                            "avd_sec": ya.get("avd_sec"),
+                            "apv_pct": ya.get("apv_pct"),
+                            "stay_pct": ya.get("stay_pct"),
+                            "swipe_pct": ya.get("swipe_pct"),
                         }
                         all_public.append(v_obj)
                         if age_h <= 72.0:
                             recent_72h.append(v_obj)
+                        if ya.get("avd_sec") is not None:
+                            top_analytics_videos.append(v_obj)
 
                 scheduled_queue.sort(key=lambda x: x["publish_at_utc"])
                 effective_total_views = max(total_views, sum(x["views"] for x in all_public))
+
+                prev_ch = prev_channels.get(cid, {})
+                delta_views = effective_total_views - int(prev_ch["views"]) if "views" in prev_ch else 0
+                delta_subs = total_subs - int(prev_ch["subs"]) if "subs" in prev_ch else 0
                 new_channels_state[cid] = {"views": effective_total_views, "subs": total_subs}
 
                 channels_data.append({
@@ -227,8 +313,9 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
                     "total_videos": total_videos,
                     "scheduled_count": len(scheduled_queue),
                     "scheduled_queue": scheduled_queue,
+                    "analytics": ch_analytics,
                     "recent_72h": recent_72h,
-                    "unscheduled_private": unscheduled_private,
+                    "top_analytics_videos": top_analytics_videos[:5],
                 })
             except Exception as e:
                 channels_data.append({"id": cid, "name": cname, "language": lang, "error": str(e)})
@@ -248,7 +335,7 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def analyze_with_gemini(telemetry: Dict[str, Any]) -> str:
-    """Phân tích Ưu/Nhược điểm & Đề xuất cải thiện bằng Gemini REST API."""
+    """Phân tích sâu Ưu/Nhược điểm (bao gồm AVD, APV%, Tỷ lệ Vuốt bỏ) bằng Gemini 3 Flash."""
     raw_keys = os.getenv("GEMINI_API_KEYS", "")
     keys = [k.strip() for k in raw_keys.split(",") if k.strip().startswith("AIza")]
 
@@ -259,26 +346,28 @@ def analyze_with_gemini(telemetry: Dict[str, Any]) -> str:
             "total_views": c.get("total_views"),
             "delta_views": c.get("delta_views"),
             "subs": c.get("total_subs"),
+            "channel_analytics_28d": c.get("analytics"),
             "scheduled_count": c.get("scheduled_count"),
-            "scheduled_next": c.get("scheduled_queue", [])[:2],
             "recent_72h": c.get("recent_72h", []),
+            "videos_with_retention_data": c.get("top_analytics_videos", [])[:3],
         }
         for c in telemetry["channels"]
         if not c.get("error")
     ]
 
     prompt = f"""Bạn là Chuyên gia Chiến lược YouTube Shorts đang kiểm tra định kỳ (7 lần/ngày) cho hệ thống 7 kênh lúc {telemetry['timestamp_vn']}.
-Dữ liệu thực tế từ YouTube API:
+Dữ liệu thực tế từ YouTube Data API v3 + YouTube Analytics API v2:
 {json.dumps(payload_summary, ensure_ascii=False, indent=2)}
 
 KPI chuẩn 10.000 Views:
+- Tỷ lệ Ở lại xem (Stay-to-Watch %) >= 70% (tức Tỷ lệ Vuốt bỏ / Swiped Away <= 30%).
+- Tỷ lệ xem trung bình (APV %) >= 90% - 105%, Thời lượng xem trung bình (AVD) >= 24s - 32s.
 - Vận tốc cắn đề xuất (Seed Velocity): >= 40-80 views/giờ trong 12h đầu.
-- Tỷ lệ Like/View: >= 4.0% là rất tốt, 2.5%-3.9% là đạt, < 2.0% là cần kích tương tác.
-- 12 video đang SCHEDULED vừa được áp dụng cấu trúc 3-Cut Opening Hook (4 cảnh cắt nhanh trong 3.5s đầu).
+- Tỷ lệ Like/View: >= 4.0% là rất tốt, < 2.0% là cần kích tương tác.
 
 Hãy viết báo cáo phân tích ngắn gọn, sắc bén bằng tiếng Việt gồm đúng 3 phần:
-1. ✅ ƯU ĐIỂM & VIDEO ĐANG CẮN ĐỀ XUẤT (nêu rõ số view, tốc độ view/giờ, tỷ lệ Like/View).
-2. ⚠️ NHƯỢC ĐIỂM & CẢNH BÁO SỚM (video nào chững view, tỷ lệ like thấp hoặc lệch pha giữa kênh pt-BR và en).
+1. ✅ ƯU ĐIỂM & VIDEO ĐANG CẮN ĐỀ XUẤT (nêu rõ số view, tốc độ view/giờ, AVD/APV% và tỷ lệ Vuốt bỏ/Ở lại xem của các kênh/video nổi bật).
+2. ⚠️ NHƯỢC ĐIỂM & CẢNH BÁO TỶ LỆ BỎ QUA / CHỮNG VIEW (chỉ rõ kênh/video nào đang bị tỷ lệ Vuốt bỏ Swiped Away cao >55%, AVD thấp hoặc lệch pha giữa kênh pt-BR và en).
 3. 🛠️ ĐỀ XUẤT CẢI THIỆN CỤ THỂ NGAY.
 Đi thẳng vào 3 mục, không chào hỏi rườm rà."""
 
@@ -299,8 +388,18 @@ Hãy viết báo cáo phân tích ngắn gọn, sắc bén bằng tiếng Việt
     return "*(Hệ thống AI đang bận, vui lòng xem bảng số liệu chi tiết phía trên)*"
 
 
+def _fmt_retention_badge(v: Dict[str, Any]) -> str:
+    """Hiển thị chuỗi AVD, APV% và Tỷ lệ Bỏ qua (nếu YouTube Analytics đã tổng hợp xong cho video đó)."""
+    if v.get("avd_sec") is not None and v.get("apv_pct") is not None:
+        return (
+            f"⏱️ AVD: `{v['avd_sec']}s` (`{v['apv_pct']}%`) | "
+            f"👁️ Ở lại: `{v['stay_pct']}%` / ⏭️ Bỏ qua: `{v['swipe_pct']}%`"
+        )
+    return "⏳ *(Analytics đang chốt sổ 24h đầu)*"
+
+
 def send_telegram_direct(telemetry: Dict[str, Any], insights: str) -> None:
-    """Bắn báo cáo thẳng vào Nhóm Telegram bằng HTTP REST thuần túy (không phụ thuộc code app/)."""
+    """Bắn báo cáo kèm chỉ số AVD, APV% & Tỷ lệ bỏ qua thẳng vào Nhóm Telegram."""
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
         return
@@ -325,15 +424,20 @@ def send_telegram_direct(telemetry: Dict[str, Any], insights: str) -> None:
     lines = [f"📊 *BÁO CÁO ĐỊNH KỲ 7 KÊNH ({telemetry['timestamp_vn']} VN)*"]
     if telemetry.get("prev_timestamp_vn"):
         lines.append(f"🔄 _So với lần check trước ({telemetry['hours_since_prev']}h trước)_")
-    lines.append("\n📌 *1. TỔNG QUAN 7 KÊNH:*")
+    lines.append("\n📌 *1. TỔNG QUAN & TỶ LỆ GIỮ CHÂN / BỎ QUA:*")
     for c in telemetry["channels"]:
         if c.get("error"):
             lines.append(f"• *{c['name']}*: ❌ Lỗi kết nối")
             continue
         dv = f" (+{c['delta_views']})" if c["delta_views"] > 0 else ""
-        ds = f" (+{c['delta_subs']})" if c["delta_subs"] > 0 else ""
+        ya = c.get("analytics", {})
+        ya_str = (
+            f" | ⏱️ AVD: `{ya['avd_sec']}s` (`{ya['apv_pct']}%`) | ⏭️ Bỏ qua: `{ya['swipe_pct']}%`"
+            if ya.get("has_data")
+            else ""
+        )
         lines.append(
-            f"• *{c['name']}* (`{c['language']}`): *{c['total_views']:,}* views{dv} | *{c['total_subs']}* subs{ds} | ⏳ Lịch: *{c['scheduled_count']}*"
+            f"• *{c['name']}* (`{c['language']}`): *{c['total_views']:,}* views{dv} | *{c['total_subs']}* subs{ya_str} | ⏳ Lịch: *{c['scheduled_count']}*"
         )
 
     lines.append("\n🔥 *2. VIDEO MỚI ĐĂNG (72H QUA):*")
@@ -342,8 +446,9 @@ def send_telegram_direct(telemetry: Dict[str, Any], insights: str) -> None:
             continue
         for v in c["recent_72h"][:2]:
             dv = f" (+{v['delta_views']})" if v["delta_views"] > 0 else ""
+            ret = f" | AVD {v['avd_sec']}s ({v['apv_pct']}%), Bỏ qua {v['swipe_pct']}%" if v.get("avd_sec") is not None else ""
             lines.append(
-                f"• *{c['name']}* — _{v['title'][:36]}_: *{v['views']:,}* views{dv} ({v['views_per_hour']}/h) | 👍 {v['likes']} ({v['like_rate_pct']}%)"
+                f"• *{c['name']}* — _{v['title'][:34]}_: *{v['views']:,}* views{dv} ({v['views_per_hour']}/h) | 👍 {v['likes']} ({v['like_rate_pct']}%){ret}"
             )
 
     msg1 = "\n".join(lines)
@@ -363,29 +468,51 @@ def send_telegram_direct(telemetry: Dict[str, Any], insights: str) -> None:
 
 
 def format_full_markdown(telemetry: Dict[str, Any], insights: str) -> str:
-    """Tạo nội dung báo cáo Markdown đầy đủ."""
+    """Tạo nội dung báo cáo Markdown đầy đủ kèm AVD, APV%, Stay-to-Watch & Tỷ lệ bỏ qua."""
     lines = [f"# 📊 BÁO CÁO ĐỊNH KỲ 7 KÊNH YOUTUBE ({telemetry['timestamp_vn']} VN)", ""]
-    lines.append("| Kênh | Ngôn ngữ | Tổng Views (Biến động) | Subscribers | Video Public | Đang Lên Lịch (`SCHEDULED`) |")
-    lines.append("| :--- | :---: | :---: | :---: | :---: | :---: |")
+    lines.append("## 1. Tổng quan Kênh & Chỉ số Giữ chân / Tỷ lệ Bỏ qua (YouTube Analytics)")
+    lines.append("")
+    lines.append("| Kênh | Ngôn ngữ | Tổng Views (Biến động) | Subs | Thời lượng xem TB (`AVD`) | Tỷ lệ xem TB (`APV%`) | Ở lại xem (`Viewed%`) | Tỷ lệ Bỏ qua (`Swiped Away%`) | Lịch `SCHEDULED` |")
+    lines.append("| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |")
     for c in telemetry["channels"]:
         if c.get("error"):
-            lines.append(f"| **{c['name']}** | `{c['language']}` | ❌ {c['error'][:35]} | - | - | - |")
+            lines.append(f"| **{c['name']}** | `{c['language']}` | ❌ {c['error'][:30]} | - | - | - | - | - | - |")
             continue
         dv = f" *(+{c['delta_views']})*" if c["delta_views"] > 0 else ""
-        ds = f" *(+{c['delta_subs']})*" if c["delta_subs"] > 0 else ""
-        lines.append(f"| **{c['name']}** | `{c['language']}` | **{c['total_views']:,}**{dv} | **{c['total_subs']}**{ds} | {c['total_videos']} | **{c['scheduled_count']} video** |")
+        ya = c.get("analytics", {})
+        avd_s = f"**{ya['avd_sec']}s**" if ya.get("has_data") else "-"
+        apv_s = f"**{ya['apv_pct']}%**" if ya.get("has_data") else "-"
+        stay_s = f"**{ya['stay_pct']}%**" if ya.get("has_data") else "-"
+        swipe_s = f"`{ya['swipe_pct']}%`" if ya.get("has_data") else "-"
+        lines.append(
+            f"| **{c['name']}** | `{c['language']}` | **{c['total_views']:,}**{dv} | **{c['total_subs']}** | {avd_s} | {apv_s} | {stay_s} | {swipe_s} | **{c['scheduled_count']} video** |"
+        )
 
-    lines.append("\n## Hiệu suất Video mới (72h qua)\n")
+    lines.append("\n## 2. Hiệu suất Video mới (72h qua) & Chi tiết Tỷ lệ Bỏ qua từng Video\n")
     for c in telemetry["channels"]:
-        if c.get("error") or not c.get("recent_72h"):
+        if c.get("error"):
             continue
         lines.append(f"### 📺 {c['name']} (`{c['language']}`)")
-        for v in c["recent_72h"]:
-            dv = f" (+{v['delta_views']} mới)" if v["delta_views"] > 0 else ""
-            lines.append(f"- [{v['title']}](https://www.youtube.com/shorts/{v['id']}) ({v['age_hours']}h trước): **{v['views']:,} views**{dv} | ⚡ `{v['views_per_hour']} views/h` | 👍 {v['likes']} (`{v['like_rate_pct']}%`)")
+        if c.get("recent_72h"):
+            for v in c["recent_72h"]:
+                dv = f" (+{v['delta_views']} mới)" if v["delta_views"] > 0 else ""
+                ret_str = _fmt_retention_badge(v)
+                lines.append(
+                    f"- [{v['title']}](https://www.youtube.com/shorts/{v['id']}) ({v['age_hours']}h trước): "
+                    f"**{v['views']:,} views**{dv} | ⚡ `{v['views_per_hour']} views/h` | 👍 {v['likes']} (`{v['like_rate_pct']}%`) | {ret_str}"
+                )
+        # Hiển thị thêm các video gần nhất đã có dữ liệu Analytics chốt sổ để đối chiếu AVD/Swipe
+        shown_ids = {v["id"] for v in c.get("recent_72h", [])}
+        extra_ya = [v for v in c.get("top_analytics_videos", []) if v["id"] not in shown_ids][:2]
+        for v in extra_ya:
+            ret_str = _fmt_retention_badge(v)
+            lines.append(
+                f"- *(Đã chốt Analytics)* [{v['title']}](https://www.youtube.com/shorts/{v['id']}): "
+                f"**{v['views']:,} views** | 👍 {v['likes']} (`{v['like_rate_pct']}%`) | {ret_str}"
+            )
         lines.append("")
 
-    lines.append("## Đánh giá Chiến lược (AI Strategist)\n")
+    lines.append("## 3. Đánh giá Chiến lược (AI Strategist)\n")
     lines.append(insights)
     return "\n".join(lines)
 
@@ -417,7 +544,7 @@ def main():
 
     if "--no-telegram" not in sys.argv:
         send_telegram_direct(telemetry, insights)
-        logger.info("📲 Đã gửi báo cáo độc lập vào Nhóm Telegram!")
+        logger.info("📲 Đã gửi báo cáo độc lập (kèm AVD, APV% & Tỷ lệ bỏ qua) vào Nhóm Telegram!")
 
     print(md_report)
 
