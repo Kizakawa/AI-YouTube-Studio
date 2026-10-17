@@ -89,9 +89,9 @@ REALITY_KEYWORDS: Dict[str, List[str]] = {
 # Truy vấn bổ trợ theo lớp: giúp kho stock / Google Images trả về đúng LOẠI hình (CGI rùng rợn, Thalassophobia, motion graphics...)
 CLASS_QUERY_HINTS: Dict[str, List[str]] = {
     DEEP_SEA_MYSTERY: [
-        "{subject} terrifying giant monster dark ocean cgi",
-        "{subject} thalassophobia megalophobia horror artstation",
-        "dark deep ocean abyss submarine spotlight",
+        "giant {subject} ocean",
+        "{subject} attacking ship",
+        "deep ocean submarine spotlight",
     ],
     SCIENTIFIC_VISUALIZATION: ["{subject} animation", "{subject} 3d", "{subject} space"],
     ABSTRACT_CONCEPT: ["abstract particles glowing", "light tunnel motion", "glowing network abstract",

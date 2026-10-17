@@ -271,7 +271,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # TỐI ƯU TỐC ĐỘ: Giữ nguyên file ảnh tĩnh ở bước Fetch để VideoAgent._prepare_scene_clips
         # render 3D Ken Burns ĐÚNG 1 LẦN DUY NHẤT (kèm bù thời lượng xfade), giảm 50% thời gian FFmpeg!
         # ══════════════════════════════════════════════════════════════════════
-        search_first = os.getenv("SEARCH_FIRST_VISUAL_MODE", "false").strip().lower() in ("1", "true", "yes", "on")
+        search_first = os.getenv("SEARCH_FIRST_VISUAL_MODE", "true").strip().lower() not in ("0", "false", "no", "off")
         creature_first = os.getenv("CREATURE_ART_FIRST", "true").strip().lower() not in ("0", "false", "no", "off")
         tier0_searched = False
         if (
@@ -285,9 +285,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     (v_analysis.get("creature_queries") if v_analysis.get("creature_mode") else None)
                     or v_analysis.get("google_image_queries")
                     or v_analysis.get("search_queries")
-                    or [search_query or sq or kw]
+                    or [kw or search_query or sq]
                 )
-                primary_g_query = next((q for q in g_queries if q), search_query or sq or kw)
+                primary_g_query = next((q for q in g_queries if q), kw or search_query or sq)
                 searched_photo = await asyncio.to_thread(
                     media_agent.search_best_photo,
                     primary_g_query,

@@ -125,24 +125,23 @@ def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any
     res["search_queries"] = fixed[:4]
     res["subject"] = subject
 
-    # Xác định chế độ thị giác: chỉ bật creature_mode khi thực sự là quái vật / sinh vật thần thoại
+    # Xác định chế độ thị giác: luôn ưu tiên trực tiếp Top Search Google Images ("google")
     paradigm = str(res.get("visual_paradigm") or "").upper()
     actual_creature = is_creature_subject(subject)
     if is_ai:
-        if paradigm in ("DARK_HORROR_MYTHOLOGY", "MYTHOLOGY_MONSTER") or (paradigm == "CGI_CONCEPT_ART" and actual_creature):
+        if paradigm in ("DARK_HORROR_MYTHOLOGY", "MYTHOLOGY_MONSTER", "HOLLYWOOD_VFX_MOVIE", "CGI_CONCEPT_ART") and actual_creature or actual_creature:
             res["creature_mode"] = True
-            if not res.get("preferred_engines"):
-                res["preferred_engines"] = ["artstation", "bing", "wallhaven", "ddgs"]
+            res["preferred_engines"] = ["google"]
         else:
             res["creature_mode"] = False
-            if not res.get("preferred_engines"):
-                res["preferred_engines"] = ["bing", "ddgs", "wallhaven"]
+            res["preferred_engines"] = ["google"]
     else:
         if actual_creature:
             c_qs = creature_queries(subject)
-            res["google_image_queries"] = c_qs[:3]
+            res["google_image_queries"] = c_qs[:4]
             res["creature_mode"] = True
             res["creature_queries"] = c_qs
+            res["preferred_engines"] = ["google"]
             return res
 
     g_queries = [_strip_metaphor_and_jargon(q.replace('"', "").strip()) for q in (res.get("google_image_queries") or []) if isinstance(q, str) and q.strip()]
@@ -150,19 +149,20 @@ def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any
     for gq in g_queries:
         if not gq:
             continue
+        gq = re.sub(r"\s+", " ", gq).strip()
         if core_entity and not _has_subject(gq):
             gq = f"{anchor_subj} {gq}"
         gq_words = gq.split()
         if len(gq_words) > 6:
             gq = " ".join(gq_words[:6])
-        if gq not in fixed_g:
+        if gq and gq.lower() not in [x.lower() for x in fixed_g]:
             fixed_g.append(gq)
 
     if not fixed_g:
         primary_action = " ".join((fixed[0] if fixed else short_subj).split()[:5])
         fixed_g = [
             primary_action,
-            short_subj,
+            f"{short_subj} epic 4k",
         ]
 
     res["google_image_queries"] = fixed_g[:4]
@@ -173,11 +173,8 @@ def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any
 
 def _apply_creature_mode(res: Dict[str, Any], narration: str = "", topic: str = "", channel_niche: str = "") -> Dict[str, Any]:
     """
-    Bổ sung chế độ thị giác chuyên biệt:
-    1. Nếu là chủ đề Tâm lý học / Thao túng tâm lý (@MasteringMindControl Dark Psychological Noir):
-       - Đảm bảo preferred_engines có ["bing", "ddgs", "wallhaven"].
-       - Giữ nguyên truy vấn ngữ nghĩa sạch của AI, chỉ bổ sung truy vấn dự phòng khi thiếu.
-    2. Dự phòng ngoại tuyến (Offline Heuristic Fallback) cho Quái vật / Sinh vật huyền bí (creature_mode).
+    Bổ sung chế độ thị giác chuyên biệt với nguồn ưu tiên số 1 là TOP SEARCH GOOGLE IMAGES (["google"]).
+    Đảm bảo mỗi phân cảnh giữ được truy vấn hành động/bối cảnh riêng biệt (ai_qs) thay vì lặp lại cùng 1 từ khóa.
     """
     from app.services.media.image_quality import (
         is_creature_subject, creature_queries, extract_core_creature, _SPECIFIC_CREATURES, _norm_text,
@@ -188,32 +185,25 @@ def _apply_creature_mode(res: Dict[str, Any], narration: str = "", topic: str = 
     # Chế độ @MasteringMindControl Dark Psychological Noir & Seinen Thriller
     if is_psychology_noir_subject(subject, narration, topic, channel_niche):
         res["psychology_noir_mode"] = True
-        engines = list(res.get("preferred_engines") or [])
-        for eng in ("bing", "ddgs", "wallhaven"):
-            if eng not in engines:
-                engines.append(eng)
-        res["preferred_engines"] = engines[:3]
+        res["preferred_engines"] = ["google"]
         noir_qs = psychology_noir_queries(subject, narration=narration, topic=topic)
         if res.get("analysis_source") == "ai" and res.get("google_image_queries"):
             existing_g = list(res.get("google_image_queries") or [])
             for nq in noir_qs:
-                if len(existing_g) < 4 and nq not in existing_g:
+                if len(existing_g) < 4 and nq.lower() not in [x.lower() for x in existing_g]:
                     existing_g.append(nq)
             res["google_image_queries"] = existing_g[:4]
             return res
         else:
             res["google_image_queries"] = noir_qs[:4]
             res["search_queries"] = noir_qs[:3]
-            logger.info(f"🎭 [VisualCuration Noir] Chế độ DARK PSYCHOLOGICAL NOIR cho '{subject or topic[:30]}': {noir_qs[:3]}")
+            logger.info(f"🎭 [VisualCuration Noir] Chế độ DARK PSYCHOLOGICAL NOIR (Google Top Search) cho '{subject or topic[:30]}': {noir_qs[:3]}")
             return res
-
-    if res.get("analysis_source") == "ai" and res.get("google_image_queries"):
-        return res
 
     if is_creature_subject(subject, narration, topic):
         core_monster = extract_core_creature(subject, narration, topic)
         norm_subj = f" {_norm_text(subject)} "
-        if core_monster and f" {core_monster} " not in norm_subj:
+        if core_monster and f" {core_monster.replace('-', ' ')} " not in norm_subj:
             if not any(f" {sp} " in norm_subj for sp in _SPECIFIC_CREATURES):
                 subject = f"giant {core_monster} {subject}".strip() if subject else f"giant {core_monster}"
                 res["subject"] = subject
@@ -222,10 +212,22 @@ def _apply_creature_mode(res: Dict[str, Any], narration: str = "", topic: str = 
             res["subject"] = subject
 
         c_qs = creature_queries(subject, topic=topic, narration=narration)
+        ai_qs = [q for q in (res.get("google_image_queries") or []) if q]
+        is_hook = bool(res.get("is_hook_scene")) or int(res.get("scene_id") or 1) == 1
+
+        # Cảnh 1 (Hook): Ưu tiên truy vấn Hook ấn tượng nhất + từ khóa chủ thể kinh điển.
+        # Cảnh 2..N: Ưu tiên truy vấn hành động/góc máy đặc thù của chính cảnh đó (ai_qs) TRƯỚC,
+        # sau đó mới lót c_qs dự phòng để các cảnh trong video không bị trùng từ khóa tìm kiếm!
+        ordered_candidates = (ai_qs[:1] + c_qs[:1] + ai_qs[1:] + c_qs[1:]) if is_hook else (ai_qs + c_qs)
+        merged_qs: List[str] = []
+        for q in ordered_candidates:
+            if q and q.lower() not in [x.lower() for x in merged_qs]:
+                merged_qs.append(q)
         res["creature_mode"] = True
-        res["creature_queries"] = c_qs
-        res["google_image_queries"] = c_qs[:3]
-        logger.info(f"🐙 [VisualCuration Fallback] Chế độ QUÁI VẬT RÙNG RỢN cho '{subject}': {res['creature_queries']}")
+        res["preferred_engines"] = ["google"]
+        res["creature_queries"] = merged_qs[:4]
+        res["google_image_queries"] = merged_qs[:4]
+        logger.info(f"🔎 [VisualCuration GoogleTop] Cảnh {res.get('scene_id', '?')} TOP SEARCH GOOGLE IMAGES cho '{subject}': {res['creature_queries']}")
     return res
 
 
@@ -311,7 +313,8 @@ class VisualCurationAgent:
         """
         Phân tích đồng loạt toàn bộ các phân cảnh trong 1 lần gọi Gemini duy nhất:
         - Tiết kiệm ~85% số lệnh gọi LLM, giảm độ trễ và tránh lỗi 429 Quota.
-        - Nhìn tổng thể mạch truyện để đảm bảo KHÔNG trùng lặp truy vấn tìm kiếm hoặc góc máy giữa các cảnh liền kề.
+        - Thiết kế truy vấn TOP SEARCH GOOGLE IMAGES ngắn gọn (2-5 từ tiếng Anh), ấn tượng nhất (PEAK / WOW factor)
+          và tuyệt đối KHÔNG trùng lặp giữa các phân cảnh liền kề.
         """
         if not scenes:
             return {}
@@ -328,8 +331,8 @@ class VisualCurationAgent:
             })
 
         prompt = f"""
-Bạn là Tổng Đạo Diễn Nghệ Thuật & Chuyên Gia Tìm Kiếm Hình Ảnh Đa Động Cơ (Autonomous Visual Intelligence & Search Director) cho YouTube Shorts triệu view.
-Nhiệm vụ của bạn là TỰ ĐỘNG HIỂU SÂU BẢN CHẤT NGỮ NGHĨA của bất kỳ chủ đề hay xu hướng nào (không phụ thuộc từ khóa cố định) và thiết kế kế hoạch tìm kiếm hình ảnh BẮT MẮT, CÂU VIEW NHẤT cho toàn bộ {len(scenes_payload)} phân cảnh.
+Bạn là Tổng Đạo Diễn Hình Ảnh & Chuyên Gia Truy Vấn Top Search Google Images (Viral Visual & Google Search Director) cho YouTube Shorts triệu view.
+Nhiệm vụ của bạn là đọc hiểu sâu mạch truyện của toàn bộ {len(scenes_payload)} phân cảnh và thiết kế bộ từ khóa tìm kiếm `google_image_queries` NGẮN GỌN, ĐẮT GIÁ NHẤT (2–5 từ tiếng Anh) để công cụ **Top Search Google Images** trả ra những bức ảnh PEAK / WOW / ẤN TƯỢNG NHẤT trên mạng, khớp hoàn hảo với lời thoại từng cảnh.
 
 THÔNG TIN VIDEO:
 - Chủ đề: "{topic}"
@@ -338,49 +341,49 @@ THÔNG TIN VIDEO:
 - Danh sách phân cảnh:
 {json.dumps(scenes_payload, ensure_ascii=False, indent=2)}
 
-NHIỆM VỤ TƯ DUY ĐẠO DIỄN TỰ HÀNH (AUTONOMOUS SEMANTIC REASONING):
+NGUYÊN TẮC VÀNG KHI TẠO TRUY VẤN TOP SEARCH GOOGLE IMAGES (`google_image_queries`):
 1. Xác định "core_visual_entity" (Chủ thể Thị giác Vật lý Trung tâm của toàn video bằng tiếng Anh, 1-3 từ):
-   - CHỈ ĐẶT "core_visual_entity" khi video nói về 1 sinh vật, động vật, nhân vật lịch sử hoặc vật thể cụ thể xuyên suốt (vd: "harpy eagle", "julius caesar", "giant kraken").
-   - NẾU video thuộc chủ đề Tâm lý học (Psychology), Hành vi con người, Mối quan hệ, Triết học, Tài chính, Phát triển bản thân: BẮT BUỘC đặt `"core_visual_entity": ""` (chuỗi rỗng)! TUYỆT ĐỐI CẤM bịa ra ẩn dụ trừu tượng kiểu "manipulative puppet master", "toxic trap", "mind prison" làm core_visual_entity vì công cụ tìm ảnh sẽ trả về ảnh quái vật/rối gỗ/lồng sắt kỳ quặc không liên quan!
+   - CHỈ ĐẶT "core_visual_entity" khi video nói về 1 sinh vật, động vật, nhân vật lịch sử hoặc vật thể cụ thể xuyên suốt (vd: "kraken", "megalodon", "harpy eagle", "julius caesar").
+   - NẾU video thuộc chủ đề Tâm lý học (Psychology), Hành vi con người, Mối quan hệ, Triết học, Tài chính, Phát triển bản thân: BẮT BUỘC đặt `"core_visual_entity": ""` (chuỗi rỗng)! TUYỆT ĐỐI CẤM bịa ra ẩn dụ trừu tượng kiểu "manipulative puppet master", "toxic trap", "mind prison" hay đạo cụ nghĩa đen ("knife", "blade", "puppet strings", "cage")!
 2. Xác định "visual_paradigm" (Bản chất thị giác của từng cảnh dựa trên ngữ nghĩa chủ đề):
-   - "CINEMATIC_REALISM": Tâm lý học, thao túng tâm lý, ngôn ngữ cơ thể, cảm xúc con người, giao tiếp xã hội, tội phạm, tài chính, triết học đời sống → ưu tiên phong cách **Dark Psychological Noir & Monochrome Seinen Thriller** (chuẩn kênh @MasteringMindControl: chân dung bóng tối chiaroscuro tương phản cao, cảnh đối mặt im lặng căng thẳng giữa 2 người, hoặc minh họa Seinen Psychological Thriller đen trắng sắc lạnh như Monster / Johan Liebert / noir shadow portrait), dùng động cơ ["bing", "wallhaven", "ddgs"]. TUYỆT ĐỐI CẤM ảnh văn phòng công sở cười tươi giả tạo (cheesy corporate stock photo)!
-   - "REAL_WORLD_ACTION": Động vật hoang dã có thật, thiên nhiên có thật, giải cứu động vật, hành động vật lý đời thực → ưu tiên nhiếp ảnh kịch tính & footage thật ["bing", "ddgs"].
-   - "HISTORICAL_ARCHIVE": Nhân vật lịch sử có thật, sự kiện lịch sử, cổ vật/di tích thật → ưu tiên tư liệu lịch sử & tranh/ảnh chân thực ["bing", "ddgs"].
-   - "SCIENTIFIC_3D": Vũ trụ, thiên văn, giải phẫu, vi sinh, vật lý lượng tử → ưu tiên mô phỏng 3D khoa học & NASA ["bing", "ddgs", "wallhaven"].
-   - "CGI_CONCEPT_ART": CHỈ DÙNG CHO thần thoại, quái vật, thủy quái, kinh dị siêu nhiên, viễn tưởng (Sci-Fi) → ưu tiên ["artstation", "bing", "wallhaven", "ddgs"].
+   - "CINEMATIC_REALISM": Tâm lý học, thao túng tâm lý, ngôn ngữ cơ thể, cảm xúc con người, giao tiếp xã hội, tội phạm, tài chính, triết học đời sống → ưu tiên ảnh điện ảnh tâm lý / Dark Noir / Chiaroscuro sắc lạnh hoặc Seinen Thriller cực ngầu (vd: `"man cold calculating stare noir"`, `"johan liebert monster anime"`, `"woman anxious dark room"`, `"intense eye contact shadow"`). TUYỆT ĐỐI CẤM ảnh văn phòng công sở cười tươi giả tạo (cheesy corporate stock photo)!
+   - "REAL_WORLD_ACTION": Động vật hoang dã có thật, thiên nhiên có thật, giải cứu động vật, hành động vật lý đời thực → truy vấn nhiếp ảnh kịch tính sắc nét (vd: `"harpy eagle talons close up"`, `"harpy eagle hunting monkey"`).
+   - "HISTORICAL_ARCHIVE": Nhân vật lịch sử có thật, sự kiện lịch sử, cổ vật/di tích thật → truy vấn chân dung/tượng/tranh lịch sử hoành tráng (vd: `"julius caesar marble bust"`, `"roman senate assassination painting"`).
+   - "SCIENTIFIC_3D": Vũ trụ, thiên văn, giải phẫu, vi sinh, vật lý lượng tử → truy vấn hình ảnh không gian/khoa học ngoạn mục (vd: `"supermassive black hole accretion disk"`, `"james webb nebula pillar"`).
+   - "HOLLYWOOD_VFX_MOVIE": Thần thoại, quái vật, thủy quái, kinh dị siêu nhiên, viễn tưởng (Sci-Fi) → truy vấn NGẮN GỌN, TRỰC DIỆN (2–5 từ tiếng Anh) giúp Top Search Google Images trả về ngay kiệt tác CGI / VFX / Thalassophobia đỉnh nhất (vd: Cảnh 1: `"giant kraken ocean"`, Cảnh 2: `"kraken attacking ship"`, Cảnh 3: `"deep sea submarine spotlight"`, Cảnh 4: `"giant kraken tentacles"`, Cảnh 5: `"leviathan deep ocean monster"`).
    - "STYLIZED_ANIMATION": Hoạt hình 2D châm biếm, minh họa.
-3. Chọn "preferred_engines": Mảng động cơ tìm kiếm phù hợp nhất cho cảnh đó từ ["bing", "ddgs", "wallhaven", "artstation"].
-4. Thiết kế "search_queries" và "google_image_queries" (3 câu truy vấn TỰ NHIÊN, SẮC BÉN 3-6 từ tiếng Anh cho mỗi cảnh — giống hệt cách con người tìm kiếm trên ứng dụng Google / Gemini):
-   - "google_image_queries" PHẢI là các cụm từ tìm kiếm tự nhiên, cụ thể mà các bài báo khoa học/tâm lý, nhiếp ảnh gia, hoặc cảnh phim thực sự đặt làm tiêu đề ảnh (vd: "narcissist fake smile psychology", "two people silent tension argument", "Johan Liebert Monster cold gaze", "giant river otter attacking caiman pantanal", "Movile Cave Romania underground lake").
-   - TUYỆT ĐỐI CẤM nhồi các từ khóa học thuật nhiếp ảnh ("chiaroscuro", "shadow portrait", "monochrome aesthetic", "Macro shot", "Wide-angle", "Close-up", "Low-angle", "Breathtaking cinematography") vào `search_queries` hoặc `google_image_queries` vì công cụ tìm kiếm sẽ trả về bài dạy chụp ảnh hoặc ảnh mẫu vô hồn thay vì nội dung cảnh! (Hãy để các từ khóa ánh sáng/góc máy đó trong `cinematic_ai_prompt`).
-   - TUYỆT ĐỐI CẤM đưa từ khóa ẩn dụ trừu tượng ("puppet master", "mental trap", "invisible cage") vào câu tìm kiếm khi video nói về tâm lý con người!
-   - Các phân cảnh liền kề KHÔNG được trùng lặp truy vấn.
+3. Chọn "preferred_engines": Luôn đặt `["google"]` để lấy trực tiếp từ Top Search Google Images.
+4. CÔNG THỨC TẠO `google_image_queries` & `search_queries` (CỰC KỲ QUAN TRỌNG):
+   - Độ dài chuẩn: **2 đến 5 từ tiếng Anh** (`[Chủ thể cụ thể] + [Hành động / Bối cảnh / Biểu cảm đắt giá của riêng cảnh đó]`).
+   - Truy vấn ngắn gọn, súc tích (2–5 từ) luôn cho kết quả Top #1–#10 Google Images đẹp và chuẩn xác gấp nhiều lần câu văn dài dòng!
+   - KHÔNG nhồi nhét thuật ngữ kỹ thuật máy quay (`"8k"`, `"9:16"`, `"macro shot"`, `"wide angle"`, `"camera pans"`, `"photorealistic"`, `"chiaroscuro"`) vào `google_image_queries`.
+   - **ĐA DẠNG HÓA 100% GIỮA CÁC CẢNH**: Mỗi phân cảnh từ Cảnh 1 đến Cảnh {len(scenes_payload)} BẮT BUỘC phải khai thác một GÓC NHÌN / HÀNH ĐỘNG / CHI TIẾT KHÁC NHAU khớp với lời thoại của cảnh đó. TUYỆT ĐỐI KHÔNG lặp lại cùng một câu truy vấn đầu tiên (`google_image_queries[0]`) ở 2 cảnh khác nhau!
 
 TRẢ VỀ JSON DUY NHẤT THEO ĐỊNH DẠNG:
 {{
   "core_visual_entity": "Tên tiếng Anh của thực thể vật lý cụ thể (hoặc chuỗi rỗng '' nếu là chủ đề tâm lý/con người/trừu tượng)",
-  "overall_visual_paradigm": "CINEMATIC_REALISM | REAL_WORLD_ACTION | HISTORICAL_ARCHIVE | SCIENTIFIC_3D | CGI_CONCEPT_ART | STYLIZED_ANIMATION",
+  "overall_visual_paradigm": "CINEMATIC_REALISM | REAL_WORLD_ACTION | HISTORICAL_ARCHIVE | SCIENTIFIC_3D | HOLLYWOOD_VFX_MOVIE | STYLIZED_ANIMATION",
   "scenes_analysis": [
     {{
       "scene_id": 1,
       "core_visual_entity": "Thực thể vật lý cụ thể hoặc ''",
-      "visual_paradigm": "CINEMATIC_REALISM | REAL_WORLD_ACTION | HISTORICAL_ARCHIVE | SCIENTIFIC_3D | CGI_CONCEPT_ART | STYLIZED_ANIMATION",
-      "preferred_engines": ["bing", "ddgs", "wallhaven"],
+      "visual_paradigm": "CINEMATIC_REALISM | REAL_WORLD_ACTION | HISTORICAL_ARCHIVE | SCIENTIFIC_3D | HOLLYWOOD_VFX_MOVIE | STYLIZED_ANIMATION",
+      "preferred_engines": ["google"],
       "mood": "dark_ominous | tense_mysterious | epic_heroic | vibrant_energetic | melancholy_thoughtful | scientific_curiosity",
       "narrative_subtext": "Ngụ ý cảm xúc của cảnh (1 câu ngắn)",
-      "visual_metaphor": "Mô tả hình ảnh cụ thể, chân thực trên màn hình 9:16",
-      "subject": "Chủ thể cụ thể của cảnh bằng tiếng Anh (vd: 'man with subtle smirk', 'giant river otter confronting caiman')",
+      "visual_metaphor": "Mô tả hình ảnh cụ thể, ấn tượng trên màn hình 9:16 khớp lời thoại",
+      "subject": "Chủ thể + hành động/đặc điểm cụ thể của cảnh bằng tiếng Anh (2-4 từ)",
       "production_method": "IMAGE_TO_VIDEO | STOCK_FOOTAGE | TEXT_TO_VIDEO | REAL_ARCHIVE",
       "tool_choice": "ai_image_to_video | pexels_video_clip | ai_text_to_video | real_archive_photo",
       "motion_level": "HIGH_MOTION | MEDIUM_MOTION | STATIC_DETAILED",
-      "search_queries": ["concrete visual query 1", "concrete visual query 2", "concrete visual query 3"],
+      "search_queries": ["iconic 2-5 word query 1", "iconic 2-5 word query 2", "iconic 2-5 word query 3"],
       "google_image_queries": [
-        "natural specific Google search phrase for exact subject and action (3-6 words)",
-        "alternative specific search phrase for scene emotion or real-world context (3-6 words)",
-        "iconic film/anime/documentary reference or specific visual subject (3-6 words)"
+        "Primary iconic Top Search Google query matching this exact scene (2-5 English words)",
+        "Alternative high-impact Google query for this scene's action/scale (2-5 English words)",
+        "Third distinct visual angle query for this scene (2-5 English words)"
       ],
-      "negative_cues": ["text overlay", "watermark", "blurry", "unrelated monster", "lingerie", "nsfw", "happy office stock photo", "youtube thumbnail text"],
-      "cinematic_ai_prompt": "Detailed 8K vertical 9:16 photorealistic prompt in English describing the exact scene, subject expression, dramatic lighting, and atmosphere"
+      "negative_cues": ["text overlay", "watermark", "meme", "diagram", "chart", "infographic", "blurry", "low resolution", "toy", "plush"],
+      "cinematic_ai_prompt": "Detailed 8K vertical 9:16 photorealistic IMAX visual prompt in English describing the exact scene, dramatic lighting, atmosphere physics, 35mm film grain"
     }}
   ]
 }}
@@ -390,6 +393,8 @@ TRẢ VỀ JSON DUY NHẤT THEO ĐỊNH DẠNG:
         if res and isinstance(res.get("scenes_analysis"), list):
             video_core_entity = str(res.get("core_visual_entity") or primary_entity or "").strip()
             video_paradigm = str(res.get("overall_visual_paradigm") or "").strip()
+            used_primary_queries: set = set()
+
             for item in res["scenes_analysis"]:
                 if not isinstance(item, dict):
                     continue
@@ -406,9 +411,28 @@ TRẢ VỀ JSON DUY NHẤT THEO ĐỊNH DẠNG:
                     item["visual_paradigm"] = video_paradigm
                 sc_orig = next((x for x in scenes_payload if x["scene_id"] == sid), {})
                 narr = sc_orig.get("narration", "")
+                orig_vk = _clean_search_phrase(str(sc_orig.get("visual_keyword") or "").strip())
+                if orig_vk and 2 <= len(orig_vk.split()) <= 6:
+                    existing_gqs = list(item.get("google_image_queries") or [])
+                    if orig_vk.lower() not in [str(x).lower() for x in existing_gqs]:
+                        existing_gqs.append(orig_vk)
+                    item["google_image_queries"] = existing_gqs
+
                 subj = str(item.get("subject") or item.get("core_visual_entity") or "").strip() or extract_subject(narr, primary_entity)
                 item = _enforce_subject_queries(item, subj)
                 item = _apply_creature_mode(item, narr, topic, channel_niche=channel_niche)
+
+                # Đảm bảo mỗi phân cảnh trong cùng 1 video có truy vấn ưu tiên #1 (google_image_queries[0]) KHÁC NHAU
+                for q_key in ("google_image_queries", "creature_queries", "search_queries"):
+                    q_list = list(item.get(q_key) or [])
+                    if len(q_list) > 1 and q_list[0].lower() in used_primary_queries:
+                        non_used = [q for q in q_list if q.lower() not in used_primary_queries]
+                        used_ones = [q for q in q_list if q.lower() in used_primary_queries]
+                        item[q_key] = non_used + used_ones
+                top_q = (item.get("google_image_queries") or item.get("search_queries") or [""])[0].strip().lower()
+                if top_q:
+                    used_primary_queries.add(top_q)
+
                 result_map[sid_int] = item
             if result_map:
                 logger.info(
@@ -430,11 +454,12 @@ TRẢ VỀ JSON DUY NHẤT THEO ĐỊNH DẠNG:
     ) -> Dict[str, Any]:
         """
         Phân tích chuyên sâu ngữ cảnh và bản chất thị giác của phân cảnh bằng AI Agent:
-        - Tự động suy luận core_visual_entity, visual_paradigm, preferred_engines và google_image_queries từ ngữ nghĩa chủ đề.
+        - Tự động suy luận core_visual_entity, visual_paradigm, preferred_engines=["google"] và google_image_queries
+          ngắn gọn (2-5 từ tiếng Anh) chuẩn Top Search Google Images.
         """
         prompt = f"""
-Bạn là Tổng Đạo Diễn Nghệ Thuật & Chuyên Gia Tìm Kiếm Hình Ảnh Đa Động Cơ (Autonomous Visual Intelligence & Search Director) cho YouTube Shorts triệu view.
-Hãy TỰ ĐỘNG HIỂU SÂU BẢN CHẤT NGỮ NGHĨA của chủ đề và phân cảnh dưới đây để tạo bộ truy vấn tìm kiếm hình ảnh CHÍNH XÁC, KHỚP NỘI DUNG NHẤT (giống hệt cách con người tìm kiếm trên ứng dụng Google / Gemini).
+Bạn là Tổng Đạo Diễn Hình Ảnh & Chuyên Gia Truy Vấn Top Search Google Images (Viral Visual & Google Search Director) cho YouTube Shorts triệu view.
+Hãy phân tích sâu chủ đề và lời thoại phân cảnh dưới đây để tạo bộ từ khóa tìm kiếm `google_image_queries` NGẮN GỌN, ẤN TƯỢNG NHẤT (2–5 từ tiếng Anh) giúp **Top Search Google Images** trả về những bức ảnh PEAK / WOW / CÂU VIEW NHẤT, khớp chặt chẽ với nội dung phân cảnh.
 
 THÔNG TIN ĐẦU VÀO:
 - Chủ đề video: "{topic}"
@@ -444,44 +469,44 @@ THÔNG TIN ĐẦU VÀO:
 - Lời thoại phân cảnh: "{narration}"
 - Ngữ cảnh xung quanh: "{surrounding_context}"
 
-NHIỆM VỤ TƯ DUY ĐẠO DIỄN TỰ HÀNH:
-1. "core_visual_entity": CHỈ ĐẶT khi video nói về 1 sinh vật, động vật, nhân vật lịch sử hoặc vật thể cụ thể (vd: "harpy eagle", "julius caesar", "giant kraken"). Nếu video nói về Tâm lý học, Hành vi con người, Mối quan hệ, Triết học, Tài chính -> BẮT BUỘC để chuỗi rỗng `""`! CẤM bịa ra cụm từ ẩn dụ kiểu "manipulative puppet master" hay "toxic trap".
+NGUYÊN TẮC TƯ DUY ĐẠO DIỄN & TẠO TRUY VẤN GOOGLE IMAGES:
+1. "core_visual_entity": CHỈ ĐẶT khi video nói về 1 sinh vật, động vật, nhân vật lịch sử hoặc vật thể cụ thể (vd: "kraken", "megalodon", "harpy eagle", "julius caesar"). Nếu video nói về Tâm lý học, Hành vi con người, Mối quan hệ, Triết học, Tài chính -> BẮT BUỘC để chuỗi rỗng `""`!
 2. "visual_paradigm": Chọn đúng bản chất thị giác của cảnh:
-   - "CINEMATIC_REALISM": Tâm lý học, thao túng tâm lý, cảm xúc con người, giao tiếp xã hội, tội phạm, đời sống -> ["bing", "ddgs", "wallhaven"].
-   - "REAL_WORLD_ACTION": Động vật hoang dã thật, thiên nhiên thật, hành động đời thực -> ["bing", "ddgs"].
-   - "HISTORICAL_ARCHIVE": Nhân vật/sự kiện lịch sử có thật -> ["bing", "ddgs"].
-   - "SCIENTIFIC_3D": Vũ trụ, thiên văn, giải phẫu, tế bào, vật lý -> ["bing", "ddgs", "wallhaven"].
-   - "CGI_CONCEPT_ART": CHỈ DÙNG CHO thần thoại, quái vật, kinh dị siêu nhiên, viễn tưởng -> ["artstation", "bing", "wallhaven", "ddgs"].
+   - "CINEMATIC_REALISM": Tâm lý học, thao túng tâm lý, cảm xúc con người, giao tiếp xã hội, tội phạm, đời sống -> ưu tiên ảnh biểu cảm tâm lý Dark Noir / Chiaroscuro hoặc Seinen Thriller sắc lạnh -> `["google"]`.
+   - "REAL_WORLD_ACTION": Động vật hoang dã thật, thiên nhiên thật, hành động đời thực -> `["google"]`.
+   - "HISTORICAL_ARCHIVE": Nhân vật/sự kiện lịch sử có thật -> `["google"]`.
+   - "SCIENTIFIC_3D": Vũ trụ, thiên văn, giải phẫu, tế bào, vật lý -> `["google"]`.
+   - "HOLLYWOOD_VFX_MOVIE": Thần thoại, quái vật, thủy quái, kinh dị siêu nhiên, viễn tưởng -> ưu tiên truy vấn 2–5 từ tiếng Anh trả về kiệt tác CGI / VFX / Thalassophobia ấn tượng nhất trên Top Search Google Images (vd: `"giant kraken ocean"`, `"kraken attacking ship"`, `"deep sea submarine spotlight"`) -> `["google"]`.
    - "STYLIZED_ANIMATION": Hoạt hình 2D châm biếm, minh họa.
-3. "preferred_engines": Chọn thứ tự động cơ tìm kiếm phù hợp nhất từ ["bing", "ddgs", "wallhaven", "artstation"].
-4. "search_queries" & "google_image_queries": 3 câu truy vấn TỰ NHIÊN, SẮC BÉN (3-6 từ tiếng Anh) mô tả TRỰC TIẾP chủ thể, biểu cảm/hành động hoặc cảnh phim/tư liệu thật cần hiển thị (vd: "narcissist fake smile psychology", "two people tense argument silence", "giant river otter confronting caiman"). TUYỆT ĐỐI CẤM nhồi từ khóa kỹ thuật nhiếp ảnh ("chiaroscuro", "shadow portrait", "monochrome aesthetic", "Macro shot", "Wide-angle", "Close-up", "Breathtaking cinematography") vào `search_queries` hoặc `google_image_queries`!
+3. "preferred_engines": Luôn chọn `["google"]`.
+4. "search_queries" & "google_image_queries": 3 câu truy vấn NGẮN GỌN, TRỰC DIỆN, ĐẮT GIÁ (**2 đến 5 từ tiếng Anh**) mô tả đúng `[Chủ thể cụ thể] + [Hành động / Quy mô / Biểu cảm của cảnh này]`. KHÔNG nhồi nhét từ khóa kỹ thuật máy quay (`"8k"`, `"9:16"`, `"macro shot"`, `"wide angle"`, `"chiaroscuro"`).
 
 HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
 {{
   "core_visual_entity": "Thực thể vật lý cụ thể hoặc ''",
-  "visual_paradigm": "CINEMATIC_REALISM | REAL_WORLD_ACTION | HISTORICAL_ARCHIVE | SCIENTIFIC_3D | CGI_CONCEPT_ART | STYLIZED_ANIMATION",
-  "preferred_engines": ["bing", "ddgs", "wallhaven"],
+  "visual_paradigm": "CINEMATIC_REALISM | REAL_WORLD_ACTION | HISTORICAL_ARCHIVE | SCIENTIFIC_3D | HOLLYWOOD_VFX_MOVIE | STYLIZED_ANIMATION",
+  "preferred_engines": ["google"],
   "mood": "dark_ominous | tense_mysterious | epic_heroic | vibrant_energetic | melancholy_thoughtful | scientific_curiosity",
   "narrative_subtext": "Ngụ ý và cảm xúc sâu xa mà phân cảnh này muốn truyền tải (1-2 câu tiếng Việt)",
-  "visual_metaphor": "Mô tả bối cảnh điện ảnh chân thực, khớp nội dung trên màn hình 9:16",
-  "subject": "Chủ thể cụ thể của cảnh bằng tiếng Anh (không chứa góc máy hay từ khóa nhiếp ảnh)",
+  "visual_metaphor": "Mô tả bối cảnh hình ảnh ấn tượng trên màn hình 9:16 khớp lời thoại",
+  "subject": "Chủ thể + hành động cụ thể của cảnh bằng tiếng Anh (2-4 từ)",
   "production_method": "IMAGE_TO_VIDEO | STOCK_FOOTAGE | TEXT_TO_VIDEO | REAL_ARCHIVE",
   "tool_choice": "ai_image_to_video | pexels_video_clip | ai_text_to_video | real_archive_photo",
   "motion_level": "HIGH_MOTION | MEDIUM_MOTION | STATIC_DETAILED",
   "search_queries": [
-    "concrete subject + action (3-5 từ tiếng Anh)",
-    "concrete subject + mood/setting (3-5 từ tiếng Anh)",
-    "concrete subject + expression (3-5 từ tiếng Anh)"
+    "iconic 2-5 word English query 1",
+    "iconic 2-5 word English query 2",
+    "iconic 2-5 word English query 3"
   ],
   "google_image_queries": [
-    "natural specific Google search query for exact subject and action (3-6 từ tiếng Anh)",
-    "alternative specific search query for scene emotion or real-world context (3-6 từ tiếng Anh)",
-    "iconic film/anime/documentary reference or specific visual subject (3-6 từ tiếng Anh)"
+    "Primary iconic Top Search Google query matching this scene (2-5 từ tiếng Anh)",
+    "Alternative high-impact Google query for this scene's action/scale (2-5 từ tiếng Anh)",
+    "Third distinct visual angle query for this scene (2-5 từ tiếng Anh)"
   ],
   "negative_cues": [
-    "text overlay, watermark, blurry, low resolution, unrelated monster, lingerie, nsfw, happy office stock photo, youtube thumbnail text"
+    "text overlay, watermark, meme, diagram, chart, infographic, blurry, low resolution, toy, plush"
   ],
-  "cinematic_ai_prompt": "Detailed 8K vertical 9:16 cinematic photorealistic prompt in English, dramatic lighting, vivid contrast, scroll-stopping visual impact."
+  "cinematic_ai_prompt": "Detailed 8K vertical 9:16 photorealistic IMAX visual prompt in English, dramatic lighting and atmosphere physics, 35mm film grain."
 }}
 """
         res = self._call_gemini_json(prompt)
@@ -512,7 +537,7 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
         if subj and subj.lower() not in _GENERIC_SUBJECTS and res.get("production_method") != "REAL_ARCHIVE":
             generic = list(res.get("search_queries") or [])
             res["search_queries"] = [subj, f"{subj} close up"] + generic[:1]
-            res["google_image_queries"] = [f'"{subj}" high resolution photograph', f"{subj} close up real photo"]
+            res["google_image_queries"] = [subj, f"{subj} close up", f"{subj} epic"]
             res["subject"] = subj
             res = _apply_creature_mode(res, narration, topic, channel_niche=channel_niche)
             logger.info(f"🎬 [VisualCuration] Cảnh {scene_id} (heuristic) subject='{subj}' queries={res['search_queries']}")
@@ -704,40 +729,37 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
         subject = str(va.get("subject") or "").strip()
         subject_rule = (
             f"\nCHỦ THỂ TRỌNG TÂM TRONG ẢNH: \"{subject}\".\n"
-            f"- KHÔNG CẦN PHẢI LÀ ẢNH CHỤP THẬT 100%: Mọi chất liệu thị giác gồm Cảnh phim CGI (Movie Still), ArtStation 8K Concept Art, "
-            f"3D Render, tranh kỹ thuật số siêu thực hay nhiếp ảnh kịch tính ĐỀU ĐƯỢC KHUYẾN KHÍCH miễn là CỰC KỲ BẮT MẮT ĐỂ CÂU VIEW và khớp chủ đề!\n"
+            f"- ƯU TIÊN SỐ 1 (TOP SEARCH GOOGLE IMAGES + ĐỘ PEAK/WOW): Các ứng viên được lấy trực tiếp từ TOP SEARCH GOOGLE IMAGES. Hãy ưu tiên chọn bức ảnh nằm trong nhóm Top đầu Google Images có hình ảnh BÙNG NỔ, HOÀNH TRÁNG, ẤN TƯỢNG NHẤT (PEAK / WOW / VIRAL SHORTS) và thể hiện rõ nét, chân thực chủ thể!\n"
+            f"- PHẠT NẶNG & LOẠI BỎ (chấm appeal <= 2.5): Mô hình cao su/nhựa trong bảo tàng (animatronic prop có khung sắt/phông màn đen), tranh khắc gỗ đen trắng cổ (1800s woodcut), ảnh chụp game khối vuông (Minecraft/Roblox/Subnautica), hoặc cảnh góc hẹp nhàm chán không thấy rõ sự hoành tráng của chủ thể!\n"
             if subject else ""
         )
         if is_hook_scene:
             subject_rule += (
                 f"\n🔥 QUY TẮC SỐNG CÒN CHO CẢNH 1 (FRAME 0.0s WOW HOOK — QUYẾT ĐỊNH 85% TỶ LỆ Ở LẠI XEM):\n"
-                f"- Đây là hình ảnh mở màn giây 0.0s! Hình ảnh BẮT BUỘC phải đạt hiệu ứng 'WOW' choáng ngợp ngay lập tức: "
-                f"cận cảnh cực nét (Extreme Close-Up), khoảnh khắc hành động bùng nổ (Mid-Action Strike/Splash), tương phản quy mô khổng lồ (Megalophobia/Scale Shock), hoặc ánh mắt/biểu cảm trực diện đầy kịch tính.\n"
-                f"- KHẮT KHE TUYỆT ĐỐI: Nếu ảnh/video bị tối mù, mờ nhòe, chủ thể ở quá xa/nhỏ bé, góc quay tĩnh nhàm chán, hoặc màu sắc nhạt nhòa -> BẮT BUỘC chấm appeal <= 4.0! Chỉ chấm appeal >= 7.5 cho hình ảnh thực sự xuất sắc, giữ chân ngón tay người xem!\n"
+                f"- Đây là hình ảnh mở màn giây 0.0s! Hình ảnh BẮT BUỘC phải đạt hiệu ứng 'PEAK / WOW' cực mạnh như các video triệu view trên mạng: "
+                f"thấy rõ TOÀN BỘ SỰ KHỔNG LỒ, DỮ TỢN & UY LỰC ĐỈNH ĐIỂM của chủ thể (há miệng gầm thét, mắt phát sáng, xúc tu khổng lồ nuốt chửng tàu chiến trong bão, hoặc tương phản kích thước khổng lồ trước tàu ngầm/con người).\n"
+                f"- KHẮT KHE TUYỆT ĐỐI: Nếu ảnh nhạt nhẽo, mờ nhòe, chủ thể quá nhỏ bé/khuất lấp, hoặc có chữ chèn -> BẮT BUỘC chấm appeal <= 3.0!\n"
             )
         if va.get("creature_mode"):
             subject_rule += (
-                f"\nĐÂY LÀ CHẾ ĐỘ QUÁI VẬT / THỦY QUÁI / KINH DỊ RÙNG RỢN (\"{subject}\"):\n"
-                f"- ƯU TIÊN TUYỆT ĐỐI (chấm appeal 9-10): Cảnh phim CGI điện ảnh, ArtStation 8K Dark Horror, Thalassophobia / Megalophobia; "
-                f"quái vật KHỔNG LỒ, RÙNG RỢN, ÁM ẢNH, quy mô áp đảo (vd: bóng đen khổng lồ dưới đáy biển sâu trước đèn pha tàu ngầm, "
-                f"hàm răng/xúc tu khổng lồ nhấn chìm tàu, đôi mắt phát sáng trong bóng tối).\n"
-                f"- LOẠI BỎ NGAY (chấm relevance <= 2, appeal <= 2): Ảnh hóa thạch răng/xương trong bảo tàng, xác cá/mực chết dạt bờ, "
-                f"bản vẽ khắc gỗ đen trắng cổ điển khô khan, bản đồ, biểu đồ, hoạt hình dễ thương, chibi, đồ chơi, mô hình, "
-                f"hoặc ảnh con vật thật bình thường nhỏ bé trong bể cá!\n"
+                f"\nĐÂY LÀ CHẾ ĐỘ QUÁI VẬT / THỦY QUÁI / KHỦNG LONG (\"{subject}\"):\n"
+                f"- ƯU TIÊN TUYỆT ĐỐI (chấm appeal 9.0-10.0): Ảnh TOP SEARCH GOOGLE IMAGES thể hiện TRỌN VẸN SỰ KHỔNG LỒ, ĐÁNG SỢ & HOÀNH TRÁNG ĐỈNH CAO (PEAK / WOW) của \"{subject}\" — độ phân giải cao sắc nét, ánh sáng kịch tính, quy mô áp đảo!\n"
+                f"- LOẠI BỎ NGAY (chấm relevance <= 2.5, appeal <= 2.5): Tranh khắc gỗ/tranh vẽ sách cổ thế kỷ 19 trên Wikipedia (1800s woodcut/engraving), mô hình cao su/nhựa trưng bày bảo tàng (animatronic prop), cảnh phim góc hẹp nhạt nhẽo chỉ thấy vài xúc tu nhỏ bên mạn thuyền, hóa thạch xương khô, đồ chơi, hoạt hình trẻ em!\n"
             )
 
         meta_lines = []
         for img_no, (orig_idx, _) in enumerate(indexed):
             c = pool[orig_idx]
             w, h = c.get("width") or 0, c.get("height") or 0
-            orient = "dọc 9:16" if (w and h and h >= w) else ("ngang" if (w and h) else "không rõ")
+            g_rank = int(c.get("_google_rank") or 999)
+            rank_tag = f"Top #{g_rank} Google Images" if g_rank < 900 else c.get("source", "web")
             desc = (c.get("description") or c.get("title") or c.get("alt") or "")[:90]
-            meta_lines.append(f"- Ảnh #{img_no}: nguồn={c.get('source', 'stock')}, bố cục={orient}, mô tả='{desc}'")
+            meta_lines.append(f"- Ảnh #{img_no}: [{rank_tag}] ({w}x{h}), trang='{c.get('creator', 'web')}', mô tả='{desc}'")
 
         prompt = f"""
-Bạn là Giám Đốc Hình Ảnh (Director of Photography) kiêm Chuyên Gia Tuyển Chọn Hình Ảnh Câu View (Gemini Search Visual Curator) cho kênh YouTube Shorts triệu view.
-Bạn được xem {len(indexed)} ảnh thumbnail của các {'video clip' if kind == 'video' else 'bức ảnh'} ứng viên (theo đúng thứ tự Ảnh #0, #1, ...).
-Hãy NHÌN KỸ từng ảnh và chọn ứng viên BẮT MẮT NHẤT, CÂU VIEW NHẤT và khớp ngữ cảnh phân cảnh.
+Bạn là Giám Đốc Hình Ảnh (Visual Director) cho kênh YouTube Shorts triệu view.
+Bạn được xem {len(indexed)} bức ảnh lấy trực tiếp từ **TOP SEARCH GOOGLE IMAGES** (theo thứ tự Ảnh #0, #1, ...).
+Hãy NHÌN KỸ từng ảnh và chọn bức ảnh **ĐỈNH CAO NHẤT (PEAK / WOW / BẮT MẮT NHẤT)** trong nhóm Top Search Google Images, khớp hoàn hảo với chủ thể và lời thoại.
 
 PHÂN CẢNH:
 - Chủ đề video: "{topic}"
@@ -746,24 +768,22 @@ PHÂN CẢNH:
 - Không khí (mood): "{mood}"
 - Yếu tố cấm kỵ: {json.dumps(negative_cues, ensure_ascii=False)}
 {subject_rule}
-THÔNG TIN ỨNG VIÊN:
+DANH SÁCH ỨNG VIÊN TỪ TOP SEARCH GOOGLE IMAGES:
 {chr(10).join(meta_lines)}
 
 TIÊU CHÍ CHẤM NGHIÊM NGẶT (mỗi ứng viên):
 1. relevance (0-10) — TIÊU CHÍ QUAN TRỌNG NHẤT:
-   - Hình ảnh PHẢI thể hiện ĐÚNG chủ đề, thực thể chính, hoàn cảnh, cảm xúc và nội dung của lời thoại!
-   - NẾU video nói về Tâm lý học / Con người / Đời sống mà ảnh ứng viên lại là: bài hướng dẫn nhiếp ảnh (Chiaroscuro photography tutorial), quái vật giả tưởng, mặt nạ kinh dị, trang phục hóa trang, người mặc đồ lót/bikini, xe đẩy siêu thị kỳ quặc, phong cảnh/đồ vật ngẫu nhiên không ăn nhập với lời thoại -> BẮT BUỘC chấm relevance <= 2.0!
-   - NẾU ảnh có CHỮ CHÈN LỚN Ở GIỮA ẢNH (YouTube thumbnail title overlay, meme text, poster chữ, quote card, infographic, biểu đồ) -> BẮT BUỘC chấm relevance <= 2.0 và appeal <= 2.0!
-   - Lạc đề hoặc chỉ khớp 1 từ khóa nghĩa đen vô nghĩa (vd lời thoại nói "trap/cage" trong tâm lý mà ảnh là lồng chim/xe đẩy) -> chấm relevance <= 2.5!
-2. appeal (0-10): Độ sắc nét, ánh sáng điện ảnh, bố cục 9:16 đẹp mắt, biểu cảm/hành động có hồn như trên Google Images thực tế. Ảnh có WATERMARK, logo trang web, chữ chèn lớn (text overlay), khung viền, ảnh ghép collage -> appeal tối đa 2.0.
-3. refined_google_query: Nếu các ảnh hiện tại chưa khớp nội dung (relevance < 6.8), hãy viết 1 câu truy vấn tiếng Anh mô tả CỤ THỂ chủ thể và hành động đời thực cần tìm (4-7 từ, TUYỆT ĐỐI KHÔNG dùng từ khóa kỹ thuật nhiếp ảnh như "chiaroscuro", "monochrome", "macro shot" hay ẩn dụ như "puppet master").
+   - Hình ảnh PHẢI thể hiện ĐÚNG chủ thể "{subject or topic}", đúng hoàn cảnh và nội dung!
+   - NẾU ảnh là mô hình nhựa/cao su trưng bày (animatronic prop), tranh khắc gỗ cổ đen trắng, sơ đồ, hoặc có CHỮ CHÈN LỚN Ở GIỮA ẢNH (YouTube thumbnail title overlay, meme text, poster chữ, quote card, infographic) -> BẮT BUỘC chấm relevance <= 2.5 và appeal <= 2.5!
+2. appeal (0-10): Độ "PEAK / WOW" câu view trên YouTube Shorts (bố cục hoành tráng, chủ thể rõ nét đầy uy lực, tương phản ánh sáng mạnh, sắc nét chuẩn HD/4K; ưu tiên các ảnh nằm ở thứ hạng Top đầu Google Images). Ảnh có WATERMARK, logo trang web, chữ chèn lớn, khung viền -> appeal tối đa 2.0.
+3. refined_google_query: Nếu các ảnh hiện tại chưa đủ WOW hoặc chưa khớp nội dung (relevance < 6.8), hãy viết 1 câu truy vấn Google Images ngắn gọn (3-5 từ tiếng Anh) để tìm lại.
 
 TRẢ VỀ JSON DUY NHẤT:
 {{
   "scores": [{{"image": 0, "relevance": 8.5, "appeal": 8.5}}],
   "best_image": 0,
-  "rationale": "1 câu giải thích vì sao bức ảnh này khớp ngữ cảnh lời thoại nhất (hoặc vì sao từ chối tất cả)",
-  "refined_google_query": "concrete visual subject and action",
+  "rationale": "1 câu giải thích vì sao bức ảnh Top Google này PEAK/WOW và khớp ngữ cảnh nhất",
+  "refined_google_query": "concrete visual subject",
   "reject_all": false
 }}
 Nếu KHÔNG ảnh nào có relevance >= 6.6 và appeal >= 6.2 (sạch chữ chèn/watermark) -> BẮT BUỘC đặt best_image = -1 và reject_all = true.

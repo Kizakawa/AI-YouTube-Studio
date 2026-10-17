@@ -218,38 +218,69 @@ class ContentAgent:
         # TUYỆT ĐỐI KHÔNG dùng regex từ khóa (động vật, thú, rừng...) để ghi đè hay thay thế các trường
         # visual_keyword, visual_prompt, stock_query thành các mẫu có sẵn (tránh cảnh tiêm thuốc biến thành thú rừng).
         banned_abstract = ["psychology", "minimalism", "authority", "power", "wealth", "mindset", "discipline", "history", "secret", "truth"]
+        camera_jargon_re = re.compile(
+            r"\b(8k|4k|uhd|hd|9:16|16:9|vertical\s+shot|macro\s+shot|wide[- ]angle\s+shot|wide[- ]angle|"
+            r"extreme\s+close[- ]up|camera\s+pans?|dolly\s+zoom|photorealistic|hyper[- ]realistic|"
+            r"unreal\s+engine|octane\s+render|35mm\s+film|aspect\s+ratio)\b",
+            re.IGNORECASE,
+        )
+        seen_visual_keywords: set = set()
 
         for sc in scenes:
             if not isinstance(sc, dict):
                 continue
 
-            # Đảm bảo visual_keyword không bị rỗng
+            # Đảm bảo visual_keyword ngắn gọn (2-6 từ), sạch từ khóa kỹ thuật máy quay để tối ưu cho Top Search Google Images
             vk = str(sc.get("visual_keyword") or "").strip()
+            vk = camera_jargon_re.sub(" ", vk)
+            vk = re.sub(r"\s+", " ", vk).strip(" ,.-:")
             if not vk:
-                sq = str(sc.get("stock_query") or "").strip()
-                if sq:
-                    vk = sq
+                sq_fallback = camera_jargon_re.sub(" ", str(sc.get("stock_query") or "").strip())
+                sq_fallback = re.sub(r"\s+", " ", sq_fallback).strip(" ,.-:")
+                if sq_fallback:
+                    vk = sq_fallback
                 else:
-                    vp_words = str(sc.get("visual_prompt") or "").strip().split()
-                    vk = " ".join(vp_words[:3]) if vp_words else "cinematic visual"
-                sc["visual_keyword"] = vk
+                    vp_clean = camera_jargon_re.sub(" ", str(sc.get("visual_prompt") or "").strip())
+                    vp_words = [w.strip(",.:;!?") for w in vp_clean.split() if len(w.strip(",.:;!?")) > 2]
+                    vk = " ".join(vp_words[:4]) if vp_words else "dramatic cinematic scene"
+            if len(vk.split()) > 6:
+                vk = " ".join(vk.split()[:6])
 
             # Đảm bảo visual_prompt không bị rỗng
             vp = str(sc.get("visual_prompt") or "").strip()
             if not vp:
-                sc["visual_prompt"] = f"Cinematic 8k photorealistic vertical shot of {sc['visual_keyword']}"
+                sc["visual_prompt"] = f"Cinematic 8k photorealistic vertical shot of {vk}"
 
             # Đảm bảo stock_query không bị rỗng và lọc nhẹ các từ trừu tượng cấm kỵ của Pexels
             sq = str(sc.get("stock_query") or "").strip()
+            sq = camera_jargon_re.sub(" ", sq)
             if not sq:
-                sq = sc["visual_keyword"]
+                sq = " ".join(vk.split()[:4])
             else:
                 for b in banned_abstract:
                     sq = re.sub(rf'\b{b}\b', '', sq, flags=re.IGNORECASE).strip()
-                sq = re.sub(r'\s+', ' ', sq).strip()
+                sq = re.sub(r'\s+', ' ', sq).strip(" ,.-:")
                 if not sq:
-                    sq = sc["visual_keyword"]
+                    sq = " ".join(vk.split()[:4])
             sc["stock_query"] = sq
+
+            # Chống trùng lặp visual_keyword giữa các phân cảnh trong cùng 1 kịch bản
+            vk_norm = vk.lower()
+            if vk_norm in seen_visual_keywords:
+                sq_norm = sq.lower()
+                if sq and sq_norm not in seen_visual_keywords and sq_norm != vk_norm:
+                    vk = sq
+                else:
+                    vp_clean = camera_jargon_re.sub(" ", str(sc.get("visual_prompt") or "")).strip()
+                    extra_words = [
+                        w.strip(",.:;!?").lower()
+                        for w in vp_clean.split()
+                        if len(w.strip(",.:;!?")) > 3 and w.strip(",.:;!?").lower() not in vk_norm.split()
+                    ]
+                    if extra_words:
+                        vk = " ".join((vk.split()[:4] + extra_words[:2])[:6])
+            seen_visual_keywords.add(vk.lower())
+            sc["visual_keyword"] = vk
 
             # Đảm bảo media_type có giá trị mặc định nếu LLM chưa chỉ định
             if not sc.get("media_type"):
@@ -1037,16 +1068,21 @@ YouTube Shorts rewards TWO metrics simultaneously:
      * Every single scene's spoken narration MUST be a 100% grammatically complete sentence with proper closing punctuation (period, exclamation, or question mark).
      * NEVER split a single sentence across two consecutive scenes, and NEVER end any scene with dangling prepositions or conjunctions ('because', 'which', 'and', 'so', 'that', 'but', 'with').
 
-4. CONCRETE HUMAN & PHYSICAL VISUAL QUERIES (NO LITERAL PROP METAPHORS!):
-   - `visual_keyword` (4-7 English words) and `stock_query` (3-4 English words) drive Google Images and Pexels 9:16 Video search.
+4. TOP SEARCH GOOGLE IMAGES QUERY ENGINEERING (`visual_keyword` & `stock_query` — NO LITERAL PROP METAPHORS!):
+   - `visual_keyword` (strictly **2 to 5 punchy English words**) is fed directly into **Top Search Google Images** (`tbm=isch&tbs=isz:l`) to pull the #1 most iconic, jaw-dropping 4K/HD image for each scene!
+   - FORMULA FOR `visual_keyword` (2–5 English words): `[Specific Entity / Human Subject] + [Distinct Action / Scale / Mood of THAT exact scene]`:
+     * Deep Sea / Monsters / Mythology: Scene 1 `"giant kraken glowing eyes"`, Scene 2 `"kraken tentacles attacking ship"`, Scene 3 `"mariana trench submarine spotlight"`, Scene 4 `"colossal squid underwater battle"`.
+     * Wildlife / Nature: Scene 1 `"harpy eagle talons close up"`, Scene 2 `"harpy eagle flying rainforest"`, Scene 3 `"harpy eagle hunting monkey"`.
+     * History / Mystery: Scene 1 `"julius caesar marble bust"`, Scene 2 `"roman senate assassination painting"`.
    - CRITICAL ANTI-METAPHOR & DARK PSYCHOLOGICAL NOIR RULE FOR PSYCHOLOGY TOPICS (@MasteringMindControl Aesthetic):
      * When the narration uses a figure of speech ("velvet praise", "hidden barb", "loaded weapon", "invisible cage", "pulling strings", "waiting for the blade to drop"), NEVER put literal objects (`knife`, `blade`, `dagger`, `needles`, `velvet glove`, `puppet strings`, `cage`, `mask`, `shield`) in `visual_keyword`, `stock_query`, or `visual_prompt`!
      * NEVER use cheesy corporate stock photo queries (`"happy office workers"`, `"business handshake"`, `"smiling colleagues"`).
-     * ALWAYS translate psychological dynamics into HIGH-CONTRAST DARK NOIR / CHIAROSCURO HUMAN EXPRESSIONS OR SEINEN PSYCHOLOGICAL THRILLER IMAGERY:
-       - "loaded compliment / covert manipulation" -> `visual_keyword`: `"man cold calculating smirk noir shadow"`, `stock_query`: `"man serious gaze dark"`
-       - "gaslighting / self-doubt" -> `visual_keyword`: `"woman anxious expression dark chiaroscuro room"`, `stock_query`: `"woman stressed dark room"`
-       - "isolation gambit / silent control" -> `visual_keyword`: `"two people silent tension noir shadow"`, `stock_query`: `"couple silent tension"`
-       - "4-second silence counter-move" -> `visual_keyword`: `"calm man unblinking stare chiaroscuro portrait"`, `stock_query`: `"intense eye contact portrait"`
+     * ALWAYS translate psychological dynamics into HIGH-CONTRAST DARK NOIR / CHIAROSCURO HUMAN EXPRESSIONS OR SEINEN PSYCHOLOGICAL THRILLER IMAGERY (2–5 words):
+       - "loaded compliment / covert manipulation" -> `visual_keyword`: `"man cold calculating smirk noir"`, `stock_query`: `"man serious gaze dark"`
+       - "gaslighting / self-doubt" -> `visual_keyword`: `"woman anxious dark room shadow"`, `stock_query`: `"woman stressed dark room"`
+       - "isolation gambit / silent control" -> `visual_keyword`: `"two people silent tension noir"`, `stock_query`: `"couple silent tension"`
+       - "4-second silence counter-move" -> `visual_keyword`: `"calm man intense stare noir"`, `stock_query`: `"intense eye contact portrait"`
+   - NEVER stuff camera/technical jargon (`"8k"`, `"9:16"`, `"macro shot"`, `"wide angle"`, `"photorealistic"`) into `visual_keyword` or `stock_query`!
    - STRICTLY FORBIDDEN abstract words: "psychology", "minimalism", "authority", "power", "wealth", "mindset", "discipline", "history", "secret", "truth".
 
 5. MASTER VISUAL DIRECTOR & CINEMATIC PROMPT (FOR AI IMAGERY & ARTWORK):
@@ -1094,8 +1130,9 @@ YouTube Shorts rewards TWO metrics simultaneously:
    - Scenes 1 to 3 must immediately hook the viewer with the core conflict and a recognizable real-life example.
    - "thumbnail_text" MUST be 2-4 ALL-CAPS words with high contrast (e.g. "TOXIC PRAISE TRAP ⚠️", "4-SECOND SILENCE 🧠").
 
-12. GOOGLE IMAGES & STOCK QUERY SPECIFICITY (`visual_keyword` & `stock_query`):
-   - `visual_keyword` (4-7 English words) and `stock_query` (3-4 English words) MUST name the concrete human subject/setting or historical/animal entity in that scene, never repeating across adjacent scenes.
+12. TOP SEARCH GOOGLE IMAGES & STOCK QUERY DIVERSITY (`visual_keyword` & `stock_query`):
+   - `visual_keyword` (**2-5 English words**) and `stock_query` (**3-4 English words**) MUST name the concrete subject + distinct visual action/setting of that specific scene.
+   - **ZERO REPETITION ACROSS SCENES**: Every single scene from Scene 1 to Scene 9 MUST have a 100% UNIQUE `visual_keyword` showing a different angle, action, scale, or moment of the story so the video never shows repetitive imagery!
 
 ═══════════════════════════════════════════════════════════
 OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
@@ -1119,9 +1156,9 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   "scenes": [
     {{
       "scene_id": 1,
-      "visual_reasoning": "Tư duy đạo diễn: Giải thích cách chuyển hóa câu thoại thành biểu cảm/hành động con người cụ thể (không dùng đạo cụ ẩn dụ nghĩa đen)",
+      "visual_reasoning": "Tư duy đạo diễn: Giải thích cách chuyển hóa câu thoại thành hình ảnh/biểu cảm/hành động cụ thể cực kỳ ấn tượng cho cảnh này",
       "narration": "Complete spoken sentence for this scene (Scene 1: 5-8 words; Scenes 2-9: 10-14 words each, 8 to 9 complete scenes total)",
-      "visual_keyword": "concrete human/entity subject + expression/setting for Google Images search (4-7 English words)",
+      "visual_keyword": "iconic Top Search Google Images query: concrete subject + distinct scene action/mood (2-5 English words, NO camera jargon)",
       "visual_prompt": "Cinematic visual description: concrete human/entity subject + expression/action + camera angle + lighting + setting",
       "stock_query": "concrete physical human/entity nouns + action for 9:16 stock video (3-4 English words)",
       "media_type": "video | ai_image | photo | documentary",
@@ -1229,16 +1266,17 @@ Target Language: {language} ({target_lang_display})
 HARD RETENTION & 5-ACT DEPTH RULES:
 1. SCENE 1 PATTERN INTERRUPT & PRIMAL VISUAL HOOK (CRITICAL TO PREVENT SWIPING):
    - Scene 1 spoken text must use an urgent warning, elite interrogation tactic, dark law, or counter-intuitive shock (5-8 words, ~2.2s).
-   - Scene 1 visual_prompt MUST depict a concrete, high-impact human expression, confrontation, historical portrait, or wildlife action.
-   - Scene 1 visual_keyword & stock_query MUST be concrete physical nouns (3-5 words).
+   - Scene 1 visual_prompt MUST depict a concrete, high-impact human expression, confrontation, historical portrait, monster/creature scale, or wildlife action.
+   - Scene 1 visual_keyword & stock_query MUST be concrete physical nouns + action/mood (2-5 English words).
 2. 32-42s Golden Depth 5-Act Arc (88-118 words total across 8-9 complete-sentence scenes, 10-14 words per body scene):
    - Act 1 (Scene 1): Hook (5-8 words).
    - Act 2 (Scenes 2-3): Concrete real-life verbal quote/example or specific historical/scientific proof.
    - Act 3 (Scenes 4-5): Hidden neurological/psychological mechanism + Mid-Video Twist.
    - Act 4 (Scenes 6-7): Concrete word-for-word Counter-Move / actionable defense that viewers will Save & Share.
    - Act 5 (Scene 8-9): Final revelation + Seamless Infinite Loop Bridge back to Scene 1 (ZERO spoken Subscribe CTA).
-3. NO ABSTRACT OR LITERAL PROP METAPHORS in `visual_keyword` or `stock_query`:
-   - Never use "psychology", "authority", "power", and never translate verbal metaphors into literal props (`knife`, `dagger`, `blade`, `needles`, `puppet strings`, `cage`). Always depict real human interactions, facial expressions, and environments.
+3. TOP SEARCH GOOGLE IMAGES `visual_keyword` (2-5 WORDS, DISTINCT PER SCENE, NO LITERAL PROP METAPHORS):
+   - `visual_keyword` (2-5 English words) is queried directly on Top Search Google Images. Every scene MUST have a unique `visual_keyword` matching its specific narration action/moment without repeating across scenes or using camera jargon (`8k`, `9:16`, `macro shot`).
+   - Never use "psychology", "authority", "power", and never translate verbal metaphors into literal props (`knife`, `dagger`, `blade`, `needles`, `puppet strings`, `cage`). Always depict real human interactions, facial expressions, creatures, and environments.
 4. Return ONLY valid JSON:
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
@@ -1251,7 +1289,7 @@ HARD RETENTION & 5-ACT DEPTH RULES:
       "scene_id": 1,
       "visual_reasoning": "Tư duy logic đạo diễn cho cảnh này",
       "narration": "Complete sentence spoken in this scene (Scene 1: 5-8 words; Scenes 2-9: 10-14 words each, 8-9 scenes total)",
-      "visual_keyword": "concrete human/entity search keywords (4-7 English words)",
+      "visual_keyword": "iconic Top Search Google Images query: concrete subject + distinct scene action/mood (2-5 English words)",
       "visual_prompt": "Detailed cinematic scene: concrete human/entity subject + camera angle + lighting + environment",
       "stock_query": "concrete physical human/entity nouns (3-4 English words)",
       "media_type": "video | ai_image | photo | documentary",

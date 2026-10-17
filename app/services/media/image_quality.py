@@ -108,7 +108,6 @@ _STOPWORDS = {
     "vivid", "contrast", "dynamic", "golden", "hour", "imax", "live", "action", "live-action",
     "beautiful", "vibrant", "stunning", "epic", "4k", "8k", "razor", "focal", "depth", "rim",
     "peak", "ultra", "retention", "youtube", "shorts", "masterpiece", "award", "winning",
-    "generation", "generate", "generated", "during", "ai",
 }
 
 _NUMBER_WORDS = {

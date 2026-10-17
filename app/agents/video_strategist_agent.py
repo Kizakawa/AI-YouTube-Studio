@@ -337,20 +337,20 @@ III. ĐẠO DIỄN CHỈ THỊ & PHÂN CÔNG NHIỆM VỤ CHO CẤP DƯỚI (DEL
 ══════════════════════════════════════════════════════════════════════════════
 Đạo diễn có trong tay 3 bộ phận công nhân chuyên trách (Subordinate Workers):
 
-1. BỘ PHẬN SĂN LÙNG TƯ LIỆU & ẢNH HOT-TREND MẠNG MỞ ('REAL_ARCHIVE' - Google Images / Open Web / Wikipedia):
+1. BỘ PHẬN SĂN LÙNG TƯ LIỆU & TOP SEARCH GOOGLE IMAGES ('REAL_ARCHIVE' - Google Images Top Search / Wikipedia):
    - KHI NÀO GIAO VIỆC: 
      * Nhân vật lịch sử có thật, sự kiện lịch sử, di tích cổ đại, bằng chứng khoa học thực nghiệm.
-   - LỆNH CHỈ ĐẠO CHO CẤP DƯỚI ('search_query'): Viết câu lệnh tiếng Anh 3-6 từ sắc bén để tìm bức ảnh đắt giá, ấn tượng nhất trên Google Images.
+   - LỆNH CHỈ ĐẠO CHO CẤP DƯỚI ('search_query'): Viết từ khóa tiếng Anh NGẮN GỌN, TRỰC DIỆN (**2–5 từ**) để lấy bức ảnh Top #1–#10 đắt giá nhất trên Google Images (vd: `'julius caesar marble bust'`, `'roman senate assassination painting'`).
    - Hiệu ứng: Hệ thống tự động áp dụng hiệu ứng Ken Burns 3D Deep Zoom / Pan biến ảnh thành thước phim sống động!
 
 2. BỘ PHẬN QUAY PHIM B-ROLL THỰC TẾ ('STOCK_FOOTAGE' - Pexels / Pixabay 60fps):
    - KHI NÀO GIAO VIỆC: Cảnh có hành động vật lý thực tế, biểu cảm con người đời thường, thiên nhiên dữ dội (sóng biển cuộn, bão tố, sấm sét), ĐẠI DƯƠNG ĐEN NGÒM RÙNG RỢN (vực thẳm đáy biển tối tăm, đèn pha tàu ngầm rọi bóng tối, thợ lặn trong hang ngầm tối).
-   - LỆNH CHỈ ĐẠO CHO CẤP DƯỚI ('search_query'): Viết từ khóa b-roll khí quyển u tối, kịch tính (Ví dụ: 'dark deep ocean abyssal underwater', 'submarine spotlight pitch black water', 'dark storm ocean waves night').
+   - LỆNH CHỈ ĐẠO CHO CẤP DƯỚI ('search_query'): Viết từ khóa b-roll khí quyển u tối, kịch tính 3–5 từ (Ví dụ: `'deep ocean submarine spotlight'`, `'dark storm ocean waves'`).
 
-3. BỘ PHẬN SĂN ẢNH QUÁI VẬT RÙNG RỢN & HỌA SĨ ĐIỆN ẢNH 3D ('IMAGE_TO_VIDEO' / 'TEXT_TO_VIDEO'):
+3. BỘ PHẬN SĂN ẢNH TOP SEARCH GOOGLE IMAGES ĐỈNH CAO & CHUYỂN ĐỘNG 3D ('IMAGE_TO_VIDEO' / 'TEXT_TO_VIDEO'):
    - KHI NÀO GIAO VIỆC: 
-     * QUÁI VẬT, THỦY QUÁI, SINH VẬT TIỀN SỬ & KINH DỊ (Kraken, Megalodon, Leviathan, Loch Ness, The Bloop, Titanoboa, Cthulhu, SCP, Wendigo...): BẮT BUỘC dùng 'IMAGE_TO_VIDEO' với 'search_query' săn ảnh Movie CGI / ArtStation Dark Horror / Thalassophobia rùng rợn (Ví dụ: 'terrifying giant kraken tentacles attacking ship cgi', 'terrifying megalodon shark jaws dark ocean movie scene', 'colossal sea monster thalassophobia megalophobia artstation') kết hợp 'ai_prompt' cực kỳ rùng rợn, quy mô khổng lồ áp đảo (Megalophobia), ánh sáng u tối lạnh gáy!
-     * Chủ đề CẦN ẨN DỤ NGHỆ THUẬT & TƯ DUY ĐIỆN ẢNH hoặc cảnh viễn tưởng PURE_FICTION.
+     * QUÁI VẬT, THỦY QUÁI, SINH VẬT TIỀN SỬ & KINH DỊ (Kraken, Megalodon, Leviathan, Loch Ness, The Bloop, Titanoboa, Cthulhu, SCP, Wendigo...): BẮT BUỘC dùng 'IMAGE_TO_VIDEO' với 'search_query' NGẮN GỌN, SÚC TÍCH (**2–5 từ tiếng Anh**) để Top Search Google Images trả về ngay tác phẩm CGI / VFX / Thalassophobia ấn tượng nhất, KHỚP VỚI HÀNH ĐỘNG CỦA CẢNH ĐÓ và KHÔNG TRÙNG LẶP GIỮA CÁC CẢNH (Ví dụ: Cảnh 1: `'giant kraken ocean'`, Cảnh 2: `'kraken attacking ship'`, Cảnh 3: `'deep sea submarine spotlight'`, Cảnh 4: `'giant kraken tentacles'`) kết hợp 'ai_prompt' cực kỳ rùng rợn, quy mô khổng lồ áp đảo (Megalophobia), ánh sáng u tối lạnh gáy!
+     * Chủ đề TÂM LÝ HỌC / THAO TÚNG TÂM LÝ / TRIẾT HỌC: Truy vấn biểu cảm Dark Noir / Chiaroscuro hoặc Seinen Thriller 2–5 từ (vd: `'man cold calculating smirk noir'`, `'johan liebert monster gaze'`, `'woman anxious dark room'`).
    - LỆNH CHỈ ĐẠO CHO CẤP DƯỚI ('ai_prompt'): Viết câu lệnh tiếng Anh điện ảnh 8K 9:16 chi tiết, làm rõ quy mô khổng lồ rùng rợn (terrifying colossal scale, thalassophobia, megalophobia), ánh sáng tương phản mạnh (submersible spotlight piercing pitch-black abyss, glowing eyes in darkness, chiaroscuro), góc máy (extreme low-angle, POV).
 
 ══════════════════════════════════════════════════════════════════════════════
@@ -373,9 +373,9 @@ IV. CHỈ ĐẠO MÁY QUAY & ÂM THANH (CINEMATOGRAPHY & SOUND DESIGN)
 ══════════════════════════════════════════════════════════════════════════════
 V. QUY TẮC ĐAN XEN NHỊP ĐIỆU (RHYTHMIC WEAVING RULES)
 ══════════════════════════════════════════════════════════════════════════════
-- TUYỆT ĐỐI KHÔNG để 2 cảnh cùng kiểu ảnh tĩnh nối tiếp nhau!
-- Với chủ đề Động vật / Thiên nhiên / Đời thực: 70% - 90% là STOCK_FOOTAGE.
-- Với chủ đề Bí ẩn đại dương / Quái vật biển / Kinh dị: 60% IMAGE_TO_VIDEO (Săn ảnh Movie CGI / ArtStation Horror / Thalassophobia rùng rợn + chuyển động 3D Ken Burns) đan xen 40% STOCK_FOOTAGE (B-roll vực thẳm đại dương đen ngòm / hành lang tối) để vừa có chuyển động thật vừa nổi da gà ở mọi khung hình!
+- TUYỆT ĐỐI KHÔNG để 2 cảnh liền kề dùng cùng một từ khóa `search_query`! Mỗi cảnh phải có `search_query` riêng biệt khớp đúng lời thoại của cảnh đó.
+- Với chủ đề Động vật / Thiên nhiên / Đời thực: 70% - 90% là STOCK_FOOTAGE kết hợp ảnh Top Search Google Images sắc nét.
+- Với chủ đề Bí ẩn đại dương / Quái vật biển / Kinh dị: Ưu tiên IMAGE_TO_VIDEO (Săn ảnh Top Search Google Images 4K/HD + chuyển động 3D Ken Burns) đan xen STOCK_FOOTAGE (B-roll vực thẳm đại dương đen ngòm) để vừa có chuyển động thật vừa nổi da gà ở mọi khung hình!
 - Với chủ đề Tâm lý học / Khắc kỷ / Triết học: 50% - 70% IMAGE_TO_VIDEO đan xen STOCK_FOOTAGE hành động đời thực.
 
 ══════════════════════════════════════════════════════════════════════════════
@@ -404,7 +404,7 @@ HÃY XUẤT RA JSON DUY NHẤT THEO SCHEMA:
       "production_method": "REAL_ARCHIVE | STOCK_FOOTAGE | IMAGE_TO_VIDEO | TEXT_TO_VIDEO",
       "tool": "wikimedia_archive | pexels_video_api | imagen3_i2v | wan_t2v",
       "rationale": "Giải thích chi tiết 1 câu vì sao chọn phương pháp & công cụ này cho cảnh này (bằng tiếng Việt)",
-      "search_query": "3-6 từ tiếng Anh CỤ THỂ CHỈ ĐỊNH CẤP DƯỚI TÌM KIẾM (ví dụ: 'giant kraken tentacles crushing ship cgi', 'roman emperor julius caesar portrait', 'harpy eagle swooping talons close up'; cấm từ chung chung như 'cinematic' hoặc ảnh hóa thạch/tranh khắc gỗ cũ)",
+      "search_query": "2-5 từ tiếng Anh NGẮN GỌN, ẤN TƯỢNG NHẤT cho Top Search Google Images khớp hành động của cảnh này (ví dụ: 'giant kraken ocean', 'kraken attacking ship', 'julius caesar marble bust', 'harpy eagle talons close up'; cấm trùng lặp giữa các cảnh)",
       "ai_prompt": "Câu lệnh tiếng Anh chi tiết phong cách điện ảnh 8K 9:16 do Đạo diễn tự sáng tạo logic theo kịch bản (dành cho AI hoặc dự phòng nếu kho stock thiếu)",
       "camera_motion": "hyper_zoom | zoom_in | zoom_out | cinematic_drift | pan_left | pan_right",
       "sfx_cue": "impact_sub | sub_drop | whoosh_fast | tension_riser | heartbeat"
@@ -418,8 +418,16 @@ HÃY XUẤT RA JSON DUY NHẤT THEO SCHEMA:
         try:
             plan = json.loads(raw)
             if "scene_proposals" in plan and isinstance(plan["scene_proposals"], list):
+                seen_sqs: set = set()
+                scene_by_id = {s.get("scene_id"): s for s in scenes}
                 for p in plan["scene_proposals"]:
-                    sq = p.get("search_query") or "cinematic"
+                    sc_ref = scene_by_id.get(p.get("scene_id"), {})
+                    sq = str(p.get("search_query") or sc_ref.get("visual_keyword") or "cinematic").strip()
+                    if sq.lower() in seen_sqs and sc_ref.get("visual_keyword"):
+                        vk_alt = str(sc_ref.get("visual_keyword")).strip()
+                        if vk_alt.lower() not in seen_sqs:
+                            sq = vk_alt
+                    seen_sqs.add(sq.lower())
                     ap = p.get("ai_prompt") or f"Cinematic 8k dramatic vertical film still of {sq}, rich atmospheric lighting, vivid contrast, 35mm photography, 9:16"
                     p["search_query"] = sq
                     p["ai_prompt"] = ap

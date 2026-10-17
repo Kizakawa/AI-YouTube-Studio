@@ -133,7 +133,7 @@ class AIVideoAgent:
         Săn ảnh BẮT MẮT, CÂU VIEW chuẩn Gemini Search (Bing HD + ArtStation 4K + Wallhaven 4K + DDGS + Gemini Vision Curation).
         Không yêu cầu ảnh chụp thật 100% — ưu tiên CGI, Movie Still, Concept Art 8K, Nhiếp ảnh kịch tính.
         """
-        if os.getenv("SEARCH_FIRST_VISUAL_MODE", "false").strip().lower() not in ("1", "true", "yes", "on"):
+        if os.getenv("SEARCH_FIRST_VISUAL_MODE", "true").strip().lower() in ("0", "false", "no", "off"):
             return None
         try:
             import re as _re

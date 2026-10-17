@@ -372,12 +372,102 @@ class WebImageFetcher:
             })
         return out
 
-    @staticmethod
-    def _raw_google_images(query: str, limit: int = 35) -> List[Dict]:
+    _CHROME_POOL_SIZE = 3
+    _chrome_slot_locks = [threading.Lock() for _ in range(3)]
+    _browser_exe_cache: Optional[str] = None
+
+    @classmethod
+    def _find_headless_browser(cls) -> Optional[str]:
+        if cls._browser_exe_cache and os.path.exists(cls._browser_exe_cache):
+            return cls._browser_exe_cache
+        candidates = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        ]
+        for p in candidates:
+            if os.path.exists(p):
+                cls._browser_exe_cache = p
+                return p
+        return None
+
+    @classmethod
+    def _fetch_google_isch_dom_headless(cls, query: str, safe_mode: str = "off", tbs: str = "isz:l") -> str:
+        """Lấy trực tiếp DOM kết quả Top Google Images bằng Chrome/Edge Headless (vượt JS challenge SG_SS trong ~1.8s)."""
+        import subprocess
+        from urllib.parse import urlencode
+
+        browser_exe = cls._find_headless_browser()
+        if not browser_exe:
+            return ""
+
+        params = {
+            "q": query,
+            "tbm": "isch",
+            "hl": "en",
+            "gl": "us",
+            "safe": safe_mode,
+        }
+        if tbs:
+            params["tbs"] = tbs
+        target_url = f"https://www.google.com/search?{urlencode(params)}"
+
+        slot_idx = -1
+        acquired_lock = None
+        for idx, lk in enumerate(cls._chrome_slot_locks):
+            if lk.acquire(blocking=False):
+                slot_idx = idx
+                acquired_lock = lk
+                break
+
+        try:
+            cmd = [
+                browser_exe,
+                "--headless=new",
+                "--disable-gpu",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-extensions",
+                "--disable-sync",
+                "--disable-background-networking",
+                "--blink-settings=imagesEnabled=false",
+                f"--user-agent={_UA}",
+            ]
+            if slot_idx >= 0:
+                profile_dir = os.path.abspath(f"storage/cache/chrome_gimg_pool/slot_{slot_idx}")
+                os.makedirs(profile_dir, exist_ok=True)
+                cmd.append(f"--user-data-dir={profile_dir}")
+            else:
+                cmd.append("--incognito")
+
+            cmd.append("--dump-dom")
+            cmd.append(target_url)
+
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="ignore",
+                timeout=11,
+                creationflags=creationflags,
+            )
+            return proc.stdout or ""
+        except Exception as e:
+            logger.debug(f"[WebImage] Headless Google Images DOM error for '{query}': {e}")
+            return ""
+        finally:
+            if acquired_lock is not None:
+                acquired_lock.release()
+
+    @classmethod
+    def _raw_google_images(cls, query: str, limit: int = 35) -> List[Dict]:
         """
-        Tìm kiếm trực tiếp trên Google Images (chế độ ảnh lớn tbs=isz:l) như thanh tìm kiếm Google/Gemini:
+        Tìm kiếm trực tiếp TOP SEARCH trên Google Images (www.google.com/search?tbm=isch&tbs=isz:l):
         - Ưu tiên Google Custom Search API nếu có GOOGLE_SEARCH_API_KEY + GOOGLE_SEARCH_CX.
-        - Trích xuất trực tiếp từ dữ liệu nhúng AF_initDataCallback của Google Images.
+        - Mặc định dùng Chrome/Edge Headless trích xuất trực tiếp Top Search Google Images (100+ ảnh gốc sắc nét).
         """
         import html as _html
         import re as _re
@@ -406,7 +496,7 @@ class WebImageFetcher:
                     timeout=8,
                 )
                 if res_api.status_code == 200:
-                    for item in res_api.json().get("items", []):
+                    for rank_i, item in enumerate(res_api.json().get("items", []), start=1):
                         link = item.get("link")
                         if not link or link in seen_urls:
                             continue
@@ -423,41 +513,37 @@ class WebImageFetcher:
                             "source": (item.get("displayLink") or "google").replace("www.", ""),
                             "url": ctx_link,
                             "engine": "google_images",
+                            "google_rank": rank_i,
                         })
             except Exception as e:
                 logger.debug(f"[WebImage] Google CSE fallback: {e}")
 
-        # 2. Truy vấn trực tiếp Google Images (tbm=isch & tbs=isz:l ưu tiên ảnh độ phân giải lớn)
-        headers = {
-            "User-Agent": _UA,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "none",
-            "Cookie": "CONSENT=YES+cb.20230531-04-p0.en+FX+908;",
-        }
-        res = requests.get(
-            "https://www.google.com/search",
-            params={
-                "q": query,
-                "tbm": "isch",
-                "tbs": "isz:l",
-                "hl": "en",
-                "gl": "us",
-                "safe": safe_mode,
-                "ijn": "0",
-            },
-            headers=headers,
-            timeout=8,
-        )
-        if res.status_code != 200:
+        # 2. Truy vấn trực tiếp Top Search Google Images (tbm=isch & tbs=isz:l ưu tiên ảnh độ phân giải lớn)
+        raw_html = cls._fetch_google_isch_dom_headless(query, safe_mode=safe_mode, tbs="isz:l")
+        if not raw_html or "gstatic.com" not in raw_html:
+            # Dự phòng HTTP thường nếu máy không có Chrome/Edge
+            headers = {
+                "User-Agent": _UA,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Cookie": "CONSENT=YES+cb.20230531-04-p0.en+FX+908;",
+            }
+            res = requests.get(
+                "https://www.google.com/search",
+                params={"q": query, "tbm": "isch", "tbs": "isz:l", "hl": "en", "gl": "us", "safe": safe_mode, "ijn": "0"},
+                headers=headers,
+                timeout=8,
+            )
+            if res.status_code == 200:
+                raw_html = res.text
+
+        if not raw_html:
             if out:
                 return out
-            raise RuntimeError(f"Google Images HTTP {res.status_code}")
+            raise RuntimeError("Không lấy được HTML từ Google Images")
 
         text = (
-            res.text
+            raw_html
             .replace("\\u003d", "=")
             .replace("\\u0026", "&")
             .replace("\\u003c", "<")
@@ -511,12 +597,13 @@ class WebImageFetcher:
                 "source": domain,
                 "url": page_url,
                 "engine": "google_images",
+                "google_rank": len(out) + 1,
             })
             if len(out) >= limit:
                 break
 
-        if not out and "/httpservice/retry/enablejs" in res.text:
-            raise RuntimeError("Google Images yêu cầu JS challenge (chuyển sang Bing HD/ArtStation/DDGS/Wallhaven)")
+        if not out and "/httpservice/retry/enablejs" in raw_html:
+            raise RuntimeError("Google Images yêu cầu JS challenge")
         return out
 
     @staticmethod
@@ -559,7 +646,11 @@ class WebImageFetcher:
             return []
         try:
             raw_results: List[Dict] = []
-            if eng == "bing":
+            if eng == "google":
+                raw_results = self._raw_google_images(query, limit=max(per_page * 4, 35))
+            elif eng == "serper":
+                raw_results = self._raw_serper_images(query, limit=25)
+            elif eng == "bing":
                 raw_results = self._raw_bing_images(query, limit=35)
             elif eng == "artstation":
                 raw_results = self._raw_artstation_images(query, limit=max(per_page * 2, 14))
@@ -567,12 +658,8 @@ class WebImageFetcher:
                 raw_results = self._raw_ddgs_images(query, limit=max(per_page * 3, 20))
             elif eng == "wallhaven":
                 raw_results = self._raw_wallhaven_images(query, limit=max(per_page * 2, 12))
-            elif eng == "serper":
-                raw_results = self._raw_serper_images(query, limit=25)
-            elif eng == "google":
-                raw_results = self._raw_google_images(query, limit=max(per_page * 4, 30))
 
-            if raw_results and not self._looks_relevant(raw_results, query):
+            if raw_results and eng != "google" and not self._looks_relevant(raw_results, query):
                 logger.info(f"[WebImage] {eng} trả kết quả ít liên quan cho '{query}' → bỏ qua")
                 return []
 
@@ -599,7 +686,7 @@ class WebImageFetcher:
                 title = r.get("title") or query
                 thumb = r.get("thumbnail") or img_url
                 fb_url = r.get("fallback_url") or (thumb if thumb != img_url else "")
-                engine_tag = "google_images" if eng in ("google", "serper", "bing", "artstation", "wallhaven") else "open_web"
+                engine_tag = "google_images" if eng in ("google", "serper") else "open_web"
 
                 item = {
                     "url": img_url,
@@ -615,32 +702,43 @@ class WebImageFetcher:
                     "creator": source_site,
                     "page_url": r.get("url") or "",
                     "attribution": f"Web image from {source_site} (via {eng})",
+                    "_google_rank": int(r.get("google_rank") or 999),
                 }
                 if is_watermark_risk(item) or min(w, h) < 420:
                     continue
                 items.append(item)
-                if len(items) >= max(per_page, 8):
+                if len(items) >= max(per_page, 14):
                     break
             return items
         except Exception as e:
             logger.debug(f"[WebImage] {eng} lỗi cho '{query}': {e}")
-            self._engine_fail(eng, minutes=15 if eng == "google" else 2)
+            self._engine_fail(eng, minutes=2)
             return []
 
     def search_open_web(
         self,
         query: str,
-        per_page: int = 10,
+        per_page: int = 12,
         preferred_engines: Optional[List[str]] = None,
     ) -> List[Dict]:
         """
-        Tìm kiếm ảnh đa luồng song song chuẩn Google Search (Bing HD + DDGS + Wallhaven 4K + Serper/Google).
-        Ưu tiên thứ tự động cơ tìm kiếm do AI Agent (VisualCurationAgent) chỉ định qua preferred_engines.
+        Ưu tiên số 1: Tìm kiếm trực tiếp TOP SEARCH GOOGLE IMAGES (google.com/search?tbm=isch&tbs=isz:l).
+        Chỉ dùng Bing / DDGS làm dự phòng khi Google Images trả về quá ít kết quả (< 6 ảnh).
         """
-        default_engines = "bing,ddgs,wallhaven,serper,google"
-        env_engines = [e.strip() for e in os.getenv("OPEN_WEB_ENGINES", default_engines).split(",") if e.strip()]
+        target_limit = max(per_page, 12)
+        # 1. Chạy trực tiếp Top Search Google Images trước
+        if self._engine_ok("google"):
+            google_items = self._run_single_open_engine("google", query, target_limit)
+            if len(google_items) >= 6:
+                return google_items[:target_limit]
+        else:
+            google_items = []
+
+        # 2. Dự phòng (fallback) nếu Google Images trả về < 6 ảnh
+        default_engines = "bing,ddgs,serper"
+        env_engines = [e.strip() for e in os.getenv("OPEN_WEB_ENGINES", default_engines).split(",") if e.strip() and e.strip() != "google"]
         if preferred_engines:
-            valid_pref = [e.strip().lower() for e in preferred_engines if isinstance(e, str) and e.strip()]
+            valid_pref = [e.strip().lower() for e in preferred_engines if isinstance(e, str) and e.strip() and e.strip().lower() != "google"]
             engines = valid_pref + [e for e in env_engines if e not in valid_pref]
         else:
             engines = env_engines
@@ -649,14 +747,12 @@ class WebImageFetcher:
             if self._engine_ok(e) and not (e == "serper" and not os.getenv("SERPER_API_KEY", "").strip())
         ]
         if not active_engines:
-            # Nếu toàn bộ bị tạm ngắt, mở lại bing + ddgs + wallhaven ngay lập tức
-            active_engines = ["bing", "ddgs", "wallhaven"]
+            active_engines = ["bing", "ddgs"]
             for e in active_engines:
                 self._engine_block_until.pop(e, None)
 
-        # Chạy song song tối đa 4 nguồn mạnh nhất để tổng thời gian luôn < 1.2s
-        parallel_batch = active_engines[:4]
-        buckets: List[List[Dict]] = []
+        parallel_batch = active_engines[:3]
+        buckets: List[List[Dict]] = [google_items] if google_items else []
         with ThreadPoolExecutor(max_workers=len(parallel_batch)) as ex:
             futures = [ex.submit(self._run_single_open_engine, eng, query, per_page) for eng in parallel_batch]
             for f in futures:
@@ -665,21 +761,16 @@ class WebImageFetcher:
                 except Exception:
                     buckets.append([])
 
-        # Trộn xen kẽ (round-robin) giữa các nguồn (Bing HD, ArtStation 8K, DDGS, Wallhaven 4K) để Gemini Vision có đủ góc nhìn
         out: List[Dict] = []
         seen = set()
-        max_len = max((len(b) for b in buckets), default=0)
-        target_limit = max(per_page, 12)
-        for idx in range(max_len):
-            for b in buckets:
-                if idx < len(b):
-                    it = b[idx]
-                    u = it.get("url")
-                    if u and u not in seen:
-                        seen.add(u)
-                        out.append(it)
-                        if len(out) >= target_limit:
-                            return out
+        for b in buckets:
+            for it in b:
+                u = it.get("url")
+                if u and u not in seen:
+                    seen.add(u)
+                    out.append(it)
+                    if len(out) >= target_limit:
+                        return out
         return out
 
     # ─────────────────────────────── Wikipedia Page Images ─────────────────────
@@ -952,13 +1043,13 @@ class WebImageFetcher:
         subject = (subject or "").strip()
         entity_q = subject or query
         use_pure_google_search = creature_mode or bypass_copyright_enabled()
-        open_web_per_page = max(per_source, 8) if use_pure_google_search else per_source
+        open_web_per_page = max(per_source, 12) if use_pure_google_search else per_source
 
         def _open_web_with_pref(q_str: str, pp: int) -> List[Dict]:
             return self.search_open_web(q_str, per_page=pp, preferred_engines=preferred_engines)
 
         jobs = [
-            (_open_web_with_pref, "google_web", query, open_web_per_page),
+            (_open_web_with_pref, "google_top_search", query, open_web_per_page),
         ]
 
         auto_extra = list(extra_queries or [])
@@ -966,18 +1057,20 @@ class WebImageFetcher:
             if not auto_extra:
                 from app.services.media.image_quality import creature_queries
                 auto_extra = creature_queries(subject or query)
-            for i, xq in enumerate(q for q in auto_extra[:1] if q and q.lower() != query.lower()):
-                jobs.append((_open_web_with_pref, f"google_creature+{i + 1}", xq, open_web_per_page))
+            for i, xq in enumerate(q for q in auto_extra if q and q.lower() != query.lower()):
+                if i >= 1:
+                    break
+                jobs.append((_open_web_with_pref, f"google_top+{i + 1}", xq, open_web_per_page))
         elif use_pure_google_search:
-            # Chế độ Gemini Search: Ưu tiên tuyệt đối các truy vấn extra_queries do AI Agent sinh ra
             if not auto_extra:
                 base_target = subject or query
                 auto_extra = [
-                    f"{base_target} cinematic 8k concept art",
-                    f"{base_target} movie scene dramatic HD",
+                    f"{base_target} cinematic HD",
                 ]
-            for i, xq in enumerate(q for q in auto_extra[:1] if q and q.lower() != query.lower()):
-                jobs.append((_open_web_with_pref, f"google_web+{i + 1}", xq, open_web_per_page))
+            for i, xq in enumerate(q for q in auto_extra if q and q.lower() != query.lower()):
+                if i >= 1:
+                    break
+                jobs.append((_open_web_with_pref, f"google_top+{i + 1}", xq, open_web_per_page))
         else:
             if subject or len(query.split()) <= 3:
                 jobs.append((self.search_wikipedia_images, "wikipedia", entity_q, per_source))
@@ -995,20 +1088,15 @@ class WebImageFetcher:
             buckets = []
             for f in futures:
                 try:
-                    buckets.append(f.result(timeout=8))
+                    buckets.append(f.result(timeout=13))
                 except Exception:
                     buckets.append([])
 
-        # Open web quá ít kết quả với truy vấn dài → thử lại bằng tên chủ thể + từ khóa bắt mắt
+        # Open web quá ít kết quả với truy vấn dài → thử lại bằng tên chủ thể trực tiếp trên Google Images
         total_found = sum(len(b) for b in buckets)
         if subject and subject.lower() != query.lower() and total_found < 3:
             try:
-                fallback_q = (
-                    f"{subject} terrifying monster dark art"
-                    if creature_mode
-                    else f"{subject} cinematic 8k dramatic"
-                )
-                buckets[0] = buckets[0] + _open_web_with_pref(fallback_q, open_web_per_page)
+                buckets[0] = buckets[0] + _open_web_with_pref(subject, open_web_per_page)
             except Exception:
                 pass
 

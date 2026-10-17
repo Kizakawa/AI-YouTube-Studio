@@ -1120,9 +1120,9 @@ class VideoPipeline:
                     (va_dict.get("creature_queries") if is_creature else None)
                     or va_dict.get("google_image_queries")
                     or va_dict.get("search_queries")
-                    or [getattr(scene, 'stock_query', None) or scene.visual_keyword or topic]
+                    or [scene.visual_keyword or getattr(scene, 'stock_query', None) or topic]
                 )
-                c_query = next((q for q in g_queries if q), getattr(scene, 'stock_query', None) or scene.visual_keyword or topic)
+                c_query = next((q for q in g_queries if q), scene.visual_keyword or getattr(scene, 'stock_query', None) or topic)
                 searched_photo = await asyncio.to_thread(
                     self._media_agent.search_best_photo,
                     c_query,
