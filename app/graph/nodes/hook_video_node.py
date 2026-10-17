@@ -225,30 +225,116 @@ Return ONLY valid JSON:
     }
 
 
-def _is_real_action_channel(niche: str, channel_id: str) -> bool:
+def _analyze_script_climax_for_hook(
+    state: VideoWorkflowState,
+    topic: str,
+    primary_entity: str,
+    visual_keyword: str,
+    hook_narration: str,
+    niche: str,
+) -> Dict[str, Any]:
     """
-    Phân luồng tự động giữa 2 Đề xuất:
-    - Đề xuất 1 (True): Kênh Động Vật & Đời Thực (Wild Odyssey, Odisseia Selvagem, Paws & Hearts / wildlife, pets, animals)
-      -> Dùng yt-dlp cắt 12s đầu từ YouTube + Gemini Vision chấm điểm + Fair Use 100% (hflip, zoom 108%, 3 cuts).
-    - Đề xuất 2 (False): Kênh Lịch Sử, Tâm Lý, Bí Ẩn (Alternate History, Psychology, Mysteries, Mistérios do Mundo)
-      -> Giữ 4 Ảnh Google Top Search cắt nhanh + Phủ Lớp Hiệu Ứng Chuyển Động Thực FFmpeg (Lửa/Khói/Camera Shake, Sonar/Hạt bụi, Heartbeat/Chromatic Glitch).
+    Đọc trực tiếp toàn bộ Kịch bản (script_data / narration các cảnh) để:
+    1. Xác định Khoảnh khắc Cao Trào Thị Giác (Climax Moment) đắt giá nhất của nội dung video.
+    2. Sinh ra 2 câu truy vấn tìm kiếm Video thực tế trên YouTube Shorts (3-5 từ tiếng Anh) sát với cao trào đó.
+    3. Tự động chọn Tông Hiệu Ứng Chuyển Động (atmosphere_fx: 'history' | 'psychology' | 'mystery' | 'action')
+       dựa trên NỘI DUNG KỊCH BẢN (hoạt động tự động cho mọi kênh mới mà không cần chia nhánh cứng theo tên kênh).
     """
-    combined = f"{niche} {channel_id}".lower()
-    if any(k in combined for k in ("history", "psych", "myster", "mister", "selfhelp", "scifi", "alternate")):
-        return False
-    if any(k in combined for k in ("wild", "odyssey", "odisseia", "paws", "pet", "animal", "nature", "creature")):
-        return True
-    return True
+    fallback_queries = _build_hook_video_search_queries(topic, primary_entity, visual_keyword, niche)
+    script_data = state.get("script_data") or {}
+    scenes_list = script_data.get("scenes") or state.get("scenes_media") or []
+    full_script_text = " | ".join(
+        f"Scene {s.get('scene_id', i+1)}: {s.get('narration', '')} ({s.get('visual_keyword', '')})"
+        for i, s in enumerate(scenes_list[:8])
+        if isinstance(s, dict)
+    )
+
+    prompt = f"""You are a Viral YouTube Shorts Hook Director.
+Read the video's full script below and extract the single MOST DRAMATIC CLIMAX VISUAL MOMENT to search for real-world footage for the first 3.5 seconds (Opening Hook).
+
+- Topic: {topic}
+- Primary Subject: {primary_entity or topic}
+- Opening Narration: {hook_narration}
+- Full Script Summary: {full_script_text[:1200]}
+
+Tasks:
+1. "climax_description": Describe in 1 sentence the most intense, action-packed physical/visual climax in this script.
+2. "search_queries": Provide 2 short English YouTube search queries (3 to 5 words each, concrete nouns + action verbs, NO quotes or hashtags) to find real footage of this exact climax.
+3. "atmosphere_fx": Based purely on the script's content/mood, pick ONE visual FX profile from:
+   - "history" (for war, fire, ancient battles, disasters, explosions, historical events)
+   - "psychology" (for human mind, brain, stare, emotion, manipulation, social behavior)
+   - "mystery" (for deep ocean, space, caves, dark secrets, eerie phenomena, science)
+   - "action" (for wildlife, predators, pets, sports, fast real-world physical action)
+
+Return ONLY valid JSON:
+{{
+  "climax_description": "...",
+  "search_queries": ["query 1", "query 2"],
+  "atmosphere_fx": "action"
+}}"""
+
+    try:
+        from app.services.KeyManager import key_manager
+        from google import genai
+        from google.genai import types
+
+        key_info = key_manager.get_key("gemini")
+        if key_info and key_info.get("key"):
+            client = genai.Client(api_key=key_info["key"])
+            resp = client.models.generate_content(
+                model="gemini-3-flash-preview",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.2,
+                    response_mime_type="application/json",
+                ),
+            )
+            data = json.loads((resp.text or "").strip())
+            raw_queries = [
+                re.sub(r"[^a-zA-Z0-9\s]", " ", str(q)).strip()
+                for q in (data.get("search_queries") or [])
+                if str(q).strip()
+            ]
+            valid_queries = [re.sub(r"\s+", " ", q) for q in raw_queries if len(q.split()) >= 2][:2]
+            fx = str(data.get("atmosphere_fx") or niche or "action").lower()
+            climax_desc = str(data.get("climax_description") or topic).strip()
+            if valid_queries:
+                return {
+                    "climax_description": climax_desc,
+                    "search_queries": valid_queries,
+                    "atmosphere_fx": fx,
+                }
+    except Exception as e:
+        logger.debug(f"[HookVideoNode] Script climax analysis fallback: {e}")
+
+    # Fallback tự động từ từ khóa kịch bản nếu API bận
+    combined_text = f"{topic} {hook_narration} {visual_keyword} {niche}".lower()
+    if any(k in combined_text for k in ("war", "battle", "fire", "burn", "empire", "history", "king", "army", "ancient")):
+        auto_fx = "history"
+    elif any(k in combined_text for k in ("brain", "mind", "psych", "stare", "eye", "lie", "emotion", "silence", "habit")):
+        auto_fx = "psychology"
+    elif any(k in combined_text for k in ("ocean", "deep", "sea", "cave", "space", "myster", "alien", "black hole", "ice")):
+        auto_fx = "mystery"
+    else:
+        auto_fx = "action"
+
+    return {
+        "climax_description": f"{primary_entity or topic} — {visual_keyword}",
+        "search_queries": fallback_queries,
+        "atmosphere_fx": auto_fx,
+    }
 
 
 async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[str, Any]:
     """
-    Node độc lập trong LangGraph:
-    - Nhánh 1 (Đề xuất 1 - Động vật & Đời thực): Săn tìm ứng viên Video Chuyển Động Thực 12s bằng yt-dlp ->
-      Gemini Vision chấm điểm -> Biến đổi Fair Use 100% (hflip, phóng 108%, cắt 3 đoạn ngắn + chỉnh màu).
-    - Nhánh 2 (Đề xuất 2 - Lịch sử, Tâm lý, Bí ẩn): Giữ 4 ảnh Google Top Search đúng bối cảnh +
-      Phủ lớp Hiệu Ứng Chuyển Động Thực FFmpeg (Lửa/Khói/Rung chấn, Bụi nước/Sonar, Nhịp đập/Glitch).
-    Sau khi dựng xong `hook_motion_001.mp4`, bàn giao sang `node_render_video` để Merge với Cảnh 2..N và Lồng tiếng cuối cùng!
+    Node độc lập trong LangGraph (Hoạt động tự động cho MỌI KÊNH dựa trên Nội dung Kịch bản, không chia nhánh cứng):
+    1. Đọc toàn bộ kịch bản (`_analyze_script_climax_for_hook`) để rút ra Khoảnh khắc Cao Trào Thị Giác,
+       2 truy vấn tìm kiếm video cao trào và tông hiệu ứng `atmosphere_fx` theo đúng nội dung bài.
+    2. Dùng `yt-dlp` cắt nhanh 12s đầu của các video thực tế khớp với Cao Trào Kịch Bản.
+    3. Dùng Gemini Vision chấm điểm độc lập từng ứng viên xem có đúng Cao Trào Kịch Bản & sạch chữ không:
+       - Nếu ĐẠT (>= 7.4/10): Dựng `hook_motion_001.mp4` từ Video Chuyển Động Thực + Fair Use 100% (hflip, phóng 108%, cắt 3 đoạn ngắn + chỉnh màu).
+       - Nếu KHÔNG ĐẠT (< 7.4/10): Tự động dùng 4 ảnh Google Top Search cắt nhanh 3 nhát + phủ Hiệu Ứng Chuyển Động Thực FFmpeg (`atmosphere_fx` theo kịch bản).
+    4. Bàn giao `hook_motion_001.mp4` sang `node_render_video` để Merge với Cảnh 2..N và Lồng tiếng cuối cùng!
     """
     work_dir = Path(state.get("work_dir", "storage/cache"))
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -266,7 +352,6 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
     topic = state.get("topic") or ""
     primary_entity = state.get("primary_entity") or ""
     niche = state.get("channel_style") or state.get("niche") or "general"
-    channel_id = state.get("target_channel_id") or ""
     visual_keyword = scene_1.get("visual_keyword") or topic
     hook_narration = scene_1.get("narration") or audio_1.get("narration") or ""
 
@@ -280,60 +365,68 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
     transition_duration = 0.18 if len(scenes_media) > 1 else (0.15 + VIDEO_DURATION_SAFETY_MARGIN)
     target_hook_duration_sec = max(dur_ms / 1000.0, 1.0) + transition_duration
 
-    use_proposal_1_yt_action = _is_real_action_channel(niche, channel_id)
+    # 1. Đọc kịch bản để rút ra Khoảnh khắc Cao Trào + Truy vấn tìm Video + Tông hiệu ứng theo nội dung
+    climax_plan = _analyze_script_climax_for_hook(
+        state=state,
+        topic=topic,
+        primary_entity=primary_entity,
+        visual_keyword=visual_keyword,
+        hook_narration=hook_narration,
+        niche=niche,
+    )
+    queries = climax_plan["search_queries"]
+    climax_desc = climax_plan["climax_description"]
+    atmosphere_fx = climax_plan["atmosphere_fx"]
+
+    logger.info(
+        f"🎯 [HookVideoNode] Phân tích Cao Trào Kịch Bản: '{climax_desc[:75]}' "
+        f"| Queries: {queries} | FX Profile: {atmosphere_fx} | Thời lượng: {target_hook_duration_sec:.2f}s"
+    )
+
+    # 2. Tìm & tải nhanh ứng viên video 12s từ YouTube Shorts theo truy vấn Cao Trào Kịch Bản
     existing_path = str(scene_1.get("media_path") or "")
+    candidate_videos: List[str] = []
+    if existing_path and existing_path.lower().endswith((".mp4", ".mov", ".webm")) and Path(existing_path).exists():
+        candidate_videos.append(existing_path)
+
+    yt_cands = _download_yt_action_candidates(queries, hook_cand_dir, max_candidates=2)
+    for c in yt_cands:
+        if c not in candidate_videos:
+            candidate_videos.append(c)
+
+    # 3. Chấm điểm từng ứng viên Video bằng Gemini Vision dựa trên độ khớp với Cao Trào Kịch Bản
     scored_candidates: List[Dict[str, Any]] = []
     best_candidate: Optional[Dict[str, Any]] = None
 
-    if use_proposal_1_yt_action:
-        logger.info(
-            f"🎯 [HookVideoNode - Đề xuất 1] Kênh Động vật/Đời thực ({niche}): Săn tìm Video Chuyển Động Thực 12s bằng yt-dlp "
-            f"& chấm điểm Gemini Vision (Topic: '{topic[:45]}' | Thời lượng đích: {target_hook_duration_sec:.2f}s)..."
+    for idx, v_path in enumerate(candidate_videos):
+        b64_sheet = _extract_contact_sheet_b64(v_path, hook_cand_dir, idx)
+        if not b64_sheet:
+            continue
+        score_res = _score_hook_video_candidate_with_gemini(
+            video_path=v_path,
+            contact_b64=b64_sheet,
+            topic=f"{topic} (Climax: {climax_desc})",
+            hook_narration=hook_narration,
+            primary_entity=primary_entity or climax_desc,
         )
-        candidate_videos: List[str] = []
-        if existing_path and existing_path.lower().endswith((".mp4", ".mov", ".webm")) and Path(existing_path).exists():
-            candidate_videos.append(existing_path)
-
-        queries = _build_hook_video_search_queries(topic, primary_entity, visual_keyword, niche)
-        yt_cands = _download_yt_action_candidates(queries, hook_cand_dir, max_candidates=2)
-        for c in yt_cands:
-            if c not in candidate_videos:
-                candidate_videos.append(c)
-
-        for idx, v_path in enumerate(candidate_videos):
-            b64_sheet = _extract_contact_sheet_b64(v_path, hook_cand_dir, idx)
-            if not b64_sheet:
-                continue
-            score_res = _score_hook_video_candidate_with_gemini(
-                video_path=v_path,
-                contact_b64=b64_sheet,
-                topic=topic,
-                hook_narration=hook_narration,
-                primary_entity=primary_entity,
-            )
-            scored_candidates.append(score_res)
-            logger.info(
-                f"  📊 [HookVideoGrader] Ứng viên #{idx + 1} ({Path(v_path).name}): "
-                f"Overall={score_res['overall_score']}/10 "
-                f"(Entity={score_res['entity_match_score']}, Motion={score_res['motion_action_score']}, Clean={score_res['clean_frame_score']}) "
-                f"-> {'✅ ĐẠT' if score_res['passed'] else '❌ LOẠI'} ({score_res['reason']})"
-            )
-            if score_res["passed"]:
-                if best_candidate is None or score_res["overall_score"] > best_candidate["overall_score"]:
-                    best_candidate = score_res
-    else:
+        scored_candidates.append(score_res)
         logger.info(
-            f"⚡ [HookVideoNode - Đề xuất 2] Kênh Lịch sử/Tâm lý/Bí ẩn ({niche}): Giữ 4 ảnh Google Top Search đúng bối cảnh "
-            f"+ Phủ Lớp Hiệu Ứng Chuyển Động Thực FFmpeg (Lửa/Khói/Camera Shake / Sonar / Heartbeat Glitch)"
+            f"  📊 [HookVideoGrader] Ứng viên #{idx + 1} ({Path(v_path).name}): "
+            f"Overall={score_res['overall_score']}/10 "
+            f"(Entity={score_res['entity_match_score']}, Motion={score_res['motion_action_score']}, Clean={score_res['clean_frame_score']}) "
+            f"-> {'✅ ĐẠT' if score_res['passed'] else '❌ LOẠI'} ({score_res['reason']})"
         )
+        if score_res["passed"]:
+            if best_candidate is None or score_res["overall_score"] > best_candidate["overall_score"]:
+                best_candidate = score_res
 
-    # 3. Dựng sẵn clip mở đầu `hook_motion_001.mp4` (Silent 1080x1920 30fps, >= 3 lần cắt cảnh nhanh)
+    # 4. Dựng sẵn clip mở đầu `hook_motion_001.mp4` (Silent 1080x1920 30fps, >= 3 lần cắt cảnh nhanh)
     hook_output_clip = str(work_dir / "hook_motion_001.mp4")
-    is_scifi = "scifi" in niche.lower()
+    is_scifi = "scifi" in atmosphere_fx or "scifi" in niche.lower()
 
     if best_candidate and Path(best_candidate["video_path"]).exists():
         logger.info(
-            f"🔥 [HookVideoNode - Đề xuất 1] Sử dụng Video Chuyển Động Thực đạt chuẩn ({best_candidate['overall_score']}/10) "
+            f"🔥 [HookVideoNode] Tìm thấy Video Cao Trào đạt chuẩn ({best_candidate['overall_score']}/10) "
             f"+ Fair-Use 100% (hflip, phóng 108%, 3-Cut) -> {hook_output_clip}"
         )
         trim_video(
@@ -344,17 +437,17 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
             height=1920,
             fps=30,
             is_scifi=is_scifi,
-            niche=niche,
+            niche=atmosphere_fx,
             apply_grading=True,
             is_hook_scene=True,
             fair_use_transform=True,
         )
-        hook_mode = "PROPOSAL_1_YT_REAL_ACTION_FAIR_USE_3CUT"
+        hook_mode = "CLIMAX_REAL_VIDEO_FAIR_USE_3CUT"
     else:
         pose_list = scene_1.get("pose_images") or ([existing_path] if existing_path and Path(existing_path).exists() else [])
         logger.info(
-            f"⚡ [HookVideoNode - Đề xuất 2] Dùng {len(pose_list)} ảnh Google Top Search "
-            f"+ Bộ lọc Hiệu Ứng Chuyển Động Thực FFmpeg ({niche}) dựng 3-Cut Dynamic Hook -> {hook_output_clip}"
+            f"⚡ [HookVideoNode] Video trên mạng chưa đạt chuẩn kịch bản -> Dùng {len(pose_list)} ảnh Google Top Search "
+            f"+ Hiệu Ứng Chuyển Động Thực FFmpeg (Atmosphere: {atmosphere_fx}) dựng 3-Cut Dynamic Hook -> {hook_output_clip}"
         )
         if pose_list:
             render_opening_hook_multi_cut(
@@ -366,9 +459,9 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
                 fps=30,
                 min_cuts=3,
                 is_scifi=is_scifi,
-                niche=niche,
+                niche=atmosphere_fx,
             )
-        hook_mode = "PROPOSAL_2_GOOGLE_IMAGES_LIVE_FX_3CUT"
+        hook_mode = f"CLIMAX_IMAGES_LIVE_FX_{atmosphere_fx.upper()}_3CUT"
 
     if Path(hook_output_clip).exists() and Path(hook_output_clip).stat().st_size > 10_000:
         scene_1["media_path"] = hook_output_clip
@@ -378,9 +471,12 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
 
     eval_summary = {
         "mode": hook_mode,
+        "climax_description": climax_desc,
+        "search_queries": queries,
+        "atmosphere_fx": atmosphere_fx,
         "candidates_tested": len(scored_candidates),
         "best_score": best_candidate["overall_score"] if best_candidate else 8.8,
-        "best_reason": best_candidate["reason"] if best_candidate else f"Live FX ({niche}) + 4-image multi-cut",
+        "best_reason": best_candidate["reason"] if best_candidate else f"Live FX ({atmosphere_fx}) + 4-image multi-cut",
         "output_clip": hook_output_clip,
         "duration_sec": round(target_hook_duration_sec, 2),
     }
