@@ -256,6 +256,22 @@ class ScriptContract(BaseModel):
         default=None,
         description="2-4 từ in hoa cực to, tương phản cao gợi tò mò cho ảnh bìa (Thumbnail 1-second rule)"
     )
+    hook_visual_mode: Optional[str] = Field(
+        default=None,
+        description="Quyết định của Gemini cho Hook: 'video' (tìm & cắt đoạn Peak từ YouTube Shorts) hoặc 'scene' (tạo cảnh / tìm ảnh truyền thống khi từ khóa trừu tượng)"
+    )
+    is_abstract_keyword: Optional[bool] = Field(
+        default=None,
+        description="Cổng phân loại từ khóa trừu tượng do Gemini quyết định: True nếu nên tạo cảnh ('scene'), False nếu nên săn video Short ('video')"
+    )
+    climax_scene_id: Optional[int] = Field(
+        default=None,
+        description="ID phân cảnh cao trào giữa thân video (2..N) để ghép đoạn Peak cắt từ Short vào trong thân video"
+    )
+    hook_search_queries: Optional[List[str]] = Field(
+        default=None,
+        description="2 câu truy vấn ngắn gọn bằng tiếng Anh để tìm video Short trên mạng khi hook_visual_mode='video'"
+    )
 
     @model_validator(mode="after")
     def ensure_description_and_defaults(self) -> "ScriptContract":

@@ -666,6 +666,35 @@ class ContentAgent:
         elif "hook" not in raw_data or not raw_data["hook"]:
             raw_data["hook"] = raw_data.get("title", "")
 
+        # ── 2.88. CỔNG QUYẾT ĐỊNH HOOK CỦA GEMINI: TẠO VIDEO ("video") HAY TẠO CẢNH ("scene") ──
+        raw_h_mode = str(raw_data.get("hook_visual_mode") or "").strip().lower()
+        raw_is_abs = raw_data.get("is_abstract_keyword")
+        if raw_h_mode in ("scene", "image", "ai_image", "photo", "traditional"):
+            raw_data["hook_visual_mode"] = "scene"
+            raw_data["is_abstract_keyword"] = True
+        elif raw_h_mode in ("video", "short", "shorts", "clip"):
+            raw_data["hook_visual_mode"] = "video"
+            raw_data["is_abstract_keyword"] = False if raw_is_abs is None else bool(raw_is_abs)
+        elif isinstance(raw_is_abs, bool):
+            raw_data["is_abstract_keyword"] = raw_is_abs
+            raw_data["hook_visual_mode"] = "scene" if raw_is_abs else "video"
+
+        if scenes and isinstance(scenes, list):
+            default_climax_id = min(max(3, len(scenes) // 2), max(len(scenes) - 1, 1))
+            try:
+                c_id = int(raw_data.get("climax_scene_id") or default_climax_id)
+                if c_id < 2 or c_id > len(scenes):
+                    c_id = default_climax_id
+            except Exception:
+                c_id = default_climax_id
+            raw_data["climax_scene_id"] = c_id
+
+        raw_h_queries = raw_data.get("hook_search_queries")
+        if isinstance(raw_h_queries, list):
+            raw_data["hook_search_queries"] = [str(q).strip() for q in raw_h_queries if str(q).strip()][:2]
+        elif isinstance(raw_h_queries, str) and raw_h_queries.strip():
+            raw_data["hook_search_queries"] = [q.strip() for q in raw_h_queries.split(",") if q.strip()][:2]
+
         # ── 2.9. OPUSCLIP / VIDIQ VIRAL CTR TITLE TOURNAMENT (ĐẤU TRƯỜNG TIÊU ĐỀ TỐI ƯU CTR) ──
         raw_variants = raw_data.get("title_variants")
         candidates: List[str] = []
@@ -1227,6 +1256,13 @@ YouTube Shorts rewards TWO metrics simultaneously:
    - `visual_keyword` (**2-5 English words**) and `stock_query` (**3-4 English words**) MUST name the concrete subject + distinct visual action/setting of that specific scene.
    - **ZERO REPETITION ACROSS SCENES**: Every single scene from Scene 1 to Scene 9 MUST have a 100% UNIQUE `visual_keyword` showing a different angle, action, scale, or moment of the story so the video never shows repetitive imagery!
 
+13. HOOK VISUAL MODE DECISION (`hook_visual_mode`: `"video"` VS `"scene"`, `is_abstract_keyword`, & `climax_scene_id`):
+   - Directly decide whether this Hook should be produced as a real cut Short video (`"video"`) or generated/searched as a visual scene (`"scene"`):
+     * Set `"hook_visual_mode": "video"` and `"is_abstract_keyword": false` when the hook/climax involves CONCRETE, REAL-WORLD PHYSICAL FOOTAGE available on YouTube Shorts (e.g. wildlife predator battles, animal rescues, deep-sea exploration footage, natural phenomena).
+     * Set `"hook_visual_mode": "scene"` and `"is_abstract_keyword": true` when the hook/keyword is ABSTRACT, PSYCHOLOGICAL, HYPOTHETICAL, or CONCEPTUAL (e.g. dark psychology, manipulation, gaslighting, alternate history "What If", mindsets) where searching YouTube Shorts would return talking heads/podcasts instead of cinematic scenes.
+   - Set `"climax_scene_id"` (integer between 2 and 7) to the body scene where the most intense visual climax happens (used to splice the Peak clip into the body of the video when `"hook_visual_mode" == "video"`).
+   - Provide `"hook_search_queries"`: 2 short English search queries (3–5 words each) for finding the exact YouTube Short peak clip when `"hook_visual_mode" == "video"`.
+
 ═══════════════════════════════════════════════════════════
 OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
 ═══════════════════════════════════════════════════════════
@@ -1244,6 +1280,10 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
     "Counter-intuitive psychological or physical paradox hook sentence (5-8 words)",
     "Immediate behavioral test or high-stakes action hook sentence (5-8 words)"
   ],
+  "hook_visual_mode": "video | scene",
+  "is_abstract_keyword": false,
+  "climax_scene_id": 3,
+  "hook_search_queries": ["concrete short search query 1", "concrete short search query 2"],
   "full_narration": "Complete spoken text without stage directions (strictly 88-118 words, 32-42s golden depth with Real-Life Example, Mechanism, Actionable Counter-Move, and zero spoken Subscribe CTA)",
   "thumbnail_text": "2-4 TỪ IN HOA CỰC TO GỢI TÒ MÒ CHO ẢNH BÌA",
   "scenes": [
@@ -1375,6 +1415,10 @@ HARD RETENTION & 5-ACT DEPTH RULES:
   "title": "Viral YouTube Shorts Title with Emojis",
   "primary_entity": "Full official name of main person/figure or null",
   "hook": "The opening 2.2-second hook sentence (5-8 words)",
+  "hook_visual_mode": "video | scene",
+  "is_abstract_keyword": false,
+  "climax_scene_id": 3,
+  "hook_search_queries": ["concrete short search query 1", "concrete short search query 2"],
   "full_narration": "The full spoken text without any stage directions (strictly 88-118 words for 32-42s golden depth with Real-Life Example, Mechanism, Counter-Move, and zero spoken Subscribe CTA)",
   "thumbnail_text": "2-4 TỪ IN HOA CỰC TO GỢI TÒ MÒ CHO ẢNH BÌA",
   "scenes": [
