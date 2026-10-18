@@ -188,6 +188,7 @@ class PublisherAgent:
         topic: str = "",
         script: str = "",
         thumbnail_path: Optional[str] = None,
+        notify_subscribers: Optional[bool] = None,
     ) -> Dict:
         """
         Upload video lên YouTube qua YouTube Data API v3.
@@ -380,15 +381,31 @@ class PublisherAgent:
         elif isinstance(tags, str):
             tag_list = [t.strip() for t in tags.split(",") if t.strip()]
 
+        # Loại bỏ các tag rò rỉ vùng VN trên kênh quốc tế
+        tag_list = [t for t in tag_list if t.lower() not in ("vn", "vietnam", "vietnamese", "tiengviet")]
+
         for req_tag in ["Shorts", "shorts", "ytshorts", "viral"]:
             if req_tag.lower() not in [t.lower() for t in tag_list]:
                 tag_list.append(req_tag)
 
-        # Chuẩn hóa ngôn ngữ mặc định (Target US, Brazil pt-BR & Global Audience chuẩn BCP-47)
+        # Chuẩn hóa ngôn ngữ mặc định & Tọa độ GPS định tuyến vùng (US Geo-Lock / Brazil Geo-Lock chuẩn BCP-47)
         cfg_lang = str(self.channel_config.get("language") or "").strip()
-        if cfg_lang.lower().startswith("pt") or (default_language and str(default_language).lower().startswith("pt")):
-            target_lang = "pt"
+        is_pt_br = cfg_lang.lower().startswith("pt") or (default_language and str(default_language).lower().startswith("pt"))
+        if is_pt_br:
+            target_lang = "pt-BR"
             target_audio_lang = "pt-BR"
+            recording_details = {
+                "locationDescription": "São Paulo, Brazil",
+                "location": {
+                    "latitude": -23.5505,
+                    "longitude": -46.6333,
+                    "altitude": 0.0,
+                },
+            }
+            for br_tag in ["brasil", "curiosidades"]:
+                if len(tag_list) < 20 and br_tag not in [t.lower() for t in tag_list]:
+                    tag_list.append(br_tag)
+            default_notify_subs = True
         else:
             target_lang = default_language or cfg_lang or "en-US"
             if str(target_lang).lower() in ("en", "en-us", "english"):
@@ -398,6 +415,28 @@ class PublisherAgent:
                 target_audio_lang = "vi-VN" if str(target_lang).lower().startswith("vi") else "en-US"
             else:
                 target_audio_lang = default_audio_language
+
+            recording_details = {
+                "locationDescription": "New York, United States",
+                "location": {
+                    "latitude": 40.7128,
+                    "longitude": -74.0060,
+                    "altitude": 0.0,
+                },
+            }
+            for us_tag in ["usa", "american"]:
+                if len(tag_list) < 20 and us_tag not in [t.lower() for t in tag_list]:
+                    tag_list.append(us_tag)
+            # Kênh en-US tắt notifySubscribers mặc định để ngắt hoàn toàn tệp sub VN cũ,
+            # ép thuật toán YouTube đẩy 100% vòng Seed sang Shorts Shelf tại Mỹ (US/UK/CA/AU)
+            default_notify_subs = False
+
+        if notify_subscribers is not None:
+            should_notify_subs = bool(notify_subscribers)
+        elif self.channel_config.get("notify_subscribers") is not None:
+            should_notify_subs = bool(self.channel_config.get("notify_subscribers"))
+        else:
+            should_notify_subs = default_notify_subs
 
         # Chống đăng trùng lặp tiêu đề video (Anti-Duplicate Upload Guard across Channel Family + Semantic Similarity)
         try:
@@ -472,7 +511,8 @@ class PublisherAgent:
                 "privacyStatus": "private" if schedule_time_iso else privacy_status,
                 "selfDeclaredMadeForKids": False,
                 "containsSyntheticMedia": True  # Khai báo minh bạch nội dung AI / Synthetic theo chính sách YouTube 2026
-            }
+            },
+            "recordingDetails": recording_details,
         }
 
         if schedule_time_iso:
@@ -500,9 +540,10 @@ class PublisherAgent:
                         )
 
                         request = self.service.videos().insert(
-                            part="snippet,status",
+                            part="snippet,status,recordingDetails",
                             body=body,
-                            media_body=media
+                            media_body=media,
+                            notifySubscribers=should_notify_subs,
                         )
 
                         response = None
