@@ -182,8 +182,13 @@ class ContentAgent:
             f"{len(AVAILABLE_MODELS)} models trong {time.monotonic() - start_time:.1f}s — không nhận được phản hồi."
         )
 
-    def _parse_json_script(self, raw_text: str) -> ScriptContract:
-        """Helper làm sạch markdown và parse JSON thành ScriptContract, tự động khử rò rỉ ngôn ngữ ở tiêu đề."""
+    def _parse_json_script(
+        self,
+        raw_text: str,
+        channel_niche: str = "general",
+        topic: str = "",
+    ) -> ScriptContract:
+        """Helper làm sạch markdown và parse JSON thành ScriptContract, tự động khử rò rỉ ngôn ngữ và metadata chéo ngách."""
         import re
         text = raw_text.strip()
         if text.startswith("```"):
@@ -199,6 +204,9 @@ class ContentAgent:
         if start != -1 and end != -1 and end > start:
             text = text[start:end+1]
         raw_data = json.loads(text)
+
+        if topic and ("topic" not in raw_data or not str(raw_data.get("topic") or "").strip()):
+            raw_data["topic"] = str(topic).strip()
 
         # Khử sạch các hậu tố kênh hoặc mã quốc gia rò rỉ ở tiêu đề (tránh thuật toán YouTube phân phối nhầm vùng)
         if "title" in raw_data and isinstance(raw_data["title"], str):
@@ -668,6 +676,13 @@ class ContentAgent:
                 v_clean = _strip_variant_prefix(str(v)) if v else ""
                 if v_clean and v_clean not in candidates:
                     candidates.append(v_clean)
+        niche_norm = str(channel_niche or "").strip().lower()
+        topic_norm = str(raw_data.get("topic") or topic or "").strip().lower()
+        is_what_if_context = (
+            niche_norm == "alternate_history"
+            or topic_norm.startswith(("what if", "e se ", "nếu "))
+            or "what if" in topic_norm
+        )
         if len(candidates) >= 2:
             def _score_title_ctr(t_str: str) -> float:
                 score = 50.0
@@ -683,15 +698,18 @@ class ContentAgent:
                     score += 12.0
                 if re.search(r'\b(vs\.?|versus|hay|or)\b', clean_t, flags=re.IGNORECASE):
                     score += 10.0
-                # Chứa từ khóa kích hoạt tò mò / cảnh báo (Curiosity Gap & Threat Triggers)
+                # Chứa từ khóa kích hoạt tò mò / cảnh báo / giả định (Curiosity Gap & Counterfactual Triggers)
                 ctr_triggers = (
-                    "why", "never", "secret", "truth", "sign", "until", "mistake", "hidden", "actually", "refused",
-                    "tại sao", "đừng", "bí mật", "sự thật", "dấu hiệu", "cho đến khi", "sai lầm", "ẩn giấu",
-                    "por que", "nunca", "segredo", "verdade", "erro", "jamais"
+                    "what if", "why", "never", "secret", "truth", "sign", "until", "mistake", "hidden", "actually", "refused",
+                    "nếu", "tại sao", "đừng", "bí mật", "sự thật", "dấu hiệu", "cho đến khi", "sai lầm", "ẩn giấu",
+                    "e se", "por que", "nunca", "segredo", "verdade", "erro", "jamais"
                 )
                 t_low = clean_t.lower()
                 if any(k in t_low for k in ctr_triggers):
                     score += 14.0
+                # Bảo toàn tuyệt đối cấu trúc "What If..." cho kênh Alternate History & "What If?"
+                if is_what_if_context and any(w in t_low for w in ("what if", "e se ", "nếu ")):
+                    score += 26.0
                 if "?" in clean_t or "!" in clean_t:
                     score += 5.0
                 return score
@@ -717,38 +735,45 @@ class ContentAgent:
                 raw_data["thumbnail_text"] = "SỰ THẬT TÀN KHỐC!"
 
         # ── 3. BÌNH LUẬN MỒI GHIM ĐẦU TRANG (PINNED COMMENT BAIT) TỐI ƯU TƯƠNG TÁC ──
+        comb_all = f"{niche_norm} {str(raw_data.get('topic', ''))} {str(raw_data.get('title', ''))}".lower()
+        is_pt_lang = any(w in comb_all for w in ("você", "não", "por que", "oceano", "selva", "onça", "jacaré", "segredo", "ilha", "caverna", "leões", "ratel", "harpia"))
+        is_vn = any("\u0100" <= c <= "\u1EF9" for c in comb_all) and not is_pt_lang
         if "pinned_comment" not in raw_data or not str(raw_data.get("pinned_comment", "")).strip():
-            comb = f"{str(raw_data.get('topic', ''))} {str(raw_data.get('title', ''))}".lower()
-            is_vn = any("\u0100" <= c <= "\u1EF9" for c in comb)
-            if any(k in comb for k in ("rescue", "chó", "mèo", "pet", "cứu hộ", "puppy", "kitten", "animal")):
+            if niche_norm == "animal_rescue" or any(k in comb_all for k in ("rescue", "chó", "mèo", "pet", "cứu hộ", "puppy", "kitten", "stray")):
                 raw_data["pinned_comment"] = (
                     "Nếu là bạn, bạn có dừng lại giúp chú cún này không? 🥺 Link ủng hộ trạm cứu hộ mình đã ghim ở đầu kênh nhé! ❤️"
                     if is_vn else
-                    "If you were there, would you have stopped to help this poor baby? 🥺 Our rescue support link is pinned at the top of our channel bio! ❤️"
+                    "If you were there, would you have stopped to help this poor baby? 🥺 Drop a ❤️ in the comments to bless his recovery!"
                 )
-            elif any(k in comb for k in ("tâm lý", "psychology", "manipulat", "thao túng", "mindset", "gaslight", "liar", "dark psychology", "tội phạm", "killer")):
+            elif niche_norm == "alternate_history" or any(k in comb_all for k in ("lịch sử", "history", "what if", "thế chiến", "war", "empire", "roman", "alexandria")):
+                raw_data["pinned_comment"] = (
+                    "Nếu bước ngoặt lịch sử này xảy ra, thế giới hôm nay sẽ ra sao? Tranh luận ngay bên dưới 👇"
+                    if is_vn else
+                    "If this single moment in history had gone differently, what would our world look like today? Debate below 👇"
+                )
+            elif niche_norm == "deep_sea_earth_mysteries" or any(k in comb_all for k in ("deep sea", "biển sâu", "ocean", "đại dương", "mystery", "bí ẩn", "abyss", "caverna", "ilha", "oceano")):
+                raw_data["pinned_comment"] = (
+                    "Você teria coragem de explorar esse lugar misterioso? Deixe sua opinião nos comentários 👇"
+                    if is_pt_lang else (
+                        "Bạn đã bao giờ trải qua hiện tượng kỳ lạ này ngoài đời thực chưa? Để lại câu chuyện của bạn bên dưới 👇"
+                        if is_vn else
+                        "Would you dare explore this unexplained place in real life? Drop your theory below 👇"
+                    )
+                )
+            elif niche_norm == "wildlife_predators" or any(k in comb_all for k in ("săn mồi", "predator", "wildlife", "dã thú", "báo", "sư tử", "hổ", "cheetah", "leopard", "eagle", "onça", "sucuri", "jacaré", "ratel", "hippo", "orca")):
+                raw_data["pinned_comment"] = (
+                    "Quem vence esse confronto mortal na natureza? Deixe seu voto nos comentários 👇"
+                    if is_pt_lang else (
+                        "Theo bạn kẻ săn mồi nào sẽ chiến thắng trong cuộc đối đầu sinh tử này? Để lại bình chọn bên dưới 👇"
+                        if is_vn else
+                        "Who wins this ultimate apex duel in the wild? Drop your vote below 👇"
+                    )
+                )
+            elif niche_norm == "psychology" or any(k in comb_all for k in ("tâm lý", "psychology", "manipulat", "thao túng", "mindset", "gaslight", "liar", "dark psychology")):
                 raw_data["pinned_comment"] = (
                     "Bạn đã từng gặp ai có dấu hiệu số 2 trong đời thực chưa? Chia sẻ thật lòng bên dưới nhé 👇"
                     if is_vn else
                     "Have you ever encountered someone who showed sign #2 in real life? Tell me your story below 👇"
-                )
-            elif any(k in comb for k in ("lịch sử", "history", "what if", "thế chiến", "war", "rockefeller", "conqueror")):
-                raw_data["pinned_comment"] = (
-                    "Nếu đứng ở vị trí của họ, bạn sẽ đưa ra quyết định gì? Liệu lịch sử có rẽ sang hướng khác không? Tranh luận ngay bên dưới 👇"
-                    if is_vn else
-                    "What would you have done if you stood in their shoes? Would history be completely different? Debate below 👇"
-                )
-            elif any(k in comb for k in ("deep sea", "biển sâu", "ocean", "đại dương", "mystery", "bí ẩn", "abyss", "blind", "silence")):
-                raw_data["pinned_comment"] = (
-                    "Bạn đã bao giờ trải qua hiện tượng kỳ lạ này ngoài đời thực chưa? Để lại câu chuyện của bạn bên dưới 👇"
-                    if is_vn else
-                    "Have you ever experienced this eerie phenomenon in real life? Drop your thoughts below 👇"
-                )
-            elif any(k in comb for k in ("săn mồi", "predator", "wildlife", "dã thú", "báo", "sư tử", "hổ", "cheetah", "leopard", "eagle", "onça", "sucuri")):
-                raw_data["pinned_comment"] = (
-                    "Theo bạn kẻ săn mồi nào sẽ chiến thắng trong cuộc đối đầu sinh tử này? Để lại bình chọn bên dưới 👇"
-                    if is_vn else
-                    "Who wins this ultimate apex duel in the wild? Drop your vote below 👇"
                 )
             else:
                 raw_data["pinned_comment"] = (
@@ -757,40 +782,107 @@ class ContentAgent:
                     "Which moment shocked you the most? Drop your thoughts in the comments below 👇"
                 )
 
-        # ── 4. MINI-EBOOK DESCRIPTION BREAKDOWN (CHUẨN SEO & GIÁ TRỊ LƯU TRỮ @MasteringMindControl) ──
+        # ── 4. NICHE-AWARE MINI-EBOOK DESCRIPTION BREAKDOWN (CHỐNG RÒ RỈ METADATA CHÉO NGÁCH 100%) ──
         raw_desc = str(raw_data.get("description") or "").strip()
+        is_psych_niche = (
+            niche_norm == "psychology"
+            or (not niche_norm or niche_norm == "general")
+            and any(k in comb_all for k in ("psychology", "tâm lý", "manipulat", "gaslight", "narcissist", "liar"))
+        )
+        if not is_psych_niche and raw_desc:
+            raw_desc = re.sub(r'#(?:psychology|darkpsychology|selfmastery|mindcontrol)\b', '', raw_desc, flags=re.IGNORECASE).strip()
+            raw_desc = raw_desc.replace("🧠 KEY PSYCHOLOGICAL BREAKDOWN:", "📌 KEY VIDEO BREAKDOWN:")
+            raw_data["description"] = raw_desc
+
         if len(raw_desc) < 180 and raw_data.get("scenes"):
             sc_list = raw_data.get("scenes") or []
             title_str = str(raw_data.get("title") or "").strip()
             hook_str = str(raw_data.get("hook") or (sc_list[0].get("narration", "") if sc_list else "")).strip()
-            comb_text = f"{title_str} {hook_str}".lower()
-            is_vn_desc = any("\u0100" <= c <= "\u1EF9" for c in comb_text)
             mid_idx = max(1, len(sc_list) // 2)
             act2_str = str(sc_list[min(2, len(sc_list) - 1)].get("narration", "")).strip() if len(sc_list) > 2 else ""
             act3_str = str(sc_list[mid_idx].get("narration", "")).strip() if len(sc_list) > mid_idx else ""
             act4_str = str(sc_list[max(0, len(sc_list) - 2)].get("narration", "")).strip() if len(sc_list) >= 2 else ""
-            tags_list = [f"#{str(t).lstrip('#').replace(' ', '')}" for t in (raw_data.get("tags") or ["shorts", "psychology", "mindset"]) if str(t).strip()]
-            tags_line = " ".join(dict.fromkeys(tags_list + ["#shorts", "#psychology", "#darkpsychology", "#selfmastery"]))
-            if is_vn_desc:
-                raw_data["description"] = (
-                    f"{title_str}\n\n"
-                    f"⚡ {hook_str}\n\n"
+
+            if niche_norm == "alternate_history" or any(k in comb_all for k in ("what if", "alternate history", "empire", "roman", "alexandria")):
+                default_tags = ["#shorts", "#alternatehistory", "#whatif", "#history"]
+                header_block = (
+                    f"⏳ ALTERNATE HISTORY TIMELINE BREAKDOWN:\n"
+                    f"• The Point of Divergence: {act2_str}\n"
+                    f"• The Historical Domino Effect: {act3_str}\n"
+                    f"• How Our Modern World Changes: {act4_str}"
+                )
+            elif niche_norm == "deep_sea_earth_mysteries" or any(k in comb_all for k in ("deep sea", "ocean", "mystery", "caverna", "ilha", "oceano", "abyss")):
+                if is_pt_lang:
+                    default_tags = ["#shorts", "#misterios", "#oceano", "#ciencia", "#curiosidades"]
+                    header_block = (
+                        f"🌊 ANÁLISE DO MISTÉRIO E CIÊNCIA:\n"
+                        f"• O Fenômeno Oculto: {act2_str}\n"
+                        f"• A Explicação Científica: {act3_str}\n"
+                        f"• A Revelação Final: {act4_str}"
+                    )
+                else:
+                    default_tags = ["#shorts", "#mysteries", "#deepsea", "#science", "#unexplained"]
+                    header_block = (
+                        f"🌊 SCIENTIFIC & MYSTERY BREAKDOWN:\n"
+                        f"• The Unexplained Anomaly: {act2_str}\n"
+                        f"• The Hidden Mechanism: {act3_str}\n"
+                        f"• The Final Revelation: {act4_str}"
+                    )
+            elif niche_norm == "wildlife_predators" or any(k in comb_all for k in ("predator", "wildlife", "onça", "jacaré", "ratel", "harpia", "hippo", "orca", "leopard", "anaconda")):
+                if is_pt_lang:
+                    default_tags = ["#shorts", "#vidaanimal", "#natureza", "#predadores", "#curiosidades"]
+                    header_block = (
+                        f"🐆 ANÁLISE DO CONFRONTO SELVAGEM:\n"
+                        f"• O Ataque Inicial: {act2_str}\n"
+                        f"• A Vantagem Biomecânica: {act3_str}\n"
+                        f"• O Veredito da Natureza: {act4_str}"
+                    )
+                else:
+                    default_tags = ["#shorts", "#wildlife", "#nature", "#animals", "#predators"]
+                    header_block = (
+                        f"🦈 APEX WILDLIFE BREAKDOWN:\n"
+                        f"• The Opening Strike: {act2_str}\n"
+                        f"• Biomechanical Advantage: {act3_str}\n"
+                        f"• Survival Verdict: {act4_str}"
+                    )
+            elif niche_norm == "animal_rescue" or any(k in comb_all for k in ("rescue", "puppy", "kitten", "stray", "shelter")):
+                default_tags = ["#shorts", "#animalrescue", "#dogrescue", "#wholesome", "#puppies"]
+                header_block = (
+                    f"🐾 RESCUE TRANSFORMATION STORY:\n"
+                    f"• The Moment Found: {act2_str}\n"
+                    f"• The Turning Point of Trust: {act3_str}\n"
+                    f"• A Brand New Life: {act4_str}"
+                )
+            elif is_vn:
+                default_tags = ["#shorts", "#tamlyhoc", "#kynangsong", "#phattrienbanthan"]
+                header_block = (
                     f"🧠 3 ĐIỂM CỐT LÕI TRONG VIDEO:\n"
                     f"1️⃣ Dấu hiệu nhận diện: {act2_str}\n"
                     f"2️⃣ Cơ chế tâm lý ngầm: {act3_str}\n"
-                    f"3️⃣ Đòn hóa giải thực chiến: {act4_str}\n\n"
-                    f"{raw_desc}\n\n{tags_line}"
-                ).strip()
+                    f"3️⃣ Đòn hóa giải thực chiến: {act4_str}"
+                )
             else:
-                raw_data["description"] = (
-                    f"{title_str}\n\n"
-                    f"⚡ {hook_str}\n\n"
+                default_tags = ["#shorts", "#psychology", "#darkpsychology", "#selfmastery"]
+                header_block = (
                     f"🧠 KEY PSYCHOLOGICAL BREAKDOWN:\n"
                     f"• The Hidden Pattern: {act2_str}\n"
                     f"• The Neurological Mechanism: {act3_str}\n"
-                    f"• Tactical Counter-Move: {act4_str}\n\n"
-                    f"{raw_desc}\n\n{tags_line}"
-                ).strip()
+                    f"• Tactical Counter-Move: {act4_str}"
+                )
+
+            raw_tags_filtered = [
+                f"#{str(t).lstrip('#').replace(' ', '')}"
+                for t in (raw_data.get("tags") or ["shorts"])
+                if str(t).strip()
+                and (is_psych_niche or str(t).lstrip('#').lower() not in ("psychology", "darkpsychology", "selfmastery"))
+            ]
+            tags_line = " ".join(dict.fromkeys(raw_tags_filtered + default_tags))
+            raw_data["description"] = (
+                f"{title_str}\n\n"
+                f"⚡ {hook_str}\n\n"
+                f"{header_block}\n\n"
+                f"{raw_desc}\n\n{tags_line}"
+            ).strip()
 
         return ScriptContract(**raw_data)
 
@@ -1186,7 +1278,7 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
         for attempt in range(1, max_attempts + 1):
             try:
                 raw_text = self._call_api(current_prompt, json_mode=False, timeout=30)
-                script = self._parse_json_script(raw_text)
+                script = self._parse_json_script(raw_text, channel_niche=channel_niche, topic=topic)
                 last_script = script
 
                 linter_res = ScriptValidationLinter.lint(
@@ -1308,7 +1400,11 @@ HARD RETENTION & 5-ACT DEPTH RULES:
 }}
 """
         raw_text = self._call_api(prompt, json_mode=False, timeout=30)
-        return self._parse_json_script(raw_text)
+        return self._parse_json_script(
+            raw_text,
+            channel_niche=channel_niche,
+            topic=getattr(current_script, "topic", "") or getattr(current_script, "title", ""),
+        )
 
     def chat_brainstorm(
         self,
@@ -1424,7 +1520,7 @@ HARD RULES:
 }}
 """
         raw_text = self._call_api(prompt, json_mode=True, timeout=30)
-        return self._parse_json_script(raw_text)
+        return self._parse_json_script(raw_text, channel_niche=channel_niche)
 
     def generate_best_script(
         self,
