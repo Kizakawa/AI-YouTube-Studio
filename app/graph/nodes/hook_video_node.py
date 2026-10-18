@@ -84,11 +84,11 @@ def _download_yt_action_candidates(
     cand_dir.mkdir(parents=True, exist_ok=True)
     downloaded: List[str] = []
 
-    for q_idx, q in enumerate(queries[:1]):
+    for q_idx, q in enumerate(queries[:2]):
         if len(downloaded) >= max_candidates:
             break
         out_tmpl = str(cand_dir / f"yt_hook_cand_{q_idx}_%(id)s.%(ext)s")
-        search_expr = f"ytsearch2:{q} #shorts"
+        search_expr = f"ytsearch1:{q} #shorts"
         cmd = [
             "yt-dlp",
             "--no-playlist",
@@ -106,16 +106,17 @@ def _download_yt_action_candidates(
                 cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                timeout=11,
+                timeout=15,
                 check=False,
             )
-            for mp4 in sorted(cand_dir.glob(f"yt_hook_cand_{q_idx}_*.mp4")):
-                if mp4.stat().st_size > 80_000 and str(mp4) not in downloaded:
-                    downloaded.append(str(mp4))
-                    if len(downloaded) >= max_candidates:
-                        break
         except Exception as e:
             logger.debug(f"[HookVideoNode] yt-dlp candidate fetch timeout/skip ({q}): {e}")
+
+        for mp4 in sorted(cand_dir.glob(f"yt_hook_cand_{q_idx}_*.mp4")):
+            if mp4.stat().st_size > 80_000 and str(mp4) not in downloaded:
+                downloaded.append(str(mp4))
+                if len(downloaded) >= max_candidates:
+                    break
 
     return downloaded
 
