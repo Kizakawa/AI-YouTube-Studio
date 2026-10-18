@@ -644,54 +644,41 @@ def get_winner_cloner_blueprint(
             ]
         yaml_topic_bank = []
     elif "psychology" in eff_niche:
-        if "serial killer" in w_low or "court" in w_low or "smile" in w_low:
-            sequel_templates = [
-                "Why Sociopaths Never Blink When They Lie Under Oath",
-                "Why FBI Interrogators Watch Your Feet Instead Of Your Eyes",
-                "Why Guilty Suspects Always Repeat Your Question Before Answering",
-            ]
-        elif "using you" in w_low or "sign" in w_low:
-            sequel_templates = [
-                "If Someone Insults You Disguised As A Joke, Ask This 4-Word Question",
-                "The 4-Second Silence Trick That Makes Arrogant People Panic",
-                "How To Spot A Fake Friend By How They React To Your Good News",
-            ]
-        else:
-            sequel_templates = yaml_topic_bank[:5]
+        sequel_templates = [
+            "Why FBI Interrogators Watch Your Feet Instead Of Your Eyes When You Lie",
+            "Why Guilty Suspects Always Repeat Your Question Before Answering In Police Rooms",
+            "The 1971 Stanford Prison Experiment: How Ordinary Students Turned Ruthless In 6 Days",
+            "Why Sociopaths Never Blink When They Lie Under Oath In Court",
+            "The Bystander Paradox: Why 30 People Freeze When Someone Screams For Help",
+        ]
     elif "rescue" in eff_niche or "animal" in eff_niche:
-        if "refused to let go" in w_low or "terrified" in w_low:
-            sequel_templates = [
-                "He Refused To Stop Hugging The Rescuer Who Pulled Him Out Of The Storm",
-                "The Exact Second This Stray Mama Dog Realized Her Puppies Were Safe",
-                "Terrified Stray Puppy Fell Asleep In A Rescuer's Warm Hands For The First Time",
-                "Everyone Walked Past The Senior Shelter Dog Until One Man Read His Sign",
-            ]
-        else:
-            sequel_templates = yaml_topic_bank[:5]
+        sequel_templates = [
+            "The Stray Puppy Who Grabbed A Rescuer's Coat And Led Them To A Storm Drain",
+            "Terrified Shelter Dog Hid Facing The Wall Until One Rescuer Sat Quietly Beside Him",
+            "Hero Stray Dog Stood Guard Over A Box Of Orphaned Kittens In Pouring Rain",
+            "Everyone Walked Past The Senior Shelter Dog Until One Man Read His Sign",
+        ]
     elif "deep_sea" in eff_niche or "myster" in eff_niche:
-        if "terrified of deep water" in w_low or "silence" in w_low or "blind" in w_low:
-            sequel_templates = [
-                "Why Deep Sea Divers Never Look Up At The Surface At Night",
-                "What Happens To Your Brain After 45 Minutes In Zero Light And Zero Sound",
-                "Why Your Body Freezes In Sleep Paralysis And What Your Brain Is Hiding",
-                "The Terrifying Reason Scientists Sealed The Kola Superdeep Borehole At 40,230 Feet",
-            ]
-        else:
-            sequel_templates = yaml_topic_bank[:5]
+        sequel_templates = [
+            "The Door To Hell: Why This Giant Desert Fire Crater Has Burned Nonstop Since 1971",
+            "The Boiling River Of The Amazon: A 200°F River That Boils Anything That Falls In",
+            "Why Scientists Welded Shut The Kola Superdeep Borehole At 40,230 Feet",
+            "Why Deep Sea Divers Never Look Up At The Surface At Night",
+        ]
     elif "wildlife" in eff_niche or "predator" in eff_niche:
         sequel_templates = [
-            "This Is Why Caimans Are Terrified Of Jaguars In Deep Water",
-            "Why Even A 20-Foot Great White Shark Flees From A Single Orca",
-            "How A Snow Leopard Survives A 60-Foot Vertical Cliff Fall While Hunting",
-            "Honey Badger vs King Cobra: How It Sleeps Off Lethal Neurotoxin",
+            "Harpy Eagle vs Tree Sloth: The 500 PSI Talons Larger Than Grizzly Bear Claws",
+            "Komodo Dragon vs Water Buffalo: How One Venomous Bite Takes Down A 1,200lb Giant",
+            "Giant River Otter Pack vs Black Caiman: The Ruthless Gang Of The Amazon",
+            "Honey Badger vs King Cobra: How It Sleeps Off Lethal Neurotoxin And Keeps Eating",
         ]
     elif "alternate" in eff_niche or "history" in eff_niche:
         sequel_templates = [
+            "What If Vasili Arkhipov Pressed The Nuclear Button Inside Submarine B-59 In 1962?",
+            "What If The 3 Chernobyl Suicide Divers Failed To Drain The Reactor Pool In 1986?",
+            "What If The 1983 Soviet Satellite Glitch Triggered A Full Nuclear Launch?",
+            "What If The 1815 Mount Tambora Super-Eruption Lasted One More Year?",
             "What If The Library Of Alexandria Never Burned Down? (300-Year Tech Leap)",
-            "What If The Titanic Never Hit The Iceberg In 1912? The Dark Paradox",
-            "What If Genghis Khan's Mongol Army Invaded Western Europe In 1242?",
-            "What If Vasili Arkhipov Pressed The Nuclear Button Inside Submarine B-59?",
-            "What If The Roman Empire Industrialized Steam Engines 1,800 Years Early?",
         ]
 
     # Gộp sequel_templates + yaml_topic_bank và lọc chống trùng lặp với lịch sử kênh
@@ -997,61 +984,61 @@ def _get_curated_niche_fallbacks(niche_id: str, lang: str = "en") -> List[Dict[s
                 "trend_alignment": "Lịch sử chiến tranh lạnh & quyết định định mệnh."
             },
             {
-                "topic": "The Wrong Turn in Sarajevo (1914) That Triggered World War I",
-                "title": "How One Wrong Turn Started World War I 🚗💥 #Shorts",
-                "hook": "World War One started because a chauffeur made one wrong turn onto a quiet street.",
-                "angle": "Archduke Franz Ferdinand surviving the first bomb, Leopold Lojka's wrong turn right in front of Gavrilo Princip",
-                "pinned_comment": "What is the craziest domino effect in human history? Debate below 👇",
-                "viral_formula": "Curiosity Part 2",
-                "predicted_retention": "155% - 165%",
-                "why_viral": "Hiệu ứng cánh bướm lịch sử kinh điển nhất thế kỷ 20",
-                "fixes_flaw": "Mở đầu bằng nghịch lý lịch sử cực kỳ cụ thể (một cú rẽ nhầm xe hơi).",
-                "trend_alignment": "Hiệu ứng cánh bướm lịch sử (Historical Butterfly Effect)."
+                "topic": "What If The 3 Chernobyl Suicide Divers Failed To Drain The Reactor Pool In 1986?",
+                "title": "3 Men Dove Into Radioactive Water To Save Europe ☢️🤿 #Shorts",
+                "hook": "In 1986, Chernobyl's melting core was 48 hours away from hitting a giant water tank and wiping out half of Europe.",
+                "angle": "Chernobyl thermal explosion risk, Alexei Ananenko and Valeri Bezpalov diving in pitch black radioactive water",
+                "pinned_comment": "Why don't school history books teach the names of these 3 men? Debate below 👇",
+                "viral_formula": "Debate in Comments",
+                "predicted_retention": "165% - 175%",
+                "why_viral": "Khoảnh khắc sinh tử có thật 100% với mức độ nguy hiểm huỷ diệt lục địa",
+                "fixes_flaw": "Thay thế tiêu đề mơ hồ ('What If This Chauffeur...') bằng tình huống sinh tử hạt nhân rõ ràng ngay giây đầu.",
+                "trend_alignment": "Lịch sử bước ngoặt & What-If (Historical Single-Second Turning Points)."
             }
         ]
     elif "mystery" in niche_id or "deep_sea" in niche_id:
         return [
             {
-                "topic": "The 3 Underwater Sounds Recorded in Deep Oceans Science Can't Explain",
-                "title": "3 Deep Ocean Sounds Science CANNOT Explain 🌊📻 #Shorts",
-                "hook": "In 1997, oceanic sensors detected this terrifying subterranean creature sound...",
-                "angle": "The Bloop, Julia sound, acoustic anomalies across 3,000 miles",
-                "pinned_comment": "Do you believe there are unknown titanic leviathans in the deep? 👇",
+                "topic": "The Door To Hell: Why This Giant Desert Fire Crater Has Burned Nonstop Since 1971",
+                "title": "Why Scientists Set This Giant Crater On Fire In 1971 🔥🕳️ #Shorts",
+                "hook": "In 1971, Soviet geologists lit a giant gas crater expecting it to burn out in two weeks... it is still burning today.",
+                "angle": "Darvaza gas crater collapse in Turkmenistan, 1,800°F methane flames, desert wildlife drawn to the pit",
+                "pinned_comment": "How would they ever extinguish a crater burning at 1,800°F? Drop your theory 👇",
                 "viral_formula": "Debate in Comments",
                 "predicted_retention": "160% - 170%",
-                "why_viral": "Ăn theo video 1.2K views 'Why You're Terrified of Deep Water' — khai thác âm thanh bí ẩn đại dương",
-                "fixes_flaw": "Khắc phục bão hòa hình ảnh 11,000m bằng cách chuyển trọng tâm sang giải mã tệp âm thanh bí ẩn (The Bloop/Julia) có tần số thực nghiệm, giữ chân người nghe bằng thính giác.",
-                "trend_alignment": "Đón đầu trào lưu Subterranean Acoustic Anomalies 2026 (âm thanh bí ẩn đáy đại dương thu hút hàng triệu lượt bàn tán toàn cầu)."
+                "why_viral": "Hình ảnh hố lửa khổng lồ cháy suốt 55 năm giữa sa mạc cực kỳ bắt mắt ngay 3 giây đầu",
+                "fixes_flaw": "Chuyển từ ảnh tĩnh đáy biển tối đen sang video hố lửa thực tế rực sáng trên YouTube Shorts.",
+                "trend_alignment": "Hiện tượng địa chất kỳ bí có thật trên Trái Đất."
             },
             {
-                "topic": "The Sealed Cave System Cut Off From Sunlight For 5.5 Million Years",
-                "title": "The Cave Sealed For 5,500,000 Years! 🕳️👁️ #Shorts",
-                "hook": "When scientists opened Movile Cave, they found creatures breathing pure toxic gas...",
-                "angle": "Movile Cave chemosynthesis, blind translucent species, zero oxygen survival",
-                "pinned_comment": "Would you dare step inside a cave sealed for 5 million years? 👇",
+                "topic": "The Boiling River Of The Amazon: A 200°F River That Boils Anything That Falls In",
+                "title": "The Amazon River That Boils Everything Alive At 200°F 🔥🌿 #Shorts",
+                "hook": "Deep in the Peruvian Amazon flows a four-mile river so hot that any animal falling in is boiled alive in seconds.",
+                "angle": "Shanay-Timpishka thermal river, 93°C boiling water with no nearby volcano, fault-fed hydrothermal anomaly",
+                "pinned_comment": "Would you dare swim near the edge of a 200°F river? 👇",
                 "viral_formula": "Curiosity Part 2",
                 "predicted_retention": "155% - 165%",
-                "why_viral": "Bí ẩn hệ sinh thái bị phong tỏa hàng triệu năm kích thích tò mò khoa học cực mạnh",
-                "fixes_flaw": "Cắt đứt chuỗi video rãnh Mariana gây topic fatigue, đổi sang chủ đề hang động độc tố bị niêm phong để làm mới luồng phân phối của thuật toán.",
-                "trend_alignment": "Khám phá hệ sinh thái ngầm dị biệt trên Trái Đất (Forbidden Subterranean Ecosystems)."
+                "why_viral": "Sự đối lập thị giác giữa rừng rậm Amazon xanh mát và dòng nước sôi bốc khói nghi ngút",
+                "fixes_flaw": "Có cảnh quay video thực tế khói bốc nghi ngút trên sông, giữ chân người xem 3.5s đầu.",
+                "trend_alignment": "Khám phá địa danh cấm địa kỳ bí trên Trái Đất."
             },
             {
-                "topic": "Why Your Brain Fabricates Fake Memories Every Single Day",
-                "title": "Your Memory Is Lying To You Right Now 🧠⚡ #Shorts",
-                "hook": "Half of your vivid childhood memories never actually happened — here is why...",
-                "angle": "Mandela effect neurology, memory reconstruction glitch, sensory illusion",
-                "pinned_comment": "Have you ever remembered something vividly that never happened? 👇",
+                "topic": "Why Scientists Welded Shut The Kola Superdeep Borehole At 40,230 Feet",
+                "title": "Why Scientists Welded Shut The Deepest Hole On Earth 🕳️⚠️ #Shorts",
+                "hook": "After drilling 40,230 feet into the Earth's crust, scientists hit a terrifying anomaly and welded the shaft shut forever.",
+                "angle": "Kola Superdeep Borehole, 356°F plastic rock behavior, deep microscopic fossils and boiling hydrogen gas",
+                "pinned_comment": "What do you think lies beneath 40,000 feet of solid rock? 👇",
                 "viral_formula": "Debate in Comments",
                 "predicted_retention": "150% - 160%",
-                "why_viral": "Tiếp nối thành công của 'Your Eyes Are Biologically Blind' (140 views) & 'Absolute Silence' (190 views)",
-                "fixes_flaw": "Đánh trực diện vào giác quan và não bộ của chính người xem (Second-person sensory hook), đạt tỷ lệ Viewed > 75%.",
-                "trend_alignment": "Nghịch lý giác quan và ảo giác sinh học con người (Human Sensory Glitches)."
+                "why_viral": "Bí ẩn hố khoan sâu nhất hành tinh bị hàn kín nắp sắt luôn kích thích trí tò mò cực đại",
+                "fixes_flaw": "Khai thác bí ẩn lòng đất có hình ảnh nắp hầm kim loại thật và số liệu chiều sâu cụ thể.",
+                "trend_alignment": "Bí ẩn lòng đất và công trình khoa học bị phong ấn."
             }
         ]
     elif "animal" in niche_id or "rescue" in niche_id or "pet" in niche_id:
         return [
             {
-                "topic": "The Stray Puppy Who Refused To Let Go Of The Rescuer's Sleeve Until They Followed Him",
+                "topic": "The Stray Puppy Who Grabbed A Rescuer's Coat And Led Them To A Storm Drain",
                 "title": "He Refused To Let Go Until They Followed Him 🥺🐾 #Shorts",
                 "hook": "This stray puppy bit onto a stranger's coat and refused to let go for a heartbreaking reason...",
                 "angle": "Urgent plea for help, leading rescuer to trapped littermates, full joyful adoption recovery",
@@ -1059,19 +1046,19 @@ def _get_curated_niche_fallbacks(niche_id: str, lang: str = "en") -> List[Dict[s
                 "viral_formula": "Emotional Rollercoaster & Tears to Joy",
                 "predicted_retention": "170% - 185%",
                 "why_viral": "Nhân bản trực tiếp công thức video #1 của kênh 'He Refused to Let Go Until This Happened' (2,282 views, +32 subs)",
-                "fixes_flaw": "Thay thế các tiêu đề bi lụy đơn thuần ('Frozen Puppy in Rain') bằng mồi câu tò mò chủ động ('He Refused To Let Go Until...'), kéo dài thời lượng 50-55s có Payoff hạnh phúc.",
+                "fixes_flaw": "Thay thế các tiêu đề bi lụy đơn thuần bằng mồi câu tò mò chủ động ('He Refused To Let Go Until...'), kéo dài thời lượng 50-55s có Payoff hạnh phúc.",
                 "trend_alignment": "Cấu trúc biến đổi 4 giai đoạn (4-Stage Emotional Transformation Arc) đạt tỷ lệ chuyển đổi Subscribe cao nhất."
             },
             {
-                "topic": "The Exact Moment An Abused Shelter Dog Realizes He Will Never Be Hurt Again",
-                "title": "The Moment He Realized He Was Finally SAFE 🥺❤️ #Shorts",
-                "hook": "Every time a hand reached toward him, he flinched in terror... until today.",
-                "angle": "Overcoming severe trauma, first gentle touch, trembling tail wag, unconditional human warmth",
+                "topic": "Terrified Shelter Dog Hid Facing The Wall Until One Rescuer Sat Quietly Beside Him",
+                "title": "The Exact Moment This Broken Dog Dared To Trust Again 🥺❤️ #Shorts",
+                "hook": "For three weeks at the shelter, he stared at the concrete wall and trembled whenever anyone walked by...",
+                "angle": "Overcoming severe trauma, patient rescuer sitting on floor, first gentle paw touch, joyful tail wag",
                 "pinned_comment": "Have you ever rescued an animal? Tell us their name below! 👇",
                 "viral_formula": "Double Tap & Healing Empathy",
                 "predicted_retention": "165% - 175%",
                 "why_viral": "Nhân bản công thức video #2 của kênh (1,205 views, 94.8% APV) — chữa lành tâm hồn",
-                "fixes_flaw": "Tập trung vào vi biểu cảm ánh mắt sợ hãi chuyển sang tin tưởng của thú cưng, kéo dài thời gian giữ chân (AVD > 45s).",
+                "fixes_flaw": "Tập trung vào hành động thực tế của chú chó từ sợ hãi sang chủ động đặt chân lên tay người cứu hộ.",
                 "trend_alignment": "Nội dung chữa lành tâm hồn (Healing & Empathy) có tỷ lệ lưu lại (Save) cao nhất trên nền tảng."
             },
             {
@@ -1090,79 +1077,67 @@ def _get_curated_niche_fallbacks(niche_id: str, lang: str = "en") -> List[Dict[s
     elif "wildlife" in niche_id or "predator" in niche_id or "nature" in niche_id:
         return [
             {
-                "topic": "Why Even a Pride of Adult Lions Refuses to Fight The Honey Badger",
-                "title": "Why Lions REFUSE to Fight The Honey Badger 🦡🦁 #Shorts",
-                "hook": "A male lion has a bone-crushing 1,000 PSI bite force... yet it backs away from this 20-pound creature.",
-                "angle": "Complete venom immunity, loose impenetrable rubber skin, terrifying fearless psychology",
-                "pinned_comment": "Who is the REAL King of the Savanna? Drop your vote below! 👇",
-                "viral_formula": "Shock Fact & Savanna Hierarchy",
+                "topic": "Harpy Eagle vs Tree Sloth: The 500 PSI Talons Larger Than Grizzly Bear Claws",
+                "title": "The Giant Eagle With Claws Bigger Than A Grizzly Bear! 🦅🔥 #Shorts",
+                "hook": "With talons larger than a grizzly bear's claws, the Harpy Eagle snatches 20-pound prey straight off tree branches at 50 mph.",
+                "angle": "500 PSI crushing grip, canopy radar facial disc, snatching sloths and monkeys mid-flight",
+                "pinned_comment": "Is the Harpy Eagle the most terrifying bird on Earth? Drop your vote below! 👇",
+                "viral_formula": "Shock Fact & Apex Predator",
                 "predicted_retention": "175% - 185%",
-                "why_viral": "Nhân vật Honey Badger là hiện tượng meme huyền thoại về sự lì lợm và bản lĩnh sinh tồn",
-                "fixes_flaw": "Khắc phục 100% lỗi lệch ngách (đăng vũ trụ/hố đen/tâm lý trên kênh động vật) — đưa kênh về chuẩn ngách mãnh thú săn mồi với biểu tượng bất bại Honey Badger.",
-                "trend_alignment": "Hiện tượng meme sức mạnh sinh tồn lì lợm (Animal Hierarchy Subversion) thu hút lượng bình luận tranh cãi khổng lồ."
+                "why_viral": "Đã chứng minh đạt 1,178 views trên kênh Odisseia Selvagem",
+                "fixes_flaw": "Nhân bản chủ đề đại bàng Harpia đã thắng lớn sang bản tiếng Anh.",
+                "trend_alignment": "Giải phẫu vũ khí săn mồi hạng nặng của tự nhiên."
             },
             {
-                "topic": "What Actually Happens in The 3 Seconds Before a Cheetah Strikes at 70 MPH",
-                "title": "The 3 Seconds Before a Cheetah STRIKES at 70 MPH 🐆⚡ #Shorts",
-                "hook": "Her heart rate explodes to 250 beats per minute, yet her gaze never moves one millimeter...",
-                "angle": "Biomechanical perfection, non-retractable claw traction, flexible spine energy storage",
-                "pinned_comment": "Drop a ⚡ if you think the Cheetah is nature's ultimate speed machine!",
-                "viral_formula": "Adrenaline Surge & High-Speed Physics",
+                "topic": "Komodo Dragon vs Water Buffalo: How One Venomous Bite Takes Down A 1,200lb Giant",
+                "title": "How One Bite From A Komodo Dragon Drops A 1,200lb Giant 🦎💀 #Shorts",
+                "hook": "A Water Buffalo outweighs a Komodo Dragon by 1,000 pounds... yet one single bite seals its fate.",
+                "angle": "Serrated iron-coated teeth, anticoagulant venom glands, relentless patient tracking",
+                "pinned_comment": "Could any land predator survive a Komodo Dragon bite? 👇",
+                "viral_formula": "Adrenaline Surge & Predator Biomechanics",
                 "predicted_retention": "165% - 175%",
-                "why_viral": "Hình ảnh rượt đuổi tốc độ cao slow-motion kết hợp thông số giật gân giữ chân 100% người xem",
-                "fixes_flaw": "Khắc phục nhịp điệu chậm, ứng dụng cơ học tốc độ cao và góc quay slow-motion để khóa chặt mắt người xem trong 3 giây mở màn.",
-                "trend_alignment": "Giải phẫu cơ sinh học động vật săn mồi (Predator Biomechanics & Sensory Overload)."
-            },
-            {
-                "topic": "The Only Ocean Predator That Terrifies The Great White Shark",
-                "title": "The ONLY Creature Great White Sharks FEAR 🦈🌊 #Shorts",
-                "hook": "Great White Sharks rule the open ocean... until a pod of Orcas appears on the horizon.",
-                "angle": "Tactical suffocation, tonic immobility induction, surgical liver extraction",
-                "pinned_comment": "Do you think Orcas are the most intelligent predators on Earth? 👇",
-                "viral_formula": "Debate in Comments & Ocean Mystery",
-                "predicted_retention": "170% - 180%",
-                "why_viral": "Bí ẩn sức mạnh vượt trội của cá voi sát thủ (Orca) luôn là thỏi nam châm hút hàng triệu lượt xem tranh luận",
-                "fixes_flaw": "Định vị lại tệp người xem yêu thích kẻ săn mồi đại dương, thay thế các video thảm họa biển sâu chung chung bằng cuộc chiến trí tuệ đỉnh cao Orca vs Cá mập.",
-                "trend_alignment": "Đại chiến kẻ thống trị đại dương (Apex Clash Orca vs Shark) luôn là nam châm hút triệu view tranh luận."
+                "why_viral": "Cuộc đối đầu bất đối xứng giữa Rồng Komodo và Trâu rừng luôn thu hút triệu view",
+                "fixes_flaw": "Mở đầu bằng cảnh đớp mồi thực tế tốc độ cao trên YouTube Shorts.",
+                "trend_alignment": "Giải phẫu cơ sinh học động vật săn mồi (Predator Biomechanics)."
             }
         ]
     else:  # psychology / default
         return [
             {
-                "topic": "The 3-Second Cold Silence Trick to Flip Any Interrogation",
-                "title": "How to Use The 3-Second SILENCE Trick 🤫🧠 #Shorts",
-                "hook": "When someone tries to manipulate or pressure you, NEVER speak...",
-                "angle": "Status reversal through unblinking silence, discomfort amplification",
-                "pinned_comment": "Have you ever silenced an arrogant person with this? Tell your story 👇",
-                "viral_formula": "Double Tap & Protect",
-                "predicted_retention": "155% - 165%",
-                "why_viral": "Vũ khí tự vệ giao tiếp thực chiến ai cũng muốn học ngay lập tức",
-                "fixes_flaw": "Kế thừa trọn vẹn công thức video đạt 514 views (3 Signs They're Using You) nhưng nâng cấp thành vũ khí tự vệ phản đòn cụ thể, thay vì chỉ cảnh báo thụ động.",
-                "trend_alignment": "Nghệ thuật kiểm soát vị thế bằng sự im lặng (High-Status Frame Control & Cold Silence) đang viral khắp TikTok & Shorts quốc tế."
+                "topic": "Why FBI Interrogators Watch Your Feet Instead Of Your Eyes When You Lie",
+                "title": "Why FBI Agents Watch Your FEET When You Lie 🕵️‍♂️🧠 #Shorts",
+                "hook": "A trained liar can control their face and voice for hours, but they always forget to control their feet.",
+                "angle": "Limbic system freeze response, foot-pointing toward the exit door, Joe Navarro FBI behavioral profiling",
+                "pinned_comment": "Have you ever caught someone lying by watching their body language? 👇",
+                "viral_formula": "Double Tap & Behavioral Secret",
+                "predicted_retention": "165% - 175%",
+                "why_viral": "Mẹo đọc vị ngôn ngữ cơ thể của FBI luôn đạt tỷ lệ dừng xem (Stay%) trên 65%",
+                "fixes_flaw": "Thoát khỏi chuỗi video 'Silence Trick / 3 Signs Toxic' bị lặp lại, chuyển sang kỹ thuật thẩm vấn FBI cực kỳ trực quan.",
+                "trend_alignment": "Tâm lý học hành vi & Ngôn ngữ cơ thể FBI (Behavioral Profiling)."
             },
             {
-                "topic": "3 Signs Someone is Intimidated by Your Quiet Presence",
-                "title": "3 Signs People Are INTIMIDATED by You 👑 #Shorts",
-                "hook": "If people act strangely awkward around you, it means one thing...",
-                "angle": "Over-explaining, avoiding direct eye contact, nervous laughter",
-                "pinned_comment": "Do people often misjudge your quietness for arrogance? 👇",
-                "viral_formula": "Debate in Comments",
-                "predicted_retention": "150% - 160%",
-                "why_viral": "Đánh trúng đối tượng người hướng nội (introverts) muốn khẳng định giá trị bản thân",
-                "fixes_flaw": "Khắc phục điểm yếu của video flop 'Loneliness Is Your Superpower' (quá triết lý, thụ động), chuyển sang tâm lý vị thế cao giúp người xem tự tin.",
-                "trend_alignment": "Đánh trúng tâm lý người hướng nội muốn nhìn thấu phản ứng người khác (Introvert Empowerment & Status Cues)."
-            },
-            {
-                "topic": "How High-Value Minds React When Someone Insults Them in Public",
-                "title": "How Elite Minds React When INSULTED Publicly 🛡️ #Shorts",
-                "hook": "When an amateur insults you, never insult them back. Do this...",
-                "angle": "Calm pity response, turning the audience against the aggressor, emotional detachment",
-                "pinned_comment": "Drop a 🧠 if you choose peace over petty drama!",
-                "viral_formula": "Double Tap & Protect",
+                "topic": "Why Guilty Suspects Always Repeat Your Question Before Answering In Police Rooms",
+                "title": "The 1 Verbal Glitch That Exposes A Liar Instantly 🗣️🚨 #Shorts",
+                "hook": "When you ask someone a direct question and they repeat your exact words back to you, their brain is stalling for time.",
+                "angle": "Cognitive load in deception, echo-questioning to buy 2 seconds to fabricate an alibi, police interrogation transcript analysis",
+                "pinned_comment": "Try this test the next time someone hides the truth from you! 👇",
+                "viral_formula": "Debate in Comments & Practical Test",
                 "predicted_retention": "160% - 170%",
-                "why_viral": "Kỹ năng phản đòn thanh lịch, người xem bấm lưu (save) và chia sẻ cực nhiều",
-                "fixes_flaw": "Tạo tình huống kịch tính có tính ứng dụng xã hội cao, biến cảm giác tức giận thành phản đòn thanh lịch, kích thích người xem xem lặp lại (Loop Rate > 150%).",
-                "trend_alignment": "Tâm lý học khắc kỷ thực chiến và phòng vệ thao túng nơi công cộng (Stoic Power Dynamic in Public)."
+                "why_viral": "Dấu hiệu ngôn từ cụ thể dễ kiểm chứng ngay trong đời thực",
+                "fixes_flaw": "Cung cấp dấu hiệu phát hiện nói dối ngay lập tức trong 3 giây đầu kèm cảnh thẩm vấn thực tế.",
+                "trend_alignment": "Giải mã tâm lý tội phạm và phát hiện nói dối (Deception Detection)."
+            },
+            {
+                "topic": "The 1971 Stanford Prison Experiment: How Ordinary Students Turned Ruthless In 6 Days",
+                "title": "The Psychology Experiment Cancelled After Just 6 Days 🚨🧠 #Shorts",
+                "hook": "In 1971, psychologists locked 24 healthy college students in a fake basement prison — by day six, they had to shut it down in horror.",
+                "angle": "Philip Zimbardo's Stanford Prison Experiment, instant power corruption, deindividuation behind mirrored sunglasses",
+                "pinned_comment": "Does power corrupt good people, or does it just reveal who they really are? 👇",
+                "viral_formula": "Debate in Comments",
+                "predicted_retention": "160% - 175%",
+                "why_viral": "Các thí nghiệm tâm lý học bị cấm trong lịch sử luôn có tỷ lệ xem hết video (APV) cao nhất ngách tâm lý",
+                "fixes_flaw": "Kể chuyện thực nghiệm có thật với tư liệu hình ảnh lịch sử thay vì lời khuyên chung chung.",
+                "trend_alignment": "Thí nghiệm tâm lý học đen tối có thật trong lịch sử (Forbidden Dark Psychology Experiments)."
             }
         ]
 
