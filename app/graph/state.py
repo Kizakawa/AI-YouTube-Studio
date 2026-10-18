@@ -135,6 +135,7 @@ class VideoWorkflowState(TypedDict, total=False):
     visual_plan: Optional[Dict[str, Any]]  # VisualPlanReport dict
     
     # Bước 3: Hình ảnh / Video (Media) & Node chuyên biệt Cảnh 1 Hook Video
+    pre_resolved_hook_media: Optional[Dict[int, Dict[str, Any]]]  # Các cảnh (Cảnh 1 / Cảnh Cao Trào) đã được HookVideoNode cắt từ Short trên mạng
     scenes_media: List[Dict[str, Any]]
     media_eval: Optional[Dict[str, Any]]  # VisualEvaluationReport (kiểm tra độ sắc nét & độ phân giải)
     media_retry_count: int

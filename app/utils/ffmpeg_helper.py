@@ -16,7 +16,7 @@ import subprocess
 import json
 import logging
 from pathlib import Path
-from typing import Optional, Dict, List, Union, Any
+from typing import Optional, Dict, List, Union, Any, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -923,18 +923,19 @@ def multi_pose_loop_to_video(
 # CHECKPOINT B: Cắt + Ghép N clips
 # ──────────────────────────────────────────────
 
-def find_hook_peak_action_offset(input_path: str, target_duration: float) -> float:
+def find_hook_peak_action_offset(input_path: str, target_duration: float, exclude_ranges: Optional[List[Tuple[float, float]]] = None) -> float:
     """
-    Quét siêu tốc (4fps @ 90x160 RGB24 trong ~0.12s) 12 giây đầu của stock video clip
-    để tìm đúng khoảnh khắc có chuyển động kịch tính nhất (Peak Action Energy) + Frame 0 sáng rõ.
-    Giúp Scene 1 (0.0s) nhảy thẳng vào pha hành động bùng nổ thay vì 1-2 giây lia máy tĩnh ở đầu video stock.
+    Quét siêu tốc (4fps @ 90x160 RGB24) toàn bộ chiều dài video Short (tối đa 50 giây)
+    để tìm đúng khoảnh khắc ĐỈNH CAO NHẤT (Peak Action Energy) & TRỪU TƯỢNG / CUỐN HÚT NHẤT
+    (Visual Intrigue / Edge Entropy + Contrast Drama) + Frame 0 sáng rõ.
+    Hỗ trợ `exclude_ranges` để có thể lấy thêm đoạn Peak thứ 2 ghép vào thân video (Climax Scene) mà không trùng đoạn đầu.
     """
     try:
         src_sec = get_duration_ms(input_path) / 1000.0
         if src_sec <= target_duration + 0.6:
             return 0.0
 
-        scan_sec = min(src_sec, 12.0)
+        scan_sec = min(src_sec, 50.0)
         sample_fps = 4
         w, h = 90, 160
         frame_bytes = w * h * 3
@@ -949,17 +950,18 @@ def find_hook_peak_action_offset(input_path: str, target_duration: float) -> flo
             "-pix_fmt", "rgb24",
             "-",
         ]
-        res = subprocess.run(cmd, capture_output=True, timeout=6)
+        res = subprocess.run(cmd, capture_output=True, timeout=10)
         raw = res.stdout or b""
         n_frames = len(raw) // frame_bytes
         win_frames = max(int(target_duration * sample_fps), 4)
         if n_frames <= win_frames + 1:
             return 0.0
 
-        from PIL import Image, ImageChops, ImageStat
+        from PIL import Image, ImageChops, ImageFilter, ImageStat
         lums: List[float] = []
         contrasts: List[float] = []
         motions: List[float] = []
+        intrigues: List[float] = []
         prev_g = None
 
         for i in range(n_frames):
@@ -969,6 +971,10 @@ def find_hook_peak_action_offset(input_path: str, target_duration: float) -> flo
             st = ImageStat.Stat(g)
             lums.append(float(st.mean[0]))
             contrasts.append(float(st.stddev[0]))
+            edges = g.filter(ImageFilter.FIND_EDGES)
+            edge_st = ImageStat.Stat(edges)
+            # Độ phức tạp thị giác / tính trừu tượng cuốn hút (Edge Mean + Edge StdDev)
+            intrigues.append(float(edge_st.mean[0]) * 0.65 + float(edge_st.stddev[0]) * 0.35)
             if prev_g is not None:
                 diff = ImageChops.difference(g, prev_g)
                 motions.append(float(ImageStat.Stat(diff).mean[0]))
@@ -979,11 +985,23 @@ def find_hook_peak_action_offset(input_path: str, target_duration: float) -> flo
         if len(motions) > 1:
             motions[0] = motions[1]
 
+        def _is_excluded(start_idx: int) -> bool:
+            if not exclude_ranges:
+                return False
+            sec = start_idx / float(sample_fps)
+            end_s = sec + target_duration
+            for ex_s, ex_e in exclude_ranges:
+                if not (end_s <= ex_s or sec >= ex_e):
+                    return True
+            return False
+
         def _score_window(start_idx: int) -> float:
+            if _is_excluded(start_idx):
+                return -999.0
             f0_lum = lums[start_idx]
             f0_con = contrasts[start_idx]
-            # Phạt nặng nếu Frame 0 tối đen (< 50) hoặc cháy trắng (> 220) hoặc mờ phẳng (< 25)
-            if f0_lum < 50.0 or f0_lum > 220.0 or f0_con < 25.0:
+            # Phạt nặng nếu Frame 0 tối đen (< 45) hoặc cháy trắng (> 225) hoặc mờ phẳng (< 22)
+            if f0_lum < 45.0 or f0_lum > 225.0 or f0_con < 22.0:
                 penalty = -25.0
             else:
                 penalty = 0.0
@@ -991,8 +1009,9 @@ def find_hook_peak_action_offset(input_path: str, target_duration: float) -> flo
             win_end = min(start_idx + win_frames, n_frames)
             early_motion = sum(motions[start_idx:early_end]) / max(early_end - start_idx, 1)
             win_motion = sum(motions[start_idx:win_end]) / max(win_end - start_idx, 1)
-            f0_quality = min(f0_con / 52.0, 1.35) + (0.25 if 62.0 <= f0_lum <= 195.0 else 0.0)
-            return early_motion * 1.70 + win_motion * 1.15 + f0_quality * 7.5 + penalty
+            win_intrigue = sum(intrigues[start_idx:win_end]) / max(win_end - start_idx, 1)
+            f0_quality = min(f0_con / 50.0, 1.4) + (0.25 if 58.0 <= f0_lum <= 198.0 else 0.0)
+            return early_motion * 1.55 + win_motion * 1.10 + win_intrigue * 0.45 + f0_quality * 7.0 + penalty
 
         base_score = _score_window(0)
         best_idx = 0
@@ -1005,13 +1024,12 @@ def find_hook_peak_action_offset(input_path: str, target_duration: float) -> flo
                 best_score = sc
                 best_idx = idx
 
-        # Chỉ dịch điểm cắt nếu cửa sổ mới có độ kịch tính vượt trội (>= +12% hoặc đầu video gốc quá tĩnh/tối)
-        if best_idx > 0 and (best_score >= base_score * 1.12 or lums[0] < 55.0 or motions[0] < 3.5):
+        if best_idx > 0 and (best_score >= base_score * 1.08 or lums[0] < 55.0 or motions[0] < 3.5 or exclude_ranges):
             seek_sec = round(best_idx / float(sample_fps), 2)
             if seek_sec + target_duration <= src_sec + 0.15:
                 logger.info(
-                    f"  ⚡ [Hook Peak-Action Seek] Tự động tua qua {seek_sec:.2f}s đầu tĩnh → "
-                    f"bắt đầu ngay đỉnh hành động (MotionScore {base_score:.1f} → {best_score:.1f})"
+                    f"  ⚡ [Hook Peak & Intrigue Seek] Tự động cắt đoạn Peak tại {seek_sec:.2f}s -> {seek_sec + target_duration:.2f}s "
+                    f"(PeakScore {base_score:.1f} → {best_score:.1f})"
                 )
                 return seek_sec
     except Exception as e:
@@ -1031,6 +1049,7 @@ def trim_video(
     apply_grading: bool = True,
     is_hook_scene: bool = False,
     fair_use_transform: bool = True,
+    start_offset_sec: Optional[float] = None,
 ) -> str:
     """
     Cắt video Pexels / YouTube Action về đúng duration cần thiết + scale/crop 9:16 + chuẩn hóa fps 30.
@@ -1068,7 +1087,9 @@ def trim_video(
     )
 
     seek_args: List[str] = []
-    if is_hook_scene and not is_already_rendered:
+    if start_offset_sec is not None and start_offset_sec >= 0.20:
+        seek_args = ["-ss", f"{start_offset_sec:.2f}"]
+    elif is_hook_scene and not is_already_rendered:
         seek_sec = find_hook_peak_action_offset(input_path, duration_seconds)
         if seek_sec >= 0.25:
             seek_args = ["-ss", f"{seek_sec:.2f}"]

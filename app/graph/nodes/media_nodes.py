@@ -161,7 +161,35 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     except Exception as e_batch:
         logger.debug(f"[MediaNodes] analyze_scenes_batch fallback: {e_batch}")
 
+    pre_hook_map = state.get("pre_resolved_hook_media") or {}
+
     async def _fetch_one_scene(idx: int, scene) -> Dict[str, Any]:
+        # ── ƯU TIÊN TUYỆT ĐỐI CHO NODE HOOK VIDEO: Nếu Cảnh này (Cảnh 1 hoặc Cảnh Cao Trào) đã được cắt Peak từ Short trên mạng ──
+        pre_hook = pre_hook_map.get(scene.scene_id) or pre_hook_map.get(str(scene.scene_id))
+        if isinstance(pre_hook, dict) and pre_hook.get("media_path") and Path(pre_hook["media_path"]).exists():
+            logger.info(
+                f"Scene {scene.scene_id}: 🔥 Sử dụng trực tiếp Video Peak Short từ HookVideoNode "
+                f"({Path(pre_hook['media_path']).name}) — Bỏ qua tìm kiếm ảnh truyền thống!"
+            )
+            return {
+                "scene_id": scene.scene_id,
+                "media_path": pre_hook["media_path"],
+                "media_type": pre_hook.get("media_type", "hook_ready_video"),
+                "pose_images": None,
+                "vision_curated": True,
+                "visual_keyword": scene.visual_keyword,
+                "visual_prompt": getattr(scene, "visual_prompt", None),
+                "narration": scene.narration,
+                "camera_motion": getattr(scene, "camera_motion", None) or "hyper_zoom",
+                "sfx_cue": getattr(scene, "sfx_cue", None) or ("whoosh" if idx == 0 else "hit"),
+                "highlight_words": getattr(scene, "highlight_words", None),
+                "overlay_badge": getattr(scene, "overlay_badge", None),
+                "visual_strategy": pre_hook.get("visual_strategy", "HOOK_PEAK_SHORT_VIDEO"),
+                "production_method": pre_hook.get("production_method", "CLIMAX_REAL_VIDEO_FAIR_USE_3CUT"),
+                "tool": "hook_video_node",
+                "strategy_rationale": pre_hook.get("strategy_rationale", "Peak segment extracted from online Short"),
+            }
+
         media_path = ""
         media_type = "image"
         vision_curated = False
@@ -761,11 +789,33 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         Path(alt_out).unlink(missing_ok=True)
                 except Exception:
                     Path(alt_out).unlink(missing_ok=True)
-            if len(pose_images) > 1:
+            if len(pose_images) >= 1:
                 logger.info(
-                    f"Scene 1: ⚡ [Hook Multi-Cut] Đã chuẩn bị {len(pose_images)} khung hình thật độc lập "
-                    f"(đảm bảo ≥3 lần chuyển cảnh dồn dập ngay mở đầu video)"
+                    f"Scene 1: ⚡ [Hook Multi-Cut Ảnh Truyền Thống] Đã chuẩn bị {len(pose_images)} khung hình thật độc lập "
+                    f"-> Dựng hook_motion_001.mp4 (≥3 lần chuyển cảnh dồn dập)"
                 )
+                try:
+                    from app.utils.ffmpeg_helper import render_opening_hook_multi_cut, VIDEO_DURATION_SAFETY_MARGIN
+                    hook_out_p = str(work_dir / "hook_motion_001.mp4")
+                    trans_dur = 0.18 if len(script.scenes) > 1 else (0.15 + VIDEO_DURATION_SAFETY_MARGIN)
+                    hook_dur_sec = max(dur, 1.0) + trans_dur
+                    render_opening_hook_multi_cut(
+                        image_paths=pose_images,
+                        duration_seconds=hook_dur_sec,
+                        output_path=hook_out_p,
+                        width=1080,
+                        height=1920,
+                        fps=30,
+                        min_cuts=3,
+                        is_scifi=is_scifi_val,
+                        niche=current_niche,
+                    )
+                    if Path(hook_out_p).exists() and Path(hook_out_p).stat().st_size > 10_000:
+                        media_path = hook_out_p
+                        media_type = "hook_ready_video"
+                        prod_method = f"CLIMAX_IMAGES_LIVE_FX_{str(current_niche).upper()}_3CUT"
+                except Exception as e_hk_img:
+                    logger.debug(f"Scene 1: Lỗi dựng hook_motion_001 từ ảnh truyền thống: {e_hk_img}")
 
         return {
             "scene_id": scene.scene_id,
@@ -914,6 +964,8 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
     for item in scenes_media:
         if item.get("scene_id") in failed_ids:
+            if item.get("media_type") == "hook_ready_video" or item.get("production_method") in ("CLIMAX_REAL_VIDEO_FAIR_USE_3CUT", "CLIMAX_PEAK_SHORT_SPLICE"):
+                continue
             scene_id = item["scene_id"]
             kw = item.get("visual_keyword", "")
             narr = item.get("narration", "")
