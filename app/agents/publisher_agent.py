@@ -490,11 +490,7 @@ class PublisherAgent:
         except Exception as e_dup:
             logger.debug(f"[Publisher] Kiểm tra trùng lặp: {e_dup}")
 
-        raw_niche_cat = str(self.channel_config.get("niche") or "").lower()
-        if any(k in raw_niche_cat for k in ("wildlife", "predator", "nature")):
-            yt_category_id = "15"  # Pets & Animals (đã kiểm chứng nổ 630 - 1,568 views/video trên Wild Odyssey & Odisseia Selvagem)
-        else:
-            yt_category_id = "22"  # People & Blogs (đã kiểm chứng nổ 948 - 1,704 views/video trên Mistérios do Mundo & Paws & Hearts; tránh cat=27 Education bị bóp hiển thị Shorts Feed)
+        yt_category_id = self.resolve_locked_category_id()
 
         body = {
             "snippet": {
@@ -1017,4 +1013,97 @@ class PublisherAgent:
             logger.warning(f"💬 [PublisherAgent] Lỗi khi sync_channel_pinned_comments ({self.channel_name}): {e}")
 
         return results
+
+    def resolve_locked_category_id(self) -> str:
+        """
+        Khóa cứng Category ID chuẩn cho từng kênh (Tuyệt đối chặn cat=27 Education gây bóp hiển thị 0-4 view trên Shorts Feed).
+        - Kênh Động vật hoang dã săn mồi (wildlife_predators: Wild Odyssey, Odisseia Selvagem) -> '15' (Pets & Animals)
+        - Toàn bộ các kênh còn lại (Mistérios do Mundo, Mysteries EN, Psychology, Alternate History, Paws & Hearts) -> '22' (People & Blogs)
+        """
+        FORBIDDEN_CATEGORIES = {"27"}  # Tuyệt đối cấm Education (27) cho kênh Shorts giải trí/tò mò
+        explicit_cat = str(self.channel_config.get("youtube_category_id") or "").strip()
+        raw_niche = str(self.channel_config.get("niche") or "").lower()
+
+        if explicit_cat in FORBIDDEN_CATEGORIES:
+            logger.warning(
+                f"🛡️ [CategoryFirewall] Chặn categoryId='{explicit_cat}' (bị cấm trên Shorts) cho kênh '{self.channel_name}' -> Ép về '22' (People & Blogs)!"
+            )
+            return "22"
+
+        if explicit_cat in ("15", "22", "24"):
+            # Chỉ cho phép cat=15 trên kênh wildlife_predators (tránh animal_rescue bị lệch tệp cũ cat=22)
+            if explicit_cat == "15" and not any(k in raw_niche for k in ("wildlife", "predator")):
+                return "22"
+            return explicit_cat
+
+        if any(k in raw_niche for k in ("wildlife", "predator")):
+            return "15"
+        return "22"
+
+    def verify_and_heal_video_metadata(self, video_id: str) -> bool:
+        """
+        Tự động kiểm tra và sửa chữa (Self-Healing) metadata của video trên YouTube:
+        - Nếu categoryId bị lệch khỏi resolve_locked_category_id() (đặc biệt nếu dính cat=27) -> Tự động đổi về chuẩn ('22' hoặc '15').
+        - Nếu thiếu defaultLanguage / defaultAudioLanguage hoặc recordingDetails (US/BR Geo-Lock) -> Tự động vá ngay.
+        """
+        if not self.service or not video_id:
+            return False
+        try:
+            vres = self.service.videos().list(id=video_id, part="snippet,recordingDetails").execute()
+            items = vres.get("items", [])
+            if not items:
+                return False
+            vobj = items[0]
+            snip = vobj.get("snippet", {})
+            rec = vobj.get("recordingDetails", {}) or {}
+
+            expected_cat = self.resolve_locked_category_id()
+            cfg_lang = str(self.channel_config.get("language") or "").strip().lower()
+            is_br = cfg_lang.startswith("pt")
+            expected_lang = "pt-BR" if is_br else "en-US"
+            expected_loc = "Sao Paulo, Brazil" if is_br else "New York, United States"
+
+            needs_update = False
+            if str(snip.get("categoryId") or "") != expected_cat:
+                logger.warning(
+                    f"🛡️ [SelfHealMetadata] Video {video_id} ({self.channel_name}) đang có categoryId={snip.get('categoryId')} "
+                    f"!= chuẩn '{expected_cat}' -> Tự động khôi phục về '{expected_cat}'!"
+                )
+                snip["categoryId"] = expected_cat
+                needs_update = True
+
+            if snip.get("defaultLanguage") != expected_lang or snip.get("defaultAudioLanguage") != expected_lang:
+                snip["defaultLanguage"] = expected_lang
+                snip["defaultAudioLanguage"] = expected_lang
+                needs_update = True
+
+            if not rec.get("locationDescription"):
+                rec = {
+                    "locationDescription": expected_loc,
+                    "location": {
+                        "latitude": -23.5505 if is_br else 40.7128,
+                        "longitude": -46.6333 if is_br else -74.0060,
+                        "altitude": 0.0,
+                    },
+                }
+                needs_update = True
+
+            if needs_update:
+                self.service.videos().update(
+                    part="snippet,recordingDetails",
+                    body={
+                        "id": video_id,
+                        "snippet": snip,
+                        "recordingDetails": rec,
+                    },
+                ).execute()
+                logger.info(
+                    f"✅ [SelfHealMetadata] Đã tự động khóa chuẩn metadata cho video {video_id} ({self.channel_name}): "
+                    f"cat={expected_cat}, lang={expected_lang}, loc={rec.get('locationDescription')}"
+                )
+                return True
+        except Exception as e:
+            logger.debug(f"[SelfHealMetadata] Bỏ qua kiểm tra video {video_id}: {e}")
+        return False
+
 

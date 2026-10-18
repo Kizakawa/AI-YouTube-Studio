@@ -273,7 +273,7 @@ def sync_scheduled_jobs_status() -> int:
     except Exception as e:
         logger.warning(f"Lỗi khi đồng bộ trạng thái SCHEDULED jobs: {e}")
 
-    # Tự động ghim bình luận mồi (Pinned Comment Bait) cho các video vừa chuyển sang công khai
+    # Tự động kiểm tra & khóa chuẩn Category ID ('22'/'15', chặn tuyệt đối '27'), US/BR Geo-Lock và ghim bình luận mồi
     if just_published_jobs:
         try:
             import json
@@ -290,6 +290,9 @@ def sync_scheduled_jobs_status() -> int:
                 p_agent = PublisherAgent(channel_config=ch_cfg)
                 if not p_agent.service:
                     continue
+
+                # Tự động kiểm tra & sửa chữa (Self-Healing) nếu categoryId bị lệch hoặc thiếu US/BR Geo-Lock
+                p_agent.verify_and_heal_video_metadata(v_id)
 
                 p_comment = None
                 if p_info.get("scenes_json"):
@@ -378,9 +381,9 @@ def process_waiting_quota_jobs() -> int:
                     except Exception:
                         pass
 
-                raw_lang = str(ch_cfg.get("language") or "en")
-                def_lang = "pt" if raw_lang.lower().startswith("pt") else raw_lang
-                def_audio_lang = "pt-BR" if raw_lang.lower().startswith("pt") else raw_lang
+                raw_lang = str(ch_cfg.get("language") or "en-US")
+                def_lang = "pt-BR" if raw_lang.lower().startswith("pt") else "en-US"
+                def_audio_lang = "pt-BR" if raw_lang.lower().startswith("pt") else "en-US"
                 logger.info(f"🚀 [SmartScheduler] Quota đã được nạp lại! Đang tự động xuất bản Video #{job_id} ('{job_data['title']}')...")
                 res = pub_agent.upload_video(
                     video_path=job_data["video_path"],
