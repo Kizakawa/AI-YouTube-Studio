@@ -491,12 +491,10 @@ class PublisherAgent:
             logger.debug(f"[Publisher] Kiểm tra trùng lặp: {e_dup}")
 
         raw_niche_cat = str(self.channel_config.get("niche") or "").lower()
-        if any(k in raw_niche_cat for k in ("history", "what_if", "alternate", "mystery", "deep_sea", "psych", "science", "edu")):
-            yt_category_id = "27"  # Education (chuẩn thuật toán phân phối kênh Lịch sử / Khoa học / Tâm lý Edutainment)
-        elif any(k in raw_niche_cat for k in ("animal", "rescue", "pet", "wildlife", "predator", "nature")):
-            yt_category_id = "15"  # Pets & Animals (chuẩn thuật toán phân phối kênh Động vật / Dã thú)
+        if any(k in raw_niche_cat for k in ("wildlife", "predator", "nature")):
+            yt_category_id = "15"  # Pets & Animals (đã kiểm chứng nổ 630 - 1,568 views/video trên Wild Odyssey & Odisseia Selvagem)
         else:
-            yt_category_id = "22"  # People & Blogs
+            yt_category_id = "22"  # People & Blogs (đã kiểm chứng nổ 948 - 1,704 views/video trên Mistérios do Mundo & Paws & Hearts; tránh cat=27 Education bị bóp hiển thị Shorts Feed)
 
         body = {
             "snippet": {
