@@ -142,11 +142,14 @@ def node_evaluate_script(state: VideoWorkflowState) -> Dict[str, Any]:
 
 
 def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
-    """Node 4: Tự động tinh chỉnh phẫu thuật (Surgical Refinement) kịch bản dựa trên nhận xét của Critic."""
+    """Node 4: Tự động tinh chỉnh phẫu thuật (Surgical Refinement) kịch bản dựa trên nhận xét của Critic (tối đa 5 vòng cho đến khi đạt chuẩn)."""
     script_data = state.get("script_data", {})
     script_eval = state.get("script_eval", {})
     retry_count = state.get("script_retry_count", 0) + 1
+    max_retries = max(1, int(os.getenv("MAX_SCRIPT_RETRIES", "5")))
     critiques = script_eval.get("actionable_critiques", [])
+    cur_overall = (script_eval or {}).get("overall_score", 0.0)
+    cur_hook = ((script_eval or {}).get("hook_strength") or {}).get("score", 0.0)
     topic = state.get("topic", "")
     channel_style = state.get("channel_style", "general")
     primary_entity = state.get("primary_entity")
@@ -154,12 +157,14 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
     director_notes = state.get("director_notes")
     target_channel_id = state.get("target_channel_id", "")
 
-    logger.info(f"🔄 [LangGraph] Tự động tinh chỉnh kịch bản lần {retry_count} theo nhận xét: {critiques}")
+    logger.info(f"🔄 [LangGraph] Tự động tinh chỉnh kịch bản lần {retry_count}/{max_retries} theo nhận xét: {critiques}")
 
     feedback_text = (
-        f"Sửa chữa chính xác các điểm yếu sau từ Critic: {'; '.join(critiques)}. "
-        f"Đảm bảo Cảnh 1 giật gân trong 2.5 giây đầu (5-9 từ), Cảnh 4 có Mid-Video Re-Hook, "
-        f"Cảnh 5-9 có Payoff giá trị cao, và Cảnh cuối kết thúc bằng cầu nối Vòng lặp Vô tận (Zero Spoken Subscribe CTA)."
+        f"[VÒNG TINH CHỈNH {retry_count}/{max_retries} — Điểm hiện tại: Overall={cur_overall}/10, Hook={cur_hook}/10 -> MỤC TIÊU BẮT BUỘC: Overall >= 8.2/10 và Hook Cảnh 1 >= 8.6/10]. "
+        f"Sửa chữa TRIỆT ĐỂ và ÁP DỤNG TRỰC TIẾP các câu đề xuất cụ thể sau từ Critic: {'; '.join(critiques)}. "
+        f"Yêu cầu bắt buộc: (1) Nếu Critic có gợi ý câu Hook mẫu trong ngoặc đơn cho Cảnh 1, hãy dùng ngay câu Hook sắc bén đó (dưới 9 từ, đánh thẳng vào nỗi sợ/nghịch lý/xung đột trong 2.5s đầu); "
+        f"(2) Cảnh 4 phải có Mid-Video Re-Hook lật tình thế; "
+        f"(3) Cảnh cuối kết thúc bằng câu hoàn chỉnh nối vòng lặp vô tận (Zero Spoken Subscribe CTA)."
     )
     if primary_entity:
         feedback_text += f" Giữ vững trọng tâm vào nhân vật/thực thể chính: {primary_entity}."
@@ -195,6 +200,6 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
         "script_data": script_dict,
         "script_retry_count": retry_count,
         "current_step": "SCRIPT_REFINED",
-        "progress_message": f"Đã tinh chỉnh kịch bản theo nhận xét (Lần {retry_count})",
+        "progress_message": f"Đã tinh chỉnh kịch bản theo nhận xét (Lần {retry_count}/{max_retries})",
     }
 

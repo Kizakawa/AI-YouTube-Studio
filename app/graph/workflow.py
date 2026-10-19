@@ -36,14 +36,19 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def should_refine_script(state: VideoWorkflowState) -> Literal["refine_script", "generate_audio"]:
-    """Điều hướng: Nếu kịch bản chưa đạt điểm chất lượng và chưa quá số lần thử -> Sửa lại. Nếu hết lượt vẫn trượt -> Chặn cứng!"""
+    """Điều hướng: Nếu kịch bản chưa đạt điểm chất lượng và chưa quá số lần thử (mặc định tối đa 5 lần) -> Sửa lại cho đến khi đạt kết quả ưng ý!"""
+    import os
     script_eval = state.get("script_eval", {})
     passed = script_eval.get("passed", True)
     retry_count = state.get("script_retry_count", 0)
     evaluated_by = script_eval.get("evaluated_by", "ai")
+    max_script_retries = max(1, int(os.getenv("MAX_SCRIPT_RETRIES", "5")))
 
-    if not passed and retry_count < 2:
-        logger.info(f"🔄 [ConditionalEdge] Kịch bản chưa đạt (Score: {script_eval.get('overall_score')}/10). Quay lại node_refine_script!")
+    if not passed and retry_count < max_script_retries:
+        logger.info(
+            f"🔄 [ConditionalEdge] Kịch bản chưa đạt (Score: {script_eval.get('overall_score')}/10 | "
+            f"Lần {retry_count + 1}/{max_script_retries}). Quay lại node_refine_script!"
+        )
         return "refine_script"
 
     # [P1-FIX-4] Nếu pass nhưng chỉ qua heuristic fallback (API lỗi) — ép retry 1 lần với AI thật
@@ -57,7 +62,7 @@ def should_refine_script(state: VideoWorkflowState) -> Literal["refine_script", 
         critiques = "; ".join((script_eval.get("actionable_critiques") or [])[:3])
         if overall_s >= 6.5 and hook_s >= 6.5:
             logger.warning(
-                f"⚠️ [SoftPass ScriptQA] Kịch bản đạt mức khá sau {retry_count} lần tinh chỉnh "
+                f"⚠️ [SoftPass ScriptQA] Kịch bản đạt mức khá sau {retry_count}/{max_script_retries} lần tinh chỉnh "
                 f"(Overall={overall_s}/10, Hook={hook_s}/10) — tiếp tục trong LangGraph để giữ nguyên luồng Video-First & mật độ 15-17 ảnh!"
             )
             return "generate_audio"
@@ -66,7 +71,7 @@ def should_refine_script(state: VideoWorkflowState) -> Literal["refine_script", 
             f"(Overall={overall_s}/10, Hook={hook_s}/10). Lý do: {critiques or 'Dưới ngưỡng chống vuốt bỏ'}"
         )
 
-    logger.info("✅ [ConditionalEdge] Kịch bản đã đạt chuẩn chất lượng. Tiếp tục sang node_generate_audio!")
+    logger.info(f"✅ [ConditionalEdge] Kịch bản đã đạt chuẩn chất lượng (sau {retry_count} lần tinh chỉnh). Tiếp tục sang node_generate_audio!")
     return "generate_audio"
 
 
