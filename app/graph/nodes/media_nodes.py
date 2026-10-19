@@ -310,7 +310,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 if not media_path and valid_cached_imgs:
                     media_path = valid_cached_imgs[0]
                     media_type = "image"
-                    cached_pose_images = valid_cached_imgs
+                    pose_images = valid_cached_imgs
                     vision_curated = True
                     prod_method = chosen_strategy = "CACHED_MEDIA"
                     logger.info(
@@ -341,7 +341,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             subj_ent = sc_strat.get("subject_entity") or primary_entity or state.get("topic", "")
             sc_scope = sc_strat.get("search_scope") or "SCENE_SPECIFIC"
             overall_q = sc_strat.get("overall_script_query") or state.get("topic", "")
-            scene_target_imgs = 3 if (scene.scene_id == 1 or dur >= 4.0 or total_scenes <= 7) else 2
+            import math as _math
+            scene_target_imgs = max(3, min(4, _math.ceil(16 / max(1, total_scenes - 1)))) if (scene.scene_id == 1 or dur >= 3.5 or total_scenes <= 7) else 3
             if tool_name == "clone_youtube_short_peak_clip":
                 yt_q = sc_strat.get("youtube_search_query") or kw or state.get("topic", "")
                 fb_q = sc_strat.get("fallback_broad_query") or overall_q or subj_ent
@@ -1294,12 +1295,12 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         if body_img_indices:
             n_img_scenes = len(body_img_indices)
             rem_budget = max(n_img_scenes, target_total_images - hook_img_count)
-            # Giới hạn tối đa 4 ảnh/cảnh và tối thiểu 1-2 ảnh/cảnh để nhịp chuyển ảnh tự nhiên (~1.6s-2.3s/ảnh)
-            rem_budget = min(rem_budget, n_img_scenes * 4)
+            # Cho phép tối đa 4-5 ảnh/cảnh khi có các phân cảnh đầu dùng Video Peak dài để tổng ảnh vẫn đạt 15-17 ảnh/video
+            rem_budget = min(rem_budget, n_img_scenes * 5)
             base_q = max(1, rem_budget // n_img_scenes)
             extra_q = max(0, rem_budget - (base_q * n_img_scenes))
 
-            # Ưu tiên phân bổ thêm ảnh (3 ảnh/cảnh thay vì 2 ảnh/cảnh) cho các phân cảnh có thời lượng câu đọc dài hơn
+            # Ưu tiên phân bổ thêm ảnh (3-4 ảnh/cảnh) cho các phân cảnh có thời lượng câu đọc dài hơn
             sorted_by_dur = sorted(body_img_indices, key=lambda i_slot: _get_slot_dur(i_slot), reverse=True)
             scene_quotas: Dict[int, int] = {i_slot: base_q for i_slot in body_img_indices}
             for i_slot in sorted_by_dur[:extra_q]:
@@ -1319,7 +1320,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             async def _fill_scene_image_quota(slot_idx: int) -> None:
                 sc_item = scenes_media[slot_idx]
                 sid = int(sc_item.get("scene_id") or (slot_idx + 1))
-                quota = scene_quotas.get(slot_idx, 2)
+                quota = scene_quotas.get(slot_idx, 3)
                 primary_p = sc_item.get("media_path")
                 existing_poses = [
                     p for p in (sc_item.get("pose_images") or ([primary_p] if primary_p else []))
@@ -1344,38 +1345,32 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     if u
                 ]
 
+                short_subj = clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=2)
+                raw_sc_kw = sc_item.get("visual_keyword") or sc_item.get("visual_prompt") or short_subj
+                sc_kw = clean_scene_search_query(raw_sc_kw, max_words=4) or short_subj
+
                 # Nếu kho alternate_urls của cảnh chưa đủ lấp đầy quota, tìm bổ sung bằng truy vấn góc máy riêng của từng cảnh
-                if len(verified_poses) + len(alt_pool) < quota + 3:
-                    short_subj = clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=2)
-                    raw_sc_kw = sc_item.get("visual_keyword") or sc_item.get("visual_prompt") or short_subj
-                    sc_kw = clean_scene_search_query(raw_sc_kw, max_words=4) or short_subj
+                if len(verified_poses) + len(alt_pool) < quota + 5:
                     facet = angle_facets[slot_idx % len(angle_facets)]
                     facet2 = angle_facets[(slot_idx + 3) % len(angle_facets)]
                     supp_q = clean_scene_search_query(f"{sc_kw} {facet}", max_words=6) or sc_kw
                     supp_q2 = clean_scene_search_query(f"{short_subj} {facet2}", max_words=5) or supp_q
                     try:
                         from app.services.media.web_image_fetcher import WebImageFetcher
-                        from app.services.media.stock_fetcher import prefilter_candidates
                         wf = WebImageFetcher()
-                        raw_web = await asyncio.to_thread(
+                        ranked_web = await asyncio.to_thread(
                             wf.search_all,
                             supp_q,
                             10,
                             short_subj,
                             [supp_q2],
                         )
-                        ranked_web = prefilter_candidates(
-                            raw_web or [],
-                            subject=short_subj or supp_q,
-                            limit=14,
-                            max_per_source=12,
-                        )
-                        for c_item in ranked_web:
+                        for c_item in (ranked_web or []):
                             u_supp = c_item.get("url")
                             if u_supp and u_supp not in alt_pool:
                                 alt_pool.append(u_supp)
-                    except Exception:
-                        pass
+                    except Exception as _wf_err:
+                        logger.debug(f"[Visual Density Engine] Scene {sid} web search error: {_wf_err}")
 
                 for idx_c, cand_u in enumerate(alt_pool):
                     if len(verified_poses) >= quota:
@@ -1408,6 +1403,30 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     except Exception:
                         Path(tmp_cut).unlink(missing_ok=True)
 
+                # Nếu sau khi lọc dHash từ web vẫn còn thiếu 1-2 ảnh để đạt quota -> sinh bổ sung góc máy AI 8K độc lập
+                while len(verified_poses) < quota:
+                    shot_num = len(verified_poses) + 1
+                    ai_angle = angle_facets[(slot_idx + shot_num) % len(angle_facets)]
+                    ai_cut_p = str(media_dir / f"scene_{sid:03d}_cut{shot_num}.jpg")
+                    ai_q = f"{sc_kw}, {ai_angle}, dramatic vertical 9:16 photography, 8k sharp focus"
+                    try:
+                        gen_p = await asyncio.to_thread(
+                            image_agent.generate_scene_image,
+                            ai_q,
+                            ai_cut_p,
+                            "9:16",
+                            state.get("channel_style", "cinematic"),
+                            sid,
+                            sc_item.get("visual_prompt"),
+                        )
+                        if gen_p and Path(gen_p).exists() and Path(gen_p).stat().st_size > 2500:
+                            rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=sid, image_path=gen_p, url=gen_p)
+                            verified_poses.append(gen_p)
+                        else:
+                            break
+                    except Exception:
+                        break
+
                 sc_item["pose_images"] = verified_poses[:quota]
 
             await asyncio.gather(*[_fill_scene_image_quota(i_slot) for i_slot in body_img_indices])
@@ -1425,7 +1444,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 f"(Mục tiêu: 15-17 ảnh/video ~40s | Hook={hook_img_count}img | Body: {per_scene_log})"
             )
     except Exception as e_dens:
-        logger.debug(f"[MediaNodes] Visual Density Engine skip: {e_dens}")
+        logger.warning(f"[MediaNodes] Visual Density Engine warning: {e_dens}")
 
     # Đa dạng hóa chuyển động máy quay (Camera Motion Alternation) giữa các phân cảnh liền kề
     _motion_pool = ["zoom_in", "pan_right", "zoom_out", "pan_left", "pan_up", "pan_down"]

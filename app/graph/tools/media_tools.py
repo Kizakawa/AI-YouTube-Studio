@@ -1101,20 +1101,21 @@ def execute_google_cinematic_image_sync(
         if u_cand and u_cand not in all_candidate_urls:
             all_candidate_urls.append(u_cand)
 
-    # Nếu cần >= 2 ảnh mà kho ứng viên ban đầu ít hơn 4 URL, bồi thêm nhanh từ truy vấn góc nhìn phụ thứ 2
-    if len(all_candidate_urls) < max(4, target_image_count + 1) and len(search_qs) > 1:
+    # Khi cần >= 2 ảnh/cảnh, bồi thêm nhanh ứng viên góc nhìn phụ thứ 2 qua WebImageFetcher để kho có >= 12 URL đa dạng
+    if target_image_count >= 2 and len(all_candidate_urls) < max(10, target_image_count * 3):
+        sec_q = search_qs[1] if len(search_qs) > 1 else f"{subj} closeup dramatic"
         try:
-            extra_photo = media_agent.search_best_photo(
-                query=search_qs[1],
-                used_urls=used,
-                visual_analysis=va_photo,
-                narration=effective_narration,
-                topic=overall_script_query or topic,
+            from app.services.media.web_image_fetcher import WebImageFetcher
+            extra_web = WebImageFetcher().search_all(
+                query=sec_q,
+                per_source=8,
+                subject=subj,
+                extra_queries=search_qs[2:3] if len(search_qs) > 2 else None,
             )
-            if extra_photo:
-                for u_ex in [extra_photo.get("url"), *(extra_photo.get("alternate_urls") or [])]:
-                    if u_ex and u_ex not in all_candidate_urls and not is_media_already_used(u_ex, used):
-                        all_candidate_urls.append(u_ex)
+            for item_ex in (extra_web or []):
+                u_ex = item_ex.get("url")
+                if u_ex and u_ex not in all_candidate_urls and not is_media_already_used(u_ex, used):
+                    all_candidate_urls.append(u_ex)
         except Exception:
             pass
 
@@ -1158,7 +1159,7 @@ def execute_google_cinematic_image_sync(
         out_p = Path(output_path)
         stem = out_p.stem
         parent = out_p.parent
-        cand_slice = remaining_urls[: max(desired_extra + 3, 5)]
+        cand_slice = remaining_urls[: max(desired_extra + 6, 8)]
 
         def _dl_cand(pair: Tuple[int, str]) -> Optional[Tuple[str, str]]:
             c_idx, c_url = pair
