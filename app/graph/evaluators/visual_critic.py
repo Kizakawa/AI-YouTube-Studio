@@ -168,7 +168,22 @@ class VisualCritic:
                 }
 
             failed = False
+            is_long_peak_cont = str(item.get("production_method") or "") == "LONG_PEAK_CONTINUOUS_FLOW"
             if media_type == "image":
+                # Kiểm tra & lọc sạch danh sách pose_images (nếu có) để loại bỏ file phụ lỗi/đen trước khi dựng
+                raw_poses = item.get("pose_images")
+                if isinstance(raw_poses, list) and len(raw_poses) > 1:
+                    clean_poses: List[str] = []
+                    for pp in raw_poses:
+                        if pp and Path(pp).exists() and Path(pp).stat().st_size >= 2500 and not self._is_solid_color_or_black(str(pp)):
+                            clean_poses.append(str(pp))
+                    if clean_poses:
+                        item["pose_images"] = clean_poses
+                        if str(p) not in clean_poses:
+                            media_path = clean_poses[0]
+                            item["media_path"] = media_path
+                            p = Path(media_path)
+
                 try:
                     with Image.open(str(p)) as im:
                         im.verify()
@@ -246,6 +261,7 @@ class VisualCritic:
                 "failed": failed,
                 "img_hash": img_hash,
                 "sig": sig,
+                "is_long_peak_cont": is_long_peak_cont,
             }
 
         max_workers = min(max(len(scenes_media), 1), 8)
@@ -265,6 +281,7 @@ class VisualCritic:
             failed = res["failed"]
             img_hash = res["img_hash"]
             sig = res["sig"]
+            is_long_peak_cont = bool(res.get("is_long_peak_cont"))
 
             if img_hash:
                 if img_hash in seen_hashes:
@@ -276,7 +293,7 @@ class VisualCritic:
                     seen_hashes[img_hash] = scene_id
 
             if sig:
-                dup_id = self._find_duplicate(sig, seen_signatures)
+                dup_id = None if is_long_peak_cont else self._find_duplicate(sig, seen_signatures)
                 if dup_id is not None and not any("trùng lặp" in i for i in issues):
                     issues.append(f"Hình ảnh/clip trùng lặp với Cảnh #{dup_id}")
                     aes_score -= 4.0

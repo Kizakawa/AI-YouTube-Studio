@@ -724,7 +724,7 @@ class VideoMemoryRAG:
                 continue
 
             max_sim = max((self.compute_text_similarity(cur_q, prev_q) for prev_q in seen_queries), default=0.0)
-            if max_sim >= 0.55:
+            if max_sim >= 0.55 and not item.get("_rag_diversified"):
                 # Trích xuất các từ hành động/miêu tả độc nhất từ lời dẫn của chính phân cảnh này
                 narr_text = narration_map.get(sid) or str(item.get("narration") or "")
                 narr_unigrams = [
@@ -734,8 +734,8 @@ class VideoMemoryRAG:
                 facet = angle_facets[idx % len(angle_facets)]
                 extra_terms = " ".join(narr_unigrams[:2]) if narr_unigrams else facet
                 anchor_prefix = " ".join(list(subj_clean.split())[:2]) if subj_clean else ""
-                diversified_q = f"{anchor_prefix} {cur_q} {extra_terms}".strip()
-                # Giữ độ dài gọn gàng (tối đa 6-7 từ) để tìm kiếm YouTube Shorts / Google chính xác
+                # Đặt anchor_prefix + extra_terms (từ khóa hành động riêng của cảnh) lên trước để không bị cắt mất khi giới hạn 6 từ
+                diversified_q = f"{anchor_prefix} {extra_terms} {cur_q}".strip()
                 words_dedup: List[str] = []
                 for w in diversified_q.split():
                     if w.lower() not in [x.lower() for x in words_dedup]:
@@ -744,8 +744,8 @@ class VideoMemoryRAG:
                 item[q_key] = new_q
                 if item.get("youtube_search_query"):
                     item["youtube_search_query"] = new_q
-                # Chuyển sang SCENE_SPECIFIC để ưu tiên câu truy vấn đã đa dạng hóa thay vì rơi về cùng 1 câu SCRIPT_OVERALL
                 item["search_scope"] = "SCENE_SPECIFIC"
+                item["_rag_diversified"] = True
                 logger.info(
                     f"🧠 [MiniRAG Intra-Video Diversifier] Cảnh #{sid}: Phát hiện truy vấn trùng lặp nội bộ (sim={max_sim:.2f}) "
                     f"-> Đa dạng hóa thành '{new_q}'"

@@ -104,13 +104,16 @@ async def node_direct_visual_strategy(state: VideoWorkflowState) -> Dict[str, An
         primary_entity=primary_entity,
         channel_niche=channel_style,
     )
-    audited_decisions = await asyncio.to_thread(
-        audit_and_decide_search_scopes_with_llm_sync,
-        topic=topic,
-        scenes=scenes,
-        proposed_decisions=tool_decisions,
-        primary_entity=primary_entity,
-    )
+    if tool_decisions and all(isinstance(d, dict) and d.get("scope_audited") for d in tool_decisions):
+        audited_decisions = tool_decisions
+    else:
+        audited_decisions = await asyncio.to_thread(
+            audit_and_decide_search_scopes_with_llm_sync,
+            topic=topic,
+            scenes=scenes,
+            proposed_decisions=tool_decisions,
+            primary_entity=primary_entity,
+        )
     plan = {
         "topic_classification": "HYBRID_TOOL_CALLING",
         "director_vision": "Adaptive Dual-Scope Search (SCENE_SPECIFIC vs SCRIPT_OVERALL) + YouTube Peak & Google Images",

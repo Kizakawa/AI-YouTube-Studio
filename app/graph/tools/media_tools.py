@@ -1404,6 +1404,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                         "overall_script_query": d.get("overall_script_query") or default_overall_q,
                         "camera_motion": d.get("camera_motion") or motion_cycle[idx % len(motion_cycle)],
                     }
+            d["scope_audited"] = True
             final_plan.append(d)
             continue
 
