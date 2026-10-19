@@ -331,18 +331,27 @@ class StockFetcher:
         used.update(get_recent_media_urls(limit=150))
 
         from app.services.media.image_quality import extract_subject, prefilter_candidates
+        from app.services.media.query_broadener import is_vague_single_word
         va = visual_analysis or {}
-        subject = str(va.get("subject") or "").strip() or extract_subject(narration or query)
+        cq = clean_scene_search_query(query, max_words=6)
+        raw_subj = str(va.get("subject") or "").strip() or extract_subject(query) or extract_subject(narration)
+        if raw_subj and len(raw_subj.split()) == 1 and (is_vague_single_word(raw_subj) or len(raw_subj) <= 5):
+            subject = cq or extract_subject(topic) or raw_subj
+        else:
+            subject = raw_subj or cq
 
         queries: List[str] = []
         for q in va.get("search_queries", [])[:2]:
             if q and q not in queries:
                 queries.append(q)
-        if subject and subject not in queries:
-            queries.append(subject)
-        cq = clean_scene_search_query(query, max_words=5)
         if cq and cq not in queries:
             queries.append(cq)
+        if query and len(query.split()) <= 7 and query not in queries:
+            queries.append(query)
+        if subject and len(subject.split()) >= 2 and subject not in queries:
+            queries.append(subject)
+        if not queries and subject:
+            queries.append(subject)
         if not queries:
             return None
 

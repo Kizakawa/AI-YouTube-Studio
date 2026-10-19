@@ -275,8 +275,10 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             channel_visual_mode = state.get("visual_mode") or "auto"
             scene_media_pref = getattr(scene, 'media_type', None)
 
+            subj_ent = sc_strat.get("subject_entity") or primary_entity or state.get("topic", "")
             if tool_name == "clone_youtube_short_peak_clip":
                 yt_q = sc_strat.get("youtube_search_query") or kw or state.get("topic", "")
+                fb_q = sc_strat.get("fallback_broad_query") or subj_ent
                 clip_role = sc_strat.get("clip_role") or ("HOOK" if scene.scene_id == 1 else "PEAK")
                 out_vid = str(
                     work_dir / "hook_motion_001.mp4"
@@ -290,6 +292,10 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     target_duration_sec=dur + 0.25,
                     clip_role=clip_role,
                     used_urls=used_pool_urls,
+                    fallback_query=fb_q,
+                    subject_entity=subj_ent,
+                    narration=scene.narration,
+                    topic=state.get("topic", ""),
                 )
                 if yt_res and yt_res.get("media_path"):
                     media_path = yt_res["media_path"]
@@ -303,12 +309,13 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     out_img = str(media_dir / f"scene_{scene.scene_id:03d}_gsearch.jpg")
                     img_res = await asyncio.to_thread(
                         execute_google_cinematic_image_sync,
-                        smart_query=f"{yt_q} movie still dramatic",
+                        smart_query=yt_q,
                         output_path=out_img,
                         narration=scene.narration,
                         topic=state.get("topic", ""),
                         used_urls=used_pool_urls,
                         is_hook_scene=(scene.scene_id == 1),
+                        subject_entity=subj_ent,
                     )
                     if img_res and img_res.get("media_path"):
                         media_path = img_res["media_path"]
@@ -327,6 +334,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     topic=state.get("topic", ""),
                     used_urls=used_pool_urls,
                     is_hook_scene=(scene.scene_id == 1),
+                    subject_entity=subj_ent,
                 )
                 if img_res and img_res.get("media_path"):
                     media_path = img_res["media_path"]
