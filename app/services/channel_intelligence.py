@@ -1460,26 +1460,28 @@ def send_telegram_video_broadcast(
     if not chat_ids:
         return False
 
-    # Kiểm tra kích thước file; nếu > 49MB nén nhanh bằng FFmpeg
+    # Kiểm tra kích thước file; nếu > 5MB nén nhanh bản preview cho Telegram bằng FFmpeg (giữ nguyên bản gốc 1080p cho YouTube)
     upload_path = video_path
     temp_compressed = None
     try:
         size_mb = Path(video_path).stat().st_size / (1024 * 1024)
-        if size_mb > 49.0:
+        if size_mb > 5.0:
             import subprocess
             temp_dir = Path(settings.TEMP_DIR)
             temp_dir.mkdir(parents=True, exist_ok=True)
             temp_compressed = str(temp_dir / f"tg_preview_{Path(video_path).stem}.mp4")
             cmd = [
                 "ffmpeg", "-y", "-i", video_path,
-                "-c:v", "libx264", "-crf", "28", "-preset", "veryfast",
-                "-c:a", "copy", temp_compressed
+                "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2",
+                "-c:v", "libx264", "-crf", "28", "-preset", "ultrafast",
+                "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+                temp_compressed
             ]
-            logger.info(f"[TelegramVideoAlert] File {size_mb:.1f}MB > 49MB, đang nén nhanh video cho Telegram...")
+            logger.info(f"[TelegramVideoAlert] File gốc {size_mb:.1f}MB -> đang tạo bản nén nhẹ gửi Telegram để tránh đứt kết nối...")
             res_comp = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45)
             if res_comp.returncode == 0 and Path(temp_compressed).exists():
                 upload_path = temp_compressed
-                logger.info(f"[TelegramVideoAlert] Đã nén video thành công: {Path(upload_path).stat().st_size / (1024*1024):.1f}MB")
+                logger.info(f"[TelegramVideoAlert] Đã tạo bản gửi Telegram thành công: {Path(upload_path).stat().st_size / (1024*1024):.1f}MB")
     except Exception as ex_comp:
         logger.warning(f"[TelegramVideoAlert] Lỗi khi nén video: {ex_comp}")
 
@@ -1514,8 +1516,10 @@ def send_telegram_video_broadcast(
                         if v_obj and v_obj.get("file_id"):
                             cached_file_id = v_obj.get("file_id")
                     elif r.status_code != 200:
-                        # Thử lại không parse_mode nếu có lỗi HTML tags
+                        logger.warning(f"[TelegramVideoAlert] sendVideo HTML lỗi ({r.status_code}): {r.text[:200]} -> Thử lại plain text")
+                        # Thử lại không parse_mode và lọc bỏ thẻ HTML bị cắt dở
                         data.pop("parse_mode", None)
+                        data["caption"] = re.sub(r"<[^>]*>?", "", caption)[:950] if caption else ""
                         with open(upload_path, "rb") as vf2:
                             r2 = http_requests.post(url, data=data, files={"video": vf2}, timeout=180)
                             if r2.status_code == 200:
@@ -1524,8 +1528,10 @@ def send_telegram_video_broadcast(
                                 v_obj2 = res_json2.get("result", {}).get("video")
                                 if v_obj2 and v_obj2.get("file_id"):
                                     cached_file_id = v_obj2.get("file_id")
+                            else:
+                                logger.warning(f"[TelegramVideoAlert] sendVideo fallback lỗi ({r2.status_code}): {r2.text[:200]}")
         except Exception as ex_send:
-            logger.debug(f"[TelegramVideoAlert] Lỗi gửi video cho {cid}: {ex_send}")
+            logger.warning(f"[TelegramVideoAlert] Lỗi gửi video cho {cid}: {ex_send}")
 
     if temp_compressed and Path(temp_compressed).exists():
         try:

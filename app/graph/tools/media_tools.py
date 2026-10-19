@@ -32,12 +32,20 @@ from config.settings import settings
 logger = logging.getLogger(__name__)
 _yt_url_lock = threading.Lock()
 
-# Các từ khóa tiêu đề YouTube cần loại bỏ để tránh cắt nhầm video người ngồi nói chuyện (Podcast / Talking Head)
+# Các từ khóa tiêu đề YouTube cần loại bỏ để tránh cắt nhầm video người ngồi nói chuyện (Podcast / Talking Head) hoặc Meme/Game lệch chủ đề
 _TALKING_HEAD_BLOCKLIST = (
     "podcast", "interview", "reaction", "reacts", "q&a", "livestream", "stream highlight",
     "talking", "lecture", "ted talk", "joe rogan", "lex fridman", "review", "unboxing",
     "vlog", "storytime", "asmr", "tutorial", "how to", "course", "lesson",
+    "animation meme", "gacha", "roblox", "minecraft", "fortnite", "valorant", "lyrics", "karaoke",
 )
+
+_YT_QUERY_FILLER_WORDS = {
+    "cinematic", "4k", "8k", "hd", "edit", "edits", "visuals", "footage", "scene", "scenes",
+    "dramatic", "vertical", "shot", "shots", "video", "clip", "clips", "short", "shorts",
+    "the", "a", "an", "of", "in", "on", "at", "to", "for", "with", "by", "from", "and", "or",
+}
+
 
 
 @tool
@@ -167,8 +175,13 @@ def execute_youtube_short_peak_clone_sync(
         return None
 
     used = used_urls if used_urls is not None else set()
-    clean_q = re.sub(r"\b(shorts?|#shorts?)\b", "", search_query, flags=re.IGNORECASE).strip()
-    yt_query = f"ytsearch6:{clean_q} #shorts"
+    raw_words = re.findall(r"[a-zA-Z0-9]+", search_query or "")
+    core_tokens = [w for w in raw_words if w.lower() not in _YT_QUERY_FILLER_WORDS and len(w) >= 3]
+    if not core_tokens:
+        core_tokens = [w for w in raw_words if len(w) >= 3][:4]
+    focused_q = " ".join(core_tokens[:5]).strip()
+    yt_query = f"ytsearch8:{focused_q} shorts"
+    core_lower_set = {w.lower() for w in core_tokens[:5]}
 
     search_opts = {
         "quiet": True,
@@ -199,6 +212,12 @@ def execute_youtube_short_peak_clone_sync(
                 if any(bad in title_lower for bad in _TALKING_HEAD_BLOCKLIST):
                     continue
 
+                # Kiểm tra độ khớp từ khóa chủ đề để không bao giờ tải nhầm video lạc đề
+                meta_text = f"{title_lower} {(entry.get('description') or '')[:300].lower()} {' '.join(entry.get('tags') or []).lower()}"
+                matched_tokens = sum(1 for tok in core_lower_set if tok in meta_text)
+                if core_lower_set and matched_tokens == 0:
+                    continue
+
                 views = int(entry.get("view_count") or 0)
                 likes = int(entry.get("like_count") or 0)
                 w = int(entry.get("width") or 0)
@@ -206,8 +225,14 @@ def execute_youtube_short_peak_clone_sync(
                 is_vertical = (h >= w) if (w and h) else True
                 has_heatmap = bool(entry.get("heatmap"))
 
-                # Chấm điểm ưu tiên: khung dọc 9:16 + có heatmap Most Replayed + lượt view cao
-                score = (views / 10000.0) + (likes / 500.0) + (50.0 if is_vertical else 0.0) + (30.0 if has_heatmap else 0.0)
+                # Chấm điểm ưu tiên: độ khớp chủ đề + khung dọc 9:16 + heatmap Most Replayed + lượt view
+                score = (
+                    (matched_tokens * 60.0)
+                    + min(views / 20000.0, 80.0)
+                    + min(likes / 1000.0, 40.0)
+                    + (50.0 if is_vertical else 0.0)
+                    + (30.0 if has_heatmap else 0.0)
+                )
                 candidates.append({
                     "entry": entry,
                     "url": webpage_url,

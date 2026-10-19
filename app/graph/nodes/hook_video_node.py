@@ -96,6 +96,19 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
     hook_cand_dir = work_dir / "hook_candidates"
     hook_cand_dir.mkdir(parents=True, exist_ok=True)
 
+    visual_plan = state.get("visual_plan") or {}
+    if visual_plan.get("topic_classification") == "HYBRID_TOOL_CALLING" and visual_plan.get("scenes_strategy"):
+        logger.info(
+            "⚡ [HookVideoNode] Đã có kế hoạch LLM `@tool` (HYBRID_TOOL_CALLING) -> "
+            "Chuyển thẳng sang `node_fetch_media` để chạy SONG SONG Hook + 2-3 Peak Shorts + Google Images cùng lúc!"
+        )
+        return {
+            "pre_resolved_hook_media": {},
+            "current_step": "HOOK_DELEGATED_TO_PARALLEL_TOOLS",
+            "progress_percent": 56,
+            "progress_message": "⚡ Chuyển sang thực thi song song bộ @tool Hook & Peak Shorts...",
+        }
+
     script_data = state.get("script_data") or {}
     script_scenes = list(script_data.get("scenes") or [])
     scenes_media = list(state.get("scenes_media") or [])
