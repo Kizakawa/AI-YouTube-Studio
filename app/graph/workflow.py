@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def should_refine_script(state: VideoWorkflowState) -> Literal["refine_script", "generate_audio"]:
-    """Điều hướng: Nếu kịch bản chưa đạt điểm chất lượng và chưa quá số lần thử -> Sửa lại."""
+    """Điều hướng: Nếu kịch bản chưa đạt điểm chất lượng và chưa quá số lần thử -> Sửa lại. Nếu hết lượt vẫn trượt -> Chặn cứng!"""
     script_eval = state.get("script_eval", {})
     passed = script_eval.get("passed", True)
     retry_count = state.get("script_retry_count", 0)
@@ -50,6 +50,15 @@ def should_refine_script(state: VideoWorkflowState) -> Literal["refine_script", 
     if passed and evaluated_by == "heuristic" and retry_count == 0:
         logger.warning("⚠️ [ConditionalEdge] Script PASS nhưng qua heuristic fallback (API lỗi). Buộc retry với AI thật!")
         return "refine_script"
+
+    if not passed:
+        hook_s = (script_eval.get("hook_strength") or {}).get("score", 0.0)
+        overall_s = script_eval.get("overall_score", 0.0)
+        critiques = "; ".join((script_eval.get("actionable_critiques") or [])[:3])
+        raise RuntimeError(
+            f"🚫 [HardBlock ScriptQA] Kịch bản/Hook không đạt ngưỡng giữ chân sau {retry_count} lần tinh chỉnh "
+            f"(Overall={overall_s}/10, Hook={hook_s}/10). Lý do: {critiques or 'Dưới ngưỡng chống vuốt bỏ'}"
+        )
 
     logger.info("✅ [ConditionalEdge] Kịch bản đã đạt chuẩn chất lượng. Tiếp tục sang node_generate_audio!")
     return "generate_audio"

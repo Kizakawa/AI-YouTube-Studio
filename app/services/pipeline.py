@@ -430,14 +430,24 @@ class VideoPipeline:
         audio_dir = str(self.work_dir / "audio")
         Path(audio_dir).mkdir(exist_ok=True)
 
-        # Lấy voice từ channel config (nếu có)
+        # Lấy voice và target_channel_id từ channel config (nếu có)
         voice = self._get_channel_voice()
+        target_ch_id = None
+        try:
+            with get_db() as db:
+                j_row = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
+                if j_row:
+                    target_ch_id = j_row.target_channel_id
+        except Exception:
+            pass
 
         return await self._voice_agent.generate_per_scene_audio(
             scenes=script.scenes,
             output_dir=audio_dir,
             voice=voice,
             niche=getattr(self, "niche", None),
+            channel_id=target_ch_id,
+            job_id=self.job_id,
         )
 
     async def _step_concat_audio(self, scenes: List[SceneContract]) -> Tuple[str, int]:
@@ -1464,12 +1474,15 @@ class VideoPipeline:
                     job.error_message = None
 
     def _save_audio_metadata(self, audio_path: str, duration_ms: int, scenes: List[SceneContract]):
-        """Lưu metadata audio vào DB sau Step B."""
+        """Lưu metadata audio và voice_engine vào DB sau Step B."""
         with get_db() as db:
             job = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
             if job:
                 job.audio_path = audio_path
                 job.audio_duration_ms = duration_ms
+                used_ve = getattr(self._voice_agent, "last_used_engine", None)
+                if used_ve:
+                    job.voice_engine = used_ve
                 # Cập nhật scenes_json với audio enrichment
                 if job.scenes_json:
                     script = ScriptContract.from_json_str(job.scenes_json)

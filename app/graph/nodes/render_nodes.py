@@ -121,7 +121,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
 
 
 def node_evaluate_video(state: VideoWorkflowState) -> Dict[str, Any]:
-    """Node kiểm định chất lượng kỹ thuật VideoQA bằng FFprobe."""
+    """Node kiểm định chất lượng kỹ thuật VideoQA bằng FFprobe & QualityEvaluator (Chặn cứng nếu không đạt)."""
     rendered_video_path = state.get("rendered_video_path", "")
     total_audio_duration_ms = state.get("total_audio_duration_ms", 0)
 
@@ -130,18 +130,36 @@ def node_evaluate_video(state: VideoWorkflowState) -> Dict[str, Any]:
         expected_duration_ms=total_audio_duration_ms
     )
 
+    from app.services.quality_evaluator import QualityEvaluator
+    eval_res = QualityEvaluator().evaluate_video(
+        video_path=rendered_video_path,
+        expected_duration_ms=total_audio_duration_ms,
+    )
+    video_score = eval_res.get("score", 0)
+    combined_passed = bool(qa_report.passed and eval_res.get("passed", True))
+    combined_issues = list(dict.fromkeys(list(qa_report.issues) + list(eval_res.get("issues", []))))
+
     logger.info(
         f"🎬 [VideoQA] File: {Path(qa_report.video_path).name} | "
         f"Size: {qa_report.file_size_bytes/1024:.0f}KB | "
         f"Resolution: {qa_report.width}x{qa_report.height} | "
         f"Duration: {qa_report.duration_seconds}s | "
-        f"Passed: {qa_report.passed}"
+        f"Score: {video_score}/100 | Passed: {combined_passed}"
     )
 
+    if not combined_passed:
+        raise RuntimeError(
+            f"🚫 [HardBlock VideoQA] Video không đạt chuẩn kỹ thuật/chất lượng "
+            f"(Score={video_score}/100): {'; '.join(combined_issues) or 'Lỗi kiểm định video'}"
+        )
+
+    qa_dict = qa_report.model_dump()
+    qa_dict["score"] = video_score
+    qa_dict["metrics"] = eval_res
     return {
-        "video_eval": qa_report.model_dump(),
+        "video_eval": qa_dict,
         "current_step": "QA_DONE",
         "progress_percent": 100,
-        "progress_message": f"Kiểm định VideoQA: {'Xuất sắc (1080x1920 30fps)' if qa_report.passed else 'Cảnh báo lỗi'}",
-        "status": "COMPLETED" if qa_report.passed else "QA_WARNING",
+        "progress_message": f"Kiểm định VideoQA: Đạt chuẩn ({video_score}/100, 1080x1920 30fps)",
+        "status": "COMPLETED",
     }

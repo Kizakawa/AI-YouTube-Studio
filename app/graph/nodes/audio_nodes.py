@@ -55,15 +55,30 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
             return None
 
     # Chạy SONG SONG: (1) Sinh Audio TTS tất cả các cảnh + (2) LLM bind_tools chọn công cụ hình ảnh cho tất cả các cảnh
+    job_id = state.get("job_id")
+    target_channel_id = state.get("target_channel_id")
     scenes_objs, precomputed_visual_plan = await asyncio.gather(
         voice_agent.generate_per_scene_audio(
             scenes=script.scenes,
             output_dir=str(audio_dir),
             voice=preferred_voice,
             niche=channel_style,
+            channel_id=target_channel_id,
+            job_id=job_id,
         ),
         _run_visual_tool_planner(),
     )
+
+    used_voice_engine = getattr(voice_agent, "last_used_engine", "edge_tts")
+    if job_id:
+        try:
+            from app.database.models import get_db, VideoJob
+            with get_db() as db:
+                j_row = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                if j_row:
+                    j_row.voice_engine = used_voice_engine
+        except Exception as ex_ve:
+            logger.debug(f"[AudioNode] Không thể lưu voice_engine vào DB: {ex_ve}")
 
     enriched_scenes = [
         {
@@ -98,9 +113,10 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
         "full_audio_path": full_audio_path,
         "total_audio_duration_ms": total_duration_ms,
         "subtitle_path": subtitle_path,
+        "voice_engine": used_voice_engine,
         "current_step": "AUDIO_READY",
         "progress_percent": 45,
-        "progress_message": f"Đã tạo giọng đọc Edge-TTS ({total_duration_ms/1000:.1f}s) + phụ đề ASS + Kế hoạch Tool Hình ảnh (Song song)",
+        "progress_message": f"Đã tạo giọng đọc ({used_voice_engine}, {total_duration_ms/1000:.1f}s) + phụ đề ASS + Kế hoạch Tool Hình ảnh",
     }
     if precomputed_visual_plan:
         out_state["visual_plan"] = precomputed_visual_plan

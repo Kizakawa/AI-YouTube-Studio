@@ -127,22 +127,34 @@ def get_channel_today_summary(channel_id: Optional[str] = None) -> Dict[str, Any
             ).order_by(VideoJob.scheduled_time.asc()).all()
 
             today_videos = []
+            upcoming_scheduled_videos = []
+            now_utc = datetime.now(timezone.utc)
             for j in jobs:
                 t = j.scheduled_time or j.created_at
                 if t:
                     if t.tzinfo is None:
                         t = t.replace(tzinfo=timezone.utc)
                     t_vn = t.astimezone(VN_TZ)
+                    v_item = {
+                        "job_id": j.id,
+                        "title": j.title or j.topic or f"Video #{j.id}",
+                        "status": j.status,
+                        "time_vn": t_vn.strftime("%H:%M"),
+                        "time_full_vn": t_vn.strftime("%H:%M %d/%m/%Y"),
+                        "youtube_video_id": j.youtube_video_id,
+                        "shorts_url": f"https://www.youtube.com/shorts/{j.youtube_video_id}" if j.youtube_video_id else None,
+                    }
                     if t_vn.date() == today_vn_date:
-                        today_videos.append({
-                            "job_id": j.id,
-                            "title": j.title or j.topic or f"Video #{j.id}",
-                            "status": j.status,
-                            "time_vn": t_vn.strftime("%H:%M"),
-                            "time_full_vn": t_vn.strftime("%H:%M %d/%m/%Y"),
-                            "youtube_video_id": j.youtube_video_id,
-                            "shorts_url": f"https://www.youtube.com/shorts/{j.youtube_video_id}" if j.youtube_video_id else None
-                        })
+                        today_videos.append(v_item)
+                    if j.status == "SCHEDULED" and t >= now_utc - timedelta(minutes=15):
+                        upcoming_scheduled_videos.append(v_item)
+
+            # Đếm số video đã dựng xong (RENDERED) đang chờ tự động đăng
+            rendered_ready_count = db.query(VideoJob).filter(
+                VideoJob.target_channel_id.in_(family),
+                VideoJob.status.in_(["RENDERED", "WAITING_QUOTA_RESET"]),
+                VideoJob.video_path.isnot(None),
+            ).count()
 
             # 2. Tìm job đang trong tiến trình xử lý dở (chỉ tính các job mới trong vòng 3 giờ qua để tránh job cũ làm kẹt Auto-Pilot)
             recent_pending_cutoff = datetime.utcnow() - timedelta(hours=3)
@@ -172,7 +184,10 @@ def get_channel_today_summary(channel_id: Optional[str] = None) -> Dict[str, Any
                 next_display_us = ""
 
             count = len(today_videos)
-            is_empty = (count == 0 and pending_job is None)
+            scheduled_queue_count = len(upcoming_scheduled_videos)
+            queue_deficit = max(0, 3 - scheduled_queue_count)
+            is_schedule_empty = (scheduled_queue_count == 0)
+            is_empty = ((count == 0 or scheduled_queue_count == 0) and pending_job is None)
 
             ch_data = {
                 "channel_id": cid,
@@ -181,6 +196,11 @@ def get_channel_today_summary(channel_id: Optional[str] = None) -> Dict[str, Any
                 "niche": niche,
                 "today_video_count": count,
                 "today_videos": today_videos,
+                "scheduled_queue_count": scheduled_queue_count,
+                "upcoming_scheduled_videos": upcoming_scheduled_videos,
+                "queue_deficit": queue_deficit,
+                "rendered_ready_count": rendered_ready_count,
+                "is_schedule_empty": is_schedule_empty,
                 "pending_job": pending_job,
                 "is_empty": is_empty,
                 "has_video_today": count > 0,
@@ -291,7 +311,7 @@ async def run_autopilot_pipeline_for_channel(
             f"Góc khai thác triệu view: {topic_angle}. "
             f"Gợi ý Hook mở đầu: '{topic_hook}'. "
             f"Khắc phục nhược điểm cũ: {topic_fixes}. "
-            f"Bắt buộc: (1) Cảnh 1 mở đầu bằng câu khẳng định/cảnh báo sắc lẹm, CẤM mở đầu bằng câu hỏi Yes/No thụ động; "
+            f"Bắt buộc: (1) Cảnh 1 mở đầu bằng cấu trúc đối đầu 'A vs B' hoặc câu khẳng định gây sốc 5-8 từ có số liệu/thông số vật lý cụ thể (công thức pt-BR & Wild Odyssey), CẤM mở đầu bằng câu hỏi Yes/No thụ động; "
             f"(2) Có câu nói trích dẫn đời thực (Real-life verbal quote) hoặc chi tiết định lượng cụ thể, giải mã cơ chế ngầm (Mechanism) và chiêu phản đòn/cao trào cụ thể (Surgical counter-move / Climax); "
             f"(3) Cảnh cuối dùng Seamless Infinite Loop nối mượt về Cảnh 1, TUYỆT ĐỐI KHÔNG đọc lời kêu gọi Subscribe/Like bằng giọng đọc (chỉ đặt câu hỏi tranh luận ở trường pinned_comment)."
         )
@@ -304,62 +324,61 @@ async def run_autopilot_pipeline_for_channel(
                 language=ch_lang,
                 director_notes=director_notes,
                 min_acceptable_score=8.2,
-                max_attempts=2,
+                max_attempts=3,
                 cooldown_entities=cooldown_ents,
                 channel_id=channel_id,
+                strict_block=True,
             )
             script = script_res[0] if isinstance(script_res, tuple) else script_res
         except Exception as e_script:
-            logger.error(f"[AutoPilot] Lỗi sinh kịch bản cho {channel_id}: {e_script}", exc_info=True)
-            return {"success": False, "error": f"Lỗi sinh kịch bản: {e_script}"}
+            logger.error(f"[AutoPilot] Lỗi/Chặn QA khi sinh kịch bản cho {channel_id}: {e_script}", exc_info=True)
+            return {"success": False, "error": f"Kịch bản bị chặn hoặc lỗi: {e_script}"}
 
-        # ── [FIX] Step 3.5: Quality Gate — Chấm điểm kịch bản, rewrite nếu điểm < 70 ──
-        try:
-            from app.services.quality_evaluator import QualityEvaluator
-            _qa = QualityEvaluator()
-            _max_rewrites = 2
-            for _rewrite_attempt in range(_max_rewrites + 1):
-                _script_dict = script.to_dict() if hasattr(script, "to_dict") else {"title": script.title, "scenes": [{"scene_id": i+1, "narration": s.narration} for i, s in enumerate(getattr(script, "scenes", []))]}
-                _qa_result = await asyncio.to_thread(
-                    _qa.evaluate_script, _script_dict, topic_str, ch_niche, ch_lang
+        # ── Step 3.5: Quality Gate — Hiệu chỉnh theo tỷ lệ vuốt bỏ thật & CHẶN CỨNG nếu không đạt ──
+        from app.services.quality_evaluator import QualityEvaluator
+        _qa = QualityEvaluator()
+        _max_rewrites = 2
+        _qa_passed = False
+        _qa_score = 0
+        _qa_result: Dict[str, Any] = {}
+        for _rewrite_attempt in range(_max_rewrites + 1):
+            _script_dict = script.to_dict() if hasattr(script, "to_dict") else {"title": script.title, "scenes": [{"scene_id": i+1, "narration": s.narration} for i, s in enumerate(getattr(script, "scenes", []))]}
+            _qa_result = await asyncio.to_thread(
+                _qa.evaluate_script, _script_dict, topic_str, ch_niche, ch_lang, channel_id
+            )
+            _qa_score = _qa_result.get("score", 0)
+            _qa_passed = bool(_qa_result.get("passed", False))
+            logger.info(
+                f"[AutoPilot #{channel_id}] 📊 Script QA Lần {_rewrite_attempt + 1}: "
+                f"Score={_qa_score}/100 (Hook={_qa_result.get('hook_score')}/{_qa_result.get('min_hook_required')}) | "
+                f"{'✅ ĐẠT' if _qa_passed else '❌ CHƯA ĐẠT'}"
+            )
+            if _qa_passed:
+                break
+            if _rewrite_attempt >= _max_rewrites:
+                raise RuntimeError(
+                    f"🚫 [HardBlock AutoPilot ScriptQA] Kịch bản kênh '{ch_name}' ({channel_id}) không đạt ngưỡng giữ chân "
+                    f"sau {_max_rewrites} lần viết lại (Score={_qa_score}/{_qa_result.get('min_score_required')}, "
+                    f"Hook={_qa_result.get('hook_score')}/{_qa_result.get('min_hook_required')}). "
+                    f"Đã chặn sản xuất để bảo vệ tỷ lệ ở lại xem của kênh!"
                 )
-                _qa_score = _qa_result.get("score", 80)
-                _qa_passed = _qa_result.get("passed", True)
-                logger.info(
-                    f"[AutoPilot #{channel_id}] 📊 Script QA Lần {_rewrite_attempt + 1}: "
-                    f"Score={_qa_score}/100 | {'✅ ĐẠT' if _qa_passed else '❌ CHƯA ĐẠT'}"
-                )
-                if _qa_passed or _rewrite_attempt >= _max_rewrites:
-                    if not _qa_passed:
-                        logger.warning(
-                            f"[AutoPilot #{channel_id}] Kịch bản vẫn chưa đạt sau {_max_rewrites} lần rewrite "
-                            f"(score={_qa_score}). Tiếp tục với kịch bản hiện tại."
-                        )
-                    break
-                # Rewrite script với feedback từ QA làm director notes bổ sung
-                _weaknesses = "; ".join(_qa_result.get("weaknesses", []))
-                _rewrite_notes = (
-                    f"{director_notes} "
-                    f"[Rewrite #{_rewrite_attempt + 1}] Kịch bản trước đạt {_qa_score}/100. "
-                    f"Cần cải thiện: {_weaknesses}. "
-                    f"Đảm bảo đủ 8-9 cảnh (88-118 từ), hook khẳng định 3s đầu sắc bén và kết thúc Seamless Loop không đọc CTA."
-                )
-                logger.info(f"[AutoPilot] 🔄 Tự động rewrite kịch bản lần {_rewrite_attempt + 1}...")
-                try:
-                    script = await asyncio.to_thread(
-                        agent.generate_script,
-                        topic=topic_str,
-                        channel_niche=ch_niche,
-                        language=ch_lang,
-                        director_notes=_rewrite_notes,
-                        cooldown_entities=cooldown_ents,
-                        channel_id=channel_id,
-                    )
-                except Exception as _rw_err:
-                    logger.warning(f"[AutoPilot] Lỗi rewrite kịch bản: {_rw_err}. Dùng kịch bản cũ.")
-                    break
-        except Exception as _qa_err:
-            logger.warning(f"[AutoPilot] QualityEvaluator gặp lỗi (không chặn pipeline): {_qa_err}")
+            _weaknesses = "; ".join(_qa_result.get("weaknesses", []))
+            _rewrite_notes = (
+                f"{director_notes} "
+                f"[Rewrite #{_rewrite_attempt + 1}] Kịch bản trước đạt {_qa_score}/100 (Hook={_qa_result.get('hook_score')}). "
+                f"BẮT BUỘC KHẮC PHỤC: {_weaknesses}. "
+                f"Áp dụng công thức pt-BR / Wild Odyssey: đối đầu 'A vs B' + câu khẳng định gây sốc 5-8 từ có số liệu vật lý ngay Cảnh 1."
+            )
+            logger.info(f"[AutoPilot] 🔄 Tự động rewrite kịch bản lần {_rewrite_attempt + 1}...")
+            script = await asyncio.to_thread(
+                agent.generate_script,
+                topic=topic_str,
+                channel_niche=ch_niche,
+                language=ch_lang,
+                director_notes=_rewrite_notes,
+                cooldown_entities=cooldown_ents,
+                channel_id=channel_id,
+            )
 
         # Đảm bảo tiêu đề độc bản 100% và có bình luận mồi chuẩn
         try:
@@ -381,6 +400,16 @@ async def run_autopilot_pipeline_for_channel(
             except Exception:
                 pass
 
+        # Trích xuất hook_text từ Cảnh 1 để lưu vào DB phục vụ đối chiếu Winner/Loser hàng tuần
+        scene_1_hook_text = ""
+        try:
+            if getattr(script, "scenes", None) and len(script.scenes) > 0:
+                scene_1_hook_text = getattr(script.scenes[0], "narration", "") or ""
+            if not scene_1_hook_text:
+                scene_1_hook_text = getattr(script, "hook", "") or ""
+        except Exception:
+            pass
+
         # ── Step 4: Tạo VideoJob trong Database ──
         with get_db() as db:
             job = VideoJob(
@@ -389,6 +418,7 @@ async def run_autopilot_pipeline_for_channel(
                 topic=topic_str,
                 title=script.title or title_str,
                 script=script.full_narration,
+                hook_text=scene_1_hook_text[:500] if scene_1_hook_text else None,
                 description=script.description,
                 tags=",".join(script.tags),
                 scenes_json=script.to_json_str(),
@@ -447,12 +477,31 @@ async def run_autopilot_pipeline_for_channel(
         if not video_path or not Path(video_path).exists():
             raise RuntimeError(f"Render pipeline kết thúc nhưng không tìm thấy file video tại: {video_path}")
 
+        # ── Step 5.5: Kiểm định cứng VideoQA trước khi đăng lên YouTube (Hard-Block nếu không đạt) ──
+        vid_eval = await asyncio.to_thread(
+            _qa.evaluate_video,
+            video_path,
+            getattr(render_job, "total_audio_duration_ms", 0) or 0,
+        )
+        if not vid_eval.get("passed", False):
+            with get_db() as db_fail:
+                j_fail = db_fail.query(VideoJob).filter(VideoJob.id == job_id).first()
+                if j_fail:
+                    j_fail.status = "FAILED"
+                    j_fail.error_message = f"HardBlock VideoQA ({vid_eval.get('score')}/100): {'; '.join(vid_eval.get('issues', []))}"
+            raise RuntimeError(
+                f"🚫 [HardBlock VideoQA] Video #{job_id} không đạt chuẩn kỹ thuật/độ nét "
+                f"(Score={vid_eval.get('score')}/100): {'; '.join(vid_eval.get('issues', []))}. Đã chặn đăng tải!"
+            )
+
         # Đọc lại dữ liệu mới nhất của Job từ DB (sau khi LangGraph có thể đã tinh chỉnh kịch bản/tiêu đề)
         latest_title = script.title or initial_job_title
         latest_desc = script.description or ""
         latest_tags = list(script.tags) if script.tags else []
         latest_topic = topic_str
         latest_scenes_json = script.to_json_str()
+        latest_hook_text = scene_1_hook_text
+        latest_voice_engine = None
         with get_db() as db_read:
             j_latest = db_read.query(VideoJob).filter(VideoJob.id == job_id).first()
             if j_latest:
@@ -462,6 +511,8 @@ async def run_autopilot_pipeline_for_channel(
                     latest_tags = [t.strip() for t in j_latest.tags.split(",") if t.strip()]
                 latest_topic = j_latest.topic or latest_topic
                 latest_scenes_json = j_latest.scenes_json or latest_scenes_json
+                latest_hook_text = j_latest.hook_text or latest_hook_text
+                latest_voice_engine = j_latest.voice_engine
 
         # ── Step 6: Lên lịch phát sóng tự động lên YouTube Shorts (status.publishAt) ──
         logger.info(f"[AutoPilot #{job_id}] 📤 Đang lên lịch công chiếu lên YouTube Shorts vào {display_vn}...")
@@ -717,16 +768,231 @@ async def run_autopilot_for_all_empty(user_id: int = 0, notify_telegram: bool = 
         _release_channel_autopilot("__ALL_EMPTY__")
 
 
+MIN_SCHEDULED_QUEUE_PER_CHANNEL = 3
+
+
+def auto_publish_rendered_jobs(notify_telegram: bool = True) -> List[Dict[str, Any]]:
+    """
+    Tự động đăng/lên lịch tất cả các video đã dựng xong (`RENDERED` hoặc `WAITING_QUOTA_RESET`)
+    mà chưa được đẩy lên YouTube (`youtube_video_id IS NULL`).
+    Kiểm định cứng VideoQA trước khi upload; nếu đạt thì gán khe giờ vàng tiếp theo của kênh và upload.
+    """
+    from app.services.channel_manager import get_channel
+    from app.services.quality_evaluator import QualityEvaluator
+    from app.agents.publisher_agent import PublisherAgent
+
+    qa = QualityEvaluator()
+    published_results: List[Dict[str, Any]] = []
+
+    with get_db() as db:
+        pending_rendered = (
+            db.query(VideoJob)
+            .filter(
+                VideoJob.status.in_(["RENDERED", "WAITING_QUOTA_RESET"]),
+                VideoJob.video_path.isnot(None),
+                VideoJob.youtube_video_id.is_(None),
+            )
+            .order_by(VideoJob.id.asc())
+            .all()
+        )
+        candidate_ids = [j.id for j in pending_rendered]
+
+    for jid in candidate_ids:
+        try:
+            with get_db() as db:
+                job = db.query(VideoJob).filter(VideoJob.id == jid).first()
+                if not job or not job.video_path or not Path(job.video_path).exists():
+                    continue
+                v_path = job.video_path
+                ch_id = job.target_channel_id or "ch_the_mysteries_of_the_world"
+                title = job.title or job.topic or f"Shorts #{job.id}"
+                desc = job.description or ""
+                tags = [t.strip() for t in (job.tags or "").split(",") if t.strip()]
+                topic = job.topic or ""
+                scenes_json = job.scenes_json or ""
+                audio_dur_ms = job.audio_duration_ms or 0
+
+            # 1. Kiểm định VideoQA (Chặn cứng nếu lỗi)
+            vid_qa = qa.evaluate_video(v_path, expected_duration_ms=audio_dur_ms)
+            if not vid_qa.get("passed", False):
+                with get_db() as db_f:
+                    jf = db_f.query(VideoJob).filter(VideoJob.id == jid).first()
+                    if jf:
+                        jf.status = "FAILED"
+                        jf.error_message = f"HardBlock VideoQA ({vid_qa.get('score')}/100): {'; '.join(vid_qa.get('issues', []))}"
+                logger.warning(f"[AutoPublishRendered] 🚫 Chặn cứng Job #{jid} vì không đạt VideoQA ({vid_qa.get('score')}/100)")
+                continue
+
+            # 2. Lấy cấu hình kênh và khe giờ vàng tiếp theo
+            ch_cfg = get_channel(ch_id) or {}
+            if not ch_cfg:
+                channels = settings.get_channels_config()
+                ch_cfg = next((c for c in channels if c.get("id") == ch_id), {})
+            ch_name = ch_cfg.get("name", ch_id)
+            ch_lang = ch_cfg.get("language", "en")
+
+            slot_dt, slot_iso, display_vn, display_us = get_next_available_golden_slot(ch_id)
+
+            pinned_comment = None
+            try:
+                s_dict = json.loads(scenes_json) if scenes_json else {}
+                if isinstance(s_dict, dict):
+                    pinned_comment = s_dict.get("pinned_comment")
+            except Exception:
+                pass
+
+            pub_agent = PublisherAgent(channel_config=ch_cfg)
+            pub_res = pub_agent.upload_video(
+                video_path=v_path,
+                title=title,
+                description=desc,
+                tags=tags,
+                privacy_status="private",
+                schedule_time_iso=slot_iso,
+                default_language=ch_lang,
+                default_audio_language=ch_lang,
+                pinned_comment=pinned_comment,
+                topic=topic,
+                script=scenes_json,
+            )
+
+            yt_id = pub_res.get("video_id")
+            yt_url = pub_res.get("shorts_url") or (f"https://www.youtube.com/shorts/{yt_id}" if yt_id else None)
+
+            with get_db() as db_u:
+                ju = db_u.query(VideoJob).filter(VideoJob.id == jid).first()
+                if ju:
+                    if pub_res.get("status") == "success":
+                        ju.status = "SCHEDULED"
+                        ju.scheduled_time = slot_dt
+                        ju.youtube_video_id = yt_id
+                        ju.progress_percent = 100
+                        ju.progress_message = f"Đã tự động lên lịch phát sóng vào {display_vn}!"
+                        published_results.append({
+                            "job_id": jid,
+                            "channel_id": ch_id,
+                            "channel_name": ch_name,
+                            "title": title,
+                            "scheduled_time_vn": display_vn,
+                            "youtube_video_id": yt_id,
+                            "shorts_url": yt_url,
+                        })
+                        if notify_telegram:
+                            from app.services.channel_intelligence import send_telegram_broadcast
+                            send_telegram_broadcast(
+                                f"📤 **TỰ ĐỘNG ĐĂNG VIDEO ĐÃ DỰNG XONG (#{jid})**\n\n"
+                                f"📺 **Kênh:** `{ch_name}` (`{ch_id}`)\n"
+                                f"🎬 **Tiêu đề:** *{title}*\n"
+                                f"⏰ **Lịch công chiếu:** `{display_vn}`\n"
+                                f"🔗 **Link Shorts:** {yt_url or 'Đã khóa lịch'}"
+                            )
+                    elif pub_res.get("status") == "waiting_quota_reset":
+                        ju.status = "WAITING_QUOTA_RESET"
+                        break
+        except Exception as ex_pub:
+            logger.warning(f"[AutoPublishRendered] Lỗi khi tự động đăng Job #{jid}: {ex_pub}")
+
+    return published_results
+
+
+async def ensure_minimum_channel_queue(
+    min_queue: int = MIN_SCHEDULED_QUEUE_PER_CHANNEL,
+    notify_telegram: bool = True,
+    auto_produce: bool = True,
+    user_id: int = 0,
+) -> Dict[str, Any]:
+    """
+    Tự động hóa thật sự:
+    1. Tự đăng ngay các video đã dựng xong (`RENDERED`) vào lịch.
+    2. Kiểm tra hàng đợi `SCHEDULED` của từng kênh.
+    3. Báo Telegram ngay khi phát hiện một kênh bị TRỐNG LỊCH (`scheduled_queue_count == 0`).
+    4. Bảo đảm mỗi kênh luôn có ít nhất `min_queue` (mặc định = 3) video trong lịch đăng (`SCHEDULED`).
+    """
+    # Bước 1: Tự động đăng các video đã dựng xong (RENDERED)
+    published_rendered = await asyncio.to_thread(auto_publish_rendered_jobs, notify_telegram)
+
+    # Bước 2: Rà soát hàng đợi lịch đăng của tất cả các kênh
+    summary = get_channel_today_summary()
+    channels_list = summary.get("channels", [])
+    allowed_cids = settings.get_autopilot_enabled_channels()
+    if allowed_cids:
+        channels_list = [c for c in channels_list if c["channel_id"] in allowed_cids]
+
+    # Bước 3: Báo Telegram ngay khi phát hiện kênh trống lịch (0 video trong lịch đăng)
+    empty_schedule_channels = [c for c in channels_list if int(c.get("scheduled_queue_count", 0)) == 0]
+    if empty_schedule_channels and notify_telegram:
+        state = _load_watchdog_state()
+        empty_alerts = state.get("empty_schedule_alerts", {})
+        now_ts = datetime.now(timezone.utc).timestamp()
+        newly_empty = []
+        for ch in empty_schedule_channels:
+            cid = ch["channel_id"]
+            last_alert_ts = float(empty_alerts.get(cid, 0.0))
+            if now_ts - last_alert_ts >= 6 * 3600:
+                newly_empty.append(ch)
+                empty_alerts[cid] = now_ts
+
+        if newly_empty:
+            state["empty_schedule_alerts"] = empty_alerts
+            _save_watchdog_state(state)
+            from app.services.channel_intelligence import send_telegram_broadcast
+            lines = [
+                f"• 🔴 **{c['channel_name']}** (`{c['channel_id']}`) — **0 video trong lịch** (Khe tiếp theo: `{c.get('next_golden_slot', {}).get('display_vn', '')}`)"
+                for c in newly_empty
+            ]
+            send_telegram_broadcast(
+                f"🚨 **CẢNH BÁO KÊNH TRỐNG LỊCH ĐĂNG (0 VIDEO TRONG HÀNG ĐỢI)!**\n\n"
+                + "\n".join(lines)
+                + f"\n\n🤖 *Hệ thống đang tự động kích hoạt sản xuất để lấp đầy tối thiểu {min_queue} video/kênh trong lịch đăng!*"
+            )
+
+    # Bước 4: Lập kế hoạch sản xuất bù cho các kênh có scheduled_queue_count < min_queue (3 video)
+    deficit_plan: List[Tuple[str, str, int]] = []
+    for target_level in range(1, min_queue + 1):
+        for ch in channels_list:
+            q_count = int(ch.get("scheduled_queue_count", 0))
+            if q_count < target_level:
+                deficit_plan.append((ch["channel_id"], ch["channel_name"], target_level))
+
+    produced_results = []
+    if auto_produce and deficit_plan:
+        if _try_acquire_channel_autopilot("__QUEUE_GUARD__"):
+            try:
+                for cid, cname, slot_num in deficit_plan:
+                    logger.info(
+                        f"🛡️ [QueueGuard min={min_queue}] Đang sản xuất video lấp hàng đợi #{slot_num}/{min_queue} cho kênh '{cname}' ({cid})..."
+                    )
+                    res = await run_autopilot_pipeline_for_channel(
+                        channel_id=cid,
+                        user_id=user_id,
+                        notify_telegram=notify_telegram,
+                    )
+                    produced_results.append(res)
+                    await asyncio.sleep(2)
+            finally:
+                _release_channel_autopilot("__QUEUE_GUARD__")
+
+    return {
+        "success": True,
+        "min_queue_target": min_queue,
+        "auto_published_rendered_count": len(published_rendered),
+        "empty_schedule_channels": [c["channel_id"] for c in empty_schedule_channels],
+        "deficit_tasks_count": len(deficit_plan),
+        "produced_count": len(produced_results),
+        "produced_results": produced_results,
+    }
+
+
 async def run_autopilot_target_per_channel(
-    target_videos_per_channel: int = 2,
+    target_videos_per_channel: int = MIN_SCHEDULED_QUEUE_PER_CHANNEL,
     channel_ids: Optional[List[str]] = None,
     user_id: int = 0,
     notify_telegram: bool = True,
 ) -> Dict[str, Any]:
     """
-    Rà soát toàn bộ các kênh và tự động sản xuất + đặt lịch khung giờ vàng
-    để mỗi kênh đạt đủ `target_videos_per_channel` (mặc định 2 video/kênh/ngày).
-    Ưu tiên lấp đầy video thứ 1 cho các kênh đang 0 video trước, sau đó lấp đầy video thứ 2 cho toàn bộ các kênh.
+    Rà soát toàn bộ các kênh:
+    1. Tự đăng các video đã dựng xong (`RENDERED`).
+    2. Tự động sản xuất + đặt lịch khung giờ vàng để mỗi kênh có ít nhất `target_videos_per_channel` (mặc định 3 video) trong lịch đăng (`SCHEDULED`).
     """
     if not _try_acquire_channel_autopilot("__TARGET_BATCH__"):
         return {
@@ -737,29 +1003,30 @@ async def run_autopilot_target_per_channel(
         }
 
     try:
+        await asyncio.to_thread(auto_publish_rendered_jobs, notify_telegram)
         summary = get_channel_today_summary()
         channels_list = summary.get("channels", [])
         if channel_ids:
             channels_list = [c for c in channels_list if c["channel_id"] in channel_ids]
 
-        # Xây dựng hàng đợi theo từng vòng (Round 1: kênh có 0 video -> 1 video; Round 2: kênh có 1 video -> 2 video)
+        # Xây dựng hàng đợi theo từng vòng để mỗi kênh có ít nhất target_videos_per_channel (3) video trong lịch SCHEDULED
         production_plan: List[Tuple[str, str, int]] = []
         for round_idx in range(1, target_videos_per_channel + 1):
             for ch in channels_list:
-                curr_count = int(ch.get("today_video_count", 0))
-                if curr_count < round_idx:
+                curr_q = int(ch.get("scheduled_queue_count", 0))
+                if curr_q < round_idx:
                     production_plan.append((ch["channel_id"], ch["channel_name"], round_idx))
 
         if not production_plan:
             return {
                 "success": True,
-                "message": f"Tất cả kênh đã đủ {target_videos_per_channel} video/ngày hôm nay!",
+                "message": f"Tất cả kênh đã có đủ >= {target_videos_per_channel} video trong lịch đăng!",
                 "processed_count": 0,
                 "results": [],
             }
 
         logger.info(
-            f"🔥 [AutoPilot Target={target_videos_per_channel}/kênh] "
+            f"🔥 [AutoPilot Target={target_videos_per_channel} scheduled/kênh] "
             f"Bắt đầu sản xuất tổng cộng {len(production_plan)} video cho {len(channels_list)} kênh..."
         )
 
@@ -767,16 +1034,16 @@ async def run_autopilot_target_per_channel(
             from app.services.channel_intelligence import send_telegram_broadcast
             plan_desc = ", ".join([f"`{name}` (#{r_idx})" for _, name, r_idx in production_plan])
             send_telegram_broadcast(
-                f"🚀 **KÍCH HOẠT CHIẾN DỊCH BỨT PHÁ VIEW ({target_videos_per_channel} VIDEO / KÊNH)!**\n\n"
-                f"📋 **Tổng số video cần sản xuất & lên lịch hôm nay:** `{len(production_plan)} video`\n"
+                f"🚀 **KÍCH HOẠT TỰ ĐỘNG DUY TRÌ HÀNG ĐỢI (>= {target_videos_per_channel} VIDEO / KÊNH)!**\n\n"
+                f"📋 **Tổng số video cần sản xuất & lên lịch:** `{len(production_plan)} video`\n"
                 f"🎯 **Thứ tự ưu tiên:** {plan_desc}\n"
-                f"🤖 *Hệ thống đang tổng hợp chủ đề Winner Cloner, viết kịch bản 5-Act 32-42s qua ScriptCritic, dựng 1080p và khóa lịch Giờ Vàng...*"
+                f"🤖 *Hệ thống đang lấy Top 3 Thắng / 3 Thua của từng kênh, chấm điểm Hook theo tỷ lệ vuốt bỏ thật, dựng 1080p và khóa lịch Giờ Vàng...*"
             )
 
         results = []
         for idx, (cid, cname, round_idx) in enumerate(production_plan, start=1):
             logger.info(
-                f"🎬 [{idx}/{len(production_plan)}] Đang sản xuất video thứ #{round_idx} trong ngày cho kênh '{cname}' ({cid})..."
+                f"🎬 [{idx}/{len(production_plan)}] Đang sản xuất video hàng đợi #{round_idx}/{target_videos_per_channel} cho kênh '{cname}' ({cid})..."
             )
             res = await run_autopilot_pipeline_for_channel(
                 channel_id=cid,

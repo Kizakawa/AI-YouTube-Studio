@@ -174,45 +174,21 @@ WEEKDAY_VN_MAP = {
 def resolve_channel_family(channel_id: str) -> List[str]:
     """
     Tìm tất cả các ID và alias liên quan đến kênh này để chống trùng lịch chéo.
-    Bao gồm: ID nội bộ, youtube_channel_id (UC...), handle (@...), và tên kênh.
+    Đảm bảo phần tử đầu tiên trong danh sách trả về luôn là Canonical Channel ID chuẩn.
     """
     if not channel_id:
-        return ["default"]
+        return ["ch_psychology_of_the_world"]
 
-    canonical_map = {
-        "channel_psychology": "channel_maya",
-        "channel_maya": "channel_maya",
-        "uc1_lvpilxq-j4sfrqozfrkw": "channel_maya",
-        "uc1lvpilxq-j4sfrqozfrkw": "channel_maya",
-        "@vv1n-oe9gs": "channel_maya",
-        "ucsrjiil67qxidtxt70z-iwa": "ucsrjiil67qxidtxt70z-iwa",
-        "ucsjll67qxidtxt70z-iwa": "ucsrjiil67qxidtxt70z-iwa",
-        "ch_the_mysteries_of_the_world": "ucsrjiil67qxidtxt70z-iwa",
-        "@themysteriesoftheworld-f3w": "ucsrjiil67qxidtxt70z-iwa",
-        "ucsjriil67qxidtxt70z-iwa": "ucsrjiil67qxidtxt70z-iwa",
-        "ch_paws_hearts_rescue": "ch_paws_hearts_rescue",
-        "ucv-2dyuqkx1u0cjqdmzdhta": "ch_paws_hearts_rescue",
-        "@pawsandheartsrescue": "ch_paws_hearts_rescue",
-        "ch_wild_odyssey": "ch_wild_odyssey",
-        "uclsjhbvjjxi-j16vzxxs68a": "ch_wild_odyssey",
-        "@wildodysseyhq": "ch_wild_odyssey",
-        "ch_odisseia_selvagem": "ch_odisseia_selvagem",
-        "ucpbqs4h5qugpu3hcqjg-p9w": "ch_odisseia_selvagem",
-        "@odisseiaselvagemoficial": "ch_odisseia_selvagem",
-        "ch_misterios_do_mundo": "ch_misterios_do_mundo",
-        "ucvfonq9jcpvvze8e1cgng": "ch_misterios_do_mundo",
-        "@misteriosdomundo-tv": "ch_misterios_do_mundo",
-        "@alternatehistorywhatif-e2x": "@alternatehistorywhatif-e2x",
-    }
+    from app.database.models import CANONICAL_CHANNEL_MAP, normalize_channel_id
 
     cid_clean = channel_id.strip()
     cid_lower = cid_clean.lower()
+    canon_id = normalize_channel_id(cid_clean)
 
-    family = {cid_clean, cid_lower}
-    if cid_lower in canonical_map:
-        canon = canonical_map[cid_lower]
-        family.add(canon)
-        family.add(canon.lower())
+    family = {cid_clean, cid_lower, canon_id, canon_id.lower()}
+    for alias_k, mapped_canon in CANONICAL_CHANNEL_MAP.items():
+        if mapped_canon == canon_id:
+            family.add(alias_k)
 
     try:
         from config.settings import settings
@@ -232,7 +208,9 @@ def resolve_channel_family(channel_id: str) -> List[str]:
     except Exception:
         pass
 
-    return list(family)
+    ordered = [canon_id] + [f for f in family if f != canon_id]
+    return ordered
+
 
 
 

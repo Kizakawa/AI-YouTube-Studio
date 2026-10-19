@@ -771,38 +771,67 @@ def suggest_channel_topics(
     winner_blueprint = get_winner_cloner_blueprint(channel_id, niche_id=niche_id, portfolio=portfolio)
     winner_cloner_prompt = winner_blueprint.get("prompt_directive") or ""
 
-    # Xây dựng dữ liệu Top Performers làm hình mẫu lan toả
+    # Tự động nạp 3 video thắng (Top 3 Winners) và 3 video thua (Bottom 3 Losers) kèm tỷ lệ xem hết / ở lại / vuốt bỏ thật từ DB
+    db_wl_winners: List[Dict[str, Any]] = []
+    db_wl_losers: List[Dict[str, Any]] = []
+    try:
+        from app.services.video_library import get_weekly_winners_and_losers
+        wl_data = get_weekly_winners_and_losers(channel_id=channel_id, top_k=3)
+        db_wl_winners = wl_data.get("winners") or []
+        db_wl_losers = wl_data.get("losers") or []
+    except Exception as _wl_err:
+        logger.debug(f"[TopicSuggester] Không thể tải weekly winners/losers từ DB: {_wl_err}")
+
+    # Xây dựng dữ liệu Top 3 Winners từ DB (hoặc fallback portfolio)
     top_performer_prompt = ""
-    if top_performers:
+    if db_wl_winners or top_performers:
         top_lines = []
-        for p in top_performers[:3]:
-            v_txt = p.get("views_text") or (str(p.get("views_num", 0)) + " views")
-            top_lines.append(f"- \"{p['title']}\" ({v_txt})")
+        if db_wl_winners:
+            for idx_w, w in enumerate(db_wl_winners[:3], start=1):
+                hk = f" | Hook: \"{w['hook_text'][:110]}\"" if w.get("hook_text") else ""
+                top_lines.append(
+                    f"  #{idx_w}. \"{w['title']}\" — {w.get('views', 0):,} views | "
+                    f"Stayed: {w.get('stayed_to_watch_pct')}% | Swipe-Away: {w.get('swipe_away_pct')}% | "
+                    f"Completion (APV): {w.get('avg_view_percentage')}%{hk}"
+                )
+        else:
+            for p in top_performers[:3]:
+                v_txt = p.get("views_text") or (str(p.get("views_num", 0)) + " views")
+                top_lines.append(f"- \"{p['title']}\" ({v_txt})")
         top_performer_prompt = f"""
-🏆 PROVEN HIGH-RETENTION BREAKTHROUGH VIDEOS ON THIS CHANNEL:
+🏆 WEEKLY TOP 3 WINNING VIDEOS ON THIS CHANNEL (REAL DB RETENTION METRICS):
 {chr(10).join(top_lines)}
-Winning Mechanism: High-curiosity primal trigger, instant pattern interrupt, urgent psychological or existential stakes.
-Your new ideas MUST inherit this winning emotional DNA without copying the same subject!
+Winning Formula (Proven on pt-BR & Wild Odyssey -> MANDATORY FOR ALL EN & PT-BR CHANNELS):
+  1. "A vs B" Asymmetric Confrontation Structure (Entity A vs Entity B / Instinct vs Reality / Hidden Mechanism vs Victim).
+  2. 5-8 Word Shocking Declarative Statement with a hard physical number/measurement in the first 3 seconds (NO passive Yes/No questions).
 {winner_cloner_prompt}
 """
     elif winner_cloner_prompt:
         top_performer_prompt = f"\n{winner_cloner_prompt}\n"
 
-    # Xây dựng dữ liệu Flop Videos và các cạm bẫy cần tránh
+    # Xây dựng dữ liệu Bottom 3 Losers từ DB (hoặc fallback flop_videos)
     flop_prompt = ""
-    if flop_videos:
+    if db_wl_losers or flop_videos:
         flop_lines = []
-        for p in flop_videos[:4]:
-            v_txt = p.get("views_text") or (str(p.get("views_num", 0)) + " views")
-            flop_lines.append(f"- \"{p['title']}\" ({v_txt})")
+        if db_wl_losers:
+            for idx_l, l in enumerate(db_wl_losers[:3], start=1):
+                hk = f" | Failed Hook: \"{l['hook_text'][:110]}\"" if l.get("hook_text") else ""
+                flop_lines.append(
+                    f"  #{idx_l}. \"{l['title']}\" — {l.get('views', 0):,} views | "
+                    f"Stayed: {l.get('stayed_to_watch_pct')}% | Swipe-Away: {l.get('swipe_away_pct')}% | "
+                    f"Completion (APV): {l.get('avg_view_percentage')}%{hk}"
+                )
+        else:
+            for p in flop_videos[:3]:
+                v_txt = p.get("views_text") or (str(p.get("views_num", 0)) + " views")
+                flop_lines.append(f"- \"{p['title']}\" ({v_txt})")
         flop_prompt = f"""
-⚠️ UNDERPERFORMING / FLOP VIDEOS ON THIS CHANNEL (CRITICAL TRAPS TO AVOID):
+⚠️ WEEKLY BOTTOM 3 LOSING VIDEOS ON THIS CHANNEL (HIGH SWIPE-AWAY TRAPS TO AVOID):
 {chr(10).join(flop_lines)}
 Core Weaknesses Identified:
-1. Topic fatigue: Do NOT repeat the exact same sub-topic or keyword consecutively (e.g., avoid repetitive deep sea ocean lists).
-2. Passive / philosophical / low-urgency openings lacking a 3-second pattern interrupt.
-3. Niche mismatch: Stay 100% faithful to '{niche_id}', never confuse YouTube's recommendation algorithm with off-niche topics.
-Mandate: Each new idea MUST actively solve these weaknesses!
+1. High swipe-away rate caused by slow textbook openings or generic questions instead of an "A vs B" confrontation or shocking claim.
+2. Topic fatigue: Do NOT repeat the exact same sub-topic or keyword consecutively.
+3. Niche mismatch: Stay 100% faithful to '{niche_id}'.
 """
 
     global_trends_prompt = _get_global_trends_directive(niche_id)
@@ -1781,9 +1810,10 @@ def process_fallback_publishing() -> List[Dict[str, Any]]:
 
 class ChannelIntelligenceWorker:
     """Worker chạy ngầm định kỳ (mỗi 30 phút):
-    - Kiểm tra fallback publish cho các video hết hạn duyệt.
-    - Kiểm tra KPI sức khỏe các kênh.
-    - Tự động kích hoạt sản xuất video cho các kênh trễ deadline >= 2 ngày.
+    - Đồng bộ dữ liệu thật (avg_view_percentage, stayed_to_watch_pct, swipe_away_pct) vào DB.
+    - Tự động đăng các video đã dựng xong (`RENDERED`).
+    - Báo Telegram ngay khi phát hiện kênh trống lịch (0 video) & bảo đảm mỗi kênh luôn có >= 3 video trong lịch đăng.
+    - Kiểm tra fallback publish và KPI sức khỏe các kênh.
     """
     _instance = None
     _thread = None
@@ -1799,11 +1829,33 @@ class ChannelIntelligenceWorker:
             logger.info(f"🚀 [ChannelIntelligence] Background Worker đã khởi động (chu kỳ kiểm tra: {check_interval_minutes} phút)!")
             while cls._running:
                 try:
+                    # 0. Đồng bộ số liệu retention thật (tỷ lệ xem hết, ở lại xem, vuốt bỏ) vào DB
+                    try:
+                        from app.services.video_library import backfill_from_jobs
+                        backfill_from_jobs()
+                    except Exception as ex_bf:
+                        logger.debug(f"[ChannelIntelligence] Đồng bộ retention metrics định kỳ warning: {ex_bf}")
+
                     # 1. Xử lý đăng tạm cho các video hết hạn duyệt (nếu người dùng bật)
                     if getattr(settings, "ENABLE_FALLBACK_AUTO_PUBLISH", False):
                         process_fallback_publishing()
 
-                    # 2. Quét KPI toàn mạng lưới kênh
+                    # 2. Tự động đăng các video đã dựng xong (RENDERED), báo Telegram nếu kênh trống lịch,
+                    # và duy trì tối thiểu 3 video trong lịch đăng cho mỗi kênh
+                    try:
+                        from app.services.autopilot_service import ensure_minimum_channel_queue
+                        auto_prod_enabled = bool(getattr(settings, "ENABLE_OVERDUE_AUTO_PRODUCTION", True))
+                        asyncio.run(
+                            ensure_minimum_channel_queue(
+                                min_queue=3,
+                                notify_telegram=True,
+                                auto_produce=auto_prod_enabled,
+                            )
+                        )
+                    except Exception as ex_q:
+                        logger.warning(f"[ChannelIntelligence] Lỗi kiểm tra hàng đợi 3 video/kênh: {ex_q}")
+
+                    # 3. Quét KPI toàn mạng lưới kênh
                     audit = run_network_kpi_audit()
                     overdue_channels = [c for c in audit.get("channels", []) if c.get("kpi_status") == "OVERDUE_CRITICAL"]
 
@@ -1811,7 +1863,6 @@ class ChannelIntelligenceWorker:
                         for ch in overdue_channels:
                             cid = ch["channel_id"]
                             try:
-                                # Nếu kênh chưa có job đang chạy, tự động kích hoạt
                                 if not ch.get("pending_job"):
                                     logger.info(f"[ChannelIntelligence] Phát hiện kênh '{cid}' trễ deadline 2 ngày! Tự động sản xuất video cứu nguy...")
                                     trigger_auto_generation_for_overdue_channel(cid)
@@ -1821,11 +1872,9 @@ class ChannelIntelligenceWorker:
                         if overdue_channels:
                             logger.info(f"[ChannelIntelligence] Có {len(overdue_channels)} kênh trễ hạn nhưng ENABLE_OVERDUE_AUTO_PRODUCTION đang tắt (False). Không tự sinh video.")
 
-
                 except Exception as ex:
                     logger.error(f"[ChannelIntelligence] Lỗi chu kỳ worker: {ex}")
 
-                # Chờ đến chu kỳ tiếp theo
                 import time
                 for _ in range(check_interval_minutes * 6):
                     if not cls._running:

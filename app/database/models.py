@@ -1,16 +1,105 @@
 import hashlib
 import logging
+import os
+import sys
 from pathlib import Path
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, BigInteger, String, Text, DateTime, ForeignKey, event, text
+from sqlalchemy import create_engine, Column, Integer, BigInteger, Float, String, Text, DateTime, ForeignKey, event, text
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from contextlib import contextmanager
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
+# Bảng ánh xạ chuẩn hóa 100% mã kênh di sản / alias / YouTube UC ID / Handle về 7 mã kênh chính thức (Canonical IDs)
+CANONICAL_CHANNEL_MAP = {
+    # 1. Psychology of the World (EN)
+    "ch_psychology_of_the_world": "ch_psychology_of_the_world",
+    "channel_maya": "ch_psychology_of_the_world",
+    "ch_maya": "ch_psychology_of_the_world",
+    "channel_psychology": "ch_psychology_of_the_world",
+    "uc1_lvpilxq-j4sfrqozfrkw": "ch_psychology_of_the_world",
+    "uc1lvpilxq-j4sfrqozfrkw": "ch_psychology_of_the_world",
+    "@vv1n-oe9gs": "ch_psychology_of_the_world",
+    # 2. The Mysteries of the World (EN)
+    "ch_the_mysteries_of_the_world": "ch_the_mysteries_of_the_world",
+    "ucsrjiil67qxidtxt70z-iwa": "ch_the_mysteries_of_the_world",
+    "ucsjll67qxidtxt70z-iwa": "ch_the_mysteries_of_the_world",
+    "ucsjriil67qxidtxt70z-iwa": "ch_the_mysteries_of_the_world",
+    "@themysteriesoftheworld-f3w": "ch_the_mysteries_of_the_world",
+    "channel_1": "ch_the_mysteries_of_the_world",
+    # 3. Paws & Hearts Rescue (EN)
+    "ch_paws_hearts_rescue": "ch_paws_hearts_rescue",
+    "ucv-2dyuqkx1u0cjqdmzdhta": "ch_paws_hearts_rescue",
+    "@pawsandheartsrescue": "ch_paws_hearts_rescue",
+    # 4. Wild Odyssey (EN)
+    "ch_wild_odyssey": "ch_wild_odyssey",
+    "channel_wildlife": "ch_wild_odyssey",
+    "uclsjhbvjjxi-j16vzxxs68a": "ch_wild_odyssey",
+    "@wildodysseyhq": "ch_wild_odyssey",
+    # 5. Alternate History & "What If?" (EN)
+    "@alternatehistorywhatif-e2x": "@alternatehistorywhatif-e2x",
+    "ch_alternate_history": "@alternatehistorywhatif-e2x",
+    "channel_history": "@alternatehistorywhatif-e2x",
+    # 6. Odisseia Selvagem (pt-BR)
+    "ch_odisseia_selvagem": "ch_odisseia_selvagem",
+    "ucpbqs4h5qugpu3hcqjg-p9w": "ch_odisseia_selvagem",
+    "@odisseiaselvagemoficial": "ch_odisseia_selvagem",
+    # 7. Mistérios do Mundo (pt-BR)
+    "ch_misterios_do_mundo": "ch_misterios_do_mundo",
+    "ucvfonq9jcpvvze8e1cgng": "ch_misterios_do_mundo",
+    "ucvfonq9jcpvvze8e1cgnng": "ch_misterios_do_mundo",
+    "@misteriosdomundo-tv": "ch_misterios_do_mundo",
+}
+
+
+def normalize_channel_id(channel_id: str) -> str:
+    """Chuẩn hóa mọi biến thể mã kênh (alias, handle, UC ID, legacy ID) về đúng Canonical Channel ID."""
+    if not channel_id:
+        return "ch_psychology_of_the_world"
+    raw = str(channel_id).strip()
+    low = raw.lower()
+    if low in CANONICAL_CHANNEL_MAP:
+        return CANONICAL_CHANNEL_MAP[low]
+    try:
+        for ch in settings.get_channels_config():
+            cid = ch.get("id", "")
+            for field in (cid, ch.get("youtube_channel_id", ""), ch.get("handle", ""), ch.get("name", "")):
+                if field and field.strip().lower() == low:
+                    return cid
+    except Exception:
+        pass
+    return raw
+
+
+def is_test_environment() -> bool:
+    """
+    Kiểm tra xem tiến trình hiện tại có đang chạy trong môi trường Test hay không.
+    Tự động tách biệt hoàn toàn Test ra khỏi DB thật (PostgreSQL / ai_youtube.db)
+    để không bao giờ sinh job rác trong DB sản xuất.
+    """
+    if os.getenv("YOUTUBE_ALLOW_PROD_DB", "").strip().lower() in ("1", "true", "yes"):
+        return False
+    if os.getenv("YOUTUBE_TEST_MODE", "").strip().lower() in ("1", "true", "yes"):
+        return True
+    if "pytest" in sys.modules or "unittest" in sys.modules:
+        return True
+    try:
+        argv0 = Path(sys.argv[0]).name.lower() if sys.argv and sys.argv[0] else ""
+        if argv0.startswith("test_") or argv0.endswith("_test.py"):
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def normalize_database_url(url: str) -> str:
     """Chuẩn hóa DATABASE_URL: chuyển postgres:// thành postgresql:// cho SQLAlchemy 2.0"""
+    if is_test_environment():
+        test_url = os.getenv("TEST_DATABASE_URL", "").strip()
+        if test_url:
+            return test_url
+        return f"sqlite:///{settings.BASE_DIR}/storage/test_ai_youtube.db"
     if not url:
         return f"sqlite:///{settings.BASE_DIR}/storage/ai_youtube.db"
     clean_url = url.strip()
@@ -18,14 +107,55 @@ def normalize_database_url(url: str) -> str:
         clean_url = "postgresql://" + clean_url[len("postgres://"):]
     return clean_url
 
+
+_VIDEO_JOBS_EXTRA_COLUMNS_SQLITE = {
+    "description": "TEXT",
+    "scenes_json": "TEXT",
+    "audio_duration_ms": "INTEGER",
+    "render_manifest": "TEXT",
+    "error_message": "TEXT",
+    "subtitle_path": "VARCHAR(255)",
+    "updated_at": "DATETIME",
+    "progress_percent": "INTEGER DEFAULT 0",
+    "progress_message": "VARCHAR(255)",
+    "quality_scores": "TEXT",
+    "is_auto_generated": "INTEGER DEFAULT 0",
+    "approval_deadline": "DATETIME",
+    "thumbnail_path": "VARCHAR(500)",
+    "thumbnail_vertical_path": "VARCHAR(500)",
+    "views": "INTEGER DEFAULT 0",
+    "likes": "INTEGER DEFAULT 0",
+    "comments": "INTEGER DEFAULT 0",
+    "avg_view_percentage": "REAL",
+    "stayed_to_watch_pct": "REAL",
+    "swipe_away_pct": "REAL",
+    "avg_view_duration_sec": "REAL",
+    "voice_engine": "VARCHAR(100)",
+}
+
+_PUBLISHED_VIDEOS_EXTRA_COLUMNS_SQLITE = {
+    "likes": "INTEGER DEFAULT 0",
+    "comments": "INTEGER DEFAULT 0",
+    "avg_view_percentage": "REAL",
+    "stayed_to_watch_pct": "REAL",
+    "swipe_away_pct": "REAL",
+    "avg_view_duration_sec": "REAL",
+    "hook_text": "TEXT",
+    "voice_engine": "VARCHAR(100)",
+}
+
+
 def create_configured_engine(raw_url: str):
     """
     Khởi tạo SQLAlchemy engine thông minh:
-    - Nếu là PostgreSQL: Cấu hình connection pool (pool_size=10, max_overflow=20, pool_pre_ping=True, pool_recycle=300).
+    - Nếu là môi trường Test: Tự động cô lập sang SQLite test_ai_youtube.db.
+    - Nếu là PostgreSQL: Cấu hình connection pool (pool_size=5, max_overflow=10, pool_pre_ping=True, pool_recycle=1800).
     - Nếu là SQLite: Đảm bảo thư mục tồn tại, cấu hình check_same_thread=False, kích hoạt WAL mode.
     - Fallback: Nếu kết nối PostgreSQL thất bại, tự động chuyển về SQLite cục bộ an toàn.
     """
     db_url = normalize_database_url(raw_url)
+    if is_test_environment():
+        logger.info(f"🧪 [Database] Đang chạy chế độ TEST cô lập — sử dụng DB: {db_url}")
     is_postgres = db_url.startswith("postgresql://") or db_url.startswith("postgresql+psycopg2://")
 
     if is_postgres:
@@ -98,25 +228,16 @@ def create_configured_engine(raw_url: str):
                 cur.execute("PRAGMA table_info(video_jobs)")
                 s_cols = {r[1] for r in cur.fetchall()}
                 if s_cols:
-                    for c_name, c_type in {
-                        "description": "TEXT",
-                        "scenes_json": "TEXT",
-                        "audio_duration_ms": "INTEGER",
-                        "render_manifest": "TEXT",
-                        "error_message": "TEXT",
-                        "subtitle_path": "VARCHAR(255)",
-                        "updated_at": "DATETIME",
-                        "progress_percent": "INTEGER DEFAULT 0",
-                        "progress_message": "VARCHAR(255)",
-                        "quality_scores": "TEXT",
-                        "is_auto_generated": "INTEGER DEFAULT 0",
-                        "approval_deadline": "DATETIME",
-                        "thumbnail_path": "VARCHAR(500)",
-                        "thumbnail_vertical_path": "VARCHAR(500)",
-                    }.items():
+                    for c_name, c_type in _VIDEO_JOBS_EXTRA_COLUMNS_SQLITE.items():
                         if c_name not in s_cols:
                             cur.execute(f"ALTER TABLE video_jobs ADD COLUMN {c_name} {c_type}")
-                    s_conn.commit()
+                cur.execute("PRAGMA table_info(published_videos)")
+                pv_cols = {r[1] for r in cur.fetchall()}
+                if pv_cols:
+                    for c_name, c_type in _PUBLISHED_VIDEOS_EXTRA_COLUMNS_SQLITE.items():
+                        if c_name not in pv_cols:
+                            cur.execute(f"ALTER TABLE published_videos ADD COLUMN {c_name} {c_type}")
+                s_conn.commit()
     except Exception:
         pass
 
@@ -204,6 +325,16 @@ class VideoJob(Base):
     is_auto_generated = Column(Integer, default=0)        # 1 = Hệ thống tự động sinh khi trễ KPI
     approval_deadline = Column(DateTime, nullable=True)   # Hạn chót duyệt video trước khi tự động đăng tạm
 
+    # Real YouTube Analytics & Voice A/B Testing Metrics
+    views = Column(Integer, default=0)
+    likes = Column(Integer, default=0)
+    comments = Column(Integer, default=0)
+    avg_view_percentage = Column(Float, nullable=True)    # Tỷ lệ xem hết trung bình (APV %, vd: 94.5)
+    stayed_to_watch_pct = Column(Float, nullable=True)    # Tỷ lệ ở lại xem (Viewed %, vd: 76.2)
+    swipe_away_pct = Column(Float, nullable=True)         # Tỷ lệ vuốt bỏ (Swiped Away %, vd: 23.8)
+    avg_view_duration_sec = Column(Float, nullable=True)  # Thời lượng xem trung bình (giây)
+    voice_engine = Column(String(100), nullable=True)     # Engine giọng đọc ('gemini_tts:...' | 'edge_tts:...')
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -247,6 +378,14 @@ class PublishedVideo(Base):
     description = Column(Text, nullable=True)
     published_at = Column(DateTime, nullable=True)
     views = Column(Integer, default=0)
+    likes = Column(Integer, default=0)
+    comments = Column(Integer, default=0)
+    avg_view_percentage = Column(Float, nullable=True)    # Tỷ lệ xem hết trung bình (APV %)
+    stayed_to_watch_pct = Column(Float, nullable=True)    # Tỷ lệ ở lại xem (Viewed %)
+    swipe_away_pct = Column(Float, nullable=True)         # Tỷ lệ vuốt bỏ (Swiped Away %)
+    avg_view_duration_sec = Column(Float, nullable=True)  # Thời lượng xem trung bình (giây)
+    hook_text = Column(Text, nullable=True)               # Câu Hook mở đầu Cảnh 1 của video
+    voice_engine = Column(String(100), nullable=True)     # Engine giọng đọc đã dùng
     source = Column(String(30), default="system")   # 'system' | 'youtube_sync'
     job_id = Column(Integer, nullable=True)
     summary = Column(Text, nullable=True)           # Tóm tắt ngắn (AI hoặc fallback)
@@ -288,10 +427,11 @@ class UsedTopic(Base):
             cls.__table__.create(bind=engine, checkfirst=True)
         except Exception:
             pass
+        canon_cid = normalize_channel_id(channel_id)
         cutoff = datetime.utcnow() - timedelta(days=lookback_days)
         topic_hash = cls.hash_topic(topic)
         return db.query(cls).filter(
-            cls.channel_id == channel_id,
+            cls.channel_id.in_([channel_id, canon_cid]),
             cls.topic_hash == topic_hash,
             cls.used_at >= cutoff
         ).first() is not None
@@ -304,7 +444,7 @@ class UsedTopic(Base):
         except Exception:
             pass
         entry = cls(
-            channel_id=channel_id,
+            channel_id=normalize_channel_id(channel_id),
             topic_hash=cls.hash_topic(topic),
             topic_text=topic.strip(),
             niche=niche,
@@ -313,6 +453,28 @@ class UsedTopic(Base):
         with db.begin_nested():
             db.add(entry)
             db.flush()
+
+
+# Tự động chuẩn hóa mã kênh về Canonical ID trước mọi thao tác INSERT / UPDATE
+@event.listens_for(VideoJob, "before_insert")
+@event.listens_for(VideoJob, "before_update")
+def _normalize_video_job_channel(mapper, connection, target):
+    if getattr(target, "target_channel_id", None):
+        target.target_channel_id = normalize_channel_id(target.target_channel_id)
+
+
+@event.listens_for(PublishedVideo, "before_insert")
+@event.listens_for(PublishedVideo, "before_update")
+def _normalize_published_video_channel(mapper, connection, target):
+    if getattr(target, "channel_id", None):
+        target.channel_id = normalize_channel_id(target.channel_id)
+
+
+@event.listens_for(UsedTopic, "before_insert")
+@event.listens_for(UsedTopic, "before_update")
+def _normalize_used_topic_channel(mapper, connection, target):
+    if getattr(target, "channel_id", None):
+        target.channel_id = normalize_channel_id(target.channel_id)
 
 
 def log_activity(db, telegram_id: int, username: str, action_type: str, details: str, channel_id: str = None):
@@ -332,7 +494,7 @@ def log_activity(db, telegram_id: int, username: str, action_type: str, details:
             username=username or f"User_{telegram_id}",
             action_type=action_type,
             details=details,
-            channel_id=channel_id,
+            channel_id=normalize_channel_id(channel_id) if channel_id else None,
             created_at=datetime.utcnow()
         )
         db.add(activity)
@@ -340,6 +502,43 @@ def log_activity(db, telegram_id: int, username: str, action_type: str, details:
         # Tránh double commit gây SQLite busy khi multi-thread
     except Exception as e:
         logging.getLogger(__name__).warning(f"Lỗi ghi activity log: {e}")
+
+
+_VIDEO_JOBS_EXTRA_COLUMNS_PG = {
+    "description": "TEXT",
+    "scenes_json": "TEXT",
+    "audio_duration_ms": "INTEGER",
+    "render_manifest": "TEXT",
+    "error_message": "TEXT",
+    "subtitle_path": "VARCHAR(255)",
+    "updated_at": "TIMESTAMP",
+    "progress_percent": "INTEGER DEFAULT 0",
+    "progress_message": "VARCHAR(255)",
+    "quality_scores": "TEXT",
+    "is_auto_generated": "INTEGER DEFAULT 0",
+    "approval_deadline": "TIMESTAMP",
+    "thumbnail_path": "VARCHAR(500)",
+    "thumbnail_vertical_path": "VARCHAR(500)",
+    "views": "INTEGER DEFAULT 0",
+    "likes": "INTEGER DEFAULT 0",
+    "comments": "INTEGER DEFAULT 0",
+    "avg_view_percentage": "DOUBLE PRECISION",
+    "stayed_to_watch_pct": "DOUBLE PRECISION",
+    "swipe_away_pct": "DOUBLE PRECISION",
+    "avg_view_duration_sec": "DOUBLE PRECISION",
+    "voice_engine": "VARCHAR(100)",
+}
+
+_PUBLISHED_VIDEOS_EXTRA_COLUMNS_PG = {
+    "likes": "INTEGER DEFAULT 0",
+    "comments": "INTEGER DEFAULT 0",
+    "avg_view_percentage": "DOUBLE PRECISION",
+    "stayed_to_watch_pct": "DOUBLE PRECISION",
+    "swipe_away_pct": "DOUBLE PRECISION",
+    "avg_view_duration_sec": "DOUBLE PRECISION",
+    "hook_text": "TEXT",
+    "voice_engine": "VARCHAR(100)",
+}
 
 
 def init_db():
@@ -351,26 +550,15 @@ def init_db():
             try:
                 result = conn.execute(text("PRAGMA table_info(video_jobs)")).fetchall()
                 existing_columns = {row[1] for row in result}
-                
-                columns_to_add = {
-                    "description": "TEXT",
-                    "scenes_json": "TEXT",
-                    "audio_duration_ms": "INTEGER",
-                    "render_manifest": "TEXT",
-                    "error_message": "TEXT",
-                    "subtitle_path": "VARCHAR(255)",
-                    "updated_at": "DATETIME",
-                    "progress_percent": "INTEGER DEFAULT 0",
-                    "progress_message": "VARCHAR(255)",
-                    "quality_scores": "TEXT",
-                    "is_auto_generated": "INTEGER DEFAULT 0",
-                    "approval_deadline": "DATETIME",
-                    "thumbnail_path": "VARCHAR(500)",
-                    "thumbnail_vertical_path": "VARCHAR(500)",
-                }
-                for col_name, col_type in columns_to_add.items():
+                for col_name, col_type in _VIDEO_JOBS_EXTRA_COLUMNS_SQLITE.items():
                     if col_name not in existing_columns:
                         conn.execute(text(f"ALTER TABLE video_jobs ADD COLUMN {col_name} {col_type}"))
+
+                pv_res = conn.execute(text("PRAGMA table_info(published_videos)")).fetchall()
+                pv_existing = {row[1] for row in pv_res}
+                for col_name, col_type in _PUBLISHED_VIDEOS_EXTRA_COLUMNS_SQLITE.items():
+                    if col_name not in pv_existing:
+                        conn.execute(text(f"ALTER TABLE published_videos ADD COLUMN {col_name} {col_type}"))
                 conn.commit()
             except Exception as migration_err:
                 logger.error(
@@ -383,25 +571,15 @@ def init_db():
             try:
                 result = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='video_jobs'")).fetchall()
                 existing_columns = {row[0] for row in result}
-                columns_to_add = {
-                    "description": "TEXT",
-                    "scenes_json": "TEXT",
-                    "audio_duration_ms": "INTEGER",
-                    "render_manifest": "TEXT",
-                    "error_message": "TEXT",
-                    "subtitle_path": "VARCHAR(255)",
-                    "updated_at": "TIMESTAMP",
-                    "progress_percent": "INTEGER DEFAULT 0",
-                    "progress_message": "VARCHAR(255)",
-                    "quality_scores": "TEXT",
-                    "is_auto_generated": "INTEGER DEFAULT 0",
-                    "approval_deadline": "TIMESTAMP",
-                    "thumbnail_path": "VARCHAR(500)",
-                    "thumbnail_vertical_path": "VARCHAR(500)",
-                }
-                for col_name, col_type in columns_to_add.items():
+                for col_name, col_type in _VIDEO_JOBS_EXTRA_COLUMNS_PG.items():
                     if col_name not in existing_columns:
                         conn.execute(text(f"ALTER TABLE video_jobs ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+
+                pv_res = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='published_videos'")).fetchall()
+                pv_existing = {row[0] for row in pv_res}
+                for col_name, col_type in _PUBLISHED_VIDEOS_EXTRA_COLUMNS_PG.items():
+                    if col_name not in pv_existing:
+                        conn.execute(text(f"ALTER TABLE published_videos ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
                 conn.commit()
             except Exception as migration_err:
                 logger.error(
@@ -419,26 +597,18 @@ def init_db():
                 cur.execute("PRAGMA table_info(video_jobs)")
                 s_cols = {r[1] for r in cur.fetchall()}
                 if s_cols:
-                    for c_name, c_type in {
-                        "description": "TEXT",
-                        "scenes_json": "TEXT",
-                        "audio_duration_ms": "INTEGER",
-                        "render_manifest": "TEXT",
-                        "error_message": "TEXT",
-                        "subtitle_path": "VARCHAR(255)",
-                        "updated_at": "DATETIME",
-                        "progress_percent": "INTEGER DEFAULT 0",
-                        "progress_message": "VARCHAR(255)",
-                        "quality_scores": "TEXT",
-                        "is_auto_generated": "INTEGER DEFAULT 0",
-                        "approval_deadline": "DATETIME",
-                        "thumbnail_path": "VARCHAR(500)",
-                        "thumbnail_vertical_path": "VARCHAR(500)",
-                    }.items():
+                    for c_name, c_type in _VIDEO_JOBS_EXTRA_COLUMNS_SQLITE.items():
                         if c_name not in s_cols:
                             cur.execute(f"ALTER TABLE video_jobs ADD COLUMN {c_name} {c_type}")
-                    s_conn.commit()
+                cur.execute("PRAGMA table_info(published_videos)")
+                pv_cols = {r[1] for r in cur.fetchall()}
+                if pv_cols:
+                    for c_name, c_type in _PUBLISHED_VIDEOS_EXTRA_COLUMNS_SQLITE.items():
+                        if c_name not in pv_cols:
+                            cur.execute(f"ALTER TABLE published_videos ADD COLUMN {c_name} {c_type}")
+                s_conn.commit()
     except Exception:
         pass
+
 
 

@@ -32,34 +32,27 @@ class QualityEvaluator:
         script_dict: Dict[str, Any],
         topic: str,
         channel_niche: str,
-        language: str = "pt-BR"
+        language: str = "pt-BR",
+        channel_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Đánh giá kịch bản theo 4 tiêu chí cốt lõi:
+        Đánh giá kịch bản theo 4 tiêu chí cốt lõi + hiệu chỉnh ngưỡng Hook theo tỷ lệ vuốt bỏ thật (swipe_away_pct):
         1. Hook Strength (0-3s thu hút người xem ngay lập tức) - 30%
         2. Channel Niche Alignment (đúng ngách & phong cách kênh) - 25%
         3. Language Authenticity (chuẩn ngôn ngữ bản địa, không lai tạp) - 25%
-        4. Retention Arc & Pacing (nhịp độ 4-beat, cao trào, CTA) - 20%
-        Ngưỡng đạt chuẩn: Tổng điểm >= 80/100.
+        4. Retention Arc & Pacing (nhịp độ, cao trào, Seamless Loop) - 20%
         """
         title = script_dict.get("title", "")
         scenes = script_dict.get("scenes", [])
         full_text = " ".join([s.get("narration", "") for s in scenes])
 
-        # Cố gắng chấm điểm bằng Gemini AI
-        ai_report = self._evaluate_script_with_ai(
-            title=title,
-            scenes=scenes,
-            full_text=full_text,
-            topic=topic,
-            channel_niche=channel_niche,
-            language=language
-        )
-        if ai_report:
-            return ai_report
+        from app.graph.evaluators.script_critic import ScriptCritic
+        cal_thresh = ScriptCritic.get_calibrated_thresholds(channel_id=channel_id, channel_style=channel_niche)
+        min_hook = float(cal_thresh.get("min_hook_score", 8.0))
+        min_total = int(round(float(cal_thresh.get("min_overall_score", 8.0)) * 10))
 
-        # Fallback: Chấm điểm dựa trên hệ thống luật chuyên sâu (Rule-Based Heuristic)
-        return self._heuristic_evaluate_script(
+        # Cố gắng chấm điểm bằng Gemini AI
+        report = self._evaluate_script_with_ai(
             title=title,
             scenes=scenes,
             full_text=full_text,
@@ -67,6 +60,52 @@ class QualityEvaluator:
             channel_niche=channel_niche,
             language=language
         )
+        if not report:
+            # Fallback: Chấm điểm dựa trên hệ thống luật chuyên sâu (Rule-Based Heuristic)
+            report = self._heuristic_evaluate_script(
+                title=title,
+                scenes=scenes,
+                full_text=full_text,
+                topic=topic,
+                channel_niche=channel_niche,
+                language=language
+            )
+
+        # Hiệu chỉnh điểm Hook theo dữ liệu vuốt bỏ thật (swipe_away_pct) và công thức pt-BR / Wild Odyssey
+        scene_1_text = scenes[0].get("narration", "") if scenes else script_dict.get("hook", "")
+        raw_hook = float(report.get("hook_score", 8.0))
+        cal_hook, cal_notes = ScriptCritic._calibrate_hook_score_with_real_data(
+            raw_hook_score=raw_hook,
+            scene_1_narration=scene_1_text,
+            title=title,
+            channel_style=channel_niche,
+            thresholds=cal_thresh,
+        )
+        report["hook_score"] = round(cal_hook, 1)
+        n_s = float(report.get("niche_score", 8.0))
+        l_s = float(report.get("language_score", 8.5))
+        r_s = float(report.get("retention_score", 8.0))
+        recalc_total = int(round((cal_hook * 0.35 + n_s * 0.25 + l_s * 0.20 + r_s * 0.20) * 10))
+        report["score"] = recalc_total
+        report["min_hook_required"] = min_hook
+        report["min_score_required"] = min_total
+        report["avg_swipe_away_pct"] = cal_thresh.get("avg_swipe_away_pct")
+
+        weaknesses = list(report.get("weaknesses") or [])
+        for note in cal_notes:
+            if note.startswith("❌") or note.startswith("⚠️"):
+                weaknesses.append(note)
+        report["weaknesses"] = weaknesses
+
+        passed = (recalc_total >= min_total) and (cal_hook >= min_hook)
+        report["passed"] = passed
+        report["verdict"] = "APROVADO (ĐẠT CHUẨN)" if passed else "REPROVADO (CHẶN XUẤT BẢN)"
+        if not passed and cal_hook < min_hook:
+            report["feedback"] = (
+                f"Hook Cảnh 1 ({cal_hook:.1f}/10) chưa đạt ngưỡng chống vuốt bỏ ({min_hook:.1f}/10, "
+                f"swipe_away={cal_thresh.get('avg_swipe_away_pct')}%). Cần công thức 'A vs B' hoặc câu khẳng định gây sốc có số liệu."
+            )
+        return report
 
     def _evaluate_script_with_ai(
         self,
@@ -103,10 +142,10 @@ ROTEIRO:
 {scenes_txt}
 
 Critérios de Avaliação (Notas de 0 a 10):
-1. hook_score: O gancho dos primeiros 3 segundos (Cena 1) é eletrizante, desperta curiosidade irresistível e impede o swipe?
+1. hook_score: O gancho dos primeiros 3 segundos (Cena 1) usa confronto "A vs B" ou afirmação de choque com dados reais e impede o swipe?
 2. niche_score: O conteúdo está 100% alinhado com o nicho ({channel_niche})?
 3. language_score: O português é 100% brasileiro, coloquial, natural, sem erros e SEM nenhuma palavra em inglês?
-4. retention_score: Ritmo rápido, tensão crescente, clímax dramático e chamada para ação (CTA) envolvente?
+4. retention_score: Ritmo rápido, tensão crescente, clímax dramático e loop perfeito no final?
 
 Responda APENAS em JSON válido no formato:
 {{
@@ -134,10 +173,10 @@ SCRIPT:
 {scenes_txt}
 
 Evaluation Criteria (Scores 0 to 10):
-1. hook_score: Does Scene 1 have an electrifying 3-second hook that creates irresistible curiosity and stops the swipe?
+1. hook_score: Does Scene 1 use an electrifying 3-second hook ("A vs B" confrontation or shocking declarative claim with hard physical numbers, NO passive Yes/No questions) that stops the swipe?
 2. niche_score: Is the content 100% aligned with the niche ({channel_niche})?
 3. language_score: Is the language natural, engaging, native-level phrasing without awkward artifacts?
-4. retention_score: Fast pacing, escalating tension, dramatic climax, and compelling Call to Action (CTA)?
+4. retention_score: Fast pacing, escalating tension, dramatic climax, and seamless infinite loop bridge?
 
 Respond ONLY in valid JSON:
 {{
@@ -206,7 +245,7 @@ Respond ONLY in valid JSON:
     ) -> Dict[str, Any]:
         """Quy tắc thẩm định kịch bản dựa trên phân tích ngôn ngữ học & cấu trúc Shorts."""
         is_pt = str(language).lower().startswith("pt")
-        hook_score = 8.0
+        hook_score = 7.8
         niche_score = 8.5
         lang_score = 9.0
         retention_score = 8.0
@@ -220,17 +259,16 @@ Respond ONLY in valid JSON:
             if len(words_s1) < 4:
                 hook_score -= 2.0
                 issues.append("Cảnh 1 quá ngắn, chưa đủ thông tin làm mồi câu (Hook).")
-            elif len(words_s1) > 22:
+            elif len(words_s1) > 20:
                 hook_score -= 1.5
-                issues.append("Cảnh 1 quá dài, nhịp điệu mở đầu bị chậm.")
+                issues.append("Cảnh 1 quá dài (>20 từ), nhịp điệu mở đầu bị chậm dễ gây vuốt bỏ.")
             else:
                 strengths.append(f"Cảnh 1 có độ dài lý tưởng ({len(words_s1)} từ) cho Hook 3s.")
 
-            # Kiểm tra từ cảm thán hoặc câu hỏi giật gân
-            hook_cues = ["?", "!", "Você", "Esse", "Essa", "O único", "Nunca", "Inacreditável", "Sabia", "Never", "If you", "This is why", "Did you know", "Watch"]
-            if any(p in scene_1 for p in hook_cues):
-                hook_score = min(10.0, hook_score + 1.5)
-                strengths.append("Cảnh 1 có yếu tố kích thích trí tò mò hoặc nghịch lý.")
+            hook_cues = ["!", "vs", "versus", "contra", "never", "nunca", "jamais", "deadliest", "mortal", "crushes", "destroys"]
+            if any(p in scene_1.lower() for p in hook_cues):
+                hook_score = min(9.8, hook_score + 0.8)
+                strengths.append("Cảnh 1 có yếu tố đối đầu kịch tính hoặc khẳng định gây sốc.")
 
         # 2. Kiểm tra Niche fit & Chặn rò rỉ lệch ngách (Off-Niche Contamination)
         niche_kw_map = {
@@ -261,7 +299,6 @@ Respond ONLY in valid JSON:
             if any(bad in combined_lower for bad in ("inject", "vaccine", "syringe", "burn the evidence", "serial killer", "ted bundy", "btk killer", "gaslighting", "narcissist", "bloodbath", "execution order")):
                 niche_score = max(3.0, niche_score - 5.0)
                 issues.append("Vi phạm nghiêm trọng: Rò rỉ chủ đề nhạy cảm/lệch ngách (y tế, tội phạm, tâm lý học hoặc từ khóa bạo lực bị bóp phân phối) vào kênh Lịch sử Giả định.")
-            title_l = title.lower()
             if not any(cf in combined_lower for cf in ("what if", "if ", "would ", "never ", "almost ", "timeline", "alternate")):
                 hook_score = max(4.5, hook_score - 2.5)
                 issues.append("Thiếu cấu trúc giả thuyết 'What If / Counterfactual' đặc trưng của ngách Lịch sử Giả định (dễ biến thành bài giảng sử khô khan).")
@@ -321,7 +358,7 @@ Respond ONLY in valid JSON:
         }
 
     # ═════════════════════════════════════════════════════════════════════════════
-    # 2. ĐÁNH GIÁ & CHẤM ĐIỂM VIDEO THÀNH PHẨM (VIDEO QUALITY GATE)
+    # 2. ĐÁNH GIÁ & CHẤM ĐIỂM VIDEO THÀNH PHẨM (CALIBRATED REAL METRICS GATE)
     # ═════════════════════════════════════════════════════════════════════════════
 
     def evaluate_video(
@@ -330,26 +367,31 @@ Respond ONLY in valid JSON:
         expected_duration_ms: int = 0
     ) -> Dict[str, Any]:
         """
-        Kiểm định chất lượng kỹ thuật & tính thẩm mỹ video:
-        - Tồn tại file & kích thước hợp lý (> 1MB)
-        - Luồng video (h264, 1080x1920 portrait 9:16)
-        - Luồng audio (aac, rõ ràng, không câm)
-        - Thời lượng Shorts chuẩn (25s - 60s)
-        - Điểm chất lượng: 0 - 100. Đạt chuẩn: >= 85/100.
+        Chấm điểm chất lượng video thành phẩm bằng thang đo thực tế liên tục (không còn trả về 100 cứng):
+        1. Stream & Portrait Integrity (0 - 25 điểm): 1080x1920 9:16, H.264 + AAC, ~30fps
+        2. Bitrate & Visual Encoding Density (0 - 25 điểm): đo Mbps thực tế
+        3. A/V Sync Precision (0 - 25 điểm): đo độ lệch mili-giây giữa video stream và audio stream
+        4. Shorts Retention Duration Curve (0 - 15 điểm): so với khung vàng 30s - 45s
+        5. Frame Sharpness & Contrast Inspection (0 - 10 điểm): trích xuất khung hình kiểm tra độ nét & màn đen
+        Đạt chuẩn (passed=True): Tổng điểm >= 78/100 và không vi phạm lỗi chặn cứng.
         """
+        import subprocess
+        import tempfile
+        from app.graph.evaluators.visual_critic import VisualCritic
+
         p = Path(video_path)
         if not p.exists() or p.stat().st_size < 500 * 1024:
             return {
                 "passed": False,
                 "score": 0,
                 "issues": ["File video không tồn tại hoặc dung lượng rỗng (< 500KB)"],
-                "feedback": "Render thất bại, cần render lại."
+                "feedback": "Render thất bại, chặn xuất bản."
             }
 
         file_size_mb = p.stat().st_size / (1024 * 1024)
-        issues = []
-        strengths = []
-        score = 100
+        issues: List[str] = []
+        strengths: List[str] = []
+        hard_fail = False
 
         try:
             info = probe_file(video_path) or {}
@@ -358,19 +400,21 @@ Respond ONLY in valid JSON:
 
             has_video = False
             has_audio = False
-            width = 1080
-            height = 1920
-            fps = 30.0
+            width = 0
+            height = 0
+            fps = 0.0
             video_duration = 0.0
             audio_duration = 0.0
             audio_codec = ""
+            video_codec = ""
 
             for stream in info.get("streams", []):
                 st = stream.get("codec_type")
                 if st == "video":
                     has_video = True
-                    width = int(stream.get("width", 1080))
-                    height = int(stream.get("height", 1920))
+                    width = int(stream.get("width", 0))
+                    height = int(stream.get("height", 0))
+                    video_codec = stream.get("codec_name", "").lower()
                     r_frame = stream.get("r_frame_rate", "30/1")
                     if "/" in r_frame:
                         num, den = r_frame.split("/")
@@ -381,85 +425,153 @@ Respond ONLY in valid JSON:
                     audio_duration = float(stream.get("duration", duration_sec) or duration_sec)
                     audio_codec = stream.get("codec_name", "").lower()
 
-            # Kiểm tra luồng
-            if not has_video:
-                issues.append("Thiếu stream video!")
-                score -= 50
-            if not has_audio:
-                issues.append("Thiếu stream âm thanh giọng đọc!")
-                score -= 50
+            if not has_video or not has_audio:
+                return {
+                    "passed": False,
+                    "score": 0,
+                    "issues": ["Thiếu stream video hoặc stream âm thanh giọng đọc!"],
+                    "feedback": "File MP4 thiếu luồng nghe/nhìn, chặn xuất bản."
+                }
 
-            # [FIX Phase 3] Kiểm tra AV Sync: chênh lệch thời lượng video vs audio
-            if has_video and has_audio and video_duration > 0 and audio_duration > 0:
-                av_drift_ms = abs(video_duration - audio_duration) * 1000
-                if av_drift_ms > 500:
-                    issues.append(
-                        f"⚠️ AV Desync nghiêm trọng: Video={video_duration:.2f}s vs Audio={audio_duration:.2f}s "
-                        f"(lệch {av_drift_ms:.0f}ms > 500ms). Video sẽ bị desync khi phát."
+            # 1. Stream & Portrait Integrity (Tối đa 25 điểm)
+            stream_pts = 0.0
+            if width == 1080 and height == 1920:
+                stream_pts += 15.0
+                strengths.append(f"Chuẩn dọc Shorts 9:16 ({width}x{height}).")
+            elif height > width and width >= 720:
+                stream_pts += 11.0
+                issues.append(f"Độ phân giải dọc chưa chuẩn 1080x1920 ({width}x{height}).")
+            else:
+                hard_fail = True
+                issues.append(f"Sai tỉ lệ khung hình Shorts ({width}x{height}).")
+
+            if 28.0 <= fps <= 61.0:
+                stream_pts += 5.0
+            else:
+                stream_pts += 2.0
+                issues.append(f"FPS lệch chuẩn ({fps} fps).")
+
+            if audio_codec in ("aac", "mp3", "opus"):
+                stream_pts += 5.0
+            else:
+                stream_pts += 2.0
+                issues.append(f"Codec âm thanh '{audio_codec}' không tối ưu cho mobile.")
+
+            # 2. Bitrate & Visual Encoding Density (Tối đa 25 điểm)
+            mbps = (file_size_mb * 8.0) / max(duration_sec, 1.0)
+            if 4.0 <= mbps <= 12.0:
+                # Điểm liên tục từ 21 -> 25 tùy độ nét bitrate
+                bitrate_pts = min(25.0, 21.0 + (mbps - 4.0) * 0.6)
+                strengths.append(f"Bitrate sắc nét ({mbps:.2f} Mbps, {file_size_mb:.2f} MB).")
+            elif 2.0 <= mbps < 4.0:
+                bitrate_pts = 15.0 + (mbps - 2.0) * 3.0
+            elif mbps > 12.0:
+                bitrate_pts = 23.0
+            else:
+                bitrate_pts = max(5.0, mbps * 7.0)
+                issues.append(f"Bitrate video thấp ({mbps:.2f} Mbps), dễ bị vỡ nét trên YouTube Shorts.")
+                if mbps < 0.8:
+                    hard_fail = True
+
+            # 3. A/V Sync Precision (Tối đa 25 điểm)
+            av_drift_ms = abs(video_duration - audio_duration) * 1000.0 if (video_duration > 0 and audio_duration > 0) else 0.0
+            if expected_duration_ms > 0:
+                exp_drift_ms = abs(duration_sec * 1000.0 - expected_duration_ms)
+                av_drift_ms = max(av_drift_ms, min(exp_drift_ms, 800.0))
+
+            if av_drift_ms <= 50.0:
+                sync_pts = 25.0 - (av_drift_ms / 50.0) * 1.5
+                strengths.append(f"Đồng bộ A/V chính xác (drift {av_drift_ms:.0f}ms).")
+            elif av_drift_ms <= 250.0:
+                sync_pts = 23.5 - ((av_drift_ms - 50.0) / 200.0) * 5.5
+            elif av_drift_ms <= 550.0:
+                sync_pts = 18.0 - ((av_drift_ms - 250.0) / 300.0) * 8.0
+                issues.append(f"A/V Sync lệch {av_drift_ms:.0f}ms.")
+            else:
+                sync_pts = 5.0
+                hard_fail = True
+                issues.append(f"AV Desync nghiêm trọng ({av_drift_ms:.0f}ms > 550ms) — chặn xuất bản!")
+
+            # 4. Shorts Retention Duration Curve (Tối đa 15 điểm)
+            if 30.0 <= duration_sec <= 46.0:
+                # Khung vàng giữ chân cao nhất
+                dist_from_37 = abs(duration_sec - 37.0)
+                dur_pts = max(13.0, 15.0 - dist_from_37 * 0.2)
+                strengths.append(f"Thời lượng nằm trong khung vàng Retention ({duration_sec:.1f}s).")
+            elif 20.0 <= duration_sec < 30.0:
+                dur_pts = 10.0 + (duration_sec - 20.0) * 0.3
+            elif 46.0 < duration_sec <= 60.0:
+                dur_pts = 13.0 - (duration_sec - 46.0) * 0.25
+            else:
+                dur_pts = 4.0
+                hard_fail = True
+                issues.append(f"Thời lượng ngoài ngưỡng Shorts ({duration_sec:.1f}s, yêu cầu 20s-60s).")
+
+            # 5. Frame Sharpness & Black-Screen Inspection tại Hook (Tối đa 10 điểm)
+            frame_pts = 7.5
+            sample_sharpness = 0.0
+            try:
+                with tempfile.TemporaryDirectory() as td:
+                    f_hook = str(Path(td) / "hook_frame.jpg")
+                    t_pos = min(1.0, max(0.2, duration_sec * 0.1))
+                    subprocess.run(
+                        ["ffmpeg", "-v", "error", "-y", "-ss", f"{t_pos:.2f}", "-i", str(p), "-frames:v", "1", f_hook],
+                        capture_output=True,
+                        timeout=10,
                     )
-                    score -= 20
-                elif av_drift_ms > 200:
-                    issues.append(
-                        f"AV Sync hơi lệch: {av_drift_ms:.0f}ms (chấp nhận được nhưng cần chú ý)."
-                    )
-                    score -= 5
-                else:
-                    strengths.append(f"AV Sync xuất sắc (drift chỉ {av_drift_ms:.0f}ms).")
+                    if Path(f_hook).exists() and Path(f_hook).stat().st_size > 1000:
+                        if VisualCritic._is_solid_color_or_black(f_hook):
+                            frame_pts = 0.0
+                            hard_fail = True
+                            issues.append("Khung hình mở đầu (Hook) bị đen kịt hoặc đơn sắc lỗi!")
+                        else:
+                            sample_sharpness = VisualCritic._measure_sharpness(f_hook)
+                            if sample_sharpness >= 6.0:
+                                frame_pts = min(10.0, 7.0 + (sample_sharpness - 6.0) * 0.35)
+                            elif sample_sharpness >= 4.2:
+                                frame_pts = 5.0 + (sample_sharpness - 4.2) * 1.1
+                                issues.append(f"Khung hình mở đầu hơi mờ (sharpness={sample_sharpness:.1f}).")
+                            else:
+                                frame_pts = 2.0
+                                hard_fail = True
+                                issues.append(f"Khung hình mở đầu quá mờ nhòe (sharpness={sample_sharpness:.1f} < 4.2)!")
+            except Exception as ex_frame:
+                logger.debug(f"[QualityEvaluator] Không thể trích xuất frame kiểm tra độ nét: {ex_frame}")
 
-            # [FIX Phase 3] Kiểm tra codec âm thanh (AAC là chuẩn mobile-safe)
-            if has_audio and audio_codec and audio_codec not in ("aac", "mp3", "opus"):
-                issues.append(f"Codec âm thanh '{audio_codec}' không phải AAC — có thể không phát được trên iOS.")
-                score -= 5
+            total_raw = stream_pts + bitrate_pts + sync_pts + dur_pts + frame_pts
+            final_score = int(round(max(0.0, min(99.0, total_raw))))
+            passed = (final_score >= 78) and (not hard_fail)
 
-            # Kiểm tra tỉ lệ khung hình (Khuyến khích 9:16)
-            if height > width:
-                strengths.append(f"Độ phân giải dọc chuẩn Shorts 9:16 ({width}x{height}, {fps} FPS).")
-            else:
-                issues.append(f"Video không phải tỉ lệ dọc ({width}x{height}).")
-                score -= 15
-
-            # Kiểm tra thời lượng
-            if 20.0 <= duration_sec <= 65.0:
-                strengths.append(f"Thời lượng lý tưởng cho Shorts: {duration_sec:.1f}s.")
-            elif duration_sec < 20.0:
-                issues.append(f"Thời lượng quá ngắn ({duration_sec:.1f}s < 20s).")
-                score -= 15
-            else:
-                issues.append(f"Thời lượng vượt quá chuẩn Shorts ({duration_sec:.1f}s > 60s).")
-                score -= 10
-
-            # Kiểm tra kích thước file
-            if file_size_mb >= 2.0:
-                strengths.append(f"Dung lượng video sắc nét ({file_size_mb:.2f} MB).")
-            else:
-                issues.append(f"Dung lượng hơi nhỏ ({file_size_mb:.2f} MB), có thể bitrate thấp.")
-                score -= 5
-
-            passed = (score >= 85) and has_video and has_audio
             return {
                 "passed": passed,
-                "score": max(0, score),
+                "score": final_score,
                 "duration_seconds": round(duration_sec, 2),
                 "video_duration": round(video_duration, 2),
                 "audio_duration": round(audio_duration, 2),
-                "av_drift_ms": round(abs(video_duration - audio_duration) * 1000, 1) if has_video and has_audio else None,
+                "av_drift_ms": round(av_drift_ms, 1),
+                "bitrate_mbps": round(mbps, 2),
+                "hook_frame_sharpness": round(sample_sharpness, 2),
                 "width": width,
                 "height": height,
                 "fps": fps,
+                "video_codec": video_codec,
                 "audio_codec": audio_codec,
                 "file_size_mb": round(file_size_mb, 2),
                 "has_audio": has_audio,
                 "has_video": has_video,
                 "issues": issues,
                 "strengths": strengths,
-                "feedback": "Video hoàn hảo, sẵn sàng đăng tải!" if passed else "Video chưa đạt chuẩn chất lượng."
+                "feedback": (
+                    f"Video đạt chuẩn ({final_score}/100, {mbps:.1f}Mbps, drift {av_drift_ms:.0f}ms)."
+                    if passed else f"Video bị chặn ({final_score}/100): {'; '.join(issues)}"
+                ),
             }
 
         except Exception as e:
             logger.error(f"[QualityEvaluator] Lỗi kiểm tra video bằng FFprobe: {e}")
             return {
                 "passed": False,
-                "score": 40,
+                "score": 0,
                 "issues": [f"Lỗi đọc metadata: {e}"],
-                "feedback": "Không thể kiểm tra file video."
+                "feedback": "Không thể kiểm tra file video — chặn xuất bản."
             }

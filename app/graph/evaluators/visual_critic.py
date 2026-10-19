@@ -191,9 +191,11 @@ class VisualCritic:
                     else:
                         sharpness = self._measure_sharpness(str(p))
                         if sharpness < 5.8:
-                            aes_score -= 3.5
+                            aes_score = max(3.5, round(sharpness * 0.9, 1))
                             issues.append(f"Ảnh bị mờ nhòe / thiếu độ sắc nét (sharpness={sharpness:.1f} < 5.8)")
                             failed = True
+                        else:
+                            aes_score = round(min(9.8, 7.6 + (sharpness - 5.8) * 0.22), 1)
                         img_hash = self._compute_image_hash(str(p))
                         if img_hash:
                             sig = [img_hash]
@@ -203,9 +205,35 @@ class VisualCritic:
                     failed = True
             else:
                 try:
+                    import subprocess
+                    import tempfile
                     sig = self._media_signature(str(p))
+                    with tempfile.TemporaryDirectory() as td:
+                        sample_frame = str(Path(td) / "v_mid.jpg")
+                        subprocess.run(
+                            ["ffmpeg", "-v", "error", "-y", "-ss", "0.5", "-i", str(p), "-frames:v", "1", sample_frame],
+                            capture_output=True,
+                            timeout=10,
+                        )
+                        if Path(sample_frame).exists() and Path(sample_frame).stat().st_size > 1000:
+                            if self._is_solid_color_or_black(sample_frame):
+                                aes_score = 2.5
+                                issues.append("Video clip bị tối đen hoặc đơn sắc lỗi")
+                                failed = True
+                            else:
+                                v_sharp = self._measure_sharpness(sample_frame)
+                                if v_sharp < 4.5:
+                                    aes_score = max(4.0, round(v_sharp * 1.1, 1))
+                                    issues.append(f"Video clip bị mờ nhòe (sharpness={v_sharp:.1f} < 4.5)")
+                                    failed = True
+                                else:
+                                    aes_score = round(min(9.8, 7.5 + (v_sharp - 4.5) * 0.22), 1)
+                        elif p.stat().st_size < 15000:
+                            aes_score = 3.0
+                            issues.append("Video clip lỗi không trích xuất được khung hình")
+                            failed = True
                 except Exception as ex_sig:
-                    logger.debug(f"[VisualCritic] Lỗi trích xuất chữ ký video cảnh {scene_id}: {ex_sig}")
+                    logger.debug(f"[VisualCritic] Lỗi kiểm tra khung hình video cảnh {scene_id}: {ex_sig}")
 
             return {
                 "scene_id": scene_id,

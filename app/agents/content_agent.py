@@ -624,6 +624,9 @@ class ContentAgent:
                     # Chứa số liệu / tốc độ / lực cắn / thời gian cụ thể
                     if re.search(r'\d', h_str):
                         h_score += 18.0
+                    # Thưởng lớn cho công thức "A vs B" / Đối đầu bất đối xứng (pt-BR & Wild Odyssey Formula)
+                    if re.search(r'\b(?:vs\.?|versus|against|contra|outsmart|crushes|destroys|beats|backs down)\b', h_str, flags=re.IGNORECASE):
+                        h_score += 18.0
                     # Chứa động từ hành động mạnh / nghịch lý / sinh tồn (EN / VI / PT)
                     power_hook_words = (
                         "never", "deadly", "crush", "swallow", "silent", "seconds", "freeze", "blind", "strike", "bite",
@@ -658,6 +661,7 @@ class ContentAgent:
                     )
                     scenes[0]["narration"] = best_hook
                     scenes[0]["highlight_words"] = _auto_extract_scene_highlights(best_hook)
+
 
         # Cập nhật lại full_narration & hook để đồng bộ 100% với Cảnh 1 đã tối ưu nhịp
         raw_data["full_narration"] = " ".join(s.get("narration", "") for s in scenes if isinstance(s, dict))
@@ -922,51 +926,73 @@ class ContentAgent:
         channel_id: Optional[str] = None,
     ) -> str:
         """
-        Hệ thống Trí nhớ Ngữ cảnh Kênh & Tự thích nghi Đa Kênh (Context-Aware Episodic Memory & Zero-Shot Multi-Niche Synthesis):
-        1. Truy vấn nhanh (< 5ms) từ Database cục bộ (`PublishedVideo`, `VideoJob`) + Live YouTube Channel Cache để lấy:
-           - Top 3 video thắng lớn nhất của kênh/ngách (giúp Agent học cú pháp Hook & tâm lý khán giả thực tế).
+        Hệ thống Trí nhớ Ngữ cảnh Kênh & Phản Hồi Dữ Liệu Thật Hàng Tuần (Weekly Real-Data Closed Loop):
+        1. Mỗi tuần tự động truy vấn từ DB (`PublishedVideo`, `VideoJob`) để đưa:
+           - Top 3 video thắng (Winners) kèm Views, Tỷ lệ xem hết (APV %), Tỷ lệ ở lại xem (Stayed %) & Tỷ lệ vuốt bỏ (Swipe-Away %) + câu Hook mở đầu.
+           - Bottom 3 video thua (Losers) kèm chỉ số vuốt bỏ thật để LLM tránh lặp lại mô-típ mở đầu yếu.
            - 8 tiêu đề gần nhất đã sản xuất (chống lặp góc tiếp cận, câu mở đầu và từ khóa bão hòa).
-        2. Kích hoạt giao thức Zero-Shot Multi-Niche Synthesis khi mở rộng ra bất kỳ kênh/ngách mới nào.
+        2. Áp dụng công thức chiến thắng của các kênh `pt-BR` và `Wild Odyssey` (Cấu trúc đối đầu trực diện `"A vs B"` + Câu khẳng định gây sốc kèm thông số vật lý ở giây 0.0s) sang toàn bộ các kênh `EN`.
         """
         top_winners: List[str] = []
+        bottom_losers: List[str] = []
         recent_titles: List[str] = []
         saturated_terms: List[str] = []
+        channel_avg_swipe: float = 30.0
+        week_label: str = ""
 
         try:
-            from app.database.models import get_db, PublishedVideo, VideoJob
+            from app.database.models import get_db, PublishedVideo, VideoJob, normalize_channel_id
             from app.services.smart_scheduler import resolve_channel_family
+            from app.services.video_library import get_weekly_winners_and_losers
 
             target_ids: List[str] = []
             matched_handle: Optional[str] = None
+            canon_cid: Optional[str] = normalize_channel_id(channel_id) if channel_id else None
             niche_low = (channel_niche or "").strip().lower()
             for ch in settings.get_channels_config():
                 cid = ch.get("id")
                 ch_niche = str(ch.get("niche") or "").strip().lower()
-                if (channel_id and cid == channel_id) or (not channel_id and ch_niche == niche_low):
+                if (canon_cid and cid == canon_cid) or (not canon_cid and ch_niche == niche_low):
                     if cid:
+                        if not canon_cid:
+                            canon_cid = cid
                         target_ids.extend(resolve_channel_family(cid))
                     if not matched_handle and ch.get("youtube_handle"):
                         matched_handle = str(ch.get("youtube_handle")).strip()
 
-            if channel_id and not target_ids:
-                target_ids.extend(resolve_channel_family(channel_id))
+            if canon_cid and not target_ids:
+                target_ids.extend(resolve_channel_family(canon_cid))
 
             from app.services.channel_intelligence import is_off_niche_video_title, extract_saturated_channel_concepts
+
+            # 1. Lấy tự động 3 Video Thắng (Top 3 Winners) & 3 Video Thua (Bottom 3 Losers) theo tuần từ DB thật
+            if canon_cid:
+                weekly_perf = get_weekly_winners_and_losers(canon_cid, top_k=3)
+                week_label = weekly_perf.get("week_key", "")
+                channel_avg_swipe = float(weekly_perf.get("avg_swipe_away_pct", 30.0))
+                for idx, w in enumerate(weekly_perf.get("winners", []), 1):
+                    w_title = w.get("title", "")
+                    if w_title and not is_off_niche_video_title(w_title, niche_low):
+                        w_hook = w.get("hook_text") or w_title
+                        top_winners.append(
+                            f'  * [WINNER #{idx}] Title: "{w_title}" | Scene 1 Hook: "{w_hook}" '
+                            f'-> {w["views"]:,} views | Stayed: {w["stayed_to_watch_pct"]:.1f}% | '
+                            f'Swipe-Away: {w["swipe_away_pct"]:.1f}% | Completion (APV): {w["avg_view_percentage"]:.1f}%'
+                        )
+                for idx, l in enumerate(weekly_perf.get("losers", []), 1):
+                    l_title = l.get("title", "")
+                    if l_title:
+                        l_hook = l.get("hook_text") or l_title
+                        bottom_losers.append(
+                            f'  * [LOSER #{idx}] Title: "{l_title}" | Scene 1 Hook: "{l_hook}" '
+                            f'-> {l["views"]:,} views | Stayed: {l["stayed_to_watch_pct"]:.1f}% | '
+                            f'Swipe-Away: {l["swipe_away_pct"]:.1f}% | Completion (APV): {l["avg_view_percentage"]:.1f}% '
+                            f'(HIGH SWIPE-AWAY — DO NOT REPEAT THIS SLOW/VAGUE HOOK PATTERN!)'
+                        )
 
             if target_ids:
                 unique_ids = list(dict.fromkeys(target_ids))
                 with get_db() as db:
-                    top_Rows = (
-                        db.query(PublishedVideo)
-                        .filter(PublishedVideo.channel_id.in_(unique_ids), PublishedVideo.views >= 80)
-                        .order_by(PublishedVideo.views.desc())
-                        .limit(6)
-                        .all()
-                    )
-                    for r in top_Rows:
-                        if r.title and not is_off_niche_video_title(r.title, niche_low):
-                            top_winners.append(f'  * "{r.title.strip()}" ({r.views:,} views)')
-
                     rec_pub = (
                         db.query(PublishedVideo)
                         .filter(PublishedVideo.channel_id.in_(unique_ids))
@@ -1010,11 +1036,16 @@ class ContentAgent:
                     except Exception:
                         pass
                 if cached_entry and cached_entry.get("videos"):
-                    for v_info in cached_entry["videos"][:5]:
+                    for v_info in cached_entry["videos"][:3]:
                         v_title = str(v_info.get("title") or "").strip()
                         v_views = int(v_info.get("views_num") or 0)
                         if v_title and v_views >= 20 and not is_off_niche_video_title(v_title, niche_low):
                             top_winners.append(f'  * "{v_title}" ({v_views:,} live YouTube views)')
+                    for v_info in list(reversed(cached_entry["videos"]))[:3]:
+                        v_title = str(v_info.get("title") or "").strip()
+                        v_views = int(v_info.get("views_num") or 0)
+                        if v_title:
+                            bottom_losers.append(f'  * "{v_title}" ({v_views:,} views — High Swipe-Away Loser)')
                     for v_info in cached_entry["videos"][:8]:
                         v_title = str(v_info.get("title") or "").strip()
                         if v_title and v_title not in recent_titles:
@@ -1027,13 +1058,26 @@ class ContentAgent:
 
         memory_sections = [
             "═══════════════════════════════════════════════════════════",
-            "🧠 AUTONOMOUS CHANNEL MEMORY & CONTEXT-AWARE COGNITIVE ENGINE:",
+            f"🧠 WEEKLY REAL-DATA ANALYTICS LOOP ({week_label or 'LIVE'}) — CHANNEL SWIPE-AWAY BASELINE: {channel_avg_swipe:.1f}%:",
         ]
         if top_winners:
             memory_sections.append(
-                "🏆 PROVEN VIRAL WINNERS ON THIS CHANNEL (Study why this audience clicked & watched, then replicate the curiosity tension with a FRESH angle):\n"
+                "🏆 TOP 3 WINNING VIDEOS OF THIS CHANNEL (High Stayed-to-Watch % & High Completion APV % — Replicate their direct confrontation & concrete physical numbers with a FRESH topic):\n"
                 + "\n".join(top_winners[:3])
             )
+        if bottom_losers:
+            memory_sections.append(
+                "💀 BOTTOM 3 LOSING VIDEOS OF THIS CHANNEL (High Swipe-Away % & Low Retention — STRICTLY AVOID their slow setup, generic phrasing, or passive opening hooks):\n"
+                + "\n".join(bottom_losers[:3])
+            )
+        memory_sections.append(
+            """🔥 MANDATORY WINNING FORMULA FROM pt-BR & WILD ODYSSEY (APPLY STRICTLY TO ALL EN & pt-BR CHANNELS):
+1. "A vs B" ASYMMETRIC CONFRONTATION FORMULA:
+   - Frame both the Title and Scene 1 around a high-stakes, visceral confrontation between two opposing forces/entities ("Entity A vs. Entity B", "Small Underdog vs. Apex Giant", "4-Second Silence vs. Narcissist Trap", "3,600m Ice Sheet vs. Military Sonar", "Stray Dog vs. Highway Traffic").
+2. SHOCKING DECLARATIVE STATEMENT AT 0.0s (SCENE 1 = 5 TO 8 WORDS MAX):
+   - Open Scene 1 with a blunt, undeniable statement of fact or survival warning backed by an extreme physical/numerical metric (PSI, mph, meters, seconds, %, kg).
+   - ZERO passive introductions, ZERO rhetorical or Yes/No questions ("Did you know...", "Have you ever...")."""
+        )
         if recent_titles:
             memory_sections.append(
                 "🚫 RECENTLY PRODUCED VIDEOS ON THIS CHANNEL (DO NOT repeat these exact titles, opening hook sentences, or examples):\n"
@@ -1067,6 +1111,7 @@ class ContentAgent:
         )
         memory_sections.append("═══════════════════════════════════════════════════════════")
         return "\n".join(memory_sections)
+
 
     def generate_script(
         self,
@@ -1576,16 +1621,21 @@ HARD RULES:
         max_attempts: int = 3,
         cooldown_entities: Optional[List[str]] = None,
         channel_id: Optional[str] = None,
+        strict_block: bool = True,
         **kwargs,
     ) -> tuple:
         """
-        Quy trình biên soạn cao cấp: Tạo kịch bản -> Tự động chấm điểm bằng ScriptCritic.
-        Nếu điểm tệ (< min_acceptable_score hoặc chưa passed), hệ thống tự động tái tạo & tinh chỉnh
-        qua nhiều vòng lặp cho đến khi đạt chuẩn viral mới xuất ra cho người dùng.
+        Quy trình biên soạn cao cấp: Tạo kịch bản -> Tự động chấm điểm bằng ScriptCritic
+        với ngưỡng Hook được hiệu chỉnh theo tỷ lệ vuốt bỏ thật (swipe_away_pct) của kênh.
+        Nếu sau max_attempts vẫn không đạt ngưỡng và strict_block=True -> Chặn cứng (raise RuntimeError).
         Trả về tuple: (ScriptContract, ScriptEvaluationReport).
         """
         from app.graph.evaluators.script_critic import ScriptCritic
         critic = ScriptCritic()
+        cal_thresh = critic.get_calibrated_thresholds(channel_id=channel_id, channel_style=channel_niche)
+        effective_min_overall = max(float(min_acceptable_score or 8.0), float(cal_thresh.get("min_overall_score", 8.0)))
+        effective_min_hook = float(cal_thresh.get("min_hook_score", 8.0))
+        avg_swipe = cal_thresh.get("avg_swipe_away_pct")
 
         # 1. Tạo kịch bản sơ khởi
         best_script = self.generate_script(
@@ -1603,21 +1653,35 @@ HARD RULES:
                 script_data=best_script.model_dump(),
                 topic=topic,
                 channel_style=channel_niche,
-                primary_entity=getattr(best_script, "primary_entity", None)
+                primary_entity=getattr(best_script, "primary_entity", None),
+                channel_id=channel_id,
             )
         except Exception as e:
             logger.warning(f"Lỗi khi chấm điểm kịch bản sơ bộ: {e}")
+            if strict_block:
+                raise RuntimeError(f"🚫 [HardBlock QA] Không thể thẩm định chất lượng kịch bản: {e}")
             return best_script, None
 
-        # Nếu ngay vòng 1 đã đạt chuẩn xuất sắc (>= min_acceptable_score và passed) -> Trả về ngay
-        if best_eval.overall_score >= min_acceptable_score and best_eval.passed:
-            logger.info(f"✅ [ContentAgent] Kịch bản đạt chuẩn ngay vòng 1: {best_eval.overall_score:.1f}/10")
+        # Nếu ngay vòng 1 đã đạt chuẩn xuất sắc (cả overall lẫn hook_strength) -> Trả về ngay
+        if (
+            best_eval.overall_score >= effective_min_overall
+            and best_eval.hook_strength.score >= effective_min_hook
+            and best_eval.passed
+        ):
+            logger.info(
+                f"✅ [ContentAgent] Kịch bản đạt chuẩn ngay vòng 1: "
+                f"Overall={best_eval.overall_score:.1f}/{effective_min_overall:.1f} | "
+                f"Hook={best_eval.hook_strength.score:.1f}/{effective_min_hook:.1f}"
+            )
             return best_script, best_eval
 
         # 2. Vòng lặp tự động tái tạo & hoàn thiện cho đến khi đạt điểm chuẩn
         logger.info(
-            f"⚠️ [ContentAgent] Kịch bản sơ bộ chưa đạt ({best_eval.overall_score:.1f}/10 < {min_acceptable_score}). "
-            f"Bắt đầu quy trình tự động tái tạo đến khi đạt chuẩn (Tối đa {max_attempts} lần thử)..."
+            f"⚠️ [ContentAgent] Kịch bản sơ bộ chưa đạt "
+            f"(Overall={best_eval.overall_score:.1f}/{effective_min_overall:.1f}, "
+            f"Hook={best_eval.hook_strength.score:.1f}/{effective_min_hook:.1f}, "
+            f"Channel Avg Swipe-Away={avg_swipe}%). "
+            f"Bắt đầu quy trình tự động tái tạo (Tối đa {max_attempts} lần thử)..."
         )
 
         lang_low = str(language or "en").lower()
@@ -1631,16 +1695,22 @@ HARD RULES:
         for attempt in range(1, max_attempts + 1):
             critiques_list = list(best_eval.actionable_critiques) if best_eval.actionable_critiques else []
 
-            # Thêm chỉ đạo chuyên sâu theo các tiêu chí bị điểm kém
-            if best_eval.hook_strength.score < 8.0:
-                critiques_list.insert(0, f"Cảnh 1 Hook bị trừ nặng ({best_eval.hook_strength.score:.1f}/10): {best_eval.hook_strength.feedback}. Bắt buộc thay thế bằng hook giật gân, đảo ngược định kiến hoặc cảnh báo cấp bách trong 5-8 từ.")
+            # Thêm chỉ đạo chuyên sâu theo các tiêu chí bị điểm kém (đặc biệt là ngưỡng Hook theo swipe_away_pct)
+            if best_eval.hook_strength.score < effective_min_hook:
+                critiques_list.insert(
+                    0,
+                    f"Cảnh 1 Hook chưa đạt ngưỡng chống vuốt bỏ ({best_eval.hook_strength.score:.1f}/{effective_min_hook:.1f}, "
+                    f"kênh có swipe_away={avg_swipe}%): {best_eval.hook_strength.feedback}. "
+                    f"BẮT BUỘC dùng công thức pt-BR / Wild Odyssey: cấu trúc đối đầu 'A vs B' + câu khẳng định gây sốc 5-8 từ có con số/thông số vật lý cụ thể ngay giây 0.0s."
+                )
             if best_eval.story_pacing.score < 8.0:
                 critiques_list.append(f"Nhịp điệu chưa chuẩn ({best_eval.story_pacing.score:.1f}/10): {best_eval.story_pacing.feedback}. Điều chỉnh lời thoại strictly 88-118 từ cho toàn bộ video, 3.5-4.5s/cảnh, 8-9 cảnh.")
             if getattr(best_eval, "visual_direction", None) and best_eval.visual_direction.score < 8.0:
                 critiques_list.append(f"Thị giác yếu ({best_eval.visual_direction.score:.1f}/10): Cấm từ ngữ trừu tượng. visual_keyword và stock_query phải là danh từ/hành động vật lý cụ thể.")
 
             directive = (
-                f"KỊCH BẢN TRƯỚC ĐÓ ĐẠT ĐIỂM KÉM ({best_eval.overall_score:.1f}/10). {target_lang_note} "
+                f"KỊCH BẢN TRƯỚC ĐÓ ĐẠT ĐIỂM KÉM (Overall={best_eval.overall_score:.1f}/{effective_min_overall:.1f}, "
+                f"Hook={best_eval.hook_strength.score:.1f}/{effective_min_hook:.1f}). {target_lang_note} "
                 f"CHỈ ĐẠO BẮT BUỘC SỬA ĐỂ ĐẠT CHUẨN VIRAL: " + " | ".join(critiques_list)
             )
 
@@ -1656,7 +1726,7 @@ HARD RULES:
                     )
                 else:
                     # Lần thử cuối cùng: Tái tạo kịch bản từ đầu với góc nhìn sốc và sắc bén hơn
-                    refreshed_topic = f"{topic} (Shocking perspective, intense curiosity loop)"
+                    refreshed_topic = f"{topic} (A vs B confrontation, shocking physical claim hook)"
                     merged_notes = f"{director_notes or ''}\nMUST FIX: {'; '.join(critiques_list[:3])}".strip()
                     candidate_script = self.generate_script(
                         topic=refreshed_topic,
@@ -1672,27 +1742,51 @@ HARD RULES:
                     script_data=candidate_script.model_dump(),
                     topic=topic,
                     channel_style=channel_niche,
-                    primary_entity=getattr(candidate_script, "primary_entity", None)
+                    primary_entity=getattr(candidate_script, "primary_entity", None),
+                    channel_id=channel_id,
                 )
 
                 logger.info(
                     f"🔄 [ContentAgent Auto-Retry {attempt}/{max_attempts}] "
-                    f"Điểm số mới: {candidate_eval.overall_score:.1f}/10 (Cũ: {best_eval.overall_score:.1f}/10)"
+                    f"Overall: {candidate_eval.overall_score:.1f}/{effective_min_overall:.1f} | "
+                    f"Hook: {candidate_eval.hook_strength.score:.1f}/{effective_min_hook:.1f} | "
+                    f"Passed: {candidate_eval.passed}"
                 )
 
-                # Cập nhật ứng viên tốt nhất
-                if candidate_eval.overall_score > best_eval.overall_score:
+                # Cập nhật ứng viên tốt nhất (ưu tiên kịch bản passed hoặc có tổng điểm + hook cao hơn)
+                cand_rank = (1 if candidate_eval.passed else 0, candidate_eval.hook_strength.score * 0.5 + candidate_eval.overall_score * 0.5)
+                best_rank = (1 if best_eval.passed else 0, best_eval.hook_strength.score * 0.5 + best_eval.overall_score * 0.5)
+                if cand_rank > best_rank:
                     best_script = candidate_script
                     best_eval = candidate_eval
 
                 # Kiểm tra nếu đã vượt qua ngưỡng chuẩn
-                if candidate_eval.overall_score >= min_acceptable_score and candidate_eval.passed:
-                    logger.info(f"🎉 [ContentAgent] Kịch bản đã đạt chuẩn xuất sắc {candidate_eval.overall_score:.1f}/10 ở lần thử {attempt}!")
+                if (
+                    candidate_eval.overall_score >= effective_min_overall
+                    and candidate_eval.hook_strength.score >= effective_min_hook
+                    and candidate_eval.passed
+                ):
+                    logger.info(
+                        f"🎉 [ContentAgent] Kịch bản đã đạt chuẩn xuất sắc "
+                        f"(Overall={candidate_eval.overall_score:.1f}, Hook={candidate_eval.hook_strength.score:.1f}) ở lần thử {attempt}!"
+                    )
                     return candidate_script, candidate_eval
 
             except Exception as e:
                 logger.warning(f"Lỗi trong vòng lặp tự sửa kịch bản lần {attempt}: {e}")
                 continue
+
+        if strict_block and (
+            not best_eval.passed
+            or best_eval.overall_score < effective_min_overall
+            or best_eval.hook_strength.score < effective_min_hook
+        ):
+            raise RuntimeError(
+                f"🚫 [HardBlock ScriptQA] Kịch bản/Hook không đạt ngưỡng giữ chân sau {max_attempts} vòng tối ưu "
+                f"(Overall={best_eval.overall_score:.1f}/{effective_min_overall:.1f}, "
+                f"Hook={best_eval.hook_strength.score:.1f}/{effective_min_hook:.1f}, "
+                f"Channel Swipe-Away={avg_swipe}%). Đã chặn sản xuất video không đạt chuẩn!"
+            )
 
         logger.info(f"🏁 [ContentAgent] Hoàn thành tối ưu hóa kịch bản, điểm tốt nhất đạt được: {best_eval.overall_score:.1f}/10")
         return best_script, best_eval
