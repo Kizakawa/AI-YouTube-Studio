@@ -209,10 +209,11 @@ class AICommander:
         """
         context_data = {}
 
+        from app.database.models import normalize_channel_id
         # 1. Kênh & Người dùng
         with get_db() as db:
             db_user = db.query(User).filter(User.telegram_id == user_id).first()
-            active_ch_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_maya"
+            active_ch_id = normalize_channel_id(db_user.active_channel_id if db_user and db_user.active_channel_id else "ch_psychology_of_the_world")
 
             channels_cfg = settings.get_channels_config()
             ch_list_summary = []

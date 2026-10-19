@@ -159,9 +159,11 @@ def on_startup():
                     username="web_studio",
                     full_name="Web Studio UI",
                     role="admin",
-                    active_channel_id="channel_maya"
+                    active_channel_id="ch_psychology_of_the_world"
                 )
                 db.add(admin)
+            elif admin.active_channel_id in ("channel_maya", "ch_maya", "channel_psychology"):
+                admin.active_channel_id = "ch_psychology_of_the_world"
     except Exception as e:
         print(f"Warning during startup DB check: {e}")
 
@@ -1151,7 +1153,7 @@ async def get_channel_trend_suggestions(
 
 class QuickCreateFromTrendRequest(BaseModel):
     topic: str
-    channel_id: Optional[str] = "channel_maya"
+    channel_id: Optional[str] = "ch_psychology_of_the_world"
     language: Optional[str] = None
     trend_keyword: Optional[str] = None
     curiosity_hook: Optional[str] = None
@@ -1171,7 +1173,8 @@ async def quick_create_from_trend(body: QuickCreateFromTrendRequest):
     4. Text thumbnail 1 giây
     """
     from app.bot.handlers import _try_acquire_action, _release_action, _find_recent_duplicate_job
-    target_channel = body.channel_id or "channel_maya"
+    from app.database.models import normalize_channel_id
+    target_channel = normalize_channel_id(body.channel_id or "ch_psychology_of_the_world")
     norm_topic = " ".join((body.topic or "").lower().split())[:100]
     lock_key = f"web_quick_create:{target_channel}:{norm_topic}"
     acquired = _try_acquire_action(lock_key, max_inflight_sec=90.0, debounce_sec=8.0)
@@ -1223,7 +1226,7 @@ async def quick_create_from_trend(body: QuickCreateFromTrendRequest):
         with get_db() as db:
             job = VideoJob(
                 user_id=0,
-                target_channel_id=body.channel_id,
+                target_channel_id=target_channel,
                 topic=body.topic,
                 title=script.title,
                 script=script.full_narration,
@@ -1297,7 +1300,7 @@ async def api_library_check_duplicate(body: LibraryDuplicateRequest) -> Dict[str
 
 class CreateScriptRequest(BaseModel):
     topic: str
-    channel_id: str = "channel_maya"
+    channel_id: str = "ch_psychology_of_the_world"
     language: str = "en"
     director_notes: Optional[str] = None
 
@@ -1312,6 +1315,8 @@ async def create_script_from_web(body: CreateScriptRequest) -> Dict[str, Any]:
     Tự động chấm điểm qua ScriptCritic và lặp lại tái tạo cho đến khi đạt chuẩn viral (>= 8.0/10) mới hiển thị.
     """
     from app.bot.handlers import _try_acquire_action, _release_action, _find_recent_duplicate_job
+    from app.database.models import normalize_channel_id
+    body.channel_id = normalize_channel_id(body.channel_id)
     norm_topic = " ".join((body.topic or "").lower().split())[:100]
     lock_key = f"web_create_script:{body.channel_id}:{norm_topic}"
     acquired = _try_acquire_action(lock_key, max_inflight_sec=90.0, debounce_sec=8.0)
@@ -1428,7 +1433,7 @@ class FormulaDeconstructRequest(BaseModel):
 class FormulaGenerateRequest(BaseModel):
     blueprint: Dict[str, Any]
     new_topic: str
-    channel_id: str = "channel_maya"
+    channel_id: str = "ch_psychology_of_the_world"
     language: str = "en"
     director_notes: Optional[str] = None
 
@@ -1456,6 +1461,8 @@ async def api_formula_generate(body: FormulaGenerateRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="Thiếu dữ liệu Blueprint nhịp điệu.")
     try:
         from app.services.formula_deconstructor import FormulaDeconstructor
+        from app.database.models import normalize_channel_id
+        body.channel_id = normalize_channel_id(body.channel_id)
         channels = settings.get_channels_config()
         ch = next((c for c in channels if c.get("id") == body.channel_id), {})
         channel_niche = ch.get("niche") or "general"
@@ -1526,7 +1533,7 @@ async def api_formula_generate(body: FormulaGenerateRequest) -> Dict[str, Any]:
 class CreateManualScriptRequest(BaseModel):
     title: Optional[str] = None
     topic: Optional[str] = None
-    channel_id: str = "channel_maya"
+    channel_id: str = "ch_psychology_of_the_world"
     language: str = "en"
     scenes: Optional[List[Dict[str, Any]]] = None
 
@@ -2195,7 +2202,8 @@ def get_video_monetization_preview(job_id: int, channel_id: Optional[str] = None
         if not job:
             raise HTTPException(status_code=404, detail="Không tìm thấy video job")
 
-        target_ch = channel_id or job.target_channel_id or "channel_maya"
+        from app.database.models import normalize_channel_id
+        target_ch = normalize_channel_id(channel_id or job.target_channel_id or "ch_psychology_of_the_world")
         cfg = _read_channels_yaml()
         channels = cfg.get("channels", [])
         ch_cfg = next((c for c in channels if c.get("id") == target_ch), {"id": target_ch, "name": target_ch})
@@ -4799,7 +4807,7 @@ async def disconnect_channel(channel_id: str) -> Dict[str, Any]:
 from app.services.youtube_analytics import fetch_channel_live_stats, calculate_ai_forecast
 
 class ForecastRequest(BaseModel):
-    channel_id: Optional[str] = "channel_maya"
+    channel_id: Optional[str] = "ch_psychology_of_the_world"
     daily_uploads: Optional[float] = 1.0
     custom_avg_views: Optional[int] = None
 
@@ -5280,6 +5288,26 @@ async def preview_voice_sample(req: VoicePreviewRequest):
         except Exception as e:
             last_err = e
             logger.warning(f"Preview voice attempt {attempt} error: {e}")
+
+    if len(audio_bytes) == 0:
+        try:
+            import tempfile
+            from app.agents.voice_agent import VoiceAgent
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tf:
+                tmp_preview = tf.name
+            va = VoiceAgent(default_voice=voice)
+            await va.synthesize_single_clip(
+                text=text,
+                output_path=tmp_preview,
+                voice=voice,
+                rate=rate or "+0%",
+                pitch=pitch or "+0Hz",
+            )
+            if Path(tmp_preview).exists() and Path(tmp_preview).stat().st_size > 256:
+                audio_bytes.extend(Path(tmp_preview).read_bytes())
+            Path(tmp_preview).unlink(missing_ok=True)
+        except Exception as fb_err:
+            last_err = fb_err
 
     if len(audio_bytes) == 0:
         logger.error(f"Preview voice failed: {last_err}")

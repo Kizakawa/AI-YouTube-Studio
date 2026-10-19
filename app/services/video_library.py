@@ -623,6 +623,50 @@ def get_weekly_winners_and_losers(channel_id: str, top_k: int = 3, force_refresh
     except Exception as e:
         logger.debug(f"[VideoLibrary] get_weekly_winners_and_losers({canon_cid}) warning: {e}")
 
+    auditor_insights = ""
+    avg_avd_sec = 25.0
+    try:
+        from pathlib import Path
+        audit_path = Path(settings.BASE_DIR) / "storage" / "channel_audit_latest.json"
+        if audit_path.exists():
+            audit_json = json.loads(audit_path.read_text(encoding="utf-8"))
+            ch_audit = audit_json.get(canon_cid) if isinstance(audit_json, dict) else None
+            if ch_audit and isinstance(ch_audit, dict):
+                auditor_insights = str(ch_audit.get("ai_insights") or "").strip()
+                ya = ch_audit.get("analytics") or {}
+                if ya.get("has_data"):
+                    if ya.get("avd_sec"):
+                        avg_avd_sec = float(ya["avd_sec"])
+                    if not winners and ya.get("apv_pct"):
+                        avg_apv = float(ya["apv_pct"])
+                    if not winners and ya.get("stay_pct"):
+                        avg_stayed = float(ya["stay_pct"])
+                        avg_swipe = float(ya.get("swipe_pct") or (100.0 - avg_stayed))
+    except Exception:
+        pass
+
+    prompt_lines = [
+        f"📊 LIVE CHANNEL RETENTION BASELINE ({canon_cid} — {iso_year}-W{iso_week:02d}): "
+        f"Avg Views: {avg_views:,.0f} | Stayed-to-Watch: {avg_stayed:.1f}% | "
+        f"Swipe-Away: {avg_swipe:.1f}% | Avg Completion (APV): {avg_apv:.1f}% | Avg AVD: {avg_avd_sec:.1f}s"
+    ]
+    if winners:
+        prompt_lines.append("🏆 TOP 3 PROVEN WINNERS FROM DB (Replicate their hook structure & curiosity mechanism):")
+        for idx, w in enumerate(winners[:top_k], 1):
+            prompt_lines.append(
+                f"  #{idx}. \"{w['title']}\" | Hook: \"{w.get('hook_text', '')[:110]}\" -> "
+                f"{w['views']:,} views | Stayed: {w['stayed_to_watch_pct']:.1f}% | "
+                f"Swipe-Away: {w['swipe_away_pct']:.1f}% | APV: {w['avg_view_percentage']:.1f}%"
+            )
+    if losers:
+        prompt_lines.append("⚠️ BOTTOM 3 LOSERS FROM DB (High Swipe-Away — Avoid their slow opening & fatigued angle):")
+        for idx, l in enumerate(losers[:top_k], 1):
+            prompt_lines.append(
+                f"  #{idx}. \"{l['title']}\" | Hook: \"{l.get('hook_text', '')[:110]}\" -> "
+                f"{l['views']:,} views | Stayed: {l['stayed_to_watch_pct']:.1f}% | "
+                f"Swipe-Away: {l['swipe_away_pct']:.1f}% | APV: {l['avg_view_percentage']:.1f}%"
+            )
+
     res = {
         "channel_id": canon_cid,
         "week_key": f"{iso_year}-W{iso_week:02d}",
@@ -632,6 +676,9 @@ def get_weekly_winners_and_losers(channel_id: str, top_k: int = 3, force_refresh
         "avg_stayed_to_watch_pct": avg_stayed,
         "avg_swipe_away_pct": avg_swipe,
         "avg_view_percentage": avg_apv,
+        "avg_view_duration_sec": avg_avd_sec,
+        "auditor_ai_insights": auditor_insights,
+        "prompt_block": "\n".join(prompt_lines),
     }
     _WEEKLY_PERFORMANCE_CACHE[cache_key] = res
     return res

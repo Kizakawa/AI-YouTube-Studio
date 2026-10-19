@@ -399,7 +399,7 @@ def process_waiting_quota_jobs() -> int:
 
 
 def get_next_available_golden_slot(
-    channel_id: str = "channel_maya",
+    channel_id: str = "ch_psychology_of_the_world",
     min_lead_minutes: int = 20
 ) -> Tuple[datetime, str, str, str]:
     """
@@ -537,7 +537,7 @@ def get_next_available_golden_slot(
 
 
 
-def get_channel_upcoming_schedule(channel_id: str = "channel_maya", limit: int = 10) -> List[Dict[str, Any]]:
+def get_channel_upcoming_schedule(channel_id: str = "ch_psychology_of_the_world", limit: int = 10) -> List[Dict[str, Any]]:
     """Lấy danh sách các video đã lên lịch trong tương lai của kênh để theo dõi."""
     sync_scheduled_jobs_status()
     now_utc = datetime.now(timezone.utc)

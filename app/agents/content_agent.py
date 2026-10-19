@@ -1891,7 +1891,7 @@ HARD RULES:
 
     def suggest_viral_ideas(
         self,
-        channel_id: str = "channel_maya",
+        channel_id: str = "ch_psychology_of_the_world",
         channel_name: str = "Psychology of the world",
         channel_niche: str = "psychology",
         language: str = "en",
@@ -1901,31 +1901,37 @@ HARD RULES:
         """
         Sinh danh sách các chủ đề Shorts triệu view bám sát nội dung thực tế của kênh:
         - Đọc danh sách các video đã đăng/sản xuất của kênh để tránh trùng lặp.
-        - Nhân bản công thức chiến thắng từ video đạt 160% Retention (3 Signs They're JUST Using You).
+        - Trích xuất động Top 3 Winners & Bottom 3 Losers từ DB thực tế (APV%, Stay%, Swipe%, Views).
         - Xây dựng cụm chủ đề liên hoàn (Topic Cluster / Binge-watching Playlist) kích thích xem tiếp.
         """
+        from app.database.models import normalize_channel_id
+        channel_id = normalize_channel_id(channel_id)
         is_psychology = "psychology" in channel_niche.lower() or "tâm lý" in channel_niche.lower()
 
-        recent_context_block = ""
-        if recent_titles:
-            clean_titles = [f"  - \"{t}\"" for t in recent_titles[:8] if t]
-            if clean_titles:
-                recent_context_block = f"""
-═══════════════════════════════════════════════════════════
-📺 CHANNEL IDENTITY & RECENT VIDEO PORTFOLIO:
-Channel Name: '{channel_name}'
-Channel Niche: '{channel_niche}'
-Recently Produced / Uploaded Videos on this Channel:
-{chr(10).join(clean_titles)}
+        live_feedback_block = ""
+        try:
+            from app.services.video_library import get_weekly_winners_and_losers
+            wl = get_weekly_winners_and_losers(channel_id, top_k=3)
+            live_feedback_block = wl.get("prompt_block", "")
+        except Exception as e:
+            logger.debug(f"[ContentAgent] Could not fetch live winners/losers for {channel_id}: {e}")
 
-🏆 CHANNEL'S PROVEN WINNING HERO (160.2% RETENTION BENCHMARK):
-- "3 Signs They’re JUST Using You 🚩 #psychology" (Viral breakthrough hit!)
-- Winning Mechanism: Interpersonal red flags, covert manipulation, spotting exploitation, psychological self-defense.
+        recent_context_block = ""
+        clean_titles = [f"  - \"{t}\"" for t in (recent_titles or [])[:8] if t]
+        recent_titles_str = chr(10).join(clean_titles) if clean_titles else "  - (See live channel database telemetry below)"
+        recent_context_block = f"""
+═══════════════════════════════════════════════════════════
+📺 CHANNEL IDENTITY & LIVE PERFORMANCE TELEMETRY:
+Channel ID: '{channel_id}' | Channel Name: '{channel_name}' | Niche: '{channel_niche}'
+Recently Produced / Uploaded Videos on this Channel (DO NOT DUPLICATE):
+{recent_titles_str}
+
+{live_feedback_block}
 
 CRITICAL CHANNEL ALIGNMENT & BINGE-WATCHING RULES:
 1. DEEP CHANNEL SYNERGY: The {count} suggested concepts MUST feel like natural sister episodes in a binge-worthy playlist for '{channel_name}'.
-2. NO DUPLICATES: DO NOT suggest topics or titles already covered in the recent videos list above!
-3. BINGE-WATCHING MULTIPLIER: Viewers who watched "3 Signs They’re JUST Using You" must feel an irresistible psychological compulsion to click these videos next (e.g. Secret jealousy in friend circles, subtle tests toxic people use, psychological boundary defense, detecting hidden deceit).
+2. NO DUPLICATES: DO NOT suggest topics or titles already covered in the recent videos list or live telemetry above!
+3. DATA-DRIVEN REPLICATION: Replicate the hook architecture, pacing, and curiosity angle of the Top 3 Proven Winners above while strictly avoiding the structural patterns of the Bottom 3 Losers.
 ═══════════════════════════════════════════════════════════
 """
 

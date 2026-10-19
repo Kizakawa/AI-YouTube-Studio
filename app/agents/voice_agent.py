@@ -899,6 +899,151 @@ class VoiceAgent:
         logger.info(f"Full narration audio (perfect deterministic sync): {total_ms}ms ({total_ms/1000:.1f}s)")
         return total_ms
 
+    async def synthesize_single_clip(
+        self,
+        text: str,
+        output_path: str,
+        voice: Optional[str] = None,
+        rate: str = "+0%",
+        pitch: Optional[str] = None,
+        metadata_fname: Optional[str] = None,
+    ) -> Tuple[str, int, str]:
+        """
+        Tổng hợp 1 đoạn audio đơn lẻ (dùng cho edit_nodes, manual_studio, repurposer, preview, full_narration)
+        với đầy đủ chuỗi dự phòng 5 tầng (Edge-TTS Primary -> Backup Neural Voices -> Edge-TTS CLI -> Gemini TTS -> Google HTTP TTS).
+        Trả về: (output_path, duration_ms, engine_used).
+        """
+        clean_text = re.sub(r'^[^\w\s\(\)]+', '', (text or "")).strip()
+        if not clean_text or len(clean_text) < 2:
+            clean_text = (text or "").strip() or "..."
+
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        safe_voice = self._resolve_safe_voice(clean_text, voice or self.default_voice)
+        candidate_voices = [safe_voice]
+        if safe_voice.startswith("vi-"):
+            for v_alt in ("vi-VN-NamMinhNeural", "vi-VN-HoaiMyNeural"):
+                if v_alt not in candidate_voices:
+                    candidate_voices.append(v_alt)
+        elif safe_voice.startswith("pt-"):
+            for v_alt in ("pt-BR-AntonioNeural", "pt-BR-FranciscaNeural", "pt-BR-ThalitaMultilingualNeural"):
+                if v_alt not in candidate_voices:
+                    candidate_voices.append(v_alt)
+        else:
+            for v_alt in (
+                "en-US-AndrewMultilingualNeural",
+                "en-US-BrianMultilingualNeural",
+                "en-US-EricNeural",
+                "en-US-ChristopherNeural",
+                "en-US-GuyNeural",
+            ):
+                if v_alt not in candidate_voices:
+                    candidate_voices.append(v_alt)
+
+        success = False
+        used_http_fallback = False
+        engine_used = f"edge_tts:{safe_voice}"
+        last_err = None
+
+        ws_circuit_open = time.time() < VoiceAgent._edge_ws_blocked_until
+        if not ws_circuit_open:
+            for c_voice in candidate_voices:
+                for attempt in range(2):
+                    try:
+                        kwargs = {"text": clean_text, "voice": c_voice}
+                        if rate and rate != "+0%":
+                            kwargs["rate"] = rate
+                        if pitch and pitch != "+0Hz" and attempt == 0:
+                            kwargs["pitch"] = pitch
+                        if metadata_fname:
+                            try:
+                                comm = edge_tts.Communicate(**kwargs, boundary="WordBoundary")
+                                await comm.save(output_path, metadata_fname=metadata_fname)
+                            except TypeError:
+                                comm = edge_tts.Communicate(**kwargs)
+                                await comm.save(output_path)
+                        else:
+                            comm = edge_tts.Communicate(**kwargs)
+                            await comm.save(output_path)
+
+                        if Path(output_path).exists() and Path(output_path).stat().st_size > 1024:
+                            success = True
+                            engine_used = f"edge_tts:{c_voice}"
+                            VoiceAgent._edge_403_streak = 0
+                            VoiceAgent._edge_ws_blocked_until = 0.0
+                            break
+                        raise RuntimeError("Audio file empty or incomplete")
+                    except Exception as err_tts:
+                        last_err = err_tts
+                        err_str = f"{type(err_tts).__name__}: {err_tts}"
+                        is_403 = "403" in err_str or "Invalid response status" in err_str
+                        is_no_audio = "NoAudioReceived" in err_str or "No audio" in err_str
+                        if is_403:
+                            VoiceAgent._edge_403_streak += 1
+                            if VoiceAgent._edge_403_streak >= 2:
+                                VoiceAgent._edge_ws_blocked_until = time.time() + 45.0
+                                ws_circuit_open = True
+                                break
+                        if (is_no_audio or is_403) and attempt == 0:
+                            try:
+                                import shutil
+                                edge_cli = shutil.which("edge-tts") or str(Path(sys.executable).parent / "edge-tts.exe")
+                                cmd = [edge_cli, "--text", clean_text, "--voice", c_voice, f"--rate={rate or '+0%'}", "--write-media", output_path]
+                                res = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, timeout=20)
+                                if res.returncode == 0 and Path(output_path).exists() and Path(output_path).stat().st_size > 1024:
+                                    success = True
+                                    engine_used = f"edge_cli:{c_voice}"
+                                    break
+                            except Exception:
+                                pass
+                        await asyncio.sleep(0.5 * (attempt + 1))
+                if success or ws_circuit_open:
+                    break
+
+        # Tier 4: Gemini 2.5 Flash Native TTS
+        if not success:
+            try:
+                gem_voice = self.get_gemini_persona_voice()
+                ok_gem = await asyncio.to_thread(self._synthesize_with_gemini_tts, clean_text, output_path, gem_voice)
+                if ok_gem and Path(output_path).exists() and Path(output_path).stat().st_size > 1024:
+                    success = True
+                    engine_used = f"gemini_tts_fallback:{gem_voice}"
+            except Exception as ex_gem:
+                logger.debug(f"[synthesize_single_clip] Gemini TTS fallback error: {ex_gem}")
+
+        # Tier 5: Google Translate HTTP TTS
+        if not success:
+            try:
+                import requests as _req
+                from urllib.parse import quote as _quote
+                tl = "vi" if safe_voice.startswith("vi-") else ("pt" if safe_voice.startswith("pt-") else "en")
+                chunks = self._split_text_chunks(clean_text, max_chars=190)
+                audio_bytes = bytearray()
+                for chunk in chunks:
+                    gtts_url = f"https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl={tl}&q={_quote(chunk)}"
+                    r_tts = await asyncio.to_thread(
+                        _req.get,
+                        gtts_url,
+                        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+                        timeout=15,
+                    )
+                    if r_tts.status_code == 200 and len(r_tts.content) > 256:
+                        audio_bytes.extend(r_tts.content)
+                if len(audio_bytes) > 1024:
+                    Path(output_path).write_bytes(bytes(audio_bytes))
+                    success = True
+                    used_http_fallback = True
+                    engine_used = f"gtts_http:{tl}"
+            except Exception as ex_gtts:
+                logger.debug(f"[synthesize_single_clip] Google HTTP TTS fallback error: {ex_gtts}")
+
+        if not success:
+            raise last_err or RuntimeError("Không thể sinh audio sau 5 tầng dự phòng")
+
+        await asyncio.to_thread(self._master_and_trim_scene_audio, output_path, used_http_fallback)
+        dur_ms = await asyncio.to_thread(self._get_audio_duration_ms, output_path)
+        self.last_used_engine = engine_used
+        return output_path, dur_ms, engine_used
+
     async def generate_full_narration(
         self,
         text: str,
@@ -906,13 +1051,10 @@ class VoiceAgent:
         voice: str = None
     ) -> str:
         """
-        Backward-compatible: Tạo 1 file audio từ toàn bộ narration.
-        Dùng cho trường hợp không cần per-scene timing.
+        Backward-compatible: Tạo 1 file audio từ toàn bộ narration với đầy đủ 5 tầng dự phòng.
         """
-        safe_voice = self._resolve_safe_voice(text, voice or self.default_voice)
-        communicate = edge_tts.Communicate(text, safe_voice)
-        await communicate.save(output_path)
-        return output_path
+        out_p, _, _ = await self.synthesize_single_clip(text=text, output_path=output_path, voice=voice)
+        return out_p
 
     # ──────────────────────────────────────────
     # PRIVATE HELPERS

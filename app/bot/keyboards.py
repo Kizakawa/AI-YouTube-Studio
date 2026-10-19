@@ -412,7 +412,7 @@ def get_schedule_channel_keyboard(job_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
-def get_viral_ideas_keyboard(ideas: list, channel_id: str = "channel_maya") -> InlineKeyboardMarkup:
+def get_viral_ideas_keyboard(ideas: list, channel_id: str = "ch_psychology_of_the_world") -> InlineKeyboardMarkup:
     """Bàn phím 1-Click chọn ý tưởng triệu view để sản xuất kịch bản ngay lập tức"""
     keyboard = []
     for idx, idea in enumerate(ideas):

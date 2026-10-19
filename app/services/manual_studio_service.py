@@ -93,37 +93,28 @@ class ManualStudioService:
         voice_pitch: str,
         output_audio_path: str
     ) -> float:
-        """Sinh giọng đọc Edge-TTS cho 1 cảnh và trả về thời lượng thực tế (giây) với cơ chế tự động retry."""
+        """Sinh giọng đọc AI cho 1 cảnh với chuỗi dự phòng 5 tầng (Edge-TTS -> Backup Neural -> CLI -> Gemini TTS -> Google HTTP TTS)."""
         clean_text = text.strip()
         if not clean_text:
             return 0.0
 
         Path(output_audio_path).parent.mkdir(parents=True, exist_ok=True)
-        
-        last_error = None
-        for attempt in range(1, 4):
-            try:
-                # Lần 1-2 dùng rate/pitch; nếu có lỗi lần 3 fallback bỏ pitch
-                r = voice_rate if (voice_rate and voice_rate != "+0%") else None
-                p = voice_pitch if (voice_pitch and voice_pitch != "+0Hz" and attempt < 3) else None
+        try:
+            from app.agents.voice_agent import VoiceAgent
+            va = VoiceAgent(default_voice=voice)
+            _, duration_ms, eng = await va.synthesize_single_clip(
+                text=clean_text,
+                output_path=output_audio_path,
+                voice=voice,
+                rate=voice_rate or "+0%",
+                pitch=voice_pitch or "+0Hz",
+            )
+            if duration_ms > 0:
+                logger.info(f"[ManualStudio TTS] Đã sinh audio ({duration_ms}ms) qua engine: {eng}")
+                return round(duration_ms / 1000.0, 3)
+        except Exception as e:
+            logger.error(f"Chuỗi 5 tầng TTS thất bại: {e}. Dùng fallback im lặng an toàn.")
 
-                kwargs = {"text": clean_text, "voice": voice}
-                if r: kwargs["rate"] = r
-                if p: kwargs["pitch"] = p
-
-                communicate = edge_tts.Communicate(**kwargs)
-                await communicate.save(output_audio_path)
-
-                duration_ms = get_duration_ms(output_audio_path)
-                if duration_ms > 0:
-                    return round(duration_ms / 1000.0, 3)
-            except Exception as e:
-                last_error = e
-                logger.warning(f"Edge-TTS attempt {attempt}/3 thất bại ({e}), đang thử lại...")
-                await asyncio.sleep(0.8 * attempt)
-
-        logger.error(f"Edge-TTS thất bại hoàn toàn sau 3 lần thử: {last_error}. Dùng fallback an toàn.")
-        # Fallback an toàn: ước tính theo số từ và tạo file im lặng để pipeline không bị gián đoạn
         word_count = len(clean_text.split())
         dur = max(2.5, round(word_count / 3.2, 2))
         await self._create_silent_audio(dur, output_audio_path)

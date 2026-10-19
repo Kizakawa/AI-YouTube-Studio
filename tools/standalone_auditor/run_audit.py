@@ -235,7 +235,7 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
                 total_videos = int(stats.get("videoCount", 0))
                 uploads_pl = item.get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads")
 
-                pl_items = srv.playlistItems().list(playlistId=uploads_pl, part="contentDetails", maxResults=15).execute().get("items", [])
+                pl_items = srv.playlistItems().list(playlistId=uploads_pl, part="contentDetails", maxResults=30).execute().get("items", [])
                 vids = [x["contentDetails"]["videoId"] for x in pl_items]
                 v_details = srv.videos().list(id=",".join(vids), part="snippet,statistics,status").execute().get("items", []) if vids else []
 
@@ -247,6 +247,7 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
                     status = v.get("status", {})
 
                     title = snip.get("title", "")
+                    desc = snip.get("description", "")
                     pub_at_str = snip.get("publishedAt", "")
                     privacy = status.get("privacyStatus", "")
                     sched_at_str = status.get("publishAt", "")
@@ -262,7 +263,16 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
                     # Ghép chỉ số Retention & Tỷ lệ bỏ qua từ YouTube Analytics API v2
                     ya = vid_analytics_map.get(vid, {})
 
-                    new_videos_state[vid] = {"views": views, "likes": likes, "privacy": privacy}
+                    new_videos_state[vid] = {
+                        "views": views,
+                        "likes": likes,
+                        "comments": comments,
+                        "privacy": privacy,
+                        "avd_sec": ya.get("avd_sec"),
+                        "apv_pct": ya.get("apv_pct"),
+                        "stay_pct": ya.get("stay_pct"),
+                        "swipe_pct": ya.get("swipe_pct"),
+                    }
 
                     if privacy == "private" and sched_at_str:
                         sched_dt = _parse_iso(sched_at_str)
@@ -275,6 +285,8 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
                         v_obj = {
                             "id": vid,
                             "title": title,
+                            "description": desc[:500] if desc else "",
+                            "published_at_utc": pub_at_str,
                             "published_vn": pub_vn,
                             "age_hours": round(age_h, 1),
                             "views": views,
@@ -297,6 +309,20 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
                 scheduled_queue.sort(key=lambda x: x["publish_at_utc"])
                 effective_total_views = max(total_views, sum(x["views"] for x in all_public))
 
+                # Xếp hạng Top 3 Winners và Bottom 3 Losers theo hiệu suất thật
+                ranked_public = sorted(
+                    all_public,
+                    key=lambda x: (
+                        x.get("views", 0),
+                        float(x.get("stay_pct") or 0.0),
+                        float(x.get("apv_pct") or 0.0),
+                    ),
+                    reverse=True,
+                )
+                top_3_winners = ranked_public[:3]
+                winner_ids = {w["id"] for w in top_3_winners}
+                bottom_3_losers = [x for x in reversed(ranked_public) if x["id"] not in winner_ids][:3]
+
                 prev_ch = prev_channels.get(cid, {})
                 delta_views = effective_total_views - int(prev_ch["views"]) if "views" in prev_ch else 0
                 delta_subs = total_subs - int(prev_ch["subs"]) if "subs" in prev_ch else 0
@@ -305,6 +331,8 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
                 channels_data.append({
                     "id": cid,
                     "name": cname,
+                    "handle": ch.get("youtube_handle") or ch.get("handle") or "",
+                    "niche": ch.get("niche") or "",
                     "language": lang,
                     "total_views": effective_total_views,
                     "delta_views": delta_views,
@@ -315,13 +343,17 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
                     "scheduled_queue": scheduled_queue,
                     "analytics": ch_analytics,
                     "recent_72h": recent_72h,
-                    "top_analytics_videos": top_analytics_videos[:5],
+                    "top_analytics_videos": top_analytics_videos[:10],
+                    "all_public_videos": all_public,
+                    "top_3_winners": top_3_winners,
+                    "bottom_3_losers": bottom_3_losers,
                 })
             except Exception as e:
                 channels_data.append({"id": cid, "name": cname, "language": lang, "error": str(e)})
 
     return {
         "timestamp_vn": now_vn.strftime("%H:%M — %d/%m/%Y"),
+        "timestamp_utc": now_utc.isoformat(),
         "hours_since_prev": round(hours_since_prev, 2) if hours_since_prev else None,
         "prev_timestamp_vn": prev_state.get("timestamp_vn"),
         "channels": channels_data,
@@ -517,6 +549,187 @@ def format_full_markdown(telemetry: Dict[str, Any], insights: str) -> str:
     return "\n".join(lines)
 
 
+def sync_telemetry_to_production(telemetry: Dict[str, Any], insights: str) -> Dict[str, Any]:
+    """
+    Đóng vòng lặp phản hồi (Closed-Loop Production Feedback):
+    Đưa toàn bộ dữ liệu thực tế từ Auditor (views, likes, comments, avd_sec, apv_pct, stay_pct, swipe_pct,
+    top_3_winners, bottom_3_losers, ai_insights) ngược lại vào:
+    1. File `storage/channel_audit_latest.json` (để ChannelIntelligence & ContentAgent đọc tức thì).
+    2. Bảng `PublishedVideo` & `VideoJob` trong Production DB (PostgreSQL / SQLite).
+    """
+    summary = {"json_updated": False, "db_upserted": 0, "channels_synced": 0}
+    audit_json_path = ROOT_DIR / "storage" / "channel_audit_latest.json"
+    audit_json_path.parent.mkdir(parents=True, exist_ok=True)
+
+    existing_json: Dict[str, Any] = {}
+    if audit_json_path.exists():
+        try:
+            existing_json = json.loads(audit_json_path.read_text(encoding="utf-8"))
+            if not isinstance(existing_json, dict):
+                existing_json = {}
+        except Exception:
+            existing_json = {}
+
+    # 1. Cập nhật storage/channel_audit_latest.json
+    for c in telemetry.get("channels", []):
+        cid = c.get("id")
+        if not cid or c.get("error"):
+            continue
+        prev_entry = existing_json.get(cid) if isinstance(existing_json.get(cid), dict) else {}
+        pub_vids = c.get("all_public_videos") or prev_entry.get("videos") or []
+        existing_json[cid] = {
+            **prev_entry,
+            "id": cid,
+            "name": c.get("name", cid),
+            "handle": c.get("handle") or prev_entry.get("handle") or "",
+            "niche": c.get("niche") or prev_entry.get("niche") or "",
+            "language": c.get("language", "en"),
+            "audited_at_utc": telemetry.get("timestamp_utc"),
+            "audited_at_vn": telemetry.get("timestamp_vn"),
+            "total_views": c.get("total_views", 0),
+            "delta_views": c.get("delta_views", 0),
+            "total_subs": c.get("total_subs", 0),
+            "delta_subs": c.get("delta_subs", 0),
+            "total_videos": c.get("total_videos", 0),
+            "scheduled_count": c.get("scheduled_count", 0),
+            "scheduled_queue": c.get("scheduled_queue", []),
+            "analytics": c.get("analytics", {}),
+            "videos": pub_vids,
+            "top_3_winners": c.get("top_3_winners", []),
+            "bottom_3_losers": c.get("bottom_3_losers", []),
+            "ai_insights": insights,
+        }
+        summary["channels_synced"] += 1
+
+    try:
+        audit_json_path.write_text(json.dumps(existing_json, ensure_ascii=False, indent=2), encoding="utf-8")
+        summary["json_updated"] = True
+    except Exception as e:
+        logger.warning(f"Không thể ghi channel_audit_latest.json: {e}")
+
+    # 2. Đồng bộ trực tiếp vào bảng PublishedVideo & VideoJob trong Production DB
+    try:
+        if str(ROOT_DIR) not in sys.path:
+            sys.path.insert(0, str(ROOT_DIR))
+        from app.database.models import get_db, PublishedVideo, VideoJob, normalize_channel_id
+        from app.services.video_library import (
+            _compute_calibrated_retention,
+            _extract_hook_from_job,
+            _parse_yt_time,
+            _WEEKLY_PERFORMANCE_CACHE,
+        )
+
+        now_naive = datetime.utcnow()
+        upserted = 0
+        with get_db() as db:
+            jobs = db.query(VideoJob).filter(VideoJob.youtube_video_id.isnot(None)).all()
+            job_by_vid = {(j.youtube_video_id or "").strip(): j for j in jobs if (j.youtube_video_id or "").strip()}
+
+            for c in telemetry.get("channels", []):
+                if c.get("error"):
+                    continue
+                canon_cid = normalize_channel_id(c.get("id"))
+                pub_vids = c.get("all_public_videos") or []
+                if not pub_vids:
+                    continue
+
+                valid_views = [int(v.get("views") or 0) for v in pub_vids if int(v.get("views") or 0) > 0]
+                ch_avg_views = (sum(valid_views) / len(valid_views)) if valid_views else 120.0
+                ch_ya = c.get("analytics") or {}
+
+                for v in pub_vids:
+                    vid = (v.get("id") or "").strip()
+                    if not vid:
+                        continue
+                    v_views = int(v.get("views") or 0)
+                    v_likes = int(v.get("likes") or 0)
+                    v_comments = int(v.get("comments") or 0)
+                    raw_apv = v.get("apv_pct")
+                    raw_stay = v.get("stay_pct")
+                    raw_swipe = v.get("swipe_pct")
+                    raw_avd = v.get("avd_sec")
+
+                    matched_job = job_by_vid.get(vid)
+                    if matched_job:
+                        matched_job.target_channel_id = canon_cid
+                    hook_txt = _extract_hook_from_job(matched_job, v.get("title") or "")
+
+                    cal = _compute_calibrated_retention(
+                        views=v_views,
+                        likes=v_likes,
+                        comments=v_comments,
+                        channel_avg_views=ch_avg_views,
+                        hook_text=hook_txt,
+                        raw_apv=float(raw_apv) if raw_apv is not None else (float(ch_ya["apv_pct"]) if ch_ya.get("has_data") and ch_ya.get("apv_pct") else None),
+                        raw_stayed=float(raw_stay) if raw_stay is not None else (float(ch_ya["stay_pct"]) if ch_ya.get("has_data") and ch_ya.get("stay_pct") else None),
+                    )
+                    final_apv = float(raw_apv) if raw_apv is not None else cal["avg_view_percentage"]
+                    final_stay = float(raw_stay) if raw_stay is not None else cal["stayed_to_watch_pct"]
+                    final_swipe = float(raw_swipe) if raw_swipe is not None else round(max(0.0, 100.0 - final_stay), 1)
+                    final_avd = float(raw_avd) if raw_avd is not None else cal["avg_view_duration_sec"]
+
+                    existing_pv = db.query(PublishedVideo).filter(PublishedVideo.youtube_video_id == vid).first()
+                    if existing_pv:
+                        existing_pv.channel_id = canon_cid
+                        existing_pv.title = v.get("title") or existing_pv.title
+                        existing_pv.views = v_views
+                        existing_pv.likes = v_likes
+                        existing_pv.comments = v_comments
+                        existing_pv.avg_view_percentage = final_apv
+                        existing_pv.stayed_to_watch_pct = final_stay
+                        existing_pv.swipe_away_pct = final_swipe
+                        existing_pv.avg_view_duration_sec = final_avd
+                        existing_pv.last_synced_at = now_naive
+                        if matched_job and not existing_pv.job_id:
+                            existing_pv.job_id = matched_job.id
+                        if hook_txt and not existing_pv.hook_text:
+                            existing_pv.hook_text = hook_txt
+                        if matched_job and matched_job.voice_engine and not existing_pv.voice_engine:
+                            existing_pv.voice_engine = matched_job.voice_engine
+                    else:
+                        db.add(
+                            PublishedVideo(
+                                channel_id=canon_cid,
+                                youtube_video_id=vid,
+                                title=v.get("title") or "",
+                                description=v.get("description") or "",
+                                published_at=_parse_yt_time(v.get("published_at_utc")) or now_naive,
+                                views=v_views,
+                                likes=v_likes,
+                                comments=v_comments,
+                                avg_view_percentage=final_apv,
+                                stayed_to_watch_pct=final_stay,
+                                swipe_away_pct=final_swipe,
+                                avg_view_duration_sec=final_avd,
+                                hook_text=hook_txt,
+                                voice_engine=matched_job.voice_engine if matched_job else None,
+                                last_synced_at=now_naive,
+                                source="auditor_sync",
+                                job_id=matched_job.id if matched_job else None,
+                            )
+                        )
+                    if matched_job:
+                        matched_job.views = v_views
+                        matched_job.likes = v_likes
+                        matched_job.comments = v_comments
+                        matched_job.avg_view_percentage = final_apv
+                        matched_job.stayed_to_watch_pct = final_stay
+                        matched_job.swipe_away_pct = final_swipe
+                        matched_job.avg_view_duration_sec = final_avd
+                    upserted += 1
+
+        _WEEKLY_PERFORMANCE_CACHE.clear()
+        summary["db_upserted"] = upserted
+        logger.info(
+            f"🔄 [Auditor->Production] Đã đồng bộ {upserted} video từ {summary['channels_synced']} kênh "
+            f"vào PublishedVideo DB & channel_audit_latest.json!"
+        )
+    except Exception as e:
+        logger.warning(f"Đồng bộ Auditor vào Production DB tạm thời bỏ qua (chế độ độc lập): {e}")
+
+    return summary
+
+
 def main():
     _load_dotenv_if_present()
     prev_state = {}
@@ -533,6 +746,9 @@ def main():
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     STATE_PATH.write_text(json.dumps(telemetry["new_state"], ensure_ascii=False, indent=2), encoding="utf-8")
     REPORT_PATH.write_text(md_report, encoding="utf-8")
+
+    # Đưa ngược toàn bộ chỉ số thật (AVD, APV%, Stay%, Swipe%, Winners/Losers, AI Insights) vào khâu sản xuất
+    sync_telemetry_to_production(telemetry, insights)
 
     step_summary = os.getenv("GITHUB_STEP_SUMMARY")
     if step_summary:

@@ -126,7 +126,6 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
     elif action_type == "edit_text" and scene_id:
         new_text = edit_req.get("new_text", "")
         if new_text:
-            import edge_tts
             voice_agent = VoiceAgent()
             audio_dir = work_dir / "audio"
             audio_dir.mkdir(parents=True, exist_ok=True)
@@ -136,15 +135,16 @@ async def node_execute_edit(state: VideoWorkflowState) -> Dict[str, Any]:
             safe_voice = voice_agent._resolve_safe_voice(clean_text, voice_agent.default_voice)
             tts_rate = "+0%"
 
-            try:
-                communicate = edge_tts.Communicate(clean_text, safe_voice, rate=tts_rate, boundary="WordBoundary")
-                await communicate.save(scene_audio_path, metadata_fname=words_meta_path)
-            except Exception:
-                communicate = edge_tts.Communicate(clean_text, safe_voice, rate=tts_rate)
-                await communicate.save(scene_audio_path)
-
-            new_dur = await asyncio.to_thread(voice_agent._get_audio_duration_ms, scene_audio_path)
-            new_word_timings = voice_agent._parse_words_jsonl(words_meta_path)
+            _, new_dur, _ = await voice_agent.synthesize_single_clip(
+                text=clean_text,
+                output_path=scene_audio_path,
+                voice=safe_voice,
+                rate=tts_rate,
+                metadata_fname=words_meta_path,
+            )
+            new_word_timings = voice_agent._parse_words_jsonl(words_meta_path, max_duration_ms=new_dur)
+            if not new_word_timings and new_dur > 0:
+                new_word_timings = voice_agent._synthesize_word_timings(clean_text, new_dur)
 
             for sa in scenes_audio:
                 if sa.get("scene_id") == scene_id:

@@ -529,63 +529,66 @@ def get_channel_existing_portfolio(channel_id: str) -> Dict[str, Any]:
     }
 
 
-def _get_global_trends_directive(niche_id: str) -> str:
-    """Cung cấp xu hướng Shorts toàn cầu 2026 thịnh hành nhất theo từng ngách cụ thể."""
+def _get_global_trends_directive(niche_id: str, channel_id: Optional[str] = None) -> str:
+    """
+    Cung cấp định hướng cấu trúc nội dung theo ngách kết hợp dữ liệu thực tế từ DB & Auditor
+    (Không dùng con số view/APV vá tay tĩnh).
+    """
     nid = (niche_id or "").lower()
+    auditor_note = ""
+    if channel_id:
+        try:
+            from app.services.video_library import get_weekly_winners_and_losers
+            wl = get_weekly_winners_and_losers(channel_id, top_k=3)
+            if wl.get("auditor_ai_insights"):
+                # Trích đoạn chẩn đoán ngắn gọn từ Auditor
+                short_insight = wl["auditor_ai_insights"][:450].replace("\n", " ")
+                auditor_note = f"\n📡 LIVE AUDITOR STRATEGIC FEEDBACK: {short_insight}\n"
+        except Exception:
+            pass
+
     if any(k in nid for k in ("deep_sea", "ocean", "thalassophobia", "bien_sau", "abyss", "mysteries")):
-        return """
-🌍 2026 GLOBAL VIRAL SHORTS TRENDS (MYSTERIES OF THE WORLD, SENSORY PARADOXES & DEEP ANOMALIES):
-1. Human Sensory & Biological Blind Spots (Proven Breakout on Channel - 140 to 190 Views, 89% APV): Why your eyes are biologically blind to 99% of reality; why the human mind starts hallucinating inside the world's quietest room (Orfield Anechoic Chamber) in 15 minutes; the Phantom Limb / Capgras neural paradox.
-2. Instinctive Thalassophobia & Unexplained Acoustic Signals (Proven #1 Winner - 1,242 Views): Why human DNA carries a primal fear of dark water; NOAA's classified hydrophone recordings (The Bloop, Julia, Upsweep).
-3. Sealed Subterranean Vaults & Forbidden Ecosystems: Movile Cave (sealed for 5.5 million years breathing toxic sulfur), Lake Vostok beneath 4km of Antarctic ice, Derinkuyu underground city.
-CRITICAL ANTI-CANNIBALIZATION CONSTRAINT: STRICTLY FORBIDDEN to use the overused phrase "11,000m", "11,000 meters", or "Mariana Trench"! Pivot to human sensory anomalies, sealed subterranean ecosystems, and acoustic mysteries!
+        return f"""
+🌍 VIRAL SHORTS STRUCTURAL DIRECTIVES (MYSTERIES OF THE WORLD, SENSORY PARADOXES & DEEP ANOMALIES):
+1. Human Sensory & Biological Paradoxes ("A vs B" Confrontation): Contrast human biological limits against extreme physical environments (e.g., Anechoic Chamber sensory deprivation vs. neural hallucination threshold).
+2. Unexplained Acoustic & Geological Signals: Open with a concrete physical measurement (decibels, frequency Hz, depth/temperature) in the first 3 seconds.
+3. Sealed Subterranean Vaults & Extreme Ecosystems: Movile Cave sulfur ecosystem, sub-glacial lakes, sealed geological anomalies.
+CRITICAL ANTI-CANNIBALIZATION CONSTRAINT: Avoid repeating saturated phrases detected in the channel history.{auditor_note}
 """
     elif any(k in nid for k in ("alternate_history", "what_if", "timeline", "temporal")):
-        return """
-🌍 2026 GLOBAL VIRAL SHORTS TRENDS (ALTERNATE HISTORY & WHAT IF?):
-1. Explicit "What If...?" Counterfactual Titles + Modern Reality Anchor: Viewers swipe away from dry textbook history titles ("How A Rainstorm Saved Europe" got 8 views). Every title MUST lead with a high-curiosity "What If...?" question or terrifying butterfly paradox ("What If the Library of Alexandria Never Burned?", "What If the Titanic Never Hit the Iceberg?").
-2. 2nd-Person Modern Reality Hook (0-3s): Anchor the ancient turning point directly to the viewer's life in 2026 ("Look at your smartphone — if one fire in 48 BC had been stopped, human beings would have landed on Mars by 1650").
-3. 3-Stage Butterfly Domino Effect (Mid-Video Re-Hook at 12s): Show step-by-step how 1 changed decision rewrites borders, languages, and technology to prevent the 13-second retention drop-off.
-STRICT CONSTRAINT: Strictly 100% historical counter-factual scenarios ("What If...") and empire turning points. ZERO psychology advice, ZERO true-crime/serial killer topics, ZERO modern medical/vaccine/injection topics, ZERO violent clickbait words ("Bloodbath", "Execution Order", "Wiped Out")!
-Hook Formula: 'Look at the world around you — if one single decision in [Year] went the other way, today you would...'
-"""
-    elif "mystery" in nid or "history" in nid:
-        return """
-🌍 2026 GLOBAL VIRAL SHORTS TRENDS (MYSTERIES & ANOMALIES):
-1. Subterranean & Historical Acoustic Anomalies: Ancient acoustic resonance chambers (Kailasa, Hal Saflieni Hypogeum, Puma Punku), declassified signals with exact frequency stats.
-2. Forbidden Architecture & Sealed Vaults: Underground secrets beneath the Sphinx's right paw, Derinkuyu subterranean ventilation mysteries, Vatican secret vault micro-documents.
-3. Glitches in Historical Reality: Prophecies with eerie modern precision (Roger Bacon 1290 machines), ancient astronomical alignments.
-Hook Formula: 'In [Year], archaeologists uncovered a sealed chamber that official records erased...'
+        return f"""
+🌍 VIRAL SHORTS STRUCTURAL DIRECTIVES (ALTERNATE HISTORY & WHAT IF?):
+1. High-Stakes Single-Second Historical Turning Points ("Decision A vs Catastrophe B"): Lead with an immediate life-or-death historical confrontation or explicit "What If...?" paradox.
+2. 2nd-Person Modern Reality Hook (0-3s): Anchor the historical turning point directly to a concrete physical number or countdown in the first 3 seconds.
+3. 3-Stage Butterfly Domino Effect (Mid-Video Re-Hook at 12s): Show step-by-step how 1 changed decision rewrites borders, technology, or survival.
+STRICT CONSTRAINT: 100% historical scenarios and turning points. Zero psychology advice, zero medical topics.{auditor_note}
 """
     elif "animal" in nid or "rescue" in nid or "pet" in nid:
-        return """
-🌍 2026 GLOBAL VIRAL SHORTS TRENDS (ANIMAL RESCUE & EMOTIONAL HEALING):
-1. Curiosity + Refusal To Give Up (Proven #1 Channel Winner - 2,282 Views & +32 Subs): 'He Refused to Let Go Until This Happened...' — Combining an intriguing opening mystery with a 50-second 4-stage emotional transformation arc.
-2. The Exact Breakthrough Moment (Proven #2 Winner - 1,205 Views & 94.8% APV): The exact second a terrified rescue puppy stopped shaking and dared to rest its head on the rescuer's hand.
-3. Joyful Recovery Payoff (45-56s): Full emotional journey from abandonment -> gentle rescue -> veterinary healing -> joyous sprint in a sunlit meadow.
-CRITICAL CONSTRAINT: STRICTLY FORBIDDEN to use bleak/depressing-only titles ('Frozen Puppy Found in Rain', 'Shivering Puppy Tied In Rain'). Every title MUST contain a curiosity gap or promise of transformation ('Until This Happened', 'The Exact Moment He Realized He Was Safe')!
-Hook Formula: 'He refused to let go of the rescuer's hand until they looked inside the box...'
+        return f"""
+🌍 VIRAL SHORTS STRUCTURAL DIRECTIVES (ANIMAL RESCUE & EMOTIONAL HEALING):
+1. Active Curiosity + Refusal To Give Up Hook: Open with a specific, observable animal action that creates an immediate curiosity gap in the first 3 seconds.
+2. The Exact Breakthrough Moment: Show the concrete turning point from fear/danger to trust and safety.
+3. Joyful Recovery Payoff: Complete the 4-stage emotional transformation arc (crisis -> intervention -> recovery -> thriving payoff).
+CRITICAL CONSTRAINT: Avoid passive or purely bleak titles; every title and hook must promise a compelling transformation.{auditor_note}
 """
     elif "wildlife" in nid or "predator" in nid or "nature" in nid:
-        return """
-🌍 2026 GLOBAL VIRAL SHORTS TRENDS (WILDLIFE & APEX PREDATORS):
-1. Head-to-Head Apex Predator Duels (Proven #1 Breakout Formula - 214 Views on Debut): Green Anaconda vs. Black Caiman; Orca vs. Great White Shark; Honey Badger vs. Lion Pride; Siberian Tiger vs. Grizzly Bear.
-2. Extreme Asymmetric Combat Biomechanics: Jaguar 1,500 PSI skull-crushing bite vs. armored caiman; Mantis Shrimp cavitation punch; Peregrine Falcon 240 mph dive physics.
-STRICT NEGATIVE CONSTRAINT: Strictly 100% biological animal predator behaviors and head-to-head matchups. ZERO sports/football teams (NO 'Bayern'), zero space facts, zero psychology!
-Hook Formula: 'Green Anaconda vs. Black Caiman — when these two river monsters collide, only one leaves alive...'
+        return f"""
+🌍 VIRAL SHORTS STRUCTURAL DIRECTIVES (WILDLIFE & APEX PREDATORS):
+1. Head-to-Head Apex Predator Duels ("Entity A vs Entity B"): Frame the opening around an asymmetric biological confrontation between two named creatures.
+2. Extreme Biomechanical Metrics: Anchor the first 3 seconds with a real physical measurement (PSI bite force, voltage, speed in mph/kmh, strike milliseconds).
+STRICT NEGATIVE CONSTRAINT: 100% biological animal predator behaviors and matchups. Zero sports/football, zero psychology.{auditor_note}
 """
     else:  # psychology / dark psychology / self-mastery
-        return """
-🌍 2026 GLOBAL VIRAL SHORTS TRENDS (DARK PSYCHOLOGY & HUMAN BEHAVIOR):
-1. Criminal & Manipulator Micro-Expressions (Proven 941-View Winner): Why serial killers and covert manipulators smile or freeze their eyes in specific high-stress moments.
-2. Personal Threat & Social Traps (Proven 514-View & 156% APV Winner): '3 Signs They're JUST Using You', 'The Deadliest Trap in Any Room'.
-3. High-Status Unblinking Silence: How calm, deliberate non-reaction flips power dynamics during public disrespect or interrogation.
-Hook Formula: 'If someone does this within the first 5 seconds of speaking to you, pay close attention...'
+        return f"""
+🌍 VIRAL SHORTS STRUCTURAL DIRECTIVES (DARK PSYCHOLOGY & HUMAN BEHAVIOR):
+1. Observable Behavioral Glitches & Micro-Expressions ("Instinct A vs Deception B"): Focus on concrete, verifiable physical or verbal behaviors (e.g., eye-freeze, foot direction, question repetition).
+2. High-Stakes Interpersonal Defense: Frame the hook around a specific real-world situation with a measurable timing or count in the first 3 seconds.
+3. Actionable Tactical Payoff: Deliver a clear, memorable psychological counter-move before the seamless loop.{auditor_note}
 """
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 2.5. BỘ NHÂN BẢN QUÁN QUÂN & PHÁT HIỆN SERIES PART 2 (WINNER CLONER ENGINE)
+# 2.5. BỘ NHÂN BẢN QUÁN QUÂN DỰA TRÊN DỮ LIỆU DB THẬT (DYNAMIC WINNER CLONER)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def get_winner_cloner_blueprint(
@@ -594,96 +597,43 @@ def get_winner_cloner_blueprint(
     portfolio: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    Phân tích video quán quân (Outlier Winner) của kênh để trích xuất:
-    1. Cấu trúc cú pháp tiêu đề chiến thắng (Winner Title Syntax Pattern).
-    2. Danh sách chủ đề 'Sister Sequel / Part 2' nhân bản cơ chế tâm lý của video thắng lớn
-       nhưng đổi sang thực thể/tình huống mới 100% (đã lọc chống trùng lặp qua check_idea_similarity).
-    3. Danh sách chủ đề chưa từng dùng từ `viral_topic_bank_2026` của Niche YAML.
+    Phân tích động 3 video thắng (Top 3 Winners) và 3 video thua (Bottom 3 Losers) từ DB thật
+    (`PublishedVideo` & `VideoJob`) để trích xuất:
+    1. Cấu trúc cú pháp tiêu đề & Hook chiến thắng thực tế (kèm APV%, Stayed%, Swipe-Away%).
+    2. Danh sách chủ đề chưa từng dùng từ `viral_topic_bank_2026` của Niche YAML (đã lọc chống trùng lặp
+       qua `check_idea_similarity` và `UsedTopic` DB — hoàn toàn không dùng danh sách vá tay tĩnh).
     """
-    port = portfolio or get_channel_existing_portfolio(channel_id)
+    from app.database.models import normalize_channel_id
+    from app.services.video_library import get_weekly_winners_and_losers
+
+    canon_cid = normalize_channel_id(channel_id)
+    port = portfolio or get_channel_existing_portfolio(canon_cid)
     eff_niche = (niche_id or port.get("channel_niche") or "psychology").lower()
     existing_titles = list(port.get("existing_titles") or []) + list(port.get("existing_topics") or [])
     top_performers = port.get("top_performers") or []
+
+    wl = get_weekly_winners_and_losers(canon_cid, top_k=3)
+    db_winners = wl.get("winners") or []
+    db_losers = wl.get("losers") or []
 
     niche_prof = get_niche(eff_niche)
     blueprint_cfg = niche_prof.get("script_blueprint") or {}
     yaml_topic_bank = list(blueprint_cfg.get("viral_topic_bank_2026") or [])
 
-    winner_title = top_performers[0]["title"] if top_performers else ""
-    winner_views = top_performers[0].get("views_num", 0) if top_performers else 0
+    if db_winners:
+        winner_title = db_winners[0].get("title", "")
+        winner_views = int(db_winners[0].get("views", 0))
+        winner_stayed = float(db_winners[0].get("stayed_to_watch_pct", 0.0))
+        winner_apv = float(db_winners[0].get("avg_view_percentage", 0.0))
+    else:
+        winner_title = top_performers[0]["title"] if top_performers else ""
+        winner_views = top_performers[0].get("views_num", 0) if top_performers else 0
+        winner_stayed = 0.0
+        winner_apv = 0.0
 
-    # Kho Sister Sequel theo từng mẫu Winner thực tế của 7 kênh (5 US + 2 Brazil pt-BR)
-    sequel_templates: List[str] = []
-    w_low = winner_title.lower()
-    is_pt = (
-        str(port.get("channel_lang") or "").lower().startswith("pt")
-        or str(channel_id).lower() in ("ch_odisseia_selvagem", "ch_misterios_do_mundo", "@odisseiaselvagemoficial", "@misteriosdomundo-tv")
-    )
-
-    if is_pt:
-        if "wildlife" in eff_niche or "predator" in eff_niche or "odisseia" in str(channel_id).lower():
-            sequel_templates = [
-                "Ariranha vs Jacaré no Pantanal: O Bando Sanguinário Que Até a Onça Respeita! 🦦🐊",
-                "Onça-Pintada vs Jacaré-Açu: A Mordida de 1.500 PSI Que Perfura Crânios na Água! 🐆💥",
-                "Harpia Brasileira: A Águia Monstruosa Com Garras do Tamanho de um Urso Pardo! 🦅🔥",
-                "Piranha-Preta vs Poraquê de 860 Volts: O Duelo Mais Letal dos Rios da Amazônia! ⚡🐟",
-                "Sucuri Gigante de 8 Metros vs Jacaré-Açu: Quem Domina as Águas da Amazônia? 🐍🐊",
-                "Texugo-do-Mel vs Orgulho de Leões: O Animal Que Não Sente Medo e Nem Veneno! 🦡🦁",
-                "Orca vs Tubarão-Branco: O Golpe Cirúrgico Que Faz o Rei do Mar Fugir em Pânico! 🐋🦈",
-            ]
-        else:
-            # Mistérios do Mundo (Winner: "Sons bizarros do fundo do oceano que ninguém explica! 🌊😱" - 1,435 views, 50 likes)
-            sequel_templates = [
-                "O Som Mais Aterrorizante Já Gravado no Ponto Nemo — E a Ciência Escondeu! 🌊😱",
-                "Por Que os Cientistas Desligaram os Microfones no Fundo do Oceano Pacífico? 🎧🌊",
-                "Ilha da Queimada Grande: Por Que a Marinha do Brasil Proíbe Qualquer Humano de Pisar Lá? 🐍🚫",
-                "O Rio Que Ferve a 93°C no Coração da Amazônia — Tudo Que Cai Lá Dentro Cozinha Vivo! 🔥🌿",
-                "A Caverna Selada Há 5 Milhões de Anos Onde Criaturas Vivem Sem Oxigênio e Sem Luz! 🕳️🧬",
-                "Por Que Seus Olhos São Biologicamente Cegos Para 99% do Que Está Ao Seu Redor? 👁️🧠",
-                "A Sala Mais Silenciosa do Mundo Onde Ninguém Aguenta Ficar 15 Minutos Sem Alucinar! 🔇🧠",
-            ]
-        yaml_topic_bank = []
-    elif "psychology" in eff_niche:
-        sequel_templates = [
-            "Why FBI Interrogators Watch Your Feet Instead Of Your Eyes When You Lie",
-            "Why Guilty Suspects Always Repeat Your Question Before Answering In Police Rooms",
-            "The 1971 Stanford Prison Experiment: How Ordinary Students Turned Ruthless In 6 Days",
-            "Why Sociopaths Never Blink When They Lie Under Oath In Court",
-            "The Bystander Paradox: Why 30 People Freeze When Someone Screams For Help",
-        ]
-    elif "rescue" in eff_niche or "animal" in eff_niche:
-        sequel_templates = [
-            "The Stray Puppy Who Grabbed A Rescuer's Coat And Led Them To A Storm Drain",
-            "Terrified Shelter Dog Hid Facing The Wall Until One Rescuer Sat Quietly Beside Him",
-            "Hero Stray Dog Stood Guard Over A Box Of Orphaned Kittens In Pouring Rain",
-            "Everyone Walked Past The Senior Shelter Dog Until One Man Read His Sign",
-        ]
-    elif "deep_sea" in eff_niche or "myster" in eff_niche:
-        sequel_templates = [
-            "The Door To Hell: Why This Giant Desert Fire Crater Has Burned Nonstop Since 1971",
-            "The Boiling River Of The Amazon: A 200°F River That Boils Anything That Falls In",
-            "Why Scientists Welded Shut The Kola Superdeep Borehole At 40,230 Feet",
-            "Why Deep Sea Divers Never Look Up At The Surface At Night",
-        ]
-    elif "wildlife" in eff_niche or "predator" in eff_niche:
-        sequel_templates = [
-            "Harpy Eagle vs Tree Sloth: The 500 PSI Talons Larger Than Grizzly Bear Claws",
-            "Komodo Dragon vs Water Buffalo: How One Venomous Bite Takes Down A 1,200lb Giant",
-            "Giant River Otter Pack vs Black Caiman: The Ruthless Gang Of The Amazon",
-            "Honey Badger vs King Cobra: How It Sleeps Off Lethal Neurotoxin And Keeps Eating",
-        ]
-    elif "alternate" in eff_niche or "history" in eff_niche:
-        sequel_templates = [
-            "What If Vasili Arkhipov Pressed The Nuclear Button Inside Submarine B-59 In 1962?",
-            "What If The 3 Chernobyl Suicide Divers Failed To Drain The Reactor Pool In 1986?",
-            "What If The 1983 Soviet Satellite Glitch Triggered A Full Nuclear Launch?",
-            "What If The 1815 Mount Tambora Super-Eruption Lasted One More Year?",
-            "What If The Library Of Alexandria Never Burned Down? (300-Year Tech Leap)",
-        ]
-
-    # Gộp sequel_templates + yaml_topic_bank và lọc chống trùng lặp với lịch sử kênh
+    # Lọc yaml_topic_bank chống trùng lặp với toàn bộ lịch sử kênh
     fresh_candidates: List[str] = []
-    for cand in sequel_templates + yaml_topic_bank:
+    for cand in yaml_topic_bank:
         if not cand or cand in fresh_candidates:
             continue
         is_dup, _, _ = check_idea_similarity(cand, existing_titles, similarity_threshold=0.38)
@@ -692,21 +642,28 @@ def get_winner_cloner_blueprint(
 
     prompt_directive = ""
     if winner_title:
+        metrics_badge = f"{winner_views:,} views"
+        if winner_stayed > 0 or winner_apv > 0:
+            metrics_badge += f", Stayed: {winner_stayed:.1f}%, APV: {winner_apv:.1f}%"
         prompt_directive = (
-            f"🔥 WINNER CLONER DIRECTIVE (Top Channel Winner: \"{winner_title}\" — {winner_views:,} views):\n"
-            f"  - Replicate the exact high-stakes curiosity tension, 2nd-person visceral framing, and 4-beat payoff of this winner.\n"
-            f"  - Recommended 'Part 2 / Sister Sequel' angles ready for production: "
-            + "; ".join(f'"{c}"' for c in fresh_candidates[:3])
+            f"🔥 DYNAMIC WINNER CLONER DIRECTIVE (Live DB #1 Winner: \"{winner_title}\" — {metrics_badge}):\n"
+            f"  - Replicate the exact high-stakes curiosity tension, 'A vs B' confrontation framing, and concrete metric hook of this proven winner on a 100% FRESH topic.\n"
         )
+        if fresh_candidates:
+            prompt_directive += "  - Unexplored candidate angles from niche configuration: " + "; ".join(
+                f'"{c}"' for c in fresh_candidates[:3]
+            )
     elif fresh_candidates:
         prompt_directive = (
-            f"🔥 2026 MILLION-VIEW TOPIC BANK RECOMMENDATIONS:\n  - "
+            f"🔥 UNEXPLORED NICHE TOPIC CANDIDATES:\n  - "
             + "\n  - ".join(f'"{c}"' for c in fresh_candidates[:4])
         )
 
     return {
         "winner_title": winner_title,
         "winner_views": winner_views,
+        "winners": db_winners,
+        "losers": db_losers,
         "fresh_sequel_topics": fresh_candidates,
         "prompt_directive": prompt_directive,
     }
@@ -834,7 +791,7 @@ Core Weaknesses Identified:
 3. Niche mismatch: Stay 100% faithful to '{niche_id}'.
 """
 
-    global_trends_prompt = _get_global_trends_directive(niche_id)
+    global_trends_prompt = _get_global_trends_directive(niche_id, channel_id=channel_id)
 
     # Tác nhân tự động nhận diện các cụm từ, số đo hoặc chủ đề đang bị bão hòa
     saturated_concepts = extract_saturated_channel_concepts(all_existing, min_frequency=2)
@@ -1074,7 +1031,7 @@ def _get_curated_niche_fallbacks(niche_id: str, lang: str = "en") -> List[Dict[s
                 "pinned_comment": "Drop a ❤️ if you believe every stray animal deserves a miracle! 👇",
                 "viral_formula": "Emotional Rollercoaster & Tears to Joy",
                 "predicted_retention": "170% - 185%",
-                "why_viral": "Nhân bản trực tiếp công thức video #1 của kênh 'He Refused to Let Go Until This Happened' (2,282 views, +32 subs)",
+                "why_viral": "Cấu trúc mồi câu tò mò chủ động kết hợp hành trình giải cứu 4 giai đoạn",
                 "fixes_flaw": "Thay thế các tiêu đề bi lụy đơn thuần bằng mồi câu tò mò chủ động ('He Refused To Let Go Until...'), kéo dài thời lượng 50-55s có Payoff hạnh phúc.",
                 "trend_alignment": "Cấu trúc biến đổi 4 giai đoạn (4-Stage Emotional Transformation Arc) đạt tỷ lệ chuyển đổi Subscribe cao nhất."
             },
@@ -1086,7 +1043,7 @@ def _get_curated_niche_fallbacks(niche_id: str, lang: str = "en") -> List[Dict[s
                 "pinned_comment": "Have you ever rescued an animal? Tell us their name below! 👇",
                 "viral_formula": "Double Tap & Healing Empathy",
                 "predicted_retention": "165% - 175%",
-                "why_viral": "Nhân bản công thức video #2 của kênh (1,205 views, 94.8% APV) — chữa lành tâm hồn",
+                "why_viral": "Khoảnh khắc chuyển biến cảm xúc chân thực — chữa lành tâm hồn",
                 "fixes_flaw": "Tập trung vào hành động thực tế của chú chó từ sợ hãi sang chủ động đặt chân lên tay người cứu hộ.",
                 "trend_alignment": "Nội dung chữa lành tâm hồn (Healing & Empathy) có tỷ lệ lưu lại (Save) cao nhất trên nền tảng."
             },
@@ -1113,7 +1070,7 @@ def _get_curated_niche_fallbacks(niche_id: str, lang: str = "en") -> List[Dict[s
                 "pinned_comment": "Is the Harpy Eagle the most terrifying bird on Earth? Drop your vote below! 👇",
                 "viral_formula": "Shock Fact & Apex Predator",
                 "predicted_retention": "175% - 185%",
-                "why_viral": "Đã chứng minh đạt 1,178 views trên kênh Odisseia Selvagem",
+                "why_viral": "Cấu trúc đối đầu trực diện A vs B kèm thông số lực bóp 500 PSI",
                 "fixes_flaw": "Nhân bản chủ đề đại bàng Harpia đã thắng lớn sang bản tiếng Anh.",
                 "trend_alignment": "Giải phẫu vũ khí săn mồi hạng nặng của tự nhiên."
             },

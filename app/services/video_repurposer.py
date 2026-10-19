@@ -1090,20 +1090,17 @@ OUTPUT MUST BE A STRICT JSON ARRAY ONLY (No markdown formatting around json, no 
         voice_tmp_path = None
 
         if audio_mode == "ai_voiceover" and subtitle_text.strip():
-            # Thuyết minh AI mới bằng Edge-TTS + Ducking âm thanh gốc xuống 15%
+            # Thuyết minh AI mới qua chuỗi dự phòng 5 tầng của VoiceAgent + Ducking âm thanh gốc xuống 15%
             try:
-                import edge_tts
                 import asyncio
+                from app.agents.voice_agent import VoiceAgent
                 clean_voice_text = SubtitleHelper.sanitize_subtitle_text(subtitle_text)
                 voice_tmp_file = REPURPOSER_DIR / f"temp_voice_{Path(output_filename).stem}.mp3"
                 voice_tmp_path = str(voice_tmp_file)
-                # Giọng đọc phù hợp tiếng Anh / tiếng Việt
                 is_vn = any(c in clean_voice_text.lower() for c in "àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ")
-                tts_voice = "vi-VN-NamMinhNeural" if is_vn else "en-US-AndrewNeural"
-                async def _gen_tts():
-                    comm = edge_tts.Communicate(clean_voice_text, tts_voice)
-                    await comm.save(voice_tmp_path)
-                asyncio.run(_gen_tts())
+                tts_voice = "vi-VN-NamMinhNeural" if is_vn else "en-US-AndrewMultilingualNeural"
+                va = VoiceAgent(default_voice=tts_voice)
+                asyncio.run(va.synthesize_single_clip(text=clean_voice_text, output_path=voice_tmp_path, voice=tts_voice))
 
                 if os.path.exists(voice_tmp_path) and os.path.getsize(voice_tmp_path) > 1000:
                     extra_input_args = ["-i", voice_tmp_path]

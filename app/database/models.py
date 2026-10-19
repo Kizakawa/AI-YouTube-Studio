@@ -40,6 +40,7 @@ CANONICAL_CHANNEL_MAP = {
     # 5. Alternate History & "What If?" (EN)
     "@alternatehistorywhatif-e2x": "@alternatehistorywhatif-e2x",
     "ch_alternate_history": "@alternatehistorywhatif-e2x",
+    "ch_alternate_history_what_if": "@alternatehistorywhatif-e2x",
     "channel_history": "@alternatehistorywhatif-e2x",
     # 6. Odisseia Selvagem (pt-BR)
     "ch_odisseia_selvagem": "ch_odisseia_selvagem",
@@ -82,11 +83,11 @@ def is_test_environment() -> bool:
         return False
     if os.getenv("YOUTUBE_TEST_MODE", "").strip().lower() in ("1", "true", "yes"):
         return True
-    if "pytest" in sys.modules or "unittest" in sys.modules:
+    if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
         return True
     try:
         argv0 = Path(sys.argv[0]).name.lower() if sys.argv and sys.argv[0] else ""
-        if argv0.startswith("test_") or argv0.endswith("_test.py"):
+        if argv0 in ("pytest", "py.test", "unittest") or argv0.startswith("test_") or argv0.endswith("_test.py"):
             return True
     except Exception:
         pass
@@ -455,12 +456,43 @@ class UsedTopic(Base):
             db.flush()
 
 
-# Tự động chuẩn hóa mã kênh về Canonical ID trước mọi thao tác INSERT / UPDATE
+# Tự động chuẩn hóa mã kênh về Canonical ID và chặn dữ liệu Test / Codebase cũ ghi vào DB thật
+_TEST_JOB_PATTERNS = (
+    "api storyboard test",
+    "test storyboard",
+    "pytest_topic",
+    "unit_test_topic",
+    "dummy test topic",
+)
+
+
+@event.listens_for(User, "before_insert")
+@event.listens_for(User, "before_update")
+def _normalize_user_channel(mapper, connection, target):
+    if getattr(target, "active_channel_id", None):
+        target.active_channel_id = normalize_channel_id(target.active_channel_id)
+
+
 @event.listens_for(VideoJob, "before_insert")
 @event.listens_for(VideoJob, "before_update")
 def _normalize_video_job_channel(mapper, connection, target):
-    if getattr(target, "target_channel_id", None):
-        target.target_channel_id = normalize_channel_id(target.target_channel_id)
+    raw_ch = str(getattr(target, "target_channel_id", "") or "").strip()
+    if not is_test_environment():
+        topic_low = str(getattr(target, "topic", "") or "").strip().lower()
+        title_low = str(getattr(target, "title", "") or "").strip().lower()
+        if raw_ch.lower() in ("ch_test", "test_channel") or any(p in topic_low or p in title_low for p in _TEST_JOB_PATTERNS):
+            raise ValueError(
+                f"🚫 [ProductionDBGuard] Chặn ghi job test ('{getattr(target, 'topic', '')}' / channel='{raw_ch}') vào DB sản xuất! "
+                f"Hãy đặt YOUTUBE_TEST_MODE=1 để chạy trên storage/test_ai_youtube.db."
+            )
+    if raw_ch:
+        target.target_channel_id = normalize_channel_id(raw_ch)
+    # Tự động chuẩn hóa đường dẫn nếu có dấu vết từ thư mục dự án cũ D:\AI_YouTube_Project_Ready
+    for path_attr in ("video_path", "audio_path", "subtitle_path", "thumbnail_path", "thumbnail_vertical_path"):
+        val = getattr(target, path_attr, None)
+        if val and "AI_YouTube_Project_Ready" in str(val):
+            fname = Path(str(val)).name
+            setattr(target, path_attr, str(Path(settings.BASE_DIR) / "storage" / "outputs" / fname))
 
 
 @event.listens_for(PublishedVideo, "before_insert")
@@ -475,6 +507,23 @@ def _normalize_published_video_channel(mapper, connection, target):
 def _normalize_used_topic_channel(mapper, connection, target):
     if getattr(target, "channel_id", None):
         target.channel_id = normalize_channel_id(target.channel_id)
+
+
+@event.listens_for(ActivityLog, "before_insert")
+@event.listens_for(ActivityLog, "before_update")
+def _normalize_activity_log_channel(mapper, connection, target):
+    if getattr(target, "channel_id", None):
+        raw_ch = str(target.channel_id).strip()
+        if raw_ch.lower() in ("ch_test", "test_channel") and not is_test_environment():
+            target.channel_id = None
+        else:
+            target.channel_id = normalize_channel_id(raw_ch)
+    if getattr(target, "details", None) and "AI_YouTube_Project_Ready" in str(target.details):
+        target.details = str(target.details).replace(
+            "D:\\AI_YouTube_Project_Ready\\AI-youtube-main", str(settings.BASE_DIR)
+        ).replace(
+            "D:/AI_YouTube_Project_Ready/AI-youtube-main", str(settings.BASE_DIR)
+        )
 
 
 def log_activity(db, telegram_id: int, username: str, action_type: str, details: str, channel_id: str = None):

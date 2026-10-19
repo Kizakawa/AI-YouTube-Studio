@@ -792,11 +792,11 @@ async def editchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             "Cú pháp 1: `/editchannel <mã_kênh>` — Mở bảng nút bấm trực quan\n\n"
             "Cú pháp 2 (Sửa nhanh): `/editchannel <mã_kênh> <thuộc_tính> <giá_trị>`\n"
             "Các thuộc tính hỗ trợ:\n"
-            "• `name`: Đổi tên kênh (vd: `/editchannel channel_psychology name Dark Psychology Pro`)\n"
-            "• `niche`: Đổi chủ đề (vd: `/editchannel channel_psychology niche philosophy`)\n"
-            "• `voice`: Đổi giọng đọc (vd: `/editchannel channel_psychology voice vi-VN-NamMinhNeural`)\n"
-            "• `lang`: Đổi ngôn ngữ (vd: `/editchannel channel_psychology lang vi`)\n"
-            "• `visual`: Đổi phong cách (vd: `/editchannel channel_psychology visual imagen_ai` hoặc `pexels_stock`)"
+            "• `name`: Đổi tên kênh (vd: `/editchannel ch_psychology_of_the_world name Dark Psychology Pro`)\n"
+            "• `niche`: Đổi chủ đề (vd: `/editchannel ch_psychology_of_the_world niche philosophy`)\n"
+            "• `voice`: Đổi giọng đọc (vd: `/editchannel ch_psychology_of_the_world voice vi-VN-NamMinhNeural`)\n"
+            "• `lang`: Đổi ngôn ngữ (vd: `/editchannel ch_psychology_of_the_world lang vi`)\n"
+            "• `visual`: Đổi phong cách (vd: `/editchannel ch_psychology_of_the_world visual imagen_ai` hoặc `pexels_stock`)"
         )
         await safe_reply(update, guide)
         return
@@ -960,11 +960,14 @@ def detect_best_channel_for_topic(topic: str, current_channel_id: Optional[str] 
         "hitler", "napoleon", "caesar", "rome", "liên xô", "soviet", "đế chế", "quân đội", "giả định"
     ]
     
+    from app.database.models import normalize_channel_id
+    current_channel_id = normalize_channel_id(current_channel_id) if current_channel_id else "ch_psychology_of_the_world"
+
     scores = {
         "ch_wild_odyssey": sum(1 for kw in wildlife_keywords if kw in t),
         "ch_paws_hearts_rescue": sum(1 for kw in rescue_keywords if kw in t),
-        "ucsrjiil67qxidtxt70z-iwa": sum(1 for kw in mystery_keywords if kw in t),
-        "channel_maya": sum(1 for kw in psychology_keywords if kw in t),
+        "ch_the_mysteries_of_the_world": sum(1 for kw in mystery_keywords if kw in t),
+        "ch_psychology_of_the_world": sum(1 for kw in psychology_keywords if kw in t),
         "@alternatehistorywhatif-e2x": sum(1 for kw in history_keywords if kw in t),
     }
     
@@ -976,14 +979,14 @@ def detect_best_channel_for_topic(topic: str, current_channel_id: Optional[str] 
             ch_names = {
                 "ch_wild_odyssey": "Wild Odyssey (Động vật hoang dã)",
                 "ch_paws_hearts_rescue": "Paws & Hearts Rescue (Cứu hộ thú cưng)",
-                "ucsrjiil67qxidtxt70z-iwa": "The mysteries of the world (Bí ẩn vũ trụ & đại dương)",
-                "channel_maya": "Psychology of the world (Tâm lý học)",
+                "ch_the_mysteries_of_the_world": "The mysteries of the world (Bí ẩn vũ trụ & đại dương)",
+                "ch_psychology_of_the_world": "Psychology of the world (Tâm lý học)",
                 "@alternatehistorywhatif-e2x": "Alternate History (Lịch sử giả định / What If)"
             }
             reason = f"Phát hiện chủ đề phù hợp với kênh {ch_names.get(best_candidate, best_candidate)} -> Tự động chuyển kênh mục tiêu!"
             return best_candidate, reason
 
-    return current_channel_id or "channel_maya", None
+    return current_channel_id or "ch_psychology_of_the_world", None
 
 
 
@@ -997,12 +1000,13 @@ async def viral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user = update.effective_user
+    from app.database.models import normalize_channel_id
 
     # Lấy kênh đang hoạt động của user và lịch sử các video đã sản xuất
     recent_titles = []
     with get_db() as db:
         db_user = db.query(User).filter(User.telegram_id == user.id).first()
-        channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_maya"
+        channel_id = normalize_channel_id(db_user.active_channel_id if db_user and db_user.active_channel_id else "ch_psychology_of_the_world")
         if db_user:
             db_user.last_active = datetime.utcnow()
 
@@ -1120,11 +1124,12 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(update):
         return
 
+    from app.database.models import normalize_channel_id
     if not context.args:
         user = update.effective_user
         with get_db() as db:
             db_user = db.query(User).filter(User.telegram_id == user.id).first()
-            active_id = db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_maya"
+            active_id = normalize_channel_id(db_user.active_channel_id if db_user and db_user.active_channel_id else "ch_psychology_of_the_world")
         ch = channel_manager.get_channel(active_id) or {}
         ch_name = ch.get("name") or active_id
         ch_lang = ch.get("language") or "en"
@@ -1170,7 +1175,7 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Lấy kênh đang hoạt động và tự động điều hướng nếu chủ đề lệch ngách
         with get_db() as db:
             db_user = db.query(User).filter(User.telegram_id == user.id).first()
-            active_id = override_ch_id or (db_user.active_channel_id if db_user and db_user.active_channel_id else "channel_maya")
+            active_id = normalize_channel_id(override_ch_id or (db_user.active_channel_id if db_user and db_user.active_channel_id else "ch_psychology_of_the_world"))
             
             # Tự động phát hiện và chuyển đúng kênh nếu chủ đề lệch ngách (Ví dụ: chim muông -> Wild Odyssey)
             channel_id, switch_reason = detect_best_channel_for_topic(clean_topic, active_id)
@@ -3507,7 +3512,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if not job or not job.scenes_json:
                     await safe_reply(update, f"❌ Không tìm thấy kịch bản cho Job #{job_id}")
                     return
-                channel_id = job.target_channel_id or "channel_maya"
+                channel_id = job.target_channel_id or "ch_psychology_of_the_world"
                 current_script_json = job.scenes_json
 
             from app.agents.voice_agent import VoiceAgent
@@ -3593,7 +3598,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if not job:
                     await safe_reply(update, f"❌ Không tìm thấy VideoJob #{job_id}")
                     return
-                channel_id = job.target_channel_id or "channel_maya"
+                channel_id = job.target_channel_id or "ch_psychology_of_the_world"
                 topic = job.topic or job.title or "Viral Concept"
                 # Nhận diện ngôn ngữ hiện tại của job
                 from app.agents.voice_agent import VoiceAgent
@@ -3847,7 +3852,9 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if trend_align:
             director_notes += f" Đón đầu xu hướng toàn cầu: {trend_align}."
 
-        channel_id = context.chat_data.get("cached_viral_channel", "channel_maya") if context.chat_data else "channel_maya"
+        from app.database.models import normalize_channel_id
+        raw_ch = context.chat_data.get("cached_viral_channel", "ch_psychology_of_the_world") if context.chat_data else "ch_psychology_of_the_world"
+        channel_id = normalize_channel_id(raw_ch)
         ch = channel_manager.get_channel(channel_id) or {}
         channel_name = ch.get("name") or channel_id
         channel_niche = ch.get("niche") or "psychology"
@@ -3880,7 +3887,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             update,
             f"🎬 **{user.first_name}** đã chọn ý tưởng #{idx+1}: *\"{topic}\"*\n"
             f"⚡ **Công thức:** `{formula}`\n"
-            f"⏳ Đang kích hoạt Gemini AI lên kịch bản chuẩn giữ chân 160% cho kênh `{channel_name}`..."
+            f"⏳ Đang kích hoạt Gemini AI lên kịch bản chuẩn giữ chân cho kênh `{channel_name}`..."
         )
 
         try:
@@ -3962,7 +3969,9 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 9. Làm mới 5 ý tưởng viral
     elif data.startswith("refresh_viral_ideas:"):
-        channel_id = data.split(":")[1] if ":" in data else "channel_maya"
+        from app.database.models import normalize_channel_id
+        raw_ch = data.split(":")[1] if ":" in data else "ch_psychology_of_the_world"
+        channel_id = normalize_channel_id(raw_ch)
         ref_lock_key = f"refresh_viral:{channel_id}"
         acquired = _try_acquire_action(ref_lock_key, max_inflight_sec=45.0, debounce_sec=5.0)
         if not acquired:
@@ -4932,13 +4941,15 @@ async def _show_schedule_view(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     user = update.effective_user
+    from app.database.models import normalize_channel_id
     channels = settings.get_channels_config()
-    default_ch_id = channels[0].get("id") if channels else "channel_maya"
+    default_ch_id = channels[0].get("id") if channels else "ch_psychology_of_the_world"
 
     if not channel_id:
         with get_db() as db:
             db_user = db.query(User).filter(User.telegram_id == user.id).first()
             channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else default_ch_id
+    channel_id = normalize_channel_id(channel_id)
 
     ch_cfg = next((c for c in channels if c.get("id") == channel_id), {"id": channel_id, "name": channel_id})
     ch_name = ch_cfg.get("name", channel_id)
@@ -5318,11 +5329,12 @@ async def chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
+        from app.database.models import normalize_channel_id
         with get_db() as db:
             db_user = db.query(User).filter(User.telegram_id == user.id).first()
             channels = settings.get_channels_config()
-            default_ch = channels[0].get("id") if channels else "channel_maya"
-            channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else default_ch
+            default_ch = channels[0].get("id") if channels else "ch_psychology_of_the_world"
+            channel_id = normalize_channel_id(db_user.active_channel_id if db_user and db_user.active_channel_id else default_ch)
             if db_user:
                 db_user.last_active = datetime.utcnow()
             log_activity(db, user.id, user.username, "AI_COMMAND", f"Lệnh tự nhiên: '{prompt[:50]}...'", channel_id=channel_id)
@@ -5497,11 +5509,12 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     try:
+        from app.database.models import normalize_channel_id
         with get_db() as db:
             db_user = db.query(User).filter(User.telegram_id == user.id).first()
             channels = settings.get_channels_config()
-            default_ch = channels[0].get("id") if channels else "channel_maya"
-            channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else default_ch
+            default_ch = channels[0].get("id") if channels else "ch_psychology_of_the_world"
+            channel_id = normalize_channel_id(db_user.active_channel_id if db_user and db_user.active_channel_id else default_ch)
             if db_user:
                 db_user.last_active = datetime.utcnow()
             log_activity(db, user.id, user.username, "AI_NATURAL_TEXT", f"Trao đổi tự nhiên: '{clean_text[:50]}...'", channel_id=channel_id)
@@ -5536,13 +5549,13 @@ async def chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_query_answer(query, "🎬 Đang tổng hợp kịch bản...", show_alert=False)
 
         try:
+            from app.database.models import normalize_channel_id
             with get_db() as db:
                 db_user = db.query(User).filter(User.telegram_id == user.id).first()
                 channels = settings.get_channels_config()
-                default_ch = channels[0].get("id") if channels else "channel_maya"
-                channel_id = db_user.active_channel_id if db_user and db_user.active_channel_id else default_ch
-                if channel_id == "channel_psychology":
-                    channel_id = "channel_maya"
+                default_ch = channels[0].get("id") if channels else "ch_psychology_of_the_world"
+                raw_ch = db_user.active_channel_id if db_user and db_user.active_channel_id else default_ch
+                channel_id = normalize_channel_id(raw_ch)
 
             channel_niche = "psychology"
             channel_lang = "en"

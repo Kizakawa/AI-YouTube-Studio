@@ -43,7 +43,7 @@ def upload_job_311():
     print("=" * 70)
 
     job_id = 311
-    video_path = Path("D:/AI_YouTube_Project_Ready/AI-youtube-main/storage/outputs/video_311.mp4")
+    video_path = project_root / "storage" / "outputs" / "video_311.mp4"
     if not video_path.exists():
         print(f"❌ Không tìm thấy file: {video_path}")
         return False
@@ -147,7 +147,7 @@ def upload_job_312():
     print("=" * 70)
 
     job_id = 312
-    video_path = Path("D:/AI_YouTube_Project_Ready/AI-youtube-main/storage/outputs/video_312.mp4")
+    video_path = project_root / "storage" / "outputs" / "video_312.mp4"
     if not video_path.exists():
         print(f"❌ Không tìm thấy file: {video_path}")
         return False
