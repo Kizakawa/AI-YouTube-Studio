@@ -52,11 +52,17 @@ def should_refine_script(state: VideoWorkflowState) -> Literal["refine_script", 
         return "refine_script"
 
     if not passed:
-        hook_s = (script_eval.get("hook_strength") or {}).get("score", 0.0)
-        overall_s = script_eval.get("overall_score", 0.0)
+        hook_s = float((script_eval.get("hook_strength") or {}).get("score", 0.0) or 0.0)
+        overall_s = float(script_eval.get("overall_score", 0.0) or 0.0)
         critiques = "; ".join((script_eval.get("actionable_critiques") or [])[:3])
+        if overall_s >= 6.5 and hook_s >= 6.5:
+            logger.warning(
+                f"⚠️ [SoftPass ScriptQA] Kịch bản đạt mức khá sau {retry_count} lần tinh chỉnh "
+                f"(Overall={overall_s}/10, Hook={hook_s}/10) — tiếp tục trong LangGraph để giữ nguyên luồng Video-First & mật độ 15-17 ảnh!"
+            )
+            return "generate_audio"
         raise RuntimeError(
-            f"🚫 [HardBlock ScriptQA] Kịch bản/Hook không đạt ngưỡng giữ chân sau {retry_count} lần tinh chỉnh "
+            f"🚫 [HardBlock ScriptQA] Kịch bản/Hook không đạt ngưỡng giữ chân tối thiểu sau {retry_count} lần tinh chỉnh "
             f"(Overall={overall_s}/10, Hook={hook_s}/10). Lý do: {critiques or 'Dưới ngưỡng chống vuốt bỏ'}"
         )
 

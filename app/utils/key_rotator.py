@@ -21,11 +21,13 @@ GEMINI_PRIORITY_MODELS: List[str] = [
     "gemini-3.1-pro-preview",        # Tier A+ (#6): Gemini 3.1 Pro Preview
     "gemini-omni-1.1-flash",         # Tier A  (#7): Gemini Omni 1.1 Flash
     "gemini-3-flash-preview",        # Tier A  (#8): Gemini 3.0 Flash Preview
-    "gemini-flash-latest",           # Tier A  (#9): Alias Flash chính thức
-    "gemini-3.5-flash-lite",         # Tier B+ (#10): Gemini 3.5 Flash-Lite siêu tốc, quota dồi dào
-    "gemini-3.1-flash-lite",         # Tier B  (#11): Gemini 3.1 Flash-Lite ổn định
-    "gemini-3.1-flash-lite-preview", # Tier B  (#12): Gemini 3.1 Flash-Lite Preview
-    "gemini-flash-lite-latest",      # Tier B  (#13): Fallback cuối siêu tốc, hạn mức dồi dào nhất
+    "gemini-2.5-flash",              # Tier A  (#9): Gemini 2.5 Flash GA siêu ổn định
+    "gemini-flash-latest",           # Tier A  (#10): Alias Flash chính thức
+    "gemini-3.5-flash-lite",         # Tier B+ (#11): Gemini 3.5 Flash-Lite siêu tốc, quota dồi dào
+    "gemini-3.1-flash-lite",         # Tier B  (#12): Gemini 3.1 Flash-Lite ổn định
+    "gemini-3.1-flash-lite-preview", # Tier B  (#13): Gemini 3.1 Flash-Lite Preview
+    "gemini-2.5-flash-lite",         # Tier B  (#14): Gemini 2.5 Flash-Lite GA siêu ổn định
+    "gemini-flash-lite-latest",      # Tier B  (#15): Fallback cuối siêu tốc, hạn mức dồi dào nhất
 ]
 
 # Điểm xếp hạng độ "xịn" (Quality Tier) của từng model để chọn model mạnh nhất trong số các model phản hồi thành công
@@ -145,9 +147,9 @@ class KeyRotator:
         Đánh dấu hạn mức riêng cho từng cặp (key, model) và tự động khóa toàn model (*:model)
         khi phát hiện cạn quota ngày (Free Tier Daily Quota), lỗi 404, hoặc bị treo Timeout:
         - Nếu 404, 'limit: 0', 'free_tier_requests', hoặc 'retry in Xh/Xm': khóa model trên mọi key 60 phút.
-        - Nếu Timeout ('timed out' / 'readtimeout'): khóa model trên mọi key 10 phút (600s) để tránh treo dây chuyền.
-        - Nếu 429 lặp lại trên >= 2 key (hoặc khi chỉ có 1 key trong pool): khóa model 180s để nhảy sang model kế tiếp ngay.
-        - Nếu 503 (model đang quá tải trên server Google): tạm né model đó 60s.
+        - Nếu Timeout ('timed out' / 'readtimeout'): khóa model tạm 25s để tránh treo dây chuyền.
+        - Nếu 429 lặp lại trên >= 2 key (hoặc khi chỉ có 1 key trong pool): khóa model 45s để nhảy sang model kế tiếp ngay.
+        - Nếu 503 (model đang quá tải trên server Google): tạm né model đó 20s.
         - Nếu 403 (key bị từ chối quyền): khóa toàn bộ key 180s.
         """
         import re as _re
@@ -165,32 +167,31 @@ class KeyRotator:
             ):
                 self._model_cooldowns[f"*:{model}"] = now + (cooldown_sec or 3600.0)
             elif "timed out" in err_low or "timeout" in err_low:
-                self._model_cooldowns[f"*:{model}"] = now + (cooldown_sec or 600.0)
+                self._model_cooldowns[f"*:{model}"] = now + (cooldown_sec or 25.0)
             elif status_code == 503:
-                self._model_cooldowns[f"*:{model}"] = now + (cooldown_sec or 60.0)
+                self._model_cooldowns[f"*:{model}"] = now + (cooldown_sec or 20.0)
             elif status_code == 403 or "api_key_invalid" in err_low:
                 self._global_cooldowns[key] = now + (cooldown_sec or 180.0)
             else:
-                wait_s = cooldown_sec or 120.0
+                wait_s = cooldown_sec or 45.0
                 self._model_cooldowns[f"{key}:{model}"] = now + wait_s
-                # Nếu >= 2 key trong pool (hoặc toàn bộ key hiện có) bị 429 trên cùng model, khóa luôn *:model 180s
+                # Nếu >= 2 key trong pool (hoặc toàn bộ key hiện có) bị 429 trên cùng model, khóa luôn *:model 45s
                 active_key_locks = sum(
                     1 for k in self.keys if self._model_cooldowns.get(f"{k}:{model}", 0.0) > now
                 )
                 if active_key_locks >= min(2, max(len(self.keys), 1)):
-                    self._model_cooldowns[f"*:{model}"] = now + 180.0
+                    self._model_cooldowns[f"*:{model}"] = now + 45.0
 
     def probe_all_models_concurrently(
         self,
         candidate_models: Optional[Sequence[str]] = None,
-        probe_timeout_sec: float = 3.2,
+        probe_timeout_sec: float = 4.0,
         force: bool = False,
     ) -> List[str]:
         """
         Bắn kiểm tra ĐỒNG THỜI (Parallel Probe) tất cả các Model ứng viên cùng 1 lúc bằng ThreadPoolExecutor.
-        Đợi phản hồi trong `probe_timeout_sec` (~3.2 giây):
-        - Các model bị 404, 429, 503 hoặc treo (Timeout) bị khóa ngay vào `_model_cooldowns` để không bao giờ gây chờ đợi tuần tự.
-        - Các model phản hồi 200 OK được xếp hạng theo Độ Xịn (Quality Tier) + Tốc độ phản hồi để chọn ra danh sách Model tốt nhất.
+        Đợi phản hồi trong `probe_timeout_sec` (~4.0 giây):
+        - Các model phản hồi 200 OK được mở khóa ngay khỏi `_model_cooldowns` và xếp hạng theo Độ Xịn (Quality Tier).
         """
         if not self.keys:
             return list(candidate_models or GEMINI_PRIORITY_MODELS)
@@ -218,7 +219,7 @@ class KeyRotator:
                     "generationConfig": {"maxOutputTokens": 2},
                 }
                 try:
-                    resp = requests.post(url, json=payload, timeout=(2.0, probe_timeout_sec))
+                    resp = requests.post(url, json=payload, timeout=(2.5, probe_timeout_sec))
                     latency = time.monotonic() - t0
                     return (model_name, resp.status_code, latency, resp.text[:300] if resp.status_code != 200 else "OK")
                 except Exception as exc:
@@ -226,16 +227,18 @@ class KeyRotator:
                     return (model_name, 599, latency, f" timed out / connection error: {exc}")
 
             live_results: List[Tuple[str, float]] = []
-            max_workers = max(len(models_to_check), 1)
+            max_workers = min(max(len(models_to_check), 1), 6)
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {executor.submit(_ping_single_model, m): m for m in models_to_check}
                 for fut in as_completed(futures):
                     m_name, status, lat, err_txt = fut.result()
                     if status == 200:
                         live_results.append((m_name, lat))
+                        with self._global_lock:
+                            self._model_cooldowns.pop(f"*:{m_name}", None)
+                            self._model_cooldowns.pop(f"{probe_key}:{m_name}", None)
                     elif status == 599:
-                        # Model bị treo quá timeout -> khóa 10 phút để tuyệt đối không làm treo luồng chính
-                        self.mark_model_rate_limited(probe_key, m_name, status_code=503, error_text="timed out", cooldown_sec=600.0)
+                        self.mark_model_rate_limited(probe_key, m_name, status_code=503, error_text="timed out", cooldown_sec=15.0)
                     else:
                         self.mark_model_rate_limited(probe_key, m_name, status_code=status, error_text=err_txt)
 
@@ -286,39 +289,41 @@ class KeyRotator:
                 model_list.append(m)
 
         n_keys = len(self.keys)
-        limit = max_total_attempts or max(n_keys * len(model_list), 10)
+        limit = max_total_attempts or max(n_keys * len(model_list), 12)
         yielded = 0
+        yielded_models = set()
 
         for model in model_list:
             now = time.monotonic()
             with self._global_lock:
                 self._cleanup_expired_locked(now)
-                if self._model_cooldowns.get(f"*:{model}", 0.0) > now:
+                if self._model_cooldowns.get(f"*:{model}", 0.0) > now and model not in live_ranked:
                     continue
                 start_idx = self._global_cursor % n_keys
 
             for offset in range(n_keys):
                 if yielded >= limit:
                     return
-                # Kiểm tra lại khóa *:model sau mỗi lần yield (nếu key vừa thử báo hết quota ngày của model thì nhảy sang model tiếp theo ngay)
-                if self._model_cooldowns.get(f"*:{model}", 0.0) > time.monotonic():
+                if self._model_cooldowns.get(f"*:{model}", 0.0) > time.monotonic() and model in yielded_models:
                     break
                 idx = (start_idx + offset) % n_keys
                 candidate_key = self.keys[idx]
-                if not self.is_model_available(candidate_key, model):
+                if not self.is_model_available(candidate_key, model) and model not in live_ranked:
                     continue
                 with self._global_lock:
                     self._global_cursor = (idx + 1) % n_keys
                     self._current_key = candidate_key
                 yielded += 1
+                yielded_models.add(model)
                 yield model, candidate_key
 
-        # Fallback khẩn cấp nếu tất cả cặp đều đang trong cooldown: thử model sống đầu tiên hoặc flash-lite-latest
-        if yielded == 0 and model_list:
-            fallback_model = live_ranked[0] if live_ranked else model_list[-1]
-            fallback_key = self._select_next_healthy_key(advance_cursor=True)
-            if fallback_key:
-                yield fallback_model, fallback_key
+        # Fallback dự phòng cho các dòng Flash/Flash-Lite ổn định nếu các model trên gặp 503 tạm thời
+        for fb_model in ("gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-flash-lite-latest"):
+            if fb_model not in yielded_models:
+                fb_key = self._select_next_healthy_key(advance_cursor=True)
+                if fb_key:
+                    yielded += 1
+                    yield fb_model, fb_key
 
     def mark_rate_limited(self, key: Optional[str] = None, cooldown_sec: Optional[float] = None) -> None:
         """Đánh dấu một key bị giới hạn tốc độ (429/403) để các luồng song song tạm né."""

@@ -169,17 +169,17 @@ def create_configured_engine(raw_url: str):
                 eng = create_engine(
                     driver_url,
                     echo=False,
-                    pool_size=5,           # Giảm từ 10 → 5 (Supabase Free cho phép max 10 connections)
-                    max_overflow=10,       # Giảm từ 20 → 10 cho an toàn
+                    pool_size=3,           # Giữ pool nhỏ gọn cho Supabase Pooler
+                    max_overflow=4,        # Tránh vượt giới hạn kết nối đồng thời của Supabase Free
                     pool_pre_ping=True,    # Tự kiểm tra connection sống/chết trước mỗi query
-                    pool_recycle=1800,     # [FIX] Tăng từ 300 → 1800s (Supabase đóng idle >600s)
-                    pool_timeout=30,       # [FIX] Fail-fast sau 30s nếu không lấy được connection
+                    pool_recycle=25,       # Recycle sau 25s để tránh Supabase PgBouncer đóng kết nối idle
+                    pool_timeout=30,       # Fail-fast sau 30s nếu không lấy được connection
                     connect_args={
                         "connect_timeout": 10,
                         "keepalives": 1,
-                        "keepalives_idle": 30,
-                        "keepalives_interval": 10,
-                        "keepalives_count": 5,
+                        "keepalives_idle": 15,
+                        "keepalives_interval": 5,
+                        "keepalives_count": 3,
                     },
                 )
                 # Test ping connection
@@ -250,18 +250,27 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expi
 
 
 # ──────────────────────────────────────────────
-# FIX CRITICAL: Context manager chống session leak
+# FIX CRITICAL: Context manager chống session leak & tự hồi phục kết nối Pooler
 # ──────────────────────────────────────────────
 @contextmanager
 def get_db():
     """
     Dùng: with get_db() as db:
     Tự động commit nếu thành công, rollback + close nếu exception.
+    Nếu gặp OperationalError (Supabase đóng kết nối idle), tự động dispose pool để kết nối sau tươi mới.
     """
+    from sqlalchemy.exc import OperationalError
     db = SessionLocal()
     try:
         yield db
         db.commit()
+    except OperationalError:
+        db.rollback()
+        try:
+            engine.dispose()
+        except Exception:
+            pass
+        raise
     except Exception:
         db.rollback()
         raise

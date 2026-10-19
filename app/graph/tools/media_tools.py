@@ -1125,7 +1125,12 @@ def execute_google_cinematic_image_sync(
     for idx_u, cand_u in enumerate(all_candidate_urls):
         if idx_u > 0 and is_media_already_used(cand_u, used):
             continue
-        media_agent.download_file(cand_u, output_path)
+        try:
+            media_agent.download_file(cand_u, output_path)
+        except Exception as _dl_err:
+            logger.debug(f"[GoogleImageTool] Bỏ qua URL ảnh lỗi ({cand_u[:70]}): {_dl_err}")
+            Path(output_path).unlink(missing_ok=True)
+            continue
         if Path(output_path).exists() and Path(output_path).stat().st_size > 3000:
             if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=scene_id, image_path=output_path, url=cand_u):
                 primary_selected_url = cand_u
@@ -1367,9 +1372,10 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
 
     final_plan: List[Dict[str, Any]] = []
     motion_cycle = ["zoom_in", "pan_right", "zoom_out", "pan_left"]
-    # Giới hạn tối đa 1-2 cảnh Video Peak (Cảnh 1 Hook + tối đa 1 cảnh cao trào) để dành 6-7 phân cảnh cho mật độ 15-17 ảnh/video
-    peak_indices = {1} if is_psych_or_abstract_niche else {1, max(3, total_scenes // 2)}
-    max_video_peak_scenes = 1 if is_psych_or_abstract_niche else 2
+    # Giới hạn Cảnh 1 dùng Video Peak (nếu đoạn Peak dài > 4.2s, Step A sẽ tự chảy liền mạch sang Cảnh 2),
+    # dành trọn các phân cảnh còn lại cho mật độ 15-17 ảnh thật độc lập trên mỗi video
+    peak_indices = {1}
+    max_video_peak_scenes = 1
     video_peak_count = 0
     default_subj = _clean_yt_search_phrase(primary_entity or topic, max_words=3, strip_distractor_props=True)
     default_overall_q = _clean_yt_search_phrase(topic, subject_entity=default_subj, max_words=5, strip_distractor_props=True)

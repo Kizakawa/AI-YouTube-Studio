@@ -547,7 +547,7 @@ _INCONGRUENT_TAG_GROUPS = {
 
 
 def _is_incongruent_stock_heuristic(title_or_alt: str, topic: str = "", narration: str = "") -> bool:
-    """Bộ lọc heuristic từ khóa 0ms để phát hiện các nhóm thể loại lạc quẻ phổ biến."""
+    """Bộ lọc heuristic từ khóa 0ms để phát hiện các nhóm thể loại lạc quẻ phổ biến (khớp nguyên từ \b)."""
     if not title_or_alt:
         return False
 
@@ -555,10 +555,12 @@ def _is_incongruent_stock_heuristic(title_or_alt: str, topic: str = "", narratio
     context_lower = f"{topic} {narration}".lower()
 
     for group_name, bad_words in _INCONGRUENT_TAG_GROUPS.items():
-        matched_bad = [bw for bw in bad_words if bw in t_lower]
+        matched_bad = [
+            bw for bw in bad_words
+            if re.search(rf"\b{re.escape(bw)}\b", t_lower)
+        ]
         if matched_bad:
-            # Nếu trong ngữ cảnh video thật sự có nhắc đến chủ đề này thì cho phép, ngược lại coi là lạc đề
-            is_legit = any(bw in context_lower for bw in matched_bad)
+            is_legit = any(re.search(rf"\b{re.escape(bw)}\b", context_lower) for bw in matched_bad)
             if not is_legit:
                 logger.info(f"🚫 [EntityDetector:Heuristic] Từ chối ảnh stock lạc đề ('{title_or_alt[:45]}...') do chứa từ khóa: {matched_bad}")
                 return True

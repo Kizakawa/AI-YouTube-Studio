@@ -73,18 +73,21 @@ class GraphRunner:
         self.progress_callback = progress_callback
         self.work_dir = Path(settings.TEMP_DIR) / f"job_{self.job_id}"
         self.work_dir.mkdir(parents=True, exist_ok=True)
+        self._last_db_pct: int = -20
 
     async def _report(self, stage: str, message: str, percent: int):
-        """Đồng bộ tiến độ vào Database & gọi callback Telegram/Dashboard."""
+        """Đồng bộ tiến độ vào Database & gọi callback Telegram/Dashboard (chống nghẽn kết nối Cloud DB)."""
         logger.info(f"[LangGraph Job {self.job_id}] [{stage}] [{percent}%] {message}")
-        try:
-            with get_db() as db:
-                job = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
-                if job:
-                    job.progress_percent = percent
-                    job.progress_message = message
-        except Exception as e:
-            logger.debug(f"Không thể cập nhật tiến độ DB: {e}")
+        if not self.progress_callback and (abs(percent - self._last_db_pct) >= 15 or percent in (5, 100)):
+            self._last_db_pct = percent
+            try:
+                with get_db() as db:
+                    job = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
+                    if job:
+                        job.progress_percent = percent
+                        job.progress_message = message
+            except Exception as e:
+                logger.debug(f"Không thể cập nhật tiến độ DB: {e}")
 
         if self.progress_callback:
             try:
@@ -206,6 +209,7 @@ class GraphRunner:
                         if sc_id in media_map:
                             sc_copy["media_path"] = media_map[sc_id].get("media_path")
                             sc_copy["media_type"] = media_map[sc_id].get("media_type")
+                            sc_copy["pose_images"] = media_map[sc_id].get("pose_images")
                             sc_copy["visual_strategy"] = media_map[sc_id].get("visual_strategy")
                             sc_copy["production_method"] = media_map[sc_id].get("production_method")
                             sc_copy["tool"] = media_map[sc_id].get("tool")

@@ -68,20 +68,23 @@ class VideoPipeline:
         self._media_agent = MediaAgent()
         self._image_agent = ImageAgent()
         self._visual_curation_agent = VisualCurationAgent()
+        self._last_db_pct: int = -20
 
     async def _report_progress(self, stage: str, message: str, percent: int = 0):
-        """Báo cáo tiến độ thời gian thực về Telegram/Web Dashboard kèm phần trăm %."""
+        """Báo cáo tiến độ thời gian thực về Telegram/Web Dashboard kèm phần trăm % (gộp DB write tránh nghẽn Cloud Pooler)."""
         logger.info(f"[Job {self.job_id}] [{stage}] [{percent}%] {message}")
 
-        # Đồng bộ tiến độ vào Database để Web Dashboard hiển thị thanh % thời gian thực
-        try:
-            with get_db() as db:
-                job = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
-                if job:
-                    job.progress_percent = percent
-                    job.progress_message = message
-        except Exception as ex:
-            logger.debug(f"Không thể ghi nhận progress vào DB: {ex}")
+        # Chỉ ghi xuống Cloud DB khi % thay đổi >= 15% hoặc ở mốc đầu/cuối để tránh treo kết nối khi tải song song
+        if abs(percent - self._last_db_pct) >= 15 or percent in (5, 100) or stage in ("GRAPH_INIT", "COMPLETED"):
+            self._last_db_pct = percent
+            try:
+                with get_db() as db:
+                    job = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
+                    if job:
+                        job.progress_percent = percent
+                        job.progress_message = message
+            except Exception as ex:
+                logger.debug(f"Không thể ghi nhận progress vào DB: {ex}")
 
         if self.progress_callback:
             try:
@@ -178,6 +181,7 @@ class VideoPipeline:
                             visual_prompt=s.get("visual_prompt"),
                             media_path=s.get("media_path", ""),
                             media_type=s.get("media_type", "image"),
+                            pose_images=s.get("pose_images"),
                             audio_path=s.get("audio_path") or a_info.get("audio_path") or audio_p or "",
                             audio_duration_ms=s.get("audio_duration_ms") or a_info.get("audio_duration_ms") or a_info.get("duration_ms") or 0,
                             camera_motion=s.get("camera_motion") or a_info.get("camera_motion"),
@@ -1462,16 +1466,24 @@ class VideoPipeline:
     # ──────────────────────────────────────────
 
     def _update_status(self, status: JobStatus, error_msg: str = None):
-        """Ghi checkpoint trạng thái vào DB — resume-safe."""
-        with get_db() as db:
-            job = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
-            if job:
-                job.status = status.value
-                if error_msg:
-                    job.error_message = error_msg
-                elif status in (JobStatus.RENDERED, JobStatus.PUBLISHED):
-                    # Clear error_message khi hoàn thành thành công
-                    job.error_message = None
+        """Ghi checkpoint trạng thái vào DB — resume-safe (tự thử lại nếu Cloud DB tạm ngắt)."""
+        for _att in range(2):
+            try:
+                with get_db() as db:
+                    job = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
+                    if job:
+                        job.status = status.value
+                        if error_msg:
+                            job.error_message = error_msg
+                        elif status in (JobStatus.RENDERED, JobStatus.PUBLISHED):
+                            job.error_message = None
+                return
+            except Exception as _db_err:
+                if _att == 0:
+                    import time as _t
+                    _t.sleep(0.5)
+                else:
+                    logger.warning(f"[Job {self.job_id}] Không thể cập nhật status={status.value} vào DB: {_db_err}")
 
     def _save_audio_metadata(self, audio_path: str, duration_ms: int, scenes: List[SceneContract]):
         """Lưu metadata audio và voice_engine vào DB sau Step B."""

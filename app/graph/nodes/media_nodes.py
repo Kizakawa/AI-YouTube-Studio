@@ -293,17 +293,29 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             else:
                 cached_files = sorted(
                     media_dir.glob(f"scene_{scene.scene_id:03d}_*"),
-                    key=lambda p: p.stat().st_mtime if p.exists() else 0,
-                    reverse=True,
+                    key=lambda p: (0 if "_cut" not in p.name else 1, p.name),
                 )
+                valid_cached_imgs: List[str] = []
                 for cf in cached_files:
                     if cf.is_file() and cf.stat().st_size > 3000 and cf.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp", ".mp4"):
-                        media_path = str(cf.resolve())
-                        media_type = "video" if cf.suffix.lower() == ".mp4" else "image"
-                        vision_curated = True
-                        prod_method = chosen_strategy = "CACHED_MEDIA"
-                        logger.info(f"Scene {scene.scene_id}: ⚡ Tái sử dụng Media đã tải trong cache: {cf.name}")
-                        break
+                        if cf.suffix.lower() == ".mp4" and not media_path:
+                            media_path = str(cf.resolve())
+                            media_type = "video"
+                            vision_curated = True
+                            prod_method = chosen_strategy = "CACHED_MEDIA"
+                            logger.info(f"Scene {scene.scene_id}: ⚡ Tái sử dụng Video đã tải trong cache: {cf.name}")
+                            break
+                        elif cf.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
+                            valid_cached_imgs.append(str(cf.resolve()))
+                if not media_path and valid_cached_imgs:
+                    media_path = valid_cached_imgs[0]
+                    media_type = "image"
+                    cached_pose_images = valid_cached_imgs
+                    vision_curated = True
+                    prod_method = chosen_strategy = "CACHED_MEDIA"
+                    logger.info(
+                        f"Scene {scene.scene_id}: ⚡ Tái sử dụng {len(valid_cached_imgs)} ảnh đã tải trong cache: {Path(media_path).name}"
+                    )
 
         # ══════════════════════════════════════════════════════════════════════
         # NHÁNH ƯU TIÊN MỚI: THỰC THI BỘ @TOOL CỦA LLM (`clone_youtube_short_peak_clip` / `search_google_cinematic_image`)
@@ -1329,36 +1341,45 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
                 alt_pool = [
                     u for u in (sc_item.get("alternate_urls") or [])
-                    if u and not is_media_already_used(u, used_pool_urls)
+                    if u
                 ]
 
-                # Nếu kho alternate_urls của cảnh chưa đủ lấp đầy quota, tìm bổ sung bằng truy vấn góc máy mới
-                if len(verified_poses) + len(alt_pool) < quota + 1:
-                    subj_anchor = primary_entity or state.get("topic", "")
-                    sc_kw = sc_item.get("visual_keyword") or subj_anchor
+                # Nếu kho alternate_urls của cảnh chưa đủ lấp đầy quota, tìm bổ sung bằng truy vấn góc máy riêng của từng cảnh
+                if len(verified_poses) + len(alt_pool) < quota + 3:
+                    short_subj = clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=2)
+                    raw_sc_kw = sc_item.get("visual_keyword") or sc_item.get("visual_prompt") or short_subj
+                    sc_kw = clean_scene_search_query(raw_sc_kw, max_words=4) or short_subj
                     facet = angle_facets[slot_idx % len(angle_facets)]
-                    supp_q = clean_scene_search_query(f"{subj_anchor} {sc_kw} {facet}", max_words=6) or sc_kw
+                    facet2 = angle_facets[(slot_idx + 3) % len(angle_facets)]
+                    supp_q = clean_scene_search_query(f"{sc_kw} {facet}", max_words=6) or sc_kw
+                    supp_q2 = clean_scene_search_query(f"{short_subj} {facet2}", max_words=5) or supp_q
                     try:
-                        extra_best = await asyncio.to_thread(
-                            media_agent.search_best_photo,
+                        from app.services.media.web_image_fetcher import WebImageFetcher
+                        from app.services.media.stock_fetcher import prefilter_candidates
+                        wf = WebImageFetcher()
+                        raw_web = await asyncio.to_thread(
+                            wf.search_all,
                             supp_q,
-                            used_pool_urls,
-                            {"subject": subj_anchor, "search_queries": [supp_q]},
-                            sc_item.get("narration") or "",
-                            state.get("topic", ""),
+                            10,
+                            short_subj,
+                            [supp_q2],
                         )
-                        if extra_best:
-                            for u_supp in [extra_best.get("url"), *(extra_best.get("alternate_urls") or [])]:
-                                if u_supp and u_supp not in alt_pool and not is_media_already_used(u_supp, used_pool_urls):
-                                    alt_pool.append(u_supp)
+                        ranked_web = prefilter_candidates(
+                            raw_web or [],
+                            subject=short_subj or supp_q,
+                            limit=14,
+                            max_per_source=12,
+                        )
+                        for c_item in ranked_web:
+                            u_supp = c_item.get("url")
+                            if u_supp and u_supp not in alt_pool:
+                                alt_pool.append(u_supp)
                     except Exception:
                         pass
 
                 for idx_c, cand_u in enumerate(alt_pool):
                     if len(verified_poses) >= quota:
                         break
-                    if is_media_already_used(cand_u, used_pool_urls):
-                        continue
                     tmp_cut = str(media_dir / f"scene_{sid:03d}_density_cand{idx_c + 2}.jpg")
                     try:
                         await asyncio.to_thread(media_agent.download_file, cand_u, tmp_cut)
