@@ -18,6 +18,7 @@ import os
 import re
 import subprocess
 import tempfile
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -29,6 +30,7 @@ from app.services.media.web_image_fetcher import WebImageFetcher
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
+_yt_url_lock = threading.Lock()
 
 # Các từ khóa tiêu đề YouTube cần loại bỏ để tránh cắt nhầm video người ngồi nói chuyện (Podcast / Talking Head)
 _TALKING_HEAD_BLOCKLIST = (
@@ -222,9 +224,13 @@ def execute_youtube_short_peak_clone_sync(
     candidates.sort(key=lambda x: x["score"], reverse=True)
 
     # Thử tải ứng viên tốt nhất (tối đa 2 ứng viên đầu để đảm bảo tốc độ)
-    for cand in candidates[:2]:
+    for cand in candidates[:3]:
         entry = cand["entry"]
         vid_url = cand["url"]
+        with _yt_url_lock:
+            if vid_url in used:
+                continue
+            used.add(vid_url)
         start_s, end_s = _find_best_peak_window(entry, target_duration_sec + 0.8, role=clip_role)
         clip_len = max(3.0, end_s - start_s)
 

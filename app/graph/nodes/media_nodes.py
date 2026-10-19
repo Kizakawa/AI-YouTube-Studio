@@ -229,9 +229,35 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 dur = max(float(sc_audio["audio_duration_ms"]) / 1000.0, 1.2)
 
         # ══════════════════════════════════════════════════════════════════════
+        # TẦNG -1 (REUSE CACHE): NẾU ĐÃ CÓ FILE MEDIA HỢP LỆ TỪ STORYBOARD HOẶC LẦN CHẠY TRƯỚC
+        # ══════════════════════════════════════════════════════════════════════
+        if state.get("media_retry_count", 0) == 0 and state.get("content_retry_count", 0) == 0:
+            pre_m = getattr(scene, "media_path", None)
+            if pre_m and Path(pre_m).exists() and Path(pre_m).stat().st_size > 3000:
+                media_path = str(Path(pre_m).resolve())
+                media_type = "video" if media_path.lower().endswith((".mp4", ".mov", ".webm")) else "image"
+                vision_curated = True
+                prod_method = chosen_strategy = "CACHED_MEDIA"
+                logger.info(f"Scene {scene.scene_id}: ⚡ Tái sử dụng Media có sẵn: {Path(media_path).name}")
+            else:
+                cached_files = sorted(
+                    media_dir.glob(f"scene_{scene.scene_id:03d}_*"),
+                    key=lambda p: p.stat().st_mtime if p.exists() else 0,
+                    reverse=True,
+                )
+                for cf in cached_files:
+                    if cf.is_file() and cf.stat().st_size > 3000 and cf.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp", ".mp4"):
+                        media_path = str(cf.resolve())
+                        media_type = "video" if cf.suffix.lower() == ".mp4" else "image"
+                        vision_curated = True
+                        prod_method = chosen_strategy = "CACHED_MEDIA"
+                        logger.info(f"Scene {scene.scene_id}: ⚡ Tái sử dụng Media đã tải trong cache: {cf.name}")
+                        break
+
+        # ══════════════════════════════════════════════════════════════════════
         # NHÁNH ƯU TIÊN MỚI: THỰC THI BỘ @TOOL CỦA LLM (`clone_youtube_short_peak_clip` / `search_google_cinematic_image`)
         # ══════════════════════════════════════════════════════════════════════
-        if tool_name in ("clone_youtube_short_peak_clip", "search_google_cinematic_image"):
+        if not media_path and tool_name in ("clone_youtube_short_peak_clip", "search_google_cinematic_image"):
             from app.graph.tools.media_tools import (
                 execute_youtube_short_peak_clone_sync,
                 execute_google_cinematic_image_sync,
@@ -309,46 +335,21 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     hook_alternate_urls = list(img_res.get("alternate_urls") or [])
                     rationale = f"Google Top Image ({img_res.get('curation_score')}): {img_res.get('title', '')[:45]}"
         else:
-            # ── Fallback tương thích ngược cho các kế hoạch cũ ──
+            # ── Khởi tạo biến cho cảnh dùng cache hoặc fallback tương thích ngược ──
             surround_text = " ".join([s.narration for s in script.scenes[max(0, idx - 1):min(len(script.scenes), idx + 2)]])
             v_analysis = batch_analyses.get(scene.scene_id) or {}
-            chosen_strategy = sc_strat.get("strategy", "STOCK_VIDEO")
-            prod_method = sc_strat.get("production_method") or "STOCK_FOOTAGE"
+            if not media_path:
+                chosen_strategy = sc_strat.get("strategy", "STOCK_VIDEO")
+                prod_method = sc_strat.get("production_method") or "STOCK_FOOTAGE"
             channel_visual_mode = state.get("visual_mode") or "auto"
             scene_media_pref = getattr(scene, 'media_type', None)
-            tool = sc_strat.get("tool", "")
+            tool = sc_strat.get("tool") or tool_name or ""
             rationale = sc_strat.get("rationale", "")
-            search_query = sc_strat.get("search_query") or sq or kw
+            search_query = sc_strat.get("search_query") or sc_strat.get("youtube_search_query") or sc_strat.get("smart_image_query") or sq or kw
             ai_prompt = sc_strat.get("ai_prompt") or vp or kw
-            camera_motion = sc_strat.get("camera_motion", "zoom_in")
-            sfx_cue = sc_strat.get("sfx_cue", "whoosh" if idx == 0 else "hit")
+            camera_motion = sc_strat.get("camera_motion") or ("hyper_zoom" if idx == 0 else "zoom_in")
+            sfx_cue = sc_strat.get("sfx_cue") or ("whoosh" if idx == 0 else "hit")
             tier0_searched = False
-
-        # ══════════════════════════════════════════════════════════════════════
-        # TẦNG -1 (REUSE CACHE): NẾU ĐÃ CÓ FILE MEDIA HỢP LỆ TỪ STORYBOARD HOẶC LẦN CHẠY TRƯỚC
-        # ══════════════════════════════════════════════════════════════════════
-        if state.get("media_retry_count", 0) == 0 and state.get("content_retry_count", 0) == 0:
-            pre_m = getattr(scene, "media_path", None)
-            if pre_m and Path(pre_m).exists() and Path(pre_m).stat().st_size > 3000:
-                media_path = str(Path(pre_m).resolve())
-                media_type = "video" if media_path.lower().endswith((".mp4", ".mov", ".webm")) else "image"
-                vision_curated = True
-                prod_method = chosen_strategy = "CACHED_MEDIA"
-                logger.info(f"Scene {scene.scene_id}: ⚡ Tái sử dụng Media có sẵn: {Path(media_path).name}")
-            else:
-                cached_files = sorted(
-                    media_dir.glob(f"scene_{scene.scene_id:03d}_*"),
-                    key=lambda p: p.stat().st_mtime if p.exists() else 0,
-                    reverse=True,
-                )
-                for cf in cached_files:
-                    if cf.is_file() and cf.stat().st_size > 3000 and cf.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp", ".mp4"):
-                        media_path = str(cf.resolve())
-                        media_type = "video" if cf.suffix.lower() == ".mp4" else "image"
-                        vision_curated = True
-                        prod_method = chosen_strategy = "CACHED_MEDIA"
-                        logger.info(f"Scene {scene.scene_id}: ⚡ Tái sử dụng Media đã tải trong cache: {cf.name}")
-                        break
 
         # ══════════════════════════════════════════════════════════════════════
         # TẦNG 0 (ƯU TIÊN TUYỆT ĐỐI): GEMINI GOOGLE SEARCH + VISION CURATION + 3D MOTION
@@ -359,9 +360,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # ══════════════════════════════════════════════════════════════════════
         search_first = os.getenv("SEARCH_FIRST_VISUAL_MODE", "true").strip().lower() not in ("0", "false", "no", "off")
         creature_first = os.getenv("CREATURE_ART_FIRST", "true").strip().lower() not in ("0", "false", "no", "off")
-        tier0_searched = False
         if (
             not media_path
+            and not tier0_searched
             and (search_first or (creature_first and v_analysis.get("creature_mode")))
             and channel_visual_mode not in ("imagen_ai", "ai_image")
         ):
@@ -406,7 +407,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # ══════════════════════════════════════════════════════════════════════
         # PHƯƠNG PHÁP 1: REAL_ARCHIVE (Tư liệu lịch sử thật 100%)
         # ══════════════════════════════════════════════════════════════════════
-        if prod_method == "REAL_ARCHIVE" or chosen_strategy == "REAL_DOCUMENTARY":
+        if not media_path and (prod_method == "REAL_ARCHIVE" or chosen_strategy == "REAL_DOCUMENTARY"):
             # A. Thử Semantic Pool Matcher
             if primary_entity and entity_media_pool:
                 best_pool_photo = match_best_pool_photo(
