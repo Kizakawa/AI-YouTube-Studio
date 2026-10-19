@@ -18,6 +18,48 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from auth_channel import authenticate_channel, load_channels_config
 from app.utils.security import load_encrypted_json
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
+
+
+def check_live_channel_status(all_channels):
+    """Kiểm tra trực tiếp xem token chính của từng kênh còn sống (🟢) hay đã hết hạn/chưa có (🔴)."""
+    print("\n" + "═" * 78)
+    print("🩺 TRẠNG THÁI XÁC THỰC TRỰC TIẾP (LIVE OAUTH) CỦA 7 KÊNH YOUTUBE:")
+    print("═" * 78)
+    print(f"{'STT':<4} | {'Tên Kênh YouTube':<30} | {'Project':<10} | {'Trạng Thái Token'}")
+    print("─" * 78)
+
+    expired_or_missing = []
+    for idx, ch in enumerate(all_channels, 1):
+        cid = ch.get("id")
+        name = ch.get("name", cid)[:28]
+        acc = ch.get("account", "account_1")
+        prim_token = Path("credentials/channels") / cid / "youtube_token.json"
+
+        status_str = "🔴 Chưa có token"
+        is_valid = False
+        if prim_token.exists():
+            try:
+                data = load_encrypted_json(prim_token)
+                if data and data.get("refresh_token"):
+                    creds = Credentials.from_authorized_user_info(data)
+                    creds.refresh(Request())
+                    is_valid = True
+                    status_str = "🟢 Đang hoạt động tốt (VALID)"
+                else:
+                    status_str = "🔴 Thiếu refresh_token"
+            except Exception as e:
+                err_short = "Hết hạn (invalid_grant)" if "invalid_grant" in str(e) else str(e)[:28]
+                status_str = f"🔴 Cần cấp lại ({err_short})"
+
+        print(f"[{idx}]  | {name:<30} | {acc:<10} | {status_str}")
+        if not is_valid:
+            expired_or_missing.append(ch)
+
+    print("═" * 78 + "\n")
+    return expired_or_missing
+
 
 def print_matrix(all_channels, accounts, cid_to_acc):
     print("\n" + "═" * 72)
@@ -98,59 +140,62 @@ def main():
                 "account": ch.get("google_account", "account_1")
             })
 
-    missing = print_matrix(all_channels, accounts, cid_to_acc)
+    # 1. Kiểm tra trực tiếp trạng thái sống/chết của token chính trên 7 kênh
+    broken_channels = check_live_channel_status(all_channels)
 
-    if not missing:
-        print("🎉 TẤT CẢ CÁC KÊNH ĐỀU ĐÃ LIÊN KẾT ĐỦ 3 DỰ ÁN GOOGLE CLOUD! (30.000 Quota/kênh/ngày)")
-        return
+    if not broken_channels:
+        print("🎉 TẤT CẢ 7/7 KÊNH ĐỀU ĐANG HOẠT ĐỘNG TỐT (🟢 VALID TOKEN)!")
+    else:
+        print(f"⚠️ Phát hiện {len(broken_channels)}/{len(all_channels)} kênh cần cấp quyền lại:")
+        for ch in broken_channels:
+            print(f"   👉 {ch['name']} (ID: {ch['id']} ── Project: {ch['account']})")
+        print()
 
-    print(f"💡 Hệ thống phát hiện còn {len(missing)} liên kết chưa cấp quyền (❌).")
     print("👉 Bạn muốn làm gì:")
-    print("   [1] 🚀 Cấp quyền liên hoàn tất cả các ô còn thiếu (tự động mở lần lượt)")
-    print("   [2] 🎯 Chọn 1 kênh để cấp quyền cả 3 dự án (--all)")
-    print("   [3] ❌ Thoát")
-    print("-" * 72)
+    print(f"   [1] ⚡ Cấp quyền ngay cho {len(broken_channels)} kênh đang thiếu/hết hạn (KHUYÊN DÙNG)")
+    print("   [2] 🎯 Chọn 1 kênh cụ thể theo số thứ tự để cấp quyền lại")
+    print("   [3] 📊 Mở Ma trận 7x3 Dự án (Xoay vòng Quota nâng cao)")
+    print("   [4] ❌ Thoát")
+    print("-" * 78)
 
-    choice = input("👉 Nhập lựa chọn [1, 2, 3]: ").strip()
+    choice = input("👉 Nhập lựa chọn [1-4, mặc định 1]: ").strip() or "1"
 
     if choice == "1":
-        print("\n" + "🚀" * 35)
-        print("BẮT ĐẦU CẤP QUYỀN LIÊN HOÀN CÁC LIÊN KẾT CÒN THIẾU:")
-        print("Với mỗi liên kết, trình duyệt sẽ mở ra trang Google OAuth.")
-        print("Bạn chỉ cần chọn đúng kênh và bấm 'Cho phép' (Allow).")
-        print("Nhấn Enter để tiếp tục, gõ 's' để bỏ qua, 'q' để dừng.")
-        print("🚀" * 35 + "\n")
-
-        for i, (ch, acc) in enumerate(missing, 1):
-            ch_name = ch.get("name", ch.get("id"))
-            print(f"\n[{i}/{len(missing)}] 📺 KÊNH: '{ch_name}' ➔ 👤 DỰ ÁN: '{acc}'")
-            user_in = input("👉 Bấm [Enter] để mở trình duyệt ('s' bỏ qua, 'q' thoát): ").strip().lower()
-            if user_in == "q":
-                print("Đã dừng tiến trình cấp quyền.")
-                break
-            elif user_in == "s":
-                print("Đã bỏ qua.")
-                continue
-
-            authenticate_channel(ch.get("id"), acc)
-
-        print("\nHoàn tất! Bảng trạng thái sau khi cập nhật:")
-        print_matrix(all_channels, accounts, cid_to_acc)
+        if not broken_channels:
+            print("✅ Tất cả các kênh đã xanh, không cần cấp quyền thêm!")
+            return
+        for i, ch in enumerate(broken_channels, 1):
+            print(f"\n[{i}/{len(broken_channels)}] 📺 Đang mở trình duyệt cho kênh: '{ch['name']}' (ID: {ch['id']})...")
+            authenticate_channel(ch.get("id"), ch.get("account"))
+        print("\n🔄 Kiểm tra lại trạng thái sau khi cấp quyền:")
+        check_live_channel_status(all_channels)
 
     elif choice == "2":
-        print("\n📋 DANH SÁCH KÊNH:")
-        for idx, ch in enumerate(all_channels, 1):
-            print(f"  [{idx}] {ch['name']} (ID: {ch['id']})")
-        c_idx = input("👉 Chọn số thứ tự kênh muốn cấp cả 3 dự án: ").strip()
+        c_idx = input(f"👉 Chọn số thứ tự kênh [1-{len(all_channels)}]: ").strip()
         if c_idx.isdigit() and 1 <= int(c_idx) <= len(all_channels):
             sel_ch = all_channels[int(c_idx) - 1]
-            print(f"\nBắt đầu cấp quyền cả 3 dự án cho kênh: {sel_ch['name']}...")
-            for acc in accounts:
-                authenticate_channel(sel_ch["id"], acc)
-            print("\nBảng trạng thái cập nhật:")
+            authenticate_channel(sel_ch["id"], sel_ch["account"])
+            check_live_channel_status(all_channels)
+
+    elif choice == "3":
+        missing = print_matrix(all_channels, accounts, cid_to_acc)
+        if not missing:
+            print("🎉 TẤT CẢ CÁC KÊNH ĐỀU ĐÃ LIÊN KẾT ĐỦ 3 DỰ ÁN GOOGLE CLOUD!")
+            return
+        sub = input(f"👉 Bấm [1] để cấp quyền {len(missing)} ô còn thiếu, hoặc [Enter] để thoát: ").strip()
+        if sub == "1":
+            for i, (ch, acc) in enumerate(missing, 1):
+                ch_name = ch.get("name", ch.get("id"))
+                print(f"\n[{i}/{len(missing)}] 📺 KÊNH: '{ch_name}' ➔ 👤 DỰ ÁN: '{acc}'")
+                user_in = input("👉 Bấm [Enter] để mở trình duyệt ('s' bỏ qua, 'q' thoát): ").strip().lower()
+                if user_in == "q":
+                    break
+                elif user_in == "s":
+                    continue
+                authenticate_channel(ch.get("id"), acc)
             print_matrix(all_channels, accounts, cid_to_acc)
     else:
-        print("Đã hủy.")
+        print("Đã thoát.")
 
 if __name__ == "__main__":
     main()
