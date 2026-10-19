@@ -16,7 +16,10 @@ logger = logging.getLogger(__name__)
 
 
 async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
-    """Node sinh giọng đọc AI Edge-TTS từng cảnh và tạo tệp phụ đề SRT."""
+    """
+    Node sinh giọng đọc AI Edge-TTS từng cảnh + phụ đề ASS SONG SONG với bước LLM Đạo diễn chọn Tool hình ảnh.
+    Giúp tiết kiệm 100% thời gian chờ gọi LLM ở bước visual_director tiếp theo!
+    """
     script_data = state.get("script_data", {})
     work_dir = Path(state.get("work_dir", "storage/cache"))
     audio_dir = work_dir / "audio"
@@ -24,15 +27,42 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
 
     preferred_voice = state.get("preferred_voice")
     channel_style = state.get("channel_style") or state.get("channel_niche") or "general"
+    topic = state.get("topic", "")
+    primary_entity = state.get("primary_entity")
     script = ScriptContract(**script_data)
     voice_agent = VoiceAgent()
 
-    # Sinh audio cho từng cảnh qua VoiceAgent với preferred_voice và niche pacing từ channel
-    scenes_objs = await voice_agent.generate_per_scene_audio(
-        scenes=script.scenes,
-        output_dir=str(audio_dir),
-        voice=preferred_voice,
-        niche=channel_style,
+    async def _run_visual_tool_planner():
+        if state.get("visual_plan"):
+            return state.get("visual_plan")
+        try:
+            from app.graph.tools.media_tools import plan_media_tools_with_llm_sync
+            scenes_dicts = [s.model_dump() for s in script.scenes]
+            tool_decisions = await asyncio.to_thread(
+                plan_media_tools_with_llm_sync,
+                topic=topic,
+                scenes=scenes_dicts,
+                primary_entity=primary_entity,
+                channel_niche=channel_style,
+            )
+            return {
+                "topic_classification": "HYBRID_TOOL_CALLING",
+                "director_vision": "YouTube Shorts Peak Clone (Hook + 2-3 Peak Clips) kết hợp Google Top Search Images",
+                "scenes_strategy": tool_decisions,
+            }
+        except Exception as e_plan:
+            logger.warning(f"[ParallelPlanner] Lỗi lập kế hoạch Tool song song: {e_plan}")
+            return None
+
+    # Chạy SONG SONG: (1) Sinh Audio TTS tất cả các cảnh + (2) LLM bind_tools chọn công cụ hình ảnh cho tất cả các cảnh
+    scenes_objs, precomputed_visual_plan = await asyncio.gather(
+        voice_agent.generate_per_scene_audio(
+            scenes=script.scenes,
+            output_dir=str(audio_dir),
+            voice=preferred_voice,
+            niche=channel_style,
+        ),
+        _run_visual_tool_planner(),
     )
 
     enriched_scenes = [
@@ -43,28 +73,38 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
         for s in scenes_objs
     ]
 
-    # Ghép toàn bộ audio và lưu phụ đề ASS Karaoke
+    # Ghép toàn bộ audio và lưu phụ đề ASS Karaoke SONG SONG
     full_audio_path = str(work_dir / "full_voiceover.mp3")
     subtitle_path = str(work_dir / "subtitles.ass")   # ASS karaoke thay SRT thông thường
+    hook_banner_text = getattr(script, "thumbnail_text", None) or getattr(script, "title", None) or state.get("title")
 
-    total_duration_ms = await voice_agent.concat_scene_audio(
-        scenes=scenes_objs,
-        output_path=full_audio_path
+    total_duration_ms, _ = await asyncio.gather(
+        voice_agent.concat_scene_audio(
+            scenes=scenes_objs,
+            output_path=full_audio_path
+        ),
+        asyncio.to_thread(
+            SubtitleHelper.save_ass_file,
+            scenes_objs,
+            subtitle_path,
+            niche_id=channel_style,
+            hook_title=hook_banner_text,
+            show_cta_badge=True,
+        ),
     )
 
-    # Tạo phụ đề ASS chuẩn Shorts với word-level karaoke highlight, Hook Headline Banner ở Frame 0 & Visual CTA Banner (Like + Comment + Subscribe) ở cảnh cuối
-    hook_banner_text = getattr(script, "thumbnail_text", None) or getattr(script, "title", None) or state.get("title")
-    SubtitleHelper.save_ass_file(scenes_objs, subtitle_path, niche_id=channel_style, hook_title=hook_banner_text, show_cta_badge=True)
-
-    return {
+    out_state: Dict[str, Any] = {
         "scenes_audio": enriched_scenes,
         "full_audio_path": full_audio_path,
         "total_audio_duration_ms": total_duration_ms,
         "subtitle_path": subtitle_path,
         "current_step": "AUDIO_READY",
         "progress_percent": 45,
-        "progress_message": f"Đã tạo giọng đọc Edge-TTS ({total_duration_ms/1000:.1f}s) + phụ đề ASS Karaoke",
+        "progress_message": f"Đã tạo giọng đọc Edge-TTS ({total_duration_ms/1000:.1f}s) + phụ đề ASS + Kế hoạch Tool Hình ảnh (Song song)",
     }
+    if precomputed_visual_plan:
+        out_state["visual_plan"] = precomputed_visual_plan
+    return out_state
 
 
 def node_evaluate_audio(state: VideoWorkflowState) -> Dict[str, Any]:

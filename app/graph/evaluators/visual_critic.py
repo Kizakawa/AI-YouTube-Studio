@@ -134,45 +134,40 @@ class VisualCritic:
         primary_entity: Optional[str] = None
     ) -> VisualEvaluationReport:
         """
-        Kiểm định ĐỘ SẮC NÉT, ĐỘ PHÂN GIẢI, TÍNH TOÀN VẸN BITMAP & CHỐNG TRÙNG LẶP của tất cả các cảnh.
-        (Đã loại bỏ bước kiểm tra độ liên quan nội dung theo cấu hình mới).
+        Kiểm định SONG SONG ĐỘ SẮC NÉT, ĐỘ PHÂN GIẢI, TÍNH TOÀN VẸN BITMAP & CHỐNG TRÙNG LẶP của tất cả các cảnh.
+        Sử dụng ThreadPoolExecutor để kiểm tra đồng loạt toàn bộ các cảnh cùng lúc.
         """
-        scene_scores: List[SceneVisualScore] = []
-        failed_scene_ids: List[int] = []
-        seen_hashes = {}
-        seen_signatures: Dict[int, List[str]] = {}
-        issues_summary = []
+        from concurrent.futures import ThreadPoolExecutor
 
-        for item in scenes_media:
+        def _inspect_single_scene(item: Dict[str, Any]) -> Dict[str, Any]:
             scene_id = item.get("scene_id", 0)
             media_path = item.get("media_path", "")
             media_type = item.get("media_type", "image")
             p = Path(media_path)
 
-            issues = []
+            issues: List[str] = []
             rel_score = 9.5
             entity_score = 9.5
             aes_score = 9.5
             valid_bitmap = True
+            img_hash = ""
+            sig: List[str] = []
 
-            # 1. Kiểm tra tồn tại file
             if not p.exists() or p.stat().st_size < 2048:
-                valid_bitmap = False
-                issues.append("File media không tồn tại hoặc dung lượng rỗng (< 2KB)")
-                failed_scene_ids.append(scene_id)
-                issues_summary.append(f"Cảnh {scene_id}: {'; '.join(issues)}")
-                scene_scores.append(SceneVisualScore(
-                    scene_id=scene_id,
-                    media_path=media_path,
-                    relevance_score=1.0,
-                    entity_match_score=1.0,
-                    aesthetic_score=1.0,
-                    is_valid_bitmap=False,
-                    issues=issues
-                ))
-                continue
+                return {
+                    "scene_id": scene_id,
+                    "media_path": media_path,
+                    "rel_score": 1.0,
+                    "entity_score": 1.0,
+                    "aes_score": 1.0,
+                    "valid_bitmap": False,
+                    "issues": ["File media không tồn tại hoặc dung lượng rỗng (< 2KB)"],
+                    "failed": True,
+                    "img_hash": "",
+                    "sig": [],
+                }
 
-            # 2. Kiểm tra độ phân giải, độ sắc nét (Sharpness) & tính toàn vẹn nếu là file ảnh
+            failed = False
             if media_type == "image":
                 try:
                     with Image.open(str(p)) as im:
@@ -182,69 +177,100 @@ class VisualCritic:
                         if w < 400 or h < 400:
                             aes_score -= 3.5
                             issues.append(f"Độ phân giải quá thấp (kém sắc nét): {w}x{h} px (yêu cầu >= 400px)")
-                            failed_scene_ids.append(scene_id)
+                            failed = True
                         aspect = max(w / h, h / w)
                         if aspect > 2.6:
                             aes_score -= 4.0
                             issues.append(f"Tỷ lệ khung hình bất thường (dải hẹp/banner: {w}x{h})")
-                            failed_scene_ids.append(scene_id)
+                            failed = True
 
-                    # Kiểm tra ảnh đen kịt / hỏng
                     if self._is_solid_color_or_black(str(p)):
                         aes_score = 2.0
                         issues.append("Ảnh bị tối đen hoàn toàn hoặc đơn sắc lỗi")
-                        failed_scene_ids.append(scene_id)
+                        failed = True
                     else:
-                        # Kiểm tra độ sắc nét biên cạnh (Sharpness check)
                         sharpness = self._measure_sharpness(str(p))
                         if sharpness < 5.8:
                             aes_score -= 3.5
                             issues.append(f"Ảnh bị mờ nhòe / thiếu độ sắc nét (sharpness={sharpness:.1f} < 5.8)")
-                            failed_scene_ids.append(scene_id)
-
-                    # 3. Kiểm tra trùng lặp ảnh với các cảnh khác
-                    img_hash = self._compute_image_hash(str(p))
-                    if img_hash:
-                        if img_hash in seen_hashes:
-                            prev_id = seen_hashes[img_hash]
-                            issues.append(f"Ảnh trùng lặp 100% với Cảnh #{prev_id}")
-                            aes_score -= 4.0
-                            failed_scene_ids.append(scene_id)
-                        else:
-                            seen_hashes[img_hash] = scene_id
-
+                            failed = True
+                        img_hash = self._compute_image_hash(str(p))
+                        if img_hash:
+                            sig = [img_hash]
                 except Exception as ex:
                     valid_bitmap = False
                     issues.append(f"Lỗi đọc file ảnh với Pillow: {ex}")
-                    failed_scene_ids.append(scene_id)
+                    failed = True
+            else:
+                try:
+                    sig = self._media_signature(str(p))
+                except Exception as ex_sig:
+                    logger.debug(f"[VisualCritic] Lỗi trích xuất chữ ký video cảnh {scene_id}: {ex_sig}")
 
-            # 4. Chống trùng lặp THỊ GIÁC giữa các cảnh (cả ảnh lẫn VIDEO)
-            try:
-                sig = self._media_signature(str(p))
+            return {
+                "scene_id": scene_id,
+                "media_path": media_path,
+                "rel_score": rel_score,
+                "entity_score": entity_score,
+                "aes_score": aes_score,
+                "valid_bitmap": valid_bitmap,
+                "issues": issues,
+                "failed": failed,
+                "img_hash": img_hash,
+                "sig": sig,
+            }
+
+        max_workers = min(max(len(scenes_media), 1), 8)
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            inspected_list = list(pool.map(_inspect_single_scene, scenes_media))
+
+        scene_scores: List[SceneVisualScore] = []
+        failed_scene_ids: List[int] = []
+        seen_hashes: Dict[str, int] = {}
+        seen_signatures: Dict[int, List[str]] = {}
+        issues_summary: List[str] = []
+
+        for res in inspected_list:
+            scene_id = res["scene_id"]
+            issues = list(res["issues"])
+            aes_score = res["aes_score"]
+            failed = res["failed"]
+            img_hash = res["img_hash"]
+            sig = res["sig"]
+
+            if img_hash:
+                if img_hash in seen_hashes:
+                    prev_id = seen_hashes[img_hash]
+                    issues.append(f"Ảnh trùng lặp 100% với Cảnh #{prev_id}")
+                    aes_score -= 4.0
+                    failed = True
+                else:
+                    seen_hashes[img_hash] = scene_id
+
+            if sig:
                 dup_id = self._find_duplicate(sig, seen_signatures)
                 if dup_id is not None and not any("trùng lặp" in i for i in issues):
                     issues.append(f"Hình ảnh/clip trùng lặp với Cảnh #{dup_id}")
                     aes_score -= 4.0
-                    failed_scene_ids.append(scene_id)
+                    failed = True
                     logger.warning(f"🔁 [VisualCritic] Cảnh {scene_id} trùng hình ảnh với Cảnh #{dup_id} → sẽ thay thế")
-                elif sig:
+                else:
                     seen_signatures[scene_id] = sig
-            except Exception as ex_dup:
-                logger.debug(f"[VisualCritic] Lỗi kiểm tra trùng cảnh {scene_id}: {ex_dup}")
 
+            if failed:
+                failed_scene_ids.append(scene_id)
             if issues:
                 issues_summary.append(f"Cảnh {scene_id}: {'; '.join(issues)}")
 
-            score_item = SceneVisualScore(
+            scene_scores.append(SceneVisualScore(
                 scene_id=scene_id,
-                media_path=media_path,
-                relevance_score=max(1.0, rel_score),
-                entity_match_score=max(1.0, entity_score),
+                media_path=res["media_path"],
+                relevance_score=max(1.0, res["rel_score"]),
+                entity_match_score=max(1.0, res["entity_score"]),
                 aesthetic_score=max(1.0, aes_score),
-                is_valid_bitmap=valid_bitmap,
+                is_valid_bitmap=res["valid_bitmap"],
                 issues=issues,
-            )
-            scene_scores.append(score_item)
+            ))
 
         total_scenes = len(scene_scores)
         overall = sum(s.aesthetic_score for s in scene_scores) / total_scenes if total_scenes > 0 else 0.0
