@@ -595,10 +595,15 @@ def execute_youtube_short_peak_clone_sync(
     overall_script_query: str = "",
     max_peak_duration_sec: float = 14.0,
     job_id: int = 0,
+    scene_id: int = 0,
+    channel_id: str = "",
 ) -> Optional[Dict[str, Any]]:
     """
-    Thực thi tìm kiếm & cắt đoạn Peak từ YouTube Shorts theo chiến lược kép + GỠ KHÓA CỨNG 3 GIÂY:
-    - Chống lặp lại tuyệt đối giữa các video khác nhau qua `is_media_already_used` & `record_used_media` (`yt:<id>`).
+    Thực thi tìm kiếm & cắt đoạn Peak từ YouTube Shorts tích hợp hệ thống Mini-RAG (`VideoMemoryRAG`):
+    - Chống lặp lại 100% các cảnh cắt BÊN TRONG CÙNG 1 VIDEO (`job_id`) qua khóa nguyên tử ID/URL,
+      so khớp ngữ nghĩa tiêu đề chống bản re-upload, và đối chiếu chữ ký thị giác 3-frame `dHash`
+      (không cần lưu khóa cứng giữa các bài đăng khác nhau).
+    - Xếp hạng ứng viên bằng Hybrid BM25/Cosine của Mini-RAG kết hợp trọng số giữ chân lịch sử (`stayed_to_watch_pct`).
     - Nếu đoạn Peak thực tế trong video nguồn kéo dài (ví dụ 6s - 14s), tự động trích xuất TRỌN VẸN cả đoạn Peak dài
       (`full_peak_path` & `full_peak_duration_sec`) để bộ lắp ghép Timeline (`node_fetch_media`) ưu tiên phủ liền mạch
       đoạn video Peak dài đó qua nhiều phân cảnh liên tiếp trước khi dùng đến ảnh tĩnh!
@@ -608,8 +613,19 @@ def execute_youtube_short_peak_clone_sync(
         is_media_already_used,
         record_used_media,
     )
+    from app.services.video_memory_rag import get_video_memory_rag
 
+    rag = get_video_memory_rag()
     used = used_urls if used_urls is not None else set()
+
+    eff_scene_id = int(scene_id or 0)
+    if eff_scene_id <= 0 and output_path:
+        m_sc = re.search(r"scene_(\d+)", Path(output_path).name)
+        if m_sc:
+            eff_scene_id = int(m_sc.group(1))
+        elif "hook_motion_001" in Path(output_path).name:
+            eff_scene_id = 1
+
     effective_scope, search_phrases = _resolve_adaptive_search_queries(
         search_scope=search_scope,
         scene_query=search_query,
@@ -623,7 +639,7 @@ def execute_youtube_short_peak_clone_sync(
     subject_anchors = _extract_subject_anchor_tokens(subject_entity, topic, search_phrases[0] if search_phrases else search_query)
 
     logger.info(
-        f"🎯 [YouTubePeakTool] Scope={effective_scope} | Role={clip_role} | "
+        f"🎯 [YouTubePeakTool + MiniRAG] Scene=#{eff_scene_id} | Scope={effective_scope} | Role={clip_role} | "
         f"Queries={search_phrases} (raw_scene='{search_query}', overall='{overall_script_query}')"
     )
 
@@ -634,32 +650,43 @@ def execute_youtube_short_peak_clone_sync(
         if w.lower() not in _YT_QUERY_FILLER_WORDS
     }
 
-    # ── TẦNG 1: SĂN YOUTUBE SHORTS XOAY QUANH CẢNH HOẶC TỔNG THỂ KỊCH BẢN ──
+    # ── TẦNG 1: SĂN YOUTUBE SHORTS & XẾP HẠNG CHẤT LƯỢNG + CHỐNG LẶP NỘI BỘ BẰNG MINI-RAG ──
     try:
         import yt_dlp
 
         candidates = _search_youtube_flat_cached(search_phrases, subject_anchors, all_query_tokens)
-
-        # Lọc chống lặp lại: Loại bỏ 100% các video đã từng xuất hiện ở các video/job trước đó trong recent_media_history.json!
         unused_cands = [
             c for c in candidates
             if not is_media_already_used(c["url"], used) and f"yt:{c['id']}" not in used
         ]
-        # Chỉ cho phép cắt khúc Peak thứ 2 từ cùng 1 video NẾU video đó vừa được mở trong chính job hiện tại (_used_short_windows)
-        with _yt_url_lock:
-            in_job_urls = set(_used_short_windows.keys())
-        reusable_multi_window_cands = [
-            c for c in candidates
-            if c["url"] in in_job_urls and (float(c.get("duration") or 0) == 0 or float(c.get("duration") or 0) >= 18.0)
-        ]
-        ordered_cands = unused_cands[:6] + reusable_multi_window_cands[:2]
+        # Tái sử dụng hệ thống Mini-RAG để xếp hạng chất lượng ứng viên & loại bỏ 100% video/re-upload đã xuất hiện trong cùng Job!
+        ordered_cands = rag.rank_video_candidates_for_scene(
+            job_id=job_id,
+            candidates=unused_cands,
+            scene_narration=narration,
+            scene_query=search_query,
+            topic=topic,
+            subject_entity=subject_entity or topic,
+            channel_id=channel_id,
+        )
 
         for cand in ordered_cands[:6]:
             vid_url = cand["url"]
             vid_id = cand.get("id") or ""
+            cand_title = str(cand.get("title") or "")
+
+            # Khóa nguyên tử trong phiên RAG nội bộ của Job (chống 2 luồng asyncio.gather tải trùng cùng 1 video hoặc bản re-upload)
+            if not rag.try_claim_in_job_video(
+                job_id=job_id,
+                vid_id=vid_id,
+                url=vid_url,
+                title=cand_title,
+                scene_id=eff_scene_id,
+            ):
+                continue
+
             with _yt_url_lock:
-                existing_wins = list(_used_short_windows.get(vid_url) or [])
-                if vid_url in used and (vid_url not in in_job_urls or len(existing_wins) >= 2):
+                if vid_url in used:
                     continue
                 used.update(extract_media_identity(vid_url))
 
@@ -683,13 +710,12 @@ def execute_youtube_short_peak_clone_sync(
                 info_entry,
                 target_duration_sec + 0.5,
                 role=clip_role,
-                existing_windows=existing_wins,
+                existing_windows=None,
                 max_peak_dur=max_peak_duration_sec,
             )
             if not win_pair:
                 continue
             start_s, end_s = win_pair
-            probe_window_len = max(target_duration_sec + 0.5, end_s - start_s)
 
             with tempfile.TemporaryDirectory() as tmp_dir:
                 raw_dl_template = str(Path(tmp_dir) / "raw_short.%(ext)s")
@@ -732,7 +758,6 @@ def execute_youtube_short_peak_clone_sync(
                 raw_dur_sec = max(0.0, get_duration_ms(raw_file) / 1000.0)
                 min_req_dur = max(3.0, target_duration_sec)
                 if "download_ranges" in dl_opts:
-                    # File tải về đã bắt đầu tại start_s -> quét tìm độ dài Peak thực sự bên trong đoạn vừa tải
                     rel_start, natural_peak_len = find_hook_peak_window(
                         raw_file,
                         min_duration=min_req_dur,
@@ -744,7 +769,6 @@ def execute_youtube_short_peak_clone_sync(
                         raw_file,
                         min_duration=min_req_dur,
                         max_duration=max_peak_duration_sec,
-                        exclude_ranges=existing_wins if existing_wins else None,
                     )
                     actual_start_s = det_start if det_start > 0.0 else start_s
 
@@ -783,6 +807,28 @@ def execute_youtube_short_peak_clone_sync(
                     subprocess.run(cmd, capture_output=True, timeout=25, check=False)
 
                 if Path(output_path).exists() and Path(output_path).stat().st_size > 20000:
+                    # Kiểm tra chữ ký thị giác 3-frame dHash trong Mini-RAG TRƯỚC khi gọi Gemini Vision:
+                    # Nếu đây là bản re-upload trùng cảnh quay với 1 phân cảnh khác trong cùng video, loại bỏ ngay (<15ms)!
+                    ok_sig, dup_sid = rag.verify_and_commit_in_job_clip(
+                        job_id=job_id,
+                        scene_id=eff_scene_id,
+                        media_path=output_path,
+                        vid_id=vid_id,
+                        url=vid_url,
+                        title=cand_title,
+                        is_continuation_slice=False,
+                    )
+                    if not ok_sig:
+                        logger.info(
+                            f"🛡️ [YouTubePeakTool -> MiniRAG] Loại bỏ Short '{cand_title[:45]}' vì khung hình trùng với "
+                            f"Cảnh #{dup_sid} trong cùng video -> Thử ứng viên tiếp theo!"
+                        )
+                        try:
+                            Path(output_path).unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                        continue
+
                     passed_vis, vis_score, vis_reason = _verify_short_clip_with_gemini_vision(
                         video_path=output_path,
                         topic=topic,
@@ -790,11 +836,11 @@ def execute_youtube_short_peak_clone_sync(
                         subject_entity=subject_entity or topic,
                         overall_script_query=overall_script_query or (search_phrases[0] if search_phrases else topic),
                         search_scope=effective_scope,
-                        video_title=cand["title"],
+                        video_title=cand_title,
                     )
                     if not passed_vis:
                         logger.info(
-                            f"🚫 [YouTubePeakTool] Gemini Vision từ chối Short '{cand['title'][:45]}' "
+                            f"🚫 [YouTubePeakTool] Gemini Vision từ chối Short '{cand_title[:45]}' "
                             f"(điểm={vis_score}/10: {vis_reason}) -> Thử ứng viên tiếp theo!"
                         )
                         try:
@@ -833,10 +879,7 @@ def execute_youtube_short_peak_clone_sync(
 
                     win_start = (start_s + actual_start_s) if "download_ranges" in dl_opts else actual_start_s
                     win_end = win_start + (natural_peak_len if full_peak_path else scene_clip_len)
-                    with _yt_url_lock:
-                        _used_short_windows.setdefault(vid_url, []).append((win_start, win_end))
 
-                    # Ghi nhận vĩnh viễn vào recent_media_history.json để các video sau KHÔNG BAO GIỜ lặp lại Short này!
                     record_used_media(
                         url=vid_url,
                         query=search_phrases[0] if search_phrases else search_query,
@@ -846,16 +889,16 @@ def execute_youtube_short_peak_clone_sync(
                     )
 
                     logger.info(
-                        f"🔥 [YouTubePeakTool] Đã clone & duyệt Vision ({vis_score}/10, scope={effective_scope}) "
+                        f"🔥 [YouTubePeakTool + MiniRAG] Đã clone & duyệt Vision ({vis_score}/10, rag_score={cand.get('rag_score', 0)}, scope={effective_scope}) "
                         f"đoạn {clip_role} ({win_start:.1f}s-{win_end:.1f}s, full_peak={natural_peak_len:.1f}s) "
-                        f"từ Shorts: '{cand['title'][:55]}' ({vid_url})"
+                        f"từ Shorts: '{cand_title[:55]}' ({vid_url})"
                     )
                     return {
                         "media_path": output_path,
                         "media_type": "hook_ready_video" if (clip_role or "").upper() == "HOOK" else "video",
                         "source_url": vid_url,
                         "youtube_id": vid_id,
-                        "title": cand["title"],
+                        "title": cand_title,
                         "window": f"{win_start:.1f}s-{win_end:.1f}s",
                         "vision_score": vis_score,
                         "search_scope": effective_scope,
@@ -888,78 +931,91 @@ def execute_youtube_short_peak_clone_sync(
         )
         if best_stock_v and best_stock_v.get("url"):
             v_url = best_stock_v["url"]
-            with tempfile.TemporaryDirectory() as tmp_s:
-                raw_stock = str(Path(tmp_s) / "stock_raw.mp4")
-                media_agent.download_file(v_url, raw_stock)
-                if Path(raw_stock).exists() and Path(raw_stock).stat().st_size > 20000:
-                    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-                    from app.utils.ffmpeg_helper import find_hook_peak_window, get_duration_ms, trim_video
-                    raw_st_dur = max(0.0, get_duration_ms(raw_stock) / 1000.0)
-                    min_st_dur = max(3.0, target_duration_sec)
-                    st_start, st_peak_len = find_hook_peak_window(
-                        raw_stock,
-                        min_duration=min_st_dur,
-                        max_duration=min(max_peak_duration_sec, max(min_st_dur, raw_st_dur)),
-                    )
-                    trim_video(
-                        input_path=raw_stock,
-                        duration_seconds=min_st_dur,
-                        output_path=output_path,
-                        width=1080,
-                        height=1920,
-                        fps=30,
-                        apply_grading=True,
-                        is_hook_scene=((clip_role or "").upper() == "HOOK"),
-                        fair_use_transform=False,
-                        start_offset_sec=st_start,
-                        preserve_continuous_flow=True,
-                    )
-                    if Path(output_path).exists() and Path(output_path).stat().st_size > 20000:
-                        full_peak_path = None
-                        if st_peak_len >= min_st_dur + 1.8 and raw_st_dur >= st_start + min_st_dur + 1.5:
-                            cand_full_st = str(Path(output_path).parent / f"{Path(output_path).stem}_fullpeak.mp4")
-                            try:
-                                trim_video(
-                                    input_path=raw_stock,
-                                    duration_seconds=st_peak_len,
-                                    output_path=cand_full_st,
-                                    width=1080,
-                                    height=1920,
-                                    fps=30,
-                                    apply_grading=True,
-                                    is_hook_scene=False,
-                                    fair_use_transform=False,
-                                    start_offset_sec=st_start,
-                                    preserve_continuous_flow=True,
-                                )
-                                if Path(cand_full_st).exists() and Path(cand_full_st).stat().st_size > 25000:
-                                    full_peak_path = cand_full_st
-                            except Exception:
-                                pass
+            st_title = str(best_stock_v.get("title") or "")
+            if rag.try_claim_in_job_video(job_id=job_id, url=v_url, title=st_title, scene_id=eff_scene_id):
+                with tempfile.TemporaryDirectory() as tmp_s:
+                    raw_stock = str(Path(tmp_s) / "stock_raw.mp4")
+                    media_agent.download_file(v_url, raw_stock)
+                    if Path(raw_stock).exists() and Path(raw_stock).stat().st_size > 20000:
+                        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                        from app.utils.ffmpeg_helper import find_hook_peak_window, get_duration_ms, trim_video
+                        raw_st_dur = max(0.0, get_duration_ms(raw_stock) / 1000.0)
+                        min_st_dur = max(3.0, target_duration_sec)
+                        st_start, st_peak_len = find_hook_peak_window(
+                            raw_stock,
+                            min_duration=min_st_dur,
+                            max_duration=min(max_peak_duration_sec, max(min_st_dur, raw_st_dur)),
+                        )
+                        trim_video(
+                            input_path=raw_stock,
+                            duration_seconds=min_st_dur,
+                            output_path=output_path,
+                            width=1080,
+                            height=1920,
+                            fps=30,
+                            apply_grading=True,
+                            is_hook_scene=((clip_role or "").upper() == "HOOK"),
+                            fair_use_transform=False,
+                            start_offset_sec=st_start,
+                            preserve_continuous_flow=True,
+                        )
+                        if Path(output_path).exists() and Path(output_path).stat().st_size > 20000:
+                            ok_st_sig, _ = rag.verify_and_commit_in_job_clip(
+                                job_id=job_id,
+                                scene_id=eff_scene_id,
+                                media_path=output_path,
+                                url=v_url,
+                                title=st_title,
+                                is_continuation_slice=False,
+                            )
+                            if ok_st_sig:
+                                full_peak_path = None
+                                if st_peak_len >= min_st_dur + 1.8 and raw_st_dur >= st_start + min_st_dur + 1.5:
+                                    cand_full_st = str(Path(output_path).parent / f"{Path(output_path).stem}_fullpeak.mp4")
+                                    try:
+                                        trim_video(
+                                            input_path=raw_stock,
+                                            duration_seconds=st_peak_len,
+                                            output_path=cand_full_st,
+                                            width=1080,
+                                            height=1920,
+                                            fps=30,
+                                            apply_grading=True,
+                                            is_hook_scene=False,
+                                            fair_use_transform=False,
+                                            start_offset_sec=st_start,
+                                            preserve_continuous_flow=True,
+                                        )
+                                        if Path(cand_full_st).exists() and Path(cand_full_st).stat().st_size > 25000:
+                                            full_peak_path = cand_full_st
+                                    except Exception:
+                                        pass
 
-                        used.update(extract_media_identity(v_url))
-                        record_used_media(
-                            url=v_url,
-                            query=search_phrases[0] if search_phrases else search_query,
-                            job_id=job_id,
-                            source="pexels_stock_video",
-                            media_path=output_path,
-                        )
-                        logger.info(
-                            f"🎬 [YouTubePeakTool -> StockVideo HD] Đã tải & duyệt video Pexels/Pixabay "
-                            f"(scope={effective_scope}, peak={st_peak_len:.1f}s) cho {clip_role}: '{best_stock_v.get('title', '')[:50]}'"
-                        )
-                        return {
-                            "media_path": output_path,
-                            "media_type": "hook_ready_video" if (clip_role or "").upper() == "HOOK" else "video",
-                            "source_url": v_url,
-                            "title": best_stock_v.get("title", "HD Portrait Stock Video"),
-                            "window": f"{st_start:.1f}s-{st_start + (st_peak_len if full_peak_path else min_st_dur):.1f}s",
-                            "search_scope": effective_scope,
-                            "full_peak_path": full_peak_path,
-                            "full_peak_duration_sec": round(st_peak_len if full_peak_path else min_st_dur, 2),
-                            "scene_clip_duration_sec": round(min_st_dur, 2),
-                        }
+                                used.update(extract_media_identity(v_url))
+                                record_used_media(
+                                    url=v_url,
+                                    query=search_phrases[0] if search_phrases else search_query,
+                                    job_id=job_id,
+                                    source="pexels_stock_video",
+                                    media_path=output_path,
+                                )
+                                logger.info(
+                                    f"🎬 [YouTubePeakTool -> StockVideo HD] Đã tải & duyệt video Pexels/Pixabay "
+                                    f"(scope={effective_scope}, peak={st_peak_len:.1f}s) cho {clip_role}: '{st_title[:50]}'"
+                                )
+                                return {
+                                    "media_path": output_path,
+                                    "media_type": "hook_ready_video" if (clip_role or "").upper() == "HOOK" else "video",
+                                    "source_url": v_url,
+                                    "title": st_title or "HD Portrait Stock Video",
+                                    "window": f"{st_start:.1f}s-{st_start + (st_peak_len if full_peak_path else min_st_dur):.1f}s",
+                                    "search_scope": effective_scope,
+                                    "full_peak_path": full_peak_path,
+                                    "full_peak_duration_sec": round(st_peak_len if full_peak_path else min_st_dur, 2),
+                                    "scene_clip_duration_sec": round(min_st_dur, 2),
+                                }
+                            else:
+                                Path(output_path).unlink(missing_ok=True)
     except Exception as e_st:
         logger.debug(f"[YouTubePeakTool] Stock video fallback skip: {e_st}")
 
@@ -1261,6 +1317,17 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 "camera_motion": motion_cycle[idx % len(motion_cycle)],
             })
 
+    try:
+        from app.services.video_memory_rag import get_video_memory_rag
+        final_plan = get_video_memory_rag().diversify_intra_video_scene_queries(
+            job_id=0,
+            scenes_strategy=final_plan,
+            topic=topic,
+            primary_entity=primary_entity or topic,
+            scenes_raw=scenes,
+        )
+    except Exception:
+        pass
     return final_plan
 
 
@@ -1389,12 +1456,24 @@ Return ONLY a valid JSON object in this exact format:
                                         item["scope_audited"] = True
                                         audited_list.append(item)
 
+                                    try:
+                                        from app.services.video_memory_rag import get_video_memory_rag
+                                        audited_list = get_video_memory_rag().diversify_intra_video_scene_queries(
+                                            job_id=0,
+                                            scenes_strategy=audited_list,
+                                            topic=topic,
+                                            primary_entity=primary_entity or topic,
+                                            scenes_raw=scenes,
+                                        )
+                                    except Exception:
+                                        pass
+
                                     verdict_log = ", ".join(
                                         f"S{x.get('scene_id')}:{x.get('search_scope')}('{x.get('youtube_search_query') or x.get('smart_image_query')}')"
                                         for x in audited_list
                                     )
                                     logger.info(
-                                        f"⚖️ [LLM Scope Judge Node] Đã thẩm định xong {len(audited_list)} cảnh "
+                                        f"⚖️ [LLM Scope Judge Node + MiniRAG] Đã thẩm định & đa dạng hóa xong {len(audited_list)} cảnh "
                                         f"qua `{model_name}` -> {verdict_log}"
                                     )
                                     return audited_list
@@ -1407,4 +1486,5 @@ Return ONLY a valid JSON object in this exact format:
         logger.debug(f"[LLM Scope Judge] Fallback pass: {ex}")
 
     return proposed_decisions
+
 

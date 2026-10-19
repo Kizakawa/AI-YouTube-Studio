@@ -165,6 +165,10 @@ class VideoMemoryRAG:
         self.index_path = index_path or _RAG_INDEX_PATH
         self._docs: Dict[str, Dict[str, Any]] = {}
         self._loaded = False
+        # Bộ nhớ RAG tạm thời theo từng Job (In-Job Ephemeral RAG Session):
+        # Chống lặp cảnh cắt / video nguồn 100% BÊN TRONG CÙNG 1 VIDEO và tối ưu xếp hạng chất lượng ứng viên,
+        # không ghi rác ra ổ đĩa và không khóa cứng video giữa các bài đăng khác nhau.
+        self._active_job_sessions: Dict[int, Dict[str, Any]] = {}
 
     def _ensure_loaded(self) -> None:
         with _RAG_LOCK:
@@ -539,6 +543,409 @@ class VideoMemoryRAG:
                 + ", ".join(f'"{k}"' for k in used_vis["visual_keywords"][:15])
             )
         return "\n".join(lines)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # INTRA-VIDEO RAG ENGINE (Chống lặp cảnh cắt 100% TRONG CÙNG 1 VIDEO + Tối ưu chất lượng bằng RAG)
+    # Lưu trên RAM theo `job_id` (tự động giải phóng sau khi render xong), không cần lưu lịch sử khóa cứng giữa các bài đăng khác nhau.
+    # ══════════════════════════════════════════════════════════════════════════
+
+    def _get_or_create_job_session(self, job_id: int) -> Dict[str, Any]:
+        eff_jid = int(job_id or 0)
+        now_ts = datetime.utcnow().timestamp()
+        with _RAG_LOCK:
+            # Tự động dọn các session cũ quá 25 phút trong RAM
+            stale = [
+                k for k, v in self._active_job_sessions.items()
+                if now_ts - float(v.get("updated_ts", now_ts)) > 1500.0
+            ]
+            for k in stale:
+                self._active_job_sessions.pop(k, None)
+
+            sess = self._active_job_sessions.get(eff_jid)
+            if sess is None:
+                sess = {
+                    "job_id": eff_jid,
+                    "created_ts": now_ts,
+                    "updated_ts": now_ts,
+                    "claimed_video_ids": set(),         # Tập hợp yt:<id>, pexels:<id>, URL chuẩn hóa đã claim trong job này
+                    "claimed_titles": [],               # List[{"scene_id": int, "vid_id": str, "title": str, "tokens": Set[str]}]
+                    "committed_signatures": {},         # Dict[int, List[str]] (scene_id -> list of 64-bit dHash strings)
+                    "scene_queries_used": [],           # List[str] các truy vấn đã phân bổ trong cùng 1 video
+                }
+                self._active_job_sessions[eff_jid] = sess
+            else:
+                sess["updated_ts"] = now_ts
+            return sess
+
+    def reset_job_session(self, job_id: int) -> None:
+        """Khởi tạo mới phiên RAG chống lặp cảnh cắt nội bộ cho 1 Job chuẩn bị dựng."""
+        eff_jid = int(job_id or 0)
+        with _RAG_LOCK:
+            self._active_job_sessions.pop(eff_jid, None)
+            self._get_or_create_job_session(eff_jid)
+
+    def cleanup_job_session(self, job_id: int) -> None:
+        """Giải phóng bộ nhớ RAM của phiên RAG nội bộ sau khi Job hoàn tất."""
+        eff_jid = int(job_id or 0)
+        with _RAG_LOCK:
+            self._active_job_sessions.pop(eff_jid, None)
+
+    @staticmethod
+    def _canonical_video_keys(vid_id: str = "", url: str = "") -> Set[str]:
+        keys: Set[str] = set()
+        if vid_id and str(vid_id).strip():
+            cid = str(vid_id).strip()
+            keys.add(cid)
+            keys.add(f"yt:{cid}")
+        if url and str(url).strip():
+            u = str(url).strip()
+            keys.add(u)
+            clean_u = re.sub(r"\?.*$", "", u).strip()
+            if clean_u:
+                keys.add(clean_u)
+            m_yt = (
+                re.search(r"(?:v=|/shorts/|youtu\.be/|/embed/)([A-Za-z0-9_-]{11})(?:[?&/#]|$)", u)
+                or re.search(r"yt_(?:hook_cand_\d+|peak|short)_([A-Za-z0-9_-]{11})", u)
+            )
+            if m_yt:
+                yid = m_yt.group(1)
+                keys.add(yid)
+                keys.add(f"yt:{yid}")
+        return keys
+
+    @staticmethod
+    def compute_text_similarity(text_a: str, text_b: str) -> float:
+        """
+        Đo độ tương đồng ngữ nghĩa & cụm từ (1-gram + 2-gram Cosine + Containment) siêu tốc (<0.2ms)
+        giữa 2 tiêu đề video hoặc 2 câu truy vấn phân cảnh bằng bộ tách từ của Mini-RAG.
+        """
+        toks_a = _tokenize_rag(text_a)
+        toks_b = _tokenize_rag(text_b)
+        if not toks_a or not toks_b:
+            return 0.0
+        ca = Counter(toks_a)
+        cb = Counter(toks_b)
+        dot = sum(ca[t] * cb[t] for t in (ca.keys() & cb.keys()))
+        norm_a = math.sqrt(sum(v * v for v in ca.values())) or 1.0
+        norm_b = math.sqrt(sum(v * v for v in cb.values())) or 1.0
+        cosine = dot / (norm_a * norm_b)
+
+        uni_a = {t for t in toks_a if "_" not in t}
+        uni_b = {t for t in toks_b if "_" not in t}
+        if not uni_a or not uni_b:
+            return round(cosine, 3)
+        inter = len(uni_a & uni_b)
+        containment = inter / max(1, min(len(uni_a), len(uni_b)))
+        return round(max(cosine, containment * 0.82), 3)
+
+    def get_high_performing_visual_tokens(
+        self,
+        channel_id: Optional[str] = None,
+        topic: str = "",
+        top_k: int = 6,
+    ) -> Dict[str, float]:
+        """
+        Khai thác dữ liệu hiệu suất thật trong Mini-RAG (`stayed_to_watch_pct`, `avg_view_percentage`, `views`)
+        để trích xuất các từ khóa hình ảnh / hành động từng tạo ra tỷ lệ giữ chân cao nhất trên kênh/hệ thống.
+        """
+        self._ensure_loaded()
+        hits = self.query_similar(query_text=topic, channel_id=channel_id, top_k=top_k, min_score=0.12) if topic else []
+        if not hits:
+            hits = list(self._docs.values())
+
+        token_boosts: Dict[str, float] = {}
+        for d in hits:
+            stayed = float(d.get("stayed_to_watch_pct") or 0.0)
+            apv = float(d.get("avg_view_percentage") or 0.0)
+            views = int(d.get("views") or 0)
+            # Điểm chất lượng giữ chân thực tế của video trong RAG
+            perf_mult = 1.0
+            if stayed >= 65.0 or apv >= 72.0:
+                perf_mult = 1.85
+            elif stayed >= 52.0 or apv >= 60.0 or views >= 300:
+                perf_mult = 1.35
+            elif 0 < stayed < 38.0 and 0 < apv < 45.0:
+                continue  # Bỏ qua các mẫu hình ảnh có hiệu suất giữ chân thấp
+
+            vis_text = " ".join(d.get("visual_keywords_used") or [])
+            for sc_m in (d.get("visual_metadata") or [])[:4]:
+                if isinstance(sc_m, dict):
+                    vis_text += f" {sc_m.get('visual_keyword', '')} {sc_m.get('stock_query', '')}"
+            for tok in _tokenize_rag(vis_text):
+                if "_" not in tok and len(tok) >= 4:
+                    token_boosts[tok] = max(token_boosts.get(tok, 0.0), round(perf_mult, 2))
+        return token_boosts
+
+    def diversify_intra_video_scene_queries(
+        self,
+        job_id: int,
+        scenes_strategy: List[Dict[str, Any]],
+        topic: str = "",
+        primary_entity: str = "",
+        channel_id: Optional[str] = None,
+        scenes_raw: Optional[List[Dict[str, Any]]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Sử dụng Mini-RAG để kiểm tra và ĐA DẠNG HÓA các câu truy vấn tìm kiếm (`youtube_search_query` / `smart_image_query`)
+        giữa các phân cảnh BÊN TRONG CÙNG 1 VIDEO:
+        - Nếu Cảnh #i và Cảnh #j trong cùng 1 video có câu truy vấn quá giống nhau (similarity >= 0.55),
+          tự động bơm thêm từ khóa hành động/bối cảnh riêng của câu thoại Cảnh #j + góc quay điện ảnh khác biệt
+          để tránh việc nhiều phân cảnh tải về cùng một đoạn video cắt!
+        """
+        if not scenes_strategy:
+            return scenes_strategy
+
+        narration_map: Dict[int, str] = {}
+        for s in (scenes_raw or []):
+            if isinstance(s, dict) and s.get("scene_id"):
+                narration_map[int(s["scene_id"])] = str(s.get("narration") or s.get("visual_keyword") or "")
+
+        angle_facets = [
+            "extreme closeup action",
+            "dramatic wide motion",
+            "intense survival moment",
+            "slow motion detail",
+            "real footage encounter",
+            "shocking behavior caught",
+            "natural habitat action",
+            "climax turning point",
+        ]
+        seen_queries: List[str] = []
+        subj_clean = re.sub(r"[^\w\s]", " ", (primary_entity or topic or "")).strip()
+        subj_tokens = {w.lower() for w in subj_clean.split() if len(w) >= 3}
+
+        for idx, item in enumerate(scenes_strategy):
+            if not isinstance(item, dict):
+                continue
+            sid = int(item.get("scene_id") or (idx + 1))
+            q_key = "youtube_search_query" if item.get("tool_name") == "clone_youtube_short_peak_clip" else "smart_image_query"
+            cur_q = str(item.get(q_key) or item.get("youtube_search_query") or item.get("smart_image_query") or "").strip()
+            if not cur_q:
+                continue
+
+            max_sim = max((self.compute_text_similarity(cur_q, prev_q) for prev_q in seen_queries), default=0.0)
+            if max_sim >= 0.55:
+                # Trích xuất các từ hành động/miêu tả độc nhất từ lời dẫn của chính phân cảnh này
+                narr_text = narration_map.get(sid) or str(item.get("narration") or "")
+                narr_unigrams = [
+                    t for t in _tokenize_rag(narr_text)
+                    if "_" not in t and len(t) >= 4 and t not in subj_tokens and t not in cur_q.lower()
+                ]
+                facet = angle_facets[idx % len(angle_facets)]
+                extra_terms = " ".join(narr_unigrams[:2]) if narr_unigrams else facet
+                anchor_prefix = " ".join(list(subj_clean.split())[:2]) if subj_clean else ""
+                diversified_q = f"{anchor_prefix} {cur_q} {extra_terms}".strip()
+                # Giữ độ dài gọn gàng (tối đa 6-7 từ) để tìm kiếm YouTube Shorts / Google chính xác
+                words_dedup: List[str] = []
+                for w in diversified_q.split():
+                    if w.lower() not in [x.lower() for x in words_dedup]:
+                        words_dedup.append(w)
+                new_q = " ".join(words_dedup[:6])
+                item[q_key] = new_q
+                if item.get("youtube_search_query"):
+                    item["youtube_search_query"] = new_q
+                # Chuyển sang SCENE_SPECIFIC để ưu tiên câu truy vấn đã đa dạng hóa thay vì rơi về cùng 1 câu SCRIPT_OVERALL
+                item["search_scope"] = "SCENE_SPECIFIC"
+                logger.info(
+                    f"🧠 [MiniRAG Intra-Video Diversifier] Cảnh #{sid}: Phát hiện truy vấn trùng lặp nội bộ (sim={max_sim:.2f}) "
+                    f"-> Đa dạng hóa thành '{new_q}'"
+                )
+                cur_q = new_q
+
+            seen_queries.append(cur_q)
+
+        return scenes_strategy
+
+    def try_claim_in_job_video(
+        self,
+        job_id: int,
+        vid_id: str = "",
+        url: str = "",
+        title: str = "",
+        scene_id: int = 0,
+    ) -> bool:
+        """
+        Khóa nguyên tử (Atomic Claim) 1 video ứng viên cho Cảnh `scene_id` trong phạm vi `job_id` hiện tại:
+        - Trả về `False` ngay lập tức nếu `vid_id` / `url` đã được bất kỳ cảnh nào khác trong CÙNG VIDEO sử dụng
+          (bao gồm cả `hook_video_node` hoặc các luồng `asyncio.gather` đang chạy song song).
+        - Trả về `False` nếu tiêu đề video mới trùng lặp ngữ nghĩa cao (sim >= 0.70) với video đã chọn ở cảnh khác
+          trong cùng Job (ngăn chặn việc tải 2 bản re-upload của cùng 1 clip viral trên YouTube Shorts!).
+        """
+        keys = self._canonical_video_keys(vid_id=vid_id, url=url)
+        if not keys and not title:
+            return True
+
+        with _RAG_LOCK:
+            sess = self._get_or_create_job_session(job_id)
+            claimed_ids: Set[str] = sess["claimed_video_ids"]
+            if keys & claimed_ids:
+                return False
+
+            if title and len(title.strip()) >= 6:
+                for prev in sess["claimed_titles"]:
+                    if prev.get("scene_id") == scene_id:
+                        continue
+                    sim = self.compute_text_similarity(title, prev.get("title", ""))
+                    if sim >= 0.70:
+                        logger.info(
+                            f"🛡️ [MiniRAG Intra-Video Guard] Từ chối ứng viên '{title[:45]}' tại Cảnh #{scene_id} "
+                            f"vì trùng nội dung/reupload (sim={sim:.2f}) với Cảnh #{prev.get('scene_id')} ('{prev.get('title', '')[:40]}')"
+                        )
+                        return False
+
+            claimed_ids.update(keys)
+            if title and len(title.strip()) >= 4:
+                sess["claimed_titles"].append({
+                    "scene_id": scene_id,
+                    "vid_id": vid_id or next(iter(keys), ""),
+                    "title": title.strip(),
+                })
+            return True
+
+    def rank_video_candidates_for_scene(
+        self,
+        job_id: int,
+        candidates: List[Dict[str, Any]],
+        scene_narration: str = "",
+        scene_query: str = "",
+        topic: str = "",
+        subject_entity: str = "",
+        channel_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Tái sử dụng động cơ Hybrid BM25 + Cosine + Dữ liệu hiệu suất của `VideoMemoryRAG` để:
+        1. Loại bỏ 100% các video ứng viên đã được dùng hoặc trùng tiêu đề (re-upload) với các cảnh khác TRONG CÙNG 1 VIDEO (`job_id`).
+        2. Chấm điểm chất lượng & độ khớp ngữ cảnh (`rag_score`) của từng ứng viên với câu thoại phân cảnh (`scene_narration`),
+           từ khóa chủ thể (`subject_entity`), thời lượng Peak lý tưởng (9s-55s), và từ khóa giữ chân cao trong lịch sử RAG.
+        """
+        if not candidates:
+            return []
+
+        with _RAG_LOCK:
+            sess = self._get_or_create_job_session(job_id)
+            claimed_ids = set(sess["claimed_video_ids"])
+            claimed_titles = list(sess["claimed_titles"])
+
+        target_context = f"{subject_entity} {scene_query} {scene_narration} {topic}".strip()
+        perf_tokens = self.get_high_performing_visual_tokens(channel_id=channel_id, topic=topic, top_k=5)
+
+        ranked: List[Dict[str, Any]] = []
+        for cand in candidates:
+            if not isinstance(cand, dict):
+                continue
+            vid_id = str(cand.get("id") or "").strip()
+            vid_url = str(cand.get("url") or cand.get("webpage_url") or "").strip()
+            title = str(cand.get("title") or "").strip()
+            dur = float(cand.get("duration") or 0.0)
+            base_score = float(cand.get("score") or 0.0)
+
+            keys = self._canonical_video_keys(vid_id=vid_id, url=vid_url)
+            # 1. Loại bỏ tuyệt đối nếu video đã xuất hiện ở bất kỳ cảnh nào khác trong CÙNG 1 VIDEO này
+            if keys & claimed_ids:
+                continue
+
+            # 2. Kiểm tra chống lặp bản Re-upload (2 kênh YouTube Shorts đăng lại cùng 1 video với tiêu đề giống nhau)
+            max_title_dup = max(
+                (self.compute_text_similarity(title, prev.get("title", "")) for prev in claimed_titles),
+                default=0.0,
+            )
+            if max_title_dup >= 0.70:
+                continue
+
+            # 3. Tính điểm khớp ngữ nghĩa RAG (BM25/Cosine) giữa tiêu đề video với câu thoại của cảnh
+            semantic_sim = self.compute_text_similarity(title, target_context)
+            narration_sim = self.compute_text_similarity(title, f"{scene_query} {scene_narration}")
+
+            # 4. Điểm thưởng từ lịch sử hiệu suất cao trong RAG (Stayed-to-watch / APV)
+            title_toks = {t for t in _tokenize_rag(title) if "_" not in t}
+            rag_perf_bonus = sum(perf_tokens.get(t, 0.0) * 14.0 for t in title_toks if t in perf_tokens)
+
+            # 5. Điểm thưởng cho các video có độ dài lý tưởng (10s - 50s) để lấy trọn đoạn Peak dài tự nhiên mà không bị lặp
+            dur_bonus = 25.0 if 10.0 <= dur <= 50.0 else (10.0 if 7.0 <= dur < 10.0 else 0.0)
+            novelty_bonus = (1.0 - max_title_dup) * 35.0
+
+            rag_total_score = (
+                base_score
+                + (semantic_sim * 110.0)
+                + (narration_sim * 85.0)
+                + min(rag_perf_bonus, 45.0)
+                + dur_bonus
+                + novelty_bonus
+            )
+            enriched = dict(cand)
+            enriched["rag_score"] = round(rag_total_score, 2)
+            enriched["rag_semantic_sim"] = semantic_sim
+            ranked.append(enriched)
+
+        ranked.sort(key=lambda x: x.get("rag_score", 0.0), reverse=True)
+        return ranked
+
+    def verify_and_commit_in_job_clip(
+        self,
+        job_id: int,
+        scene_id: int,
+        media_path: str,
+        vid_id: str = "",
+        url: str = "",
+        title: str = "",
+        is_continuation_slice: bool = False,
+    ) -> Tuple[bool, Optional[int]]:
+        """
+        Kiểm tra chữ ký thị giác (3-frame 64-bit dHash) của đoạn video vừa cắt so với toàn bộ các cảnh
+        ĐÃ CHỐT TRONG CÙNG 1 VIDEO (`job_id`):
+        - Ngăn chặn 100% trường hợp 2 link YouTube khác nhau (và tiêu đề khác nhau) nhưng bên trong lại là
+          cùng 1 cảnh quay được re-upload!
+        - Nếu `is_continuation_slice=True` (khúc nối tiếp của 1 đoạn Long Peak): kiểm tra xem khúc nối tiếp
+          có thực sự chuyển động sang khung hình mới hay không. Nếu video gốc chỉ là 1 bức ảnh đứng yên hoặc
+          đoạn loop ngắn lặp đi lặp lại (dHash trùng khớp với khúc trước), từ chối ngay để không bị lặp cảnh!
+        """
+        if not media_path or not Path(media_path).exists():
+            return False, None
+
+        try:
+            from app.graph.evaluators.visual_critic import VisualCritic
+            sig = VisualCritic._media_signature(str(media_path))
+        except Exception as e:
+            logger.debug(f"[MiniRAG Visual Verify] Skip signature check ({e})")
+            sig = []
+
+        keys = self._canonical_video_keys(vid_id=vid_id, url=url or media_path)
+
+        with _RAG_LOCK:
+            sess = self._get_or_create_job_session(job_id)
+            seen_sigs: Dict[int, List[str]] = sess["committed_signatures"]
+
+            if sig:
+                # Nếu là khúc nối tiếp (Long Peak Flow), ngưỡng Hamming chặt hơn (<= 5) để chặn video tĩnh/loop;
+                # nếu là 2 cảnh độc lập, ngưỡng Hamming <= 7 để chặn mọi clip re-upload trùng cảnh quay.
+                hamming_thresh = 5 if is_continuation_slice else 7
+                need_hits = 2 if len(sig) >= 2 else 1
+
+                for prev_sid, prev_sig in seen_sigs.items():
+                    if prev_sid == scene_id or not prev_sig:
+                        continue
+                    hits = sum(
+                        1 for h in sig
+                        if any(sum(a != b for a, b in zip(h, ph)) <= hamming_thresh for ph in prev_sig)
+                    )
+                    if hits >= min(need_hits, len(prev_sig)):
+                        logger.warning(
+                            f"🚫 [MiniRAG Intra-Video Visual Guard] Cảnh #{scene_id} ({Path(media_path).name}) "
+                            f"bị trùng khung hình thị giác với Cảnh #{prev_sid} trong cùng video -> Loại bỏ để chống lặp cảnh cắt!"
+                        )
+                        return False, prev_sid
+
+                seen_sigs[scene_id] = sig
+
+            sess["claimed_video_ids"].update(keys)
+            if title and len(title.strip()) >= 4:
+                if not any(x.get("scene_id") == scene_id and x.get("title") == title.strip() for x in sess["claimed_titles"]):
+                    sess["claimed_titles"].append({
+                        "scene_id": scene_id,
+                        "vid_id": vid_id or next(iter(keys), ""),
+                        "title": title.strip(),
+                    })
+            return True, None
 
 
 _GLOBAL_MINI_RAG: Optional[VideoMemoryRAG] = None

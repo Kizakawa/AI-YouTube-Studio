@@ -172,16 +172,34 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             "scenes_strategy": tool_decisions,
         }
 
+    from app.services.video_memory_rag import get_video_memory_rag
+    rag = get_video_memory_rag()
+    job_id = int(state.get("job_id") or 0)
+    channel_id_val = str(state.get("target_channel_id") or state.get("channel_id") or "")
+
+    raw_strategies = list(visual_plan.get("scenes_strategy") or [])
+    if raw_strategies:
+        try:
+            raw_strategies = rag.diversify_intra_video_scene_queries(
+                job_id=job_id,
+                scenes_strategy=raw_strategies,
+                topic=state.get("topic", ""),
+                primary_entity=primary_entity or "",
+                channel_id=channel_id_val,
+                scenes_raw=[s.model_dump() for s in script.scenes],
+            )
+        except Exception as e_div:
+            logger.debug(f"[MediaNodes] RAG query diversification skip: {e_div}")
+
     strategy_map = {
         int(s.get("scene_id") or 0): s
-        for s in visual_plan.get("scenes_strategy", [])
+        for s in raw_strategies
         if isinstance(s, dict) and s.get("scene_id")
     }
 
     scenes_media = []
     from app.services.media.media_history import get_recent_media_urls, record_used_media
-    used_pool_urls = get_recent_media_urls(limit=350)
-    job_id = state.get("job_id", 0)
+    used_pool_urls = get_recent_media_urls(limit=150)
 
     # Mở rộng Semaphore lên 8 để toàn bộ 8-10 phân cảnh của Shorts chạy SONG SONG 100% cùng lúc
     sem = asyncio.Semaphore(8)
@@ -334,6 +352,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     overall_script_query=overall_q,
                     max_peak_duration_sec=14.0,
                     job_id=job_id,
+                    scene_id=scene.scene_id,
+                    channel_id=channel_id_val,
                 )
                 if yt_res and yt_res.get("media_path"):
                     media_path = yt_res["media_path"]
@@ -1086,9 +1106,29 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     preserve_continuous_flow=True,
                 )
                 if Path(cont_out).exists() and Path(cont_out).stat().st_size > 15_000:
+                    ok_cont, dup_sid = rag.verify_and_commit_in_job_clip(
+                        job_id=job_id,
+                        scene_id=next_sid,
+                        media_path=cont_out,
+                        url=str(cur_item.get("source_url") or fp_path),
+                        is_continuation_slice=True,
+                    )
+                    if not ok_cont:
+                        logger.info(
+                            f"🛡️ [MediaNodes -> MiniRAG] Dừng mở rộng Long Peak tại Cảnh #{next_sid} vì khung hình lặp lại "
+                            f"Cảnh #{dup_sid} (video gốc tĩnh hoặc loop)!"
+                        )
+                        try:
+                            Path(cont_out).unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                        break
+
                     next_item["media_path"] = cont_out
                     next_item["media_type"] = "hook_ready_video"
                     next_item["pose_images"] = None
+                    next_item["full_peak_path"] = None
+                    next_item["full_peak_duration_sec"] = 0.0
                     next_item["visual_strategy"] = "YOUTUBE_PEAK_SHORT"
                     next_item["production_method"] = "LONG_PEAK_CONTINUOUS_FLOW"
                     next_item["strategy_rationale"] = (
@@ -1099,6 +1139,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         f"🌟 [MediaNodes -> Long Peak Flow] Đoạn Peak dài ({fp_dur:.1f}s) từ Cảnh #{cur_item.get('scene_id')} "
                         f"chảy liền mạch sang Cảnh #{next_sid} ({consumed_sec:.1f}s -> {consumed_sec + next_slot_dur:.1f}s)!"
                     )
+                    # Xóa full_peak_path trên cảnh gốc sau khi đã cắt chia các khúc nối tiếp để Bước B không cắt lại từ 0.0s!
+                    cur_item["full_peak_path"] = None
                     consumed_sec += next_slot_dur
                     rem_sec -= next_slot_dur
                     next_idx += 1
@@ -1140,8 +1182,12 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         req_dur = _get_slot_dur(slot_i) + 0.22
                         for k in visual_keys:
                             sc_dict[k] = pay.get(k)
-                        # Nếu một đoạn Video được dồn lên slot mới ở đầu timeline, đồng bộ thời lượng khớp với slot mới
-                        if pay["_orig_idx"] != slot_i and str(sc_dict.get("media_type") or "").lower() in ("video", "hook_ready_video"):
+                        # Nếu một đoạn Video độc lập được dồn lên slot mới ở đầu timeline, đồng bộ thời lượng từ chính file của cảnh đó
+                        if (
+                            pay["_orig_idx"] != slot_i
+                            and str(sc_dict.get("media_type") or "").lower() in ("video", "hook_ready_video")
+                            and str(pay.get("production_method") or "") != "LONG_PEAK_CONTINUOUS_FLOW"
+                        ):
                             src_v = pay.get("full_peak_path") if (pay.get("full_peak_path") and Path(pay["full_peak_path"]).exists()) else pay.get("media_path")
                             if src_v and Path(src_v).exists():
                                 cur_v_dur = get_duration_ms(str(sc_dict["media_path"])) / 1000.0
@@ -1232,7 +1278,7 @@ def node_evaluate_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
 
 async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
-    """Node tự động sửa chữa SONG SONG các cảnh bị đánh giá FAIL kỹ thuật (thay thế media mới chuẩn xác)."""
+    """Node tự động sửa chữa SONG SONG các cảnh bị đánh giá FAIL kỹ thuật hoặc TRÙNG LẶP CẢNH CẮT trong cùng video."""
     scenes_media = list(state.get("scenes_media", []))
     media_eval = state.get("media_eval", {})
     failed_ids = set(media_eval.get("failed_scene_ids", []))
@@ -1246,7 +1292,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
     ai_video_agent = AIVideoAgent()
     current_niche = state.get("niche") or state.get("channel_style") or state.get("channel_niche") or "general"
     is_scifi_val = (current_niche == "scifi") or any(k in state.get("topic", "").lower() for k in ("scifi", "sci-fi", "alien", "cyborg", "viễn tưởng"))
-    logger.info(f"🔄 [LangGraph] Tự động sửa chữa SONG SONG media kỹ thuật cho các cảnh: {sorted(failed_ids)} (Lần {retry_count})")
+    logger.info(f"🔄 [LangGraph] Tự động sửa chữa SONG SONG media kỹ thuật / chống trùng cảnh cắt cho: {sorted(failed_ids)} (Lần {retry_count})")
 
     from app.services.media.media_history import get_recent_media_urls
     from app.services.media.image_quality import clean_search_query_from_prompt
@@ -1258,14 +1304,14 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
     async def _refine_single_item(item: Dict[str, Any]) -> None:
         if item.get("scene_id") not in failed_ids:
             return
-        if item.get("media_type") == "hook_ready_video" or item.get("production_method") in ("CLIMAX_REAL_VIDEO_FAIR_USE_3CUT", "CLIMAX_PEAK_SHORT_SPLICE"):
-            return
         scene_id = item["scene_id"]
         kw = item.get("visual_keyword", "")
         narr = item.get("narration", "")
         vp = item.get("visual_prompt", None)
         clean_kw_q = clean_search_query_from_prompt(kw or vp or "", narration=narr, topic=state.get("topic", ""), max_words=6) or kw
-        is_video = item.get("media_type") == "video" or item.get("production_method") in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO", "YOUTUBE_PEAK_SHORT")
+        is_video = item.get("media_type") in ("video", "hook_ready_video") or item.get("production_method") in (
+            "STOCK_FOOTAGE", "TEXT_TO_VIDEO", "YOUTUBE_PEAK_SHORT", "CLIMAX_PEAK_SHORT_SPLICE", "LONG_PEAK_CONTINUOUS_FLOW"
+        )
         replaced = False
 
         if is_video:
