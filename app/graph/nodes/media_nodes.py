@@ -50,35 +50,53 @@ def _scene_audio_duration(work_dir: Path, scene_id: int, default: float = 6.0) -
 
 async def node_direct_visual_strategy(state: VideoWorkflowState) -> Dict[str, Any]:
     """
-    Node Đạo Diễn Chiến Lược bằng LLM Tool-Calling (`bind_tools`):
-    - Nếu `visual_plan` đã được tính toán SONG SONG trong lúc tạo Audio (`node_generate_audio`),
-      tái sử dụng ngay lập tức (0ms độ trễ)!
-    - Ngược lại, gọi `plan_media_tools_with_llm_sync` để LLM tự chọn giữa:
-      1. `clone_youtube_short_peak_clip`: Cho Cảnh 1 (Hook) và 2-3 cảnh Cao trào (Peak) xen kẽ.
-      2. `search_google_cinematic_image`: Cho các cảnh trừu tượng, nội tâm, nhân vật lịch sử.
+    Node LLM Đánh Giá & Quyết Định Chiến Lược Tìm Kiếm (`visual_director`):
+    1. Đọc toàn bộ kịch bản và từng câu văn đã chia nhỏ (`scenes`).
+    2. Dùng LLM Tool-Calling (`plan_media_tools_with_llm_sync`) + LLM Thẩm Định Phạm Vi (`audit_and_decide_search_scopes_with_llm_sync`)
+       để đánh giá từng câu văn nhỏ:
+       - Nếu câu văn chia nhỏ ra VẪN CÓ NGHĨA ĐỘC LẬP (`SCENE_SPECIFIC`) -> Duyệt đi search theo ý câu nhỏ đó.
+       - Nếu câu văn chia nhỏ ra BỊ VÔ NGHĨA / CỤT NGỦN / LỆCH CHỦ ĐỀ (`SCRIPT_OVERALL`) -> Quyết định đi search
+         nội dung xoay quanh TỔNG THỂ KỊCH BẢN (`overall_script_query`).
     """
-    existing_plan = state.get("visual_plan")
-    if existing_plan and existing_plan.get("scenes_strategy"):
-        strat_list = existing_plan.get("scenes_strategy", [])
-        summary = ", ".join([
-            f"Cảnh {s.get('scene_id')}: {s.get('tool_name', s.get('production_method', s.get('strategy')))}"
-            for s in strat_list[:5]
-        ])
-        logger.info(f"⚡ [VisualDirector] Sử dụng ngay kế hoạch Tool đã chạy song song cùng Audio: {summary}...")
-        return {
-            "visual_plan": existing_plan,
-            "current_step": "VISUAL_STRATEGY_PLANNED",
-            "progress_percent": 55,
-            "progress_message": f"🎬 Đạo diễn LLM Tool đã chọn công cụ cho {len(strat_list)} cảnh (0ms Parallel Cache)",
-        }
-
     topic = state.get("topic", "")
     script_data = state.get("script_data", {})
     primary_entity = state.get("primary_entity")
     channel_style = state.get("channel_style", "cinematic")
     scenes = script_data.get("scenes", [])
 
-    from app.graph.tools.media_tools import plan_media_tools_with_llm_sync
+    from app.graph.tools.media_tools import (
+        plan_media_tools_with_llm_sync,
+        audit_and_decide_search_scopes_with_llm_sync,
+    )
+
+    existing_plan = state.get("visual_plan")
+    if existing_plan and existing_plan.get("scenes_strategy"):
+        strat_list = existing_plan.get("scenes_strategy", [])
+        if not existing_plan.get("scope_audited"):
+            strat_list = await asyncio.to_thread(
+                audit_and_decide_search_scopes_with_llm_sync,
+                topic=topic,
+                scenes=scenes,
+                proposed_decisions=strat_list,
+                primary_entity=primary_entity,
+            )
+            existing_plan = {
+                **existing_plan,
+                "scenes_strategy": strat_list,
+                "scope_audited": True,
+            }
+        summary = ", ".join([
+            f"S{s.get('scene_id')}:{s.get('search_scope', 'SCENE_SPECIFIC')}[{s.get('tool_name', '')}]"
+            for s in strat_list[:6]
+        ])
+        logger.info(f"⚖️ [VisualDirector Node] LLM đã đánh giá & chốt quyết định Search Scope: {summary}...")
+        return {
+            "visual_plan": existing_plan,
+            "current_step": "VISUAL_STRATEGY_PLANNED",
+            "progress_percent": 55,
+            "progress_message": f"⚖️ Node LLM đã đánh giá & quyết định phạm vi tìm kiếm cho {len(strat_list)} cảnh",
+        }
+
     tool_decisions = await asyncio.to_thread(
         plan_media_tools_with_llm_sync,
         topic=topic,
@@ -86,20 +104,31 @@ async def node_direct_visual_strategy(state: VideoWorkflowState) -> Dict[str, An
         primary_entity=primary_entity,
         channel_niche=channel_style,
     )
+    audited_decisions = await asyncio.to_thread(
+        audit_and_decide_search_scopes_with_llm_sync,
+        topic=topic,
+        scenes=scenes,
+        proposed_decisions=tool_decisions,
+        primary_entity=primary_entity,
+    )
     plan = {
         "topic_classification": "HYBRID_TOOL_CALLING",
-        "director_vision": "YouTube Shorts Peak Clone (Hook + 2-3 Peak Clips) kết hợp Google Top Search Images",
-        "scenes_strategy": tool_decisions,
+        "director_vision": "Adaptive Dual-Scope Search (SCENE_SPECIFIC vs SCRIPT_OVERALL) + YouTube Peak & Google Images",
+        "scenes_strategy": audited_decisions,
+        "scope_audited": True,
     }
 
-    proposals_summary = ", ".join([f"Cảnh {s.get('scene_id')}: {s.get('tool_name')}" for s in tool_decisions[:5]])
-    logger.info(f"🎬 [VisualDirector] LLM bind_tools đã chọn công cụ: {proposals_summary}...")
+    proposals_summary = ", ".join([
+        f"S{s.get('scene_id')}:{s.get('search_scope')}[{s.get('tool_name')}]"
+        for s in audited_decisions[:6]
+    ])
+    logger.info(f"🎬 [VisualDirector Node] LLM đã đánh giá & chọn công cụ: {proposals_summary}...")
 
     return {
         "visual_plan": plan,
         "current_step": "VISUAL_STRATEGY_PLANNED",
         "progress_percent": 55,
-        "progress_message": f"🎬 Đạo diễn LLM Tool đã chọn công cụ ({len(tool_decisions)} cảnh)",
+        "progress_message": f"🎬 Node LLM đã đánh giá & chọn công cụ ({len(audited_decisions)} cảnh)",
     }
 
 

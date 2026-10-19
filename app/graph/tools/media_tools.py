@@ -1114,3 +1114,149 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
             })
 
     return final_plan
+
+
+def audit_and_decide_search_scopes_with_llm_sync(
+    topic: str,
+    scenes: List[Dict[str, Any]],
+    proposed_decisions: List[Dict[str, Any]],
+    primary_entity: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    LLM Node Đánh Giá & Phê Duyệt Quyết Định Tìm Kiếm (`SCENE_SPECIFIC` vs `SCRIPT_OVERALL`):
+    Đọc toàn bộ kịch bản gốc (`full_script_text`) đối chiếu với từng câu văn đã chia nhỏ (`scenes`)
+    và bản kế hoạch `proposed_decisions`:
+    - Đánh giá từng câu văn nhỏ: Khi tách riêng ra khỏi kịch bản để đi search, câu này CÓ NGHĨA ĐỘC LẬP (`SCENE_SPECIFIC`)
+      hay BỊ VÔ NGHĨA / CỤT NGỦN / LỆCH SANG ĐỒ VẬT PHỤ (`SCRIPT_OVERALL`)?
+    - Nếu câu nhỏ vô nghĩa hoặc dễ gây lạc đề khi search riêng lẻ -> ép chuyển sang `SCRIPT_OVERALL` và viết lại
+      câu truy vấn xoay quanh tổng thể kịch bản (`overall_script_query`)!
+    - Nếu câu nhỏ có nghĩa rõ ràng -> duyệt `SCENE_SPECIFIC` và tinh chỉnh từ khóa sát câu nhỏ đó.
+    """
+    if not scenes or not proposed_decisions:
+        return proposed_decisions
+
+    full_script_text = " ".join(str(s.get("narration") or "").strip() for s in scenes if s.get("narration"))
+    review_items = []
+    dec_map = {int(d.get("scene_id") or 0): dict(d) for d in proposed_decisions if isinstance(d, dict)}
+
+    for idx, s in enumerate(scenes):
+        sid = int(s.get("scene_id") or (idx + 1))
+        d = dec_map.get(sid, {})
+        q_cur = d.get("youtube_search_query") or d.get("smart_image_query") or ""
+        review_items.append({
+            "scene_id": sid,
+            "split_sentence": s.get("narration", ""),
+            "proposed_tool": d.get("tool_name", "search_google_cinematic_image"),
+            "proposed_scope": d.get("search_scope", "SCENE_SPECIFIC"),
+            "proposed_query": q_cur,
+            "overall_script_query": d.get("overall_script_query", ""),
+        })
+
+    audit_prompt = f"""You are the Chief LLM Search Scope Judge & Visual Auditor in a LangGraph video pipeline.
+Topic: "{topic}"
+Primary Subject: "{primary_entity or topic}"
+
+FULL SCRIPT STORY:
+"{full_script_text}"
+
+PROPOSED SCENE DECISIONS TO AUDIT:
+{json.dumps(review_items, ensure_ascii=False, indent=2)}
+
+YOUR TASK:
+Evaluate each scene (from scene_id=1 to {len(scenes)}) and decide whether searching the split sentence on its own makes sense:
+1. If `split_sentence` when isolated from the script still has a clear, concrete, self-contained visual action of the main subject:
+   - Set `"approved_scope": "SCENE_SPECIFIC"`
+   - Keep or refine `"approved_query"` so it searches directly for that sentence's visual meaning (must include the main subject).
+2. If `split_sentence` when isolated from the script becomes MEANINGLESS, VAGUE, TRANSITIONAL (e.g. "For three days nobody knew why...", "That moment changed everything"), SCIENTIFIC/ABSTRACT ("Behaviorists call this imprinting"), or focuses on a minor inanimate prop that would hijack search results (e.g. "inside an old leather boot" returning shoe commercials):
+   - Set `"approved_scope": "SCRIPT_OVERALL"`
+   - Rewrite `"approved_query"` so it searches for content REVOLVING AROUND THE OVERALL SCRIPT STORY (using a distinct angle/moment of the main story so scenes do not duplicate).
+
+Return ONLY a valid JSON object in this exact format:
+{{
+  "overall_script_query": "3-5 word core story search query",
+  "subject_entity": "2-4 word main subject",
+  "scenes_audit": [
+    {{
+      "scene_id": 1,
+      "approved_scope": "SCENE_SPECIFIC",
+      "approved_query": "stray golden retriever shivering in rain",
+      "reason": "Sentence clearly describes the dog shivering in rain"
+    }}
+  ]
+}}"""
+
+    try:
+        import requests
+        from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
+
+        keys = settings.get_gemini_keys_pool()
+        rotator = KeyRotator(keys) if keys else None
+        if rotator and rotator.has_keys:
+            payload = {
+                "contents": [{"parts": [{"text": audit_prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.1,
+                    "responseMimeType": "application/json",
+                },
+            }
+            for model_name, api_key in rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS):
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+                try:
+                    resp = requests.post(url, json=payload, timeout=18)
+                    if resp.status_code == 200:
+                        cands = resp.json().get("candidates") or []
+                        if cands:
+                            txt = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", []))
+                            m = re.search(r"\{.*\}", txt, re.DOTALL)
+                            if m:
+                                parsed = json.loads(m.group(0))
+                                top_overall_q = str(parsed.get("overall_script_query") or "").strip()
+                                top_subj = str(parsed.get("subject_entity") or "").strip()
+                                audits = parsed.get("scenes_audit") or []
+                                audit_by_sid = {
+                                    int(a.get("scene_id") or 0): a
+                                    for a in audits
+                                    if isinstance(a, dict) and a.get("scene_id")
+                                }
+                                if audit_by_sid:
+                                    audited_list: List[Dict[str, Any]] = []
+                                    for d in proposed_decisions:
+                                        sid = int(d.get("scene_id") or 0)
+                                        item = dict(d)
+                                        if top_overall_q:
+                                            item["overall_script_query"] = top_overall_q
+                                        if top_subj:
+                                            item["subject_entity"] = top_subj
+                                        if sid in audit_by_sid:
+                                            au = audit_by_sid[sid]
+                                            app_scope = str(au.get("approved_scope") or item.get("search_scope") or "SCENE_SPECIFIC").upper()
+                                            app_query = str(au.get("approved_query") or "").strip()
+                                            item["search_scope"] = app_scope if app_scope in ("SCENE_SPECIFIC", "SCRIPT_OVERALL") else "SCENE_SPECIFIC"
+                                            item["scope_audit_reason"] = str(au.get("reason") or "")
+                                            if app_query:
+                                                if item.get("tool_name") == "clone_youtube_short_peak_clip":
+                                                    item["youtube_search_query"] = app_query
+                                                else:
+                                                    item["smart_image_query"] = app_query
+                                        item["scope_audited"] = True
+                                        audited_list.append(item)
+
+                                    verdict_log = ", ".join(
+                                        f"S{x.get('scene_id')}:{x.get('search_scope')}('{x.get('youtube_search_query') or x.get('smart_image_query')}')"
+                                        for x in audited_list
+                                    )
+                                    logger.info(
+                                        f"⚖️ [LLM Scope Judge Node] Đã thẩm định xong {len(audited_list)} cảnh "
+                                        f"qua `{model_name}` -> {verdict_log}"
+                                    )
+                                    return audited_list
+                    elif resp.status_code in (429, 403, 404, 503):
+                        rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:200])
+                except Exception as e_req:
+                    logger.debug(f"[LLM Scope Judge] {model_name} error: {e_req}")
+                    continue
+    except Exception as ex:
+        logger.debug(f"[LLM Scope Judge] Fallback pass: {ex}")
+
+    return proposed_decisions
+
