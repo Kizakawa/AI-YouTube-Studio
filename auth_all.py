@@ -23,7 +23,7 @@ from google.auth.transport.requests import Request
 
 
 def check_live_channel_status(all_channels):
-    """Kiểm tra trực tiếp xem token chính của từng kênh còn sống (🟢) hay đã hết hạn/chưa có (🔴)."""
+    """Kiểm tra trực tiếp xem token chính của từng kênh còn sống (🟢), đúng chủ sở hữu kênh hay đã hết hạn/chưa có (🔴)."""
     print("\n" + "═" * 78)
     print("🩺 TRẠNG THÁI XÁC THỰC TRỰC TIẾP (LIVE OAUTH) CỦA 7 KÊNH YOUTUBE:")
     print("═" * 78)
@@ -35,6 +35,7 @@ def check_live_channel_status(all_channels):
         cid = ch.get("id")
         name = ch.get("name", cid)[:28]
         acc = ch.get("account", "account_1")
+        exp_yt = (ch.get("youtube_channel_id") or "").strip()
         prim_token = Path("credentials/channels") / cid / "youtube_token.json"
 
         status_str = "🔴 Chưa có token"
@@ -42,7 +43,10 @@ def check_live_channel_status(all_channels):
         if prim_token.exists():
             try:
                 data = load_encrypted_json(prim_token)
-                if data and data.get("refresh_token"):
+                tok_yt = (data.get("channel_id") or "").strip() if data else ""
+                if exp_yt and tok_yt and exp_yt.lower() != tok_yt.lower():
+                    status_str = f"🔴 Lệch kênh ({tok_yt[:12]}...)"
+                elif data and data.get("refresh_token"):
                     creds = Credentials.from_authorized_user_info(data)
                     creds.refresh(Request())
                     is_valid = True
@@ -130,14 +134,16 @@ def main():
             all_channels.append({
                 "id": bch.get("id"),
                 "name": bch.get("name"),
-                "account": acc.get("id")
+                "account": acc.get("id"),
+                "youtube_channel_id": bch.get("youtube_channel_id"),
             })
     for ch in cfg.get("channels", []):
         if not any(c["id"] == ch.get("id") for c in all_channels):
             all_channels.append({
                 "id": ch.get("id"),
                 "name": ch.get("name"),
-                "account": ch.get("google_account", "account_1")
+                "account": ch.get("google_account", "account_1"),
+                "youtube_channel_id": ch.get("youtube_channel_id"),
             })
 
     # 1. Kiểm tra trực tiếp trạng thái sống/chết của token chính trên 7 kênh
