@@ -237,12 +237,32 @@ class VideoAgent:
             is_already_rendered = bool(scene.media_path and any(tag in Path(scene.media_path).name.lower() for tag in ("_i2v", "_t2v", "_pexels_fb", "clip_", "_gsearch_3d", "_creature_3d", "_motion3d", "_anim", "_fb_motion", "hook_motion_")))
 
             if raw_type == "hook_ready_video" or (scene.media_path and Path(scene.media_path).name.lower().startswith("hook_motion_")):
-                logger.info(
-                    f"  Scene {scene.scene_id}: 🎯 HOOK READY VIDEO ({Path(scene.media_path).name}) → "
-                    f"nhận trực tiếp từ HookVideoNode để merge với phần còn lại ({duration:.1f}s)"
-                )
-                if os.path.abspath(scene.media_path) != os.path.abspath(clip_path):
-                    shutil.copy2(scene.media_path, clip_path)
+                from app.utils.ffmpeg_helper import get_duration_ms
+                actual_hook_sec = get_duration_ms(scene.media_path) / 1000.0
+                if actual_hook_sec > 0.5 and abs(actual_hook_sec - duration) <= 0.25:
+                    logger.info(
+                        f"  Scene {scene.scene_id}: 🎯 HOOK READY VIDEO ({Path(scene.media_path).name}, {actual_hook_sec:.1f}s) → "
+                        f"khớp thời lượng ({duration:.1f}s), copy trực tiếp"
+                    )
+                    if os.path.abspath(scene.media_path) != os.path.abspath(clip_path):
+                        shutil.copy2(scene.media_path, clip_path)
+                else:
+                    logger.info(
+                        f"  Scene {scene.scene_id}: 🎯 HOOK READY VIDEO ({Path(scene.media_path).name}, {actual_hook_sec:.1f}s) → "
+                        f"đồng bộ thời lượng sang {duration:.1f}s để chống hụt xfade"
+                    )
+                    trim_video(
+                        input_path=scene.media_path,
+                        duration_seconds=duration,
+                        output_path=clip_path,
+                        width=job.resolution_w,
+                        height=job.resolution_h,
+                        fps=job.fps,
+                        is_scifi=is_scifi_clip,
+                        niche=clip_niche,
+                        apply_grading=False,
+                        is_hook_scene=False,
+                    )
             elif raw_type in ("video", "ai_video", "i2v", "t2v") or is_video_file:
                 logger.info(
                     f"  Scene {scene.scene_id}: video ({raw_type}) → trim {duration:.1f}s"

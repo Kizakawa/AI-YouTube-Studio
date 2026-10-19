@@ -1095,7 +1095,7 @@ def trim_video(
             seek_args = ["-ss", f"{seek_sec:.2f}"]
 
     # Clip ngắn hơn lời thoại một chút (≤ 1.6x) → kéo dãn slow-motion nhẹ thay vì lặp lại (lặp rất dễ bị nhận ra)
-    loop_args = ["-stream_loop", "-1"] if not seek_args else []
+    loop_args = ["-stream_loop", "-1"]
     pts_prefix = ""
     try:
         src_sec = get_duration_ms(input_path) / 1000.0
@@ -1277,18 +1277,24 @@ def concat_videos_with_xfade(
     if len(video_paths) == 0:
         raise ValueError("concat_videos_with_xfade: video_paths rỗng")
 
-    # Lấy thời lượng từng clip nếu chưa cung cấp
+    # Lấy thời lượng thực tế từng clip trên đĩa để chống lỗi xfade offset vượt quá độ dài thực của clip (gây cụt video về 9-10s)
     durations = []
-    if scene_durations_seconds and len(scene_durations_seconds) == len(video_paths):
-        durations = list(scene_durations_seconds)
-    else:
-        for vp in video_paths:
-            dur_ms = get_duration_ms(vp)
-            dur_s = dur_ms / 1000.0 if dur_ms > 0 else 4.0
-            durations.append(dur_s)
+    for idx_vp, vp in enumerate(video_paths):
+        dur_ms = get_duration_ms(vp)
+        real_dur_s = dur_ms / 1000.0 if dur_ms > 0 else 0.0
+        req_dur_s = (
+            float(scene_durations_seconds[idx_vp])
+            if (scene_durations_seconds and idx_vp < len(scene_durations_seconds))
+            else (real_dur_s if real_dur_s > 0 else 4.0)
+        )
+        if real_dur_s > 0.5:
+            durations.append(min(req_dur_s, real_dur_s))
+        else:
+            durations.append(req_dur_s)
 
     td = transition_duration  # shorthand
     n = len(video_paths)
+    expected_total_s = max(sum(durations) - (n - 1) * td, 1.0)
 
     # Chuẩn bị danh sách chuyển cảnh cho (n - 1) nhát cắt
     if isinstance(transition, list) and transition:
@@ -1361,13 +1367,18 @@ def concat_videos_with_xfade(
 
     try:
         run_ffmpeg_with_gpu_fallback(args, timeout=FFMPEG_TIMEOUT * (2 if has_sub else 1))
+        out_dur_s = get_duration_ms(output_path) / 1000.0
+        if out_dur_s < expected_total_s * 0.80:
+            raise RuntimeError(
+                f"xfade output bị hụt thời lượng ({out_dur_s:.1f}s < kỳ vọng {expected_total_s:.1f}s)"
+            )
         logger.info(
-            f"[xfade] ✅ Ghép {n} clips với xfade={transition}"
+            f"[xfade] ✅ Ghép {n} clips với xfade={transition} ({out_dur_s:.1f}s)"
             f"{' + Single-Pass Subtitles' if has_sub else ''} → {output_path}"
         )
         return output_path
     except RuntimeError as e:
-        logger.warning(f"[xfade] xfade thất bại, fallback về concat thường: {e}")
+        logger.warning(f"[xfade] xfade thất bại hoặc hụt thời lượng, fallback về concat chuẩn: {e}")
         if has_sub:
             tmp_concat = str(Path(output_path).parent / "_concat_fallback_nosub.mp4")
             concat_videos(video_paths, tmp_concat, fps=fps)
