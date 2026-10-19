@@ -416,8 +416,8 @@ class StockFetcher:
 
         # Lọc watermark/ảnh nhỏ + xếp hạng theo độ bắt mắt, chủ thể, bố cục dọc, độ phân giải
         candidates = prefilter_candidates(
-            candidates, subject=subject or queries[0], limit=12,
-            creature_mode=creature_mode, max_per_source=12 if (creature_mode or bypass_copyright) else 6,
+            candidates, subject=subject or queries[0], limit=16,
+            creature_mode=creature_mode, max_per_source=14 if (creature_mode or bypass_copyright) else 8,
         )
 
         if not candidates:
@@ -467,9 +467,9 @@ class StockFetcher:
                 cu = c.get("url")
                 if cu and cu not in (win_u, win_fb) and not is_media_already_used(cu, used) and cu not in distinct_alts:
                     distinct_alts.append(cu)
-                if len(distinct_alts) >= 4:
+                if len(distinct_alts) >= 8:
                     break
-            winner["alternate_urls"] = distinct_alts[:4]
+            winner["alternate_urls"] = distinct_alts[:8]
         except Exception:
             pass
         record_used_media(winner["url"], query=query, source=winner.get("source", "stock_photo"))

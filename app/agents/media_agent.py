@@ -67,16 +67,16 @@ def register_download_fallbacks(winner: Optional[Dict[str, Any]], candidates: Op
             for cu_all in (c.get("url"), c.get("fallback_url")):
                 if cu_all and cu_all != u and cu_all not in alts:
                     alts.append(cu_all)
-            if len(alts) >= 6 and len(distinct_urls) >= 4:
+            if len(alts) >= 8 and len(distinct_urls) >= 8:
                 break
     if distinct_urls and not winner.get("alternate_urls"):
-        winner["alternate_urls"] = distinct_urls[:4]
+        winner["alternate_urls"] = distinct_urls[:8]
     with _download_fallback_lock:
         if len(_download_fallback_registry) > 500:
             _download_fallback_registry.clear()
         _download_fallback_registry[u] = {
             "referer": winner.get("page_url") or "",
-            "alternates": alts[:6],
+            "alternates": alts[:8],
         }
 
 

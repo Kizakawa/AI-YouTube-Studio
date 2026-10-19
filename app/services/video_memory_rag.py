@@ -947,6 +947,63 @@ class VideoMemoryRAG:
                     })
             return True, None
 
+    def verify_and_commit_in_job_image(
+        self,
+        job_id: int,
+        scene_id: int,
+        image_path: str,
+        url: str = "",
+    ) -> bool:
+        """
+        Kiểm tra chữ ký thị giác 64-bit dHash và tính toàn vẹn của từng bức ảnh trong kho 15-17 ảnh/video:
+        - Đảm bảo ảnh mới tải về KHÔNG trùng lặp thị giác (Hamming distance <= 6) với BẤT KỲ ảnh nào
+          đã chọn trước đó trong cùng phân cảnh (`pose_images`) HOẶC ở các phân cảnh khác trong cùng 1 video (`job_id`).
+        - Kiểm tra nhanh kích thước (>= 320px) và loại bỏ ảnh đen/lỗi đơn sắc.
+        """
+        if not image_path or not Path(image_path).exists():
+            return False
+        try:
+            if Path(image_path).stat().st_size < 2500:
+                return False
+            from PIL import Image
+            from app.graph.evaluators.visual_critic import VisualCritic
+
+            with Image.open(str(image_path)) as im:
+                w, h = im.size
+                if w < 300 or h < 300:
+                    return False
+            if VisualCritic._is_solid_color_or_black(str(image_path)):
+                return False
+            img_hash = VisualCritic._compute_image_hash(str(image_path))
+        except Exception as e:
+            logger.debug(f"[MiniRAG Image Verify] Skip invalid image '{image_path}': {e}")
+            return False
+
+        keys = self._canonical_video_keys(url=url or image_path)
+        abs_p = str(Path(image_path).resolve())
+
+        with _RAG_LOCK:
+            sess = self._get_or_create_job_session(job_id)
+            committed_paths: Set[str] = sess.setdefault("committed_image_paths", set())
+            if abs_p in committed_paths:
+                return True
+
+            seen_sigs: Dict[int, List[str]] = sess["committed_signatures"]
+            if img_hash:
+                for prev_sid, prev_hashes in seen_sigs.items():
+                    for ph in (prev_hashes or []):
+                        if len(ph) == len(img_hash) and sum(a != b for a, b in zip(img_hash, ph)) <= 6:
+                            logger.info(
+                                f"🚫 [MiniRAG Multi-Image Guard] Loại bỏ ảnh trùng lặp thị giác tại Cảnh #{scene_id} "
+                                f"({Path(image_path).name} trùng dHash với Cảnh #{prev_sid})!"
+                            )
+                            return False
+                seen_sigs.setdefault(scene_id, []).append(img_hash)
+
+            committed_paths.add(abs_p)
+            sess["claimed_video_ids"].update(keys)
+            return True
+
 
 _GLOBAL_MINI_RAG: Optional[VideoMemoryRAG] = None
 

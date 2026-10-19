@@ -1033,16 +1033,22 @@ def execute_google_cinematic_image_sync(
     search_scope: str = "SCENE_SPECIFIC",
     overall_script_query: str = "",
     job_id: int = 0,
+    scene_id: int = 0,
+    target_image_count: int = 2,
 ) -> Optional[Dict[str, Any]]:
     """
-    Thực thi công cụ tìm ảnh Top Search Google Images theo cơ chế kép (`SCENE_SPECIFIC` vs `SCRIPT_OVERALL`):
+    Thực thi công cụ tìm ảnh Top Search Google Images theo cơ chế kép (`SCENE_SPECIFIC` vs `SCRIPT_OVERALL`)
+    kết hợp Multi-Image Harvest (tải 2-3 ảnh thật độc lập/phân cảnh để đạt mật độ 15-17 ảnh/video ~40s):
     - Nếu câu nhỏ có nghĩa độc lập (`SCENE_SPECIFIC`): Tìm trực tiếp theo ý câu nhỏ (`smart_query`), dự phòng bằng `overall_script_query`.
     - Nếu câu nhỏ khi tách lẻ bị vô nghĩa / cụt ngủn / vướng đạo cụ phụ (`SCRIPT_OVERALL`):
-      Tìm trực tiếp các hình ảnh xoay quanh TỔNG THỂ KỊCH BẢN (`overall_script_query`) và lọc trùng lặp (`used_urls`)
+      Tìm trực tiếp các hình ảnh xoay quanh TỔNG THỂ KỊCH BẢN (`overall_script_query`) và lọc trùng lặp (`used_urls` + Mini-RAG 64-bit dHash)
       để ghép vào video mượt mà, 100% đúng chủ đề kịch bản!
     """
-    from app.services.media.media_history import extract_media_identity, record_used_media
+    from concurrent.futures import ThreadPoolExecutor
+    from app.services.media.media_history import extract_media_identity, is_media_already_used, record_used_media
+    from app.services.video_memory_rag import get_video_memory_rag
 
+    rag = get_video_memory_rag()
     used = used_urls if used_urls is not None else set()
     effective_scope, search_qs = _resolve_adaptive_search_queries(
         search_scope=search_scope,
@@ -1061,8 +1067,8 @@ def execute_google_cinematic_image_sync(
 
     primary_q = search_qs[0] if search_qs else smart_query
     logger.info(
-        f"🖼️ [GoogleImageTool] Scope={effective_scope} | Primary='{primary_q}' | "
-        f"Pool={search_qs[:3]} (raw_scene='{smart_query}')"
+        f"🖼️ [GoogleImageTool] Scene #{scene_id or '?'} | Scope={effective_scope} | Primary='{primary_q}' | "
+        f"TargetImages={target_image_count} | Pool={search_qs[:3]}"
     )
 
     va_photo = {
@@ -1073,8 +1079,6 @@ def execute_google_cinematic_image_sync(
         "is_hook_scene": is_hook_scene,
     }
 
-    # Khi câu nhỏ bị vô nghĩa (`SCRIPT_OVERALL`), truyền ngữ cảnh tổng thể kịch bản cho bộ chấm điểm Vision
-    # để Vision chọn ảnh xoay quanh câu chuyện chính thay vì đòi hỏi chi tiết vụn vặt trong câu dẫn!
     effective_narration = (
         f"Overall story: {overall_script_query or topic} ({subj}). Context: {narration}"
         if effective_scope == "SCRIPT_OVERALL"
@@ -1092,28 +1096,119 @@ def execute_google_cinematic_image_sync(
     if not best_photo or not best_photo.get("url"):
         return None
 
-    img_url = best_photo["url"]
+    all_candidate_urls: List[str] = []
+    for u_cand in [best_photo.get("url"), *(best_photo.get("alternate_urls") or [])]:
+        if u_cand and u_cand not in all_candidate_urls:
+            all_candidate_urls.append(u_cand)
+
+    # Nếu cần >= 2 ảnh mà kho ứng viên ban đầu ít hơn 4 URL, bồi thêm nhanh từ truy vấn góc nhìn phụ thứ 2
+    if len(all_candidate_urls) < max(4, target_image_count + 1) and len(search_qs) > 1:
+        try:
+            extra_photo = media_agent.search_best_photo(
+                query=search_qs[1],
+                used_urls=used,
+                visual_analysis=va_photo,
+                narration=effective_narration,
+                topic=overall_script_query or topic,
+            )
+            if extra_photo:
+                for u_ex in [extra_photo.get("url"), *(extra_photo.get("alternate_urls") or [])]:
+                    if u_ex and u_ex not in all_candidate_urls and not is_media_already_used(u_ex, used):
+                        all_candidate_urls.append(u_ex)
+        except Exception:
+            pass
+
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    media_agent.download_file(img_url, output_path)
-    if Path(output_path).exists() and Path(output_path).stat().st_size > 3000:
-        used.update(extract_media_identity(img_url))
-        record_used_media(
-            url=img_url,
-            query=primary_q,
-            job_id=job_id,
-            source=best_photo.get("source", "google_image"),
-            media_path=output_path,
-        )
-        return {
-            "media_path": output_path,
-            "media_type": "image",
-            "source_url": img_url,
-            "title": best_photo.get("title", ""),
-            "curation_score": best_photo.get("curation_score", 9.0),
-            "alternate_urls": list(best_photo.get("alternate_urls") or []),
-            "search_scope": effective_scope,
-        }
-    return None
+    primary_selected_url = ""
+    remaining_urls: List[str] = []
+
+    for idx_u, cand_u in enumerate(all_candidate_urls):
+        if idx_u > 0 and is_media_already_used(cand_u, used):
+            continue
+        media_agent.download_file(cand_u, output_path)
+        if Path(output_path).exists() and Path(output_path).stat().st_size > 3000:
+            if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=scene_id, image_path=output_path, url=cand_u):
+                primary_selected_url = cand_u
+                remaining_urls = [u for u in all_candidate_urls[idx_u + 1:] if u != cand_u and not is_media_already_used(u, used)]
+                break
+            else:
+                Path(output_path).unlink(missing_ok=True)
+
+    if not primary_selected_url or not Path(output_path).exists():
+        return None
+
+    used.update(extract_media_identity(primary_selected_url))
+    record_used_media(
+        url=primary_selected_url,
+        query=primary_q,
+        job_id=job_id,
+        source=best_photo.get("source", "google_image"),
+        media_path=output_path,
+    )
+
+    pose_images: List[str] = [output_path]
+    desired_extra = max(0, int(target_image_count) - 1)
+
+    if desired_extra > 0 and remaining_urls:
+        out_p = Path(output_path)
+        stem = out_p.stem
+        parent = out_p.parent
+        cand_slice = remaining_urls[: max(desired_extra + 3, 5)]
+
+        def _dl_cand(pair: Tuple[int, str]) -> Optional[Tuple[str, str]]:
+            c_idx, c_url = pair
+            tmp_path = str(parent / f"{stem}_cand{c_idx + 2}.jpg")
+            try:
+                media_agent.download_file(c_url, tmp_path)
+                if Path(tmp_path).exists() and Path(tmp_path).stat().st_size > 3000:
+                    return tmp_path, c_url
+            except Exception:
+                pass
+            Path(tmp_path).unlink(missing_ok=True)
+            return None
+
+        with ThreadPoolExecutor(max_workers=min(4, len(cand_slice))) as pool:
+            dl_results = list(pool.map(_dl_cand, enumerate(cand_slice)))
+
+        unused_after_multi: List[str] = []
+        for res_pair in dl_results:
+            if not res_pair:
+                continue
+            tmp_p, c_url = res_pair
+            if len(pose_images) < target_image_count:
+                if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=scene_id, image_path=tmp_p, url=c_url):
+                    final_cut_p = str(parent / f"{stem}_cut{len(pose_images) + 1}.jpg")
+                    try:
+                        Path(tmp_p).replace(final_cut_p)
+                    except Exception:
+                        final_cut_p = tmp_p
+                    pose_images.append(final_cut_p)
+                    used.update(extract_media_identity(c_url))
+                    record_used_media(
+                        url=c_url,
+                        query=primary_q,
+                        job_id=job_id,
+                        source=best_photo.get("source", "google_image"),
+                        media_path=final_cut_p,
+                    )
+                else:
+                    Path(tmp_p).unlink(missing_ok=True)
+            else:
+                Path(tmp_p).unlink(missing_ok=True)
+                unused_after_multi.append(c_url)
+
+        remaining_urls = unused_after_multi + remaining_urls[len(cand_slice):]
+
+    return {
+        "media_path": output_path,
+        "media_type": "image",
+        "pose_images": pose_images,
+        "source_url": primary_selected_url,
+        "title": best_photo.get("title", ""),
+        "curation_score": best_photo.get("curation_score", 9.0),
+        "alternate_urls": remaining_urls,
+        "search_scope": effective_scope,
+    }
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1129,14 +1224,20 @@ def plan_media_tools_with_llm_sync(
     """
     Sử dụng Gemini gắn `bind_tools([clone_youtube_short_peak_clip, search_google_cinematic_image])`
     để LLM đọc toàn bộ kịch bản và quyết định cho từng phân cảnh:
-    - ƯU TIÊN VIDEO TRƯỚC, ẢNH SAU (Video-First -> Image-Fallback):
-      Ưu tiên dùng `clone_youtube_short_peak_clip` cho Hook và các phân cảnh hành động/cao trào chính
-      (nếu đoạn Peak dài, hệ thống sẽ tự động cho chảy liền mạch qua các phân cảnh kế tiếp),
-      các cảnh còn lại hoặc cảnh mô tả tĩnh dùng `search_google_cinematic_image`.
+    - ƯU TIÊN VIDEO PEAK MỞ ĐẦU (1-2 cảnh) + MẬT ĐỘ CAO 15-17 ẢNH/VIDEO (~40s) Ở CÁC CẢNH THÂN:
+      * Cảnh 1 (Hook) và tối đa 1 cảnh cao trào hành động dùng `clone_youtube_short_peak_clip`
+        (nếu đoạn Peak dài, hệ thống tự động cho chảy liền mạch qua cảnh kế tiếp).
+      * Toàn bộ 6-8 phân cảnh còn lại dùng `search_google_cinematic_image` (mỗi cảnh tự động lấy 2-3 ảnh thật độc lập
+        để tổng số ảnh trên toàn video ~40s luôn đạt 15-17 ảnh sắc nét, đổi khung hình mỗi ~1.8s-2.2s!).
     """
     total_scenes = len(scenes)
     if total_scenes == 0:
         return []
+
+    niche_low = (channel_niche or "").strip().lower()
+    is_psych_or_abstract_niche = any(
+        k in niche_low for k in ("psych", "stoic", "philosoph", "selfhelp", "mind", "tâm lý", "history", "lịch sử")
+    )
 
     full_script_text = " ".join(str(s.get("narration") or "").strip() for s in scenes if s.get("narration"))
     scenes_brief = [
@@ -1177,10 +1278,9 @@ Call EXACTLY ONE tool for EACH scene (from scene_id=1 to scene_id={total_scenes}
        The sentence is a time transition ("For three days nobody knew why it refused to move"), an abstract/scientific explanation ("Canine behaviorists call this maternal imprinting"), an emotional conclusion ("That single moment changed everything"), or focuses on a minor inanimate prop that would return unrelated product ads if searched literally (e.g., "inside an old leather boot" -> would return shoe ads!).
        -> Set `search_scope = "SCRIPT_OVERALL"` and write `youtube_search_query` / `smart_image_query` revolving around the OVERALL SCRIPT STORY (`overall_script_query`) with a natural angle variation (NEVER include distracting props like "boot" or abstract words)!
 
-3. TOOL SELECTION (VIDEO-FIRST PRIORITY -> IMAGE FALLBACK):
-   - Prioritize real action video clips (`clone_youtube_short_peak_clip`) first! Note that if a found Peak clip is long (e.g. 7-14s), the system will automatically let that continuous Peak video span across consecutive scenes before filling remaining scenes with images.
-   - SCENE 1 (THE HOOK): MUST call `clone_youtube_short_peak_clip` with `clip_role="HOOK"`.
-   - BODY SCENES (2 to {total_scenes}): Call `clone_youtube_short_peak_clip` (`clip_role="PEAK"`) for 3 to 5 key action/climax scenes across the story, and call `search_google_cinematic_image` for static close-ups, transitions, or detail scenes.
+3. TOOL SELECTION (OPENING VIDEO PEAK + 15-17 HIGH-DENSITY IMAGES ACROSS THE VIDEO):
+   - SCENE 1 (THE HOOK): Call `clone_youtube_short_peak_clip` with `clip_role="HOOK"` (if a long peak video is found, the system will automatically let it flow continuously into Scene 2).
+   - BODY SCENES (2 to {total_scenes}): To achieve high visual retention (15-17 distinct images per ~40s video, switching every ~2.0s), call `search_google_cinematic_image` for MOST body scenes (at least {max(5, total_scenes - 2)} scenes)! At most 1 body scene may call `clone_youtube_short_peak_clip` (`clip_role="PEAK"`) if it is an extreme physical action climax (and 0 body scenes for psychology/philosophy topics).
    - NEVER use filler words like "4k edit", "cinematic visuals", or "movie scene" in `youtube_search_query`.
 
 IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!"""
@@ -1267,8 +1367,10 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
 
     final_plan: List[Dict[str, Any]] = []
     motion_cycle = ["zoom_in", "pan_right", "zoom_out", "pan_left"]
-    # Ưu tiên Video trước (Cảnh 1, 2, giữa kịch bản, và cao trào 3/4)
-    peak_indices = {1, 2, max(3, total_scenes // 2), max(4, (total_scenes * 3) // 4)}
+    # Giới hạn tối đa 1-2 cảnh Video Peak (Cảnh 1 Hook + tối đa 1 cảnh cao trào) để dành 6-7 phân cảnh cho mật độ 15-17 ảnh/video
+    peak_indices = {1} if is_psych_or_abstract_niche else {1, max(3, total_scenes // 2)}
+    max_video_peak_scenes = 1 if is_psych_or_abstract_niche else 2
+    video_peak_count = 0
     default_subj = _clean_yt_search_phrase(primary_entity or topic, max_words=3, strip_distractor_props=True)
     default_overall_q = _clean_yt_search_phrase(topic, subject_entity=default_subj, max_words=5, strip_distractor_props=True)
 
@@ -1280,6 +1382,21 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 d["overall_script_query"] = default_overall_q
             if not d.get("search_scope"):
                 d["search_scope"] = "SCENE_SPECIFIC"
+            if d.get("tool_name") == "clone_youtube_short_peak_clip":
+                if video_peak_count < max_video_peak_scenes:
+                    video_peak_count += 1
+                else:
+                    # Chuyển các cảnh vượt ngân sách video sang tìm kiếm đa ảnh (2-3 ảnh/cảnh) để đảm bảo đủ 15-17 ảnh/video
+                    q_conv = d.get("youtube_search_query") or d.get("smart_image_query") or s.get("visual_keyword") or default_overall_q
+                    d = {
+                        "tool_name": "search_google_cinematic_image",
+                        "scene_id": sid,
+                        "subject_entity": d.get("subject_entity") or default_subj,
+                        "search_scope": d.get("search_scope") or "SCENE_SPECIFIC",
+                        "smart_image_query": q_conv,
+                        "overall_script_query": d.get("overall_script_query") or default_overall_q,
+                        "camera_motion": d.get("camera_motion") or motion_cycle[idx % len(motion_cycle)],
+                    }
             final_plan.append(d)
             continue
 
@@ -1293,7 +1410,8 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
             else _clean_yt_search_phrase(kw, subject_entity=default_subj, max_words=5)
         )
         dur = float(s.get("estimated_seconds") or 4.5)
-        if sid in peak_indices:
+        if sid in peak_indices and video_peak_count < max_video_peak_scenes:
+            video_peak_count += 1
             final_plan.append({
                 "tool_name": "clone_youtube_short_peak_clip",
                 "scene_id": sid,

@@ -259,6 +259,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         media_path = ""
         media_type = "image"
         vision_curated = False
+        pose_images: List[str] = []
         hook_alternate_urls: List[str] = []
         full_peak_path: Optional[str] = None
         full_peak_duration_sec: float = 0.0
@@ -328,6 +329,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             subj_ent = sc_strat.get("subject_entity") or primary_entity or state.get("topic", "")
             sc_scope = sc_strat.get("search_scope") or "SCENE_SPECIFIC"
             overall_q = sc_strat.get("overall_script_query") or state.get("topic", "")
+            scene_target_imgs = 3 if (scene.scene_id == 1 or dur >= 4.0 or total_scenes <= 7) else 2
             if tool_name == "clone_youtube_short_peak_clip":
                 yt_q = sc_strat.get("youtube_search_query") or kw or state.get("topic", "")
                 fb_q = sc_strat.get("fallback_broad_query") or overall_q or subj_ent
@@ -369,7 +371,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     )
                 else:
                     # Nếu chủ đề khó/không tìm được Shorts -> tự động gọi Tool 2 (search_google_cinematic_image) ngay lập tức!
-                    logger.info(f"Scene {scene.scene_id}: ⚡ YouTube Shorts Peak không có clip phù hợp cho '{yt_q}' -> Chuyển sang tìm ảnh Top Google Images!")
+                    logger.info(f"Scene {scene.scene_id}: ⚡ YouTube Shorts Peak không có clip phù hợp cho '{yt_q}' -> Chuyển sang tìm bộ {scene_target_imgs} ảnh Top Google Images!")
                     out_img = str(media_dir / f"scene_{scene.scene_id:03d}_gsearch.jpg")
                     img_res = await asyncio.to_thread(
                         execute_google_cinematic_image_sync,
@@ -383,11 +385,14 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         search_scope=sc_scope,
                         overall_script_query=overall_q,
                         job_id=job_id,
+                        scene_id=scene.scene_id,
+                        target_image_count=scene_target_imgs,
                     )
                     if img_res and img_res.get("media_path"):
                         media_path = img_res["media_path"]
                         media_type = "image"
                         vision_curated = True
+                        pose_images = list(img_res.get("pose_images") or [media_path])
                         source_url_used = str(img_res.get("source_url") or "")
                         hook_alternate_urls = list(img_res.get("alternate_urls") or [])
                         prod_method = "GOOGLE_TOP_IMAGE_FALLBACK"
@@ -406,14 +411,20 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     search_scope=sc_scope,
                     overall_script_query=overall_q,
                     job_id=job_id,
+                    scene_id=scene.scene_id,
+                    target_image_count=scene_target_imgs,
                 )
                 if img_res and img_res.get("media_path"):
                     media_path = img_res["media_path"]
                     media_type = "image"
                     vision_curated = True
+                    pose_images = list(img_res.get("pose_images") or [media_path])
                     source_url_used = str(img_res.get("source_url") or "")
                     hook_alternate_urls = list(img_res.get("alternate_urls") or [])
-                    rationale = f"Google Top Image [{img_res.get('search_scope', sc_scope)}] ({img_res.get('curation_score')}): {img_res.get('title', '')[:45]}"
+                    rationale = (
+                        f"Google Top Image x{len(pose_images)} [{img_res.get('search_scope', sc_scope)}] "
+                        f"({img_res.get('curation_score')}): {img_res.get('title', '')[:45]}"
+                    )
         else:
             # ── Khởi tạo biến cho cảnh dùng cache hoặc fallback tương thích ngược ──
             surround_text = " ".join([s.narration for s in script.scenes[max(0, idx - 1):min(len(script.scenes), idx + 2)]])
@@ -921,26 +932,50 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # ── HOOK MULTI-CUT (3 LẦN CHUYỂN CẢNH TRONG KHỞI ĐẦU VIDEO - SCENE 1) ──
         # Nếu Scene 1 là ảnh tĩnh, tải SONG SONG tối đa 3 ảnh ứng viên chất lượng cao (alternate_urls)
         # để tạo đủ 4 góc máy / 4 khung hình thật (3 nhát cắt chuyển cảnh dồn dập trong 3–4s đầu).
-        pose_images: List[str] = []
-        if scene.scene_id == 1 and media_path and media_type == "image":
-            pose_images = [media_path]
-            valid_alts = [u for u in hook_alternate_urls if u and u not in used_pool_urls][:3]
+        if media_path and media_type == "image":
+            if not pose_images:
+                pose_images = [media_path]
+            rag.verify_and_commit_in_job_image(
+                job_id=job_id,
+                scene_id=scene.scene_id,
+                image_path=media_path,
+                url=source_url_used or media_path,
+            )
 
-            async def _dl_hook_alt(idx_alt: int, u_alt: str) -> Optional[str]:
-                alt_out = str(media_dir / f"scene_001_hook_cut{idx_alt + 2}.jpg")
+        if scene.scene_id == 1 and media_path and media_type == "image":
+            need_hook_extra = max(0, 3 - len(pose_images))
+            valid_alts = [u for u in hook_alternate_urls if u and u not in used_pool_urls][: max(need_hook_extra + 2, 3)]
+
+            async def _dl_hook_alt(idx_alt: int, u_alt: str) -> Optional[Tuple[str, str]]:
+                alt_out = str(media_dir / f"scene_001_hook_cand{idx_alt + 2}.jpg")
                 try:
                     await asyncio.to_thread(media_agent.download_file, u_alt, alt_out)
                     if Path(alt_out).exists() and Path(alt_out).stat().st_size > 3000:
-                        used_pool_urls.add(u_alt)
-                        return alt_out
+                        return alt_out, u_alt
                     Path(alt_out).unlink(missing_ok=True)
                 except Exception:
                     Path(alt_out).unlink(missing_ok=True)
                 return None
 
-            if valid_alts:
+            if need_hook_extra > 0 and valid_alts:
                 alt_results = await asyncio.gather(*[_dl_hook_alt(i, u) for i, u in enumerate(valid_alts)])
-                pose_images.extend([p for p in alt_results if p])
+                for pair in alt_results:
+                    if not pair:
+                        continue
+                    alt_p, u_alt = pair
+                    if len(pose_images) < 4 and rag.verify_and_commit_in_job_image(
+                        job_id=job_id, scene_id=1, image_path=alt_p, url=u_alt
+                    ):
+                        final_hk_p = str(media_dir / f"scene_001_hook_cut{len(pose_images) + 1}.jpg")
+                        try:
+                            Path(alt_p).replace(final_hk_p)
+                        except Exception:
+                            final_hk_p = alt_p
+                        pose_images.append(final_hk_p)
+                        used_pool_urls.add(u_alt)
+                    else:
+                        Path(alt_p).unlink(missing_ok=True)
+
             if len(pose_images) >= 1:
                 logger.info(
                     f"Scene 1: ⚡ [Hook Multi-Cut Ảnh Truyền Thống] Đã chuẩn bị {len(pose_images)} khung hình thật độc lập "
@@ -961,6 +996,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         min_cuts=3,
                         is_scifi=is_scifi_val,
                         niche=current_niche,
+                        is_hook_scene=True,
                     )
                     if Path(hook_out_p).exists() and Path(hook_out_p).stat().st_size > 10_000:
                         media_path = hook_out_p
@@ -986,6 +1022,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             "media_path": media_path,
             "media_type": media_type,
             "pose_images": pose_images if pose_images else None,
+            "alternate_urls": hook_alternate_urls,
             "vision_curated": vision_curated,
             "visual_keyword": scene.visual_keyword,
             "visual_prompt": getattr(scene, 'visual_prompt', None),
@@ -1015,6 +1052,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     "scene_id": scene.scene_id,
                     "media_path": out_g,
                     "media_type": "image",
+                    "pose_images": [out_g],
                     "visual_keyword": scene.visual_keyword,
                     "visual_prompt": getattr(scene, 'visual_prompt', None),
                     "narration": scene.narration,
@@ -1127,6 +1165,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     next_item["media_path"] = cont_out
                     next_item["media_type"] = "hook_ready_video"
                     next_item["pose_images"] = None
+                    next_item["alternate_urls"] = []
                     next_item["full_peak_path"] = None
                     next_item["full_peak_duration_sec"] = 0.0
                     next_item["visual_strategy"] = "YOUTUBE_PEAK_SHORT"
@@ -1151,7 +1190,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         video_first_enabled = os.getenv("VIDEO_FIRST_TIMELINE_PRIORITY", "true").strip().lower() not in ("0", "false", "no", "off")
         if video_first_enabled and len(scenes_media) > 2:
             visual_keys = (
-                "media_path", "media_type", "pose_images", "vision_curated",
+                "media_path", "media_type", "pose_images", "alternate_urls", "vision_curated",
                 "visual_strategy", "production_method", "tool", "strategy_rationale",
                 "source_url", "full_peak_path", "full_peak_duration_sec",
             )
@@ -1218,6 +1257,155 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     except Exception as e_asm:
         logger.debug(f"[MediaNodes] Video-First Timeline Assembler skip: {e_asm}")
 
+    # ══════════════════════════════════════════════════════════════════════════
+    # Bước C: BỘ ĐIỀU PHỐI MẬT ĐỘ THỊ GIÁC 15-17 ẢNH / VIDEO (~40s)
+    # - Đảm bảo mỗi video ~35s-45s (đặc biệt kênh Tâm lý, Động vật, Bí ẩn, Lịch sử) luôn hiển thị
+    #   15 đến 17 bức ảnh độc lập (đổi khung hình mỗi ~1.8s-2.2s) mà vẫn giữ nguyên câu thoại TTS mượt mà.
+    # - Sử dụng Mini-RAG (`verify_and_commit_in_job_image` 64-bit dHash) để đảm bảo toàn bộ 15-17 bức ảnh
+    #   trong cùng 1 video hoàn toàn khác biệt, không lặp lại bất kỳ ảnh nào.
+    # ══════════════════════════════════════════════════════════════════════════
+    try:
+        target_total_images = int(os.getenv("TARGET_IMAGES_PER_VIDEO", "16"))
+        target_total_images = max(15, min(17, target_total_images))
+
+        hook_img_count = 0
+        if scenes_media and isinstance(scenes_media[0], dict):
+            sc0 = scenes_media[0]
+            if str(sc0.get("production_method") or "").startswith("CLIMAX_IMAGES_LIVE_FX_"):
+                hook_img_count = len([p for p in (sc0.get("pose_images") or []) if p and Path(p).exists()])
+
+        body_img_indices = [
+            idx_b for idx_b, m_b in enumerate(scenes_media)
+            if isinstance(m_b, dict) and str(m_b.get("media_type") or "image").lower() == "image"
+        ]
+
+        if body_img_indices:
+            n_img_scenes = len(body_img_indices)
+            rem_budget = max(n_img_scenes, target_total_images - hook_img_count)
+            # Giới hạn tối đa 4 ảnh/cảnh và tối thiểu 1-2 ảnh/cảnh để nhịp chuyển ảnh tự nhiên (~1.6s-2.3s/ảnh)
+            rem_budget = min(rem_budget, n_img_scenes * 4)
+            base_q = max(1, rem_budget // n_img_scenes)
+            extra_q = max(0, rem_budget - (base_q * n_img_scenes))
+
+            # Ưu tiên phân bổ thêm ảnh (3 ảnh/cảnh thay vì 2 ảnh/cảnh) cho các phân cảnh có thời lượng câu đọc dài hơn
+            sorted_by_dur = sorted(body_img_indices, key=lambda i_slot: _get_slot_dur(i_slot), reverse=True)
+            scene_quotas: Dict[int, int] = {i_slot: base_q for i_slot in body_img_indices}
+            for i_slot in sorted_by_dur[:extra_q]:
+                scene_quotas[i_slot] += 1
+
+            angle_facets = [
+                "dramatic close up portrait",
+                "intense action moment",
+                "cinematic wide angle",
+                "emotional eye contact",
+                "dark atmospheric detail",
+                "natural habitat behavior",
+                "turning point scene",
+                "vivid high contrast shot",
+            ]
+
+            async def _fill_scene_image_quota(slot_idx: int) -> None:
+                sc_item = scenes_media[slot_idx]
+                sid = int(sc_item.get("scene_id") or (slot_idx + 1))
+                quota = scene_quotas.get(slot_idx, 2)
+                primary_p = sc_item.get("media_path")
+                existing_poses = [
+                    p for p in (sc_item.get("pose_images") or ([primary_p] if primary_p else []))
+                    if p and Path(p).exists() and Path(p).stat().st_size > 2500
+                ]
+                if not existing_poses and primary_p and Path(primary_p).exists():
+                    existing_poses = [primary_p]
+
+                verified_poses: List[str] = []
+                for ep in existing_poses:
+                    if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=sid, image_path=ep, url=ep):
+                        verified_poses.append(ep)
+                if not verified_poses and existing_poses:
+                    verified_poses = [existing_poses[0]]
+
+                if len(verified_poses) >= quota:
+                    sc_item["pose_images"] = verified_poses[:quota]
+                    return
+
+                alt_pool = [
+                    u for u in (sc_item.get("alternate_urls") or [])
+                    if u and not is_media_already_used(u, used_pool_urls)
+                ]
+
+                # Nếu kho alternate_urls của cảnh chưa đủ lấp đầy quota, tìm bổ sung bằng truy vấn góc máy mới
+                if len(verified_poses) + len(alt_pool) < quota + 1:
+                    subj_anchor = primary_entity or state.get("topic", "")
+                    sc_kw = sc_item.get("visual_keyword") or subj_anchor
+                    facet = angle_facets[slot_idx % len(angle_facets)]
+                    supp_q = clean_scene_search_query(f"{subj_anchor} {sc_kw} {facet}", max_words=6) or sc_kw
+                    try:
+                        extra_best = await asyncio.to_thread(
+                            media_agent.search_best_photo,
+                            supp_q,
+                            used_pool_urls,
+                            {"subject": subj_anchor, "search_queries": [supp_q]},
+                            sc_item.get("narration") or "",
+                            state.get("topic", ""),
+                        )
+                        if extra_best:
+                            for u_supp in [extra_best.get("url"), *(extra_best.get("alternate_urls") or [])]:
+                                if u_supp and u_supp not in alt_pool and not is_media_already_used(u_supp, used_pool_urls):
+                                    alt_pool.append(u_supp)
+                    except Exception:
+                        pass
+
+                for idx_c, cand_u in enumerate(alt_pool):
+                    if len(verified_poses) >= quota:
+                        break
+                    if is_media_already_used(cand_u, used_pool_urls):
+                        continue
+                    tmp_cut = str(media_dir / f"scene_{sid:03d}_density_cand{idx_c + 2}.jpg")
+                    try:
+                        await asyncio.to_thread(media_agent.download_file, cand_u, tmp_cut)
+                        if Path(tmp_cut).exists() and Path(tmp_cut).stat().st_size > 3000:
+                            if rag.verify_and_commit_in_job_image(
+                                job_id=job_id, scene_id=sid, image_path=tmp_cut, url=cand_u
+                            ):
+                                final_cut = str(media_dir / f"scene_{sid:03d}_cut{len(verified_poses) + 1}.jpg")
+                                try:
+                                    Path(tmp_cut).replace(final_cut)
+                                except Exception:
+                                    final_cut = tmp_cut
+                                verified_poses.append(final_cut)
+                                used_pool_urls.add(cand_u)
+                                record_used_media(
+                                    url=cand_u,
+                                    query=sc_item.get("visual_keyword") or state.get("topic", ""),
+                                    job_id=job_id,
+                                    source="density_multi_image",
+                                    media_path=final_cut,
+                                )
+                            else:
+                                Path(tmp_cut).unlink(missing_ok=True)
+                        else:
+                            Path(tmp_cut).unlink(missing_ok=True)
+                    except Exception:
+                        Path(tmp_cut).unlink(missing_ok=True)
+
+                sc_item["pose_images"] = verified_poses[:quota]
+
+            await asyncio.gather(*[_fill_scene_image_quota(i_slot) for i_slot in body_img_indices])
+
+            total_video_images = hook_img_count + sum(
+                len(scenes_media[i_s].get("pose_images") or [scenes_media[i_s].get("media_path")])
+                for i_s in body_img_indices
+            )
+            per_scene_log = ", ".join(
+                f"S{scenes_media[i_s].get('scene_id')}:{len(scenes_media[i_s].get('pose_images') or [])}img"
+                for i_s in body_img_indices
+            )
+            logger.info(
+                f"🖼️ [Visual Density Engine] Đã chuẩn bị tổng cộng {total_video_images} ảnh thật độc lập cho video "
+                f"(Mục tiêu: 15-17 ảnh/video ~40s | Hook={hook_img_count}img | Body: {per_scene_log})"
+            )
+    except Exception as e_dens:
+        logger.debug(f"[MediaNodes] Visual Density Engine skip: {e_dens}")
+
     # Đa dạng hóa chuyển động máy quay (Camera Motion Alternation) giữa các phân cảnh liền kề
     _motion_pool = ["zoom_in", "pan_right", "zoom_out", "pan_left", "pan_up", "pan_down"]
     prev_motion = None
@@ -1239,6 +1427,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 "scene_id": m.get("scene_id") if isinstance(m, dict) else None,
                 "file": Path(m.get("media_path") or "").name if isinstance(m, dict) else "",
                 "media_type": m.get("media_type") if isinstance(m, dict) else "image",
+                "image_count": len(m.get("pose_images") or ([m.get("media_path")] if m.get("media_type") == "image" else [])) if isinstance(m, dict) else 0,
+                "pose_files": [Path(p).name for p in (m.get("pose_images") or [])] if isinstance(m, dict) else [],
                 "production_method": m.get("production_method") if isinstance(m, dict) else "unknown",
                 "narration": (m.get("narration") or "")[:120] if isinstance(m, dict) else "",
             }
@@ -1375,9 +1565,11 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 )
             )
             if res_img and Path(res_img).exists() and Path(res_img).stat().st_size > 2000:
+                old_poses = [p for p in (item.get("pose_images") or [])[1:] if p and Path(p).exists()]
                 item["media_path"] = res_img
                 item["media_type"] = "image"
-                logger.info(f"Scene {scene_id}: ✅ Đã thay thế bằng ảnh sắc nét mới")
+                item["pose_images"] = [res_img, *old_poses]
+                logger.info(f"Scene {scene_id}: ✅ Đã thay thế bằng ảnh sắc nét mới (giữ {len(item['pose_images'])} ảnh/cảnh)")
 
     await asyncio.gather(*[_refine_single_item(item) for item in scenes_media if isinstance(item, dict)])
 

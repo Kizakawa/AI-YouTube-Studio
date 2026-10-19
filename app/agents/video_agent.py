@@ -295,10 +295,12 @@ class VideoAgent:
                     fair_use_transform=(not is_already_rendered),
                     preserve_continuous_flow=True,
                 )
-            elif is_hook or raw_type in ("comic_anim", "multi_pose", "2d_loop") or getattr(scene, "pose_images", None):
+            elif is_hook or raw_type in ("comic_anim", "multi_pose", "2d_loop") or (getattr(scene, "pose_images", None) and len(getattr(scene, "pose_images", [])) >= 2):
                 pose_list = getattr(scene, "pose_images", None) or [scene.media_path]
+                target_cuts = 3 if is_hook else max(1, len(pose_list) - 1)
                 logger.info(
-                    f"  Scene {scene.scene_id}: ⚡ HOOK MULTI-CUT ({len(pose_list)} ảnh gốc → 4 shots / 3 nhát cắt chuyển cảnh) "
+                    f"  Scene {scene.scene_id}: ⚡ {'HOOK' if is_hook else 'BODY'} MULTI-IMAGE CUT "
+                    f"({len(pose_list)} ảnh độc lập → {target_cuts + 1} shots / {target_cuts} nhát cắt chuyển ảnh) "
                     f"{duration:.1f}s{f' [{clip_niche} Grading]' if clip_niche else ''}"
                 )
                 render_opening_hook_multi_cut(
@@ -308,9 +310,10 @@ class VideoAgent:
                     width=job.resolution_w,
                     height=job.resolution_h,
                     fps=job.fps,
-                    min_cuts=3,
+                    min_cuts=target_cuts,
                     is_scifi=is_scifi_clip,
                     niche=clip_niche,
+                    is_hook_scene=is_hook,
                 )
             elif raw_type in ("image", "ai_image", "photo", "documentary", "auto"):
                 logger.info(

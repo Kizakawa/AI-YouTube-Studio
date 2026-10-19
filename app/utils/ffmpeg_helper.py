@@ -679,14 +679,14 @@ def render_opening_hook_multi_cut(
     min_cuts: int = 3,
     is_scifi: bool = False,
     niche: Optional[str] = None,
+    is_hook_scene: bool = True,
 ) -> str:
     """
-    Render cảnh mở đầu (Scene 1 Hook) với ÍT NHẤT 3 LẦN CHUYỂN CẢNH (4 shots độc lập, ~0.85s–1.1s/shot)
-    mà KHÔNG cần cắt vụn câu thoại TTS.
-    - Nếu có 2–4 ảnh thật khác nhau (từ alternate_urls / pose_images): chuyển cảnh dồn dập qua từng ảnh thật.
-    - Nếu thiếu đủ 4 ảnh (chỉ có 1–3 ảnh): tự động điền các slot còn thiếu bằng các góc cắt Saliency/Camera
-      độc lập (Wide 1.0x -> Upper-Third Eye Close-Up 1.28x -> Action Counter-Angle 1.38x -> Extreme Focal Punch-In 1.52x)
-      để đảm bảo 100% khởi đầu video luôn có ít nhất 3 nhát cắt chuyển cảnh thị giác rõ nét.
+    Render phân cảnh đa khung hình (Multi-Image Cut) cho cả Cảnh 1 (Hook) lẫn các Cảnh thân (Body Scenes 2..N)
+    để đạt mật độ 15–17 ảnh độc lập / video ~40s mà KHÔNG cần cắt vụn câu thoại TTS:
+    - Với Cảnh 1 (`is_hook_scene=True`): Render tối thiểu 4 shots (3 nhát cắt chuyển cảnh dồn dập ~0.85s–1.1s/shot) + Live FX.
+    - Với Cảnh thân (`is_hook_scene=False`): Render chính xác số lượng ảnh thật độc lập trong `image_paths` (2–3 ảnh/cảnh,
+      đổi khung hình mỗi ~1.8s–2.2s) kèm chuyển động máy quay 3D mượt mà trên từng ảnh + Niche Color Grading.
     """
     import re as _re
     import uuid as _uuid
@@ -698,11 +698,10 @@ def render_opening_hook_multi_cut(
         if p and Path(p).exists() and Path(p).stat().st_size > 1000
     ]
     if not valid_paths:
-        raise ValueError("render_opening_hook_multi_cut: Không có file ảnh hợp lệ cho Scene 1 Hook")
+        raise ValueError("render_opening_hook_multi_cut: Không có file ảnh hợp lệ")
 
-    # Nếu cảnh quá ngắn (< 1.4s), fallback về image_to_video tiêu chuẩn
-    n_shots = max(min_cuts + 1, 4)
-    if duration_seconds < 1.4:
+    n_shots = max(min_cuts + 1, 4) if is_hook_scene else max(len(valid_paths), min_cuts + 1, 2)
+    if duration_seconds < 1.4 or (not is_hook_scene and len(valid_paths) <= 1 and min_cuts < 1):
         return image_to_video(
             image_path=valid_paths[0],
             duration_seconds=duration_seconds,
@@ -710,8 +709,8 @@ def render_opening_hook_multi_cut(
             width=width,
             height=height,
             fps=fps,
-            zoom_effect=False,
-            is_hook_scene=True,
+            zoom_effect=not is_hook_scene,
+            is_hook_scene=is_hook_scene,
             is_scifi=is_scifi,
             niche=niche,
         )
@@ -751,7 +750,7 @@ def render_opening_hook_multi_cut(
                 with Image.open(p) as im:
                     if im.mode != "RGB":
                         im = im.convert("RGB")
-                    norm_im = prepare_vertical(im, width, height, max_upscale=3.8, is_hook_scene=True)
+                    norm_im = prepare_vertical(im, width, height, max_upscale=3.8, is_hook_scene=is_hook_scene)
                     base_images.append(norm_im)
             except Exception as ex_im:
                 logger.debug(f"[render_opening_hook_multi_cut] Lỗi đọc ảnh '{p}': {ex_im}")
@@ -759,32 +758,36 @@ def render_opening_hook_multi_cut(
         if not base_images:
             raise ValueError(f"Không thể chuẩn hóa bất kỳ ảnh nào từ {valid_paths}")
 
-        # Bước 2: Tạo đủ 4 khung hình độc lập (3 nhát cắt chuyển cảnh trong Scene 1)
+        # Bước 2: Tạo đủ n_shots khung hình độc lập
         shot_paths: List[str] = []
         for idx in range(n_shots):
             angle = CAMERA_ANGLES[idx % len(CAMERA_ANGLES)]
             if idx < len(base_images):
-                # Đây là ảnh thật mới hoàn toàn -> giữ nguyên khung 9:16 hoặc nhích nhẹ tiêu cự nếu có đủ 4 ảnh
                 src_im = base_images[idx]
-                if len(base_images) >= n_shots and idx > 0:
+                if is_hook_scene and len(base_images) >= n_shots and idx > 0:
                     subtle_zoom = 1.0 + (idx * 0.03)
                     shot_im = _crop_camera_angle(src_im, subtle_zoom, angle[1], angle[2], 1.02)
                 else:
                     shot_im = src_im
             else:
-                # Nếu thiếu ảnh thật thứ idx+1 -> cắt góc máy cận cảnh/trung cảnh kịch tính từ ảnh gốc
                 src_im = base_images[idx % len(base_images)]
                 shot_im = _crop_camera_angle(src_im, angle[0], angle[1], angle[2], angle[3])
 
-            shot_file = str(parent_dir / f"_hook_shot_{uid}_{idx}.jpg")
+            shot_file = str(parent_dir / f"_mc_shot_{uid}_{idx}.jpg")
             shot_im.save(shot_file, "JPEG", quality=94)
             temp_files.append(shot_file)
             shot_paths.append(shot_file)
 
-        # Bước 3: Phân bổ thời lượng 4 shots theo nhịp tăng tốc giữ chân người xem (24% - 24% - 25% - 27%)
-        weights = [0.24, 0.24, 0.25, 0.27]
-        if n_shots != 4:
+        # Bước 3: Phân bổ thời lượng từng shot mượt mà
+        if is_hook_scene and n_shots == 4:
+            weights = [0.24, 0.24, 0.25, 0.27]
+        elif n_shots == 2:
+            weights = [0.49, 0.51]
+        elif n_shots == 3:
+            weights = [0.33, 0.33, 0.34]
+        else:
             weights = [1.0 / n_shots] * n_shots
+
         shot_durs: List[float] = []
         elapsed = 0.0
         for i in range(n_shots):
@@ -795,10 +798,10 @@ def render_opening_hook_multi_cut(
             else:
                 shot_durs.append(round(max(0.35, duration_seconds - elapsed), 3))
 
-        # Bước 4: Ghép 4 shots bằng 1 lệnh FFmpeg filter_complex duy nhất + Niche Color Grading + Live Motion FX (Đề xuất 2)
+        # Bước 4: Ghép n_shots bằng 1 lệnh FFmpeg filter_complex duy nhất + Niche Color Grading
         grading = get_niche_color_grading(niche=niche, is_scifi=is_scifi)
         clean_vf_filter = _re.sub(r",?unsharp=[^,]+", "", grading["vf_filter"]).strip(",")
-        live_fx = get_hook_live_fx_filter(niche=niche, is_scifi=is_scifi, width=width, height=height)
+        live_fx = get_hook_live_fx_filter(niche=niche, is_scifi=is_scifi, width=width, height=height) if is_hook_scene else ""
         post_filters = [f"scale={width}:{height}", "setsar=1", f"fps={fps}"]
         if clean_vf_filter:
             post_filters.append(clean_vf_filter)
@@ -810,11 +813,32 @@ def render_opening_hook_multi_cut(
 
         input_args: List[str] = []
         concat_inputs: List[str] = []
+        per_shot_chains: List[str] = []
+        pad_w = width + 28
+        pad_h = height + 28
+        drift_exprs = [
+            ("14+10*sin(1.8*t)", "14-10*cos(1.5*t)"),
+            ("14-10*cos(1.9*t)", "14+10*sin(1.6*t)"),
+            ("14+10*cos(2.0*t)", "14+10*sin(1.7*t)"),
+            ("14-10*sin(1.8*t)", "14-10*cos(1.6*t)"),
+        ]
+
         for i, (sp, sd) in enumerate(zip(shot_paths, shot_durs)):
             input_args.extend(["-loop", "1", "-t", f"{sd:.3f}", "-i", sp])
-            concat_inputs.append(f"[{i}:v]")
+            if is_hook_scene:
+                concat_inputs.append(f"[{i}:v]")
+            else:
+                dx, dy = drift_exprs[i % len(drift_exprs)]
+                per_shot_chains.append(
+                    f"[{i}:v]scale={pad_w}:{pad_h},crop={width}:{height}:'{dx}':'{dy}',setsar=1,fps={fps}[v{i}]"
+                )
+                concat_inputs.append(f"[v{i}]")
 
-        filter_complex = f"{''.join(concat_inputs)}concat=n={n_shots}:v=1:a=0,{post_chain}[vout]"
+        if per_shot_chains:
+            filter_complex = f"{';'.join(per_shot_chains)};{''.join(concat_inputs)}concat=n={n_shots}:v=1:a=0,{post_chain}[vout]"
+        else:
+            filter_complex = f"{''.join(concat_inputs)}concat=n={n_shots}:v=1:a=0,{post_chain}[vout]"
+
         enc_args = get_video_encoder_args(quality="intermediate")
         args = [
             *input_args,
@@ -826,9 +850,10 @@ def render_opening_hook_multi_cut(
             "-an",
             output_path,
         ]
+        role_tag = "Hook Multi-Cut + Live FX" if is_hook_scene else "Body Multi-Image 3D Drift"
         logger.info(
-            f"  ⚡ [Hook Multi-Cut + Live FX Render] {n_shots} shots ({n_shots - 1} nhát cắt: "
-            f"{'s -> '.join(f'{d:.2f}' for d in shot_durs)}s | Niche FX: {niche or 'default'}) từ {len(base_images)} ảnh gốc"
+            f"  ⚡ [{role_tag}] {n_shots} shots ({n_shots - 1} nhát cắt: "
+            f"{'s -> '.join(f'{d:.2f}' for d in shot_durs)}s | Niche: {niche or 'default'}) từ {len(base_images)} ảnh gốc"
         )
         run_ffmpeg_with_gpu_fallback(args)
         return output_path
