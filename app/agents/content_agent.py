@@ -1156,8 +1156,8 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
         else:
             target_lang_display = "ENGLISH"
 
-        duration_spec = "26 ĐẾN 32 GIÂY ĐỘ DÀI VÀNG — NÉN MẬT ĐỘ THÔNG TIN CAO (7 ĐẾN 8 PHÂN CẢNH TRỌN CÂU, 3.2-4.0s/CẢNH, STRICTLY 76 ĐẾN 96 TỪ — BẮT BUỘC GIỮ NGUYÊN 100% 5 HỒI: HOOK + VÍ DỤ THẬT + CƠ CHẾ NGẦM + ĐÒN HÓA GIẢI + VÒNG LẶP VÔ TẬN, CẮT BỎ 100% TỪ ĐỆM RƯỜM RÀ)"
-        word_range_en = "76 to 96 words (26-32s Golden Retention 5-Act Arc, 7-8 complete-sentence scenes of 9-12 high-density words each)"
+        duration_spec = "30 ĐẾN 40 GIÂY MẠCH TRUYỆN ĐẦY ĐẶN, MƯỢT MÀ (7 ĐẾN 9 PHÂN CẢNH TRỌN VẸN, 85 ĐẾN 120 TỪ — DẪN DẮT TỰ NHIÊN CÓ ĐẦU CÓ ĐUÔI, TUYỆT ĐỐI KHÔNG VIẾT CỤT LỦN HAY NHẢY CÓC)"
+        word_range_en = "85 to 120 words (30-40s Smooth & Complete 5-Act Narrative Arc across 7-9 natural scenes)"
 
         prompt = f"""You are an elite YouTube Shorts Master Showrunner, Behavioral Storyteller, and Viral Retention Architect for the channel '{niche_profile.get('name')}' (niche: '{channel_niche}').
 Topic: '{topic}'
@@ -1167,42 +1167,40 @@ Target Language: {language} ({target_lang_display})
 {channel_memory_block}
 {niche_instructions}
 ═══════════════════════════════════════════════════════════
-MASTER-CLASS YOUTUBE SHORTS ARCHITECTURE (26–32 SECONDS GOLDEN DURATION | 76–96 WORDS | 7–8 COMPLETE SCENES)
+MASTER-CLASS YOUTUBE SHORTS ARCHITECTURE (30–40 SECONDS | 85–120 WORDS | SMOOTH & COMPLETE STORYTELLING)
 YouTube Shorts rewards TWO metrics simultaneously:
-1. Viewed vs. Swiped-Away > 75%: Achieved by a razor-sharp Scene 1 Hook (5–8 words, ~2.0s) + a jaw-dropping Frame-0 visual.
-2. High Average Percentage Viewed (APV > 90%–120%) + High Save/Share Rate (26–32s Golden Duration, 76–96 words):
-   - PRESERVE 100% OF THE 5-ACT DEPTH: Never cut any of the 5 narrative acts! Instead, achieve the 26–32s Golden Duration through HIGH-DENSITY ZERO-FILLER WRITING (every word carries weight; zero throat-clearing or redundant clauses).
-   - Every scene MUST be a 100% grammatically complete sentence (9–12 punchy words for body scenes, 5–8 words for Scene 1 Hook). NEVER chop one sentence across two scenes!
+1. Viewed vs. Swiped-Away > 75%: Achieved by a sharp Scene 1 Hook (5–9 words) + an engaging opening visual.
+2. Smooth, Coherent, Full-Bodied Narrative (85–120 words, 30–40s):
+   - NEVER write an abrupt, choppy, or truncated script ("cụt lủn")! Let the sentences flow naturally into one another with smooth transitions, clear context, and complete explanations so the viewer feels deeply satisfied.
+   - Flexible sentence length per scene (8 to 16 words per body scene) — prioritize natural storytelling rhythm and emotional flow over rigid word counting!
+   - Every scene MUST be a 100% grammatically complete sentence. NEVER chop one sentence across two scenes!
 ═══════════════════════════════════════════════════════════
 1. THE MANDATORY 5-ACT DEEP STORYTELLING BLUEPRINT (target: {word_range_en}):
    - DURATION & SCENE COUNT: {duration_spec}.
-   - YOU MUST EXECUTE ALL 5 ACTS IN ORDER across 7 to 8 scenes (100% depth preserved, zero fluff):
+   - YOU MUST EXECUTE ALL 5 ACTS SMOOTHLY IN ORDER across 7 to 9 scenes:
 
-     * ACT 1 — THE VISCERAL HOOK (Scene 1 | 0.0 – 2.2s | 5 to 8 words):
-       - Deliver an immediate, personal, high-stakes truth, 1v1 apex duel, covert manipulation quote, or staccato sensory cue ("That sweet compliment is a loaded weapon.", "Six lions backed down from one badger.", "Never ignore this four-second silence in conversation.").
+     * ACT 1 — THE VISCERAL HOOK (Scene 1 | 5 to 9 words):
+       - Deliver an immediate, personal, high-stakes truth, 1v1 apex duel, covert manipulation quote, or intriguing paradox ("That sweet compliment is a loaded weapon.", "Six lions backed down from one honey badger.", "Never ignore this four-second silence in conversation.").
        - No greetings, no textbook definitions, no passive "Did you know?" questions.
 
-     * ACT 2 — 3-STEP COVERT ESCALATION OR HISTORICAL/PHYSICAL PROOF (Scenes 2 – 3 | 2.2 – 9.5s | 9 to 12 words per scene):
-       - [CRITICAL DEPTH RULE — SHOW, DON'T GENERALIZE]:
-         * For Psychology / Manipulation / Relationships / Stoicism (@MasteringMindControl Formula): Show the covert escalation ("First, they subtly criticize your closest friends to isolate you.") OR include an EXACT real-life spoken quote viewers immediately recognize ('They whisper, "You are too sensitive," to make you doubt reality.').
-         * For Mysteries / Deep Sea / History: Cite the exact year, depth in meters, location, or physical anomaly recorded by researchers.
-         * For Wildlife / Animal Rescue: Depict the exact physical strike, bite force (PSI), or the trembling moment of first human touch.
+     * ACT 2 — NATURAL CONTEXT & CONCRETE REAL-LIFE PROOF (Scenes 2 – 3):
+       - Smoothly build the context and show a concrete real-life example so the story never feels rushed or abrupt:
+         * For Psychology / Manipulation / Relationships / Stoicism: Describe the real-life situation naturally and include a recognizable spoken quote ('They casually say, "You are just too sensitive," right after crossing your boundaries.').
+         * For Mysteries / Deep Sea / History: Set the historical/scientific scene with the exact year, location, depth, or documented event.
+         * For Wildlife / Animal Rescue: Build the tension of the encounter, exact physical traits, bite force (PSI), or the emotional turning point.
 
-     * ACT 3 — NAMED PSYCHOLOGICAL GAMBIT / BRAIN MECHANISM & MID-VIDEO TWIST (Scenes 4 – 5 | 9.5 – 17.5s | 9 to 12 words per scene):
-       - Name the exact psychological or physical principle (*The Isolation Gambit*, *The Ben Franklin Effect*, *Pavlovian Conditioning*, *Cavitation Shockwave*, *Intermittent Reinforcement*) and explain *WHY* it works (dopamine/cortisol loop, cognitive dissonance, biomechanical leverage).
-       - Drop a razor-sharp aphoristic contrast ("Love expands your world—control shrinks it.", "Calm breaks control; silence exposes intent.") and set `overlay_badge` to a short uppercase tag like `"[ // THE ISOLATION GAMBIT // ]"` or `"[ // THE REAL TRAP // ]"`.
+     * ACT 3 — DEEP MECHANISM EXPLANATION & MID-VIDEO TWIST (Scenes 4 – 5):
+       - Explain *WHY* and *HOW* this happens thoroughly and clearly so the viewer truly understands the underlying mechanism (*The Isolation Gambit*, *Cognitive Dissonance*, *Cavitation Shockwave*, *Cortisol Loop*, or historical chain reaction).
+       - Connect sentences smoothly with natural cause-and-effect transitions. Optionally set `overlay_badge` to a short uppercase tag like `"[ // THE REAL TRAP // ]"`.
 
-     * ACT 4 — THE SURGICAL COUNTER-MOVE / SAVE-WORTHY PAYOFF (Scenes 6 – 7 | 17.5 – 26.5s | 9 to 12 words per scene):
-       - [THE #1 REASON VIEWERS SAVE & SHARE YOUR VIDEO]:
-         * Give the viewer a concrete, practical, word-for-word Counter-Move or behavioral defense they can use today!
-         * Example for Psychology: 'Hold four seconds of silent eye contact and ask: "What did you mean?"'
-         * Explain why the counter-move works: 'Dead silence forces them to hear their own manipulation collapse.'
-         * For Wildlife / Rescue / Mysteries: Deliver the decisive biomechanical climax, the full joyful transformation, or the scientific revelation that resolves Scene 1's mystery.
+     * ACT 4 — THE SURGICAL COUNTER-MOVE / CLIMAX PAYOFF (Scenes 6 – 7):
+       - Deliver the full climax, resolution, or practical word-for-word Counter-Move that makes the video worth saving and sharing:
+         * For Psychology: Give the exact calm response phrase and explain why it disarms the manipulator.
+         * For Wildlife / Rescue / Mysteries: Deliver the complete biomechanical outcome, joyful transformation, or scientific answer that fully resolves the story.
 
-     * ACT 5 — CLIMAX REVELATION & SEAMLESS INFINITE LOOP BRIDGE (Scene 7 or 8 | 26.5 – 31.0s | 8 to 12 words):
+     * ACT 5 — SATISFYING CONCLUSION & SEAMLESS INFINITE LOOP BRIDGE (Scene 8 or 9):
        - ZERO SPOKEN OUTRO CTA: NEVER say "Subscribe", "Follow", "Leave a comment", "Inscreva-se", or "Đăng ký kênh" in the narration!
-       - End with a powerful final insight that bridges seamlessly back into Scene 1's opening hook so viewers rewatch from the start.
-
+       - Conclude the story with a complete, resonant final thought that bridges naturally back into Scene 1's opening hook.
 
 2. 1.8-SECOND SHOCK ANGLE HOOK (SCENE 1) & HIGH-CTR TITLE RULES:
    - The first 1.5 - 2.5 seconds determines 100% of Shorts performance (Viewed vs Swiped away).
@@ -1222,92 +1220,35 @@ YouTube Shorts rewards TWO metrics simultaneously:
      * Formula 3 (Pattern Interrupt / Elite Authority Secret): "This FBI trick exposes liars in seconds." / "The dark rule 99% learn too late."
      * Formula 4 (Dark Paradox / Counterfactual Twist): "What if Rome never fell, and ruled today?"
    - NEVER start with textbook definitions, greetings, or passive rhetorical questions ("Did you know...", "Welcome to...").
-   - Scene 1 spoken text MUST be 5 to 8 words (1.8s - 2.5s), delivered with high stakes, sharp rhythm, and immediate urgency.
-   - Scene 1 visual_keyword & visual_prompt MUST be visually arresting, shocking, and intense.
-   - thumbnail_text MUST be strictly 3 to 5 words in ALL CAPS with 1 high-contrast emoji (e.g. "THEY'RE USING YOU 🚩", "ANACONDA VS CAIMAN 🐍", "HE REFUSED TO LET GO 🥺", "ROME NEVER FELL? 🏛️"). This text is rendered directly on Frame 0.0s as the massive Hook Headline Banner to stop the viewer's thumb from swiping away!
+   - thumbnail_text MUST be 2 to 5 words in ALL CAPS with 1 high-contrast emoji (e.g. "THEY'RE USING YOU 🚩", "ANACONDA VS CAIMAN 🐍", "HE REFUSED TO LET GO 🥺", "ROME NEVER FELL? 🏛️").
 
-3. SEAMLESS INFINITE LOOP ENDING (FINAL SCENE 3.5-4.5s — NO SPOKEN OUTRO CTA):
-   - ZERO SPOKEN OUTRO CTA RULE (CRITICAL FOR >100% APV):
-     * NEVER include "Subscribe", "Like", "Follow", "Leave a comment", "Leave your theory in the comments", "Inscreva-se", "Deixe nos comentários", or "Đăng ký kênh" in ANY scene's spoken narration!
-     * Engagement bait belongs ONLY in the `pinned_comment` JSON field, NEVER in the voiceover narration.
-   - SEAMLESS CONCEPTUAL CONTINUITY (THE INFINITE LOOP BRIDGE):
-     * The final scene (9-13 words) MUST deliver the final high-impact payoff/revelation and bridge seamlessly back into Scene 1's opening hook so viewers rewatch before realizing the video looped!
-   - HARD GRAMMAR & COMPLETENESS RULE:
-     * Every single scene's spoken narration MUST be a 100% grammatically complete sentence with proper closing punctuation (period, exclamation, or question mark).
-     * NEVER split a single sentence across two consecutive scenes, and NEVER end any scene with dangling prepositions or conjunctions ('because', 'which', 'and', 'so', 'that', 'but', 'with').
+3. SEAMLESS INFINITE LOOP ENDING (NO SPOKEN OUTRO CTA):
+   - NEVER include "Subscribe", "Like", "Follow", "Leave a comment", "Inscreva-se", or "Đăng ký kênh" in ANY scene's spoken narration!
+   - Every single scene's spoken narration MUST be a 100% grammatically complete sentence with proper closing punctuation. NEVER end any scene with dangling prepositions or conjunctions ('because', 'which', 'and', 'so', 'that', 'but', 'with').
 
-4. TOP SEARCH GOOGLE IMAGES QUERY ENGINEERING (`visual_keyword` & `stock_query` — NO LITERAL PROP METAPHORS!):
-   - `visual_keyword` (strictly **2 to 5 punchy English words**) is fed directly into **Top Search Google Images** (`tbm=isch&tbs=isz:l`) to pull the #1 most iconic, jaw-dropping 4K/HD image for each scene!
-   - FORMULA FOR `visual_keyword` (2–5 English words): `[Specific Entity / Human Subject] + [Distinct Action / Scale / Mood of THAT exact scene]`:
-     * Deep Sea / Monsters / Mythology: Scene 1 `"giant kraken glowing eyes"`, Scene 2 `"kraken tentacles attacking ship"`, Scene 3 `"mariana trench submarine spotlight"`, Scene 4 `"colossal squid underwater battle"`.
-     * Wildlife / Nature: Scene 1 `"harpy eagle talons close up"`, Scene 2 `"harpy eagle flying rainforest"`, Scene 3 `"harpy eagle hunting monkey"`.
-     * History / Mystery: Scene 1 `"julius caesar marble bust"`, Scene 2 `"roman senate assassination painting"`.
-   - CRITICAL ANTI-METAPHOR & DARK PSYCHOLOGICAL NOIR RULE FOR PSYCHOLOGY TOPICS (@MasteringMindControl Aesthetic):
-     * When the narration uses a figure of speech ("velvet praise", "hidden barb", "loaded weapon", "invisible cage", "pulling strings", "waiting for the blade to drop"), NEVER put literal objects (`knife`, `blade`, `dagger`, `needles`, `velvet glove`, `puppet strings`, `cage`, `mask`, `shield`) in `visual_keyword`, `stock_query`, or `visual_prompt`!
-     * NEVER use cheesy corporate stock photo queries (`"happy office workers"`, `"business handshake"`, `"smiling colleagues"`).
-     * ALWAYS translate psychological dynamics into HIGH-CONTRAST DARK NOIR / CHIAROSCURO HUMAN EXPRESSIONS OR SEINEN PSYCHOLOGICAL THRILLER IMAGERY (2–5 words):
-       - "loaded compliment / covert manipulation" -> `visual_keyword`: `"man cold calculating smirk noir"`, `stock_query`: `"man serious gaze dark"`
-       - "gaslighting / self-doubt" -> `visual_keyword`: `"woman anxious dark room shadow"`, `stock_query`: `"woman stressed dark room"`
-       - "isolation gambit / silent control" -> `visual_keyword`: `"two people silent tension noir"`, `stock_query`: `"couple silent tension"`
-       - "4-second silence counter-move" -> `visual_keyword`: `"calm man intense stare noir"`, `stock_query`: `"intense eye contact portrait"`
-   - NEVER stuff camera/technical jargon (`"8k"`, `"9:16"`, `"macro shot"`, `"wide angle"`, `"photorealistic"`) into `visual_keyword` or `stock_query`!
-   - STRICTLY FORBIDDEN abstract words: "psychology", "minimalism", "authority", "power", "wealth", "mindset", "discipline", "history", "secret", "truth".
+4. SIMPLE, NATURAL VISUAL KEYWORDS (`visual_keyword` & `stock_query` — RELATIVE MATCH IS FINE):
+   - Do NOT overcomplicate per-scene keywords! Viewers care about a captivating, well-told story; visuals only need to fit the general theme, subject, or mood of the video.
+   - Keep `visual_keyword` (2–5 English words) and `stock_query` (2–4 English words) focused on the main subject/entity and general atmosphere of the topic (e.g. `"honey badger fighting lion"`, `"man serious gaze dark noir"`, `"roman empire senate painting"`).
+   - For psychology topics, use moody human expressions (`"man cold smirk dark room"`, `"woman thoughtful shadow noir"`) rather than literal props (`knife`, `cage`).
 
-5. MASTER VISUAL DIRECTOR & CINEMATIC PROMPT (FOR AI IMAGERY & ARTWORK):
-   - As the Master Director of Photography, NEVER create flat, monotonous, or muddy dark images!
-   - Paint with light, rich color palettes, and cinematic depth appropriate to the topic's spirit:
-     * Dark Psychological Noir & Chiaroscuro Silver-Black (@MasteringMindControl Style): For psychology, manipulation, dark human behavior, stoicism — razor-sharp monochrome/desaturated silver-noir contrast, venetian blind shadow lines, dramatic rim light on eyes, floating film dust particles.
-     * Golden Hour & Warm Sunlight: For breakthroughs, hope, ancient history, majestic landscapes, victory, morning routines.
-     * Rich Cyberpunk / Vivid Neon: For cutting-edge AI, future tech, quantum computing, digital mindscapes.
-     * Cinematic Twilight / Deep Sapphire: For profound contemplation, cosmic wonders, serene ocean vistas.
-     * Bioluminescent Glow & Prismatic Caustics: For deep sea exploration, neuro-synapses firing, alien biology.
-   - Format: Put the MAIN SUBJECT & ACTION FIRST:
-     "[Focal Subject + Specific Micro-Action], [Environment & Setting], [Camera Angle: macro close-up / low-angle dolly / wide establishing shot], [Lighting & Color Grading: chiaroscuro silver-noir / warm golden sunbeams / vivid neon / crystalline water caustics]"
-   - Every scene must be visually unique (no repeating subjects or camera angles).
+5. CINEMATIC ATMOSPHERE & LIGHTING:
+   - Choose a cohesive visual mood for `visual_prompt` (e.g. Dark Psychological Noir for psychology, Warm Golden Hour or Documentary Realism for history/wildlife, Deep Bioluminescent Blue for ocean mysteries).
 
 6. TITLE & LANGUAGE INTEGRITY (100% STRICT ENFORCEMENT):
    - The entire video script (spoken narration in all scenes, hook, full_narration, title) MUST be 100% in {target_lang_display}.
-   - Title MUST be in {target_lang_display} and strictly focused on click-through rate (CTR > 10%).
    - Clean, punchy title under 60 characters with emojis.
-   - DO NOT include channel tags, country names, or suffixes like "- VN", "- VI", "(Vietnam)", "- EN".
 
-7. DYNAMIC PRIMAL VISUAL HOOK ENGINE (SCENE 1 ONLY — HIGHEST CTR IMPACT):
-   Scene 1 visual is the SINGLE MOST IMPORTANT factor preventing swipe-away (>75% viewed).
-   DO NOT depict the topic passively (FORBIDDEN: person sitting casually at desk, generic empty office, landscape without focal point).
-   Instead, deduce the most potent visual hook for '{topic}' showing an intense human micro-expression, dramatic confrontation, historical figure portrait, or apex wildlife action with razor-sharp focus and high-contrast rim lighting.
+7. NATURAL MEDIA SELECTION (`media_type` PER SCENE):
+   - Choose `'video'`, `'photo'`, `'documentary'`, or `'ai_image'` naturally based on the topic.
 
-8. PHYSICAL ACTION & SENSORY MAPPING (ALL SCENES MUST HAVE TANGIBLE SIGHTS):
-   - CRITICAL FIDELITY FOR ANIMALS & NATURE (STRICT RULE):
-     If the topic or command mentions animals, birds, wildlife, pets, or nature:
-     * 100% of scenes MUST directly show the REAL LIVING ANIMAL, its chicks/cubs, hunting, feeding, nesting, and wild habitat!
-     * NEVER hallucinate human equipment (cameras, film rolls, darkrooms), cameramen, or human organs when the topic is about animals!
-   - In EVERY scene, translate abstract thoughts or emotions into OBSERVABLE HUMAN OR PHYSICAL BEHAVIORS.
+8. COHERENT, FULL-BODIED STORYTELLING (NEVER ABRUPT OR TRUNCATED):
+   - Make sure every idea is fully developed and explained before moving to the next point.
+   - Connect scenes with smooth narrative flow so the entire 85–120 word script reads like a seamless, gripping mini-documentary from start to finish.
 
-9. DYNAMIC AUTONOMOUS MEDIA SELECTION (`media_type` PER SCENE):
-   For EACH scene, choose the best visual medium:
-   - 'ai_image': Expressive psychological micro-expressions, historical portraits, dramatic confrontations, or mind-palace visual concepts.
-   - 'video': Real-world human interactions, conversations, office/cafe scenes, footsteps, chess moves, nature, or wildlife (searches Pexels 9:16 Video B-Roll).
-   - 'photo': Authentic high-resolution real-world photography.
-   - 'documentary': Authentic historical figures, real artifacts, or historical events (searches Wikimedia / historical archive).
-
-10. FACT-DENSE STORYTELLING & ANTI-FLUFF (ZERO EMPTY FILLER):
-   - Every body sentence (9-12 high-density words) MUST advance the 5-Act arc with a concrete real-life verbal quote, a specific psychological/biological mechanism, a historical case, or a word-for-word actionable counter-move.
-   - NEVER write filler sentences like "You will be shocked by what comes next" or "Most people never realize this secret".
-
-11. THE 50% FRONTLOAD RULE & THUMBNAIL HOOK TEXT:
-   - Scenes 1 to 3 must immediately hook the viewer with the core conflict and a recognizable real-life example.
-   - "thumbnail_text" MUST be 2-4 ALL-CAPS words with high contrast (e.g. "TOXIC PRAISE TRAP ⚠️", "4-SECOND SILENCE 🧠").
-
-12. TOP SEARCH GOOGLE IMAGES & STOCK QUERY DIVERSITY (`visual_keyword` & `stock_query`):
-   - `visual_keyword` (**2-5 English words**) and `stock_query` (**3-4 English words**) MUST name the concrete subject + distinct visual action/setting of that specific scene.
-   - **ZERO REPETITION ACROSS SCENES**: Every single scene from Scene 1 to Scene 8 MUST have a 100% UNIQUE `visual_keyword` showing a different angle, action, scale, or moment of the story so the video never shows repetitive imagery!
-
-13. HOOK VISUAL MODE DECISION (`hook_visual_mode`: `"video"` VS `"scene"`, `is_abstract_keyword`, & `climax_scene_id`):
-   - Directly decide whether this Hook should be produced as a real cut Short video (`"video"`) or generated/searched as a visual scene (`"scene"`):
-     * Set `"hook_visual_mode": "video"` and `"is_abstract_keyword": false` when the hook/climax involves CONCRETE, REAL-WORLD PHYSICAL FOOTAGE available on YouTube Shorts (e.g. wildlife predator battles, animal rescues, deep-sea exploration footage, natural phenomena).
-     * Set `"hook_visual_mode": "scene"` and `"is_abstract_keyword": true` when the hook/keyword is ABSTRACT, PSYCHOLOGICAL, HYPOTHETICAL, or CONCEPTUAL (e.g. dark psychology, manipulation, gaslighting, alternate history "What If", mindsets) where searching YouTube Shorts would return talking heads/podcasts instead of cinematic scenes.
-   - Set `"climax_scene_id"` (integer between 2 and 6) to the body scene where the most intense visual climax happens (used to splice the Peak clip into the body of the video when `"hook_visual_mode" == "video"`).
-   - Provide `"hook_search_queries"`: 2 short English search queries (3–5 words each) for finding the exact YouTube Short peak clip when `"hook_visual_mode" == "video"`.
+9. HOOK VISUAL MODE DECISION (`hook_visual_mode`: `"video"` VS `"scene"`, `is_abstract_keyword`, & `climax_scene_id`):
+   - Set `"hook_visual_mode": "video"` and `"is_abstract_keyword": false` when the topic involves concrete real-world footage (wildlife, animal rescues, natural phenomena).
+   - Set `"hook_visual_mode": "scene"` and `"is_abstract_keyword": true` when the topic is psychological, abstract, or counterfactual ("What If").
+   - Set `"climax_scene_id"` (integer between 2 and 7) and provide 2 simple English `"hook_search_queries"` (3–5 words each) related to the overall topic.
 
 ═══════════════════════════════════════════════════════════
 OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
@@ -1320,38 +1261,38 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
     "Alternative Extreme Contrast / Counter-Move Title with Emoji (28-55 chars, NO 'Variant' prefix)"
   ],
   "primary_entity": "Full official name of main historical person/species or null (null for general psychology topics)",
-  "hook": "The opening 2.0-second declarative hook sentence (5-8 words, NO passive questions)",
+  "hook": "The opening declarative hook sentence (5-9 words, NO passive questions)",
   "hook_variants": [
-    "Declarative personal warning or pain-point hook sentence (5-8 words)",
-    "Counter-intuitive psychological or physical paradox hook sentence (5-8 words)",
-    "Immediate behavioral test or high-stakes action hook sentence (5-8 words)"
+    "Declarative personal warning or pain-point hook sentence (5-9 words)",
+    "Counter-intuitive psychological or physical paradox hook sentence (5-9 words)",
+    "Immediate behavioral test or high-stakes action hook sentence (5-9 words)"
   ],
   "hook_visual_mode": "video | scene",
   "is_abstract_keyword": false,
   "climax_scene_id": 3,
   "hook_search_queries": ["concrete short search query 1", "concrete short search query 2"],
-  "full_narration": "Complete spoken text without stage directions (strictly 76-96 words, 26-32s Golden Duration 5-Act Arc with Real-Life Example, Named Mechanism, Actionable Counter-Move, and zero spoken Subscribe CTA)",
+  "full_narration": "Complete, smooth, well-developed spoken story without stage directions (85-120 words, 30-40s full 5-Act story with Real-Life Example, Mechanism, Counter-Move/Climax, and zero spoken Subscribe CTA)",
   "thumbnail_text": "2-4 TỪ IN HOA CỰC TO GỢI TÒ MÒ CHO ẢNH BÌA",
   "scenes": [
     {{
       "scene_id": 1,
-      "visual_reasoning": "Tư duy đạo diễn: Giải thích cách chuyển hóa câu thoại thành hình ảnh/biểu cảm/hành động cụ thể cực kỳ ấn tượng cho cảnh này",
-      "narration": "Complete spoken sentence for this scene (Scene 1: 5-8 words; Scenes 2-8: 9-12 high-density words each, 7 to 8 complete scenes total)",
-      "visual_keyword": "iconic Top Search Google Images query: concrete subject + distinct scene action/mood (2-5 English words, NO camera jargon)",
-      "visual_prompt": "Cinematic visual description: concrete human/entity subject + expression/action + camera angle + lighting + setting",
-      "stock_query": "concrete physical human/entity nouns + action for 9:16 stock video (3-4 English words)",
+      "visual_reasoning": "Ý đồ dẫn dắt mạch truyện của cảnh này",
+      "narration": "Complete, natural spoken sentence for this scene (Scene 1: 5-9 words; Body scenes: 8-16 words flowing naturally, 7 to 9 scenes total)",
+      "visual_keyword": "simple relevant search query for the subject/theme (2-5 English words)",
+      "visual_prompt": "Cinematic visual description fitting the overall story mood",
+      "stock_query": "simple subject/mood query for stock video (2-4 English words)",
       "media_type": "video | ai_image | photo | documentary",
       "camera_motion": "zoom_in_fast | ken_burns_zoom_out | pan_right | ken_burns_zoom_in | pan_left",
       "sfx_cue": "impact_boom | whoosh_heavy | riser_tension | heartbeat_thump | glitch | reveal",
       "highlight_words": ["WORD1", "WORD2"],
       "overlay_badge": "[ // THE REAL TRAP // ] or null",
-      "estimated_seconds": 3.5
+      "estimated_seconds": 4.0
     }}
   ],
   "tags": ["shorts", "viral"],
   "description": "Engaging description with hashtags",
   "pinned_comment": "Irresistible open-ended bait question in {target_lang_display} posted by channel owner to pin at top of comments",
-  "viral_formula": "5-Act Golden Retention | Real-Life Example | Surgical Counter-Move | Seamless Loop"
+  "viral_formula": "5-Act Full Storytelling | Smooth Transitions | Surgical Counter-Move | Seamless Loop"
 }}
 """
         from app.services.content_linter import ScriptValidationLinter
@@ -1442,45 +1383,42 @@ SURGICALLY REFINE the script strictly addressing the feedback above while preser
 Target Language: {language} ({target_lang_display})
 {lang_instruction}
 
-HARD RETENTION & 5-ACT DEPTH RULES:
-1. SCENE 1 PATTERN INTERRUPT & PRIMAL VISUAL HOOK (CRITICAL TO PREVENT SWIPING):
-   - Scene 1 spoken text must use an urgent warning, 1v1 apex duel, elite interrogation tactic, dark law, or counter-intuitive shock (5-8 words, ~2.0s).
-   - Scene 1 visual_prompt MUST depict a concrete, high-impact human expression, confrontation, historical portrait, monster/creature scale, or wildlife action.
-   - Scene 1 visual_keyword & stock_query MUST be concrete physical nouns + action/mood (2-5 English words).
-2. 26-32s Golden Retention 5-Act Arc (76-96 words total across 7-8 complete-sentence scenes, 9-12 high-density words per body scene — 100% 5-Act depth preserved, zero filler):
-   - Act 1 (Scene 1): Hook (5-8 words).
-   - Act 2 (Scenes 2-3): Concrete real-life verbal quote/example or specific historical/scientific proof.
-   - Act 3 (Scenes 4-5): Hidden neurological/psychological/biomechanical mechanism + Mid-Video Twist.
-   - Act 4 (Scenes 6-7): Concrete word-for-word Counter-Move / decisive climax that viewers will Save & Share.
-   - Act 5 (Scene 7-8): Final revelation + Seamless Infinite Loop Bridge back to Scene 1 (ZERO spoken Subscribe CTA).
-3. TOP SEARCH GOOGLE IMAGES `visual_keyword` (2-5 WORDS, DISTINCT PER SCENE, NO LITERAL PROP METAPHORS):
-   - `visual_keyword` (2-5 English words) is queried directly on Top Search Google Images. Every scene MUST have a unique `visual_keyword` matching its specific narration action/moment without repeating across scenes or using camera jargon (`8k`, `9:16`, `macro shot`).
-   - Never use "psychology", "authority", "power", and never translate verbal metaphors into literal props (`knife`, `dagger`, `blade`, `needles`, `puppet strings`, `cage`). Always depict real human interactions, facial expressions, creatures, and environments.
+HARD RETENTION & FULL-BODIED 5-ACT STORYTELLING RULES:
+1. SCENE 1 PATTERN INTERRUPT HOOK (CRITICAL TO PREVENT SWIPING):
+   - Scene 1 spoken text must use an urgent warning, 1v1 apex duel, elite interrogation tactic, dark law, or counter-intuitive shock (5-9 words).
+2. SMOOTH, COMPLETE 5-ACT NARRATIVE (85-120 words total across 7-9 scenes, flexible 8-16 words per body scene — NEVER write choppy or truncated sentences!):
+   - Act 1 (Scene 1): Hook (5-9 words).
+   - Act 2 (Scenes 2-3): Smooth context + concrete real-life verbal quote/example or specific historical/scientific proof.
+   - Act 3 (Scenes 4-5): Thorough explanation of the hidden neurological/psychological/biomechanical mechanism + Mid-Video Twist.
+   - Act 4 (Scenes 6-7): Complete climax or concrete word-for-word Counter-Move that viewers will Save & Share.
+   - Act 5 (Scene 8-9): Satisfying conclusion + Seamless Infinite Loop Bridge back to Scene 1 (ZERO spoken Subscribe CTA).
+3. SIMPLE, NATURAL `visual_keyword` & `stock_query` (RELATIVE MATCH IS FINE):
+   - Keep `visual_keyword` (2-5 English words) and `stock_query` (2-4 English words) simple and relevant to the general subject/mood of the story.
 4. Return ONLY valid JSON:
 {{
   "title": "Viral YouTube Shorts Title with Emojis",
   "primary_entity": "Full official name of main person/figure or null",
-  "hook": "The opening 2.0-second hook sentence (5-8 words)",
+  "hook": "The opening hook sentence (5-9 words)",
   "hook_visual_mode": "video | scene",
   "is_abstract_keyword": false,
   "climax_scene_id": 3,
   "hook_search_queries": ["concrete short search query 1", "concrete short search query 2"],
-  "full_narration": "The full spoken text without any stage directions (strictly 76-96 words for 26-32s Golden Duration 5-Act Arc with Real-Life Example, Mechanism, Counter-Move, and zero spoken Subscribe CTA)",
+  "full_narration": "The full, smooth, well-developed spoken story without stage directions (85-120 words, 30-40s full 5-Act story with Real-Life Example, Mechanism, Counter-Move, and zero spoken Subscribe CTA)",
   "thumbnail_text": "2-4 TỪ IN HOA CỰC TO GỢI TÒ MÒ CHO ẢNH BÌA",
   "scenes": [
     {{
       "scene_id": 1,
-      "visual_reasoning": "Tư duy logic đạo diễn cho cảnh này",
-      "narration": "Complete sentence spoken in this scene (Scene 1: 5-8 words; Scenes 2-8: 9-12 high-density words each, 7-8 scenes total)",
-      "visual_keyword": "iconic Top Search Google Images query: concrete subject + distinct scene action/mood (2-5 English words)",
-      "visual_prompt": "Detailed cinematic scene: concrete human/entity subject + camera angle + lighting + environment",
-      "stock_query": "concrete physical human/entity nouns (3-4 English words)",
+      "visual_reasoning": "Ý đồ dẫn dắt mạch truyện của cảnh này",
+      "narration": "Complete, natural sentence spoken in this scene (Scene 1: 5-9 words; Body scenes: 8-16 words flowing naturally, 7-9 scenes total)",
+      "visual_keyword": "simple relevant search query for the subject/theme (2-5 English words)",
+      "visual_prompt": "Cinematic visual description fitting the overall story mood",
+      "stock_query": "simple subject/mood query for stock video (2-4 English words)",
       "media_type": "video | ai_image | photo | documentary",
       "camera_motion": "zoom_in_fast | ken_burns_zoom_out | pan_right | ken_burns_zoom_in | pan_left",
       "sfx_cue": "impact_boom | whoosh_heavy | riser_tension | heartbeat_thump | glitch | reveal",
       "highlight_words": ["WORD1", "WORD2"],
       "overlay_badge": "[ // THE REAL TRAP // ] or null",
-      "estimated_seconds": 3.5
+      "estimated_seconds": 4.0
     }}
   ],
   "tags": ["tag1", "tag2", "shorts"],

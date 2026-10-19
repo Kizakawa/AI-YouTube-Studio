@@ -232,33 +232,28 @@ Tỷ lệ vuốt bỏ trung bình hiện tại của kênh (Real Swipe-Away Rate
 --- NỘI DUNG KỊCH BẢN ---
 {scenes_formatted}
 
---- BỘ QUY CHUẨN ĐÁNH GIÁ THUẬT TOÁN SHORTS 5 HỒI CHIỀU SÂU — ĐỘ DÀI VÀNG 26-32s (Thang điểm 1 - 10) ---
+--- BỘ QUY CHUẨN ĐÁNH GIÁ KỊCH BẢN SHORTS 5 HỒI ĐẦY ĐẶN, MƯỢT MÀ (Thang điểm 1 - 10) ---
 1. hook_strength (Ngưỡng chặn cứng >= {min_hook_req}/10 — Mục tiêu: Viewed > 75%, Swipe-Away < 25%):
-   - Cảnh 1 (5-8 từ, ~2.0s) BẮT BUỘC mở đầu bằng công thức chiến thắng của pt-BR & Wild Odyssey: Thế đối đầu trực diện ("A vs B") HOẶC câu khẳng định gây sốc kèm thông số vật lý/sinh tồn cụ thể.
-   - Bị đánh trượt ngay lập tức (< 6.0): Mở đầu bằng câu hỏi Yes/No ("Did you know...", "Have you ever..."), định nghĩa sách giáo khoa, hoặc lặp lại cấu trúc của 3 video thua cuộc (Losers).
-2. story_pacing (Mục tiêu: Chuẩn Chiều Sâu 5 Hồi Nén Mật Độ Cao 26 - 32s, 76 - 96 từ, 7 - 8 phân cảnh trọn câu ~ 9 - 12 từ đắt giá/cảnh):
-   - BẮT BUỘC GIỮ NGUYÊN 100% 5 HỒI CHIỀU SÂU (cắt 100% từ đệm rườm rà, KHÔNG ĐƯỢC CẮT BỚT HỒI NÀO):
-     * Hồi 1 (Cảnh 1): Hook trực diện (5-8 từ).
-     * Hồi 2 (Cảnh 2-3): Ví dụ câu nói đời thực cụ thể HOẶC dẫn chứng lịch sử/khoa học xác thực.
-     * Hồi 3 (Cảnh 4-5): Giải phẫu cơ chế thần kinh/tâm lý/vật lý ngầm + Mid-Video Twist.
-     * Hồi 4 (Cảnh 6-7): Đòn phản công nguyên văn / Cao trào sinh tồn thực chiến.
-     * Hồi 5 (Cảnh 7-8): Cú chốt & Cầu nối Vòng lặp Vô tận.
-3. entity_coherence: Kịch bản và hình ảnh có bám chặt vào nhân vật/bối cảnh thực tế không?
-4. visual_direction: Khả năng chỉ đạo hình ảnh & Chống ẩn dụ đạo cụ nghĩa đen (Anti-Literal-Metaphor):
-   - Đạt điểm cao (>= 8.5): `visual_keyword` & `stock_query` mô tả con người thật, biểu cảm thật, động vật/tư liệu thật.
-5. viral_loop (Mục tiêu: Seamless Infinite Loop đạt APV > 90-120% — CẤM câu kêu gọi Subscribe đọc thành tiếng ở cuối video):
-   - Cảnh cuối (8-12 từ) BẮT BUỘC khép lại bằng cú chốt ấn tượng và nối mượt ý niệm quay trở lại câu Hook ở Cảnh 1.
+   - Cảnh 1 (5-9 từ) BẮT BUỘC mở đầu bằng thế đối đầu trực diện ("A vs B") HOẶC câu khẳng định/cảnh báo sắc bén.
+   - Bị đánh trượt (< 6.0): Mở đầu bằng câu hỏi Yes/No ("Did you know...", "Have you ever..."), định nghĩa sách giáo khoa, hoặc lặp lại cấu trúc của 3 video thua cuộc (Losers).
+2. story_pacing (Mục tiêu: Mạch truyện đầy đặn, mượt mà, có đầu có đuôi 30 - 40s, 85 - 120 từ, 7 - 9 phân cảnh — TUYỆT ĐỐI KHÔNG CỤT LỦN):
+   - Đánh giá cao (>= 8.5) kịch bản dẫn dắt tự nhiên, có câu chuyển ý mượt mà, giải thích thấu đáo đủ 5 Hồi (Hook -> Bối cảnh/Ví dụ thật -> Giải thích cơ chế -> Cao trào/Đòn hóa giải -> Kết luận trọn vẹn).
+   - Trừ điểm nếu kịch bản bị viết cụt lủn, nhảy cóc ý, hoặc cắt câu máy móc.
+3. entity_coherence: Nội dung kịch bản bám sát chủ đề và nhân vật/vấn đề chính một cách tự nhiên.
+4. visual_direction: Chỉ cần từ khóa hình ảnh (`visual_keyword` & `stock_query`) phù hợp tương đối với chủ đề chung của kịch bản là đạt điểm cao (>= 8.5) — KHÔNG đòi hỏi khóa cứng từ khóa theo từng câu thoại nhỏ.
+5. viral_loop (CẤM câu kêu gọi Subscribe đọc thành tiếng ở cuối video):
+   - Cảnh cuối khép lại câu chuyện một cách trọn vẹn, có chiều sâu và nối tự nhiên về ý mở đầu ở Cảnh 1.
 
 --- YÊU CẦU TRẢ VỀ ---
 Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với schema sau:
 {{
-  "hook_strength": {{"score": 8.5, "feedback": "Nhận xét chi tiết về Hook Cảnh 1 (5-8 từ)..."}},
-  "story_pacing": {{"score": 8.5, "feedback": "Nhận xét chi tiết về độ dày 5 hồi nén mật độ cao (76-96 từ, 7-8 cảnh trọn câu, 26-32s)..."}},
+  "hook_strength": {{"score": 8.5, "feedback": "Nhận xét chi tiết về Hook Cảnh 1..."}},
+  "story_pacing": {{"score": 8.8, "feedback": "Nhận xét về độ mượt mà, đầy đặn có đầu có đuôi của mạch truyện 5 hồi (85-120 từ)..."}},
   "entity_coherence": {{"score": 9.0, "feedback": "Nhận xét chi tiết..."}},
-  "visual_direction": {{"score": 8.5, "feedback": "Nhận xét chi tiết về từ khóa hình ảnh cụ thể..."}},
-  "viral_loop": {{"score": 8.5, "feedback": "Nhận xét chi tiết về cầu nối Seamless Infinite Loop..."}},
+  "visual_direction": {{"score": 8.8, "feedback": "Nhận xét tương đối về bối cảnh hình ảnh chung..."}},
+  "viral_loop": {{"score": 8.8, "feedback": "Nhận xét chi tiết về câu kết trọn vẹn & cầu nối Loop..."}},
   "actionable_critiques": [
-    "Nêu rõ cách sửa Cảnh 1 theo công thức 'A vs B' hoặc câu khẳng định số liệu gây sốc nếu chưa đạt..."
+    "Nêu rõ cách cải thiện nếu Hook Cảnh 1 yếu hoặc nếu kịch bản bị cụt lủn..."
   ]
 }}"""
 
@@ -384,16 +379,16 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
             channel_style=channel_style,
         )
 
-        # Kiểm tra nhịp điệu & chiều sâu nén mật độ cao (68 - 105 từ cho 7-9 cảnh trọn câu, thời lượng vàng 26-32s)
-        pace_score = 8.8 if 68 <= total_words <= 105 and 7 <= scene_count <= 9 else 6.5
+        # Kiểm tra nhịp điệu & độ đầy đặn của mạch truyện (75 - 135 từ cho 6-11 cảnh trọn câu, chống kịch bản cụt lủn)
+        pace_score = 8.8 if 75 <= total_words <= 135 and 6 <= scene_count <= 11 else 6.5
 
-        # Kiểm tra thực thể
-        ent_score = 8.5
+        # Kiểm tra thực thể tương đối trên tổng thể kịch bản (không khóa cứng theo visual_keyword từng cảnh)
+        ent_score = 8.8
         if primary_entity:
-            ent_present = sum(1 for s in scenes if primary_entity.lower() in s.get("visual_keyword", "").lower())
-            ent_score = 9.0 if ent_present >= 2 else 7.5
+            full_narr_lower = " ".join(s.get("narration", "") for s in scenes).lower()
+            ent_score = 9.0 if primary_entity.lower() in full_narr_lower else 8.5
 
-        vis_score = 8.5
+        vis_score = 8.8
 
         # Kiểm tra vòng lặp vô tận (Seamless Loop) & KHÔNG dính câu xin Subscribe ở cảnh cuối
         last_scene = scenes[-1] if scenes else {}

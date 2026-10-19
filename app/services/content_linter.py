@@ -151,42 +151,40 @@ class ScriptValidationLinter:
         niche_id: str = ""
     ) -> Tuple[List[str], int]:
         """
-        Kiểm tra số từ và tính toán nhịp đọc (Chuẩn Độ Dài Vàng 26 - 32s — Giữ Nguyên 100% 5 Hồi Chiều Sâu):
-        - Chuẩn vàng YouTube Shorts (26 - 32s tại ~170 WPM nhịp sắc nét +5%) là 76 đến 96 từ (7 - 8 cảnh trọn câu, 3.2 - 4.0s/cảnh, 9 - 12 từ đắt giá/cảnh).
-        - Cho phép biên độ linh hoạt từ 68 đến 105 từ để LLM triển khai đủ 100% 5 hồi (Hook -> Ví dụ đời thực -> Cơ chế ngầm -> Đòn hóa giải -> Loop) mà không bị cắt giảm nội dung.
+        Kiểm tra số từ và tính toán nhịp đọc (Ưu tiên mạch truyện đầy đặn, mượt mà, có đầu có đuôi — chống kịch bản cụt lủn):
+        - Cho phép biên độ thoải mái từ 75 đến 135 từ (mục tiêu 85 - 120 từ, 6 - 11 cảnh) để LLM dẫn dắt câu chuyện tự nhiên, giải thích thấu đáo, không bị cắt cụt ý.
         """
         issues = []
         all_narrations = " ".join(s.narration for s in script.scenes if s.narration)
         words = re.findall(r'\b\w+\b', all_narrations)
         total_words = len(words)
 
-        min_words = 68
-        max_words = 105
-        target_range_str = "76 to 96 words (26-32s High-Density 5-Act Arc across 7-8 complete-sentence scenes of 9-12 words each)"
+        min_words = 75
+        max_words = 135
+        target_range_str = "85 to 120 words (30-40s smooth, complete 5-Act story across 7-9 natural scenes)"
 
         if total_words > max_words:
             est_seconds = (total_words / max(target_wpm, 165)) * 60
             issues.append(
-                f"Script is too long ({total_words} words, ~{est_seconds:.1f}s). "
-                f"Tighten via zero-filler compression to strictly {target_range_str} while keeping all 5 Acts."
+                f"Script is overly long ({total_words} words, ~{est_seconds:.1f}s). "
+                f"Keep around {target_range_str}."
             )
         elif total_words < min_words:
             est_seconds = (total_words / max(target_wpm, 165)) * 60
             issues.append(
-                f"Script is too thin and superficial ({total_words} words, ~{est_seconds:.1f}s) — lacks concrete real-life example and actionable counter-move! "
-                f"Expand to at least {min_words} words (target {target_range_str})."
+                f"Script is too short and abrupt ({total_words} words, ~{est_seconds:.1f}s) — feels truncated and lacks smooth context/explanation! "
+                f"Expand to at least {min_words} words (target {target_range_str}) so the story flows naturally from start to finish."
             )
 
-        # Số lượng scene: 7 đến 9 scene trọn câu là nhịp tối ưu cho Shorts 26-32s (3.2 - 4.0s/scene)
         scene_count = len(script.scenes)
-        min_scenes = 7
+        min_scenes = 6
         if scene_count < min_scenes:
             issues.append(
-                f"Too few scenes ({scene_count}). Need 7 to 8 complete-sentence scenes (minimum {min_scenes}) to cover Hook, Real-Life Example, Mechanism, Counter-Move, and Loop."
+                f"Too few scenes ({scene_count}). Need 7 to 9 scenes (minimum {min_scenes}) to tell a complete, well-paced story."
             )
-        elif scene_count > 9:
+        elif scene_count > 11:
             issues.append(
-                f"Too many scenes ({scene_count}). Keep between 7 and 8 complete-sentence scenes (9-12 words each) so the 5-Act arc finishes in the 26-32s Golden Duration."
+                f"Too many scenes ({scene_count}). Keep between 7 and 10 complete-sentence scenes so the narrative flows smoothly."
             )
 
         return issues, total_words
@@ -198,12 +196,10 @@ class ScriptValidationLinter:
         niche_profile: Dict[str, Any]
     ) -> List[str]:
         """
-        Kiểm tra chất lượng Kịch Bản Chuẩn 5-Act 32–42s (88–118 từ, 8–9 cảnh trọn câu):
-        1. Cảnh 1 (Hook 0–2.5s): 100% mở đầu bằng câu khẳng định/cảnh báo sắc bén (5–8 từ, tối đa 10 từ),
-           TUYỆT ĐỐI KHÔNG dùng câu hỏi Yes/No yếu ('Did you know...?', 'Have you ever...?', 'Do you...?', dấu '?').
-        2. Phải có dấu hiệu Ví dụ / Câu nói đời thực hoặc số liệu/cơ chế cụ thể (tránh lý thuyết suông chung chung).
-        3. Toàn bộ các cảnh tuyệt đối không được chứa câu đọc xin Subscribe / Comment gây tụt 15% APV.
-        4. Không để lọt tiền tố 'Variant 1:' vào tiêu đề, và chặn tiêu đề bi lụy/chung chung.
+        Kiểm tra chất lượng Hook Cảnh 1 và Tiêu đề (không khóa cứng từ khóa hay số từ từng cảnh thân bài):
+        1. Cảnh 1 (Hook): Mở đầu bằng câu khẳng định/cảnh báo sắc bén, không dùng câu hỏi Yes/No yếu.
+        2. Cấm câu đọc xin Subscribe / Comment gây tụt APV.
+        3. Không để lọt tiền tố 'Variant 1:' vào tiêu đề.
         """
         issues = []
         niche_id = str(niche_profile.get("id", "")).lower()
@@ -219,14 +215,13 @@ class ScriptValidationLinter:
             s1 = script.scenes[0]
             s1_narr = (s1.narration or "").strip()
             s1_words = re.findall(r'\b\w+\b', s1_narr)
-            if len(s1_words) > 10:
+            if len(s1_words) > 12:
                 issues.append(
-                    f"Scene 1 hook is too long ({len(s1_words)} words). Keep Scene 1 between 5 and 8 punchy words "
-                    f"(max 10 words, ~2.0s) for an instant thumb-stopper (Viewed > 75%)."
+                    f"Scene 1 hook is too long ({len(s1_words)} words). Keep Scene 1 between 5 and 10 punchy words for an instant thumb-stopper."
                 )
             elif len(s1_words) < 3:
                 issues.append(
-                    f"Scene 1 hook is too fragmented ({len(s1_words)} words). Must be a complete 5-8 word declarative warning/revelation hook."
+                    f"Scene 1 hook is too fragmented ({len(s1_words)} words). Must be a complete 5-9 word declarative hook."
                 )
 
             # CẤM câu hỏi Yes/No yếu ở Cảnh 1 (trừ ngách Alternate History cho phép 'What if...')
@@ -243,14 +238,6 @@ class ScriptValidationLinter:
                     f"100% of Scene 1 hooks MUST be a sharp declarative statement or warning (NO '?' or Yes/No questions like 'Have you ever...' / 'Do you...')."
                 )
 
-            # Kiểm toán từ khóa hình ảnh Cảnh 1 (cấm quá chung chung < 2 từ)
-            s1_vk = (s1.visual_keyword or "").strip()
-            if len(s1_vk.split()) < 2:
-                issues.append(
-                    f"Scene 1 visual_keyword ('{s1_vk}') is too vague for a Frame-0 WOW visual. "
-                    f"Provide 4-6 specific English words naming the exact concrete subject and physical action."
-                )
-
             # CẤM đọc câu xin Subscribe / Comment ở BẤT KỲ cảnh nào (đặc biệt là cảnh cuối)
             cta_regex = re.compile(
                 r'\b(?:subscribe|inscreva-se|se inscreva|đăng ký kênh|bấm đăng ký|nhấn đăng ký|leave a comment|drop a comment|comment below|like and follow)\b',
@@ -263,16 +250,6 @@ class ScriptValidationLinter:
                         f"Scene {sc.scene_id} contains a spoken 'Subscribe / Comment' CTA ('{sc_narr}') which causes a 15% APV drop-off. "
                         f"Remove all spoken CTAs and end with a Seamless Infinite Loop Bridge that connects directly back to Scene 1."
                     )
-
-            # Kiểm tra mỗi scene thân bài không bị cắt câu quá ngắn (< 4 từ) gây cảm giác giật cục
-            short_body_scenes = [
-                sc.scene_id for sc in script.scenes[1:-1]
-                if len(re.findall(r'\b\w+\b', sc.narration or "")) < 5
-            ]
-            if len(short_body_scenes) >= 2:
-                issues.append(
-                    f"Body scenes {short_body_scenes} are fragmented (< 5 words). Each scene in the 5-Act 32-42s structure must be 1 complete sentence of 10-14 words."
-                )
 
         # Kiểm tra tiêu đề kênh Animal Rescue tránh rơi vào bẫy bi lụy đơn thuần không có curiosity/payoff
         if "rescue" in niche_id or "animal" in niche_id:
@@ -375,23 +352,23 @@ class ScriptValidationLinter:
         retry_hint = None
         if not is_valid:
             word_target_instruction = (
-                "Keep total word count strictly between 76 and 96 words (26-32s High-Density 5-Act Arc at crisp +5% broadcast tempo, "
-                "across 7 to 8 complete-sentence scenes of 9-12 high-impact words each, with Scene 1 being a 5-8 word declarative warning/revelation hook)."
+                "Write a smooth, full-bodied, complete story of 85 to 120 words (30-40s across 7 to 9 natural scenes, "
+                "flexible 8-16 words per body scene so sentences flow smoothly and never feel abrupt or truncated)."
             )
             bullet_points = "\n".join(f"- {issue}" for issue in all_issues)
             retry_hint = (
-                f"CRITICAL QUALITY GATE VIOLATIONS DETECTED (MUST FIX FOR YOUTUBE SHORTS 5-ACT RETENTION):\n"
+                f"CRITICAL QUALITY GATE VIOLATIONS DETECTED:\n"
                 f"{bullet_points}\n\n"
                 f"ACTION REQUIRED:\n"
-                f"1. Follow the strict 5-Act 26-32s Golden Retention Architecture (100% depth preserved, zero filler clauses):\n"
-                f"   - Act 1 (Scene 1, 5-8 words): Sharp declarative statement, 1v1 duel, or warning hook (100% NO '?' or weak Yes/No questions).\n"
-                f"   - Act 2 (Scenes 2-3): Concrete real-life quote, behavior, or factual scenario.\n"
-                f"   - Act 3 (Scenes 4-5): Hidden brain/neuroscience or physical mechanism.\n"
-                f"   - Act 4 (Scenes 6-7): Actionable counter-move, exact response phrase, or decisive twist.\n"
-                f"   - Act 5 (Scene 7/8): Seamless Infinite Loop Bridge connecting straight back into Scene 1 (ZERO spoken 'Subscribe/Comment' CTAs).\n"
+                f"1. Write a smooth, well-developed 5-Act story (NEVER abrupt or truncated):\n"
+                f"   - Act 1 (Scene 1, 5-9 words): Sharp declarative statement, 1v1 duel, or warning hook (NO weak Yes/No questions).\n"
+                f"   - Act 2 (Scenes 2-3): Smooth context + concrete real-life quote, behavior, or factual scenario.\n"
+                f"   - Act 3 (Scenes 4-5): Clear, thorough explanation of the hidden brain/psychological or physical mechanism.\n"
+                f"   - Act 4 (Scenes 6-7): Complete climax or actionable word-for-word counter-move.\n"
+                f"   - Act 5 (Scene 8/9): Satisfying conclusion + Seamless Infinite Loop Bridge connecting back into Scene 1 (ZERO spoken 'Subscribe/Comment' CTAs).\n"
                 f"2. {word_target_instruction}\n"
-                f"3. Every scene MUST be 100% grammatically complete — NEVER chop a sentence across scenes or end on 'because', 'which', 'and', 'but'.\n"
-                f"4. Strictly avoid all forbidden concepts/terms and repetitive channel entities listed above."
+                f"3. Every scene MUST be a complete sentence — NEVER end on dangling connectors like 'because', 'which', 'and', 'but'.\n"
+                f"4. Avoid forbidden out-of-niche terms and repetitive channel entities listed above."
             )
 
         return LinterResult(
