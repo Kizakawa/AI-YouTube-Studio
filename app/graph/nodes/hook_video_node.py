@@ -29,7 +29,14 @@ from app.utils.ffmpeg_helper import (
     trim_video,
     render_opening_hook_multi_cut,
     find_hook_peak_action_offset,
+    find_hook_peak_window,
     VIDEO_DURATION_SAFETY_MARGIN,
+)
+from app.services.media.media_history import (
+    extract_media_identity,
+    get_recent_media_urls,
+    is_media_already_used,
+    record_used_media,
 )
 
 logger = logging.getLogger(__name__)
@@ -292,68 +299,116 @@ Return ONLY valid JSON:
         }
 
     # ──────────────────────────────────────────────────────────────────────────
-    # BƯỚC 2: GEMINI CHỌN "video" -> SĂN VIDEO SHORT TRÊN MẠNG (YT-DLP <= 75s)
+    # BƯỚC 2: GEMINI CHỌN "video" -> SĂN VIDEO SHORT TRÊN MẠNG (CHỐNG LẶP 100%)
     # ──────────────────────────────────────────────────────────────────────────
     logger.info(
         f"🎯 [HookVideoNode] Gemini chọn `hook_visual_mode='video'` -> Săn tìm Short trên mạng cho Cao Trào: "
         f"'{climax_desc[:75]}' | Queries: {queries} | Hook={target_hook_duration_sec:.2f}s | ClimaxScene=#{climax_scene_id}"
     )
 
+    used_pool_urls = get_recent_media_urls(limit=350)
+    job_id = int(state.get("job_id") or 0)
+
     existing_path = str(scene_1.get("media_path") or "")
     candidate_videos: List[str] = []
-    if existing_path and existing_path.lower().endswith((".mp4", ".mov", ".webm")) and Path(existing_path).exists():
+    if (
+        existing_path
+        and existing_path.lower().endswith((".mp4", ".mov", ".webm"))
+        and Path(existing_path).exists()
+        and not is_media_already_used(existing_path, used_pool_urls)
+    ):
         candidate_videos.append(existing_path)
 
     for q_idx, q in enumerate(queries[:2]):
         if len(candidate_videos) >= 3:
             break
+        # Quét danh sách 15 ứng viên qua yt_dlp flat search để lọc bỏ 100% các video đã dùng ở những lần chạy trước!
+        selected_urls: List[str] = []
+        try:
+            import yt_dlp
+            flat_opts = {
+                "quiet": True,
+                "no_warnings": True,
+                "extract_flat": "in_playlist",
+                "skip_download": True,
+                "socket_timeout": 8,
+                "ignoreerrors": True,
+            }
+            with yt_dlp.YoutubeDL(flat_opts) as ydl_flat:
+                flat_res = ydl_flat.extract_info(f"ytsearch15:{q} #shorts", download=False)
+            for entry in ((flat_res or {}).get("entries") or []):
+                if not isinstance(entry, dict):
+                    continue
+                vid_id = str(entry.get("id") or "").strip()
+                if not vid_id:
+                    continue
+                dur_e = float(entry.get("duration") or 0)
+                if dur_e > 0 and (dur_e < 5 or dur_e > 75):
+                    continue
+                vid_url = f"https://www.youtube.com/watch?v={vid_id}"
+                if is_media_already_used(vid_url, used_pool_urls) or f"yt:{vid_id}" in used_pool_urls:
+                    continue
+                selected_urls.append(vid_url)
+                if len(selected_urls) >= 3:
+                    break
+        except Exception as e_flat:
+            logger.debug(f"[HookVideoNode] yt_dlp flat pre-filter skip ({q}): {e_flat}")
+
         out_tmpl = str(hook_cand_dir / f"yt_hook_cand_{q_idx}_%(id)s.%(ext)s")
+        dl_targets = selected_urls if selected_urls else [f"ytsearch4:{q} #shorts"]
         cmd_yt = [
             "yt-dlp",
             "--no-playlist",
             "--no-warnings",
             "--quiet",
             "--socket-timeout", "8",
-            "--max-filesize", "22M",
+            "--max-filesize", "24M",
             "--match-filter", "duration <= 75",
-            "--max-downloads", "2",
+            "--max-downloads", "3",
             "-f", "best[height>=480][height<=1080][ext=mp4]/bestvideo[height>=480][height<=1080][ext=mp4]/best[ext=mp4]",
             "-o", out_tmpl,
-            f"ytsearch2:{q} #shorts",
+            *dl_targets,
         ]
         try:
             subprocess.run(
                 cmd_yt,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                timeout=28,
+                timeout=30,
                 check=False,
             )
         except Exception as e_yt:
             logger.debug(f"[HookVideoNode] yt-dlp search skip ({q}): {e_yt}")
 
         for mp4 in sorted(hook_cand_dir.glob(f"yt_hook_cand_{q_idx}_*.mp4")):
-            if mp4.stat().st_size > 80_000 and str(mp4) not in candidate_videos:
+            if (
+                mp4.stat().st_size > 80_000
+                and str(mp4) not in candidate_videos
+                and not is_media_already_used(str(mp4), used_pool_urls)
+            ):
                 candidate_videos.append(str(mp4))
-                if len(candidate_videos) >= 3:
+                if len(candidate_videos) >= 4:
                     break
 
     # ──────────────────────────────────────────────────────────────────────────
-    # BƯỚC 3: QUÉT ĐOẠN PEAK (`peak_offset_sec`) & TRÍCH XUẤT 3 KHUNG HÌNH NGAY TẠI PEAK
-    # (Tuyệt đối không lấy 3 khung hình ở giây 0.0s lúc video gốc chưa vào cao trào!)
-    # Gửi 3 khung hình Peak cho Gemini Vision chấm điểm & trả về `recommended_hook_mode`: "video" | "scene"
+    # BƯỚC 3: QUÉT ĐOẠN PEAK TỰ NHIÊN (`peak_offset_sec`, `peak_duration_sec`) & CHẤM ĐIỂM VISION
+    # (Gỡ khóa cứng 3s: Đo luôn cả độ dài thực sự của đoạn Peak tới 15s nếu cao trào kéo dài!)
     # ──────────────────────────────────────────────────────────────────────────
     scored_candidates: List[Dict[str, Any]] = []
     passing_candidates: List[Dict[str, Any]] = []
     best_candidate: Optional[Dict[str, Any]] = None
 
     for idx, v_path in enumerate(candidate_videos):
-        # 3.1. Quét toàn bộ video Short để tìm đúng mốc Peak & Trừu tượng/Cuốn hút nhất (`peak_offset_sec`)
-        peak_offset_sec = find_hook_peak_action_offset(v_path, target_hook_duration_sec)
+        # 3.1. Quét toàn bộ video Short để tìm đúng mốc Peak & đo trọn vẹn độ dài đoạn Peak tự nhiên (tới 15s)
+        peak_offset_sec, peak_duration_sec = find_hook_peak_window(
+            v_path,
+            min_duration=target_hook_duration_sec,
+            max_duration=15.0,
+        )
 
         # 3.2. Trích xuất 3 khung hình đại diện NGAY TẠI ĐOẠN PEAK (`-ss peak_offset_sec`)
         sheet_path = hook_cand_dir / f"hook_score_sheet_{idx}.jpg"
-        win_dur = max(target_hook_duration_sec, 2.4)
+        win_dur = max(peak_duration_sec, target_hook_duration_sec, 2.4)
         fps_expr = f"3/{win_dur:.2f}"
         seek_args = ["-ss", f"{peak_offset_sec:.2f}"] if peak_offset_sec >= 0.15 else []
         cmd_sheet = [
@@ -379,7 +434,7 @@ Return ONLY valid JSON:
 
         # 3.3. Gửi 3 khung hình tại đoạn Peak cho Gemini Vision chấm điểm & quyết định nên dùng "video" hay "scene"
         vision_prompt = f"""You are a strict YouTube Shorts Hook Video Quality Grader & Director.
-Evaluate this 3-frame sequence extracted directly from the PEAK CLIMAX window (starting at {peak_offset_sec:.1f}s, NOT 0.0s) of a candidate Short video for:
+Evaluate this 3-frame sequence extracted directly from the PEAK CLIMAX window (starting at {peak_offset_sec:.1f}s, natural peak length {peak_duration_sec:.1f}s) of a candidate Short video for:
 - Video Topic: "{topic} (Climax: {climax_desc})"
 - Primary Subject/Entity: "{primary_entity or climax_desc}"
 - Opening Hook Line: "{hook_narration}"
@@ -431,6 +486,7 @@ Return ONLY valid JSON:
                             score_res = {
                                 "video_path": v_path,
                                 "peak_offset_sec": peak_offset_sec,
+                                "peak_duration_sec": peak_duration_sec,
                                 "recommended_hook_mode": "video" if passed else "scene",
                                 "entity_match_score": e_score,
                                 "motion_action_score": m_score,
@@ -488,13 +544,14 @@ Return ONLY valid JSON:
                     score_res = {
                         "video_path": v_path,
                         "peak_offset_sec": peak_offset_sec,
+                        "peak_duration_sec": peak_duration_sec,
                         "recommended_hook_mode": "video" if passed else "scene",
                         "entity_match_score": e_score,
                         "motion_action_score": m_score,
                         "clean_frame_score": c_score,
                         "overall_score": overall,
                         "passed": passed,
-                        "reason": f"Local CV Peak Grader @{peak_offset_sec:.1f}s (Motion={avg_motion:.1f}, Contrast={avg_contrast:.1f}, Intrigue={avg_sharp:.1f})",
+                        "reason": f"Local CV Peak Grader @{peak_offset_sec:.1f}s (len={peak_duration_sec:.1f}s, Motion={avg_motion:.1f})",
                     }
             except Exception as e_cv:
                 logger.debug(f"[HookVideoNode] Local CV fallback error: {e_cv}")
@@ -504,7 +561,7 @@ Return ONLY valid JSON:
 
         scored_candidates.append(score_res)
         logger.info(
-            f"  📊 [HookVideoGrader] Ứng viên #{idx + 1} ({Path(v_path).name} @Peak {peak_offset_sec:.1f}s): "
+            f"  📊 [HookVideoGrader] Ứng viên #{idx + 1} ({Path(v_path).name} @Peak {peak_offset_sec:.1f}s, len={peak_duration_sec:.1f}s): "
             f"Mode={score_res['recommended_hook_mode']} | Overall={score_res['overall_score']}/10 "
             f"(Entity={score_res['entity_match_score']}, Motion={score_res['motion_action_score']}, Clean={score_res['clean_frame_score']}) "
             f"-> {'✅ ĐẠT (Dùng Video Peak)' if score_res['passed'] else '❌ LOẠI (Chuyển sang Tạo Cảnh)'} ({score_res['reason']})"
@@ -515,17 +572,40 @@ Return ONLY valid JSON:
                 best_candidate = score_res
 
     # ──────────────────────────────────────────────────────────────────────────
-    # BƯỚC 4: CẮT ĐOẠN PEAK GHÉP VÀO ĐẦU VIDEO (CẢNH 1) VÀ TRONG THÂN VIDEO (`climax_scene_id`)
-    # Nếu không có video nào đạt -> Chuyển sang Tạo Cảnh ("scene") tại `node_fetch_media`
+    # BƯỚC 4: CẮT ĐOẠN PEAK GHÉP VÀO ĐẦU VIDEO + PHỦ LIỀN MẠCH NẾU ĐOẠN PEAK DÀI
+    # (Gỡ khóa cứng 3s: Nếu đoạn Peak kéo dài 7s-15s, tự động nối liền qua Cảnh 1 -> Cảnh 2 -> Cảnh 3!)
     # ──────────────────────────────────────────────────────────────────────────
     hook_output_clip = str(work_dir / "hook_motion_001.mp4")
     is_scifi = "scifi" in atmosphere_fx or "scifi" in niche.lower()
 
+    def _get_scene_dur_sec(sid: int, default_s: float = 3.5) -> float:
+        sc_a = next((s for s in scenes_audio if isinstance(s, dict) and int(s.get("scene_id") or 0) == sid), {})
+        ms = sc_a.get("audio_duration_ms") or sc_a.get("duration_ms") or 0
+        if ms:
+            return max(float(ms) / 1000.0, 1.4)
+        if 0 < sid <= len(base_scenes):
+            b_sc = base_scenes[sid - 1]
+            est = b_sc.get("estimated_seconds") if isinstance(b_sc, dict) else getattr(b_sc, "estimated_seconds", None)
+            if est:
+                return max(float(est), 1.4)
+        return default_s
+
     if best_candidate and Path(best_candidate["video_path"]).exists():
         best_v_path = best_candidate["video_path"]
         peak_start = float(best_candidate.get("peak_offset_sec", 0.0))
+        natural_peak_dur = float(best_candidate.get("peak_duration_sec") or target_hook_duration_sec)
+
+        # Ghi nhận ngay vào recent_media_history.json để các video sau KHÔNG BAO GIỜ lặp lại video Hook này!
+        record_used_media(
+            url=best_v_path,
+            query=queries[0] if queries else topic,
+            job_id=job_id,
+            source="youtube_hook_short",
+            media_path=best_v_path,
+        )
+
         logger.info(
-            f"🔥 [HookVideoNode] Đã cắt đoạn PEAK NHẤT (@{peak_start:.2f}s -> {peak_start + target_hook_duration_sec:.2f}s, "
+            f"🔥 [HookVideoNode] Đã cắt đoạn PEAK NHẤT (@{peak_start:.2f}s, độ dài tự nhiên={natural_peak_dur:.2f}s, "
             f"Score={best_candidate['overall_score']}/10) ghép vào ĐẦU VIDEO (Cảnh 1) -> {hook_output_clip}"
         )
         trim_video(
@@ -541,8 +621,9 @@ Return ONLY valid JSON:
             is_hook_scene=True,
             fair_use_transform=True,
             start_offset_sec=peak_start,
+            preserve_continuous_flow=True,
         )
-        hook_mode = "CLIMAX_REAL_VIDEO_FAIR_USE_3CUT"
+        hook_mode = "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK"
         final_hook_visual_mode = "video"
         if Path(hook_output_clip).exists() and Path(hook_output_clip).stat().st_size > 10_000:
             pre_resolved_hook_media[1] = {
@@ -550,7 +631,7 @@ Return ONLY valid JSON:
                 "media_type": "hook_ready_video",
                 "production_method": hook_mode,
                 "visual_strategy": "HOOK_PEAK_SHORT_VIDEO",
-                "strategy_rationale": f"Peak Short clip @{peak_start:.1f}s ({best_candidate['overall_score']}/10)",
+                "strategy_rationale": f"Peak Short clip @{peak_start:.1f}s (full_peak={natural_peak_dur:.1f}s, {best_candidate['overall_score']}/10)",
             }
             if scenes_media:
                 scene_1["media_path"] = hook_output_clip
@@ -558,11 +639,61 @@ Return ONLY valid JSON:
                 scene_1["production_method"] = hook_mode
                 scenes_media[0] = scene_1
 
-        # Ghép thêm đoạn Peak thứ 2 vào TRONG THÂN VIDEO (tại Cảnh Cao Trào `climax_scene_id`)
-        if 1 < climax_scene_id <= len(base_scenes):
-            climax_audio = next((s for s in scenes_audio if isinstance(s, dict) and s.get("scene_id") == climax_scene_id), {})
-            c_dur_ms = climax_audio.get("audio_duration_ms") or climax_audio.get("duration_ms") or 3500
-            climax_dur_sec = max(c_dur_ms / 1000.0, 1.5) + 0.18
+        # ── MỞ RỘNG ĐOẠN PEAK DÀI LIỀN MẠCH QUA CÁC CẢNH KẾ TIẾP (CẢNH 2, CẢNH 3...) ──
+        # Nếu đoạn Peak thực tế dài (ví dụ 7s - 15s), không ngắt cụt ở 3s mà nối tiếp mạch chuyển động sang Cảnh 2, Cảnh 3!
+        consumed_peak_sec = max(target_hook_duration_sec - 0.18, 2.5)
+        remaining_peak_sec = natural_peak_dur - consumed_peak_sec
+        cur_cont_offset = peak_start + consumed_peak_sec
+        next_sid = 2
+        while next_sid <= min(len(base_scenes), 4) and remaining_peak_sec >= 2.2:
+            next_base_dur = _get_scene_dur_sec(next_sid, default_s=3.5)
+            if remaining_peak_sec < next_base_dur * 0.68:
+                break
+            cont_clip_dur = next_base_dur + 0.18
+            cont_out_clip = str(work_dir / f"hook_peak_cont_{next_sid:03d}.mp4")
+            try:
+                trim_video(
+                    input_path=best_v_path,
+                    duration_seconds=cont_clip_dur,
+                    output_path=cont_out_clip,
+                    width=1080,
+                    height=1920,
+                    fps=30,
+                    is_scifi=is_scifi,
+                    niche=atmosphere_fx,
+                    apply_grading=True,
+                    is_hook_scene=False,
+                    fair_use_transform=True,
+                    start_offset_sec=cur_cont_offset,
+                    preserve_continuous_flow=True,
+                )
+                if Path(cont_out_clip).exists() and Path(cont_out_clip).stat().st_size > 10_000:
+                    pre_resolved_hook_media[next_sid] = {
+                        "media_path": cont_out_clip,
+                        "media_type": "hook_ready_video",
+                        "production_method": "LONG_PEAK_CONTINUOUS_FLOW",
+                        "visual_strategy": "HOOK_PEAK_SHORT_VIDEO",
+                        "strategy_rationale": (
+                            f"Continuous Long Peak flow @{cur_cont_offset:.1f}s->{cur_cont_offset + cont_clip_dur:.1f}s "
+                            f"(from {natural_peak_dur:.1f}s Peak)"
+                        ),
+                    }
+                    logger.info(
+                        f"🌟 [HookVideoNode -> Long Peak Flow] Đoạn Peak dài ({natural_peak_dur:.1f}s) chảy liền mạch sang "
+                        f"Cảnh #{next_sid} (@{cur_cont_offset:.2f}s -> {cur_cont_offset + cont_clip_dur:.2f}s)!"
+                    )
+                    cur_cont_offset += next_base_dur
+                    remaining_peak_sec -= next_base_dur
+                    next_sid += 1
+                else:
+                    break
+            except Exception as e_cont:
+                logger.debug(f"[HookVideoNode] Lỗi nối tiếp Long Peak tại Cảnh #{next_sid}: {e_cont}")
+                break
+
+        # Ghép thêm đoạn Peak thứ 2 vào TRONG THÂN VIDEO (tại Cảnh Cao Trào `climax_scene_id` nếu chưa được phủ)
+        if 1 < climax_scene_id <= len(base_scenes) and climax_scene_id not in pre_resolved_hook_media:
+            climax_dur_sec = _get_scene_dur_sec(climax_scene_id, default_s=3.5) + 0.18
             climax_output_clip = str(work_dir / f"hook_climax_scene_{climax_scene_id:03d}.mp4")
 
             second_v_path = best_v_path
@@ -570,11 +701,20 @@ Return ONLY valid JSON:
             if other_passing:
                 second_v_path = other_passing[0]["video_path"]
                 second_peak_start = float(other_passing[0].get("peak_offset_sec", 0.0))
+                second_peak_dur = float(other_passing[0].get("peak_duration_sec") or climax_dur_sec)
+                record_used_media(
+                    url=second_v_path,
+                    query=queries[0] if queries else topic,
+                    job_id=job_id,
+                    source="youtube_climax_short",
+                    media_path=second_v_path,
+                )
             else:
-                second_peak_start = find_hook_peak_action_offset(
+                second_peak_start, second_peak_dur = find_hook_peak_window(
                     best_v_path,
-                    climax_dur_sec,
-                    exclude_ranges=[(max(0.0, peak_start - 1.0), peak_start + target_hook_duration_sec + 1.0)],
+                    min_duration=climax_dur_sec,
+                    max_duration=12.0,
+                    exclude_ranges=[(max(0.0, peak_start - 1.0), cur_cont_offset + 1.0)],
                 )
 
             if second_peak_start > 0.0 or other_passing:
@@ -592,19 +732,51 @@ Return ONLY valid JSON:
                         is_hook_scene=False,
                         fair_use_transform=True,
                         start_offset_sec=second_peak_start,
+                        preserve_continuous_flow=True,
                     )
                     if Path(climax_output_clip).exists() and Path(climax_output_clip).stat().st_size > 10_000:
                         pre_resolved_hook_media[climax_scene_id] = {
                             "media_path": climax_output_clip,
-                            "media_type": "video",
+                            "media_type": "hook_ready_video",
                             "production_method": "CLIMAX_PEAK_SHORT_SPLICE",
                             "visual_strategy": "STOCK_VIDEO",
-                            "strategy_rationale": f"Mid-video Peak Short splice @{second_peak_start:.1f}s",
+                            "strategy_rationale": f"Mid-video Peak Short splice @{second_peak_start:.1f}s (len={second_peak_dur:.1f}s)",
                         }
                         logger.info(
-                            f"🔥 [HookVideoNode] Đã cắt đoạn Peak thứ 2 (@{second_peak_start:.2f}s) "
+                            f"🔥 [HookVideoNode] Đã cắt đoạn Peak thứ 2 (@{second_peak_start:.2f}s, len={second_peak_dur:.1f}s) "
                             f"ghép vào TRONG THÂN VIDEO tại Cảnh #{climax_scene_id} -> {climax_output_clip}"
                         )
+                        # Nếu đoạn Peak thứ 2 cũng dài, nối liền sang cảnh kế tiếp (climax_scene_id + 1)
+                        rem_climax = second_peak_dur - (climax_dur_sec - 0.18)
+                        next_c_sid = climax_scene_id + 1
+                        if next_c_sid <= len(base_scenes) and next_c_sid not in pre_resolved_hook_media:
+                            next_c_dur = _get_scene_dur_sec(next_c_sid, default_s=3.5)
+                            if rem_climax >= next_c_dur * 0.68:
+                                next_c_clip = str(work_dir / f"hook_climax_cont_{next_c_sid:03d}.mp4")
+                                c_off = second_peak_start + (climax_dur_sec - 0.18)
+                                trim_video(
+                                    input_path=second_v_path,
+                                    duration_seconds=next_c_dur + 0.18,
+                                    output_path=next_c_clip,
+                                    width=1080,
+                                    height=1920,
+                                    fps=30,
+                                    is_scifi=is_scifi,
+                                    niche=atmosphere_fx,
+                                    apply_grading=True,
+                                    is_hook_scene=False,
+                                    fair_use_transform=True,
+                                    start_offset_sec=c_off,
+                                    preserve_continuous_flow=True,
+                                )
+                                if Path(next_c_clip).exists() and Path(next_c_clip).stat().st_size > 10_000:
+                                    pre_resolved_hook_media[next_c_sid] = {
+                                        "media_path": next_c_clip,
+                                        "media_type": "hook_ready_video",
+                                        "production_method": "LONG_PEAK_CONTINUOUS_FLOW",
+                                        "visual_strategy": "STOCK_VIDEO",
+                                        "strategy_rationale": f"Continuous Climax Peak flow @{c_off:.1f}s",
+                                    }
                 except Exception as e_climax:
                     logger.debug(f"[HookVideoNode] Không thể cắt đoạn Peak thứ 2 cho Cảnh #{climax_scene_id}: {e_climax}")
     else:

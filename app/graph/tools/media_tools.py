@@ -322,14 +322,20 @@ def _find_best_peak_window(
     clip_dur: float,
     role: str = "PEAK",
     existing_windows: Optional[List[Tuple[float, float]]] = None,
+    max_peak_dur: float = 14.0,
 ) -> Optional[Tuple[float, float]]:
     """
-    Xác định mốc thời gian (start_sec, end_sec) đắt giá nhất trong chiếc YouTube Short,
-    đồng thời đảm bảo KHÔNG TRÙNG LẶP với các khoảng `existing_windows` nếu cùng 1 video tổng thể
-    được cắt nhiều phân đoạn khác nhau để ghép vào kịch bản!
+    Xác định mốc thời gian (start_sec, end_sec) đắt giá nhất trong chiếc YouTube Short.
+    KHÔNG KHÓA CỨNG 3 GIÂY:
+    - Nếu đoạn Peak (Most Replayed heatmap hoặc cao trào hành động) kéo dài liên tục (ví dụ 6s - 14s),
+      ưu tiên lấy TRỌN VẸN cả đoạn Peak dài đó (`max_peak_dur`, mặc định tới 14s) để ghép liền mạch
+      qua nhiều phân cảnh liên tiếp thay vì cắt cụt ở 3 giây!
+    - Đảm bảo KHÔNG TRÙNG LẶP với các khoảng `existing_windows` nếu cùng 1 video tổng thể được cắt
+      nhiều phân đoạn khác nhau trong cùng 1 kịch bản.
     """
     total_dur = float(info.get("duration") or 15.0)
-    clip_dur = max(3.0, min(clip_dur, 8.0))
+    min_dur = max(3.0, min(clip_dur, 8.0))
+    max_dur = max(min_dur + 1.0, min(max_peak_dur, max(3.5, total_dur - 0.8)))
     used_wins = existing_windows or []
 
     def _overlaps(s: float, e: float) -> bool:
@@ -338,29 +344,49 @@ def _find_best_peak_window(
                 return True
         return False
 
-    if total_dur <= clip_dur + 1.0:
+    if total_dur <= min_dur + 1.0:
         if used_wins:
             return None
         return 0.0, max(2.0, total_dur)
 
-    # 1. Thử lấy từ đỉnh Most Replayed (heatmap)
+    # 1. Thử lấy từ đỉnh Most Replayed (heatmap) — GỘP LIỀN MẠCH TOÀN BỘ VÙNG PEAK DÀI NẾU ĐỈNH KÉO DÀI
     heatmap = info.get("heatmap")
     if isinstance(heatmap, list) and len(heatmap) >= 3:
-        sorted_pts = sorted(heatmap, key=lambda x: float(x.get("value", 0.0)), reverse=True)
-        for pt in sorted_pts[:4]:
-            if float(pt.get("value", 0.0)) > 0.25:
-                peak_center = (float(pt.get("start_time", 0.0)) + float(pt.get("end_time", 0.0))) / 2.0
-                start_s = max(0.5, min(peak_center - clip_dur / 2.0, total_dur - clip_dur - 0.3))
-                end_s = start_s + clip_dur
+        indexed_pts = [(idx, pt) for idx, pt in enumerate(heatmap) if isinstance(pt, dict)]
+        sorted_pts = sorted(indexed_pts, key=lambda x: float(x[1].get("value", 0.0)), reverse=True)
+        for best_idx, pt in sorted_pts[:4]:
+            peak_val = float(pt.get("value", 0.0))
+            if peak_val > 0.22:
+                # Mở rộng sang trái & phải trên heatmap chừng nào độ cuốn hút vẫn cao (>= 52% đỉnh hoặc >= 0.25)
+                cont_thresh = max(0.22, peak_val * 0.52)
+                left_idx = best_idx
+                right_idx = best_idx
+                while left_idx > 0 and float(heatmap[left_idx - 1].get("value", 0.0)) >= cont_thresh:
+                    if float(heatmap[right_idx].get("end_time", 0.0)) - float(heatmap[left_idx - 1].get("start_time", 0.0)) > max_dur:
+                        break
+                    left_idx -= 1
+                while right_idx + 1 < len(heatmap) and float(heatmap[right_idx + 1].get("value", 0.0)) >= cont_thresh:
+                    if float(heatmap[right_idx + 1].get("end_time", 0.0)) - float(heatmap[left_idx].get("start_time", 0.0)) > max_dur:
+                        break
+                    right_idx += 1
+
+                raw_start = float(heatmap[left_idx].get("start_time", 0.0))
+                raw_end = float(heatmap[right_idx].get("end_time", 0.0))
+                span_len = raw_end - raw_start
+                eff_len = max(min_dur, min(max_dur, span_len if span_len >= min_dur else max(min_dur, 8.5)))
+                peak_center = (raw_start + raw_end) / 2.0
+                start_s = max(0.4, min(raw_start if span_len >= min_dur else (peak_center - eff_len / 2.0), total_dur - eff_len - 0.2))
+                end_s = min(total_dur, start_s + eff_len)
                 if not _overlaps(start_s, end_s):
                     return round(start_s, 2), round(end_s, 2)
 
-    # 2. Các mốc ứng viên theo vai trò (HOOK đầu video, hoặc các khúc PEAK rải đều trong video tổng thể)
-    candidate_ratios = [0.05, 0.32, 0.58, 0.75] if (role or "").upper() == "HOOK" else [0.32, 0.58, 0.15, 0.75]
+    # 2. Các mốc ứng viên theo vai trò: Cho phép cửa sổ rộng (tới min(max_dur, 11.5s)) để bộ quét CV lấy trọn đoạn Peak dài
+    probe_span = min(max_dur, max(min_dur, min(11.5, total_dur * 0.65)))
+    candidate_ratios = [0.05, 0.28, 0.52, 0.70] if (role or "").upper() == "HOOK" else [0.25, 0.50, 0.12, 0.68]
     for ratio in candidate_ratios:
-        start_s = 0.8 if ratio <= 0.08 else max(1.0, min(total_dur * ratio, total_dur - clip_dur - 0.4))
-        end_s = start_s + clip_dur
-        if end_s <= total_dur and not _overlaps(start_s, end_s):
+        start_s = 0.6 if ratio <= 0.08 else max(0.8, min(total_dur * ratio, total_dur - min_dur - 0.3))
+        end_s = min(total_dur, start_s + probe_span)
+        if end_s - start_s >= min_dur and not _overlaps(start_s, end_s):
             return round(start_s, 2), round(end_s, 2)
 
     return None
@@ -483,8 +509,7 @@ def _search_youtube_flat_cached(
 ) -> List[Dict[str, Any]]:
     """
     Quét nhanh danh sách ứng viên YouTube Shorts (`extract_flat="in_playlist"`) có bộ nhớ đệm (cache)
-    để khi nhiều phân cảnh cùng tìm xoay quanh tổng thể kịch bản (`overall_script_query`),
-    các luồng song song dùng chung ngay danh sách Shorts chất lượng cao mà không phải đợi tìm lại!
+    mở rộng lên 25 ứng viên/truy vấn để chống lặp lại video giữa các lần chạy khác nhau!
     """
     import yt_dlp
 
@@ -506,7 +531,7 @@ def _search_youtube_flat_cached(
             cached_entries = _yt_flat_search_cache.get(cache_key)
 
         if cached_entries is None:
-            yt_query = f"ytsearch15:{sp} #shorts"
+            yt_query = f"ytsearch25:{sp} #shorts"
             try:
                 with yt_dlp.YoutubeDL(flat_opts) as ydl:
                     res = ydl.extract_info(yt_query, download=False)
@@ -568,15 +593,22 @@ def execute_youtube_short_peak_clone_sync(
     topic: str = "",
     search_scope: str = "SCENE_SPECIFIC",
     overall_script_query: str = "",
+    max_peak_duration_sec: float = 14.0,
+    job_id: int = 0,
 ) -> Optional[Dict[str, Any]]:
     """
-    Thực thi tìm kiếm & cắt đoạn Peak từ YouTube Shorts theo chiến lược kép:
-    - Nếu `search_scope == "SCENE_SPECIFIC"` (câu văn nhỏ có nghĩa rõ ràng):
-      Tìm trực tiếp theo câu văn nhỏ (`search_query`), và dùng `overall_script_query` (tổng thể kịch bản) làm dự phòng ngay phía sau.
-    - Nếu `search_scope == "SCRIPT_OVERALL"` (câu văn nhỏ khi tách lẻ bị vô nghĩa / cụt ngủn / vướng đạo cụ phụ):
-      Đi search trực tiếp các video xoay quanh TỔNG THỂ KỊCH BẢN (`overall_script_query`),
-      lấy các video khác nhau hoặc cắt các khúc Peak không trùng lặp để ghép vào video!
+    Thực thi tìm kiếm & cắt đoạn Peak từ YouTube Shorts theo chiến lược kép + GỠ KHÓA CỨNG 3 GIÂY:
+    - Chống lặp lại tuyệt đối giữa các video khác nhau qua `is_media_already_used` & `record_used_media` (`yt:<id>`).
+    - Nếu đoạn Peak thực tế trong video nguồn kéo dài (ví dụ 6s - 14s), tự động trích xuất TRỌN VẸN cả đoạn Peak dài
+      (`full_peak_path` & `full_peak_duration_sec`) để bộ lắp ghép Timeline (`node_fetch_media`) ưu tiên phủ liền mạch
+      đoạn video Peak dài đó qua nhiều phân cảnh liên tiếp trước khi dùng đến ảnh tĩnh!
     """
+    from app.services.media.media_history import (
+        extract_media_identity,
+        is_media_already_used,
+        record_used_media,
+    )
+
     used = used_urls if used_urls is not None else set()
     effective_scope, search_phrases = _resolve_adaptive_search_queries(
         search_scope=search_scope,
@@ -608,21 +640,28 @@ def execute_youtube_short_peak_clone_sync(
 
         candidates = _search_youtube_flat_cached(search_phrases, subject_anchors, all_query_tokens)
 
-        # Ưu tiên các URL chưa từng dùng trước; nếu hết URL mới thì cho phép cắt khúc Peak khác (không trùng lặp) từ video dài >= 16s
-        unused_cands = [c for c in candidates if c["url"] not in used]
+        # Lọc chống lặp lại: Loại bỏ 100% các video đã từng xuất hiện ở các video/job trước đó trong recent_media_history.json!
+        unused_cands = [
+            c for c in candidates
+            if not is_media_already_used(c["url"], used) and f"yt:{c['id']}" not in used
+        ]
+        # Chỉ cho phép cắt khúc Peak thứ 2 từ cùng 1 video NẾU video đó vừa được mở trong chính job hiện tại (_used_short_windows)
+        with _yt_url_lock:
+            in_job_urls = set(_used_short_windows.keys())
         reusable_multi_window_cands = [
             c for c in candidates
-            if c["url"] in used and (float(c.get("duration") or 0) == 0 or float(c.get("duration") or 0) >= 16.0)
+            if c["url"] in in_job_urls and (float(c.get("duration") or 0) == 0 or float(c.get("duration") or 0) >= 18.0)
         ]
-        ordered_cands = unused_cands[:4] + reusable_multi_window_cands[:2]
+        ordered_cands = unused_cands[:6] + reusable_multi_window_cands[:2]
 
-        for cand in ordered_cands[:4]:
+        for cand in ordered_cands[:6]:
             vid_url = cand["url"]
+            vid_id = cand.get("id") or ""
             with _yt_url_lock:
                 existing_wins = list(_used_short_windows.get(vid_url) or [])
-                if vid_url in used and len(existing_wins) >= 2:
+                if vid_url in used and (vid_url not in in_job_urls or len(existing_wins) >= 2):
                     continue
-                used.add(vid_url)
+                used.update(extract_media_identity(vid_url))
 
             info_entry: Dict[str, Any] = cand
             try:
@@ -642,14 +681,15 @@ def execute_youtube_short_peak_clone_sync(
 
             win_pair = _find_best_peak_window(
                 info_entry,
-                target_duration_sec + 0.8,
+                target_duration_sec + 0.5,
                 role=clip_role,
                 existing_windows=existing_wins,
+                max_peak_dur=max_peak_duration_sec,
             )
             if not win_pair:
                 continue
             start_s, end_s = win_pair
-            clip_len = max(3.0, end_s - start_s)
+            probe_window_len = max(target_duration_sec + 0.5, end_s - start_s)
 
             with tempfile.TemporaryDirectory() as tmp_dir:
                 raw_dl_template = str(Path(tmp_dir) / "raw_short.%(ext)s")
@@ -662,9 +702,10 @@ def execute_youtube_short_peak_clone_sync(
                     "retries": 1,
                     "nopart": True,
                 }
+                # Tải khoảng Peak rộng (tới end_s + 1.0s, tối đa ~15s) để đo và giữ trọn vẹn đoạn Peak dài nếu có!
                 try:
                     from yt_dlp.utils import download_range_func
-                    dl_opts["download_ranges"] = download_range_func(None, [(start_s, end_s + 0.5)])
+                    dl_opts["download_ranges"] = download_range_func(None, [(start_s, end_s + 1.0)])
                 except Exception:
                     pass
 
@@ -686,24 +727,35 @@ def execute_youtube_short_peak_clone_sync(
                 if Path(raw_file).stat().st_size < 15000:
                     continue
 
-                actual_start_s = 0.0
-                if "download_ranges" not in dl_opts:
-                    if not existing_wins:
-                        try:
-                            from app.utils.ffmpeg_helper import find_hook_peak_action_offset
-                            detected_peak = find_hook_peak_action_offset(raw_file, clip_len)
-                            actual_start_s = detected_peak if detected_peak > 0.0 else start_s
-                        except Exception:
-                            actual_start_s = start_s
-                    else:
-                        actual_start_s = start_s
+                # Đo thời lượng thực tế và phát hiện trọn vẹn khoảng Peak tự nhiên (không khóa cứng 3s!)
+                from app.utils.ffmpeg_helper import find_hook_peak_window, get_duration_ms, trim_video
+                raw_dur_sec = max(0.0, get_duration_ms(raw_file) / 1000.0)
+                min_req_dur = max(3.0, target_duration_sec)
+                if "download_ranges" in dl_opts:
+                    # File tải về đã bắt đầu tại start_s -> quét tìm độ dài Peak thực sự bên trong đoạn vừa tải
+                    rel_start, natural_peak_len = find_hook_peak_window(
+                        raw_file,
+                        min_duration=min_req_dur,
+                        max_duration=min(max_peak_duration_sec, max(min_req_dur, raw_dur_sec)),
+                    )
+                    actual_start_s = rel_start
+                else:
+                    det_start, natural_peak_len = find_hook_peak_window(
+                        raw_file,
+                        min_duration=min_req_dur,
+                        max_duration=max_peak_duration_sec,
+                        exclude_ranges=existing_wins if existing_wins else None,
+                    )
+                    actual_start_s = det_start if det_start > 0.0 else start_s
+
+                natural_peak_len = max(min_req_dur, min(natural_peak_len, max_peak_duration_sec))
+                scene_clip_len = min_req_dur
 
                 Path(output_path).parent.mkdir(parents=True, exist_ok=True)
                 try:
-                    from app.utils.ffmpeg_helper import trim_video
                     trim_video(
                         input_path=raw_file,
-                        duration_seconds=clip_len,
+                        duration_seconds=scene_clip_len,
                         output_path=output_path,
                         width=1080,
                         height=1920,
@@ -712,17 +764,18 @@ def execute_youtube_short_peak_clone_sync(
                         is_hook_scene=((clip_role or "").upper() == "HOOK"),
                         fair_use_transform=True,
                         start_offset_sec=actual_start_s,
+                        preserve_continuous_flow=True,
                     )
                 except Exception:
                     vf_filter = (
-                        "scale=1150:2044:force_original_aspect_ratio=increase,"
+                        "hflip,scale=1150:2044:force_original_aspect_ratio=increase,"
                         "crop=1080:1920,fps=30,format=yuv420p"
                     )
                     cmd = [
                         "ffmpeg", "-y", "-v", "error",
                         "-ss", f"{actual_start_s:.2f}",
                         "-i", raw_file,
-                        "-t", f"{clip_len:.2f}",
+                        "-t", f"{scene_clip_len:.2f}",
                         "-an", "-vf", vf_filter,
                         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "21",
                         output_path,
@@ -750,23 +803,65 @@ def execute_youtube_short_peak_clone_sync(
                             pass
                         continue
 
-                    win_start = start_s if "download_ranges" in dl_opts else actual_start_s
-                    win_end = win_start + clip_len
+                    # Nếu đoạn Peak thực tế dài hơn thời lượng 1 cảnh (>= scene_clip_len + 1.8s),
+                    # xuất luôn file Master Full Peak (`_fullpeak.mp4`) để phủ liền mạch sang các cảnh kế tiếp!
+                    full_peak_path: Optional[str] = None
+                    if natural_peak_len >= scene_clip_len + 1.8 and raw_dur_sec >= actual_start_s + scene_clip_len + 1.5:
+                        cand_full_path = str(Path(output_path).parent / f"{Path(output_path).stem}_fullpeak.mp4")
+                        try:
+                            trim_video(
+                                input_path=raw_file,
+                                duration_seconds=natural_peak_len,
+                                output_path=cand_full_path,
+                                width=1080,
+                                height=1920,
+                                fps=30,
+                                apply_grading=True,
+                                is_hook_scene=False,
+                                fair_use_transform=True,
+                                start_offset_sec=actual_start_s,
+                                preserve_continuous_flow=True,
+                            )
+                            if Path(cand_full_path).exists() and Path(cand_full_path).stat().st_size > 25000:
+                                full_peak_path = cand_full_path
+                                logger.info(
+                                    f"🌟 [Long Peak Preserved] Đoạn Peak dài {natural_peak_len:.1f}s (> {scene_clip_len:.1f}s) "
+                                    f"được giữ trọn vẹn tại '{Path(cand_full_path).name}' để phủ liền mạch qua các cảnh kế tiếp!"
+                                )
+                        except Exception as e_fp:
+                            logger.debug(f"[YouTubePeakTool] Lỗi xuất full_peak_path: {e_fp}")
+
+                    win_start = (start_s + actual_start_s) if "download_ranges" in dl_opts else actual_start_s
+                    win_end = win_start + (natural_peak_len if full_peak_path else scene_clip_len)
                     with _yt_url_lock:
                         _used_short_windows.setdefault(vid_url, []).append((win_start, win_end))
 
+                    # Ghi nhận vĩnh viễn vào recent_media_history.json để các video sau KHÔNG BAO GIỜ lặp lại Short này!
+                    record_used_media(
+                        url=vid_url,
+                        query=search_phrases[0] if search_phrases else search_query,
+                        job_id=job_id,
+                        source="youtube_shorts",
+                        media_path=output_path,
+                    )
+
                     logger.info(
                         f"🔥 [YouTubePeakTool] Đã clone & duyệt Vision ({vis_score}/10, scope={effective_scope}) "
-                        f"đoạn {clip_role} ({win_start:.1f}s-{win_end:.1f}s) từ Shorts: '{cand['title'][:55]}' ({vid_url})"
+                        f"đoạn {clip_role} ({win_start:.1f}s-{win_end:.1f}s, full_peak={natural_peak_len:.1f}s) "
+                        f"từ Shorts: '{cand['title'][:55]}' ({vid_url})"
                     )
                     return {
                         "media_path": output_path,
                         "media_type": "hook_ready_video" if (clip_role or "").upper() == "HOOK" else "video",
                         "source_url": vid_url,
+                        "youtube_id": vid_id,
                         "title": cand["title"],
                         "window": f"{win_start:.1f}s-{win_end:.1f}s",
                         "vision_score": vis_score,
                         "search_scope": effective_scope,
+                        "full_peak_path": full_peak_path,
+                        "full_peak_duration_sec": round(natural_peak_len if full_peak_path else scene_clip_len, 2),
+                        "scene_clip_duration_sec": round(scene_clip_len, 2),
                     }
     except Exception as e_yt:
         logger.debug(f"[YouTubePeakTool] Lỗi nhánh YouTube Shorts: {e_yt}")
@@ -798,10 +893,17 @@ def execute_youtube_short_peak_clone_sync(
                 media_agent.download_file(v_url, raw_stock)
                 if Path(raw_stock).exists() and Path(raw_stock).stat().st_size > 20000:
                     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-                    from app.utils.ffmpeg_helper import trim_video
+                    from app.utils.ffmpeg_helper import find_hook_peak_window, get_duration_ms, trim_video
+                    raw_st_dur = max(0.0, get_duration_ms(raw_stock) / 1000.0)
+                    min_st_dur = max(3.0, target_duration_sec)
+                    st_start, st_peak_len = find_hook_peak_window(
+                        raw_stock,
+                        min_duration=min_st_dur,
+                        max_duration=min(max_peak_duration_sec, max(min_st_dur, raw_st_dur)),
+                    )
                     trim_video(
                         input_path=raw_stock,
-                        duration_seconds=max(3.0, target_duration_sec),
+                        duration_seconds=min_st_dur,
                         output_path=output_path,
                         width=1080,
                         height=1920,
@@ -809,20 +911,54 @@ def execute_youtube_short_peak_clone_sync(
                         apply_grading=True,
                         is_hook_scene=((clip_role or "").upper() == "HOOK"),
                         fair_use_transform=False,
+                        start_offset_sec=st_start,
+                        preserve_continuous_flow=True,
                     )
                     if Path(output_path).exists() and Path(output_path).stat().st_size > 20000:
-                        used.add(v_url)
+                        full_peak_path = None
+                        if st_peak_len >= min_st_dur + 1.8 and raw_st_dur >= st_start + min_st_dur + 1.5:
+                            cand_full_st = str(Path(output_path).parent / f"{Path(output_path).stem}_fullpeak.mp4")
+                            try:
+                                trim_video(
+                                    input_path=raw_stock,
+                                    duration_seconds=st_peak_len,
+                                    output_path=cand_full_st,
+                                    width=1080,
+                                    height=1920,
+                                    fps=30,
+                                    apply_grading=True,
+                                    is_hook_scene=False,
+                                    fair_use_transform=False,
+                                    start_offset_sec=st_start,
+                                    preserve_continuous_flow=True,
+                                )
+                                if Path(cand_full_st).exists() and Path(cand_full_st).stat().st_size > 25000:
+                                    full_peak_path = cand_full_st
+                            except Exception:
+                                pass
+
+                        used.update(extract_media_identity(v_url))
+                        record_used_media(
+                            url=v_url,
+                            query=search_phrases[0] if search_phrases else search_query,
+                            job_id=job_id,
+                            source="pexels_stock_video",
+                            media_path=output_path,
+                        )
                         logger.info(
                             f"🎬 [YouTubePeakTool -> StockVideo HD] Đã tải & duyệt video Pexels/Pixabay "
-                            f"(scope={effective_scope}) cho {clip_role}: '{best_stock_v.get('title', '')[:50]}'"
+                            f"(scope={effective_scope}, peak={st_peak_len:.1f}s) cho {clip_role}: '{best_stock_v.get('title', '')[:50]}'"
                         )
                         return {
                             "media_path": output_path,
                             "media_type": "hook_ready_video" if (clip_role or "").upper() == "HOOK" else "video",
                             "source_url": v_url,
                             "title": best_stock_v.get("title", "HD Portrait Stock Video"),
-                            "window": f"0.0s-{target_duration_sec:.1f}s",
+                            "window": f"{st_start:.1f}s-{st_start + (st_peak_len if full_peak_path else min_st_dur):.1f}s",
                             "search_scope": effective_scope,
+                            "full_peak_path": full_peak_path,
+                            "full_peak_duration_sec": round(st_peak_len if full_peak_path else min_st_dur, 2),
+                            "scene_clip_duration_sec": round(min_st_dur, 2),
                         }
     except Exception as e_st:
         logger.debug(f"[YouTubePeakTool] Stock video fallback skip: {e_st}")
@@ -840,6 +976,7 @@ def execute_google_cinematic_image_sync(
     subject_entity: str = "",
     search_scope: str = "SCENE_SPECIFIC",
     overall_script_query: str = "",
+    job_id: int = 0,
 ) -> Optional[Dict[str, Any]]:
     """
     Thực thi công cụ tìm ảnh Top Search Google Images theo cơ chế kép (`SCENE_SPECIFIC` vs `SCRIPT_OVERALL`):
@@ -848,6 +985,8 @@ def execute_google_cinematic_image_sync(
       Tìm trực tiếp các hình ảnh xoay quanh TỔNG THỂ KỊCH BẢN (`overall_script_query`) và lọc trùng lặp (`used_urls`)
       để ghép vào video mượt mà, 100% đúng chủ đề kịch bản!
     """
+    from app.services.media.media_history import extract_media_identity, record_used_media
+
     used = used_urls if used_urls is not None else set()
     effective_scope, search_qs = _resolve_adaptive_search_queries(
         search_scope=search_scope,
@@ -901,7 +1040,14 @@ def execute_google_cinematic_image_sync(
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     media_agent.download_file(img_url, output_path)
     if Path(output_path).exists() and Path(output_path).stat().st_size > 3000:
-        used.add(img_url)
+        used.update(extract_media_identity(img_url))
+        record_used_media(
+            url=img_url,
+            query=primary_q,
+            job_id=job_id,
+            source=best_photo.get("source", "google_image"),
+            media_path=output_path,
+        )
         return {
             "media_path": output_path,
             "media_type": "image",
@@ -927,9 +1073,10 @@ def plan_media_tools_with_llm_sync(
     """
     Sử dụng Gemini gắn `bind_tools([clone_youtube_short_peak_clip, search_google_cinematic_image])`
     để LLM đọc toàn bộ kịch bản và quyết định cho từng phân cảnh:
-    - Khi câu văn nhỏ tự thân CÓ NGHĨA (`search_scope="SCENE_SPECIFIC"`): đi search trực tiếp theo ý câu văn nhỏ.
-    - Khi câu văn nhỏ bị VÔ NGHĨA / CỤT NGỦN / LỆCH CHỦ ĐỀ nếu tách rời (`search_scope="SCRIPT_OVERALL"`):
-      đi search nội dung xoay quanh TỔNG THỂ KỊCH BẢN (`overall_script_query`)!
+    - ƯU TIÊN VIDEO TRƯỚC, ẢNH SAU (Video-First -> Image-Fallback):
+      Ưu tiên dùng `clone_youtube_short_peak_clip` cho Hook và các phân cảnh hành động/cao trào chính
+      (nếu đoạn Peak dài, hệ thống sẽ tự động cho chảy liền mạch qua các phân cảnh kế tiếp),
+      các cảnh còn lại hoặc cảnh mô tả tĩnh dùng `search_google_cinematic_image`.
     """
     total_scenes = len(scenes)
     if total_scenes == 0:
@@ -974,10 +1121,10 @@ Call EXACTLY ONE tool for EACH scene (from scene_id=1 to scene_id={total_scenes}
        The sentence is a time transition ("For three days nobody knew why it refused to move"), an abstract/scientific explanation ("Canine behaviorists call this maternal imprinting"), an emotional conclusion ("That single moment changed everything"), or focuses on a minor inanimate prop that would return unrelated product ads if searched literally (e.g., "inside an old leather boot" -> would return shoe ads!).
        -> Set `search_scope = "SCRIPT_OVERALL"` and write `youtube_search_query` / `smart_image_query` revolving around the OVERALL SCRIPT STORY (`overall_script_query`) with a natural angle variation (NEVER include distracting props like "boot" or abstract words)!
 
-3. TOOL SELECTION (HOOK + 2-3 PEAK VIDEOS INTERLEAVED WITH IMAGES):
-   - SCENE 1 (THE HOOK): Call `clone_youtube_short_peak_clip` with `clip_role="HOOK"`.
-   - BODY SCENES (2 to {total_scenes}): Pick 2 to 3 peak scenes spaced across the script (e.g., scene 3, scene 5, scene 7) and call `clone_youtube_short_peak_clip` with `clip_role="PEAK"`.
-   - For all other scenes, call `search_google_cinematic_image`.
+3. TOOL SELECTION (VIDEO-FIRST PRIORITY -> IMAGE FALLBACK):
+   - Prioritize real action video clips (`clone_youtube_short_peak_clip`) first! Note that if a found Peak clip is long (e.g. 7-14s), the system will automatically let that continuous Peak video span across consecutive scenes before filling remaining scenes with images.
+   - SCENE 1 (THE HOOK): MUST call `clone_youtube_short_peak_clip` with `clip_role="HOOK"`.
+   - BODY SCENES (2 to {total_scenes}): Call `clone_youtube_short_peak_clip` (`clip_role="PEAK"`) for 3 to 5 key action/climax scenes across the story, and call `search_google_cinematic_image` for static close-ups, transitions, or detail scenes.
    - NEVER use filler words like "4k edit", "cinematic visuals", or "movie scene" in `youtube_search_query`.
 
 IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!"""
@@ -1064,7 +1211,8 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
 
     final_plan: List[Dict[str, Any]] = []
     motion_cycle = ["zoom_in", "pan_right", "zoom_out", "pan_left"]
-    peak_indices = {1, max(2, total_scenes // 2), max(3, (total_scenes * 3) // 4)}
+    # Ưu tiên Video trước (Cảnh 1, 2, giữa kịch bản, và cao trào 3/4)
+    peak_indices = {1, 2, max(3, total_scenes // 2), max(4, (total_scenes * 3) // 4)}
     default_subj = _clean_yt_search_phrase(primary_entity or topic, max_words=3, strip_distractor_props=True)
     default_overall_q = _clean_yt_search_phrase(topic, subject_entity=default_subj, max_words=5, strip_distractor_props=True)
 

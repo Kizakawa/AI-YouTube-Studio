@@ -1037,6 +1037,113 @@ def find_hook_peak_action_offset(input_path: str, target_duration: float, exclud
     return 0.0
 
 
+def find_hook_peak_window(
+    input_path: str,
+    min_duration: float = 3.5,
+    max_duration: float = 15.0,
+    exclude_ranges: Optional[List[Tuple[float, float]]] = None,
+) -> Tuple[float, float]:
+    """
+    Phát hiện trọn vẹn khoảng thời gian ĐỈNH CAO LIÊN TỤC (start_offset_sec, full_peak_duration_sec)
+    thay vì khóa cứng 3 giây:
+    - Tìm điểm bắt đầu cao trào (`peak_start`) bằng `find_hook_peak_action_offset`.
+    - Quét mở rộng về phía sau (tối đa `max_duration`, mặc định 15s) chừng nào năng lượng chuyển động
+      (motion energy) và độ chi tiết khung hình (edge intrigue / contrast) vẫn đang ở nhịp cao trào,
+      tự động dừng lại ngay trước khi video gốc chuyển sang màn hình tĩnh / outro / chữ cuối video.
+    """
+    min_dur = max(2.5, float(min_duration or 3.5))
+    max_dur = max(min_dur, float(max_duration or 15.0))
+    try:
+        src_sec = get_duration_ms(input_path) / 1000.0
+        if src_sec <= 0.5:
+            return 0.0, min_dur
+        if src_sec <= min_dur + 0.6:
+            return 0.0, round(max(2.0, src_sec), 2)
+
+        peak_start = find_hook_peak_action_offset(input_path, min_dur, exclude_ranges=exclude_ranges)
+        avail_after_start = max(2.0, src_sec - peak_start - 0.15)
+        scan_dur = min(avail_after_start, max_dur)
+        if scan_dur <= min_dur + 0.5:
+            return peak_start, round(scan_dur, 2)
+
+        sample_fps = 4
+        w, h = 90, 160
+        frame_bytes = w * h * 3
+        cmd = [
+            shutil.which("ffmpeg") or "ffmpeg",
+            "-v", "quiet",
+            "-ss", f"{peak_start:.2f}",
+            "-i", input_path,
+            "-t", f"{scan_dur:.1f}",
+            "-vf", f"fps={sample_fps},scale={w}:{h}",
+            "-f", "rawvideo",
+            "-pix_fmt", "rgb24",
+            "-",
+        ]
+        res = subprocess.run(cmd, capture_output=True, timeout=10)
+        raw = res.stdout or b""
+        n_frames = len(raw) // frame_bytes
+        min_frames = max(int(min_dur * sample_fps), 4)
+        if n_frames <= min_frames + 1:
+            return peak_start, round(min(avail_after_start, min_dur), 2)
+
+        from PIL import Image, ImageChops, ImageFilter, ImageStat
+        energies: List[float] = []
+        lums: List[float] = []
+        contrasts: List[float] = []
+        prev_g = None
+        for i in range(n_frames):
+            chunk = raw[i * frame_bytes : (i + 1) * frame_bytes]
+            im = Image.frombytes("RGB", (w, h), chunk)
+            g = im.convert("L")
+            st = ImageStat.Stat(g)
+            lum = float(st.mean[0])
+            con = float(st.stddev[0])
+            lums.append(lum)
+            contrasts.append(con)
+            edge_st = ImageStat.Stat(g.filter(ImageFilter.FIND_EDGES))
+            intrigue = float(edge_st.mean[0]) * 0.65 + float(edge_st.stddev[0]) * 0.35
+            mot = float(ImageStat.Stat(ImageChops.difference(g, prev_g)).mean[0]) if prev_g is not None else 0.0
+            prev_g = g
+            energies.append(mot * 1.4 + intrigue * 0.45)
+
+        if len(energies) > 1:
+            energies[0] = energies[1]
+
+        core_avg_energy = sum(energies[:min_frames]) / max(min_frames, 1)
+        energy_threshold = max(core_avg_energy * 0.50, 4.2)
+
+        end_frame = min_frames
+        low_energy_streak = 0
+        for idx in range(min_frames, n_frames):
+            cur_sec = peak_start + (idx / float(sample_fps))
+            if exclude_ranges and any(ex_s < cur_sec < ex_e for ex_s, ex_e in exclude_ranges):
+                break
+            # Dừng nếu gặp frame tối đen, cháy sáng hoặc màn hình outro phẳng lì
+            if lums[idx] < 38.0 or lums[idx] > 232.0 or contrasts[idx] < 17.0:
+                low_energy_streak += 1
+            else:
+                win_slice = energies[max(0, idx - 2) : min(n_frames, idx + 2)]
+                local_e = sum(win_slice) / max(len(win_slice), 1)
+                if local_e < energy_threshold:
+                    low_energy_streak += 1
+                else:
+                    low_energy_streak = 0
+                    end_frame = idx + 1
+            if low_energy_streak >= 3:  # >= 0.75s tụt năng lượng / màn hình tĩnh -> kết thúc đoạn Peak
+                break
+
+        full_peak_dur = round(min(scan_dur, max(min_dur, end_frame / float(sample_fps))), 2)
+        logger.info(
+            f"  🔥 [Full Peak Window] Phát hiện đoạn Peak tự nhiên dài {full_peak_dur:.2f}s "
+            f"({peak_start:.2f}s -> {peak_start + full_peak_dur:.2f}s, năng lượng lõi={core_avg_energy:.1f})"
+        )
+        return peak_start, full_peak_dur
+    except Exception as e:
+        logger.debug(f"[find_hook_peak_window] Fallback về min_duration ({e})")
+        return 0.0, round(min_dur, 2)
+
+
 def trim_video(
     input_path: str,
     duration_seconds: float,
@@ -1050,22 +1157,27 @@ def trim_video(
     is_hook_scene: bool = False,
     fair_use_transform: bool = True,
     start_offset_sec: Optional[float] = None,
+    preserve_continuous_flow: bool = True,
 ) -> str:
     """
     Cắt video Pexels / YouTube Action về đúng duration cần thiết + scale/crop 9:16 + chuẩn hóa fps 30.
     Tự động lặp lại (stream_loop) nếu video stock ngắn hơn thời lượng lời thoại.
     Bỏ audio gốc của stock video.
     Áp dụng Cinematic Color Grading & Vignette chuẩn hóa theo từng Niche (100% Free Native FFmpeg Filter).
-    Đặc biệt cho Scene 1 (is_hook_scene=True):
-    - Quét Peak-Action Smart Seek để bỏ qua 1-2s đầu tĩnh, nhảy thẳng vào khoảnh khắc cao trào ngay Frame 0.0s.
-    - Biến đổi chống bản quyền tự động (Fair Use 100%): Lật ngang khung hình (hflip), phóng nhẹ 108%,
-      cắt thành các đoạn ngắn chuyển góc máy dồn dập và phủ bộ lọc màu điện ảnh.
+    Đặc biệt:
+    - Khi `preserve_continuous_flow=True` (mặc định mới): Giữ nguyên mạch chuyển động mượt mà của đoạn Peak
+      (kèm biến đổi Fair-Use lật ngang `hflip` + phóng nhẹ 106% + chỉnh màu điện ảnh) thay vì cắt vụn 3s,
+      giúp các đoạn Peak dài chảy liền mạch qua nhiều phân cảnh.
     """
-    # Tránh double-grading (nếu clip đã qua image_to_video hoặc trim_video trước đó)
+    # Tránh double-grading & double-flip (nếu clip đã qua image_to_video, trim_video, hoặc cắt từ YouTube Peak trước đó)
     input_filename = Path(input_path).name.lower()
     is_already_rendered = any(
         tag in input_filename
-        for tag in ("_i2v", "_t2v", "_pexels_fb", "clip_", "_gsearch_3d", "_creature_3d", "_motion3d", "_anim", "_fb_motion")
+        for tag in (
+            "_i2v", "_t2v", "_pexels_fb", "clip_", "_gsearch_3d", "_creature_3d",
+            "_motion3d", "_anim", "_fb_motion", "hook_motion_", "hook_peak_",
+            "hook_climax_", "_yt_peak", "_fullpeak", "_long_peak", "_vfirst",
+        )
     )
     should_grade = apply_grading and not is_already_rendered
 
@@ -1078,9 +1190,20 @@ def trim_video(
 
     grading_chain = ("," + ",".join(grading_parts)) if grading_parts else ""
 
+    zw, zh = ((int(width * 1.06) // 2) * 2), ((int(height * 1.06) // 2) * 2)
+    if fair_use_transform and not is_already_rendered:
+        scale_crop_chain = (
+            f"hflip,scale={zw}:{zh}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height}"
+        )
+    else:
+        scale_crop_chain = (
+            f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height}"
+        )
+
     vf_chain = (
-        f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-        f"crop={width}:{height}"
+        f"{scale_crop_chain}"
         f"{grading_chain},"
         f"setsar=1,"
         f"fps={fps}"
@@ -1099,29 +1222,32 @@ def trim_video(
     pts_prefix = ""
     try:
         src_sec = get_duration_ms(input_path) / 1000.0
-        if not seek_args and 0.5 < src_sec < duration_seconds:
-            factor = duration_seconds / src_sec
+        eff_avail = max(0.1, src_sec - (start_offset_sec or 0.0)) if seek_args else src_sec
+        if 0.5 < eff_avail < duration_seconds:
+            factor = duration_seconds / eff_avail
             if factor <= 1.6:
                 pts_prefix = f"setpts={factor + 0.02:.4f}*PTS,"
                 vf_chain = pts_prefix + vf_chain
                 loop_args = []
-                logger.debug(f"[trim_video] Slow-motion x{factor:.2f} thay vì lặp clip ({src_sec:.1f}s → {duration_seconds:.1f}s)")
+                logger.debug(f"[trim_video] Slow-motion x{factor:.2f} thay vì lặp clip ({eff_avail:.1f}s → {duration_seconds:.1f}s)")
             else:
-                logger.debug(f"[trim_video] Clip quá ngắn ({src_sec:.1f}s cho {duration_seconds:.1f}s) → buộc phải lặp")
+                logger.debug(f"[trim_video] Clip quá ngắn ({eff_avail:.1f}s cho {duration_seconds:.1f}s) → buộc phải lặp")
+        elif eff_avail >= duration_seconds:
+            loop_args = []
     except Exception:
         pass
 
     enc_args = get_video_encoder_args(quality="intermediate")
-    if is_hook_scene and duration_seconds >= 1.8:
+    if is_hook_scene and duration_seconds >= 1.8 and not preserve_continuous_flow:
         t1 = round(duration_seconds * 0.28, 3)
         t2 = round(duration_seconds * 0.56, 3)
         t3 = round(duration_seconds * 0.80, 3)
         t4 = round(duration_seconds, 3)
-        zw, zh = ((int(width * 1.08) // 2) * 2), ((int(height * 1.08) // 2) * 2)
+        zw_h, zh_h = ((int(width * 1.08) // 2) * 2), ((int(height * 1.08) // 2) * 2)
         cw1, ch1 = max(2, (int(width / 1.24) // 2) * 2), max(2, (int(height / 1.24) // 2) * 2)
         cw2, ch2 = max(2, (int(width / 1.16) // 2) * 2), max(2, (int(height / 1.16) // 2) * 2)
         cw3, ch3 = max(2, (int(width / 1.36) // 2) * 2), max(2, (int(height / 1.36) // 2) * 2)
-        fair_use_prefix = f"hflip,scale={zw}:{zh}:force_original_aspect_ratio=increase,crop={width}:{height}," if fair_use_transform else f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},"
+        fair_use_prefix = f"hflip,scale={zw_h}:{zh_h}:force_original_aspect_ratio=increase,crop={width}:{height}," if fair_use_transform else f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},"
         filter_complex = (
             f"[0:v]{pts_prefix}{fair_use_prefix}setsar=1,fps={fps},split=4[v0][v1][v2][v3];"
             f"[v0]trim=0:{t1},setpts=PTS-STARTPTS[s0];"

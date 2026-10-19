@@ -184,6 +184,17 @@ def extract_media_identity(url_or_path: str) -> Set[str]:
         if m_pb:
             identities.add(f"pixabay:{m_pb.group(1)}")
 
+    # Trích xuất YouTube Video ID (watch?v=..., /shorts/..., youtu.be/..., hoặc tên file yt_hook_cand_0_<id>.mp4)
+    m_yt = (
+        re.search(r'(?:v=|/shorts/|youtu\.be/|/embed/)([A-Za-z0-9_-]{11})(?:[?&/#]|$)', url_or_path)
+        or re.search(r'yt_(?:hook_cand_\d+|peak|short)_([A-Za-z0-9_-]{11})', url_or_path)
+    )
+    if m_yt:
+        yt_id = m_yt.group(1)
+        identities.add(f"yt:{yt_id}")
+        identities.add(f"https://www.youtube.com/watch?v={yt_id}")
+        identities.add(f"https://www.youtube.com/shorts/{yt_id}")
+
     # Trích xuất Wikimedia filename
     m_wiki = re.search(r'/([^/]+\.(?:jpg|jpeg|png|webp|mp4))', clean_url, re.IGNORECASE)
     if m_wiki:
@@ -203,15 +214,15 @@ def is_media_already_used(url_or_path: str, used_set: Set[str]) -> bool:
     canon = {k for k in keys if ":" in k and not k.startswith(("http", "wiki:"))}
     if not canon:
         return False
-    for u in used_set:
-        if isinstance(u, str) and u.startswith("http") and canon & extract_media_identity(u):
+    for u in list(used_set):
+        if isinstance(u, str) and (u.startswith("http") or "yt_" in u) and canon & extract_media_identity(u):
             return True
     return False
 
 
-def get_recent_media_urls(limit: int = 250) -> Set[str]:
+def get_recent_media_urls(limit: int = 350) -> Set[str]:
     """
-    Lấy tập hợp các URL/ID media đã dùng gần đây kèm toàn bộ định danh canonical (Pexels ID, stripped URL).
+    Lấy tập hợp các URL/ID media đã dùng gần đây kèm toàn bộ định danh canonical (YouTube ID, Pexels ID, stripped URL).
     Dùng để nạp sẵn vào used_urls của job mới nhằm tránh trùng lặp 100%.
     """
     entries = _load_history()
@@ -229,16 +240,20 @@ def get_recent_media_urls(limit: int = 250) -> Set[str]:
 
 def record_used_media(url: str, query: str = "", job_id: int = 0, source: str = "pexels", media_path: Optional[str] = None):
     """Ghi nhận 1 media URL/file vừa được tải và sử dụng trong 1 phân cảnh."""
-    if not url:
+    if not url and not media_path:
         return
+    effective_url = url or str(media_path or "")
     entries = _load_history()
-    if any(e.get("url") == url for e in entries[-50:]):
-        return
+    new_identities = extract_media_identity(effective_url)
+    for e in entries[-80:]:
+        existing_url = e.get("url") or ""
+        if existing_url == effective_url or (new_identities and (new_identities & extract_media_identity(existing_url))):
+            return
 
     f_md5 = compute_file_md5(media_path) if media_path and Path(media_path).exists() else ""
 
     entries.append({
-        "url": url,
+        "url": effective_url,
         "query": query,
         "job_id": job_id,
         "source": source,
@@ -246,7 +261,7 @@ def record_used_media(url: str, query: str = "", job_id: int = 0, source: str = 
         "timestamp": int(time.time()),
     })
     _save_history(entries)
-    logger.debug(f"[MediaHistory] Đã ghi nhận media mới: {url[:60]}... (Job #{job_id})")
+    logger.debug(f"[MediaHistory] Đã ghi nhận media mới: {effective_url[:65]}... (Job #{job_id}, source={source})")
 
 
 def record_batch_used_media(urls: List[str], job_id: int = 0):

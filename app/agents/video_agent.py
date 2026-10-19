@@ -234,21 +234,31 @@ class VideoAgent:
             is_video_file = bool(scene.media_path and scene.media_path.lower().endswith((".mp4", ".mov", ".webm", ".mkv")))
             clip_niche = getattr(job, "niche", None)
             is_scifi_clip = getattr(job, "is_scifi", False) or ("scifi" in str(clip_niche or "").lower()) or ("scifi" in (getattr(scene, "visual_keyword", "") or "").lower())
-            is_already_rendered = bool(scene.media_path and any(tag in Path(scene.media_path).name.lower() for tag in ("_i2v", "_t2v", "_pexels_fb", "clip_", "_gsearch_3d", "_creature_3d", "_motion3d", "_anim", "_fb_motion", "hook_motion_")))
+            is_already_rendered = bool(
+                scene.media_path
+                and any(
+                    tag in Path(scene.media_path).name.lower()
+                    for tag in (
+                        "_i2v", "_t2v", "_pexels_fb", "clip_", "_gsearch_3d", "_creature_3d",
+                        "_motion3d", "_anim", "_fb_motion", "hook_motion_", "hook_peak_",
+                        "hook_climax_", "_yt_peak", "_fullpeak", "_long_peak", "_vfirst",
+                    )
+                )
+            )
 
-            if raw_type == "hook_ready_video" or (scene.media_path and Path(scene.media_path).name.lower().startswith("hook_motion_")):
+            if raw_type == "hook_ready_video" or (scene.media_path and Path(scene.media_path).name.lower().startswith(("hook_motion_", "hook_peak_", "hook_climax_"))):
                 from app.utils.ffmpeg_helper import get_duration_ms
                 actual_hook_sec = get_duration_ms(scene.media_path) / 1000.0
                 if actual_hook_sec > 0.5 and abs(actual_hook_sec - duration) <= 0.25:
                     logger.info(
-                        f"  Scene {scene.scene_id}: 🎯 HOOK READY VIDEO ({Path(scene.media_path).name}, {actual_hook_sec:.1f}s) → "
+                        f"  Scene {scene.scene_id}: 🎯 HOOK/PEAK READY VIDEO ({Path(scene.media_path).name}, {actual_hook_sec:.1f}s) → "
                         f"khớp thời lượng ({duration:.1f}s), copy trực tiếp"
                     )
                     if os.path.abspath(scene.media_path) != os.path.abspath(clip_path):
                         shutil.copy2(scene.media_path, clip_path)
                 else:
                     logger.info(
-                        f"  Scene {scene.scene_id}: 🎯 HOOK READY VIDEO ({Path(scene.media_path).name}, {actual_hook_sec:.1f}s) → "
+                        f"  Scene {scene.scene_id}: 🎯 HOOK/PEAK READY VIDEO ({Path(scene.media_path).name}, {actual_hook_sec:.1f}s) → "
                         f"đồng bộ thời lượng sang {duration:.1f}s để chống hụt xfade"
                     )
                     trim_video(
@@ -262,6 +272,8 @@ class VideoAgent:
                         niche=clip_niche,
                         apply_grading=False,
                         is_hook_scene=False,
+                        fair_use_transform=False,
+                        preserve_continuous_flow=True,
                     )
             elif raw_type in ("video", "ai_video", "i2v", "t2v") or is_video_file:
                 logger.info(
@@ -280,6 +292,8 @@ class VideoAgent:
                     niche=clip_niche,
                     apply_grading=(not is_already_rendered),
                     is_hook_scene=is_hook,
+                    fair_use_transform=(not is_already_rendered),
+                    preserve_continuous_flow=True,
                 )
             elif is_hook or raw_type in ("comic_anim", "multi_pose", "2d_loop") or getattr(scene, "pose_images", None):
                 pose_list = getattr(scene, "pose_images", None) or [scene.media_path]

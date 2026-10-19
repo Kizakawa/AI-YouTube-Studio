@@ -180,7 +180,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
     scenes_media = []
     from app.services.media.media_history import get_recent_media_urls, record_used_media
-    used_pool_urls = get_recent_media_urls(limit=150)
+    used_pool_urls = get_recent_media_urls(limit=350)
     job_id = state.get("job_id", 0)
 
     # Mở rộng Semaphore lên 8 để toàn bộ 8-10 phân cảnh của Shorts chạy SONG SONG 100% cùng lúc
@@ -216,7 +216,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     pre_hook_map = state.get("pre_resolved_hook_media") or {}
 
     async def _fetch_one_scene(idx: int, scene) -> Dict[str, Any]:
-        # ── ƯU TIÊN TUYỆT ĐỐI CHO NODE HOOK VIDEO: Nếu Cảnh này đã được cắt sẵn ──
+        # ── ƯU TIÊN TUYỆT ĐỐI CHO NODE HOOK VIDEO: Nếu Cảnh này đã được cắt sẵn (bao gồm cả Long Peak chảy liền mạch) ──
         pre_hook = pre_hook_map.get(scene.scene_id) or pre_hook_map.get(str(scene.scene_id))
         if isinstance(pre_hook, dict) and pre_hook.get("media_path") and Path(pre_hook["media_path"]).exists():
             return {
@@ -233,7 +233,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 "highlight_words": getattr(scene, "highlight_words", None),
                 "overlay_badge": getattr(scene, "overlay_badge", None),
                 "visual_strategy": pre_hook.get("visual_strategy", "HOOK_PEAK_SHORT_VIDEO"),
-                "production_method": pre_hook.get("production_method", "CLIMAX_REAL_VIDEO_FAIR_USE_3CUT"),
+                "production_method": pre_hook.get("production_method", "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK"),
                 "tool": "hook_video_node",
                 "strategy_rationale": pre_hook.get("strategy_rationale", "Peak segment extracted from online Short"),
             }
@@ -242,6 +242,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         media_type = "image"
         vision_curated = False
         hook_alternate_urls: List[str] = []
+        full_peak_path: Optional[str] = None
+        full_peak_duration_sec: float = 0.0
+        source_url_used: str = ""
         sq = getattr(scene, 'stock_query', None)
         vp = getattr(scene, 'visual_prompt', None)
         kw = scene.visual_keyword or ""
@@ -329,13 +332,21 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     topic=state.get("topic", ""),
                     search_scope=sc_scope,
                     overall_script_query=overall_q,
+                    max_peak_duration_sec=14.0,
+                    job_id=job_id,
                 )
                 if yt_res and yt_res.get("media_path"):
                     media_path = yt_res["media_path"]
                     media_type = yt_res.get("media_type", "video")
                     vision_curated = True
-                    prod_method = "CLIMAX_REAL_VIDEO_FAIR_USE_3CUT" if scene.scene_id == 1 else "CLIMAX_PEAK_SHORT_SPLICE"
-                    rationale = f"YouTube Shorts Peak [{yt_res.get('search_scope', sc_scope)}] ({yt_res.get('window')}): {yt_res.get('title', '')[:45]}"
+                    full_peak_path = yt_res.get("full_peak_path")
+                    full_peak_duration_sec = float(yt_res.get("full_peak_duration_sec") or dur)
+                    source_url_used = str(yt_res.get("source_url") or "")
+                    prod_method = "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK" if scene.scene_id == 1 else "CLIMAX_PEAK_SHORT_SPLICE"
+                    rationale = (
+                        f"YouTube Shorts Peak [{yt_res.get('search_scope', sc_scope)}] "
+                        f"({yt_res.get('window')}, full_peak={full_peak_duration_sec:.1f}s): {yt_res.get('title', '')[:45]}"
+                    )
                 else:
                     # Nếu chủ đề khó/không tìm được Shorts -> tự động gọi Tool 2 (search_google_cinematic_image) ngay lập tức!
                     logger.info(f"Scene {scene.scene_id}: ⚡ YouTube Shorts Peak không có clip phù hợp cho '{yt_q}' -> Chuyển sang tìm ảnh Top Google Images!")
@@ -351,11 +362,13 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         subject_entity=subj_ent,
                         search_scope=sc_scope,
                         overall_script_query=overall_q,
+                        job_id=job_id,
                     )
                     if img_res and img_res.get("media_path"):
                         media_path = img_res["media_path"]
                         media_type = "image"
                         vision_curated = True
+                        source_url_used = str(img_res.get("source_url") or "")
                         hook_alternate_urls = list(img_res.get("alternate_urls") or [])
                         prod_method = "GOOGLE_TOP_IMAGE_FALLBACK"
             else:
@@ -372,11 +385,13 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     subject_entity=subj_ent,
                     search_scope=sc_scope,
                     overall_script_query=overall_q,
+                    job_id=job_id,
                 )
                 if img_res and img_res.get("media_path"):
                     media_path = img_res["media_path"]
                     media_type = "image"
                     vision_curated = True
+                    source_url_used = str(img_res.get("source_url") or "")
                     hook_alternate_urls = list(img_res.get("alternate_urls") or [])
                     rationale = f"Google Top Image [{img_res.get('search_scope', sc_scope)}] ({img_res.get('curation_score')}): {img_res.get('title', '')[:45]}"
         else:
@@ -434,6 +449,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     await asyncio.to_thread(media_agent.download_file, searched_photo["url"], out_img)
                     if Path(out_img).exists() and Path(out_img).stat().st_size > 3000:
                         used_pool_urls.add(searched_photo["url"])
+                        source_url_used = searched_photo["url"]
                         media_path = out_img
                         media_type = "image"
                         vision_curated = True
@@ -470,6 +486,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         await asyncio.to_thread(media_agent.download_file, cand_url, output)
                         if Path(output).exists() and Path(output).stat().st_size > 3000:
                             used_pool_urls.add(cand_url)
+                            source_url_used = cand_url
                             media_path = output
                             media_type = "image"
                             logger.info(f"Scene {scene.scene_id}: 📸 [Tư liệu thật] Khớp từ Pool: {best_pool_photo.get('title', '')[:45]}")
@@ -501,6 +518,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         await asyncio.to_thread(media_agent.download_file, cand_url, output)
                         if Path(output).exists() and Path(output).stat().st_size > 3000:
                             used_pool_urls.add(cand_url)
+                            source_url_used = cand_url
                             media_path = output
                             media_type = "image"
                             hook_alternate_urls = list(candidate_media.get("alternate_urls") or [])
@@ -525,6 +543,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         await asyncio.to_thread(media_agent.download_file, best_photo["url"], output)
                         if Path(output).exists() and Path(output).stat().st_size > 3000:
                             used_pool_urls.add(best_photo["url"])
+                            source_url_used = best_photo["url"]
                             media_path = output
                             media_type = "image"
                             hook_alternate_urls = list(best_photo.get("alternate_urls") or [])
@@ -578,6 +597,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         await asyncio.to_thread(media_agent.download_file, cand_url, vid_out)
                         if Path(vid_out).exists() and Path(vid_out).stat().st_size > 10000:
                             used_pool_urls.add(cand_url)
+                            source_url_used = cand_url
                             media_path = vid_out
                             media_type = "video"
                             logger.info(f"Scene {scene.scene_id}: 🎥 Cứu hộ thành công bằng Video Pexels: '{search_query or kw}'")
@@ -627,6 +647,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         await asyncio.to_thread(media_agent.download_file, cand_url, vid_out)
                         if Path(vid_out).exists() and Path(vid_out).stat().st_size > 10000:
                             used_pool_urls.add(cand_url)
+                            source_url_used = cand_url
                             media_path = vid_out
                             media_type = "video"
                             logger.info(f"Scene {scene.scene_id}: 🎥 Cứu hộ thành công bằng Video Pexels: '{search_query or kw}'")
@@ -670,6 +691,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     await asyncio.to_thread(media_agent.download_file, cand_url, vid_out)
                     if Path(vid_out).exists() and Path(vid_out).stat().st_size > 10000:
                         used_pool_urls.add(cand_url)
+                        source_url_used = cand_url
                         media_path = vid_out
                         media_type = "video"
                         logger.info(f"Scene {scene.scene_id}: 🎥 [Video B-Roll Tuyển chọn] Tải thành công video: '{best_vid.get('title')}'")
@@ -755,6 +777,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     await asyncio.to_thread(media_agent.download_file, cand_url, output)
                     if Path(output).exists() and Path(output).stat().st_size > 3000:
                         used_pool_urls.add(cand_url)
+                        source_url_used = cand_url
                         media_path = output
                         media_type = c_type
                         if c_type == "image":
@@ -834,6 +857,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     await asyncio.to_thread(media_agent.download_file, img_url, out_img)
                     if Path(out_img).exists() and Path(out_img).stat().st_size > 3000:
                         used_pool_urls.add(img_url)
+                        source_url_used = img_url
                         media_path = out_img
                         media_type = "image"
                         vision_curated = True
@@ -925,6 +949,18 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 except Exception as e_hk_img:
                     logger.debug(f"Scene 1: Lỗi dựng hook_motion_001 từ ảnh truyền thống: {e_hk_img}")
 
+        if source_url_used and media_path:
+            try:
+                record_used_media(
+                    url=source_url_used,
+                    query=search_query or kw,
+                    job_id=job_id,
+                    source=str(prod_method or chosen_strategy or "media_fetch").lower(),
+                    media_path=media_path,
+                )
+            except Exception:
+                pass
+
         return {
             "scene_id": scene.scene_id,
             "media_path": media_path,
@@ -942,6 +978,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             "production_method": prod_method,
             "tool": tool,
             "strategy_rationale": rationale,
+            "source_url": source_url_used,
+            "full_peak_path": full_peak_path,
+            "full_peak_duration_sec": full_peak_duration_sec,
         }
 
     async def _guarded_fetch(idx: int, scene) -> Dict[str, Any]:
@@ -986,6 +1025,152 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
     tasks = [_guarded_fetch(i, s) for i, s in enumerate(script.scenes)]
     scenes_media = list(await asyncio.gather(*tasks))
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # BỘ LẮP GHÉP TIMELINE ƯU TIÊN VIDEO PEAK DÀI -> ẢNH TĨNH (VIDEO-FIRST TIMELINE ASSEMBLER)
+    # 1. Mở rộng các đoạn Peak dài (`full_peak_path` 6s-14s) chảy liền mạch qua các phân cảnh kế tiếp
+    #    thay vì khóa cứng 3 giây rồi cắt cụt sang ảnh tĩnh!
+    # 2. Tổng hợp & ưu tiên xếp các phân đoạn Video lên trước, các phân đoạn Ảnh tĩnh ở phía sau
+    #    để tạo luồng video liền mạch trước khi ghép giọng đọc (voiceover) và phụ đề (subtitles).
+    # ══════════════════════════════════════════════════════════════════════════
+    scenes_audio_list = state.get("scenes_audio", [])
+
+    def _get_slot_dur(slot_idx: int) -> float:
+        sid = slot_idx + 1
+        if scenes_audio_list:
+            sc_a = next((a for a in scenes_audio_list if isinstance(a, dict) and int(a.get("scene_id") or 0) == sid), None)
+            if sc_a and sc_a.get("audio_duration_ms"):
+                return max(float(sc_a["audio_duration_ms"]) / 1000.0, 1.2)
+        if 0 <= slot_idx < len(script.scenes):
+            return max(float(getattr(script.scenes[slot_idx], "estimated_seconds", 4.0) or 4.0), 1.2)
+        return 3.8
+
+    # Bước A: Nối dài các đoạn Peak dài (`full_peak_path`) chảy liên tục sang các cảnh kế tiếp đang là ảnh tĩnh
+    try:
+        from app.utils.ffmpeg_helper import get_duration_ms, trim_video
+
+        for i_sc in range(len(scenes_media)):
+            cur_item = scenes_media[i_sc]
+            if not isinstance(cur_item, dict):
+                continue
+            fp_path = cur_item.get("full_peak_path")
+            fp_dur = float(cur_item.get("full_peak_duration_sec") or 0.0)
+            if not fp_path or not Path(fp_path).exists() or fp_dur <= 0.0:
+                continue
+
+            cur_slot_dur = _get_slot_dur(i_sc)
+            consumed_sec = cur_slot_dur
+            rem_sec = fp_dur - consumed_sec
+            next_idx = i_sc + 1
+
+            while next_idx < len(scenes_media) and rem_sec >= 2.2:
+                next_item = scenes_media[next_idx]
+                if not isinstance(next_item, dict) or next_item.get("media_type") != "image":
+                    break
+                next_slot_dur = _get_slot_dur(next_idx)
+                if rem_sec < next_slot_dur * 0.68:
+                    break
+                next_sid = int(next_item.get("scene_id") or (next_idx + 1))
+                cont_out = str(media_dir / f"scene_{next_sid:03d}_long_peak_cont.mp4")
+                trim_video(
+                    input_path=fp_path,
+                    duration_seconds=next_slot_dur + 0.22,
+                    output_path=cont_out,
+                    width=1080,
+                    height=1920,
+                    fps=30,
+                    apply_grading=False,
+                    is_hook_scene=False,
+                    fair_use_transform=False,
+                    start_offset_sec=consumed_sec,
+                    preserve_continuous_flow=True,
+                )
+                if Path(cont_out).exists() and Path(cont_out).stat().st_size > 15_000:
+                    next_item["media_path"] = cont_out
+                    next_item["media_type"] = "hook_ready_video"
+                    next_item["pose_images"] = None
+                    next_item["visual_strategy"] = "YOUTUBE_PEAK_SHORT"
+                    next_item["production_method"] = "LONG_PEAK_CONTINUOUS_FLOW"
+                    next_item["strategy_rationale"] = (
+                        f"Continuous Long Peak flow ({consumed_sec:.1f}s->{consumed_sec + next_slot_dur:.1f}s "
+                        f"of {fp_dur:.1f}s Peak from Scene #{cur_item.get('scene_id')})"
+                    )
+                    logger.info(
+                        f"🌟 [MediaNodes -> Long Peak Flow] Đoạn Peak dài ({fp_dur:.1f}s) từ Cảnh #{cur_item.get('scene_id')} "
+                        f"chảy liền mạch sang Cảnh #{next_sid} ({consumed_sec:.1f}s -> {consumed_sec + next_slot_dur:.1f}s)!"
+                    )
+                    consumed_sec += next_slot_dur
+                    rem_sec -= next_slot_dur
+                    next_idx += 1
+                else:
+                    break
+
+        # Bước B: Tổng hợp ưu tiên từ Video rồi đến Ảnh tĩnh trên Timeline thị giác (Video-First Assembly)
+        video_first_enabled = os.getenv("VIDEO_FIRST_TIMELINE_PRIORITY", "true").strip().lower() not in ("0", "false", "no", "off")
+        if video_first_enabled and len(scenes_media) > 2:
+            visual_keys = (
+                "media_path", "media_type", "pose_images", "vision_curated",
+                "visual_strategy", "production_method", "tool", "strategy_rationale",
+                "source_url", "full_peak_path", "full_peak_duration_sec",
+            )
+            video_payloads = []
+            image_payloads = []
+            for idx_s, m_dict in enumerate(scenes_media):
+                if not isinstance(m_dict, dict):
+                    continue
+                payload = {k: m_dict.get(k) for k in visual_keys}
+                payload["_orig_idx"] = idx_s
+                m_t = str(m_dict.get("media_type") or "image").lower()
+                is_img_multicut = str(m_dict.get("production_method") or "").startswith("CLIMAX_IMAGES_LIVE_FX_")
+                if m_t in ("video", "hook_ready_video") and not is_img_multicut:
+                    video_payloads.append(payload)
+                else:
+                    image_payloads.append(payload)
+
+            # Kiểm tra xem có đoạn Video nào đang bị xếp sau Ảnh tĩnh hay không
+            if video_payloads and image_payloads:
+                orig_video_indices = [p["_orig_idx"] for p in video_payloads]
+                expected_front_indices = list(range(len(video_payloads)))
+                if orig_video_indices != expected_front_indices:
+                    ordered_payloads = video_payloads + image_payloads
+                    for slot_i, (sc_dict, pay) in enumerate(zip(scenes_media, ordered_payloads)):
+                        if not isinstance(sc_dict, dict):
+                            continue
+                        sid = int(sc_dict.get("scene_id") or (slot_i + 1))
+                        req_dur = _get_slot_dur(slot_i) + 0.22
+                        for k in visual_keys:
+                            sc_dict[k] = pay.get(k)
+                        # Nếu một đoạn Video được dồn lên slot mới ở đầu timeline, đồng bộ thời lượng khớp với slot mới
+                        if pay["_orig_idx"] != slot_i and str(sc_dict.get("media_type") or "").lower() in ("video", "hook_ready_video"):
+                            src_v = pay.get("full_peak_path") if (pay.get("full_peak_path") and Path(pay["full_peak_path"]).exists()) else pay.get("media_path")
+                            if src_v and Path(src_v).exists():
+                                cur_v_dur = get_duration_ms(str(sc_dict["media_path"])) / 1000.0
+                                if abs(cur_v_dur - req_dur) > 0.25:
+                                    retrimmed = str(media_dir / f"scene_{sid:03d}_vfirst.mp4")
+                                    try:
+                                        trim_video(
+                                            input_path=str(src_v),
+                                            duration_seconds=req_dur,
+                                            output_path=retrimmed,
+                                            width=1080,
+                                            height=1920,
+                                            fps=30,
+                                            apply_grading=False,
+                                            is_hook_scene=False,
+                                            fair_use_transform=False,
+                                            preserve_continuous_flow=True,
+                                        )
+                                        if Path(retrimmed).exists() and Path(retrimmed).stat().st_size > 15_000:
+                                            sc_dict["media_path"] = retrimmed
+                                            sc_dict["media_type"] = "hook_ready_video"
+                                    except Exception:
+                                        pass
+                    logger.info(
+                        f"🎬 [Video-First Timeline Assembler] Đã gom ưu tiên {len(video_payloads)} phân cảnh Video lên đầu liền mạch, "
+                        f"tiếp nối bằng {len(image_payloads)} phân cảnh Ảnh 3D trước khi lồng giọng đọc & phụ đề!"
+                    )
+    except Exception as e_asm:
+        logger.debug(f"[MediaNodes] Video-First Timeline Assembler skip: {e_asm}")
 
     # Đa dạng hóa chuyển động máy quay (Camera Motion Alternation) giữa các phân cảnh liền kề
     _motion_pool = ["zoom_in", "pan_right", "zoom_out", "pan_left", "pan_up", "pan_down"]
