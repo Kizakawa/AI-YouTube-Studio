@@ -151,24 +151,24 @@ class ScriptValidationLinter:
         niche_id: str = ""
     ) -> Tuple[List[str], int]:
         """
-        Kiểm tra số từ và tính toán nhịp đọc (Chuẩn Chiều Sâu 32 - 42s — Đủ Ví Dụ Thật + Cơ Chế + Đòn Phản Công):
-        - Chuẩn vàng YouTube Shorts (32 - 42s tại ~170 WPM tự nhiên +0%) là 88 đến 118 từ (8 - 9 cảnh trọn câu, 3.5 - 4.5s/cảnh).
-        - Cho phép biên độ linh hoạt từ 75 đến 128 từ để LLM triển khai đủ 5 hồi (Hook -> Ví dụ đời thực -> Cơ chế ngầm -> Đòn hóa giải -> Loop).
+        Kiểm tra số từ và tính toán nhịp đọc (Chuẩn Độ Dài Vàng 26 - 32s — Giữ Nguyên 100% 5 Hồi Chiều Sâu):
+        - Chuẩn vàng YouTube Shorts (26 - 32s tại ~170 WPM nhịp sắc nét +5%) là 76 đến 96 từ (7 - 8 cảnh trọn câu, 3.2 - 4.0s/cảnh, 9 - 12 từ đắt giá/cảnh).
+        - Cho phép biên độ linh hoạt từ 68 đến 105 từ để LLM triển khai đủ 100% 5 hồi (Hook -> Ví dụ đời thực -> Cơ chế ngầm -> Đòn hóa giải -> Loop) mà không bị cắt giảm nội dung.
         """
         issues = []
         all_narrations = " ".join(s.narration for s in script.scenes if s.narration)
         words = re.findall(r'\b\w+\b', all_narrations)
         total_words = len(words)
 
-        min_words = 75
-        max_words = 128
-        target_range_str = "88 to 118 words (32-42s High-Depth 5-Act Arc across 8-9 complete-sentence scenes of 10-14 words each)"
+        min_words = 68
+        max_words = 105
+        target_range_str = "76 to 96 words (26-32s High-Density 5-Act Arc across 7-8 complete-sentence scenes of 9-12 words each)"
 
         if total_words > max_words:
             est_seconds = (total_words / max(target_wpm, 165)) * 60
             issues.append(
                 f"Script is too long ({total_words} words, ~{est_seconds:.1f}s). "
-                f"Tighten to strictly {target_range_str}."
+                f"Tighten via zero-filler compression to strictly {target_range_str} while keeping all 5 Acts."
             )
         elif total_words < min_words:
             est_seconds = (total_words / max(target_wpm, 165)) * 60
@@ -177,16 +177,16 @@ class ScriptValidationLinter:
                 f"Expand to at least {min_words} words (target {target_range_str})."
             )
 
-        # Số lượng scene: 7 đến 10 scene trọn câu là nhịp tối ưu cho Shorts 32-42s (3.5 - 4.5s/scene)
+        # Số lượng scene: 7 đến 9 scene trọn câu là nhịp tối ưu cho Shorts 26-32s (3.2 - 4.0s/scene)
         scene_count = len(script.scenes)
         min_scenes = 7
         if scene_count < min_scenes:
             issues.append(
-                f"Too few scenes ({scene_count}). Need 8 to 9 complete-sentence scenes (minimum {min_scenes}) to cover Hook, Real-Life Example, Mechanism, Counter-Move, and Loop."
+                f"Too few scenes ({scene_count}). Need 7 to 8 complete-sentence scenes (minimum {min_scenes}) to cover Hook, Real-Life Example, Mechanism, Counter-Move, and Loop."
             )
-        elif scene_count > 11:
+        elif scene_count > 9:
             issues.append(
-                f"Too many scenes ({scene_count}). Keep between 8 and 10 complete-sentence scenes (10-14 words each) so sentences are never chopped in half."
+                f"Too many scenes ({scene_count}). Keep between 7 and 8 complete-sentence scenes (9-12 words each) so the 5-Act arc finishes in the 26-32s Golden Duration."
             )
 
         return issues, total_words
@@ -375,20 +375,20 @@ class ScriptValidationLinter:
         retry_hint = None
         if not is_valid:
             word_target_instruction = (
-                "Keep total word count strictly between 88 and 118 words (32-42s High-Depth 5-Act Arc at natural +0% speed, "
-                "across 8 to 9 complete-sentence scenes of 10-14 words each, with Scene 1 being a 5-8 word declarative warning/revelation hook)."
+                "Keep total word count strictly between 76 and 96 words (26-32s High-Density 5-Act Arc at crisp +5% broadcast tempo, "
+                "across 7 to 8 complete-sentence scenes of 9-12 high-impact words each, with Scene 1 being a 5-8 word declarative warning/revelation hook)."
             )
             bullet_points = "\n".join(f"- {issue}" for issue in all_issues)
             retry_hint = (
                 f"CRITICAL QUALITY GATE VIOLATIONS DETECTED (MUST FIX FOR YOUTUBE SHORTS 5-ACT RETENTION):\n"
                 f"{bullet_points}\n\n"
                 f"ACTION REQUIRED:\n"
-                f"1. Follow the strict 5-Act 32-42s Architecture:\n"
-                f"   - Act 1 (Scene 1, 5-8 words): Sharp declarative statement or warning hook (100% NO '?' or weak Yes/No questions).\n"
+                f"1. Follow the strict 5-Act 26-32s Golden Retention Architecture (100% depth preserved, zero filler clauses):\n"
+                f"   - Act 1 (Scene 1, 5-8 words): Sharp declarative statement, 1v1 duel, or warning hook (100% NO '?' or weak Yes/No questions).\n"
                 f"   - Act 2 (Scenes 2-3): Concrete real-life quote, behavior, or factual scenario.\n"
                 f"   - Act 3 (Scenes 4-5): Hidden brain/neuroscience or physical mechanism.\n"
                 f"   - Act 4 (Scenes 6-7): Actionable counter-move, exact response phrase, or decisive twist.\n"
-                f"   - Act 5 (Scene 8/9): Seamless Infinite Loop Bridge connecting straight back into Scene 1 (ZERO spoken 'Subscribe/Comment' CTAs).\n"
+                f"   - Act 5 (Scene 7/8): Seamless Infinite Loop Bridge connecting straight back into Scene 1 (ZERO spoken 'Subscribe/Comment' CTAs).\n"
                 f"2. {word_target_instruction}\n"
                 f"3. Every scene MUST be 100% grammatically complete — NEVER chop a sentence across scenes or end on 'because', 'which', 'and', 'but'.\n"
                 f"4. Strictly avoid all forbidden concepts/terms and repetitive channel entities listed above."
