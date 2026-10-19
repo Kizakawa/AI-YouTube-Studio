@@ -276,9 +276,11 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             scene_media_pref = getattr(scene, 'media_type', None)
 
             subj_ent = sc_strat.get("subject_entity") or primary_entity or state.get("topic", "")
+            sc_scope = sc_strat.get("search_scope") or "SCENE_SPECIFIC"
+            overall_q = sc_strat.get("overall_script_query") or state.get("topic", "")
             if tool_name == "clone_youtube_short_peak_clip":
                 yt_q = sc_strat.get("youtube_search_query") or kw or state.get("topic", "")
-                fb_q = sc_strat.get("fallback_broad_query") or subj_ent
+                fb_q = sc_strat.get("fallback_broad_query") or overall_q or subj_ent
                 clip_role = sc_strat.get("clip_role") or ("HOOK" if scene.scene_id == 1 else "PEAK")
                 out_vid = str(
                     work_dir / "hook_motion_001.mp4"
@@ -296,13 +298,15 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     subject_entity=subj_ent,
                     narration=scene.narration,
                     topic=state.get("topic", ""),
+                    search_scope=sc_scope,
+                    overall_script_query=overall_q,
                 )
                 if yt_res and yt_res.get("media_path"):
                     media_path = yt_res["media_path"]
                     media_type = yt_res.get("media_type", "video")
                     vision_curated = True
                     prod_method = "CLIMAX_REAL_VIDEO_FAIR_USE_3CUT" if scene.scene_id == 1 else "CLIMAX_PEAK_SHORT_SPLICE"
-                    rationale = f"YouTube Shorts Peak ({yt_res.get('window')}): {yt_res.get('title', '')[:45]}"
+                    rationale = f"YouTube Shorts Peak [{yt_res.get('search_scope', sc_scope)}] ({yt_res.get('window')}): {yt_res.get('title', '')[:45]}"
                 else:
                     # Nếu chủ đề khó/không tìm được Shorts -> tự động gọi Tool 2 (search_google_cinematic_image) ngay lập tức!
                     logger.info(f"Scene {scene.scene_id}: ⚡ YouTube Shorts Peak không có clip phù hợp cho '{yt_q}' -> Chuyển sang tìm ảnh Top Google Images!")
@@ -316,6 +320,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         used_urls=used_pool_urls,
                         is_hook_scene=(scene.scene_id == 1),
                         subject_entity=subj_ent,
+                        search_scope=sc_scope,
+                        overall_script_query=overall_q,
                     )
                     if img_res and img_res.get("media_path"):
                         media_path = img_res["media_path"]
@@ -335,13 +341,15 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     used_urls=used_pool_urls,
                     is_hook_scene=(scene.scene_id == 1),
                     subject_entity=subj_ent,
+                    search_scope=sc_scope,
+                    overall_script_query=overall_q,
                 )
                 if img_res and img_res.get("media_path"):
                     media_path = img_res["media_path"]
                     media_type = "image"
                     vision_curated = True
                     hook_alternate_urls = list(img_res.get("alternate_urls") or [])
-                    rationale = f"Google Top Image ({img_res.get('curation_score')}): {img_res.get('title', '')[:45]}"
+                    rationale = f"Google Top Image [{img_res.get('search_scope', sc_scope)}] ({img_res.get('curation_score')}): {img_res.get('title', '')[:45]}"
         else:
             # ── Khởi tạo biến cho cảnh dùng cache hoặc fallback tương thích ngược ──
             surround_text = " ".join([s.narration for s in script.scenes[max(0, idx - 1):min(len(script.scenes), idx + 2)]])
