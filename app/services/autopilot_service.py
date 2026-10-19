@@ -441,19 +441,8 @@ async def run_autopilot_pipeline_for_channel(
                 details=f"Tự động sản xuất A-Z cho kênh '{ch_name}' (Job #{job_id}): '{job.title}'",
                 channel_id=channel_id
             )
-
-            try:
-                register_job_entities(channel_id, script, job_id=job_id)
-            except Exception as e_ent:
-                logger.debug(f"[AutoPilot] Không thể đăng ký cooldown entities: {e_ent}")
-
-            # [FIX Phase 2] Ghi nhận topic đã dùng vào DB deduplication table
-            try:
-                from app.database.models import UsedTopic
-                UsedTopic.register(db, channel_id=channel_id, topic=topic_str, niche=ch_niche, job_id=job_id)
-                logger.debug(f"[AutoPilot] ✅ Đã ghi nhận topic '{topic_str[:50]}' vào lịch sử deduplication.")
-            except Exception as e_dedup:
-                logger.debug(f"[AutoPilot] Không thể ghi nhận used topic: {e_dedup}")
+            # Lưu ý: Kịch bản, chủ đề (UsedTopic) và metadata hình ảnh chỉ được ghi vào bộ nhớ (Mini-RAG)
+            # ở Step 6 SAU KHI video đã đăng lên YouTube thành công (có youtube_video_id).
 
         # ── Step 5: Render Video Pipeline (LangGraph / Local Render Engine) ──
         logger.info(f"[AutoPilot #{job_id}] 🎬 Bắt đầu render video cho kênh '{ch_name}'...")

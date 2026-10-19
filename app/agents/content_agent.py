@@ -1007,7 +1007,11 @@ class ContentAgent:
 
                     rec_jobs = (
                         db.query(VideoJob)
-                        .filter(VideoJob.target_channel_id.in_(unique_ids))
+                        .filter(
+                            VideoJob.target_channel_id.in_(unique_ids),
+                            VideoJob.youtube_video_id.isnot(None),
+                            VideoJob.youtube_video_id != "",
+                        )
                         .order_by(VideoJob.created_at.desc())
                         .limit(10)
                         .all()

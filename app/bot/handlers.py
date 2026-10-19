@@ -1262,19 +1262,7 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 log_activity(db, user.id, user.username, "SCRIPT_CREATED",
                              f"Kịch bản #{job_id} đã hoàn thành: '{script.title}'",
                              channel_id=channel_id)
-
-                # Củng cố bộ nhớ chống trùng lặp UsedTopic
-                try:
-                    from app.database.models import UsedTopic
-                    db.add(UsedTopic(
-                        channel_id=channel_id,
-                        topic_hash=UsedTopic.hash_topic(clean_topic),
-                        topic_text=clean_topic,
-                        niche=channel_niche,
-                        job_id=job_id,
-                    ))
-                except Exception:
-                    pass
+                # Lưu ý: Chỉ lưu vào bộ nhớ (VideoMemoryRAG / UsedTopic) sau khi video thực sự được đăng lên YouTube.
 
             # Soạn nội dung thông báo cho nhóm
             scenes_preview = "\n".join([

@@ -299,12 +299,17 @@ class VideoMemoryRAG:
                     offset += batch_size
                 pvs = db.query(PublishedVideo).all()
 
+                # Xóa mọi bản ghi cũ không có youtube_video_id (chỉ giữ lại "yt:*")
+                for k in list(self._docs.keys()):
+                    if not k.startswith("yt:") or not self._docs[k].get("youtube_video_id"):
+                        self._docs.pop(k, None)
+
                 job_by_yt: Dict[str, VideoJob] = {}
                 for j in jobs:
-                    if j.youtube_video_id:
-                        job_by_yt[j.youtube_video_id.strip()] = j
+                    if j.youtube_video_id and str(j.youtube_video_id).strip():
+                        job_by_yt[str(j.youtube_video_id).strip()] = j
 
-                # 1. Index toàn bộ PublishedVideo (ghép kịch bản + metadata ảnh từ VideoJob nếu có)
+                # 1. Index toàn bộ PublishedVideo đã đăng lên YouTube (ghép kịch bản + metadata ảnh từ VideoJob nếu có)
                 for pv in pvs:
                     vid = (pv.youtube_video_id or "").strip()
                     if not vid:
@@ -344,10 +349,13 @@ class VideoMemoryRAG:
                     )
                     pub_indexed += 1
 
-                # 2. Index các VideoJob chưa có trong PublishedVideo (đã dựng hoặc đã lên lịch)
+                # 2. Index các VideoJob ĐÃ ĐĂNG LÊN YOUTUBE (có youtube_video_id) nhưng chưa có trong PublishedVideo
                 for j in jobs:
                     vid = (j.youtube_video_id or "").strip()
-                    if vid and f"yt:{vid}" in self._docs:
+                    if not vid:
+                        # Tuyệt đối KHÔNG lưu video nháp / lỗi / test chưa đăng YouTube vào bộ nhớ RAG
+                        continue
+                    if f"yt:{vid}" in self._docs:
                         continue
                     meta = extract_visual_and_script_metadata(
                         scenes_json_raw=j.scenes_json,
@@ -355,7 +363,7 @@ class VideoMemoryRAG:
                         fallback_script=j.script or j.description,
                         fallback_hook=getattr(j, "hook_text", None) or j.title,
                     )
-                    doc_key = f"yt:{vid}" if vid else f"job:{j.id}"
+                    doc_key = f"yt:{vid}"
                     self.upsert_document(
                         doc_id=doc_key,
                         channel_id=j.target_channel_id,
@@ -367,7 +375,7 @@ class VideoMemoryRAG:
                         visual_metadata=meta["visual_metadata"],
                         visual_keywords_used=meta["visual_keywords_used"],
                         media_fingerprints_used=meta["media_fingerprints_used"],
-                        youtube_video_id=vid or None,
+                        youtube_video_id=vid,
                         job_id=j.id,
                         views=j.views or 0,
                         avg_view_percentage=j.avg_view_percentage,
@@ -546,25 +554,26 @@ def get_video_memory_rag() -> VideoMemoryRAG:
 
 def archive_job_to_rag_and_cleanup_files(job_id: int) -> Dict[str, Any]:
     """
-    Sau khi 1 VideoJob đã được upload lên YouTube (`PUBLISHED` hoặc `SCHEDULED` đã có `youtube_video_id`):
-    1. Trích xuất toàn bộ Kịch bản + Metadata Hình ảnh lưu vào Mini-RAG.
+    Sau khi 1 VideoJob ĐÃ ĐƯỢC UPLOAD LÊN YOUTUBE (đã có `youtube_video_id`):
+    1. Trích xuất toàn bộ Kịch bản + Metadata Hình ảnh lưu vào Mini-RAG (`yt:<youtube_video_id>`),
+       đồng thời ghi nhận `UsedTopic` và lịch sử media (`recent_media_history.json`).
+       (Nếu job chưa có `youtube_video_id` — ví dụ nháp, lỗi, test nội bộ — TUYỆT ĐỐI KHÔNG lưu vào bộ nhớ).
     2. Xóa gọn `render_manifest` nặng trong DB (chỉ giữ lại `scenes_json` gọn nhẹ chứa lời dẫn + metadata ảnh).
     3. Xóa ngay file `.mp4` nặng trong `storage/outputs/` và các file tạm của job trong `storage/temp/`.
     """
     rag = get_video_memory_rag()
     freed_bytes = 0
     removed_files: List[str] = []
+    doc_id: Optional[str] = None
 
     with get_db() as db:
         job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
         if not job:
             return {"ok": False, "error": f"Job #{job_id} not found"}
 
+        vid = (job.youtube_video_id or "").strip()
         # Chỉ xóa file video nặng khi video ĐÃ ĐƯỢC ĐẨY LÊN YOUTUBE (có youtube_video_id) hoặc đã PUBLISHED/FAILED
-        is_uploaded_to_youtube = bool(
-            (job.youtube_video_id and str(job.youtube_video_id).strip())
-            or job.status in ("PUBLISHED", "FAILED")
-        )
+        should_cleanup_files = bool(vid or job.status in ("PUBLISHED", "FAILED"))
 
         meta = extract_visual_and_script_metadata(
             scenes_json_raw=job.scenes_json,
@@ -573,28 +582,56 @@ def archive_job_to_rag_and_cleanup_files(job_id: int) -> Dict[str, Any]:
             fallback_hook=getattr(job, "hook_text", None) or job.title,
         )
 
-        vid = (job.youtube_video_id or "").strip()
-        doc_id = f"yt:{vid}" if vid else f"job:{job.id}"
-        rag.upsert_document(
-            doc_id=doc_id,
-            channel_id=job.target_channel_id,
-            title=job.title or job.topic,
-            topic=job.topic or job.title or "",
-            hook_text=meta["hook_text"],
-            full_script=meta["full_script"],
-            summary=meta["full_script"][:320],
-            visual_metadata=meta["visual_metadata"],
-            visual_keywords_used=meta["visual_keywords_used"],
-            media_fingerprints_used=meta["media_fingerprints_used"],
-            youtube_video_id=vid or None,
-            job_id=job.id,
-            views=job.views or 0,
-            avg_view_percentage=job.avg_view_percentage,
-            stayed_to_watch_pct=job.stayed_to_watch_pct,
-            swipe_away_pct=job.swipe_away_pct,
-            avg_view_duration_sec=job.avg_view_duration_sec,
-            published_at=job.created_at.strftime("%Y-%m-%d") if job.created_at else None,
-        )
+        # CHỈ LƯU VÀO BỘ NHỚ (Mini-RAG + UsedTopic + MediaHistory) KHI VIDEO ĐÃ ĐĂNG LÊN YOUTUBE (có youtube_video_id)
+        if vid:
+            doc_id = f"yt:{vid}"
+            rag.upsert_document(
+                doc_id=doc_id,
+                channel_id=job.target_channel_id,
+                title=job.title or job.topic,
+                topic=job.topic or job.title or "",
+                hook_text=meta["hook_text"],
+                full_script=meta["full_script"],
+                summary=meta["full_script"][:320],
+                visual_metadata=meta["visual_metadata"],
+                visual_keywords_used=meta["visual_keywords_used"],
+                media_fingerprints_used=meta["media_fingerprints_used"],
+                youtube_video_id=vid,
+                job_id=job.id,
+                views=job.views or 0,
+                avg_view_percentage=job.avg_view_percentage,
+                stayed_to_watch_pct=job.stayed_to_watch_pct,
+                swipe_away_pct=job.swipe_away_pct,
+                avg_view_duration_sec=job.avg_view_duration_sec,
+                published_at=job.created_at.strftime("%Y-%m-%d") if job.created_at else None,
+            )
+
+            # Ghi nhận UsedTopic khi và chỉ khi video đã đăng lên YouTube
+            try:
+                from app.database.models import UsedTopic
+                topic_val = (job.topic or job.title or "").strip()
+                if topic_val and job.target_channel_id:
+                    UsedTopic.register(
+                        db,
+                        channel_id=job.target_channel_id,
+                        topic=topic_val,
+                        niche="",
+                        job_id=job.id,
+                    )
+            except Exception as e_ut:
+                logger.debug(f"[MiniRAG] Không thể ghi nhận UsedTopic cho Job #{job_id}: {e_ut}")
+
+            # Ghi nhận media URLs của video đã đăng lên YouTube vào kho lịch sử cross-job
+            try:
+                from app.services.media.media_history import commit_published_media_to_history
+                urls_to_commit = [
+                    s.get("media_source_url") or s.get("media_fingerprint")
+                    for s in (meta.get("visual_metadata") or [])
+                    if s.get("media_source_url") or s.get("media_fingerprint")
+                ]
+                commit_published_media_to_history(urls_to_commit, job_id=job.id, youtube_video_id=vid)
+            except Exception as e_mh:
+                logger.debug(f"[MiniRAG] Không thể lưu media history cho Job #{job_id}: {e_mh}")
 
         # Lưu lại bản scenes_json siêu gọn (chỉ chứa lời dẫn + metadata hình ảnh, bỏ word_timings dài dòng)
         compact_scenes_payload = {
@@ -606,7 +643,7 @@ def archive_job_to_rag_and_cleanup_files(job_id: int) -> Dict[str, Any]:
         job.scenes_json = json.dumps(compact_scenes_payload, ensure_ascii=False)
         job.render_manifest = None
 
-        if is_uploaded_to_youtube:
+        if should_cleanup_files:
             for path_attr in ("video_path", "audio_path", "subtitle_path", "thumbnail_path", "thumbnail_vertical_path"):
                 p_val = getattr(job, path_attr, None)
                 if p_val:
@@ -638,6 +675,7 @@ def archive_job_to_rag_and_cleanup_files(job_id: int) -> Dict[str, Any]:
         "ok": True,
         "job_id": job_id,
         "doc_id": doc_id,
+        "indexed_in_memory": bool(vid),
         "freed_mb": round(freed_bytes / (1024 * 1024), 2),
         "removed_files_count": len(removed_files),
     }

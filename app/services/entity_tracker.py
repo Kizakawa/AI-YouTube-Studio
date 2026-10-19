@@ -68,10 +68,12 @@ def get_channel_cooldown_entities(channel_id: str, limit_jobs: int = 15) -> List
 
     try:
         with get_db() as db:
+            # Chỉ lấy các video ĐÃ ĐĂNG LÊN YOUTUBE (có youtube_video_id) để đưa thực thể vào bộ nhớ cooldown
             recent_jobs = (
                 db.query(VideoJob)
                 .filter(VideoJob.target_channel_id == channel_id)
-                .filter(VideoJob.status.notin_(["FAILED", "SCRIPT_LINTER_FAILED"]))
+                .filter(VideoJob.youtube_video_id.isnot(None))
+                .filter(VideoJob.youtube_video_id != "")
                 .order_by(VideoJob.id.desc())
                 .limit(limit_jobs)
                 .all()

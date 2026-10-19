@@ -220,22 +220,40 @@ def is_media_already_used(url_or_path: str, used_set: Set[str]) -> bool:
     return False
 
 
+# Bộ đệm tạm trong RAM chỉ phục vụ chống lặp ảnh/clip giữa các cảnh trong CÙNG 1 lần dựng (intra-job),
+# tự động hết hạn sau 12 phút; TUYỆT ĐỐI KHÔNG ghi xuống ổ cứng cho tới khi video được đăng lên YouTube.
+_ACTIVE_RENDER_BUFFER: List[Dict[str, Any]] = []
+_ACTIVE_BUFFER_TTL_SEC = 720
+
+
 def get_recent_media_urls(limit: int = 350) -> Set[str]:
     """
-    Lấy tập hợp các URL/ID media đã dùng gần đây kèm toàn bộ định danh canonical (YouTube ID, Pexels ID, stripped URL)
-    và cả các media_fingerprint đã lưu trong hệ thống Mini-RAG (`VideoMemoryRAG`).
-    Dùng để nạp sẵn vào used_urls của job mới nhằm tránh trùng lặp 100% dù file ảnh/video gốc đã được dọn dẹp.
+    Lấy tập hợp các URL/ID media đã dùng gần đây từ các video ĐÃ ĐĂNG LÊN YOUTUBE
+    (lưu trong `recent_media_history.json` và hệ thống Mini-RAG `VideoMemoryRAG`),
+    kèm bộ đệm tạm trong phiên render hiện tại để các cảnh trong cùng 1 video không lặp lại clip của nhau.
     """
     entries = _load_history()
     recent = entries[-limit:] if len(entries) > limit else entries
     used_set = set()
     for item in recent:
+        # Chỉ nạp các bản ghi của video đã đăng lên YouTube (hoặc lịch sử chuẩn hóa)
         url = item.get("url")
         if url:
             used_set.update(extract_media_identity(url))
         f_md5 = item.get("md5")
         if f_md5:
             used_set.add(f"md5:{f_md5}")
+
+    # Nạp bộ đệm tạm trong RAM cho các phân cảnh đang dựng dở trong cùng 1 job (TTL 12 phút)
+    now_ts = int(time.time())
+    for buf_item in list(_ACTIVE_RENDER_BUFFER):
+        if now_ts - buf_item.get("timestamp", 0) <= _ACTIVE_BUFFER_TTL_SEC:
+            u = buf_item.get("url")
+            if u:
+                used_set.update(extract_media_identity(u))
+            m5 = buf_item.get("md5")
+            if m5:
+                used_set.add(f"md5:{m5}")
 
     try:
         from app.services.video_memory_rag import get_video_memory_rag
@@ -249,34 +267,55 @@ def get_recent_media_urls(limit: int = 350) -> Set[str]:
 
 
 def record_used_media(url: str, query: str = "", job_id: int = 0, source: str = "pexels", media_path: Optional[str] = None):
-    """Ghi nhận 1 media URL/file vừa được tải và sử dụng trong 1 phân cảnh."""
+    """
+    Ghi nhận tạm 1 media URL/file vào bộ đệm RAM trong lúc đang dựng video (để Cảnh 2 không lấy trùng Cảnh 1).
+    Chỉ khi video được đăng lên YouTube thành công thì `commit_published_media_to_history` mới lưu vĩnh viễn vào bộ nhớ.
+    """
     if not url and not media_path:
         return
     effective_url = url or str(media_path or "")
-    entries = _load_history()
-    new_identities = extract_media_identity(effective_url)
-    for e in entries[-80:]:
-        existing_url = e.get("url") or ""
-        if existing_url == effective_url or (new_identities and (new_identities & extract_media_identity(existing_url))):
-            return
-
     f_md5 = compute_file_md5(media_path) if media_path and Path(media_path).exists() else ""
+    now_ts = int(time.time())
 
-    entries.append({
+    # Dọn các mục quá hạn trong RAM buffer
+    _ACTIVE_RENDER_BUFFER[:] = [
+        x for x in _ACTIVE_RENDER_BUFFER
+        if now_ts - x.get("timestamp", 0) <= _ACTIVE_BUFFER_TTL_SEC
+    ]
+    _ACTIVE_RENDER_BUFFER.append({
         "url": effective_url,
         "query": query,
         "job_id": job_id,
         "source": source,
         "md5": f_md5,
-        "timestamp": int(time.time()),
+        "timestamp": now_ts,
     })
-    _save_history(entries)
-    logger.debug(f"[MediaHistory] Đã ghi nhận media mới: {effective_url[:65]}... (Job #{job_id}, source={source})")
+    logger.debug(f"[MediaHistory] Đã ghi nhận tạm vào RAM buffer (intra-job): {effective_url[:65]}... (Job #{job_id})")
 
 
 def record_batch_used_media(urls: List[str], job_id: int = 0):
-    """Ghi nhận hàng loạt media URLs sau khi hoàn tất render job."""
+    """
+    Giữ lại trong bộ đệm RAM khi vừa render xong.
+    (Việc ghi vĩnh viễn vào bộ nhớ chỉ thực hiện trong `commit_published_media_to_history` sau khi đăng lên YouTube).
+    """
     if not urls:
+        return
+    now_ts = int(time.time())
+    for u in urls:
+        if u:
+            _ACTIVE_RENDER_BUFFER.append({
+                "url": u,
+                "job_id": job_id,
+                "timestamp": now_ts,
+            })
+
+
+def commit_published_media_to_history(urls: List[str], job_id: int = 0, youtube_video_id: str = ""):
+    """
+    Chỉ gọi hàm này SAU KHI video đã được đăng lên YouTube (`youtube_video_id` hợp lệ).
+    Lưu danh sách media của video đã đăng vào `storage/cache/recent_media_history.json`.
+    """
+    if not urls or not youtube_video_id:
         return
     entries = _load_history()
     existing_urls = {e.get("url") for e in entries}
@@ -287,10 +326,13 @@ def record_batch_used_media(urls: List[str], job_id: int = 0):
             entries.append({
                 "url": u,
                 "job_id": job_id,
+                "youtube_video_id": youtube_video_id,
                 "timestamp": now,
             })
             existing_urls.add(u)
             added += 1
     if added > 0:
         _save_history(entries)
-        logger.info(f"[MediaHistory] Đã lưu {added} media URLs vào kho lịch sử cross-job (Tổng: {len(entries)})")
+        logger.info(
+            f"[MediaHistory] ✅ Đã lưu {added} media từ video YouTube '{youtube_video_id}' (Job #{job_id}) vào bộ nhớ."
+        )

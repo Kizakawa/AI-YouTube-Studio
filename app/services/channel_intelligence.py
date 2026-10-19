@@ -464,7 +464,9 @@ def get_channel_existing_portfolio(channel_id: str) -> Dict[str, Any]:
     try:
         with get_db() as db:
             jobs = db.query(VideoJob).filter(
-                VideoJob.target_channel_id.in_(family_ids)
+                VideoJob.target_channel_id.in_(family_ids),
+                VideoJob.youtube_video_id.isnot(None),
+                VideoJob.youtube_video_id != "",
             ).order_by(VideoJob.created_at.desc()).all()
 
             for j in jobs:
@@ -481,13 +483,13 @@ def get_channel_existing_portfolio(channel_id: str) -> Dict[str, Any]:
                 if pv.title and pv.title not in existing_titles:
                     existing_titles.append(pv.title)
 
-            # Lấy mốc thời gian video mới nhất
-            # Ưu tiên video có trạng thái hoàn tất (RENDERED, SCHEDULED, PUBLISHED, AWAITING_APPROVAL)
-            active_jobs = [j for j in jobs if j.status in ("RENDERED", "SCHEDULED", "PUBLISHED", "AWAITING_APPROVAL")]
-            if active_jobs:
-                last_activity_time = active_jobs[0].updated_at or active_jobs[0].created_at
-            elif jobs:
-                last_activity_time = jobs[0].created_at
+            # Lấy mốc thời gian video đã đăng YouTube mới nhất
+            if jobs:
+                last_activity_time = jobs[0].updated_at or jobs[0].created_at
+            elif pub_vids:
+                pub_dates = [pv.published_at for pv in pub_vids if pv.published_at]
+                if pub_dates:
+                    last_activity_time = max(pub_dates)
     except Exception as e:
         logger.warning(f"[Portfolio] Lỗi truy vấn DB cho {channel_id}: {e}")
 
@@ -1668,12 +1670,7 @@ def trigger_auto_generation_for_overdue_channel(
             details=f"Tự động sản xuất video cứu tương tác cho kênh '{kpi['channel_name']}' (Job #{job_id}): '{job.title}'",
             channel_id=channel_id
         )
-
-        # Ghi nhận thực thể vào Cooldown Memory
-        try:
-            register_job_entities(channel_id, script, job_id=job_id)
-        except Exception as e_reg:
-            logger.debug(f"Không thể ghi nhận thực thể cooldown: {e_reg}")
+        # Lưu ý: Thực thể, kịch bản và metadata hình ảnh chỉ được ghi vào bộ nhớ sau khi video đăng lên YouTube.
 
     # 4. Gửi thông báo Telegram để duyệt và render trực tiếp bằng Local Hardware Engine
     def _background_render_worker(jid: int, ch_name: str, ch_id: str, deadl: datetime):
