@@ -125,15 +125,19 @@ def extract_saturated_channel_concepts(existing_titles: List[str], min_frequency
 
 def check_idea_similarity(
     candidate_title_or_topic: str,
-    existing_items: List[str],
-    similarity_threshold: float = 0.40
+    existing_items: Optional[List[str]] = None,
+    similarity_threshold: float = 0.40,
+    channel_id: Optional[str] = None,
 ) -> Tuple[bool, float, str]:
     """
     Kiểm tra xem ý tưởng/tiêu đề mới có bị trùng lặp hoặc quá giống với danh sách video đã làm không.
-    Sử dụng kết hợp Jaccard Token Overlap và Substring Keyword Containment.
+    Sử dụng kết hợp:
+    1. Jaccard Token Overlap + Substring Keyword Containment trên `existing_items`.
+    2. Mini-RAG (`VideoMemoryRAG`) truy vấn ngữ nghĩa BM25/TF-IDF trên toàn bộ kịch bản (`full_script`),
+       câu mở đầu (`hook_text`) và metadata hình ảnh (`visual_metadata`) đã lưu của kênh.
     Trả về: (is_duplicate: bool, max_score: float, matched_item: str)
     """
-    if not candidate_title_or_topic or not existing_items:
+    if not candidate_title_or_topic:
         return False, 0.0, ""
 
     norm_candidate = _normalize_text_for_similarity(candidate_title_or_topic)
@@ -144,7 +148,7 @@ def check_idea_similarity(
     max_score = 0.0
     best_match = ""
 
-    for item in existing_items:
+    for item in (existing_items or []):
         if not item:
             continue
         norm_item = _normalize_text_for_similarity(item)
@@ -167,6 +171,24 @@ def check_idea_similarity(
         if combined_score > max_score:
             max_score = combined_score
             best_match = item
+
+    # 3. Truy vấn Mini-RAG (nếu có channel_id hoặc tìm trong toàn kho kịch bản + visual metadata)
+    if channel_id:
+        try:
+            from app.services.video_memory_rag import get_video_memory_rag
+            rag_hits = get_video_memory_rag().query_similar(
+                query_text=candidate_title_or_topic,
+                channel_id=channel_id,
+                top_k=2,
+                min_score=max(0.25, similarity_threshold * 0.85),
+            )
+            for hit in rag_hits:
+                rag_score = float(hit.get("similarity_score", 0.0))
+                if rag_score > max_score:
+                    max_score = rag_score
+                    best_match = hit.get("title") or hit.get("topic") or hit.get("hook_text") or ""
+        except Exception as ex_rag:
+            logger.debug(f"[AntiDuplication] Mini-RAG similarity check warning: {ex_rag}")
 
     is_duplicate = max_score >= similarity_threshold
     return is_duplicate, round(max_score, 3), best_match
@@ -199,10 +221,13 @@ def ensure_unique_title(
 
     portfolio = get_channel_existing_portfolio(channel_id)
     existing_titles = portfolio.get("existing_titles", [])
-    if not existing_titles:
-        return clean_cand, False, None
 
-    is_dup, score, matched = check_idea_similarity(clean_cand, existing_titles, similarity_threshold=similarity_threshold)
+    is_dup, score, matched = check_idea_similarity(
+        clean_cand,
+        existing_titles,
+        similarity_threshold=similarity_threshold,
+        channel_id=channel_id,
+    )
     if not is_dup:
         return clean_cand, False, None
 
@@ -631,12 +656,12 @@ def get_winner_cloner_blueprint(
         winner_stayed = 0.0
         winner_apv = 0.0
 
-    # Lọc yaml_topic_bank chống trùng lặp với toàn bộ lịch sử kênh
+    # Lọc yaml_topic_bank chống trùng lặp với toàn bộ lịch sử kênh (bao gồm Mini-RAG kịch bản + visual metadata)
     fresh_candidates: List[str] = []
     for cand in yaml_topic_bank:
         if not cand or cand in fresh_candidates:
             continue
-        is_dup, _, _ = check_idea_similarity(cand, existing_titles, similarity_threshold=0.38)
+        is_dup, _, _ = check_idea_similarity(cand, existing_titles, similarity_threshold=0.38, channel_id=canon_cid)
         if not is_dup:
             fresh_candidates.append(cand)
 
@@ -684,7 +709,7 @@ def suggest_channel_topics(
     - Học tập và phát huy từ các video thành công nhất của kênh (Top Performers).
     - Khắc phục triệt để các nhược điểm / bẫy flop từ video trước (Topic Fatigue, Niche Confusion, Passive tone).
     - Đón đầu xu hướng toàn cầu năm 2026 theo từng ngách.
-    - LỌC TRÙNG LẶP TUYỆT ĐỐI (Strict De-duplication): Kiểm tra qua check_idea_similarity với mọi video cũ.
+    - LỌC TRÙNG LẶP TUYỆT ĐỐI (Strict De-duplication): Kiểm tra qua check_idea_similarity + Mini-RAG với mọi kịch bản & metadata hình ảnh cũ.
     """
     portfolio = get_channel_existing_portfolio(channel_id)
     niche_id = portfolio["channel_niche"]
@@ -810,6 +835,15 @@ You must AUTONOMOUSLY PIVOT to completely fresh, unvisited premises, alternative
 DO NOT center any candidate around these fatigued terms!
 """
 
+    rag_topic_memory = ""
+    try:
+        from app.services.video_memory_rag import get_video_memory_rag
+        rag_ctx = get_video_memory_rag().build_rag_prompt_context(channel_id, niche_id, top_k=4)
+        if rag_ctx:
+            rag_topic_memory = f"\n═══════════════════════════════════════════════════════════\n{rag_ctx}\n"
+    except Exception:
+        pass
+
     prompt = f"""You are the Master Creative Director and Viral Algorithm Strategist for YouTube Shorts channel '{channel_name}'.
 Niche: '{niche_profile.get('name')}' ({niche_id})
 Target Language: {lang}
@@ -829,7 +863,7 @@ CRITICAL MANDATE:
 ═══════════════════════════════════════════════════════════
 {global_trends_prompt}
 ═══════════════════════════════════════════════════════════
-{saturation_prompt}
+{saturation_prompt}{rag_topic_memory}
 ═══════════════════════════════════════════════════════════
 🎯 OBJECTIVE:
 Generate exactly {count + 2} completely unique, high-retention Shorts concepts tailored specifically to '{channel_name}'.
@@ -892,9 +926,9 @@ Return ONLY a valid JSON array of objects with the following structure:
                 if has_fatigued_term:
                     continue
 
-                # Kiểm tra trùng lặp với kho video cũ
-                is_dup_title, score_title, match_t = check_idea_similarity(cand_title, all_existing, similarity_threshold=0.38)
-                is_dup_topic, score_topic, match_p = check_idea_similarity(cand_topic, all_existing, similarity_threshold=0.38)
+                # Kiểm tra trùng lặp với kho video cũ + Mini-RAG
+                is_dup_title, score_title, match_t = check_idea_similarity(cand_title, all_existing, similarity_threshold=0.38, channel_id=channel_id)
+                is_dup_topic, score_topic, match_p = check_idea_similarity(cand_topic, all_existing, similarity_threshold=0.38, channel_id=channel_id)
 
                 if is_dup_title or is_dup_topic:
                     logger.info(f"[DeDuplication] Bỏ qua ý tưởng trùng lặp: '{cand_title}' (tương đồng {max(score_title, score_topic):.2f} với '{match_t or match_p}')")
@@ -927,7 +961,7 @@ Return ONLY a valid JSON array of objects with the following structure:
         fallbacks = _get_curated_niche_fallbacks(niche_id, lang)
         for fb in fallbacks:
             fb_title = fb.get("title", "")
-            is_dup, score, _ = check_idea_similarity(fb_title, all_existing, similarity_threshold=0.35)
+            is_dup, score, _ = check_idea_similarity(fb_title, all_existing, similarity_threshold=0.35, channel_id=channel_id)
             if not is_dup:
                 fb_copy = dict(fb)
                 fb_copy["channel_id"] = channel_id
@@ -1786,12 +1820,14 @@ class ChannelIntelligenceWorker:
             logger.info(f"🚀 [ChannelIntelligence] Background Worker đã khởi động (chu kỳ kiểm tra: {check_interval_minutes} phút)!")
             while cls._running:
                 try:
-                    # 0. Đồng bộ số liệu retention thật (tỷ lệ xem hết, ở lại xem, vuốt bỏ) vào DB
+                    # 0. Đồng bộ số liệu retention thật (tỷ lệ xem hết, ở lại xem, vuốt bỏ) vào DB & nén kịch bản/metadata hình ảnh vào Mini-RAG
                     try:
                         from app.services.video_library import backfill_from_jobs
                         backfill_from_jobs()
+                        from app.services.video_memory_rag import slim_storage_and_archive_to_rag
+                        slim_storage_and_archive_to_rag(cache_max_age_hours=2.0)
                     except Exception as ex_bf:
-                        logger.debug(f"[ChannelIntelligence] Đồng bộ retention metrics định kỳ warning: {ex_bf}")
+                        logger.debug(f"[ChannelIntelligence] Đồng bộ retention metrics / Mini-RAG định kỳ warning: {ex_bf}")
 
                     # 1. Xử lý đăng tạm cho các video hết hạn duyệt (nếu người dùng bật)
                     if getattr(settings, "ENABLE_FALLBACK_AUTO_PUBLISH", False):

@@ -319,6 +319,12 @@ def backfill_from_jobs() -> int:
                     linked_job.avg_view_duration_sec = pv.avg_view_duration_sec
                     if linked_job.voice_engine and not pv.voice_engine:
                         pv.voice_engine = linked_job.voice_engine
+
+    try:
+        from app.services.video_memory_rag import get_video_memory_rag
+        get_video_memory_rag().sync_all_from_db()
+    except Exception as ex_rag:
+        logger.debug(f"[VideoLibrary] Mini-RAG sync warning: {ex_rag}")
     return added
 
 
@@ -718,20 +724,70 @@ def topics_overview(channel_id: str = "") -> List[Dict[str, Any]]:
 
 
 def check_duplicate(channel_id: str, topic: str, threshold: float = 0.34) -> List[Dict[str, Any]]:
-    """Trả về các video đã đăng có chủ đề gần giống `topic` (chỉ cảnh báo, không chặn)."""
+    """
+    Trả về các video đã đăng có chủ đề / kịch bản / hình ảnh gần giống `topic`
+    bằng cách ưu tiên truy vấn tức thời (0ms) trên hệ thống Mini-RAG (`VideoMemoryRAG`)
+    kết hợp với bảng `PublishedVideo`.
+    """
     tq = _tokens(topic)
     if not tq:
         return []
-    matches = []
-    for v in list_videos(channel_id=channel_id, limit=1000):
-        vt = _tokens(" ".join([v["title"], v["topic_cluster"], " ".join(v["topic_tags"]), v["summary"]]))
-        if not vt:
-            continue
-        inter = len(tq & vt)
-        score = inter / max(1, len(tq))          # tỉ lệ từ khóa của topic mới đã xuất hiện
-        if inter >= 2 and score >= threshold:
-            matches.append({**v, "similarity": round(score, 2)})
-    matches.sort(key=lambda m: -m["similarity"])
+    matches_by_id: Dict[str, Dict[str, Any]] = {}
+    names = _channel_names()
+
+    # 1. Truy vấn ngữ nghĩa siêu tốc từ Mini-RAG (truy xuất cả nội dung kịch bản full_script, hook_text & visual_metadata)
+    try:
+        from app.services.video_memory_rag import get_video_memory_rag
+        rag_hits = get_video_memory_rag().query_similar(
+            query_text=topic,
+            channel_id=channel_id if channel_id else None,
+            top_k=5,
+            min_score=max(0.24, threshold * 0.78),
+        )
+        for hit in rag_hits:
+            yt_id = hit.get("youtube_video_id") or ""
+            key = yt_id or f"rag_{hit.get('doc_id')}"
+            sim_score = round(float(hit.get("similarity_score", 0.0)), 2)
+            cid = hit.get("channel_id") or channel_id
+            matches_by_id[key] = {
+                "id": hit.get("job_id") or 0,
+                "channel_id": cid,
+                "channel_name": names.get(cid, cid),
+                "youtube_video_id": yt_id,
+                "youtube_url": f"https://youtu.be/{yt_id}" if yt_id else "",
+                "title": hit.get("title") or hit.get("topic") or "",
+                "published_at": str(hit.get("published_at") or "")[:10],
+                "views": int(hit.get("views") or 0),
+                "hook_text": hit.get("hook_text") or "",
+                "summary": (hit.get("full_script") or "")[:180],
+                "topic_tags": [
+                    vm.get("visual_keyword") for vm in (hit.get("visual_metadata") or []) if vm.get("visual_keyword")
+                ][:5] or hit.get("visual_keywords_used", [])[:5],
+                "topic_cluster": "Mini-RAG Script & Visual Memory",
+                "similarity": sim_score,
+            }
+    except Exception as ex_rag:
+        logger.debug(f"[VideoLibrary] check_duplicate Mini-RAG warning: {ex_rag}")
+
+    # 2. Bổ sung kiểm tra trên PublishedVideo (nếu có bản ghi mới chưa kịp nạp vào RAG)
+    try:
+        for v in list_videos(channel_id=channel_id, limit=1000):
+            vt = _tokens(" ".join([v["title"], v["topic_cluster"], " ".join(v["topic_tags"]), v["summary"], v.get("hook_text", "")]))
+            if not vt:
+                continue
+            inter = len(tq & vt)
+            score = round(inter / max(1, len(tq)), 2)
+            if inter >= 2 and score >= threshold:
+                key = v.get("youtube_video_id") or f"id_{v.get('id')}"
+                if key in matches_by_id:
+                    if score > matches_by_id[key]["similarity"]:
+                        matches_by_id[key]["similarity"] = score
+                else:
+                    matches_by_id[key] = {**v, "similarity": score}
+    except Exception as ex_db:
+        logger.debug(f"[VideoLibrary] check_duplicate DB fallback warning: {ex_db}")
+
+    matches = sorted(matches_by_id.values(), key=lambda m: -m["similarity"])
     return matches[:5]
 
 

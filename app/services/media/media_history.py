@@ -222,8 +222,9 @@ def is_media_already_used(url_or_path: str, used_set: Set[str]) -> bool:
 
 def get_recent_media_urls(limit: int = 350) -> Set[str]:
     """
-    Lấy tập hợp các URL/ID media đã dùng gần đây kèm toàn bộ định danh canonical (YouTube ID, Pexels ID, stripped URL).
-    Dùng để nạp sẵn vào used_urls của job mới nhằm tránh trùng lặp 100%.
+    Lấy tập hợp các URL/ID media đã dùng gần đây kèm toàn bộ định danh canonical (YouTube ID, Pexels ID, stripped URL)
+    và cả các media_fingerprint đã lưu trong hệ thống Mini-RAG (`VideoMemoryRAG`).
+    Dùng để nạp sẵn vào used_urls của job mới nhằm tránh trùng lặp 100% dù file ảnh/video gốc đã được dọn dẹp.
     """
     entries = _load_history()
     recent = entries[-limit:] if len(entries) > limit else entries
@@ -235,6 +236,15 @@ def get_recent_media_urls(limit: int = 350) -> Set[str]:
         f_md5 = item.get("md5")
         if f_md5:
             used_set.add(f"md5:{f_md5}")
+
+    try:
+        from app.services.video_memory_rag import get_video_memory_rag
+        rag_vis = get_video_memory_rag().get_channel_used_visuals(channel_id=None, limit_docs=60)
+        for fp in rag_vis.get("media_fingerprints", set()):
+            if fp:
+                used_set.update(extract_media_identity(fp))
+    except Exception:
+        pass
     return used_set
 
 

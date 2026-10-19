@@ -545,20 +545,21 @@ async def run_autopilot_pipeline_for_channel(
         )
 
         drive_link = None
-        # Sao lưu video lên Google Drive nếu DriveAgent khả dụng
-        try:
-            from app.agents.drive_agent import DriveAgent
-            drive_agent = DriveAgent()
-            drive_res = await asyncio.to_thread(
-                drive_agent.upload_video,
-                video_path,
-                latest_title,
-                channel_name=ch_name
-            )
-            if isinstance(drive_res, dict):
-                drive_link = drive_res.get("link")
-        except Exception as e_drive:
-            logger.debug(f"[AutoPilot #{job_id}] Sao lưu Drive gặp lỗi nhẹ: {e_drive}")
+        # Mặc định KHÔNG lưu trữ file video .mp4 nặng lên Drive (chỉ lưu Kịch bản + Metadata Hình ảnh vào Mini-RAG)
+        if os.getenv("ENABLE_DRIVE_VIDEO_BACKUP", "false").strip().lower() in ("1", "true", "yes"):
+            try:
+                from app.agents.drive_agent import DriveAgent
+                drive_agent = DriveAgent()
+                drive_res = await asyncio.to_thread(
+                    drive_agent.upload_video,
+                    video_path,
+                    latest_title,
+                    channel_name=ch_name
+                )
+                if isinstance(drive_res, dict):
+                    drive_link = drive_res.get("link") or drive_res.get("drive_link")
+            except Exception as e_drive:
+                logger.debug(f"[AutoPilot #{job_id}] Sao lưu Drive gặp lỗi nhẹ: {e_drive}")
 
         # ── Step 7: Cập nhật kết quả vào Database ──
         yt_id = pub_res.get("video_id")
@@ -594,7 +595,6 @@ async def run_autopilot_pipeline_for_channel(
                     channel_id=channel_id
                 )
 
-        # ── Step 8: Gửi thông báo báo cáo chi tiết về Telegram ──
         # ── Step 8: Gửi thông báo & UPLOAD VIDEO TRỰC TIẾP VÀO NHÓM TELEGRAM ──
         if notify_telegram:
             from app.services.channel_intelligence import send_telegram_broadcast, send_telegram_video_broadcast
@@ -669,6 +669,18 @@ async def run_autopilot_pipeline_for_channel(
             # Nếu không gửi được video (hoặc video_path không tồn tại), fallback gửi tin nhắn văn bản
             if not sent_video:
                 send_telegram_broadcast(alert_text, inline_keyboard=inline_kb)
+
+        # ── Step 9: Lưu Kịch bản + Metadata Hình ảnh vào Mini-RAG & Xóa ngay file .mp4 nặng (nếu đã đẩy lên YouTube) ──
+        if pub_res.get("status") == "success":
+            try:
+                from app.services.video_memory_rag import archive_job_to_rag_and_cleanup_files
+                rag_clean = await asyncio.to_thread(archive_job_to_rag_and_cleanup_files, job_id)
+                logger.info(
+                    f"[MiniRAG #{job_id}] ✅ Đã lưu kịch bản + metadata ảnh vào Mini-RAG & giải phóng "
+                    f"{rag_clean.get('freed_mb', 0)} MB file video/temp!"
+                )
+            except Exception as e_rag:
+                logger.debug(f"[MiniRAG #{job_id}] Lỗi lưu Mini-RAG/cleanup: {e_rag}")
 
         return {
             "success": True,
@@ -889,6 +901,12 @@ def auto_publish_rendered_jobs(notify_telegram: bool = True) -> List[Dict[str, A
                     elif pub_res.get("status") == "waiting_quota_reset":
                         ju.status = "WAITING_QUOTA_RESET"
                         break
+            if pub_res.get("status") == "success":
+                try:
+                    from app.services.video_memory_rag import archive_job_to_rag_and_cleanup_files
+                    archive_job_to_rag_and_cleanup_files(jid)
+                except Exception:
+                    pass
         except Exception as ex_pub:
             logger.warning(f"[AutoPublishRendered] Lỗi khi tự động đăng Job #{jid}: {ex_pub}")
 

@@ -2438,19 +2438,20 @@ async def publish_to_youtube(
             yt_shorts_url = pub_res.get("shorts_url") or f"https://www.youtube.com/shorts/{yt_id}"
             ch_name = ch_cfg.get("name", target_channel)
 
-            # Tự động sao lưu lên Google Drive vào đúng folder của kênh
+            # Tự động sao lưu lên Google Drive chỉ khi ENABLE_DRIVE_VIDEO_BACKUP=true (mặc định tắt để tránh lưu trữ video nặng)
             drive_link = None
             folder_link = None
-            try:
-                from app.agents.drive_agent import DriveAgent
-                drive_agent = DriveAgent(account_name=acc_id)
-                if drive_agent.service:
-                    drive_res = drive_agent.upload_video(video_path, chosen_title, channel_name=ch_name)
-                    if drive_res.get("status") == "success":
-                        drive_link = drive_res.get("drive_link")
-                        folder_link = drive_res.get("folder_link")
-            except Exception as e_drv:
-                logger.warning(f"Không thể tự động backup Drive cho Video #{job_id}: {e_drv}")
+            if os.getenv("ENABLE_DRIVE_VIDEO_BACKUP", "false").lower() in ("1", "true", "yes"):
+                try:
+                    from app.agents.drive_agent import DriveAgent
+                    drive_agent = DriveAgent(account_name=acc_id)
+                    if drive_agent.service:
+                        drive_res = drive_agent.upload_video(video_path, chosen_title, channel_name=ch_name)
+                        if drive_res.get("status") == "success":
+                            drive_link = drive_res.get("drive_link")
+                            folder_link = drive_res.get("folder_link")
+                except Exception as e_drv:
+                    logger.warning(f"Không thể tự động backup Drive cho Video #{job_id}: {e_drv}")
 
             with _get_db() as db:
                 j = db.query(VideoJob).filter(VideoJob.id == job_id).first()
@@ -2479,6 +2480,12 @@ async def publish_to_youtube(
                         else f"Video #{job_id} đã xuất bản lên kênh '{ch_name}'{affiliate_note}: {yt_shorts_url}"
                     )
                     log_activity(db, 0, "WebStudio", "PUBLISH_YOUTUBE", msg, channel_id=target_channel)
+
+            try:
+                from app.services.video_memory_rag import archive_job_to_rag_and_cleanup_files
+                archive_job_to_rag_and_cleanup_files(job_id)
+            except Exception as ex_rag:
+                logger.debug(f"[WebPublish] Mini-RAG archive warning: {ex_rag}")
 
             success_msg = (
                 f"Đã lên lịch thành công cho Video #{job_id}! Tự động công chiếu vào {display_vn_slot} ({display_us_slot}). Link: {yt_shorts_url}"

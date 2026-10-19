@@ -939,6 +939,7 @@ class ContentAgent:
         saturated_terms: List[str] = []
         channel_avg_swipe: float = 30.0
         week_label: str = ""
+        canon_cid: Optional[str] = None
 
         try:
             from app.database.models import get_db, PublishedVideo, VideoJob, normalize_channel_id
@@ -947,7 +948,7 @@ class ContentAgent:
 
             target_ids: List[str] = []
             matched_handle: Optional[str] = None
-            canon_cid: Optional[str] = normalize_channel_id(channel_id) if channel_id else None
+            canon_cid = normalize_channel_id(channel_id) if channel_id else None
             niche_low = (channel_niche or "").strip().lower()
             for ch in settings.get_channels_config():
                 cid = ch.get("id")
@@ -1087,6 +1088,16 @@ class ContentAgent:
             memory_sections.append(
                 f"⚠️ SATURATED CONCEPTS ON THIS CHANNEL (Avoid overusing these repeated words/stats): {', '.join(saturated_terms[:6])}"
             )
+
+        # Mini-RAG Semantic Script & Visual Metadata Memory (tránh lặp nội dung kịch bản + từ khóa hình ảnh cũ)
+        if canon_cid:
+            try:
+                from app.services.video_memory_rag import get_video_memory_rag
+                rag_ctx = get_video_memory_rag().build_rag_prompt_context(canon_cid, topic, top_k=4)
+                if rag_ctx:
+                    memory_sections.append(rag_ctx)
+            except Exception as ex_rag:
+                logger.debug(f"[ContentAgent] Mini-RAG context warning: {ex_rag}")
 
         try:
             from app.services.niche_manager import get_niche

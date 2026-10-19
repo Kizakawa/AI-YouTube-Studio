@@ -282,6 +282,11 @@ def sync_scheduled_jobs_status() -> int:
                         pass
 
                 p_agent.ensure_pinned_comment(v_id, p_comment)
+                try:
+                    from app.services.video_memory_rag import archive_job_to_rag_and_cleanup_files
+                    archive_job_to_rag_and_cleanup_files(p_info["id"])
+                except Exception:
+                    pass
         except Exception as bait_err:
             logger.warning(f"Lỗi khi tự động post bình luận mồi cho video vừa công chiếu: {bait_err}")
 
@@ -384,6 +389,11 @@ def process_waiting_quota_jobs() -> int:
                             job.status = "PUBLISHED"
                             job.youtube_video_id = res.get("video_id")
                             job.error_message = None
+                    try:
+                        from app.services.video_memory_rag import archive_job_to_rag_and_cleanup_files
+                        archive_job_to_rag_and_cleanup_files(job_id)
+                    except Exception:
+                        pass
                     processed_count += 1
                     logger.info(f"✅ [SmartScheduler] Tự động xuất bản thành công Video #{job_id}: {res.get('shorts_url')}")
 

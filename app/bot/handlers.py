@@ -2694,17 +2694,20 @@ async def _execute_channel_publish(update: Update, context: ContextTypes.DEFAULT
 
         ch_name = ch_cfg.get("name", channel_id)
         pub_agent = PublisherAgent(channel_config=ch_cfg, account_name=acc_id)
-        drive_agent = DriveAgent(account_name=acc_id)
 
-        # 1. Tải lên Google Drive đúng theo thư mục riêng của kênh
-        drive_res = await asyncio.to_thread(
-            drive_agent.upload_video,
-            video_path,
-            video_title,
-            channel_name=ch_name
-        )
-        drive_link = drive_res.get("drive_link")
-        folder_link = drive_res.get("folder_link")
+        # 1. Tải lên Google Drive chỉ khi ENABLE_DRIVE_VIDEO_BACKUP=true (mặc định tắt để tránh lưu trữ video nặng)
+        drive_link = None
+        folder_link = None
+        if os.getenv("ENABLE_DRIVE_VIDEO_BACKUP", "false").lower() in ("1", "true", "yes"):
+            drive_agent = DriveAgent(account_name=acc_id)
+            drive_res = await asyncio.to_thread(
+                drive_agent.upload_video,
+                video_path,
+                video_title,
+                channel_name=ch_name
+            )
+            drive_link = drive_res.get("drive_link")
+            folder_link = drive_res.get("folder_link")
 
         # Trích xuất bình luận mồi (pinned_comment) từ kịch bản nếu có
         pinned_comment = None
@@ -2759,6 +2762,11 @@ async def _execute_channel_publish(update: Update, context: ContextTypes.DEFAULT
                     log_activity(db, user.id, user.username, "PUBLISH_YOUTUBE",
                                  f"Đã đăng Video #{job_id} lên YouTube Shorts kênh {channel_id} ({yt_shorts_url})",
                                  channel_id=channel_id)
+            try:
+                from app.services.video_memory_rag import archive_job_to_rag_and_cleanup_files
+                archive_job_to_rag_and_cleanup_files(job_id)
+            except Exception as ex_rag:
+                logger.debug(f"[BotPublish] Mini-RAG archive warning: {ex_rag}")
 
             success_text = (
                 f"🎉 **ĐĂNG TẢI YOUTUBE SHORTS #{job_id} THÀNH CÔNG!**\n\n"
@@ -3372,17 +3380,20 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             ch_name = ch_cfg.get("name", channel_id)
             pub_agent = PublisherAgent(channel_config=ch_cfg, account_name=acc_id)
-            drive_agent = DriveAgent(account_name=acc_id)
 
-            # 1. Tải lên Google Drive đúng theo thư mục riêng của kênh
-            drive_res = await asyncio.to_thread(
-                drive_agent.upload_video,
-                video_path,
-                video_title,
-                channel_name=ch_name
-            )
-            drive_link = drive_res.get("drive_link")
-            folder_link = drive_res.get("folder_link")
+            # 1. Tải lên Google Drive chỉ khi ENABLE_DRIVE_VIDEO_BACKUP=true (mặc định tắt để tránh lưu trữ video nặng)
+            drive_link = None
+            folder_link = None
+            if os.getenv("ENABLE_DRIVE_VIDEO_BACKUP", "false").lower() in ("1", "true", "yes"):
+                drive_agent = DriveAgent(account_name=acc_id)
+                drive_res = await asyncio.to_thread(
+                    drive_agent.upload_video,
+                    video_path,
+                    video_title,
+                    channel_name=ch_name
+                )
+                drive_link = drive_res.get("drive_link")
+                folder_link = drive_res.get("folder_link")
 
             # Trích xuất bình luận mồi (pinned_comment) từ kịch bản nếu có
             pinned_comment = None
@@ -3440,6 +3451,11 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         log_activity(db, user.id, user.username, "SCHEDULE_YOUTUBE",
                                      f"Đã lên lịch Video #{job_id} vào {display_vn} ({yt_shorts_url})",
                                      channel_id=channel_id)
+                try:
+                    from app.services.video_memory_rag import archive_job_to_rag_and_cleanup_files
+                    archive_job_to_rag_and_cleanup_files(job_id)
+                except Exception as ex_rag:
+                    logger.debug(f"[BotSchedule] Mini-RAG archive warning: {ex_rag}")
 
                 success_text = (
                     f"🎉 **ĐÃ LÊN LỊCH PHÁT SÓNG SHORTS THÀNH CÔNG CHO VIDEO #{job_id}!**\n\n"
