@@ -11,11 +11,14 @@ import os
 import sys
 import json
 import base64
+import logging
 from pathlib import Path
 import yaml
 from typing import Optional, List, Dict, Any, Tuple
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+
+logger = logging.getLogger(__name__)
 
 # Đảm bảo in tiếng Việt và emoji mượt mà trên Windows console
 if sys.platform == "win32":
@@ -51,41 +54,48 @@ def authenticate_channel(channel_id: str, account_id: Optional[str] = None):
     # Chuẩn hoá alias cho các kênh
     alias_map = {
         # Kênh Psychology of the world (account_1)
-        "maya": "channel_maya",
-        "psychology": "channel_maya",
-        "uc1_lvpilxq-j4sfrqozfrkw": "channel_maya",
-        "@vv1n-oe9gs": "channel_maya",
-        # Kênh The mysteries of the world (account_1) — ID thực tế là chuỗi dài này
-        "the_mysteries": "ucsrjiil67qxidtxt70z-iwa",
-        "mysteries": "ucsrjiil67qxidtxt70z-iwa",
-        "mystery": "ucsrjiil67qxidtxt70z-iwa",
-        "ch_the_mysteries_of_the_world": "ucsrjiil67qxidtxt70z-iwa",
-        "ucsrjiil67qxidtxt70z-iwa": "ucsrjiil67qxidtxt70z-iwa",  # keep as-is
-        "@themysteriesoftheworld-f3w": "ucsrjiil67qxidtxt70z-iwa",
+        "maya": "ch_psychology_of_the_world",
+        "channel_maya": "ch_psychology_of_the_world",
+        "psychology": "ch_psychology_of_the_world",
+        "ch_psychology_of_the_world": "ch_psychology_of_the_world",
+        "uc1_lvpilxq-j4sfrqozfrkw": "ch_psychology_of_the_world",
+        "@vv1n-oe9gs": "ch_psychology_of_the_world",
+        # Kênh The mysteries of the world (account_1)
+        "the_mysteries": "ch_the_mysteries_of_the_world",
+        "mysteries": "ch_the_mysteries_of_the_world",
+        "mystery": "ch_the_mysteries_of_the_world",
+        "ch_the_mysteries_of_the_world": "ch_the_mysteries_of_the_world",
+        "ucsrjiil67qxidtxt70z-iwa": "ch_the_mysteries_of_the_world",
+        "@themysteriesoftheworld-f3w": "ch_the_mysteries_of_the_world",
         # Kênh Paws & Hearts Rescue (acount_2)
         "paws": "ch_paws_hearts_rescue",
         "rescue": "ch_paws_hearts_rescue",
+        "ch_paws_hearts_rescue": "ch_paws_hearts_rescue",
         "@pawsandheartsrescue": "ch_paws_hearts_rescue",
         # Kênh Wild Odyssey (acount_2)
         "wild": "ch_wild_odyssey",
         "odyssey": "ch_wild_odyssey",
+        "ch_wild_odyssey": "ch_wild_odyssey",
         "@wildodysseyhq": "ch_wild_odyssey",
         # Kênh Odisseia Selvagem (acount_2)
         "odisseia": "ch_odisseia_selvagem",
         "odisseia_selvagem": "ch_odisseia_selvagem",
         "ch_odisseia": "ch_odisseia_selvagem",
+        "ch_odisseia_selvagem": "ch_odisseia_selvagem",
         "ucpbqs4h5qugpu3hcqjg-p9w": "ch_odisseia_selvagem",
         "@odisseiaselvagemoficial": "ch_odisseia_selvagem",
         # Kênh Mistérios do Mundo (acount_2)
         "misterios": "ch_misterios_do_mundo",
         "misterios_do_mundo": "ch_misterios_do_mundo",
         "ch_misterios": "ch_misterios_do_mundo",
+        "ch_misterios_do_mundo": "ch_misterios_do_mundo",
         "ucvfonq9jcpvvze8e1cgng": "ch_misterios_do_mundo",
         "ucvfonq9jcpvvvze8e1cgnng": "ch_misterios_do_mundo",  # typo variant
         "@misteriosdomundo-tv": "ch_misterios_do_mundo",
-        # Kênh cũ
+        # Kênh Alternate History & "What If?" (accout3)
         "whatif": "@alternatehistorywhatif-e2x",
         "history": "@alternatehistorywhatif-e2x",
+        "@alternatehistorywhatif-e2x": "@alternatehistorywhatif-e2x",
     }
 
     channel_id = alias_map.get(channel_id.lower(), channel_id)
@@ -180,11 +190,36 @@ def authenticate_channel(channel_id: str, account_id: Optional[str] = None):
         expected_yt_id = target_channel.get("youtube_channel_id")
         if expected_yt_id and real_yt_id and expected_yt_id.lower() != real_yt_id.lower():
             print("\n" + "!" * 68)
-            print("⚠️ CẢNH BÁO: BẠN CÓ THỂ ĐÃ CHỌN NHẦM KÊNH TRÊN TRÌNH DUYỆT!")
+            print("⚠️ CẢNH BÁO: BẠN VỪA CHỌN KÊNH KHÁC TRÊN TRÌNH DUYỆT SO VỚI LỆNH GÕ!")
             print(f"   👉 Kênh bạn vừa chọn cấp quyền: '{real_yt_title}' ({real_yt_id})")
-            print(f"   👉 Kênh dự kiến trong cấu hình: '{ch_name}' ({expected_yt_id})")
-            print("   Vui lòng kiểm tra lại nếu video bị đăng nhầm kênh!")
-            print("!" * 68 + "\n")
+            print(f"   👉 Kênh dự kiến trong lệnh:     '{ch_name}' ({expected_yt_id})")
+
+            # Tự động dò tìm kênh đúng theo real_yt_id trong channels.yaml để lưu đúng thư mục!
+            matched_bch = None
+            matched_acc = None
+            matched_primary = False
+            for acc in cfg.get("google_accounts", []):
+                for idx, bch in enumerate(acc.get("brand_channels", [])):
+                    if (bch.get("youtube_channel_id") or "").lower() == real_yt_id.lower():
+                        matched_bch = bch
+                        matched_acc = acc
+                        matched_primary = (idx == 0)
+                        break
+                if matched_bch:
+                    break
+
+            if matched_bch:
+                channel_id = matched_bch.get("id")
+                ch_name = matched_bch.get("name", channel_id)
+                target_channel = matched_bch
+                target_account = matched_acc
+                is_primary_channel = matched_primary
+                print(f"   ✅ HỆ THỐNG TỰ ĐỘNG ĐỊNH TUYẾN LƯU TOKEN VÀO ĐÚNG KÊNH: '{ch_name}' (ID: {channel_id})!")
+                print("!" * 68 + "\n")
+            else:
+                print("   ❌ Không tìm thấy kênh này trong config/channels.yaml — Hủy lưu đè để bảo vệ kênh!")
+                print("!" * 68 + "\n")
+                return False
 
         # Lưu token vào credentials/channels/{channel_id}/ (Mã hoá AES-256)
         ch_dir = base_dir / "credentials" / "channels" / channel_id
@@ -201,7 +236,7 @@ def authenticate_channel(channel_id: str, account_id: Optional[str] = None):
         save_encrypted_json(acc_token_file, token_dict)
         # 2. Cập nhật token chính nếu chưa có, hoặc nếu đang xác thực tài khoản chính của kênh
         is_main_account = target_account and (acc_id == target_account.get("id"))
-        if not primary_token_file.exists() or is_main_account:
+        if not primary_token_file.exists() or is_main_account or not account_id:
             save_encrypted_json(primary_token_file, token_dict)
             logger.info(f"Đã cập nhật token chính {primary_token_file.name}")
         else:
