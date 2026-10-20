@@ -104,7 +104,7 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
     hook_cand_dir.mkdir(parents=True, exist_ok=True)
 
     visual_plan = state.get("visual_plan") or {}
-    if visual_plan.get("topic_classification") == "HYBRID_TOOL_CALLING" and visual_plan.get("scenes_strategy"):
+    if visual_plan.get("scenes_strategy"):
         logger.info(
             "⚡ [HookVideoNode] Đã có kế hoạch LLM `@tool` (HYBRID_TOOL_CALLING) -> "
             "Chuyển thẳng sang `node_fetch_media` để chạy SONG SONG Hook + 2-3 Peak Shorts + Google Images cùng lúc!"
@@ -303,7 +303,7 @@ Return ONLY valid JSON:
     ):
         candidate_videos.append(existing_path)
 
-    for q_idx, q in enumerate(queries[:2]):
+    for q_idx, q in enumerate([]):  # Đã tắt lấy clip Shorts thô của kênh khác; chuyển sang nguồn có giấy phép (Pexels/Pixabay HD) ở bước dưới
         if len(candidate_videos) >= 3:
             break
         # Quét danh sách ứng viên qua yt_dlp flat search và xếp hạng bằng Mini-RAG (tối ưu chất lượng & chống trùng trong cùng video)
@@ -611,7 +611,7 @@ Return ONLY valid JSON:
             niche=atmosphere_fx,
             apply_grading=True,
             is_hook_scene=True,
-            fair_use_transform=True,
+            fair_use_transform=False,
             start_offset_sec=peak_start,
             preserve_continuous_flow=True,
         )
@@ -649,7 +649,7 @@ Return ONLY valid JSON:
         remaining_peak_sec = natural_peak_dur - consumed_peak_sec
         cur_cont_offset = peak_start + consumed_peak_sec
         next_sid = 2
-        while next_sid <= min(len(base_scenes), 4) and remaining_peak_sec >= 2.2:
+        while False and next_sid <= min(len(base_scenes), 4) and remaining_peak_sec >= 2.2:
             next_base_dur = _get_scene_dur_sec(next_sid, default_s=3.5)
             if remaining_peak_sec < next_base_dur * 0.68:
                 break
@@ -667,7 +667,7 @@ Return ONLY valid JSON:
                     niche=atmosphere_fx,
                     apply_grading=True,
                     is_hook_scene=False,
-                    fair_use_transform=True,
+                    fair_use_transform=False,
                     start_offset_sec=cur_cont_offset,
                     preserve_continuous_flow=True,
                 )
@@ -751,7 +751,7 @@ Return ONLY valid JSON:
                         niche=atmosphere_fx,
                         apply_grading=True,
                         is_hook_scene=False,
-                        fair_use_transform=True,
+                        fair_use_transform=False,
                         start_offset_sec=second_peak_start,
                         preserve_continuous_flow=True,
                     )

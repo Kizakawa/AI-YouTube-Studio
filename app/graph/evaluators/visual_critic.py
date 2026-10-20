@@ -128,6 +128,200 @@ class VisualCritic:
                 return prev_id
         return None
 
+    @classmethod
+    def inspect_clip_before_concat(
+        cls,
+        video_path: str,
+        min_short_edge: int = 720,
+        min_sharpness: float = 5.8,
+        check_watermark: bool = True,
+        allow_snow: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Cổng kiểm duyệt chất lượng & watermark từng clip TRƯỚC khi ghép (Pre-Assembly Clip Gate):
+        1. Độ phân giải nguồn tối thiểu >= 720p (min(width, height) >= 720).
+        2. Độ sắc nét biên cạnh (sharpness >= 5.8, không khung nào < 4.8).
+        3. Độ sáng & tương phản cân bằng (24 <= brightness <= 228, contrast >= 18).
+        4. Phát hiện chữ/logo/watermark kênh khác đóng cứng ở 4 góc hoặc dải trên/dưới qua đa khung hình.
+        """
+        import subprocess
+        import tempfile
+        from PIL import ImageChops, ImageFilter, ImageStat
+        from app.utils.ffmpeg_helper import get_duration_ms, probe_file
+
+        p = Path(video_path)
+        if not p.exists() or p.stat().st_size < 15000:
+            return {
+                "passed": False,
+                "score": 1.0,
+                "issues": ["File video clip không tồn tại hoặc dung lượng quá nhỏ (< 15KB)"],
+                "width": 0,
+                "height": 0,
+                "sharpness": 0.0,
+                "brightness": 0.0,
+            }
+
+        issues: List[str] = []
+        width, height = 0, 0
+        try:
+            info = probe_file(str(p)) or {}
+            for st in info.get("streams", []):
+                if st.get("codec_type") == "video":
+                    width = int(st.get("width") or 0)
+                    height = int(st.get("height") or 0)
+                    break
+        except Exception:
+            pass
+
+        if width > 0 and height > 0 and min(width, height) < min_short_edge:
+            issues.append(f"Độ phân giải clip thấp ({width}x{height} < {min_short_edge}p)")
+
+        dur = 3.0
+        try:
+            d_ms = get_duration_ms(str(p))
+            if d_ms > 0:
+                dur = max(d_ms / 1000.0, 0.6)
+        except Exception:
+            pass
+
+        sample_times = [
+            round(min(0.35, dur * 0.18), 2),
+            round(dur * 0.50, 2),
+            round(max(dur - 0.35, dur * 0.82), 2),
+        ]
+        sharp_vals: List[float] = []
+        lum_vals: List[float] = []
+        con_vals: List[float] = []
+        gray_frames: List[Image.Image] = []
+        edge_frames: List[Image.Image] = []
+
+        with tempfile.TemporaryDirectory() as td:
+            for idx_t, t_sec in enumerate(sample_times):
+                f_jpg = str(Path(td) / f"chk_{idx_t}.jpg")
+                try:
+                    subprocess.run(
+                        [
+                            "ffmpeg", "-v", "error", "-y",
+                            "-ss", f"{t_sec:.2f}", "-i", str(p),
+                            "-frames:v", "1", "-q:v", "3", f_jpg,
+                        ],
+                        capture_output=True,
+                        timeout=10,
+                    )
+                    if not Path(f_jpg).exists() or Path(f_jpg).stat().st_size < 1000:
+                        continue
+                    raw_bytes = Path(f_jpg).read_bytes()
+                    if check_watermark:
+                        try:
+                            from app.services.video_memory_rag import VideoMemoryRAG
+                            has_bad_art, art_reason = VideoMemoryRAG._has_embedded_text_or_collage_artifacts(raw_bytes)
+                            if has_bad_art and not any("chữ/logo" in x or "vách ngăn" in x for x in issues):
+                                issues.append(f"Phát hiện chữ/logo/khung ghép đóng cứng ({art_reason})")
+                        except Exception:
+                            pass
+
+                    with Image.open(f_jpg) as im:
+                        if width == 0 or height == 0:
+                            width, height = im.size
+                            if min(width, height) < min_short_edge:
+                                issues.append(f"Độ phân giải clip thấp ({width}x{height} < {min_short_edge}p)")
+                        g256 = im.convert("L").resize((256, 256), Image.Resampling.BILINEAR)
+                        st = ImageStat.Stat(g256)
+                        lum_vals.append(float(st.mean[0]))
+                        con_vals.append(float(st.stddev[0]))
+                        e256 = g256.filter(ImageFilter.FIND_EDGES)
+                        sharp_vals.append(float(ImageStat.Stat(e256).mean[0]))
+
+                        g_small = im.convert("L").resize((180, 320), Image.Resampling.BILINEAR)
+                        gray_frames.append(g_small)
+                        edge_frames.append(g_small.filter(ImageFilter.FIND_EDGES))
+                        if not allow_snow:
+                            rgb_s = im.convert("RGB").resize((180, 320), Image.Resampling.BILINEAR)
+                            px_s = rgb_s.load()
+                            snow_ratio = sum(
+                                1 for y_s in range(100, 300) for x_s in range(180)
+                                if min(px_s[x_s, y_s]) >= 175 and (max(px_s[x_s, y_s]) - min(px_s[x_s, y_s])) <= 24
+                            ) / (200 * 180)
+                            if snow_ratio >= 0.09 and not any("tuyết" in x for x in issues):
+                                issues.append(f"Phát hiện nền tuyết trắng lạnh lệch bối cảnh (snow_ratio={snow_ratio:.2f})")
+                except Exception:
+                    continue
+
+        if not sharp_vals:
+            return {
+                "passed": False,
+                "score": 2.0,
+                "issues": ["Không thể trích xuất khung hình hợp lệ từ video clip"],
+                "width": width,
+                "height": height,
+                "sharpness": 0.0,
+                "brightness": 0.0,
+            }
+
+        avg_sharp = sum(sharp_vals) / len(sharp_vals)
+        min_f_sharp = min(sharp_vals)
+        avg_lum = sum(lum_vals) / len(lum_vals)
+        min_lum = min(lum_vals)
+        max_lum = max(lum_vals)
+        min_con = min(con_vals)
+
+        if min_lum < 22.0 or avg_lum < 26.0:
+            issues.append(f"Clip quá tối hoặc có khung hình đen (brightness={avg_lum:.1f}, min={min_lum:.1f} < 22)")
+        if max_lum > 230.0:
+            issues.append(f"Clip bị cháy sáng / lóa trắng (max_brightness={max_lum:.1f} > 230)")
+        if min_con < 16.0:
+            issues.append(f"Clip thiếu tương phản hoặc phẳng màu (contrast={min_con:.1f} < 16)")
+        if avg_sharp < min_sharpness or min_f_sharp < max(4.6, min_sharpness - 1.2):
+            issues.append(
+                f"Clip bị mờ nhòe / vỡ hạt (sharpness={avg_sharp:.1f}, min={min_f_sharp:.1f}, yêu cầu >= {min_sharpness})"
+            )
+
+        # Kiểm tra logo/watermark cố định ở 4 góc hoặc banner chữ khi cảnh nền chuyển động
+        if check_watermark and len(edge_frames) >= 2 and len(gray_frames) >= 2:
+            try:
+                diff_01 = float(ImageStat.Stat(ImageChops.difference(gray_frames[0], gray_frames[-1])).mean[0])
+                if diff_01 >= 3.5:
+                    w_s, h_s = 180, 320
+                    e_lists = [list(ef.getdata()) for ef in edge_frames]
+                    pers_e = [min(vals) for vals in zip(*e_lists)]
+                    pers_im = Image.new("L", (w_s, h_s))
+                    pers_im.putdata(pers_e)
+
+                    center_box = pers_im.crop((36, 96, 144, 224))
+                    center_mean = max(float(ImageStat.Stat(center_box).mean[0]), 4.0)
+
+                    corner_boxes = [
+                        ("top_left", (4, 6, 68, 54)),
+                        ("top_right", (112, 6, 176, 54)),
+                        ("bottom_left", (4, 256, 68, 308)),
+                        ("bottom_right", (112, 256, 176, 308)),
+                        ("top_banner", (22, 10, 158, 52)),
+                    ]
+                    for c_name, box in corner_boxes:
+                        c_mean = float(ImageStat.Stat(pers_im.crop(box)).mean[0])
+                        if c_mean >= 36.0 and c_mean >= center_mean * 2.25:
+                            issues.append(
+                                f"Phát hiện watermark/logo kênh khác đóng cứng tại vùng {c_name} (edge={c_mean:.1f})"
+                            )
+                            break
+            except Exception:
+                pass
+
+        passed = len(issues) == 0
+        base_score = min(9.8, 7.6 + max(0.0, avg_sharp - min_sharpness) * 0.22)
+        if not passed:
+            base_score = max(2.5, base_score - 3.5 * len(issues))
+
+        return {
+            "passed": passed,
+            "score": round(base_score, 1),
+            "issues": issues,
+            "width": width,
+            "height": height,
+            "sharpness": round(avg_sharp, 2),
+            "brightness": round(avg_lum, 1),
+        }
+
     def evaluate_media(
         self,
         scenes_media: List[Dict[str, Any]],
@@ -189,9 +383,9 @@ class VisualCritic:
                         im.verify()
                     with Image.open(str(p)) as im:
                         w, h = im.size
-                        if w < 400 or h < 400:
+                        if min(w, h) < 540:
                             aes_score -= 3.5
-                            issues.append(f"Độ phân giải quá thấp (kém sắc nét): {w}x{h} px (yêu cầu >= 400px)")
+                            issues.append(f"Độ phân giải quá thấp (kém sắc nét): {w}x{h} px (yêu cầu >= 540px)")
                             failed = True
                         aspect = max(w / h, h / w)
                         if aspect > 2.6:
@@ -204,12 +398,21 @@ class VisualCritic:
                         issues.append("Ảnh bị tối đen hoàn toàn hoặc đơn sắc lỗi")
                         failed = True
                     else:
+                        try:
+                            from app.services.video_memory_rag import VideoMemoryRAG
+                            has_bad_art, art_reason = VideoMemoryRAG._has_embedded_text_or_collage_artifacts(p.read_bytes())
+                            if has_bad_art:
+                                aes_score -= 4.5
+                                issues.append(f"Ảnh chứa chữ/logo/khung ghép lỗi ({art_reason})")
+                                failed = True
+                        except Exception:
+                            pass
                         sharpness = self._measure_sharpness(str(p))
                         if sharpness < 5.8:
                             aes_score = max(3.5, round(sharpness * 0.9, 1))
                             issues.append(f"Ảnh bị mờ nhòe / thiếu độ sắc nét (sharpness={sharpness:.1f} < 5.8)")
                             failed = True
-                        else:
+                        elif not failed:
                             aes_score = round(min(9.8, 7.6 + (sharpness - 5.8) * 0.22), 1)
                         img_hash = self._compute_image_hash(str(p))
                         if img_hash:
@@ -220,33 +423,17 @@ class VisualCritic:
                     failed = True
             else:
                 try:
-                    import subprocess
-                    import tempfile
                     sig = self._media_signature(str(p))
-                    with tempfile.TemporaryDirectory() as td:
-                        sample_frame = str(Path(td) / "v_mid.jpg")
-                        subprocess.run(
-                            ["ffmpeg", "-v", "error", "-y", "-ss", "0.5", "-i", str(p), "-frames:v", "1", sample_frame],
-                            capture_output=True,
-                            timeout=10,
-                        )
-                        if Path(sample_frame).exists() and Path(sample_frame).stat().st_size > 1000:
-                            if self._is_solid_color_or_black(sample_frame):
-                                aes_score = 2.5
-                                issues.append("Video clip bị tối đen hoặc đơn sắc lỗi")
-                                failed = True
-                            else:
-                                v_sharp = self._measure_sharpness(sample_frame)
-                                if v_sharp < 4.5:
-                                    aes_score = max(4.0, round(v_sharp * 1.1, 1))
-                                    issues.append(f"Video clip bị mờ nhòe (sharpness={v_sharp:.1f} < 4.5)")
-                                    failed = True
-                                else:
-                                    aes_score = round(min(9.8, 7.5 + (v_sharp - 4.5) * 0.22), 1)
-                        elif p.stat().st_size < 15000:
-                            aes_score = 3.0
-                            issues.append("Video clip lỗi không trích xuất được khung hình")
-                            failed = True
+                    clip_gate = self.inspect_clip_before_concat(
+                        str(p),
+                        min_short_edge=720,
+                        min_sharpness=5.8,
+                        check_watermark=True,
+                    )
+                    aes_score = float(clip_gate.get("score", 8.0))
+                    if not clip_gate.get("passed", True):
+                        issues.extend(clip_gate.get("issues") or ["Clip không đạt cổng kiểm duyệt chất lượng/watermark"])
+                        failed = True
                 except Exception as ex_sig:
                     logger.debug(f"[VisualCritic] Lỗi kiểm tra khung hình video cảnh {scene_id}: {ex_sig}")
 

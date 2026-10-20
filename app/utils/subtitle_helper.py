@@ -88,10 +88,10 @@ YCbCr Matrix: None
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1.2,0,1,5.2,3.0,2,40,40,{margin_v},1
-Style: HookHeadlineBanner,{fontname},60,&H0000FFFF,&H00FFFFFF,&H00000000,&HD0050505,-1,0,0,0,100,100,2,0,3,4.0,0.0,8,30,30,310,1
-Style: PatternInterruptBadge,{fontname},38,&H00FFFFFF,&H00FFFFFF,&H0000E6FF&,&HC0101010,-1,0,0,0,100,100,2,0,3,2.4,0.0,8,40,40,240,1
-Style: CTABadge,{fontname},40,&H0000FFFF,&H00FFFFFF,&H00000000,&HC8080808,-1,0,0,0,100,100,1.4,0,1,4.2,2.2,2,30,30,465,1
-Style: WatermarkStyle,Arial,28,&H30FFFFFF,&H30FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1.8,1.2,8,30,30,90,1
+Style: HookHeadlineBanner,{fontname},64,&H0000FFFF,&H00FFFFFF,&H00000000,&HD0050505,-1,0,0,0,100,100,2,0,3,4.2,0.0,8,30,30,315,1
+Style: PatternInterruptBadge,{fontname},54,&H00FFFFFF,&H00FFFFFF,&H0000E6FF&,&HC0101010,-1,0,0,0,100,100,2,0,3,3.2,0.0,8,30,30,235,1
+Style: CTABadge,{fontname},54,&H0000FFFF,&H00FFFFFF,&H00000000,&HC8080808,-1,0,0,0,100,100,1.4,0,1,4.6,2.4,2,30,30,455,1
+Style: WatermarkStyle,Arial,38,&H30FFFFFF,&H30FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2.2,1.4,8,30,30,90,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -311,39 +311,39 @@ class SubtitleHelper:
         if is_vi:
             line1 = r"{\1c&H0000FFFF&}[ ★ BẤM THÍCH  {\1c&H0033FF33&}•  BÌNH LUẬN  {\1c&H002222FF&}•  ĐĂNG KÝ KÊNH ★ ]"
             if "psychology" in niche_l:
-                line2 = r"{\1c&H00FFFFFF&\fs32}▼ ĐỂ LẠI Ý KIẾN & ĐĂNG KÝ ĐỂ KHÔNG BỊ THAO TÚNG ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs44}▼ ĐỂ LẠI Ý KIẾN & ĐĂNG KÝ ĐỂ KHÔNG BỊ THAO TÚNG ▼"
             elif any(k in niche_l for k in ("predator", "wildlife")):
-                line2 = r"{\1c&H00FFFFFF&\fs32}▼ KẺ NÀO THẮNG? BÌNH LUẬN & ĐĂNG KÝ NGAY ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs44}▼ KẺ NÀO THẮNG? BÌNH LUẬN & ĐĂNG KÝ NGAY ▼"
             elif any(k in niche_l for k in ("deep_sea", "ocean", "mystery")):
-                line2 = r"{\1c&H00FFFFFF&\fs32}▼ BÌNH LUẬN GIẢ THUYẾT & ĐĂNG KÝ XEM PHẦN 2 ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs44}▼ BÌNH LUẬN GIẢ THUYẾT & ĐĂNG KÝ XEM PHẦN 2 ▼"
             elif any(k in niche_l for k in ("history", "what_if", "alternate")):
-                line2 = r"{\1c&H00FFFFFF&\fs32}▼ BẠN NGHĨ SAO? BÌNH LUẬN & ĐĂNG KÝ KÊNH ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs44}▼ BẠN NGHĨ SAO? BÌNH LUẬN & ĐĂNG KÝ KÊNH ▼"
             else:
-                line2 = r"{\1c&H00FFFFFF&\fs32}▼ BÌNH LUẬN BÊN DƯỚI & ĐĂNG KÝ ĐÓN XEM TIẾP ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs44}▼ BÌNH LUẬN BÊN DƯỚI & ĐĂNG KÝ ĐÓN XEM TIẾP ▼"
         elif is_pt:
             line1 = r"{\1c&H0000FFFF&}[ ★ CURTA  {\1c&H0033FF33&}•  COMENTE  {\1c&H002222FF&}•  INSCREVA-SE ★ ]"
             if "psychology" in niche_l:
-                line2 = r"{\1c&H00FFFFFF&\fs32}▼ COMENTE SUA OPINIÃO E INSCREVA-SE NO CANAL ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs44}▼ COMENTE SUA OPINIÃO E INSCREVA-SE NO CANAL ▼"
             elif any(k in niche_l for k in ("predator", "wildlife")):
-                line2 = r"{\1c&H00FFFFFF&\fs32}▼ QUEM VENCE? COMENTE ABAIXO E INSCREVA-SE ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs44}▼ QUEM VENCE? COMENTE ABAIXO E INSCREVA-SE ▼"
             elif any(k in niche_l for k in ("deep_sea", "ocean", "mystery")):
-                line2 = r"{\1c&H00FFFFFF&\fs32}▼ QUAL SUA TEORIA? COMENTE E INSCREVA-SE ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs44}▼ QUAL SUA TEORIA? COMENTE E INSCREVA-SE ▼"
             elif any(k in niche_l for k in ("history", "what_if", "alternate")):
-                line2 = r"{\1c&H00FFFFFF&\fs32}▼ O QUE ACONTECERIA? COMENTE E INSCREVA-SE ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs44}▼ O QUE ACONTECERIA? COMENTE E INSCREVA-SE ▼"
             else:
-                line2 = r"{\1c&H00FFFFFF&\fs32}▼ DEIXE SEU COMENTÁRIO E INSCREVA-SE AGORA ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs44}▼ DEIXE SEU COMENTÁRIO E INSCREVA-SE AGORA ▼"
         else:
             line1 = r"{\1c&H0000FFFF&}[ ★ LIKE  {\1c&H0033FF33&}•  COMMENT  {\1c&H002222FF&}•  SUBSCRIBE ★ ]"
             if "psychology" in niche_l:
-                line2 = r"{\1c&H00FFFFFF&\fs32}▼ DROP YOUR THOUGHTS & SUBSCRIBE FOR MORE ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs44}▼ DROP YOUR THOUGHTS & SUBSCRIBE FOR MORE ▼"
             elif any(k in niche_l for k in ("predator", "wildlife")):
-                line2 = r"{\1c&H00FFFFFF&\fs32}▼ WHO WINS? COMMENT BELOW & SUBSCRIBE ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs44}▼ WHO WINS? COMMENT BELOW & SUBSCRIBE ▼"
             elif any(k in niche_l for k in ("deep_sea", "ocean", "mystery")):
-                line2 = r"{\1c&H00FFFFFF&\fs32}▼ COMMENT YOUR THEORY & SUBSCRIBE FOR PART 2 ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs44}▼ COMMENT YOUR THEORY & SUBSCRIBE FOR PART 2 ▼"
             elif any(k in niche_l for k in ("history", "what_if", "alternate")):
-                line2 = r"{\1c&H00FFFFFF&\fs32}▼ WHAT WOULD HAPPEN? COMMENT & SUBSCRIBE ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs44}▼ WHAT WOULD HAPPEN? COMMENT & SUBSCRIBE ▼"
             else:
-                line2 = r"{\1c&H00FFFFFF&\fs32}▼ DROP A COMMENT & SUBSCRIBE FOR DAILY SHORTS ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs44}▼ DROP A COMMENT & SUBSCRIBE FOR DAILY SHORTS ▼"
         return f"{line1}\\N{line2}"
 
     @classmethod
@@ -436,7 +436,7 @@ class SubtitleHelper:
                 cur_len = 0
                 for w_info in word_timings:
                     raw_w = w_info.get("word", "").strip()
-                    raw_w = re.sub(r'\[?(?:LOOP|HOOK|ACT\d*|SCENE\d*|PAUSE|BEAT|SILENCE|WHISPER)\]?', '', raw_w, flags=re.IGNORECASE).strip()
+                    raw_w = re.sub(r'\[(?:LOOP|HOOK|ACT\s*\d*|SCENE\s*\d*|PAUSE|BEAT|SILENCE|WHISPER)[^\]]*\]', '', raw_w, flags=re.IGNORECASE).strip()
                     w_text = raw_w.upper()
                     if not w_text:
                         continue

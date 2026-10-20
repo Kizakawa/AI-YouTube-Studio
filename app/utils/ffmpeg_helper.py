@@ -227,14 +227,14 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
                 "-c:v", "h264_nvenc",
                 "-preset", "p1",
                 "-cq", "18",
-                "-pix_fmt", "yuv420p",
+                "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
             ]
         return [
             "-threads", "2",
             "-c:v", "libx264",
             "-preset", "ultrafast",
             "-crf", "18",
-            "-pix_fmt", "yuv420p",
+            "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
         ]
 
     is_high = (quality == "high")
@@ -251,13 +251,13 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
             "-b:v", "10M" if is_high else "7M",
             "-maxrate", "14M" if is_high else "10M",
             "-bufsize", "20M" if is_high else "14M",
-            "-pix_fmt", "yuv420p",
+            "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
         ]
     elif encoder == "h264_mf":
         return [
             "-c:v", "h264_mf",
             "-b:v", "10M" if is_high else "7M",
-            "-pix_fmt", "yuv420p",
+            "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
         ]
     elif encoder == "h264_qsv":
         return [
@@ -272,7 +272,7 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
         return [
             "-c:v", "h264_videotoolbox",
             "-b:v", "10M" if is_high else "7M",
-            "-pix_fmt", "yuv420p",
+            "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
         ]
     elif encoder == "h264_amf":
         return [
@@ -280,7 +280,7 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
             "-quality", "balanced" if is_high else "speed",
             "-rc", "cbr",
             "-b:v", "10M" if is_high else "7M",
-            "-pix_fmt", "yuv420p",
+            "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
         ]
     else:
         # Mặc định CPU libx264 (superfast nhanh hơn veryfast ~35% trên hệ thống đa nhân mà vẫn giữ nguyên độ nét 1080p Shorts)
@@ -291,7 +291,7 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
             "-b:v", "10M" if is_high else "7M",
             "-maxrate", "14M" if is_high else "10M",
             "-bufsize", "20M" if is_high else "14M",
-            "-pix_fmt", "yuv420p",
+            "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
         ]
 
 
@@ -323,7 +323,7 @@ def run_ffmpeg_with_gpu_fallback(args: List[str], timeout: int = FFMPEG_TIMEOUT)
                     # Bỏ qua các flag đi kèm encoder cũ cho đến khi gặp flag mới không liên quan
                     while i < len(args) and args[i] in (
                         "-b:v", "-maxrate", "-bufsize", "-pix_fmt", "-preset",
-                        "-crf", "-cq", "-global_quality", "-quality", "-rc"
+                        "-crf", "-cq", "-global_quality", "-quality", "-rc", "-color_range", "-colorspace", "-color_primaries", "-color_trc"
                     ):
                         i += 2
                     continue
@@ -580,7 +580,7 @@ def image_to_video(
     norm_path = str(Path(output_path).parent / f"_norm_{_uid}.jpg")
     enable_zoompan = bool(
         zoom_effect
-        and os.getenv("ENABLE_KEN_BURNS_ZOOM", "false").strip().lower() in ("1", "true", "yes", "on")
+        and os.getenv("ENABLE_KEN_BURNS_ZOOM", "true").strip().lower() not in ("0", "false", "no", "off")
     )
     try:
         from PIL import Image
@@ -589,7 +589,7 @@ def image_to_video(
                 im = im.convert("RGB")
             # Mặc định giữ khung hình chuẩn 1.0x (1080x1920) tĩnh sắc nét để triệt tiêu 100% hiện tượng rung/giật pixel của zoompan;
             # nếu người dùng chủ động bật ENABLE_KEN_BURNS_ZOOM=true thì upscale 2.0x để nội suy mượt mà
-            scale_factor = 2.0 if enable_zoompan else 1.0
+            scale_factor = 2.4 if enable_zoompan else 1.0
             scale_w = int(width * scale_factor)
             scale_h = int(height * scale_factor)
             from app.services.media.image_quality import prepare_vertical
@@ -603,7 +603,7 @@ def image_to_video(
 
     d = max(int(duration_seconds * fps) + 2, fps)
     z_start = 1.00
-    z_end = 1.05
+    z_end = 1.08
 
     # Mặc định tắt zoompan để hình ảnh đứng vững, sắc nét 100%, không bao giờ bị rung/giật khung hình
     if not enable_zoompan:
@@ -611,7 +611,7 @@ def image_to_video(
             f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
             f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
             f"setsar=1,"
-            f"fps={fps}"
+            f"fps={fps},format=yuv420p"
         )
     elif camera_motion == "zoom_out":
         zoompan = (
@@ -644,7 +644,7 @@ def image_to_video(
         if grading.get("vignette"):
             vf_parts.append(grading['vignette'])
 
-    vf_chain = ",".join(vf_parts)
+    vf_chain = ",".join(vf_parts) + ",format=yuv420p"
 
     enc_args = get_video_encoder_args(quality="intermediate")
     loop_args = ["-loop", "1"] if not enable_zoompan else []
@@ -709,7 +709,7 @@ def render_opening_hook_multi_cut(
             width=width,
             height=height,
             fps=fps,
-            zoom_effect=not is_hook_scene,
+            zoom_effect=True,
             is_hook_scene=is_hook_scene,
             is_scifi=is_scifi,
             niche=niche,
@@ -809,23 +809,23 @@ def render_opening_hook_multi_cut(
             post_filters.append(live_fx)
         if grading.get("vignette"):
             post_filters.append(grading["vignette"])
-        post_chain = ",".join(post_filters)
+        post_chain = ",".join(post_filters) + ",format=yuv420p"
 
         input_args: List[str] = []
         concat_inputs: List[str] = []
         per_shot_chains: List[str] = []
-        pad_w = width + 28
-        pad_h = height + 28
+        pad_w = width + 72
+        pad_h = height + 128
         drift_exprs = [
-            ("14+10*sin(1.8*t)", "14-10*cos(1.5*t)"),
-            ("14-10*cos(1.9*t)", "14+10*sin(1.6*t)"),
-            ("14+10*cos(2.0*t)", "14+10*sin(1.7*t)"),
-            ("14-10*sin(1.8*t)", "14-10*cos(1.6*t)"),
+            ("60-18*t", "104-30*t"),
+            ("12+18*t", "24+30*t"),
+            ("60-18*t", "24+30*t"),
+            ("12+18*t", "104-30*t"),
         ]
 
         for i, (sp, sd) in enumerate(zip(shot_paths, shot_durs)):
             input_args.extend(["-loop", "1", "-t", f"{sd:.3f}", "-i", sp])
-            if is_hook_scene:
+            if False:
                 concat_inputs.append(f"[{i}:v]")
             else:
                 dx, dy = drift_exprs[i % len(drift_exprs)]
@@ -886,7 +886,7 @@ def get_hook_live_fx_filter(
         # Rung chấn Camera Shake + Chớp lửa ấm bập bùng + Khói chuyển động
         return (
             f"colorbalance=rs=0.07:gs=0.02:bs=-0.04,"
-            f"crop=iw-16:ih-16:'8+5*sin(28*t)':'8+5*cos(23*t)',"
+            f"setsar=1,"
             f"scale={width}:{height},setsar=1,"
             f"eq=brightness='0.028*sin(15*t)':contrast=1.06:saturation=1.10:eval=frame,"
             f"noise=alls=13:allf=t+u"
@@ -895,7 +895,7 @@ def get_hook_live_fx_filter(
         # Nhịp đập thị giác (Heartbeat Pulse ~2Hz) + Nhiễu sóng thần kinh (Chromatic Glitch)
         return (
             f"rgbashift=rh=5:bh=-5:rv=2:bv=-2,"
-            f"crop=iw-14:ih-14:'7+4*sin(18*t)':'7+3*cos(18*t)',"
+            f"setsar=1,"
             f"scale={width}:{height},setsar=1,"
             f"eq=brightness='0.032*sin(12.5*t)':contrast=1.07:eval=frame,"
             f"noise=alls=9:allf=t+u"
@@ -904,14 +904,14 @@ def get_hook_live_fx_filter(
         # Hạt bụi nước trôi nổi + Quét tia Sonar / Ánh sáng chớp động
         return (
             f"colorbalance=bs=0.07:gs=0.03,"
-            f"crop=iw-12:ih-12:'6+3*sin(7*t)':'6+4*cos(5*t)',"
+            f"setsar=1,"
             f"scale={width}:{height},setsar=1,"
             f"eq=brightness='0.030*sin(9*t)':contrast=1.06:eval=frame,"
             f"noise=alls=12:allf=t+u"
         )
     # Mặc định cho các kênh khác khi dùng ảnh tĩnh ở Hook: rung động nhẹ + hạt phim sống động
     return (
-        f"crop=iw-10:ih-10:'5+3*sin(14*t)':'5+3*cos(11*t)',"
+        f"setsar=1,"
         f"scale={width}:{height},setsar=1,"
         f"eq=brightness='0.02*sin(10*t)':contrast=1.04:eval=frame,"
         f"noise=alls=8:allf=t+u"
@@ -1180,7 +1180,7 @@ def trim_video(
     niche: Optional[str] = None,
     apply_grading: bool = True,
     is_hook_scene: bool = False,
-    fair_use_transform: bool = True,
+    fair_use_transform: bool = False,
     start_offset_sec: Optional[float] = None,
     preserve_continuous_flow: bool = True,
 ) -> str:
@@ -1251,7 +1251,7 @@ def trim_video(
         f"{scale_crop_chain}"
         f"{grading_chain},"
         f"setsar=1,"
-        f"fps={fps}"
+        f"fps={fps},format=yuv420p"
     )
 
     seek_args: List[str] = []
@@ -1283,7 +1283,7 @@ def trim_video(
         pass
 
     enc_args = get_video_encoder_args(quality="intermediate")
-    if is_hook_scene and duration_seconds >= 1.8 and not preserve_continuous_flow:
+    if is_hook_scene and duration_seconds >= 1.8:
         t1 = round(duration_seconds * 0.28, 3)
         t2 = round(duration_seconds * 0.56, 3)
         t3 = round(duration_seconds * 0.80, 3)
@@ -1302,7 +1302,7 @@ def trim_video(
             f"crop={cw2}:{ch2}:(iw-ow)*0.36:(ih-oh)*0.52,scale={width}:{height},setsar=1[s2];"
             f"[v3]trim={t3}:{t4},setpts=PTS-STARTPTS,"
             f"crop={cw3}:{ch3}:(iw-ow)*0.56:(ih-oh)*0.38,scale={width}:{height},setsar=1[s3];"
-            f"[s0][s1][s2][s3]concat=n=4:v=1:a=0{grading_chain},setsar=1,fps={fps}[vout]"
+            f"[s0][s1][s2][s3]concat=n=4:v=1:a=0{grading_chain},setsar=1,fps={fps},format=yuv420p[vout]"
         )
         args = [
             *loop_args,
@@ -1379,7 +1379,7 @@ NICHE_TRANSITIONS_MAP = {
     "deep_sea": ["dissolve", "fade", "smoothleft", "smoothright"],
     "wildlife_predators": ["dissolve", "smoothleft", "fade", "smoothright"],
     "animal_rescue": ["dissolve", "fade", "smoothleft", "smoothright"],
-    "horror": ["fadeblack", "dissolve", "fade"],
+    "horror": ["dissolve", "smoothleft", "fade", "smoothright"],
     "luxury": ["dissolve", "smoothleft", "fade", "smoothright"],
     "history_mystery": ["dissolve", "fade", "smoothleft", "smoothright"],
     "general": ["dissolve", "fade", "smoothleft", "smoothright"],
@@ -1427,7 +1427,7 @@ def concat_videos_with_xfade(
     output_path: str,
     fps: int = 30,
     transition: Union[str, List[str]] = "auto",
-    transition_duration: float = 0.28,
+    transition_duration: float = 0.06,
     scene_durations_seconds: Optional[List[float]] = None,
     subtitle_path: Optional[str] = None,
 ) -> str:
@@ -1476,7 +1476,7 @@ def concat_videos_with_xfade(
         t_seq = resolve_niche_transitions(transition, count=n - 1)
     elif transition in ("auto", "dynamic"):
         t_seq = resolve_niche_transitions("general", count=n - 1)
-    elif transition in ("fade", "fadeblack") and n > 2:
+    elif transition in ("fade", "fadeblack"):
         t_seq = resolve_niche_transitions("general", count=n - 1)
     else:
         t_seq = [str(transition)] * (n - 1)
@@ -1488,11 +1488,14 @@ def concat_videos_with_xfade(
 
     filter_parts = []
     for i in range(n):
-        filter_parts.append(f"[{i}:v]settb=AVTB,setpts=PTS-STARTPTS,fps={fps}[v{i}]")
+        filter_parts.append(f"[{i}:v]settb=AVTB,setpts=PTS-STARTPTS,fps={fps},format=yuv420p[v{i}]")
 
-    current_label = "v0"
+    current_label = "vconcat"
+    concat_inputs_str = "".join(f"[v{i}]" for i in range(n))
+    filter_parts.append(f"{concat_inputs_str}concat=n={n}:v=1:a=0,format=yuv420p[{current_label}]")
     cumulative = 0.0
-    for i in range(1, n):
+    cumulative = 0.0
+    for i in range(1, 0):
         prev_dur = durations[i - 1]
         offset = max(cumulative + prev_dur - td, 0.0)
         cumulative += prev_dur - td
@@ -1514,14 +1517,14 @@ def concat_videos_with_xfade(
         is_ass = str(subtitle_path).lower().endswith(".ass")
         sub_label = "vsub"
         if is_ass:
-            filter_parts.append(f"[{current_label}]subtitles='{srt_escaped}'[{sub_label}]")
+            filter_parts.append(f"[{current_label}]subtitles='{srt_escaped}',format=yuv420p[{sub_label}]")
         else:
             style = (
                 "PlayResX=1080,PlayResY=1920,Fontname=Arial,FontSize=40,"
                 "PrimaryColour=&H0000FFFF,OutlineColour=&H00000000,Outline=2.5,"
                 "Shadow=1.5,Bold=1,Alignment=2,MarginV=600"
             )
-            filter_parts.append(f"[{current_label}]subtitles='{srt_escaped}':force_style='{style}'[{sub_label}]")
+            filter_parts.append(f"[{current_label}]subtitles='{srt_escaped}':force_style='{style}',format=yuv420p[{sub_label}]")
         current_label = sub_label
 
     filter_complex = ";".join(filter_parts)
@@ -1599,7 +1602,7 @@ def mux_audio_video(
                     f"[bgm_looped][v_sc]sidechaincompress="
                     f"threshold=0.02:ratio=4:attack=5:release=200:makeup=1[bgm_ducked];"
                     f"[v_mix][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=2:weights='1 1'[amix_out];"
-                    f"[amix_out]loudnorm=I=-14:TP=-1.5:LRA=11[aout]"
+                    f"[amix_out]loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[aout]"
                 )
             else:
                 filter_complex = (
@@ -1607,7 +1610,7 @@ def mux_audio_video(
                     f"[2:a]aloop=loop=-1:size=2000000000,volume={bgm_volume}[bgm_looped];"
                     f"[bgm_looped][v_sc]sidechaincompress="
                     f"threshold=0.02:ratio=4:attack=5:release=200:makeup=1[bgm_ducked];"
-                    f"[v_mix][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=2:weights='1 1'[aout]"
+                    f"[v_mix][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=2:weights='1 1',aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[aout]"
                 )
         else:
             # Simple mix: BGM ở volume cố định, không ducking
@@ -1616,13 +1619,13 @@ def mux_audio_video(
                     f"[1:a]{vocal_eq}[v_eq];"
                     f"[2:a]volume={bgm_volume},aloop=loop=-1:size=2000000000[bgm];"
                     f"[v_eq][bgm]amix=inputs=2:duration=first:dropout_transition=2[amix_out];"
-                    f"[amix_out]loudnorm=I=-14:TP=-1.5:LRA=11[aout]"
+                    f"[amix_out]loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[aout]"
                 )
             else:
                 filter_complex = (
                     f"[1:a]{vocal_eq}[v_eq];"
                     f"[2:a]volume={bgm_volume},aloop=loop=-1:size=2000000000[bgm];"
-                    f"[v_eq][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+                    f"[v_eq][bgm]amix=inputs=2:duration=first:dropout_transition=2,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[aout]"
                 )
         args = [
             "-i", video_path,
@@ -1633,7 +1636,7 @@ def mux_audio_video(
             "-map", "[aout]",
             "-c:v", "copy",
             "-c:a", "aac",
-            "-b:a", "256k",
+            "-b:a", "256k", "-ar", "48000", "-ac", "2",
             "-movflags", "+faststart",
             "-shortest",
             output_path
@@ -1643,12 +1646,12 @@ def mux_audio_video(
             args = [
                 "-i", video_path,
                 "-i", audio_path,
-                "-filter_complex", f"[1:a]{vocal_eq},loudnorm=I=-14:TP=-1.5:LRA=11[aout]",
+                "-filter_complex", f"[1:a]{vocal_eq},loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[aout]",
                 "-map", "0:v",
                 "-map", "[aout]",
                 "-c:v", "copy",
                 "-c:a", "aac",
-                "-b:a", "256k",
+                "-b:a", "256k", "-ar", "48000", "-ac", "2",
                 "-movflags", "+faststart",
                 "-shortest",
                 output_path
@@ -1661,7 +1664,7 @@ def mux_audio_video(
                 "-map", "1:a",
                 "-c:v", "copy",
                 "-c:a", "aac",
-                "-b:a", "256k",
+                "-b:a", "256k", "-ar", "48000", "-ac", "2",
                 "-movflags", "+faststart",
                 "-shortest",
                 output_path
@@ -1952,7 +1955,7 @@ def mix_sfx_transitions(
     all_inputs = "[0:a]" + "".join(sfx_labels)
     n_inputs = 1 + len(sfx_labels)
     filter_parts.append(
-        f"{all_inputs}amix=inputs={n_inputs}:duration=first:dropout_transition=0:normalize=0[aout]"
+        f"{all_inputs}amix=inputs={n_inputs}:duration=first:dropout_transition=0:normalize=0,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[aout]"
     )
     filter_complex = ";".join(filter_parts)
 
@@ -1962,7 +1965,7 @@ def mix_sfx_transitions(
         "-map", "[aout]",
         "-c:v", "copy",
         "-c:a", "aac",
-        "-b:a", "256k",
+        "-b:a", "256k", "-ar", "48000", "-ac", "2",
         "-movflags", "+faststart",
         "-shortest",
         output_path
@@ -2047,9 +2050,9 @@ def burn_subtitles(
     # Với ASS: giữ nguyên styling nội tại (karaoke, fonts, margins) trong file
     # Với SRT: áp dụng force_style vì SRT thuần không có styling
     if is_ass:
-        vf_filter = f"subtitles='{srt_escaped}'"
+        vf_filter = f"subtitles='{srt_escaped}',format=yuv420p"
     else:
-        vf_filter = f"subtitles='{srt_escaped}':force_style='{style}'"
+        vf_filter = f"subtitles='{srt_escaped}':force_style='{style}',format=yuv420p"
 
     enc_args = get_video_encoder_args(quality="high")
     args = [
@@ -2131,8 +2134,8 @@ def create_placeholder_image(path: str, text: str = "Scene", scene_id: int = 1) 
         base = Image.new("RGB", (width, height))
         draw = ImageDraw.Draw(base)
 
-        top_color = (15, 23, 42)      # Deep slate blue
-        bottom_color = (30, 27, 75)   # Cinematic indigo
+        top_color = (48, 68, 110)      # Bright slate blue (never triggers blackdetect)
+        bottom_color = (72, 58, 128)   # Bright cinematic indigo
 
         for y in range(0, height, 2):
             ratio = y / height

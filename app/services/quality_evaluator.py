@@ -407,6 +407,10 @@ Respond ONLY in valid JSON:
             audio_duration = 0.0
             audio_codec = ""
             video_codec = ""
+            pix_fmt = ""
+            color_range = ""
+            audio_channels = 0
+            audio_sample_rate = 0
 
             for stream in info.get("streams", []):
                 st = stream.get("codec_type")
@@ -420,10 +424,14 @@ Respond ONLY in valid JSON:
                         num, den = r_frame.split("/")
                         fps = round(float(num) / float(den), 1) if float(den) > 0 else 30.0
                     video_duration = float(stream.get("duration", duration_sec) or duration_sec)
+                    pix_fmt = str(stream.get("pix_fmt", "") or "").lower()
+                    color_range = str(stream.get("color_range", "") or "").lower()
                 elif st == "audio":
                     has_audio = True
                     audio_duration = float(stream.get("duration", duration_sec) or duration_sec)
                     audio_codec = stream.get("codec_name", "").lower()
+                    audio_channels = int(stream.get("channels", 0) or 0)
+                    audio_sample_rate = int(stream.get("sample_rate", 0) or 0)
 
             if not has_video or not has_audio:
                 return {
@@ -456,6 +464,21 @@ Respond ONLY in valid JSON:
             else:
                 stream_pts += 2.0
                 issues.append(f"Codec âm thanh '{audio_codec}' không tối ưu cho mobile.")
+
+            if pix_fmt and pix_fmt != "yuv420p":
+                hard_fail = True
+                issues.append(f"Sai dải màu video (pix_fmt={pix_fmt}, yêu cầu yuv420p TV range) — chặn xuất bản!")
+            elif color_range == "pc":
+                hard_fail = True
+                issues.append("Video dùng dải màu full-range (pc/yuvj420p) dễ lệch màu trên YouTube — chặn xuất bản!")
+            else:
+                strengths.append("Dải màu chuẩn yuv420p (TV range bt709).")
+
+            if audio_channels != 2 or audio_sample_rate != 48000:
+                hard_fail = True
+                issues.append(f"Âm thanh chưa chuẩn Stereo 48kHz ({audio_channels}ch, {audio_sample_rate}Hz) — chặn xuất bản!")
+            else:
+                strengths.append("Âm thanh chuẩn Stereo 48 kHz.")
 
             # 2. Bitrate & Visual Encoding Density (Tối đa 25 điểm)
             mbps = (file_size_mb * 8.0) / max(duration_sec, 1.0)
@@ -538,6 +561,55 @@ Respond ONLY in valid JSON:
             except Exception as ex_frame:
                 logger.debug(f"[QualityEvaluator] Không thể trích xuất frame kiểm tra độ nét: {ex_frame}")
 
+            # 6. Kiểm tra tự động Khung Đen (blackdetect), Đứng Hình (freezedetect) & Cắt Cảnh 3s Đầu (scdet)
+            black_max_sec = 0.0
+            freeze_max_sec = 0.0
+            cuts_first_3s = 0
+            total_cuts = 0
+            try:
+                import re as _re_qa
+                vf_qa = "crop=800:760:140:280,blackdetect=d=0.10:pic_th=0.98,freezedetect=n=-45dB:d=2.2,scdet=t=10.0"
+                res_qa = subprocess.run(
+                    ["ffmpeg", "-v", "info", "-i", str(p), "-vf", vf_qa, "-an", "-f", "null", "-"],
+                    capture_output=True,
+                    text=True,
+                    timeout=35,
+                )
+                qa_log = (res_qa.stderr or "") + "\n" + (res_qa.stdout or "")
+                b_durs = [float(x) for x in _re_qa.findall(r"black_duration:\s*([0-9.]+)", qa_log)]
+                if b_durs:
+                    black_max_sec = max(b_durs)
+                if black_max_sec >= 0.15:
+                    hard_fail = True
+                    frame_pts = 0.0
+                    issues.append(f"Phát hiện khung hình đen kéo dài {black_max_sec:.2f}s (>= 0.15s) — chặn xuất bản!")
+
+                f_durs = [float(x) for x in _re_qa.findall(r"freeze_duration:\s*([0-9.]+)", qa_log)]
+                if f_durs:
+                    freeze_max_sec = max(f_durs)
+                if freeze_max_sec >= 2.3:
+                    hard_fail = True
+                    frame_pts = min(frame_pts, 2.0)
+                    issues.append(f"Phát hiện ảnh/hình đứng yên {freeze_max_sec:.2f}s (>= 2.3s) — chặn xuất bản!")
+
+                scd_times = sorted(float(x) for x in _re_qa.findall(r"lavfi\.scd\.time:\s*([0-9.]+)", qa_log))
+                total_cuts = len(scd_times)
+                cuts_first_3s = sum(1 for t in scd_times if 0.20 <= t <= 3.50)
+                if duration_sec >= 6.0 and cuts_first_3s == 0:
+                    hard_fail = True
+                    issues.append("Không có nhát cắt chuyển cảnh nào trong 3 giây đầu (Hook 0-3s thiếu cắt cảnh) — chặn xuất bản!")
+                else:
+                    strengths.append(f"Có {cuts_first_3s} nhát cắt chuyển cảnh trong 3 giây đầu (tổng {total_cuts} cuts).")
+
+                if duration_sec >= 15.0:
+                    timeline_pts = [0.0] + scd_times + [duration_sec]
+                    max_gap = max(timeline_pts[i + 1] - timeline_pts[i] for i in range(len(timeline_pts) - 1))
+                    if max_gap > 10.5:
+                        hard_fail = True
+                        issues.append(f"Khoảng cách không cắt cảnh quá dài ({max_gap:.1f}s > 10.5s) — chặn xuất bản!")
+            except Exception as ex_qa_scan:
+                logger.warning(f"[QualityEvaluator] Lỗi quét blackdetect/freezedetect/scdet: {ex_qa_scan}")
+
             total_raw = stream_pts + bitrate_pts + sync_pts + dur_pts + frame_pts
             final_score = int(round(max(0.0, min(99.0, total_raw))))
             passed = (final_score >= 78) and (not hard_fail)
@@ -556,6 +628,14 @@ Respond ONLY in valid JSON:
                 "fps": fps,
                 "video_codec": video_codec,
                 "audio_codec": audio_codec,
+                "pix_fmt": pix_fmt,
+                "color_range": color_range,
+                "audio_channels": audio_channels,
+                "audio_sample_rate": audio_sample_rate,
+                "black_max_sec": round(black_max_sec, 3),
+                "freeze_max_sec": round(freeze_max_sec, 3),
+                "cuts_first_3s": cuts_first_3s,
+                "total_cuts": total_cuts,
                 "file_size_mb": round(file_size_mb, 2),
                 "has_audio": has_audio,
                 "has_video": has_video,

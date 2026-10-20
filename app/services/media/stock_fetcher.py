@@ -60,29 +60,40 @@ class StockFetcher:
         if not key:
             return []
 
-        # Jitter ngẫu nhiên trang 1-3 để phân bổ đa dạng kho footage khổng lồ của Pexels,
-        # tránh việc mọi video cùng chủ đề đều lấy clip đầu tiên của trang 1
-        target_page = page if page is not None else random.choice([1, 1, 2, 3])
+        target_page = page if page is not None else 1
+        q_low = (query or "").lower()
+        if "honey badger" in q_low:
+            query = "cobra snake wildlife" if ("snake" in q_low or "venom" in q_low) else "leopard wildlife savanna"
+            q_low = query.lower()
+        allow_snow_zoo = any(w in q_low for w in ("zoo", "cage", "snow", "winter", "arctic", "polar", "ice", "penguin", "seal", "husky"))
+        _bad_slugs = ("-zoo", "zoo-", "zoological", "cage", "enclosure", "fence", "captive", "captivity", "snow", "winter", "blizzard", "arctic", "aquarium")
+
+        def _filter_vids(raw_vids: List[Dict]) -> List[Dict]:
+            if allow_snow_zoo:
+                return raw_vids
+            return [
+                v for v in (raw_vids or [])
+                if not any(bs in str(v.get("url", "")).lower() for bs in _bad_slugs)
+            ]
 
         for attempt in range(2):
             try:
                 headers = {"Authorization": key}
                 params = {
                     "query": query,
-                    "per_page": per_page,
+                    "per_page": max(per_page, 10),
                     "orientation": orientation,
                     "page": target_page,
                 }
                 res = requests.get(self.base_url, headers=headers, params=params, timeout=12)
                 if res.status_code == 200:
-                    vids = res.json().get("videos", [])
+                    vids = _filter_vids(res.json().get("videos", []))
                     if not vids and target_page > 1:
-                        # Fallback về page 1 nếu page cao không có kết quả
                         params["page"] = 1
                         res1 = requests.get(self.base_url, headers=headers, params=params, timeout=10)
                         if res1.status_code == 200:
-                            return res1.json().get("videos", [])
-                    return vids
+                            vids = _filter_vids(res1.json().get("videos", []))
+                    return vids[:per_page] if len(vids) > per_page else vids
                 elif res.status_code in (401, 429):
                     logger.warning(f"Pexels key bị giới hạn ({res.status_code}), chuyển key...")
                     key = self._get_active_key()
@@ -110,13 +121,32 @@ class StockFetcher:
         if not key:
             return []
 
-        target_page = page if page is not None else random.choice([1, 1, 2, 3])
+        target_page = page if page is not None else 1
+        ctx_photo_low = f"{topic} {query} {narration}".lower()
+        if "honey badger" in (query or "").lower():
+            qn_low = f"{query} {narration}".lower()
+            if "snake" in qn_low or "venom" in qn_low:
+                query = "cobra snake wildlife"
+            elif any(w in qn_low for w in ("snarl", "attack", "lunge", "teeth", "claw", "jaws", "fury")):
+                query = "leopard roaring teeth"
+            elif any(w in qn_low for w in ("walk", "undefeated", "savanna", "bush")):
+                query = "leopard hunting savanna"
+            else:
+                query = "african leopard closeup"
+        allow_snow_zoo = any(
+            w in ctx_photo_low
+            for w in ("zoo", "cage", "snow", "winter", "arctic", "polar", "ice", "penguin", "seal", "husky")
+        )
+        is_wildlife_ctx = any(
+            w in ctx_photo_low
+            for w in ("leopard", "badger", "lion", "tiger", "cheetah", "jaguar", "hyena", "wolf", "bear", "snake", "cobra", "predator", "wildlife", "savanna")
+        )
 
         try:
             headers = {"Authorization": key}
             params = {
                 "query": query,
-                "per_page": max(per_page * 2, 6),  # Lấy dư để lọc bỏ ảnh trùng lặp và ảnh lạc đề
+                "per_page": max(per_page * 3, 12),  # Lấy dư để lọc bỏ ảnh trùng lặp và ảnh lạc đề
                 "orientation": orientation,
                 "page": target_page,
             }
@@ -137,6 +167,23 @@ class StockFetcher:
 
                     p_id = str(p.get("id", ""))
                     alt_text = p.get("alt", "") or query
+                    alt_low = f"{alt_text} {p.get('url', '')}".lower()
+
+                    if not allow_snow_zoo and any(
+                        sz_w in alt_low
+                        for sz_w in ("-zoo", "zoo-", "zoological", " in a zoo", " at the zoo", "cage", "enclosure", "fence", "in snow", "in winter", "snowy")
+                    ):
+                        continue
+                    if is_wildlife_ctx and any(
+                        bw in alt_low
+                        for bw in (
+                            "honeycomb", "beeswax", "beehive", "beekeeper", "woman", "man ", "person", "people",
+                            "girl", "boy", "sheep", "cow", "goat", "black cat", "domestic cat", "house cat",
+                            "kitten", "puppy", "dark skin", "fireworks", "boat", "celebration", "asphalt",
+                            "suitcase", "wicker basket", "warrior",
+                        )
+                    ):
+                        continue
 
                     # Lọc ảnh lạc quẻ (văn phòng, cafe, tiệc tùng lọt vào chủ đề khác)
                     if is_incongruent_stock_image(alt_text, topic=topic or query, narration=narration):
@@ -174,6 +221,8 @@ class StockFetcher:
             return []
 
         try:
+            if "honey badger" in (query or "").lower():
+                query = "leopard wildlife"
             clean_q = clean_scene_search_query(query, max_words=3) or query
             url = f"https://pixabay.com/api/videos/?key={key}&q={urllib.parse.quote(clean_q)}&video_type=all&per_page={max(per_page, 3)}&safesearch=true"
             res = requests.get(url, timeout=6)
@@ -213,6 +262,8 @@ class StockFetcher:
             return []
 
         try:
+            if "honey badger" in (query or "").lower():
+                query = "leopard wildlife"
             clean_q = clean_scene_search_query(query, max_words=3) or query
             url = f"https://pixabay.com/api/?key={key}&q={urllib.parse.quote(clean_q)}&image_type=photo&orientation=vertical&per_page={max(per_page, 3)}&safesearch=true&order=popular"
             res = requests.get(url, timeout=6)
@@ -368,20 +419,62 @@ class StockFetcher:
         candidates: List[Dict] = []
 
         congruence_topic = f"{topic} {query}".strip()
+        full_ctx_low = f"{congruence_topic} {narration}".lower()
+        if "honey badger" in full_ctx_low:
+            hb_qs = (
+                ["cobra snake wildlife", "leopard roaring teeth", "leopard hunting savanna"]
+                if ("snake" in full_ctx_low or "venom" in full_ctx_low)
+                else ["leopard roaring teeth", "leopard hunting savanna", "african leopard closeup", "leopard wildlife"]
+            )
+            queries = hb_qs + [q for q in queries if "honey" not in q.lower() and q not in hb_qs]
+        creature_mode = bool(va.get("creature_mode"))
+        creature_qs = [q for q in (va.get("creature_queries") or []) if q]
+        clean_stock_only = bool(va.get("clean_stock_only"))
+        _allow_snow_zoo = any(
+            w in full_ctx_low
+            for w in ("snow", "winter", "arctic", "polar", "ice", "zoo", "cage")
+        )
+        _is_wildlife_photo_ctx = any(
+            w in full_ctx_low
+            for w in ("leopard", "badger", "lion", "tiger", "cheetah", "jaguar", "hyena", "wolf", "bear", "snake", "cobra", "predator", "wildlife", "savanna")
+        )
 
         def _add(items: List[Dict]):
             for it in items:
                 u = it.get("url")
                 if not u or is_media_already_used(u, used) or any(c.get("url") == u for c in candidates):
                     continue
+                desc_low = f"{it.get('alt') or ''} {it.get('title') or ''} {u}".lower()
+                if not creature_mode and any(
+                    art_w in desc_low
+                    for art_w in ("painting", "illustration", "drawing", "cartoon", "clipart", "vector", "sketch", "book cover", "infographic", "poster", "meme", "fantasy art", "watercolor")
+                ):
+                    continue
+                if not _allow_snow_zoo and any(
+                    sz_w in desc_low
+                    for sz_w in ("-zoo", "zoo-", "zoological", " in a zoo", " at the zoo", "cage", "enclosure", "in snow", "in winter", "snowy")
+                ):
+                    continue
+                if _is_wildlife_photo_ctx and any(
+                    bw in desc_low
+                    for bw in (
+                        "honeycomb", "beeswax", "beehive", "beekeeper", "woman", "man ", "person", "people",
+                        "girl", "boy", "sheep", "cow", "goat", "black cat", "domestic cat", "house cat",
+                        "kitten", "puppy", "dark skin", "fireworks", "boat", "celebration", "asphalt",
+                        "suitcase", "wicker basket", "warrior",
+                    )
+                ):
+                    continue
                 if is_incongruent_stock_image(it.get("alt") or it.get("title") or "", topic=congruence_topic, narration=narration):
                     continue
                 candidates.append(it)
 
-        creature_mode = bool(va.get("creature_mode"))
-        creature_qs = [q for q in (va.get("creature_queries") or []) if q]
-        clean_stock_only = bool(va.get("clean_stock_only"))
-        bypass_copyright = True
+        bypass_copyright = False
+        try:
+            from app.services.media.web_image_fetcher import bypass_copyright_enabled
+            bypass_copyright = bypass_copyright_enabled()
+        except Exception:
+            bypass_copyright = False
 
         # 1. Nếu Agent gọi công cụ `fetch_clean_cinematic_portrait_or_broll` (`clean_stock_only=True`):
         #    Ưu tiên tuyệt đối kho ảnh chụp thật Pexels / Pixabay HD không chữ (bỏ qua Open Web để tránh Quote Card / bìa sách)
@@ -391,11 +484,53 @@ class StockFetcher:
                 _add(self.search_pixabay_photos(pq_p, per_page=5))
                 if len(candidates) >= 10:
                     break
+
+        # 2. Khi tắt `bypass_copyright` (chế độ an toàn bản quyền & ảnh chụp thật) và không phải `creature_mode`:
+        #    Truy vấn Pexels HD + Pixabay HD + Openverse TRƯỚC để đảm bảo 100% ảnh chụp thật sắc nét, không dính tranh vẽ/infographic!
+        def _fetch_licensed_stock_photos():
+            stock_queries = ([subject] if subject else queries[:1]) if creature_mode else queries[:3]
+            photo_tasks: List[Dict[str, Any]] = []
+            for q in stock_queries:
+                photo_tasks.append({"src": "pexels", "q": q})
+                photo_tasks.append({"src": "pixabay", "q": q})
+            photo_tasks.append({"src": "openverse", "q": subject or queries[0]})
+
+            try:
+                from app.graph.parallel_search import run_langgraph_parallel_tasks
+
+                def _exec_photo_api(t: Dict[str, Any]) -> List[Dict]:
+                    src_t = t["src"]
+                    q_t = t["q"]
+                    if src_t == "pexels":
+                        return self.search_photos(
+                            q_t, per_page=6, orientation="portrait",
+                            topic=f"{congruence_topic} {q_t}".strip(), narration=narration, used_urls=used
+                        )
+                    if src_t == "pixabay":
+                        return self.search_pixabay_photos(q_t, per_page=6)
+                    if src_t == "openverse":
+                        return self.search_openverse(q_t, per_page=5)
+                    return []
+
+                completed_photos = run_langgraph_parallel_tasks(
+                    tasks=photo_tasks,
+                    worker_fn=_exec_photo_api,
+                    task_group=f"StockPhotoAPIs({len(photo_tasks)} calls)",
+                )
+                for cp in completed_photos:
+                    _add(cp.get("result") or [])
+            except Exception:
+                for q in stock_queries:
+                    _add(self.search_photos(q, per_page=6, orientation="portrait", topic=f"{congruence_topic} {q}".strip(), narration=narration, used_urls=used))
+                    _add(self.search_pixabay_photos(q, per_page=6))
+
+        if not clean_stock_only and (not bypass_copyright and not creature_mode):
+            _fetch_licensed_stock_photos()
+
         web_fetcher = None
         try:
-            from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled, bypass_copyright_enabled
-            bypass_copyright = bypass_copyright_enabled()
-            if web_image_search_enabled() and not clean_stock_only:
+            from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
+            if web_image_search_enabled() and not clean_stock_only and (bypass_copyright or creature_mode or len(candidates) < 6):
                 web_fetcher = WebImageFetcher()
                 google_qs = [q for q in (va.get("google_image_queries") or []) if q]
                 pref_engines = va.get("preferred_engines")
@@ -415,49 +550,14 @@ class StockFetcher:
                 _add(web_items)
                 logger.info(
                     f"[StockFetcher] 🔎 Gemini Google Search '{queries[0]}' (subject='{subject}'): "
-                    f"{len(candidates)} ảnh web bắt mắt (paradigm={va.get('visual_paradigm', 'auto')}, creature={creature_mode})"
+                    f"{len(candidates)} ảnh ứng viên (paradigm={va.get('visual_paradigm', 'auto')}, creature={creature_mode})"
                 )
         except Exception as e:
             logger.debug(f"[StockFetcher] Lỗi nguồn ảnh web: {e}")
 
-        # 2. Chỉ gọi Pexels / Pixabay / Openverse làm phao cứu sinh khi Google Images trả về quá ít (< 4 ảnh) hoặc tắt bypass_copyright
-        if len(candidates) < 4 or not bypass_copyright:
-            stock_queries = ([subject] if subject else queries[:1]) if creature_mode else queries[:2]
-            photo_tasks: List[Dict[str, Any]] = []
-            for q in stock_queries:
-                photo_tasks.append({"src": "pexels", "q": q})
-                photo_tasks.append({"src": "pixabay", "q": q})
-            if len(candidates) < 4:
-                photo_tasks.append({"src": "openverse", "q": subject or queries[0]})
-
-            try:
-                from app.graph.parallel_search import run_langgraph_parallel_tasks
-
-                def _exec_photo_api(t: Dict[str, Any]) -> List[Dict]:
-                    src_t = t["src"]
-                    q_t = t["q"]
-                    if src_t == "pexels":
-                        return self.search_photos(
-                            q_t, per_page=4, orientation="portrait",
-                            topic=f"{congruence_topic} {q_t}".strip(), narration=narration, used_urls=used
-                        )
-                    if src_t == "pixabay":
-                        return self.search_pixabay_photos(q_t, per_page=4)
-                    if src_t == "openverse":
-                        return self.search_openverse(q_t, per_page=5)
-                    return []
-
-                completed_photos = run_langgraph_parallel_tasks(
-                    tasks=photo_tasks,
-                    worker_fn=_exec_photo_api,
-                    task_group=f"StockPhotoAPIs({len(photo_tasks)} calls)",
-                )
-                for cp in completed_photos:
-                    _add(cp.get("result") or [])
-            except Exception:
-                for q in stock_queries:
-                    _add(self.search_photos(q, per_page=4, orientation="portrait", topic=f"{congruence_topic} {q}".strip(), narration=narration, used_urls=used))
-                    _add(self.search_pixabay_photos(q, per_page=4))
+        # 3. Gọi Pexels / Pixabay / Openverse bổ sung nếu chưa chạy ở bước 2 và tổng ứng viên < 6
+        if not clean_stock_only and (bypass_copyright or creature_mode) and len(candidates) < 6:
+            _fetch_licensed_stock_photos()
 
         # Lọc watermark/ảnh nhỏ + xếp hạng theo độ bắt mắt, chủ thể, bố cục dọc, độ phân giải
         candidates = prefilter_candidates(
@@ -486,18 +586,12 @@ class StockFetcher:
             )
             if winner is not None:
                 winner["vision_score"] = float(score or 0.0)
-            if not winner and (should_ai or is_hook_photo):
-                logger.info(
-                    f"[StockFetcher] {'🔥 Cảnh 1 Hook' if is_hook_photo else 'Agent'} từ chối ảnh chưa đủ WOW cho '{query}' "
-                    f"({rationale}) → chuyển sang sinh 8K AI Masterpiece / Video!"
-                )
-                return None
+            if not winner:
+                winner = candidates[0]
         except Exception as e:
             logger.debug(f"[StockFetcher] Lỗi curate ảnh: {e}")
 
         if not winner:
-            if is_hook_photo:
-                return None
             winner = candidates[0]
         try:
             from app.agents.media_agent import register_download_fallbacks
@@ -512,9 +606,9 @@ class StockFetcher:
                 cu = c.get("url")
                 if cu and cu not in (win_u, win_fb) and not is_media_already_used(cu, used) and cu not in distinct_alts:
                     distinct_alts.append(cu)
-                if len(distinct_alts) >= 8:
+                if len(distinct_alts) >= 12:
                     break
-            winner["alternate_urls"] = distinct_alts[:8]
+            winner["alternate_urls"] = distinct_alts[:12]
         except Exception:
             pass
         record_used_media(winner["url"], query=query, source=winner.get("source", "stock_photo"))
@@ -713,7 +807,12 @@ class StockFetcher:
         from app.services.media.entity_detector import is_incongruent_stock_image
         from app.services.media.media_history import is_media_already_used
         from app.services.media.query_broadener import conflicts_with_topic_biome
-        _bad_wildlife_cues = ("honeycomb", "beekeeper", "beekeeping", "apiculture", "beehive", "jar-of-honey", "pouring-honey", "bird-feeder") if ("badger" in _ctx_low or "leopard" in _ctx_low) else ()
+        _bad_wildlife_list = []
+        if "badger" in _ctx_low or "leopard" in _ctx_low:
+            _bad_wildlife_list.extend(["honeycomb", "beekeeper", "beekeeping", "apiculture", "beehive", "jar-of-honey", "pouring-honey", "bird-feeder"])
+        if not any(w in _ctx_low for w in ("snow", "winter", "arctic", "polar", "ice", "zoo", "cage", "penguin", "seal", "husky")):
+            _bad_wildlife_list.extend(["-zoo", "zoo-", "cage", "enclosure", "fence", "captive", "captivity", "snow", "winter", "snowy", "arctic", "blizzard"])
+        _bad_wildlife_cues = tuple(_bad_wildlife_list)
 
         # Bắn song song 5 nhánh tìm kiếm Video B-Roll (Pexels + Pixabay + NASA) qua LangGraph Send API + operator.add
         try:

@@ -80,6 +80,23 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
     bgm_path = VideoPipeline.find_bgm_for_niche(niche, is_scifi=is_scifi, scifi_subgenre=state.get("scifi_subgenre", "general_scifi"))
     sfx_dir = str(Path(settings.BASE_DIR) / "assets" / "sfx")
 
+    if not subtitle_path:
+        subtitle_path = str(work_dir / "subtitles.ass")
+    try:
+        sub_ok = Path(subtitle_path).exists() and ("Dialogue: 0," in Path(subtitle_path).read_text(encoding="utf-8", errors="ignore"))
+        if not sub_ok and enriched_scenes:
+            from app.utils.subtitle_helper import SubtitleHelper
+            hook_banner_text = (state.get("script_data") or {}).get("thumbnail_text") or title
+            SubtitleHelper.save_ass_file(
+                enriched_scenes,
+                subtitle_path,
+                niche_id=niche,
+                hook_title=hook_banner_text,
+                show_cta_badge=True,
+            )
+    except Exception as e_sub:
+        logger.debug(f"[RenderNode] Auto-repair subtitles.ass warning: {e_sub}")
+
     render_job = RenderJobContract(
         job_id=job_id,
         title=title,

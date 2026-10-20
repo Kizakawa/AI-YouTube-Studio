@@ -801,8 +801,8 @@ class VideoMemoryRAG:
                 for prev in sess["claimed_titles"]:
                     if prev.get("scene_id") == scene_id:
                         continue
-                    sim = self.compute_text_similarity(title, prev.get("title", ""))
-                    if sim >= 0.70:
+                    sim = self.compute_title_reupload_similarity(title, prev.get("title", ""))
+                    if sim >= 0.85:
                         logger.info(
                             f"🛡️ [MiniRAG Intra-Video Guard] Từ chối ứng viên '{title[:45]}' tại Cảnh #{scene_id} "
                             f"vì trùng nội dung/reupload (sim={sim:.2f}) với Cảnh #{prev.get('scene_id')} ('{prev.get('title', '')[:40]}')"
@@ -817,6 +817,54 @@ class VideoMemoryRAG:
                     "title": title.strip(),
                 })
             return True
+
+    @staticmethod
+    def compute_title_reupload_similarity(title_a: str, title_b: str) -> float:
+        """
+        Đo độ trùng lặp tiêu đề để phát hiện bản Re-upload y hệt (bỏ qua các từ khóa thể loại/tìm kiếm chung
+        như shorts, animation, 3d, cgi, thalassophobia, megalophobia để tránh loại nhầm các video 3D khác nhau
+        cùng chủ đề).
+        """
+        if not title_a or not title_b:
+            return 0.0
+        na = title_a.strip().lower()
+        nb = title_b.strip().lower()
+        if na == nb:
+            return 1.0
+        generic_tags = {
+            "shorts", "short", "animation", "animated", "3d", "cgi", "vfx",
+            "thalassophobia", "megalophobia", "edit", "4k", "hd", "viral",
+            "fyp", "trending", "video", "monster", "giant", "massive",
+        }
+        uni_a = {t for t in _tokenize_rag(na) if "_" not in t}
+        uni_b = {t for t in _tokenize_rag(nb) if "_" not in t}
+        core_a = uni_a - generic_tags
+        core_b = uni_b - generic_tags
+        eff_a = core_a if len(core_a) >= 2 else uni_a
+        eff_b = core_b if len(core_b) >= 2 else uni_b
+        if not eff_a or not eff_b:
+            return 0.0
+        inter = len(eff_a & eff_b)
+        union = len(eff_a | eff_b)
+        return round(inter / max(1, union), 3)
+
+    def release_in_job_video_claim(
+        self,
+        job_id: int,
+        vid_id: str = "",
+        url: str = "",
+        title: str = "",
+        scene_id: int = 0,
+    ) -> None:
+        """Giải phóng tiêu đề đã claim tạm nếu ứng viên tải lỗi hoặc bị loại ở bước kiểm duyệt."""
+        with _RAG_LOCK:
+            sess = self._get_or_create_job_session(job_id)
+            if title:
+                t_clean = title.strip()
+                sess["claimed_titles"] = [
+                    x for x in sess["claimed_titles"]
+                    if not (x.get("scene_id") == scene_id and x.get("title") == t_clean)
+                ]
 
     def rank_video_candidates_for_scene(
         self,
@@ -862,10 +910,10 @@ class VideoMemoryRAG:
 
             # 2. Kiểm tra chống lặp bản Re-upload (2 kênh YouTube Shorts đăng lại cùng 1 video với tiêu đề giống nhau)
             max_title_dup = max(
-                (self.compute_text_similarity(title, prev.get("title", "")) for prev in claimed_titles),
+                (self.compute_title_reupload_similarity(title, prev.get("title", "")) for prev in claimed_titles),
                 default=0.0,
             )
-            if max_title_dup >= 0.70:
+            if max_title_dup >= 0.85:
                 continue
 
             # 3. Tính điểm khớp ngữ nghĩa RAG (BM25/Cosine) giữa tiêu đề video với câu thoại của cảnh
@@ -963,6 +1011,105 @@ class VideoMemoryRAG:
                     })
             return True, None
 
+    @staticmethod
+    def _has_embedded_text_or_collage_artifacts(image_input: Any) -> Tuple[bool, str]:
+        """
+        Kiểm tra xem ảnh/khung hình có chứa:
+        - Hộp chữ infographic / phụ đề TikTok / tiêu đề đóng cứng ở nửa trên hoặc nửa dưới (`top_white_text_rows`, `bot_white_text_rows`)
+        - Bìa sách / Quote Poster / Sơ đồ 2D nền trắng hoặc xám (`white_paper_ratio`, `neutral_grey_bg`)
+        - Vách ngăn trắng chia đôi khung hình kiểu meme/collage (`has_white_h_divider`, `has_white_v_divider`)
+        """
+        import io
+        from PIL import Image, ImageFilter, ImageStat
+
+        im_obj = None
+        close_after = False
+        try:
+            if isinstance(image_input, Image.Image):
+                im_obj = image_input
+            elif isinstance(image_input, (bytes, bytearray)):
+                im_obj = Image.open(io.BytesIO(image_input))
+                close_after = True
+            else:
+                im_obj = Image.open(str(image_input))
+                close_after = True
+
+            rgb_small = im_obj.convert("RGB").resize((160, 240))
+            g_small = rgb_small.convert("L")
+            hist = g_small.histogram()
+            tot_px = 160 * 240
+            white_paper_ratio = sum(hist[210:]) / tot_px
+            black_poster_ratio = sum(hist[:24]) / tot_px
+            px_rgb = rgb_small.load()
+            px_g = g_small.load()
+            neutral_grey_bg = sum(
+                1 for y_g in range(240) for x_g in range(160)
+                if max(px_rgb[x_g, y_g]) - min(px_rgb[x_g, y_g]) <= 8 and 95 <= (sum(px_rgb[x_g, y_g]) // 3) <= 185
+            ) / tot_px
+            edges = g_small.filter(ImageFilter.FIND_EDGES)
+            sharp_mean = float(ImageStat.Stat(edges).mean[0])
+            px_e = edges.load()
+            text_rows = 0
+            for y_r in range(15, 225):
+                row_vals = [px_e[x_c, y_r] for x_c in range(12, 148)]
+                high_transitions = sum(1 for k_i in range(len(row_vals) - 1) if abs(row_vals[k_i] - row_vals[k_i + 1]) > 46)
+                if high_transitions >= 16:
+                    text_rows += 1
+
+            # Phát hiện hộp chữ trắng/vàng trên nền tối ở nửa dưới hoặc nửa trên (Infographic / TikTok caption):
+            bot_white_text_rows = 0
+            for y_r in range(110, 232):
+                wt_trans = sum(
+                    1 for x_c in range(14, 146)
+                    if abs(px_g[x_c, y_r] - px_g[x_c + 1, y_r]) > 75
+                    and max(px_g[x_c, y_r], px_g[x_c + 1, y_r]) >= 195
+                    and min(px_g[x_c, y_r], px_g[x_c + 1, y_r]) <= 95
+                )
+                if wt_trans >= 8:
+                    bot_white_text_rows += 1
+
+            top_white_text_rows = 0
+            for y_r in range(8, 105):
+                wt_trans = sum(
+                    1 for x_c in range(14, 146)
+                    if abs(px_g[x_c, y_r] - px_g[x_c + 1, y_r]) > 75
+                    and max(px_g[x_c, y_r], px_g[x_c + 1, y_r]) >= 195
+                    and min(px_g[x_c, y_r], px_g[x_c + 1, y_r]) <= 95
+                )
+                if wt_trans >= 9:
+                    top_white_text_rows += 1
+
+            has_white_h_divider = any(
+                sum(1 for x_c in range(8, 152) if min(px_rgb[x_c, y_d]) >= 232) >= 132
+                for y_d in range(75, 165)
+            )
+            has_white_v_divider = any(
+                sum(1 for y_r in range(12, 228) if min(px_rgb[x_d, y_r]) >= 232) >= 198
+                for x_d in range(50, 110)
+            )
+
+            if white_paper_ratio > 0.34:
+                return True, f"white_paper={white_paper_ratio:.2f}"
+            if neutral_grey_bg > 0.38:
+                return True, f"grey_bg={neutral_grey_bg:.2f}"
+            if sharp_mean > 42.0 or sharp_mean < 4.5:
+                return True, f"sharp_mean={sharp_mean:.1f}"
+            if has_white_h_divider or has_white_v_divider:
+                return True, "collage_divider"
+            if text_rows >= 36 and (white_paper_ratio > 0.16 or black_poster_ratio > 0.28):
+                return True, f"poster_text_rows={text_rows}"
+            if bot_white_text_rows >= 10 or top_white_text_rows >= 11:
+                return True, f"embedded_caption_box(bot={bot_white_text_rows},top={top_white_text_rows})"
+            return False, ""
+        except Exception as e:
+            return False, str(e)
+        finally:
+            if close_after and im_obj is not None:
+                try:
+                    im_obj.close()
+                except Exception:
+                    pass
+
     def verify_and_commit_in_job_image(
         self,
         job_id: int,
@@ -974,52 +1121,26 @@ class VideoMemoryRAG:
         Kiểm tra chữ ký thị giác 64-bit dHash và tính toàn vẹn của từng bức ảnh trong kho 15-17 ảnh/video:
         - Đảm bảo ảnh mới tải về KHÔNG trùng lặp thị giác (Hamming distance <= 6) với BẤT KỲ ảnh nào
           đã chọn trước đó trong cùng phân cảnh (`pose_images`) HOẶC ở các phân cảnh khác trong cùng 1 video (`job_id`).
-        - Kiểm tra nhanh kích thước (>= 320px) và loại bỏ ảnh đen/lỗi đơn sắc.
+        - Kiểm tra nhanh kích thước (>= 480px) và loại bỏ ảnh đen/lỗi đơn sắc/infographic có chữ.
         """
         if not image_path or not Path(image_path).exists():
             return False
         try:
-            if Path(image_path).stat().st_size < 2500:
+            if Path(image_path).stat().st_size < 4000:
                 return False
             from PIL import Image
             from app.graph.evaluators.visual_critic import VisualCritic
 
             with Image.open(str(image_path)) as im:
                 w, h = im.size
-                if w < 300 or h < 300:
+                if w < 480 or h < 480:
+                    logger.info(f"🚫 [MiniRAG LowRes] Loại bỏ ảnh độ phân giải thấp ({w}x{h} < 480px) tại Cảnh #{scene_id}")
                     return False
-                # Detect book covers, quote posters, 2D flat concept sheets, and game UI infographics:
-                from PIL import ImageFilter, ImageStat
-                rgb_small = im.convert("RGB").resize((160, 240))
-                g_small = rgb_small.convert("L")
-                hist = g_small.histogram()
-                tot_px = 160 * 240
-                white_paper_ratio = sum(hist[210:]) / tot_px
-                black_poster_ratio = sum(hist[:24]) / tot_px
-                px_rgb = rgb_small.load()
-                neutral_grey_bg = sum(
-                    1 for y_g in range(240) for x_g in range(160)
-                    if max(px_rgb[x_g, y_g]) - min(px_rgb[x_g, y_g]) <= 8 and 95 <= (sum(px_rgb[x_g, y_g]) // 3) <= 185
-                ) / tot_px
-                edges = g_small.filter(ImageFilter.FIND_EDGES)
-                sharp_mean = float(ImageStat.Stat(edges).mean[0])
-                px_e = edges.load()
-                text_rows = 0
-                for y_r in range(15, 225):
-                    row_vals = [px_e[x_c, y_r] for x_c in range(12, 148)]
-                    high_transitions = sum(1 for k_i in range(len(row_vals) - 1) if abs(row_vals[k_i] - row_vals[k_i + 1]) > 46)
-                    if high_transitions >= 16:
-                        text_rows += 1
-                if (
-                    white_paper_ratio > 0.34
-                    or neutral_grey_bg > 0.38
-                    or sharp_mean > 42.0
-                    or sharp_mean < 4.5
-                    or (text_rows >= 36 and (white_paper_ratio > 0.16 or black_poster_ratio > 0.28))
-                ):
+                has_bad_art, art_reason = self._has_embedded_text_or_collage_artifacts(im)
+                if has_bad_art:
                     logger.info(
                         f"🚫 [MiniRAG Anti-Infographic/BookCover] Loại bỏ ảnh lỗi/chứa chữ/sơ đồ 2D/UI game tại Cảnh #{scene_id} "
-                        f"(white={white_paper_ratio:.2f}, grey_bg={neutral_grey_bg:.2f}, sharp={sharp_mean:.1f}, text_rows={text_rows})"
+                        f"({art_reason})"
                     )
                     return False
             if VisualCritic._is_solid_color_or_black(str(image_path)):

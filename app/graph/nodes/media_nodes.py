@@ -376,7 +376,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 act_q = sc_strat.get("action_or_concept_query") or kw or f"{c_name} {s_anchor}"
                 out_m = str(
                     media_dir / f"scene_{scene.scene_id:03d}_monster.mp4"
-                    if m_mode.upper() == "3D_CGI_VIDEO"
+                    if m_mode.upper() == "3D_CGI_VIDEO" or scene.scene_id == 1
                     else media_dir / f"scene_{scene.scene_id:03d}_monster_8k.jpg"
                 )
                 m_res = await asyncio.to_thread(
@@ -531,16 +531,21 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         )
                         if best_stock_v and best_stock_v.get("url"):
                             out_stock_v = str(media_dir / f"scene_{scene.scene_id:03d}_stock_hd.mp4")
+                            used_pool_urls.add(best_stock_v["url"])
                             await asyncio.to_thread(media_agent.download_file, best_stock_v["url"], out_stock_v)
                             if Path(out_stock_v).exists() and Path(out_stock_v).stat().st_size > 15000:
-                                used_pool_urls.add(best_stock_v["url"])
-                                media_path = out_stock_v
-                                media_type = "video"
-                                vision_curated = True
-                                source_url_used = str(best_stock_v["url"])
-                                prod_method = "STOCK_VIDEO_REAL_MOTION_RESCUE"
-                                rationale = f"Stock HD Video Rescue ({best_stock_v.get('source', 'pexels')}): {stock_vid_q[:40]}"
-                                logger.info(f"Scene {scene.scene_id}: 🎬 [StockVideoRescue] Đã tải video chuyển động thật HD cho '{stock_vid_q}'!")
+                                clip_qc = VisualCritic.inspect_clip_before_concat(out_stock_v, min_short_edge=720, min_sharpness=5.5, check_watermark=True)
+                                ok_rag_v, _ = rag.verify_and_commit_in_job_clip(job_id=job_id, scene_id=scene.scene_id, media_path=out_stock_v, url=str(best_stock_v["url"]))
+                                if clip_qc.get("passed", True) and ok_rag_v:
+                                    media_path = out_stock_v
+                                    media_type = "video"
+                                    vision_curated = True
+                                    source_url_used = str(best_stock_v["url"])
+                                    prod_method = "STOCK_VIDEO_REAL_MOTION_RESCUE"
+                                    rationale = f"Stock HD Video Rescue ({best_stock_v.get('source', 'pexels')}): {stock_vid_q[:40]}"
+                                    logger.info(f"Scene {scene.scene_id}: 🎬 [StockVideoRescue] Đã tải video chuyển động thật HD cho '{stock_vid_q}'!")
+                                else:
+                                    Path(out_stock_v).unlink(missing_ok=True)
                     except Exception as _sv_err:
                         logger.debug(f"Scene {scene.scene_id}: Stock video rescue skip: {_sv_err}")
 
@@ -1044,8 +1049,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             except Exception as e_fb_ai:
                 logger.debug(f"Scene {scene.scene_id}: AI image fallback error: {e_fb_ai}")
 
-        # Fallback 4: Ảnh tĩnh HD đa nguồn (Pexels + Pixabay + Openverse) do AI Vision tuyển chọn (nếu chưa tìm ở Tier 0)
-        if not media_path and not tier0_searched:
+        # Fallback 4: Ảnh tĩnh HD đa nguồn (Pexels + Pixabay + Openverse) do AI Vision tuyển chọn
+        if not media_path:
             try:
                 clean_q = search_query or sq or kw
                 best_photo = await asyncio.to_thread(
@@ -1285,7 +1290,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     try:
         from app.utils.ffmpeg_helper import get_duration_ms, trim_video
 
-        for i_sc in range(len(scenes_media)):
+        for i_sc in []:  # Đã tắt nối dài Long Peak qua nhiều cảnh để giữ đúng khớp lời đọc từng cảnh
             cur_item = scenes_media[i_sc]
             if not isinstance(cur_item, dict):
                 continue
@@ -1365,7 +1370,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     break
 
         # Bước B: Tổng hợp ưu tiên từ Video rồi đến Ảnh tĩnh trên Timeline thị giác (Video-First Assembly)
-        video_first_enabled = os.getenv("VIDEO_FIRST_TIMELINE_PRIORITY", "true").strip().lower() not in ("0", "false", "no", "off")
+        video_first_enabled = False  # Giữ đúng thứ tự cảnh theo lời đọc kịch bản, tuyệt đối không tráo cảnh video lên trước ảnh!
         if video_first_enabled and len(scenes_media) > 2:
             visual_keys = (
                 "media_path", "media_type", "pose_images", "alternate_urls", "vision_curated",
@@ -1662,6 +1667,11 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=sid, image_path=gen_p, url=gen_p)
                             verified_poses.append(gen_p)
 
+                real_poses = [p for p in verified_poses if p and not str(p).endswith("_graphic.png")]
+                if real_poses:
+                    verified_poses = real_poses
+                    if str(sc_item.get("media_path") or "").endswith("_graphic.png"):
+                        sc_item["media_path"] = real_poses[0]
                 sc_item["pose_images"] = verified_poses[:quota]
 
             await asyncio.gather(*[_fill_scene_image_quota(i_slot) for i_slot in body_img_indices])
@@ -1845,6 +1855,28 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 item["media_type"] = "image"
                 item["pose_images"] = [res_img, *old_poses]
                 logger.info(f"Scene {scene_id}: ✅ Đã thay thế bằng ảnh sắc nét mới (giữ {len(item['pose_images'])} ảnh/cảnh)")
+            else:
+                try:
+                    best_ph = await asyncio.to_thread(
+                        media_agent.search_best_photo,
+                        clean_kw_q,
+                        used_refine_urls,
+                        None,
+                        narr,
+                        state.get("topic", ""),
+                    )
+                    if best_ph and best_ph.get("url"):
+                        ph_url = best_ph["url"]
+                        out_ph = str(media_dir / f"scene_{scene_id:03d}_refined_stock.jpg")
+                        await asyncio.to_thread(media_agent.download_file, ph_url, out_ph)
+                        if Path(out_ph).exists() and Path(out_ph).stat().st_size > 3000:
+                            used_refine_urls.add(ph_url)
+                            item["media_path"] = out_ph
+                            item["media_type"] = "image"
+                            item["pose_images"] = [out_ph]
+                            logger.info(f"Scene {scene_id}: ✅ Đã thay thế bằng ảnh Stock HD mới: '{clean_kw_q}'")
+                except Exception as ex_ph:
+                    logger.debug(f"Scene {scene_id}: Stock photo refine error: {ex_ph}")
 
     await asyncio.gather(*[_refine_single_item(item) for item in scenes_media if isinstance(item, dict)])
 

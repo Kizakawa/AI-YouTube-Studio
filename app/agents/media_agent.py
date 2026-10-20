@@ -551,34 +551,63 @@ If no real entities found, return empty array: []"""
             or extract_subject(scene_narration)
         )
 
-        # 1. Ưu tiên hàng đầu: Ảnh Google Images / Bing HD bắt mắt câu view (Gemini Search)
+        # 1. Ưu tiên kho ảnh chụp thật có giấy phép (Pexels / Pixabay / Wikimedia) khi tắt bypass_copyright
+        bypass_cp = False
         try:
-            from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
-            if web_image_search_enabled():
-                google_qs = [q for q in ((v_analysis or {}).get("google_image_queries") or []) if q]
-                web_q = (
-                    (google_qs[0] if google_qs else None)
-                    or ((v_analysis or {}).get("search_queries") or [None])[0]
-                    or primary_q
-                    or fallback_q
-                )
-                web_items = WebImageFetcher().search_all(
-                    web_q,
-                    per_source=6,
-                    subject=scene_subject,
-                    extra_queries=google_qs[1:] if len(google_qs) > 1 else None,
-                    creature_mode=bool((v_analysis or {}).get("creature_mode")),
-                    preferred_engines=(v_analysis or {}).get("preferred_engines"),
-                )
-                for item in web_items:
-                    u = item.get("url")
-                    if u and not is_media_already_used(u, used) and not any(c.get("url") == u for c in candidate_photos):
-                        candidate_photos.append(item)
-        except Exception as e:
-            logger.debug(f"[MediaAgent] Candidate web photos error: {e}")
+            from app.services.media.web_image_fetcher import bypass_copyright_enabled
+            bypass_cp = bypass_copyright_enabled()
+        except Exception:
+            bypass_cp = False
 
-        # 2. Chỉ gọi Pexels / Wikimedia Commons khi Google Search trả về ít hơn 4 ảnh
-        if len(candidate_photos) < 4:
+        if not bypass_cp:
+            if self.api_key:
+                px_photos = self.search_photos(
+                    primary_q or fallback_q,
+                    per_page=6,
+                    orientation="portrait",
+                    topic=topic,
+                    narration=scene_narration,
+                    used_urls=used,
+                )
+                candidate_photos.extend(px_photos)
+            for pxb_it in (self._stock_fetcher.search_pixabay_photos(primary_q or fallback_q, per_page=6) or []):
+                u_pxb = pxb_it.get("url")
+                if u_pxb and not is_media_already_used(u_pxb, used) and not any(x.get("url") == u_pxb for x in candidate_photos):
+                    candidate_photos.append(pxb_it)
+            commons_fallback = self.search_web_photos(primary_q or fallback_q, per_page=4)
+            for c in commons_fallback:
+                u = c.get("url")
+                if u and not is_media_already_used(u, used) and not any(x.get("url") == u for x in candidate_photos):
+                    candidate_photos.append(c)
+
+        # 2. Gọi Google Images / Bing HD khi bật bypass_copyright hoặc khi kho ảnh chuẩn trả về < 4 ảnh
+        if bypass_cp or len(candidate_photos) < 4:
+            try:
+                from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled
+                if web_image_search_enabled():
+                    google_qs = [q for q in ((v_analysis or {}).get("google_image_queries") or []) if q]
+                    web_q = (
+                        (google_qs[0] if google_qs else None)
+                        or ((v_analysis or {}).get("search_queries") or [None])[0]
+                        or primary_q
+                        or fallback_q
+                    )
+                    web_items = WebImageFetcher().search_all(
+                        web_q,
+                        per_source=6,
+                        subject=scene_subject,
+                        extra_queries=google_qs[1:] if len(google_qs) > 1 else None,
+                        creature_mode=bool((v_analysis or {}).get("creature_mode")),
+                        preferred_engines=(v_analysis or {}).get("preferred_engines"),
+                    )
+                    for item in web_items:
+                        u = item.get("url")
+                        if u and not is_media_already_used(u, used) and not any(c.get("url") == u for c in candidate_photos):
+                            candidate_photos.append(item)
+            except Exception as e:
+                logger.debug(f"[MediaAgent] Candidate web photos error: {e}")
+
+        if bypass_cp and len(candidate_photos) < 4:
             if self.api_key:
                 px_photos = self.search_photos(
                     primary_q or fallback_q,

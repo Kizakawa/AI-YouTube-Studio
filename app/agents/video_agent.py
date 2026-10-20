@@ -72,7 +72,7 @@ class VideoAgent:
             scene_clips = await asyncio.to_thread(self._prepare_scene_clips, job.scenes, str(work_dir), job)
 
             # ── Step 2: Concat tất cả scenes → 1 video silent với xfade transition ──
-            transition_duration = 0.18
+            transition_duration = 0.0
             tail_buffer = 0.15
             total_scenes = len(job.scenes)
 
@@ -196,7 +196,7 @@ class VideoAgent:
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         total_scenes = len(scenes)
-        transition_duration = 0.18
+        transition_duration = 0.0
         tail_buffer = 0.15
 
         def _render_one(idx: int, scene: SceneContract) -> tuple[int, str]:
@@ -292,7 +292,7 @@ class VideoAgent:
                     niche=clip_niche,
                     apply_grading=(not is_already_rendered),
                     is_hook_scene=is_hook,
-                    fair_use_transform=(not is_already_rendered),
+                    fair_use_transform=False,
                     preserve_continuous_flow=True,
                 )
             elif is_hook or raw_type in ("comic_anim", "multi_pose", "2d_loop") or (getattr(scene, "pose_images", None) and len(getattr(scene, "pose_images", [])) >= 2):
@@ -372,7 +372,94 @@ class VideoAgent:
                     raise  # Re-raise để pipeline biết có lỗi
 
         # Sắp xếp lại theo scene_id (as_completed không giữ thứ tự)
-        return [results[s.scene_id] for s in scenes]
+        ordered_clips = [results[s.scene_id] for s in scenes]
+        return self._inject_dynamic_bcam_cuts(ordered_clips, scenes, work_dir, job)
+
+    def _inject_dynamic_bcam_cuts(
+        self,
+        ordered_clips: List[str],
+        scenes: List[SceneContract],
+        work_dir: str,
+        job: RenderJobContract,
+    ) -> List[str]:
+        """
+        Đảm bảo:
+        1. Cảnh 1 (Hook 0-3s) LUÔN có nhát cắt chuyển góc máy B-Cam thực thụ tại 1.25s -> 2.20s (scdet > 15).
+        2. Bất kỳ phân cảnh nào dài >= 6.2s đều được chèn 1 nhát cắt B-Cam (1.0s) ở giữa cảnh để không bao giờ đứng cảnh lâu quá 5.5s.
+        """
+        if len(ordered_clips) < 2:
+            return ordered_clips
+
+        from app.utils.ffmpeg_helper import get_duration_ms, get_video_encoder_args, run_ffmpeg_with_gpu_fallback
+        w, h, fps = job.resolution_w, job.resolution_h, job.fps
+        enc_args = get_video_encoder_args(quality="intermediate")
+        updated_clips = list(ordered_clips)
+
+        for idx, clip_p in enumerate(ordered_clips):
+            dur_s = get_duration_ms(clip_p) / 1000.0
+            if idx == 0 and dur_s >= 2.5:
+                bcam_idx = 2 if len(ordered_clips) > 2 else 1
+                bcam_p = ordered_clips[bcam_idx]
+                out_p = str(Path(work_dir) / f"clip_bcam_hook_{idx:03d}.mp4")
+                t1 = 1.20
+                t2 = min(2.15, round(dur_s - 0.55, 2))
+                b_dur = round(t2 - t1, 3)
+                if dur_s >= 6.8:
+                    t3 = round(dur_s * 0.58, 2)
+                    t4 = round(min(t3 + 1.0, dur_s - 0.6), 2)
+                    b2_idx = (bcam_idx + 1) % len(ordered_clips)
+                    if b2_idx == 0:
+                        b2_idx = 1
+                    bcam2_p = ordered_clips[b2_idx]
+                    fc = (
+                        f"[0:v]split=3[a0][a1][a2];"
+                        f"[a0]trim=0:{t1},setpts=PTS-STARTPTS[s0];"
+                        f"[1:v]trim=0.2:{0.2 + b_dur:.3f},setpts=PTS-STARTPTS,scale={w}:{h},setsar=1[s1];"
+                        f"[a1]trim={t2}:{t3},setpts=PTS-STARTPTS[s2];"
+                        f"[2:v]trim=0.2:{0.2 + (t4 - t3):.3f},setpts=PTS-STARTPTS,scale={w}:{h},setsar=1[s3];"
+                        f"[a2]trim={t4}:{dur_s:.3f},setpts=PTS-STARTPTS[s4];"
+                        f"[s0][s1][s2][s3][s4]concat=n=5:v=1:a=0,fps={fps},format=yuv420p[vout]"
+                    )
+                    args = ["-i", clip_p, "-i", bcam_p, "-i", bcam2_p, "-filter_complex", fc, "-map", "[vout]", "-t", f"{dur_s:.3f}", *enc_args, "-r", str(fps), "-an", out_p]
+                else:
+                    fc = (
+                        f"[0:v]split=2[a0][a1];"
+                        f"[a0]trim=0:{t1},setpts=PTS-STARTPTS[s0];"
+                        f"[1:v]trim=0.2:{0.2 + b_dur:.3f},setpts=PTS-STARTPTS,scale={w}:{h},setsar=1[s1];"
+                        f"[a1]trim={t2}:{dur_s:.3f},setpts=PTS-STARTPTS[s2];"
+                        f"[s0][s1][s2]concat=n=3:v=1:a=0,fps={fps},format=yuv420p[vout]"
+                    )
+                    args = ["-i", clip_p, "-i", bcam_p, "-filter_complex", fc, "-map", "[vout]", "-t", f"{dur_s:.3f}", *enc_args, "-r", str(fps), "-an", out_p]
+                try:
+                    run_ffmpeg_with_gpu_fallback(args)
+                    if Path(out_p).exists() and Path(out_p).stat().st_size > 10000:
+                        updated_clips[idx] = out_p
+                        logger.info(f"  ⚡ [Hook B-Cam Cutaway] Đã chèn cắt cảnh B-Cam trong 3s đầu cho Scene 1 ({dur_s:.2f}s)")
+                except Exception as ex_bc:
+                    logger.debug(f"[Hook B-Cam Cutaway] Bỏ qua: {ex_bc}")
+            elif idx > 0 and dur_s >= 6.2:
+                bcam_idx = (idx + 1) % len(ordered_clips)
+                bcam_p = ordered_clips[bcam_idx]
+                out_p = str(Path(work_dir) / f"clip_bcam_body_{idx:03d}.mp4")
+                t_mid = round(dur_s * 0.48, 2)
+                t_end_b = round(min(t_mid + 0.95, dur_s - 0.8), 2)
+                fc = (
+                    f"[0:v]split=2[a0][a1];"
+                    f"[a0]trim=0:{t_mid},setpts=PTS-STARTPTS[s0];"
+                    f"[1:v]trim=0.2:{0.2 + (t_end_b - t_mid):.3f},setpts=PTS-STARTPTS,scale={w}:{h},setsar=1[s1];"
+                    f"[a1]trim={t_end_b}:{dur_s:.3f},setpts=PTS-STARTPTS[s2];"
+                    f"[s0][s1][s2]concat=n=3:v=1:a=0,fps={fps},format=yuv420p[vout]"
+                )
+                args = ["-i", clip_p, "-i", bcam_p, "-filter_complex", fc, "-map", "[vout]", "-t", f"{dur_s:.3f}", *enc_args, "-r", str(fps), "-an", out_p]
+                try:
+                    run_ffmpeg_with_gpu_fallback(args)
+                    if Path(out_p).exists() and Path(out_p).stat().st_size > 10000:
+                        updated_clips[idx] = out_p
+                        logger.info(f"  ⚡ [Body B-Cam Cutaway] Đã chèn cắt cảnh giữa cho Scene {idx + 1} ({dur_s:.2f}s)")
+                except Exception as ex_bb:
+                    logger.debug(f"[Body B-Cam Cutaway] Bỏ qua: {ex_bb}")
+
+        return updated_clips
 
     @staticmethod
     def _compute_scene_timestamps(scenes: List[SceneContract]) -> List[float]:

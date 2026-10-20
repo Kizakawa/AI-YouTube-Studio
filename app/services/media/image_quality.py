@@ -255,15 +255,27 @@ def extract_subject(narration: str, primary_entity: Optional[str] = None, max_wo
     return " ".join(phrase).strip(" -")
 
 
-def is_watermark_risk(item: Dict) -> bool:
-    """True nếu ảnh có watermark / là clipart / poster quảng cáo phim có chữ / tranh fan-art / thumbnail so kèo."""
+def is_watermark_risk(item: Dict, creature_mode: bool = False) -> bool:
+    """True nếu ảnh có watermark / là clipart / poster quảng cáo phim có chữ / tranh vẽ / sở thú lệch bối cảnh."""
     blob = " ".join(str(item.get(k) or "") for k in ("url", "page_url", "creator", "thumbnail")).lower()
     if any(d in blob for d in WATERMARK_DOMAINS):
         return True
     if any(p in blob for p in ("-poster.", "_poster.", "-poster-", "_poster_", "/posters/", "movie-poster", "new-poster", "poster-for", "-vs-", "_vs_")):
         return True
     title = f" {(item.get('title') or '')} {(item.get('alt') or '')} {blob} ".lower()
-    return any(c in title for c in _HARD_TITLE_CUES)
+    if any(c in title for c in _HARD_TITLE_CUES):
+        return True
+    if not creature_mode:
+        non_live_action_or_zoo = (
+            "painting", "oil painting", "acrylic", "watercolor", "watercolour", "drawing",
+            "sketch", "pencil", "charcoal", "illustration", "illustrated", "digital painting",
+            "fan art", "fanart", "cartoon", "clipart", "vector art", "zoo ", " in zoo",
+            "at the zoo", "zoo enclosure", "captivity", "in a cage", "behind bars",
+            "latestsightings", "latest sightings", "mr. friend", "mr friend", "viralhog", "tiktok",
+        )
+        if any(c in title for c in non_live_action_or_zoo):
+            return True
+    return False
 
 
 def _dims(item: Dict) -> tuple:
@@ -540,10 +552,10 @@ def prefilter_candidates(
         if not u or u in seen:
             continue
         seen.add(u)
-        if is_watermark_risk(it):
+        if is_watermark_risk(it, creature_mode=creature_mode):
             continue
         w, h = _dims(it)
-        if w and h and min(w, h) < 400:
+        if w and h and min(w, h) < 540:
             continue
         it["_hscore"] = heuristic_score(it, terms, creature_mode=creature_mode)
         it["_order"] = idx

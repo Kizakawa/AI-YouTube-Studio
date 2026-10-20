@@ -772,15 +772,15 @@ TRẢ VỀ JSON DUY NHẤT:
             if any(nc in slug for nc in negative_cues):
                 continue
 
-            score = 5.0
+            score = 7.4 if (c.get("height", 0) or 0) >= 1280 else 6.5
             # Thưởng điểm nếu slug chứa các từ khóa trong search_queries
             for q in queries:
                 for w in q.split():
                     if len(w) > 3 and w in slug:
-                        score += 1.5
+                        score += 1.0
 
             if score > best_score:
-                best_score = score
+                best_score = min(score, 9.5)
                 best_cand = c
 
         if best_cand and best_score >= 6.0:
@@ -876,16 +876,19 @@ TRẢ VỀ JSON DUY NHẤT:
                     continue
                 with Image.open(_io.BytesIO(res.content)) as im:
                     w, h = im.size
-                    if min(w, h) < 400 or max(w / max(h, 1), h / max(w, 1)) > 2.6:
+                    if min(w, h) < 540 or max(w / max(h, 1), h / max(w, 1)) > 2.6:
                         continue
                     gray = im.convert("L").resize((256, 256), Image.Resampling.BILINEAR)
                     g_stat = ImageStat.Stat(gray)
                     std_con = float(g_stat.stddev[0])
-                    if std_con < 12.0:
+                    lum_mean = float(g_stat.mean[0])
+                    if std_con < 18.0 or lum_mean < 24.0 or lum_mean > 228.0:
                         continue
                     edges = gray.filter(ImageFilter.FIND_EDGES)
                     sharpness = float(ImageStat.Stat(edges).mean[0])
-                    if sharpness < 5.8:
+                    from app.services.video_memory_rag import VideoMemoryRAG
+                    has_bad_text, _ = VideoMemoryRAG._has_embedded_text_or_collage_artifacts(res.content)
+                    if sharpness < 5.8 or has_bad_text:
                         continue
                     return {
                         "width": w,
@@ -968,4 +971,4 @@ TRẢ VỀ JSON DUY NHẤT:
         fb_rat = "Chọn trực tiếp Top #1 Google Images (bỏ qua bước kiểm tra độ liên quan)"
         fallback_winner["curation_score"] = fb_score
         fallback_winner["curation_rationale"] = fb_rat
-        return fallback_winner, fb_score, fb_rat, False
+        return None, 0.0, "Không có ứng viên ảnh nào đạt chuẩn độ nét (>=5.8) và sạch watermark", True

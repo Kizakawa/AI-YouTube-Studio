@@ -1455,6 +1455,11 @@ class VideoPipeline:
         if not result["valid"]:
             errors = "; ".join(result["errors"])
             raise RuntimeError(f"QA FAILED: {errors}")
+        from app.services.quality_evaluator import QualityEvaluator
+        eval_res = QualityEvaluator().evaluate_video(output_path)
+        if not eval_res.get("passed", True):
+            issues_str = "; ".join(eval_res.get("issues", []))
+            raise RuntimeError(f"🚫 [HardBlock VideoQA] {issues_str}")
         logger.info(
             f"[Job {self.job_id}] QA PASSED: "
             f"{result['resolution']}, {result['duration_ms']}ms, "

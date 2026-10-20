@@ -42,7 +42,7 @@ def web_image_search_enabled() -> bool:
 
 def bypass_copyright_enabled() -> bool:
     """Kiểm tra có bỏ qua rào cản bản quyền để tìm kiếm ảnh thực tế rộng rãi trên mạng hay không."""
-    return os.getenv("BYPASS_IMAGE_COPYRIGHT", "true").strip().lower() not in ("0", "false", "no", "off")
+    return os.getenv("BYPASS_IMAGE_COPYRIGHT", "false").strip().lower() not in ("0", "false", "no", "off")
 
 
 def _aspect_ok(w: int, h: int, max_aspect: float = 2.8) -> bool:
