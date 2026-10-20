@@ -531,6 +531,18 @@ class PublisherAgent:
         }
 
         if schedule_time_iso:
+            try:
+                from datetime import timezone, timedelta
+                sched_dt = datetime.fromisoformat(str(schedule_time_iso).replace("Z", "+00:00"))
+                if sched_dt.tzinfo is None:
+                    sched_dt = sched_dt.replace(tzinfo=timezone.utc)
+                now_u = datetime.now(timezone.utc)
+                if sched_dt <= now_u + timedelta(minutes=8):
+                    sched_dt = (now_u + timedelta(minutes=12)).replace(second=0, microsecond=0)
+                    schedule_time_iso = sched_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                    logger.info(f"⏰ [Publisher] Điều chỉnh nhẹ publishAt sang {schedule_time_iso} (+12p) để tránh lỗi invalidPublishAt của YouTube.")
+            except Exception:
+                pass
             body["status"]["publishAt"] = schedule_time_iso
 
         try:
