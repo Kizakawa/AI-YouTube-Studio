@@ -140,8 +140,8 @@ class PublisherAgent:
                             save_encrypted_json(self.token_file, json.loads(creds.to_json()))
                             logger.info(f"✅ Đã tự động refresh & lưu mã hoá AES-256 YouTube token cho '{self.channel_name}'")
                     else:
-                        # init_error đã được set bên trong _refresh_token_with_retry
-                        return
+                        # Raise để khối except bên dưới tự động fallback về token chính nếu đang dùng token phụ
+                        raise RuntimeError(self.init_error or "Token refresh failed")
 
                 self.service = build("youtube", "v3", credentials=creds)
                 self.init_error = None
@@ -150,13 +150,23 @@ class PublisherAgent:
                 self.init_error = f"File token rỗng hoặc không giải mã được: {self.token_file}"
                 logger.warning(f"Chưa tìm thấy youtube_token hợp lệ cho '{self.token_file}'")
         except Exception as e:
-            # Nếu đang dùng token phụ mà bị lỗi invalid_grant / expired, thử fallback ngay về token chính
+            # Nếu đang dùng token phụ mà bị lỗi invalid_grant / expired, cô lập token hỏng và fallback ngay về token chính
             primary_tok = os.path.join(settings.CREDENTIALS_DIR, "channels", self.channel_id, "youtube_token.json")
-            if self.token_file != primary_tok and os.path.exists(primary_tok):
+            if self.token_file and os.path.exists(primary_tok) and os.path.abspath(self.token_file) != os.path.abspath(primary_tok):
                 logger.warning(f"⚠️ Token phụ '{self.token_file}' bị lỗi ({e}). Đang tự động fallback về token chính '{primary_tok}'...")
+                if "invalid_grant" in str(e) and os.path.exists(self.token_file):
+                    try:
+                        bak_path = f"{self.token_file}.revoked.bak"
+                        if os.path.exists(bak_path):
+                            os.remove(bak_path)
+                        os.rename(self.token_file, bak_path)
+                        logger.info(f"🧹 Đã cô lập token phụ hết hạn sang '{bak_path}' để tránh xoay nhầm.")
+                    except Exception as ren_err:
+                        logger.debug(f"Không thể đổi tên token phụ hỏng: {ren_err}")
                 self.token_file = primary_tok
                 try:
                     from app.utils.security import load_encrypted_json, save_encrypted_json
+                    from app.services.quota_manager import QuotaManager
                     token_data = load_encrypted_json(primary_tok)
                     if token_data:
                         creds = Credentials.from_authorized_user_info(token_data)
@@ -165,8 +175,9 @@ class PublisherAgent:
                             creds.refresh(Request())
                             save_encrypted_json(primary_tok, json.loads(creds.to_json()))
                         self.service = build("youtube", "v3", credentials=creds)
+                        self.project_id = QuotaManager.get_channel_project_id(self.channel_id)
                         self.init_error = None
-                        logger.info(f"✅ Đã fallback kết nối thành công qua token chính cho '{self.channel_name}'!")
+                        logger.info(f"✅ Đã fallback kết nối thành công qua token chính cho '{self.channel_name}' (Project: {self.project_id})!")
                         return
                 except Exception as fb_err:
                     logger.error(f"Fallback token chính cũng thất bại: {fb_err}")
