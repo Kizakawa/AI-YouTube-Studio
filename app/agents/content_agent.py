@@ -177,6 +177,41 @@ class ContentAgent:
                 time.sleep(0.3)
                 continue
 
+        # Fallback đám mây độc lập khi toàn bộ pool Gemini API tạm chạm trần 429/503
+        for fb_model in ("openai", "openai-large"):
+            try:
+                fb_payload = {
+                    "model": fb_model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are an elite viral YouTube Shorts scriptwriter. Always respond with valid JSON only, no markdown fences.",
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    "temperature": 0.7,
+                }
+                if json_mode:
+                    fb_payload["response_format"] = {"type": "json_object"}
+                r_cloud = self.session.post(
+                    "https://text.pollinations.ai/openai",
+                    headers={"Content-Type": "application/json"},
+                    json=fb_payload,
+                    timeout=max(timeout, 45),
+                )
+                if r_cloud.status_code == 200:
+                    c_data = r_cloud.json()
+                    choices = c_data.get("choices") or []
+                    if choices:
+                        c_txt = str(choices[0].get("message", {}).get("content") or "").strip()
+                        if c_txt and "{" in c_txt:
+                            logger.info(
+                                f"✅ Cloud LLM Fallback ({fb_model}) thành công khi Gemini 429 trong {time.monotonic()-start_time:.1f}s"
+                            )
+                            return c_txt
+            except Exception as ex_cloud:
+                logger.warning(f"Cloud LLM Fallback ({fb_model}) warning: {ex_cloud}")
+
         raise RuntimeError(
             f"Đã thử tất cả {attempts} requests qua {total_keys} keys và "
             f"{len(AVAILABLE_MODELS)} models trong {time.monotonic() - start_time:.1f}s — không nhận được phản hồi."
