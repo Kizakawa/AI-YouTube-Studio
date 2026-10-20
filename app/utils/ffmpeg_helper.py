@@ -589,7 +589,7 @@ def image_to_video(
                 im = im.convert("RGB")
             # Mặc định giữ khung hình chuẩn 1.0x (1080x1920) tĩnh sắc nét để triệt tiêu 100% hiện tượng rung/giật pixel của zoompan;
             # nếu người dùng chủ động bật ENABLE_KEN_BURNS_ZOOM=true thì upscale 2.0x để nội suy mượt mà
-            scale_factor = 2.4 if enable_zoompan else 1.0
+            scale_factor = 1.35 if enable_zoompan else 1.0
             scale_w = int(width * scale_factor)
             scale_h = int(height * scale_factor)
             from app.services.media.image_quality import prepare_vertical

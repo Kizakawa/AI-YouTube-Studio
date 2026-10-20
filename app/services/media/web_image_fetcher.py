@@ -69,14 +69,13 @@ class WebImageFetcher:
         return _t.time() >= cls._engine_block_until.get(name, 0)
 
     @classmethod
-    def _engine_fail(cls, name: str, minutes: float = 0.25) -> None:
+    def _engine_fail(cls, name: str, minutes: float = 15.0) -> None:
         import time as _t
         streak = cls._engine_fail_streak.get(name, 0) + 1
         cls._engine_fail_streak[name] = streak
-        if name == "google" and streak < 4:
-            return
-        cls._engine_block_until[name] = _t.time() + minutes * 60
-        logger.warning(f"[WebImage] Nguồn '{name}' lỗi/timeout ({streak} lần) → tạm ngắt {int(minutes * 60)}s, dùng nguồn khác.")
+        block_min = max(minutes, 15.0 if name in ("google", "ddgs") else 3.0)
+        cls._engine_block_until[name] = _t.time() + block_min * 60
+        logger.warning(f"[WebImage] Nguồn '{name}' lỗi/timeout ({streak} lần) → tạm ngắt {int(block_min * 60)}s, dùng nguồn siêu tốc khác.")
 
     @staticmethod
     def _concise_art_query(query: str, max_words: int = 3) -> str:
@@ -413,13 +412,9 @@ class WebImageFetcher:
 
     @classmethod
     def _fetch_google_isch_dom_headless(cls, query: str, safe_mode: str = "off", tbs: str = "isz:l") -> str:
-        """Lấy trực tiếp DOM kết quả Top Google Images bằng Chrome/Edge Headless (vượt JS challenge SG_SS trong ~1.8s)."""
+        """Lấy trực tiếp DOM kết quả Top Google Images bằng primp TLS (0.4s) hoặc Chrome/Edge Headless nếu bật ENABLE_HEADLESS_GOOGLE_DOM=true."""
         import subprocess
         from urllib.parse import urlencode
-
-        browser_exe = cls._find_headless_browser()
-        if not browser_exe:
-            return ""
 
         params = {
             "q": query,
@@ -431,6 +426,29 @@ class WebImageFetcher:
         if tbs:
             params["tbs"] = tbs
         target_url = f"https://www.google.com/search?{urlencode(params)}"
+
+        # Ưu tiên số 1: Dùng primp giả lập TLS Chrome phản hồi trong ~0.4s (không tốn 10-14s khởi tạo tiến trình chrome.exe)
+        if os.getenv("ENABLE_HEADLESS_GOOGLE_DOM", "false").strip().lower() not in ("1", "true", "yes", "on"):
+            try:
+                client = cls._get_primp_client(timeout=6)
+                r_primp = client.get(
+                    target_url,
+                    headers={
+                        "User-Agent": _UA,
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "Cookie": "CONSENT=YES+cb.20230531-04-p0.en+FX+908;",
+                    },
+                )
+                if r_primp.status_code == 200 and r_primp.text:
+                    return r_primp.text
+            except Exception:
+                pass
+            return ""
+
+        browser_exe = cls._find_headless_browser()
+        if not browser_exe:
+            return ""
 
         slot_idx = -1
         acquired_lock = None
@@ -540,8 +558,8 @@ class WebImageFetcher:
 
         # 2. Truy vấn trực tiếp Top Search Google Images (tbm=isch & tbs=isz:l ưu tiên ảnh độ phân giải lớn)
         raw_html = cls._fetch_google_isch_dom_headless(query, safe_mode=safe_mode, tbs="isz:l")
-        if not raw_html or "gstatic.com" not in raw_html:
-            # Dự phòng HTTP thường nếu máy không có Chrome/Edge
+        if not raw_html:
+            # Dự phòng HTTP thường nếu chưa có HTML
             headers = {
                 "User-Agent": _UA,
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -552,7 +570,7 @@ class WebImageFetcher:
                 "https://www.google.com/search",
                 params={"q": query, "tbm": "isch", "tbs": "isz:l", "hl": "en", "gl": "us", "safe": safe_mode, "ijn": "0"},
                 headers=headers,
-                timeout=8,
+                timeout=5,
             )
             if res.status_code == 200:
                 raw_html = res.text

@@ -635,7 +635,7 @@ def _search_youtube_flat_cached(
         "no_warnings": True,
         "extract_flat": "in_playlist",
         "skip_download": True,
-        "socket_timeout": 12,
+        "socket_timeout": 8,
         "ignoreerrors": True,
     }
 
@@ -645,7 +645,7 @@ def _search_youtube_flat_cached(
             cached_entries = _yt_flat_search_cache.get(cache_key)
         if cached_entries:
             return cached_entries
-        yt_query = f"ytsearch20:{sp}"
+        yt_query = f"ytsearch12:{sp}"
         try:
             with yt_dlp.YoutubeDL(flat_opts) as ydl:
                 res = ydl.extract_info(yt_query, download=False)
@@ -663,7 +663,7 @@ def _search_youtube_flat_cached(
     try:
         from app.graph.parallel_search import run_langgraph_parallel_youtube_flat_search
         parallel_buckets = run_langgraph_parallel_youtube_flat_search(
-            search_phrases=search_phrases[:5],
+            search_phrases=search_phrases[:4],
             fetch_single_phrase_fn=_fetch_single_yt_phrase,
         )
     except Exception:
@@ -835,7 +835,7 @@ def execute_youtube_short_peak_clone_sync(
                 channel_id=channel_id,
             )
 
-            max_claimed_probes = 4
+            max_claimed_probes = 3 if (clip_role or "").upper() == "HOOK" else 2
             claimed_probes = 0
             cand_pool = list(ordered_cands[:20])
             if len(cand_pool) > 4 and eff_scene_id > 1:
@@ -916,11 +916,14 @@ def execute_youtube_short_peak_clone_sync(
                         "retries": 1,
                         "nopart": True,
                     }
-                    try:
-                        from yt_dlp.utils import download_range_func
-                        dl_opts["download_ranges"] = download_range_func(None, [(start_s, end_s + 1.0)])
-                    except Exception:
-                        pass
+                    # Chỉ dùng download_ranges khi video gốc dài > 75s; với YouTube Shorts (<= 75s), tải thẳng MP4 qua HTTP nhanh gấp 4-6 lần và tránh treo ffmpeg HTTP seek
+                    cand_dur_est = float(info_entry.get("duration") or cand.get("duration") or 0)
+                    if cand_dur_est > 75.0:
+                        try:
+                            from yt_dlp.utils import download_range_func
+                            dl_opts["download_ranges"] = download_range_func(None, [(start_s, end_s + 1.0)])
+                        except Exception:
+                            pass
 
                     try:
                         with yt_dlp.YoutubeDL(dl_opts) as ydl_dl:

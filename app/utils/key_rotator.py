@@ -197,16 +197,25 @@ class KeyRotator:
 
         now = time.monotonic()
         with self._probe_lock:
-            # Nếu đã probe trong vòng TTL và vẫn còn ít nhất 1 model sống chưa bị cooldown -> dùng luôn kết quả cache
-            if not force and KeyRotator._verified_live_models and (now - KeyRotator._last_parallel_probe_ts) < self._PARALLEL_PROBE_TTL_SEC:
-                healthy_cached = [
-                    m for m in KeyRotator._verified_live_models
-                    if self._model_cooldowns.get(f"*:{m}", 0.0) <= now
-                ]
-                if healthy_cached:
-                    return healthy_cached
+            # Nếu đã probe trong vòng TTL -> dùng luôn kết quả cache (kể cả khi tất cả model đang 429 tạm thời, tránh bắn lại 14 HTTP probes liên tục mỗi giây)
+            if not force and KeyRotator._last_parallel_probe_ts > 0:
+                elapsed_since_probe = now - KeyRotator._last_parallel_probe_ts
+                if KeyRotator._verified_live_models and elapsed_since_probe < self._PARALLEL_PROBE_TTL_SEC:
+                    healthy_cached = [
+                        m for m in KeyRotator._verified_live_models
+                        if self._model_cooldowns.get(f"*:{m}", 0.0) <= now
+                    ]
+                    if healthy_cached:
+                        return healthy_cached
+                elif not KeyRotator._verified_live_models and elapsed_since_probe < 30.0:
+                    return []
 
-            models_to_check = list(candidate_models) if candidate_models else list(GEMINI_PRIORITY_MODELS)
+            raw_candidates = list(candidate_models) if candidate_models else list(GEMINI_PRIORITY_MODELS)
+            # Bỏ qua các model đã bị khóa dài hạn (404 Not Found / Daily Quota > 60s) để không tốn thời gian ping lại
+            models_to_check = [
+                m for m in raw_candidates
+                if self._model_cooldowns.get(f"*:{m}", 0.0) <= (now + 60.0)
+            ] or raw_candidates[-3:]
             probe_key = self._select_next_healthy_key(advance_cursor=False) or self.keys[0]
             t_start = time.monotonic()
 
@@ -218,7 +227,7 @@ class KeyRotator:
                     "generationConfig": {"maxOutputTokens": 2},
                 }
                 try:
-                    resp = requests.post(url, json=payload, timeout=(2.5, probe_timeout_sec))
+                    resp = requests.post(url, json=payload, timeout=(2.0, probe_timeout_sec))
                     latency = time.monotonic() - t0
                     return (model_name, resp.status_code, latency, resp.text[:300] if resp.status_code != 200 else "OK")
                 except Exception as exc:
@@ -226,7 +235,7 @@ class KeyRotator:
                     return (model_name, 599, latency, f" timed out / connection error: {exc}")
 
             live_results: List[Tuple[str, float]] = []
-            max_workers = min(max(len(models_to_check), 1), 6)
+            max_workers = min(max(len(models_to_check), 1), 8)
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {executor.submit(_ping_single_model, m): m for m in models_to_check}
                 for fut in as_completed(futures):
@@ -249,8 +258,8 @@ class KeyRotator:
 
             elapsed_probe = time.monotonic() - t_start
             KeyRotator._last_parallel_probe_ts = time.monotonic()
+            KeyRotator._verified_live_models = ranked_live_models
             if ranked_live_models:
-                KeyRotator._verified_live_models = ranked_live_models
                 logger.info(
                     f"⚡ [KeyRotator Parallel Probe] Đã test đồng thời {len(models_to_check)} models trong {elapsed_probe:.2f}s "
                     f"-> Chọn Model xịn nhất: {ranked_live_models[0]} (Danh sách sống: {ranked_live_models})"
@@ -258,9 +267,9 @@ class KeyRotator:
                 return ranked_live_models
             else:
                 logger.warning(
-                    f"⚠️ [KeyRotator Parallel Probe] Không có model nào trả 200 OK tức thì sau {elapsed_probe:.2f}s. Giữ danh sách fallback."
+                    f"⚠️ [KeyRotator Parallel Probe] Không có model nào trả 200 OK tức thì sau {elapsed_probe:.2f}s. Chuyển nhanh sang nhánh dự phòng."
                 )
-                return models_to_check
+                return []
 
     def iter_best_model_key_pairs(
         self,
@@ -288,7 +297,8 @@ class KeyRotator:
                 model_list.append(m)
 
         n_keys = len(self.keys)
-        limit = max_total_attempts or max(n_keys * len(model_list), 12)
+        default_cap = 6 if live_ranked else 2
+        limit = max_total_attempts or min(max(n_keys * len(model_list), 2), default_cap)
         yielded = 0
         yielded_models = set()
 
