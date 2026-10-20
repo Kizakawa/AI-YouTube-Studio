@@ -78,7 +78,7 @@ class ThumbnailService:
             return "PHÉP MÀU KỲ DIỆU!"
 
         # Fallback từ tiêu đề ngắn
-        words = re.sub(r"[^\w\s]", "", viral_title or topic).split()
+        words = re.sub(r"[^\w\s]", " ", viral_title or topic).split()
         if len(words) >= 3:
             return " ".join(words[:3]).upper() + "!"
         return "SỰ THẬT BẤT NGỜ!"

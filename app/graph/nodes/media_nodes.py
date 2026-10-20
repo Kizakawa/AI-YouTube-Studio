@@ -386,7 +386,34 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         f"({yt_res.get('window')}, full_peak={full_peak_duration_sec:.1f}s): {yt_res.get('title', '')[:45]}"
                     )
                 else:
-                    # Nếu chủ đề khó/không tìm được Shorts -> tự động gọi Tool 2 (search_google_cinematic_image) ngay lập tức!
+                    # Tầng Cứu Hộ Video Chuyển Động Thật (Pexels / Pixabay HD Portrait Video) trước khi dùng ảnh tĩnh
+                    try:
+                        stock_vid_q = yt_q or fb_q or kw or state.get("topic", "")
+                        best_stock_v = await asyncio.to_thread(
+                            media_agent.search_best_video_clip,
+                            stock_vid_q,
+                            used_pool_urls,
+                            {},
+                            scene.narration,
+                            state.get("topic", ""),
+                        )
+                        if best_stock_v and best_stock_v.get("url"):
+                            out_stock_v = str(media_dir / f"scene_{scene.scene_id:03d}_stock_hd.mp4")
+                            await asyncio.to_thread(media_agent.download_file, best_stock_v["url"], out_stock_v)
+                            if Path(out_stock_v).exists() and Path(out_stock_v).stat().st_size > 15000:
+                                used_pool_urls.add(best_stock_v["url"])
+                                media_path = out_stock_v
+                                media_type = "video"
+                                vision_curated = True
+                                source_url_used = str(best_stock_v["url"])
+                                prod_method = "STOCK_VIDEO_REAL_MOTION_RESCUE"
+                                rationale = f"Stock HD Video Rescue ({best_stock_v.get('source', 'pexels')}): {stock_vid_q[:40]}"
+                                logger.info(f"Scene {scene.scene_id}: 🎬 [StockVideoRescue] Đã tải video chuyển động thật HD cho '{stock_vid_q}'!")
+                    except Exception as _sv_err:
+                        logger.debug(f"Scene {scene.scene_id}: Stock video rescue skip: {_sv_err}")
+
+                if not media_path:
+                    # Nếu cả YouTube Shorts lẫn Stock Video không có clip -> gọi Tool 2 (search_google_cinematic_image)
                     logger.info(f"Scene {scene.scene_id}: ⚡ YouTube Shorts Peak không có clip phù hợp cho '{yt_q}' -> Chuyển sang tìm bộ {scene_target_imgs} ảnh Top Google Images!")
                     out_img = str(media_dir / f"scene_{scene.scene_id:03d}_gsearch.jpg")
                     img_res = await asyncio.to_thread(
@@ -1358,22 +1385,37 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     facet2 = angle_facets[(slot_idx + 3) % len(angle_facets)]
                     supp_q = clean_scene_search_query(f"{sc_kw} {facet}", max_words=6) or sc_kw
                     supp_q2 = clean_scene_search_query(f"{short_subj} {facet2}", max_words=5) or supp_q
-                    try:
-                        from app.services.media.web_image_fetcher import WebImageFetcher
-                        wf = WebImageFetcher()
-                        ranked_web = await asyncio.to_thread(
-                            wf.search_all,
-                            supp_q,
-                            10,
-                            short_subj,
-                            [supp_q2],
-                        )
-                        for c_item in (ranked_web or []):
-                            u_supp = c_item.get("url")
-                            if u_supp and u_supp not in alt_pool:
-                                alt_pool.append(u_supp)
-                    except Exception as _wf_err:
-                        logger.debug(f"[Visual Density Engine] Scene {sid} web search error: {_wf_err}")
+                    _is_psych_density = (current_niche in ("psychology", "philosophy_stoicism")) or any(
+                        k in f"{state.get('topic', '')} {sc_kw}".lower()
+                        for k in ("narcissist", "psychology", "manipulat", "gaslight", "ego", "stoic", "sociopath", "psychopath", "dissonance", "toxic")
+                    )
+                    if _is_psych_density:
+                        try:
+                            for pq_d in ["dramatic portrait dark shadow", "intense eyes close up dark", "person silhouette night", "man thinking dark room"]:
+                                px_list = await asyncio.to_thread(media_agent.search_photos, pq_d, 5, "portrait", "dramatic portrait", "", used_pool_urls)
+                                for p_it in (px_list or []):
+                                    u_px = p_it.get("url") or (p_it.get("src") or {}).get("large2x") or (p_it.get("src") or {}).get("portrait")
+                                    if u_px and u_px not in alt_pool:
+                                        alt_pool.append(u_px)
+                        except Exception as _px_err:
+                            logger.debug(f"[Visual Density Engine] Scene {sid} pexels portrait error: {_px_err}")
+                    else:
+                        try:
+                            from app.services.media.web_image_fetcher import WebImageFetcher
+                            wf = WebImageFetcher()
+                            ranked_web = await asyncio.to_thread(
+                                wf.search_all,
+                                supp_q,
+                                10,
+                                short_subj,
+                                [supp_q2],
+                            )
+                            for c_item in (ranked_web or []):
+                                u_supp = c_item.get("url")
+                                if u_supp and u_supp not in alt_pool:
+                                    alt_pool.append(u_supp)
+                        except Exception as _wf_err:
+                            logger.debug(f"[Visual Density Engine] Scene {sid} web search error: {_wf_err}")
 
                 for idx_c, cand_u in enumerate(alt_pool):
                     if len(verified_poses) >= quota:

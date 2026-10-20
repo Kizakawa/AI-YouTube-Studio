@@ -217,6 +217,7 @@ class GraphRunner:
                         if sc_id in audio_map:
                             sc_copy["audio_path"] = audio_map[sc_id].get("audio_path")
                             sc_copy["audio_duration_ms"] = audio_map[sc_id].get("duration_ms")
+                            sc_copy["word_timings"] = audio_map[sc_id].get("word_timings")
                         enriched_scenes_list.append(sc_copy)
                     s_data["scenes"] = enriched_scenes_list
                     j.scenes_json = json.dumps(s_data, ensure_ascii=False)

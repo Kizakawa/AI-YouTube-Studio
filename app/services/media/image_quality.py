@@ -31,6 +31,12 @@ WATERMARK_DOMAINS = (
     "chegg.com", "coursehero.com", "quizlet.com", "github.com", "stackoverflow.com",
     "towardsdatascience.com", "analyticsvidhya.com", "promptden.com", "eartohear",
     "qaqooking", "about.com", "fity.club", "designbundles.net",
+    "amazon.com", "goodreads.com", "books.google", "barnesandnoble.com",
+    "audible.com", "kobo.com", "herway.net", "mindjournal.com", "themindsjournal.com",
+    "narcissisms.com", "yourtango.com", "thoughtcatalog.com", "hackspirit.com", "ideapod.com",
+    "powerofpositivity.com", "learning-mind.com", "wikihow.com", "verywellmind.com",
+    "healthline.com", "medicalnewstoday.com", "webmd.com", "quotefancy.com", "brainyquote.com",
+    "azquotes.com", "picturequotes.com", "geckoandfly.com", "inspiringquotes.us",
 )
 
 # Tiêu đề / URL chứa các cụm này là ảnh stock watermark / mô hình nhựa bảo tàng ("trông đểu") / poster chữ / game khối vuông / biểu đồ code
@@ -51,6 +57,14 @@ _HARD_TITLE_CUES = (
     "histogram", "bar chart", "pie chart", "scatter plot", "flowchart", "schematic",
     "cross-section", "cross section", "infographic", "worksheet", "slide ", "slideshare",
     "radar absorbing", "damaged zones",
+    "book cover", "paperback", "hardcover", "audiobook", "kindle edition", "ebook",
+    "2 in 1", "3 in 1", "box set", "bestseller", "by grace", "by sarah", "author",
+    "things he", "things she", "signs of a", "signs you", "ways to", "reasons why",
+    "why narcissists", "how to understand", "explained", "secrets:", "cheat sheet",
+    "quote", "quotes", "saying", "sayings", "checklist", "symptom", "symptoms",
+    "types of", "stages of", "rules of", "guide to", "narcissisms.com", "mindjournal", "herway", "narcsite",
+    "marcus aurelius", "seneca", "epictetus", "how to deal with", "manipulative person",
+    "fantasy art", "digital painting", "deviantart", "furaffinity", "furry", "anthropomorphic", " tarot ", "zodiac", "galaxycape",
 )
 
 # Tiêu đề chứa các cụm này → trừ điểm mạnh (tranh vẽ tay 2D phẳng, đồ chơi, sơ đồ, chữ chèn)
@@ -64,10 +78,10 @@ _SOFT_TITLE_CUES = (
 # Nguồn Điện Ảnh 4K/8K & Siêu Phẩm Thị Giác Viral trên mạng (ArtStation, Pinterest, Wallhaven, 4K UHD, IMDb, Báo điện ảnh)
 _HOT_TREND_DOMAINS = (
     "artstation.com", "cdna.artstation.com", "cdnb.artstation.com",
-    "pinimg.com", "pinterest.com", "wallhaven.cc", "w.wallhaven.cc", "th.wallhaven.cc",
+    "wallhaven.cc", "w.wallhaven.cc", "th.wallhaven.cc",
     "hdqwalls.com", "images.hdqwalls.com", "alphacoders.com", "images.alphacoders.com",
     "wallpaperflare.com", "c4.wallpaperflare.com", "uhdpaper.com", "peakpx.com", "wallhere.com",
-    "imdb.com", "media-amazon.com", "tmdb.org", "image.tmdb.org", "film-grab.com",
+    "imdb.com", "tmdb.org", "image.tmdb.org", "film-grab.com",
     "shotdeck.com", "fancaps.net", "moviestillsdb.com", "collider.com", "screenrant.com", "srcdn.com",
     "variety.com", "hollywoodreporter.com", "empireonline.com", "indiewire.com", "ign.com",
     "polygon.com", "bloody-disgusting.com", "denofgeek.com", "slashfilm.com", "rogerebert.com",
@@ -488,32 +502,28 @@ def psychology_noir_queries(subject: str, topic: str = "", narration: str = "") 
 
     if any(k in ctx for k in ("silence", "silent", "argument", "confront", "enemy", "enemies", "ally", "allies", "favor", "distance", "im lặng")):
         qs.extend([
-            "two people tense silence argument dark room",
             "johan liebert monster anime confrontation scene",
-            "two people silent tension psychological thriller",
+            "two men tense confrontation dark room movie still",
+            "death note l and light tense silence anime scene",
         ])
     elif any(k in ctx for k in ("smile", "smirk", "charm", "disguise", "familiar", "mirror", "love bomb", "friend", "kind", "compliment", "cười", "mặt nạ")):
         qs.extend([
-            "narcissist fake smile cold gaze psychology",
             "johan liebert monster cold smile anime",
-            "man subtle calculating smirk dark thriller",
+            "patrick bateman cold stare movie still",
+            "man dark shadow portrait cold expression film still",
         ])
     elif any(k in ctx for k in ("isolat", "shrink", "alone", "depend", "trap", "leash", "guilt", "guilty", "anxiet", "doubt", "cô lập", "bẫy")):
         qs.extend([
-            "person sitting alone dark room anxiety",
             "seinen anime character alone in dark room",
-            "gaslighting emotional manipulation dark psychology",
+            "man sitting alone dark room cinematic movie still",
+            "thomas shelby dark shadow contemplative movie still",
         ])
     else:
         qs.extend([
             "johan liebert monster intense cold eyes",
-            "intense eye contact psychological thriller",
-            "man cold unblinking stare dark room",
+            "cillian murphy intense cold stare movie still",
+            "man dark shadow intense eyes film still",
         ])
-
-    clean_subj = " ".join(subject_terms(subject)[:4])
-    if clean_subj and clean_subj not in ("person", "people", "man", "woman", "mind", "brain"):
-        qs.insert(0, f"{clean_subj} psychological thriller")
 
     return list(dict.fromkeys(qs))[:4]
 

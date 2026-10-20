@@ -583,7 +583,8 @@ class SubtitleHelper:
                     effective_hook = " ".join(words[:6])
 
             if effective_hook:
-                clean_hook = re.sub(r'#\w+', '', effective_hook).strip().upper()
+                clean_hook = re.sub(r'[—–―]+', ' - ', effective_hook)
+                clean_hook = re.sub(r'#\w+', '', clean_hook).strip().upper()
                 clean_hook = cls._strip_ass_unsupported_emojis(clean_hook)
                 if len(clean_hook) > 42:
                     clean_hook = clean_hook[:39].rstrip() + "..."

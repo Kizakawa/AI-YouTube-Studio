@@ -972,6 +972,27 @@ class VideoMemoryRAG:
                 w, h = im.size
                 if w < 300 or h < 300:
                     return False
+                # Detect book covers, quote posters, and text infographics:
+                from PIL import ImageFilter
+                g_small = im.convert("L").resize((160, 240))
+                hist = g_small.histogram()
+                tot_px = 160 * 240
+                white_paper_ratio = sum(hist[210:]) / tot_px
+                black_poster_ratio = sum(hist[:24]) / tot_px
+                edges = g_small.filter(ImageFilter.FIND_EDGES)
+                px_e = edges.load()
+                text_rows = 0
+                for y_r in range(15, 225):
+                    row_vals = [px_e[x_c, y_r] for x_c in range(12, 148)]
+                    high_transitions = sum(1 for k_i in range(len(row_vals) - 1) if abs(row_vals[k_i] - row_vals[k_i + 1]) > 46)
+                    if high_transitions >= 16:
+                        text_rows += 1
+                if white_paper_ratio > 0.34 or (text_rows >= 36 and (white_paper_ratio > 0.16 or black_poster_ratio > 0.28)):
+                    logger.info(
+                        f"🚫 [MiniRAG Anti-Infographic/BookCover] Loại bỏ ảnh chứa chữ/bìa sách/infographic tại Cảnh #{scene_id} "
+                        f"(white_ratio={white_paper_ratio:.2f}, black_ratio={black_poster_ratio:.2f}, text_rows={text_rows})"
+                    )
+                    return False
             if VisualCritic._is_solid_color_or_black(str(image_path)):
                 return False
             img_hash = VisualCritic._compute_image_hash(str(image_path))

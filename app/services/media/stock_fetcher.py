@@ -372,12 +372,20 @@ class StockFetcher:
         creature_qs = [q for q in (va.get("creature_queries") or []) if q]
         bypass_copyright = True
 
-        # 1. ƯU TIÊN SỐ 1: Săn ảnh trực tiếp trên Google Images / Bing HD (Chuẩn Gemini Search)
+        # 1. ƯU TIÊN SỐ 1: Săn ảnh trực tiếp trên Google Images / Bing HD (TRỪ ngách Tâm lý/Khắc kỷ vì ảnh Web chứa 95% Quote Card / Blog chữ!)
+        _photo_ctx_low = f"{topic} {query} {narration} {va.get('subject', '')}".lower()
+        _is_psych_photo = any(k in _photo_ctx_low for k in ("narcissist", "psychology", "manipulat", "gaslight", "ego", "stoic", "sociopath", "psychopath", "dissonance", "toxic"))
+        if _is_psych_photo:
+            for pq_p in ["man intense eyes dark shadow", "dramatic portrait dark lighting", "person silhouette shadow", "serious man dark room"]:
+                _add(self.search_photos(pq_p, per_page=5, orientation="portrait", topic="dramatic portrait", narration="", used_urls=used))
+                _add(self.search_pixabay_photos(pq_p, per_page=5))
+                if len(candidates) >= 10:
+                    break
         web_fetcher = None
         try:
             from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled, bypass_copyright_enabled
             bypass_copyright = bypass_copyright_enabled()
-            if web_image_search_enabled():
+            if web_image_search_enabled() and not _is_psych_photo:
                 web_fetcher = WebImageFetcher()
                 google_qs = [q for q in (va.get("google_image_queries") or []) if q]
                 pref_engines = va.get("preferred_engines")
@@ -592,8 +600,28 @@ class StockFetcher:
             if q and q not in candidate_queries:
                 candidate_queries.append(q)
 
+        _ctx_low = f"{topic} {query} {narration}".lower()
+        _is_psych_ctx = any(k in _ctx_low for k in ("narcissist", "psychology", "manipulat", "gaslight", "ego", "stoic", "sociopath", "psychopath", "dissonance", "stare", "eye contact", "emotional", "toxic", "lie", "liar"))
+        if _is_psych_ctx:
+            if any(k in _ctx_low for k in ("stare", "eye", "gaze", "blink", "look")):
+                for pq in ["close up eyes dark lighting", "man intense stare", "woman serious gaze portrait", "person dark shadow face"]:
+                    _push(pq)
+            elif any(k in _ctx_low for k in ("argue", "argument", "public", "intimidate", "rage", "angry", "confront")):
+                for pq in ["couple argument tension", "angry man shouting", "two people serious conversation", "man frustrated dark"]:
+                    _push(pq)
+            elif any(k in _ctx_low for k in ("crumble", "insecurity", "panic", "anxious", "stress", "alone", "dissonance")):
+                for pq in ["man stressed alone dark room", "anxious person head in hands", "man looking in mirror dark", "silhouette person dark shadow"]:
+                    _push(pq)
+            else:
+                for pq in ["man confident dark lighting", "silhouette person walking night", "close up face dark shadow", "dramatic portrait lighting"]:
+                    _push(pq)
+        if "honey badger" in _ctx_low:
+            for hq in ["leopard wildlife africa", "african savanna predator", "leopard stalking prey", "badger wildlife"]:
+                _push(hq)
         if visual_analysis and visual_analysis.get("search_queries"):
             for sq in visual_analysis["search_queries"]:
+                if "honey badger" in sq.lower():
+                    continue
                 _push(sq)
         _push(clean_q)
         for b in ladder["broadened"]:
@@ -602,9 +630,10 @@ class StockFetcher:
             _push(" ".join(words[:2]))
         # Từ đơn chỉ dùng khi KHÔNG có thang thay thế: từ đơn như 'black' / 'swimming' / 'amazon'
         # trả về clip ngẫu nhiên (hộp hàng Amazon, người bơi hồ bơi...) làm loãng bể ứng viên.
+        _COMPOUND_NO_SPLIT_WORDS = {"honey", "sea", "red", "black", "white", "blue", "golden", "king", "tasmanian", "devil", "komodo", "dragon", "mantis", "pistol", "box", "cone", "bald", "harpy", "great", "giant", "african", "wild", "water", "tree", "mountain", "snow", "clouded", "painted", "spotted"}
         if not ladder["broadened"] and not establishing and not _establishing_pass:
             for w in words:
-                if not is_vague_single_word(w):
+                if not is_vague_single_word(w) and w.lower() not in _COMPOUND_NO_SPLIT_WORDS:
                     _push(w)
         _push(query)
 
@@ -666,8 +695,10 @@ class StockFetcher:
                 from app.services.media.entity_detector import is_incongruent_stock_image
                 from app.services.media.media_history import is_media_already_used
                 from app.services.media.query_broadener import conflicts_with_topic_biome
+                _bad_wildlife_cues = ("honeycomb", "beekeeper", "beekeeping", "apiculture", "beehive", "jar-of-honey", "pouring-honey", "bird-feeder") if ("badger" in _ctx_low or "leopard" in _ctx_low) else ()
                 if (
                     v_url and not is_media_already_used(v_url, used)
+                    and not any(bw in str(v_desc).lower() for bw in _bad_wildlife_cues)
                     and not is_incongruent_stock_image(v_desc, topic=f"{topic} {q_try}".strip(), narration=narration)
                     and not conflicts_with_topic_biome(v_desc, topic)
                 ):
@@ -708,7 +739,7 @@ class StockFetcher:
             combined_text = f"{query} {narration} {clean_q}".lower()
             theme_fallbacks = []
             if any(w in combined_text for w in ["animal", "wildlife", "bird", "lion", "tiger", "leopard", "cheetah", "chim", "báo", "sư tử", "hổ", "động vật", "thú"]):
-                theme_fallbacks.extend(["wild animal in nature", "birds in tree forest", "leopard savanna", "wildlife running 4k"])
+                theme_fallbacks.extend(["leopard wildlife savanna", "african predator hunting", "lion wildlife savanna", "cheetah wildlife running"])
             if any(w in combined_text for w in ["ocean", "sea", "water", "underwater", "deep", "biển", "nước", "sóng"]):
                 theme_fallbacks.extend(["underwater ocean", "ocean waves", "deep water", "dark ocean"])
             if any(w in combined_text for w in ["space", "galaxy", "stars", "universe", "planet", "vũ trụ"]):

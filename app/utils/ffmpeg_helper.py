@@ -1215,7 +1215,27 @@ def trim_video(
 
     grading_chain = ("," + ",".join(grading_parts)) if grading_parts else ""
 
-    zw, zh = ((int(width * 1.06) // 2) * 2), ((int(height * 1.06) // 2) * 2)
+    # Tự động phát hiện nếu video nguồn 9:16 có dải viền đen ngang (letterbox) ở trên và dưới -> Phóng 1.84x để cắt sạch viền đen!
+    zoom_mult = 1.06
+    try:
+        probe_ss = f"{start_offset_sec + 0.5:.2f}" if (start_offset_sec and start_offset_sec > 0) else "0.50"
+        p_cmd = [
+            shutil.which("ffmpeg") or "ffmpeg", "-v", "quiet",
+            "-ss", probe_ss, "-i", input_path,
+            "-frames:v", "1", "-vf", "scale=90:160", "-f", "rawvideo", "-pix_fmt", "gray", "-"
+        ]
+        p_res = subprocess.run(p_cmd, capture_output=True, timeout=4)
+        raw_g = p_res.stdout or b""
+        if len(raw_g) >= 90 * 160:
+            top_band = sum(raw_g[: 90 * 24]) / (90 * 24)
+            bot_band = sum(raw_g[90 * 136 : 90 * 160]) / (90 * 24)
+            mid_band = sum(raw_g[90 * 50 : 90 * 110]) / (90 * 60)
+            if top_band < 24.0 and bot_band < 24.0 and mid_band > 42.0:
+                zoom_mult = 1.84
+                logger.info(f"  🔍 [Anti-Letterbox Crop] Phát hiện viền đen trên/dưới (top={top_band:.1f}, bot={bot_band:.1f}, mid={mid_band:.1f}) -> Tự động phóng {zoom_mult}x full màn hình 9:16!")
+    except Exception:
+        pass
+    zw, zh = ((int(width * zoom_mult) // 2) * 2), ((int(height * zoom_mult) // 2) * 2)
     if fair_use_transform and not is_already_rendered:
         scale_crop_chain = (
             f"hflip,scale={zw}:{zh}:force_original_aspect_ratio=increase,"

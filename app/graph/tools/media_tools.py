@@ -462,7 +462,7 @@ REJECT IMMEDIATELY (passed=false, score < 5) ONLY IF the clip shows:
 2. A person sitting and talking to a camera/microphone (podcast, reaction, vlog, lecture)
 3. Video game / cartoon / anime / meme
 4. Giant burned-in text covering the middle of the frame
-5. A completely unrelated subject that does not belong to "{overall_script_query or topic}"
+5. A completely unrelated subject or wrong animal species that does not match the Main Subject ("{subject_entity or topic}") — e.g., REJECT a snake/cobra clip if the Main Subject is a honey badger or leopard, even if the narration mentions 'venom'!
 
 Return ONLY valid JSON:
 {{"passed": true, "score": 8.5, "reason": "Shows real footage matching the script story"}}"""
@@ -477,7 +477,7 @@ Return ONLY valid JSON:
             "generationConfig": {"temperature": 0.1},
         }
 
-        for model_name, api_key in rotator.iter_best_model_key_pairs(max_total_attempts=2):
+        for model_name, api_key in rotator.iter_best_model_key_pairs(max_total_attempts=4):
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             try:
                 resp = requests.post(url, json=payload, timeout=8)
@@ -1102,7 +1102,8 @@ def execute_google_cinematic_image_sync(
             all_candidate_urls.append(u_cand)
 
     # Khi cần >= 2 ảnh/cảnh, bồi thêm nhanh ứng viên góc nhìn phụ thứ 2 qua WebImageFetcher để kho có >= 12 URL đa dạng
-    if target_image_count >= 2 and len(all_candidate_urls) < max(10, target_image_count * 3):
+    _is_psych_img = any(k in f"{topic} {smart_query} {narration}".lower() for k in ("narcissist", "psychology", "manipulat", "gaslight", "ego", "stoic", "sociopath", "psychopath", "dissonance", "toxic"))
+    if not _is_psych_img and target_image_count >= 2 and len(all_candidate_urls) < max(10, target_image_count * 3):
         sec_q = search_qs[1] if len(search_qs) > 1 else f"{subj} closeup dramatic"
         try:
             from app.services.media.web_image_fetcher import WebImageFetcher
@@ -1389,6 +1390,20 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 d["overall_script_query"] = default_overall_q
             if not d.get("search_scope"):
                 d["search_scope"] = "SCENE_SPECIFIC"
+            if sid in peak_indices and video_peak_count < max_video_peak_scenes and d.get("tool_name") != "clone_youtube_short_peak_clip":
+                q_vid = d.get("youtube_search_query") or d.get("smart_image_query") or s.get("visual_keyword") or default_overall_q
+                d = {
+                    "tool_name": "clone_youtube_short_peak_clip",
+                    "scene_id": sid,
+                    "subject_entity": d.get("subject_entity") or default_subj,
+                    "search_scope": d.get("search_scope") or "SCENE_SPECIFIC",
+                    "youtube_search_query": q_vid,
+                    "overall_script_query": d.get("overall_script_query") or default_overall_q,
+                    "fallback_broad_query": default_overall_q,
+                    "clip_role": "HOOK" if sid == 1 else "PEAK",
+                    "target_duration_sec": float(s.get("estimated_seconds") or 4.5),
+                    "camera_motion": "hyper_zoom" if sid == 1 else motion_cycle[idx % len(motion_cycle)],
+                }
             if d.get("tool_name") == "clone_youtube_short_peak_clip":
                 if video_peak_count < max_video_peak_scenes:
                     video_peak_count += 1

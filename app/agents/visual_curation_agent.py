@@ -797,11 +797,11 @@ TRẢ VỀ JSON DUY NHẤT:
                 )
                 return _format_winner(winner, score, rationale), score, rationale, False
             else:
-                logger.warning(
-                    f"🎬 [VisualCuration] ⚠️ Agent từ chối toàn bộ stock videos (Score: {score}/10). "
-                    f"Lý do: {rationale}. Tự động chuyển hướng sang Generative AI!"
+                logger.info(
+                    f"🎬 [VisualCuration] ℹ️ Gemini chấm stock videos mức trung bình (Score: {score}/10: {rationale}) -> "
+                    f"Chuyển sang Heuristic B-Roll Selector để giữ video chuyển động thật thay vì ảnh tĩnh!"
                 )
-                return None, score, rationale, True
+                return self._heuristic_curate_videos(eval_pool, visual_analysis)
 
         # Rule-based fallback nếu Agent không phản hồi
         return self._heuristic_curate_videos(eval_pool, visual_analysis)

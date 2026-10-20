@@ -553,7 +553,7 @@ class ContentAgent:
             )
             _dangling_end_re = re.compile(
                 r'[\s\.\,\-\—\…]+(?:because|which|and|so|that|but|with|or|while|as|if|since|although|though|where|'
-                r'of|to|for|from|in|on|at|by|into|onto|until|his|her|their|its|my|your|our|'
+                r'of|to|for|from|in|on|at|by|into|onto|until|his|her|their|its|my|your|our|these|this|those|the|a|an|is|are|was|were|why|how|what|when|'
                 r'que|de|do|da|dos|das|pois|porque|para|com|em|no|na|nos|nas|mas|ou|quando|onde|'
                 r'bởi vì|cho nên|nhưng|hoặc|của|với| tại|trong)[\s\.\,\-\—\…]*$',
                 re.IGNORECASE,
