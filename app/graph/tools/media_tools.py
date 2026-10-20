@@ -1284,9 +1284,9 @@ Call EXACTLY ONE tool for EACH scene (from scene_id=1 to scene_id={total_scenes}
        The sentence is a time transition ("For three days nobody knew why it refused to move"), an abstract/scientific explanation ("Canine behaviorists call this maternal imprinting"), an emotional conclusion ("That single moment changed everything"), or focuses on a minor inanimate prop that would return unrelated product ads if searched literally (e.g., "inside an old leather boot" -> would return shoe ads!).
        -> Set `search_scope = "SCRIPT_OVERALL"` and write `youtube_search_query` / `smart_image_query` revolving around the OVERALL SCRIPT STORY (`overall_script_query`) with a natural angle variation (NEVER include distracting props like "boot" or abstract words)!
 
-3. TOOL SELECTION (OPENING VIDEO PEAK + 15-17 HIGH-DENSITY IMAGES ACROSS THE VIDEO):
-   - SCENE 1 (THE HOOK): Call `clone_youtube_short_peak_clip` with `clip_role="HOOK"` (if a long peak video is found, the system will automatically let it flow continuously into Scene 2).
-   - BODY SCENES (2 to {total_scenes}): To achieve high visual retention (15-17 distinct images per ~40s video, switching every ~2.0s), call `search_google_cinematic_image` for MOST body scenes (at least {max(5, total_scenes - 2)} scenes)! At most 1 body scene may call `clone_youtube_short_peak_clip` (`clip_role="PEAK"`) if it is an extreme physical action climax (and 0 body scenes for psychology/philosophy topics).
+3. TOOL SELECTION (HYBRID REAL-MOTION VIDEO >= 50% + HIGH-DENSITY CINEMATIC IMAGES):
+   - SCENE 1 (THE HOOK): ALWAYS call `clone_youtube_short_peak_clip` with `clip_role="HOOK"`.
+   - BODY SCENES (2 to {total_scenes}): Call `clone_youtube_short_peak_clip` (`clip_role="PEAK"`) for at least 3-4 key action/climax body scenes (so >= 50% of the video has real moving footage!), and call `search_google_cinematic_image` for the remaining 3-4 scenes.
    - NEVER use filler words like "4k edit", "cinematic visuals", or "movie scene" in `youtube_search_query`.
 
 IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!"""
@@ -1375,8 +1375,8 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
     motion_cycle = ["zoom_in", "pan_right", "zoom_out", "pan_left"]
     # Giới hạn Cảnh 1 dùng Video Peak (nếu đoạn Peak dài > 4.2s, Step A sẽ tự chảy liền mạch sang Cảnh 2),
     # dành trọn các phân cảnh còn lại cho mật độ 15-17 ảnh thật độc lập trên mỗi video
-    peak_indices = {1}
-    max_video_peak_scenes = 1
+    peak_indices = {1, 2, 4, 6, 8}
+    max_video_peak_scenes = max(4, (total_scenes + 1) // 2)
     video_peak_count = 0
     default_subj = _clean_yt_search_phrase(primary_entity or topic, max_words=3, strip_distractor_props=True)
     default_overall_q = _clean_yt_search_phrase(topic, subject_entity=default_subj, max_words=5, strip_distractor_props=True)

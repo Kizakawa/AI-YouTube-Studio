@@ -123,6 +123,8 @@ class VideoWorkflowState(TypedDict, total=False):
     script_data: Optional[Dict[str, Any]]  # ScriptContract dict
     script_eval: Optional[Dict[str, Any]]  # ScriptEvaluationReport dict
     script_retry_count: int
+    best_script_data: Optional[Dict[str, Any]]
+    best_script_eval: Optional[Dict[str, Any]]
     
     # Bước 2: Giọng đọc (Audio)
     scenes_audio: List[Dict[str, Any]]

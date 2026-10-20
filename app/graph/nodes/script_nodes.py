@@ -111,7 +111,7 @@ def node_generate_script(state: VideoWorkflowState) -> Dict[str, Any]:
 
 
 def node_evaluate_script(state: VideoWorkflowState) -> Dict[str, Any]:
-    """Node 3: Script Critic phản biện và chấm điểm kịch bản theo ngưỡng vuốt bỏ thật của kênh."""
+    """Node 3: Script Critic phản biện, chấm điểm kịch bản và lưu lại ứng viên đạt điểm cao nhất (Best-Candidate Tracking)."""
     script_data = state.get("script_data", {})
     topic = state.get("topic", "")
     channel_style = state.get("channel_style", "general")
@@ -126,15 +126,45 @@ def node_evaluate_script(state: VideoWorkflowState) -> Dict[str, Any]:
         primary_entity=primary_entity,
         channel_id=target_channel_id,
     )
+    eval_dict = eval_report.model_dump()
+
+    # Lưu giữ phiên bản kịch bản tốt nhất qua các vòng tinh chỉnh (tránh vòng cuối bị tụt điểm đè mất bản tốt trước đó)
+    best_data = state.get("best_script_data")
+    best_eval = state.get("best_script_eval")
+
+    def _rank(ev: Dict[str, Any]) -> tuple:
+        if not ev:
+            return (0, 0.0, 0.0)
+        hk = float((ev.get("hook_strength") or {}).get("score", 0.0) or 0.0)
+        ov = float(ev.get("overall_score", 0.0) or 0.0)
+        ps = 1 if (ev.get("passed") and ov >= 8.0 and hk >= 8.0) else 0
+        return (ps, round(hk * 0.55 + ov * 0.45, 3), ov)
+
+    if not best_eval or _rank(eval_dict) >= _rank(best_eval):
+        best_data = script_data
+        best_eval = eval_dict
 
     logger.info(
         f"🎯 [ScriptCritic] Điểm kịch bản: {eval_report.overall_score}/10 | "
         f"Passed: {eval_report.passed} | Hook: {eval_report.hook_strength.score} | "
-        f"Entity: {eval_report.entity_coherence.score}"
+        f"Best Overall so far: {(best_eval or {}).get('overall_score')}/10"
     )
 
+    import os
+    retry_count = state.get("script_retry_count", 0)
+    max_retries = max(2, int(os.getenv("MAX_SCRIPT_RETRIES", "5")))
+    out_script_data = script_data
+    out_eval_dict = eval_dict
+    if retry_count >= max_retries and best_data and best_eval and _rank(best_eval) > _rank(eval_dict):
+        logger.info(f"🛡️ [BestCandidateRestore] Khôi phục bản kịch bản tốt nhất (Overall={best_eval.get('overall_score')}/10) ở vòng thử cuối!")
+        out_script_data = best_data
+        out_eval_dict = best_eval
+
     return {
-        "script_eval": eval_report.model_dump(),
+        "script_data": out_script_data,
+        "script_eval": out_eval_dict,
+        "best_script_data": best_data,
+        "best_script_eval": best_eval,
         "current_step": "SCRIPT_EVALUATED",
         "progress_percent": 25,
         "progress_message": f"Chấm điểm kịch bản: {eval_report.overall_score}/10 ({'Đạt chuẩn' if eval_report.passed else 'Cần tinh chỉnh'})",
@@ -142,14 +172,15 @@ def node_evaluate_script(state: VideoWorkflowState) -> Dict[str, Any]:
 
 
 def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
-    """Node 4: Tự động tinh chỉnh phẫu thuật (Surgical Refinement) kịch bản dựa trên nhận xét của Critic (tối đa 5 vòng cho đến khi đạt chuẩn)."""
-    script_data = state.get("script_data", {})
-    script_eval = state.get("script_eval", {})
+    """Node 4: Tự động tinh chỉnh phẫu thuật (Surgical Refinement) hoặc tái tạo Hook sắc bén từ ứng viên tốt nhất."""
+    # Luôn lấy ứng viên tốt nhất làm nền tảng để cải tiến thay vì bản bị tụt điểm
+    script_data = state.get("best_script_data") or state.get("script_data", {})
+    script_eval = state.get("best_script_eval") or state.get("script_eval", {})
     retry_count = state.get("script_retry_count", 0) + 1
     max_retries = max(1, int(os.getenv("MAX_SCRIPT_RETRIES", "5")))
     critiques = script_eval.get("actionable_critiques", [])
-    cur_overall = (script_eval or {}).get("overall_score", 0.0)
-    cur_hook = ((script_eval or {}).get("hook_strength") or {}).get("score", 0.0)
+    cur_overall = float((script_eval or {}).get("overall_score", 0.0) or 0.0)
+    cur_hook = float(((script_eval or {}).get("hook_strength") or {}).get("score", 0.0) or 0.0)
     topic = state.get("topic", "")
     channel_style = state.get("channel_style", "general")
     primary_entity = state.get("primary_entity")
@@ -157,21 +188,30 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
     director_notes = state.get("director_notes")
     target_channel_id = state.get("target_channel_id", "")
 
-    logger.info(f"🔄 [LangGraph] Tự động tinh chỉnh kịch bản lần {retry_count}/{max_retries} theo nhận xét: {critiques}")
+    logger.info(
+        f"🔄 [LangGraph] Tinh chỉnh kịch bản lần {retry_count}/{max_retries} "
+        f"(Điểm nền: Overall={cur_overall}/10, Hook={cur_hook}/10) theo nhận xét: {critiques}"
+    )
 
     feedback_text = (
-        f"[VÒNG TINH CHỈNH {retry_count}/{max_retries} — Điểm hiện tại: Overall={cur_overall}/10, Hook={cur_hook}/10 -> MỤC TIÊU BẮT BUỘC: Overall >= 8.2/10 và Hook Cảnh 1 >= 8.6/10]. "
-        f"Sửa chữa TRIỆT ĐỂ và ÁP DỤNG TRỰC TIẾP các câu đề xuất cụ thể sau từ Critic: {'; '.join(critiques)}. "
-        f"Yêu cầu bắt buộc: (1) Nếu Critic có gợi ý câu Hook mẫu trong ngoặc đơn cho Cảnh 1, hãy dùng ngay câu Hook sắc bén đó (dưới 9 từ, đánh thẳng vào nỗi sợ/nghịch lý/xung đột trong 2.5s đầu); "
-        f"(2) Cảnh 4 phải có Mid-Video Re-Hook lật tình thế; "
-        f"(3) Cảnh cuối kết thúc bằng câu hoàn chỉnh nối vòng lặp vô tận (Zero Spoken Subscribe CTA)."
+        f"[VÒNG TINH CHỈNH {retry_count}/{max_retries} — Điểm hiện tại: Overall={cur_overall}/10, Hook={cur_hook}/10 -> "
+        f"MỤC TIÊU BẮT BUỘC: Overall >= 8.2/10 và Hook Cảnh 1 >= 8.5/10]. "
+        f"Sửa chữa TRIỆT ĐỂ các lỗi sau từ Critic: {'; '.join(critiques)}. "
+        f"YÊU CẦU CỐT LÕI: "
+        f"(1) CẢNH 1 (HOOK 5-8 TỪ) BẮT BUỘC chứa CON SỐ ĐỊNH LƯỢNG CỤ THỂ hoặc THẾ ĐỐI ĐẦU 'A vs B' / NGHỊCH LÝ SỐC ngay giây 0.0s "
+        f"(Cấm mở đầu chung chung hay thuần mô tả!); "
+        f"(2) TỔNG ĐỘ DÀI KỊCH BẢN: 85-105 từ chia đều cho 7-8 phân cảnh (mỗi cảnh thân 9-14 từ mạch lạc, có đầu có đuôi đủ 5 Hồi, tạo thời lượng chuẩn 34s-39s); "
+        f"(3) Cảnh cuối nối vòng lặp vô tận (Zero Spoken Subscribe CTA)."
     )
     if primary_entity:
-        feedback_text += f" Giữ vững trọng tâm vào nhân vật/thực thể chính: {primary_entity}."
+        feedback_text += f" Giữ vững trọng tâm vào thực thể chính: {primary_entity}."
 
     content_agent = ContentAgent()
     new_script = None
-    if script_data and script_data.get("scenes"):
+    # Nếu đã thử >= 2 lần mà Hook vẫn < 8.0 hoặc điểm chung < 7.5 -> Tái tạo mới hoàn toàn với góc tiếp cận sốc hơn
+    force_fresh_generation = (retry_count >= 2 and (cur_hook < 8.0 or cur_overall < 7.5)) or (retry_count >= max_retries)
+
+    if not force_fresh_generation and script_data and script_data.get("scenes"):
         try:
             current_contract = ScriptContract(**script_data)
             new_script = content_agent.refine_script(
@@ -186,7 +226,7 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
 
     if new_script is None:
         refined_topic = f"{topic} (Focus on {primary_entity})" if (primary_entity and primary_entity.lower() not in topic.lower()) else topic
-        combined_notes = f"{director_notes or ''}\n[CRITIC REVISION]: {feedback_text}".strip()
+        combined_notes = f"{director_notes or ''}\n[CRITIC MANDATORY FIX]: {feedback_text}".strip()
         new_script = content_agent.generate_script(
             topic=refined_topic,
             channel_niche=channel_style,
@@ -202,4 +242,3 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
         "current_step": "SCRIPT_REFINED",
         "progress_message": f"Đã tinh chỉnh kịch bản theo nhận xét (Lần {retry_count}/{max_retries})",
     }
-

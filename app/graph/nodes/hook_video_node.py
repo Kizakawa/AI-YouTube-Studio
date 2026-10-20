@@ -269,34 +269,15 @@ Return ONLY valid JSON:
 
     pre_resolved_hook_media: Dict[int, Dict[str, Any]] = {}
 
-    # Nếu Gemini quyết định Hook này nên TẠO CẢNH ("scene") / từ khóa trừu tượng -> bỏ qua tìm Short, giao cho fetch_media tạo cảnh
+    # BẮT BUỘC 100% CẢNH 1 (HOOK) TRÊN MỌI KÊNH (KỂ CẢ PSYCHOLOGY, ALTERNATE HISTORY, MYSTERIES) PHẢI LÀ VIDEO CHUYỂN ĐỘNG THẬT!
+    # Tuyệt đối không bỏ qua bước săn Video Mở Đầu để tránh lỗi mở màn bằng ảnh tĩnh gây tụt Stay Rate.
     if hook_visual_mode == "scene" or is_abstract_keyword:
         logger.info(
-            f"⚡ [HookVideoNode] Gemini quyết định `hook_visual_mode='scene'` (is_abstract_keyword={is_abstract_keyword}) "
-            f"cho '{visual_keyword}' -> Bỏ qua search video Short, chuyển sang tạo cảnh / tìm ảnh truyền thống!"
+            f"🔥 [HookVideoNode] Kênh '{niche}' có từ khóa trừu tượng ('{visual_keyword}') "
+            f"-> Ép chế độ `hook_visual_mode='video'` (săn Short / Stock Video chuyển động thật cho Cảnh 1 thay vì ảnh tĩnh)!"
         )
-        eval_summary = {
-            "mode": "GEMINI_SCENE_MODE_TRADITIONAL_IMAGE_SEARCH",
-            "hook_visual_mode": "scene",
-            "is_abstract_keyword": True,
-            "climax_scene_id": climax_scene_id,
-            "climax_description": climax_desc,
-            "search_queries": queries,
-            "atmosphere_fx": atmosphere_fx,
-            "candidates_tested": 0,
-            "best_score": 8.5,
-            "best_reason": "Gemini selected 'scene' mode (abstract keyword) -> delegated to traditional scene/image creation",
-            "output_clip": None,
-            "spliced_scenes": [],
-            "duration_sec": round(target_hook_duration_sec, 2),
-        }
-        return {
-            "pre_resolved_hook_media": pre_resolved_hook_media,
-            "hook_video_eval": eval_summary,
-            "current_step": "HOOK_SCENE_MODE_DELEGATED",
-            "progress_percent": 56,
-            "progress_message": "Gemini chọn chế độ Tạo Cảnh (Scene) -> Chuyển sang tìm kiếm ảnh truyền thống",
-        }
+        hook_visual_mode = "video"
+        is_abstract_keyword = False
 
     # ──────────────────────────────────────────────────────────────────────────
     # BƯỚC 2: GEMINI CHỌN "video" -> SĂN VIDEO SHORT TRÊN MẠNG (CHỐNG LẶP 100%)
@@ -806,34 +787,75 @@ Return ONLY valid JSON:
                 except Exception as e_climax:
                     logger.debug(f"[HookVideoNode] Không thể cắt đoạn Peak thứ 2 cho Cảnh #{climax_scene_id}: {e_climax}")
     else:
-        final_hook_visual_mode = "scene"
-        pose_list = scene_1.get("pose_images") or ([existing_path] if existing_path and Path(existing_path).exists() else [])
-        if pose_list:
-            logger.info(
-                f"⚡ [HookVideoNode] Chuyển sang chế độ Tạo Cảnh (Scene) -> Dùng {len(pose_list)} ảnh dựng 3-Cut Dynamic Hook -> {hook_output_clip}"
-            )
-            render_opening_hook_multi_cut(
-                image_paths=pose_list,
-                duration_seconds=target_hook_duration_sec,
+        # CỨU HỘ CẢNH 1 BẰNG VIDEO CHUYỂN ĐỘNG THẬT TỪ PEXELS / PIXABAY HD TRƯỚC KHI FALLBACK VỀ ẢNH TĨNH
+        stock_hook_ok = False
+        try:
+            from app.graph.tools.media_tools import execute_youtube_short_peak_clip_sync
+            st_q = queries[0] if queries else (visual_keyword or topic)
+            st_res = execute_youtube_short_peak_clip_sync(
+                search_query=st_q,
                 output_path=hook_output_clip,
-                width=1080,
-                height=1920,
-                fps=30,
-                min_cuts=3,
-                is_scifi=is_scifi,
-                niche=atmosphere_fx,
+                target_duration_sec=target_hook_duration_sec,
+                fallback_query=queries[1] if len(queries) > 1 else topic,
+                clip_role="HOOK",
+                subject_entity=primary_entity or topic,
+                topic=topic,
+                narration=hook_narration,
+                search_scope="SCRIPT_OVERALL",
+                overall_script_query=st_q,
+                job_id=job_id,
+                scene_id=1,
+                channel_id=channel_id,
             )
-            if Path(hook_output_clip).exists() and Path(hook_output_clip).stat().st_size > 10_000:
-                scene_1["media_path"] = hook_output_clip
+            if st_res and st_res.get("media_path") and Path(st_res["media_path"]).exists():
+                stock_hook_ok = True
+                final_hook_visual_mode = "video"
+                hook_mode = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
+                pre_resolved_hook_media[1] = {
+                    "media_path": st_res["media_path"],
+                    "media_type": "hook_ready_video",
+                    "production_method": "CLIMAX_STOCK_VIDEO_REAL_MOTION",
+                    "visual_strategy": "STOCK_VIDEO",
+                    "strategy_rationale": f"Real motion Hook video ({st_res.get('title', 'Stock HD')})",
+                }
+                scene_1["media_path"] = st_res["media_path"]
                 scene_1["media_type"] = "hook_ready_video"
-                scene_1["production_method"] = f"CLIMAX_IMAGES_LIVE_FX_{atmosphere_fx.upper()}_3CUT"
+                scene_1["production_method"] = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
                 if scenes_media:
                     scenes_media[0] = scene_1
-        else:
-            logger.info(
-                "⚡ [HookVideoNode] Các ứng viên Short không đạt chuẩn -> Gemini chuyển Hook sang chế độ Tạo Cảnh ('scene') tại fetch_media!"
-            )
-        hook_mode = f"TRADITIONAL_SCENE_FALLBACK_{atmosphere_fx.upper()}"
+                logger.info(f"🎬 [HookVideoNode] Đã nạp Video chuyển động thật cho Cảnh 1: {st_res['media_path']}")
+        except Exception as e_st_hk:
+            logger.debug(f"[HookVideoNode] Stock video hook rescue skip: {e_st_hk}")
+
+        if not stock_hook_ok:
+            final_hook_visual_mode = "scene"
+            pose_list = scene_1.get("pose_images") or ([existing_path] if existing_path and Path(existing_path).exists() else [])
+            if pose_list:
+                logger.info(
+                    f"⚡ [HookVideoNode] Chuyển sang chế độ Tạo Cảnh (Scene) -> Dùng {len(pose_list)} ảnh dựng 3-Cut Dynamic Hook -> {hook_output_clip}"
+                )
+                render_opening_hook_multi_cut(
+                    image_paths=pose_list,
+                    duration_seconds=target_hook_duration_sec,
+                    output_path=hook_output_clip,
+                    width=1080,
+                    height=1920,
+                    fps=30,
+                    min_cuts=3,
+                    is_scifi=is_scifi,
+                    niche=atmosphere_fx,
+                )
+                if Path(hook_output_clip).exists() and Path(hook_output_clip).stat().st_size > 10_000:
+                    scene_1["media_path"] = hook_output_clip
+                    scene_1["media_type"] = "hook_ready_video"
+                    scene_1["production_method"] = f"CLIMAX_IMAGES_LIVE_FX_{atmosphere_fx.upper()}_3CUT"
+                    if scenes_media:
+                        scenes_media[0] = scene_1
+            else:
+                logger.info(
+                    "⚡ [HookVideoNode] Các ứng viên Short không đạt chuẩn -> Gemini chuyển Hook sang chế độ Tạo Cảnh ('scene') tại fetch_media!"
+                )
+            hook_mode = f"TRADITIONAL_SCENE_FALLBACK_{atmosphere_fx.upper()}"
 
     eval_summary = {
         "mode": hook_mode,

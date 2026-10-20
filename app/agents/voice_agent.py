@@ -89,56 +89,13 @@ class VoiceAgent:
         job_id: Optional[int] = None,
     ) -> str:
         """
-        Chọn động cơ giọng đọc A/B miễn phí cho kênh EN (vì khán giả EN nhạy với giọng máy):
-        - Nhánh A: 'gemini_tts' (Gemini 2.5 Flash Preview TTS — miễn phí từ Gemini API pool)
-        - Nhánh B: 'edge_tts' (Edge-TTS Multilingual Neural Persona — miễn phí)
-        Nếu kênh đã có dữ liệu thật trong DB (PublishedVideo.voice_engine + stayed_to_watch_pct),
-        ưu tiên nhánh có tỷ lệ ở lại xem (stayed_to_watch_pct) cao hơn (70% exploit / 30% explore).
-        Các kênh pt-BR hoặc vi giữ nguyên 'edge_tts' chuẩn bản ngữ (có Gemini TTS làm dự phòng).
+        Chọn động cơ giọng đọc đồng nhất 100% ('edge_tts' Neural Persona) cho toàn bộ các kênh (EN, pt-BR, VI):
+        - Đảm bảo 100% các phân cảnh trong cùng 1 video dùng chung 1 giọng đọc duy nhất (không bao giờ bị đứt quãng
+          hay trộn giọng giữa Gemini TTS và Edge-TTS khi Gemini TTS chạm giới hạn RPM).
+        - Đảm bảo 100% có mốc thời gian từng từ (WordBoundary) chuẩn xác tuyệt đối và tốc độ đọc ổn định (~162-170 WPM).
+        - Giữ Gemini TTS làm tầng cứu hộ khẩn cấp (Tier-4 Fallback) khi Edge-TTS gặp sự cố.
         """
-        lang_low = str(language or "en").lower()
-        if lang_low.startswith(("pt", "vi")):
-            return "edge_tts"
-
-        # Kiểm tra xem Gemini TTS có đang bị cooldown tạm thời không
-        if time.time() < cls._gemini_tts_blocked_until:
-            return "edge_tts"
-        keys = settings.get_gemini_keys_pool() if hasattr(settings, "get_gemini_keys_pool") else []
-        if not keys:
-            return "edge_tts"
-
-        # Truy vấn hiệu quả A/B thực tế từ DB nếu có channel_id
-        if channel_id:
-            try:
-                from app.database.models import get_db, PublishedVideo, normalize_channel_id
-                norm_ch = normalize_channel_id(channel_id)
-                with get_db() as db:
-                    rows = (
-                        db.query(PublishedVideo.voice_engine, PublishedVideo.stayed_to_watch_pct)
-                        .filter(
-                            PublishedVideo.channel_id == norm_ch,
-                            PublishedVideo.voice_engine.isnot(None),
-                            PublishedVideo.stayed_to_watch_pct.isnot(None),
-                        )
-                        .limit(30)
-                        .all()
-                    )
-                gemini_stays = [float(r[1]) for r in rows if str(r[0]).startswith("gemini_tts") and r[1]]
-                edge_stays = [float(r[1]) for r in rows if str(r[0]).startswith("edge_tts") and r[1]]
-                if len(gemini_stays) >= 2 and len(edge_stays) >= 2:
-                    avg_g = sum(gemini_stays) / len(gemini_stays)
-                    avg_e = sum(edge_stays) / len(edge_stays)
-                    selector = (job_id or int(time.time())) % 10
-                    if avg_g >= avg_e + 1.5:
-                        return "gemini_tts" if selector < 7 else "edge_tts"
-                    elif avg_e >= avg_g + 1.5:
-                        return "edge_tts" if selector < 7 else "gemini_tts"
-            except Exception:
-                pass
-
-        # Mặc định chia A/B 50-50 theo job_id (hoặc timestamp) cho kênh EN
-        seed_val = int(job_id) if job_id else int(time.time() // 60)
-        return "gemini_tts" if (seed_val % 2 == 1) else "edge_tts"
+        return "edge_tts"
 
     @classmethod
     def _synthesize_with_gemini_tts(
@@ -402,7 +359,7 @@ class VoiceAgent:
             except Exception:
                 pass
 
-        return "+3%"
+        return "+5%"
 
     # ──────────────────────────────────────────
     # PUBLIC API — Gọi từ Pipeline Orchestrator
@@ -701,6 +658,68 @@ class VoiceAgent:
         if engine_tracker:
             from collections import Counter
             self.last_used_engine = Counter(engine_tracker).most_common(1)[0][0]
+
+        # ── KHÓA TRẦN THỜI LƯỢNG VÀNG (33s - 40.5s) CHỐNG TỤT APV % MÀ KHÔNG CẮT BỚT CÂU CHỮ ──
+        total_raw_ms = sum(int(sc.audio_duration_ms or 0) for sc in enriched_scenes)
+        if total_raw_ms > 40500:
+            tempo_factor = min(1.24, max(1.05, total_raw_ms / 37500.0))
+            logger.info(
+                f"⚡ [VoiceAgent GoldenDurationCap] Tổng audio={total_raw_ms/1000:.1f}s (> 40.5s) "
+                f"-> Tự động tăng nhịp kể chuyện x{tempo_factor:.2f} để đưa về Khung Vàng ~{total_raw_ms/tempo_factor/1000:.1f}s "
+                f"(giữ nguyên 100% câu chữ kịch bản, không cắt cụt)!"
+            )
+            from app.utils.ffmpeg_helper import run_ffmpeg, get_duration_ms
+            re_enriched: List[SceneContract] = []
+            for sc in enriched_scenes:
+                ap = sc.audio_path
+                if ap and Path(ap).exists():
+                    tmp_fast = str(Path(ap).with_suffix(".fast.mp3"))
+                    try:
+                        run_ffmpeg([
+                            "-i", ap,
+                            "-af", f"atempo={tempo_factor:.3f}",
+                            "-ar", "24000",
+                            "-ac", "1",
+                            "-c:a", "libmp3lame",
+                            "-b:a", "128k",
+                            tmp_fast,
+                        ], timeout=20)
+                        if Path(tmp_fast).exists() and Path(tmp_fast).stat().st_size > 1024:
+                            Path(tmp_fast).replace(Path(ap))
+                            new_dur_ms = await asyncio.to_thread(get_duration_ms, ap)
+                            if new_dur_ms > 200:
+                                old_dur_ms = max(1, int(sc.audio_duration_ms or new_dur_ms))
+                                ratio = new_dur_ms / float(old_dur_ms)
+                                scaled_words = []
+                                for wt in (sc.word_timings or []):
+                                    s_ms = int(round(wt.get("start_ms", 0) * ratio))
+                                    e_ms = min(new_dur_ms, max(s_ms + 35, int(round(wt.get("end_ms", 0) * ratio))))
+                                    scaled_words.append({
+                                        "word": wt.get("word", ""),
+                                        "start_ms": s_ms,
+                                        "end_ms": e_ms,
+                                        "duration_ms": max(35, e_ms - s_ms),
+                                    })
+                                sc = sc.model_copy(update={
+                                    "audio_duration_ms": new_dur_ms,
+                                    "word_timings": scaled_words if scaled_words else sc.word_timings,
+                                })
+                                meta_p = Path(ap).with_suffix(".meta.json")
+                                if meta_p.exists():
+                                    try:
+                                        m_obj = json.loads(meta_p.read_text(encoding="utf-8"))
+                                        m_obj["duration_ms"] = new_dur_ms
+                                        m_obj["word_timings"] = sc.word_timings
+                                        meta_p.write_text(json.dumps(m_obj, ensure_ascii=False), encoding="utf-8")
+                                    except Exception:
+                                        pass
+                    except Exception as e_fast:
+                        logger.debug(f"[GoldenDurationCap] Scene {sc.scene_id} skip: {e_fast}")
+                    finally:
+                        Path(tmp_fast).unlink(missing_ok=True)
+                re_enriched.append(sc)
+            enriched_scenes = re_enriched
+
         return enriched_scenes
 
     @staticmethod

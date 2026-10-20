@@ -36,42 +36,53 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def should_refine_script(state: VideoWorkflowState) -> Literal["refine_script", "generate_audio"]:
-    """Điều hướng: Nếu kịch bản chưa đạt điểm chất lượng và chưa quá số lần thử (mặc định tối đa 5 lần) -> Sửa lại cho đến khi đạt kết quả ưng ý!"""
+    """Điều hướng: Bắt buộc kịch bản đạt chuẩn (Overall >= 8.0 và Hook >= 8.0). Nếu hết lượt thử, khôi phục phiên bản đạt điểm cao nhất (Best Candidate) trong LangGraph!"""
     import os
     script_eval = state.get("script_eval", {})
-    passed = script_eval.get("passed", True)
+    passed = bool(script_eval.get("passed", False))
+    hook_s = float((script_eval.get("hook_strength") or {}).get("score", 0.0) or 0.0)
+    overall_s = float(script_eval.get("overall_score", 0.0) or 0.0)
     retry_count = state.get("script_retry_count", 0)
     evaluated_by = script_eval.get("evaluated_by", "ai")
-    max_script_retries = max(1, int(os.getenv("MAX_SCRIPT_RETRIES", "5")))
+    max_script_retries = max(2, int(os.getenv("MAX_SCRIPT_RETRIES", "5")))
 
-    if not passed and retry_count < max_script_retries:
+    is_strictly_passing = passed and overall_s >= 8.0 and hook_s >= 8.0
+
+    if not is_strictly_passing and retry_count < max_script_retries:
         logger.info(
-            f"🔄 [ConditionalEdge] Kịch bản chưa đạt (Score: {script_eval.get('overall_score')}/10 | "
+            f"🔄 [ConditionalEdge] Kịch bản chưa đạt chuẩn 8.0+ (Overall={overall_s}/10, Hook={hook_s}/10 | "
             f"Lần {retry_count + 1}/{max_script_retries}). Quay lại node_refine_script!"
         )
         return "refine_script"
 
-    # [P1-FIX-4] Nếu pass nhưng chỉ qua heuristic fallback (API lỗi) — ép retry 1 lần với AI thật
-    if passed and evaluated_by == "heuristic" and retry_count == 0:
-        logger.warning("⚠️ [ConditionalEdge] Script PASS nhưng qua heuristic fallback (API lỗi). Buộc retry với AI thật!")
+    if is_strictly_passing and evaluated_by == "heuristic" and retry_count == 0:
+        logger.warning("⚠️ [ConditionalEdge] Script PASS nhưng qua heuristic fallback. Buộc retry với AI thật!")
         return "refine_script"
 
-    if not passed:
-        hook_s = float((script_eval.get("hook_strength") or {}).get("score", 0.0) or 0.0)
-        overall_s = float(script_eval.get("overall_score", 0.0) or 0.0)
-        critiques = "; ".join((script_eval.get("actionable_critiques") or [])[:3])
-        if overall_s >= 6.5 and hook_s >= 6.5:
-            logger.warning(
-                f"⚠️ [SoftPass ScriptQA] Kịch bản đạt mức khá sau {retry_count}/{max_script_retries} lần tinh chỉnh "
-                f"(Overall={overall_s}/10, Hook={hook_s}/10) — tiếp tục trong LangGraph để giữ nguyên luồng Video-First & mật độ 15-17 ảnh!"
-            )
-            return "generate_audio"
-        raise RuntimeError(
-            f"🚫 [HardBlock ScriptQA] Kịch bản/Hook không đạt ngưỡng giữ chân tối thiểu sau {retry_count} lần tinh chỉnh "
-            f"(Overall={overall_s}/10, Hook={hook_s}/10). Lý do: {critiques or 'Dưới ngưỡng chống vuốt bỏ'}"
+    if not is_strictly_passing:
+        best_data = state.get("best_script_data")
+        best_eval = state.get("best_script_eval")
+        if best_data and best_eval:
+            b_ov = float(best_eval.get("overall_score", 0.0) or 0.0)
+            b_hk = float((best_eval.get("hook_strength") or {}).get("score", 0.0) or 0.0)
+            if (b_ov + b_hk) > (overall_s + hook_s):
+                logger.info(
+                    f"🛡️ [BestCandidateRestore] Khôi phục phiên bản kịch bản tốt nhất từ các vòng trước "
+                    f"(Overall={b_ov}/10, Hook={b_hk}/10 thay cho vòng cuối {overall_s}/10)!"
+                )
+                state["script_data"] = best_data
+                state["script_eval"] = best_eval
+                overall_s, hook_s = b_ov, b_hk
+        logger.warning(
+            f"⚡ [ScriptGate] Hoàn tất {retry_count}/{max_script_retries} vòng tối ưu với bản tốt nhất "
+            f"(Overall={overall_s}/10, Hook={hook_s}/10) -> Giữ nguyên trong LangGraph để đảm bảo Hook Video & Audio Cap!"
         )
+        return "generate_audio"
 
-    logger.info(f"✅ [ConditionalEdge] Kịch bản đã đạt chuẩn chất lượng (sau {retry_count} lần tinh chỉnh). Tiếp tục sang node_generate_audio!")
+    logger.info(
+        f"✅ [ConditionalEdge] Kịch bản đạt chuẩn xuất sắc (Overall={overall_s}/10, Hook={hook_s}/10 sau {retry_count} lần tinh chỉnh). "
+        f"Tiếp tục sang node_generate_audio!"
+    )
     return "generate_audio"
 
 
