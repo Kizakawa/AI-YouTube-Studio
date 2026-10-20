@@ -1023,7 +1023,7 @@ class WebImageFetcher:
         except Exception:
             pass
 
-    # ─────────────────────────────── Tổng hợp ────────────────────────────────
+    # ─────────────────────────────── Tổng hợp (LangGraph 5-Way Parallel Send + operator.add) ────────────────────────────────
     def search_all(
         self,
         query: str,
@@ -1034,99 +1034,39 @@ class WebImageFetcher:
         preferred_engines: Optional[List[str]] = None,
     ) -> List[Dict]:
         """
-        Gọi song song các luồng tìm kiếm ảnh trên Internet (Bing HD + ArtStation 4K + Wallhaven 4K + DDGS + Google),
-        tuân theo chỉ đạo ngữ nghĩa (extra_queries & preferred_engines) từ VisualCurationAgent.
+        Thực thi tìm kiếm ảnh song song 5 luồng (5-Way Parallel Execution) bằng LangGraph `Send` API
+        kết hợp `Annotated[List[Dict[str, Any]], operator.add]` để bắn đồng thời 5 nhánh
+        (Google Top Images, ArtStation 8K / Google Angle 2, Bing HD, Wallhaven 4K / DDGS, Wikimedia / Google Angle 3)
+        và tự động gom (reduce) 5 kết quả lại trong 1 Superstep duy nhất!
         """
         if not query or not web_image_search_enabled():
             return []
 
-        subject = (subject or "").strip()
-        entity_q = subject or query
+        subject_clean = (subject or "").strip()
         use_pure_google_search = creature_mode or bypass_copyright_enabled()
-        open_web_per_page = max(per_source, 12) if use_pure_google_search else per_source
-
-        def _open_web_with_pref(q_str: str, pp: int) -> List[Dict]:
-            return self.search_open_web(q_str, per_page=pp, preferred_engines=preferred_engines)
-
-        jobs = [
-            (_open_web_with_pref, "google_top_search", query, open_web_per_page),
-        ]
-
         auto_extra = list(extra_queries or [])
-        if creature_mode:
-            if not auto_extra:
-                from app.services.media.image_quality import creature_queries
-                auto_extra = creature_queries(subject or query)
-            for i, xq in enumerate(q for q in auto_extra if q and q.lower() != query.lower()):
-                if i >= 1:
-                    break
-                jobs.append((_open_web_with_pref, f"google_top+{i + 1}", xq, open_web_per_page))
-        elif use_pure_google_search:
-            if not auto_extra:
-                base_target = subject or query
-                auto_extra = [
-                    f"{base_target} cinematic HD",
-                ]
-            for i, xq in enumerate(q for q in auto_extra if q and q.lower() != query.lower()):
-                if i >= 1:
-                    break
-                jobs.append((_open_web_with_pref, f"google_top+{i + 1}", xq, open_web_per_page))
-        else:
-            if subject or len(query.split()) <= 3:
-                jobs.append((self.search_wikipedia_images, "wikipedia", entity_q, per_source))
-            jobs.append((self.search_wikimedia_commons, "commons", entity_q, per_source))
-            jobs.append((self.search_openverse, "openverse", entity_q, per_source))
-            if not auto_extra and subject and subject.lower() != query.lower():
-                auto_extra.append(f'"{subject}" dramatic photography')
-            for i, xq in enumerate(q for q in auto_extra[:1] if q and q != query):
-                jobs.append((_open_web_with_pref, f"google_web+{i + 1}", xq, per_source))
-            if self._unsplash_key:
-                jobs.append((self.search_unsplash, "unsplash", query, per_source))
-
-        with ThreadPoolExecutor(max_workers=len(jobs)) as ex:
-            futures = [ex.submit(fn, q, ps) for fn, _, q, ps in jobs]
-            buckets = []
-            for f in futures:
-                try:
-                    buckets.append(f.result(timeout=13))
-                except Exception:
-                    buckets.append([])
-
-        # Open web quá ít kết quả với truy vấn dài → thử lại bằng tên chủ thể trực tiếp trên Google Images
-        total_found = sum(len(b) for b in buckets)
-        if subject and subject.lower() != query.lower() and total_found < 3:
+        if creature_mode and not auto_extra:
             try:
-                buckets[0] = buckets[0] + _open_web_with_pref(subject, open_web_per_page)
+                from app.services.media.image_quality import creature_queries
+                auto_extra = creature_queries(subject_clean or query)
             except Exception:
-                pass
+                auto_extra = [f"giant {subject_clean or query} concept art 8k"]
 
-        merged, seen = [], set()
-        # Đưa toàn bộ ứng viên từ Google Web / Open Web lên đầu
-        for b in buckets:
-            for item in b:
-                if item.get("url") and item["url"] not in seen:
-                    seen.add(item["url"])
-                    merged.append(item)
-
-        # Lọc watermark / ảnh nhỏ và xếp hạng theo độ bắt mắt + chủ thể + bố cục dọc + độ phân giải
         try:
-            from app.services.media.image_quality import prefilter_candidates
-            merged = prefilter_candidates(
-                merged,
-                subject=subject or query,
-                limit=max(16, per_source * 3),
+            from app.graph.parallel_search import run_langgraph_5way_image_search
+            return run_langgraph_5way_image_search(
+                fetcher=self,
+                query=query,
+                per_source=per_source,
+                subject=subject_clean,
+                extra_queries=auto_extra,
                 creature_mode=creature_mode,
-                max_per_source=16 if use_pure_google_search else 7,
+                use_pure_google_search=use_pure_google_search,
+                preferred_engines=preferred_engines,
             )
-        except Exception as e:
-            logger.debug(f"[WebImage] prefilter lỗi: {e}")
-
-        summary_parts = [f"{name}={len(b)}" for (_, name, _, _), b in zip(jobs, buckets)]
-        logger.info(
-            f"[WebImage] 🌐 Tìm ảnh mạng cho '{query}' (subject='{subject}', creature={creature_mode}): "
-            f"{len(merged)} ảnh ({', '.join(summary_parts)})"
-        )
-        return merged
+        except Exception as e_lg:
+            logger.warning(f"[WebImage] LangGraph 5-Way Search fallback: {e_lg}")
+            return self.search_open_web(query, per_page=max(per_source, 12), preferred_engines=preferred_engines)
 
 
 def record_image_credit(item: Dict, query: str = "") -> None:

@@ -682,21 +682,36 @@ class StockFetcher:
 
         space_words = ["space", "universe", "galaxy", "black hole", "nebula", "planet", "mars", "moon", "star", "telescope", "astronaut", "astronomy", "hố đen", "vũ trụ", "ngân hà", "hành tinh", "sao hỏa", "mặt trăng"]
         is_space = any(w in f"{query} {narration} {clean_q}".lower() for w in space_words)
-        if is_space:
-            nasa_vids = self.search_nasa_media(query, media_type="video", per_page=3)
-            for nv in nasa_vids:
-                if nv.get("url") and nv["url"] not in used and nv not in collected_candidates:
-                    collected_candidates.append(nv)
 
-        for q_try in candidate_queries:
-            videos = self.search_videos(q_try, per_page=6, orientation="portrait")
-            for v in videos:
+        from app.services.media.entity_detector import is_incongruent_stock_image
+        from app.services.media.media_history import is_media_already_used
+        from app.services.media.query_broadener import conflicts_with_topic_biome
+        _bad_wildlife_cues = ("honeycomb", "beekeeper", "beekeeping", "apiculture", "beehive", "jar-of-honey", "pouring-honey", "bird-feeder") if ("badger" in _ctx_low or "leopard" in _ctx_low) else ()
+
+        # Bắn song song 5 nhánh tìm kiếm Video B-Roll (Pexels + Pixabay + NASA) qua LangGraph Send API + operator.add
+        try:
+            from app.graph.parallel_search import run_langgraph_5way_stock_video_search
+            branch_buckets = run_langgraph_5way_stock_video_search(
+                stock_fetcher=self,
+                candidate_queries=candidate_queries,
+                include_pixabay=bool(self._pixabay_key),
+                include_nasa=is_space,
+                nasa_query=query,
+            )
+        except Exception as e_lg_v:
+            logger.debug(f"[StockFetcher] LangGraph 5-Way Video fallback: {e_lg_v}")
+            branch_buckets = [
+                {"source": "pexels", "query": q_try, "items": self.search_videos(q_try, per_page=6, orientation="portrait")}
+                for q_try in candidate_queries[:3]
+            ]
+
+        pxb_added = 0
+        for b_res in branch_buckets:
+            b_src = b_res.get("source", "pexels")
+            q_try = b_res.get("query", query)
+            for v in (b_res.get("items") or []):
                 v_url = v.get("url")
-                v_desc = v.get("tags") or v.get("url") or ""
-                from app.services.media.entity_detector import is_incongruent_stock_image
-                from app.services.media.media_history import is_media_already_used
-                from app.services.media.query_broadener import conflicts_with_topic_biome
-                _bad_wildlife_cues = ("honeycomb", "beekeeper", "beekeeping", "apiculture", "beehive", "jar-of-honey", "pouring-honey", "bird-feeder") if ("badger" in _ctx_low or "leopard" in _ctx_low) else ()
+                v_desc = v.get("tags") or v.get("title") or v.get("url") or ""
                 if (
                     v_url and not is_media_already_used(v_url, used)
                     and not any(bw in str(v_desc).lower() for bw in _bad_wildlife_cues)
@@ -704,32 +719,11 @@ class StockFetcher:
                     and not conflicts_with_topic_biome(v_desc, topic)
                 ):
                     if v not in collected_candidates:
-                        collected_candidates.append(v)
-            if len(collected_candidates) >= 6:
-                break
-
-        # Luôn bổ sung kho Pixabay để mở rộng lựa chọn (trước đây chỉ gọi khi Pexels thiếu → gần như không bao giờ dùng)
-        if self._pixabay_key:
-            pxb_added = 0
-            for q_try in candidate_queries[:2]:
-                pxb_vids = self.search_pixabay_videos(q_try, per_page=5)
-                for pv in pxb_vids:
-                    pv_url = pv.get("url")
-                    pv_desc = pv.get("title") or ""
-                    from app.services.media.entity_detector import is_incongruent_stock_image
-                    from app.services.media.media_history import is_media_already_used
-                    from app.services.media.query_broadener import conflicts_with_topic_biome
-                    if (
-                        pv_url and not is_media_already_used(pv_url, used)
-                        and not is_incongruent_stock_image(pv_desc, topic=f"{topic} {q_try}".strip(), narration=narration)
-                        and not conflicts_with_topic_biome(pv_desc, topic)
-                    ):
-                        if pv not in collected_candidates:
-                            # Xen kẽ vào vị trí 2,4,6... để pool 8 ứng viên luôn có cả 2 nguồn
-                            collected_candidates.insert(min(len(collected_candidates), 1 + pxb_added * 2), pv)
+                        if b_src == "pixabay" and pxb_added < 3:
+                            collected_candidates.insert(min(len(collected_candidates), 1 + pxb_added * 2), v)
                             pxb_added += 1
-                if pxb_added >= 3:
-                    break
+                        else:
+                            collected_candidates.append(v)
 
         if not collected_candidates and establishing:
             est_res = _try_establishing_pass("Không tìm thấy clip cho truy vấn cụ thể")

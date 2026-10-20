@@ -602,8 +602,9 @@ def _search_youtube_flat_cached(
     all_query_tokens: Set[str],
 ) -> List[Dict[str, Any]]:
     """
-    Quét nhanh danh sách ứng viên YouTube Shorts (`extract_flat="in_playlist"`) có bộ nhớ đệm (cache)
-    mở rộng lên 25 ứng viên/truy vấn để chống lặp lại video giữa các lần chạy khác nhau!
+    Quét song song tối đa 5 nhánh ứng viên YouTube Shorts (`extract_flat="in_playlist"`)
+    qua LangGraph `Send` API + `Annotated[List[Dict[str, Any]], operator.add]` có bộ nhớ đệm (cache)
+    mở rộng lên 25 ứng viên/truy vấn để tăng tốc độ tìm kiếm gấp 3-5 lần!
     """
     import yt_dlp
 
@@ -616,29 +617,40 @@ def _search_youtube_flat_cached(
         "ignoreerrors": True,
     }
 
-    candidates: List[Dict[str, Any]] = []
-    seen_ids: Set[str] = set()
-
-    for sp in search_phrases[:3]:
+    def _fetch_single_yt_phrase(sp: str) -> List[Dict[str, Any]]:
         cache_key = sp.lower().strip()
         with _yt_url_lock:
             cached_entries = _yt_flat_search_cache.get(cache_key)
+        if cached_entries is not None:
+            return cached_entries
+        yt_query = f"ytsearch25:{sp} #shorts"
+        try:
+            with yt_dlp.YoutubeDL(flat_opts) as ydl:
+                res = ydl.extract_info(yt_query, download=False)
+            cached_entries = [
+                e for e in ((res or {}).get("entries") or [])
+                if e and isinstance(e, dict)
+            ]
+        except Exception:
+            cached_entries = []
+        with _yt_url_lock:
+            _yt_flat_search_cache[cache_key] = cached_entries
+        return cached_entries
 
-        if cached_entries is None:
-            yt_query = f"ytsearch25:{sp} #shorts"
-            try:
-                with yt_dlp.YoutubeDL(flat_opts) as ydl:
-                    res = ydl.extract_info(yt_query, download=False)
-                cached_entries = [
-                    e for e in ((res or {}).get("entries") or [])
-                    if e and isinstance(e, dict)
-                ]
-            except Exception:
-                cached_entries = []
-            with _yt_url_lock:
-                _yt_flat_search_cache[cache_key] = cached_entries
+    try:
+        from app.graph.parallel_search import run_langgraph_parallel_youtube_flat_search
+        parallel_buckets = run_langgraph_parallel_youtube_flat_search(
+            search_phrases=search_phrases[:5],
+            fetch_single_phrase_fn=_fetch_single_yt_phrase,
+        )
+    except Exception:
+        parallel_buckets = [{"items": _fetch_single_yt_phrase(sp)} for sp in search_phrases[:3]]
 
-        for entry in cached_entries:
+    candidates: List[Dict[str, Any]] = []
+    seen_ids: Set[str] = set()
+
+    for bucket in parallel_buckets:
+        for entry in (bucket.get("items") or []):
             vid_id = entry.get("id") or ""
             if not vid_id or vid_id in seen_ids:
                 continue

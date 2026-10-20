@@ -9,7 +9,8 @@ Bao gồm:
 - VideoQAReport: Báo cáo kiểm định kỹ thuật video thành phẩm.
 - EditRequest: Yêu cầu chỉnh sửa vi mô cho từng phân cảnh / thuộc tính video.
 """
-from typing import TypedDict, List, Dict, Optional, Any
+import operator
+from typing import Annotated, TypedDict, List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
 
@@ -139,6 +140,7 @@ class VideoWorkflowState(TypedDict, total=False):
     # Bước 3: Hình ảnh / Video (Media) & Node chuyên biệt Cảnh 1 Hook Video
     pre_resolved_hook_media: Optional[Dict[int, Dict[str, Any]]]  # Các cảnh (Cảnh 1 / Cảnh Cao Trào) đã được HookVideoNode cắt từ Short trên mạng
     scenes_media: List[Dict[str, Any]]
+    parallel_search_results: Annotated[List[Dict[str, Any]], operator.add]  # Gom kết quả tìm kiếm song song 5 luồng qua LangGraph Send API + operator.add
     media_eval: Optional[Dict[str, Any]]  # VisualEvaluationReport (kiểm tra độ sắc nét & độ phân giải)
     media_retry_count: int
     hook_video_eval: Optional[Dict[str, Any]]  # Báo cáo chấm điểm & dựng riêng Cảnh 1 Hook Video
