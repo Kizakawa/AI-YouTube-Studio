@@ -161,7 +161,94 @@ def search_google_cinematic_image(
     }
 
 
-MEDIA_DIRECTOR_TOOLS = [clone_youtube_short_peak_clip, search_google_cinematic_image]
+@tool
+def summon_epic_monster_cinematic_media(
+    scene_id: int,
+    creature_name: str,
+    scale_anchor_object: str,
+    monster_media_mode: str = "3D_CGI_VIDEO",
+    search_scope: str = "SCENE_SPECIFIC",
+    action_or_concept_query: str = "",
+    overall_script_query: str = "",
+    target_duration_sec: float = 4.5,
+    camera_motion: str = "hyper_zoom",
+) -> Dict[str, Any]:
+    """
+    CÔNG CỤ ĐẶC NHIỆM CHUYÊN BIỆT CHO QUÁI VẬT KHỔNG LỒ, THỦY QUÁI BIỂN SÂU, KHỦNG LONG TIỀN SỬ, THỰC THỂ VŨ TRỤ & HỘI CHỨNG SỢ VẬT KHỔNG LỒ (MEGALOPHOBIA / THALASSOPHOBIA).
+    GỌI NGAY CÔNG CỤ NÀY KHI:
+    - Kịch bản hoặc phân cảnh nói về các sinh vật/quái vật hùng vĩ, khổng lồ, hầm hố hoặc rùng rợn mà các model tạo ảnh AI miễn phí thường vẽ bị méo mó giải phẫu hoặc mất cảm giác quy mô khổng lồ:
+      * Thủy quái & quái vật biển sâu: The Bloop, Kraken, Leviathan, Gargantuan Leviathan, Megalodon, Cthulhu, Loch Ness, Mosasaurus, Liopleurodon, Dunkleosteus, Charybdis, Jormungandr, Bigfin Squid (Magnapinna).
+      * Quái thú tiền sử & Kaiju điện ảnh: Godzilla, King Kong, Titanoboa, Tyrannosaurus Rex (T-Rex), Spinosaurus, Indominus, Behemoth, Rồng (Dragon), Hydra, Cerberus, Fenrir.
+      * Thực thể kinh dị / Cryptids / Vũ trụ: SCP, Siren Head, Wendigo, Mothman, Skinwalker, Eldritch Cosmic Entity, Megalophobia / Thalassophobia scale comparison.
+    - CƠ CHẾ HOẠT ĐỘNG 3 TẦNG (3-Tier Megalophobia & Monster Engine):
+      1. `monster_media_mode = "3D_CGI_VIDEO"` (Dùng cho Cảnh 1 Hook & các cảnh hành động cao trào):
+         Săn trực tiếp các đoạn Video 3D CGI Unreal Engine 5 / Blender Megalophobia / VFX Movie Scene trên YouTube Shorts (VD: "{creature_name} {scale_anchor_object} 3d animation", "{creature_name} megalophobia cgi"), cắt đúng đoạn Peak hoành tráng nhất và kiểm duyệt bằng Gemini Vision (chấp nhận 3D CGI điện ảnh, chặn hoạt hình 2D trẻ em / đồ chơi / Minecraft).
+      2. `monster_media_mode = "CONCEPT_ART_8K"` (Dùng cho các cảnh thân cần mật độ đa góc máy hoặc khi không có clip 3D):
+         Săn bộ 3-4 bức Đại cảnh Concept Art 8K trên ArtStation / Wallhaven / Movie Stills có vật đối chiếu tỷ lệ (`scale_anchor_object` như tàu ngầm, tàu chiến, thợ lặn, tòa nhà chọc trời) để dựng hiệu ứng 3D Parallax + Rung chấn camera.
+      3. Tham số bắt buộc:
+         - `creature_name`: Tên quái vật/sinh vật (VD: "The Bloop Leviathan", "Megalodon", "Kraken", "Titanoboa").
+         - `scale_anchor_object`: Vật thể con người nhỏ bé đặt cạnh để tôn quy mô khổng lồ (VD: "submarine", "battleship", "scuba diver", "skyscraper", "helicopter").
+         - `action_or_concept_query`: Truy vấn mô tả hành động/quy mô (4-6 từ tiếng Anh, VD: "colossal leviathan swallowing submarine abyss").
+    """
+    return {
+        "tool_name": "summon_epic_monster_cinematic_media",
+        "scene_id": scene_id,
+        "creature_name": creature_name,
+        "subject_entity": creature_name,
+        "scale_anchor_object": scale_anchor_object,
+        "monster_media_mode": monster_media_mode,
+        "search_scope": search_scope,
+        "action_or_concept_query": action_or_concept_query,
+        "overall_script_query": overall_script_query,
+        "target_duration_sec": target_duration_sec,
+        "camera_motion": camera_motion,
+    }
+
+
+@tool
+def fetch_clean_cinematic_portrait_or_broll(
+    scene_id: int,
+    subject_entity: str,
+    human_action_query: str,
+    media_preference: str = "VIDEO_BROLL",
+    search_scope: str = "SCENE_SPECIFIC",
+    overall_script_query: str = "",
+    target_duration_sec: float = 4.5,
+    camera_motion: str = "zoom_in",
+) -> Dict[str, Any]:
+    """
+    CÔNG CỤ ĐẶC NHIỆM CHUYÊN BIỆT CHO TÂM LÝ HỌC (DARK PSYCHOLOGY), THAO TÚNG TÂM LÝ, ÁI KỶ (NARCISSISM), KHẮC KỶ (STOICISM), TRIẾT HỌC & CẢM XÚC CON NGƯỜI.
+    GỌI NGAY CÔNG CỤ NÀY KHI:
+    - Kịch bản hoặc phân cảnh nói về tâm lý con người, thao túng, đọc vị hành vi, ngôn ngữ cơ thể, ánh mắt, sự im lặng, tranh cãi, cô đơn, khắc kỷ, hoặc đấu trí nội tâm.
+    - TẠI SAO PHẢI GỌI CÔNG CỤ NÀY THAY VÌ GOOGLE IMAGES:
+      Khi tìm các chủ đề tâm lý/triết học trên Google Images, 95% kết quả web là ảnh Quote Card có chữ chằng chịt, bìa sách, hoặc infographic làm hỏng hoàn toàn video.
+      Công cụ này tự động BỎ QUA Open Web và truy xuất trực tiếp kho Video B-Roll diễn viên thật & Ảnh chân dung nghệ thuật Chạng vạng (Chiaroscuro / Dark Moody Portrait) SẠCH 100% KHÔNG CHỮ từ Pexels HD & Pixabay HD!
+    - Tham số quan trọng:
+      * `human_action_query`: Cụm 2-4 từ tiếng Anh mô tả HÀNH ĐỘNG VẬT LÝ hoặc BIỂU CẢM KHUÔN MẶT cụ thể của con người (TUYỆT ĐỐI KHÔNG dùng từ trừu tượng như "narcissist", "cognitive dissonance", "manipulation").
+        Ví dụ chuẩn: "close up eyes dark lighting", "couple argument tension", "man stressed alone dark room", "silhouette person walking night", "two men serious conversation".
+      * `media_preference`:
+        - `"VIDEO_BROLL"`: Ưu tiên tải đoạn video quay diễn viên thật chuyển động chuẩn dọc 9:16 (dùng cho Hook & các cảnh chính).
+        - `"CLEAN_PORTRAIT_PHOTO"`: Tải bộ 3-4 bức ảnh chân dung nghệ thuật ánh sáng tối kịch tính sạch chữ 100% để cắt nhịp nhanh.
+    """
+    return {
+        "tool_name": "fetch_clean_cinematic_portrait_or_broll",
+        "scene_id": scene_id,
+        "subject_entity": subject_entity,
+        "human_action_query": human_action_query,
+        "media_preference": media_preference,
+        "search_scope": search_scope,
+        "overall_script_query": overall_script_query,
+        "target_duration_sec": target_duration_sec,
+        "camera_motion": camera_motion,
+    }
+
+
+MEDIA_DIRECTOR_TOOLS = [
+    clone_youtube_short_peak_clip,
+    search_google_cinematic_image,
+    summon_epic_monster_cinematic_media,
+    fetch_clean_cinematic_portrait_or_broll,
+]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -400,6 +487,7 @@ def _verify_short_clip_with_gemini_vision(
     overall_script_query: str = "",
     search_scope: str = "SCENE_SPECIFIC",
     video_title: str = "",
+    allow_3d_cgi_monster: bool = False,
 ) -> Tuple[bool, float, str]:
     """
     Trích xuất 3 khung hình (tile=3x1) từ đoạn clip vừa cắt và nhờ Gemini Vision kiểm duyệt:
@@ -438,9 +526,15 @@ def _verify_short_clip_with_gemini_vision(
         if not rotator or not rotator.has_keys:
             return True, 7.5, "No Gemini keys for vision check"
 
+        cgi_rule = (
+            "3. 2D kids cartoon / chibi / Minecraft / Roblox / plastic toy (NOTE: Photorealistic 3D CGI / Unreal Engine 5 / Blender / Hollywood VFX monster animation IS HIGHLY APPROVED for this monster scene!)"
+            if allow_3d_cgi_monster
+            else "3. Video game / cartoon / anime / meme"
+        )
+
         scope_note = (
             f'NOTE: This scene line is part of an overall story ("{overall_script_query or topic}"). '
-            f'APPROVE (passed=true, score>=7.5) if the clip shows real footage revolving around the overall story '
+            f'APPROVE (passed=true, score>=7.5) if the clip shows real or photorealistic 3D CGI footage revolving around the overall story '
             f'and main subject ("{subject_entity or topic}"), even if it does not show minor props mentioned in the line!'
             if search_scope == "SCRIPT_OVERALL"
             else f'APPROVE (passed=true, score>=7.5) if the clip shows the main subject ("{subject_entity or topic}") '
@@ -460,12 +554,12 @@ Look at this 3-frame strip extracted from a candidate video clip:
 REJECT IMMEDIATELY (passed=false, score < 5) ONLY IF the clip shows:
 1. A product commercial / fashion ad / gadget demo / shopping promotion (e.g., shoe/boot ad, ultrasonic repeller, collar ad)
 2. A person sitting and talking to a camera/microphone (podcast, reaction, vlog, lecture)
-3. Video game / cartoon / anime / meme
+{cgi_rule}
 4. Giant burned-in text covering the middle of the frame
 5. A completely unrelated subject or wrong animal species that does not match the Main Subject ("{subject_entity or topic}") — e.g., REJECT a snake/cobra clip if the Main Subject is a honey badger or leopard, even if the narration mentions 'venom'!
 
 Return ONLY valid JSON:
-{{"passed": true, "score": 8.5, "reason": "Shows real footage matching the script story"}}"""
+{{"passed": true, "score": 8.5, "reason": "Shows footage matching the script story"}}"""
 
         payload = {
             "contents": [{
@@ -597,6 +691,7 @@ def execute_youtube_short_peak_clone_sync(
     job_id: int = 0,
     scene_id: int = 0,
     channel_id: str = "",
+    allow_3d_cgi_monster: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """
     Thực thi tìm kiếm & cắt đoạn Peak từ YouTube Shorts tích hợp hệ thống Mini-RAG (`VideoMemoryRAG`):
@@ -837,6 +932,7 @@ def execute_youtube_short_peak_clone_sync(
                         overall_script_query=overall_script_query or (search_phrases[0] if search_phrases else topic),
                         search_scope=effective_scope,
                         video_title=cand_title,
+                        allow_3d_cgi_monster=allow_3d_cgi_monster,
                     )
                     if not passed_vis:
                         logger.info(
@@ -1102,8 +1198,7 @@ def execute_google_cinematic_image_sync(
             all_candidate_urls.append(u_cand)
 
     # Khi cần >= 2 ảnh/cảnh, bồi thêm nhanh ứng viên góc nhìn phụ thứ 2 qua WebImageFetcher để kho có >= 12 URL đa dạng
-    _is_psych_img = any(k in f"{topic} {smart_query} {narration}".lower() for k in ("narcissist", "psychology", "manipulat", "gaslight", "ego", "stoic", "sociopath", "psychopath", "dissonance", "toxic"))
-    if not _is_psych_img and target_image_count >= 2 and len(all_candidate_urls) < max(10, target_image_count * 3):
+    if target_image_count >= 2 and len(all_candidate_urls) < max(10, target_image_count * 3):
         sec_q = search_qs[1] if len(search_qs) > 1 else f"{subj} closeup dramatic"
         try:
             from app.services.media.web_image_fetcher import WebImageFetcher
@@ -1218,6 +1313,509 @@ def execute_google_cinematic_image_sync(
     }
 
 
+def execute_epic_monster_cinematic_media_sync(
+    creature_name: str,
+    scale_anchor_object: str,
+    output_path: str,
+    monster_media_mode: str = "3D_CGI_VIDEO",
+    action_or_concept_query: str = "",
+    overall_script_query: str = "",
+    search_scope: str = "SCENE_SPECIFIC",
+    narration: str = "",
+    topic: str = "",
+    target_duration_sec: float = 4.5,
+    used_urls: Optional[Set[str]] = None,
+    is_hook_scene: bool = False,
+    job_id: int = 0,
+    scene_id: int = 0,
+    channel_id: str = "",
+    target_image_count: int = 3,
+) -> Optional[Dict[str, Any]]:
+    """
+    Thực thi công cụ `@tool summon_epic_monster_cinematic_media` (3-Tier Epic Monster & Megalophobia Engine):
+    - Tầng 1 (`monster_media_mode == "3D_CGI_VIDEO"`):
+      Tìm kiếm video 3D CGI Unreal Engine 5 / Blender Megalophobia / VFX Movie Scene trên YouTube Shorts
+      (VD: "{creature_name} {scale_anchor_object} 3d animation", "{creature_name} megalophobia cgi"),
+      kiểm duyệt với `allow_3d_cgi_monster=True` và cắt đúng đoạn Peak hoành tráng nhất.
+    - Tầng 2 (`monster_media_mode == "CONCEPT_ART_8K"` hoặc khi Tầng 1 không có clip):
+      Truy xuất bộ 3-4 bức Đại cảnh Concept Art 8K trên ArtStation / Wallhaven / Movie Stills có vật đối chiếu tỷ lệ
+      (`scale_anchor_object`) với `creature_mode=True` để dựng 3D Multi-Cut Parallax.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    from app.services.media.image_quality import creature_queries
+    from app.services.media.media_history import extract_media_identity, is_media_already_used, record_used_media
+    from app.services.video_memory_rag import get_video_memory_rag
+
+    rag = get_video_memory_rag()
+    used = used_urls if used_urls is not None else set()
+    c_name = (creature_name or topic or "colossal sea monster").strip()
+    s_anchor = (scale_anchor_object or "submarine").strip()
+    mode_norm = (monster_media_mode or "3D_CGI_VIDEO").strip().upper()
+
+    # 1. TẦNG 1: Săn Video 3D CGI / Unreal Engine 5 / Megalophobia Shorts Peak
+    if mode_norm == "3D_CGI_VIDEO" or is_hook_scene:
+        yt_monster_q = (
+            action_or_concept_query
+            if action_or_concept_query and any(k in action_or_concept_query.lower() for k in ("3d", "cgi", "animation", "megalophobia"))
+            else f"{c_name} {s_anchor} 3d animation"
+        )
+        yt_fallback_q = f"{c_name} megalophobia cgi"
+        vid_out = (
+            output_path
+            if output_path.lower().endswith(".mp4")
+            else str(Path(output_path).parent / f"scene_{scene_id:03d}_monster_cgi.mp4")
+        )
+        yt_res = execute_youtube_short_peak_clone_sync(
+            search_query=yt_monster_q,
+            output_path=vid_out,
+            target_duration_sec=target_duration_sec,
+            clip_role="HOOK" if is_hook_scene else "PEAK",
+            used_urls=used,
+            fallback_query=yt_fallback_q,
+            subject_entity=c_name,
+            narration=narration,
+            topic=topic,
+            search_scope=search_scope,
+            overall_script_query=overall_script_query or f"{c_name} {s_anchor}",
+            max_peak_duration_sec=14.0,
+            job_id=job_id,
+            scene_id=scene_id,
+            channel_id=channel_id,
+            allow_3d_cgi_monster=True,
+        )
+        if yt_res and yt_res.get("media_path") and Path(yt_res["media_path"]).exists():
+            logger.info(
+                f"🐉 [MonsterTool 3D CGI Video] Scene #{scene_id}: Đã triệu hồi clip 3D CGI Peak cho '{c_name}' "
+                f"(anchor='{s_anchor}'): {yt_res.get('title', '')[:50]}"
+            )
+            return yt_res
+
+    # 2. TẦNG 2: Săn bộ 3-4 bức Đại cảnh Concept Art 8K (ArtStation / Wallhaven / Movie VFX Stills) có vật đối chiếu tỷ lệ
+    c_qs = creature_queries(
+        subject=c_name,
+        topic=topic,
+        narration=narration,
+        scale_anchor=s_anchor,
+        action_query=action_or_concept_query,
+    )
+    img_out = (
+        output_path
+        if output_path.lower().endswith((".jpg", ".jpeg", ".png"))
+        else str(Path(output_path).parent / f"scene_{scene_id:03d}_monster_8k.jpg")
+    )
+    va_monster = {
+        "subject": c_name,
+        "creature_mode": True,
+        "creature_queries": c_qs,
+        "google_image_queries": c_qs[:4],
+        "search_queries": c_qs[:3],
+        "is_hook_scene": is_hook_scene,
+        "preferred_engines": ["google"],
+    }
+    media_agent = MediaAgent()
+    best_photo = media_agent.search_best_photo(
+        query=c_qs[0] if c_qs else f"giant {c_name} {s_anchor} concept art 8k",
+        used_urls=used,
+        visual_analysis=va_monster,
+        narration=f"Colossal {c_name} towering over {s_anchor}. {narration}",
+        topic=overall_script_query or topic,
+    )
+    if not best_photo or not best_photo.get("url"):
+        return None
+
+    all_candidate_urls: List[str] = []
+    for u_cand in [best_photo.get("url"), *(best_photo.get("alternate_urls") or [])]:
+        if u_cand and u_cand not in all_candidate_urls:
+            all_candidate_urls.append(u_cand)
+
+    if target_image_count >= 2 and len(all_candidate_urls) < max(10, target_image_count * 3):
+        try:
+            from app.services.media.web_image_fetcher import WebImageFetcher
+            extra_web = WebImageFetcher().search_all(
+                query=c_qs[1] if len(c_qs) > 1 else f"giant {c_name} movie scene cgi",
+                per_source=8,
+                subject=c_name,
+                extra_queries=c_qs[2:4],
+                creature_mode=True,
+            )
+            for item_ex in (extra_web or []):
+                u_ex = item_ex.get("url")
+                if u_ex and u_ex not in all_candidate_urls and not is_media_already_used(u_ex, used):
+                    all_candidate_urls.append(u_ex)
+        except Exception:
+            pass
+
+    Path(img_out).parent.mkdir(parents=True, exist_ok=True)
+    primary_selected_url = ""
+    remaining_urls: List[str] = []
+
+    for idx_u, cand_u in enumerate(all_candidate_urls):
+        if idx_u > 0 and is_media_already_used(cand_u, used):
+            continue
+        try:
+            media_agent.download_file(cand_u, img_out)
+        except Exception:
+            Path(img_out).unlink(missing_ok=True)
+            continue
+        if Path(img_out).exists() and Path(img_out).stat().st_size > 3000:
+            if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=scene_id, image_path=img_out, url=cand_u):
+                primary_selected_url = cand_u
+                remaining_urls = [u for u in all_candidate_urls[idx_u + 1:] if u != cand_u and not is_media_already_used(u, used)]
+                break
+            else:
+                Path(img_out).unlink(missing_ok=True)
+
+    if not primary_selected_url or not Path(img_out).exists():
+        return None
+
+    used.update(extract_media_identity(primary_selected_url))
+    record_used_media(
+        url=primary_selected_url,
+        query=c_qs[0] if c_qs else c_name,
+        job_id=job_id,
+        source=best_photo.get("source", "monster_concept_art_8k"),
+        media_path=img_out,
+    )
+
+    pose_images: List[str] = [img_out]
+    desired_extra = max(0, int(target_image_count) - 1)
+    if desired_extra > 0 and remaining_urls:
+        out_p = Path(img_out)
+        stem = out_p.stem
+        parent = out_p.parent
+        cand_slice = remaining_urls[: max(desired_extra + 6, 8)]
+
+        def _dl_m_cand(pair: Tuple[int, str]) -> Optional[Tuple[str, str]]:
+            c_idx, c_url = pair
+            tmp_path = str(parent / f"{stem}_cand{c_idx + 2}.jpg")
+            try:
+                media_agent.download_file(c_url, tmp_path)
+                if Path(tmp_path).exists() and Path(tmp_path).stat().st_size > 3000:
+                    return tmp_path, c_url
+            except Exception:
+                pass
+            Path(tmp_path).unlink(missing_ok=True)
+            return None
+
+        with ThreadPoolExecutor(max_workers=min(4, len(cand_slice))) as pool:
+            dl_results = list(pool.map(_dl_m_cand, enumerate(cand_slice)))
+
+        unused_after_multi: List[str] = []
+        for res_pair in dl_results:
+            if not res_pair:
+                continue
+            tmp_p, c_url = res_pair
+            if len(pose_images) < target_image_count:
+                if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=scene_id, image_path=tmp_p, url=c_url):
+                    final_cut_p = str(parent / f"{stem}_cut{len(pose_images) + 1}.jpg")
+                    try:
+                        Path(tmp_p).replace(final_cut_p)
+                    except Exception:
+                        final_cut_p = tmp_p
+                    pose_images.append(final_cut_p)
+                    used.update(extract_media_identity(c_url))
+                    record_used_media(
+                        url=c_url,
+                        query=c_qs[0] if c_qs else c_name,
+                        job_id=job_id,
+                        source="monster_concept_art_8k",
+                        media_path=final_cut_p,
+                    )
+                else:
+                    Path(tmp_p).unlink(missing_ok=True)
+            else:
+                Path(tmp_p).unlink(missing_ok=True)
+                unused_after_multi.append(c_url)
+        remaining_urls = unused_after_multi + remaining_urls[len(cand_slice):]
+
+    logger.info(
+        f"🐉 [MonsterTool ConceptArt 8K] Scene #{scene_id}: Đã thu thập {len(pose_images)} ảnh đại cảnh '{c_name}' "
+        f"(anchor='{s_anchor}')!"
+    )
+    return {
+        "media_path": img_out,
+        "media_type": "image",
+        "pose_images": pose_images,
+        "source_url": primary_selected_url,
+        "title": best_photo.get("title", ""),
+        "curation_score": best_photo.get("curation_score", 9.2),
+        "alternate_urls": remaining_urls,
+        "search_scope": search_scope,
+        "creature_mode": True,
+    }
+
+
+def execute_clean_cinematic_portrait_or_broll_sync(
+    subject_entity: str,
+    human_action_query: str,
+    output_path: str,
+    media_preference: str = "VIDEO_BROLL",
+    overall_script_query: str = "",
+    search_scope: str = "SCENE_SPECIFIC",
+    narration: str = "",
+    topic: str = "",
+    target_duration_sec: float = 4.5,
+    used_urls: Optional[Set[str]] = None,
+    is_hook_scene: bool = False,
+    job_id: int = 0,
+    scene_id: int = 0,
+    target_image_count: int = 3,
+) -> Optional[Dict[str, Any]]:
+    """
+    Thực thi công cụ `@tool fetch_clean_cinematic_portrait_or_broll`:
+    - Bỏ qua 100% Open Web Google Images (tránh triệt để Quote Card có chữ, bìa sách, infographic).
+    - Khi `media_preference == "VIDEO_BROLL"` (hoặc cảnh Hook):
+      Truy xuất trực tiếp Video B-Roll quay diễn viên thật chuẩn dọc 9:16 từ Pexels HD / Pixabay HD,
+      cắt đoạn Peak cảm xúc và trả về cả `full_peak_path` nếu đoạn Peak dài.
+    - Khi `media_preference == "CLEAN_PORTRAIT_PHOTO"` (hoặc dự phòng):
+      Truy xuất bộ 3-4 bức ảnh chân dung nghệ thuật ánh sáng tối (Chiaroscuro / Moody Portrait) sạch chữ 100%
+      từ Pexels & Pixabay Photo API.
+    """
+    from app.services.media.media_history import extract_media_identity, is_media_already_used, record_used_media
+    from app.services.video_memory_rag import get_video_memory_rag
+
+    rag = get_video_memory_rag()
+    used = used_urls if used_urls is not None else set()
+    media_agent = MediaAgent()
+    clean_act_q = (human_action_query or subject_entity or "dramatic portrait dark lighting").strip()
+    pref_norm = (media_preference or "VIDEO_BROLL").strip().upper()
+
+    # 1. Nhánh Video B-Roll diễn viên thật Pexels / Pixabay HD
+    if pref_norm == "VIDEO_BROLL" or is_hook_scene:
+        vid_out = (
+            output_path
+            if output_path.lower().endswith(".mp4")
+            else str(Path(output_path).parent / f"scene_{scene_id:03d}_clean_broll.mp4")
+        )
+        va_clean_vid = {
+            "subject": subject_entity or clean_act_q,
+            "search_queries": [
+                clean_act_q,
+                "close up eyes dark lighting",
+                "silhouette person walking night",
+                "dramatic portrait lighting",
+            ],
+            "clean_stock_only": True,
+            "is_hook_scene": is_hook_scene,
+        }
+        best_stock_v = media_agent.search_best_video_clip(
+            query=clean_act_q,
+            used_urls=used,
+            visual_analysis=va_clean_vid,
+            narration=narration,
+            topic=overall_script_query or topic,
+        )
+        if best_stock_v and best_stock_v.get("url"):
+            v_url = best_stock_v["url"]
+            st_title = str(best_stock_v.get("title") or "")
+            if rag.try_claim_in_job_video(job_id=job_id, url=v_url, title=st_title, scene_id=scene_id):
+                with tempfile.TemporaryDirectory() as tmp_s:
+                    raw_stock = str(Path(tmp_s) / "stock_raw.mp4")
+                    media_agent.download_file(v_url, raw_stock)
+                    if Path(raw_stock).exists() and Path(raw_stock).stat().st_size > 20000:
+                        Path(vid_out).parent.mkdir(parents=True, exist_ok=True)
+                        from app.utils.ffmpeg_helper import find_hook_peak_window, get_duration_ms, trim_video
+                        raw_st_dur = max(0.0, get_duration_ms(raw_stock) / 1000.0)
+                        min_st_dur = max(3.0, target_duration_sec)
+                        st_start, st_peak_len = find_hook_peak_window(
+                            raw_stock,
+                            min_duration=min_st_dur,
+                            max_duration=min(14.0, max(min_st_dur, raw_st_dur)),
+                        )
+                        trim_video(
+                            input_path=raw_stock,
+                            duration_seconds=min_st_dur,
+                            output_path=vid_out,
+                            width=1080,
+                            height=1920,
+                            fps=30,
+                            apply_grading=True,
+                            is_hook_scene=is_hook_scene,
+                            fair_use_transform=False,
+                            start_offset_sec=st_start,
+                            preserve_continuous_flow=True,
+                        )
+                        if Path(vid_out).exists() and Path(vid_out).stat().st_size > 20000:
+                            ok_st_sig, _ = rag.verify_and_commit_in_job_clip(
+                                job_id=job_id,
+                                scene_id=scene_id,
+                                media_path=vid_out,
+                                url=v_url,
+                                title=st_title,
+                                is_continuation_slice=False,
+                            )
+                            if ok_st_sig:
+                                full_peak_path = None
+                                if st_peak_len >= min_st_dur + 1.8 and raw_st_dur >= st_start + min_st_dur + 1.5:
+                                    cand_full_st = str(Path(vid_out).parent / f"{Path(vid_out).stem}_fullpeak.mp4")
+                                    try:
+                                        trim_video(
+                                            input_path=raw_stock,
+                                            duration_seconds=st_peak_len,
+                                            output_path=cand_full_st,
+                                            width=1080,
+                                            height=1920,
+                                            fps=30,
+                                            apply_grading=True,
+                                            is_hook_scene=False,
+                                            fair_use_transform=False,
+                                            start_offset_sec=st_start,
+                                            preserve_continuous_flow=True,
+                                        )
+                                        if Path(cand_full_st).exists() and Path(cand_full_st).stat().st_size > 25000:
+                                            full_peak_path = cand_full_st
+                                    except Exception:
+                                        pass
+                                used.update(extract_media_identity(v_url))
+                                record_used_media(
+                                    url=v_url,
+                                    query=clean_act_q,
+                                    job_id=job_id,
+                                    source="clean_portrait_broll_video",
+                                    media_path=vid_out,
+                                )
+                                logger.info(
+                                    f"🎭 [CleanPortraitTool Video] Scene #{scene_id}: Đã tải B-Roll diễn viên thật sạch chữ "
+                                    f"cho '{clean_act_q}' ({st_title[:45]})"
+                                )
+                                return {
+                                    "media_path": vid_out,
+                                    "media_type": "hook_ready_video" if is_hook_scene else "video",
+                                    "source_url": v_url,
+                                    "title": st_title or "Clean Portrait B-Roll Video",
+                                    "window": f"{st_start:.1f}s-{st_start + (st_peak_len if full_peak_path else min_st_dur):.1f}s",
+                                    "search_scope": search_scope,
+                                    "full_peak_path": full_peak_path,
+                                    "full_peak_duration_sec": round(st_peak_len if full_peak_path else min_st_dur, 2),
+                                    "scene_clip_duration_sec": round(min_st_dur, 2),
+                                    "clean_stock_only": True,
+                                }
+                            else:
+                                Path(vid_out).unlink(missing_ok=True)
+
+    # 2. Nhánh Bộ 3-4 Ảnh Chân Dung Nghệ Thuật Pexels / Pixabay HD Sạch Chữ 100% (`clean_stock_only=True`)
+    img_out = (
+        output_path
+        if output_path.lower().endswith((".jpg", ".jpeg", ".png"))
+        else str(Path(output_path).parent / f"scene_{scene_id:03d}_clean_portrait.jpg")
+    )
+    va_clean_photo = {
+        "subject": subject_entity or clean_act_q,
+        "search_queries": [
+            clean_act_q,
+            "dramatic portrait dark lighting",
+            "man intense eyes dark shadow",
+            "person silhouette shadow",
+        ],
+        "clean_stock_only": True,
+        "is_hook_scene": is_hook_scene,
+    }
+    best_photo = media_agent.search_best_photo(
+        query=clean_act_q,
+        used_urls=used,
+        visual_analysis=va_clean_photo,
+        narration=narration,
+        topic="dramatic portrait",
+    )
+    if not best_photo or not best_photo.get("url"):
+        return None
+
+    all_candidate_urls: List[str] = []
+    for u_cand in [best_photo.get("url"), *(best_photo.get("alternate_urls") or [])]:
+        if u_cand and u_cand not in all_candidate_urls:
+            all_candidate_urls.append(u_cand)
+
+    for pq_supp in [clean_act_q, "dramatic portrait dark shadow", "intense eyes close up dark", "person silhouette night"]:
+        if len(all_candidate_urls) >= max(8, target_image_count * 2):
+            break
+        try:
+            px_list = media_agent.search_photos(pq_supp, per_page=5, orientation="portrait", topic="dramatic portrait", narration="", used_urls=used)
+            for p_it in (px_list or []):
+                u_px = p_it.get("url")
+                if u_px and u_px not in all_candidate_urls and not is_media_already_used(u_px, used):
+                    all_candidate_urls.append(u_px)
+        except Exception:
+            pass
+
+    Path(img_out).parent.mkdir(parents=True, exist_ok=True)
+    primary_selected_url = ""
+    remaining_urls: List[str] = []
+    for idx_u, cand_u in enumerate(all_candidate_urls):
+        if idx_u > 0 and is_media_already_used(cand_u, used):
+            continue
+        try:
+            media_agent.download_file(cand_u, img_out)
+        except Exception:
+            Path(img_out).unlink(missing_ok=True)
+            continue
+        if Path(img_out).exists() and Path(img_out).stat().st_size > 3000:
+            if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=scene_id, image_path=img_out, url=cand_u):
+                primary_selected_url = cand_u
+                remaining_urls = [u for u in all_candidate_urls[idx_u + 1:] if u != cand_u and not is_media_already_used(u, used)]
+                break
+            else:
+                Path(img_out).unlink(missing_ok=True)
+
+    if not primary_selected_url or not Path(img_out).exists():
+        return None
+
+    used.update(extract_media_identity(primary_selected_url))
+    record_used_media(
+        url=primary_selected_url,
+        query=clean_act_q,
+        job_id=job_id,
+        source="clean_portrait_photo",
+        media_path=img_out,
+    )
+
+    pose_images: List[str] = [img_out]
+    out_p = Path(img_out)
+    for idx_r, c_url in enumerate(remaining_urls):
+        if len(pose_images) >= target_image_count:
+            break
+        tmp_p = str(out_p.parent / f"{out_p.stem}_cand{idx_r + 2}.jpg")
+        try:
+            media_agent.download_file(c_url, tmp_p)
+            if Path(tmp_p).exists() and Path(tmp_p).stat().st_size > 3000:
+                if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=scene_id, image_path=tmp_p, url=c_url):
+                    final_cut_p = str(out_p.parent / f"{out_p.stem}_cut{len(pose_images) + 1}.jpg")
+                    try:
+                        Path(tmp_p).replace(final_cut_p)
+                    except Exception:
+                        final_cut_p = tmp_p
+                    pose_images.append(final_cut_p)
+                    used.update(extract_media_identity(c_url))
+                    record_used_media(
+                        url=c_url,
+                        query=clean_act_q,
+                        job_id=job_id,
+                        source="clean_portrait_photo",
+                        media_path=final_cut_p,
+                    )
+                else:
+                    Path(tmp_p).unlink(missing_ok=True)
+            else:
+                Path(tmp_p).unlink(missing_ok=True)
+        except Exception:
+            Path(tmp_p).unlink(missing_ok=True)
+
+    logger.info(
+        f"🎭 [CleanPortraitTool Photo] Scene #{scene_id}: Đã thu thập {len(pose_images)} ảnh chân dung sạch chữ "
+        f"cho '{clean_act_q}'!"
+    )
+    return {
+        "media_path": img_out,
+        "media_type": "image",
+        "pose_images": pose_images,
+        "source_url": primary_selected_url,
+        "title": best_photo.get("title", ""),
+        "curation_score": best_photo.get("curation_score", 9.0),
+        "alternate_urls": remaining_urls[len(pose_images):],
+        "search_scope": search_scope,
+        "clean_stock_only": True,
+    }
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # BỘ ĐẠO DIỄN LLM BIND_TOOLS (PHÂN TÍCH KỊCH BẢN TỔNG THỂ VS CÂU NHỎ TỰ ĐỘNG)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1229,22 +1827,15 @@ def plan_media_tools_with_llm_sync(
     channel_niche: str = "cinematic",
 ) -> List[Dict[str, Any]]:
     """
-    Sử dụng Gemini gắn `bind_tools([clone_youtube_short_peak_clip, search_google_cinematic_image])`
-    để LLM đọc toàn bộ kịch bản và quyết định cho từng phân cảnh:
-    - ƯU TIÊN VIDEO PEAK MỞ ĐẦU (1-2 cảnh) + MẬT ĐỘ CAO 15-17 ẢNH/VIDEO (~40s) Ở CÁC CẢNH THÂN:
-      * Cảnh 1 (Hook) và tối đa 1 cảnh cao trào hành động dùng `clone_youtube_short_peak_clip`
-        (nếu đoạn Peak dài, hệ thống tự động cho chảy liền mạch qua cảnh kế tiếp).
-      * Toàn bộ 6-8 phân cảnh còn lại dùng `search_google_cinematic_image` (mỗi cảnh tự động lấy 2-3 ảnh thật độc lập
-        để tổng số ảnh trên toàn video ~40s luôn đạt 15-17 ảnh sắc nét, đổi khung hình mỗi ~1.8s-2.2s!).
+    Sử dụng Gemini gắn `bind_tools(MEDIA_DIRECTOR_TOOLS)` gồm 4 công cụ chuyên biệt:
+      1. `summon_epic_monster_cinematic_media`: Cho các cảnh quái vật khổng lồ, thủy quái biển sâu, khủng long, kaiju, thực thể kinh dị, megalophobia.
+      2. `fetch_clean_cinematic_portrait_or_broll`: Cho các cảnh tâm lý học, thao túng tâm lý, khắc kỷ, cảm xúc con người (sạch chữ 100%).
+      3. `clone_youtube_short_peak_clip`: Cho các cảnh động vật hoang dã, thiên nhiên, khoa học, đời thực cần cắt Peak YouTube Shorts.
+      4. `search_google_cinematic_image`: Cho các cảnh tìm kiếm đa ảnh Top Google Images thông thường.
     """
     total_scenes = len(scenes)
     if total_scenes == 0:
         return []
-
-    niche_low = (channel_niche or "").strip().lower()
-    is_psych_or_abstract_niche = any(
-        k in niche_low for k in ("psych", "stoic", "philosoph", "selfhelp", "mind", "tâm lý", "history", "lịch sử")
-    )
 
     full_script_text = " ".join(str(s.get("narration") or "").strip() for s in scenes if s.get("narration"))
     scenes_brief = [
@@ -1257,7 +1848,7 @@ def plan_media_tools_with_llm_sync(
         for s in scenes
     ]
 
-    prompt = f"""You are an Elite Viral YouTube Shorts Visual Director.
+    prompt = f"""You are an Elite Viral YouTube Shorts Visual Director with 4 specialized media tools.
 Topic: "{topic}"
 Primary Subject/Entity: "{primary_entity or topic}"
 Channel Niche: "{channel_niche}"
@@ -1270,25 +1861,23 @@ Individual Scenes Breakdown:
 {json.dumps(scenes_brief, ensure_ascii=False, indent=2)}
 
 YOUR MISSION:
-Call EXACTLY ONE tool for EACH scene (from scene_id=1 to scene_id={total_scenes}) following these strict rules:
+Call EXACTLY ONE tool for EACH scene (from scene_id=1 to scene_id={total_scenes}) based on semantic understanding of the script (NO brittle keyword matching):
 
-1. DEFINE THE OVERALL SCRIPT QUERY (`overall_script_query`) & MAIN SUBJECT (`subject_entity`):
-   - First, read the FULL SCRIPT STORY and summarize its core visual story in a natural 3-5 word query: `overall_script_query` (e.g., "stray dog protecting abandoned kitten", "mother dog rescuing puppies rain").
-   - Define `subject_entity` (e.g., "stray dog and kitten", "golden retriever dog"). Pass both `subject_entity` and `overall_script_query` into EVERY tool call!
+1. CHOOSE THE RIGHT SPECIALIZED TOOL BASED ON TOPIC & SCENE MEANING:
+   - IF THE SCRIPT OR SCENE IS ABOUT COLOSSAL MONSTERS, DEEP-SEA LEVIATHANS (The Bloop, Kraken, Megalodon, Cthulhu, Gargantuan Leviathan), PREHISTORIC MEGAFAUNA (Titanoboa, Mosasaurus, T-Rex), KAIJU (Godzilla), CRYPTIDS (SCP, Siren Head, Wendigo), OR MEGALOPHOBIA/THALASSOPHOBIA:
+     -> ALWAYS call `summon_epic_monster_cinematic_media`!
+     -> Provide `creature_name` (e.g., "The Bloop Leviathan", "Megalodon", "Kraken") and `scale_anchor_object` (a human object like "submarine", "battleship", "scuba diver", "skyscraper" to show colossal scale).
+     -> Use `monster_media_mode="3D_CGI_VIDEO"` for Scene 1 (Hook) and 2-3 climax action scenes, and `monster_media_mode="CONCEPT_ART_8K"` for the remaining body scenes so the video combines 3D CGI motion with 8K ArtStation/Movie Still scale shots.
+   - IF THE SCRIPT OR SCENE IS ABOUT HUMAN PSYCHOLOGY, DARK PSYCHOLOGY, MANIPULATION, NARCISSISM, GASLIGHTING, STOICISM, PHILOSOPHY, OR INTERPERSONAL EMOTIONAL TENSION:
+     -> ALWAYS call `fetch_clean_cinematic_portrait_or_broll`! (NEVER call `search_google_cinematic_image` for psychology because open-web Google Images return text quote cards and book covers!).
+     -> Write `human_action_query` as a concrete 2-4 word physical human action or facial expression (e.g., "close up eyes dark lighting", "couple argument tension", "man stressed alone dark room", "silhouette person walking night").
+     -> Use `media_preference="VIDEO_BROLL"` for Scene 1 and 3-4 body scenes, and `media_preference="CLEAN_PORTRAIT_PHOTO"` for the other scenes.
+   - FOR REAL-WORLD WILDLIFE, NATURE, SCIENCE, HISTORY, OR DOCUMENTARY TOPICS:
+     -> Call `clone_youtube_short_peak_clip` (`clip_role="HOOK"` for Scene 1, and `clip_role="PEAK"` for 3-4 action body scenes) + `search_google_cinematic_image` for the remaining scenes.
 
 2. DECIDE `search_scope` FOR EACH INDIVIDUAL SCENE (`"SCENE_SPECIFIC"` vs `"SCRIPT_OVERALL"`):
-   - Evaluate whether the individual scene's sentence (`narration`) still makes clear, standalone visual sense when searched on YouTube/Google by itself:
-     * CASE A — `search_scope = "SCENE_SPECIFIC"` (Split sentence IS visually meaningful on its own):
-       The sentence describes a clear, concrete visual action of the main subject (e.g., "A drenched golden retriever shivering in the rain", "A veterinarian warming the rescued kitten in a clinic").
-       -> Search directly for that scene's specific visual meaning!
-     * CASE B — `search_scope = "SCRIPT_OVERALL"` (Split sentence becomes MEANINGLESS, FRAGMENTED, TRANSITIONAL, or PROP-DISTRACTED when isolated):
-       The sentence is a time transition ("For three days nobody knew why it refused to move"), an abstract/scientific explanation ("Canine behaviorists call this maternal imprinting"), an emotional conclusion ("That single moment changed everything"), or focuses on a minor inanimate prop that would return unrelated product ads if searched literally (e.g., "inside an old leather boot" -> would return shoe ads!).
-       -> Set `search_scope = "SCRIPT_OVERALL"` and write `youtube_search_query` / `smart_image_query` revolving around the OVERALL SCRIPT STORY (`overall_script_query`) with a natural angle variation (NEVER include distracting props like "boot" or abstract words)!
-
-3. TOOL SELECTION (HYBRID REAL-MOTION VIDEO >= 50% + HIGH-DENSITY CINEMATIC IMAGES):
-   - SCENE 1 (THE HOOK): ALWAYS call `clone_youtube_short_peak_clip` with `clip_role="HOOK"`.
-   - BODY SCENES (2 to {total_scenes}): Call `clone_youtube_short_peak_clip` (`clip_role="PEAK"`) for at least 3-4 key action/climax body scenes (so >= 50% of the video has real moving footage!), and call `search_google_cinematic_image` for the remaining 3-4 scenes.
-   - NEVER use filler words like "4k edit", "cinematic visuals", or "movie scene" in `youtube_search_query`.
+   - `"SCENE_SPECIFIC"`: The split sentence describes a clear, standalone visual action of the subject.
+   - `"SCRIPT_OVERALL"`: The split sentence becomes vague, transitional, abstract, or mentions a minor distracting prop when isolated -> search around `overall_script_query`!
 
 IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!"""
 
@@ -1356,7 +1945,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                                     decisions_by_scene[sid] = t_args
                         if decisions_by_scene:
                             scope_summary = ", ".join(
-                                f"S{sid}:{d.get('search_scope', 'SCENE_SPECIFIC')}"
+                                f"S{sid}:{d.get('tool_name')}[{d.get('search_scope', 'SCENE_SPECIFIC')}]"
                                 for sid, d in sorted(decisions_by_scene.items())
                             )
                             logger.info(
@@ -1374,23 +1963,48 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
 
     final_plan: List[Dict[str, Any]] = []
     motion_cycle = ["zoom_in", "pan_right", "zoom_out", "pan_left"]
-    # Giới hạn Cảnh 1 dùng Video Peak (nếu đoạn Peak dài > 4.2s, Step A sẽ tự chảy liền mạch sang Cảnh 2),
-    # dành trọn các phân cảnh còn lại cho mật độ 15-17 ảnh thật độc lập trên mỗi video
     peak_indices = {1, 2, 4, 6, 8}
     max_video_peak_scenes = max(4, (total_scenes + 1) // 2)
     video_peak_count = 0
     default_subj = _clean_yt_search_phrase(primary_entity or topic, max_words=3, strip_distractor_props=True)
     default_overall_q = _clean_yt_search_phrase(topic, subject_entity=default_subj, max_words=5, strip_distractor_props=True)
 
+    # Nếu LLM đã chọn công cụ chuyên biệt (`summon_epic_monster_cinematic_media` hoặc `fetch_clean_cinematic_portrait_or_broll`)
+    # cho kịch bản này nhưng chỉ trả về functionCall cho một số cảnh đầu, kế thừa quyết định công cụ của LLM cho các cảnh còn lại!
+    llm_monster_ref = next(
+        (d for d in decisions_by_scene.values() if d.get("tool_name") == "summon_epic_monster_cinematic_media"),
+        None,
+    )
+    llm_portrait_ref = next(
+        (d for d in decisions_by_scene.values() if d.get("tool_name") == "fetch_clean_cinematic_portrait_or_broll"),
+        None,
+    )
+
     for idx, s in enumerate(scenes):
         sid = int(s.get("scene_id") or (idx + 1))
         if sid in decisions_by_scene:
             d = decisions_by_scene[sid]
+            t_chosen = d.get("tool_name", "")
             if not d.get("overall_script_query"):
                 d["overall_script_query"] = default_overall_q
             if not d.get("search_scope"):
                 d["search_scope"] = "SCENE_SPECIFIC"
-            if sid in peak_indices and video_peak_count < max_video_peak_scenes and d.get("tool_name") != "clone_youtube_short_peak_clip":
+            if not d.get("camera_motion"):
+                d["camera_motion"] = "hyper_zoom" if sid == 1 else motion_cycle[idx % len(motion_cycle)]
+
+            # Tôn trọng tuyệt đối khi LLM đã chọn 2 công cụ chuyên biệt (`summon_epic_monster_cinematic_media` hoặc `fetch_clean_cinematic_portrait_or_broll`)
+            if t_chosen == "summon_epic_monster_cinematic_media":
+                d.setdefault("subject_entity", d.get("creature_name") or default_subj)
+                d["scope_audited"] = True
+                final_plan.append(d)
+                continue
+            if t_chosen == "fetch_clean_cinematic_portrait_or_broll":
+                d.setdefault("subject_entity", default_subj)
+                d["scope_audited"] = True
+                final_plan.append(d)
+                continue
+
+            if sid in peak_indices and video_peak_count < max_video_peak_scenes and t_chosen != "clone_youtube_short_peak_clip":
                 q_vid = d.get("youtube_search_query") or d.get("smart_image_query") or s.get("visual_keyword") or default_overall_q
                 d = {
                     "tool_name": "clone_youtube_short_peak_clip",
@@ -1408,7 +2022,6 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 if video_peak_count < max_video_peak_scenes:
                     video_peak_count += 1
                 else:
-                    # Chuyển các cảnh vượt ngân sách video sang tìm kiếm đa ảnh (2-3 ảnh/cảnh) để đảm bảo đủ 15-17 ảnh/video
                     q_conv = d.get("youtube_search_query") or d.get("smart_image_query") or s.get("visual_keyword") or default_overall_q
                     d = {
                         "tool_name": "search_google_cinematic_image",
@@ -1433,7 +2046,40 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
             else _clean_yt_search_phrase(kw, subject_entity=default_subj, max_words=5)
         )
         dur = float(s.get("estimated_seconds") or 4.5)
-        if sid in peak_indices and video_peak_count < max_video_peak_scenes:
+
+        if llm_monster_ref is not None:
+            c_name_inh = llm_monster_ref.get("creature_name") or default_subj
+            s_anchor_inh = llm_monster_ref.get("scale_anchor_object") or "submarine"
+            m_mode_inh = "3D_CGI_VIDEO" if sid in (1, 2, 5) else "CONCEPT_ART_8K"
+            final_plan.append({
+                "tool_name": "summon_epic_monster_cinematic_media",
+                "scene_id": sid,
+                "creature_name": c_name_inh,
+                "subject_entity": c_name_inh,
+                "scale_anchor_object": s_anchor_inh,
+                "monster_media_mode": m_mode_inh,
+                "search_scope": scope,
+                "action_or_concept_query": clean_kw,
+                "overall_script_query": llm_monster_ref.get("overall_script_query") or default_overall_q,
+                "target_duration_sec": dur,
+                "camera_motion": "hyper_zoom" if sid == 1 else motion_cycle[idx % len(motion_cycle)],
+                "scope_audited": True,
+            })
+        elif llm_portrait_ref is not None:
+            m_pref_inh = "VIDEO_BROLL" if sid in (1, 2, 4, 6) else "CLEAN_PORTRAIT_PHOTO"
+            final_plan.append({
+                "tool_name": "fetch_clean_cinematic_portrait_or_broll",
+                "scene_id": sid,
+                "subject_entity": llm_portrait_ref.get("subject_entity") or default_subj,
+                "human_action_query": clean_kw,
+                "media_preference": m_pref_inh,
+                "search_scope": scope,
+                "overall_script_query": llm_portrait_ref.get("overall_script_query") or default_overall_q,
+                "target_duration_sec": dur,
+                "camera_motion": "hyper_zoom" if sid == 1 else motion_cycle[idx % len(motion_cycle)],
+                "scope_audited": True,
+            })
+        elif sid in peak_indices and video_peak_count < max_video_peak_scenes:
             video_peak_count += 1
             final_plan.append({
                 "tool_name": "clone_youtube_short_peak_clip",
@@ -1481,12 +2127,7 @@ def audit_and_decide_search_scopes_with_llm_sync(
     """
     LLM Node Đánh Giá & Phê Duyệt Quyết Định Tìm Kiếm (`SCENE_SPECIFIC` vs `SCRIPT_OVERALL`):
     Đọc toàn bộ kịch bản gốc (`full_script_text`) đối chiếu với từng câu văn đã chia nhỏ (`scenes`)
-    và bản kế hoạch `proposed_decisions`:
-    - Đánh giá từng câu văn nhỏ: Khi tách riêng ra khỏi kịch bản để đi search, câu này CÓ NGHĨA ĐỘC LẬP (`SCENE_SPECIFIC`)
-      hay BỊ VÔ NGHĨA / CỤT NGỦN / LỆCH SANG ĐỒ VẬT PHỤ (`SCRIPT_OVERALL`)?
-    - Nếu câu nhỏ vô nghĩa hoặc dễ gây lạc đề khi search riêng lẻ -> ép chuyển sang `SCRIPT_OVERALL` và viết lại
-      câu truy vấn xoay quanh tổng thể kịch bản (`overall_script_query`)!
-    - Nếu câu nhỏ có nghĩa rõ ràng -> duyệt `SCENE_SPECIFIC` và tinh chỉnh từ khóa sát câu nhỏ đó.
+    và bản kế hoạch `proposed_decisions`.
     """
     if not scenes or not proposed_decisions:
         return proposed_decisions
@@ -1498,7 +2139,13 @@ def audit_and_decide_search_scopes_with_llm_sync(
     for idx, s in enumerate(scenes):
         sid = int(s.get("scene_id") or (idx + 1))
         d = dec_map.get(sid, {})
-        q_cur = d.get("youtube_search_query") or d.get("smart_image_query") or ""
+        q_cur = (
+            d.get("youtube_search_query")
+            or d.get("smart_image_query")
+            or d.get("action_or_concept_query")
+            or d.get("human_action_query")
+            or ""
+        )
         review_items.append({
             "scene_id": sid,
             "split_sentence": s.get("narration", ""),
@@ -1522,10 +2169,10 @@ YOUR TASK:
 Evaluate each scene (from scene_id=1 to {len(scenes)}) and decide whether searching the split sentence on its own makes sense:
 1. If `split_sentence` when isolated from the script still has a clear, concrete, self-contained visual action of the main subject:
    - Set `"approved_scope": "SCENE_SPECIFIC"`
-   - Keep or refine `"approved_query"` so it searches directly for that sentence's visual meaning (must include the main subject).
-2. If `split_sentence` when isolated from the script becomes MEANINGLESS, VAGUE, TRANSITIONAL (e.g. "For three days nobody knew why...", "That moment changed everything"), SCIENTIFIC/ABSTRACT ("Behaviorists call this imprinting"), or focuses on a minor inanimate prop that would hijack search results (e.g. "inside an old leather boot" returning shoe commercials):
+   - Keep or refine `"approved_query"` so it searches directly for that sentence's visual meaning.
+2. If `split_sentence` when isolated from the script becomes MEANINGLESS, VAGUE, TRANSITIONAL, SCIENTIFIC/ABSTRACT, or focuses on a minor inanimate prop that would hijack search results:
    - Set `"approved_scope": "SCRIPT_OVERALL"`
-   - Rewrite `"approved_query"` so it searches for content REVOLVING AROUND THE OVERALL SCRIPT STORY (using a distinct angle/moment of the main story so scenes do not duplicate).
+   - Rewrite `"approved_query"` so it searches for content REVOLVING AROUND THE OVERALL SCRIPT STORY.
 
 Return ONLY a valid JSON object in this exact format:
 {{
@@ -1581,7 +2228,7 @@ Return ONLY a valid JSON object in this exact format:
                                         item = dict(d)
                                         if top_overall_q:
                                             item["overall_script_query"] = top_overall_q
-                                        if top_subj:
+                                        if top_subj and not item.get("creature_name"):
                                             item["subject_entity"] = top_subj
                                         if sid in audit_by_sid:
                                             au = audit_by_sid[sid]
@@ -1590,8 +2237,13 @@ Return ONLY a valid JSON object in this exact format:
                                             item["search_scope"] = app_scope if app_scope in ("SCENE_SPECIFIC", "SCRIPT_OVERALL") else "SCENE_SPECIFIC"
                                             item["scope_audit_reason"] = str(au.get("reason") or "")
                                             if app_query:
-                                                if item.get("tool_name") == "clone_youtube_short_peak_clip":
+                                                t_n = item.get("tool_name")
+                                                if t_n == "clone_youtube_short_peak_clip":
                                                     item["youtube_search_query"] = app_query
+                                                elif t_n == "summon_epic_monster_cinematic_media":
+                                                    item["action_or_concept_query"] = app_query
+                                                elif t_n == "fetch_clean_cinematic_portrait_or_broll":
+                                                    item["human_action_query"] = app_query
                                                 else:
                                                     item["smart_image_query"] = app_query
                                         item["scope_audited"] = True
@@ -1610,7 +2262,7 @@ Return ONLY a valid JSON object in this exact format:
                                         pass
 
                                     verdict_log = ", ".join(
-                                        f"S{x.get('scene_id')}:{x.get('search_scope')}('{x.get('youtube_search_query') or x.get('smart_image_query')}')"
+                                        f"S{x.get('scene_id')}:{x.get('tool_name')}[{x.get('search_scope')}]"
                                         for x in audited_list
                                     )
                                     logger.info(

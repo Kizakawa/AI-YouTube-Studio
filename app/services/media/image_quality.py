@@ -263,69 +263,17 @@ def _dims(item: Dict) -> tuple:
         return 0, 0
 
 
-# ─────────────────────────────── Chế độ quái vật / sinh vật huyền thoại & kinh dị ───────────────────────────────
-# Những chủ thể quái vật, thủy quái, sinh vật tiền sử hoặc thực thể kinh dị → ảnh rùng rợn, ám ảnh nhất là
-# cảnh phim CGI (The Meg, Underwater, Pirates of the Caribbean), ArtStation dark horror, Thalassophobia/Megalophobia art.
-_CREATURE_WORDS = (
-    "kraken", "leviathan", "megalodon", "sea serpent", "sea monster", "cthulhu", "godzilla",
-    "loch ness", "nessie", "bloop", "the bloop", "mothman", "wendigo", "chupacabra", "bigfoot", "sasquatch",
-    "yeti", "skinwalker", "behemoth", "basilisk", "giant squid", "colossal squid",
-    "magnapinna", "bigfin squid", "monster", "monsters", "cryptid", "demon", "lusca", "jormungandr",
-    "charybdis", "scylla", "tiamat", "ningen", "kaiju", "werewolf", "vampire", "ghost ship",
-    "abyssal creature", "deep sea creature", "deep sea monster", "eldritch", "mermaid", "siren",
-    "thunderbird", "jersey devil", "dogman", "titanoboa", "mosasaurus", "liopleurodon",
-    "dunkleosteus", "helicoprion", "livyatan", "sarcosuchus", "plesiosaur", "kronosaurus",
-    "basilosaurus", "megalania", "smilodon", "terror bird", "gorgonopsid", "arthropleura",
-    "t rex", "tyrannosaurus", "spinosaurus", "indominus", "giganotosaurus", "velociraptor",
-    "allosaurus", "dinosaur", "dinosaurs", "dragon", "hydra", "cerberus", "fenrir", "minotaur",
-    "king kong", "kong",
-    "scp", "siren head", "backrooms", "slenderman", "the rake", "crawler", "pale crawler",
-    "shadow person", "doppelganger", "analog horror", "thalassophobia", "megalophobia",
-    "anglerfish", "goblin shark", "frilled shark", "vampire squid", "giant isopod", "oarfish",
-    "gulper eel", "viperfish", "black swallower", "tentacle", "tentacles",
-)
-# Tên có chữ "monster"/"dragon" nhưng là động vật THẬT → không bật chế độ quái vật
-_REAL_ANIMAL_EXCEPTIONS = ("gila monster", "komodo dragon", "sea dragon", "dragonfish", "dragonfly")
-
-# Truy vấn Top Google Images bổ trợ theo từng quái vật cụ thể
-_CREATURE_FILM_REFS = {
-    "kraken": "giant kraken monster attacking ship",
-    "megalodon": "giant megalodon shark attacking submarine",
-    "godzilla": "Godzilla King of the Monsters giant monster",
-    "loch ness": "giant Loch Ness monster underwater",
-    "nessie": "giant Loch Ness monster underwater",
-    "cthulhu": "giant Cthulhu monster ocean",
-    "leviathan": "giant leviathan sea monster underwater",
-    "sea serpent": "giant sea serpent monster ocean",
-    "sea monster": "giant sea monster deep ocean thalassophobia",
-    "bloop": "the bloop giant sea monster",
-    "giant squid": "giant squid attacking ship underwater",
-    "colossal squid": "colossal squid deep sea monster",
-    "magnapinna": "bigfin squid magnapinna deep sea ROV footage",
-    "bigfin squid": "bigfin squid magnapinna deep sea ROV footage",
-    "titanoboa": "giant titanoboa snake",
-    "mosasaurus": "Jurassic World Mosasaurus giant underwater",
-    "t rex": "Tyrannosaurus rex Jurassic World roaring",
-    "tyrannosaurus": "Tyrannosaurus rex Jurassic World roaring",
-    "spinosaurus": "Spinosaurus dinosaur giant predator",
-    "indominus": "Indominus rex Jurassic World",
-    "dunkleosteus": "giant Dunkleosteus prehistoric fish",
-    "helicoprion": "Helicoprion prehistoric shark",
-    "livyatan": "Livyatan melvillei giant whale",
-    "mothman": "terrifying Mothman glowing red eyes",
-    "wendigo": "terrifying Wendigo monster dark forest",
-    "skinwalker": "terrifying skinwalker monster",
-    "siren head": "giant Siren Head monster",
-    "scp": "SCP terrifying monster containment",
-    "backrooms": "Backrooms found footage monster",
-    "anglerfish": "deep sea anglerfish glowing",
-    "goblin shark": "deep sea goblin shark jaws",
-}
+# ─────────────────────────────── Chế độ quái vật / sinh vật huyền thoại & kinh dị (Điều phối qua @tool Agent) ───────────────────────────────
+# Lưu ý: Đã xóa bỏ hoàn toàn cơ chế dò tìm từ khóa tĩnh (_CREATURE_WORDS / _SPECIFIC_CREATURES / _CREATURE_FILM_REFS).
+# Việc nhận diện phân cảnh Quái vật hùng vĩ (Epic Monster / Megalophobia) hay Tâm lý học (Dark Psychology)
+# nay do LLM Visual Director trực tiếp quyết định thông qua việc chọn công cụ `@tool` có mô tả ngữ nghĩa:
+# - `summon_epic_monster_cinematic_media` (bật `creature_mode=True`)
+# - `fetch_clean_cinematic_portrait_or_broll` (bật `clean_stock_only=True`)
 
 _CREATURE_BONUS_CUES = (
     "movie", "movie scene", "movie still", "film", "vfx", "cgi", "8k", "4k", "photorealistic",
-    "hyperrealistic", "imax", "underwater", "the meg", "godzilla", "jurassic", "kraken",
-    "leviathan", "thalassophobia", "megalophobia", "colossal", "giant", "massive", "roaring",
+    "hyperrealistic", "imax", "underwater", "artstation", "concept art", "unreal engine",
+    "thalassophobia", "megalophobia", "colossal", "giant", "massive", "roaring",
     "terrifying", "dark", "deep sea", "ocean", "monster", "creature", "attack", "jaws",
 )
 
@@ -342,137 +290,64 @@ _CREATURE_PENALTY_CUES = (
     "statue", "sculpture", "map", "book cover", "dvd cover", "washed ashore", "beached",
 )
 
-# Thứ tự ưu tiên nhận diện tên quái vật đặc trưng (ưu tiên tên riêng trước các từ chung như "tentacle", "monster")
-_SPECIFIC_CREATURES = (
-    "kraken", "leviathan", "megalodon", "cthulhu", "godzilla", "loch ness", "nessie",
-    "bloop", "jormungandr", "charybdis", "scylla", "lusca", "tiamat", "ningen", "kaiju",
-    "mothman", "wendigo", "chupacabra", "bigfoot", "sasquatch", "yeti", "skinwalker",
-    "behemoth", "basilisk", "titanoboa", "mosasaurus", "liopleurodon", "dunkleosteus",
-    "helicoprion", "livyatan", "sarcosuchus", "plesiosaur", "kronosaurus", "basilosaurus",
-    "t rex", "tyrannosaurus", "spinosaurus", "indominus", "giganotosaurus", "velociraptor",
-    "allosaurus", "dinosaur", "dragon", "hydra", "cerberus", "fenrir", "minotaur", "king kong",
-    "siren head", "slenderman", "backrooms", "scp", "magnapinna", "bigfin squid",
-    "colossal squid", "giant squid", "anglerfish", "goblin shark", "frilled shark",
-    "vampire squid", "oarfish", "gulper eel", "viperfish", "sea serpent", "sea monster",
-)
+_SPECIFIC_CREATURES: tuple = ()
 
 
 def is_creature_subject(subject: Optional[str], narration: str = "", topic: str = "") -> bool:
-    """True nếu chủ thể hoặc ngữ cảnh là quái vật / thủy quái / khủng long / thực thể kinh dị."""
-    import os
-    if os.getenv("CREATURE_ART_MODE", "true").strip().lower() in ("0", "false", "no", "off"):
-        return False
-    subj = f" {_norm_text(subject or '')} "
-    if any(f" {x} " in subj or x in subj for x in _REAL_ANIMAL_EXCEPTIONS):
-        return False
-    if any(f" {w} " in subj for w in _CREATURE_WORDS):
-        return True
-    ctx = f" {_norm_text(narration)} {_norm_text(topic)} "
-    if any(f" {w} " in ctx for w in _CREATURE_WORDS):
-        return True
-    raw_ctx = f"{subject or ''} {narration or ''} {topic or ''}".lower()
-    vi_horror_cues = (
-        "quái vật", "thủy quái", "quái thú", "sinh vật biển sâu", "mực khổng lồ",
-        "khủng long", "bạo chúa", "rồng", "rùng rợn", "kinh dị", "ác mộng",
-        "vực thẳm", "huyền thoại biển", "người đi biển", "thần thoại",
-    )
-    return any(cue in raw_ctx for cue in vi_horror_cues)
+    """
+    Giữ chữ ký hàm tương thích ngược.
+    Không còn tự đoán bằng danh sách từ khóa tĩnh — chế độ quái vật được kích hoạt tường minh
+    khi LLM Agent gọi `@tool summon_epic_monster_cinematic_media`.
+    """
+    return False
 
 
 def extract_core_creature(*texts: str) -> str:
-    """Trích xuất tên quái vật/sinh vật cốt lõi từ subject, narration hoặc topic (ưu tiên tên riêng như kraken, leviathan, t rex)."""
-    combined_norm = " " + " ".join(_norm_text(t) for t in texts if t) + " "
-    if any(f" {x} " in combined_norm for x in _REAL_ANIMAL_EXCEPTIONS):
-        return ""
-    for c in _SPECIFIC_CREATURES:
-        if f" {c} " in combined_norm:
-            return "t-rex" if c == "t rex" else c
-    raw_low = " ".join((t or "").lower() for t in texts if t)
-    if any(k in raw_low for k in ("khủng long bạo chúa", "bạo chúa")):
-        return "t-rex"
-    if "khủng long" in raw_low:
-        return "dinosaur"
-    if any(k in raw_low for k in ("thủy quái", "mực khổng lồ", "bạch tuộc khổng lồ", "quái vật biển", "người đi biển")):
-        return "kraken"
-    if any(k in combined_norm for k in (" tentacle ", " tentacles ", " suction ", " ship ", " sailor ", " whirlpool ")):
-        if any(k in raw_low for k in ("quái vật", "thần thoại", "biển", "đại dương", "ocean", "sea", "abyss")):
-            return "kraken"
-    for w in _CREATURE_WORDS:
-        if f" {w} " in combined_norm and w not in ("monster", "monsters", "tentacle", "tentacles"):
-            return "t-rex" if w == "t rex" else w
+    """
+    Giữ chữ ký hàm tương thích ngược.
+    Tên sinh vật/quái vật nay được LLM truyền trực tiếp qua tham số `creature_name` của `@tool`.
+    """
     return ""
 
 
-def creature_queries(subject: str, topic: str = "", narration: str = "") -> List[str]:
+def creature_queries(
+    subject: str,
+    topic: str = "",
+    narration: str = "",
+    scale_anchor: str = "",
+    action_query: str = "",
+) -> List[str]:
     """
-    Sinh bộ truy vấn TOP SEARCH GOOGLE IMAGES bám sát ĐÚNG tên quái vật/chủ thể mà người dùng tìm kiếm
-    (không bao giờ tự ý đổi sang tên bộ phim của quái vật khác).
+    Sinh bộ truy vấn Concept Art 8K / Movie Still CGI / Megalophobia dựa trực tiếp trên
+    tham số `creature_name` (`subject`), `scale_anchor_object` (`scale_anchor`) và `action_query`
+    do LLM Agent truyền vào qua `@tool summon_epic_monster_cinematic_media`.
     """
-    subject = (subject or "").strip()
-    core = extract_core_creature(subject, narration, topic)
-    norm_all = f" {_norm_text(subject)} {_norm_text(narration)} {_norm_text(topic)} "
+    base_creature = re.sub(r"\s+", " ", (subject or "").strip()) or "colossal monster"
+    anchor = re.sub(r"\s+", " ", (scale_anchor or "").strip())
+    act = re.sub(r"\s+", " ", (action_query or "").strip())
 
-    scene_focus_words = []
-    focus_candidates = (
-        "tentacles", "tentacle", "ship", "eye", "eyes", "jaws", "teeth", "whirlpool",
-        "shipwreck", "submarine", "diver", "sailor", "storm", "abyss", "roaring", "glowing",
-    )
-    subj_norm = f" {_norm_text(subject)} {_norm_text(narration)} "
-    for fw in focus_candidates:
-        if f" {fw} " in subj_norm and fw not in (core or ""):
-            scene_focus_words.append(fw)
-        if len(scene_focus_words) >= 2:
-            break
-    focus_str = " ".join(scene_focus_words)
-
-    base_creature = core or " ".join(subject_terms(subject)[:3]) or "giant sea monster"
-    is_marine = any(
-        k in norm_all
-        for k in (
-            "kraken", "megalodon", "leviathan", "cthulhu", "loch ness", "nessie", "bloop",
-            "squid", "sea", "ocean", "abyss", "shark", "whale", "mosasaurus", "liopleurodon",
-            "dunkleosteus", "helicoprion", "livyatan", "anglerfish", "oarfish", "thalassophobia",
-            "ship", "sailor", "biển", "đại dương", "thủy quái", "mariana", "vực",
-        )
-    )
+    candidates: List[str] = []
+    if act:
+        candidates.append(f"{act} concept art 8k" if "concept art" not in act.lower() and "movie" not in act.lower() else act)
+    if anchor:
+        candidates.append(f"colossal {base_creature} towering over {anchor} concept art 8k")
+        candidates.append(f"giant {base_creature} vs {anchor} cgi movie scene")
+    candidates.extend([
+        f"giant {base_creature} monster concept art 8k",
+        f"{base_creature} cgi movie still",
+        f"{base_creature} megalophobia artstation",
+    ])
 
     qs: List[str] = []
-    # 1. Truy vấn Top Search Google Images trực diện đúng chủ thể
-    ref = _CREATURE_FILM_REFS.get(core) or _CREATURE_FILM_REFS.get(core.replace("-", " "))
-    if ref:
-        qs.append(ref)
-
-    if is_marine:
-        candidates = [
-            f"giant {base_creature} sea monster" if "monster" not in base_creature else f"giant {base_creature}",
-            f"{base_creature} {focus_str} underwater monster".strip() if focus_str else f"{base_creature} attacking ship ocean",
-            f"{base_creature}",
-        ]
-    else:
-        candidates = [
-            f"giant {base_creature} {focus_str} roaring".strip(),
-            f"{base_creature} movie scene",
-            f"{base_creature}",
-        ]
-
     for cq in candidates:
         cq_clean = re.sub(r"\s+", " ", cq).strip()
         if cq_clean and cq_clean.lower() not in [x.lower() for x in qs]:
             qs.append(cq_clean)
 
-    return qs[:4]
+    return qs[:5]
 
 
-# ─────────────────────────────── Chế độ Tâm Lý Học Đen Tối / Seinen Noir (@MasteringMindControl) ───────────────────────────────
-_PSYCHOLOGY_NOIR_CUES = (
-    "psychology", "dark psychology", "mind control", "manipulation", "manipulator", "manipulators",
-    "gaslight", "gaslighting", "narcissist", "narcissistic", "sociopath", "psychopath",
-    "micro expression", "micro expressions", "silent treatment", "love bombing",
-    "intermittent reinforcement", "pavlovian", "ben franklin effect", "isolation gambit",
-    "emotional mirroring", "false choice", "pratfall effect", "cognitive dissonance",
-    "tâm lý", "thao túng", "đọc vị", "ngôn ngữ cơ thể", "im lặng", "ái kỷ",
-)
-
+# ─────────────────────────────── Chế độ Tâm Lý Học Đen Tối / Seinen Noir (Điều phối qua @tool Agent) ───────────────────────────────
 _PSYCHOLOGY_NOIR_BONUS_CUES = (
     "noir", "monochrome", "black and white", "johan", "liebert", "monster anime", "seinen",
     "psychological", "thriller", "shadow", "shadows", "silhouette", "chiaroscuro",
@@ -486,46 +361,25 @@ _CHEESY_CORPORATE_PENALTY_CUES = (
 
 
 def is_psychology_noir_subject(subject: Optional[str], narration: str = "", topic: str = "", channel_niche: str = "") -> bool:
-    """True nếu chủ đề, kênh hoặc phân cảnh thuộc Tâm lý học đen tối / Thao túng tâm lý / Đọc vị hành vi."""
-    raw_ctx = f"{subject or ''} {narration or ''} {topic or ''} {channel_niche or ''}".lower()
-    return any(cue in raw_ctx for cue in _PSYCHOLOGY_NOIR_CUES)
+    """
+    Giữ chữ ký hàm tương thích ngược.
+    Chế độ tâm lý học / chân dung điện ảnh sạch không chữ nay do LLM Agent quyết định trực tiếp
+    bằng cách gọi `@tool fetch_clean_cinematic_portrait_or_broll`.
+    """
+    return False
 
 
 def psychology_noir_queries(subject: str, topic: str = "", narration: str = "") -> List[str]:
     """
-    Sinh bộ truy vấn Google Images / Bing HD / Wallhaven chuẩn phong cách @MasteringMindControl
-    (Dark Psychological Thriller / Monochrome Seinen Noir)
-    bám sát hành động và cảm xúc cụ thể của từng câu thoại (KHÔNG chèn từ khóa học thuật nhiếp ảnh như 'chiaroscuro' làm lệch kết quả).
+    Sinh bộ truy vấn chân dung điện ảnh từ tham số chủ thể mà LLM Agent cung cấp (không dùng từ khóa tĩnh).
     """
-    ctx = f"{subject or ''} {narration or ''} {topic or ''}".lower()
-    qs: List[str] = []
-
-    if any(k in ctx for k in ("silence", "silent", "argument", "confront", "enemy", "enemies", "ally", "allies", "favor", "distance", "im lặng")):
-        qs.extend([
-            "johan liebert monster anime confrontation scene",
-            "two men tense confrontation dark room movie still",
-            "death note l and light tense silence anime scene",
-        ])
-    elif any(k in ctx for k in ("smile", "smirk", "charm", "disguise", "familiar", "mirror", "love bomb", "friend", "kind", "compliment", "cười", "mặt nạ")):
-        qs.extend([
-            "johan liebert monster cold smile anime",
-            "patrick bateman cold stare movie still",
-            "man dark shadow portrait cold expression film still",
-        ])
-    elif any(k in ctx for k in ("isolat", "shrink", "alone", "depend", "trap", "leash", "guilt", "guilty", "anxiet", "doubt", "cô lập", "bẫy")):
-        qs.extend([
-            "seinen anime character alone in dark room",
-            "man sitting alone dark room cinematic movie still",
-            "thomas shelby dark shadow contemplative movie still",
-        ])
-    else:
-        qs.extend([
-            "johan liebert monster intense cold eyes",
-            "cillian murphy intense cold stare movie still",
-            "man dark shadow intense eyes film still",
-        ])
-
-    return list(dict.fromkeys(qs))[:4]
+    clean_subj = re.sub(r"\s+", " ", (subject or "").strip()) or "man dark shadow portrait"
+    return [
+        f"{clean_subj} dark shadow portrait",
+        "intense eyes close up dark lighting",
+        "silhouette person walking night",
+        "dramatic portrait chiaroscuro lighting",
+    ]
 
 
 # Các tên miền báo chí khoa học / bách khoa / bảo tàng uy tín trên Google Images (dùng cho chủ thể khoa học/lịch sử thường)

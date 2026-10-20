@@ -718,8 +718,24 @@ class VideoMemoryRAG:
             if not isinstance(item, dict):
                 continue
             sid = int(item.get("scene_id") or (idx + 1))
-            q_key = "youtube_search_query" if item.get("tool_name") == "clone_youtube_short_peak_clip" else "smart_image_query"
-            cur_q = str(item.get(q_key) or item.get("youtube_search_query") or item.get("smart_image_query") or "").strip()
+            t_name = str(item.get("tool_name") or "")
+            if t_name == "fetch_clean_cinematic_portrait_or_broll":
+                # Giữ nguyên các cụm truy vấn hành động con người ngắn gọn của Pexels/Pixabay cho tool chân dung/B-Roll
+                continue
+            q_key = (
+                "action_or_concept_query"
+                if t_name == "summon_epic_monster_cinematic_media"
+                else "youtube_search_query"
+                if t_name == "clone_youtube_short_peak_clip"
+                else "smart_image_query"
+            )
+            cur_q = str(
+                item.get(q_key)
+                or item.get("action_or_concept_query")
+                or item.get("youtube_search_query")
+                or item.get("smart_image_query")
+                or ""
+            ).strip()
             if not cur_q:
                 continue
 

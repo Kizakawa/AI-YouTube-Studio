@@ -164,16 +164,22 @@ class StockFetcher:
             logger.debug(f"Pexels search_photos error for '{query}': {e}")
         return []
 
+    _pixabay_rate_limited_until: float = 0.0
+
     def search_pixabay_videos(self, query: str, per_page: int = 4) -> List[Dict]:
         """Tìm kiếm video clip trên Pixabay API (kho video 3D, CGI, chuyển động trừu tượng)."""
+        import time as _time
         key = self._pixabay_key
-        if not key or key == "your_pixabay_api_key_here":
+        if not key or key == "your_pixabay_api_key_here" or _time.time() < StockFetcher._pixabay_rate_limited_until:
             return []
 
         try:
             clean_q = clean_scene_search_query(query, max_words=3) or query
             url = f"https://pixabay.com/api/videos/?key={key}&q={urllib.parse.quote(clean_q)}&video_type=all&per_page={max(per_page, 3)}&safesearch=true"
-            res = requests.get(url, timeout=10)
+            res = requests.get(url, timeout=6)
+            if res.status_code == 429:
+                StockFetcher._pixabay_rate_limited_until = _time.time() + 180.0
+                return []
             if res.status_code == 200:
                 hits = res.json().get("hits", [])
                 results = []
@@ -201,14 +207,18 @@ class StockFetcher:
 
     def search_pixabay_photos(self, query: str, per_page: int = 4) -> List[Dict]:
         """Tìm kiếm ảnh chất lượng cao trên Pixabay API."""
+        import time as _time
         key = self._pixabay_key
-        if not key or key == "your_pixabay_api_key_here":
+        if not key or key == "your_pixabay_api_key_here" or _time.time() < StockFetcher._pixabay_rate_limited_until:
             return []
 
         try:
             clean_q = clean_scene_search_query(query, max_words=3) or query
             url = f"https://pixabay.com/api/?key={key}&q={urllib.parse.quote(clean_q)}&image_type=photo&orientation=vertical&per_page={max(per_page, 3)}&safesearch=true&order=popular"
-            res = requests.get(url, timeout=10)
+            res = requests.get(url, timeout=6)
+            if res.status_code == 429:
+                StockFetcher._pixabay_rate_limited_until = _time.time() + 180.0
+                return []
             if res.status_code == 200:
                 hits = res.json().get("hits", [])
                 results = []
@@ -370,13 +380,13 @@ class StockFetcher:
 
         creature_mode = bool(va.get("creature_mode"))
         creature_qs = [q for q in (va.get("creature_queries") or []) if q]
+        clean_stock_only = bool(va.get("clean_stock_only"))
         bypass_copyright = True
 
-        # 1. ƯU TIÊN SỐ 1: Săn ảnh trực tiếp trên Google Images / Bing HD (TRỪ ngách Tâm lý/Khắc kỷ vì ảnh Web chứa 95% Quote Card / Blog chữ!)
-        _photo_ctx_low = f"{topic} {query} {narration} {va.get('subject', '')}".lower()
-        _is_psych_photo = any(k in _photo_ctx_low for k in ("narcissist", "psychology", "manipulat", "gaslight", "ego", "stoic", "sociopath", "psychopath", "dissonance", "toxic"))
-        if _is_psych_photo:
-            for pq_p in ["man intense eyes dark shadow", "dramatic portrait dark lighting", "person silhouette shadow", "serious man dark room"]:
+        # 1. Nếu Agent gọi công cụ `fetch_clean_cinematic_portrait_or_broll` (`clean_stock_only=True`):
+        #    Ưu tiên tuyệt đối kho ảnh chụp thật Pexels / Pixabay HD không chữ (bỏ qua Open Web để tránh Quote Card / bìa sách)
+        if clean_stock_only:
+            for pq_p in (queries + ["man intense eyes dark shadow", "dramatic portrait dark lighting", "person silhouette shadow"]):
                 _add(self.search_photos(pq_p, per_page=5, orientation="portrait", topic="dramatic portrait", narration="", used_urls=used))
                 _add(self.search_pixabay_photos(pq_p, per_page=5))
                 if len(candidates) >= 10:
@@ -385,7 +395,7 @@ class StockFetcher:
         try:
             from app.services.media.web_image_fetcher import WebImageFetcher, web_image_search_enabled, bypass_copyright_enabled
             bypass_copyright = bypass_copyright_enabled()
-            if web_image_search_enabled() and not _is_psych_photo:
+            if web_image_search_enabled() and not clean_stock_only:
                 web_fetcher = WebImageFetcher()
                 google_qs = [q for q in (va.get("google_image_queries") or []) if q]
                 pref_engines = va.get("preferred_engines")
@@ -601,20 +611,11 @@ class StockFetcher:
                 candidate_queries.append(q)
 
         _ctx_low = f"{topic} {query} {narration}".lower()
-        _is_psych_ctx = any(k in _ctx_low for k in ("narcissist", "psychology", "manipulat", "gaslight", "ego", "stoic", "sociopath", "psychopath", "dissonance", "stare", "eye contact", "emotional", "toxic", "lie", "liar"))
-        if _is_psych_ctx:
-            if any(k in _ctx_low for k in ("stare", "eye", "gaze", "blink", "look")):
-                for pq in ["close up eyes dark lighting", "man intense stare", "woman serious gaze portrait", "person dark shadow face"]:
-                    _push(pq)
-            elif any(k in _ctx_low for k in ("argue", "argument", "public", "intimidate", "rage", "angry", "confront")):
-                for pq in ["couple argument tension", "angry man shouting", "two people serious conversation", "man frustrated dark"]:
-                    _push(pq)
-            elif any(k in _ctx_low for k in ("crumble", "insecurity", "panic", "anxious", "stress", "alone", "dissonance")):
-                for pq in ["man stressed alone dark room", "anxious person head in hands", "man looking in mirror dark", "silhouette person dark shadow"]:
-                    _push(pq)
-            else:
-                for pq in ["man confident dark lighting", "silhouette person walking night", "close up face dark shadow", "dramatic portrait lighting"]:
-                    _push(pq)
+        if (visual_analysis or {}).get("clean_stock_only"):
+            for sq_clean in ((visual_analysis or {}).get("search_queries") or []):
+                _push(sq_clean)
+            for pq_fallback in ["close up eyes dark lighting", "man intense stare", "silhouette person walking night", "dramatic portrait lighting"]:
+                _push(pq_fallback)
         if "honey badger" in _ctx_low:
             for hq in ["leopard wildlife africa", "african savanna predator", "leopard stalking prey", "badger wildlife"]:
                 _push(hq)

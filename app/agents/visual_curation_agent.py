@@ -95,7 +95,7 @@ def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any
     if not subject or subject.lower() in _GENERIC_SUBJECTS:
         return res
 
-    from app.services.media.image_quality import subject_terms, is_creature_subject, creature_queries
+    from app.services.media.image_quality import subject_terms, creature_queries
     if core_entity and core_entity.lower() not in _GENERIC_SUBJECTS:
         core_terms = subject_terms(core_entity)
         subj_lower = subject.lower()
@@ -125,24 +125,14 @@ def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any
     res["search_queries"] = fixed[:4]
     res["subject"] = subject
 
-    # Xác định chế độ thị giác: luôn ưu tiên trực tiếp Top Search Google Images ("google")
+    # Xác định chế độ thị giác dựa trên quyết định ngữ nghĩa của AI (`visual_paradigm` hoặc cờ `creature_mode` từ @tool)
     paradigm = str(res.get("visual_paradigm") or "").upper()
-    actual_creature = is_creature_subject(subject)
-    if is_ai:
-        if paradigm in ("DARK_HORROR_MYTHOLOGY", "MYTHOLOGY_MONSTER", "HOLLYWOOD_VFX_MOVIE", "CGI_CONCEPT_ART") and actual_creature or actual_creature:
-            res["creature_mode"] = True
-            res["preferred_engines"] = ["google"]
-        else:
-            res["creature_mode"] = False
-            res["preferred_engines"] = ["google"]
+    if is_ai and paradigm in ("DARK_HORROR_MYTHOLOGY", "MYTHOLOGY_MONSTER", "HOLLYWOOD_VFX_MOVIE", "CGI_CONCEPT_ART"):
+        res["creature_mode"] = True
+        res["preferred_engines"] = ["google"]
     else:
-        if actual_creature:
-            c_qs = creature_queries(subject)
-            res["google_image_queries"] = c_qs[:4]
-            res["creature_mode"] = True
-            res["creature_queries"] = c_qs
-            res["preferred_engines"] = ["google"]
-            return res
+        res.setdefault("creature_mode", False)
+        res["preferred_engines"] = ["google"]
 
     g_queries = [_strip_metaphor_and_jargon(q.replace('"', "").strip()) for q in (res.get("google_image_queries") or []) if isinstance(q, str) and q.strip()]
     fixed_g: List[str] = []
@@ -167,67 +157,26 @@ def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any
 
     res["google_image_queries"] = fixed_g[:4]
     if res.get("creature_mode"):
-        res["creature_queries"] = fixed_g[:4]
+        res["creature_queries"] = creature_queries(subject, action_query=fixed_g[0] if fixed_g else "")
     return res
 
 
 def _apply_creature_mode(res: Dict[str, Any], narration: str = "", topic: str = "", channel_niche: str = "") -> Dict[str, Any]:
     """
-    Bổ sung chế độ thị giác chuyên biệt với nguồn ưu tiên số 1 là TOP SEARCH GOOGLE IMAGES (["google"]).
-    Đảm bảo mỗi phân cảnh giữ được truy vấn hành động/bối cảnh riêng biệt (ai_qs) thay vì lặp lại cùng 1 từ khóa.
+    Giữ hàm tương thích ngược. Không còn dò từ khóa tĩnh; chỉ đồng bộ `creature_queries` nếu
+    LLM Agent đã chọn paradigm quái vật hoặc bật `creature_mode=True` qua `@tool`.
     """
-    from app.services.media.image_quality import (
-        is_creature_subject, creature_queries, extract_core_creature, _SPECIFIC_CREATURES, _norm_text,
-        is_psychology_noir_subject, psychology_noir_queries,
-    )
-    subject = str(res.get("subject") or "").strip()
-
-    # Chế độ @MasteringMindControl Dark Psychological Noir & Seinen Thriller
-    if is_psychology_noir_subject(subject, narration, topic, channel_niche):
-        res["psychology_noir_mode"] = True
-        res["preferred_engines"] = ["google"]
-        noir_qs = psychology_noir_queries(subject, narration=narration, topic=topic)
-        if res.get("analysis_source") == "ai" and res.get("google_image_queries"):
-            existing_g = list(res.get("google_image_queries") or [])
-            for nq in noir_qs:
-                if len(existing_g) < 4 and nq.lower() not in [x.lower() for x in existing_g]:
-                    existing_g.append(nq)
-            res["google_image_queries"] = existing_g[:4]
-            return res
-        else:
-            res["google_image_queries"] = noir_qs[:4]
-            res["search_queries"] = noir_qs[:3]
-            logger.info(f"🎭 [VisualCuration Noir] Chế độ DARK PSYCHOLOGICAL NOIR (Google Top Search) cho '{subject or topic[:30]}': {noir_qs[:3]}")
-            return res
-
-    if is_creature_subject(subject, narration, topic):
-        core_monster = extract_core_creature(subject, narration, topic)
-        norm_subj = f" {_norm_text(subject)} "
-        if core_monster and f" {core_monster.replace('-', ' ')} " not in norm_subj:
-            if not any(f" {sp} " in norm_subj for sp in _SPECIFIC_CREATURES):
-                subject = f"giant {core_monster} {subject}".strip() if subject else f"giant {core_monster}"
-                res["subject"] = subject
-        elif not subject:
-            subject = f"giant {core_monster}" if core_monster else "terrifying deep sea monster"
-            res["subject"] = subject
-
-        c_qs = creature_queries(subject, topic=topic, narration=narration)
+    from app.services.media.image_quality import creature_queries
+    if res.get("creature_mode"):
+        subject = str(res.get("subject") or "").strip()
         ai_qs = [q for q in (res.get("google_image_queries") or []) if q]
-        is_hook = bool(res.get("is_hook_scene")) or int(res.get("scene_id") or 1) == 1
-
-        # Cảnh 1 (Hook): Ưu tiên truy vấn Hook ấn tượng nhất + từ khóa chủ thể kinh điển.
-        # Cảnh 2..N: Ưu tiên truy vấn hành động/góc máy đặc thù của chính cảnh đó (ai_qs) TRƯỚC,
-        # sau đó mới lót c_qs dự phòng để các cảnh trong video không bị trùng từ khóa tìm kiếm!
-        ordered_candidates = (ai_qs[:1] + c_qs[:1] + ai_qs[1:] + c_qs[1:]) if is_hook else (ai_qs + c_qs)
+        c_qs = creature_queries(subject, topic=topic, narration=narration, action_query=ai_qs[0] if ai_qs else "")
         merged_qs: List[str] = []
-        for q in ordered_candidates:
+        for q in (ai_qs + c_qs):
             if q and q.lower() not in [x.lower() for x in merged_qs]:
                 merged_qs.append(q)
-        res["creature_mode"] = True
-        res["preferred_engines"] = ["google"]
         res["creature_queries"] = merged_qs[:4]
         res["google_image_queries"] = merged_qs[:4]
-        logger.info(f"🔎 [VisualCuration GoogleTop] Cảnh {res.get('scene_id', '?')} TOP SEARCH GOOGLE IMAGES cho '{subject}': {res['creature_queries']}")
     return res
 
 

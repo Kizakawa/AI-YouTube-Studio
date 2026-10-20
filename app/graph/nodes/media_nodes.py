@@ -321,32 +321,164 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     )
 
         # ══════════════════════════════════════════════════════════════════════
-        # NHÁNH ƯU TIÊN MỚI: THỰC THI BỘ @TOOL CỦA LLM (`clone_youtube_short_peak_clip` / `search_google_cinematic_image`)
+        # NHÁNH ƯU TIÊN MỚI: THỰC THI BỘ 4 @TOOL CHUYÊN BIỆT CỦA LLM ĐẠO DIỄN
+        # (`summon_epic_monster_cinematic_media` | `fetch_clean_cinematic_portrait_or_broll` | `clone_youtube_short_peak_clip` | `search_google_cinematic_image`)
         # ══════════════════════════════════════════════════════════════════════
-        if not media_path and tool_name in ("clone_youtube_short_peak_clip", "search_google_cinematic_image"):
+        if not media_path and tool_name in (
+            "clone_youtube_short_peak_clip",
+            "search_google_cinematic_image",
+            "summon_epic_monster_cinematic_media",
+            "fetch_clean_cinematic_portrait_or_broll",
+        ):
             from app.graph.tools.media_tools import (
                 execute_youtube_short_peak_clone_sync,
                 execute_google_cinematic_image_sync,
+                execute_epic_monster_cinematic_media_sync,
+                execute_clean_cinematic_portrait_or_broll_sync,
             )
             camera_motion = sc_strat.get("camera_motion") or ("hyper_zoom" if idx == 0 else "zoom_in")
             sfx_cue = sc_strat.get("sfx_cue") or ("whoosh" if idx == 0 else "hit")
-            chosen_strategy = "YOUTUBE_PEAK_SHORT" if tool_name == "clone_youtube_short_peak_clip" else "GOOGLE_TOP_IMAGE"
+            chosen_strategy = (
+                "EPIC_MONSTER_ENGINE"
+                if tool_name == "summon_epic_monster_cinematic_media"
+                else "CLEAN_PORTRAIT_BROLL"
+                if tool_name == "fetch_clean_cinematic_portrait_or_broll"
+                else "YOUTUBE_PEAK_SHORT"
+                if tool_name == "clone_youtube_short_peak_clip"
+                else "GOOGLE_TOP_IMAGE"
+            )
             prod_method = chosen_strategy
             tool = tool_name
             rationale = f"LLM Tool Call: {tool_name}"
-            search_query = sc_strat.get("youtube_search_query") or sc_strat.get("smart_image_query") or kw
+            search_query = (
+                sc_strat.get("action_or_concept_query")
+                or sc_strat.get("human_action_query")
+                or sc_strat.get("youtube_search_query")
+                or sc_strat.get("smart_image_query")
+                or kw
+            )
             ai_prompt = vp or search_query
             v_analysis = {}
             tier0_searched = True
             channel_visual_mode = state.get("visual_mode") or "auto"
             scene_media_pref = getattr(scene, 'media_type', None)
 
-            subj_ent = sc_strat.get("subject_entity") or primary_entity or state.get("topic", "")
+            subj_ent = sc_strat.get("creature_name") or sc_strat.get("subject_entity") or primary_entity or state.get("topic", "")
             sc_scope = sc_strat.get("search_scope") or "SCENE_SPECIFIC"
             overall_q = sc_strat.get("overall_script_query") or state.get("topic", "")
             import math as _math
             scene_target_imgs = max(3, min(4, _math.ceil(16 / max(1, total_scenes - 1)))) if (scene.scene_id == 1 or dur >= 3.5 or total_scenes <= 7) else 3
-            if tool_name == "clone_youtube_short_peak_clip":
+
+            if tool_name == "summon_epic_monster_cinematic_media":
+                c_name = sc_strat.get("creature_name") or subj_ent
+                s_anchor = sc_strat.get("scale_anchor_object") or "submarine"
+                m_mode = sc_strat.get("monster_media_mode") or ("3D_CGI_VIDEO" if scene.scene_id == 1 else "CONCEPT_ART_8K")
+                act_q = sc_strat.get("action_or_concept_query") or kw or f"{c_name} {s_anchor}"
+                out_m = str(
+                    media_dir / f"scene_{scene.scene_id:03d}_monster.mp4"
+                    if m_mode.upper() == "3D_CGI_VIDEO"
+                    else media_dir / f"scene_{scene.scene_id:03d}_monster_8k.jpg"
+                )
+                m_res = await asyncio.to_thread(
+                    execute_epic_monster_cinematic_media_sync,
+                    creature_name=c_name,
+                    scale_anchor_object=s_anchor,
+                    output_path=out_m,
+                    monster_media_mode=m_mode,
+                    action_or_concept_query=act_q,
+                    overall_script_query=overall_q,
+                    search_scope=sc_scope,
+                    narration=scene.narration,
+                    topic=state.get("topic", ""),
+                    target_duration_sec=dur + 0.25,
+                    used_urls=used_pool_urls,
+                    is_hook_scene=(scene.scene_id == 1),
+                    job_id=job_id,
+                    scene_id=scene.scene_id,
+                    channel_id=channel_id_val,
+                    target_image_count=scene_target_imgs,
+                )
+                if m_res and m_res.get("media_path"):
+                    media_path = m_res["media_path"]
+                    media_type = m_res.get("media_type", "image")
+                    vision_curated = True
+                    source_url_used = str(m_res.get("source_url") or "")
+                    if media_type in ("video", "hook_ready_video"):
+                        full_peak_path = m_res.get("full_peak_path")
+                        full_peak_duration_sec = float(m_res.get("full_peak_duration_sec") or dur)
+                        prod_method = "MONSTER_3D_CGI_VIDEO_PEAK"
+                        rationale = f"Monster 3D CGI Video ({c_name} vs {s_anchor}): {m_res.get('title', '')[:45]}"
+                    else:
+                        pose_images = list(m_res.get("pose_images") or [media_path])
+                        hook_alternate_urls = list(m_res.get("alternate_urls") or [])
+                        prod_method = "MONSTER_CONCEPT_ART_8K"
+                        rationale = f"Monster Concept Art 8K x{len(pose_images)} ({c_name} vs {s_anchor}): {m_res.get('title', '')[:45]}"
+                else:
+                    # Tầng 3 Fallback (Abyssal Silhouette & Scale Anchor AI): Tránh lộ chi tiết giải phẫu méo của model free
+                    abyssal_prompt = (
+                        f"Colossal silhouette of {c_name} emerging from pitch black fog and deep shadows, "
+                        f"towering over a tiny illuminated {s_anchor} in the foreground for massive scale comparison, "
+                        f"backlit volumetric xenon spotlight, megalophobia cinematic movie still, 8k vertical 9:16"
+                    )
+                    out_ai_m = str(media_dir / f"scene_{scene.scene_id:03d}_monster_silhouette.jpg")
+                    gen_m = await asyncio.to_thread(
+                        image_agent.generate_scene_image,
+                        abyssal_prompt,
+                        out_ai_m,
+                        "9:16",
+                        "scifi",
+                        scene.scene_id,
+                        abyssal_prompt,
+                    )
+                    if gen_m and Path(gen_m).exists():
+                        media_path = gen_m
+                        media_type = "image"
+                        pose_images = [gen_m]
+                        prod_method = "MONSTER_ABYSSAL_SILHOUETTE_AI"
+                        rationale = f"Abyssal Silhouette AI ({c_name} vs {s_anchor})"
+
+            elif tool_name == "fetch_clean_cinematic_portrait_or_broll":
+                h_query = sc_strat.get("human_action_query") or kw or "dramatic portrait dark lighting"
+                m_pref = sc_strat.get("media_preference") or ("VIDEO_BROLL" if scene.scene_id in (1, 2, 4, 6) else "CLEAN_PORTRAIT_PHOTO")
+                out_clean = str(
+                    media_dir / f"scene_{scene.scene_id:03d}_clean_broll.mp4"
+                    if m_pref.upper() == "VIDEO_BROLL"
+                    else media_dir / f"scene_{scene.scene_id:03d}_clean_portrait.jpg"
+                )
+                c_res = await asyncio.to_thread(
+                    execute_clean_cinematic_portrait_or_broll_sync,
+                    subject_entity=subj_ent,
+                    human_action_query=h_query,
+                    output_path=out_clean,
+                    media_preference=m_pref,
+                    overall_script_query=overall_q,
+                    search_scope=sc_scope,
+                    narration=scene.narration,
+                    topic=state.get("topic", ""),
+                    target_duration_sec=dur + 0.25,
+                    used_urls=used_pool_urls,
+                    is_hook_scene=(scene.scene_id == 1),
+                    job_id=job_id,
+                    scene_id=scene.scene_id,
+                    target_image_count=scene_target_imgs,
+                )
+                if c_res and c_res.get("media_path"):
+                    media_path = c_res["media_path"]
+                    media_type = c_res.get("media_type", "image")
+                    vision_curated = True
+                    source_url_used = str(c_res.get("source_url") or "")
+                    if media_type in ("video", "hook_ready_video"):
+                        full_peak_path = c_res.get("full_peak_path")
+                        full_peak_duration_sec = float(c_res.get("full_peak_duration_sec") or dur)
+                        prod_method = "CLEAN_ACTOR_VIDEO_BROLL"
+                        rationale = f"Clean Actor Video B-Roll ({h_query}): {c_res.get('title', '')[:45]}"
+                    else:
+                        pose_images = list(c_res.get("pose_images") or [media_path])
+                        hook_alternate_urls = list(c_res.get("alternate_urls") or [])
+                        prod_method = "CLEAN_PORTRAIT_PHOTO_8K"
+                        rationale = f"Clean Portrait Photo x{len(pose_images)} ({h_query})"
+
+            elif tool_name == "clone_youtube_short_peak_clip":
                 yt_q = sc_strat.get("youtube_search_query") or kw or state.get("topic", "")
                 fb_q = sc_strat.get("fallback_broad_query") or overall_q or subj_ent
                 clip_role = sc_strat.get("clip_role") or ("HOOK" if scene.scene_id == 1 else "PEAK")
@@ -1379,17 +1511,14 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 raw_sc_kw = sc_item.get("visual_keyword") or sc_item.get("visual_prompt") or short_subj
                 sc_kw = clean_scene_search_query(raw_sc_kw, max_words=4) or short_subj
 
-                # Nếu kho alternate_urls của cảnh chưa đủ lấp đầy quota, tìm bổ sung bằng truy vấn góc máy riêng của từng cảnh
+                # Nếu kho alternate_urls của cảnh chưa đủ lấp đầy quota, tìm bổ sung theo đúng công cụ `@tool` mà LLM đã chọn (không dùng danh sách từ khóa tĩnh)
                 if len(verified_poses) + len(alt_pool) < quota + 5:
                     facet = angle_facets[slot_idx % len(angle_facets)]
                     facet2 = angle_facets[(slot_idx + 3) % len(angle_facets)]
                     supp_q = clean_scene_search_query(f"{sc_kw} {facet}", max_words=6) or sc_kw
                     supp_q2 = clean_scene_search_query(f"{short_subj} {facet2}", max_words=5) or supp_q
-                    _is_psych_density = (current_niche in ("psychology", "philosophy_stoicism")) or any(
-                        k in f"{state.get('topic', '')} {sc_kw}".lower()
-                        for k in ("narcissist", "psychology", "manipulat", "gaslight", "ego", "stoic", "sociopath", "psychopath", "dissonance", "toxic")
-                    )
-                    if _is_psych_density:
+                    sc_tool = str(sc_item.get("tool") or "")
+                    if sc_tool == "fetch_clean_cinematic_portrait_or_broll":
                         try:
                             for pq_d in ["dramatic portrait dark shadow", "intense eyes close up dark", "person silhouette night", "man thinking dark room"]:
                                 px_list = await asyncio.to_thread(media_agent.search_photos, pq_d, 5, "portrait", "dramatic portrait", "", used_pool_urls)
@@ -1403,12 +1532,14 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         try:
                             from app.services.media.web_image_fetcher import WebImageFetcher
                             wf = WebImageFetcher()
+                            is_monster_tool = (sc_tool == "summon_epic_monster_cinematic_media")
                             ranked_web = await asyncio.to_thread(
                                 wf.search_all,
-                                supp_q,
+                                f"{sc_kw} concept art 8k" if is_monster_tool else supp_q,
                                 10,
                                 short_subj,
                                 [supp_q2],
+                                is_monster_tool,
                             )
                             for c_item in (ranked_web or []):
                                 u_supp = c_item.get("url")
