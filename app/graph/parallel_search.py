@@ -161,69 +161,65 @@ def build_image_search_branches(
     branches: List[Dict[str, Any]] = []
 
     if creature_mode:
-        # 1. Google Images với câu truy vấn chính + mọi câu truy vấn góc nhìn phụ trong extras
+        # 1 nhánh Google Headless + các nhánh HTTP TLS siêu tốc (ArtStation 8K, Bing HD đa góc nhìn, DDGS HD)
+        # Tránh gọi nhiều tiến trình Chrome Headless cùng lúc gây nghẽn CPU & loại bỏ Wallhaven (tránh lẫn ảnh anime).
         branches.append({
             "branch_name": "google_primary_8k",
             "engine_or_source": "google",
             "branch_query": clean_q,
+            "per_source": max(per_source, 14),
+        })
+        branches.append({
+            "branch_name": "artstation_concept_8k",
+            "engine_or_source": "artstation",
+            "branch_query": extras[0],
             "per_source": max(per_source, 12),
         })
-        for idx_x, xq in enumerate(extras[:3]):
+        branches.append({
+            "branch_name": "bing_hd_primary",
+            "engine_or_source": "bing",
+            "branch_query": clean_q,
+            "per_source": max(per_source, 14),
+        })
+        for idx_x, xq in enumerate(extras[:2]):
             branches.append({
-                "branch_name": f"google_angle_{idx_x + 2}",
-                "engine_or_source": "google",
-                "branch_query": xq,
-                "per_source": max(per_source, 10),
-            })
-        # 2. ArtStation 8K + Bing HD + Wallhaven 4K chạy đồng thời
-        branches.extend([
-            {
-                "branch_name": "artstation_concept_8k",
-                "engine_or_source": "artstation",
-                "branch_query": extras[0],
-                "per_source": max(per_source, 10),
-            },
-            {
-                "branch_name": "bing_hd_scale",
+                "branch_name": f"bing_hd_angle_{idx_x + 2}",
                 "engine_or_source": "bing",
-                "branch_query": clean_q,
-                "per_source": max(per_source, 10),
-            },
-            {
-                "branch_name": "wallhaven_4k_vfx",
-                "engine_or_source": "wallhaven",
-                "branch_query": clean_subj,
-                "per_source": max(per_source, 8),
-            },
-        ])
+                "branch_query": xq,
+                "per_source": max(per_source, 12),
+            })
+        branches.append({
+            "branch_name": "ddgs_hd_creature",
+            "engine_or_source": "ddgs",
+            "branch_query": extras[0],
+            "per_source": max(per_source, 10),
+        })
     else:
         branches.append({
             "branch_name": "google_top_primary",
             "engine_or_source": "google",
             "branch_query": clean_q,
-            "per_source": max(per_source, 12),
+            "per_source": max(per_source, 14),
+        })
+        branches.append({
+            "branch_name": "bing_hd_primary",
+            "engine_or_source": "bing",
+            "branch_query": clean_q,
+            "per_source": max(per_source, 14),
         })
         for idx_x, xq in enumerate(extras[:2]):
             branches.append({
-                "branch_name": f"google_angle_{idx_x + 2}",
-                "engine_or_source": "google",
-                "branch_query": xq,
-                "per_source": max(per_source, 10),
-            })
-        branches.extend([
-            {
-                "branch_name": "bing_hd_visual",
+                "branch_name": f"bing_hd_angle_{idx_x + 2}",
                 "engine_or_source": "bing",
-                "branch_query": clean_q,
-                "per_source": max(per_source, 10),
-            },
-            {
-                "branch_name": "ddgs_open_web",
-                "engine_or_source": "ddgs",
-                "branch_query": clean_q,
-                "per_source": max(per_source, 8),
-            },
-        ])
+                "branch_query": xq,
+                "per_source": max(per_source, 12),
+            })
+        branches.append({
+            "branch_name": "ddgs_open_web",
+            "engine_or_source": "ddgs",
+            "branch_query": clean_q,
+            "per_source": max(per_source, 10),
+        })
         if not use_pure_google_search:
             branches.extend([
                 {

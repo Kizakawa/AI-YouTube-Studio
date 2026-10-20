@@ -37,6 +37,10 @@ WATERMARK_DOMAINS = (
     "powerofpositivity.com", "learning-mind.com", "wikihow.com", "verywellmind.com",
     "healthline.com", "medicalnewstoday.com", "webmd.com", "quotefancy.com", "brainyquote.com",
     "azquotes.com", "picturequotes.com", "geckoandfly.com", "inspiringquotes.us",
+    # Chặn YouTube Thumbnail có chữ clickbait, trang truyện tranh Marvel/DC và kho ảnh Anime/Wibu lệch chủ đề
+    "ytimg.com", "img.youtube.com", "aminoapps.com", "comicvine.gamespot.com", "cbr.com",
+    "marvel.com", "dc.com", "dccomics.com", "superherodb.com", "vsbattles.fandom.com",
+    "myanimelist.net", "zerochan.net", "danbooru", "gelbooru", "safebooru", "konachan", "yandere.re", "pixiv.net",
 )
 
 # Tiêu đề / URL chứa các cụm này là ảnh stock watermark / mô hình nhựa bảo tàng ("trông đểu") / poster chữ / game khối vuông / biểu đồ code
@@ -46,6 +50,12 @@ _HARD_TITLE_CUES = (
     "colouring", "t-shirt", "tshirt", "sticker", "mug ", "poster print", "canvas print",
     "framed print", "art print", "for sale", "buy now", "watermarked",
     "movie poster", "new poster", "official poster", "teaser poster", "poster for",
+    # Chặn ảnh thumbnail so kèo có chữ ("JAWS VS LEVIATHAN"), bảng xếp hạng, truyện tranh siêu anh hùng & anime
+    " vs ", " vs.", "-vs-", "_vs_", " versus ", "who would win", "size comparison", "tier list", "thumbnail",
+    "anime", "waifu", "manga", "manhwa", "webtoon", "genshin", "honkai", "vtuber", "vocaloid", "hatsune",
+    "comic book", "marvel", "dc comics", "avengers", "galactus", "thanos", "superhero", "pokemon", "yugioh", "digimon",
+    "voxel", "blockbench", "pixel art", "low poly", "character sheet", "concept sheet", "reference sheet",
+    "turnaround", "anatomy of", "size chart", "subnautica", "grand order", "fgo", "gacha", "walkthrough", "exploration quest",
     # Chặn mô hình cao su/nhựa, tượng bảo tàng, đồ chơi, thú nhồi bông làm ảnh trông giả ("đểu")
     "animatronic", "animatronics", "prop ", "movie prop", "replica", "mannequin", "puppet",
     "wax figure", "museum exhibit", "exhibition", "theme park ride", "universal studios ride",
@@ -64,7 +74,7 @@ _HARD_TITLE_CUES = (
     "quote", "quotes", "saying", "sayings", "checklist", "symptom", "symptoms",
     "types of", "stages of", "rules of", "guide to", "narcissisms.com", "mindjournal", "herway", "narcsite",
     "marcus aurelius", "seneca", "epictetus", "how to deal with", "manipulative person",
-    "fantasy art", "digital painting", "deviantart", "furaffinity", "furry", "anthropomorphic", " tarot ", "zodiac", "galaxycape",
+    "deviantart", "furaffinity", "furry", "anthropomorphic", " tarot ", "zodiac", "galaxycape",
 )
 
 # Tiêu đề chứa các cụm này → trừ điểm mạnh (tranh vẽ tay 2D phẳng, đồ chơi, sơ đồ, chữ chèn)
@@ -246,13 +256,13 @@ def extract_subject(narration: str, primary_entity: Optional[str] = None, max_wo
 
 
 def is_watermark_risk(item: Dict) -> bool:
-    """True nếu ảnh có watermark / là clipart / poster quảng cáo phim có chữ / tranh fan-art."""
+    """True nếu ảnh có watermark / là clipart / poster quảng cáo phim có chữ / tranh fan-art / thumbnail so kèo."""
     blob = " ".join(str(item.get(k) or "") for k in ("url", "page_url", "creator", "thumbnail")).lower()
     if any(d in blob for d in WATERMARK_DOMAINS):
         return True
-    if any(p in blob for p in ("-poster.", "_poster.", "-poster-", "_poster_", "/posters/", "movie-poster", "new-poster", "poster-for")):
+    if any(p in blob for p in ("-poster.", "_poster.", "-poster-", "_poster_", "/posters/", "movie-poster", "new-poster", "poster-for", "-vs-", "_vs_")):
         return True
-    title = f" {(item.get('title') or '')} {(item.get('alt') or '')} ".lower()
+    title = f" {(item.get('title') or '')} {(item.get('alt') or '')} {blob} ".lower()
     return any(c in title for c in _HARD_TITLE_CUES)
 
 
@@ -331,7 +341,7 @@ def creature_queries(
         candidates.append(f"{act} concept art 8k" if "concept art" not in act.lower() and "movie" not in act.lower() else act)
     if anchor:
         candidates.append(f"colossal {base_creature} towering over {anchor} concept art 8k")
-        candidates.append(f"giant {base_creature} vs {anchor} cgi movie scene")
+        candidates.append(f"giant {base_creature} attacking {anchor} cgi movie scene")
     candidates.extend([
         f"giant {base_creature} monster concept art 8k",
         f"{base_creature} cgi movie still",

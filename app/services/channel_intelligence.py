@@ -1482,12 +1482,12 @@ def send_telegram_video_broadcast(
     if not chat_ids:
         return False
 
-    # Kiểm tra kích thước file; nếu > 5MB nén nhanh bản preview cho Telegram bằng FFmpeg (giữ nguyên bản gốc 1080p cho YouTube)
+    # Kiểm tra kích thước file; nếu > 2.0MB nén nhanh bản preview cho Telegram bằng FFmpeg (giữ nguyên bản gốc 1080p cho YouTube)
     upload_path = video_path
     temp_compressed = None
     try:
         size_mb = Path(video_path).stat().st_size / (1024 * 1024)
-        if size_mb > 5.0:
+        if size_mb > 2.0:
             import subprocess
             temp_dir = Path(settings.TEMP_DIR)
             temp_dir.mkdir(parents=True, exist_ok=True)
@@ -1512,48 +1512,56 @@ def send_telegram_video_broadcast(
     sent_any = False
 
     for cid in chat_ids:
-        try:
-            data = {
-                "chat_id": cid,
-                "caption": caption[:1000] if caption else "",
-                "parse_mode": "HTML",
-                "supports_streaming": True
-            }
-            if inline_keyboard:
-                data["reply_markup"] = json.dumps({"inline_keyboard": inline_keyboard})
+        for attempt in range(3):
+            try:
+                data = {
+                    "chat_id": cid,
+                    "caption": caption[:1000] if caption else "",
+                    "parse_mode": "HTML",
+                    "supports_streaming": True
+                }
+                if inline_keyboard:
+                    data["reply_markup"] = json.dumps({"inline_keyboard": inline_keyboard})
 
-            if cached_file_id:
-                # Chat thứ 2 trở đi gửi qua file_id chỉ mất 0.2s!
-                data["video"] = cached_file_id
-                r = http_requests.post(url, data=data, timeout=15)
-                if r.status_code == 200:
-                    sent_any = True
-            else:
-                with open(upload_path, "rb") as vf:
-                    r = http_requests.post(url, data=data, files={"video": vf}, timeout=180)
+                if cached_file_id:
+                    # Chat thứ 2 trở đi gửi qua file_id chỉ mất 0.2s!
+                    data["video"] = cached_file_id
+                    r = http_requests.post(url, data=data, timeout=20)
                     if r.status_code == 200:
                         sent_any = True
-                        res_json = r.json()
-                        v_obj = res_json.get("result", {}).get("video")
-                        if v_obj and v_obj.get("file_id"):
-                            cached_file_id = v_obj.get("file_id")
-                    elif r.status_code != 200:
-                        logger.warning(f"[TelegramVideoAlert] sendVideo HTML lỗi ({r.status_code}): {r.text[:200]} -> Thử lại plain text")
-                        # Thử lại không parse_mode và lọc bỏ thẻ HTML bị cắt dở
-                        data.pop("parse_mode", None)
-                        data["caption"] = re.sub(r"<[^>]*>?", "", caption)[:950] if caption else ""
-                        with open(upload_path, "rb") as vf2:
-                            r2 = http_requests.post(url, data=data, files={"video": vf2}, timeout=180)
-                            if r2.status_code == 200:
-                                sent_any = True
-                                res_json2 = r2.json()
-                                v_obj2 = res_json2.get("result", {}).get("video")
-                                if v_obj2 and v_obj2.get("file_id"):
-                                    cached_file_id = v_obj2.get("file_id")
-                            else:
-                                logger.warning(f"[TelegramVideoAlert] sendVideo fallback lỗi ({r2.status_code}): {r2.text[:200]}")
-        except Exception as ex_send:
-            logger.warning(f"[TelegramVideoAlert] Lỗi gửi video cho {cid}: {ex_send}")
+                        break
+                else:
+                    with open(upload_path, "rb") as vf:
+                        r = http_requests.post(url, data=data, files={"video": vf}, timeout=120)
+                        if r.status_code == 200:
+                            sent_any = True
+                            res_json = r.json()
+                            v_obj = res_json.get("result", {}).get("video")
+                            if v_obj and v_obj.get("file_id"):
+                                cached_file_id = v_obj.get("file_id")
+                            break
+                        elif r.status_code != 200:
+                            logger.warning(f"[TelegramVideoAlert] sendVideo HTML lỗi ({r.status_code}): {r.text[:200]} -> Thử lại plain text")
+                            # Thử lại không parse_mode và lọc bỏ thẻ HTML bị cắt dở
+                            data.pop("parse_mode", None)
+                            data["caption"] = re.sub(r"<[^>]*>?", "", caption)[:950] if caption else ""
+                            with open(upload_path, "rb") as vf2:
+                                r2 = http_requests.post(url, data=data, files={"video": vf2}, timeout=120)
+                                if r2.status_code == 200:
+                                    sent_any = True
+                                    res_json2 = r2.json()
+                                    v_obj2 = res_json2.get("result", {}).get("video")
+                                    if v_obj2 and v_obj2.get("file_id"):
+                                        cached_file_id = v_obj2.get("file_id")
+                                    break
+                                else:
+                                    logger.warning(f"[TelegramVideoAlert] sendVideo fallback lỗi ({r2.status_code}): {r2.text[:200]}")
+                                    break
+            except Exception as ex_send:
+                logger.warning(f"[TelegramVideoAlert] Lỗi gửi video cho {cid} (lần {attempt + 1}/3): {ex_send}")
+                if attempt < 2:
+                    import time as _t
+                    _t.sleep(2.0 * (attempt + 1))
 
     if temp_compressed and Path(temp_compressed).exists():
         try:

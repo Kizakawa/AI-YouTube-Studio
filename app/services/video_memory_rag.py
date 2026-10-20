@@ -988,14 +988,21 @@ class VideoMemoryRAG:
                 w, h = im.size
                 if w < 300 or h < 300:
                     return False
-                # Detect book covers, quote posters, and text infographics:
-                from PIL import ImageFilter
-                g_small = im.convert("L").resize((160, 240))
+                # Detect book covers, quote posters, 2D flat concept sheets, and game UI infographics:
+                from PIL import ImageFilter, ImageStat
+                rgb_small = im.convert("RGB").resize((160, 240))
+                g_small = rgb_small.convert("L")
                 hist = g_small.histogram()
                 tot_px = 160 * 240
                 white_paper_ratio = sum(hist[210:]) / tot_px
                 black_poster_ratio = sum(hist[:24]) / tot_px
+                px_rgb = rgb_small.load()
+                neutral_grey_bg = sum(
+                    1 for y_g in range(240) for x_g in range(160)
+                    if max(px_rgb[x_g, y_g]) - min(px_rgb[x_g, y_g]) <= 8 and 95 <= (sum(px_rgb[x_g, y_g]) // 3) <= 185
+                ) / tot_px
                 edges = g_small.filter(ImageFilter.FIND_EDGES)
+                sharp_mean = float(ImageStat.Stat(edges).mean[0])
                 px_e = edges.load()
                 text_rows = 0
                 for y_r in range(15, 225):
@@ -1003,10 +1010,16 @@ class VideoMemoryRAG:
                     high_transitions = sum(1 for k_i in range(len(row_vals) - 1) if abs(row_vals[k_i] - row_vals[k_i + 1]) > 46)
                     if high_transitions >= 16:
                         text_rows += 1
-                if white_paper_ratio > 0.34 or (text_rows >= 36 and (white_paper_ratio > 0.16 or black_poster_ratio > 0.28)):
+                if (
+                    white_paper_ratio > 0.34
+                    or neutral_grey_bg > 0.38
+                    or sharp_mean > 42.0
+                    or sharp_mean < 4.5
+                    or (text_rows >= 36 and (white_paper_ratio > 0.16 or black_poster_ratio > 0.28))
+                ):
                     logger.info(
-                        f"🚫 [MiniRAG Anti-Infographic/BookCover] Loại bỏ ảnh chứa chữ/bìa sách/infographic tại Cảnh #{scene_id} "
-                        f"(white_ratio={white_paper_ratio:.2f}, black_ratio={black_poster_ratio:.2f}, text_rows={text_rows})"
+                        f"🚫 [MiniRAG Anti-Infographic/BookCover] Loại bỏ ảnh lỗi/chứa chữ/sơ đồ 2D/UI game tại Cảnh #{scene_id} "
+                        f"(white={white_paper_ratio:.2f}, grey_bg={neutral_grey_bg:.2f}, sharp={sharp_mean:.1f}, text_rows={text_rows})"
                     )
                     return False
             if VisualCritic._is_solid_color_or_black(str(image_path)):

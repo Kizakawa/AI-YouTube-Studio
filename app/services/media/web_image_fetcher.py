@@ -59,6 +59,9 @@ class WebImageFetcher:
 
     # ─────────────────────────────── Open Web (Bing trực tiếp + DDGS) ───────────────────────────
     _engine_block_until: Dict[str, float] = {}
+    _engine_fail_streak: Dict[str, int] = {}
+    _open_engine_cache: Dict[str, List[Dict]] = {}
+    _cache_lock = threading.Lock()
 
     @classmethod
     def _engine_ok(cls, name: str) -> bool:
@@ -66,10 +69,14 @@ class WebImageFetcher:
         return _t.time() >= cls._engine_block_until.get(name, 0)
 
     @classmethod
-    def _engine_fail(cls, name: str, minutes: int = 2) -> None:
+    def _engine_fail(cls, name: str, minutes: float = 0.25) -> None:
         import time as _t
+        streak = cls._engine_fail_streak.get(name, 0) + 1
+        cls._engine_fail_streak[name] = streak
+        if name == "google" and streak < 4:
+            return
         cls._engine_block_until[name] = _t.time() + minutes * 60
-        logger.warning(f"[WebImage] Nguồn '{name}' lỗi/timeout → tạm ngắt {minutes} phút, dùng nguồn khác.")
+        logger.warning(f"[WebImage] Nguồn '{name}' lỗi/timeout ({streak} lần) → tạm ngắt {int(minutes * 60)}s, dùng nguồn khác.")
 
     @staticmethod
     def _concise_art_query(query: str, max_words: int = 3) -> str:
@@ -274,7 +281,18 @@ class WebImageFetcher:
                 continue
             seen.add(full_url)
             title = (item.get("title") or short_q).strip()
+            desc = (item.get("description") or "").strip()
             permalink = item.get("permalink") or item.get("url") or "https://www.artstation.com"
+            art_blob = f"{title} {desc} {permalink}".lower()
+            if any(
+                bad_art in art_blob
+                for bad_art in (
+                    "minecraft", "voxel", "blockbench", "roblox", "fortnite", "pixel art",
+                    "low poly", "low-poly", "chibi", "anime", "waifu", "genshin", "character sheet",
+                    "concept sheet", "reference sheet", "turnaround", "subnautica", "stylized",
+                )
+            ):
+                continue
             out.append({
                 "image": full_url,
                 "thumbnail": medium_url,
@@ -374,6 +392,7 @@ class WebImageFetcher:
 
     _CHROME_POOL_SIZE = 3
     _chrome_slot_locks = [threading.Lock() for _ in range(3)]
+    _headless_chrome_sem = threading.BoundedSemaphore(2)
     _browser_exe_cache: Optional[str] = None
 
     @classmethod
@@ -445,15 +464,16 @@ class WebImageFetcher:
             cmd.append(target_url)
 
             creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="ignore",
-                timeout=11,
-                creationflags=creationflags,
-            )
+            with cls._headless_chrome_sem:
+                proc = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="ignore",
+                    timeout=14,
+                    creationflags=creationflags,
+                )
             return proc.stdout or ""
         except Exception as e:
             logger.debug(f"[WebImage] Headless Google Images DOM error for '{query}': {e}")
@@ -638,12 +658,17 @@ class WebImageFetcher:
         return hits / len(sample) >= 0.20
 
     def _run_single_open_engine(self, eng: str, query: str, per_page: int) -> List[Dict]:
-        """Chạy 1 engine tìm kiếm ảnh đơn lẻ và chuẩn hóa kết quả."""
+        """Chạy 1 engine tìm kiếm ảnh đơn lẻ và chuẩn hóa kết quả (có cache bộ nhớ đệm chống gọi trùng lặp)."""
         from app.services.media.image_quality import is_watermark_risk
         if not self._engine_ok(eng):
             return []
         if eng == "serper" and not os.getenv("SERPER_API_KEY", "").strip():
             return []
+        cache_key = f"{eng}:{(query or '').strip().lower()}"
+        with self._cache_lock:
+            cached = self._open_engine_cache.get(cache_key)
+        if cached is not None:
+            return list(cached[: max(per_page, 14)])
         try:
             raw_results: List[Dict] = []
             if eng == "google":
@@ -709,10 +734,14 @@ class WebImageFetcher:
                 items.append(item)
                 if len(items) >= max(per_page, 14):
                     break
+            if items:
+                self._engine_fail_streak[eng] = 0
+                with self._cache_lock:
+                    self._open_engine_cache[cache_key] = list(items)
             return items
         except Exception as e:
             logger.debug(f"[WebImage] {eng} lỗi cho '{query}': {e}")
-            self._engine_fail(eng, minutes=2)
+            self._engine_fail(eng, minutes=0.25)
             return []
 
     def search_open_web(

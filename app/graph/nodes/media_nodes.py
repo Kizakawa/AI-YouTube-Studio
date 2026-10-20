@@ -367,7 +367,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             sc_scope = sc_strat.get("search_scope") or "SCENE_SPECIFIC"
             overall_q = sc_strat.get("overall_script_query") or state.get("topic", "")
             import math as _math
-            scene_target_imgs = max(3, min(4, _math.ceil(16 / max(1, total_scenes - 1)))) if (scene.scene_id == 1 or dur >= 3.5 or total_scenes <= 7) else 3
+            scene_target_imgs = 3 if (scene.scene_id == 1 or dur >= 3.5) else 2
 
             if tool_name == "summon_epic_monster_cinematic_media":
                 c_name = sc_strat.get("creature_name") or subj_ent
@@ -1138,16 +1138,19 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     if not pair:
                         continue
                     alt_p, u_alt = pair
-                    if len(pose_images) < 4 and rag.verify_and_commit_in_job_image(
-                        job_id=job_id, scene_id=1, image_path=alt_p, url=u_alt
-                    ):
+                    if len(pose_images) < 4:
                         final_hk_p = str(media_dir / f"scene_001_hook_cut{len(pose_images) + 1}.jpg")
                         try:
                             Path(alt_p).replace(final_hk_p)
                         except Exception:
                             final_hk_p = alt_p
-                        pose_images.append(final_hk_p)
-                        used_pool_urls.add(u_alt)
+                        if rag.verify_and_commit_in_job_image(
+                            job_id=job_id, scene_id=1, image_path=final_hk_p, url=u_alt
+                        ):
+                            pose_images.append(final_hk_p)
+                            used_pool_urls.add(u_alt)
+                        else:
+                            Path(final_hk_p).unlink(missing_ok=True)
                     else:
                         Path(alt_p).unlink(missing_ok=True)
 
@@ -1456,17 +1459,18 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
         if body_img_indices:
             n_img_scenes = len(body_img_indices)
-            rem_budget = max(n_img_scenes, target_total_images - hook_img_count)
-            # Cho phép tối đa 4-5 ảnh/cảnh khi có các phân cảnh đầu dùng Video Peak dài để tổng ảnh vẫn đạt 15-17 ảnh/video
-            rem_budget = min(rem_budget, n_img_scenes * 5)
-            base_q = max(1, rem_budget // n_img_scenes)
-            extra_q = max(0, rem_budget - (base_q * n_img_scenes))
+            rem_budget = max(n_img_scenes * 2, target_total_images - hook_img_count)
+            # Giới hạn tối đa 3 ảnh/cảnh để chỉ lấy Top 2-3 ứng viên điểm cao nhất (không vét tới ứng viên hạng thấp #4-#5)
+            rem_budget = min(rem_budget, n_img_scenes * 3)
+            base_q = max(2, min(3, rem_budget // n_img_scenes))
+            extra_q = max(0, min(n_img_scenes, rem_budget - (base_q * n_img_scenes)))
 
-            # Ưu tiên phân bổ thêm ảnh (3-4 ảnh/cảnh) cho các phân cảnh có thời lượng câu đọc dài hơn
+            # Ưu tiên phân bổ 3 ảnh/cảnh cho các phân cảnh có thời lượng câu đọc dài hơn (tối đa không quá 3 ảnh/cảnh)
             sorted_by_dur = sorted(body_img_indices, key=lambda i_slot: _get_slot_dur(i_slot), reverse=True)
             scene_quotas: Dict[int, int] = {i_slot: base_q for i_slot in body_img_indices}
             for i_slot in sorted_by_dur[:extra_q]:
-                scene_quotas[i_slot] += 1
+                if scene_quotas[i_slot] < 3:
+                    scene_quotas[i_slot] += 1
 
             angle_facets = [
                 "dramatic close up portrait",
@@ -1541,12 +1545,17 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             from app.services.media.web_image_fetcher import WebImageFetcher
                             wf = WebImageFetcher()
                             is_monster_tool = (sc_tool == "summon_epic_monster_cinematic_media")
+                            monster_supp_q = (
+                                f"colossal {short_subj} underwater submarine concept art 8k"
+                                if is_monster_tool
+                                else supp_q
+                            )
                             ranked_web = await asyncio.to_thread(
                                 wf.search_all,
-                                f"{sc_kw} concept art 8k" if is_monster_tool else supp_q,
+                                monster_supp_q,
                                 10,
                                 short_subj,
-                                [supp_q2],
+                                [f"giant {short_subj} movie scene cgi"] if is_monster_tool else [supp_q2],
                                 is_monster_tool,
                             )
                             for c_item in (ranked_web or []):
@@ -1580,14 +1589,14 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                             continue
                         tmp_cut, cand_u = out_pair
                         if len(verified_poses) < quota:
+                            final_cut = str(media_dir / f"scene_{sid:03d}_cut{len(verified_poses) + 1}.jpg")
+                            try:
+                                Path(tmp_cut).replace(final_cut)
+                            except Exception:
+                                final_cut = tmp_cut
                             if rag.verify_and_commit_in_job_image(
-                                job_id=job_id, scene_id=sid, image_path=tmp_cut, url=cand_u
+                                job_id=job_id, scene_id=sid, image_path=final_cut, url=cand_u
                             ):
-                                final_cut = str(media_dir / f"scene_{sid:03d}_cut{len(verified_poses) + 1}.jpg")
-                                try:
-                                    Path(tmp_cut).replace(final_cut)
-                                except Exception:
-                                    final_cut = tmp_cut
                                 verified_poses.append(final_cut)
                                 used_pool_urls.add(cand_u)
                                 record_used_media(
@@ -1598,7 +1607,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                     media_path=final_cut,
                                 )
                             else:
-                                Path(tmp_cut).unlink(missing_ok=True)
+                                Path(final_cut).unlink(missing_ok=True)
                         else:
                             Path(tmp_cut).unlink(missing_ok=True)
 
@@ -1618,6 +1627,19 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     ]
 
                     def _gen_single_ai_shot(task_obj: Dict[str, Any]) -> Optional[str]:
+                        if str(sc_item.get("tool") or "") == "summon_epic_monster_cinematic_media":
+                            try:
+                                from app.services.media.monster_art_synthesizer import MonsterArtSynthesizer
+                                synth_p = MonsterArtSynthesizer().generate_epic_monster_image(
+                                    creature_name=short_subj or "colossal leviathan",
+                                    scale_anchor_object="nuclear submarine",
+                                    action_description=f"{sc_kw}, {task_obj['ai_angle']}",
+                                    output_path=task_obj["ai_cut_p"],
+                                )
+                                if synth_p and Path(synth_p).exists():
+                                    return synth_p
+                            except Exception:
+                                pass
                         ai_q = f"{sc_kw}, {task_obj['ai_angle']}, dramatic vertical 9:16 photography, 8k sharp focus"
                         return image_agent.generate_scene_image(
                             ai_q,

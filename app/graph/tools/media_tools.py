@@ -527,7 +527,8 @@ def _verify_short_clip_with_gemini_vision(
             return True, 7.5, "No Gemini keys for vision check"
 
         cgi_rule = (
-            "3. 2D kids cartoon / chibi / Minecraft / Roblox / plastic toy (NOTE: Photorealistic 3D CGI / Unreal Engine 5 / Blender / Hollywood VFX monster animation IS HIGHLY APPROVED for this monster scene!)"
+            "3. 2D kids cartoon / chibi / Minecraft / Roblox / plastic toy / GMod / size comparison chart / VS battle text overlay\n"
+            "6. Normal real-world tourist boats, normal submarines in bright daylight, weather towers, sonar screens, or normal ocean waves WITHOUT a visible colossal monster/leviathan/creature! (CRITICAL FOR MONSTER SCENE: The clip MUST visibly depict a giant monster / sea leviathan / kaiju in a dark cinematic setting!)"
             if allow_3d_cgi_monster
             else "3. Video game / cartoon / anime / meme"
         )
@@ -743,7 +744,18 @@ def execute_youtube_short_peak_clone_sync(
         narration=narration,
         max_words=5,
     )
+    if allow_3d_cgi_monster:
+        c_core = _clean_yt_search_phrase(subject_entity or topic, max_words=3, strip_distractor_props=True) or "sea monster"
+        monster_yt_phrases = [
+            f"{c_core} 3d animation",
+            f"giant {c_core} megalophobia",
+            *search_phrases,
+        ]
+        search_phrases = [q for q in dict.fromkeys(monster_yt_phrases) if q][:4]
+
     subject_anchors = _extract_subject_anchor_tokens(subject_entity, topic, search_phrases[0] if search_phrases else search_query)
+    if allow_3d_cgi_monster:
+        subject_anchors.update({"monster", "leviathan", "bloop", "kraken", "megalodon", "cthulhu", "creature", "megalophobia", "thalassophobia"})
 
     logger.info(
         f"🎯 [YouTubePeakTool + MiniRAG] Scene=#{eff_scene_id} | Scope={effective_scope} | Role={clip_role} | "
@@ -762,6 +774,12 @@ def execute_youtube_short_peak_clone_sync(
         import yt_dlp
 
         candidates = _search_youtube_flat_cached(search_phrases, subject_anchors, all_query_tokens)
+        if allow_3d_cgi_monster:
+            _monster_yt_bad = (" vs ", " vs.", " versus ", "tier list", "size comparison", "explained", "minecraft", "roblox", "gmod", "garry", "lego")
+            candidates = [
+                c for c in candidates
+                if not any(b_tok in str(c.get("title") or "").lower() for b_tok in _monster_yt_bad)
+            ]
         unused_cands = [
             c for c in candidates
             if not is_media_already_used(c["url"], used) and f"yt:{c['id']}" not in used
@@ -777,7 +795,8 @@ def execute_youtube_short_peak_clone_sync(
             channel_id=channel_id,
         )
 
-        for cand in ordered_cands[:6]:
+        max_cand_probes = 3 if allow_3d_cgi_monster else 6
+        for cand in ordered_cands[:max_cand_probes]:
             vid_url = cand["url"]
             vid_id = cand.get("id") or ""
             cand_title = str(cand.get("title") or "")
@@ -1016,6 +1035,12 @@ def execute_youtube_short_peak_clone_sync(
                     }
     except Exception as e_yt:
         logger.debug(f"[YouTubePeakTool] Lỗi nhánh YouTube Shorts: {e_yt}")
+
+    if allow_3d_cgi_monster:
+        # Với cảnh Quái vật khổng lồ / Thủy quái (`allow_3d_cgi_monster=True`), TUYỆT ĐỐI KHÔNG rơi xuống Pexels/Pixabay
+        # (vì Pexels chỉ có tàu ngầm du lịch ban ngày / thợ lặn hồ bơi, làm mất hoàn toàn chất điện ảnh quái vật).
+        # Trả về None ngay để `execute_epic_monster_cinematic_media_sync` chuyển sang Tầng 2: Đại cảnh Concept Art 8K!
+        return None
 
     # ── TẦNG 2 (DỰ PHÒNG VIDEO SẠCH): TÌM VIDEO HD DỌC TRÊN PEXELS / PIXABAY XOAY QUANH KỊCH BẢN ──
     try:
@@ -1290,12 +1315,12 @@ def execute_google_cinematic_image_sync(
                 continue
             tmp_p, c_url = res_pair
             if len(pose_images) < target_image_count:
-                if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=scene_id, image_path=tmp_p, url=c_url):
-                    final_cut_p = str(parent / f"{stem}_cut{len(pose_images) + 1}.jpg")
-                    try:
-                        Path(tmp_p).replace(final_cut_p)
-                    except Exception:
-                        final_cut_p = tmp_p
+                final_cut_p = str(parent / f"{stem}_cut{len(pose_images) + 1}.jpg")
+                try:
+                    Path(tmp_p).replace(final_cut_p)
+                except Exception:
+                    final_cut_p = tmp_p
+                if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=scene_id, image_path=final_cut_p, url=c_url):
                     pose_images.append(final_cut_p)
                     used.update(extract_media_identity(c_url))
                     record_used_media(
@@ -1306,7 +1331,7 @@ def execute_google_cinematic_image_sync(
                         media_path=final_cut_p,
                     )
                 else:
-                    Path(tmp_p).unlink(missing_ok=True)
+                    Path(final_cut_p).unlink(missing_ok=True)
             else:
                 Path(tmp_p).unlink(missing_ok=True)
                 unused_after_multi.append(c_url)
@@ -1518,12 +1543,12 @@ def execute_epic_monster_cinematic_media_sync(
                 continue
             tmp_p, c_url = res_pair
             if len(pose_images) < target_image_count:
-                if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=scene_id, image_path=tmp_p, url=c_url):
-                    final_cut_p = str(parent / f"{stem}_cut{len(pose_images) + 1}.jpg")
-                    try:
-                        Path(tmp_p).replace(final_cut_p)
-                    except Exception:
-                        final_cut_p = tmp_p
+                final_cut_p = str(parent / f"{stem}_cut{len(pose_images) + 1}.jpg")
+                try:
+                    Path(tmp_p).replace(final_cut_p)
+                except Exception:
+                    final_cut_p = tmp_p
+                if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=scene_id, image_path=final_cut_p, url=c_url):
                     pose_images.append(final_cut_p)
                     used.update(extract_media_identity(c_url))
                     record_used_media(
@@ -1534,7 +1559,7 @@ def execute_epic_monster_cinematic_media_sync(
                         media_path=final_cut_p,
                     )
                 else:
-                    Path(tmp_p).unlink(missing_ok=True)
+                    Path(final_cut_p).unlink(missing_ok=True)
             else:
                 Path(tmp_p).unlink(missing_ok=True)
                 unused_after_multi.append(c_url)
@@ -1822,12 +1847,12 @@ def execute_clean_cinematic_portrait_or_broll_sync(
                 continue
             tmp_p, c_url = pair_out
             if len(pose_images) < target_image_count:
-                if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=scene_id, image_path=tmp_p, url=c_url):
-                    final_cut_p = str(out_p.parent / f"{out_p.stem}_cut{len(pose_images) + 1}.jpg")
-                    try:
-                        Path(tmp_p).replace(final_cut_p)
-                    except Exception:
-                        final_cut_p = tmp_p
+                final_cut_p = str(out_p.parent / f"{out_p.stem}_cut{len(pose_images) + 1}.jpg")
+                try:
+                    Path(tmp_p).replace(final_cut_p)
+                except Exception:
+                    final_cut_p = tmp_p
+                if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=scene_id, image_path=final_cut_p, url=c_url):
                     pose_images.append(final_cut_p)
                     used.update(extract_media_identity(c_url))
                     record_used_media(
@@ -1838,7 +1863,7 @@ def execute_clean_cinematic_portrait_or_broll_sync(
                         media_path=final_cut_p,
                     )
                 else:
-                    Path(tmp_p).unlink(missing_ok=True)
+                    Path(final_cut_p).unlink(missing_ok=True)
             else:
                 Path(tmp_p).unlink(missing_ok=True)
 
@@ -2036,6 +2061,45 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 d["camera_motion"] = "hyper_zoom" if sid == 1 else motion_cycle[idx % len(motion_cycle)]
 
             # Tôn trọng tuyệt đối khi LLM đã chọn 2 công cụ chuyên biệt (`summon_epic_monster_cinematic_media` hoặc `fetch_clean_cinematic_portrait_or_broll`)
+            # Đồng thời: Nếu kịch bản tổng thể đã được LLM xác nhận là Quái Vật (`llm_monster_ref`) hoặc Tâm Lý Học (`llm_portrait_ref`),
+            # đồng bộ hóa luôn các phân cảnh chuyển ý (như "NOAA sensors", "Naval sonar") về cùng công cụ chuyên biệt với `search_scope="SCRIPT_OVERALL"`
+            # để tránh việc cảnh phụ bị lọt sang Pexels lấy video tàu thuyền/tháp thời tiết ban ngày lạc tông!
+            if t_chosen != "summon_epic_monster_cinematic_media" and llm_monster_ref is not None:
+                c_name_inh = llm_monster_ref.get("creature_name") or default_subj
+                s_anchor_inh = llm_monster_ref.get("scale_anchor_object") or "submarine"
+                d = {
+                    "tool_name": "summon_epic_monster_cinematic_media",
+                    "scene_id": sid,
+                    "creature_name": c_name_inh,
+                    "subject_entity": c_name_inh,
+                    "scale_anchor_object": s_anchor_inh,
+                    "monster_media_mode": "CONCEPT_ART_8K",
+                    "search_scope": "SCRIPT_OVERALL",
+                    "action_or_concept_query": f"colossal {c_name_inh} towering over {s_anchor_inh} dark abyss",
+                    "overall_script_query": llm_monster_ref.get("overall_script_query") or default_overall_q,
+                    "target_duration_sec": float(s.get("estimated_seconds") or 4.5),
+                    "camera_motion": d.get("camera_motion") or motion_cycle[idx % len(motion_cycle)],
+                    "scope_audited": True,
+                }
+                final_plan.append(d)
+                continue
+
+            if t_chosen != "fetch_clean_cinematic_portrait_or_broll" and llm_portrait_ref is not None and llm_monster_ref is None:
+                d = {
+                    "tool_name": "fetch_clean_cinematic_portrait_or_broll",
+                    "scene_id": sid,
+                    "subject_entity": default_subj,
+                    "human_action_query": llm_portrait_ref.get("human_action_query") or "dramatic portrait dark lighting",
+                    "media_preference": "CLEAN_PORTRAIT_PHOTO",
+                    "search_scope": "SCRIPT_OVERALL",
+                    "overall_script_query": llm_portrait_ref.get("overall_script_query") or default_overall_q,
+                    "target_duration_sec": float(s.get("estimated_seconds") or 4.5),
+                    "camera_motion": d.get("camera_motion") or motion_cycle[idx % len(motion_cycle)],
+                    "scope_audited": True,
+                }
+                final_plan.append(d)
+                continue
+
             if t_chosen == "summon_epic_monster_cinematic_media":
                 d.setdefault("subject_entity", d.get("creature_name") or default_subj)
                 d["scope_audited"] = True
