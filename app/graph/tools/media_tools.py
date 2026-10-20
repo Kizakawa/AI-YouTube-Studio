@@ -59,9 +59,11 @@ _TALKING_HEAD_BLOCKLIST = (
 _HIGH_RISK_WATERMARK_CHANNEL_BLOCKLIST = (
     "latestsightings", "latest sightings", "kruger sightings", "mr. friend", "mr friend", "mrfriend",
     "viralhog", "caters", "jukin", "newsflare", "bviral", "ladbible", "unilad", "pubity", "memezar",
-    "daily dose", "the dodo", "dodo", "tiktok", "douyin", "kwai", "capcut", "inshot", "kinemaster",
-    "filmora", "alighty", "#shorts", "shorts", "subscribe", "follow for", "credit:", "credits:",
-    "🎥", "📸", "@", "top 10", "top 5", "tier list", "explained", "whatsapp status",
+    "daily dose", "the dodo", "dodo", "national geographic", "nat geo", "bbc earth", "bbc",
+    "discovery", "animal planet", "smithsonian", "tmz", "inside edition",
+    "tiktok", "douyin", "kwai", "capcut", "inshot", "kinemaster",
+    "filmora", "alighty", "credit:", "credits:",
+    "🎥", "📸", "top 10", "top 5", "tier list", "explained", "whatsapp status",
 )
 
 _YT_QUERY_FILLER_WORDS = {
@@ -680,12 +682,8 @@ def _search_youtube_flat_cached(
             if webpage_url.startswith("/"):
                 webpage_url = f"https://www.youtube.com{webpage_url}"
 
-            # Ngừng lấy clip Shorts của kênh khác (/shorts/ URL)
-            if "/shorts/" in webpage_url.lower():
-                continue
-
             dur = float(entry.get("duration") or 0)
-            if dur > 0 and (dur < 8 or dur > 300):
+            if dur > 0 and (dur < 4 or dur > 300):
                 continue
 
             title = str(entry.get("title") or "")
@@ -807,9 +805,308 @@ def execute_youtube_short_peak_clone_sync(
         if w.lower() not in _YT_QUERY_FILLER_WORDS
     }
 
-    # ── TẦNG 1 (ƯU TIÊN SỐ 1 — NGUỒN CÓ GIẤY PHÉP THƯƠNG MẠI): VIDEO HD DỌC TRÊN PEXELS / PIXABAY XOAY QUANH KỊCH BẢN ──
-    # Ngừng lấy clip Shorts của kênh khác có rủi ro bản quyền/watermark (LatestSightings, MR. FRIEND...).
-    # Đối với các phân cảnh thực tế (`not allow_3d_cgi_monster`), luôn ưu tiên tìm Video Stock HD có giấy phép (>= 720p) trước tiên!
+    # ── TẦNG 1 (ƯU TIÊN SỐ 1): SĂN & CẮT ĐOẠN PEAK TỪ VIDEO YOUTUBE RỦI RO THẤP (ĐÃ QUA 4 LỚP LỌC WATERMARK & >= 720P) ──
+    allow_low_risk_yt = allow_3d_cgi_monster or (
+        os.getenv("ALLOW_LOW_RISK_YOUTUBE_CLIPS", "true").strip().lower() not in ("0", "false", "no", "off")
+    )
+    if allow_low_risk_yt:
+        try:
+            import yt_dlp
+            from app.graph.evaluators.visual_critic import VisualCritic
+
+            candidates = _search_youtube_flat_cached(search_phrases, subject_anchors, all_query_tokens)
+            if allow_3d_cgi_monster:
+                _monster_yt_bad = ("tier list", "explained", "minecraft", "roblox", "gmod", "garry", "lego", "podcast", "reaction")
+                candidates = [
+                    c for c in candidates
+                    if not any(b_tok in str(c.get("title") or "").lower() for b_tok in _monster_yt_bad)
+                ]
+            unused_cands = [
+                c for c in candidates
+                if not is_media_already_used(c["url"], used) and f"yt:{c['id']}" not in used
+            ]
+            ordered_cands = rag.rank_video_candidates_for_scene(
+                job_id=job_id,
+                candidates=unused_cands,
+                scene_narration=narration,
+                scene_query=search_query,
+                topic=topic,
+                subject_entity=subject_entity or topic,
+                channel_id=channel_id,
+            )
+
+            max_claimed_probes = 4
+            claimed_probes = 0
+            cand_pool = list(ordered_cands[:20])
+            if len(cand_pool) > 4 and eff_scene_id > 1:
+                rot_c = (eff_scene_id - 1) % min(5, len(cand_pool))
+                cand_pool = cand_pool[rot_c:] + cand_pool[:rot_c]
+
+            for cand in cand_pool:
+                if claimed_probes >= max_claimed_probes:
+                    break
+                vid_url = cand["url"]
+                vid_id = cand.get("id") or ""
+                cand_title = str(cand.get("title") or "")
+
+                if not rag.try_claim_in_job_video(
+                    job_id=job_id,
+                    vid_id=vid_id,
+                    url=vid_url,
+                    title=cand_title,
+                    scene_id=eff_scene_id,
+                ):
+                    continue
+
+                with _yt_url_lock:
+                    if vid_url in used:
+                        rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
+                        continue
+                    used.update(extract_media_identity(vid_url))
+
+                claimed_probes += 1
+                info_entry: Dict[str, Any] = cand
+                try:
+                    info_opts = {"quiet": True, "no_warnings": True, "skip_download": True, "socket_timeout": 8}
+                    with yt_dlp.YoutubeDL(info_opts) as ydl_info:
+                        full_info = ydl_info.extract_info(vid_url, download=False)
+                        if isinstance(full_info, dict):
+                            dur_full = float(full_info.get("duration") or 0)
+                            if dur_full < 4 or dur_full > 300:
+                                rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
+                                continue
+                            w_full = int(full_info.get("width") or 0)
+                            h_full = int(full_info.get("height") or 0)
+                            if w_full > 0 and h_full > 0 and min(w_full, h_full) < 720:
+                                rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
+                                continue
+                            meta_full_lower = (
+                                f"{full_info.get('title') or ''} {full_info.get('uploader') or ''} "
+                                f"{full_info.get('channel') or ''} {(full_info.get('description') or '')[:300]}"
+                            ).lower()
+                            if any(bad in meta_full_lower for bad in _TALKING_HEAD_BLOCKLIST) or any(
+                                bad_c in meta_full_lower for bad_c in _HIGH_RISK_WATERMARK_CHANNEL_BLOCKLIST
+                            ):
+                                rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
+                                continue
+                            info_entry = full_info
+                except Exception:
+                    pass
+
+                win_pair = _find_best_peak_window(
+                    info_entry,
+                    target_duration_sec + 0.5,
+                    role=clip_role,
+                    existing_windows=None,
+                    max_peak_dur=max_peak_duration_sec,
+                )
+                if not win_pair:
+                    rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
+                    continue
+                start_s, end_s = win_pair
+
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    raw_dl_template = str(Path(tmp_dir) / "raw_short.%(ext)s")
+                    dl_opts = {
+                        "quiet": True,
+                        "no_warnings": True,
+                        "format": "bestvideo[height>=720][height<=1920][ext=mp4]/best[height>=720][height<=1920][ext=mp4]",
+                        "outtmpl": raw_dl_template,
+                        "socket_timeout": 12,
+                        "retries": 1,
+                        "nopart": True,
+                    }
+                    try:
+                        from yt_dlp.utils import download_range_func
+                        dl_opts["download_ranges"] = download_range_func(None, [(start_s, end_s + 1.0)])
+                    except Exception:
+                        pass
+
+                    try:
+                        with yt_dlp.YoutubeDL(dl_opts) as ydl_dl:
+                            ydl_dl.download([vid_url])
+                    except Exception:
+                        dl_opts.pop("download_ranges", None)
+                        try:
+                            with yt_dlp.YoutubeDL(dl_opts) as ydl_dl2:
+                                ydl_dl2.download([vid_url])
+                        except Exception:
+                            rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
+                            continue
+
+                    downloaded_files = list(Path(tmp_dir).glob("raw_short.*"))
+                    if not downloaded_files and "download_ranges" in dl_opts:
+                        dl_opts.pop("download_ranges", None)
+                        try:
+                            with yt_dlp.YoutubeDL(dl_opts) as ydl_dl2:
+                                ydl_dl2.download([vid_url])
+                        except Exception:
+                            pass
+                        downloaded_files = list(Path(tmp_dir).glob("raw_short.*"))
+
+                    if not downloaded_files:
+                        rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
+                        continue
+                    raw_file = str(downloaded_files[0])
+                    if Path(raw_file).stat().st_size < 15000:
+                        rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
+                        continue
+
+                    # Cổng kiểm duyệt clip nguồn trước khi cắt ghép: tối thiểu 720p, độ nét >= 5.8, độ sáng cân bằng, không watermark/caption
+                    raw_gate = VisualCritic.inspect_clip_before_concat(
+                        raw_file, min_short_edge=720, min_sharpness=5.8, check_watermark=True
+                    )
+                    if not raw_gate.get("passed", False):
+                        logger.info(
+                            f"🚫 [PreAssemblyClipGate] Loại bỏ clip nguồn YouTube '{cand_title[:45]}' trước khi cắt: "
+                            f"{'; '.join(raw_gate.get('issues') or [])}"
+                        )
+                        rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
+                        continue
+
+                    from app.utils.ffmpeg_helper import find_hook_peak_window, get_duration_ms, trim_video
+                    raw_dur_sec = max(0.0, get_duration_ms(raw_file) / 1000.0)
+                    min_req_dur = max(3.0, target_duration_sec)
+                    if "download_ranges" in dl_opts:
+                        rel_start, natural_peak_len = find_hook_peak_window(
+                            raw_file,
+                            min_duration=min_req_dur,
+                            max_duration=min(max_peak_duration_sec, max(min_req_dur, raw_dur_sec)),
+                        )
+                        actual_start_s = rel_start
+                    else:
+                        det_start, natural_peak_len = find_hook_peak_window(
+                            raw_file,
+                            min_duration=min_req_dur,
+                            max_duration=max_peak_duration_sec,
+                        )
+                        actual_start_s = det_start if det_start > 0.0 else start_s
+
+                    natural_peak_len = max(min_req_dur, min(natural_peak_len, max_peak_duration_sec))
+                    scene_clip_len = min_req_dur
+
+                    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                    try:
+                        trim_video(
+                            input_path=raw_file,
+                            duration_seconds=scene_clip_len,
+                            output_path=output_path,
+                            width=1080,
+                            height=1920,
+                            fps=30,
+                            apply_grading=True,
+                            is_hook_scene=((clip_role or "").upper() == "HOOK"),
+                            fair_use_transform=False,
+                            start_offset_sec=actual_start_s,
+                            preserve_continuous_flow=True,
+                        )
+                    except Exception:
+                        vf_filter = (
+                            "scale=1080:1920:force_original_aspect_ratio=increase,"
+                            "crop=1080:1920,fps=30,format=yuv420p"
+                        )
+                        cmd = [
+                            "ffmpeg", "-y", "-v", "error",
+                            "-ss", f"{actual_start_s:.2f}",
+                            "-i", raw_file,
+                            "-t", f"{scene_clip_len:.2f}",
+                            "-an", "-vf", vf_filter,
+                            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "21",
+                            "-pix_fmt", "yuv420p", "-color_range", "tv",
+                            output_path,
+                        ]
+                        subprocess.run(cmd, capture_output=True, timeout=25, check=False)
+
+                    if Path(output_path).exists() and Path(output_path).stat().st_size > 20000:
+                        ok_sig, dup_sid = rag.verify_and_commit_in_job_clip(
+                            job_id=job_id,
+                            scene_id=eff_scene_id,
+                            media_path=output_path,
+                            vid_id=vid_id,
+                            url=vid_url,
+                            title=cand_title,
+                            is_continuation_slice=False,
+                        )
+                        if not ok_sig:
+                            rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
+                            Path(output_path).unlink(missing_ok=True)
+                            continue
+
+                        passed_vis, vis_score, vis_reason = _verify_short_clip_with_gemini_vision(
+                            video_path=output_path,
+                            topic=topic,
+                            narration=narration,
+                            subject_entity=subject_entity or topic,
+                            overall_script_query=overall_script_query or (search_phrases[0] if search_phrases else topic),
+                            search_scope=effective_scope,
+                            video_title=cand_title,
+                            allow_3d_cgi_monster=allow_3d_cgi_monster,
+                            strict_no_fallback=False,
+                        )
+                        if not passed_vis:
+                            logger.info(
+                                f"🚫 [YouTubePeakTool] Gemini Vision từ chối clip '{cand_title[:45]}' "
+                                f"(điểm={vis_score}/10: {vis_reason}) -> Thử ứng viên tiếp theo!"
+                            )
+                            rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
+                            Path(output_path).unlink(missing_ok=True)
+                            continue
+
+                        full_peak_path: Optional[str] = None
+                        if natural_peak_len >= scene_clip_len + 1.8 and raw_dur_sec >= actual_start_s + scene_clip_len + 1.5:
+                            cand_full_path = str(Path(output_path).parent / f"{Path(output_path).stem}_fullpeak.mp4")
+                            try:
+                                trim_video(
+                                    input_path=raw_file,
+                                    duration_seconds=natural_peak_len,
+                                    output_path=cand_full_path,
+                                    width=1080,
+                                    height=1920,
+                                    fps=30,
+                                    apply_grading=True,
+                                    is_hook_scene=False,
+                                    fair_use_transform=False,
+                                    start_offset_sec=actual_start_s,
+                                    preserve_continuous_flow=True,
+                                )
+                                if Path(cand_full_path).exists() and Path(cand_full_path).stat().st_size > 25000:
+                                    full_peak_path = cand_full_path
+                            except Exception as e_fp:
+                                logger.debug(f"[YouTubePeakTool] Lỗi xuất full_peak_path: {e_fp}")
+
+                        win_start = (start_s + actual_start_s) if "download_ranges" in dl_opts else actual_start_s
+                        win_end = win_start + (natural_peak_len if full_peak_path else scene_clip_len)
+
+                        record_used_media(
+                            url=vid_url,
+                            query=search_phrases[0] if search_phrases else search_query,
+                            job_id=job_id,
+                            source="low_risk_clean_video",
+                            media_path=output_path,
+                        )
+
+                        logger.info(
+                            f"🔥 [YouTubePeakTool + MiniRAG] Đã cắt & duyệt Vision ({vis_score}/10, scope={effective_scope}) "
+                            f"đoạn {clip_role} ({win_start:.1f}s-{win_end:.1f}s, full_peak={natural_peak_len:.1f}s) "
+                            f"từ nguồn YouTube sạch watermark: '{cand_title[:55]}' ({vid_url})"
+                        )
+                        return {
+                            "media_path": output_path,
+                            "media_type": "hook_ready_video" if (clip_role or "").upper() == "HOOK" else "video",
+                            "source_url": vid_url,
+                            "youtube_id": vid_id,
+                            "title": cand_title,
+                            "window": f"{win_start:.1f}s-{win_end:.1f}s",
+                            "vision_score": vis_score,
+                            "search_scope": effective_scope,
+                            "full_peak_path": full_peak_path,
+                            "full_peak_duration_sec": round(natural_peak_len if full_peak_path else scene_clip_len, 2),
+                            "scene_clip_duration_sec": round(scene_clip_len, 2),
+                        }
+        except Exception as e_yt:
+            logger.debug(f"[YouTubePeakTool] Lỗi nhánh YouTube video: {e_yt}")
+
+    # ── TẦNG 2 (FALLBACK TỰ ĐỘNG KHI KHÔNG CÓ CLIP YOUTUBE ĐẠT CHUẨN): VIDEO HD DỌC TRÊN PEXELS / PIXABAY ──
     if not allow_3d_cgi_monster:
         try:
             from app.graph.evaluators.visual_critic import VisualCritic
@@ -912,7 +1209,7 @@ def execute_youtube_short_peak_clone_sync(
                             Path(output_path).unlink(missing_ok=True)
                             continue
 
-                        full_peak_path = None
+                        full_peak_path_st = None
                         if st_peak_len >= min_st_dur + 1.8 and raw_st_dur >= st_start + min_st_dur + 1.5:
                             cand_full_st = str(Path(output_path).parent / f"{Path(output_path).stem}_fullpeak.mp4")
                             try:
@@ -930,7 +1227,7 @@ def execute_youtube_short_peak_clone_sync(
                                     preserve_continuous_flow=True,
                                 )
                                 if Path(cand_full_st).exists() and Path(cand_full_st).stat().st_size > 25000:
-                                    full_peak_path = cand_full_st
+                                    full_peak_path_st = cand_full_st
                             except Exception:
                                 pass
 
@@ -943,7 +1240,7 @@ def execute_youtube_short_peak_clone_sync(
                             media_path=output_path,
                         )
                         logger.info(
-                            f"🎬 [LicensedStockVideo HD] Đã tải & duyệt video Pexels/Pixabay có giấy phép "
+                            f"🎬 [LicensedStockVideo HD Fallback] Đã tải & duyệt video Pexels/Pixabay "
                             f"(scope={effective_scope}, peak={st_peak_len:.1f}s, vis={st_vis_score}/10) cho {clip_role}: '{st_title[:50]}'"
                         )
                         return {
@@ -951,318 +1248,15 @@ def execute_youtube_short_peak_clone_sync(
                             "media_type": "hook_ready_video" if (clip_role or "").upper() == "HOOK" else "video",
                             "source_url": v_url,
                             "title": st_title or "HD Portrait Stock Video",
-                            "window": f"{st_start:.1f}s-{st_start + (st_peak_len if full_peak_path else min_st_dur):.1f}s",
+                            "window": f"{st_start:.1f}s-{st_start + (st_peak_len if full_peak_path_st else min_st_dur):.1f}s",
                             "vision_score": st_vis_score,
                             "search_scope": effective_scope,
-                            "full_peak_path": full_peak_path,
-                            "full_peak_duration_sec": round(st_peak_len if full_peak_path else min_st_dur, 2),
+                            "full_peak_path": full_peak_path_st,
+                            "full_peak_duration_sec": round(st_peak_len if full_peak_path_st else min_st_dur, 2),
                             "scene_clip_duration_sec": round(min_st_dur, 2),
                         }
         except Exception as e_st:
             logger.debug(f"[LicensedStockVideo] Lỗi tìm stock video có giấy phép: {e_st}")
-
-    # ── TẦNG 2: CHỈ CHO PHÉP NGUỒN YOUTUBE RỦI RO THẤP (KHÔNG PHẢI SHORTS KÊNH KHÁC) KHI BẬT CỜ HOẶC 3D CGI MONSTER ──
-    allow_low_risk_yt = allow_3d_cgi_monster or (
-        os.getenv("ALLOW_LOW_RISK_YOUTUBE_CLIPS", "false").strip().lower() in ("1", "true", "yes", "on")
-    )
-    if not allow_low_risk_yt:
-        return None
-
-    try:
-        import yt_dlp
-        from app.graph.evaluators.visual_critic import VisualCritic
-
-        candidates = _search_youtube_flat_cached(search_phrases, subject_anchors, all_query_tokens)
-        if allow_3d_cgi_monster:
-            _monster_yt_bad = ("tier list", "explained", "minecraft", "roblox", "gmod", "garry", "lego", "podcast", "reaction")
-            candidates = [
-                c for c in candidates
-                if not any(b_tok in str(c.get("title") or "").lower() for b_tok in _monster_yt_bad)
-            ]
-        unused_cands = [
-            c for c in candidates
-            if not is_media_already_used(c["url"], used) and f"yt:{c['id']}" not in used
-        ]
-        ordered_cands = rag.rank_video_candidates_for_scene(
-            job_id=job_id,
-            candidates=unused_cands,
-            scene_narration=narration,
-            scene_query=search_query,
-            topic=topic,
-            subject_entity=subject_entity or topic,
-            channel_id=channel_id,
-        )
-
-        max_claimed_probes = 4
-        claimed_probes = 0
-        cand_pool = list(ordered_cands[:20])
-        if len(cand_pool) > 4 and eff_scene_id > 1:
-            rot_c = (eff_scene_id - 1) % min(5, len(cand_pool))
-            cand_pool = cand_pool[rot_c:] + cand_pool[:rot_c]
-
-        for cand in cand_pool:
-            if claimed_probes >= max_claimed_probes:
-                break
-            vid_url = cand["url"]
-            vid_id = cand.get("id") or ""
-            cand_title = str(cand.get("title") or "")
-
-            if not rag.try_claim_in_job_video(
-                job_id=job_id,
-                vid_id=vid_id,
-                url=vid_url,
-                title=cand_title,
-                scene_id=eff_scene_id,
-            ):
-                continue
-
-            with _yt_url_lock:
-                if vid_url in used:
-                    rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
-                    continue
-                used.update(extract_media_identity(vid_url))
-
-            claimed_probes += 1
-            info_entry: Dict[str, Any] = cand
-            try:
-                info_opts = {"quiet": True, "no_warnings": True, "skip_download": True, "socket_timeout": 8}
-                with yt_dlp.YoutubeDL(info_opts) as ydl_info:
-                    full_info = ydl_info.extract_info(vid_url, download=False)
-                    if isinstance(full_info, dict):
-                        dur_full = float(full_info.get("duration") or 0)
-                        if dur_full < 8 or dur_full > 300:
-                            rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
-                            continue
-                        w_full = int(full_info.get("width") or 0)
-                        h_full = int(full_info.get("height") or 0)
-                        if w_full > 0 and h_full > 0 and min(w_full, h_full) < 720:
-                            rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
-                            continue
-                        meta_full_lower = (
-                            f"{full_info.get('title') or ''} {full_info.get('uploader') or ''} "
-                            f"{full_info.get('channel') or ''} {(full_info.get('description') or '')[:300]}"
-                        ).lower()
-                        if any(bad in meta_full_lower for bad in _TALKING_HEAD_BLOCKLIST) or any(
-                            bad_c in meta_full_lower for bad_c in _HIGH_RISK_WATERMARK_CHANNEL_BLOCKLIST
-                        ):
-                            rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
-                            continue
-                        info_entry = full_info
-            except Exception:
-                pass
-
-            win_pair = _find_best_peak_window(
-                info_entry,
-                target_duration_sec + 0.5,
-                role=clip_role,
-                existing_windows=None,
-                max_peak_dur=max_peak_duration_sec,
-            )
-            if not win_pair:
-                rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
-                continue
-            start_s, end_s = win_pair
-
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                raw_dl_template = str(Path(tmp_dir) / "raw_short.%(ext)s")
-                dl_opts = {
-                    "quiet": True,
-                    "no_warnings": True,
-                    "format": "bestvideo[height>=720][height<=1920][ext=mp4]/best[height>=720][height<=1920][ext=mp4]",
-                    "outtmpl": raw_dl_template,
-                    "socket_timeout": 12,
-                    "retries": 1,
-                    "nopart": True,
-                }
-                try:
-                    from yt_dlp.utils import download_range_func
-                    dl_opts["download_ranges"] = download_range_func(None, [(start_s, end_s + 1.0)])
-                except Exception:
-                    pass
-
-                try:
-                    with yt_dlp.YoutubeDL(dl_opts) as ydl_dl:
-                        ydl_dl.download([vid_url])
-                except Exception:
-                    dl_opts.pop("download_ranges", None)
-                    try:
-                        with yt_dlp.YoutubeDL(dl_opts) as ydl_dl2:
-                            ydl_dl2.download([vid_url])
-                    except Exception:
-                        rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
-                        continue
-
-                downloaded_files = list(Path(tmp_dir).glob("raw_short.*"))
-                if not downloaded_files and "download_ranges" in dl_opts:
-                    dl_opts.pop("download_ranges", None)
-                    try:
-                        with yt_dlp.YoutubeDL(dl_opts) as ydl_dl2:
-                            ydl_dl2.download([vid_url])
-                    except Exception:
-                        pass
-                    downloaded_files = list(Path(tmp_dir).glob("raw_short.*"))
-
-                if not downloaded_files:
-                    rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
-                    continue
-                raw_file = str(downloaded_files[0])
-                if Path(raw_file).stat().st_size < 15000:
-                    rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
-                    continue
-
-                # Cổng kiểm duyệt clip nguồn trước khi cắt ghép: tối thiểu 720p, độ nét >= 5.8, độ sáng cân bằng, không watermark
-                raw_gate = VisualCritic.inspect_clip_before_concat(
-                    raw_file, min_short_edge=720, min_sharpness=5.8, check_watermark=True
-                )
-                if not raw_gate.get("passed", False):
-                    logger.info(
-                        f"🚫 [PreAssemblyClipGate] Loại bỏ clip nguồn '{cand_title[:45]}' trước khi cắt: "
-                        f"{'; '.join(raw_gate.get('issues') or [])}"
-                    )
-                    rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
-                    continue
-
-                from app.utils.ffmpeg_helper import find_hook_peak_window, get_duration_ms, trim_video
-                raw_dur_sec = max(0.0, get_duration_ms(raw_file) / 1000.0)
-                min_req_dur = max(3.0, target_duration_sec)
-                if "download_ranges" in dl_opts:
-                    rel_start, natural_peak_len = find_hook_peak_window(
-                        raw_file,
-                        min_duration=min_req_dur,
-                        max_duration=min(max_peak_duration_sec, max(min_req_dur, raw_dur_sec)),
-                    )
-                    actual_start_s = rel_start
-                else:
-                    det_start, natural_peak_len = find_hook_peak_window(
-                        raw_file,
-                        min_duration=min_req_dur,
-                        max_duration=max_peak_duration_sec,
-                    )
-                    actual_start_s = det_start if det_start > 0.0 else start_s
-
-                natural_peak_len = max(min_req_dur, min(natural_peak_len, max_peak_duration_sec))
-                scene_clip_len = min_req_dur
-
-                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-                try:
-                    trim_video(
-                        input_path=raw_file,
-                        duration_seconds=scene_clip_len,
-                        output_path=output_path,
-                        width=1080,
-                        height=1920,
-                        fps=30,
-                        apply_grading=True,
-                        is_hook_scene=((clip_role or "").upper() == "HOOK"),
-                        fair_use_transform=False,
-                        start_offset_sec=actual_start_s,
-                        preserve_continuous_flow=True,
-                    )
-                except Exception:
-                    vf_filter = (
-                        "scale=1080:1920:force_original_aspect_ratio=increase,"
-                        "crop=1080:1920,fps=30,format=yuv420p"
-                    )
-                    cmd = [
-                        "ffmpeg", "-y", "-v", "error",
-                        "-ss", f"{actual_start_s:.2f}",
-                        "-i", raw_file,
-                        "-t", f"{scene_clip_len:.2f}",
-                        "-an", "-vf", vf_filter,
-                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "21",
-                        "-pix_fmt", "yuv420p", "-color_range", "tv",
-                        output_path,
-                    ]
-                    subprocess.run(cmd, capture_output=True, timeout=25, check=False)
-
-                if Path(output_path).exists() and Path(output_path).stat().st_size > 20000:
-                    ok_sig, dup_sid = rag.verify_and_commit_in_job_clip(
-                        job_id=job_id,
-                        scene_id=eff_scene_id,
-                        media_path=output_path,
-                        vid_id=vid_id,
-                        url=vid_url,
-                        title=cand_title,
-                        is_continuation_slice=False,
-                    )
-                    if not ok_sig:
-                        rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
-                        Path(output_path).unlink(missing_ok=True)
-                        continue
-
-                    passed_vis, vis_score, vis_reason = _verify_short_clip_with_gemini_vision(
-                        video_path=output_path,
-                        topic=topic,
-                        narration=narration,
-                        subject_entity=subject_entity or topic,
-                        overall_script_query=overall_script_query or (search_phrases[0] if search_phrases else topic),
-                        search_scope=effective_scope,
-                        video_title=cand_title,
-                        allow_3d_cgi_monster=allow_3d_cgi_monster,
-                        strict_no_fallback=True,
-                    )
-                    if not passed_vis:
-                        logger.info(
-                            f"🚫 [YouTubePeakTool] Gemini Vision từ chối clip '{cand_title[:45]}' "
-                            f"(điểm={vis_score}/10: {vis_reason}) -> Thử ứng viên tiếp theo!"
-                        )
-                        rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
-                        Path(output_path).unlink(missing_ok=True)
-                        continue
-
-                    full_peak_path: Optional[str] = None
-                    if natural_peak_len >= scene_clip_len + 1.8 and raw_dur_sec >= actual_start_s + scene_clip_len + 1.5:
-                        cand_full_path = str(Path(output_path).parent / f"{Path(output_path).stem}_fullpeak.mp4")
-                        try:
-                            trim_video(
-                                input_path=raw_file,
-                                duration_seconds=natural_peak_len,
-                                output_path=cand_full_path,
-                                width=1080,
-                                height=1920,
-                                fps=30,
-                                apply_grading=True,
-                                is_hook_scene=False,
-                                fair_use_transform=False,
-                                start_offset_sec=actual_start_s,
-                                preserve_continuous_flow=True,
-                            )
-                            if Path(cand_full_path).exists() and Path(cand_full_path).stat().st_size > 25000:
-                                full_peak_path = cand_full_path
-                        except Exception as e_fp:
-                            logger.debug(f"[YouTubePeakTool] Lỗi xuất full_peak_path: {e_fp}")
-
-                    win_start = (start_s + actual_start_s) if "download_ranges" in dl_opts else actual_start_s
-                    win_end = win_start + (natural_peak_len if full_peak_path else scene_clip_len)
-
-                    record_used_media(
-                        url=vid_url,
-                        query=search_phrases[0] if search_phrases else search_query,
-                        job_id=job_id,
-                        source="low_risk_clean_video",
-                        media_path=output_path,
-                    )
-
-                    logger.info(
-                        f"🔥 [CleanVideoPeakTool + MiniRAG] Đã cắt & duyệt Vision ({vis_score}/10, scope={effective_scope}) "
-                        f"đoạn {clip_role} ({win_start:.1f}s-{win_end:.1f}s, full_peak={natural_peak_len:.1f}s) "
-                        f"từ nguồn sạch: '{cand_title[:55]}' ({vid_url})"
-                    )
-                    return {
-                        "media_path": output_path,
-                        "media_type": "hook_ready_video" if (clip_role or "").upper() == "HOOK" else "video",
-                        "source_url": vid_url,
-                        "youtube_id": vid_id,
-                        "title": cand_title,
-                        "window": f"{win_start:.1f}s-{win_end:.1f}s",
-                        "vision_score": vis_score,
-                        "search_scope": effective_scope,
-                        "full_peak_path": full_peak_path,
-                        "full_peak_duration_sec": round(natural_peak_len if full_peak_path else scene_clip_len, 2),
-                        "scene_clip_duration_sec": round(scene_clip_len, 2),
-                    }
-    except Exception as e_yt:
-        logger.debug(f"[YouTubePeakTool] Lỗi nhánh video: {e_yt}")
 
     return None
 

@@ -303,10 +303,16 @@ Return ONLY valid JSON:
     ):
         candidate_videos.append(existing_path)
 
-    for q_idx, q in enumerate([]):  # Đã tắt lấy clip Shorts thô của kênh khác; chuyển sang nguồn có giấy phép (Pexels/Pixabay HD) ở bước dưới
+    from app.graph.tools.media_tools import (
+        _HIGH_RISK_WATERMARK_CHANNEL_BLOCKLIST,
+        _TALKING_HEAD_BLOCKLIST,
+    )
+    from app.graph.evaluators.visual_critic import VisualCritic
+
+    for q_idx, q in enumerate(queries):
         if len(candidate_videos) >= 3:
             break
-        # Quét danh sách ứng viên qua yt_dlp flat search và xếp hạng bằng Mini-RAG (tối ưu chất lượng & chống trùng trong cùng video)
+        # Quét danh sách ứng viên qua yt_dlp flat search, chặn kênh rủi ro bản quyền/watermark và xếp hạng bằng Mini-RAG
         selected_urls: List[str] = []
         try:
             import yt_dlp
@@ -319,7 +325,7 @@ Return ONLY valid JSON:
                 "ignoreerrors": True,
             }
             with yt_dlp.YoutubeDL(flat_opts) as ydl_flat:
-                flat_res = ydl_flat.extract_info(f"ytsearch15:{q} #shorts", download=False)
+                flat_res = ydl_flat.extract_info(f"ytsearch15:{q}", download=False)
             raw_flat_cands: List[Dict[str, Any]] = []
             for entry in ((flat_res or {}).get("entries") or []):
                 if not isinstance(entry, dict):
@@ -328,11 +334,17 @@ Return ONLY valid JSON:
                 if not vid_id:
                     continue
                 dur_e = float(entry.get("duration") or 0)
-                if dur_e > 0 and (dur_e < 5 or dur_e > 75):
+                if dur_e > 0 and (dur_e < 4 or dur_e > 180):
+                    continue
+                title_e = str(entry.get("title") or "")
+                uploader_e = str(entry.get("uploader") or entry.get("channel") or "")
+                meta_e = f"{title_e} {uploader_e}".lower()
+                if any(bad in meta_e for bad in _TALKING_HEAD_BLOCKLIST) or any(
+                    bad_c in meta_e for bad_c in _HIGH_RISK_WATERMARK_CHANNEL_BLOCKLIST
+                ):
                     continue
                 vid_url = f"https://www.youtube.com/watch?v={vid_id}"
                 views_e = int(entry.get("view_count") or 0)
-                title_e = str(entry.get("title") or "")
                 raw_flat_cands.append({
                     "id": vid_id,
                     "url": vid_url,
@@ -356,20 +368,22 @@ Return ONLY valid JSON:
         except Exception as e_flat:
             logger.debug(f"[HookVideoNode] yt_dlp flat pre-filter skip ({q}): {e_flat}")
 
+        if not selected_urls:
+            continue
+
         out_tmpl = str(hook_cand_dir / f"yt_hook_cand_{q_idx}_%(id)s.%(ext)s")
-        dl_targets = selected_urls if selected_urls else [f"ytsearch4:{q} #shorts"]
         cmd_yt = [
             "yt-dlp",
             "--no-playlist",
             "--no-warnings",
             "--quiet",
             "--socket-timeout", "8",
-            "--max-filesize", "24M",
-            "--match-filter", "duration <= 75",
+            "--max-filesize", "28M",
+            "--match-filter", "duration <= 180",
             "--max-downloads", "3",
-            "-f", "best[height>=480][height<=1080][ext=mp4]/bestvideo[height>=480][height<=1080][ext=mp4]/best[ext=mp4]",
+            "-f", "bestvideo[height>=720][height<=1920][ext=mp4]/best[height>=720][height<=1920][ext=mp4]",
             "-o", out_tmpl,
-            *dl_targets,
+            *selected_urls,
         ]
         try:
             subprocess.run(
@@ -384,6 +398,16 @@ Return ONLY valid JSON:
 
         for mp4 in sorted(hook_cand_dir.glob(f"yt_hook_cand_{q_idx}_*.mp4")):
             if mp4.stat().st_size > 80_000 and str(mp4) not in candidate_videos:
+                gate_res = VisualCritic.inspect_clip_before_concat(
+                    str(mp4), min_short_edge=720, min_sharpness=5.8, check_watermark=True
+                )
+                if not gate_res.get("passed", False):
+                    logger.info(
+                        f"🚫 [HookVideoNode Gate] Loại bỏ ứng viên Hook '{mp4.name}' vì: "
+                        f"{'; '.join(gate_res.get('issues') or [])}"
+                    )
+                    mp4.unlink(missing_ok=True)
+                    continue
                 candidate_videos.append(str(mp4))
                 if len(candidate_videos) >= 4:
                     break
@@ -790,9 +814,9 @@ Return ONLY valid JSON:
         # CỨU HỘ CẢNH 1 BẰNG VIDEO CHUYỂN ĐỘNG THẬT TỪ PEXELS / PIXABAY HD TRƯỚC KHI FALLBACK VỀ ẢNH TĨNH
         stock_hook_ok = False
         try:
-            from app.graph.tools.media_tools import execute_youtube_short_peak_clip_sync
+            from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
             st_q = queries[0] if queries else (visual_keyword or topic)
-            st_res = execute_youtube_short_peak_clip_sync(
+            st_res = execute_youtube_short_peak_clone_sync(
                 search_query=st_q,
                 output_path=hook_output_clip,
                 target_duration_sec=target_hook_duration_sec,
