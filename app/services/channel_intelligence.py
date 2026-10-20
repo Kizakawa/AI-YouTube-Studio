@@ -576,11 +576,10 @@ def _get_global_trends_directive(niche_id: str, channel_id: Optional[str] = None
 
     if any(k in nid for k in ("deep_sea", "ocean", "thalassophobia", "bien_sau", "abyss", "mysteries")):
         return f"""
-🌍 VIRAL SHORTS STRUCTURAL DIRECTIVES (MYSTERIES OF THE WORLD, SENSORY PARADOXES & DEEP ANOMALIES):
-1. Human Sensory & Biological Paradoxes ("A vs B" Confrontation): Contrast human biological limits against extreme physical environments (e.g., Anechoic Chamber sensory deprivation vs. neural hallucination threshold).
-2. Unexplained Acoustic & Geological Signals: Open with a concrete physical measurement (decibels, frequency Hz, depth/temperature) in the first 3 seconds.
-3. Sealed Subterranean Vaults & Extreme Ecosystems: Movile Cave sulfur ecosystem, sub-glacial lakes, sealed geological anomalies.
-CRITICAL ANTI-CANNIBALIZATION CONSTRAINT: Avoid repeating saturated phrases detected in the channel history.{auditor_note}
+🌍 VIRAL SHORTS STRUCTURAL DIRECTIVES (DEEP SEA & OCEAN MYSTERIES ONLY — 100% MARINE / UNDERWATER):
+1. Deep Ocean & Marine Anomalies ONLY ("Entity A vs Entity B" or "Submarine/Diver vs Abyssal Anomaly"): Every concept MUST take place in the OCEAN, DEEP SEA, ABYSSAL TRENCHES, POINT NEMO, or MARINE PREDATORS (Colossal Squid, Sperm Whale, Greenland Shark, Orca vs Great White Shark, Deep-Sea Hydrophones, Saturation Diving).
+2. Unexplained Underwater Acoustic & Marine Signals: Open with a concrete physical measurement (depth in meters/feet, water pressure PSI, sonar Hz, ocean coordinates) in the first 3 seconds.
+3. STRICT DOMAIN LOCK (CHỐNG NHẦM LẪN VỚI KÊNH TRÊN CẠN): 100% OCEAN / SEA / MARINE topics ONLY! NEVER suggest terrestrial land animals (NO jaguars/onça, NO anacondas/sucuri, NO caimans, NO eagles, NO deserts, NO forests/savannas).{auditor_note}
 """
     elif any(k in nid for k in ("alternate_history", "what_if", "timeline", "temporal")):
         return f"""
@@ -600,10 +599,10 @@ CRITICAL CONSTRAINT: Avoid passive or purely bleak titles; every title and hook 
 """
     elif "wildlife" in nid or "predator" in nid or "nature" in nid:
         return f"""
-🌍 VIRAL SHORTS STRUCTURAL DIRECTIVES (WILDLIFE & APEX PREDATORS):
-1. Head-to-Head Apex Predator Duels ("Entity A vs Entity B"): Frame the opening around an asymmetric biological confrontation between two named creatures.
-2. Extreme Biomechanical Metrics: Anchor the first 3 seconds with a real physical measurement (PSI bite force, voltage, speed in mph/kmh, strike milliseconds).
-STRICT NEGATIVE CONSTRAINT: 100% biological animal predator behaviors and matchups. Zero sports/football, zero psychology.{auditor_note}
+🌍 VIRAL SHORTS STRUCTURAL DIRECTIVES (TERRESTRIAL / LAND WILDLIFE & APEX PREDATORS ONLY — 100% TRÊN CẠN):
+1. Head-to-Head Land & River-Jungle Apex Predator Duels ("Entity A vs Entity B"): Frame the opening around an asymmetric biological confrontation between two named TERRESTRIAL / JUNGLE / SAVANNA creatures (e.g., Jaguar/Onça-pintada, Caiman/Jacaré-açu, Anaconda/Sucuri, Harpy Eagle/Harpia, Honey Badger/Texugo-do-mel, Komodo Dragon, Giant River Otter/Ariranha, Snow Leopard, Lion, Hippo, Black Mamba).
+2. Extreme Biomechanical Metrics: Anchor the first 3 seconds with a real physical measurement (PSI bite force, claw pressure, speed in mph/kmh, strike milliseconds).
+3. STRICT DOMAIN LOCK (CHỐNG NHẦM LẪN VỚI KÊNH BIỂN SÂU): 100% TERRESTRIAL / LAND & JUNGLE WILDLIFE ONLY! NEVER suggest deep-sea, ocean trenches, submarines, whales, sharks, or marine monsters.{auditor_note}
 """
     else:  # psychology / dark psychology / self-mastery
         return f"""
@@ -942,6 +941,18 @@ Return ONLY a valid JSON array of objects with the following structure:
                 if is_self_dup:
                     continue
 
+                # Kiểm tra tường lửa ngách cứng (Đặc biệt tách biệt Kênh Trên Cạn vs Kênh Về Biển)
+                from app.services.niche_manager import validate_channel_niche_alignment
+                niche_check = validate_channel_niche_alignment(
+                    channel_id=channel_id,
+                    title=cand_title,
+                    topic=cand_topic,
+                    script=cand.get("hook", ""),
+                )
+                if not niche_check.get("passed", True):
+                    logger.info(f"[NicheFirewall] Bỏ qua ý tưởng lệch ngách '{cand_title}' trên {channel_id}: {niche_check.get('reason')}")
+                    continue
+
                 cand["channel_id"] = channel_id
                 cand["channel_name"] = channel_name
                 cand["niche"] = niche_id
@@ -1019,42 +1030,81 @@ def _get_curated_niche_fallbacks(niche_id: str, lang: str = "en") -> List[Dict[s
             }
         ]
     elif "mystery" in niche_id or "deep_sea" in niche_id:
+        if str(lang or "").lower().startswith("pt"):
+            return [
+                {
+                    "topic": "Colossal Squid vs Sperm Whale: Battle Scars From 2,000 Meters Deep In The Southern Ocean",
+                    "title": "Lula-Colossal vs Cachalote: O Duelo Mortal A 2.000m No Oceano 🦑🐋 #Shorts",
+                    "hook": "A 2.000 metros de profundidade no oceano escuro, cachalotes emergem cobertos por cicatrizes de ventosas com garras giratórias.",
+                    "angle": "Colossal squid rotating hooks vs sperm whale sonar click stun at 2,000m ocean depth",
+                    "pinned_comment": "Quem vence na escuridão total do oceano profundo: Cachalote ou Lula-Colossal? Comente! 👇",
+                    "viral_formula": "Debate in Comments",
+                    "predicted_retention": "165% - 175%",
+                    "why_viral": "Cuộc chiến sinh tử dưới đáy đại dương giữa Cá nhà táng và Mực khổng lồ chuẩn ngách biển sâu Brazil",
+                    "fixes_flaw": "100% đại dương sâu cho kênh Mistérios do Mundo, tách biệt hoàn toàn với kênh trên cạn.",
+                    "trend_alignment": "Thủy quái biển sâu & đối đầu đại dương."
+                },
+                {
+                    "topic": "Point Nemo: The Spacecraft Cemetery In The Middle Of The Pacific Ocean",
+                    "title": "Ponto Nemo: O Cemitério Secreto De Naves No Fundo Do Oceano 🌊🛰️ #Shorts",
+                    "hook": "Existe um ponto no Oceano Pacífico tão isolado que os humanos mais próximos estão na Estação Espacial Internacional.",
+                    "angle": "Point Nemo oceanic pole of inaccessibility, 2,688 km from land, sunken space stations at 4,000m depth",
+                    "pinned_comment": "Você teria coragem de navegar pelo Ponto Nemo à noite? 👇",
+                    "viral_formula": "Curiosity Part 2",
+                    "predicted_retention": "160% - 170%",
+                    "why_viral": "Bí ẩn vùng biển cô độc nhất Thái Bình Dương nơi chôn cất tàu vũ trụ dưới đáy đại dương",
+                    "fixes_flaw": "100% chủ đề biển cả & đại dương sâu chuẩn pt-BR.",
+                    "trend_alignment": "Khám phá tọa độ tử thần trên đại dương."
+                },
+                {
+                    "topic": "The 400-Year-Old Greenland Shark: The Blind Apex Predator Of The Freezing Arctic Ocean",
+                    "title": "O Tubarão De 400 Anos Que Vive Na Escuridão Do Oceano Ártico 🦈❄️ #Shorts",
+                    "hook": "Nas águas congelantes do Oceano Ártico, nada um tubarão gigante que nasceu antes mesmo do Império Brasileiro existir.",
+                    "angle": "Greenland shark 400-year lifespan, antifreeze TMAO blood at 2,200m ocean depth",
+                    "pinned_comment": "Qual segredo mais assustador você acha que o oceano ainda esconde? 👇",
+                    "viral_formula": "Debate in Comments",
+                    "predicted_retention": "160% - 170%",
+                    "why_viral": "Sinh vật đại dương sống 400 năm dưới đáy Bắc Băng Dương kích thích tò mò cực lớn",
+                    "fixes_flaw": "100% sinh vật biển sâu cho kênh Mistérios do Mundo.",
+                    "trend_alignment": "Sinh vật bất tử dưới đáy đại dương."
+                }
+            ]
         return [
             {
-                "topic": "The Door To Hell: Why This Giant Desert Fire Crater Has Burned Nonstop Since 1971",
-                "title": "Why Scientists Set This Giant Crater On Fire In 1971 🔥🕳️ #Shorts",
-                "hook": "In 1971, Soviet geologists lit a giant gas crater expecting it to burn out in two weeks... it is still burning today.",
-                "angle": "Darvaza gas crater collapse in Turkmenistan, 1,800°F methane flames, desert wildlife drawn to the pit",
-                "pinned_comment": "How would they ever extinguish a crater burning at 1,800°F? Drop your theory 👇",
+                "topic": "Colossal Squid vs Sperm Whale: Battle Scars From 6,500 Feet Deep In The Ocean",
+                "title": "Colossal Squid vs Sperm Whale At 6,500 Feet Deep 🦑🐋 #Shorts",
+                "hook": "At 6,500 feet below the ocean surface, 50-ton sperm whales surface covered in jagged circular scars from a ruthless abyssal hunter.",
+                "angle": "Colossal squid swiveling tentacle hooks vs sperm whale 230-decibel sonar click in pitch-black ocean",
+                "pinned_comment": "In pitch-black water at 6,500 feet, who rules the deep ocean? Drop your vote 👇",
                 "viral_formula": "Debate in Comments",
                 "predicted_retention": "160% - 170%",
-                "why_viral": "Hình ảnh hố lửa khổng lồ cháy suốt 55 năm giữa sa mạc cực kỳ bắt mắt ngay 3 giây đầu",
-                "fixes_flaw": "Chuyển từ ảnh tĩnh đáy biển tối đen sang video hố lửa thực tế rực sáng trên YouTube Shorts.",
-                "trend_alignment": "Hiện tượng địa chất kỳ bí có thật trên Trái Đất."
+                "why_viral": "Cuộc đối đầu dưới đáy biển sâu giữa Cá nhà táng và Mực khổng lồ",
+                "fixes_flaw": "100% chủ đề đại dương và biển sâu.",
+                "trend_alignment": "Bí ẩn đại dương và quái vật biển sâu."
             },
             {
-                "topic": "The Boiling River Of The Amazon: A 200°F River That Boils Anything That Falls In",
-                "title": "The Amazon River That Boils Everything Alive At 200°F 🔥🌿 #Shorts",
-                "hook": "Deep in the Peruvian Amazon flows a four-mile river so hot that any animal falling in is boiled alive in seconds.",
-                "angle": "Shanay-Timpishka thermal river, 93°C boiling water with no nearby volcano, fault-fed hydrothermal anomaly",
-                "pinned_comment": "Would you dare swim near the edge of a 200°F river? 👇",
+                "topic": "Point Nemo: Why Spaceships Are Crashed Into The Most Isolated Spot In The Pacific Ocean",
+                "title": "The Secret Spacecraft Graveyard At The Bottom Of The Ocean 🌊🛰️ #Shorts",
+                "hook": "In the middle of the South Pacific Ocean lies a graveyard 1,670 miles from land where 260 spacecraft rest on the seafloor.",
+                "angle": "Point Nemo oceanic pole of inaccessibility, 13,000-foot ocean depth, astronauts overhead closer than land",
+                "pinned_comment": "Would you dare sail across Point Nemo at night? 👇",
                 "viral_formula": "Curiosity Part 2",
                 "predicted_retention": "155% - 165%",
-                "why_viral": "Sự đối lập thị giác giữa rừng rậm Amazon xanh mát và dòng nước sôi bốc khói nghi ngút",
-                "fixes_flaw": "Có cảnh quay video thực tế khói bốc nghi ngút trên sông, giữ chân người xem 3.5s đầu.",
-                "trend_alignment": "Khám phá địa danh cấm địa kỳ bí trên Trái Đất."
+                "why_viral": "Nghĩa địa tàu vũ trụ dưới đáy Thái Bình Dương",
+                "fixes_flaw": "100% chủ đề đại dương sâu.",
+                "trend_alignment": "Khám phá vùng biển bí ẩn nhất hành tinh."
             },
             {
-                "topic": "Why Scientists Welded Shut The Kola Superdeep Borehole At 40,230 Feet",
-                "title": "Why Scientists Welded Shut The Deepest Hole On Earth 🕳️⚠️ #Shorts",
-                "hook": "After drilling 40,230 feet into the Earth's crust, scientists hit a terrifying anomaly and welded the shaft shut forever.",
-                "angle": "Kola Superdeep Borehole, 356°F plastic rock behavior, deep microscopic fossils and boiling hydrogen gas",
-                "pinned_comment": "What do you think lies beneath 40,000 feet of solid rock? 👇",
+                "topic": "The 1997 Upsweep Sound: The Unexplained Pacific Ocean Signal Recorded By NOAA Hydrophones",
+                "title": "The 1997 Deep Ocean Sound Scientists Still Can't Explain 🌊🔊 #Shorts",
+                "hook": "In August 1997, underwater hydrophones across the Pacific Ocean recorded a repeating train of sounds rising from the abyss.",
+                "angle": "NOAA Pacific marine acoustic monitoring, 4,000-mile hydrophone detection range, volcanic abyssal vents",
+                "pinned_comment": "What do you think produced the Upsweep sound on the Pacific seafloor? 👇",
                 "viral_formula": "Debate in Comments",
-                "predicted_retention": "150% - 160%",
-                "why_viral": "Bí ẩn hố khoan sâu nhất hành tinh bị hàn kín nắp sắt luôn kích thích trí tò mò cực đại",
-                "fixes_flaw": "Khai thác bí ẩn lòng đất có hình ảnh nắp hầm kim loại thật và số liệu chiều sâu cụ thể.",
-                "trend_alignment": "Bí ẩn lòng đất và công trình khoa học bị phong ấn."
+                "predicted_retention": "155% - 165%",
+                "why_viral": "Âm thanh bí ẩn dưới đáy Thái Bình Dương được NOAA ghi lại",
+                "fixes_flaw": "100% chủ đề đại dương sâu.",
+                "trend_alignment": "Tín hiệu âm thanh bí ẩn dưới đáy đại dương."
             }
         ]
     elif "animal" in niche_id or "rescue" in niche_id or "pet" in niche_id:
@@ -1097,6 +1147,45 @@ def _get_curated_niche_fallbacks(niche_id: str, lang: str = "en") -> List[Dict[s
             }
         ]
     elif "wildlife" in niche_id or "predator" in niche_id or "nature" in niche_id:
+        if str(lang or "").lower().startswith("pt"):
+            return [
+                {
+                    "topic": "Jaguar vs Black Caiman: Why The 1,500 PSI Bite Pierces Straight Through The Skull",
+                    "title": "Por Que O Jacaré-Açu Tem Pavor Da Onça-Pintada No Pantanal 🐆🐊 #Shorts",
+                    "hook": "Com uma mordida de 1.500 PSI, a onça-pintada ignora o pescoço e perfura diretamente o crânio de jacarés no Pantanal.",
+                    "angle": "Jaguar skull-piercing 1,500 PSI bite force vs Black Caiman in Pantanal rivers",
+                    "pinned_comment": "Quem domina o Pantanal: Onça-Pintada ou Jacaré-Açu? Deixe seu voto nos comentários! 👇",
+                    "viral_formula": "Shock Fact & Apex Predator",
+                    "predicted_retention": "175% - 185%",
+                    "why_viral": "Cuộc đối đầu kinh điển trên cạn/đầm lầy Pantanal giữa Báo đốm và Cá sấu Jacaré-açu",
+                    "fixes_flaw": "100% động vật săn mồi trên cạn Brazil cho Odisseia Selvagem.",
+                    "trend_alignment": "Giải phẫu vũ khí săn mồi trên cạn."
+                },
+                {
+                    "topic": "Giant River Otter Pack vs Jaguar: How The 'River Wolves' Defend Their Territory",
+                    "title": "Por Que Até A Onça-Pintada Recua Diante De Um Bando De Ariranhas 🦦🐆 #Shorts",
+                    "hook": "Sozinha, a onça-pintada reina na selva — mas quando oito ariranhas cercam a margem, até o maior felino das Américas recua.",
+                    "angle": "Giant river otter pack coordination, razor teeth and territorial defense against a lone jaguar",
+                    "pinned_comment": "Você sabia que as ariranhas são chamadas de 'lobos do rio' na Amazônia? 👇",
+                    "viral_formula": "Adrenaline Surge & Predator Biomechanics",
+                    "predicted_retention": "170% - 180%",
+                    "why_viral": "Cuộc đối đầu bất ngờ giữa bầy Rái cá khổng lồ Amazon và Báo đốm",
+                    "fixes_flaw": "100% động vật hoang dã trên cạn/rừng Amazon cho Odisseia Selvagem.",
+                    "trend_alignment": "Chiến thuật săn mồi bầy đàn trên cạn."
+                },
+                {
+                    "topic": "Honey Badger vs King Cobra: How It Sleeps Off Lethal Neurotoxic Venom",
+                    "title": "Texugo-do-Mel vs Cobra-Rei: O Predador Imune Ao Veneno Mortal 🦡🐍 #Shorts",
+                    "hook": "Uma única picada da cobra-rei derruba um elefante em três horas — mas o texugo-do-mel apenas tira uma soneca e volta para terminar a refeição.",
+                    "angle": "Honey badger nicotinic receptor mutation blocking alpha-neurotoxin, thick loose skin defense",
+                    "pinned_comment": "Existe algum animal terrestre mais destemido que o Texugo-do-Mel? 👇",
+                    "viral_formula": "Shock Fact & Apex Predator",
+                    "predicted_retention": "165% - 175%",
+                    "why_viral": "Khả năng miễn nhiễm nọc độc rắn hổ mang chúa của Lửng mật trên cạn",
+                    "fixes_flaw": "100% động vật săn mồi trên cạn.",
+                    "trend_alignment": "Đột biến sinh học kỳ diệu của thú săn mồi trên cạn."
+                }
+            ]
         return [
             {
                 "topic": "Harpy Eagle vs Tree Sloth: The 500 PSI Talons Larger Than Grizzly Bear Claws",

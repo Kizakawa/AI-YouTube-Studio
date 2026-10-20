@@ -13,14 +13,12 @@ script_blueprint:
     và tôn kính trước sự tàn khốc hoàn hảo của mẹ thiên nhiên.
   pacing: Siêu cuốn hút, thời lượng tối ưu 38 - 48 giây (7 - 9 cảnh, 95 - 125 từ), nhịp điệu dồn dập, đẩy thời lượng giữ chân AWT > 25s để kích hoạt thuật toán Shorts.
   hook_formulas:
-  - 'Counter-Intuitive Apex Fear (Nature Lens 7.0M Formula): ''This is why 1,000-pound Caimans are terrified the second a Jaguar steps into the water...'''
+  - 'Counter-Intuitive Apex Fear (Nature Lens 7.0M Formula): ''This is why 1,000-pound Caimans are terrified the second a Jaguar steps into the river...'''
   - 'Physics-Defying Survival (FleshlyPaws 12.7M Formula): ''When a Leopard leaps from a 50-foot tree branch, here is how it survives the impact without breaking a single bone...'''
-  - 'Asymmetric Ocean Terror: ''Why even a 15-foot Great White Shark will abandon its hunting ground the exact second a lone Orca appears...'''
   - 'Bite Force Skull-Piercer: ''With a bone-crushing 1,500 PSI bite force, the Jaguar ignores the throat and pierces straight through the skull...'''
   - 'Venom Immunity Shock: ''A single bite from a King Cobra drops an elephant in 3 hours — yet the Honey Badger wakes up and finishes its meal...'''
   viral_topic_bank_2026:
-  - "This Is Why Caimans Are Terrified Of Jaguars In Deep Water"
-  - "Why Even A 20-Foot Great White Shark Flees From A Single Orca"
+  - "This Is Why Caimans Are Terrified Of Jaguars In The Pantanal"
   - "How A Snow Leopard Survives A 60-Foot Vertical Cliff Fall While Hunting"
   - "Why African Lions Never Mess With A Fully Grown Nile Hippo"
   - "Honey Badger vs King Cobra: How It Sleeps Off Lethal Neurotoxin"

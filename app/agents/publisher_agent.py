@@ -247,6 +247,27 @@ class PublisherAgent:
             logger.debug(f"[IntegrityGuard] Probe check warning: {e_probe}")
 
         # ──────────────────────────────────────────────────────────
+        # 1.5. LIVE YOUTUBE CHANNEL ID IDENTITY LOCK (CHỐNG ĐĂNG NHẦM KÊNH TRONG CÙNG GOOGLE ACCOUNT)
+        # ──────────────────────────────────────────────────────────
+        expected_yt_id = str(self.channel_config.get("youtube_channel_id") or "").strip()
+        if expected_yt_id and self.service:
+            try:
+                ch_info_resp = self.service.channels().list(part="id,snippet", mine=True).execute()
+                ch_items = ch_info_resp.get("items") or []
+                if ch_items:
+                    live_yt_id = str(ch_items[0].get("id") or "").strip()
+                    live_yt_title = str((ch_items[0].get("snippet") or {}).get("title") or "").strip()
+                    if live_yt_id and live_yt_id != expected_yt_id:
+                        err_mismatch = (
+                            f"🛡️ [ChannelIdentityLock] CHẶN UPLOAD NHẦM KÊNH: Token của '{self.channel_name}' ({self.channel_id}) "
+                            f"đang trỏ sang kênh '{live_yt_title}' ({live_yt_id}) thay vì '{expected_yt_id}'!"
+                        )
+                        logger.error(err_mismatch)
+                        return {"status": "failed", "error": err_mismatch, "message": err_mismatch, "video_id": None}
+            except Exception as e_id_lock:
+                logger.debug(f"[ChannelIdentityLock] Check warning: {e_id_lock}")
+
+        # ──────────────────────────────────────────────────────────
         # 2. HARD NICHE FIREWALL (CHẶN TUYỆT ĐỐI NHIỄM CHÉO NGÁCH KÊNH)
         # ──────────────────────────────────────────────────────────
         try:

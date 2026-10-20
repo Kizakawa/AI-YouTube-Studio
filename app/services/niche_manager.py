@@ -452,6 +452,9 @@ NICHE_EXCLUSIVE_SIGNATURES: Dict[str, Tuple[List[str], str]] = {
             "ocean deadliest", "ocean's deadliest", "abyssal", "quái vật biển", "đáy đại dương",
             "fossa das marianas", "fundo do oceano", "fundo do mar", "triângulo das bermudas",
             "oceano escondido", "ponto nemo", "buraco negro que engole navios",
+            "tubarão", "baleia", "cachalote", "lula-colossal", "lula gigante", "abismo marinho",
+            "zona hadal", "submarino", "oceano pacífico", "oceano atlântico", "great white shark",
+            "sperm whale", "greenland shark", "tubarão-da-groenlândia",
         ],
         "ch_the_mysteries_of_the_world",
     ),
@@ -459,9 +462,10 @@ NICHE_EXCLUSIVE_SIGNATURES: Dict[str, Tuple[List[str], str]] = {
         [
             "jaguar vs", "caiman vs", "anaconda vs", "honey badger", "komodo dragon",
             "apex predator", "bite force", "harpy eagle", "giant river otter",
-            "great white shark vs", "crocodile attack",
+            "crocodile attack", "snow leopard", "secretary bird", "black mamba",
             "onça-pintada", "onça vs", "sucuri vs", "sucuri de", "jacaré-açu", "ariranha",
-            "harpia", "lobo-guará", "tatu-canastra", "piranha",
+            "harpia", "lobo-guará", "tatu-canastra", "texugo-do-mel", "dragão-de-komodo",
+            "pantanal", "savana",
         ],
         "ch_wild_odyssey",
     ),
@@ -534,6 +538,53 @@ def validate_channel_niche_alignment(
                 "detected_niche": "banned_lexicon",
                 "suggested_channel_id": None,
                 "reason": f"Tiêu đề/Chủ đề chứa từ khóa bị cấm tuyệt đối ('{bt}') đối với ngách '{channel_niche}'.",
+            }
+
+    # 1.5. Tường lửa cứng tách biệt tuyệt đối Kênh Trên Cạn (`wildlife_predators` / `ch_odisseia_selvagem`)
+    # và Kênh Về Biển (`deep_sea_earth_mysteries` / `ch_misterios_do_mundo`) để không bao giờ đăng nhầm
+    cid_low = str(channel_id or "").lower()
+    is_br = cid_low in (
+        "ch_odisseia_selvagem", "ch_misterios_do_mundo",
+        "@odisseiaselvagemoficial", "@misteriosdomundo-tv",
+        "ucpbqs4h5qugpu3hcqjg-p9w", "ucvfonq9jcpvvze8e1cgnng",
+    )
+    if channel_niche == "wildlife_predators":
+        marine_only_terms = (
+            "fossa das marianas", "ponto nemo", "lula-colossal", "lula gigante", "cachalote",
+            "abismo marinho", "zona hadal", "fundo do oceano", "fundo do mar", "submarino",
+            "tubarão-da-groenlândia", "tubarão-branco", "great white shark", "mariana trench",
+            "colossal squid", "sperm whale", "deep ocean", "ocean floor", "seafloor", "kraken", "leviathan",
+        )
+        hit_marine = [m for m in marine_only_terms if re.search(rf"(?<![\w]){re.escape(m)}(?![\w])", combined_head)]
+        if hit_marine:
+            return {
+                "passed": False,
+                "channel_niche": channel_niche,
+                "detected_niche": "deep_sea_earth_mysteries",
+                "suggested_channel_id": "ch_misterios_do_mundo" if is_br else "ch_the_mysteries_of_the_world",
+                "reason": (
+                    f"Kênh Trên Cạn ('{channel_id}') không được đăng nội dung Biển Sâu/Đại Dương "
+                    f"({', '.join(hit_marine[:2])})."
+                ),
+            }
+    elif channel_niche == "deep_sea_earth_mysteries":
+        land_only_terms = (
+            "onça-pintada", "onça vs", "sucuri", "jacaré-açu", "ariranha", "harpia",
+            "texugo-do-mel", "dragão-de-komodo", "mamba-negra", "pantanal", "savana",
+            "leopardo", "hipopótamo", "leão", "tigre", "elefante", "jaguar vs", "caiman vs",
+            "honey badger", "harpy eagle", "komodo dragon", "snow leopard", "black mamba",
+        )
+        hit_land = [l for l in land_only_terms if re.search(rf"(?<![\w]){re.escape(l)}(?![\w])", combined_head)]
+        if hit_land:
+            return {
+                "passed": False,
+                "channel_niche": channel_niche,
+                "detected_niche": "wildlife_predators",
+                "suggested_channel_id": "ch_odisseia_selvagem" if is_br else "ch_wild_odyssey",
+                "reason": (
+                    f"Kênh Về Biển ('{channel_id}') không được đăng nội dung Động Vật Trên Cạn "
+                    f"({', '.join(hit_land[:2])})."
+                ),
             }
 
     # 2. Kiểm tra xem tiêu đề/chủ đề có mang dấu hiệu đặc trưng độc quyền của ngách khác không
