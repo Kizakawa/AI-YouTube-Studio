@@ -343,6 +343,7 @@ class VideoJob(Base):
     stayed_to_watch_pct = Column(Float, nullable=True)    # Tỷ lệ ở lại xem (Viewed %, vd: 76.2)
     swipe_away_pct = Column(Float, nullable=True)         # Tỷ lệ vuốt bỏ (Swiped Away %, vd: 23.8)
     avg_view_duration_sec = Column(Float, nullable=True)  # Thời lượng xem trung bình (giây)
+    hook_text = Column(Text, nullable=True)
     voice_engine = Column(String(100), nullable=True)     # Engine giọng đọc ('gemini_tts:...' | 'edge_tts:...')
 
     created_at = Column(DateTime, default=datetime.utcnow)
