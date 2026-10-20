@@ -1737,15 +1737,23 @@ def execute_clean_cinematic_portrait_or_broll_sync(
         if u_cand and u_cand not in all_candidate_urls:
             all_candidate_urls.append(u_cand)
 
-    for pq_supp in [clean_act_q, "dramatic portrait dark shadow", "intense eyes close up dark", "person silhouette night"]:
-        if len(all_candidate_urls) >= max(8, target_image_count * 2):
-            break
+    if len(all_candidate_urls) < max(8, target_image_count * 2):
         try:
-            px_list = media_agent.search_photos(pq_supp, per_page=5, orientation="portrait", topic="dramatic portrait", narration="", used_urls=used)
-            for p_it in (px_list or []):
-                u_px = p_it.get("url")
-                if u_px and u_px not in all_candidate_urls and not is_media_already_used(u_px, used):
-                    all_candidate_urls.append(u_px)
+            from app.graph.parallel_search import run_langgraph_parallel_tasks
+            supp_queries = [clean_act_q, "dramatic portrait dark shadow", "intense eyes close up dark", "person silhouette night"]
+            px_tasks = [{"q": q_s} for q_s in supp_queries]
+            px_completed = run_langgraph_parallel_tasks(
+                tasks=px_tasks,
+                worker_fn=lambda t: media_agent.search_photos(
+                    t["q"], per_page=5, orientation="portrait", topic="dramatic portrait", narration="", used_urls=used
+                ) or [],
+                task_group=f"PortraitPexelsSearch({len(px_tasks)} queries)",
+            )
+            for px_res in px_completed:
+                for p_it in (px_res.get("result") or []):
+                    u_px = p_it.get("url")
+                    if u_px and u_px not in all_candidate_urls and not is_media_already_used(u_px, used):
+                        all_candidate_urls.append(u_px)
         except Exception:
             pass
 
@@ -1782,13 +1790,38 @@ def execute_clean_cinematic_portrait_or_broll_sync(
 
     pose_images: List[str] = [img_out]
     out_p = Path(img_out)
-    for idx_r, c_url in enumerate(remaining_urls):
-        if len(pose_images) >= target_image_count:
-            break
-        tmp_p = str(out_p.parent / f"{out_p.stem}_cand{idx_r + 2}.jpg")
-        try:
-            media_agent.download_file(c_url, tmp_p)
-            if Path(tmp_p).exists() and Path(tmp_p).stat().st_size > 3000:
+    desired_extra = max(0, int(target_image_count) - 1)
+    if desired_extra > 0 and remaining_urls:
+        from app.graph.parallel_search import run_langgraph_parallel_tasks
+        cand_slice = remaining_urls[: max(desired_extra + 5, 6)]
+        dl_tasks = [
+            {"idx_r": idx_r, "c_url": c_url, "tmp_p": str(out_p.parent / f"{out_p.stem}_cand{idx_r + 2}.jpg")}
+            for idx_r, c_url in enumerate(cand_slice)
+        ]
+
+        def _dl_portrait_item(t: Dict[str, Any]) -> Optional[Tuple[str, str]]:
+            tmp_p = t["tmp_p"]
+            c_url = t["c_url"]
+            try:
+                media_agent.download_file(c_url, tmp_p)
+                if Path(tmp_p).exists() and Path(tmp_p).stat().st_size > 3000:
+                    return tmp_p, c_url
+            except Exception:
+                pass
+            Path(tmp_p).unlink(missing_ok=True)
+            return None
+
+        dl_completed = run_langgraph_parallel_tasks(
+            tasks=dl_tasks,
+            worker_fn=_dl_portrait_item,
+            task_group=f"PortraitDownload({len(dl_tasks)} images)",
+        )
+        for dl_res in dl_completed:
+            pair_out = dl_res.get("result")
+            if not pair_out:
+                continue
+            tmp_p, c_url = pair_out
+            if len(pose_images) < target_image_count:
                 if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=scene_id, image_path=tmp_p, url=c_url):
                     final_cut_p = str(out_p.parent / f"{out_p.stem}_cut{len(pose_images) + 1}.jpg")
                     try:
@@ -1808,8 +1841,6 @@ def execute_clean_cinematic_portrait_or_broll_sync(
                     Path(tmp_p).unlink(missing_ok=True)
             else:
                 Path(tmp_p).unlink(missing_ok=True)
-        except Exception:
-            Path(tmp_p).unlink(missing_ok=True)
 
     logger.info(
         f"🎭 [CleanPortraitTool Photo] Scene #{scene_id}: Đã thu thập {len(pose_images)} ảnh chân dung sạch chữ "

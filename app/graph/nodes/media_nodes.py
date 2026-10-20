@@ -10,7 +10,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 from app.schemas.contracts import ScriptContract, SceneContract
 from app.agents.media_agent import MediaAgent, detect_real_entity, match_best_pool_photo, clean_scene_search_query
@@ -1520,12 +1520,20 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     sc_tool = str(sc_item.get("tool") or "")
                     if sc_tool == "fetch_clean_cinematic_portrait_or_broll":
                         try:
-                            for pq_d in ["dramatic portrait dark shadow", "intense eyes close up dark", "person silhouette night", "man thinking dark room"]:
-                                px_list = await asyncio.to_thread(media_agent.search_photos, pq_d, 5, "portrait", "dramatic portrait", "", used_pool_urls)
-                                for p_it in (px_list or []):
-                                    u_px = p_it.get("url") or (p_it.get("src") or {}).get("large2x") or (p_it.get("src") or {}).get("portrait")
-                                    if u_px and u_px not in alt_pool:
-                                        alt_pool.append(u_px)
+                            portrait_qs = ["dramatic portrait dark shadow", "intense eyes close up dark", "person silhouette night", "man thinking dark room"]
+                            px_batches = await asyncio.gather(
+                                *[
+                                    asyncio.to_thread(media_agent.search_photos, pq_d, 5, "portrait", "dramatic portrait", "", used_pool_urls)
+                                    for pq_d in portrait_qs
+                                ],
+                                return_exceptions=True,
+                            )
+                            for px_list in px_batches:
+                                if isinstance(px_list, list):
+                                    for p_it in px_list:
+                                        u_px = p_it.get("url") or (p_it.get("src") or {}).get("large2x") or (p_it.get("src") or {}).get("portrait")
+                                        if u_px and u_px not in alt_pool:
+                                            alt_pool.append(u_px)
                         except Exception as _px_err:
                             logger.debug(f"[Visual Density Engine] Scene {sid} pexels portrait error: {_px_err}")
                     else:
@@ -1548,13 +1556,30 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         except Exception as _wf_err:
                             logger.debug(f"[Visual Density Engine] Scene {sid} web search error: {_wf_err}")
 
-                for idx_c, cand_u in enumerate(alt_pool):
-                    if len(verified_poses) >= quota:
-                        break
-                    tmp_cut = str(media_dir / f"scene_{sid:03d}_density_cand{idx_c + 2}.jpg")
-                    try:
-                        await asyncio.to_thread(media_agent.download_file, cand_u, tmp_cut)
-                        if Path(tmp_cut).exists() and Path(tmp_cut).stat().st_size > 3000:
+                needed_web_dl = max(0, quota - len(verified_poses))
+                if needed_web_dl > 0 and alt_pool:
+                    cand_batch = alt_pool[: max(needed_web_dl + 4, 6)]
+
+                    async def _dl_density_cand(idx_c: int, cand_u: str) -> Optional[Tuple[str, str]]:
+                        tmp_cut = str(media_dir / f"scene_{sid:03d}_density_cand{idx_c + 2}.jpg")
+                        try:
+                            await asyncio.to_thread(media_agent.download_file, cand_u, tmp_cut)
+                            if Path(tmp_cut).exists() and Path(tmp_cut).stat().st_size > 3000:
+                                return tmp_cut, cand_u
+                        except Exception:
+                            pass
+                        Path(tmp_cut).unlink(missing_ok=True)
+                        return None
+
+                    dl_outcomes = await asyncio.gather(
+                        *[_dl_density_cand(i_c, u_c) for i_c, u_c in enumerate(cand_batch)],
+                        return_exceptions=True,
+                    )
+                    for out_pair in dl_outcomes:
+                        if not isinstance(out_pair, tuple):
+                            continue
+                        tmp_cut, cand_u = out_pair
+                        if len(verified_poses) < quota:
                             if rag.verify_and_commit_in_job_image(
                                 job_id=job_id, scene_id=sid, image_path=tmp_cut, url=cand_u
                             ):
@@ -1576,32 +1601,44 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                                 Path(tmp_cut).unlink(missing_ok=True)
                         else:
                             Path(tmp_cut).unlink(missing_ok=True)
-                    except Exception:
-                        Path(tmp_cut).unlink(missing_ok=True)
 
-                # Nếu sau khi lọc dHash từ web vẫn còn thiếu 1-2 ảnh để đạt quota -> sinh bổ sung góc máy AI 8K độc lập
-                while len(verified_poses) < quota:
-                    shot_num = len(verified_poses) + 1
-                    ai_angle = angle_facets[(slot_idx + shot_num) % len(angle_facets)]
-                    ai_cut_p = str(media_dir / f"scene_{sid:03d}_cut{shot_num}.jpg")
-                    ai_q = f"{sc_kw}, {ai_angle}, dramatic vertical 9:16 photography, 8k sharp focus"
-                    try:
-                        gen_p = await asyncio.to_thread(
-                            image_agent.generate_scene_image,
+                # Nếu sau khi lọc dHash từ web vẫn còn thiếu N ảnh để đạt quota -> Gọi ĐỒNG THỜI N API tạo ảnh AI 8K qua LangGraph Send+operator.add!
+                missing_ai_shots = max(0, quota - len(verified_poses))
+                if missing_ai_shots > 0:
+                    from app.graph.parallel_search import run_langgraph_parallel_tasks
+
+                    base_shot_idx = len(verified_poses)
+                    ai_tasks = [
+                        {
+                            "shot_num": base_shot_idx + i_shot + 1,
+                            "ai_angle": angle_facets[(slot_idx + base_shot_idx + i_shot + 1) % len(angle_facets)],
+                            "ai_cut_p": str(media_dir / f"scene_{sid:03d}_cut{base_shot_idx + i_shot + 1}.jpg"),
+                        }
+                        for i_shot in range(missing_ai_shots)
+                    ]
+
+                    def _gen_single_ai_shot(task_obj: Dict[str, Any]) -> Optional[str]:
+                        ai_q = f"{sc_kw}, {task_obj['ai_angle']}, dramatic vertical 9:16 photography, 8k sharp focus"
+                        return image_agent.generate_scene_image(
                             ai_q,
-                            ai_cut_p,
+                            task_obj["ai_cut_p"],
                             "9:16",
                             state.get("channel_style", "cinematic"),
                             sid,
                             sc_item.get("visual_prompt"),
                         )
+
+                    ai_completed = await asyncio.to_thread(
+                        run_langgraph_parallel_tasks,
+                        ai_tasks,
+                        _gen_single_ai_shot,
+                        f"AIImageGen_Scene{sid}({len(ai_tasks)} shots)",
+                    )
+                    for ai_res in ai_completed:
+                        gen_p = ai_res.get("result")
                         if gen_p and Path(gen_p).exists() and Path(gen_p).stat().st_size > 2500:
                             rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=sid, image_path=gen_p, url=gen_p)
                             verified_poses.append(gen_p)
-                        else:
-                            break
-                    except Exception:
-                        break
 
                 sc_item["pose_images"] = verified_poses[:quota]
 

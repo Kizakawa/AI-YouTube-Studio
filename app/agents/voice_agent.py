@@ -669,21 +669,25 @@ class VoiceAgent:
                 f"(giữ nguyên 100% câu chữ kịch bản, không cắt cụt)!"
             )
             from app.utils.ffmpeg_helper import run_ffmpeg, get_duration_ms
-            re_enriched: List[SceneContract] = []
-            for sc in enriched_scenes:
+
+            async def _speedup_scene_audio(sc: SceneContract) -> SceneContract:
                 ap = sc.audio_path
                 if ap and Path(ap).exists():
                     tmp_fast = str(Path(ap).with_suffix(".fast.mp3"))
                     try:
-                        run_ffmpeg([
-                            "-i", ap,
-                            "-af", f"atempo={tempo_factor:.3f}",
-                            "-ar", "24000",
-                            "-ac", "1",
-                            "-c:a", "libmp3lame",
-                            "-b:a", "128k",
-                            tmp_fast,
-                        ], timeout=20)
+                        await asyncio.to_thread(
+                            run_ffmpeg,
+                            [
+                                "-i", ap,
+                                "-af", f"atempo={tempo_factor:.3f}",
+                                "-ar", "24000",
+                                "-ac", "1",
+                                "-c:a", "libmp3lame",
+                                "-b:a", "128k",
+                                tmp_fast,
+                            ],
+                            20,
+                        )
                         if Path(tmp_fast).exists() and Path(tmp_fast).stat().st_size > 1024:
                             Path(tmp_fast).replace(Path(ap))
                             new_dur_ms = await asyncio.to_thread(get_duration_ms, ap)
@@ -717,8 +721,9 @@ class VoiceAgent:
                         logger.debug(f"[GoldenDurationCap] Scene {sc.scene_id} skip: {e_fast}")
                     finally:
                         Path(tmp_fast).unlink(missing_ok=True)
-                re_enriched.append(sc)
-            enriched_scenes = re_enriched
+                return sc
+
+            enriched_scenes = list(await asyncio.gather(*[_speedup_scene_audio(sc) for sc in enriched_scenes]))
 
         return enriched_scenes
 

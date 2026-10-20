@@ -423,14 +423,41 @@ class StockFetcher:
         # 2. Chỉ gọi Pexels / Pixabay / Openverse làm phao cứu sinh khi Google Images trả về quá ít (< 4 ảnh) hoặc tắt bypass_copyright
         if len(candidates) < 4 or not bypass_copyright:
             stock_queries = ([subject] if subject else queries[:1]) if creature_mode else queries[:2]
+            photo_tasks: List[Dict[str, Any]] = []
             for q in stock_queries:
-                _add(self.search_photos(q, per_page=4, orientation="portrait", topic=f"{congruence_topic} {q}".strip(), narration=narration, used_urls=used))
-                _add(self.search_pixabay_photos(q, per_page=4))
-                if len(candidates) >= 12:
-                    break
+                photo_tasks.append({"src": "pexels", "q": q})
+                photo_tasks.append({"src": "pixabay", "q": q})
+            if len(candidates) < 4:
+                photo_tasks.append({"src": "openverse", "q": subject or queries[0]})
 
-        if len(candidates) < 4:
-            _add(self.search_openverse(subject or queries[0], per_page=5))
+            try:
+                from app.graph.parallel_search import run_langgraph_parallel_tasks
+
+                def _exec_photo_api(t: Dict[str, Any]) -> List[Dict]:
+                    src_t = t["src"]
+                    q_t = t["q"]
+                    if src_t == "pexels":
+                        return self.search_photos(
+                            q_t, per_page=4, orientation="portrait",
+                            topic=f"{congruence_topic} {q_t}".strip(), narration=narration, used_urls=used
+                        )
+                    if src_t == "pixabay":
+                        return self.search_pixabay_photos(q_t, per_page=4)
+                    if src_t == "openverse":
+                        return self.search_openverse(q_t, per_page=5)
+                    return []
+
+                completed_photos = run_langgraph_parallel_tasks(
+                    tasks=photo_tasks,
+                    worker_fn=_exec_photo_api,
+                    task_group=f"StockPhotoAPIs({len(photo_tasks)} calls)",
+                )
+                for cp in completed_photos:
+                    _add(cp.get("result") or [])
+            except Exception:
+                for q in stock_queries:
+                    _add(self.search_photos(q, per_page=4, orientation="portrait", topic=f"{congruence_topic} {q}".strip(), narration=narration, used_urls=used))
+                    _add(self.search_pixabay_photos(q, per_page=4))
 
         # Lọc watermark/ảnh nhỏ + xếp hạng theo độ bắt mắt, chủ thể, bố cục dọc, độ phân giải
         candidates = prefilter_candidates(
