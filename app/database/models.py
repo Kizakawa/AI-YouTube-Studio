@@ -131,6 +131,7 @@ _VIDEO_JOBS_EXTRA_COLUMNS_SQLITE = {
     "stayed_to_watch_pct": "REAL",
     "swipe_away_pct": "REAL",
     "avg_view_duration_sec": "REAL",
+    "hook_text": "TEXT",
     "voice_engine": "VARCHAR(100)",
 }
 
@@ -185,6 +186,8 @@ def create_configured_engine(raw_url: str):
                 # Test ping connection
                 with eng.connect() as test_conn:
                     test_conn.execute(text("SELECT 1"))
+                    test_conn.execute(text("ALTER TABLE video_jobs ADD COLUMN IF NOT EXISTS hook_text TEXT"))
+                    test_conn.commit()
                 logger.info("✅ [Database] Đã kết nối thành công tới PostgreSQL Cloud!")
                 return eng, db_url
             except Exception as ex:
@@ -585,6 +588,7 @@ _VIDEO_JOBS_EXTRA_COLUMNS_PG = {
     "stayed_to_watch_pct": "DOUBLE PRECISION",
     "swipe_away_pct": "DOUBLE PRECISION",
     "avg_view_duration_sec": "DOUBLE PRECISION",
+    "hook_text": "TEXT",
     "voice_engine": "VARCHAR(100)",
 }
 
