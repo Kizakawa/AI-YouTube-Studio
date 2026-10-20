@@ -55,13 +55,20 @@ def _normalize_text_for_similarity(text: str) -> str:
     clean = re.sub(r"(\d+)\s*(?:meters|meter|m)\b", r"\1m", clean)
     # Loại bỏ emoji và ký tự đặc biệt
     clean = re.sub(r"[^\w\s]", " ", clean, flags=re.UNICODE)
-    # Loại bỏ các từ dừng thông dụng trong tiêu đề Shorts
+    # Loại bỏ các từ dừng thông dụng trong tiêu đề Shorts (EN / PT-BR / VI)
     stop_words = {
         "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with",
         "is", "are", "this", "that", "why", "how", "what", "signs", "sign",
         "video", "shorts", "viral", "psychology", "mystery", "history",
         "they", "them", "their", "you", "your", "when", "into", "from",
         "was", "were", "been", "have", "has", "had", "will", "would", "could",
+        "de", "do", "da", "dos", "das", "no", "na", "nos", "nas", "em", "se",
+        "ao", "aos", "as", "os", "um", "uma", "uns", "umas", "ou", "já", "só",
+        "há", "até", "pelo", "pela", "pelos", "pelas", "num", "numa", "dele",
+        "dela", "este", "esta", "esse", "essa", "isto", "isso", "aquele", "aquela",
+        "muito", "muita", "onde", "quando", "quem", "qual", "quais", "sobre",
+        "entre", "contra", "sem", "sob", "após", "antes", "depois", "por", "que",
+        "para", "com", "mais", "como", "foi", "são", "era", "tem", "têm", "seu", "sua",
         "những", "các", "và", "của", "là", "trong", "về", "dấu", "hiệu",
         "bí", "ẩn", "tâm", "lý", "thế", "giới"
     }
@@ -165,8 +172,11 @@ def check_idea_similarity(
         # 2. Overlap trên tập từ nhỏ hơn (phát hiện ý tưởng bị bao hàm 100%)
         containment = len(intersection) / min(len(cand_tokens), len(item_tokens)) if min(len(cand_tokens), len(item_tokens)) > 0 else 0.0
 
-        # Điểm tương đồng tổng hợp
-        combined_score = max(jaccard, containment * 0.75)
+        # Nếu chỉ trùng đúng 1 từ đơn lẻ (vd: 'oceano', 'metros', 'shark'), không được phép vọt điểm containment ảo
+        if len(intersection) == 1 and min(len(cand_tokens), len(item_tokens)) >= 3:
+            combined_score = min(0.22, jaccard)
+        else:
+            combined_score = max(jaccard, containment * 0.75)
 
         if combined_score > max_score:
             max_score = combined_score
@@ -972,18 +982,33 @@ Return ONLY a valid JSON array of objects with the following structure:
     if len(verified_ideas) < count:
         logger.info(f"[TopicSuggester] Bổ sung fallback curated cho kênh {channel_id} (niche: {niche_id})")
         fallbacks = _get_curated_niche_fallbacks(niche_id, lang)
+        scored_fallbacks = []
+        existing_verified_titles = {v.get("title", "") for v in verified_ideas}
         for fb in fallbacks:
             fb_title = fb.get("title", "")
+            if fb_title in existing_verified_titles:
+                continue
             is_dup, score, _ = check_idea_similarity(fb_title, all_existing, similarity_threshold=0.35, channel_id=channel_id)
+            fb_copy = dict(fb)
+            fb_copy["channel_id"] = channel_id
+            fb_copy["channel_name"] = channel_name
+            fb_copy["niche"] = niche_id
+            fb_copy["similarity_score"] = score
+            scored_fallbacks.append((is_dup, score, fb_copy))
             if not is_dup:
-                fb_copy = dict(fb)
-                fb_copy["channel_id"] = channel_id
-                fb_copy["channel_name"] = channel_name
-                fb_copy["niche"] = niche_id
-                fb_copy["similarity_score"] = score
                 verified_ideas.append(fb_copy)
+                existing_verified_titles.add(fb_title)
                 if len(verified_ideas) >= count:
                     break
+        # Nếu vẫn chưa đủ count, chọn các ứng viên fallback có similarity_score thấp nhất để không bao giờ trả về rỗng
+        if len(verified_ideas) < count and scored_fallbacks:
+            scored_fallbacks.sort(key=lambda x: x[1])
+            for _, score, fb_copy in scored_fallbacks:
+                if fb_copy.get("title") not in existing_verified_titles:
+                    verified_ideas.append(fb_copy)
+                    existing_verified_titles.add(fb_copy.get("title", ""))
+                    if len(verified_ideas) >= count:
+                        break
 
     return verified_ideas[:count]
 

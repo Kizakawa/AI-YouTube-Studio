@@ -245,10 +245,10 @@ Respond ONLY in valid JSON:
     ) -> Dict[str, Any]:
         """Quy tắc thẩm định kịch bản dựa trên phân tích ngôn ngữ học & cấu trúc Shorts."""
         is_pt = str(language).lower().startswith("pt")
-        hook_score = 7.8
-        niche_score = 8.5
+        hook_score = 8.5
+        niche_score = 8.6
         lang_score = 9.0
-        retention_score = 8.0
+        retention_score = 8.5
         issues = []
         strengths = []
 
@@ -256,19 +256,19 @@ Respond ONLY in valid JSON:
         if scenes:
             scene_1 = scenes[0].get("narration", "")
             words_s1 = scene_1.split()
-            if len(words_s1) < 4:
+            if len(words_s1) < 3:
                 hook_score -= 2.0
                 issues.append("Cảnh 1 quá ngắn, chưa đủ thông tin làm mồi câu (Hook).")
-            elif len(words_s1) > 20:
+            elif len(words_s1) > 22:
                 hook_score -= 1.5
-                issues.append("Cảnh 1 quá dài (>20 từ), nhịp điệu mở đầu bị chậm dễ gây vuốt bỏ.")
+                issues.append("Cảnh 1 quá dài (>22 từ), nhịp điệu mở đầu bị chậm dễ gây vuốt bỏ.")
             else:
                 strengths.append(f"Cảnh 1 có độ dài lý tưởng ({len(words_s1)} từ) cho Hook 3s.")
 
-            hook_cues = ["!", "vs", "versus", "contra", "never", "nunca", "jamais", "deadliest", "mortal", "crushes", "destroys"]
-            if any(p in scene_1.lower() for p in hook_cues):
-                hook_score = min(9.8, hook_score + 0.8)
-                strengths.append("Cảnh 1 có yếu tố đối đầu kịch tính hoặc khẳng định gây sốc.")
+            hook_cues = ["!", "vs", "versus", "contra", "never", "nunca", "jamais", "deadliest", "mortal", "crushes", "destroys", "psi", "meters", "metros", "feet", "seconds", "segundos"]
+            if any(p in scene_1.lower() for p in hook_cues) or bool(re.search(r"\d", scene_1)):
+                hook_score = min(9.8, hook_score + 0.6)
+                strengths.append("Cảnh 1 có yếu tố đối đầu kịch tính hoặc khẳng định số liệu gây sốc.")
 
         # 2. Kiểm tra Niche fit & Chặn rò rỉ lệch ngách (Off-Niche Contamination)
         niche_kw_map = {

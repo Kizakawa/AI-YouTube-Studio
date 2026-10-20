@@ -41,7 +41,12 @@ _STOP_WORDS: Set[str] = {
     "has", "had", "about", "into", "than", "then", "they", "them", "their", "one", "all",
     "video", "videos", "shorts", "short", "most", "more", "just", "like", "been", "out",
     "were", "would", "could", "should", "there", "where", "which", "while", "after", "before",
-    "uma", "para", "com", "dos", "das", "nos", "nas", "por", "que", "mais", "como", "isso",
+    "de", "do", "da", "dos", "das", "no", "na", "nos", "nas", "em", "se", "ao", "aos",
+    "as", "os", "um", "uma", "uns", "umas", "ou", "já", "só", "há", "até", "pelo", "pela",
+    "pelos", "pelas", "num", "numa", "dele", "dela", "este", "esta", "esse", "essa", "isto",
+    "isso", "aquele", "aquela", "muito", "muita", "onde", "quando", "quem", "qual", "quais",
+    "sobre", "entre", "contra", "sem", "sob", "após", "antes", "depois", "por", "que",
+    "para", "com", "mais", "como", "foi", "são", "era", "tem", "têm", "seu", "sua", "seus", "suas",
     "của", "và", "là", "một", "những", "các", "cho", "trong", "với", "này", "khi", "được",
 }
 
@@ -437,30 +442,47 @@ class VideoMemoryRAG:
             if not doc_weights:
                 continue
 
-            # 1. Weighted TF-IDF Cosine trên toàn bộ Kịch bản + Metadata Hình ảnh
+            # 1. Weighted TF-IDF Cosine trên toàn bộ Kịch bản + Metadata Hình ảnh (loại bỏ stop words tồn đọng trong index cũ)
+            filtered_doc_weights = {
+                k: v for k, v in doc_weights.items()
+                if k not in _STOP_WORDS and not any(part in _STOP_WORDS for part in k.split("_"))
+            }
+            if not filtered_doc_weights:
+                continue
+
             dot = 0.0
-            doc_norm = math.sqrt(sum(v * v for v in doc_weights.values())) or 1.0
+            q_tfidf_sq = 0.0
             for tok, q_tf in q_counts.items():
-                d_tf = doc_weights.get(tok, 0)
+                idf = 1.0 + math.log((total_docs + 1.0) / (df_map[tok] + 1.0))
+                q_w = q_tf * idf
+                q_tfidf_sq += q_w * q_w
+                d_tf = filtered_doc_weights.get(tok, 0)
                 if d_tf > 0:
-                    idf = 1.0 + math.log((total_docs + 1.0) / (df_map[tok] + 1.0))
-                    dot += (q_tf * idf) * (d_tf * idf)
-            cosine_sim = min(1.0, dot / (q_norm * doc_norm * 2.2))
+                    dot += q_w * (d_tf * idf)
+            q_tfidf_norm = math.sqrt(q_tfidf_sq) or 1.0
+            doc_tfidf_norm = math.sqrt(sum((v * 1.8) ** 2 for v in filtered_doc_weights.values())) or 1.0
+            cosine_sim = min(1.0, dot / (q_tfidf_norm * doc_tfidf_norm))
 
             # 2. Overlap trực tiếp với Tiêu đề + Chủ đề + Hook (phát hiện trùng ý tưởng chính)
             title_hook_tokens = {
                 t for t in _tokenize_rag(f"{doc.get('title', '')} {doc.get('topic', '')} {doc.get('hook_text', '')}")
-                if "_" not in t
+                if "_" not in t and t not in _STOP_WORDS
             }
             title_overlap = 0.0
-            if q_unigrams and title_hook_tokens:
-                inter = len(q_unigrams & title_hook_tokens)
+            shared_unigrams = q_unigrams & title_hook_tokens
+            if q_unigrams and title_hook_tokens and shared_unigrams:
+                inter = len(shared_unigrams)
                 union = len(q_unigrams | title_hook_tokens)
                 jaccard = inter / union if union else 0.0
                 containment = inter / min(len(q_unigrams), len(title_hook_tokens))
-                title_overlap = max(jaccard, containment * 0.78)
+                # Nếu chỉ trùng đúng 1 từ đơn lẻ (vd: 'oceano', 'metros', 'shark'), không được phép vọt điểm containment ảo
+                if inter == 1 and min(len(q_unigrams), len(title_hook_tokens)) >= 3:
+                    title_overlap = min(0.22, jaccard)
+                    cosine_sim = min(0.22, cosine_sim)
+                else:
+                    title_overlap = max(jaccard, containment * 0.78)
 
-            combined = round(max(title_overlap, cosine_sim * 0.85 + title_overlap * 0.35), 3)
+            combined = round(max(title_overlap, cosine_sim * 0.75 + title_overlap * 0.35), 3)
             if combined >= min_score:
                 results.append({
                     "doc_id": doc["doc_id"],

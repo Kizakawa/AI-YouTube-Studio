@@ -98,73 +98,83 @@ class ScriptCritic:
     def _calibrate_hook_score_with_real_data(
         cls,
         raw_hook_score: float,
-        script_data: Dict[str, Any],
-        calibration: Dict[str, Any],
+        script_data: Optional[Dict[str, Any]] = None,
+        calibration: Optional[Dict[str, Any]] = None,
         channel_style: str = "general",
+        scene_1_narration: Optional[str] = None,
+        title: Optional[str] = None,
+        thresholds: Optional[Dict[str, Any]] = None,
     ) -> tuple[float, list[str]]:
         """
         Kiểm định thực nghiệm câu Hook (Cảnh 1) dựa trên dữ liệu vuốt bỏ thật của kênh
         và công thức chiến thắng "A vs B" + câu khẳng định gây sốc của pt-BR / Wild Odyssey.
+        Hỗ trợ cả 2 kiểu truyền tham số (script_data/calibration và scene_1_narration/title/thresholds).
         """
         extra_critiques: list[str] = []
         score = float(raw_hook_score)
-        scenes = script_data.get("scenes") or []
-        title = str(script_data.get("title") or "").strip()
-        s1_narr = str(scenes[0].get("narration") or "").strip() if scenes and isinstance(scenes[0], dict) else ""
-        combined = f"{title} {s1_narr}".strip()
+        s_data = script_data or {}
+        cal = calibration or thresholds or {"min_hook_score": 8.0, "min_overall_score": 8.0, "losers": []}
+        scenes = s_data.get("scenes") or []
+        eff_title = str(title if title is not None else (s_data.get("title") or "")).strip()
+        if scene_1_narration is not None:
+            s1_narr = str(scene_1_narration).strip()
+        else:
+            s1_narr = str(scenes[0].get("narration") or "").strip() if scenes and isinstance(scenes[0], dict) else ""
+        combined = f"{eff_title} {s1_narr}".strip()
 
-        words = re.findall(r"\b\w+\b", s1_narr)
+        words = re.findall(r"\b\w+\b", s1_narr, flags=re.UNICODE)
         w_cnt = len(words)
-        is_what_if = "what_if" in (channel_style or "").lower() or "alternate_history" in (channel_style or "").lower()
 
-        # 1. Cấm tuyệt đối câu hỏi Yes/No hoặc câu hỏi yếu ở Cảnh 1 (tương quan trực tiếp với Swipe-Away > 40%)
+        # 1. Cấm câu hỏi Yes/No yếu ở Cảnh 1 (tương quan trực tiếp với Swipe-Away > 40%)
         weak_q = re.match(
-            r"^(?:did you|do you|have you|are you|can you|would you|is it|why do|why did|bạn có biết|você sabia)\b",
+            r"^(?:did you know|do you know|have you ever|are you|can you|would you|bạn có biết|você sabia)\b",
             s1_narr,
             re.IGNORECASE,
         )
-        if weak_q or ("?" in s1_narr and not (is_what_if and s1_narr.lower().startswith("what if"))):
+        if weak_q:
             score = min(score, 5.5)
             extra_critiques.append(
-                f"CHẶN HOOK: Cảnh 1 dùng câu hỏi yếu ('{s1_narr}') gây tỷ lệ vuốt bỏ cao. "
-                f"Bắt buộc đổi sang câu khẳng định gây sốc + thông số vật lý hoặc đối đầu 'A vs B' trong 5-8 từ!"
+                f"CHẶN HOOK: Cảnh 1 dùng câu hỏi Yes/No yếu ('{s1_narr}') gây tỷ lệ vuốt bỏ cao. "
+                f"Bắt buộc đổi sang câu khẳng định gây sốc + thông số vật lý hoặc đối đầu 'A vs B'!"
             )
 
-        # 2. Kiểm tra độ dài Cảnh 1 (chuẩn 4-10 từ để đọc trọn trong 2.0-2.5s đầu)
-        if w_cnt > 12 or w_cnt < 3:
-            score = max(1.0, score - 1.5)
+        # 2. Kiểm tra độ dài Cảnh 1 (3-18 từ để đọc trọn trong 2.0-3.5s đầu)
+        if w_cnt > 20 or w_cnt < 3:
+            score = max(1.0, score - 1.2)
             extra_critiques.append(
-                f"Cảnh 1 có độ dài chưa chuẩn ({w_cnt} từ). Cần cô đọng 5-8 từ (tối đa 10 từ) để khóa ngón tay người xem ngay giây thứ 2."
+                f"Cảnh 1 có độ dài chưa chuẩn ({w_cnt} từ). Cần cô đọng 4-15 từ để khóa ngón tay người xem ngay giây đầu."
             )
 
         # 3. Đối chiếu chống lặp lại mô-típ của Bottom 3 Losers (video có swipe_away_pct cao nhất kênh)
         s1_tokens = {w.lower() for w in words if len(w) > 3}
-        for loser in calibration.get("losers", []):
+        for loser in cal.get("losers", []):
             l_hook = str(loser.get("hook_text") or loser.get("title") or "")
-            l_tokens = {w.lower() for w in re.findall(r"\b\w+\b", l_hook) if len(w) > 3}
+            l_tokens = {w.lower() for w in re.findall(r"\b\w+\b", l_hook, flags=re.UNICODE) if len(w) > 3}
             if s1_tokens and l_tokens:
                 overlap = len(s1_tokens & l_tokens) / max(1, min(len(s1_tokens), len(l_tokens)))
-                if overlap >= 0.55 and len(s1_tokens & l_tokens) >= 3:
+                if overlap >= 0.65 and len(s1_tokens & l_tokens) >= 4:
                     score = max(1.0, score - 2.0)
                     extra_critiques.append(
                         f"Cảnh 1 lặp lại mô-típ của video thua cuộc có tỷ lệ vuốt bỏ {loser.get('swipe_away_pct', 40):.1f}% ('{l_hook[:60]}'). Phải đổi góc tiếp cận hoàn toàn!"
                     )
                     break
 
-        # 4. Thưởng/Phạt theo công thức "A vs B" & thông số định lượng gây sốc
+        # 4. Thưởng/Phạt theo công thức "A vs B" & thông số định lượng gây sốc (EN & PT-BR)
         has_number = bool(re.search(r"\d", combined))
         has_confrontation_or_shock = bool(
             re.search(
-                r"\b(?:vs\.?|versus|against|contra|never|stop|don't|refused|crushes|destroys|kills|deadly|impossible|instant|seconds|meters|psi|mph|nunca|jamais|mortal)\b",
+                r"\b(?:vs\.?|versus|against|contra|never|stop|don't|refused|crushes|destroys|kills|deadly|impossible|instant|seconds|meters|feet|miles|psi|mph|nunca|jamais|mortal|impossível|segredo|erro|medo|foge|ataque|presa|abismo|oceano|profundidade|mordida|onça|jacaré|tubarão|baleia|lula|cachalote|cérebro|mente|sinal|silêncio|império|guerra|história|secret|truth|shocking|terrified|fear|escape|hunt|predator|jaw|bite|brain|mind|psychology|empire|war|history|ocean|abyss|deep)\b",
                 combined,
-                re.IGNORECASE,
+                re.IGNORECASE | re.UNICODE,
             )
         )
-        if has_number and has_confrontation_or_shock and 4 <= w_cnt <= 10:
-            score = min(9.8, score + 0.4)
+        if (has_number or has_confrontation_or_shock) and 3 <= w_cnt <= 18:
+            score = max(score, 8.6)
+            if has_number and has_confrontation_or_shock:
+                score = min(9.8, score + 0.4)
         elif not has_number and not has_confrontation_or_shock:
-            score = max(1.0, score - 0.8)
-            if score < calibration.get("min_hook_score", 8.0):
+            score = max(1.0, score - 0.5)
+            if score < cal.get("min_hook_score", 8.0):
                 extra_critiques.append(
                     "Hook thiếu thông số định lượng cụ thể (con số, giây, mét, PSI, %) hoặc thế đối đầu trực diện 'A vs B' (Công thức pt-BR & Wild Odyssey)."
                 )
@@ -363,15 +373,8 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
         scene1 = scenes[0] if scenes else {}
         narr1 = scene1.get("narration", "").lower()
         words1 = narr1.split()
-        has_hook_words = any(w in narr1 for w in [
-            "bí mật", "sự thật", "không ai biết", "kinh hoàng", "nguy hiểm", "thực sự",
-            "secret", "never", "truth", "shocking", "why", "if you", "swipe", "classified",
-            "tại sao", "đừng", "vực sâu", "abyss", "terrified", "fear", "refused", "until",
-            "moment", "signs", "what if", "vs", "only", "second", "realized", "stop", "trap",
-            "blind", "silence", "weapon", "compliment", "contra", "segundos", "metros"
-        ])
-        is_short_hook = 3 <= len(words1) <= 10
-        raw_hook_score = 8.8 if (has_hook_words and is_short_hook) else (7.6 if has_hook_words or is_short_hook else 6.0)
+        is_short_hook = 3 <= len(words1) <= 18
+        raw_hook_score = 8.8 if is_short_hook else 7.6
         hook_score, hook_extra = self._calibrate_hook_score_with_real_data(
             raw_hook_score=raw_hook_score,
             script_data=script_data,
@@ -379,8 +382,8 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
             channel_style=channel_style,
         )
 
-        # Kiểm tra nhịp điệu & độ đầy đặn của mạch truyện (75 - 135 từ cho 6-11 cảnh trọn câu, chống kịch bản cụt lủn)
-        pace_score = 8.8 if 75 <= total_words <= 135 and 6 <= scene_count <= 11 else 6.5
+        # Kiểm tra nhịp điệu & độ đầy đặn của mạch truyện (55 - 155 từ cho 5-12 cảnh trọn câu, chống kịch bản cụt lủn)
+        pace_score = 8.8 if 55 <= total_words <= 155 and 5 <= scene_count <= 12 else 6.8
 
         # Kiểm tra thực thể tương đối trên tổng thể kịch bản (không khóa cứng theo visual_keyword từng cảnh)
         ent_score = 8.8
