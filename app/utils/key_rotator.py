@@ -21,13 +21,12 @@ GEMINI_PRIORITY_MODELS: List[str] = [
     "gemini-3.1-pro-preview",        # Tier A+ (#6): Gemini 3.1 Pro Preview
     "gemini-omni-1.1-flash",         # Tier A  (#7): Gemini Omni 1.1 Flash
     "gemini-3-flash-preview",        # Tier A  (#8): Gemini 3.0 Flash Preview
-    "gemini-2.5-flash",              # Tier A  (#9): Gemini 2.5 Flash GA siêu ổn định
-    "gemini-flash-latest",           # Tier A  (#10): Alias Flash chính thức
-    "gemini-3.5-flash-lite",         # Tier B+ (#11): Gemini 3.5 Flash-Lite siêu tốc, quota dồi dào
+    "gemini-flash-latest",           # Tier A  (#9): Alias Flash chính thức
+    "gemini-3.5-flash-lite",         # Tier B+ (#10): Gemini 3.5 Flash-Lite siêu tốc, quota dồi dào
+    "gemini-robotics-er-2-preview",  # Tier B+ (#11): Gemini ER 2 Preview (Bucket quota độc lập siêu ổn định khi Flash 429)
     "gemini-3.1-flash-lite",         # Tier B  (#12): Gemini 3.1 Flash-Lite ổn định
     "gemini-3.1-flash-lite-preview", # Tier B  (#13): Gemini 3.1 Flash-Lite Preview
-    "gemini-2.5-flash-lite",         # Tier B  (#14): Gemini 2.5 Flash-Lite GA siêu ổn định
-    "gemini-flash-lite-latest",      # Tier B  (#15): Fallback cuối siêu tốc, hạn mức dồi dào nhất
+    "gemini-flash-lite-latest",      # Tier B  (#14): Fallback cuối siêu tốc, hạn mức dồi dào nhất
 ]
 
 # Điểm xếp hạng độ "xịn" (Quality Tier) của từng model để chọn model mạnh nhất trong số các model phản hồi thành công
