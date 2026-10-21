@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from langchain_core.tools import tool
+from app.utils.langsmith_tracer import trace_custom_span
 
 from app.agents.media_agent import MediaAgent, clean_scene_search_query
 from app.services.media import license_policy
@@ -759,6 +760,7 @@ def _search_youtube_flat_cached(
     return candidates
 
 
+@trace_custom_span("MediaTools.execute_youtube_or_stock_video", run_type="tool")
 def execute_youtube_short_peak_clone_sync(
     search_query: str,
     output_path: str,
@@ -776,6 +778,7 @@ def execute_youtube_short_peak_clone_sync(
     scene_id: int = 0,
     channel_id: str = "",
     allow_3d_cgi_monster: bool = False,
+    skip_youtube_search: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """
     Thực thi tìm kiếm & cắt đoạn Peak từ YouTube Shorts tích hợp hệ thống Mini-RAG (`VideoMemoryRAG`):
@@ -850,8 +853,10 @@ def execute_youtube_short_peak_clone_sync(
     }
 
     # ── TẦNG 1 (ƯU TIÊN SỐ 1): SĂN & CẮT ĐOẠN PEAK TỪ VIDEO YOUTUBE RỦI RO THẤP (ĐÃ QUA 4 LỚP LỌC WATERMARK & >= 720P) ──
-    allow_low_risk_yt = allow_3d_cgi_monster or (
-        os.getenv("ALLOW_LOW_RISK_YOUTUBE_CLIPS", "true").strip().lower() not in ("0", "false", "no", "off")
+    allow_low_risk_yt = (not skip_youtube_search) and (
+        allow_3d_cgi_monster or (
+            os.getenv("ALLOW_LOW_RISK_YOUTUBE_CLIPS", "true").strip().lower() not in ("0", "false", "no", "off")
+        )
     )
     if allow_low_risk_yt:
         try:
@@ -1181,7 +1186,9 @@ def execute_youtube_short_peak_clone_sync(
             from app.graph.evaluators.visual_critic import VisualCritic
             media_agent = MediaAgent()
             va_vid = {
+                "analysis_source": "ai",
                 "subject": subject_entity or topic,
+                "core_visual_entity": subject_entity or topic,
                 "topic": overall_script_query or topic,
                 "expected_visual_content": f"{subject_entity or topic} — {narration}",
                 "search_queries": search_phrases,
@@ -1192,7 +1199,8 @@ def execute_youtube_short_peak_clone_sync(
                 if effective_scope == "SCRIPT_OVERALL"
                 else narration
             )
-            for st_q in search_phrases[:2]:
+            # Chỉ gọi `search_best_video_clip` 1 lần vì bên trong đã bắn song song toàn bộ `va_vid["search_queries"]`
+            for st_q in search_phrases[:1]:
                 best_stock_v = media_agent.search_best_video_clip(
                     query=st_q,
                     used_urls=used,
@@ -1260,17 +1268,24 @@ def execute_youtube_short_peak_clone_sync(
                             Path(output_path).unlink(missing_ok=True)
                             continue
 
-                        passed_st_vis, st_vis_score, st_vis_reason = _verify_short_clip_with_gemini_vision(
-                            video_path=output_path,
-                            topic=topic,
-                            narration=narration,
-                            subject_entity=subject_entity or topic,
-                            overall_script_query=overall_script_query or st_q,
-                            search_scope=effective_scope,
-                            video_title=st_title,
-                            allow_3d_cgi_monster=False,
-                            strict_no_fallback=False,
-                        )
+                        # Nếu clip đã được LLM Link & Vision Auditor duyệt trực tiếp qua ảnh Thumbnail (score >= 6.8),
+                        # không gọi lại Gemini Vision lần thứ 2 trên cùng 1 video để tiết kiệm 6.5 giây/cảnh!
+                        if best_stock_v.get("vision_curated") and float(best_stock_v.get("vision_score") or 0.0) >= 6.8:
+                            passed_st_vis = True
+                            st_vis_score = float(best_stock_v.get("vision_score") or 8.0)
+                            st_vis_reason = "Approved by LLM Link & Thumbnail Vision Auditor"
+                        else:
+                            passed_st_vis, st_vis_score, st_vis_reason = _verify_short_clip_with_gemini_vision(
+                                video_path=output_path,
+                                topic=topic,
+                                narration=narration,
+                                subject_entity=subject_entity or topic,
+                                overall_script_query=overall_script_query or st_q,
+                                search_scope=effective_scope,
+                                video_title=st_title,
+                                allow_3d_cgi_monster=False,
+                                strict_no_fallback=False,
+                            )
                         if not passed_st_vis:
                             logger.info(
                                 f"🚫 [LicensedStockVision] Gemini Vision từ chối stock clip '{st_title[:45]}' "
@@ -1332,6 +1347,7 @@ def execute_youtube_short_peak_clone_sync(
     return None
 
 
+@trace_custom_span("MediaTools.execute_google_cinematic_image", run_type="tool")
 def execute_google_cinematic_image_sync(
     smart_query: str,
     output_path: str,
@@ -2398,6 +2414,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 "clip_role": "HOOK" if sid == 1 else "PEAK",
                 "target_duration_sec": dur,
                 "camera_motion": "hyper_zoom" if sid == 1 else motion_cycle[idx % len(motion_cycle)],
+                "scope_audited": True,
             })
         else:
             final_plan.append({
@@ -2408,6 +2425,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 "smart_image_query": clean_kw,
                 "overall_script_query": default_overall_q,
                 "camera_motion": motion_cycle[idx % len(motion_cycle)],
+                "scope_audited": True,
             })
 
     try:

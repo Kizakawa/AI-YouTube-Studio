@@ -734,7 +734,8 @@ class StockFetcher:
                 candidate_queries.append(q)
 
         _ctx_low = f"{topic} {query} {narration}".lower()
-        if not _establishing_pass and (not visual_analysis or visual_analysis.get("analysis_source") != "ai"):
+        has_preplanned_queries = bool(visual_analysis and visual_analysis.get("search_queries"))
+        if not _establishing_pass and not has_preplanned_queries and not clean_q:
             try:
                 from app.agents.visual_curation_agent import VisualCurationAgent
                 llm_va = VisualCurationAgent().analyze_scene_context(
@@ -897,10 +898,11 @@ class StockFetcher:
             try:
                 from app.agents.visual_curation_agent import VisualCurationAgent
                 curator = VisualCurationAgent()
-                v_analysis = dict(visual_analysis or curator.analyze_scene_context(
-                    narration=narration or query,
-                    topic=topic or query,
-                ))
+                v_analysis = dict(visual_analysis or {
+                    "subject": clean_q or query,
+                    "topic": topic or query,
+                    "search_queries": candidate_queries[:3],
+                })
                 v_analysis.setdefault("topic", topic or query)
                 winner, score, rationale, should_ai = curator.curate_candidate_videos(
                     candidates=collected_candidates,
@@ -913,6 +915,8 @@ class StockFetcher:
                 if winner and score >= min_vid_score and not should_ai:
                     formatted_winner = self.format_video_candidate(winner, query=query, used=used)
                     if formatted_winner and formatted_winner.get("url"):
+                        formatted_winner["vision_curated"] = True
+                        formatted_winner["vision_score"] = round(float(score), 2)
                         record_used_media(formatted_winner["url"], query=query, source=formatted_winner.get("source", "curated_video"))
                         from app.services.media.media_history import extract_media_identity
                         ids = extract_media_identity(formatted_winner["url"])

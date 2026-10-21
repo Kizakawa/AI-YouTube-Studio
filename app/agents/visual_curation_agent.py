@@ -645,9 +645,9 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
                 with Image.open(_io.BytesIO(r.content)) as im:
                     if im.mode != "RGB":
                         im = im.convert("RGB")
-                    im.thumbnail((384, 384), Image.Resampling.BILINEAR)
+                    im.thumbnail((320, 320), Image.Resampling.BILINEAR)
                     buf = _io.BytesIO()
-                    im.save(buf, format="JPEG", quality=78)
+                    im.save(buf, format="JPEG", quality=72)
                     b64_str = _b64.b64encode(buf.getvalue()).decode("utf-8")
                     return idx, "image/jpeg", b64_str
             except Exception:

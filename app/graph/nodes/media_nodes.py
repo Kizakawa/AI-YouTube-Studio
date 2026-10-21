@@ -72,7 +72,7 @@ async def node_direct_visual_strategy(state: VideoWorkflowState) -> Dict[str, An
     existing_plan = state.get("visual_plan")
     if existing_plan and existing_plan.get("scenes_strategy"):
         strat_list = existing_plan.get("scenes_strategy", [])
-        if not existing_plan.get("scope_audited"):
+        if not existing_plan.get("scope_audited") and not all(isinstance(d, dict) and d.get("scope_audited") for d in strat_list):
             strat_list = await asyncio.to_thread(
                 audit_and_decide_search_scopes_with_llm_sync,
                 topic=topic,
@@ -326,6 +326,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
         # ══════════════════════════════════════════════════════════════════════
         if not media_path and tool_name in (
             "clone_youtube_short_peak_clip",
+            "search_pexels_pixabay_stock_video",
             "search_google_cinematic_image",
             "summon_epic_monster_cinematic_media",
             "fetch_clean_cinematic_portrait_or_broll",
@@ -504,6 +505,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     job_id=job_id,
                     scene_id=scene.scene_id,
                     channel_id=channel_id_val,
+                    skip_youtube_search=(tool_name == "search_pexels_pixabay_stock_video"),
                 )
                 if yt_res and yt_res.get("media_path"):
                     media_path = yt_res["media_path"]
@@ -1337,8 +1339,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 raw_sc_kw = sc_item.get("visual_keyword") or sc_item.get("visual_prompt") or short_subj
                 sc_kw = clean_scene_search_query(raw_sc_kw, max_words=4) or short_subj
 
-                # Nếu kho alternate_urls của cảnh chưa đủ lấp đầy quota, tìm bổ sung theo đúng công cụ `@tool` mà LLM đã chọn (không dùng danh sách từ khóa tĩnh)
-                if len(verified_poses) + len(alt_pool) < quota + 5:
+                # Nếu kho alternate_urls của cảnh chưa đủ lấp đầy quota, tìm bổ sung theo đúng công cụ `@tool` mà LLM đã chọn
+                if len(verified_poses) + len(alt_pool) < quota + 1:
                     facet = angle_facets[slot_idx % len(angle_facets)]
                     facet2 = angle_facets[(slot_idx + 3) % len(angle_facets)]
                     supp_q = clean_scene_search_query(f"{sc_kw} {facet}", max_words=6) or sc_kw
