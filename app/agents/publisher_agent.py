@@ -1199,36 +1199,45 @@ class PublisherAgent:
         KNOWN_SUBJECTS_EN = [
             "honey badger", "komodo dragon", "sperm whale", "colossal squid", "giant squid",
             "orca", "killer whale", "great white shark", "saltwater crocodile", "nile crocodile",
-            "hippo", "polar bear", "grizzly bear", "siberian tiger", "bengal tiger", "jaguar",
-            "leopard", "snow leopard", "lion", "hyena", "harpy eagle", "cassowary", "king cobra",
-            "black mamba", "wolverine", "electric eel", "mantis shrimp", "pistol shrimp", "sloth",
-            "mariana trench", "bermuda triangle", "boiling river", "amazon river", "antarctica",
-            "sahara", "krakatoa", "yellowstone", "pompeii", "roman empire", "ancient egypt",
+            "nile hippo", "hippo", "polar bear", "grizzly bear", "siberian tiger", "bengal tiger",
+            "snow leopard", "jaguar", "leopard", "cheetah", "lion", "lions", "hyena", "harpy eagle",
+            "cassowary", "king cobra", "black mamba", "wolverine", "electric eel", "mantis shrimp",
+            "pistol shrimp", "sloth", "walrus", "giant otter", "otter", "shark", "crocodile",
+            "blind dog", "shelter puppy", "stray kitten", "orphan puppy", "puppy", "kitten", "dog",
+            "mariana trench", "bermuda triangle", "boiling river", "amazon river", "amazon",
+            "antarctica", "sahara", "krakatoa", "yellowstone", "pompeii", "roman empire", "rome",
+            "ancient egypt", "giza", "alexandria", "alexander", "emperor qin", "world war 1",
+            "soviet", "rockefeller", "apollo", "spacecraft", "kraken", "abyss", "deep ocean",
             "body language", "eye contact", "fbi", "lie detector", "micro expressions",
+            "narcissist", "sociopath", "psychopath", "gaslighting", "love bombed", "manipulators",
+            "manipulating", "serial killers", "negotiator", "liars", "liar", "fake smile",
+            "silence", "envy", "anger", "loneliness", "confidence", "confident",
         ]
         KNOWN_SUBJECTS_PT = [
             "onça pintada", "onça", "sucuri", "jacaré", "poraquê", "ariranha", "lobo guará",
-            "águia harpia", "dragão de komodo", "komodo", "tubarão branco", "tubarão", "orca",
-            "baleia", "cachalote", "lula colossal", "ratel", "javali", "leão", "tigre",
-            "amazônia", "pantanal", "fossa das marianas", "triângulo das bermudas",
+            "tatu canastra", "águia harpia", "harpia", "dragão de komodo", "komodo",
+            "tubarão branco", "tubarão", "orca", "baleia", "cachalote", "lula colossal",
+            "ratel", "javali", "leões", "leão", "tigre", "taiga", "amazônia", "pantanal",
+            "fossa das marianas", "triângulo das bermudas", "caverna movile", "caverna",
+            "oceano", "navios", "ilha", "silêncio", "gelo", "rússia",
         ]
         subject_pool = KNOWN_SUBJECTS_PT if is_br else KNOWN_SUBJECTS_EN
         title_lower = base_title.lower()
         extracted_topic_tags: List[str] = []
         topic_hashtag_candidates: List[str] = []
         for subj in subject_pool:
-            if subj in title_lower:
+            if re.search(rf'\b{re.escape(subj)}\b', title_lower):
                 extracted_topic_tags.append(subj)
                 h_subj = re.sub(r'[^a-z0-9à-ỹçãõáéíóúâêô]+', '', subj.lower())
                 if 3 <= len(h_subj) <= 18 and h_subj not in topic_hashtag_candidates:
                     topic_hashtag_candidates.append(h_subj)
 
-        # Khử các tag thực thể động vật khác không xuất hiện trong tiêu đề khỏi custom_tags
+        # Khử các tag thực thể động vật khác không xuất hiện nguyên từ trong tiêu đề khỏi custom_tags
         ALL_ANIMAL_ENTITIES = set(KNOWN_SUBJECTS_EN + KNOWN_SUBJECTS_PT)
         filtered_custom_tags: List[str] = []
         for ct in custom_tags:
             ct_low = re.sub(r'^#+', '', ct.strip()).lower()
-            if ct_low in ALL_ANIMAL_ENTITIES and ct_low not in title_lower:
+            if ct_low in ALL_ANIMAL_ENTITIES and not re.search(rf'\b{re.escape(ct_low)}\b', title_lower):
                 continue
             if is_br and ct_low in KNOWN_SUBJECTS_EN and ct_low not in KNOWN_SUBJECTS_PT:
                 continue
