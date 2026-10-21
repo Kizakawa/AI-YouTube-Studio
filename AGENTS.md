@@ -16,5 +16,11 @@
   1. **Zero Estimation Policy**: **NEVER** report estimated/interpolated retention metrics (`APV %`, `Stayed %`, `Swipe Away %`, `AVD`). Only report 100% real numbers fetched from **YouTube Data API v3** and **YouTube Analytics API v2** (or user-provided YouTube Studio Realtime screenshots). If a video is `< 24–48h` old and YouTube Analytics API v2 has not finalized its row yet, explicitly display `⏳ Chờ Analytics chốt sổ (24–48h)`.
   2. **Mandatory Strategic Analysis**: Always accompany the real data tables with a data-driven analysis covering top-performing videos (velocity, `Like/View %`, real `APV %` / `Stayed %`), recovering channels, and actionable warnings based strictly on real metrics.
 
+## 4. Mandatory System-Wide Root-Cause Bugfix — Zero Keyword Patching (`systemic-root-cause-bugfix`)
+- Whenever you debug, fix, or optimize any issue in `d:\Python\Youtube`, you **MUST** follow the [systemic-root-cause-bugfix](.agents/skills/systemic-root-cause-bugfix/SKILL.md) skill:
+  1. **Zero Keyword-Patching Policy**: **NEVER** patch bugs by hardcoding topic/species/biome/weather keyword lists (`if "snow" in ...`, `if "tiger" in ...`, etc.) or blindly appending static strings to queries just to pass a single test case.
+  2. **Right-Layer Architectural Fix**: Always fix the root cause system-wide across all parallel flows (`HookVideoNode`, `VisualCurationAgent` batch & single scene, video & photo curation, and topic-agnostic CV/FFmpeg gates) so the solution generalizes 100% across every topic and channel.
+
+
 
 
