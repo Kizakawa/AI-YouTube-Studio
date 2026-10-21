@@ -325,26 +325,51 @@ class VideoAgent:
                     fair_use_transform=False,
                     preserve_continuous_flow=True,
                 )
-            elif is_hook or raw_type in ("comic_anim", "multi_pose", "2d_loop") or (getattr(scene, "pose_images", None) and len(getattr(scene, "pose_images", [])) >= 2):
-                pose_list = getattr(scene, "pose_images", None) or [scene.media_path]
-                target_cuts = 3 if is_hook else max(1, len(pose_list) - 1)
-                logger.info(
-                    f"  Scene {scene.scene_id}: ⚡ {'HOOK' if is_hook else 'BODY'} MULTI-IMAGE CUT "
-                    f"({len(pose_list)} ảnh độc lập → {target_cuts + 1} shots / {target_cuts} nhát cắt chuyển ảnh) "
-                    f"{duration:.1f}s{f' [{clip_niche} Grading]' if clip_niche else ''}"
-                )
-                render_opening_hook_multi_cut(
-                    image_paths=pose_list,
-                    duration_seconds=duration,
-                    output_path=clip_path,
-                    width=job.resolution_w,
-                    height=job.resolution_h,
-                    fps=job.fps,
-                    min_cuts=target_cuts,
-                    is_scifi=is_scifi_clip,
-                    niche=clip_niche,
-                    is_hook_scene=is_hook,
-                )
+            elif getattr(scene, "pose_images", None) and len(getattr(scene, "pose_images", [])) >= 2:
+                pose_list = list(getattr(scene, "pose_images", None) or [scene.media_path])
+                # Tự động tính số lượng ảnh tối đa khớp với thời lượng câu đọc (tối thiểu 1.0s/ảnh để không bị nháy hình);
+                # nếu thừa ảnh thì tăng nhịp chuyển ảnh (1.0s - 2.0s/ảnh) hoặc tự động bỏ qua ảnh thừa!
+                min_sec_per_img = 1.0
+                max_usable_imgs = max(1, int(duration // min_sec_per_img))
+                usable_poses = pose_list[:max_usable_imgs]
+                dropped_count = max(0, len(pose_list) - len(usable_poses))
+                if len(usable_poses) >= 2:
+                    target_cuts = len(usable_poses) - 1
+                    sec_per_shot = duration / len(usable_poses)
+                    logger.info(
+                        f"  Scene {scene.scene_id}: ⚡ {'HOOK' if is_hook else 'BODY'} DYNAMIC MULTI-IMAGE "
+                        f"(Dùng {len(usable_poses)}/{len(pose_list)} ảnh, bỏ qua {dropped_count} ảnh thừa → "
+                        f"đổi ảnh mỗi {sec_per_shot:.2f}s trong tổng {duration:.1f}s)"
+                    )
+                    render_opening_hook_multi_cut(
+                        image_paths=usable_poses,
+                        duration_seconds=duration,
+                        output_path=clip_path,
+                        width=job.resolution_w,
+                        height=job.resolution_h,
+                        fps=job.fps,
+                        min_cuts=target_cuts,
+                        is_scifi=is_scifi_clip,
+                        niche=clip_niche,
+                        is_hook_scene=is_hook,
+                    )
+                else:
+                    logger.info(
+                        f"  Scene {scene.scene_id}: Câu thoại ngắn ({duration:.1f}s) → dùng 1 ảnh chính (bỏ qua {dropped_count} ảnh thừa) với Ken Burns [{motion}]"
+                    )
+                    image_to_video(
+                        image_path=usable_poses[0],
+                        duration_seconds=duration,
+                        output_path=clip_path,
+                        width=job.resolution_w,
+                        height=job.resolution_h,
+                        fps=job.fps,
+                        zoom_effect=True,
+                        camera_motion=motion,
+                        is_hook_scene=is_hook,
+                        is_scifi=is_scifi_clip,
+                        niche=clip_niche,
+                    )
             elif raw_type in ("image", "ai_image", "photo", "documentary", "auto"):
                 logger.info(
                     f"  Scene {scene.scene_id}: image ({raw_type}) → Ken Burns [{motion}] {duration:.1f}s"
@@ -401,9 +426,11 @@ class VideoAgent:
                     logger.error(f"  ❌ Scene {scene_id}: Lỗi render clip: {exc}")
                     raise  # Re-raise để pipeline biết có lỗi
 
-        # Sắp xếp lại theo scene_id (as_completed không giữ thứ tự)
+        # Sắp xếp lại theo scene_id (as_completed không giữ thứ tự).
+        # Tuyệt đối KHÔNG cắt thủng giữa cảnh để chèn clip của cảnh khác vào (_inject_dynamic_bcam_cuts),
+        # đảm bảo 100% mỗi phân cảnh giữ nguyên mạch hình ảnh/video đúng với câu đọc của phân cảnh đó!
         ordered_clips = [results[s.scene_id] for s in scenes]
-        return self._inject_dynamic_bcam_cuts(ordered_clips, scenes, work_dir, job)
+        return ordered_clips
 
     def _inject_dynamic_bcam_cuts(
         self,

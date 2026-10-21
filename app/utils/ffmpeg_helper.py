@@ -737,8 +737,14 @@ def render_opening_hook_multi_cut(
     if not valid_paths:
         raise ValueError("render_opening_hook_multi_cut: Không có file ảnh hợp lệ")
 
-    n_shots = max(min_cuts + 1, 4) if is_hook_scene else max(len(valid_paths), min_cuts + 1, 2)
-    if duration_seconds < 1.4 or (not is_hook_scene and len(valid_paths) <= 1 and min_cuts < 1):
+    # Tự động tính số lượng ảnh hiển thị tối ưu theo thời lượng câu đọc (mỗi ảnh 1.0s - 2.2s):
+    # - Nếu có nhiều ảnh: tăng tốc độ chuyển ảnh (1.0s - 2.0s/ảnh) để khớp đúng duration_seconds.
+    # - Nếu thừa ảnh so với thời lượng (duration_seconds // 1.0s): tự động bỏ qua các ảnh thừa ở cuối.
+    # - Nếu chỉ có 1 ảnh: dùng Ken Burns mượt mà, KHÔNG tự cắt 1 ảnh thành 4 mảnh giật cục!
+    max_shots_by_dur = max(1, int(duration_seconds // 1.0))
+    usable_valid_paths = valid_paths[:max_shots_by_dur]
+    n_shots = len(usable_valid_paths)
+    if duration_seconds < 1.6 or n_shots <= 1:
         return image_to_video(
             image_path=valid_paths[0],
             duration_seconds=duration_seconds,
@@ -751,6 +757,7 @@ def render_opening_hook_multi_cut(
             is_scifi=is_scifi,
             niche=niche,
         )
+    valid_paths = usable_valid_paths
 
     uid = _uuid.uuid4().hex[:8]
     parent_dir = Path(output_path).parent
