@@ -21,6 +21,14 @@
   1. **Zero Test-Case Overfitting & Zero Keyword-Patching Policy**: **NEVER** patch bugs by hardcoding topic/species/biome/weather keyword lists (`if "snow" in ...`, `if "tiger" in ...`, etc.) or blindly appending static strings to queries just to pass a single test case. Every fix must pass the **4-Domain Counterfactual Test** (generalizing across Wildlife, Ancient History, Dark Psychology, and Sci-Fi/Ocean Mysteries without domain-specific keywords in Python).
   2. **Backward Root-Cause Tracing & Right-Layer Defense-in-Depth**: Trace bugs backward from the symptom to the upstream source (`FFmpeg` ⬅ `VisualCritic/RAG` ⬅ `StockFetcher` ⬅ `VisualCurationAgent` ⬅ `Query Normalization` ⬅ `System Prompt`) and fix the root cause across all parallel flows (`HookVideoNode`, `VisualCurationAgent` batch & single scene, video & photo curation, and topic-agnostic CV/FFmpeg gates).
 
+## 5. Universal Engineering & AI System Guardrails (All Projects)
+- Always adhere to the universal engineering skills in `.agents/skills/` (and `~/.gemini/config/skills/`):
+  - **[verification-before-completion](.agents/skills/verification-before-completion/SKILL.md)**: Never claim a task or bugfix is complete without running fresh verification (`py_compile`, smoke tests, output inspection) after the final code edit.
+  - **[architecture-first-design](.agents/skills/architecture-first-design/SKILL.md)**: Keep modules focused (Single Responsibility, no God-files), preserve backward-compatible signatures (`**kwargs`), and clean up dead code immediately.
+  - **[llm-agentic-system-design](.agents/skills/llm-agentic-system-design/SKILL.md)**: Keep semantic reasoning in LLM System Prompts / Multimodal Vision (preferring Batch Prompting over sequential loops) and keep deterministic validation/math/key-rotation in code.
+  - **[subagent-parallel-execution](.agents/skills/subagent-parallel-execution/SKILL.md)** & **[security-and-secret-hygiene](.agents/skills/security-and-secret-hygiene/SKILL.md)**: Execute independent tasks in parallel without polling loops, and never hardcode or stage secrets/runtime artifacts (`.env`, `*.pickle`, `*.db`).
+
+
 
 
 

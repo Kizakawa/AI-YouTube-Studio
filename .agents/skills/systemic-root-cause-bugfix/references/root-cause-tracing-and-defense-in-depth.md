@@ -23,3 +23,4 @@ Trước khi dùng công cụ `edit_file`, Agent bắt buộc phải trả lời
 2. **Hàm nào đã trực tiếp chọn tư liệu lỗi đó?** (Ví dụ: `curate_candidate_videos` chấm điểm `8.5/10` cho video Pexels đó).
 3. **Vì sao hàm đó lại đưa ra quyết định sai?** (Đọc log `rationale` của LLM hoặc kiểm tra dữ liệu đầu vào: Hóa ra trong System Prompt của `curate_candidate_videos` có câu *"ĐỀU LÀ TƯ LIỆU B-ROLL HỢP LỆ VÀ PHẢI ĐƯỢC CHẤM ĐẠT"* quá mạnh khiến LLM bỏ qua điều kiện cấm sở thú/sai môi trường!).
 4. **Giải pháp ở tầng gốc có tổng quát cho mọi chủ đề không?** (Sửa lại câu chữ trong System Prompt của `curate_candidate_videos` để điều kiện *Đúng tự nhiên hoang dã & Đúng hệ sinh thái/mùa* trở thành điều kiện bắt buộc tiên quyết).
+
