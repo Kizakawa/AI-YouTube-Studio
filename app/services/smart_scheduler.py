@@ -28,30 +28,34 @@ BR_TZ = ZoneInfo("America/Sao_Paulo")  # Giờ chuẩn Brazil (BRT = UTC-3)
 # Giới hạn tối đa video trên mỗi kênh trong 1 ngày
 MAX_VIDEOS_PER_DAY = 2
 
-# Khoảng cách tối thiểu an toàn giữa 2 video cùng kênh (6 giờ = 21,600 giây) để tránh tự bóp tương tác
-MIN_SPACING_SECONDS = 21600
+# Khoảng cách tối thiểu an toàn giữa 2 video cùng kênh (3 giờ = 10,800 giây) để xếp trọn 2 khung giờ Đỉnh Trưa & Chiều Mỹ trong cùng 1 ngày
+MIN_SPACING_SECONDS = 10800
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CẤU HÌNH 2 KHUNG GIỜ VÀNG QUỐC TẾ (US & GLOBAL PEAKS) TỐI ƯU 2 VIDEO / NGÀY
-# ĐÃ TỐI ƯU HÓA: ĐĂNG SỚM HƠN ĐỈNH VÀNG 60 - 90 PHÚT ĐỂ THUẬT TOÁN KỊP PHÂN PHỐI
+# CẤU HÌNH 2 KHUNG GIỜ VÀNG QUỐC TẾ (US DAYTIME PEAK & VIETNAM DEAD-SLEEP WINDOW)
+# ĐÃ TỐI ƯU HÓA ĐỊA LÝ (US GEO-ROUTING):
+# - Loại bỏ hoàn toàn khung 21:15-21:45 UTC (04:15-04:45 Sáng VN) vì sóng phân phối 60-90p sau khi đăng
+#   rơi đúng vào 05:30-07:30 Sáng VN (lúc người dùng Việt Nam thức dậy lướt Shorts làm loãng tệp US!).
+# - Chuyển toàn bộ 2 khung giờ US về lúc Việt Nam đang chuẩn bị ngủ / ngủ say (21:30 Đêm & 01:00 Rạng sáng VN),
+#   đồng thời trùng khớp 100% với Đỉnh Sáng-Trưa Bờ Đông (EDT) & Đỉnh Trưa-Chiều Bờ Tây (PDT) tại Mỹ!
 # ──────────────────────────────────────────────────────────────────────────────
 GOLDEN_SLOTS_UTC = [
     {
-        "hour": 15,
-        "minute": 0,
-        "label_vn": "22:00 Đêm",
-        "label_us": "11:00 AM EDT / 08:00 AM PDT (ĐÓN ĐẦU ĐỈNH TRƯA MỸ)",
-        "description": "Đăng sớm trước giờ nghỉ trưa Mỹ 60 phút để YouTube xử lý độ nét, phụ đề và kiểm thử tệp; bùng nổ đúng giờ ăn trưa (12:00-13:30).",
-        "tag": "US_LUNCH_LEAD",
+        "hour": 14,
+        "minute": 30,
+        "label_vn": "21:30 Đêm",
+        "label_us": "10:30 AM EDT / 07:30 AM PDT (ĐÓN ĐẦU ĐỈNH TRƯA BỜ ĐÔNG MỸ)",
+        "description": "Đăng lúc 21:30 đêm VN để sóng phân phối (22:30-00:30 đêm VN) rơi đúng lúc VN đi ngủ và bùng nổ trọn giờ nghỉ trưa New York / Bờ Đông Mỹ (11:30 AM - 01:30 PM EDT).",
+        "tag": "US_EAST_LUNCH_PEAK",
         "rank": 1
     },
     {
-        "hour": 21,
-        "minute": 15,
-        "label_vn": "04:15 Sáng",
-        "label_us": "17:15 PM EDT / 14:15 PM PDT (ĐÓN ĐẦU ĐỈNH TỐI VÀNG MỸ #1)",
-        "description": "Đăng sớm trước đỉnh tối Mỹ (19:00-22:00 EDT) 90 phút để video index từ khóa và đón trọn đỉnh lướt Shorts lớn nhất toàn cầu khi người Mỹ tan sở về nhà.",
-        "tag": "US_EVENING_LEAD",
+        "hour": 18,
+        "minute": 0,
+        "label_vn": "01:00 Đêm",
+        "label_us": "14:00 PM EDT / 11:00 AM PDT (ĐỈNH TRƯA BỜ TÂY CALIFORNIA & CHIỀU MỸ — 100% VN NGỦ SAY)",
+        "description": "Đăng lúc 01:00 rạng sáng VN khi 100% người dùng Việt Nam đang ngủ say (01:00-04:00 sáng VN), ép thuật toán YouTube bắt buộc phân phối 100% tệp hạt giống sang Mỹ (New York 2:00 PM EDT / California 11:00 AM PDT) & UK/Canada!",
+        "tag": "US_WEST_DAYTIME_PEAK",
         "rank": 2
     },
 ]

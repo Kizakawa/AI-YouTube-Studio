@@ -805,39 +805,39 @@ class ContentAgent:
         if "pinned_comment" not in raw_data or not str(raw_data.get("pinned_comment", "")).strip():
             if niche_norm == "animal_rescue" or any(k in comb_all for k in ("rescue", "chó", "mèo", "pet", "cứu hộ", "puppy", "kitten", "stray")):
                 raw_data["pinned_comment"] = (
-                    "Nếu là bạn, bạn có dừng lại giúp chú cún này không? 🥺 Link ủng hộ trạm cứu hộ mình đã ghim ở đầu kênh nhé! ❤️"
+                    "Chấm điểm màn lột xác của bé từ 1 đến 10 nhé! 🥺 Thả ❤️ bên dưới để chúc bé luôn hạnh phúc!"
                     if is_vn else
-                    "If you were there, would you have stopped to help this poor baby? 🥺 Drop a ❤️ in the comments to bless his recovery!"
+                    "Rate this sweet baby's transformation from 1 to 10! 🥺 Drop a ❤️ in the comments if this made your day!"
                 )
             elif niche_norm == "alternate_history" or any(k in comb_all for k in ("lịch sử", "history", "what if", "thế chiến", "war", "empire", "roman", "alexandria")):
                 raw_data["pinned_comment"] = (
-                    "Nếu bước ngoặt lịch sử này xảy ra, thế giới hôm nay sẽ ra sao? Tranh luận ngay bên dưới 👇"
+                    "Nếu là bạn: Chọn (1) Giữ nguyên lịch sử hay (2) Thay đổi tất cả? Bình chọn 1 hoặc 2 bên dưới 👇"
                     if is_vn else
-                    "If this single moment in history had gone differently, what would our world look like today? Debate below 👇"
+                    "Quick Poll: Would you choose (1) Keep our timeline or (2) Rewrite history? Drop 1 or 2 below! 👇"
                 )
             elif niche_norm == "deep_sea_earth_mysteries" or any(k in comb_all for k in ("deep sea", "biển sâu", "ocean", "đại dương", "mystery", "bí ẩn", "abyss", "caverna", "ilha", "oceano")):
                 raw_data["pinned_comment"] = (
-                    "Você teria coragem de explorar esse lugar misterioso? Deixe sua opinião nos comentários 👇"
+                    "Enquete rápida: Você acha que isso é (1) Criatura Desconhecida ou (2) Fenômeno Natural? Digite 1 ou 2 nos comentários! 👇"
                     if is_pt_lang else (
-                        "Bạn đã bao giờ trải qua hiện tượng kỳ lạ này ngoài đời thực chưa? Để lại câu chuyện của bạn bên dưới 👇"
+                        "Theo bạn đây là (1) Sinh vật chưa được khám phá hay (2) Hiện tượng tự nhiên? Gõ 1 hoặc 2 bên dưới 👇"
                         if is_vn else
-                        "Would you dare explore this unexplained place in real life? Drop your theory below 👇"
+                        "Quick Poll: Is this (1) An Undiscovered Creature or (2) A Natural Anomaly? Drop 1 or 2 below! 👇"
                     )
                 )
             elif niche_norm == "wildlife_predators" or any(k in comb_all for k in ("săn mồi", "predator", "wildlife", "dã thú", "báo", "sư tử", "hổ", "cheetah", "leopard", "eagle", "onça", "sucuri", "jacaré", "ratel", "hippo", "orca")):
                 raw_data["pinned_comment"] = (
-                    "Quem vence esse confronto mortal na natureza? Deixe seu voto nos comentários 👇"
+                    "Quem vence esse duelo mortal no 1x1? Digite seu voto nos comentários! 👇🔥"
                     if is_pt_lang else (
-                        "Theo bạn kẻ săn mồi nào sẽ chiến thắng trong cuộc đối đầu sinh tử này? Để lại bình chọn bên dưới 👇"
+                        "Kèo sinh tử 1v1 này bạn chọn phe nào? Để lại bình chọn bên dưới 👇🔥"
                         if is_vn else
-                        "Who wins this ultimate apex duel in the wild? Drop your vote below 👇"
+                        "Who takes the crown in this 1v1 apex showdown? Drop your vote in the comments below! 👇🔥"
                     )
                 )
             elif niche_norm == "psychology" or any(k in comb_all for k in ("tâm lý", "psychology", "manipulat", "thao túng", "mindset", "gaslight", "liar", "dark psychology")):
                 raw_data["pinned_comment"] = (
-                    "Bạn đã từng gặp ai có dấu hiệu số 2 trong đời thực chưa? Chia sẻ thật lòng bên dưới nhé 👇"
+                    "Bạn đã từng gặp kiểu người này ngoài đời thực chưa? Gõ (1) Đã từng hoặc (2) Chưa bao giờ bên dưới nhé 👇"
                     if is_vn else
-                    "Have you ever encountered someone who showed sign #2 in real life? Tell me your story below 👇"
+                    "Have you ever dealt with someone who used Sign #2 in real life? Drop (1) YES or (2) NO below! 👇"
                 )
             else:
                 raw_data["pinned_comment"] = (
@@ -1202,8 +1202,8 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
         else:
             target_lang_display = "ENGLISH"
 
-        duration_spec = "30 ĐẾN 40 GIÂY MẠCH TRUYỆN ĐẦY ĐẶN, MƯỢT MÀ (7 ĐẾN 9 PHÂN CẢNH TRỌN VẸN, 85 ĐẾN 120 TỪ — DẪN DẮT TỰ NHIÊN CÓ ĐẦU CÓ ĐUÔI, TUYỆT ĐỐI KHÔNG VIẾT CỤT LỦN HAY NHẢY CÓC)"
-        word_range_en = "85 to 120 words (30-40s Smooth & Complete 5-Act Narrative Arc across 7-9 natural scenes)"
+        duration_spec = "28 ĐẾN 36 GIÂY VÀNG TỐI ƯU APV > 80% & STAYED-TO-WATCH > 65% (6 ĐẾN 8 PHÂN CẢNH SẮC GỌN, 72 ĐẾN 98 TỪ — CẢNH 1 HOOK 5-8 TỪ CỰC GẮT, DẪN DẮT MƯỢT MÀ CÓ ĐẦU CÓ ĐUÔI, KHÔNG DÀI LÊ THÊ)"
+        word_range_en = "72 to 98 words (28-36s High-APV Golden Duration across 6-8 crisp, complete scenes; Scene 1 Hook MUST be 5-8 words ~2.0s)"
 
         prompt = f"""You are an elite YouTube Shorts Master Showrunner, Behavioral Storyteller, and Viral Retention Architect for the channel '{niche_profile.get('name')}' (niche: '{channel_niche}').
 Topic: '{topic}'

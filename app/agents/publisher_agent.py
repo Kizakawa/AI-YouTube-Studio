@@ -444,20 +444,35 @@ class PublisherAgent:
             else:
                 target_audio_lang = default_audio_language
 
+            # Gán tọa độ GPS Metro Mỹ chuyên biệt theo từng kênh (New York, Los Angeles, Chicago, Austin, Miami)
+            # để tránh 5 kênh US dùng chung 1 tọa độ GPS duy nhất và tăng độ tin cậy Geo-Signal Mỹ
+            US_METRO_LOCATIONS = {
+                "ch_the_mysteries_of_the_world": ("New York, NY, United States", 40.7128, -74.0060),
+                "ch_psychology_of_the_world": ("Los Angeles, CA, United States", 34.0522, -118.2437),
+                "ch_paws_hearts_rescue": ("Chicago, IL, United States", 41.8781, -87.6298),
+                "ch_wild_odyssey": ("Austin, TX, United States", 30.2672, -97.7431),
+                "@alternatehistorywhatif-e2x": ("Miami, FL, United States", 25.7617, -80.1918),
+            }
+            loc_desc, loc_lat, loc_lon = US_METRO_LOCATIONS.get(
+                str(self.channel_id or "").strip(),
+                ("New York, NY, United States", 40.7128, -74.0060),
+            )
             recording_details = {
-                "locationDescription": "New York, United States",
+                "locationDescription": loc_desc,
                 "location": {
-                    "latitude": 40.7128,
-                    "longitude": -74.0060,
+                    "latitude": loc_lat,
+                    "longitude": loc_lon,
                     "altitude": 0.0,
                 },
             }
-            for us_tag in ["usa", "american"]:
-                if len(tag_list) < 20 and us_tag not in [t.lower() for t in tag_list]:
+            for us_tag in ["usa", "united states", "american"]:
+                if len(tag_list) < 22 and us_tag not in [t.lower() for t in tag_list]:
                     tag_list.append(us_tag)
-            # Bật notifySubscribers=True cho cả kênh US khi tệp sub đã chuẩn hóa US,
-            # giúp kích hoạt tín hiệu tương tác sớm (Initial Velocity) ngay khi video công chiếu
-            default_notify_subs = True
+            # CỰC KỲ QUAN TRỌNG ĐỂ ĐẨY TỆP NGƯỜI XEM SANG MỸ (US GEO-SEEDING):
+            # Đặt default_notify_subs = False cho toàn bộ kênh US để thuật toán YouTube KHÔNG đẩy thông báo
+            # về tệp người đăng ký/lịch sử người xem Việt Nam cũ (nơi tỉ lệ vuốt bỏ lên tới 80-91% do rào cản tiếng Anh),
+            # ép hệ thống phân phối hạt giống hoàn toàn mới (100% Discovery Seed Pool) sang tệp khán giả Mỹ (Stayed 55.7%-62.4%)!
+            default_notify_subs = False
 
         if notify_subscribers is not None:
             should_notify_subs = bool(notify_subscribers)
@@ -524,7 +539,7 @@ class PublisherAgent:
             "snippet": {
                 "title": clean_title[:100],
                 "description": desc_clean[:5000],
-                "tags": tag_list[:20],
+                "tags": tag_list[:25],
                 "categoryId": yt_category_id,
                 "defaultLanguage": target_lang,
                 "defaultAudioLanguage": target_audio_lang,
@@ -535,6 +550,12 @@ class PublisherAgent:
                 "containsSyntheticMedia": bool(self.channel_config.get("contains_synthetic_media", False)),
             },
             "recordingDetails": recording_details,
+            "localizations": {
+                target_lang: {
+                    "title": clean_title[:100],
+                    "description": desc_clean[:5000],
+                }
+            },
         }
 
         if schedule_time_iso:
@@ -574,7 +595,7 @@ class PublisherAgent:
                         )
 
                         request = self.service.videos().insert(
-                            part="snippet,status,recordingDetails",
+                            part="snippet,status,recordingDetails,localizations",
                             body=body,
                             media_body=media,
                             notifySubscribers=should_notify_subs,
@@ -656,41 +677,40 @@ class PublisherAgent:
                 raw_niche = (self.channel_config.get("niche") or "").lower()
                 if any(k in raw_niche for k in ("history", "what_if", "alternate_history")):
                     effective_comment = (
-                        "Nếu đứng ở vị trí của họ, bạn sẽ đưa ra quyết định gì? Liệu lịch sử có rẽ sang hướng khác không? Tranh luận ngay bên dưới 👇"
+                        "Nếu là bạn ở thời khắc đó: Chọn (1) Giữ nguyên lịch sử hay (2) Thay đổi tất cả? Bình chọn 1 hoặc 2 bên dưới 👇"
                         if is_vn else
-                        "What would you have done if you stood in their shoes? Would history be completely different? Debate below 👇"
+                        "Quick Poll: Would you choose (1) Keep our timeline or (2) Rewrite history? Drop 1 or 2 below! 👇"
                     )
                 elif "psychology" in raw_niche:
                     effective_comment = (
-                        "Bạn đã từng gặp ai có dấu hiệu số 2 trong đời thực chưa? Chia sẻ thật lòng bên dưới nhé 👇"
+                        "Bạn đã từng gặp kiểu người này ngoài đời thực chưa? Gõ (1) Đã từng gặp hoặc (2) Chưa bao giờ bên dưới nhé 👇"
                         if is_vn else
-                        "Have you ever encountered someone who showed sign #2 in real life? Tell me your story below 👇"
+                        "Have you ever dealt with someone like this in real life? Drop (1) YES or (2) NO in the comments! 👇"
                     )
                 elif any(k in raw_niche for k in ("rescue", "animal", "pet")):
                     effective_comment = (
-                        "Nếu là bạn, bạn có dừng lại giúp chú cún này không? 🥺 Link ủng hộ trạm cứu hộ mình đã ghim ở đầu kênh/bio nhé! ❤️"
+                        "Chấm điểm màn lột xác của bé từ 1 đến 10 nhé! 🥺 Thả ❤️ bên dưới để chúc bé luôn hạnh phúc!"
                         if is_vn else
-                        "If you were there, would you have stopped to help this poor baby? 🥺 Our rescue support link is pinned at the top of our channel bio! ❤️"
+                        "Rate this sweet baby's transformation from 1 to 10! 🥺 Drop a ❤️ below if this made your day!"
                     )
                 elif any(k in raw_niche for k in ("predator", "wildlife")):
                     effective_comment = (
-                        "Theo bạn con người có cơ hội sống sót nào trước dã thú này không? Để lại suy nghĩ bên dưới 👇"
+                        "Kèo sinh tử này bạn chọn phe nào? Gõ (1) hay (2) để bình chọn bên dưới 👇"
                         if is_vn else
-                        "Could any human survive 10 seconds against this apex predator? Drop your survival strategy below 👇"
+                        "Who takes the crown in a 1v1 survival showdown? Drop your vote in the comments below! 👇🔥"
                     )
                 elif any(k in raw_niche for k in ("deep_sea", "ocean", "abyss", "mariana")):
                     effective_comment = (
-                        "Theo bạn, có thật sự có sinh vật khổng lồ ở đáy 11.000m không? Để lại giả thuyết của bạn bên dưới 👇"
+                        "Theo bạn đây là (1) Sinh vật chưa từng được khám phá hay (2) Hiện tượng tự nhiên? Bình chọn 1 hoặc 2 bên dưới 👇"
                         if is_vn else
-                        "Do you believe colossal creatures are truly hiding at 11,000 meters in the pitch black abyss? Drop your theory below 👇"
+                        "What do you think is really hiding down there: (1) Undiscovered Mega-Species or (2) Geological Anomaly? Drop 1 or 2 below! 👇"
                     )
                 else:
                     effective_comment = (
                         "Chi tiết nào khiến bạn bất ngờ nhất? Hãy bình luận suy nghĩ của bạn bên dưới 👇\n"
                         "🔔 Đăng ký kênh (Subscribe) để không bỏ lỡ video tiếp theo! 🔥"
                         if is_vn else
-                        "Which moment shocked you the most? Drop your theory in the comments below 👇\n"
-                        "🔔 Subscribe for more mind-bending stories! 🔥"
+                        "Did you know this before watching? Drop (1) YES or (2) NO in the comments below! 👇🔥"
                     )
 
             posted_comment_id = None
@@ -961,39 +981,39 @@ class PublisherAgent:
 
                 if any(k in raw_niche for k in ("history", "what_if", "alternate_history")):
                     effective_comment = (
-                        "Nếu đứng ở vị trí của họ, bạn sẽ đưa ra quyết định gì? Liệu lịch sử có rẽ sang hướng khác không? Tranh luận ngay bên dưới 👇"
+                        "Nếu là bạn ở thời khắc đó: Chọn (1) Giữ nguyên lịch sử hay (2) Thay đổi tất cả? Bình chọn 1 hoặc 2 bên dưới 👇"
                         if is_vn else
-                        "What would you have done if you stood in their shoes? Would history be completely different? Debate below 👇"
+                        "Quick Poll: Would you choose (1) Keep our timeline or (2) Rewrite history? Drop 1 or 2 below! 👇"
                     )
                 elif "psychology" in raw_niche:
                     effective_comment = (
-                        "Bạn đã từng gặp ai có dấu hiệu số 2 trong đời thực chưa? Chia sẻ thật lòng bên dưới nhé 👇"
+                        "Bạn đã từng gặp kiểu người này ngoài đời thực chưa? Gõ (1) Đã từng gặp hoặc (2) Chưa bao giờ bên dưới nhé 👇"
                         if is_vn else
-                        "Have you ever encountered someone who showed sign #2 in real life? Tell me your story below 👇"
+                        "Have you ever dealt with someone like this in real life? Drop (1) YES or (2) NO in the comments! 👇"
                     )
                 elif any(k in raw_niche for k in ("rescue", "animal", "pet")):
                     effective_comment = (
-                        "Nếu là bạn, bạn có dừng lại giúp chú cún này không? 🥺 Link ủng hộ trạm cứu hộ mình đã ghim ở đầu kênh/bio nhé! ❤️"
+                        "Chấm điểm màn lột xác của bé từ 1 đến 10 nhé! 🥺 Thả ❤️ bên dưới để chúc bé luôn hạnh phúc!"
                         if is_vn else
-                        "If you were there, would you have stopped to help this poor baby? 🥺 Our rescue support link is pinned at the top of our channel bio! ❤️"
+                        "Rate this sweet baby's transformation from 1 to 10! 🥺 Drop a ❤️ below if this made your day!"
                     )
                 elif any(k in raw_niche for k in ("predator", "wildlife")):
                     effective_comment = (
-                        "Theo bạn con người có cơ hội sống sót nào trước dã thú này không? Để lại suy nghĩ bên dưới 👇"
+                        "Kèo sinh tử này bạn chọn phe nào? Gõ (1) hay (2) để bình chọn bên dưới 👇"
                         if is_vn else
-                        "Could any human survive 10 seconds against this apex predator? Drop your survival strategy below 👇"
+                        "Who takes the crown in a 1v1 survival showdown? Drop your vote in the comments below! 👇🔥"
                     )
                 elif any(k in raw_niche for k in ("deep_sea", "ocean", "abyss", "mariana")):
                     effective_comment = (
-                        "Theo bạn, có thật sự có sinh vật khổng lồ ở đáy 11.000m không? Để lại giả thuyết của bạn bên dưới 👇"
+                        "Theo bạn đây là (1) Sinh vật chưa từng được khám phá hay (2) Hiện tượng tự nhiên? Bình chọn 1 hoặc 2 bên dưới 👇"
                         if is_vn else
-                        "Do you believe colossal creatures are truly hiding at 11,000 meters in the pitch black abyss? Drop your theory below 👇"
+                        "What do you think is really hiding down there: (1) Undiscovered Mega-Species or (2) Geological Anomaly? Drop 1 or 2 below! 👇"
                     )
                 else:
                     effective_comment = (
                         "Chi tiết nào khiến bạn bất ngờ nhất? Hãy bình luận suy nghĩ của bạn bên dưới 👇\n🔔 Đăng ký kênh (Subscribe) để không bỏ lỡ video tiếp theo! 🔥"
                         if is_vn else
-                        "Which moment shocked you the most? Drop your theory in the comments below 👇\n🔔 Subscribe for more mind-bending stories! 🔥"
+                        "Did you know this before watching? Drop (1) YES or (2) NO in the comments below! 👇🔥"
                     )
 
             # 5. Đăng bình luận
@@ -1508,11 +1528,17 @@ class PublisherAgent:
 
             if needs_update:
                 self.service.videos().update(
-                    part="snippet,recordingDetails",
+                    part="snippet,recordingDetails,localizations",
                     body={
                         "id": video_id,
                         "snippet": snip,
                         "recordingDetails": rec,
+                        "localizations": {
+                            expected_lang: {
+                                "title": str(snip.get("title") or "")[:100],
+                                "description": str(snip.get("description") or "")[:5000],
+                            }
+                        },
                     },
                 ).execute()
                 logger.info(

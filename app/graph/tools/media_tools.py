@@ -1000,6 +1000,11 @@ def execute_youtube_short_peak_clone_sync(
                     natural_peak_len = max(min_req_dur, min(natural_peak_len, max_peak_duration_sec))
                     scene_clip_len = min_req_dur
 
+                    # [FRAME-0 ACTION BOOST]: Nếu là Cảnh 1 (HOOK), tự động dịch điểm cắt vào sâu +0.35s
+                    # (nếu độ dài video cho phép) để triệt tiêu hoàn toàn khung hình tĩnh/fade-in ở giây 0.0s!
+                    if (clip_role or "").upper() == "HOOK" and raw_dur_sec >= actual_start_s + scene_clip_len + 0.45:
+                        actual_start_s = round(actual_start_s + 0.35, 2)
+
                     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
                     try:
                         trim_video(
@@ -2172,8 +2177,13 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
 
     final_plan: List[Dict[str, Any]] = []
     motion_cycle = ["zoom_in", "pan_right", "zoom_out", "pan_left"]
-    peak_indices = {1, 2, 4, 6, 8}
-    max_video_peak_scenes = max(4, (total_scenes + 1) // 2)
+    niche_norm_dir = str(channel_niche or "").strip().lower()
+    is_rescue_or_wildlife = any(k in niche_norm_dir for k in ("rescue", "animal", "pet", "wildlife", "predator"))
+    # Với kênh Cứu hộ động vật (Paws & Hearts) & Động vật hoang dã (Wild Odyssey):
+    # Bắt buộc ưu tiên 100% Video chuyển động thật liên hoàn ở 3 cảnh đầu (Cảnh 1, 2, 3) + Cảnh 5, 6
+    # để giữ chân người xem qua mốc 8 giây đầu và đẩy APV% vượt 75%!
+    peak_indices = {1, 2, 3, 5, 6} if is_rescue_or_wildlife else {1, 2, 4, 6, 8}
+    max_video_peak_scenes = max(5 if is_rescue_or_wildlife else 4, (total_scenes + 1) // 2)
     video_peak_count = 0
     default_subj = _clean_yt_search_phrase(primary_entity or topic, max_words=3, strip_distractor_props=True)
     default_overall_q = _clean_yt_search_phrase(topic, subject_entity=default_subj, max_words=5, strip_distractor_props=True)

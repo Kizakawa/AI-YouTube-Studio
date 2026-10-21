@@ -159,9 +159,9 @@ class ScriptValidationLinter:
         words = re.findall(r'\b\w+\b', all_narrations)
         total_words = len(words)
 
-        min_words = 75
-        max_words = 125
-        target_range_str = "85 to 110 words (33-40s smooth, complete 5-Act story across 7-9 natural scenes)"
+        min_words = 68
+        max_words = 115
+        target_range_str = "72 to 98 words (28-36s high-retention 5-Act story across 6-8 crisp scenes)"
 
         if total_words > max_words:
             est_seconds = (total_words / max(target_wpm, 165)) * 60
