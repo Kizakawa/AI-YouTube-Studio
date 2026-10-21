@@ -441,10 +441,22 @@ def check_langsmith_status() -> int:
     project_name = os.environ.get("LANGCHAIN_PROJECT", "AI-YouTube-Studio")
     print(f"🟢 LangSmith Cloud API Key     : ĐÃ KÍCH HOẠT (Project: {project_name})")
     try:
+        import warnings
         from langsmith import Client
-        client = Client()
-        runs = list(client.list_runs(project_name=project_name, is_root=True, limit=5))
-        print(f"🌐 Kết nối LangSmith Cloud     : THÀNH CÔNG (Tìm thấy {len(runs)} runs gần nhất)")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            client = Client()
+            try:
+                if not client.has_project(project_name=project_name):
+                    client.create_project(
+                        project_name=project_name,
+                        description="AI YouTube Shorts Studio — Multi-Agent LangGraph + Gemini + Mini-RAG Pipeline",
+                    )
+                    print(f"✨ Đã tự động khởi tạo Project '{project_name}' trên LangSmith Cloud!")
+            except Exception:
+                pass
+            runs = list(client.list_runs(project_name=project_name, is_root=True, limit=5))
+        print(f"🌐 Kết nối LangSmith Cloud     : THÀNH CÔNG (Tìm thấy {len(runs)} runs gần nhất trên '{project_name}')")
         for r in runs:
             dur = (
                 (r.end_time - r.start_time).total_seconds()
@@ -459,25 +471,26 @@ def check_langsmith_status() -> int:
     return 0
 
 
-def run_live_practice_lab(topic: str = "Why hippos are more dangerous than lions in Africa") -> None:
-    """
-    Bài thực hành trực tiếp (Hands-on Production Observability Lab):
-    Chạy thử 1 luồng thật (Job #9999) gồm:
-      1. Node `plan_scene_query` (LLM phân tích ngữ cảnh & sinh từ khóa đơn loài cho Pexels)
-      2. Node `fetch_and_audit_media` (Gọi Pexels API + LLM kiểm duyệt Link URL & Ảnh Thumbnail)
-    Sau đó xuất toàn bộ biểu đồ Waterfall + Input/Output Inspector như các dự án AI thực tế.
-    """
-    _ensure_utf8_stdout()
-    job_id = 9999
-    narration = "In African rivers, a territorial hippopotamus charges through deep water with bone-crushing jaws."
-    print("\n🚀 [BÀI THỰC HÀNH TRỰC TIẾP] Đang chạy luồng AI Agent thật (Job #9999) có gắn cảm biến LangSmith...")
-    start_job_trace(job_id=job_id, channel_id="Watch_Out", topic=topic, niche="wildlife_survival", mode="practice_lab")
-
+@trace_custom_span("PracticeLab.FullScenePipeline", run_type="chain")
+def _execute_practice_pipeline(topic: str, narration: str, job_id: int) -> Dict[str, Any]:
     from app.agents.visual_curation_agent import VisualCurationAgent
     from app.services.media.stock_fetcher import StockFetcher
+    from app.services.video_memory_rag import get_video_memory_rag
 
     curator = VisualCurationAgent()
     fetcher = StockFetcher()
+    rag = get_video_memory_rag()
+
+    # Bước 0: Truy vấn Mini-RAG kiểm tra lịch sử kịch bản/hình ảnh tương đồng
+    t_rag = time.monotonic()
+    rag_hits = rag.query_similar(query_text=topic, top_k=3)
+    record_node_span(
+        job_id=job_id,
+        node_name="0_mini_rag_retriever",
+        duration_sec=time.monotonic() - t_rag,
+        status="OK",
+        details={"matched_docs": len(rag_hits)},
+    )
 
     # Bước 1: Node phân tích ngữ cảnh & lập kế hoạch truy vấn bằng LLM
     t0 = time.monotonic()
@@ -505,6 +518,30 @@ def run_live_practice_lab(topic: str = "Why hippos are more dangerous than lions
         status="OK" if clip else "REJECTED",
         details={"chosen_url": (clip or {}).get("url")},
     )
+    return {
+        "rag_matches": len(rag_hits),
+        "planned_queries": va.get("search_queries", []),
+        "selected_clip_url": (clip or {}).get("url"),
+        "selected_source": (clip or {}).get("source"),
+    }
+
+
+def run_live_practice_lab(topic: str = "Why hippos are more dangerous than lions in Africa") -> None:
+    """
+    Bài thực hành trực tiếp (Hands-on Production Observability Lab):
+    Chạy thử 1 luồng thật (Job #9999) gồm:
+      0. Node `0_mini_rag_retriever` (Truy vấn bộ nhớ Mini-RAG)
+      1. Node `1_llm_query_planner` (LLM phân tích ngữ cảnh & sinh từ khóa đơn loài cho Pexels)
+      2. Node `2_stock_tool_and_vision_auditor` (Gọi Pexels API + LLM kiểm duyệt Link URL & Ảnh Thumbnail)
+    Sau đó đẩy cây Trace lên LangSmith Cloud (`AI-YouTube-Studio`) và xuất biểu đồ Waterfall + Input/Output Inspector.
+    """
+    _ensure_utf8_stdout()
+    job_id = 9999
+    narration = "In African rivers, a territorial hippopotamus charges through deep water with bone-crushing jaws."
+    print("\n🚀 [BÀI THỰC HÀNH TRỰC TIẾP] Đang chạy luồng AI Agent thật (Job #9999) có gắn cảm biến LangSmith...")
+    start_job_trace(job_id=job_id, channel_id="Watch_Out", topic=topic, niche="wildlife_survival", mode="practice_lab")
+
+    _execute_practice_pipeline(topic=topic, narration=narration, job_id=job_id)
 
     out_file = finish_job_trace(job_id=job_id, status="COMPLETED")
     if out_file and out_file.exists():
@@ -514,6 +551,7 @@ def run_live_practice_lab(topic: str = "Why hippos are more dangerous than lions
 
 
 def main() -> None:
+    _ensure_utf8_stdout()
     parser = argparse.ArgumentParser(description="Công cụ chẩn đoán LangSmith & LangGraph Waterfall Tracer")
     parser.add_argument("--status", action="store_true", help="Kiểm tra trạng thái kết nối LangSmith & API Key")
     parser.add_argument("--latest", action="store_true", help="Xem biểu đồ Waterfall của VideoJob mới nhất")
@@ -534,21 +572,24 @@ def main() -> None:
         if not configure_langsmith_env(reload_dotenv=True):
             print("⚠️ Chưa có `LANGSMITH_API_KEY` trong `.env`. Hãy cấu hình key trước khi dùng `--cloud`.")
             return
+        import warnings
         from langsmith import Client
         project_name = os.environ.get("LANGCHAIN_PROJECT", "AI-YouTube-Studio")
-        client = Client()
-        runs = list(client.list_runs(project_name=project_name, is_root=True, limit=5))
-        if not runs:
-            print(f"Chưa có Run nào trên project '{project_name}'.")
-            return
-        for r in runs:
-            dur = (r.end_time - r.start_time).total_seconds() if (r.end_time and r.start_time) else 0.0
-            print(f"\n🌐 [LangSmith Cloud Run] {r.name} | Status: {r.status} | Tổng: {dur:.2f}s")
-            children = list(client.list_runs(project_name=project_name, parent_run_id=r.id))
-            for ch in sorted(children, key=lambda x: x.start_time or datetime.min.replace(tzinfo=timezone.utc)):
-                cdur = (ch.end_time - ch.start_time).total_seconds() if (ch.end_time and ch.start_time) else 0.0
-                pct = (cdur / dur * 100.0) if dur > 0 else 0.0
-                print(f"   ├─ {ch.name:<28} ({ch.run_type:<5}) : {cdur:>7.2f}s ({pct:>5.1f}%) [{ch.status}]")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            client = Client()
+            runs = list(client.list_runs(project_name=project_name, is_root=True, limit=5))
+            if not runs:
+                print(f"Chưa có Run nào trên project '{project_name}'.")
+                return
+            for r in runs:
+                dur = (r.end_time - r.start_time).total_seconds() if (r.end_time and r.start_time) else 0.0
+                print(f"\n🌐 [LangSmith Cloud Run] {r.name} | Status: {r.status} | Tổng: {dur:.2f}s")
+                children = list(client.list_runs(project_name=project_name, parent_run_id=r.id))
+                for ch in sorted(children, key=lambda x: x.start_time or datetime.min.replace(tzinfo=timezone.utc)):
+                    cdur = (ch.end_time - ch.start_time).total_seconds() if (ch.end_time and ch.start_time) else 0.0
+                    pct = (cdur / dur * 100.0) if dur > 0 else 0.0
+                    print(f"   ├─ {ch.name:<28} ({ch.run_type:<5}) : {cdur:>7.2f}s ({pct:>5.1f}%) [{ch.status}]")
         return
 
     target_file: Optional[Path] = None

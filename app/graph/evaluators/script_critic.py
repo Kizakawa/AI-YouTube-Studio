@@ -17,6 +17,7 @@ import requests
 from config.settings import settings
 from app.graph.state import ScriptEvaluationReport, ScriptCriteriaScore
 from app.utils.key_rotator import KeyRotator
+from app.utils.langsmith_tracer import trace_custom_span
 
 logger = logging.getLogger(__name__)
 
@@ -183,6 +184,7 @@ class ScriptCritic:
 
         return round(score, 1), extra_critiques
 
+    @trace_custom_span("ScriptCritic.evaluate_script", run_type="llm")
     def evaluate_script(
         self,
         script_data: Dict[str, Any],

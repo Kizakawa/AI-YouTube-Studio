@@ -6,6 +6,7 @@ import re
 from typing import Dict, List, Any, Optional
 from config.settings import settings
 from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
+from app.utils.langsmith_tracer import trace_custom_span
 from app.schemas.contracts import ScriptContract
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,7 @@ class ContentAgent:
         self.conversations: Dict[str, List[Dict[str, str]]] = {}
         self.session = requests.Session()
 
+    @trace_custom_span("ContentAgent.gemini_generate", run_type="llm")
     def _call_api(self, prompt: str, json_mode: bool = False, timeout: int = 20, max_total_seconds: int = 60) -> str:
         """
         Gọi trực tiếp Gemini REST API theo chiến lược ưu tiên Model mạnh nhất trước:

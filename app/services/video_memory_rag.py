@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from config.settings import settings
 from app.database.models import get_db, VideoJob, PublishedVideo, normalize_channel_id
+from app.utils.langsmith_tracer import trace_custom_span
 
 logger = logging.getLogger(__name__)
 
@@ -403,6 +404,7 @@ class VideoMemoryRAG:
                 "total_rag_docs": len(self._docs),
             }
 
+    @trace_custom_span("MiniRAG.query_similar", run_type="retriever")
     def query_similar(
         self,
         query_text: str = "",
@@ -888,6 +890,7 @@ class VideoMemoryRAG:
                     if not (x.get("scene_id") == scene_id and x.get("title") == t_clean)
                 ]
 
+    @trace_custom_span("MiniRAG.rank_video_candidates", run_type="retriever")
     def rank_video_candidates_for_scene(
         self,
         job_id: int,
