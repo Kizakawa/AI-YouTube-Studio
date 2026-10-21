@@ -477,8 +477,18 @@ class ContentAgent:
                     if len(left_str.split()) >= 4 and len(right_str.split()) >= 4:
                         return left_str, right_str
 
-            # Tuyệt đối KHÔNG cắt giữa 1 câu đơn tại dấu phẩy hay liên từ phụ thuộc ("as", "when", "which"),
-            # đảm bảo 100% mỗi phân cảnh luôn là một câu văn hoàn chỉnh, tự nhiên.
+            # Riêng với Cảnh 1 (prefer_word_idx == 6) nếu câu ghép quá dài (>= 12 từ) có dấu phẩy + liên từ độc lập
+            # (", yet ", ", but ", ", mas ", ", e ") -> Tách gọn để Cảnh 1 luôn dứt điểm trong 5-8 từ (~2.0s)!
+            if prefer_word_idx <= 6 and len(words) >= 12:
+                import re as _re
+                m_conj = _re.search(r'^([^,]{18,65}),\s+(?:yet|but|and|mas|porém|contudo)\s+(.{15,})$', text_clean, flags=_re.IGNORECASE)
+                if m_conj:
+                    l_part = m_conj.group(1).strip().rstrip(",.") + "!"
+                    r_part = m_conj.group(2).strip()
+                    if r_part and r_part[0].islower():
+                        r_part = r_part[0].upper() + r_part[1:]
+                    if 4 <= len(l_part.split()) <= 10 and len(r_part.split()) >= 4:
+                        return l_part, r_part
             return None
 
         if scenes and isinstance(scenes, list):
@@ -1421,14 +1431,14 @@ Rewrite immediately addressing ALL violations above!
                     "title": "Ponto Nemo: O Cemitério Secreto De Naves No Fundo Do Oceano 🌊🛰️ #Shorts",
                     "topic": topic,
                     "primary_entity": "Point Nemo",
-                    "hook": "A 4.000 metros no Oceano Pacífico existe um cemitério secreto com 260 naves espaciais.",
+                    "hook": "260 naves espaciais afundaram neste cemitério secreto do Pacífico!",
                     "hook_visual_mode": "video",
                     "hook_search_queries": ["deep ocean abyss underwater", "spacecraft reentry ocean splash"],
                     "thumbnail_text": "CEMITÉRIO NO OCEANO! 🌊",
                     "pinned_comment": "Você teria coragem de navegar pelo Ponto Nemo à noite no meio do oceano? Comente! 👇",
                     "tags": ["shorts", "oceano", "misteriosdomundo", "pontonemo", "abismo"],
                     "scenes": [
-                        {"scene_id": 1, "narration": "A 4.000 metros no Oceano Pacífico existe um cemitério secreto com 260 naves espaciais.", "visual_keyword": "deep pacific ocean dark waves", "stock_query": "deep ocean waves", "visual_prompt": "Dark stormy Pacific Ocean waters from above", "estimated_seconds": 4.2},
+                        {"scene_id": 1, "narration": "260 naves espaciais afundaram neste cemitério secreto do Pacífico!", "visual_keyword": "deep pacific ocean dark waves", "stock_query": "deep ocean waves", "visual_prompt": "Dark stormy Pacific Ocean waters from above", "estimated_seconds": 4.2},
                         {"scene_id": 2, "narration": "Esse lugar se chama Ponto Nemo, o local mais isolado de todos os oceanos da Terra.", "visual_keyword": "remote ocean horizon aerial view", "stock_query": "remote ocean aerial", "visual_prompt": "Endless deep blue ocean far from any continent", "estimated_seconds": 4.5},
                         {"scene_id": 3, "narration": "Ele fica a 2.688 quilômetros da costa mais próxima, cercado apenas por águas profundas.", "visual_keyword": "underwater deep blue sea abyss", "stock_query": "underwater deep sea", "visual_prompt": "Deep underwater ocean rays fading into darkness", "estimated_seconds": 4.5},
                         {"scene_id": 4, "narration": "Quando um navio passa por lá, os humanos mais próximos estão na Estação Espacial Internacional.", "visual_keyword": "international space station orbit earth", "stock_query": "space station earth", "visual_prompt": "International Space Station orbiting above the Pacific Ocean", "estimated_seconds": 4.8},
@@ -1443,14 +1453,14 @@ Rewrite immediately addressing ALL violations above!
                     "title": "Lula-Colossal vs Cachalote: O Duelo Mortal A 2.000m No Oceano 🦑🐋 #Shorts",
                     "topic": topic,
                     "primary_entity": "Colossal Squid",
-                    "hook": "A 2.000 metros no oceano escuro, cachalotes emergem cobertos por cicatrizes de garras mortais.",
+                    "hook": "Lula-colossal contra cachalote: o duelo mais brutal do oceano!",
                     "hook_visual_mode": "video",
                     "hook_search_queries": ["sperm whale diving deep ocean", "giant squid underwater ocean"],
                     "thumbnail_text": "DUELO A 2.000M NO MAR! 🦑",
                     "pinned_comment": "Quem vence na escuridão total do oceano profundo: Cachalote ou Lula-Colossal? Comente! 👇",
                     "tags": ["shorts", "oceano", "misteriosdomundo", "baleia", "abismo"],
                     "scenes": [
-                        {"scene_id": 1, "narration": "A 2.000 metros no oceano escuro, cachalotes emergem cobertos por cicatrizes de garras mortais.", "visual_keyword": "sperm whale diving deep ocean", "stock_query": "sperm whale underwater", "visual_prompt": "Massive sperm whale diving into the dark ocean abyss", "estimated_seconds": 4.2},
+                        {"scene_id": 1, "narration": "Lula-colossal contra cachalote: o duelo mais brutal do oceano!", "visual_keyword": "sperm whale diving deep ocean", "stock_query": "sperm whale underwater", "visual_prompt": "Massive sperm whale diving into the dark ocean abyss", "estimated_seconds": 4.2},
                         {"scene_id": 2, "narration": "Essas marcas circulares na pele da baleia vêm dos tentáculos da temida lula-colossal.", "visual_keyword": "giant squid tentacles underwater dark", "stock_query": "squid underwater ocean", "visual_prompt": "Giant squid tentacles moving through dark ocean water", "estimated_seconds": 4.5},
                         {"scene_id": 3, "narration": "Com 14 metros e olhos do tamanho de pratos, ela caça na escuridão congelante da Antártida.", "visual_keyword": "deep sea creature glowing eyes", "stock_query": "deep ocean creature", "visual_prompt": "Huge squid eye gleaming in the pitch black Southern Ocean", "estimated_seconds": 4.6},
                         {"scene_id": 4, "narration": "Diferente da lula comum, suas ventosas possuem ganchos afiados que giram 360 graus na carne.", "visual_keyword": "octopus tentacles closeup underwater", "stock_query": "tentacles underwater closeup", "visual_prompt": "Powerful cephalopod tentacles gripping in deep water", "estimated_seconds": 4.8},
@@ -1465,14 +1475,14 @@ Rewrite immediately addressing ALL violations above!
                 "title": "One Man Refused The Order To End The World ☢️🚢 #Shorts",
                 "topic": topic,
                 "primary_entity": "Vasili Arkhipov",
-                "hook": "On October 27, 1962, two Soviet captains voted to fire a nuclear torpedo at the US Navy.",
+                "hook": "One Soviet officer refused to launch World War Three!",
                 "hook_visual_mode": "video",
                 "hook_search_queries": ["submarine underwater ocean", "naval warship sea storm"],
                 "thumbnail_text": "1 VOTE SAVED EARTH! ☢️",
                 "pinned_comment": "If Vasili Arkhipov had said YES on submarine B-59 that day, would civilization still exist? 👇",
                 "tags": ["shorts", "alternatehistory", "whatif", "history", "coldwar"],
                 "scenes": [
-                    {"scene_id": 1, "narration": "On October 27, 1962, two Soviet captains voted to fire a nuclear torpedo at the US Navy.", "visual_keyword": "submarine underwater dark ocean", "stock_query": "submarine underwater", "visual_prompt": "Soviet diesel submarine submerged in dark Atlantic waters", "estimated_seconds": 4.3},
+                    {"scene_id": 1, "narration": "One Soviet officer refused to launch World War Three!", "visual_keyword": "submarine underwater dark ocean", "stock_query": "submarine underwater", "visual_prompt": "Soviet diesel submarine submerged in dark Atlantic waters", "estimated_seconds": 4.3},
                     {"scene_id": 2, "narration": "American destroyers had cornered Soviet submarine B-59 near Cuba and begun dropping signaling depth charges.", "visual_keyword": "navy destroyer warship ocean waves", "stock_query": "navy warship ocean", "visual_prompt": "US Navy destroyers cutting through rough ocean waves", "estimated_seconds": 4.8},
                     {"scene_id": 3, "narration": "Cut off from Moscow for days in 120-degree heat, the exhausted crew believed World War Three had started.", "visual_keyword": "submarine control room gauges red light", "stock_query": "submarine interior red", "visual_prompt": "Tense submarine control room bathed in red emergency light", "estimated_seconds": 4.8},
                     {"scene_id": 4, "narration": "Inside the hull sat a 10-kiloton nuclear torpedo capable of vaporizing the entire American carrier fleet.", "visual_keyword": "torpedo tube submarine weapon", "stock_query": "military torpedo", "visual_prompt": "Heavy torpedo loaded inside a submarine launch tube", "estimated_seconds": 4.6},
@@ -1487,14 +1497,14 @@ Rewrite immediately addressing ALL violations above!
                 "title": "Why FBI Agents Watch Your FEET When You Lie 🕵️‍♂️🧠 #Shorts",
                 "topic": topic,
                 "primary_entity": "Joe Navarro",
-                "hook": "A trained liar can freeze their face for hours, but they always forget to control their feet.",
+                "hook": "Trained liars freeze their face, but their feet confess!",
                 "hook_visual_mode": "video",
                 "hook_search_queries": ["detective interrogation room", "person tapping feet nervous"],
                 "thumbnail_text": "WATCH THEIR FEET! 🕵️‍♂️",
                 "pinned_comment": "Have you ever caught someone lying by watching their body language instead of their words? 👇",
                 "tags": ["shorts", "psychology", "darkpsychology", "bodylanguage", "fbi"],
                 "scenes": [
-                    {"scene_id": 1, "narration": "A trained liar can freeze their face for hours, but they always forget to control their feet.", "visual_keyword": "interrogation room detective table", "stock_query": "interrogation detective", "visual_prompt": "Suspect sitting across a metal table in a dim interrogation room", "estimated_seconds": 4.3},
+                    {"scene_id": 1, "narration": "Trained liars freeze their face, but their feet confess!", "visual_keyword": "interrogation room detective table", "stock_query": "interrogation detective", "visual_prompt": "Suspect sitting across a metal table in a dim interrogation room", "estimated_seconds": 4.3},
                     {"scene_id": 2, "narration": "When someone rehearses a lie, they spend all their mental energy managing their eyes and fake smile.", "visual_keyword": "person closeup eyes intense stare", "stock_query": "intense eyes closeup", "visual_prompt": "Extreme closeup of nervous eyes trying to stay calm", "estimated_seconds": 4.6},
                     {"scene_id": 3, "narration": "Former FBI counterintelligence agent Joe Navarro discovered the truth leaks out at the bottom of the table.", "visual_keyword": "fbi agent reviewing case files", "stock_query": "detective investigating", "visual_prompt": "Behavioral analyst observing a suspect through glass", "estimated_seconds": 4.8},
                     {"scene_id": 4, "narration": "Your feet are wired directly to the brain's ancient limbic system, which reacts before conscious thought.", "visual_keyword": "human brain neural network glowing", "stock_query": "brain neural network", "visual_prompt": "Glowing limbic system firing signals inside the human brain", "estimated_seconds": 4.7},
@@ -1509,14 +1519,14 @@ Rewrite immediately addressing ALL violations above!
                 "title": "The Secret Spacecraft Graveyard At The Bottom Of The Ocean 🌊🛰️ #Shorts",
                 "topic": topic,
                 "primary_entity": "Point Nemo",
-                "hook": "At 13,000 feet below the Pacific Ocean lies a secret graveyard holding 260 sunken spacecraft.",
+                "hook": "260 sunken spacecraft rest in this secret ocean graveyard!",
                 "hook_visual_mode": "video",
                 "hook_search_queries": ["deep ocean underwater abyss", "satellite space orbit earth"],
                 "thumbnail_text": "OCEAN SPACE GRAVEYARD! 🌊",
                 "pinned_comment": "Would you dare sail across Point Nemo at night knowing you are 1,670 miles from land? 👇",
                 "tags": ["shorts", "deepsea", "oceanmysteries", "pointnemo", "science"],
                 "scenes": [
-                    {"scene_id": 1, "narration": "At 13,000 feet below the Pacific Ocean lies a secret graveyard holding 260 sunken spacecraft.", "visual_keyword": "deep pacific ocean dark waves", "stock_query": "deep ocean waves", "visual_prompt": "Dark swells of the South Pacific Ocean", "estimated_seconds": 4.3},
+                    {"scene_id": 1, "narration": "260 sunken spacecraft rest in this secret ocean graveyard!", "visual_keyword": "deep pacific ocean dark waves", "stock_query": "deep ocean waves", "visual_prompt": "Dark swells of the South Pacific Ocean", "estimated_seconds": 4.3},
                     {"scene_id": 2, "narration": "Scientists call this coordinate Point Nemo, the oceanic pole of inaccessibility.", "visual_keyword": "remote ocean horizon aerial view", "stock_query": "remote ocean aerial", "visual_prompt": "Aerial view of endless deep blue ocean water", "estimated_seconds": 4.4},
                     {"scene_id": 3, "narration": "It sits 1,670 miles from the nearest strip of land in every single direction.", "visual_keyword": "underwater deep blue sea abyss", "stock_query": "underwater deep sea", "visual_prompt": "Sunlight fading into the deep ocean abyss", "estimated_seconds": 4.4},
                     {"scene_id": 4, "narration": "When you stand at Point Nemo, the closest human beings to you are astronauts orbiting 250 miles overhead.", "visual_keyword": "international space station orbit earth", "stock_query": "space station earth", "visual_prompt": "International Space Station orbiting above Earth's oceans", "estimated_seconds": 4.9},
@@ -1531,14 +1541,14 @@ Rewrite immediately addressing ALL violations above!
                 "title": "How One Bite From A Komodo Dragon Drops A 1,200lb Giant 🦎💀 #Shorts",
                 "topic": topic,
                 "primary_entity": "Komodo Dragon",
-                "hook": "A water buffalo outweighs a Komodo dragon by 1,000 pounds, yet one bite seals its fate.",
+                "hook": "One Komodo dragon bite drops a 1,200-pound buffalo!",
                 "hook_visual_mode": "video",
                 "hook_search_queries": ["komodo dragon walking wild", "water buffalo horns wildlife"],
                 "thumbnail_text": "1 BITE DROPS A GIANT! 🦎",
                 "pinned_comment": "Could any land predator survive a venomous bite from a giant Komodo Dragon? Drop your vote 👇",
                 "tags": ["shorts", "wildlife", "predators", "komododragon", "nature"],
                 "scenes": [
-                    {"scene_id": 1, "narration": "A water buffalo outweighs a Komodo dragon by 1,000 pounds, yet one bite seals its fate.", "visual_keyword": "komodo dragon walking wild nature", "stock_query": "komodo dragon", "visual_prompt": "Giant Komodo dragon stalking across dry island terrain", "estimated_seconds": 4.3},
+                    {"scene_id": 1, "narration": "One Komodo dragon bite drops a 1,200-pound buffalo!", "visual_keyword": "komodo dragon walking wild nature", "stock_query": "komodo dragon", "visual_prompt": "Giant Komodo dragon stalking across dry island terrain", "estimated_seconds": 4.3},
                     {"scene_id": 2, "narration": "For decades, people believed dirty saliva killed the dragon's prey, but CT scans revealed a deadlier weapon.", "visual_keyword": "komodo dragon closeup tongue", "stock_query": "komodo dragon closeup", "visual_prompt": "Extreme closeup of a Komodo dragon flicking its yellow forked tongue", "estimated_seconds": 4.8},
                     {"scene_id": 3, "narration": "Inside its lower jaw sit sixty curved, shark-like teeth coated in a natural layer of pure iron.", "visual_keyword": "reptile sharp teeth jaw closeup", "stock_query": "reptile closeup", "visual_prompt": "Serrated reptile teeth gleaming in sunlight", "estimated_seconds": 4.7},
                     {"scene_id": 4, "narration": "Instead of crushing bone like a crocodile, the Komodo dragon clamps onto the buffalo's leg and pulls backward.", "visual_keyword": "water buffalo standing mud wild", "stock_query": "water buffalo wild", "visual_prompt": "Massive water buffalo standing defensively in muddy grass", "estimated_seconds": 4.9},

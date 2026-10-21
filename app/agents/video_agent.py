@@ -427,47 +427,18 @@ class VideoAgent:
 
         for idx, clip_p in enumerate(ordered_clips):
             dur_s = get_duration_ms(clip_p) / 1000.0
-            if idx == 0 and dur_s >= 2.5:
-                bcam_idx = 2 if len(ordered_clips) > 2 else 1
-                bcam_p = ordered_clips[bcam_idx]
-                out_p = str(Path(work_dir) / f"clip_bcam_hook_{idx:03d}.mp4")
-                t1 = 1.20
-                t2 = min(2.15, round(dur_s - 0.55, 2))
-                b_dur = round(t2 - t1, 3)
-                if dur_s >= 6.8:
-                    t3 = round(dur_s * 0.58, 2)
-                    t4 = round(min(t3 + 1.0, dur_s - 0.6), 2)
-                    b2_idx = (bcam_idx + 1) % len(ordered_clips)
-                    if b2_idx == 0:
-                        b2_idx = 1
-                    bcam2_p = ordered_clips[b2_idx]
-                    fc = (
-                        f"[0:v]split=3[a0][a1][a2];"
-                        f"[a0]trim=0:{t1},setpts=PTS-STARTPTS[s0];"
-                        f"[1:v]trim=0.2:{0.2 + b_dur:.3f},setpts=PTS-STARTPTS,scale={w}:{h},setsar=1[s1];"
-                        f"[a1]trim={t2}:{t3},setpts=PTS-STARTPTS[s2];"
-                        f"[2:v]trim=0.2:{0.2 + (t4 - t3):.3f},setpts=PTS-STARTPTS,scale={w}:{h},setsar=1[s3];"
-                        f"[a2]trim={t4}:{dur_s:.3f},setpts=PTS-STARTPTS[s4];"
-                        f"[s0][s1][s2][s3][s4]concat=n=5:v=1:a=0,fps={fps},format=yuv420p[vout]"
-                    )
-                    args = ["-i", clip_p, "-i", bcam_p, "-i", bcam2_p, "-filter_complex", fc, "-map", "[vout]", "-t", f"{dur_s:.3f}", *enc_args, "-r", str(fps), "-an", out_p]
-                else:
-                    fc = (
-                        f"[0:v]split=2[a0][a1];"
-                        f"[a0]trim=0:{t1},setpts=PTS-STARTPTS[s0];"
-                        f"[1:v]trim=0.2:{0.2 + b_dur:.3f},setpts=PTS-STARTPTS,scale={w}:{h},setsar=1[s1];"
-                        f"[a1]trim={t2}:{dur_s:.3f},setpts=PTS-STARTPTS[s2];"
-                        f"[s0][s1][s2]concat=n=3:v=1:a=0,fps={fps},format=yuv420p[vout]"
-                    )
-                    args = ["-i", clip_p, "-i", bcam_p, "-filter_complex", fc, "-map", "[vout]", "-t", f"{dur_s:.3f}", *enc_args, "-r", str(fps), "-an", out_p]
-                try:
-                    run_ffmpeg_with_gpu_fallback(args)
-                    if Path(out_p).exists() and Path(out_p).stat().st_size > 10000:
-                        updated_clips[idx] = out_p
-                        logger.info(f"  ⚡ [Hook B-Cam Cutaway] Đã chèn cắt cảnh B-Cam trong 3s đầu cho Scene 1 ({dur_s:.2f}s)")
-                except Exception as ex_bc:
-                    logger.debug(f"[Hook B-Cam Cutaway] Bỏ qua: {ex_bc}")
-            elif idx > 0 and dur_s >= 6.2:
+            sc_obj = scenes[idx] if idx < len(scenes) else None
+            sc_type = (getattr(sc_obj, "media_type", "") or "").lower()
+            has_multi_poses = bool(getattr(sc_obj, "pose_images", None) and len(getattr(sc_obj, "pose_images", [])) >= 2)
+            is_real_video_scene = sc_type in ("hook_ready_video", "video", "ai_video", "i2v", "t2v") or bool(
+                getattr(sc_obj, "media_path", None) and str(sc_obj.media_path).lower().endswith((".mp4", ".mov", ".webm", ".mkv"))
+            )
+
+            # TUYỆT ĐỐI KHÔNG chèn cảnh 3 cắt ngang vào giữa Cảnh 1 (giây 1.20s-2.15s) khi Cảnh 1 là Video hành động thật
+            # hoặc đã có bộ đa ảnh pose_images riêng — tránh làm đứt mạch thị giác ở giây 1.2s khiến người xem vuốt bỏ!
+            if idx == 0:
+                continue
+            elif idx > 0 and dur_s >= 6.5 and not is_real_video_scene and not has_multi_poses:
                 bcam_idx = (idx + 1) % len(ordered_clips)
                 bcam_p = ordered_clips[bcam_idx]
                 out_p = str(Path(work_dir) / f"clip_bcam_body_{idx:03d}.mp4")
