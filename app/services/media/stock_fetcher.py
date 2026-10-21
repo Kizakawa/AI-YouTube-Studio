@@ -63,18 +63,15 @@ class StockFetcher:
 
         target_page = page if page is not None else 1
         q_low = (query or "").lower()
-        if "honey badger" in q_low:
-            query = "cobra snake wildlife" if ("snake" in q_low or "venom" in q_low) else "leopard wildlife savanna"
-            q_low = query.lower()
-        allow_snow_zoo = any(w in q_low for w in ("zoo", "cage", "snow", "winter", "arctic", "polar", "ice", "penguin", "seal", "husky"))
-        _bad_slugs = ("-zoo", "zoo-", "zoological", "cage", "enclosure", "fence", "captive", "captivity", "snow", "winter", "blizzard", "arctic", "aquarium")
+        allow_zoo = any(w in q_low for w in ("zoo", "cage", "aquarium"))
+        _bad_zoo_slugs = ("-zoo", "zoo-", "zoological", "cage", "enclosure", "fence", "captive", "captivity", "aquarium")
 
         def _filter_vids(raw_vids: List[Dict]) -> List[Dict]:
-            if allow_snow_zoo:
+            if allow_zoo:
                 return raw_vids
             return [
                 v for v in (raw_vids or [])
-                if not any(bs in str(v.get("url", "")).lower() for bs in _bad_slugs)
+                if not any(bs in str(v.get("url", "")).lower() for bs in _bad_zoo_slugs)
             ]
 
         for attempt in range(2):
@@ -124,24 +121,7 @@ class StockFetcher:
 
         target_page = page if page is not None else 1
         ctx_photo_low = f"{topic} {query} {narration}".lower()
-        if "honey badger" in (query or "").lower():
-            qn_low = f"{query} {narration}".lower()
-            if "snake" in qn_low or "venom" in qn_low:
-                query = "cobra snake wildlife"
-            elif any(w in qn_low for w in ("snarl", "attack", "lunge", "teeth", "claw", "jaws", "fury")):
-                query = "leopard roaring teeth"
-            elif any(w in qn_low for w in ("walk", "undefeated", "savanna", "bush")):
-                query = "leopard hunting savanna"
-            else:
-                query = "african leopard closeup"
-        allow_snow_zoo = any(
-            w in ctx_photo_low
-            for w in ("zoo", "cage", "snow", "winter", "arctic", "polar", "ice", "penguin", "seal", "husky")
-        )
-        is_wildlife_ctx = any(
-            w in ctx_photo_low
-            for w in ("leopard", "badger", "lion", "tiger", "cheetah", "jaguar", "hyena", "wolf", "bear", "snake", "cobra", "predator", "wildlife", "savanna")
-        )
+        allow_zoo = any(w in ctx_photo_low for w in ("zoo", "cage", "aquarium"))
 
         try:
             headers = {"Authorization": key}
@@ -170,19 +150,9 @@ class StockFetcher:
                     alt_text = p.get("alt", "") or query
                     alt_low = f"{alt_text} {p.get('url', '')}".lower()
 
-                    if not allow_snow_zoo and any(
+                    if not allow_zoo and any(
                         sz_w in alt_low
-                        for sz_w in ("-zoo", "zoo-", "zoological", " in a zoo", " at the zoo", "cage", "enclosure", "fence", "in snow", "in winter", "snowy")
-                    ):
-                        continue
-                    if is_wildlife_ctx and any(
-                        bw in alt_low
-                        for bw in (
-                            "honeycomb", "beeswax", "beehive", "beekeeper", "woman", "man ", "person", "people",
-                            "girl", "boy", "sheep", "cow", "goat", "black cat", "domestic cat", "house cat",
-                            "kitten", "puppy", "dark skin", "fireworks", "boat", "celebration", "asphalt",
-                            "suitcase", "wicker basket", "warrior",
-                        )
+                        for sz_w in ("-zoo", "zoo-", "zoological", " in a zoo", " at the zoo", "cage", "enclosure", "fence")
                     ):
                         continue
 
@@ -421,24 +391,10 @@ class StockFetcher:
 
         congruence_topic = f"{topic} {query}".strip()
         full_ctx_low = f"{congruence_topic} {narration}".lower()
-        if "honey badger" in full_ctx_low:
-            hb_qs = (
-                ["cobra snake wildlife", "leopard roaring teeth", "leopard hunting savanna"]
-                if ("snake" in full_ctx_low or "venom" in full_ctx_low)
-                else ["leopard roaring teeth", "leopard hunting savanna", "african leopard closeup", "leopard wildlife"]
-            )
-            queries = hb_qs + [q for q in queries if "honey" not in q.lower() and q not in hb_qs]
         creature_mode = bool(va.get("creature_mode"))
         creature_qs = [q for q in (va.get("creature_queries") or []) if q]
         clean_stock_only = bool(va.get("clean_stock_only"))
-        _allow_snow_zoo = any(
-            w in full_ctx_low
-            for w in ("snow", "winter", "arctic", "polar", "ice", "zoo", "cage")
-        )
-        _is_wildlife_photo_ctx = any(
-            w in full_ctx_low
-            for w in ("leopard", "badger", "lion", "tiger", "cheetah", "jaguar", "hyena", "wolf", "bear", "snake", "cobra", "predator", "wildlife", "savanna")
-        )
+        _allow_zoo = any(w in full_ctx_low for w in ("zoo", "cage", "aquarium"))
 
         def _add(items: List[Dict]):
             for it in items:
@@ -451,19 +407,9 @@ class StockFetcher:
                     for art_w in ("painting", "illustration", "drawing", "cartoon", "clipart", "vector", "sketch", "book cover", "infographic", "poster", "meme", "fantasy art", "watercolor")
                 ):
                     continue
-                if not _allow_snow_zoo and any(
+                if not _allow_zoo and any(
                     sz_w in desc_low
-                    for sz_w in ("-zoo", "zoo-", "zoological", " in a zoo", " at the zoo", "cage", "enclosure", "in snow", "in winter", "snowy")
-                ):
-                    continue
-                if _is_wildlife_photo_ctx and any(
-                    bw in desc_low
-                    for bw in (
-                        "honeycomb", "beeswax", "beehive", "beekeeper", "woman", "man ", "person", "people",
-                        "girl", "boy", "sheep", "cow", "goat", "black cat", "domestic cat", "house cat",
-                        "kitten", "puppy", "dark skin", "fireworks", "boat", "celebration", "asphalt",
-                        "suitcase", "wicker basket", "warrior",
-                    )
+                    for sz_w in ("-zoo", "zoo-", "zoological", " in a zoo", " at the zoo", "cage", "enclosure")
                 ):
                     continue
                 if is_incongruent_stock_image(it.get("alt") or it.get("title") or "", topic=congruence_topic, narration=narration):
@@ -916,7 +862,7 @@ class StockFetcher:
                 if winner and score >= min_vid_score and not should_ai:
                     formatted_winner = self.format_video_candidate(winner, query=query, used=used)
                     if formatted_winner and formatted_winner.get("url"):
-                        formatted_winner["vision_curated"] = True
+                        formatted_winner["vision_curated"] = (rationale != "Rule-based curation passed")
                         formatted_winner["vision_score"] = round(float(score), 2)
                         record_used_media(formatted_winner["url"], query=query, source=formatted_winner.get("source", "curated_video"))
                         from app.services.media.media_history import extract_media_identity

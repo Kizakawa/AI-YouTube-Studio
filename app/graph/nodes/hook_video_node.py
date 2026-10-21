@@ -184,16 +184,19 @@ Analyze this video's Hook and full script, and decide whether the Hook should be
 - Full Script Summary: {full_script_text[:1400]}
 
 Return a JSON object with your decision:
-1. "canonical_subject": Bare 1-2 word canonical noun of the main creature/animal/subject WITHOUT literary or size adjectives (e.g. "leviathan", "kraken", "honey badger", "black hole"; NEVER include words like "colossal", "abyssal", "terrifying", "ancient").
+1. "canonical_subject": Bare 1-2 word canonical English noun of the main creature/animal/subject WITHOUT literary or size adjectives (e.g. "siberian tiger", "leviathan", "kraken", "honey badger", "black hole"; NEVER include words like "colossal", "abyssal", "terrifying", "ancient", "deadly").
 2. "hook_visual_mode": Must be strictly "video" or "scene":
    - Choose "video" when the Hook/Climax depicts a concrete physical subject, wildlife predator, or 3D CGI/VFX monster/sci-fi creature where cutting the Peak moment from a YouTube Short creates an explosive opening.
    - Choose "scene" when the Hook/Keyword is abstract, psychological, conceptual, or counterfactual.
 3. "is_abstract_keyword": Boolean (true if "hook_visual_mode" is "scene", false if "hook_visual_mode" is "video").
 4. "climax_scene_id": Integer scene_id (between 2 and {max(len(base_scenes), 2)}) where the most intense mid-video climax occurs in the body of the script so we can splice the Peak clip there too.
 5. "climax_description": 1-sentence description of the peak visual climax.
-6. "search_queries": 3 high-hit English YouTube Shorts search queries (2 to 4 words each, strictly using "canonical_subject" + action/format, NO quotes, NO hashtags, NO flowery adjectives):
-   - If "canonical_subject" is a REAL living animal, real person, or real-world phenomenon (e.g. orca, great white shark, jaguar, honey badger, harpy eagle, submarine, diver): NEVER use "3d animation" or "size comparison"! Always query real wildlife/documentary action (e.g. "orca hunting shark", "jaguar attacking caiman").
-   - ONLY if "canonical_subject" is a fictional, mythical, or extinct monster/cryptid with zero real camera footage (e.g. leviathan, kraken, bloop, cthulhu, megalodon): include "<canonical_subject> 3d animation" and "<canonical_subject> thalassophobia".
+6. "search_queries": 3 high-hit English YouTube Shorts search queries (2 to 4 words each, NO quotes, NO hashtags, NO flowery adjectives):
+   - SINGLE SUBJECT PER QUERY (CRITICAL): NEVER use "vs", "versus", or combine two different animals/entities in a single query (queries like "A vs B" return low-quality compilation edits, slideshows, or gaming clips). If the script features two subjects (Subject A and Subject B), dedicate Query 1 & 2 to Subject A and Query 3 to Subject B.
+   - INCLUDE CORE HABITAT / BIOME / ACTION: Always include the 1-word core natural environment, season, or action when essential to the script's setting (e.g. "<subject> snow", "<subject> hunting snow", "<subject> underwater", "<subject> night hunting").
+   - REAL SUBJECT vs MYTHICAL/CGI ENTITY:
+     * If "canonical_subject" is a REAL living animal, real person, or real-world phenomenon: query authentic wildlife/documentary action (NEVER use "3d animation" or "size comparison").
+     * ONLY if "canonical_subject" is a fictional, mythical, or extinct prehistoric creature/cryptid with zero real camera footage: use "<canonical_subject> 3d animation", "<canonical_subject> thalassophobia", or "<canonical_subject> megalophobia".
 7. "atmosphere_fx": Pick ONE from: "history", "psychology", "mystery", "action".
 
 Return ONLY valid JSON:
@@ -275,41 +278,6 @@ Return ONLY valid JSON:
         hook_visual_mode = "video"
         is_abstract_keyword = False
 
-    # Nhận diện chủ đề Quái vật khổng lồ / Thủy quái biển sâu / Khoa học viễn tưởng (Leviathan, Bloop, Kraken, Megalodon...)
-    # để tự động bổ sung truy vấn 3D CGI / Thalassophobia trên YouTube Shorts thay vì tìm đạo cụ "sonar screen"
-    _hook_ctx_low = f"{topic} {primary_entity} {visual_keyword} {hook_narration}".lower()
-    is_monster_hook = any(
-        mk in _hook_ctx_low
-        for mk in (
-            "leviathan",
-            "bloop",
-            "kraken",
-            "megalodon",
-            "cthulhu",
-            "kaiju",
-            "godzilla",
-            "titanoboa",
-            "mosasaurus",
-            "sea monster",
-            "colossal monster",
-            "thalassophobia",
-            "megalophobia",
-        )
-    )
-    if is_monster_hook:
-        from app.graph.tools.media_tools import _clean_yt_search_phrase
-        clean_m_subj = (
-            _clean_yt_search_phrase(canonical_subject or primary_entity or topic, max_words=2, strip_distractor_props=True)
-            or "sea monster"
-        )
-        monster_hook_queries = [
-            *queries,
-            f"{clean_m_subj} 3d animation",
-            "sea monster thalassophobia",
-            f"{clean_m_subj} megalophobia",
-        ]
-        queries = [q for q in dict.fromkeys(monster_hook_queries) if q][:3]
-
     # ──────────────────────────────────────────────────────────────────────────
     # BƯỚC 2: GEMINI CHỌN "video" -> SĂN VIDEO SHORT TRÊN MẠNG (CHỐNG LẶP 100%)
     # ──────────────────────────────────────────────────────────────────────────
@@ -328,6 +296,8 @@ Return ONLY valid JSON:
     candidate_videos: List[str] = []
     candidate_titles: Dict[str, str] = {}
     candidate_uploaders: Dict[str, str] = {}
+    validated_peaks: Dict[str, Dict[str, Any]] = {}
+    is_scifi_pre = "scifi" in atmosphere_fx or "scifi" in niche.lower()
     if (
         existing_path
         and existing_path.lower().endswith((".mp4", ".mov", ".webm"))
@@ -341,6 +311,7 @@ Return ONLY valid JSON:
     )
     from app.graph.evaluators.visual_critic import VisualCritic
 
+    cand_seq_idx = 0
     for q_idx, q in enumerate(queries):
         if len(candidate_videos) >= 2:
             break
@@ -406,48 +377,90 @@ Return ONLY valid JSON:
             continue
 
         out_tmpl = str(hook_cand_dir / f"yt_hook_cand_{q_idx}_%(id)s.%(ext)s")
-        cmd_yt = [
-            "yt-dlp",
-            "--no-playlist",
-            "--no-warnings",
-            "--quiet",
-            "--socket-timeout", "8",
-            "--max-filesize", "28M",
-            "--match-filter", license_policy.ytdlp_cli_match_filter("duration <= 180"),
-            "--max-downloads", "2",
-            "-f", "bestvideo[height>=720][height<=1920][ext=mp4]/best[height>=720][height<=1920][ext=mp4]",
-            "-o", out_tmpl,
-            *selected_urls,
-        ]
+        dl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "noplaylist": True,
+            "socket_timeout": 10,
+            "retries": 1,
+            "nopart": True,
+            "max_filesize": 28 * 1024 * 1024,
+            "format": "bestvideo[height>=720][height<=1920][ext=mp4]/best[height>=720][height<=1920][ext=mp4]/bestvideo[height>=720][height<=1920]/best[height>=480][ext=mp4]/best",
+            "merge_output_format": "mp4",
+            "outtmpl": out_tmpl,
+            "ignoreerrors": True,
+        }
         try:
-            subprocess.run(
-                cmd_yt,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=20,
-                check=False,
-            )
+            import yt_dlp
+            with yt_dlp.YoutubeDL(dl_opts) as ydl_dl:
+                ydl_dl.download(selected_urls[:2])
         except Exception as e_yt:
-            logger.debug(f"[HookVideoNode] yt-dlp search skip ({q}): {e_yt}")
+            logger.debug(f"[HookVideoNode] yt-dlp download skip ({q}): {e_yt}")
 
-        for mp4 in sorted(hook_cand_dir.glob(f"yt_hook_cand_{q_idx}_*.mp4")):
-            if mp4.stat().st_size > 80_000 and str(mp4) not in candidate_videos:
-                gate_res = VisualCritic.inspect_clip_before_concat(
-                    str(mp4), min_short_edge=720, min_sharpness=5.8, check_watermark=True
+        for mp4 in sorted(hook_cand_dir.glob(f"yt_hook_cand_{q_idx}_*.*")):
+            if mp4.suffix.lower() not in (".mp4", ".webm", ".mkv", ".mov"):
+                continue
+            v_str = str(mp4)
+            if mp4.stat().st_size <= 60_000 or v_str in candidate_videos or v_str in validated_peaks:
+                continue
+
+            peak_offset_sec, peak_duration_sec = find_hook_peak_window(
+                v_str,
+                min_duration=target_hook_duration_sec,
+                max_duration=15.0,
+            )
+            clean_peak_path = str(hook_cand_dir / f"hook_peak_clean_{cand_seq_idx}.mp4")
+            cand_seq_idx += 1
+            try:
+                trim_video(
+                    input_path=v_str,
+                    duration_seconds=max(target_hook_duration_sec, 3.0),
+                    output_path=clean_peak_path,
+                    width=1080,
+                    height=1920,
+                    fps=30,
+                    is_scifi=is_scifi_pre,
+                    niche=atmosphere_fx,
+                    apply_grading=False,
+                    is_hook_scene=True,
+                    fair_use_transform=True,
+                    start_offset_sec=peak_offset_sec,
+                    preserve_continuous_flow=True,
                 )
-                if not gate_res.get("passed", False):
-                    logger.info(
-                        f"🚫 [HookVideoNode Gate] Loại bỏ ứng viên Hook '{mp4.name}' vì: "
-                        f"{'; '.join(gate_res.get('issues') or [])}"
-                    )
-                    mp4.unlink(missing_ok=True)
-                    continue
-                candidate_videos.append(str(mp4))
-                if len(candidate_videos) >= 2:
-                    break
+            except Exception as e_tr:
+                logger.debug(f"[HookVideoNode] Pre-trim peak skip ({v_str}): {e_tr}")
+
+            inspect_target = clean_peak_path if (Path(clean_peak_path).exists() and Path(clean_peak_path).stat().st_size > 20_000) else v_str
+            gate_res = VisualCritic.inspect_clip_before_concat(
+                inspect_target,
+                min_short_edge=720,
+                min_sharpness=5.4,
+                check_watermark=True,
+                allow_snow=True,
+                auto_sanitize=True,
+            )
+            if not gate_res.get("passed", False):
+                logger.info(
+                    f"🚫 [HookVideoNode Gate] Loại bỏ ứng viên Hook '{mp4.name}' tại đoạn Peak @{peak_offset_sec:.1f}s vì: "
+                    f"{'; '.join(gate_res.get('issues') or [])}"
+                )
+                Path(clean_peak_path).unlink(missing_ok=True)
+                validated_peaks[v_str] = {"passed": False}
+                continue
+
+            validated_peaks[v_str] = {
+                "passed": True,
+                "peak_offset_sec": peak_offset_sec,
+                "peak_duration_sec": peak_duration_sec,
+                "clean_peak_path": clean_peak_path,
+                "inspect_target": inspect_target,
+            }
+            candidate_videos.append(v_str)
+            if len(candidate_videos) >= 2:
+                break
 
     # ──────────────────────────────────────────────────────────────────────────
-    # BƯỚC 3: QUÉT ĐOẠN PEAK TỰ NHIÊN (`peak_offset_sec`, `peak_duration_sec`) & CHẤM ĐIỂM VISION
+    # BƯỚC 3: QUÉT ĐOẠN PEAK TỰ NHIÊN (`peak_offset_sec`, `peak_duration_sec`), LỌC SẠCH WATERMARK 3 BƯỚC & CHẤM ĐIỂM VISION
     # (Gỡ khóa cứng 3s: Đo luôn cả độ dài thực sự của đoạn Peak tới 15s nếu cao trào kéo dài!)
     # ──────────────────────────────────────────────────────────────────────────
     scored_candidates: List[Dict[str, Any]] = []
@@ -455,23 +468,68 @@ Return ONLY valid JSON:
     best_candidate: Optional[Dict[str, Any]] = None
 
     for idx, v_path in enumerate(candidate_videos):
-        # 3.1. Quét toàn bộ video Short để tìm đúng mốc Peak & đo trọn vẹn độ dài đoạn Peak tự nhiên (tới 15s)
-        peak_offset_sec, peak_duration_sec = find_hook_peak_window(
-            v_path,
-            min_duration=target_hook_duration_sec,
-            max_duration=15.0,
-        )
+        pre_v = validated_peaks.get(v_path)
+        if pre_v and pre_v.get("passed"):
+            peak_offset_sec = float(pre_v["peak_offset_sec"])
+            peak_duration_sec = float(pre_v["peak_duration_sec"])
+            clean_peak_path = str(pre_v["clean_peak_path"])
+            inspect_target = str(pre_v["inspect_target"])
+        else:
+            # 3.1. Quét toàn bộ video Short để tìm đúng mốc Peak & đo trọn vẹn độ dài đoạn Peak tự nhiên (tới 15s)
+            peak_offset_sec, peak_duration_sec = find_hook_peak_window(
+                v_path,
+                min_duration=target_hook_duration_sec,
+                max_duration=15.0,
+            )
 
-        # 3.2. Trích xuất 3 khung hình đại diện NGAY TẠI ĐOẠN PEAK (`-ss peak_offset_sec`)
+            # 3.1b. Cắt riêng đoạn Peak (kèm fair_use_transform để gọt lề chữ trên/dưới) rồi chạy cổng 3 bước (Cắt né -> Delogo/Crop -> Bỏ)
+            clean_peak_path = str(hook_cand_dir / f"hook_peak_clean_ext_{idx}.mp4")
+            try:
+                trim_video(
+                    input_path=v_path,
+                    duration_seconds=max(target_hook_duration_sec, 3.0),
+                    output_path=clean_peak_path,
+                    width=1080,
+                    height=1920,
+                    fps=30,
+                    is_scifi=is_scifi_pre,
+                    niche=atmosphere_fx,
+                    apply_grading=False,
+                    is_hook_scene=True,
+                    fair_use_transform=True,
+                    start_offset_sec=peak_offset_sec,
+                    preserve_continuous_flow=True,
+                )
+            except Exception as e_tr:
+                logger.debug(f"[HookVideoNode] Pre-trim peak skip ({v_path}): {e_tr}")
+
+            inspect_target = clean_peak_path if (Path(clean_peak_path).exists() and Path(clean_peak_path).stat().st_size > 20_000) else v_path
+            gate_res = VisualCritic.inspect_clip_before_concat(
+                inspect_target,
+                min_short_edge=720,
+                min_sharpness=5.4,
+                check_watermark=True,
+                allow_snow=True,
+                auto_sanitize=True,
+            )
+            if not gate_res.get("passed", False):
+                logger.info(
+                    f"🚫 [HookVideoNode Gate] Loại bỏ ứng viên Hook '{Path(v_path).name}' tại đoạn Peak @{peak_offset_sec:.1f}s vì: "
+                    f"{'; '.join(gate_res.get('issues') or [])}"
+                )
+                Path(clean_peak_path).unlink(missing_ok=True)
+                continue
+
+        # 3.2. Trích xuất 3 khung hình đại diện NGAY TẠI ĐOẠN PEAK ĐÃ XỬ LÝ SẠCH (`inspect_target`)
         sheet_path = hook_cand_dir / f"hook_score_sheet_{idx}.jpg"
-        win_dur = max(peak_duration_sec, target_hook_duration_sec, 2.4)
+        win_dur = max(target_hook_duration_sec, 2.4)
         fps_expr = f"3/{win_dur:.2f}"
-        seek_args = ["-ss", f"{peak_offset_sec:.2f}"] if peak_offset_sec >= 0.15 else []
+        seek_args = [] if inspect_target == clean_peak_path else (["-ss", f"{peak_offset_sec:.2f}"] if peak_offset_sec >= 0.15 else [])
         cmd_sheet = [
             "ffmpeg", "-y",
             *seek_args,
             "-t", f"{win_dur:.2f}",
-            "-i", v_path,
+            "-i", inspect_target,
             "-vf", f"fps={fps_expr},scale=360:640:force_original_aspect_ratio=increase,crop=360:640,tile=3x1",
             "-frames:v", "1",
             "-q:v", "4",
@@ -496,10 +554,10 @@ Evaluate this 3-frame sequence extracted directly from the PEAK CLIMAX window (s
 - Opening Hook Line: "{hook_narration}"
 
 Score strictly from 1.0 to 10.0 and decide whether this Hook should use this cut Peak VIDEO ("video") or fall back to creating a traditional visual SCENE ("scene"):
-1. "recommended_hook_mode": Return "video" if these 3 peak frames show compelling, relevant real motion/footage worthy of splicing into the Hook and Climax. Return "scene" if the footage is unrelated, a talking head, or cluttered with giant text.
-2. "entity_match_score": Does the peak clip visually match the subject/entity or intriguing climax ("{primary_entity or climax_desc}")? (10 = exact or compelling visual match, 1 = unrelated).
-3. "motion_action_score": Is it dynamic real footage/action/intriguing visual rather than a talking head / podcast / static slide? (10 = intense real action or intriguing motion, 1 = talking head or static slide).
-4. "clean_frame_score": Is the center of the visual reasonably clean without giant burned-in text blocking the subject? (10 = clean footage, 1 = cluttered with huge text).
+1. "recommended_hook_mode": Return "video" ONLY if these 3 peak frames show compelling, relevant real motion/footage in the authentic setting/habitat worthy of splicing into the Hook and Climax. Return "scene" if the footage is unrelated, wrong species/subject, trapped in an artificial zoo enclosure/cage when wild nature is required, contradicting the script's core biome/season, a talking head, or cluttered with burned-in text/watermarks.
+2. "entity_match_score": Does the peak clip visually match BOTH the subject/entity AND its authentic habitat/biome/setting in "{topic}" / "{hook_narration}"? (10 = exact subject in authentic environment, <= 4.0 = wrong subject, domestic pet, artificial zoo cage, or contradicting biome/season).
+3. "motion_action_score": Is it dynamic real footage/action/intriguing visual rather than a talking head / podcast / static image zoom? (10 = intense real action or intriguing motion, 1 = talking head or static slide).
+4. "clean_frame_score": Is the visual frame clean without burned-in subtitles, giant text overlays, split-screen collages, or persistent corner watermarks/logos? (10 = clean full-bleed footage, <= 4.0 = visible watermark/logo, subtitles, or split-screen).
 5. "reason": Short 1-sentence explanation.
 
 Return ONLY valid JSON:
@@ -533,14 +591,15 @@ Return ONLY valid JSON:
                             c_score = float(data.get("clean_frame_score", 5.0))
                             overall = round(e_score * 0.45 + m_score * 0.35 + c_score * 0.20, 2)
                             passed = (
-                                rec_mode == "video"
-                                and (overall >= 6.8)
-                                and (e_score >= 6.5)
-                                and (c_score >= 6.0)
-                                and (m_score >= 6.5)
+                                (rec_mode == "video" or e_score >= 6.5)
+                                and (overall >= 6.0)
+                                and (e_score >= 5.8)
+                                and (c_score >= 5.8)
+                                and (m_score >= 5.5)
                             )
                             score_res = {
                                 "video_path": v_path,
+                                "clean_peak_path": inspect_target,
                                 "peak_offset_sec": peak_offset_sec,
                                 "peak_duration_sec": peak_duration_sec,
                                 "recommended_hook_mode": "video" if passed else "scene",
@@ -648,6 +707,8 @@ Return ONLY valid JSON:
 
     if best_candidate and Path(best_candidate["video_path"]).exists():
         best_v_path = best_candidate["video_path"]
+        clean_p_path = best_candidate.get("clean_peak_path") or best_v_path
+        use_precleaned = clean_p_path != best_v_path and Path(clean_p_path).exists()
         peak_start = float(best_candidate.get("peak_offset_sec", 0.0))
         natural_peak_dur = float(best_candidate.get("peak_duration_sec") or target_hook_duration_sec)
         m_yt_hook = re.search(r"yt_hook_cand_\d+_([A-Za-z0-9_-]{11})", Path(best_v_path).name)
@@ -659,7 +720,7 @@ Return ONLY valid JSON:
             f"Score={best_candidate['overall_score']}/10) ghép vào ĐẦU VIDEO (Cảnh 1) -> {hook_output_clip}"
         )
         trim_video(
-            input_path=best_v_path,
+            input_path=clean_p_path if use_precleaned else best_v_path,
             duration_seconds=target_hook_duration_sec,
             output_path=hook_output_clip,
             width=1080,
@@ -669,8 +730,8 @@ Return ONLY valid JSON:
             niche=atmosphere_fx,
             apply_grading=True,
             is_hook_scene=True,
-            fair_use_transform=True,
-            start_offset_sec=peak_start,
+            fair_use_transform=not use_precleaned,
+            start_offset_sec=0.0 if use_precleaned else peak_start,
             preserve_continuous_flow=True,
         )
         hook_mode = "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK"

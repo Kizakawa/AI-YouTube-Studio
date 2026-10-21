@@ -1260,7 +1260,7 @@ def trim_video(
     grading_chain = ("," + ",".join(grading_parts)) if grading_parts else ""
 
     # Tự động phát hiện nếu video nguồn 9:16 có dải viền đen ngang (letterbox) ở trên và dưới -> Phóng 1.84x để cắt sạch viền đen!
-    zoom_mult = 1.06
+    zoom_mult = 1.16 if (fair_use_transform and not is_already_rendered) else 1.06
     try:
         probe_ss = f"{start_offset_sec + 0.5:.2f}" if (start_offset_sec and start_offset_sec > 0) else "0.50"
         p_cmd = [
@@ -1283,7 +1283,7 @@ def trim_video(
     if fair_use_transform and not is_already_rendered:
         scale_crop_chain = (
             f"hflip,scale={zw}:{zh}:force_original_aspect_ratio=increase,"
-            f"crop={width}:{height}"
+            f"crop={width}:{height}:(iw-{width})/2:(ih-{height})*0.34"
         )
     else:
         scale_crop_chain = (

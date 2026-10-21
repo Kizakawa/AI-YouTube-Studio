@@ -149,7 +149,7 @@ def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any
         if not gq:
             continue
         gq = re.sub(r"\s+", " ", gq).strip()
-        if core_entity and not _has_subject(gq):
+        if not is_ai and core_entity and not _has_subject(gq):
             gq = f"{anchor_subj} {gq}"
         gq_words = gq.split()
         if len(gq_words) > 6:
@@ -328,8 +328,9 @@ NGUYÊN TẮC VÀNG KHI TẠO TRUY VẤN TOP SEARCH GOOGLE IMAGES & YOUTUBE SHOR
    - "STYLIZED_ANIMATION": Hoạt hình 2D châm biếm, minh họa.
 3. Chọn "preferred_engines": Luôn đặt `["google"]` để lấy trực tiếp từ Top Search Google Images.
 4. CÔNG THỨC TẠO `google_image_queries` & `search_queries` (CỰC KỲ QUAN TRỌNG):
-   - Độ dài chuẩn: **2 đến 5 từ tiếng Anh** (`[Chủ thể cụ thể] + [Hành động / Bối cảnh / Biểu cảm đắt giá của riêng cảnh đó]`).
-   - Truy vấn ngắn gọn, súc tích (2–5 từ) luôn cho kết quả Top #1–#10 Google Images đẹp và chuẩn xác gấp nhiều lần câu văn dài dòng!
+   - Độ dài chuẩn: **2 đến 4 từ tiếng Anh** (`[Chủ thể cụ thể của riêng cảnh đó] + [Môi trường/Mùa đặc trưng] + [Hành động/Chi tiết đắt giá]`).
+   - **GIỮ ĐÚNG MÔI TRƯỜNG SINH THÁI / MÙA / BỐI CẢNH (BIOME & HABITAT CONGRUENCY)**: Nếu kịch bản/chủ đề có môi trường tự nhiên, mùa hoặc bối cảnh đặc trưng (ví dụ: tuyết mùa đông, đáy biển sâu, rừng rậm, sa mạc, ban đêm, thời cổ đại...), BẮT BUỘC đưa từ khóa môi trường đó (1 từ tiếng Anh ngắn gọn) vào trong `search_queries` và `google_image_queries` của phân cảnh để kết quả trả về đồng nhất 100% bối cảnh!
+   - **MỖI TRUY VẤN CHỈ TẬP TRUNG VÀO 1 CHỦ THỂ DUY NHẤT (CẤM GHÉP "A vs B")**: TUYỆT ĐỐI CẤM dùng từ `"vs"`, `"versus"` hoặc ghép tên 2 loài vật/2 thực thể khác nhau vào cùng 1 câu truy vấn (vì kho video Pexels sẽ trả về 0 kết quả, còn Google Images sẽ trả về ảnh ghép chia đôi khung hình / meme so sánh có chữ). Nếu chủ đề có 2 loài đối đầu, mỗi phân cảnh hãy truy vấn đích danh loài vật đang được nhắc tới ở cảnh đó kèm môi trường sống thật của nó!
    - KHÔNG nhồi nhét thuật ngữ kỹ thuật máy quay (`"8k"`, `"9:16"`, `"macro shot"`, `"wide angle"`, `"camera pans"`, `"photorealistic"`, `"chiaroscuro"`) vào `google_image_queries`.
    - **ĐA DẠNG HÓA 100% GIỮA CÁC CẢNH**: Mỗi phân cảnh từ Cảnh 1 đến Cảnh {len(scenes_payload)} BẮT BUỘC phải khai thác một GÓC NHÌN / HÀNH ĐỘNG / CHI TIẾT KHÁC NHAU khớp với lời thoại của cảnh đó. TUYỆT ĐỐI KHÔNG lặp lại cùng một câu truy vấn đầu tiên (`google_image_queries[0]`) ở 2 cảnh khác nhau!
 
@@ -454,8 +455,8 @@ NGUYÊN TẮC TƯ DUY ĐẠO DIỄN & TẠO TRUY VẤN GOOGLE IMAGES:
    - "STYLIZED_ANIMATION": Hoạt hình 2D châm biếm, minh họa.
 3. "preferred_engines": Luôn chọn `["google"]`.
 4. "search_queries" (Dành riêng cho API Pexels/Pixabay) & "google_image_queries" (Dành cho Google Images):
-   - Với `search_queries` (gọi API Pexels/Pixabay): BẮT BUỘC là **2 đến 3 từ tiếng Anh đơn giản** theo kiểu thẻ tag vật lý (`[Tên loài/chủ thể đơn lẻ bằng tiếng Anh] + [Môi trường/hành động đơn giản]`, VD: `"hippopotamus water"`, `"african lion savanna"`, `"crocodile river"`). TUYỆT ĐỐI CẤM dùng từ `"vs"`, `"versus"`, `"standoff"`, `"confronting"`, `"facing"` trong `search_queries` vì API Pexels sẽ trả về 0 kết quả! Nếu chủ đề có 2 loài đối đầu (VD: Hà mã vs Sư tử), hãy đặt câu 1 cho loài A (`"hippopotamus river"`), câu 2 cho loài B (`"lion savanna"`).
-   - Với `google_image_queries`: 3 câu truy vấn NGẮN GỌN (**2 đến 5 từ tiếng Anh**) mô tả đúng `[Chủ thể] + [Hành động / Đối đầu]`.
+   - Với `search_queries` (gọi API Pexels/Pixabay): BẮT BUỘC là **2 đến 3 từ tiếng Anh đơn giản** theo kiểu thẻ tag vật lý (`[Tên loài/chủ thể đơn lẻ bằng tiếng Anh] + [Môi trường/mùa đặc trưng]`, VD: `"hippopotamus water"`, `"siberian tiger snow"`, `"crocodile river"`). TUYỆT ĐỐI CẤM dùng từ `"vs"`, `"versus"`, `"standoff"`, `"confronting"`, `"facing"` trong `search_queries` vì API Pexels sẽ trả về 0 kết quả! Nếu chủ đề có 2 loài đối đầu, hãy truy vấn đích danh loài vật của cảnh đó kèm môi trường sống thật của nó.
+   - Với `google_image_queries`: 3 câu truy vấn NGẮN GỌN (**2 đến 4 từ tiếng Anh**) mô tả đúng `[Chủ thể đơn lẻ của cảnh đó] + [Môi trường/mùa đặc trưng] + [Hành động]`. TUYỆT ĐỐI CẤM dùng `"vs"` hoặc ghép tên 2 loài trong cùng 1 câu để tránh tải nhầm ảnh ghép chia đôi khung hình (split-screen collage).
 
 HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
 {{
@@ -833,14 +834,14 @@ QUY TRÌNH KIỂM TRA NGHIÊM NGẶT (BẮT BUỘC TUÂN THỦ):
    - Nếu `returned_url` hoặc `slug_or_tags` cho thấy video là thú cưng trong nhà (mèo nhà, chó cảnh), sai loài vật hoàn toàn, bị nhốt trong chuồng trại/sở thú, sai bối cảnh thời đại, hoặc là cảnh con người sinh hoạt/văn phòng không liên quan -> LOẠI BỎ NGAY LẬP TỨC!
 2. KIỂM TRA ẢNH PREVIEW ĐÍNH KÈM (`attached_preview_image`):
    - Ngay cả khi `returned_url` đặt tên chung chung không rõ nội dung, hãy NHÌN TRỰC TIẾP vào bức ảnh `Image #N` tương ứng của ứng viên đó để xác minh thực tế bên trong video quay cảnh gì.
-   - QUY TẮC QUAN TRỌNG NHẤT VỀ KHO STOCK VIDEO (PEXELS/PIXABAY B-ROLL):
-     * Kho video Pexels/Pixabay KHÔNG BAO GIỜ có cảnh 2 loài thú hoang dã đang đánh nhau trong cùng 1 khung hình! Mỗi clip trên Pexels chỉ quay 1 loài đơn lẻ (đang đi bộ, bơi, gầm, hoặc quan sát ngoài tự nhiên).
-     * Vì vậy, nếu chủ đề/lời thoại nhắc đến 2 loài (ví dụ "Hipopótamo vs Leões" / "Jaguar vs Caiman"), bất kỳ video nào quay cảnh tự nhiên hoang dã thật của **MỘT TRONG HAI LOÀI ĐÓ** (ví dụ: clip quay con Hà mã hoang dã HOẶC clip quay đàn Sư tử hoang dã đang đi/nằm/quan sát trên thảo nguyên) ĐỀU LÀ TƯ LIỆU B-ROLL HỢP LỆ VÀ PHẢI ĐƯỢC CHẤM ĐẠT (`confidence_score` từ 7.5 đến 9.2, `"should_fallback_to_ai": false`)!
-     * KHÔNG ĐƯỢC từ chối clip chỉ vì clip chỉ có 1 trong 2 loài hoặc vì con vật trong clip đang đi bộ/nghỉ ngơi thay vì đang lao vào cắn nhau!
-     * CHỈ TỪ CHỐI (`"winner_index": -1`) khi ứng viên là: (a) Thú cưng trong nhà (mèo nhà `two-cats`, chó cảnh), (b) Loài vật khác hoàn toàn không có trong chủ đề, (c) Động vật bị nhốt trong lồng sắt/tường đá/chuồng sở thú nhân tạo, (d) Sai lệch môi trường tự nhiên cốt lõi được nhấn mạnh trong lời thoại (ví dụ: lời thoại đang tả cảnh tuyết phủ trắng xóa/mùa đông Taiga nhưng video lại quay cảnh đất cát khô cằn không có tuyết, hoặc lời thoại tả dưới đáy biển sâu nhưng video lại trên cạn), hoặc (e) Con người/văn phòng lạc đề.
+   - QUY TẮC KIỂM DUYỆT KHO STOCK VIDEO (PEXELS/PIXABAY B-ROLL):
+     * Kho video Pexels/Pixabay hiếm khi có cảnh 2 loài thú hoang dã đang đánh nhau trong cùng 1 khung hình. Vì vậy, nếu chủ đề/lời thoại nhắc đến 2 loài đối đầu, video quay cảnh tự nhiên hoang dã thật của **MỘT TRONG HAI LOÀI ĐÓ** được chấp nhận làm tư liệu B-roll **CHỈ KHI VÀ CHỈ KHI** nó thỏa mãn đồng thời cả 2 điều kiện bắt buộc sau:
+       (1) **Đúng môi trường tự nhiên hoang dã (Wild Nature)**: Con vật phải ở ngoài thiên nhiên hoang dã thật. TUYỆT ĐỐI TỪ CHỐI (`"winner_index": -1`) mọi video có tường bê tông, tường gạch/đá nhân tạo, hàng rào lưới sắt, chuồng sở thú, công viên nuôi nhốt!
+       (2) **Đúng hệ sinh thái / mùa / bối cảnh cốt lõi của kịch bản (Biome & Season Congruency)**: Môi trường trong video BẮT BUỘC phải khớp với môi trường/mùa của kịch bản. Nếu kịch bản mô tả bối cảnh mùa đông/tuyết phủ, đáy biển sâu, sa mạc, ban đêm... mà video lại quay ở môi trường trái ngược (ví dụ: thảm cỏ xanh mùa hè khô ráo trong khi kịch bản tả rừng tuyết trắng xóa, hoặc trên cạn trong khi kịch bản tả dưới đáy đại dương) -> BẮT BUỘC TỪ CHỐI (`"winner_index": -1`, `"should_fallback_to_ai": true`)! Không được viện cớ "B-roll hợp lệ" để châm chước cho video sai môi trường/sai mùa hoặc quay trong sở thú!
+     * BẮT BUỘC TỪ CHỐI (`"winner_index": -1`, `"should_fallback_to_ai": true`) khi ứng viên là: (a) Thú cưng trong nhà (mèo nhà `two-cats`, chó cảnh), (b) Loài vật khác hoàn toàn không có trong chủ đề, (c) Động vật trong sở thú / tường nhân tạo / lồng nuôi nhốt, (d) Sai lệch hệ sinh thái / mùa / bối cảnh thời đại so với kịch bản, (e) Dính chữ/watermark/logo hoặc cảnh con người/văn phòng lạc đề.
 3. RA QUYẾT ĐỊNH DỨT KHOÁT:
-   - Nếu CÓ ứng viên đúng loài vật/chủ thể thật trong môi trường tự nhiên (`confidence_score >= 6.5`): trả về `winner_index` của ứng viên tốt nhất và `"should_fallback_to_ai": false`.
-   - Nếu TẤT CẢ ứng viên trả về đều sai loài vật (ví dụ toàn mèo nhà thay vì sư tử/hà mã), thú nhốt chuồng, hoặc lạc đề (`confidence_score < 6.5`): BẮT BUỘC trả về `"winner_index": -1` và `"should_fallback_to_ai": true`!
+   - Nếu CÓ ứng viên đúng loài vật/chủ thể thật VÀ đúng môi trường tự nhiên/mùa của kịch bản (`confidence_score >= 7.0`): trả về `winner_index` của ứng viên tốt nhất và `"should_fallback_to_ai": false`.
+   - Nếu TẤT CẢ ứng viên trả về đều sai loài vật, sai môi trường/mùa, thú nhốt sở thú, hoặc lạc đề (`confidence_score < 7.0`): BẮT BUỘC trả về `"winner_index": -1` và `"should_fallback_to_ai": true`!
 
 TRẢ VỀ JSON DUY NHẤT:
 {{
@@ -857,7 +858,7 @@ TRẢ VỀ JSON DUY NHẤT:
             rationale = str(agent_dec.get("rationale", ""))
             fallback_ai = bool(agent_dec.get("should_fallback_to_ai", False))
 
-            if 0 <= w_idx < len(eval_pool) and score >= 6.5 and not fallback_ai:
+            if 0 <= w_idx < len(eval_pool) and score >= 7.0 and not fallback_ai:
                 winner = eval_pool[w_idx]
                 logger.info(
                     f"🎬 [LLM Link & Vision Audit] ✅ Đã kiểm duyệt & chọn Video #{winner['raw_video'].get('id')} "
@@ -872,12 +873,14 @@ TRẢ VỀ JSON DUY NHẤT:
             return None, score, rationale, True
 
         # Chỉ khi mất kết nối hoàn toàn tới mọi model Gemini (agent_dec is None) mới dùng bộ lọc dự phòng
-        return self._heuristic_curate_videos(eval_pool, visual_analysis)
+        return self._heuristic_curate_videos(eval_pool, visual_analysis, narration=narration, topic=topic_ctx)
 
     def _heuristic_curate_videos(
         self,
         candidates: List[Dict[str, Any]],
         visual_analysis: Dict[str, Any],
+        narration: str = "",
+        topic: str = "",
     ) -> Tuple[Optional[Dict[str, Any]], float, str, bool]:
         """Lọc và chấm điểm bằng rule-based nếu Gemini bận."""
         negative_cues = [c.lower() for c in visual_analysis.get("negative_cues", [])]
@@ -889,6 +892,8 @@ TRẢ VỀ JSON DUY NHẤT:
         for c in candidates:
             slug = c["slug"].lower()
             if any(nc in slug for nc in negative_cues):
+                continue
+            if any(zw in slug for zw in ("zoo", "cage", "enclosure", "captive", "aquarium")):
                 continue
 
             score = 7.4 if (c.get("height", 0) or 0) >= 1280 else 6.5
@@ -976,9 +981,11 @@ TRẢ VỀ JSON DUY NHẤT:
     @staticmethod
     def _inspect_candidate_sharpness(cand: Dict[str, Any], timeout: float = 4.0) -> Optional[Dict[str, Any]]:
         """
-        Tải thử ảnh ứng viên và đo trực tiếp ĐỘ SẮC NÉT BIÊN CẠNH (Edge Sharpness), ĐỘ PHÂN GIẢI & TƯƠNG PHẢN bằng PIL.
-        Loại bỏ ngay ảnh mờ nhòe (sharpness < 6.0), ảnh quá nhỏ (< 400px) hoặc ảnh hỏng/đơn sắc.
+        Tải thử ảnh ứng viên và đo trực tiếp ĐỘ SẮC NÉT BIÊN CẠNH (Edge Sharpness), ĐỘ PHÂN GIẢI & TƯƠNG PHẢN bằng PIL,
+        đồng thời trích xuất thumbnail base64 nhẹ (320px) để Gemini Vision chấm điểm ngữ cảnh.
+        Loại bỏ ngay ảnh mờ nhòe (sharpness < 5.8), ảnh quá nhỏ (< 540px), ảnh dính chữ/ghép khung hoặc hỏng/đơn sắc.
         """
+        import base64 as _b64
         import io as _io
         import requests
         from PIL import Image, ImageFilter, ImageStat
@@ -1009,12 +1016,18 @@ TRẢ VỀ JSON DUY NHẤT:
                     has_bad_text, _ = VideoMemoryRAG._has_embedded_text_or_collage_artifacts(res.content)
                     if sharpness < 5.8 or has_bad_text:
                         continue
+                    rgb_thumb = im.convert("RGB") if im.mode != "RGB" else im.copy()
+                    rgb_thumb.thumbnail((320, 320), Image.Resampling.BILINEAR)
+                    buf = _io.BytesIO()
+                    rgb_thumb.save(buf, format="JPEG", quality=72)
+                    thumb_b64 = _b64.b64encode(buf.getvalue()).decode("utf-8")
                     return {
                         "width": w,
                         "height": h,
                         "sharpness": round(sharpness, 2),
                         "contrast": round(std_con, 2),
                         "verified_url": target_u,
+                        "thumb_b64": thumb_b64,
                     }
             except Exception:
                 continue
@@ -1030,9 +1043,9 @@ TRẢ VỀ JSON DUY NHẤT:
         used_urls: Optional[set] = None,
     ) -> Tuple[Optional[Dict[str, Any]], float, str, bool]:
         """
-        Tuyển chọn ảnh trực tiếp dựa trên THỨ HẠNG TOP SEARCH GOOGLE IMAGES + KIỂM ĐỊNH ĐỘ SẮC NÉT & ĐỘ PHÂN GIẢI:
-        - Đã bỏ bước kiểm tra độ liên quan bằng AI Vision/LLM (tránh từ chối nhầm ảnh đẹp từ Google Images và tiết kiệm 10-15s/cảnh).
-        - Đo trực tiếp độ sắc nét biên cạnh (sharpness), độ phân giải thực tế (width x height) và độ tương phản của Top ứng viên.
+        Tuyển chọn ảnh kết hợp KIỂM ĐỊNH KỸ THUẬT (Độ sắc nét, Độ phân giải, Không chữ/ghép khung)
+        VÀ KIỂM DUYỆT THỊ GIÁC ĐA PHƯƠNG THỨC (1 lệnh Gemini Vision duy nhất cho Top ứng viên):
+        - Đảm bảo ảnh được chọn vừa sắc nét chuẩn HD/4K, vừa khớp 100% Chủ thể + Môi trường sinh thái / Bối cảnh / Mùa của kịch bản.
         """
         from concurrent.futures import ThreadPoolExecutor
 
@@ -1064,30 +1077,109 @@ TRẢ VỀ JSON DUY NHẤT:
 
         if scored_sharp:
             scored_sharp.sort(reverse=True)
-            best_score, _, winner_item = scored_sharp[0]
+            va = visual_analysis or {}
+            subject_req = va.get("subject") or va.get("core_visual_entity") or visual_keyword or ""
+            topic_ctx = topic or va.get("topic") or subject_req
+            expected_vis = va.get("visual_metaphor") or visual_keyword or narration
+
+            # Gửi các ảnh ứng viên đã qua cổng kỹ thuật vào 1 lệnh Gemini Vision duy nhất để chọn bức ảnh khớp bối cảnh/môi trường nhất
+            vision_images: List[Tuple[str, str]] = []
+            vision_meta: List[Dict[str, Any]] = []
+            for v_idx, (t_score, _, item_c) in enumerate(scored_sharp[:5]):
+                sm = item_c.get("_sharp_metrics") or {}
+                b64_img = sm.get("thumb_b64")
+                if b64_img:
+                    vision_images.append(("image/jpeg", b64_img))
+                    vision_meta.append({
+                        "index": v_idx,
+                        "attached_image": f"Image #{len(vision_images)}",
+                        "title_or_alt": str(item_c.get("title") or "")[:100],
+                        "resolution": f"{sm.get('width')}x{sm.get('height')}",
+                        "sharpness": sm.get("sharpness"),
+                    })
+
+            selected_idx = 0
+            vision_rationale = ""
+            if vision_images and self.rotator:
+                photo_prompt = f"""Bạn là Tổng Đạo Diễn Hình Ảnh & Giám Khảo Kiểm Duyệt Ảnh Tư Liệu (Multimodal Photo Curation Director) cho YouTube Shorts.
+Hãy NHÌN TRỰC TIẾP vào {len(vision_images)} bức ảnh ứng viên đính kèm (Image #1 đến Image #{len(vision_images)}) và chọn ra DUY NHẤT 1 BỨC ẢNH xuất sắc nhất, khớp hoàn hảo với phân cảnh:
+
+THÔNG TIN PHÂN CẢNH:
+- Chủ đề tổng thể (Topic): "{topic_ctx}"
+- Chủ thể yêu cầu (Required Subject): "{subject_req}"
+- Lời thoại phân cảnh (Narration): "{narration}"
+- Hình ảnh kỳ vọng (Visual Metaphor/Keyword): "{expected_vis}"
+
+DANH SÁCH ỨNG VIÊN:
+{json.dumps(vision_meta, ensure_ascii=False, indent=2)}
+
+TIÊU CHUẨN TUYỂN CHỌN NGHIÊM NGẶT (BẮT BUỘC TUÂN THỦ):
+1. ĐÚNG CHỦ THỂ & LOÀI VẬT: Bức ảnh phải thể hiện đúng chủ thể/loài vật của phân cảnh. Loại bỏ ngay ảnh sai loài, thú cưng trong nhà (khi cần thú hoang dã), đồ chơi/thú nhồi bông, hoặc ảnh lạc đề.
+2. ĐỒNG NHẤT MÔI TRƯỜNG SINH THÁI / MÙA / BỐI CẢNH (BIOME & SETTING CONGRUENCY):
+   - Môi trường tự nhiên, mùa và bối cảnh thời đại trong ảnh BẮT BUỘC phải khớp với kịch bản (`Topic` & `Narration`).
+   - Ví dụ: nếu kịch bản mô tả rừng tuyết mùa đông, đáy biển sâu, sa mạc, ban đêm hay thời cổ đại, TUYỆT ĐỐI LOẠI BỎ bức ảnh chụp ở môi trường trái ngược (như rừng cỏ xanh mùa hè nhiệt đới khi kịch bản tả tuyết trắng mùa đông, hoặc con vật bị nhốt trong chuồng bê tông/lồng sắt sở thú).
+3. KHUNG HÌNH NGUYÊN BẢN SẠCH 100% (SINGLE CLEAN FRAME):
+   - TUYỆT ĐỐI LOẠI BỎ ảnh ghép chia đôi/chia ba khung hình (split-screen / 2-panel comparison collage), ảnh có chữ chèn đè (text overlay, meme, phụ đề), biểu đồ/bản đồ, hoặc ảnh dính logo/watermark bản quyền.
+4. Nếu KHÔNG CÓ bức ảnh nào đạt cả 3 tiêu chuẩn trên (`confidence_score < 6.8`), BẮT BUỘC trả về `"winner_index": -1` và `"should_fallback_to_ai": true`.
+
+TRẢ VỀ JSON DUY NHẤT:
+{{
+  "winner_index": 0,
+  "confidence_score": 8.8,
+  "approved_alternate_indices": [],
+  "rationale": "Giải thích ngắn gọn vì sao chọn bức ảnh này (hoặc vì sao từ chối toàn bộ)",
+  "should_fallback_to_ai": false
+}}"""
+                photo_dec = self._call_gemini_json(photo_prompt, images=vision_images, timeout=9)
+                if photo_dec is not None:
+                    w_idx = int(photo_dec.get("winner_index", -1))
+                    v_score = float(photo_dec.get("confidence_score", 0.0))
+                    v_fb = bool(photo_dec.get("should_fallback_to_ai", False))
+                    v_rat = str(photo_dec.get("rationale", "")).strip()
+                    if 0 <= w_idx < len(scored_sharp) and v_score >= 6.8 and not v_fb:
+                        selected_idx = w_idx
+                        vision_rationale = v_rat
+                        approved_alts = [
+                            int(i) for i in (photo_dec.get("approved_alternate_indices") or [])
+                            if isinstance(i, (int, float)) and 0 <= int(i) < len(scored_sharp) and int(i) != selected_idx
+                        ]
+                        scored_sharp[selected_idx][2]["_approved_alt_indices"] = approved_alts
+                    else:
+                        logger.info(
+                            f"🚫 [PhotoVisionAudit] LLM từ chối toàn bộ {len(vision_images)} ảnh ứng viên "
+                            f"(Score={v_score}/10: {v_rat}) -> Chuyển truy vấn tiếp theo / AI!"
+                        )
+                        return None, v_score, v_rat or "Ảnh ứng viên không khớp bối cảnh/môi trường", True
+
+            best_score, _, winner_item = scored_sharp[selected_idx]
             m = winner_item.pop("_sharp_metrics", {})
-            alt_urls = [
-                item.get("url")
-                for _, _, item in scored_sharp[1:5]
-                if item.get("url") and item.get("url") != winner_item.get("url")
-            ]
+            approved_alt_idxs = winner_item.pop("_approved_alt_indices", None)
+            if approved_alt_idxs is not None:
+                alt_urls = [
+                    scored_sharp[i][2].get("url")
+                    for i in approved_alt_idxs
+                    if scored_sharp[i][2].get("url") and scored_sharp[i][2].get("url") != winner_item.get("url")
+                ]
+            else:
+                alt_urls = [
+                    item.get("url")
+                    for idx_s, (_, _, item) in enumerate(scored_sharp[:5])
+                    if idx_s != selected_idx and item.get("url") and item.get("url") != winner_item.get("url")
+                ]
+            for _, _, item_cleanup in scored_sharp:
+                item_cleanup.pop("_sharp_metrics", None)
+                item_cleanup.pop("_approved_alt_indices", None)
             if alt_urls:
                 winner_item["_vision_alternates"] = alt_urls
             g_rank = int(winner_item.get("_google_rank") or 999)
             rank_str = f"Top #{g_rank} Google Images" if g_rank < 900 else winner_item.get("source", "web")
             rationale = (
-                f"[{rank_str} · Sắc nét đạt chuẩn] Độ nét={m.get('sharpness')}, "
-                f"Tương phản={m.get('contrast')}, Độ phân giải={m.get('width')}x{m.get('height')}px"
+                f"[{rank_str} · Vision+Sharpness] {vision_rationale + ' | ' if vision_rationale else ''}"
+                f"Độ nét={m.get('sharpness')}, Độ phân giải={m.get('width')}x{m.get('height')}px"
             )
             winner_item["curation_score"] = best_score
             winner_item["curation_rationale"] = rationale
-            logger.info(f"📸 [SharpnessCuration] ✅ Chọn ảnh {rank_str} | Điểm độ nét: {best_score}/10 | {rationale}")
+            logger.info(f"📸 [PhotoVisionCuration] ✅ Chọn ảnh {rank_str} | Điểm: {best_score}/10 | {rationale}")
             return winner_item, best_score, rationale, False
 
-        # Nếu các server chặn tải kiểm thử nhanh (timeout), lấy ngay ứng viên Top #1 Google Images có metadata tốt nhất
-        fallback_winner = valid[0]
-        fb_score = float(fallback_winner.get("_hscore") or 7.5)
-        fb_rat = "Chọn trực tiếp Top #1 Google Images (bỏ qua bước kiểm tra độ liên quan)"
-        fallback_winner["curation_score"] = fb_score
-        fallback_winner["curation_rationale"] = fb_rat
         return None, 0.0, "Không có ứng viên ảnh nào đạt chuẩn độ nét (>=5.8) và sạch watermark", True

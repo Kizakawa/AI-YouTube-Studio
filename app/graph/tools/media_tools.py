@@ -40,6 +40,7 @@ from config.settings import settings
 
 logger = logging.getLogger(__name__)
 _yt_url_lock = threading.Lock()
+_yt_search_sem = threading.Semaphore(2)
 
 # Bộ nhớ đệm kết quả tìm kiếm YouTube Shorts theo từ khóa & các khoảng thời gian đã cắt trên từng URL
 _yt_flat_search_cache: Dict[str, List[Dict[str, Any]]] = {}
@@ -63,6 +64,10 @@ _HIGH_RISK_WATERMARK_CHANNEL_BLOCKLIST = (
     "viralhog", "caters", "jukin", "newsflare", "bviral", "ladbible", "unilad", "pubity", "memezar",
     "daily dose", "the dodo", "dodo", "national geographic", "nat geo", "bbc earth", "bbc",
     "discovery", "animal planet", "smithsonian", "tmz", "inside edition",
+    "naturefootage", "nature footage", "endangered siberian tiger",
+    "pond5", "shutterstock", "getty", "gettyimages", "istock", "storyblocks",
+    "dissolve", "criticalpast", "framepool", "envato", "videvo", "adobe stock",
+    "wildfilmhistory", "british pathe", "ap archive", "stock footage", "stock video",
     "tiktok", "douyin", "kwai", "capcut", "inshot", "kinemaster",
     "filmora", "alighty", "credit:", "credits:",
     "🎥", "📸", "top 10", "top 5", "tier list", "explained", "whatsapp status",
@@ -570,11 +575,15 @@ def _verify_short_clip_with_gemini_vision(
     pre_gate = VisualCritic.inspect_clip_before_concat(
         video_path,
         min_short_edge=720,
-        min_sharpness=5.8,
+        min_sharpness=5.4,
         check_watermark=True,
+        allow_snow=True,
+        auto_sanitize=True,
     )
     if not pre_gate.get("passed", False):
         return False, float(pre_gate.get("score", 2.0)), "; ".join(pre_gate.get("issues") or ["Failed pre-assembly clip gate"])
+    if float(pre_gate.get("brightness", 50.0)) < 34.0:
+        return False, 2.5, f"Clip quá tối / thiếu chi tiết chủ thể (brightness={pre_gate.get('brightness', 0):.1f} < 34)"
 
     with tempfile.TemporaryDirectory() as tmp_v:
         sheet_jpg = str(Path(tmp_v) / "verify_sheet.jpg")
@@ -702,21 +711,26 @@ def _search_youtube_flat_cached(
             cached_entries = _yt_flat_search_cache.get(cache_key)
         if cached_entries:
             return cached_entries
-        # Chế độ `cc_only` (mặc định): chỉ tìm video có giấy phép Creative Commons (free & hợp lệ để tái sử dụng)
-        yt_query = license_policy.youtube_search_target(sp, max_results=12)
-        try:
-            with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=12)) as ydl:
-                res = ydl.extract_info(yt_query, download=False)
-            cached_entries = [
-                e for e in ((res or {}).get("entries") or [])
-                if e and isinstance(e, dict)
-            ]
-        except Exception:
-            cached_entries = []
-        if cached_entries:
+        with _yt_search_sem:
             with _yt_url_lock:
-                _yt_flat_search_cache[cache_key] = cached_entries
-        return cached_entries
+                cached_entries = _yt_flat_search_cache.get(cache_key)
+            if cached_entries:
+                return cached_entries
+            # Chế độ `cc_only` (mặc định): chỉ tìm video có giấy phép Creative Commons (free & hợp lệ để tái sử dụng)
+            yt_query = license_policy.youtube_search_target(sp, max_results=12)
+            try:
+                with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=12)) as ydl:
+                    res = ydl.extract_info(yt_query, download=False)
+                cached_entries = [
+                    e for e in ((res or {}).get("entries") or [])
+                    if e and isinstance(e, dict)
+                ]
+            except Exception:
+                cached_entries = []
+            if cached_entries:
+                with _yt_url_lock:
+                    _yt_flat_search_cache[cache_key] = cached_entries
+            return cached_entries
 
     try:
         from app.graph.parallel_search import run_langgraph_parallel_youtube_flat_search
@@ -927,34 +941,42 @@ def execute_youtube_short_peak_clone_sync(
 
                 claimed_probes += 1
                 info_entry: Dict[str, Any] = cand
-                license_verified = False
-                try:
-                    info_opts = {"quiet": True, "no_warnings": True, "skip_download": True, "socket_timeout": 8}
-                    with yt_dlp.YoutubeDL(info_opts) as ydl_info:
-                        full_info = ydl_info.extract_info(vid_url, download=False)
-                        if isinstance(full_info, dict):
-                            license_verified = license_policy.is_reuse_allowed(full_info)
-                            dur_full = float(full_info.get("duration") or 0)
-                            if dur_full < 4 or dur_full > 300:
-                                rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
-                                continue
-                            w_full = int(full_info.get("width") or 0)
-                            h_full = int(full_info.get("height") or 0)
-                            if w_full > 0 and h_full > 0 and min(w_full, h_full) < 720:
-                                rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
-                                continue
-                            meta_full_lower = (
-                                f"{full_info.get('title') or ''} {full_info.get('uploader') or ''} "
-                                f"{full_info.get('channel') or ''} {(full_info.get('description') or '')[:300]}"
-                            ).lower()
-                            if any(bad in meta_full_lower for bad in _TALKING_HEAD_BLOCKLIST) or any(
-                                bad_c in meta_full_lower for bad_c in _HIGH_RISK_WATERMARK_CHANNEL_BLOCKLIST
-                            ):
-                                rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
-                                continue
-                            info_entry = full_info
-                except Exception:
-                    pass
+                license_verified = not license_policy.cc_only_enabled()
+                if license_policy.cc_only_enabled():
+                    try:
+                        info_opts = {
+                            "quiet": True,
+                            "no_warnings": True,
+                            "skip_download": True,
+                            "socket_timeout": 8,
+                            "ignore_no_formats_error": True,
+                            "format": "bestvideo/best",
+                        }
+                        with yt_dlp.YoutubeDL(info_opts) as ydl_info:
+                            full_info = ydl_info.extract_info(vid_url, download=False)
+                            if isinstance(full_info, dict):
+                                license_verified = license_policy.is_reuse_allowed(full_info)
+                                dur_full = float(full_info.get("duration") or 0)
+                                if dur_full < 4 or dur_full > 300:
+                                    rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
+                                    continue
+                                w_full = int(full_info.get("width") or 0)
+                                h_full = int(full_info.get("height") or 0)
+                                if w_full > 0 and h_full > 0 and min(w_full, h_full) < 480:
+                                    rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
+                                    continue
+                                meta_full_lower = (
+                                    f"{full_info.get('title') or ''} {full_info.get('uploader') or ''} "
+                                    f"{full_info.get('channel') or ''} {(full_info.get('description') or '')[:300]}"
+                                ).lower()
+                                if any(bad in meta_full_lower for bad in _TALKING_HEAD_BLOCKLIST) or any(
+                                    bad_c in meta_full_lower for bad_c in _HIGH_RISK_WATERMARK_CHANNEL_BLOCKLIST
+                                ):
+                                    rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
+                                    continue
+                                info_entry = full_info
+                    except Exception:
+                        pass
 
                 if not license_verified:
                     logger.info(
@@ -981,7 +1003,8 @@ def execute_youtube_short_peak_clone_sync(
                     dl_opts = {
                         "quiet": True,
                         "no_warnings": True,
-                        "format": "bestvideo[height>=720][height<=1920][ext=mp4]/best[height>=720][height<=1920][ext=mp4]",
+                        "format": "bestvideo[height>=720][height<=1920][ext=mp4]/best[height>=720][height<=1920][ext=mp4]/bestvideo[height>=720][height<=1920]/bestvideo[height>=480][ext=mp4]/bestvideo/best",
+                        "merge_output_format": "mp4",
                         "outtmpl": raw_dl_template,
                         "socket_timeout": 12,
                         "retries": 1,
@@ -1023,18 +1046,6 @@ def execute_youtube_short_peak_clone_sync(
                         continue
                     raw_file = str(downloaded_files[0])
                     if Path(raw_file).stat().st_size < 15000:
-                        rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
-                        continue
-
-                    # Cổng kiểm duyệt clip nguồn trước khi cắt ghép: tối thiểu 720p, độ nét >= 5.8, độ sáng cân bằng, không watermark/caption
-                    raw_gate = VisualCritic.inspect_clip_before_concat(
-                        raw_file, min_short_edge=720, min_sharpness=5.8, check_watermark=True
-                    )
-                    if not raw_gate.get("passed", False):
-                        logger.info(
-                            f"🚫 [PreAssemblyClipGate] Loại bỏ clip nguồn YouTube '{cand_title[:45]}' trước khi cắt: "
-                            f"{'; '.join(raw_gate.get('issues') or [])}"
-                        )
                         rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
                         continue
 
@@ -1120,7 +1131,7 @@ def execute_youtube_short_peak_clone_sync(
                             search_scope=effective_scope,
                             video_title=cand_title,
                             allow_3d_cgi_monster=allow_3d_cgi_monster,
-                            strict_no_fallback=False,
+                            strict_no_fallback=True,
                         )
                         if not passed_vis:
                             logger.info(
@@ -1237,9 +1248,9 @@ def execute_youtube_short_peak_clone_sync(
                     if not Path(raw_stock).exists() or Path(raw_stock).stat().st_size <= 20000:
                         rag.release_in_job_video_claim(job_id=job_id, url=v_url, title=st_title, scene_id=eff_scene_id)
                         continue
-                    # Kiểm tra độ phân giải >= 720p, độ nét >= 5.8, độ sáng và sạch watermark trên clip nguồn
+                    # Kiểm tra độ phân giải >= 720p, độ nét >= 5.2 và độ sáng trên stock clip bản quyền (Pexels/Pixabay không có watermark kênh thứ 3)
                     raw_gate = VisualCritic.inspect_clip_before_concat(
-                        raw_stock, min_short_edge=720, min_sharpness=5.8, check_watermark=True
+                        raw_stock, min_short_edge=720, min_sharpness=5.2, check_watermark=False, allow_snow=True
                     )
                     if not raw_gate.get("passed", False):
                         logger.info(
@@ -1489,7 +1500,13 @@ def execute_google_cinematic_image_sync(
             Path(output_path).unlink(missing_ok=True)
             continue
         if Path(output_path).exists() and Path(output_path).stat().st_size > 3000:
-            if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=scene_id, image_path=output_path, url=cand_u):
+            if rag.verify_and_commit_in_job_image(
+                job_id=job_id,
+                scene_id=scene_id,
+                image_path=output_path,
+                url=cand_u,
+                context_text=f"{primary_q} {topic} {narration}",
+            ):
                 primary_selected_url = cand_u
                 remaining_urls = [u for u in all_candidate_urls[idx_u + 1:] if u != cand_u and not is_media_already_used(u, used)]
                 break
@@ -1543,7 +1560,13 @@ def execute_google_cinematic_image_sync(
                     Path(tmp_p).replace(final_cut_p)
                 except Exception:
                     final_cut_p = tmp_p
-                if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=scene_id, image_path=final_cut_p, url=c_url):
+                if rag.verify_and_commit_in_job_image(
+                    job_id=job_id,
+                    scene_id=scene_id,
+                    image_path=final_cut_p,
+                    url=c_url,
+                    context_text=f"{primary_q} {topic} {narration}",
+                ):
                     pose_images.append(final_cut_p)
                     used.update(extract_media_identity(c_url))
                     record_used_media(
@@ -1793,7 +1816,13 @@ def execute_epic_monster_cinematic_media_sync(
                     Path(tmp_p).replace(final_cut_p)
                 except Exception:
                     final_cut_p = tmp_p
-                if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=scene_id, image_path=final_cut_p, url=c_url):
+                if rag.verify_and_commit_in_job_image(
+                    job_id=job_id,
+                    scene_id=scene_id,
+                    image_path=final_cut_p,
+                    url=c_url,
+                    context_text=f"{c_qs[0] if c_qs else c_name} {topic} {narration}",
+                ):
                     pose_images.append(final_cut_p)
                     used.update(extract_media_identity(c_url))
                     record_used_media(
@@ -2097,7 +2126,13 @@ def execute_clean_cinematic_portrait_or_broll_sync(
                     Path(tmp_p).replace(final_cut_p)
                 except Exception:
                     final_cut_p = tmp_p
-                if rag.verify_and_commit_in_job_image(job_id=job_id, scene_id=scene_id, image_path=final_cut_p, url=c_url):
+                if rag.verify_and_commit_in_job_image(
+                    job_id=job_id,
+                    scene_id=scene_id,
+                    image_path=final_cut_p,
+                    url=c_url,
+                    context_text=f"{clean_act_q} {topic} {narration}",
+                ):
                     pose_images.append(final_cut_p)
                     used.update(extract_media_identity(c_url))
                     record_used_media(

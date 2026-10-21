@@ -41,6 +41,7 @@ WATERMARK_DOMAINS = (
     "ytimg.com", "img.youtube.com", "aminoapps.com", "comicvine.gamespot.com", "cbr.com",
     "marvel.com", "dc.com", "dccomics.com", "superherodb.com", "vsbattles.fandom.com",
     "myanimelist.net", "zerochan.net", "danbooru", "gelbooru", "safebooru", "konachan", "yandere.re", "pixiv.net",
+    "boneclones.com", "uchytel.com", "skullsUnlimited", "skullsunlimited.com",
 )
 
 # Tiêu đề / URL chứa các cụm này là ảnh stock watermark / mô hình nhựa bảo tàng ("trông đểu") / poster chữ / game khối vuông / biểu đồ code
@@ -59,6 +60,7 @@ _HARD_TITLE_CUES = (
     # Chặn mô hình cao su/nhựa, tượng bảo tàng, đồ chơi, thú nhồi bông làm ảnh trông giả ("đểu")
     "animatronic", "animatronics", "prop ", "movie prop", "replica", "mannequin", "puppet",
     "wax figure", "museum exhibit", "exhibition", "theme park ride", "universal studios ride",
+    "bone clones", "boneclones", "skull replica", "osteological", "like comment subscribe", "who wins",
     "action figure", "toy ", "toys", "figurine", "lego", "plush", "stuffed animal", "taxidermy",
     "costume", "cosplay", "inflatable", "statue", "sculpture",
     "minecraft", "roblox", "fortnite",
@@ -773,6 +775,13 @@ def prepare_vertical(im, target_w: int, target_h: int, max_upscale: float = 3.8,
     if im.mode != "RGB":
         im = im.convert("RGB")
     w, h = im.size
+    # Gọt nhẹ 2.5% lề trên và 8.5% lề dưới của ảnh tĩnh trước khi dựng 9:16 để cắt bỏ chữ ký/logo bản quyền góc dưới (vd: © Photography)
+    if h >= 360 and w >= 360:
+        y_top = int(h * 0.025)
+        y_bot = int(h * 0.915)
+        if y_bot - y_top >= 300:
+            im = im.crop((0, y_top, w, y_bot))
+            w, h = im.size
     target_ratio = target_w / target_h
     src_ratio = w / h
 

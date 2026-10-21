@@ -136,7 +136,7 @@ class VisualCritic:
         min_short_edge: int = 720,
         min_sharpness: float = 5.8,
         check_watermark: bool = True,
-        allow_snow: bool = False,
+        allow_snow: bool = True,
         auto_sanitize: bool = True,
     ) -> Dict[str, Any]:
         """
@@ -276,13 +276,13 @@ class VisualCritic:
         max_lum = max(lum_vals)
         min_con = min(con_vals)
 
-        if min_lum < 22.0 or avg_lum < 26.0:
-            issues.append(f"Clip quá tối hoặc có khung hình đen (brightness={avg_lum:.1f}, min={min_lum:.1f} < 22)")
-        if max_lum > 230.0:
-            issues.append(f"Clip bị cháy sáng / lóa trắng (max_brightness={max_lum:.1f} > 230)")
+        if min_lum < 18.0 or avg_lum < 22.0:
+            issues.append(f"Clip quá tối hoặc có khung hình đen (brightness={avg_lum:.1f}, min={min_lum:.1f} < 18)")
+        if max_lum > 242.0:
+            issues.append(f"Clip bị cháy sáng / lóa trắng (max_brightness={max_lum:.1f} > 242)")
         if min_con < 16.0:
             issues.append(f"Clip thiếu tương phản hoặc phẳng màu (contrast={min_con:.1f} < 16)")
-        if avg_sharp < min_sharpness or min_f_sharp < max(4.6, min_sharpness - 1.2):
+        if avg_sharp < min_sharpness or min_f_sharp < 2.2:
             issues.append(
                 f"Clip bị mờ nhòe / vỡ hạt (sharpness={avg_sharp:.1f}, min={min_f_sharp:.1f}, yêu cầu >= {min_sharpness})"
             )
@@ -310,10 +310,22 @@ class VisualCritic:
                         ("bottom_left", (4, 256, 68, 308)),
                         ("bottom_right", (112, 256, 176, 308)),
                         ("top_banner", (22, 10, 158, 52)),
+                        ("bottom_banner", (18, 258, 162, 314)),
                     ]
                     for c_name, box in corner_boxes:
+                        c_diff = float(
+                            ImageStat.Stat(
+                                ImageChops.difference(gray_frames[0].crop(box), gray_frames[-1].crop(box))
+                            ).mean[0]
+                        )
+                        # Chỉ coi vùng góc có cạnh tĩnh (pers_im) là logo đóng cứng khi cảnh nền tại chính góc đó CÓ chuyển động (c_diff >= 11.5),
+                        # tránh báo nhầm cành cây rừng/tảng đá đứng yên khi máy quay đặt trên chân máy (tripod)!
+                        if c_diff < 11.5:
+                            continue
                         c_mean = float(ImageStat.Stat(pers_im.crop(box)).mean[0])
-                        if c_mean >= 36.0 and c_mean >= center_mean * 2.25:
+                        min_c_thr = 28.0 if "banner" in c_name else 36.0
+                        mult_thr = 1.90 if "banner" in c_name else 2.25
+                        if c_mean >= min_c_thr and c_mean >= center_mean * mult_thr:
                             detected_corner_zone = (c_name, box)
                             break
             except Exception:
@@ -360,17 +372,26 @@ class VisualCritic:
                         )
                     Path(tmp_skip).unlink(missing_ok=True)
 
-            # BƯỚC 2: Xóa logo bằng bộ lọc FFmpeg `delogo` kết hợp phóng Crop dịch tâm né góc chứa logo
+            # BƯỚC 2: Xóa logo bằng bộ lọc FFmpeg `delogo` kết hợp phóng Crop dịch tâm né góc chứa logo / caption
             if center_is_clean and (detected_corner_zone is not None or any(frame_bad_flags)):
-                z_name, (bx1, by1, bx2, by2) = detected_corner_zone or ("top_banner", (18, 6, 162, 50))
+                default_zone = ("top_banner", (18, 6, 162, 50))
+                if detected_corner_zone is None and bad_art_reasons:
+                    r0 = bad_art_reasons[0]
+                    m_bt = re.search(r"bot=(\d+),top=(\d+)", r0) if "re" in dir() else None
+                    if m_bt is None:
+                        import re as _re
+                        m_bt = _re.search(r"bot=(\d+),top=(\d+)", r0)
+                    if m_bt and int(m_bt.group(1)) >= int(m_bt.group(2)):
+                        default_zone = ("bottom_banner", (18, 252, 162, 312))
+                z_name, (bx1, by1, bx2, by2) = detected_corner_zone or default_zone
                 lx = max(2, int(bx1 * width / 180.0))
                 ly = max(2, int(by1 * height / 320.0))
                 lw = max(16, min(width - lx - 4, int((bx2 - bx1) * width / 180.0)))
                 lh = max(16, min(height - ly - 4, int((by2 - by1) * height / 320.0)))
 
-                # Phóng 116% và dịch tâm crop ngược hướng với góc có logo để vừa xóa vừa cắt bay vùng rìa
-                zw = (int(width * 1.16) // 2) * 2
-                zh = (int(height * 1.16) // 2) * 2
+                # Phóng 120% và dịch tâm crop ngược hướng với góc/dải có logo/caption để vừa xóa vừa cắt bay vùng rìa
+                zw = (int(width * 1.20) // 2) * 2
+                zh = (int(height * 1.20) // 2) * 2
                 x_expr = "0" if "right" in z_name else ("(iw-ow)" if "left" in z_name else "(iw-ow)/2")
                 y_expr = "0" if "bottom" in z_name else ("(ih-oh)" if "top" in z_name else "(ih-oh)/2")
 

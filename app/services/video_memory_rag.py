@@ -1063,14 +1063,25 @@ class VideoMemoryRAG:
             g_small = rgb_small.convert("L")
             hist = g_small.histogram()
             tot_px = 160 * 240
-            white_paper_ratio = sum(hist[210:]) / tot_px
             black_poster_ratio = sum(hist[:24]) / tot_px
             px_rgb = rgb_small.load()
             px_g = g_small.load()
-            neutral_grey_bg = sum(
-                1 for y_g in range(240) for x_g in range(160)
-                if max(px_rgb[x_g, y_g]) - min(px_rgb[x_g, y_g]) <= 8 and 95 <= (sum(px_rgb[x_g, y_g]) // 3) <= 185
-            ) / tot_px
+            # Chỉ coi là nền giấy trắng (white_paper) hoặc nền xám phẳng (grey_bg) khi các điểm ảnh phẳng tuyệt đối
+            # kiểu đồ họa 2D/trang sách kỹ thuật số (chênh lệch lân cận <= 1), tránh báo nhầm tuyết trắng, bầu trời mùa đông, sương mù!
+            flat_white_px = 0
+            flat_grey_px = 0
+            for y_g in range(240):
+                for x_g in range(159):
+                    rgb_c = px_rgb[x_g, y_g]
+                    sat_c = max(rgb_c) - min(rgb_c)
+                    g_c = px_g[x_g, y_g]
+                    diff_nx = abs(g_c - px_g[x_g + 1, y_g])
+                    if min(rgb_c) >= 242 and sat_c <= 4 and diff_nx <= 1:
+                        flat_white_px += 1
+                    elif sat_c <= 3 and 110 <= g_c <= 200 and diff_nx <= 1:
+                        flat_grey_px += 1
+            white_paper_ratio = flat_white_px / tot_px
+            neutral_grey_bg = flat_grey_px / tot_px
             edges = g_small.filter(ImageFilter.FIND_EDGES)
             sharp_mean = float(ImageStat.Stat(edges).mean[0])
             px_e = edges.load()
@@ -1081,50 +1092,85 @@ class VideoMemoryRAG:
                 if high_transitions >= 16:
                     text_rows += 1
 
-            # Phát hiện hộp chữ trắng/vàng trên nền tối ở nửa dưới hoặc nửa trên (Infographic / TikTok caption):
+            # Phát hiện hộp chữ trắng/vàng có viền đen trên nền tối ở nửa dưới, giữa hoặc nửa trên (Infographic / TikTok caption / banner 1-2 dòng):
             bot_white_text_rows = 0
-            for y_r in range(110, 232):
+            bot_dense_banner_rows = 0
+            for y_r in range(118, 238):
                 wt_trans = sum(
                     1 for x_c in range(14, 146)
-                    if abs(px_g[x_c, y_r] - px_g[x_c + 1, y_r]) > 75
-                    and max(px_g[x_c, y_r], px_g[x_c + 1, y_r]) >= 195
-                    and min(px_g[x_c, y_r], px_g[x_c + 1, y_r]) <= 95
+                    if abs(px_g[x_c, y_r] - px_g[x_c + 1, y_r]) > 105
+                    and max(px_g[x_c, y_r], px_g[x_c + 1, y_r]) >= 205
+                    and min(px_g[x_c, y_r], px_g[x_c + 1, y_r]) <= 65
                 )
-                if wt_trans >= 8:
+                if wt_trans >= 10:
                     bot_white_text_rows += 1
+                if wt_trans >= 12:
+                    bot_dense_banner_rows += 1
 
             top_white_text_rows = 0
-            for y_r in range(8, 105):
+            top_dense_banner_rows = 0
+            for y_r in range(6, 118):
                 wt_trans = sum(
                     1 for x_c in range(14, 146)
-                    if abs(px_g[x_c, y_r] - px_g[x_c + 1, y_r]) > 75
-                    and max(px_g[x_c, y_r], px_g[x_c + 1, y_r]) >= 195
-                    and min(px_g[x_c, y_r], px_g[x_c + 1, y_r]) <= 95
+                    if abs(px_g[x_c, y_r] - px_g[x_c + 1, y_r]) > 105
+                    and max(px_g[x_c, y_r], px_g[x_c + 1, y_r]) >= 205
+                    and min(px_g[x_c, y_r], px_g[x_c + 1, y_r]) <= 65
                 )
-                if wt_trans >= 9:
+                if wt_trans >= 10:
                     top_white_text_rows += 1
+                if wt_trans >= 12:
+                    top_dense_banner_rows += 1
 
+            def _row_white_cnt(y_idx: int) -> int:
+                return sum(
+                    1 for x_c in range(8, 152)
+                    if min(px_rgb[x_c, y_idx]) >= 238 and (max(px_rgb[x_c, y_idx]) - min(px_rgb[x_c, y_idx])) <= 4
+                )
+
+            def _col_white_cnt(x_idx: int) -> int:
+                return sum(
+                    1 for y_r in range(12, 228)
+                    if min(px_rgb[x_idx, y_r]) >= 238 and (max(px_rgb[x_idx, y_r]) - min(px_rgb[x_idx, y_r])) <= 4
+                )
+
+            # Vạch kẻ trắng chia đôi khung ghép (chỉ bắt vạch kẻ mỏng 1-5px, KHÔNG bắt nền tuyết trắng tự nhiên dày!)
             has_white_h_divider = any(
-                sum(1 for x_c in range(8, 152) if min(px_rgb[x_c, y_d]) >= 232) >= 132
+                _row_white_cnt(y_d) >= 136 and _row_white_cnt(max(6, y_d - 6)) < 55 and _row_white_cnt(min(233, y_d + 6)) < 55
                 for y_d in range(75, 165)
             )
             has_white_v_divider = any(
-                sum(1 for y_r in range(12, 228) if min(px_rgb[x_d, y_r]) >= 232) >= 198
+                _col_white_cnt(x_d) >= 202 and _col_white_cnt(max(4, x_d - 6)) < 75 and _col_white_cnt(min(155, x_d + 6)) < 75
                 for x_d in range(50, 110)
             )
 
-            if white_paper_ratio > 0.34:
+            # Phát hiện đường ghép ngang cắt đôi 2 bức ảnh (2-panel top/bottom split collage thẳng tắp >= 92% chiều ngang)
+            def _row_v_jump(y_idx: int) -> int:
+                return sum(1 for x_c in range(8, 152) if abs(px_g[x_c, y_idx] - px_g[x_c, y_idx + 1]) >= 42)
+
+            has_split_collage_seam = any(
+                _row_v_jump(y_d) >= 132
+                and max(_row_v_jump(y_d - 4), _row_v_jump(y_d + 4)) <= 32
+                for y_d in range(96, 144)
+            )
+
+            if white_paper_ratio > 0.45:
                 return True, f"white_paper={white_paper_ratio:.2f}"
-            if neutral_grey_bg > 0.38:
+            if neutral_grey_bg > 0.48:
                 return True, f"grey_bg={neutral_grey_bg:.2f}"
-            if sharp_mean > 42.0 or sharp_mean < 4.5:
+            if sharp_mean > 72.0 and text_rows >= 28:
                 return True, f"sharp_mean={sharp_mean:.1f}"
-            if has_white_h_divider or has_white_v_divider:
+            if has_white_h_divider or has_white_v_divider or has_split_collage_seam:
                 return True, "collage_divider"
-            if text_rows >= 36 and (white_paper_ratio > 0.16 or black_poster_ratio > 0.28):
+            if text_rows >= 38 and (white_paper_ratio > 0.22 or black_poster_ratio > 0.32):
                 return True, f"poster_text_rows={text_rows}"
-            if bot_white_text_rows >= 10 or top_white_text_rows >= 11:
-                return True, f"embedded_caption_box(bot={bot_white_text_rows},top={top_white_text_rows})"
+            if (
+                bot_white_text_rows >= 9
+                or top_white_text_rows >= 9
+                or bot_dense_banner_rows >= 3
+                or top_dense_banner_rows >= 3
+                or (bot_dense_banner_rows + top_dense_banner_rows) >= 3
+            ):
+                return True, f"embedded_caption_box(bot={bot_white_text_rows}/{bot_dense_banner_rows},top={top_white_text_rows}/{top_dense_banner_rows})"
             return False, ""
         except Exception as e:
             return False, str(e)
@@ -1141,12 +1187,13 @@ class VideoMemoryRAG:
         scene_id: int,
         image_path: str,
         url: str = "",
+        context_text: str = "",
     ) -> bool:
         """
         Kiểm tra chữ ký thị giác 64-bit dHash và tính toàn vẹn của từng bức ảnh trong kho 15-17 ảnh/video:
         - Đảm bảo ảnh mới tải về KHÔNG trùng lặp thị giác (Hamming distance <= 6) với BẤT KỲ ảnh nào
           đã chọn trước đó trong cùng phân cảnh (`pose_images`) HOẶC ở các phân cảnh khác trong cùng 1 video (`job_id`).
-        - Kiểm tra nhanh kích thước (>= 480px) và loại bỏ ảnh đen/lỗi đơn sắc/infographic có chữ.
+        - Kiểm tra nhanh kích thước (>= 480px) và loại bỏ ảnh đen/lỗi đơn sắc/infographic có chữ hoặc sai mùa (cỏ xanh trong cảnh tuyết).
         """
         if not image_path or not Path(image_path).exists():
             return False
