@@ -1141,10 +1141,21 @@ class PublisherAgent:
         if not base_title:
             base_title = (topic or "Shorts Video").strip()
 
-        # Danh sách từ khóa cấm / sai chính tả / dễ gây lệch ngách
+        # Danh sách từ khóa cấm / sai chính tả / từ đơn lẻ vô nghĩa bị tách từ tiêu đề
         BLACKLIST_TAGS = {
             "narcisist", "masteringdiscipline", "legacyofalexander", "vn", "vietnam",
-            "vietnamese", "tiengviet", "variant", "option", "test", "undefined", "null"
+            "vietnamese", "tiengviet", "variant", "option", "test", "undefined", "null",
+            "como", "única", "unica", "queda", "metros", "segredo", "cima", "nunca",
+            "olham", "jogadas", "ponto", "flees", "foot", "great", "white", "bottom",
+            "live", "secret", "drops", "down", "shut", "word", "being", "controlled",
+            "signs", "esmaga", "acabou", "imitar", "pulled", "sleeve", "exact", "second",
+            "tiny", "looked", "refused", "until", "tied", "shivering", "found", "saving",
+            "alone", "happened", "thought", "order", "rewrote", "sank", "does", "endless",
+            "cooks", "degree", "captured", "unthinkable", "flee", "kill", "kicks",
+            "crushes", "deadliest", "clue", "hidden", "stop", "trick", "watch", "body",
+            "language", "sperm", "whale", "squid", "colossal", "harpy", "eagle", "howler",
+            "king", "cobra", "polar", "bears", "diante", "treme", "branco", "enfrentar",
+            "odeiam", "choque", "ferve", "perigosa", "erro",
         }
         text_context = f"{base_title} {topic or ''}".lower()
 
@@ -1206,11 +1217,13 @@ class PublisherAgent:
 
         # Chặn các tag chéo ngách nếu nội dung thực tế của video không hề nhắc tới
         CROSS_NICHE_GUARDS = {
-            "space": ("space", "planet", "galaxy", "nasa", "black hole", "astronaut", "universe", "espaco", "planeta"),
+            "space": ("space", "planet", "galaxy", "nasa", "black hole", "astronaut", "universe", "espaco", "planeta", "spacecraft", "espaçonaves"),
             "titanic": ("titanic", "shipwreck", "iceberg", "1912"),
             "alexander": ("alexander", "macedon"),
             "narcissist": ("narcissist", "narcissism", "toxic"),
             "motivation": ("motivation", "discipline", "habit"),
+            "bigcat": ("lion", "lions", "tiger", "jaguar", "leopard", "cheetah", "cougar", "puma", "panther", "big cat", "onça", "leão", "tigre", "leopardo"),
+            "big cat": ("lion", "lions", "tiger", "jaguar", "leopard", "cheetah", "cougar", "puma", "panther", "big cat", "onça", "leão", "tigre", "leopardo"),
         }
 
         def _is_tag_allowed(raw_t: str) -> bool:
@@ -1238,24 +1251,28 @@ class PublisherAgent:
             "orca", "killer whale", "great white shark", "saltwater crocodile", "nile crocodile",
             "nile hippo", "hippo", "polar bear", "grizzly bear", "siberian tiger", "bengal tiger",
             "snow leopard", "jaguar", "leopard", "cheetah", "lion", "lions", "hyena", "harpy eagle",
-            "cassowary", "king cobra", "black mamba", "wolverine", "electric eel", "mantis shrimp",
-            "pistol shrimp", "sloth", "walrus", "giant otter", "otter", "shark", "crocodile",
-            "blind dog", "shelter puppy", "stray kitten", "orphan puppy", "puppy", "kitten", "dog",
+            "howler monkey", "secretary bird", "water buffalo", "cassowary", "king cobra",
+            "black mamba", "wolverine", "electric eel", "mantis shrimp", "pistol shrimp",
+            "sloth", "sloths", "walrus", "giant otter", "otter", "shark", "crocodile",
+            "blind dog", "shelter puppy", "stray kitten", "orphan puppy", "wheelchair dog", "puppy", "kitten", "dog",
             "mariana trench", "bermuda triangle", "boiling river", "amazon river", "amazon",
+            "point nemo", "spacecraft graveyard", "saturation divers", "divers",
             "antarctica", "sahara", "krakatoa", "yellowstone", "pompeii", "roman empire", "rome",
-            "ancient egypt", "giza", "alexandria", "alexander", "emperor qin", "world war 1",
+            "steam engine", "titanic", "cold war", "world war 1", "world war 2",
+            "ancient egypt", "giza", "alexandria", "alexander", "emperor qin",
             "soviet", "rockefeller", "apollo", "spacecraft", "kraken", "abyss", "deep ocean",
-            "body language", "eye contact", "fbi", "lie detector", "micro expressions",
-            "narcissist", "sociopath", "psychopath", "gaslighting", "love bombed", "manipulators",
-            "manipulating", "serial killers", "negotiator", "liars", "liar", "fake smile",
+            "body language", "eye contact", "fbi", "lie detector", "lie detection", "micro expressions",
+            "narcissist", "sociopath", "psychopath", "gaslighting", "gaslighters", "love bombed", "manipulators",
+            "manipulating", "mind control", "serial killers", "negotiator", "liars", "liar", "fake smile",
             "silence", "envy", "anger", "loneliness", "confidence", "confident",
         ]
         KNOWN_SUBJECTS_PT = [
             "onça pintada", "onça", "sucuri", "jacaré", "poraquê", "ariranha", "lobo guará",
             "tatu canastra", "águia harpia", "harpia", "dragão de komodo", "komodo",
             "tubarão branco", "tubarão", "orca", "baleia", "cachalote", "lula colossal",
-            "ratel", "javali", "leões", "leão", "tigre", "taiga", "amazônia", "pantanal",
-            "fossa das marianas", "triângulo das bermudas", "caverna movile", "caverna",
+            "hiena", "leopardo das neves", "leopardo", "ratel", "javali", "leões", "leão", "tigre",
+            "taiga", "amazônia", "pantanal", "fossa das marianas", "triângulo das bermudas",
+            "ponto nemo", "espaçonaves", "mergulhadores", "rio fervente", "caverna movile", "caverna",
             "oceano", "navios", "ilha", "silêncio", "gelo", "rússia",
         ]
         subject_pool = KNOWN_SUBJECTS_PT if is_br else KNOWN_SUBJECTS_EN
@@ -1281,29 +1298,14 @@ class PublisherAgent:
             filtered_custom_tags.append(ct)
         custom_tags = filtered_custom_tags
 
-        # Bổ sung từ khóa danh từ từ tiêu đề nếu chưa có trong KNOWN_SUBJECTS
-        stop_words = {
-            "the", "and", "for", "with", "that", "this", "from", "what", "when", "where", "why",
-            "how", "into", "over", "under", "after", "before", "never", "ever", "most", "more",
-            "only", "just", "can", "will", "your", "you", "their", "they", "its", "his", "her",
-            "feet", "meters", "seconds", "minutes", "hours", "days", "years", "psi", "volts",
-            "one", "two", "three", "four", "five", "ten", "vs", "versus", "contra", "uma", "para",
-            "com", "dos", "das", "nos", "nas", "pelo", "pela", "sem", "que", "não", "mais",
-        }
-        title_words = [
-            w.lower() for w in re.findall(r"[A-Za-zÀ-ỹçãõáéíóúâêô]{4,}", base_title)
-            if w.lower() not in stop_words and _is_tag_allowed(w)
-        ]
-        for tw in title_words[:4]:
-            if tw not in extracted_topic_tags:
-                extracted_topic_tags.append(tw)
-
-        # 3. Hợp nhất danh sách Tags chuẩn cho YouTube (snippet.tags, tối đa 25 tags & < 460 ký tự)
+        # 3. Hợp nhất danh sách Tags chuẩn cho YouTube (snippet.tags, tối đa 24 tags & < 450 ký tự)
+        # Ưu tiên: Thực thể chủ đề (extracted_topic_tags) + Bộ tag chuẩn Ngách & Quốc gia (niche_core_tags) trước,
+        # sau đó mới đến custom_tags đã qua bộ lọc để KHÔNG BAO GIỜ bị đẩy mất tag định hướng quốc gia ('usa'/'brasil')!
         final_tags: List[str] = []
         seen_lower = set()
         total_chars = 0
 
-        for candidate in (*custom_tags, *extracted_topic_tags, *niche_core_tags):
+        for candidate in (*extracted_topic_tags, *niche_core_tags, *custom_tags):
             clean_t = re.sub(r'^#+', '', str(candidate or "").strip()).strip()
             if not _is_tag_allowed(clean_t):
                 continue
@@ -1514,6 +1516,23 @@ class PublisherAgent:
 
             raw_desc = str(snip.get("description") or "").strip()
             desc_body = re.sub(r'(?:\n*\s*(?:#[^\s#]+\s*)+)$', '', raw_desc).strip()
+            if is_br:
+                pt_header_replacements = {
+                    "🦈 APEX WILDLIFE BREAKDOWN:": "🐆 ANÁLISE DO CONFRONTO SELVAGEM:",
+                    "🌊 SCIENTIFIC & MYSTERY BREAKDOWN:": "🌊 ANÁLISE DO MISTÉRIO E CIÊNCIA:",
+                    "• The Opening Strike:": "• O Ataque Inicial:",
+                    "• Biomechanical Advantage:": "• A Vantagem Biomecânica:",
+                    "• The Lethal Outcome:": "• O Desfecho Mortal:",
+                    "• The Unexplained Anomaly:": "• O Fenômeno Oculto:",
+                    "• Scientific Evidence:": "• A Explicação Científica:",
+                }
+                for en_h, pt_h in pt_header_replacements.items():
+                    if en_h in desc_body:
+                        desc_body = desc_body.replace(en_h, pt_h)
+            elif "history" in str(self.channel_config.get("niche") or "").lower():
+                if "🧠 KEY PSYCHOLOGICAL BREAKDOWN:" in desc_body:
+                    desc_body = desc_body.replace("🧠 KEY PSYCHOLOGICAL BREAKDOWN:", "⏳ ALTERNATE HISTORY TIMELINE BREAKDOWN:")
+                    desc_body = desc_body.replace("• The Hidden Pattern:", "• The Point of Divergence:")
             healed_desc = f"{desc_body}\n\n{smart['description_hashtags']}".strip() if desc_body else smart["description_hashtags"]
             if healed_desc != raw_desc:
                 snip["description"] = healed_desc
