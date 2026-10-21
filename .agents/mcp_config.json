@@ -1,10 +1,12 @@
 {
   "mcpServers": {
+    "context7": {
+      "url": "https://mcp.context7.com/mcp"
+    },
     "chrome-devtools": {
-      "command": "npx",
+      "command": "agy-node",
       "args": [
-        "-y",
-        "chrome-devtools-mcp@latest"
+        "C:/Users/vv1nc/.gemini/config/node_modules/chrome-devtools-mcp/build/src/bin/chrome-devtools-mcp.js"
       ]
     }
   }
