@@ -1404,17 +1404,23 @@ Rewrite immediately addressing ALL violations above!
 ═══════════════════════════════════════════════════════════
 """
             except Exception as e:
-                logger.warning(f"[ContentAgent] Generation attempt {attempt} error: {e}")
-                if "không nhận được phản hồi" in str(e) or "429" in str(e) or attempt == max_attempts:
-                    if not last_script:
-                        logger.info(
-                            f"🛡️ [ContentAgent] Kích hoạt Curated 5-Act Viral Script Fallback cho '{topic}' ({channel_niche}, {language})"
-                        )
-                        return self._build_curated_5act_script_fallback(
-                            topic=topic,
-                            channel_niche=channel_niche,
-                            language=language,
-                        )
+                logger.warning(f"[ContentAgent] Generation attempt {attempt}/{max_attempts} error: {e}")
+                if attempt < max_attempts:
+                    time.sleep(2.5)
+                    try:
+                        self.rotator.probe_all_models_concurrently(force=True)
+                    except Exception:
+                        pass
+                    continue
+                if not last_script:
+                    logger.info(
+                        f"🛡️ [ContentAgent] Kích hoạt Curated 5-Act Viral Script Fallback cho '{topic}' ({channel_niche}, {language})"
+                    )
+                    return self._build_curated_5act_script_fallback(
+                        topic=topic,
+                        channel_niche=channel_niche,
+                        language=language,
+                    )
 
         logger.error(f"❌ [ContentAgent] Script failed Quality Gate Linter after {max_attempts} attempts: {last_issues}")
         if last_script:
@@ -1437,8 +1443,8 @@ Rewrite immediately addressing ALL violations above!
         n_low = (channel_niche or "").lower()
         is_pt = str(language or "").lower().startswith("pt")
 
-        if is_pt and ("deep_sea" in n_low or "mystery" in n_low or "oceano" in t_low or "lula" in t_low or "nemo" in t_low or "tubarão" in t_low):
-            if "nemo" in t_low or "cemitério" in t_low or "nave" in t_low:
+        if is_pt and ("deep_sea" in n_low or "mystery" in n_low or "oceano" in t_low or "lula" in t_low or "nemo" in t_low or "tubarão" in t_low or "fossa" in t_low or "mergulhador" in t_low):
+            if "nemo" in t_low or "cemitério" in t_low or "nave" in t_low or "sinal" in t_low:
                 raw_data = {
                     "title": "Ponto Nemo: O Cemitério Secreto De Naves No Fundo Do Oceano 🌊🛰️ #Shorts",
                     "topic": topic,
@@ -1480,6 +1486,51 @@ Rewrite immediately addressing ALL violations above!
                         {"scene_id": 6, "narration": "Ele dispara cliques de sonar de 230 decibéis que funcionam como uma onda de choque submarina.", "visual_keyword": "underwater sonar sound wave ocean", "stock_query": "underwater ocean rays", "visual_prompt": "Acoustic shockwave rippling through dark underwater depths", "estimated_seconds": 4.8},
                         {"scene_id": 7, "narration": "O impacto sonoro desorienta a lula-colossal no abismo antes do golpe final das mandíbulas.", "visual_keyword": "predator whale hunting deep sea", "stock_query": "whale hunting ocean", "visual_prompt": "Sperm whale emerging victorious from the deep sea", "estimated_seconds": 4.6},
                         {"scene_id": 8, "narration": "Ainda assim, nas fossas mais profundas do oceano, essa guerra invisível acontece todos os dias.", "visual_keyword": "dark ocean abyssal trench", "stock_query": "dark ocean abyss", "visual_prompt": "Endless dark ocean abyss at 2000 meters depth", "estimated_seconds": 4.4},
+                    ],
+                }
+        elif is_pt:
+            if "ariranha" in t_low or "jacaré-açu" in t_low or "bando" in t_low:
+                raw_data = {
+                    "title": "Por Que Até o Jacaré-Açu Foge de um Bando de Ariranhas 🦦🐊 #Shorts",
+                    "topic": topic,
+                    "primary_entity": "Giant Otter",
+                    "hook": "Até o jacaré-açu foge quando as ariranhas cercam o rio!",
+                    "hook_visual_mode": "video",
+                    "hook_search_queries": ["giant river otter amazon", "black caiman amazon river"],
+                    "thumbnail_text": "TERROR DOS RIOS! 🦦",
+                    "pinned_comment": "Você sabia que as ariranhas são chamadas de lobos dos rios na Amazônia? Comente! 👇",
+                    "tags": ["shorts", "animais", "natureza", "amazonia", "pantanal", "predadores"],
+                    "scenes": [
+                        {"scene_id": 1, "narration": "Até o jacaré-açu foge quando as ariranhas cercam o rio!", "visual_keyword": "giant river otter swimming amazon", "stock_query": "river otter swimming", "visual_prompt": "Pack of giant river otters patrolling the Amazon river", "estimated_seconds": 4.2},
+                        {"scene_id": 2, "narration": "Sozinha, uma ariranha de quase dois metros já possui mandíbulas capazes de triturar ossos duros.", "visual_keyword": "otter teeth closeup wild", "stock_query": "otter closeup", "visual_prompt": "Giant otter baring sharp teeth at the water surface", "estimated_seconds": 4.6},
+                        {"scene_id": 3, "narration": "Mas o verdadeiro perigo na Amazônia é que esses predadores jamais caçam sozinhos.", "visual_keyword": "group of otters river bank", "stock_query": "otters river", "visual_prompt": "Coordinated family group of giant otters in tropical river", "estimated_seconds": 4.4},
+                        {"scene_id": 4, "narration": "Um bando coordenado de até dez ariranhas age exatamente como uma alcateia de lobos dentro d'água.", "visual_keyword": "otters swimming underwater fast", "stock_query": "otter underwater", "visual_prompt": "Sleek otters darting underwater at high speed", "estimated_seconds": 4.8},
+                        {"scene_id": 5, "narration": "Quando um jacaré invade o território, o grupo inteiro ataca pelas laterais e pela cauda ao mesmo tempo.", "visual_keyword": "caiman crocodile river water", "stock_query": "caiman river", "visual_prompt": "Large caiman surrounded in muddy Amazon river water", "estimated_seconds": 4.9},
+                        {"scene_id": 6, "narration": "Sem conseguir girar rápido o suficiente para morder, o réptil gigante perde fôlego em poucos minutos.", "visual_keyword": "crocodile splashing water river", "stock_query": "crocodile water", "visual_prompt": "Caiman thrashing defensively in shallow river", "estimated_seconds": 4.7},
+                        {"scene_id": 7, "narration": "Mesmo a própria onça-pintada evita entrar na água quando ouve os gritos de alerta do bando.", "visual_keyword": "jaguar looking at river", "stock_query": "jaguar river", "visual_prompt": "Jaguar watching cautiously from the riverbank", "estimated_seconds": 4.6},
+                        {"scene_id": 8, "narration": "É por essa união implacável que até o jacaré-açu recua quando as ariranhas dominam o rio.", "visual_keyword": "amazon river aerial jungle", "stock_query": "amazon river jungle", "visual_prompt": "Dark winding Amazon river surrounded by dense rainforest", "estimated_seconds": 4.4},
+                    ],
+                }
+            else:
+                raw_data = {
+                    "title": "Onça-Pintada vs Caimão: A Mordida de 1.500 PSI no Pantanal 🐆🐊 #Shorts",
+                    "topic": topic,
+                    "primary_entity": "Jaguar",
+                    "hook": "A onça-pintada mata um jacaré com uma única mordida no crânio!",
+                    "hook_visual_mode": "video",
+                    "hook_search_queries": ["jaguar hunting caiman pantanal", "jaguar swimming river wild"],
+                    "thumbnail_text": "1.500 PSI DE FORÇA! 🐆",
+                    "pinned_comment": "A onça-pintada é o felino mais completo do planeta? Deixe sua opinião! 👇",
+                    "tags": ["shorts", "animais", "oncapintada", "pantanal", "natureza", "predadores"],
+                    "scenes": [
+                        {"scene_id": 1, "narration": "A onça-pintada mata um jacaré com uma única mordida no crânio!", "visual_keyword": "jaguar hunting caiman river", "stock_query": "jaguar river", "visual_prompt": "Powerful jaguar leaping into Pantanal river water", "estimated_seconds": 4.2},
+                        {"scene_id": 2, "narration": "Enquanto leões e tigres atacam a garganta para sufocar a presa, o maior felino das Américas usa outra tática.", "visual_keyword": "jaguar walking jungle closeup", "stock_query": "jaguar walking", "visual_prompt": "Muscular jaguar stalking silently along a muddy riverbank", "estimated_seconds": 4.8},
+                        {"scene_id": 3, "narration": "Sua mandíbula compacta gera impressionantes mil e quinhentos PSI de pressão direta nos dentes caninos.", "visual_keyword": "jaguar roaring sharp teeth", "stock_query": "jaguar closeup", "visual_prompt": "Closeup of jaguar jaws and massive canine teeth", "estimated_seconds": 4.7},
+                        {"scene_id": 4, "narration": "No Pantanal, ela nada em silêncio absoluto sem criar uma única ondulação na superfície da água.", "visual_keyword": "jaguar swimming water stealth", "stock_query": "jaguar swimming", "visual_prompt": "Jaguar swimming stealthily through dark river water", "estimated_seconds": 4.6},
+                        {"scene_id": 5, "narration": "Antes que o jacaré perceba a sombra, a onça salta do barranco direto sobre o dorso blindado do réptil.", "visual_keyword": "caiman resting river bank", "stock_query": "caiman crocodile", "visual_prompt": "Caiman basking on a sandy riverbank in the Pantanal", "estimated_seconds": 4.8},
+                        {"scene_id": 6, "narration": "Em vez de lutar contra a couraça, ela crava os caninos exatamente entre as orelhas e perfura o cérebro instantaneamente.", "visual_keyword": "jaguar biting prey river", "stock_query": "big cat hunting", "visual_prompt": "Jaguar clamping down with lethal precision in shallow water", "estimated_seconds": 5.0},
+                        {"scene_id": 7, "narration": "O predador aquático de oitenta quilos fica paralisado no mesmo segundo, sem conseguir dar um único golpe de cauda.", "visual_keyword": "jaguar carrying prey riverbank", "stock_query": "jaguar nature", "visual_prompt": "Jaguar dragging its prize up the steep muddy bank", "estimated_seconds": 4.8},
+                        {"scene_id": 8, "narration": "É por essa força cirúrgica que a onça-pintada reina absoluta nas águas e nas matas do Pantanal.", "visual_keyword": "jaguar resting tree branch", "stock_query": "jaguar forest", "visual_prompt": "Apex jaguar surveying the Pantanal wetlands from a tree", "estimated_seconds": 4.5},
                     ],
                 }
         elif "history" in n_low or "what_if" in n_low:
@@ -1549,27 +1600,50 @@ Rewrite immediately addressing ALL violations above!
                 ],
             }
         else:
-            raw_data = {
-                "title": "How One Bite From A Komodo Dragon Drops A 1,200lb Giant 🦎💀 #Shorts",
-                "topic": topic,
-                "primary_entity": "Komodo Dragon",
-                "hook": "One Komodo dragon bite drops a 1,200-pound buffalo!",
-                "hook_visual_mode": "video",
-                "hook_search_queries": ["komodo dragon walking wild", "water buffalo horns wildlife"],
-                "thumbnail_text": "1 BITE DROPS A GIANT! 🦎",
-                "pinned_comment": "Could any land predator survive a venomous bite from a giant Komodo Dragon? Drop your vote 👇",
-                "tags": ["shorts", "wildlife", "predators", "komododragon", "nature"],
-                "scenes": [
-                    {"scene_id": 1, "narration": "One Komodo dragon bite drops a 1,200-pound buffalo!", "visual_keyword": "komodo dragon walking wild nature", "stock_query": "komodo dragon", "visual_prompt": "Giant Komodo dragon stalking across dry island terrain", "estimated_seconds": 4.3},
-                    {"scene_id": 2, "narration": "For decades, people believed dirty saliva killed the dragon's prey, but CT scans revealed a deadlier weapon.", "visual_keyword": "komodo dragon closeup tongue", "stock_query": "komodo dragon closeup", "visual_prompt": "Extreme closeup of a Komodo dragon flicking its yellow forked tongue", "estimated_seconds": 4.8},
-                    {"scene_id": 3, "narration": "Inside its lower jaw sit sixty curved, shark-like teeth coated in a natural layer of pure iron.", "visual_keyword": "reptile sharp teeth jaw closeup", "stock_query": "reptile closeup", "visual_prompt": "Serrated reptile teeth gleaming in sunlight", "estimated_seconds": 4.7},
-                    {"scene_id": 4, "narration": "Instead of crushing bone like a crocodile, the Komodo dragon clamps onto the buffalo's leg and pulls backward.", "visual_keyword": "water buffalo standing mud wild", "stock_query": "water buffalo wild", "visual_prompt": "Massive water buffalo standing defensively in muddy grass", "estimated_seconds": 4.9},
-                    {"scene_id": 5, "narration": "As those serrated teeth slice deep grooves, twin venom glands along its jaw pump potent anticoagulants into the wound.", "visual_keyword": "komodo dragon hunting prey", "stock_query": "lizard hunting", "visual_prompt": "Komodo dragon lunging forward with jaws wide open", "estimated_seconds": 5.0},
-                    {"scene_id": 6, "narration": "The venom blocks blood clotting completely and sends the 1,200-pound giant into rapid hypotensive shock.", "visual_keyword": "buffalo herd running savanna", "stock_query": "buffalo running", "visual_prompt": "Water buffalo stumbling through shallow water", "estimated_seconds": 4.7},
-                    {"scene_id": 7, "narration": "The dragon doesn't even need to chase; it simply follows the scent trail with its forked tongue for hours.", "visual_keyword": "komodo dragon walking forest", "stock_query": "giant lizard walking", "visual_prompt": "Komodo dragon tracking prey patiently across the island", "estimated_seconds": 4.8},
-                    {"scene_id": 8, "narration": "And when the exhausted giant finally collapses, the patient apex predator claims its 1,000-pound prize.", "visual_keyword": "komodo dragon apex predator island", "stock_query": "komodo dragon nature", "visual_prompt": "Komodo dragon standing dominant on the island shore", "estimated_seconds": 4.5},
-                ],
-            }
+            if "honey badger" in t_low or "cobra" in t_low or "snake" in t_low or "mamba" in t_low:
+                raw_data = {
+                    "title": "Honey Badger vs King Cobra: How It Sleeps Off Lethal Venom 🦡🐍 #Shorts",
+                    "topic": topic,
+                    "primary_entity": "Honey Badger",
+                    "hook": "A honey badger gets bitten by a cobra and just takes a nap!",
+                    "hook_visual_mode": "video",
+                    "hook_search_queries": ["honey badger fighting snake", "king cobra hood strike"],
+                    "thumbnail_text": "IMMUNE TO VENOM! 🦡",
+                    "pinned_comment": "Is the Honey Badger pound-for-pound the most fearless animal on Earth? Drop your vote 👇",
+                    "tags": ["shorts", "wildlife", "honeybadger", "kingcobra", "predators", "nature"],
+                    "scenes": [
+                        {"scene_id": 1, "narration": "A honey badger gets bitten by a cobra and just takes a nap!", "visual_keyword": "honey badger walking savanna wild", "stock_query": "badger wildlife", "visual_prompt": "Fearless honey badger stalking across dry African brush", "estimated_seconds": 4.3},
+                        {"scene_id": 2, "narration": "One bite from a Cape cobra pumps enough neurotoxin to paralyze an adult lion within minutes.", "visual_keyword": "cobra snake hood aggressive wild", "stock_query": "cobra snake", "visual_prompt": "Venomous cobra rearing up with hood flared", "estimated_seconds": 4.6},
+                        {"scene_id": 3, "narration": "Yet the thirty-pound honey badger actively hunts venomous snakes as its favorite afternoon meal.", "visual_keyword": "badger hunting snake desert", "stock_query": "snake hunting", "visual_prompt": "Honey badger charging straight at a coiled venomous snake", "estimated_seconds": 4.7},
+                        {"scene_id": 4, "narration": "Its first defense is quarter-inch-thick rubbery skin so loose it can twist around and bite back.", "visual_keyword": "badger claws fur closeup", "stock_query": "wild animal closeup", "visual_prompt": "Thick loose hide and razor claws of a honey badger", "estimated_seconds": 4.8},
+                        {"scene_id": 5, "narration": "Even when the cobra's fangs pierce its face, a rare genetic mutation saves the badger's life.", "visual_keyword": "snake fangs venom strike", "stock_query": "snake strike", "visual_prompt": "Close shot of venomous snake striking forward", "estimated_seconds": 4.6},
+                        {"scene_id": 6, "narration": "Modified nicotinic receptors in its nervous system physically block alpha-neurotoxins from binding to its muscles.", "visual_keyword": "neural network glowing biology", "stock_query": "nervous system", "visual_prompt": "Molecular shield blocking venom molecules inside nerve cells", "estimated_seconds": 5.0},
+                        {"scene_id": 7, "narration": "After crushing the snake's skull, the badger passes out for two hours while its liver flushes the venom.", "visual_keyword": "mammal sleeping ground savanna", "stock_query": "animal sleeping wild", "visual_prompt": "Honey badger resting in the shade on dry earth", "estimated_seconds": 4.9},
+                        {"scene_id": 8, "narration": "Then it wakes up completely unharmed and finishes eating the cobra before trotting back into the bush.", "visual_keyword": "honey badger running wild nature", "stock_query": "badger nature", "visual_prompt": "Honey badger trotting fearlessly across the African savanna", "estimated_seconds": 4.6},
+                    ],
+                }
+            else:
+                raw_data = {
+                    "title": "Why Caimans Are Terrified Of Jaguars In Deep Water 🐆🐊 #Shorts",
+                    "topic": topic,
+                    "primary_entity": "Jaguar",
+                    "hook": "One jaguar bite crushes a caiman's skull straight through bone!",
+                    "hook_visual_mode": "video",
+                    "hook_search_queries": ["jaguar hunting caiman river", "jaguar swimming pantanal"],
+                    "thumbnail_text": "1,500 PSI SKULL CRUSH! 🐆",
+                    "pinned_comment": "Could any river predator survive a stealth ambush from a 300-pound Jaguar? Drop your vote 👇",
+                    "tags": ["shorts", "wildlife", "jaguar", "predators", "bigcats", "nature"],
+                    "scenes": [
+                        {"scene_id": 1, "narration": "One jaguar bite crushes a caiman's skull straight through bone!", "visual_keyword": "jaguar hunting caiman river", "stock_query": "jaguar river", "visual_prompt": "Powerful jaguar leaping into a river to ambush a caiman", "estimated_seconds": 4.3},
+                        {"scene_id": 2, "narration": "In the flooded jungles of the Pantanal, eight-foot caimans should be the undisputed rulers of the water.", "visual_keyword": "caiman crocodile swimming river", "stock_query": "caiman river", "visual_prompt": "Large caiman floating silently in dark river water", "estimated_seconds": 4.7},
+                        {"scene_id": 3, "narration": "Instead, they flee onto muddy banks the moment a jaguar steps into the river.", "visual_keyword": "jaguar walking riverbank jungle", "stock_query": "jaguar walking", "visual_prompt": "Muscular jaguar prowling along a tropical riverbank", "estimated_seconds": 4.5},
+                        {"scene_id": 4, "narration": "Unlike lions or tigers that suffocate prey by the throat, the jaguar evolved a stockier jaw built like a hydraulic press.", "visual_keyword": "jaguar roaring fangs closeup", "stock_query": "jaguar closeup", "visual_prompt": "Extreme closeup of a jaguar's massive jaws and canine teeth", "estimated_seconds": 5.0},
+                        {"scene_id": 5, "narration": "Its bite delivers fifteen hundred pounds per square inch, twice the crushing force of an African lion.", "visual_keyword": "big cat predator eyes intense", "stock_query": "jaguar eyes", "visual_prompt": "Golden eyes of a jaguar locked onto its target", "estimated_seconds": 4.8},
+                        {"scene_id": 6, "narration": "Swimming silently without a single ripple, the big cat lunges onto the reptile's armored back.", "visual_keyword": "jaguar swimming water stealth", "stock_query": "jaguar swimming", "visual_prompt": "Jaguar gliding silently through deep river water", "estimated_seconds": 4.6},
+                        {"scene_id": 7, "narration": "Its thick canines punch directly between the caiman's ears, piercing the brain and ending the fight in one second.", "visual_keyword": "jaguar splashing river ambush", "stock_query": "jaguar hunting", "visual_prompt": "Explosive water splash as the jaguar secures its prey", "estimated_seconds": 4.9},
+                        {"scene_id": 8, "narration": "Then the apex cat drags the two-hundred-pound reptile straight up a vertical riverbank into the jungle.", "visual_keyword": "jaguar resting jungle tree", "stock_query": "jaguar jungle", "visual_prompt": "Dominant jaguar in the dense South American rainforest", "estimated_seconds": 4.6},
+                    ],
+                }
 
         raw_data["full_narration"] = " ".join(s["narration"] for s in raw_data["scenes"])
         return self._parse_json_script(json.dumps(raw_data, ensure_ascii=False), channel_niche=channel_niche, topic=topic)

@@ -160,8 +160,8 @@ class ScriptValidationLinter:
         total_words = len(words)
 
         min_words = 68
-        max_words = 115
-        target_range_str = "72 to 98 words (28-36s high-retention 5-Act story across 6-8 crisp scenes)"
+        max_words = 128
+        target_range_str = "85 to 120 words (30-40s full-bodied 5-Act story across 7-9 smooth scenes)"
 
         if total_words > max_words:
             est_seconds = (total_words / max(target_wpm, 165)) * 60

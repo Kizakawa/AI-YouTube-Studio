@@ -195,17 +195,24 @@ Respond ONLY in valid JSON:
         from app.utils.key_rotator import GEMINI_PRIORITY_MODELS
         rotator = self.rotator
         headers = {"Content-Type": "application/json"}
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"}
-        }
         for model, k_use in rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS, max_total_attempts=6):
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={k_use}"
-                resp = requests.post(url, headers=headers, json=payload, timeout=20)
+                gen_cfg = {"temperature": 0.2}
+                if not model.startswith("gemma-"):
+                    gen_cfg["responseMimeType"] = "application/json"
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": gen_cfg
+                }
+                req_timeout = 14 if model.startswith("gemma-") else 20
+                resp = requests.post(url, headers=headers, json=payload, timeout=req_timeout)
                 if resp.status_code == 200:
                     data = resp.json()
-                    content = data["candidates"][0]["content"]["parts"][0]["text"]
+                    content = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    s_idx, e_idx = content.find("{"), content.rfind("}")
+                    if s_idx != -1 and e_idx != -1:
+                        content = content[s_idx:e_idx + 1]
                     result = json.loads(content)
                     total = int(result.get("total_score", 0))
                     if total == 0:
@@ -227,11 +234,12 @@ Respond ONLY in valid JSON:
                         "strengths": result.get("strengths", []),
                         "weaknesses": result.get("weaknesses", []),
                     }
-                elif resp.status_code in (429, 403, 404, 503):
+                elif resp.status_code in (400, 429, 403, 404, 500, 502, 503, 504):
                     rotator.mark_model_rate_limited(k_use, model, status_code=resp.status_code, error_text=resp.text[:250])
                     continue
             except Exception as e:
                 logger.warning(f"[QualityEvaluator] Lỗi gọi Gemini ({model}) chấm điểm kịch bản: {e}")
+                rotator.mark_model_rate_limited(k_use, model, status_code=503, error_text=str(e))
         return None
 
     def _heuristic_evaluate_script(

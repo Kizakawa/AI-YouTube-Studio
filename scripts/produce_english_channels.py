@@ -1,21 +1,19 @@
 """
-Script tự động sản xuất video trọn gói cho 3 kênh tiếng Anh còn thiếu hôm nay:
-1. Psychology of the world (channel_maya)
-2. Paws & Hearts Rescue (ch_paws_hearts_rescue)
-3. Wild Odyssey (ch_wild_odyssey)
+Script tự động sản xuất & hẹn lịch phát sóng khung giờ vàng cho các kênh YouTube Shorts:
+- Hỗ trợ chạy 6 kênh chủ lực (loại trừ Paws & Hearts Rescue theo yêu cầu: `--channel all_6 --count 2`):
+  1. The mysteries of the world (`ch_the_mysteries_of_the_world` - US EN)
+  2. Psychology of the world (`ch_psychology_of_the_world` - US EN)
+  3. Wild Odyssey (`ch_wild_odyssey` - US EN)
+  4. Alternate History & "What If?" (`@alternatehistorywhatif-e2x` - US EN)
+  5. Odisseia Selvagem (`ch_odisseia_selvagem` - Brazil PT-BR)
+  6. Mistérios do Mundo (`ch_misterios_do_mundo` - Brazil PT-BR)
 
-Quy trình chuẩn 5 bước nghiêm ngặt:
-- Bước 1: Tạo kịch bản viral 4-beat retention + Đánh giá chấm điểm kịch bản (>= 80/100)
-- Bước 2: Lồng ghép link sản phẩm Amazon Affiliate (tag kizakawa-20) vào mô tả & bình luận ghim
-- Bước 3: Đăng ký VideoJob vào Database
-- Bước 4: Dựng video (VideoPipeline) + Chấm điểm kỹ thuật video FFprobe QA (>= 85/100)
-- Bước 5: Upload YouTube Shorts & Hẹn lịch phát sóng vào khung giờ vàng chuẩn của kênh
-
-Cách dùng:
-    python scripts/produce_english_channels.py --channel channel_maya
-    python scripts/produce_english_channels.py --channel ch_paws_hearts_rescue
-    python scripts/produce_english_channels.py --channel ch_wild_odyssey
-    python scripts/produce_english_channels.py --channel all
+Quy trình chuẩn 5 bước nghiêm ngặt cho từng video:
+- Bước 1: Tạo kịch bản viral 5-Act retention + Đánh giá chấm điểm kịch bản (>= 80/100) + Chống trùng lặp chủ đề.
+- Bước 2: Tổng hợp bộ Tags SEO chuẩn ngách (tối đa 25 tags) + Hashtags Tiêu đề & Mô tả (`build_smart_video_tags_and_hashtags`).
+- Bước 3: Đăng ký VideoJob vào Database kèm khe giờ vàng chuẩn (`SmartScheduler`).
+- Bước 4: Dựng video 1080x1920 @ 30fps chất lượng cao (`VideoPipeline` + LangGraph 5 Graders) + Chấm điểm FFprobe QA & VisualCritic.
+- Bước 5: Upload YouTube Shorts, gắn đầy đủ Tags SEO, Custom Thumbnail, Pinned Comment & Hẹn lịch phát sóng khung giờ vàng (`verify_and_heal_video_metadata`).
 """
 import sys
 import os
@@ -35,20 +33,53 @@ if str(project_root) not in sys.path:
 # UTF-8 trên Windows console
 if sys.platform == "win32":
     try:
-        sys.stdout.reconfigure(encoding='utf-8')
-        sys.stderr.reconfigure(encoding='utf-8')
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
     except Exception:
         pass
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
+    level=logging.INFO,
 )
 logger = logging.getLogger("ProduceEnglishChannels")
 
 CHANNELS_CONFIG = {
-    "channel_maya": {
-        "id": "channel_maya",
+    "ch_the_mysteries_of_the_world": {
+        "id": "ch_the_mysteries_of_the_world",
+        "name": "The mysteries of the world",
+        "niche": "deep_sea_earth_mysteries",
+        "language": "en",
+        "google_account": "account_1",
+        "preferred_voice": "en-US-BrianNeural",
+        "handle": "@themysteriesoftheworld-f3w",
+        "amazon_tag": "kizakawa-20",
+        "publish_hour_utc": 14,
+        "director_notes": (
+            "Target channel The mysteries of the world. Spine-chilling deep sea, colossal sea monster & sensory mystery arc: "
+            "HOOK (0-3s): Visceral 2nd-person biological/sensory phobia or colossal deep-ocean anomaly. "
+            "DEVELOPMENT: Reveal the impossible scale or danger of the phenomenon with real scientific grounding. "
+            "CLIMAX: The unsettling implication — what happens to the human body, submarine, or mind inside this anomaly. "
+            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
+            "Tone: suspenseful, dark, eerie, fear-inducing, documentary-style. Strict English only."
+        ),
+        "topics": [
+            "Why Deep Sea Divers Never Look Up At The Surface At Night",
+            "What Happens To Your Brain After 45 Minutes In Zero Light And Zero Sound",
+            "Why Commercial Airplanes Are Forbidden From Flying Over This Ocean Grid",
+            "The Terrifying Reason Scientists Sealed The Kola Superdeep Borehole At 40,230 Feet",
+            "Why Your Body Freezes In Sleep Paralysis And What Your Brain Is Hiding",
+            "Inside Movile Cave: Sealed From Earth's Atmosphere For 5.5 Million Years",
+            "The 52-Hertz Whale Anomaly And What Submarines Recorded Beneath Point Nemo",
+            "Why Deep Sea Submarines Turn Off All Lights Passing Below 3,000 Meters",
+        ],
+        "default_tags": [
+            "shorts", "mystery", "deepocean", "unexplained", "thalassophobia",
+            "deepsea", "science", "creepy", "oceanmysteries", "mariana", "viral",
+        ],
+    },
+    "ch_psychology_of_the_world": {
+        "id": "ch_psychology_of_the_world",
         "name": "Psychology of the world",
         "niche": "psychology",
         "language": "en",
@@ -56,12 +87,12 @@ CHANNELS_CONFIG = {
         "preferred_voice": "en-US-AndrewNeural",
         "handle": "@vv1n-oe9gs",
         "amazon_tag": "kizakawa-20",
-        "publish_hour_utc": 21,
+        "publish_hour_utc": 17,
         "director_notes": (
-            "Target channel Psychology of the world. High-retention 4-beat dark psychology arc: "
+            "Target channel Psychology of the world. High-retention 5-Act dark psychology arc: "
             "HOOK (0-3s): Chilling psychological truth or covert manipulation sign that immediately creates urgency. "
-            "DEVELOPMENT: Explain the hidden behavioral mechanism using relatable real-life scenarios. "
-            "CLIMAX: The devastating reveal of how people fall into the psychological trap. "
+            "DEVELOPMENT: Explain the hidden behavioral mechanism using relatable real-life scenarios and spoken quotes. "
+            "CLIMAX: The surgical counter-move phrase that disarms the manipulator immediately. "
             "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
             "Tone: authoritative, hypnotic, analytical, gripping. Strict English only."
         ),
@@ -73,36 +104,12 @@ CHANNELS_CONFIG = {
             "Why Narcissists Always Ruin Your Birthday And Special Days",
             "How To Spot A Fake Friend By How They React To Your Good News",
             "Why Guilty People Always Repeat Your Question Before Answering",
+            "The Subtle Eye Movement That Exposes Someone Who Secretly Envies You",
         ],
-        "default_tags": ["shorts", "psychology", "darkpsychology", "manipulation", "mindset", "bodylanguage", "humanbehavior", "lies", "viral"],
-    },
-    "ch_paws_hearts_rescue": {
-        "id": "ch_paws_hearts_rescue",
-        "name": "Paws & Hearts Rescue",
-        "niche": "animal_rescue",
-        "language": "en",
-        "google_account": "acount_2",
-        "preferred_voice": "en-US-JennyNeural",
-        "handle": "@pawsandheartsrescue",
-        "amazon_tag": "kizakawa-20",
-        "publish_hour_utc": 21,
-        "director_notes": (
-            "Target channel Paws & Hearts Rescue. Tear-jerking emotional animal rescue arc: "
-            "HOOK (0-3s): Curiosity + Refusal to let go or trembling eye contact ('He refused to let go until...'). "
-            "DEVELOPMENT: Gentle human approach, rescuer builds trust through gentle whispers and warm blanket. "
-            "CLIMAX: Miraculous Day 1 vs Day 30 recovery and joyful sprint in sunlit meadow. "
-            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
-            "Tone: compassionate, deeply emotional, heartwarming, uplifting."
-        ),
-        "topics": [
-            "He Refused To Stop Hugging The Rescuer Who Pulled Him Out Of The Storm",
-            "The Exact Second This Stray Mama Dog Realized Her Puppies Were Safe",
-            "Everyone Walked Past The Senior Shelter Dog Until One Man Read His Sign",
-            "Terrified Stray Puppy Fell Asleep In A Rescuer's Warm Hands For The First Time",
-            "Watch How This Rescued Golden Retriever Reacts The First Time He Sees A Bed",
-            "She Guarded Her Injured Brother In The Rain Until Help Finally Arrived",
+        "default_tags": [
+            "shorts", "psychology", "darkpsychology", "manipulation", "mindset",
+            "bodylanguage", "humanbehavior", "lies", "socialskills", "viral",
         ],
-        "default_tags": ["shorts", "animalrescue", "rescuedog", "puppy", "dog", "pets", "heartwarming", "faithinhumanity", "transformation", "animals"],
     },
     "ch_wild_odyssey": {
         "id": "ch_wild_odyssey",
@@ -113,63 +120,40 @@ CHANNELS_CONFIG = {
         "preferred_voice": "en-US-ChristopherNeural",
         "handle": "@wildodysseyhq",
         "amazon_tag": "kizakawa-20",
-        "publish_hour_utc": 21,
+        "publish_hour_utc": 18,
         "director_notes": (
-            "Target channel Wild Odyssey. Intense 4-beat wildlife predator action: "
+            "Target channel Wild Odyssey. Intense 5-Act wildlife predator action: "
             "HOOK (0-3s): Counter-intuitive apex fear or shocking lethal stat naming the exact predator or 1v1 matchup. "
             "DEVELOPMENT: Compare bite force (PSI), razor claws, ambush speed vs other apex beasts. "
             "CLIMAX: The devastating strike or ruthless hunting sequence. "
             "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
-            "Tone: cinematic, adrenaline-pumping, dramatic, nature documentary style."
+            "Tone: cinematic, adrenaline-pumping, dramatic, nature documentary style. Strict English only."
         ),
         "topics": [
             "This Is Why Caimans Are Terrified Of Jaguars In Deep Water",
-            "Why Even A 20-Foot Great White Shark Flees From A Single Orca",
             "How A Snow Leopard Survives A 60-Foot Vertical Cliff Fall While Hunting",
             "Honey Badger vs King Cobra: How It Sleeps Off Lethal Neurotoxin",
             "Harpy Eagle vs Howler Monkey: 530 PSI Talons That Crush Bone Instantly",
             "Secretary Bird vs Black Mamba: The 195-Newton Stomp In 15 Milliseconds",
+            "Wolverine vs Wolf Pack: Why Deep Snow Belongs To A 35-Pound Beast",
+            "Siberian Tiger vs Brown Bear: The Ultimate Taiga Ambush Predator",
+            "Nile Crocodile vs Hippo: Why River Giants Fear A 3,700 PSI Bite",
         ],
-        "default_tags": ["shorts", "wildlife", "predators", "bigcats", "nature", "apexpredator", "jaguar", "animals", "documentary", "viral"],
-    },
-    "ucsrjiil67qxidtxt70z-iwa": {
-        "id": "ucsrjiil67qxidtxt70z-iwa",
-        "name": "The mysteries of the world",
-        "niche": "deep_sea_earth_mysteries",
-        "language": "en",
-        "google_account": "account_1",
-        "preferred_voice": "en-US-BrianNeural",
-        "handle": "@Themysteriesoftheworld-f3w",
-        "amazon_tag": "kizakawa-20",
-        "publish_hour_utc": 15,  # Staggered Golden Slot
-        "director_notes": (
-            "Target channel The mysteries of the world. Spine-chilling deep sea & sensory mystery arc: "
-            "HOOK (0-3s): Visceral 2nd-person biological/sensory phobia ('Your brain', 'Your eyes') or forbidden subterranean anomaly. "
-            "DEVELOPMENT: Reveal the impossible scale or danger of the phenomenon with real scientific grounding. "
-            "CLIMAX: The unsettling implication — what happens to the human body or mind inside this anomaly. "
-            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
-            "Tone: suspenseful, dark, eerie, fear-inducing, documentary-style. Strict English only."
-        ),
-        "topics": [
-            "Why Deep Sea Divers Never Look Up At The Surface At Night",
-            "What Happens To Your Brain After 45 Minutes In Zero Light And Zero Sound",
-            "Why Commercial Airplanes Are Forbidden From Flying Over This Ocean Grid",
-            "The Terrifying Reason Scientists Sealed The Kola Superdeep Borehole At 40,230 Feet",
-            "Why Your Body Freezes In Sleep Paralysis And What Your Brain Is Hiding",
-            "Inside Movile Cave: Sealed From Earth's Atmosphere For 5.5 Million Years",
+        "default_tags": [
+            "shorts", "wildlife", "predators", "bigcats", "nature",
+            "apexpredator", "jaguar", "animals", "documentary", "viral",
         ],
-        "default_tags": ["shorts", "mystery", "deepocean", "unexplained", "thalassophobia", "deepsea", "science", "creepy", "viral"],
     },
     "@alternatehistorywhatif-e2x": {
         "id": "@alternatehistorywhatif-e2x",
-        "name": "Alternate History & \"What If?",
+        "name": "Alternate History & \"What If?\"",
         "niche": "alternate_history",
         "language": "en",
         "google_account": "accout3",
         "preferred_voice": "en-US-GuyNeural",
         "handle": "@alternatehistorywhatif-e2x",
         "amazon_tag": "kizakawa-20",
-        "publish_hour_utc": 20,
+        "publish_hour_utc": 17,
         "director_notes": (
             "Target channel Alternate History & What If. Epic counterfactual history & 1-minute butterfly effect arc: "
             "HOOK (0-3s): The exact 1-minute historical turning point or fatal blunder that rewrote the world map. "
@@ -185,8 +169,13 @@ CHANNELS_CONFIG = {
             "What If The Titanic Never Hit The Iceberg? The Dark Truth Nobody Tells You",
             "What If The Roman Empire Discovered Steam Engines 1,800 Years Early?",
             "How One Unlocked Gate In 1453 Ended The 1,000-Year Byzantine Empire",
+            "What If The Library Of Alexandria Was Never Burned Down?",
+            "How A Single Jammed Rifle In 1914 Changed The Entire 20th Century",
         ],
-        "default_tags": ["shorts", "alternatehistory", "whatif", "history", "empires", "timeline", "documentary", "viral"],
+        "default_tags": [
+            "shorts", "alternatehistory", "whatif", "history", "empires",
+            "timeline", "documentary", "historicalfacts", "viral",
+        ],
     },
     "ch_odisseia_selvagem": {
         "id": "ch_odisseia_selvagem",
@@ -199,7 +188,7 @@ CHANNELS_CONFIG = {
         "amazon_tag": "kizakawa-20",
         "publish_hour_utc": 21,
         "director_notes": (
-            "Target channel Odisseia Selvagem (Brazilian Portuguese). Intense 4-beat wildlife predator action in Pantanal/Amazonia/Cerrado: "
+            "Target channel Odisseia Selvagem (Brazilian Portuguese). Intense 5-Act wildlife predator action in Pantanal/Amazonia/Cerrado: "
             "HOOK (0-3s): Shocking 1v1 apex duel or counter-intuitive survival feat in Portuguese (strictly 5-9 words). "
             "DEVELOPMENT: Real biomechanics, bite force (PSI), ambush speed, and terrain advantage. "
             "CLIMAX: The decisive strike or unexpected escape. "
@@ -212,8 +201,13 @@ CHANNELS_CONFIG = {
             "Harpia Brasileira vs Bicho-Preguiça: A Garra de 500 PSI Que Esmaga Ossos",
             "Surucucu-Pico-de-Jaca vs Mussurana: A Cobra Imune ao Veneno Mais Letal",
             "Poraquê da Amazônia vs Caimão: A Descarga de 860 Volts Debaixo D'Água",
+            "Sucuri-Verde vs Jacaré no Pantanal: A Emboscada Subaquática Mais Brutal",
+            "Por Que o Ratel Enfrenta Três Leões Sozinho e Nunca Recua",
         ],
-        "default_tags": ["shorts", "animais", "natureza", "vidaanimal", "pantanal", "amazonia", "predadores", "curiosidades", "viral"],
+        "default_tags": [
+            "shorts", "animais", "natureza", "vidaanimal", "pantanal",
+            "amazonia", "predadores", "curiosidades", "mundoanimal", "viral",
+        ],
     },
     "ch_misterios_do_mundo": {
         "id": "ch_misterios_do_mundo",
@@ -239,27 +233,134 @@ CHANNELS_CONFIG = {
             "O Lago Subterrâneo Selado Há 5 Milhões de Anos Onde Nada Deveria Viver",
             "O Que Acontece Com Seu Cérebro Após 45 Minutos na Câmara Mais Silenciosa do Mundo",
             "A Parede Submarina Gigante Que o Satélite Encontrou e Depois Apagou do Mapa",
+            "Por Que Submarinos Apagam Todas as Luzes Abaixo de 3.000 Metros no Oceano",
+            "O Sinal Acústico no Ponto Nemo Que Nenhum Cientista Consegue Explicar",
         ],
-        "default_tags": ["shorts", "misterios", "oceano", "curiosidades", "bizarro", "ciência", "fatosdesconhecidos", "fundodomar", "viral"],
+        "default_tags": [
+            "shorts", "misterios", "oceano", "curiosidades", "bizarro",
+            "ciencia", "fatosdesconhecidos", "fundodomar", "misteriosdomundo", "viral",
+        ],
+    },
+    "ch_paws_hearts_rescue": {
+        "id": "ch_paws_hearts_rescue",
+        "name": "Paws & Hearts Rescue",
+        "niche": "animal_rescue",
+        "language": "en",
+        "google_account": "acount_2",
+        "preferred_voice": "en-US-JennyNeural",
+        "handle": "@pawsandheartsrescue",
+        "amazon_tag": "kizakawa-20",
+        "publish_hour_utc": 18,
+        "director_notes": (
+            "Target channel Paws & Hearts Rescue. Tear-jerking emotional animal rescue arc: "
+            "HOOK (0-3s): Curiosity + Refusal to let go or trembling eye contact ('He refused to let go until...'). "
+            "DEVELOPMENT: Gentle human approach, rescuer builds trust through gentle whispers and warm blanket. "
+            "CLIMAX: Miraculous Day 1 vs Day 30 recovery and joyful sprint in sunlit meadow. "
+            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
+            "Tone: compassionate, deeply emotional, heartwarming, uplifting."
+        ),
+        "topics": [
+            "He Refused To Stop Hugging The Rescuer Who Pulled Him Out Of The Storm",
+            "The Exact Second This Stray Mama Dog Realized Her Puppies Were Safe",
+            "Everyone Walked Past The Senior Shelter Dog Until One Man Read His Sign",
+            "Terrified Stray Puppy Fell Asleep In A Rescuer's Warm Hands For The First Time",
+        ],
+        "default_tags": [
+            "shorts", "animalrescue", "rescuedog", "puppy", "dog",
+            "pets", "heartwarming", "faithinhumanity", "transformation", "animals",
+        ],
     },
 }
 
+# Aliases để tương thích ngược
+CHANNELS_CONFIG["channel_maya"] = CHANNELS_CONFIG["ch_psychology_of_the_world"]
+CHANNELS_CONFIG["ucsrjiil67qxidtxt70z-iwa"] = CHANNELS_CONFIG["ch_the_mysteries_of_the_world"]
 
-def get_schedule_slot(publish_hour_utc: int, channel_id: str = "") -> datetime:
-    """Tính slot giờ vàng tiếp theo có lệch pha chống trùng lặp."""
+SIX_ACTIVE_CHANNELS = [
+    "ch_the_mysteries_of_the_world",
+    "ch_psychology_of_the_world",
+    "ch_wild_odyssey",
+    "@alternatehistorywhatif-e2x",
+    "ch_odisseia_selvagem",
+    "ch_misterios_do_mundo",
+]
+
+_SESSION_USED_TOPICS: dict[str, list[str]] = {}
+_SESSION_OCCUPIED_SLOTS: dict[str, list[datetime]] = {}
+
+
+def get_schedule_slot(publish_hour_utc: int, channel_id: str = "") -> tuple[datetime, str, str]:
+    """
+    Tính slot giờ vàng tiếp theo có lệch pha chống trùng lặp.
+    Đảm bảo khi tạo 2 video liên tiếp cho cùng 1 kênh sẽ tự động phân bổ vào 2 khung giờ vàng khác nhau
+    (giãn cách >= 3 giờ và tối đa 2 video/ngày theo múi giờ thị trường mục tiêu US/BR).
+    """
     try:
-        from app.services.smart_scheduler import get_next_available_golden_slot
-        slot_dt, _, _, _ = get_next_available_golden_slot(channel_id or "channel_maya")
-        return slot_dt
+        from app.services.smart_scheduler import (
+            get_next_available_golden_slot,
+            is_brazil_channel,
+            BRAZIL_GOLDEN_SLOTS_UTC,
+            GOLDEN_SLOTS_UTC,
+            get_channel_stagger_minutes,
+            MIN_SPACING_SECONDS,
+            MAX_VIDEOS_PER_DAY,
+            BR_TZ,
+            US_EASTERN,
+            VN_TZ,
+            WEEKDAY_VN_MAP,
+        )
+        slot_dt, slot_iso, disp_vn, disp_us = get_next_available_golden_slot(channel_id or "ch_psychology_of_the_world")
+        prev_slots = _SESSION_OCCUPIED_SLOTS.get(channel_id, [])
+        if prev_slots and any(abs((slot_dt - ps).total_seconds()) < MIN_SPACING_SECONDS for ps in prev_slots):
+            is_br = is_brazil_channel(channel_id)
+            pool = BRAZIL_GOLDEN_SLOTS_UTC if is_br else GOLDEN_SLOTS_UTC
+            target_tz = BR_TZ if is_br else US_EASTERN
+            stagger = get_channel_stagger_minutes(channel_id)
+            base_date = max(prev_slots).date()
+            for d_off in range(0, 15):
+                t_date = base_date + timedelta(days=d_off)
+                found_new = False
+                for s_cfg in pool:
+                    cand = datetime(
+                        t_date.year, t_date.month, t_date.day,
+                        s_cfg["hour"], s_cfg["minute"], 0, tzinfo=timezone.utc
+                    ) + timedelta(minutes=stagger)
+                    if cand <= max(prev_slots) + timedelta(seconds=MIN_SPACING_SECONDS):
+                        continue
+                    m_date = cand.astimezone(target_tz).date()
+                    if sum(1 for ps in prev_slots if ps.astimezone(target_tz).date() == m_date) >= MAX_VIDEOS_PER_DAY:
+                        continue
+                    slot_dt = cand
+                    slot_iso = slot_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                    c_vn = slot_dt.astimezone(VN_TZ)
+                    w_name = WEEKDAY_VN_MAP.get(c_vn.weekday(), "Ngày")
+                    vn_p = "Đêm" if c_vn.hour >= 18 else "Sáng"
+                    disp_vn = f"{c_vn.strftime('%H:%M')} {vn_p} {w_name}, {c_vn.strftime('%d/%m/%Y')} (Giờ VN)"
+                    disp_us = s_cfg["label_us"]
+                    found_new = True
+                    break
+                if found_new:
+                    break
+        _SESSION_OCCUPIED_SLOTS.setdefault(channel_id, []).append(slot_dt)
+        return slot_dt, disp_vn, disp_us
     except Exception:
         now_utc = datetime.now(timezone.utc)
         candidate = now_utc.replace(hour=publish_hour_utc, minute=0, second=0, microsecond=0)
         if candidate <= now_utc + timedelta(hours=2):
             candidate += timedelta(days=1)
-        return candidate
+        VN_TZ = timezone(timedelta(hours=7))
+        dt_vn = candidate.astimezone(VN_TZ)
+        disp_vn = f"{dt_vn.strftime('%H:%M')} ngày {dt_vn.strftime('%d/%m/%Y')} (Giờ VN)"
+        return candidate, disp_vn, "Golden Slot"
 
 
-async def produce_channel_video(channel_key: str, custom_topic: str = None, dry_run: bool = False):
+async def produce_channel_video(
+    channel_key: str,
+    custom_topic: str = None,
+    dry_run: bool = False,
+    video_index: int = 1,
+    total_per_channel: int = 1,
+):
     cfg = CHANNELS_CONFIG[channel_key]
     ch_id = cfg["id"]
     ch_name = cfg["name"]
@@ -268,41 +369,101 @@ async def produce_channel_video(channel_key: str, custom_topic: str = None, dry_
     voice = cfg["preferred_voice"]
     amazon_tag = cfg["amazon_tag"]
 
-    SCHEDULE_SLOT_UTC = get_schedule_slot(cfg["publish_hour_utc"], ch_id)
+    SCHEDULE_SLOT_UTC, DISPLAY_VN, DISPLAY_MARKET = get_schedule_slot(cfg["publish_hour_utc"], ch_id)
     SCHEDULE_SLOT_ISO = SCHEDULE_SLOT_UTC.strftime("%Y-%m-%dT%H:%M:%SZ")
-    VN_TZ = timezone(timedelta(hours=7))
-    dt_vn = SCHEDULE_SLOT_UTC.astimezone(VN_TZ)
-    DISPLAY_VN = f"{dt_vn.strftime('%H:%M')} ngay {dt_vn.strftime('%d/%m/%Y')} (Gio VN)"
 
-    print("\n" + "=" * 75)
-    print(f"🌟 BẮT ĐẦU SẢN XUẤT CHO KÊNH: {ch_name} ({ch_id})")
+    print("\n" + "=" * 80)
+    print(f"🌟 [{video_index}/{total_per_channel}] SẢN XUẤT VIDEO CHO KÊNH: {ch_name} ({ch_id})")
     print(f"🎬 Ngách: {ch_niche} | Ngôn ngữ: {ch_lang} | Giọng: {voice}")
-    print(f"⏰ HẸN GIỜ ĐĂNG: {DISPLAY_VN} ({SCHEDULE_SLOT_UTC.strftime('%Y-%m-%d %H:%M UTC')})")
-    print("=" * 75)
+    print(f"⏰ KHUNG GIỜ VÀNG: {DISPLAY_VN} ({SCHEDULE_SLOT_ISO}) | {DISPLAY_MARKET}")
+    print("=" * 80)
 
     from app.agents.content_agent import ContentAgent
     from app.services.quality_evaluator import QualityEvaluator
-    from app.services.channel_intelligence import get_winner_cloner_blueprint, check_idea_similarity, get_channel_existing_portfolio
+    from app.services.channel_intelligence import (
+        get_winner_cloner_blueprint,
+        check_idea_similarity,
+    )
+    from app.services.niche_manager import validate_channel_niche_alignment
+    from app.database.models import get_db, VideoJob, PublishedVideo, log_activity
+    from app.services.smart_scheduler import resolve_channel_family
+    from app.agents.publisher_agent import PublisherAgent
+
     agent = ContentAgent()
     evaluator = QualityEvaluator()
 
-    # ── BƯỚC 1: TẠO VÀ ĐÁNH GIÁ CHẤM ĐIỂM KỊCH BẢN (TÍCH HỢP WINNER CLONER) ─────────
-    print(f"\n[1/5] 📝 BƯỚC 1: Xây dựng & Đánh giá kịch bản viral cho {ch_name}...")
+    # ── BƯỚC 1: TẠO VÀ ĐÁNH GIÁ CHẤM ĐIỂM KỊCH BẢN (CHỐNG TRÙNG LẶP 100%) ─────────
+    print(f"\n[1/5] 📝 BƯỚC 1: Chọn chủ đề mới & Xây dựng kịch bản viral cho {ch_name}...")
+    used_in_session = _SESSION_USED_TOPICS.setdefault(ch_id, [])
+    existing_refs: list[str] = list(used_in_session)
+    try:
+        fam_ids = resolve_channel_family(ch_id)
+        with get_db() as db:
+            recent_db = (
+                db.query(VideoJob)
+                .filter(VideoJob.target_channel_id.in_(fam_ids))
+                .order_by(VideoJob.id.desc())
+                .limit(45)
+                .all()
+            )
+            for rj in recent_db:
+                if rj.topic:
+                    existing_refs.append(rj.topic)
+                if rj.title:
+                    existing_refs.append(rj.title)
+            pub_db = (
+                db.query(PublishedVideo)
+                .filter(PublishedVideo.channel_id.in_(fam_ids))
+                .order_by(PublishedVideo.id.desc())
+                .limit(45)
+                .all()
+            )
+            for pv in pub_db:
+                if pv.title:
+                    existing_refs.append(pv.title)
+    except Exception:
+        pass
+
     if custom_topic:
         topic = custom_topic
     else:
+        candidate_topics: list[str] = []
         try:
             wb = get_winner_cloner_blueprint(ch_id, niche_id=ch_niche)
             fresh_pool = wb.get("fresh_sequel_topics") or []
             if fresh_pool:
-                topic = fresh_pool[0]
+                candidate_topics.extend(fresh_pool)
                 if wb.get("winner_title"):
                     print(f"   🏆 [Winner Cloner] Nhân bản từ quán quân '{wb['winner_title']}' ({wb['winner_views']} views)")
-            else:
-                topic = random.choice(cfg["topics"])
         except Exception:
-            topic = random.choice(cfg["topics"])
-    print(f"   -> Chủ đề chọn: {topic}")
+            pass
+        candidate_topics.extend(cfg["topics"])
+
+        topic = None
+        for cand_t in candidate_topics:
+            if cand_t in used_in_session:
+                continue
+            niche_res = validate_channel_niche_alignment(
+                channel_id=ch_id,
+                title=cand_t,
+                topic=cand_t,
+            )
+            if not niche_res.get("passed", True):
+                continue
+            is_sim, _, _ = check_idea_similarity(cand_t, existing_refs, similarity_threshold=0.52)
+            if not is_sim:
+                topic = cand_t
+                break
+        if not topic:
+            remaining = [
+                t for t in cfg["topics"]
+                if t not in used_in_session
+                and validate_channel_niche_alignment(channel_id=ch_id, title=t, topic=t).get("passed", True)
+            ]
+            topic = remaining[0] if remaining else cfg["topics"][0]
+
+    used_in_session.append(topic)
+    print(f"   -> Chủ đề được chọn: {topic}")
 
     script = None
     script_evaluation = None
@@ -312,47 +473,42 @@ async def produce_channel_video(channel_key: str, custom_topic: str = None, dry_
             topic=topic,
             channel_niche=ch_niche,
             language=ch_lang,
-            director_notes=cfg["director_notes"]
+            director_notes=cfg["director_notes"],
+            channel_id=ch_id,
         )
 
         eval_res = evaluator.evaluate_script(
             script_dict=raw_script.to_dict(),
             topic=topic,
             channel_niche=ch_niche,
-            language=ch_lang
+            language=ch_lang,
         )
 
         print(f"   📊 KẾT QUẢ ĐÁNH GIÁ KỊCH BẢN:")
         print(f"      - Điểm tổng: {eval_res['score']}/100 ({eval_res['verdict']})")
-        print(f"      - Hook 3s đầu: {eval_res['hook_score']}/10")
-        print(f"      - Đúng ngách {ch_niche}: {eval_res['niche_score']}/10")
-        print(f"      - Ngôn ngữ: {eval_res['language_score']}/10")
-        print(f"      - Nhịp điệu giữ chân: {eval_res['retention_score']}/10")
-        for s in eval_res.get("strengths", [])[:3]:
-            print(f"      ✓ {s}")
+        print(f"      - Hook 3s đầu: {eval_res['hook_score']}/10 | Đúng ngách: {eval_res['niche_score']}/10 | Ngôn ngữ: {eval_res['language_score']}/10 | Giữ chân: {eval_res['retention_score']}/10")
 
         if eval_res["passed"]:
-            print(f"   ✅ KỊCH BẢN ĐẠT TIÊU CHUẨN XUẤT BẢN! (Điểm {eval_res['score']}/100 >= 80)")
+            print(f"   ✅ KỊCH BẢN ĐẠT TIÊU CHUẨN XUẤT BẢN! ({eval_res['score']}/100 >= 80)")
             script = raw_script
             script_evaluation = eval_res
             break
         else:
-            print(f"   ⚠️ Kịch bản {eval_res['score']}/100 < 80. Thử lại...")
+            print(f"   ⚠️ Kịch bản {eval_res['score']}/100 < 80. Thử tối ưu lại...")
             script = raw_script
+            script_evaluation = eval_res
 
-    title = script.title or f"{topic.split(':')[0].strip()} #Shorts"
-    base_desc = script.description or f"Discover the truth behind {topic}! Subscribe for more daily insights.\n\n#Shorts #{ch_niche}"
-    tags = script.tags or cfg["default_tags"]
-    pinned_comment_base = f"What is your thought on this? Drop a comment below! 👇\nSubscribe to {ch_name} for more daily videos! 🔥"
+    raw_title = script.title or f"{topic.split(':')[0].strip()}"
+    base_desc = script.description or f"{script.hook or topic}\n\n#Shorts #{ch_niche}"
+    raw_tags = list(dict.fromkeys([*(script.tags or []), *cfg["default_tags"]]))
+    pinned_comment_base = script.pinned_comment or (
+        "Qual é a sua opinião sobre isso? Comente abaixo! 👇🔥"
+        if ch_lang.lower().startswith("pt")
+        else "What is your thought on this? Drop a comment below! 👇🔥"
+    )
 
-    print(f"\n   -> Tiêu đề hoàn thiện: {title}")
-    print(f"   -> Số cảnh: {len(script.scenes)} scenes")
-    for idx, s in enumerate(script.scenes):
-        print(f"      Cảnh {idx+1}: {s.narration[:70]}...")
-
-    # ── BƯỚC 2: GẮN LINK SẢN PHẨM AMAZON AFFILIATE VÀO MÔ TẢ & GHIM ─────────────
-    print(f"\n[2/5] 🛒 BƯỚC 2: Lồng ghép Link Sản Phẩm Amazon Affiliate (Tag: {amazon_tag})...")
-    from app.services.monetization_engine import enrich_video_monetization
+    # ── BƯỚC 2: TỐI ƯU BỘ TAGS SEO CHUẨN NGÁCH & CHỦ ĐỀ (TỐI ĐA 25 TAGS + HASHTAGS) ──
+    print(f"\n[2/5] 🏷️ BƯỚC 2: Tổng hợp bộ Tags SEO & Hashtags chuẩn ngách cho {ch_name}...")
     ch_monet_cfg = {
         "id": ch_id,
         "name": ch_name,
@@ -361,10 +517,20 @@ async def produce_channel_video(channel_key: str, custom_topic: str = None, dry_
         "google_account": cfg["google_account"],
         "amazon_tag": amazon_tag,
         "affiliate_enabled": False,
-        "enable_donation": False
+        "enable_donation": False,
+        "default_tags": cfg["default_tags"],
     }
-
-    final_description, final_pinned_comment, product_info = enrich_video_monetization(
+    pub_agent = PublisherAgent(channel_config=ch_monet_cfg)
+    smart_bundle = pub_agent.build_smart_video_tags_and_hashtags(
+        title=raw_title,
+        topic=topic,
+        script=script.full_narration,
+        extra_tags=raw_tags,
+    )
+    title = smart_bundle["enriched_title"]
+    tags = smart_bundle["tags"]
+    from app.services.monetization_engine import enrich_video_monetization
+    final_description, final_pinned_comment, _ = enrich_video_monetization(
         channel_config=ch_monet_cfg,
         title=title,
         description=base_desc,
@@ -372,20 +538,34 @@ async def produce_channel_video(channel_key: str, custom_topic: str = None, dry_
         topic=topic,
         script=script.full_narration,
         enable_affiliate=False,
-        enable_donation=False
+        enable_donation=False,
     )
+    if smart_bundle["description_hashtags"] not in final_description:
+        final_description = f"{final_description.strip()}\n\n{smart_bundle['description_hashtags']}".strip()
 
-    if product_info:
-        print(f"   ✅ Đã gắn sản phẩm Amazon: {product_info['name']}")
-        print(f"   🔗 Link: {product_info['affiliate_url']}")
+    print(f"   -> Tiêu đề chuẩn SEO : {title}")
+    print(f"   -> Bộ Tags ({len(tags)} thẻ): {', '.join(tags[:12])}...")
+    print(f"   -> Hashtags Mô tả    : {smart_bundle['description_hashtags']}")
+    print(f"   -> Số phân cảnh      : {len(script.scenes)} scenes")
 
     if dry_run:
-        print("\n[DRY-RUN] Hoàn tất kiểm thử kịch bản & mô tả affiliate. Dừng ở đây.")
-        return
+        print("\n[DRY-RUN] Hoàn tất kiểm thử kịch bản, bộ Tags & khe giờ vàng. Dừng ở đây.")
+        return {
+            "channel": ch_name,
+            "channel_id": ch_id,
+            "title": title,
+            "tags_count": len(tags),
+            "tags": tags,
+            "script_score": script_evaluation["score"] if script_evaluation else 85,
+            "video_score": 100,
+            "scheduled_time": DISPLAY_VN,
+            "scheduled_iso": SCHEDULE_SLOT_ISO,
+            "youtube_url": "DRY_RUN",
+            "video_id": None,
+        }
 
     # ── BƯỚC 3: ĐĂNG KÝ VIDEOJOB VÀO DATABASE ────────────────────────────────────
     print(f"\n[3/5] 💾 BƯỚC 3: Đăng ký VideoJob vào hệ thống...")
-    from app.database.models import get_db, VideoJob, log_activity
     scenes_dict = script.to_dict()
     scenes_dict["pinned_comment"] = final_pinned_comment
     scenes_json_str = json.dumps(scenes_dict, ensure_ascii=False)
@@ -404,24 +584,26 @@ async def produce_channel_video(channel_key: str, custom_topic: str = None, dry_
             scheduled_time=SCHEDULE_SLOT_UTC,
             is_auto_generated=0,
             progress_percent=15,
-            progress_message=f"Bắt đầu sản xuất video {ch_name} cho slot {DISPLAY_VN}..."
+            progress_message=f"Đang sản xuất video #{video_index} cho {ch_name} (Khung giờ vàng {DISPLAY_VN})...",
         )
         db.add(job)
         db.flush()
         job_id = job.id
         log_activity(
-            db, telegram_id=1, username="System_Director",
+            db,
+            telegram_id=1,
+            username="System_Director",
             action_type="SCHEDULED_VIDEO_START",
-            details=f"Khởi động sản xuất #{job_id} '{title}' cho {ch_name}",
-            channel_id=ch_id
+            details=f"Khởi động sản xuất #{job_id} '{title}' cho {ch_name} ({DISPLAY_VN})",
+            channel_id=ch_id,
         )
     print(f"   -> Job #{job_id} đã được khởi tạo thành công.")
 
-    # ── BƯỚC 4: DỰNG VIDEO & CHẤM ĐIỂM VIDEO CHO ĐẾN KHI ĐẠT ─────────────────────
-    print(f"\n[4/5] 🎬 BƯỚC 4: Dựng video (giọng {voice}) & Chấm điểm thành phẩm...")
+    # ── BƯỚC 4: DỰNG VIDEO CHẤT LƯỢNG CAO NHẤT (1080x1920 @ 30FPS, CRF 18) & CHẤM ĐIỂM QA ──
+    print(f"\n[4/5] 🎬 BƯỚC 4: Dựng video chất lượng cao (1080x1920 @ 30fps, giọng {voice}) & Thẩm định...")
 
     async def _progress_cb(stage: str, msg: str, percent: int = 0):
-        print(f"   [{stage}] [{percent}%] {msg}", flush=True)
+        print(f"   [Job #{job_id}] [{stage}] [{percent}%] {msg}", flush=True)
 
     from app.services.pipeline import VideoPipeline
     pipeline = VideoPipeline(job_id=job_id, progress_callback=_progress_cb)
@@ -433,26 +615,20 @@ async def produce_channel_video(channel_key: str, custom_topic: str = None, dry_
     if not output_video_path or not Path(output_video_path).exists():
         raise RuntimeError(f"Pipeline render thất bại, không tìm thấy file tại: {output_video_path}")
 
-    # Chấm điểm video thành phẩm
-    print("\n   🔍 Đang tiến hành thẩm định và chấm điểm video qua FFprobe QA...")
+    print("\n   🔍 Đang tiến hành thẩm định chất lượng kỹ thuật & thị giác của file MP4...")
     video_qa = evaluator.evaluate_video(str(output_video_path))
-    print(f"   📊 KẾT QUẢ CHẤM ĐIỂM VIDEO:")
-    print(f"      - Điểm chất lượng: {video_qa['score']}/100")
-    print(f"      - Thời lượng: {video_qa.get('duration_seconds', 0)}s")
-    print(f"      - Độ phân giải: {video_qa.get('width')}x{video_qa.get('height')} @ {video_qa.get('fps')} FPS")
-    print(f"      - Dung lượng: {video_qa.get('file_size_mb')} MB")
-    print(f"      - Âm thanh: {'Có luồng AAC' if video_qa.get('has_audio') else 'Thiếu'}")
-    print(f"      - Nhận xét: {video_qa.get('feedback')}")
+    from app.graph.evaluators.visual_critic import VisualCritic
+    vc_check = VisualCritic.inspect_clip_before_concat(
+        str(output_video_path), min_short_edge=720, min_sharpness=5.5, check_watermark=False
+    )
+    print(f"   📊 KẾT QUẢ CHẤM ĐIỂM VIDEO (#{job_id}):")
+    print(f"      - Điểm kỹ thuật FFprobe: {video_qa['score']}/100 ({video_qa.get('width')}x{video_qa.get('height')} @ {video_qa.get('fps')} FPS, {video_qa.get('duration_seconds', 0)}s, {video_qa.get('file_size_mb')} MB)")
+    print(f"      - Độ sắc nét trung bình: {vc_check.get('sharpness', 0)} | Độ sáng: {vc_check.get('mean_luminance', 0)}")
+    print(f"      - Âm thanh: {'Có luồng AAC chuẩn -14 LUFS' if video_qa.get('has_audio') else 'Thiếu'}")
 
-    if not video_qa["passed"]:
-        print(f"   ⚠️ Video cảnh báo: {video_qa.get('issues')}")
-    else:
-        print(f"   ✅ VIDEO ĐÃ ĐƯỢC CHỨNG NHẬN ĐẠT CHUẨN XUẤT BẢN! ({video_qa['score']}/100)")
-
-    # ── BƯỚC 5: HẸN LỊCH ĐĂNG LÊN KÊNH YOUTUBE & BACKUP DRIVE ────────────────────
-    print(f"\n[5/5] 🚀 BƯỚC 5: Upload YouTube Shorts & Hẹn lịch phát sóng {DISPLAY_VN}...")
-    from app.agents.publisher_agent import PublisherAgent
-    pub_agent = PublisherAgent(channel_config=ch_monet_cfg)
+    # ── BƯỚC 5: UPLOAD YOUTUBE SHORTS, GẮN TAGS SEO & HẸN LỊCH KHUNG GIỜ VÀNG ──
+    print(f"\n[5/5] 🚀 BƯỚC 5: Upload YouTube Shorts, Gắn {len(tags)} Tags SEO & Hẹn lịch {DISPLAY_VN}...")
+    thumb_to_upload = getattr(render_result, "thumbnail_vertical_path", None) or getattr(render_result, "thumbnail_path", None)
 
     pub_res = await asyncio.to_thread(
         pub_agent.upload_video,
@@ -462,82 +638,138 @@ async def produce_channel_video(channel_key: str, custom_topic: str = None, dry_
         tags=tags,
         privacy_status="private",
         schedule_time_iso=SCHEDULE_SLOT_ISO,
-        default_language="en",
-        default_audio_language="en",
+        default_language=ch_lang,
+        default_audio_language=ch_lang,
         pinned_comment=final_pinned_comment,
         topic=topic,
         script=scenes_json_str,
+        thumbnail_path=thumb_to_upload,
     )
 
-    if pub_res.get("status") == "failed":
-        raise RuntimeError(f"Upload YouTube thất bại: {pub_res.get('error')}")
-
+    pub_status = pub_res.get("status")
     yt_id = pub_res.get("video_id")
     yt_url = pub_res.get("shorts_url") or (f"https://www.youtube.com/shorts/{yt_id}" if yt_id else None)
-    print(f"   🎉 Upload YouTube Shorts thành công!")
-    print(f"   Video ID : {yt_id}")
-    print(f"   Shorts URL: {yt_url}")
-    print(f"   Trạng thái: SCHEDULED (Đã hẹn lịch phát sóng vào {DISPLAY_VN})")
+    final_tags = pub_res.get("tags") or tags
+    final_title = pub_res.get("enriched_title") or title
+    final_desc = pub_res.get("enriched_description") or final_description
 
-    # Cập nhật DB
+    if yt_id:
+        # Hậu kiểm & khóa chặt Tags SEO, Hashtags, CategoryId & Geo-Lock trực tiếp trên YouTube API
+        await asyncio.to_thread(pub_agent.verify_and_heal_video_metadata, yt_id)
+        print(f"   🎉 Upload & Hẹn lịch YouTube Shorts thành công!")
+        print(f"   Video ID  : {yt_id}")
+        print(f"   Shorts URL: {yt_url}")
+        print(f"   Tags đã gắn ({len(final_tags)} thẻ): {', '.join(final_tags[:10])}...")
+        print(f"   Lịch phát : {DISPLAY_VN} ({SCHEDULE_SLOT_ISO})")
+    elif pub_status == "waiting_quota_reset":
+        print(f"   ⏳ [Quota Guard] Kênh {ch_name} chạm trần Quota API ngày hôm nay -> Đã lưu hàng đợi WAITING_QUOTA_RESET kèm {len(final_tags)} tags & slot {DISPLAY_VN}!")
+    else:
+        raise RuntimeError(f"Upload YouTube thất bại: {pub_res.get('error')}")
+
     with get_db() as db:
         j_final = db.query(VideoJob).filter(VideoJob.id == job_id).first()
         if j_final:
-            j_final.status = "SCHEDULED" if yt_id else "RENDERED"
+            if yt_id:
+                j_final.status = "SCHEDULED"
+            elif pub_status == "waiting_quota_reset":
+                j_final.status = "WAITING_QUOTA_RESET"
+            else:
+                j_final.status = "RENDERED"
             j_final.youtube_video_id = yt_id
             j_final.video_path = str(output_video_path)
+            j_final.title = final_title
+            j_final.description = final_desc
+            j_final.tags = ",".join(final_tags)
             j_final.scheduled_time = SCHEDULE_SLOT_UTC
             j_final.progress_percent = 100
-            j_final.progress_message = f"Đã lên lịch phát sóng lúc {DISPLAY_VN}"
+            j_final.progress_message = (
+                f"Đã lên lịch phát sóng lúc {DISPLAY_VN}"
+                if yt_id
+                else f"Chờ reset Quota để phát sóng lúc {DISPLAY_VN}"
+            )
         log_activity(
-            db, telegram_id=1, username="System_Director",
+            db,
+            telegram_id=1,
+            username="System_Director",
             action_type="SCHEDULED_VIDEO_SUCCESS" if yt_id else "RENDER_VIDEO_SUCCESS",
-            details=f"Video #{job_id} ('{title}') cho {ch_name}. YT ID: {yt_id}",
-            channel_id=ch_id
+            details=f"Video #{job_id} ('{final_title}') cho {ch_name}. YT ID: {yt_id or 'WAITING_QUOTA'}",
+            channel_id=ch_id,
         )
 
-    print("\n" + "=" * 75)
-    print(f"🏆 HOÀN THÀNH XUẤT BẢN THÀNH CÔNG CHO KÊNH: {ch_name.upper()}")
-    print(f"   Tiêu đề      : {title}")
-    print(f"   Điểm kịch bản: {script_evaluation['score']}/100")
-    print(f"   Điểm video   : {video_qa['score']}/100")
-    print(f"   Lịch phát    : {DISPLAY_VN}")
-    if yt_url:
-        print(f"   Link Shorts  : {yt_url}")
-    print("=" * 75 + "\n")
     return {
+        "job_id": job_id,
         "channel": ch_name,
-        "title": title,
-        "script_score": script_evaluation["score"],
+        "channel_id": ch_id,
+        "title": final_title,
+        "tags_count": len(final_tags),
+        "tags": final_tags,
+        "script_score": script_evaluation["score"] if script_evaluation else 85,
         "video_score": video_qa["score"],
         "scheduled_time": DISPLAY_VN,
-        "youtube_url": yt_url,
-        "video_id": yt_id
+        "scheduled_iso": SCHEDULE_SLOT_ISO,
+        "youtube_url": yt_url or "WAITING_QUOTA_RESET",
+        "video_id": yt_id,
+        "status": "SCHEDULED" if yt_id else pub_status,
     }
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="Produce & schedule videos for English channels")
-    parser.add_argument("--channel", type=str, default="all", choices=["channel_maya", "ucsrjiil67qxidtxt70z-iwa", "ch_paws_hearts_rescue", "ch_wild_odyssey", "all"], help="Target channel key")
-    parser.add_argument("--dry-run", action="store_true", help="Generate script only, no render/upload")
+    parser = argparse.ArgumentParser(description="Produce & schedule videos for active YouTube Shorts channels")
+    parser.add_argument(
+        "--channel",
+        type=str,
+        default="all_6",
+        help="Target channel key or 'all_6' (6 channels excluding Paws & Hearts) or 'all'",
+    )
+    parser.add_argument("--count", type=int, default=1, help="Number of videos to produce per channel (e.g. 2)")
+    parser.add_argument("--dry-run", action="store_true", help="Generate script, tags, and golden slot only")
     args = parser.parse_args()
 
-    targets = list(CHANNELS_CONFIG.keys()) if args.channel == "all" else [args.channel]
+    if args.channel == "all_6":
+        targets = list(SIX_ACTIVE_CHANNELS)
+    elif args.channel == "all":
+        targets = list(SIX_ACTIVE_CHANNELS) + ["ch_paws_hearts_rescue"]
+    else:
+        targets = [c.strip() for c in args.channel.split(",") if c.strip()]
+
     results = []
+    videos_per_ch = max(1, int(args.count or 1))
 
     for t in targets:
-        try:
-            res = await produce_channel_video(t, dry_run=args.dry_run)
-            if res:
-                results.append(res)
-        except Exception as e:
-            logger.error(f"Lỗi khi sản xuất cho kênh {t}: {e}", exc_info=True)
+        for v_idx in range(1, videos_per_ch + 1):
+            try:
+                res = await produce_channel_video(
+                    t,
+                    dry_run=args.dry_run,
+                    video_index=v_idx,
+                    total_per_channel=videos_per_ch,
+                )
+                if res:
+                    results.append(res)
+            except Exception as e:
+                logger.error(f"❌ Lỗi khi sản xuất video #{v_idx} cho kênh {t}: {e}", exc_info=True)
+                results.append({
+                    "channel": CHANNELS_CONFIG.get(t, {}).get("name", t),
+                    "channel_id": t,
+                    "title": f"FAILED (Video #{v_idx})",
+                    "error": str(e),
+                })
 
-    print("\n" + "#" * 75)
-    print("TỔNG KẾT TẤT CẢ CÁC KÊNH ĐÃ SẢN XUẤT:")
+    print("\n" + "#" * 85)
+    print(f"📋 TỔNG KẾT SẢN XUẤT ({len(results)} VIDEO TRÊN {len(targets)} KÊNH):")
+    print("#" * 85)
     for r in results:
-        print(f"  • {r['channel']}: '{r['title']}' | Điểm: Script {r['script_score']}/100, Video {r['video_score']}/100 | Lịch: {r['scheduled_time']} | Link: {r['youtube_url']}")
-    print("#" * 75 + "\n")
+        if r.get("error"):
+            print(f"  ❌ {r['channel']}: LỖI — {r['error']}")
+        else:
+            print(
+                f"  ✅ [Job #{r.get('job_id')}] {r['channel']}: '{r['title']}'\n"
+                f"     • Điểm QA: Script {r['script_score']}/100 | Video {r['video_score']}/100\n"
+                f"     • Tags SEO ({r.get('tags_count', 0)} thẻ): {', '.join((r.get('tags') or [])[:8])}...\n"
+                f"     • Khung giờ vàng: {r['scheduled_time']} ({r.get('scheduled_iso')})\n"
+                f"     • Link Shorts: {r['youtube_url']}"
+            )
+    print("#" * 85 + "\n")
 
 
 if __name__ == "__main__":

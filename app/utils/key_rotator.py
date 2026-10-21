@@ -188,12 +188,12 @@ class KeyRotator:
             else:
                 wait_s = cooldown_sec or 45.0
                 self._model_cooldowns[f"{key}:{model}"] = now + wait_s
-                # Nếu >= 2 key trong pool bị 429 trên cùng model, khóa luôn *:model 45s để nhảy sang model kế tiếp ngay
+                # Chỉ khóa toàn cục *:model khi TOÀN BỘ các key trong pool đều bị 429 trên cùng model này
                 active_key_locks = sum(
                     1 for k in self.keys if self._model_cooldowns.get(f"{k}:{model}", 0.0) > now
                 )
-                if active_key_locks >= min(2, max(len(self.keys), 1)):
-                    self._model_cooldowns[f"*:{model}"] = now + 45.0
+                if active_key_locks >= max(len(self.keys), 1):
+                    self._model_cooldowns[f"*:{model}"] = now + 35.0
                     if model in KeyRotator._verified_live_models:
                         KeyRotator._verified_live_models = [
                             m for m in KeyRotator._verified_live_models if m != model
@@ -225,7 +225,7 @@ class KeyRotator:
                     ]
                     if healthy_cached:
                         return healthy_cached
-                elif not KeyRotator._verified_live_models and elapsed_since_probe < 30.0:
+                elif not KeyRotator._verified_live_models and elapsed_since_probe < 15.0:
                     return []
 
             raw_candidates = list(candidate_models) if candidate_models else list(GEMINI_PRIORITY_MODELS)
@@ -234,12 +234,14 @@ class KeyRotator:
                 m for m in raw_candidates
                 if self._model_cooldowns.get(f"*:{m}", 0.0) <= (now + 60.0)
             ] or raw_candidates[-3:]
-            probe_key = self._select_next_healthy_key(advance_cursor=False) or self.keys[0]
             t_start = time.monotonic()
+            n_keys = max(len(self.keys), 1)
 
-            def _ping_single_model(model_name: str) -> Tuple[str, int, float, str]:
+            def _ping_single_model(idx_and_model: Tuple[int, str]) -> Tuple[str, str, int, float, str]:
+                m_idx, model_name = idx_and_model
+                p_key = self.keys[m_idx % n_keys]
                 t0 = time.monotonic()
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={probe_key}"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={p_key}"
                 payload = {
                     "contents": [{"parts": [{"text": "1"}]}],
                     "generationConfig": {"maxOutputTokens": 2},
@@ -247,26 +249,26 @@ class KeyRotator:
                 try:
                     resp = requests.post(url, json=payload, timeout=(1.5, probe_timeout_sec))
                     latency = time.monotonic() - t0
-                    return (model_name, resp.status_code, latency, resp.text[:300] if resp.status_code != 200 else "OK")
+                    return (model_name, p_key, resp.status_code, latency, resp.text[:300] if resp.status_code != 200 else "OK")
                 except Exception as exc:
                     latency = time.monotonic() - t0
-                    return (model_name, 599, latency, f" timed out / connection error: {exc}")
+                    return (model_name, p_key, 599, latency, f" timed out / connection error: {exc}")
 
             live_results: List[Tuple[str, float]] = []
             max_workers = min(max(len(models_to_check), 1), 8)
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {executor.submit(_ping_single_model, m): m for m in models_to_check}
+                futures = {executor.submit(_ping_single_model, (idx, m)): m for idx, m in enumerate(models_to_check)}
                 for fut in as_completed(futures):
-                    m_name, status, lat, err_txt = fut.result()
+                    m_name, used_key, status, lat, err_txt = fut.result()
                     if status == 200:
                         live_results.append((m_name, lat))
                         with self._global_lock:
                             self._model_cooldowns.pop(f"*:{m_name}", None)
-                            self._model_cooldowns.pop(f"{probe_key}:{m_name}", None)
+                            self._model_cooldowns.pop(f"{used_key}:{m_name}", None)
                     elif status == 599:
-                        self.mark_model_rate_limited(probe_key, m_name, status_code=503, error_text="timed out", cooldown_sec=15.0)
+                        self.mark_model_rate_limited(used_key, m_name, status_code=503, error_text="timed out", cooldown_sec=15.0)
                     else:
-                        self.mark_model_rate_limited(probe_key, m_name, status_code=status, error_text=err_txt)
+                        self.mark_model_rate_limited(used_key, m_name, status_code=status, error_text=err_txt)
 
             # Xếp hạng các model sống (200 OK): Ưu tiên Độ Xịn (Quality Tier) cao nhất trước, nếu cùng Tier thì ưu tiên phản hồi nhanh hơn
             live_results.sort(
@@ -320,11 +322,11 @@ class KeyRotator:
                 model_list.append(m)
 
         n_keys = len(self.keys)
-        default_cap = 6 if live_ranked else 3
+        default_cap = max(8, n_keys * 2) if live_ranked else max(6, n_keys)
         limit = max_total_attempts or min(max(n_keys * len(model_list), 2), default_cap)
         yielded = 0
         yielded_models = set()
-        max_keys_per_model = min(2, n_keys)
+        max_keys_per_model = n_keys
 
         for model in model_list:
             now = time.monotonic()

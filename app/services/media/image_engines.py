@@ -249,24 +249,26 @@ class PollinationsEngine(BaseEngine):
         headers = {"User-Agent": "Mozilla/5.0"}
         if self.key:
             headers["Authorization"] = f"Bearer {self.key}"
-        # Pollinations: model=flux hoạt động miễn phí ổn định (turbo trả HTTP 402).
-        # Thử lần 1 với prompt đầy đủ (<=500 ký tự, timeout 25s), lần 2 với prompt rút gọn (<=240 ký tự, seed mới) nếu nghẽn mạng.
+        # Pollinations: Thử lần 1 với model=flux, nếu gặp HTTP 402/429 thì tự động thử endpoint mặc định không khóa model
         last_err = ""
-        for attempt_idx, (max_len, t_out) in enumerate(((500, 25), (240, 28))):
+        attempts_cfg = [
+            (500, 25, f"https://image.pollinations.ai/prompt/{{enc}}?width={GEN_W}&height={GEN_H}&model=flux&nologo=true&seed={{seed}}"),
+            (260, 25, f"https://image.pollinations.ai/prompt/{{enc}}?width={GEN_W}&height={GEN_H}&nologo=true&seed={{seed}}"),
+            (220, 25, f"https://pollinations.ai/p/{{enc}}?width={GEN_W}&height={GEN_H}&nologo=true&seed={{seed}}"),
+        ]
+        for attempt_idx, (max_len, t_out, url_tpl) in enumerate(attempts_cfg):
             enc = urllib.parse.quote(prompt[:max_len].strip())
             cur_seed = seed + attempt_idx * 17
-            url = f"https://image.pollinations.ai/prompt/{enc}?width={GEN_W}&height={GEN_H}&model=flux&nologo=true&seed={cur_seed}"
+            url = url_tpl.format(enc=enc, seed=cur_seed)
             try:
                 r = requests.get(url, headers=headers, timeout=t_out)
                 if r.status_code == 200 and len(r.content) >= 5000:
                     return r.content
-                last_err = f"flux(try {attempt_idx+1}): HTTP {r.status_code}"
-                if r.status_code == 402 and not self.key:
-                    break
+                last_err = f"try {attempt_idx+1}: HTTP {r.status_code}"
                 if r.status_code in (429, 502, 503, 504):
-                    time.sleep(1.2)
+                    time.sleep(1.0)
             except Exception as e:
-                last_err = f"flux(try {attempt_idx+1}): {type(e).__name__}"
+                last_err = f"try {attempt_idx+1}: {type(e).__name__}"
                 time.sleep(0.8)
                 continue
         raise EngineError(f"Pollinations thất bại ({last_err})")

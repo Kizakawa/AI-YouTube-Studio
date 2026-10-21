@@ -191,17 +191,19 @@ Return a JSON object with your decision:
 3. "is_abstract_keyword": Boolean (true if "hook_visual_mode" is "scene", false if "hook_visual_mode" is "video").
 4. "climax_scene_id": Integer scene_id (between 2 and {max(len(base_scenes), 2)}) where the most intense mid-video climax occurs in the body of the script so we can splice the Peak clip there too.
 5. "climax_description": 1-sentence description of the peak visual climax.
-6. "search_queries": 3 high-hit English YouTube Shorts search queries (2 to 4 words each, strictly using "canonical_subject" + action/format, NO quotes, NO hashtags, NO flowery adjectives; for monsters/cryptids/ocean horrors include "<canonical_subject> 3d animation" and "<canonical_subject> thalassophobia").
+6. "search_queries": 3 high-hit English YouTube Shorts search queries (2 to 4 words each, strictly using "canonical_subject" + action/format, NO quotes, NO hashtags, NO flowery adjectives):
+   - If "canonical_subject" is a REAL living animal, real person, or real-world phenomenon (e.g. orca, great white shark, jaguar, honey badger, harpy eagle, submarine, diver): NEVER use "3d animation" or "size comparison"! Always query real wildlife/documentary action (e.g. "orca hunting shark", "jaguar attacking caiman").
+   - ONLY if "canonical_subject" is a fictional, mythical, or extinct monster/cryptid with zero real camera footage (e.g. leviathan, kraken, bloop, cthulhu, megalodon): include "<canonical_subject> 3d animation" and "<canonical_subject> thalassophobia".
 7. "atmosphere_fx": Pick ONE from: "history", "psychology", "mystery", "action".
 
 Return ONLY valid JSON:
 {{
-  "canonical_subject": "leviathan",
+  "canonical_subject": "subject noun",
   "hook_visual_mode": "video",
   "is_abstract_keyword": false,
   "climax_scene_id": {climax_scene_id},
   "climax_description": "...",
-  "search_queries": ["leviathan 3d animation", "leviathan thalassophobia", "sea monster megalophobia"],
+  "search_queries": ["query 1", "query 2", "query 3"],
   "atmosphere_fx": "action"
 }}"""
 

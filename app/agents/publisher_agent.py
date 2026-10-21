@@ -732,6 +732,11 @@ class PublisherAgent:
             except Exception as q_err:
                 logger.warning(f"Không thể ghi nhận quota: {q_err}")
 
+            logger.info(
+                f"🏷️ [PublisherAgent] Đã gắn {len(tag_list[:25])} thẻ Tags SEO & Hashtags cho '{clean_title}': "
+                f"{tag_list[:10]}..."
+            )
+
             return {
                 "status": "success",
                 "video_id": video_id,
@@ -743,7 +748,9 @@ class PublisherAgent:
                 "comment_id": posted_comment_id,
                 "thumbnail_uploaded": uploaded_thumb,
                 "product_info": prod_info if "prod_info" in locals() and prod_info else None,
+                "enriched_title": clean_title,
                 "enriched_description": desc_clean,
+                "tags": tag_list[:25],
             }
 
         except Exception as e:
@@ -901,11 +908,15 @@ class PublisherAgent:
             logger.warning(f"💬 [PublisherAgent] Không thể đăng bình luận mồi lên video {video_id}: {e}")
             return None
 
+    _CUSTOM_THUMB_FORBIDDEN_CHANNELS = set()
+
     def upload_thumbnail(self, video_id: str, thumbnail_path: str) -> bool:
         """
         Tải thumbnail tùy chỉnh lên YouTube qua YouTube Data API v3 (thumbnails.set).
         Áp dụng cho video Shorts nhằm tối ưu tỷ lệ click CTR > 10%.
         """
+        if self.channel_id in self._CUSTOM_THUMB_FORBIDDEN_CHANNELS:
+            return False
         if not self.service or not video_id or not os.path.exists(thumbnail_path):
             logger.warning(f"📸 [PublisherAgent] Không đủ điều kiện upload thumbnail (video_id={video_id}, path={thumbnail_path})")
             return False
@@ -918,6 +929,10 @@ class PublisherAgent:
             logger.info(f"📸 [PublisherAgent] ✅ Đã upload custom thumbnail thành công cho video {video_id}: {thumbnail_path}")
             return True
         except Exception as e:
+            if "403" in str(e) and "permissions to upload and set custom video thumbnails" in str(e):
+                self._CUSTOM_THUMB_FORBIDDEN_CHANNELS.add(self.channel_id)
+                logger.info(f"📸 [PublisherAgent] Kênh '{self.channel_name}' chưa bật tính năng Custom Thumbnail trên YouTube Studio -> Bỏ qua tự động cho các video tiếp theo.")
+                return False
             logger.warning(f"📸 [PublisherAgent] Không thể upload custom thumbnail ({thumbnail_path}): {e}")
             return False
 
