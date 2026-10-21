@@ -127,12 +127,12 @@ class Settings:
         keys = []
         if cls.GEMINI_API_KEYS_RAW:
             for k in cls.GEMINI_API_KEYS_RAW.split(","):
-                k_clean = k.strip()
+                k_clean = k.strip().strip('"').strip("'")
                 if k_clean:
                     keys.append(k_clean)
         elif cls.GEMINI_API_KEY_SINGLE:
             keys.append(cls.GEMINI_API_KEY_SINGLE.strip())
-        aiza_keys = [k for k in keys if k.startswith("AIza")]
+        aiza_keys = [k for k in keys if k.startswith(("AIza", "AQ."))]
         return aiza_keys if aiza_keys else keys
 
     @classmethod
@@ -141,7 +141,7 @@ class Settings:
         keys = []
         if cls.PEXELS_API_KEYS_RAW:
             for k in cls.PEXELS_API_KEYS_RAW.split(","):
-                k_clean = k.strip()
+                k_clean = k.strip().strip('"').strip("'")
                 if k_clean:
                     keys.append(k_clean)
         elif cls.PEXELS_API_KEY:

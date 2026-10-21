@@ -13,20 +13,16 @@ import requests
 # Hệ thống sẽ bắn kiểm tra ĐỒNG THỜI (Parallel Probe) toàn bộ danh sách này cùng 1 lúc,
 # loại bỏ ngay các model bị treo (Timeout) hoặc hết hạn mức (429/404), và chọn Model xịn nhất phản hồi thành công.
 GEMINI_PRIORITY_MODELS: List[str] = [
-    "gemini-4-argon",                # Tier S+ (#1): Gemini 4 Flagship Reasoning & Multimodal
-    "gemini-3.8-flash",              # Tier S  (#2): Gemini 3.8 Flash Flagship
-    "gemini-3.7-flash",              # Tier S  (#3): Gemini 3.7 Flash
-    "gemini-3.6-flash",              # Tier A+ (#4): Gemini 3.6 Flash Multimodal & JSON
-    "gemini-3.5-flash",              # Tier A+ (#5): Gemini 3.5 Flash Multimodal & JSON
-    "gemini-3.1-pro-preview",        # Tier A+ (#6): Gemini 3.1 Pro Preview
-    "gemini-omni-1.1-flash",         # Tier A  (#7): Gemini Omni 1.1 Flash
-    "gemini-3-flash-preview",        # Tier A  (#8): Gemini 3.0 Flash Preview
-    "gemini-flash-latest",           # Tier A  (#9): Alias Flash chính thức
-    "gemini-3.5-flash-lite",         # Tier B+ (#10): Gemini 3.5 Flash-Lite siêu tốc, quota dồi dào
-    "gemini-robotics-er-2-preview",  # Tier B+ (#11): Gemini ER 2 Preview (Bucket quota độc lập siêu ổn định khi Flash 429)
-    "gemini-3.1-flash-lite",         # Tier B  (#12): Gemini 3.1 Flash-Lite ổn định
-    "gemini-3.1-flash-lite-preview", # Tier B  (#13): Gemini 3.1 Flash-Lite Preview
-    "gemini-flash-lite-latest",      # Tier B  (#14): Fallback cuối siêu tốc, hạn mức dồi dào nhất
+    "gemini-3-flash-preview",        # Tier S+ (#1): Gemini 3.0 Flash Preview (Multimodal & JSON nhanh nhất)
+    "gemini-3.1-pro-preview",        # Tier S  (#2): Gemini 3.1 Pro Preview
+    "gemini-3.1-flash-lite-preview", # Tier A+ (#3): Gemini 3.1 Flash-Lite Preview (Siêu tốc, quota độc lập)
+    "gemma-4-31b-it",                # Tier A+ (#4): Gemma 4 31B IT (Quota rất dồi dào, viết kịch bản 5 hồi xuất sắc)
+    "gemma-4-26b-a4b-it",            # Tier A  (#5): Gemma 4 26B A4B IT (MoE siêu nhanh, bucket quota riêng)
+    "gemini-flash-latest",           # Tier A  (#6): Alias Flash chính thức
+    "gemini-flash-lite-latest",      # Tier B+ (#7): Alias Flash-Lite chính thức
+    "gemini-robotics-er-2-preview",  # Tier B+ (#8): Gemini ER 2 Preview (Bucket quota độc lập)
+    "gemini-2.5-flash",              # Tier B  (#9): Legacy 2.5 Flash
+    "gemini-2.5-flash-lite",         # Tier B  (#10): Legacy 2.5 Flash-Lite
 ]
 
 # Điểm xếp hạng độ "xịn" (Quality Tier) của từng model để chọn model mạnh nhất trong số các model phản hồi thành công
@@ -157,14 +153,25 @@ class KeyRotator:
         with self._global_lock:
             if (
                 status_code == 404
-                or "limit: 0" in err_low
                 or "no longer available" in err_low
                 or "not found" in err_low
+            ):
+                # Model không tồn tại hoặc đã ngừng hỗ trợ -> khóa toàn cục *:model
+                self._model_cooldowns[f"*:{model}"] = now + (cooldown_sec or 3600.0)
+            elif (
+                "limit: 0" in err_low
                 or "generate_content_free_tier_requests" in err_low
                 or "perday" in err_low
                 or bool(_re.search(r"retry in \d+\s*[hm]", err_low))
             ):
-                self._model_cooldowns[f"*:{model}"] = now + (cooldown_sec or 3600.0)
+                # Hết hạn mức ngày theo từng Project/Key -> chỉ khóa cặp (key:model) này trong 60 phút
+                self._model_cooldowns[f"{key}:{model}"] = now + (cooldown_sec or 3600.0)
+                # Chỉ khóa toàn cục *:model nếu TẤT CẢ các key trong pool đều đã cạn model này
+                all_keys_exhausted = all(
+                    self._model_cooldowns.get(f"{k}:{model}", 0.0) > now for k in self.keys
+                )
+                if all_keys_exhausted:
+                    self._model_cooldowns[f"*:{model}"] = now + (cooldown_sec or 3600.0)
             elif "timed out" in err_low or "timeout" in err_low:
                 self._model_cooldowns[f"*:{model}"] = now + (cooldown_sec or 25.0)
             elif status_code == 503:
@@ -174,11 +181,11 @@ class KeyRotator:
             else:
                 wait_s = cooldown_sec or 45.0
                 self._model_cooldowns[f"{key}:{model}"] = now + wait_s
-                # Nếu >= 2 key trong pool (hoặc toàn bộ key hiện có) bị 429 trên cùng model, khóa luôn *:model 45s
+                # Nếu toàn bộ key hiện có trong pool đều bị 429 trên cùng model, khóa luôn *:model 45s
                 active_key_locks = sum(
                     1 for k in self.keys if self._model_cooldowns.get(f"{k}:{model}", 0.0) > now
                 )
-                if active_key_locks >= min(2, max(len(self.keys), 1)):
+                if active_key_locks >= max(len(self.keys), 1):
                     self._model_cooldowns[f"*:{model}"] = now + 45.0
 
     def probe_all_models_concurrently(
