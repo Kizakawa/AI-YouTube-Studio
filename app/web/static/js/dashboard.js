@@ -1458,7 +1458,27 @@ async function openVideoDetail(jobId) {
         </div>` : ''}
         <div class="detail-row">
             <div class="detail-label">Tiêu Đề</div>
-            <div class="detail-value" style="font-weight:600;font-size:16px;">${esc(data.title) || '—'}</div>
+            <div class="detail-value" id="detail-video-title-${data.id}" style="font-weight:600;font-size:16px;">${esc(data.title) || '—'}</div>
+        </div>
+        <div class="detail-row" style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.25);border-radius:10px;padding:12px 14px;margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+                <div style="font-weight:700;color:#60a5fa;font-size:12.5px;display:flex;align-items:center;gap:6px;">
+                    <span>🏷️ Thẻ Tags & Hashtags Video</span>
+                    ${data.youtube_id ? `<span class="badge badge-green" style="font-size:10px;">Đồng bộ trực tiếp YouTube (${esc(data.youtube_id)})</span>` : `<span class="badge badge-purple" style="font-size:10px;">Tự động gắn khi Upload</span>`}
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="autoSuggestAndApplyVideoTags(${data.id})" style="font-size:11px;padding:3px 9px;border-color:rgba(59,130,246,0.4);color:#60a5fa;font-weight:600;">
+                    ✨ Tự Động Gắn Tag Chuẩn Ngách
+                </button>
+            </div>
+            <div id="detail-tags-chips-${data.id}" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;">
+                ${(data.tags ? data.tags.split(',').map(t => t.trim()).filter(Boolean) : []).map(t => `<span style="font-size:11px;padding:2px 8px;border-radius:12px;background:rgba(59,130,246,0.18);color:#93c5fd;border:1px solid rgba(59,130,246,0.3);">#${esc(t.replace(/^#+/, ''))}</span>`).join('') || '<span style="font-size:11px;color:var(--text-muted);">Chưa có tag — bấm Gợi Ý hoặc nhập thêm bên dưới</span>'}
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                <input type="text" id="detail-add-tags-input-${data.id}" class="form-input" style="flex:1;min-width:200px;font-size:12px;padding:6px 10px;" placeholder="Nhập thêm tag (VD: wildlife, honey badger, predator...)" onkeydown="if(event.key==='Enter'){event.preventDefault();addCustomTagsToVideo(${data.id});}">
+                <button type="button" class="btn btn-primary btn-sm" onclick="addCustomTagsToVideo(${data.id})" style="font-size:11.5px;padding:6px 12px;font-weight:600;">
+                    ➕ Gắn Thêm Tag
+                </button>
+            </div>
         </div>
         ${evalDetailHTML}
         ${data.error_message && data.status === 'FAILED' ? `
@@ -2077,9 +2097,16 @@ async function openPublishModal(jobId) {
     titleInput.value = job.title || job.topic || '';
     updateTitleCounter();
 
-    // Set description
+    // Set description & tags
     const descInput = document.getElementById('publish-desc-input');
     descInput.value = job.description || (job.tags ? job.tags.split(',').map(t => `#${t.trim()}`).join(' ') : '#shorts #viral');
+    const tagsInput = document.getElementById('publish-tags-input');
+    if (tagsInput) {
+        tagsInput.value = job.tags || '';
+        if (!tagsInput.value) {
+            suggestTagsForPublishModal(true);
+        }
+    }
 
     // Reset pinned comment
     const commentInput = document.getElementById('publish-pinned-comment-input');
@@ -2347,6 +2374,7 @@ async function submitPublishYouTube() {
     );
 
     try {
+        const tagsVal = document.getElementById('publish-tags-input')?.value?.trim() || '';
         const res = await fetch(`/api/videos/${jobId}/publish-youtube`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2354,6 +2382,7 @@ async function submitPublishYouTube() {
                 channel_id: channelId,
                 title: title,
                 description: description,
+                tags: tagsVal,
                 pinned_comment: pinnedComment,
                 privacy: privacy,
                 auto_schedule: isAutoSchedule,
@@ -9772,3 +9801,104 @@ async function renderApprovedStoryboard() {
     }
 }
 
+
+
+async function suggestTagsForPublishModal(silent = false) {
+    const jobId = document.getElementById('publish-job-id')?.value;
+    const channelId = document.getElementById('publish-channel-select')?.value || '';
+    if (!jobId) return;
+    try {
+        const res = await fetch(`/api/videos/${jobId}/suggest-tags` + (channelId ? `?channel_id=${encodeURIComponent(channelId)}` : ''));
+        const data = await res.json();
+        if (data.success) {
+            const tagsInput = document.getElementById('publish-tags-input');
+            if (tagsInput) tagsInput.value = data.tags_csv || (data.tags || []).join(', ');
+            const titleInput = document.getElementById('publish-title-input');
+            if (titleInput && data.enriched_title) {
+                titleInput.value = data.enriched_title;
+                updateTitleCounter();
+            }
+            if (!silent) {
+                showToast(`✨ Đã gợi ý ${data.tags?.length || 0} tags & hashtags chuẩn ngách!`, 'success');
+            }
+        }
+    } catch (e) {
+        if (!silent) showToast('Không thể lấy gợi ý tag tự động', 'error');
+    }
+}
+
+function _renderVideoTagChips(jobId, tagsList, newTitle) {
+    const chipsBox = document.getElementById(`detail-tags-chips-${jobId}`);
+    if (chipsBox && Array.isArray(tagsList)) {
+        chipsBox.innerHTML = tagsList.map(t => `<span style="font-size:11px;padding:2px 8px;border-radius:12px;background:rgba(59,130,246,0.18);color:#93c5fd;border:1px solid rgba(59,130,246,0.3);">#${esc(String(t).replace(/^#+/, ''))}</span>`).join('');
+    }
+    if (newTitle) {
+        const titleEl = document.getElementById(`detail-video-title-${jobId}`);
+        if (titleEl) titleEl.textContent = newTitle;
+    }
+}
+
+async function addCustomTagsToVideo(jobId) {
+    const inputEl = document.getElementById(`detail-add-tags-input-${jobId}`);
+    const rawTags = inputEl ? inputEl.value.trim() : '';
+    if (!rawTags) {
+        showToast('Vui lòng nhập ít nhất 1 tag để gắn thêm vào video', 'warning');
+        return;
+    }
+    try {
+        showToast(`🏷️ Đang gắn thêm tag vào Video #${jobId}...`, 'info');
+        const res = await fetch(`/api/videos/${jobId}/tags`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                tags: rawTags,
+                append: true,
+                sync_youtube: true,
+                update_title_hashtags: true,
+                update_description_hashtags: true
+            })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            if (inputEl) inputEl.value = '';
+            _renderVideoTagChips(jobId, data.tags || [], data.title);
+            showToast(`✅ ${data.message}`, 'success');
+            await fetchVideos();
+        } else {
+            showToast(data.detail || data.error || 'Lỗi khi gắn thêm tag', 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi kết nối khi gắn thêm tag', 'error');
+    }
+}
+
+async function autoSuggestAndApplyVideoTags(jobId) {
+    try {
+        showToast(`✨ Đang phân tích chủ đề & gắn bộ Tags chuẩn ngách cho Video #${jobId}...`, 'info');
+        const sugRes = await fetch(`/api/videos/${jobId}/suggest-tags`);
+        const sugData = await sugRes.json();
+        if (!sugData.success) {
+            showToast('Không thể tạo gợi ý tag', 'error');
+            return;
+        }
+        const res = await fetch(`/api/videos/${jobId}/tags`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                tags: sugData.tags || [],
+                append: true,
+                sync_youtube: true,
+                update_title_hashtags: true,
+                update_description_hashtags: true
+            })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            _renderVideoTagChips(jobId, data.tags || [], data.title);
+            showToast(`✅ ${data.message}`, 'success');
+            await fetchVideos();
+        }
+    } catch (e) {
+        showToast('Lỗi khi tự động gắn tag', 'error');
+    }
+}

@@ -2069,7 +2069,23 @@ Ví dụ Căn Theo Mốc:
             <!-- Description & Tags -->
             <div class="form-group" style="margin-bottom:14px;">
                 <label class="form-label" for="publish-desc-input"><strong>3. Mô Tả Video & Hashtags:</strong></label>
-                <textarea id="publish-desc-input" class="form-input" rows="4" style="font-size:12px;" placeholder="#shorts #viral..."></textarea>
+                <textarea id="publish-desc-input" class="form-input" rows="3" style="font-size:12px;" placeholder="#shorts #viral..."></textarea>
+            </div>
+
+            <!-- Video SEO Tags & Hashtags -->
+            <div class="form-group" style="margin-bottom:14px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <label class="form-label" for="publish-tags-input" style="margin-bottom:0;">
+                        <strong>🏷️ 3.5. Thẻ Tags SEO & Hashtags (Gắn vào Video & Tiêu Đề):</strong>
+                    </label>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="suggestTagsForPublishModal()" style="font-size:11px; padding:3px 8px; border-color:rgba(59,130,246,0.4); color:#60a5fa;">
+                        ✨ Gợi Ý Tag Chuẩn Ngách
+                    </button>
+                </div>
+                <input type="text" id="publish-tags-input" class="form-input" style="font-size:12px;" placeholder="Nhập các tag cách nhau bằng dấu phẩy (VD: wildlife, honey badger, animals, nature...)">
+                <div style="font-size:10.5px; color:var(--text-muted); margin-top:3px;">
+                    💡 Hệ thống tự động gắn các tag này vào <code>snippet.tags</code> của YouTube, cuối phần Mô tả và 2-3 hashtag chuẩn ngách trên Tiêu đề.
+                </div>
             </div>
 
             <!-- Amazon Affiliate Monetization Preview Card -->

@@ -6,7 +6,7 @@ import base64
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -348,17 +348,19 @@ class PublisherAgent:
             clean_title,
             flags=re.IGNORECASE
         ).strip()
-        # Khử toàn bộ chuỗi hashtag rác/lệch ngách ở cuối tiêu đề (ví dụ #legacyofalexander, #narcisist, #space)
-        # Chỉ giữ lại duy nhất 1 thẻ #Shorts chuẩn ở cuối để thuật toán Shorts Classifier không bị nhiễu.
+        # Khử toàn bộ chuỗi hashtag cũ ở cuối tiêu đề để gắn lại bộ Hashtag Chuẩn Ngách + Chủ Đề thông minh
         clean_title = re.sub(r'(?:\s+#[^\s#]+)+\s*$', '', clean_title).strip()
         clean_title = re.sub(r'#shorts\b', '', clean_title, flags=re.IGNORECASE).strip()
         if not clean_title:
             clean_title = (title or "Shorts Video").strip()
 
-        # Đảm bảo video được gắn cờ và phân loại 100% là YouTube Shorts
-        if len(clean_title) > 91:
-            clean_title = clean_title[:91].rstrip()
-        clean_title = f"{clean_title} #Shorts"
+        smart_bundle = self.build_smart_video_tags_and_hashtags(
+            title=clean_title,
+            topic=topic or "",
+            script=script or "",
+            extra_tags=tags,
+        )
+        clean_title = smart_bundle["enriched_title"]
 
         # Tự động tối ưu hóa kiếm tiền qua Amazon Affiliate & Kêu gọi ủng hộ PayPal
         prod_info = None
@@ -405,23 +407,12 @@ class PublisherAgent:
         else:
             logger.info(f"Ngách '{niche_id}' không bật affiliate hay donation -> Giữ mô tả sạch tối ưu phân phối Shorts Feed")
 
-        # Đảm bảo description luôn có hashtag nhận diện Shorts
-        shorts_hashtags = "#Shorts #shorts #viral #ytshorts"
-        if "#shorts" not in desc_clean.lower():
-            desc_clean = f"{desc_clean.strip()}\n\n{shorts_hashtags}" if desc_clean.strip() else shorts_hashtags
+        # Đảm bảo description luôn có khối Hashtags thông minh (Ngách + Chủ đề + Shorts)
+        desc_hashtag_line = smart_bundle["description_hashtags"]
+        desc_without_trailing_hashes = re.sub(r'(?:\n*\s*(?:#[^\s#]+\s*)+)$', '', (desc_clean or "").strip()).strip()
+        desc_clean = f"{desc_without_trailing_hashes}\n\n{desc_hashtag_line}".strip() if desc_without_trailing_hashes else desc_hashtag_line
 
-        tag_list = []
-        if isinstance(tags, list):
-            tag_list = list(tags)
-        elif isinstance(tags, str):
-            tag_list = [t.strip() for t in tags.split(",") if t.strip()]
-
-        # Loại bỏ các tag rò rỉ vùng VN trên kênh quốc tế
-        tag_list = [t for t in tag_list if t.lower() not in ("vn", "vietnam", "vietnamese", "tiengviet")]
-
-        for req_tag in ["Shorts", "shorts", "ytshorts", "viral"]:
-            if req_tag.lower() not in [t.lower() for t in tag_list]:
-                tag_list.append(req_tag)
+        tag_list = list(smart_bundle["tags"])
 
         # Chuẩn hóa ngôn ngữ mặc định & Tọa độ GPS định tuyến vùng (US Geo-Lock / Brazil Geo-Lock chuẩn BCP-47)
         cfg_lang = str(self.channel_config.get("language") or "").strip()
@@ -1087,10 +1078,353 @@ class PublisherAgent:
             return "15"
         return "22"
 
+    def build_smart_video_tags_and_hashtags(
+        self,
+        title: str,
+        topic: str = "",
+        script: str = "",
+        extra_tags: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """
+        Tự động tổng hợp bộ Tags SEO (`snippet.tags`) và Hashtags (`#Shorts #...`) chuẩn ngách & sát chủ đề thực tế của video:
+        1. Trích xuất thực thể/từ khóa chủ đề trực tiếp từ `title` và `topic`.
+        2. Khóa chặt bộ Hashtag/Tag cốt lõi theo từng ngách kênh (`wildlife_predators`, `psychology`, `deep_sea_earth_mysteries`, `alternate_history`, `animal_rescue`) và ngôn ngữ (`en-US` / `pt-BR`).
+        3. Chặn 100% các hashtag sai chính tả hoặc lệch ngách (`#narcisist`, `#legacyofalexander`, `#masteringdiscipline`, `#space`, `#titanic` khi không khớp chủ đề).
+        4. Gắn 2-3 hashtag chuẩn ngách ngay sau `#Shorts` trên Tiêu đề (đảm bảo <= 100 ký tự) + 8-10 hashtag ở cuối Mô tả + tối đa 25 thẻ `tags` cho YouTube Data API v3.
+        """
+        raw_niche = str(self.channel_config.get("niche") or "").lower()
+        cfg_lang = str(self.channel_config.get("language") or "").strip().lower()
+        is_br = cfg_lang.startswith("pt")
+
+        # Làm sạch tiêu đề gốc (bỏ mọi chuỗi #hashtag ở cuối)
+        base_title = re.sub(r'(?:\s+#[^\s#]+)+\s*$', '', (title or "").strip()).strip()
+        base_title = re.sub(r'#shorts\b', '', base_title, flags=re.IGNORECASE).strip()
+        if not base_title:
+            base_title = (topic or "Shorts Video").strip()
+
+        # Danh sách từ khóa cấm / sai chính tả / dễ gây lệch ngách
+        BLACKLIST_TAGS = {
+            "narcisist", "masteringdiscipline", "legacyofalexander", "vn", "vietnam",
+            "vietnamese", "tiengviet", "variant", "option", "test", "undefined", "null"
+        }
+        text_context = f"{base_title} {topic or ''}".lower()
+
+        # Cấu hình bộ Hashtag Tiêu đề & Tags SEO cốt lõi theo từng Ngách + Ngôn ngữ
+        if any(k in raw_niche for k in ("wildlife", "predator")):
+            if is_br:
+                niche_title_hashes = ["vidaanimal", "animais", "natureza"]
+                niche_core_tags = [
+                    "vida selvagem", "animais", "natureza", "mundo animal", "predadores",
+                    "reino animal", "curiosidades animais", "batalha animal", "documentario animal",
+                    "selva", "brasil", "Shorts", "shorts", "ytshorts", "viral",
+                ]
+            else:
+                niche_title_hashes = ["wildlife", "animals", "nature"]
+                niche_core_tags = [
+                    "wildlife", "animals", "nature", "animal kingdom", "apex predator",
+                    "wild animals", "nature documentary", "animal facts", "wildlife battle",
+                    "predator", "usa", "Shorts", "shorts", "ytshorts", "viral",
+                ]
+        elif "psychology" in raw_niche:
+            niche_title_hashes = ["psychology", "humanbehavior", "mindset"]
+            niche_core_tags = [
+                "psychology", "human behavior", "body language", "dark psychology",
+                "psychology facts", "mindset", "social skills", "subconscious mind",
+                "behavioral psychology", "usa", "Shorts", "shorts", "ytshorts", "viral",
+            ]
+        elif any(k in raw_niche for k in ("deep_sea", "ocean", "mystery", "earth")):
+            if is_br:
+                niche_title_hashes = ["misterios", "curiosidades", "ciencia"]
+                niche_core_tags = [
+                    "misterios", "curiosidades", "ciencia", "misterios do mundo", "oceano",
+                    "descobertas", "fatos desconhecidos", "fenomenos naturais", "fundo do mar",
+                    "brasil", "Shorts", "shorts", "ytshorts", "viral",
+                ]
+            else:
+                niche_title_hashes = ["mystery", "science", "ocean"]
+                niche_core_tags = [
+                    "mystery", "science facts", "unexplained mysteries", "deep sea",
+                    "ocean mysteries", "earth mysteries", "scientific discovery", "nature mystery",
+                    "facts", "usa", "Shorts", "shorts", "ytshorts", "viral",
+                ]
+        elif any(k in raw_niche for k in ("history", "what_if", "alternate")):
+            niche_title_hashes = ["history", "whatif", "documentary"]
+            niche_core_tags = [
+                "history", "alternate history", "what if", "historical facts",
+                "world history", "ancient history", "history documentary", "civilization",
+                "timeline", "usa", "Shorts", "shorts", "ytshorts", "viral",
+            ]
+        elif any(k in raw_niche for k in ("rescue", "pet", "animal_rescue")):
+            niche_title_hashes = ["animalrescue", "dogrescue", "wholesome"]
+            niche_core_tags = [
+                "animal rescue", "dog rescue", "cat rescue", "wholesome", "saved animals",
+                "heartwarming", "pet rescue", "stray dog", "faith in humanity",
+                "usa", "Shorts", "shorts", "ytshorts", "viral",
+            ]
+        else:
+            niche_title_hashes = ["facts", "mystery", "viral"]
+            niche_core_tags = ["facts", "mystery", "documentary", "Shorts", "shorts", "ytshorts", "viral"]
+
+        # Chặn các tag chéo ngách nếu nội dung thực tế của video không hề nhắc tới
+        CROSS_NICHE_GUARDS = {
+            "space": ("space", "planet", "galaxy", "nasa", "black hole", "astronaut", "universe", "espaco", "planeta"),
+            "titanic": ("titanic", "shipwreck", "iceberg", "1912"),
+            "alexander": ("alexander", "macedon"),
+            "narcissist": ("narcissist", "narcissism", "toxic"),
+            "motivation": ("motivation", "discipline", "habit"),
+        }
+
+        def _is_tag_allowed(raw_t: str) -> bool:
+            t_clean = re.sub(r'^#+', '', (raw_t or "").strip()).lower()
+            if not t_clean or len(t_clean) < 2 or len(t_clean) > 40:
+                return False
+            if t_clean in BLACKLIST_TAGS:
+                return False
+            for guard_key, required_words in CROSS_NICHE_GUARDS.items():
+                if guard_key in t_clean and not any(w in text_context for w in required_words):
+                    return False
+            return True
+
+        # 1. Thu thập extra_tags do người dùng/script truyền vào + default_tags của kênh
+        custom_tags: List[str] = []
+        for src in (extra_tags, self.channel_config.get("default_tags")):
+            if isinstance(src, list):
+                custom_tags.extend(str(x).strip() for x in src if str(x).strip())
+            elif isinstance(src, str):
+                custom_tags.extend(x.strip() for x in re.split(r'[,;#]+', src) if x.strip())
+
+        # 2. Trích xuất thực thể chủ đề nổi bật TRỰC TIẾP TỪ TIÊU ĐỀ (đúng ngôn ngữ kênh EN vs pt-BR)
+        KNOWN_SUBJECTS_EN = [
+            "honey badger", "komodo dragon", "sperm whale", "colossal squid", "giant squid",
+            "orca", "killer whale", "great white shark", "saltwater crocodile", "nile crocodile",
+            "hippo", "polar bear", "grizzly bear", "siberian tiger", "bengal tiger", "jaguar",
+            "leopard", "snow leopard", "lion", "hyena", "harpy eagle", "cassowary", "king cobra",
+            "black mamba", "wolverine", "electric eel", "mantis shrimp", "pistol shrimp", "sloth",
+            "mariana trench", "bermuda triangle", "boiling river", "amazon river", "antarctica",
+            "sahara", "krakatoa", "yellowstone", "pompeii", "roman empire", "ancient egypt",
+            "body language", "eye contact", "fbi", "lie detector", "micro expressions",
+        ]
+        KNOWN_SUBJECTS_PT = [
+            "onça pintada", "onça", "sucuri", "jacaré", "poraquê", "ariranha", "lobo guará",
+            "águia harpia", "dragão de komodo", "komodo", "tubarão branco", "tubarão", "orca",
+            "baleia", "cachalote", "lula colossal", "ratel", "javali", "leão", "tigre",
+            "amazônia", "pantanal", "fossa das marianas", "triângulo das bermudas",
+        ]
+        subject_pool = KNOWN_SUBJECTS_PT if is_br else KNOWN_SUBJECTS_EN
+        title_lower = base_title.lower()
+        extracted_topic_tags: List[str] = []
+        topic_hashtag_candidates: List[str] = []
+        for subj in subject_pool:
+            if subj in title_lower:
+                extracted_topic_tags.append(subj)
+                h_subj = re.sub(r'[^a-z0-9à-ỹçãõáéíóúâêô]+', '', subj.lower())
+                if 3 <= len(h_subj) <= 18 and h_subj not in topic_hashtag_candidates:
+                    topic_hashtag_candidates.append(h_subj)
+
+        # Khử các tag thực thể động vật khác không xuất hiện trong tiêu đề khỏi custom_tags
+        ALL_ANIMAL_ENTITIES = set(KNOWN_SUBJECTS_EN + KNOWN_SUBJECTS_PT)
+        filtered_custom_tags: List[str] = []
+        for ct in custom_tags:
+            ct_low = re.sub(r'^#+', '', ct.strip()).lower()
+            if ct_low in ALL_ANIMAL_ENTITIES and ct_low not in title_lower:
+                continue
+            if is_br and ct_low in KNOWN_SUBJECTS_EN and ct_low not in KNOWN_SUBJECTS_PT:
+                continue
+            filtered_custom_tags.append(ct)
+        custom_tags = filtered_custom_tags
+
+        # Bổ sung từ khóa danh từ từ tiêu đề nếu chưa có trong KNOWN_SUBJECTS
+        stop_words = {
+            "the", "and", "for", "with", "that", "this", "from", "what", "when", "where", "why",
+            "how", "into", "over", "under", "after", "before", "never", "ever", "most", "more",
+            "only", "just", "can", "will", "your", "you", "their", "they", "its", "his", "her",
+            "feet", "meters", "seconds", "minutes", "hours", "days", "years", "psi", "volts",
+            "one", "two", "three", "four", "five", "ten", "vs", "versus", "contra", "uma", "para",
+            "com", "dos", "das", "nos", "nas", "pelo", "pela", "sem", "que", "não", "mais",
+        }
+        title_words = [
+            w.lower() for w in re.findall(r"[A-Za-zÀ-ỹçãõáéíóúâêô]{4,}", base_title)
+            if w.lower() not in stop_words and _is_tag_allowed(w)
+        ]
+        for tw in title_words[:4]:
+            if tw not in extracted_topic_tags:
+                extracted_topic_tags.append(tw)
+
+        # 3. Hợp nhất danh sách Tags chuẩn cho YouTube (snippet.tags, tối đa 25 tags & < 460 ký tự)
+        final_tags: List[str] = []
+        seen_lower = set()
+        total_chars = 0
+
+        for candidate in (*custom_tags, *extracted_topic_tags, *niche_core_tags):
+            clean_t = re.sub(r'^#+', '', str(candidate or "").strip()).strip()
+            if not _is_tag_allowed(clean_t):
+                continue
+            low_t = clean_t.lower()
+            if low_t in seen_lower:
+                continue
+            if len(final_tags) >= 24 or (total_chars + len(clean_t) + 2) > 450:
+                break
+            final_tags.append(clean_t)
+            seen_lower.add(low_t)
+            total_chars += len(clean_t) + 2
+
+        # 4. Xây dựng chuỗi Hashtag cho Tiêu đề (#Shorts + 2-3 hashtag chuẩn ngách/chủ đề, <= 100 ký tự)
+        title_hash_list: List[str] = ["Shorts"]
+        # Nếu người dùng truyền tag ngắn hợp lệ hoặc có thực thể chủ đề, ưu tiên đưa 1 hashtag chủ đề + 2 hashtag ngách
+        for h_cand in (*topic_hashtag_candidates[:1], *niche_title_hashes):
+            h_clean = re.sub(r'[^a-zA-Z0-9À-ỹçãõáéíóúâêô]', '', h_cand).lower()
+            if h_clean and h_clean != "shorts" and h_clean not in [x.lower() for x in title_hash_list]:
+                title_hash_list.append(h_clean)
+            if len(title_hash_list) >= 4:
+                break
+
+        # Ghép vào base_title sao cho không vượt quá 100 ký tự của YouTube
+        enriched_title = f"{base_title[:91].rstrip()} #Shorts"
+        cur_title = base_title
+        built_hashes = ["#Shorts"]
+        for extra_h in title_hash_list[1:]:
+            candidate_suffix = " ".join(built_hashes + [f"#{extra_h}"])
+            if len(cur_title) + 1 + len(candidate_suffix) <= 100:
+                built_hashes.append(f"#{extra_h}")
+        enriched_title = f"{cur_title} {' '.join(built_hashes)}".strip()
+        if len(enriched_title) > 100:
+            enriched_title = f"{base_title[:91].rstrip()} #Shorts"
+
+        # 5. Xây dựng khối Hashtags đầy đủ (8-10 thẻ) cho cuối phần Mô tả (Description)
+        desc_hash_tokens: List[str] = ["#Shorts"]
+        for h_tok in (*topic_hashtag_candidates, *niche_title_hashes, *[re.sub(r'\s+', '', t.lower()) for t in final_tags]):
+            h_c = re.sub(r'[^a-zA-Z0-9À-ỹçãõáéíóúâêô]', '', str(h_tok)).lower()
+            if not h_c or len(h_c) < 3 or len(h_c) > 24:
+                continue
+            tag_str = f"#{h_c}"
+            if tag_str.lower() not in [x.lower() for x in desc_hash_tokens]:
+                desc_hash_tokens.append(tag_str)
+            if len(desc_hash_tokens) >= 10:
+                break
+
+        return {
+            "base_title": base_title,
+            "enriched_title": enriched_title,
+            "title_hashtags": built_hashes,
+            "description_hashtags": " ".join(desc_hash_tokens),
+            "tags": final_tags,
+        }
+
+    def add_tags_to_video(
+        self,
+        video_id: str,
+        new_tags: Any = None,
+        append: bool = True,
+        update_title_hashtags: bool = True,
+        update_description_hashtags: bool = True,
+        topic: str = "",
+    ) -> Dict[str, Any]:
+        """
+        Gắn thêm (hoặc cập nhật) bộ Tags & Hashtags trực tiếp lên video đã có trên YouTube
+        (áp dụng được cho cả video đang hẹn giờ `SCHEDULED/private` lẫn video đã công chiếu `PUBLIC`).
+        """
+        if not self.service or not video_id:
+            return {"success": False, "error": "Chưa kết nối YouTube API hoặc thiếu video_id"}
+        try:
+            vres = self.service.videos().list(id=video_id, part="snippet").execute()
+            items = vres.get("items", [])
+            if not items:
+                return {"success": False, "error": f"Không tìm thấy video {video_id} trên YouTube"}
+
+            snip = items[0].get("snippet", {})
+            cur_title = snip.get("title", "")
+            cur_desc = snip.get("description", "")
+            cur_tags = list(snip.get("tags") or [])
+
+            input_tags: List[str] = []
+            if isinstance(new_tags, list):
+                input_tags = [str(t).strip() for t in new_tags if str(t).strip()]
+            elif isinstance(new_tags, str):
+                input_tags = [t.strip() for t in re.split(r'[,;#]+', new_tags) if t.strip()]
+
+            combined_seed = (input_tags + cur_tags) if append else input_tags
+            smart = self.build_smart_video_tags_and_hashtags(
+                title=cur_title,
+                topic=topic or cur_title,
+                extra_tags=combined_seed,
+            )
+
+            # Đảm bảo toàn bộ tag do người dùng chủ động gõ vào luôn đứng đầu danh sách
+            merged_tags: List[str] = []
+            seen_l = set()
+            total_c = 0
+            for t_item in (*input_tags, *smart["tags"]):
+                c_t = re.sub(r'^#+', '', str(t_item).strip()).strip()
+                if not c_t or c_t.lower() in seen_l:
+                    continue
+                if len(merged_tags) >= 25 or (total_c + len(c_t) + 2) > 460:
+                    break
+                merged_tags.append(c_t)
+                seen_l.add(c_t.lower())
+                total_c += len(c_t) + 2
+
+            snip["tags"] = merged_tags
+
+            if update_title_hashtags:
+                if append and 1 <= len(input_tags) <= 5:
+                    base_t = smart["base_title"]
+                    user_short_hashes = [
+                        re.sub(r'[^a-zA-Z0-9À-ỹçãõáéíóúâêô]', '', t).lower()
+                        for t in input_tags
+                        if 2 <= len(re.sub(r'[^a-zA-Z0-9À-ỹçãõáéíóúâêô]', '', t)) <= 18
+                    ]
+                    hash_chain = ["#Shorts"]
+                    for h_c in (*user_short_hashes[:2], *[h.lstrip("#") for h in smart["title_hashtags"][1:]]):
+                        if h_c and h_c.lower() != "shorts" and f"#{h_c.lower()}" not in [x.lower() for x in hash_chain]:
+                            cand_str = " ".join(hash_chain + [f"#{h_c.lower()}"])
+                            if len(base_t) + 1 + len(cand_str) <= 100 and len(hash_chain) < 4:
+                                hash_chain.append(f"#{h_c.lower()}")
+                    snip["title"] = f"{base_t} {' '.join(hash_chain)}".strip()[:100]
+                else:
+                    snip["title"] = smart["enriched_title"]
+
+            if update_description_hashtags:
+                desc_body = re.sub(r'(?:\n*\s*(?:#[^\s#]+\s*)+)$', '', (cur_desc or "").strip()).strip()
+                extra_desc_hashes = [
+                    f"#{re.sub(r'[^a-zA-Z0-9À-ỹçãõáéíóúâêô]', '', t).lower()}"
+                    for t in merged_tags[:10]
+                    if len(re.sub(r'[^a-zA-Z0-9À-ỹçãõáéíóúâêô]', '', t)) >= 3
+                ]
+                all_desc_hashes: List[str] = ["#Shorts"]
+                for dh in (*extra_desc_hashes, *smart["description_hashtags"].split()):
+                    if dh.lower() not in [x.lower() for x in all_desc_hashes] and len(all_desc_hashes) < 12:
+                        all_desc_hashes.append(dh)
+                hash_block = " ".join(all_desc_hashes)
+                snip["description"] = f"{desc_body}\n\n{hash_block}".strip() if desc_body else hash_block
+
+            self.service.videos().update(
+                part="snippet",
+                body={
+                    "id": video_id,
+                    "snippet": snip,
+                },
+            ).execute()
+
+            logger.info(
+                f"🏷️ [PublisherAgent] Đã gắn {len(merged_tags)} tags lên video YouTube {video_id} ({self.channel_name}): "
+                f"title='{snip.get('title')}' | tags={merged_tags[:8]}..."
+            )
+            return {
+                "success": True,
+                "video_id": video_id,
+                "title": snip.get("title"),
+                "description": snip.get("description"),
+                "tags": merged_tags,
+            }
+        except Exception as e:
+            logger.warning(f"🏷️ [PublisherAgent] Lỗi khi gắn thêm tag cho video {video_id}: {e}")
+            return {"success": False, "error": str(e)}
+
     def verify_and_heal_video_metadata(self, video_id: str) -> bool:
         """
         Tự động kiểm tra và sửa chữa (Self-Healing) metadata của video trên YouTube:
         - Nếu categoryId bị lệch khỏi resolve_locked_category_id() (đặc biệt nếu dính cat=27) -> Tự động đổi về chuẩn ('22' hoặc '15').
+        - Tự động làm sạch hashtag sai ngách và gắn đầy đủ bộ Hashtags + Tags chuẩn ngách (`build_smart_video_tags_and_hashtags`).
         - Nếu thiếu defaultLanguage / defaultAudioLanguage hoặc recordingDetails (US/BR Geo-Lock) -> Tự động vá ngay.
         """
         if not self.service or not video_id:
@@ -1112,17 +1446,30 @@ class PublisherAgent:
 
             needs_update = False
             raw_title = str(snip.get("title") or "").strip()
-            # Tự động dọn sạch chuỗi hashtag rác/lệch ngách ở cuối tiêu đề (chỉ giữ 1 thẻ #Shorts duy nhất)
-            healed_base = re.sub(r'(?:\s+#[^\s#]+)+\s*$', '', raw_title).strip()
-            healed_base = re.sub(r'#shorts\b', '', healed_base, flags=re.IGNORECASE).strip()
-            if healed_base:
-                healed_title = f"{healed_base[:91].rstrip()} #Shorts"
-                if healed_title != raw_title:
-                    logger.info(
-                        f"🧹 [SelfHealMetadata] Làm sạch hashtag thừa trên tiêu đề video {video_id}: '{raw_title}' -> '{healed_title}'"
-                    )
-                    snip["title"] = healed_title
-                    needs_update = True
+            cur_tags = list(snip.get("tags") or [])
+            smart = self.build_smart_video_tags_and_hashtags(
+                title=raw_title,
+                topic=raw_title,
+                extra_tags=cur_tags,
+            )
+            healed_title = smart["enriched_title"]
+            if healed_title and healed_title != raw_title:
+                logger.info(
+                    f"🏷️ [SelfHealMetadata] Chuẩn hóa Hashtag tiêu đề video {video_id}: '{raw_title}' -> '{healed_title}'"
+                )
+                snip["title"] = healed_title
+                needs_update = True
+
+            if set(t.lower() for t in cur_tags) != set(t.lower() for t in smart["tags"]):
+                snip["tags"] = smart["tags"]
+                needs_update = True
+
+            raw_desc = str(snip.get("description") or "").strip()
+            desc_body = re.sub(r'(?:\n*\s*(?:#[^\s#]+\s*)+)$', '', raw_desc).strip()
+            healed_desc = f"{desc_body}\n\n{smart['description_hashtags']}".strip() if desc_body else smart["description_hashtags"]
+            if healed_desc != raw_desc:
+                snip["description"] = healed_desc
+                needs_update = True
 
             if str(snip.get("categoryId") or "") != expected_cat:
                 logger.warning(
@@ -1158,8 +1505,8 @@ class PublisherAgent:
                     },
                 ).execute()
                 logger.info(
-                    f"✅ [SelfHealMetadata] Đã tự động khóa chuẩn metadata cho video {video_id} ({self.channel_name}): "
-                    f"cat={expected_cat}, lang={expected_lang}, loc={rec.get('locationDescription')}"
+                    f"✅ [SelfHealMetadata] Đã tự động khóa chuẩn metadata & gắn {len(snip.get('tags', []))} tags cho video {video_id} ({self.channel_name}): "
+                    f"title='{snip.get('title')}', cat={expected_cat}, lang={expected_lang}"
                 )
                 return True
         except Exception as e:

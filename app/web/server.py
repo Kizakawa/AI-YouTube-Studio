@@ -2293,6 +2293,155 @@ def get_channel_full_schedule(channel_id: str):
         return {"success": False, "error": str(e)}
 
 
+
+
+class UpdateVideoTagsRequest(BaseModel):
+    tags: Any = ""
+    append: bool = True
+    sync_youtube: bool = True
+    update_title_hashtags: bool = True
+    update_description_hashtags: bool = True
+
+
+@app.get("/api/videos/{job_id}/suggest-tags")
+async def suggest_video_tags(job_id: int, channel_id: Optional[str] = None) -> Dict[str, Any]:
+    """Tự động gợi ý bộ Tags SEO & Hashtags chuẩn ngách cho video."""
+    with get_db() as db:
+        job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Không tìm thấy video job")
+        target_ch = channel_id or job.target_channel_id or "default"
+        title = job.title or job.topic or ""
+        topic = job.topic or ""
+        script = job.scenes_json or job.script or ""
+        existing_tags = [t.strip() for t in (job.tags or "").split(",") if t.strip()]
+
+    cfg = _read_channels_yaml()
+    channels = cfg.get("channels", [])
+    ch_cfg = next((c for c in channels if c.get("id") == target_ch), {"id": target_ch, "name": target_ch})
+
+    from app.agents.publisher_agent import PublisherAgent
+    pub = PublisherAgent(channel_config=ch_cfg)
+    smart = pub.build_smart_video_tags_and_hashtags(
+        title=title,
+        topic=topic,
+        script=script,
+        extra_tags=existing_tags,
+    )
+    return {
+        "success": True,
+        "job_id": job_id,
+        "channel_id": target_ch,
+        "tags": smart["tags"],
+        "tags_csv": ", ".join(smart["tags"]),
+        "title_hashtags": smart["title_hashtags"],
+        "enriched_title": smart["enriched_title"],
+        "description_hashtags": smart["description_hashtags"],
+    }
+
+
+@app.post("/api/videos/{job_id}/tags")
+async def update_or_add_video_tags(job_id: int, body: UpdateVideoTagsRequest) -> Dict[str, Any]:
+    """
+    Gắn thêm hoặc cập nhật bộ Tags & Hashtags cho VideoJob trong DB,
+    đồng thời tự động đồng bộ trực tiếp lên YouTube nếu video đã có youtube_video_id.
+    """
+    import re as _re
+    raw_in = body.tags
+    if isinstance(raw_in, list):
+        input_tags = [str(x).strip() for x in raw_in if str(x).strip()]
+    else:
+        input_tags = [x.strip() for x in _re.split(r"[,;#]+", str(raw_in or "")) if x.strip()]
+
+    with get_db() as db:
+        job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Không tìm thấy video job")
+
+        target_ch = job.target_channel_id or "default"
+        cur_tags = [t.strip() for t in (job.tags or "").split(",") if t.strip()]
+        seed_tags = (input_tags + cur_tags) if body.append else input_tags
+
+        cfg = _read_channels_yaml()
+        channels = cfg.get("channels", [])
+        ch_cfg = next((c for c in channels if c.get("id") == target_ch), {"id": target_ch, "name": target_ch})
+
+        from app.agents.publisher_agent import PublisherAgent
+        pub = PublisherAgent(channel_config=ch_cfg)
+        smart = pub.build_smart_video_tags_and_hashtags(
+            title=job.title or job.topic or "",
+            topic=job.topic or "",
+            script=job.scenes_json or job.script or "",
+            extra_tags=seed_tags,
+        )
+
+        # Ưu tiên giữ các tag người dùng vừa nhập ở đầu danh sách
+        merged_tags = []
+        seen_l = set()
+        for t_cand in (*input_tags, *smart["tags"]):
+            c_t = _re.sub(r"^#+", "", str(t_cand).strip()).strip()
+            if c_t and c_t.lower() not in seen_l and len(merged_tags) < 25:
+                merged_tags.append(c_t)
+                seen_l.add(c_t.lower())
+
+        job.tags = ", ".join(merged_tags)
+        if body.update_title_hashtags and smart.get("enriched_title"):
+            base_t = smart["base_title"]
+            user_short_hashes = [
+                _re.sub(r"[^a-zA-Z0-9À-ỹçãõáéíóúâêô]", "", t).lower()
+                for t in input_tags
+                if 2 <= len(_re.sub(r"[^a-zA-Z0-9À-ỹçãõáéíóúâêô]", "", t)) <= 18
+            ]
+            hash_chain = ["#Shorts"]
+            for h_c in (*user_short_hashes[:2], *[h.lstrip("#") for h in smart["title_hashtags"][1:]]):
+                if h_c and h_c.lower() != "shorts" and f"#{h_c.lower()}" not in [x.lower() for x in hash_chain]:
+                    cand_s = " ".join(hash_chain + [f"#{h_c.lower()}"])
+                    if len(base_t) + 1 + len(cand_s) <= 100 and len(hash_chain) < 4:
+                        hash_chain.append(f"#{h_c.lower()}")
+            job.title = f"{base_t} {' '.join(hash_chain)}".strip()[:100]
+
+        if body.update_description_hashtags:
+            cur_desc = (job.description or "").strip()
+            desc_body = _re.sub(r"(?:\n*\s*(?:#[^\s#]+\s*)+)$", "", cur_desc).strip()
+            job.description = f"{desc_body}\n\n{smart['description_hashtags']}".strip() if desc_body else smart["description_hashtags"]
+
+        yt_vid = (job.youtube_video_id or "").strip()
+        final_title = job.title
+        final_desc = job.description
+
+    yt_sync_res = None
+    if yt_vid and body.sync_youtube:
+        try:
+            yt_sync_res = await asyncio.to_thread(
+                pub.add_tags_to_video,
+                video_id=yt_vid,
+                new_tags=merged_tags,
+                append=False,
+                update_title_hashtags=body.update_title_hashtags,
+                update_description_hashtags=body.update_description_hashtags,
+                topic=final_title,
+            )
+        except Exception as ex_yt:
+            yt_sync_res = {"success": False, "error": str(ex_yt)}
+
+    return {
+        "success": True,
+        "job_id": job_id,
+        "youtube_video_id": yt_vid or None,
+        "youtube_synced": bool(yt_sync_res and yt_sync_res.get("success")),
+        "youtube_sync_detail": yt_sync_res,
+        "title": (yt_sync_res.get("title") if yt_sync_res and yt_sync_res.get("title") else final_title),
+        "description": (yt_sync_res.get("description") if yt_sync_res and yt_sync_res.get("description") else final_desc),
+        "tags": merged_tags,
+        "tags_csv": ", ".join(merged_tags),
+        "message": (
+            f"Đã gắn {len(merged_tags)} tags & đồng bộ trực tiếp lên YouTube ({yt_vid})!"
+            if (yt_sync_res and yt_sync_res.get("success"))
+            else f"Đã lưu {len(merged_tags)} tags & hashtags vào Video #{job_id}!"
+        ),
+    }
+
+
 @app.post("/api/videos/{job_id}/publish-youtube")
 async def publish_to_youtube(
     job_id: int,
