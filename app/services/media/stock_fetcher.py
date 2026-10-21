@@ -16,6 +16,7 @@ import logging
 import requests
 from typing import List, Dict, Optional, Any
 
+from app.utils.langsmith_tracer import trace_custom_span
 from config.settings import settings
 from app.services.media.entity_detector import clean_scene_search_query
 
@@ -700,6 +701,7 @@ class StockFetcher:
                 }
         return None
 
+    @trace_custom_span("StockFetcher.search_best_video_clip", run_type="tool")
     def search_best_video_clip(
         self,
         query: str,

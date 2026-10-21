@@ -57,6 +57,9 @@ class Settings:
     USE_LANGGRAPH: bool = os.getenv("USE_LANGGRAPH", "true").lower() in ("true", "1", "yes")
     ENABLE_DEVICE_GATEKEEPER: bool = os.getenv("ENABLE_DEVICE_GATEKEEPER", "true").lower() in ("true", "1", "yes")
     AGENT_API_KEY: str = os.getenv("AGENT_API_KEY", "agy_agent_supersecret_key_2026")
+    LANGSMITH_API_KEY: str = os.getenv("LANGSMITH_API_KEY", "") or os.getenv("LANGCHAIN_API_KEY", "")
+    LANGSMITH_PROJECT: str = os.getenv("LANGSMITH_PROJECT", "") or os.getenv("LANGCHAIN_PROJECT", "AI-YouTube-Studio")
+    LANGSMITH_TRACING: bool = os.getenv("LANGSMITH_TRACING", os.getenv("LANGCHAIN_TRACING_V2", "true")).lower() in ("true", "1", "yes")
     
     # Tự động hóa sản xuất & đăng bài (Mặc định FALSE để tránh bot tự ý sinh video linh tinh)
     ENABLE_OVERDUE_AUTO_PRODUCTION: bool = os.getenv("ENABLE_OVERDUE_AUTO_PRODUCTION", "false").lower() in ("true", "1", "yes")

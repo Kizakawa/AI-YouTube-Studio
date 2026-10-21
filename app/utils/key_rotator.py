@@ -9,20 +9,20 @@ logger = logging.getLogger(__name__)
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 
-# Thứ tự ưu tiên chuẩn toàn hệ thống (từ Model Flagship xịn nhất -> Flash-Lite siêu tốc):
+# Thứ tự ưu tiên chuẩn toàn hệ thống (từ Model Gemini Flash/Pro hỗ trợ JSON & Vision gốc siêu tốc -> Gemma dự phòng):
 # Hệ thống sẽ bắn kiểm tra ĐỒNG THỜI (Parallel Probe) toàn bộ danh sách này cùng 1 lúc,
 # loại bỏ ngay các model bị treo (Timeout) hoặc hết hạn mức (429/404), và chọn Model xịn nhất phản hồi thành công.
 GEMINI_PRIORITY_MODELS: List[str] = [
     "gemini-3-flash-preview",        # Tier S+ (#1): Gemini 3.0 Flash Preview (Multimodal & JSON nhanh nhất)
-    "gemini-3.1-pro-preview",        # Tier S  (#2): Gemini 3.1 Pro Preview
-    "gemini-3.1-flash-lite-preview", # Tier A+ (#3): Gemini 3.1 Flash-Lite Preview (Siêu tốc, quota độc lập)
-    "gemma-4-31b-it",                # Tier A+ (#4): Gemma 4 31B IT (Quota rất dồi dào, viết kịch bản 5 hồi xuất sắc)
-    "gemma-4-26b-a4b-it",            # Tier A  (#5): Gemma 4 26B A4B IT (MoE siêu nhanh, bucket quota riêng)
-    "gemini-flash-latest",           # Tier A  (#6): Alias Flash chính thức
-    "gemini-flash-lite-latest",      # Tier B+ (#7): Alias Flash-Lite chính thức
-    "gemini-robotics-er-2-preview",  # Tier B+ (#8): Gemini ER 2 Preview (Bucket quota độc lập)
-    "gemini-2.5-flash",              # Tier B  (#9): Legacy 2.5 Flash
-    "gemini-2.5-flash-lite",         # Tier B  (#10): Legacy 2.5 Flash-Lite
+    "gemini-3.1-flash-lite-preview", # Tier S  (#2): Gemini 3.1 Flash-Lite Preview (Siêu tốc, quota độc lập)
+    "gemini-flash-latest",           # Tier A+ (#3): Alias Flash chính thức (Hỗ trợ Vision & JSON gốc cực nhanh)
+    "gemini-flash-lite-latest",      # Tier A+ (#4): Alias Flash-Lite chính thức (Độ trễ cực thấp ~1.2s)
+    "gemini-2.5-flash",              # Tier A  (#5): Gemini 2.5 Flash ổn định
+    "gemini-2.5-flash-lite",         # Tier A  (#6): Gemini 2.5 Flash-Lite siêu tốc
+    "gemini-3.1-pro-preview",        # Tier A  (#7): Gemini 3.1 Pro Preview
+    "gemma-4-26b-a4b-it",            # Tier B+ (#8): Gemma 4 26B A4B IT (MoE nhanh, dự phòng text khi Gemini cạn quota)
+    "gemma-4-31b-it",                # Tier B  (#9): Gemma 4 31B IT (Dự phòng text)
+    "gemini-robotics-er-2-preview",  # Tier B  (#10): Gemini ER 2 Preview (Bucket quota độc lập)
 ]
 
 # Điểm xếp hạng độ "xịn" (Quality Tier) của từng model để chọn model mạnh nhất trong số các model phản hồi thành công
@@ -191,7 +191,7 @@ class KeyRotator:
     def probe_all_models_concurrently(
         self,
         candidate_models: Optional[Sequence[str]] = None,
-        probe_timeout_sec: float = 4.0,
+        probe_timeout_sec: float = 2.6,
         force: bool = False,
     ) -> List[str]:
         """
@@ -234,7 +234,7 @@ class KeyRotator:
                     "generationConfig": {"maxOutputTokens": 2},
                 }
                 try:
-                    resp = requests.post(url, json=payload, timeout=(2.0, probe_timeout_sec))
+                    resp = requests.post(url, json=payload, timeout=(1.5, probe_timeout_sec))
                     latency = time.monotonic() - t0
                     return (model_name, resp.status_code, latency, resp.text[:300] if resp.status_code != 200 else "OK")
                 except Exception as exc:
@@ -296,9 +296,14 @@ class KeyRotator:
         # Bước 1: Kiểm tra đồng thời toàn bộ model (hoặc lấy từ cache 5 phút) để lấy danh sách Model xịn nhất đang sống
         live_ranked = self.probe_all_models_concurrently()
 
-        # Ghép danh sách ưu tiên: Đưa các model sống (đã xếp hạng từ xịn nhất) lên đầu tiên
+        # Ghép danh sách ưu tiên: Đưa các model sống (đã xếp hạng từ xịn nhất) lên đầu tiên.
+        # Nếu caller truyền danh sách `models` cụ thể (ví dụ chỉ các model hỗ trợ Vision), ưu tiên lọc trong `models` đó trước.
         base_models = list(models) if models else list(GEMINI_PRIORITY_MODELS)
-        model_list: List[str] = list(live_ranked)
+        if models:
+            allowed_set = set(base_models)
+            model_list: List[str] = [m for m in live_ranked if m in allowed_set]
+        else:
+            model_list = list(live_ranked)
         for m in base_models:
             if m not in model_list:
                 model_list.append(m)

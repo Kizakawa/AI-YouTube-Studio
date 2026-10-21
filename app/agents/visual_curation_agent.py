@@ -24,6 +24,7 @@ from pathlib import Path
 
 from config.settings import settings
 from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
+from app.utils.langsmith_tracer import trace_custom_span
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +201,7 @@ class VisualCurationAgent:
         self.rotator = KeyRotator(keys) if keys else None
         self.session = requests.Session()
 
+    @trace_custom_span("VisualCurationAgent.gemini_json", run_type="llm")
     def _call_gemini_json(
         self,
         prompt: str,
@@ -222,6 +224,8 @@ class VisualCurationAgent:
 
         conn_errors = 0
         for model, key in self.rotator.iter_best_model_key_pairs(models or AVAILABLE_MODELS, max_total_attempts=max_attempts or 6):
+            if images and model.startswith("gemma-"):
+                continue
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
             gen_cfg: Dict[str, Any] = {"temperature": 0.2}
             if not model.startswith("gemma-"):

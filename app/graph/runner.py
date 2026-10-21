@@ -74,6 +74,45 @@ class GraphRunner:
         self.work_dir = Path(settings.TEMP_DIR) / f"job_{self.job_id}"
         self.work_dir.mkdir(parents=True, exist_ok=True)
         self._last_db_pct: int = -20
+        self._node_timer_ts: float = 0.0
+
+    def _record_node_done(self, node_name: str, step: str, pct: int) -> None:
+        try:
+            import time as _time
+            from app.utils.langsmith_tracer import record_node_span
+            _now = _time.monotonic()
+            _dur = max(0.001, _now - (self._node_timer_ts or _now))
+            self._node_timer_ts = _now
+            record_node_span(self.job_id, node_name, _dur, status="OK", details={"step": step, "percent": pct})
+        except Exception:
+            pass
+
+    def _finish_trace(self, status: str, error: Optional[str] = None) -> None:
+        try:
+            from app.utils.langsmith_tracer import finish_job_trace
+            finish_job_trace(self.job_id, status=status, error=error)
+        except Exception:
+            pass
+
+    def _get_trace_config(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        import time as _time
+        from app.utils.langsmith_tracer import build_langgraph_run_config, start_job_trace
+        self._node_timer_ts = _time.monotonic()
+        mode = "edit" if state.get("edit_request") else "full_pipeline"
+        start_job_trace(
+            job_id=self.job_id,
+            channel_id=str(state.get("target_channel_id") or "default"),
+            topic=str(state.get("topic") or state.get("title") or ""),
+            niche=str(state.get("channel_style") or "general"),
+            mode=mode,
+        )
+        return build_langgraph_run_config(
+            job_id=self.job_id,
+            channel_id=str(state.get("target_channel_id") or "default"),
+            topic=str(state.get("topic") or state.get("title") or ""),
+            niche=str(state.get("channel_style") or "general"),
+            mode=mode,
+        )
 
     async def _report(self, stage: str, message: str, percent: int):
         """Đồng bộ tiến độ vào Database & gọi callback Telegram/Dashboard (chống nghẽn kết nối Cloud DB)."""
@@ -170,7 +209,7 @@ class GraphRunner:
         # 3. Chạy luồng LangGraph với streaming để cập nhật tiến độ mượt mà
         final_state = initial_state
         try:
-            async for event in video_graph.astream(initial_state):
+            async for event in video_graph.astream(initial_state, config=self._get_trace_config(initial_state)):
                 for node_name, node_output in event.items():
                     if not isinstance(node_output, dict):
                         continue
@@ -178,9 +217,11 @@ class GraphRunner:
                     step = node_output.get("current_step", node_name.upper())
                     pct = node_output.get("progress_percent", 50)
                     msg = node_output.get("progress_message", f"Hoàn tất node: {node_name}")
+                    self._record_node_done(node_name, step, pct)
                     await self._report(step, msg, pct)
 
         except Exception as ex:
+            self._finish_trace("FAILED", str(ex))
             logger.error(f"[LangGraph Job {self.job_id}] Thất bại tại đồ thị: {ex}", exc_info=True)
             with get_db() as db:
                 j = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
@@ -247,6 +288,7 @@ class GraphRunner:
                 j.progress_message = "✅ Video hoàn thành xuất sắc! Đã qua 4 tầng kiểm định chất lượng."
                 j.error_message = None
 
+        self._finish_trace("COMPLETED")
         logger.info(f"🎉 [LangGraph Job {self.job_id}] Video hoàn thành: {final_state.get('rendered_video_path')}")
         return final_state
 
@@ -328,7 +370,7 @@ class GraphRunner:
 
         # Kích hoạt đồ thị bắt đầu từ entry point execute_edit
         final_state = initial_state
-        async for event in video_graph.astream(initial_state):
+        async for event in video_graph.astream(initial_state, config=self._get_trace_config(initial_state)):
             for node_name, node_output in event.items():
                 if isinstance(node_output, dict):
                     final_state.update(node_output)
