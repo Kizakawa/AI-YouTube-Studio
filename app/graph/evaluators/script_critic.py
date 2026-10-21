@@ -154,8 +154,10 @@ class ScriptCritic:
                 overlap = len(s1_tokens & l_tokens) / max(1, min(len(s1_tokens), len(l_tokens)))
                 if overlap >= 0.65 and len(s1_tokens & l_tokens) >= 4:
                     score = max(1.0, score - 2.0)
+                    l_swp = loser.get("swipe_away_pct")
+                    swp_label = f"{float(l_swp):.1f}%" if l_swp is not None else "cao"
                     extra_critiques.append(
-                        f"Cảnh 1 lặp lại mô-típ của video thua cuộc có tỷ lệ vuốt bỏ {loser.get('swipe_away_pct', 40):.1f}% ('{l_hook[:60]}'). Phải đổi góc tiếp cận hoàn toàn!"
+                        f"Cảnh 1 lặp lại mô-típ của video thua cuộc có tỷ lệ vuốt bỏ {swp_label} ('{l_hook[:60]}'). Phải đổi góc tiếp cận hoàn toàn!"
                     )
                     break
 

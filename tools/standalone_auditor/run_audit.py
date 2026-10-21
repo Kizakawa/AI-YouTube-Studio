@@ -150,16 +150,16 @@ def _fetch_analytics_metrics(yta_service: Any) -> Tuple[Dict[str, Any], Dict[str
     except Exception as e:
         logger.debug(f"Analytics channel query error: {e}")
 
-    # 2. Chỉ số chi tiết từng video (Top 30 video trong 28 ngày)
+    # 2. Chỉ số chi tiết từng video (Top 200 video từ 2024-01-01 để lấy đủ mọi video đã chốt sổ Analytics)
     try:
         v_rep = yta_service.reports().query(
             ids="channel==MINE",
-            startDate=start_date,
+            startDate="2024-01-01",
             endDate=end_date,
             metrics="views,engagedViews,averageViewDuration,averageViewPercentage",
             dimensions="video",
             sort="-views",
-            maxResults=30,
+            maxResults=200,
         ).execute()
         for r in v_rep.get("rows", []):
             vid_id, v_views, v_engaged, v_avd, v_apv = r[0], float(r[1] or 0), float(r[2] or 0), float(r[3] or 0), float(r[4] or 0)
@@ -235,7 +235,7 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
                 total_videos = int(stats.get("videoCount", 0))
                 uploads_pl = item.get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads")
 
-                pl_items = srv.playlistItems().list(playlistId=uploads_pl, part="contentDetails", maxResults=30).execute().get("items", [])
+                pl_items = srv.playlistItems().list(playlistId=uploads_pl, part="contentDetails", maxResults=50).execute().get("items", [])
                 vids = [x["contentDetails"]["videoId"] for x in pl_items]
                 v_details = srv.videos().list(id=",".join(vids), part="snippet,statistics,status").execute().get("items", []) if vids else []
 
@@ -633,9 +633,12 @@ def sync_telemetry_to_production(telemetry: Dict[str, Any], insights: str) -> Di
                 if not pub_vids:
                     continue
 
-                valid_views = [int(v.get("views") or 0) for v in pub_vids if int(v.get("views") or 0) > 0]
-                ch_avg_views = (sum(valid_views) / len(valid_views)) if valid_views else 120.0
-                ch_ya = c.get("analytics") or {}
+                public_ids = {(v.get("id") or "").strip() for v in pub_vids if (v.get("id") or "").strip()}
+                if public_ids:
+                    db.query(PublishedVideo).filter(
+                        PublishedVideo.channel_id == canon_cid,
+                        ~PublishedVideo.youtube_video_id.in_(public_ids),
+                    ).delete(synchronize_session=False)
 
                 for v in pub_vids:
                     vid = (v.get("id") or "").strip()
@@ -654,19 +657,15 @@ def sync_telemetry_to_production(telemetry: Dict[str, Any], insights: str) -> Di
                         matched_job.target_channel_id = canon_cid
                     hook_txt = _extract_hook_from_job(matched_job, v.get("title") or "")
 
-                    cal = _compute_calibrated_retention(
-                        views=v_views,
-                        likes=v_likes,
-                        comments=v_comments,
-                        channel_avg_views=ch_avg_views,
-                        hook_text=hook_txt,
-                        raw_apv=float(raw_apv) if raw_apv is not None else (float(ch_ya["apv_pct"]) if ch_ya.get("has_data") and ch_ya.get("apv_pct") else None),
-                        raw_stayed=float(raw_stay) if raw_stay is not None else (float(ch_ya["stay_pct"]) if ch_ya.get("has_data") and ch_ya.get("stay_pct") else None),
+                    # CHỈ LƯU SỐ LIỆU THẬT TỪ YOUTUBE ANALYTICS API v2 (Không ước lượng nội suy!)
+                    final_apv = round(float(raw_apv), 1) if raw_apv is not None else None
+                    final_stay = round(float(raw_stay), 1) if raw_stay is not None else None
+                    final_swipe = (
+                        round(float(raw_swipe), 1)
+                        if raw_swipe is not None
+                        else (round(max(0.0, 100.0 - final_stay), 1) if final_stay is not None else None)
                     )
-                    final_apv = float(raw_apv) if raw_apv is not None else cal["avg_view_percentage"]
-                    final_stay = float(raw_stay) if raw_stay is not None else cal["stayed_to_watch_pct"]
-                    final_swipe = float(raw_swipe) if raw_swipe is not None else round(max(0.0, 100.0 - final_stay), 1)
-                    final_avd = float(raw_avd) if raw_avd is not None else cal["avg_view_duration_sec"]
+                    final_avd = round(float(raw_avd), 1) if raw_avd is not None else None
 
                     existing_pv = db.query(PublishedVideo).filter(PublishedVideo.youtube_video_id == vid).first()
                     if existing_pv:

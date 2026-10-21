@@ -71,7 +71,7 @@ def _extract_hook_from_job(job: Optional[VideoJob], fallback_title: str = "") ->
 
 
 def _compute_calibrated_retention(
-    views: int,
+    views: int = 0,
     likes: int = 0,
     comments: int = 0,
     channel_avg_views: float = 150.0,
@@ -79,58 +79,33 @@ def _compute_calibrated_retention(
     hook_text: str = "",
     raw_apv: Optional[float] = None,
     raw_stayed: Optional[float] = None,
-) -> Dict[str, float]:
+    raw_avd: Optional[float] = None,
+) -> Dict[str, Optional[float]]:
     """
-    Tính toán / hiệu chỉnh bộ 3 chỉ số giữ chân thật cho từng video:
+    Chỉ trả về bộ chỉ số giữ chân THẬT 100% từ YouTube Analytics API v2:
     - avg_view_percentage (tỷ lệ xem hết %)
     - stayed_to_watch_pct (tỷ lệ ở lại xem %)
     - swipe_away_pct (tỷ lệ vuốt bỏ % = 100 - stayed_to_watch_pct)
     - avg_view_duration_sec (thời lượng xem trung bình giây)
-    Nếu có số liệu trực tiếp từ YouTube Analytics API (raw_apv, raw_stayed) thì dùng trực tiếp;
-    nếu API chưa trả về (do độ trễ 48h của Shorts hoặc giới hạn scope), hiệu chỉnh thực nghiệm
-    từ tỷ lệ tương tác thực tế (views / channel_avg_views, likes, comments) và cấu trúc Hook.
+    TUYỆT ĐỐI KHÔNG ước lượng hay nội suy giả định khi YouTube Analytics API chưa chốt sổ (trả về None).
     """
-    import math
-    dur = max(18.0, min(60.0, float(duration_sec or 36.0)))
-    v = max(0, int(views or 0))
-    lk = max(0, int(likes or 0))
-    cm = max(0, int(comments or 0))
-    avg_v = max(25.0, float(channel_avg_views or 120.0))
-
-    # Tỷ số hiệu suất view so với trung bình kênh
-    ratio = (v + 5.0) / (avg_v + 5.0)
-    log_perf = math.log10(max(0.08, min(15.0, ratio)))  # [-1.1 .. +1.17]
-
-    # Tỷ lệ tương tác (Engagement boost)
-    eng_rate = (lk + cm * 3.0) / max(v, 10)
-    eng_boost = min(8.5, eng_rate * 120.0)
-
-    # Phân tích tín hiệu Hook thực tế (Question yếu vs. Khẳng định số liệu / A vs B)
-    hook_clean = (hook_text or "").strip()
-    hook_delta = 0.0
-    if "?" in hook_clean and re.match(r"^(?:did you|do you|have you|are you|can you|você sabia)\b", hook_clean, re.I):
-        hook_delta -= 6.5  # Câu hỏi Yes/No mở đầu làm tăng tỷ lệ vuốt bỏ
-    if re.search(r"\b\d+(?:[\.,]\d+)?\s*(?:%|psi|mph|km|meters|seconds|days|years|kg|pounds|metros|segundos)\b", hook_clean, re.I):
-        hook_delta += 3.5  # Có con số vật lý/định lượng cụ thể ngay câu đầu
-    if re.search(r"\b(?:vs\.?|versus|contra|never|stop|don't|warning|cuidado|nunca)\b", hook_clean, re.I):
-        hook_delta += 2.5  # Cấu trúc đối đầu A vs B hoặc mệnh lệnh cảnh báo
-
-    if raw_stayed is not None and raw_stayed > 0:
-        stayed_pct = round(max(15.0, min(95.0, float(raw_stayed))), 1)
+    if raw_stayed is not None and float(raw_stayed) > 0:
+        stayed_pct: Optional[float] = round(max(0.0, min(100.0, float(raw_stayed))), 1)
+        swipe_pct: Optional[float] = round(max(0.0, 100.0 - stayed_pct), 1)
     else:
-        # Hiệu chuẩn sát thực tế YouTube Shorts Analytics (trung bình kênh ~42-46% Stayed, tránh ảo tưởng 64%+)
-        base_stayed = 44.0 + (log_perf * 18.0) + (eng_boost * 0.75) + hook_delta
-        stayed_pct = round(max(20.0, min(88.0, base_stayed)), 1)
+        stayed_pct = None
+        swipe_pct = None
 
-    swipe_pct = round(max(12.0, min(80.0, 100.0 - stayed_pct)), 1)
-
-    if raw_apv is not None and raw_apv > 0:
-        apv_pct = round(max(25.0, min(145.0, float(raw_apv))), 1)
+    if raw_apv is not None and float(raw_apv) > 0:
+        apv_pct: Optional[float] = round(float(raw_apv), 1)
     else:
-        base_apv = 68.0 + (log_perf * 22.0) + eng_boost + (hook_delta * 0.8)
-        apv_pct = round(max(32.0, min(124.0, base_apv)), 1)
+        apv_pct = None
 
-    avg_dur_sec = round((apv_pct / 100.0) * dur, 1)
+    if raw_avd is not None and float(raw_avd) > 0:
+        avg_dur_sec: Optional[float] = round(float(raw_avd), 1)
+    else:
+        avg_dur_sec = None
+
     return {
         "avg_view_percentage": apv_pct,
         "stayed_to_watch_pct": stayed_pct,
@@ -139,44 +114,45 @@ def _compute_calibrated_retention(
     }
 
 
-def _fetch_yt_analytics_retention_map(creds, video_ids: List[str]) -> Dict[str, Dict[str, float]]:
+def _fetch_yt_analytics_retention_map(creds, video_ids: List[str]) -> Dict[str, Dict[str, Optional[float]]]:
     """
     Truy vấn trực tiếp YouTube Analytics API v2 (nếu OAuth token có quyền yt-analytics.readonly)
-    để lấy averageViewPercentage, averageViewDuration, engagedViews, views cho từng video.
+    để lấy dữ liệu THẬT 100%: averageViewPercentage, averageViewDuration, engagedViews, views cho từng video.
     """
     if not creds or not video_ids:
         return {}
-    out: Dict[str, Dict[str, float]] = {}
+    out: Dict[str, Dict[str, Optional[float]]] = {}
     try:
+        from datetime import timedelta
         from googleapiclient.discovery import build
         yt_analytics = build("youtubeAnalytics", "v2", credentials=creds, cache_discovery=False)
-        vid_filter = "video==" + ",".join(video_ids[:100])
-        end_date = datetime.utcnow().strftime("%Y-%m-%d")
+        end_date = (datetime.utcnow() + timedelta(days=1)).strftime("%Y-%m-%d")
         resp = yt_analytics.reports().query(
             ids="channel==MINE",
             startDate="2024-01-01",
             endDate=end_date,
-            metrics="views,averageViewPercentage,averageViewDuration,engagedViews,likes,comments",
+            metrics="views,engagedViews,averageViewDuration,averageViewPercentage",
             dimensions="video",
-            filters=vid_filter,
-            maxResults=100,
+            sort="-views",
+            maxResults=200,
         ).execute()
         for row in resp.get("rows") or []:
-            # [video_id, views, avgViewPct, avgViewDur, engagedViews, likes, comments]
             if len(row) >= 5:
                 v_id = str(row[0])
                 v_cnt = float(row[1] or 0)
-                apv = float(row[2] or 0)
+                eng_v = float(row[2] or 0)
                 avd = float(row[3] or 0)
-                eng_v = float(row[4] or 0)
-                stayed = round((eng_v / v_cnt) * 100.0, 1) if v_cnt > 0 and eng_v > 0 else None
+                apv = float(row[4] or 0)
+                stayed = round(min(100.0, (eng_v / v_cnt) * 100.0), 1) if v_cnt > 0 and eng_v > 0 else None
+                swipe = round(max(0.0, 100.0 - stayed), 1) if stayed is not None else None
                 out[v_id] = {
-                    "avg_view_percentage": apv if apv > 0 else None,
-                    "avg_view_duration_sec": avd if avd > 0 else None,
+                    "avg_view_percentage": round(apv, 1) if apv > 0 else None,
+                    "avg_view_duration_sec": round(avd, 1) if avd > 0 else None,
                     "stayed_to_watch_pct": stayed,
+                    "swipe_away_pct": swipe,
                 }
     except Exception as e:
-        logger.debug(f"[VideoLibrary] YouTube Analytics API query fallback (dùng empirical calibration): {e}")
+        logger.debug(f"[VideoLibrary] YouTube Analytics API query warning: {e}")
     return out
 
 
@@ -333,20 +309,22 @@ def backfill_from_jobs() -> int:
                     pv.likes = int(real_audit["likes"])
                 if real_audit.get("comments") is not None and int(real_audit.get("comments") or 0) > (pv.comments or 0):
                     pv.comments = int(real_audit["comments"])
-                cal = _compute_calibrated_retention(
-                    views=pv.views or 0,
-                    likes=pv.likes or 0,
-                    comments=pv.comments or 0,
-                    channel_avg_views=ch_avg,
-                    duration_sec=dur_sec,
-                    hook_text=hook_txt,
-                    raw_apv=real_audit.get("apv_pct"),
-                    raw_stayed=real_audit.get("stay_pct"),
-                )
-                pv.avg_view_percentage = cal["avg_view_percentage"]
-                pv.stayed_to_watch_pct = cal["stayed_to_watch_pct"]
-                pv.swipe_away_pct = cal["swipe_away_pct"]
-                pv.avg_view_duration_sec = float(real_audit["avd_sec"]) if real_audit.get("avd_sec") else cal["avg_view_duration_sec"]
+                if real_audit:
+                    cal = _compute_calibrated_retention(
+                        views=pv.views or 0,
+                        likes=pv.likes or 0,
+                        comments=pv.comments or 0,
+                        channel_avg_views=ch_avg,
+                        duration_sec=dur_sec,
+                        hook_text=hook_txt,
+                        raw_apv=real_audit.get("apv_pct"),
+                        raw_stayed=real_audit.get("stay_pct"),
+                        raw_avd=real_audit.get("avd_sec"),
+                    )
+                    pv.avg_view_percentage = cal["avg_view_percentage"]
+                    pv.stayed_to_watch_pct = cal["stayed_to_watch_pct"]
+                    pv.swipe_away_pct = cal["swipe_away_pct"]
+                    pv.avg_view_duration_sec = cal["avg_view_duration_sec"]
 
                 if linked_job:
                     linked_job.views = pv.views or 0
@@ -432,8 +410,9 @@ def sync_channel(channel_cfg: Dict[str, Any], max_videos: int = 200) -> Dict[str
 
         public_details = [
             d for d in details
-            if (d.get("status", {}).get("privacyStatus") or "") != "private"
+            if (d.get("status", {}).get("privacyStatus") or "") == "public"
         ]
+        public_ids = {d["id"] for d in public_details}
         all_views = [
             int(d.get("statistics", {}).get("viewCount", 0) or 0)
             for d in public_details
@@ -442,6 +421,11 @@ def sync_channel(channel_cfg: Dict[str, Any], max_videos: int = 200) -> Dict[str
         ch_avg_views = (sum(all_views) / len(all_views)) if all_views else 100.0
 
         with get_db() as db:
+            if public_ids:
+                db.query(PublishedVideo).filter(
+                    PublishedVideo.channel_id == ch_id,
+                    ~PublishedVideo.youtube_video_id.in_(public_ids),
+                ).delete(synchronize_session=False)
             for d in public_details:
                 vid = d["id"]
                 sn = d.get("snippet", {})
@@ -463,6 +447,7 @@ def sync_channel(channel_cfg: Dict[str, Any], max_videos: int = 200) -> Dict[str
                     hook_text=hook_txt,
                     raw_apv=an_data.get("avg_view_percentage"),
                     raw_stayed=an_data.get("stayed_to_watch_pct"),
+                    raw_avd=an_data.get("avg_view_duration_sec"),
                 )
 
                 row = db.query(PublishedVideo).filter(PublishedVideo.youtube_video_id == vid).first()
@@ -621,23 +606,8 @@ def get_weekly_winners_and_losers(channel_id: str, top_k: int = 3, force_refresh
                 .order_by(PublishedVideo.published_at.desc())
                 .all()
             )
-            # Nếu có bản ghi chưa được tính toán retention, tính ngay tại chỗ
-            valid_v = [r.views or 0 for r in rows if (r.views or 0) > 0]
-            ch_avg_v = (sum(valid_v) / len(valid_v)) if valid_v else 100.0
             records: List[Dict[str, Any]] = []
             for r in rows:
-                if r.avg_view_percentage is None or r.stayed_to_watch_pct is None or r.swipe_away_pct is None:
-                    cal = _compute_calibrated_retention(
-                        views=r.views or 0,
-                        likes=r.likes or 0,
-                        comments=r.comments or 0,
-                        channel_avg_views=ch_avg_v,
-                        hook_text=r.hook_text or r.title or "",
-                    )
-                    r.avg_view_percentage = cal["avg_view_percentage"]
-                    r.stayed_to_watch_pct = cal["stayed_to_watch_pct"]
-                    r.swipe_away_pct = cal["swipe_away_pct"]
-                    r.avg_view_duration_sec = cal["avg_view_duration_sec"]
                 records.append({
                     "youtube_video_id": r.youtube_video_id,
                     "title": (r.title or "").strip(),
@@ -645,22 +615,34 @@ def get_weekly_winners_and_losers(channel_id: str, top_k: int = 3, force_refresh
                     "views": int(r.views or 0),
                     "likes": int(r.likes or 0),
                     "comments": int(r.comments or 0),
-                    "avg_view_percentage": float(r.avg_view_percentage or 80.0),
-                    "stayed_to_watch_pct": float(r.stayed_to_watch_pct or 68.0),
-                    "swipe_away_pct": float(r.swipe_away_pct or 32.0),
+                    "avg_view_percentage": float(r.avg_view_percentage) if r.avg_view_percentage is not None else None,
+                    "stayed_to_watch_pct": float(r.stayed_to_watch_pct) if r.stayed_to_watch_pct is not None else None,
+                    "swipe_away_pct": float(r.swipe_away_pct) if r.swipe_away_pct is not None else None,
                     "voice_engine": r.voice_engine or "",
                 })
 
             if records:
                 avg_views = round(sum(x["views"] for x in records) / len(records), 1)
-                avg_stayed = round(sum(x["stayed_to_watch_pct"] for x in records) / len(records), 1)
-                avg_swipe = round(sum(x["swipe_away_pct"] for x in records) / len(records), 1)
-                avg_apv = round(sum(x["avg_view_percentage"] for x in records) / len(records), 1)
+                real_stayed = [x["stayed_to_watch_pct"] for x in records if x["stayed_to_watch_pct"] is not None]
+                real_swipe = [x["swipe_away_pct"] for x in records if x["swipe_away_pct"] is not None]
+                real_apv = [x["avg_view_percentage"] for x in records if x["avg_view_percentage"] is not None]
+                if real_stayed:
+                    avg_stayed = round(sum(real_stayed) / len(real_stayed), 1)
+                if real_swipe:
+                    avg_swipe = round(sum(real_swipe) / len(real_swipe), 1)
+                elif real_stayed:
+                    avg_swipe = round(max(0.0, 100.0 - avg_stayed), 1)
+                if real_apv:
+                    avg_apv = round(sum(real_apv) / len(real_apv), 1)
 
-                # Xếp hạng theo composite score kết hợp Views + Stayed% + APV%
+                # Xếp hạng theo dữ liệu thật: Views + Stayed% (nếu đã chốt sổ Analytics) + APV%
                 scored = sorted(
                     records,
-                    key=lambda x: (x["views"], x["stayed_to_watch_pct"], x["avg_view_percentage"]),
+                    key=lambda x: (
+                        x["views"],
+                        x["stayed_to_watch_pct"] if x["stayed_to_watch_pct"] is not None else -1.0,
+                        x["avg_view_percentage"] if x["avg_view_percentage"] is not None else -1.0,
+                    ),
                     reverse=True,
                 )
                 winners = scored[:top_k]
@@ -684,13 +666,22 @@ def get_weekly_winners_and_losers(channel_id: str, top_k: int = 3, force_refresh
                 if ya.get("has_data"):
                     if ya.get("avd_sec"):
                         avg_avd_sec = float(ya["avd_sec"])
-                    if not winners and ya.get("apv_pct"):
+                    if ya.get("apv_pct"):
                         avg_apv = float(ya["apv_pct"])
-                    if not winners and ya.get("stay_pct"):
+                    if ya.get("stay_pct"):
                         avg_stayed = float(ya["stay_pct"])
                         avg_swipe = float(ya.get("swipe_pct") or (100.0 - avg_stayed))
     except Exception:
         pass
+
+    def _fmt_rec_metrics(rec: Dict[str, Any]) -> str:
+        if rec.get("stayed_to_watch_pct") is not None and rec.get("avg_view_percentage") is not None:
+            return (
+                f"{rec['views']:,} views | Stayed: {rec['stayed_to_watch_pct']:.1f}% | "
+                f"Swipe-Away: {rec.get('swipe_away_pct', round(100.0 - rec['stayed_to_watch_pct'], 1)):.1f}% | "
+                f"APV: {rec['avg_view_percentage']:.1f}%"
+            )
+        return f"{rec['views']:,} views | ⏳ Analytics đang chốt sổ 24-48h đầu"
 
     prompt_lines = [
         f"📊 LIVE CHANNEL RETENTION BASELINE ({canon_cid} — {iso_year}-W{iso_week:02d}): "
@@ -701,17 +692,13 @@ def get_weekly_winners_and_losers(channel_id: str, top_k: int = 3, force_refresh
         prompt_lines.append("🏆 TOP 3 PROVEN WINNERS FROM DB (Replicate their hook structure & curiosity mechanism):")
         for idx, w in enumerate(winners[:top_k], 1):
             prompt_lines.append(
-                f"  #{idx}. \"{w['title']}\" | Hook: \"{w.get('hook_text', '')[:110]}\" -> "
-                f"{w['views']:,} views | Stayed: {w['stayed_to_watch_pct']:.1f}% | "
-                f"Swipe-Away: {w['swipe_away_pct']:.1f}% | APV: {w['avg_view_percentage']:.1f}%"
+                f"  #{idx}. \"{w['title']}\" | Hook: \"{w.get('hook_text', '')[:110]}\" -> {_fmt_rec_metrics(w)}"
             )
     if losers:
         prompt_lines.append("⚠️ BOTTOM 3 LOSERS FROM DB (High Swipe-Away — Avoid their slow opening & fatigued angle):")
         for idx, l in enumerate(losers[:top_k], 1):
             prompt_lines.append(
-                f"  #{idx}. \"{l['title']}\" | Hook: \"{l.get('hook_text', '')[:110]}\" -> "
-                f"{l['views']:,} views | Stayed: {l['stayed_to_watch_pct']:.1f}% | "
-                f"Swipe-Away: {l['swipe_away_pct']:.1f}% | APV: {l['avg_view_percentage']:.1f}%"
+                f"  #{idx}. \"{l['title']}\" | Hook: \"{l.get('hook_text', '')[:110]}\" -> {_fmt_rec_metrics(l)}"
             )
 
     res = {

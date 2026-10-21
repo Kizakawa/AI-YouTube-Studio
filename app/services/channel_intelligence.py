@@ -658,9 +658,9 @@ def get_winner_cloner_blueprint(
 
     if db_winners:
         winner_title = db_winners[0].get("title", "")
-        winner_views = int(db_winners[0].get("views", 0))
-        winner_stayed = float(db_winners[0].get("stayed_to_watch_pct", 0.0))
-        winner_apv = float(db_winners[0].get("avg_view_percentage", 0.0))
+        winner_views = int(db_winners[0].get("views", 0) or 0)
+        winner_stayed = float(db_winners[0].get("stayed_to_watch_pct") or 0.0)
+        winner_apv = float(db_winners[0].get("avg_view_percentage") or 0.0)
     else:
         winner_title = top_performers[0]["title"] if top_performers else ""
         winner_views = top_performers[0].get("views_num", 0) if top_performers else 0

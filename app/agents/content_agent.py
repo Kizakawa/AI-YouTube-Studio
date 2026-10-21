@@ -1016,19 +1016,27 @@ class ContentAgent:
                     w_title = w.get("title", "")
                     if w_title and not is_off_niche_video_title(w_title, niche_low):
                         w_hook = w.get("hook_text") or w_title
+                        w_ret = (
+                            f'Stayed: {w["stayed_to_watch_pct"]:.1f}% | Swipe-Away: {w["swipe_away_pct"]:.1f}% | Completion (APV): {w["avg_view_percentage"]:.1f}%'
+                            if w.get("stayed_to_watch_pct") is not None and w.get("avg_view_percentage") is not None
+                            else "⏳ Analytics pending 24-48h"
+                        )
                         top_winners.append(
                             f'  * [WINNER #{idx}] Title: "{w_title}" | Scene 1 Hook: "{w_hook}" '
-                            f'-> {w["views"]:,} views | Stayed: {w["stayed_to_watch_pct"]:.1f}% | '
-                            f'Swipe-Away: {w["swipe_away_pct"]:.1f}% | Completion (APV): {w["avg_view_percentage"]:.1f}%'
+                            f'-> {w["views"]:,} views | {w_ret}'
                         )
                 for idx, l in enumerate(weekly_perf.get("losers", []), 1):
                     l_title = l.get("title", "")
                     if l_title:
                         l_hook = l.get("hook_text") or l_title
+                        l_ret = (
+                            f'Stayed: {l["stayed_to_watch_pct"]:.1f}% | Swipe-Away: {l["swipe_away_pct"]:.1f}% | Completion (APV): {l["avg_view_percentage"]:.1f}%'
+                            if l.get("stayed_to_watch_pct") is not None and l.get("avg_view_percentage") is not None
+                            else "⏳ Analytics pending 24-48h"
+                        )
                         bottom_losers.append(
                             f'  * [LOSER #{idx}] Title: "{l_title}" | Scene 1 Hook: "{l_hook}" '
-                            f'-> {l["views"]:,} views | Stayed: {l["stayed_to_watch_pct"]:.1f}% | '
-                            f'Swipe-Away: {l["swipe_away_pct"]:.1f}% | Completion (APV): {l["avg_view_percentage"]:.1f}% '
+                            f'-> {l["views"]:,} views | {l_ret} '
                             f'(HIGH SWIPE-AWAY — DO NOT REPEAT THIS SLOW/VAGUE HOOK PATTERN!)'
                         )
 

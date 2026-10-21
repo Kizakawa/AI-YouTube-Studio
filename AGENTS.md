@@ -11,4 +11,10 @@
   1. **Audit System, Agent & Project**: Scan for the newest AI models (Gemini, Claude, OpenAI/OSS, TTS/Image/Video), library updates, IDE extensions, Agent optimization files (`AGENTS.md`, `SKILL.md`, `mcp_config.json`), and `d:\Python\Youtube` configurations (`app/core/config.py`, `app/agents/`, `app/services/`, `app/graph/`).
   2. **Mandatory Report-Before-Execute Gate (Báo cáo trước khi thực hiện)**: **NEVER** apply model/technology upgrades silently. Always present a detailed comparison report in Vietnamese to the user first and wait for confirmation before executing changes.
 
+## 3. Mandatory 100% Real YouTube Metrics Reporting (`youtube-real-metrics-reporting`)
+- Whenever the user asks for a summary, status check, or performance analysis of uploaded YouTube videos or channels, you **MUST** follow the [youtube-real-metrics-reporting](.agents/skills/youtube-real-metrics-reporting/SKILL.md) skill:
+  1. **Zero Estimation Policy**: **NEVER** report estimated/interpolated retention metrics (`APV %`, `Stayed %`, `Swipe Away %`, `AVD`). Only report 100% real numbers fetched from **YouTube Data API v3** and **YouTube Analytics API v2** (or user-provided YouTube Studio Realtime screenshots). If a video is `< 24–48h` old and YouTube Analytics API v2 has not finalized its row yet, explicitly display `⏳ Chờ Analytics chốt sổ (24–48h)`.
+  2. **Mandatory Strategic Analysis**: Always accompany the real data tables with a data-driven analysis covering top-performing videos (velocity, `Like/View %`, real `APV %` / `Stayed %`), recovering channels, and actionable warnings based strictly on real metrics.
+
+
 
