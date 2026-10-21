@@ -257,8 +257,48 @@ def fetch_clean_cinematic_portrait_or_broll(
     }
 
 
+@tool
+def search_pexels_pixabay_stock_video(
+    scene_id: int,
+    subject_entity: str,
+    search_scope: str,
+    primary_stock_query: str,
+    secondary_stock_query: str = "",
+    overall_script_query: str = "",
+    expected_visual_content: str = "",
+    forbidden_false_positives: str = "",
+    target_duration_sec: float = 4.5,
+    camera_motion: str = "zoom_in",
+) -> Dict[str, Any]:
+    """
+    CÔNG CỤ GỌI API KHO VIDEO BẢN QUYỀN SẠCH (PEXELS HD & PIXABAY HD) KÈM KIỂM DUYỆT LINK & ẢNH PREVIEW BỞI LLM.
+    CƠ CHẾ HOẠT ĐỘNG 2 BƯỚC CỦA TOOL:
+    - Bước 1 (LLM Gọi API): Gửi `primary_stock_query` và `secondary_stock_query` (cụm 2–4 từ tiếng Anh mô tả danh từ chủ thể vật lý + môi trường/hành động đơn giản, VD: "hippopotamus river wildlife", "african lion savanna") tới API Pexels & Pixabay để lấy danh sách link ứng viên (`returned_url`, `slug_or_tags`) và ảnh chụp preview (`thumbnail`).
+      * Lưu ý đặc tả API: Pexels/Pixabay chỉ lập chỉ mục theo danh từ vật lý cụ thể (2-4 từ), KHÔNG hiểu các từ cảm xúc/trừu tượng ("retreating", "frustrated", "impassive").
+    - Bước 2 (LLM Kiểm Tra Lại Link & Ảnh Preview Trả Về):
+      * Ngay khi nhận danh sách link từ API, LLM Auditor (`curate_candidate_videos`) sẽ đọc từng đường link `returned_url` kết hợp NHÌN TRỰC TIẾP ảnh `thumbnail` của từng video (kể cả khi link đặt tên chung chung).
+      * Đối chiếu với `expected_visual_content` (nội dung bắt buộc phải thấy trong hình) và `forbidden_false_positives` (các kết quả nhầm lẫn cần loại bỏ ngay như mèo nhà, thú cưng phòng khách, lồng sắt sở thú) trước khi tải file MP4!
+    """
+    return {
+        "tool_name": "search_pexels_pixabay_stock_video",
+        "scene_id": scene_id,
+        "subject_entity": subject_entity,
+        "search_scope": search_scope,
+        "primary_stock_query": primary_stock_query,
+        "secondary_stock_query": secondary_stock_query,
+        "youtube_search_query": primary_stock_query,
+        "fallback_broad_query": secondary_stock_query,
+        "overall_script_query": overall_script_query,
+        "expected_visual_content": expected_visual_content,
+        "forbidden_false_positives": forbidden_false_positives,
+        "target_duration_sec": target_duration_sec,
+        "camera_motion": camera_motion,
+    }
+
+
 MEDIA_DIRECTOR_TOOLS = [
     clone_youtube_short_peak_clip,
+    search_pexels_pixabay_stock_video,
     search_google_cinematic_image,
     summon_epic_monster_cinematic_media,
     fetch_clean_cinematic_portrait_or_broll,
@@ -1142,6 +1182,8 @@ def execute_youtube_short_peak_clone_sync(
             media_agent = MediaAgent()
             va_vid = {
                 "subject": subject_entity or topic,
+                "topic": overall_script_query or topic,
+                "expected_visual_content": f"{subject_entity or topic} — {narration}",
                 "search_queries": search_phrases,
                 "is_hook_scene": ((clip_role or "").upper() == "HOOK"),
             }

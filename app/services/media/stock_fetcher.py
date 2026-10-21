@@ -66,18 +66,7 @@ class StockFetcher:
             query = "cobra snake wildlife" if ("snake" in q_low or "venom" in q_low) else "leopard wildlife savanna"
             q_low = query.lower()
         allow_snow_zoo = any(w in q_low for w in ("zoo", "cage", "snow", "winter", "arctic", "polar", "ice", "penguin", "seal", "husky"))
-        is_wild_predator_q = any(
-            w in q_low
-            for w in ("lion", "tiger", "leopard", "jaguar", "cheetah", "panther", "cougar", "hippo", "crocodile", "caiman", "alligator", "predator", "wildlife", "savanna", "hyena", "wolf", "bear", "snake", "cobra", "eagle")
-        ) and not any(w in q_low for w in ("cat", "kitten", "kitty", "dog", "puppy", "pet", "stray"))
-        _bad_slugs_list = ["-zoo", "zoo-", "zoological", "cage", "enclosure", "fence", "captive", "captivity", "snow", "winter", "blizzard", "arctic", "aquarium", "concrete-pool", "swimming-pool"]
-        if is_wild_predator_q:
-            _bad_slugs_list.extend([
-                "-cat-", "-cats-", "video/a-cat-", "video/two-cats-", "video/cat-", "kitten", "kittens", "kitty", "tabby",
-                "house-cat", "domestic-cat", "pet-cat", "black-cat", "white-cat", "orange-cat", "ginger-cat",
-                "-dog-", "-dogs-", "puppy", "puppies", "window-sill", "living-room", "bedroom", "sofa", "couch",
-            ])
-        _bad_slugs = tuple(_bad_slugs_list)
+        _bad_slugs = ("-zoo", "zoo-", "zoological", "cage", "enclosure", "fence", "captive", "captivity", "snow", "winter", "blizzard", "arctic", "aquarium")
 
         def _filter_vids(raw_vids: List[Dict]) -> List[Dict]:
             if allow_snow_zoo:
@@ -743,6 +732,17 @@ class StockFetcher:
                 candidate_queries.append(q)
 
         _ctx_low = f"{topic} {query} {narration}".lower()
+        if not _establishing_pass and (not visual_analysis or visual_analysis.get("analysis_source") != "ai"):
+            try:
+                from app.agents.visual_curation_agent import VisualCurationAgent
+                llm_va = VisualCurationAgent().analyze_scene_context(
+                    narration=narration or query,
+                    topic=topic or query,
+                )
+                if isinstance(llm_va, dict) and llm_va.get("search_queries"):
+                    visual_analysis = {**(visual_analysis or {}), **llm_va}
+            except Exception as e_pre_va:
+                logger.debug(f"[StockFetcher] Pre-API LLM query planner fallback: {e_pre_va}")
         if (visual_analysis or {}).get("clean_stock_only"):
             for sq_clean in ((visual_analysis or {}).get("search_queries") or []):
                 _push(sq_clean)
@@ -821,17 +821,8 @@ class StockFetcher:
         _bad_wildlife_list = []
         if "badger" in _ctx_low or "leopard" in _ctx_low:
             _bad_wildlife_list.extend(["honeycomb", "beekeeper", "beekeeping", "apiculture", "beehive", "jar-of-honey", "pouring-honey", "bird-feeder"])
-        if any(
-            w in _ctx_low
-            for w in ("lion", "tiger", "leopard", "jaguar", "cheetah", "panther", "cougar", "hippo", "crocodile", "caiman", "alligator", "predator", "wildlife", "savanna", "hyena", "wolf", "bear", "snake", "cobra", "eagle")
-        ) and not any(w in _ctx_low for w in ("cat", "kitten", "kitty", "dog", "puppy", "pet", "stray")):
-            _bad_wildlife_list.extend([
-                "-cat-", "-cats-", "video/a-cat-", "video/two-cats-", "video/cat-", "kitten", "kittens", "kitty", "tabby",
-                "house-cat", "domestic-cat", "pet-cat", "black-cat", "white-cat", "orange-cat", "ginger-cat",
-                "-dog-", "-dogs-", "puppy", "puppies", "window-sill", "living-room", "bedroom", "sofa", "couch",
-            ])
         if not any(w in _ctx_low for w in ("snow", "winter", "arctic", "polar", "ice", "zoo", "cage", "penguin", "seal", "husky")):
-            _bad_wildlife_list.extend(["-zoo", "zoo-", "cage", "enclosure", "fence", "captive", "captivity", "snow", "winter", "snowy", "arctic", "blizzard", "concrete-pool", "swimming-pool"])
+            _bad_wildlife_list.extend(["-zoo", "zoo-", "cage", "enclosure", "fence", "captive", "captivity", "snow", "winter", "snowy", "arctic", "blizzard"])
         _bad_wildlife_cues = tuple(_bad_wildlife_list)
 
         # Bắn song song 5 nhánh tìm kiếm Video B-Roll (Pexels + Pixabay + NASA) qua LangGraph Send API + operator.add
@@ -900,22 +891,24 @@ class StockFetcher:
                 if len(collected_candidates) >= 4:
                     break
 
-        if collected_candidates and (visual_analysis or narration):
+        if collected_candidates:
             try:
                 from app.agents.visual_curation_agent import VisualCurationAgent
                 curator = VisualCurationAgent()
-                v_analysis = visual_analysis or curator.analyze_scene_context(
+                v_analysis = dict(visual_analysis or curator.analyze_scene_context(
                     narration=narration or query,
-                    topic=query,
-                )
+                    topic=topic or query,
+                ))
+                v_analysis.setdefault("topic", topic or query)
                 winner, score, rationale, should_ai = curator.curate_candidate_videos(
                     candidates=collected_candidates,
                     visual_analysis=v_analysis,
                     narration=narration or query,
                     used_urls=used,
+                    topic=topic or query,
                 )
-                min_vid_score = 7.2 if is_hook_vid else 4.8
-                if winner and score >= min_vid_score:
+                min_vid_score = 7.2 if is_hook_vid else 6.5
+                if winner and score >= min_vid_score and not should_ai:
                     formatted_winner = self.format_video_candidate(winner, query=query, used=used)
                     if formatted_winner and formatted_winner.get("url"):
                         record_used_media(formatted_winner["url"], query=query, source=formatted_winner.get("source", "curated_video"))
@@ -925,42 +918,17 @@ class StockFetcher:
                         if used_urls is not None:
                             used_urls.update(ids)
                         return formatted_winner
-                if should_ai or is_hook_vid:
-                    if not is_hook_vid:
-                        est_res = _try_establishing_pass(f"AI Vision từ chối clip cụ thể ({str(rationale)[:80]})")
-                        if est_res:
-                            return est_res
-                    logger.info(
-                        f"[StockFetcher] {'🔥 Cảnh 1 Hook' if is_hook_vid else 'VisualCurationAgent'} từ chối stock video chưa đủ WOW "
-                        f"(score={score:.1f} < {min_vid_score}, {rationale}) → chuyển sang 8K AI Masterpiece!"
-                    )
-                    return None
+                if not is_hook_vid:
+                    est_res = _try_establishing_pass(f"LLM Link & Vision Auditor từ chối clip cụ thể ({str(rationale)[:80]})")
+                    if est_res:
+                        return est_res
+                logger.info(
+                    f"[StockFetcher] 🚫 LLM Link & Vision Auditor từ chối các link stock video không khớp chủ thể "
+                    f"(score={score:.1f} < {min_vid_score}, {rationale}) → Bỏ qua, không chọn ngẫu nhiên!"
+                )
+                return None
             except Exception as e:
                 logger.debug(f"[StockFetcher] Lỗi khi gọi VisualCurationAgent: {e}")
-
-        if is_hook_vid:
-            return None
-
-        candidates_found = []
-        for v in collected_candidates:
-            formatted = StockFetcher.format_video_candidate(v, query=query, used=used)
-            if formatted:
-                candidates_found.append(formatted)
-            if len(candidates_found) >= 5:
-                break
-
-        if candidates_found:
-            import random
-            top_pool = candidates_found[:min(len(candidates_found), 3)]
-            chosen = random.choice(top_pool)
-            if chosen.get("url"):
-                record_used_media(chosen["url"], query=query, source=chosen.get("source", "pexels_video"))
-                from app.services.media.media_history import extract_media_identity
-                ids = extract_media_identity(chosen["url"])
-                used.update(ids)
-                if used_urls is not None:
-                    used_urls.update(ids)
-                return chosen
 
         return None
 

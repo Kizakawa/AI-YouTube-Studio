@@ -27,7 +27,15 @@ from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
 
 logger = logging.getLogger(__name__)
 
-AVAILABLE_MODELS = list(GEMINI_PRIORITY_MODELS)
+AVAILABLE_MODELS = [
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-flash-latest",
+    "gemini-flash-lite-latest",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-3.1-pro-preview",
+]
 
 # Giới hạn số lệnh Gemini Vision chạy đồng thời (mặc định 4 luồng song song giúp tăng tốc gấp đôi)
 import threading as _threading
@@ -115,8 +123,8 @@ def _enforce_subject_queries(res: Dict[str, Any], subject: str) -> Dict[str, Any
 
     fixed: List[str] = []
     for q in queries:
-        # Chỉ ghép anchor_subj nếu core_entity là thực thể cụ thể (động vật, nhân vật lịch sử, quái vật)
-        if core_entity and not _has_subject(q):
+        # Nếu LLM đã tự thiết kế search_queries (is_ai=True) cho từng loài đơn lẻ trên Pexels, giữ nguyên không ghép đè anchor_subj
+        if not is_ai and core_entity and not _has_subject(q):
             q = f"{anchor_subj} {q}" if len(q.split()) <= 4 else f"{anchor_subj} {' '.join(q.split()[:3])}"
         if q and q not in fixed:
             fixed.append(q)
@@ -213,14 +221,14 @@ class VisualCurationAgent:
             parts.append({"inline_data": {"mime_type": mime, "data": b64}})
 
         conn_errors = 0
-        for model, key in self.rotator.iter_best_model_key_pairs(models or AVAILABLE_MODELS, max_total_attempts=max_attempts):
+        for model, key in self.rotator.iter_best_model_key_pairs(models or AVAILABLE_MODELS, max_total_attempts=max_attempts or 6):
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            gen_cfg: Dict[str, Any] = {"temperature": 0.2}
+            if not model.startswith("gemma-"):
+                gen_cfg["responseMimeType"] = "application/json"
             payload = {
                 "contents": [{"parts": parts}],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "responseMimeType": "application/json",
-                }
+                "generationConfig": gen_cfg,
             }
             try:
                 res = self.session.post(url, json=payload, timeout=timeout)
@@ -228,17 +236,29 @@ class VisualCurationAgent:
                     data = res.json()
                     candidates = data.get("candidates", [])
                     if candidates:
-                        raw_text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                        c_parts = candidates[0].get("content", {}).get("parts", [])
+                        raw_text = "".join(
+                            str(p.get("text") or "")
+                            for p in c_parts
+                            if isinstance(p, dict) and not p.get("thought")
+                        ).strip()
+                        if not raw_text and c_parts:
+                            raw_text = str(c_parts[-1].get("text") or "").strip()
                         if raw_text:
-                            return json.loads(raw_text)
-                elif res.status_code in (429, 403, 404, 503):
+                            m_json = re.search(r"\{.*\}", raw_text, re.DOTALL)
+                            return json.loads(m_json.group(0) if m_json else raw_text)
+                elif res.status_code in (429, 403, 404, 503, 400):
                     self.rotator.mark_model_rate_limited(key, model, status_code=res.status_code, error_text=res.text[:800])
                     continue
-            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            except requests.exceptions.Timeout as e:
+                self.rotator.mark_model_rate_limited(key, model, status_code=504, error_text=f"Timeout: {e}")
+                logger.debug(f"[VisualCurationAgent] Timeout on {model}, switching model: {e}")
+                continue
+            except requests.exceptions.ConnectionError as e:
                 conn_errors += 1
-                logger.debug(f"[VisualCurationAgent] Network error on {model}: {e}")
+                logger.debug(f"[VisualCurationAgent] Connection error on {model}: {e}")
                 if conn_errors >= 2:
-                    logger.warning("[VisualCurationAgent] Mất kết nối tới Gemini → bỏ qua, dùng heuristic.")
+                    logger.warning("[VisualCurationAgent] Mất kết nối mạng tới Gemini → bỏ qua, dùng heuristic.")
                     return None
                 continue
             except Exception as e:
@@ -428,7 +448,9 @@ NGUYÊN TẮC TƯ DUY ĐẠO DIỄN & TẠO TRUY VẤN GOOGLE IMAGES:
    - "HOLLYWOOD_VFX_MOVIE": Thần thoại, quái vật, thủy quái, kinh dị siêu nhiên, viễn tưởng -> ưu tiên truy vấn 2–5 từ tiếng Anh trả về kiệt tác CGI / VFX / Thalassophobia ấn tượng nhất trên Top Search Google Images (vd: `"giant kraken ocean"`, `"kraken attacking ship"`, `"deep sea submarine spotlight"`) -> `["google"]`.
    - "STYLIZED_ANIMATION": Hoạt hình 2D châm biếm, minh họa.
 3. "preferred_engines": Luôn chọn `["google"]`.
-4. "search_queries" & "google_image_queries": 3 câu truy vấn NGẮN GỌN, TRỰC DIỆN, ĐẮT GIÁ (**2 đến 5 từ tiếng Anh**) mô tả đúng `[Chủ thể cụ thể] + [Hành động / Quy mô / Biểu cảm của cảnh này]`. KHÔNG nhồi nhét từ khóa kỹ thuật máy quay (`"8k"`, `"9:16"`, `"macro shot"`, `"wide angle"`, `"chiaroscuro"`).
+4. "search_queries" (Dành riêng cho API Pexels/Pixabay) & "google_image_queries" (Dành cho Google Images):
+   - Với `search_queries` (gọi API Pexels/Pixabay): BẮT BUỘC là **2 đến 3 từ tiếng Anh đơn giản** theo kiểu thẻ tag vật lý (`[Tên loài/chủ thể đơn lẻ bằng tiếng Anh] + [Môi trường/hành động đơn giản]`, VD: `"hippopotamus water"`, `"african lion savanna"`, `"crocodile river"`). TUYỆT ĐỐI CẤM dùng từ `"vs"`, `"versus"`, `"standoff"`, `"confronting"`, `"facing"` trong `search_queries` vì API Pexels sẽ trả về 0 kết quả! Nếu chủ đề có 2 loài đối đầu (VD: Hà mã vs Sư tử), hãy đặt câu 1 cho loài A (`"hippopotamus river"`), câu 2 cho loài B (`"lion savanna"`).
+   - Với `google_image_queries`: 3 câu truy vấn NGẮN GỌN (**2 đến 5 từ tiếng Anh**) mô tả đúng `[Chủ thể] + [Hành động / Đối đầu]`.
 
 HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
 {{
@@ -586,18 +608,78 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
     # PHASE 2: ĐÁNH GIÁ & TUYỂN CHỌN ỨNG VIÊN TƯ LIỆU (CANDIDATE CURATION)
     # ──────────────────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _fetch_video_thumbnails_for_llm(
+        eval_pool: List[Dict[str, Any]],
+        timeout: float = 3.5,
+    ) -> Tuple[List[Tuple[str, str]], Dict[int, int]]:
+        """
+        Tải song song các ảnh preview (thumbnail) của ứng viên video Pexels/Pixabay
+        và nén nhẹ về JPEG 384px base64 để LLM nhìn trực tiếp nội dung bên trong video
+        ngay cả khi đường link URL của Pexels/Pixabay đặt tên chung chung.
+        Trả về: (images_list, map_candidate_idx_to_1based_image_order).
+        """
+        import base64 as _b64
+        import io as _io
+        import requests as _req
+        from concurrent.futures import ThreadPoolExecutor
+        from PIL import Image
+
+        def _dl_one(item_pair: Tuple[int, Dict[str, Any]]) -> Optional[Tuple[int, str, str]]:
+            idx, cand = item_pair
+            t_url = str(cand.get("thumbnail") or "").strip()
+            if not t_url or not t_url.startswith("http"):
+                return None
+            try:
+                r = _req.get(
+                    t_url,
+                    timeout=timeout,
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+                )
+                if r.status_code != 200 or not r.content or len(r.content) < 800:
+                    return None
+                with Image.open(_io.BytesIO(r.content)) as im:
+                    if im.mode != "RGB":
+                        im = im.convert("RGB")
+                    im.thumbnail((384, 384), Image.Resampling.BILINEAR)
+                    buf = _io.BytesIO()
+                    im.save(buf, format="JPEG", quality=78)
+                    b64_str = _b64.b64encode(buf.getvalue()).decode("utf-8")
+                    return idx, "image/jpeg", b64_str
+            except Exception:
+                return None
+
+        images_out: List[Tuple[str, str]] = []
+        idx_to_order: Dict[int, int] = {}
+        if not eval_pool:
+            return images_out, idx_to_order
+
+        with ThreadPoolExecutor(max_workers=min(6, len(eval_pool))) as ex:
+            results = list(ex.map(_dl_one, list(enumerate(eval_pool))))
+
+        for res in results:
+            if res is None:
+                continue
+            c_idx, mime, b64_data = res
+            images_out.append((mime, b64_data))
+            idx_to_order[c_idx] = len(images_out)
+
+        return images_out, idx_to_order
+
     def curate_candidate_videos(
         self,
         candidates: List[Dict[str, Any]],
         visual_analysis: Dict[str, Any],
         narration: str = "",
         used_urls: Optional[set] = None,
+        topic: str = "",
     ) -> Tuple[Optional[Dict[str, Any]], float, str, bool]:
         """
-        Đánh giá toàn diện danh sách video ứng viên từ kho Pexels:
-        - Đọc slug URL, tiêu đề, thời lượng, bố cục dọc 9:16.
-        - Agent chấm điểm độ tương thích ngữ nghĩa và cảm xúc.
-        - Lựa chọn video xuất sắc nhất, hoặc quyết định từ chối toàn bộ nếu không đạt chuẩn.
+        Đánh giá toàn diện danh sách video ứng viên trả về từ API Pexels/Pixabay bằng LLM + Multimodal Vision:
+        - Nhận danh sách link trả về (`returned_url`), mô tả slug/tags VÀ ảnh chụp preview (`thumbnail`) của từng video.
+        - LLM kiểm tra chéo cả đường link trả về lẫn hình ảnh thực tế trong thumbnail (giải quyết triệt để trường hợp
+          link đặt tên chung chung hoặc API trả nhầm mèo nhà/thú cưng khi tìm thú hoang dã).
+        - Nếu LLM đánh giá không có link nào khớp chủ thể/bối cảnh -> TỪ CHỐI DỨT KHOÁT (không dùng heuristic ghi đè).
 
         Returns:
             (winner_candidate, confidence_score, rationale, should_fallback_to_ai)
@@ -698,61 +780,93 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
                 "curation_rationale": rationale,
             }
 
-        # 2. Gọi Agent phân tích & tuyển chọn
+        # 2. Tải song song ảnh preview (thumbnail) của các link trả về để LLM vừa đọc link vừa nhìn ảnh thật
+        thumb_images, idx_to_img_order = self._fetch_video_thumbnails_for_llm(eval_pool)
+
         mood = visual_analysis.get("mood", "cinematic")
         metaphor = visual_analysis.get("visual_metaphor", "")
-        negative_cues = visual_analysis.get("negative_cues", [])
+        subject_req = visual_analysis.get("subject") or visual_analysis.get("core_visual_entity") or ""
+        topic_ctx = topic or visual_analysis.get("topic") or subject_req
+        expected_vis = visual_analysis.get("expected_visual_content") or metaphor
+        forbidden_fp = visual_analysis.get("forbidden_false_positives") or ""
+        negative_cues = list(visual_analysis.get("negative_cues", []))
+        if forbidden_fp:
+            negative_cues.append(str(forbidden_fp))
+
+        candidates_for_llm = []
+        for idx, c in enumerate(eval_pool):
+            img_ord = idx_to_img_order.get(idx)
+            candidates_for_llm.append({
+                "index": idx,
+                "returned_url": c["url"],
+                "slug_or_tags": c["slug"],
+                "source": c["source"],
+                "duration": f"{c['duration']}s",
+                "resolution": f"{c['width']}x{c['height']}",
+                "attached_preview_image": f"Image #{img_ord}" if img_ord else "None (evaluate via returned_url & slug_or_tags)",
+            })
 
         prompt = f"""
-Bạn là Tổng Đạo Diễn Hình Ảnh (Director of Photography).
-Nhiệm vụ: Duyệt qua các đoạn video ứng viên từ kho tư liệu và LỰA CHỌN DUY NHẤT 1 VIDEO phù hợp nhất với tinh thần phân cảnh.
+Bạn là Tổng Đạo Diễn Hình Ảnh & Giám Khảo Kiểm Duyệt Link API Kho Video (LLM Stock Video Link & Vision Auditor).
+Sau khi hệ thống gọi API Pexels/Pixabay, API đã trả về danh sách các đường link ứng viên kèm ảnh chụp preview (Image #1, #2...) bên dưới.
+Nhiệm vụ của bạn là KIỂM TRA LẠI CÁC ĐƯỜNG LINK & ẢNH PREVIEW TRẢ VỀ và chỉ chọn ra DUY NHẤT 1 VIDEO thực sự khớp với chủ thể & nội dung phân cảnh.
 
-BỐI CẢNH PHÂN CẢNH:
-- Lời thoại: "{narration}"
-- Ý niệm thị giác & Ẩn dụ: "{metaphor}"
-- Tâm trạng / Không khí (Mood): "{mood}"
-- Yếu tố cấm kỵ (Negative Cues): {json.dumps(negative_cues, ensure_ascii=False)}
+THÔNG TIN BỐI CẢNH & YÊU CẦU BẮT BUỘC:
+- Chủ đề tổng thể của video (Topic): "{topic_ctx}"
+- Chủ thể bắt buộc (Required Subject/Species): "{subject_req}"
+- Lời thoại phân cảnh (Narration): "{narration}"
+- Nội dung thị giác kỳ vọng: "{expected_vis}"
+- Tâm trạng (Mood): "{mood}"
+- Các yếu tố sai lệch / False-Positives bị cấm: {json.dumps(negative_cues, ensure_ascii=False)}
 
-DANH SÁCH ỨNG VIÊN VIDEO CÓ SẴN (Nội dung thực tế trích xuất từ video):
-{json.dumps([{"index": idx, "description": c["slug"], "duration": f"{c['duration']}s"} for idx, c in enumerate(eval_pool)], ensure_ascii=False, indent=2)}
+DANH SÁCH ĐƯỜNG LINK & METADATA DO API TRẢ VỀ:
+{json.dumps(candidates_for_llm, ensure_ascii=False, indent=2)}
 
-QUY TẮC TUYỂN CHỌN:
-1. Video phải có cùng tâm trạng (ví dụ nếu u ám thì không chọn cảnh có nắng tươi vui).
-2. TUYỆT ĐỐI LOẠI TRỪ video lạc đề, sai lệch thời đại (anachronism) hoặc lệch thể loại (ví dụ: người văn phòng/laptop/quán cafe/tiệc bar/hộp đêm/selfie trong video về vũ trụ, triết học, lịch sử, thiên nhiên hoang dã).
-3. Video KHÔNG được dính các yếu tố cấm kỵ (Negative Cues).
-4. Nếu CÓ ứng viên đạt chuẩn (điểm >= 6.0/10) -> Chọn index của ứng viên đó.
-5. NẾU TẤT CẢ ỨNG VIÊN ĐỀU KHÔNG LIÊN QUAN, LẠC ĐỀ HOẶC PHÁ HỎNG BỐI CẢNH (Tất cả < 6.0) -> Trả về winner_index = -1 và should_fallback_to_ai = true để hệ thống tự động sinh Video AI kỳ ảo.
+QUY TRÌNH KIỂM TRA NGHIÊM NGẶT (BẮT BUỘC TUÂN THỦ):
+1. KIỂM TRA ĐƯỜNG LINK (`returned_url`) & MÔ TẢ (`slug_or_tags`):
+   - Các API kho video (như Pexels/Pixabay) thường trả về kết quả nhầm loài vật hoặc lệch ngữ cảnh (ví dụ: tìm "lion" nhưng trả về link mèo nhà `two-cats-lying-on-a-window-sill`, thú cưng trong phòng khách, chó nhà, hoặc con vật bị nhốt trong lồng sắt sở thú).
+   - Nếu `returned_url` hoặc `slug_or_tags` cho thấy video là thú cưng trong nhà (mèo nhà, chó cảnh), sai loài vật hoàn toàn, bị nhốt trong chuồng trại/sở thú, sai bối cảnh thời đại, hoặc là cảnh con người sinh hoạt/văn phòng không liên quan -> LOẠI BỎ NGAY LẬP TỨC!
+2. KIỂM TRA ẢNH PREVIEW ĐÍNH KÈM (`attached_preview_image`):
+   - Ngay cả khi `returned_url` đặt tên chung chung không rõ nội dung, hãy NHÌN TRỰC TIẾP vào bức ảnh `Image #N` tương ứng của ứng viên đó để xác minh thực tế bên trong video quay cảnh gì.
+   - QUY TẮC QUAN TRỌNG NHẤT VỀ KHO STOCK VIDEO (PEXELS/PIXABAY B-ROLL):
+     * Kho video Pexels/Pixabay KHÔNG BAO GIỜ có cảnh 2 loài thú hoang dã đang đánh nhau trong cùng 1 khung hình! Mỗi clip trên Pexels chỉ quay 1 loài đơn lẻ (đang đi bộ, bơi, gầm, hoặc quan sát ngoài tự nhiên).
+     * Vì vậy, nếu chủ đề/lời thoại nhắc đến 2 loài (ví dụ "Hipopótamo vs Leões" / "Jaguar vs Caiman"), bất kỳ video nào quay cảnh tự nhiên hoang dã thật của **MỘT TRONG HAI LOÀI ĐÓ** (ví dụ: clip quay con Hà mã hoang dã HOẶC clip quay đàn Sư tử hoang dã đang đi/nằm/quan sát trên thảo nguyên) ĐỀU LÀ TƯ LIỆU B-ROLL HỢP LỆ VÀ PHẢI ĐƯỢC CHẤM ĐẠT (`confidence_score` từ 7.5 đến 9.2, `"should_fallback_to_ai": false`)!
+     * KHÔNG ĐƯỢC từ chối clip chỉ vì clip chỉ có 1 trong 2 loài hoặc vì con vật trong clip đang đi bộ/nghỉ ngơi thay vì đang lao vào cắn nhau!
+     * CHỈ TỪ CHỐI (`"winner_index": -1`) khi ứng viên là: (a) Thú cưng trong nhà (mèo nhà `two-cats`, chó cảnh), (b) Loài vật khác hoàn toàn không có trong chủ đề, (c) Động vật bị nhốt trong lồng sắt sở thú, hoặc (d) Con người/văn phòng lạc đề.
+3. RA QUYẾT ĐỊNH DỨT KHOÁT:
+   - Nếu CÓ ứng viên đúng loài vật/chủ thể thật trong môi trường tự nhiên (`confidence_score >= 6.5`): trả về `winner_index` của ứng viên tốt nhất và `"should_fallback_to_ai": false`.
+   - Nếu TẤT CẢ ứng viên trả về đều sai loài vật (ví dụ toàn mèo nhà thay vì sư tử/hà mã), thú nhốt chuồng, hoặc lạc đề (`confidence_score < 6.5`): BẮT BUỘC trả về `"winner_index": -1` và `"should_fallback_to_ai": true`!
 
 TRẢ VỀ JSON DUY NHẤT:
 {{
-  "winner_index": 0,
-  "confidence_score": 8.5,
-  "rationale": "Giải thích ngắn gọn 1 câu vì sao chọn (hoặc vì sao từ chối toàn bộ)",
-  "should_fallback_to_ai": false
+  "winner_index": -1,
+  "confidence_score": 2.0,
+  "rationale": "Giải thích rõ kết quả kiểm tra đường link & ảnh preview (vì sao chọn hoặc vì sao loại bỏ)",
+  "should_fallback_to_ai": true
 }}
 """
-        agent_dec = self._call_gemini_json(prompt)
-        if agent_dec:
-            w_idx = agent_dec.get("winner_index", -1)
+        agent_dec = self._call_gemini_json(prompt, images=thumb_images if thumb_images else None)
+        if agent_dec is not None:
+            w_idx = int(agent_dec.get("winner_index", -1))
             score = float(agent_dec.get("confidence_score", 0.0))
-            rationale = agent_dec.get("rationale", "")
+            rationale = str(agent_dec.get("rationale", ""))
             fallback_ai = bool(agent_dec.get("should_fallback_to_ai", False))
 
-            if w_idx >= 0 and w_idx < len(eval_pool) and score >= 6.0 and not fallback_ai:
+            if 0 <= w_idx < len(eval_pool) and score >= 6.5 and not fallback_ai:
                 winner = eval_pool[w_idx]
                 logger.info(
-                    f"🎬 [VisualCuration] ✅ Đã tuyển chọn Video #{winner['raw_video'].get('id')} "
-                    f"('{winner['slug']}') | Điểm: {score}/10 | {rationale}"
+                    f"🎬 [LLM Link & Vision Audit] ✅ Đã kiểm duyệt & chọn Video #{winner['raw_video'].get('id')} "
+                    f"('{winner['url']}') | Điểm: {score}/10 | {rationale}"
                 )
                 return _format_winner(winner, score, rationale), score, rationale, False
-            else:
-                logger.info(
-                    f"🎬 [VisualCuration] ℹ️ Gemini chấm stock videos mức trung bình (Score: {score}/10: {rationale}) -> "
-                    f"Chuyển sang Heuristic B-Roll Selector để giữ video chuyển động thật thay vì ảnh tĩnh!"
-                )
-                return self._heuristic_curate_videos(eval_pool, visual_analysis)
 
-        # Rule-based fallback nếu Agent không phản hồi
+            logger.info(
+                f"🚫 [LLM Link & Vision Audit] LLM đã kiểm tra các link trả về và TỪ CHỐI toàn bộ "
+                f"(Score: {score}/10: {rationale}) -> Không tải video sai lệch!"
+            )
+            return None, score, rationale, True
+
+        # Chỉ khi mất kết nối hoàn toàn tới mọi model Gemini (agent_dec is None) mới dùng bộ lọc dự phòng
         return self._heuristic_curate_videos(eval_pool, visual_analysis)
 
     def _heuristic_curate_videos(

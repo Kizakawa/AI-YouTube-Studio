@@ -478,9 +478,9 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         prod_method = "CLEAN_PORTRAIT_PHOTO_8K"
                         rationale = f"Clean Portrait Photo x{len(pose_images)} ({h_query})"
 
-            elif tool_name == "clone_youtube_short_peak_clip":
-                yt_q = sc_strat.get("youtube_search_query") or kw or state.get("topic", "")
-                fb_q = sc_strat.get("fallback_broad_query") or overall_q or subj_ent
+            elif tool_name in ("clone_youtube_short_peak_clip", "search_pexels_pixabay_stock_video"):
+                yt_q = sc_strat.get("youtube_search_query") or sc_strat.get("primary_stock_query") or kw or state.get("topic", "")
+                fb_q = sc_strat.get("fallback_broad_query") or sc_strat.get("secondary_stock_query") or overall_q or subj_ent
                 clip_role = sc_strat.get("clip_role") or ("HOOK" if scene.scene_id == 1 else "PEAK")
                 out_vid = str(
                     work_dir / "hook_motion_001.mp4"
