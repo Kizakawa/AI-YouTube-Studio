@@ -229,15 +229,47 @@ def _flush_job_trace_locked(job_id: int) -> Optional[Path]:
         return None
 
 
+def _summarize_io(args: tuple, kwargs: dict, result: Any) -> Dict[str, Any]:
+    """Trích xuất tóm tắt Input / Output gọn sạch (như tab Inputs/Outputs của LangSmith UI)."""
+    in_summary: Dict[str, Any] = {}
+    for k in ("query", "topic", "narration", "timeout"):
+        if k in kwargs and kwargs[k] is not None:
+            val = str(kwargs[k])
+            in_summary[k] = val[:140] + ("..." if len(val) > 140 else "")
+    if "images" in kwargs and kwargs["images"]:
+        in_summary["attached_images"] = len(kwargs["images"])
+    if "prompt" in kwargs and kwargs["prompt"]:
+        p_txt = str(kwargs["prompt"]).strip().replace("\n", " ")
+        in_summary["prompt_head"] = p_txt[:140] + ("..." if len(p_txt) > 140 else "")
+    elif len(args) >= 2 and isinstance(args[1], str):
+        p_txt = args[1].strip().replace("\n", " ")
+        in_summary["arg1"] = p_txt[:140] + ("..." if len(p_txt) > 140 else "")
+
+    out_summary: Any = None
+    if isinstance(result, dict):
+        keep_keys = (
+            "url", "source", "duration", "winner_index", "best_score",
+            "rationale", "search_queries", "core_visual_entity", "subject",
+        )
+        out_summary = {k: result[k] for k in keep_keys if k in result}
+        if not out_summary:
+            out_summary = {k: str(v)[:100] for k, v in list(result.items())[:4]}
+    elif result is None:
+        out_summary = None
+    else:
+        out_summary = str(result)[:160]
+
+    return {"input": in_summary, "output": out_summary}
+
+
 def trace_custom_span(name: str, run_type: str = "llm"):
     """
     Decorator kép:
     - Nếu `LANGSMITH_API_KEY` được cấu hình, tự động bọc hàm bằng `langsmith.traceable(name=name, run_type=run_type)`
       để hiển thị thành Span con trên cây Waterfall của LangSmith Cloud.
-    - Đồng thời luôn đo thời gian thực thi chính xác vào `storage/traces/job_<id>_trace.json`.
+    - Đồng thời luôn đo thời gian thực thi + Input/Output vào `storage/traces/job_<id>_trace.json`.
     """
     def decorator(func: Callable):
-        # Bọc bằng langsmith.traceable nếu thư viện có sẵn
         try:
             from langsmith import traceable
             ls_wrapped = traceable(name=name, run_type=run_type)(func)
@@ -248,29 +280,35 @@ def trace_custom_span(name: str, run_type: str = "llm"):
         def sync_wrapper(*args, **kwargs):
             t0 = time.monotonic()
             status = "OK"
+            res = None
             try:
                 target_fn = ls_wrapped if is_langsmith_enabled() else func
-                return target_fn(*args, **kwargs)
+                res = target_fn(*args, **kwargs)
+                return res
             except Exception as exc:
                 status = f"ERR:{type(exc).__name__}"
                 raise
             finally:
                 dur = time.monotonic() - t0
-                record_custom_span(name=name, run_type=run_type, duration_sec=dur, status=status)
+                io_meta = _summarize_io(args, kwargs, res)
+                record_custom_span(name=name, run_type=run_type, duration_sec=dur, status=status, metadata=io_meta)
 
         @functools.wraps(func)
         async def async_wrapper(*args, **kwargs):
             t0 = time.monotonic()
             status = "OK"
+            res = None
             try:
                 target_fn = ls_wrapped if is_langsmith_enabled() else func
-                return await target_fn(*args, **kwargs)
+                res = await target_fn(*args, **kwargs)
+                return res
             except Exception as exc:
                 status = f"ERR:{type(exc).__name__}"
                 raise
             finally:
                 dur = time.monotonic() - t0
-                record_custom_span(name=name, run_type=run_type, duration_sec=dur, status=status)
+                io_meta = _summarize_io(args, kwargs, res)
+                record_custom_span(name=name, run_type=run_type, duration_sec=dur, status=status, metadata=io_meta)
 
         import asyncio
         if asyncio.iscoroutinefunction(func):
@@ -298,8 +336,8 @@ def _ensure_utf8_stdout() -> None:
         pass
 
 
-def print_trace_report(trace_data: Dict[str, Any]) -> None:
-    """In bảng phân tích Waterfall trực quan ra màn hình console."""
+def print_trace_report(trace_data: Dict[str, Any], inspect_io: bool = True) -> None:
+    """In bảng phân tích Waterfall trực quan kèm chi tiết Input/Output ra màn hình console."""
     _ensure_utf8_stdout()
     job_id = trace_data.get("job_id", "?")
     channel = trace_data.get("channel_id", "default")
@@ -356,6 +394,23 @@ def print_trace_report(trace_data: Dict[str, Any]) -> None:
             )
         print("=" * 84)
 
+        if inspect_io:
+            print("🔎 CHI TIẾT ĐẦU VÀO / ĐẦU RA TỪNG BƯỚC (SPAN INPUT -> OUTPUT INSPECTOR):")
+            print("-" * 84)
+            for idx, s in enumerate(spans, 1):
+                s_name = s.get("name", "unknown")
+                s_type = str(s.get("run_type", "llm")).upper()
+                dur = float(s.get("duration_sec", 0.0))
+                meta = s.get("metadata") or {}
+                inp = meta.get("input") or {}
+                out = meta.get("output")
+                print(f"  [{idx}] ({s_type}) {s_name} — ⏱️ {dur:.2f}s [{s.get('status', 'OK')}]")
+                if inp:
+                    print(f"      📥 Input  : {json.dumps(inp, ensure_ascii=False)}")
+                if out is not None:
+                    print(f"      📤 Output : {json.dumps(out, ensure_ascii=False)}")
+            print("=" * 84)
+
 
 def check_langsmith_status() -> int:
     """Kiểm tra trạng thái cài đặt LangSmith SDK, API Key và kết nối tới máy chủ LangSmith."""
@@ -404,13 +459,72 @@ def check_langsmith_status() -> int:
     return 0
 
 
+def run_live_practice_lab(topic: str = "Why hippos are more dangerous than lions in Africa") -> None:
+    """
+    Bài thực hành trực tiếp (Hands-on Production Observability Lab):
+    Chạy thử 1 luồng thật (Job #9999) gồm:
+      1. Node `plan_scene_query` (LLM phân tích ngữ cảnh & sinh từ khóa đơn loài cho Pexels)
+      2. Node `fetch_and_audit_media` (Gọi Pexels API + LLM kiểm duyệt Link URL & Ảnh Thumbnail)
+    Sau đó xuất toàn bộ biểu đồ Waterfall + Input/Output Inspector như các dự án AI thực tế.
+    """
+    _ensure_utf8_stdout()
+    job_id = 9999
+    narration = "In African rivers, a territorial hippopotamus charges through deep water with bone-crushing jaws."
+    print("\n🚀 [BÀI THỰC HÀNH TRỰC TIẾP] Đang chạy luồng AI Agent thật (Job #9999) có gắn cảm biến LangSmith...")
+    start_job_trace(job_id=job_id, channel_id="Watch_Out", topic=topic, niche="wildlife_survival", mode="practice_lab")
+
+    from app.agents.visual_curation_agent import VisualCurationAgent
+    from app.services.media.stock_fetcher import StockFetcher
+
+    curator = VisualCurationAgent()
+    fetcher = StockFetcher()
+
+    # Bước 1: Node phân tích ngữ cảnh & lập kế hoạch truy vấn bằng LLM
+    t0 = time.monotonic()
+    va = curator.analyze_scene_context(narration=narration, topic=topic, channel_niche="wildlife_survival")
+    record_node_span(
+        job_id=job_id,
+        node_name="1_llm_query_planner",
+        duration_sec=time.monotonic() - t0,
+        status="OK",
+        details={"queries": va.get("search_queries", [])},
+    )
+
+    # Bước 2: Node gọi Tool Pexels/Pixabay + LLM duyệt Link & Ảnh Thumbnail
+    t1 = time.monotonic()
+    clip = fetcher.search_best_video_clip(
+        query="hippopotamus african river",
+        visual_analysis=va,
+        narration=narration,
+        topic=topic,
+    )
+    record_node_span(
+        job_id=job_id,
+        node_name="2_stock_tool_and_vision_auditor",
+        duration_sec=time.monotonic() - t1,
+        status="OK" if clip else "REJECTED",
+        details={"chosen_url": (clip or {}).get("url")},
+    )
+
+    out_file = finish_job_trace(job_id=job_id, status="COMPLETED")
+    if out_file and out_file.exists():
+        data = json.loads(out_file.read_text(encoding="utf-8"))
+        print_trace_report(data, inspect_io=True)
+        print(f"💡 File JSON gốc vừa được lưu tại: {out_file}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Công cụ chẩn đoán LangSmith & LangGraph Waterfall Tracer")
     parser.add_argument("--status", action="store_true", help="Kiểm tra trạng thái kết nối LangSmith & API Key")
     parser.add_argument("--latest", action="store_true", help="Xem biểu đồ Waterfall của VideoJob mới nhất")
     parser.add_argument("--job", type=int, default=None, help="Xem biểu đồ Waterfall của một Job ID cụ thể")
     parser.add_argument("--cloud", action="store_true", help="Truy vấn trực tiếp 5 Runs gần nhất trên LangSmith Cloud")
+    parser.add_argument("--practice", action="store_true", help="Chạy bài thực hành trực tiếp 1 cảnh thật và in báo cáo Trace")
     args = parser.parse_args()
+
+    if args.practice:
+        run_live_practice_lab()
+        return
 
     if args.status:
         check_langsmith_status()
@@ -458,4 +572,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # Đảm bảo khi chạy bằng `python -m app.utils.langsmith_tracer`, module `__main__` và `app.utils.langsmith_tracer`
+    # dùng chung 1 vùng nhớ Singleton `_active_job_traces` với các Agent/Service khác.
+    import sys as _sys
+    _sys.modules.setdefault("app.utils.langsmith_tracer", _sys.modules[__name__])
     main()
