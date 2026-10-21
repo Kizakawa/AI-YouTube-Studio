@@ -34,6 +34,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from langchain_core.tools import tool
 
 from app.agents.media_agent import MediaAgent, clean_scene_search_query
+from app.services.media import license_policy
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -640,14 +641,15 @@ def _search_youtube_flat_cached(
     }
 
     def _fetch_single_yt_phrase(sp: str) -> List[Dict[str, Any]]:
-        cache_key = sp.lower().strip()
+        cache_key = f"{license_policy.license_mode()}::{sp.lower().strip()}"
         with _yt_url_lock:
             cached_entries = _yt_flat_search_cache.get(cache_key)
         if cached_entries:
             return cached_entries
-        yt_query = f"ytsearch12:{sp}"
+        # Chế độ `cc_only` (mặc định): chỉ tìm video có giấy phép Creative Commons (free & hợp lệ để tái sử dụng)
+        yt_query = license_policy.youtube_search_target(sp, max_results=12)
         try:
-            with yt_dlp.YoutubeDL(flat_opts) as ydl:
+            with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=12)) as ydl:
                 res = ydl.extract_info(yt_query, download=False)
             cached_entries = [
                 e for e in ((res or {}).get("entries") or [])
@@ -866,11 +868,13 @@ def execute_youtube_short_peak_clone_sync(
 
                 claimed_probes += 1
                 info_entry: Dict[str, Any] = cand
+                license_verified = False
                 try:
                     info_opts = {"quiet": True, "no_warnings": True, "skip_download": True, "socket_timeout": 8}
                     with yt_dlp.YoutubeDL(info_opts) as ydl_info:
                         full_info = ydl_info.extract_info(vid_url, download=False)
                         if isinstance(full_info, dict):
+                            license_verified = license_policy.is_reuse_allowed(full_info)
                             dur_full = float(full_info.get("duration") or 0)
                             if dur_full < 4 or dur_full > 300:
                                 rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
@@ -892,6 +896,14 @@ def execute_youtube_short_peak_clone_sync(
                             info_entry = full_info
                 except Exception:
                     pass
+
+                if not license_verified:
+                    logger.info(
+                        f"🚫 [LicensePolicy] Bỏ qua '{cand_title[:45]}' ({vid_url}): "
+                        f"không xác minh được giấy phép Creative Commons"
+                    )
+                    rag.release_in_job_video_claim(job_id=job_id, vid_id=vid_id, url=vid_url, title=cand_title, scene_id=eff_scene_id)
+                    continue
 
                 win_pair = _find_best_peak_window(
                     info_entry,
@@ -1087,6 +1099,13 @@ def execute_youtube_short_peak_clone_sync(
                             source="low_risk_clean_video",
                             media_path=output_path,
                         )
+                        if license_policy.cc_only_enabled():
+                            license_policy.record_credit(
+                                job_id=job_id,
+                                video_id=vid_id,
+                                title=cand_title,
+                                uploader=str(info_entry.get("channel") or info_entry.get("uploader") or cand.get("uploader") or ""),
+                            )
 
                         logger.info(
                             f"🔥 [YouTubePeakTool + MiniRAG] Đã cắt & duyệt Vision ({vis_score}/10, scope={effective_scope}) "

@@ -223,6 +223,12 @@ class GraphRunner:
                     j.scenes_json = json.dumps(s_data, ensure_ascii=False)
                     j.title = s_data.get("title", j.title)
                     j.description = s_data.get("description", j.description)
+                    # Tự động ghi nguồn các clip Creative Commons (CC BY) đã dùng vào cuối mô tả video
+                    try:
+                        from app.services.media.license_policy import append_credits_to_description
+                        j.description = append_credits_to_description(j.description, self.job_id)
+                    except Exception as e_cred:
+                        logger.warning(f"[LangGraph Job {self.job_id}] Không thể nối credits CC BY: {e_cred}")
                     if s_data.get("full_narration"):
                         j.script = s_data["full_narration"]
                 
@@ -351,6 +357,11 @@ class GraphRunner:
                         j.title = s_data["title"]
                     if s_data.get("description"):
                         j.description = s_data["description"]
+                        try:
+                            from app.services.media.license_policy import append_credits_to_description
+                            j.description = append_credits_to_description(j.description, self.job_id)
+                        except Exception as e_cred:
+                            logger.warning(f"[LangGraph Edit {self.job_id}] Không thể nối credits CC BY: {e_cred}")
                     if s_data.get("tags"):
                         j.tags = ",".join(s_data["tags"]) if isinstance(s_data["tags"], list) else s_data["tags"]
                     if s_data.get("full_narration"):

@@ -25,6 +25,7 @@ from typing import Dict, Any, List, Optional
 import requests
 from config.settings import settings
 from app.graph.state import VideoWorkflowState
+from app.services.media import license_policy
 from app.utils.ffmpeg_helper import (
     trim_video,
     render_opening_hook_multi_cut,
@@ -296,6 +297,7 @@ Return ONLY valid JSON:
     existing_path = str(scene_1.get("media_path") or "")
     candidate_videos: List[str] = []
     candidate_titles: Dict[str, str] = {}
+    candidate_uploaders: Dict[str, str] = {}
     if (
         existing_path
         and existing_path.lower().endswith((".mp4", ".mov", ".webm"))
@@ -324,8 +326,8 @@ Return ONLY valid JSON:
                 "socket_timeout": 8,
                 "ignoreerrors": True,
             }
-            with yt_dlp.YoutubeDL(flat_opts) as ydl_flat:
-                flat_res = ydl_flat.extract_info(f"ytsearch15:{q}", download=False)
+            with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=15)) as ydl_flat:
+                flat_res = ydl_flat.extract_info(license_policy.youtube_search_target(q, max_results=15), download=False)
             raw_flat_cands: List[Dict[str, Any]] = []
             for entry in ((flat_res or {}).get("entries") or []):
                 if not isinstance(entry, dict):
@@ -349,6 +351,7 @@ Return ONLY valid JSON:
                     "id": vid_id,
                     "url": vid_url,
                     "title": title_e,
+                    "uploader": uploader_e,
                     "duration": dur_e,
                     "score": min(views_e / 25000.0, 60.0),
                 })
@@ -365,6 +368,7 @@ Return ONLY valid JSON:
             for rc in ranked_flat[:3]:
                 selected_urls.append(rc["url"])
                 candidate_titles[rc["id"]] = rc.get("title", "")
+                candidate_uploaders[rc["id"]] = rc.get("uploader", "")
         except Exception as e_flat:
             logger.debug(f"[HookVideoNode] yt_dlp flat pre-filter skip ({q}): {e_flat}")
 
@@ -379,7 +383,7 @@ Return ONLY valid JSON:
             "--quiet",
             "--socket-timeout", "8",
             "--max-filesize", "28M",
-            "--match-filter", "duration <= 180",
+            "--match-filter", license_policy.ytdlp_cli_match_filter("duration <= 180"),
             "--max-downloads", "3",
             "-f", "bestvideo[height>=720][height<=1920][ext=mp4]/best[height>=720][height<=1920][ext=mp4]",
             "-o", out_tmpl,
@@ -652,6 +656,13 @@ Return ONLY valid JSON:
                 title=hook_vid_title,
                 is_continuation_slice=False,
             )
+            if hook_vid_id and license_policy.cc_only_enabled():
+                license_policy.record_credit(
+                    job_id=job_id,
+                    video_id=hook_vid_id,
+                    title=hook_vid_title,
+                    uploader=candidate_uploaders.get(hook_vid_id, ""),
+                )
             pre_resolved_hook_media[1] = {
                 "media_path": hook_output_clip,
                 "media_type": "hook_ready_video",
@@ -726,6 +737,13 @@ Return ONLY valid JSON:
                                 pass
                             continue
 
+                        if sec_vid_id and license_policy.cc_only_enabled():
+                            license_policy.record_credit(
+                                job_id=job_id,
+                                video_id=sec_vid_id,
+                                title=sec_title,
+                                uploader=candidate_uploaders.get(sec_vid_id, ""),
+                            )
                         pre_resolved_hook_media[climax_scene_id] = {
                             "media_path": climax_output_clip,
                             "media_type": "hook_ready_video",
