@@ -1586,4 +1586,168 @@ class PublisherAgent:
             logger.debug(f"[SelfHealMetadata] Bỏ qua kiểm tra video {video_id}: {e}")
         return False
 
+    def build_smart_channel_keywords(self, extra_keywords: Any = None, max_chars: int = 485) -> str:
+        """
+        Xây dựng chuỗi Channel Keywords chuẩn YouTube Data API v3 (`brandingSettings.channel.keywords`):
+        - Cụm từ nhiều từ được bọc trong dấu ngoặc kép `"..."`, từ đơn giữ nguyên cách nhau bởi khoảng trắng.
+        - Tự động kết hợp `channel_keywords` từ `config/channels.yaml`, bộ từ khóa cốt lõi theo ngách (`niche` & `language`),
+          và `extra_keywords` truyền vào.
+        - Giới hạn cứng `<= max_chars` (mặc định 485/500 ký tự) để không bao giờ bị lỗi `invalidChannelKeywords`.
+        """
+        raw_niche = str(self.channel_config.get("niche") or "general").strip().lower()
+        cfg_lang = str(self.channel_config.get("language") or "en").strip().lower()
+        is_br = cfg_lang.startswith("pt")
+
+        if any(k in raw_niche for k in ("wildlife", "predator")):
+            if is_br:
+                niche_defaults = [
+                    "odisseia selvagem", "predadores", "onça pintada", "animais selvagens",
+                    "vida selvagem", "natureza selvagem", "reino animal", "fatos animais",
+                    "mundo animal", "documentário natureza", "batalha animal", "felinos",
+                    "amazônia", "pantanal", "sucuri", "jacaré", "águia harpia", "leão",
+                    "tigre siberiano", "predador", "curiosidades animais", "brasil", "shorts", "ytshorts",
+                ]
+            else:
+                niche_defaults = [
+                    "wild odyssey", "wildlife", "apex predators", "animal kingdom",
+                    "nature documentary", "wildlife battle", "animal facts", "wild animals",
+                    "big cats", "siberian tiger", "jaguar vs caiman", "lion vs hyena",
+                    "honey badger", "king cobra", "snow leopard", "bite force",
+                    "predator vs prey", "bbc earth", "national geographic", "wildlife shorts",
+                    "usa", "united states", "american", "us shorts", "shorts", "ytshorts",
+                ]
+        elif "psych" in raw_niche:
+            niche_defaults = [
+                "psychology of the world", "psychology", "dark psychology",
+                "human behavior", "body language", "psychology facts", "mindset",
+                "subconscious mind", "manipulation tactics", "gaslighting", "narcissist",
+                "emotional intelligence", "cognitive bias", "stoicism", "mind control",
+                "social dynamics", "reverse psychology", "micro expressions",
+                "usa", "united states", "american", "us shorts", "shorts", "ytshorts",
+            ]
+        elif any(k in raw_niche for k in ("deep_sea", "ocean", "mystery", "earth")):
+            if is_br:
+                niche_defaults = [
+                    "mistérios do mundo", "oceano profundo", "fatos desconhecidos",
+                    "curiosidades", "abismo", "criaturas marinhas", "anomalia", "ciência",
+                    "mistérios do oceano", "fundo do mar", "fenômenos inexplicáveis",
+                    "fatos científicos", "ponto nemo", "descobertas científicas",
+                    "enigmas da terra", "mistérios sem explicação", "curiosidades do mundo",
+                    "brasil", "shorts", "ytshorts",
+                ]
+            else:
+                niche_defaults = [
+                    "mysteries of the world", "deep sea mysteries", "ocean mysteries",
+                    "unexplained mysteries", "earth mysteries", "science facts", "deep ocean",
+                    "thalassophobia", "abyssal zone", "point nemo", "unexplained phenomena",
+                    "scientific mysteries", "weird science", "earth anomalies",
+                    "underwater discoveries", "strange facts", "bizarre nature", "ocean facts",
+                    "usa", "united states", "american", "us shorts", "shorts", "ytshorts",
+                ]
+        elif any(k in raw_niche for k in ("history", "what_if", "alternate")):
+            niche_defaults = [
+                "alternate history", "what if", "what if history", "butterfly effect",
+                "historical facts", "world history", "american history", "ancient history",
+                "history documentary", "roman empire", "ancient rome", "timeline split",
+                "counterfactual history", "historical paradox", "ancient civilizations",
+                "world war history", "napoleon", "history shorts",
+                "usa", "united states", "american", "us shorts", "shorts", "ytshorts",
+            ]
+        elif any(k in raw_niche for k in ("rescue", "pet", "animal_rescue")):
+            niche_defaults = [
+                "paws and hearts rescue", "animal rescue", "dog rescue", "puppy rescue",
+                "stray dog rescue", "abandoned puppy", "shelter dog", "cat rescue",
+                "kitten rescue", "animal transformation", "before and after rescue",
+                "saved animals", "wholesome animals", "heartwarming", "faith in humanity",
+                "golden retriever", "stray dog", "pet rescue story", "thedodo",
+                "usa", "united states", "american", "us shorts", "shorts", "ytshorts",
+            ]
+        else:
+            niche_defaults = ["facts", "mystery", "documentary", "usa", "shorts", "ytshorts", "viral"]
+
+        candidates: List[str] = []
+        for src in (extra_keywords, self.channel_config.get("channel_keywords"), niche_defaults):
+            if not src:
+                continue
+            if isinstance(src, list):
+                candidates.extend(str(x).strip() for x in src if str(x).strip())
+            elif isinstance(src, str):
+                for m in re.finditer(r'"([^"]+)"|([^,\s;]+)', src):
+                    tok = (m.group(1) or m.group(2) or "").strip()
+                    if tok:
+                        candidates.append(tok)
+
+        formatted_tokens: List[str] = []
+        seen_lower = set()
+        cur_len = 0
+
+        for kw in candidates:
+            clean_kw = re.sub(r'["#]+', "", kw).strip()
+            clean_kw = re.sub(r"\s+", " ", clean_kw)
+            if not clean_kw or len(clean_kw) < 2:
+                continue
+            low_kw = clean_kw.lower()
+            if low_kw in seen_lower:
+                continue
+            token_str = f'"{clean_kw}"' if " " in clean_kw else clean_kw
+            added_len = len(token_str) + (1 if formatted_tokens else 0)
+            if cur_len + added_len > max_chars:
+                continue
+            formatted_tokens.append(token_str)
+            seen_lower.add(low_kw)
+            cur_len += added_len
+
+        return " ".join(formatted_tokens)
+
+    def sync_channel_branding_keywords(self, extra_keywords: Any = None) -> Dict[str, Any]:
+        """
+        Đồng bộ trực tiếp bộ Channel Keywords (`brandingSettings.channel.keywords`) và quốc gia mục tiêu (`country`)
+        lên YouTube Studio thông qua YouTube Data API v3 `channels().update`.
+        """
+        if not self.service:
+            return {"success": False, "channel_id": self.channel_id, "error": self.init_error or "Chưa kết nối YouTube API"}
+        try:
+            res = self.service.channels().list(part="brandingSettings", mine=True).execute()
+            items = res.get("items", [])
+            if not items:
+                return {"success": False, "channel_id": self.channel_id, "error": "Không tìm thấy kênh trên tài khoản OAuth này"}
+
+            ch_item = items[0]
+            yt_id = ch_item.get("id")
+            bs = ch_item.get("brandingSettings", {}) or {}
+            ch_bs = bs.get("channel", {}) or {}
+
+            keywords_str = self.build_smart_channel_keywords(extra_keywords=extra_keywords)
+            ch_bs["keywords"] = keywords_str
+
+            target_country = str(self.channel_config.get("target_country") or "").strip().upper()
+            if not target_country:
+                cfg_lang = str(self.channel_config.get("language") or "en").strip().lower()
+                target_country = "BR" if cfg_lang.startswith("pt") else "US"
+            ch_bs["country"] = target_country
+
+            bs["channel"] = ch_bs
+            # Chỉ giữ các trường hợp lệ khi gọi channels().update(part="brandingSettings")
+            update_body = {
+                "id": yt_id,
+                "brandingSettings": {
+                    "channel": ch_bs,
+                },
+            }
+            self.service.channels().update(part="brandingSettings", body=update_body).execute()
+            logger.info(
+                f"✅ [ChannelKeywords] Đã cập nhật Channel Keywords cho '{self.channel_name}' ({yt_id}, {len(keywords_str)}/500 chars, country={target_country})"
+            )
+            return {
+                "success": True,
+                "channel_id": self.channel_id,
+                "youtube_channel_id": yt_id,
+                "channel_name": self.channel_name,
+                "country": target_country,
+                "keywords": keywords_str,
+                "char_length": len(keywords_str),
+            }
+        except Exception as e:
+            logger.error(f"❌ [ChannelKeywords] Lỗi cập nhật Channel Keywords cho '{self.channel_name}': {e}")
+            return {"success": False, "channel_id": self.channel_id, "error": str(e)}
 
