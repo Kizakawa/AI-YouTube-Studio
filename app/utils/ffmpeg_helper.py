@@ -587,14 +587,23 @@ def image_to_video(
         with Image.open(image_path) as im:
             if im.mode not in ("RGB",):
                 im = im.convert("RGB")
-            # Mặc định giữ khung hình chuẩn 1.0x (1080x1920) tĩnh sắc nét để triệt tiêu 100% hiện tượng rung/giật pixel của zoompan;
-            # nếu người dùng chủ động bật ENABLE_KEN_BURNS_ZOOM=true thì upscale 2.0x để nội suy mượt mà
-            scale_factor = 1.35 if enable_zoompan else 1.0
-            scale_w = int(width * scale_factor)
-            scale_h = int(height * scale_factor)
+            # Khi tắt zoompan nhưng bật zoom_effect, tạo biên đệm +36px để lướt camera (smooth crop drift)
+            # mượt mà, triệt tiêu cả lỗi rung pixel của zoompan lẫn lỗi khung hình chết đứng (freeze-frame)
+            if enable_zoompan:
+                scale_w = int(width * 1.35)
+                scale_h = int(height * 1.35)
+                max_up = 3.8 * 1.35
+            elif zoom_effect:
+                scale_w = width + 36
+                scale_h = height + 36
+                max_up = 4.0
+            else:
+                scale_w = width
+                scale_h = height
+                max_up = 3.8
             from app.services.media.image_quality import prepare_vertical
             im_resized = prepare_vertical(
-                im, scale_w, scale_h, max_upscale=3.8 * scale_factor, is_hook_scene=is_hook_scene
+                im, scale_w, scale_h, max_upscale=max_up, is_hook_scene=is_hook_scene
             )
             im_resized.save(norm_path, "JPEG", quality=94 if is_hook_scene else 92)
             image_path = norm_path
@@ -605,14 +614,42 @@ def image_to_video(
     z_start = 1.00
     z_end = 1.08
 
-    # Mặc định tắt zoompan để hình ảnh đứng vững, sắc nét 100%, không bao giờ bị rung/giật khung hình
+    # Khi tắt zoompan nhưng zoom_effect=True: dùng phép dịch chuyển cửa sổ crop (+36px) mượt mà theo camera_motion
     if not enable_zoompan:
-        zoompan = (
-            f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
-            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
-            f"setsar=1,"
-            f"fps={fps},format=yuv420p"
-        )
+        if zoom_effect:
+            dur_f = max(float(duration_seconds), 0.8)
+            motion_key = (camera_motion or "zoom_in").lower()
+            if motion_key == "pan_left":
+                x_expr = f"36-36*min(t/{dur_f:.2f},1)"
+                y_expr = "18+10*sin(1.8*t)"
+            elif motion_key == "pan_right":
+                x_expr = f"36*min(t/{dur_f:.2f},1)"
+                y_expr = "18-10*sin(1.8*t)"
+            elif motion_key == "pan_up":
+                x_expr = "18+10*sin(1.8*t)"
+                y_expr = f"36-36*min(t/{dur_f:.2f},1)"
+            elif motion_key == "pan_down":
+                x_expr = "18-10*sin(1.8*t)"
+                y_expr = f"36*min(t/{dur_f:.2f},1)"
+            elif motion_key == "zoom_out":
+                x_expr = "18+14*cos(1.6*t)"
+                y_expr = f"36*min(t/{dur_f:.2f},1)"
+            else:
+                x_expr = "18+14*sin(1.6*t)"
+                y_expr = f"36-36*min(t/{dur_f:.2f},1)"
+            zoompan = (
+                f"scale={width+36}:{height+36}:force_original_aspect_ratio=increase,"
+                f"crop={width}:{height}:'{x_expr}':'{y_expr}',"
+                f"setsar=1,"
+                f"fps={fps},format=yuv420p"
+            )
+        else:
+            zoompan = (
+                f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
+                f"setsar=1,"
+                f"fps={fps},format=yuv420p"
+            )
     elif camera_motion == "zoom_out":
         zoompan = (
             f"zoompan=z='{z_end}-({z_end}-{z_start})*(on/{d})':"
@@ -1955,7 +1992,7 @@ def mix_sfx_transitions(
     all_inputs = "[0:a]" + "".join(sfx_labels)
     n_inputs = 1 + len(sfx_labels)
     filter_parts.append(
-        f"{all_inputs}amix=inputs={n_inputs}:duration=first:dropout_transition=0:normalize=0,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[aout]"
+        f"{all_inputs}amix=inputs={n_inputs}:duration=first:dropout_transition=0:normalize=0,alimiter=limit=0.95:attack=5:release=50,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[aout]"
     )
     filter_complex = ";".join(filter_parts)
 

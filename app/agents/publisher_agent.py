@@ -143,6 +143,7 @@ class PublisherAgent:
                         # Raise để khối except bên dưới tự động fallback về token chính nếu đang dùng token phụ
                         raise RuntimeError(self.init_error or "Token refresh failed")
 
+                self.creds = creds
                 self.service = build("youtube", "v3", credentials=creds)
                 self.init_error = None
                 logger.info(f"YouTube Data API v3 đã kết nối thành công cho '{self.channel_name}'")
@@ -174,6 +175,7 @@ class PublisherAgent:
                             from google.auth.transport.requests import Request
                             creds.refresh(Request())
                             save_encrypted_json(primary_tok, json.loads(creds.to_json()))
+                        self.creds = creds
                         self.service = build("youtube", "v3", credentials=creds)
                         self.project_id = QuotaManager.get_channel_project_id(self.channel_id)
                         self.init_error = None

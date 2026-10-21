@@ -115,21 +115,49 @@ class VideoAgent:
                 subtitle_path=job.subtitle_path if has_subtitle else None,
             )
 
-            # ── Step 3 & 4: Ghép audio narration + BGM (tắt các hiệu ứng âm thanh SFX ngớ ngẩn/gây nhiễu mặc định) ──
-            enable_sfx = bool(getattr(job, "enable_sfx", False))
+            # ── Step 3 & 4: Ghép audio narration + BGM + Cinematic SFX (Hook Impact t=0s & Climax/Reveal cues) ──
+            enable_sfx = bool(getattr(job, "enable_sfx", True))
             will_mix_sfx = False
             resolved_sfx_cues = []
+            hit_sfx_name = "none"
 
             if enable_sfx and Path(sfx_dir).exists():
-                from app.utils.ffmpeg_helper import _find_sfx_file
+                from app.utils.ffmpeg_helper import _find_sfx_file, resolve_smart_sfx_cue
                 sfx_dir_path_check = Path(sfx_dir)
-                for s in job.scenes[1:]:
-                    cue = (s.sfx_cue or "").strip()
-                    if cue and cue.lower() not in ("whoosh", "default", "none", "auto", "off", "mute") and _find_sfx_file(sfx_dir_path_check, cue):
+                if _find_sfx_file(sfx_dir_path_check, "impact_sub"):
+                    hit_sfx_name = "impact_sub"
+                elif _find_sfx_file(sfx_dir_path_check, "hit"):
+                    hit_sfx_name = "hit"
+
+                total_sc = len(job.scenes)
+                active_cue_count = 0
+                for idx_s, s in enumerate(job.scenes[1:], start=1):
+                    raw_cue = (s.sfx_cue or "").strip()
+                    if raw_cue.lower() in ("off", "mute", "disable"):
+                        resolved_sfx_cues.append("none")
+                        continue
+                    cue = resolve_smart_sfx_cue(
+                        explicit_cue=raw_cue,
+                        narration=s.narration or "",
+                        visual_keyword=s.visual_keyword or "",
+                        niche=job.niche,
+                        scene_idx=idx_s,
+                        total_scenes=total_sc,
+                    )
+                    # Chỉ giữ các hiệu ứng điểm nhấn điện ảnh (impact_sub, riser, reveal, sub_drop, glitch),
+                    # bỏ qua tiếng whoosh lặp lại liên tục ở mọi nhát cắt và giới hạn tối đa 3 điểm nhấn chuyển cảnh/video
+                    if (
+                        cue
+                        and not cue.lower().startswith("whoosh")
+                        and cue.lower() not in ("default", "none", "auto", "off", "mute")
+                        and active_cue_count < 3
+                        and _find_sfx_file(sfx_dir_path_check, cue)
+                    ):
                         resolved_sfx_cues.append(cue)
+                        active_cue_count += 1
                     else:
                         resolved_sfx_cues.append("none")
-                will_mix_sfx = any(c != "none" for c in resolved_sfx_cues)
+                will_mix_sfx = (hit_sfx_name != "none") or any(c != "none" for c in resolved_sfx_cues)
 
             logger.info(f"[VideoAgent] Job {job.job_id}: Ghép audio narration + BGM (Audio Ducking)...")
             await report(f"🎵 Đang hòa âm giọng đọc AI và nhạc nền (Audio Ducking tự động)...", 84)
@@ -143,12 +171,14 @@ class VideoAgent:
                 bgm_path=job.bgm_path,
                 bgm_volume=job.bgm_volume,
                 use_ducking=True,  # Bật Audio Ducking thực sự qua sidechaincompress
-                normalize_loudness=(not will_mix_sfx),  # Chỉ chuẩn hóa loudnorm 1 lần duy nhất ở bước cuối cùng
+                normalize_loudness=True,  # Luôn chuẩn hóa EBU R128 (-14 LUFS) cho giọng đọc + BGM
             )
 
             if will_mix_sfx:
-                logger.info(f"[VideoAgent] Job {job.job_id}: Mix custom SFX transitions từ {sfx_dir}...")
-                await report(f"🔊 Đang ghép hiệu ứng âm thanh chuyển cảnh...", 92)
+                logger.info(
+                    f"[VideoAgent] Job {job.job_id}: Mix Cinematic SFX (hit={hit_sfx_name}, cues={resolved_sfx_cues}) từ {sfx_dir}..."
+                )
+                await report(f"🔊 Đang ghép hiệu ứng âm thanh điện ảnh (Hook Impact & Climax SFX)...", 92)
 
                 scene_timestamps = self._compute_scene_timestamps(job.scenes)
                 sfx_out = str(work_dir / "muxed_with_sfx.mp4")
@@ -159,9 +189,9 @@ class VideoAgent:
                     sfx_dir=sfx_dir,
                     default_sfx="none",
                     sfx_cues=resolved_sfx_cues,
-                    sfx_volume=0.20,
-                    hit_sfx="none",
-                    hit_volume=0.0,
+                    sfx_volume=0.22,
+                    hit_sfx=hit_sfx_name,
+                    hit_volume=0.28 if hit_sfx_name != "none" else 0.0,
                     micro_sfx_cues=None,
                 )
                 muxed_video = result_video

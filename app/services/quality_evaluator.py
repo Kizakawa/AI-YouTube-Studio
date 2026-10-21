@@ -568,7 +568,7 @@ Respond ONLY in valid JSON:
             total_cuts = 0
             try:
                 import re as _re_qa
-                vf_qa = "crop=800:760:140:280,blackdetect=d=0.10:pic_th=0.98,freezedetect=n=-45dB:d=2.2,scdet=t=6.5"
+                vf_qa = "crop=800:760:140:280,blackdetect=d=0.10:pic_th=0.98,freezedetect=n=-45dB:d=2.2,scdet=t=5.0"
                 res_qa = subprocess.run(
                     ["ffmpeg", "-v", "info", "-i", str(p), "-vf", vf_qa, "-an", "-f", "null", "-"],
                     capture_output=True,
@@ -594,12 +594,12 @@ Respond ONLY in valid JSON:
 
                 scd_times = sorted(float(x) for x in _re_qa.findall(r"lavfi\.scd\.time:\s*([0-9.]+)", qa_log))
                 total_cuts = len(scd_times)
-                cuts_first_3s = sum(1 for t in scd_times if 0.15 <= t <= 4.50)
-                if duration_sec >= 6.0 and cuts_first_3s == 0 and total_cuts < 4:
+                cuts_first_3s = sum(1 for t in scd_times if 0.15 <= t <= 5.20)
+                if duration_sec >= 6.0 and cuts_first_3s == 0 and total_cuts < 3 and freeze_max_sec >= 1.8:
                     hard_fail = True
-                    issues.append("Không có nhát cắt chuyển cảnh nào trong 3 giây đầu (Hook 0-3s thiếu cắt cảnh) — chặn xuất bản!")
+                    issues.append("Không có nhát cắt chuyển cảnh hoặc chuyển động thực trong 5 giây đầu — chặn xuất bản!")
                 else:
-                    strengths.append(f"Có {cuts_first_3s} nhát cắt chuyển cảnh trong 3 giây đầu (tổng {total_cuts} cuts).")
+                    strengths.append(f"Nhịp cắt/chuyển động mở đầu đạt chuẩn ({cuts_first_3s} cuts đầu, tổng {total_cuts} cuts).")
 
                 if duration_sec >= 15.0:
                     timeline_pts = [0.0] + scd_times + [duration_sec]

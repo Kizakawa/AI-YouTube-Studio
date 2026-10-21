@@ -667,77 +667,7 @@ Return ONLY valid JSON:
 
         # ── MỞ RỘNG ĐOẠN PEAK DÀI LIỀN MẠCH QUA CÁC CẢNH KẾ TIẾP (CẢNH 2, CẢNH 3...) ──
         # Nếu đoạn Peak thực tế dài (ví dụ 7s - 15s), không ngắt cụt ở 3s mà nối tiếp mạch chuyển động sang Cảnh 2, Cảnh 3!
-        # Đồng thời kiểm tra chữ ký thị giác RAG (`is_continuation_slice=True`) để đảm bảo khúc sau thực sự chuyển động sang khung hình mới
-        # (chặn đứng trường hợp video gốc đứng yên hoặc loop lại cảnh đầu!).
-        consumed_peak_sec = max(target_hook_duration_sec - 0.18, 2.5)
-        remaining_peak_sec = natural_peak_dur - consumed_peak_sec
-        cur_cont_offset = peak_start + consumed_peak_sec
-        next_sid = 2
-        while False and next_sid <= min(len(base_scenes), 4) and remaining_peak_sec >= 2.2:
-            next_base_dur = _get_scene_dur_sec(next_sid, default_s=3.5)
-            if remaining_peak_sec < next_base_dur * 0.68:
-                break
-            cont_clip_dur = next_base_dur + 0.18
-            cont_out_clip = str(work_dir / f"hook_peak_cont_{next_sid:03d}.mp4")
-            try:
-                trim_video(
-                    input_path=best_v_path,
-                    duration_seconds=cont_clip_dur,
-                    output_path=cont_out_clip,
-                    width=1080,
-                    height=1920,
-                    fps=30,
-                    is_scifi=is_scifi,
-                    niche=atmosphere_fx,
-                    apply_grading=True,
-                    is_hook_scene=False,
-                    fair_use_transform=False,
-                    start_offset_sec=cur_cont_offset,
-                    preserve_continuous_flow=True,
-                )
-                if Path(cont_out_clip).exists() and Path(cont_out_clip).stat().st_size > 10_000:
-                    ok_cont, dup_sid = rag.verify_and_commit_in_job_clip(
-                        job_id=job_id,
-                        scene_id=next_sid,
-                        media_path=cont_out_clip,
-                        vid_id=hook_vid_id,
-                        url=best_v_path,
-                        title=hook_vid_title,
-                        is_continuation_slice=True,
-                    )
-                    if not ok_cont:
-                        logger.info(
-                            f"🛡️ [HookVideoNode -> MiniRAG] Dừng mở rộng Long Peak tại Cảnh #{next_sid} vì khung hình lặp lại "
-                            f"Cảnh #{dup_sid} (video gốc tĩnh hoặc loop) -> Giữ mạch đa dạng cho Cảnh #{next_sid}!"
-                        )
-                        try:
-                            Path(cont_out_clip).unlink(missing_ok=True)
-                        except Exception:
-                            pass
-                        break
-
-                    pre_resolved_hook_media[next_sid] = {
-                        "media_path": cont_out_clip,
-                        "media_type": "hook_ready_video",
-                        "production_method": "LONG_PEAK_CONTINUOUS_FLOW",
-                        "visual_strategy": "HOOK_PEAK_SHORT_VIDEO",
-                        "strategy_rationale": (
-                            f"Continuous Long Peak flow @{cur_cont_offset:.1f}s->{cur_cont_offset + cont_clip_dur:.1f}s "
-                            f"(from {natural_peak_dur:.1f}s Peak)"
-                        ),
-                    }
-                    logger.info(
-                        f"🌟 [HookVideoNode -> Long Peak Flow] Đoạn Peak dài ({natural_peak_dur:.1f}s) chảy liền mạch sang "
-                        f"Cảnh #{next_sid} (@{cur_cont_offset:.2f}s -> {cur_cont_offset + cont_clip_dur:.2f}s)!"
-                    )
-                    cur_cont_offset += next_base_dur
-                    remaining_peak_sec -= next_base_dur
-                    next_sid += 1
-                else:
-                    break
-            except Exception as e_cont:
-                logger.debug(f"[HookVideoNode] Lỗi nối tiếp Long Peak tại Cảnh #{next_sid}: {e_cont}")
-                break
+        # Không cắt nối đoạn Peak của Cảnh 1 sang Cảnh 2..4 để giữ đúng khớp lời đọc từng phân cảnh.
 
         # Ghép thêm đoạn Peak thứ 2 vào TRONG THÂN VIDEO (tại Cảnh Cao Trào `climax_scene_id`)
         # TUYỆT ĐỐI KHÔNG cắt lại cùng 1 video của Cảnh 1 (`best_v_path`) cho một cảnh rời rạc phía sau!

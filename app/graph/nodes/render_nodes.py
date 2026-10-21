@@ -109,6 +109,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
         is_scifi=is_scifi,
         scifi_subgenre=state.get("scifi_subgenre", "general_scifi"),
         sfx_dir=sfx_dir,
+        enable_sfx=True,
         output_path=final_output,
     )
 

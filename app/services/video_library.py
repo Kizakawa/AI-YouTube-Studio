@@ -118,16 +118,17 @@ def _compute_calibrated_retention(
     if raw_stayed is not None and raw_stayed > 0:
         stayed_pct = round(max(15.0, min(95.0, float(raw_stayed))), 1)
     else:
-        base_stayed = 64.0 + (log_perf * 16.5) + (eng_boost * 0.65) + hook_delta
-        stayed_pct = round(max(24.0, min(91.5, base_stayed)), 1)
+        # Hiệu chuẩn sát thực tế YouTube Shorts Analytics (trung bình kênh ~42-46% Stayed, tránh ảo tưởng 64%+)
+        base_stayed = 44.0 + (log_perf * 18.0) + (eng_boost * 0.75) + hook_delta
+        stayed_pct = round(max(20.0, min(88.0, base_stayed)), 1)
 
-    swipe_pct = round(max(8.5, min(76.0, 100.0 - stayed_pct)), 1)
+    swipe_pct = round(max(12.0, min(80.0, 100.0 - stayed_pct)), 1)
 
     if raw_apv is not None and raw_apv > 0:
         apv_pct = round(max(25.0, min(145.0, float(raw_apv))), 1)
     else:
-        base_apv = 76.0 + (log_perf * 22.0) + eng_boost + (hook_delta * 0.8)
-        apv_pct = round(max(35.0, min(124.0, base_apv)), 1)
+        base_apv = 68.0 + (log_perf * 22.0) + eng_boost + (hook_delta * 0.8)
+        apv_pct = round(max(32.0, min(124.0, base_apv)), 1)
 
     avg_dur_sec = round((apv_pct / 100.0) * dur, 1)
     return {
@@ -275,6 +276,27 @@ def backfill_from_jobs() -> int:
 
         db.flush()
 
+        # Đọc dữ liệu YouTube Analytics v2 thực tế đã thu thập trong storage/channel_audit_latest.json (nếu có)
+        audit_vid_map: Dict[str, Dict[str, Any]] = {}
+        try:
+            from pathlib import Path as _Path
+            audit_p = _Path(settings.BASE_DIR) / "storage" / "channel_audit_latest.json"
+            if audit_p.exists():
+                audit_json = json.loads(audit_p.read_text(encoding="utf-8", errors="ignore"))
+                if isinstance(audit_json, dict):
+                    for _ck, ch_obj in audit_json.items():
+                        if not isinstance(ch_obj, dict):
+                            continue
+                        for list_key in ("videos", "top_3_winners", "bottom_3_losers"):
+                            for v_item in (ch_obj.get(list_key) or []):
+                                if not isinstance(v_item, dict):
+                                    continue
+                                vid_key = str(v_item.get("id") or v_item.get("video_id") or "").strip()
+                                if vid_key and (v_item.get("stay_pct") or v_item.get("apv_pct")):
+                                    audit_vid_map[vid_key] = v_item
+        except Exception as _e_aud:
+            logger.debug(f"[VideoLibrary] Không đọc được channel_audit_latest.json: {_e_aud}")
+
         # Tính toán & điền đầy đủ tỷ lệ xem hết / ở lại / vuốt bỏ cho tất cả PublishedVideo & VideoJob của từng kênh
         all_pvs = db.query(PublishedVideo).all()
         by_ch: Dict[str, List[PublishedVideo]] = {}
@@ -304,6 +326,13 @@ def backfill_from_jobs() -> int:
                 if hook_txt and not pv.hook_text:
                     pv.hook_text = hook_txt
                 dur_sec = (linked_job.audio_duration_ms / 1000.0) if (linked_job and linked_job.audio_duration_ms) else 36.0
+                real_audit = audit_vid_map.get(pv.youtube_video_id, {})
+                if real_audit.get("views") is not None and int(real_audit.get("views") or 0) > (pv.views or 0):
+                    pv.views = int(real_audit["views"])
+                if real_audit.get("likes") is not None and int(real_audit.get("likes") or 0) > (pv.likes or 0):
+                    pv.likes = int(real_audit["likes"])
+                if real_audit.get("comments") is not None and int(real_audit.get("comments") or 0) > (pv.comments or 0):
+                    pv.comments = int(real_audit["comments"])
                 cal = _compute_calibrated_retention(
                     views=pv.views or 0,
                     likes=pv.likes or 0,
@@ -311,13 +340,13 @@ def backfill_from_jobs() -> int:
                     channel_avg_views=ch_avg,
                     duration_sec=dur_sec,
                     hook_text=hook_txt,
-                    raw_apv=pv.avg_view_percentage,
-                    raw_stayed=pv.stayed_to_watch_pct,
+                    raw_apv=real_audit.get("apv_pct"),
+                    raw_stayed=real_audit.get("stay_pct"),
                 )
                 pv.avg_view_percentage = cal["avg_view_percentage"]
                 pv.stayed_to_watch_pct = cal["stayed_to_watch_pct"]
                 pv.swipe_away_pct = cal["swipe_away_pct"]
-                pv.avg_view_duration_sec = cal["avg_view_duration_sec"]
+                pv.avg_view_duration_sec = float(real_audit["avd_sec"]) if real_audit.get("avd_sec") else cal["avg_view_duration_sec"]
 
                 if linked_job:
                     linked_job.views = pv.views or 0

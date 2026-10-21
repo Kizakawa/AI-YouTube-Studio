@@ -88,8 +88,8 @@ YCbCr Matrix: None
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1.2,0,1,5.2,3.0,2,40,40,{margin_v},1
-Style: HookHeadlineBanner,{fontname},64,&H0000FFFF,&H00FFFFFF,&H00000000,&HD0050505,-1,0,0,0,100,100,2,0,3,4.2,0.0,8,30,30,315,1
-Style: PatternInterruptBadge,{fontname},54,&H00FFFFFF,&H00FFFFFF,&H0000E6FF&,&HC0101010,-1,0,0,0,100,100,2,0,3,3.2,0.0,8,30,30,235,1
+Style: HookHeadlineBanner,{fontname},50,&H0000FFFF,&H00FFFFFF,&H00000000,&HD0050505,-1,0,0,0,100,100,1.8,0,3,3.4,0.0,8,30,30,235,1
+Style: PatternInterruptBadge,{fontname},48,&H00FFFFFF,&H00FFFFFF,&H0000E6FF&,&HC0101010,-1,0,0,0,100,100,1.8,0,3,3.0,0.0,8,30,30,230,1
 Style: CTABadge,{fontname},54,&H0000FFFF,&H00FFFFFF,&H00000000,&HC8080808,-1,0,0,0,100,100,1.4,0,1,4.6,2.4,2,30,30,455,1
 Style: WatermarkStyle,Arial,38,&H30FFFFFF,&H30FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2.2,1.4,8,30,30,90,1
 
@@ -576,53 +576,42 @@ class SubtitleHelper:
             is_pt = ("ç" in full_txt or "õ" in full_txt or "ã" in full_txt or len(txt_words & pt_words) >= 2) and not bool(vn_exclusive_re.search(full_txt))
             is_vi = bool(vn_exclusive_re.search(full_txt)) and not is_pt
 
-            effective_hook = (hook_title or "").strip()
-            if not effective_hook and scenes:
-                words = re.sub(r'[^\w\s\d\?\!\,\.\-]', '', scenes[0].narration).split()
-                if words:
-                    effective_hook = " ".join(words[:6])
-
-            if effective_hook:
-                clean_hook = re.sub(r'[—–―]+', ' - ', effective_hook)
+            # ── Tối ưu Anti-Swipe 0-3s: Chỉ hiển thị DUY NHẤT 1 phù hiệu HUD nhỏ gọn (1 dòng, <= 26 ký tự)
+            # ở sát mép trên (MarginV=230), tuyệt đối KHÔNG chồng 2 lớp HookHeadlineBanner + PatternInterruptBadge
+            # gây che khuất khuôn mặt/chủ thể chính ở trung tâm khung hình!
+            custom_open_badge = cls._strip_ass_unsupported_emojis(getattr(scenes[0], "overlay_badge", "") or "").strip()
+            effective_hook = cls._strip_ass_unsupported_emojis((hook_title or "").strip())
+            if custom_open_badge and len(custom_open_badge) <= 24:
+                badge_core = custom_open_badge.upper()
+            elif effective_hook:
+                clean_hook = re.sub(r'[—–―]+', ' ', effective_hook)
                 clean_hook = re.sub(r'#\w+', '', clean_hook).strip().upper()
-                clean_hook = cls._strip_ass_unsupported_emojis(clean_hook)
-                if len(clean_hook) > 42:
-                    clean_hook = clean_hook[:39].rstrip() + "..."
-
-                if clean_hook:
-                    first_scene_dur_ms = scenes[0].audio_duration_ms or int(scenes[0].estimated_seconds * 1000)
-                    banner_end_ms = min(2800, max(1800, first_scene_dur_ms))
-                    banner_end_str = cls._ms_to_ass_time(banner_end_ms)
-                    dialogue_lines.insert(0,
-                        f"Dialogue: 3,0:00:00.00,{banner_end_str},HookHeadlineBanner,,0,0,0,,{{\\fade(0,180)\\t(0,110,\\fscx112\\fscy112)\\t(110,230,\\fscx100\\fscy100)}}{clean_hook}"
-                    )
-
-            # Phù hiệu danh mục (PatternInterruptBadge): ưu tiên nhãn ngữ cảnh từ AI Director (scenes[0].overlay_badge),
-            # và sử dụng ký tự HUD sắc nét [ // ... // ] thay cho Emoji bị lỗi ô vuông □ trong Arial Black
-            custom_open_badge = cls._strip_ass_unsupported_emojis(getattr(scenes[0], "overlay_badge", "") or "")
-            if custom_open_badge:
-                badge_title = f"[ // {custom_open_badge.upper()} // ]"
+                hook_words = clean_hook.split()
+                badge_core = " ".join(hook_words[:4])
+                if len(badge_core) > 24:
+                    badge_core = badge_core[:24].rstrip()
             elif "psychology" in raw_niche:
-                badge_title = "[ // TÂM LÝ ĐEN TỐI // ]" if is_vi else ("[ // MENTE SOMBRIA // ]" if is_pt else "[ // MENTAL TRAP // ]")
+                badge_core = "TÂM LÝ ĐEN TỐI" if is_vi else ("MENTE SOMBRIA" if is_pt else "MENTAL TRAP")
             elif any(k in raw_niche for k in ("deep_sea", "ocean")):
-                badge_title = "[ // VỰC THẲM BÍ ẨN // ]" if is_vi else ("[ // ABISMO OCULTO // ]" if is_pt else "[ // UNCHARTED ABYSS // ]")
+                badge_core = "VỰC THẲM BÍ ẨN" if is_vi else ("ABISMO OCULTO" if is_pt else "UNCHARTED ABYSS")
             elif any(k in raw_niche for k in ("predator", "wildlife")):
-                badge_title = "[ // ĐỐI ĐẦU SINH TỬ // ]" if is_vi else ("[ // DUELO MORTAL // ]" if is_pt else "[ // APEX DUEL // ]")
+                badge_core = "ĐỐI ĐẦU SINH TỬ" if is_vi else ("DUELO MORTAL" if is_pt else "APEX DUEL")
             elif any(k in raw_niche for k in ("rescue", "animal")):
-                badge_title = "[ // HỒ SƠ CỨU HỘ // ]" if is_vi else ("[ // RESGATE REAL // ]" if is_pt else "[ // RESCUE ARCHIVE // ]")
+                badge_core = "HỒ SƠ CỨU HỘ" if is_vi else ("RESGATE REAL" if is_pt else "RESCUE ARCHIVE")
             elif any(k in raw_niche for k in ("history", "mystery", "alternate")):
-                badge_title = "[ // TÀI LIỆU MẬT // ]" if is_vi else ("[ // ARQUIVO SECRETO // ]" if is_pt else "[ // CLASSIFIED FILE // ]")
+                badge_core = "TÀI LIỆU MẬT" if is_vi else ("ARQUIVO SECRETO" if is_pt else "CLASSIFIED FILE")
             elif "horror" in raw_niche:
-                badge_title = "[ // HỒ SƠ KINH DỊ // ]" if is_vi else ("[ // LENDA URBANA // ]" if is_pt else "[ // URBAN LEGEND // ]")
+                badge_core = "HỒ SƠ KINH DỊ" if is_vi else ("LENDA URBANA" if is_pt else "URBAN LEGEND")
             else:
-                badge_title = "[ // ĐIỀU CHƯA BIẾT // ]" if is_vi else ("[ // ARQUIVO CRÍTICO // ]" if is_pt else "[ // CRITICAL FILE // ]")
+                badge_core = "ĐIỀU CHƯA BIẾT" if is_vi else ("ARQUIVO CRÍTICO" if is_pt else "CRITICAL FILE")
 
+            badge_title = f"[ // {badge_core} // ]"
             first_scene_dur_ms = scenes[0].audio_duration_ms or int(scenes[0].estimated_seconds * 1000)
-            badge_end_ms = min(2600, max(1200, first_scene_dur_ms - 200))
-            badge_start_str = cls._ms_to_ass_time(200)
+            badge_end_ms = min(2400, max(1200, first_scene_dur_ms - 150))
+            badge_start_str = cls._ms_to_ass_time(0)
             badge_end_str = cls._ms_to_ass_time(badge_end_ms)
-            dialogue_lines.insert(1,
-                f"Dialogue: 2,{badge_start_str},{badge_end_str},PatternInterruptBadge,,0,0,0,,{{\\fade(150,150)\\t(0,150,\\fscx106\\fscy106)}}{badge_title}"
+            dialogue_lines.insert(0,
+                f"Dialogue: 2,{badge_start_str},{badge_end_str},PatternInterruptBadge,,0,0,0,,{{\\fade(120,150)\\t(0,140,\\fscx105\\fscy105)}}{badge_title}"
             )
 
             # Mid-video & Climax Pattern Interrupt + Quantitative Stat Card Engine (Giây 10-16s và Giây 22-32s):
