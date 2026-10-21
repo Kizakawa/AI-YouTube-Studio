@@ -1574,6 +1574,26 @@ def execute_google_cinematic_image_sync(
     }
 
 
+def _sanitize_tool_arg(val: Any, fallback: str = "") -> str:
+    """Loại bỏ các token lỗi từ parser functionCall (VD: ',creature_name:', '<|...|>', v.v.)."""
+    s = str(val or "").strip()
+    if not s:
+        return fallback
+    s_clean = re.sub(r"^[,:;\"'<>\s]+|[,:;\"'<>\s]+$", "", s).strip()
+    bad_markers = (
+        "creature_name",
+        "scale_anchor_object",
+        "subject_entity",
+        "action_or_concept_query",
+        "overall_script_query",
+        "tool_call",
+        "function",
+    )
+    if not s_clean or len(s_clean) < 2 or any(m in s_clean.lower() for m in bad_markers):
+        return fallback
+    return s_clean
+
+
 def execute_epic_monster_cinematic_media_sync(
     creature_name: str,
     scale_anchor_object: str,
@@ -1609,8 +1629,10 @@ def execute_epic_monster_cinematic_media_sync(
 
     rag = get_video_memory_rag()
     used = used_urls if used_urls is not None else set()
-    c_name = (creature_name or topic or "colossal sea monster").strip()
-    s_anchor = (scale_anchor_object or "submarine").strip()
+    fallback_creature = _clean_yt_search_phrase(topic, max_words=3, strip_distractor_props=True) or "colossal sea monster"
+    c_name = _sanitize_tool_arg(creature_name, fallback=fallback_creature)
+    s_anchor = _sanitize_tool_arg(scale_anchor_object, fallback="submarine")
+    action_or_concept_query = _sanitize_tool_arg(action_or_concept_query, fallback="")
     mode_norm = (monster_media_mode or "3D_CGI_VIDEO").strip().upper()
 
     # 1. TẦNG 1: Săn Video 3D CGI / Unreal Engine 5 / Megalophobia Shorts Peak
@@ -2215,10 +2237,11 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 "generationConfig": {"temperature": 0.2},
             }
 
-            for model_name, api_key in rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS):
+            tool_capable_models = [m for m in GEMINI_PRIORITY_MODELS if not m.startswith("gemma-")]
+            for model_name, api_key in rotator.iter_best_model_key_pairs(tool_capable_models):
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
                 try:
-                    resp = requests.post(url, json=payload, timeout=22)
+                    resp = requests.post(url, json=payload, timeout=18)
                     if resp.status_code == 200:
                         data = resp.json()
                         parts = (
@@ -2231,6 +2254,17 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                             if fc and isinstance(fc, dict):
                                 t_name = fc.get("name", "")
                                 t_args = dict(fc.get("args") or {})
+                                for str_k in (
+                                    "creature_name",
+                                    "scale_anchor_object",
+                                    "subject_entity",
+                                    "action_or_concept_query",
+                                    "overall_script_query",
+                                    "youtube_search_query",
+                                    "smart_image_query",
+                                ):
+                                    if str_k in t_args:
+                                        t_args[str_k] = _sanitize_tool_arg(t_args.get(str_k), fallback="")
                                 sid = int(t_args.get("scene_id") or 0)
                                 if sid > 0:
                                     t_args["tool_name"] = t_name
@@ -2245,9 +2279,10 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                                 f"qua `{model_name}` ({scope_summary})"
                             )
                             break
-                    elif resp.status_code in (429, 403, 404, 503):
+                    elif resp.status_code in (429, 403, 404, 500, 502, 503, 504):
                         rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:200])
                 except Exception as req_err:
+                    rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(req_err))
                     logger.debug(f"[LLM Tool Director] {model_name} error: {req_err}")
                     continue
     except Exception as ex:
@@ -2272,6 +2307,32 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
         (d for d in decisions_by_scene.values() if d.get("tool_name") == "summon_epic_monster_cinematic_media"),
         None,
     )
+    if llm_monster_ref is None:
+        _monster_ctx_low = f"{topic} {primary_entity} {default_subj}".lower()
+        if any(
+            mk in _monster_ctx_low
+            for mk in (
+                "leviathan",
+                "bloop",
+                "kraken",
+                "megalodon",
+                "cthulhu",
+                "kaiju",
+                "godzilla",
+                "titanoboa",
+                "mosasaurus",
+                "sea monster",
+                "colossal monster",
+                "thalassophobia",
+                "megalophobia",
+            )
+        ):
+            llm_monster_ref = {
+                "tool_name": "summon_epic_monster_cinematic_media",
+                "creature_name": default_subj or "colossal sea monster",
+                "scale_anchor_object": "submarine",
+                "overall_script_query": default_overall_q,
+            }
     llm_portrait_ref = next(
         (d for d in decisions_by_scene.values() if d.get("tool_name") == "fetch_clean_cinematic_portrait_or_broll"),
         None,
@@ -2294,8 +2355,8 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
             # đồng bộ hóa luôn các phân cảnh chuyển ý (như "NOAA sensors", "Naval sonar") về cùng công cụ chuyên biệt với `search_scope="SCRIPT_OVERALL"`
             # để tránh việc cảnh phụ bị lọt sang Pexels lấy video tàu thuyền/tháp thời tiết ban ngày lạc tông!
             if t_chosen != "summon_epic_monster_cinematic_media" and llm_monster_ref is not None:
-                c_name_inh = llm_monster_ref.get("creature_name") or default_subj
-                s_anchor_inh = llm_monster_ref.get("scale_anchor_object") or "submarine"
+                c_name_inh = _sanitize_tool_arg(llm_monster_ref.get("creature_name"), fallback=default_subj or "colossal sea monster")
+                s_anchor_inh = _sanitize_tool_arg(llm_monster_ref.get("scale_anchor_object"), fallback="submarine")
                 m_mode_force = "3D_CGI_VIDEO" if sid in (1, 2, 4, 5, 6) else "CONCEPT_ART_8K"
                 d = {
                     "tool_name": "summon_epic_monster_cinematic_media",
@@ -2331,7 +2392,10 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 continue
 
             if t_chosen == "summon_epic_monster_cinematic_media":
-                d.setdefault("subject_entity", d.get("creature_name") or default_subj)
+                clean_c = _sanitize_tool_arg(d.get("creature_name"), fallback=default_subj or "colossal sea monster")
+                d["creature_name"] = clean_c
+                d["subject_entity"] = _sanitize_tool_arg(d.get("subject_entity"), fallback=clean_c)
+                d["scale_anchor_object"] = _sanitize_tool_arg(d.get("scale_anchor_object"), fallback="submarine")
                 # Đảm bảo ít nhất 5/7 phân cảnh (Cảnh 1, 2, 4, 5, 6) ưu tiên săn Video 3D CGI YouTube Shorts Reup trước khi dùng ảnh tĩnh!
                 if sid in (1, 2, 4, 5, 6):
                     d["monster_media_mode"] = "3D_CGI_VIDEO"
@@ -2388,8 +2452,8 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
         dur = float(s.get("estimated_seconds") or 4.5)
 
         if llm_monster_ref is not None:
-            c_name_inh = llm_monster_ref.get("creature_name") or default_subj
-            s_anchor_inh = llm_monster_ref.get("scale_anchor_object") or "submarine"
+            c_name_inh = _sanitize_tool_arg(llm_monster_ref.get("creature_name"), fallback=default_subj or "colossal sea monster")
+            s_anchor_inh = _sanitize_tool_arg(llm_monster_ref.get("scale_anchor_object"), fallback="submarine")
             m_mode_inh = "3D_CGI_VIDEO" if sid in (1, 2, 4, 5, 6) else "CONCEPT_ART_8K"
             final_plan.append({
                 "tool_name": "summon_epic_monster_cinematic_media",
@@ -2537,17 +2601,18 @@ Return ONLY a valid JSON object in this exact format:
         keys = settings.get_gemini_keys_pool()
         rotator = KeyRotator(keys) if keys else None
         if rotator and rotator.has_keys:
-            payload = {
-                "contents": [{"parts": [{"text": audit_prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.1,
-                    "responseMimeType": "application/json",
-                },
-            }
             for model_name, api_key in rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS):
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+                gen_cfg: Dict[str, Any] = {"temperature": 0.1}
+                if not model_name.startswith("gemma-"):
+                    gen_cfg["responseMimeType"] = "application/json"
+                payload = {
+                    "contents": [{"parts": [{"text": audit_prompt}]}],
+                    "generationConfig": gen_cfg,
+                }
                 try:
-                    resp = requests.post(url, json=payload, timeout=18)
+                    req_t = 14 if model_name.startswith("gemma-") else 18
+                    resp = requests.post(url, json=payload, timeout=req_t)
                     if resp.status_code == 200:
                         cands = resp.json().get("candidates") or []
                         if cands:

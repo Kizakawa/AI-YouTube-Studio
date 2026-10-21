@@ -272,14 +272,15 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
 }}"""
 
         from app.utils.key_rotator import GEMINI_PRIORITY_MODELS
-        for model, key in self.rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS):
+        for model, key in self.rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS, max_total_attempts=6):
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
                 payload = {
                     "contents": [{"parts": [{"text": prompt}]}]
                 }
-                r = requests.post(url, json=payload, timeout=25)
-                if r.status_code in (429, 403, 404, 503):
+                req_timeout = 14 if model.startswith("gemma-") else 20
+                r = requests.post(url, json=payload, timeout=req_timeout)
+                if r.status_code in (429, 403, 404, 500, 502, 503, 504):
                     logger.warning(f"ScriptCritic: Model {model} trên key {key[:8]}... gặp mã {r.status_code}, chuyển ứng viên kế tiếp...")
                     self.rotator.mark_model_rate_limited(key, model, status_code=r.status_code, error_text=r.text[:250])
                     continue
@@ -301,6 +302,7 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
                         return self._build_report(parsed, script_data=script_data, calibration=calibration, channel_style=channel_style)
             except Exception as e:
                 logger.warning(f"ScriptCritic ({model}) error: {e}")
+                self.rotator.mark_model_rate_limited(key, model, status_code=503, error_text=str(e))
                 continue
 
         return self._heuristic_evaluate(script_data, primary_entity, calibration=calibration, channel_style=channel_style)

@@ -364,15 +364,19 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             channel_visual_mode = state.get("visual_mode") or "auto"
             scene_media_pref = getattr(scene, 'media_type', None)
 
-            subj_ent = sc_strat.get("creature_name") or sc_strat.get("subject_entity") or primary_entity or state.get("topic", "")
+            from app.graph.tools.media_tools import _sanitize_tool_arg
+            subj_ent = _sanitize_tool_arg(
+                sc_strat.get("creature_name") or sc_strat.get("subject_entity"),
+                fallback=primary_entity or state.get("topic", ""),
+            )
             sc_scope = sc_strat.get("search_scope") or "SCENE_SPECIFIC"
             overall_q = sc_strat.get("overall_script_query") or state.get("topic", "")
             import math as _math
             scene_target_imgs = 3 if (scene.scene_id == 1 or dur >= 3.5) else 2
 
             if tool_name == "summon_epic_monster_cinematic_media":
-                c_name = sc_strat.get("creature_name") or subj_ent
-                s_anchor = sc_strat.get("scale_anchor_object") or "submarine"
+                c_name = _sanitize_tool_arg(sc_strat.get("creature_name"), fallback=subj_ent or "colossal sea monster")
+                s_anchor = _sanitize_tool_arg(sc_strat.get("scale_anchor_object"), fallback="submarine")
                 m_mode = sc_strat.get("monster_media_mode") or ("3D_CGI_VIDEO" if scene.scene_id == 1 else "CONCEPT_ART_8K")
                 act_q = sc_strat.get("action_or_concept_query") or kw or f"{c_name} {s_anchor}"
                 out_m = str(

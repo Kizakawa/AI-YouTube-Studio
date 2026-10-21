@@ -116,12 +116,13 @@ class ContentAgent:
                 "contents": [{"parts": [{"text": prompt}]}],
                 "safetySettings": safety_settings,
             }
-            if json_mode:
+            if json_mode and not model.startswith("gemma-"):
                 payload["generationConfig"] = {"responseMimeType": "application/json"}
 
             try:
                 attempts += 1
-                r = self.session.post(url, json=payload, timeout=timeout)
+                req_timeout = min(timeout, 15) if model.startswith("gemma-") else timeout
+                r = self.session.post(url, json=payload, timeout=req_timeout)
                 if r.status_code == 200:
                     data = r.json()
                     candidates = data.get("candidates", [])
@@ -146,7 +147,7 @@ class ContentAgent:
                             "contents": [{"parts": [{"text": prompt}]}],
                             "safetySettings": safety_settings,
                         }
-                        r_fb = self.session.post(url, json=fallback_payload, timeout=timeout)
+                        r_fb = self.session.post(url, json=fallback_payload, timeout=req_timeout)
                         if r_fb.status_code == 200:
                             data = r_fb.json()
                             candidates = data.get("candidates", [])
@@ -172,6 +173,7 @@ class ContentAgent:
                     except Exception:
                         err_msg = r.text[:80]
                     logger.warning(f"Gemini API ({model}) trả lỗi {r.status_code} với key {key[:8]}...: {err_msg}")
+                    self.rotator.mark_model_rate_limited(key, model, status_code=r.status_code, error_text=err_msg)
                     continue
             except Exception as e:
                 logger.warning(f"Lỗi kết nối Gemini API ({model}) với key {key[:8]}...: {e}")

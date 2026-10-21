@@ -172,21 +172,32 @@ class KeyRotator:
                 )
                 if all_keys_exhausted:
                     self._model_cooldowns[f"*:{model}"] = now + (cooldown_sec or 3600.0)
-            elif "timed out" in err_low or "timeout" in err_low:
-                self._model_cooldowns[f"*:{model}"] = now + (cooldown_sec or 25.0)
-            elif status_code == 503:
-                self._model_cooldowns[f"*:{model}"] = now + (cooldown_sec or 20.0)
+            elif (
+                "timed out" in err_low
+                or "timeout" in err_low
+                or status_code in (500, 502, 503, 504)
+                or "internal error" in err_low
+            ):
+                self._model_cooldowns[f"*:{model}"] = now + (cooldown_sec or 30.0)
+                if model in KeyRotator._verified_live_models:
+                    KeyRotator._verified_live_models = [
+                        m for m in KeyRotator._verified_live_models if m != model
+                    ]
             elif status_code == 403 or "api_key_invalid" in err_low:
                 self._global_cooldowns[key] = now + (cooldown_sec or 180.0)
             else:
                 wait_s = cooldown_sec or 45.0
                 self._model_cooldowns[f"{key}:{model}"] = now + wait_s
-                # Nếu toàn bộ key hiện có trong pool đều bị 429 trên cùng model, khóa luôn *:model 45s
+                # Nếu >= 2 key trong pool bị 429 trên cùng model, khóa luôn *:model 45s để nhảy sang model kế tiếp ngay
                 active_key_locks = sum(
                     1 for k in self.keys if self._model_cooldowns.get(f"{k}:{model}", 0.0) > now
                 )
-                if active_key_locks >= max(len(self.keys), 1):
+                if active_key_locks >= min(2, max(len(self.keys), 1)):
                     self._model_cooldowns[f"*:{model}"] = now + 45.0
+                    if model in KeyRotator._verified_live_models:
+                        KeyRotator._verified_live_models = [
+                            m for m in KeyRotator._verified_live_models if m != model
+                        ]
 
     def probe_all_models_concurrently(
         self,
@@ -309,32 +320,37 @@ class KeyRotator:
                 model_list.append(m)
 
         n_keys = len(self.keys)
-        default_cap = 6 if live_ranked else 2
+        default_cap = 6 if live_ranked else 3
         limit = max_total_attempts or min(max(n_keys * len(model_list), 2), default_cap)
         yielded = 0
         yielded_models = set()
+        max_keys_per_model = min(2, n_keys)
 
         for model in model_list:
             now = time.monotonic()
             with self._global_lock:
                 self._cleanup_expired_locked(now)
-                if self._model_cooldowns.get(f"*:{model}", 0.0) > now and model not in live_ranked:
+                if self._model_cooldowns.get(f"*:{model}", 0.0) > now:
                     continue
                 start_idx = self._global_cursor % n_keys
 
+            model_attempts = 0
             for offset in range(n_keys):
                 if yielded >= limit:
                     return
-                if self._model_cooldowns.get(f"*:{model}", 0.0) > time.monotonic() and model in yielded_models:
+                if model_attempts >= max_keys_per_model:
+                    break
+                if self._model_cooldowns.get(f"*:{model}", 0.0) > time.monotonic():
                     break
                 idx = (start_idx + offset) % n_keys
                 candidate_key = self.keys[idx]
-                if not self.is_model_available(candidate_key, model) and model not in live_ranked:
+                if not self.is_model_available(candidate_key, model):
                     continue
                 with self._global_lock:
                     self._global_cursor = (idx + 1) % n_keys
                     self._current_key = candidate_key
                 yielded += 1
+                model_attempts += 1
                 yielded_models.add(model)
                 yield model, candidate_key
 

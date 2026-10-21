@@ -269,6 +269,38 @@ Return ONLY valid JSON:
         hook_visual_mode = "video"
         is_abstract_keyword = False
 
+    # Nhận diện chủ đề Quái vật khổng lồ / Thủy quái biển sâu / Khoa học viễn tưởng (Leviathan, Bloop, Kraken, Megalodon...)
+    # để tự động bổ sung truy vấn 3D CGI / Thalassophobia trên YouTube Shorts thay vì tìm đạo cụ "sonar screen"
+    _hook_ctx_low = f"{topic} {primary_entity} {visual_keyword} {hook_narration}".lower()
+    is_monster_hook = any(
+        mk in _hook_ctx_low
+        for mk in (
+            "leviathan",
+            "bloop",
+            "kraken",
+            "megalodon",
+            "cthulhu",
+            "kaiju",
+            "godzilla",
+            "titanoboa",
+            "mosasaurus",
+            "sea monster",
+            "colossal monster",
+            "thalassophobia",
+            "megalophobia",
+        )
+    )
+    if is_monster_hook:
+        from app.graph.tools.media_tools import _clean_yt_search_phrase
+        clean_m_subj = _clean_yt_search_phrase(primary_entity or topic, max_words=3, strip_distractor_props=True) or "sea monster"
+        monster_hook_queries = [
+            f"{clean_m_subj} 3d animation",
+            "sea monster thalassophobia",
+            f"{clean_m_subj} sea monster",
+            *queries,
+        ]
+        queries = [q for q in dict.fromkeys(monster_hook_queries) if q][:3]
+
     # ──────────────────────────────────────────────────────────────────────────
     # BƯỚC 2: GEMINI CHỌN "video" -> SĂN VIDEO SHORT TRÊN MẠNG (CHỐNG LẶP 100%)
     # ──────────────────────────────────────────────────────────────────────────
@@ -767,6 +799,7 @@ Return ONLY valid JSON:
                 job_id=job_id,
                 scene_id=1,
                 channel_id=channel_id,
+                allow_3d_cgi_monster=is_monster_hook,
             )
             if st_res and st_res.get("media_path") and Path(st_res["media_path"]).exists():
                 stock_hook_ok = True
