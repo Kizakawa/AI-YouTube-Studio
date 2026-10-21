@@ -751,15 +751,13 @@ class StockFetcher:
                 _push(sq_clean)
             for pq_fallback in ["close up eyes dark lighting", "man intense stare", "silhouette person walking night", "dramatic portrait lighting"]:
                 _push(pq_fallback)
-        if "honey badger" in _ctx_low:
-            for hq in ["leopard wildlife africa", "african savanna predator", "leopard stalking prey", "badger wildlife"]:
-                _push(hq)
+        _push(clean_q)
         if visual_analysis and visual_analysis.get("search_queries"):
             for sq in visual_analysis["search_queries"]:
-                if "honey badger" in sq.lower():
-                    continue
                 _push(sq)
-        _push(clean_q)
+        if "honey badger" in _ctx_low:
+            for hq in ["honey badger wildlife", "african lion pride savanna", "badger wildlife"]:
+                _push(hq)
         for b in ladder["broadened"]:
             _push(b)
         if len(words) >= 2:
@@ -792,6 +790,9 @@ class StockFetcher:
             logger.info(f"[StockFetcher] {reason} -> thử cảnh toàn đúng bối cảnh: {establishing[:3]}")
             est_va = dict(visual_analysis or {})
             est_va["search_queries"] = list(establishing)
+            est_va["subject"] = f"Bối cảnh thiên nhiên / địa hình ({', '.join(establishing[:2])})"
+            est_va["core_visual_entity"] = establishing[0]
+            est_va["expected_visual_content"] = f"Cảnh toàn bối cảnh thiên nhiên ({', '.join(establishing[:2])}) — không bắt buộc có mặt con vật chính"
             est_va["visual_metaphor"] = (
                 f"Establishing shot of the real location ({', '.join(establishing[:2])}) for the topic '{topic or query}'"
             )

@@ -60,7 +60,7 @@ async def node_direct_visual_strategy(state: VideoWorkflowState) -> Dict[str, An
     """
     topic = state.get("topic", "")
     script_data = state.get("script_data", {})
-    primary_entity = state.get("primary_entity")
+    primary_entity = state.get("primary_entity") or script_data.get("primary_entity")
     channel_style = state.get("channel_style", "cinematic")
     scenes = script_data.get("scenes", [])
 
@@ -143,7 +143,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     Tất cả các phân cảnh được chạy đồng loạt qua `asyncio.gather` (Semaphore 8) để đạt tốc độ tối đa.
     """
     script_data = state.get("script_data", {})
-    primary_entity = state.get("primary_entity")
+    primary_entity = state.get("primary_entity") or script_data.get("primary_entity")
     entity_type = state.get("entity_type", "person")
     entity_media_pool = state.get("entity_media_pool", [])
     work_dir = Path(state.get("work_dir", "storage/cache"))

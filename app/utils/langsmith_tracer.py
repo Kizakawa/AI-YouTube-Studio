@@ -376,16 +376,17 @@ def _summarize_io(args: tuple, kwargs: dict, result: Any) -> Dict[str, Any]:
         in_summary["items_count"] = len(args[1])
 
     out_summary: Any = None
-    if isinstance(result, dict):
+    res_obj = result.model_dump() if hasattr(result, "model_dump") else result
+    if isinstance(res_obj, dict):
         keep_keys = (
             "url", "source", "duration", "winner_index", "best_score",
             "rationale", "search_queries", "core_visual_entity", "subject",
             "overall_score", "passed", "hook_score", "failed_scene_ids",
-            "video_id", "status", "current_step", "hook_video_eval",
+            "actionable_critiques", "video_id", "status", "current_step", "hook_video_eval",
         )
-        out_summary = {k: result[k] for k in keep_keys if k in result}
+        out_summary = {k: res_obj[k] for k in keep_keys if k in res_obj}
         if not out_summary:
-            out_summary = {k: str(v)[:100] for k, v in list(result.items())[:4]}
+            out_summary = {k: str(v)[:100] for k, v in list(res_obj.items())[:4]}
     elif isinstance(result, list):
         out_summary = {"returned_items": len(result)}
     elif result is None:

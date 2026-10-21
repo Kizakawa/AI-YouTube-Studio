@@ -73,6 +73,9 @@ _YT_QUERY_FILLER_WORDS = {
     "dramatic", "vertical", "shot", "shots", "video", "clip", "clips", "short", "shorts",
     "movie", "still", "photo", "photograph", "picture", "image",
     "the", "a", "an", "of", "in", "on", "at", "to", "for", "with", "by", "from", "and", "or",
+    "why", "how", "what", "when", "where", "who", "which", "whose", "whom",
+    "does", "do", "did", "is", "are", "was", "were", "can", "could", "would", "should", "will",
+    "not", "even", "never", "nothing", "everything", "anything", "something", "fear", "fears",
     "retreating", "confused", "frustrated", "wary", "hesitating", "impassive", "futility",
     "superior", "dominance", "calculated", "caution", "acknowledging",
 }
@@ -353,10 +356,20 @@ def _clean_yt_search_phrase(
         and len(w) >= 3
     ]
     core_lower = {w.lower() for w in core}
-    for sw in reversed(subj_words[:2]):
-        if sw.lower() not in core_lower:
-            core.insert(0, sw)
-            core_lower.add(sw.lower())
+    # Nếu câu truy vấn của cảnh đã có danh từ loài vật riêng biệt (như "alpha male lion" trong kịch bản Honey Badger vs Lion),
+    # không chèn cứng subject_entity vào đầu làm hỏng truy vấn Pexels ("Honey Badger alpha male lion")!
+    distinct_animals = {
+        "lion", "lions", "tiger", "tigers", "leopard", "leopards", "jaguar", "jaguars", "cheetah",
+        "hyena", "hyenas", "crocodile", "crocodiles", "alligator", "caiman", "hippo", "hippopotamus",
+        "cobra", "python", "snake", "snakes", "eagle", "hawk", "shark", "orca", "whale", "bear", "wolf", "wolves",
+        "badger", "badgers", "wolverine", "elephant", "rhino", "gorilla", "komodo",
+    }
+    has_own_animal = any(w in distinct_animals for w in core_lower)
+    if not has_own_animal or len(core) <= 1:
+        for sw in reversed(subj_words[:2]):
+            if sw.lower() not in core_lower:
+                core.insert(0, sw)
+                core_lower.add(sw.lower())
     return " ".join(core[:max_words]).strip()
 
 
@@ -1185,12 +1198,17 @@ def execute_youtube_short_peak_clone_sync(
         try:
             from app.graph.evaluators.visual_critic import VisualCritic
             media_agent = MediaAgent()
+            scene_subj_hint = (
+                f"{search_phrases[0]} (hoặc {subject_entity or topic})"
+                if (effective_scope == "SCENE_SPECIFIC" and search_phrases)
+                else (subject_entity or topic)
+            )
             va_vid = {
                 "analysis_source": "ai",
-                "subject": subject_entity or topic,
-                "core_visual_entity": subject_entity or topic,
+                "subject": scene_subj_hint,
+                "core_visual_entity": scene_subj_hint,
                 "topic": overall_script_query or topic,
-                "expected_visual_content": f"{subject_entity or topic} — {narration}",
+                "expected_visual_content": f"{scene_subj_hint} — {narration}",
                 "search_queries": search_phrases,
                 "is_hook_scene": ((clip_role or "").upper() == "HOOK"),
             }
