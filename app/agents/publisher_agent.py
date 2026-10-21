@@ -11,6 +11,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from config.settings import settings
+from app.utils.langsmith_tracer import trace_custom_span
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +188,7 @@ class PublisherAgent:
             self.init_error = str(e)
             logger.error(f"Lỗi khởi tạo YouTube API cho '{self.channel_name}': {e}")
 
+    @trace_custom_span("PublisherAgent.upload_youtube", run_type="tool")
     def upload_video(
         self,
         video_path: str,

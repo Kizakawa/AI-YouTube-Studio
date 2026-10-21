@@ -14,6 +14,7 @@ from typing import List, Dict, Any, Optional
 
 from PIL import Image
 from app.graph.state import VisualEvaluationReport, SceneVisualScore
+from app.utils.langsmith_tracer import trace_custom_span
 
 logger = logging.getLogger(__name__)
 
@@ -322,6 +323,7 @@ class VisualCritic:
             "brightness": round(avg_lum, 1),
         }
 
+    @trace_custom_span("VisualCritic.evaluate_media", run_type="chain")
     def evaluate_media(
         self,
         scenes_media: List[Dict[str, Any]],

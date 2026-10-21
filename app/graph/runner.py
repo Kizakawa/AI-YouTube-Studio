@@ -87,9 +87,23 @@ class GraphRunner:
         except Exception:
             pass
 
-    def _finish_trace(self, status: str, error: Optional[str] = None) -> None:
+    def _finish_trace(
+        self,
+        status: str,
+        error: Optional[str] = None,
+        final_state: Optional[Dict[str, Any]] = None,
+    ) -> None:
         try:
-            from app.utils.langsmith_tracer import finish_job_trace
+            from app.utils.langsmith_tracer import finish_job_trace, log_job_quality_feedback
+            if isinstance(final_state, dict):
+                scores_summary = {
+                    "script_critic": final_state.get("script_eval"),
+                    "visual_critic": final_state.get("media_eval"),
+                    "hook_video_grader": final_state.get("hook_video_eval"),
+                    "audio_qa": final_state.get("audio_eval"),
+                    "video_qa": final_state.get("video_eval"),
+                }
+                log_job_quality_feedback(self.job_id, scores_summary)
             finish_job_trace(self.job_id, status=status, error=error)
         except Exception:
             pass
@@ -288,7 +302,7 @@ class GraphRunner:
                 j.progress_message = "✅ Video hoàn thành xuất sắc! Đã qua 4 tầng kiểm định chất lượng."
                 j.error_message = None
 
-        self._finish_trace("COMPLETED")
+        self._finish_trace("COMPLETED", final_state=final_state)
         logger.info(f"🎉 [LangGraph Job {self.job_id}] Video hoàn thành: {final_state.get('rendered_video_path')}")
         return final_state
 

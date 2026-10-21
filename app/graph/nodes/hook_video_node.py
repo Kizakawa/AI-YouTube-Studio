@@ -26,6 +26,7 @@ import requests
 from config.settings import settings
 from app.graph.state import VideoWorkflowState
 from app.services.media import license_policy
+from app.utils.langsmith_tracer import trace_custom_span
 from app.utils.ffmpeg_helper import (
     trim_video,
     render_opening_hook_multi_cut,
@@ -82,6 +83,7 @@ def _build_hook_video_search_queries(
     return unique_q[:2] or ["cinematic wildlife action"]
 
 
+@trace_custom_span("HookVideoNode.produce_and_score_hook", run_type="chain")
 async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[str, Any]:
     """
     Hàm Tạo Hook Chuyên Biệt (`node_produce_and_score_hook_video` — Chạy TRƯỚC `node_fetch_media`):

@@ -10,6 +10,7 @@ from typing import List, Optional, Dict, Any, Tuple
 import edge_tts
 from config.settings import settings
 from app.schemas.contracts import SceneContract, AudioSegment
+from app.utils.langsmith_tracer import trace_custom_span
 
 # Đảm bảo Sec-MS-GEC-Version luôn ở chuẩn v2+ trên cả constants, drm và communicate
 def _ensure_edge_tts_v2_token() -> None:
@@ -367,6 +368,7 @@ class VoiceAgent:
     # PUBLIC API — Gọi từ Pipeline Orchestrator
     # ──────────────────────────────────────────
 
+    @trace_custom_span("VoiceAgent.generate_per_scene_audio", run_type="tool")
     async def generate_per_scene_audio(
         self,
         scenes: List[SceneContract],
