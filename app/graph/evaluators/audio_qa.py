@@ -98,9 +98,10 @@ class AudioQA:
         if wpm < 115:
             pacing_rating = "TOO_SLOW"
             feedback_items.append(f"Tốc độ đọc hơi chậm ({wpm:.0f} WPM), chuẩn tự nhiên là 130-165 WPM")
-        elif wpm > 185:
+        elif wpm > 180:
             pacing_rating = "TOO_FAST"
-            feedback_items.append(f"Tốc độ đọc quá nhanh ({wpm:.0f} WPM), người xem không kịp nghe")
+            passed = False
+            feedback_items.append(f"Tốc độ đọc quá nhanh ({wpm:.0f} WPM > 180 WPM), người xem không kịp nghe -> dễ vuốt bỏ")
 
         # [FIXED P1-FIX-2] Phát hiện khoảng im lặng thật bằng ffmpeg (thay vì hardcode False)
         has_silence = AudioQA._detect_silence(full_audio_path)

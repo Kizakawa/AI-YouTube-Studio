@@ -290,6 +290,16 @@ def backfill_from_jobs() -> int:
                 linked_job = db.query(VideoJob).filter(VideoJob.id == pv.job_id).first() if pv.job_id else job_by_vid.get(pv.youtube_video_id)
                 if linked_job and not pv.job_id:
                     pv.job_id = linked_job.id
+                if linked_job and linked_job.status == "SCHEDULED" and (pv.views or 0) == 0:
+                    pv.avg_view_percentage = None
+                    pv.stayed_to_watch_pct = None
+                    pv.swipe_away_pct = None
+                    pv.avg_view_duration_sec = None
+                    linked_job.avg_view_percentage = None
+                    linked_job.stayed_to_watch_pct = None
+                    linked_job.swipe_away_pct = None
+                    linked_job.avg_view_duration_sec = None
+                    continue
                 hook_txt = pv.hook_text or _extract_hook_from_job(linked_job, pv.title or "")
                 if hook_txt and not pv.hook_text:
                     pv.hook_text = hook_txt
@@ -463,6 +473,8 @@ def sync_channel(channel_cfg: Dict[str, Any], max_videos: int = 200) -> Dict[str
 
                 if job:
                     job.target_channel_id = ch_id
+                    if job.status == "SCHEDULED":
+                        job.status = "PUBLISHED"
                     job.views = views
                     job.likes = likes
                     job.comments = comments

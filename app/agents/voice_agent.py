@@ -352,14 +352,16 @@ class VoiceAgent:
                     if cfg_rate and isinstance(cfg_rate, str) and cfg_rate.endswith("%"):
                         try:
                             val = int(cfg_rate.replace("%", "").replace("+", "").strip())
-                            if -5 <= val <= 8:
+                            if -5 <= val <= 3:
                                 return f"{val:+d}%"
+                            elif val > 3:
+                                return "+2%"
                         except Exception:
                             pass
             except Exception:
                 pass
 
-        return "+5%"
+        return "+2%"
 
     # ──────────────────────────────────────────
     # PUBLIC API — Gọi từ Pipeline Orchestrator

@@ -348,14 +348,17 @@ class PublisherAgent:
             clean_title,
             flags=re.IGNORECASE
         ).strip()
+        # Khử toàn bộ chuỗi hashtag rác/lệch ngách ở cuối tiêu đề (ví dụ #legacyofalexander, #narcisist, #space)
+        # Chỉ giữ lại duy nhất 1 thẻ #Shorts chuẩn ở cuối để thuật toán Shorts Classifier không bị nhiễu.
+        clean_title = re.sub(r'(?:\s+#[^\s#]+)+\s*$', '', clean_title).strip()
+        clean_title = re.sub(r'#shorts\b', '', clean_title, flags=re.IGNORECASE).strip()
         if not clean_title:
             clean_title = (title or "Shorts Video").strip()
 
         # Đảm bảo video được gắn cờ và phân loại 100% là YouTube Shorts
-        if "#shorts" not in clean_title.lower():
-            if len(clean_title) > 91:
-                clean_title = clean_title[:91].rstrip()
-            clean_title = f"{clean_title} #Shorts"
+        if len(clean_title) > 91:
+            clean_title = clean_title[:91].rstrip()
+        clean_title = f"{clean_title} #Shorts"
 
         # Tự động tối ưu hóa kiếm tiền qua Amazon Affiliate & Kêu gọi ủng hộ PayPal
         prod_info = None
@@ -459,9 +462,9 @@ class PublisherAgent:
             for us_tag in ["usa", "american"]:
                 if len(tag_list) < 20 and us_tag not in [t.lower() for t in tag_list]:
                     tag_list.append(us_tag)
-            # Kênh en-US tắt notifySubscribers mặc định để ngắt hoàn toàn tệp sub VN cũ,
-            # ép thuật toán YouTube đẩy 100% vòng Seed sang Shorts Shelf tại Mỹ (US/UK/CA/AU)
-            default_notify_subs = False
+            # Bật notifySubscribers=True cho cả kênh US khi tệp sub đã chuẩn hóa US,
+            # giúp kích hoạt tín hiệu tương tác sớm (Initial Velocity) ngay khi video công chiếu
+            default_notify_subs = True
 
         if notify_subscribers is not None:
             should_notify_subs = bool(notify_subscribers)
@@ -536,7 +539,7 @@ class PublisherAgent:
             "status": {
                 "privacyStatus": "private" if schedule_time_iso else privacy_status,
                 "selfDeclaredMadeForKids": False,
-                "containsSyntheticMedia": True  # Khai báo minh bạch nội dung AI / Synthetic theo chính sách YouTube 2026
+                "containsSyntheticMedia": bool(self.channel_config.get("contains_synthetic_media", False)),
             },
             "recordingDetails": recording_details,
         }
@@ -1108,6 +1111,19 @@ class PublisherAgent:
             expected_loc = "Sao Paulo, Brazil" if is_br else "New York, United States"
 
             needs_update = False
+            raw_title = str(snip.get("title") or "").strip()
+            # Tự động dọn sạch chuỗi hashtag rác/lệch ngách ở cuối tiêu đề (chỉ giữ 1 thẻ #Shorts duy nhất)
+            healed_base = re.sub(r'(?:\s+#[^\s#]+)+\s*$', '', raw_title).strip()
+            healed_base = re.sub(r'#shorts\b', '', healed_base, flags=re.IGNORECASE).strip()
+            if healed_base:
+                healed_title = f"{healed_base[:91].rstrip()} #Shorts"
+                if healed_title != raw_title:
+                    logger.info(
+                        f"🧹 [SelfHealMetadata] Làm sạch hashtag thừa trên tiêu đề video {video_id}: '{raw_title}' -> '{healed_title}'"
+                    )
+                    snip["title"] = healed_title
+                    needs_update = True
+
             if str(snip.get("categoryId") or "") != expected_cat:
                 logger.warning(
                     f"🛡️ [SelfHealMetadata] Video {video_id} ({self.channel_name}) đang có categoryId={snip.get('categoryId')} "
