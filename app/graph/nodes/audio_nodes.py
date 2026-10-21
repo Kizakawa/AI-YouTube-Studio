@@ -4,7 +4,7 @@ app.graph.nodes.audio_nodes — Node xử lý Giọng đọc AI & Kiểm định
 import asyncio
 import logging
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from app.schemas.contracts import ScriptContract, SceneContract
 from app.agents.voice_agent import VoiceAgent
@@ -19,6 +19,8 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
     """
     Node sinh giọng đọc AI Edge-TTS từng cảnh + phụ đề ASS SONG SONG với bước LLM Đạo diễn chọn Tool hình ảnh.
     Giúp tiết kiệm 100% thời gian chờ gọi LLM ở bước visual_director tiếp theo!
+    Nếu được gọi lại từ vòng lặp tự sửa lỗi AudioQA (`audio_retry_count > 0`), tự động điều chỉnh `rate`
+    hoặc xóa cache cảnh lỗi để khắc phục triệt để lỗi tốc độ WPM / khoảng lặng.
     """
     script_data = state.get("script_data", {})
     work_dir = Path(state.get("work_dir", "storage/cache"))
@@ -31,6 +33,30 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
     primary_entity = state.get("primary_entity")
     script = ScriptContract(**script_data)
     voice_agent = VoiceAgent()
+
+    audio_retry_count = int(state.get("audio_retry_count", 0) or 0)
+    prev_audio_eval = state.get("audio_eval") or {}
+    explicit_rate: Optional[str] = None
+
+    if audio_retry_count > 0:
+        pacing_rating = str(prev_audio_eval.get("pacing_rating") or "")
+        feedback_reason = str(prev_audio_eval.get("feedback") or pacing_rating)
+        if pacing_rating in ("TOO_FAST", "TOO_SHORT"):
+            explicit_rate = "-6%" if audio_retry_count == 1 else "-12%"
+        elif pacing_rating in ("TOO_SLOW", "TOO_LONG"):
+            explicit_rate = "+14%" if audio_retry_count == 1 else "+20%"
+        else:
+            # Lỗi HAS_SILENCE hoặc thiếu file audio cảnh -> Xóa cache metadata để buộc tổng hợp lại
+            for meta_file in audio_dir.glob("*.meta.json"):
+                try:
+                    meta_file.unlink(missing_ok=True)
+                except Exception:
+                    pass
+            explicit_rate = "+6%"
+        logger.info(
+            f"🔄 [AudioNode] Tái tạo giọng đọc (Lần thử lại #{audio_retry_count}) "
+            f"với rate={explicit_rate} để khắc phục lỗi AudioQA: {feedback_reason}"
+        )
 
     async def _run_visual_tool_planner():
         if state.get("visual_plan"):
@@ -57,15 +83,19 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
     # Chạy SONG SONG: (1) Sinh Audio TTS tất cả các cảnh + (2) LLM bind_tools chọn công cụ hình ảnh cho tất cả các cảnh
     job_id = state.get("job_id")
     target_channel_id = state.get("target_channel_id")
+    gen_kwargs: Dict[str, Any] = {
+        "scenes": script.scenes,
+        "output_dir": str(audio_dir),
+        "voice": preferred_voice,
+        "niche": channel_style,
+        "channel_id": target_channel_id,
+        "job_id": job_id,
+    }
+    if explicit_rate:
+        gen_kwargs["rate"] = explicit_rate
+
     scenes_objs, precomputed_visual_plan = await asyncio.gather(
-        voice_agent.generate_per_scene_audio(
-            scenes=script.scenes,
-            output_dir=str(audio_dir),
-            voice=preferred_voice,
-            niche=channel_style,
-            channel_id=target_channel_id,
-            job_id=job_id,
-        ),
+        voice_agent.generate_per_scene_audio(**gen_kwargs),
         _run_visual_tool_planner(),
     )
 
@@ -129,6 +159,7 @@ def node_evaluate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
     full_audio_path = state.get("full_audio_path", "")
     total_duration = state.get("total_audio_duration_ms", 0)
     subtitle_path = state.get("subtitle_path", "")
+    retry_count = int(state.get("audio_retry_count", 0) or 0)
 
     eval_report = AudioQA.evaluate_audio(
         scenes_audio=scenes_audio,
@@ -143,9 +174,12 @@ def node_evaluate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
         f"Passed: {eval_report.passed}"
     )
 
-    return {
+    out: Dict[str, Any] = {
         "audio_eval": eval_report.model_dump(),
         "current_step": "AUDIO_EVALUATED",
         "progress_percent": 50,
         "progress_message": f"Kiểm định âm thanh: {eval_report.words_per_minute:.0f} WPM ({eval_report.pacing_rating})",
     }
+    if not eval_report.passed:
+        out["audio_retry_count"] = retry_count + 1
+    return out

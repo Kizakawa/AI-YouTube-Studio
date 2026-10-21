@@ -212,6 +212,7 @@ class GraphRunner:
             "work_dir": str(self.work_dir),
             "script_data": existing_script,
             "script_retry_count": 0,
+            "audio_retry_count": 0,
             "media_retry_count": 0,
             "content_retry_count": 0,
             "render_retry_count": 0,
@@ -299,7 +300,7 @@ class GraphRunner:
                 
                 j.status = "RENDERED"
                 j.progress_percent = 100
-                j.progress_message = "✅ Video hoàn thành xuất sắc! Đã qua 4 tầng kiểm định chất lượng."
+                j.progress_message = "✅ Video hoàn thành xuất sắc! Đã qua 5 tầng kiểm định chất lượng."
                 j.error_message = None
 
         self._finish_trace("COMPLETED", final_state=final_state)

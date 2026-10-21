@@ -46,6 +46,7 @@ def node_research_and_entity(state: VideoWorkflowState) -> Dict[str, Any]:
         "progress_percent": 10,
         "progress_message": f"Đã nhận diện: {ent_name or 'Chủ đề chung'} ({len(entity_media_pool)} tư liệu)",
         "script_retry_count": 0,
+        "audio_retry_count": 0,
         "media_retry_count": 0,
         "render_retry_count": 0,
     }

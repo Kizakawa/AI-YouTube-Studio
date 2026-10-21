@@ -2,6 +2,7 @@
 app.graph.nodes.render_nodes — Node Render Video bằng VideoAgent & Kiểm định VideoQA.
 """
 import logging
+import os
 from pathlib import Path
 from typing import Dict, Any
 
@@ -139,9 +140,11 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
 
 
 def node_evaluate_video(state: VideoWorkflowState) -> Dict[str, Any]:
-    """Node kiểm định chất lượng kỹ thuật VideoQA bằng FFprobe & QualityEvaluator (Chặn cứng nếu không đạt)."""
+    """Node kiểm định chất lượng kỹ thuật VideoQA bằng FFprobe & QualityEvaluator (Tự động render lại nếu lỗi, Hard-Block nếu vẫn không đạt)."""
     rendered_video_path = state.get("rendered_video_path", "")
     total_audio_duration_ms = state.get("total_audio_duration_ms", 0)
+    render_retry_count = int(state.get("render_retry_count", 0) or 0)
+    max_render_retries = max(0, int(os.getenv("MAX_RENDER_RETRIES", "1")))
 
     qa_report = VideoQA.inspect_video(
         video_path=rendered_video_path,
@@ -165,15 +168,32 @@ def node_evaluate_video(state: VideoWorkflowState) -> Dict[str, Any]:
         f"Score: {video_score}/100 | Passed: {combined_passed}"
     )
 
+    qa_dict = qa_report.model_dump()
+    qa_dict["score"] = video_score
+    qa_dict["passed"] = combined_passed
+    qa_dict["issues"] = combined_issues
+    qa_dict["metrics"] = eval_res
+
     if not combined_passed:
+        next_retry = render_retry_count + 1
+        if next_retry <= max_render_retries:
+            logger.warning(
+                f"🔄 [VideoQA] Video chưa đạt chuẩn ở lần dựng #{next_retry} (Score={video_score}/100: {'; '.join(combined_issues)}). "
+                f"Kích hoạt dựng lại tự động ({next_retry}/{max_render_retries})..."
+            )
+            return {
+                "video_eval": qa_dict,
+                "render_retry_count": next_retry,
+                "current_step": "QA_RETRY_RENDER",
+                "progress_percent": 88,
+                "progress_message": f"VideoQA phát hiện lỗi ({video_score}/100), đang tự động render lại (Lần {next_retry}/{max_render_retries})...",
+            }
+
         raise RuntimeError(
-            f"🚫 [HardBlock VideoQA] Video không đạt chuẩn kỹ thuật/chất lượng "
+            f"🚫 [HardBlock VideoQA] Video không đạt chuẩn kỹ thuật/chất lượng sau {next_retry} lần render "
             f"(Score={video_score}/100): {'; '.join(combined_issues) or 'Lỗi kiểm định video'}"
         )
 
-    qa_dict = qa_report.model_dump()
-    qa_dict["score"] = video_score
-    qa_dict["metrics"] = eval_res
     return {
         "video_eval": qa_dict,
         "current_step": "QA_DONE",

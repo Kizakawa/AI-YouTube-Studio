@@ -256,6 +256,19 @@ class VideoPipeline:
                     render_succeeded = True
                     return render_job
                 except Exception as e:
+                    if "[HardBlock" in str(e):
+                        logger.error(f"🚫 [Job {self.job_id}] Bị chặn cứng bởi cổng kiểm định chất lượng: {e}")
+                        self._update_status(JobStatus.FAILED, str(e))
+                        try:
+                            from app.services.channel_intelligence import send_telegram_broadcast
+                            send_telegram_broadcast(
+                                f"🛑 **[CỔNG KIỂM ĐỊNH CHẶN XUẤT BẢN]** Job #{self.job_id} bị chặn bởi VideoQA Hard-Block:\n"
+                                f"`{str(e)[:250]}`\n\n"
+                                f"_↳ Đã dừng xuất bản để bảo vệ chất lượng kênh (không chạy fallback tuyến tính)._"
+                            )
+                        except Exception:
+                            pass
+                        raise e
                     _lg_err_msg = (
                         f"⚠️ [Job {self.job_id}] LangGraph engine gặp sự cố: {e}\n"
                         f"Hệ thống tự động chuyển sang pipeline tuyến tính dự phòng..."
@@ -580,6 +593,26 @@ class VideoPipeline:
         except Exception as e_batch:
             logger.debug(f"[Job {self.job_id}] analyze_scenes_batch fallback: {e_batch}")
 
+        # ── KHÓA ĐỒNG NHẤT PHONG CÁCH THỊ GIÁC TOÀN VIDEO (VISUAL COHERENCE LOCK) ──
+        # Tránh hiện tượng pha trộn lộn xộn giữa video quay thật Pexels, ảnh tư liệu và tranh vẽ AI trong cùng 1 video
+        ai_count = sum(1 for s in proposals if s.get("production_method") == "IMAGE_TO_VIDEO")
+        stock_count = sum(1 for s in proposals if s.get("production_method") in ("STOCK_FOOTAGE", "TEXT_TO_VIDEO"))
+        total_prop = max(len(proposals), 1)
+
+        if primary_entity:
+            dominant_paradigm = "DOCUMENTARY"
+        elif channel_visual_mode in ("imagen_ai", "ai_image") or (ai_count / total_prop >= 0.60):
+            dominant_paradigm = "AI_CINEMATIC"
+        elif channel_visual_mode in ("pexels_stock", "video") or (stock_count / total_prop >= 0.60):
+            dominant_paradigm = "LIVE_FOOTAGE"
+        else:
+            dominant_paradigm = "HYBRID"
+
+        logger.info(
+            f"[Job {self.job_id}] 🎨 Visual Coherence Lock: dominant_paradigm={dominant_paradigm} "
+            f"(entity={primary_entity}, mode={channel_visual_mode}, niche={channel_niche})"
+        )
+
         total_scenes = len(scenes)
         sem = asyncio.Semaphore(4)
         completed_count = 0
@@ -627,7 +660,14 @@ class VideoPipeline:
                         prod_method = "TEXT_TO_VIDEO"
                     logger.info(f"[Job {self.job_id}] 🚀 Cảnh {idx+1}/{total_scenes}: YẾU TỐ VIỄN TƯỞNG -> Khóa chế độ Video Động ({prod_method}), chống chuyển ảnh đơn điệu!")
                 else:
-                    if channel_visual_mode in ("imagen_ai", "ai_image") and prod_method != "REAL_ARCHIVE":
+                    if dominant_paradigm == "DOCUMENTARY" and prod_method == "STOCK_FOOTAGE":
+                        # Chế độ Phim Tài Liệu nhân vật có thật: không chèn video diễn viên Pexels hiện đại làm gãy mạch lịch sử
+                        prod_method = "REAL_ARCHIVE"
+                    elif dominant_paradigm == "AI_CINEMATIC" and prod_method != "REAL_ARCHIVE":
+                        prod_method = "IMAGE_TO_VIDEO"
+                    elif dominant_paradigm == "LIVE_FOOTAGE" and prod_method == "IMAGE_TO_VIDEO" and scene_pref != "ai_image":
+                        prod_method = "STOCK_FOOTAGE"
+                    elif channel_visual_mode in ("imagen_ai", "ai_image") and prod_method != "REAL_ARCHIVE":
                         prod_method = "IMAGE_TO_VIDEO"
                     elif scene_pref == "ai_image":
                         prod_method = "IMAGE_TO_VIDEO"

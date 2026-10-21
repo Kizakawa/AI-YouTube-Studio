@@ -133,6 +133,7 @@ class VideoWorkflowState(TypedDict, total=False):
     total_audio_duration_ms: int
     subtitle_path: Optional[str]
     audio_eval: Optional[Dict[str, Any]]
+    audio_retry_count: int
 
     # Bước 2.5: Đạo diễn Thị giác (Visual Director Agent)
     visual_plan: Optional[Dict[str, Any]]  # VisualPlanReport dict

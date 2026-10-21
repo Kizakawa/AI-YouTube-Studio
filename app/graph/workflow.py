@@ -2,11 +2,16 @@
 app.graph.workflow — Xây dựng StateGraph đa tác nhân hoàn chỉnh bằng LangGraph.
 
 Tích hợp:
-- 4 Bộ Grader / QA độc lập: ScriptCritic, VisualCritic (kiểm tra độ sắc nét & độ phân giải), AudioQA, VideoQA.
-- Vòng lặp phản biện & tự sửa chữa (Self-Correction Loops) ở mọi tầng.
+- 5 Bộ Grader / QA độc lập: ScriptCritic, HookVideoGrader, VisualCritic, AudioQA, VideoQA.
+- Vòng lặp phản biện & tự sửa chữa (Self-Correction Loops) ở mọi tầng:
+  1. evaluate_script -> refine_script (hoặc generate_audio)
+  2. evaluate_audio  -> generate_audio (hoặc visual_director)
+  3. evaluate_media  -> refine_media (hoặc render_video)
+  4. evaluate_video  -> render_video (hoặc END / Hard-Block)
 - Khả năng kích hoạt sub-graph chỉnh sửa vi mô (Granular Edit).
 """
 import logging
+import os
 from typing import Literal
 
 from langgraph.graph import StateGraph, END
@@ -37,7 +42,6 @@ logger = logging.getLogger(__name__)
 
 def should_refine_script(state: VideoWorkflowState) -> Literal["refine_script", "generate_audio"]:
     """Điều hướng: Bắt buộc kịch bản đạt chuẩn (Overall >= 8.0 và Hook >= 8.0). Nếu hết lượt thử, khôi phục phiên bản đạt điểm cao nhất (Best Candidate) trong LangGraph!"""
-    import os
     script_eval = state.get("script_eval", {})
     passed = bool(script_eval.get("passed", False))
     hook_s = float((script_eval.get("hook_strength") or {}).get("score", 0.0) or 0.0)
@@ -86,18 +90,72 @@ def should_refine_script(state: VideoWorkflowState) -> Literal["refine_script", 
     return "generate_audio"
 
 
+def should_refine_audio(state: VideoWorkflowState) -> Literal["generate_audio", "visual_director"]:
+    """Điều hướng: Nếu AudioQA phát hiện lỗi tốc độ (WPM > 180 / > 65s) hoặc khoảng lặng > 1.5s -> Tạo lại Audio với tốc độ TTS điều chỉnh."""
+    audio_eval = state.get("audio_eval") or {}
+    passed = bool(audio_eval.get("passed", True))
+    retry_count = int(state.get("audio_retry_count", 0) or 0)
+    max_audio_retries = max(0, int(os.getenv("MAX_AUDIO_RETRIES", "2")))
+
+    if not passed and retry_count <= max_audio_retries:
+        logger.warning(
+            f"🔄 [ConditionalEdge] AudioQA chưa đạt chuẩn ({audio_eval.get('pacing_rating')}: {audio_eval.get('feedback')} | "
+            f"Lần {retry_count}/{max_audio_retries}). Quay lại node_generate_audio để điều chỉnh tốc độ TTS!"
+        )
+        return "generate_audio"
+
+    if not passed:
+        logger.warning(
+            f"⚠️ [AudioGate] Đã thử tối ưu Audio {retry_count - 1}/{max_audio_retries} lần ({audio_eval.get('feedback')}). "
+            f"Tiếp tục sang visual_director với bản thu hiện tại."
+        )
+    else:
+        logger.info(
+            f"✅ [ConditionalEdge] AudioQA đạt chuẩn ({audio_eval.get('words_per_minute', 0):.0f} WPM, {audio_eval.get('pacing_rating')}). "
+            f"Tiếp tục sang visual_director!"
+        )
+    return "visual_director"
+
+
 def should_refine_media(state: VideoWorkflowState) -> Literal["refine_media", "render_video"]:
     """Điều hướng: Kiểm tra độ sắc nét, độ phân giải & kỹ thuật media. Nếu lỗi -> Sửa lại. Nếu đạt -> Sang node_render_video!"""
     media_eval = state.get("media_eval", {})
-    passed = media_eval.get("passed", True)
-    retry_count = state.get("media_retry_count", 0)
+    passed = bool(media_eval.get("passed", True))
+    retry_count = int(state.get("media_retry_count", 0) or 0)
+    max_media_retries = max(0, int(os.getenv("MAX_MEDIA_RETRIES", "2")))
+    failed_ids = media_eval.get("failed_scene_ids", [])
 
-    if not passed and retry_count < 2:
-        logger.info(f"🔄 [ConditionalEdge] Media có cảnh chưa đạt độ sắc nét/kỹ thuật ({len(media_eval.get('failed_scene_ids', []))} cảnh). Chuyển sang node_refine_media!")
+    if not passed and failed_ids and retry_count < max_media_retries:
+        logger.info(
+            f"🔄 [ConditionalEdge] Media có cảnh chưa đạt độ sắc nét/kỹ thuật ({len(failed_ids)} cảnh: {failed_ids} | "
+            f"Lần {retry_count + 1}/{max_media_retries}). Chuyển sang node_refine_media!"
+        )
         return "refine_media"
 
-    logger.info("✅ [ConditionalEdge] Media đạt chuẩn độ sắc nét & kỹ thuật. Chuyển sang node_render_video!")
+    if not passed:
+        logger.warning(
+            f"⚠️ [MediaGate] Đã hoàn tất {retry_count}/{max_media_retries} vòng sửa media "
+            f"(Cảnh còn hạn chế: {failed_ids}, điểm chung: {media_eval.get('overall_score')}/10). Chuyển sang node_render_video!"
+        )
+    else:
+        logger.info("✅ [ConditionalEdge] Media đạt chuẩn độ sắc nét & kỹ thuật. Chuyển sang node_render_video!")
     return "render_video"
+
+
+def should_retry_render(state: VideoWorkflowState) -> Literal["render_video", "__end__"]:
+    """Điều hướng: Nếu VideoQA phát hiện lỗi kỹ thuật ở lần render đầu -> Cho phép render lại (tối đa MAX_RENDER_RETRIES lần)."""
+    video_eval = state.get("video_eval") or {}
+    passed = bool(video_eval.get("passed", True))
+    retry_count = int(state.get("render_retry_count", 0) or 0)
+    max_render_retries = max(0, int(os.getenv("MAX_RENDER_RETRIES", "1")))
+
+    if not passed and retry_count <= max_render_retries:
+        logger.warning(
+            f"🔄 [ConditionalEdge] VideoQA phát hiện lỗi kỹ thuật (Lần {retry_count}/{max_render_retries}). "
+            f"Quay lại node_render_video để dựng lại!"
+        )
+        return "render_video"
+    return "__end__"
 
 
 def route_entry_point(state: VideoWorkflowState) -> Literal["execute_edit", "research_and_entity"]:
@@ -160,11 +218,18 @@ def create_video_workflow_graph() -> StateGraph:
             "generate_audio": "generate_audio",
         }
     )
-    builder.add_edge("refine_script", "evaluate_script")  # Vòng lặp phản biện
+    builder.add_edge("refine_script", "evaluate_script")  # Vòng lặp phản biện kịch bản
 
-    # ── Luồng Giọng đọc -> Đạo diễn hình ảnh -> Node Hook Video chuyên biệt (search Short & cắt đoạn Peak trước) -> Thu thập tư liệu các cảnh còn lại ──
+    # ── Luồng Giọng đọc & AudioQA (có vòng lặp tự điều chỉnh tốc độ TTS) -> Đạo diễn hình ảnh -> Node Hook Video -> Thu thập Media ──
     builder.add_edge("generate_audio", "evaluate_audio")
-    builder.add_edge("evaluate_audio", "visual_director")
+    builder.add_conditional_edges(
+        "evaluate_audio",
+        should_refine_audio,
+        {
+            "generate_audio": "generate_audio",
+            "visual_director": "visual_director",
+        }
+    )
     builder.add_edge("visual_director", "produce_hook_video")
     builder.add_edge("produce_hook_video", "fetch_media")
 
@@ -181,7 +246,14 @@ def create_video_workflow_graph() -> StateGraph:
     builder.add_edge("refine_media", "evaluate_media")  # Vòng lặp sửa file mờ/lỗi kỹ thuật
 
     builder.add_edge("render_video", "evaluate_video")
-    builder.add_edge("evaluate_video", END)
+    builder.add_conditional_edges(
+        "evaluate_video",
+        should_retry_render,
+        {
+            "render_video": "render_video",
+            "__end__": END,
+        }
+    )
 
     # ── Luồng Chỉnh sửa vi mô (Edit Sub-Graph) ──
     builder.add_conditional_edges(
@@ -198,4 +270,3 @@ def create_video_workflow_graph() -> StateGraph:
 
 # Khởi tạo đồ thị biên dịch sẵn
 video_graph = create_video_workflow_graph()
-

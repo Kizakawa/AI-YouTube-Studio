@@ -248,7 +248,7 @@ def log_job_quality_feedback(
 
     hk_eval = scores_summary.get("hook_video_grader")
     if isinstance(hk_eval, dict):
-        raw_hk = hk_eval.get("score") or hk_eval.get("overall_score")
+        raw_hk = hk_eval.get("best_score") or hk_eval.get("score") or hk_eval.get("overall_score")
         if raw_hk is not None:
             try:
                 val = float(raw_hk)
@@ -260,6 +260,17 @@ def log_job_quality_feedback(
                 }
             except Exception:
                 pass
+
+    aud_qa = scores_summary.get("audio_qa")
+    if isinstance(aud_qa, dict) and ("passed" in aud_qa or "words_per_minute" in aud_qa):
+        aud_passed = bool(aud_qa.get("passed", True))
+        wpm_val = float(aud_qa.get("words_per_minute") or 0.0)
+        rating = aud_qa.get("pacing_rating", "PERFECT")
+        feedback_items["audio_score"] = {
+            "score": 1.0 if aud_passed else 0.4,
+            "raw_10": 10.0 if aud_passed else 4.0,
+            "comment": f"AudioQA: {wpm_val:.0f} WPM ({rating}, passed={aud_passed})",
+        }
 
     vid_qa = scores_summary.get("video_qa")
     if isinstance(vid_qa, dict) and "passed" in vid_qa:
@@ -496,7 +507,7 @@ def print_trace_report(trace_data: Dict[str, Any], inspect_io: bool = True) -> N
     if qf:
         badges = [f"{k}={v.get('raw_10', v.get('score'))}/10" for k, v in qf.items() if isinstance(v, dict)]
         if badges:
-            print(f"• Điểm 4 Grader: 🏆 {' | '.join(badges)} (Đã gắn Feedback Badge lên LangSmith Cloud)")
+            print(f"• Điểm 5 Grader: 🏆 {' | '.join(badges)} (Đã gắn Feedback Badge lên LangSmith Cloud)")
     print("-" * 84)
 
     if nodes:
