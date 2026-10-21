@@ -10,7 +10,7 @@ Kiểm tra:
 """
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 from PIL import Image
 from app.graph.state import VisualEvaluationReport, SceneVisualScore
@@ -137,14 +137,18 @@ class VisualCritic:
         min_sharpness: float = 5.8,
         check_watermark: bool = True,
         allow_snow: bool = False,
+        auto_sanitize: bool = True,
     ) -> Dict[str, Any]:
         """
-        Cổng kiểm duyệt chất lượng & watermark từng clip TRƯỚC khi ghép (Pre-Assembly Clip Gate):
-        1. Độ phân giải nguồn tối thiểu >= 720p (min(width, height) >= 720).
-        2. Độ sắc nét biên cạnh (sharpness >= 5.8, không khung nào < 4.8).
-        3. Độ sáng & tương phản cân bằng (24 <= brightness <= 228, contrast >= 18).
-        4. Phát hiện chữ/logo/watermark kênh khác đóng cứng ở 4 góc hoặc dải trên/dưới qua đa khung hình.
+        Cổng kiểm duyệt & xử lý logo/tag 3 bước TRƯỚC khi ghép (Pre-Assembly Clip Gate):
+        - Bước 1 (Cắt qua đoạn dính tag): Nếu tag/chữ chỉ xuất hiện ở đầu (Intro) hoặc cuối (Outro TikTok/CapCut)
+          trong khi đoạn giữa sạch -> tự động cắt bỏ phần đầu/cuối để giữ lại đoạn sạch.
+        - Bước 2 (Xóa delogo + Crop lệch góc): Nếu logo bản quyền nằm ở 4 góc hoặc mép trên/dưới trong khi
+          giữa màn hình sạch -> tự động dùng FFmpeg `delogo` xóa logo kết hợp phóng Crop dịch tâm né góc đó.
+        - Bước 3 (Cuối cùng mới Bỏ): Nếu chữ/logo nằm chình ình giữa màn hình hoặc sau khi cắt/xóa vẫn không sạch
+          -> đánh trượt (`passed=False`) để bỏ video này và lấy ứng viên tiếp theo.
         """
+        import shutil
         import subprocess
         import tempfile
         from PIL import ImageChops, ImageFilter, ImageStat
@@ -195,6 +199,8 @@ class VisualCritic:
         con_vals: List[float] = []
         gray_frames: List[Image.Image] = []
         edge_frames: List[Image.Image] = []
+        frame_bad_flags: List[bool] = []
+        bad_art_reasons: List[str] = []
 
         with tempfile.TemporaryDirectory() as td:
             for idx_t, t_sec in enumerate(sample_times):
@@ -210,16 +216,20 @@ class VisualCritic:
                         timeout=10,
                     )
                     if not Path(f_jpg).exists() or Path(f_jpg).stat().st_size < 1000:
+                        frame_bad_flags.append(False)
                         continue
                     raw_bytes = Path(f_jpg).read_bytes()
+                    this_frame_bad = False
                     if check_watermark:
                         try:
                             from app.services.video_memory_rag import VideoMemoryRAG
                             has_bad_art, art_reason = VideoMemoryRAG._has_embedded_text_or_collage_artifacts(raw_bytes)
-                            if has_bad_art and not any("chữ/logo" in x or "vách ngăn" in x for x in issues):
-                                issues.append(f"Phát hiện chữ/logo/khung ghép đóng cứng ({art_reason})")
+                            if has_bad_art:
+                                this_frame_bad = True
+                                bad_art_reasons.append(art_reason)
                         except Exception:
                             pass
+                    frame_bad_flags.append(this_frame_bad)
 
                     with Image.open(f_jpg) as im:
                         if width == 0 or height == 0:
@@ -278,6 +288,8 @@ class VisualCritic:
             )
 
         # Kiểm tra logo/watermark cố định ở 4 góc hoặc banner chữ khi cảnh nền chuyển động
+        detected_corner_zone: Optional[Tuple[str, Tuple[int, int, int, int]]] = None
+        center_is_clean: bool = True
         if check_watermark and len(edge_frames) >= 2 and len(gray_frames) >= 2:
             try:
                 diff_01 = float(ImageStat.Stat(ImageChops.difference(gray_frames[0], gray_frames[-1])).mean[0])
@@ -290,6 +302,7 @@ class VisualCritic:
 
                     center_box = pers_im.crop((36, 96, 144, 224))
                     center_mean = max(float(ImageStat.Stat(center_box).mean[0]), 4.0)
+                    center_is_clean = center_mean < 28.0
 
                     corner_boxes = [
                         ("top_left", (4, 6, 68, 54)),
@@ -301,12 +314,105 @@ class VisualCritic:
                     for c_name, box in corner_boxes:
                         c_mean = float(ImageStat.Stat(pers_im.crop(box)).mean[0])
                         if c_mean >= 36.0 and c_mean >= center_mean * 2.25:
-                            issues.append(
-                                f"Phát hiện watermark/logo kênh khác đóng cứng tại vùng {c_name} (edge={c_mean:.1f})"
-                            )
+                            detected_corner_zone = (c_name, box)
                             break
             except Exception:
                 pass
+
+        # ── QUY TRÌNH 3 BƯỚC XỬ LÝ TAG / LOGO BẢN QUYỀN: (1) CẮT NÉ -> (2) XÓA DELOGO/CROP -> (3) BỎ ──
+        has_watermark_issue = any(frame_bad_flags) or (detected_corner_zone is not None)
+        if auto_sanitize and check_watermark and has_watermark_issue and len(issues) == 0 and width >= 540 and height >= 540:
+            # BƯỚC 1: Cắt né qua đoạn đầu (Intro) hoặc đoạn cuối (Outro) bị dính tag nếu đoạn giữa (frame 1) SẠCH
+            if (
+                len(frame_bad_flags) == 3
+                and not frame_bad_flags[1]
+                and (frame_bad_flags[0] or frame_bad_flags[2])
+                and detected_corner_zone is None
+                and dur >= 3.8
+            ):
+                clean_ss = round(dur * 0.22, 2) if frame_bad_flags[0] else 0.0
+                clean_end = round(dur * 0.78, 2) if frame_bad_flags[2] else dur
+                clean_len = round(clean_end - clean_ss, 2)
+                if clean_len >= 2.4:
+                    tmp_skip = str(p.with_name(f"{p.stem}_step1_skip{p.suffix}"))
+                    cmd_skip = [
+                        "ffmpeg", "-v", "error", "-y",
+                        "-ss", f"{clean_ss:.2f}",
+                        "-t", f"{clean_len:.2f}",
+                        "-i", str(p),
+                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-an",
+                        tmp_skip,
+                    ]
+                    subprocess.run(cmd_skip, capture_output=True, timeout=18, check=False)
+                    if Path(tmp_skip).exists() and Path(tmp_skip).stat().st_size > 15000:
+                        shutil.move(tmp_skip, str(p))
+                        logger.info(
+                            f"✂️ [Watermark Step 1 - Cắt Né] Đã cắt bỏ đoạn Intro/Outro dính tag cho '{p.name}' "
+                            f"(lấy đoạn sạch {clean_ss:.1f}s -> {clean_end:.1f}s)"
+                        )
+                        return cls.inspect_clip_before_concat(
+                            video_path=str(p),
+                            min_short_edge=min_short_edge,
+                            min_sharpness=min_sharpness,
+                            check_watermark=check_watermark,
+                            allow_snow=allow_snow,
+                            auto_sanitize=False,
+                        )
+                    Path(tmp_skip).unlink(missing_ok=True)
+
+            # BƯỚC 2: Xóa logo bằng bộ lọc FFmpeg `delogo` kết hợp phóng Crop dịch tâm né góc chứa logo
+            if center_is_clean and (detected_corner_zone is not None or any(frame_bad_flags)):
+                z_name, (bx1, by1, bx2, by2) = detected_corner_zone or ("top_banner", (18, 6, 162, 50))
+                lx = max(2, int(bx1 * width / 180.0))
+                ly = max(2, int(by1 * height / 320.0))
+                lw = max(16, min(width - lx - 4, int((bx2 - bx1) * width / 180.0)))
+                lh = max(16, min(height - ly - 4, int((by2 - by1) * height / 320.0)))
+
+                # Phóng 116% và dịch tâm crop ngược hướng với góc có logo để vừa xóa vừa cắt bay vùng rìa
+                zw = (int(width * 1.16) // 2) * 2
+                zh = (int(height * 1.16) // 2) * 2
+                x_expr = "0" if "right" in z_name else ("(iw-ow)" if "left" in z_name else "(iw-ow)/2")
+                y_expr = "0" if "bottom" in z_name else ("(ih-oh)" if "top" in z_name else "(ih-oh)/2")
+
+                vf_delogo = (
+                    f"delogo=x={lx}:y={ly}:w={lw}:h={lh},"
+                    f"scale={zw}:{zh}:force_original_aspect_ratio=increase,"
+                    f"crop={width}:{height}:{x_expr}:{y_expr}"
+                )
+                tmp_delogo = str(p.with_name(f"{p.stem}_step2_delogo{p.suffix}"))
+                cmd_delogo = [
+                    "ffmpeg", "-v", "error", "-y",
+                    "-i", str(p),
+                    "-vf", vf_delogo,
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-an",
+                    tmp_delogo,
+                ]
+                subprocess.run(cmd_delogo, capture_output=True, timeout=22, check=False)
+                if Path(tmp_delogo).exists() and Path(tmp_delogo).stat().st_size > 15000:
+                    recheck = cls.inspect_clip_before_concat(
+                        video_path=tmp_delogo,
+                        min_short_edge=min_short_edge,
+                        min_sharpness=min_sharpness,
+                        check_watermark=check_watermark,
+                        allow_snow=allow_snow,
+                        auto_sanitize=False,
+                    )
+                    if recheck.get("passed", False):
+                        shutil.move(tmp_delogo, str(p))
+                        logger.info(
+                            f"🧼 [Watermark Step 2 - Xóa Delogo & Crop] Đã xóa sạch logo vùng '{z_name}' "
+                            f"(delogo={lx},{ly},{lw}x{lh} + crop 116%) cho '{p.name}'!"
+                        )
+                        return recheck
+                    Path(tmp_delogo).unlink(missing_ok=True)
+
+        # BƯỚC 3: Nếu không cứu được (hoặc đã qua Bước 1 & 2 mà vẫn còn chữ đóng cứng giữa màn hình) -> Báo lỗi để BỎ!
+        if any(frame_bad_flags):
+            reason_str = bad_art_reasons[0] if bad_art_reasons else "embedded text/logo"
+            issues.append(f"Phát hiện chữ/logo/khung ghép đóng cứng không thể xóa ({reason_str})")
+        if detected_corner_zone is not None:
+            c_name, _ = detected_corner_zone
+            issues.append(f"Phát hiện watermark/logo kênh khác đóng cứng tại vùng {c_name}")
 
         passed = len(issues) == 0
         base_score = min(9.8, 7.6 + max(0.0, avg_sharp - min_sharpness) * 0.22)
