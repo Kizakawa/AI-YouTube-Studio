@@ -27,3 +27,4 @@ Sử dụng skill này mỗi khi xây dựng tính năng mới, thiết kế d�
 4. **Không Để Lại Rác Kỹ Thuật (Zero Dead Code & Zero Duplicate Logic)**:
    - Khi thay thế một cơ chế cũ bằng cơ chế mới, dọn sạch các biến không còn sử dụng, các lệnh import thừa và các hàm chết ngay trong lần sửa đó.
    - Nếu một đoạn logic xuất hiện từ 2 nơi trở lên, gom thành hàm dùng chung (DRY — Don't Repeat Yourself).
+

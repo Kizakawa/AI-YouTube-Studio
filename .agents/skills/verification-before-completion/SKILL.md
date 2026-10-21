@@ -36,3 +36,4 @@ Trước khi viết câu trả lời báo cáo "Đã xong", "Đã fix", hoặc "
 - ❌ Dùng các cụm từ phỏng đoán: *"Lẽ ra giờ nó sẽ chạy đúng"*, *"Tôi nghĩ lỗi đã được giải quyết"*, *"Code nhìn ổn rồi"* mà chưa chạy lệnh xác minh.
 - ❌ Sửa thêm 1 dòng code nhỏ ở phút chót rồi báo cáo xong luôn mà không chạy lại `py_compile` / test.
 - ❌ Che giấu lỗi bằng cách bọc `try: ... except Exception: pass` để lệnh chạy qua mà không thực sự giải quyết nguyên nhân.
+

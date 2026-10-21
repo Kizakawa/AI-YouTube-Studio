@@ -279,7 +279,7 @@ class VideoAgent:
             if raw_type == "hook_ready_video" or (scene.media_path and Path(scene.media_path).name.lower().startswith(("hook_motion_", "hook_peak_", "hook_climax_"))):
                 from app.utils.ffmpeg_helper import get_duration_ms
                 actual_hook_sec = get_duration_ms(scene.media_path) / 1000.0
-                if actual_hook_sec > 0.5 and abs(actual_hook_sec - duration) <= 0.25:
+                if actual_hook_sec > 0.5 and abs(actual_hook_sec - duration) <= 0.04:
                     logger.info(
                         f"  Scene {scene.scene_id}: 🎯 HOOK/PEAK READY VIDEO ({Path(scene.media_path).name}, {actual_hook_sec:.1f}s) → "
                         f"khớp thời lượng ({duration:.1f}s), copy trực tiếp"
@@ -329,7 +329,7 @@ class VideoAgent:
                 pose_list = list(getattr(scene, "pose_images", None) or [scene.media_path])
                 # Tự động tính số lượng ảnh tối đa khớp với thời lượng câu đọc (tối thiểu 1.0s/ảnh để không bị nháy hình);
                 # nếu thừa ảnh thì tăng nhịp chuyển ảnh (1.0s - 2.0s/ảnh) hoặc tự động bỏ qua ảnh thừa!
-                min_sec_per_img = 2.0
+                min_sec_per_img = 0.85 if (is_hook or scene.scene_id == 2) else 1.35
                 max_usable_imgs = max(1, int(duration // min_sec_per_img))
                 usable_poses = pose_list[:max_usable_imgs]
                 dropped_count = max(0, len(pose_list) - len(usable_poses))

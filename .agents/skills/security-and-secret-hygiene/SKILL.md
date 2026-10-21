@@ -26,3 +26,4 @@ description: >-
    - Luôn stage đích danh các file mã nguồn/cấu hình cần thiết (`git add <file1> <file2>`) thay vì chạy `git add .` hoặc `git add -A` một cách mù quáng.
 3. **An Toàn Khi Chạy Lệnh Hệ Thống**:
    - Không chạy các lệnh xóa hàng loạt (`rm -rf`, `git reset --hard`, `git clean -fd`) trên thư mục chứa dữ liệu sản xuất hoặc cấu hình xác thực của người dùng khi chưa được phép.
+

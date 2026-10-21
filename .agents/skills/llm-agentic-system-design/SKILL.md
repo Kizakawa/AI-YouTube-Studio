@@ -36,3 +36,4 @@ Sử dụng skill này cho tất cả các dự án có tích hợp LLM, Vision 
    - Khi gặp lỗi `429 Rate Limit`, `503 Overloaded`, hoặc `Timeout`, tự động đánh dấu cooldown cho cặp `(model, api_key)` đó và chuyển ngay sang model/key tiếp theo mà không làm đứt gãy toàn bộ pipeline.
 3. **Truy Vết & Quan Sát Được (Observability & Tracing)**:
    - Gắn span/log rõ ràng tại đầu vào và đầu ra của mỗi Agent/Node (ghi lại câu truy vấn, điểm số, và lý do `rationale` mà LLM đưa ra) để khi cần debug trên LangSmith hoặc terminal có thể nhìn thấy ngay nguyên nhân gốc rễ.
+

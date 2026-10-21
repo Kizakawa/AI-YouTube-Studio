@@ -1260,7 +1260,7 @@ def trim_video(
     grading_chain = ("," + ",".join(grading_parts)) if grading_parts else ""
 
     # Tự động phát hiện nếu video nguồn 9:16 có dải viền đen ngang (letterbox) ở trên và dưới -> Phóng 1.84x để cắt sạch viền đen!
-    zoom_mult = 1.16 if (fair_use_transform and not is_already_rendered) else 1.06
+    zoom_mult = 1.18 if (fair_use_transform and not is_already_rendered) else 1.06
     try:
         probe_ss = f"{start_offset_sec + 0.5:.2f}" if (start_offset_sec and start_offset_sec > 0) else "0.50"
         p_cmd = [
@@ -1322,12 +1322,42 @@ def trim_video(
             else:
                 logger.debug(f"[trim_video] Clip quá ngắn ({eff_avail:.1f}s cho {duration_seconds:.1f}s) → buộc phải lặp")
         elif eff_avail >= duration_seconds:
+            if fair_use_transform and not is_already_rendered and eff_avail >= duration_seconds * 1.06:
+                pts_prefix = "setpts=0.9615*PTS,"
+                vf_chain = pts_prefix + vf_chain
             loop_args = []
     except Exception:
         pass
 
     enc_args = get_video_encoder_args(quality="intermediate")
-    if is_hook_scene and (not preserve_continuous_flow) and duration_seconds >= 1.8:
+    if is_hook_scene and apply_grading and duration_seconds >= 2.6 and preserve_continuous_flow:
+        t_mid = round(duration_seconds * 0.52, 3)
+        t_end = round(duration_seconds, 3)
+        cw_punch = max(2, (int(width / 1.12) // 2) * 2)
+        ch_punch = max(2, (int(height / 1.12) // 2) * 2)
+        filter_complex = (
+            f"[0:v]{pts_prefix}{scale_crop_chain},setsar=1,fps={fps},split=2[v0][v1];"
+            f"[v0]trim=0:{t_mid},setpts=PTS-STARTPTS[s0];"
+            f"[v1]trim={t_mid}:{t_end},setpts=PTS-STARTPTS,"
+            f"crop={cw_punch}:{ch_punch}:(iw-ow)*0.50:(ih-oh)*0.38,scale={width}:{height},setsar=1[s1];"
+            f"[s0][s1]concat=n=2:v=1:a=0{grading_chain},setsar=1,fps={fps},format=yuv420p[vout]"
+        )
+        args = [
+            *loop_args,
+            *seek_args,
+            "-i", input_path,
+            "-filter_complex", filter_complex,
+            "-map", "[vout]",
+            "-t", f"{duration_seconds:.3f}",
+            *enc_args,
+            "-r", str(fps),
+            "-an",
+            output_path,
+        ]
+        logger.info(
+            f"  ⚡ [Hook Video 2-Shot Punch-In + Anti-Copyright] (0s -> {t_mid:.2f}s Wide Peak -> {t_end:.2f}s 1.12x Close-Up Punch)"
+        )
+    elif is_hook_scene and (not preserve_continuous_flow) and duration_seconds >= 1.8:
         t1 = round(duration_seconds * 0.28, 3)
         t2 = round(duration_seconds * 0.56, 3)
         t3 = round(duration_seconds * 0.80, 3)
@@ -1532,7 +1562,8 @@ def concat_videos_with_xfade(
 
     filter_parts = []
     for i in range(n):
-        filter_parts.append(f"[{i}:v]settb=AVTB,setpts=PTS-STARTPTS,fps={fps},format=yuv420p[v{i}]")
+        clip_target_dur = max(0.5, float(durations[i]))
+        filter_parts.append(f"[{i}:v]trim=duration={clip_target_dur:.3f},settb=AVTB,setpts=PTS-STARTPTS,fps={fps},format=yuv420p[v{i}]")
 
     current_label = "vconcat"
     concat_inputs_str = "".join(f"[v{i}]" for i in range(n))

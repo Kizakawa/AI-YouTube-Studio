@@ -716,10 +716,10 @@ def _search_youtube_flat_cached(
                 cached_entries = _yt_flat_search_cache.get(cache_key)
             if cached_entries:
                 return cached_entries
-            # Chế độ `cc_only` (mặc định): chỉ tìm video có giấy phép Creative Commons (free & hợp lệ để tái sử dụng)
-            yt_query = license_policy.youtube_search_target(sp, max_results=12)
+            # Chế độ `cc_only`: chỉ tìm video có giấy phép Creative Commons; mở rộng max_results=20 để ưu tiên bắt trúng các Short Viral triệu view
+            yt_query = license_policy.youtube_search_target(sp, max_results=20)
             try:
-                with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=12)) as ydl:
+                with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=20)) as ydl:
                     res = ydl.extract_info(yt_query, download=False)
                 cached_entries = [
                     e for e in ((res or {}).get("entries") or [])
@@ -755,7 +755,7 @@ def _search_youtube_flat_cached(
                 webpage_url = f"https://www.youtube.com{webpage_url}"
 
             dur = float(entry.get("duration") or 0)
-            if dur > 0 and (dur < 4 or dur > 300):
+            if dur <= 0 or dur < 4 or dur > 180:
                 continue
 
             title = str(entry.get("title") or "")
@@ -773,13 +773,21 @@ def _search_youtube_flat_cached(
 
             action_hits = sum(1 for tok in all_query_tokens if tok in title_lower)
             views = int(entry.get("view_count") or 0)
-            score = (anchor_hits * 85.0) + (action_hits * 45.0) + min(views / 25000.0, 60.0)
+            viral_boost = (
+                65.0 if views >= 10_000_000 else
+                45.0 if views >= 1_000_000 else
+                25.0 if views >= 250_000 else
+                10.0 if views >= 50_000 else 0.0
+            )
+            short_fmt_bonus = 25.0 if (0 < dur <= 75) else 0.0
+            score = (anchor_hits * 85.0) + (action_hits * 45.0) + min(views / 15000.0, 75.0) + viral_boost + short_fmt_bonus
             candidates.append({
                 "id": vid_id,
                 "url": webpage_url,
                 "title": title,
                 "uploader": uploader,
                 "duration": dur,
+                "view_count": views,
                 "score": score,
             })
 
@@ -1003,7 +1011,7 @@ def execute_youtube_short_peak_clone_sync(
                     dl_opts = {
                         "quiet": True,
                         "no_warnings": True,
-                        "format": "bestvideo[height>=720][height<=1920][ext=mp4]/best[height>=720][height<=1920][ext=mp4]/bestvideo[height>=720][height<=1920]/bestvideo[height>=480][ext=mp4]/bestvideo/best",
+                        "format": "bestvideo[protocol=https][height>=720][height<=1920][ext=mp4]/bestvideo[protocol=https][height>=480][height<=1920][ext=mp4]/bestvideo[height>=720][height<=1920][ext=mp4]/bestvideo[height>=480][height<=1920]/bestvideo/best",
                         "merge_output_format": "mp4",
                         "outtmpl": raw_dl_template,
                         "socket_timeout": 12,

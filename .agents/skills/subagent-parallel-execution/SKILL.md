@@ -29,3 +29,4 @@ Sử dụng skill này khi xử lý các tác vụ phức tạp, khảo sát di�
 - Khi một subagent hoàn thành công việc và trả về báo cáo hoặc bản sửa code:
   1. **Kiểm tra tuân thủ kiến trúc**: Đảm bảo subagent không vi phạm quy tắc chống Overfitting / không hardcode từ khóa.
   2. **Chạy xác minh độc lập**: Kiểm tra lại bằng `py_compile` / test trước khi gộp (merge) kết quả vào nhánh `main`.
+

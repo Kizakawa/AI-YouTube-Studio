@@ -192,8 +192,6 @@ class StockFetcher:
             return []
 
         try:
-            if "honey badger" in (query or "").lower():
-                query = "leopard wildlife"
             clean_q = clean_scene_search_query(query, max_words=3) or query
             url = f"https://pixabay.com/api/videos/?key={key}&q={urllib.parse.quote(clean_q)}&video_type=all&per_page={max(per_page, 3)}&safesearch=true"
             res = requests.get(url, timeout=6)
@@ -225,6 +223,61 @@ class StockFetcher:
             logger.debug(f"Pixabay video search error for '{query}': {e}")
         return []
 
+    def search_wikimedia_videos(self, query: str, per_page: int = 4) -> List[Dict]:
+        """Tìm kiếm video tài liệu & thiên nhiên thật trên Wikimedia Commons (Public Domain / CC BY, sạch watermark 100%)."""
+        try:
+            clean_q = clean_scene_search_query(query, max_words=3) or query
+            params = {
+                "action": "query",
+                "generator": "search",
+                "gsrnamespace": "6",
+                "gsrsearch": f"filetype:video {clean_q}",
+                "gsrlimit": str(max(per_page * 2, 6)),
+                "prop": "imageinfo",
+                "iiprop": "url|dimensions|mime",
+                "iiurlwidth": "640",
+                "format": "json",
+            }
+            res = requests.get(
+                "https://commons.wikimedia.org/w/api.php",
+                params=params,
+                headers={"User-Agent": "AIYouTubeStudio/2.0 (https://github.com/vv1nc)"},
+                timeout=6,
+            )
+            if res.status_code == 200:
+                pages = (res.json().get("query") or {}).get("pages") or {}
+                results: List[Dict] = []
+                for p in pages.values():
+                    iinfo_list = p.get("imageinfo") or []
+                    if not iinfo_list:
+                        continue
+                    ii = iinfo_list[0]
+                    v_url = str(ii.get("url") or "")
+                    mime = str(ii.get("mime") or "").lower()
+                    if not v_url or ("video" not in mime and not v_url.lower().endswith((".webm", ".mp4", ".ogv"))):
+                        continue
+                    w = int(ii.get("width") or 1080)
+                    h = int(ii.get("height") or 1920)
+                    if min(w, h) < 480:
+                        continue
+                    title_raw = str(p.get("title") or "").replace("File:", "").rsplit(".", 1)[0]
+                    results.append({
+                        "url": v_url,
+                        "title": f"Wikimedia Video: {title_raw}",
+                        "width": w,
+                        "height": h,
+                        "duration": 0,
+                        "media_type": "video",
+                        "source": "wikimedia_video",
+                        "thumbnail": str(ii.get("thumburl") or ""),
+                    })
+                    if len(results) >= per_page:
+                        break
+                return results
+        except Exception as e:
+            logger.debug(f"Wikimedia video search error for '{query}': {e}")
+        return []
+
     def search_pixabay_photos(self, query: str, per_page: int = 4) -> List[Dict]:
         """Tìm kiếm ảnh chất lượng cao trên Pixabay API."""
         import time as _time
@@ -233,8 +286,6 @@ class StockFetcher:
             return []
 
         try:
-            if "honey badger" in (query or "").lower():
-                query = "leopard wildlife"
             clean_q = clean_scene_search_query(query, max_words=3) or query
             url = f"https://pixabay.com/api/?key={key}&q={urllib.parse.quote(clean_q)}&image_type=photo&orientation=vertical&per_page={max(per_page, 3)}&safesearch=true&order=popular"
             res = requests.get(url, timeout=6)
@@ -580,7 +631,7 @@ class StockFetcher:
         used_set = used if used is not None else set()
         from app.services.media.media_history import is_media_already_used
 
-        if v.get("source") in ("nasa_video", "pixabay_video") and v.get("url"):
+        if v.get("source") in ("nasa_video", "pixabay_video", "wikimedia_video") and v.get("url"):
             if not is_media_already_used(v["url"], used_set):
                 return {
                     "url": v["url"],
@@ -701,36 +752,18 @@ class StockFetcher:
         if visual_analysis and visual_analysis.get("search_queries"):
             for sq in visual_analysis["search_queries"]:
                 _push(sq)
-        if "honey badger" in _ctx_low:
-            for hq in ["honey badger wildlife", "african lion pride savanna", "badger wildlife"]:
-                _push(hq)
         for b in ladder["broadened"]:
             _push(b)
         if len(words) >= 2:
             _push(" ".join(words[:2]))
-        # Từ đơn chỉ dùng khi KHÔNG có thang thay thế: từ đơn như 'black' / 'swimming' / 'amazon'
-        # trả về clip ngẫu nhiên (hộp hàng Amazon, người bơi hồ bơi...) làm loãng bể ứng viên.
-        _COMPOUND_NO_SPLIT_WORDS = {"honey", "sea", "red", "black", "white", "blue", "golden", "king", "tasmanian", "devil", "komodo", "dragon", "mantis", "pistol", "box", "cone", "bald", "harpy", "great", "giant", "african", "wild", "water", "tree", "mountain", "snow", "clouded", "painted", "spotted"}
         if not ladder["broadened"] and not establishing and not _establishing_pass:
             for w in words:
-                if not is_vague_single_word(w) and w.lower() not in _COMPOUND_NO_SPLIT_WORDS:
+                if not is_vague_single_word(w) and len(w) >= 4:
                     _push(w)
         _push(query)
 
-        # Bộ từ khóa Động vật chung (leopard / tiger / lion...) chỉ là phương án CUỐI:
-        # trước đây chèn lên đầu danh sách nên video cá sấu Amazon lại toàn ứng viên hổ / sư tử.
-        try:
-            from app.agents.wildlife_visual_dispatcher_agent import WildlifeVisualDispatcherAgent
-            w_agent = WildlifeVisualDispatcherAgent()
-            is_wl, _, subg, _ = w_agent.detect_wildlife_elements(topic=query, narration=narration)
-            if is_wl and not establishing:
-                for cw in w_agent.get_curated_video_search_queries(subgenre=subg, narration=narration):
-                    _push(cw)
-        except Exception:
-            pass
-
         def _try_establishing_pass(reason: str) -> Optional[Dict]:
-            """Cảnh toàn đúng địa điểm/bối cảnh thật (rừng Amazon, sông rừng rậm...) trước khi nhờ AI vẽ ảnh."""
+            """Cảnh toàn đúng địa điểm/bối cảnh thật trước khi nhờ AI vẽ ảnh."""
             if not establishing:
                 return None
             logger.info(f"[StockFetcher] {reason} -> thử cảnh toàn đúng bối cảnh: {establishing[:3]}")
@@ -738,17 +771,14 @@ class StockFetcher:
             est_va["search_queries"] = list(establishing)
             est_va["subject"] = f"Bối cảnh thiên nhiên / địa hình ({', '.join(establishing[:2])})"
             est_va["core_visual_entity"] = establishing[0]
-            est_va["expected_visual_content"] = f"Cảnh toàn bối cảnh thiên nhiên ({', '.join(establishing[:2])}) — không bắt buộc có mặt con vật chính"
+            est_va["expected_visual_content"] = f"Cảnh toàn bối cảnh thiên nhiên ({', '.join(establishing[:2])}) — không bắt buộc có mặt chủ thể chính"
             est_va["visual_metaphor"] = (
                 f"Establishing shot of the real location ({', '.join(establishing[:2])}) for the topic '{topic or query}'"
             )
-            # Tâm trạng sẽ được xử lý bằng color grading theo niche -> không loại clip chỉ vì ánh sáng / màu
             est_va["mood"] = "bất kỳ (hệ thống sẽ tự chỉnh màu u tối theo kênh)"
             est_narr = (
                 f"{narration or query}\n(Cảnh bối cảnh / establishing shot: CHẤP NHẬN mọi cảnh toàn đúng LOẠI địa hình "
-                f"của chủ đề ({', '.join(establishing[:3])}). Người xem KHÔNG phân biệt được rừng mưa / sông rừng ở quốc gia nào, "
-                f"nên địa danh trong mô tả clip (Bangladesh, Thái Lan, Costa Rica...) KHÔNG phải lý do loại. "
-                f"Không bắt buộc thấy chính xác chủ thể trong lời thoại và không bắt buộc đúng tâm trạng/ánh sáng. "
+                f"của chủ đề ({', '.join(establishing[:3])}). "
                 f"Chỉ loại clip có người/vật hiện đại lạc đề, chữ/watermark, hoặc sai loại địa hình.)"
             )
             return self.search_best_video_clip(
@@ -768,14 +798,10 @@ class StockFetcher:
         from app.services.media.entity_detector import is_incongruent_stock_image
         from app.services.media.media_history import is_media_already_used
         from app.services.media.query_broadener import conflicts_with_topic_biome
-        _bad_wildlife_list = []
-        if "badger" in _ctx_low or "leopard" in _ctx_low:
-            _bad_wildlife_list.extend(["honeycomb", "beekeeper", "beekeeping", "apiculture", "beehive", "jar-of-honey", "pouring-honey", "bird-feeder"])
-        if not any(w in _ctx_low for w in ("snow", "winter", "arctic", "polar", "ice", "zoo", "cage", "penguin", "seal", "husky")):
-            _bad_wildlife_list.extend(["-zoo", "zoo-", "cage", "enclosure", "fence", "captive", "captivity", "snow", "winter", "snowy", "arctic", "blizzard"])
-        _bad_wildlife_cues = tuple(_bad_wildlife_list)
+        allow_zoo_vid = any(w in _ctx_low for w in ("zoo", "cage", "aquarium", "captive"))
+        _bad_captive_cues = () if allow_zoo_vid else ("-zoo", "zoo-", "cage", "enclosure", "fence", "captive", "captivity")
 
-        # Bắn song song 5 nhánh tìm kiếm Video B-Roll (Pexels + Pixabay + NASA) qua LangGraph Send API + operator.add
+        # Bắn song song đa nhánh tìm kiếm Video B-Roll (Pexels + Pixabay + Wikimedia + NASA)
         try:
             from app.graph.parallel_search import run_langgraph_5way_stock_video_search
             branch_buckets = run_langgraph_5way_stock_video_search(
@@ -792,6 +818,15 @@ class StockFetcher:
                 for q_try in candidate_queries[:3]
             ]
 
+        # Bổ sung nguồn Wikimedia Commons Video (Public Domain / CC BY sạch 100%)
+        if not (visual_analysis or {}).get("clean_stock_only") and candidate_queries:
+            try:
+                wiki_vids = self.search_wikimedia_videos(candidate_queries[0], per_page=4)
+                if wiki_vids:
+                    branch_buckets.append({"source": "wikimedia", "query": candidate_queries[0], "items": wiki_vids})
+            except Exception:
+                pass
+
         pxb_added = 0
         for b_res in branch_buckets:
             b_src = b_res.get("source", "pexels")
@@ -801,12 +836,12 @@ class StockFetcher:
                 v_desc = v.get("tags") or v.get("title") or v.get("url") or ""
                 if (
                     v_url and not is_media_already_used(v_url, used)
-                    and not any(bw in str(v_desc).lower() for bw in _bad_wildlife_cues)
+                    and not any(bw in str(v_desc).lower() for bw in _bad_captive_cues)
                     and not is_incongruent_stock_image(v_desc, topic=f"{topic} {q_try}".strip(), narration=narration)
                     and not conflicts_with_topic_biome(v_desc, topic)
                 ):
                     if v not in collected_candidates:
-                        if b_src == "pixabay" and pxb_added < 3:
+                        if b_src in ("pixabay", "wikimedia") and pxb_added < 4:
                             collected_candidates.insert(min(len(collected_candidates), 1 + pxb_added * 2), v)
                             pxb_added += 1
                         else:
@@ -816,30 +851,6 @@ class StockFetcher:
             est_res = _try_establishing_pass("Không tìm thấy clip cho truy vấn cụ thể")
             if est_res:
                 return est_res
-
-        if not collected_candidates and not is_hook_vid:
-            combined_text = f"{query} {narration} {clean_q}".lower()
-            theme_fallbacks = []
-            if any(w in combined_text for w in ["animal", "wildlife", "bird", "lion", "tiger", "leopard", "cheetah", "chim", "báo", "sư tử", "hổ", "động vật", "thú"]):
-                theme_fallbacks.extend(["leopard wildlife savanna", "african predator hunting", "lion wildlife savanna", "cheetah wildlife running"])
-            if any(w in combined_text for w in ["ocean", "sea", "water", "underwater", "deep", "biển", "nước", "sóng"]):
-                theme_fallbacks.extend(["underwater ocean", "ocean waves", "deep water", "dark ocean"])
-            if any(w in combined_text for w in ["space", "galaxy", "stars", "universe", "planet", "vũ trụ"]):
-                theme_fallbacks.extend(["space galaxy", "universe stars", "nebula space", "planet in space"])
-            if any(w in combined_text for w in ["cyberpunk", "tech", "technology", "neon", "ai", "robot"]):
-                theme_fallbacks.extend(["cyberpunk city", "neon technology", "futuristic city", "computer code"])
-            if any(w in combined_text for w in ["mind", "brain", "think", "psychology", "alone", "stress"]):
-                theme_fallbacks.extend(["person intense expression", "two people conversation", "dramatic lighting portrait", "person walking city street"])
-
-            for tf in theme_fallbacks:
-                videos = self.search_videos(tf, per_page=4, orientation="portrait")
-                for v in videos:
-                    v_url = v.get("url")
-                    from app.services.media.media_history import is_media_already_used
-                    if v_url and not is_media_already_used(v_url, used) and v not in collected_candidates:
-                        collected_candidates.append(v)
-                if len(collected_candidates) >= 4:
-                    break
 
         if collected_candidates:
             try:
