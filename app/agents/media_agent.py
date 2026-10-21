@@ -760,11 +760,14 @@ If no real entities found, return empty array: []"""
                 headers["Referer"] = ref
 
             downloaded_ok = False
-            tries_for_url = max_retries if idx_u == 0 else min(2, max_retries)
+            tries_for_url = 1 if is_image_target else (max_retries if idx_u == 0 else min(2, max_retries))
+            req_timeout = (3.5, 6.0) if is_image_target else (5.0, 18.0)
             for attempt in range(tries_for_url):
                 try:
-                    res = requests.get(target_u, headers=headers, stream=True, timeout=20)
+                    res = requests.get(target_u, headers=headers, stream=True, timeout=req_timeout)
                     if res.status_code == 429:
+                        if is_image_target:
+                            break
                         sleep_time = 1.5 * (attempt + 1)
                         logger.warning(f"Rate limited (429) khi tải {target_u[:60]}... Đợi {sleep_time}s")
                         time.sleep(sleep_time)
@@ -772,7 +775,7 @@ If no real entities found, return empty array: []"""
                     if res.status_code in (403, 401) and "Referer" in headers:
                         # Thử bỏ Referer nếu server chặn cross-referer
                         headers.pop("Referer", None)
-                        res = requests.get(target_u, headers=headers, stream=True, timeout=15)
+                        res = requests.get(target_u, headers=headers, stream=True, timeout=req_timeout)
                     res.raise_for_status()
                     with open(output_path, "wb") as f:
                         for chunk in res.iter_content(chunk_size=8192):
