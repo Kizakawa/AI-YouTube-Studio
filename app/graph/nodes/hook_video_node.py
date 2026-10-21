@@ -292,11 +292,18 @@ Return ONLY valid JSON:
     )
     if is_monster_hook:
         from app.graph.tools.media_tools import _clean_yt_search_phrase
-        clean_m_subj = _clean_yt_search_phrase(primary_entity or topic, max_words=3, strip_distractor_props=True) or "sea monster"
+        raw_m_subj = _clean_yt_search_phrase(primary_entity or topic, max_words=4, strip_distractor_props=True) or "sea monster"
+        _generic_monster_adj = {
+            "colossal", "abyssal", "massive", "giant", "terrifying", "apex",
+            "legendary", "prehistoric", "ancient", "deep", "trench", "ocean",
+            "hiding", "mariana", "mysterious", "creature", "monster",
+        }
+        m_tokens = [w for w in raw_m_subj.split() if w.lower() not in _generic_monster_adj]
+        clean_m_subj = " ".join(m_tokens[:2]) if m_tokens else "sea monster"
         monster_hook_queries = [
             f"{clean_m_subj} 3d animation",
             "sea monster thalassophobia",
-            f"{clean_m_subj} sea monster",
+            f"{clean_m_subj} megalophobia",
             *queries,
         ]
         queries = [q for q in dict.fromkeys(monster_hook_queries) if q][:3]
@@ -333,7 +340,7 @@ Return ONLY valid JSON:
     from app.graph.evaluators.visual_critic import VisualCritic
 
     for q_idx, q in enumerate(queries):
-        if len(candidate_videos) >= 3:
+        if len(candidate_videos) >= 2:
             break
         # Quét danh sách ứng viên qua yt_dlp flat search, chặn kênh rủi ro bản quyền/watermark và xếp hạng bằng Mini-RAG
         selected_urls: List[str] = []
@@ -386,7 +393,7 @@ Return ONLY valid JSON:
                 subject_entity=primary_entity or climax_desc,
                 channel_id=channel_id,
             )
-            for rc in ranked_flat[:3]:
+            for rc in ranked_flat[:2]:
                 selected_urls.append(rc["url"])
                 candidate_titles[rc["id"]] = rc.get("title", "")
                 candidate_uploaders[rc["id"]] = rc.get("uploader", "")
@@ -405,7 +412,7 @@ Return ONLY valid JSON:
             "--socket-timeout", "8",
             "--max-filesize", "28M",
             "--match-filter", license_policy.ytdlp_cli_match_filter("duration <= 180"),
-            "--max-downloads", "3",
+            "--max-downloads", "2",
             "-f", "bestvideo[height>=720][height<=1920][ext=mp4]/best[height>=720][height<=1920][ext=mp4]",
             "-o", out_tmpl,
             *selected_urls,
@@ -415,7 +422,7 @@ Return ONLY valid JSON:
                 cmd_yt,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                timeout=30,
+                timeout=20,
                 check=False,
             )
         except Exception as e_yt:
@@ -434,7 +441,7 @@ Return ONLY valid JSON:
                     mp4.unlink(missing_ok=True)
                     continue
                 candidate_videos.append(str(mp4))
-                if len(candidate_videos) >= 4:
+                if len(candidate_videos) >= 2:
                     break
 
     # ──────────────────────────────────────────────────────────────────────────
