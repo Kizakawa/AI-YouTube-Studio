@@ -1327,7 +1327,7 @@ def trim_video(
         pass
 
     enc_args = get_video_encoder_args(quality="intermediate")
-    if is_hook_scene and duration_seconds >= 1.8:
+    if is_hook_scene and (not preserve_continuous_flow) and duration_seconds >= 1.8:
         t1 = round(duration_seconds * 0.28, 3)
         t2 = round(duration_seconds * 0.56, 3)
         t3 = round(duration_seconds * 0.80, 3)

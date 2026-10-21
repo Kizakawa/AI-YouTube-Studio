@@ -329,7 +329,7 @@ class VideoAgent:
                 pose_list = list(getattr(scene, "pose_images", None) or [scene.media_path])
                 # Tự động tính số lượng ảnh tối đa khớp với thời lượng câu đọc (tối thiểu 1.0s/ảnh để không bị nháy hình);
                 # nếu thừa ảnh thì tăng nhịp chuyển ảnh (1.0s - 2.0s/ảnh) hoặc tự động bỏ qua ảnh thừa!
-                min_sec_per_img = 1.0
+                min_sec_per_img = 2.0
                 max_usable_imgs = max(1, int(duration // min_sec_per_img))
                 usable_poses = pose_list[:max_usable_imgs]
                 dropped_count = max(0, len(pose_list) - len(usable_poses))
