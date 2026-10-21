@@ -235,7 +235,8 @@ class VisualCurationAgent:
                 "generationConfig": gen_cfg,
             }
             try:
-                res = self.session.post(url, json=payload, timeout=timeout)
+                with _VISION_SEM:
+                    res = self.session.post(url, json=payload, timeout=timeout)
                 if res.status_code == 200:
                     data = res.json()
                     candidates = data.get("candidates", [])
@@ -836,7 +837,7 @@ QUY TRÌNH KIỂM TRA NGHIÊM NGẶT (BẮT BUỘC TUÂN THỦ):
      * Kho video Pexels/Pixabay KHÔNG BAO GIỜ có cảnh 2 loài thú hoang dã đang đánh nhau trong cùng 1 khung hình! Mỗi clip trên Pexels chỉ quay 1 loài đơn lẻ (đang đi bộ, bơi, gầm, hoặc quan sát ngoài tự nhiên).
      * Vì vậy, nếu chủ đề/lời thoại nhắc đến 2 loài (ví dụ "Hipopótamo vs Leões" / "Jaguar vs Caiman"), bất kỳ video nào quay cảnh tự nhiên hoang dã thật của **MỘT TRONG HAI LOÀI ĐÓ** (ví dụ: clip quay con Hà mã hoang dã HOẶC clip quay đàn Sư tử hoang dã đang đi/nằm/quan sát trên thảo nguyên) ĐỀU LÀ TƯ LIỆU B-ROLL HỢP LỆ VÀ PHẢI ĐƯỢC CHẤM ĐẠT (`confidence_score` từ 7.5 đến 9.2, `"should_fallback_to_ai": false`)!
      * KHÔNG ĐƯỢC từ chối clip chỉ vì clip chỉ có 1 trong 2 loài hoặc vì con vật trong clip đang đi bộ/nghỉ ngơi thay vì đang lao vào cắn nhau!
-     * CHỈ TỪ CHỐI (`"winner_index": -1`) khi ứng viên là: (a) Thú cưng trong nhà (mèo nhà `two-cats`, chó cảnh), (b) Loài vật khác hoàn toàn không có trong chủ đề, (c) Động vật bị nhốt trong lồng sắt sở thú, hoặc (d) Con người/văn phòng lạc đề.
+     * CHỈ TỪ CHỐI (`"winner_index": -1`) khi ứng viên là: (a) Thú cưng trong nhà (mèo nhà `two-cats`, chó cảnh), (b) Loài vật khác hoàn toàn không có trong chủ đề, (c) Động vật bị nhốt trong lồng sắt/tường đá/chuồng sở thú nhân tạo, (d) Sai lệch môi trường tự nhiên cốt lõi được nhấn mạnh trong lời thoại (ví dụ: lời thoại đang tả cảnh tuyết phủ trắng xóa/mùa đông Taiga nhưng video lại quay cảnh đất cát khô cằn không có tuyết, hoặc lời thoại tả dưới đáy biển sâu nhưng video lại trên cạn), hoặc (e) Con người/văn phòng lạc đề.
 3. RA QUYẾT ĐỊNH DỨT KHOÁT:
    - Nếu CÓ ứng viên đúng loài vật/chủ thể thật trong môi trường tự nhiên (`confidence_score >= 6.5`): trả về `winner_index` của ứng viên tốt nhất và `"should_fallback_to_ai": false`.
    - Nếu TẤT CẢ ứng viên trả về đều sai loài vật (ví dụ toàn mèo nhà thay vì sư tử/hà mã), thú nhốt chuồng, hoặc lạc đề (`confidence_score < 6.5`): BẮT BUỘC trả về `"winner_index": -1` và `"should_fallback_to_ai": true`!

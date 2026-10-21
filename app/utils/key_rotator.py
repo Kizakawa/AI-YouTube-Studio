@@ -20,9 +20,7 @@ GEMINI_PRIORITY_MODELS: List[str] = [
     "gemini-2.5-flash",              # Tier A  (#5): Gemini 2.5 Flash ổn định
     "gemini-2.5-flash-lite",         # Tier A  (#6): Gemini 2.5 Flash-Lite siêu tốc
     "gemini-3.1-pro-preview",        # Tier A  (#7): Gemini 3.1 Pro Preview
-    "gemma-4-26b-a4b-it",            # Tier B+ (#8): Gemma 4 26B A4B IT (MoE nhanh, dự phòng text khi Gemini cạn quota)
-    "gemma-4-31b-it",                # Tier B  (#9): Gemma 4 31B IT (Dự phòng text)
-    "gemini-robotics-er-2-preview",  # Tier B  (#10): Gemini ER 2 Preview (Bucket quota độc lập)
+    "gemini-robotics-er-2-preview",  # Tier B  (#8): Gemini ER 2 Preview (Bucket quota độc lập)
 ]
 
 # Điểm xếp hạng độ "xịn" (Quality Tier) của từng model để chọn model mạnh nhất trong số các model phản hồi thành công
@@ -178,7 +176,7 @@ class KeyRotator:
                 or status_code in (500, 502, 503, 504)
                 or "internal error" in err_low
             ):
-                self._model_cooldowns[f"*:{model}"] = now + (cooldown_sec or 30.0)
+                self._model_cooldowns[f"*:{model}"] = now + (cooldown_sec or 180.0)
                 if model in KeyRotator._verified_live_models:
                     KeyRotator._verified_live_models = [
                         m for m in KeyRotator._verified_live_models if m != model
