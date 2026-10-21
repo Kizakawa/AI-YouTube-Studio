@@ -553,12 +553,12 @@ class ContentAgent:
                     p_sc["highlight_words"] = _auto_extract_scene_highlights(str(p_sc.get("narration") or ""))
                 if new_id == 1:
                     p_sc["camera_motion"] = "hyper_zoom"
-                    p_sc["sfx_cue"] = "impact_boom"
+                    p_sc["sfx_cue"] = "none"
                 else:
                     if not p_sc.get("camera_motion"):
                         p_sc["camera_motion"] = _motion_cycle[(new_id - 1) % len(_motion_cycle)]
                     if not p_sc.get("sfx_cue"):
-                        p_sc["sfx_cue"] = "riser_tension" if new_id == 4 else "whoosh_fast"
+                        p_sc["sfx_cue"] = "none"
             scenes = paced_scenes
             raw_data["scenes"] = scenes
 

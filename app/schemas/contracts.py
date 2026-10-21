@@ -376,7 +376,7 @@ class RenderJobContract(BaseModel):
     resolution_h: int = Field(default=1920)
     fps: int = Field(default=30)
     bgm_volume: float = Field(default=0.08, ge=0, le=1.0, description="Volume nhạc nền (0-1)")
-    enable_sfx: bool = Field(default=True, description="Bật hiệu ứng âm thanh điện ảnh (Hook Impact t=0s + Climax/Reveal SFX)")
+    enable_sfx: bool = Field(default=False, description="Đã tắt hoàn toàn hiệu ứng âm thanh phụ (SFX)")
     niche: Optional[str] = Field(default=None, description="Ngách nội dung cho Cinematic Color Grading và Sound Design")
     is_scifi: bool = Field(default=False, description="Cờ nhận diện video viễn tưởng")
     scifi_subgenre: Optional[str] = Field(default=None, description="Phân nhánh viễn tưởng (deep_space_cosmic, cyberpunk...)")

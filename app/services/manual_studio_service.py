@@ -350,7 +350,7 @@ class ManualStudioService:
                 visual_keyword="shorts",
                 visual_prompt="",
                 camera_motion=sc.camera_motion or "zoom_in",
-                sfx_cue=sc.sfx_cue or "whoosh",
+                sfx_cue="none",
                 audio_path=sc_audio,
                 audio_duration_ms=int(dur * 1000),
                 estimated_seconds=dur
@@ -433,7 +433,7 @@ class ManualStudioService:
         current_video_stage = muxed_video
 
         # Mix SFX nếu bật
-        if config.use_sfx:
+        if False and config.use_sfx:
             sfx_dir_path = self.get_sfx_dir()
             available_sfx = self.get_available_sfx()
             if sfx_dir_path.exists() and available_sfx:
@@ -952,7 +952,7 @@ class ManualStudioService:
         current_video_stage = muxed_video
 
         # Mix SFX nếu bật
-        if config.use_sfx:
+        if False and config.use_sfx:
             sfx_dir_path = self.get_sfx_dir()
             available_sfx = self.get_available_sfx()
             if sfx_dir_path.exists() and available_sfx:

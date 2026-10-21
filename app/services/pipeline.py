@@ -351,7 +351,8 @@ class VideoPipeline:
                 subtitle_path=subtitle_path,
                 bgm_path=self._find_bgm(niche=self.niche),
                 niche=self.niche or "general",
-                sfx_dir="assets/sfx",  # Thư mục SFX cho chuyển cảnh (whoosh, hit, impact...)
+                sfx_dir=None,
+                enable_sfx=False,
                 output_path=output_path,
                 is_scifi=is_scifi_video,
                 scifi_subgenre=scifi_subgenre,
