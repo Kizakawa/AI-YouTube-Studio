@@ -184,27 +184,30 @@ Analyze this video's Hook and full script, and decide whether the Hook should be
 - Full Script Summary: {full_script_text[:1400]}
 
 Return a JSON object with your decision:
-1. "hook_visual_mode": Must be strictly "video" or "scene":
-   - Choose "video" when the Hook/Climax depicts a concrete, physical, real-world subject or action (e.g. wildlife predator attack, animal rescue, deep-sea footage, natural disaster, physical experiment) where cutting the Peak moment from a YouTube Short creates an explosive opening and mid-video climax.
-   - Choose "scene" when the Hook/Keyword is abstract, psychological, conceptual, or counterfactual (e.g. dark psychology, manipulation, gaslighting, love bombing, mindset, alternate history "What If") where searching YouTube Shorts would return talking heads/podcasts instead of cinematic scenes.
-2. "is_abstract_keyword": Boolean (true if "hook_visual_mode" is "scene", false if "hook_visual_mode" is "video").
-3. "climax_scene_id": Integer scene_id (between 2 and {max(len(base_scenes), 2)}) where the most intense mid-video climax occurs in the body of the script so we can splice the Peak clip there too.
-4. "climax_description": 1-sentence description of the peak visual climax.
-5. "search_queries": 2 short English YouTube Shorts search queries (3 to 5 words each, concrete nouns + action verbs, NO quotes or hashtags) to find real Short videos of this climax.
-6. "atmosphere_fx": Pick ONE from: "history", "psychology", "mystery", "action".
+1. "canonical_subject": Bare 1-2 word canonical noun of the main creature/animal/subject WITHOUT literary or size adjectives (e.g. "leviathan", "kraken", "honey badger", "black hole"; NEVER include words like "colossal", "abyssal", "terrifying", "ancient").
+2. "hook_visual_mode": Must be strictly "video" or "scene":
+   - Choose "video" when the Hook/Climax depicts a concrete physical subject, wildlife predator, or 3D CGI/VFX monster/sci-fi creature where cutting the Peak moment from a YouTube Short creates an explosive opening.
+   - Choose "scene" when the Hook/Keyword is abstract, psychological, conceptual, or counterfactual.
+3. "is_abstract_keyword": Boolean (true if "hook_visual_mode" is "scene", false if "hook_visual_mode" is "video").
+4. "climax_scene_id": Integer scene_id (between 2 and {max(len(base_scenes), 2)}) where the most intense mid-video climax occurs in the body of the script so we can splice the Peak clip there too.
+5. "climax_description": 1-sentence description of the peak visual climax.
+6. "search_queries": 3 high-hit English YouTube Shorts search queries (2 to 4 words each, strictly using "canonical_subject" + action/format, NO quotes, NO hashtags, NO flowery adjectives; for monsters/cryptids/ocean horrors include "<canonical_subject> 3d animation" and "<canonical_subject> thalassophobia").
+7. "atmosphere_fx": Pick ONE from: "history", "psychology", "mystery", "action".
 
 Return ONLY valid JSON:
 {{
+  "canonical_subject": "leviathan",
   "hook_visual_mode": "video",
   "is_abstract_keyword": false,
   "climax_scene_id": {climax_scene_id},
   "climax_description": "...",
-  "search_queries": ["query 1", "query 2"],
+  "search_queries": ["leviathan 3d animation", "leviathan thalassophobia", "sea monster megalophobia"],
   "atmosphere_fx": "action"
 }}"""
 
     rotator = KeyRotator(keys)
     gemini_decided = False
+    canonical_subject = ""
     for model_name, key in rotator.iter_best_model_key_pairs(max_total_attempts=3):
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
@@ -216,6 +219,7 @@ Return ONLY valid JSON:
                     m = re.search(r"\{.*\}", txt, re.DOTALL)
                     if m:
                         data = json.loads(m.group(0))
+                        canonical_subject = re.sub(r"[^a-zA-Z0-9\s]", " ", str(data.get("canonical_subject") or "")).strip()
                         mode_raw = str(data.get("hook_visual_mode") or "").strip().lower()
                         abs_raw = bool(data.get("is_abstract_keyword", mode_raw == "scene"))
                         if mode_raw in ("scene", "image", "ai_image", "photo") or abs_raw:
@@ -230,7 +234,7 @@ Return ONLY valid JSON:
                             for q in (data.get("search_queries") or [])
                             if str(q).strip()
                         ]
-                        valid_q = [re.sub(r"\s+", " ", q) for q in raw_q if len(q.split()) >= 2][:2]
+                        valid_q = [re.sub(r"\s+", " ", q) for q in raw_q if len(q.split()) >= 2][:3]
                         if valid_q:
                             queries = valid_q
 
@@ -292,19 +296,15 @@ Return ONLY valid JSON:
     )
     if is_monster_hook:
         from app.graph.tools.media_tools import _clean_yt_search_phrase
-        raw_m_subj = _clean_yt_search_phrase(primary_entity or topic, max_words=4, strip_distractor_props=True) or "sea monster"
-        _generic_monster_adj = {
-            "colossal", "abyssal", "massive", "giant", "terrifying", "apex",
-            "legendary", "prehistoric", "ancient", "deep", "trench", "ocean",
-            "hiding", "mariana", "mysterious", "creature", "monster",
-        }
-        m_tokens = [w for w in raw_m_subj.split() if w.lower() not in _generic_monster_adj]
-        clean_m_subj = " ".join(m_tokens[:2]) if m_tokens else "sea monster"
+        clean_m_subj = (
+            _clean_yt_search_phrase(canonical_subject or primary_entity or topic, max_words=2, strip_distractor_props=True)
+            or "sea monster"
+        )
         monster_hook_queries = [
+            *queries,
             f"{clean_m_subj} 3d animation",
             "sea monster thalassophobia",
             f"{clean_m_subj} megalophobia",
-            *queries,
         ]
         queries = [q for q in dict.fromkeys(monster_hook_queries) if q][:3]
 

@@ -832,14 +832,7 @@ def execute_youtube_short_peak_clone_sync(
         max_words=5,
     )
     if allow_3d_cgi_monster:
-        raw_c_core = _clean_yt_search_phrase(subject_entity or topic, max_words=4, strip_distractor_props=True) or "sea monster"
-        _generic_monster_adj = {
-            "colossal", "abyssal", "massive", "giant", "terrifying", "apex",
-            "legendary", "prehistoric", "ancient", "deep", "trench", "ocean",
-            "hiding", "mariana", "mysterious", "creature", "monster",
-        }
-        core_tokens = [w for w in raw_c_core.split() if w.lower() not in _generic_monster_adj]
-        c_core = " ".join(core_tokens[:2]) if core_tokens else "sea monster"
+        c_core = _clean_yt_search_phrase(subject_entity or topic, max_words=2, strip_distractor_props=True) or "sea monster"
         monster_angle_variants = [
             f"{c_core} 3d animation",
             f"{c_core} thalassophobia",
@@ -850,9 +843,8 @@ def execute_youtube_short_peak_clone_sync(
         rot_idx = max(0, (eff_scene_id - 1)) % len(monster_angle_variants)
         rotated_angles = monster_angle_variants[rot_idx:] + monster_angle_variants[:rot_idx]
         monster_yt_phrases = [
-            *rotated_angles[:2],
             *search_phrases,
-            rotated_angles[2],
+            *rotated_angles[:2],
         ]
         search_phrases = [q for q in dict.fromkeys(monster_yt_phrases) if q][:4]
 

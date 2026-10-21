@@ -314,9 +314,9 @@ THÔNG TIN VIDEO:
 - Danh sách phân cảnh:
 {json.dumps(scenes_payload, ensure_ascii=False, indent=2)}
 
-NGUYÊN TẮC VÀNG KHI TẠO TRUY VẤN TOP SEARCH GOOGLE IMAGES (`google_image_queries`):
-1. Xác định "core_visual_entity" (Chủ thể Thị giác Vật lý Trung tâm của toàn video bằng tiếng Anh, 1-3 từ):
-   - CHỈ ĐẶT "core_visual_entity" khi video nói về 1 sinh vật, động vật, nhân vật lịch sử hoặc vật thể cụ thể xuyên suốt (vd: "kraken", "megalodon", "harpy eagle", "julius caesar").
+NGUYÊN TẮC VÀNG KHI TẠO TRUY VẤN TOP SEARCH GOOGLE IMAGES & YOUTUBE SHORTS (`google_image_queries` & `search_queries`):
+1. Xác định "core_visual_entity" (Danh từ gốc chỉ Chủ thể Thị giác Vật lý Trung tâm bằng tiếng Anh, ĐÚNG 1–2 TỪ):
+   - CHỈ ĐẶT "core_visual_entity" là DANH TỪ RIÊNG / TÊN LOÀI GỐC (1–2 từ, vd: "leviathan", "kraken", "megalodon", "harpy eagle", "julius caesar"). TUYỆT ĐỐI CẤM nhồi thêm tính từ văn học hoa mỹ vào `core_visual_entity` (CẤM: "colossal abyssal leviathan", "terrifying giant kraken", "legendary apex predator") vì sẽ làm hỏng bộ máy tìm kiếm YouTube/Google!
    - NẾU video thuộc chủ đề Tâm lý học (Psychology), Hành vi con người, Mối quan hệ, Triết học, Tài chính, Phát triển bản thân: BẮT BUỘC đặt `"core_visual_entity": ""` (chuỗi rỗng)! TUYỆT ĐỐI CẤM bịa ra ẩn dụ trừu tượng kiểu "manipulative puppet master", "toxic trap", "mind prison" hay đạo cụ nghĩa đen ("knife", "blade", "puppet strings", "cage")!
 2. Xác định "visual_paradigm" (Bản chất thị giác của từng cảnh dựa trên ngữ nghĩa chủ đề):
    - "CINEMATIC_REALISM": Tâm lý học, thao túng tâm lý, ngôn ngữ cơ thể, cảm xúc con người, giao tiếp xã hội, tội phạm, tài chính, triết học đời sống → ưu tiên ảnh điện ảnh tâm lý / Dark Noir / Chiaroscuro sắc lạnh hoặc Seinen Thriller cực ngầu (vd: `"man cold calculating stare noir"`, `"johan liebert monster anime"`, `"woman anxious dark room"`, `"intense eye contact shadow"`). TUYỆT ĐỐI CẤM ảnh văn phòng công sở cười tươi giả tạo (cheesy corporate stock photo)!

@@ -1314,9 +1314,9 @@ YouTube Shorts rewards TWO metrics simultaneously:
    - Connect scenes with smooth narrative flow so the entire 85–120 word script reads like a seamless, gripping mini-documentary from start to finish.
 
 9. HOOK VISUAL MODE DECISION (`hook_visual_mode`: `"video"` VS `"scene"`, `is_abstract_keyword`, & `climax_scene_id`):
-   - Set `"hook_visual_mode": "video"` and `"is_abstract_keyword": false` when the topic involves concrete real-world footage (wildlife, animal rescues, natural phenomena).
+   - Set `"hook_visual_mode": "video"` and `"is_abstract_keyword": false` when the topic involves concrete real-world footage or 3D CGI/VFX monster/sci-fi action (wildlife, animal rescues, natural phenomena, sea monsters, sci-fi creatures).
    - Set `"hook_visual_mode": "scene"` and `"is_abstract_keyword": true` when the topic is psychological, abstract, or counterfactual ("What If").
-   - Set `"climax_scene_id"` (integer between 2 and 7) and provide 2 simple English `"hook_search_queries"` (3–5 words each) related to the overall topic.
+   - Set `"climax_scene_id"` (integer between 2 and 7) and provide 2 concise English `"hook_search_queries"` (2–4 words each, bare canonical noun + action/format, NO literary adjectives like 'colossal', 'abyssal', 'terrifying'; e.g. `"leviathan 3d animation"`, `"leviathan thalassophobia"`, `"honey badger fighting lion"`).
 
 ═══════════════════════════════════════════════════════════
 OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
@@ -1328,7 +1328,7 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
     "Alternative Direct Warning / Numbered Title with Emoji (28-55 chars, NO 'Variant' prefix)",
     "Alternative Extreme Contrast / Counter-Move Title with Emoji (28-55 chars, NO 'Variant' prefix)"
   ],
-  "primary_entity": "Full official name of main historical person/species or null (null for general psychology topics)",
+  "primary_entity": "Bare canonical 1-2 word name of main person/species/creature WITHOUT descriptive adjectives (e.g. 'Gargantuan Leviathan', 'Honey Badger', 'Julius Caesar') or null for psychology",
   "hook": "The opening declarative hook sentence (5-9 words, NO passive questions)",
   "hook_variants": [
     "Declarative personal warning or pain-point hook sentence (5-9 words)",
@@ -1338,7 +1338,7 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   "hook_visual_mode": "video | scene",
   "is_abstract_keyword": false,
   "climax_scene_id": 3,
-  "hook_search_queries": ["concrete short search query 1", "concrete short search query 2"],
+  "hook_search_queries": ["bare noun + action/format (2-4 words)", "bare noun + angle (2-4 words)"],
   "full_narration": "Complete, smooth, well-developed spoken story without stage directions (85-120 words, 30-40s full 5-Act story with Real-Life Example, Mechanism, Counter-Move/Climax, and zero spoken Subscribe CTA)",
   "thumbnail_text": "2-4 TỪ IN HOA CỰC TO GỢI TÒ MÒ CHO ẢNH BÌA",
   "scenes": [
