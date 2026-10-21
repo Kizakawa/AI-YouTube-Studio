@@ -660,7 +660,7 @@ Return ONLY valid JSON:
             niche=atmosphere_fx,
             apply_grading=True,
             is_hook_scene=True,
-            fair_use_transform=False,
+            fair_use_transform=True,
             start_offset_sec=peak_start,
             preserve_continuous_flow=True,
         )
@@ -737,7 +737,7 @@ Return ONLY valid JSON:
                         niche=atmosphere_fx,
                         apply_grading=True,
                         is_hook_scene=False,
-                        fair_use_transform=False,
+                        fair_use_transform=True,
                         start_offset_sec=second_peak_start,
                         preserve_continuous_flow=True,
                     )

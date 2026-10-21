@@ -1076,7 +1076,7 @@ def execute_youtube_short_peak_clone_sync(
                             fps=30,
                             apply_grading=True,
                             is_hook_scene=((clip_role or "").upper() == "HOOK"),
-                            fair_use_transform=False,
+                            fair_use_transform=True,
                             start_offset_sec=actual_start_s,
                             preserve_continuous_flow=True,
                         )
@@ -1145,7 +1145,7 @@ def execute_youtube_short_peak_clone_sync(
                                     fps=30,
                                     apply_grading=True,
                                     is_hook_scene=False,
-                                    fair_use_transform=False,
+                                    fair_use_transform=True,
                                     start_offset_sec=actual_start_s,
                                     preserve_continuous_flow=True,
                                 )
