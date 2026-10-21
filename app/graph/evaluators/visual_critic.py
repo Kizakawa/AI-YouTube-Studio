@@ -323,6 +323,147 @@ class VisualCritic:
             "brightness": round(avg_lum, 1),
         }
 
+    @classmethod
+    def _gemini_vision_audit_contact_sheet(
+        cls,
+        scenes_media: List[Dict[str, Any]],
+        primary_entity: Optional[str] = None,
+    ) -> Dict[int, str]:
+        """
+        Trích xuất khung hình đại diện của toàn bộ các phân cảnh, ghép thành 1 bảng Contact Sheet
+        có đánh số `S1, S2, ...` và gửi cho Gemini Vision kiểm tra trực quan:
+        - Phát hiện ảnh/video chứa chữ giải thích tạp chí/infographic ('HOW IT WORKS', sơ đồ mũi tên, watermark lớn).
+        - Phát hiện cảnh lệch hoàn toàn chủ đề/bối cảnh (VD: bàn DJ âm thanh, rừng cây ban ngày, xe hơi trên tuyết khi đang nói về thủy quái biển sâu, hoặc nhầm loài vật như chồn hôi/báo đốm khi nói về lửng mật).
+        Trả về dict `{scene_id: lý_do_loại}`.
+        """
+        import base64
+        import io
+        import json
+        import re
+        import subprocess
+        import tempfile
+        import requests
+        from PIL import ImageDraw
+        from config.settings import settings
+        from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
+
+        if not scenes_media or not primary_entity:
+            return {}
+        keys = settings.get_gemini_keys_pool()
+        if not keys:
+            return {}
+
+        tw, th = 220, 390
+        thumbs: List[tuple[int, Image.Image, str]] = []
+        with tempfile.TemporaryDirectory() as td:
+            for item in scenes_media:
+                sid = int(item.get("scene_id") or 0)
+                mpath = str(item.get("media_path") or "")
+                narr = str(item.get("narration") or item.get("visual_keyword") or "")
+                if sid <= 0 or not mpath or not Path(mpath).exists():
+                    continue
+                p = Path(mpath)
+                im_obj: Optional[Image.Image] = None
+                try:
+                    if p.suffix.lower() in (".mp4", ".mov", ".webm", ".mkv"):
+                        f_jpg = str(Path(td) / f"s_{sid}.jpg")
+                        subprocess.run(
+                            [
+                                "ffmpeg", "-v", "error", "-y",
+                                "-ss", "1.0", "-i", str(p),
+                                "-frames:v", "1", "-vf", f"scale={tw}:{th}:force_original_aspect_ratio=increase,crop={tw}:{th}",
+                                f_jpg,
+                            ],
+                            capture_output=True,
+                            timeout=8,
+                        )
+                        if Path(f_jpg).exists() and Path(f_jpg).stat().st_size > 1000:
+                            with Image.open(f_jpg) as im_tmp:
+                                im_obj = im_tmp.convert("RGB").copy()
+                    else:
+                        with Image.open(str(p)) as im_tmp:
+                            im_rgb = im_tmp.convert("RGB")
+                            im_obj = im_rgb.resize((tw, th), Image.Resampling.BILINEAR)
+                except Exception:
+                    im_obj = None
+
+                if im_obj is not None:
+                    draw = ImageDraw.Draw(im_obj)
+                    draw.rectangle([(0, 0), (96, 30)], fill=(0, 0, 0))
+                    draw.text((8, 7), f"SCENE #{sid}", fill=(255, 230, 0))
+                    thumbs.append((sid, im_obj, narr[:90]))
+
+        if not thumbs:
+            return {}
+
+        cols = min(4, len(thumbs))
+        rows = (len(thumbs) + cols - 1) // cols
+        sheet = Image.new("RGB", (cols * tw, rows * th), (12, 12, 12))
+        scene_lines: List[str] = []
+        for idx, (sid, im_t, narr_t) in enumerate(thumbs):
+            r_i = idx // cols
+            c_i = idx % cols
+            sheet.paste(im_t, (c_i * tw, r_i * th))
+            scene_lines.append(f"- SCENE #{sid}: \"{narr_t}\"")
+
+        buf = io.BytesIO()
+        sheet.save(buf, format="JPEG", quality=78)
+        b64_sheet = base64.b64encode(buf.getvalue()).decode("ascii")
+
+        prompt = f"""You are a strict Visual Continuity & Quality Director inspecting the final scene frames of a YouTube Short BEFORE rendering.
+Main Subject / Entity of this video: "{primary_entity}"
+Scenes in the attached contact sheet (labeled SCENE #1, SCENE #2, ...):
+{chr(10).join(scene_lines)}
+
+Inspect every labeled tile carefully and flag ONLY scenes that have severe visual defects:
+1. Magazine / Textbook / Infographic clutter: Frames containing paragraphs of explanatory text, anatomy callout arrows/labels, or big magazine logos (e.g. "HOW IT WORKS").
+2. Completely wrong species or absurdly off-topic environment:
+   - e.g. Showing a striped skunk or leopard when the subject is specifically a Honey Badger.
+   - e.g. Showing a purple DJ audio mixer board, a person lying in a green forest, or a car on a snowy highway when the video is about a deep-sea monster ("{primary_entity}") in the ocean trench.
+
+Return ONLY valid JSON in this exact format:
+{{
+  "failed_scenes": [
+    {{"scene_id": 4, "reason": "Contains magazine infographic text labels and HOW IT WORKS watermark"}}
+  ]
+}}"""
+
+        rotator = KeyRotator(settings.get_gemini_keys_pool())
+        vision_models = [m for m in GEMINI_PRIORITY_MODELS if not m.startswith("gemma-")]
+        for model_name, api_key in rotator.iter_best_model_key_pairs(vision_models, max_total_attempts=3):
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            payload = {
+                "contents": [
+                    {
+                        "parts": [
+                            {"text": prompt},
+                            {"inline_data": {"mime_type": "image/jpeg", "data": b64_sheet}},
+                        ]
+                    }
+                ],
+                "generationConfig": {"temperature": 0.1},
+            }
+            try:
+                resp = requests.post(url, json=payload, timeout=14)
+                if resp.status_code == 200:
+                    cands = resp.json().get("candidates") or []
+                    if cands:
+                        txt = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", []))
+                        m = re.search(r"\{.*\}", txt, re.DOTALL)
+                        if m:
+                            data = json.loads(m.group(0))
+                            out_reasons: Dict[int, str] = {}
+                            for item_f in (data.get("failed_scenes") or []):
+                                if isinstance(item_f, dict) and item_f.get("scene_id"):
+                                    out_reasons[int(item_f["scene_id"])] = str(item_f.get("reason") or "Lệch chủ đề/chứa chữ rác")
+                            return out_reasons
+                elif resp.status_code in (429, 403, 404, 500, 502, 503, 504):
+                    rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:200])
+            except Exception as e_v:
+                rotator.mark_model_rate_limited(api_key, model_name, status_code=503, error_text=str(e_v))
+                continue
+        return {}
+
     @trace_custom_span("VisualCritic.evaluate_media", run_type="chain")
     def evaluate_media(
         self,
@@ -457,6 +598,20 @@ class VisualCritic:
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
             inspected_list = list(pool.map(_inspect_single_scene, scenes_media))
 
+        vision_semantic_failures: Dict[int, str] = {}
+        try:
+            vision_semantic_failures = self._gemini_vision_audit_contact_sheet(
+                scenes_media=scenes_media,
+                primary_entity=primary_entity,
+            )
+            if vision_semantic_failures:
+                logger.warning(
+                    f"👁️ [VisualCritic ContactSheet Vision] Phát hiện {len(vision_semantic_failures)} cảnh lệch nội dung/chứa chữ tạp chí: "
+                    f"{vision_semantic_failures}"
+                )
+        except Exception as e_cs:
+            logger.debug(f"[VisualCritic ContactSheet Vision] skip: {e_cs}")
+
         scene_scores: List[SceneVisualScore] = []
         failed_scene_ids: List[int] = []
         seen_hashes: Dict[str, int] = {}
@@ -471,6 +626,14 @@ class VisualCritic:
             img_hash = res["img_hash"]
             sig = res["sig"]
             is_long_peak_cont = bool(res.get("is_long_peak_cont"))
+
+            if scene_id in vision_semantic_failures:
+                v_reason = vision_semantic_failures[scene_id]
+                issues.append(f"Gemini Vision ContactSheet: {v_reason}")
+                res["rel_score"] = 4.0
+                res["entity_score"] = 4.0
+                aes_score = min(aes_score, 4.5)
+                failed = True
 
             if img_hash:
                 if img_hash in seen_hashes:

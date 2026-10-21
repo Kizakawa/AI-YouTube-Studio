@@ -34,8 +34,8 @@ _credits_lock = threading.Lock()
 
 
 def license_mode() -> str:
-    mode = os.getenv("MEDIA_LICENSE_MODE", "cc_only").strip().lower()
-    return mode if mode in ("cc_only", "any") else "cc_only"
+    mode = os.getenv("MEDIA_LICENSE_MODE", "any").strip().lower()
+    return mode if mode in ("cc_only", "any") else "any"
 
 
 def cc_only_enabled() -> bool:
