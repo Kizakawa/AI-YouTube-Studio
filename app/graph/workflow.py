@@ -44,7 +44,7 @@ def should_refine_script(state: VideoWorkflowState) -> Literal["refine_script", 
     overall_s = float(script_eval.get("overall_score", 0.0) or 0.0)
     retry_count = state.get("script_retry_count", 0)
     evaluated_by = script_eval.get("evaluated_by", "ai")
-    max_script_retries = max(2, int(os.getenv("MAX_SCRIPT_RETRIES", "5")))
+    max_script_retries = max(0, int(os.getenv("MAX_SCRIPT_RETRIES", "5")))
 
     is_strictly_passing = passed and overall_s >= 8.0 and hook_s >= 8.0
 
@@ -55,7 +55,7 @@ def should_refine_script(state: VideoWorkflowState) -> Literal["refine_script", 
         )
         return "refine_script"
 
-    if is_strictly_passing and evaluated_by == "heuristic" and retry_count == 0:
+    if is_strictly_passing and evaluated_by == "heuristic" and retry_count == 0 and max_script_retries > 0:
         logger.warning("⚠️ [ConditionalEdge] Script PASS nhưng qua heuristic fallback. Buộc retry với AI thật!")
         return "refine_script"
 

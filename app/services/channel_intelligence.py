@@ -1608,13 +1608,13 @@ def send_telegram_video_broadcast(
             temp_compressed = str(temp_dir / f"tg_preview_{Path(video_path).stem}.mp4")
             cmd = [
                 "ffmpeg", "-y", "-i", video_path,
-                "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2",
-                "-c:v", "libx264", "-crf", "28", "-preset", "ultrafast",
-                "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+                "-vf", "scale=480:854:force_original_aspect_ratio=decrease,pad=480:854:(ow-iw)/2:(oh-ih)/2,fps=24",
+                "-c:v", "libx264", "-crf", "31", "-maxrate", "480k", "-bufsize", "960k", "-preset", "veryfast",
+                "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart",
                 temp_compressed
             ]
             logger.info(f"[TelegramVideoAlert] File gốc {size_mb:.1f}MB -> đang tạo bản nén nhẹ gửi Telegram để tránh đứt kết nối...")
-            res_comp = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45)
+            res_comp = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=90)
             if res_comp.returncode == 0 and Path(temp_compressed).exists():
                 upload_path = temp_compressed
                 logger.info(f"[TelegramVideoAlert] Đã tạo bản gửi Telegram thành công: {Path(upload_path).stat().st_size / (1024*1024):.1f}MB")

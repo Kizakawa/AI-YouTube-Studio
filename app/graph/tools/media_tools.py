@@ -72,6 +72,8 @@ _YT_QUERY_FILLER_WORDS = {
     "dramatic", "vertical", "shot", "shots", "video", "clip", "clips", "short", "shorts",
     "movie", "still", "photo", "photograph", "picture", "image",
     "the", "a", "an", "of", "in", "on", "at", "to", "for", "with", "by", "from", "and", "or",
+    "retreating", "confused", "frustrated", "wary", "hesitating", "impassive", "futility",
+    "superior", "dominance", "calculated", "caution", "acknowledging",
 }
 
 _GENERIC_NON_SUBJECT_WORDS = {

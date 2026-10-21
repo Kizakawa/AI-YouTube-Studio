@@ -66,7 +66,18 @@ class StockFetcher:
             query = "cobra snake wildlife" if ("snake" in q_low or "venom" in q_low) else "leopard wildlife savanna"
             q_low = query.lower()
         allow_snow_zoo = any(w in q_low for w in ("zoo", "cage", "snow", "winter", "arctic", "polar", "ice", "penguin", "seal", "husky"))
-        _bad_slugs = ("-zoo", "zoo-", "zoological", "cage", "enclosure", "fence", "captive", "captivity", "snow", "winter", "blizzard", "arctic", "aquarium")
+        is_wild_predator_q = any(
+            w in q_low
+            for w in ("lion", "tiger", "leopard", "jaguar", "cheetah", "panther", "cougar", "hippo", "crocodile", "caiman", "alligator", "predator", "wildlife", "savanna", "hyena", "wolf", "bear", "snake", "cobra", "eagle")
+        ) and not any(w in q_low for w in ("cat", "kitten", "kitty", "dog", "puppy", "pet", "stray"))
+        _bad_slugs_list = ["-zoo", "zoo-", "zoological", "cage", "enclosure", "fence", "captive", "captivity", "snow", "winter", "blizzard", "arctic", "aquarium", "concrete-pool", "swimming-pool"]
+        if is_wild_predator_q:
+            _bad_slugs_list.extend([
+                "-cat-", "-cats-", "video/a-cat-", "video/two-cats-", "video/cat-", "kitten", "kittens", "kitty", "tabby",
+                "house-cat", "domestic-cat", "pet-cat", "black-cat", "white-cat", "orange-cat", "ginger-cat",
+                "-dog-", "-dogs-", "puppy", "puppies", "window-sill", "living-room", "bedroom", "sofa", "couch",
+            ])
+        _bad_slugs = tuple(_bad_slugs_list)
 
         def _filter_vids(raw_vids: List[Dict]) -> List[Dict]:
             if allow_snow_zoo:
@@ -810,8 +821,17 @@ class StockFetcher:
         _bad_wildlife_list = []
         if "badger" in _ctx_low or "leopard" in _ctx_low:
             _bad_wildlife_list.extend(["honeycomb", "beekeeper", "beekeeping", "apiculture", "beehive", "jar-of-honey", "pouring-honey", "bird-feeder"])
+        if any(
+            w in _ctx_low
+            for w in ("lion", "tiger", "leopard", "jaguar", "cheetah", "panther", "cougar", "hippo", "crocodile", "caiman", "alligator", "predator", "wildlife", "savanna", "hyena", "wolf", "bear", "snake", "cobra", "eagle")
+        ) and not any(w in _ctx_low for w in ("cat", "kitten", "kitty", "dog", "puppy", "pet", "stray")):
+            _bad_wildlife_list.extend([
+                "-cat-", "-cats-", "video/a-cat-", "video/two-cats-", "video/cat-", "kitten", "kittens", "kitty", "tabby",
+                "house-cat", "domestic-cat", "pet-cat", "black-cat", "white-cat", "orange-cat", "ginger-cat",
+                "-dog-", "-dogs-", "puppy", "puppies", "window-sill", "living-room", "bedroom", "sofa", "couch",
+            ])
         if not any(w in _ctx_low for w in ("snow", "winter", "arctic", "polar", "ice", "zoo", "cage", "penguin", "seal", "husky")):
-            _bad_wildlife_list.extend(["-zoo", "zoo-", "cage", "enclosure", "fence", "captive", "captivity", "snow", "winter", "snowy", "arctic", "blizzard"])
+            _bad_wildlife_list.extend(["-zoo", "zoo-", "cage", "enclosure", "fence", "captive", "captivity", "snow", "winter", "snowy", "arctic", "blizzard", "concrete-pool", "swimming-pool"])
         _bad_wildlife_cues = tuple(_bad_wildlife_list)
 
         # Bắn song song 5 nhánh tìm kiếm Video B-Roll (Pexels + Pixabay + NASA) qua LangGraph Send API + operator.add

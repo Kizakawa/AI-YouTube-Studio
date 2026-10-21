@@ -198,9 +198,9 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
         f"MỤC TIÊU BẮT BUỘC: Overall >= 8.2/10 và Hook Cảnh 1 >= 8.5/10]. "
         f"Sửa chữa TRIỆT ĐỂ các lỗi sau từ Critic: {'; '.join(critiques)}. "
         f"YÊU CẦU CỐT LÕI: "
-        f"(1) CẢNH 1 (HOOK 5-8 TỪ) BẮT BUỘC chứa CON SỐ ĐỊNH LƯỢNG CỤ THỂ hoặc THẾ ĐỐI ĐẦU 'A vs B' / NGHỊCH LÝ SỐC ngay giây 0.0s "
-        f"(Cấm mở đầu chung chung hay thuần mô tả!); "
-        f"(2) TỔNG ĐỘ DÀI KỊCH BẢN: 85-105 từ chia đều cho 7-8 phân cảnh (mỗi cảnh thân 9-14 từ mạch lạc, có đầu có đuôi đủ 5 Hồi, tạo thời lượng chuẩn 34s-39s); "
+        f"(1) CẢNH 1 (HOOK 6-8 TỪ, ~2.0 GIÂY) BẮT BUỘC ĐẶT TÊN CON VẬT / THỰC THỂ CHÍNH NGAY TỪ THỨ 1-2 + HÀNH ĐỘNG VA CHẠM + CON SỐ VẬT LÝ CỤ THỂ ngay giây 0.0s "
+        f"(Cấm xóa tên con vật ở Cảnh 1, cấm mở đầu bằng đại từ mơ hồ 'Uma mordida/It/They' hay câu hỏi Yes/No!); "
+        f"(2) TỔNG ĐỘ DÀI KỊCH BẢN: 75-92 từ chia đều cho 7-8 phân cảnh (mỗi cảnh thân 10-13 từ mạch lạc, KHÔNG lặp lại cùng một con số ở 2 cảnh khác nhau, tạo thời lượng vàng 28s-36s); "
         f"(3) Cảnh cuối nối vòng lặp vô tận (Zero Spoken Subscribe CTA)."
     )
     if primary_entity:

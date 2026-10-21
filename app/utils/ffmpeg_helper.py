@@ -1803,10 +1803,13 @@ def _find_sfx_file(sfx_dir_path: Path, name: str) -> Optional[str]:
 
 
 def resolve_smart_sfx_cue(
-    narration: str,
-    scene_idx: int,
-    total_scenes: int,
+    narration: str = "",
+    scene_idx: int = 1,
+    total_scenes: int = 7,
     niche: Optional[str] = None,
+    explicit_cue: Optional[str] = None,
+    visual_keyword: Optional[str] = None,
+    **kwargs,
 ) -> str:
     """
     Phân tích cảm xúc và ngữ nghĩa của lời thoại để tự động chọn hiệu ứng âm thanh (SFX)
@@ -1819,7 +1822,10 @@ def resolve_smart_sfx_cue(
       - whoosh_heavy.wav: Chuyển động quy mô lớn, sức mạnh, nhanh mạnh
       - whoosh_fast.wav / whoosh.mp3: Lướt nhanh dứt khoát
     """
-    text = (narration or "").lower()
+    exp = (explicit_cue or "").strip().lower()
+    if exp and exp not in ("auto", "default", "none", "whoosh", "whoosh_fast", "whoosh_heavy"):
+        return exp
+    text = f"{narration or ''} {visual_keyword or ''}".lower()
     raw_niche = (niche or "").lower()
 
     # 1. Phân cảnh cận kề kết thúc hoặc cao trào chuẩn bị kết luận
