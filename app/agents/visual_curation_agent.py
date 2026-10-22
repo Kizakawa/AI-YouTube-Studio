@@ -629,7 +629,7 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
         import io as _io
         import requests as _req
         from concurrent.futures import ThreadPoolExecutor
-        from PIL import Image
+        from PIL import Image, ImageDraw
 
         def _dl_one(item_pair: Tuple[int, Dict[str, Any]]) -> Optional[Tuple[int, str, str]]:
             idx, cand = item_pair
@@ -648,8 +648,19 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
                     if im.mode != "RGB":
                         im = im.convert("RGB")
                     im.thumbnail((320, 320), Image.Resampling.BILINEAR)
+                    # Đóng dấu trực tiếp INDEX + SLUG lên đỉnh ảnh thumbnail để Gemini Vision KHÔNG BAO GIỜ
+                    # nhầm lẫn thứ tự 0-based (index) với 1-based (Image #N)!
+                    try:
+                        draw = ImageDraw.Draw(im)
+                        w_im, _ = im.size
+                        slug_short = str(cand.get("slug") or "")[:28]
+                        label_txt = f"INDEX {idx}: {slug_short}"
+                        draw.rectangle([(0, 0), (w_im, 22)], fill=(0, 0, 0))
+                        draw.text((6, 4), label_txt, fill=(255, 255, 0))
+                    except Exception:
+                        pass
                     buf = _io.BytesIO()
-                    im.save(buf, format="JPEG", quality=72)
+                    im.save(buf, format="JPEG", quality=74)
                     b64_str = _b64.b64encode(buf.getvalue()).decode("utf-8")
                     return idx, "image/jpeg", b64_str
             except Exception:
@@ -667,8 +678,9 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
             if res is None:
                 continue
             c_idx, mime, b64_data = res
+            # Sử dụng chính xác chỉ số 0-based `c_idx` đồng nhất với nhãn `INDEX {c_idx}` in trên ảnh
+            idx_to_order[c_idx] = c_idx
             images_out.append((mime, b64_data))
-            idx_to_order[c_idx] = len(images_out)
 
         return images_out, idx_to_order
 
@@ -809,12 +821,16 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
                 "source": c["source"],
                 "duration": f"{c['duration']}s",
                 "resolution": f"{c['width']}x{c['height']}",
-                "attached_preview_image": f"Image #{img_ord}" if img_ord else "None (evaluate via returned_url & slug_or_tags)",
+                "attached_preview_image": (
+                    f"INDEX {img_ord} (stamped 'INDEX {img_ord}' at top of preview image)"
+                    if img_ord is not None
+                    else "None (evaluate via returned_url & slug_or_tags)"
+                ),
             })
 
         prompt = f"""
 Bạn là Tổng Đạo Diễn Hình Ảnh & Giám Khảo Kiểm Duyệt Link API Kho Video (LLM Stock Video Link & Vision Auditor).
-Sau khi hệ thống gọi API Pexels/Pixabay, API đã trả về danh sách các đường link ứng viên kèm ảnh chụp preview (Image #1, #2...) bên dưới.
+Sau khi hệ thống gọi API Pexels/Pixabay, API đã trả về danh sách các đường link ứng viên kèm ảnh chụp preview (trên đỉnh mỗi ảnh đã đóng dấu nhãn vàng 'INDEX 0', 'INDEX 1'...) bên dưới.
 Nhiệm vụ của bạn là KIỂM TRA LẠI CÁC ĐƯỜNG LINK & ẢNH PREVIEW TRẢ VỀ và chỉ chọn ra DUY NHẤT 1 VIDEO thực sự khớp với chủ thể & nội dung phân cảnh.
 
 THÔNG TIN BỐI CẢNH & YÊU CẦU BẮT BUỘC:
@@ -829,40 +845,53 @@ DANH SÁCH ĐƯỜNG LINK & METADATA DO API TRẢ VỀ:
 {json.dumps(candidates_for_llm, ensure_ascii=False, indent=2)}
 
 QUY TRÌNH KIỂM TRA NGHIÊM NGẶT (BẮT BUỘC TUÂN THỦ):
-1. KIỂM TRA ĐƯỜNG LINK (`returned_url`) & MÔ TẢ (`slug_or_tags`):
-   - Các API kho video (như Pexels/Pixabay) thường trả về kết quả nhầm loài vật hoặc lệch ngữ cảnh (ví dụ: tìm "lion" nhưng trả về link mèo nhà `two-cats-lying-on-a-window-sill`, thú cưng trong phòng khách, chó nhà, hoặc con vật bị nhốt trong lồng sắt sở thú).
-   - Nếu `returned_url` hoặc `slug_or_tags` cho thấy video là thú cưng trong nhà (mèo nhà, chó cảnh), sai loài vật hoàn toàn, bị nhốt trong chuồng trại/sở thú, sai bối cảnh thời đại, hoặc là cảnh con người sinh hoạt/văn phòng không liên quan -> LOẠI BỎ NGAY LẬP TỨC!
+1. KIỂM TRA ĐƯỜNG LINK (`returned_url`) & MÔ TẢ (`slug_or_tags`) ĐỐI CHIẾU VỚI NHÃN `INDEX N` TRÊN ẢNH:
+   - Các API kho video (như Pexels/Pixabay) thường trả về kết quả nhầm loài vật hoặc lệch ngữ cảnh (ví dụ: tìm "lion" hoặc "caiman" nhưng trả về link mèo nhà `two-cats-lying-on-a-window-sill`, cá chép `colorful-koi-fish-swimming-in-clear-pond`, thú cưng trong phòng khách, chó nhà, hoặc con vật bị nhốt trong lồng sắt sở thú).
+   - BẮT BUỘC ĐỌC KỸ `returned_url` VÀ `slug_or_tags` CỦA ĐÚNG `index` ĐÓ: Nếu `returned_url` hoặc `slug_or_tags` ghi rõ tên một loài vật/chủ thể khác hoàn toàn với chủ thể bắt buộc `{subject_req}` và `{topic_ctx}` (ví dụ: slug ghi rõ loài cá/chim/thú cưng khác không nằm trong chủ đề), TUYỆT ĐỐI CẤM chọn `index` đó dù ảnh preview mờ hoặc nhìn thoáng qua dễ nhầm!
+   - Khi chọn ứng viên nào, BẮT BUỘC nhìn đúng nhãn `INDEX N` in chữ vàng trên đỉnh ảnh preview và trả về cả `"winner_index": N` lẫn `"winner_url"` của đúng ứng viên `index: N` đó.
 2. KIỂM TRA ẢNH PREVIEW ĐÍNH KÈM (`attached_preview_image`):
-   - Ngay cả khi `returned_url` đặt tên chung chung không rõ nội dung, hãy NHÌN TRỰC TIẾP vào bức ảnh `Image #N` tương ứng của ứng viên đó để xác minh thực tế bên trong video quay cảnh gì.
+   - Ngay cả khi `returned_url` đặt tên chung chung không rõ nội dung, hãy NHÌN TRỰC TIẾP vào bức ảnh có nhãn `INDEX N` tương ứng của ứng viên đó để xác minh thực tế bên trong video quay cảnh gì.
    - QUY TẮC KIỂM DUYỆT KHO STOCK VIDEO (PEXELS/PIXABAY B-ROLL):
      * Kho video Pexels/Pixabay hiếm khi có cảnh 2 loài thú hoang dã đang đánh nhau trong cùng 1 khung hình. Vì vậy, nếu chủ đề/lời thoại nhắc đến 2 loài đối đầu, video quay cảnh tự nhiên hoang dã thật của **MỘT TRONG HAI LOÀI ĐÓ** được chấp nhận làm tư liệu B-roll **CHỈ KHI VÀ CHỈ KHI** nó thỏa mãn đồng thời cả 2 điều kiện bắt buộc sau:
        (1) **Đúng môi trường tự nhiên hoang dã (Wild Nature)**: Con vật phải ở ngoài thiên nhiên hoang dã thật. TUYỆT ĐỐI TỪ CHỐI (`"winner_index": -1`) mọi video có tường bê tông, tường gạch/đá nhân tạo, hàng rào lưới sắt, chuồng sở thú, công viên nuôi nhốt!
        (2) **Đúng hệ sinh thái / mùa / bối cảnh cốt lõi của kịch bản (Biome & Season Congruency)**: Môi trường trong video BẮT BUỘC phải khớp với môi trường/mùa của kịch bản. Nếu kịch bản mô tả bối cảnh mùa đông/tuyết phủ, đáy biển sâu, sa mạc, ban đêm... mà video lại quay ở môi trường trái ngược (ví dụ: thảm cỏ xanh mùa hè khô ráo trong khi kịch bản tả rừng tuyết trắng xóa, hoặc trên cạn trong khi kịch bản tả dưới đáy đại dương) -> BẮT BUỘC TỪ CHỐI (`"winner_index": -1`, `"should_fallback_to_ai": true`)! Không được viện cớ "B-roll hợp lệ" để châm chước cho video sai môi trường/sai mùa hoặc quay trong sở thú!
-     * BẮT BUỘC TỪ CHỐI (`"winner_index": -1`, `"should_fallback_to_ai": true`) khi ứng viên là: (a) Thú cưng trong nhà (mèo nhà `two-cats`, chó cảnh), (b) Loài vật khác hoàn toàn không có trong chủ đề, (c) Động vật trong sở thú / tường nhân tạo / lồng nuôi nhốt, (d) Sai lệch hệ sinh thái / mùa / bối cảnh thời đại so với kịch bản, (e) Dính chữ/watermark/logo hoặc cảnh con người/văn phòng lạc đề.
+     * BẮT BUỘC TỪ CHỐI (`"winner_index": -1`, `"should_fallback_to_ai": true`) khi ứng viên là: (a) Thú cưng trong nhà (mèo nhà `two-cats`, chó cảnh, cá cảnh `koi-fish`), (b) Loài vật khác hoàn toàn không có trong chủ đề, (c) Động vật trong sở thú / tường nhân tạo / lồng nuôi nhốt, (d) Sai lệch hệ sinh thái / mùa / bối cảnh thời đại so với kịch bản, (e) Dính chữ/watermark/logo hoặc cảnh con người/văn phòng lạc đề.
 3. RA QUYẾT ĐỊNH DỨT KHOÁT:
-   - Nếu CÓ ứng viên đúng loài vật/chủ thể thật VÀ đúng môi trường tự nhiên/mùa của kịch bản (`confidence_score >= 7.0`): trả về `winner_index` của ứng viên tốt nhất và `"should_fallback_to_ai": false`.
-   - Nếu TẤT CẢ ứng viên trả về đều sai loài vật, sai môi trường/mùa, thú nhốt sở thú, hoặc lạc đề (`confidence_score < 7.0`): BẮT BUỘC trả về `"winner_index": -1` và `"should_fallback_to_ai": true`!
+   - Nếu CÓ ứng viên đúng loài vật/chủ thể thật VÀ đúng môi trường tự nhiên/mùa của kịch bản (`confidence_score >= 7.0`): trả về `winner_index`, `winner_url` của ứng viên tốt nhất và `"should_fallback_to_ai": false`.
+   - Nếu TẤT CẢ ứng viên trả về đều sai loài vật, sai môi trường/mùa, thú nhốt sở thú, hoặc lạc đề (`confidence_score < 7.0`): BẮT BUỘC trả về `"winner_index": -1`, `"winner_url": ""` và `"should_fallback_to_ai": true`!
 
 TRẢ VỀ JSON DUY NHẤT:
 {{
   "winner_index": -1,
+  "winner_url": "",
   "confidence_score": 2.0,
-  "rationale": "Giải thích rõ kết quả kiểm tra đường link & ảnh preview (vì sao chọn hoặc vì sao loại bỏ)",
+  "rationale": "Giải thích rõ kết quả kiểm tra đường link & ảnh preview INDEX N (vì sao chọn hoặc vì sao loại bỏ)",
   "should_fallback_to_ai": true
 }}
 """
         agent_dec = self._call_gemini_json(prompt, images=thumb_images if thumb_images else None)
         if agent_dec is not None:
             w_idx = int(agent_dec.get("winner_index", -1))
+            w_url = str(agent_dec.get("winner_url") or "").strip()
             score = float(agent_dec.get("confidence_score", 0.0))
             rationale = str(agent_dec.get("rationale", ""))
             fallback_ai = bool(agent_dec.get("should_fallback_to_ai", False))
+
+            # Đối chiếu chéo `winner_url` với `winner_index` để chống lệch chỉ số
+            if w_url and not fallback_ai:
+                url_matched_idx = next((i for i, c in enumerate(eval_pool) if c["url"] == w_url), None)
+                if url_matched_idx is not None and url_matched_idx != w_idx:
+                    logger.warning(
+                        f"⚠️ [LLM Link & Vision Audit] Phát hiện lệch chỉ số: winner_index={w_idx} nhưng winner_url khớp index={url_matched_idx}. "
+                        f"Tự động hiệu chỉnh về index={url_matched_idx}!"
+                    )
+                    w_idx = url_matched_idx
 
             if 0 <= w_idx < len(eval_pool) and score >= 7.0 and not fallback_ai:
                 winner = eval_pool[w_idx]
                 logger.info(
                     f"🎬 [LLM Link & Vision Audit] ✅ Đã kiểm duyệt & chọn Video #{winner['raw_video'].get('id')} "
-                    f"('{winner['url']}') | Điểm: {score}/10 | {rationale}"
+                    f"(INDEX {w_idx}: '{winner['url']}') | Điểm: {score}/10 | {rationale}"
                 )
                 return _format_winner(winner, score, rationale), score, rationale, False
 
@@ -1089,10 +1118,26 @@ TRẢ VỀ JSON DUY NHẤT:
                 sm = item_c.get("_sharp_metrics") or {}
                 b64_img = sm.get("thumb_b64")
                 if b64_img:
+                    try:
+                        import base64 as _b64
+                        import io as _io
+                        from PIL import Image, ImageDraw
+                        raw_bytes = _b64.b64decode(b64_img)
+                        with Image.open(_io.BytesIO(raw_bytes)) as pil_im:
+                            pil_im = pil_im.convert("RGB")
+                            draw = ImageDraw.Draw(pil_im)
+                            draw.rectangle([(0, 0), (pil_im.width, 24)], fill=(0, 0, 0))
+                            draw.text((6, 5), f"INDEX {v_idx}", fill=(255, 255, 0))
+                            out_buf = _io.BytesIO()
+                            pil_im.save(out_buf, format="JPEG", quality=75)
+                            b64_img = _b64.b64encode(out_buf.getvalue()).decode("utf-8")
+                    except Exception:
+                        pass
                     vision_images.append(("image/jpeg", b64_img))
                     vision_meta.append({
                         "index": v_idx,
-                        "attached_image": f"Image #{len(vision_images)}",
+                        "attached_image": f"INDEX {v_idx} (Ảnh đính kèm thứ {len(vision_images)})",
+                        "url": item_c.get("url"),
                         "title_or_alt": str(item_c.get("title") or "")[:100],
                         "resolution": f"{sm.get('width')}x{sm.get('height')}",
                         "sharpness": sm.get("sharpness"),
@@ -1101,41 +1146,52 @@ TRẢ VỀ JSON DUY NHẤT:
             selected_idx = 0
             vision_rationale = ""
             if vision_images and self.rotator:
+                paradigm_str = str(va.get("visual_paradigm") or "REAL_WORLD_ACTION").upper()
                 photo_prompt = f"""Bạn là Tổng Đạo Diễn Hình Ảnh & Giám Khảo Kiểm Duyệt Ảnh Tư Liệu (Multimodal Photo Curation Director) cho YouTube Shorts.
-Hãy NHÌN TRỰC TIẾP vào {len(vision_images)} bức ảnh ứng viên đính kèm (Image #1 đến Image #{len(vision_images)}) và chọn ra DUY NHẤT 1 BỨC ẢNH xuất sắc nhất, khớp hoàn hảo với phân cảnh:
+Hãy NHÌN TRỰC TIẾP vào {len(vision_images)} bức ảnh ứng viên đính kèm (mỗi ảnh đã được in nhãn "INDEX 0", "INDEX 1"... ở góc trên cùng bên trái) và chọn ra DUY NHẤT 1 BỨC ẢNH xuất sắc nhất, khớp hoàn hảo với phân cảnh:
 
 THÔNG TIN PHÂN CẢNH:
 - Chủ đề tổng thể (Topic): "{topic_ctx}"
 - Chủ thể yêu cầu (Required Subject): "{subject_req}"
 - Lời thoại phân cảnh (Narration): "{narration}"
 - Hình ảnh kỳ vọng (Visual Metaphor/Keyword): "{expected_vis}"
+- Trường phái thị giác (Visual Paradigm): "{paradigm_str}"
 
 DANH SÁCH ỨNG VIÊN:
 {json.dumps(vision_meta, ensure_ascii=False, indent=2)}
 
 TIÊU CHUẨN TUYỂN CHỌN NGHIÊM NGẶT (BẮT BUỘC TUÂN THỦ):
-1. ĐÚNG CHỦ THỂ & LOÀI VẬT: Bức ảnh phải thể hiện đúng chủ thể/loài vật của phân cảnh. Loại bỏ ngay ảnh sai loài, thú cưng trong nhà (khi cần thú hoang dã), đồ chơi/thú nhồi bông, hoặc ảnh lạc đề.
-2. ĐỒNG NHẤT MÔI TRƯỜNG SINH THÁI / MÙA / BỐI CẢNH (BIOME & SETTING CONGRUENCY):
+1. ĐỌC ĐÚNG NHÃN "INDEX X" TRÊN ẢNH: `winner_index` BẮT BUỘC là số nguyên `0, 1, 2...` khớp chính xác với nhãn `INDEX X` in ở góc trên bức ảnh và trường `"index"` trong JSON ứng viên.
+2. ĐÚNG CHỦ THỂ & LOÀI VẬT: Bức ảnh phải thể hiện đúng chủ thể/loài vật của phân cảnh. Loại bỏ ngay ảnh sai loài, thú cưng trong nhà (khi cần thú hoang dã), đồ chơi/thú nhồi bông, ảnh trừu tượng/fractal/neon wallpaper vô nghĩa, hoặc ảnh lạc đề.
+3. ĐỒNG NHẤT MÔI TRƯỜNG SINH THÁI / MÙA / BỐI CẢNH (BIOME & SETTING CONGRUENCY):
    - Môi trường tự nhiên, mùa và bối cảnh thời đại trong ảnh BẮT BUỘC phải khớp với kịch bản (`Topic` & `Narration`).
    - Ví dụ: nếu kịch bản mô tả rừng tuyết mùa đông, đáy biển sâu, sa mạc, ban đêm hay thời cổ đại, TUYỆT ĐỐI LOẠI BỎ bức ảnh chụp ở môi trường trái ngược (như rừng cỏ xanh mùa hè nhiệt đới khi kịch bản tả tuyết trắng mùa đông, hoặc con vật bị nhốt trong chuồng bê tông/lồng sắt sở thú).
-3. KHUNG HÌNH NGUYÊN BẢN SẠCH 100% (SINGLE CLEAN FRAME):
+4. KHUNG HÌNH NGUYÊN BẢN SẠCH 100% (SINGLE CLEAN FRAME):
    - TUYỆT ĐỐI LOẠI BỎ ảnh ghép chia đôi/chia ba khung hình (split-screen / 2-panel comparison collage), ảnh có chữ chèn đè (text overlay, meme, phụ đề), biểu đồ/bản đồ, hoặc ảnh dính logo/watermark bản quyền.
-4. Nếu KHÔNG CÓ bức ảnh nào đạt cả 3 tiêu chuẩn trên (`confidence_score < 6.8`), BẮT BUỘC trả về `"winner_index": -1` và `"should_fallback_to_ai": true`.
+5. Nếu KHÔNG CÓ bức ảnh nào đạt các tiêu chuẩn trên (`confidence_score < 6.8`), BẮT BUỘC trả về `"winner_index": -1` và `"should_fallback_to_ai": true`.
 
 TRẢ VỀ JSON DUY NHẤT:
 {{
   "winner_index": 0,
+  "winner_url": "url_cua_ung_vien_thang_cuoc",
   "confidence_score": 8.8,
   "approved_alternate_indices": [],
-  "rationale": "Giải thích ngắn gọn vì sao chọn bức ảnh này (hoặc vì sao từ chối toàn bộ)",
+  "rationale": "Giải thích ngắn gọn vì sao chọn bức ảnh INDEX X này (hoặc vì sao từ chối toàn bộ)",
   "should_fallback_to_ai": false
 }}"""
                 photo_dec = self._call_gemini_json(photo_prompt, images=vision_images, timeout=9)
                 if photo_dec is not None:
                     w_idx = int(photo_dec.get("winner_index", -1))
+                    w_url = str(photo_dec.get("winner_url") or "").strip()
                     v_score = float(photo_dec.get("confidence_score", 0.0))
                     v_fb = bool(photo_dec.get("should_fallback_to_ai", False))
                     v_rat = str(photo_dec.get("rationale", "")).strip()
+                    if w_url:
+                        for c_i, (_, _, c_obj) in enumerate(scored_sharp[:5]):
+                            if c_obj.get("url") == w_url and c_i != w_idx:
+                                logger.info(f"🔧 [PhotoVisionAudit] Hiệu chỉnh winner_index lệch ({w_idx} -> {c_i}) theo winner_url khớp tuyệt đối.")
+                                w_idx = c_i
+                                break
                     if 0 <= w_idx < len(scored_sharp) and v_score >= 6.8 and not v_fb:
                         selected_idx = w_idx
                         vision_rationale = v_rat
@@ -1153,6 +1209,10 @@ TRẢ VỀ JSON DUY NHẤT:
 
             best_score, _, winner_item = scored_sharp[selected_idx]
             m = winner_item.pop("_sharp_metrics", {})
+            if m.get("verified_url"):
+                if winner_item.get("url") and winner_item["url"] != m["verified_url"] and not winner_item.get("fallback_url"):
+                    winner_item["fallback_url"] = winner_item["url"]
+                winner_item["url"] = m["verified_url"]
             approved_alt_idxs = winner_item.pop("_approved_alt_indices", None)
             if approved_alt_idxs is not None:
                 alt_urls = [
@@ -1169,8 +1229,7 @@ TRẢ VỀ JSON DUY NHẤT:
             for _, _, item_cleanup in scored_sharp:
                 item_cleanup.pop("_sharp_metrics", None)
                 item_cleanup.pop("_approved_alt_indices", None)
-            if alt_urls:
-                winner_item["_vision_alternates"] = alt_urls
+            winner_item["_vision_alternates"] = alt_urls
             g_rank = int(winner_item.get("_google_rank") or 999)
             rank_str = f"Top #{g_rank} Google Images" if g_rank < 900 else winner_item.get("source", "web")
             rationale = (

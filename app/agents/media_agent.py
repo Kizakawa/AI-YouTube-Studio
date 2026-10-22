@@ -59,7 +59,8 @@ def register_download_fallbacks(winner: Optional[Dict[str, Any]], candidates: Op
     for va in winner.get("_vision_alternates") or []:
         if va and va not in (u, fb_u) and va not in distinct_urls:
             distinct_urls.append(va)
-    if candidates:
+    is_vision_audited = "_vision_alternates" in winner or "curation_score" in winner
+    if candidates and not is_vision_audited:
         for c in candidates:
             cu = c.get("url")
             if cu and cu not in (u, fb_u) and cu not in distinct_urls:

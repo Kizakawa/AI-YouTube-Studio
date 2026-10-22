@@ -929,12 +929,15 @@ class VoiceAgent:
                 safe_tail = Path(tail_silence_path).resolve().as_posix().replace("'", "'\\''")
                 f.write(f"file '{safe_tail}'\n")
 
-        # FFmpeg concat demuxer an toàn qua run_ffmpeg (giữ nguyên timestamp chuẩn hóa)
+        # FFmpeg concat demuxer kèm tái mã hóa MP3 sạch (loại bỏ hoàn toàn 8 khung LAME/Xing header ~380ms gây lệch A/V Sync)
         run_ffmpeg([
             "-f", "concat",
             "-safe", "0",
             "-i", list_file,
-            "-c", "copy",
+            "-ar", "24000",
+            "-ac", "1",
+            "-c:a", "libmp3lame",
+            "-b:a", "128k",
             output_path
         ])
 

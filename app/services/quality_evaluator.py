@@ -508,7 +508,10 @@ Respond ONLY in valid JSON:
             av_drift_ms = abs(video_duration - audio_duration) * 1000.0 if (video_duration > 0 and audio_duration > 0) else 0.0
             if expected_duration_ms > 0:
                 exp_drift_ms = abs(duration_sec * 1000.0 - expected_duration_ms)
-                av_drift_ms = max(av_drift_ms, min(exp_drift_ms, 800.0))
+                # Chỉ ghi nhận lệch expected_duration_ms nếu chênh lệch lớn (> 650ms, dấu hiệu rớt 1 phân cảnh audio),
+                # còn độ lệch thực tế giữa hình và tiếng trong file MP4 thành phẩm là abs(video_duration - audio_duration)
+                if exp_drift_ms > 650.0:
+                    av_drift_ms = max(av_drift_ms, min(exp_drift_ms, 800.0))
 
             if av_drift_ms <= 50.0:
                 sync_pts = 25.0 - (av_drift_ms / 50.0) * 1.5
@@ -523,16 +526,16 @@ Respond ONLY in valid JSON:
                 hard_fail = True
                 issues.append(f"AV Desync nghiêm trọng ({av_drift_ms:.0f}ms > 550ms) — chặn xuất bản!")
 
-            # 4. Shorts Retention Duration Curve (Tối đa 15 điểm)
-            if 30.0 <= duration_sec <= 46.0:
-                # Khung vàng giữ chân cao nhất
-                dist_from_37 = abs(duration_sec - 37.0)
-                dur_pts = max(13.0, 15.0 - dist_from_37 * 0.2)
-                strengths.append(f"Thời lượng nằm trong khung vàng Retention ({duration_sec:.1f}s).")
-            elif 20.0 <= duration_sec < 30.0:
-                dur_pts = 10.0 + (duration_sec - 20.0) * 0.3
-            elif 46.0 < duration_sec <= 60.0:
-                dur_pts = 13.0 - (duration_sec - 46.0) * 0.25
+            # 4. Shorts Retention Duration Curve (Tối đa 15 điểm — Khung vàng High-APV 27s - 42s)
+            if 27.0 <= duration_sec <= 42.0:
+                # Khung vàng giữ chân & APV > 80% cao nhất (đỉnh tại ~33.0s)
+                dist_from_33 = abs(duration_sec - 33.0)
+                dur_pts = max(13.5, 15.0 - dist_from_33 * 0.18)
+                strengths.append(f"Thời lượng nằm trong khung vàng High-APV Retention ({duration_sec:.1f}s).")
+            elif 20.0 <= duration_sec < 27.0:
+                dur_pts = 10.0 + (duration_sec - 20.0) * 0.45
+            elif 42.0 < duration_sec <= 60.0:
+                dur_pts = 13.0 - (duration_sec - 42.0) * 0.25
             else:
                 dur_pts = 4.0
                 hard_fail = True
