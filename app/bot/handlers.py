@@ -241,9 +241,8 @@ def is_authorized(update: Update) -> bool:
     """
     Kiểm tra quyền truy cập bot:
     - Chủ sở hữu hệ thống (Giang & Vương): Luôn luôn được cấp quyền truy cập.
-    - Thành viên đã được lưu trong Database: Luôn được cấp quyền.
-    - Nếu có cấu hình ALLOWED_TELEGRAM_USERS hoặc ALLOWED_GROUP_IDS: bắt buộc tuân thủ danh sách trắng.
-    - Nếu không cấu hình: Cho phép tương tác (nhưng các thao tác đặc quyền yêu cầu quyền Admin).
+    - Nếu có cấu hình ALLOWED_TELEGRAM_USERS hoặc ALLOWED_GROUP_IDS: bắt buộc kiểm tra danh sách trắng hoặc thành viên đã được Admin cấp quyền trong Database.
+    - Nếu không cấu hình danh sách trắng: Chỉ cho phép thành viên đã có trong Database (hoặc khởi tạo lần đầu khi DB trống).
     """
     user = update.effective_user
     chat = update.effective_chat
@@ -252,32 +251,32 @@ def is_authorized(update: Update) -> bool:
     if user and user.id in (7177163590, 8498162618):
         return True
 
-    # 2. Thành viên đã có hồ sơ trong Database được phép truy cập
-    if user:
-        try:
-            with get_db() as db:
-                db_user = db.query(User).filter(User.telegram_id == user.id).first()
-                if db_user:
-                    return True
-        except Exception:
-            pass
-
     allowed_users = settings.get_allowed_users()
     allowed_groups = settings.get_allowed_group_ids()
-
-    # 3. Mặc định mở nếu chưa đặt whitelist trong .env
-    if not allowed_users and not allowed_groups:
-        return True
 
     if chat and chat.type in ["group", "supergroup"]:
         if allowed_groups and chat.id in allowed_groups:
             return True
         if user and user.id in allowed_users:
             return True
-        return False
 
     if user and user.id in allowed_users:
         return True
+
+    # 2. Thành viên đã được lưu chính thức trong Database (và có vai trò hợp lệ)
+    if user:
+        try:
+            with get_db() as db:
+                db_user = db.query(User).filter(User.telegram_id == user.id).first()
+                if db_user and db_user.role in ("admin", "owner", "editor", "creator"):
+                    return True
+                # Cho phép bootstrap duy nhất cho người dùng đầu tiên khi chưa cấu hình whitelist và DB hoàn toàn trống
+                if not allowed_users and not allowed_groups:
+                    human_count = db.query(User).filter(User.telegram_id > 0).count()
+                    if human_count == 0:
+                        return True
+        except Exception:
+            pass
 
     return False
 
@@ -295,15 +294,11 @@ def is_admin_user(telegram_id: int) -> bool:
     if telegram_id in allowed_users:
         return allowed_users[telegram_id].lower() in ("admin", "owner")
 
-    # 2. Kiểm tra vai trò trong Database
+    # 2. Kiểm tra vai trò trong Database (đã loại bỏ hoàn toàn cơ chế tự nâng quyền theo số lượng thành viên)
     try:
         with get_db() as db:
             db_user = db.query(User).filter(User.telegram_id == telegram_id).first()
             if db_user and db_user.role in ("admin", "owner"):
-                return True
-            # Nếu hệ thống ít thành viên (dưới 4 người), cấp quyền Admin cho các thành viên sáng lập
-            human_count = db.query(User).filter(User.telegram_id > 0).count()
-            if human_count <= 4:
                 return True
     except Exception as e:
         logger.error(f"Lỗi kiểm tra quyền admin cho {telegram_id}: {e}")
@@ -438,6 +433,9 @@ async def channels_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def channel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Xử lý tất cả các thao tác tương tác liên quan đến kênh qua nút bấm"""
     query = update.callback_query
+    if not is_authorized(update):
+        await safe_query_answer(query, "⛔ Bạn chưa được cấp quyền sử dụng thao tác này.", show_alert=True)
+        return
     await safe_query_answer(query)
 
     data = query.data
@@ -2815,6 +2813,11 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Xử lý nút bấm trên kịch bản & video: Duyệt Dựng / Đăng YouTube / Góp Ý Sửa / Lên Lịch / Tạo Lại / Hủy
     """
     query = update.callback_query
+    if not is_authorized(update):
+        if query:
+            await safe_query_answer(query, "⛔ Bạn chưa được cấp quyền sử dụng thao tác này.", show_alert=True)
+        return
+    await safe_query_answer(query)
     data = query.data if query else ""
     user = query.from_user if query else update.effective_user
 
@@ -5205,6 +5208,11 @@ async def _show_autopilot_view(update: Update, context: ContextTypes.DEFAULT_TYP
 async def autopilot_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Xử lý các tương tác nút bấm của hệ thống Auto-Pilot trên Telegram."""
     query = update.callback_query
+    if not is_authorized(update):
+        if query:
+            await safe_query_answer(query, "⛔ Bạn chưa được cấp quyền sử dụng thao tác này.", show_alert=True)
+        return
+    await safe_query_answer(query)
     data = query.data if query else ""
     user = update.effective_user
     uid = user.id if user else 0
@@ -5536,6 +5544,11 @@ async def chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Xử lý nút bấm: Chốt kịch bản từ đoạn chat / Gợi ý thêm góc nhìn / Đổi hook
     """
     query = update.callback_query
+    if not is_authorized(update):
+        if query:
+            await safe_query_answer(query, "⛔ Bạn chưa được cấp quyền sử dụng thao tác này.", show_alert=True)
+        return
+    await safe_query_answer(query)
     data = query.data if query else ""
     user = query.from_user if query else update.effective_user
 

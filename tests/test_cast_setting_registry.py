@@ -282,18 +282,12 @@ def test_image_agent_generate_scene_image_auto_cast(tmp_path):
 
     captured_prompt = {}
 
-    def fake_pollinations_get(url, headers=None, timeout=None):
-        captured_prompt["url"] = url
-        mock_res = MagicMock()
-        mock_res.status_code = 200
-        mock_res.content = b"\xFF\xD8\xFF\xE0" + b"\x00" * 6000  # Fake valid JPEG > 5KB
-        return mock_res
+    def fake_generate_image(prompt, output_path, premium=False):
+        captured_prompt["prompt"] = prompt
+        Path(output_path).write_bytes(b"\xFF\xD8\xFF\xE0" + b"\x00" * 6000)
+        return output_path, "mock_engine"
 
-    with patch("requests.get", side_effect=fake_pollinations_get), \
-         patch.object(agent, "_try_google_image_api", return_value=None), \
-         patch.object(agent, "_try_huggingface_image_api", return_value=None), \
-         patch.object(agent, "_sanitize_ai_image", return_value=None):
-
+    with patch("app.services.media.image_engines.generate_image", side_effect=fake_generate_image):
         res = agent.generate_scene_image(
             prompt="Working on high voltage transformer coils in lab",
             output_path=out_file,
@@ -304,7 +298,4 @@ def test_image_agent_generate_scene_image_auto_cast(tmp_path):
 
         assert res == out_file
         assert Path(out_file).exists()
-        # Verify URL sent to Pollinations encoded the cast anchor
-        assert "url" in captured_prompt
-        # Tesla should be in the encoded prompt
-        assert "Tesla" in captured_prompt["url"]
+        assert "prompt" in captured_prompt

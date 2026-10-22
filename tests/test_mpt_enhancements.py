@@ -192,18 +192,20 @@ def test_video_agent_applies_safety_margin(tmp_path):
     )
 
     with patch("app.agents.video_agent.image_to_video") as mock_i2v, \
+         patch("app.agents.video_agent.render_opening_hook_multi_cut") as mock_hook, \
          patch("app.agents.video_agent.trim_video") as mock_trim:
         mock_i2v.return_value = "dummy.mp4"
+        mock_hook.return_value = "dummy.mp4"
         
         # Gọi _prepare_scene_clips
         clips = agent._prepare_scene_clips(job.scenes, str(tmp_path), job)
         
         assert len(clips) == 2
-        # Cảnh 1: base (3.0) + transition_duration (0.3) = 3.3s
-        # Cảnh 2 (cảnh cuối): base (4.0) + tail_buffer (0.6) + VIDEO_DURATION_SAFETY_MARGIN (0.1) = 4.7s
-        call_durations = [call[1]["duration_seconds"] for call in mock_i2v.call_args_list]
-        assert abs(call_durations[0] - 3.3) < 0.001
-        assert abs(call_durations[1] - (4.0 + 0.6 + VIDEO_DURATION_SAFETY_MARGIN)) < 0.001
+        # Cảnh 1: base (3.0) qua image_to_video (khi chỉ có 1 ảnh)
+        # Cảnh 2 (cảnh cuối): base (4.0) + tail_buffer (0.15) + VIDEO_DURATION_SAFETY_MARGIN (0.1) = 4.25s
+        call_durations = sorted([call[1]["duration_seconds"] for call in (mock_i2v.call_args_list + mock_hook.call_args_list)])
+        assert abs(call_durations[0] - 3.0) < 0.001
+        assert abs(call_durations[1] - (4.0 + 0.15 + VIDEO_DURATION_SAFETY_MARGIN)) < 0.001
 
 
 # ==============================================================================

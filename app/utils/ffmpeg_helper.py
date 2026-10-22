@@ -120,6 +120,48 @@ def _supports_fps_mode() -> bool:
     return _cached_supports_fps_mode
 
 
+# ── MoneyPrinterTurbo Standard: Video Duration Safety Margin (+0.1s) ──
+# Bù đệm 100ms vào cảnh cuối để chống frame rounding truncation làm đứt âm thanh kết thúc
+VIDEO_DURATION_SAFETY_MARGIN: float = 0.1
+
+# ── MoneyPrinterTurbo Standard: BT.709 Color Space & Primaries Tagging ──
+# Khóa chặt color primaries, transfer characteristics và matrix coefficients về BT.709 (sRGB/HDTV)
+# Ngăn chặn YouTube & mobile browsers hiểu nhầm thành BT.601 dẫn đến màu sắc bị bợt nhạt, mất tương phản
+BT709_COLOR_ARGS: List[str] = [
+    "-colorspace", "bt709",
+    "-color_primaries", "bt709",
+    "-color_trc", "bt709",
+    "-color_range", "tv",
+]
+
+
+def build_atempo_filter(speed_ratio: float) -> str:
+    """
+    Sinh chuỗi filter FFmpeg 'atempo' chuẩn xác để đồng bộ thời lượng âm thanh không đổi cao độ (pitch).
+    Xử lý giới hạn 0.5 <= atempo <= 2.0 của FFmpeg bằng cách ghép chuỗi (chaining).
+    Lấy cảm hứng từ VoiceStudio Timed Speech Synchronization.
+    """
+    if speed_ratio <= 0:
+        return "anull"
+    ratio = float(speed_ratio)
+    # Nếu xấp xỉ 1.0 (độ lệch dưới 2%), không cần can thiệp
+    if abs(ratio - 1.0) < 0.02:
+        return "anull"
+
+    filters = []
+    # Xử lý trường hợp nén tốc độ > 2.0x (ví dụ: ratio=2.4 -> atempo=2.0,atempo=1.2)
+    while ratio > 2.0:
+        filters.append("atempo=2.0")
+        ratio /= 2.0
+    # Xử lý trường hợp kéo giãn tốc độ < 0.5x (ví dụ: ratio=0.4 -> atempo=0.5,atempo=0.8)
+    while ratio < 0.5:
+        filters.append("atempo=0.5")
+        ratio /= 0.5
+
+    filters.append(f"atempo={ratio:.4f}")
+    return ",".join(filters)
+
+
 _cached_hardware_encoder: Optional[Dict[str, Any]] = None
 
 
@@ -127,7 +169,7 @@ def detect_hardware_encoder(force_recheck: bool = False) -> Dict[str, Any]:
     """
     Tự động phát hiện và kiểm định bộ mã hóa video tăng tốc phần cứng (GPU Hardware Acceleration).
     Kiểm tra thực tế bằng FFmpeg probe (0.1 giây) để đảm bảo bộ mã hóa 100% hoạt động được trên thiết bị:
-      1. h264_nvenc: NVIDIA GPU (CUDA / NVENC) — Tối ưu cao nhất trên card rời NVIDIA & Colab/Linux
+      1. h264_nvenc: NVIDIA GPU (CUDA / NVENC) — Tối ưu cao nhất trên card rời NVIDIA (Windows/Linux)
       2. h264_mf: Windows Media Foundation — Tăng tốc GPU DirectX mượt mà trên Windows (hỗ trợ NVIDIA, Intel, AMD)
       3. h264_qsv: Intel QuickSync Video — Tận dụng nhân đồ họa tích hợp Intel Iris Xe / UHD
       4. h264_videotoolbox: Apple Silicon (M1/M2/M3/M4) trên macOS
@@ -573,8 +615,10 @@ def image_to_video(
     và tăng độ sắc nét chi tiết 8K (HDR Sci-Fi grading).
     Codec: H.264 + yuv420p (YouTube compatible).
     """
-    # ── Chuẩn hóa ảnh bằng Pillow: chuyển sang RGB, scale về đúng tỷ lệ ──
-    # Dùng unique suffix theo output_path để tránh race condition khi nhiều job chạy song song
+    # ── Chuẩn hóa ảnh bằng Pillow: chuyển sang RGB, Supersampling 2.0x (2160x3840) khử rung zoompan ──
+    # Bộ lọc zoompan của FFmpeg làm tròn tọa độ (x, y) về số nguyên pixel trên ảnh đầu vào.
+    # Khi chuẩn bị ảnh ở độ phân giải 2.0x (2160x3840 - 4K Vertical) một lần duy nhất bằng Pillow LANCZOS,
+    # mật độ lưới tọa độ tăng gấp 4 lần (bước nhảy 0.5px sub-pixel khi hạ về 1080x1920), triệt tiêu 100% hiện tượng rung/giật bậc thang!
     import uuid as _uuid
     _uid = _uuid.uuid4().hex[:8]
     norm_path = str(Path(output_path).parent / f"_norm_{_uid}.jpg")
@@ -605,7 +649,7 @@ def image_to_video(
             im_resized = prepare_vertical(
                 im, scale_w, scale_h, max_upscale=max_up, is_hook_scene=is_hook_scene
             )
-            im_resized.save(norm_path, "JPEG", quality=94 if is_hook_scene else 92)
+            im_resized.save(norm_path, "JPEG", quality=95 if is_hook_scene else 92)
             image_path = norm_path
     except Exception as e:
         raise ValueError(f"File ảnh không hợp lệ hoặc không thể đọc '{image_path}': {e}")
@@ -691,6 +735,7 @@ def image_to_video(
         "-vf", vf_chain,
         "-t", str(duration_seconds),
         *enc_args,
+        *BT709_COLOR_ARGS,
         "-r", str(fps),
         "-an",
         output_path
@@ -1365,6 +1410,7 @@ def trim_video(
             "-map", "[vout]",
             "-t", f"{duration_seconds:.3f}",
             *enc_args,
+            *BT709_COLOR_ARGS,
             "-r", str(fps),
             "-an",
             output_path,
@@ -1401,6 +1447,7 @@ def trim_video(
             "-map", "[vout]",
             "-t", str(duration_seconds),
             *enc_args,
+            *BT709_COLOR_ARGS,
             "-r", str(fps),
             "-an",
             output_path,
@@ -1416,6 +1463,7 @@ def trim_video(
             "-t", str(duration_seconds),
             "-vf", vf_chain,
             *enc_args,
+            *BT709_COLOR_ARGS,
             "-r", str(fps),
             "-an",  # Bỏ audio gốc của stock video
             output_path
@@ -1449,6 +1497,7 @@ def concat_videos(
         "-safe", "0",
         "-i", list_file,
         *enc_args,
+        *BT709_COLOR_ARGS,
         "-r", str(fps),
     ] + fps_flag + [
         "-an",
@@ -1584,7 +1633,6 @@ def concat_videos_with_xfade(
     concat_inputs_str = "".join(f"[v{i}]" for i in range(n))
     filter_parts.append(f"{concat_inputs_str}concat=n={n}:v=1:a=0,format=yuv420p[{current_label}]")
     cumulative = 0.0
-    cumulative = 0.0
     for i in range(1, 0):
         prev_dur = durations[i - 1]
         offset = max(cumulative + prev_dur - td, 0.0)
@@ -1603,18 +1651,23 @@ def concat_videos_with_xfade(
 
     # Nếu có subtitle_path, burn trực tiếp trên luồng uncompressed sau xfade (Single-Pass)
     if has_sub:
-        srt_escaped = str(subtitle_path).replace("\\", "/").replace(":", "\\:")
+        srt_escaped = str(subtitle_path).replace("\\", "/").replace(":", "\\:").replace("'", "")
         is_ass = str(subtitle_path).lower().endswith(".ass")
         sub_label = "vsub"
+        fonts_dir = Path(__file__).resolve().parent.parent.parent / "assets" / "fonts"
+        fontsdir_opt = ""
+        if fonts_dir.exists() and any(fonts_dir.glob("*.[to]tf")):
+            fdir_esc = str(fonts_dir).replace("\\", "/").replace(":", "\\:").replace("'", "")
+            fontsdir_opt = f":fontsdir='{fdir_esc}'"
         if is_ass:
-            filter_parts.append(f"[{current_label}]subtitles='{srt_escaped}',format=yuv420p[{sub_label}]")
+            filter_parts.append(f"[{current_label}]subtitles='{srt_escaped}'{fontsdir_opt},format=yuv420p[{sub_label}]")
         else:
             style = (
-                "PlayResX=1080,PlayResY=1920,Fontname=Arial,FontSize=40,"
+                "PlayResX=1080,PlayResY=1920,Fontname=Montserrat ExtraBold,FontSize=40,"
                 "PrimaryColour=&H0000FFFF,OutlineColour=&H00000000,Outline=2.5,"
                 "Shadow=1.5,Bold=1,Alignment=2,MarginV=600"
             )
-            filter_parts.append(f"[{current_label}]subtitles='{srt_escaped}':force_style='{style}',format=yuv420p[{sub_label}]")
+            filter_parts.append(f"[{current_label}]subtitles='{srt_escaped}'{fontsdir_opt}:force_style='{style}',format=yuv420p[{sub_label}]")
         current_label = sub_label
 
     filter_complex = ";".join(filter_parts)
@@ -1624,6 +1677,7 @@ def concat_videos_with_xfade(
         "-filter_complex", filter_complex,
         "-map", f"[{current_label}]",
         *enc_args,
+        *BT709_COLOR_ARGS,
         "-r", str(fps),
         "-an",
         output_path,
@@ -1897,36 +1951,45 @@ def burn_subtitles(
     đặt ở vùng an toàn (MarginV: 576-672px, mặc định 600px) để không bị đè bởi Shorts UI.
     Đã bổ sung PlayResX=1080 & PlayResY=1920 để khóa chặt độ phân giải canvas.
     """
-    safe_margin = margin_v if 576 <= margin_v <= 672 else 600
+    safe_margin = int(margin_v) if 576 <= int(margin_v) <= 672 else 600
+    safe_font_name = "".join(c for c in str(font_name or "Arial") if c.isalnum() or c in (" ", "-", "_")).strip() or "Arial"
+    safe_font_color = "".join(c for c in str(font_color or "&H0000FFFF") if c.isalnum() or c == "&") or "&H0000FFFF"
+    safe_outline_color = "".join(c for c in str(outline_color or "&H00000000") if c.isalnum() or c == "&") or "&H00000000"
     style = (
         f"PlayResX=1080,"
         f"PlayResY=1920,"
-        f"Fontname={font_name},"
-        f"FontSize={font_size},"
-        f"PrimaryColour={font_color},"
-        f"OutlineColour={outline_color},"
-        f"Outline={outline_width},"
-        f"Shadow={shadow},"
+        f"Fontname={safe_font_name},"
+        f"FontSize={int(font_size)},"
+        f"PrimaryColour={safe_font_color},"
+        f"OutlineColour={safe_outline_color},"
+        f"Outline={float(outline_width)},"
+        f"Shadow={float(shadow)},"
         f"Bold={'1' if bold else '0'},"
         f"Alignment=2,"      # Bottom center
         f"MarginV={safe_margin}" # Chuẩn hóa vùng an toàn Shorts UI
     )
-    # Escape path cho Windows (ffmpeg subtitles filter cần forward slashes và escape colon)
-    srt_escaped = srt_path.replace("\\", "/").replace(":", "\\:")
+    # Escape path cho Windows (ffmpeg subtitles filter cần forward slashes và escape colon/quote)
+    srt_escaped = srt_path.replace("\\", "/").replace(":", "\\:").replace("'", "")
     is_ass = srt_path.lower().endswith(".ass")
+    fonts_dir = Path(__file__).resolve().parent.parent.parent / "assets" / "fonts"
+    fontsdir_opt = ""
+    if fonts_dir.exists() and any(fonts_dir.glob("*.[to]tf")):
+        fdir_esc = str(fonts_dir).replace("\\", "/").replace(":", "\\:").replace("'", "")
+        fontsdir_opt = f":fontsdir='{fdir_esc}'"
 
     # Với ASS: giữ nguyên styling nội tại (karaoke, fonts, margins) trong file
     # Với SRT: áp dụng force_style vì SRT thuần không có styling
     if is_ass:
-        vf_filter = f"subtitles='{srt_escaped}',format=yuv420p"
+        vf_filter = f"subtitles='{srt_escaped}'{fontsdir_opt},format=yuv420p"
     else:
-        vf_filter = f"subtitles='{srt_escaped}':force_style='{style}',format=yuv420p"
+        vf_filter = f"subtitles='{srt_escaped}'{fontsdir_opt}:force_style='{style}',format=yuv420p"
 
     enc_args = get_video_encoder_args(quality="high")
     args = [
         "-i", video_path,
         "-vf", vf_filter,
         *enc_args,
+        *BT709_COLOR_ARGS,
         "-c:a", "copy",
         output_path
     ]
@@ -1953,6 +2016,9 @@ def validate_output(file_path: str) -> Dict:
         "resolution": "",
         "codec_video": "",
         "codec_audio": "",
+        "color_space": "",
+        "color_primaries": "",
+        "color_trc": "",
         "errors": [],
     }
 
@@ -1974,6 +2040,9 @@ def validate_output(file_path: str) -> Dict:
             result["has_video"] = True
             result["resolution"] = f"{stream.get('width')}x{stream.get('height')}"
             result["codec_video"] = stream.get("codec_name", "unknown")
+            result["color_space"] = stream.get("color_space") or stream.get("colorspace", "")
+            result["color_primaries"] = stream.get("color_primaries", "")
+            result["color_trc"] = stream.get("color_transfer") or stream.get("color_trc", "")
         elif stream.get("codec_type") == "audio":
             result["has_audio"] = True
             result["codec_audio"] = stream.get("codec_name", "unknown")

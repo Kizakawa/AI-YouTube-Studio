@@ -36,7 +36,7 @@ TARGET_W, TARGET_H = 1080, 1920          # khung Shorts chuẩn
 GEN_W, GEN_H = 768, 1344                 # kích thước sinh (9:16, bội số 64)
 
 # Giới hạn số lệnh gọi AI đồng thời trên toàn tiến trình (tránh 429 khi 8 cảnh chạy song song)
-_AI_CONCURRENCY = threading.BoundedSemaphore(int(os.getenv("IMAGE_ENGINE_CONCURRENCY", "2") or 2))
+_AI_CONCURRENCY = threading.BoundedSemaphore(int(os.getenv("IMAGE_ENGINE_CONCURRENCY", "1") or 1))
 
 
 class EngineError(Exception):
@@ -73,8 +73,8 @@ class _Breaker:
             self.last_error = err[:200]
             if fatal:
                 self.open_until = time.time() + 60 * 60      # sai cấu hình / hết quota: nghỉ 1 giờ
-            elif self.failures >= 3:
-                self.open_until = time.time() + 15 * 60      # lỗi tạm thời lặp lại: nghỉ 15 phút
+            elif self.failures >= 5:
+                self.open_until = time.time() + 15           # lỗi mạng tạm thời: chỉ nghỉ 15 giây rồi thử lại ngay
 
 
 _BREAKERS: Dict[str, _Breaker] = {}

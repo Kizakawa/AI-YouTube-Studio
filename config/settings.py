@@ -56,7 +56,27 @@ class Settings:
     DEFAULT_TTS_VOICE: str = os.getenv("DEFAULT_TTS_VOICE", "en-US-AndrewNeural")
     USE_LANGGRAPH: bool = os.getenv("USE_LANGGRAPH", "true").lower() in ("true", "1", "yes")
     ENABLE_DEVICE_GATEKEEPER: bool = os.getenv("ENABLE_DEVICE_GATEKEEPER", "true").lower() in ("true", "1", "yes")
-    AGENT_API_KEY: str = os.getenv("AGENT_API_KEY", "agy_agent_supersecret_key_2026")
+    @staticmethod
+    def _resolve_agent_api_key(base_dir: Path) -> str:
+        env_k = os.getenv("AGENT_API_KEY", "").strip()
+        if env_k and env_k != "agy_agent_supersecret_key_2026":
+            return env_k
+        key_file = base_dir / "credentials" / ".agent.key"
+        try:
+            if key_file.exists():
+                saved = key_file.read_text(encoding="utf-8").strip()
+                if len(saved) >= 24:
+                    return saved
+            import secrets
+            key_file.parent.mkdir(parents=True, exist_ok=True)
+            generated = f"agy_sec_{secrets.token_urlsafe(32)}"
+            key_file.write_text(generated, encoding="utf-8")
+            return generated
+        except Exception:
+            import secrets
+            return f"agy_sec_{secrets.token_urlsafe(32)}"
+
+    AGENT_API_KEY: str = _resolve_agent_api_key.__func__(BASE_DIR)
     LANGSMITH_API_KEY: str = os.getenv("LANGSMITH_API_KEY", "") or os.getenv("LANGCHAIN_API_KEY", "")
     LANGSMITH_PROJECT: str = os.getenv("LANGSMITH_PROJECT", "") or os.getenv("LANGCHAIN_PROJECT", "AI-YouTube-Studio")
     LANGSMITH_TRACING: bool = os.getenv("LANGSMITH_TRACING", os.getenv("LANGCHAIN_TRACING_V2", "true")).lower() in ("true", "1", "yes")

@@ -97,14 +97,35 @@ Style: WatermarkStyle,Arial,38,&H30FFFFFF,&H30FFFFFF,&H00000000,&H80000000,-1,0,
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
-# ── Fonts ưu tiên (Arial Black / Arial phổ cập toàn diện trên Windows) ───────
-PREFERRED_FONTS = ["Arial Black", "Montserrat", "Segoe UI", "Arial", "Roboto"]
+# ── Fonts ưu tiên (Ưu tiên Montserrat ExtraBold nhúng sẵn trong assets/fonts, fallback Segoe UI / Arial) ──
+PREFERRED_FONTS = ["Montserrat ExtraBold", "Montserrat Black", "Montserrat", "Arial Black", "Segoe UI", "Arial", "Roboto"]
 
 
 class SubtitleHelper:
     """Helper xử lý và tạo phụ đề video — ASS (karaoke) + SRT (legacy)."""
 
     # ── Utilities ─────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _resolve_effective_font(requested_font: Optional[str] = None) -> str:
+        """
+        Tự động chọn font chữ dày, sắc nét chuẩn Shorts Viral (Montserrat ExtraBold / Black)
+        từ kho assets/fonts đã nhúng sẵn, hoặc fallback thông minh sang font hệ thống có thật.
+        """
+        req = (requested_font or "").strip()
+        fonts_dir = Path(__file__).resolve().parent.parent.parent / "assets" / "fonts"
+        has_bundled_montserrat = (fonts_dir / "Montserrat-ExtraBold.ttf").exists() or (fonts_dir / "Montserrat-Black.ttf").exists()
+
+        if has_bundled_montserrat:
+            if not req or req.lower() in ("montserrat", "montserrat, sans-serif", "sans-serif"):
+                return "Montserrat ExtraBold" if (fonts_dir / "Montserrat-ExtraBold.ttf").exists() else "Montserrat Black"
+            return req
+
+        # Nếu không có thư mục assets/fonts, kiểm tra Windows Fonts tránh trường hợp thiếu ariblk.ttf
+        win_fonts = Path("C:/Windows/Fonts")
+        if req.lower() == "arial black" and win_fonts.exists() and not (win_fonts / "ariblk.ttf").exists():
+            return "Segoe UI" if (win_fonts / "segoeuib.ttf").exists() else "Arial"
+        return req or "Arial"
 
     @staticmethod
     def _ms_to_ass_time(ms: int) -> str:
@@ -259,39 +280,50 @@ class SubtitleHelper:
             focal_idx = n_words - 1
 
         parts = []
+        cum_ms = 0
         for i, (word, dur_cs) in enumerate(zip(words, word_durations_cs)):
+            dur_ms = max(dur_cs * 10, 50)
             clean_word = re.sub(r'[^\w\d]', '', word.upper())
             has_shock_number = bool(re.search(r'\d', word))
             is_danger = clean_word in DANGER_POWER_WORDS
             is_payoff = (clean_word in PAYOFF_POWER_WORDS) or (clean_word in custom_set)
             is_focal = (i == focal_idx and n_words >= 2)
 
+            t_start = cum_ms
+            t_peak = cum_ms + min(75, max(35, dur_ms // 3))
+            t_settle = cum_ms + min(180, max(80, (dur_ms * 2) // 3))
+
             if has_shock_number:
                 token_str = (
-                    f"{{\\kf{dur_cs}\\1c{norm_green}\\fscx124\\fscy124\\b1}}{word}"
+                    f"{{\\kf{dur_cs}\\1c{norm_green}\\fscx124\\fscy124\\b1"
+                    f"\\t({t_start},{t_peak},\\fscx130\\fscy130)\\t({t_peak},{t_settle},\\fscx124\\fscy124)}}{word}"
                     f"{{\\1c{norm_highlight}\\fscx100\\fscy100}}"
                 )
             elif is_danger:
                 token_str = (
-                    f"{{\\kf{dur_cs}\\1c{norm_crimson}\\fscx124\\fscy124\\b1}}{word}"
+                    f"{{\\kf{dur_cs}\\1c{norm_crimson}\\fscx124\\fscy124\\b1"
+                    f"\\t({t_start},{t_peak},\\fscx130\\fscy130)\\t({t_peak},{t_settle},\\fscx124\\fscy124)}}{word}"
                     f"{{\\1c{norm_highlight}\\fscx100\\fscy100}}"
                 )
             elif is_payoff:
                 chosen_payoff_color = norm_power if "2080FF" in norm_power else norm_cyan
                 token_str = (
-                    f"{{\\kf{dur_cs}\\1c{chosen_payoff_color}\\fscx122\\fscy122\\b1}}{word}"
+                    f"{{\\kf{dur_cs}\\1c{chosen_payoff_color}\\fscx122\\fscy122\\b1"
+                    f"\\t({t_start},{t_peak},\\fscx128\\fscy128)\\t({t_peak},{t_settle},\\fscx122\\fscy122)}}{word}"
                     f"{{\\1c{norm_highlight}\\fscx100\\fscy100}}"
                 )
             elif is_focal:
                 # Từ trọng tâm ở dòng 2 (hoặc từ mở nhịp dòng 1) được phóng đại 122% chuẩn @MasteringMindControl
                 token_str = (
-                    f"{{\\kf{dur_cs}\\1c{norm_highlight}\\fscx122\\fscy122\\b1}}{word}"
+                    f"{{\\kf{dur_cs}\\1c{norm_highlight}\\fscx122\\fscy122\\b1"
+                    f"\\t({t_start},{t_peak},\\fscx128\\fscy128)\\t({t_peak},{t_settle},\\fscx122\\fscy122)}}{word}"
                     f"{{\\fscx100\\fscy100}}"
                 )
             else:
                 token_str = f"{{\\kf{dur_cs}}}{word}"
 
             parts.append(token_str)
+            cum_ms += dur_ms
 
         if 0 <= split_after_idx < len(parts) - 1:
             line1 = " ".join(parts[: split_after_idx + 1])
@@ -350,7 +382,7 @@ class SubtitleHelper:
     def build_ass_content(
         cls,
         scenes: List[SceneContract],
-        fontname: str = "Arial Black",
+        fontname: str = "Montserrat ExtraBold",
         fontsize: int = 68,
         margin_v: int = 720,
         primary_color: Optional[str] = None,
@@ -380,12 +412,14 @@ class SubtitleHelper:
                 eff_primary = primary_color or niche_sub.get("primary_ass", ASS_DIM_SILVER)
                 eff_secondary = secondary_color or niche_sub.get("secondary_ass", ASS_WHITE)
                 eff_outline = outline_color or niche_sub.get("outline_ass", ASS_BLACK)
-                if not fontname or fontname in ("Arial", "Arial Black"):
-                    eff_font = niche_sub.get("fontname", "Arial Black")
+                if not fontname or fontname in ("Arial", "Arial Black", "Montserrat ExtraBold"):
+                    eff_font = niche_sub.get("fontname", "Montserrat ExtraBold")
                 eff_size = fontsize if fontsize not in (42, 44, 68) and fontsize >= 62 else niche_sub.get("fontsize", 68)
                 eff_margin = margin_v if margin_v not in (580, 720) else niche_sub.get("margin_v", 720)
             except Exception as e:
                 pass
+
+        eff_font = cls._resolve_effective_font(eff_font)
 
         header = ASS_HEADER_TEMPLATE.format(
             fontname=eff_font,
@@ -903,12 +937,14 @@ class SubtitleHelper:
                 eff_primary = primary_color or niche_sub.get("primary_ass", ASS_WHITE)
                 eff_secondary = secondary_color or niche_sub.get("secondary_ass", ASS_YELLOW)
                 eff_outline = outline_color or niche_sub.get("outline_ass", ASS_BLACK)
-                if not fontname or fontname == "Arial":
-                    eff_font = niche_sub.get("fontname", "Arial")
+                if not fontname or fontname in ("Arial", "Arial Black", "Montserrat ExtraBold"):
+                    eff_font = niche_sub.get("fontname", "Montserrat ExtraBold")
                 eff_size = fontsize if fontsize not in (42, 44, 68) and fontsize >= 62 else niche_sub.get("fontsize", 68)
                 eff_margin = margin_v if margin_v not in (580, 720) else niche_sub.get("margin_v", 720)
             except Exception:
                 pass
+
+        eff_font = cls._resolve_effective_font(eff_font)
 
         header = ASS_HEADER_TEMPLATE.format(
             fontname=eff_font,
@@ -1021,7 +1057,7 @@ class SubtitleHelper:
         output_path: str,
         total_duration_sec: float = 0.0,
         clip_start_offset: float = 0.0,
-        fontname: str = "Arial",
+        fontname: str = "Montserrat ExtraBold",
         fontsize: int = 68,
         margin_v: int = 720,
         primary_color: Optional[str] = None,
@@ -1057,7 +1093,7 @@ class SubtitleHelper:
     def build_mashup_ass_content(
         cls,
         clips: List[Dict[str, Any]],
-        fontname: str = "Arial Black",
+        fontname: str = "Montserrat ExtraBold",
         fontsize: int = 68,
         margin_v: int = 720,
         primary_color: Optional[str] = None,
@@ -1081,7 +1117,7 @@ class SubtitleHelper:
         eff_secondary = secondary_color or ASS_YELLOW
         eff_outline = outline_color or ASS_BLACK
         eff_back = "&H90000000"
-        eff_font = fontname or "Arial Black"
+        eff_font = fontname or "Montserrat ExtraBold"
         eff_size = fontsize if (fontsize and fontsize >= 62) else 68
         eff_margin = margin_v or 720
 
@@ -1093,10 +1129,12 @@ class SubtitleHelper:
                 eff_primary = primary_color or niche_sub.get("primary_ass", ASS_WHITE)
                 eff_secondary = secondary_color or niche_sub.get("secondary_ass", ASS_YELLOW)
                 eff_outline = outline_color or niche_sub.get("outline_ass", ASS_BLACK)
-                eff_font = fontname or niche_sub.get("fontname", "Arial Black")
+                eff_font = fontname or niche_sub.get("fontname", "Montserrat ExtraBold")
                 eff_size = fontsize if (fontsize and fontsize not in (42, 44, 68) and fontsize >= 62) else niche_sub.get("fontsize", 68)
             except Exception:
                 pass
+
+        eff_font = cls._resolve_effective_font(eff_font)
 
         header = ASS_HEADER_TEMPLATE.format(
             fontname=eff_font,

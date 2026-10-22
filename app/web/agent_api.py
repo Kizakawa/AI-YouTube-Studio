@@ -12,10 +12,11 @@ from typing import Dict, List, Any, Optional
 from fastapi import APIRouter, HTTPException, Request, Depends, Query, Body
 from pydantic import BaseModel
 
+import hmac
 from config.settings import settings
 from app.utils.key_rotator import GEMINI_PRIORITY_MODELS
 from app.database.models import get_db, VideoJob, ActivityLog, User, log_activity
-from app.services.device_auth import is_local_ip
+from app.services.device_auth import extract_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +27,10 @@ def verify_agent_auth(request: Request):
     - Chấp nhận header 'X-Agent-Key' hoặc 'X-Agent-Secret'
     - Chấp nhận 'Authorization: Bearer <key>'
     - Chấp nhận query parameter '?agent_key=<key>'
-    - Tự động cho phép localhost (127.0.0.1) gọi nội bộ
+    - Tự động cho phép kết nối trực tiếp từ localhost (không qua Proxy/Tunnel)
     """
-    client_ip = request.client.host if request.client else "127.0.0.1"
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        client_ip = forwarded.split(",")[0].strip()
-
-    if is_local_ip(client_ip):
+    _, is_direct_local = extract_client_ip(request)
+    if is_direct_local:
         return True
 
     key = (
@@ -46,8 +43,8 @@ def verify_agent_auth(request: Request):
     if auth_hdr.startswith("Bearer "):
         key = auth_hdr[7:].strip()
 
-    expected_key = getattr(settings, "AGENT_API_KEY", "agy_agent_supersecret_key_2026")
-    if key and key == expected_key:
+    expected_key = (getattr(settings, "AGENT_API_KEY", "") or "").strip()
+    if key and expected_key and hmac.compare_digest(key.strip(), expected_key):
         return True
 
     raise HTTPException(

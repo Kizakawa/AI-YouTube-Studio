@@ -57,6 +57,7 @@ class WorkerDispatcher:
                     "vcodec": "h264_nvenc"
                 },
                 "callback_url": effective_callback,
+                "worker_token": getattr(settings, "AGENT_API_KEY", "") or "",
             }
 
     @staticmethod

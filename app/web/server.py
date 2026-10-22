@@ -31,28 +31,31 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
+import hmac
+import html as html_lib
+
 DEFAULT_DESKTOP_CLIENT = {
     "installed": {
-        "client_id": "972622851789-4175b1dquscrk08j2aq4jb8s84llh4uo.apps.googleusercontent.com",
-        "project_id": "bionic-client-509515-h2",
+        "client_id": os.getenv("GOOGLE_DESKTOP_CLIENT_ID", "972622851789-4175b1dquscrk08j2aq4jb8s84llh4uo.apps.googleusercontent.com"),
+        "project_id": os.getenv("GOOGLE_OAUTH_PROJECT_ID", "bionic-client-509515-h2"),
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
         "token_uri": "https://oauth2.googleapis.com/token",
         "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "client_secret": "GOCSPX-REDACTED_OAUTH_CLIENT_SECRET",
+        "client_secret": os.getenv("GOOGLE_DESKTOP_CLIENT_SECRET", ""),
         "redirect_uris": ["http://localhost"]
     }
 }
 
 DEFAULT_WEB_CLIENT = {
     "web": {
-        "client_id": "972622851789-l65i20vr94lp5mnc504oc58gdgumbr42.apps.googleusercontent.com",
-        "project_id": "bionic-client-509515-h2",
+        "client_id": os.getenv("GOOGLE_WEB_CLIENT_ID", "972622851789-l65i20vr94lp5mnc504oc58gdgumbr42.apps.googleusercontent.com"),
+        "project_id": os.getenv("GOOGLE_OAUTH_PROJECT_ID", "bionic-client-509515-h2"),
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
         "token_uri": "https://oauth2.googleapis.com/token",
         "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "client_secret": "GOCSPX-REDACTED_OAUTH_CLIENT_SECRET",
+        "client_secret": os.getenv("GOOGLE_WEB_CLIENT_SECRET", ""),
         "redirect_uris": [
-            "https://ai-youtube-studio-8kbu.onrender.com/api/oauth/callback"
+            os.getenv("GOOGLE_WEB_REDIRECT_URI", "https://ai-youtube-studio-8kbu.onrender.com/api/oauth/callback")
         ]
     }
 }
@@ -63,9 +66,11 @@ app = FastAPI(
     version="2.0.0"
 )
 
+_extra_cors = [o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https?://.*$",
+    allow_origins=_extra_cors,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|\[::1\]|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$|^https://[a-zA-Z0-9-]+\.(trycloudflare\.com|onrender\.com|ngrok-free\.app)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -73,15 +78,16 @@ app.add_middleware(
 
 @app.middleware("http")
 async def device_gatekeeper_middleware(request: Request, call_next):
-    """Bảo mật 2 lớp: Thiết bị từ xa (khác localhost) phải có token đã được Admin duyệt trên Telegram mới được gọi API"""
-    from app.services.device_auth import is_gatekeeper_enabled, is_local_ip, is_device_token_valid
+    """Bảo mật 2 lớp: Thiết bị từ xa (khác localhost trực tiếp) phải có token đã được Admin duyệt trên Telegram mới được gọi API"""
+    from app.services.device_auth import is_gatekeeper_enabled, extract_client_ip, is_device_token_valid
 
     if not is_gatekeeper_enabled():
         return await call_next(request)
 
     path = request.url.path
+    expected_agent_key = (getattr(settings, "AGENT_API_KEY", "") or "").strip()
 
-    # Cho phép AI Agent có key hợp lệ hoặc truy cập các endpoint /api/agent
+    # Cho phép AI Agent có key hợp lệ hoặc truy cập các endpoint /api/agent (nơi có Depends(verify_agent_auth))
     agent_key = (
         request.headers.get("X-Agent-Key")
         or request.headers.get("X-Agent-Secret")
@@ -90,25 +96,23 @@ async def device_gatekeeper_middleware(request: Request, call_next):
     auth_hdr = request.headers.get("Authorization", "")
     if auth_hdr.startswith("Bearer "):
         bearer_val = auth_hdr[7:].strip()
-        if bearer_val == getattr(settings, "AGENT_API_KEY", "agy_agent_supersecret_key_2026"):
+        if expected_agent_key and hmac.compare_digest(bearer_val, expected_agent_key):
             agent_key = bearer_val
 
-    if agent_key and agent_key == getattr(settings, "AGENT_API_KEY", "agy_agent_supersecret_key_2026"):
+    if agent_key and expected_agent_key and hmac.compare_digest(agent_key.strip(), expected_agent_key):
         return await call_next(request)
 
     if path.startswith("/api/agent"):
         return await call_next(request)
 
-    # Cho phép trang chủ HTML, tài nguyên tĩnh, media video, health check, oauth callback, và các endpoint xác thực thiết bị
+    # Chỉ miễn trừ tài nguyên giao diện tĩnh, trang chủ, endpoint kiểm tra trạng thái 2FA và OAuth redirect callback
     if (
         path.startswith("/static")
         or path.startswith("/media")
         or path.startswith("/api/auth")
-        or path.startswith("/api/oauth")
-        or path.startswith("/api/worker")
+        or path == "/api/oauth/callback"
+        or path.startswith("/api/worker/callback")
         or path.startswith("/api/render-complete")
-        or "/start-auth" in path
-        or "/auth-status" in path
         or path in ("/", "/health", "/api/health", "/api/system/client-info", "/api/network-info", "/favicon.ico")
     ):
         resp = await call_next(request)
@@ -116,18 +120,15 @@ async def device_gatekeeper_middleware(request: Request, call_next):
             resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         return resp
 
-    client_ip = request.client.host if request.client else "127.0.0.1"
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        client_ip = forwarded.split(",")[0].strip()
+    client_ip, is_direct_local = extract_client_ip(request)
 
-    # Máy chủ localhost luôn được cho qua
-    if is_local_ip(client_ip):
+    # Máy chủ localhost kết nối trực tiếp (không qua Proxy/Tunnel) luôn được cho qua
+    if is_direct_local:
         return await call_next(request)
 
     # Thiết bị từ xa phải có token hợp lệ đã được phê duyệt qua Telegram
     token = request.headers.get("X-Device-Token") or request.cookies.get("device_token")
-    if not is_device_token_valid(token, client_ip=client_ip):
+    if not is_device_token_valid(token, client_ip=client_ip, is_direct_local=is_direct_local):
         from starlette.responses import JSONResponse
         return JSONResponse(
             status_code=401,
@@ -384,19 +385,24 @@ async def get_network_info_endpoint():
 
 @app.get("/api/auth/check")
 async def check_device_auth(request: Request, response: Response):
-    """Kiểm tra quyền truy cập thiết bị (Localhost luôn qua; Thiết bị từ xa phải có token hoặc IP đã duyệt)"""
-    client_ip = request.client.host if request.client else "127.0.0.1"
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        client_ip = forwarded.split(",")[0].strip()
+    """Kiểm tra quyền truy cập thiết bị (Localhost trực tiếp luôn qua; Thiết bị từ xa phải có token đã duyệt)"""
+    from app.services.device_auth import is_gatekeeper_enabled, extract_client_ip, is_device_token_valid, parse_device_info
 
-    from app.services.device_auth import is_gatekeeper_enabled, is_local_ip, is_device_token_valid, get_token_for_ip, parse_device_info
+    client_ip, is_direct_local = extract_client_ip(request)
 
-    if not is_gatekeeper_enabled() or is_local_ip(client_ip):
+    if not is_gatekeeper_enabled() or is_direct_local:
         return {"authenticated": True, "is_local": True, "client_ip": client_ip}
 
     auth_token = request.headers.get("X-Device-Token") or request.cookies.get("device_token")
-    if auth_token and is_device_token_valid(auth_token, client_ip=client_ip):
+    if auth_token and is_device_token_valid(auth_token, client_ip=client_ip, is_direct_local=is_direct_local):
+        response.set_cookie(
+            key="device_token",
+            value=auth_token,
+            max_age=7 * 24 * 3600,
+            path="/",
+            samesite="lax",
+            httponly=True
+        )
         return {"authenticated": True, "is_local": False, "client_ip": client_ip, "token": auth_token}
 
     ua = request.headers.get("user-agent", "")
@@ -411,24 +417,16 @@ async def check_device_auth(request: Request, response: Response):
 @app.post("/api/auth/request-access")
 async def request_device_access(request: Request):
     """Gửi yêu cầu phê duyệt thiết bị mới đến nhóm Telegram"""
-    client_ip = request.client.host if request.client else "127.0.0.1"
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        client_ip = forwarded.split(",")[0].strip()
-
-    from app.services.device_auth import create_access_request
+    from app.services.device_auth import extract_client_ip, create_access_request
+    client_ip, _ = extract_client_ip(request)
     ua = request.headers.get("user-agent", "")
     return create_access_request(client_ip, ua)
 
 @app.get("/api/auth/status/{request_id}")
 async def check_device_request_status(request_id: str, request: Request, response: Response):
     """Frontend polling kiểm tra xem Admin đã bấm [Đồng Ý] trên Telegram chưa"""
-    client_ip = request.client.host if request.client else "127.0.0.1"
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        client_ip = forwarded.split(",")[0].strip()
-
-    from app.services.device_auth import get_request_status
+    from app.services.device_auth import extract_client_ip, get_request_status
+    client_ip, _ = extract_client_ip(request)
     res = get_request_status(request_id, client_ip=client_ip)
     if res.get("status") == "approved" and res.get("token"):
         response.set_cookie(
@@ -437,7 +435,7 @@ async def check_device_request_status(request_id: str, request: Request, respons
             max_age=7 * 24 * 3600,
             path="/",
             samesite="lax",
-            httponly=False
+            httponly=True
         )
     return res
 
@@ -914,6 +912,32 @@ async def delete_video_job(job_id: int) -> Dict[str, str]:
 
 # ─── Download Video ───────────────────────────────────────────────────────────
 
+def _resolve_safe_video_path(raw_video_path: str, job_id: Optional[int] = None) -> Path:
+    """Xác thực đường dẫn video thuộc các thư mục xuất an toàn và có định dạng video hợp lệ."""
+    allowed_exts = {".mp4", ".mov", ".webm", ".mkv"}
+    allowed_dirs = [
+        Path(settings.OUTPUT_DIR),
+        Path(settings.TEMP_DIR),
+        Path(settings.BASE_DIR) / "output",
+        Path(settings.BASE_DIR) / "storage",
+    ]
+    candidate = Path(raw_video_path)
+    if not candidate.exists() and job_id is not None:
+        local_fallback = Path(settings.OUTPUT_DIR) / f"video_{job_id}.mp4"
+        if local_fallback.exists():
+            candidate = local_fallback
+
+    if candidate.suffix.lower() not in allowed_exts:
+        raise HTTPException(status_code=403, detail="Định dạng file video không hợp lệ")
+    if not any(is_safe_path(candidate, d) for d in allowed_dirs):
+        raise HTTPException(status_code=403, detail="Truy cập đường dẫn ngoài vùng cho phép bị từ chối")
+    if not candidate.exists() or not candidate.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail=f"File video không tồn tại trên máy cục bộ này (Đường dẫn: {raw_video_path})."
+        )
+    return candidate
+
 @app.get("/api/videos/{job_id}/download")
 async def download_video(job_id: int):
     """Tải file video đã render về máy."""
@@ -923,9 +947,7 @@ async def download_video(job_id: int):
             raise HTTPException(status_code=404, detail="Không tìm thấy video job")
         if not job.video_path:
             raise HTTPException(status_code=404, detail="Video chưa được render")
-        video_path = Path(job.video_path)
-        if not video_path.exists():
-            raise HTTPException(status_code=404, detail=f"File video không tồn tại: {job.video_path}")
+        video_path = _resolve_safe_video_path(job.video_path, job_id=job_id)
         filename = f"video_{job_id}_{(job.title or 'untitled')[:30].replace(' ', '_')}.mp4"
 
     return FileResponse(
@@ -943,16 +965,7 @@ async def stream_video(job_id: int):
             raise HTTPException(status_code=404, detail="Không tìm thấy video job")
         if not job.video_path:
             raise HTTPException(status_code=404, detail="Video chưa được render")
-        video_path = Path(job.video_path)
-        if not video_path.exists():
-            local_fallback = Path(settings.OUTPUT_DIR) / f"video_{job_id}.mp4"
-            if local_fallback.exists():
-                video_path = local_fallback
-            else:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"File video không tồn tại trên máy cục bộ này (Đường dẫn: {job.video_path}). Có thể video được render trên máy khác."
-                )
+        video_path = _resolve_safe_video_path(job.video_path, job_id=job_id)
 
     return FileResponse(
         path=str(video_path),
@@ -2030,6 +2043,24 @@ async def worker_render_callback(request: Request) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "error", "message": f"Invalid JSON payload: {e}"}
 
+    # Xác thực Worker / Agent / Local / Thiết bị hợp lệ
+    from app.services.device_auth import extract_client_ip, is_device_token_valid
+    client_ip, is_direct_local = extract_client_ip(request)
+    expected_key = getattr(settings, "AGENT_API_KEY", "") or ""
+    provided_secret = (
+        request.headers.get("X-Agent-Key")
+        or request.headers.get("X-Worker-Secret")
+        or str(body.get("worker_token") or "")
+    )
+    dev_token = request.headers.get("X-Device-Token") or request.cookies.get("device_token") or ""
+    is_authed = (
+        is_direct_local
+        or (bool(expected_key) and bool(provided_secret) and hmac.compare_digest(provided_secret, expected_key))
+        or is_device_token_valid(dev_token, client_ip, is_direct_local=is_direct_local)
+    )
+    if not is_authed:
+        raise HTTPException(status_code=403, detail="Unauthorized worker callback")
+
     job_id = body.get("job_id")
     if not job_id:
         return {"status": "error", "message": "job_id is required"}
@@ -2039,6 +2070,19 @@ async def worker_render_callback(request: Request) -> Dict[str, Any]:
     drive_link = body.get("drive_link")
     render_time = body.get("render_time_s", 0)
     error_msg = body.get("error")
+
+    # Kiểm tra an toàn cho video_path nếu được truyền vào
+    if video_path:
+        allowed_dirs = [
+            Path(settings.OUTPUT_DIR),
+            Path(settings.TEMP_DIR),
+            Path(settings.BASE_DIR) / "output",
+            Path(settings.BASE_DIR) / "storage",
+        ]
+        cand_path = Path(str(video_path))
+        if cand_path.suffix.lower() not in {".mp4", ".mov", ".webm", ".mkv"} or not any(is_safe_path(cand_path, d) for d in allowed_dirs):
+            logger.warning(f"⚠️ [Worker Callback] Từ chối video_path ngoài vùng an toàn: {video_path}")
+            video_path = None
 
     with get_db() as db:
         job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
@@ -2854,13 +2898,14 @@ async def oauth_callback(
     Người dùng không cần copy-paste hay đụng vào bàn phím.
     """
     if error:
+        safe_error = html_lib.escape(str(error))
         return HTMLResponse(
             content=f"""<!DOCTYPE html>
             <html><head><meta charset="utf-8"><title>Lỗi Xác Thực</title></head>
             <body style="font-family:system-ui,sans-serif; background:#0f172a; color:#f8fafc; text-align:center; padding:60px 20px;">
                 <div style="font-size:50px; margin-bottom:12px;">❌</div>
                 <h2 style="color:#ef4444;">Lỗi Xác Thực Từ Google</h2>
-                <p style="color:#94a3b8;">Chi tiết: {error}</p>
+                <p style="color:#94a3b8;">Chi tiết: {safe_error}</p>
                 <p style="color:#64748b; font-size:13px;">Bạn có thể đóng cửa sổ này và thử lại từ Web Dashboard.</p>
             </body></html>""",
             status_code=400
@@ -2951,7 +2996,7 @@ async def oauth_callback(
                 "channel_title": succ_title,
                 "message": succ_msg
             }
-            display_name = f"Kênh YouTube: {succ_title}"
+            display_name = html_lib.escape(f"Kênh YouTube: {succ_title}")
         else:
             account_id = st_info["account_id"]
             service = st_info["service"]
@@ -2962,11 +3007,6 @@ async def oauth_callback(
             token_file = acc_dir / token_filename
             token_dict_to_save = json.loads(token_data)
             save_encrypted_json(token_file, token_dict_to_save)
-
-            b64_str = base64.b64encode(token_data.encode("utf-8")).decode("utf-8")
-            b64_file = acc_dir / f"{Path(token_filename).stem}_base64.txt"
-            with open(b64_file, "w", encoding="utf-8") as f:
-                f.write(b64_str)
 
             detected_email = None
             try:
@@ -3005,7 +3045,7 @@ async def oauth_callback(
                 "status": "success",
                 "message": succ_msg
             }
-            display_name = f"Tài khoản Google: {account_id}"
+            display_name = html_lib.escape(f"Tài khoản Google: {account_id}")
 
         return HTMLResponse(content=f"""<!DOCTYPE html>
 <html>
@@ -3035,7 +3075,7 @@ async def oauth_callback(
     <script>
         try {{
             if (window.opener) {{
-                window.opener.postMessage({{ type: 'oauth_complete', success: true }}, '*');
+                window.opener.postMessage({{ type: 'oauth_complete', success: true }}, window.location.origin);
             }}
         }} catch(e) {{}}
         setTimeout(function() {{
@@ -3048,13 +3088,14 @@ async def oauth_callback(
     except Exception as ex:
         logger.error(f"Lỗi trao đổi code OAuth qua callback: {ex}")
         _oauth_sessions[session_key] = {"status": "error", "error": str(ex)}
+        safe_ex = html_lib.escape(str(ex))
         return HTMLResponse(
             content=f"""<!DOCTYPE html>
             <html><head><meta charset="utf-8"><title>Lỗi</title></head>
             <body style="font-family:system-ui,sans-serif; background:#0f172a; color:#f8fafc; text-align:center; padding:60px 20px;">
                 <div style="font-size:50px; margin-bottom:12px;">❌</div>
                 <h2 style="color:#ef4444;">Không Thể Xác Thực Mã Code</h2>
-                <p style="color:#94a3b8;">Lỗi: {ex}</p>
+                <p style="color:#94a3b8;">Lỗi: {safe_ex}</p>
                 <p style="color:#64748b; font-size:13px;">Bạn có thể đóng tab này và thử lại từ Dashboard.</p>
             </body></html>""",
             status_code=500
@@ -3736,12 +3777,6 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
             token_dict_to_save = json.loads(token_data)
             save_encrypted_json(token_file, token_dict_to_save)
 
-            # Lưu thêm file Base64 cho Render deployment
-            b64_str = base64.b64encode(token_data.encode("utf-8")).decode("utf-8")
-            b64_file = acc_dir / f"{Path(token_filename).stem}_base64.txt"
-            with open(b64_file, "w", encoding="utf-8") as f:
-                f.write(b64_str)
-
             # Tự động nhận diện email thật của tài khoản Google vừa đăng nhập
             detected_email = None
             try:
@@ -4203,6 +4238,22 @@ def analyze_repurpose_video(req: RepurposeAnalyzeRequest) -> Dict[str, Any]:
         logger.error(f"Lỗi phân tích repurpose video: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+def _validate_repurpose_local_source(source_path: str) -> str:
+    """Đảm bảo đường dẫn file nguồn cục bộ chỉ nằm trong thư mục output/temp/storage/tests."""
+    import tempfile
+    allowed_dirs = [
+        Path(settings.OUTPUT_DIR),
+        Path(settings.TEMP_DIR),
+        Path(settings.BASE_DIR) / "output",
+        Path(settings.BASE_DIR) / "storage",
+        Path(settings.BASE_DIR) / "tests",
+        Path(tempfile.gettempdir()),
+    ]
+    cand = Path(source_path)
+    if not any(is_safe_path(cand, d) for d in allowed_dirs):
+        raise HTTPException(status_code=403, detail="Đường dẫn file nguồn nằm ngoài vùng cho phép")
+    return str(cand.resolve())
+
 @app.post("/api/repurposer/render-clip")
 def render_repurposed_clip(req: RepurposeRenderRequest, request: Request) -> Dict[str, Any]:
     """Cắt đoạn highlight, chuyển tỉ lệ 9:16 và ghép phụ đề Karaoke chuẩn Niche Profile."""
@@ -4213,7 +4264,9 @@ def render_repurposed_clip(req: RepurposeRenderRequest, request: Request) -> Dic
         client_ip = request.client.host if request.client else "unknown"
         source_path = req.source.strip()
         effective_source_url = req.source_url.strip() if req.source_url else (source_path if source_path.startswith("http") else "")
-        if not os.path.exists(source_path):
+        if os.path.exists(source_path):
+            source_path = _validate_repurpose_local_source(source_path)
+        else:
             video_id = extract_youtube_video_id(source_path)
             if not video_id:
                 raise HTTPException(status_code=400, detail="Không tìm thấy file nguồn hoặc link YouTube hợp lệ")
@@ -4258,6 +4311,8 @@ def render_repurposed_clip(req: RepurposeRenderRequest, request: Request) -> Dic
             watermark_position=req.watermark_position,
         )
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Lỗi render repurposed short: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -4272,7 +4327,9 @@ def render_repurposed_mashup(req: RepurposeMashupRenderRequest, request: Request
         client_ip = request.client.host if request.client else "unknown"
         source_path = req.source.strip()
         effective_source_url = req.source_url.strip() if req.source_url else (source_path if source_path.startswith("http") else "")
-        if not os.path.exists(source_path):
+        if os.path.exists(source_path):
+            source_path = _validate_repurpose_local_source(source_path)
+        else:
             video_id = extract_youtube_video_id(source_path)
             if not video_id:
                 raise HTTPException(status_code=400, detail="Không tìm thấy file nguồn hoặc link YouTube hợp lệ")
@@ -4509,9 +4566,10 @@ async def publish_repurposed_clip(req: RepurposePublishRequest) -> Dict[str, Any
     from app.services.video_repurposer import CLIPS_DIR
     from pathlib import Path as _Path
 
-    clip_path = CLIPS_DIR / req.clip_filename
-    if not clip_path.exists():
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy clip: {req.clip_filename}")
+    safe_clip_name = os.path.basename(req.clip_filename.strip())
+    clip_path = CLIPS_DIR / safe_clip_name
+    if not is_safe_path(clip_path, CLIPS_DIR) or not clip_path.exists() or not clip_path.is_file():
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy clip hợp lệ: {req.clip_filename}")
 
     try:
         cfg = _read_channels_yaml()
@@ -5806,8 +5864,21 @@ async def create_manual_studio_video(
 
     # 3. Cấu hình studio
     bgm_path = data.get("bgm_path")
-    if bgm_path and not Path(bgm_path).exists():
-        bgm_path = None
+    if bgm_path:
+        bgm_cand = Path(str(bgm_path))
+        allowed_bgm_dirs = [
+            Path(settings.BASE_DIR) / "assets",
+            Path(settings.BASE_DIR) / "storage",
+            Path(settings.OUTPUT_DIR),
+            Path(settings.TEMP_DIR),
+        ]
+        if not bgm_cand.exists() or not bgm_cand.is_file() or not any(is_safe_path(bgm_cand, d) for d in allowed_bgm_dirs):
+            bgm_path = None
+        else:
+            bgm_path = str(bgm_cand.resolve())
+
+    raw_font = str(data.get("subtitle_font", "Arial") or "Arial")
+    safe_font = "".join(c for c in raw_font if c.isalnum() or c in (" ", "-", "_")).strip() or "Arial"
 
     config = ManualStudioConfig(
         title=title,
@@ -5818,7 +5889,7 @@ async def create_manual_studio_video(
         bgm_volume=float(data.get("bgm_volume", 0.12)),
         use_ducking=bool(data.get("use_ducking", True)),
         subtitle_enabled=bool(data.get("subtitle_enabled", True)),
-        subtitle_font=data.get("subtitle_font", "Arial"),
+        subtitle_font=safe_font,
         subtitle_font_size=int(data.get("subtitle_font_size", 40)),
         subtitle_margin_v=int(data.get("subtitle_margin_v", 210)),
         transition_type=data.get("transition_type", "fade"),

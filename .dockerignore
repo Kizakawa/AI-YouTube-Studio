@@ -17,4 +17,9 @@ venv/
 .venv
 *.mp4
 *.mp3
-credentials/accounts/
+*.zip
+*.key
+*.b64
+*_base64.txt
+credentials/
+config/channels.yaml

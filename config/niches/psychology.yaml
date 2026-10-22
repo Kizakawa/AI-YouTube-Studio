@@ -65,7 +65,7 @@ visual_aesthetics:
   color_palette: Monochrome charcoal and silver-white chiaroscuro noir, deep obsidian shadows, stark ivory highlights, floating atmospheric film dust particles
   master_prompt_prefix: masterpiece dark psychological thriller art, monochrome noir aesthetic, high-contrast chiaroscuro lighting, intense micro-expression, seinen psychological anime & cinematic noir film still, floating dust particles
   master_prompt_suffix: stark silver and charcoal contrast, razor-sharp eyes and facial expression, moody atmospheric depth, vertical 9:16 composition, no text, no watermark
-  negative_prompts: bright cheerful corporate office, smiling stock photo business people, colorful cartoon, chibi, blurry, low quality, distorted faces, extra fingers, watermark, text
+  negative_prompts: bright cheerful corporate office, smiling stock photo business people, colorful cartoon, chibi, blurry, low quality, distorted faces, extra fingers, watermark, text, macro eye, dark muddy face
   stock_video_keywords:
   - chess grandmaster hand moving piece dark
   - two people tense silence confrontation shadow
@@ -83,7 +83,7 @@ subtitles:
   accent_color: '#FF2A2A'
   outline_color: '#000000'
   outline_width: 4
-  margin_bottom: 780
+  margin_bottom: 600
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural

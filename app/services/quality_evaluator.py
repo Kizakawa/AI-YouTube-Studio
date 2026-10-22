@@ -76,10 +76,9 @@ class QualityEvaluator:
         raw_hook = float(report.get("hook_score", 8.0))
         cal_hook, cal_notes = ScriptCritic._calibrate_hook_score_with_real_data(
             raw_hook_score=raw_hook,
-            scene_1_narration=scene_1_text,
-            title=title,
+            script_data=script_dict,
+            calibration=cal_thresh,
             channel_style=channel_niche,
-            thresholds=cal_thresh,
         )
         report["hook_score"] = round(cal_hook, 1)
         n_s = float(report.get("niche_score", 8.0))

@@ -378,6 +378,74 @@ class VoiceAgent:
 
         return f"{niche_default:+d}%"
 
+    @classmethod
+    def resolve_scene_prosody(
+        cls,
+        voice: str,
+        scene_idx: int,
+        total_scenes: int,
+        narration: str = "",
+        niche: Optional[str] = None,
+        explicit_rate: Optional[str] = None,
+    ) -> Dict[str, str]:
+        """
+        Biến thiên cảm xúc & nhịp độ giọng đọc theo từng Nhịp (Beat) của kịch bản (Dynamic Per-Scene Prosody):
+          - Scene 1 (Hook 0-3s): Tăng +2% tốc độ, +2Hz cao độ, +4% âm lượng tạo năng lượng cuốn hút tức thì.
+          - Mid-Video Twist / Reveal (Scene 4 hoặc có từ khóa bước ngoặt): Hạ nhẹ -1% tốc độ, -2Hz cao độ tạo chiều sâu bí ẩn.
+          - Cảnh Cao trào / Nguy hiểm (chứa từ khóa khẩn cấp hoặc dấu chấm than/hỏi): +1% tốc độ, +1Hz cao độ.
+          - Scene Cuối (Payoff / Seamless Loop): Nhịp đọc đĩnh đạc (-1Hz cao độ) để nối vòng lặp mượt mà.
+        """
+        base_rate_str = cls.resolve_optimal_tts_rate(voice, niche=niche, explicit_rate=explicit_rate)
+        try:
+            base_pct = int(base_rate_str.replace("%", "").replace("+", "").strip())
+        except Exception:
+            base_pct = 6
+
+        text_low = (narration or "").lower().strip()
+        twist_cues = (
+            "nhưng ", "tuy nhiên", "sự thật là", "hóa ra", "ít ai biết", "điều kỳ lạ",
+            "but ", "however", "the truth is", "turns out", "until ", "what nobody", "yet ",
+        )
+        urgent_cues = (
+            "nguy hiểm", "chết", "ngay lập tức", "cảnh báo", "tấn công", "khẩn cấp",
+            "danger", "deadly", "instantly", "warning", "attack", "never", "terrifying",
+        )
+
+        rate_delta = 0
+        pitch_hz = 0
+        vol_pct = 0
+
+        if scene_idx == 0:
+            # Nhịp 1 — 3s Thumb-Stopper Hook: Nhanh, đanh, bắt tai ngay lập tức
+            rate_delta = 2
+            pitch_hz = 2
+            vol_pct = 4
+        elif scene_idx == total_scenes - 1 and total_scenes >= 3:
+            # Nhịp 4 — Payoff & Infinite Loop: Chắc chắn, lắng đọng để nối mượt về câu Hook
+            rate_delta = 0
+            pitch_hz = -1
+            vol_pct = 2
+        elif scene_idx == 3 or any(text_low.startswith(k) or f" {k}" in text_low for k in twist_cues):
+            # Nhịp 2 — Mid-Video Twist / Pattern Interrupt: Chậm lại nửa nhịp, trầm giọng gây tò mò
+            rate_delta = -1
+            pitch_hz = -2
+            vol_pct = 2
+        elif any(k in text_low for k in urgent_cues) or "!" in narration:
+            # Nhịp 3 — Cao trào kịch tính
+            rate_delta = 1
+            pitch_hz = 1
+            vol_pct = 3
+
+        final_rate = max(-5, min(14, base_pct + rate_delta))
+        rate_str = f"{final_rate:+d}%"
+        pitch_str = f"{pitch_hz:+d}Hz"
+        vol_str = f"{vol_pct:+d}%"
+        return {
+            "rate": rate_str,
+            "pitch": pitch_str,
+            "volume": vol_str,
+        }
+
     # ──────────────────────────────────────────
     # PUBLIC API — Gọi từ Pipeline Orchestrator
     # ──────────────────────────────────────────
@@ -406,6 +474,8 @@ class VoiceAgent:
         """
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         sem = asyncio.Semaphore(4)
+        total_scenes = len(scenes)
+        # Xác định giọng đọc đồng nhất trên toàn bộ kịch bản (tránh trường hợp 1 câu ngắn bị nhận diện lệch ngôn ngữ)
         full_script_text = " ".join(getattr(s, "narration", "") or "" for s in scenes)
         base_requested = voice or (self.get_persona_voice(niche_id=niche) if niche else self.default_voice)
         global_safe_voice = self._resolve_safe_voice(full_script_text, base_requested)
@@ -435,7 +505,7 @@ class VoiceAgent:
 
         engine_tracker: List[str] = []
 
-        async def _process_single_scene(scene: SceneContract) -> SceneContract:
+        async def _process_single_scene(scene_idx: int, scene: SceneContract) -> SceneContract:
             async with sem:
                 if scene.scene_id > 1:
                     await asyncio.sleep(0.06 * ((scene.scene_id - 1) % 4))
@@ -532,12 +602,35 @@ class VoiceAgent:
                         for c_voice in candidate_voices:
                             for attempt in range(2):
                                 try:
-                                    tts_rate = self.resolve_optimal_tts_rate(c_voice, niche=niche, explicit_rate=rate)
+                                    prosody = self.resolve_scene_prosody(
+                                        voice=c_voice,
+                                        scene_idx=scene_idx,
+                                        total_scenes=total_scenes,
+                                        narration=clean_text,
+                                        niche=niche,
+                                        explicit_rate=rate,
+                                    )
+                                    tts_rate = prosody["rate"]
+                                    tts_pitch = prosody["pitch"]
+                                    tts_volume = prosody["volume"]
                                     try:
-                                        communicate = edge_tts.Communicate(clean_text, c_voice, rate=tts_rate, boundary="WordBoundary")
+                                        communicate = edge_tts.Communicate(
+                                            clean_text,
+                                            c_voice,
+                                            rate=tts_rate,
+                                            pitch=tts_pitch,
+                                            volume=tts_volume,
+                                            boundary="WordBoundary",
+                                        )
                                         await communicate.save(scene_audio_path, metadata_fname=words_meta_path)
                                     except TypeError:
-                                        communicate = edge_tts.Communicate(clean_text, c_voice, rate=tts_rate)
+                                        communicate = edge_tts.Communicate(
+                                            clean_text,
+                                            c_voice,
+                                            rate=tts_rate,
+                                            pitch=tts_pitch,
+                                            volume=tts_volume,
+                                        )
                                         await communicate.save(scene_audio_path)
 
                                     if Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024:
@@ -672,7 +765,7 @@ class VoiceAgent:
                 )
                 return enriched
 
-        enriched_scenes = list(await asyncio.gather(*[_process_single_scene(sc) for sc in scenes]))
+        enriched_scenes = list(await asyncio.gather(*[_process_single_scene(idx, sc) for idx, sc in enumerate(scenes)]))
         if engine_tracker:
             from collections import Counter
             self.last_used_engine = Counter(engine_tracker).most_common(1)[0][0]

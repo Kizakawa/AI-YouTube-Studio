@@ -19,7 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Tạo sẵn toàn bộ cây thư mục lưu trữ cần thiết
-RUN mkdir -p /app/storage/temp /app/storage/outputs /app/storage/jobs /app/credentials/accounts
+RUN mkdir -p /app/storage/temp /app/storage/outputs /app/storage/jobs \
+    /app/credentials/accounts /app/credentials/channels /app/output /app/logs
 
 # Cài đặt thư viện Python
 COPY requirements.txt .
@@ -27,6 +28,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy toàn bộ mã nguồn vào image
 COPY . .
+
+# Tạo non-root user bảo mật cho container
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app && \
+    chmod 700 /app/credentials
+
+USER appuser
 
 # Expose cổng Web Dashboard (mặc định 8000)
 EXPOSE 8000

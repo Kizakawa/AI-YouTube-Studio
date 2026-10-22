@@ -126,11 +126,13 @@ async def test_full_pipeline_render():
     assert qa["has_video"], "Thiếu video stream!"
     assert qa["has_audio"], "Thiếu audio stream!"
 
-    # 9. Kiểm tra file phụ đề SRT đã tạo
-    subtitle_file = pipeline.work_dir / "subtitles.srt"
-    assert subtitle_file.exists(), "File phụ đề SRT không được tạo!"
-    srt_content = subtitle_file.read_text(encoding="utf-8")
-    print(f"\n[5] Kiểm tra phụ đề SRT:\n{srt_content[:200]}...")
+    # 9. Kiểm tra file phụ đề (ASS hoặc SRT) đã tạo
+    subtitle_file = pipeline.work_dir / "subtitles.ass"
+    if not subtitle_file.exists():
+        subtitle_file = pipeline.work_dir / "subtitles.srt"
+    assert subtitle_file.exists(), "File phụ đề (ASS/SRT) không được tạo!"
+    sub_content = subtitle_file.read_text(encoding="utf-8")
+    print(f"\n[5] Kiểm tra phụ đề:\n{sub_content[:200]}...")
 
     # 10. Kiểm tra trạng thái DB
     with get_db() as db:

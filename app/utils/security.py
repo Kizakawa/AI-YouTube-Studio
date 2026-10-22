@@ -12,11 +12,15 @@ import re
 import json
 import base64
 import hashlib
+import secrets
 import logging
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, Tuple
 
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+try:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+except ImportError:
+    AESGCM = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -25,20 +29,21 @@ AES_PREFIX = b"AES256GCM:"
 AES_PREFIX_STR = "AES256GCM:"
 
 _CACHED_MASTER_KEY: Optional[bytes] = None
+# Khóa di chuyển tương thích ngược (chỉ dùng để giải mã tự động các file cũ và nâng cấp lên .master.key mới)
+_LEGACY_MIGRATION_KEY = bytes.fromhex("27e6b92fef27250bcec8629328c7060bce3da29a9edf98e3d00f63092ff2ba0a")
 
 
 def get_master_key() -> bytes:
     """
     Lấy khoá mã hoá chủ AES-256 (32 bytes).
     1. Ưu tiên đọc từ biến môi trường ENCRYPTION_MASTER_KEY.
-    2. Nếu chưa có, tự động đọc hoặc khởi tạo file bí mật credentials/.master.key.
+    2. Nếu chưa có, tự động đọc hoặc khởi tạo file bí mật độc lập credentials/.master.key.
     """
     global _CACHED_MASTER_KEY
     if _CACHED_MASTER_KEY is not None:
         return _CACHED_MASTER_KEY
 
-    DEFAULT_MASTER_KEY_HEX = "27e6b92fef27250bcec8629328c7060bce3da29a9edf98e3d00f63092ff2ba0a"
-    env_key = os.getenv("ENCRYPTION_MASTER_KEY", "").strip() or DEFAULT_MASTER_KEY_HEX
+    env_key = os.getenv("ENCRYPTION_MASTER_KEY", "").strip()
     if env_key:
         if len(env_key) == 64:
             try:
@@ -66,14 +71,14 @@ def get_master_key() -> bytes:
             elif len(raw) == 44:  # Base64 32 bytes
                 _CACHED_MASTER_KEY = base64.b64decode(raw)
                 return _CACHED_MASTER_KEY
-            else:
+            elif len(raw) > 0:
                 _CACHED_MASTER_KEY = hashlib.sha256(raw).digest()
                 return _CACHED_MASTER_KEY
         except Exception as e:
             logger.warning(f"Lỗi đọc key từ {key_file}: {e}. Tạo khoá mới...")
 
     # Tạo khoá AES-256 ngẫu nhiên chuẩn mật mã (32 bytes = 256 bits)
-    new_key = AESGCM.generate_key(bit_length=256)
+    new_key = AESGCM.generate_key(bit_length=256) if AESGCM is not None else secrets.token_bytes(32)
     try:
         with open(key_file, "wb") as f:
             f.write(new_key)
@@ -93,7 +98,7 @@ def get_master_key() -> bytes:
 
 def encrypt_bytes(data: bytes) -> bytes:
     """Mã hoá dữ liệu dạng bytes bằng AES-256-GCM với 12-byte random nonce."""
-    if not data:
+    if not data or AESGCM is None:
         return data
     key = get_master_key()
     aesgcm = AESGCM(key)
@@ -103,29 +108,42 @@ def encrypt_bytes(data: bytes) -> bytes:
     return AES_PREFIX + payload
 
 
+def _decrypt_bytes_with_status(data: bytes) -> Tuple[bytes, bool]:
+    """
+    Giải mã dữ liệu AES-256-GCM.
+    Trả về (decrypted_bytes, used_legacy_key).
+    """
+    if not data or not data.startswith(AES_PREFIX) or AESGCM is None:
+        return data, False
+
+    raw_b64 = data[len(AES_PREFIX):]
+    combined = base64.b64decode(raw_b64)
+    if len(combined) < 28:  # 12-byte nonce + 16-byte GCM tag
+        return data, False
+    nonce = combined[:12]
+    ciphertext = combined[12:]
+    key = get_master_key()
+    try:
+        return AESGCM(key).decrypt(nonce, ciphertext, None), False
+    except Exception:
+        if key != _LEGACY_MIGRATION_KEY:
+            try:
+                dec = AESGCM(_LEGACY_MIGRATION_KEY).decrypt(nonce, ciphertext, None)
+                return dec, True
+            except Exception as e:
+                logger.error(f"Lỗi giải mã AES-256-GCM: {e}")
+                return data, False
+        logger.error("Lỗi giải mã AES-256-GCM.")
+        return data, False
+
+
 def decrypt_bytes(data: bytes) -> bytes:
     """
     Giải mã dữ liệu AES-256-GCM.
     Nếu dữ liệu chưa được mã hoá (không có tiền tố AES256GCM:), trả về nguyên bản (Fallback).
     """
-    if not data:
-        return data
-    if not data.startswith(AES_PREFIX):
-        return data  # Dữ liệu dạng thô cũ, trả về nguyên bản
-
-    try:
-        raw_b64 = data[len(AES_PREFIX):]
-        combined = base64.b64decode(raw_b64)
-        if len(combined) < 28:  # 12-byte nonce + 16-byte GCM tag
-            return data
-        nonce = combined[:12]
-        ciphertext = combined[12:]
-        key = get_master_key()
-        aesgcm = AESGCM(key)
-        return aesgcm.decrypt(nonce, ciphertext, None)
-    except Exception as e:
-        logger.error(f"Lỗi giải mã AES-256-GCM: {e}")
-        return data
+    dec, _ = _decrypt_bytes_with_status(data)
+    return dec
 
 
 def encrypt_string(text: str) -> str:
@@ -164,7 +182,9 @@ def save_encrypted_json(file_path: Union[str, Path], data: Any) -> bool:
 def load_encrypted_json(file_path: Union[str, Path]) -> Optional[Any]:
     """
     Đọc dữ liệu từ file đã mã hoá AES-256-GCM.
-    Tương thích ngược: Nếu file vẫn là JSON thô chưa mã hoá, vẫn nạp bình thường 100%.
+    Tương thích ngược:
+    - Nếu file vẫn là JSON thô chưa mã hoá, vẫn nạp bình thường 100%.
+    - Nếu file được mã hoá bằng khoá cũ, tự động giải mã và nâng cấp (re-encrypt) sang khoá .master.key mới.
     """
     p = Path(file_path)
     if not p.exists():
@@ -172,8 +192,11 @@ def load_encrypted_json(file_path: Union[str, Path]) -> Optional[Any]:
     try:
         with open(p, "rb") as f:
             raw_bytes = f.read()
-        decrypted_bytes = decrypt_bytes(raw_bytes)
-        return json.loads(decrypted_bytes.decode("utf-8"))
+        decrypted_bytes, used_legacy = _decrypt_bytes_with_status(raw_bytes)
+        parsed = json.loads(decrypted_bytes.decode("utf-8"))
+        if used_legacy or not raw_bytes.startswith(AES_PREFIX):
+            save_encrypted_json(p, parsed)
+        return parsed
     except Exception as e:
         logger.error(f"Lỗi đọc file JSON (giải mã AES) từ {file_path}: {e}")
         return None

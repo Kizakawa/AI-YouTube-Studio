@@ -43,8 +43,12 @@ tokens/
 *.token.json
 *.pem
 *.key
+*.b64
+*_base64.txt
 .master.key
 credentials/.master.key
+credentials/.agent.key
+credentials/.vault_bundle.b64
 config/channels.yaml
 *.backup
 secrets_config.zip

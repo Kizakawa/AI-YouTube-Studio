@@ -629,6 +629,7 @@ class AIVideoAgent:
         visual_analysis: Optional[Dict[str, Any]] = None,
         narration: str = "",
         is_scifi: bool = False,
+        **kwargs,
     ) -> Optional[str]:
         """
         Tìm kiếm và tải video clip 9:16 chất lượng cao từ Pexels Video cho các chủ đề viễn tưởng / chuyển động.

@@ -21,10 +21,11 @@ import secrets
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 
 from config.settings import settings
 from app.services.channel_intelligence import send_telegram_broadcast
+from app.utils.security import get_master_key
 
 logger = logging.getLogger(__name__)
 
@@ -34,13 +35,11 @@ PENDING_FILE = STORAGE_DIR / "pending_requests.json"
 
 
 def _get_signing_key() -> bytes:
-    """Khóa bí mật tạo chữ ký HMAC cho device token, không bao giờ mất khi Render restart"""
-    secret = (
-        os.getenv("DEVICE_GATEKEEPER_SECRET")
-        or settings.TELEGRAM_BOT_TOKEN
-        or "ai_youtube_studio_device_gatekeeper_2026_salt"
-    )
-    return secret.encode("utf-8")
+    """Khóa bí mật tạo chữ ký HMAC cho device token, ưu tiên khóa cấu hình hoặc Master Key độc lập."""
+    secret = os.getenv("DEVICE_GATEKEEPER_SECRET", "").strip() or (settings.TELEGRAM_BOT_TOKEN or "").strip()
+    if secret:
+        return secret.encode("utf-8")
+    return get_master_key()
 
 
 def generate_signed_token(client_ip: str, device_name: str, approver: str = "Admin", duration_days: int = 7) -> str:
@@ -48,7 +47,7 @@ def generate_signed_token(client_ip: str, device_name: str, approver: str = "Adm
     Tạo token chữ ký số HMAC-SHA256 lưu giữ trực tiếp trên thiết bị (Client-Side State).
     Đặc tính:
     - Chứa thời hạn hết hạn (exp = 7 ngày).
-    - Có chữ ký bí mật từ TELEGRAM_BOT_TOKEN.
+    - Có chữ ký bí mật HMAC-SHA256.
     - Miễn nhiễm hoàn toàn khi Render ngủ đông, khởi động lại hoặc redeploy!
     """
     now = time.time()
@@ -163,21 +162,64 @@ def is_local_ip(ip: Optional[str]) -> bool:
     """Kiểm tra xem IP có phải là localhost của chính máy chủ đang chạy bot không"""
     if not ip:
         return False
-    clean_ip = ip.strip()
+    clean_ip = ip.strip().lower()
     return clean_ip in ("127.0.0.1", "localhost", "::1", "testclient")
 
 
-def is_device_token_valid(token: Optional[str] = None, client_ip: Optional[str] = None) -> bool:
+def extract_client_ip(request: Any) -> Tuple[str, bool]:
+    """
+    Trích xuất địa chỉ IP thực của client và xác định xem kết nối có phải là truy cập cục bộ trực tiếp hay không.
+    Chống hoàn toàn tấn công giả mạo X-Forwarded-For:
+    - Chỉ coi là local trực tiếp (is_direct_local=True) khi socket kết nối trực tiếp từ loopback VÀ không có bất kỳ header Proxy/Tunnel nào.
+    - Nếu kết nối đi qua local Reverse Proxy / Cloudflare Tunnel (direct_host là loopback nhưng có header proxy), ưu tiên CF-Connecting-IP hoặc phần tử cuối của X-Forwarded-For, và luôn đặt is_direct_local=False.
+    - Nếu kết nối trực tiếp từ mạng ngoài/LAN (direct_host không phải loopback), bỏ qua hoàn toàn X-Forwarded-For do client tự chèn.
+    """
+    direct_host = (request.client.host if getattr(request, "client", None) else "unknown").strip()
+    headers = getattr(request, "headers", {}) or {}
+    cf_ip = headers.get("CF-Connecting-IP", "").strip()
+    x_real_ip = headers.get("X-Real-IP", "").strip()
+    xff = headers.get("X-Forwarded-For", "").strip()
+    cf_ray = headers.get("CF-Ray", "").strip()
+
+    has_proxy_headers = bool(cf_ip or x_real_ip or xff or cf_ray)
+    direct_is_loopback = is_local_ip(direct_host)
+
+    if direct_is_loopback and not has_proxy_headers:
+        return direct_host, True
+
+    if direct_is_loopback and has_proxy_headers:
+        if cf_ip:
+            return cf_ip, False
+        if x_real_ip:
+            return x_real_ip, False
+        if xff:
+            # Lấy IP cuối cùng do Reverse Proxy cục bộ gắn vào, không lấy phần tử đầu do client kiểm soát
+            parts = [p.strip() for p in xff.split(",") if p.strip()]
+            if parts:
+                return parts[-1], False
+        return direct_host, False
+
+    # Kết nối trực tiếp từ IP bên ngoài -> Không tin tưởng X-Forwarded-For của client
+    return direct_host, False
+
+
+def is_device_token_valid(
+    token: Optional[str] = None,
+    client_ip: Optional[str] = None,
+    is_direct_local: Optional[bool] = None
+) -> bool:
     """
     Kiểm tra xem thiết bị có được cấp quyền truy cập không.
-    1. Localhost luôn hợp lệ.
-    2. Token chữ ký số HMAC (dtk_...) hợp lệ và còn hạn 7 ngày -> Luôn hợp lệ (không phụ thuộc file hệ thống).
-    3. Token cũ hoặc IP đã lưu trong approved_devices.json -> Hợp lệ.
+    1. Kết nối trực tiếp từ Localhost (không qua proxy/tunnel) luôn hợp lệ.
+    2. Token chữ ký số HMAC (dtk_...) hợp lệ và còn hạn 7 ngày -> Luôn hợp lệ.
+    3. Token đã lưu trong approved_devices.json -> Hợp lệ.
     """
     if not is_gatekeeper_enabled():
         return True
 
-    if is_local_ip(client_ip):
+    if is_direct_local is True:
+        return True
+    if is_direct_local is None and is_local_ip(client_ip):
         return True
 
     # 1. Kiểm tra Signed Cryptographic Token (Chống mất khi Render restart / ngủ đông)
@@ -186,11 +228,10 @@ def is_device_token_valid(token: Optional[str] = None, client_ip: Optional[str] 
         if signed_payload is not None:
             return True
 
-    # 2. Kiểm tra danh sách thiết bị lưu tạm thời trên đĩa
+    # 2. Kiểm tra danh sách thiết bị lưu tạm thời trên đĩa theo Token
     devices = _load_approved_devices()
     now = time.time()
 
-    # Kiểm tra theo Token cũ
     if token and token in devices:
         if devices[token].get("expires_at", 0) > now:
             return True
@@ -245,7 +286,7 @@ def parse_device_info(user_agent: str) -> str:
 def create_access_request(client_ip: str, user_agent: str) -> Dict[str, Any]:
     """
     Tạo yêu cầu truy cập mới từ thiết bị từ xa và bắn tin nhắn duyệt về Telegram.
-    Chống spam: nếu IP này đã có request pending trong 2 phút gần nhất thì tái sử dụng.
+    Chống spam: nếu IP này đã có request pending trong 1 phút gần nhất thì tái sử dụng.
     """
     pending = _load_pending_requests()
     now = time.time()
@@ -265,7 +306,7 @@ def create_access_request(client_ip: str, user_agent: str) -> Dict[str, Any]:
                 "client_ip": client_ip
             }
 
-    req_id = "dev_" + secrets.token_hex(4)
+    req_id = "dev_" + secrets.token_hex(8)
     device_name = parse_device_info(user_agent)
     now_str = datetime.now().strftime("%H:%M:%S %d/%m/%Y")
 
@@ -340,53 +381,28 @@ def _broadcast_to_allowed_groups(text: str, inline_keyboard: list):
 
 
 def get_request_status(req_id: str, client_ip: Optional[str] = None) -> Dict[str, Any]:
-    """Kiểm tra trạng thái của một yêu cầu phê duyệt (hỗ trợ kiểm tra cả IP đã duyệt)"""
-    # 1. Kiểm tra nếu IP này đã có trong danh sách approved_devices
-    if client_ip:
-        devices = _load_approved_devices()
-        now = time.time()
-        for tok, dev in devices.items():
-            if dev.get("client_ip") == client_ip and dev.get("expires_at", 0) > now:
-                return {
-                    "request_id": req_id,
-                    "status": "approved",
-                    "token": tok
-                }
+    """Kiểm tra trạng thái của một yêu cầu phê duyệt theo đúng req_id đã cấp."""
+    if not req_id:
+        return {"status": "not_found"}
 
-    # 2. Kiểm tra theo req_id
     pending = _load_pending_requests()
     req = pending.get(req_id)
     if not req:
-        # Nếu không thấy theo ID, kiểm tra xem có pending request nào của IP này không
-        if client_ip:
-            for r_id, r in pending.items():
-                if r.get("client_ip") == client_ip:
-                    return {
-                        "request_id": r_id,
-                        "status": r.get("status", "pending"),
-                        "token": r.get("token")
-                    }
         return {"status": "not_found"}
 
     return {
         "request_id": req_id,
         "status": req.get("status", "pending"),
-        "token": req.get("token")
+        "token": req.get("token") if req.get("status") == "approved" else None
     }
 
 
 def approve_access_request(req_id: str, admin_name: str = "Admin") -> Optional[Dict[str, Any]]:
-    """Admin bấm [✅ Đồng Ý] trên Telegram"""
+    """Admin bấm [✅ Đồng Ý] trên Telegram (chỉ duyệt đúng req_id được chỉ định)"""
+    if not req_id:
+        return None
     pending = _load_pending_requests()
     req = pending.get(req_id)
-
-    # Fallback an toàn: nếu req_id cụ thể không có (do restart), lấy request pending gần nhất
-    if not req:
-        for r_id, r in pending.items():
-            if r.get("status") == "pending":
-                req_id = r_id
-                req = r
-                break
 
     if not req:
         logger.warning(f"Không tìm thấy yêu cầu duyệt thiết bị: {req_id}")
@@ -421,16 +437,11 @@ def approve_access_request(req_id: str, admin_name: str = "Admin") -> Optional[D
 
 
 def reject_access_request(req_id: str, admin_name: str = "Admin") -> Optional[Dict[str, Any]]:
-    """Admin bấm [❌ Từ Chối] trên Telegram"""
+    """Admin bấm [❌ Từ Chối] trên Telegram (chỉ từ chối đúng req_id được chỉ định)"""
+    if not req_id:
+        return None
     pending = _load_pending_requests()
     req = pending.get(req_id)
-    if not req:
-        for r_id, r in pending.items():
-            if r.get("status") == "pending":
-                req_id = r_id
-                req = r
-                break
-
     if not req:
         return None
 

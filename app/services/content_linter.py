@@ -312,6 +312,55 @@ class ScriptValidationLinter:
 
         return issues, repeated
 
+    # Các cụm từ vi phạm Chính sách Tiêu chuẩn Cộng đồng YouTube (Animal Abuse/Suffering, Staged Rescue, Graphic Gore, Self-Harm)
+    COMMUNITY_GUIDELINES_BANNED_PHRASES = [
+        # Animal suffering / Staged rescue triggers (Nguyên nhân gây xóa video Job #309)
+        "paralyzed", "dragged herself", "dragged his", "dragged her", "dragging its",
+        "bloodied", "bleeding", "open wound", "flesh wound", "spinal trauma",
+        "broken spine", "crushed spine", "mangled", "chained for", "tied in rain",
+        "tied up in", "starving to death", "frozen to death", "dying in the",
+        "tortured", "abused", "beaten", "suffocating", "choking", "drowning",
+        # Portuguese equivalents for Brazil channels
+        "paralisado", "paralisada", "arrastando as patas", "sangrando", "espancado",
+        "acorrentado", "torturado", "morrendo de fome",
+        # Graphic violence / Gore triggers
+        "bites into brains", "shatters skulls", "ripping flesh", "tearing flesh",
+        "bloodbath", "mutilated", "disembowel", "decapitate",
+        # Self-harm / Extreme violence triggers
+        "suicide", "self-harm", "kill yourself", "serial killer", "serial killers",
+        "weaponize death", "buried alive",
+    ]
+
+    @classmethod
+    def check_community_guidelines_safety(cls, script: ScriptContract) -> List[str]:
+        """
+        Kiểm tra nghiêm ngặt Tiêu chuẩn Cộng đồng YouTube (YouTube Community Guidelines Safety Gate):
+        Chặn tuyệt đối ngôn từ mô tả hành hạ động vật, thương tích máu me, kéo lê chân liệt (Staged/Graphic Animal Suffering),
+        bạo lực máu me (Graphic Gore) hoặc tự gây hại.
+        """
+        issues = []
+        combined_text = " ".join([
+            script.title or "",
+            script.hook or "",
+            script.full_narration or "",
+            " ".join((s.narration or "") + " " + (s.visual_keyword or "") + " " + (s.visual_prompt or "") for s in (script.scenes or []))
+        ]).lower()
+
+        violated = []
+        for phrase in cls.COMMUNITY_GUIDELINES_BANNED_PHRASES:
+            pattern = r'\b' + re.escape(phrase.lower()) + r'\b'
+            if re.search(pattern, combined_text):
+                violated.append(phrase)
+
+        if violated:
+            v_str = ", ".join(f"'{v}'" for v in violated)
+            issues.append(
+                f"YOUTUBE COMMUNITY GUIDELINES VIOLATION DETECTED ({v_str}): "
+                f"Strictly avoid graphic animal suffering, paralysis/dragging limbs, blood/wounds, chaining/tying animals, "
+                f"graphic gore, or self-harm/violence terms. Focus on gentle care, shelter discovery, curiosity, and joyful recovery."
+            )
+        return issues
+
     @classmethod
     def lint(
         cls,
@@ -326,6 +375,10 @@ class ScriptValidationLinter:
         """
         all_issues: List[str] = []
         niche_id = str(niche_profile.get("id", "")).lower()
+
+        # 0. YouTube Community Guidelines Safety Gate (Chặn tuyệt đối vi phạm chính sách YouTube)
+        cg_issues = cls.check_community_guidelines_safety(script)
+        all_issues.extend(cg_issues)
 
         # 1. Trailing connector check
         conn_issues = cls.check_trailing_connectors(script)
