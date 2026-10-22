@@ -92,7 +92,7 @@ class PublisherAgent:
                     self.init_error = f"invalid_grant: {err_str}"
                     logger.error(
                         f"🔑 [TokenRefresh] Phiên OAuth của '{self.channel_name}' đã bị thu hồi vĩnh viễn. "
-                        f"Vui lòng chạy 'python auth_channel.py {self.channel_id}' để cấp quyền lại."
+                        f"Vui lòng vào Web Dashboard -> Tab 'Kênh & Tài Khoản' -> Bấm '🔑 Cấp Quyền YouTube' cho kênh '{self.channel_id}'."
                     )
                     return False
                 # Lỗi tạm thời (mạng, timeout, 5xx) → retry với backoff
@@ -220,12 +220,12 @@ class PublisherAgent:
             if self.init_error and ("invalid_grant" in self.init_error or "expired" in self.init_error):
                 err_msg = (
                     f"⚠️ Phiên đăng nhập YouTube của kênh '{self.channel_name}' đã hết hạn (Google OAuth token expired). "
-                    f"Vui lòng chạy lệnh 'python auth_channel.py {self.channel_id}' trong terminal hoặc vào Web Dashboard (http://127.0.0.1:8000) -> Tab Kênh & Tài Khoản -> Bấm '🔑 Cấp Quyền YouTube (Kênh Này)' để kết nối lại."
+                    f"Vui lòng vào Web Dashboard (http://127.0.0.1:8000) -> Tab 'Kênh & Tài Khoản' -> Bấm '🔑 Cấp Quyền YouTube (Kênh Này)' để kết nối lại."
                 )
             else:
                 err_msg = (
                     f"Kênh '{self.channel_name}' chưa có token YouTube riêng hoặc chưa được cấp quyền ({self.init_error or 'Chưa xác thực'}). "
-                    f"Vui lòng vào Web Dashboard -> Tab Kênh & Tài Khoản -> Bấm '🔑 Cấp Quyền YouTube (Kênh Này)' hoặc chạy 'python auth_channel.py {self.channel_id}'."
+                    f"Vui lòng vào Web Dashboard -> Tab 'Kênh & Tài Khoản' -> Bấm '🔑 Cấp Quyền YouTube (Kênh Này)'."
                 )
             logger.error(f"Không thể kết nối YouTube API để upload: {self.token_file} ({err_msg})")
             return {

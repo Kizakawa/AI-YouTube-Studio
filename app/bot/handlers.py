@@ -2792,7 +2792,7 @@ async def _execute_channel_publish(update: Update, context: ContextTypes.DEFAULT
                 f"Video <b>KHÔNG</b> bị chuyển sang kênh khác để đảm bảo đúng chủ đề nội dung (niche).\n"
                 f"Video đã được đưa vào hàng đợi an toàn và sẽ <b>tự động xuất bản lên {html.escape(ch_name)}</b> lúc <b>{next_reset_str}</b> (khi Google nạp lại Quota).\n\n"
                 f"💡 <i>Mẹo: Để đăng ngay mà không cần đợi, bạn có thể liên kết thêm Dự án Google Cloud dự phòng cho kênh {html.escape(ch_name)} bằng lệnh:</i>\n"
-                f"<code>python auth_channel.py {channel_id} account_1</code>"
+                f"<b>Web Dashboard ➔ Tab Kênh &amp; Tài Khoản ➔ 🔑 Cấp Quyền YouTube</b>"
             )
             if drive_link:
                 waiting_text += f"\n\n💾 Video đã lưu trữ an toàn trên Google Drive:\n👉 {drive_link}"
@@ -3483,7 +3483,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"Video <b>KHÔNG</b> bị chuyển sang kênh khác để đảm bảo đúng chủ đề nội dung (niche).\n"
                     f"Video đã được đưa vào hàng đợi an toàn và sẽ <b>tự động xuất bản lên {html.escape(ch_name)}</b> lúc <b>{next_reset_str}</b> (khi Google nạp lại Quota).\n\n"
                     f"💡 <i>Mẹo: Để đăng ngay mà không cần đợi, bạn có thể liên kết thêm Dự án Google Cloud dự phòng cho kênh {html.escape(ch_name)} bằng lệnh:</i>\n"
-                    f"<code>python auth_channel.py {channel_id} account_1</code>"
+                    f"<b>Web Dashboard ➔ Tab Kênh &amp; Tài Khoản ➔ 🔑 Cấp Quyền YouTube</b>"
                 )
                 await safe_reply(update, waiting_text, parse_mode="HTML")
             else:

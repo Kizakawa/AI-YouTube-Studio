@@ -2794,6 +2794,87 @@ function useChannelForScript(channelId) {
     showToast(`Đã chọn kênh: ${ch?.name || channelId}! Hãy nhập chủ đề video.`, 'info');
 }
 
+async function runLiveOAuthMatrixCheck() {
+    const box = document.getElementById('live-oauth-matrix-box');
+    const btn = document.getElementById('btn-live-oauth-matrix');
+    if (!box) return;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Đang kiểm tra trực tiếp 7 kênh với Google OAuth...';
+    }
+    box.style.display = 'block';
+    box.innerHTML = `<div style="padding:16px; text-align:center; color:var(--text-secondary);">🔄 Đang kết nối trực tiếp tới máy chủ Google OAuth để kiểm tra sức khỏe Refresh Token và Ma trận 3 Project Quota...</div>`;
+    try {
+        const res = await apiGet('/api/channels/oauth-live-check');
+        if (!res || !res.success) {
+            box.innerHTML = `<div style="padding:14px; color:var(--accent-rose);">❌ Không thể kiểm tra trạng thái OAuth Live.</div>`;
+            return;
+        }
+        const projs = res.accounts || ['account_1', 'acount_2', 'accout3'];
+        const rows = (res.channels || []).map((ch, idx) => {
+            const projCells = projs.map(p => {
+                const linked = ch.project_matrix && ch.project_matrix[p];
+                const encId = encodeURIComponent(ch.id);
+                const encName = encodeURIComponent(ch.name);
+                const encProj = encodeURIComponent(p);
+                return `<td style="text-align:center; padding:8px;">
+                    <button type="button" class="btn btn-sm ${linked ? 'btn-secondary' : 'btn-primary'}"
+                        style="font-size:11px; padding:4px 8px; ${linked ? 'border-color:rgba(16,185,129,0.4); color:#34d399;' : 'background:rgba(245,158,11,0.2); border-color:rgba(245,158,11,0.5); color:#fbbf24;'}"
+                        onclick="startChannelAuth(decodeURIComponent('${encId}'), decodeURIComponent('${encName}'), decodeURIComponent('${encProj}'))"
+                        title="Bấm để cấp quyền / làm mới OAuth kênh '${esc(ch.name)}' với Project '${esc(p)}'">
+                        ${linked ? '🟢 Đã liên kết' : '➕ Cấp quyền'}
+                    </button>
+                </td>`;
+            }).join('');
+            const encIdMain = encodeURIComponent(ch.id);
+            const encNameMain = encodeURIComponent(ch.name);
+            const encAccMain = encodeURIComponent(ch.primary_account || 'account_1');
+            return `<tr style="border-bottom:1px solid rgba(255,255,255,0.06);">
+                <td style="padding:8px 10px; font-weight:600;">#${idx + 1} · 📺 ${esc(ch.name)}</td>
+                <td style="padding:8px 10px;"><code>${esc(ch.primary_account)}</code></td>
+                <td style="padding:8px 10px; color:${ch.is_valid ? '#34d399' : '#f87171'}; font-weight:600;">${esc(ch.status_text)}</td>
+                ${projCells}
+                <td style="padding:8px 10px; text-align:right;">
+                    <button type="button" class="btn btn-primary btn-sm" style="font-size:11px;"
+                        onclick="startChannelAuth(decodeURIComponent('${encIdMain}'), decodeURIComponent('${encNameMain}'), decodeURIComponent('${encAccMain}'))">
+                        🔑 Cấp Quyền Ngay
+                    </button>
+                </td>
+            </tr>`;
+        }).join('');
+
+        box.innerHTML = `
+            <div style="margin-top:12px; background:rgba(15,23,42,0.75); border:1px solid rgba(96,165,250,0.25); border-radius:10px; padding:14px; overflow-x:auto;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+                    <div style="font-weight:700; color:#e2e8f0; font-size:13.5px;">
+                        🩺 Kết Quả Kiểm Định Live OAuth: <span style="color:#34d399;">${res.valid_count}/${res.total_count} Kênh Hoạt Động Tốt</span>
+                    </div>
+                    <span style="font-size:11.5px; color:var(--text-muted);">💡 Bấm vào từng ô Project để liên kết xoay vòng Quota (30.000 Quota/ngày/kênh)</span>
+                </div>
+                <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+                    <thead>
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.12); color:var(--text-secondary); text-align:left;">
+                            <th style="padding:8px 10px;">Kênh YouTube</th>
+                            <th style="padding:8px 10px;">Project Chính</th>
+                            <th style="padding:8px 10px;">Trạng Thái Token Live</th>
+                            ${projs.map(p => `<th style="padding:8px; text-align:center;">Pool: ${esc(p)}</th>`).join('')}
+                            <th style="padding:8px 10px; text-align:right;">Thao Tác</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        `;
+    } catch (e) {
+        box.innerHTML = `<div style="padding:14px; color:var(--accent-rose);">❌ Lỗi kiểm tra OAuth Live: ${esc(e.message || String(e))}</div>`;
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '🩺 Kiểm Tra Sức Khỏe Token Live & Ma Trận Quota (7 Kênh)';
+        }
+    }
+}
+
 function renderAccounts(accounts) {
     const container = document.getElementById('accounts-container');
     if (!container) return;
@@ -2810,7 +2891,24 @@ function renderAccounts(accounts) {
         return;
     }
 
-    container.innerHTML = accounts.map(acc => {
+    const wizardBanner = `
+        <div class="account-card" style="margin-bottom:18px; background:linear-gradient(135deg, rgba(30,41,59,0.9), rgba(15,23,42,0.95)); border:1px solid rgba(59,130,246,0.3);">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div>
+                    <h4 style="font-size:15px; color:#60a5fa; margin-bottom:4px;">🔐 Trung Tâm Xác Thực OAuth Tự Động & Ma Trận Quota Đa Dự Án (Web Wizard)</h4>
+                    <p style="font-size:12.5px; color:var(--text-secondary); margin:0;">
+                        Tích hợp toàn bộ tính năng kiểm tra Token Live, tự động định tuyến chống chọn nhầm kênh và liên kết Ma trận 7 Kênh × 3 Google Cloud Project ngay trên Web.
+                    </p>
+                </div>
+                <button id="btn-live-oauth-matrix" type="button" class="btn btn-primary btn-sm" onclick="runLiveOAuthMatrixCheck()" style="font-weight:600; padding:8px 14px;">
+                    🩺 Kiểm Tra Sức Khỏe Token Live & Ma Trận Quota (7 Kênh)
+                </button>
+            </div>
+            <div id="live-oauth-matrix-box" style="display:none;"></div>
+        </div>
+    `;
+
+    container.innerHTML = wizardBanner + accounts.map(acc => {
         const brandChannels = acc.brand_channels || [];
         const email = acc.email_label || 'Chưa đặt Gmail';
 
@@ -3281,7 +3379,7 @@ async function deleteChannel(accountId, channelId) {
 ══════════════════════════════════════════════════════════ */
 let currentOAuthSessionKey = '';
 
-async function startChannelAuth(channelId, channelName) {
+async function startChannelAuth(channelId, channelName, accountId = '') {
     let authWin = null;
     try {
         // Mở trước tab mới trực tiếp trong sự kiện click của người dùng để tránh bị trình duyệt Edge/Chrome chặn popup
@@ -3346,8 +3444,9 @@ async function startChannelAuth(channelId, channelName) {
             }
         }, 1000);
 
-        // Khởi động OAuth cho kênh này
-        const res = await apiPost(`/api/channels/${encodeURIComponent(channelId)}/start-auth?service=youtube`, {});
+        // Khởi động OAuth cho kênh này (hỗ trợ chỉ định Project account_id để mở rộng Quota Pool)
+        const accQuery = accountId ? `&account_id=${encodeURIComponent(accountId)}` : '';
+        const res = await apiPost(`/api/channels/${encodeURIComponent(channelId)}/start-auth?service=youtube${accQuery}`, {});
         if (!res || !res.success) {
             if (authWin && !authWin.closed) authWin.close();
             showToast(res?.detail || 'Không thể khởi động xác thực cho kênh này', 'error');

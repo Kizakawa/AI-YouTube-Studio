@@ -62,7 +62,7 @@ class DriveAgent:
                             self._init_service()
                             return
                         else:
-                            logger.error(f"⚠️ Tất cả token Google Drive đều đã hết hạn hoặc bị thu hồi (invalid_grant). Hãy chạy 'python auth_google.py drive' để cấp lại quyền.")
+                            logger.error(f"⚠️ Tất cả token Google Drive đều đã hết hạn hoặc bị thu hồi (invalid_grant). Hãy vào Web Dashboard -> Tab 'Kênh & Tài Khoản' -> Bấm '☁️ Kết Nối Google Drive' để cấp lại quyền.")
                     else:
                         raise ex_test
             else:
