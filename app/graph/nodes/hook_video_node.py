@@ -29,6 +29,7 @@ from app.services.media import license_policy
 from app.utils.langsmith_tracer import trace_custom_span
 from app.utils.ffmpeg_helper import (
     trim_video,
+    get_duration_ms,
     render_opening_hook_multi_cut,
     find_hook_peak_action_offset,
     find_hook_peak_window,
@@ -471,9 +472,9 @@ Return ONLY valid JSON:
     )
     subject_anchor_words = {
         w.lower()
-        for src_s in (canonical_subject, beat_1_subject, beat_2_subject, primary_entity, topic)
+        for src_s in (canonical_subject, beat_1_subject, beat_2_subject, beat_1_query, beat_2_query, *queries, *stock_broll_queries, primary_entity, topic)
         for w in re.findall(r"[a-zA-Z]{3,}", str(src_s or "").lower())
-        if w.lower() not in {"the", "and", "for", "with", "from", "into", "that", "this", "why", "how", "what", "when", "fatal", "nature", "defies", "ambush", "secret", "truth"}
+        if w.lower() not in {"the", "and", "for", "with", "from", "into", "that", "this", "why", "how", "what", "when", "fatal", "nature", "defies", "ambush", "secret", "truth", "footage", "action", "wildlife", "cinematic", "dramatic", "close"}
     }
     for q_idx, q in enumerate(yt_queries_to_run):
         if len(candidate_videos) >= 4:
@@ -1214,11 +1215,17 @@ Return ONLY valid JSON:
                 + [c for c in other_passing if c["video_path"] in used_second_paths]
             )
             for cand_s2 in s2_ordered_cands:
-                if float(cand_s2.get("peak_duration_sec") or 0.0) < max(dur_s2 - 0.8, 3.0):
+                already_in_b1b = cand_s2["video_path"] in used_second_paths
+                b1b_offset_shift = round(max(0.85, target_hook_duration_sec - min(1.80, max(1.35, target_hook_duration_sec * 0.48))), 2) if already_in_b1b else 0.0
+                if float(cand_s2.get("peak_duration_sec") or 0.0) < max(b1b_offset_shift + dur_s2 - 0.8, 2.8):
                     continue
                 s2_v_path = cand_s2["video_path"]
                 s2_clean_p = cand_s2.get("clean_peak_path") or s2_v_path
-                s2_use_pre = s2_clean_p != s2_v_path and Path(s2_clean_p).exists()
+                s2_use_pre = (
+                    s2_clean_p != s2_v_path
+                    and Path(s2_clean_p).exists()
+                    and (get_duration_ms(s2_clean_p) / 1000.0) >= (b1b_offset_shift + dur_s2 - 0.35)
+                )
                 m_yt_s2 = re.search(r"yt_hook_cand_\d+_([A-Za-z0-9_-]{11})", Path(s2_v_path).name)
                 s2_vid_id = m_yt_s2.group(1) if m_yt_s2 else ""
                 s2_title = candidate_titles.get(s2_vid_id) or candidate_titles.get(Path(s2_v_path).stem, "")
@@ -1230,7 +1237,7 @@ Return ONLY valid JSON:
                     scene_id=2,
                 ):
                     continue
-                s2_peak_start = float(cand_s2.get("peak_offset_sec", 0.0))
+                s2_peak_start = float(cand_s2.get("peak_offset_sec", 0.0)) + b1b_offset_shift
                 try:
                     trim_video(
                         input_path=s2_clean_p if s2_use_pre else s2_v_path,
@@ -1244,7 +1251,7 @@ Return ONLY valid JSON:
                         apply_grading=True,
                         is_hook_scene=True,
                         fair_use_transform=not s2_use_pre,
-                        start_offset_sec=0.0 if s2_use_pre else s2_peak_start,
+                        start_offset_sec=b1b_offset_shift if s2_use_pre else s2_peak_start,
                         preserve_continuous_flow=True,
                     )
                     if Path(hook_output_clip_s2).exists() and Path(hook_output_clip_s2).stat().st_size > 10_000:
@@ -1255,7 +1262,7 @@ Return ONLY valid JSON:
                             vid_id=s2_vid_id,
                             url=s2_v_path,
                             title=s2_title,
-                            is_continuation_slice=False,
+                            is_continuation_slice=already_in_b1b,
                         )
                         if ok_s2:
                             used_second_paths.add(s2_v_path)
@@ -1288,11 +1295,12 @@ Return ONLY valid JSON:
                 except Exception as e_s2:
                     logger.debug(f"[HookVideoNode] Scene 2 viral candidate slice skip: {e_s2}")
 
-            # Ưu tiên 2: Nếu chỉ có 1 ứng viên nhưng đoạn Peak dài >= (dur_s1 + dur_s2 - 0.5s) -> Cắt nối tiếp mạch Peak sang Cảnh 2
-            if not s2_filled and natural_peak_dur >= (dur_s1 + min(dur_s2, 1.8)):
+            # Ưu tiên 2: Nếu chỉ có 1 ứng viên (hoặc ứng viên #1 mới dùng ~1.75s ở Beat 1A) -> Cắt nối tiếp phần Peak chưa chiếu sang Cảnh 2
+            consumed_s1_sec = round(min(1.80, max(1.35, target_hook_duration_sec * 0.48)), 2) if dual_beat_spliced else dur_s1
+            if not s2_filled and natural_peak_dur >= (consumed_s1_sec + min(dur_s2, 1.5)):
                 try:
-                    cont_src = clean_p_path if (use_precleaned and (get_duration_ms(clean_p_path) / 1000.0) >= (dur_s1 + dur_s2 - 0.35)) else best_v_path
-                    cont_offset = dur_s1 if cont_src == clean_p_path else (peak_start + dur_s1)
+                    cont_src = clean_p_path if (use_precleaned and (get_duration_ms(clean_p_path) / 1000.0) >= (consumed_s1_sec + dur_s2 - 0.35)) else best_v_path
+                    cont_offset = consumed_s1_sec if cont_src == clean_p_path else (peak_start + consumed_s1_sec)
                     trim_video(
                         input_path=cont_src,
                         duration_seconds=dur_s2,
