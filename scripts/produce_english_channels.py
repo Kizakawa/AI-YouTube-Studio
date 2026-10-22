@@ -1,4 +1,4 @@
-   """
+"""
 Script tự động sản xuất & hẹn lịch phát sóng khung giờ vàng cho các kênh YouTube Shorts:
 - Hỗ trợ chạy 6 kênh chủ lực (loại trừ Paws & Hearts Rescue theo yêu cầu: `--channel all_6 --count 2`):
   1. The mysteries of the world (`ch_the_mysteries_of_the_world` - US EN)
@@ -64,6 +64,10 @@ CHANNELS_CONFIG = {
             "Tone: suspenseful, dark, eerie, fear-inducing, documentary-style. Strict English only."
         ),
         "topics": [
+            "Brine Pool at 3,300 Feet: The Underwater Toxic Lake That Pickles Sharks Instantly",
+            "Challenger Deep at 35,876 Feet: What Crushed the Nereus Submarine at 16,000 PSI",
+            "Skeleton Coast Namibia: Why 1,000 Shipwrecks Rotted in the World's Oldest Desert Fog",
+            "Lake Nyos 1986: The Silent 1.6-Million-Ton CO2 Cloud That Erased 1,746 Lives",
             "Why Deep Sea Divers Never Look Up At The Surface At Night",
             "What Happens To Your Brain After 45 Minutes In Zero Light And Zero Sound",
             "Why Commercial Airplanes Are Forbidden From Flying Over This Ocean Grid",
@@ -97,6 +101,10 @@ CHANNELS_CONFIG = {
             "Tone: authoritative, hypnotic, analytical, gripping. Strict English only."
         ),
         "topics": [
+            "The Benjamin Franklin Effect: How Asking for 1 Tiny Favor Makes Enemies Loyal to You",
+            "3 Narcissist Hoovering Texts They Always Send Right After You Block Them",
+            "FBI Hostage Tactic: Why Mirroring the Last 3 Words Forces Anyone to Reveal the Truth",
+            "Dark Empathy: 3 Signs the Nicest Person in the Room Is Secretly Calculating You",
             "Why Sociopaths Never Blink When They Lie To Your Face",
             "If Someone Insults You Disguised As A Joke, Ask This 4-Word Question",
             "Why FBI Interrogators Watch Your Feet, Never Your Eyes",
@@ -130,6 +138,10 @@ CHANNELS_CONFIG = {
             "Tone: cinematic, adrenaline-pumping, dramatic, nature documentary style. Strict English only."
         ),
         "topics": [
+            "Mantis Shrimp vs Kevlar: The 50-MPH Punch That Boils Water at 8,000 Degrees",
+            "Wolverine vs Grizzly Bear: Why a 35-Pound Demon Steals Kills From 800-Pound Giants",
+            "Siberian Tiger vs Ussuri Brown Bear: 1,050 PSI Fangs in the Frozen Russian Taiga",
+            "Secretary Bird vs Black Mamba: The 195-Newton Stomp In 15 Milliseconds",
             "This Is Why Caimans Are Terrified Of Jaguars In Deep Water",
             "How A Snow Leopard Survives A 60-Foot Vertical Cliff Fall While Hunting",
             "Honey Badger vs King Cobra: How It Sleeps Off Lethal Neurotoxin",
@@ -163,6 +175,10 @@ CHANNELS_CONFIG = {
             "Tone: cinematic, gripping, Christopher Nolan / Dan Carlin style. Strict English only."
         ),
         "topics": [
+            "How 1 Unlocked Gate in 1453 Ended the 1,100-Year Byzantine Empire at Constantinople",
+            "What If the 1983 Stanislav Petrov Satellite Glitch Launched 10,000 Nuclear Warheads?",
+            "What If the Mongol Typhoon of 1281 Never Stopped Kublai Khan's 4,400 Warships?",
+            "What If Operation Unthinkable Happened in 1945: Churchill's Secret Plan to Invade the USSR",
             "How One Wrong Turn By A Driver In 1914 Erased Four Empires Forever",
             "The Man Who Refused To Launch A Nuclear Strike In 1962 Inside Submarine B-59",
             "How A 15-Minute Rainstorm At Waterloo Ended Napoleon's Empire",
@@ -196,6 +212,10 @@ CHANNELS_CONFIG = {
             "Tone: dramatic, fast-paced, National Geographic Brasil style. Strict Brazilian Portuguese (pt-BR) only."
         ),
         "topics": [
+            "Harpia Brasileira vs Bicho-Preguiça: A Garra de 530 PSI Que Esmaga Ossos na Amazônia",
+            "Lagosta-Boxeadora: O Soco a 80 km/h Que Ferve a Água e Quebra Vidro Blindado",
+            "Sucuri-Verde de 200 Kg vs Caimão: O Abraço Mortal Que Para um Coração em 90 Segundos",
+            "Surucucu-Pico-de-Jaca vs Mussurana: A Cobra Imune ao Veneno Mais Letal da Floresta",
             "Por Que Até o Jacaré-Açu Foge Quando um Bando de Ariranhas Entra no Rio",
             "Onça-Pintada vs Queixada: O Erro Fatal Que Transforma o Predador em Presa",
             "Harpia Brasileira vs Bicho-Preguiça: A Garra de 500 PSI Que Esmaga Ossos",
@@ -228,6 +248,10 @@ CHANNELS_CONFIG = {
             "Tone: suspenseful, dark, eerie documentary style. Strict Brazilian Portuguese (pt-BR) only."
         ),
         "topics": [
+            "Piscina de Salmoura a 1.000 Metros: O Lago Mortal no Fundo do Mar Que Paralisa Tubarões",
+            "Lago Vostok na Antártida: O Oceano Secreto Selado Sob 4.000 Metros de Gelo Há 15 Milhões de Anos",
+            "Caverna de Movile: O Ecossistema Tóxico Trancado Sem Luz Solar Há 5,5 Milhões de Anos",
+            "Submarino Nereus a 10.900 Metros: O Momento em Que 16.000 PSI Implodiram o Robô nas Marianas",
             "O Som a 10.994 Metros na Fossa das Marianas Que Fez Cientistas Desligarem o Sonar",
             "Por Que Mergulhadores Profundos Nunca Olham Para a Superfície à Noite",
             "O Lago Subterrâneo Selado Há 5 Milhões de Anos Onde Nada Deveria Viver",
@@ -427,17 +451,16 @@ async def produce_channel_video(
     if custom_topic:
         topic = custom_topic
     else:
-        candidate_topics: list[str] = []
+        candidate_topics: list[str] = list(cfg["topics"])
         try:
             wb = get_winner_cloner_blueprint(ch_id, niche_id=ch_niche)
             fresh_pool = wb.get("fresh_sequel_topics") or []
             if fresh_pool:
-                candidate_topics.extend(fresh_pool)
+                candidate_topics.extend(t for t in fresh_pool if t not in candidate_topics)
                 if wb.get("winner_title"):
-                    print(f"   🏆 [Winner Cloner] Nhân bản từ quán quân '{wb['winner_title']}' ({wb['winner_views']} views)")
+                    print(f"   🏆 [Winner Cloner] Tham chiếu công thức quán quân '{wb['winner_title']}' ({wb['winner_views']} views)")
         except Exception:
             pass
-        candidate_topics.extend(cfg["topics"])
 
         topic = None
         for cand_t in candidate_topics:
