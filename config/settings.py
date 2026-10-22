@@ -287,5 +287,40 @@ class Settings:
         except Exception:
             return cls._cached_accounts or []
 
+    _CHANNEL_ID_ALIASES: Dict[str, str] = {
+        "ch_dark_psychology": "ch_psychology_of_the_world",
+        "channel_1": "ch_psychology_of_the_world",
+        "channel_2": "ch_wild_odyssey",
+        "ch_deep_sea": "ch_the_mysteries_of_the_world",
+        "channel_3": "ch_the_mysteries_of_the_world",
+        "channel_4": "ch_misterios_do_mundo",
+        "ch_alternate_history": "@alternatehistorywhatif-e2x",
+        "channel_5": "@alternatehistorywhatif-e2x",
+        "ch_heart_rescue": "ch_paws_hearts_rescue",
+        "channel_6": "ch_paws_hearts_rescue",
+        "channel_7": "ch_odisseia_selvagem",
+    }
+
+    @classmethod
+    def get_channel_by_id(cls, channel_id: str) -> Optional[Dict]:
+        """Tìm và trả về dict cấu hình đầy đủ của kênh theo ID hoặc alias (từ danh sách channels hoặc brand_channels)."""
+        raw_target = str(channel_id or "").strip()
+        if not raw_target:
+            return None
+        targets = {raw_target, cls._CHANNEL_ID_ALIASES.get(raw_target, raw_target)}
+        for ch in cls.get_channels_config() or []:
+            if isinstance(ch, dict) and str(ch.get("id") or "").strip() in targets:
+                return dict(ch)
+        for acc in cls.get_accounts_config() or []:
+            if not isinstance(acc, dict):
+                continue
+            for bc in acc.get("brand_channels") or []:
+                if isinstance(bc, dict) and str(bc.get("id") or "").strip() in targets:
+                    res = dict(bc)
+                    if not res.get("google_account") and acc.get("id"):
+                        res["google_account"] = acc.get("id")
+                    return res
+        return None
+
 settings = Settings()
 settings.ensure_storage_dirs()

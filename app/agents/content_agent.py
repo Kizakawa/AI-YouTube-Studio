@@ -883,7 +883,7 @@ class ContentAgent:
                     "Which moment shocked you the most? Drop your thoughts in the comments below 👇"
                 )
 
-        # ── 4. NICHE-AWARE MINI-EBOOK DESCRIPTION BREAKDOWN (CHỐNG RÒ RỈ METADATA CHÉO NGÁCH 100%) ──
+        # ── 4. NICHE-AWARE CLEAN SHORTS DESCRIPTION (CHỐNG RÒ RỈ METADATA CHÉO NGÁCH & CHỐNG SPAM BREAKDOWN) ──
         raw_desc = str(raw_data.get("description") or "").strip()
         is_psych_niche = (
             niche_norm == "psychology"
@@ -892,84 +892,33 @@ class ContentAgent:
         )
         if not is_psych_niche and raw_desc:
             raw_desc = re.sub(r'#(?:psychology|darkpsychology|selfmastery|mindcontrol)\b', '', raw_desc, flags=re.IGNORECASE).strip()
-            raw_desc = raw_desc.replace("🧠 KEY PSYCHOLOGICAL BREAKDOWN:", "📌 KEY VIDEO BREAKDOWN:")
             raw_data["description"] = raw_desc
 
-        if len(raw_desc) < 180 and raw_data.get("scenes"):
+        if len(raw_desc) < 60 and raw_data.get("scenes"):
             sc_list = raw_data.get("scenes") or []
-            title_str = str(raw_data.get("title") or "").strip()
             hook_str = str(raw_data.get("hook") or (sc_list[0].get("narration", "") if sc_list else "")).strip()
-            mid_idx = max(1, len(sc_list) // 2)
-            act2_str = str(sc_list[min(2, len(sc_list) - 1)].get("narration", "")).strip() if len(sc_list) > 2 else ""
-            act3_str = str(sc_list[mid_idx].get("narration", "")).strip() if len(sc_list) > mid_idx else ""
-            act4_str = str(sc_list[max(0, len(sc_list) - 2)].get("narration", "")).strip() if len(sc_list) >= 2 else ""
+            act2_str = str(sc_list[min(1, len(sc_list) - 1)].get("narration", "")).strip() if len(sc_list) > 1 else ""
 
             if niche_norm == "alternate_history" or any(k in comb_all for k in ("what if", "alternate history", "empire", "roman", "alexandria")):
                 default_tags = ["#shorts", "#alternatehistory", "#whatif", "#history"]
-                header_block = (
-                    f"⏳ ALTERNATE HISTORY TIMELINE BREAKDOWN:\n"
-                    f"• The Point of Divergence: {act2_str}\n"
-                    f"• The Historical Domino Effect: {act3_str}\n"
-                    f"• How Our Modern World Changes: {act4_str}"
-                )
             elif niche_norm == "deep_sea_earth_mysteries" or any(k in comb_all for k in ("deep sea", "ocean", "mystery", "caverna", "ilha", "oceano", "abyss")):
-                if is_pt_lang:
-                    default_tags = ["#shorts", "#misterios", "#oceano", "#ciencia", "#curiosidades"]
-                    header_block = (
-                        f"🌊 ANÁLISE DO MISTÉRIO E CIÊNCIA:\n"
-                        f"• O Fenômeno Oculto: {act2_str}\n"
-                        f"• A Explicação Científica: {act3_str}\n"
-                        f"• A Revelação Final: {act4_str}"
-                    )
-                else:
-                    default_tags = ["#shorts", "#mysteries", "#deepsea", "#science", "#unexplained"]
-                    header_block = (
-                        f"🌊 SCIENTIFIC & MYSTERY BREAKDOWN:\n"
-                        f"• The Unexplained Anomaly: {act2_str}\n"
-                        f"• The Hidden Mechanism: {act3_str}\n"
-                        f"• The Final Revelation: {act4_str}"
-                    )
+                default_tags = (
+                    ["#shorts", "#misterios", "#oceano", "#ciencia", "#curiosidades"]
+                    if is_pt_lang else
+                    ["#shorts", "#mysteries", "#deepsea", "#science", "#unexplained"]
+                )
             elif niche_norm == "wildlife_predators" or any(k in comb_all for k in ("predator", "wildlife", "onça", "jacaré", "ratel", "harpia", "hippo", "orca", "leopard", "anaconda")):
-                if is_pt_lang:
-                    default_tags = ["#shorts", "#vidaanimal", "#natureza", "#predadores", "#curiosidades"]
-                    header_block = (
-                        f"🐆 ANÁLISE DO CONFRONTO SELVAGEM:\n"
-                        f"• O Ataque Inicial: {act2_str}\n"
-                        f"• A Vantagem Biomecânica: {act3_str}\n"
-                        f"• O Veredito da Natureza: {act4_str}"
-                    )
-                else:
-                    default_tags = ["#shorts", "#wildlife", "#nature", "#animals", "#predators"]
-                    header_block = (
-                        f"🦈 APEX WILDLIFE BREAKDOWN:\n"
-                        f"• The Opening Strike: {act2_str}\n"
-                        f"• Biomechanical Advantage: {act3_str}\n"
-                        f"• Survival Verdict: {act4_str}"
-                    )
+                default_tags = (
+                    ["#shorts", "#vidaanimal", "#natureza", "#predadores", "#curiosidades"]
+                    if is_pt_lang else
+                    ["#shorts", "#wildlife", "#nature", "#animals", "#predators"]
+                )
             elif niche_norm == "animal_rescue" or any(k in comb_all for k in ("rescue", "puppy", "kitten", "stray", "shelter")):
                 default_tags = ["#shorts", "#animalrescue", "#dogrescue", "#wholesome", "#puppies"]
-                header_block = (
-                    f"🐾 RESCUE TRANSFORMATION STORY:\n"
-                    f"• The Moment Found: {act2_str}\n"
-                    f"• The Turning Point of Trust: {act3_str}\n"
-                    f"• A Brand New Life: {act4_str}"
-                )
             elif is_vn:
                 default_tags = ["#shorts", "#tamlyhoc", "#kynangsong", "#phattrienbanthan"]
-                header_block = (
-                    f"🧠 3 ĐIỂM CỐT LÕI TRONG VIDEO:\n"
-                    f"1️⃣ Dấu hiệu nhận diện: {act2_str}\n"
-                    f"2️⃣ Cơ chế tâm lý ngầm: {act3_str}\n"
-                    f"3️⃣ Đòn hóa giải thực chiến: {act4_str}"
-                )
             else:
                 default_tags = ["#shorts", "#psychology", "#darkpsychology", "#selfmastery"]
-                header_block = (
-                    f"🧠 KEY PSYCHOLOGICAL BREAKDOWN:\n"
-                    f"• The Hidden Pattern: {act2_str}\n"
-                    f"• The Neurological Mechanism: {act3_str}\n"
-                    f"• Tactical Counter-Move: {act4_str}"
-                )
 
             raw_tags_filtered = [
                 f"#{str(t).lstrip('#').replace(' ', '')}"
@@ -978,12 +927,8 @@ class ContentAgent:
                 and (is_psych_niche or str(t).lstrip('#').lower() not in ("psychology", "darkpsychology", "selfmastery"))
             ]
             tags_line = " ".join(dict.fromkeys(raw_tags_filtered + default_tags))
-            raw_data["description"] = (
-                f"{title_str}\n\n"
-                f"⚡ {hook_str}\n\n"
-                f"{header_block}\n\n"
-                f"{raw_desc}\n\n{tags_line}"
-            ).strip()
+            summary_body = raw_desc or f"{hook_str} {act2_str}".strip()
+            raw_data["description"] = f"{summary_body}\n\n{tags_line}".strip()
 
         return ScriptContract(**raw_data)
 

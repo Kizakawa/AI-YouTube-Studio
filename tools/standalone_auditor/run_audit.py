@@ -612,12 +612,18 @@ def sync_telemetry_to_production(telemetry: Dict[str, Any], insights: str) -> Di
         if str(ROOT_DIR) not in sys.path:
             sys.path.insert(0, str(ROOT_DIR))
         from app.database.models import get_db, PublishedVideo, VideoJob, normalize_channel_id
+        from app.services.smart_scheduler import sync_scheduled_jobs_status
         from app.services.video_library import (
             _compute_calibrated_retention,
             _extract_hook_from_job,
             _parse_yt_time,
             _WEEKLY_PERFORMANCE_CACHE,
         )
+
+        try:
+            sync_scheduled_jobs_status()
+        except Exception as e_sched:
+            logger.debug(f"[Auditor->Production] sync_scheduled_jobs_status warning: {e_sched}")
 
         now_naive = datetime.utcnow()
         upserted = 0
@@ -655,6 +661,8 @@ def sync_telemetry_to_production(telemetry: Dict[str, Any], insights: str) -> Di
                     matched_job = job_by_vid.get(vid)
                     if matched_job:
                         matched_job.target_channel_id = canon_cid
+                        if matched_job.status == "SCHEDULED":
+                            matched_job.status = "PUBLISHED"
                     hook_txt = _extract_hook_from_job(matched_job, v.get("title") or "")
 
                     # CHỈ LƯU SỐ LIỆU THẬT TỪ YOUTUBE ANALYTICS API v2 (Không ước lượng nội suy!)

@@ -19,8 +19,19 @@ class PublisherAgent:
     """Agent chịu trách nhiệm xác thực OAuth2 và đăng tải/lên lịch video lên các kênh YouTube."""
 
     def __init__(self, channel_config: Optional[Dict] = None, account_name: str = "account_1"):
-        self.channel_config = channel_config or {}
+        self.channel_config = dict(channel_config or {})
         self.channel_id = self.channel_config.get("id", "default")
+        if self.channel_id and self.channel_id != "default":
+            try:
+                from config.settings import settings
+                full_ch = settings.get_channel_by_id(self.channel_id) or {}
+                if full_ch:
+                    merged_cfg = dict(full_ch)
+                    merged_cfg.update({k: v for k, v in self.channel_config.items() if v is not None and k != "id"})
+                    self.channel_config = merged_cfg
+                    self.channel_id = self.channel_config.get("id", self.channel_id)
+            except Exception as cfg_err:
+                logger.debug(f"PublisherAgent get_channel_by_id merge error: {cfg_err}")
         self.channel_name = self.channel_config.get("name", "YouTube Channel")
         self.account_name = self.channel_config.get("google_account", account_name)
 
@@ -375,19 +386,20 @@ class PublisherAgent:
         try:
             ch_monet = self.channel_config.get("enable_monetization")
             ch_aff = self.channel_config.get("affiliate_enabled")
-            env_aff = os.getenv("ENABLE_AFFILIATE_LINKS", "false").lower() in ("true", "1", "yes")
             if ch_monet is False or ch_aff is False:
                 affiliate_enabled = False
-            elif ch_monet is True or ch_aff is True or env_aff:
+            elif ch_monet is True or ch_aff is True:
                 affiliate_enabled = True
         except Exception:
             affiliate_enabled = False
 
-        donation_enabled = bool(
-            os.getenv("ENABLE_DONATION_CTA", "false").lower() in ("true", "1", "yes")
-        )
+        donation_enabled = False
         if self.channel_config.get("enable_donation") is not None:
             donation_enabled = bool(self.channel_config.get("enable_donation"))
+        elif self.channel_config.get("enable_monetization") is True:
+            donation_enabled = bool(
+                os.getenv("ENABLE_DONATION_CTA", "false").lower() in ("true", "1", "yes")
+            )
 
         if affiliate_enabled or donation_enabled:
             try:
@@ -410,10 +422,18 @@ class PublisherAgent:
                 logger.warning(f"Không thể áp dụng monetization_engine: {ex}")
         else:
             logger.info(f"Ngách '{niche_id}' không bật affiliate hay donation -> Giữ mô tả sạch tối ưu phân phối Shorts Feed")
+            if pinned_comment and any(k in str(pinned_comment).lower() for k in ("http://", "https://", "amazon.com", "paypal.me")):
+                pinned_comment = None
+
+        # Khử sạch link affiliate rò rỉ hoặc khối BREAKDOWN dàn trải trước khi gắn Hashtag
+        desc_without_trailing_hashes = self.sanitize_shorts_description(
+            raw_desc=desc_clean,
+            base_title=smart_bundle.get("base_title") or clean_title,
+            allow_affiliate=bool(affiliate_enabled or donation_enabled),
+        )
 
         # Đảm bảo description luôn có khối Hashtags thông minh (Ngách + Chủ đề + Shorts)
         desc_hashtag_line = smart_bundle["description_hashtags"]
-        desc_without_trailing_hashes = re.sub(r'(?:\n*\s*(?:#[^\s#]+\s*)+)$', '', (desc_clean or "").strip()).strip()
         desc_clean = f"{desc_without_trailing_hashes}\n\n{desc_hashtag_line}".strip() if desc_without_trailing_hashes else desc_hashtag_line
 
         tag_list = list(smart_bundle["tags"])
@@ -680,39 +700,57 @@ class PublisherAgent:
                 if any(k in raw_niche for k in ("history", "what_if", "alternate_history")):
                     effective_comment = (
                         "Nếu là bạn ở thời khắc đó: Chọn (1) Giữ nguyên lịch sử hay (2) Thay đổi tất cả? Bình chọn 1 hoặc 2 bên dưới 👇"
-                        if is_vn else
-                        "Quick Poll: Would you choose (1) Keep our timeline or (2) Rewrite history? Drop 1 or 2 below! 👇"
+                        if is_vn else (
+                            "Se você estivesse lá: escolheria (1) Manter nossa linha do tempo ou (2) Reescrever a história? Comente 1 ou 2 abaixo! 👇"
+                            if is_pt_br else
+                            "Quick Poll: Would you choose (1) Keep our timeline or (2) Rewrite history? Drop 1 or 2 below! 👇"
+                        )
                     )
                 elif "psychology" in raw_niche:
                     effective_comment = (
                         "Bạn đã từng gặp kiểu người này ngoài đời thực chưa? Gõ (1) Đã từng gặp hoặc (2) Chưa bao giờ bên dưới nhé 👇"
-                        if is_vn else
-                        "Have you ever dealt with someone like this in real life? Drop (1) YES or (2) NO in the comments! 👇"
+                        if is_vn else (
+                            "Você já lidou com alguém assim na vida real? Comente (1) SIM ou (2) NÃO abaixo! 👇"
+                            if is_pt_br else
+                            "Have you ever dealt with someone like this in real life? Drop (1) YES or (2) NO in the comments! 👇"
+                        )
                     )
                 elif any(k in raw_niche for k in ("rescue", "animal", "pet")):
                     effective_comment = (
                         "Chấm điểm màn lột xác của bé từ 1 đến 10 nhé! 🥺 Thả ❤️ bên dưới để chúc bé luôn hạnh phúc!"
-                        if is_vn else
-                        "Rate this sweet baby's transformation from 1 to 10! 🥺 Drop a ❤️ below if this made your day!"
+                        if is_vn else (
+                            "Dê uma nota de 1 a 10 para essa transformação emocionante! 🥺 Deixe um ❤️ nos comentários!"
+                            if is_pt_br else
+                            "Rate this sweet baby's transformation from 1 to 10! 🥺 Drop a ❤️ below if this made your day!"
+                        )
                     )
                 elif any(k in raw_niche for k in ("predator", "wildlife")):
                     effective_comment = (
                         "Kèo sinh tử này bạn chọn phe nào? Gõ (1) hay (2) để bình chọn bên dưới 👇"
-                        if is_vn else
-                        "Who takes the crown in a 1v1 survival showdown? Drop your vote in the comments below! 👇🔥"
+                        if is_vn else (
+                            "Quem leva a melhor nesse confronto de sobrevivência? Deixe seu voto nos comentários abaixo! 👇🔥"
+                            if is_pt_br else
+                            "Who takes the crown in a 1v1 survival showdown? Drop your vote in the comments below! 👇🔥"
+                        )
                     )
                 elif any(k in raw_niche for k in ("deep_sea", "ocean", "abyss", "mariana")):
                     effective_comment = (
                         "Theo bạn đây là (1) Sinh vật chưa từng được khám phá hay (2) Hiện tượng tự nhiên? Bình chọn 1 hoặc 2 bên dưới 👇"
-                        if is_vn else
-                        "What do you think is really hiding down there: (1) Undiscovered Mega-Species or (2) Geological Anomaly? Drop 1 or 2 below! 👇"
+                        if is_vn else (
+                            "O que você acha que realmente se esconde lá no fundo: (1) Criatura Desconhecida ou (2) Fenômeno Geológico? Comente 1 ou 2 abaixo! 👇"
+                            if is_pt_br else
+                            "What do you think is really hiding down there: (1) Undiscovered Mega-Species or (2) Geological Anomaly? Drop 1 or 2 below! 👇"
+                        )
                     )
                 else:
                     effective_comment = (
                         "Chi tiết nào khiến bạn bất ngờ nhất? Hãy bình luận suy nghĩ của bạn bên dưới 👇\n"
                         "🔔 Đăng ký kênh (Subscribe) để không bỏ lỡ video tiếp theo! 🔥"
-                        if is_vn else
-                        "Did you know this before watching? Drop (1) YES or (2) NO in the comments below! 👇🔥"
+                        if is_vn else (
+                            "Você já sabia disso antes de assistir? Comente (1) SIM ou (2) NÃO abaixo! 👇🔥"
+                            if is_pt_br else
+                            "Did you know this before watching? Drop (1) YES or (2) NO in the comments below! 👇🔥"
+                        )
                     )
 
             posted_comment_id = None
@@ -970,6 +1008,7 @@ class PublisherAgent:
 
             # 3. Kiểm tra xem tác giả (kênh này) đã có bình luận nào trên video chưa
             has_author_comment = False
+            allow_affiliate = bool(self.channel_config.get("enable_monetization") is True or self.channel_config.get("affiliate_enabled") is True)
             try:
                 threads_res = self.service.commentThreads().list(
                     part="snippet",
@@ -977,9 +1016,18 @@ class PublisherAgent:
                     maxResults=20
                 ).execute()
                 for t in threads_res.get("items", []):
-                    top_c = t.get("snippet", {}).get("topLevelComment", {}).get("snippet", {})
+                    top_obj = t.get("snippet", {}).get("topLevelComment", {})
+                    top_c = top_obj.get("snippet", {})
                     author_cid = top_c.get("authorChannelId", {}).get("value")
                     if my_channel_id and author_cid == my_channel_id:
+                        c_text = str(top_c.get("textOriginal") or top_c.get("textDisplay") or "").lower()
+                        if not allow_affiliate and any(k in c_text for k in ("http://", "https://", "amazon.com", "paypal.me")):
+                            try:
+                                self.service.comments().delete(id=top_obj.get("id")).execute()
+                                logger.info(f"🧹 [PublisherAgent] Đã xóa bình luận dính link ngoài ({top_obj.get('id')}) trên video {video_id} để thay bằng bình luận tương tác sạch.")
+                                continue
+                            except Exception as del_err:
+                                logger.debug(f"Không thể xóa comment {top_obj.get('id')}: {del_err}")
                         has_author_comment = True
                         break
             except Exception as chk_e:
@@ -991,46 +1039,69 @@ class PublisherAgent:
 
             # 4. Xác định nội dung bình luận mồi chuẩn theo niche và ngôn ngữ
             effective_comment = comment_text
+            if effective_comment and not allow_affiliate and any(k in str(effective_comment).lower() for k in ("http://", "https://", "amazon.com", "paypal.me")):
+                effective_comment = None
+
             if not effective_comment:
                 v_title = v_item.get("snippet", {}).get("title", "")
-                is_vn = any("\u0100" <= c <= "\u1EF9" for c in v_title) or str(self.channel_config.get("language", "")).lower().startswith("vi")
+                cfg_lang = str(self.channel_config.get("language", "")).lower().strip()
+                is_vn = cfg_lang.startswith("vi")
+                is_pt_br = cfg_lang.startswith("pt")
                 raw_niche = (self.channel_config.get("niche") or "").lower()
 
                 if any(k in raw_niche for k in ("history", "what_if", "alternate_history")):
                     effective_comment = (
                         "Nếu là bạn ở thời khắc đó: Chọn (1) Giữ nguyên lịch sử hay (2) Thay đổi tất cả? Bình chọn 1 hoặc 2 bên dưới 👇"
-                        if is_vn else
-                        "Quick Poll: Would you choose (1) Keep our timeline or (2) Rewrite history? Drop 1 or 2 below! 👇"
+                        if is_vn else (
+                            "Se você estivesse lá: escolheria (1) Manter nossa linha do tempo ou (2) Reescrever a história? Comente 1 ou 2 abaixo! 👇"
+                            if is_pt_br else
+                            "Quick Poll: Would you choose (1) Keep our timeline or (2) Rewrite history? Drop 1 or 2 below! 👇"
+                        )
                     )
                 elif "psychology" in raw_niche:
                     effective_comment = (
                         "Bạn đã từng gặp kiểu người này ngoài đời thực chưa? Gõ (1) Đã từng gặp hoặc (2) Chưa bao giờ bên dưới nhé 👇"
-                        if is_vn else
-                        "Have you ever dealt with someone like this in real life? Drop (1) YES or (2) NO in the comments! 👇"
+                        if is_vn else (
+                            "Você já lidou com alguém assim na vida real? Comente (1) SIM ou (2) NÃO abaixo! 👇"
+                            if is_pt_br else
+                            "Have you ever dealt with someone like this in real life? Drop (1) YES or (2) NO in the comments! 👇"
+                        )
                     )
                 elif any(k in raw_niche for k in ("rescue", "animal", "pet")):
                     effective_comment = (
                         "Chấm điểm màn lột xác của bé từ 1 đến 10 nhé! 🥺 Thả ❤️ bên dưới để chúc bé luôn hạnh phúc!"
-                        if is_vn else
-                        "Rate this sweet baby's transformation from 1 to 10! 🥺 Drop a ❤️ below if this made your day!"
+                        if is_vn else (
+                            "Dê uma nota de 1 a 10 para essa transformação emocionante! 🥺 Deixe um ❤️ nos comentários!"
+                            if is_pt_br else
+                            "Rate this sweet baby's transformation from 1 to 10! 🥺 Drop a ❤️ below if this made your day!"
+                        )
                     )
                 elif any(k in raw_niche for k in ("predator", "wildlife")):
                     effective_comment = (
                         "Kèo sinh tử này bạn chọn phe nào? Gõ (1) hay (2) để bình chọn bên dưới 👇"
-                        if is_vn else
-                        "Who takes the crown in a 1v1 survival showdown? Drop your vote in the comments below! 👇🔥"
+                        if is_vn else (
+                            "Quem leva a melhor nesse confronto de sobrevivência? Deixe seu voto nos comentários abaixo! 👇🔥"
+                            if is_pt_br else
+                            "Who takes the crown in a 1v1 survival showdown? Drop your vote in the comments below! 👇🔥"
+                        )
                     )
                 elif any(k in raw_niche for k in ("deep_sea", "ocean", "abyss", "mariana")):
                     effective_comment = (
                         "Theo bạn đây là (1) Sinh vật chưa từng được khám phá hay (2) Hiện tượng tự nhiên? Bình chọn 1 hoặc 2 bên dưới 👇"
-                        if is_vn else
-                        "What do you think is really hiding down there: (1) Undiscovered Mega-Species or (2) Geological Anomaly? Drop 1 or 2 below! 👇"
+                        if is_vn else (
+                            "O que você acha que realmente se esconde lá no fundo: (1) Criatura Desconhecida ou (2) Fenômeno Geológico? Comente 1 ou 2 abaixo! 👇"
+                            if is_pt_br else
+                            "What do you think is really hiding down there: (1) Undiscovered Mega-Species or (2) Geological Anomaly? Drop 1 or 2 below! 👇"
+                        )
                     )
                 else:
                     effective_comment = (
                         "Chi tiết nào khiến bạn bất ngờ nhất? Hãy bình luận suy nghĩ của bạn bên dưới 👇\n🔔 Đăng ký kênh (Subscribe) để không bỏ lỡ video tiếp theo! 🔥"
-                        if is_vn else
-                        "Did you know this before watching? Drop (1) YES or (2) NO in the comments below! 👇🔥"
+                        if is_vn else (
+                            "Você já sabia disso antes de assistir? Comente (1) SIM ou (2) NÃO abaixo! 👇🔥"
+                            if is_pt_br else
+                            "Did you know this before watching? Drop (1) YES or (2) NO in the comments below! 👇🔥"
+                        )
                     )
 
             # 5. Đăng bình luận
@@ -1470,12 +1541,84 @@ class PublisherAgent:
             logger.warning(f"🏷️ [PublisherAgent] Lỗi khi gắn thêm tag cho video {video_id}: {e}")
             return {"success": False, "error": str(e)}
 
+    def sanitize_shorts_description(
+        self,
+        raw_desc: str,
+        base_title: str = "",
+        allow_affiliate: bool = False,
+    ) -> str:
+        """
+        Làm sạch mô tả Shorts (Description Hygiene):
+        1. Loại bỏ dòng tiêu đề bị lặp ở đầu và khối mẫu cứng `BREAKDOWN:` / `ANÁLISE DO ...:` + các gạch đầu dòng `• ...` gây đội ký tự lên 700-850 chars.
+        2. Nếu `allow_affiliate=False`, gỡ bỏ hoàn toàn các khối chứa link ngoài (`https://www.amazon.com/...`, `paypal.me/...`, `🛒 Recommended:`).
+        3. Giữ lại đoạn tóm tắt tự nhiên ngắn gọn (150-300 ký tự) trước khi gắn khối Hashtag chuẩn ngách.
+        """
+        if not raw_desc:
+            return ""
+        text = re.sub(r'(?:\n*\s*(?:#[^\s#]+\s*)+)$', '', str(raw_desc).strip()).strip()
+        if not text:
+            return ""
+
+        clean_base_title = re.sub(r'(?:\s+#[^\s#]+)+\s*$', '', str(base_title or "").strip()).strip().lower()
+        lines = [ln.strip() for ln in text.splitlines()]
+        filtered_lines: List[str] = []
+
+        breakdown_headers = (
+            "⏳ alternate history timeline breakdown:",
+            "🌊 scientific & mystery breakdown:",
+            "🌊 análise do mistério e ciência:",
+            "🦈 apex wildlife breakdown:",
+            "🐆 análise do confronto selvagem:",
+            "🐾 rescue transformation story:",
+            "🧠 key psychological breakdown:",
+            "📌 key video breakdown:",
+            "🧠 3 điểm cốt lõi trong video:",
+        )
+
+        for ln in lines:
+            if not ln:
+                continue
+            ln_low = ln.lower()
+            # 1. Bỏ dòng lặp lại nguyên văn tiêu đề ở đầu mô tả
+            ln_no_hash = re.sub(r'(?:\s+#[^\s#]+)+\s*$', '', ln).strip().lower()
+            if clean_base_title and ln_no_hash == clean_base_title:
+                continue
+            # 2. Bỏ dòng hook có icon ⚡ và các dòng header/bullet của mẫu BREAKDOWN cứng
+            if ln.startswith("⚡ "):
+                continue
+            if any(ln_low.startswith(bh) for bh in breakdown_headers):
+                continue
+            if ln.startswith("• ") or ln.startswith("1️⃣ ") or ln.startswith("2️⃣ ") or ln.startswith("3️⃣ "):
+                continue
+            # 3. Bỏ các dòng chứa link ngoài hoặc CTA Affiliate/PayPal khi kênh tắt monetization
+            if not allow_affiliate:
+                if any(
+                    tok in ln_low
+                    for tok in (
+                        "http://",
+                        "https://",
+                        "amazon.com",
+                        "paypal.me",
+                        "🛒 recommended",
+                        "👉 check it out here",
+                        "☕ enjoying these",
+                        "support the channel:",
+                    )
+                ):
+                    continue
+            filtered_lines.append(ln)
+
+        cleaned = "\n\n".join(filtered_lines).strip()
+        if not cleaned and base_title:
+            cleaned = re.sub(r'(?:\s+#[^\s#]+)+\s*$', '', str(base_title).strip()).strip()
+        return cleaned
+
     def verify_and_heal_video_metadata(self, video_id: str) -> bool:
         """
         Tự động kiểm tra và sửa chữa (Self-Healing) metadata của video trên YouTube:
         - Nếu categoryId bị lệch khỏi resolve_locked_category_id() (đặc biệt nếu dính cat=27) -> Tự động đổi về chuẩn ('22' hoặc '15').
-        - Tự động làm sạch hashtag sai ngách và gắn đầy đủ bộ Hashtags + Tags chuẩn ngách (`build_smart_video_tags_and_hashtags`).
-        - Nếu thiếu defaultLanguage / defaultAudioLanguage hoặc recordingDetails (US/BR Geo-Lock) -> Tự động vá ngay.
+        - Tự động làm sạch hashtag sai ngách, gỡ link affiliate rò rỉ / mẫu BREAKDOWN cứng và gắn đầy đủ bộ Hashtags + Tags chuẩn ngách (`build_smart_video_tags_and_hashtags`).
+        - Nếu thiếu defaultLanguage / defaultAudioLanguage hoặc recordingDetails.location (US/BR Geo-Lock) -> Tự động vá ngay.
         """
         if not self.service or not video_id:
             return False
@@ -1514,25 +1657,16 @@ class PublisherAgent:
                 snip["tags"] = smart["tags"]
                 needs_update = True
 
+            allow_affiliate = bool(
+                self.channel_config.get("enable_monetization") is True
+                or self.channel_config.get("affiliate_enabled") is True
+            )
             raw_desc = str(snip.get("description") or "").strip()
-            desc_body = re.sub(r'(?:\n*\s*(?:#[^\s#]+\s*)+)$', '', raw_desc).strip()
-            if is_br:
-                pt_header_replacements = {
-                    "🦈 APEX WILDLIFE BREAKDOWN:": "🐆 ANÁLISE DO CONFRONTO SELVAGEM:",
-                    "🌊 SCIENTIFIC & MYSTERY BREAKDOWN:": "🌊 ANÁLISE DO MISTÉRIO E CIÊNCIA:",
-                    "• The Opening Strike:": "• O Ataque Inicial:",
-                    "• Biomechanical Advantage:": "• A Vantagem Biomecânica:",
-                    "• The Lethal Outcome:": "• O Desfecho Mortal:",
-                    "• The Unexplained Anomaly:": "• O Fenômeno Oculto:",
-                    "• Scientific Evidence:": "• A Explicação Científica:",
-                }
-                for en_h, pt_h in pt_header_replacements.items():
-                    if en_h in desc_body:
-                        desc_body = desc_body.replace(en_h, pt_h)
-            elif "history" in str(self.channel_config.get("niche") or "").lower():
-                if "🧠 KEY PSYCHOLOGICAL BREAKDOWN:" in desc_body:
-                    desc_body = desc_body.replace("🧠 KEY PSYCHOLOGICAL BREAKDOWN:", "⏳ ALTERNATE HISTORY TIMELINE BREAKDOWN:")
-                    desc_body = desc_body.replace("• The Hidden Pattern:", "• The Point of Divergence:")
+            desc_body = self.sanitize_shorts_description(
+                raw_desc=raw_desc,
+                base_title=smart.get("base_title") or raw_title,
+                allow_affiliate=allow_affiliate,
+            )
             healed_desc = f"{desc_body}\n\n{smart['description_hashtags']}".strip() if desc_body else smart["description_hashtags"]
             if healed_desc != raw_desc:
                 snip["description"] = healed_desc
@@ -1551,7 +1685,8 @@ class PublisherAgent:
                 snip["defaultAudioLanguage"] = expected_lang
                 needs_update = True
 
-            if not rec.get("locationDescription"):
+            rec_loc = rec.get("location") or {}
+            if rec_loc.get("latitude") is None or rec_loc.get("longitude") is None:
                 rec = {
                     "locationDescription": expected_loc,
                     "location": {
