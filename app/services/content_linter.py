@@ -152,21 +152,21 @@ class ScriptValidationLinter:
     ) -> Tuple[List[str], int]:
         """
         Kiểm tra số từ và tính toán nhịp đọc (Ưu tiên mạch truyện đầy đặn, mượt mà, có đầu có đuôi — chống kịch bản cụt lủn):
-        - Cho phép biên độ thoải mái từ 75 đến 135 từ (mục tiêu 85 - 120 từ, 6 - 11 cảnh) để LLM dẫn dắt câu chuyện tự nhiên, giải thích thấu đáo, không bị cắt cụt ý.
+        - Cho phép biên độ linh hoạt từ 62 đến 110 từ (mục tiêu vàng 72 - 98 từ, 6 - 8 cảnh, thời lượng 28 - 36 giây) để tối ưu APV > 80% mà vẫn dẫn dắt câu chuyện mượt mà, giải thích thấu đáo, không bị cắt cụt ý.
         """
         issues = []
         all_narrations = " ".join(s.narration for s in script.scenes if s.narration)
         words = re.findall(r'\b\w+\b', all_narrations)
         total_words = len(words)
 
-        min_words = 68
-        max_words = 128
-        target_range_str = "85 to 120 words (30-40s full-bodied 5-Act story across 7-9 smooth scenes)"
+        min_words = 62
+        max_words = 110
+        target_range_str = "72 to 98 words (28-36s High-APV Golden Duration across 6-8 smooth, complete scenes)"
 
         if total_words > max_words:
             est_seconds = (total_words / max(target_wpm, 165)) * 60
             issues.append(
-                f"Script is overly long ({total_words} words, ~{est_seconds:.1f}s). "
+                f"Script is overly long ({total_words} words, ~{est_seconds:.1f}s) which lowers APV %. "
                 f"Keep around {target_range_str}."
             )
         elif total_words < min_words:
@@ -180,11 +180,11 @@ class ScriptValidationLinter:
         min_scenes = 6
         if scene_count < min_scenes:
             issues.append(
-                f"Too few scenes ({scene_count}). Need 7 to 9 scenes (minimum {min_scenes}) to tell a complete, well-paced story."
+                f"Too few scenes ({scene_count}). Need 6 to 8 scenes (minimum {min_scenes}) to tell a complete, well-paced story."
             )
-        elif scene_count > 11:
+        elif scene_count > 9:
             issues.append(
-                f"Too many scenes ({scene_count}). Keep between 7 and 10 complete-sentence scenes so the narrative flows smoothly."
+                f"Too many scenes ({scene_count}). Keep between 6 and 8 complete-sentence scenes so the narrative stays in the 28-36s high-APV window."
             )
 
         return issues, total_words

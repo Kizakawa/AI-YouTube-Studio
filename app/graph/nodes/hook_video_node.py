@@ -49,8 +49,9 @@ def _build_hook_video_search_queries(
     primary_entity: str,
     visual_keyword: str,
     niche: str,
+    full_script_text: str = "",
 ) -> List[str]:
-    """Tạo danh sách truy vấn dự phòng ngắn gọn (2-5 từ) khi cần tìm kiếm video Short hành động thực tế."""
+    """Tạo danh sách truy vấn dự phòng ngắn gọn (2-5 từ) bám sát hành động vật lý thực tế của toàn bộ kịch bản."""
     queries: List[str] = []
     clean_kw = re.sub(r"[^a-zA-Z0-9\s]", " ", visual_keyword or "").strip()
     clean_ent = re.sub(r"[^a-zA-Z0-9\s]", " ", primary_entity or "").strip()
@@ -59,28 +60,136 @@ def _build_hook_video_search_queries(
     stop_words = {
         "cinematic", "photorealistic", "dramatic", "lighting", "4k", "8k", "vertical",
         "why", "how", "what", "when", "secret", "behind", "truth", "about", "never",
+        "psychology", "manipulation", "narcissist", "gaslighting", "mindset", "stoicism",
     }
     kw_tokens = [w for w in clean_kw.split() if w.lower() not in stop_words][:4]
     ent_tokens = [w for w in clean_ent.split() if w.lower() not in stop_words][:3]
     top_tokens = [w for w in clean_top.split() if w.lower() not in stop_words][:4]
 
     niche_l = (niche or "").lower()
-    action_suffix = "wildlife action" if any(k in niche_l for k in ("wildlife", "predator")) else "footage"
-
-    if ent_tokens and kw_tokens:
-        merged = " ".join(dict.fromkeys(ent_tokens + kw_tokens[:2]))
-        queries.append(f"{merged} {action_suffix}".strip())
-    if kw_tokens:
-        queries.append(" ".join(kw_tokens))
-    if top_tokens:
-        queries.append(" ".join(top_tokens))
+    comb_l = f"{topic} {visual_keyword} {full_script_text[:400]}".lower()
+    if "psych" in niche_l or any(k in comb_l for k in ("interrogat", "liar", "body language", "fake smile", "eye contact")):
+        if "feet" in comb_l or "foot" in comb_l or "table" in comb_l:
+            queries.extend(["nervous hands interrogation dark", "man intense eye contact shadow"])
+        elif "smile" in comb_l or "envy" in comb_l:
+            queries.extend(["woman cold fake smile dark", "suspicious glance side eye cinematic"])
+        else:
+            queries.extend(["intense eye contact dark room", "man serious expression shadow noir"])
+    elif "history" in niche_l or "what if" in comb_l:
+        if kw_tokens:
+            queries.append(" ".join(kw_tokens))
+        if ent_tokens:
+            queries.append(f"{' '.join(ent_tokens)} historical cinematic")
+        queries.append("dramatic fire smoke cinematic")
+    else:
+        action_suffix = "wildlife action" if any(k in niche_l for k in ("wildlife", "predator")) else "footage"
+        if ent_tokens and kw_tokens:
+            merged = " ".join(dict.fromkeys(ent_tokens + kw_tokens[:2]))
+            queries.append(f"{merged} {action_suffix}".strip())
+        if kw_tokens:
+            queries.append(" ".join(kw_tokens))
+        if top_tokens:
+            queries.append(" ".join(top_tokens))
 
     unique_q = []
     for q in queries:
         q_clean = re.sub(r"\s+", " ", q).strip()
         if q_clean and q_clean.lower() not in [x.lower() for x in unique_q]:
             unique_q.append(q_clean)
-    return unique_q[:2] or ["cinematic wildlife action"]
+    return unique_q[:3] or ["cinematic dramatic motion"]
+
+
+def _splice_dual_beat_hook_clip(
+    clip_a_path: str,
+    start_a: float,
+    clip_b_path: str,
+    start_b: float,
+    total_duration_sec: float,
+    output_path: str,
+    work_dir: Path,
+    is_scifi: bool = False,
+    niche: str = "action",
+    fair_use_a: bool = False,
+    fair_use_b: bool = False,
+) -> bool:
+    """
+    Dựng Hook 2 Nhịp Cắt Nhanh (Dual-Beat Fast-Cut Hook) ngay trong Cảnh 1:
+    - Beat 1A (0.0s -> ~1.75s): Cú sốc thị giác / Hành động mở màn từ ứng viên #1.
+    - Beat 1B (~1.75s -> hết Cảnh 1): Đổi góc máy sang ứng viên #2 (hoặc góc cận cảnh phản ứng/cao trào),
+      tạo Pattern Interrupt ở giây thứ 1.75 để chặn phản xạ vuốt bỏ ở giây thứ 2.0!
+    - Đảm bảo tổng thời lượng khớp chính xác 100% với `total_duration_sec` (0ms lệch audio).
+    """
+    if total_duration_sec < 2.6:
+        return False
+    dur_a = round(min(1.80, max(1.35, total_duration_sec * 0.48)), 2)
+    dur_b = round(max(0.85, total_duration_sec - dur_a), 2)
+    beat_a_out = str(work_dir / "hook_beat_1a_tmp.mp4")
+    beat_b_out = str(work_dir / "hook_beat_1b_tmp.mp4")
+    concat_list_path = work_dir / "hook_dual_beat_concat.txt"
+
+    try:
+        Path(beat_a_out).unlink(missing_ok=True)
+        Path(beat_b_out).unlink(missing_ok=True)
+        trim_video(
+            input_path=clip_a_path,
+            duration_seconds=dur_a,
+            output_path=beat_a_out,
+            width=1080,
+            height=1920,
+            fps=30,
+            is_scifi=is_scifi,
+            niche=niche,
+            apply_grading=True,
+            is_hook_scene=True,
+            fair_use_transform=fair_use_a,
+            start_offset_sec=start_a,
+            preserve_continuous_flow=True,
+        )
+        trim_video(
+            input_path=clip_b_path,
+            duration_seconds=dur_b,
+            output_path=beat_b_out,
+            width=1080,
+            height=1920,
+            fps=30,
+            is_scifi=is_scifi,
+            niche=niche,
+            apply_grading=True,
+            is_hook_scene=True,
+            fair_use_transform=fair_use_b,
+            start_offset_sec=start_b,
+            preserve_continuous_flow=True,
+        )
+        if not (Path(beat_a_out).exists() and Path(beat_b_out).exists()):
+            return False
+        if Path(beat_a_out).stat().st_size < 8_000 or Path(beat_b_out).stat().st_size < 8_000:
+            return False
+
+        p_a = str(Path(beat_a_out).resolve()).replace("\\", "/")
+        p_b = str(Path(beat_b_out).resolve()).replace("\\", "/")
+        concat_list_path.write_text(f"file '{p_a}'\nfile '{p_b}'\n", encoding="utf-8")
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-f", "concat", "-safe", "0",
+            "-i", str(concat_list_path),
+            "-t", f"{total_duration_sec:.2f}",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-pix_fmt", "yuv420p", "-r", "30", "-an",
+            output_path,
+        ]
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15, check=False)
+        ok = Path(output_path).exists() and Path(output_path).stat().st_size > 15_000
+        return ok
+    except Exception as e_db:
+        logger.debug(f"[HookVideoNode] Dual-beat splice skip: {e_db}")
+        return False
+    finally:
+        for tmp_p in (beat_a_out, beat_b_out, str(concat_list_path)):
+            try:
+                Path(tmp_p).unlink(missing_ok=True)
+            except Exception:
+                pass
 
 
 @trace_custom_span("HookVideoNode.produce_and_score_hook", run_type="chain")
@@ -151,16 +260,21 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
         keys = [k.strip() for k in raw_keys.split(",") if k.strip().startswith("AIza")]
 
     # ──────────────────────────────────────────────────────────────────────────
-    # BƯỚC 1: CỔNG PHÂN LOẠI HOOK CỦA GEMINI NGAY TRONG HÀM TẠO HOOK
+    # BƯỚC 1: CỔNG PHÂN TÍCH KỊCH BẢN & ĐẠO DIỄN HOOK BẰNG GEMINI (SCRIPT-AWARE HOOK DIRECTOR)
     # ──────────────────────────────────────────────────────────────────────────
-    fallback_queries = _build_hook_video_search_queries(topic, primary_entity, visual_keyword, niche)
-    default_climax_scene_id = 4 if len(base_scenes) >= 5 else (3 if len(base_scenes) >= 3 else (2 if len(base_scenes) >= 2 else 1))
-
     full_script_text = " | ".join(
         f"Scene {s.get('scene_id', i + 1)}: {s.get('narration', '')} ({s.get('visual_keyword', '')})"
         for i, s in enumerate(base_scenes[:9])
         if isinstance(s, dict)
     )
+    fallback_queries = _build_hook_video_search_queries(
+        topic=topic,
+        primary_entity=primary_entity,
+        visual_keyword=visual_keyword,
+        niche=niche,
+        full_script_text=full_script_text,
+    )
+    default_climax_scene_id = 4 if len(base_scenes) >= 5 else (3 if len(base_scenes) >= 3 else (2 if len(base_scenes) >= 2 else 1))
 
     pre_mode = str(script_data.get("hook_visual_mode") or "").strip().lower()
     pre_abstract = script_data.get("is_abstract_keyword")
@@ -176,46 +290,47 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
         else fallback_queries
     )
     climax_desc: str = f"{primary_entity or topic} — {visual_keyword}"
+    visual_hook_blueprint: str = climax_desc
+    hook_production_strategy: str = "VIRAL_SHORT_ACTION_PEAK"
+    beat_1_query: str = queries[0] if queries else visual_keyword
+    beat_2_query: str = queries[1] if len(queries) > 1 else beat_1_query
     atmosphere_fx: str = "action"
     is_3d_cgi_subject: bool = False
 
-    plan_prompt = f"""You are an elite Viral YouTube Shorts Hook Director.
-Analyze this video's Hook and full script, and decide whether the Hook should be produced as a real cut Short VIDEO ("video") or generated/searched as a visual SCENE ("scene").
+    plan_prompt = f"""You are an elite Viral YouTube Shorts Hook Director & Script Visual Analyst.
+Read the ENTIRE script below from Scene 1 to the final scene, understand the true core payoff of the story, and design the most scroll-stopping 0–3.5s Visual Hook for Scene 1.
 
 - Topic: {topic}
 - Primary Subject: {primary_entity or topic}
 - Channel Niche: {niche}
 - Opening Hook Narration (Scene 1): {hook_narration}
 - Scene 1 Visual Keyword: {visual_keyword}
-- Full Script Summary: {full_script_text[:1400]}
+- Full Script (All Scenes): {full_script_text[:1600]}
 
-Return a JSON object with your decision:
-1. "canonical_subject": Bare 1-2 word canonical English noun of the main creature/animal/subject WITHOUT literary or size adjectives (e.g. "siberian tiger", "leviathan", "kraken", "honey badger", "black hole"; NEVER include words like "colossal", "abyssal", "terrifying", "ancient", "deadly").
-2. "is_3d_cgi_subject": Boolean — true ONLY if "canonical_subject" is a fictional, mythical, cryptid, or extinct prehistoric monster/leviathan with zero real camera footage (requiring 3D CGI/VFX animation); false for all real living animals, real people, and real-world places/phenomena.
-3. "hook_visual_mode": Must be strictly "video" or "scene":
-   - Choose "video" when the Hook/Climax depicts a concrete physical subject, wildlife predator, or 3D CGI/VFX monster/sci-fi creature where cutting the Peak moment from a viral Short creates an explosive opening.
-   - Choose "scene" when the Hook/Keyword is abstract, psychological, conceptual, or counterfactual.
-4. "is_abstract_keyword": Boolean (true if "hook_visual_mode" is "scene", false if "hook_visual_mode" is "video").
-5. "climax_scene_id": Integer scene_id (between 3 and {max(len(base_scenes), 3)}) where the most intense mid-video climax occurs in the body of the script so we can splice a distinct Peak clip there too.
-6. "climax_description": 1-sentence description of the peak visual climax.
-7. "search_queries": 3 high-hit English YouTube Shorts search queries (2 to 4 words each, NO quotes, NO hashtags, NO flowery adjectives):
-   - SINGLE SUBJECT PER QUERY (CRITICAL): NEVER use "vs", "versus", or combine two different animals/entities in a single query (queries like "A vs B" return low-quality compilation edits, slideshows, or gaming clips). If the script features two subjects (Subject A and Subject B), dedicate Query 1 & 2 to Subject A and Query 3 to Subject B.
-   - INCLUDE CORE HABITAT / BIOME / ACTION: Always include the 1-word core natural environment, season, or action when essential to the script's setting (e.g. "<subject> snow", "<subject> hunting snow", "<subject> underwater", "<subject> night hunting").
-   - REAL SUBJECT vs MYTHICAL/CGI ENTITY:
-     * If "is_3d_cgi_subject" is false: query authentic wildlife/documentary action (NEVER use "3d animation" or "size comparison").
-     * If "is_3d_cgi_subject" is true: use "<canonical_subject> 3d animation", "<canonical_subject> thalassophobia", or "<canonical_subject> megalophobia".
-8. "atmosphere_fx": Pick ONE from: "history", "psychology", "mystery", "action".
+CRITICAL DIRECTORIAL RULES:
+1. DO NOT translate Scene 1's words blindly if Scene 1 is metaphorical, rhetorical, or a setup line (e.g., "One man refused the order to end the world" or "FBI analysts never look at your face"). Instead, read the FULL script to identify the concrete physical subject/climax and bring that visual payoff right into the first 3 seconds (Visual Foreshadowing).
+2. Choose "hook_production_strategy" from EXACTLY one of these 3 modes based on what fits this specific topic & hook best:
+   - "VIRAL_SHORT_ACTION_PEAK": Best for wildlife predators, animal rescues, underwater/ocean phenomena, natural disasters, or 3D CGI monsters where real action footage or 3D VFX from a viral Short creates an instant visceral shock.
+   - "CINEMATIC_BROLL_FAST_CUT": Best for psychology, dark psychology, human behavior, FBI interrogation, body language, or interpersonal tension where YouTube Shorts searches would return talking heads/podcasts. We instead fetch 2 moody, clean HD B-Roll video clips of concrete physical human expressions/body language (e.g. nervous hands under table, cold fake smile, intense eye contact in shadows) and fast-cut them in Scene 1.
+   - "HYBRID_MOTION_AND_SCENE_MONTAGE": Best for counterfactual history ("What If"), ancient empires, historical events, or conceptual mysteries where combining dramatic physical motion footage (Beat 1A) with a rapid multi-shot historical/cinematic scene montage (Beat 1B) fits the script hook best.
+3. Translate any abstract concept into two distinct, concrete physical English queries ("beat_1_query" for 0.0–1.8s opening shock, and "beat_2_query" for 1.8–3.5s angle shift/reaction):
+   - NEVER use abstract words ("manipulation", "psychology", "envy", "alternate history", "what if") in queries.
+   - NEVER use "vs" or "versus" in a single query. Dedicate each query to ONE concrete subject + physical action/habitat.
 
 Return ONLY valid JSON:
 {{
-  "canonical_subject": "subject noun",
+  "canonical_subject": "bare 1-2 word noun without adjectives",
   "is_3d_cgi_subject": false,
-  "hook_visual_mode": "video",
+  "hook_production_strategy": "VIRAL_SHORT_ACTION_PEAK | CINEMATIC_BROLL_FAST_CUT | HYBRID_MOTION_AND_SCENE_MONTAGE",
+  "hook_visual_mode": "video | scene",
   "is_abstract_keyword": false,
+  "visual_hook_blueprint": "1-sentence description of the exact visual payoff that must appear in 0-3s to match this script's hook",
+  "beat_1_query": "concrete physical subject + action/setting for 0.0-1.8s (2-4 words)",
+  "beat_2_query": "distinct angle/reaction/subject for 1.8-3.5s fast cut (2-4 words)",
   "climax_scene_id": {climax_scene_id},
-  "climax_description": "...",
+  "climax_description": "1-sentence description of mid-video climax",
   "search_queries": ["query 1", "query 2", "query 3"],
-  "atmosphere_fx": "action"
+  "atmosphere_fx": "action | psychology | mystery | history"
 }}"""
 
     rotator = KeyRotator(keys)
@@ -234,6 +349,9 @@ Return ONLY valid JSON:
                         data = json.loads(m.group(0))
                         canonical_subject = re.sub(r"[^a-zA-Z0-9\s]", " ", str(data.get("canonical_subject") or "")).strip()
                         is_3d_cgi_subject = bool(data.get("is_3d_cgi_subject", False))
+                        strat_raw = str(data.get("hook_production_strategy") or "").strip().upper()
+                        if strat_raw in ("VIRAL_SHORT_ACTION_PEAK", "CINEMATIC_BROLL_FAST_CUT", "HYBRID_MOTION_AND_SCENE_MONTAGE"):
+                            hook_production_strategy = strat_raw
                         mode_raw = str(data.get("hook_visual_mode") or "").strip().lower()
                         abs_raw = bool(data.get("is_abstract_keyword", mode_raw == "scene"))
                         if mode_raw in ("scene", "image", "ai_image", "photo") or abs_raw:
@@ -243,20 +361,29 @@ Return ONLY valid JSON:
                             hook_visual_mode = "video"
                             is_abstract_keyword = False
 
+                        b1_raw = re.sub(r"[^a-zA-Z0-9\s]", " ", str(data.get("beat_1_query") or "")).strip()
+                        b2_raw = re.sub(r"[^a-zA-Z0-9\s]", " ", str(data.get("beat_2_query") or "")).strip()
                         raw_q = [
                             re.sub(r"[^a-zA-Z0-9\s]", " ", str(q)).strip()
-                            for q in (data.get("search_queries") or [])
+                            for q in ([b1_raw, b2_raw] + list(data.get("search_queries") or []))
                             if str(q).strip()
                         ]
-                        valid_q = [re.sub(r"\s+", " ", q) for q in raw_q if len(q.split()) >= 2][:3]
-                        if valid_q:
-                            queries = valid_q
+                        dedup_q: List[str] = []
+                        for rq in raw_q:
+                            rq_c = re.sub(r"\s+", " ", rq).strip()
+                            if len(rq_c.split()) >= 2 and rq_c.lower() not in [x.lower() for x in dedup_q]:
+                                dedup_q.append(rq_c)
+                        if dedup_q:
+                            queries = dedup_q[:3]
+                            beat_1_query = queries[0]
+                            beat_2_query = queries[1] if len(queries) > 1 else queries[0]
 
                         c_id_val = int(data.get("climax_scene_id") or climax_scene_id)
                         if 1 < c_id_val <= len(base_scenes):
                             climax_scene_id = c_id_val
 
                         climax_desc = str(data.get("climax_description") or climax_desc).strip()
+                        visual_hook_blueprint = str(data.get("visual_hook_blueprint") or climax_desc).strip()
                         atmosphere_fx = str(data.get("atmosphere_fx") or niche or "action").lower()
                         gemini_decided = True
                         break
@@ -266,33 +393,28 @@ Return ONLY valid JSON:
             rotator.mark_model_rate_limited(key, model_name, status_code=503, error_text=str(e))
             logger.debug(f"[HookVideoNode] Gemini Hook Mode classifier fallback ({model_name}): {e}")
 
-    if not gemini_decided and not pre_mode:
+    if not gemini_decided:
         combined_text = f"{topic} {hook_narration} {visual_keyword} {niche}".lower()
-        if any(k in combined_text for k in ("psych", "manipulat", "gaslight", "narcissist", "love bomb", "mindset", "what if", "alternate history")):
+        if any(k in combined_text for k in ("psych", "manipulat", "gaslight", "narcissist", "love bomb", "mindset", "body language", "liar", "interrogat")):
+            hook_production_strategy = "CINEMATIC_BROLL_FAST_CUT"
+            hook_visual_mode = "video"
+            is_abstract_keyword = True
+        elif any(k in combined_text for k in ("what if", "alternate history", "ancient", "empire", "world war", "soviet")):
+            hook_production_strategy = "HYBRID_MOTION_AND_SCENE_MONTAGE"
             hook_visual_mode = "scene"
             is_abstract_keyword = True
         else:
+            hook_production_strategy = "VIRAL_SHORT_ACTION_PEAK"
             hook_visual_mode = "video"
             is_abstract_keyword = False
 
     pre_resolved_hook_media: Dict[int, Dict[str, Any]] = {}
 
-    # BẮT BUỘC 100% CẢNH 1 (HOOK) TRÊN MỌI KÊNH (KỂ CẢ PSYCHOLOGY, ALTERNATE HISTORY, MYSTERIES) PHẢI LÀ VIDEO CHUYỂN ĐỘNG THẬT!
-    # Tuyệt đối không bỏ qua bước săn Video Mở Đầu để tránh lỗi mở màn bằng ảnh tĩnh gây tụt Stay Rate.
-    if hook_visual_mode == "scene" or is_abstract_keyword:
-        logger.info(
-            f"🔥 [HookVideoNode] Kênh '{niche}' có từ khóa trừu tượng ('{visual_keyword}') "
-            f"-> Ép chế độ `hook_visual_mode='video'` (săn Short / Stock Video chuyển động thật cho Cảnh 1 thay vì ảnh tĩnh)!"
-        )
-        hook_visual_mode = "video"
-        is_abstract_keyword = False
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # BƯỚC 2: GEMINI CHỌN "video" -> SĂN VIDEO SHORT TRÊN MẠNG (CHỐNG LẶP 100%)
-    # ──────────────────────────────────────────────────────────────────────────
     logger.info(
-        f"🎯 [HookVideoNode] Gemini chọn `hook_visual_mode='video'` -> Săn tìm Short Viral & Đa nguồn cho Cao Trào: "
-        f"'{climax_desc[:75]}' | Queries: {queries} | HookWindow={opening_hook_window_sec:.2f}s (S1={dur_s1:.2f}s, S2={dur_s2:.2f}s) | ClimaxScene=#{climax_scene_id}"
+        f"🎯 [HookVideoNode] Chiến lược Hook do AI chọn từ kịch bản: strategy='{hook_production_strategy}' "
+        f"(mode='{hook_visual_mode}') | Blueprint: '{visual_hook_blueprint[:75]}' | "
+        f"Beat1='{beat_1_query}' + Beat2='{beat_2_query}' | Queries={queries} | "
+        f"HookWindow={opening_hook_window_sec:.2f}s (S1={dur_s1:.2f}s, S2={dur_s2:.2f}s) | ClimaxScene=#{climax_scene_id}"
     )
 
     from app.services.video_memory_rag import get_video_memory_rag
@@ -327,7 +449,12 @@ Return ONLY valid JSON:
     )
 
     cand_seq_idx = 0
-    for q_idx, q in enumerate(queries):
+    yt_queries_to_run = (
+        queries[:1]
+        if hook_production_strategy == "CINEMATIC_BROLL_FAST_CUT"
+        else queries
+    )
+    for q_idx, q in enumerate(yt_queries_to_run):
         if len(candidate_videos) >= 3:
             break
         # Quét danh sách ứng viên qua yt_dlp flat search (max_results=25), ưu tiên mạnh các Short VIRAL triệu view,
@@ -487,73 +614,86 @@ Return ONLY valid JSON:
             if len(candidate_videos) >= 3:
                 break
 
-    # ── BỔ SUNG ĐA NGUỒN VIDEO (PEXELS HD + PIXABAY HD + WIKIMEDIA COMMONS + NASA VIDEO) CHO HOOK ──
-    # Luôn nạp thêm 1 ứng viên Video HD sạch từ Pexels/Pixabay/Wikimedia vào bể chấm điểm để:
-    # (1) Kết hợp cùng Viral Short tạo thành chuỗi 2-Video Hook 3-7s (Cảnh 1 + Cảnh 2) hoặc Cảnh Cao Trào,
-    # (2) Dự phòng tức thì nếu các ứng viên YouTube Short bị Gemini Vision loại do chuồng trại/watermark!
+    # ── BỔ SUNG ĐA NGUỒN VIDEO (PEXELS HD + PIXABAY HD + WIKIMEDIA COMMONS + NASA VIDEO) CHO DUAL-BEAT HOOK ──
+    # Nạp tối đa 2 ứng viên Video HD sạch cho Beat 1 (0-1.8s) và Beat 2 (1.8-3.5s) để:
+    # (1) Tạo nhịp cắt cảnh kép (Dual-Beat Fast-Cut) ngay trong Cảnh 1 chống vuốt bỏ ở giây 1.8s,
+    # (2) Cung cấp B-Roll điện ảnh không chữ/watermark cho ngách Tâm lý (CINEMATIC_BROLL_FAST_CUT).
     if len(candidate_videos) < 4 and not is_3d_cgi_subject:
         try:
             from app.agents.media_agent import MediaAgent
             m_agent = MediaAgent()
-            st_q_hook = queries[0] if queries else (canonical_subject or visual_keyword or topic)
-            va_multi_src = {
-                "analysis_source": "ai",
-                "subject": canonical_subject or primary_entity or topic,
-                "core_visual_entity": canonical_subject or primary_entity or topic,
-                "topic": topic,
-                "search_queries": queries[:3],
-                "is_hook_scene": True,
-            }
-            best_multi_v = m_agent.search_best_video_clip(
-                query=st_q_hook,
-                visual_analysis=va_multi_src,
-                narration=hook_narration,
-                topic=topic,
-            )
-            if best_multi_v and best_multi_v.get("url"):
-                multi_v_path = str(hook_cand_dir / f"multisrc_hook_cand_{cand_seq_idx}.mp4")
-                m_agent.download_file(best_multi_v["url"], multi_v_path)
-                if Path(multi_v_path).exists() and Path(multi_v_path).stat().st_size > 40_000:
-                    p_off, p_dur = find_hook_peak_window(
-                        multi_v_path,
-                        min_duration=max(target_hook_duration_sec, 3.0),
-                        max_duration=15.0,
-                    )
-                    clean_ms_path = str(hook_cand_dir / f"hook_peak_clean_{cand_seq_idx}.mp4")
-                    cand_seq_idx += 1
-                    trim_video(
-                        input_path=multi_v_path,
-                        duration_seconds=min(max(p_dur, opening_hook_window_sec, 3.5), 8.5),
-                        output_path=clean_ms_path,
-                        width=1080,
-                        height=1920,
-                        fps=30,
-                        is_scifi=is_scifi_pre,
-                        niche=atmosphere_fx,
-                        apply_grading=False,
-                        is_hook_scene=True,
-                        fair_use_transform=False,
-                        start_offset_sec=p_off,
-                        preserve_continuous_flow=True,
-                    )
-                    insp_ms = clean_ms_path if (Path(clean_ms_path).exists() and Path(clean_ms_path).stat().st_size > 20_000) else multi_v_path
-                    ms_gate = VisualCritic.inspect_clip_before_concat(
-                        insp_ms, min_short_edge=720, min_sharpness=5.2, check_watermark=True, allow_snow=True, auto_sanitize=True
-                    )
-                    if ms_gate.get("passed", False):
-                        validated_peaks[multi_v_path] = {
-                            "passed": True,
-                            "peak_offset_sec": p_off,
-                            "peak_duration_sec": p_dur,
-                            "clean_peak_path": clean_ms_path,
-                            "inspect_target": insp_ms,
-                        }
-                        candidate_videos.append(multi_v_path)
-                        candidate_titles[Path(multi_v_path).stem] = str(best_multi_v.get("title") or "Multi-Source HD Video")
-                        logger.info(
-                            f"🌐 [HookVideoNode Multi-Source] Đã bổ sung video sạch từ '{best_multi_v.get('source', 'stock')}': "
-                            f"'{best_multi_v.get('title', '')[:50]}'"
+            multi_beat_queries: List[str] = []
+            for bq in [beat_1_query, beat_2_query, *(queries[:2])]:
+                bq_clean = str(bq or "").strip()
+                if bq_clean and bq_clean.lower() not in {x.lower() for x in multi_beat_queries}:
+                    multi_beat_queries.append(bq_clean)
+            if not multi_beat_queries:
+                multi_beat_queries = [canonical_subject or visual_keyword or topic]
+
+            seen_multi_urls: set = set()
+            for mb_idx, st_q_hook in enumerate(multi_beat_queries[:2]):
+                if len(candidate_videos) >= 4:
+                    break
+                va_multi_src = {
+                    "analysis_source": "ai",
+                    "subject": canonical_subject or primary_entity or st_q_hook,
+                    "core_visual_entity": canonical_subject or primary_entity or st_q_hook,
+                    "topic": topic,
+                    "search_queries": [st_q_hook] + [q for q in queries[:2] if q != st_q_hook],
+                    "is_hook_scene": True,
+                }
+                best_multi_v = m_agent.search_best_video_clip(
+                    query=st_q_hook,
+                    visual_analysis=va_multi_src,
+                    narration=hook_narration,
+                    topic=topic,
+                )
+                v_url_ms = (best_multi_v or {}).get("url")
+                if v_url_ms and v_url_ms not in seen_multi_urls:
+                    seen_multi_urls.add(v_url_ms)
+                    multi_v_path = str(hook_cand_dir / f"multisrc_hook_cand_{cand_seq_idx}.mp4")
+                    m_agent.download_file(v_url_ms, multi_v_path)
+                    if Path(multi_v_path).exists() and Path(multi_v_path).stat().st_size > 40_000:
+                        p_off, p_dur = find_hook_peak_window(
+                            multi_v_path,
+                            min_duration=max(target_hook_duration_sec, 3.0),
+                            max_duration=15.0,
                         )
+                        clean_ms_path = str(hook_cand_dir / f"hook_peak_clean_{cand_seq_idx}.mp4")
+                        cand_seq_idx += 1
+                        trim_video(
+                            input_path=multi_v_path,
+                            duration_seconds=min(max(p_dur, opening_hook_window_sec, 3.5), 8.5),
+                            output_path=clean_ms_path,
+                            width=1080,
+                            height=1920,
+                            fps=30,
+                            is_scifi=is_scifi_pre,
+                            niche=atmosphere_fx,
+                            apply_grading=False,
+                            is_hook_scene=True,
+                            fair_use_transform=False,
+                            start_offset_sec=p_off,
+                            preserve_continuous_flow=True,
+                        )
+                        insp_ms = clean_ms_path if (Path(clean_ms_path).exists() and Path(clean_ms_path).stat().st_size > 20_000) else multi_v_path
+                        ms_gate = VisualCritic.inspect_clip_before_concat(
+                            insp_ms, min_short_edge=720, min_sharpness=5.2, check_watermark=True, allow_snow=True, auto_sanitize=True
+                        )
+                        if ms_gate.get("passed", False):
+                            validated_peaks[multi_v_path] = {
+                                "passed": True,
+                                "peak_offset_sec": p_off,
+                                "peak_duration_sec": p_dur,
+                                "clean_peak_path": clean_ms_path,
+                                "inspect_target": insp_ms,
+                            }
+                            candidate_videos.append(multi_v_path)
+                            candidate_titles[Path(multi_v_path).stem] = str(best_multi_v.get("title") or f"Multi-Source Beat #{mb_idx + 1}")
+                            logger.info(
+                                f"🌐 [HookVideoNode Multi-Source Beat #{mb_idx + 1}] Đã bổ sung video sạch từ '{best_multi_v.get('source', 'stock')}' "
+                                f"cho query '{st_q_hook}': '{best_multi_v.get('title', '')[:50]}'"
+                            )
         except Exception as e_ms:
             logger.debug(f"[HookVideoNode] Multi-source video expansion skip: {e_ms}")
 
@@ -645,21 +785,24 @@ Return ONLY valid JSON:
             continue
 
         # 3.3. Gửi 3 khung hình tại đoạn Peak cho Gemini Vision chấm điểm & quyết định nên dùng "video" hay "scene"
-        vision_prompt = f"""You are a strict YouTube Shorts Hook Video Quality Grader & Director.
+        vision_prompt = f"""You are a strict YouTube Shorts Hook Video Quality Grader & Scroll-Stop Director.
 Evaluate this 3-frame sequence extracted directly from the PEAK CLIMAX window (starting at {peak_offset_sec:.1f}s, natural peak length {peak_duration_sec:.1f}s) of a candidate Short video for:
 - Video Topic: "{topic} (Climax: {climax_desc})"
 - Primary Subject/Entity: "{primary_entity or climax_desc}"
 - Opening Hook Line: "{hook_narration}"
+- Hook Production Strategy: "{hook_production_strategy}"
+- Target Visual Hook Blueprint (from full script): "{visual_hook_blueprint or hook_narration}"
 
-Score strictly from 1.0 to 10.0 and decide whether this Hook should use this cut Peak VIDEO ("video") or fall back to creating a traditional visual SCENE ("scene"):
-1. "recommended_hook_mode": Return "video" ONLY if these 3 peak frames show compelling, relevant real motion/footage in the authentic setting/habitat worthy of splicing into the Hook and Climax. Return "scene" if the footage is unrelated, wrong species/subject, trapped in an artificial zoo enclosure/cage when wild nature is required, contradicting the script's core biome/season, a talking head, or cluttered with burned-in text/watermarks.
-2. "entity_match_score": Does the peak clip visually match BOTH the subject/entity AND its authentic habitat/biome/setting in "{topic}" / "{hook_narration}"? (10 = exact subject in authentic environment, <= 4.0 = wrong subject, domestic pet, artificial zoo cage, or contradicting biome/season).
-3. "motion_action_score": Is it dynamic real footage/action/intriguing visual rather than a talking head / podcast / static image zoom? (10 = intense real action or intriguing motion, 1 = talking head or static slide).
-4. "clean_frame_score": Is the visual frame clean without burned-in subtitles, giant text overlays, split-screen collages, or persistent corner watermarks/logos? (10 = clean full-bleed footage, <= 4.0 = visible watermark/logo, subtitles, or split-screen).
-5. "reason": Short 1-sentence explanation.
+Score strictly from 1.0 to 10.0 and decide whether this Hook should use this cut Peak VIDEO ("video") or fall back to creating a dynamic visual SCENE montage ("scene"):
+1. "recommended_hook_mode": Return "video" ONLY if these 3 peak frames show compelling, relevant real motion/footage in the authentic setting/habitat (or moody cinematic human expression/gesture for psychology) worthy of splicing into the Hook. Return "scene" if the footage is unrelated, wrong species/subject, trapped in an artificial zoo enclosure/cage when wild nature is required, contradicting the script's core biome/season, a podcast/vlog talking head, or cluttered with burned-in text/watermarks.
+2. "entity_match_score": Does the peak clip visually match BOTH the subject/entity AND its authentic setting/mood in "{topic}" / "{visual_hook_blueprint or hook_narration}"? (10 = exact subject/mood in authentic environment, <= 4.0 = wrong subject, domestic pet, artificial zoo cage, or contradicting biome/season).
+3. "motion_action_score": Is it dynamic real footage/action/expressive cinematic motion rather than a podcast talking head or static slide? (10 = intense real action or gripping cinematic motion, 1 = talking head or static slide).
+4. "scroll_stop_score": Will this visual IMMEDIATELY freeze a viewer's thumb in the first 1.5 seconds on the YouTube Shorts feed when paired with "{hook_narration}"? (10 = visceral, dramatic, impossible-to-swipe-past visual hook; <= 5.0 = boring, flat, generic landscape, or slow walking).
+5. "clean_frame_score": Is the visual frame clean without burned-in subtitles, giant text overlays, split-screen collages, or persistent corner watermarks/logos? (10 = clean full-bleed footage, <= 4.0 = visible watermark/logo, subtitles, or split-screen).
+6. "reason": Short 1-sentence explanation.
 
 Return ONLY valid JSON:
-{{"recommended_hook_mode": "video", "entity_match_score": 8.5, "motion_action_score": 9.0, "clean_frame_score": 8.0, "reason": "..."}}"""
+{{"recommended_hook_mode": "video", "entity_match_score": 8.5, "motion_action_score": 9.0, "scroll_stop_score": 8.8, "clean_frame_score": 8.0, "reason": "..."}}"""
 
         score_res: Optional[Dict[str, Any]] = None
         for model_name, key in rotator.iter_best_model_key_pairs(max_total_attempts=3):
@@ -686,14 +829,17 @@ Return ONLY valid JSON:
                             rec_mode = str(data.get("recommended_hook_mode") or "video").strip().lower()
                             e_score = float(data.get("entity_match_score", 5.0))
                             m_score = float(data.get("motion_action_score", 5.0))
+                            s_score = float(data.get("scroll_stop_score", m_score))
                             c_score = float(data.get("clean_frame_score", 5.0))
-                            overall = round(e_score * 0.45 + m_score * 0.35 + c_score * 0.20, 2)
+                            overall = round(e_score * 0.40 + m_score * 0.25 + s_score * 0.20 + c_score * 0.15, 2)
+                            min_scroll_req = 6.5 if hook_production_strategy == "HYBRID_MOTION_AND_SCENE_MONTAGE" else 5.8
                             passed = (
                                 (rec_mode == "video" or e_score >= 6.5)
-                                and (overall >= 6.0)
+                                and (overall >= 6.2)
                                 and (e_score >= 5.8)
                                 and (c_score >= 5.8)
                                 and (m_score >= 5.5)
+                                and (s_score >= min_scroll_req)
                             )
                             score_res = {
                                 "video_path": v_path,
@@ -703,6 +849,7 @@ Return ONLY valid JSON:
                                 "recommended_hook_mode": "video" if passed else "scene",
                                 "entity_match_score": e_score,
                                 "motion_action_score": m_score,
+                                "scroll_stop_score": s_score,
                                 "clean_frame_score": c_score,
                                 "overall_score": overall,
                                 "passed": passed,
@@ -751,16 +898,19 @@ Return ONLY valid JSON:
                     avg_sharp = sum(sharpness_vals) / max(len(sharpness_vals), 1)
                     e_score = 8.0
                     m_score = round(min(9.5, max(4.0, 5.5 + avg_motion * 0.22)), 2)
+                    s_score = round(min(9.5, max(4.5, 5.6 + avg_motion * 0.20 + (avg_contrast / 28.0))), 2)
                     c_score = round(min(9.2, max(5.0, 5.5 + (avg_contrast / 18.0) + (avg_sharp / 15.0))), 2)
-                    overall = round(e_score * 0.45 + m_score * 0.35 + c_score * 0.20, 2)
+                    overall = round(e_score * 0.40 + m_score * 0.25 + s_score * 0.20 + c_score * 0.15, 2)
                     passed = (avg_motion >= 3.0) and (avg_contrast >= 24.0) and (overall >= 6.8)
                     score_res = {
                         "video_path": v_path,
+                        "clean_peak_path": inspect_target,
                         "peak_offset_sec": peak_offset_sec,
                         "peak_duration_sec": peak_duration_sec,
                         "recommended_hook_mode": "video" if passed else "scene",
                         "entity_match_score": e_score,
                         "motion_action_score": m_score,
+                        "scroll_stop_score": s_score,
                         "clean_frame_score": c_score,
                         "overall_score": overall,
                         "passed": passed,
@@ -776,7 +926,8 @@ Return ONLY valid JSON:
         logger.info(
             f"  📊 [HookVideoGrader] Ứng viên #{idx + 1} ({Path(v_path).name} @Peak {peak_offset_sec:.1f}s, len={peak_duration_sec:.1f}s): "
             f"Mode={score_res['recommended_hook_mode']} | Overall={score_res['overall_score']}/10 "
-            f"(Entity={score_res['entity_match_score']}, Motion={score_res['motion_action_score']}, Clean={score_res['clean_frame_score']}) "
+            f"(Entity={score_res['entity_match_score']}, Motion={score_res['motion_action_score']}, "
+            f"ScrollStop={score_res.get('scroll_stop_score', 0.0)}, Clean={score_res['clean_frame_score']}) "
             f"-> {'✅ ĐẠT (Dùng Video Peak)' if score_res['passed'] else '❌ LOẠI (Chuyển sang Tạo Cảnh)'} ({score_res['reason']})"
         )
         if score_res["passed"]:
@@ -786,14 +937,18 @@ Return ONLY valid JSON:
             passing_candidates.append(score_res)
 
     passing_candidates.sort(
-        key=lambda x: (float(x.get("overall_score", 0.0)), int(x.get("view_count", 0))),
+        key=lambda x: (
+            float(x.get("overall_score", 0.0)),
+            float(x.get("scroll_stop_score", 0.0)),
+            int(x.get("view_count", 0)),
+        ),
         reverse=True,
     )
     if passing_candidates:
         best_candidate = passing_candidates[0]
 
     # ──────────────────────────────────────────────────────────────────────────
-    # BƯỚC 4: CẮT ĐOẠN PEAK GHÉP VÀO ĐẦU VIDEO (3-7 GIÂY LINH HOẠT: CẢNH 1 HOẶC CẢNH 1 + CẢNH 2 LIỀN MẠCH)
+    # BƯỚC 4: CẮT ĐOẠN PEAK GHÉP VÀO ĐẦU VIDEO (ƯU TIÊN DUAL-BEAT FAST-CUT TRONG CẢNH 1 + MỞ RỘNG CẢNH 2 LIỀN MẠCH)
     # ──────────────────────────────────────────────────────────────────────────
     hook_output_clip = str(work_dir / "hook_motion_001.mp4")
     hook_output_clip_s2 = str(work_dir / "hook_motion_002.mp4")
@@ -809,27 +964,68 @@ Return ONLY valid JSON:
         hook_vid_id = m_yt_hook.group(1) if m_yt_hook else ""
         hook_vid_title = candidate_titles.get(hook_vid_id) or candidate_titles.get(Path(best_v_path).stem, "")
 
-        logger.info(
-            f"🔥 [HookVideoNode] Đã cắt đoạn PEAK NHẤT (@{peak_start:.2f}s, độ dài tự nhiên={natural_peak_dur:.2f}s, "
-            f"Views={best_candidate.get('view_count', 0):,}, Score={best_candidate['overall_score']}/10) "
-            f"ghép vào ĐẦU VIDEO (Cảnh 1: {target_hook_duration_sec:.2f}s) -> {hook_output_clip}"
+        other_passing = [c for c in passing_candidates if c["video_path"] != best_v_path]
+        used_second_paths = set()
+
+        # 4.1. Thử tạo DUAL-BEAT FAST-CUT ngay trong Cảnh 1 (0.0-1.75s Beat 1A + 1.75s-end Beat 1B)
+        # nếu có >= 2 ứng viên đạt chuẩn và Cảnh 1 >= 2.5s (chống phản xạ vuốt bỏ ở giây thứ 2.0!)
+        dual_beat_spliced = False
+        if other_passing and target_hook_duration_sec >= 2.6:
+            beat_b_cand = other_passing[0]
+            beat_b_v_path = beat_b_cand["video_path"]
+            beat_b_clean = beat_b_cand.get("clean_peak_path") or beat_b_v_path
+            use_b_precleaned = beat_b_clean != beat_b_v_path and Path(beat_b_clean).exists()
+            peak_b_start = float(beat_b_cand.get("peak_offset_sec", 0.0))
+            if Path(beat_b_clean).exists():
+                dual_beat_spliced = _splice_dual_beat_hook_clip(
+                    clip_a_path=clean_p_path if use_precleaned else best_v_path,
+                    start_a=0.0 if use_precleaned else peak_start,
+                    clip_b_path=beat_b_clean if use_b_precleaned else beat_b_v_path,
+                    start_b=0.0 if use_b_precleaned else peak_b_start,
+                    total_duration_sec=target_hook_duration_sec,
+                    output_path=hook_output_clip,
+                    work_dir=work_dir,
+                    is_scifi=is_scifi,
+                    niche=atmosphere_fx,
+                    fair_use_a=not use_precleaned,
+                    fair_use_b=not use_b_precleaned,
+                )
+                if dual_beat_spliced:
+                    used_second_paths.add(beat_b_v_path)
+                    logger.info(
+                        f"⚡ [HookVideoNode Dual-Beat Fast-Cut] Đã ghép 2 góc máy liên tiếp cho Cảnh 1 "
+                        f"({target_hook_duration_sec:.2f}s | Beat 1A='{Path(best_v_path).name}' + Beat 1B='{Path(beat_b_v_path).name}') "
+                        f"-> {hook_output_clip}"
+                    )
+
+        if not dual_beat_spliced:
+            logger.info(
+                f"🔥 [HookVideoNode] Đã cắt đoạn PEAK NHẤT (@{peak_start:.2f}s, độ dài tự nhiên={natural_peak_dur:.2f}s, "
+                f"Views={best_candidate.get('view_count', 0):,}, Score={best_candidate['overall_score']}/10, "
+                f"ScrollStop={best_candidate.get('scroll_stop_score', 0.0)}/10) "
+                f"ghép vào ĐẦU VIDEO (Cảnh 1: {target_hook_duration_sec:.2f}s) -> {hook_output_clip}"
+            )
+            trim_video(
+                input_path=clean_p_path if use_precleaned else best_v_path,
+                duration_seconds=target_hook_duration_sec,
+                output_path=hook_output_clip,
+                width=1080,
+                height=1920,
+                fps=30,
+                is_scifi=is_scifi,
+                niche=atmosphere_fx,
+                apply_grading=True,
+                is_hook_scene=True,
+                fair_use_transform=not use_precleaned,
+                start_offset_sec=0.0 if use_precleaned else peak_start,
+                preserve_continuous_flow=True,
+            )
+
+        hook_mode = (
+            f"DUAL_BEAT_FAST_CUT_{hook_production_strategy}"
+            if dual_beat_spliced
+            else "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK"
         )
-        trim_video(
-            input_path=clean_p_path if use_precleaned else best_v_path,
-            duration_seconds=target_hook_duration_sec,
-            output_path=hook_output_clip,
-            width=1080,
-            height=1920,
-            fps=30,
-            is_scifi=is_scifi,
-            niche=atmosphere_fx,
-            apply_grading=True,
-            is_hook_scene=True,
-            fair_use_transform=not use_precleaned,
-            start_offset_sec=0.0 if use_precleaned else peak_start,
-            preserve_continuous_flow=True,
-        )
-        hook_mode = "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK"
         final_hook_visual_mode = "video"
         if Path(hook_output_clip).exists() and Path(hook_output_clip).stat().st_size > 10_000:
             rag.verify_and_commit_in_job_clip(
@@ -852,8 +1048,12 @@ Return ONLY valid JSON:
                 "media_path": hook_output_clip,
                 "media_type": "hook_ready_video",
                 "production_method": hook_mode,
-                "visual_strategy": "HOOK_PEAK_SHORT_VIDEO",
-                "strategy_rationale": f"Viral Peak Short @{peak_start:.1f}s (full_peak={natural_peak_dur:.1f}s, {best_candidate['overall_score']}/10)",
+                "visual_strategy": "HOOK_DUAL_BEAT_FAST_CUT" if dual_beat_spliced else "HOOK_PEAK_SHORT_VIDEO",
+                "strategy_rationale": (
+                    f"Dual-Beat Fast-Cut ({hook_production_strategy}, Score={best_candidate['overall_score']}/10, ScrollStop={best_candidate.get('scroll_stop_score', 0.0)}/10)"
+                    if dual_beat_spliced
+                    else f"Viral Peak Short @{peak_start:.1f}s (full_peak={natural_peak_dur:.1f}s, {best_candidate['overall_score']}/10)"
+                ),
             }
             if scenes_media:
                 scene_1["media_path"] = hook_output_clip
@@ -862,8 +1062,6 @@ Return ONLY valid JSON:
                 scenes_media[0] = scene_1
 
         # ── MỞ RỘNG HOOK VIDEO ĐẦU VIDEO TRỌN VẸN 3-7 GIÂY (CẢNH 1 + CẢNH 2 LIỀN MẠCH, KHỚP 100% LỜI ĐỌC) ──
-        other_passing = [c for c in passing_candidates if c["video_path"] != best_v_path]
-        used_second_paths = set()
         if span_opening_two_scenes and dur_s2 >= 1.2 and len(base_scenes) >= 2:
             s2_filled = False
             # Ưu tiên 1: Nếu có video ứng viên Viral thứ 2 độc lập -> Ghép nối tiếp sang Cảnh 2 tạo chuỗi 2-Video Viral Hook (4-7s)
@@ -1218,6 +1416,10 @@ Return ONLY valid JSON:
     )
     eval_summary = {
         "mode": hook_mode,
+        "hook_production_strategy": hook_production_strategy,
+        "visual_hook_blueprint": visual_hook_blueprint,
+        "beat_1_query": beat_1_query,
+        "beat_2_query": beat_2_query,
         "hook_visual_mode": final_hook_visual_mode,
         "is_abstract_keyword": is_abstract_keyword,
         "climax_scene_id": climax_scene_id,
@@ -1226,6 +1428,7 @@ Return ONLY valid JSON:
         "atmosphere_fx": atmosphere_fx,
         "candidates_tested": len(scored_candidates),
         "best_score": best_candidate["overall_score"] if best_candidate else (8.4 if pre_resolved_hook_media else None),
+        "best_scroll_stop_score": best_candidate.get("scroll_stop_score") if best_candidate else None,
         "best_reason": best_candidate["reason"] if best_candidate else ("Rapid Multi-Image Peak Hook / Stock Motion Spliced" if pre_resolved_hook_media else "Delegated to fetch_media & VisualCritic (scene mode)"),
         "evaluated_by": "vision_ai" if best_candidate else ("peak_synthesizer" if pre_resolved_hook_media else "delegated_to_visual_critic"),
         "output_clip": hook_output_clip if Path(hook_output_clip).exists() else None,

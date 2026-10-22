@@ -1203,38 +1203,38 @@ Target Language: {language} ({target_lang_display})
 {channel_memory_block}
 {niche_instructions}
 ═══════════════════════════════════════════════════════════
-MASTER-CLASS YOUTUBE SHORTS ARCHITECTURE (30–40 SECONDS | 85–120 WORDS | SMOOTH & COMPLETE STORYTELLING)
+MASTER-CLASS YOUTUBE SHORTS ARCHITECTURE (28–36 SECONDS | 72–98 WORDS | HIGH-APV SMOOTH STORYTELLING)
 YouTube Shorts rewards TWO metrics simultaneously:
-1. Viewed vs. Swiped-Away > 75%: Achieved by a sharp Scene 1 Hook (5–9 words) + an engaging opening visual.
-2. Smooth, Coherent, Full-Bodied Narrative (85–120 words, 30–40s):
-   - NEVER write an abrupt, choppy, or truncated script ("cụt lủn")! Let the sentences flow naturally into one another with smooth transitions, clear context, and complete explanations so the viewer feels deeply satisfied.
-   - Flexible sentence length per scene (8 to 16 words per body scene) — prioritize natural storytelling rhythm and emotional flow over rigid word counting!
+1. Viewed vs. Swiped-Away > 75%: Achieved by a sharp Scene 1 Hook (5–8 words, ~2.0–2.6s) + a dual-beat opening visual.
+2. High APV (80%–95%) + Smooth, Complete Narrative (72–98 words, 28–36s):
+   - NEVER write an abrupt, choppy, or truncated script ("cụt lủn")! Let the sentences flow naturally into one another with smooth transitions, clear context, and complete explanations so the viewer feels deeply satisfied within a tight 28–36s runtime.
+   - Flexible sentence length per scene (8 to 14 words per body scene) — prioritize natural storytelling rhythm and emotional flow over rigid word counting!
    - Every scene MUST be a 100% grammatically complete sentence. NEVER chop one sentence across two scenes!
 ═══════════════════════════════════════════════════════════
 1. THE MANDATORY 5-ACT DEEP STORYTELLING BLUEPRINT (target: {word_range_en}):
    - DURATION & SCENE COUNT: {duration_spec}.
-   - YOU MUST EXECUTE ALL 5 ACTS SMOOTHLY IN ORDER across 7 to 9 scenes:
+   - YOU MUST EXECUTE ALL 5 ACTS SMOOTHLY IN ORDER across 6 to 8 scenes:
 
-     * ACT 1 — THE VISCERAL HOOK (Scene 1 | 5 to 9 words):
+     * ACT 1 — THE VISCERAL HOOK (Scene 1 | 5 to 8 words):
        - Deliver an immediate, personal, high-stakes truth, 1v1 apex duel, covert manipulation quote, or intriguing paradox ("That sweet compliment is a loaded weapon.", "Six lions backed down from one honey badger.", "Never ignore this four-second silence in conversation.").
        - No greetings, no textbook definitions, no passive "Did you know?" questions.
 
-     * ACT 2 — NATURAL CONTEXT & CONCRETE REAL-LIFE PROOF (Scenes 2 – 3):
+     * ACT 2 — NATURAL CONTEXT & CONCRETE REAL-LIFE PROOF (Scene 2 or Scenes 2 – 3):
        - Smoothly build the context and show a concrete real-life example so the story never feels rushed or abrupt:
          * For Psychology / Manipulation / Relationships / Stoicism: Describe the real-life situation naturally and include a recognizable spoken quote ('They casually say, "You are just too sensitive," right after crossing your boundaries.').
          * For Mysteries / Deep Sea / History: Set the historical/scientific scene with the exact year, location, depth, or documented event.
          * For Wildlife / Animal Rescue: Build the tension of the encounter, exact physical traits, bite force (PSI), or the emotional turning point.
 
-     * ACT 3 — DEEP MECHANISM EXPLANATION & MID-VIDEO TWIST (Scenes 4 – 5):
+     * ACT 3 — DEEP MECHANISM EXPLANATION & MID-VIDEO TWIST (Scenes 3 – 4 or 4 – 5):
        - Explain *WHY* and *HOW* this happens thoroughly and clearly so the viewer truly understands the underlying mechanism (*The Isolation Gambit*, *Cognitive Dissonance*, *Cavitation Shockwave*, *Cortisol Loop*, or historical chain reaction).
        - Connect sentences smoothly with natural cause-and-effect transitions. Optionally set `overlay_badge` to a short uppercase tag like `"[ // THE REAL TRAP // ]"`.
 
-     * ACT 4 — THE SURGICAL COUNTER-MOVE / CLIMAX PAYOFF (Scenes 6 – 7):
+     * ACT 4 — THE SURGICAL COUNTER-MOVE / CLIMAX PAYOFF (Scenes 5 – 6 or 6 – 7):
        - Deliver the full climax, resolution, or practical word-for-word Counter-Move that makes the video worth saving and sharing:
          * For Psychology: Give the exact calm response phrase and explain why it disarms the manipulator.
          * For Wildlife / Rescue / Mysteries: Deliver the complete biomechanical outcome, joyful transformation, or scientific answer that fully resolves the story.
 
-     * ACT 5 — SATISFYING CONCLUSION & SEAMLESS INFINITE LOOP BRIDGE (Scene 8 or 9):
+     * ACT 5 — SATISFYING CONCLUSION & SEAMLESS INFINITE LOOP BRIDGE (Final Scene 6, 7, or 8):
        - ZERO SPOKEN OUTRO CTA: NEVER say "Subscribe", "Follow", "Leave a comment", "Inscreva-se", or "Đăng ký kênh" in the narration!
        - Conclude the story with a complete, resonant final thought that bridges naturally back into Scene 1's opening hook.
 
@@ -1297,23 +1297,23 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
     "Alternative Extreme Contrast / Counter-Move Title with Emoji (28-55 chars, NO 'Variant' prefix)"
   ],
   "primary_entity": "Bare canonical 1-2 word name of main person/species/creature WITHOUT descriptive adjectives (e.g. 'Gargantuan Leviathan', 'Honey Badger', 'Julius Caesar') or null for psychology",
-  "hook": "The opening declarative hook sentence (5-9 words, NO passive questions)",
+  "hook": "The opening declarative hook sentence (5-8 words, NO passive questions)",
   "hook_variants": [
-    "Declarative personal warning or pain-point hook sentence (5-9 words)",
-    "Counter-intuitive psychological or physical paradox hook sentence (5-9 words)",
-    "Immediate behavioral test or high-stakes action hook sentence (5-9 words)"
+    "Declarative personal warning or pain-point hook sentence (5-8 words)",
+    "Counter-intuitive psychological or physical paradox hook sentence (5-8 words)",
+    "Immediate behavioral test or high-stakes action hook sentence (5-8 words)"
   ],
   "hook_visual_mode": "video | scene",
   "is_abstract_keyword": false,
   "climax_scene_id": 3,
   "hook_search_queries": ["bare noun + action/format (2-4 words)", "bare noun + angle (2-4 words)"],
-  "full_narration": "Complete, smooth, well-developed spoken story without stage directions (85-120 words, 30-40s full 5-Act story with Real-Life Example, Mechanism, Counter-Move/Climax, and zero spoken Subscribe CTA)",
+  "full_narration": "Complete, smooth, well-developed spoken story without stage directions (72-98 words, 28-36s High-APV 5-Act story with Real-Life Example, Mechanism, Counter-Move/Climax, and zero spoken Subscribe CTA)",
   "thumbnail_text": "2-4 TỪ IN HOA CỰC TO GỢI TÒ MÒ CHO ẢNH BÌA",
   "scenes": [
     {{
       "scene_id": 1,
       "visual_reasoning": "Ý đồ dẫn dắt mạch truyện của cảnh này",
-      "narration": "Complete, natural spoken sentence for this scene (Scene 1: 5-9 words; Body scenes: 8-16 words flowing naturally, 7 to 9 scenes total)",
+      "narration": "Complete, natural spoken sentence for this scene (Scene 1: 5-8 words; Body scenes: 8-14 words flowing naturally, 6 to 8 scenes total)",
       "visual_keyword": "simple relevant search query for the subject/theme (2-5 English words)",
       "visual_prompt": "Cinematic visual description fitting the overall story mood",
       "stock_query": "simple subject/mood query for stock video (2-4 English words)",
