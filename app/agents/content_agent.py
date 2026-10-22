@@ -547,6 +547,34 @@ class ContentAgent:
 
             # Đánh lại số thứ tự scene_id chuẩn xác 1..N và làm giàu highlight_words / camera_motion / sfx_cue
             _motion_cycle = ["zoom_in_fast", "ken_burns_zoom_out", "pan_right", "ken_burns_zoom_in", "pan_left"]
+            def _direct_scene_motion_and_prompt(sc_item: Dict[str, Any], idx_1based: int, default_m: str) -> None:
+                narr_txt = str(sc_item.get("narration") or "").lower()
+                vp_txt = str(sc_item.get("visual_prompt") or sc_item.get("visual_keyword") or "").strip()
+                vp_low = vp_txt.lower()
+                ctx_s = f"{narr_txt} {vp_low}"
+
+                # Đạo diễn góc máy theo ngữ cảnh (Prompt #2 & #4: tiến gần, lia nhẹ, hoặc đổi tiêu điểm)
+                cur_m = str(sc_item.get("camera_motion") or "").strip().lower()
+                if idx_1based == 1:
+                    sc_item["camera_motion"] = "hyper_zoom"
+                elif not cur_m or cur_m == "auto":
+                    if any(w in ctx_s for w in ("eyes", "gaze", "face", "whisper", "secret", "shock", "paradox", "ánh mắt", "khuôn mặt", "bí mật")):
+                        sc_item["camera_motion"] = "zoom_in"
+                    elif any(w in ctx_s for w in ("vast", "ocean", "trench", "abyss", "empire", "horizon", "world", "đại dương", "toàn cảnh")):
+                        sc_item["camera_motion"] = "zoom_out"
+                    elif any(w in ctx_s for w in ("tower", "rise", "surface", "sky", "canopy", "tall", "vươn lên", "bầu trời")):
+                        sc_item["camera_motion"] = "pan_up"
+                    elif any(w in ctx_s for w in ("chase", "run", "hunt", "across", "follow", "stalk", "rượt đuổi", "băng qua")):
+                        sc_item["camera_motion"] = "pan_right" if idx_1based % 2 == 0 else "pan_left"
+                    else:
+                        sc_item["camera_motion"] = default_m
+
+                # Bổ sung lớp vi chuyển động vật lý & khóa chống méo hình cho visual_prompt (Prompt #1, #4, #5)
+                if vp_txt and "anatomical" not in vp_low and "micro-physics" not in vp_low:
+                    sc_item["visual_prompt"] = (
+                        f"{vp_txt}, natural micro-physics of hair, fabric, and ambient light, "
+                        f"shallow depth-of-field, stable background geometry, exact facial and anatomical fidelity"
+                    ).strip(", ")
             for new_id, p_sc in enumerate(paced_scenes, start=1):
                 p_sc["scene_id"] = new_id
                 if not p_sc.get("highlight_words"):
@@ -556,9 +584,10 @@ class ContentAgent:
                     p_sc["sfx_cue"] = "none"
                 else:
                     if not p_sc.get("camera_motion"):
-                        p_sc["camera_motion"] = _motion_cycle[(new_id - 1) % len(_motion_cycle)]
+                        pass
                     if not p_sc.get("sfx_cue"):
                         p_sc["sfx_cue"] = "none"
+                _direct_scene_motion_and_prompt(p_sc, new_id, _motion_cycle[(new_id - 1) % len(_motion_cycle)])
             scenes = paced_scenes
             raw_data["scenes"] = scenes
 

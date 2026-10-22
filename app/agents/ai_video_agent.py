@@ -32,6 +32,220 @@ logger = logging.getLogger(__name__)
 
 
 class AIVideoAgent:
+    # ── BỘ 3 PHONG CÁCH ĐẠO DIỄN HÌNH ẢNH (3-STYLE VIDEO DIRECTOR ARCHETYPES - PROMPT #3 & #4) ──
+    DIRECTOR_STYLE_ARCHETYPES: Dict[str, str] = {
+        "luxury_commercial_imax": (
+            "Shot on RED V-Raptor 8K VV macro-cinema lens, high-end commercial luxury aesthetics, "
+            "layered foreground-to-background 3D depth separation, crisp volumetric rim lighting, "
+            "floating ambient particles, ultra-smooth 60fps optical clarity"
+        ),
+        "natural_documentary": (
+            "Shot on Sony FX9 85mm telephoto lens, authentic high-end wildlife & real-life camera aesthetics, "
+            "organic camera breathing stability, natural environmental lighting, "
+            "realistic micro-movements of hair, fur, fabric folds, and foliage reacting naturally to wind"
+        ),
+        "cinematic_emotional": (
+            "Shot on Arri Alexa 65 anamorphic cinema lens, deep emotional film atmosphere, "
+            "shallow depth-of-field with smooth rack focus on subject's expressive eyes and micro-expressions, "
+            "subtle chiaroscuro volumetric lighting, rich cinematic color depth without gaudy filters"
+        ),
+    }
+
+    # ── HƯỚNG DẪN CHUYỂN ĐỘNG MÁY QUAY CHUYÊN NGHIỆP (CAMERA MOTION DIRECTIVES - PROMPT #2 & #4) ──
+    CAMERA_MOTION_DIRECTIVES: Dict[str, str] = {
+        "zoom_in": "smooth motorized slow dolly push-in toward the primary subject with shallow depth-of-field rack focus",
+        "zoom_in_fast": "dynamic cinematic push-in locking focus on the central subject's eyes and posture",
+        "hyper_zoom": "assertive optical push-in with crisp focal lock on the main subject and 3D background compression",
+        "ken_burns_zoom_in": "gradual cinematic dolly-in with natural foreground-to-background parallax depth",
+        "zoom_out": "smooth motorized dolly pull-back revealing the surrounding environment and spatial scale",
+        "ken_burns_zoom_out": "slow atmospheric pull-back revealing full environmental depth and lighting",
+        "pan_left": "fluid lateral tracking pan left with natural 3D foreground-background parallax separation",
+        "pan_right": "fluid lateral tracking pan right with natural 3D foreground-background parallax separation",
+        "tilt_up": "steady vertical crane tilt-up revealing vertical scale, posture, and volumetric lighting",
+        "dolly_zoom": "subtle cinematic vertigo dolly-zoom keeping the subject locked in razor-sharp focus while background perspective shifts",
+    }
+
+    # ── KHÓA CHẶT CHẤT LƯỢNG VẬT LÝ & CHỐNG MÉO HÌNH (ANTI-MORPHING & QUALITY LOCK - PROMPT #1 & #5) ──
+    ANTI_MORPH_QUALITY_LOCK: str = (
+        "STRICT QUALITY & PHYSICS LOCK: preserve exact facial features, eye symmetry, character expression, "
+        "clothing details, and original composition; subtle natural micro-movements of hair, fabric, and light; "
+        "physically accurate fluid motion, stable background geometry, zero facial morphing, zero limb distortion, "
+        "no jitter, no warping, no text or watermark"
+    )
+
+    @classmethod
+    def resolve_director_style(
+        cls,
+        niche: Optional[str] = None,
+        narration: str = "",
+        prompt: str = "",
+    ) -> str:
+        """
+        Tự động chọn 1 trong 3 phong cách đạo diễn (Prompt #3):
+        - luxury_commercial_imax: Sang trọng, sắc nét, chiều sâu 3D (Deep Sea, Sci-Fi, Space, Alternate History)
+        - natural_documentary: Đời thường, chân thực như quay bằng máy ảnh cao cấp (Wildlife, Animal Rescue, Nature)
+        - cinematic_emotional: Giàu cảm xúc như cảnh trong phim điện ảnh (Psychology, History Mystery, True Crime)
+        """
+        n_low = str(niche or "").strip().lower()
+        ctx = f"{n_low} {narration} {prompt}".lower()
+
+        if n_low in ("animal_rescue", "wildlife_predators", "nature", "pets") or any(
+            k in ctx for k in ("rescue", "puppy", "kitten", "predator", "wildlife", "jaguar", "crocodile", "lion", "eagle", "stray")
+        ):
+            return "natural_documentary"
+
+        if n_low in ("psychology", "history_mystery", "true_crime", "philosophy", "stoicism") or any(
+            k in ctx for k in ("psychology", "manipulat", "narcissist", "emotion", "silence", "gaze", "eyes", "tears", "betrayal", "secret")
+        ):
+            return "cinematic_emotional"
+
+        if n_low in ("deep_sea_earth_mysteries", "scifi", "alternate_history", "space", "ancient_civilizations") or any(
+            k in ctx for k in ("abyss", "trench", "ocean", "bioluminescent", "cosmos", "galaxy", "sonar", "artifact", "megalodon")
+        ):
+            return "luxury_commercial_imax"
+
+        return "cinematic_emotional"
+
+    @classmethod
+    def build_cinematic_motion_prompt(
+        cls,
+        prompt: str,
+        niche: Optional[str] = None,
+        camera_motion: str = "zoom_in",
+        style_mode: str = "auto",
+        scene_id: int = 1,
+        narration: str = "",
+    ) -> str:
+        """
+        Tổng hợp bộ 5 Prompt Đạo Diễn Chuyển Động (Thổi hồn ảnh tĩnh + Chuyển động siêu mượt +
+        3 Kiểu Video + Máy ảnh 100 củ + Khóa chất lượng chống méo mặt/nền rung) thành Prompt hoàn chỉnh
+        cho Google Veo 3.1 / Wan 2.2 / Wan 2.1.
+        """
+        style_key = (
+            style_mode
+            if style_mode in cls.DIRECTOR_STYLE_ARCHETYPES
+            else cls.resolve_director_style(niche=niche, narration=narration, prompt=prompt)
+        )
+        style_clause = cls.DIRECTOR_STYLE_ARCHETYPES[style_key]
+        cam_key = str(camera_motion or "zoom_in").strip().lower()
+        cam_clause = cls.CAMERA_MOTION_DIRECTIVES.get(
+            cam_key,
+            cls.CAMERA_MOTION_DIRECTIVES["zoom_in"],
+        )
+        hook_pacing = (
+            "Immediate thumb-stopping opening frame with crisp subject separation; "
+            if scene_id == 1
+            else ""
+        )
+        clean_subj = str(prompt or "").strip().rstrip(".")
+        return (
+            f"Cinematic 9:16 vertical video (5-8s). {hook_pacing}"
+            f"Subject & Action: {clean_subj}. "
+            f"Camera & Optics: {style_clause}; {cam_clause}. "
+            f"{cls.ANTI_MORPH_QUALITY_LOCK}."
+        )
+
+    @classmethod
+    def build_three_video_style_variants(
+        cls,
+        prompt: str,
+        camera_motion: str = "zoom_in",
+        narration: str = "",
+    ) -> Dict[str, str]:
+        """
+        Thực thi Prompt #3 (BIẾN 1 ẢNH THÀNH 3 KIỂU VIDEO KHÁC NHAU):
+        Trả về 3 phương án prompt hoàn chỉnh (Quảng cáo sang trọng / Đời thường chân thực / Điện ảnh giàu cảm xúc)
+        với góc máy và nhịp hình riêng biệt.
+        """
+        return {
+            "luxury_commercial_imax": cls.build_cinematic_motion_prompt(
+                prompt=prompt,
+                camera_motion="dolly_zoom" if camera_motion == "zoom_in" else camera_motion,
+                style_mode="luxury_commercial_imax",
+                narration=narration,
+            ),
+            "natural_documentary": cls.build_cinematic_motion_prompt(
+                prompt=prompt,
+                camera_motion="pan_right" if camera_motion == "zoom_in" else camera_motion,
+                style_mode="natural_documentary",
+                narration=narration,
+            ),
+            "cinematic_emotional": cls.build_cinematic_motion_prompt(
+                prompt=prompt,
+                camera_motion="zoom_in",
+                style_mode="cinematic_emotional",
+                narration=narration,
+            ),
+        }
+
+    @classmethod
+    def direct_camera_motion_from_image(
+        cls,
+        image_path: str,
+        fallback_motion: str = "zoom_in",
+        scene_id: int = 1,
+        narration: str = "",
+        visual_analysis: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """
+        Thực thi Prompt #1 & #4 (PHÂN TÍCH KHUNG HÌNH ẢNH TĨNH & ĐẠO DIỄN GÓC MÁY):
+        Đọc bức ảnh thực tế trên đĩa bằng OpenCV, đo phân bổ độ nét/tương phản (Saliency & Gradient Energy)
+        giữa trung tâm, trái/phải và trên/dưới để chọn chuyển động máy quay tự nhiên nhất cho bức ảnh đó.
+        """
+        if not image_path or not Path(image_path).exists():
+            return fallback_motion
+        if scene_id == 1 and fallback_motion in ("hyper_zoom", "zoom_in_fast", "dolly_zoom"):
+            return fallback_motion
+
+        try:
+            from PIL import Image
+            import numpy as np
+
+            with Image.open(str(image_path)) as pil_img:
+                img = np.asarray(pil_img.convert("L"), dtype=np.float32)
+            import numpy as np
+
+
+            if img is None or img.size == 0:
+                return fallback_motion
+            h, w = img.shape[:2]
+            if h < 64 or w < 64:
+                return fallback_motion
+
+            gy, gx = np.gradient(img)
+            mag = np.hypot(gx, gy)
+
+
+            mean_total = float(np.mean(mag)) + 1e-5
+
+            center_crop = mag[int(h * 0.25):int(h * 0.75), int(w * 0.22):int(w * 0.78)]
+            center_ratio = float(np.mean(center_crop)) / mean_total
+
+            left_energy = float(np.mean(mag[:, :int(w * 0.45)]))
+            right_energy = float(np.mean(mag[:, int(w * 0.55):]))
+            top_energy = float(np.mean(mag[:int(h * 0.42), :]))
+            bottom_energy = float(np.mean(mag[int(h * 0.58):, :]))
+
+            narr_low = str(narration or "").lower()
+            is_emotional_or_twist = any(
+                w in narr_low
+                for w in ("secret", "eyes", "silence", "truth", "never", "shock", "fear", "mind", "bí mật", "ánh mắt", "sự thật")
+            )
+
+            if center_ratio >= 1.32:
+                return "dolly_zoom" if is_emotional_or_twist else "zoom_in"
+            if right_energy > left_energy * 1.24:
+                return "pan_right"
+            if left_energy > right_energy * 1.24:
+                return "pan_left"
+            if top_energy > bottom_energy * 1.28:
+                return "tilt_up"
+            if center_ratio <= 0.92:
+                return "zoom_out"
+        except Exception as e:
+            logger.debug(f"[AIVideoAgent] direct_camera_motion_from_image fallback: {e}")
+
+        return fallback_motion
     """
     Tác nhân sinh video AI chuyên nghiệp.
     Cung cấp cả 2 giải pháp: Text-to-Video trực tiếp & Image-to-Video có kiểm soát chi tiết.
@@ -279,6 +493,14 @@ class AIVideoAgent:
                 logger.warning(f"Scene {scene_id}: Không thể sinh ảnh chủ đề cho Image-to-Video.")
                 return None
 
+        # Đạo diễn chuyển động máy quay dựa trên bố cục thực tế của bức ảnh (Prompt #1 & #4)
+        camera_motion = self.direct_camera_motion_from_image(
+            image_path=target_img_path,
+            fallback_motion=camera_motion,
+            scene_id=scene_id,
+            narration=narration,
+            visual_analysis=visual_analysis,
+        )
         # Chuyển hóa ảnh chủ đề thành video MP4 1080x1920 với chuyển động 3D chân thực (chạy trong thread pool)
         try:
             await asyncio.to_thread(
@@ -331,13 +553,30 @@ class AIVideoAgent:
         full_prompt = visual_prompt or prompt
 
         # 1. ƯU TIÊN SỐ 1: Thử gọi trực tiếp công cụ tạo video AI của Google (Google Veo 3.1)
-        google_veo_res = await self._try_google_veo_api(full_prompt, output_path, duration_seconds)
+        google_veo_res = await self._try_google_veo_api(
+            full_prompt,
+            output_path,
+            duration_seconds,
+            niche=niche,
+            camera_motion=camera_motion,
+            scene_id=scene_id,
+            narration=narration,
+        )
         if google_veo_res and Path(google_veo_res).exists() and Path(google_veo_res).stat().st_size > 10000:
             logger.info(f"🎥 [AIVideoAgent] ✅ Google Veo 3.1 Video hoàn tất: {output_path}")
             return output_path
 
         # 2. Thử gọi API Video AI ngoại vi nếu có cấu hình (HuggingFace Wan2.1 / Fal)
-        external_res = await asyncio.to_thread(self._try_external_video_api, full_prompt, output_path, duration_seconds)
+        external_res = await asyncio.to_thread(
+            self._try_external_video_api,
+            full_prompt,
+            output_path,
+            duration_seconds,
+            niche,
+            camera_motion,
+            scene_id,
+            narration,
+        )
         if external_res and Path(external_res).exists() and Path(external_res).stat().st_size > 10000:
             logger.info(f"🔮 [AIVideoAgent] ✅ Text-to-Video API ngoại vi hoàn tất: {output_path}")
             return output_path
@@ -437,7 +676,16 @@ class AIVideoAgent:
 
         return None
 
-    async def _try_google_veo_api(self, prompt: str, output_path: str, duration_seconds: float) -> Optional[str]:
+    async def _try_google_veo_api(
+        self,
+        prompt: str,
+        output_path: str,
+        duration_seconds: float,
+        niche: Optional[str] = None,
+        camera_motion: str = "zoom_in",
+        scene_id: int = 1,
+        narration: str = "",
+    ) -> Optional[str]:
         """
         Gọi trực tiếp công cụ sinh video AI chính hãng của Google (Google Veo 3.1).
         Hỗ trợ các model:
@@ -459,10 +707,14 @@ class AIVideoAgent:
 
         # Google Veo yêu cầu durationSeconds là số nguyên từ 4 đến 8 giây
         dur_int = max(4, min(8, int(round(duration_seconds))))
-        clean_prompt = (
-            f"Cinematic 9:16 vertical video, 8k masterpiece, photorealistic, dramatic lighting, "
-            f"fluid dynamic camera movement, award-winning cinematography, no text, no watermark: {prompt}"
+        clean_prompt = self.build_cinematic_motion_prompt(
+            prompt=prompt,
+            niche=niche,
+            camera_motion=camera_motion,
+            scene_id=scene_id,
+            narration=narration,
         )
+
 
         total_keys = len(self.rotator.keys)
         for _ in range(min(total_keys, 3)):
@@ -568,7 +820,16 @@ class AIVideoAgent:
             return output_path
         return None
 
-    def _try_external_video_api(self, prompt: str, output_path: str, duration_seconds: float) -> Optional[str]:
+    def _try_external_video_api(
+        self,
+        prompt: str,
+        output_path: str,
+        duration_seconds: float,
+        niche: Optional[str] = None,
+        camera_motion: str = "zoom_in",
+        scene_id: int = 1,
+        narration: str = "",
+    ) -> Optional[str]:
         """Thử nghiệm các API sinh video ngoại vi (Pollinations / Fal / HuggingFace)."""
         import requests
 
@@ -580,7 +841,7 @@ class AIVideoAgent:
                 url = "https://gen.pollinations.ai/v1/chat/completions"
                 payload = {
                     "model": "alibaba/wan-2.2-fast",
-                    "messages": [{"role": "user", "content": f"Cinematic 9:16 vertical video, 8k: {prompt}"}],
+                    "messages": [{"role": "user", "content": self.build_cinematic_motion_prompt(prompt=prompt, niche=niche, camera_motion=camera_motion, scene_id=scene_id, narration=narration)}],
                 }
                 res = requests.post(url, json=payload, headers=headers, timeout=60)
                 if res.status_code == 200:
@@ -608,7 +869,7 @@ class AIVideoAgent:
             try:
                 headers = {"Authorization": f"Bearer {hf_token}"}
                 api_url = "https://api-inference.huggingface.co/models/Wan-AI/Wan2.1-T2V-1.3B"
-                payload = {"inputs": f"Cinematic vertical video, {prompt}"}
+                payload = {"inputs": self.build_cinematic_motion_prompt(prompt=prompt, niche=niche, camera_motion=camera_motion, scene_id=scene_id, narration=narration)}
                 res = requests.post(api_url, headers=headers, json=payload, timeout=5)
                 if res.status_code == 200 and len(res.content) > 10000:
                     with open(output_path, "wb") as f:
