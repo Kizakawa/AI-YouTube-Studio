@@ -26,7 +26,7 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
 # Đảm bảo import được module dự án
-project_root = Path(__file__).resolve().parent.parent
+project_root = Path(__file__).resolve().parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 

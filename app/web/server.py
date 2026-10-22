@@ -4659,6 +4659,110 @@ async def publish_repurposed_clip(req: RepurposePublishRequest) -> Dict[str, Any
 
 # ─── Channel-Level OAuth Endpoints & Live Matrix Wizard (Tích hợp auth_all/auth_channel/auth_google lên Web) ─
 
+
+_batch_produce_state: Dict[str, Any] = {
+    "running": False,
+    "started_at": None,
+    "completed_at": None,
+    "total_target": 0,
+    "completed_count": 0,
+    "current_channel": "",
+    "results": [],
+    "error": None,
+}
+
+class BatchProduceRequest(BaseModel):
+    channels: Optional[str] = "all_6"
+    count_per_channel: int = 2
+
+@app.post("/api/channels/batch-auto-produce")
+async def start_batch_auto_produce_endpoint(req: Optional[BatchProduceRequest] = None):
+    """
+    Khởi chạy sản xuất & hẹn lịch tự động hàng loạt cho 6 kênh chủ lực (mặc định loại trừ Paws & Hearts Rescue)
+    ngay trên nền Web Dashboard.
+    """
+    if _batch_produce_state.get("running"):
+        return {
+            "success": False,
+            "message": f"Đang có tiến trình sản xuất hàng loạt chạy ({_batch_produce_state.get('completed_count')}/{_batch_produce_state.get('total_target')}).",
+            "state": _batch_produce_state,
+        }
+
+    from app.services.batch_producer import SIX_ACTIVE_CHANNELS, CHANNELS_CONFIG, produce_channel_video
+
+    ch_arg = (req.channels if req and req.channels else "all_6").strip()
+    count_per_ch = max(1, min(4, int(req.count_per_channel if req and req.count_per_channel else 2)))
+
+    if ch_arg == "all_6":
+        targets = list(SIX_ACTIVE_CHANNELS)
+    elif ch_arg == "all":
+        targets = list(SIX_ACTIVE_CHANNELS) + ["ch_paws_hearts_rescue"]
+    else:
+        targets = [c.strip() for c in ch_arg.split(",") if c.strip() in CHANNELS_CONFIG]
+
+    if not targets:
+        raise HTTPException(status_code=400, detail="Không có kênh hợp lệ để sản xuất")
+
+    _batch_produce_state.update({
+        "running": True,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "completed_at": None,
+        "total_target": len(targets) * count_per_ch,
+        "completed_count": 0,
+        "current_channel": targets[0],
+        "results": [],
+        "error": None,
+    })
+
+    def _run_batch_bg():
+        import asyncio as _aio
+        loop = _aio.new_event_loop()
+        _aio.set_event_loop(loop)
+        try:
+            for t in targets:
+                for v_idx in range(1, count_per_ch + 1):
+                    _batch_produce_state["current_channel"] = f"{CHANNELS_CONFIG.get(t, {}).get('name', t)} (#{v_idx}/{count_per_ch})"
+                    try:
+                        res = loop.run_until_complete(
+                            produce_channel_video(
+                                t,
+                                dry_run=False,
+                                video_index=v_idx,
+                                total_per_channel=count_per_ch,
+                            )
+                        )
+                        if res:
+                            _batch_produce_state["results"].append(res)
+                    except Exception as ex_item:
+                        logger.error(f"[BatchAutoProduce] Lỗi kênh {t} #{v_idx}: {ex_item}", exc_info=True)
+                        _batch_produce_state["results"].append({
+                            "channel": CHANNELS_CONFIG.get(t, {}).get("name", t),
+                            "channel_id": t,
+                            "title": f"FAILED (#{v_idx})",
+                            "error": str(ex_item),
+                        })
+                    _batch_produce_state["completed_count"] = len(_batch_produce_state["results"])
+        except Exception as ex_all:
+            _batch_produce_state["error"] = str(ex_all)
+        finally:
+            _batch_produce_state["running"] = False
+            _batch_produce_state["current_channel"] = ""
+            _batch_produce_state["completed_at"] = datetime.now(timezone.utc).isoformat()
+            loop.close()
+
+    threading.Thread(target=_run_batch_bg, daemon=True).start()
+    return {
+        "success": True,
+        "message": f"Đã khởi chạy sản xuất tự động {len(targets) * count_per_ch} video cho {len(targets)} kênh!",
+        "state": _batch_produce_state,
+    }
+
+@app.get("/api/channels/batch-auto-produce/status")
+async def get_batch_auto_produce_status():
+    """Lấy trạng thái tiến trình sản xuất tự động hàng loạt trên Web."""
+    return {"success": True, "state": _batch_produce_state}
+
+
 @app.get("/api/channels/oauth-live-check")
 def check_all_channels_live_oauth() -> Dict[str, Any]:
     """

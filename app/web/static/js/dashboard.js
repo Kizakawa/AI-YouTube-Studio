@@ -2794,6 +2794,53 @@ function useChannelForScript(channelId) {
     showToast(`Đã chọn kênh: ${ch?.name || channelId}! Hãy nhập chủ đề video.`, 'info');
 }
 
+let _batchPollTimer = null;
+
+async function triggerBatchProduce6Channels(countPerChannel = 2) {
+    const box = document.getElementById('batch-produce-status-box');
+    const btn = document.getElementById('btn-batch-produce-6');
+    if (box) {
+        box.style.display = 'block';
+        box.innerHTML = `<div style="margin-top:12px; padding:12px; background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); border-radius:8px; color:#6ee7b7; font-size:12.5px;">🚀 Đang khởi động tiến trình sản xuất tự động ${countPerChannel * 6} video cho 6 kênh chủ lực (loại trừ Paws & Hearts)...</div>`;
+    }
+    try {
+        const res = await apiPost('/api/channels/batch-auto-produce', { channels: 'all_6', count_per_channel: countPerChannel });
+        showToast(res?.message || 'Đã khởi chạy sản xuất hàng loạt 6 kênh!', 'success');
+        if (_batchPollTimer) clearInterval(_batchPollTimer);
+        _batchPollTimer = setInterval(pollBatchProduceStatus, 5000);
+        await pollBatchProduceStatus();
+    } catch (e) {
+        if (box) box.innerHTML = `<div style="margin-top:12px; padding:12px; color:var(--accent-rose);">❌ Lỗi khởi chạy: ${esc(e.message || String(e))}</div>`;
+    }
+}
+
+async function pollBatchProduceStatus() {
+    const box = document.getElementById('batch-produce-status-box');
+    if (!box) return;
+    try {
+        const res = await apiGet('/api/channels/batch-auto-produce/status');
+        const st = res?.state;
+        if (!st) return;
+        box.style.display = 'block';
+        const itemsHtml = (st.results || []).map(r => r.error
+            ? `<div style="color:#f87171; font-size:12px;">❌ <strong>${esc(r.channel)}:</strong> ${esc(r.error)}</div>`
+            : `<div style="color:#34d399; font-size:12px;">✅ <strong>[Job #${r.job_id}] ${esc(r.channel)}:</strong> ${esc(r.title)} — <a href="${esc(r.youtube_url)}" target="_blank" style="color:#60a5fa;">${esc(r.youtube_url)}</a> (${esc(r.scheduled_time)})</div>`
+        ).join('');
+        box.innerHTML = `
+            <div style="margin-top:12px; padding:12px 14px; background:rgba(15,23,42,0.8); border:1px solid rgba(16,185,129,0.3); border-radius:10px;">
+                <div style="font-weight:700; font-size:13px; color:#e2e8f0; margin-bottom:6px;">
+                    ${st.running ? `⏳ Đang sản xuất tự động (${st.completed_count}/${st.total_target}) — Đang xử lý: <span style="color:#fbbf24;">${esc(st.current_channel)}</span>` : `🎉 Hoàn tất sản xuất tự động (${st.completed_count}/${st.total_target} video)`}
+                </div>
+                <div style="display:flex; flex-direction:column; gap:4px;">${itemsHtml}</div>
+            </div>
+        `;
+        if (!st.running && _batchPollTimer) {
+            clearInterval(_batchPollTimer);
+            _batchPollTimer = null;
+        }
+    } catch (e) {}
+}
+
 async function runLiveOAuthMatrixCheck() {
     const box = document.getElementById('live-oauth-matrix-box');
     const btn = document.getElementById('btn-live-oauth-matrix');
@@ -2900,10 +2947,16 @@ function renderAccounts(accounts) {
                         Tích hợp toàn bộ tính năng kiểm tra Token Live, tự động định tuyến chống chọn nhầm kênh và liên kết Ma trận 7 Kênh × 3 Google Cloud Project ngay trên Web.
                     </p>
                 </div>
-                <button id="btn-live-oauth-matrix" type="button" class="btn btn-primary btn-sm" onclick="runLiveOAuthMatrixCheck()" style="font-weight:600; padding:8px 14px;">
-                    🩺 Kiểm Tra Sức Khỏe Token Live & Ma Trận Quota (7 Kênh)
-                </button>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                    <button id="btn-batch-produce-6" type="button" class="btn btn-primary btn-sm" onclick="triggerBatchProduce6Channels(2)" style="font-weight:600; padding:8px 14px; background:linear-gradient(135deg,#10b981,#059669); border-color:#059669;">
+                        🚀 Sản Xuất Tự Động 6 Kênh (2 Video/Kênh)
+                    </button>
+                    <button id="btn-live-oauth-matrix" type="button" class="btn btn-primary btn-sm" onclick="runLiveOAuthMatrixCheck()" style="font-weight:600; padding:8px 14px;">
+                        🩺 Kiểm Tra Sức Khỏe Token Live & Ma Trận Quota (7 Kênh)
+                    </button>
+                </div>
             </div>
+            <div id="batch-produce-status-box" style="display:none;"></div>
             <div id="live-oauth-matrix-box" style="display:none;"></div>
         </div>
     `;
