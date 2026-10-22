@@ -444,7 +444,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
             elif tool_name == "fetch_clean_cinematic_portrait_or_broll":
                 h_query = sc_strat.get("human_action_query") or kw or "dramatic portrait dark lighting"
-                m_pref = sc_strat.get("media_preference") or ("VIDEO_BROLL" if scene.scene_id in (1, 2, 4, 6) else "CLEAN_PORTRAIT_PHOTO")
+                m_pref = sc_strat.get("media_preference") or ("VIDEO_BROLL" if scene.scene_id in (1, 2, 3, 5, 6) else "CLEAN_PORTRAIT_PHOTO")
                 out_clean = str(
                     media_dir / f"scene_{scene.scene_id:03d}_clean_broll.mp4"
                     if m_pref.upper() == "VIDEO_BROLL"

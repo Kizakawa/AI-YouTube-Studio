@@ -306,23 +306,42 @@ class VideoAgent:
                         niche=clip_niche,
                     )
             elif raw_type in ("image", "ai_image", "photo", "documentary", "auto"):
-                logger.info(
-                    f"  Scene {scene.scene_id}: image ({raw_type}) → Ken Burns [{motion}] {duration:.1f}s"
-                    f"{f' [{clip_niche} Grading]' if clip_niche else ''}"
-                )
-                image_to_video(
-                    image_path=scene.media_path,
-                    duration_seconds=duration,
-                    output_path=clip_path,
-                    width=job.resolution_w,
-                    height=job.resolution_h,
-                    fps=job.fps,
-                    zoom_effect=True,
-                    camera_motion=motion,
-                    is_hook_scene=is_hook,
-                    is_scifi=is_scifi_clip,
-                    niche=clip_niche,
-                )
+                if duration >= 3.0:
+                    logger.info(
+                        f"  Scene {scene.scene_id}: image ({raw_type}) dài {duration:.1f}s (>= 3.0s) → "
+                        f"2-Shot Dynamic Camera Cut (Focal Punch-In 1.28x giữa cảnh)"
+                        f"{f' [{clip_niche} Grading]' if clip_niche else ''}"
+                    )
+                    render_opening_hook_multi_cut(
+                        image_paths=[scene.media_path],
+                        duration_seconds=duration,
+                        output_path=clip_path,
+                        width=job.resolution_w,
+                        height=job.resolution_h,
+                        fps=job.fps,
+                        min_cuts=1,
+                        is_scifi=is_scifi_clip,
+                        niche=clip_niche,
+                        is_hook_scene=is_hook,
+                    )
+                else:
+                    logger.info(
+                        f"  Scene {scene.scene_id}: image ({raw_type}) → Ken Burns [{motion}] {duration:.1f}s"
+                        f"{f' [{clip_niche} Grading]' if clip_niche else ''}"
+                    )
+                    image_to_video(
+                        image_path=scene.media_path,
+                        duration_seconds=duration,
+                        output_path=clip_path,
+                        width=job.resolution_w,
+                        height=job.resolution_h,
+                        fps=job.fps,
+                        zoom_effect=True,
+                        camera_motion=motion,
+                        is_hook_scene=is_hook,
+                        is_scifi=is_scifi_clip,
+                        niche=clip_niche,
+                    )
             else:
                 # Fallback graceful: log warning, render như image
                 logger.warning(

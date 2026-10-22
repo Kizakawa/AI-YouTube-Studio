@@ -744,6 +744,8 @@ def render_opening_hook_multi_cut(
     max_shots_by_dur = max(1, int(duration_seconds // 1.0))
     usable_valid_paths = valid_paths[:max_shots_by_dur]
     n_shots = len(usable_valid_paths)
+    if n_shots == 1 and duration_seconds >= 3.0:
+        n_shots = 2
     if duration_seconds < 1.6 or n_shots <= 1:
         return image_to_video(
             image_path=valid_paths[0],

@@ -959,6 +959,7 @@ def execute_youtube_short_peak_clone_sync(
                             "socket_timeout": 8,
                             "ignore_no_formats_error": True,
                             "format": "bestvideo/best",
+                            "extractor_args": {"youtube": {"player_client": ["android_vr", "web_safari", "ios"]}},
                         }
                         with yt_dlp.YoutubeDL(info_opts) as ydl_info:
                             full_info = ydl_info.extract_info(vid_url, download=False)
@@ -1017,6 +1018,7 @@ def execute_youtube_short_peak_clone_sync(
                         "socket_timeout": 12,
                         "retries": 1,
                         "nopart": True,
+                        "extractor_args": {"youtube": {"player_client": ["android_vr", "web_safari", "ios"]}},
                     }
                     # Chỉ dùng download_ranges khi video gốc dài > 75s; với YouTube Shorts (<= 75s), tải thẳng MP4 qua HTTP nhanh gấp 4-6 lần và tránh treo ffmpeg HTTP seek
                     cand_dur_est = float(info_entry.get("duration") or cand.get("duration") or 0)
@@ -1093,7 +1095,7 @@ def execute_youtube_short_peak_clone_sync(
                             height=1920,
                             fps=30,
                             apply_grading=True,
-                            is_hook_scene=((clip_role or "").upper() == "HOOK"),
+                            is_hook_scene=((clip_role or "").upper() in ("HOOK", "PEAK")),
                             fair_use_transform=True,
                             start_offset_sec=actual_start_s,
                             preserve_continuous_flow=True,
@@ -1221,13 +1223,23 @@ def execute_youtube_short_peak_clone_sync(
                 if (effective_scope == "SCENE_SPECIFIC" and search_phrases)
                 else (subject_entity or topic)
             )
+            core_subj_2w = _clean_yt_search_phrase(subject_entity or topic, max_words=2, strip_distractor_props=True)
+            core_subj_1w = _clean_yt_search_phrase(subject_entity or topic, max_words=1, strip_distractor_props=True)
+            stock_query_candidates: List[str] = []
+            for cand_sq in [*search_phrases[:2], core_subj_2w, core_subj_1w]:
+                c_clean = (cand_sq or "").strip()
+                if c_clean and c_clean.lower() not in [x.lower() for x in stock_query_candidates]:
+                    stock_query_candidates.append(c_clean)
+            if not stock_query_candidates:
+                stock_query_candidates = [search_query or topic or "wildlife nature"]
+
             va_vid = {
                 "analysis_source": "ai",
                 "subject": scene_subj_hint,
                 "core_visual_entity": scene_subj_hint,
                 "topic": overall_script_query or topic,
                 "expected_visual_content": f"{scene_subj_hint} — {narration}",
-                "search_queries": search_phrases,
+                "search_queries": stock_query_candidates[:4],
                 "is_hook_scene": ((clip_role or "").upper() == "HOOK"),
             }
             effective_narr = (
@@ -1235,15 +1247,28 @@ def execute_youtube_short_peak_clone_sync(
                 if effective_scope == "SCRIPT_OVERALL"
                 else narration
             )
-            # Chỉ gọi `search_best_video_clip` 1 lần vì bên trong đã bắn song song toàn bộ `va_vid["search_queries"]`
-            for st_q in search_phrases[:1]:
+            # Thử tối đa 3 truy vấn từ cụ thể -> rút gọn danh từ gốc (2 từ -> 1 từ) + bổ sung nguồn thứ 5 Wikimedia Commons HD Video
+            for idx_sq, st_q in enumerate(stock_query_candidates[:3]):
+                va_iter = dict(va_vid)
+                if idx_sq > 0:
+                    va_iter["search_queries"] = [st_q]
                 best_stock_v = media_agent.search_best_video_clip(
                     query=st_q,
                     used_urls=used,
-                    visual_analysis=va_vid,
+                    visual_analysis=va_iter,
                     narration=effective_narr,
                     topic=overall_script_query or topic,
                 )
+                if (not best_stock_v or not best_stock_v.get("url")) and hasattr(media_agent, "_stock_fetcher"):
+                    try:
+                        wiki_vids = media_agent._stock_fetcher.search_wikimedia_videos(st_q, per_page=6) or []
+                        for wv in wiki_vids:
+                            w_url = wv.get("url")
+                            if w_url and not is_media_already_used(w_url, used):
+                                best_stock_v = wv
+                                break
+                    except Exception:
+                        pass
                 if not best_stock_v or not best_stock_v.get("url"):
                     continue
                 v_url = best_stock_v["url"]
@@ -2333,12 +2358,20 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
     final_plan: List[Dict[str, Any]] = []
     motion_cycle = ["zoom_in", "pan_right", "zoom_out", "pan_left"]
     niche_norm_dir = str(channel_niche or "").strip().lower()
-    is_rescue_or_wildlife = any(k in niche_norm_dir for k in ("rescue", "animal", "pet", "wildlife", "predator"))
-    # Với kênh Cứu hộ động vật (Paws & Hearts) & Động vật hoang dã (Wild Odyssey):
-    # Bắt buộc ưu tiên 100% Video chuyển động thật liên hoàn ở 3 cảnh đầu (Cảnh 1, 2, 3) + Cảnh 5, 6
-    # để giữ chân người xem qua mốc 8 giây đầu và đẩy APV% vượt 75%!
-    peak_indices = {1, 2, 3, 5, 6} if is_rescue_or_wildlife else {1, 2, 4, 6, 8}
-    max_video_peak_scenes = max(5 if is_rescue_or_wildlife else 4, (total_scenes + 1) // 2)
+    is_rescue_niche = any(k in niche_norm_dir for k in ("rescue", "pet", "paws", "wholesome", "animal_rescue"))
+    is_rescue_or_wildlife = is_rescue_niche or any(k in niche_norm_dir for k in ("animal", "wildlife", "predator"))
+    # Phân bổ hạn ngạch Video chuyển động thật theo ngách để chống tụt AVD ở giây 11-17:
+    # - Kênh Cứu hộ động vật (Paws & Hearts Rescue): Ưu tiên 75%-85% cảnh là Video quay thật liên tục ({1..7}).
+    # - Tất cả các ngách khác: Bắt buộc có Hook Video (Cảnh 1+2), Mid-Video Re-Hook (Cảnh 4 - giây 10-15) và Climax Video (Cảnh 5+6).
+    if is_rescue_niche:
+        peak_indices = {1, 2, 3, 4, 5, 6, 7}
+        max_video_peak_scenes = max(6, total_scenes - 1)
+    elif is_rescue_or_wildlife:
+        peak_indices = {1, 2, 3, 4, 5, 6}
+        max_video_peak_scenes = max(5, (total_scenes * 2) // 3)
+    else:
+        peak_indices = {1, 2, 4, 5, 6, 8}
+        max_video_peak_scenes = max(5, (total_scenes * 2) // 3)
     video_peak_count = 0
     default_subj = _clean_yt_search_phrase(primary_entity or topic, max_words=3, strip_distractor_props=True)
     default_overall_q = _clean_yt_search_phrase(topic, subject_entity=default_subj, max_words=5, strip_distractor_props=True)
@@ -2423,7 +2456,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                     "scene_id": sid,
                     "subject_entity": default_subj,
                     "human_action_query": llm_portrait_ref.get("human_action_query") or "dramatic portrait dark lighting",
-                    "media_preference": "VIDEO_BROLL" if sid in (1, 2, 4, 6) else "CLEAN_PORTRAIT_PHOTO",
+                    "media_preference": "VIDEO_BROLL" if sid in (1, 2, 3, 5, 6) else "CLEAN_PORTRAIT_PHOTO",
                     "search_scope": "SCRIPT_OVERALL",
                     "overall_script_query": llm_portrait_ref.get("overall_script_query") or default_overall_q,
                     "target_duration_sec": float(s.get("estimated_seconds") or 4.5),
@@ -2446,6 +2479,8 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 continue
             if t_chosen == "fetch_clean_cinematic_portrait_or_broll":
                 d.setdefault("subject_entity", default_subj)
+                if sid in (1, 2, 3, 5, 6):
+                    d["media_preference"] = "VIDEO_BROLL"
                 d["scope_audited"] = True
                 final_plan.append(d)
                 continue
@@ -2512,7 +2547,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 "scope_audited": True,
             })
         elif llm_portrait_ref is not None:
-            m_pref_inh = "VIDEO_BROLL" if sid in (1, 2, 4, 6) else "CLEAN_PORTRAIT_PHOTO"
+            m_pref_inh = "VIDEO_BROLL" if sid in (1, 2, 3, 5, 6) else "CLEAN_PORTRAIT_PHOTO"
             final_plan.append({
                 "tool_name": "fetch_clean_cinematic_portrait_or_broll",
                 "scene_id": sid,

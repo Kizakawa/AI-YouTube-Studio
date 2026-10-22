@@ -162,7 +162,18 @@ class ScriptCritic:
                     )
                     break
 
-        # 4. Thưởng/Phạt theo công thức "A vs B" & thông số định lượng gây sốc (EN & PT-BR)
+        # 4. Thưởng/Phạt theo công thức "A vs B" & thông số định lượng gây sốc (EN & PT-BR) + Chặn tiêu đề mơ hồ giấu chủ thể
+        vague_title_match = bool(
+            eff_title
+            and re.search(
+                r"\b(?:this\s+(?:cute\s+|deadly\s+|terrifying\s+|tiny\s+|giant\s+)?(?:creature|animal|beast|place|point|bird|thing|monster|predator)|"
+                r"invisible\s+monsters|one\s+bite\s+is\s+all(?:\s+it\s+takes)?|the\s+point\s+in\s+the\s+ocean\s+where|"
+                r"este\s+animal|esta\s+criatura|esta\s+ave)\b",
+                eff_title,
+                re.IGNORECASE,
+            )
+            and not re.search(r"\d", eff_title)
+        )
         has_number = bool(re.search(r"\d", combined))
         has_confrontation_or_shock = bool(
             re.search(
@@ -171,7 +182,13 @@ class ScriptCritic:
                 re.IGNORECASE | re.UNICODE,
             )
         )
-        if (has_number or has_confrontation_or_shock) and 3 <= w_cnt <= 18:
+        if vague_title_match:
+            score = min(score, 6.5)
+            extra_critiques.append(
+                f"CHẶN TIÊU ĐỀ MƠ HỒ: Tiêu đề đang giấu tên chủ thể ('{eff_title}') gây kẹt dưới 100 views. "
+                f"Bắt buộc nêu đích danh Tên loài/Thực thể/Địa danh cụ thể + Con số định lượng hoặc cặp đối đầu 'A vs B' ngay trên tiêu đề!"
+            )
+        elif (has_number or has_confrontation_or_shock) and 3 <= w_cnt <= 18:
             score = max(score, 8.6)
             if has_number and has_confrontation_or_shock:
                 score = min(9.8, score + 0.4)

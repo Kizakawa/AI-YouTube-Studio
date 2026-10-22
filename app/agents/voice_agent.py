@@ -336,13 +336,27 @@ class VoiceAgent:
     @staticmethod
     def resolve_optimal_tts_rate(voice: str, niche: Optional[str] = None, explicit_rate: Optional[str] = None) -> str:
         """
-        Xác định tốc độ đọc TTS kể chuyện tự nhiên, mượt mà (+3%, ~158-162 WPM):
-        Giúp câu chuyện có nhịp thở tự nhiên, truyền cảm, dẫn dắt có đầu có đuôi mà không bị vội hay cụt lủn.
+        Xác định tốc độ đọc TTS tối ưu giữ chân (Retention Pacing) theo đặc thù từng ngách:
+        - Psychology / Dark Facts / Stoic: +11% (~175-180 WPM, nhịp sắc lạnh, dứt khoát, giữ thời lượng vàng 26-33s)
+        - Wildlife / Mysteries / Alternate History: +9% (~170-175 WPM, nhịp phim tài liệu kịch tính, 31-37s)
+        - Animal Rescue / Pets: +5% (~164 WPM, truyền cảm, ấm áp nhưng không lê thê)
+        - Mặc định (general): +8%
         """
         if explicit_rate:
             return explicit_rate
 
         nid = (niche or "").strip().lower()
+        if any(k in nid for k in ("psych", "mind", "stoic", "dark", "crime")):
+            niche_default = 11
+        elif any(k in nid for k in ("animal_rescue", "rescue", "pet", "paws", "wholesome")):
+            niche_default = 5
+        elif any(k in nid for k in ("wildlife", "predator", "mystery", "mysteries", "deep_sea", "ocean", "history", "alternate", "what_if")):
+            niche_default = 9
+        elif "animal" in nid:
+            niche_default = 5
+        else:
+            niche_default = 8
+
         if nid:
             try:
                 from app.services.niche_manager import get_niche
@@ -353,16 +367,16 @@ class VoiceAgent:
                     if cfg_rate and isinstance(cfg_rate, str) and cfg_rate.endswith("%"):
                         try:
                             val = int(cfg_rate.replace("%", "").replace("+", "").strip())
-                            if -5 <= val <= 3:
+                            if 4 <= val <= 12:
                                 return f"{val:+d}%"
-                            elif val > 3:
-                                return "+2%"
+                            elif val > 12:
+                                return f"{niche_default:+d}%"
                         except Exception:
                             pass
             except Exception:
                 pass
 
-        return "+2%"
+        return f"{niche_default:+d}%"
 
     # ──────────────────────────────────────────
     # PUBLIC API — Gọi từ Pipeline Orchestrator
@@ -441,7 +455,7 @@ class VoiceAgent:
                             meta.get("narration") == scene.narration
                             and meta.get("voice") in (expected_voice_tag, safe_voice)
                             and meta.get("rate") == expected_rate
-                            and meta.get("mastered_v5") is True
+                            and meta.get("mastered_v6") is True
                         ):
                             duration_ms = meta.get("duration_ms") or await asyncio.to_thread(self._get_audio_duration_ms, scene_audio_path)
                             if duration_ms > 0:
@@ -639,7 +653,7 @@ class VoiceAgent:
                         "voice": safe_voice,
                         "engine": scene_engine_used,
                         "rate": expected_rate,
-                        "mastered_v5": True,
+                        "mastered_v6": True,
                         "duration_ms": duration_ms,
                         "word_timings": word_timings,
                     }, ensure_ascii=False), encoding="utf-8")
@@ -846,7 +860,7 @@ class VoiceAgent:
             "equalizer=f=4200:width_type=q:width=1.5:g=1.5,"
             "acompressor=threshold=-18dB:ratio=2.2:attack=15:release=180:makeup=1.2dB,"
             "areverse,silenceremove=start_periods=1:start_duration=0.02:start_threshold=-42dB,areverse,"
-            "apad=pad_dur=0.06"
+            "apad=pad_dur=0.02"
         )
         try:
             from app.utils.ffmpeg_helper import run_ffmpeg, get_duration_ms

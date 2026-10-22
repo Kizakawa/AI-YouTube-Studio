@@ -87,7 +87,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: +24%
+  rate: +11%
   pitch: -3Hz
   bgm_vibe: dark suspense cello, low ambient psychological drone, minimalist noir tension
   sfx_cues:

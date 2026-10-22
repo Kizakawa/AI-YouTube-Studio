@@ -761,28 +761,43 @@ class ContentAgent:
             or topic_norm.startswith(("what if", "e se ", "nếu "))
             or "what if" in topic_norm
         )
-        if len(candidates) >= 2:
+        if len(candidates) >= 1:
+            prim_ent_str = str(raw_data.get("primary_entity") or "").strip()
+            prim_tokens = [t.lower() for t in re.findall(r"[a-zA-ZÀ-ỹ]{4,}", prim_ent_str) if t.lower() not in ("animal", "creature", "monster", "predator", "history", "ocean")]
+            _vague_title_re = re.compile(
+                r"\b(?:this\s+(?:cute\s+|deadly\s+|terrifying\s+|tiny\s+|giant\s+)?(?:creature|animal|beast|place|point|bird|thing|monster|predator)|"
+                r"invisible\s+monsters|one\s+bite\s+is\s+all(?:\s+it\s+takes)?|the\s+point\s+in\s+the\s+ocean\s+where|"
+                r"este\s+animal|esta\s+criatura|esta\s+ave)\b",
+                re.IGNORECASE,
+            )
+
             def _score_title_ctr(t_str: str) -> float:
                 score = 50.0
                 clean_t = re.sub(r'#\w+', '', _strip_variant_prefix(t_str)).strip()
                 c_len = len(clean_t)
+                t_low = clean_t.lower()
                 # Chiều dài vàng trên Shorts Shelf Mobile: 26 - 56 ký tự (không bị cắt '...')
                 if 26 <= c_len <= 56:
                     score += 20.0
                 elif c_len > 60:
                     score -= 22.0
                 # Chứa con số / dữ kiện định lượng / đối đầu trực diện
-                if re.search(r'\d', clean_t):
-                    score += 12.0
-                if re.search(r'\b(vs\.?|versus|hay|or)\b', clean_t, flags=re.IGNORECASE):
-                    score += 10.0
+                has_num = bool(re.search(r'\d', clean_t))
+                if has_num:
+                    score += 18.0
+                if re.search(r'\b(vs\.?|versus|contra|flee|flees|temem|odeiam|crushes|esmagam|aniquila|terrified|tremem|smile|jump|refused|hay|or)\b', clean_t, flags=re.IGNORECASE):
+                    score += 16.0
+                if prim_tokens and any(pt in t_low for pt in prim_tokens):
+                    score += 15.0
+                # Phạt nặng các tiêu đề ẩn dụ mơ hồ giấu tên chủ thể (nguyên nhân làm video kẹt < 100 views)
+                if _vague_title_re.search(clean_t) and not (has_num and prim_tokens and any(pt in t_low for pt in prim_tokens)):
+                    score -= 32.0
                 # Chứa từ khóa kích hoạt tò mò / cảnh báo / giả định (Curiosity Gap & Counterfactual Triggers)
                 ctr_triggers = (
                     "what if", "why", "never", "secret", "truth", "sign", "until", "mistake", "hidden", "actually", "refused",
                     "nếu", "tại sao", "đừng", "bí mật", "sự thật", "dấu hiệu", "cho đến khi", "sai lầm", "ẩn giấu",
                     "e se", "por que", "nunca", "segredo", "verdade", "erro", "jamais"
                 )
-                t_low = clean_t.lower()
                 if any(k in t_low for k in ctr_triggers):
                     score += 14.0
                 # Bảo toàn tuyệt đối cấu trúc "What If..." cho kênh Alternate History & "What If?"
@@ -793,6 +808,14 @@ class ContentAgent:
                 return score
 
             best_title = max(candidates, key=_score_title_ctr)
+            if prim_ent_str and _vague_title_re.search(best_title) and not any(pt in best_title.lower() for pt in prim_tokens):
+                best_title = re.sub(
+                    r"\bthis\s+(?:cute\s+|deadly\s+|terrifying\s+|tiny\s+|giant\s+)?(?:creature|animal|beast|bird|monster|predator)\b",
+                    f"the {prim_ent_str}",
+                    best_title,
+                    count=1,
+                    flags=re.IGNORECASE,
+                )
             if best_title != raw_data.get("title"):
                 logger.info(f"[ContentAgent] 🎯 CTR Title Tournament chọn tiêu đề tối ưu: '{best_title}' (thay cho '{raw_data.get('title')}')")
                 raw_data["title"] = best_title
