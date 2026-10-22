@@ -671,7 +671,7 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
         if not eval_pool:
             return images_out, idx_to_order
 
-        with ThreadPoolExecutor(max_workers=min(6, len(eval_pool))) as ex:
+        with ThreadPoolExecutor(max_workers=min(8, len(eval_pool))) as ex:
             results = list(ex.map(_dl_one, list(enumerate(eval_pool))))
 
         for res in results:
@@ -779,9 +779,9 @@ HÃY PHÂN TÍCH VÀ TRẢ VỀ JSON DUY NHẤT:
         if not valid_candidates:
             return None, 0.0, "Tất cả ứng viên đều không đạt định dạng hoặc đã được sử dụng.", True
 
-        # Ưu tiên clip dọc lên trước, tối đa 6 ứng viên cho Agent phân tích
+        # Ưu tiên clip dọc lên trước, tối đa 8 ứng viên cho Agent phân tích
         valid_candidates.sort(key=lambda c: 0 if (c["height"] or 0) >= (c["width"] or 0) else 1)
-        eval_pool = valid_candidates[:6]
+        eval_pool = valid_candidates[:8]
 
         def _format_winner(winner: Dict[str, Any], score: float, rationale: str) -> Dict[str, Any]:
             return {
@@ -901,8 +901,9 @@ TRẢ VỀ JSON DUY NHẤT:
             )
             return None, score, rationale, True
 
-        # Chỉ khi mất kết nối hoàn toàn tới mọi model Gemini (agent_dec is None) mới dùng bộ lọc dự phòng
-        return self._heuristic_curate_videos(eval_pool, visual_analysis, narration=narration, topic=topic_ctx)
+        # Tuyệt đối không dùng rule-based mù chữ ký thị giác để duyệt bừa video sở thú/sai loài khi Gemini bận
+        logger.warning("⚠️ [LLM Link & Vision Audit] Không thể kết nối Gemini Vision để kiểm duyệt video -> Từ chối chọn mù!")
+        return None, 0.0, "Gemini Vision unavailable — rejected unverified stock videos", True
 
     def _heuristic_curate_videos(
         self,

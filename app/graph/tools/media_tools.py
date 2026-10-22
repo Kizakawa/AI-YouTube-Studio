@@ -657,10 +657,10 @@ Return ONLY valid JSON:
             "generationConfig": {"temperature": 0.1},
         }
 
-        for model_name, api_key in rotator.iter_best_model_key_pairs(max_total_attempts=4):
+        for model_name, api_key in rotator.iter_best_model_key_pairs(max_total_attempts=6):
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             try:
-                resp = requests.post(url, json=payload, timeout=8)
+                resp = requests.post(url, json=payload, timeout=12)
                 if resp.status_code == 200:
                     cands = resp.json().get("candidates") or []
                     if cands:
@@ -959,7 +959,6 @@ def execute_youtube_short_peak_clone_sync(
                             "socket_timeout": 8,
                             "ignore_no_formats_error": True,
                             "format": "bestvideo/best",
-                            "extractor_args": {"youtube": {"player_client": ["android_vr", "web_safari", "ios"]}},
                         }
                         with yt_dlp.YoutubeDL(info_opts) as ydl_info:
                             full_info = ydl_info.extract_info(vid_url, download=False)
@@ -1012,13 +1011,14 @@ def execute_youtube_short_peak_clone_sync(
                     dl_opts = {
                         "quiet": True,
                         "no_warnings": True,
+                        "noplaylist": True,
+                        "max_filesize": 28 * 1024 * 1024,
                         "format": "bestvideo[protocol=https][height>=720][height<=1920][ext=mp4]/bestvideo[protocol=https][height>=480][height<=1920][ext=mp4]/bestvideo[height>=720][height<=1920][ext=mp4]/bestvideo[height>=480][height<=1920]/bestvideo/best",
                         "merge_output_format": "mp4",
                         "outtmpl": raw_dl_template,
                         "socket_timeout": 12,
                         "retries": 1,
                         "nopart": True,
-                        "extractor_args": {"youtube": {"player_client": ["android_vr", "web_safari", "ios"]}},
                     }
                     # Chỉ dùng download_ranges khi video gốc dài > 75s; với YouTube Shorts (<= 75s), tải thẳng MP4 qua HTTP nhanh gấp 4-6 lần và tránh treo ffmpeg HTTP seek
                     cand_dur_est = float(info_entry.get("duration") or cand.get("duration") or 0)
@@ -1237,13 +1237,13 @@ def execute_youtube_short_peak_clone_sync(
                 "analysis_source": "ai",
                 "subject": scene_subj_hint,
                 "core_visual_entity": scene_subj_hint,
-                "topic": overall_script_query or topic,
+                "topic": topic or overall_script_query,
                 "expected_visual_content": f"{scene_subj_hint} — {narration}",
                 "search_queries": stock_query_candidates[:4],
                 "is_hook_scene": ((clip_role or "").upper() == "HOOK"),
             }
             effective_narr = (
-                f"{overall_script_query or topic}. {narration}"
+                f"{topic or overall_script_query}. {narration}"
                 if effective_scope == "SCRIPT_OVERALL"
                 else narration
             )
@@ -1257,7 +1257,7 @@ def execute_youtube_short_peak_clone_sync(
                     used_urls=used,
                     visual_analysis=va_iter,
                     narration=effective_narr,
-                    topic=overall_script_query or topic,
+                    topic=topic or overall_script_query,
                 )
                 if (not best_stock_v or not best_stock_v.get("url")) and hasattr(media_agent, "_stock_fetcher"):
                     try:
@@ -1345,7 +1345,7 @@ def execute_youtube_short_peak_clone_sync(
                                 search_scope=effective_scope,
                                 video_title=st_title,
                                 allow_3d_cgi_monster=False,
-                                strict_no_fallback=False,
+                                strict_no_fallback=True,
                             )
                         if not passed_st_vis:
                             logger.info(

@@ -287,6 +287,20 @@ class VisualCritic:
                 f"Clip bị mờ nhòe / vỡ hạt (sharpness={avg_sharp:.1f}, min={min_f_sharp:.1f}, yêu cầu >= {min_sharpness})"
             )
 
+        # Kiểm tra đứng hình / freeze-frame ngay trên 4 khung hình mẫu (18%, 40%, 62%, 82%)
+        if len(gray_frames) >= 3:
+            try:
+                pair_diffs = [
+                    float(ImageStat.Stat(ImageChops.difference(gray_frames[i], gray_frames[i + 1])).mean[0])
+                    for i in range(len(gray_frames) - 1)
+                ]
+                if pair_diffs and min(pair_diffs) < 0.85:
+                    issues.append(
+                        f"Clip bị đứng hình / freeze-frame kéo dài (min_motion_diff={min(pair_diffs):.2f} < 0.85)"
+                    )
+            except Exception:
+                pass
+
         # Kiểm tra logo/watermark cố định ở 4 góc hoặc banner chữ khi cảnh nền chuyển động
         detected_corner_zone: Optional[Tuple[str, Tuple[int, int, int, int]]] = None
         center_is_clean: bool = True

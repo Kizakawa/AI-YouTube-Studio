@@ -1069,6 +1069,17 @@ def find_hook_peak_action_offset(input_path: str, target_duration: float, exclud
         def _score_window(start_idx: int) -> float:
             if _is_excluded(start_idx):
                 return -999.0
+            win_end = min(start_idx + win_frames, n_frames)
+            if win_end - start_idx < max(win_frames - 1, 3):
+                return -999.0
+            freeze_streak = 0
+            for m_val in motions[start_idx:win_end]:
+                if m_val < 0.85:
+                    freeze_streak += 1
+                    if freeze_streak >= 3:
+                        return -999.0
+                else:
+                    freeze_streak = 0
             f0_lum = lums[start_idx]
             f0_con = contrasts[start_idx]
             # Phạt nặng nếu Frame 0 tối đen (< 45) hoặc cháy trắng (> 225) hoặc mờ phẳng (< 22)
@@ -1087,7 +1098,9 @@ def find_hook_peak_action_offset(input_path: str, target_duration: float, exclud
         base_score = _score_window(0)
         best_idx = 0
         best_score = base_score
-        max_start_idx = n_frames - win_frames
+        max_start_idx = max(0, n_frames - win_frames - 2)
+        actual_decoded_sec = n_frames / float(sample_fps)
+        effective_src_sec = min(src_sec, actual_decoded_sec)
 
         for idx in range(1, max_start_idx + 1):
             sc = _score_window(idx)
@@ -1095,9 +1108,9 @@ def find_hook_peak_action_offset(input_path: str, target_duration: float, exclud
                 best_score = sc
                 best_idx = idx
 
-        if best_idx > 0 and (best_score >= base_score * 1.08 or lums[0] < 55.0 or motions[0] < 3.5 or exclude_ranges):
+        if best_idx > 0 and best_score > -500.0 and (best_score >= base_score * 1.08 or lums[0] < 55.0 or motions[0] < 3.5 or exclude_ranges):
             seek_sec = round(best_idx / float(sample_fps), 2)
-            if seek_sec + target_duration <= src_sec + 0.15:
+            if seek_sec + target_duration <= effective_src_sec - 0.35:
                 logger.info(
                     f"  ⚡ [Hook Peak & Intrigue Seek] Tự động cắt đoạn Peak tại {seek_sec:.2f}s -> {seek_sec + target_duration:.2f}s "
                     f"(PeakScore {base_score:.1f} → {best_score:.1f})"

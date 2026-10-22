@@ -841,8 +841,11 @@ class StockFetcher:
                     and not conflicts_with_topic_biome(v_desc, topic)
                 ):
                     if v not in collected_candidates:
-                        if b_src in ("pixabay", "wikimedia") and pxb_added < 4:
-                            collected_candidates.insert(min(len(collected_candidates), 1 + pxb_added * 2), v)
+                        desc_l = str(v_desc).lower()
+                        is_portrait_v = (v.get("height") or 0) >= (v.get("width") or 0)
+                        has_kw_match = any(w.lower() in desc_l for w in words if len(w) >= 3)
+                        if b_src in ("pixabay", "wikimedia") and pxb_added < 3 and is_portrait_v and has_kw_match:
+                            collected_candidates.insert(min(len(collected_candidates), 2 + pxb_added * 2), v)
                             pxb_added += 1
                         else:
                             collected_candidates.append(v)

@@ -176,11 +176,17 @@ class KeyRotator:
                 or status_code in (500, 502, 503, 504)
                 or "internal error" in err_low
             ):
-                self._model_cooldowns[f"*:{model}"] = now + (cooldown_sec or 180.0)
-                if model in KeyRotator._verified_live_models:
-                    KeyRotator._verified_live_models = [
-                        m for m in KeyRotator._verified_live_models if m != model
-                    ]
+                wait_t = cooldown_sec or 20.0
+                self._model_cooldowns[f"{key}:{model}"] = now + wait_t
+                active_t_locks = sum(
+                    1 for k in self.keys if self._model_cooldowns.get(f"{k}:{model}", 0.0) > now
+                )
+                if active_t_locks >= max(len(self.keys), 1):
+                    self._model_cooldowns[f"*:{model}"] = now + 20.0
+                    if model in KeyRotator._verified_live_models:
+                        KeyRotator._verified_live_models = [
+                            m for m in KeyRotator._verified_live_models if m != model
+                        ]
             elif status_code == 403 or "api_key_invalid" in err_low:
                 self._global_cooldowns[key] = now + (cooldown_sec or 180.0)
             else:
@@ -304,8 +310,11 @@ class KeyRotator:
         if not self.keys:
             return
 
-        # Bước 1: Kiểm tra đồng thời toàn bộ model (hoặc lấy từ cache 5 phút) để lấy danh sách Model xịn nhất đang sống
-        live_ranked = self.probe_all_models_concurrently()
+        # Bỏ qua việc bắn 8 HTTP probe giả ('1') gây tốn RPM quota; sử dụng danh sách model ưu tiên kết hợp lịch sử sống (_verified_live_models)
+        live_ranked = [
+            m for m in KeyRotator._verified_live_models
+            if self._model_cooldowns.get(f"*:{m}", 0.0) <= time.monotonic()
+        ]
 
         # Ghép danh sách ưu tiên: Đưa các model sống (đã xếp hạng từ xịn nhất) lên đầu tiên.
         # Nếu caller truyền danh sách `models` cụ thể (ví dụ chỉ các model hỗ trợ Vision), ưu tiên lọc trong `models` đó trước.
@@ -320,47 +329,49 @@ class KeyRotator:
                 model_list.append(m)
 
         n_keys = len(self.keys)
-        default_cap = max(8, n_keys * 2) if live_ranked else max(6, n_keys)
+        default_cap = max(8, n_keys * 2)
         limit = max_total_attempts or min(max(n_keys * len(model_list), 2), default_cap)
         yielded = 0
-        yielded_models = set()
-        max_keys_per_model = n_keys
+        yielded_pairs = set()
 
-        for model in model_list:
-            now = time.monotonic()
-            with self._global_lock:
-                self._cleanup_expired_locked(now)
-                if self._model_cooldowns.get(f"*:{model}", 0.0) > now:
-                    continue
-                start_idx = self._global_cursor % n_keys
-
-            model_attempts = 0
-            for offset in range(n_keys):
+        # Vòng 1 (Diagonal Model+Key Rotation): Mỗi lần thử đổi ĐỒNG THỜI cả Model lẫn API Key
+        # để không bao giờ bị kẹt toàn bộ số lần thử (max_total_attempts) trên cùng 1 model hoặc cùng 1 key!
+        for pass_idx in range(n_keys):
+            for model in model_list:
                 if yielded >= limit:
                     return
-                if model_attempts >= max_keys_per_model:
-                    break
-                if self._model_cooldowns.get(f"*:{model}", 0.0) > time.monotonic():
-                    break
-                idx = (start_idx + offset) % n_keys
-                candidate_key = self.keys[idx]
-                if not self.is_model_available(candidate_key, model):
-                    continue
+                now = time.monotonic()
                 with self._global_lock:
-                    self._global_cursor = (idx + 1) % n_keys
-                    self._current_key = candidate_key
-                yielded += 1
-                model_attempts += 1
-                yielded_models.add(model)
-                yield model, candidate_key
+                    self._cleanup_expired_locked(now)
+                    if self._model_cooldowns.get(f"*:{model}", 0.0) > now:
+                        continue
+                    start_idx = self._global_cursor % n_keys
 
-        # Fallback dự phòng cho các dòng Flash/Flash-Lite ổn định nếu các model trên gặp 503 tạm thời
-        for fb_model in ("gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-flash-lite-latest"):
-            if fb_model not in yielded_models:
-                fb_key = self._select_next_healthy_key(advance_cursor=True)
-                if fb_key:
+                for offset in range(n_keys):
+                    idx = (start_idx + offset) % n_keys
+                    candidate_key = self.keys[idx]
+                    pair_id = f"{model}::{candidate_key}"
+                    if pair_id in yielded_pairs:
+                        continue
+                    if not self.is_model_available(candidate_key, model):
+                        continue
+                    with self._global_lock:
+                        self._global_cursor = (idx + 1) % n_keys
+                        self._current_key = candidate_key
                     yielded += 1
-                    yield fb_model, fb_key
+                    yielded_pairs.add(pair_id)
+                    yield model, candidate_key
+                    break  # Chuyển ngay sang Model kế tiếp trong pass hiện tại!
+
+        # Fallback dự phòng cho các dòng Flash/Flash-Lite ổn định nếu tất cả cặp trên đang trong thời gian cooldown ngắn
+        for fb_model in ("gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3-flash-preview"):
+            if yielded >= limit:
+                return
+            fb_key = self._select_next_healthy_key(advance_cursor=True)
+            if fb_key and f"{fb_model}::{fb_key}" not in yielded_pairs:
+                yielded += 1
+                yielded_pairs.add(f"{fb_model}::{fb_key}")
+                yield fb_model, fb_key
 
     def mark_rate_limited(self, key: Optional[str] = None, cooldown_sec: Optional[float] = None) -> None:
         """Đánh dấu một key bị giới hạn tốc độ (429/403) để các luồng song song tạm né."""
