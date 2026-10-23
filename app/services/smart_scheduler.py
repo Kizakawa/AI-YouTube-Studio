@@ -333,6 +333,7 @@ def process_waiting_quota_jobs() -> int:
                     "tags": j.tags,
                     "topic": j.topic,
                     "scenes_json": j.scenes_json,
+                    "scheduled_time": j.scheduled_time,
                 }
                 for j in db.query(VideoJob).filter(
                     VideoJob.status == "WAITING_QUOTA_RESET"
@@ -371,28 +372,55 @@ def process_waiting_quota_jobs() -> int:
                 raw_lang = str(ch_cfg.get("language") or "en-US")
                 def_lang = "pt-BR" if raw_lang.lower().startswith("pt") else "en-US"
                 def_audio_lang = "pt-BR" if raw_lang.lower().startswith("pt") else "en-US"
-                logger.info(f"🚀 [SmartScheduler] Quota đã được nạp lại! Đang tự động xuất bản Video #{job_id} ('{job_data['title']}')...")
+                now_utc = datetime.now(timezone.utc)
+                sched_dt = job_data.get("scheduled_time")
+                if sched_dt and sched_dt.tzinfo is None:
+                    sched_dt = sched_dt.replace(tzinfo=timezone.utc)
+                # Nếu giờ hẹn vẫn còn ở tương lai (> 15 phút nữa) thì giữ đúng lịch hẹn giờ vàng (SCHEDULED),
+                # nếu đã qua giờ hẹn thì tìm khung giờ vàng tiếp theo cho kênh thay vì đăng bừa giờ xấu!
+                if not sched_dt or sched_dt <= now_utc + timedelta(minutes=15):
+                    sched_dt, _, _, _ = get_next_available_golden_slot(job_data["target_channel_id"])
+                sched_iso = sched_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                thumb_p = str(Path("storage/thumbnails") / f"thumb_{job_id}_9x16.jpg")
+                if not Path(thumb_p).exists():
+                    thumb_p = None
+
+                logger.info(
+                    f"🚀 [SmartScheduler] Quota đã được nạp lại! Đang tự động xuất bản & hẹn lịch Video #{job_id} "
+                    f"('{job_data['title']}') vào slot {sched_iso}..."
+                )
                 res = pub_agent.upload_video(
                     video_path=job_data["video_path"],
                     title=job_data["title"] or f"Shorts #{job_id}",
                     description=job_data["description"] or "",
-                    tags=job_data["tags"].split(",") if job_data.get("tags") else None,
-                    privacy_status="public",
+                    tags=[t.strip() for t in job_data["tags"].split(",") if t.strip()] if job_data.get("tags") else None,
+                    privacy_status="private",
+                    schedule_time_iso=sched_iso,
                     default_language=def_lang,
                     default_audio_language=def_audio_lang,
                     pinned_comment=pinned_comment,
                     topic=job_data.get("topic") or "",
-                    script=job_data.get("scenes_json") or ""
+                    script=job_data.get("scenes_json") or "",
+                    thumbnail_path=thumb_p,
                 )
 
                 # Bước 3: Mở session MỚI để ghi kết quả (session sống ngắn)
                 if res.get("status") == "success":
+                    yt_id = res.get("video_id")
+                    if yt_id:
+                        try:
+                            pub_agent.verify_and_heal_video_metadata(yt_id)
+                        except Exception:
+                            pass
                     with get_db() as db:
                         job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
                         if job:
-                            job.status = "PUBLISHED"
-                            job.youtube_video_id = res.get("video_id")
+                            job.status = "SCHEDULED"
+                            job.youtube_video_id = yt_id
+                            job.scheduled_time = sched_dt
                             job.error_message = None
+                            job.progress_percent = 100
+                            job.progress_message = f"Đã tự động hẹn lịch phát sóng ({sched_iso})"
                     try:
                         from app.services.video_memory_rag import archive_job_to_rag_and_cleanup_files
                         archive_job_to_rag_and_cleanup_files(job_id)
