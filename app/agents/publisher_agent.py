@@ -599,6 +599,8 @@ class PublisherAgent:
             "status": {
                 "privacyStatus": "private" if schedule_time_iso else privacy_status,
                 "selfDeclaredMadeForKids": False,
+                "embeddable": True,
+                "publicStatsViewable": True,
                 "containsSyntheticMedia": bool(self.channel_config.get("contains_synthetic_media", False)),
             },
             "recordingDetails": recording_details,
@@ -865,40 +867,55 @@ class PublisherAgent:
         raw_niche = (self.channel_config.get("niche") or "").lower()
         clean_t = re.sub(r'(?:\s+#[^\s#]+)+\s*$', '', str(title or "").strip()).strip()
 
-        # Phát hiện cấu trúc đối đầu A vs B trong tiêu đề để tạo câu hỏi bình chọn cá nhân hóa
+        # Phát hiện cấu trúc đối đầu A vs B trong tiêu đề (hỗ trợ tên ghép có dấu gạch ngang & hậu tố emoji)
+        clean_for_vs = re.sub(r'[^\w\sÀ-ỹçãõáéíóúâêô\-:\?!\|]', ' ', clean_t)
+        clean_for_vs = re.sub(r'\s+', ' ', clean_for_vs).strip()
+        # Nếu có dấu ':' ở đầu (ví dụ "Mordida de 1.500 PSI: Onça vs Jacaré"), ưu tiên vế chứa 'vs'
+        for seg in clean_for_vs.split(":"):
+            if re.search(r'\b(?:vs\.?|versus|x)\b', seg, flags=re.IGNORECASE):
+                clean_for_vs = seg.strip()
+                break
         vs_match = re.search(
-            r'([A-Za-zÀ-ỹçãõáéíóúâêô\s]{3,28}?)\s+(?:vs\.?|versus|x)\s+([A-Za-zÀ-ỹçãõáéíóúâêô\s]{3,28}?)(?:[:\?!\-\|]|$)',
-            clean_t,
+            r'([A-Za-zÀ-ỹçãõáéíóúâêô\-]{2,25}(?:\s+[A-Za-zÀ-ỹçãõáéíóúâêô\-]{2,25}){0,2})\s+(?:vs\.?|versus|x)\s+([A-Za-zÀ-ỹçãõáéíóúâêô\-]{2,25}(?:\s+[A-Za-zÀ-ỹçãõáéíóúâêô\-]{2,25}){0,2})',
+            clean_for_vs,
             flags=re.IGNORECASE,
         )
         if vs_match:
-            side_a = vs_match.group(1).strip()
-            side_b = vs_match.group(2).strip()
+            side_a = vs_match.group(1).strip(" -")
+            side_b = vs_match.group(2).strip(" -")
             if 2 <= len(side_a) <= 28 and 2 <= len(side_b) <= 28:
                 if is_vn:
                     return f"Kèo sinh tử này bạn chọn phe nào: (1) {side_a} hay (2) {side_b}? Bình chọn 1 hoặc 2 bên dưới 👇🔥"
                 if is_pt_br:
-                    return f"Quem vence esse confronto: (1) {side_a} ou (2) {side_b}? Comente 1 ou 2 abaixo! 👇🔥"
+                    return f"Quem vence esse duelo extremo: (1) {side_a} ou (2) {side_b}? Comente 1 ou 2 abaixo! 👇🔥"
                 return f"Who wins this 1v1 showdown: (1) {side_a} or (2) {side_b}? Drop 1 or 2 in the comments! 👇🔥"
 
+        rot_idx = sum(ord(c) for c in (clean_t or "shorts")) % 4
+
         if any(k in raw_niche for k in ("history", "what_if", "alternate_history")):
-            return (
-                "Nếu là bạn ở thời khắc đó: Chọn (1) Giữ nguyên lịch sử hay (2) Thay đổi tất cả? Bình chọn 1 hoặc 2 bên dưới 👇"
-                if is_vn else (
-                    "Se você estivesse lá: escolheria (1) Manter nossa linha do tempo ou (2) Reescrever a história? Comente 1 ou 2 abaixo! 👇"
-                    if is_pt_br else
-                    "Quick Poll: Would you choose (1) Keep our timeline or (2) Rewrite history? Drop 1 or 2 below! 👇"
-                )
-            )
+            if is_vn:
+                return "Nếu là bạn ở thời khắc đó: Chọn (1) Giữ nguyên lịch sử hay (2) Thay đổi tất cả? Bình chọn 1 hoặc 2 bên dưới 👇"
+            if is_pt_br:
+                return "Se você estivesse lá: escolheria (1) Manter nossa linha do tempo ou (2) Reescrever a história? Comente 1 ou 2 abaixo! 👇"
+            en_hist_polls = [
+                "Quick Poll: Would you choose (1) Keep our timeline or (2) Rewrite history? Drop 1 or 2 below! 👇",
+                "How would our world look today if this happened: (1) Better or (2) Total Chaos? Vote 1 or 2 below! 👇",
+                "Could this historical turning point have been avoided: (1) YES or (2) NO? Drop your vote below! 👇",
+                "Which outcome was more likely here: (1) Survival or (2) Collapse? Comment 1 or 2 below! 👇",
+            ]
+            return en_hist_polls[rot_idx]
         if "psychology" in raw_niche:
-            return (
-                "Bạn đã từng gặp kiểu người này ngoài đời thực chưa? Gõ (1) Đã từng gặp hoặc (2) Chưa bao giờ bên dưới nhé 👇"
-                if is_vn else (
-                    "Você já lidou com alguém assim na vida real? Comente (1) SIM ou (2) NÃO abaixo! 👇"
-                    if is_pt_br else
-                    "Have you ever dealt with someone like this in real life? Drop (1) YES or (2) NO in the comments! 👇"
-                )
-            )
+            if is_vn:
+                return "Bạn đã từng gặp kiểu người này ngoài đời thực chưa? Gõ (1) Đã từng gặp hoặc (2) Chưa bao giờ bên dưới nhé 👇"
+            if is_pt_br:
+                return "Você já lidou com alguém assim na vida real? Comente (1) SIM ou (2) NÃO abaixo! 👇"
+            en_psych_polls = [
+                "Have you ever dealt with someone like this in real life? Drop (1) YES or (2) NO in the comments! 👇",
+                "Would you spot this psychological tactic in real time: (1) Immediately or (2) Too Late? Comment 1 or 2! 👇",
+                "Have you ever used this behavioral rule yourself? Vote (1) YES or (2) Not Yet below! 👇",
+                "Do you think people do this on purpose: (1) Calculated or (2) Subconscious? Drop 1 or 2 below! 👇",
+            ]
+            return en_psych_polls[rot_idx]
         if any(k in raw_niche for k in ("rescue", "animal", "pet")):
             return (
                 "Chấm điểm màn lột xác của bé từ 1 đến 10 nhé! 🥺 Thả ❤️ bên dưới để chúc bé luôn hạnh phúc!"
@@ -909,14 +926,23 @@ class PublisherAgent:
                 )
             )
         if any(k in raw_niche for k in ("predator", "wildlife")):
-            return (
-                "Kèo sinh tử này bạn chọn phe nào? Gõ (1) hay (2) để bình chọn bên dưới 👇"
-                if is_vn else (
-                    "Quem leva a melhor nesse confronto de sobrevivência: (1) Predador ou (2) Presa? Deixe seu voto abaixo! 👇🔥"
-                    if is_pt_br else
-                    "Who takes the crown in this survival showdown: (1) Predator or (2) Challenger? Drop 1 or 2 below! 👇🔥"
-                )
-            )
+            if is_vn:
+                return "Kèo sinh tử này bạn chọn phe nào? Gõ (1) hay (2) để bình chọn bên dưới 👇"
+            if is_pt_br:
+                pt_wild_polls = [
+                    "Na sua opinião, algum predador sobreviveria a esse ataque: (1) SIM ou (2) Impossível? Deixe seu voto abaixo! 👇🔥",
+                    "Qual arma natural é mais letal na natureza: (1) Força Bruta ou (2) Velocidade Mortal? Comente 1 ou 2 abaixo! 👇🔥",
+                    "Você teria coragem de chegar perto desse animal na natureza: (1) Jamais ou (2) De longe? Comente abaixo! 👇🔥",
+                    "Quem realmente domina o topo da cadeia alimentar aqui: (1) O Caçador ou (2) O Rival? Vote 1 ou 2 nos comentários! 👇🔥",
+                ]
+                return pt_wild_polls[rot_idx]
+            en_wild_polls = [
+                "Who takes the crown in this survival showdown: (1) Predator or (2) Challenger? Drop 1 or 2 below! 👇🔥",
+                "Could any land predator survive a direct strike from this beast: (1) YES or (2) NO? Vote below! 👇🔥",
+                "What wins in the wild: (1) Raw Bite Force or (2) Lethal Speed? Drop 1 or 2 in the comments! 👇🔥",
+                "Is this the most fearless creature on Earth: (1) Undefeated or (2) Overrated? Comment 1 or 2 below! 👇🔥",
+            ]
+            return en_wild_polls[rot_idx]
         if any(k in raw_niche for k in ("deep_sea", "ocean", "abyss", "mariana", "mystery", "earth")):
             return (
                 "Theo bạn đây là (1) Sinh vật chưa từng được khám phá hay (2) Hiện tượng tự nhiên? Bình chọn 1 hoặc 2 bên dưới 👇"
@@ -1313,6 +1339,8 @@ class PublisherAgent:
             "motivation": ("motivation", "discipline", "habit"),
             "bigcat": ("lion", "lions", "tiger", "jaguar", "leopard", "cheetah", "cougar", "puma", "panther", "big cat", "onça", "leão", "tigre", "leopardo"),
             "big cat": ("lion", "lions", "tiger", "jaguar", "leopard", "cheetah", "cougar", "puma", "panther", "big cat", "onça", "leão", "tigre", "leopardo"),
+            "amazonia": ("amazon", "amazônia", "amazonia", "pantanal", "selva", "onça", "sucuri", "jacaré", "harpia", "ariranha", "poraquê", "preguiça"),
+            "amazônia": ("amazon", "amazônia", "amazonia", "pantanal", "selva", "onça", "sucuri", "jacaré", "harpia", "ariranha", "poraquê", "preguiça"),
         }
 
         def _is_tag_allowed(raw_t: str) -> bool:
@@ -1356,22 +1384,26 @@ class PublisherAgent:
             "silence", "envy", "anger", "loneliness", "confidence", "confident",
         ]
         KNOWN_SUBJECTS_PT = [
-            "onça pintada", "onça", "sucuri", "jacaré", "poraquê", "ariranha", "lobo guará",
-            "tatu canastra", "águia harpia", "harpia", "dragão de komodo", "komodo",
+            "onça pintada", "onça", "sucuri", "jacaré açu", "jacaré", "poraquê", "ariranha", "lobo guará",
+            "tatu canastra", "águia harpia", "gavião real", "harpia", "bicho preguiça", "preguiça",
+            "lagosta boxeadora", "tamarutaca", "dragão de komodo", "komodo", "hipopótamo", "crocodilo",
             "tubarão branco", "tubarão", "orca", "baleia", "cachalote", "lula colossal",
-            "hiena", "leopardo das neves", "leopardo", "ratel", "javali", "leões", "leão", "tigre",
-            "taiga", "amazônia", "pantanal", "fossa das marianas", "triângulo das bermudas",
+            "hiena", "leopardo das neves", "leopardo", "texugo do mel", "ratel", "javali",
+            "leões", "leão", "tigre siberiano", "tigre", "urso pardo", "urso polar", "cobra rei", "mamba negra",
+            "taiga", "amazônia", "pantanal", "cerrado", "fossa das marianas", "triângulo das bermudas",
             "ponto nemo", "espaçonaves", "mergulhadores", "rio fervente", "caverna movile", "caverna",
             "oceano", "navios", "ilha", "silêncio", "gelo", "rússia",
         ]
         subject_pool = KNOWN_SUBJECTS_PT if is_br else KNOWN_SUBJECTS_EN
-        title_lower = base_title.lower()
+        title_lower = re.sub(r'[\-_]+', ' ', base_title.lower())
+        topic_lower = re.sub(r'[\-_]+', ' ', f"{base_title} {topic or ''}".lower())
         extracted_topic_tags: List[str] = []
         topic_hashtag_candidates: List[str] = []
         for subj in subject_pool:
-            if re.search(rf'\b{re.escape(subj)}\b', title_lower):
-                extracted_topic_tags.append(subj)
-                h_subj = re.sub(r'[^a-z0-9à-ỹçãõáéíóúâêô]+', '', subj.lower())
+            subj_norm = re.sub(r'[\-_]+', ' ', subj.lower()).strip()
+            if re.search(rf'\b{re.escape(subj_norm)}\b', topic_lower):
+                extracted_topic_tags.append(subj_norm)
+                h_subj = re.sub(r'[^a-z0-9à-ỹçãõáéíóúâêô]+', '', subj_norm)
                 if 3 <= len(h_subj) <= 18 and h_subj not in topic_hashtag_candidates:
                     topic_hashtag_candidates.append(h_subj)
 

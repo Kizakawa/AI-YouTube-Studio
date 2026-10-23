@@ -127,6 +127,7 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
    - [Fórmula C — Escala Absurda / Segredo Proibido]: Revele um número chocante imediatamente ("260 naves espaciais afundaram nesse ponto secreto do oceano!").
 3. PROIBIDO NO MERCADO BRASILEIRO:
    - NUNCA comece com frases lentas de documentário de TV ou metáforas abstratas.
+   - NUNCA comece com rótulo de dicionário sem verbo ativo ("Nome-do-Animal: um soco a 80 km/h", "Harpia: garras de 530 PSI"). Comece SEMPRE com ação imediata + paradoxo ("Essas garras esmagam ossos em segundos!", "Seis leões famintos recuam deste animal!").
    - NUNCA faça perguntas passivas ("Você sabia que...?").{bench_block}
 ═══════════════════════════════════════════════════════════════════
 """
@@ -809,14 +810,17 @@ class ContentAgent:
                     # Thưởng lớn cho Deictic Visual Pointer / Conversational Trigger chuẩn US & Brazil triệu view
                     if re.search(
                         r'\b(?:look at|watch|see this|this man|this woman|this dog|this puppy|this jaguar|if someone says|when someone|turn any|never answer|'
-                        r'olha|veja|esse|essa|nem o|nem a|até o|até a)\b',
+                        r'olha|veja|esse|essa|esses|essas|este|esta|nem o|nem a|até o|até a|uma única|um único)\b',
                         h_str,
                         flags=re.IGNORECASE,
                     ):
                         h_score += 16.0
-                    # Thưởng lớn cho công thức "A vs B" / Đối đầu bất đối xứng (pt-BR & Wild Odyssey Formula)
-                    if re.search(r'\b(?:vs\.?|versus|against|contra|outsmart|crushes|destroys|beats|backs down|perfura|esmaga|paralisa)\b', h_str, flags=re.IGNORECASE):
+                    # Thưởng lớn cho công thức "A vs B" / Đối đầu bất đối xứng & Nghịch lý sợ hãi (pt-BR & Wild Odyssey Formula)
+                    if re.search(r'\b(?:vs\.?|versus|against|contra|outsmart|crushes|destroys|beats|backs down|perfura|esmaga|esmagam|paralisa|recua|recuam|aterroriza|teme|temem|pânico)\b', h_str, flags=re.IGNORECASE):
                         h_score += 18.0
+                    # Phạt nếu mở đầu kiểu nhãn từ điển khô khan ("Lagosta-Boxeadora: um soco...") thiếu động từ đầu câu
+                    if re.match(r'^[A-Za-zÀ-ỹçãõáéíóúâêô\-\s]{2,26}:\s', h_str.strip()):
+                        h_score -= 20.0
                     # Chứa động từ hành động mạnh / nghịch lý / sinh tồn (EN / VI / PT)
                     power_hook_words = (
                         "never", "deadly", "crush", "swallow", "silent", "seconds", "freeze", "blind", "strike", "bite",

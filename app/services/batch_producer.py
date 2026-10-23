@@ -130,26 +130,26 @@ CHANNELS_CONFIG = {
         "amazon_tag": "kizakawa-20",
         "publish_hour_utc": 18,
         "director_notes": (
-            "Target channel Wild Odyssey. Intense 5-Act wildlife predator action: "
-            "HOOK (0-3s): Counter-intuitive apex fear or shocking lethal stat naming the exact predator or 1v1 matchup. "
-            "DEVELOPMENT: Compare bite force (PSI), razor claws, ambush speed vs other apex beasts. "
-            "CLIMAX: The devastating strike or ruthless hunting sequence. "
-            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
+            "Target channel Wild Odyssey. Intense 5-Act wildlife predator action (28-35s crisp runtime for >80% APV): "
+            "HOOK (0-2s): Blunt 5-8 word statement naming both specific animals ('A vs B') + exact biomechanical number (PSI, Volts, MPH, lbs). "
+            "DEVELOPMENT: Compare bite force, venom, armor, or reflex speed vs the rival predator. "
+            "CLIMAX (Scene 4 - 15s Twist): The unexpected counter-weapon or fatal strike that flips the fight. "
+            "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA; HUD badge handles Subscribe). "
             "Tone: cinematic, adrenaline-pumping, dramatic, nature documentary style. Strict English only."
         ),
         "topics": [
-            "Mantis Shrimp vs Kevlar: The 50-MPH Punch That Boils Water at 8,000 Degrees",
-            "Wolverine vs Grizzly Bear: Why a 35-Pound Demon Steals Kills From 800-Pound Giants",
-            "Siberian Tiger vs Ussuri Brown Bear: 1,050 PSI Fangs in the Frozen Russian Taiga",
-            "Secretary Bird vs Black Mamba: The 195-Newton Stomp In 15 Milliseconds",
-            "This Is Why Caimans Are Terrified Of Jaguars In Deep Water",
-            "How A Snow Leopard Survives A 60-Foot Vertical Cliff Fall While Hunting",
-            "Honey Badger vs King Cobra: How It Sleeps Off Lethal Neurotoxin",
-            "Harpy Eagle vs Howler Monkey: 530 PSI Talons That Crush Bone Instantly",
-            "Secretary Bird vs Black Mamba: The 195-Newton Stomp In 15 Milliseconds",
-            "Wolverine vs Wolf Pack: Why Deep Snow Belongs To A 35-Pound Beast",
-            "Siberian Tiger vs Brown Bear: The Ultimate Taiga Ambush Predator",
-            "Nile Crocodile vs Hippo: Why River Giants Fear A 3,700 PSI Bite",
+            "Electric Eel vs Caiman: How an 860-Volt Biological Taser Stops a River Predator",
+            "African Crested Porcupine vs Leopard: How 30,000 Razor Quills Stop a 150-Pound Ambush",
+            "Cassowary: Why Nothing in the Jungle Messes With This 130-Pound Dinosaur Bird's 5-Inch Dagger Kick",
+            "Cape Buffalo vs Lion Pride: Why the 2,000-Pound Black Death Hunts Its Own Predators",
+            "Spotted Hyena vs Leopard: The 1,100 PSI Bone-Crushing Jaws That Shatter Femurs",
+            "Golden Eagle vs Mountain Goat: How a 15-Pound Raptor Pulls 150-Pound Prey Off Vertical Cliffs",
+            "Mongoose vs Black Mamba: The 0.03-Second Reflex and Venom-Proof Receptors That Beat Africa's Deadliest Snake",
+            "Tasmanian Devil: How a 26-Pound Beast Delivers the Strongest Bite Per Pound of Any Living Mammal",
+            "Goliath Tigerfish: The 70-Pound Congo River Predator With 32 Interlocking Razor Teeth",
+            "Wild Boar vs Tiger: Why 400 Pounds of Armored Cartilage and Razor Tusks Can Gore an Apex Cat",
+            "Giant Horned Lizard vs Coyote: The Desert Reptile That Shoots Pressurized Blood From Its Eyes",
+            "Jaguar vs Green Anaconda: When a 1,500 PSI Skull-Bite Meets 500 Pounds of Constriction Muscle",
         ],
         "default_tags": [
             "shorts", "wildlife", "predators", "bigcats", "nature",
@@ -198,31 +198,29 @@ CHANNELS_CONFIG = {
         "name": "Odisseia Selvagem",
         "niche": "wildlife_predators",
         "language": "pt-BR",
-        "google_account": "acccount4",
+        "google_account": "acount_2",
         "preferred_voice": "pt-BR-AntonioNeural",
         "handle": "@odisseiaselvagemoficial",
         "amazon_tag": "kizakawa-20",
         "publish_hour_utc": 21,
         "director_notes": (
-            "Target channel Odisseia Selvagem (Brazilian Portuguese). Intense 5-Act wildlife predator action in Pantanal/Amazonia/Cerrado: "
-            "HOOK (0-3s): Shocking 1v1 apex duel or counter-intuitive survival feat in Portuguese (strictly 5-9 words). "
-            "DEVELOPMENT: Real biomechanics, bite force (PSI), ambush speed, and terrain advantage. "
-            "CLIMAX: The decisive strike or unexpected escape. "
+            "Target channel Odisseia Selvagem (Brazilian Portuguese). Intense 5-Act wildlife predator action (29-35s, 7 scenes, 85-100 words): "
+            "HOOK (0-2s): Active visual pointer or asymmetric apex fear paradox in Portuguese (strictly 5-8 words, e.g., 'Seis leões famintos recuam deste monstro!', 'Essas garras arrancam presas de penhascos!'). NEVER use dry dictionary labels ('Nome: número'). "
+            "DEVELOPMENT: Real biomechanics, speed, venom or crushing force, and terrain advantage. "
+            "CLIMAX: The decisive strike or unexpected survival reversal. "
             "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
             "Tone: dramatic, fast-paced, National Geographic Brasil style. Strict Brazilian Portuguese (pt-BR) only."
         ),
         "topics": [
-            "Harpia Brasileira vs Bicho-Preguiça: A Garra de 530 PSI Que Esmaga Ossos na Amazônia",
-            "Lagosta-Boxeadora: O Soco a 80 km/h Que Ferve a Água e Quebra Vidro Blindado",
-            "Sucuri-Verde de 200 Kg vs Caimão: O Abraço Mortal Que Para um Coração em 90 Segundos",
-            "Surucucu-Pico-de-Jaca vs Mussurana: A Cobra Imune ao Veneno Mais Letal da Floresta",
-            "Por Que Até o Jacaré-Açu Foge Quando um Bando de Ariranhas Entra no Rio",
-            "Onça-Pintada vs Queixada: O Erro Fatal Que Transforma o Predador em Presa",
-            "Harpia Brasileira vs Bicho-Preguiça: A Garra de 500 PSI Que Esmaga Ossos",
-            "Surucucu-Pico-de-Jaca vs Mussurana: A Cobra Imune ao Veneno Mais Letal",
-            "Poraquê da Amazônia vs Caimão: A Descarga de 860 Volts Debaixo D'Água",
-            "Sucuri-Verde vs Jacaré no Pantanal: A Emboscada Subaquática Mais Brutal",
-            "Por Que o Ratel Enfrenta Três Leões Sozinho e Nunca Recua",
+            "Hipopótamo vs Alcateia de Leões: Por Que 6 Leões Famintos Recuam Diante Deste Gigante nos Rios Africanos",
+            "Águia-Real vs Cabra-da-Montanha: A Emboscada Aérea a 240 km/h nos Penhascos Mais Íngremes",
+            "Mamba-Negra vs Mangusto: O Reflexo de 15 Milissegundos Que Humilha a Cobra Mais Letal da África",
+            "Crocodilo-do-Nilo vs Búfalo-Africano: Como a Manada Inteira Vira o Jogo Contra o Monstro do Rio",
+            "Casuar: Por Que Nenhum Predador Ousa Enfrentar a Ave-Dinossauro Mais Perigosa do Mundo",
+            "Cachalote vs Lula-Colossal: O Duelo Secreto a 2.000 Metros de Profundidade no Oceano",
+            "Onça-Pintada vs Bando de Queixadas: Por Que 100 Porcos Selvagens Fazem o Maior Felino Subir nas Árvores",
+            "Guepardo vs Avestruz: O Chute de 2.000 PSI Que Pode Matar o Felino Mais Rápido da Terra",
+            "Lobo-Cinzento vs Alce Gigante: A Estratégia de Caça na Neve Profunda Onde Um Coice É Fatal",
         ],
         "default_tags": [
             "shorts", "animais", "natureza", "vidaanimal", "pantanal",
