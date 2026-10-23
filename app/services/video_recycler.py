@@ -328,3 +328,29 @@ def audit_clip_phash_divergence(
         "divergence_pct": divergence_pct,
         "anti_phash_passed": max_dist >= 16,
     }
+
+
+
+PAWS_HEARTS_BGM_ARCHETYPES: Dict[str, str] = {
+    "mother_love": "bgm_01_mother_love.wav",
+    "rescue_tension_to_relief": "bgm_02_rescue_tension_to_relief.wav",
+    "lonely_stray_to_warm_home": "bgm_03_lonely_stray_to_warm_home.wav",
+    "healing_recovery_journey": "bgm_04_healing_recovery_journey.wav",
+    "smart_animal_seeks_help": "bgm_05_smart_animal_seeks_help.wav",
+    "joyful_new_family_ending": "bgm_06_joyful_new_family_ending.wav",
+}
+
+
+def get_paws_hearts_bgm_path(archetype_key: str = "mother_love") -> str:
+    """
+    Trả về đường dẫn tuyệt đối tới bản nhạc nền độc quyền (Golden-Window 48kHz Stereo WAV)
+    trong `assets/bgm/paws_hearts/` khớp với mạch cảm xúc của kịch bản giải cứu.
+    """
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    pool_dir = os.path.join(base_dir, "assets", "bgm", "paws_hearts")
+    filename = PAWS_HEARTS_BGM_ARCHETYPES.get(archetype_key, "bgm_01_mother_love.wav")
+    candidate = os.path.join(pool_dir, filename)
+    if os.path.exists(candidate):
+        return candidate
+    fallback = os.path.join(base_dir, "assets", "bgm", "emotional_piano.wav")
+    return fallback
