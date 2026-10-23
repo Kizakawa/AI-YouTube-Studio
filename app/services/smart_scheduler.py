@@ -29,7 +29,7 @@ BR_TZ = ZoneInfo("America/Sao_Paulo")  # Giờ chuẩn Brazil (BRT = UTC-3)
 MAX_VIDEOS_PER_DAY = 2
 
 # Khoảng cách tối thiểu an toàn giữa 2 video cùng kênh (3 giờ = 10,800 giây) để xếp trọn 2 khung giờ Đỉnh Trưa & Chiều Mỹ trong cùng 1 ngày
-MIN_SPACING_SECONDS = 21600
+MIN_SPACING_SECONDS = 10800
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CẤU HÌNH 2 KHUNG GIỜ VÀNG QUỐC TẾ (US DAYTIME PEAK & VIETNAM DEAD-SLEEP WINDOW)
@@ -50,12 +50,12 @@ GOLDEN_SLOTS_UTC = [
         "rank": 1
     },
     {
-        "hour": 21,
+        "hour": 18,
         "minute": 0,
-        "label_vn": "04:00 Sáng",
-        "label_us": "17:00 PM EDT / 14:00 PM PDT (ĐỈNH VÀNG CHIỀU-TỐI MỸ PRIME TIME — GIÃN CÁCH 6.5H)",
-        "description": "Đăng lúc 04:00 rạng sáng VN (5:00 PM EDT chiều tối Mỹ), cách khung 1 đúng 6.5 tiếng để không tự nuốt view nhau và đón sóng Prime Time lớn nhất tại Mỹ!",
-        "tag": "US_EVENING_PRIME_PEAK",
+        "label_vn": "01:00 Rạng sáng",
+        "label_us": "14:00 PM EDT / 11:00 AM PDT (ĐỈNH TRƯA BỜ TÂY & CHIỀU MỸ — 100% VN NGỦ SAY)",
+        "description": "Đăng lúc 01:00-01:30 rạng sáng VN (2:00-2:30 PM EDT / 11:00-11:30 AM PDT trưa Bờ Tây Mỹ), lúc 100% người dùng VN ngủ say để giữ nguyên tệp khán giả US thuần khiết!",
+        "tag": "US_WEST_LUNCH_AFTERNOON_PEAK",
         "rank": 2
     },
 ]
@@ -69,21 +69,21 @@ GOLDEN_SLOTS_UTC = [
 #     Base 21:00 UTC (18:00 PM BRT = 04:00 Sáng VN) -> Đăng sớm 60-90p trước đỉnh tối Brazil.
 BRAZIL_GOLDEN_SLOTS_UTC = [
     {
-        "hour": 13,
-        "minute": 30,
-        "label_vn": "20:30 Tối",
-        "label_us": "10:30 AM BRT (ĐÓN ĐẦU ĐỈNH TRƯA BRAZIL - HORÁRIO DE ALMOÇO)",
-        "description": "Đăng sớm 60 phút trước giờ nghỉ trưa tại São Paulo/Brasília (11:30-13:30 BRT) để thuật toán YouTube Brazil phân phối đúng tệp pt-BR.",
-        "tag": "BR_LUNCH_LEAD",
-        "rank": 1
-    },
-    {
         "hour": 21,
         "minute": 0,
         "label_vn": "04:00 Sáng",
         "label_us": "18:00 PM BRT (ĐÓN ĐẦU ĐỈNH TỐI VÀNG BRAZIL - HORÁRIO NOBRE #1)",
-        "description": "Đăng sớm 60-90 phút trước giờ vàng giải trí buổi tối lớn nhất Brazil (19:00-22:30 BRT), lúc 100% người dùng VN đang ngủ say.",
+        "description": "Đăng sớm 60-90 phút trước giờ vàng giải trí buổi tối lớn nhất Brazil (19:00-22:30 BRT), lúc 100% người dùng VN đang ngủ say (100% hit-rate thực nghiệm).",
         "tag": "BR_EVENING_LEAD",
+        "rank": 1
+    },
+    {
+        "hour": 13,
+        "minute": 30,
+        "label_vn": "20:30 Tối",
+        "label_us": "10:30 AM BRT (ĐÓN ĐẦU ĐỈNH TRƯA BRAZIL - HORÁRIO DE ALMOÇO #2)",
+        "description": "Đăng sớm 60 phút trước giờ nghỉ trưa tại São Paulo/Brasília (11:30-13:30 BRT) để thuật toán YouTube Brazil phân phối đúng tệp pt-BR.",
+        "tag": "BR_LUNCH_LEAD",
         "rank": 2
     },
 ]

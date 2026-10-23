@@ -998,21 +998,26 @@ class ContentAgent:
                     "Quick Poll: Would you choose (1) Keep our timeline or (2) Rewrite history? Drop 1 or 2 below! 👇"
                 )
             elif niche_norm == "deep_sea_earth_mysteries" or any(k in comb_all for k in ("deep sea", "biển sâu", "ocean", "đại dương", "mystery", "bí ẩn", "abyss", "caverna", "ilha", "oceano")):
-                raw_data["pinned_comment"] = (
-                    "Enquete rápida: Você acha que isso é (1) Criatura Desconhecida ou (2) Fenômeno Natural? Digite 1 ou 2 nos comentários! 👇"
-                    if is_pt_lang else (
+                is_duel = any(k in comb_all for k in (" vs ", "duelo", "cachalote", "lula-colossal", "lula gigante", "tubarão", "orca", "showdown"))
+                if is_pt_lang:
+                    raw_data["pinned_comment"] = (
+                        "Quem vence esse duelo mortal nas profundezas: (1) ou (2)? Digite seu voto nos comentários e inscreva-se no canal! 👇🦑🐋"
+                        if is_duel else
+                        "Você teria coragem de explorar esse lugar ou acha que a ciência esconde algo? Digite (1) SIM ou (2) NUNCA e inscreva-se no canal! 👇🌊"
+                    )
+                else:
+                    raw_data["pinned_comment"] = (
                         "Theo bạn đây là (1) Sinh vật chưa được khám phá hay (2) Hiện tượng tự nhiên? Gõ 1 hoặc 2 bên dưới 👇"
                         if is_vn else
                         "Quick Poll: Is this (1) An Undiscovered Creature or (2) A Natural Anomaly? Drop 1 or 2 below! 👇"
                     )
-                )
             elif niche_norm == "wildlife_predators" or any(k in comb_all for k in ("săn mồi", "predator", "wildlife", "dã thú", "báo", "sư tử", "hổ", "cheetah", "leopard", "eagle", "onça", "sucuri", "jacaré", "ratel", "hippo", "orca")):
                 raw_data["pinned_comment"] = (
-                    "Quem vence esse duelo mortal no 1x1? Digite seu voto nos comentários! 👇🔥"
+                    "Quem vence esse duelo mortal no 1x1: (1) ou (2)? Digite seu voto abaixo e INSCREVA-SE para duelos diários! 👇🔥"
                     if is_pt_lang else (
-                        "Kèo sinh tử 1v1 này bạn chọn phe nào? Để lại bình chọn bên dưới 👇🔥"
+                        "Kèo sinh tử 1v1 này bạn chọn (1) hay (2)? Để lại bình chọn bên dưới và ĐĂNG KÝ kênh để xem tập tiếp theo! 👇🔥"
                         if is_vn else
-                        "Who takes the crown in this 1v1 apex showdown? Drop your vote in the comments below! 👇🔥"
+                        "Who takes the crown in this 1v1 survival showdown: (1) Predator or (2) Challenger? Drop your vote below & SUBSCRIBE for daily Apex Battles! 👇🔥🦁"
                     )
                 )
             elif niche_norm == "psychology" or any(k in comb_all for k in ("tâm lý", "psychology", "manipulat", "thao túng", "mindset", "gaslight", "liar", "dark psychology")):
@@ -1026,6 +1031,29 @@ class ContentAgent:
                     "Chi tiết nào khiến bạn bất ngờ nhất? Hãy để lại bình luận của bạn bên dưới nhé 👇"
                     if is_vn else
                     "Which moment shocked you the most? Drop your thoughts in the comments below 👇"
+                )
+
+        # Đảm bảo mọi Pinned Comment (kể cả do LLM tự sinh) đều tích hợp lời mời Subscribe tự nhiên
+        # và Cảnh cuối cùng có HUD Badge nhắc Vote & Subscribe (giữ nguyên 0% Spoken Outro CTA để bảo toàn Loop APV)
+        cur_pin = str(raw_data.get("pinned_comment") or "").strip()
+        if cur_pin and not re.search(r'\b(?:subscribe|inscreva|đăng\s*ký)\b', cur_pin, flags=re.IGNORECASE):
+            if is_pt_lang:
+                cur_pin = f"{cur_pin.rstrip()} 🔔 INSCREVA-SE no canal para não perder o próximo episódio!"
+            elif is_vn:
+                cur_pin = f"{cur_pin.rstrip()} 🔔 ĐĂNG KÝ kênh để không bỏ lỡ tập tiếp theo!"
+            else:
+                cur_pin = f"{cur_pin.rstrip()} 🔔 SUBSCRIBE for daily viral episodes!"
+            raw_data["pinned_comment"] = cur_pin
+
+        if scenes and isinstance(scenes, list) and len(scenes) >= 3 and isinstance(scenes[-1], dict):
+            if not scenes[-1].get("overlay_badge"):
+                scenes[-1]["overlay_badge"] = (
+                    "[ // VOTE 1 OU 2 & INSCREVA-SE // ]"
+                    if is_pt_lang else (
+                        "[ // BÌNH CHỌN & ĐĂNG KÝ KÊNH // ]"
+                        if is_vn else
+                        "[ // VOTE 1 OR 2 & SUBSCRIBE // ]"
+                    )
                 )
 
         # ── 4. NICHE-AWARE CLEAN SHORTS DESCRIPTION (CHỐNG RÒ RỈ METADATA CHÉO NGÁCH & CHỐNG SPAM BREAKDOWN) ──
