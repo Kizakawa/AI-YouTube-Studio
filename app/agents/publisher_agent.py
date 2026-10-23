@@ -671,12 +671,25 @@ class PublisherAgent:
                         if "quotaExceeded" in err_str or "exceeded your quota" in err_str:
                             raise up_err
 
-                        # Xử lý các lỗi mạng hoặc session upload bị đứt giữa chừng
+                        # Xử lý các lỗi mạng hoặc session upload bị đứt giữa chừng (bao gồm cả SSLEOFError / TLS drop)
                         is_recoverable = (
                             "410" in err_str
                             or "Gone" in err_str
                             or any(code in err_str for code in ["500", "502", "503", "504"])
-                            or any(k in err_str.lower() for k in ["timeout", "connection reset", "broken pipe", "remotely closed"])
+                            or any(
+                                k in err_str.lower()
+                                for k in [
+                                    "timeout",
+                                    "connection reset",
+                                    "broken pipe",
+                                    "remotely closed",
+                                    "eof occurred",
+                                    "ssl",
+                                    "connection aborted",
+                                    "incomplete read",
+                                    "badstatusline",
+                                ]
+                            )
                         )
                         if is_recoverable and upload_attempt < max_upload_retries:
                             wait_sec = upload_attempt * 3
@@ -1388,7 +1401,7 @@ class PublisherAgent:
             "tatu canastra", "águia harpia", "gavião real", "harpia", "bicho preguiça", "preguiça",
             "lagosta boxeadora", "tamarutaca", "dragão de komodo", "komodo", "hipopótamo", "crocodilo",
             "tubarão branco", "tubarão", "orca", "baleia", "cachalote", "lula colossal",
-            "hiena", "leopardo das neves", "leopardo", "texugo do mel", "ratel", "javali",
+            "hiena", "leopardo das neves", "leopardo", "texugo do mel", "ratel", "mangusto", "javali",
             "leões", "leão", "tigre siberiano", "tigre", "urso pardo", "urso polar", "cobra rei", "mamba negra",
             "taiga", "amazônia", "pantanal", "cerrado", "fossa das marianas", "triângulo das bermudas",
             "ponto nemo", "espaçonaves", "mergulhadores", "rio fervente", "caverna movile", "caverna",

@@ -212,8 +212,6 @@ CHANNELS_CONFIG = {
             "Tone: dramatic, fast-paced, National Geographic Brasil style. Strict Brazilian Portuguese (pt-BR) only."
         ),
         "topics": [
-            "Hipopótamo vs Alcateia de Leões: Por Que 6 Leões Famintos Recuam Diante Deste Gigante nos Rios Africanos",
-            "Águia-Real vs Cabra-da-Montanha: A Emboscada Aérea a 240 km/h nos Penhascos Mais Íngremes",
             "Mamba-Negra vs Mangusto: O Reflexo de 15 Milissegundos Que Humilha a Cobra Mais Letal da África",
             "Crocodilo-do-Nilo vs Búfalo-Africano: Como a Manada Inteira Vira o Jogo Contra o Monstro do Rio",
             "Casuar: Por Que Nenhum Predador Ousa Enfrentar a Ave-Dinossauro Mais Perigosa do Mundo",
@@ -221,6 +219,8 @@ CHANNELS_CONFIG = {
             "Onça-Pintada vs Bando de Queixadas: Por Que 100 Porcos Selvagens Fazem o Maior Felino Subir nas Árvores",
             "Guepardo vs Avestruz: O Chute de 2.000 PSI Que Pode Matar o Felino Mais Rápido da Terra",
             "Lobo-Cinzento vs Alce Gigante: A Estratégia de Caça na Neve Profunda Onde Um Coice É Fatal",
+            "Águia-Real vs Cabra-da-Montanha: A Emboscada Aérea a 240 km/h nos Penhascos Mais Íngremes",
+            "Hipopótamo vs Alcateia de Leões: Por Que 6 Leões Famintos Recuam Diante Deste Gigante nos Rios Africanos",
         ],
         "default_tags": [
             "shorts", "animais", "natureza", "vidaanimal", "pantanal",
