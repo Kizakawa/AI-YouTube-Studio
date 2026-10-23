@@ -1,0 +1,134 @@
+{
+  "version": "2.0",
+  "description": "O(1) Hash-Indexed Multi-Channel Audio Catalog (Zero Disk-Scan Latency)",
+  "channel_to_niche_folder": {
+    "ch_paws_hearts_rescue": "01_animal_rescue_paws",
+    "animal_rescue": "01_animal_rescue_paws",
+    "paws_hearts": "01_animal_rescue_paws",
+    "ch_wild_odyssey": "02_wildlife_predators",
+    "ch_odisseia_selvagem": "02_wildlife_predators",
+    "wildlife_predators": "02_wildlife_predators",
+    "wildlife": "02_wildlife_predators",
+    "ucsrjiil67qxidtxt70z-iwa": "03_deep_sea_mysteries",
+    "ch_misterios_do_mundo": "03_deep_sea_mysteries",
+    "deep_sea_earth_mysteries": "03_deep_sea_mysteries",
+    "mystery": "03_deep_sea_mysteries",
+    "channel_maya": "04_dark_psychology",
+    "ch_psychology_of_the_world": "04_dark_psychology",
+    "psychology": "04_dark_psychology",
+    "@alternatehistorywhatif-e2x": "05_alternate_history",
+    "alternate_history": "05_alternate_history",
+    "history": "05_alternate_history"
+  },
+  "niches": {
+    "01_animal_rescue_paws": {
+      "prefix": "PAWS",
+      "default_bgm": "01_animal_rescue_paws/PAWS_BGM_01_mother_love.wav",
+      "bgm_tracks": {
+        "mother_love": {
+          "file": "01_animal_rescue_paws/PAWS_BGM_01_mother_love.wav",
+          "instrument": "Felt Piano & Warm Cello",
+          "bpm": 68,
+          "semantic_triggers": ["mother", "mama", "puppies", "kittens", "litter", "newborn", "carries", "protect", "nursing"]
+        },
+        "rescue_tension_to_relief": {
+          "file": "01_animal_rescue_paws/PAWS_BGM_02_rescue_tension_to_relief.wav",
+          "instrument": "Muted Piano Pulse -> Uplifting Strings & Acoustic Guitar",
+          "bpm": 74,
+          "semantic_triggers": ["trapped", "canal", "drowning", "stranded", "rope", "strap", "highway", "traffic", "stuck", "saved"]
+        },
+        "lonely_stray_to_warm_home": {
+          "file": "01_animal_rescue_paws/PAWS_BGM_03_lonely_stray_to_warm_home.wav",
+          "instrument": "Music Box -> Warm Fingerpicked Acoustic Guitar",
+          "bpm": 70,
+          "semantic_triggers": ["lonely", "locked", "abandoned", "rain", "shivering", "adopted", "cat adopted", "basket", "blanket"]
+        },
+        "healing_recovery_journey": {
+          "file": "01_animal_rescue_paws/PAWS_BGM_04_healing_recovery_journey.wav",
+          "instrument": "Acoustic Guitar & Uplifting Piano",
+          "bpm": 78,
+          "semantic_triggers": ["muddy", "transformed", "transformation", "bath", "grooming", "healed", "recovery", "vet", "clean", "fluffy"]
+        },
+        "smart_animal_seeks_help": {
+          "file": "01_animal_rescue_paws/PAWS_BGM_05_smart_animal_seeks_help.wav",
+          "instrument": "Kalimba, Harp & Pizzicato Strings",
+          "bpm": 76,
+          "semantic_triggers": ["tiny", "cute", "playful", "begging", "stopped", "asked for help", "smart", "followed"]
+        },
+        "joyful_new_family_ending": {
+          "file": "01_animal_rescue_paws/PAWS_BGM_06_joyful_new_family_ending.wav",
+          "instrument": "Strummed Acoustic Guitar, Piano & Warm Strings",
+          "bpm": 82,
+          "semantic_triggers": ["forever home", "new family", "smiling", "happy", "reunited", "running", "wagging"]
+        }
+      },
+      "sfx_tracks": {
+        "puppy_whimper": "01_animal_rescue_paws/PAWS_SFX_01_puppy_whimper.wav",
+        "kitten_meow": "01_animal_rescue_paws/PAWS_SFX_02_kitten_meow.wav",
+        "gentle_rain": "01_animal_rescue_paws/PAWS_SFX_03_gentle_rain.wav",
+        "happy_purr": "01_animal_rescue_paws/PAWS_SFX_04_happy_purr.wav",
+        "happy_dog_bark": "01_animal_rescue_paws/PAWS_SFX_05_happy_dog_bark.wav"
+      }
+    },
+    "02_wildlife_predators": {
+      "prefix": "WILD",
+      "default_bgm": "02_wildlife_predators/WILD_BGM_01_predator_suspense.wav",
+      "bgm_tracks": {
+        "predator_suspense": {
+          "file": "02_wildlife_predators/WILD_BGM_01_predator_suspense.wav",
+          "semantic_triggers": ["ambush", "stalk", "venom", "snake", "crocodile", "shark", "night", "hunt"]
+        },
+        "apex_clash_epic": {
+          "file": "02_wildlife_predators/WILD_BGM_02_apex_clash_epic.wav",
+          "semantic_triggers": ["lion", "hippo", "tiger", "battle", "clash", "vs", "defend", "power"]
+        }
+      },
+      "sfx_tracks": {}
+    },
+    "03_deep_sea_mysteries": {
+      "prefix": "MYST",
+      "default_bgm": "03_deep_sea_mysteries/MYST_BGM_01_abyss_mystery.wav",
+      "bgm_tracks": {
+        "abyss_mystery": {
+          "file": "03_deep_sea_mysteries/MYST_BGM_01_abyss_mystery.wav",
+          "semantic_triggers": ["trench", "mariana", "monster", "anomaly", "volcano", "terrifying", "found"]
+        },
+        "deep_ocean_drone": {
+          "file": "03_deep_sea_mysteries/MYST_BGM_02_deep_ocean_drone.wav",
+          "semantic_triggers": ["ancient", "400-year", "deep", "bottom", "ocean", "scientist", "secret"]
+        }
+      },
+      "sfx_tracks": {}
+    },
+    "04_dark_psychology": {
+      "prefix": "PSYC",
+      "default_bgm": "04_dark_psychology/PSYC_BGM_01_mind_shadow_ambient.wav",
+      "bgm_tracks": {
+        "mind_shadow_ambient": {
+          "file": "04_dark_psychology/PSYC_BGM_01_mind_shadow_ambient.wav",
+          "semantic_triggers": ["mind", "habit", "silent", "intelligent", "secret", "emotion", "attachment"]
+        },
+        "psychological_tension": {
+          "file": "04_dark_psychology/PSYC_BGM_02_psychological_tension.wav",
+          "semantic_triggers": ["psychopath", "manipulator", "narcissist", "dark", "lie", "test", "trick"]
+        }
+      },
+      "sfx_tracks": {}
+    },
+    "05_alternate_history": {
+      "prefix": "HIST",
+      "default_bgm": "05_alternate_history/HIST_BGM_01_empire_chronicle_epic.wav",
+      "bgm_tracks": {
+        "empire_chronicle_epic": {
+          "file": "05_alternate_history/HIST_BGM_01_empire_chronicle_epic.wav",
+          "semantic_triggers": ["empire", "rome", "war", "king", "ancient", "army", "history"]
+        },
+        "whatif_future_timeline": {
+          "file": "05_alternate_history/HIST_BGM_02_whatif_future_timeline.wav",
+          "semantic_triggers": ["what if", "future", "ai", "earth", "humanity", "simulation", "timeline"]
+        }
+      },
+      "sfx_tracks": {}
+    }
+  }
+}

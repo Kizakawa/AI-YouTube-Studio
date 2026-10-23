@@ -21,7 +21,8 @@ Chuyên trách tái chế video cứu hộ động vật thực tế (Real Rescu
 
 import os
 import subprocess
-from typing import Dict, List, Optional, Tuple
+import json
+from typing import Any, Dict, List, Optional, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -332,25 +333,113 @@ def audit_clip_phash_divergence(
 
 
 PAWS_HEARTS_BGM_ARCHETYPES: Dict[str, str] = {
-    "mother_love": "bgm_01_mother_love.wav",
-    "rescue_tension_to_relief": "bgm_02_rescue_tension_to_relief.wav",
-    "lonely_stray_to_warm_home": "bgm_03_lonely_stray_to_warm_home.wav",
-    "healing_recovery_journey": "bgm_04_healing_recovery_journey.wav",
-    "smart_animal_seeks_help": "bgm_05_smart_animal_seeks_help.wav",
-    "joyful_new_family_ending": "bgm_06_joyful_new_family_ending.wav",
+    "mother_love": "PAWS_BGM_01_mother_love.wav",
+    "rescue_tension_to_relief": "PAWS_BGM_02_rescue_tension_to_relief.wav",
+    "urgent_rescue_to_warm_relief": "PAWS_BGM_02_rescue_tension_to_relief.wav",
+    "lonely_stray_to_warm_home": "PAWS_BGM_03_lonely_stray_to_warm_home.wav",
+    "healing_recovery_journey": "PAWS_BGM_04_healing_recovery_journey.wav",
+    "smart_animal_seeks_help": "PAWS_BGM_05_smart_animal_seeks_help.wav",
+    "tiny_puppies_kittens_lullaby": "PAWS_BGM_05_smart_animal_seeks_help.wav",
+    "joyful_new_family_ending": "PAWS_BGM_06_joyful_new_family_ending.wav",
 }
 
+_AUDIO_CATALOG_CACHE: Optional[Dict[str, Any]] = None
 
-def get_paws_hearts_bgm_path(archetype_key: str = "mother_love") -> str:
+
+def _load_audio_catalog() -> Dict[str, Any]:
+    """Nạp bảng băm `audio_catalog.json` vào RAM 1 lần duy nhất (O(1) lookup, 0ms disk scan)."""
+    global _AUDIO_CATALOG_CACHE
+    if _AUDIO_CATALOG_CACHE is not None:
+        return _AUDIO_CATALOG_CACHE
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    catalog_path = os.path.join(base_dir, "assets", "bgm", "audio_catalog.json")
+    if os.path.exists(catalog_path):
+        try:
+            with open(catalog_path, "r", encoding="utf-8") as f:
+                _AUDIO_CATALOG_CACHE = json.load(f)
+                return _AUDIO_CATALOG_CACHE
+        except Exception:
+            pass
+    _AUDIO_CATALOG_CACHE = {}
+    return _AUDIO_CATALOG_CACHE
+
+
+def resolve_channel_bgm_fast(
+    channel_or_niche: str,
+    archetype_key: Optional[str] = None,
+    text_context: Optional[str] = None,
+) -> Optional[str]:
     """
-    Trả về đường dẫn tuyệt đối tới bản nhạc nền độc quyền (Golden-Window 48kHz Stereo WAV)
-    trong `assets/bgm/paws_hearts/` khớp với mạch cảm xúc của kịch bản giải cứu.
+    Truy xuất tức thì O(1) (~0.001ms) đường dẫn nhạc nền theo Thư mục Ngách/Kênh đã gắn nhãn
+    (`01_animal_rescue_paws` .. `05_alternate_history`) mà không cần quét ổ cứng.
     """
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    pool_dir = os.path.join(base_dir, "assets", "bgm", "paws_hearts")
-    filename = PAWS_HEARTS_BGM_ARCHETYPES.get(archetype_key, "bgm_01_mother_love.wav")
-    candidate = os.path.join(pool_dir, filename)
-    if os.path.exists(candidate):
-        return candidate
+    bgm_root = os.path.join(base_dir, "assets", "bgm")
+    catalog = _load_audio_catalog()
+    mapping = catalog.get("channel_to_niche_folder", {})
+    niches = catalog.get("niches", {})
+
+    clean_key = str(channel_or_niche or "").strip().lower()
+    niche_folder = mapping.get(clean_key)
+    if not niche_folder:
+        for k, folder in mapping.items():
+            if k in clean_key:
+                niche_folder = folder
+                break
+
+    if not niche_folder or niche_folder not in niches:
+        return None
+
+    niche_entry = niches[niche_folder]
+    tracks = niche_entry.get("bgm_tracks", {})
+
+    # 1. Khớp trực tiếp theo nhãn archetype_key (O(1) hash lookup)
+    if archetype_key and archetype_key in tracks:
+        rel_file = tracks[archetype_key].get("file")
+        if rel_file:
+            abs_p = os.path.join(bgm_root, rel_file.replace("/", os.sep))
+            if os.path.exists(abs_p):
+                return abs_p
+
+    # 2. Khớp ngữ nghĩa tự động theo text_context (topic / script) nếu có
+    if text_context and tracks:
+        ctx_low = text_context.lower()
+        best_track = None
+        best_hits = 0
+        for t_info in tracks.values():
+            triggers = t_info.get("semantic_triggers", [])
+            hits = sum(1 for kw in triggers if kw in ctx_low)
+            if hits > best_hits:
+                best_hits = hits
+                best_track = t_info.get("file")
+        if best_track:
+            abs_p = os.path.join(bgm_root, best_track.replace("/", os.sep))
+            if os.path.exists(abs_p):
+                return abs_p
+
+    # 3. Trả về bản nhạc mặc định của ngách đó
+    default_rel = niche_entry.get("default_bgm")
+    if default_rel:
+        abs_p = os.path.join(bgm_root, default_rel.replace("/", os.sep))
+        if os.path.exists(abs_p):
+            return abs_p
+    return None
+
+
+def get_paws_hearts_bgm_path(archetype_key: str = "mother_love", text_context: str = "") -> str:
+    """
+    Trả về đường dẫn tuyệt đối tới bản nhạc nền độc quyền (Golden-Window 48kHz Stereo WAV)
+    trong `assets/bgm/01_animal_rescue_paws/` (với O(1) catalog lookup và fallback tương thích ngược).
+    """
+    fast_hit = resolve_channel_bgm_fast("01_animal_rescue_paws", archetype_key=archetype_key, text_context=text_context)
+    if fast_hit and os.path.exists(fast_hit):
+        return fast_hit
+
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    filename = PAWS_HEARTS_BGM_ARCHETYPES.get(archetype_key, "PAWS_BGM_01_mother_love.wav")
+    for sub in ("01_animal_rescue_paws", "paws_hearts"):
+        candidate = os.path.join(base_dir, "assets", "bgm", sub, filename)
+        if os.path.exists(candidate):
+            return candidate
     fallback = os.path.join(base_dir, "assets", "bgm", "emotional_piano.wav")
     return fallback

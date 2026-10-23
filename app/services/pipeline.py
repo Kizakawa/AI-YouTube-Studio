@@ -1597,6 +1597,23 @@ class VideoPipeline:
         if not bgm_dir.exists():
             return None
 
+        # Ưu tiên truy xuất tức thì O(1) (~0.001ms) qua AudioCatalogRegistry đã phân vùng theo thư mục Ngách/Kênh
+        if niche and not is_scifi:
+            try:
+                from app.services.video_recycler import resolve_channel_bgm_fast
+
+                ctx_str = str(kwargs.get("topic") or kwargs.get("text_context") or "")
+                fast_bgm = resolve_channel_bgm_fast(
+                    channel_or_niche=niche,
+                    archetype_key=kwargs.get("archetype_key"),
+                    text_context=ctx_str,
+                )
+                if fast_bgm and os.path.exists(fast_bgm):
+                    logger.info(f"⚡ [O(1) AudioCatalog] BGM khớp tức thì cho '{niche}' → {os.path.basename(fast_bgm)}")
+                    return fast_bgm
+            except Exception as e_cat:
+                logger.debug(f"[AudioCatalog] Fallback scan: {e_cat}")
+
         # Niche keyword mapping (hỗ trợ đầy đủ 5 kênh hiện tại + mở rộng đa ngách + scifi subgenres)
         niche_keywords = {
             "rescue": ["chill_ambient", "emotional", "piano", "warm", "chill", "ambient"],
