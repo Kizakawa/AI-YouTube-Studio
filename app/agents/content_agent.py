@@ -769,9 +769,9 @@ class ContentAgent:
 
         raw_h_queries = raw_data.get("hook_search_queries")
         if isinstance(raw_h_queries, list):
-            raw_data["hook_search_queries"] = [str(q).strip() for q in raw_h_queries if str(q).strip()][:2]
+            raw_data["hook_search_queries"] = [str(q).strip() for q in raw_h_queries if str(q).strip()][:5]
         elif isinstance(raw_h_queries, str) and raw_h_queries.strip():
-            raw_data["hook_search_queries"] = [q.strip() for q in raw_h_queries.split(",") if q.strip()][:2]
+            raw_data["hook_search_queries"] = [q.strip() for q in raw_h_queries.split(",") if q.strip()][:5]
 
         # ── 2.9. OPUSCLIP / VIDIQ VIRAL CTR TITLE TOURNAMENT (ĐẤU TRƯỜNG TIÊU ĐỀ TỐI ƯU CTR) ──
         raw_variants = raw_data.get("title_variants")
@@ -1178,6 +1178,152 @@ class ContentAgent:
         return "\n".join(memory_sections)
 
 
+    @trace_custom_span("ContentAgent.brainstorm_deep_viral_blueprint", run_type="llm")
+    def _brainstorm_deep_viral_blueprint(
+        self,
+        topic: str,
+        channel_niche: str,
+        language: str,
+        target_lang_display: str,
+        channel_memory_block: str,
+        director_notes: Optional[str] = None,
+    ) -> str:
+        """
+        STAGE 1 (Deep Showrunner Research & 3-Angle Viral Tournament LLM Pass):
+        Đầu tư thêm 1 lượt gọi LLM chuyên sâu để đào sâu thông số vật lý/sinh học/lịch sử/tâm lý thật,
+        đặt lên bàn cân 3 góc tiếp cận Viral khác nhau (1v1 Clash vs Paradox Twist vs Behavioral Glitch),
+        chọn ra Blueprint thắng cuộc có cả Hook 0.0s, Cú bẻ lái giây 15 (Scene 4), và 5 truy vấn săn Peak YouTube Shorts.
+        """
+        notes_ctx = f'\nCreator Direction: "{director_notes.strip()}"' if (director_notes and len(director_notes.strip()) > 3) else ""
+        blueprint_prompt = f"""You are an Elite YouTube Shorts Showrunner, Documentary Fact Researcher, and Viral Retention Architect for niche '{channel_niche}'.
+Input Topic: "{topic}"
+Target Spoken Language: {language} ({target_lang_display}){notes_ctx}
+
+{channel_memory_block[:2500]}
+
+YOUR MISSION (DEEP PRE-SCRIPT RESEARCH & 3-ANGLE TOURNAMENT):
+Do NOT write the full script yet. Spend your full reasoning capacity to mine the most jaw-dropping, verifiable truths about "{topic}" and pit 3 distinct viral angles against each other before selecting the #1 Winning Blueprint:
+1. DEEP FACT & METRIC MINING:
+   - Extract 3 concrete, verifiable numbers/mechanisms (e.g. exact PSI bite force, °C temperature, ocean depth in meters, decibels, reaction speed in seconds/milliseconds, historical year/casualty count, or exact neurological/behavioral reflex).
+2. 3-ANGLE VIRAL TOURNAMENT:
+   - Angle A (Asymmetric 1v1 Clash / Direct Confrontation): Frame around "Entity A vs Entity B" with an extreme physical metric.
+   - Angle B (Counter-Intuitive Paradox / Hidden Lethal Mechanism): Expose why what 99% of people believe about this topic is dead wrong.
+   - Angle C (Visceral 0.0s Survival / Micro-Behavior Test): Immediate high-stakes action or observable real-life trap.
+3. SELECT THE #1 WINNING BLUEPRINT FOR 100%+ APV:
+   - Design the exact 0.0s Scene 1 Hook (6–10 words in {target_lang_display}), the Act 2 concrete proof, the 15-second Mid-Video Reversal Twist (Scene 4) with a SECOND shocking metric, the Act 4 ultimate payoff, the Scene 8 Infinite Echo-Loop bridge back to Scene 1, and 5 hot English search queries to hunt Peak YouTube Shorts footage.
+
+Return ONLY valid JSON:
+{{
+  "mined_hard_metrics": ["metric/fact 1 with exact number", "metric/fact 2 with exact number", "metric/fact 3 with exact number"],
+  "angle_a_clash": "1-sentence pitch for Angle A",
+  "angle_b_paradox": "1-sentence pitch for Angle B",
+  "angle_c_visceral": "1-sentence pitch for Angle C",
+  "winning_angle": "Angle A | Angle B | Angle C — plus 1-sentence reason why it maximizes Stayed-to-Watch % and APV %",
+  "primary_entity": "Bare 1-2 word English name of the primary subject/entity",
+  "winning_title": "High-CTR Title in {target_lang_display} (28-55 chars with concrete number or 'A vs B' + emojis)",
+  "scene_1_hook_0s": "Blunt 6-10 word declarative opening hook in {target_lang_display} with subject + number/clash",
+  "act_2_concrete_proof": "Specific real-world example, quote, or documented event for Scenes 2-3",
+  "scene_4_mid_video_15s_twist": "Explosive 15-second Plot Twist / Second Hook for Scene 4 that flips expectations with a 2nd concrete metric",
+  "act_4_ultimate_payoff": "Decisive biomechanical outcome, scientific revelation, or surgical counter-move for Scenes 6-7",
+  "scene_8_infinite_echo_loop": "Exact conceptual bridge connecting the end of Scene 8 directly back into Scene 1's opening hook",
+  "hot_yt_shorts_peak_queries": [
+    "concrete English query 1 for 0s peak action YouTube Short (3-5 words)",
+    "concrete English query 2 for close-up strike/clash YouTube Short (3-5 words)",
+    "concrete English query 3 with shorts keyword (3-5 words)",
+    "concrete English query 4 for Scene 4 mid-video climax peak (3-5 words)",
+    "concrete English query 5 for secondary reaction/angle beat (3-5 words)"
+  ]
+}}"""
+        try:
+            raw_bp = self._call_api(blueprint_prompt, json_mode=True, timeout=22, max_total_seconds=38)
+            start = raw_bp.find("{")
+            end = raw_bp.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                bp_data = json.loads(raw_bp[start : end + 1])
+                logger.info(
+                    f"🧠 [ContentAgent Stage-1 Deep Blueprint] Winning Angle: {bp_data.get('winning_angle', '')[:80]} | "
+                    f"Hook 0.0s: '{bp_data.get('scene_1_hook_0s', '')}' | "
+                    f"15s Twist: '{str(bp_data.get('scene_4_mid_video_15s_twist', ''))[:70]}'"
+                )
+                return (
+                    "\n═══════════════════════════════════════════════════════════\n"
+                    "🔥 STAGE-1 SHOWRUNNER WINNING VIRAL BLUEPRINT (MANDATORY EXECUTION):\n"
+                    f"- Mined Verifiable Metrics: {json.dumps(bp_data.get('mined_hard_metrics', []), ensure_ascii=False)}\n"
+                    f"- Winning Angle: {bp_data.get('winning_angle', '')}\n"
+                    f"- Primary Entity: {bp_data.get('primary_entity', '')}\n"
+                    f"- Recommended High-CTR Title: {bp_data.get('winning_title', '')}\n"
+                    f"- Mandatory Scene 1 Hook (0.0s): {bp_data.get('scene_1_hook_0s', '')}\n"
+                    f"- Mandatory Act 2 Proof (Scenes 2-3): {bp_data.get('act_2_concrete_proof', '')}\n"
+                    f"- Mandatory Scene 4 Mid-Video 15s Reversal Twist: {bp_data.get('scene_4_mid_video_15s_twist', '')}\n"
+                    f"- Mandatory Act 4 Payoff (Scenes 6-7): {bp_data.get('act_4_ultimate_payoff', '')}\n"
+                    f"- Mandatory Scene 8 Infinite Echo-Loop Bridge: {bp_data.get('scene_8_infinite_echo_loop', '')}\n"
+                    f"- Hot YouTube Shorts Peak Search Queries: {json.dumps(bp_data.get('hot_yt_shorts_peak_queries', []), ensure_ascii=False)}\n"
+                    "═══════════════════════════════════════════════════════════\n"
+                )
+        except Exception as e_bp:
+            logger.debug(f"[ContentAgent] Stage-1 Deep Blueprint fallback to single-pass: {e_bp}")
+        return ""
+
+    @trace_custom_span("ContentAgent.showrunner_retention_polish", run_type="llm")
+    def _polish_script_for_maximum_retention(
+        self,
+        draft_script: ScriptContract,
+        topic: str,
+        channel_niche: str,
+        language: str,
+        target_lang_display: str,
+        deep_blueprint_block: str = "",
+        director_notes: Optional[str] = None,
+    ) -> Optional[ScriptContract]:
+        """
+        STAGE 3 (Executive Showrunner Retention Doctor & Hot Peak Query Distiller LLM Pass):
+        Đầu tư thêm 1 lượt gọi LLM độc lập sau khi có bản nháp để chuốt sắc từng câu chữ:
+        - Đảm bảo Cảnh 1 (0.0s Hook) sắc lẹm, có chủ thể + thông số vật lý/đối đầu ngay 6-10 từ đầu.
+        - Đảm bảo Cảnh 4 (15s Mid-Video Climax) thực sự là cú bẻ lái (Plot Twist) có con số thứ 2 chống tụt APV.
+        - Nối mạch nhân quả ("Nhưng / Chính vì vậy / Cho đến khi") giữa 8 phân cảnh và khóa vòng lặp vô tận ở Cảnh 8.
+        - Chắt lọc 5 truy vấn tiếng Anh cực chuẩn (`hook_search_queries`) để săn cảnh Peak trên YouTube Shorts.
+        """
+        lang_instruction = build_language_integrity_instruction(language)
+        notes_ctx = f'\nCREATOR NOTES: "{director_notes.strip()}"' if (director_notes and len(director_notes.strip()) > 3) else ""
+        polish_prompt = f"""You are an Executive YouTube Shorts Showrunner, Retention Doctor (100%+ APV Specialist), and Peak Visual Director.
+Review and upgrade the following draft script for Topic: "{topic}" (Niche: '{channel_niche}', Language: {language} / {target_lang_display}).
+{lang_instruction}{notes_ctx}
+{deep_blueprint_block}
+
+CURRENT DRAFT SCRIPT JSON:
+{draft_script.model_dump_json(indent=2)}
+
+YOUR EXECUTIVE PUNCH-UP MANDATE (UPGRADE EVERY WEAK LINK WHILE PRESERVING 7-8 SCENES & 92-118 TOTAL WORDS):
+1. SCENE 1 HOOK (0.0s–3.0s | 6 TO 10 WORDS):
+   - Make Scene 1 an undeniable gut-punch statement with the concrete subject name + hard physical/numerical metric or "A vs B" confrontation right in the first words. Remove any slow setup or generic phrasing.
+2. CAUSAL STORYTELLING FLOW ("BUT / THEREFORE" TRANSITIONS):
+   - Ensure every scene flows into the next with high-tension causal connectors rather than flat textbook listing. Every scene MUST be 100% grammatically complete (11–16 words per body scene).
+3. SCENE 4 MID-VIDEO CLIMAX TWIST (14.0s–20.0s | ANTI-DROP-OFF ENGINE):
+   - Ensure Scene 4 (`climax_scene_id`) delivers an explosive SECOND HOOK / REVERSAL TWIST backed by a second concrete metric/mechanism, and has a sharp uppercase HUD `overlay_badge` (e.g. `"[ // THE 15-SECOND TWIST // ]"`).
+4. SCENE 7/8 INFINITE ECHO-LOOP FINALE (APV > 100%):
+   - Craft the final scene's closing sentence so its thought/paradox bridges directly back into Scene 1's opening hook. ZERO spoken Subscribe/Follow/Comment CTA!
+5. DISTILL 5 HOT YOUTUBE SHORTS PEAK SEARCH QUERIES (`hook_search_queries`):
+   - Based on the hottest physical climax moments in this script, provide 5 distinct, concrete English search queries (3–5 words each, subject + explosive peak action/setting) optimized for finding viral YouTube Shorts peak clips.
+
+Return ONLY the complete upgraded JSON matching the exact same schema as CURRENT DRAFT SCRIPT JSON."""
+        try:
+            raw_polished = self._call_api(polish_prompt, json_mode=False, timeout=28, max_total_seconds=45)
+            polished_contract = self._parse_json_script(
+                raw_polished,
+                channel_niche=channel_niche,
+                topic=topic,
+            )
+            if polished_contract and len(polished_contract.scenes) >= 6:
+                logger.info(
+                    f"✨ [ContentAgent Stage-3 Showrunner Polish] Đã chuốt sắc kịch bản: "
+                    f"Title='{polished_contract.title}' | Hook='{polished_contract.hook}' | "
+                    f"PeakQueries={polished_contract.hook_search_queries}"
+                )
+                return polished_contract
+        except Exception as e_pol:
+            logger.debug(f"[ContentAgent] Stage-3 Showrunner Polish skip: {e_pol}")
+        return None
+
     def generate_script(
         self,
         topic: str,
@@ -1189,9 +1335,10 @@ class ContentAgent:
         **kwargs
     ) -> ScriptContract:
         """
-        Sinh kịch bản video Shorts viral tối ưu thuật toán giữ chân (AVD > 80%, thời lượng vàng 35-55 giây, 7-10 cảnh).
-        Nhịp cảnh dồn dập (3.5-5.0s/cảnh), Hook 3s đầu đảo ngược định kiến, Mid-Video Re-Hook ở Cảnh 4 (giây 12-15),
-        Payoff sâu sắc ở Cảnh 5-8 và vòng lặp vô tận (Infinite Shorts Loop).
+        Sinh kịch bản video Shorts viral theo kiến trúc Đa Tầng Chuyên Sâu (3-Stage Deep Showrunner Pipeline):
+        - Stage 1: LLM đào sâu dữ kiện định lượng & đấu trường 3 góc nhìn Viral (`_brainstorm_deep_viral_blueprint`).
+        - Stage 2: LLM viết kịch bản 5 Hồi Cao Trào Kép (7-8 cảnh, 92-118 từ).
+        - Stage 3: LLM Showrunner Doctor chuốt lại Hook 0.0s, Cao trào giây 15 (Cảnh 4), Vòng lặp vô tận (Cảnh 8) & 5 truy vấn săn Peak YouTube Shorts (`_polish_script_for_maximum_retention`).
         """
         director_block = ""
         if director_notes and len(director_notes.strip()) > 3:
@@ -1221,6 +1368,17 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
         else:
             target_lang_display = "ENGLISH"
 
+        deep_blueprint_block = ""
+        if not kwargs.get("skip_deep_blueprint"):
+            deep_blueprint_block = self._brainstorm_deep_viral_blueprint(
+                topic=topic,
+                channel_niche=channel_niche,
+                language=language,
+                target_lang_display=target_lang_display,
+                channel_memory_block=channel_memory_block,
+                director_notes=director_notes,
+            )
+
         duration_spec = "34 ĐẾN 42 GIÂY VÀNG TỐI ƯU APV > 90% & STAYED-TO-WATCH > 68% (7 ĐẾN 8 PHÂN CẢNH ĐẦY ĐẶN, 92 ĐẾN 118 TỪ — CẢNH 1 HOOK 6-10 TỪ CỰC GẮT, DẪN DẮT MƯỢT MÀ CÓ ĐẦU CÓ ĐUÔI, GIẢI THÍCH SÂU SẮC)"
         word_range_en = "92 to 118 words (34-42s High-APV Golden Duration across 7-8 rich, complete scenes; Scene 1 Hook MUST be 6-10 words ~2.8-3.4s)"
 
@@ -1230,6 +1388,7 @@ Target Language: {language} ({target_lang_display})
 {lang_instruction}
 {director_block}
 {channel_memory_block}
+{deep_blueprint_block}
 {niche_instructions}
 ═══════════════════════════════════════════════════════════
 MASTER-CLASS YOUTUBE SHORTS ARCHITECTURE (34–42 SECONDS | 92–118 WORDS | HIGH-APV DEEP DOCUMENTARY STORYTELLING)
@@ -1389,6 +1548,26 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
 
                 if linter_res.is_valid:
                     logger.info(f"✅ [ContentAgent] Script passed Quality Gate Linter on attempt {attempt}/{max_attempts}")
+                    if not kwargs.get("skip_deep_polish"):
+                        polished = self._polish_script_for_maximum_retention(
+                            draft_script=script,
+                            topic=topic,
+                            channel_niche=channel_niche,
+                            language=language,
+                            target_lang_display=target_lang_display,
+                            deep_blueprint_block=deep_blueprint_block,
+                            director_notes=director_notes,
+                        )
+                        if polished is not None:
+                            pol_lint = ScriptValidationLinter.lint(
+                                script=polished,
+                                niche_profile=niche_profile,
+                                cooldown_entities=cooldown_entities,
+                                target_wpm=niche_profile.get("target_wpm", 170),
+                            )
+                            if pol_lint.is_valid:
+                                logger.info("🔥 [ContentAgent] Stage-3 Showrunner Polished Script passed Linter — adopting upgraded masterpiece!")
+                                return polished
                     return script
 
                 last_issues = linter_res.issues

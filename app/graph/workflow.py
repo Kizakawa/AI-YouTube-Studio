@@ -50,11 +50,11 @@ def should_refine_script(state: VideoWorkflowState) -> Literal["refine_script", 
     evaluated_by = script_eval.get("evaluated_by", "ai")
     max_script_retries = max(0, int(os.getenv("MAX_SCRIPT_RETRIES", "5")))
 
-    is_strictly_passing = passed and overall_s >= 8.0 and hook_s >= 8.0
+    is_strictly_passing = passed and overall_s >= 8.4 and hook_s >= 8.4
 
     if not is_strictly_passing and retry_count < max_script_retries:
         logger.info(
-            f"🔄 [ConditionalEdge] Kịch bản chưa đạt chuẩn 8.0+ (Overall={overall_s}/10, Hook={hook_s}/10 | "
+            f"🔄 [ConditionalEdge] Kịch bản chưa đạt chuẩn 8.4+ (Overall={overall_s}/10, Hook={hook_s}/10 | "
             f"Lần {retry_count + 1}/{max_script_retries}). Quay lại node_refine_script!"
         )
         return "refine_script"

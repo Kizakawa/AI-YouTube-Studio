@@ -261,10 +261,11 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
         keys = [k.strip() for k in raw_keys.split(",") if k.strip().startswith("AIza")]
 
     # ──────────────────────────────────────────────────────────────────────────
-    # BƯỚC 1: CỔNG PHÂN TÍCH KỊCH BẢN & ĐẠO DIỄN HOOK BẰNG GEMINI (SCRIPT-AWARE HOOK DIRECTOR)
+    # BƯỚC 1: CHUYÊN GIA LLM ĐỌC TOÀN BỘ KỊCH BẢN, CHẮT LỌC ĐIỂM NÓNG (HOT TOPIC ESSENCE) & TẠO 5 TRUY VẤN SĂN PEAK YT SHORTS
     # ──────────────────────────────────────────────────────────────────────────
+    script_title = str(script_data.get("title") or topic or "").strip()
     full_script_text = " | ".join(
-        f"Scene {s.get('scene_id', i + 1)}: {s.get('narration', '')} ({s.get('visual_keyword', '')})"
+        f"Scene {s.get('scene_id', i + 1)}: {s.get('narration', '')} [kw: {s.get('visual_keyword', '')}]"
         for i, s in enumerate(base_scenes[:9])
         if isinstance(s, dict)
     )
@@ -286,12 +287,14 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
     is_abstract_keyword: bool = bool(pre_abstract) if isinstance(pre_abstract, bool) else (hook_visual_mode == "scene")
     climax_scene_id: int = int(pre_climax_id) if isinstance(pre_climax_id, int) and 1 < pre_climax_id <= len(base_scenes) else default_climax_scene_id
     queries: List[str] = (
-        [str(q).strip() for q in pre_queries if str(q).strip()][:3]
+        [str(q).strip() for q in pre_queries if str(q).strip()][:5]
         if isinstance(pre_queries, list) and pre_queries
         else fallback_queries
     )
     climax_desc: str = f"{primary_entity or topic} — {visual_keyword}"
     visual_hook_blueprint: str = climax_desc
+    hot_topic_essence: str = script_title or topic
+    must_see_visual_cues: List[str] = []
     hook_production_strategy: str = "VIRAL_SHORT_ACTION_PEAK"
     beat_1_query: str = queries[0] if queries else visual_keyword
     beat_2_query: str = queries[1] if len(queries) > 1 else beat_1_query
@@ -301,26 +304,38 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
     atmosphere_fx: str = "action"
     is_3d_cgi_subject: bool = False
 
-    plan_prompt = f"""You are an elite Viral YouTube Shorts Hook Director & Script Visual Analyst.
-Read the ENTIRE script below from Scene 1 to the final scene, understand the true core payoff of the story, and design the most scroll-stopping 0–3.5s Visual Hook for Scene 1.
+    rotator = KeyRotator(keys)
 
+    @trace_custom_span("HookVideoNode.distill_script_hot_peaks_llm", run_type="llm")
+    def _distill_script_hot_peaks_with_llm() -> Optional[Dict[str, Any]]:
+        plan_prompt = f"""You are an elite Viral YouTube Shorts Peak Footage Scout & Script-to-Hook Visual Director.
+Read the ENTIRE finalized script below from Scene 1 to Scene 8, distill the hottest core conflict/spectacle of the story, and engineer 5 hyper-targeted YouTube Shorts search queries to harvest the most explosive PEAK action clips for the Opening Hook (0.0–3.5s) and Mid-Video Climax (Scene {climax_scene_id}).
+
+- Video Title: {script_title}
 - Topic: {topic}
 - Primary Subject: {primary_entity or topic}
 - Channel Niche: {niche}
 - Opening Hook Narration (Scene 1): {hook_narration}
 - Scene 1 Visual Keyword: {visual_keyword}
-- Full Script (All Scenes): {full_script_text[:1600]}
+- Pre-Suggested Script Queries: {json.dumps(queries, ensure_ascii=False)}
+- Full Script (All Scenes): {full_script_text[:2400]}
 
-CRITICAL DIRECTORIAL RULES:
-1. DO NOT translate Scene 1's words blindly if Scene 1 is metaphorical, rhetorical, or a setup line (e.g., "One man refused the order to end the world" or "FBI analysts never look at your face"). Instead, read the FULL script to identify the concrete physical subject/climax and bring that visual payoff right into the first 3 seconds (Visual Foreshadowing).
-2. Choose "hook_production_strategy" from EXACTLY one of these 3 modes based on what fits this specific topic & hook best:
+CRITICAL PEAK HARVESTING & DIRECTORIAL RULES:
+1. DISTILL THE HOTTEST VISUAL PAYOFF FROM THE ENTIRE SCRIPT:
+   - Do NOT translate Scene 1 blindly if Scene 1 is rhetorical or abstract. Read all scenes to identify the #1 most shocking physical clash, high-speed strike, extreme natural phenomenon, or intense human behavioral moment in the script, and bring that Peak right into the first 3 seconds (Visual Foreshadowing).
+2. CHOOSE "hook_production_strategy" FROM EXACTLY ONE OF THESE 3 MODES:
    - "VIRAL_SHORT_ACTION_PEAK": Best for wildlife predators, animal rescues, underwater/ocean phenomena, natural disasters, or 3D CGI monsters where real action footage or 3D VFX from a viral Short creates an instant visceral shock.
-   - "CINEMATIC_BROLL_FAST_CUT": Best for psychology, dark psychology, human behavior, FBI interrogation, body language, or interpersonal tension where YouTube Shorts searches would return talking heads/podcasts. We instead fetch 2 moody, clean HD B-Roll video clips of concrete physical human expressions/body language (e.g. nervous hands under table, cold fake smile, intense eye contact in shadows) and fast-cut them in Scene 1.
-   - "HYBRID_MOTION_AND_SCENE_MONTAGE": Best for counterfactual history ("What If"), ancient empires, historical events, or conceptual mysteries where combining dramatic physical motion footage (Beat 1A) with a rapid multi-shot historical/cinematic scene montage (Beat 1B) fits the script hook best.
-3. Translate any abstract concept into two distinct, concrete physical PEAK-ACTION English queries ("beat_1_query" for 0.0–1.8s opening shock, and "beat_2_query" for 1.8–3.5s angle shift/reaction):
+   - "CINEMATIC_BROLL_FAST_CUT": Best for psychology, dark psychology, human behavior, FBI interrogation, body language, or interpersonal tension where YouTube Shorts searches might return talking heads.
+   - "HYBRID_MOTION_AND_SCENE_MONTAGE": Best for counterfactual history ("What If"), ancient empires, or historical events.
+3. ENGINEER 5 HYPER-TARGETED YOUTUBE SHORTS PEAK QUERIES ("search_queries"):
+   - Write 5 distinct English search queries (3–6 words each) in the exact phrasing used by viral YouTube Shorts titles (`[Concrete Subject] + [Explosive Action/Strike/Phenomenon] + [Setting/Detail]`).
+   - Query 1 ("beat_1_query"): The ultimate 0.0–1.8s Opening Peak Shock (e.g., `"jaguar jumping in river attack caiman"`, `"boiling river amazon steam thermal"`, `"sperm whale diving deep ocean"`).
+   - Query 2 ("beat_2_query"): Distinct close-up strike, weapon, or reaction shot for 1.8–3.5s (e.g., `"jaguar bite caiman skull pantanal"`, `"honey badger fighting lions wild"`).
+   - Query 3: Viral YouTube Short native phrasing with `shorts` keyword (e.g., `"jaguar vs caiman real fight shorts"`, `"honey badger fearless lion shorts"`).
+   - Query 4: The 15-Second Mid-Video Climax visual for Scene {climax_scene_id}.
+   - Query 5: High-impact close-up / phenomenon angle.
    - NEVER use abstract words ("manipulation", "psychology", "envy", "alternate history", "what if") in queries.
-   - NEVER use "vs" or "versus" in a single query. Dedicate each query to ONE concrete subject + explosive physical action/climax (e.g., `"jaguar hunting river"`, `"honey badger fearless lion"`, `"boiling river steam amazon"`, `"sperm whale deep dive"`, `"nervous hands interrogation dark"`).
-   - Also provide "beat_1_subject" and "beat_2_subject" (bare 1-2 word noun of the subject in Beat 1 and Beat 2) and "stock_broll_queries" (2 concise 2-3 word noun + natural habitat/feature queries optimized for Pexels/Pixabay stock B-roll indexers, without complex verbs like "biting skull" or "thrashing").
+   - Also provide "must_see_visual_cues" (3–4 concrete visual elements that must appear in the Peak frames) and "stock_broll_queries" (2 concise 2–3 word noun + habitat queries for Pexels/Pixabay).
 
 Return ONLY valid JSON:
 {{
@@ -331,83 +346,91 @@ Return ONLY valid JSON:
   "hook_production_strategy": "VIRAL_SHORT_ACTION_PEAK | CINEMATIC_BROLL_FAST_CUT | HYBRID_MOTION_AND_SCENE_MONTAGE",
   "hook_visual_mode": "video | scene",
   "is_abstract_keyword": false,
-  "visual_hook_blueprint": "1-sentence description of the exact visual payoff that must appear in 0-3s to match this script's hook",
-  "beat_1_query": "concrete physical subject + action/setting for 0.0-1.8s (2-4 words)",
-  "beat_2_query": "distinct angle/reaction/subject for 1.8-3.5s fast cut (2-4 words)",
+  "hot_topic_essence": "1-sentence distillation of the hottest viral spectacle in this script",
+  "visual_hook_blueprint": "1-sentence description of the exact peak visual payoff that must appear in 0-3.5s",
+  "must_see_visual_cues": ["concrete visual cue 1", "concrete visual cue 2", "concrete visual cue 3"],
+  "beat_1_query": "concrete physical subject + peak action for 0.0-1.8s (3-5 words)",
+  "beat_2_query": "distinct close-up/reaction/angle for 1.8-3.5s (3-5 words)",
   "stock_broll_queries": ["subject1 habitat/close up (2-3 words)", "subject2 habitat/close up (2-3 words)"],
   "climax_scene_id": {climax_scene_id},
-  "climax_description": "1-sentence description of mid-video climax",
-  "search_queries": ["query 1", "query 2", "query 3"],
+  "climax_description": "1-sentence description of mid-video climax visual",
+  "search_queries": ["peak query 1", "peak query 2", "peak query 3", "peak query 4", "peak query 5"],
   "atmosphere_fx": "action | psychology | mystery | history"
 }}"""
+        for model_name, key in rotator.iter_best_model_key_pairs(max_total_attempts=5):
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
+                resp = requests.post(url, json={"contents": [{"parts": [{"text": plan_prompt}]}]}, timeout=14)
+                if resp.status_code == 200:
+                    cands = resp.json().get("candidates", [])
+                    if cands:
+                        txt = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", []))
+                        m = re.search(r"\{.*\}", txt, re.DOTALL)
+                        if m:
+                            return json.loads(m.group(0))
+                elif resp.status_code in (429, 403, 404, 503):
+                    rotator.mark_model_rate_limited(key, model_name, status_code=resp.status_code, error_text=resp.text[:300])
+            except Exception as e_distill:
+                rotator.mark_model_rate_limited(key, model_name, status_code=503, error_text=str(e_distill))
+                logger.debug(f"[HookVideoNode] Script Hot-Peak Distiller fallback ({model_name}): {e_distill}")
+        return None
 
-    rotator = KeyRotator(keys)
     gemini_decided = False
     canonical_subject = ""
-    for model_name, key in rotator.iter_best_model_key_pairs(max_total_attempts=3):
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
-            resp = requests.post(url, json={"contents": [{"parts": [{"text": plan_prompt}]}]}, timeout=7)
-            if resp.status_code == 200:
-                cands = resp.json().get("candidates", [])
-                if cands:
-                    txt = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", []))
-                    m = re.search(r"\{.*\}", txt, re.DOTALL)
-                    if m:
-                        data = json.loads(m.group(0))
-                        canonical_subject = re.sub(r"[^a-zA-Z0-9\s]", " ", str(data.get("canonical_subject") or "")).strip()
-                        beat_1_subject = re.sub(r"[^a-zA-Z0-9\s]", " ", str(data.get("beat_1_subject") or canonical_subject or primary_entity or "")).strip()
-                        beat_2_subject = re.sub(r"[^a-zA-Z0-9\s]", " ", str(data.get("beat_2_subject") or canonical_subject or primary_entity or "")).strip()
-                        is_3d_cgi_subject = bool(data.get("is_3d_cgi_subject", False))
-                        strat_raw = str(data.get("hook_production_strategy") or "").strip().upper()
-                        if strat_raw in ("VIRAL_SHORT_ACTION_PEAK", "CINEMATIC_BROLL_FAST_CUT", "HYBRID_MOTION_AND_SCENE_MONTAGE"):
-                            hook_production_strategy = strat_raw
-                        mode_raw = str(data.get("hook_visual_mode") or "").strip().lower()
-                        abs_raw = bool(data.get("is_abstract_keyword", mode_raw == "scene"))
-                        if mode_raw in ("scene", "image", "ai_image", "photo") or abs_raw:
-                            hook_visual_mode = "scene"
-                            is_abstract_keyword = True
-                        else:
-                            hook_visual_mode = "video"
-                            is_abstract_keyword = False
+    distilled_data = _distill_script_hot_peaks_with_llm()
+    if isinstance(distilled_data, dict) and distilled_data:
+        canonical_subject = re.sub(r"[^a-zA-Z0-9\s]", " ", str(distilled_data.get("canonical_subject") or "")).strip()
+        beat_1_subject = re.sub(r"[^a-zA-Z0-9\s]", " ", str(distilled_data.get("beat_1_subject") or canonical_subject or primary_entity or "")).strip()
+        beat_2_subject = re.sub(r"[^a-zA-Z0-9\s]", " ", str(distilled_data.get("beat_2_subject") or canonical_subject or primary_entity or "")).strip()
+        is_3d_cgi_subject = bool(distilled_data.get("is_3d_cgi_subject", False))
+        strat_raw = str(distilled_data.get("hook_production_strategy") or "").strip().upper()
+        if strat_raw in ("VIRAL_SHORT_ACTION_PEAK", "CINEMATIC_BROLL_FAST_CUT", "HYBRID_MOTION_AND_SCENE_MONTAGE"):
+            hook_production_strategy = strat_raw
+        mode_raw = str(distilled_data.get("hook_visual_mode") or "").strip().lower()
+        abs_raw = bool(distilled_data.get("is_abstract_keyword", mode_raw == "scene"))
+        if mode_raw in ("scene", "image", "ai_image", "photo") or abs_raw:
+            hook_visual_mode = "scene"
+            is_abstract_keyword = True
+        else:
+            hook_visual_mode = "video"
+            is_abstract_keyword = False
 
-                        b1_raw = re.sub(r"[^a-zA-Z0-9\s]", " ", str(data.get("beat_1_query") or "")).strip()
-                        b2_raw = re.sub(r"[^a-zA-Z0-9\s]", " ", str(data.get("beat_2_query") or "")).strip()
-                        raw_sb = [
-                            re.sub(r"[^a-zA-Z0-9\s]", " ", str(sq)).strip()
-                            for sq in (data.get("stock_broll_queries") or [])
-                            if str(sq).strip()
-                        ]
-                        stock_broll_queries = [re.sub(r"\s+", " ", sq).strip() for sq in raw_sb if len(sq.split()) >= 1][:3]
-                        raw_q = [
-                            re.sub(r"[^a-zA-Z0-9\s]", " ", str(q)).strip()
-                            for q in ([b1_raw, b2_raw] + list(data.get("search_queries") or []))
-                            if str(q).strip()
-                        ]
-                        dedup_q: List[str] = []
-                        for rq in raw_q:
-                            rq_c = re.sub(r"\s+", " ", rq).strip()
-                            if len(rq_c.split()) >= 2 and rq_c.lower() not in [x.lower() for x in dedup_q]:
-                                dedup_q.append(rq_c)
-                        if dedup_q:
-                            queries = dedup_q[:3]
-                            beat_1_query = queries[0]
-                            beat_2_query = queries[1] if len(queries) > 1 else queries[0]
+        hot_topic_essence = str(distilled_data.get("hot_topic_essence") or hot_topic_essence).strip()
+        raw_cues = distilled_data.get("must_see_visual_cues")
+        if isinstance(raw_cues, list):
+            must_see_visual_cues = [str(c).strip() for c in raw_cues if str(c).strip()][:4]
 
-                        c_id_val = int(data.get("climax_scene_id") or climax_scene_id)
-                        if 1 < c_id_val <= len(base_scenes):
-                            climax_scene_id = c_id_val
+        b1_raw = re.sub(r"[^a-zA-Z0-9\s]", " ", str(distilled_data.get("beat_1_query") or "")).strip()
+        b2_raw = re.sub(r"[^a-zA-Z0-9\s]", " ", str(distilled_data.get("beat_2_query") or "")).strip()
+        raw_sb = [
+            re.sub(r"[^a-zA-Z0-9\s]", " ", str(sq)).strip()
+            for sq in (distilled_data.get("stock_broll_queries") or [])
+            if str(sq).strip()
+        ]
+        stock_broll_queries = [re.sub(r"\s+", " ", sq).strip() for sq in raw_sb if len(sq.split()) >= 1][:3]
+        raw_q = [
+            re.sub(r"[^a-zA-Z0-9\s]", " ", str(q)).strip()
+            for q in ([b1_raw, b2_raw] + list(distilled_data.get("search_queries") or []) + list(queries or []))
+            if str(q).strip()
+        ]
+        dedup_q: List[str] = []
+        for rq in raw_q:
+            rq_c = re.sub(r"\s+", " ", rq).strip()
+            if len(rq_c.split()) >= 2 and rq_c.lower() not in [x.lower() for x in dedup_q]:
+                dedup_q.append(rq_c)
+        if dedup_q:
+            queries = dedup_q[:5]
+            beat_1_query = queries[0]
+            beat_2_query = queries[1] if len(queries) > 1 else queries[0]
 
-                        climax_desc = str(data.get("climax_description") or climax_desc).strip()
-                        visual_hook_blueprint = str(data.get("visual_hook_blueprint") or climax_desc).strip()
-                        atmosphere_fx = str(data.get("atmosphere_fx") or niche or "action").lower()
-                        gemini_decided = True
-                        break
-            elif resp.status_code in (429, 403, 404, 503):
-                rotator.mark_model_rate_limited(key, model_name, status_code=resp.status_code, error_text=resp.text[:300])
-        except Exception as e:
-            rotator.mark_model_rate_limited(key, model_name, status_code=503, error_text=str(e))
-            logger.debug(f"[HookVideoNode] Gemini Hook Mode classifier fallback ({model_name}): {e}")
+        c_id_val = int(distilled_data.get("climax_scene_id") or climax_scene_id)
+        if 1 < c_id_val <= len(base_scenes):
+            climax_scene_id = c_id_val
+
+        climax_desc = str(distilled_data.get("climax_description") or climax_desc).strip()
+        visual_hook_blueprint = str(distilled_data.get("visual_hook_blueprint") or climax_desc).strip()
+        atmosphere_fx = str(distilled_data.get("atmosphere_fx") or niche or "action").lower()
+        gemini_decided = True
 
     if not gemini_decided:
         combined_text = f"{topic} {hook_narration} {visual_keyword} {niche}".lower()
@@ -466,22 +489,20 @@ Return ONLY valid JSON:
 
     cand_seq_idx = 0
     yt_queries_to_run = (
-        queries[:1]
+        queries[:2]
         if hook_production_strategy == "CINEMATIC_BROLL_FAST_CUT"
-        else queries
+        else queries[:5]
     )
     subject_anchor_words = {
         w.lower()
         for src_s in (canonical_subject, beat_1_subject, beat_2_subject, beat_1_query, beat_2_query, *queries, *stock_broll_queries, primary_entity, topic)
         for w in re.findall(r"[a-zA-Z]{3,}", str(src_s or "").lower())
-        if w.lower() not in {"the", "and", "for", "with", "from", "into", "that", "this", "why", "how", "what", "when", "fatal", "nature", "defies", "ambush", "secret", "truth", "footage", "action", "wildlife", "cinematic", "dramatic", "close"}
+        if w.lower() not in {"the", "and", "for", "with", "from", "into", "that", "this", "why", "how", "what", "when", "fatal", "nature", "defies", "ambush", "secret", "truth", "footage", "action", "wildlife", "cinematic", "dramatic", "close", "shorts", "short"}
     }
+
+    # ── BƯỚC 2A: QUÉT RỘNG ĐA TRUY VẤN TRÊN YOUTUBE SHORTS & DÙNG LLM CHỌN RA TOP 6 SHORT PEAK NHẤT KHỚP KỊCH BẢN ──
+    pooled_flat_by_id: Dict[str, Dict[str, Any]] = {}
     for q_idx, q in enumerate(yt_queries_to_run):
-        if len(candidate_videos) >= 4:
-            break
-        # Quét danh sách ứng viên qua yt_dlp flat search (max_results=25), ưu tiên mạnh các Short VIRAL triệu view,
-        # chặn kênh rủi ro bản quyền/watermark và xếp hạng bằng Mini-RAG
-        selected_urls: List[str] = []
         try:
             import yt_dlp
             flat_opts = {
@@ -492,8 +513,8 @@ Return ONLY valid JSON:
                 "socket_timeout": 8,
                 "ignoreerrors": True,
             }
-            with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=25)) as ydl_flat:
-                flat_res = ydl_flat.extract_info(license_policy.youtube_search_target(q, max_results=25), download=False)
+            with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=20)) as ydl_flat:
+                flat_res = ydl_flat.extract_info(license_policy.youtube_search_target(q, max_results=20), download=False)
             raw_flat_cands: List[Dict[str, Any]] = []
             for entry in ((flat_res or {}).get("entries") or []):
                 if not isinstance(entry, dict):
@@ -550,6 +571,8 @@ Return ONLY valid JSON:
                     "uploader": uploader_e,
                     "duration": dur_e,
                     "view_count": views_e,
+                    "matched_query": q,
+                    "q_idx": q_idx,
                     "score": (
                         (anchor_hits * 45.0)
                         + peak_intensity_bonus
@@ -569,17 +592,99 @@ Return ONLY valid JSON:
                 subject_entity=canonical_subject or primary_entity or climax_desc,
                 channel_id=channel_id,
             )
-            for rc in ranked_flat[:3]:
-                selected_urls.append(rc["url"])
-                candidate_titles[rc["id"]] = rc.get("title", "")
-                candidate_uploaders[rc["id"]] = rc.get("uploader", "")
-                candidate_views[rc["id"]] = int(rc.get("view_count") or 0)
+            for rc in ranked_flat[:6]:
+                cid_rc = rc["id"]
+                candidate_titles[cid_rc] = rc.get("title", "")
+                candidate_uploaders[cid_rc] = rc.get("uploader", "")
+                candidate_views[cid_rc] = int(rc.get("view_count") or 0)
+                if cid_rc not in pooled_flat_by_id or float(rc.get("score", 0)) > float(pooled_flat_by_id[cid_rc].get("score", 0)):
+                    pooled_flat_by_id[cid_rc] = rc
         except Exception as e_flat:
             logger.debug(f"[HookVideoNode] yt_dlp flat pre-filter skip ({q}): {e_flat}")
 
-        if not selected_urls:
-            continue
+    pooled_cands_sorted = sorted(
+        pooled_flat_by_id.values(),
+        key=lambda x: float(x.get("score", 0.0)),
+        reverse=True,
+    )[:22]
 
+    @trace_custom_span("HookVideoNode.select_hottest_yt_shorts_llm", run_type="llm")
+    def _select_hottest_yt_shorts_with_llm(candidates_pool: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if len(candidates_pool) <= 3:
+            return candidates_pool
+        compact_list = [
+            {
+                "id": c["id"],
+                "title": str(c.get("title") or "")[:95],
+                "views": int(c.get("view_count") or 0),
+                "duration_s": round(float(c.get("duration") or 0), 1),
+                "channel": str(c.get("uploader") or "")[:40],
+                "query": str(c.get("matched_query") or ""),
+            }
+            for c in candidates_pool
+        ]
+        scout_prompt = f"""You are an elite YouTube Shorts Peak Action Scout & Hook Producer.
+We have a finalized script and {len(compact_list)} candidate YouTube Shorts found across our hot peak queries.
+Your job is to read the script and the candidate titles/metadata, and select the TOP 6 YouTube Shorts that are most likely to contain JAW-DROPPING, REAL PEAK FOOTAGE for our Opening Hook (0.0–3.5s) and Mid-Video Climax (Scene {climax_scene_id}).
+
+- Script Title: {script_title}
+- Hot Topic Essence: {hot_topic_essence}
+- Opening 0-3.5s Peak Blueprint: {visual_hook_blueprint}
+- Mid-Video Climax Blueprint (Scene {climax_scene_id}): {climax_desc}
+- Must-See Visual Cues: {json.dumps(must_see_visual_cues, ensure_ascii=False)}
+- Full Script: {full_script_text[:1800]}
+
+CANDIDATE YOUTUBE SHORTS POOL:
+{json.dumps(compact_list, ensure_ascii=False, indent=2)}
+
+SELECTION RULES:
+1. Prioritize candidates whose titles describe REAL, HIGH-INTENSITY PHYSICAL ACTION, CLOSE-UP CLASH, or SHOCKING NATURAL PHENOMENA matching "{hot_topic_essence}" and "{visual_hook_blueprint}".
+2. Reject clickbait commentary, reactions, podcasts, toys/figurines, video game mods (unless 3D CGI monster is requested), or passive zoo/sleeping clips.
+3. Pick up to 6 best video IDs ordered from #1 strongest Opening Hook Peak to #6.
+
+Return ONLY valid JSON:
+{{
+  "selected_ids": ["id1", "id2", "id3", "id4", "id5", "id6"],
+  "selection_reasoning": "1-sentence explanation of why #1 and #2 were chosen for the Peak Hook"
+}}"""
+        for m_scout, k_scout in rotator.iter_best_model_key_pairs(max_total_attempts=4):
+            try:
+                u_sc = f"https://generativelanguage.googleapis.com/v1beta/models/{m_scout}:generateContent?key={k_scout}"
+                r_sc = requests.post(u_sc, json={"contents": [{"parts": [{"text": scout_prompt}]}]}, timeout=12)
+                if r_sc.status_code == 200:
+                    cands_sc = r_sc.json().get("candidates", [])
+                    if cands_sc:
+                        txt_sc = "".join(p.get("text", "") for p in cands_sc[0].get("content", {}).get("parts", []))
+                        m_sc = re.search(r"\{.*\}", txt_sc, re.DOTALL)
+                        if m_sc:
+                            d_sc = json.loads(m_sc.group(0))
+                            sel_ids = [str(x).strip() for x in (d_sc.get("selected_ids") or []) if str(x).strip()]
+                            id_map = {c["id"]: c for c in candidates_pool}
+                            ordered_sel = [id_map[sid] for sid in sel_ids if sid in id_map]
+                            for c_rem in candidates_pool:
+                                if c_rem["id"] not in {x["id"] for x in ordered_sel}:
+                                    ordered_sel.append(c_rem)
+                            if ordered_sel:
+                                logger.info(
+                                    f"🔥 [HookVideoNode LLM Peak Scout] Đã duyệt {len(candidates_pool)} YouTube Shorts -> "
+                                    f"Chọn Top {min(6, len(ordered_sel))}: {[c['title'][:38] for c in ordered_sel[:4]]} | "
+                                    f"Lý do: {str(d_sc.get('selection_reasoning', ''))[:100]}"
+                                )
+                                return ordered_sel[:6]
+                elif r_sc.status_code in (429, 403, 404, 503):
+                    rotator.mark_model_rate_limited(k_scout, m_scout, status_code=r_sc.status_code, error_text=r_sc.text[:300])
+            except Exception as e_sc:
+                rotator.mark_model_rate_limited(k_scout, m_scout, status_code=503, error_text=str(e_sc))
+                logger.debug(f"[HookVideoNode] LLM Peak Scout fallback ({m_scout}): {e_sc}")
+        return candidates_pool[:6]
+
+    top_curated_yt_cands = _select_hottest_yt_shorts_with_llm(pooled_cands_sorted) if pooled_cands_sorted else []
+
+    for dl_idx, rc_cand in enumerate(top_curated_yt_cands):
+        if len(candidate_videos) >= 6:
+            break
+        vid_url_dl = rc_cand["url"]
+        q_idx = int(rc_cand.get("q_idx") or dl_idx)
         out_tmpl = str(hook_cand_dir / f"yt_hook_cand_{q_idx}_%(id)s.%(ext)s")
         dl_opts = {
             "quiet": True,
@@ -597,11 +702,11 @@ Return ONLY valid JSON:
         try:
             import yt_dlp
             with yt_dlp.YoutubeDL(dl_opts) as ydl_dl:
-                ydl_dl.download(selected_urls[:3])
+                ydl_dl.download([vid_url_dl])
         except Exception as e_yt:
-            logger.debug(f"[HookVideoNode] yt-dlp download skip ({q}): {e_yt}")
+            logger.debug(f"[HookVideoNode] yt-dlp download skip ({vid_url_dl}): {e_yt}")
 
-        for mp4 in sorted(hook_cand_dir.glob(f"yt_hook_cand_{q_idx}_*.*")):
+        for mp4 in sorted(hook_cand_dir.glob(f"yt_hook_cand_{q_idx}_{rc_cand['id']}.*")):
             if mp4.suffix.lower() not in (".mp4", ".webm", ".mkv", ".mov"):
                 continue
             v_str = str(mp4)
@@ -701,7 +806,7 @@ Return ONLY valid JSON:
                 "inspect_target": inspect_target,
             }
             candidate_videos.append(v_str)
-            if len(candidate_videos) >= 4:
+            if len(candidate_videos) >= 6:
                 break
 
     # ── BỔ SUNG ĐA NGUỒN VIDEO (PEXELS HD + PIXABAY HD + WIKIMEDIA COMMONS + NASA VIDEO) CHO DUAL-BEAT HOOK ──
@@ -910,12 +1015,16 @@ Return ONLY valid JSON:
         vision_prompt = f"""You are a strict YouTube Shorts Hook Video Quality Grader & Scroll-Stop Director.
 Evaluate this 3-frame sequence extracted directly from the PEAK CLIMAX window (starting at {peak_offset_sec:.1f}s, natural peak length {peak_duration_sec:.1f}s) of a candidate Short video for:
 - Video Topic: "{topic}"
+- Hot Topic Essence: "{hot_topic_essence}"
+- Target Opening Hook Blueprint: "{visual_hook_blueprint}"
+- Desired Peak Visual Cues: {json.dumps(must_see_visual_cues, ensure_ascii=False)}
 - Valid Subjects/Entities for Hook: "{beat_1_subject}, {beat_2_subject}, or {primary_entity}"
 - Opening Hook Line: "{hook_narration}"
 - Hook Production Strategy: "{hook_production_strategy}"
 
-CRITICAL GRADING CALIBRATION (REAL VIDEO HOOK PRIORITY):
+CRITICAL GRADING CALIBRATION (REAL VIDEO HOOK PRIORITY & PEAK INTENSITY):
 - Real moving video footage of ANY of the core subjects ("{beat_1_subject}", "{beat_2_subject}", or "{primary_entity}") in their authentic natural environment/habitat (stalking, swimming, prowling, hunting, close-up detail, or dramatic motion) is ALWAYS 10x better for a YouTube Shorts Hook than downgrading to static photos ("scene")!
+- Give the HIGHEST scores (8.8–10.0) on "motion_action_score" and "scroll_stop_score" when the frames show high-intensity peak action, close-up confrontation, or dramatic movement matching "{visual_hook_blueprint}".
 - DO NOT reject a real wild video just because it shows stalking/prowling/swimming rather than a literal movie-like explosion/strike, as we combine multiple video beats in a fast-cut!
 - ONLY return "recommended_hook_mode": "scene" (rejecting the video) if the footage shows: (a) the WRONG species/subject not in "{topic}", (b) an animal trapped in an artificial zoo enclosure/concrete wall/cage when wild nature is required, (c) a contradicting biome/season (e.g. snow when tropical jungle is required), (d) a talking head/podcast/vlog, or (e) burned-in subtitles, giant text overlays, or watermarks.
 
