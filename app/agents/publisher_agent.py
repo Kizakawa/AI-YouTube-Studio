@@ -434,15 +434,43 @@ class PublisherAgent:
             allow_affiliate=bool(affiliate_enabled or donation_enabled),
         )
 
+        # Chuẩn hóa ngôn ngữ mặc định & Tọa độ GPS định tuyến vùng (US Geo-Lock / Brazil Geo-Lock chuẩn BCP-47)
+        cfg_lang = str(self.channel_config.get("language") or "").strip()
+        is_pt_br = cfg_lang.lower().startswith("pt") or (default_language and str(default_language).lower().startswith("pt"))
+
+        # Xác định câu hỏi tương tác nhị phân (Engagement Poll) ngay từ bước đóng gói Metadata
+        effective_comment = pinned_comment
+        if not effective_comment and script:
+            try:
+                s_data = json.loads(script) if isinstance(script, str) else script
+                if isinstance(s_data, dict):
+                    effective_comment = s_data.get("pinned_comment")
+            except Exception:
+                pass
+        if effective_comment and not (affiliate_enabled or donation_enabled):
+            if any(k in str(effective_comment).lower() for k in ("http://", "https://", "amazon.com", "paypal.me")):
+                effective_comment = None
+        if not effective_comment:
+            effective_comment = self.build_default_engagement_comment(
+                title=clean_title,
+                target_lang="pt-BR" if is_pt_br else (default_language or cfg_lang or "en-US"),
+            )
+
+        # Luôn ghim câu hỏi tương tác (💬 Poll) ngay ở Dòng 1 của Description để hiển thị tức thì
+        # kể cả khi video đang ở chế độ SCHEDULED (private) hoặc YouTube API không cho ghim comment tự động.
+        if effective_comment and "💬" not in (desc_without_trailing_hashes or ""):
+            poll_line = f"💬 {effective_comment.strip()}"
+            desc_without_trailing_hashes = (
+                f"{poll_line}\n\n{desc_without_trailing_hashes}".strip()
+                if desc_without_trailing_hashes
+                else poll_line
+            )
+
         # Đảm bảo description luôn có khối Hashtags thông minh (Ngách + Chủ đề + Shorts)
         desc_hashtag_line = smart_bundle["description_hashtags"]
         desc_clean = f"{desc_without_trailing_hashes}\n\n{desc_hashtag_line}".strip() if desc_without_trailing_hashes else desc_hashtag_line
 
         tag_list = list(smart_bundle["tags"])
-
-        # Chuẩn hóa ngôn ngữ mặc định & Tọa độ GPS định tuyến vùng (US Geo-Lock / Brazil Geo-Lock chuẩn BCP-47)
-        cfg_lang = str(self.channel_config.get("language") or "").strip()
-        is_pt_br = cfg_lang.lower().startswith("pt") or (default_language and str(default_language).lower().startswith("pt"))
         if is_pt_br:
             target_lang = "pt-BR"
             target_audio_lang = "pt-BR"
@@ -686,83 +714,21 @@ class PublisherAgent:
             if target_thumb and os.path.exists(target_thumb):
                 uploaded_thumb = self.upload_thumbnail(video_id, target_thumb)
 
-            # ── 2. Tự động đăng bình luận mồi (Engagement Bait & Subscriber CTA) ──
-            effective_comment = pinned_comment
-            if not effective_comment and script:
-                try:
-                    s_data = json.loads(script) if isinstance(script, str) else script
-                    if isinstance(s_data, dict):
-                        effective_comment = s_data.get("pinned_comment")
-                except Exception:
-                    pass
-
-            if not effective_comment:
-                is_vn = str(target_lang).lower().startswith("vi")
-                raw_niche = (self.channel_config.get("niche") or "").lower()
-                if any(k in raw_niche for k in ("history", "what_if", "alternate_history")):
-                    effective_comment = (
-                        "Nếu là bạn ở thời khắc đó: Chọn (1) Giữ nguyên lịch sử hay (2) Thay đổi tất cả? Bình chọn 1 hoặc 2 bên dưới 👇"
-                        if is_vn else (
-                            "Se você estivesse lá: escolheria (1) Manter nossa linha do tempo ou (2) Reescrever a história? Comente 1 ou 2 abaixo! 👇"
-                            if is_pt_br else
-                            "Quick Poll: Would you choose (1) Keep our timeline or (2) Rewrite history? Drop 1 or 2 below! 👇"
-                        )
-                    )
-                elif "psychology" in raw_niche:
-                    effective_comment = (
-                        "Bạn đã từng gặp kiểu người này ngoài đời thực chưa? Gõ (1) Đã từng gặp hoặc (2) Chưa bao giờ bên dưới nhé 👇"
-                        if is_vn else (
-                            "Você já lidou com alguém assim na vida real? Comente (1) SIM ou (2) NÃO abaixo! 👇"
-                            if is_pt_br else
-                            "Have you ever dealt with someone like this in real life? Drop (1) YES or (2) NO in the comments! 👇"
-                        )
-                    )
-                elif any(k in raw_niche for k in ("rescue", "animal", "pet")):
-                    effective_comment = (
-                        "Chấm điểm màn lột xác của bé từ 1 đến 10 nhé! 🥺 Thả ❤️ bên dưới để chúc bé luôn hạnh phúc!"
-                        if is_vn else (
-                            "Dê uma nota de 1 a 10 para essa transformação emocionante! 🥺 Deixe um ❤️ nos comentários!"
-                            if is_pt_br else
-                            "Rate this sweet baby's transformation from 1 to 10! 🥺 Drop a ❤️ below if this made your day!"
-                        )
-                    )
-                elif any(k in raw_niche for k in ("predator", "wildlife")):
-                    effective_comment = (
-                        "Kèo sinh tử này bạn chọn phe nào? Gõ (1) hay (2) để bình chọn bên dưới 👇"
-                        if is_vn else (
-                            "Quem leva a melhor nesse confronto de sobrevivência? Deixe seu voto nos comentários abaixo! 👇🔥"
-                            if is_pt_br else
-                            "Who takes the crown in a 1v1 survival showdown? Drop your vote in the comments below! 👇🔥"
-                        )
-                    )
-                elif any(k in raw_niche for k in ("deep_sea", "ocean", "abyss", "mariana")):
-                    effective_comment = (
-                        "Theo bạn đây là (1) Sinh vật chưa từng được khám phá hay (2) Hiện tượng tự nhiên? Bình chọn 1 hoặc 2 bên dưới 👇"
-                        if is_vn else (
-                            "O que você acha que realmente se esconde lá no fundo: (1) Criatura Desconhecida ou (2) Fenômeno Geológico? Comente 1 ou 2 abaixo! 👇"
-                            if is_pt_br else
-                            "What do you think is really hiding down there: (1) Undiscovered Mega-Species or (2) Geological Anomaly? Drop 1 or 2 below! 👇"
-                        )
-                    )
-                else:
-                    effective_comment = (
-                        "Chi tiết nào khiến bạn bất ngờ nhất? Hãy bình luận suy nghĩ của bạn bên dưới 👇\n"
-                        "🔔 Đăng ký kênh (Subscribe) để không bỏ lỡ video tiếp theo! 🔥"
-                        if is_vn else (
-                            "Você já sabia disso antes de assistir? Comente (1) SIM ou (2) NÃO abaixo! 👇🔥"
-                            if is_pt_br else
-                            "Did you know this before watching? Drop (1) YES or (2) NO in the comments below! 👇🔥"
-                        )
-                    )
-
+            # ── 2. Tự động đăng bình luận tương tác (Author Engagement Poll Comment) ──
+            # Lưu ý: YouTube Data API v3 chặn đăng comment (403 Forbidden) khi video đang ở trạng thái SCHEDULED (private)
+            # và không có API ghim (Pin) tự động. Vì vậy:
+            # - Tầng 1: Câu hỏi Poll (💬) đã được đặt ở Dòng 1 của Description ngay khi upload.
+            # - Tầng 2: Visual Poll CTA Banner đã hiển thị ở 3.8s cuối trên màn hình video.
+            # - Tầng 3: Bình luận của tác giả được đăng ngay nếu PUBLIC, hoặc tự động đăng ngay khi chuyển sang PUBLIC.
             posted_comment_id = None
             if video_id and effective_comment:
-                # Nếu video được lên lịch hoặc đang private, không đăng comment ngay (vì YouTube API sẽ báo lỗi 403 Forbidden).
-                # Bình luận mồi đã được lưu vào hợp đồng và sẽ tự động được ghim bởi sync_channel_pinned_comments khi video công chiếu.
                 if schedule_time_iso or str(privacy_status).lower() != "public":
-                    logger.info(f"⏳ [PublisherAgent] Video {video_id} đang ở chế độ hẹn giờ/riêng tư. Bình luận mồi đã được lưu và sẽ tự động đăng ngay khi video công chiếu.")
+                    logger.info(
+                        f"⏳ [PublisherAgent] Video {video_id} đang ở chế độ hẹn giờ/riêng tư. "
+                        f"Câu hỏi Poll đã hiển thị ở Dòng 1 Description và sẽ tự động đăng vào mục Bình luận ngay khi video công chiếu."
+                    )
                 else:
-                    comment_res = self.add_pinned_comment(video_id, effective_comment)
+                    comment_res = self.add_pinned_comment(video_id, effective_comment, retry_delay_sec=5)
                     if comment_res:
                         posted_comment_id = comment_res.get("id")
 
@@ -887,11 +853,99 @@ class PublisherAgent:
                 "video_id": None
             }
 
-    def add_pinned_comment(self, video_id: str, comment_text: str, retry_on_spam: bool = True) -> Optional[Dict]:
+    def build_default_engagement_comment(self, title: str = "", target_lang: Optional[str] = None) -> str:
         """
-        Tự động đăng bình luận mồi (Engagement Bait Comment) của chính chủ kênh lên video mới upload.
-        Bình luận của tác giả giúp kích thích khán giả comment trả lời và đẩy thời lượng xem trung bình (APV) lên >160%.
-        [FIX] Thêm retry sau 300s nếu bị spam filter chặn (403/commentDisabled).
+        Tạo câu hỏi bình chọn tương tác (Binary Poll Comment) bám sát tiêu đề/chủ đề và khu vực của kênh:
+        - Nếu tiêu đề có dạng đối đầu 'A vs B' (hoặc 'A x B'), tự động trích xuất (1) A hay (2) B.
+        - Ngược lại, sinh câu hỏi bình chọn nhị phân (1) / (2) sát ngách và ngôn ngữ (en-US / pt-BR / vi-VN).
+        """
+        cfg_lang = str(target_lang or self.channel_config.get("language") or "en-US").lower().strip()
+        is_vn = cfg_lang.startswith("vi")
+        is_pt_br = cfg_lang.startswith("pt")
+        raw_niche = (self.channel_config.get("niche") or "").lower()
+        clean_t = re.sub(r'(?:\s+#[^\s#]+)+\s*$', '', str(title or "").strip()).strip()
+
+        # Phát hiện cấu trúc đối đầu A vs B trong tiêu đề để tạo câu hỏi bình chọn cá nhân hóa
+        vs_match = re.search(
+            r'([A-Za-zÀ-ỹçãõáéíóúâêô\s]{3,28}?)\s+(?:vs\.?|versus|x)\s+([A-Za-zÀ-ỹçãõáéíóúâêô\s]{3,28}?)(?:[:\?!\-\|]|$)',
+            clean_t,
+            flags=re.IGNORECASE,
+        )
+        if vs_match:
+            side_a = vs_match.group(1).strip()
+            side_b = vs_match.group(2).strip()
+            if 2 <= len(side_a) <= 28 and 2 <= len(side_b) <= 28:
+                if is_vn:
+                    return f"Kèo sinh tử này bạn chọn phe nào: (1) {side_a} hay (2) {side_b}? Bình chọn 1 hoặc 2 bên dưới 👇🔥"
+                if is_pt_br:
+                    return f"Quem vence esse confronto: (1) {side_a} ou (2) {side_b}? Comente 1 ou 2 abaixo! 👇🔥"
+                return f"Who wins this 1v1 showdown: (1) {side_a} or (2) {side_b}? Drop 1 or 2 in the comments! 👇🔥"
+
+        if any(k in raw_niche for k in ("history", "what_if", "alternate_history")):
+            return (
+                "Nếu là bạn ở thời khắc đó: Chọn (1) Giữ nguyên lịch sử hay (2) Thay đổi tất cả? Bình chọn 1 hoặc 2 bên dưới 👇"
+                if is_vn else (
+                    "Se você estivesse lá: escolheria (1) Manter nossa linha do tempo ou (2) Reescrever a história? Comente 1 ou 2 abaixo! 👇"
+                    if is_pt_br else
+                    "Quick Poll: Would you choose (1) Keep our timeline or (2) Rewrite history? Drop 1 or 2 below! 👇"
+                )
+            )
+        if "psychology" in raw_niche:
+            return (
+                "Bạn đã từng gặp kiểu người này ngoài đời thực chưa? Gõ (1) Đã từng gặp hoặc (2) Chưa bao giờ bên dưới nhé 👇"
+                if is_vn else (
+                    "Você já lidou com alguém assim na vida real? Comente (1) SIM ou (2) NÃO abaixo! 👇"
+                    if is_pt_br else
+                    "Have you ever dealt with someone like this in real life? Drop (1) YES or (2) NO in the comments! 👇"
+                )
+            )
+        if any(k in raw_niche for k in ("rescue", "animal", "pet")):
+            return (
+                "Chấm điểm màn lột xác của bé từ 1 đến 10 nhé! 🥺 Thả ❤️ bên dưới để chúc bé luôn hạnh phúc!"
+                if is_vn else (
+                    "Dê uma nota de 1 a 10 para essa transformação emocionante! 🥺 Deixe um ❤️ nos comentários!"
+                    if is_pt_br else
+                    "Rate this sweet baby's transformation from 1 to 10! 🥺 Drop a ❤️ below if this made your day!"
+                )
+            )
+        if any(k in raw_niche for k in ("predator", "wildlife")):
+            return (
+                "Kèo sinh tử này bạn chọn phe nào? Gõ (1) hay (2) để bình chọn bên dưới 👇"
+                if is_vn else (
+                    "Quem leva a melhor nesse confronto de sobrevivência: (1) Predador ou (2) Presa? Deixe seu voto abaixo! 👇🔥"
+                    if is_pt_br else
+                    "Who takes the crown in this survival showdown: (1) Predator or (2) Challenger? Drop 1 or 2 below! 👇🔥"
+                )
+            )
+        if any(k in raw_niche for k in ("deep_sea", "ocean", "abyss", "mariana", "mystery", "earth")):
+            return (
+                "Theo bạn đây là (1) Sinh vật chưa từng được khám phá hay (2) Hiện tượng tự nhiên? Bình chọn 1 hoặc 2 bên dưới 👇"
+                if is_vn else (
+                    "O que você acha que realmente se esconde lá: (1) Criatura Desconhecida ou (2) Fenômeno Geológico? Comente 1 ou 2 abaixo! 👇"
+                    if is_pt_br else
+                    "What do you think is really behind this: (1) Undiscovered Species or (2) Natural Anomaly? Drop 1 or 2 below! 👇"
+                )
+            )
+        return (
+            "Chi tiết nào khiến bạn bất ngờ nhất? Hãy bình luận suy nghĩ của bạn bên dưới 👇\n🔔 Đăng ký kênh (Subscribe) để không bỏ lỡ video tiếp theo! 🔥"
+            if is_vn else (
+                "Você já sabia disso antes de assistir? Comente (1) SIM ou (2) NÃO abaixo! 👇🔥"
+                if is_pt_br else
+                "Did you know this before watching? Drop (1) YES or (2) NO in the comments below! 👇🔥"
+            )
+        )
+
+    def add_pinned_comment(
+        self,
+        video_id: str,
+        comment_text: str,
+        retry_on_spam: bool = True,
+        retry_delay_sec: int = 5,
+    ) -> Optional[Dict]:
+        """
+        Tự động đăng bình luận tương tác đầu luồng (Top-Level Author Engagement Comment) của chính chủ kênh lên video PUBLIC.
+        Lưu ý kỹ thuật: YouTube Data API v3 chỉ hỗ trợ `commentThreads().insert` khi video đã `public` và không có endpoint
+        để tự động bấm nút 'Ghim' (Pin) của YouTube Studio. Vì vậy câu hỏi này luôn đi kèm với Dòng 1 Description + Visual CTA Banner.
         """
         if not self.service or not video_id or not comment_text:
             return None
@@ -916,36 +970,34 @@ class PublisherAgent:
             res = _do_comment()
             comment_id = res.get("id")
             logger.info(
-                f"💬 [PublisherAgent] ✅ Đã đăng bình luận mồi lên video {video_id}: "
-                f"'{comment_text[:40]}...' (Comment ID: {comment_id})"
+                f"💬 [PublisherAgent] ✅ Đã đăng bình luận tác giả lên video {video_id}: "
+                f"'{comment_text[:45]}...' (Comment ID: {comment_id})"
             )
             return res
         except Exception as e:
             err_str = str(e).lower()
-            # Lỗi vĩnh viễn: kênh tắt comment, nội dung quá dài
             if any(p.lower() in err_str for p in PERMANENT_ERRORS):
                 logger.warning(
                     f"💬 [PublisherAgent] Comment bị chặn vĩnh viễn trên video {video_id}: {e}"
                 )
                 return None
-            # Lỗi tạm thời (spam filter YouTube thường chặn comment ngay sau upload)
-            if retry_on_spam and any(p.lower() in err_str for p in SPAM_ERRORS):
+            if retry_on_spam and retry_delay_sec > 0 and any(p.lower() in err_str for p in SPAM_ERRORS):
                 logger.warning(
-                    f"💬 [PublisherAgent] Comment bị spam filter chặn cho video {video_id}. "
-                    f"Tự động thử lại sau 300 giây... ({e})"
+                    f"💬 [PublisherAgent] Comment tạm thời bị chặn trên video {video_id}. "
+                    f"Tự động thử lại sau {retry_delay_sec} giây... ({e})"
                 )
-                time.sleep(300)  # Chờ 5 phút cho YouTube xử lý xong video
+                time.sleep(retry_delay_sec)
                 try:
                     res = _do_comment()
                     comment_id = res.get("id")
                     logger.info(
-                        f"💬 [PublisherAgent] ✅ Retry thành công! Đã đăng comment mồi sau 5 phút (Comment ID: {comment_id})"
+                        f"💬 [PublisherAgent] ✅ Retry thành công! Đã đăng comment tác giả (Comment ID: {comment_id})"
                     )
                     return res
                 except Exception as e2:
                     logger.warning(f"💬 [PublisherAgent] Retry comment vẫn thất bại cho video {video_id}: {e2}")
                     return None
-            logger.warning(f"💬 [PublisherAgent] Không thể đăng bình luận mồi lên video {video_id}: {e}")
+            logger.warning(f"💬 [PublisherAgent] Không thể đăng bình luận tác giả lên video {video_id}: {e}")
             return None
 
     _CUSTOM_THUMB_FORBIDDEN_CHANNELS = set()
@@ -978,8 +1030,9 @@ class PublisherAgent:
 
     def ensure_pinned_comment(self, video_id: str, comment_text: Optional[str] = None) -> Optional[Dict]:
         """
-        Kiểm tra và đăng bình luận mồi (Pinned Comment Bait) của chính chủ kênh cho video nếu video đã ở trạng thái PUBLIC
+        Kiểm tra và đăng bình luận tương tác của chính chủ kênh cho video nếu video đã ở trạng thái PUBLIC
         và tác giả chưa có bình luận nào trên video.
+        Ưu tiên lấy `pinned_comment` đã sinh riêng cho kịch bản từ DB (`VideoJob.scenes_json`) hoặc từ Dòng 1 `💬` của Description.
         """
         if not self.service or not video_id:
             return None
@@ -995,7 +1048,7 @@ class PublisherAgent:
             v_item = items[0]
             privacy_status = v_item.get("status", {}).get("privacyStatus", "public")
             if privacy_status.lower() != "public":
-                logger.info(f"💬 [PublisherAgent] Video {video_id} đang ở trạng thái {privacy_status}. Chỉ đăng bình luận mồi khi video đã PUBLIC.")
+                logger.info(f"💬 [PublisherAgent] Video {video_id} đang ở trạng thái {privacy_status}. Chỉ đăng bình luận khi video đã PUBLIC.")
                 return None
 
             # 2. Lấy thông tin kênh của chính mình để nhận diện author
@@ -1039,75 +1092,39 @@ class PublisherAgent:
                 logger.info(f"💬 [PublisherAgent] Video {video_id} đã có bình luận của kênh tác giả. Bỏ qua.")
                 return None
 
-            # 4. Xác định nội dung bình luận mồi chuẩn theo niche và ngôn ngữ
+            # 4. Xác định nội dung bình luận tương tác chuẩn theo video cụ thể
             effective_comment = comment_text
+            if not effective_comment:
+                try:
+                    from app.database.models import get_db, VideoJob
+                    with get_db() as db:
+                        vj = db.query(VideoJob).filter(VideoJob.youtube_video_id == video_id).order_by(VideoJob.id.desc()).first()
+                        if vj and vj.scenes_json:
+                            s_obj = json.loads(vj.scenes_json) if isinstance(vj.scenes_json, str) else vj.scenes_json
+                            if isinstance(s_obj, dict) and s_obj.get("pinned_comment"):
+                                effective_comment = str(s_obj.get("pinned_comment")).strip()
+                except Exception:
+                    pass
+
+            if not effective_comment:
+                v_desc = str(v_item.get("snippet", {}).get("description", "") or "")
+                for ln in v_desc.splitlines():
+                    ln_s = ln.strip()
+                    if ln_s.startswith("💬"):
+                        cand_c = ln_s.lstrip("💬").strip()
+                        if len(cand_c) >= 15:
+                            effective_comment = cand_c
+                            break
+
             if effective_comment and not allow_affiliate and any(k in str(effective_comment).lower() for k in ("http://", "https://", "amazon.com", "paypal.me")):
                 effective_comment = None
 
             if not effective_comment:
                 v_title = v_item.get("snippet", {}).get("title", "")
-                cfg_lang = str(self.channel_config.get("language", "")).lower().strip()
-                is_vn = cfg_lang.startswith("vi")
-                is_pt_br = cfg_lang.startswith("pt")
-                raw_niche = (self.channel_config.get("niche") or "").lower()
+                effective_comment = self.build_default_engagement_comment(title=v_title)
 
-                if any(k in raw_niche for k in ("history", "what_if", "alternate_history")):
-                    effective_comment = (
-                        "Nếu là bạn ở thời khắc đó: Chọn (1) Giữ nguyên lịch sử hay (2) Thay đổi tất cả? Bình chọn 1 hoặc 2 bên dưới 👇"
-                        if is_vn else (
-                            "Se você estivesse lá: escolheria (1) Manter nossa linha do tempo ou (2) Reescrever a história? Comente 1 ou 2 abaixo! 👇"
-                            if is_pt_br else
-                            "Quick Poll: Would you choose (1) Keep our timeline or (2) Rewrite history? Drop 1 or 2 below! 👇"
-                        )
-                    )
-                elif "psychology" in raw_niche:
-                    effective_comment = (
-                        "Bạn đã từng gặp kiểu người này ngoài đời thực chưa? Gõ (1) Đã từng gặp hoặc (2) Chưa bao giờ bên dưới nhé 👇"
-                        if is_vn else (
-                            "Você já lidou com alguém assim na vida real? Comente (1) SIM ou (2) NÃO abaixo! 👇"
-                            if is_pt_br else
-                            "Have you ever dealt with someone like this in real life? Drop (1) YES or (2) NO in the comments! 👇"
-                        )
-                    )
-                elif any(k in raw_niche for k in ("rescue", "animal", "pet")):
-                    effective_comment = (
-                        "Chấm điểm màn lột xác của bé từ 1 đến 10 nhé! 🥺 Thả ❤️ bên dưới để chúc bé luôn hạnh phúc!"
-                        if is_vn else (
-                            "Dê uma nota de 1 a 10 para essa transformação emocionante! 🥺 Deixe um ❤️ nos comentários!"
-                            if is_pt_br else
-                            "Rate this sweet baby's transformation from 1 to 10! 🥺 Drop a ❤️ below if this made your day!"
-                        )
-                    )
-                elif any(k in raw_niche for k in ("predator", "wildlife")):
-                    effective_comment = (
-                        "Kèo sinh tử này bạn chọn phe nào? Gõ (1) hay (2) để bình chọn bên dưới 👇"
-                        if is_vn else (
-                            "Quem leva a melhor nesse confronto de sobrevivência? Deixe seu voto nos comentários abaixo! 👇🔥"
-                            if is_pt_br else
-                            "Who takes the crown in a 1v1 survival showdown? Drop your vote in the comments below! 👇🔥"
-                        )
-                    )
-                elif any(k in raw_niche for k in ("deep_sea", "ocean", "abyss", "mariana")):
-                    effective_comment = (
-                        "Theo bạn đây là (1) Sinh vật chưa từng được khám phá hay (2) Hiện tượng tự nhiên? Bình chọn 1 hoặc 2 bên dưới 👇"
-                        if is_vn else (
-                            "O que você acha que realmente se esconde lá no fundo: (1) Criatura Desconhecida ou (2) Fenômeno Geológico? Comente 1 ou 2 abaixo! 👇"
-                            if is_pt_br else
-                            "What do you think is really hiding down there: (1) Undiscovered Mega-Species or (2) Geological Anomaly? Drop 1 or 2 below! 👇"
-                        )
-                    )
-                else:
-                    effective_comment = (
-                        "Chi tiết nào khiến bạn bất ngờ nhất? Hãy bình luận suy nghĩ của bạn bên dưới 👇\n🔔 Đăng ký kênh (Subscribe) để không bỏ lỡ video tiếp theo! 🔥"
-                        if is_vn else (
-                            "Você já sabia disso antes de assistir? Comente (1) SIM ou (2) NÃO abaixo! 👇🔥"
-                            if is_pt_br else
-                            "Did you know this before watching? Drop (1) YES or (2) NO in the comments below! 👇🔥"
-                        )
-                    )
-
-            # 5. Đăng bình luận
-            return self.add_pinned_comment(video_id, effective_comment)
+            # 5. Đăng bình luận tác giả
+            return self.add_pinned_comment(video_id, effective_comment, retry_on_spam=False, retry_delay_sec=0)
         except Exception as e:
             logger.warning(f"💬 [PublisherAgent] Lỗi khi ensure_pinned_comment cho {video_id}: {e}")
             return None
@@ -1668,6 +1685,13 @@ class PublisherAgent:
                 base_title=smart.get("base_title") or raw_title,
                 allow_affiliate=allow_affiliate,
             )
+            if "💬" not in (desc_body or ""):
+                poll_q = self.build_default_engagement_comment(
+                    title=smart.get("base_title") or raw_title,
+                    target_lang=expected_lang,
+                )
+                if poll_q:
+                    desc_body = f"💬 {poll_q.strip()}\n\n{desc_body}".strip() if desc_body else f"💬 {poll_q.strip()}"
             healed_desc = f"{desc_body}\n\n{smart['description_hashtags']}".strip() if desc_body else smart["description_hashtags"]
             if healed_desc != raw_desc:
                 snip["description"] = healed_desc

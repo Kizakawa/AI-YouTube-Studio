@@ -115,15 +115,15 @@ def _splice_dual_beat_hook_clip(
 ) -> bool:
     """
     Dựng Hook 2 Nhịp Cắt Nhanh (Dual-Beat Fast-Cut Hook) ngay trong Cảnh 1:
-    - Beat 1A (0.0s -> ~1.75s): Cú sốc thị giác / Hành động mở màn từ ứng viên #1.
-    - Beat 1B (~1.75s -> hết Cảnh 1): Đổi góc máy sang ứng viên #2 (hoặc góc cận cảnh phản ứng/cao trào),
-      tạo Pattern Interrupt ở giây thứ 1.75 để chặn phản xạ vuốt bỏ ở giây thứ 2.0!
+    - Beat 1A (0.0s -> ~1.35s): Cú sốc thị giác / Hành động mở màn từ ứng viên #1.
+    - Beat 1B (~1.35s -> hết Cảnh 1): Đổi góc máy sang ứng viên #2 (hoặc góc cận cảnh phản ứng/cao trào),
+      tạo Pattern Interrupt ở giây thứ 1.35-1.50 để chặn phản xạ vuốt bỏ ở giây thứ 1.8!
     - Đảm bảo tổng thời lượng khớp chính xác 100% với `total_duration_sec` (0ms lệch audio).
     """
-    if total_duration_sec < 2.6:
+    if total_duration_sec < 2.0:
         return False
-    dur_a = round(min(1.80, max(1.35, total_duration_sec * 0.48)), 2)
-    dur_b = round(max(0.85, total_duration_sec - dur_a), 2)
+    dur_a = round(min(1.55, max(1.10, total_duration_sec * 0.46)), 2)
+    dur_b = round(max(0.80, total_duration_sec - dur_a), 2)
     beat_a_out = str(work_dir / "hook_beat_1a_tmp.mp4")
     beat_b_out = str(work_dir / "hook_beat_1b_tmp.mp4")
     concat_list_path = work_dir / "hook_dual_beat_concat.txt"

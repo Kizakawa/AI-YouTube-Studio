@@ -341,41 +341,47 @@ class SubtitleHelper:
         """
         niche_l = (raw_niche or "").lower()
         if is_vi:
-            line1 = r"{\1c&H0000FFFF&}[ ★ BẤM THÍCH  {\1c&H0033FF33&}•  BÌNH LUẬN  {\1c&H002222FF&}•  ĐĂNG KÝ KÊNH ★ ]"
+            line1 = r"{\1c&H0000FFFF&}[ ★ BẤM THÍCH  {\1c&H0033FF33&}•  BÌNH LUẬN 1 HOẶC 2  {\1c&H002222FF&}•  ĐĂNG KÝ ★ ]"
             if "psychology" in niche_l:
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ ĐỂ LẠI Ý KIẾN & ĐĂNG KÝ ĐỂ KHÔNG BỊ THAO TÚNG ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs36}▼ TỪNG GẶP NGƯỜI NHƯ VẬY? GÕ (1) CÓ HOẶC (2) CHƯA ▼"
             elif any(k in niche_l for k in ("predator", "wildlife")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ KẺ NÀO THẮNG? BÌNH LUẬN & ĐĂNG KÝ NGAY ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs36}▼ KÈO NÀY AI THẮNG? BÌNH CHỌN (1) HOẶC (2) BÊN DƯỚI ▼"
             elif any(k in niche_l for k in ("deep_sea", "ocean", "mystery")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ BÌNH LUẬN GIẢ THUYẾT & ĐĂNG KÝ XEM PHẦN 2 ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs36}▼ (1) SINH VẬT BÍ ẨN HAY (2) DỊ THƯỜNG? GÕ 1 HOẶC 2 ▼"
             elif any(k in niche_l for k in ("history", "what_if", "alternate")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ BẠN NGHĨ SAO? BÌNH LUẬN & ĐĂNG KÝ KÊNH ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs36}▼ (1) GIỮ LỊCH SỬ HAY (2) THAY ĐỔI? GÕ 1 HOẶC 2 ▼"
+            elif any(k in niche_l for k in ("rescue", "animal", "pet")):
+                line2 = r"{\1c&H00FFFFFF&\fs36}▼ CHẤM ĐIỂM TỪ 1-10 CHO BÉ Ở PHẦN BÌNH LUẬN NHÉ ▼"
             else:
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ BÌNH LUẬN BÊN DƯỚI & ĐĂNG KÝ ĐÓN XEM TIẾP ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs36}▼ BẠN ĐÃ BIẾT ĐIỀU NÀY CHƯA? GÕ (1) RỒI HOẶC (2) CHƯA ▼"
         elif is_pt:
-            line1 = r"{\1c&H0000FFFF&}[ ★ CURTA  {\1c&H0033FF33&}•  COMENTE  {\1c&H002222FF&}•  INSCREVA-SE ★ ]"
+            line1 = r"{\1c&H0000FFFF&}[ ★ CURTA  {\1c&H0033FF33&}•  VOTE 1 OU 2  {\1c&H002222FF&}•  INSCREVA-SE ★ ]"
             if "psychology" in niche_l:
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ COMENTE SUA OPINIÃO E INSCREVA-SE NO CANAL ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs36}▼ JÁ PASSOU POR ISSO? COMENTE (1) SIM OU (2) NÃO ▼"
             elif any(k in niche_l for k in ("predator", "wildlife")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ QUEM VENCE? COMENTE ABAIXO E INSCREVA-SE ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs36}▼ QUEM VENCE ESSE DUELO? VOTE (1) OU (2) ABAIXO ▼"
             elif any(k in niche_l for k in ("deep_sea", "ocean", "mystery")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ QUAL SUA TEORIA? COMENTE E INSCREVA-SE ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs36}▼ (1) CRIATURA OCULTA OU (2) ANOMALIA? VOTE 1 OU 2 ▼"
             elif any(k in niche_l for k in ("history", "what_if", "alternate")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ O QUE ACONTECERIA? COMENTE E INSCREVA-SE ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs36}▼ (1) MANTER OU (2) MUDAR A HISTÓRIA? VOTE 1 OU 2 ▼"
+            elif any(k in niche_l for k in ("rescue", "animal", "pet")):
+                line2 = r"{\1c&H00FFFFFF&\fs36}▼ DÊ UMA NOTA DE 1 A 10 NOS COMENTÁRIOS ABAIXO ▼"
             else:
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ DEIXE SEU COMENTÁRIO E INSCREVA-SE AGORA ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs36}▼ VOCÊ SABIA DISSO? COMENTE (1) SIM OU (2) NÃO ▼"
         else:
-            line1 = r"{\1c&H0000FFFF&}[ ★ LIKE  {\1c&H0033FF33&}•  COMMENT  {\1c&H002222FF&}•  SUBSCRIBE ★ ]"
+            line1 = r"{\1c&H0000FFFF&}[ ★ LIKE  {\1c&H0033FF33&}•  VOTE 1 OR 2  {\1c&H002222FF&}•  SUBSCRIBE ★ ]"
             if "psychology" in niche_l:
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ DROP YOUR THOUGHTS & SUBSCRIBE FOR MORE ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs36}▼ EVER MET SOMEONE LIKE THIS? COMMENT (1) YES OR (2) NO ▼"
             elif any(k in niche_l for k in ("predator", "wildlife")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ WHO WINS? COMMENT BELOW & SUBSCRIBE ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs36}▼ WHO WINS THIS 1V1? VOTE (1) OR (2) IN COMMENTS ▼"
             elif any(k in niche_l for k in ("deep_sea", "ocean", "mystery")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ COMMENT YOUR THEORY & SUBSCRIBE FOR PART 2 ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs36}▼ (1) UNDISCOVERED SPECIES OR (2) ANOMALY? VOTE 1 OR 2 ▼"
             elif any(k in niche_l for k in ("history", "what_if", "alternate")):
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ WHAT WOULD HAPPEN? COMMENT & SUBSCRIBE ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs36}▼ (1) KEEP TIMELINE OR (2) REWRITE HISTORY? VOTE 1 OR 2 ▼"
+            elif any(k in niche_l for k in ("rescue", "animal", "pet")):
+                line2 = r"{\1c&H00FFFFFF&\fs36}▼ RATE THIS TRANSFORMATION 1-10 IN THE COMMENTS ▼"
             else:
-                line2 = r"{\1c&H00FFFFFF&\fs36}▼ DROP A COMMENT & SUBSCRIBE FOR DAILY SHORTS ▼"
+                line2 = r"{\1c&H00FFFFFF&\fs36}▼ DID YOU KNOW THIS? COMMENT (1) YES OR (2) NO BELOW ▼"
         return f"{line1}\\N{line2}"
 
     @classmethod

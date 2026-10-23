@@ -126,24 +126,29 @@ class ScriptCritic:
         words = re.findall(r"\b\w+\b", s1_narr, flags=re.UNICODE)
         w_cnt = len(words)
 
-        # 1. Cấm câu hỏi Yes/No yếu ở Cảnh 1 (tương quan trực tiếp với Swipe-Away > 40%)
+        # 1. Cấm câu hỏi Yes/No yếu hoặc ẩn dụ văn chương trừu tượng ở Cảnh 1 (tương quan trực tiếp với Swipe-Away > 70%)
         weak_q = re.match(
-            r"^(?:did you know|do you know|have you ever|are you|can you|would you|bạn có biết|você sabia)\b",
+            r"^(?:did you know|do you know|have you ever|are you|can you|would you|imagine if|what if i told you|bạn có biết|você sabia)\b",
             s1_narr,
             re.IGNORECASE,
         )
-        if weak_q:
+        abstract_metaphor = re.search(
+            r"\b(?:loaded weapon|silent cage|invisible armor|a word\.\s*a face|sweet compliment is actually)\b",
+            s1_narr,
+            re.IGNORECASE,
+        )
+        if weak_q or abstract_metaphor:
             score = min(score, 5.5)
             extra_critiques.append(
-                f"CHẶN HOOK: Cảnh 1 dùng câu hỏi Yes/No yếu ('{s1_narr}') gây tỷ lệ vuốt bỏ cao. "
-                f"Bắt buộc đổi sang câu khẳng định gây sốc + thông số vật lý hoặc đối đầu 'A vs B'!"
+                f"CHẶN HOOK: Cảnh 1 dùng câu hỏi Yes/No yếu hoặc ẩn dụ trừu tượng ('{s1_narr}') gây tỷ lệ vuốt bỏ >70%. "
+                f"Bắt buộc đổi sang câu chỉ điểm trực quan (Deictic Pointer: 'Look at...', 'When someone says...', 'Olha...') + thông số vật lý hoặc đối đầu 'A vs B' trong 5-8 từ!"
             )
 
-        # 2. Kiểm tra độ dài Cảnh 1 (3-18 từ để đọc trọn trong 2.0-3.5s đầu)
-        if w_cnt > 20 or w_cnt < 3:
+        # 2. Kiểm tra độ dài Cảnh 1 chuẩn triệu view (4-11 từ để đọc trọn trong 1.6-2.4s đầu)
+        if w_cnt > 14 or w_cnt < 3:
             score = max(1.0, score - 1.2)
             extra_critiques.append(
-                f"Cảnh 1 có độ dài chưa chuẩn ({w_cnt} từ). Cần cô đọng 4-15 từ để khóa ngón tay người xem ngay giây đầu."
+                f"Cảnh 1 có độ dài chưa chuẩn ({w_cnt} từ). Cần cô đọng 5-8 từ (tối đa 12 từ) để khớp nhịp cắt cảnh 1.8 giây đầu."
             )
 
         # 3. Đối chiếu chống lặp lại mô-típ của Bottom 3 Losers (video có swipe_away_pct cao nhất kênh)

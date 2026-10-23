@@ -1,0 +1,126 @@
+{
+  "updated_at": "2026-10-23",
+  "total_million_view_shorts_analyzed": 343,
+  "data_source": "YouTube Data API v3 (search.list order=viewCount + videos.list statistics/contentDetails)",
+  "global_findings": {
+    "hook_0_to_2s_rule": "85% of viewers decide to stay or swipe within 0.0s-1.8s. Scene 1 narration MUST be 5-8 words (1.6s-2.2s) accompanied by an immediate visual motion cut at 1.3s-1.5s.",
+    "visual_deictic_anchoring": "Million-view Shorts lock the viewer's eye at 0.0s using deictic pointers ('Look at this...', 'This man...', 'Watch the second...', 'Olha esse...', 'Esse lago...') paired with immediate physical motion on screen.",
+    "zero_literary_fluff": "Top 10M-120M view Shorts use Grade-5 conversational language (Zack D. Films / Factasm / Nature Lens / EiCurioso style), never slow poetic metaphors or textbook definitions.",
+    "engagement_architecture": "Because YouTube Data API v3 does not allow commenting on SCHEDULED (private) videos and has no API endpoint to pin comments, million-view pipelines embed a 1-vs-2 Poll/Debate Question in THREE places simultaneously: (1) Line 1 of Description, (2) Final Scene On-Screen Visual HUD Badge, and (3) Post-Premiere Automated Author Comment."
+  },
+  "regional_hook_profiles": {
+    "en-US": {
+      "market": "United States / Global English",
+      "reading_grade_level": "Grade 5-6 Conversational American English",
+      "scene_1_word_limit": "5 to 8 words (1.6s - 2.2s max)",
+      "visual_cut_rhythm": "Dual-beat fast cut in Scene 1 (Beat 1A: 0.0s-1.35s Shock Action -> Beat 1B: 1.35s-2.5s Close-up/Reaction), then 2.5s-3.8s per body scene.",
+      "hook_archetypes": [
+        "Deictic Visual Shock: 'Look at this diver's suit at 1,000 feet.' / 'This man saved Earth from World War Three.'",
+        "Conversational Manipulation Trap (Psychology): 'If someone says \"I'm just joking,\" watch their eyes.' / 'Turn any insult into instant respect with 3 words.'",
+        "Play-by-Play Apex Clash (Wildlife): 'This jaguar crushes caiman skulls with 1,500 PSI.' / 'Six adult lions backed down from one honey badger.'",
+        "Counterfactual Disaster Twist (History): 'In 1946, this underwater nuclear test went terribly wrong.'",
+        "Emotional Turning Point (Rescue): 'Watch the exact second this abandoned puppy felt safe.'"
+      ],
+      "anti_patterns_causing_high_swipe": [
+        "Abstract literary metaphors ('That sweet compliment is a loaded weapon', 'A word. A face. A sound.')",
+        "Slow 12-16 word opening sentences where the first visual cut happens after 3.5s",
+        "Rhetorical Yes/No questions ('Did you know...?', 'Have you ever wondered...?')"
+      ]
+    },
+    "pt-BR": {
+      "market": "Brasil (Português Brasileiro)",
+      "reading_grade_level": "Coloquial Brasileiro Vibrante, Direto e Hiper-Visual",
+      "scene_1_word_limit": "5 to 8 words (1.6s - 2.2s max)",
+      "visual_cut_rhythm": "Corte duplo rápido na Cena 1 (0.0s-1.35s Choque Físico -> 1.35s-2.5s Reação/Close-up), mantendo APV > 100%.",
+      "hook_archetypes": [
+        "Confronto Direto + Número Físico (Vida Selvagem): '1.500 PSI: a onça perfura o crânio do jacaré!' / 'Nem o jacaré-açu encara um bando de ariranhas!'",
+        "Anomalia Extrema + Apontamento Visual (Mistérios): 'Esse lago no fundo do mar paralisa tubarões!' / 'A 93 graus, esse rio da Amazônia ferve tudo!'",
+        "Escala Absurda / Segredo Proibido: 'Essa é a verdadeira profundidade do oceano Pacífico!' / '260 naves espaciais afundaram nesse ponto secreto!'"
+      ],
+      "anti_patterns_causing_high_swipe": [
+        "Introduções lentas tipo documentário de TV ('O oceano é um lugar cheio de mistérios...')",
+        "Português de Portugal formal em vez de português brasileiro natural",
+        "Cena 1 com mais de 10 palavras sem número físico ou ação imediata"
+      ]
+    }
+  },
+  "niches": {
+    "psychology": {
+      "sample_size_1m_plus": 61,
+      "avg_duration_sec": 45.9,
+      "golden_duration_range_sec": [32, 42],
+      "avg_title_words": 8.6,
+      "avg_title_chars": 56.1,
+      "avg_like_rate_pct": 4.15,
+      "top_million_view_examples": [
+        {"title": "Turn Insults into Respect 💀 | 3 Smart Psychology Hacks!", "views": 16312242, "duration_sec": 60, "like_rate_pct": 3.17, "channel": "Darkful Mind"},
+        {"title": "Dark Psychology Trick 🖤", "views": 15279843, "duration_sec": 47, "like_rate_pct": 7.22, "channel": "onlyjayus"},
+        {"title": "Face reading & body language reading hacks!", "views": 20566718, "duration_sec": 45, "like_rate_pct": 4.09, "channel": "Riya Upreti"}
+      ],
+      "winning_hook_blueprint": "Open at 0.0s with a recognizable everyday social attack/lie + an instant 3-second behavioral test or verbal counter-move ('When someone insults you and says \"just joking,\" do this.' / 'Three body language signs someone is lying to your face.')."
+    },
+    "deep_sea_earth_mysteries": {
+      "sample_size_1m_plus": 105,
+      "avg_duration_sec": 42.3,
+      "golden_duration_range_sec": [32, 42],
+      "avg_title_words": 8.5,
+      "avg_title_chars": 52.0,
+      "avg_like_rate_pct": 3.24,
+      "top_million_view_examples": [
+        {"title": "Every second is important for this deep sea diver 😯", "views": 92925484, "duration_sec": 27, "like_rate_pct": 3.5, "channel": "Factasm"},
+        {"title": "Why DEEP Ocean SCARED James Cameron", "views": 64503873, "duration_sec": 41, "like_rate_pct": 3.78, "channel": "Tarun Decipher"},
+        {"title": "Why Deep Sea Creatures Are Giant 😱", "views": 50876580, "duration_sec": 55, "like_rate_pct": 2.86, "channel": "FactoHolic"},
+        {"title": "ESSA É A VERDADEIRA PROFUNDIDADE DO OCEANO! #Shorts", "views": 13910412, "duration_sec": 51, "like_rate_pct": 6.77, "channel": "Rodrigo Correa"},
+        {"title": "O SEGREDO NO FUNDO DO OCEANO", "views": 12277164, "duration_sec": 60, "like_rate_pct": 6.76, "channel": "Investiga, Pinhel!"},
+        {"title": "LEVIATÃ, o MONSTRO mais ANTIGO do OCEANO! 🐉⚠️", "views": 8903797, "duration_sec": 57, "like_rate_pct": 5.81, "channel": "EiCurioso!"}
+      ],
+      "winning_hook_blueprint": "Point directly at the physical anomaly on screen in the first 3 words ('Look at this diver...', 'At 2,000 meters deep, this lake...', 'Esse lago no fundo do mar...') and state the lethal physical consequence immediately."
+    },
+    "wildlife_predators": {
+      "sample_size_1m_plus": 98,
+      "avg_duration_sec": 35.0,
+      "golden_duration_range_sec": [32, 42],
+      "avg_title_words": 8.8,
+      "avg_title_chars": 57.5,
+      "avg_like_rate_pct": 2.15,
+      "top_million_view_examples": [
+        {"title": "Dia 39 Buscando Anaconda 10M 🐍", "views": 127224447, "duration_sec": 60, "like_rate_pct": 2.17, "channel": "Dilane Salvaje"},
+        {"title": "Honey Badgers can sleep off some of the most venomous snake bites", "views": 123008419, "duration_sec": 60, "like_rate_pct": 5.03, "channel": "Natural Habitat Shorts"},
+        {"title": "Do Crocodiles Love Capybaras?", "views": 106187597, "duration_sec": 34, "like_rate_pct": 4.90, "channel": "Jasper Storm"},
+        {"title": "JAGUAR VS CAIMAN", "views": 97880535, "duration_sec": 9, "like_rate_pct": 0.69, "channel": "Nick Kleer"},
+        {"title": "Snake vs Komodo Dragon: The Moment Everything Changes", "views": 63514976, "duration_sec": 15, "like_rate_pct": 0.53, "channel": "She Zan Mahmud"},
+        {"title": "Anaconda Gigante Encontrada em exploração no Brasil #shorts", "views": 49524813, "duration_sec": 29, "like_rate_pct": 1.34, "channel": "CameraMan do GINHO"}
+      ],
+      "winning_hook_blueprint": "Name both creatures (A vs B) + the exact biomechanical weapon (1,500 PSI skull bite, 860-volt shock, neurotoxin immunity) in the first 6-8 words while showing mid-strike action at Frame 0.0s."
+    },
+    "alternate_history": {
+      "sample_size_1m_plus": 48,
+      "avg_duration_sec": 50.7,
+      "golden_duration_range_sec": [34, 44],
+      "avg_title_words": 7.9,
+      "avg_title_chars": 49.8,
+      "avg_like_rate_pct": 3.61,
+      "top_million_view_examples": [
+        {"title": "The Watch That Changed History 😨", "views": 51524997, "duration_sec": 58, "like_rate_pct": 4.83, "channel": "Zack D. Films"},
+        {"title": "Under Water Nuclear Test 😱 (it went bad)", "views": 51465929, "duration_sec": 28, "like_rate_pct": 3.50, "channel": "Zack D. Films"},
+        {"title": "The man who stopped WWIII", "views": 26302577, "duration_sec": 58, "like_rate_pct": 4.67, "channel": "Smart Nonsense"},
+        {"title": "I Tried an Ancient Roman 'Shield Destroyer' 😳", "views": 23238543, "duration_sec": 34, "like_rate_pct": 2.40, "channel": "Sean Andrew"}
+      ],
+      "winning_hook_blueprint": "Anchor at 0.0s with the exact year, object, or decision that almost destroyed/rewrote the modern world ('In 1962, this one man stopped World War Three.' / 'What if one locked gate in 1453 saved Rome?')."
+    },
+    "animal_rescue": {
+      "sample_size_1m_plus": 33,
+      "avg_duration_sec": 40.6,
+      "golden_duration_range_sec": [36, 48],
+      "avg_title_words": 10.3,
+      "avg_title_chars": 63.4,
+      "avg_like_rate_pct": 2.71,
+      "top_million_view_examples": [
+        {"title": "I saved 3 abandoned puppies", "views": 252235138, "duration_sec": 27, "like_rate_pct": 0.79, "channel": "Clean Girl"},
+        {"title": "Stray Kitten Rescued From Drain Pipe", "views": 145324317, "duration_sec": 57, "like_rate_pct": 3.04, "channel": "ViralHog"},
+        {"title": "Building a Luxury Shelter for Stray Cats | Amazing Transformation 🐱🏠", "views": 97356116, "duration_sec": 63, "like_rate_pct": 1.18, "channel": "Slayzerr"}
+      ],
+      "winning_hook_blueprint": "Open on the exact moment of rescue contact + promise of transformation ('This terrified stray puppy refused to let go of his rescuer.' / 'Nobody recognized this stray dog 30 days after one stranger stopped.')."
+    }
+  }
+}

@@ -72,6 +72,106 @@ def build_language_integrity_instruction(language: str) -> str:
 """
 
 
+def build_regional_hook_mastery_instruction(language: str, channel_niche: str = "general") -> str:
+    """
+    Xây dựng chỉ dẫn tối ưu Hook 0.0s–2.0s chuyên biệt theo từng khu vực địa lý (US/Global English vs. Brasil pt-BR vs. Việt Nam)
+    dựa trên dữ liệu phân tích 343 video YouTube Shorts triệu view (1M–371M views) từ YouTube Data API v3.
+    """
+    lang_clean = (language or "en").strip().lower()
+    niche_clean = (channel_niche or "general").strip().lower()
+    is_pt = lang_clean.startswith("pt")
+    is_vi = lang_clean.startswith("vi")
+
+    bench_lines: List[str] = []
+    try:
+        from pathlib import Path
+        bench_path = Path(settings.BASE_DIR) / "config" / "million_view_benchmarks.json"
+        if bench_path.exists():
+            bench_data = json.loads(bench_path.read_text(encoding="utf-8"))
+            niche_map = bench_data.get("niches", {})
+            matched_niche = niche_map.get(niche_clean)
+            if not matched_niche:
+                for nk, nv in niche_map.items():
+                    if nk in niche_clean or niche_clean in nk:
+                        matched_niche = nv
+                        break
+            if matched_niche:
+                ex_list = matched_niche.get("top_million_view_examples", [])[:4]
+                for ex in ex_list:
+                    bench_lines.append(
+                        f'  * [{ex.get("views", 0):,} views | {ex.get("duration_sec")}s | 👍{ex.get("like_rate_pct")}%] '
+                        f'"{ex.get("title")}" ({ex.get("channel")})'
+                    )
+                bp_rule = matched_niche.get("winning_hook_blueprint", "")
+                if bp_rule:
+                    bench_lines.append(f"  * WINNING 0.0s HOOK BLUEPRINT: {bp_rule}")
+    except Exception:
+        pass
+
+    bench_block = (
+        "\n📊 REAL MILLION-VIEW YOUTUBE SHORTS DATA FOR THIS NICHE:\n" + "\n".join(bench_lines)
+        if bench_lines else ""
+    )
+
+    if is_pt:
+        return f"""
+═══════════════════════════════════════════════════════════════════
+🇧🇷 REGIONAL HOOK MASTERY — MERCADO BRASILEIRO (pt-BR | META: STAYED-TO-WATCH >= 70% & APV >= 100%)
+═══════════════════════════════════════════════════════════════════
+1. REGRA DOS 1,8 SEGUNDOS NO BRASIL (CENA 1 = 5 A 8 PALAVRAS NO MÁXIMO):
+   - No feed de Shorts do Brasil, 85% do público decide deslizar nos primeiros 1,8s.
+   - A Cena 1 DEVE ter entre 5 e 8 palavras (1,6s a 2,2s), falada com ritmo urgente, coloquial e hiper-visual!
+2. 3 FÓRMULAS DE HOOK COMPROVADAS EM SHORTS DE +10 MILHÕES DE VIEWS NO BRASIL:
+   - [Fórmula A — Apontamento Visual + Anomalia Mortal]: Comece apontando diretamente para o que está na tela no frame 0.0s + consequência física imediata ("Esse lago no fundo do mar paralisa tubarões!", "A 93 graus, esse rio da Amazônia ferve tudo!").
+   - [Fórmula B — Duelo Brutal A vs B + Número Físico (PSI / Volts / Metros)]: Nomeie os dois oponentes + a arma biológica exata logo nos primeiros 2 segundos ("1.500 PSI: a onça perfura o crânio do jacaré!", "Nem o jacaré-açu encara um bando de ariranhas!").
+   - [Fórmula C — Escala Absurda / Segredo Proibido]: Revele um número chocante imediatamente ("260 naves espaciais afundaram nesse ponto secreto do oceano!").
+3. PROIBIDO NO MERCADO BRASILEIRO:
+   - NUNCA comece com frases lentas de documentário de TV ou metáforas abstratas.
+   - NUNCA faça perguntas passivas ("Você sabia que...?").{bench_block}
+═══════════════════════════════════════════════════════════════════
+"""
+    elif is_vi:
+        return f"""
+═══════════════════════════════════════════════════════════════════
+🇻🇳 REGIONAL HOOK MASTERY — THỊ TRƯỜNG VIỆT NAM (vi-VN | MỤC TIÊU: STAYED-TO-WATCH >= 70%)
+═══════════════════════════════════════════════════════════════════
+1. QUY TẮC 1.8 GIÂY ĐẦU (CẢNH 1 = 6 ĐẾN 9 TỪ):
+   - Mở đầu trực diện vào tình huống đời thực, con số gây sốc hoặc đòn tâm lý sắc lẹm ngay ở giây 0.0s.
+   - Tuyệt đối không mở đầu bằng câu hỏi thụ động ("Bạn có biết...") hay văn phong sách giáo khoa.{bench_block}
+═══════════════════════════════════════════════════════════════════
+"""
+    else:
+        return f"""
+═══════════════════════════════════════════════════════════════════
+🇺🇸 REGIONAL HOOK MASTERY — US / GLOBAL ENGLISH MARKET (en-US | TARGET: STAYED-TO-WATCH >= 70%)
+═══════════════════════════════════════════════════════════════════
+1. THE 1.8-SECOND US FEED SURVIVAL RULE (SCENE 1 = 5 TO 8 WORDS MAX | GRADE-5 CONVERSATIONAL ENGLISH):
+   - Telemetry across our US channels shows that poetic/literary metaphors ("That sweet compliment is a loaded weapon", "A word. A face. A sound.") cause 71%–79% Swipe-Away because US viewers swipe before decoding abstract language!
+   - Million-view US Shorts (Zack D. Films 51M, Factasm 92M, Darkful Mind 16M, Smart Nonsense 26M) use ULTRA-SIMPLE, GRADE-5 CONVERSATIONAL AMERICAN ENGLISH that points directly at the visual subject or a real-life situation in 5 to 8 words (1.6s–2.2s):
+2. NICHE-SPECIFIC MILLION-VIEW US HOOK ARCHETYPES (CHOOSE THE EXACT FIT):
+   - [Dark Psychology & Human Behavior]: Open with a concrete everyday quote/insult or a 2-second behavioral test:
+     * "When someone says 'just joking,' watch their eyes."
+     * "Turn any insult into instant respect with three words."
+     * "Three body language signs someone is lying right now."
+   - [Deep Sea & Earth Mysteries]: Open with a visual deictic pointer ("Look at this...", "At 2,000 meters...") + immediate physical danger:
+     * "Look at this diver's suit at 1,000 feet."
+     * "Scientists sealed this toxic cave for five million years."
+     * "Every second counts when this deep-sea suit depressurizes."
+   - [Wildlife Apex Predators]: Open with real-time play-by-play confrontation + biomechanical number:
+     * "This jaguar crushes caiman skulls with 1,500 PSI."
+     * "Six adult lions backed down from one honey badger."
+   - [Alternate History & What If]: Open with the exact year/person/object that almost erased modern life:
+     * "In 1962, this one man stopped World War Three."
+     * "What if Rome industrialized steam power 1,800 years early?"
+   - [Animal Rescue]: Open at the exact emotional turning point on screen:
+     * "This terrified stray puppy refused to let go."
+     * "Nobody recognized this stray dog thirty days later."
+3. STRICTLY BANNED IN US HOOKS:
+   - NO abstract poetry, NO cryptic 2-word fragments, NO slow 13+ word setup sentences in Scene 1!{bench_block}
+═══════════════════════════════════════════════════════════════════
+"""
+
+
 class ContentAgent:
     """Agent chịu trách nhiệm lên ý tưởng, viết kịch bản giật gân (hook), phân cảnh và metadata SEO.
     Đã tích hợp KeyRotator để xoay vòng API Keys qua nhiều tài khoản Google Ultra bằng direct HTTP REST
@@ -481,17 +581,21 @@ class ContentAgent:
                     if len(left_str.split()) >= 4 and len(right_str.split()) >= 4:
                         return left_str, right_str
 
-            # Riêng với Cảnh 1 (prefer_word_idx == 6) nếu câu ghép quá dài (>= 12 từ) có dấu phẩy + liên từ độc lập
-            # (", yet ", ", but ", ", mas ", ", e ") -> Tách gọn để Cảnh 1 luôn dứt điểm trong 5-8 từ (~2.0s)!
-            if prefer_word_idx <= 6 and len(words) >= 12:
+            # Riêng với Cảnh 1 (prefer_word_idx <= 7) nếu câu ghép dài (>= 10 từ) có dấu phẩy / gạch ngang / liên từ
+            # (", yet ", ", but ", ", mas ", " — ", " - ") -> Tách gọn để Cảnh 1 luôn dứt điểm trong 5-8 từ (1.6s-2.2s)!
+            if prefer_word_idx <= 7 and len(words) >= 10:
                 import re as _re
-                m_conj = _re.search(r'^([^,]{18,65}),\s+(?:yet|but|and|mas|porém|contudo)\s+(.{15,})$', text_clean, flags=_re.IGNORECASE)
+                m_conj = _re.search(
+                    r'^([^,;\—\-]{15,65})(?:[,;\—\-]+\s*(?:yet|but|and|while|until|mas|porém|contudo|enquanto|até)\s+|\s+[\—\-]+\s+)(.{14,})$',
+                    text_clean,
+                    flags=_re.IGNORECASE,
+                )
                 if m_conj:
-                    l_part = m_conj.group(1).strip().rstrip(",.") + "!"
+                    l_part = m_conj.group(1).strip().rstrip(",;.-—") + "!"
                     r_part = m_conj.group(2).strip()
                     if r_part and r_part[0].islower():
                         r_part = r_part[0].upper() + r_part[1:]
-                    if 4 <= len(l_part.split()) <= 10 and len(r_part.split()) >= 4:
+                    if 4 <= len(l_part.split()) <= 9 and len(r_part.split()) >= 4:
                         return l_part, r_part
             return None
 
@@ -504,19 +608,20 @@ class ContentAgent:
                 w_list = narr_str.split()
                 w_count = len(w_list)
 
-                # Chỉ tách câu khi câu quá dài (>= 22 từ, ghép 2 mệnh đề) VÀ có dấu ngắt câu/liên từ tự nhiên
+                # Cảnh 1 ưu tiên tách nhịp nhanh nếu >= 11 từ để cú cắt chuyển cảnh đầu tiên rơi vào 1.8s-2.2s
                 should_split = (
-                    (idx_sc == 0 and w_count >= 15)
+                    (idx_sc == 0 and w_count >= 11)
                     or (idx_sc > 0 and w_count >= 22 and len(paced_scenes) + (len(scenes) - idx_sc) < 9)
                 )
-                target_pref = 7 if idx_sc == 0 else max(8, w_count // 2)
+                target_pref = 6 if idx_sc == 0 else max(8, w_count // 2)
                 split_res = _split_long_narration(narr_str, target_pref) if should_split else None
 
                 if split_res:
                     left_narr, right_narr = split_res
                     sc_first = dict(sc)
                     sc_first["narration"] = left_narr
-                    sc_first["estimated_seconds"] = round(max(2.5, len(left_narr.split()) / 2.65), 1)
+                    min_s1_dur = 1.8 if idx_sc == 0 else 2.5
+                    sc_first["estimated_seconds"] = round(max(min_s1_dur, len(left_narr.split()) / 2.8), 1)
                     sc_first["highlight_words"] = _auto_extract_scene_highlights(left_narr)
 
                     sc_second = dict(sc)
@@ -537,12 +642,13 @@ class ContentAgent:
                     sc_second["visual_keyword"] = f"{base_vk} {extra_focus}".strip()[:65] if extra_focus else base_vk
                     sc_second["stock_query"] = base_sq
                     sc_second["visual_prompt"] = base_vp
-                    sc_second["estimated_seconds"] = round(max(2.5, len(right_narr.split()) / 2.65), 1)
+                    sc_second["estimated_seconds"] = round(max(2.4, len(right_narr.split()) / 2.65), 1)
 
                     paced_scenes.append(sc_first)
                     paced_scenes.append(sc_second)
                 else:
-                    sc["estimated_seconds"] = round(max(2.5, min(5.4, w_count / 2.65)), 1)
+                    min_dur = 1.9 if idx_sc == 0 else 2.5
+                    sc["estimated_seconds"] = round(max(min_dur, min(5.4, w_count / 2.75)), 1)
                     paced_scenes.append(sc)
 
             # Đánh lại số thứ tự scene_id chuẩn xác 1..N và làm giàu highlight_words / camera_motion / sfx_cue
@@ -690,24 +796,34 @@ class ContentAgent:
                     h_score = 50.0
                     words_h = re.findall(r'\b\w+\b', h_str)
                     w_len = len(words_h)
-                    # Độ dài vàng cho Hook 0.0s (5 - 10 từ ~ 1.8s - 2.6s): Đủ 1 câu khẳng định sắc lẹm
-                    if 5 <= w_len <= 10:
-                        h_score += 22.0
-                    elif w_len > 12 or w_len < 4:
-                        h_score -= 20.0
+                    # Độ dài vàng cho Hook 0.0s từ 343 Shorts triệu view (5 - 8 từ ~ 1.6s - 2.2s): Dứt điểm trước phản xạ vuốt 1.8s!
+                    if 5 <= w_len <= 8:
+                        h_score += 26.0
+                    elif 9 <= w_len <= 10:
+                        h_score += 16.0
+                    elif w_len > 11 or w_len < 4:
+                        h_score -= 22.0
                     # Chứa số liệu / tốc độ / lực cắn / thời gian cụ thể
                     if re.search(r'\d', h_str):
                         h_score += 18.0
+                    # Thưởng lớn cho Deictic Visual Pointer / Conversational Trigger chuẩn US & Brazil triệu view
+                    if re.search(
+                        r'\b(?:look at|watch|see this|this man|this woman|this dog|this puppy|this jaguar|if someone says|when someone|turn any|never answer|'
+                        r'olha|veja|esse|essa|nem o|nem a|até o|até a)\b',
+                        h_str,
+                        flags=re.IGNORECASE,
+                    ):
+                        h_score += 16.0
                     # Thưởng lớn cho công thức "A vs B" / Đối đầu bất đối xứng (pt-BR & Wild Odyssey Formula)
-                    if re.search(r'\b(?:vs\.?|versus|against|contra|outsmart|crushes|destroys|beats|backs down)\b', h_str, flags=re.IGNORECASE):
+                    if re.search(r'\b(?:vs\.?|versus|against|contra|outsmart|crushes|destroys|beats|backs down|perfura|esmaga|paralisa)\b', h_str, flags=re.IGNORECASE):
                         h_score += 18.0
                     # Chứa động từ hành động mạnh / nghịch lý / sinh tồn (EN / VI / PT)
                     power_hook_words = (
                         "never", "deadly", "crush", "swallow", "silent", "seconds", "freeze", "blind", "strike", "bite",
                         "venom", "paradox", "impossible", "mistake", "alive", "shivering", "refused", "terror", "abyss",
-                        "weapon", "trap", "manipulat", "narcissist", "toxic", "lie", "liar", "secret", "warning",
+                        "weapon", "trap", "manipulat", "narcissist", "toxic", "lie", "liar", "secret", "warning", "insult", "respect",
                         "tử thần", "ngay lập tức", "nghịch lý", "cắn", "nuốt", "đóng băng", "run rẩy", "tuyệt đối", "bí mật",
-                        "jamais", "mortal", "esmagar", "engolir", "silêncio", "segundos", "erro", "impossível", "veneno", "abismo"
+                        "jamais", "mortal", "esmagar", "engolir", "silêncio", "segundos", "erro", "impossível", "veneno", "abismo", "ferve"
                     )
                     h_low = h_str.lower().strip()
                     if any(pw in h_low for pw in power_hook_words):
@@ -958,6 +1074,14 @@ class ContentAgent:
             tags_line = " ".join(dict.fromkeys(raw_tags_filtered + default_tags))
             summary_body = raw_desc or f"{hook_str} {act2_str}".strip()
             raw_data["description"] = f"{summary_body}\n\n{tags_line}".strip()
+
+        # Đảm bảo câu hỏi tương tác (Engagement Poll / Pinned Question) luôn nằm ngay DÒNG 1 của Description
+        # để hiển thị 100% ngay cả khi video đang ở chế độ Hẹn giờ (SCHEDULED) hoặc YouTube API không cho ghim comment!
+        pin_q = str(raw_data.get("pinned_comment") or "").strip()
+        cur_desc = str(raw_data.get("description") or "").strip()
+        if pin_q and pin_q[:30].lower() not in cur_desc.lower():
+            lead_q = pin_q if pin_q.startswith("💬") else f"💬 {pin_q}"
+            raw_data["description"] = f"{lead_q}\n\n{cur_desc}".strip() if cur_desc else lead_q
 
         return ScriptContract(**raw_data)
 
@@ -1355,6 +1479,7 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
         niche_profile = get_niche(channel_niche)
         niche_instructions = build_script_prompt_instructions(niche_profile, language=language)
         lang_instruction = build_language_integrity_instruction(language)
+        regional_hook_instruction = build_regional_hook_mastery_instruction(language, channel_niche=channel_niche)
         channel_memory_block = self._build_channel_context_memory(
             channel_niche=channel_niche,
             topic=topic,
@@ -1368,6 +1493,7 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
         else:
             target_lang_display = "ENGLISH"
 
+<<<<<<< HEAD
         deep_blueprint_block = ""
         if not kwargs.get("skip_deep_blueprint"):
             deep_blueprint_block = self._brainstorm_deep_viral_blueprint(
@@ -1381,22 +1507,27 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
 
         duration_spec = "34 ĐẾN 42 GIÂY VÀNG TỐI ƯU APV > 90% & STAYED-TO-WATCH > 68% (7 ĐẾN 8 PHÂN CẢNH ĐẦY ĐẶN, 92 ĐẾN 118 TỪ — CẢNH 1 HOOK 6-10 TỪ CỰC GẮT, DẪN DẮT MƯỢT MÀ CÓ ĐẦU CÓ ĐUÔI, GIẢI THÍCH SÂU SẮC)"
         word_range_en = "92 to 118 words (34-42s High-APV Golden Duration across 7-8 rich, complete scenes; Scene 1 Hook MUST be 6-10 words ~2.8-3.4s)"
+=======
+        duration_spec = "34 ĐẾN 42 GIÂY VÀNG TỐI ƯU APV > 90% & STAYED-TO-WATCH > 70% (7 ĐẾN 8 PHÂN CẢNH ĐẦY ĐẶN, 92 ĐẾN 118 TỪ — CẢNH 1 HOOK 5-8 TỪ SIÊU GẮT DỨT ĐIỂM TRONG 1.8 GIÂY ĐẦU, DẪN DẮT MƯỢT MÀ CÓ ĐẦU CÓ ĐUÔI)"
+        word_range_en = "92 to 118 words (34-42s High-APV Golden Duration across 7-8 rich, complete scenes; Scene 1 Hook MUST be 5-8 words ~1.6-2.2s)"
+>>>>>>> f47447b (feat(retention,engagement): 3-layer engagement poll system & regional million-view hook mastery (US vs BR))
 
         prompt = f"""You are an elite YouTube Shorts Master Showrunner, Behavioral Storyteller, and Viral Retention Architect for the channel '{niche_profile.get('name')}' (niche: '{channel_niche}').
 Topic: '{topic}'
 Target Language: {language} ({target_lang_display})
 {lang_instruction}
+{regional_hook_instruction}
 {director_block}
 {channel_memory_block}
 {deep_blueprint_block}
 {niche_instructions}
 ═══════════════════════════════════════════════════════════
-MASTER-CLASS YOUTUBE SHORTS ARCHITECTURE (34–42 SECONDS | 92–118 WORDS | HIGH-APV DEEP DOCUMENTARY STORYTELLING)
+MASTER-CLASS YOUTUBE SHORTS ARCHITECTURE (34–42 SECONDS | 92–118 WORDS | MILLION-VIEW EMPIRICAL BLUEPRINT)
 YouTube Shorts rewards TWO metrics simultaneously:
-1. Viewed vs. Swiped-Away > 75%: Achieved by a sharp Scene 1 Hook (6–10 words, ~2.8–3.5s) + a captivating continuous opening video.
-2. High APV (90%–125%) + Smooth, Complete Narrative (92–118 words, 34–42s across 7–8 scenes):
+1. Viewed vs. Swiped-Away > 75%: Achieved by an ultra-punchy Scene 1 Hook (5–8 words, ~1.6–2.2s) using Grade-5 conversational language + immediate visual deictic anchoring ("Look at...", "Watch how...", "When someone says...", "Olha o tamanho...", "Esse lago no fundo do mar...").
+2. High APV (95%–130%) + Smooth, Complete Narrative (92–118 words, 34–42s across 7–8 scenes):
    - NEVER write an abrupt, choppy, or truncated script ("cụt lủn")! Let the sentences flow naturally into one another with smooth transitions, clear context, and complete explanations so the viewer feels deeply satisfied within a golden 34–42s runtime.
-   - Natural documentary sentence length per scene (11 to 16 words per body scene) — prioritize natural storytelling rhythm and emotional depth over rigid word counting!
+   - Natural documentary sentence length per body scene (11 to 16 words per body scene) — prioritize natural storytelling rhythm and emotional depth over rigid word counting!
    - Every scene MUST be a 100% grammatically complete sentence. NEVER chop one sentence across two scenes!
 ═══════════════════════════════════════════════════════════
 1. THE MANDATORY 5-ACT DUAL-PEAK STORYTELLING BLUEPRINT (target: {word_range_en}):
@@ -1405,9 +1536,9 @@ YouTube Shorts rewards TWO metrics simultaneously:
      * Before writing Scene 1, if the input Topic is broad or lacks a number, you MUST autonomously anchor the story around a **real, verifiable extreme physical/biological/historical metric** (`1,100 PSI`, `93°C`, `2,000m`, `1883`, `0.2 seconds`, `4-second silence`, `230 dB`) AND a **visceral "A vs B" confrontation or counter-intuitive anomaly**.
    - YOU MUST EXECUTE ALL 5 ACTS SMOOTHLY IN ORDER across 7 to 8 scenes:
 
-     * ACT 1 — THE 0.0s PHYSICAL-METRIC / CLASH HOOK (Scene 1 | 6 to 10 words):
-       - Open *in media res* at peak tension with a blunt, undeniable statement of fact, 1v1 apex duel, or observable behavioral glitch backed by a concrete number/metric ("A 1,100 PSI bite crushes caiman skulls instantly.", "This Amazon river boils at 93 degrees without volcanoes.", "A four-second eye freeze exposes every covert liar.").
-       - ZERO greetings, ZERO textbook definitions, ZERO vague metaphors, ZERO passive "Did you know?" questions.
+     * ACT 1 — THE 1.8-SECOND DEICTIC / PHYSICAL-METRIC HOOK (Scene 1 | 5 to 8 words MAX):
+       - Open *in media res* at peak tension with an immediate visual deictic pointer, spoken everyday social trap, or extreme physical number in 5–8 words ("When someone says 'relax,' watch their eyes.", "Look at this diver's suit at 300 meters.", "Six adult lions backed down from one badger.", "Essa é a verdadeira profundidade do oceano!", "1.500 PSI: a onça perfura o crânio!").
+       - FORBIDDEN: Abstract poetic metaphors ("loaded weapon", "silent cage", "invisible armor"), 1-word fragments ("A word. A face."), greetings, or passive "Did you know?" questions.
 
      * ACT 2 — NATURAL CONTEXT & CONCRETE REAL-LIFE PROOF (Scenes 2 – 3):
        - Smoothly build the context and show a concrete real-life proof so the story never feels rushed or abrupt:
@@ -1429,29 +1560,32 @@ YouTube Shorts rewards TWO metrics simultaneously:
        - ZERO SPOKEN OUTRO CTA: NEVER say "Subscribe", "Follow", "Leave a comment", "Inscreva-se", or "Đăng ký kênh" in the narration!
        - Craft the final complete sentence so its final concept/paradox echoes and bridges directly back into the exact subject and metric of Scene 1's opening hook (driving repeat views and `APV > 100%`).
 
-2. 1.8-SECOND SHOCK ANGLE HOOK (SCENE 1) & HIGH-CTR TITLE RULES:
-   - The first 1.5 - 2.5 seconds determines 100% of Shorts performance (Viewed vs Swiped away).
-   - HIGH-CTR TITLE MANDATE (LEARNED FROM CHANNEL ANALYTICS):
-     * NEVER write bleak/depressing-only titles for Animal Rescue (FORBIDDEN: "Frozen Puppy Found in Rain"). ALWAYS build a curiosity/transformation gap (WINNING FORMULA: "He Guarded This Drain For 72 Hours Until Rescuers Looked Inside 🥺❤️").
-     * NEVER write vague generic titles that hide the subject (FORBIDDEN: "Invisible Monsters Waiting To Strike", "That Fake Smile Exposes Their Envy", "Where Does This Endless River Go?"). ALWAYS name the specific entity/phenomenon + concrete number or "A vs B" clash ("Green Anaconda vs. Black Caiman: 1,100 PSI River Duel! 🐍🐊", "The 93°C Boiling Amazon River With Zero Volcanoes! 🔥🌊", "The 4-Second Eye Freeze That Exposes Fake Smiles 👁️🚩").
+2. 1.8-SECOND SHOCK ANGLE HOOK (SCENE 1) & HIGH-CTR TITLE RULES (LEARNED FROM 343 MILLION-VIEW SHORTS):
+   - The first 1.5 - 2.2 seconds determines 100% of Shorts performance (Viewed vs Swiped away).
+   - HIGH-CTR TITLE MANDATE:
+     * NEVER write bleak/depressing-only titles for Animal Rescue (FORBIDDEN: "Frozen Puppy Found in Rain"). ALWAYS build a transformation/recognition gap ("The Exact Moment This Stray Dog Realized He Was Safe 🥺❤️", "He Guarded This Drain For 72 Hours Until Rescuers Looked Inside 🐾").
+     * NEVER write vague generic titles that hide the subject (FORBIDDEN: "Invisible Monsters Waiting To Strike", "That Fake Smile Exposes Their Envy", "Where Does This Endless River Go?"). ALWAYS name the specific entity/phenomenon + concrete number or "A vs B" clash ("Green Anaconda vs. Black Caiman: 1,500 PSI River Duel! 🐍🐊", "The 93°C Boiling Amazon River With Zero Volcanoes! 🔥🌊", "The 4-Second Eye Freeze That Exposes Fake Smiles 👁️🚩").
      * NEVER repeat saturated numbers like "11,000m" on Mysteries; use fresh, verifiable physical metrics and visceral sensory/fear hooks.
-   - SCENE 1 HOOK FORMULAS (MUST CHOOSE 1 OF 4 HIGH-RETENTION FORMULAS):
-     * Formula 1 (Observable Behavioral Glitch + Exact Timing — For Psychology):
-       - "A four-second eye freeze exposes every fake smile."
-       - "Three words disarm a manipulator in five seconds."
-       - "If their feet point away, they want out."
-     * Formula 2 (Apex Duel + Biomechanical Metric — For Wildlife / Rescue):
-       - "A 1,100 PSI jaguar bite pierces caiman armor."
-       - "Six adult lions backed down from one honey badger."
-       - "He guarded this freezing drain for 72 straight hours."
-     * Formula 3 (Extreme Physical Anomaly + Hard Number — For Mysteries / Ocean / Science):
-       - "This Amazon river boils at 93 degrees without volcanoes."
-       - "At 2,000 meters deep, sperm whales hunt giant squid."
-     * Formula 4 (Single-Second Historical Clash / Counterfactual — For History):
-       - "In 1962, one officer refused to fire a nuclear torpedo."
-       - "The 1883 Krakatoa blast cooled Earth by two degrees."
-   - NEVER start with textbook definitions, greetings, or passive rhetorical questions ("Did you know...", "Welcome to...").
-   - thumbnail_text MUST be 2 to 5 words in ALL CAPS with 1 high-contrast emoji (e.g. "THEY'RE USING YOU 🚩", "ANACONDA VS CAIMAN 🐍", "HE REFUSED TO LET GO 🥺", "ROME NEVER FELL? 🏛️").
+   - SCENE 1 HOOK FORMULAS (5–8 WORDS MAX — CHOOSE 1 OF 4 MILLION-VIEW FORMULAS):
+     * Formula 1 (Deictic Visual Pointer at Frame 0.0s):
+       Point directly at what is on screen right now so the viewer's eyes lock onto the frame:
+       - "Look at the water under this ship."
+       - "Watch this man's eyes when he lies."
+       - "Olha o tamanho dessa sucuri no rio!"
+       - "Essa é a verdadeira profundidade do oceano!"
+     * Formula 2 (Everyday Conversational Social Trap — US Psychology):
+       Start with a real spoken phrase or immediate behavioral move in Grade-5 conversational English:
+       - "When someone insults you, pause four seconds."
+       - "If they say 'relax,' watch their hands."
+       - "Turn any insult into respect in seconds."
+     * Formula 3 (Apex 1v1 Clash + Physical Number — Wildlife):
+       - "Six adult lions backed down from one badger."
+       - "1.500 PSI: a onça perfura o crânio!"
+     * Formula 4 (Historical Year / Counterfactual Consequence — History & Mysteries):
+       - "In 1946, this underwater nuke went wrong."
+       - "One wrong turn in 1914 changed everything."
+   - NEVER start with abstract literary metaphors, textbook definitions, greetings, or passive rhetorical questions ("Did you know...", "Welcome to...").
+   - thumbnail_text MUST be 2 to 4 words in ALL CAPS with 1 high-contrast emoji (e.g. "PAUSE 4 SECONDS 🧠", "1,500 PSI BITE! 🐆", "FINALLY SAFE 🥺", "300M DEEP! 🌊").
 
 3. SEAMLESS INFINITE LOOP ENDING (NO SPOKEN OUTRO CTA):
    - NEVER include "Subscribe", "Like", "Follow", "Leave a comment", "Inscreva-se", or "Đăng ký kênh" in ANY scene's spoken narration!

@@ -227,6 +227,57 @@ def _parse_iso(iso_str: str) -> Optional[datetime]:
         return None
 
 
+def _build_audit_engagement_comment(ch: Dict[str, Any], title: str = "", desc: str = "") -> str:
+    """Trích xuất câu hỏi Poll từ Dòng 1 Description (💬 ...) hoặc sinh câu hỏi bình chọn chuẩn ngách/khu vực."""
+    if desc:
+        for ln in str(desc).splitlines():
+            ln_s = ln.strip()
+            if ln_s.startswith("💬"):
+                cand = ln_s.lstrip("💬").strip()
+                if len(cand) >= 15:
+                    return cand
+
+    lang = str(ch.get("language") or "en").lower().strip()
+    is_pt = lang.startswith("pt")
+    raw_niche = str(ch.get("niche") or "").lower()
+
+    if any(k in raw_niche for k in ("history", "what_if", "alternate")):
+        return (
+            "Se você estivesse lá: escolheria (1) Manter nossa linha do tempo ou (2) Reescrever a história? Comente 1 ou 2 abaixo! 👇"
+            if is_pt else
+            "Quick Poll: Would you choose (1) Keep our timeline or (2) Rewrite history? Drop 1 or 2 below! 👇"
+        )
+    if "psychology" in raw_niche:
+        return (
+            "Você já lidou com alguém assim na vida real? Comente (1) SIM ou (2) NÃO abaixo! 👇"
+            if is_pt else
+            "Have you ever dealt with someone like this in real life? Drop (1) YES or (2) NO in the comments! 👇"
+        )
+    if any(k in raw_niche for k in ("rescue", "animal", "pet")):
+        return (
+            "Dê uma nota de 1 a 10 para essa transformação emocionante! 🥺 Deixe um ❤️ nos comentários!"
+            if is_pt else
+            "Rate this sweet baby's transformation from 1 to 10! 🥺 Drop a ❤️ below if this made your day!"
+        )
+    if any(k in raw_niche for k in ("predator", "wildlife")):
+        return (
+            "Quem leva a melhor nesse confronto de sobrevivência: (1) Predador ou (2) Presa? Deixe seu voto abaixo! 👇🔥"
+            if is_pt else
+            "Who takes the crown in this survival showdown: (1) Predator or (2) Challenger? Drop 1 or 2 below! 👇🔥"
+        )
+    if any(k in raw_niche for k in ("deep_sea", "ocean", "abyss", "mariana", "mystery", "earth")):
+        return (
+            "O que você acha que realmente se esconde lá: (1) Criatura Desconhecida ou (2) Fenômeno Geológico? Comente 1 ou 2 abaixo! 👇"
+            if is_pt else
+            "What do you think is really behind this: (1) Undiscovered Species or (2) Natural Anomaly? Drop 1 or 2 below! 👇"
+        )
+    return (
+        "Você já sabia disso antes de assistir? Comente (1) SIM ou (2) NÃO abaixo! 👇🔥"
+        if is_pt else
+        "Did you know this before watching? Drop (1) YES or (2) NO in the comments below! 👇🔥"
+    )
+
+
 def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
     """Quét toàn bộ 7 kênh YouTube (Data API v3 + Analytics API v2)."""
     cfg_path = ROOT_DIR / "config" / "channels.yaml"
@@ -301,6 +352,7 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
                 v_details = srv.videos().list(id=",".join(vids), part="snippet,statistics,status").execute().get("items", []) if vids else []
 
                 recent_72h, all_public, scheduled_queue, top_analytics_videos = [], [], [], []
+                auto_commented_in_run = 0
                 for v in v_details:
                     vid = v["id"]
                     snip = v.get("snippet", {})
@@ -324,17 +376,6 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
                     # Ghép chỉ số Retention & Tỷ lệ bỏ qua từ YouTube Analytics API v2
                     ya = vid_analytics_map.get(vid, {})
 
-                    new_videos_state[vid] = {
-                        "views": views,
-                        "likes": likes,
-                        "comments": comments,
-                        "privacy": privacy,
-                        "avd_sec": ya.get("avd_sec"),
-                        "apv_pct": ya.get("apv_pct"),
-                        "stay_pct": ya.get("stay_pct"),
-                        "swipe_pct": ya.get("swipe_pct"),
-                    }
-
                     if privacy == "private" and sched_at_str:
                         sched_dt = _parse_iso(sched_at_str)
                         sched_vn = sched_dt.astimezone(VN_TZ).strftime("%H:%M %d/%m/%Y") if sched_dt else sched_at_str
@@ -343,6 +384,30 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
                         pub_dt = _parse_iso(pub_at_str)
                         age_h = max(0.2, (now_utc - pub_dt).total_seconds() / 3600.0) if pub_dt else 999.0
                         pub_vn = pub_dt.astimezone(VN_TZ).strftime("%H:%M %d/%m") if pub_dt else pub_at_str[:16]
+
+                        # Tự động đăng bình luận tương tác của tác giả ngay khi video vừa công chiếu (SCHEDULED -> PUBLIC)
+                        if not using_public_fallback and comments == 0 and age_h <= 120.0 and auto_commented_in_run < 2:
+                            try:
+                                poll_text = _build_audit_engagement_comment(ch, title=title, desc=desc)
+                                srv.commentThreads().insert(
+                                    part="snippet",
+                                    body={
+                                        "snippet": {
+                                            "videoId": vid,
+                                            "topLevelComment": {
+                                                "snippet": {
+                                                    "textOriginal": poll_text.strip()
+                                                }
+                                            }
+                                        }
+                                    },
+                                ).execute()
+                                comments = 1
+                                auto_commented_in_run += 1
+                                logger.info(f"💬 [AutoComment] Đã tự động đăng bình luận tương tác tác giả cho video mới công chiếu {vid} ({cname})")
+                            except Exception as ce:
+                                logger.debug(f"[AutoComment] Bỏ qua {vid} ({cname}): {ce}")
+
                         v_obj = {
                             "id": vid,
                             "title": title,
@@ -366,6 +431,17 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
                             recent_72h.append(v_obj)
                         if ya.get("avd_sec") is not None:
                             top_analytics_videos.append(v_obj)
+
+                    new_videos_state[vid] = {
+                        "views": views,
+                        "likes": likes,
+                        "comments": comments,
+                        "privacy": privacy,
+                        "avd_sec": ya.get("avd_sec"),
+                        "apv_pct": ya.get("apv_pct"),
+                        "stay_pct": ya.get("stay_pct"),
+                        "swipe_pct": ya.get("swipe_pct"),
+                    }
 
                 scheduled_queue.sort(key=lambda x: x["publish_at_utc"])
                 effective_total_views = max(total_views, sum(x["views"] for x in all_public))
