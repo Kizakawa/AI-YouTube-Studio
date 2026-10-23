@@ -1493,7 +1493,6 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
         else:
             target_lang_display = "ENGLISH"
 
-<<<<<<< HEAD
         deep_blueprint_block = ""
         if not kwargs.get("skip_deep_blueprint"):
             deep_blueprint_block = self._brainstorm_deep_viral_blueprint(
@@ -1505,12 +1504,8 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
                 director_notes=director_notes,
             )
 
-        duration_spec = "34 ĐẾN 42 GIÂY VÀNG TỐI ƯU APV > 90% & STAYED-TO-WATCH > 68% (7 ĐẾN 8 PHÂN CẢNH ĐẦY ĐẶN, 92 ĐẾN 118 TỪ — CẢNH 1 HOOK 6-10 TỪ CỰC GẮT, DẪN DẮT MƯỢT MÀ CÓ ĐẦU CÓ ĐUÔI, GIẢI THÍCH SÂU SẮC)"
-        word_range_en = "92 to 118 words (34-42s High-APV Golden Duration across 7-8 rich, complete scenes; Scene 1 Hook MUST be 6-10 words ~2.8-3.4s)"
-=======
         duration_spec = "34 ĐẾN 42 GIÂY VÀNG TỐI ƯU APV > 90% & STAYED-TO-WATCH > 70% (7 ĐẾN 8 PHÂN CẢNH ĐẦY ĐẶN, 92 ĐẾN 118 TỪ — CẢNH 1 HOOK 5-8 TỪ SIÊU GẮT DỨT ĐIỂM TRONG 1.8 GIÂY ĐẦU, DẪN DẮT MƯỢT MÀ CÓ ĐẦU CÓ ĐUÔI)"
         word_range_en = "92 to 118 words (34-42s High-APV Golden Duration across 7-8 rich, complete scenes; Scene 1 Hook MUST be 5-8 words ~1.6-2.2s)"
->>>>>>> f47447b (feat(retention,engagement): 3-layer engagement poll system & regional million-view hook mastery (US vs BR))
 
         prompt = f"""You are an elite YouTube Shorts Master Showrunner, Behavioral Storyteller, and Viral Retention Architect for the channel '{niche_profile.get('name')}' (niche: '{channel_niche}').
 Topic: '{topic}'
