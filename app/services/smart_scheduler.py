@@ -474,6 +474,30 @@ def get_next_available_golden_slot(
         except Exception as e_pv:
             logger.debug(f"[SmartScheduler] Không thể quét PublishedVideo cho {channel_id}: {e_pv}")
 
+        # Bổ sung thêm các video thực tế trên YouTube từ storage/channel_audit_latest.json (cả public và scheduled_queue)
+        try:
+            audit_file = Path(__file__).resolve().parent.parent.parent / "storage" / "channel_audit_latest.json"
+            if audit_file.exists():
+                audit_data = json.loads(audit_file.read_text(encoding="utf-8"))
+                for ch_k, ch_v in (audit_data or {}).items():
+                    if not isinstance(ch_v, dict):
+                        continue
+                    if ch_k in channel_family or ch_v.get("id") in channel_family or ch_v.get("handle") in channel_family:
+                        for sq in ch_v.get("scheduled_queue", []):
+                            sq_iso = sq.get("publish_at_utc")
+                            if sq_iso:
+                                sq_dt = datetime.fromisoformat(sq_iso.replace("Z", "+00:00"))
+                                if sq_dt >= cutoff_48h and not any(abs((sq_dt - ex).total_seconds()) < 120 for ex in occupied_slots_utc):
+                                    occupied_slots_utc.append(sq_dt)
+                        for vd in ch_v.get("videos", []):
+                            vd_iso = vd.get("published_at_utc")
+                            if vd_iso:
+                                vd_dt = datetime.fromisoformat(vd_iso.replace("Z", "+00:00"))
+                                if vd_dt >= cutoff_48h and not any(abs((vd_dt - ex).total_seconds()) < 120 for ex in occupied_slots_utc):
+                                    occupied_slots_utc.append(vd_dt)
+        except Exception as e_aud:
+            logger.debug(f"[SmartScheduler] Không thể quét channel_audit_latest.json cho {channel_id}: {e_aud}")
+
     logger.debug(f"[SmartScheduler] Kênh {channel_id} (Family: {channel_family}, Brazil={is_br}) hiện có {len(occupied_slots_utc)} khe giờ đã đặt lịch/xuất bản.")
 
     # 2. Duyệt tìm khe giờ trống bắt đầu từ ngày hôm nay đến 45 ngày tiếp theo

@@ -1175,13 +1175,22 @@ def find_hook_peak_action_offset(
             if win_end - start_idx < max(win_frames - 1, 3):
                 return -999.0
             freeze_streak = 0
-            for m_val in motions[start_idx:win_end]:
+            dark_streak = 0
+            for f_i in range(start_idx, win_end):
+                m_val = motions[f_i]
                 if m_val < 0.85:
                     freeze_streak += 1
                     if freeze_streak >= 3:
                         return -999.0
                 else:
                     freeze_streak = 0
+                # Chặn cứng mọi cửa sổ có khung hình tối đen hoặc cháy trắng bên trong (ngăn lỗi blackdetect >= 0.15s)
+                if lums[f_i] < 24.0 or contrasts[f_i] < 10.0:
+                    dark_streak += 1
+                    if lums[f_i] < 16.0 or dark_streak >= 1:
+                        return -999.0
+                else:
+                    dark_streak = 0
             f0_lum = lums[start_idx]
             f0_con = contrasts[start_idx]
             # Phạt nặng nếu Frame 0 tối đen (< 45) hoặc cháy trắng (> 225) hoặc mờ phẳng (< 22)
@@ -1300,7 +1309,10 @@ def find_hook_peak_window(
             cur_sec = peak_start + (idx / float(sample_fps))
             if exclude_ranges and any(ex_s < cur_sec < ex_e for ex_s, ex_e in exclude_ranges):
                 break
-            # Dừng nếu gặp frame tối đen, cháy sáng hoặc màn hình outro phẳng lì
+            # Dừng NGAY LẬP TỨC nếu gặp frame tối đen / fade-to-black (< 25) để không bao giờ cắt lẹm vào đoạn chuyển cảnh đen!
+            if lums[idx] < 25.0 or contrasts[idx] < 10.0:
+                break
+            # Dừng nếu gặp frame tối mờ, cháy sáng hoặc màn hình outro phẳng lì kéo dài
             if lums[idx] < 38.0 or lums[idx] > 232.0 or contrasts[idx] < 17.0:
                 low_energy_streak += 1
             else:

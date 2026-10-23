@@ -11,21 +11,21 @@ target_audience: Khán giả toàn cầu đam mê thế giới động vật hoa
 script_blueprint:
   tone_of_voice: Trầm hùng, dồn dập, sắc bén, kích thích adrenaline tột độ, uy lực
     và tôn kính trước sự tàn khốc hoàn hảo của mẹ thiên nhiên.
-  pacing: Siêu cuốn hút, thời lượng tối ưu 38 - 48 giây (7 - 9 cảnh, 95 - 125 từ), nhịp điệu dồn dập, đẩy thời lượng giữ chân AWT > 25s để kích hoạt thuật toán Shorts.
+  pacing: Siêu cuốn hút, thời lượng vàng 28 - 35 giây (7 - 8 cảnh súc tích, 85 - 105 từ), nhịp điệu dồn dập, tối ưu đồng thời Stayed-to-Watch > 65% và APV > 80% để phá trần 1.3K views sang luồng 10K-100K Shorts Feed.
   hook_formulas:
   - 'Counter-Intuitive Apex Fear (Nature Lens 7.0M Formula): ''This is why 1,000-pound Caimans are terrified the second a Jaguar steps into the river...'''
   - 'Physics-Defying Survival (FleshlyPaws 12.7M Formula): ''When a Leopard leaps from a 50-foot tree branch, here is how it survives the impact without breaking a single bone...'''
   - 'Bite Force Skull-Piercer: ''With a bone-crushing 1,500 PSI bite force, the Jaguar ignores the throat and pierces straight through the skull...'''
   - 'Venom Immunity Shock: ''A single bite from a King Cobra drops an elephant in 3 hours — yet the Honey Badger wakes up and finishes its meal...'''
   viral_topic_bank_2026:
-  - "This Is Why Caimans Are Terrified Of Jaguars In The Pantanal"
-  - "How A Snow Leopard Survives A 60-Foot Vertical Cliff Fall While Hunting"
-  - "Why African Lions Never Mess With A Fully Grown Nile Hippo"
-  - "Honey Badger vs King Cobra: How It Sleeps Off Lethal Neurotoxin"
-  - "Harpy Eagle vs Howler Monkey: 530 PSI Talons That Crush Bone Instantly"
+  - "Electric Eel vs Caiman: How An 860-Volt Biological Taser Stops A River Predator"
+  - "African Crested Porcupine vs Leopard: How 30,000 Razor Quills Stop An Ambush"
+  - "Cassowary: Why Nothing In The Jungle Messes With This 130-Pound Dinosaur Bird"
   - "Secretary Bird vs Black Mamba: The 195-Newton Stomp In 15 Milliseconds"
   - "Why A Pack Of Giant River Otters Can Drive A Jaguar Out Of Its Territory"
-  narrative_structure: "Hook đối đầu sinh tử cụ thể giữa 2 loài săn mồi (3s) -> So sánh vũ khí sinh học & cơ học sát thương -> Mid-Video Re-Hook (Cảnh 4 - Đòn đánh quyết định lật ngược thế cờ) -> Kết cục tàn khốc của kẻ chiến thắng (Payoff Cảnh 5-7) -> Câu hỏi bầu chọn kẻ mạnh nhất & Infinite Loop"
+  - "Wolverine vs Grizzly Bear: Why 35 Pounds Of Fury Forces An 800lb Giant To Back Off"
+  - "Orca Pod vs Great White Shark: The Tonic Immobility Surgical Ambush"
+  narrative_structure: "Hook đối đầu sinh tử cụ thể giữa 2 loài săn mồi kèm thông số vật lý ở 0.0s (5-8 từ) -> So sánh vũ khí sinh học & cơ học sát thương -> Mid-Video Re-Hook (Cảnh 4 - Đòn đánh quyết định lật ngược thế cờ kèm chỉ số thứ 2) -> Kết cục tàn khốc của kẻ chiến thắng (Payoff Cảnh 5-6) -> Cú chốt Infinite Loop nối mượt về Cảnh 1 + HUD Badge nhắc bình chọn & Subscribe"
   forbidden_words:
   - Chào mừng các bạn đến với thế giới động vật
   - Hôm nay chúng ta sẽ tìm hiểu về loài
@@ -35,9 +35,9 @@ script_blueprint:
   - Welcome back to our channel
   - In today's video
   cta_templates:
-  - In a 1v1 ambush with no escape, who takes the crown? Drop your vote in the comments below! 🦁👇
-  - Could any land predator survive a direct strike from this beast? Comment your pick for the ultimate apex hunter! 👇
-  - Quem vence esse duelo mortal na selva? Deixe seu palpite nos comentários! 👇
+  - "Who takes the crown in this 1v1 survival showdown: (1) Predator or (2) Challenger? Drop your vote below & SUBSCRIBE for daily Apex Battles! 🦁🔥👇"
+  - "Could any predator survive a direct strike from this beast? Vote (1) YES or (2) NO in the comments & SUBSCRIBE for daily wildlife showdowns! 👇⚡"
+  - "Quem vence esse duelo mortal na selva: (1) ou (2)? Deixe seu voto nos comentários e INSCREVA-SE para duelos diários! 👇🔥"
   anti_hallucination_rules:
   - Mọi thông số sinh học (tốc độ tối đa, lực cắn PSI, chiều dài móng vuốt, nồng độ
     độc tố LD50) phải chuẩn xác theo tài liệu sinh học động vật thực tế.
@@ -98,7 +98,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-ChristopherNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: +4%
+  rate: +7%
   pitch: -2Hz
   bgm_vibe: primal tribal drums, accelerating heartbeat bass, intense suspense thriller
     orchestral, epic crescendo
@@ -109,6 +109,6 @@ audio:
   - whoosh_fast
   - riser
 banned_lexicon: *id001
-target_wpm: 145
+target_wpm: 165
 monetization:
   affiliate_enabled: false

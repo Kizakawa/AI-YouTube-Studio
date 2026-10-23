@@ -232,31 +232,30 @@ CHANNELS_CONFIG = {
         "name": "Mistérios do Mundo",
         "niche": "deep_sea_earth_mysteries",
         "language": "pt-BR",
-        "google_account": "acccount4",
+        "google_account": "acount_2",
         "preferred_voice": "pt-BR-AntonioNeural",
         "handle": "@misteriosdomundo-tv",
         "amazon_tag": "kizakawa-20",
-        "publish_hour_utc": 22,
+        "publish_hour_utc": 21,
         "director_notes": (
-            "Target channel Mistérios do Mundo (Brazilian Portuguese). Spine-chilling deep sea & sensory acoustic mystery arc: "
-            "HOOK (0-3s): Visceral acoustic/oceanic anomaly or forbidden scientific recording in Portuguese (strictly 5-9 words). "
-            "DEVELOPMENT: Real depth measurements (meters), sonar data, or biological terror. "
-            "CLIMAX: The unsettling scientific implication that remains unexplained. "
+            "Target channel Mistérios do Mundo (Brazilian Portuguese). High-retention 5-Act abyssal showdown & lethal ocean mystery arc (28-34s crisp runtime, 6-7 scenes, 75-92 words for >95% APV): "
+            "HOOK (0-2s): Blunt 5-8 word statement in Portuguese naming the specific abyssal predator duel ('A vs B') or lethal ocean anomaly + exact physical number (meters, °C, PSI, years). NEVER open with vague philosophical questions. "
+            "DEVELOPMENT: Real depth measurements (meters), biomechanical weapons, sonar data, or extreme thermal/chemical danger. "
+            "CLIMAX (Scene 4 - 15s Twist): The fatal strike, survival reversal, or terrifying scientific discovery at the bottom of the sea. "
             "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
-            "Tone: suspenseful, dark, eerie documentary style. Strict Brazilian Portuguese (pt-BR) only."
+            "Tone: suspenseful, dark, adrenaline-pumping, eerie documentary style. Strict Brazilian Portuguese (pt-BR) only."
         ),
         "topics": [
-            "Piscina de Salmoura a 1.000 Metros: O Lago Mortal no Fundo do Mar Que Paralisa Tubarões",
-            "Lago Vostok na Antártida: O Oceano Secreto Selado Sob 4.000 Metros de Gelo Há 15 Milhões de Anos",
-            "Caverna de Movile: O Ecossistema Tóxico Trancado Sem Luz Solar Há 5,5 Milhões de Anos",
-            "Submarino Nereus a 10.900 Metros: O Momento em Que 16.000 PSI Implodiram o Robô nas Marianas",
-            "O Som a 10.994 Metros na Fossa das Marianas Que Fez Cientistas Desligarem o Sonar",
-            "Por Que Mergulhadores Profundos Nunca Olham Para a Superfície à Noite",
-            "O Lago Subterrâneo Selado Há 5 Milhões de Anos Onde Nada Deveria Viver",
-            "O Que Acontece Com Seu Cérebro Após 45 Minutos na Câmara Mais Silenciosa do Mundo",
-            "A Parede Submarina Gigante Que o Satélite Encontrou e Depois Apagou do Mapa",
-            "Por Que Submarinos Apagam Todas as Luzes Abaixo de 3.000 Metros no Oceano",
-            "O Sinal Acústico no Ponto Nemo Que Nenhum Cientista Consegue Explicar",
+            "Tubarão-da-Groenlândia vs Lula-Gigante: O Predador Cego de 400 Anos nas Profundezas do Ártico",
+            "Vulcão Submarino Kavachi: A Cratera em Ebulição no Oceano Onde Tubarões Caçam em Água Ácida",
+            "Orca vs Tubarão-Branco de 2 Toneladas: O Golpe Cirúrgico Que Faz o Maior Predador Fugir do Oceano",
+            "Tubarão-Duende vs Peixe-Diabo Negro: A Mandíbula Que Dispara em 0,02 Segundo a 3.000 Metros no Mar",
+            "Enguia-Pelicano e Lula-Vampiro: Como Monstros a 2.500 Metros Caçam Sem Oxigênio na Zona da Meia-Noite",
+            "Fossa de Porto Rico a 8.376 Metros: A Anomalia Gravitacional no Fundo do Oceano Atlântico",
+            "Chaminés Hidrotermais Negras a 400°C: Os Vermes Gigantes Que Vivem Sem Sol no Fundo do Oceano",
+            "Peixe-Dragão Negro a 2.000 Metros: O Predador Invisível Que Produz Luz Vermelha Infra-Vermelha no Abismo",
+            "Por Que Submarinos Militares Apagam Todas as Luzes Ao Cruzar 3.000 Metros na Zona Abissal",
+            "O Cemitério de Baleias a 4.000 Metros: Como um Único Esqueleto Alimenta Monstros Cegos Por 50 Anos",
         ],
         "default_tags": [
             "shorts", "misterios", "oceano", "curiosidades", "bizarro",
@@ -342,7 +341,7 @@ def get_schedule_slot(publish_hour_utc: int, channel_id: str = "") -> tuple[date
             for d_off in range(0, 15):
                 t_date = base_date + timedelta(days=d_off)
                 found_new = False
-                for s_cfg in pool:
+                for s_cfg in sorted(pool, key=lambda x: (x["hour"], x["minute"])):
                     cand = datetime(
                         t_date.year, t_date.month, t_date.day,
                         s_cfg["hour"], s_cfg["minute"], 0, tzinfo=timezone.utc
@@ -443,6 +442,16 @@ async def produce_channel_video(
             for pv in pub_db:
                 if pv.title:
                     existing_refs.append(pv.title)
+            audit_p = project_root / "storage" / "channel_audit_latest.json"
+            if audit_p.exists():
+                aud_j = json.loads(audit_p.read_text(encoding="utf-8"))
+                ch_aud = (aud_j or {}).get(ch_id, {})
+                for av in ch_aud.get("videos", []):
+                    if av.get("title"):
+                        existing_refs.append(av["title"])
+                for sq in ch_aud.get("scheduled_queue", []):
+                    if sq.get("title"):
+                        existing_refs.append(sq["title"])
     except Exception:
         pass
 

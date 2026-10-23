@@ -287,6 +287,71 @@ class VisualCritic:
                 f"Clip bị mờ nhòe / vỡ hạt (sharpness={avg_sharp:.1f}, min={min_f_sharp:.1f}, yêu cầu >= {min_sharpness})"
             )
 
+        # Quét toàn bộ thời lượng clip bằng FFmpeg blackdetect để chặn tuyệt đối mọi chớp đen / fade-to-black ngắn (>= 0.10s)
+        # nằm xen giữa các khung hình mẫu (ngăn chặn 100% lỗi HardBlock VideoQA blackdetect >= 0.15s ở cuối pipeline)
+        try:
+            import re as _re_bd
+            vf_bd = "crop=iw*0.74:ih*0.40:iw*0.13:ih*0.15,blackdetect=d=0.10:pic_th=0.98"
+            res_bd = subprocess.run(
+                ["ffmpeg", "-v", "info", "-i", str(p), "-vf", vf_bd, "-an", "-f", "null", "-"],
+                capture_output=True,
+                text=True,
+                timeout=12,
+            )
+            bd_log = (res_bd.stderr or "") + "\n" + (res_bd.stdout or "")
+            bd_matches = list(
+                _re_bd.finditer(
+                    r"black_start:\s*([0-9.]+)\s+black_end:\s*([0-9.]+)\s+black_duration:\s*([0-9.]+)",
+                    bd_log,
+                )
+            )
+            if bd_matches:
+                max_bd = max(float(m.group(3)) for m in bd_matches)
+                if max_bd >= 0.10:
+                    # Nếu đoạn đen chỉ nằm ở rìa đầu hoặc rìa cuối và phần sạch còn lại >= 2.2s -> tự động cắt gọt sạch!
+                    if auto_sanitize and len(bd_matches) == 1 and dur >= 2.6:
+                        bs = float(bd_matches[0].group(1))
+                        be = float(bd_matches[0].group(2))
+                        trim_ss, trim_len = 0.0, 0.0
+                        if be <= dur * 0.35 and (dur - be - 0.05) >= 2.2:
+                            trim_ss = round(be + 0.05, 2)
+                            trim_len = round(dur - trim_ss, 2)
+                        elif bs >= dur * 0.65 and (bs - 0.05) >= 2.2:
+                            trim_ss = 0.0
+                            trim_len = round(bs - 0.05, 2)
+                        if trim_len >= 2.2:
+                            tmp_bd = str(p.with_name(f"{p.stem}_nobk{p.suffix}"))
+                            subprocess.run(
+                                [
+                                    "ffmpeg", "-v", "error", "-y",
+                                    "-ss", f"{trim_ss:.2f}", "-t", f"{trim_len:.2f}",
+                                    "-i", str(p),
+                                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-an",
+                                    tmp_bd,
+                                ],
+                                capture_output=True,
+                                timeout=15,
+                                check=False,
+                            )
+                            if Path(tmp_bd).exists() and Path(tmp_bd).stat().st_size > 15000:
+                                shutil.move(tmp_bd, str(p))
+                                logger.info(
+                                    f"✂️ [BlackFrame Sanitizer] Đã gọt bỏ đoạn chớp đen ({bs:.2f}s->{be:.2f}s) khỏi '{p.name}', "
+                                    f"giữ lại đoạn sạch {trim_len:.2f}s!"
+                                )
+                                return cls.inspect_clip_before_concat(
+                                    video_path=str(p),
+                                    min_short_edge=min_short_edge,
+                                    min_sharpness=min_sharpness,
+                                    check_watermark=check_watermark,
+                                    allow_snow=allow_snow,
+                                    auto_sanitize=False,
+                                )
+                            Path(tmp_bd).unlink(missing_ok=True)
+                    issues.append(f"Clip chứa khoảng tối/chớp đen kéo dài {max_bd:.2f}s (>= 0.10s)")
+        except Exception:
+            pass
+
         # Kiểm tra đứng hình / freeze-frame / ảnh tĩnh giả video ngay trên các khung hình mẫu:
         # Video chuyển động thật có pair_diffs ~ 15.0 - 50.0; clip ảnh tĩnh/slideshow có pair_diffs < 6.5
         if len(gray_frames) >= 3:

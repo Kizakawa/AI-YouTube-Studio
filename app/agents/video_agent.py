@@ -360,6 +360,84 @@ class VideoAgent:
                     niche=clip_niche,
                 )
 
+            # ── CỔNG TỰ CHỮA LÀNH KHUNG HÌNH ĐEN CHO TỪNG CLIP TRƯỚC KHI GHÉP (PRE-CONCAT BLACKDETECT GUARD) ──
+            # Đảm bảo 100% không có clip đơn lẻ nào chứa khoảng tối/chớp đen >= 0.10s lọt vào bộ ghép xfade!
+            try:
+                import re as _re_cb
+                import subprocess as _sp_cb
+                vf_cb = "crop=800:760:140:280,blackdetect=d=0.10:pic_th=0.98"
+                r_cb = _sp_cb.run(
+                    ["ffmpeg", "-v", "info", "-i", clip_path, "-vf", vf_cb, "-an", "-f", "null", "-"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                cb_log = (r_cb.stderr or "") + "\n" + (r_cb.stdout or "")
+                cb_matches = list(
+                    _re_cb.finditer(
+                        r"black_start:\s*([0-9.]+)\s+black_end:\s*([0-9.]+)\s+black_duration:\s*([0-9.]+)",
+                        cb_log,
+                    )
+                )
+                if cb_matches:
+                    max_cb = max(float(m.group(3)) for m in cb_matches)
+                    if max_cb >= 0.10:
+                        bs_0 = float(cb_matches[0].group(1))
+                        be_0 = float(cb_matches[0].group(2))
+                        logger.warning(
+                            f"  ⚠️ Scene {scene.scene_id}: Phát hiện chớp đen {max_cb:.2f}s ({bs_0:.2f}s->{be_0:.2f}s) "
+                            f"trong '{Path(clip_path).name}' → Tự động trích xuất khung hình sáng rõ và dựng lại Ken Burns sạch 100%!"
+                        )
+                        rescue_t = round(bs_0 * 0.5, 2) if bs_0 >= 0.5 else round(min(duration - 0.25, be_0 + 0.45), 2)
+                        rescue_jpg = str(Path(work_dir) / f"rescue_nobk_{scene.scene_id:03d}.jpg")
+                        _sp_cb.run(
+                            [
+                                "ffmpeg", "-v", "error", "-y",
+                                "-ss", f"{max(0.05, rescue_t):.2f}", "-i", clip_path,
+                                "-frames:v", "1", "-q:v", "2", rescue_jpg,
+                            ],
+                            capture_output=True,
+                            timeout=8,
+                            check=False,
+                        )
+                        pose_candidates = [
+                            p for p in (getattr(scene, "pose_images", None) or [])
+                            if p and Path(p).exists() and str(p).lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
+                        ]
+                        if Path(rescue_jpg).exists() and Path(rescue_jpg).stat().st_size > 5000:
+                            pose_candidates.insert(0, rescue_jpg)
+                        if pose_candidates:
+                            if len(pose_candidates) >= 2 and duration >= 3.2:
+                                render_opening_hook_multi_cut(
+                                    image_paths=pose_candidates[:2],
+                                    duration_seconds=duration,
+                                    output_path=clip_path,
+                                    width=job.resolution_w,
+                                    height=job.resolution_h,
+                                    fps=job.fps,
+                                    min_cuts=1,
+                                    is_scifi=is_scifi_clip,
+                                    niche=clip_niche,
+                                    is_hook_scene=is_hook,
+                                )
+                            else:
+                                image_to_video(
+                                    image_path=pose_candidates[0],
+                                    duration_seconds=duration,
+                                    output_path=clip_path,
+                                    width=job.resolution_w,
+                                    height=job.resolution_h,
+                                    fps=job.fps,
+                                    zoom_effect=True,
+                                    camera_motion=motion,
+                                    is_hook_scene=is_hook,
+                                    is_scifi=is_scifi_clip,
+                                    niche=clip_niche,
+                                )
+                            logger.info(f"  ✅ Scene {scene.scene_id}: Đã khử sạch 100% khung hình đen bằng Ken Burns từ ảnh thật sáng rõ!")
+            except Exception as ex_cb:
+                logger.debug(f"[PreConcatBlackGuard] Scene {scene.scene_id} check skip: {ex_cb}")
+
             return scene.scene_id, clip_path
 
         # ── Chạy song song với ThreadPoolExecutor ──
