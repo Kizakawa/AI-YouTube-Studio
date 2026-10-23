@@ -56,26 +56,27 @@ CHANNELS_CONFIG = {
         "amazon_tag": "kizakawa-20",
         "publish_hour_utc": 14,
         "director_notes": (
-            "Target channel The mysteries of the world. Spine-chilling deep sea, colossal sea monster & sensory mystery arc: "
-            "HOOK (0-3s): Visceral 2nd-person biological/sensory phobia or colossal deep-ocean anomaly. "
-            "DEVELOPMENT: Reveal the impossible scale or danger of the phenomenon with real scientific grounding. "
-            "CLIMAX: The unsettling implication — what happens to the human body, submarine, or mind inside this anomaly. "
+            "Target channel The mysteries of the world (US English). High-retention 5-Act abyssal showdown & lethal ocean physics arc (28-34s crisp runtime, 6-7 scenes, 75-92 words for >90% APV): "
+            "HOOK (0-2s): Blunt 5-8 word statement naming the specific abyssal predator duel ('A vs B') or lethal deep-sea anomaly + exact physical number (feet, PSI, °F/°C, years). NEVER open with vague philosophical questions or 'The secret to... is terrifying'. "
+            "DEVELOPMENT: Real depth measurements (feet/meters), biomechanical weapons, sonar data, or extreme thermal/chemical/pressure danger. "
+            "CLIMAX (Scene 4 - 15s Twist): The fatal strike, survival reversal, or terrifying scientific discovery at the bottom of the ocean. "
             "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
-            "Tone: suspenseful, dark, eerie, fear-inducing, documentary-style. Strict English only."
+            "Tone: suspenseful, dark, adrenaline-pumping, eerie documentary style. Strict English only."
         ),
         "topics": [
-            "Brine Pool at 3,300 Feet: The Underwater Toxic Lake That Pickles Sharks Instantly",
+            "Sharks vs Kavachi Underwater Volcano: Why Hammerheads Hunt Inside a 212°F Acidic Ocean Crater",
+            "400-Year-Old Greenland Shark vs Giant Squid: The Blind Apex Predator Hunting at 6,500 Feet in the Arctic Abyss",
+            "Brine Pool at 3,300 Feet: The Underwater Toxic Lake That Paralyzes Deep-Sea Sharks in 3 Seconds",
+            "Goblin Shark vs Black Dragonfish: The Slingshot Jaw That Strikes in 0.02 Seconds at 4,000 Feet",
+            "Lake Vostok: The Secret Prehistoric Ocean Sealed Under 13,000 Feet of Antarctic Ice for 15 Million Years",
             "Challenger Deep at 35,876 Feet: What Crushed the Nereus Submarine at 16,000 PSI",
             "Skeleton Coast Namibia: Why 1,000 Shipwrecks Rotted in the World's Oldest Desert Fog",
             "Lake Nyos 1986: The Silent 1.6-Million-Ton CO2 Cloud That Erased 1,746 Lives",
             "Why Deep Sea Divers Never Look Up At The Surface At Night",
-            "What Happens To Your Brain After 45 Minutes In Zero Light And Zero Sound",
-            "Why Commercial Airplanes Are Forbidden From Flying Over This Ocean Grid",
             "The Terrifying Reason Scientists Sealed The Kola Superdeep Borehole At 40,230 Feet",
-            "Why Your Body Freezes In Sleep Paralysis And What Your Brain Is Hiding",
             "Inside Movile Cave: Sealed From Earth's Atmosphere For 5.5 Million Years",
             "The 52-Hertz Whale Anomaly And What Submarines Recorded Beneath Point Nemo",
-            "Why Deep Sea Submarines Turn Off All Lights Passing Below 3,000 Meters",
+            "Why Military Submarines Turn Off All Lights Passing Below 3,000 Meters in the Midnight Zone",
         ],
         "default_tags": [
             "shorts", "mystery", "deepocean", "unexplained", "thalassophobia",
@@ -93,26 +94,26 @@ CHANNELS_CONFIG = {
         "amazon_tag": "kizakawa-20",
         "publish_hour_utc": 17,
         "director_notes": (
-            "Target channel Psychology of the world. High-retention 5-Act dark psychology arc: "
-            "HOOK (0-3s): Chilling psychological truth or covert manipulation sign that immediately creates urgency. "
-            "DEVELOPMENT: Explain the hidden behavioral mechanism using relatable real-life scenarios and spoken quotes. "
-            "CLIMAX: The surgical counter-move phrase that disarms the manipulator immediately. "
+            "Target channel Psychology of the world. High-retention 5-Act forensic & behavioral psychology arc (27-34s crisp runtime): "
+            "HOOK (0-3s): Blunt 5-8 word Grade-5 English confrontation hook with a concrete number/timing and observable behavioral tell (NO 1-word poetic fragments). "
+            "DEVELOPMENT: Explain the hidden FBI/CIA or neuro-behavioral mechanism using concrete real-life interrogation or social scenarios. "
+            "CLIMAX (Scene 4 - 14s Twist): Name the exact psychological principle/test and deliver the surgical counter-move or verification drill. "
             "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
-            "Tone: authoritative, hypnotic, analytical, gripping. Strict English only."
+            "Tone: authoritative, surgical, analytical, gripping. Strict English only."
         ),
         "topics": [
-            "The Benjamin Franklin Effect: How Asking for 1 Tiny Favor Makes Enemies Loyal to You",
-            "3 Narcissist Hoovering Texts They Always Send Right After You Block Them",
-            "FBI Hostage Tactic: Why Mirroring the Last 3 Words Forces Anyone to Reveal the Truth",
-            "Dark Empathy: 3 Signs the Nicest Person in the Room Is Secretly Calculating You",
-            "Why Sociopaths Never Blink When They Lie To Your Face",
-            "If Someone Insults You Disguised As A Joke, Ask This 4-Word Question",
-            "Why FBI Interrogators Watch Your Feet, Never Your Eyes",
-            "The 4-Second Silence Trick That Makes Arrogant People Panic",
-            "Why Narcissists Always Ruin Your Birthday And Special Days",
-            "How To Spot A Fake Friend By How They React To Your Good News",
-            "Why Guilty People Always Repeat Your Question Before Answering",
-            "The Subtle Eye Movement That Exposes Someone Who Secretly Envies You",
+            "Why Psychopaths Never Yawn When You Do: The Contagious Empathy Test",
+            "The 1 Word Guilty Suspects Always Drop In Police Interrogations (FBI Statement Analysis)",
+            "CIA Elicitation Trick: How Stating 1 Wrong Fact Forces Anyone To Reveal Their Secret",
+            "Why Liars Touch Their Neck Within 3 Seconds Of A Hard Question (Carotid Pacifying)",
+            "3 Micro-Expressions That Expose Someone Who Secretly Envies You Within 2 Seconds",
+            "The Door-In-The-Face Trick: How Asking For Something Insane Makes People Say Yes",
+            "Why Pathological Liars Always Add 3 Unnecessary Details To Every Fake Alibi",
+            "How To Break A Manipulator's Control Using The 3-Second Grey Rock Protocol",
+            "Why Guilty People Always Point With Both Hands When Accused",
+            "Why Arrogant People Interrupt Your First 5 Words — And How To Stop It Cold",
+            "The Pre-Suasion Trap: How 1 Innocent Question Rigs Your Decision Before You Answer",
+            "Why Fake Friends Always Freeze For 1 Second Before Celebrating Your Good News",
         ],
         "default_tags": [
             "shorts", "psychology", "darkpsychology", "manipulation", "mindset",
