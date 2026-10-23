@@ -1240,50 +1240,57 @@ YouTube Shorts rewards TWO metrics simultaneously:
    - Natural documentary sentence length per scene (11 to 16 words per body scene) — prioritize natural storytelling rhythm and emotional depth over rigid word counting!
    - Every scene MUST be a 100% grammatically complete sentence. NEVER chop one sentence across two scenes!
 ═══════════════════════════════════════════════════════════
-1. THE MANDATORY 5-ACT DEEP STORYTELLING BLUEPRINT (target: {word_range_en}):
+1. THE MANDATORY 5-ACT DUAL-PEAK STORYTELLING BLUEPRINT (target: {word_range_en}):
    - DURATION & SCENE COUNT: {duration_spec}.
+   - UPSTREAM TOPIC & PREMISE ELEVATION (CRITICAL FIRST STEP):
+     * Before writing Scene 1, if the input Topic is broad or lacks a number, you MUST autonomously anchor the story around a **real, verifiable extreme physical/biological/historical metric** (`1,100 PSI`, `93°C`, `2,000m`, `1883`, `0.2 seconds`, `4-second silence`, `230 dB`) AND a **visceral "A vs B" confrontation or counter-intuitive anomaly**.
    - YOU MUST EXECUTE ALL 5 ACTS SMOOTHLY IN ORDER across 7 to 8 scenes:
 
-     * ACT 1 — THE VISCERAL HOOK (Scene 1 | 6 to 10 words):
-       - Deliver an immediate, personal, high-stakes truth, 1v1 apex duel, covert manipulation quote, or intriguing paradox ("That sweet compliment is actually a loaded weapon.", "Six adult lions backed down from one honey badger.", "Never ignore this four-second silence in a conversation.").
-       - No greetings, no textbook definitions, no passive "Did you know?" questions.
+     * ACT 1 — THE 0.0s PHYSICAL-METRIC / CLASH HOOK (Scene 1 | 6 to 10 words):
+       - Open *in media res* at peak tension with a blunt, undeniable statement of fact, 1v1 apex duel, or observable behavioral glitch backed by a concrete number/metric ("A 1,100 PSI bite crushes caiman skulls instantly.", "This Amazon river boils at 93 degrees without volcanoes.", "A four-second eye freeze exposes every covert liar.").
+       - ZERO greetings, ZERO textbook definitions, ZERO vague metaphors, ZERO passive "Did you know?" questions.
 
      * ACT 2 — NATURAL CONTEXT & CONCRETE REAL-LIFE PROOF (Scenes 2 – 3):
-       - Smoothly build the context and show a concrete real-life example so the story never feels rushed or abrupt:
-         * For Psychology / Manipulation / Relationships / Stoicism: Describe the real-life situation naturally and include a recognizable spoken quote ('They casually say, "You are just too sensitive," right after crossing your boundaries.').
+       - Smoothly build the context and show a concrete real-life proof so the story never feels rushed or abrupt:
+         * For Psychology / Manipulation / Relationships / Stoicism: Describe the observable physical behavior or spoken trap ('Right after crossing your boundary, they smile and say, "You are overreacting again."').
          * For Mysteries / Deep Sea / History: Set the historical/scientific scene with the exact year, location, depth, or documented event.
-         * For Wildlife / Animal Rescue: Build the tension of the encounter, exact physical traits, bite force (PSI), or the emotional turning point.
+         * For Wildlife / Animal Rescue: Build the physical tension of the encounter, exact anatomical weapons, or the emotional turning point.
 
-     * ACT 3 — DEEP MECHANISM EXPLANATION & MID-VIDEO TWIST (Scenes 4 – 5):
-       - Explain *WHY* and *HOW* this happens thoroughly and clearly so the viewer truly understands the underlying mechanism (*The Isolation Gambit*, *Cognitive Dissonance*, *Cavitation Shockwave*, *Cortisol Loop*, or historical chain reaction).
-       - Connect sentences smoothly with natural cause-and-effect transitions. Optionally set `overlay_badge` to a short uppercase tag like `"[ // THE REAL TRAP // ]"`.
+     * ACT 3 — THE 15-SECOND MID-VIDEO CLIMAX & REVERSAL TWIST (Scenes 4 – 5 | ANTI-DROP-OFF ENGINE):
+       - CRITICAL FOR APV > 95%: Viewers swipe away at second 14–18 if Scenes 4–5 sound like a flat textbook lecture!
+       - You MUST write Scene 4 (`climax_scene_id`) as a **SECOND EXPLOSIVE PEAK / PLOT TWIST** that flips the viewer's initial assumption ("But the real weapon isn't its teeth—it's a 230-decibel sonar shockwave.", "Yet when hydrophones listened deeper, the 93-degree water hid a lethal fault line.", "But FBI profilers ignore the smile and watch the feet freeze for two seconds.").
+       - Introduce a **second shocking metric or hidden mechanism** (*Cavitation Shockwave*, *The Isolation Gambit*, *Thermal Fault Rupture*, *Cortisol Freeze*) and set `overlay_badge` on Scene 4 to a sharp uppercase HUD tag like `"[ // THE 15-SECOND TWIST // ]"` or `"[ // FATAL MECHANISM // ]"`.
 
-     * ACT 4 — THE SURGICAL COUNTER-MOVE / CLIMAX PAYOFF (Scenes 6 – 7):
-       - Deliver the full climax, resolution, or practical word-for-word Counter-Move that makes the video worth saving and sharing:
-         * For Psychology: Give the exact calm response phrase and explain why it disarms the manipulator.
-         * For Wildlife / Rescue / Mysteries: Deliver the complete biomechanical outcome, joyful transformation, or scientific answer that fully resolves the story.
+     * ACT 4 — THE SURGICAL COUNTER-MOVE / ULTIMATE PAYOFF (Scenes 6 – 7):
+       - Deliver the full climax payoff, resolution, or practical word-for-word Counter-Move that rewards the viewer for staying until the end:
+         * For Psychology: Give the exact calm verbal/behavioral counter-move that disarms the trap on the spot.
+         * For Wildlife / Rescue / Mysteries: Deliver the decisive biomechanical outcome, joyful transformation, or scientific revelation that resolves the twist.
 
-     * ACT 5 — SATISFYING CONCLUSION & SEAMLESS INFINITE LOOP BRIDGE (Final Scene 7 or 8):
+     * ACT 5 — ECHO-LOOP FINALE & SEAMLESS INFINITE BRIDGE (Final Scene 7 or 8 -> Loops into Scene 1):
        - ZERO SPOKEN OUTRO CTA: NEVER say "Subscribe", "Follow", "Leave a comment", "Inscreva-se", or "Đăng ký kênh" in the narration!
-       - Conclude the story with a complete, resonant final thought that bridges naturally back into Scene 1's opening hook.
+       - Craft the final complete sentence so its final concept/paradox echoes and bridges directly back into the exact subject and metric of Scene 1's opening hook (driving repeat views and `APV > 100%`).
 
 2. 1.8-SECOND SHOCK ANGLE HOOK (SCENE 1) & HIGH-CTR TITLE RULES:
    - The first 1.5 - 2.5 seconds determines 100% of Shorts performance (Viewed vs Swiped away).
    - HIGH-CTR TITLE MANDATE (LEARNED FROM CHANNEL ANALYTICS):
-     * NEVER write bleak/depressing-only titles for Animal Rescue (FORBIDDEN: "Frozen Puppy Found in Rain", "Shivering Puppy Tied In Rain"). ALWAYS build a curiosity/transformation gap (WINNING FORMULA: "He Refused to Let Go Until This Happened 🥺❤️", "The Exact Moment He Realized He Was Finally Safe 🐾").
-     * NEVER write vague generic titles for Wildlife (FORBIDDEN: "Invisible Monsters Waiting To Strike") or mix sports/off-niche words ("Bayern"). ALWAYS name the specific apex predators or duel ("Green Anaconda vs. Black Caiman: Brutal River Duel! 🐍🐊", "Why Lions REFUSE to Fight The Honey Badger 🦡🦁").
-     * NEVER repeat saturated numbers like "11,000m" on Mysteries; use visceral second-person sensory/fear hooks ("Your Eyes Are Biologically Blind! 👁️", "Why Your Mind Snaps In Absolute Silence 🧠").
-   - SCENE 1 HOOK FORMULAS (MUST CHOOSE 1 OF 4 CORE FORMULAS):
-     * Formula 1 (Personal Pain Point & Hidden Vulnerability - HIGHEST RETENTION):
-       Target personal insecurity, hidden exploitation, quiet anxiety, or counter-intuitive psychology using personal triggers ("You", "Your brain", "They"):
-       - "3 subtle signs they are using you."
-       - "Stop trying to be confident. Do this."
-       - "If you feel drained around them, run."
-       - "That sweet compliment is a loaded weapon."
-       - "He refused to let go until this..."
-     * Formula 2 (Apex Duel / Urgent Danger): "A 20-foot Anaconda ambushes a Caiman." / "If you see this symbol, run immediately."
-     * Formula 3 (Pattern Interrupt / Elite Authority Secret): "This FBI trick exposes liars in seconds." / "The dark rule 99% learn too late."
-     * Formula 4 (Dark Paradox / Counterfactual Twist): "What if Rome never fell, and ruled today?"
+     * NEVER write bleak/depressing-only titles for Animal Rescue (FORBIDDEN: "Frozen Puppy Found in Rain"). ALWAYS build a curiosity/transformation gap (WINNING FORMULA: "He Guarded This Drain For 72 Hours Until Rescuers Looked Inside 🥺❤️").
+     * NEVER write vague generic titles that hide the subject (FORBIDDEN: "Invisible Monsters Waiting To Strike", "That Fake Smile Exposes Their Envy", "Where Does This Endless River Go?"). ALWAYS name the specific entity/phenomenon + concrete number or "A vs B" clash ("Green Anaconda vs. Black Caiman: 1,100 PSI River Duel! 🐍🐊", "The 93°C Boiling Amazon River With Zero Volcanoes! 🔥🌊", "The 4-Second Eye Freeze That Exposes Fake Smiles 👁️🚩").
+     * NEVER repeat saturated numbers like "11,000m" on Mysteries; use fresh, verifiable physical metrics and visceral sensory/fear hooks.
+   - SCENE 1 HOOK FORMULAS (MUST CHOOSE 1 OF 4 HIGH-RETENTION FORMULAS):
+     * Formula 1 (Observable Behavioral Glitch + Exact Timing — For Psychology):
+       - "A four-second eye freeze exposes every fake smile."
+       - "Three words disarm a manipulator in five seconds."
+       - "If their feet point away, they want out."
+     * Formula 2 (Apex Duel + Biomechanical Metric — For Wildlife / Rescue):
+       - "A 1,100 PSI jaguar bite pierces caiman armor."
+       - "Six adult lions backed down from one honey badger."
+       - "He guarded this freezing drain for 72 straight hours."
+     * Formula 3 (Extreme Physical Anomaly + Hard Number — For Mysteries / Ocean / Science):
+       - "This Amazon river boils at 93 degrees without volcanoes."
+       - "At 2,000 meters deep, sperm whales hunt giant squid."
+     * Formula 4 (Single-Second Historical Clash / Counterfactual — For History):
+       - "In 1962, one officer refused to fire a nuclear torpedo."
+       - "The 1883 Krakatoa blast cooled Earth by two degrees."
    - NEVER start with textbook definitions, greetings, or passive rhetorical questions ("Did you know...", "Welcome to...").
    - thumbnail_text MUST be 2 to 5 words in ALL CAPS with 1 high-contrast emoji (e.g. "THEY'RE USING YOU 🚩", "ANACONDA VS CAIMAN 🐍", "HE REFUSED TO LET GO 🥺", "ROME NEVER FELL? 🏛️").
 

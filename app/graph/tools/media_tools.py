@@ -772,6 +772,25 @@ def _search_youtube_flat_cached(
                 continue
 
             action_hits = sum(1 for tok in all_query_tokens if tok in title_lower)
+            # Thưởng điểm cho ứng viên YouTube có tín hiệu hành động cao trào / cận cảnh kịch tính,
+            # và phạt nặng các clip thụ động (nằm ngủ, sở thú, thư giãn, nhạc nền)
+            peak_intensity_bonus = (
+                42.0
+                if re.search(
+                    r"\b(?:attack|ambush|hunt|hunting|strike|bite|catch|fight|chase|jump|leap|dive|diving|roar|eruption|explosion|shockwave|rescue|saved|closeup|close\-up|encounter|wild|underwater|deep\s+sea|sonar)\b",
+                    title_lower,
+                )
+                else 0.0
+            )
+            passive_clip_penalty = (
+                -65.0
+                if re.search(
+                    r"\b(?:sleeping|napping|relaxing|ambient|ASMR|zoo\s+tour|petting\s+zoo|feeding\s+time|slideshow|wallpaper|screensaver|1\s+hour|10\s+hours)\b",
+                    title_lower,
+                    re.IGNORECASE,
+                )
+                else 0.0
+            )
             views = int(entry.get("view_count") or 0)
             viral_boost = (
                 65.0 if views >= 10_000_000 else
@@ -780,7 +799,15 @@ def _search_youtube_flat_cached(
                 10.0 if views >= 50_000 else 0.0
             )
             short_fmt_bonus = 25.0 if (0 < dur <= 75) else 0.0
-            score = (anchor_hits * 85.0) + (action_hits * 45.0) + min(views / 15000.0, 75.0) + viral_boost + short_fmt_bonus
+            score = (
+                (anchor_hits * 85.0)
+                + (action_hits * 45.0)
+                + peak_intensity_bonus
+                + passive_clip_penalty
+                + min(views / 15000.0, 75.0)
+                + viral_boost
+                + short_fmt_bonus
+            )
             candidates.append({
                 "id": vid_id,
                 "url": webpage_url,
@@ -2254,7 +2281,8 @@ Call EXACTLY ONE tool for EACH scene (from scene_id=1 to scene_id={total_scenes}
      -> Write `human_action_query` as a concrete 2-4 word physical human action or facial expression (e.g., "close up eyes dark lighting", "couple argument tension", "man stressed alone dark room", "silhouette person walking night").
      -> Use `media_preference="VIDEO_BROLL"` for Scene 1 and 3-4 body scenes, and `media_preference="CLEAN_PORTRAIT_PHOTO"` for the other scenes.
    - FOR REAL-WORLD WILDLIFE, NATURE, SCIENCE, HISTORY, OR DOCUMENTARY TOPICS:
-     -> Call `clone_youtube_short_peak_clip` (`clip_role="HOOK"` for Scene 1, and `clip_role="PEAK"` for 3-4 action body scenes) + `search_google_cinematic_image` for the remaining scenes.
+     -> Call `clone_youtube_short_peak_clip` (`clip_role="HOOK"` for Scene 1, and `clip_role="PEAK"` for the Mid-Video Climax at Scene 4–5 plus 2–3 other high-action body scenes) + `search_google_cinematic_image` for the remaining scenes.
+     -> PEAK VIDEO QUERY PRIMING (CRITICAL): When writing `youtube_search_query` for `clone_youtube_short_peak_clip`, NEVER write passive noun-only queries (e.g., FORBIDDEN: `"black caiman river"`, `"honey badger savanna"`). ALWAYS include the **explosive physical action, climax verb, or dramatic phenomenon** (e.g., `"black caiman hunting amazon"`, `"honey badger fearless lion encounter"`, `"boiling river amazon steam"`, `"sperm whale deep dive underwater"`) so our Peak Scanner extracts the most intense action moment!
 
 2. DECIDE `search_scope` FOR EACH INDIVIDUAL SCENE (`"SCENE_SPECIFIC"` vs `"SCRIPT_OVERALL"`):
    - `"SCENE_SPECIFIC"`: The split sentence describes a clear, standalone visual action of the subject.

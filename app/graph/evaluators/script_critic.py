@@ -175,9 +175,11 @@ class ScriptCritic:
             and not re.search(r"\d", eff_title)
         )
         has_number = bool(re.search(r"\d", combined))
+        # Chỉ tính là xung đột/cú sốc thật sự khi có từ khóa đối đầu ("vs", "contra"), động từ sát thương vật lý,
+        # hoặc đơn vị đo lường cực đoan (KHÔNG tính các danh từ chung của ngách như psychology/mind/ocean/history/secret/truth)
         has_confrontation_or_shock = bool(
             re.search(
-                r"\b(?:vs\.?|versus|against|contra|never|stop|don't|refused|crushes|destroys|kills|deadly|impossible|instant|seconds|meters|feet|miles|psi|mph|nunca|jamais|mortal|impossível|segredo|erro|medo|foge|ataque|presa|abismo|oceano|profundidade|mordida|onça|jacaré|tubarão|baleia|lula|cachalote|cérebro|mente|sinal|silêncio|império|guerra|história|secret|truth|shocking|terrified|fear|escape|hunt|predator|jaw|bite|brain|mind|psychology|empire|war|history|ocean|abyss|deep)\b",
+                r"\b(?:vs\.?|versus|against|contra|refused|crushes|destroys|kills|deadly|impossible|instant|seconds|meters|feet|miles|psi|mph|celsius|degrees|decibels|nunca|jamais|mortal|impossível|foge|ataque|presa|mordida|esmagam|ferve|choque|volts|shocking|terrified|ambush|strike|pierces|boils|paralyzes)\b",
                 combined,
                 re.IGNORECASE | re.UNICODE,
             )
@@ -188,15 +190,33 @@ class ScriptCritic:
                 f"CHẶN TIÊU ĐỀ MƠ HỒ: Tiêu đề đang giấu tên chủ thể ('{eff_title}') gây kẹt dưới 100 views. "
                 f"Bắt buộc nêu đích danh Tên loài/Thực thể/Địa danh cụ thể + Con số định lượng hoặc cặp đối đầu 'A vs B' ngay trên tiêu đề!"
             )
+        elif (has_number and has_confrontation_or_shock) and 3 <= w_cnt <= 18:
+            score = max(score, 8.8)
+            score = min(9.8, score + 0.3)
         elif (has_number or has_confrontation_or_shock) and 3 <= w_cnt <= 18:
-            score = max(score, 8.6)
-            if has_number and has_confrontation_or_shock:
-                score = min(9.8, score + 0.4)
+            score = max(score, 8.3)
         elif not has_number and not has_confrontation_or_shock:
-            score = max(1.0, score - 0.5)
+            score = max(1.0, score - 0.8)
             if score < cal.get("min_hook_score", 8.0):
                 extra_critiques.append(
-                    "Hook thiếu thông số định lượng cụ thể (con số, giây, mét, PSI, %) hoặc thế đối đầu trực diện 'A vs B' (Công thức pt-BR & Wild Odyssey)."
+                    "Hook Cảnh 1 và Tiêu đề thiếu thông số định lượng cụ thể (con số, giây, mét, PSI, °C, %) hoặc thế đối đầu trực diện 'A vs B'."
+                )
+
+        # 5. Kiểm tra Cao Trào Giữa Video (Mid-Video Climax / Twist ở Cảnh 3-5) để ngăn tụt APV ở giây 14-20
+        if isinstance(scenes, list) and len(scenes) >= 5:
+            mid_scenes = scenes[2:5]
+            mid_text = " ".join(str(ms.get("narration") or "") for ms in mid_scenes if isinstance(ms, dict))
+            has_mid_twist_or_metric = bool(
+                re.search(r"\d", mid_text)
+                or re.search(
+                    r"\b(?:but|yet|however|instead|suddenly|actually|until|real\s+weapon|real\s+trap|secret\s+weapon|shockwave|mas|porém|contudo|na\s+verdade|de\s+repente|nhưng|thực\s+ra|bất\s+ngờ)\b",
+                    mid_text,
+                    re.IGNORECASE | re.UNICODE,
+                )
+            )
+            if not has_mid_twist_or_metric:
+                extra_critiques.append(
+                    "Cảnh 3-5 (Giây 14-20) thiếu Cú Lật Kèo / Cao Trào Giữa Video (Mid-Video Climax Twist + thông số sốc thứ 2), dễ làm người xem lướt đi ở giữa video."
                 )
 
         return round(score, 1), extra_critiques

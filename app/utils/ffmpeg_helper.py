@@ -1035,20 +1035,24 @@ def multi_pose_loop_to_video(
 # CHECKPOINT B: Cắt + Ghép N clips
 # ──────────────────────────────────────────────
 
-def find_hook_peak_action_offset(input_path: str, target_duration: float, exclude_ranges: Optional[List[Tuple[float, float]]] = None) -> float:
+def _scan_video_peak_metrics(
+    input_path: str,
+    max_scan_sec: float = 50.0,
+    sample_fps: int = 4,
+) -> Optional[Dict[str, Any]]:
     """
-    Quét siêu tốc (4fps @ 90x160 RGB24) toàn bộ chiều dài video Short (tối đa 50 giây)
-    để tìm đúng khoảnh khắc ĐỈNH CAO NHẤT (Peak Action Energy) & TRỪU TƯỢNG / CUỐN HÚT NHẤT
-    (Visual Intrigue / Edge Entropy + Contrast Drama) + Frame 0 sáng rõ.
-    Hỗ trợ `exclude_ranges` để có thể lấy thêm đoạn Peak thứ 2 ghép vào thân video (Climax Scene) mà không trùng đoạn đầu.
+    Quét siêu tốc 1 lượt duy nhất (4fps @ 90x160 RGB24) để đo đồng thời:
+    - Độ sáng (`lums`) & Độ tương phản (`contrasts`)
+    - Chuyển động vùng trung tâm chủ thể 9:16 (`motions`: 65% Center-ROI + 35% Full-Frame)
+    - Độ sắc nét & cuốn hút thị giác vùng trung tâm (`intrigues`: Center-ROI Edge Saliency)
+    Giúp phát hiện chính xác khoảnh khắc hành động bùng nổ nhất (Peak Burst) mà không cần gọi FFmpeg 2 lần.
     """
     try:
         src_sec = get_duration_ms(input_path) / 1000.0
-        if src_sec <= target_duration + 0.6:
-            return 0.0
+        if src_sec <= 0.5:
+            return None
 
-        scan_sec = min(src_sec, 50.0)
-        sample_fps = 4
+        scan_sec = min(src_sec, max_scan_sec)
         w, h = 90, 160
         frame_bytes = w * h * 3
 
@@ -1065,37 +1069,94 @@ def find_hook_peak_action_offset(input_path: str, target_duration: float, exclud
         res = subprocess.run(cmd, capture_output=True, timeout=10)
         raw = res.stdout or b""
         n_frames = len(raw) // frame_bytes
-        win_frames = max(int(target_duration * sample_fps), 4)
-        if n_frames <= win_frames + 1:
-            return 0.0
+        if n_frames < 4:
+            return None
 
         from PIL import Image, ImageChops, ImageFilter, ImageStat
         lums: List[float] = []
         contrasts: List[float] = []
         motions: List[float] = []
         intrigues: List[float] = []
+        # Vùng trung tâm khung hình dọc 9:16 (nơi chủ thể chính xuất hiện)
+        roi_box = (18, 28, 72, 132)
         prev_g = None
+        prev_roi = None
 
         for i in range(n_frames):
             chunk = raw[i * frame_bytes : (i + 1) * frame_bytes]
             im = Image.frombytes("RGB", (w, h), chunk)
             g = im.convert("L")
+            roi_g = g.crop(roi_box)
             st = ImageStat.Stat(g)
+            roi_st = ImageStat.Stat(roi_g)
             lums.append(float(st.mean[0]))
-            contrasts.append(float(st.stddev[0]))
-            edges = g.filter(ImageFilter.FIND_EDGES)
-            edge_st = ImageStat.Stat(edges)
-            # Độ phức tạp thị giác / tính trừu tượng cuốn hút (Edge Mean + Edge StdDev)
-            intrigues.append(float(edge_st.mean[0]) * 0.65 + float(edge_st.stddev[0]) * 0.35)
-            if prev_g is not None:
-                diff = ImageChops.difference(g, prev_g)
-                motions.append(float(ImageStat.Stat(diff).mean[0]))
+            # Ưu tiên độ tương phản của chủ thể vùng trung tâm kết hợp toàn khung
+            contrasts.append(float(roi_st.stddev[0]) * 0.60 + float(st.stddev[0]) * 0.40)
+
+            edges_full = g.filter(ImageFilter.FIND_EDGES)
+            edges_roi = edges_full.crop(roi_box)
+            ef_st = ImageStat.Stat(edges_full)
+            er_st = ImageStat.Stat(edges_roi)
+            full_intrigue = float(ef_st.mean[0]) * 0.65 + float(ef_st.stddev[0]) * 0.35
+            roi_intrigue = float(er_st.mean[0]) * 0.65 + float(er_st.stddev[0]) * 0.35
+            intrigues.append(roi_intrigue * 0.65 + full_intrigue * 0.35)
+
+            if prev_g is not None and prev_roi is not None:
+                diff_full = float(ImageStat.Stat(ImageChops.difference(g, prev_g)).mean[0])
+                diff_roi = float(ImageStat.Stat(ImageChops.difference(roi_g, prev_roi)).mean[0])
+                motions.append(diff_roi * 0.65 + diff_full * 0.35)
             else:
                 motions.append(0.0)
             prev_g = g
+            prev_roi = roi_g
 
         if len(motions) > 1:
             motions[0] = motions[1]
+
+        return {
+            "src_sec": src_sec,
+            "sample_fps": sample_fps,
+            "n_frames": n_frames,
+            "lums": lums,
+            "contrasts": contrasts,
+            "motions": motions,
+            "intrigues": intrigues,
+        }
+    except Exception as e:
+        logger.debug(f"[_scan_video_peak_metrics] Lỗi quét frame metrics: {e}")
+        return None
+
+
+def find_hook_peak_action_offset(
+    input_path: str,
+    target_duration: float,
+    exclude_ranges: Optional[List[Tuple[float, float]]] = None,
+    _precomputed_metrics: Optional[Dict[str, Any]] = None,
+) -> float:
+    """
+    Quét siêu tốc (4fps @ 90x160 RGB24) toàn bộ chiều dài video Short (tối đa 50 giây)
+    để tìm đúng khoảnh khắc ĐỈNH CAO NHẤT (Center-ROI Peak Action + Burst Spike) & CUỐN HÚT NHẤT
+    (Visual Intrigue / Edge Saliency + Contrast Drama) + Frame 0 sáng rõ.
+    Hỗ trợ `exclude_ranges` để có thể lấy thêm đoạn Peak thứ 2 ghép vào thân video (Climax Scene) mà không trùng đoạn đầu.
+    """
+    try:
+        metrics = _precomputed_metrics or _scan_video_peak_metrics(input_path, max_scan_sec=50.0, sample_fps=4)
+        if not metrics:
+            return 0.0
+        src_sec = float(metrics["src_sec"])
+        if src_sec <= target_duration + 0.6:
+            return 0.0
+
+        sample_fps = int(metrics["sample_fps"])
+        n_frames = int(metrics["n_frames"])
+        lums = metrics["lums"]
+        contrasts = metrics["contrasts"]
+        motions = metrics["motions"]
+        intrigues = metrics["intrigues"]
+
+        win_frames = max(int(target_duration * sample_fps), 4)
+        if n_frames <= win_frames + 1:
+            return 0.0
 
         def _is_excluded(start_idx: int) -> bool:
             if not exclude_ranges:
@@ -1128,13 +1189,27 @@ def find_hook_peak_action_offset(input_path: str, target_duration: float, exclud
                 penalty = -25.0
             else:
                 penalty = 0.0
-            early_end = min(start_idx + 3, n_frames)
-            win_end = min(start_idx + win_frames, n_frames)
+            # Khử thiên vị giây 0.0s (thường là đoạn intro tĩnh/chưa vào đòn của video gốc)
+            if start_idx == 0 and src_sec >= target_duration + 2.5:
+                penalty -= 3.5
+
+            early_end = min(start_idx + 5, n_frames)
+            burst_end = min(start_idx + 8, n_frames)
             early_motion = sum(motions[start_idx:early_end]) / max(early_end - start_idx, 1)
+            # Peak Burst Spike: Thưởng lớn cho cửa sổ có cú nổ hành động mạnh nhất ngay trong 0.5s - 2.0s đầu
+            burst_slice = motions[start_idx:burst_end]
+            peak_burst = max(burst_slice) if burst_slice else early_motion
             win_motion = sum(motions[start_idx:win_end]) / max(win_end - start_idx, 1)
             win_intrigue = sum(intrigues[start_idx:win_end]) / max(win_end - start_idx, 1)
-            f0_quality = min(f0_con / 50.0, 1.4) + (0.25 if 58.0 <= f0_lum <= 198.0 else 0.0)
-            return early_motion * 1.55 + win_motion * 1.10 + win_intrigue * 0.45 + f0_quality * 7.0 + penalty
+            f0_quality = min(f0_con / 48.0, 1.5) + (0.30 if 58.0 <= f0_lum <= 198.0 else 0.0)
+            return (
+                early_motion * 1.45
+                + peak_burst * 0.75
+                + win_motion * 1.15
+                + win_intrigue * 0.50
+                + f0_quality * 7.0
+                + penalty
+            )
 
         base_score = _score_window(0)
         best_idx = 0
@@ -1149,11 +1224,11 @@ def find_hook_peak_action_offset(input_path: str, target_duration: float, exclud
                 best_score = sc
                 best_idx = idx
 
-        if best_idx > 0 and best_score > -500.0 and (best_score >= base_score * 1.08 or lums[0] < 55.0 or motions[0] < 3.5 or exclude_ranges):
+        if best_idx > 0 and best_score > -500.0 and (best_score >= base_score * 1.02 or lums[0] < 55.0 or motions[0] < 4.0 or exclude_ranges):
             seek_sec = round(best_idx / float(sample_fps), 2)
             if seek_sec + target_duration <= effective_src_sec - 0.35:
                 logger.info(
-                    f"  ⚡ [Hook Peak & Intrigue Seek] Tự động cắt đoạn Peak tại {seek_sec:.2f}s -> {seek_sec + target_duration:.2f}s "
+                    f"  ⚡ [Hook Peak & Center-ROI Burst Seek] Tự động cắt đoạn Peak tại {seek_sec:.2f}s -> {seek_sec + target_duration:.2f}s "
                     f"(PeakScore {base_score:.1f} → {best_score:.1f})"
                 )
                 return seek_sec
@@ -1170,73 +1245,54 @@ def find_hook_peak_window(
 ) -> Tuple[float, float]:
     """
     Phát hiện trọn vẹn khoảng thời gian ĐỈNH CAO LIÊN TỤC (start_offset_sec, full_peak_duration_sec)
-    thay vì khóa cứng 3 giây:
+    trong 1 lượt quét FFmpeg duy nhất (Single-Pass Center-ROI Peak Scanner):
     - Tìm điểm bắt đầu cao trào (`peak_start`) bằng `find_hook_peak_action_offset`.
-    - Quét mở rộng về phía sau (tối đa `max_duration`, mặc định 15s) chừng nào năng lượng chuyển động
-      (motion energy) và độ chi tiết khung hình (edge intrigue / contrast) vẫn đang ở nhịp cao trào,
+    - Quét mở rộng về phía sau (tối đa `max_duration`, mặc định 15s) ngay trên mảng `motions`/`intrigues` đã giải mã,
+      chừng nào năng lượng chuyển động và độ chi tiết chủ thể trung tâm vẫn đang ở nhịp cao trào,
       tự động dừng lại ngay trước khi video gốc chuyển sang màn hình tĩnh / outro / chữ cuối video.
     """
     min_dur = max(2.5, float(min_duration or 3.5))
     max_dur = max(min_dur, float(max_duration or 15.0))
     try:
-        src_sec = get_duration_ms(input_path) / 1000.0
+        metrics = _scan_video_peak_metrics(input_path, max_scan_sec=50.0, sample_fps=4)
+        if not metrics:
+            return 0.0, round(min_dur, 2)
+        src_sec = float(metrics["src_sec"])
         if src_sec <= 0.5:
             return 0.0, min_dur
         if src_sec <= min_dur + 0.6:
             return 0.0, round(max(2.0, src_sec), 2)
 
-        peak_start = find_hook_peak_action_offset(input_path, min_dur, exclude_ranges=exclude_ranges)
+        peak_start = find_hook_peak_action_offset(
+            input_path,
+            min_dur,
+            exclude_ranges=exclude_ranges,
+            _precomputed_metrics=metrics,
+        )
         avail_after_start = max(2.0, src_sec - peak_start - 0.15)
         scan_dur = min(avail_after_start, max_dur)
         if scan_dur <= min_dur + 0.5:
             return peak_start, round(scan_dur, 2)
 
-        sample_fps = 4
-        w, h = 90, 160
-        frame_bytes = w * h * 3
-        cmd = [
-            shutil.which("ffmpeg") or "ffmpeg",
-            "-v", "quiet",
-            "-ss", f"{peak_start:.2f}",
-            "-i", input_path,
-            "-t", f"{scan_dur:.1f}",
-            "-vf", f"fps={sample_fps},scale={w}:{h}",
-            "-f", "rawvideo",
-            "-pix_fmt", "rgb24",
-            "-",
-        ]
-        res = subprocess.run(cmd, capture_output=True, timeout=10)
-        raw = res.stdout or b""
-        n_frames = len(raw) // frame_bytes
+        sample_fps = int(metrics["sample_fps"])
+        start_frame_idx = max(0, int(round(peak_start * sample_fps)))
+        max_scan_frames = int(round(scan_dur * sample_fps))
+        lums = metrics["lums"][start_frame_idx : start_frame_idx + max_scan_frames]
+        contrasts = metrics["contrasts"][start_frame_idx : start_frame_idx + max_scan_frames]
+        motions = metrics["motions"][start_frame_idx : start_frame_idx + max_scan_frames]
+        intrigues = metrics["intrigues"][start_frame_idx : start_frame_idx + max_scan_frames]
+
+        n_frames = len(lums)
         min_frames = max(int(min_dur * sample_fps), 4)
         if n_frames <= min_frames + 1:
             return peak_start, round(min(avail_after_start, min_dur), 2)
 
-        from PIL import Image, ImageChops, ImageFilter, ImageStat
-        energies: List[float] = []
-        lums: List[float] = []
-        contrasts: List[float] = []
-        prev_g = None
-        for i in range(n_frames):
-            chunk = raw[i * frame_bytes : (i + 1) * frame_bytes]
-            im = Image.frombytes("RGB", (w, h), chunk)
-            g = im.convert("L")
-            st = ImageStat.Stat(g)
-            lum = float(st.mean[0])
-            con = float(st.stddev[0])
-            lums.append(lum)
-            contrasts.append(con)
-            edge_st = ImageStat.Stat(g.filter(ImageFilter.FIND_EDGES))
-            intrigue = float(edge_st.mean[0]) * 0.65 + float(edge_st.stddev[0]) * 0.35
-            mot = float(ImageStat.Stat(ImageChops.difference(g, prev_g)).mean[0]) if prev_g is not None else 0.0
-            prev_g = g
-            energies.append(mot * 1.4 + intrigue * 0.45)
-
+        energies = [motions[i] * 1.45 + intrigues[i] * 0.48 for i in range(n_frames)]
         if len(energies) > 1:
             energies[0] = energies[1]
 
         core_avg_energy = sum(energies[:min_frames]) / max(min_frames, 1)
-        energy_threshold = max(core_avg_energy * 0.50, 4.2)
+        energy_threshold = max(core_avg_energy * 0.52, 4.4)
 
         end_frame = min_frames
         low_energy_streak = 0

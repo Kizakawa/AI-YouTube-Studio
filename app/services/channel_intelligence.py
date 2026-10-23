@@ -876,27 +876,38 @@ CRITICAL MANDATE:
 ═══════════════════════════════════════════════════════════
 {saturation_prompt}{rag_topic_memory}
 ═══════════════════════════════════════════════════════════
+🔥 UPSTREAM VIRAL TOPIC & DUAL-PEAK RETENTION PRIMING (MANDATORY FOR EVERY IDEA):
+Real YouTube Analytics proves that videos achieving 100%–127% APV and 1,500–3,000+ views succeed BEFORE the script is even written—because the TOPIC itself contains an irresistible physical anomaly and a 2-stage climax:
+1. BANNED WEAK / VAGUE TOPICS (ZERO TOLERANCE):
+   - NEVER suggest generic textbook topics, vague open-ended questions, or soft self-help advice (e.g., FORBIDDEN: "Where Does This Endless River Go?", "Signs Someone Is Envious of You", "How To Be More Confident", "Why The Ocean Is Scary").
+2. MANDATORY TOPIC FORMULA = [CONCRETE PHYSICAL/NUMERICAL ANCHOR] + [ASYMMETRIC CLASH OR COUNTER-INTUITIVE PARADOX]:
+   - Every single topic and title MUST include a specific, verifiable physical measurement, extreme metric, or historical timestamp (`1,100 PSI`, `93°C`, `2,000m`, `1883`, `0.2 seconds`, `4-second silence`, `230 dB`) paired with a high-stakes clash ("Entity A vs. Entity B") or an "impossible" real-world anomaly (e.g., "A River in the Amazon That Boils at 93°C Without a Volcano", "Colossal Squid vs. Sperm Whale at 2,000m Depth", "The 4-Second Eye Freeze That Exposes Covert Liars").
+3. BUILT-IN MID-VIDEO CLIMAX TWIST (15-SECOND RE-HOOK TO PREVENT APV DROP):
+   - Do NOT pick one-dimensional topics where the entire secret is given away in Scene 1!
+   - Every topic MUST have a built-in **Second Climax Twist (`mid_video_climax`)** that escalates the stakes at second 14–20 (Scene 4–5)—a hidden mechanism, a counter-attack, or a second shocking discovery that forces viewers to watch until the final second.
+
 🎯 OBJECTIVE:
 Generate exactly {count + 2} completely unique, high-retention Shorts concepts tailored specifically to '{channel_name}'.
 Each concept must:
-1. Inherit the winning emotional hook of top performers.
-2. Actively eliminate and fix the channel's past flop weaknesses (topic fatigue, passive tone, niche dilution).
-3. Align directly with 2026 global viral trends for this niche.
-4. Keep YouTube Shorts titles concise (under 60 characters), punchy, and include #Shorts.
+1. Open with a blunt, concrete metric or "A vs B" confrontation in both the Title and 0.0s Hook (5–9 words, ZERO passive Yes/No questions).
+2. Include a specific Mid-Video Climax Twist (`mid_video_climax`) for Scene 4–5 so APV stays above 90%+.
+3. Actively eliminate and fix the channel's past flop weaknesses (topic fatigue, passive tone, niche dilution).
+4. Keep YouTube Shorts titles concise (28–55 characters), punchy, and include #Shorts.
 
 Return ONLY a valid JSON array of objects with the following structure:
 [
   {{
-    "topic": "Core punchy topic concept (e.g. The 3-second silence interrogation trick)",
-    "title": "Viral YouTube Shorts Title with Emojis and #Shorts (under 60 chars)",
-    "hook": "Electric 3-second pattern interrupt opening line (5-8 words)",
-    "angle": "Micro-narrative breakdown & specific observable behaviors or phenomena",
-    "pinned_comment": "Provocative engagement bait question to pin at top of comments",
-    "viral_formula": "Double Tap & Protect | Debate in Comments | Curiosity Part 2",
-    "predicted_retention": "150% - 165%",
-    "why_viral": "Giải thích ngắn gọn bằng tiếng Việt vì sao chủ đề này sẽ bùng nổ views",
-    "fixes_flaw": "Giải thích bằng tiếng Việt cách ý tưởng này khắc phục nhược điểm/lỗi flop của kênh (ví dụ: tránh bão hòa biển sâu, tăng tính giật gân, bám đúng ngách)",
-    "trend_alignment": "Xu hướng toàn cầu 2026 được đón đầu (ví dụ: Giải mã âm thanh dưới đáy biển / Biomechanics mãnh thú / Dark Triad body language)"
+    "topic": "Specific high-stakes topic with a concrete physical metric/anomaly and clash (e.g. The 93°C Boiling Amazon River That Cooks Prey Alive Without a Volcano)",
+    "title": "Viral YouTube Shorts Title with Concrete Number/Clash, Emojis and #Shorts (28-55 chars)",
+    "hook": "Blunt 0.0s declarative shock or 'A vs B' confrontation line with a concrete metric (5-9 words, NO passive questions)",
+    "mid_video_climax": "The 15-second (Scene 4-5) escalation twist or second shocking proof that prevents mid-video drop-off",
+    "angle": "Micro-narrative breakdown & specific observable physical behaviors or phenomena",
+    "pinned_comment": "Provocative A-vs-B poll or debate question to pin at top of comments",
+    "viral_formula": "A vs B Metric Clash | Dual-Peak Escalation | Seamless Infinite Loop",
+    "predicted_retention": "110% - 135%",
+    "why_viral": "Giải thích ngắn gọn bằng tiếng Việt vì sao chủ đề có con số/nghịch lý này sẽ bùng nổ views và giữ APV > 100%",
+    "fixes_flaw": "Giải thích bằng tiếng Việt cách ý tưởng này khắc phục nhược điểm/lỗi tụt APV của kênh",
+    "trend_alignment": "Xu hướng toàn cầu 2026 được đón đầu (ví dụ: Giải mã chấn động vật lý dưới đáy biển / Biomechanics mãnh thú / Phản xạ vi biểu cảm 0.2s)"
   }}
 ]
 """

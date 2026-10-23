@@ -317,9 +317,9 @@ CRITICAL DIRECTORIAL RULES:
    - "VIRAL_SHORT_ACTION_PEAK": Best for wildlife predators, animal rescues, underwater/ocean phenomena, natural disasters, or 3D CGI monsters where real action footage or 3D VFX from a viral Short creates an instant visceral shock.
    - "CINEMATIC_BROLL_FAST_CUT": Best for psychology, dark psychology, human behavior, FBI interrogation, body language, or interpersonal tension where YouTube Shorts searches would return talking heads/podcasts. We instead fetch 2 moody, clean HD B-Roll video clips of concrete physical human expressions/body language (e.g. nervous hands under table, cold fake smile, intense eye contact in shadows) and fast-cut them in Scene 1.
    - "HYBRID_MOTION_AND_SCENE_MONTAGE": Best for counterfactual history ("What If"), ancient empires, historical events, or conceptual mysteries where combining dramatic physical motion footage (Beat 1A) with a rapid multi-shot historical/cinematic scene montage (Beat 1B) fits the script hook best.
-3. Translate any abstract concept into two distinct, concrete physical English queries ("beat_1_query" for 0.0–1.8s opening shock, and "beat_2_query" for 1.8–3.5s angle shift/reaction):
+3. Translate any abstract concept into two distinct, concrete physical PEAK-ACTION English queries ("beat_1_query" for 0.0–1.8s opening shock, and "beat_2_query" for 1.8–3.5s angle shift/reaction):
    - NEVER use abstract words ("manipulation", "psychology", "envy", "alternate history", "what if") in queries.
-   - NEVER use "vs" or "versus" in a single query. Dedicate each query to ONE concrete subject + physical action/habitat.
+   - NEVER use "vs" or "versus" in a single query. Dedicate each query to ONE concrete subject + explosive physical action/climax (e.g., `"jaguar hunting river"`, `"honey badger fearless lion"`, `"boiling river steam amazon"`, `"sperm whale deep dive"`, `"nervous hands interrogation dark"`).
    - Also provide "beat_1_subject" and "beat_2_subject" (bare 1-2 word noun of the subject in Beat 1 and Beat 2) and "stock_broll_queries" (2 concise 2-3 word noun + natural habitat/feature queries optimized for Pexels/Pixabay stock B-roll indexers, without complex verbs like "biting skull" or "thrashing").
 
 Return ONLY valid JSON:
@@ -526,6 +526,23 @@ Return ONLY valid JSON:
                     10.0 if views_e >= 50_000 else 0.0
                 )
                 short_fmt_bonus = 25.0 if (0 < dur_e <= 75) else 0.0
+                peak_intensity_bonus = (
+                    42.0
+                    if re.search(
+                        r"\b(?:attack|ambush|hunt|hunting|strike|bite|catch|fight|chase|jump|leap|dive|diving|roar|eruption|explosion|shockwave|rescue|saved|closeup|close\-up|encounter|wild|underwater|deep\s+sea|sonar)\b",
+                        title_low,
+                    )
+                    else 0.0
+                )
+                passive_clip_penalty = (
+                    -65.0
+                    if re.search(
+                        r"\b(?:sleeping|napping|relaxing|ambient|ASMR|zoo\s+tour|petting\s+zoo|feeding\s+time|slideshow|wallpaper|screensaver|1\s+hour|10\s+hours)\b",
+                        title_low,
+                        re.IGNORECASE,
+                    )
+                    else 0.0
+                )
                 raw_flat_cands.append({
                     "id": vid_id,
                     "url": vid_url,
@@ -533,7 +550,14 @@ Return ONLY valid JSON:
                     "uploader": uploader_e,
                     "duration": dur_e,
                     "view_count": views_e,
-                    "score": (anchor_hits * 45.0) + min(views_e / 15000.0, 75.0) + viral_boost + short_fmt_bonus,
+                    "score": (
+                        (anchor_hits * 45.0)
+                        + peak_intensity_bonus
+                        + passive_clip_penalty
+                        + min(views_e / 15000.0, 75.0)
+                        + viral_boost
+                        + short_fmt_bonus
+                    ),
                 })
 
             ranked_flat = rag.rank_video_candidates_for_scene(
