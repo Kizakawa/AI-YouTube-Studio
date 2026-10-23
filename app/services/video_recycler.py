@@ -62,12 +62,14 @@ def map_box_after_flip_and_crop(
     height: int = 1920,
 ) -> Tuple[int, int, int, int]:
     """
-    Tính tọa độ mới (new_bx, new_by, new_bw, new_bh) trên khung hình 1080x1920
-    sau khi đã áp dụng `hflip` và cắt viền `crop_pct` (4% - 6%).
+    Tính toán lại tọa độ hộp (x, y, w, h) sau khi:
+      1. Lật ngang (hflip): x' = width - x - w
+      2. Cắt viền đối xứng (crop_pct: tổng tỷ lệ cắt cả 2 bên, ví dụ 0.05 = cắt 2.5% mỗi mép)
+         và phóng to lại về kích thước (width, height).
     """
     bx, by, bw, bh = box
     if flip_horizontal:
-        bx = width - (bx + bw)
+        bx = width - bx - bw
 
     keep_ratio = 1.0 - float(crop_pct)
     cw = int(round(width * keep_ratio))
@@ -78,11 +80,16 @@ def map_box_after_flip_and_crop(
     scale_x = width / float(cw)
     scale_y = height / float(ch)
 
-    new_bx = int(round((bx - cx) * scale_x))
-    new_by = int(round((by - cy) * scale_y))
-    new_bw = int(round(bw * scale_x))
-    new_bh = int(round(bh * scale_y))
-    return (new_bx, new_by, new_bw, new_bh)
+    new_x = int(round((bx - cx) * scale_x))
+    new_y = int(round((by - cy) * scale_y))
+    new_w = int(round(bw * scale_x))
+    new_h = int(round(bh * scale_y))
+
+    new_x = max(24, min(width - 100, new_x))
+    new_y = max(300, min(height - 150, new_y))
+    new_w = max(100, min(width - new_x - 24, new_w))
+    new_h = max(80, min(height - new_y - 60, new_h))
+    return (new_x, new_y, new_w, new_h)
 
 
 def create_frosted_subtitle_card_png(
@@ -191,32 +198,45 @@ def render_anti_phash_subclip(
     cx = (1080 - cw) // 2
     cy = (1920 - ch) // 2
 
-    w1x, w1y, w1w, w1h = top_watermarks[0]
-    w2x, w2y, w2w, w2h = top_watermarks[1]
-
     flip_filter = ",hflip" if flip_horizontal else ""
     crop_zoom_filter = f",crop={cw}:{ch}:{cx}:{cy},scale=1080:1920:flags=lanczos"
 
     out_clip = os.path.join(work_dir, f"clip_{tag}.mp4")
 
-    fc = (
-        f"[0:v]trim=start={src_start:.3f}:end={src_end:.3f},setpts=({pts_factor:.6f})*(PTS-STARTPTS),"
-        f"fps=30,format=yuv420p,"
-        f"delogo=x={w1x}:y={w1y}:w={w1w}:h={w1h},"
-        f"delogo=x={w2x}:y={w2y}:w={w2w}:h={w2h},"
-        f"delogo=x={bx}:y={by}:w={bw}:h={bh},"
-        f"split=4[base][w1][w2][sub];"
-        f"[w1]crop={w1w}:{w1h}:{w1x}:{w1y},gblur=sigma=18[w1b];"
-        f"[w2]crop={w2w}:{w2h}:{w2x}:{w2y},gblur=sigma=18[w2b];"
-        f"[sub]crop={bw}:{bh}:{bx}:{by},gblur=sigma=22[subb];"
-        f"[base][w1b]overlay={w1x}:{w1y}[v1];"
-        f"[v1][w2b]overlay={w2x}:{w2y}[v2];"
-        f"[v2][subb]overlay={bx}:{by},"
-        f"eq=contrast=1.06:saturation=1.09:brightness=0.01"
-        f"{flip_filter}"
-        f"{crop_zoom_filter}[v_transformed];"
-        f"[v_transformed][1:v]overlay=0:0[outv]"
-    )
+    if top_watermarks and len(top_watermarks) >= 2:
+        w1x, w1y, w1w, w1h = top_watermarks[0]
+        w2x, w2y, w2w, w2h = top_watermarks[1]
+        fc = (
+            f"[0:v]trim=start={src_start:.3f}:end={src_end:.3f},setpts=({pts_factor:.6f})*(PTS-STARTPTS),"
+            f"fps=30,format=yuv420p,scale=1080:1920:flags=lanczos,"
+            f"delogo=x={w1x}:y={w1y}:w={w1w}:h={w1h},"
+            f"delogo=x={w2x}:y={w2y}:w={w2w}:h={w2h},"
+            f"delogo=x={bx}:y={by}:w={bw}:h={bh},"
+            f"split=4[base][w1][w2][sub];"
+            f"[w1]crop={w1w}:{w1h}:{w1x}:{w1y},gblur=sigma=18[w1b];"
+            f"[w2]crop={w2w}:{w2h}:{w2x}:{w2y},gblur=sigma=18[w2b];"
+            f"[sub]crop={bw}:{bh}:{bx}:{by},gblur=sigma=22[subb];"
+            f"[base][w1b]overlay={w1x}:{w1y}[v1];"
+            f"[v1][w2b]overlay={w2x}:{w2y}[v2];"
+            f"[v2][subb]overlay={bx}:{by},"
+            f"eq=contrast=1.06:saturation=1.09:brightness=0.01"
+            f"{flip_filter}"
+            f"{crop_zoom_filter}[v_transformed];"
+            f"[v_transformed][1:v]overlay=0:0[outv]"
+        )
+    else:
+        fc = (
+            f"[0:v]trim=start={src_start:.3f}:end={src_end:.3f},setpts=({pts_factor:.6f})*(PTS-STARTPTS),"
+            f"fps=30,format=yuv420p,scale=1080:1920:flags=lanczos,"
+            f"delogo=x={bx}:y={by}:w={bw}:h={bh},"
+            f"split=2[base][sub];"
+            f"[sub]crop={bw}:{bh}:{bx}:{by},gblur=sigma=24[subb];"
+            f"[base][subb]overlay={bx}:{by},"
+            f"eq=contrast=1.06:saturation=1.09:brightness=0.01"
+            f"{flip_filter}"
+            f"{crop_zoom_filter}[v_transformed];"
+            f"[v_transformed][1:v]overlay=0:0[outv]"
+        )
 
     cmd = [
         ffmpeg_exe,
