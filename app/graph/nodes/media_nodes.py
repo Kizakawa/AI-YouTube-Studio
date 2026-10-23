@@ -1274,6 +1274,14 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             full_p = sc_v.get("full_peak_path")
             if not full_p or not Path(full_p).exists():
                 continue
+            # Nếu cảnh này đã là lát cắt nối tiếp từ Cảnh 1 (HOOK_CONTINUOUS_PEAK_SLICE_2) hoặc LONG_PEAK_CONTINUOUS_FLOW,
+            # không nối tiếp sang cảnh thứ 3 liên tiếp để tránh 1 cú máy kéo dài > 9s không đổi góc nhìn!
+            prod_m = str(sc_v.get("production_method") or "")
+            if prod_m in ("HOOK_CONTINUOUS_PEAK_SLICE_2", "LONG_PEAK_CONTINUOUS_FLOW"):
+                continue
+            if idx_v == 0 and n_total_slots >= 2 and isinstance(scenes_media[1], dict):
+                if str(scenes_media[1].get("production_method") or "") == "HOOK_CONTINUOUS_PEAK_SLICE_2":
+                    continue
             full_dur = float(sc_v.get("full_peak_duration_sec") or 0.0)
             if full_dur <= 0.5:
                 full_dur = get_duration_ms(full_p) / 1000.0
@@ -1283,7 +1291,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             if rem_sec < 2.0:
                 continue
 
-            for next_idx in range(idx_v + 1, min(idx_v + 3, n_total_slots)):
+            for next_idx in range(idx_v + 1, min(idx_v + 2, n_total_slots)):
                 if rem_sec < 2.0:
                     break
                 next_sc = scenes_media[next_idx]
@@ -1445,6 +1453,12 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     # - Cảnh < 4.0s chỉ dùng 1 ảnh Ken Burns mượt mà; cảnh >= 4.0s dùng tối đa 2 ảnh (mỗi ảnh 2.0s - 2.5s).
     # ══════════════════════════════════════════════════════════════════════════
     try:
+        hook_img_count = 0
+        if scenes_media and isinstance(scenes_media[0], dict):
+            sc0 = scenes_media[0]
+            if str(sc0.get("production_method") or "").startswith("CLIMAX_IMAGES_LIVE_FX_"):
+                hook_img_count = len([p for p in (sc0.get("pose_images") or []) if p and Path(p).exists()])
+
         body_img_indices = [
             idx_b for idx_b, m_b in enumerate(scenes_media)
             if isinstance(m_b, dict) and str(m_b.get("media_type") or "image").lower() == "image"
@@ -1452,7 +1466,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
         if body_img_indices:
             scene_quotas: Dict[int, int] = {
-                i_slot: (2 if _get_slot_dur(i_slot) >= 4.0 else 1)
+                i_slot: (2 if _get_slot_dur(i_slot) >= 3.4 else 1)
                 for i_slot in body_img_indices
             }
 

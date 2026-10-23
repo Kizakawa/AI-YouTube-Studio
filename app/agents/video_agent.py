@@ -263,7 +263,7 @@ class VideoAgent:
             elif getattr(scene, "pose_images", None) and len(getattr(scene, "pose_images", [])) >= 2:
                 pose_list = list(getattr(scene, "pose_images", None) or [scene.media_path])
                 # Tự động tính số lượng ảnh tối đa khớp với thời lượng câu đọc (tối thiểu 2.0s/ảnh, tối đa 2 ảnh/cảnh để Ken Burns mượt mà, không nháy hình)
-                min_sec_per_img = 2.0
+                min_sec_per_img = 1.7
                 max_usable_imgs = max(1, min(2, int(duration // min_sec_per_img)))
                 usable_poses = pose_list[:max_usable_imgs]
                 dropped_count = max(0, len(pose_list) - len(usable_poses))

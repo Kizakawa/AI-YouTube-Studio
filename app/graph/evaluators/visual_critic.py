@@ -287,16 +287,18 @@ class VisualCritic:
                 f"Clip bị mờ nhòe / vỡ hạt (sharpness={avg_sharp:.1f}, min={min_f_sharp:.1f}, yêu cầu >= {min_sharpness})"
             )
 
-        # Kiểm tra đứng hình / freeze-frame ngay trên 4 khung hình mẫu (18%, 40%, 62%, 82%)
+        # Kiểm tra đứng hình / freeze-frame / ảnh tĩnh giả video ngay trên các khung hình mẫu:
+        # Video chuyển động thật có pair_diffs ~ 15.0 - 50.0; clip ảnh tĩnh/slideshow có pair_diffs < 6.5
         if len(gray_frames) >= 3:
             try:
                 pair_diffs = [
                     float(ImageStat.Stat(ImageChops.difference(gray_frames[i], gray_frames[i + 1])).mean[0])
                     for i in range(len(gray_frames) - 1)
                 ]
-                if pair_diffs and min(pair_diffs) < 0.85:
+                avg_m_diff = sum(pair_diffs) / len(pair_diffs) if pair_diffs else 0.0
+                if pair_diffs and (min(pair_diffs) < 4.5 or avg_m_diff < 6.5):
                     issues.append(
-                        f"Clip bị đứng hình / freeze-frame kéo dài (min_motion_diff={min(pair_diffs):.2f} < 0.85)"
+                        f"Clip bị đứng hình hoặc là ảnh tĩnh giả video (min_motion_diff={min(pair_diffs):.2f}, avg={avg_m_diff:.2f} < 6.5)"
                     )
             except Exception:
                 pass

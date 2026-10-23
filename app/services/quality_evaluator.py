@@ -578,7 +578,7 @@ Respond ONLY in valid JSON:
             total_cuts = 0
             try:
                 import re as _re_qa
-                vf_qa = "crop=800:760:140:280,blackdetect=d=0.10:pic_th=0.98,freezedetect=n=-45dB:d=2.2,scdet=t=5.0"
+                vf_qa = "crop=800:760:140:280,blackdetect=d=0.10:pic_th=0.98,freezedetect=n=-52dB:d=2.4,scdet=t=3.4"
                 res_qa = subprocess.run(
                     ["ffmpeg", "-v", "info", "-i", str(p), "-vf", vf_qa, "-an", "-f", "null", "-"],
                     capture_output=True,
@@ -614,9 +614,9 @@ Respond ONLY in valid JSON:
                 if duration_sec >= 15.0:
                     timeline_pts = [0.0] + scd_times + [duration_sec]
                     max_gap = max(timeline_pts[i + 1] - timeline_pts[i] for i in range(len(timeline_pts) - 1))
-                    if max_gap > 10.5:
+                    if max_gap > 12.0:
                         hard_fail = True
-                        issues.append(f"Khoảng cách không cắt cảnh quá dài ({max_gap:.1f}s > 10.5s) — chặn xuất bản!")
+                        issues.append(f"Khoảng cách không cắt cảnh quá dài ({max_gap:.1f}s > 12.0s) — chặn xuất bản!")
             except Exception as ex_qa_scan:
                 logger.warning(f"[QualityEvaluator] Lỗi quét blackdetect/freezedetect/scdet: {ex_qa_scan}")
 

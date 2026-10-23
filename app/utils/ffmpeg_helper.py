@@ -784,10 +784,10 @@ def render_opening_hook_multi_cut(
 
     # Tự động tính số lượng ảnh hiển thị tối ưu theo thời lượng câu đọc (mỗi ảnh >= 2.0s, tối đa 2 ảnh/cảnh):
     # - Nếu chỉ có 1 ảnh hoặc cảnh < 3.6s: dùng Ken Burns mượt mà trên 1 ảnh, tuyệt đối KHÔNG tự cắt 1 ảnh thành nhiều mảnh giật cục!
-    max_shots_by_dur = max(1, min(2, int(duration_seconds // 2.0)))
+    max_shots_by_dur = max(1, min(2, int(duration_seconds // 1.7)))
     usable_valid_paths = valid_paths[:max_shots_by_dur]
     n_shots = len(usable_valid_paths)
-    if duration_seconds < 3.6 or n_shots <= 1:
+    if duration_seconds < 3.2 or n_shots <= 1:
         return image_to_video(
             image_path=valid_paths[0],
             duration_seconds=duration_seconds,
