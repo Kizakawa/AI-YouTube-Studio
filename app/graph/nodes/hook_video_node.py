@@ -19,6 +19,7 @@ import json
 import base64
 import logging
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
@@ -500,9 +501,12 @@ Return ONLY valid JSON:
         if w.lower() not in {"the", "and", "for", "with", "from", "into", "that", "this", "why", "how", "what", "when", "fatal", "nature", "defies", "ambush", "secret", "truth", "footage", "action", "wildlife", "cinematic", "dramatic", "close", "shorts", "short"}
     }
 
-    # ── BƯỚC 2A: QUÉT RỘNG ĐA TRUY VẤN TRÊN YOUTUBE SHORTS & DÙNG LLM CHỌN RA TOP 6 SHORT PEAK NHẤT KHỚP KỊCH BẢN ──
+    # ── BƯỚC 2A: QUÉT SONG SONG ĐA TRUY VẤN TRÊN YOUTUBE SHORTS & DÙNG LLM CHỌN RA TOP 6 SHORT PEAK NHẤT KHỚP KỊCH BẢN ──
     pooled_flat_by_id: Dict[str, Dict[str, Any]] = {}
-    for q_idx, q in enumerate(yt_queries_to_run):
+
+    def _run_flat_search_for_query(q_pair: tuple[int, str]) -> tuple[int, str, List[Dict[str, Any]]]:
+        q_idx, q = q_pair
+        raw_flat_cands: List[Dict[str, Any]] = []
         try:
             import yt_dlp
             flat_opts = {
@@ -515,7 +519,6 @@ Return ONLY valid JSON:
             }
             with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=20)) as ydl_flat:
                 flat_res = ydl_flat.extract_info(license_policy.youtube_search_target(q, max_results=20), download=False)
-            raw_flat_cands: List[Dict[str, Any]] = []
             for entry in ((flat_res or {}).get("entries") or []):
                 if not isinstance(entry, dict):
                     continue
@@ -582,25 +585,35 @@ Return ONLY valid JSON:
                         + short_fmt_bonus
                     ),
                 })
-
-            ranked_flat = rag.rank_video_candidates_for_scene(
-                job_id=job_id,
-                candidates=raw_flat_cands,
-                scene_narration=hook_narration,
-                scene_query=q,
-                topic=topic,
-                subject_entity=canonical_subject or primary_entity or climax_desc,
-                channel_id=channel_id,
-            )
-            for rc in ranked_flat[:6]:
-                cid_rc = rc["id"]
-                candidate_titles[cid_rc] = rc.get("title", "")
-                candidate_uploaders[cid_rc] = rc.get("uploader", "")
-                candidate_views[cid_rc] = int(rc.get("view_count") or 0)
-                if cid_rc not in pooled_flat_by_id or float(rc.get("score", 0)) > float(pooled_flat_by_id[cid_rc].get("score", 0)):
-                    pooled_flat_by_id[cid_rc] = rc
         except Exception as e_flat:
             logger.debug(f"[HookVideoNode] yt_dlp flat pre-filter skip ({q}): {e_flat}")
+        return q_idx, q, raw_flat_cands
+
+    if yt_queries_to_run:
+        with ThreadPoolExecutor(max_workers=min(5, len(yt_queries_to_run))) as flat_pool:
+            flat_results = list(flat_pool.map(_run_flat_search_for_query, enumerate(yt_queries_to_run)))
+        for q_idx, q, raw_flat_cands in sorted(flat_results, key=lambda x: x[0]):
+            if not raw_flat_cands:
+                continue
+            try:
+                ranked_flat = rag.rank_video_candidates_for_scene(
+                    job_id=job_id,
+                    candidates=raw_flat_cands,
+                    scene_narration=hook_narration,
+                    scene_query=q,
+                    topic=topic,
+                    subject_entity=canonical_subject or primary_entity or climax_desc,
+                    channel_id=channel_id,
+                )
+                for rc in ranked_flat[:6]:
+                    cid_rc = rc["id"]
+                    candidate_titles[cid_rc] = rc.get("title", "")
+                    candidate_uploaders[cid_rc] = rc.get("uploader", "")
+                    candidate_views[cid_rc] = int(rc.get("view_count") or 0)
+                    if cid_rc not in pooled_flat_by_id or float(rc.get("score", 0)) > float(pooled_flat_by_id[cid_rc].get("score", 0)):
+                        pooled_flat_by_id[cid_rc] = rc
+            except Exception as e_rank:
+                logger.debug(f"[HookVideoNode] RAG flat rank skip ({q}): {e_rank}")
 
     pooled_cands_sorted = sorted(
         pooled_flat_by_id.values(),
@@ -680,12 +693,12 @@ Return ONLY valid JSON:
 
     top_curated_yt_cands = _select_hottest_yt_shorts_with_llm(pooled_cands_sorted) if pooled_cands_sorted else []
 
-    for dl_idx, rc_cand in enumerate(top_curated_yt_cands):
-        if len(candidate_videos) >= 6:
-            break
+    def _download_and_extract_single_short(dl_pair: tuple[int, Dict[str, Any]]) -> List[tuple[int, str, Dict[str, Any]]]:
+        dl_idx, rc_cand = dl_pair
+        results_for_cand: List[tuple[int, str, Dict[str, Any]]] = []
         vid_url_dl = rc_cand["url"]
         q_idx = int(rc_cand.get("q_idx") or dl_idx)
-        out_tmpl = str(hook_cand_dir / f"yt_hook_cand_{q_idx}_%(id)s.%(ext)s")
+        out_tmpl = str(hook_cand_dir / f"yt_hook_cand_{dl_idx}_%(id)s.%(ext)s")
         dl_opts = {
             "quiet": True,
             "no_warnings": True,
@@ -706,11 +719,14 @@ Return ONLY valid JSON:
         except Exception as e_yt:
             logger.debug(f"[HookVideoNode] yt-dlp download skip ({vid_url_dl}): {e_yt}")
 
-        for mp4 in sorted(hook_cand_dir.glob(f"yt_hook_cand_{q_idx}_{rc_cand['id']}.*")):
+        for mp4_sub_idx, mp4 in enumerate(sorted(hook_cand_dir.glob(f"yt_hook_cand_{dl_idx}_{rc_cand['id']}.*"))):
             if mp4.suffix.lower() not in (".mp4", ".webm", ".mkv", ".mov"):
                 continue
             v_str = str(mp4)
-            if mp4.stat().st_size <= 60_000 or v_str in candidate_videos or v_str in validated_peaks:
+            try:
+                if mp4.stat().st_size <= 60_000:
+                    continue
+            except Exception:
                 continue
 
             peak_offset_sec, peak_duration_sec = find_hook_peak_window(
@@ -719,8 +735,7 @@ Return ONLY valid JSON:
                 max_duration=15.0,
             )
             pre_clean_dur = min(max(peak_duration_sec, target_hook_duration_sec, 3.5), 8.5)
-            clean_peak_path = str(hook_cand_dir / f"hook_peak_clean_{cand_seq_idx}.mp4")
-            cand_seq_idx += 1
+            clean_peak_path = str(hook_cand_dir / f"hook_peak_clean_yt_{dl_idx}_{mp4_sub_idx}.mp4")
             try:
                 trim_video(
                     input_path=v_str,
@@ -795,28 +810,49 @@ Return ONLY valid JSON:
                     f"{'; '.join(gate_res.get('issues') or [])}"
                 )
                 Path(clean_peak_path).unlink(missing_ok=True)
-                validated_peaks[v_str] = {"passed": False}
+                results_for_cand.append((dl_idx, v_str, {"passed": False}))
                 continue
 
-            validated_peaks[v_str] = {
-                "passed": True,
-                "peak_offset_sec": peak_offset_sec,
-                "peak_duration_sec": peak_duration_sec,
-                "clean_peak_path": clean_peak_path,
-                "inspect_target": inspect_target,
-            }
-            candidate_videos.append(v_str)
-            if len(candidate_videos) >= 6:
-                break
+            results_for_cand.append((
+                dl_idx,
+                v_str,
+                {
+                    "passed": True,
+                    "peak_offset_sec": peak_offset_sec,
+                    "peak_duration_sec": peak_duration_sec,
+                    "clean_peak_path": clean_peak_path,
+                    "inspect_target": inspect_target,
+                },
+            ))
+        return results_for_cand
+
+    if top_curated_yt_cands and len(candidate_videos) < 6:
+        cands_to_dl = list(enumerate(top_curated_yt_cands[:6]))
+        with ThreadPoolExecutor(max_workers=min(4, len(cands_to_dl))) as dl_pool:
+            dl_batches = list(dl_pool.map(_download_and_extract_single_short, cands_to_dl))
+        for batch in dl_batches:
+            for _dl_i, v_str, peak_meta in batch:
+                if v_str in validated_peaks or v_str in candidate_videos:
+                    continue
+                validated_peaks[v_str] = peak_meta
+                if peak_meta.get("passed") and len(candidate_videos) < 6:
+                    candidate_videos.append(v_str)
+        cand_seq_idx = len(cands_to_dl) + 10
 
     # ── BỔ SUNG ĐA NGUỒN VIDEO (PEXELS HD + PIXABAY HD + WIKIMEDIA COMMONS + NASA VIDEO) CHO DUAL-BEAT HOOK ──
     # Nạp tối đa 2 ứng viên Video HD sạch cho Beat 1 (0-1.8s) và Beat 2 (1.8-3.5s) để:
     # (1) Tạo nhịp cắt cảnh kép (Dual-Beat Fast-Cut) ngay trong Cảnh 1 chống vuốt bỏ ở giây 1.8s,
     # (2) Cung cấp B-Roll điện ảnh không chữ/watermark cho ngách Tâm lý (CINEMATIC_BROLL_FAST_CUT).
-    if len(candidate_videos) < 6 and not is_3d_cgi_subject:
+    need_multi_source_broll = (
+        not is_3d_cgi_subject
+        and (
+            len(candidate_videos) < 2
+            or (hook_production_strategy == "CINEMATIC_BROLL_FAST_CUT" and len(candidate_videos) < 4)
+        )
+    )
+    if need_multi_source_broll:
         try:
             from app.agents.media_agent import MediaAgent
-            m_agent = MediaAgent()
             multi_beat_queries: List[str] = []
             for bq in [*stock_broll_queries, beat_1_subject, beat_2_subject, beat_1_query, beat_2_query]:
                 bq_clean = str(bq or "").strip()
@@ -830,29 +866,31 @@ Return ONLY valid JSON:
                 if beat_1_subject and beat_2_subject and beat_1_subject.lower() != beat_2_subject.lower()
                 else (canonical_subject or primary_entity or topic)
             )
-            seen_multi_urls: set = set()
-            added_stock_beats = 0
-            for mb_idx, st_q_hook in enumerate(multi_beat_queries[:3]):
-                if added_stock_beats >= 2 or len(candidate_videos) >= 6:
-                    break
-                va_multi_src = {
-                    "analysis_source": "ai",
-                    "subject": combined_hook_subjects,
-                    "core_visual_entity": combined_hook_subjects,
-                    "topic": topic,
-                    "search_queries": [st_q_hook] + [q for q in multi_beat_queries[:3] if q != st_q_hook],
-                    "is_hook_scene": True,
-                }
-                best_multi_v = m_agent.search_best_video_clip(
-                    query=st_q_hook,
-                    visual_analysis=va_multi_src,
-                    narration=hook_narration,
-                    topic=topic,
-                )
-                v_url_ms = (best_multi_v or {}).get("url")
-                if v_url_ms and v_url_ms not in seen_multi_urls:
-                    seen_multi_urls.add(v_url_ms)
-                    multi_v_path = str(hook_cand_dir / f"multisrc_hook_cand_{cand_seq_idx}.mp4")
+            broll_queries_to_run = list(enumerate(multi_beat_queries[:2]))
+
+            def _fetch_single_multisrc_beat(mb_pair: tuple[int, str]) -> Optional[tuple[int, str, str, Dict[str, Any], Dict[str, Any]]]:
+                mb_idx, st_q_hook = mb_pair
+                try:
+                    m_agent = MediaAgent()
+                    va_multi_src = {
+                        "analysis_source": "ai",
+                        "subject": combined_hook_subjects,
+                        "core_visual_entity": combined_hook_subjects,
+                        "topic": topic,
+                        "search_queries": [st_q_hook] + [q for q in multi_beat_queries[:3] if q != st_q_hook],
+                        "is_hook_scene": True,
+                    }
+                    best_multi_v = m_agent.search_best_video_clip(
+                        query=st_q_hook,
+                        visual_analysis=va_multi_src,
+                        narration=hook_narration,
+                        topic=topic,
+                    )
+                    v_url_ms = (best_multi_v or {}).get("url")
+                    if not v_url_ms:
+                        return None
+                    seq_id = cand_seq_idx + mb_idx
+                    multi_v_path = str(hook_cand_dir / f"multisrc_hook_cand_{seq_id}.mp4")
                     m_agent.download_file(v_url_ms, multi_v_path)
                     if Path(multi_v_path).exists() and Path(multi_v_path).stat().st_size > 40_000:
                         p_off, p_dur = find_hook_peak_window(
@@ -860,8 +898,7 @@ Return ONLY valid JSON:
                             min_duration=max(target_hook_duration_sec, 3.0),
                             max_duration=15.0,
                         )
-                        clean_ms_path = str(hook_cand_dir / f"hook_peak_clean_{cand_seq_idx}.mp4")
-                        cand_seq_idx += 1
+                        clean_ms_path = str(hook_cand_dir / f"hook_peak_clean_ms_{seq_id}.mp4")
                         trim_video(
                             input_path=multi_v_path,
                             duration_seconds=min(max(p_dur, opening_hook_window_sec, 3.5), 8.5),
@@ -882,7 +919,7 @@ Return ONLY valid JSON:
                             insp_ms, min_short_edge=720, min_sharpness=5.2, check_watermark=True, allow_snow=True, auto_sanitize=True
                         )
                         if ms_gate.get("passed", False):
-                            validated_peaks[multi_v_path] = {
+                            peak_meta_ms = {
                                 "passed": True,
                                 "peak_offset_sec": p_off,
                                 "peak_duration_sec": p_dur,
@@ -891,13 +928,30 @@ Return ONLY valid JSON:
                                 "pre_curated_stock": True,
                                 "vision_score": float(best_multi_v.get("vision_score") or 8.2),
                             }
-                            candidate_videos.append(multi_v_path)
-                            added_stock_beats += 1
-                            candidate_titles[Path(multi_v_path).stem] = str(best_multi_v.get("title") or f"Multi-Source Beat #{mb_idx + 1}")
-                            logger.info(
-                                f"🌐 [HookVideoNode Multi-Source Beat #{mb_idx + 1}] Đã bổ sung video sạch từ '{best_multi_v.get('source', 'stock')}' "
-                                f"cho query '{st_q_hook}': '{best_multi_v.get('title', '')[:50]}'"
-                            )
+                            return mb_idx, st_q_hook, multi_v_path, best_multi_v, peak_meta_ms
+                except Exception as e_b_worker:
+                    logger.debug(f"[HookVideoNode] Multi-source beat worker skip ({st_q_hook}): {e_b_worker}")
+                return None
+
+            if broll_queries_to_run:
+                with ThreadPoolExecutor(max_workers=min(2, len(broll_queries_to_run))) as ms_pool:
+                    ms_results = list(ms_pool.map(_fetch_single_multisrc_beat, broll_queries_to_run))
+                seen_multi_urls: set = set()
+                for ms_item in ms_results:
+                    if not ms_item or len(candidate_videos) >= 6:
+                        continue
+                    mb_idx, st_q_hook, multi_v_path, best_multi_v, peak_meta_ms = ms_item
+                    v_url_ms = str(best_multi_v.get("url") or "")
+                    if v_url_ms in seen_multi_urls:
+                        continue
+                    seen_multi_urls.add(v_url_ms)
+                    validated_peaks[multi_v_path] = peak_meta_ms
+                    candidate_videos.append(multi_v_path)
+                    candidate_titles[Path(multi_v_path).stem] = str(best_multi_v.get("title") or f"Multi-Source Beat #{mb_idx + 1}")
+                    logger.info(
+                        f"🌐 [HookVideoNode Multi-Source Beat #{mb_idx + 1}] Đã bổ sung video sạch từ '{best_multi_v.get('source', 'stock')}' "
+                        f"cho query '{st_q_hook}': '{best_multi_v.get('title', '')[:50]}'"
+                    )
         except Exception as e_ms:
             logger.debug(f"[HookVideoNode] Multi-source video expansion skip: {e_ms}")
 
@@ -909,7 +963,8 @@ Return ONLY valid JSON:
     passing_candidates: List[Dict[str, Any]] = []
     best_candidate: Optional[Dict[str, Any]] = None
 
-    for idx, v_path in enumerate(candidate_videos):
+    def _grade_single_hook_candidate(idx_pair: tuple[int, str]) -> Optional[tuple[int, Dict[str, Any]]]:
+        idx, v_path = idx_pair
         pre_v = validated_peaks.get(v_path)
         if pre_v and pre_v.get("passed"):
             peak_offset_sec = float(pre_v["peak_offset_sec"])
@@ -932,13 +987,11 @@ Return ONLY valid JSON:
                     "passed": True,
                     "reason": f"Pre-curated HD Stock Video Beat (VisionScore={v_sc}/10)",
                 }
-                scored_candidates.append(score_res)
-                passing_candidates.append(score_res)
                 logger.info(
                     f"  📊 [HookVideoGrader] Ứng viên #{idx + 1} ({Path(v_path).name} @Peak {peak_offset_sec:.1f}s, len={peak_duration_sec:.1f}s): "
                     f"Mode=video | Overall={score_res['overall_score']}/10 -> ✅ ĐẠT (Video B-Roll HD đã qua Vision Curation)"
                 )
-                continue
+                return idx, score_res
         else:
             # 3.1. Quét toàn bộ video Short để tìm đúng mốc Peak & đo trọn vẹn độ dài đoạn Peak tự nhiên (tới 15s)
             peak_offset_sec, peak_duration_sec = find_hook_peak_window(
@@ -983,7 +1036,7 @@ Return ONLY valid JSON:
                     f"{'; '.join(gate_res.get('issues') or [])}"
                 )
                 Path(clean_peak_path).unlink(missing_ok=True)
-                continue
+                return None
 
         # 3.2. Trích xuất 3 khung hình đại diện NGAY TẠI ĐOẠN PEAK ĐÃ XỬ LÝ SẠCH (`inspect_target`)
         sheet_path = hook_cand_dir / f"hook_score_sheet_{idx}.jpg"
@@ -1009,7 +1062,7 @@ Return ONLY valid JSON:
             logger.debug(f"[HookVideoNode] Lỗi trích xuất 3 khung hình Peak cho {v_path}: {e_sh}")
 
         if not b64_sheet:
-            continue
+            return None
 
         # 3.3. Gửi 3 khung hình tại đoạn Peak cho Gemini Vision chấm điểm & quyết định nên dùng "video" hay "scene"
         vision_prompt = f"""You are a strict YouTube Shorts Hook Video Quality Grader & Scroll-Stop Director.
@@ -1198,9 +1251,8 @@ Return ONLY valid JSON:
 
         if score_res is None:
             logger.warning(f"⚠️ [HookVideoGrader] Không thể xác thực Gemini Vision cho '{Path(v_path).name}' -> Bỏ qua để tránh lọt video chưa kiểm duyệt!")
-            continue
+            return None
 
-        scored_candidates.append(score_res)
         logger.info(
             f"  📊 [HookVideoGrader] Ứng viên #{idx + 1} ({Path(v_path).name} @Peak {peak_offset_sec:.1f}s, len={peak_duration_sec:.1f}s): "
             f"Mode={score_res['recommended_hook_mode']} | Overall={score_res['overall_score']}/10 "
@@ -1208,11 +1260,22 @@ Return ONLY valid JSON:
             f"ScrollStop={score_res.get('scroll_stop_score', 0.0)}, Clean={score_res['clean_frame_score']}) "
             f"-> {'✅ ĐẠT (Dùng Video Peak)' if score_res['passed'] else '❌ LOẠI (Chuyển sang Tạo Cảnh)'} ({score_res['reason']})"
         )
-        if score_res["passed"]:
-            m_yt_cand = re.search(r"yt_hook_cand_\d+_([A-Za-z0-9_-]{11})", Path(v_path).name)
-            c_vid_id = m_yt_cand.group(1) if m_yt_cand else Path(v_path).stem
-            score_res["view_count"] = int(candidate_views.get(c_vid_id, 0))
-            passing_candidates.append(score_res)
+        return idx, score_res
+
+    if candidate_videos:
+        with ThreadPoolExecutor(max_workers=min(4, len(candidate_videos))) as grade_pool:
+            graded_pairs = list(grade_pool.map(_grade_single_hook_candidate, enumerate(candidate_videos)))
+        for g_item in graded_pairs:
+            if not g_item:
+                continue
+            _g_idx, score_res = g_item
+            v_path = score_res["video_path"]
+            scored_candidates.append(score_res)
+            if score_res["passed"]:
+                m_yt_cand = re.search(r"yt_hook_cand_\d+_([A-Za-z0-9_-]{11})", Path(v_path).name)
+                c_vid_id = m_yt_cand.group(1) if m_yt_cand else Path(v_path).stem
+                score_res["view_count"] = int(candidate_views.get(c_vid_id, 0))
+                passing_candidates.append(score_res)
 
     passing_candidates.sort(
         key=lambda x: (
