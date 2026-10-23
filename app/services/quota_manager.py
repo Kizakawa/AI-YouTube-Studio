@@ -216,12 +216,39 @@ class QuotaManager:
         return [QuotaManager.get_tracker(pid) for pid in sorted(projects)]
 
     @staticmethod
+    def _resolve_channel_cred_dir(channel_id: str) -> Path:
+        """Tìm thư mục credentials/channels/<id> theo channel_id hoặc alias tương đương."""
+        base_ch_dir = Path(settings.CREDENTIALS_DIR) / "channels"
+        direct = base_ch_dir / str(channel_id or "").strip()
+        if direct.exists():
+            return direct
+        alias_map = {
+            "ch_psychology_of_the_world": ["channel_maya"],
+            "channel_maya": ["ch_psychology_of_the_world"],
+            "ch_the_mysteries_of_the_world": ["ucsrjiil67qxidtxt70z-iwa"],
+            "ucsrjiil67qxidtxt70z-iwa": ["ch_the_mysteries_of_the_world"],
+            "ch_alternate_history": ["@alternatehistorywhatif-e2x"],
+        }
+        for alt in alias_map.get(str(channel_id or "").strip().lower(), []):
+            cand = base_ch_dir / alt
+            if cand.exists():
+                return cand
+        try:
+            ch_cfg = settings.get_channel_by_id(channel_id) or {}
+            cfg_id = str(ch_cfg.get("id") or "").strip()
+            if cfg_id and (base_ch_dir / cfg_id).exists():
+                return base_ch_dir / cfg_id
+        except Exception:
+            pass
+        return direct
+
+    @staticmethod
     def get_channel_tokens_pool(channel_id: str) -> List[Dict[str, Any]]:
         """
         Quét toàn bộ danh sách các token OAuth liên kết với kênh này (Project Quota Pool).
         Cho phép 1 kênh liên kết với nhiều Google Cloud Project để tự động xoay Project khi hết hạn mức.
         """
-        ch_dir = Path(settings.CREDENTIALS_DIR) / "channels" / channel_id
+        ch_dir = QuotaManager._resolve_channel_cred_dir(channel_id)
         if not ch_dir.exists():
             return []
 
@@ -304,7 +331,8 @@ class QuotaManager:
         """
         pool = QuotaManager.get_channel_tokens_pool(channel_id)
         if not pool:
-            def_token = os.path.join(settings.CREDENTIALS_DIR, "channels", channel_id, "youtube_token.json")
+            ch_dir = QuotaManager._resolve_channel_cred_dir(channel_id)
+            def_token = str(ch_dir / "youtube_token.json")
             proj_id = QuotaManager.get_channel_project_id(channel_id)
             return (def_token if os.path.exists(def_token) else None, proj_id)
 
@@ -322,13 +350,13 @@ class QuotaManager:
         Xác định Google Cloud Project ID hiện tại của kênh.
         Nếu kênh có nhiều token, ưu tiên Project đang còn Quota.
         """
-        ch_dir = Path(settings.CREDENTIALS_DIR) / "channels" / channel_id
+        ch_dir = QuotaManager._resolve_channel_cred_dir(channel_id)
         if ch_dir.exists():
             pool = QuotaManager.get_channel_tokens_pool(channel_id)
             if pool:
                 return pool[0]["project_id"]
 
-        ch_token = os.path.join(settings.CREDENTIALS_DIR, "channels", channel_id, "youtube_token.json")
+        ch_token = str(ch_dir / "youtube_token.json")
         if os.path.exists(ch_token):
             try:
                 from app.utils.security import load_encrypted_json

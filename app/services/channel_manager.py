@@ -138,6 +138,10 @@ def get_channel(channel_id: str) -> Optional[Dict[str, Any]]:
     raw_id = str(channel_id).strip()
     mapped_id = LEGACY_CHANNEL_ALIASES.get(raw_id.lower(), raw_id)
     target_lowers = {raw_id.lower(), mapped_id.lower()}
+    for k, v in LEGACY_CHANNEL_ALIASES.items():
+        if k.lower() in target_lowers or v.lower() in target_lowers:
+            target_lowers.add(k.lower())
+            target_lowers.add(v.lower())
 
     cfg = read_channels_yaml()
     for c in cfg.get("channels", []):

@@ -310,9 +310,13 @@ class Settings:
     _CHANNEL_ID_ALIASES: Dict[str, str] = {
         "ch_dark_psychology": "ch_psychology_of_the_world",
         "channel_1": "ch_psychology_of_the_world",
+        "channel_maya": "ch_psychology_of_the_world",
+        "ch_psychology_of_the_world": "channel_maya",
         "channel_2": "ch_wild_odyssey",
         "ch_deep_sea": "ch_the_mysteries_of_the_world",
         "channel_3": "ch_the_mysteries_of_the_world",
+        "ucsrjiil67qxidtxt70z-iwa": "ch_the_mysteries_of_the_world",
+        "ch_the_mysteries_of_the_world": "ucsrjiil67qxidtxt70z-iwa",
         "channel_4": "ch_misterios_do_mundo",
         "ch_alternate_history": "@alternatehistorywhatif-e2x",
         "channel_5": "@alternatehistorywhatif-e2x",
@@ -327,19 +331,36 @@ class Settings:
         raw_target = str(channel_id or "").strip()
         if not raw_target:
             return None
-        targets = {raw_target, cls._CHANNEL_ID_ALIASES.get(raw_target, raw_target)}
+        targets = {raw_target, raw_target.lower(), cls._CHANNEL_ID_ALIASES.get(raw_target, raw_target), cls._CHANNEL_ID_ALIASES.get(raw_target.lower(), raw_target)}
+        for k, v in cls._CHANNEL_ID_ALIASES.items():
+            if k.lower() in targets or v.lower() in targets:
+                targets.add(k)
+                targets.add(v)
+        targets_low = {t.lower() for t in targets if t}
         for ch in cls.get_channels_config() or []:
-            if isinstance(ch, dict) and str(ch.get("id") or "").strip() in targets:
-                return dict(ch)
+            if isinstance(ch, dict):
+                ch_idents = {
+                    str(ch.get("id") or "").strip().lower(),
+                    str(ch.get("youtube_channel_id") or "").strip().lower(),
+                    str(ch.get("handle") or "").strip().lower(),
+                }
+                if targets_low & ch_idents:
+                    return dict(ch)
         for acc in cls.get_accounts_config() or []:
             if not isinstance(acc, dict):
                 continue
             for bc in acc.get("brand_channels") or []:
-                if isinstance(bc, dict) and str(bc.get("id") or "").strip() in targets:
-                    res = dict(bc)
-                    if not res.get("google_account") and acc.get("id"):
-                        res["google_account"] = acc.get("id")
-                    return res
+                if isinstance(bc, dict):
+                    bc_idents = {
+                        str(bc.get("id") or "").strip().lower(),
+                        str(bc.get("youtube_channel_id") or "").strip().lower(),
+                        str(bc.get("handle") or "").strip().lower(),
+                    }
+                    if targets_low & bc_idents:
+                        res = dict(bc)
+                        if not res.get("google_account") and acc.get("id"):
+                            res["google_account"] = acc.get("id")
+                        return res
         return None
 
 settings = Settings()
