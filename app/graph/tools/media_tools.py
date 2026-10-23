@@ -74,32 +74,10 @@ _HIGH_RISK_WATERMARK_CHANNEL_BLOCKLIST = (
 )
 
 _YT_QUERY_FILLER_WORDS = {
-    "cinematic", "4k", "8k", "hd", "edit", "edits", "visuals", "footage", "scene", "scenes",
-    "dramatic", "vertical", "shot", "shots", "video", "clip", "clips", "short", "shorts",
+    "cinematic", "4k", "8k", "hd", "1080p", "edit", "edits", "visuals", "footage", "scene", "scenes",
+    "vertical", "shot", "shots", "video", "clip", "clips", "short", "shorts",
     "movie", "still", "photo", "photograph", "picture", "image",
     "the", "a", "an", "of", "in", "on", "at", "to", "for", "with", "by", "from", "and", "or",
-    "why", "how", "what", "when", "where", "who", "which", "whose", "whom",
-    "does", "do", "did", "is", "are", "was", "were", "can", "could", "would", "should", "will",
-    "not", "even", "never", "nothing", "everything", "anything", "something", "fear", "fears",
-    "retreating", "confused", "frustrated", "wary", "hesitating", "impassive", "futility",
-    "superior", "dominance", "calculated", "caution", "acknowledging",
-}
-
-_GENERIC_NON_SUBJECT_WORDS = {
-    "looking", "seeing", "watching", "waiting", "running", "walking", "sitting", "standing",
-    "crying", "sleeping", "hiding", "holding", "pulling", "dragged", "refused", "left", "found",
-    "secret", "hidden", "truth", "story", "moment", "reason", "suddenly", "finally", "never",
-    "inside", "under", "behind", "dark", "cold", "warm", "tiny", "huge", "giant", "old", "new",
-    "aggressive", "emotional", "sad", "happy", "scared", "terrified", "shocking", "heart",
-}
-
-# Các từ đạo cụ vụn vặt hoặc từ trừu tượng khiến câu nhỏ khi tách khỏi kịch bản bị lệch chủ đề khi search
-_DISTRACTOR_PROP_OR_ABSTRACT_WORDS = {
-    "boot", "boots", "bootie", "shoe", "shoes", "leather", "cardboard", "blanket", "towel",
-    "porch", "deck", "doorstep", "hormone", "oxytocin", "chemical", "imprinting", "behaviorist",
-    "behaviorists", "scientist", "scientists", "psychologist", "theory", "phenomenon",
-    "days", "hours", "weeks", "months", "years", "nobody", "knew", "froze", "realized",
-    "inch", "single", "forever", "everything", "changed", "reason", "truth", "secret",
 }
 
 
@@ -319,22 +297,12 @@ MEDIA_DIRECTOR_TOOLS = [
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _extract_subject_anchor_tokens(subject_entity: str, topic: str, search_query: str) -> Set[str]:
-    """Trích xuất tập từ khóa Danh từ Chủ thể bắt buộc phải xuất hiện trong tiêu đề YouTube Short."""
+    """Trích xuất tập token ngữ cảnh từ `subject_entity` / `topic` (không hardcode danh sách loài hay từ khóa cục bộ)."""
     raw = f"{subject_entity or ''} {topic or ''}".strip()
     if not raw:
         raw = search_query or ""
     tokens = re.findall(r"[a-zA-Z]{3,}", raw.lower())
-    anchors = {
-        t for t in tokens
-        if t not in _YT_QUERY_FILLER_WORDS
-        and t not in _GENERIC_NON_SUBJECT_WORDS
-        and t not in _DISTRACTOR_PROP_OR_ABSTRACT_WORDS
-    }
-    if any(k in anchors for k in ("dog", "dogs", "puppy", "puppies", "canine", "retriever", "husky", "shepherd", "stray")):
-        anchors.update({"dog", "dogs", "puppy", "puppies", "golden", "retriever", "stray", "shelter", "pet"})
-    if any(k in anchors for k in ("cat", "cats", "kitten", "kittens", "feline")):
-        anchors.update({"cat", "cats", "kitten", "kittens"})
-    return anchors
+    return {t for t in tokens if t not in _YT_QUERY_FILLER_WORDS}
 
 
 def _clean_yt_search_phrase(
@@ -343,73 +311,21 @@ def _clean_yt_search_phrase(
     max_words: int = 5,
     strip_distractor_props: bool = False,
 ) -> str:
-    """Làm sạch câu truy vấn: bỏ từ nhiễu (4k, edit, cinematic), tùy chọn bỏ đạo cụ gây nhiễu và đảm bảo có chủ thể."""
+    """
+    Chuẩn hóa nhẹ câu truy vấn do LLM sinh ra:
+    - Chỉ loại bỏ các tag kỹ thuật thừa (`4k`, `8k`, `hd`, `short`, `shorts`) và giới hạn độ dài `max_words`.
+    - TÔN TRỌNG 100% câu truy vấn của LLM: Không dùng danh sách từ khóa cứng để ép ghép `subject_entity` đè lên truy vấn của LLM
+      (chỉ dùng `subject_entity` làm dự phòng khi câu truy vấn `q` bị rỗng).
+    """
+    _ = strip_distractor_props
     words = re.findall(r"[a-zA-Z0-9]+", q or "")
-    core = []
-    for w in words:
-        wl = w.lower()
-        if wl in _YT_QUERY_FILLER_WORDS or len(w) < 2:
-            continue
-        if strip_distractor_props and wl in _DISTRACTOR_PROP_OR_ABSTRACT_WORDS:
-            continue
-        core.append(w)
-
-    subj_words = [
-        w for w in re.findall(r"[a-zA-Z0-9]+", subject_entity or "")
-        if w.lower() not in _YT_QUERY_FILLER_WORDS
-        and w.lower() not in _DISTRACTOR_PROP_OR_ABSTRACT_WORDS
-        and len(w) >= 3
-    ]
-    core_lower = {w.lower() for w in core}
-    # Nếu câu truy vấn của cảnh đã có danh từ loài vật riêng biệt (như "alpha male lion" trong kịch bản Honey Badger vs Lion),
-    # không chèn cứng subject_entity vào đầu làm hỏng truy vấn Pexels ("Honey Badger alpha male lion")!
-    distinct_animals = {
-        "lion", "lions", "tiger", "tigers", "leopard", "leopards", "jaguar", "jaguars", "cheetah",
-        "hyena", "hyenas", "crocodile", "crocodiles", "alligator", "caiman", "hippo", "hippopotamus",
-        "cobra", "python", "snake", "snakes", "eagle", "hawk", "shark", "orca", "whale", "bear", "wolf", "wolves",
-        "badger", "badgers", "wolverine", "elephant", "rhino", "gorilla", "komodo",
-    }
-    has_own_animal = any(w in distinct_animals for w in core_lower)
-    if not has_own_animal or len(core) <= 1:
-        for sw in reversed(subj_words[:2]):
-            if sw.lower() not in core_lower:
-                core.insert(0, sw)
-                core_lower.add(sw.lower())
+    core = [w for w in words if w.lower() not in _YT_QUERY_FILLER_WORDS and len(w) >= 2]
+    if not core and subject_entity:
+        core = [
+            w for w in re.findall(r"[a-zA-Z0-9]+", subject_entity)
+            if w.lower() not in _YT_QUERY_FILLER_WORDS and len(w) >= 2
+        ]
     return " ".join(core[:max_words]).strip()
-
-
-def _is_meaningless_or_prop_distracted_when_split(
-    narration: str,
-    scene_query: str,
-    subject_entity: str,
-) -> bool:
-    """
-    Kiểm tra xem câu văn của cảnh khi chia nhỏ ra có bị:
-    1. Vô nghĩa / quá ngắn / chỉ là câu chuyển ý trừu tượng ("For three days nobody knew why...")
-    2. Hoặc bị đạo cụ phụ làm lệch hướng tìm kiếm ("old leather boot", "oxytocin hormone", "behaviorists call this")
-    Nếu trả về True -> Bắt buộc chuyển sang chế độ `SCRIPT_OVERALL` (đi search tổng thể xoay quanh kịch bản)!
-    """
-    q_tokens = [w.lower() for w in re.findall(r"[a-zA-Z]{3,}", scene_query or "")]
-    narr_tokens = [w.lower() for w in re.findall(r"[a-zA-Z]{3,}", narration or "")]
-
-    # Nếu câu truy vấn chứa các từ đạo cụ/trừu tượng dễ làm lệch kết quả search (VD: "boot", "hormone", "behaviorist")
-    distractor_hits = sum(1 for t in q_tokens if t in _DISTRACTOR_PROP_OR_ABSTRACT_WORDS)
-    if distractor_hits >= 1:
-        return True
-
-    # Kiểm tra xem câu thoại sau khi bỏ các từ chung chung và từ chủ thể còn lại từ hành động/bối cảnh thực chất nào không
-    subj_tokens = {w.lower() for w in re.findall(r"[a-zA-Z]{3,}", subject_entity or "")}
-    meaningful_scene_words = [
-        t for t in narr_tokens
-        if t not in _YT_QUERY_FILLER_WORDS
-        and t not in _GENERIC_NON_SUBJECT_WORDS
-        and t not in _DISTRACTOR_PROP_OR_ABSTRACT_WORDS
-        and t not in subj_tokens
-    ]
-    if len(meaningful_scene_words) <= 1:
-        return True
-
-    return False
 
 
 def _resolve_adaptive_search_queries(
@@ -423,55 +339,28 @@ def _resolve_adaptive_search_queries(
     max_words: int = 5,
 ) -> Tuple[str, List[str]]:
     """
-    Trả về `(effective_scope, ordered_queries)` theo đúng nguyên tắc của người dùng:
-    - Nếu chia nhỏ câu văn ra đi search mà VẪN CÓ NGHĨA (`SCENE_SPECIFIC`):
-      Ưu tiên số 1 là `scene_query` (câu nhỏ), tiếp theo mới đến `overall_script_query` (tổng thể kịch bản).
-    - Nếu chia nhỏ câu văn ra bị VÔ NGHĨA hoặc LỆCH CHỦ ĐỀ (`SCRIPT_OVERALL`):
-      Ưu tiên số 1 là `overall_script_query` (xoay quanh tổng thể kịch bản), loại bỏ các từ đạo cụ gây nhiễu!
+    Trả về `(effective_scope, ordered_queries)` dựa 100% trên quyết định ngữ nghĩa của LLM Director & LLM Scope Judge:
+    - `SCENE_SPECIFIC`: Ưu tiên số 1 là `scene_query` do LLM viết cho cảnh đó, dự phòng bằng `overall_script_query`.
+    - `SCRIPT_OVERALL`: Ưu tiên số 1 là `overall_script_query` (xoay quanh tổng thể kịch bản), dự phòng bằng `scene_query`.
+    Tuyệt đối không dùng từ khóa cứng trong code để ghi đè `search_scope` của LLM.
     """
+    _ = narration
     scope_norm = (search_scope or "SCENE_SPECIFIC").strip().upper()
     if scope_norm not in ("SCENE_SPECIFIC", "SCRIPT_OVERALL"):
         scope_norm = "SCENE_SPECIFIC"
 
-    # Tự động phát hiện nếu câu nhỏ thực chất bị vô nghĩa hoặc vướng đạo cụ gây nhiễu (như "old leather boot")
-    if scope_norm == "SCENE_SPECIFIC" and _is_meaningless_or_prop_distracted_when_split(
-        narration=narration,
-        scene_query=scene_query,
-        subject_entity=subject_entity,
-    ):
-        scope_norm = "SCRIPT_OVERALL"
-
     overall_base = overall_script_query or topic or subject_entity
-    q_overall = _clean_yt_search_phrase(
-        overall_base,
-        subject_entity=subject_entity,
-        max_words=max_words,
-        strip_distractor_props=True,
-    )
+    q_overall = _clean_yt_search_phrase(overall_base, subject_entity=subject_entity, max_words=max_words)
+    q_scene = _clean_yt_search_phrase(scene_query, subject_entity=subject_entity, max_words=max_words)
     q_fallback = _clean_yt_search_phrase(
         fallback_query or f"{subject_entity} {topic}",
         subject_entity=subject_entity,
         max_words=max_words,
-        strip_distractor_props=True,
     )
 
     if scope_norm == "SCRIPT_OVERALL":
-        # Câu nhỏ vô nghĩa khi tách lẻ -> Lấy nội dung xoay quanh TỔNG THỂ KỊCH BẢN làm gốc!
-        q_scene_cleaned = _clean_yt_search_phrase(
-            scene_query,
-            subject_entity=subject_entity,
-            max_words=max_words,
-            strip_distractor_props=True,
-        )
-        ordered = [q for q in dict.fromkeys([q_overall, q_scene_cleaned, q_fallback]) if q]
+        ordered = [q for q in dict.fromkeys([q_overall, q_scene, q_fallback]) if q]
     else:
-        # Câu nhỏ vẫn có nghĩa rõ ràng -> Cứ thế search trực tiếp câu nhỏ trước, dự phòng bằng tổng thể kịch bản!
-        q_scene = _clean_yt_search_phrase(
-            scene_query,
-            subject_entity=subject_entity,
-            max_words=max_words,
-            strip_distractor_props=False,
-        )
         ordered = [q for q in dict.fromkeys([q_scene, q_overall, q_fallback]) if q]
 
     return scope_norm, ordered
@@ -768,29 +657,7 @@ def _search_youtube_flat_cached(
 
             title_lower = title.lower()
             anchor_hits = sum(1 for a in subject_anchors if a in title_lower)
-            if subject_anchors and anchor_hits == 0:
-                continue
-
             action_hits = sum(1 for tok in all_query_tokens if tok in title_lower)
-            # Thưởng điểm cho ứng viên YouTube có tín hiệu hành động cao trào / cận cảnh kịch tính,
-            # và phạt nặng các clip thụ động (nằm ngủ, sở thú, thư giãn, nhạc nền)
-            peak_intensity_bonus = (
-                42.0
-                if re.search(
-                    r"\b(?:attack|ambush|hunt|hunting|strike|bite|catch|fight|chase|jump|leap|dive|diving|roar|eruption|explosion|shockwave|rescue|saved|closeup|close\-up|encounter|wild|underwater|deep\s+sea|sonar)\b",
-                    title_lower,
-                )
-                else 0.0
-            )
-            passive_clip_penalty = (
-                -65.0
-                if re.search(
-                    r"\b(?:sleeping|napping|relaxing|ambient|ASMR|zoo\s+tour|petting\s+zoo|feeding\s+time|slideshow|wallpaper|screensaver|1\s+hour|10\s+hours)\b",
-                    title_lower,
-                    re.IGNORECASE,
-                )
-                else 0.0
-            )
             views = int(entry.get("view_count") or 0)
             viral_boost = (
                 65.0 if views >= 10_000_000 else
@@ -800,10 +667,8 @@ def _search_youtube_flat_cached(
             )
             short_fmt_bonus = 25.0 if (0 < dur <= 75) else 0.0
             score = (
-                (anchor_hits * 85.0)
-                + (action_hits * 45.0)
-                + peak_intensity_bonus
-                + passive_clip_penalty
+                (anchor_hits * 65.0)
+                + (action_hits * 35.0)
                 + min(views / 15000.0, 75.0)
                 + viral_boost
                 + short_fmt_bonus
@@ -819,6 +684,130 @@ def _search_youtube_flat_cached(
             })
 
     candidates.sort(key=lambda x: x["score"], reverse=True)
+    return candidates
+
+
+def _rank_youtube_candidates_with_llm(
+    candidates: List[Dict[str, Any]],
+    topic: str,
+    subject_entity: str,
+    narration: str,
+    search_query: str,
+    clip_role: str = "PEAK",
+    allow_3d_cgi_monster: bool = False,
+) -> List[Dict[str, Any]]:
+    """
+    Bộ não LLM Batch Candidate Selector cho YouTube Shorts:
+    - Thay thế hoàn toàn kiểu lọc từ khóa cứng (`anchor_hits == 0` hoặc regex động từ hành động).
+    - Gửi danh sách tối đa 20 ứng viên YouTube (`id`, `title`, `uploader`, `duration`, `view_count`) trong 1 lần gọi JSON duy nhất
+      để LLM đánh giá ngữ nghĩa: chọn ra các video đúng chủ thể, giàu kịch tính/chuyển động thị giác phù hợp với câu thoại `narration`
+      và loại bỏ các video lạc đề, thụ động, tổng hợp lan man hoặc trò chơi điện tử.
+    """
+    if not candidates or len(candidates) <= 1:
+        return candidates
+
+    pool = candidates[:20]
+    remainder = candidates[20:]
+    items_for_llm = [
+        {
+            "id": str(c.get("id") or ""),
+            "title": str(c.get("title") or "")[:110],
+            "channel": str(c.get("uploader") or "")[:45],
+            "duration_s": round(float(c.get("duration") or 0.0), 1),
+            "views": int(c.get("view_count") or 0),
+        }
+        for c in pool
+    ]
+    mode_desc = (
+        "Photorealistic 3D CGI / Unreal Engine 5 / Megalophobia / Thalassophobia scale animation (REJECT 2D cartoons, Minecraft, Roblox, GMod, Lego, tier lists, reactions)"
+        if allow_3d_cgi_monster
+        else "Real-world high-impact documentary / authentic footage (REJECT cartoons, video games, slideshows, sleeping/passive pet videos, talking-head explainers, or wrong species/subjects)"
+    )
+
+    prompt = f"""You are the Lead LLM Video Candidate Curator for a viral YouTube Shorts studio.
+Topic: "{topic}"
+Primary Subject: "{subject_entity or topic}"
+Scene Role: "{clip_role}"
+Scene Narration: "{narration}"
+Target Search Query: "{search_query}"
+Required Visual Mode: {mode_desc}
+
+Candidate YouTube Videos:
+{json.dumps(items_for_llm, ensure_ascii=False)}
+
+TASK:
+1. Semantically evaluate each candidate title + channel + duration + views against the Topic, Primary Subject, and Scene Narration (understand synonyms, scientific names, and contextual meaning—do NOT rely on naive exact word matching).
+2. REJECT any candidate that is off-topic, shows the wrong subject/species, is a passive/boring clip (e.g., sleeping, screensaver, 1-hour loop), or is a reaction/gaming/tier-list/compilation video.
+3. Score the approved candidates from 0.0 to 10.0 based on how well they deliver a dramatic, high-retention visual moment for this scene.
+
+Return ONLY valid JSON in this exact format:
+{{
+  "approved": [
+    {{"id": "video_id", "llm_score": 9.4}}
+  ],
+  "rejected_ids": ["bad_video_id_1"]
+}}"""
+
+    try:
+        import requests
+        from app.utils.key_rotator import KeyRotator, GEMINI_PRIORITY_MODELS
+
+        keys = settings.get_gemini_keys_pool()
+        rotator = KeyRotator(keys) if keys else None
+        if rotator and rotator.has_keys:
+            for model_name, api_key in rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS, max_total_attempts=4):
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+                gen_cfg: Dict[str, Any] = {"temperature": 0.1}
+                if not model_name.startswith("gemma-"):
+                    gen_cfg["responseMimeType"] = "application/json"
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": gen_cfg,
+                }
+                try:
+                    resp = requests.post(url, json=payload, timeout=10)
+                    if resp.status_code == 200:
+                        cands_resp = resp.json().get("candidates") or []
+                        if cands_resp:
+                            txt_out = "".join(p.get("text", "") for p in cands_resp[0].get("content", {}).get("parts", []))
+                            m = re.search(r"\{.*\}", txt_out, re.DOTALL)
+                            if m:
+                                data = json.loads(m.group(0))
+                                approved_map = {
+                                    str(item.get("id") or ""): float(item.get("llm_score") or 0.0)
+                                    for item in (data.get("approved") or [])
+                                    if isinstance(item, dict) and item.get("id")
+                                }
+                                rejected_set = {
+                                    str(rid) for rid in (data.get("rejected_ids") or []) if rid
+                                }
+                                if approved_map or rejected_set:
+                                    curated_pool: List[Dict[str, Any]] = []
+                                    for c in pool:
+                                        cid = str(c.get("id") or "")
+                                        if cid in rejected_set and cid not in approved_map:
+                                            continue
+                                        c_copy = dict(c)
+                                        if cid in approved_map:
+                                            llm_s = approved_map[cid]
+                                            if llm_s < 4.5:
+                                                continue
+                                            c_copy["llm_score"] = llm_s
+                                            c_copy["score"] = float(c_copy.get("score") or 0.0) + (llm_s * 35.0)
+                                        curated_pool.append(c_copy)
+                                    if curated_pool:
+                                        curated_pool.sort(
+                                            key=lambda x: (float(x.get("llm_score") or 0.0), float(x.get("score") or 0.0)),
+                                            reverse=True,
+                                        )
+                                        return curated_pool + remainder
+                    elif resp.status_code in (429, 403, 404, 503):
+                        rotator.mark_model_rate_limited(api_key, model_name, status_code=resp.status_code, error_text=resp.text[:200])
+                except Exception:
+                    continue
+    except Exception as ex:
+        logger.debug(f"[LLM YouTube Candidate Selector] Fallback pass: {ex}")
+
     return candidates
 
 
@@ -898,8 +887,6 @@ def execute_youtube_short_peak_clone_sync(
         search_phrases = [q for q in dict.fromkeys(monster_yt_phrases) if q][:4]
 
     subject_anchors = _extract_subject_anchor_tokens(subject_entity, topic, search_phrases[0] if search_phrases else search_query)
-    if allow_3d_cgi_monster:
-        subject_anchors.update({"monster", "leviathan", "bloop", "kraken", "megalodon", "cthulhu", "creature", "megalophobia", "thalassophobia"})
 
     logger.info(
         f"🎯 [YouTubePeakTool + MiniRAG] Scene=#{eff_scene_id} | Scope={effective_scope} | Role={clip_role} | "
@@ -925,16 +912,19 @@ def execute_youtube_short_peak_clone_sync(
             from app.graph.evaluators.visual_critic import VisualCritic
 
             candidates = _search_youtube_flat_cached(search_phrases, subject_anchors, all_query_tokens)
-            if allow_3d_cgi_monster:
-                _monster_yt_bad = ("tier list", "explained", "minecraft", "roblox", "gmod", "garry", "lego", "podcast", "reaction")
-                candidates = [
-                    c for c in candidates
-                    if not any(b_tok in str(c.get("title") or "").lower() for b_tok in _monster_yt_bad)
-                ]
             unused_cands = [
                 c for c in candidates
                 if not is_media_already_used(c["url"], used) and f"yt:{c['id']}" not in used
             ]
+            unused_cands = _rank_youtube_candidates_with_llm(
+                candidates=unused_cands,
+                topic=topic,
+                subject_entity=subject_entity or topic,
+                narration=narration,
+                search_query=search_phrases[0] if search_phrases else search_query,
+                clip_role=clip_role,
+                allow_3d_cgi_monster=allow_3d_cgi_monster,
+            )
             ordered_cands = rag.rank_video_candidates_for_scene(
                 job_id=job_id,
                 candidates=unused_cands,
@@ -1476,8 +1466,8 @@ def execute_google_cinematic_image_sync(
     )
 
     subj = (subject_entity or "").strip()
-    if not subj or (len(subj.split()) == 1 and subj.lower() in _GENERIC_NON_SUBJECT_WORDS):
-        subj = _clean_yt_search_phrase(overall_script_query or topic, max_words=3, strip_distractor_props=True) or search_qs[0]
+    if not subj:
+        subj = _clean_yt_search_phrase(overall_script_query or topic, max_words=3) or (search_qs[0] if search_qs else smart_query)
 
     primary_q = search_qs[0] if search_qs else smart_query
     logger.info(
@@ -2385,175 +2375,62 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
 
     final_plan: List[Dict[str, Any]] = []
     motion_cycle = ["zoom_in", "pan_right", "zoom_out", "pan_left"]
-    niche_norm_dir = str(channel_niche or "").strip().lower()
-    is_rescue_niche = any(k in niche_norm_dir for k in ("rescue", "pet", "paws", "wholesome", "animal_rescue"))
-    is_rescue_or_wildlife = is_rescue_niche or any(k in niche_norm_dir for k in ("animal", "wildlife", "predator"))
-    # Phân bổ hạn ngạch Video chuyển động thật theo ngách để chống tụt AVD ở giây 11-17:
-    # - Kênh Cứu hộ động vật (Paws & Hearts Rescue): Ưu tiên 75%-85% cảnh là Video quay thật liên tục ({1..7}).
-    # - Tất cả các ngách khác: Bắt buộc có Hook Video (Cảnh 1+2), Mid-Video Re-Hook (Cảnh 4 - giây 10-15) và Climax Video (Cảnh 5+6).
-    if is_rescue_niche:
-        peak_indices = {1, 2, 3, 4, 5, 6, 7}
-        max_video_peak_scenes = max(6, total_scenes - 1)
-    elif is_rescue_or_wildlife:
-        peak_indices = {1, 2, 3, 4, 5, 6}
-        max_video_peak_scenes = max(5, (total_scenes * 2) // 3)
-    else:
-        peak_indices = {1, 2, 4, 5, 6, 8}
-        max_video_peak_scenes = max(5, (total_scenes * 2) // 3)
-    video_peak_count = 0
-    default_subj = _clean_yt_search_phrase(primary_entity or topic, max_words=3, strip_distractor_props=True)
-    default_overall_q = _clean_yt_search_phrase(topic, subject_entity=default_subj, max_words=5, strip_distractor_props=True)
+    default_subj = _clean_yt_search_phrase(primary_entity or topic, max_words=3)
+    default_overall_q = _clean_yt_search_phrase(topic, subject_entity=default_subj, max_words=5)
 
-    # Nếu LLM đã chọn công cụ chuyên biệt (`summon_epic_monster_cinematic_media` hoặc `fetch_clean_cinematic_portrait_or_broll`)
-    # cho kịch bản này nhưng chỉ trả về functionCall cho một số cảnh đầu, kế thừa quyết định công cụ của LLM cho các cảnh còn lại!
+    # Nếu LLM chỉ trả về functionCall cho một số cảnh đầu và bị thiếu các cảnh cuối,
+    # lấy công cụ chủ đạo mà LLM đã chọn để bù vào các cảnh bị khuyết (TUYỆT ĐỐI không dùng danh sách từ khóa cứng để ép công cụ).
     llm_monster_ref = next(
         (d for d in decisions_by_scene.values() if d.get("tool_name") == "summon_epic_monster_cinematic_media"),
         None,
     )
-    if llm_monster_ref is None:
-        _monster_ctx_low = f"{topic} {primary_entity} {default_subj}".lower()
-        if any(
-            mk in _monster_ctx_low
-            for mk in (
-                "leviathan",
-                "bloop",
-                "kraken",
-                "megalodon",
-                "cthulhu",
-                "kaiju",
-                "godzilla",
-                "titanoboa",
-                "mosasaurus",
-                "sea monster",
-                "colossal monster",
-                "thalassophobia",
-                "megalophobia",
-            )
-        ):
-            llm_monster_ref = {
-                "tool_name": "summon_epic_monster_cinematic_media",
-                "creature_name": default_subj or "colossal sea monster",
-                "scale_anchor_object": "submarine",
-                "overall_script_query": default_overall_q,
-            }
     llm_portrait_ref = next(
         (d for d in decisions_by_scene.values() if d.get("tool_name") == "fetch_clean_cinematic_portrait_or_broll"),
         None,
     )
+    peak_indices = {1, 2, 4, 5, 6}
+    max_video_peak_scenes = max(5, (total_scenes * 2) // 3)
+    video_peak_count = 0
 
     for idx, s in enumerate(scenes):
         sid = int(s.get("scene_id") or (idx + 1))
         if sid in decisions_by_scene:
-            d = decisions_by_scene[sid]
+            # TÔN TRỌNG 100% QUYẾT ĐỊNH CỦA BỘ NÃO LLM CHO TỪNG PHÂN CẢNH (`tool_name`, `search_scope`, `query`, `mode`)
+            d = dict(decisions_by_scene[sid])
             t_chosen = d.get("tool_name", "")
+            d.setdefault("scene_id", sid)
+            d.setdefault("subject_entity", default_subj)
             if not d.get("overall_script_query"):
                 d["overall_script_query"] = default_overall_q
             if not d.get("search_scope"):
                 d["search_scope"] = "SCENE_SPECIFIC"
             if not d.get("camera_motion"):
                 d["camera_motion"] = "hyper_zoom" if sid == 1 else motion_cycle[idx % len(motion_cycle)]
-
-            # Tôn trọng tuyệt đối khi LLM đã chọn 2 công cụ chuyên biệt (`summon_epic_monster_cinematic_media` hoặc `fetch_clean_cinematic_portrait_or_broll`)
-            # Đồng thời: Nếu kịch bản tổng thể đã được LLM xác nhận là Quái Vật (`llm_monster_ref`) hoặc Tâm Lý Học (`llm_portrait_ref`),
-            # đồng bộ hóa luôn các phân cảnh chuyển ý (như "NOAA sensors", "Naval sonar") về cùng công cụ chuyên biệt với `search_scope="SCRIPT_OVERALL"`
-            # để tránh việc cảnh phụ bị lọt sang Pexels lấy video tàu thuyền/tháp thời tiết ban ngày lạc tông!
-            if t_chosen != "summon_epic_monster_cinematic_media" and llm_monster_ref is not None:
-                c_name_inh = _sanitize_tool_arg(llm_monster_ref.get("creature_name"), fallback=default_subj or "colossal sea monster")
-                s_anchor_inh = _sanitize_tool_arg(llm_monster_ref.get("scale_anchor_object"), fallback="submarine")
-                m_mode_force = "3D_CGI_VIDEO" if sid in (1, 2, 4, 5, 6) else "CONCEPT_ART_8K"
-                d = {
-                    "tool_name": "summon_epic_monster_cinematic_media",
-                    "scene_id": sid,
-                    "creature_name": c_name_inh,
-                    "subject_entity": c_name_inh,
-                    "scale_anchor_object": s_anchor_inh,
-                    "monster_media_mode": m_mode_force,
-                    "search_scope": "SCRIPT_OVERALL",
-                    "action_or_concept_query": f"{c_name_inh} {s_anchor_inh} 3d animation",
-                    "overall_script_query": llm_monster_ref.get("overall_script_query") or default_overall_q,
-                    "target_duration_sec": float(s.get("estimated_seconds") or 4.5),
-                    "camera_motion": d.get("camera_motion") or motion_cycle[idx % len(motion_cycle)],
-                    "scope_audited": True,
-                }
-                final_plan.append(d)
-                continue
-
-            if t_chosen != "fetch_clean_cinematic_portrait_or_broll" and llm_portrait_ref is not None and llm_monster_ref is None:
-                d = {
-                    "tool_name": "fetch_clean_cinematic_portrait_or_broll",
-                    "scene_id": sid,
-                    "subject_entity": default_subj,
-                    "human_action_query": llm_portrait_ref.get("human_action_query") or "dramatic portrait dark lighting",
-                    "media_preference": "VIDEO_BROLL" if sid in (1, 2, 3, 5, 6) else "CLEAN_PORTRAIT_PHOTO",
-                    "search_scope": "SCRIPT_OVERALL",
-                    "overall_script_query": llm_portrait_ref.get("overall_script_query") or default_overall_q,
-                    "target_duration_sec": float(s.get("estimated_seconds") or 4.5),
-                    "camera_motion": d.get("camera_motion") or motion_cycle[idx % len(motion_cycle)],
-                    "scope_audited": True,
-                }
-                final_plan.append(d)
-                continue
+            d.setdefault("target_duration_sec", float(s.get("estimated_seconds") or 4.5))
 
             if t_chosen == "summon_epic_monster_cinematic_media":
-                clean_c = _sanitize_tool_arg(d.get("creature_name"), fallback=default_subj or "colossal sea monster")
+                clean_c = _sanitize_tool_arg(d.get("creature_name"), fallback=default_subj or topic)
                 d["creature_name"] = clean_c
                 d["subject_entity"] = _sanitize_tool_arg(d.get("subject_entity"), fallback=clean_c)
                 d["scale_anchor_object"] = _sanitize_tool_arg(d.get("scale_anchor_object"), fallback="submarine")
-                # Đảm bảo ít nhất 5/7 phân cảnh (Cảnh 1, 2, 4, 5, 6) ưu tiên săn Video 3D CGI YouTube Shorts Reup trước khi dùng ảnh tĩnh!
-                if sid in (1, 2, 4, 5, 6):
-                    d["monster_media_mode"] = "3D_CGI_VIDEO"
-                d["scope_audited"] = True
-                final_plan.append(d)
-                continue
-            if t_chosen == "fetch_clean_cinematic_portrait_or_broll":
-                d.setdefault("subject_entity", default_subj)
-                if sid in (1, 2, 3, 5, 6):
-                    d["media_preference"] = "VIDEO_BROLL"
-                d["scope_audited"] = True
-                final_plan.append(d)
-                continue
+                d.setdefault("monster_media_mode", "3D_CGI_VIDEO" if sid == 1 else "CONCEPT_ART_8K")
+            elif t_chosen == "fetch_clean_cinematic_portrait_or_broll":
+                d.setdefault("human_action_query", s.get("visual_keyword") or default_overall_q)
+                d.setdefault("media_preference", "VIDEO_BROLL" if sid == 1 else "CLEAN_PORTRAIT_PHOTO")
+            elif t_chosen == "clone_youtube_short_peak_clip":
+                video_peak_count += 1
+                d.setdefault("clip_role", "HOOK" if sid == 1 else "PEAK")
+                d.setdefault("fallback_broad_query", default_overall_q)
 
-            if sid in peak_indices and video_peak_count < max_video_peak_scenes and t_chosen != "clone_youtube_short_peak_clip":
-                q_vid = d.get("youtube_search_query") or d.get("smart_image_query") or s.get("visual_keyword") or default_overall_q
-                d = {
-                    "tool_name": "clone_youtube_short_peak_clip",
-                    "scene_id": sid,
-                    "subject_entity": d.get("subject_entity") or default_subj,
-                    "search_scope": d.get("search_scope") or "SCENE_SPECIFIC",
-                    "youtube_search_query": q_vid,
-                    "overall_script_query": d.get("overall_script_query") or default_overall_q,
-                    "fallback_broad_query": default_overall_q,
-                    "clip_role": "HOOK" if sid == 1 else "PEAK",
-                    "target_duration_sec": float(s.get("estimated_seconds") or 4.5),
-                    "camera_motion": "hyper_zoom" if sid == 1 else motion_cycle[idx % len(motion_cycle)],
-                }
-            if d.get("tool_name") == "clone_youtube_short_peak_clip":
-                if video_peak_count < max_video_peak_scenes:
-                    video_peak_count += 1
-                else:
-                    q_conv = d.get("youtube_search_query") or d.get("smart_image_query") or s.get("visual_keyword") or default_overall_q
-                    d = {
-                        "tool_name": "search_google_cinematic_image",
-                        "scene_id": sid,
-                        "subject_entity": d.get("subject_entity") or default_subj,
-                        "search_scope": d.get("search_scope") or "SCENE_SPECIFIC",
-                        "smart_image_query": q_conv,
-                        "overall_script_query": d.get("overall_script_query") or default_overall_q,
-                        "camera_motion": d.get("camera_motion") or motion_cycle[idx % len(motion_cycle)],
-                    }
             d["scope_audited"] = True
             final_plan.append(d)
             continue
 
+        # Chỉ chạy nhánh dự phòng khi LLM không trả về tool call cho phân cảnh `sid` này
         narr = s.get("narration", "")
         kw = s.get("visual_keyword") or narr[:50]
-        is_meaningless_split = _is_meaningless_or_prop_distracted_when_split(narr, kw, default_subj)
-        scope = "SCRIPT_OVERALL" if is_meaningless_split else "SCENE_SPECIFIC"
-        clean_kw = (
-            default_overall_q
-            if is_meaningless_split
-            else _clean_yt_search_phrase(kw, subject_entity=default_subj, max_words=5)
-        )
+        scope = "SCENE_SPECIFIC" if s.get("visual_keyword") else "SCRIPT_OVERALL"
+        clean_kw = _clean_yt_search_phrase(kw, subject_entity=default_subj, max_words=5) or default_overall_q
         dur = float(s.get("estimated_seconds") or 4.5)
 
         if llm_monster_ref is not None:
