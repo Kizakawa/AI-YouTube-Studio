@@ -582,14 +582,25 @@ class StockFetcher:
                 visual_keyword=query,
                 used_urls=used,
             )
+            if winner is None and should_ai and len(candidates) > 5:
+                winner, score, rationale, should_ai = VisualCurationAgent().curate_candidate_photos(
+                    candidates=candidates[5:],
+                    visual_analysis=va or None,
+                    narration=narration or query,
+                    topic=topic,
+                    visual_keyword=query,
+                    used_urls=used,
+                )
             if winner is not None:
                 winner["vision_score"] = float(score or 0.0)
-            if not winner:
-                winner = candidates[0]
         except Exception as e:
             logger.debug(f"[StockFetcher] Lỗi curate ảnh: {e}")
+            winner = candidates[0]
 
         if not winner:
+            if should_ai:
+                logger.info(f"[StockFetcher] 🚫 PhotoVisionAudit từ chối các ứng viên ảnh cho '{query}' -> Không lấy bừa candidates[0]!")
+                return None
             winner = candidates[0]
         try:
             from app.agents.media_agent import register_download_fallbacks

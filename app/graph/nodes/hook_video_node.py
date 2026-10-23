@@ -489,8 +489,10 @@ Return ONLY valid JSON:
     )
 
     cand_seq_idx = 0
+    # Với CINEMATIC_BROLL_FAST_CUT (tâm lý học / hành vi con người), ưu tiên 100% kho B-Roll điện ảnh HD sạch
+    # (Pexels/Pixabay) thay vì ytsearch để tránh tải nhầm video webcam/selfie/vlog nghiệp dư trên YouTube Shorts.
     yt_queries_to_run = (
-        queries[:2]
+        []
         if hook_production_strategy == "CINEMATIC_BROLL_FAST_CUT"
         else queries[:5]
     )
@@ -866,7 +868,8 @@ Return ONLY valid JSON:
                 if beat_1_subject and beat_2_subject and beat_1_subject.lower() != beat_2_subject.lower()
                 else (canonical_subject or primary_entity or topic)
             )
-            broll_queries_to_run = list(enumerate(multi_beat_queries[:2]))
+            max_broll_q = 4 if hook_production_strategy == "CINEMATIC_BROLL_FAST_CUT" else 2
+            broll_queries_to_run = list(enumerate(multi_beat_queries[:max_broll_q]))
 
             def _fetch_single_multisrc_beat(mb_pair: tuple[int, str]) -> Optional[tuple[int, str, str, Dict[str, Any], Dict[str, Any]]]:
                 mb_idx, st_q_hook = mb_pair
@@ -1079,7 +1082,7 @@ CRITICAL GRADING CALIBRATION (REAL VIDEO HOOK PRIORITY & PEAK INTENSITY):
 - Real moving video footage of ANY of the core subjects ("{beat_1_subject}", "{beat_2_subject}", or "{primary_entity}") in their authentic natural environment/habitat (stalking, swimming, prowling, hunting, close-up detail, or dramatic motion) is ALWAYS 10x better for a YouTube Shorts Hook than downgrading to static photos ("scene")!
 - Give the HIGHEST scores (8.8–10.0) on "motion_action_score" and "scroll_stop_score" when the frames show high-intensity peak action, close-up confrontation, or dramatic movement matching "{visual_hook_blueprint}".
 - DO NOT reject a real wild video just because it shows stalking/prowling/swimming rather than a literal movie-like explosion/strike, as we combine multiple video beats in a fast-cut!
-- ONLY return "recommended_hook_mode": "scene" (rejecting the video) if the footage shows: (a) the WRONG species/subject not in "{topic}", (b) an animal trapped in an artificial zoo enclosure/concrete wall/cage when wild nature is required, (c) a contradicting biome/season (e.g. snow when tropical jungle is required), (d) a talking head/podcast/vlog, or (e) burned-in subtitles, giant text overlays, or watermarks.
+- ONLY return "recommended_hook_mode": "scene" (rejecting the video) if the footage shows: (a) the WRONG species/subject not in "{topic}", (b) an animal trapped in an artificial zoo enclosure/concrete wall/cage when wild nature is required, (c) a contradicting biome/season (e.g. snow when tropical jungle is required), (d) a talking head/podcast/vlog/amateur webcam selfie in a bedroom or isolated disembodied macro eyeball closeup, or (e) burned-in subtitles, giant text overlays, or watermarks.
 
 Score strictly from 1.0 to 10.0:
 1. "recommended_hook_mode": "video" if it shows any valid subject from "{topic}" in an authentic setting with clean frames; "scene" ONLY if it violates (a)-(e) above.

@@ -184,7 +184,7 @@ class ScriptCritic:
         # hoặc đơn vị đo lường cực đoan (KHÔNG tính các danh từ chung của ngách như psychology/mind/ocean/history/secret/truth)
         has_confrontation_or_shock = bool(
             re.search(
-                r"\b(?:vs\.?|versus|against|contra|refused|crushes|destroys|kills|deadly|impossible|instant|seconds|meters|feet|miles|psi|mph|celsius|degrees|decibels|nunca|jamais|mortal|impossível|foge|ataque|presa|mordida|esmagam|ferve|choque|volts|shocking|terrified|ambush|strike|pierces|boils|paralyzes)\b",
+                r"(?:%|\b(?:vs\.?|versus|against|contra|refused|crushes|destroys|kills|deadly|impossible|instant|second|seconds|minute|minutes|meters|feet|miles|percent|psi|mph|celsius|degrees|decibels|nunca|jamais|mortal|impossível|foge|ataque|presa|mordida|esmagam|ferve|choque|volts|shocking|terrified|ambush|strike|pierces|boils|paralyzes|never|always|expose|exposes|fail|fails|confess|trap|caught|freeze|freezes|panic|liar|liars|guilty)\b)",
                 combined,
                 re.IGNORECASE | re.UNICODE,
             )

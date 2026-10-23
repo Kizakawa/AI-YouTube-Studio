@@ -218,6 +218,7 @@ class VideoPipeline:
                             video_path=video_p,
                             base_image_path=base_img,
                             niche_id=resolved_niche_id,
+                            custom_text=script_dict.get("thumbnail_text"),
                         )
                         t_16x9 = thumb_results.get("thumb_16x9")
                         t_9x16 = thumb_results.get("thumb_9x16")

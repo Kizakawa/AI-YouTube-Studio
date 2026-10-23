@@ -187,13 +187,27 @@ class GraphRunner:
                 except Exception:
                     pass
 
-        # Lấy channel niche / style, language và preferred_voice từ config
+        # Lấy channel niche / style, language và preferred_voice từ config (hỗ trợ cả canonical alias ch_*)
         channels = settings.get_channels_config()
         channel_lang = "en"
         preferred_voice = None
         channel_visual_mode = "auto"
+        from app.services.smart_scheduler import resolve_channel_family
+        from app.database.models import normalize_channel_id
+        family_set = {str(x).strip().lower() for x in resolve_channel_family(channel_id) if x}
+        norm_target = normalize_channel_id(channel_id).lower()
         for ch in channels:
-            if ch.get("id") == channel_id:
+            ch_raw_id = str(ch.get("id") or "").strip()
+            ch_norm_id = normalize_channel_id(ch_raw_id).lower()
+            ch_handle = str(ch.get("handle") or "").strip().lower()
+            ch_name_norm = normalize_channel_id(str(ch.get("name") or "")).lower()
+            if (
+                ch_raw_id.lower() in family_set
+                or ch_norm_id in family_set
+                or ch_norm_id == norm_target
+                or (ch_handle and ch_handle in family_set)
+                or (ch_name_norm and ch_name_norm == norm_target)
+            ):
                 channel_style = ch.get("niche") or ch.get("style") or "general"
                 channel_lang = ch.get("language") or "en"
                 preferred_voice = ch.get("preferred_voice")

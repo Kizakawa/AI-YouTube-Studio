@@ -77,10 +77,11 @@ class ThumbnailService:
         if any(w in full_text for w in ["giải cứu", "chó", "mèo", "bỏ rơi", "rescue"]):
             return "PHÉP MÀU KỲ DIỆU!"
 
-        # Fallback từ tiêu đề ngắn
-        words = re.sub(r"[^\w\s]", " ", viral_title or topic).split()
+        # Fallback từ tiêu đề ngắn (giữ nguyên ký hiệu %, $, - gắn liền với con số như 0%, 3-Second)
+        cleaned_t = re.sub(r"#\S+", " ", viral_title or topic)
+        words = re.sub(r"[^\w\s%$-]", " ", cleaned_t).split()
         if len(words) >= 3:
-            return " ".join(words[:3]).upper() + "!"
+            return " ".join(words[:4] if len(words[0]) <= 3 else words[:3]).upper().rstrip("!?.") + "!"
         return "SỰ THẬT BẤT NGỜ!"
 
     def extract_video_frame(self, video_path: str, timestamp_sec: float = 1.5, output_img_path: str = "") -> Optional[str]:
@@ -290,12 +291,14 @@ class ThumbnailService:
         video_path: Optional[str] = None,
         base_image_path: Optional[str] = None,
         niche_id: str = "general",
+        custom_text: Optional[str] = None,
     ) -> Dict[str, str]:
         """
         Quy trình trọn gói tự động tạo 2 phiên bản Thumbnail (16:9 và 9:16) cho 1 VideoJob.
         Trả về: {'thumb_16x9': path, 'thumb_9x16': path, 'text_hook': str}
         """
-        text_hook = self.derive_curiosity_text(topic=topic, viral_title=viral_title, niche_id=niche_id)
+        clean_custom = re.sub(r"[^\w\s%$!?.:-]", "", str(custom_text or "")).strip()
+        text_hook = clean_custom.upper() if len(clean_custom) >= 4 else self.derive_curiosity_text(topic=topic, viral_title=viral_title, niche_id=niche_id)
 
         # Lựa chọn ảnh gốc: Ưu tiên ảnh gốc sạch (Clean Image) chất lượng cao không dính subtitle/header!
         chosen_base = None
