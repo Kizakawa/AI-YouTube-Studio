@@ -12,13 +12,16 @@ google_accounts:
     name: Psychology of the world
     niche: psychology
     language: en
+    target_timezone: America/New_York
+    affiliate_enabled: false
     visual_mode: auto
     preferred_voice: en-US-AndrewNeural
-    handle: '@VV1n-oe9gs'
+    handle: '@vv1n-oe9gs'
     channel_url: https://www.youtube.com/@VV1n-oe9gs
     video_type: shorts
     format: shorts
     amazon_tag: kizakawa-20
+    paypal_url: ''
     schedule:
       publish_hour_utc: 13
       days:
@@ -26,10 +29,14 @@ google_accounts:
       - wednesday
       - friday
       - sunday
+    youtube_title: Psychology of the world
+    youtube_channel_id: UC1_lVpIlXQ-J4sFrqozfrKw
   - id: ucsrjiil67qxidtxt70z-iwa
     name: The mysteries of the world
     niche: deep_sea_earth_mysteries
     language: en
+    target_timezone: America/New_York
+    affiliate_enabled: false
     visual_mode: auto
     preferred_voice: en-US-BrianNeural
     handle: '@Themysteriesoftheworld-f3w'
@@ -37,13 +44,16 @@ google_accounts:
     video_type: shorts
     format: shorts
     amazon_tag: kizakawa-20
+    paypal_url: ''
     schedule:
-      publish_hour_utc: 13
+      publish_hour_utc: 21
       days:
       - monday
       - wednesday
       - friday
       - sunday
+    youtube_title: The mysteries of the world
+    youtube_channel_id: UCsRjIIl67QxIDtXT70z-iwA
 - id: acount_2
   email_label: pool2.studio@example.com
   drive_storage: 2 TB Google One
@@ -57,11 +67,14 @@ google_accounts:
     name: Paws & Hearts Rescue
     niche: animal_rescue
     language: en
+    target_timezone: America/New_York
+    affiliate_enabled: true
     visual_mode: auto
     preferred_voice: en-US-JennyNeural
     video_type: shorts
     format: shorts
     amazon_tag: kizakawa-20
+    paypal_url: ''
     schedule:
       publish_hour_utc: 12
       days:
@@ -77,11 +90,14 @@ google_accounts:
     name: Wild Odyssey
     niche: wildlife_predators
     language: en
+    target_timezone: America/New_York
+    affiliate_enabled: false
     visual_mode: auto
     preferred_voice: en-US-ChristopherNeural
     video_type: shorts
     format: shorts
     amazon_tag: kizakawa-20
+    paypal_url: ''
     schedule:
       publish_hour_utc: 12
       days:
@@ -93,6 +109,60 @@ google_accounts:
     youtube_channel_id: UClsJHbVjjXI-j16VzXXs68A
     handle: '@wildodysseyhq'
     channel_url: https://www.youtube.com/channel/UClsJHbVjjXI-j16VzXXs68A
+  - id: ch_odisseia_selvagem
+    name: Odisseia Selvagem
+    niche: wildlife_predators
+    language: pt-BR
+    target_timezone: America/Sao_Paulo
+    affiliate_enabled: true
+    visual_mode: auto
+    preferred_voice: pt-BR-AntonioNeural
+    video_type: shorts
+    format: shorts
+    amazon_tag: kizakawa-20
+    amazon_br_tag: odisseia07-20
+    paypal_url: ''
+    youtube_title: Odisseia Selvagem
+    youtube_channel_id: UCPbqS4H5qugPU3HcqJG-P9w
+    handle: '@odisseiaselvagemoficial'
+    channel_url: https://www.youtube.com/channel/UCPbqS4H5qugPU3HcqJG-P9w
+    schedule:
+      publish_hour_utc: 23
+      days:
+      - monday
+      - wednesday
+      - friday
+      - sunday
+    default_language: pt-BR
+    default_audio_language: pt-BR
+    description_tags: jaguar,anaconda,onça,animais,natureza,predador,amazônia,shorts,wildlife,selvagem
+  - id: ch_misterios_do_mundo
+    name: Mistérios do Mundo
+    niche: deep_sea_earth_mysteries
+    language: pt-BR
+    target_timezone: America/Sao_Paulo
+    affiliate_enabled: true
+    visual_mode: auto
+    preferred_voice: pt-BR-AntonioNeural
+    video_type: shorts
+    format: shorts
+    amazon_tag: kizakawa-20
+    amazon_br_tag: misterios07-20
+    paypal_url: ''
+    youtube_title: Mistérios do Mundo
+    youtube_channel_id: UCVfONQ9jcpvVvZe8e1CGNng
+    handle: '@misteriosdomundo-tv'
+    channel_url: https://www.youtube.com/channel/UCVfONQ9jcpvVvZe8e1CGNng
+    schedule:
+      publish_hour_utc: 1
+      days:
+      - tuesday
+      - thursday
+      - saturday
+      - sunday
+    default_language: pt-BR
+    default_audio_language: pt-BR
+    description_tags: oceano,mistério,mar profundo,terra,fenômenos,bizarro,inacreditável,shorts,misterio,mundo
 - id: accout3
   email_label: pool3.studio@example.com
   drive_storage: 2 TB Google One
@@ -103,12 +173,17 @@ google_accounts:
     drive_token: credentials/accounts/accout3/drive_token.json
   brand_channels:
   - id: '@alternatehistorywhatif-e2x'
-    name: Alternate History & "What If?
-    niche: history_mystery
+    name: Alternate History & "What If?"
+    niche: alternate_history
     language: en
+    target_timezone: America/New_York
+    affiliate_enabled: false
     visual_mode: auto
-    preferred_voice: en-US-GuyNeural
+    preferred_voice: en-US-ChristopherNeural
+    video_type: shorts
+    format: shorts
     amazon_tag: kizakawa-20
+    paypal_url: ''
     schedule:
       publish_hour_utc: 12
       days:
@@ -116,72 +191,186 @@ google_accounts:
       - wednesday
       - friday
       - sunday
-    youtube_title: Alternate History & "What If?
+    youtube_title: Alternate History & "What If?"
     youtube_channel_id: UC_ozpYzTlOiHZdRAACGH4Qg
     channel_url: https://www.youtube.com/channel/UC_ozpYzTlOiHZdRAACGH4Qg
     handle: '@alternatehistorywhatif-e2x'
+- id: project_pool_2
+  email_label: pool2.studio@example.com
+  drive_storage: N/A
+  youtube_quota_daily: 10000
+  credentials:
+    client_secret: credentials/accounts/project_pool_2/client_secret.json
+  brand_channels: []
 channels:
 - id: channel_maya
   name: Psychology of the world
-  handle: '@VV1n-oe9gs'
+  handle: '@vv1n-oe9gs'
   channel_url: https://www.youtube.com/@VV1n-oe9gs
   niche: psychology
   language: en
+  target_timezone: America/New_York
   google_account: account_1
   visual_mode: auto
   preferred_voice: en-US-AndrewNeural
   video_type: shorts
   format: shorts
   amazon_tag: kizakawa-20
+  paypal_url: ''
+  youtube_title: Psychology of the world
+  youtube_channel_id: UC1_lVpIlXQ-J4sFrqozfrKw
+  schedule:
+    publish_hour_utc: 13
+    days:
+    - monday
+    - wednesday
+    - friday
+    - sunday
 - id: ucsrjiil67qxidtxt70z-iwa
   name: The mysteries of the world
-  handle: '@Themysteriesoftheworld-f3w'
+  handle: '@themysteriesoftheworld-f3w'
   channel_url: https://www.youtube.com/@Themysteriesoftheworld-f3w
   niche: deep_sea_earth_mysteries
   language: en
+  target_timezone: America/New_York
   google_account: account_1
   visual_mode: auto
   preferred_voice: en-US-BrianNeural
   video_type: shorts
   format: shorts
   amazon_tag: kizakawa-20
+  paypal_url: ''
+  youtube_title: The mysteries of the world
+  youtube_channel_id: UCsRjIIl67QxIDtXT70z-iwA
+  schedule:
+    publish_hour_utc: 21
+    days:
+    - monday
+    - wednesday
+    - friday
+    - sunday
 - id: ch_paws_hearts_rescue
   name: Paws & Hearts Rescue
   niche: animal_rescue
   language: en
+  target_timezone: America/New_York
   google_account: acount_2
   visual_mode: auto
   preferred_voice: en-US-JennyNeural
   video_type: shorts
   format: shorts
   amazon_tag: kizakawa-20
+  paypal_url: ''
   youtube_title: Paws & Hearts Rescue
   youtube_channel_id: UCv-2dYUQKx1u0CjqdmzDHTA
   channel_url: https://www.youtube.com/channel/UCv-2dYUQKx1u0CjqdmzDHTA
   handle: '@pawsandheartsrescue'
+  schedule:
+    publish_hour_utc: 12
+    days:
+    - monday
+    - wednesday
+    - friday
+    - sunday
 - id: ch_wild_odyssey
   name: Wild Odyssey
   niche: wildlife_predators
   language: en
+  target_timezone: America/New_York
   google_account: acount_2
   visual_mode: auto
   preferred_voice: en-US-ChristopherNeural
   video_type: shorts
   format: shorts
   amazon_tag: kizakawa-20
+  paypal_url: ''
   youtube_title: Wild Odyssey
   youtube_channel_id: UClsJHbVjjXI-j16VzXXs68A
   handle: '@wildodysseyhq'
   channel_url: https://www.youtube.com/channel/UClsJHbVjjXI-j16VzXXs68A
+  schedule:
+    publish_hour_utc: 12
+    days:
+    - monday
+    - wednesday
+    - friday
+    - sunday
+- id: ch_odisseia_selvagem
+  name: Odisseia Selvagem
+  niche: wildlife_predators
+  language: pt-BR
+  target_timezone: America/Sao_Paulo
+  google_account: acount_2
+  visual_mode: auto
+  preferred_voice: pt-BR-AntonioNeural
+  video_type: shorts
+  format: shorts
+  amazon_tag: kizakawa-20
+  amazon_br_tag: odisseia07-20
+  paypal_url: ''
+  youtube_title: Odisseia Selvagem
+  youtube_channel_id: UCPbqS4H5qugPU3HcqJG-P9w
+  handle: '@odisseiaselvagemoficial'
+  channel_url: https://www.youtube.com/channel/UCPbqS4H5qugPU3HcqJG-P9w
+  affiliate_enabled: true
+  default_language: pt-BR
+  default_audio_language: pt-BR
+  schedule:
+    publish_hour_utc: 23
+    days:
+    - monday
+    - wednesday
+    - friday
+    - sunday
+  description_tags: jaguar,anaconda,onça,animais,natureza,predador,amazônia,shorts,wildlife,selvagem
+- id: ch_misterios_do_mundo
+  name: Mistérios do Mundo
+  niche: deep_sea_earth_mysteries
+  language: pt-BR
+  target_timezone: America/Sao_Paulo
+  google_account: acount_2
+  visual_mode: auto
+  preferred_voice: pt-BR-AntonioNeural
+  video_type: shorts
+  format: shorts
+  amazon_tag: kizakawa-20
+  amazon_br_tag: misterios07-20
+  paypal_url: ''
+  youtube_title: Mistérios do Mundo
+  youtube_channel_id: UCVfONQ9jcpvVvZe8e1CGNng
+  handle: '@misteriosdomundo-tv'
+  channel_url: https://www.youtube.com/channel/UCVfONQ9jcpvVvZe8e1CGNng
+  affiliate_enabled: true
+  default_language: pt-BR
+  default_audio_language: pt-BR
+  schedule:
+    publish_hour_utc: 1
+    days:
+    - tuesday
+    - thursday
+    - saturday
+    - sunday
+  description_tags: oceano,mistério,mar profundo,terra,fenômenos,bizarro,inacreditável,shorts,misterio,mundo
 - id: '@alternatehistorywhatif-e2x'
-  name: Alternate History & "What If?
-  niche: history_mystery
+  name: Alternate History & "What If?"
+  niche: alternate_history
   language: en
+  target_timezone: America/New_York
   google_account: accout3
   visual_mode: auto
-  preferred_voice: en-US-GuyNeural
+  preferred_voice: en-US-ChristopherNeural
+  video_type: shorts
+  format: shorts
   amazon_tag: kizakawa-20
-  youtube_title: Alternate History & "What If?
+  paypal_url: ''
+  youtube_title: Alternate History & "What If?"
   youtube_channel_id: UC_ozpYzTlOiHZdRAACGH4Qg
   channel_url: https://www.youtube.com/channel/UC_ozpYzTlOiHZdRAACGH4Qg
   handle: '@alternatehistorywhatif-e2x'
+  schedule:
+    publish_hour_utc: 12
+    days:
+    - monday
+    - wednesday
+    - friday
+    - sunday

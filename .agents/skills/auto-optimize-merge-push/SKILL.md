@@ -8,7 +8,7 @@ description: >-
 
 # Auto-Optimize, Merge & Push to GitHub Skill
 
-This skill defines the mandatory post-implementation workflow for **AI YouTube Studio** (`d:\Python\Youtube`). Whenever you finish writing, refactoring, or fixing code/configuration files, you **MUST** execute this workflow automatically before concluding your response to the user.
+This skill defines the mandatory post-implementation workflow for **AI YouTube Studio** (`d:\AI_YouTube_Project_Ready\AI-youtube-main`). Whenever you finish writing, refactoring, or fixing code/configuration files, you **MUST** execute this workflow automatically before concluding your response to the user.
 
 ---
 
@@ -73,4 +73,3 @@ Before staging any files, review and optimize all modified files:
 4. **Final Verification & Reporting**:
    - Verify clean status and latest commit hash via `git log -n 1 --oneline`.
    - Include the commit hash (e.g., `` `abc1234` ``) in your final Vietnamese summary to the user so they know their code is already optimized, merged, and live on GitHub.
-

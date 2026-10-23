@@ -61,6 +61,36 @@ def _load_dotenv_if_present() -> None:
         pass
 
 
+def _candidate_aes_keys() -> List[bytes]:
+    """Trả về danh sách các khoá AES-256 ứng viên (env key, credentials/.master.key, legacy key)."""
+    keys: List[bytes] = []
+    env_key = os.getenv("ENCRYPTION_MASTER_KEY", "").strip()
+    if env_key:
+        try:
+            k = bytes.fromhex(env_key) if len(env_key) == 64 else hashlib.sha256(env_key.encode("utf-8")).digest()
+            keys.append(k)
+        except Exception:
+            keys.append(hashlib.sha256(env_key.encode("utf-8")).digest())
+
+    master_key_file = ROOT_DIR / "credentials" / ".master.key"
+    if master_key_file.exists():
+        try:
+            raw_k = master_key_file.read_bytes().strip()
+            if len(raw_k) == 32:
+                keys.append(raw_k)
+            elif len(raw_k) == 44:
+                keys.append(base64.b64decode(raw_k))
+            elif len(raw_k) > 0:
+                keys.append(hashlib.sha256(raw_k).digest())
+        except Exception:
+            pass
+
+    legacy_k = bytes.fromhex(DEFAULT_MASTER_KEY_HEX)
+    if legacy_k not in keys:
+        keys.append(legacy_k)
+    return keys
+
+
 def _decrypt_token_file(file_path: Path) -> Optional[Dict[str, Any]]:
     """Giải mã độc lập file youtube_token.json (chuẩn AES-256-GCM hoặc JSON thường)."""
     if not file_path.exists():
@@ -68,11 +98,19 @@ def _decrypt_token_file(file_path: Path) -> Optional[Dict[str, Any]]:
     try:
         raw = file_path.read_bytes()
         if raw.startswith(AES_PREFIX):
-            env_key = os.getenv("ENCRYPTION_MASTER_KEY", "").strip() or DEFAULT_MASTER_KEY_HEX
-            key = bytes.fromhex(env_key) if len(env_key) == 64 else hashlib.sha256(env_key.encode("utf-8")).digest()
             combined = base64.b64decode(raw[len(AES_PREFIX):])
             nonce, ciphertext = combined[:12], combined[12:]
-            raw = AESGCM(key).decrypt(nonce, ciphertext, None)
+            decrypted = None
+            last_err = None
+            for key in _candidate_aes_keys():
+                try:
+                    decrypted = AESGCM(key).decrypt(nonce, ciphertext, None)
+                    break
+                except Exception as ex:
+                    last_err = ex
+            if decrypted is None:
+                raise ValueError(f"AES-GCM decrypt failed: {last_err}")
+            raw = decrypted
         return json.loads(raw.decode("utf-8"))
     except Exception as e:
         logger.warning(f"Không thể giải mã token {file_path}: {e}")
@@ -207,22 +245,45 @@ def collect_telemetry(prev_state: Dict[str, Any]) -> Dict[str, Any]:
     new_channels_state = {}
     new_videos_state = {}
 
+    fallback_srv = None
+    for acc_pre in cfg.get("google_accounts", []):
+        acc_pre_id = acc_pre.get("id", "account_1")
+        for ch_pre in acc_pre.get("brand_channels", []):
+            s_pre, _, _ = _build_youtube_services(ch_pre, acc_pre_id)
+            if s_pre:
+                fallback_srv = s_pre
+                break
+        if fallback_srv:
+            break
+
     for acc in cfg.get("google_accounts", []):
         acc_id = acc.get("id", "account_1")
         for ch in acc.get("brand_channels", []):
             cid = ch.get("id", "unknown")
             cname = ch.get("name", cid)
             lang = ch.get("language", "en")
+            yt_channel_id = (ch.get("youtube_channel_id") or "").strip()
 
             srv, yta, err = _build_youtube_services(ch, acc_id)
-            if not srv:
+            using_public_fallback = False
+            if not srv and fallback_srv and yt_channel_id:
+                srv = fallback_srv
+                using_public_fallback = True
+                logger.warning(f"Kênh {cname} ({cid}) lỗi OAuth riêng ({err}) -> Dùng Public Data API v3 fallback qua ID {yt_channel_id}")
+            elif not srv:
                 channels_data.append({"id": cid, "name": cname, "language": lang, "error": err})
                 continue
 
             try:
-                ch_analytics, vid_analytics_map = _fetch_analytics_metrics(yta)
+                ch_analytics, vid_analytics_map = _fetch_analytics_metrics(yta) if not using_public_fallback else (
+                    {"avd_sec": 0.0, "apv_pct": 0.0, "stay_pct": 0.0, "swipe_pct": 0.0, "has_data": False},
+                    {},
+                )
 
-                c_res = srv.channels().list(mine=True, part="snippet,statistics,contentDetails").execute()
+                if using_public_fallback:
+                    c_res = srv.channels().list(id=yt_channel_id, part="snippet,statistics,contentDetails").execute()
+                else:
+                    c_res = srv.channels().list(mine=True, part="snippet,statistics,contentDetails").execute()
                 items = c_res.get("items", [])
                 if not items:
                     channels_data.append({"id": cid, "name": cname, "language": lang, "error": "Kênh trống"})
@@ -682,10 +743,14 @@ def sync_telemetry_to_production(telemetry: Dict[str, Any], insights: str) -> Di
                         existing_pv.views = v_views
                         existing_pv.likes = v_likes
                         existing_pv.comments = v_comments
-                        existing_pv.avg_view_percentage = final_apv
-                        existing_pv.stayed_to_watch_pct = final_stay
-                        existing_pv.swipe_away_pct = final_swipe
-                        existing_pv.avg_view_duration_sec = final_avd
+                        if final_apv is not None:
+                            existing_pv.avg_view_percentage = final_apv
+                        if final_stay is not None:
+                            existing_pv.stayed_to_watch_pct = final_stay
+                        if final_swipe is not None:
+                            existing_pv.swipe_away_pct = final_swipe
+                        if final_avd is not None:
+                            existing_pv.avg_view_duration_sec = final_avd
                         existing_pv.last_synced_at = now_naive
                         if matched_job and not existing_pv.job_id:
                             existing_pv.job_id = matched_job.id
@@ -719,10 +784,14 @@ def sync_telemetry_to_production(telemetry: Dict[str, Any], insights: str) -> Di
                         matched_job.views = v_views
                         matched_job.likes = v_likes
                         matched_job.comments = v_comments
-                        matched_job.avg_view_percentage = final_apv
-                        matched_job.stayed_to_watch_pct = final_stay
-                        matched_job.swipe_away_pct = final_swipe
-                        matched_job.avg_view_duration_sec = final_avd
+                        if final_apv is not None:
+                            matched_job.avg_view_percentage = final_apv
+                        if final_stay is not None:
+                            matched_job.stayed_to_watch_pct = final_stay
+                        if final_swipe is not None:
+                            matched_job.swipe_away_pct = final_swipe
+                        if final_avd is not None:
+                            matched_job.avg_view_duration_sec = final_avd
                     upserted += 1
 
         _WEEKLY_PERFORMANCE_CACHE.clear()
