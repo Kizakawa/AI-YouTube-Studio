@@ -782,16 +782,12 @@ def render_opening_hook_multi_cut(
     if not valid_paths:
         raise ValueError("render_opening_hook_multi_cut: Không có file ảnh hợp lệ")
 
-    # Tự động tính số lượng ảnh hiển thị tối ưu theo thời lượng câu đọc (mỗi ảnh 1.0s - 2.2s):
-    # - Nếu có nhiều ảnh: tăng tốc độ chuyển ảnh (1.0s - 2.0s/ảnh) để khớp đúng duration_seconds.
-    # - Nếu thừa ảnh so với thời lượng (duration_seconds // 1.0s): tự động bỏ qua các ảnh thừa ở cuối.
-    # - Nếu chỉ có 1 ảnh: dùng Ken Burns mượt mà, KHÔNG tự cắt 1 ảnh thành 4 mảnh giật cục!
-    max_shots_by_dur = max(1, int(duration_seconds // 1.0))
+    # Tự động tính số lượng ảnh hiển thị tối ưu theo thời lượng câu đọc (mỗi ảnh >= 2.0s, tối đa 2 ảnh/cảnh):
+    # - Nếu chỉ có 1 ảnh hoặc cảnh < 3.6s: dùng Ken Burns mượt mà trên 1 ảnh, tuyệt đối KHÔNG tự cắt 1 ảnh thành nhiều mảnh giật cục!
+    max_shots_by_dur = max(1, min(2, int(duration_seconds // 2.0)))
     usable_valid_paths = valid_paths[:max_shots_by_dur]
     n_shots = len(usable_valid_paths)
-    if n_shots == 1 and duration_seconds >= 3.0:
-        n_shots = 2
-    if duration_seconds < 1.6 or n_shots <= 1:
+    if duration_seconds < 3.6 or n_shots <= 1:
         return image_to_video(
             image_path=valid_paths[0],
             duration_seconds=duration_seconds,
@@ -1390,35 +1386,7 @@ def trim_video(
         pass
 
     enc_args = get_video_encoder_args(quality="intermediate")
-    if is_hook_scene and apply_grading and duration_seconds >= 2.6 and preserve_continuous_flow:
-        t_mid = round(duration_seconds * 0.52, 3)
-        t_end = round(duration_seconds, 3)
-        cw_punch = max(2, (int(width / 1.12) // 2) * 2)
-        ch_punch = max(2, (int(height / 1.12) // 2) * 2)
-        filter_complex = (
-            f"[0:v]{pts_prefix}{scale_crop_chain},setsar=1,fps={fps},split=2[v0][v1];"
-            f"[v0]trim=0:{t_mid},setpts=PTS-STARTPTS[s0];"
-            f"[v1]trim={t_mid}:{t_end},setpts=PTS-STARTPTS,"
-            f"crop={cw_punch}:{ch_punch}:(iw-ow)*0.50:(ih-oh)*0.38,scale={width}:{height},setsar=1[s1];"
-            f"[s0][s1]concat=n=2:v=1:a=0{grading_chain},setsar=1,fps={fps},format=yuv420p[vout]"
-        )
-        args = [
-            *loop_args,
-            *seek_args,
-            "-i", input_path,
-            "-filter_complex", filter_complex,
-            "-map", "[vout]",
-            "-t", f"{duration_seconds:.3f}",
-            *enc_args,
-            *BT709_COLOR_ARGS,
-            "-r", str(fps),
-            "-an",
-            output_path,
-        ]
-        logger.info(
-            f"  ⚡ [Hook Video 2-Shot Punch-In + Anti-Copyright] (0s -> {t_mid:.2f}s Wide Peak -> {t_end:.2f}s 1.12x Close-Up Punch)"
-        )
-    elif is_hook_scene and (not preserve_continuous_flow) and duration_seconds >= 1.8:
+    if is_hook_scene and (not preserve_continuous_flow) and duration_seconds >= 1.8:
         t1 = round(duration_seconds * 0.28, 3)
         t2 = round(duration_seconds * 0.56, 3)
         t3 = round(duration_seconds * 0.80, 3)
@@ -1629,25 +1597,28 @@ def concat_videos_with_xfade(
         clip_target_dur = max(0.5, float(durations[i]))
         filter_parts.append(f"[{i}:v]trim=duration={clip_target_dur:.3f},settb=AVTB,setpts=PTS-STARTPTS,fps={fps},format=yuv420p[v{i}]")
 
-    current_label = "vconcat"
-    concat_inputs_str = "".join(f"[v{i}]" for i in range(n))
-    filter_parts.append(f"{concat_inputs_str}concat=n={n}:v=1:a=0,format=yuv420p[{current_label}]")
-    cumulative = 0.0
-    for i in range(1, 0):
-        prev_dur = durations[i - 1]
-        offset = max(cumulative + prev_dur - td, 0.0)
-        cumulative += prev_dur - td
-        next_label = f"vx{i}"
-        t_choice = t_seq[i - 1]
+    if td > 0.01:
+        current_label = "v0"
+        cumulative = 0.0
+        for i in range(1, n):
+            prev_dur = durations[i - 1]
+            offset = max(cumulative + prev_dur - td, 0.0)
+            cumulative += prev_dur - td
+            next_label = f"vx{i}"
+            t_choice = t_seq[i - 1]
 
-        filter_parts.append(
-            f"[{current_label}][v{i}]xfade="
-            f"transition={t_choice}:"
-            f"duration={td:.3f}:"
-            f"offset={offset:.3f}"
-            f"[{next_label}]"
-        )
-        current_label = next_label
+            filter_parts.append(
+                f"[{current_label}][v{i}]xfade="
+                f"transition={t_choice}:"
+                f"duration={td:.3f}:"
+                f"offset={offset:.3f}"
+                f"[{next_label}]"
+            )
+            current_label = next_label
+    else:
+        current_label = "vconcat"
+        concat_inputs_str = "".join(f"[v{i}]" for i in range(n))
+        filter_parts.append(f"{concat_inputs_str}concat=n={n}:v=1:a=0,format=yuv420p[{current_label}]")
 
     # Nếu có subtitle_path, burn trực tiếp trên luồng uncompressed sau xfade (Single-Pass)
     if has_sub:

@@ -248,11 +248,11 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
 
     dur_s1 = _get_scene_dur_sec(1, default_s=3.5)
     dur_s2 = _get_scene_dur_sec(2, default_s=3.2) if len(base_scenes) >= 2 else 0.0
-    # VideoAgent dùng concat trực tiếp (transition_duration=0.0) cho các cảnh không phải cảnh cuối,
-    # nên thời lượng clip Cảnh 1 & Cảnh 2 phải khớp chính xác 100% với dur_s1, dur_s2 (0ms lệch phụ đề/lời đọc)
-    transition_duration = 0.0 if len(base_scenes) > 1 else (0.15 + VIDEO_DURATION_SAFETY_MARGIN)
+    # VideoAgent dùng xfade 0.16s mượt mà giữa các cảnh (transition_duration=0.16)
+    # nên thời lượng clip Cảnh 1 & Cảnh 2 cộng sẵn 0.16s xfade overlap để khớp chính xác 100% lời đọc (0ms lệch phụ đề)
+    transition_duration = 0.16 if len(base_scenes) > 1 else (0.15 + VIDEO_DURATION_SAFETY_MARGIN)
     target_hook_duration_sec = dur_s1 + transition_duration
-    span_opening_two_scenes = bool(len(base_scenes) >= 2 and (dur_s1 < 3.8 or (dur_s1 + dur_s2) <= 7.2))
+    span_opening_two_scenes = bool(len(base_scenes) >= 2)
     opening_hook_window_sec = round((dur_s1 + dur_s2) if span_opening_two_scenes else target_hook_duration_sec, 2)
 
     keys = settings.get_gemini_keys_pool() if hasattr(settings, "get_gemini_keys_pool") else []
@@ -1112,10 +1112,10 @@ Return ONLY valid JSON:
         other_passing = [c for c in passing_candidates if c["video_path"] != best_v_path]
         used_second_paths = set()
 
-        # 4.1. Thử tạo DUAL-BEAT FAST-CUT ngay trong Cảnh 1 (0.0-1.75s Beat 1A + 1.75s-end Beat 1B)
-        # nếu có >= 2 ứng viên đạt chuẩn và Cảnh 1 >= 2.5s (chống phản xạ vuốt bỏ ở giây thứ 2.0!)
+        # 4.1. Chỉ ghép DUAL-BEAT trong nội bộ Cảnh 1 khi Cảnh 1 rất dài (>= 4.2s) VÀ có dư >= 2 ứng viên phụ;
+        # còn lại giữ Cảnh 1 là 1 cú máy Peak liền mạch (Continuous Shot) và dành ứng viên #2 cho Cảnh 2!
         dual_beat_spliced = False
-        if other_passing and target_hook_duration_sec >= 2.6:
+        if len(other_passing) >= 2 and target_hook_duration_sec >= 4.2:
             beat_b_cand = other_passing[0]
             beat_b_v_path = beat_b_cand["video_path"]
             beat_b_clean = beat_b_cand.get("clean_peak_path") or beat_b_v_path
@@ -1194,6 +1194,8 @@ Return ONLY valid JSON:
                 "media_type": "hook_ready_video",
                 "production_method": hook_mode,
                 "visual_strategy": "HOOK_DUAL_BEAT_FAST_CUT" if dual_beat_spliced else "HOOK_PEAK_SHORT_VIDEO",
+                "full_peak_path": clean_p_path if use_precleaned else best_v_path,
+                "full_peak_duration_sec": natural_peak_dur,
                 "strategy_rationale": (
                     f"Dual-Beat Fast-Cut ({hook_production_strategy}, Score={best_candidate['overall_score']}/10, ScrollStop={best_candidate.get('scroll_stop_score', 0.0)}/10)"
                     if dual_beat_spliced
@@ -1204,10 +1206,13 @@ Return ONLY valid JSON:
                 scene_1["media_path"] = hook_output_clip
                 scene_1["media_type"] = "hook_ready_video"
                 scene_1["production_method"] = hook_mode
+                scene_1["full_peak_path"] = clean_p_path if use_precleaned else best_v_path
+                scene_1["full_peak_duration_sec"] = natural_peak_dur
                 scenes_media[0] = scene_1
 
         # ── MỞ RỘNG HOOK VIDEO ĐẦU VIDEO TRỌN VẸN 3-7 GIÂY (CẢNH 1 + CẢNH 2 LIỀN MẠCH, KHỚP 100% LỜI ĐỌC) ──
         if span_opening_two_scenes and dur_s2 >= 1.2 and len(base_scenes) >= 2:
+            dur_s2_clip = dur_s2 + (transition_duration if len(base_scenes) > 2 else (0.15 + VIDEO_DURATION_SAFETY_MARGIN))
             s2_filled = False
             # Ưu tiên 1: Nếu có video ứng viên Viral độc lập (chưa dùng ở Beat 1B và đủ độ dài Peak) -> Ghép nối tiếp sang Cảnh 2
             s2_ordered_cands = (
@@ -1241,7 +1246,7 @@ Return ONLY valid JSON:
                 try:
                     trim_video(
                         input_path=s2_clean_p if s2_use_pre else s2_v_path,
-                        duration_seconds=dur_s2,
+                        duration_seconds=dur_s2_clip,
                         output_path=hook_output_clip_s2,
                         width=1080,
                         height=1920,
@@ -1279,6 +1284,8 @@ Return ONLY valid JSON:
                                 "media_type": "hook_ready_video",
                                 "production_method": "HOOK_EXTENDED_2ND_VIRAL_VIDEO",
                                 "visual_strategy": "HOOK_PEAK_SHORT_VIDEO",
+                                "full_peak_path": s2_clean_p if s2_use_pre else s2_v_path,
+                                "full_peak_duration_sec": float(cand_s2.get("peak_duration_sec") or 0.0),
                                 "strategy_rationale": f"Extended 3-7s Hook (Scene 2 distinct viral clip @{s2_peak_start:.1f}s, {dur_s1 + dur_s2:.1f}s total)",
                             }
                             if len(scenes_media) >= 2 and isinstance(scenes_media[1], dict):
@@ -1303,7 +1310,7 @@ Return ONLY valid JSON:
                     cont_offset = consumed_s1_sec if cont_src == clean_p_path else (peak_start + consumed_s1_sec)
                     trim_video(
                         input_path=cont_src,
-                        duration_seconds=dur_s2,
+                        duration_seconds=dur_s2_clip,
                         output_path=hook_output_clip_s2,
                         width=1080,
                         height=1920,
@@ -1368,6 +1375,7 @@ Return ONLY valid JSON:
                     continue
 
                 climax_dur_sec = _get_scene_dur_sec(eff_climax_id, default_s=3.5)
+                climax_dur_clip = climax_dur_sec + (transition_duration if eff_climax_id < len(base_scenes) else (0.15 + VIDEO_DURATION_SAFETY_MARGIN))
                 climax_output_clip = str(work_dir / f"hook_climax_scene_{eff_climax_id:03d}.mp4")
                 second_peak_start = float(sec_cand.get("peak_offset_sec", 0.0))
                 second_peak_dur = float(sec_cand.get("peak_duration_sec") or climax_dur_sec)
@@ -1375,7 +1383,7 @@ Return ONLY valid JSON:
                 try:
                     trim_video(
                         input_path=sec_clean_p if sec_use_pre else second_v_path,
-                        duration_seconds=climax_dur_sec,
+                        duration_seconds=climax_dur_clip,
                         output_path=climax_output_clip,
                         width=1080,
                         height=1920,
@@ -1414,6 +1422,8 @@ Return ONLY valid JSON:
                             "media_type": "hook_ready_video",
                             "production_method": "CLIMAX_PEAK_SHORT_SPLICE",
                             "visual_strategy": "STOCK_VIDEO",
+                            "full_peak_path": sec_clean_p if sec_use_pre else second_v_path,
+                            "full_peak_duration_sec": second_peak_dur,
                             "strategy_rationale": f"Mid-video distinct Peak Short @{second_peak_start:.1f}s (len={second_peak_dur:.1f}s)",
                         }
                         logger.info(

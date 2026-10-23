@@ -152,39 +152,39 @@ class ScriptValidationLinter:
     ) -> Tuple[List[str], int]:
         """
         Kiểm tra số từ và tính toán nhịp đọc (Ưu tiên mạch truyện đầy đặn, mượt mà, có đầu có đuôi — chống kịch bản cụt lủn):
-        - Cho phép biên độ linh hoạt từ 62 đến 110 từ (mục tiêu vàng 72 - 98 từ, 6 - 8 cảnh, thời lượng 28 - 36 giây) để tối ưu APV > 80% mà vẫn dẫn dắt câu chuyện mượt mà, giải thích thấu đáo, không bị cắt cụt ý.
+        - Cho phép biên độ linh hoạt từ 82 đến 128 từ (mục tiêu vàng 92 - 118 từ, 7 - 8 cảnh, thời lượng 34 - 42 giây) để tối ưu APV > 90% & AVD > 35s mà vẫn dẫn dắt câu chuyện mượt mà, giải thích thấu đáo, không bị cắt cụt ý.
         """
         issues = []
         all_narrations = " ".join(s.narration for s in script.scenes if s.narration)
         words = re.findall(r'\b\w+\b', all_narrations)
         total_words = len(words)
 
-        min_words = 62
-        max_words = 110
-        target_range_str = "72 to 98 words (28-36s High-APV Golden Duration across 6-8 smooth, complete scenes)"
+        min_words = 82
+        max_words = 128
+        target_range_str = "92 to 118 words (34-42s High-APV Golden Duration across 7-8 smooth, complete scenes)"
 
         if total_words > max_words:
-            est_seconds = (total_words / max(target_wpm, 165)) * 60
+            est_seconds = (total_words / max(target_wpm, 160)) * 60
             issues.append(
                 f"Script is overly long ({total_words} words, ~{est_seconds:.1f}s) which lowers APV %. "
                 f"Keep around {target_range_str}."
             )
         elif total_words < min_words:
-            est_seconds = (total_words / max(target_wpm, 165)) * 60
+            est_seconds = (total_words / max(target_wpm, 160)) * 60
             issues.append(
                 f"Script is too short and abrupt ({total_words} words, ~{est_seconds:.1f}s) — feels truncated and lacks smooth context/explanation! "
                 f"Expand to at least {min_words} words (target {target_range_str}) so the story flows naturally from start to finish."
             )
 
         scene_count = len(script.scenes)
-        min_scenes = 6
+        min_scenes = 7
         if scene_count < min_scenes:
             issues.append(
-                f"Too few scenes ({scene_count}). Need 6 to 8 scenes (minimum {min_scenes}) to tell a complete, well-paced story."
+                f"Too few scenes ({scene_count}). Need 7 to 8 scenes (minimum {min_scenes}) to tell a complete, well-paced 34-42s story."
             )
         elif scene_count > 9:
             issues.append(
-                f"Too many scenes ({scene_count}). Keep between 6 and 8 complete-sentence scenes so the narrative stays in the 28-36s high-APV window."
+                f"Too many scenes ({scene_count}). Keep between 7 and 8 complete-sentence scenes so the narrative stays in the 34-42s high-APV window."
             )
 
         return issues, total_words
@@ -215,13 +215,13 @@ class ScriptValidationLinter:
             s1 = script.scenes[0]
             s1_narr = (s1.narration or "").strip()
             s1_words = re.findall(r'\b\w+\b', s1_narr)
-            if len(s1_words) > 12:
+            if len(s1_words) > 14:
                 issues.append(
-                    f"Scene 1 hook is too long ({len(s1_words)} words). Keep Scene 1 between 5 and 10 punchy words for an instant thumb-stopper."
+                    f"Scene 1 hook is too long ({len(s1_words)} words). Keep Scene 1 between 6 and 11 punchy words for an instant thumb-stopper."
                 )
             elif len(s1_words) < 3:
                 issues.append(
-                    f"Scene 1 hook is too fragmented ({len(s1_words)} words). Must be a complete 5-9 word declarative hook."
+                    f"Scene 1 hook is too fragmented ({len(s1_words)} words). Must be a complete 6-10 word declarative hook."
                 )
 
             # CẤM câu hỏi Yes/No yếu ở Cảnh 1 (trừ ngách Alternate History cho phép 'What if...')

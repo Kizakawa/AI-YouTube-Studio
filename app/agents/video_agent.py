@@ -72,7 +72,7 @@ class VideoAgent:
             scene_clips = await asyncio.to_thread(self._prepare_scene_clips, job.scenes, str(work_dir), job)
 
             # ── Step 2: Concat tất cả scenes → 1 video silent với xfade transition ──
-            transition_duration = 0.0
+            transition_duration = 0.16
             tail_buffer = 0.15
             total_scenes = len(job.scenes)
 
@@ -161,7 +161,7 @@ class VideoAgent:
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         total_scenes = len(scenes)
-        transition_duration = 0.0
+        transition_duration = 0.16
         tail_buffer = 0.15
 
         def _render_one(idx: int, scene: SceneContract) -> tuple[int, str]:
@@ -262,10 +262,9 @@ class VideoAgent:
                 )
             elif getattr(scene, "pose_images", None) and len(getattr(scene, "pose_images", [])) >= 2:
                 pose_list = list(getattr(scene, "pose_images", None) or [scene.media_path])
-                # Tự động tính số lượng ảnh tối đa khớp với thời lượng câu đọc (tối thiểu 1.0s/ảnh để không bị nháy hình);
-                # nếu thừa ảnh thì tăng nhịp chuyển ảnh (1.0s - 2.0s/ảnh) hoặc tự động bỏ qua ảnh thừa!
-                min_sec_per_img = 0.85 if (is_hook or scene.scene_id == 2) else 1.35
-                max_usable_imgs = max(1, int(duration // min_sec_per_img))
+                # Tự động tính số lượng ảnh tối đa khớp với thời lượng câu đọc (tối thiểu 2.0s/ảnh, tối đa 2 ảnh/cảnh để Ken Burns mượt mà, không nháy hình)
+                min_sec_per_img = 2.0
+                max_usable_imgs = max(1, min(2, int(duration // min_sec_per_img)))
                 usable_poses = pose_list[:max_usable_imgs]
                 dropped_count = max(0, len(pose_list) - len(usable_poses))
                 if len(usable_poses) >= 2:

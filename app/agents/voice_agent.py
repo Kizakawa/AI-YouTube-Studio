@@ -336,26 +336,26 @@ class VoiceAgent:
     @staticmethod
     def resolve_optimal_tts_rate(voice: str, niche: Optional[str] = None, explicit_rate: Optional[str] = None) -> str:
         """
-        Xác định tốc độ đọc TTS tối ưu giữ chân (Retention Pacing) theo đặc thù từng ngách:
-        - Psychology / Dark Facts / Stoic: +11% (~175-180 WPM, nhịp sắc lạnh, dứt khoát, giữ thời lượng vàng 26-33s)
-        - Wildlife / Mysteries / Alternate History: +9% (~170-175 WPM, nhịp phim tài liệu kịch tính, 31-37s)
-        - Animal Rescue / Pets: +5% (~164 WPM, truyền cảm, ấm áp nhưng không lê thê)
-        - Mặc định (general): +8%
+        Xác định tốc độ đọc TTS tối ưu giữ chân (Retention Pacing) theo công thức Đợt 1 chiến thắng:
+        - Psychology / Dark Facts / Stoic: +6% (~162-165 WPM, nhịp sắc lạnh, dứt khoát nhưng rõ chữ, giữ thời lượng vàng 34-40s)
+        - Wildlife / Mysteries / Alternate History: +4% (~158-160 WPM, nhịp phim tài liệu kịch tính tự nhiên, 35-42s)
+        - Animal Rescue / Pets: +3% (~154 WPM, truyền cảm, ấm áp)
+        - Mặc định (general): +4%
         """
         if explicit_rate:
             return explicit_rate
 
         nid = (niche or "").strip().lower()
         if any(k in nid for k in ("psych", "mind", "stoic", "dark", "crime")):
-            niche_default = 11
+            niche_default = 6
         elif any(k in nid for k in ("animal_rescue", "rescue", "pet", "paws", "wholesome")):
-            niche_default = 5
+            niche_default = 3
         elif any(k in nid for k in ("wildlife", "predator", "mystery", "mysteries", "deep_sea", "ocean", "history", "alternate", "what_if")):
-            niche_default = 9
+            niche_default = 4
         elif "animal" in nid:
-            niche_default = 5
+            niche_default = 3
         else:
-            niche_default = 8
+            niche_default = 4
 
         if nid:
             try:
@@ -367,9 +367,9 @@ class VoiceAgent:
                     if cfg_rate and isinstance(cfg_rate, str) and cfg_rate.endswith("%"):
                         try:
                             val = int(cfg_rate.replace("%", "").replace("+", "").strip())
-                            if 4 <= val <= 12:
+                            if 0 <= val <= 7:
                                 return f"{val:+d}%"
-                            elif val > 12:
+                            elif val > 7:
                                 return f"{niche_default:+d}%"
                         except Exception:
                             pass

@@ -255,6 +255,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 "overlay_badge": getattr(scene, "overlay_badge", None),
                 "visual_strategy": pre_hook.get("visual_strategy", "HOOK_PEAK_SHORT_VIDEO"),
                 "production_method": pre_hook.get("production_method", "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK"),
+                "full_peak_path": pre_hook.get("full_peak_path"),
+                "full_peak_duration_sec": pre_hook.get("full_peak_duration_sec", 0.0),
                 "tool": "hook_video_node",
                 "strategy_rationale": pre_hook.get("strategy_rationale", "Peak segment extracted from online Short"),
             }
@@ -372,7 +374,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             sc_scope = sc_strat.get("search_scope") or "SCENE_SPECIFIC"
             overall_q = sc_strat.get("overall_script_query") or state.get("topic", "")
             import math as _math
-            scene_target_imgs = 3 if (scene.scene_id == 1 or dur >= 3.5) else 2
+            scene_target_imgs = 2 if dur >= 4.0 else 1
 
             if tool_name == "summon_epic_monster_cinematic_media":
                 c_name = _sanitize_tool_arg(sc_strat.get("creature_name"), fallback=subj_ent or "colossal sea monster")
@@ -1261,44 +1263,198 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             return max(float(getattr(script.scenes[slot_idx], "estimated_seconds", 4.0) or 4.0), 1.2)
         return 3.8
 
-    # Giữ đúng thứ tự cảnh theo lời đọc kịch bản (1:1 Audio-Visual Sync), không tráo cảnh video lên trước ảnh tĩnh.
+    # ── Bước A: MỞ RỘNG ĐOẠN PEAK DÀI (`full_peak_path` 6s-15s) CHẢY LIỀN MẠCH SANG CẢNH KẾ TIẾP (GIỮ 1:1 THỨ TỰ KỊCH BẢN) ──
+    try:
+        from app.utils.ffmpeg_helper import get_duration_ms, trim_video
+        n_total_slots = len(scenes_media)
+        for idx_v in range(n_total_slots):
+            sc_v = scenes_media[idx_v]
+            if not isinstance(sc_v, dict):
+                continue
+            full_p = sc_v.get("full_peak_path")
+            if not full_p or not Path(full_p).exists():
+                continue
+            full_dur = float(sc_v.get("full_peak_duration_sec") or 0.0)
+            if full_dur <= 0.5:
+                full_dur = get_duration_ms(full_p) / 1000.0
+            slot_v_dur = _get_slot_dur(idx_v)
+            offset_cursor = slot_v_dur
+            rem_sec = full_dur - offset_cursor
+            if rem_sec < 2.0:
+                continue
+
+            for next_idx in range(idx_v + 1, min(idx_v + 3, n_total_slots)):
+                if rem_sec < 2.0:
+                    break
+                next_sc = scenes_media[next_idx]
+                if not isinstance(next_sc, dict):
+                    break
+                next_mtype = str(next_sc.get("media_type") or "image").lower()
+                if next_mtype in ("video", "hook_ready_video", "ai_video", "i2v", "t2v"):
+                    break
+                next_sid = int(next_sc.get("scene_id") or (next_idx + 1))
+                next_dur = _get_slot_dur(next_idx)
+                clip_target_dur = next_dur + (0.16 if next_idx < n_total_slots - 1 else 0.35)
+                cont_clip_path = str(media_dir / f"scene_{next_sid:03d}_long_peak_flow.mp4")
+                try:
+                    trim_video(
+                        input_path=full_p,
+                        duration_seconds=clip_target_dur,
+                        output_path=cont_clip_path,
+                        width=1080,
+                        height=1920,
+                        fps=30,
+                        is_scifi=is_scifi,
+                        niche=niche,
+                        apply_grading=False,
+                        is_hook_scene=False,
+                        fair_use_transform=False,
+                        start_offset_sec=offset_cursor,
+                        preserve_continuous_flow=True,
+                    )
+                    if Path(cont_clip_path).exists() and Path(cont_clip_path).stat().st_size > 10_000:
+                        ok_flow, _ = rag.verify_and_commit_in_job_clip(
+                            job_id=job_id,
+                            scene_id=next_sid,
+                            media_path=cont_clip_path,
+                            vid_id=f"flow_from_s{idx_v + 1}",
+                            url=full_p,
+                            title=f"Long Peak Flow from Scene {idx_v + 1}",
+                            is_continuation_slice=True,
+                        )
+                        if ok_flow:
+                            next_sc["media_path"] = cont_clip_path
+                            next_sc["media_type"] = "video"
+                            next_sc["pose_images"] = []
+                            next_sc["production_method"] = "LONG_PEAK_CONTINUOUS_FLOW"
+                            next_sc["visual_strategy"] = "LONG_PEAK_CONTINUOUS_FLOW"
+                            offset_cursor += next_dur
+                            rem_sec = full_dur - offset_cursor
+                            logger.info(
+                                f"🌊 [VideoFlow Assembler] Đã nối liền mạch đoạn Peak dài từ Cảnh {idx_v + 1} sang Cảnh {next_sid} "
+                                f"(@{offset_cursor - next_dur:.1f}s -> @{offset_cursor:.1f}s, còn dư {rem_sec:.1f}s)"
+                            )
+                        else:
+                            Path(cont_clip_path).unlink(missing_ok=True)
+                            break
+                except Exception as _flow_err:
+                    logger.debug(f"[VideoFlow Assembler] Long peak slice Scene {next_sid} skip: {_flow_err}")
+                    break
+    except Exception as _step_a_err:
+        logger.debug(f"[VideoFlow Assembler] Step A warning: {_step_a_err}")
+
+    # ── Bước B: CỔNG BẢO ĐẢM TỶ LỆ VIDEO CHUYỂN ĐỘNG THẬT >= 50% (VÀ 100% CẢNH 1 + CẢNH 2 LÀ VIDEO) ──
+    try:
+        def _is_real_video_slot(sc_dict: Any) -> bool:
+            if not isinstance(sc_dict, dict):
+                return False
+            mt = str(sc_dict.get("media_type") or "image").lower()
+            mp = str(sc_dict.get("media_path") or "").lower()
+            return mt in ("video", "hook_ready_video", "ai_video", "i2v", "t2v") or mp.endswith((".mp4", ".mov", ".webm"))
+
+        n_slots = len(scenes_media)
+        min_video_slots = max(3, (n_slots + 1) // 2) if n_slots >= 4 else n_slots
+        current_video_slots = sum(1 for s_it in scenes_media if _is_real_video_slot(s_it))
+
+        # Luôn ưu tiên giải cứu Cảnh 2 (idx=1) trước nếu Cảnh 2 vẫn đang là ảnh tĩnh, sau đó đến các cảnh giữa thân bài
+        rescue_candidates_idx: List[int] = []
+        if n_slots >= 2 and not _is_real_video_slot(scenes_media[1]):
+            rescue_candidates_idx.append(1)
+        for idx_mid in range(2, n_slots):
+            if not _is_real_video_slot(scenes_media[idx_mid]):
+                rescue_candidates_idx.append(idx_mid)
+
+        needed_rescues = max(
+            1 if (n_slots >= 2 and not _is_real_video_slot(scenes_media[1])) else 0,
+            min_video_slots - current_video_slots,
+        )
+        if needed_rescues > 0 and rescue_candidates_idx:
+            logger.info(
+                f"🎬 [Real-Motion Floor Rescue] Hiện có {current_video_slots}/{n_slots} cảnh video (mục tiêu tối thiểu {min_video_slots} cảnh video & Cảnh 2 bắt buộc là video). "
+                f"Đang nâng cấp {min(needed_rescues, len(rescue_candidates_idx))} cảnh ảnh tĩnh sang Video chuyển động thật..."
+            )
+            for r_idx in rescue_candidates_idx[:needed_rescues]:
+                r_sc = scenes_media[r_idx]
+                r_sid = int(r_sc.get("scene_id") or (r_idx + 1))
+                r_dur = _get_slot_dur(r_idx)
+                r_kw = clean_scene_search_query(
+                    r_sc.get("visual_keyword") or primary_entity or state.get("topic", ""),
+                    max_words=4,
+                )
+                r_out_mp4 = str(media_dir / f"scene_{r_sid:03d}_motion_rescue.mp4")
+                r_subj = clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=2) or r_kw
+                rescued_ok = False
+                try:
+                    yt_rescue = await asyncio.to_thread(
+                        execute_youtube_short_peak_clone_sync,
+                        search_query=r_kw,
+                        subject_entity=r_subj,
+                        narration=str(r_sc.get("narration") or state.get("topic", "")),
+                        duration_sec=r_dur,
+                        output_path=r_out_mp4,
+                        is_scifi=is_scifi,
+                        niche=niche,
+                        used_urls=used_pool_urls,
+                        job_id=job_id,
+                        scene_id=r_sid,
+                        search_scope="OVERALL_SCRIPT",
+                        overall_script_query=clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=4),
+                    )
+                    if yt_rescue.get("ok") and yt_rescue.get("media_path") and Path(yt_rescue["media_path"]).exists():
+                        r_sc["media_path"] = yt_rescue["media_path"]
+                        r_sc["media_type"] = "video"
+                        r_sc["pose_images"] = []
+                        r_sc["production_method"] = f"MOTION_FLOOR_RESCUE_{yt_rescue.get('method', 'YT_PEAK')}"
+                        r_sc["visual_strategy"] = "YOUTUBE_SHORT_PEAK_CLONE"
+                        rescued_ok = True
+                        logger.info(f"  ✅ [Real-Motion Floor Rescue] Scene {r_sid}: Đã nâng cấp sang Video Peak ({Path(yt_rescue['media_path']).name})")
+                except Exception as _re_yt:
+                    logger.debug(f"[Real-Motion Floor Rescue] Scene {r_sid} YT peak rescue skip: {_re_yt}")
+
+                if not rescued_ok:
+                    try:
+                        doc_rescue = await asyncio.to_thread(
+                            execute_real_documentary_action_video_sync,
+                            action_query=r_kw,
+                            subject_entity=r_subj,
+                            narration=str(r_sc.get("narration") or state.get("topic", "")),
+                            duration_sec=r_dur,
+                            output_path=r_out_mp4,
+                            used_urls=used_pool_urls,
+                            job_id=job_id,
+                            scene_id=r_sid,
+                            search_scope="OVERALL_SCRIPT",
+                            overall_script_query=clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=4),
+                        )
+                        if doc_rescue.get("ok") and doc_rescue.get("media_path") and Path(doc_rescue["media_path"]).exists():
+                            r_sc["media_path"] = doc_rescue["media_path"]
+                            r_sc["media_type"] = "video"
+                            r_sc["pose_images"] = []
+                            r_sc["production_method"] = f"MOTION_FLOOR_RESCUE_{doc_rescue.get('method', 'STOCK_VIDEO')}"
+                            r_sc["visual_strategy"] = "REAL_DOCUMENTARY_VIDEO"
+                            rescued_ok = True
+                            logger.info(f"  ✅ [Real-Motion Floor Rescue] Scene {r_sid}: Đã nâng cấp sang Stock Video ({Path(doc_rescue['media_path']).name})")
+                    except Exception as _re_doc:
+                        logger.debug(f"[Real-Motion Floor Rescue] Scene {r_sid} Stock rescue skip: {_re_doc}")
+    except Exception as _step_b_err:
+        logger.debug(f"[Real-Motion Floor Rescue] Step B warning: {_step_b_err}")
 
     # ══════════════════════════════════════════════════════════════════════════
-    # Bước C: BỘ ĐIỀU PHỐI MẬT ĐỘ THỊ GIÁC 15-17 ẢNH / VIDEO (~40s)
-    # - Đảm bảo mỗi video ~35s-45s (đặc biệt kênh Tâm lý, Động vật, Bí ẩn, Lịch sử) luôn hiển thị
-    #   15 đến 17 bức ảnh độc lập (đổi khung hình mỗi ~1.8s-2.2s) mà vẫn giữ nguyên câu thoại TTS mượt mà.
-    # - Sử dụng Mini-RAG (`verify_and_commit_in_job_image` 64-bit dHash) để đảm bảo toàn bộ 15-17 bức ảnh
-    #   trong cùng 1 video hoàn toàn khác biệt, không lặp lại bất kỳ ảnh nào.
+    # Bước C: BỘ ĐIỀU PHỐI MẬT ĐỘ ẢNH TĨNH MƯỢT MÀ (TỐI ĐA 1-2 ẢNH / CẢNH ẢNH, MỖI ẢNH >= 2.0 GIÂY)
+    # - Chấm dứt hoàn toàn hiện tượng nhồi 3 ảnh vào 1 cảnh 3.5s gây nháy hình (strobe) làm rớt người xem!
+    # - Cảnh < 4.0s chỉ dùng 1 ảnh Ken Burns mượt mà; cảnh >= 4.0s dùng tối đa 2 ảnh (mỗi ảnh 2.0s - 2.5s).
     # ══════════════════════════════════════════════════════════════════════════
     try:
-        target_total_images = int(os.getenv("TARGET_IMAGES_PER_VIDEO", "16"))
-        target_total_images = max(15, min(17, target_total_images))
-
-        hook_img_count = 0
-        if scenes_media and isinstance(scenes_media[0], dict):
-            sc0 = scenes_media[0]
-            if str(sc0.get("production_method") or "").startswith("CLIMAX_IMAGES_LIVE_FX_"):
-                hook_img_count = len([p for p in (sc0.get("pose_images") or []) if p and Path(p).exists()])
-
         body_img_indices = [
             idx_b for idx_b, m_b in enumerate(scenes_media)
             if isinstance(m_b, dict) and str(m_b.get("media_type") or "image").lower() == "image"
         ]
 
         if body_img_indices:
-            n_img_scenes = len(body_img_indices)
-            rem_budget = max(n_img_scenes * 2, target_total_images - hook_img_count)
-            # Giới hạn tối đa 3 ảnh/cảnh để chỉ lấy Top 2-3 ứng viên điểm cao nhất (không vét tới ứng viên hạng thấp #4-#5)
-            rem_budget = min(rem_budget, n_img_scenes * 3)
-            base_q = max(2, min(3, rem_budget // n_img_scenes))
-            extra_q = max(0, min(n_img_scenes, rem_budget - (base_q * n_img_scenes)))
-
-            # Ưu tiên phân bổ 3 ảnh/cảnh cho các phân cảnh có thời lượng câu đọc dài hơn (tối đa không quá 3 ảnh/cảnh)
-            sorted_by_dur = sorted(body_img_indices, key=lambda i_slot: _get_slot_dur(i_slot), reverse=True)
-            scene_quotas: Dict[int, int] = {i_slot: base_q for i_slot in body_img_indices}
-            for i_slot in sorted_by_dur[:extra_q]:
-                if scene_quotas[i_slot] < 3:
-                    scene_quotas[i_slot] += 1
+            scene_quotas: Dict[int, int] = {
+                i_slot: (2 if _get_slot_dur(i_slot) >= 4.0 else 1)
+                for i_slot in body_img_indices
+            }
 
             angle_facets = [
                 "dramatic close up portrait",
