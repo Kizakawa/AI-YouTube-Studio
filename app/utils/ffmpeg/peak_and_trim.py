@@ -329,6 +329,16 @@ def find_hook_peak_window(
                 break
 
         full_peak_dur = round(min(scan_dur, max(min_dur, end_frame / float(sample_fps))), 2)
+        try:
+            from app.utils.ffmpeg.smart_reframe_and_shot import snap_window_to_clean_shot_bounds
+            peak_start, full_peak_dur = snap_window_to_clean_shot_bounds(
+                peak_start=peak_start,
+                peak_duration=full_peak_dur,
+                min_duration=min_dur,
+                metrics=metrics,
+            )
+        except Exception:
+            pass
         logger.info(
             f"  🔥 [Full Peak Window] Phát hiện đoạn Peak tự nhiên dài {full_peak_dur:.2f}s "
             f"({peak_start:.2f}s -> {peak_start + full_peak_dur:.2f}s, năng lượng lõi={core_avg_energy:.1f})"
@@ -408,6 +418,16 @@ def trim_video(
     except Exception:
         pass
 
+    seek_args: List[str] = []
+    eff_start_sec = float(start_offset_sec or 0.0)
+    if start_offset_sec is not None and start_offset_sec >= 0.20:
+        seek_args = ["-ss", f"{start_offset_sec:.2f}"]
+    elif is_hook_scene and not is_already_rendered:
+        seek_sec = find_hook_peak_action_offset(input_path, duration_seconds)
+        if seek_sec >= 0.25:
+            seek_args = ["-ss", f"{seek_sec:.2f}"]
+            eff_start_sec = seek_sec
+
     grading_chain = ("," + ",".join(grading_parts)) if grading_parts else ""
     zw, zh = ((int(width * zoom_mult) // 2) * 2), ((int(height * zoom_mult) // 2) * 2)
     if fair_use_transform and not is_already_rendered:
@@ -416,9 +436,23 @@ def trim_video(
             f"crop={width}:{height}:(iw-{width})/2:(ih-{height})*0.34"
         )
     else:
+        crop_x_ratio, crop_y_ratio = 0.50, 0.38
+        if not is_already_rendered and width < height:
+            try:
+                from app.utils.ffmpeg.smart_reframe_and_shot import compute_smart_reframe_crop_ratios
+                crop_x_ratio, crop_y_ratio = compute_smart_reframe_crop_ratios(
+                    input_path=input_path,
+                    start_sec=eff_start_sec,
+                    duration_sec=duration_seconds,
+                    target_width=width,
+                    target_height=height,
+                )
+            except Exception:
+                crop_x_ratio, crop_y_ratio = 0.50, 0.38
+        eff_sw, eff_sh = (zw, zh) if zoom_mult > 1.10 else (width, height)
         scale_crop_chain = (
-            f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-            f"crop={width}:{height}"
+            f"scale={eff_sw}:{eff_sh}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height}:(iw-{width})*{crop_x_ratio:.3f}:(ih-{height})*{crop_y_ratio:.3f}"
         )
 
     vf_chain = (
@@ -427,14 +461,6 @@ def trim_video(
         f"setsar=1,"
         f"fps={fps},format=yuv420p"
     )
-
-    seek_args: List[str] = []
-    if start_offset_sec is not None and start_offset_sec >= 0.20:
-        seek_args = ["-ss", f"{start_offset_sec:.2f}"]
-    elif is_hook_scene and not is_already_rendered:
-        seek_sec = find_hook_peak_action_offset(input_path, duration_seconds)
-        if seek_sec >= 0.25:
-            seek_args = ["-ss", f"{seek_sec:.2f}"]
 
     # Clip ngắn hơn lời thoại một chút (≤ 1.6x) → kéo dãn slow-motion nhẹ thay vì lặp lại (lặp rất dễ bị nhận ra)
     loop_args = ["-stream_loop", "-1"]

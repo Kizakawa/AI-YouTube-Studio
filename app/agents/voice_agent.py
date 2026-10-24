@@ -561,8 +561,32 @@ class VoiceAgent:
                 scene_engine_used = self.last_used_engine
                 last_err = None
 
+                # ── TIER 1A-KOKORO: Nếu bật ENABLE_KOKORO_TTS=true và có model local -> Ưu tiên Kokoro-82M Neural ──
+                if not success and not global_safe_voice.startswith("vi-"):
+                    import os as _os
+                    if _os.getenv("ENABLE_KOKORO_TTS", "false").strip().lower() in ("1", "true", "yes"):
+                        try:
+                            from app.services.tts_kokoro_engine import is_kokoro_tts_available, synthesize_with_kokoro_tts
+                            if is_kokoro_tts_available():
+                                lang_hint = "pt-br" if global_safe_voice.startswith("pt-") else "en"
+                                ok_kokoro, kokoro_v = await asyncio.to_thread(
+                                    synthesize_with_kokoro_tts,
+                                    clean_text,
+                                    scene_audio_path,
+                                    niche,
+                                    global_safe_voice,
+                                    lang_hint,
+                                )
+                                if ok_kokoro and Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024:
+                                    success = True
+                                    safe_voice = f"kokoro:{kokoro_v}"
+                                    scene_engine_used = f"kokoro_tts:{kokoro_v}"
+                                    logger.info(f"Scene {scene.scene_id}: ✅ Tạo audio thành công qua Tier-1A Kokoro-82M ({kokoro_v})")
+                        except Exception as ex_k1:
+                            logger.debug(f"Scene {scene.scene_id}: Tier-1A Kokoro-82M skip: {ex_k1}")
+
                 # ── TIER 1A: Nếu A/B Test chọn Gemini TTS cho kênh EN -> Thử Gemini TTS trước ──
-                if chosen_engine == "gemini_tts" and is_en_script:
+                if not success and chosen_engine == "gemini_tts" and is_en_script:
                     ok_gem = await asyncio.to_thread(
                         self._synthesize_with_gemini_tts,
                         clean_text,
@@ -679,6 +703,28 @@ class VoiceAgent:
                                     await asyncio.sleep(backoff_s)
                             if success or ws_circuit_open:
                                 break
+
+                # ── TIER 3.5: Cứu hộ bằng Kokoro-82M Local Neural ONNX TTS (shorts-flow / MoneyPrinterPlus) ──
+                if not success and not global_safe_voice.startswith("vi-"):
+                    try:
+                        from app.services.tts_kokoro_engine import is_kokoro_tts_available, synthesize_with_kokoro_tts
+                        if is_kokoro_tts_available():
+                            lang_hint = "pt-br" if global_safe_voice.startswith("pt-") else "en"
+                            ok_kokoro, kokoro_v = await asyncio.to_thread(
+                                synthesize_with_kokoro_tts,
+                                clean_text,
+                                scene_audio_path,
+                                niche,
+                                global_safe_voice,
+                                lang_hint,
+                            )
+                            if ok_kokoro and Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024:
+                                success = True
+                                safe_voice = f"kokoro:{kokoro_v}"
+                                scene_engine_used = f"kokoro_tts:{kokoro_v}"
+                                logger.info(f"Scene {scene.scene_id}: ✅ Tạo audio thành công qua Tier-3.5 Kokoro-82M Local Neural ({kokoro_v})")
+                    except Exception as ex_kokoro:
+                        logger.debug(f"Scene {scene.scene_id}: Kokoro-82M TTS fallback error: {ex_kokoro}")
 
                 # ── TIER 4: Cứu hộ bằng Gemini 2.5 Flash Native TTS (nếu Edge-TTS lỗi mà chưa thử Gemini TTS) ──
                 if not success and chosen_engine != "gemini_tts":

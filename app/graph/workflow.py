@@ -179,19 +179,21 @@ def route_after_edit(state: VideoWorkflowState) -> Literal["render_video", "__en
 # ──────────────────────────────────────────────────────────────────────────────
 
 def create_video_workflow_graph() -> StateGraph:
-    """Khởi tạo và biên dịch đồ thị LangGraph Video Engine."""
+    """Khởi tạo và biên dịch đồ thị LangGraph Video Engine (kèm Step-Level Disk Checkpoint Resume)."""
+    from app.graph.checkpoint_store import wrap_node_with_checkpoint
+
     builder = StateGraph(VideoWorkflowState)
 
-    # Thêm các Nodes
+    # Thêm các Nodes (bọc Step-Level Disk Checkpoint cho các bước tốn tài nguyên TTS / Media / Hook)
     builder.add_node("research_and_entity", node_research_and_entity)
     builder.add_node("generate_script", node_generate_script)
     builder.add_node("evaluate_script", node_evaluate_script)
     builder.add_node("refine_script", node_refine_script)
-    builder.add_node("generate_audio", node_generate_audio)
-    builder.add_node("evaluate_audio", node_evaluate_audio)
-    builder.add_node("visual_director", node_direct_visual_strategy)
-    builder.add_node("produce_hook_video", node_produce_and_score_hook_video)
-    builder.add_node("fetch_media", node_fetch_media)
+    builder.add_node("generate_audio", wrap_node_with_checkpoint("generate_audio", node_generate_audio))
+    builder.add_node("evaluate_audio", wrap_node_with_checkpoint("evaluate_audio", node_evaluate_audio))
+    builder.add_node("visual_director", wrap_node_with_checkpoint("visual_director", node_direct_visual_strategy))
+    builder.add_node("produce_hook_video", wrap_node_with_checkpoint("produce_hook_video", node_produce_and_score_hook_video))
+    builder.add_node("fetch_media", wrap_node_with_checkpoint("fetch_media", node_fetch_media))
     builder.add_node("evaluate_media", node_evaluate_media)
     builder.add_node("refine_media", node_refine_media)
     builder.add_node("render_video", node_render_video)

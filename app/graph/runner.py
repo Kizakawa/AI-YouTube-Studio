@@ -154,10 +154,13 @@ class GraphRunner:
                 logger.warning(f"Lỗi khi gọi progress_callback: {e}")
 
     async def run(self) -> Dict[str, Any]:
-        """Chạy toàn bộ quy trình sản xuất video bằng LangGraph."""
+        """Chạy toàn bộ quy trình sản xuất video bằng LangGraph (có Global Render Concurrency Semaphore)."""
+        from app.graph.checkpoint_store import acquire_global_render_slot
+
         ACTIVE_GRAPH_RUNNERS[self.job_id] = self
         try:
-            return await self._run_internal()
+            async with acquire_global_render_slot(self.job_id):
+                return await self._run_internal()
         finally:
             ACTIVE_GRAPH_RUNNERS.pop(self.job_id, None)
 
