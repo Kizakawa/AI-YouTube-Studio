@@ -56,7 +56,7 @@ def plan_media_tools_with_llm_sync(
         for s in scenes
     ]
 
-    prompt = f"""You are an Elite Viral YouTube Shorts Visual Director with 4 specialized media tools.
+    prompt = f"""You are an Elite Viral YouTube Shorts Visual Director & Holistic Script Reasoning Brain with 4 specialized media tools.
 Topic: "{topic}"
 Primary Subject/Entity: "{primary_entity or topic}"
 Channel Niche: "{channel_niche}"
@@ -68,25 +68,31 @@ FULL SCRIPT STORY:
 Individual Scenes Breakdown:
 {json.dumps(scenes_brief, ensure_ascii=False, indent=2)}
 
-YOUR MISSION:
-Call EXACTLY ONE tool for EACH scene (from scene_id=1 to scene_id={total_scenes}) based on semantic understanding of the script (NO brittle keyword matching):
+YOUR 2-STEP COGNITIVE REASONING PROTOCOL (NO BRITTLE KEYWORD MATCHING):
+STEP 1 — HOLISTIC SCRIPT COMPREHENSION, PRONOUN RESOLUTION & SUBTEXT DECODING:
+- Read the FULL SCRIPT STORY from start to finish before deciding any tool or search query.
+- Resolve all pronouns ("It", "He", "She", "They", "This creature", "Nó", "Họ", "Ele", "Ela") and restore missing subjects in split sentences back to the true protagonist ("{primary_entity or topic}").
+- Decode metaphors, similes, and abstract statistics into the CONCRETE PHYSICAL REALITY of the protagonist:
+  * If a split sentence says "Its bite hits like a hydraulic press" or "A 230-decibel shockwave", NEVER search for factory machinery or speakers — search for the protagonist's actual physical action in its natural environment!
+  * Deduce the true natural habitat, historical era, or psychological mood from the full script and keep all scenes visually consistent with that world.
 
-1. CHOOSE THE RIGHT SPECIALIZED TOOL BASED ON TOPIC & SCENE MEANING:
+STEP 2 — SELECT THE OPTIMAL TOOL & CONTEXT-ANCHORED SEARCH QUERY FOR EACH SCENE (scene_id=1 to {total_scenes}):
+1. CHOOSE THE RIGHT SPECIALIZED TOOL BASED ON DEEP SCRIPT INTENT (VIDEO-FIRST BODY CURATION — ENFORCE 75%–90% REAL MOTION VIDEO ACROSS THE SHORT TO MATCH 100M-VIEW COMPETITOR CHANNELS):
    - IF THE SCRIPT OR SCENE IS ABOUT COLOSSAL MONSTERS, DEEP-SEA LEVIATHANS (The Bloop, Kraken, Megalodon, Cthulhu, Gargantuan Leviathan), PREHISTORIC MEGAFAUNA (Titanoboa, Mosasaurus, T-Rex), KAIJU (Godzilla), CRYPTIDS (SCP, Siren Head, Wendigo), OR MEGALOPHOBIA/THALASSOPHOBIA:
      -> ALWAYS call `summon_epic_monster_cinematic_media`!
      -> Provide `creature_name` (e.g., "The Bloop Leviathan", "Megalodon", "Kraken") and `scale_anchor_object` (a human object like "submarine", "battleship", "scuba diver", "skyscraper" to show colossal scale).
-     -> Use `monster_media_mode="3D_CGI_VIDEO"` for Scene 1 (Hook) and 2-3 climax action scenes, and `monster_media_mode="CONCEPT_ART_8K"` for the remaining body scenes so the video combines 3D CGI motion with 8K ArtStation/Movie Still scale shots.
+     -> Use `monster_media_mode="3D_CGI_VIDEO"` for Scene 1 (Hook) AND at least 4–5 body scenes (`Scenes 1, 2, 3, 4, 5, 6`), using `monster_media_mode="CONCEPT_ART_8K"` only for 1–2 scale comparison still scenes.
    - IF THE SCRIPT OR SCENE IS ABOUT HUMAN PSYCHOLOGY, DARK PSYCHOLOGY, MANIPULATION, NARCISSISM, GASLIGHTING, STOICISM, PHILOSOPHY, OR INTERPERSONAL EMOTIONAL TENSION:
      -> ALWAYS call `fetch_clean_cinematic_portrait_or_broll`! (NEVER call `search_google_cinematic_image` for psychology because open-web Google Images return text quote cards and book covers!).
-     -> Write `human_action_query` as a concrete 2-4 word physical human action or facial expression (e.g., "close up eyes dark lighting", "couple argument tension", "man stressed alone dark room", "silhouette person walking night").
-     -> Use `media_preference="VIDEO_BROLL"` for Scene 1 and 3-4 body scenes, and `media_preference="CLEAN_PORTRAIT_PHOTO"` for the other scenes.
+     -> Write `human_action_query` as a concrete 2-4 word physical human action or facial micro-expression reflecting the scene's emotional subtext (e.g., "close up eyes dark lighting", "couple argument tension", "man stressed alone dark room", "silhouette person walking night").
+     -> Use `media_preference="VIDEO_BROLL"` for Scene 1 AND at least 5–6 body scenes (`Scenes 1, 2, 3, 4, 5, 6, 7`), reserving `media_preference="CLEAN_PORTRAIT_PHOTO"` only for 1–2 intense micro-expression close-up scenes.
    - FOR REAL-WORLD WILDLIFE, NATURE, SCIENCE, HISTORY, OR DOCUMENTARY TOPICS:
-     -> Call `clone_youtube_short_peak_clip` (`clip_role="HOOK"` for Scene 1, and `clip_role="PEAK"` for the Mid-Video Climax at Scene 4–5 plus 2–3 other high-action body scenes) + `search_google_cinematic_image` for the remaining scenes.
-     -> PEAK VIDEO QUERY PRIMING (CRITICAL): When writing `youtube_search_query` for `clone_youtube_short_peak_clip`, NEVER write passive noun-only queries (e.g., FORBIDDEN: `"black caiman river"`, `"honey badger savanna"`). ALWAYS include the **explosive physical action, climax verb, or dramatic phenomenon** (e.g., `"black caiman hunting amazon"`, `"honey badger fearless lion encounter"`, `"boiling river amazon steam"`, `"sperm whale deep dive underwater"`) so our Peak Scanner extracts the most intense action moment!
+     -> Call `clone_youtube_short_peak_clip` (`clip_role="HOOK"` for Scene 1, and `clip_role="PEAK"` for body scenes) for at least `6 out of 8` scenes (`Scenes 1, 2, 3, 4, 5, 6, 7`), only calling `search_google_cinematic_image` when a specific historical map, document, or static artifact has no motion video equivalent.
+     -> PEAK VIDEO QUERY PRIMING (CRITICAL): When writing `youtube_search_query` for `clone_youtube_short_peak_clip`, NEVER write passive noun-only queries (e.g., FORBIDDEN: `"black caiman river"`, `"honey badger savanna"`). ALWAYS include the **resolved protagonist + explosive physical action, climax verb, or dramatic phenomenon** (e.g., `"black caiman hunting amazon"`, `"honey badger fearless lion encounter"`, `"boiling river amazon steam"`, `"sperm whale deep dive underwater"`) so our Peak Scanner extracts the most intense action moment!
 
 2. DECIDE `search_scope` FOR EACH INDIVIDUAL SCENE (`"SCENE_SPECIFIC"` vs `"SCRIPT_OVERALL"`):
-   - `"SCENE_SPECIFIC"`: The split sentence describes a clear, standalone visual action of the subject.
-   - `"SCRIPT_OVERALL"`: The split sentence becomes vague, transitional, abstract, or mentions a minor distracting prop when isolated -> search around `overall_script_query`!
+   - `"SCENE_SPECIFIC"`: The split sentence (once pronouns are resolved) describes a clear, standalone visual action of the subject.
+   - `"SCRIPT_OVERALL"`: The split sentence is purely transitional, philosophical, statistical, or mentions a minor distracting metaphor/prop -> set `"SCRIPT_OVERALL"` and search around `overall_script_query`!
 
 IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!"""
 
@@ -198,8 +204,8 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
         (d for d in decisions_by_scene.values() if d.get("tool_name") == "fetch_clean_cinematic_portrait_or_broll"),
         None,
     )
-    peak_indices = {1, 2, 4, 5, 6}
-    max_video_peak_scenes = max(5, (total_scenes * 2) // 3)
+    peak_indices = {1, 2, 3, 4, 5, 6, 7}
+    max_video_peak_scenes = max(6, int(round(total_scenes * 0.8)))
     video_peak_count = 0
 
     for idx, s in enumerate(scenes):
@@ -223,10 +229,10 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 d["creature_name"] = clean_c
                 d["subject_entity"] = _sanitize_tool_arg(d.get("subject_entity"), fallback=clean_c)
                 d["scale_anchor_object"] = _sanitize_tool_arg(d.get("scale_anchor_object"), fallback="submarine")
-                d.setdefault("monster_media_mode", "3D_CGI_VIDEO" if sid == 1 else "CONCEPT_ART_8K")
+                d.setdefault("monster_media_mode", "3D_CGI_VIDEO" if sid in (1, 2, 3, 4, 5, 6) else "CONCEPT_ART_8K")
             elif t_chosen == "fetch_clean_cinematic_portrait_or_broll":
                 d.setdefault("human_action_query", s.get("visual_keyword") or default_overall_q)
-                d.setdefault("media_preference", "VIDEO_BROLL" if sid == 1 else "CLEAN_PORTRAIT_PHOTO")
+                d.setdefault("media_preference", "VIDEO_BROLL" if sid in (1, 2, 3, 4, 5, 6, 7) else "CLEAN_PORTRAIT_PHOTO")
             elif t_chosen == "clone_youtube_short_peak_clip":
                 video_peak_count += 1
                 d.setdefault("clip_role", "HOOK" if sid == 1 else "PEAK")
@@ -246,7 +252,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
         if llm_monster_ref is not None:
             c_name_inh = _sanitize_tool_arg(llm_monster_ref.get("creature_name"), fallback=default_subj or "colossal sea monster")
             s_anchor_inh = _sanitize_tool_arg(llm_monster_ref.get("scale_anchor_object"), fallback="submarine")
-            m_mode_inh = "3D_CGI_VIDEO" if sid in (1, 2, 4, 5, 6) else "CONCEPT_ART_8K"
+            m_mode_inh = "3D_CGI_VIDEO" if sid in (1, 2, 3, 4, 5, 6) else "CONCEPT_ART_8K"
             final_plan.append({
                 "tool_name": "summon_epic_monster_cinematic_media",
                 "scene_id": sid,
@@ -262,7 +268,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 "scope_audited": True,
             })
         elif llm_portrait_ref is not None:
-            m_pref_inh = "VIDEO_BROLL" if sid in (1, 2, 3, 5, 6) else "CLEAN_PORTRAIT_PHOTO"
+            m_pref_inh = "VIDEO_BROLL" if sid in (1, 2, 3, 4, 5, 6, 7) else "CLEAN_PORTRAIT_PHOTO"
             final_plan.append({
                 "tool_name": "fetch_clean_cinematic_portrait_or_broll",
                 "scene_id": sid,
@@ -353,7 +359,7 @@ def audit_and_decide_search_scopes_with_llm_sync(
             "overall_script_query": d.get("overall_script_query", ""),
         })
 
-    audit_prompt = f"""You are the Chief LLM Search Scope Judge & Visual Auditor in a LangGraph video pipeline.
+    audit_prompt = f"""You are the Chief LLM Search Scope Judge & Holistic Script Context Auditor in a LangGraph video pipeline.
 Topic: "{topic}"
 Primary Subject: "{primary_entity or topic}"
 
@@ -363,14 +369,18 @@ FULL SCRIPT STORY:
 PROPOSED SCENE DECISIONS TO AUDIT:
 {json.dumps(review_items, ensure_ascii=False, indent=2)}
 
-YOUR TASK:
-Evaluate each scene (from scene_id=1 to {len(scenes)}) and decide whether searching the split sentence on its own makes sense:
-1. If `split_sentence` when isolated from the script still has a clear, concrete, self-contained visual action of the main subject:
+YOUR 2-STEP COGNITIVE AUDIT PROTOCOL:
+STEP 1 — PRONOUN RESOLUTION & SUBTEXT DECODING ACROSS THE FULL SCRIPT:
+- Read the FULL SCRIPT STORY first. When a `split_sentence` uses pronouns ("It", "He", "They", "This", "Nó", "Ele") or omits the main subject, mentally substitute the true protagonist ("{primary_entity or topic}") and its real environment from the full script.
+- When a `split_sentence` uses a metaphor, simile, or abstract statistic (e.g., "built like a hydraulic press", "faster than a blink", "like a silent cage"), decode what is physically happening to the protagonist rather than searching literal metaphor words.
+
+STEP 2 — APPROVE OR REWRITE `approved_scope` AND `approved_query` FOR EACH SCENE (1 to {len(scenes)}):
+1. If `split_sentence` (after pronoun resolution) describes a clear, concrete, visualizable action or state of the main subject:
    - Set `"approved_scope": "SCENE_SPECIFIC"`
-   - Keep or refine `"approved_query"` so it searches directly for that sentence's visual meaning.
-2. If `split_sentence` when isolated from the script becomes MEANINGLESS, VAGUE, TRANSITIONAL, SCIENTIFIC/ABSTRACT, or focuses on a minor inanimate prop that would hijack search results:
+   - Ensure `"approved_query"` explicitly includes the resolved subject + concrete physical action/setting (3–5 English words), never a dangling pronoun or literal metaphor prop.
+2. If `split_sentence` is purely transitional, abstract, rhetorical, or focuses on a minor inanimate comparison that would hijack search results away from the story:
    - Set `"approved_scope": "SCRIPT_OVERALL"`
-   - Rewrite `"approved_query"` so it searches for content REVOLVING AROUND THE OVERALL SCRIPT STORY.
+   - Rewrite `"approved_query"` so it searches for a fresh, visually compelling angle of the MAIN SCRIPT PROTAGONIST ("{primary_entity or topic}") in its true environment.
 
 Return ONLY a valid JSON object in this exact format:
 {{
@@ -381,7 +391,7 @@ Return ONLY a valid JSON object in this exact format:
       "scene_id": 1,
       "approved_scope": "SCENE_SPECIFIC",
       "approved_query": "stray golden retriever shivering in rain",
-      "reason": "Sentence clearly describes the dog shivering in rain"
+      "reason": "Resolved subject and concrete physical action from script context"
     }}
   ]
 }}"""
@@ -478,5 +488,3 @@ Return ONLY a valid JSON object in this exact format:
         logger.debug(f"[LLM Scope Judge] Fallback pass: {ex}")
 
     return proposed_decisions
-
-
