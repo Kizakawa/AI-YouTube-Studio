@@ -390,9 +390,10 @@ class VoiceAgent:
     ) -> Dict[str, str]:
         """
         Biến thiên cảm xúc & nhịp độ giọng đọc theo từng Nhịp (Beat) của kịch bản (Dynamic Per-Scene Prosody):
-          - Scene 1 (Hook 0-3s): Tăng +2% tốc độ, +2Hz cao độ, +4% âm lượng tạo năng lượng cuốn hút tức thì.
+          - Scene 1 (Hook 0-3s): Tăng mạnh +16% tốc độ (tổng +20% đến +22%), +3Hz cao độ, +6% âm lượng tạo xung lực giữ chân tức thì ở 0.00s.
+          - Scene 2 (Hook Follow-Up 3-6s): Tăng +8% tốc độ (tổng +12% đến +14%), +2Hz cao độ, +4% âm lượng duy trì đà cuốn hút trước khi vào thân bài.
           - Mid-Video Twist / Reveal (Scene 4 hoặc có từ khóa bước ngoặt): Hạ nhẹ -1% tốc độ, -2Hz cao độ tạo chiều sâu bí ẩn.
-          - Cảnh Cao trào / Nguy hiểm (chứa từ khóa khẩn cấp hoặc dấu chấm than/hỏi): +1% tốc độ, +1Hz cao độ.
+          - Cảnh Cao trào / Nguy hiểm (chứa từ khóa khẩn cấp hoặc dấu chấm than/hỏi): +2% tốc độ, +1Hz cao độ.
           - Scene Cuối (Payoff / Seamless Loop): Nhịp đọc đĩnh đạc (-1Hz cao độ) để nối vòng lặp mượt mà.
         """
         base_rate_str = cls.resolve_optimal_tts_rate(voice, niche=niche, explicit_rate=explicit_rate)
@@ -416,8 +417,13 @@ class VoiceAgent:
         vol_pct = 0
 
         if scene_idx == 0:
-            # Nhịp 1 — 3s Thumb-Stopper Hook: Nhanh, đanh, bắt tai ngay lập tức
-            rate_delta = 2
+            # Nhịp 1 — 0-3s Thumb-Stopper Hook: Tốc độ cao (+16% delta -> +20%~+22%), đanh, bắt tai ngay lập tức
+            rate_delta = 16
+            pitch_hz = 3
+            vol_pct = 6
+        elif scene_idx == 1 and total_scenes >= 4:
+            # Nhịp 1B — 3-6s Hook Follow-Up: Giữ nhịp nhanh (+8% delta -> +12%~+14%) khóa chặt người xem qua ngưỡng 5 giây đầu
+            rate_delta = 8
             pitch_hz = 2
             vol_pct = 4
         elif scene_idx == total_scenes - 1 and total_scenes >= 3:
@@ -432,11 +438,11 @@ class VoiceAgent:
             vol_pct = 2
         elif any(k in text_low for k in urgent_cues) or "!" in narration:
             # Nhịp 3 — Cao trào kịch tính
-            rate_delta = 1
+            rate_delta = 2
             pitch_hz = 1
             vol_pct = 3
 
-        final_rate = max(-5, min(14, base_pct + rate_delta))
+        final_rate = max(-5, min(26, base_pct + rate_delta))
         rate_str = f"{final_rate:+d}%"
         pitch_str = f"{pitch_hz:+d}Hz"
         vol_str = f"{vol_pct:+d}%"
@@ -516,7 +522,17 @@ class VoiceAgent:
 
                 safe_voice = self._resolve_safe_voice(scene.narration, global_safe_voice)
                 expected_rate = self.resolve_optimal_tts_rate(safe_voice, niche=niche, explicit_rate=rate)
+                expected_prosody_rate = self.resolve_scene_prosody(
+                    voice=safe_voice,
+                    scene_idx=scene_idx,
+                    total_scenes=total_scenes,
+                    narration=scene.narration,
+                    niche=niche,
+                    explicit_rate=rate,
+                )["rate"]
                 expected_voice_tag = f"gemini:{gemini_voice}" if chosen_engine == "gemini_tts" else safe_voice
+                is_hook_scene = (scene_idx == 0)
+                is_second_scene = (scene_idx == 1 and total_scenes >= 4)
 
                 # Checkpoint: Chỉ tái sử dụng audio từ trước nếu file audio > 1KB VÀ metadata khớp chính xác
                 if Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024 and meta_path.exists():
@@ -526,13 +542,19 @@ class VoiceAgent:
                             meta.get("narration") == scene.narration
                             and meta.get("voice") in (expected_voice_tag, safe_voice)
                             and meta.get("rate") == expected_rate
-                            and meta.get("mastered_v6") is True
+                            and meta.get("prosody_rate") == expected_prosody_rate
+                            and meta.get("mastered_v7") is True
                         ):
                             duration_ms = meta.get("duration_ms") or await asyncio.to_thread(self._get_audio_duration_ms, scene_audio_path)
                             if duration_ms > 0:
                                 cached_words = meta.get("word_timings")
                                 if not cached_words and Path(words_meta_path).exists():
-                                    cached_words = self._parse_words_jsonl(words_meta_path, max_duration_ms=duration_ms)
+                                    cached_words = self._parse_words_jsonl(
+                                        words_meta_path,
+                                        max_duration_ms=duration_ms,
+                                        is_hook_scene=is_hook_scene,
+                                        is_second_scene=is_second_scene,
+                                    )
                                 if not cached_words:
                                     cached_words = self._synthesize_word_timings(scene.narration, duration_ms)
                                 engine_tracker.append(str(meta.get("engine") or self.last_used_engine))
@@ -560,6 +582,7 @@ class VoiceAgent:
                 used_http_fallback = False
                 scene_engine_used = self.last_used_engine
                 last_err = None
+                kokoro_scene_speed = 1.20 if is_hook_scene else (1.12 if is_second_scene else 1.04)
 
                 # ── TIER 1A-KOKORO: Nếu bật ENABLE_KOKORO_TTS=true và có model local -> Ưu tiên Kokoro-82M Neural ──
                 if not success and not global_safe_voice.startswith("vi-"):
@@ -576,12 +599,13 @@ class VoiceAgent:
                                     niche,
                                     global_safe_voice,
                                     lang_hint,
+                                    kokoro_scene_speed,
                                 )
                                 if ok_kokoro and Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024:
                                     success = True
                                     safe_voice = f"kokoro:{kokoro_v}"
                                     scene_engine_used = f"kokoro_tts:{kokoro_v}"
-                                    logger.info(f"Scene {scene.scene_id}: ✅ Tạo audio thành công qua Tier-1A Kokoro-82M ({kokoro_v})")
+                                    logger.info(f"Scene {scene.scene_id}: ✅ Tạo audio thành công qua Tier-1A Kokoro-82M ({kokoro_v}, speed={kokoro_scene_speed})")
                         except Exception as ex_k1:
                             logger.debug(f"Scene {scene.scene_id}: Tier-1A Kokoro-82M skip: {ex_k1}")
 
@@ -717,12 +741,13 @@ class VoiceAgent:
                                 niche,
                                 global_safe_voice,
                                 lang_hint,
+                                kokoro_scene_speed,
                             )
                             if ok_kokoro and Path(scene_audio_path).exists() and Path(scene_audio_path).stat().st_size > 1024:
                                 success = True
                                 safe_voice = f"kokoro:{kokoro_v}"
                                 scene_engine_used = f"kokoro_tts:{kokoro_v}"
-                                logger.info(f"Scene {scene.scene_id}: ✅ Tạo audio thành công qua Tier-3.5 Kokoro-82M Local Neural ({kokoro_v})")
+                                logger.info(f"Scene {scene.scene_id}: ✅ Tạo audio thành công qua Tier-3.5 Kokoro-82M Local Neural ({kokoro_v}, speed={kokoro_scene_speed})")
                     except Exception as ex_kokoro:
                         logger.debug(f"Scene {scene.scene_id}: Kokoro-82M TTS fallback error: {ex_kokoro}")
 
@@ -774,15 +799,28 @@ class VoiceAgent:
                     raise last_err or RuntimeError(f"Không thể sinh audio cho cảnh {scene.scene_id} sau cả 5 tầng dự phòng")
 
                 engine_tracker.append(scene_engine_used)
+                is_gemini_engine = str(scene_engine_used or "").startswith("gemini_tts")
 
-                # Hậu kỳ âm thanh Broadcast Voice Mastering (EQ ấm dày + Compressor + Cắt khoảng lặng thừa cuối câu)
-                await asyncio.to_thread(self._master_and_trim_scene_audio, scene_audio_path, used_http_fallback)
+                # Hậu kỳ âm thanh Broadcast Voice Mastering (EQ ấm dày + Compressor + Cắt khoảng lặng thừa + Hook Speed Boost)
+                await asyncio.to_thread(
+                    self._master_and_trim_scene_audio,
+                    scene_audio_path,
+                    used_http_fallback,
+                    is_hook_scene,
+                    is_second_scene,
+                    is_gemini_engine,
+                )
 
                 # Đo duration thực bằng ffprobe (non-blocking) sau khi đã cắt khoảng lặng đuôi
                 duration_ms = await asyncio.to_thread(self._get_audio_duration_ms, scene_audio_path)
 
                 # Đọc word-level timings chính xác từ file metadata (hoặc nội suy thông minh nếu dùng Gemini TTS / HTTP TTS)
-                word_timings = self._parse_words_jsonl(words_meta_path, max_duration_ms=duration_ms)
+                word_timings = self._parse_words_jsonl(
+                    words_meta_path,
+                    max_duration_ms=duration_ms,
+                    is_hook_scene=is_hook_scene,
+                    is_second_scene=is_second_scene,
+                )
                 if not word_timings and duration_ms > 0:
                     word_timings = self._synthesize_word_timings(scene.narration, duration_ms)
 
@@ -793,7 +831,8 @@ class VoiceAgent:
                         "voice": safe_voice,
                         "engine": scene_engine_used,
                         "rate": expected_rate,
-                        "mastered_v6": True,
+                        "prosody_rate": expected_prosody_rate,
+                        "mastered_v7": True,
                         "duration_ms": duration_ms,
                         "word_timings": word_timings,
                     }, ensure_ascii=False), encoding="utf-8")
@@ -942,8 +981,17 @@ class VoiceAgent:
         return timings
 
     @staticmethod
-    def _parse_words_jsonl(words_file_path: str, max_duration_ms: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Đọc và trích xuất mốc thời gian từng từ từ file JSONL sinh bởi Edge-TTS."""
+    def _parse_words_jsonl(
+        words_file_path: str,
+        max_duration_ms: Optional[int] = None,
+        is_hook_scene: bool = False,
+        is_second_scene: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Đọc và trích xuất mốc thời gian từng từ từ file JSONL sinh bởi Edge-TTS.
+        Tự động dịch mốc đầu câu về 0ms (cho Scene 1 Hook khi cắt khoảng lặng đầu) và co giãn tỷ lệ
+        theo duration_ms thực tế sau khi qua bộ lọc atempo mastering để phụ đề Karaoke khớp 100%.
+        """
         p = Path(words_file_path)
         if not p.exists() or p.stat().st_size == 0:
             return []
@@ -957,14 +1005,8 @@ class VoiceAgent:
                     item = json.loads(line_s)
                     if item.get("type") == "WordBoundary":
                         start_ms = int(item.get("offset", 0) / 10000)
-                        dur_ms = int(item.get("duration", 0) / 10000)
+                        dur_ms = max(35, int(item.get("duration", 0) / 10000))
                         end_ms = start_ms + dur_ms
-                        if max_duration_ms and max_duration_ms > 0:
-                            if start_ms >= max_duration_ms:
-                                start_ms = max(0, max_duration_ms - 80)
-                            if end_ms > max_duration_ms:
-                                end_ms = max_duration_ms
-                                dur_ms = max(40, end_ms - start_ms)
                         text = item.get("text", "").strip()
                         if text:
                             words.append({
@@ -973,26 +1015,72 @@ class VoiceAgent:
                                 "end_ms": end_ms,
                                 "duration_ms": dur_ms,
                             })
+            if words:
+                if is_hook_scene and words[0]["start_ms"] > 10:
+                    lead_shift = max(0, words[0]["start_ms"] - 10)
+                    for w in words:
+                        s_shifted = max(0, w["start_ms"] - lead_shift)
+                        e_shifted = max(s_shifted + 35, w["end_ms"] - lead_shift)
+                        w["start_ms"] = s_shifted
+                        w["end_ms"] = e_shifted
+                        w["duration_ms"] = e_shifted - s_shifted
+
+                if max_duration_ms and max_duration_ms > 0:
+                    raw_end = max(1, words[-1]["end_ms"])
+                    target_end = max(100, max_duration_ms - (10 if is_hook_scene else 20))
+                    if is_hook_scene or is_second_scene or raw_end > max_duration_ms:
+                        scale = target_end / float(raw_end)
+                        for w in words:
+                            s_ms = int(round(w["start_ms"] * scale))
+                            e_ms = min(max_duration_ms, max(s_ms + 35, int(round(w["end_ms"] * scale))))
+                            w["start_ms"] = s_ms
+                            w["end_ms"] = e_ms
+                            w["duration_ms"] = max(35, e_ms - s_ms)
+                    else:
+                        for w in words:
+                            if w["start_ms"] >= max_duration_ms:
+                                w["start_ms"] = max(0, max_duration_ms - 80)
+                            if w["end_ms"] > max_duration_ms:
+                                w["end_ms"] = max_duration_ms
+                                w["duration_ms"] = max(40, w["end_ms"] - w["start_ms"])
         except Exception as e:
             logger.debug(f"Lỗi parse words jsonl {words_file_path}: {e}")
         return words
 
     @staticmethod
-    def _master_and_trim_scene_audio(file_path: str, is_http_fallback: bool = False) -> None:
+    def _master_and_trim_scene_audio(
+        file_path: str,
+        is_http_fallback: bool = False,
+        is_hook_scene: bool = False,
+        is_second_scene: bool = False,
+        is_gemini_engine: bool = False,
+    ) -> None:
         """
-        Broadcast Voice Mastering & Natural Pacing cho từng phân cảnh:
-        - Nếu là audio cứu hộ từ Google HTTP TTS, giữ tốc độ tự nhiên (atempo=1.05).
+        Broadcast Voice Mastering & High-Retention Hook Pacing cho từng phân cảnh:
+        - Scene 1 (Hook 0-3s): Cắt sạch khoảng lặng đầu câu (0.00s) + tăng xung nhịp atempo (1.06x cho Edge/Kokoro đã tăng prosody, 1.18x cho Gemini/HTTP) + cắt sát đuôi (pad 10ms) để cuốn người xem ngay lập tức.
+        - Scene 2 (Hook Follow-Up 3-6s): Duy trì nhịp nhanh (atempo 1.03x cho Edge/Kokoro, 1.10x cho Gemini/HTTP) + pad 15ms để chuyển mượt sang thân bài.
         - Áp dụng EQ Podcast/Radio (Highpass 80Hz khử ù + Warmth +2.0dB @ 130Hz + Presence +1.5dB @ 4.2kHz)
           kết hợp Compressor nhẹ (-18dB, ratio 2.2) để giọng đọc ấm, rõ chữ và tự nhiên.
-        - Chỉ cắt khoảng lặng chết quá dài ở cuối câu (<-42dB) và giữ đệm nghỉ tự nhiên 60ms (apad=pad_dur=0.06)
-          để mạch kể chuyện mượt mà, có nhịp nghỉ tự nhiên giữa các câu, không bị gấp gáp hay cụt lủn.
-        - KHÔNG cắt đầu câu (0.0ms) trên Edge-TTS để mốc thời gian WordBoundary (start_ms/end_ms) khớp 100%.
         """
         p = Path(file_path)
         if not p.exists() or p.stat().st_size <= 1024:
             return
         tmp_out = str(p.with_suffix(".mastered.mp3"))
-        tempo_prefix = "atempo=1.05,silenceremove=start_periods=1:start_duration=0.02:start_threshold=-40dB," if is_http_fallback else ""
+        if is_hook_scene:
+            hook_tempo = 1.18 if (is_http_fallback or is_gemini_engine) else 1.06
+            tempo_prefix = f"atempo={hook_tempo:.2f},silenceremove=start_periods=1:start_duration=0.01:start_threshold=-42dB,"
+            tail_pad = "0.01"
+        elif is_second_scene:
+            sec2_tempo = 1.10 if (is_http_fallback or is_gemini_engine) else 1.03
+            tempo_prefix = f"atempo={sec2_tempo:.2f},"
+            tail_pad = "0.015"
+        elif is_http_fallback:
+            tempo_prefix = "atempo=1.05,silenceremove=start_periods=1:start_duration=0.02:start_threshold=-40dB,"
+            tail_pad = "0.02"
+        else:
+            tempo_prefix = ""
+            tail_pad = "0.02"
+
         af_chain = (
             f"{tempo_prefix}"
             "highpass=f=80,"
@@ -1000,7 +1088,7 @@ class VoiceAgent:
             "equalizer=f=4200:width_type=q:width=1.5:g=1.5,"
             "acompressor=threshold=-18dB:ratio=2.2:attack=15:release=180:makeup=1.2dB,"
             "areverse,silenceremove=start_periods=1:start_duration=0.02:start_threshold=-42dB,areverse,"
-            "apad=pad_dur=0.02"
+            f"apad=pad_dur={tail_pad}"
         )
         try:
             from app.utils.ffmpeg_helper import run_ffmpeg, get_duration_ms
@@ -1015,7 +1103,10 @@ class VoiceAgent:
                 tmp_out,
             ], timeout=25)
             new_dur = get_duration_ms(tmp_out)
-            min_valid_dur = 250 if is_http_fallback else max(300, orig_dur - 1350)
+            if is_http_fallback or is_hook_scene or is_second_scene:
+                min_valid_dur = max(250, int(orig_dur * 0.58) - 450)
+            else:
+                min_valid_dur = max(300, orig_dur - 1350)
             if Path(tmp_out).exists() and Path(tmp_out).stat().st_size > 1024 and new_dur >= min_valid_dur:
                 Path(tmp_out).replace(p)
             else:
