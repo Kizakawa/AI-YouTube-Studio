@@ -1228,6 +1228,109 @@ def execute_youtube_short_peak_clone_sync(
         except Exception as e_yt:
             logger.debug(f"[YouTubePeakTool] Lỗi nhánh YouTube video: {e_yt}")
 
+        # ── TẦNG 1.5: SĂN B-ROLL ĐỘC QUYỀN TRÊN BILIBILI (ĐÃ SAFE-CROP LOGO & PHỤ ĐỀ TRUNG + DUYỆT VISION) ──
+        try:
+            from app.services.media.bilibili_fetcher import (
+                download_and_crop_bilibili_broll_clip,
+                search_bilibili_videos,
+                translate_query_to_chinese,
+            )
+
+            base_q_for_bili = search_phrases[0] if search_phrases else (search_query or subject_entity or topic)
+            zh_query = translate_query_to_chinese(
+                query=base_q_for_bili,
+                primary_entity=subject_entity or topic,
+                is_3d_or_scifi=allow_3d_cgi_monster,
+            )
+            bili_cands = search_bilibili_videos(zh_query, max_results=6, min_dur_s=10.0, max_dur_s=540.0)
+            for b_cand in bili_cands[:2]:
+                bvid = str(b_cand.get("bvid") or b_cand.get("id") or "")
+                b_url = str(b_cand.get("url") or f"https://www.bilibili.com/video/{bvid}")
+                b_title = str(b_cand.get("title") or bvid)
+                if not bvid or b_url in used:
+                    continue
+                if not rag.try_claim_in_job_video(
+                    job_id=job_id,
+                    vid_id=bvid,
+                    url=b_url,
+                    title=b_title,
+                    scene_id=eff_scene_id,
+                ):
+                    continue
+                with _yt_url_lock:
+                    used.update(extract_media_identity(b_url))
+
+                b_info = download_and_crop_bilibili_broll_clip(
+                    url_or_id=bvid,
+                    output_path=output_path,
+                    target_duration_sec=max(3.5, target_duration_sec),
+                )
+                if not b_info or not Path(output_path).exists() or Path(output_path).stat().st_size < 30_000:
+                    rag.release_in_job_video_claim(job_id=job_id, vid_id=bvid, url=b_url, title=b_title, scene_id=eff_scene_id)
+                    Path(output_path).unlink(missing_ok=True)
+                    continue
+
+                ok_sig_b, _ = rag.verify_and_commit_in_job_clip(
+                    job_id=job_id,
+                    scene_id=eff_scene_id,
+                    media_path=output_path,
+                    vid_id=bvid,
+                    url=b_url,
+                    title=b_title,
+                    is_continuation_slice=False,
+                )
+                if not ok_sig_b:
+                    rag.release_in_job_video_claim(job_id=job_id, vid_id=bvid, url=b_url, title=b_title, scene_id=eff_scene_id)
+                    Path(output_path).unlink(missing_ok=True)
+                    continue
+
+                passed_vis_b, vis_score_b, vis_reason_b = _verify_short_clip_with_gemini_vision(
+                    video_path=output_path,
+                    topic=topic,
+                    narration=narration,
+                    subject_entity=subject_entity or topic,
+                    overall_script_query=overall_script_query or base_q_for_bili,
+                    search_scope=effective_scope,
+                    video_title=f"{b_title} ({zh_query})",
+                    allow_3d_cgi_monster=allow_3d_cgi_monster,
+                    strict_no_fallback=True,
+                )
+                if not passed_vis_b:
+                    logger.info(
+                        f"🚫 [BilibiliPeakTool] Gemini Vision từ chối clip Bilibili '{b_title[:40]}' "
+                        f"(điểm={vis_score_b}/10: {vis_reason_b}) -> Thử ứng viên tiếp theo!"
+                    )
+                    rag.release_in_job_video_claim(job_id=job_id, vid_id=bvid, url=b_url, title=b_title, scene_id=eff_scene_id)
+                    Path(output_path).unlink(missing_ok=True)
+                    continue
+
+                record_used_media(
+                    url=b_url,
+                    query=zh_query,
+                    job_id=job_id,
+                    source="bilibili_clean_broll",
+                    media_path=output_path,
+                )
+                logger.info(
+                    f"🐉 [BilibiliPeakTool] Đã săn & duyệt Vision ({vis_score_b}/10) clip Bilibili độc quyền "
+                    f"('{zh_query}' -> '{b_title[:45]}', {b_url})"
+                )
+                return {
+                    "media_path": output_path,
+                    "media_type": "hook_ready_video" if (clip_role or "").upper() == "HOOK" else "video",
+                    "source_url": b_url,
+                    "youtube_id": bvid,
+                    "title": b_title,
+                    "window": "bilibili_safe_crop",
+                    "vision_score": vis_score_b,
+                    "search_scope": effective_scope,
+                    "full_peak_path": None,
+                    "full_peak_duration_sec": round(float(target_duration_sec), 2),
+                    "scene_clip_duration_sec": round(float(target_duration_sec), 2),
+                }
+        except Exception as e_bili:
+            logger.debug(f"[BilibiliPeakTool] Nhánh Bilibili B-roll skip: {e_bili}")
+
     # ── TẦNG 2 (FALLBACK TỰ ĐỘNG KHI KHÔNG CÓ CLIP YOUTUBE ĐẠT CHUẨN): VIDEO HD DỌC TRÊN PEXELS / PIXABAY ──
     if not allow_3d_cgi_monster:
         try:

@@ -58,10 +58,18 @@ def _get_video_download_lock(vid: str) -> threading.Lock:
 
 
 def extract_youtube_video_id(url_or_id: str) -> Optional[str]:
-    """Trích xuất Video ID từ các định dạng URL YouTube khác nhau hoặc ID trực tiếp."""
+    """Trích xuất Video ID từ các định dạng URL YouTube hoặc Bilibili (BV1.../av.../b23.tv)."""
     if not url_or_id:
         return None
     url_or_id = url_or_id.strip()
+    try:
+        from app.services.media.bilibili_fetcher import extract_bilibili_id, is_bilibili_source
+        if is_bilibili_source(url_or_id):
+            b_parsed = extract_bilibili_id(url_or_id)
+            if b_parsed and b_parsed.get("id"):
+                return b_parsed["id"]
+    except Exception:
+        pass
     if len(url_or_id) == 11 and re.match(r'^[0-9A-Za-z_-]{11}$', url_or_id):
         return url_or_id
     patterns = [
@@ -175,6 +183,24 @@ class VideoRepurposerService:
                 "thumbnail": "",
                 "video_id": Path(file_path).stem,
             }
+
+        from app.services.media.bilibili_fetcher import (
+            get_bilibili_video_info_and_streams,
+            is_bilibili_source,
+        )
+        if is_bilibili_source(url_or_path):
+            b_info = get_bilibili_video_info_and_streams(url_or_path)
+            if b_info:
+                return {
+                    "source_type": "bilibili",
+                    "title": b_info.get("title", f"Bilibili Video {b_info.get('bvid')}"),
+                    "duration_seconds": float(b_info.get("duration", 0.0)),
+                    "author": b_info.get("uploader", "Bilibili Creator"),
+                    "thumbnail": b_info.get("thumbnail", ""),
+                    "video_id": b_info.get("bvid") or b_info.get("id"),
+                    "webpage_url": b_info.get("webpage_url", url_or_path),
+                    "description": b_info.get("description", "") or "",
+                }
 
         video_id = extract_youtube_video_id(url_or_path)
         if not video_id:
@@ -1322,6 +1348,18 @@ Return ONLY a valid JSON list matching this schema:
             if target_path.exists() and target_path.stat().st_size > 1024 * 1024:
                 logger.info(f"Đã có sẵn file tải trước đó: {target_path}")
                 return str(target_path)
+
+            from app.services.media.bilibili_fetcher import (
+                download_full_bilibili_video,
+                is_bilibili_source,
+            )
+            if is_bilibili_source(url_or_id) or is_bilibili_source(video_id):
+                logger.info(f"🐉 [Repurposer] Đang tải video 1080p từ Bilibili (WBI Direct Stream): {url_or_id}")
+                b_res = download_full_bilibili_video(url_or_id, str(target_path))
+                if b_res and target_path.exists() and target_path.stat().st_size > 100 * 1024:
+                    logger.info(f"✅ [Repurposer] Tải thành công video Bilibili: {target_path} ({target_path.stat().st_size} bytes)")
+                    return str(target_path)
+                raise RuntimeError(f"Không thể tải video từ Bilibili ({url_or_id}).")
 
             import yt_dlp
             watch_url = f"https://www.youtube.com/watch?v={video_id}" if len(video_id) == 11 else url_or_id
