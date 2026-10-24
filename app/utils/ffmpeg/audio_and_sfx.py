@@ -202,12 +202,12 @@ def _find_sfx_file(sfx_dir_path: Path, name: str) -> Optional[str]:
 
     # 4. Ánh xạ ngữ nghĩa thông minh từ các tên cue mô tả trong Niche YAML sang file vật lý có sẵn
     semantic_aliases = [
-        (("heartbeat", "boom", "thunder", "growl", "strike", "attack", "explosion", "crash", "slam", "thump", "impact"), "impact_sub"),
-        (("riser", "tension", "swell", "clock", "tick", "build", "suspense"), "riser"),
+        (("heartbeat", "boom", "thunder", "growl", "strike", "attack", "explosion", "crash", "slam", "thump", "impact", "hit"), "impact_sub"),
+        (("riser", "tension", "swell", "clock", "tick", "build", "suspense"), "riser_tension"),
         (("reveal", "chime", "miracle", "magic", "ding", "bell", "spark", "piano"), "reveal"),
         (("glitch", "error", "static", "shock", "snap", "crack", "lightning"), "glitch"),
-        (("abyss", "drop", "deep", "sonar", "sub_drop"), "sub_drop"),
-        (("fast", "swipe", "whip", "cut"), "whoosh_fast"),
+        (("abyss", "drop", "deep", "sonar", "sub_drop", "ping"), "sonar_ping"),
+        (("fast", "swipe", "whip", "cut", "whoosh", "soft"), "whoosh_soft"),
         (("heavy", "wind", "wave", "storm"), "whoosh_heavy"),
     ]
     for keywords, target_stem in semantic_aliases:
@@ -219,6 +219,54 @@ def _find_sfx_file(sfx_dir_path: Path, name: str) -> Optional[str]:
     return None
 
 
+def _ensure_core_cinematic_sfx(sfx_dir_path: Path) -> None:
+    """
+    Đảm bảo thư mục SFX tồn tại và tự động tổng hợp 4 file âm thanh Micro-SFX chuẩn phòng thu (.wav)
+    bằng FFmpeg lavfi nếu chưa có sẵn trên ổ đĩa.
+    """
+    sfx_dir_path = Path(sfx_dir_path)
+    sfx_dir_path.mkdir(parents=True, exist_ok=True)
+
+    core_sfx_specs = {
+        "impact_sub.wav": (
+            "aevalsrc='0.55*sin(2*PI*(68-28*t)*t)*exp(-4.2*t)+0.25*sin(2*PI*42*t)*exp(-3.0*t):s=48000:d=1.1',"
+            "lowpass=f=140,afade=t=in:ss=0:d=0.015,afade=t=out:st=0.35:d=0.75"
+        ),
+        "whoosh_soft.wav": (
+            "anoisesrc=d=0.65:c=pink:r=48000:a=0.35,"
+            "bandpass=f=420:width_type=h:w=320,afade=t=in:ss=0:d=0.22,afade=t=out:st=0.25:d=0.40"
+        ),
+        "riser_tension.wav": (
+            "aevalsrc='0.35*sin(2*PI*(55+65*t*t)*t)*sin(PI*t/1.4):s=48000:d=1.4',"
+            "lowpass=f=260,afade=t=in:ss=0:d=0.55,afade=t=out:st=0.95:d=0.45"
+        ),
+        "sonar_ping.wav": (
+            "aevalsrc='0.40*sin(2*PI*520*t)*exp(-5.5*t)+0.30*sin(2*PI*62*t)*exp(-3.2*t):s=48000:d=1.2',"
+            "lowpass=f=900,afade=t=in:ss=0:d=0.01,afade=t=out:st=0.30:d=0.90"
+        ),
+    }
+
+    for filename, lavfi_expr in core_sfx_specs.items():
+        target = sfx_dir_path / filename
+        if target.is_file() and target.stat().st_size > 256:
+            continue
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg", "-y", "-v", "error",
+                    "-f", "lavfi", "-i", lavfi_expr,
+                    "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le",
+                    str(target),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+        except Exception as e:
+            logger.debug(f"[SFX] Không thể tổng hợp {filename}: {e}")
+
+
 def resolve_smart_sfx_cue(
     narration: str = "",
     scene_idx: int = 1,
@@ -228,7 +276,20 @@ def resolve_smart_sfx_cue(
     visual_keyword: Optional[str] = None,
     **kwargs,
 ) -> str:
-    """Đã tắt toàn bộ hiệu ứng âm thanh phụ (SFX) theo cấu hình hệ thống."""
+
+    """Phân giải Selective 3-Point Cinematic Micro-SFX (-17dB)."""
+    core_cues = ("impact_sub", "whoosh_soft", "riser_tension", "sonar_ping")
+    if explicit_cue:
+        clean_explicit = Path(str(explicit_cue).strip().lower()).stem
+        if clean_explicit in core_cues:
+            return clean_explicit
+    if scene_idx == 1:
+        return "impact_sub"
+    if scene_idx == 4 or (total_scenes >= 4 and scene_idx == max(2, total_scenes // 2)):
+        niche_lower = str(niche or "").lower()
+        if any(k in niche_lower for k in ("deep_sea", "ocean", "mystery", "abyss", "scifi")):
+            return "sonar_ping"
+        return "riser_tension"
     return "none"
 
 
@@ -239,13 +300,117 @@ def mix_sfx_transitions(
     sfx_dir: str,
     default_sfx: str = "none",
     sfx_cues: Optional[List[Optional[str]]] = None,
-    sfx_volume: float = 0.0,
-    hit_sfx: str = "none",
-    hit_volume: float = 0.0,
+    sfx_volume: float = 0.14,
+    hit_sfx: str = "impact_sub",
+    hit_volume: float = 0.16,
     micro_sfx_cues: Optional[List[tuple]] = None,
 ) -> str:
-    """Đã xóa bỏ việc chèn âm thanh phụ (SFX) vào video — trả về nguyên trạng video gốc (Voiceover + BGM)."""
-    logger.info("[SFX] Đã tắt tính năng chèn hiệu ứng âm thanh phụ (SFX) — giữ nguyên audio gốc (Voiceover + BGM).")
+    """Hòa âm không phá hủy (Non-Destructive) tối đa 3 điểm Micro-SFX điện ảnh ở ngưỡng tinh tế (-17dB ~ -16dB)."""
+
+    if not video_path or not os.path.exists(video_path):
+        return video_path
+
+    try:
+        sfx_dir_path = Path(sfx_dir or "assets/sfx")
+        _ensure_core_cinematic_sfx(sfx_dir_path)
+
+        raw_ts = [max(0.0, float(t)) for t in (scene_timestamps_seconds or [])]
+        if not raw_ts or raw_ts[0] > 0.15:
+            scene_starts = [0.0] + raw_ts
+        else:
+            scene_starts = raw_ts
+
+        first_cut_sec = scene_starts[1] if len(scene_starts) > 1 else 2.4
+
+        normalized_cues = [str(c or "").strip().lower() for c in (sfx_cues or [])]
+        default_lower = str(default_sfx or "").strip().lower()
+        if "sonar_ping" in normalized_cues or "sonar_ping" in default_lower:
+            twist_cue_name = "sonar_ping"
+        elif "riser_tension" in normalized_cues or "riser_tension" in default_lower:
+            twist_cue_name = "riser_tension"
+        else:
+            twist_cue_name = "riser_tension"
+
+        events: List[Tuple[str, float, float]] = []
+
+        # Point 1: t = 0.04s — Opening Hook Impact (impact_sub)
+        p1_file = _find_sfx_file(sfx_dir_path, hit_sfx if hit_sfx and hit_sfx != "none" else "impact_sub") or _find_sfx_file(sfx_dir_path, "impact_sub")
+        if p1_file:
+            p1_vol = round(min(0.18, max(0.10, float(hit_volume or 0.16))), 4)
+            events.append((p1_file, 0.04, p1_vol))
+
+        # Point 2: t = min(1.35, max(0.85, first_cut_sec * 0.45)) — Dual-Beat Hook Cut (whoosh_soft)
+        p2_file = _find_sfx_file(sfx_dir_path, "whoosh_soft")
+        p2_time = round(min(1.35, max(0.85, first_cut_sec * 0.45)), 3)
+        if p2_file:
+            p2_vol = round(min(0.14, max(0.08, float(sfx_volume or 0.14) * 0.85)), 4)
+            events.append((p2_file, p2_time, p2_vol))
+
+        # Point 3: t = climax_timestamp_sec — Mid-Video Twist at Scene 4 (typically 11s–18s)
+        climax_timestamp_sec: Optional[float] = None
+        if len(scene_starts) >= 4:
+            climax_timestamp_sec = scene_starts[3]
+        elif len(scene_starts) == 3:
+            climax_timestamp_sec = scene_starts[2]
+        elif len(scene_starts) == 2 and scene_starts[1] >= 3.0:
+            climax_timestamp_sec = scene_starts[1]
+
+        p3_file = _find_sfx_file(sfx_dir_path, twist_cue_name) or _find_sfx_file(sfx_dir_path, "riser_tension")
+        if p3_file and climax_timestamp_sec is not None and climax_timestamp_sec > p2_time + 0.6:
+            p3_vol = round(min(0.16, max(0.10, float(sfx_volume or 0.14))), 4)
+            events.append((p3_file, round(climax_timestamp_sec, 3), p3_vol))
+
+        events = events[:3]
+        if not events:
+            return video_path
+
+        input_args: List[str] = ["-i", video_path]
+        filter_parts: List[str] = [
+            "[0:a]aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[main_a]"
+        ]
+        mix_labels: List[str] = ["[main_a]"]
+
+        for idx, (sfx_path, ts_sec, vol) in enumerate(events, start=1):
+            input_args.extend(["-i", sfx_path])
+            delay_ms = max(0, int(round(ts_sec * 1000)))
+            lbl = f"sfx{idx}"
+            filter_parts.append(
+                f"[{idx}:a]aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
+                f"volume={vol},adelay={delay_ms}|{delay_ms}[{lbl}]"
+            )
+            mix_labels.append(f"[{lbl}]")
+
+        total_inputs = len(mix_labels)
+        filter_parts.append(
+            f"{''.join(mix_labels)}amix=inputs={total_inputs}:duration=first:dropout_transition=0:normalize=0,"
+            f"alimiter=limit=0.95:attack=5:release=50,"
+            f"aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[aout]"
+        )
+        filter_complex = ";".join(filter_parts)
+
+        args = [
+            *input_args,
+            "-filter_complex", filter_complex,
+            "-map", "0:v",
+            "-map", "[aout]",
+            "-c:v", "copy",
+            "-c:a", "aac",
+            "-b:a", "256k",
+            "-ar", "48000",
+            "-ac", "2",
+            "-movflags", "+faststart",
+            "-shortest",
+            output_path,
+        ]
+        run_ffmpeg(args)
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
+            logger.info(
+                f"[SFX] Đã điểm xuyết {len(events)} điểm Micro-SFX tinh tế (-17dB) -> {output_path}"
+            )
+            return output_path
+    except Exception as e:
+        logger.warning(f"[SFX] Bỏ qua mix_sfx_transitions do lỗi kỹ thuật, giữ nguyên video gốc: {e}")
+
     return video_path
 
 

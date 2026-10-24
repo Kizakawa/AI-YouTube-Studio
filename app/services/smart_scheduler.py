@@ -218,15 +218,21 @@ def resolve_channel_family(channel_id: str) -> List[str]:
 
 
 
+_COMMENT_VERIFIED_VIDEOS: set = set()
+
+
 def sync_scheduled_jobs_status() -> int:
     """
     Tự động đồng bộ trạng thái: Quét các VideoJob có status == 'SCHEDULED'.
     Nếu scheduled_time <= now_utc (thời điểm công chiếu đã qua trên máy chủ YouTube),
     tự động cập nhật status = 'PUBLISHED' để database luôn phản ánh đúng thực tế!
+    Đồng thời đảm bảo các video vừa chuyển từ SCHEDULED -> PUBLISHED (kể cả khi YouTube cần 30-90s
+    để chuyển từ private sang public) luôn được kiểm tra và đăng bình luận tác giả (Author Poll Comment).
     """
     now_utc = datetime.now(timezone.utc)
     updated_count = 0
     just_published_jobs = []
+    unverified_published_jobs = []
     try:
         with get_db() as db:
             scheduled_jobs = db.query(VideoJob).filter(
@@ -234,6 +240,7 @@ def sync_scheduled_jobs_status() -> int:
                 VideoJob.scheduled_time.isnot(None)
             ).all()
 
+            just_published_vids = set()
             for job in scheduled_jobs:
                 st = job.scheduled_time
                 if st.tzinfo is None:
@@ -241,27 +248,56 @@ def sync_scheduled_jobs_status() -> int:
                 if st <= now_utc:
                     job.status = "PUBLISHED"
                     updated_count += 1
+                    if job.youtube_video_id:
+                        just_published_vids.add(job.youtube_video_id)
                     just_published_jobs.append({
                         "id": job.id,
                         "youtube_video_id": job.youtube_video_id,
                         "target_channel_id": job.target_channel_id,
                         "scenes_json": job.scenes_json,
                         "title": job.title or "",
+                        "is_just_published": True,
                     })
                     logger.info(
                         f"🔄 [SmartScheduler] Video #{job.id} ('{job.title[:30] if job.title else job.id}...') "
                         f"đã qua giờ hẹn ({st.strftime('%Y-%m-%d %H:%M UTC')}) -> Chuyển status = PUBLISHED."
                     )
+
+            recent_pub_jobs = (
+                db.query(VideoJob)
+                .filter(
+                    VideoJob.status == "PUBLISHED",
+                    VideoJob.youtube_video_id.isnot(None),
+                )
+                .order_by(VideoJob.id.desc())
+                .limit(12)
+                .all()
+            )
+            for r_job in recent_pub_jobs:
+                r_vid = r_job.youtube_video_id
+                if not r_vid or r_vid in _COMMENT_VERIFIED_VIDEOS or r_vid in just_published_vids:
+                    continue
+                unverified_published_jobs.append({
+                    "id": r_job.id,
+                    "youtube_video_id": r_vid,
+                    "target_channel_id": r_job.target_channel_id,
+                    "scenes_json": r_job.scenes_json,
+                    "title": r_job.title or "",
+                    "is_just_published": False,
+                })
+                if len(unverified_published_jobs) >= 4:
+                    break
     except Exception as e:
         logger.warning(f"Lỗi khi đồng bộ trạng thái SCHEDULED jobs: {e}")
 
     # Tự động kiểm tra & khóa chuẩn Category ID ('22'/'15', chặn tuyệt đối '27'), US/BR Geo-Lock và ghim bình luận mồi
-    if just_published_jobs:
+    comment_check_jobs = just_published_jobs + unverified_published_jobs[:4]
+    if comment_check_jobs:
         try:
             import json
             from app.agents.publisher_agent import PublisherAgent
             from app.services.channel_manager import get_channel
-            for p_info in just_published_jobs:
+            for p_info in comment_check_jobs:
                 v_id = p_info.get("youtube_video_id")
                 if not v_id:
                     continue
@@ -285,12 +321,18 @@ def sync_scheduled_jobs_status() -> int:
                     except Exception:
                         pass
 
-                p_agent.ensure_pinned_comment(v_id, p_comment)
-                try:
-                    from app.services.video_memory_rag import archive_job_to_rag_and_cleanup_files
-                    archive_job_to_rag_and_cleanup_files(p_info["id"])
-                except Exception:
-                    pass
+                c_res = p_agent.ensure_pinned_comment(v_id, p_comment)
+                if isinstance(c_res, dict) and (
+                    c_res.get("id") or c_res.get("status") in ("already_exists", "comments_disabled")
+                ):
+                    _COMMENT_VERIFIED_VIDEOS.add(v_id)
+
+                if p_info.get("is_just_published"):
+                    try:
+                        from app.services.video_memory_rag import archive_job_to_rag_and_cleanup_files
+                        archive_job_to_rag_and_cleanup_files(p_info["id"])
+                    except Exception:
+                        pass
         except Exception as bait_err:
             logger.warning(f"Lỗi khi tự động post bình luận mồi cho video vừa công chiếu: {bait_err}")
 

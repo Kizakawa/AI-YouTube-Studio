@@ -179,6 +179,8 @@ class EngagementCommentsMixin:
                 logger.warning(
                     f"💬 [PublisherAgent] Comment bị chặn vĩnh viễn trên video {video_id}: {e}"
                 )
+                if "commentsdisabled" in err_str:
+                    return {"status": "comments_disabled", "video_id": video_id}
                 return None
             if retry_on_spam and retry_delay_sec > 0 and any(p.lower() in err_str for p in SPAM_ERRORS):
                 logger.warning(
@@ -261,7 +263,7 @@ class EngagementCommentsMixin:
 
             if has_author_comment:
                 logger.info(f"💬 [PublisherAgent] Video {video_id} đã có bình luận của kênh tác giả. Bỏ qua.")
-                return None
+                return {"status": "already_exists", "video_id": video_id}
 
             # 4. Xác định nội dung bình luận tương tác chuẩn theo video cụ thể
             effective_comment = comment_text
@@ -295,7 +297,7 @@ class EngagementCommentsMixin:
                 effective_comment = self.build_default_engagement_comment(title=v_title)
 
             # 5. Đăng bình luận tác giả
-            return self.add_pinned_comment(video_id, effective_comment, retry_on_spam=False, retry_delay_sec=0)
+            return self.add_pinned_comment(video_id, effective_comment, retry_on_spam=True, retry_delay_sec=4)
         except Exception as e:
             logger.warning(f"💬 [PublisherAgent] Lỗi khi ensure_pinned_comment cho {video_id}: {e}")
             return None
@@ -340,7 +342,7 @@ class EngagementCommentsMixin:
                     continue
 
                 res = self.ensure_pinned_comment(vid)
-                if res:
+                if res and res.get("id"):
                     results.append({
                         "video_id": vid,
                         "title": v_title,

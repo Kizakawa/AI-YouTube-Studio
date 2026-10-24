@@ -341,11 +341,20 @@ def render_opening_hook_multi_cut(
         raise ValueError("render_opening_hook_multi_cut: Không có file ảnh hợp lệ")
 
     # Tự động tính số lượng ảnh hiển thị tối ưu theo thời lượng câu đọc (mỗi ảnh >= 2.0s, tối đa 2 ảnh/cảnh):
-    # - Nếu chỉ có 1 ảnh hoặc cảnh < 3.6s: dùng Ken Burns mượt mà trên 1 ảnh, tuyệt đối KHÔNG tự cắt 1 ảnh thành nhiều mảnh giật cục!
-    max_shots_by_dur = max(1, min(2, int(duration_seconds // 1.7)))
+    # - Nếu cảnh >= 3.0s có 1 ảnh gốc và min_cuts >= 1: thực hiện 2-Shot Dynamic Camera Cut (Toàn cảnh 1.00x -> Focal Punch-In 1.28x ở giữa cảnh).
+    min_dur_for_cut = 2.6 if (is_hook_scene and int(min_cuts or 0) >= 2) else 3.0
+    if is_hook_scene and int(min_cuts or 0) >= 2 and duration_seconds >= 2.6:
+        max_shots_by_dur = max(1, min(3, max(2, int(duration_seconds // 1.1))))
+    else:
+        max_shots_by_dur = max(1, min(2, int(duration_seconds // 1.5)))
     usable_valid_paths = valid_paths[:max_shots_by_dur]
-    n_shots = len(usable_valid_paths)
-    if duration_seconds < 3.2 or n_shots <= 1:
+    requested_shots = (
+        max(len(usable_valid_paths), min(max_shots_by_dur, max(1, int(min_cuts or 0) + 1)))
+        if duration_seconds >= min_dur_for_cut
+        else 1
+    )
+    n_shots = requested_shots
+    if duration_seconds < min_dur_for_cut or n_shots <= 1:
         return image_to_video(
             image_path=valid_paths[0],
             duration_seconds=duration_seconds,
@@ -495,7 +504,11 @@ def render_opening_hook_multi_cut(
             "-an",
             output_path,
         ]
-        role_tag = "Hook Multi-Cut + Live FX" if is_hook_scene else "Body Multi-Image 3D Drift"
+        role_tag = (
+            "Hook Multi-Cut + Live FX"
+            if is_hook_scene
+            else ("Body 2-Shot Focal Punch-In 1.28x" if len(base_images) == 1 and n_shots >= 2 else "Body Multi-Image 3D Drift")
+        )
         logger.info(
             f"  ⚡ [{role_tag}] {n_shots} shots ({n_shots - 1} nhát cắt: "
             f"{'s -> '.join(f'{d:.2f}' for d in shot_durs)}s | Niche: {niche or 'default'}) từ {len(base_images)} ảnh gốc"

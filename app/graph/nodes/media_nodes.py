@@ -361,7 +361,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 or kw
             )
             ai_prompt = vp or search_query
-            v_analysis = {}
+            v_analysis = batch_analyses.get(scene.scene_id) or {}
             tier0_searched = True
             channel_visual_mode = state.get("visual_mode") or "auto"
             scene_media_pref = getattr(scene, 'media_type', None)
@@ -379,7 +379,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             if tool_name == "summon_epic_monster_cinematic_media":
                 c_name = _sanitize_tool_arg(sc_strat.get("creature_name"), fallback=subj_ent or "colossal sea monster")
                 s_anchor = _sanitize_tool_arg(sc_strat.get("scale_anchor_object"), fallback="submarine")
-                m_mode = sc_strat.get("monster_media_mode") or ("3D_CGI_VIDEO" if scene.scene_id == 1 else "CONCEPT_ART_8K")
+                m_mode = sc_strat.get("monster_media_mode") or ("3D_CGI_VIDEO" if scene.scene_id in (1, 2, 3, 4, 5, 6) else "CONCEPT_ART_8K")
                 act_q = sc_strat.get("action_or_concept_query") or kw or f"{c_name} {s_anchor}"
                 out_m = str(
                     media_dir / f"scene_{scene.scene_id:03d}_monster.mp4"
@@ -446,7 +446,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
             elif tool_name == "fetch_clean_cinematic_portrait_or_broll":
                 h_query = sc_strat.get("human_action_query") or kw or "dramatic portrait dark lighting"
-                m_pref = sc_strat.get("media_preference") or ("VIDEO_BROLL" if scene.scene_id in (1, 2, 3, 5, 6) else "CLEAN_PORTRAIT_PHOTO")
+                m_pref = sc_strat.get("media_preference") or ("VIDEO_BROLL" if scene.scene_id in (1, 2, 3, 4, 5, 6, 7) else "CLEAN_PORTRAIT_PHOTO")
                 out_clean = str(
                     media_dir / f"scene_{scene.scene_id:03d}_clean_broll.mp4"
                     if m_pref.upper() == "VIDEO_BROLL"
@@ -555,33 +555,79 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         prod_method = "GOOGLE_TOP_IMAGE_FALLBACK"
             else:
                 img_q = sc_strat.get("smart_image_query") or kw or state.get("topic", "")
-                out_img = str(media_dir / f"scene_{scene.scene_id:03d}_gsearch.jpg")
-                img_res = await asyncio.to_thread(
-                    execute_google_cinematic_image_sync,
-                    smart_query=img_q,
-                    output_path=out_img,
-                    narration=scene.narration,
-                    topic=state.get("topic", ""),
-                    used_urls=used_pool_urls,
-                    is_hook_scene=(scene.scene_id == 1),
-                    subject_entity=subj_ent,
-                    search_scope=sc_scope,
-                    overall_script_query=overall_q,
-                    job_id=job_id,
-                    scene_id=scene.scene_id,
-                    target_image_count=scene_target_imgs,
-                )
-                if img_res and img_res.get("media_path"):
-                    media_path = img_res["media_path"]
-                    media_type = "image"
-                    vision_curated = True
-                    pose_images = list(img_res.get("pose_images") or [media_path])
-                    source_url_used = str(img_res.get("source_url") or "")
-                    hook_alternate_urls = list(img_res.get("alternate_urls") or [])
-                    rationale = (
-                        f"Google Top Image x{len(pose_images)} [{img_res.get('search_scope', sc_scope)}] "
-                        f"({img_res.get('curation_score')}): {img_res.get('title', '')[:45]}"
+                if (
+                    scene.scene_id >= 2
+                    and channel_visual_mode not in ("imagen_ai", "ai_image", "image")
+                    and scene_media_pref != "image"
+                ):
+                    try:
+                        pre_used_urls = set(used_pool_urls)
+                        best_vid = await asyncio.to_thread(
+                            media_agent.search_best_video_clip,
+                            img_q,
+                            used_pool_urls,
+                            v_analysis,
+                            scene.narration,
+                            state.get("topic", ""),
+                        )
+                        if best_vid and best_vid.get("url") and best_vid["url"] not in pre_used_urls:
+                            v_score = float(best_vid.get("curation_score") or best_vid.get("vision_score") or 0.0)
+                            is_valid_hd = bool(
+                                v_score >= 6.8
+                                or best_vid.get("vision_verified")
+                                or best_vid.get("vision_curated")
+                                or (v_score == 0.0 and int(best_vid.get("height") or 0) >= 720)
+                            )
+                            if is_valid_hd:
+                                cand_url = str(best_vid["url"])
+                                vid_out = str(media_dir / f"scene_{scene.scene_id:03d}_vfirst.mp4")
+                                await asyncio.to_thread(media_agent.download_file, cand_url, vid_out)
+                                if Path(vid_out).exists() and Path(vid_out).stat().st_size > 15000:
+                                    media_path = vid_out
+                                    media_type = "video"
+                                    vision_curated = True
+                                    prod_method = "VIDEO_FIRST_BODY_BROLL"
+                                    source_url_used = cand_url
+                                    used_pool_urls.add(cand_url)
+                                    rationale = (
+                                        f"Video-First Body B-Roll ({v_score or 'HD'}): "
+                                        f"{str(best_vid.get('title', img_q))[:45]}"
+                                    )
+                                    logger.info(
+                                        f"Scene {scene.scene_id}: 🎥 [Video-First Body Curation] "
+                                        f"Ưu tiên chọn Video B-Roll thực tế thay ảnh tĩnh cho '{img_q}'"
+                                    )
+                    except Exception as vf_err:
+                        logger.debug(f"Scene {scene.scene_id}: Video-First body stock lookup fallback: {vf_err}")
+
+                if not media_path:
+                    out_img = str(media_dir / f"scene_{scene.scene_id:03d}_gsearch.jpg")
+                    img_res = await asyncio.to_thread(
+                        execute_google_cinematic_image_sync,
+                        smart_query=img_q,
+                        output_path=out_img,
+                        narration=scene.narration,
+                        topic=state.get("topic", ""),
+                        used_urls=used_pool_urls,
+                        is_hook_scene=(scene.scene_id == 1),
+                        subject_entity=subj_ent,
+                        search_scope=sc_scope,
+                        overall_script_query=overall_q,
+                        job_id=job_id,
+                        scene_id=scene.scene_id,
+                        target_image_count=scene_target_imgs,
                     )
+                    if img_res and img_res.get("media_path"):
+                        media_path = img_res["media_path"]
+                        media_type = "image"
+                        vision_curated = True
+                        pose_images = list(img_res.get("pose_images") or [media_path])
+                        source_url_used = str(img_res.get("source_url") or "")
+                        hook_alternate_urls = list(img_res.get("alternate_urls") or [])
+                        rationale = (
+                            f"Google Top Image x{len(pose_images)} [{img_res.get('search_scope', sc_scope)}] "
+                            f"({img_res.get('curation_score')}): {img_res.get('title', '')[:45]}"
+                        )
         else:
             # ── Khởi tạo biến cho cảnh dùng cache hoặc fallback tương thích ngược ──
             surround_text = " ".join([s.narration for s in script.scenes[max(0, idx - 1):min(len(script.scenes), idx + 2)]])
