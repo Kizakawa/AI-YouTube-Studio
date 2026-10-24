@@ -160,6 +160,15 @@ class MediaVisionCuratorMixin:
         if not valid_candidates:
             return None, 0.0, "Tất cả ứng viên đều không đạt định dạng hoặc đã được sử dụng.", True
 
+        is_long_fmt = str((visual_analysis or {}).get("video_format") or "short").lower() == "long"
+        if not is_long_fmt:
+            portrait_only = [
+                c for c in valid_candidates
+                if (int(c.get("height") or 0) + 10) >= int(c.get("width") or 0)
+            ]
+            if portrait_only:
+                valid_candidates = portrait_only
+
         valid_candidates.sort(key=lambda c: 0 if (c["height"] or 0) >= (c["width"] or 0) else 1)
         eval_pool = valid_candidates[:8]
 

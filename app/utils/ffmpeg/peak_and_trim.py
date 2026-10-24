@@ -393,9 +393,38 @@ def trim_video(
         if grading.get("vignette"):
             grading_parts.append(grading['vignette'])
 
-    # Tự động phát hiện nếu video nguồn 9:16 có dải viền đen ngang (letterbox) ở trên và/hoặc dưới -> Phóng để cắt sạch viền đen!
-    # Đồng thời nếu là Cảnh 1 (is_hook_scene=True) mà khung hình mở đầu hơi tối (mid_band < 60), tự động kích sáng First-Frame Luma Lift (+0.04 brightness)!
-    zoom_mult = 1.18 if (fair_use_transform and not is_already_rendered) else 1.06
+    # Đo kích thước & thời lượng thực tế của video nguồn (1 lần gọi ffprobe duy nhất)
+    probe_info = probe_file(input_path)
+    src_w, src_h = 0, 0
+    src_sec_probed = 0.0
+    if probe_info:
+        try:
+            src_sec_probed = float((probe_info.get("format") or {}).get("duration") or 0.0)
+        except (ValueError, TypeError):
+            src_sec_probed = 0.0
+        for st in (probe_info.get("streams") or []):
+            if st.get("codec_type") == "video":
+                src_w = int(st.get("width") or 0)
+                src_h = int(st.get("height") or 0)
+                if src_w > 0 and src_h > 0:
+                    break
+
+    is_native_portrait = bool(src_w > 0 and src_h > 0 and src_w <= src_h * 1.05)
+    is_landscape_source = bool(src_w > 0 and src_h > 0 and src_w > src_h * 1.15)
+
+    # Giữ trọn vẹn chủ thể trong khung hình 9:16:
+    # - Nếu nguồn đã là 9:16 Native Short (is_native_portrait): chỉ zoom vi mô 1.04x (khi bật fair_use) hoặc 1.0x để giữ 96-100% khung hình gốc.
+    # - Nếu nguồn là 16:9 ngang (is_landscape_source) cần đưa vào khung 9:16: tuyệt đối KHÔNG cộng dồn zoom 1.18x (vì scale 9:16 đã tự động lấy trọn chiều dọc 100%, nếu zoom thêm sẽ làm mất góc chủ thể).
+    if width < height:
+        if is_native_portrait:
+            zoom_mult = 1.04 if (fair_use_transform and not is_already_rendered) else 1.0
+        elif is_landscape_source:
+            zoom_mult = 1.0
+        else:
+            zoom_mult = 1.06 if (fair_use_transform and not is_already_rendered) else 1.02
+    else:
+        zoom_mult = 1.08 if (fair_use_transform and not is_already_rendered) else 1.04
+
     has_letterbox = False
     top_bar_only = False
     bot_bar_only = False
@@ -409,32 +438,22 @@ def trim_video(
         p_res = subprocess.run(p_cmd, capture_output=True, timeout=4)
         raw_g = p_res.stdout or b""
         if len(raw_g) >= 90 * 160:
-            top_edge = sum(raw_g[: 90 * 12]) / (90 * 12)
-            bot_edge = sum(raw_g[90 * 148 : 90 * 160]) / (90 * 12)
-            top_band = sum(raw_g[: 90 * 24]) / (90 * 24)
-            bot_band = sum(raw_g[90 * 136 : 90 * 160]) / (90 * 24)
+            top_slice = raw_g[: 90 * 12]
+            bot_slice = raw_g[90 * 148 : 90 * 160]
+            top_edge = sum(top_slice) / len(top_slice)
+            bot_edge = sum(bot_slice) / len(bot_slice)
+            top_std = (sum((px - top_edge) ** 2 for px in top_slice) / len(top_slice)) ** 0.5
+            bot_std = (sum((px - bot_edge) ** 2 for px in bot_slice) / len(bot_slice)) ** 0.5
             mid_band = sum(raw_g[90 * 50 : 90 * 110]) / (90 * 60)
-            if mid_band > 38.0:
-                if (
-                    (top_edge < 20.0 and bot_edge < 28.0)
-                    or (bot_edge < 20.0 and top_edge < 28.0)
-                    or (top_band < 26.0 and bot_band < 26.0)
-                ):
-                    zoom_mult = 1.86
+            # Chỉ kích hoạt cắt viền đen (Anti-Letterbox) khi nguồn là khung dọc có dải đen thuần (độ lệch chuẩn < 4.5, không phải cảnh rừng/đêm tối tự nhiên)
+            if (not is_landscape_source) and mid_band > 48.0:
+                if top_edge < 13.5 and bot_edge < 13.5 and top_std < 4.5 and bot_std < 4.5:
+                    zoom_mult = 1.32
                     has_letterbox = True
-                elif top_edge < 15.5:
-                    zoom_mult = max(zoom_mult, 1.48)
-                    has_letterbox = True
-                    top_bar_only = True
-                elif bot_edge < 15.5:
-                    zoom_mult = max(zoom_mult, 1.48)
-                    has_letterbox = True
-                    bot_bar_only = True
-                if has_letterbox:
                     logger.info(
-                        f"  🔍 [Anti-Letterbox Crop] Phát hiện viền đen trên/dưới "
-                        f"(top_edge={top_edge:.1f}, bot_edge={bot_edge:.1f}, top={top_band:.1f}, bot={bot_band:.1f}, mid={mid_band:.1f}) "
-                        f"-> Tự động phóng {zoom_mult}x full màn hình 9:16!"
+                        f"  🔍 [Anti-Letterbox Crop] Phát hiện dải viền đen thuần trên/dưới "
+                        f"(top_edge={top_edge:.1f}, bot_edge={bot_edge:.1f}, std={top_std:.1f}/{bot_std:.1f}, mid={mid_band:.1f}) "
+                        f"-> Phóng nhẹ {zoom_mult}x vừa khít khung hình 9:16!"
                     )
             if is_hook_scene and not is_already_rendered and mid_band < 60.0:
                 grading_parts.append("eq=brightness=0.04:contrast=1.06")
@@ -454,8 +473,8 @@ def trim_video(
 
     grading_chain = ("," + ",".join(grading_parts)) if grading_parts else ""
     zw, zh = ((int(width * zoom_mult) // 2) * 2), ((int(height * zoom_mult) // 2) * 2)
-    crop_x_ratio, crop_y_ratio = 0.50, (0.48 if has_letterbox else 0.42)
-    if not is_already_rendered and width < height:
+    crop_x_ratio, crop_y_ratio = 0.50, (0.50 if (is_native_portrait or has_letterbox) else 0.42)
+    if (not is_already_rendered) and (not is_native_portrait) and width < height:
         try:
             from app.utils.ffmpeg.smart_reframe_and_shot import compute_smart_reframe_crop_ratios
             crop_x_ratio, crop_y_ratio = compute_smart_reframe_crop_ratios(
@@ -466,7 +485,7 @@ def trim_video(
                 target_height=height,
             )
         except Exception:
-            crop_x_ratio, crop_y_ratio = 0.50, (0.48 if has_letterbox else 0.42)
+            crop_x_ratio, crop_y_ratio = 0.50, (0.50 if has_letterbox else 0.42)
     if has_letterbox:
         if top_bar_only:
             crop_y_ratio = max(0.62, min(0.78, crop_y_ratio))
@@ -499,7 +518,7 @@ def trim_video(
     loop_args = ["-stream_loop", "-1"]
     pts_prefix = ""
     try:
-        src_sec = get_duration_ms(input_path) / 1000.0
+        src_sec = src_sec_probed if src_sec_probed > 0 else (get_duration_ms(input_path) / 1000.0)
         eff_avail = max(0.1, src_sec - (start_offset_sec or 0.0)) if seek_args else src_sec
         if 0.5 < eff_avail < duration_seconds:
             factor = duration_seconds / eff_avail

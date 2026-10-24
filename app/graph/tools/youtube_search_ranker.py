@@ -194,6 +194,7 @@ REJECT IMMEDIATELY (passed=false, score < 4.0) IF YOU SEE ANY OF THESE IN ANY FR
 {cgi_rule}
 4. Habitat or environment mismatch with the script (e.g., an animal in a snowy zoo enclosure, behind cage bars/fences, or indoors when the story takes place in the wild African savanna, jungle, or ocean).
 5. Wrong animal/subject species that does not match "{subject_entity or topic}", or a talking head / vlog / product commercial.
+6. Bad framing / severely cropped subject where only a tiny unrecognizable corner, tail, or cut-off edge of the main subject fits inside the 9:16 vertical frame instead of a clear, well-composed view of the subject.
 
 Return ONLY valid JSON:
 {{"passed": true, "score": 8.5, "reason": "100% clean HD footage with zero watermarks/text matching subject and habitat"}}"""
@@ -257,7 +258,7 @@ def _search_youtube_flat_cached(
     }
 
     def _fetch_single_yt_phrase(sp: str) -> List[Dict[str, Any]]:
-        cache_key = f"{license_policy.license_mode()}::{sp.lower().strip()}"
+        cache_key = f"{license_policy.license_mode()}::vshort::{sp.lower().strip()}"
         with _yt_url_lock:
             cached_entries = _yt_flat_search_cache.get(cache_key)
         if cached_entries:
@@ -267,17 +268,27 @@ def _search_youtube_flat_cached(
                 cached_entries = _yt_flat_search_cache.get(cache_key)
             if cached_entries:
                 return cached_entries
-            # Chế độ `cc_only`: chỉ tìm video có giấy phép Creative Commons; mở rộng max_results=20 để ưu tiên bắt trúng các Short Viral triệu view
-            yt_query = license_policy.youtube_search_target(sp, max_results=20)
-            try:
-                with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=20)) as ydl:
-                    res = ydl.extract_info(yt_query, download=False)
-                cached_entries = [
-                    e for e in ((res or {}).get("entries") or [])
-                    if e and isinstance(e, dict)
-                ]
-            except Exception:
-                cached_entries = []
+            # Bước 1 (Ưu tiên số 1): Quét kệ YouTube Shorts dọc 9:16 nguyên bản (`shortsLockupViewModel` / `/shorts/`)
+            native_shorts = license_policy.search_youtube_native_shorts_flat(sp, max_results=20)
+            seen_s_ids = {str(x.get("id") or "") for x in native_shorts if x.get("id")}
+            combined_entries: List[Dict[str, Any]] = list(native_shorts)
+
+            # Bước 2: Bổ sung ứng viên từ yt-dlp nếu kệ Shorts trả về ít hơn 10 kết quả
+            if len(combined_entries) < 10:
+                yt_query = license_policy.youtube_search_target(sp, max_results=20)
+                try:
+                    with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=20)) as ydl:
+                        res = ydl.extract_info(yt_query, download=False)
+                    for e in ((res or {}).get("entries") or []):
+                        if e and isinstance(e, dict):
+                            eid = str(e.get("id") or "")
+                            if eid and eid not in seen_s_ids:
+                                seen_s_ids.add(eid)
+                                e["is_vertical_short"] = license_policy.is_entry_vertical_short(e)
+                                combined_entries.append(e)
+                except Exception:
+                    pass
+            cached_entries = combined_entries
             if cached_entries:
                 with _yt_url_lock:
                     _yt_flat_search_cache[cache_key] = cached_entries
@@ -301,11 +312,16 @@ def _search_youtube_flat_cached(
             if not vid_id or vid_id in seen_ids:
                 continue
             seen_ids.add(vid_id)
-            webpage_url = entry.get("url") or entry.get("webpage_url") or f"https://www.youtube.com/watch?v={vid_id}"
+            is_vert_short = license_policy.is_entry_vertical_short(entry)
+            webpage_url = (
+                f"https://www.youtube.com/shorts/{vid_id}"
+                if is_vert_short
+                else (entry.get("url") or entry.get("webpage_url") or f"https://www.youtube.com/watch?v={vid_id}")
+            )
             if webpage_url.startswith("/"):
                 webpage_url = f"https://www.youtube.com{webpage_url}"
 
-            dur = float(entry.get("duration") or 0)
+            dur = float(entry.get("duration") or (25.0 if is_vert_short else 0.0))
             if dur <= 0 or dur < 4 or dur > 210:
                 continue
 
@@ -328,12 +344,14 @@ def _search_youtube_flat_cached(
                 12.0 if views >= 50_000 else 0.0
             )
             short_fmt_bonus = 25.0 if (0 < dur <= 75) else (15.0 if dur <= 150 else 0.0)
+            vertical_native_bonus = 165.0 if is_vert_short else 0.0
             score = (
                 (anchor_hits * 65.0)
                 + (action_hits * 35.0)
                 + min(views / 15000.0, 75.0)
                 + viral_boost
                 + short_fmt_bonus
+                + vertical_native_bonus
             )
             candidates.append({
                 "id": vid_id,
@@ -342,10 +360,11 @@ def _search_youtube_flat_cached(
                 "uploader": uploader,
                 "duration": dur,
                 "view_count": views,
+                "is_vertical_short": is_vert_short,
                 "score": score,
             })
 
-    candidates.sort(key=lambda x: x["score"], reverse=True)
+    candidates.sort(key=lambda x: (bool(x.get("is_vertical_short")), x["score"]), reverse=True)
     return candidates
 
 
@@ -361,9 +380,8 @@ def _rank_youtube_candidates_with_llm(
     """
     Bộ não LLM Batch Candidate Selector cho YouTube Shorts:
     - Thay thế hoàn toàn kiểu lọc từ khóa cứng (`anchor_hits == 0` hoặc regex động từ hành động).
-    - Gửi danh sách tối đa 20 ứng viên YouTube (`id`, `title`, `uploader`, `duration`, `view_count`) trong 1 lần gọi JSON duy nhất
-      để LLM đánh giá ngữ nghĩa: chọn ra các video đúng chủ thể, giàu kịch tính/chuyển động thị giác phù hợp với câu thoại `narration`
-      và loại bỏ các video lạc đề, thụ động, tổng hợp lan man hoặc trò chơi điện tử.
+    - Gửi danh sách tối đa 20 ứng viên YouTube (`id`, `title`, `uploader`, `duration`, `view_count`, `format`) trong 1 lần gọi JSON duy nhất
+      để LLM đánh giá ngữ nghĩa: ưu tiên tuyệt đối các video dọc `9:16_NATIVE_SHORT` đúng chủ thể để vừa khít khung hình 9:16 không bị mất góc!
     """
     if not candidates or len(candidates) <= 1:
         return candidates
@@ -377,6 +395,7 @@ def _rank_youtube_candidates_with_llm(
             "channel": str(c.get("uploader") or "")[:45],
             "duration_s": round(float(c.get("duration") or 0.0), 1),
             "views": int(c.get("view_count") or 0),
+            "format": "9:16_NATIVE_SHORT" if c.get("is_vertical_short") else "16:9_LANDSCAPE",
         }
         for c in pool
     ]
@@ -398,9 +417,10 @@ Candidate YouTube Videos:
 {json.dumps(items_for_llm, ensure_ascii=False)}
 
 TASK:
-1. Semantically evaluate each candidate title + channel + duration + views against the Topic, Primary Subject, and Scene Narration (understand synonyms, scientific names, and contextual meaning—do NOT rely on naive exact word matching).
-2. REJECT any candidate that is off-topic, shows the wrong subject/species, is a passive/boring clip (e.g., sleeping, screensaver, 1-hour loop), or is a reaction/gaming/tier-list/compilation video.
-3. Score the approved candidates from 0.0 to 10.0 based on how well they deliver a dramatic, high-retention visual moment for this scene.
+1. Semantically evaluate each candidate title + channel + duration + views + format against the Topic, Primary Subject, and Scene Narration (understand synonyms, scientific names, and contextual meaning—do NOT rely on naive exact word matching).
+2. CRITICAL VERTICAL FRAMING PRIORITY: Strongly prioritize candidates with `"format": "9:16_NATIVE_SHORT"` over `"16:9_LANDSCAPE"` whenever they match the subject, because native 9:16 Shorts fit the vertical screen naturally without cropping off parts of the subject's body!
+3. REJECT any candidate that is off-topic, shows the wrong subject/species, is a passive/boring clip (e.g., sleeping, screensaver, 1-hour loop), or is a reaction/gaming/tier-list/compilation video.
+4. Score the approved candidates from 0.0 to 10.0 based on how well they deliver a dramatic, well-framed 9:16 visual moment for this scene.
 
 Return ONLY valid JSON in this exact format:
 {{

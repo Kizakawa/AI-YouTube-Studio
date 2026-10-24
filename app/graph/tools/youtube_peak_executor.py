@@ -257,7 +257,7 @@ def execute_youtube_short_peak_clone_sync(
                         "no_warnings": True,
                         "noplaylist": True,
                         "max_filesize": 38 * 1024 * 1024,
-                        "format": "bestvideo[protocol=https][height>=720][height<=1080][ext=mp4]/bestvideo[protocol=https][height>=720][height<=1920][ext=mp4]/bestvideo[protocol=https][height>=480][height<=1920][ext=mp4]/bestvideo[height>=720][height<=1920][ext=mp4]/bestvideo[height>=480][height<=1920]/bestvideo/best",
+                        "format": license_policy.VERTICAL_FIRST_YTDLP_FORMAT,
                         "merge_output_format": "mp4",
                         "outtmpl": raw_dl_template,
                         "socket_timeout": 12,
