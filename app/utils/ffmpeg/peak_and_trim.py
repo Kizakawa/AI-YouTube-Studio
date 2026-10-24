@@ -393,10 +393,12 @@ def trim_video(
         if grading.get("vignette"):
             grading_parts.append(grading['vignette'])
 
-    # Tự động phát hiện nếu video nguồn 9:16 có dải viền đen ngang (letterbox) ở trên và dưới -> Phóng 1.86x để cắt sạch viền đen!
+    # Tự động phát hiện nếu video nguồn 9:16 có dải viền đen ngang (letterbox) ở trên và/hoặc dưới -> Phóng để cắt sạch viền đen!
     # Đồng thời nếu là Cảnh 1 (is_hook_scene=True) mà khung hình mở đầu hơi tối (mid_band < 60), tự động kích sáng First-Frame Luma Lift (+0.04 brightness)!
     zoom_mult = 1.18 if (fair_use_transform and not is_already_rendered) else 1.06
     has_letterbox = False
+    top_bar_only = False
+    bot_bar_only = False
     try:
         probe_ss = f"{start_offset_sec + 0.15:.2f}" if (start_offset_sec and start_offset_sec > 0) else "0.15"
         p_cmd = [
@@ -412,18 +414,28 @@ def trim_video(
             top_band = sum(raw_g[: 90 * 24]) / (90 * 24)
             bot_band = sum(raw_g[90 * 136 : 90 * 160]) / (90 * 24)
             mid_band = sum(raw_g[90 * 50 : 90 * 110]) / (90 * 60)
-            if (
-                (top_edge < 20.0 and bot_edge < 28.0)
-                or (bot_edge < 20.0 and top_edge < 28.0)
-                or (top_band < 26.0 and bot_band < 26.0)
-            ) and mid_band > 38.0:
-                zoom_mult = 1.86
-                has_letterbox = True
-                logger.info(
-                    f"  🔍 [Anti-Letterbox Crop] Phát hiện viền đen trên/dưới "
-                    f"(top_edge={top_edge:.1f}, bot_edge={bot_edge:.1f}, top={top_band:.1f}, bot={bot_band:.1f}, mid={mid_band:.1f}) "
-                    f"-> Tự động phóng {zoom_mult}x full màn hình 9:16!"
-                )
+            if mid_band > 38.0:
+                if (
+                    (top_edge < 20.0 and bot_edge < 28.0)
+                    or (bot_edge < 20.0 and top_edge < 28.0)
+                    or (top_band < 26.0 and bot_band < 26.0)
+                ):
+                    zoom_mult = 1.86
+                    has_letterbox = True
+                elif top_edge < 15.5:
+                    zoom_mult = max(zoom_mult, 1.48)
+                    has_letterbox = True
+                    top_bar_only = True
+                elif bot_edge < 15.5:
+                    zoom_mult = max(zoom_mult, 1.48)
+                    has_letterbox = True
+                    bot_bar_only = True
+                if has_letterbox:
+                    logger.info(
+                        f"  🔍 [Anti-Letterbox Crop] Phát hiện viền đen trên/dưới "
+                        f"(top_edge={top_edge:.1f}, bot_edge={bot_edge:.1f}, top={top_band:.1f}, bot={bot_band:.1f}, mid={mid_band:.1f}) "
+                        f"-> Tự động phóng {zoom_mult}x full màn hình 9:16!"
+                    )
             if is_hook_scene and not is_already_rendered and mid_band < 60.0:
                 grading_parts.append("eq=brightness=0.04:contrast=1.06")
                 logger.info(f"  💡 [First-Frame Visual Pop] Khung hình mở đầu Cảnh 1 hơi tối (luma={mid_band:.1f}) -> Tự động kích sáng +0.04 brightness & +6% contrast tại giây 0.0s!")
@@ -456,7 +468,12 @@ def trim_video(
         except Exception:
             crop_x_ratio, crop_y_ratio = 0.50, (0.48 if has_letterbox else 0.42)
     if has_letterbox:
-        crop_y_ratio = max(0.42, min(0.58, crop_y_ratio))
+        if top_bar_only:
+            crop_y_ratio = max(0.62, min(0.78, crop_y_ratio))
+        elif bot_bar_only:
+            crop_y_ratio = max(0.22, min(0.38, crop_y_ratio))
+        else:
+            crop_y_ratio = max(0.42, min(0.58, crop_y_ratio))
 
     if fair_use_transform and not is_already_rendered:
         eff_x_ratio = round(1.0 - crop_x_ratio, 3)

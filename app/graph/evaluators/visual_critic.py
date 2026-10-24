@@ -352,6 +352,55 @@ class VisualCritic:
         except Exception:
             pass
 
+        # Kiểm tra và tự động cắt gọt sạch dải viền đen ngang (letterbox / single-sided black bar) ở đỉnh hoặc đáy khung hình 9:16
+        if len(gray_frames) >= 1 and width <= height:
+            try:
+                gf0 = gray_frames[0]
+                top_st = ImageStat.Stat(gf0.crop((0, 0, 180, 24)))
+                bot_st = ImageStat.Stat(gf0.crop((0, 296, 180, 320)))
+                mid_st = ImageStat.Stat(gf0.crop((0, 80, 180, 240)))
+                top_dark = float(top_st.mean[0]) < 16.0 and float(top_st.stddev[0]) < 12.0
+                bot_dark = float(bot_st.mean[0]) < 16.0 and float(bot_st.stddev[0]) < 12.0
+                if (top_dark or bot_dark) and float(mid_st.mean[0]) > 35.0:
+                    if auto_sanitize and width >= 540 and height >= 540:
+                        if top_dark and bot_dark:
+                            lb_vf = "crop=iw:ih*0.64:0:ih*0.18,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1"
+                        elif top_dark:
+                            lb_vf = "crop=iw:ih*0.76:0:ih*0.20,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1"
+                        else:
+                            lb_vf = "crop=iw:ih*0.76:0:ih*0.04,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1"
+                        tmp_lb = str(p.with_name(f"{p.stem}_nolb{p.suffix}"))
+                        subprocess.run(
+                            [
+                                "ffmpeg", "-v", "error", "-y",
+                                "-i", str(p),
+                                "-vf", lb_vf,
+                                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-an",
+                                tmp_lb,
+                            ],
+                            capture_output=True,
+                            timeout=18,
+                            check=False,
+                        )
+                        if Path(tmp_lb).exists() and Path(tmp_lb).stat().st_size > 15000:
+                            shutil.move(tmp_lb, str(p))
+                            logger.info(
+                                f"✂️ [Letterbox Sanitizer] Đã tự động cắt bỏ dải viền đen ngang "
+                                f"(top_dark={top_dark}, bot_dark={bot_dark}) khỏi '{p.name}'!"
+                            )
+                            return cls.inspect_clip_before_concat(
+                                video_path=str(p),
+                                min_short_edge=min_short_edge,
+                                min_sharpness=min_sharpness,
+                                check_watermark=check_watermark,
+                                allow_snow=allow_snow,
+                                auto_sanitize=False,
+                            )
+                        Path(tmp_lb).unlink(missing_ok=True)
+                    issues.append(f"Clip chứa dải viền đen letterbox ở đỉnh/đáy (top_dark={top_dark}, bot_dark={bot_dark})")
+            except Exception:
+                pass
+
         # Kiểm tra đứng hình / freeze-frame / ảnh tĩnh giả video ngay trên các khung hình mẫu:
         # Video chuyển động thật có pair_diffs ~ 15.0 - 50.0; clip ảnh tĩnh/slideshow có pair_diffs < 6.5
         if len(gray_frames) >= 3:

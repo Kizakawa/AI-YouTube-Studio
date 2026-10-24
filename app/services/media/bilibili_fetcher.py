@@ -516,7 +516,7 @@ def download_and_crop_bilibili_broll_clip(
             )
         else:
             vf_chain = (
-                "crop=iw:ih*0.78:0:ih*0.08,"
+                "crop=iw:ih*0.74:0:ih*0.12,"
                 "scale=1080:1920:force_original_aspect_ratio=increase,"
                 "crop=1080:1920,"
                 "setsar=1,fps=30"

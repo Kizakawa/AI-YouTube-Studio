@@ -508,25 +508,13 @@ Return ONLY valid JSON:
     )
 
     cand_seq_idx = 0
-    # Mở khóa săn Peak YouTube Shorts + Video HD gốc triệu view (4s - 210s) kết hợp lọc sạch Talking-Head/Watermark cho cả 7 kênh:
-    # Đảm bảo ít nhất 2 truy vấn đầu không bị bó hẹp bởi hậu tố "shorts" để bắt trọn các siêu phẩm HD gốc (8M - 64M views).
+    # Ưu tiên số 1 săn YouTube Shorts dọc 9:16 nguyên bản (`/shorts/`, `shortsLockupViewModel`) để toàn bộ chủ thể vừa khít khung hình 9:16:
     raw_yt_q = (
         queries[:3]
         if hook_production_strategy == "CINEMATIC_BROLL_FAST_CUT"
         else queries[:5]
     )
     yt_queries_to_run: List[str] = []
-    for idx_q, q_item in enumerate(raw_yt_q):
-        q_str = str(q_item or "").strip()
-        if not q_str:
-            continue
-        if idx_q < 2:
-            q_no_short = re.sub(r"\bshorts?\b", "", q_str, flags=re.IGNORECASE).strip()
-            q_no_short = re.sub(r"\s+", " ", q_no_short).strip()
-            if len(q_no_short.split()) >= 2:
-                q_str = q_no_short
-        if q_str.lower() not in {x.lower() for x in yt_queries_to_run}:
-            yt_queries_to_run.append(q_str)
     for q_item in raw_yt_q:
         q_str = str(q_item or "").strip()
         if q_str and q_str.lower() not in {x.lower() for x in yt_queries_to_run} and len(yt_queries_to_run) < 5:
@@ -538,7 +526,7 @@ Return ONLY valid JSON:
         if w.lower() not in {"the", "and", "for", "with", "from", "into", "that", "this", "why", "how", "what", "when", "fatal", "nature", "defies", "ambush", "secret", "truth", "footage", "action", "wildlife", "cinematic", "dramatic", "close", "shorts", "short"}
     }
 
-    # ── BƯỚC 2A: QUÉT SONG SONG ĐA TRUY VẤN TRÊN YOUTUBE SHORTS & DÙNG LLM CHỌN RA TOP 6 SHORT PEAK NHẤT KHỚP KỊCH BẢN ──
+    # ── BƯỚC 2A: QUÉT SONG SONG ĐA TRUY VẤN TRÊN KỆ YOUTUBE SHORTS DỌC 9:16 & DÙNG LLM CHỌN RA TOP 6 SHORT PEAK NHẤT ──
     pooled_flat_by_id: Dict[str, Dict[str, Any]] = {}
 
     def _run_flat_search_for_query(q_pair: tuple[int, str]) -> tuple[int, str, List[Dict[str, Any]]]:
@@ -546,24 +534,40 @@ Return ONLY valid JSON:
         raw_flat_cands: List[Dict[str, Any]] = []
         try:
             import yt_dlp
-            flat_opts = {
-                "quiet": True,
-                "no_warnings": True,
-                "extract_flat": "in_playlist",
-                "skip_download": True,
-                "socket_timeout": 8,
-                "ignoreerrors": True,
-            }
-            with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=20)) as ydl_flat:
-                flat_res = ydl_flat.extract_info(license_policy.youtube_search_target(q, max_results=20), download=False)
-            for entry in ((flat_res or {}).get("entries") or []):
+            # Bước 1: Quét trực tiếp kệ YouTube Shorts dọc 9:16 (`shortsLockupViewModel` / `/shorts/`)
+            native_entries = license_policy.search_youtube_native_shorts_flat(q, max_results=20)
+            seen_q_ids = {str(x.get("id") or "") for x in native_entries if x.get("id")}
+            combined_entries: List[Dict[str, Any]] = list(native_entries)
+
+            # Bước 2: Bổ sung từ yt-dlp nếu kệ Shorts dọc trả về < 8 ứng viên
+            if len(combined_entries) < 8:
+                flat_opts = {
+                    "quiet": True,
+                    "no_warnings": True,
+                    "extract_flat": "in_playlist",
+                    "skip_download": True,
+                    "socket_timeout": 8,
+                    "ignoreerrors": True,
+                }
+                with yt_dlp.YoutubeDL(license_policy.youtube_search_opts(flat_opts, max_results=16)) as ydl_flat:
+                    flat_res = ydl_flat.extract_info(license_policy.youtube_search_target(q, max_results=16), download=False)
+                for e_flat_item in ((flat_res or {}).get("entries") or []):
+                    if isinstance(e_flat_item, dict):
+                        eid = str(e_flat_item.get("id") or "").strip()
+                        if eid and eid not in seen_q_ids:
+                            seen_q_ids.add(eid)
+                            e_flat_item["is_vertical_short"] = license_policy.is_entry_vertical_short(e_flat_item)
+                            combined_entries.append(e_flat_item)
+
+            for entry in combined_entries:
                 if not isinstance(entry, dict):
                     continue
                 vid_id = str(entry.get("id") or "").strip()
                 if not vid_id:
                     continue
-                dur_e = float(entry.get("duration") or 0)
-                if dur_e <= 0 or dur_e < 4 or dur_e > 210:
+                is_vert_short = license_policy.is_entry_vertical_short(entry)
+                dur_e = float(entry.get("duration") or (25.0 if is_vert_short else 0.0))
+                if dur_e <= 0 or dur_e < 4 or dur_e > 120:
                     continue
                 title_e = str(entry.get("title") or "")
                 uploader_e = str(entry.get("uploader") or entry.get("channel") or "")
@@ -578,7 +582,11 @@ Return ONLY valid JSON:
                 anchor_hits = sum(1 for aw in subject_anchor_words if aw in title_low)
                 if subject_anchor_words and anchor_hits == 0 and hook_production_strategy != "CINEMATIC_BROLL_FAST_CUT":
                     continue
-                vid_url = f"https://www.youtube.com/watch?v={vid_id}"
+                vid_url = (
+                    f"https://www.youtube.com/shorts/{vid_id}"
+                    if is_vert_short
+                    else f"https://www.youtube.com/watch?v={vid_id}"
+                )
                 views_e = int(entry.get("view_count") or 0)
                 viral_boost = (
                     85.0 if views_e >= 10_000_000 else
@@ -586,7 +594,8 @@ Return ONLY valid JSON:
                     30.0 if views_e >= 250_000 else
                     12.0 if views_e >= 50_000 else 0.0
                 )
-                short_fmt_bonus = 25.0 if (0 < dur_e <= 75) else (15.0 if dur_e <= 150 else 0.0)
+                short_fmt_bonus = 25.0 if (0 < dur_e <= 75) else 0.0
+                vertical_native_bonus = 165.0 if is_vert_short else 0.0
                 peak_intensity_bonus = (
                     42.0
                     if re.search(
@@ -611,6 +620,7 @@ Return ONLY valid JSON:
                     "uploader": uploader_e,
                     "duration": dur_e,
                     "view_count": views_e,
+                    "is_vertical_short": is_vert_short,
                     "matched_query": q,
                     "q_idx": q_idx,
                     "score": (
@@ -620,6 +630,7 @@ Return ONLY valid JSON:
                         + min(views_e / 15000.0, 75.0)
                         + viral_boost
                         + short_fmt_bonus
+                        + vertical_native_bonus
                     ),
                 })
         except Exception as e_flat:
@@ -654,7 +665,7 @@ Return ONLY valid JSON:
 
     pooled_cands_sorted = sorted(
         pooled_flat_by_id.values(),
-        key=lambda x: float(x.get("score", 0.0)),
+        key=lambda x: (bool(x.get("is_vertical_short")), float(x.get("score", 0.0))),
         reverse=True,
     )[:22]
 
@@ -668,6 +679,7 @@ Return ONLY valid JSON:
                 "title": str(c.get("title") or "")[:95],
                 "views": int(c.get("view_count") or 0),
                 "duration_s": round(float(c.get("duration") or 0), 1),
+                "format": "9:16_NATIVE_SHORT" if c.get("is_vertical_short") else "16:9_LANDSCAPE",
                 "channel": str(c.get("uploader") or "")[:40],
                 "query": str(c.get("matched_query") or ""),
             }
@@ -688,9 +700,10 @@ CANDIDATE YOUTUBE SHORTS POOL:
 {json.dumps(compact_list, ensure_ascii=False, indent=2)}
 
 SELECTION RULES:
-1. Prioritize candidates whose titles describe REAL, HIGH-INTENSITY PHYSICAL ACTION, CLOSE-UP CLASH, or SHOCKING NATURAL PHENOMENA matching "{hot_topic_essence}" and "{visual_hook_blueprint}".
-2. Reject clickbait commentary, reactions, podcasts, toys/figurines, video game mods (unless 3D CGI monster is requested), or passive zoo/sleeping clips.
-3. Pick up to 6 best video IDs ordered from #1 strongest Opening Hook Peak to #6.
+1. CRITICAL 9:16 VERTICAL FRAMING PRIORITY: Strongly prioritize candidates with `"format": "9:16_NATIVE_SHORT"` over `"16:9_LANDSCAPE"` whenever they match the subject! Native 9:16 Shorts keep the entire body of the subject fitted inside the vertical frame, whereas cropping 16:9 videos cuts off 70% of the frame.
+2. Prioritize candidates whose titles describe REAL, HIGH-INTENSITY PHYSICAL ACTION, CLOSE-UP CLASH, or SHOCKING NATURAL PHENOMENA matching "{hot_topic_essence}" and "{visual_hook_blueprint}".
+3. Reject clickbait commentary, reactions, podcasts, toys/figurines, clothing/apparel ads, video game mods (unless 3D CGI monster is requested), or passive zoo/sleeping clips.
+4. Pick up to 6 best video IDs ordered from #1 strongest Opening Hook Peak to #6.
 
 Return ONLY valid JSON:
 {{
@@ -748,7 +761,7 @@ Return ONLY valid JSON:
             "retries": 1,
             "nopart": True,
             "max_filesize": 38 * 1024 * 1024,
-            "format": "bestvideo[protocol=https][height>=720][height<=1080][ext=mp4]/bestvideo[protocol=https][height>=720][height<=1920][ext=mp4]/bestvideo[protocol=https][height>=480][height<=1920][ext=mp4]/bestvideo[height>=720][height<=1920][ext=mp4]/bestvideo[height>=480][height<=1920]/bestvideo/best",
+            "format": license_policy.VERTICAL_FIRST_YTDLP_FORMAT,
             "merge_output_format": "mp4",
             "outtmpl": out_tmpl,
             "ignoreerrors": True,
@@ -1010,27 +1023,6 @@ Return ONLY valid JSON:
             peak_duration_sec = float(pre_v["peak_duration_sec"])
             clean_peak_path = str(pre_v["clean_peak_path"])
             inspect_target = str(pre_v["inspect_target"])
-            if pre_v.get("pre_curated_stock"):
-                v_sc = float(pre_v.get("vision_score") or 8.2)
-                score_res = {
-                    "video_path": v_path,
-                    "clean_peak_path": inspect_target,
-                    "peak_offset_sec": peak_offset_sec,
-                    "peak_duration_sec": peak_duration_sec,
-                    "recommended_hook_mode": "video",
-                    "entity_match_score": v_sc,
-                    "motion_action_score": 8.2,
-                    "scroll_stop_score": 8.0,
-                    "clean_frame_score": 9.5,
-                    "overall_score": round(v_sc * 0.40 + 8.2 * 0.25 + 8.0 * 0.20 + 9.5 * 0.15, 2),
-                    "passed": True,
-                    "reason": f"Pre-curated HD Stock Video Beat (VisionScore={v_sc}/10)",
-                }
-                logger.info(
-                    f"  📊 [HookVideoGrader] Ứng viên #{idx + 1} ({Path(v_path).name} @Peak {peak_offset_sec:.1f}s, len={peak_duration_sec:.1f}s): "
-                    f"Mode=video | Overall={score_res['overall_score']}/10 -> ✅ ĐẠT (Video B-Roll HD đã qua Vision Curation)"
-                )
-                return idx, score_res
         else:
             # 3.1. Quét toàn bộ video Short để tìm đúng mốc Peak & đo trọn vẹn độ dài đoạn Peak tự nhiên (tới 15s)
             peak_offset_sec, peak_duration_sec = find_hook_peak_window(
