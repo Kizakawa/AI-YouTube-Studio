@@ -272,6 +272,29 @@ class QuotaManager:
         return direct
 
     @staticmethod
+    def get_channel_assigned_project_id(channel_id: str) -> str:
+        """
+        Xác định Google Cloud Project ID được phân bổ chính thức cho kênh trong config/channels.yaml.
+        """
+        try:
+            ch_cfg = settings.get_channel_by_id(channel_id) or {}
+            if not ch_cfg:
+                channels = settings.get_channels_config()
+                ch_cfg = next((c for c in channels if c.get("id") == channel_id), {})
+            assigned = str(ch_cfg.get("assigned_project_id") or "").strip()
+            if assigned:
+                return assigned
+            acc_name = ch_cfg.get("google_account", "account_1")
+            cs_rel = ch_cfg.get("client_secret") or f"credentials/accounts/{acc_name}/client_secret.json"
+            cs_path = Path(settings.BASE_DIR) / cs_rel if not Path(cs_rel).is_absolute() else Path(cs_rel)
+            pid = get_project_id_from_client_secret(str(cs_path))
+            if pid and pid != "default_project":
+                return pid
+        except Exception as e:
+            logger.debug(f"Lỗi đọc assigned_project_id cho kênh {channel_id}: {e}")
+        return "bionic-client-509515-h2"
+
+    @staticmethod
     def get_channel_tokens_pool(channel_id: str) -> List[Dict[str, Any]]:
         """
         Quét toàn bộ danh sách các token OAuth liên kết với kênh này (Project Quota Pool).
@@ -281,6 +304,7 @@ class QuotaManager:
         if not ch_dir.exists():
             return []
 
+        assigned_pid = QuotaManager.get_channel_assigned_project_id(channel_id)
         from app.utils.security import load_encrypted_json
         acc_dir = Path(settings.CREDENTIALS_DIR) / "accounts"
         cid_map = {}
@@ -330,10 +354,13 @@ class QuotaManager:
                 tracker = QuotaManager.get_tracker(pid)
                 can_up = QuotaManager.can_upload(pid, required_units=COST_FULL_SHORTS)
                 is_primary = (Path(tf).resolve() == primary_tok.resolve())
+                is_assigned = (pid == assigned_pid)
                 pool.append({
                     "token_file": str(tf),
                     "is_primary": is_primary,
+                    "is_assigned_pool": is_assigned,
                     "project_id": pid,
+                    "project_label": QuotaManager.get_project_label(pid),
                     "account_id": p_info["account_id"],
                     "client_id": cid,
                     "used_units": tracker.get("used_units", 0),
@@ -344,11 +371,20 @@ class QuotaManager:
             except Exception as e:
                 logger.debug(f"Lỗi kiểm tra token {tf}: {e}")
 
-        # Sắp xếp token: 
+        # Sắp xếp token:
         # 1. can_upload = True lên đầu
-        # 2. Ưu tiên Token chính (is_primary) nếu còn quota để đảm bảo tính ổn định cao nhất
-        # 3. Sau đó mới đến remaining_units cao nhất
-        pool.sort(key=lambda x: (x["can_upload"], x.get("is_primary", False), x["remaining_units"]), reverse=True)
+        # 2. Ưu tiên Project được phân bổ riêng cho kênh (is_assigned_pool)
+        # 3. Ưu tiên Token chính (is_primary) nếu còn quota
+        # 4. Sau đó mới đến remaining_units cao nhất
+        pool.sort(
+            key=lambda x: (
+                x["can_upload"],
+                x.get("is_assigned_pool", False),
+                x.get("is_primary", False),
+                x["remaining_units"],
+            ),
+            reverse=True,
+        )
         return pool
 
     @staticmethod
@@ -406,11 +442,7 @@ class QuotaManager:
                 logger.debug(f"Không thể giải mã token kênh {channel_id} để lấy project_id: {e}")
 
         # Fallback: Đọc từ cấu hình channels.yaml
-        channels = settings.get_channels_config()
-        ch_cfg = next((c for c in channels if c.get("id") == channel_id), {})
-        acc_name = ch_cfg.get("google_account", "account_1")
-        cs_path = ch_cfg.get("client_secret") or f"credentials/accounts/{acc_name}/client_secret.json"
-        return get_project_id_from_client_secret(cs_path)
+        return QuotaManager.get_channel_assigned_project_id(channel_id)
 
     @staticmethod
     def get_channel_quota_info(channel_id: str) -> Dict[str, Any]:
@@ -418,10 +450,13 @@ class QuotaManager:
         channels = settings.get_channels_config()
         ch_cfg = next((c for c in channels if c.get("id") == channel_id), {"id": channel_id, "name": channel_id})
         acc_id = ch_cfg.get("google_account", "account_1")
+        assigned_pid = QuotaManager.get_channel_assigned_project_id(channel_id)
+        assigned_label = QuotaManager.get_project_label(assigned_pid)
 
         token_path, project_id = QuotaManager.get_active_token_for_channel(channel_id)
         has_token = token_path is not None and os.path.exists(token_path)
         tracker = QuotaManager.get_tracker(project_id)
+        assigned_tracker = QuotaManager.get_tracker(assigned_pid)
         can_up = has_token and QuotaManager.can_upload(project_id)
         pool = QuotaManager.get_channel_tokens_pool(channel_id)
 
@@ -429,7 +464,11 @@ class QuotaManager:
             "channel_id": channel_id,
             "channel_name": ch_cfg.get("name", channel_id),
             "account_id": acc_id,
+            "assigned_project_id": assigned_pid,
+            "assigned_project_label": assigned_label,
+            "assigned_remaining_units": assigned_tracker.get("remaining_units", 0),
             "project_id": project_id,
+            "project_label": QuotaManager.get_project_label(project_id),
             "has_token": has_token,
             "token_file": token_path,
             "pool_size": len(pool),
