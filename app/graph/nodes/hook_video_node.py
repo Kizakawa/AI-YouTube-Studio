@@ -113,25 +113,28 @@ def _splice_dual_beat_hook_clip(
     niche: str = "action",
     fair_use_a: bool = False,
     fair_use_b: bool = False,
+    punch_in_b: bool = False,
 ) -> bool:
     """
     Dựng Hook 2 Nhịp Cắt Nhanh (Dual-Beat Fast-Cut Hook) ngay trong Cảnh 1:
-    - Beat 1A (0.0s -> ~1.35s): Cú sốc thị giác / Hành động mở màn từ ứng viên #1.
-    - Beat 1B (~1.35s -> hết Cảnh 1): Đổi góc máy sang ứng viên #2 (hoặc góc cận cảnh phản ứng/cao trào),
-      tạo Pattern Interrupt ở giây thứ 1.35-1.50 để chặn phản xạ vuốt bỏ ở giây thứ 1.8!
+    - Beat 1A (0.0s -> ~1.15s–1.45s): Cú sốc thị giác / Hành động mở màn từ ứng viên #1.
+    - Beat 1B (~1.15s–1.45s -> hết Cảnh 1): Đổi góc máy sang ứng viên #2 (hoặc góc cận cảnh 1.22x Punch-In),
+      tạo Pattern Interrupt ở giây thứ 1.25-1.45 để chặn đứng phản xạ vuốt bỏ ở giây thứ 1.8!
     - Đảm bảo tổng thời lượng khớp chính xác 100% với `total_duration_sec` (0ms lệch audio).
     """
     if total_duration_sec < 2.0:
         return False
-    dur_a = round(min(1.55, max(1.10, total_duration_sec * 0.46)), 2)
+    dur_a = round(min(1.45, max(1.05, total_duration_sec * 0.45)), 2)
     dur_b = round(max(0.80, total_duration_sec - dur_a), 2)
     beat_a_out = str(work_dir / "hook_beat_1a_tmp.mp4")
     beat_b_out = str(work_dir / "hook_beat_1b_tmp.mp4")
+    beat_b_raw = str(work_dir / "hook_beat_1b_raw_tmp.mp4")
     concat_list_path = work_dir / "hook_dual_beat_concat.txt"
 
     try:
         Path(beat_a_out).unlink(missing_ok=True)
         Path(beat_b_out).unlink(missing_ok=True)
+        Path(beat_b_raw).unlink(missing_ok=True)
         trim_video(
             input_path=clip_a_path,
             duration_seconds=dur_a,
@@ -150,7 +153,7 @@ def _splice_dual_beat_hook_clip(
         trim_video(
             input_path=clip_b_path,
             duration_seconds=dur_b,
-            output_path=beat_b_out,
+            output_path=beat_b_raw if punch_in_b else beat_b_out,
             width=1080,
             height=1920,
             fps=30,
@@ -162,6 +165,19 @@ def _splice_dual_beat_hook_clip(
             start_offset_sec=start_b,
             preserve_continuous_flow=True,
         )
+        if punch_in_b and Path(beat_b_raw).exists() and Path(beat_b_raw).stat().st_size > 8_000:
+            cmd_punch = [
+                "ffmpeg", "-y",
+                "-i", beat_b_raw,
+                "-vf", "scale=1318:2342,crop=1080:1920:(iw-1080)/2:(ih-1920)*0.36,eq=contrast=1.04:brightness=0.01,setsar=1",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
+                "-pix_fmt", "yuv420p", "-r", "30", "-an",
+                beat_b_out,
+            ]
+            subprocess.run(cmd_punch, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10, check=False)
+            if not (Path(beat_b_out).exists() and Path(beat_b_out).stat().st_size > 8_000):
+                beat_b_out = beat_b_raw
+
         if not (Path(beat_a_out).exists() and Path(beat_b_out).exists()):
             return False
         if Path(beat_a_out).stat().st_size < 8_000 or Path(beat_b_out).stat().st_size < 8_000:
@@ -176,8 +192,9 @@ def _splice_dual_beat_hook_clip(
             "-f", "concat", "-safe", "0",
             "-i", str(concat_list_path),
             "-t", f"{total_duration_sec:.2f}",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-            "-pix_fmt", "yuv420p", "-r", "30", "-an",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "19",
+            "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+            "-r", "30", "-an",
             output_path,
         ]
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15, check=False)
@@ -187,7 +204,7 @@ def _splice_dual_beat_hook_clip(
         logger.debug(f"[HookVideoNode] Dual-beat splice skip: {e_db}")
         return False
     finally:
-        for tmp_p in (beat_a_out, beat_b_out, str(concat_list_path)):
+        for tmp_p in (beat_a_out, beat_b_out, beat_b_raw, str(concat_list_path)):
             try:
                 Path(tmp_p).unlink(missing_ok=True)
             except Exception:
@@ -284,8 +301,8 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
     pre_climax_id = script_data.get("climax_scene_id")
     pre_queries = script_data.get("hook_search_queries")
 
-    hook_visual_mode: str = "scene" if pre_mode == "scene" else "video"
-    is_abstract_keyword: bool = bool(pre_abstract) if isinstance(pre_abstract, bool) else (hook_visual_mode == "scene")
+    hook_visual_mode: str = "video"
+    is_abstract_keyword: bool = bool(pre_abstract) if isinstance(pre_abstract, bool) else (pre_mode == "scene")
     climax_scene_id: int = int(pre_climax_id) if isinstance(pre_climax_id, int) and 1 < pre_climax_id <= len(base_scenes) else default_climax_scene_id
     queries: List[str] = (
         [str(q).strip() for q in pre_queries if str(q).strip()][:5]
@@ -393,12 +410,10 @@ Return ONLY valid JSON:
             hook_production_strategy = strat_raw
         mode_raw = str(distilled_data.get("hook_visual_mode") or "").strip().lower()
         abs_raw = bool(distilled_data.get("is_abstract_keyword", mode_raw == "scene"))
-        if mode_raw in ("scene", "image", "ai_image", "photo") or abs_raw:
-            hook_visual_mode = "scene"
-            is_abstract_keyword = True
-        else:
-            hook_visual_mode = "video"
-            is_abstract_keyword = False
+        # Luôn ưu tiên săn Video chuyển động thật (Dual-Beat Fast-Cut) cho Cảnh 1 trên cả 7 kênh;
+        # chỉ fallback về 'scene' ở Bước 4 nếu toàn bộ ứng viên video không vượt qua cổng kiểm duyệt.
+        hook_visual_mode = "video"
+        is_abstract_keyword = abs_raw
 
         hot_topic_essence = str(distilled_data.get("hot_topic_essence") or hot_topic_essence).strip()
         raw_cues = distilled_data.get("must_see_visual_cues")
@@ -445,8 +460,8 @@ Return ONLY valid JSON:
             is_abstract_keyword = True
         elif any(k in combined_text for k in ("what if", "alternate history", "ancient", "empire", "world war", "soviet")):
             hook_production_strategy = "HYBRID_MOTION_AND_SCENE_MONTAGE"
-            hook_visual_mode = "scene"
-            is_abstract_keyword = True
+            hook_visual_mode = "video"
+            is_abstract_keyword = False
         else:
             hook_production_strategy = "VIRAL_SHORT_ACTION_PEAK"
             hook_visual_mode = "video"
@@ -493,10 +508,10 @@ Return ONLY valid JSON:
     )
 
     cand_seq_idx = 0
-    # Với CINEMATIC_BROLL_FAST_CUT (tâm lý học / hành vi con người), ưu tiên 100% kho B-Roll điện ảnh HD sạch
-    # (Pexels/Pixabay) thay vì ytsearch để tránh tải nhầm video webcam/selfie/vlog nghiệp dư trên YouTube Shorts.
+    # Mở khóa săn Peak YouTube Shorts kết hợp lọc sạch Talking-Head/Watermark cho cả 7 kênh:
+    # Với CINEMATIC_BROLL_FAST_CUT (tâm lý học), chạy song song 3 truy vấn YouTube Shorts cao trào + 4 truy vấn B-Roll HD sạch.
     yt_queries_to_run = (
-        []
+        queries[:3]
         if hook_production_strategy == "CINEMATIC_BROLL_FAST_CUT"
         else queries[:5]
     )
@@ -856,8 +871,8 @@ Return ONLY valid JSON:
     need_multi_source_broll = (
         not is_3d_cgi_subject
         and (
-            len(candidate_videos) < 2
-            or (hook_production_strategy == "CINEMATIC_BROLL_FAST_CUT" and len(candidate_videos) < 4)
+            len(candidate_videos) < 3
+            or (hook_production_strategy in ("CINEMATIC_BROLL_FAST_CUT", "HYBRID_MOTION_AND_SCENE_MONTAGE") and len(candidate_videos) < 4)
         )
     )
     if need_multi_source_broll:
@@ -876,7 +891,7 @@ Return ONLY valid JSON:
                 if beat_1_subject and beat_2_subject and beat_1_subject.lower() != beat_2_subject.lower()
                 else (canonical_subject or primary_entity or topic)
             )
-            max_broll_q = 4 if hook_production_strategy == "CINEMATIC_BROLL_FAST_CUT" else 2
+            max_broll_q = 4 if hook_production_strategy in ("CINEMATIC_BROLL_FAST_CUT", "HYBRID_MOTION_AND_SCENE_MONTAGE") else 3
             broll_queries_to_run = list(enumerate(multi_beat_queries[:max_broll_q]))
 
             def _fetch_single_multisrc_beat(mb_pair: tuple[int, str]) -> Optional[tuple[int, str, str, Dict[str, Any], Dict[str, Any]]]:
@@ -945,7 +960,7 @@ Return ONLY valid JSON:
                 return None
 
             if broll_queries_to_run:
-                with ThreadPoolExecutor(max_workers=min(2, len(broll_queries_to_run))) as ms_pool:
+                with ThreadPoolExecutor(max_workers=min(4, len(broll_queries_to_run))) as ms_pool:
                     ms_results = list(ms_pool.map(_fetch_single_multisrc_beat, broll_queries_to_run))
                 seen_multi_urls: set = set()
                 for ms_item in ms_results:
@@ -1319,10 +1334,13 @@ Return ONLY valid JSON:
         other_passing = [c for c in passing_candidates if c["video_path"] != best_v_path]
         used_second_paths = set()
 
-        # 4.1. Chỉ ghép DUAL-BEAT trong nội bộ Cảnh 1 khi Cảnh 1 rất dài (>= 4.2s) VÀ có dư >= 2 ứng viên phụ;
-        # còn lại giữ Cảnh 1 là 1 cú máy Peak liền mạch (Continuous Shot) và dành ứng viên #2 cho Cảnh 2!
+        # 4.1. Kích hoạt DUAL-BEAT FAST-CUT ngay trong Cảnh 1 khi Cảnh 1 >= 2.2s (chuyển góc máy tại ~1.15s-1.40s
+        # để chặn đứng phản xạ vuốt màn hình ở giây 1.8s):
+        # - Ưu tiên A: Ghép 2 video ứng viên độc lập (Beat 1A = best_candidate + Beat 1B = other_passing[0]).
+        # - Ưu tiên B: Nếu chỉ có 1 ứng viên nhưng đoạn Peak dài (>= target_hook_duration_sec + 1.6s),
+        #   cắt 2 góc máy liên hoàn ngay trên cùng video (Beat 1A toàn cảnh + Beat 1B cận cảnh 1.22x Punch-In).
         dual_beat_spliced = False
-        if len(other_passing) >= 2 and target_hook_duration_sec >= 4.2:
+        if target_hook_duration_sec >= 2.2 and len(other_passing) >= 1:
             beat_b_cand = other_passing[0]
             beat_b_v_path = beat_b_cand["video_path"]
             beat_b_clean = beat_b_cand.get("clean_peak_path") or beat_b_v_path
@@ -1341,6 +1359,7 @@ Return ONLY valid JSON:
                     niche=atmosphere_fx,
                     fair_use_a=not use_precleaned,
                     fair_use_b=not use_b_precleaned,
+                    punch_in_b=False,
                 )
                 if dual_beat_spliced:
                     used_second_paths.add(beat_b_v_path)
@@ -1349,6 +1368,29 @@ Return ONLY valid JSON:
                         f"({target_hook_duration_sec:.2f}s | Beat 1A='{Path(best_v_path).name}' + Beat 1B='{Path(beat_b_v_path).name}') "
                         f"-> {hook_output_clip}"
                     )
+        elif target_hook_duration_sec >= 2.4 and natural_peak_dur >= (target_hook_duration_sec + 1.6):
+            src_single = clean_p_path if use_precleaned else best_v_path
+            base_off_single = 0.0 if use_precleaned else peak_start
+            shift_b = round(min(1.45, max(1.05, target_hook_duration_sec * 0.45)) + 0.65, 2)
+            dual_beat_spliced = _splice_dual_beat_hook_clip(
+                clip_a_path=src_single,
+                start_a=base_off_single,
+                clip_b_path=src_single,
+                start_b=base_off_single + shift_b,
+                total_duration_sec=target_hook_duration_sec,
+                output_path=hook_output_clip,
+                work_dir=work_dir,
+                is_scifi=is_scifi,
+                niche=atmosphere_fx,
+                fair_use_a=not use_precleaned,
+                fair_use_b=not use_precleaned,
+                punch_in_b=True,
+            )
+            if dual_beat_spliced:
+                logger.info(
+                    f"⚡ [HookVideoNode Intra-Clip Dual-Beat Punch-In] Đã cắt 2 góc máy (Toàn cảnh -> Cận cảnh 1.22x) cho Cảnh 1 "
+                    f"({target_hook_duration_sec:.2f}s từ '{Path(best_v_path).name}') -> {hook_output_clip}"
+                )
 
         if not dual_beat_spliced:
             logger.info(

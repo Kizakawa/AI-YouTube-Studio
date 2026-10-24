@@ -474,11 +474,17 @@ def run_ffmpeg(args: List[str], timeout: int = FFMPEG_TIMEOUT) -> subprocess.Com
     return result
 
 
-def get_niche_color_grading(niche: Optional[str] = None, is_scifi: bool = False) -> Dict[str, str]:
+def get_niche_color_grading(
+    niche: Optional[str] = None,
+    is_scifi: bool = False,
+    is_hook_scene: bool = False,
+) -> Dict[str, str]:
     """
     Trả về bộ lọc màu sắc, độ tương phản và vignette điện ảnh chuẩn hóa theo từng ngách (Niche Identity).
     Sử dụng 100% các filter native của FFmpeg (eq, colorbalance, unsharp, vignette) với tốc độ render cao,
     đồng bộ hóa màu sắc cho cả ảnh tĩnh (Ken Burns) và stock video.
+    Đặc biệt: Khi `is_hook_scene=True` (3 giây đầu), triệt tiêu mọi vignette tối góc và giữ brightness >= +0.02
+    để khung hình 0.0s đạt độ bừng sáng (First-Frame Visual Pop) tối đa trên màn hình điện thoại.
     """
     raw_niche = (niche or "").lower().strip()
 
@@ -514,16 +520,17 @@ def get_niche_color_grading(niche: Optional[str] = None, is_scifi: bool = False)
             "vignette": "",
         },
         "psychology": {
-            # @MasteringMindControl Signature Monochrome Silver-Noir & Chiaroscuro:
-            # Khử bão hòa màu lòe loẹt về tông Đen-Trắng Ánh Bạc (saturation=0.18), tương phản sâu (1.24),
-            # nét vẽ/ánh mắt sắc như dao cạo (unsharp), hạt bụi phim điện ảnh (noise=alls=4) và vignette hút tâm (0.45)
-            "vf_filter": "eq=contrast=1.24:saturation=0.18:brightness=-0.03,colorbalance=rs=-0.02:gs=-0.01:bs=0.04,unsharp=5:5:0.75:3:3:0.25,noise=alls=4:allf=t+u",
-            "vignette": "vignette=0.45",
+            # High-Contrast Neo-Noir & Chiaroscuro:
+            # Giữ độ bão hòa tự nhiên vừa phải (saturation=0.72 thay vì 0.18 xám xịt) + nâng sáng nhẹ (+0.02)
+            # để ánh mắt, vi biểu cảm khuôn mặt và tương phản nổi bật tức thì ở giây 0.0s trên Shorts Feed
+            "vf_filter": "eq=contrast=1.18:saturation=0.72:brightness=0.02,colorbalance=rs=-0.01:gs=0.00:bs=0.03,unsharp=5:5:0.70:3:3:0.25",
+            "vignette": "vignette=0.22",
         },
         "deep_sea": {
-            # Vực thẳm đại dương & Quái vật biển sâu (Thalassophobia): tương phản sâu lạnh gáy, xanh vực thẳm sắc lạnh, vignette dày ám ảnh
-            "vf_filter": "eq=contrast=1.18:saturation=1.14:brightness=-0.02,colorbalance=rs=-0.04:gs=0.01:bs=0.07,unsharp=3:3:0.70:3:3:0.25",
-            "vignette": "vignette=0.48",
+            # Vực thẳm đại dương & Bí ẩn biển sâu: nâng sáng (+0.02) và bão hòa (1.18) để chủ thể dưới nước / phát quang
+            # nổi rõ ngay từ khung hình 0.0s, tránh bị tối đen khi xem trên điện thoại
+            "vf_filter": "eq=contrast=1.16:saturation=1.18:brightness=0.02,colorbalance=rs=-0.03:gs=0.01:bs=0.06,unsharp=3:3:0.65:3:3:0.22",
+            "vignette": "vignette=0.24",
         },
         "wildlife_predators": {
             # National Geographic: màu sắc sống động rực rỡ, sắc nét tự nhiên, khung hình sáng rõ
@@ -537,18 +544,18 @@ def get_niche_color_grading(niche: Optional[str] = None, is_scifi: bool = False)
         },
         "history_mystery": {
             # Cổ tích & Huyền bí: ánh vàng kim ấm áp, giữ độ sáng và chi tiết kiến trúc/nhân vật
-            "vf_filter": "eq=contrast=1.10:saturation=1.12:brightness=0.01,colorbalance=rs=0.02:gs=0.01:bs=-0.01,unsharp=3:3:0.5:3:3:0.20",
-            "vignette": "vignette=0.35",
+            "vf_filter": "eq=contrast=1.10:saturation=1.14:brightness=0.02,colorbalance=rs=0.02:gs=0.01:bs=-0.01,unsharp=3:3:0.55:3:3:0.20",
+            "vignette": "vignette=0.20",
         },
         "horror": {
-            # Rùng rợn & Quái vật kinh dị: tương phản gai góc, bóng tối sâu thẳm, ám lạnh điện ảnh, vignette siết chặt
-            "vf_filter": "eq=contrast=1.22:saturation=0.85:brightness=-0.03,colorbalance=rs=-0.03:gs=-0.01:bs=0.05,unsharp=3:3:0.75:3:3:0.25,noise=alls=3:allf=t+u",
-            "vignette": "vignette=0.52",
+            # Rùng rợn & Kinh dị: tương phản gai góc nhưng giữ chi tiết vùng tối rõ nét (+0.01 brightness)
+            "vf_filter": "eq=contrast=1.18:saturation=0.88:brightness=0.01,colorbalance=rs=-0.02:gs=0.00:bs=0.04,unsharp=3:3:0.70:3:3:0.25",
+            "vignette": "vignette=0.28",
         },
         "scifi": {
             # Viễn tưởng công nghệ: neon rực rỡ, màu sắc punchy tươi sáng, chi tiết sắc nét
             "vf_filter": "eq=contrast=1.08:saturation=1.22:brightness=0.02,unsharp=3:3:0.5:3:3:0.20",
-            "vignette": "vignette=0.30",
+            "vignette": "vignette=0.20",
         },
         "luxury": {
             # Sang trọng & Động lực: ánh vàng kim rạng rỡ, màu sắc cao cấp, độ sáng hoàn hảo
@@ -556,9 +563,9 @@ def get_niche_color_grading(niche: Optional[str] = None, is_scifi: bool = False)
             "vignette": "",
         },
         "stoic": {
-            # Khắc kỷ / Triết học: tông trầm tĩnh Chiaroscuro bán đơn sắc sang trọng, chiều sâu triết gia
-            "vf_filter": "eq=contrast=1.18:saturation=0.42:brightness=-0.02,colorbalance=rs=-0.01:gs=-0.01:bs=0.03,unsharp=5:5:0.65:3:3:0.20,noise=alls=3:allf=t+u",
-            "vignette": "vignette=0.40",
+            # Khắc kỷ / Triết học: tông trầm tĩnh Chiaroscuro sang trọng, rõ nét chi tiết
+            "vf_filter": "eq=contrast=1.16:saturation=0.58:brightness=0.01,colorbalance=rs=-0.01:gs=0.00:bs=0.02,unsharp=5:5:0.65:3:3:0.20",
+            "vignette": "vignette=0.22",
         },
         "health": {
             # Sức khỏe & Sinh học: màu sắc tươi tắn, trong trẻo, căng tràn sức sống
@@ -574,7 +581,7 @@ def get_niche_color_grading(niche: Optional[str] = None, is_scifi: bool = False)
 
     cfg = PROFILES.get(niche_key, PROFILES["general"])
     vf_filter = cfg["vf_filter"]
-    vignette = cfg.get("vignette", "")
+    vignette = "" if is_hook_scene else cfg.get("vignette", "")
     full_filter = f"{vf_filter},{vignette}" if vignette else vf_filter
 
     return {
@@ -717,7 +724,7 @@ def image_to_video(
         )
 
     # Hiệu ứng màu sắc điện ảnh và chiều sâu theo Niche Profile (100% Free Native FFmpeg Filter)
-    grading = get_niche_color_grading(niche=niche, is_scifi=is_scifi)
+    grading = get_niche_color_grading(niche=niche, is_scifi=is_scifi, is_hook_scene=is_hook_scene)
     import re as _re
     clean_vf_filter = _re.sub(r",?unsharp=[^,]+", "", grading["vf_filter"]).strip(",")
     if enable_zoompan:
@@ -893,7 +900,7 @@ def render_opening_hook_multi_cut(
                 shot_durs.append(round(max(0.35, duration_seconds - elapsed), 3))
 
         # Bước 4: Ghép n_shots bằng 1 lệnh FFmpeg filter_complex duy nhất + Niche Color Grading
-        grading = get_niche_color_grading(niche=niche, is_scifi=is_scifi)
+        grading = get_niche_color_grading(niche=niche, is_scifi=is_scifi, is_hook_scene=is_hook_scene)
         clean_vf_filter = _re.sub(r",?unsharp=[^,]+", "", grading["vf_filter"]).strip(",")
         live_fx = get_hook_live_fx_filter(niche=niche, is_scifi=is_scifi, width=width, height=height) if is_hook_scene else ""
         post_filters = [f"scale={width}:{height}", "setsar=1", f"fps={fps}"]
@@ -1200,14 +1207,21 @@ def find_hook_peak_action_offset(
                     dark_streak = 0
             f0_lum = lums[start_idx]
             f0_con = contrasts[start_idx]
-            # Phạt nặng nếu Frame 0 tối đen (< 45) hoặc cháy trắng (> 225) hoặc mờ phẳng (< 22)
-            if f0_lum < 45.0 or f0_lum > 225.0 or f0_con < 22.0:
-                penalty = -25.0
+            f1_idx = min(start_idx + 1, n_frames - 1)
+            # Zero-Delay Peak Entry (0.0s - 0.5s): Chấm điểm chuyển động và độ nét chủ thể ngay tại khoảnh khắc mở màn
+            instant_entry_motion = motions[start_idx] * 0.65 + motions[f1_idx] * 0.35
+            instant_entry_intrigue = intrigues[start_idx] * 0.65 + intrigues[f1_idx] * 0.35
+            # Phạt nặng nếu Frame 0 tối đen (< 50) hoặc cháy trắng (> 225) hoặc mờ phẳng (< 24)
+            if f0_lum < 50.0 or f0_lum > 225.0 or f0_con < 24.0:
+                penalty = -45.0
             else:
                 penalty = 0.0
+            # Phạt nếu 0.5s đầu tiên đứng hình / chưa vào nhịp chuyển động (tránh 0.5s delay làm người xem vuốt bỏ)
+            if instant_entry_motion < 1.4:
+                penalty -= 18.0
             # Khử thiên vị giây 0.0s (thường là đoạn intro tĩnh/chưa vào đòn của video gốc)
             if start_idx == 0 and src_sec >= target_duration + 2.5:
-                penalty -= 3.5
+                penalty -= 4.5
 
             early_end = min(start_idx + 5, n_frames)
             burst_end = min(start_idx + 8, n_frames)
@@ -1217,13 +1231,15 @@ def find_hook_peak_action_offset(
             peak_burst = max(burst_slice) if burst_slice else early_motion
             win_motion = sum(motions[start_idx:win_end]) / max(win_end - start_idx, 1)
             win_intrigue = sum(intrigues[start_idx:win_end]) / max(win_end - start_idx, 1)
-            f0_quality = min(f0_con / 48.0, 1.5) + (0.30 if 58.0 <= f0_lum <= 198.0 else 0.0)
+            f0_quality = min(f0_con / 45.0, 1.65) + (0.45 if 62.0 <= f0_lum <= 198.0 else 0.0)
             return (
-                early_motion * 1.45
+                instant_entry_motion * 1.15
+                + instant_entry_intrigue * 0.35
+                + early_motion * 1.45
                 + peak_burst * 0.75
-                + win_motion * 1.15
-                + win_intrigue * 0.50
-                + f0_quality * 7.0
+                + win_motion * 1.10
+                + win_intrigue * 0.45
+                + f0_quality * 8.0
                 + penalty
             )
 
@@ -1383,17 +1399,16 @@ def trim_video(
 
     grading_parts = []
     if should_grade:
-        grading = get_niche_color_grading(niche=niche, is_scifi=is_scifi)
+        grading = get_niche_color_grading(niche=niche, is_scifi=is_scifi, is_hook_scene=is_hook_scene)
         grading_parts.append(grading['vf_filter'])
         if grading.get("vignette"):
             grading_parts.append(grading['vignette'])
 
-    grading_chain = ("," + ",".join(grading_parts)) if grading_parts else ""
-
     # Tự động phát hiện nếu video nguồn 9:16 có dải viền đen ngang (letterbox) ở trên và dưới -> Phóng 1.84x để cắt sạch viền đen!
+    # Đồng thời nếu là Cảnh 1 (is_hook_scene=True) mà khung hình mở đầu hơi tối (mid_band < 60), tự động kích sáng First-Frame Luma Lift (+0.04 brightness)!
     zoom_mult = 1.18 if (fair_use_transform and not is_already_rendered) else 1.06
     try:
-        probe_ss = f"{start_offset_sec + 0.5:.2f}" if (start_offset_sec and start_offset_sec > 0) else "0.50"
+        probe_ss = f"{start_offset_sec + 0.15:.2f}" if (start_offset_sec and start_offset_sec > 0) else "0.15"
         p_cmd = [
             shutil.which("ffmpeg") or "ffmpeg", "-v", "quiet",
             "-ss", probe_ss, "-i", input_path,
@@ -1408,8 +1423,13 @@ def trim_video(
             if top_band < 24.0 and bot_band < 24.0 and mid_band > 42.0:
                 zoom_mult = 1.84
                 logger.info(f"  🔍 [Anti-Letterbox Crop] Phát hiện viền đen trên/dưới (top={top_band:.1f}, bot={bot_band:.1f}, mid={mid_band:.1f}) -> Tự động phóng {zoom_mult}x full màn hình 9:16!")
+            if is_hook_scene and not is_already_rendered and mid_band < 60.0:
+                grading_parts.append("eq=brightness=0.04:contrast=1.06")
+                logger.info(f"  💡 [First-Frame Visual Pop] Khung hình mở đầu Cảnh 1 hơi tối (luma={mid_band:.1f}) -> Tự động kích sáng +0.04 brightness & +6% contrast tại giây 0.0s!")
     except Exception:
         pass
+
+    grading_chain = ("," + ",".join(grading_parts)) if grading_parts else ""
     zw, zh = ((int(width * zoom_mult) // 2) * 2), ((int(height * zoom_mult) // 2) * 2)
     if fair_use_transform and not is_already_rendered:
         scale_crop_chain = (

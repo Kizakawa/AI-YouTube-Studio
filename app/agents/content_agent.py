@@ -864,18 +864,15 @@ class ContentAgent:
         elif "hook" not in raw_data or not raw_data["hook"]:
             raw_data["hook"] = raw_data.get("title", "")
 
-        # ── 2.88. CỔNG QUYẾT ĐỊNH HOOK CỦA GEMINI: TẠO VIDEO ("video") HAY TẠO CẢNH ("scene") ──
+        # ── 2.88. CỔNG QUYẾT ĐỊNH HOOK CỦA GEMINI: LUÔN ƯU TIÊN VIDEO CHUYỂN ĐỘNG THẬT ("video") CHO CẢNH 1 TRÊN MỌI NGÁCH ──
         raw_h_mode = str(raw_data.get("hook_visual_mode") or "").strip().lower()
         raw_is_abs = raw_data.get("is_abstract_keyword")
-        if raw_h_mode in ("scene", "image", "ai_image", "photo", "traditional"):
-            raw_data["hook_visual_mode"] = "scene"
-            raw_data["is_abstract_keyword"] = True
-        elif raw_h_mode in ("video", "short", "shorts", "clip"):
+        if raw_h_mode in ("video", "short", "shorts", "clip", "scene", "image", "ai_image", "photo", "traditional", ""):
             raw_data["hook_visual_mode"] = "video"
             raw_data["is_abstract_keyword"] = False if raw_is_abs is None else bool(raw_is_abs)
-        elif isinstance(raw_is_abs, bool):
-            raw_data["is_abstract_keyword"] = raw_is_abs
-            raw_data["hook_visual_mode"] = "scene" if raw_is_abs else "video"
+        else:
+            raw_data["hook_visual_mode"] = "video"
+            raw_data["is_abstract_keyword"] = False
 
         if scenes and isinstance(scenes, list):
             default_climax_id = min(max(3, len(scenes) // 2), max(len(scenes) - 1, 1))
@@ -1637,10 +1634,10 @@ YouTube Shorts rewards TWO metrics simultaneously:
    - Make sure every idea is fully developed and explained before moving to the next point.
    - Connect scenes with smooth narrative flow so the entire 85–120 word script reads like a seamless, gripping mini-documentary from start to finish.
 
-9. HOOK VISUAL MODE DECISION (`hook_visual_mode`: `"video"` VS `"scene"`, `is_abstract_keyword`, & `climax_scene_id`):
-   - Set `"hook_visual_mode": "video"` and `"is_abstract_keyword": false` when the topic involves concrete real-world footage or 3D CGI/VFX monster/sci-fi action (wildlife, animal rescues, natural phenomena, sea monsters, sci-fi creatures).
-   - Set `"hook_visual_mode": "scene"` and `"is_abstract_keyword": true` when the topic is psychological, abstract, or counterfactual ("What If").
-   - Set `"climax_scene_id"` (integer between 2 and 7) and provide 2 concise English `"hook_search_queries"` (2–4 words each, bare canonical noun + action/format, NO literary adjectives like 'colossal', 'abyssal', 'terrifying'; e.g. `"leviathan 3d animation"`, `"leviathan thalassophobia"`, `"honey badger fighting lion"`).
+9. HOOK VISUAL MODE DECISION (`hook_visual_mode`: ALWAYS `"video"`, `is_abstract_keyword`, & `climax_scene_id`):
+   - ALWAYS set `"hook_visual_mode": "video"` and `"is_abstract_keyword": false` across ALL niches so Scene 1 (0.0s–3.0s) opens with high-retention real moving video footage (Dual-Beat Fast-Cut).
+   - For psychological, behavioral, or counterfactual ("What If") topics, translate the opening hook into CONCRETE, OBSERVABLE PHYSICAL ACTIONS, MICRO-EXPRESSIONS, OR HISTORICAL SPECTACLES (e.g. `"man cold smirk dark room"`, `"intense eye contact interrogation"`, `"submarine underwater ocean"`, `"nuclear explosion mushroom cloud"`), NEVER abstract nouns.
+   - Set `"climax_scene_id"` (integer between 2 and 7) and provide 2–5 concise English `"hook_search_queries"` (2–4 words each, bare canonical noun + physical action/setting, NO literary adjectives like 'colossal', 'abyssal', 'terrifying'; e.g. `"jaguar hunting caiman river"`, `"sperm whale diving deep ocean"`, `"honey badger fighting lion"`, `"man intense eye contact noir"`).
 
 ═══════════════════════════════════════════════════════════
 OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
