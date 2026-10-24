@@ -352,6 +352,7 @@ def get_winner_cloner_blueprint(
         winner_apv = 0.0
 
     # Lọc yaml_topic_bank chống trùng lặp với toàn bộ lịch sử kênh (bao gồm Mini-RAG kịch bản + visual metadata)
+    from app.services.intelligence.deduplication import check_idea_similarity
     fresh_candidates: List[str] = []
     for cand in yaml_topic_bank:
         if not cand or cand in fresh_candidates:

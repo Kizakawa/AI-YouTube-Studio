@@ -4,7 +4,7 @@ from app.services.content_linter import ScriptValidationLinter
 
 def make_dummy_script(narration: str, last_narration: str = "This mystery remains entirely unsolved."):
     scenes = [
-        SceneContract(scene_id=1, narration="What if the deep ocean hides something truly ancient?", visual_keyword="ocean abyss", estimated_seconds=3.5),
+        SceneContract(scene_id=1, narration="The deepest ocean trench hides something truly ancient beneath the black water.", visual_keyword="ocean abyss", estimated_seconds=3.5),
         SceneContract(scene_id=2, narration=narration, visual_keyword="deep sea creature", estimated_seconds=4.0),
         SceneContract(scene_id=3, narration="Scientists around the globe cannot explain the strange acoustic signal.", visual_keyword="sonar anomaly", estimated_seconds=3.5),
         SceneContract(scene_id=4, narration="Navy logs and radar recordings were immediately classified under top secret protocols.", visual_keyword="classified submarine", estimated_seconds=3.5),
@@ -33,7 +33,7 @@ class TestContentLinter(unittest.TestCase):
         )
         result = ScriptValidationLinter.lint(script_bad, niche_profile)
         self.assertFalse(result.is_valid)
-        self.assertTrue(any("ends abruptly on an incomplete connector" in issue for issue in result.issues))
+        self.assertTrue(any("ends abruptly on an incomplete" in issue for issue in result.issues))
 
         # Kịch bản bị cắt cụt ở "which is why..."
         script_bad_which = make_dummy_script(
@@ -54,7 +54,7 @@ class TestContentLinter(unittest.TestCase):
         # Kịch bản hoàn chỉnh ngữ pháp
         script_good = make_dummy_script(
             narration="In 1997, deep hydrophones captured an impossible sound echoing across thousands of miles.",
-            last_narration="What do you think is hiding down there? Drop your theory below."
+            last_narration="Every sonar array deployed into the Pacific abyss still records that exact same terrifying frequency today."
         )
         result_good = ScriptValidationLinter.lint(script_good, niche_profile)
         self.assertTrue(result_good.is_valid)

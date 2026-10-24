@@ -19,8 +19,19 @@ logger = logging.getLogger(__name__)
 
 
 class OAuthAndUploadMixin:
-    def __init__(self, channel_config: Optional[Dict] = None, account_name: str = "account_1"):
+    def __init__(
+        self,
+        channel_config: Optional[Any] = None,
+        account_name: str = "account_1",
+        channel_id: Optional[str] = None,
+        **kwargs,
+    ):
+        if isinstance(channel_config, str):
+            channel_id = channel_config
+            channel_config = {"id": channel_id}
         self.channel_config = dict(channel_config or {})
+        if channel_id and not self.channel_config.get("id"):
+            self.channel_config["id"] = channel_id
         self.channel_id = self.channel_config.get("id", "default")
         if self.channel_id and self.channel_id != "default":
             try:

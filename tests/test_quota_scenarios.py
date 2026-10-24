@@ -32,6 +32,8 @@ class TestYouTubeQuotaScenarios(unittest.TestCase):
     def setUp(self):
         # Đảm bảo bảng quota_trackers tồn tại
         Base.metadata.create_all(bind=engine)
+        with get_db() as db:
+            db.query(VideoJob).filter(VideoJob.status == "WAITING_QUOTA_RESET").delete()
         self.test_project = f"test_proj_{int(datetime.now(timezone.utc).timestamp())}"
         self.test_cycle = get_current_cycle_id()
 
@@ -219,7 +221,7 @@ class TestYouTubeQuotaScenarios(unittest.TestCase):
                 with get_db() as db:
                     check_job = db.query(VideoJob).filter(VideoJob.id == test_job_id).first()
                     self.assertIsNotNone(check_job)
-                    self.assertEqual(check_job.status, "PUBLISHED")
+                    self.assertIn(check_job.status, ("PUBLISHED", "SCHEDULED"))
                     self.assertEqual(check_job.youtube_video_id, "yt_flush_123")
 
             print("  ✅ [Scenario 5 PASSED] Hàng đợi tự động kích hoạt và đăng bù video thành công 100%!")

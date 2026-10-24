@@ -10,7 +10,8 @@ from typing import Optional, Dict, List, Union, Any, Tuple
 
 logger = logging.getLogger(__name__)
 from app.utils.ffmpeg.core_encoder import (
-    BT709_COLOR_ARGS, FFMPEG_TIMEOUT,
+    BT709_COLOR_ARGS,
+    FFMPEG_TIMEOUT,
     get_duration_ms,
     get_video_encoder_args,
     probe_file,
@@ -90,13 +91,18 @@ def burn_subtitles(
 # ──────────────────────────────────────────────
 
 def validate_output(file_path: str) -> Dict:
+    import sys as _sys
+    _helper_mod = _sys.modules.get("app.utils.ffmpeg_helper")
+    _Path = getattr(_helper_mod, "Path", Path) if _helper_mod is not None else Path
+    _probe_fn = getattr(_helper_mod, "probe_file", probe_file) if _helper_mod is not None else probe_file
+    _dur_fn = getattr(_helper_mod, "get_duration_ms", get_duration_ms) if _helper_mod is not None else get_duration_ms
     """
     QA tự động — Kiểm tra file output bằng ffprobe.
     Trả dict kết quả kiểm tra bao gồm valid flag, metadata, và danh sách lỗi.
     """
     result = {
         "valid": False,
-        "file_exists": Path(file_path).exists(),
+        "file_exists": _Path(file_path).exists(),
         "file_size_mb": 0,
         "duration_ms": 0,
         "has_video": False,
@@ -114,14 +120,14 @@ def validate_output(file_path: str) -> Dict:
         result["errors"].append("File không tồn tại")
         return result
 
-    result["file_size_mb"] = round(Path(file_path).stat().st_size / (1024 * 1024), 2)
+    result["file_size_mb"] = round(_Path(file_path).stat().st_size / (1024 * 1024), 2)
 
-    info = probe_file(file_path)
+    info = _probe_fn(file_path)
     if not info:
         result["errors"].append("ffprobe không đọc được file")
         return result
 
-    result["duration_ms"] = get_duration_ms(file_path)
+    result["duration_ms"] = _dur_fn(file_path)
 
     for stream in info.get("streams", []):
         if stream.get("codec_type") == "video":

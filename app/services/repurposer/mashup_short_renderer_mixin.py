@@ -27,8 +27,48 @@ from config.settings import settings
 from app.agents.content_agent import ContentAgent
 from app.services.niche_manager import get_niche, get_niche_subtitle_style
 from app.utils.subtitle_helper import SubtitleHelper, ASS_WHITE, ASS_YELLOW, ASS_BLACK
-from app.utils.ffmpeg_helper import run_ffmpeg, probe_file, get_duration_ms, detect_audio_speech_start, BT709_COLOR_ARGS, build_atempo_filter
-from app.services.repurposer_qa import preflight_repurpose_qa
+from app.utils.ffmpeg_helper import (
+    run_ffmpeg as _orig_run_ffmpeg,
+    probe_file as _orig_probe_file,
+    get_duration_ms as _orig_get_duration_ms,
+    detect_audio_speech_start as _orig_detect_audio_speech_start,
+    BT709_COLOR_ARGS,
+    build_atempo_filter,
+)
+import sys as _sys
+
+
+def run_ffmpeg(*args, **kwargs):
+    _mod = _sys.modules.get("app.services.video_repurposer")
+    _fn = getattr(_mod, "run_ffmpeg", None) if _mod else None
+    if _fn is not None and _fn is not run_ffmpeg:
+        return _fn(*args, **kwargs)
+    return _orig_run_ffmpeg(*args, **kwargs)
+
+
+def probe_file(*args, **kwargs):
+    _mod = _sys.modules.get("app.services.video_repurposer")
+    _fn = getattr(_mod, "probe_file", None) if _mod else None
+    if _fn is not None and _fn is not probe_file:
+        return _fn(*args, **kwargs)
+    return _orig_probe_file(*args, **kwargs)
+
+
+def get_duration_ms(*args, **kwargs):
+    _mod = _sys.modules.get("app.services.video_repurposer")
+    _fn = getattr(_mod, "get_duration_ms", None) if _mod else None
+    if _fn is not None and _fn is not get_duration_ms:
+        return _fn(*args, **kwargs)
+    return _orig_get_duration_ms(*args, **kwargs)
+from app.services.repurposer_qa import preflight_repurpose_qa as _orig_preflight_repurpose_qa
+
+
+def preflight_repurpose_qa(*args, **kwargs):
+    _mod = _sys.modules.get("app.services.video_repurposer")
+    _fn = getattr(_mod, "preflight_repurpose_qa", None) if _mod else None
+    if _fn is not None and _fn is not preflight_repurpose_qa:
+        return _fn(*args, **kwargs)
+    return _orig_preflight_repurpose_qa(*args, **kwargs)
 
 logger = logging.getLogger(__name__)
 

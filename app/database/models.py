@@ -96,6 +96,25 @@ def is_test_environment() -> bool:
 
 def normalize_database_url(url: str) -> str:
     """Chuẩn hóa DATABASE_URL: chuyển postgres:// thành postgresql:// cho SQLAlchemy 2.0"""
+    if not url:
+        return f"sqlite:///{settings.BASE_DIR}/storage/ai_youtube.db"
+    clean_url = url.strip()
+    if clean_url.startswith("postgres://"):
+        clean_url = "postgresql://" + clean_url[len("postgres://"):]
+    return clean_url
+
+
+def _resolve_default_engine_url(raw_url: str) -> str:
+    if is_test_environment() and (not raw_url or raw_url == getattr(settings, "DATABASE_URL", "")):
+        test_url = os.getenv("TEST_DATABASE_URL", "").strip()
+        if test_url:
+            return test_url
+        return f"sqlite:///{settings.BASE_DIR}/storage/test_ai_youtube.db"
+    return normalize_database_url(raw_url)
+
+
+def _unused_legacy_norm(url: str) -> str:
+    """Chuẩn hóa DATABASE_URL: chuyển postgres:// thành postgresql:// cho SQLAlchemy 2.0"""
     if is_test_environment():
         test_url = os.getenv("TEST_DATABASE_URL", "").strip()
         if test_url:
@@ -155,7 +174,7 @@ def create_configured_engine(raw_url: str):
     - Nếu là SQLite: Đảm bảo thư mục tồn tại, cấu hình check_same_thread=False, kích hoạt WAL mode.
     - Fallback: Nếu kết nối PostgreSQL thất bại, tự động chuyển về SQLite cục bộ an toàn.
     """
-    db_url = normalize_database_url(raw_url)
+    db_url = _resolve_default_engine_url(raw_url)
     if is_test_environment():
         logger.info(f"🧪 [Database] Đang chạy chế độ TEST cô lập — sử dụng DB: {db_url}")
     is_postgres = db_url.startswith("postgresql://") or db_url.startswith("postgresql+psycopg2://")
@@ -183,11 +202,9 @@ def create_configured_engine(raw_url: str):
                         "keepalives_count": 3,
                     },
                 )
-                # Test ping connection
+                # Test ping connection (chỉ dùng SELECT 1, tuyệt đối không gọi ALTER TABLE gây khóa bảng trên PgBouncer)
                 with eng.connect() as test_conn:
                     test_conn.execute(text("SELECT 1"))
-                    test_conn.execute(text("ALTER TABLE video_jobs ADD COLUMN IF NOT EXISTS hook_text TEXT"))
-                    test_conn.commit()
                 logger.info("✅ [Database] Đã kết nối thành công tới PostgreSQL Cloud!")
                 return eng, db_url
             except Exception as ex:

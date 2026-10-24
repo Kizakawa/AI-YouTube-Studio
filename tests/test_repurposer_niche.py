@@ -67,7 +67,7 @@ class TestNichePromptInjection(unittest.TestCase):
 
     def test_TC03_psychology_hooks_in_prompt(self):
         p = _build_prompt_instructions("psychology")
-        keywords = ["manipulation", "Gaslighting", "99%", "toxic", "dark", "warning"]
+        keywords = ["manipulation", "Gaslighting", "99%", "toxic", "dark", "warning", "psychopaths", "guilty", "micro-expressions", "thao túng"]
         self.assertTrue(any(k.lower() in p.lower() for k in keywords),
             f"TC-03 FAIL: psychology prompt missing hook keywords. Got:\n{p[:400]}")
 

@@ -127,7 +127,7 @@ def test_api_render_clip_receives_crop_focus(tmp_path):
         }
 
         payload = {
-            "source": "d:/test.mp4",
+            "source": str(tmp_path / "test.mp4"),
             "start_seconds": 1.0,
             "end_seconds": 15.0,
             "crop_focus": "right",

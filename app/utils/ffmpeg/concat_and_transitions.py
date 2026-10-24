@@ -11,7 +11,8 @@ from typing import Optional, Dict, List, Union, Any, Tuple
 logger = logging.getLogger(__name__)
 from app.utils.ffmpeg.subtitles_and_thumbnail import burn_subtitles
 from app.utils.ffmpeg.core_encoder import (
-    BT709_COLOR_ARGS, FFMPEG_TIMEOUT,
+    BT709_COLOR_ARGS,
+    FFMPEG_TIMEOUT,
     _supports_fps_mode,
     get_duration_ms,
     get_video_encoder_args,
@@ -122,6 +123,7 @@ def concat_videos_with_xfade(
     (Single-Pass Xfade + Subtitle Burn), loại bỏ hoàn toàn 1 thế hệ nén lại video (lossy re-encode)
     và tăng tốc độ xuất video thêm ~40%.
     """
+    from app.utils.ffmpeg.subtitles_and_thumbnail import burn_subtitles
     has_sub = bool(subtitle_path and Path(subtitle_path).exists())
     if len(video_paths) == 1:
         if has_sub:

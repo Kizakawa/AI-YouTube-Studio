@@ -341,7 +341,10 @@ def run_ffmpeg_with_gpu_fallback(args: List[str], timeout: int = FFMPEG_TIMEOUT)
     Đảm bảo 100% video luôn render thành công không bao giờ làm gián đoạn pipeline.
     """
     try:
-        return run_ffmpeg(args, timeout=timeout)
+        import sys as _sys
+        _helper_mod = _sys.modules.get("app.utils.ffmpeg_helper")
+        _run_fn = getattr(_helper_mod, "run_ffmpeg", run_ffmpeg) if _helper_mod is not None else run_ffmpeg
+        return _run_fn(args, timeout=timeout)
     except Exception as gpu_err:
         enc_info = detect_hardware_encoder()
         current_enc = enc_info["encoder"]
@@ -369,7 +372,10 @@ def run_ffmpeg_with_gpu_fallback(args: List[str], timeout: int = FFMPEG_TIMEOUT)
                 new_args.append(args[i])
                 i += 1
 
-            return run_ffmpeg(new_args, timeout=timeout)
+            import sys as _sys
+            _helper_mod = _sys.modules.get("app.utils.ffmpeg_helper")
+            _run_fn = getattr(_helper_mod, "run_ffmpeg", run_ffmpeg) if _helper_mod is not None else run_ffmpeg
+            return _run_fn(new_args, timeout=timeout)
         else:
             raise gpu_err
 

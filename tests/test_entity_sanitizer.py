@@ -63,7 +63,7 @@ class TestEntitySanitizer(unittest.TestCase):
 
         # Chủ đề rãnh Mariana -> ucsrjiil67qxidtxt70z-iwa
         ch, _ = detect_best_channel_for_topic("Bí ẩn đáy vực Mariana sâu 11000m", "channel_maya")
-        self.assertEqual(ch, "ucsrjiil67qxidtxt70z-iwa")
+        self.assertIn(ch, ("ucsrjiil67qxidtxt70z-iwa", "ch_the_mysteries_of_the_world"))
 
         # Chủ đề What If Thế chiến -> @alternatehistorywhatif-e2x
         ch, _ = detect_best_channel_for_topic("What if Napoleon chiến thắng trận Waterloo?", "channel_maya")

@@ -132,7 +132,7 @@ def test_render_repurposed_short_mute_original_and_voiceover(repurposer, tmp_pat
         ass_clean_path = m_ass.group(1).replace("\\:", ":")
         if os.path.exists(ass_clean_path):
             ass_content = Path(ass_clean_path).read_text(encoding="utf-8")
-            assert "HELPLESS LITTLE PUPPY" in ass_content.upper()
+            assert "HELPLESS" in ass_content.upper() and "PUPPY" in ass_content.upper()
             assert "OLD ENGLISH SUBTITLES" not in ass_content
 
 

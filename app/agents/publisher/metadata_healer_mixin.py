@@ -222,11 +222,11 @@ class MetadataHealerMixin:
                 ]
         elif any(k in raw_niche for k in ("history", "what_if", "alternate")):
             niche_defaults = [
-                "alternate history", "what if", "what if history", "butterfly effect",
-                "historical facts", "world history", "american history", "ancient history",
-                "history documentary", "roman empire", "ancient rome", "timeline split",
-                "counterfactual history", "historical paradox", "ancient civilizations",
-                "world war history", "napoleon", "history shorts",
+                "alternate history", "what if", "what if history", "crazy history",
+                "historical facts", "historical disasters", "biggest mistakes in history",
+                "world history", "american history", "cold war", "nuclear test",
+                "butterfly effect", "history documentary", "dark history", "bizarre history",
+                "ancient history", "world war history", "history shorts",
                 "usa", "united states", "american", "us shorts", "shorts", "ytshorts",
             ]
         elif any(k in raw_niche for k in ("rescue", "pet", "animal_rescue")):
@@ -295,6 +295,17 @@ class MetadataHealerMixin:
 
             keywords_str = self.build_smart_channel_keywords(extra_keywords=extra_keywords)
             ch_bs["keywords"] = keywords_str
+
+            raw_niche = str(self.channel_config.get("niche") or "general").strip().lower()
+            if not str(ch_bs.get("description") or "").strip():
+                if any(k in raw_niche for k in ("history", "what_if", "alternate")):
+                    ch_bs["description"] = (
+                        'Welcome to Alternate History & "What If?" — exploring the biggest turning points, '
+                        "declassified military showdowns, historical disasters, and counterfactual timelines "
+                        "that nearly rewrote our modern world. Subscribe for daily high-stakes history Shorts! 🏛️☢️🌍"
+                    )
+            if ch_bs.get("title") == 'Alternate History & "What If?':
+                ch_bs["title"] = 'Alternate History & "What If?"'
 
             target_country = str(self.channel_config.get("target_country") or "").strip().upper()
             if not target_country:

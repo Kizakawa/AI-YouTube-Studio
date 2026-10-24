@@ -2,40 +2,46 @@ id: alternate_history
 name: Lịch Sử Giả Định & "What If?" (Alternate History & Paradoxes)
 badge: ⏳ Alternate History & What If?
 icon: ⏳
-description: Khám phá các dòng thời gian song song, những bước ngoặt lịch sử bị đảo ngược (What If?), và thế giới sẽ ra sao nếu các sự kiện lớn diễn ra khác đi.
-target_audience: Khán giả Mỹ và toàn cầu đam mê lịch sử, khoa học viễn tưởng, câu hỏi giả định và bí ẩn thời gian (18-45 tuổi).
+description: Khám phá các dòng thời gian song song, những bước ngoặt lịch sử chấn động (What If?), các siêu thảm họa kỹ thuật/tự nhiên có thật và thế giới sẽ ra sao nếu lịch sử rẽ sang hướng khác.
+target_audience: Khán giả Mỹ và toàn cầu đam mê lịch sử kịch tính, thảm họa lịch sử có thật, siêu dự án quân sự và câu hỏi giả định (18-45 tuổi).
 script_blueprint:
-  tone_of_voice: "Hồi hộp, sử thi, giọng kể tài liệu điện ảnh (Christopher Nolan / Dan Carlin), tạo cảm giác rùng mình trước sự mong manh của dòng thời gian."
-  pacing: "Thời lượng vàng 35 - 45 giây (7 - 9 cảnh, 85 - 120 từ, 3.5 - 4.8 giây/cảnh). Cảnh 1 là Hook 3s giả định chấn động, Cảnh 4 (giây 12-15) là Mid-Video Re-Hook (Điểm rẽ nhánh lịch sử), Cảnh 5-7 là Payoff bản đồ thế giới bị viết lại."
+  tone_of_voice: "Kịch tính, nhịp độ dồn dập, ngôn ngữ Tiếng Anh giao tiếp lớp 5 sắc gọn (Zack D. Films / Historically / Dan Carlin), mở đầu bằng con số vật lý và xung đột sinh tử ngay ở giây 0.0s."
+  pacing: "Thời lượng vàng 32 - 38 giây (7 - 8 cảnh trọn câu, 85 - 108 từ tổng, 3.5 - 4.5 giây/cảnh). Cảnh 1 (0.0s-2.0s) chỉ 5-8 từ chỉ điểm trực diện va chạm vật lý, Cảnh 4 (giây 12-15) là Mid-Video Climax Twist (con số chấn động thứ 2), Cảnh cuối bắc cầu Infinite Loop về Cảnh 1."
   hook_formulas:
-  - 'Modern Reality Anchor + Counterfactual Shock: ''Look at your smartphone — if one fire in 48 BC had been stopped, humanity would have landed on Mars by 1650...'''
-  - 'Counter-Intuitive Disaster Paradox: ''What if the Titanic never hit the iceberg in 1912? Saving that ship would have triggered an even deadlier catastrophe...'''
-  - '1-Minute Historical Butterfly Effect: ''In 1983, one Soviet officer refused to press a red button for 4 minutes — what if he followed orders?'''
-  - 'Empire Survival Counterfactual: ''What if Alexander the Great survived his fever at 32 and marched his undefeated army straight into Rome?'''
-  - 'The Wrong Turn of 1914: ''In 1914, a driver took one wrong turn down a side street — and accidentally erased four empires from existence...'''
+  - 'Catastrophe vs. Shield Confrontation (Proven #1 Winner): ''Earth survived only because one volcano killed thousands.'' / ''Two four-megaton nukes fell straight onto North Carolina.'''
+  - 'Deictic Physical Scale Shock (5-8 words): ''This 1,720-foot mega-tsunami erased an entire mountain.'' / ''Three divers swam into Chernobyl''s radioactive basement.'''
+  - 'Bizarre Military Megaproject Clash (A vs. B): ''Britain built a two-million-ton warship out of ice.'' / ''America planned to nuke the Moon in 1958.'''
+  - 'Geopolitical Trillion-Dollar Blunder: ''Russia sold Alaska for two cents an acre.'' / ''Australia lost a war against twenty thousand birds.'''
+  - 'Split-Second Doomsday Switch: ''One low-voltage switch saved America in 1961.'' / ''This 15-megaton asteroid missed London by four hours.'''
   viral_topic_bank_2026:
-  - "What If The Library Of Alexandria Never Burned Down? (The 1,000-Year Tech Leap)"
-  - "What If The Titanic Never Hit The Iceberg In 1912? The Dark Paradox Nobody Tells You"
-  - "What If A 15-Minute Rainstorm Missed Waterloo And Napoleon Conquered Europe?"
-  - "What If Vasili Arkhipov Pressed The Launch Button Inside Submarine B-59 In 1962?"
-  - "What If The Roman Empire Industrialized Hero's Steam Engine 1,800 Years Early?"
-  - "What If Genghis Khan's Mongol Army Never Turned Back From Vienna In 1242?"
-  - "What If Lincoln Cancelled His Theater Trip On April 14, 1865?"
-  - "What If One Forgotten Gate In 1453 Had Been Locked Before The Siege Of Constantinople?"
-  narrative_structure: "Beat 1 (0-3s): Counterfactual 'What If' Shock Hook anchored to modern life -> Beat 2 (3-11s): The Exact Historical Turning Point (Real Date, Real Figure, Real Decision) -> Beat 3 (11-22s): Mid-Video Re-Hook (The 3-Stage Butterfly Domino Effect rewriting world borders & technology) -> Beat 4 (22-36s): Mind-Bending Modern Payoff (What 2026 would look like today) + Seamless Loop Bridge"
+  - "1961 Goldsboro B-52 Crash: Two 4-Megaton Nukes vs. One Low-Voltage Switch in North Carolina"
+  - "1958 Lituya Bay Mega-Tsunami: 1,720-Foot Wave vs. The Empire State Building"
+  - "1986 Chernobyl Suicide Squad: 3 Divers vs. A 5-Megaton Thermal Explosion Under Europe"
+  - "Project Habakkuk (1943): Britain's 2-Million-Ton Ice Aircraft Carrier vs. German U-Boats"
+  - "Project A119 (1958): Why The US Air Force Secretly Planned To Nuke The Moon"
+  - "1867 Alaska Purchase Blunder: What If Russia Kept Alaska's $700 Billion Oil & Gold Reserve?"
+  - "1815 Mount Tambora Eruption: The Volcano That Cancelled Summer & Froze The World"
+  - "Operation Plowshare: America's Plan To Carve A Canal With 520 Nuclear Bombs"
+  - "1932 Great Emu War: 10,000 Machine Gun Rounds vs. 20,000 Unstoppable Birds"
+  - "1908 Tunguska 15-Megaton Airburst: What If The Asteroid Hit 4 Hours Later Over Europe?"
+  narrative_structure: "Act 1 (0.0-2.0s): 5-8 Word Physical Confrontation Hook ('A vs. B' + extreme number) -> Act 2 (2.0-11.0s): Exact Historical Date, Location & Lethal Mechanism -> Act 3 (11.0-21.0s): Mid-Video Climax Twist (The hidden 2nd physical metric or counterfactual domino effect) -> Act 4 (21.0-30.0s): How The World Narrowly Escaped / Rewritten Map -> Act 5 (30.0-36.0s): Jaw-Dropping Final Payoff + Seamless Infinite Loop Bridge back to Scene 1 (Zero Spoken Subscribe CTA)"
   forbidden_words:
   - Welcome back to our channel
   - Today we will talk about
   - Thank you for watching
   - Don't forget to like and subscribe
+  - Did you know
+  - Have you ever wondered
+  - Imagine a world where
   - Chào mừng các bạn đã quay trở lại
   cta_templates:
-  - If this single turning point went the other way, would humanity today be 500 years ahead or in total chaos? Drop your theory! 👇
-  - What would you have done if you stood in their shoes at that exact moment? Debate in the comments below 👇
-  - Which fallen empire would dominate the modern world if it survived to 2026? Let's debate below 👇
+  - "Quick Poll: Would you choose (1) Keep our timeline or (2) Rewrite history? Drop 1 or 2 below & SUBSCRIBE for daily historical showdowns! 👇"
+  - "Who wins this historical showdown: (1) Human Engineering or (2) Nature's Wrath? Vote 1 or 2 below & SUBSCRIBE! 👇"
+  - "Did humanity get lucky in this moment: (1) Pure Luck or (2) Calculated Heroism? Drop 1 or 2 in the comments! 👇"
   anti_hallucination_rules:
-  - Phải dựa trên các đế chế, sự kiện, nhân vật và trận đánh lịch sử có thật (Rome, Alexandria, Napoleon, Alexander Đại Đế, Đế quốc Mông Cổ, Thế chiến), chỉ phân nhánh giả thuyết một cách logic, thuyết phục theo chuỗi nhân quả Domino 3 bước.
-  - Tiêu đề hoặc câu Hook đầu tiên BẮT BUỘC phải đặt ra giả thuyết đảo ngược lịch sử rõ ràng ("What If...?" hoặc liên hệ trực tiếp thế giới năm 2026 bị thay đổi ra sao), tránh lối giảng sử sách giáo khoa khô khan.
+  - Phải dựa trên các sự kiện, thảm họa, chiến dịch quân sự và con số vật lý có thật 100% trong lịch sử (năm, địa điểm, megaton, độ cao, nhiệt độ, PSI), kết hợp góc nhìn đối đầu trực diện ('A vs. B') hoặc giả thuyết 'What If' sắc bén.
+  - Tiêu đề BẮT BUỘC ưu tiên cấu trúc '[Thực thể/Thảm họa A] vs. [Mục tiêu/Lá chắn B] + Con số/Năm cụ thể' (dưới 60 ký tự) hoặc nghịch lý lịch sử có số liệu định lượng, tuyệt đối tránh câu mở đầu học thuật dài dòng.
+  - CẤM LẶP LẠI các chủ đề đã khai thác nhiều lần trên kênh (Cổng thành Constantinople 1453, Tài xế rẽ nhầm 1914, Sĩ quan Liên Xô Stanislav Petrov 1983 / Vasili Arkhipov 1962, Cháy thư viện Alexandria, Động cơ hơi nước Hero ở Rome).
   - TUYỆT ĐỐI KHÔNG làm nội dung về tiêm chích y tế (inject/vaccine), tội phạm giết người (serial killer/Ted Bundy), tài chính cá nhân, hay mẹo tâm lý học.
   banned_lexicon: &banned_words
   - buy now
@@ -56,19 +62,19 @@ script_blueprint:
   - narcissist
   - gaslighting
 visual_aesthetics:
-  art_style: Epic Alternate Reality Cinema, Historical War Room Maps & Neoclassical Retro-Futurism (Ridley Scott / Christopher Nolan / Vox Atlas 8K CGI aesthetic)
-  camera_angles: Grand sweeping aerial over divergent civilization, glowing 3D animated geopolitical map with shifting empire borders, dramatic low-angle of historical figures facing temporal storm, macro close-up on antique hourglass and historical artifacts
-  color_palette: Fiery amber gold, deep twilight royal blue, electric cyan timeline split, burnished antique bronze, atmospheric smoke
-  master_prompt_prefix: masterpiece alternate history cinema still, breathtaking historical authenticity & timeline divergence, dramatic chiaroscuro lighting, 70mm IMAX & 8K CGI documentary aesthetic
-  master_prompt_suffix: hyper-detailed textures of period-accurate ancient armor, stone architecture and historical war maps, epic atmosphere, photorealistic vertical 9:16, no watermark, no text
-  negative_prompts: modern computer keyboard, RGB gaming mouse, modern office desk, modern skyscraper, modern cars, modern plastic gadgets, syringe, hospital, medical needle, cartoon, anime, chibi, blurry, low resolution, watermark, text, signature
+  art_style: Epic Historical Documentary Cinema, Declassified Cold War / Ancient Battle Visuals & 8K CGI Disaster Simulation (Zack D. Films / Christopher Nolan / Vox Atlas 8K aesthetic)
+  camera_angles: Visceral eye-level impact shot at Frame 0.0s, grand sweeping aerial over historical catastrophe or battlefield, glowing 3D tactical map with shockwave radius, macro close-up on physical mechanism or detonator switch
+  color_palette: Fiery amber gold, deep twilight royal blue, high-contrast archival steel, volcanic crimson, atmospheric smoke
+  master_prompt_prefix: masterpiece historical documentary cinema still, breathtaking physical realism & high-contrast chiaroscuro lighting, 70mm IMAX & 8K CGI simulation aesthetic
+  master_prompt_suffix: hyper-detailed textures of period-accurate military hardware, historical architecture, shockwaves and war maps, epic atmosphere, photorealistic vertical 9:16, no watermark, no text
+  negative_prompts: modern computer keyboard, RGB gaming mouse, modern office desk, modern plastic gadgets, syringe, hospital, medical needle, cartoon, anime, chibi, blurry, low resolution, watermark, text, signature
   stock_video_keywords:
+  - nuclear explosion mushroom cloud shockwave archival
+  - giant ocean tsunami wave crashing storm
+  - vintage military bomber aircraft flying clouds
+  - erupting volcano lava ash lightning storm
   - ancient roman colosseum ruins dramatic sky
-  - medieval knights battle armor sword
-  - glowing antique hourglass sand time
-  - dramatic storm lightning over ancient temple
-  - old vintage world map compass candlelight
-  - historic cannon firing smoke battlefield
+  - historic warship battleship firing cannon ocean
 subtitles:
   font_family: Cinzel, Georgia, serif
   font_weight: '800'

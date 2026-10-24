@@ -31,7 +31,19 @@ class VideoRepurposerService(
     pass
 
 
+from app.utils.ffmpeg_helper import (
+    BT709_COLOR_ARGS,
+    build_atempo_filter,
+    detect_audio_speech_start,
+    get_duration_ms,
+    probe_file,
+    run_ffmpeg,
+)
+from app.services.repurposer_qa import preflight_repurpose_qa
+from app.utils.subtitle_helper import SubtitleHelper
+
 video_repurposer = VideoRepurposerService()
+repurposer_service = video_repurposer
 
 __all__ = [
     "CLIPS_DIR",

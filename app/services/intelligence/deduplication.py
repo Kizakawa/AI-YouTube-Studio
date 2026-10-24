@@ -216,6 +216,7 @@ def ensure_unique_title(
     if not clean_cand:
         clean_cand = candidate_title.strip()
 
+    from app.services.intelligence.portfolio_scanner import get_channel_existing_portfolio
     portfolio = get_channel_existing_portfolio(channel_id)
     existing_titles = portfolio.get("existing_titles", [])
 

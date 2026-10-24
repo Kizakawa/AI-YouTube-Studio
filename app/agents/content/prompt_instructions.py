@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 AVAILABLE_MODELS = list(GEMINI_PRIORITY_MODELS)
 
 
-
 def build_language_integrity_instruction(language: str) -> str:
     lang_clean = (language or "en").strip().lower()
     is_vi = lang_clean.startswith("vi")
@@ -77,7 +76,7 @@ def build_language_integrity_instruction(language: str) -> str:
 def build_regional_hook_mastery_instruction(language: str, channel_niche: str = "general") -> str:
     """
     Xây dựng chỉ dẫn tối ưu Hook 0.0s–2.0s chuyên biệt theo từng khu vực địa lý (US/Global English vs. Brasil pt-BR vs. Việt Nam)
-    dựa trên dữ liệu phân tích 343 video YouTube Shorts triệu view (1M–371M views) từ YouTube Data API v3.
+    dựa trên dữ liệu phân tích 368 video YouTube Shorts triệu view (1M–371M views) từ YouTube Data API v3.
     """
     lang_clean = (language or "en").strip().lower()
     niche_clean = (channel_niche or "general").strip().lower()
@@ -149,8 +148,8 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
 🇺🇸 REGIONAL HOOK MASTERY — US / GLOBAL ENGLISH MARKET (en-US | TARGET: STAYED-TO-WATCH >= 70%)
 ═══════════════════════════════════════════════════════════════════
 1. THE 1.8-SECOND US FEED SURVIVAL RULE (SCENE 1 = 5 TO 8 WORDS MAX | GRADE-5 CONVERSATIONAL ENGLISH):
-   - Telemetry across our US channels shows that poetic/literary metaphors ("That sweet compliment is a loaded weapon", "A word. A face. A sound.") cause 71%–79% Swipe-Away because US viewers swipe before decoding abstract language!
-   - Million-view US Shorts (Zack D. Films 51M, Factasm 92M, Darkful Mind 16M, Smart Nonsense 26M) use ULTRA-SIMPLE, GRADE-5 CONVERSATIONAL AMERICAN ENGLISH that points directly at the visual subject or a real-life situation in 5 to 8 words (1.6s–2.2s):
+   - Telemetry across our US channels shows that poetic/literary metaphors ("That sweet compliment is a loaded weapon", "A word. A face. A sound.") and slow textbook questions cause 71%–79% Swipe-Away because US viewers swipe before decoding abstract language!
+   - Million-view US Shorts (Zack D. Films 51M, Sean Andrew 51M, Historically 28M, Factasm 92M) use ULTRA-SIMPLE, GRADE-5 CONVERSATIONAL AMERICAN ENGLISH that points directly at the physical event, catastrophe, or confrontation in 5 to 8 words (1.6s–2.2s):
 2. NICHE-SPECIFIC MILLION-VIEW US HOOK ARCHETYPES (CHOOSE THE EXACT FIT):
    - [Dark Psychology & Human Behavior]: Open with a concrete everyday quote/insult or a 2-second behavioral test:
      * "When someone says 'just joking,' watch their eyes."
@@ -163,9 +162,10 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
    - [Wildlife Apex Predators]: Open with real-time play-by-play confrontation + biomechanical number:
      * "This jaguar crushes caiman skulls with 1,500 PSI."
      * "Six adult lions backed down from one honey badger."
-   - [Alternate History & What If]: Open with the exact year/person/object that almost erased modern life:
-     * "In 1962, this one man stopped World War Three."
-     * "What if Rome industrialized steam power 1,800 years early?"
+   - [Alternate History & What If]: Frame Title as '[Catastrophe/Mega-Weapon A] vs. [Target/Shield B] + Year/Metric', and open Scene 1 (0.0s) in 5-8 words with a blunt physical catastrophe or paradox:
+     * "Earth survived only because one volcano killed thousands."
+     * "Two four-megaton nukes fell straight onto North Carolina."
+     * "This 1,720-foot mega-tsunami erased an entire mountain."
    - [Animal Rescue]: Open at the exact emotional turning point on screen:
      * "This terrified stray puppy refused to let go."
      * "Nobody recognized this stray dog thirty days later."

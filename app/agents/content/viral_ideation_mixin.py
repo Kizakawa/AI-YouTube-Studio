@@ -464,26 +464,42 @@ CRITICAL CHANNEL ALIGNMENT & BINGE-WATCHING RULES:
             }
         ]
 
+        niche_topic_bank: List[str] = []
+        try:
+            from app.services.niche_manager import get_niche
+            n_prof = get_niche(channel_niche)
+            niche_topic_bank = list((n_prof.get("script_blueprint") or {}).get("viral_topic_bank_2026") or [])
+        except Exception:
+            pass
+
+        hook_mastery_block = build_regional_hook_mastery_instruction(language=language, channel_niche=channel_niche)
+        topic_bank_block = (
+            "\nPROVEN 2026 TOPIC ARCHETYPES FOR THIS NICHE:\n" + "\n".join(f"  - {t}" for t in niche_topic_bank[:6])
+            if niche_topic_bank else ""
+        )
+
         prompt = f"""You are an elite YouTube Shorts Growth Hacker and Viral Strategist for the channel '{channel_name}' in niche: '{channel_niche}'.
 Language: {language}
 Goal: Generate {count} ULTRA-VIRAL video concepts tailored specifically to match this channel's existing identity and build upon its highest-performing video.
 {recent_context_block}
+{hook_mastery_block}{topic_bank_block}
+
 CORE RETENTION PRINCIPLES:
-1. High-Stakes Personal & Relational Angle: Focus on topics that make viewers fear being tricked, betrayed, or ignored (e.g. Red Flags, Covert Narcissism, Dark Psychology Laws, Body Language of Liars, Hidden Jealousy).
-2. Electric Hook (First 2.5s): Pattern interrupt, urgent warning, or elite insider rule.
+1. High-Stakes Niche Confrontation ('A vs. B' + Concrete Physical/Historical/Behavioral Metric): Frame every concept around an undeniable physical or situational clash backed by a hard number.
+2. Electric 1.8s Hook (5-8 words max in Grade-5 conversational language): Immediate deictic pointer or physical shock at 0.0s.
 3. Psychological Call to Action (Double Tap & Protect, Debate in Comments, Curiosity Part 2).
-4. Pinned Bait Question: A compelling question to pin at the top of comments to ignite massive debate.
+4. Pinned Bait Question: A binary 1-vs-2 poll question to pin at the top of comments to ignite massive debate and subscriber conversion.
 
 Return ONLY a JSON array with exactly {count} objects:
 [
   {{
     "topic": "Clean topic name",
     "title": "Viral YouTube Shorts Title with Emojis and #hashtags",
-    "hook": "Opening 3-second hook line",
-    "angle": "Core psychological mechanism or observable micro-behavior",
-    "pinned_comment": "High-converting pinned bait question for the comment section",
+    "hook": "Opening 5-8 word hook line",
+    "angle": "Core physical/historical/behavioral mechanism and mid-video twist",
+    "pinned_comment": "High-converting binary (1 vs 2) pinned bait question for the comment section",
     "viral_formula": "Double Tap & Protect | Debate in Comments | Curiosity Part 2",
-    "predicted_retention": "150% - 165%",
+    "predicted_retention": "135% - 165%",
     "why_viral": "Brief 1-sentence reason why this will blow up and fits the channel"
   }}
 ]
@@ -510,7 +526,21 @@ Return ONLY a JSON array with exactly {count} objects:
         except Exception as e:
             logger.warning(f"[ContentAgent] Lỗi khi sinh ý tưởng viral từ Gemini: {e}")
 
-        # Fallback preset chuẩn chất lượng cao
+        # Fallback preset chuẩn chất lượng cao theo đúng ngách kênh
         if is_psychology:
-            return fallback_psychology_vi if language == "vi" else fallback_psychology_en
+            return (fallback_psychology_vi if language == "vi" else fallback_psychology_en)[:count]
+        if niche_topic_bank:
+            return [
+                {
+                    "topic": tb,
+                    "title": f"{tb[:58]} 🔥 #{channel_niche.split('_')[0]}",
+                    "hook": tb.split(":")[-1].strip() if ":" in tb else tb,
+                    "angle": "High-stakes confrontation with exact physical metrics and mid-video twist",
+                    "pinned_comment": "Quick Poll: Which side takes the win (1) or (2)? Drop your vote below & SUBSCRIBE! 👇",
+                    "viral_formula": "Debate in Comments",
+                    "predicted_retention": "130% - 155%",
+                    "why_viral": f"Proven A-vs-B million-view archetype for {channel_name}",
+                }
+                for tb in niche_topic_bank[:count]
+            ]
         return fallback_psychology_en[:count]

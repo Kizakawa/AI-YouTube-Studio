@@ -129,9 +129,11 @@ class SeoTagsMixin:
         elif any(k in raw_niche for k in ("history", "what_if", "alternate")):
             niche_title_hashes = ["history", "whatif", "documentary"]
             niche_core_tags = [
-                "history", "alternate history", "what if", "historical facts",
-                "world history", "ancient history", "history documentary", "civilization",
-                "timeline", "usa", "Shorts", "shorts", "ytshorts", "viral",
+                "history", "alternate history", "what if", "what if history",
+                "historical facts", "crazy history", "historical disasters",
+                "world history", "american history", "history documentary",
+                "biggest mistakes in history", "butterfly effect", "cold war",
+                "dark history", "usa", "Shorts", "shorts", "ytshorts", "viral",
             ]
         elif any(k in raw_niche for k in ("rescue", "pet", "animal_rescue")):
             niche_title_hashes = ["animalrescue", "dogrescue", "wholesome"]
@@ -168,9 +170,9 @@ class SeoTagsMixin:
                     return False
             return True
 
-        # 1. Thu thập extra_tags do người dùng/script truyền vào + default_tags của kênh
+        # 1. Thu thập extra_tags do người dùng/script truyền vào + default_tags/description_tags của kênh
         custom_tags: List[str] = []
-        for src in (extra_tags, self.channel_config.get("default_tags")):
+        for src in (extra_tags, self.channel_config.get("default_tags"), self.channel_config.get("description_tags")):
             if isinstance(src, list):
                 custom_tags.extend(str(x).strip() for x in src if str(x).strip())
             elif isinstance(src, str):
@@ -189,8 +191,12 @@ class SeoTagsMixin:
             "mariana trench", "bermuda triangle", "boiling river", "amazon river", "amazon",
             "point nemo", "spacecraft graveyard", "saturation divers", "divers",
             "antarctica", "sahara", "krakatoa", "yellowstone", "pompeii", "roman empire", "rome",
-            "steam engine", "titanic", "cold war", "world war 1", "world war 2",
+            "steam engine", "titanic", "cold war", "world war 1", "world war 2", "ww2", "ww1",
             "ancient egypt", "giza", "alexandria", "alexander", "emperor qin",
+            "chernobyl", "tsunami", "lituya bay", "alaska", "goldsboro", "north carolina",
+            "tambora", "tunguska", "vesuvius", "hiroshima", "hindenburg", "habakkuk",
+            "panama canal", "emu war", "tsar bomba", "nuclear", "nuke", "nukes", "b52",
+            "napoleon", "genghis khan", "vikings", "sparta", "pearl harbor", "d day",
             "soviet", "rockefeller", "apollo", "spacecraft", "kraken", "abyss", "deep ocean",
             "body language", "eye contact", "fbi", "lie detector", "lie detection", "micro expressions",
             "narcissist", "sociopath", "psychopath", "gaslighting", "gaslighters", "love bombed", "manipulators",

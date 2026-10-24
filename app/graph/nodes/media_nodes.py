@@ -855,7 +855,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     used_urls=used_pool_urls,
                     visual_analysis=v_analysis,
                     narration=scene.narration,
-                    skip_stock_lookup=prefer_generation,
+                    skip_stock_lookup=bool(v_analysis.get("prefer_generation", False)),
                     niche=current_niche,
                     is_scifi=is_scifi_val,
                     skip_web_search=tier0_searched,
@@ -1358,8 +1358,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         width=1080,
                         height=1920,
                         fps=30,
-                        is_scifi=is_scifi,
-                        niche=niche,
+                        is_scifi=is_scifi_val,
+                        niche=current_niche,
                         apply_grading=False,
                         is_hook_scene=False,
                         fair_use_transform=False,
@@ -1423,6 +1423,10 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             min_video_slots - current_video_slots,
         )
         if needed_rescues > 0 and rescue_candidates_idx:
+            from app.graph.tools.media_tools import (
+                execute_youtube_short_peak_clone_sync,
+                execute_real_documentary_action_video_sync,
+            )
             logger.info(
                 f"🎬 [Real-Motion Floor Rescue] Hiện có {current_video_slots}/{n_slots} cảnh video (mục tiêu tối thiểu {min_video_slots} cảnh video & Cảnh 2 bắt buộc là video). "
                 f"Đang nâng cấp {min(needed_rescues, len(rescue_candidates_idx))} cảnh ảnh tĩnh sang Video chuyển động thật..."
@@ -1446,8 +1450,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         narration=str(r_sc.get("narration") or state.get("topic", "")),
                         duration_sec=r_dur,
                         output_path=r_out_mp4,
-                        is_scifi=is_scifi,
-                        niche=niche,
+                        is_scifi=is_scifi_val,
+                        niche=current_niche,
                         used_urls=used_pool_urls,
                         job_id=job_id,
                         scene_id=r_sid,

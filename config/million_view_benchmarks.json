@@ -1,6 +1,6 @@
 {
-  "updated_at": "2026-10-23",
-  "total_million_view_shorts_analyzed": 343,
+  "updated_at": "2026-10-24",
+  "total_million_view_shorts_analyzed": 368,
   "data_source": "YouTube Data API v3 (search.list order=viewCount + videos.list statistics/contentDetails)",
   "global_findings": {
     "hook_0_to_2s_rule": "85% of viewers decide to stay or swipe within 0.0s-1.8s. Scene 1 narration MUST be 5-8 words (1.6s-2.2s) accompanied by an immediate visual motion cut at 1.3s-1.5s.",
@@ -15,10 +15,10 @@
       "scene_1_word_limit": "5 to 8 words (1.6s - 2.2s max)",
       "visual_cut_rhythm": "Dual-beat fast cut in Scene 1 (Beat 1A: 0.0s-1.35s Shock Action -> Beat 1B: 1.35s-2.5s Close-up/Reaction), then 2.5s-3.8s per body scene.",
       "hook_archetypes": [
-        "Deictic Visual Shock: 'Look at this diver's suit at 1,000 feet.' / 'This man saved Earth from World War Three.'",
+        "Deictic Visual Shock: 'Look at this diver's suit at 1,000 feet.' / 'Two 4-megaton nukes fell on North Carolina.'",
         "Conversational Manipulation Trap (Psychology): 'If someone says \"I'm just joking,\" watch their eyes.' / 'Turn any insult into instant respect with 3 words.'",
         "Play-by-Play Apex Clash (Wildlife): 'This jaguar crushes caiman skulls with 1,500 PSI.' / 'Six adult lions backed down from one honey badger.'",
-        "Counterfactual Disaster Twist (History): 'In 1946, this underwater nuclear test went terribly wrong.'",
+        "Counterfactual Catastrophe vs Shield (History): 'Earth survived only because one volcano killed thousands.' / 'This 1,720-foot mega-tsunami erased an entire mountain.'",
         "Emotional Turning Point (Rescue): 'Watch the exact second this abandoned puppy felt safe.'"
       ],
       "anti_patterns_causing_high_swipe": [
@@ -94,19 +94,20 @@
       "winning_hook_blueprint": "Name both creatures (A vs B) + the exact biomechanical weapon (1,500 PSI skull bite, 860-volt shock, neurotoxin immunity) in the first 6-8 words while showing mid-strike action at Frame 0.0s."
     },
     "alternate_history": {
-      "sample_size_1m_plus": 48,
-      "avg_duration_sec": 50.7,
-      "golden_duration_range_sec": [34, 44],
-      "avg_title_words": 7.9,
-      "avg_title_chars": 49.8,
-      "avg_like_rate_pct": 3.61,
+      "sample_size_1m_plus": 73,
+      "avg_duration_sec": 38.5,
+      "golden_duration_range_sec": [32, 38],
+      "avg_title_words": 7.8,
+      "avg_title_chars": 51.2,
+      "avg_like_rate_pct": 3.85,
       "top_million_view_examples": [
-        {"title": "The Watch That Changed History 😨", "views": 51524997, "duration_sec": 58, "like_rate_pct": 4.83, "channel": "Zack D. Films"},
+        {"title": "The Cruelest Punishment in History 😳 #shorts", "views": 51580351, "duration_sec": 36, "like_rate_pct": 2.87, "channel": "Sean Andrew"},
         {"title": "Under Water Nuclear Test 😱 (it went bad)", "views": 51465929, "duration_sec": 28, "like_rate_pct": 3.50, "channel": "Zack D. Films"},
-        {"title": "The man who stopped WWIII", "views": 26302577, "duration_sec": 58, "like_rate_pct": 4.67, "channel": "Smart Nonsense"},
-        {"title": "I Tried an Ancient Roman 'Shield Destroyer' 😳", "views": 23238543, "duration_sec": 34, "like_rate_pct": 2.40, "channel": "Sean Andrew"}
+        {"title": "60s before NUKE... (Japan) #shorts #4k #history", "views": 28184976, "duration_sec": 60, "like_rate_pct": 3.31, "channel": "Historically"},
+        {"title": "What if Germany won WW2 #shorts #4k #history", "views": 28092043, "duration_sec": 60, "like_rate_pct": 2.83, "channel": "Historically"},
+        {"title": "Global Warming vs. The 1883 Krakatoa Shield 🛡️ #Shorts", "views": 1334, "duration_sec": 35, "like_rate_pct": 1.87, "channel": "Alternate History & What If? (#1 Channel Winner - 125.5% APV)"}
       ],
-      "winning_hook_blueprint": "Anchor at 0.0s with the exact year, object, or decision that almost destroyed/rewrote the modern world ('In 1962, this one man stopped World War Three.' / 'What if one locked gate in 1453 saved Rome?')."
+      "winning_hook_blueprint": "Frame Title as '[Catastrophe/Mega-Weapon A] vs. [Target/Shield B]' + Exact Year/Metric, and open Scene 1 (0.0s) in 5-8 words with a blunt physical shock ('Two four-megaton nukes fell on North Carolina.' / 'Earth survived only because one volcano killed thousands.' / 'This 1,720-foot mega-tsunami erased an entire mountain.')."
     },
     "animal_rescue": {
       "sample_size_1m_plus": 33,

@@ -9,6 +9,7 @@ app.utils.ffmpeg_helper — Facade điều phối bộ công cụ FFmpeg (giữ 
 - `audio_and_sfx.py`: Trộn giọng đọc + BGM + SFX & đo chuẩn âm lượng LUFS (`mux_audio_video`, `measure_audio_loudness_and_silence`).
 - `subtitles_and_thumbnail.py`: Đốt phụ đề ASS/SRT, kiểm định QA video & trích xuất ảnh bìa (`burn_subtitles`, `validate_output`, `extract_shock_thumbnail`).
 """
+from pathlib import Path
 from app.utils.ffmpeg.core_encoder import (
     BT709_COLOR_ARGS,
     FFMPEG_TIMEOUT,
