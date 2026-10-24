@@ -2,29 +2,38 @@ id: animal_rescue
 name: Giải Cứu Động Vật & Phép Màu Tình Yêu (Paws & Hearts Rescue)
 badge: 🐾 Giải Cứu Động Vật
 icon: 🐾
-description: Những câu chuyện giải cứu chó mèo bị bỏ rơi, phép màu phục hồi kỳ diệu
-  từ đau khổ đến hạnh phúc, lan tỏa tình yêu thương và sự ấm áp chạm đáy tim.
-target_audience: Hàng trăm triệu người yêu động vật toàn cầu, phụ nữ và gia đình từ
-  16-65 tuổi, những người dễ rung động trước lòng trắc ẩn và sự chữa lành.
+description: Những câu chuyện giải cứu chó mèo bị bỏ rơi, phép màu phục hồi kỳ diệu từ đau khổ đến hạnh
+  phúc, lan tỏa tình yêu thương và sự ấm áp chạm đáy tim.
+target_audience: Hàng trăm triệu người yêu động vật toàn cầu, phụ nữ và gia đình từ 16-65 tuổi, những
+  người dễ rung động trước lòng trắc ẩn và sự chữa lành.
 script_blueprint:
-  tone_of_voice: Truyền cảm, ấm áp, thắt nghẹn ở phần đầu và vỡ òa xúc động ở phần
-    kết, chạm thẳng vào trái tim người xem, kích hoạt phản xạ đồng cảm tức thì.
-  pacing: Nhịp điệu xúc động sâu sắc, thời lượng vàng 45 - 56 giây (8 - 10 cảnh, 100 - 140 từ), đủ 4 giai đoạn chuyển hóa cảm xúc để đạt AWT > 45s và tỷ lệ chuyển đổi Subscribe cao nhất (như video 2,282 views / +32 subs).
+  tone_of_voice: Truyền cảm, ấm áp, thắt nghẹn ở phần đầu và vỡ òa xúc động ở phần kết, chạm thẳng vào
+    trái tim người xem, kích hoạt phản xạ đồng cảm tức thì.
+  pacing: Nhịp điệu xúc động sâu sắc, thời lượng vàng 35 - 42 giây (7 - 8 cảnh đầy đặn, 92 - 118 từ),
+    đủ 4 giai đoạn chuyển hóa cảm xúc để đạt APV > 90% và tỷ lệ chuyển đổi Subscribe cao nhất.
   hook_formulas:
-  - 'Refused To Let Go (Proven #1 Winner 2,282 Views & +32 Subs): ''He refused to let go of the rescuer''s hand until this heartbreaking truth came out...'''
-  - 'Relief Transformation (Proven #2 Winner 1,205 Views & 94.8% APV): ''The exact second this terrified rescue dog realized he was finally safe, everything changed...'''
-  - 'Day 1 vs Day 30 Emotional Payoff (Cuddle & Rescue 20.6M Formula): ''Nobody recognized this trembling stray dog 30 days after one kind stranger stopped his car...'''
-  - 'The First Tail Wag Breakthrough: ''He spent 3 years hiding in the corner of the shelter, until a little girl sat silently outside his kennel...'''
-  - 'Saved Mother Gratitude: ''This stray mama dog led a rescuer half a mile into the rain — and what he found inside the drain pipe broke him...'''
+  - 'Refused To Let Go (Proven #1 Winner 2,282 Views & +32 Subs): ''He refused to let go of the rescuer''s
+    hand until this heartbreaking truth came out...'''
+  - 'Relief Transformation (Proven #2 Winner 1,205 Views & 94.8% APV): ''The exact second this terrified
+    rescue dog realized he was finally safe, everything changed...'''
+  - 'Day 1 vs Day 30 Emotional Payoff (Cuddle & Rescue 20.6M Formula): ''Nobody recognized this trembling
+    stray dog 30 days after one kind stranger stopped his car...'''
+  - 'The First Tail Wag Breakthrough: ''He spent 3 years hiding in the corner of the shelter, until a
+    little girl sat silently outside his kennel...'''
+  - 'Saved Mother Gratitude: ''This stray mama dog led a rescuer half a mile into the rain — and what
+    he found inside the drain pipe broke him...'''
   viral_topic_bank_2026:
-  - "He Refused To Stop Hugging The Rescuer Who Pulled Him Out Of The Storm"
-  - "The Exact Second This Stray Mama Dog Realized Her Puppies Were Safe"
-  - "Everyone Walked Past The Senior Shelter Dog Until One Man Read His Sign"
-  - "Terrified Stray Puppy Fell Asleep In A Rescuer's Warm Hands For The First Time"
-  - "Watch How This Rescued Golden Retriever Reacts The First Time He Sees A Bed"
-  - "She Guarded Her Injured Brother In The Rain Until Help Finally Arrived"
-  - "Day 1 vs Day 30: The Stray Dog Nobody Wanted To Touch"
-  narrative_structure: Khoảnh khắc nghịch lý gây tò mò hoặc từ chối buông tay (Hook 0-5s) -> Bàn tay kiên nhẫn và hơi ấm tiếp cận (5-15s, Mid-Video Re-Hook Cảnh 4) -> Khoảnh khắc tan chảy nhận ra mình được yêu thương (15-35s) -> Sự lột xác rực rỡ, khỏe mạnh chạy nhảy dưới nắng ấm (Payoff bắt buộc Cảnh 6-9) -> Lời kêu gọi nhân văn & Infinite Loop.
+  - He Refused To Stop Hugging The Rescuer Who Pulled Him Out Of The Storm
+  - The Exact Second This Stray Mama Dog Realized Her Puppies Were Safe
+  - Everyone Walked Past The Senior Shelter Dog Until One Man Read His Sign
+  - Terrified Stray Puppy Fell Asleep In A Rescuer's Warm Hands For The First Time
+  - Watch How This Rescued Golden Retriever Reacts The First Time He Sees A Bed
+  - She Guarded Her Injured Brother In The Rain Until Help Finally Arrived
+  - 'Day 1 vs Day 30: The Stray Dog Nobody Wanted To Touch'
+  narrative_structure: Khoảnh khắc nghịch lý gây tò mò hoặc từ chối buông tay (Hook 0-5s) -> Bàn tay kiên
+    nhẫn và hơi ấm tiếp cận (5-15s, Mid-Video Re-Hook Cảnh 4) -> Khoảnh khắc tan chảy nhận ra mình được
+    yêu thương (15-35s) -> Sự lột xác rực rỡ, khỏe mạnh chạy nhảy dưới nắng ấm (Payoff bắt buộc Cảnh 6-9)
+    -> Lời kêu gọi nhân văn & Infinite Loop.
   forbidden_words:
   - Chào mừng các bạn đến với kênh yêu thú cưng
   - Hôm nay mình sẽ kể cho các bạn nghe
@@ -33,14 +42,20 @@ script_blueprint:
   - Như chúng ta đã biết
   - Welcome back to our channel
   cta_templates:
-  - Look at his eyes at the end compared to the first second 🥺❤️ What would you name this brave little survivor? 👇
-  - If you walked past that box in the rain, would you have stopped to help? Drop a ❤️ in the comments to wish him the happiest life! 👇
-  - Have you ever adopted or rescued a stray pet? Share their transformation story in the comments below! 🐾👇
+  - Look at his eyes at the end compared to the first second 🥺❤️ What would you name this brave little
+    survivor? 👇
+  - If you walked past that box in the rain, would you have stopped to help? Drop a ❤️ in the comments
+    to wish him the happiest life! 👇
+  - Have you ever adopted or rescued a stray pet? Share their transformation story in the comments below!
+    🐾👇
   anti_hallucination_rules:
-  - Kịch bản phải tôn trọng phẩm giá và sự an toàn của động vật, không khuyến khích
-    hành vi gây hại hay dàn dựng cứu trợ độc hại.
-  - TUYỆT ĐỐI KHÔNG đặt tiêu đề bi lụy/tuyệt vọng đơn thuần (như 'Frozen Puppy Found in Rain', 'Shivering Puppy Tied In Rain') mà thiếu vế hứa hẹn sự chuyển hóa/kỳ tích ('Until This Happened', 'The Moment He Realized He Was Safe').
-  - BẮT BUỘC phải có phân cảnh Payoff phục hồi khỏe mạnh, hạnh phúc ở nửa cuối video (tối thiểu 8 cảnh, 100-140 từ).
+  - Kịch bản phải tôn trọng phẩm giá và sự an toàn của động vật, không khuyến khích hành vi gây hại hay
+    dàn dựng cứu trợ độc hại.
+  - TUYỆT ĐỐI KHÔNG đặt tiêu đề bi lụy/tuyệt vọng đơn thuần (như 'Frozen Puppy Found in Rain', 'Shivering
+    Puppy Tied In Rain') mà thiếu vế hứa hẹn sự chuyển hóa/kỳ tích ('Until This Happened', 'The Moment
+    He Realized He Was Safe').
+  - BẮT BUỘC phải có phân cảnh Payoff phục hồi khỏe mạnh, hạnh phúc ở nửa cuối video (7-8 cảnh, 92-118
+    từ).
   banned_lexicon: &id001
   - hunting trophy
   - slaughterhouse
@@ -49,19 +64,16 @@ script_blueprint:
   - cryptocurrency
 visual_aesthetics:
   art_style: Warm Emotional Cinema & Golden Hour Tender Realism
-  camera_angles: Low-angle eye-level macro close-up of pet eyes with tear reflection,
-    shallow depth of field, gentle tracking shot of rescue hands, slow-motion running
-    in sunlit meadow
-  color_palette: Cold desaturated grey-blue in beginning (suffering), transitioning
-    to warm golden amber, soft peach, vibrant meadow green (healing & joy)
-  master_prompt_prefix: masterpiece 8k vertical film still, award-winning animal documentary
-    photography, intense emotional resonance, soulful eyes reflecting golden light,
-    35mm lens
-  master_prompt_suffix: hyper-realistic fur texture, individual whiskers, warm cinematic
-    backlight, photorealistic vertical 9:16, no text, no watermark, perfectly natural
-    anatomy
-  negative_prompts: ugly, deformed limbs, extra paws, distorted eyes, blood, gore,
-    cartoon, 3d render, anime, blurry, low resolution, watermark, text
+  camera_angles: Low-angle eye-level macro close-up of pet eyes with tear reflection, shallow depth of
+    field, gentle tracking shot of rescue hands, slow-motion running in sunlit meadow
+  color_palette: Cold desaturated grey-blue in beginning (suffering), transitioning to warm golden amber,
+    soft peach, vibrant meadow green (healing & joy)
+  master_prompt_prefix: masterpiece 8k vertical film still, award-winning animal documentary photography,
+    intense emotional resonance, soulful eyes reflecting golden light, 35mm lens
+  master_prompt_suffix: hyper-realistic fur texture, individual whiskers, warm cinematic backlight, photorealistic
+    vertical 9:16, no text, no watermark, perfectly natural anatomy
+  negative_prompts: ugly, deformed limbs, extra paws, distorted eyes, blood, gore, cartoon, 3d render,
+    anime, blurry, low resolution, watermark, text
   stock_video_keywords:
   - sad puppy shaking rain
   - rescuer holding small dog
@@ -85,16 +97,15 @@ audio:
   preferred_voice_vi: vi-VN-HoaiMyNeural
   rate: +3%
   pitch: 0Hz
-  bgm_vibe: emotional acoustic piano into soaring orchestral violin, heartwarming,
-    tears of joy, gentle hopeful warmth
+  bgm_vibe: emotional acoustic piano into soaring orchestral violin, heartwarming, tears of joy, gentle
+    hopeful warmth
   sfx_cues:
   - hit
   - reveal
   - riser
   - whoosh_fast
 banned_lexicon: *id001
-target_wpm: 145
+target_wpm: 154
 monetization:
   affiliate_enabled: false
   affiliate_category: pet_care
-

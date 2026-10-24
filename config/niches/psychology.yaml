@@ -4,37 +4,45 @@ badge: 🧠 Tâm Lý Học
 icon: 🧠
 description: Chuyên sâu về tâm lý học hành vi, giải mã đòn thao túng ngầm, phân tích lời khai FBI/CIA,
   đọc vị vi biểu cảm và phản đòn tâm lý thực chiến chuẩn phong cách @MasteringMindControl.
-target_audience: Khán giả 18-35 tuổi muốn nhận diện thao túng ngầm, tự vệ tâm lý, đọc vị đối phương
-  và làm chủ quyền lực tĩnh lặng trong các mối quan hệ xã hội.
+target_audience: Khán giả 18-35 tuổi muốn nhận diện thao túng ngầm, tự vệ tâm lý, đọc vị đối phương và
+  làm chủ quyền lực tĩnh lặng trong các mối quan hệ xã hội.
 script_blueprint:
-  tone_of_voice: Trầm tĩnh, sắc lạnh như dao mổ, uy quyền, trực diện không một từ thừa
-    (Calm, surgical, authoritative, forensic behavioral profiler — Grade-5 US spoken clarity).
-  pacing: Thời lượng cô đọng 26 - 33 giây (7 - 8 phân cảnh chớp nhoáng, 75 - 92 từ, 3.2 - 4.2 giây/cảnh).
-    CẤM dùng câu 1 từ rời rạc kiểu văn chương ("A word. A face. A sound.").
-    Cảnh 1 (0-3s) PHẢI là câu 5-8 từ trực diện gắn con số cụ thể & hành vi vật lý quan sát được ngay lập tức.
-    Cảnh 2-4 giải phẫu cơ chế thần kinh / tâm lý học hành vi 3 bước ("First... Then... Within seconds..."),
-    Cảnh 5-6 định danh Hiệu ứng Tâm lý / Nghiên cứu FBI & Mệnh đề Đối lập sắc bén,
-    Cảnh 7-8 là Đòn Phản Công Thực Chiến (Verbal / Behavioral Counter-Move) nối vòng lặp vô tận (Infinite Loop) về Cảnh 1.
+  tone_of_voice: Trầm tĩnh, sắc lạnh như dao mổ, uy quyền, trực diện không một từ thừa (Calm, surgical,
+    authoritative, forensic behavioral profiler — Grade-5 US spoken clarity).
+  pacing: Thời lượng vàng 34 - 40 giây (7 - 8 phân cảnh đầy đặn, 92 - 115 từ, 4.2 - 4.8 giây/cảnh). CẤM
+    dùng câu 1 từ rời rạc kiểu văn chương và CẤM lộ đáp án ngay ở Cảnh 2. Cảnh 1 (0-2.5s) PHẢI là câu
+    5-8 từ trực diện gắn con số cụ thể & nghịch lý hành vi vật lý quan sát được ngay lập tức. Cảnh 2-3
+    dựng tình huống đời thực mà kẻ thao túng/nói dối sử dụng, Cảnh 4-5 là Mid-Video Re-Hook giải phẫu
+    cơ chế thần kinh / FBI (hệ limbic, vi biểu cảm, phản xạ cơ thể ở giây thứ 15), Cảnh 6-7 mới tung Đòn
+    Phản Công Thực Chiến (Verbal / Behavioral Counter-Move) giữ chân người xem đến cuối, Cảnh 8 là Cầu
+    nối Vòng lặp Vô tận (Infinite Loop) lặp lại chủ ngữ Cảnh 1.
   hook_formulas:
-  - 'Forensic Interrogation Glitch (#1 Winner Formula - 39.1% Stayed): ''Guilty suspects always drop this one word during police questioning!'''
-  - 'Biological Empathy / Psychopath Test: ''Psychopaths fail this simple three-second yawn test every single time!'''
-  - 'CIA Elicitation / Corrective Reflex: ''CIA agents never ask for secrets—they state one wrong fact instead!'''
+  - 'Forensic Interrogation Glitch (#1 Winner Formula - 39.1% Stayed): ''Guilty suspects always drop this
+    one word during police questioning!'''
+  - 'Biological Empathy / Psychopath Test: ''Psychopaths fail this simple three-second yawn test every
+    single time!'''
+  - 'CIA Elicitation / Corrective Reflex: ''CIA agents never ask for secrets—they state one wrong fact
+    instead!'''
   - 'Timed Body Language Leak: ''Watch their hands within three seconds of asking a hard question!'''
-  - '3 Behavioral Red Flags (#2 Winner Formula - 156% APV): ''Three micro-expressions expose a fake friend within two seconds!'''
+  - '3 Behavioral Red Flags (#2 Winner Formula - 156% APV): ''Three micro-expressions expose a fake friend
+    within two seconds!'''
   viral_topic_bank_2026:
-  - "Why Psychopaths Never Yawn When You Do: The Contagious Empathy Test"
-  - "The 1 Word Guilty Suspects Always Drop In Police Interrogations (FBI Statement Analysis)"
-  - "CIA Elicitation Trick: How Stating 1 Wrong Fact Forces Anyone To Reveal Their Secret"
-  - "Why Liars Touch Their Neck Within 3 Seconds Of A Hard Question (Carotid Pacifying)"
-  - "3 Micro-Expressions That Expose Someone Who Secretly Envies You Within 2 Seconds"
-  - "The Door-In-The-Face Trick: How Asking For Something Insane Makes People Say Yes"
-  - "Why Pathological Liars Always Add 3 Unnecessary Details To Every Fake Alibi"
-  - "How To Break A Manipulator's Control Using The 3-Second Grey Rock Protocol"
-  - "Why Guilty People Always Point With Both Hands When Accused"
-  - "Why Arrogant People Interrupt Your First 5 Words — And How To Stop It Cold"
-  - "The Pre-Suasion Trap: How 1 Innocent Question Rigs Your Decision Before You Answer"
-  - "Why Fake Friends Always Freeze For 1 Second Before Celebrating Your Good News"
-  narrative_structure: "Beat 1: Bằng chứng hành vi / Lỗi ngôn ngữ 5-8 từ cực gắt (0-3s) -> Beat 2: Giải phẫu cơ chế thần kinh tự động (3-11s) -> Beat 3: Định danh kỹ thuật FBI/CIA & Mệnh đề Đối lập đắt giá (11-20s) -> Beat 4: Đòn Phản Công / Kiểm chứng Thực Chiến & Cầu nối Vòng lặp Vô tận (20-31s)"
+  - 'Why Psychopaths Never Yawn When You Do: The Contagious Empathy Test'
+  - The 1 Word Guilty Suspects Always Drop In Police Interrogations (FBI Statement Analysis)
+  - 'CIA Elicitation Trick: How Stating 1 Wrong Fact Forces Anyone To Reveal Their Secret'
+  - Why Liars Touch Their Neck Within 3 Seconds Of A Hard Question (Carotid Pacifying)
+  - 3 Micro-Expressions That Expose Someone Who Secretly Envies You Within 2 Seconds
+  - 'The Door-In-The-Face Trick: How Asking For Something Insane Makes People Say Yes'
+  - Why Pathological Liars Always Add 3 Unnecessary Details To Every Fake Alibi
+  - How To Break A Manipulator's Control Using The 3-Second Grey Rock Protocol
+  - Why Guilty People Always Point With Both Hands When Accused
+  - Why Arrogant People Interrupt Your First 5 Words — And How To Stop It Cold
+  - 'The Pre-Suasion Trap: How 1 Innocent Question Rigs Your Decision Before You Answer'
+  - Why Fake Friends Always Freeze For 1 Second Before Celebrating Your Good News
+  narrative_structure: 'Beat 1: Nghịch lý hành vi / Lỗi ngôn ngữ 5-8 từ cực gắt (0-3s) -> Beat 2: Tình
+    huống thực tế chưa lộ lời giải (3-12s) -> Beat 3: Mid-Video Twist giải phẫu cơ chế thần kinh FBI/CIA
+    ở giây 15 (12-23s) -> Beat 4: Đòn Phản Công Thực Chiến ở Cảnh 6-7 & Cầu nối Vòng lặp Vô tận ở Cảnh
+    8 (23-38s)'
   forbidden_words:
   - Chào mừng các bạn đã quay trở lại
   - Bạn có bao giờ tự hỏi
@@ -45,14 +53,17 @@ script_blueprint:
   - In today's video
   - Did you know that
   cta_templates:
-  - "Have you ever tested the Contagious Yawn reflex or caught someone dropping their pronouns when lying? Drop your experience below 👇"
-  - "Which of these FBI behavioral tells have you spotted in real life? Comment below 👇"
-  - "Would you notice if someone used this psychological tactic on you? Share your thoughts below 👇"
+  - Have you ever tested the Contagious Yawn reflex or caught someone dropping their pronouns when lying?
+    Drop your experience below 👇
+  - Which of these FBI behavioral tells have you spotted in real life? Comment below 👇
+  - Would you notice if someone used this psychological tactic on you? Share your thoughts below 👇
   anti_hallucination_rules:
   - Luôn gắn liền với hiệu ứng/cơ chế tâm lý học và khoa học hành vi có thật (FBI Statement Analysis,
     Contagious Yawn Mirror-Neuron Deficit, Cunningham's Law / CIA Elicitation, Carotid Pacifying Behavior,
-    Reciprocal Concessions / Door-in-the-Face, Grey Rock Method, Robert Cialdini Pre-Suasion, Paul Ekman Micro-Expressions).
-  - Mỗi kịch bản phải cung cấp ít nhất 1 mệnh đề đối lập sắc bén và 1 đòn kiểm chứng / phản đòn thực tế (Drill / Counter-move).
+    Reciprocal Concessions / Door-in-the-Face, Grey Rock Method, Robert Cialdini Pre-Suasion, Paul Ekman
+    Micro-Expressions).
+  - Mỗi kịch bản phải cung cấp ít nhất 1 mệnh đề đối lập sắc bén và 1 đòn kiểm chứng / phản đòn thực tế
+    (Drill / Counter-move).
   banned_lexicon: &id001
   - astrology horoscope
   - magic crystal
@@ -61,12 +72,20 @@ script_blueprint:
   - football
   - soccer
 visual_aesthetics:
-  art_style: Dark Psychological Noir & Monochrome Seinen Thriller Aesthetic (@MasteringMindControl / Monster / Chiaroscuro Noir Style)
-  camera_angles: Extreme close-up psychological gaze, half-face shadow framing, tense two-person profile confrontation in silence, low-angle cold authority portrait, silhouette in doorway shadow
-  color_palette: Monochrome charcoal and silver-white chiaroscuro noir, deep obsidian shadows, stark ivory highlights, floating atmospheric film dust particles
-  master_prompt_prefix: masterpiece dark psychological thriller art, monochrome noir aesthetic, high-contrast chiaroscuro lighting, intense micro-expression, seinen psychological anime & cinematic noir film still, floating dust particles
-  master_prompt_suffix: stark silver and charcoal contrast, razor-sharp eyes and facial expression, moody atmospheric depth, vertical 9:16 composition, no text, no watermark
-  negative_prompts: bright cheerful corporate office, smiling stock photo business people, colorful cartoon, chibi, blurry, low quality, distorted faces, extra fingers, watermark, text, macro eye, dark muddy face
+  art_style: Dark Psychological Noir & Monochrome Seinen Thriller Aesthetic (@MasteringMindControl / Monster
+    / Chiaroscuro Noir Style)
+  camera_angles: Extreme close-up psychological gaze, half-face shadow framing, tense two-person profile
+    confrontation in silence, low-angle cold authority portrait, silhouette in doorway shadow
+  color_palette: Monochrome charcoal and silver-white chiaroscuro noir, deep obsidian shadows, stark ivory
+    highlights, floating atmospheric film dust particles
+  master_prompt_prefix: masterpiece dark psychological thriller art, monochrome noir aesthetic, high-contrast
+    chiaroscuro lighting, intense micro-expression, seinen psychological anime & cinematic noir film still,
+    floating dust particles
+  master_prompt_suffix: stark silver and charcoal contrast, razor-sharp eyes and facial expression, moody
+    atmospheric depth, vertical 9:16 composition, no text, no watermark
+  negative_prompts: bright cheerful corporate office, smiling stock photo business people, colorful cartoon,
+    chibi, blurry, low quality, distorted faces, extra fingers, watermark, text, macro eye, dark muddy
+    face
   stock_video_keywords:
   - detective interrogation room dark shadow
   - two people tense silence confrontation shadow
@@ -97,6 +116,6 @@ audio:
   - riser
   - reveal
 banned_lexicon: *id001
-target_wpm: 175
+target_wpm: 165
 monetization:
   affiliate_enabled: false

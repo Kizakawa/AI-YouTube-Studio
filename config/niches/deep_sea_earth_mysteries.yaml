@@ -2,56 +2,47 @@ id: deep_sea_earth_mysteries
 name: Bí Ẩn Biển Sâu & Kỳ Quan Trái Đất Chưa Lời Giải
 badge: 🌊 Bí Ẩn Trái Đất
 icon: 🌊
-target_audience: Khán giả quốc tế mê mẩn bí ẩn đại dương, thám hiểm biển sâu, khoa
-  học kỳ dị, hiện tượng siêu nhiên tự nhiên và các câu chuyện rùng mình kích thích
-  trí tò mò.
+target_audience: Khán giả quốc tế mê mẩn bí ẩn đại dương, thám hiểm biển sâu, khoa học kỳ dị, hiện tượng
+  siêu nhiên tự nhiên và các câu chuyện rùng mình kích thích trí tò mò.
 script_blueprint:
-  tone_of_voice: Kỳ bí, rùng mình (Eerie), giật gân, nhịp thở dồn dập đánh trực diện
-    vào giác quan và nỗi sợ nguyên thủy của người xem, khiến họ lạnh gáy nhưng không
-    thể rời mắt.
-  pacing: Thời lượng tối ưu 28 - 36 giây (6 - 8 cảnh, 72 - 95 từ), nhịp điệu bí ẩn
-    dồn dập khớp chuẩn AVD 26-28s thực tế để ép APV vượt 95-115%. Cảnh 1 là Hook 2s
-    trực diện (Thực thể sinh học/địa chất cụ thể + Con số vật lý tử thần), Cảnh 4
-    là Mid-Video Re-Hook lật mở cơ chế khoa học kỳ dị, Cảnh 5-7 là Payoff giải mã
-    chấn động + Loop.
-  narrative_structure: Hook thực thể cụ thể + con số vật lý tử thần 2s (Cấm mở đầu
-    mơ hồ) -> Dẫn chứng khoa học / Hiện tượng vật lý cực đoan -> Mid-Video Re-Hook
-    (Cảnh 4 - Bằng chứng thực nghiệm không ngờ tới) -> Cú sốc nhận thức giải mã toàn
-    bộ bí ẩn (Payoff Cảnh 5-7) -> Infinite Seamless Loop
+  tone_of_voice: Kỳ bí, rùng mình (Eerie), giật gân, nhịp thở dồn dập đánh trực diện vào giác quan và
+    nỗi sợ nguyên thủy của người xem, khiến họ lạnh gáy nhưng không thể rời mắt.
+  pacing: Thời lượng vàng 35 - 42 giây (7 - 8 cảnh đầy đặn, 92 - 118 từ, ~4.5 giây/cảnh), nhịp điệu bí
+    ẩn cuốn hút khớp chuẩn công thức ngày 21/10 (AVD 26-39s, APV 70-103%). Cảnh 1 là Hook 2s trực diện
+    (Thực thể sinh học/địa chất cụ thể + Nghịch lý vật lý tử thần), Cảnh 2-3 dẫn dắt bối cảnh thực tế,
+    Cảnh 4-5 là Mid-Video Re-Hook đẩy cao trào bằng thông số thứ 2, Cảnh 6-7 mới tung lời giải mã cơ chế
+    khoa học chấn động (tuyệt đối không lộ đáp án ở Cảnh 2), Cảnh 8 là Infinite Seamless Loop nối mượt
+    về chủ ngữ Cảnh 1.
+  narrative_structure: Hook thực thể cụ thể + con số vật lý tử thần 2s (Cấm mở đầu mơ hồ) -> Dẫn chứng
+    khoa học / Hiện tượng vật lý cực đoan -> Mid-Video Re-Hook (Cảnh 4 - Bằng chứng thực nghiệm không
+    ngờ tới) -> Cú sốc nhận thức giải mã toàn bộ bí ẩn (Payoff Cảnh 5-7) -> Infinite Seamless Loop
   hook_formulas:
-  - 'Abyssal Apex Showdown Hook (Proven #1 Winner 2,981 Views, 52.7% Stayed, +6 Subs):
-    ''At 2,000 meters in pitch-black water, a 50-ton Sperm Whale plunges into a deadly
-    duel with a 14-meter Colossal Squid...'''
-  - 'Lethal Geo-Chemical Trap Hook (Proven #1 Velocity 71.1 views/h & 112.5% APV):
-    ''At the bottom of the ocean lies a toxic brine lake so dense that any shark swimming
-    into it is paralyzed in 3 seconds...'' / ''Deep in the Amazon, a river boils at
-    93°C with no volcano for 700 kilometers...'''
-  - 'Forbidden Isolation & Acoustic Anomaly Hook (Proven #1 Sub Converter +8 Subs
-    & 3.98% Like/View): ''There is an island in Brazil where the Navy forbids any
-    human from stepping foot because 4,000 deadly vipers rule every square meter...''
-    / ''Why NASA crashes dead spacecraft into Point Nemo, 2,700km from any human...'''
-  - 'Instinctive Phobia & Diver Rule Hook (Proven 1,242 Views): ''Why saturation divers
-    at 300 meters never look up at the ocean surface at night...'''
-  - 'Body vs Extreme Earth Physics (Zack D. Films Formula): ''What happens to the
-    human body if a deep-sea submersible loses pressure at 3,000 meters for 0.1 seconds...'''
+  - 'Abyssal Apex Showdown Hook (Proven #1 Winner 2,981 Views, 52.7% Stayed, +6 Subs): ''At 2,000 meters
+    in pitch-black water, a 50-ton Sperm Whale plunges into a deadly duel with a 14-meter Colossal Squid...'''
+  - 'Lethal Geo-Chemical Trap Hook (Proven #1 Velocity 71.1 views/h & 112.5% APV): ''At the bottom of
+    the ocean lies a toxic brine lake so dense that any shark swimming into it is paralyzed in 3 seconds...''
+    / ''Deep in the Amazon, a river boils at 93°C with no volcano for 700 kilometers...'''
+  - 'Forbidden Isolation & Acoustic Anomaly Hook (Proven #1 Sub Converter +8 Subs & 3.98% Like/View):
+    ''There is an island in Brazil where the Navy forbids any human from stepping foot because 4,000 deadly
+    vipers rule every square meter...'' / ''Why NASA crashes dead spacecraft into Point Nemo, 2,700km
+    from any human...'''
+  - 'Instinctive Phobia & Diver Rule Hook (Proven 1,242 Views): ''Why saturation divers at 300 meters
+    never look up at the ocean surface at night...'''
+  - 'Body vs Extreme Earth Physics (Zack D. Films Formula): ''What happens to the human body if a deep-sea
+    submersible loses pressure at 3,000 meters for 0.1 seconds...'''
   viral_topic_bank_2026:
   - 'Colossal Squid vs Sperm Whale: Deadly Duel At 2,000m In The Abyssal Ocean'
   - The Deadly Underwater Brine Lake That Paralyzes Sharks In Seconds
   - The Boiling River In The Amazon That Reaches 93°C Without A Volcano
-  - 'Snake Island (Ilha da Queimada Grande): Why The Brazilian Navy Forbids Any Human
-    From Entering'
+  - 'Snake Island (Ilha da Queimada Grande): Why The Brazilian Navy Forbids Any Human From Entering'
   - 'Point Nemo: Why Spaceships Are Crashed Into The Most Isolated Spot In The Ocean'
   - Why Deep Sea Divers Never Look Up At The Ocean Surface At Night
-  - 'Greenland Shark vs Giant Octopus: The 400-Year-Old Blind Predator Of The Arctic
-    Abyss'
+  - 'Greenland Shark vs Giant Octopus: The 400-Year-Old Blind Predator Of The Arctic Abyss'
   - Why Even A 2-Ton Great White Shark Flees When A Lone Orca Appears
   - The 1997 Hydrophone Sound From The Pacific Seafloor That Nobody Can Explain
-  - 'Lake Vostok: The Secret Ocean Sealed Under 4,000 Meters Of Antarctic Ice For
-    15 Million Years'
-  - 'Movile Cave: The Toxic Underground Ecosystem Sealed Off From Sunlight For 5.5
-    Million Years'
-  - 'Black Swallower & Goblin Shark: The Deep Sea Monsters With Jaws That Unhinge
-    In Complete Darkness'
+  - 'Lake Vostok: The Secret Ocean Sealed Under 4,000 Meters Of Antarctic Ice For 15 Million Years'
+  - 'Movile Cave: The Toxic Underground Ecosystem Sealed Off From Sunlight For 5.5 Million Years'
+  - 'Black Swallower & Goblin Shark: The Deep Sea Monsters With Jaws That Unhinge In Complete Darkness'
   forbidden_words:
   - Welcome back to our channel
   - Today we will explore
@@ -59,19 +50,17 @@ script_blueprint:
   - The ocean is very big and deep
   - In this video
   cta_templates:
-  - Would you dare stay inside that pitch-black silent chamber for 15 minutes for
-    $10,000? Why or why not? 👇
-  - Do you think scientists are hiding what the sonar actually recorded, or have we
-    barely scratched the surface? Drop your theory below 👇
-  - Which of these unexplained anomalies creeps you out the most? Let's discuss in
-    the comments 👇
+  - Would you dare stay inside that pitch-black silent chamber for 15 minutes for $10,000? Why or why
+    not? 👇
+  - Do you think scientists are hiding what the sonar actually recorded, or have we barely scratched the
+    surface? Drop your theory below 👇
+  - Which of these unexplained anomalies creeps you out the most? Let's discuss in the comments 👇
   anti_hallucination_rules:
-  - Dựa trên các hiện tượng khoa học, giác quan sinh học và địa danh có thật (Anechoic
-    Chamber, Biological Blind Spot, Point Nemo, The Bloop 1997, Movile Cave, Lake
-    Vostok, Hal Saflieni, Kola Borehole, Derinkuyu).
-  - NGHIÊM CẤM LẶP LẠI CỤM TỪ '11,000m', '11,000 meters', hoặc 'Mariana Trench' vốn
-    đã bị bão hòa trên kênh — hãy chủ động xoay vòng sang bí ẩn giác quan con người,
-    hầm ngầm bị phong tỏa, âm thanh tần số lạ và dị thường địa chất!
+  - Dựa trên các hiện tượng khoa học, giác quan sinh học và địa danh có thật (Anechoic Chamber, Biological
+    Blind Spot, Point Nemo, The Bloop 1997, Movile Cave, Lake Vostok, Hal Saflieni, Kola Borehole, Derinkuyu).
+  - NGHIÊM CẤM LẶP LẠI CỤM TỪ '11,000m', '11,000 meters', hoặc 'Mariana Trench' vốn đã bị bão hòa trên
+    kênh — hãy chủ động xoay vòng sang bí ẩn giác quan con người, hầm ngầm bị phong tỏa, âm thanh tần
+    số lạ và dị thường địa chất!
   - Phân biệt rõ ràng giữa 'ghi nhận khoa học/thực nghiệm' và 'giả thuyết'.
   banned_lexicon: &id001
   - 11,000m
@@ -83,22 +72,21 @@ script_blueprint:
   - cryptocurrency
 banned_lexicon: *id001
 visual_aesthetics:
-  art_style: Terrifying Thalassophobia, Abyssal Leviathan Horror & High-Contrast Sci-Mystery
-    Cinema (James Cameron / Underwater / Lovecraftian 8K CGI)
-  color_palette: Abyssal pitch black (#020617), eerie bioluminescent cyan (#06b6d4),
-    blood-red sonar warning (#ef4444), piercing submersible xenon beam (#f59e0b),
-    crushing midnight navy
-  camera_angles: Submersible cockpit POV staring at colossal silhouette in pitch-black
-    water, extreme megalophobia scale next to tiny diver, macro close-up human pupil
-    dilating in terror, sonar radar HUD detecting massive anomaly
-  master_prompt_prefix: masterpiece terrifying thalassophobia cinematic film still,
-    colossal shadow lurking in pitch-black abyssal ocean, dramatic submersible spotlight
-    piercing murky deep water, spine-chilling megalophobia scale, 8k vertical 9:16
-  master_prompt_suffix: hyper-realistic wet skin and bioluminescent textures, ominous
-    volumetric light rays, eerie horror atmosphere, Unreal Engine 5 & IMAX 8k cinematography,
-    vertical 9:16, no text, no watermark
-  negative_prompts: sunny beach, cheerful coral reef, cute dolphins, bright daylight,
-    cartoon, anime, plastic, blurry, low resolution, watermark, text
+  art_style: Terrifying Thalassophobia, Abyssal Leviathan Horror & High-Contrast Sci-Mystery Cinema (James
+    Cameron / Underwater / Lovecraftian 8K CGI)
+  color_palette: Abyssal pitch black (#020617), eerie bioluminescent cyan (#06b6d4), blood-red sonar warning
+    (#ef4444), piercing submersible xenon beam (#f59e0b), crushing midnight navy
+  camera_angles: Submersible cockpit POV staring at colossal silhouette in pitch-black water, extreme
+    megalophobia scale next to tiny diver, macro close-up human pupil dilating in terror, sonar radar
+    HUD detecting massive anomaly
+  master_prompt_prefix: masterpiece terrifying thalassophobia cinematic film still, colossal shadow lurking
+    in pitch-black abyssal ocean, dramatic submersible spotlight piercing murky deep water, spine-chilling
+    megalophobia scale, 8k vertical 9:16
+  master_prompt_suffix: hyper-realistic wet skin and bioluminescent textures, ominous volumetric light
+    rays, eerie horror atmosphere, Unreal Engine 5 & IMAX 8k cinematography, vertical 9:16, no text, no
+    watermark
+  negative_prompts: sunny beach, cheerful coral reef, cute dolphins, bright daylight, cartoon, anime,
+    plastic, blurry, low resolution, watermark, text
   stock_video_keywords:
   - dark deep ocean abyssal underwater
   - submarine spotlight in pitch black water
@@ -116,8 +104,7 @@ subtitles:
 audio:
   preferred_voice_en: en-US-BrianNeural
   preferred_voice_vi: vi-VN-NamMinhNeural
-  rate: +6%
+  rate: +4%
   pitch: -2Hz
-  bgm_vibe: deep ambient sub-bass drone, eerie acoustic resonance, low sonar ping,
-    tense orchestral heartbeat
-target_wpm: 150
+  bgm_vibe: deep ambient sub-bass drone, eerie acoustic resonance, low sonar ping, tense orchestral heartbeat
+target_wpm: 160
