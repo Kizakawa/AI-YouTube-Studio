@@ -1005,22 +1005,27 @@ class VideoMemoryRAG:
             seen_sigs: Dict[int, List[str]] = sess["committed_signatures"]
 
             if sig:
-                # Nếu là khúc nối tiếp (Long Peak Flow), ngưỡng Hamming chặt hơn (<= 5) để chặn video tĩnh/loop;
-                # nếu là 2 cảnh độc lập, ngưỡng Hamming <= 7 để chặn mọi clip re-upload trùng cảnh quay.
-                hamming_thresh = 5 if is_continuation_slice else 7
-                need_hits = 2 if len(sig) >= 2 else 1
+                # Chặn nghiêm ngặt mọi sự trùng lặp khung hình (kể cả trùng lặp 1 phần video hoặc cùng góc máy):
+                # - >= 1 khung hình khớp chặt (Hamming <= 7)
+                # - Hoặc >= 2 khung hình khớp trung bình (Hamming <= 10)
+                strict_thresh = 5 if is_continuation_slice else 7
+                multi_thresh = 8 if is_continuation_slice else 10
 
                 for prev_sid, prev_sig in seen_sigs.items():
                     if prev_sid == scene_id or not prev_sig:
                         continue
-                    hits = sum(
+                    strict_hits = sum(
                         1 for h in sig
-                        if any(sum(a != b for a, b in zip(h, ph)) <= hamming_thresh for ph in prev_sig)
+                        if any(sum(a != b for a, b in zip(h, ph)) <= strict_thresh for ph in prev_sig)
                     )
-                    if hits >= min(need_hits, len(prev_sig)):
+                    multi_hits = sum(
+                        1 for h in sig
+                        if any(sum(a != b for a, b in zip(h, ph)) <= multi_thresh for ph in prev_sig)
+                    )
+                    if strict_hits >= 1 or multi_hits >= min(2, len(sig), len(prev_sig)):
                         logger.warning(
                             f"🚫 [MiniRAG Intra-Video Visual Guard] Cảnh #{scene_id} ({Path(media_path).name}) "
-                            f"bị trùng khung hình thị giác với Cảnh #{prev_sid} trong cùng video -> Loại bỏ để chống lặp cảnh cắt!"
+                            f"bị trùng khung hình thị giác với Cảnh #{prev_sid} (strict={strict_hits}, multi={multi_hits}) -> Loại bỏ để chống lặp cảnh cắt!"
                         )
                         return False, prev_sid
 

@@ -1345,12 +1345,18 @@ Return ONLY valid JSON:
         # - Ưu tiên B: Nếu chỉ có 1 ứng viên nhưng đoạn Peak dài (>= target_hook_duration_sec + 1.6s),
         #   cắt 2 góc máy liên hoàn ngay trên cùng video (Beat 1A toàn cảnh + Beat 1B cận cảnh 1.22x Punch-In).
         dual_beat_spliced = False
-        if target_hook_duration_sec >= 2.2 and len(other_passing) >= 1:
+        beat_b_vid_id = ""
+        beat_b_title = ""
+        min_other_for_dual_beat = 2 if (span_opening_two_scenes and dur_s2 >= 1.2 and len(base_scenes) >= 2) else 1
+        if target_hook_duration_sec >= 2.2 and len(other_passing) >= min_other_for_dual_beat:
             beat_b_cand = other_passing[0]
             beat_b_v_path = beat_b_cand["video_path"]
             beat_b_clean = beat_b_cand.get("clean_peak_path") or beat_b_v_path
             use_b_precleaned = beat_b_clean != beat_b_v_path and Path(beat_b_clean).exists()
             peak_b_start = float(beat_b_cand.get("peak_offset_sec", 0.0))
+            m_yt_b1b = re.search(r"yt_hook_cand_\d+_([A-Za-z0-9_-]{11})", Path(beat_b_v_path).name)
+            beat_b_vid_id = m_yt_b1b.group(1) if m_yt_b1b else ""
+            beat_b_title = candidate_titles.get(beat_b_vid_id) or candidate_titles.get(Path(beat_b_v_path).stem, "")
             if Path(beat_b_clean).exists():
                 dual_beat_spliced = _splice_dual_beat_hook_clip(
                     clip_a_path=clean_p_path if use_precleaned else best_v_path,
@@ -1368,6 +1374,13 @@ Return ONLY valid JSON:
                 )
                 if dual_beat_spliced:
                     used_second_paths.add(beat_b_v_path)
+                    rag.try_claim_in_job_video(
+                        job_id=job_id,
+                        vid_id=beat_b_vid_id,
+                        url=beat_b_v_path,
+                        title=beat_b_title,
+                        scene_id=1,
+                    )
                     logger.info(
                         f"⚡ [HookVideoNode Dual-Beat Fast-Cut] Đã ghép 2 góc máy liên tiếp cho Cảnh 1 "
                         f"({target_hook_duration_sec:.2f}s | Beat 1A='{Path(best_v_path).name}' + Beat 1B='{Path(beat_b_v_path).name}') "
@@ -1464,26 +1477,20 @@ Return ONLY valid JSON:
                 scene_1["full_peak_duration_sec"] = natural_peak_dur
                 scenes_media[0] = scene_1
 
-        # ── MỞ RỘNG HOOK VIDEO ĐẦU VIDEO TRỌN VẸN 3-7 GIÂY (CẢNH 1 + CẢNH 2 LIỀN MẠCH, KHỚP 100% LỜI ĐỌC) ──
+        # ── MỞ RỘNG HOOK VIDEO ĐẦU VIDEO TRỌN VẸN 3-7 GIÂY (CẢNH 1 + CẢNH 2 BẰNG 2 VIDEO 100% ĐỘC LẬP, CẤM LẶP LẠI CẢNH 1) ──
         if span_opening_two_scenes and dur_s2 >= 1.2 and len(base_scenes) >= 2:
             dur_s2_clip = dur_s2 + (transition_duration if len(base_scenes) > 2 else (0.15 + VIDEO_DURATION_SAFETY_MARGIN))
-            s2_filled = False
-            # Ưu tiên 1: Nếu có video ứng viên Viral độc lập (chưa dùng ở Beat 1B và đủ độ dài Peak) -> Ghép nối tiếp sang Cảnh 2
-            s2_ordered_cands = (
-                [c for c in other_passing if c["video_path"] not in used_second_paths]
-                + [c for c in other_passing if c["video_path"] in used_second_paths]
-            )
+            # Chỉ lấy video ứng viên CHƯA DÙNG ở Cảnh 1 (tuyệt đối không tái sử dụng Beat 1A hay Beat 1B cho Cảnh 2)
+            s2_ordered_cands = [c for c in other_passing if c["video_path"] not in used_second_paths]
             for cand_s2 in s2_ordered_cands:
-                already_in_b1b = cand_s2["video_path"] in used_second_paths
-                b1b_offset_shift = round(max(0.85, target_hook_duration_sec - min(1.80, max(1.35, target_hook_duration_sec * 0.48))), 2) if already_in_b1b else 0.0
-                if float(cand_s2.get("peak_duration_sec") or 0.0) < max(b1b_offset_shift + min(dur_s2 - 1.2, 1.5), 1.8):
+                if float(cand_s2.get("peak_duration_sec") or 0.0) < max(min(dur_s2 - 1.2, 1.5), 1.8):
                     continue
                 s2_v_path = cand_s2["video_path"]
                 s2_clean_p = cand_s2.get("clean_peak_path") or s2_v_path
                 s2_use_pre = (
                     s2_clean_p != s2_v_path
                     and Path(s2_clean_p).exists()
-                    and (get_duration_ms(s2_clean_p) / 1000.0) >= (b1b_offset_shift + dur_s2 - 0.35)
+                    and (get_duration_ms(s2_clean_p) / 1000.0) >= (dur_s2 - 0.35)
                 )
                 m_yt_s2 = re.search(r"yt_hook_cand_\d+_([A-Za-z0-9_-]{11})", Path(s2_v_path).name)
                 s2_vid_id = m_yt_s2.group(1) if m_yt_s2 else ""
@@ -1496,7 +1503,7 @@ Return ONLY valid JSON:
                     scene_id=2,
                 ):
                     continue
-                s2_peak_start = float(cand_s2.get("peak_offset_sec", 0.0)) + b1b_offset_shift
+                s2_peak_start = float(cand_s2.get("peak_offset_sec", 0.0))
                 try:
                     trim_video(
                         input_path=s2_clean_p if s2_use_pre else s2_v_path,
@@ -1510,7 +1517,7 @@ Return ONLY valid JSON:
                         apply_grading=True,
                         is_hook_scene=True,
                         fair_use_transform=not s2_use_pre,
-                        start_offset_sec=b1b_offset_shift if s2_use_pre else s2_peak_start,
+                        start_offset_sec=0.0 if s2_use_pre else s2_peak_start,
                         preserve_continuous_flow=True,
                     )
                     if Path(hook_output_clip_s2).exists() and Path(hook_output_clip_s2).stat().st_size > 10_000:
@@ -1521,11 +1528,10 @@ Return ONLY valid JSON:
                             vid_id=s2_vid_id,
                             url=s2_v_path,
                             title=s2_title,
-                            is_continuation_slice=already_in_b1b,
+                            is_continuation_slice=False,
                         )
                         if ok_s2:
                             used_second_paths.add(s2_v_path)
-                            s2_filled = True
                             if s2_vid_id and license_policy.cc_only_enabled():
                                 license_policy.record_credit(
                                     job_id=job_id,
@@ -1547,7 +1553,7 @@ Return ONLY valid JSON:
                                 scenes_media[1]["media_type"] = "hook_ready_video"
                                 scenes_media[1]["production_method"] = "HOOK_EXTENDED_2ND_VIRAL_VIDEO"
                             logger.info(
-                                f"🔥 [HookVideoNode 3-7s Window] Đã ghép tiếp Video Viral #2 vào Cảnh 2 ({dur_s2:.2f}s) "
+                                f"🔥 [HookVideoNode 3-7s Window] Đã ghép tiếp Video Viral #2 độc lập vào Cảnh 2 ({dur_s2:.2f}s) "
                                 f"-> Tổng thời lượng Hook Video mở đầu = {dur_s1 + dur_s2:.2f}s!"
                             )
                             break
@@ -1555,58 +1561,6 @@ Return ONLY valid JSON:
                             Path(hook_output_clip_s2).unlink(missing_ok=True)
                 except Exception as e_s2:
                     logger.debug(f"[HookVideoNode] Scene 2 viral candidate slice skip: {e_s2}")
-
-            # Ưu tiên 2: Nếu chỉ có 1 ứng viên (hoặc ứng viên #1 mới dùng ~1.75s ở Beat 1A) -> Cắt nối tiếp phần Peak chưa chiếu sang Cảnh 2
-            consumed_s1_sec = round(min(1.80, max(1.35, target_hook_duration_sec * 0.48)), 2) if dual_beat_spliced else dur_s1
-            if not s2_filled and natural_peak_dur >= (consumed_s1_sec + min(dur_s2, 1.5)):
-                try:
-                    cont_src = clean_p_path if (use_precleaned and (get_duration_ms(clean_p_path) / 1000.0) >= (consumed_s1_sec + dur_s2 - 0.35)) else best_v_path
-                    cont_offset = consumed_s1_sec if cont_src == clean_p_path else (peak_start + consumed_s1_sec)
-                    trim_video(
-                        input_path=cont_src,
-                        duration_seconds=dur_s2_clip,
-                        output_path=hook_output_clip_s2,
-                        width=1080,
-                        height=1920,
-                        fps=30,
-                        is_scifi=is_scifi,
-                        niche=atmosphere_fx,
-                        apply_grading=True,
-                        is_hook_scene=True,
-                        fair_use_transform=(cont_src != clean_p_path),
-                        start_offset_sec=cont_offset,
-                        preserve_continuous_flow=True,
-                    )
-                    if Path(hook_output_clip_s2).exists() and Path(hook_output_clip_s2).stat().st_size > 10_000:
-                        ok_cont, _ = rag.verify_and_commit_in_job_clip(
-                            job_id=job_id,
-                            scene_id=2,
-                            media_path=hook_output_clip_s2,
-                            vid_id=hook_vid_id,
-                            url=best_v_path,
-                            title=hook_vid_title,
-                            is_continuation_slice=True,
-                        )
-                        if ok_cont:
-                            pre_resolved_hook_media[2] = {
-                                "media_path": hook_output_clip_s2,
-                                "media_type": "hook_ready_video",
-                                "production_method": "HOOK_CONTINUOUS_PEAK_SLICE_2",
-                                "visual_strategy": "HOOK_PEAK_SHORT_VIDEO",
-                                "strategy_rationale": f"Continuous 3-7s Viral Hook slice @{cont_offset:.1f}s (total Hook={dur_s1 + dur_s2:.1f}s)",
-                            }
-                            if len(scenes_media) >= 2 and isinstance(scenes_media[1], dict):
-                                scenes_media[1]["media_path"] = hook_output_clip_s2
-                                scenes_media[1]["media_type"] = "hook_ready_video"
-                                scenes_media[1]["production_method"] = "HOOK_CONTINUOUS_PEAK_SLICE_2"
-                            logger.info(
-                                f"🔥 [HookVideoNode 3-7s Window] Đã nối liền mạch đoạn Peak dài sang Cảnh 2 ({dur_s2:.2f}s) "
-                                f"-> Tổng thời lượng Hook Video mở đầu = {dur_s1 + dur_s2:.2f}s khớp 100% nhịp thoại!"
-                            )
-                        else:
-                            Path(hook_output_clip_s2).unlink(missing_ok=True)
-                except Exception as e_cont:
-                    logger.debug(f"[HookVideoNode] Continuous Peak slice to Scene 2 skip: {e_cont}")
 
         # Ghép toàn bộ các ứng viên Video Peak độc lập còn dư vào TRONG THÂN VIDEO (Cảnh Cao Trào `climax_scene_id` + các cảnh thân kế tiếp)
         # để tối đa hóa tỷ lệ Video thật đa góc máy và giảm thiểu phải sinh ảnh AI tĩnh!
@@ -1745,41 +1699,6 @@ Return ONLY valid JSON:
                 if scenes_media:
                     scenes_media[0] = scene_1
                 logger.info(f"🎬 [HookVideoNode] Đã nạp Video chuyển động thật cho Cảnh 1: {st_res['media_path']}")
-
-                # Nếu có full_peak_path dài đủ phủ sang Cảnh 2 (trong cửa sổ Hook 3-7s) -> Nối tiếp mượt mà sang Cảnh 2!
-                fp_path = st_res.get("full_peak_path")
-                fp_dur = float(st_res.get("full_peak_duration_sec") or 0.0)
-                if span_opening_two_scenes and fp_path and Path(fp_path).exists() and fp_dur >= (dur_s1 + min(dur_s2, 1.8)):
-                    try:
-                        trim_video(
-                            input_path=fp_path,
-                            duration_seconds=dur_s2,
-                            output_path=hook_output_clip_s2,
-                            width=1080,
-                            height=1920,
-                            fps=30,
-                            is_scifi=is_scifi,
-                            niche=atmosphere_fx,
-                            apply_grading=False,
-                            is_hook_scene=True,
-                            fair_use_transform=False,
-                            start_offset_sec=dur_s1,
-                            preserve_continuous_flow=True,
-                        )
-                        if Path(hook_output_clip_s2).exists() and Path(hook_output_clip_s2).stat().st_size > 10_000:
-                            pre_resolved_hook_media[2] = {
-                                "media_path": hook_output_clip_s2,
-                                "media_type": "hook_ready_video",
-                                "production_method": "HOOK_CONTINUOUS_PEAK_SLICE_2",
-                                "visual_strategy": "STOCK_VIDEO",
-                                "strategy_rationale": f"Continuous 3-7s Hook video slice 2 ({dur_s1 + dur_s2:.1f}s total)",
-                            }
-                            if len(scenes_media) >= 2 and isinstance(scenes_media[1], dict):
-                                scenes_media[1]["media_path"] = hook_output_clip_s2
-                                scenes_media[1]["media_type"] = "hook_ready_video"
-                                scenes_media[1]["production_method"] = "HOOK_CONTINUOUS_PEAK_SLICE_2"
-                    except Exception:
-                        pass
         except Exception as e_st_hk:
             logger.debug(f"[HookVideoNode] Stock video hook rescue skip: {e_st_hk}")
 

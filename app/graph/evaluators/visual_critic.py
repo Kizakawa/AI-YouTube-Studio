@@ -71,13 +71,15 @@ class VisualCritic:
         except Exception:
             return 10.0
 
-    # Ngưỡng Hamming (trên 64 bit) để coi 2 khung hình là "cùng 1 cảnh quay" dù bị nén/scale/crop khác nhau
-    _DUP_HAMMING = 6
+    # Ngưỡng Hamming (trên 64 bit) để coi 2 khung hình là "cùng 1 cảnh quay" dù bị nén/scale/crop/LUT khác nhau
+    _DUP_HAMMING = 7
+    _DUP_HAMMING_MULTI = 10
 
     @classmethod
     def _media_signature(cls, media_path: str) -> List[str]:
         """
-        Chữ ký thị giác của 1 cảnh: ảnh → 1 dHash; video → dHash của 3 khung hình (đầu / giữa / cuối).
+        Chữ ký thị giác của 1 cảnh: ảnh → 1 dHash; video → dHash của 5 khung hình (12%, 30%, 50%, 70%, 88% thời lượng)
+        để bắt trọn vẹn cả trường hợp trùng lặp một phần (partial overlap) giữa 2 đoạn cắt của cùng 1 video gốc.
         Bỏ qua khung hình gần như đơn sắc (màn đen) vì mọi màn đen đều giống nhau → báo trùng giả.
         """
         import subprocess
@@ -92,11 +94,19 @@ class VisualCritic:
         sig: List[str] = []
         try:
             from app.utils.ffmpeg_helper import get_duration_ms
-            dur = max(get_duration_ms(str(p)) / 1000.0, 0.6)
+            dur = max(get_duration_ms(str(p)) / 1000.0, 0.8)
         except Exception:
             dur = 3.0
+        sample_points = (
+            min(0.25, dur * 0.06),
+            dur * 0.22,
+            dur * 0.40,
+            dur * 0.60,
+            dur * 0.78,
+            max(dur - 0.25, dur * 0.94),
+        )
         with tempfile.TemporaryDirectory() as td:
-            for i, t in enumerate((min(0.4, dur * 0.2), dur * 0.5, max(dur - 0.4, dur * 0.8))):
+            for i, t in enumerate(sample_points):
                 frame = str(Path(td) / f"f{i}.jpg")
                 try:
                     subprocess.run(
@@ -114,18 +124,27 @@ class VisualCritic:
 
     @classmethod
     def _find_duplicate(cls, sig: List[str], seen: Dict[int, List[str]]) -> Optional[int]:
-        """Trả về scene_id bị trùng (nếu có). Video cần ≥ 2 khung khớp để tránh báo nhầm."""
+        """
+        Trả về scene_id bị trùng (nếu có):
+        - Phát hiện ngay nếu có >= 1 khung hình khớp chặt (Hamming <= _DUP_HAMMING = 7, bắt cả trùng lặp 1 phần video)
+        - Hoặc >= 2 khung hình khớp trung bình (Hamming <= _DUP_HAMMING_MULTI = 10, bắt cùng góc máy/cùng cảnh quay).
+        """
         if not sig:
             return None
-        need = 1 if len(sig) == 1 else 2
         for prev_id, prev_sig in seen.items():
             if not prev_sig:
                 continue
-            hits = sum(
+            strict_hits = sum(
                 1 for h in sig
                 if any(sum(a != b for a, b in zip(h, ph)) <= cls._DUP_HAMMING for ph in prev_sig)
             )
-            if hits >= min(need, len(prev_sig)):
+            if strict_hits >= 1:
+                return prev_id
+            multi_hits = sum(
+                1 for h in sig
+                if any(sum(a != b for a, b in zip(h, ph)) <= cls._DUP_HAMMING_MULTI for ph in prev_sig)
+            )
+            if multi_hits >= min(2, len(sig), len(prev_sig)):
                 return prev_id
         return None
 
@@ -928,7 +947,7 @@ Return ONLY valid JSON in this exact format:
                     seen_hashes[img_hash] = scene_id
 
             if sig:
-                dup_id = None if is_long_peak_cont else self._find_duplicate(sig, seen_signatures)
+                dup_id = self._find_duplicate(sig, seen_signatures)
                 if dup_id is not None and not any("trùng lặp" in i for i in issues):
                     issues.append(f"Hình ảnh/clip trùng lặp với Cảnh #{dup_id}")
                     aes_score -= 4.0
