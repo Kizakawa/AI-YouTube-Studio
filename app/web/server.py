@@ -34,9 +34,19 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 import hmac
 import html as html_lib
 
+_REVOKED_CLIENT_ID_PREFIXES = ("75721912954-",)
+
+
+def _safe_env_client_id(env_key: str, default_val: str) -> str:
+    val = (os.getenv(env_key) or "").strip()
+    if not val or any(val.startswith(p) for p in _REVOKED_CLIENT_ID_PREFIXES):
+        return default_val
+    return val
+
+
 DEFAULT_DESKTOP_CLIENT = {
     "installed": {
-        "client_id": os.getenv("GOOGLE_DESKTOP_CLIENT_ID", "972622851789-4175b1dquscrk08j2aq4jb8s84llh4uo.apps.googleusercontent.com"),
+        "client_id": _safe_env_client_id("GOOGLE_DESKTOP_CLIENT_ID", "972622851789-4175b1dquscrk08j2aq4jb8s84llh4uo.apps.googleusercontent.com"),
         "project_id": os.getenv("GOOGLE_OAUTH_PROJECT_ID", "bionic-client-509515-h2"),
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
         "token_uri": "https://oauth2.googleapis.com/token",
@@ -48,19 +58,17 @@ DEFAULT_DESKTOP_CLIENT = {
 
 DEFAULT_WEB_CLIENT = {
     "web": {
-        "client_id": os.getenv("GOOGLE_WEB_CLIENT_ID", "972622851789-l65i20vr94lp5mnc504oc58gdgumbr42.apps.googleusercontent.com"),
-        "project_id": os.getenv("GOOGLE_OAUTH_PROJECT_ID", "bionic-client-509515-h2"),
+        "client_id": _safe_env_client_id("GOOGLE_WEB_CLIENT_ID", "1094548290078-e7hitr7arc2d3qs2tt2h6f267msfah98.apps.googleusercontent.com"),
+        "project_id": os.getenv("GOOGLE_OAUTH_PROJECT_ID", "effective-cacao-511414-q3"),
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
         "token_uri": "https://oauth2.googleapis.com/token",
         "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
         "client_secret": os.getenv("GOOGLE_WEB_CLIENT_SECRET", ""),
         "redirect_uris": [
-            os.getenv("GOOGLE_WEB_REDIRECT_URI", "https://ai-youtube-studio-8kbu.onrender.com/api/oauth/callback")
+            os.getenv("GOOGLE_WEB_REDIRECT_URI", "http://localhost:8000/api/oauth/callback")
         ]
     }
 }
-
-_REVOKED_CLIENT_ID_PREFIXES = ("75721912954-",)
 
 
 def _is_valid_oauth_client_config(data: Optional[Dict[str, Any]]) -> bool:
