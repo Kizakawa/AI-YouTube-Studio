@@ -69,14 +69,14 @@ def get_next_reset_time(dt: Optional[datetime] = None) -> datetime:
 
 
 def get_project_id_from_client_secret(client_secret_path: str) -> str:
-    """Trích xuất Google Cloud Project ID từ file client_secret.json."""
+    """Trích xuất Google Cloud Project ID từ file client_secret.json (hỗ trợ cả bản mã hóa AES-256-GCM)."""
     if not client_secret_path or not os.path.exists(client_secret_path):
         return "default_project"
     try:
-        with open(client_secret_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        from app.utils.security import load_encrypted_json
+        data = load_encrypted_json(Path(client_secret_path)) or {}
         for key in ["installed", "web"]:
-            if key in data and "project_id" in data[key]:
+            if key in data and isinstance(data[key], dict) and "project_id" in data[key]:
                 return data[key]["project_id"]
     except Exception as e:
         logger.warning(f"Không thể đọc project_id từ {client_secret_path}: {e}")

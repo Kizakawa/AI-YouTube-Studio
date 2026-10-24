@@ -62,11 +62,13 @@ def check_account_tokens(account_id: str, brand_channels: Optional[List[Dict[str
     client_secret_path = acc_dir / "client_secret.json"
     has_client_secret = client_secret_path.exists() and client_secret_path.stat().st_size > 10
 
-    # Fallback nếu account_1 có secret thì có thể dùng chung
+    # Fallback nếu các tài khoản khác trong hệ thống đã có secret thì có thể dùng chung
     if not has_client_secret:
-        fallback = base_dir / "credentials" / "accounts" / "account_1" / "client_secret.json"
-        if fallback.exists() and fallback.stat().st_size > 10:
-            has_client_secret = True
+        for cand_acc in ("acount_2", "account_1", "accout3", "account_2", "account_3"):
+            fallback = base_dir / "credentials" / "accounts" / cand_acc / "client_secret.json"
+            if fallback.exists() and fallback.stat().st_size > 10:
+                has_client_secret = True
+                break
 
     yt_token_path = acc_dir / "youtube_token.json"
     youtube_connected = _is_valid_token_file(yt_token_path)

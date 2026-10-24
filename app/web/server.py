@@ -60,6 +60,73 @@ DEFAULT_WEB_CLIENT = {
     }
 }
 
+_REVOKED_CLIENT_ID_PREFIXES = ("75721912954-",)
+
+
+def _is_valid_oauth_client_config(data: Optional[Dict[str, Any]]) -> bool:
+    """Kiểm tra cấu hình client_secret.json có hợp lệ và không phải OAuth client đã bị xóa."""
+    if not isinstance(data, dict):
+        return False
+    info = data.get("installed") or data.get("web")
+    if not isinstance(info, dict):
+        return False
+    cid = str(info.get("client_id") or "").strip()
+    csec = str(info.get("client_secret") or "").strip()
+    if not cid or not csec:
+        return False
+    if any(cid.startswith(prefix) for prefix in _REVOKED_CLIENT_ID_PREFIXES):
+        return False
+    return True
+
+
+def _resolve_and_load_client_secret(base_dir: Path, preferred_acc_ids: List[str]) -> tuple[Optional[Path], Dict[str, Any]]:
+    """
+    Tải và giải mã an toàn client_secret.json (hỗ trợ cả AES-256-GCM và JSON thuần).
+    Tự động fallback sang các tài khoản dự phòng nếu file của tài khoản đích bị thiếu hoặc chứa client_id cũ đã xóa,
+    đồng thời tự động đồng bộ lại file chuẩn cho tài khoản đích.
+    """
+    search_order: List[str] = []
+    for acc in list(preferred_acc_ids) + ["acount_2", "account_1", "accout3", "account_2", "account_3", "project_pool_2"]:
+        acc_clean = (acc or "").strip()
+        if acc_clean and acc_clean not in search_order:
+            search_order.append(acc_clean)
+
+    accounts_root = base_dir / "credentials" / "accounts"
+    chosen_path: Optional[Path] = None
+    chosen_cfg: Dict[str, Any] = {}
+
+    for acc in search_order:
+        for fname in ("client_secret.json", "client_secret.json.json"):
+            cand = accounts_root / acc / fname
+            if not cand.exists():
+                continue
+            try:
+                loaded = load_encrypted_json(cand)
+                if _is_valid_oauth_client_config(loaded):
+                    chosen_path = cand
+                    chosen_cfg = loaded
+                    break
+            except Exception as ex:
+                logger.warning(f"Lỗi đọc client_secret tại {cand}: {ex}")
+        if chosen_cfg:
+            break
+
+    if chosen_cfg and preferred_acc_ids:
+        target_acc = (preferred_acc_ids[0] or "").strip()
+        if target_acc and is_safe_identifier(target_acc):
+            target_file = accounts_root / target_acc / "client_secret.json"
+            try:
+                existing = load_encrypted_json(target_file) if target_file.exists() else None
+                if not _is_valid_oauth_client_config(existing):
+                    target_file.parent.mkdir(parents=True, exist_ok=True)
+                    save_encrypted_json(target_file, chosen_cfg)
+                    chosen_path = target_file
+                    logger.info(f"🔄 [OAuth Self-Heal] Đã tự động đồng bộ client_secret.json hợp lệ cho '{target_acc}'")
+            except Exception as heal_err:
+                logger.warning(f"Không thể tự động đồng bộ client_secret cho {target_acc}: {heal_err}")
+
+    return chosen_path, chosen_cfg
+
 app = FastAPI(
     title="AI YouTube Multi-Channel Studio",
     description="Giao diện Web quản lý hệ thống tự động hoá YouTube",
@@ -2956,6 +3023,7 @@ async def oauth_callback(
             ch_dir = base_dir / "credentials" / "channels" / channel_id
             ch_dir.mkdir(parents=True, exist_ok=True)
             token_file = ch_dir / "youtube_token.json"
+            pool_token_file = ch_dir / f"youtube_token_{acc_id}.json"
 
             token_dict = json.loads(creds.to_json())
             token_dict["channel_id"] = real_yt_id or channel_id
@@ -2963,6 +3031,7 @@ async def oauth_callback(
             if custom_url:
                 token_dict["custom_url"] = custom_url
 
+            save_encrypted_json(pool_token_file, token_dict)
             save_encrypted_json(token_file, token_dict)
 
             cfg = _read_channels_yaml()
@@ -3400,8 +3469,7 @@ async def upload_client_secret(account_id: str, req: UploadSecretRequest) -> Dic
     acc_dir.mkdir(parents=True, exist_ok=True)
     secret_path = acc_dir / "client_secret.json"
 
-    with open(secret_path, "w", encoding="utf-8") as f:
-        json.dump(secret_data, f, indent=2)
+    save_encrypted_json(secret_path, secret_data)
 
     return {
         "success": True,
@@ -3620,25 +3688,15 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
     acc_dir = base_dir / "credentials" / "accounts" / account_id
     acc_dir.mkdir(parents=True, exist_ok=True)
 
-    secret_file = acc_dir / "client_secret.json"
-    if not secret_file.exists():
-        fallback = base_dir / "credentials" / "accounts" / "account_1" / "client_secret.json"
-        if fallback.exists():
-            secret_file = fallback
-        else:
-            raise HTTPException(status_code=400, detail="Chưa có file client_secret.json! Vui lòng nạp file trước.")
+    secret_file, sec_json = _resolve_and_load_client_secret(base_dir, [account_id])
+    if not secret_file or not sec_json:
+        raise HTTPException(status_code=400, detail="Chưa có file client_secret.json hợp lệ! Vui lòng nạp file trước.")
     scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
     host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost:8000"
     callback_url = f"{scheme}://{host}/api/oauth/callback"
 
     # Kiểm tra xem client_secret có phải loại Web application không và có khớp redirect_uris không
     is_web = False
-    sec_json = {}
-    try:
-        with open(secret_file, "r", encoding="utf-8") as f:
-            sec_json = json.load(f)
-    except Exception:
-        pass
 
     if "web" in sec_json:
         allowed_uris = sec_json.get("web", {}).get("redirect_uris", [])
@@ -4840,7 +4898,7 @@ def check_all_channels_live_oauth() -> Dict[str, Any]:
         cs = acc_dir / acc / "client_secret.json"
         if cs.exists():
             try:
-                d = json.loads(cs.read_text(encoding="utf-8"))
+                d = load_encrypted_json(cs) or {}
                 info = d.get("installed") or d.get("web") or {}
                 client_id_val = info.get("client_id")
                 if client_id_val:
@@ -4972,13 +5030,9 @@ async def start_channel_oauth(
     session_key = f"channel:{channel_id}:{service}"
 
     base_dir = Path(settings.BASE_DIR)
-    secret_file = base_dir / "credentials" / "accounts" / acc_id / "client_secret.json"
-    if not secret_file.exists():
-        secret_file = base_dir / "credentials" / "accounts" / primary_acc_id / "client_secret.json"
-    if not secret_file.exists():
-        secret_file = base_dir / "credentials" / "accounts" / "account_1" / "client_secret.json"
-    if not secret_file.exists():
-        raise HTTPException(status_code=400, detail=f"Chưa có file client_secret.json cho dự án {acc_id}!")
+    secret_file, sec_json = _resolve_and_load_client_secret(base_dir, [acc_id, primary_acc_id])
+    if not secret_file or not sec_json:
+        raise HTTPException(status_code=400, detail=f"Chưa có file client_secret.json hợp lệ cho dự án {acc_id}!")
 
     import webbrowser
     import wsgiref.simple_server
@@ -4999,12 +5053,6 @@ async def start_channel_oauth(
 
     # Kiểm tra xem client_secret có phải loại Web application không và có khớp redirect_uris không
     is_web = False
-    sec_json = {}
-    try:
-        with open(secret_file, "r", encoding="utf-8") as f:
-            sec_json = json.load(f)
-    except Exception:
-        pass
 
     if "web" in sec_json:
         allowed_uris = sec_json.get("web", {}).get("redirect_uris", [])
