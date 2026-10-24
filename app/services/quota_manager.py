@@ -86,10 +86,23 @@ def get_project_id_from_client_secret(client_secret_path: str) -> str:
 class QuotaManager:
     """Quản trị hạn mức YouTube API tập trung."""
 
+    PROJECT_FRIENDLY_LABELS: Dict[str, str] = {
+        "bionic-client-509515-h2": "YT-Pool-01-US-Main (Gmail G)",
+        "youtube-pool-02-510505": "YT-Pool-02-US-Backup (Gmail G)",
+        "astute-arcanum-509506-d7": "YT-Pool-03-History (Gmail G)",
+        "ai-youtube-studio-509521": "YT-Pool-04-Brazil (Gmail T)",
+        "effective-cacao-511414-q3": "YT-Pool-05-Wildlife-Rescue (Gmail T)",
+    }
+
+    @classmethod
+    def get_project_label(cls, project_id: str) -> str:
+        return cls.PROJECT_FRIENDLY_LABELS.get(str(project_id or "").strip(), str(project_id or "default_project"))
+
     @staticmethod
     def get_tracker(project_id: str, cycle_date: Optional[str] = None) -> Dict[str, Any]:
         """Lấy thông tin tiêu thụ quota hiện tại của một Google Cloud Project."""
         cycle = cycle_date or get_current_cycle_id()
+        label = QuotaManager.get_project_label(project_id)
         with get_db() as db:
             tracker = db.query(QuotaTracker).filter(
                 QuotaTracker.project_id == project_id,
@@ -99,6 +112,7 @@ class QuotaManager:
             if not tracker:
                 return {
                     "project_id": project_id,
+                    "project_label": label,
                     "cycle_date": cycle,
                     "used_units": 0,
                     "upload_count": 0,
@@ -113,6 +127,7 @@ class QuotaManager:
 
             return {
                 "project_id": tracker.project_id,
+                "project_label": label,
                 "cycle_date": tracker.cycle_date,
                 "used_units": tracker.used_units,
                 "upload_count": tracker.upload_count,
