@@ -957,14 +957,23 @@ class PublisherAgent:
             ]
             return en_wild_polls[rot_idx]
         if any(k in raw_niche for k in ("deep_sea", "ocean", "abyss", "mariana", "mystery", "earth")):
-            return (
-                "Theo bạn đây là (1) Sinh vật chưa từng được khám phá hay (2) Hiện tượng tự nhiên? Bình chọn 1 hoặc 2 bên dưới 👇"
-                if is_vn else (
-                    "O que você acha que realmente se esconde lá: (1) Criatura Desconhecida ou (2) Fenômeno Geológico? Comente 1 ou 2 abaixo! 👇"
-                    if is_pt_br else
-                    "What do you think is really behind this: (1) Undiscovered Species or (2) Natural Anomaly? Drop 1 or 2 below! 👇"
-                )
-            )
+            if is_vn:
+                return "Theo bạn đâu là thử thách đáng sợ hơn dưới đáy biển sâu: (1) Áp suất nghiền nát hay (2) Bóng tối tuyệt đối? Bình chọn 1 hoặc 2 bên dưới 👇"
+            if is_pt_br:
+                pt_myst_polls = [
+                    "Você teria coragem de descer até essa profundidade extrema: (1) SIM ou (2) JAMAIS? Comente 1 ou 2 abaixo! 👇🌊",
+                    "O que é mais assustador no fundo do oceano: (1) A Pressão Esmagadora ou (2) O Escuro Absoluto? Vote 1 ou 2 nos comentários! 👇🌊",
+                    "Até onde a ciência deve explorar o abismo: (1) Investigar Tudo ou (2) Deixar Intocado? Comente 1 ou 2 abaixo! 👇🌊",
+                    "Qual mistério do oceano mais intriga você: (1) Predadores Abissais ou (2) Zonas Mortais? Deixe seu voto abaixo! 👇🌊",
+                ]
+                return pt_myst_polls[rot_idx]
+            en_myst_polls = [
+                "Would you ever risk descending into this extreme deep-sea zone: (1) YES or (2) NEVER? Drop 1 or 2 below! 👇🌊",
+                "What is more terrifying in the deep ocean: (1) Crushing Pressure or (2) Pitch-Black Darkness? Vote 1 or 2 in the comments! 👇🌊",
+                "Should scientists keep exploring these lethal ocean depths: (1) Explore Everything or (2) Leave It Untouched? Comment 1 or 2! 👇🌊",
+                "Which deep-sea force is deadlier: (1) Extreme Physics or (2) Abyssal Predators? Drop 1 or 2 below! 👇🌊",
+            ]
+            return en_myst_polls[rot_idx]
         return (
             "Chi tiết nào khiến bạn bất ngờ nhất? Hãy bình luận suy nghĩ của bạn bên dưới 👇\n🔔 Đăng ký kênh (Subscribe) để không bỏ lỡ video tiếp theo! 🔥"
             if is_vn else (
@@ -1730,13 +1739,41 @@ class PublisherAgent:
                 base_title=smart.get("base_title") or raw_title,
                 allow_affiliate=allow_affiliate,
             )
+            # Ưu tiên lấy câu hỏi bình luận (pinned_comment) sinh riêng cho kịch bản của video từ DB VideoJob
+            db_pinned_q = None
+            try:
+                from app.database.models import get_db, VideoJob
+                with get_db() as db:
+                    vj = db.query(VideoJob).filter(VideoJob.youtube_video_id == video_id).order_by(VideoJob.id.desc()).first()
+                    if vj and vj.scenes_json:
+                        s_obj = json.loads(vj.scenes_json) if isinstance(vj.scenes_json, str) else vj.scenes_json
+                        if isinstance(s_obj, dict) and s_obj.get("pinned_comment"):
+                            cand_q = str(s_obj.get("pinned_comment")).strip()
+                            if cand_q and not (not allow_affiliate and any(k in cand_q.lower() for k in ("http://", "https://", "amazon.com", "paypal.me"))):
+                                db_pinned_q = cand_q.lstrip("💬").strip()
+            except Exception:
+                pass
+
+            stale_generic_markers = (
+                "(1) undiscovered species or (2) natural anomaly",
+                "(1) criatura desconhecida ou (2) fenômeno geológico",
+                "what is your thought on this? drop a comment below",
+            )
+            if desc_body and any(m in desc_body.lower() for m in stale_generic_markers):
+                cleaned_lines = [
+                    ln for ln in desc_body.splitlines()
+                    if not (ln.strip().startswith("💬") and any(m in ln.lower() for m in stale_generic_markers))
+                ]
+                desc_body = "\n\n".join([ln.strip() for ln in cleaned_lines if ln.strip()]).strip()
+
             if "💬" not in (desc_body or ""):
-                poll_q = self.build_default_engagement_comment(
+                poll_q = db_pinned_q or self.build_default_engagement_comment(
                     title=smart.get("base_title") or raw_title,
                     target_lang=expected_lang,
                 )
                 if poll_q:
-                    desc_body = f"💬 {poll_q.strip()}\n\n{desc_body}".strip() if desc_body else f"💬 {poll_q.strip()}"
+                    clean_q = poll_q.lstrip("💬").strip()
+                    desc_body = f"💬 {clean_q}\n\n{desc_body}".strip() if desc_body else f"💬 {clean_q}"
             healed_desc = f"{desc_body}\n\n{smart['description_hashtags']}".strip() if desc_body else smart["description_hashtags"]
             if healed_desc != raw_desc:
                 snip["description"] = healed_desc

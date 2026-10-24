@@ -423,7 +423,11 @@ async def produce_channel_video(
         with get_db() as db:
             recent_db = (
                 db.query(VideoJob)
-                .filter(VideoJob.target_channel_id.in_(fam_ids))
+                .filter(
+                    VideoJob.target_channel_id.in_(fam_ids),
+                    ~VideoJob.status.ilike("CANCELLED%"),
+                    VideoJob.status != "FAILED",
+                )
                 .order_by(VideoJob.id.desc())
                 .limit(45)
                 .all()
@@ -658,6 +662,24 @@ async def produce_channel_video(
     print(f"      - Âm thanh: {'Có luồng AAC chuẩn -14 LUFS' if video_qa.get('has_audio') else 'Thiếu'}")
 
     # ── BƯỚC 5: UPLOAD YOUTUBE SHORTS, GẮN TAGS SEO & HẸN LỊCH KHUNG GIỜ VÀNG ──
+    # Đồng bộ lại scenes_json & pinned_comment mới nhất sau khi LangGraph tinh chỉnh ở Bước 4
+    try:
+        with get_db() as db_sync:
+            j_sync = db_sync.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if j_sync and j_sync.scenes_json:
+                scenes_json_str = j_sync.scenes_json
+                s_refined = json.loads(scenes_json_str) if isinstance(scenes_json_str, str) else scenes_json_str
+                if isinstance(s_refined, dict):
+                    if s_refined.get("pinned_comment"):
+                        final_pinned_comment = str(s_refined["pinned_comment"]).strip()
+                    if s_refined.get("description"):
+                        ref_desc = str(s_refined["description"]).strip()
+                        if smart_bundle["description_hashtags"] not in ref_desc:
+                            ref_desc = f"{ref_desc}\n\n{smart_bundle['description_hashtags']}".strip()
+                        final_description = ref_desc
+    except Exception:
+        pass
+
     print(f"\n[5/5] 🚀 BƯỚC 5: Upload YouTube Shorts, Gắn {len(tags)} Tags SEO & Hẹn lịch {DISPLAY_VN}...")
     thumb_to_upload = getattr(render_result, "thumbnail_vertical_path", None) or getattr(render_result, "thumbnail_path", None)
 
@@ -753,6 +775,7 @@ async def main():
         help="Target channel key or 'all_6' (6 channels excluding Paws & Hearts) or 'all'",
     )
     parser.add_argument("--count", type=int, default=1, help="Number of videos to produce per channel (e.g. 2)")
+    parser.add_argument("--topic", type=str, default=None, help="Optional custom topic override")
     parser.add_argument("--dry-run", action="store_true", help="Generate script, tags, and golden slot only")
     args = parser.parse_args()
 
@@ -771,6 +794,7 @@ async def main():
             try:
                 res = await produce_channel_video(
                     t,
+                    custom_topic=args.topic,
                     dry_run=args.dry_run,
                     video_index=v_idx,
                     total_per_channel=videos_per_ch,
