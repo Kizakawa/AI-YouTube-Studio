@@ -361,7 +361,11 @@ Return ONLY valid JSON:
         for model_name, key in rotator.iter_best_model_key_pairs(max_total_attempts=5):
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
-                resp = requests.post(url, json={"contents": [{"parts": [{"text": plan_prompt}]}]}, timeout=14)
+                payload = {
+                    "contents": [{"parts": [{"text": plan_prompt}]}],
+                    "generationConfig": KeyRotator.build_fast_json_gen_config(model_name, temperature=0.15),
+                }
+                resp = requests.post(url, json=payload, timeout=KeyRotator.fast_timeout(14))
                 if resp.status_code == 200:
                     cands = resp.json().get("candidates", [])
                     if cands:
@@ -369,7 +373,7 @@ Return ONLY valid JSON:
                         m = re.search(r"\{.*\}", txt, re.DOTALL)
                         if m:
                             return json.loads(m.group(0))
-                elif resp.status_code in (429, 403, 404, 503):
+                elif resp.status_code in (429, 403, 404, 503, 400):
                     rotator.mark_model_rate_limited(key, model_name, status_code=resp.status_code, error_text=resp.text[:300])
             except Exception as e_distill:
                 rotator.mark_model_rate_limited(key, model_name, status_code=503, error_text=str(e_distill))
@@ -665,7 +669,11 @@ Return ONLY valid JSON:
         for m_scout, k_scout in rotator.iter_best_model_key_pairs(max_total_attempts=4):
             try:
                 u_sc = f"https://generativelanguage.googleapis.com/v1beta/models/{m_scout}:generateContent?key={k_scout}"
-                r_sc = requests.post(u_sc, json={"contents": [{"parts": [{"text": scout_prompt}]}]}, timeout=12)
+                p_sc = {
+                    "contents": [{"parts": [{"text": scout_prompt}]}],
+                    "generationConfig": KeyRotator.build_fast_json_gen_config(m_scout, temperature=0.15),
+                }
+                r_sc = requests.post(u_sc, json=p_sc, timeout=KeyRotator.fast_timeout(12))
                 if r_sc.status_code == 200:
                     cands_sc = r_sc.json().get("candidates", [])
                     if cands_sc:
@@ -686,7 +694,7 @@ Return ONLY valid JSON:
                                     f"Lý do: {str(d_sc.get('selection_reasoning', ''))[:100]}"
                                 )
                                 return ordered_sel[:6]
-                elif r_sc.status_code in (429, 403, 404, 503):
+                elif r_sc.status_code in (429, 403, 404, 503, 400):
                     rotator.mark_model_rate_limited(k_scout, m_scout, status_code=r_sc.status_code, error_text=r_sc.text[:300])
             except Exception as e_sc:
                 rotator.mark_model_rate_limited(k_scout, m_scout, status_code=503, error_text=str(e_sc))
@@ -701,7 +709,7 @@ Return ONLY valid JSON:
         vid_url_dl = rc_cand["url"]
         q_idx = int(rc_cand.get("q_idx") or dl_idx)
         out_tmpl = str(hook_cand_dir / f"yt_hook_cand_{dl_idx}_%(id)s.%(ext)s")
-        dl_opts = {
+        dl_opts = license_policy.optimize_ytdlp_download_opts({
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
@@ -713,7 +721,7 @@ Return ONLY valid JSON:
             "merge_output_format": "mp4",
             "outtmpl": out_tmpl,
             "ignoreerrors": True,
-        }
+        })
         try:
             import yt_dlp
             with yt_dlp.YoutubeDL(dl_opts) as ydl_dl:

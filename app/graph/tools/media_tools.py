@@ -757,15 +757,13 @@ Return ONLY valid JSON in this exact format:
         if rotator and rotator.has_keys:
             for model_name, api_key in rotator.iter_best_model_key_pairs(GEMINI_PRIORITY_MODELS, max_total_attempts=4):
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-                gen_cfg: Dict[str, Any] = {"temperature": 0.1}
-                if not model_name.startswith("gemma-"):
-                    gen_cfg["responseMimeType"] = "application/json"
+                gen_cfg = KeyRotator.build_fast_json_gen_config(model_name, temperature=0.1)
                 payload = {
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": gen_cfg,
                 }
                 try:
-                    resp = requests.post(url, json=payload, timeout=10)
+                    resp = requests.post(url, json=payload, timeout=KeyRotator.fast_timeout(10))
                     if resp.status_code == 200:
                         cands_resp = resp.json().get("candidates") or []
                         if cands_resp:
@@ -1025,7 +1023,7 @@ def execute_youtube_short_peak_clone_sync(
 
                 with tempfile.TemporaryDirectory() as tmp_dir:
                     raw_dl_template = str(Path(tmp_dir) / "raw_short.%(ext)s")
-                    dl_opts = {
+                    dl_opts = license_policy.optimize_ytdlp_download_opts({
                         "quiet": True,
                         "no_warnings": True,
                         "noplaylist": True,
@@ -1036,7 +1034,7 @@ def execute_youtube_short_peak_clone_sync(
                         "socket_timeout": 12,
                         "retries": 1,
                         "nopart": True,
-                    }
+                    })
                     # Chỉ dùng download_ranges khi video gốc dài > 75s; với YouTube Shorts (<= 75s), tải thẳng MP4 qua HTTP nhanh gấp 4-6 lần và tránh treo ffmpeg HTTP seek
                     cand_dur_est = float(info_entry.get("duration") or cand.get("duration") or 0)
                     if cand_dur_est > 75.0:

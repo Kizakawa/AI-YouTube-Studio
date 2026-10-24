@@ -58,6 +58,24 @@ def youtube_search_opts(base_opts: Dict[str, Any], max_results: int = 12) -> Dic
     return opts
 
 
+def optimize_ytdlp_download_opts(base_opts: Dict[str, Any], concurrent_fragments: int = 4) -> Dict[str, Any]:
+    """
+    Tối ưu tốc độ tải và chống YouTube bóp băng thông (n-challenge / DASH throttling),
+    kế thừa từ kỹ thuật của Y2A-Auto (youtube_handler.py):
+      - `concurrent_fragment_downloads`: Tải đa luồng 4 phân mảnh DASH/HLS cùng lúc (nhanh gấp 3-4x).
+      - `http_chunk_size`: Tải theo HTTP Range chunk 10MB để vượt cơ chế bóp băng thông HTTPS của YouTube.
+      - `throttledratelimit`: Tự động ngắt và giải mã lại URL nếu tốc độ bị bóp xuống < 100KB/s.
+      - `fragment_retries` & `extractor_retries`: Tăng độ bền khi mạng chập chờn.
+    """
+    opts = dict(base_opts)
+    opts.setdefault("concurrent_fragment_downloads", max(1, int(concurrent_fragments)))
+    opts.setdefault("http_chunk_size", 10 * 1024 * 1024)
+    opts.setdefault("throttledratelimit", 100 * 1024)
+    opts.setdefault("fragment_retries", 3)
+    opts.setdefault("extractor_retries", 3)
+    return opts
+
+
 def is_reuse_allowed(info: Optional[Dict[str, Any]]) -> bool:
     """Xác minh giấy phép của 1 video từ metadata đầy đủ của yt-dlp (trường `license`)."""
     if not cc_only_enabled():

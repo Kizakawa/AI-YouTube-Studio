@@ -293,6 +293,8 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
             "-b:v", "10M" if is_high else "7M",
             "-maxrate", "14M" if is_high else "10M",
             "-bufsize", "20M" if is_high else "14M",
+            "-spatial-aq", "1",
+            "-aq-strength", "8",
             "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
         ]
     elif encoder == "h264_mf":
@@ -326,6 +328,7 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
         ]
     else:
         # Mặc định CPU libx264 (superfast nhanh hơn veryfast ~35% trên hệ thống đa nhân mà vẫn giữ nguyên độ nét 1080p Shorts)
+        # Bổ sung -aq-mode 3 (Auto-Variance AQ ưu tiên giữ chi tiết vùng tối/biển sâu) + -x264-params VUI color tags chuẩn Y2A-Auto
         return [
             "-c:v", "libx264",
             "-preset", "superfast",
@@ -333,6 +336,9 @@ def get_video_encoder_args(quality: str = "high", encoder_name: Optional[str] = 
             "-b:v", "10M" if is_high else "7M",
             "-maxrate", "14M" if is_high else "10M",
             "-bufsize", "20M" if is_high else "14M",
+            "-aq-mode", "3",
+            "-aq-strength", "0.8",
+            "-x264-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709",
             "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
         ]
 
@@ -365,7 +371,8 @@ def run_ffmpeg_with_gpu_fallback(args: List[str], timeout: int = FFMPEG_TIMEOUT)
                     # Bỏ qua các flag đi kèm encoder cũ cho đến khi gặp flag mới không liên quan
                     while i < len(args) and args[i] in (
                         "-b:v", "-maxrate", "-bufsize", "-pix_fmt", "-preset",
-                        "-crf", "-cq", "-global_quality", "-quality", "-rc", "-color_range", "-colorspace", "-color_primaries", "-color_trc"
+                        "-crf", "-cq", "-global_quality", "-quality", "-rc", "-color_range", "-colorspace", "-color_primaries", "-color_trc",
+                        "-spatial-aq", "-aq-mode", "-aq-strength", "-x264-params"
                     ):
                         i += 2
                     continue

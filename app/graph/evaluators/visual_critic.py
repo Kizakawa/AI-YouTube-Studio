@@ -649,10 +649,10 @@ Return ONLY valid JSON in this exact format:
                         ]
                     }
                 ],
-                "generationConfig": {"temperature": 0.1},
+                "generationConfig": KeyRotator.build_fast_json_gen_config(model_name, temperature=0.1),
             }
             try:
-                resp = requests.post(url, json=payload, timeout=14)
+                resp = requests.post(url, json=payload, timeout=KeyRotator.fast_timeout(14))
                 if resp.status_code == 200:
                     cands = resp.json().get("candidates") or []
                     if cands:

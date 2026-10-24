@@ -227,16 +227,14 @@ class VisualCurationAgent:
             if images and model.startswith("gemma-"):
                 continue
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-            gen_cfg: Dict[str, Any] = {"temperature": 0.2}
-            if not model.startswith("gemma-"):
-                gen_cfg["responseMimeType"] = "application/json"
+            gen_cfg = KeyRotator.build_fast_json_gen_config(model, temperature=0.2)
             payload = {
                 "contents": [{"parts": parts}],
                 "generationConfig": gen_cfg,
             }
             try:
                 with _VISION_SEM:
-                    res = self.session.post(url, json=payload, timeout=timeout)
+                    res = self.session.post(url, json=payload, timeout=KeyRotator.fast_timeout(timeout))
                 if res.status_code == 200:
                     data = res.json()
                     candidates = data.get("candidates", [])

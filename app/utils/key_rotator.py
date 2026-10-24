@@ -176,19 +176,27 @@ class KeyRotator:
                 or status_code in (500, 502, 503, 504)
                 or "internal error" in err_low
             ):
-                wait_t = cooldown_sec or 20.0
+                wait_t = cooldown_sec or 25.0
                 self._model_cooldowns[f"{key}:{model}"] = now + wait_t
+                # Nếu chính endpoint của model trên server Google bị treo Timeout -> khóa tạm toàn cục *:model 25s
+                # để luồng kế tiếp nhảy ngay sang model khác thay vì đợi thêm 12s timeout trên key thứ 2!
+                if "timed out" in err_low or "timeout" in err_low:
+                    self._model_cooldowns[f"*:{model}"] = now + wait_t
                 active_t_locks = sum(
                     1 for k in self.keys if self._model_cooldowns.get(f"{k}:{model}", 0.0) > now
                 )
-                if active_t_locks >= max(len(self.keys), 1):
-                    self._model_cooldowns[f"*:{model}"] = now + 20.0
+                if active_t_locks >= max(len(self.keys), 1) or "timed out" in err_low or "timeout" in err_low:
+                    self._model_cooldowns[f"*:{model}"] = now + wait_t
                     if model in KeyRotator._verified_live_models:
                         KeyRotator._verified_live_models = [
                             m for m in KeyRotator._verified_live_models if m != model
                         ]
-            elif status_code == 403 or "api_key_invalid" in err_low:
-                self._global_cooldowns[key] = now + (cooldown_sec or 180.0)
+            elif (
+                status_code == 403
+                or "api_key_invalid" in err_low
+                or "api key not valid" in err_low
+            ):
+                self._global_cooldowns[key] = now + (cooldown_sec or 3600.0)
             else:
                 wait_s = cooldown_sec or 45.0
                 self._model_cooldowns[f"{key}:{model}"] = now + wait_s
@@ -364,14 +372,36 @@ class KeyRotator:
                     break  # Chuyển ngay sang Model kế tiếp trong pass hiện tại!
 
         # Fallback dự phòng cho các dòng Flash/Flash-Lite ổn định nếu tất cả cặp trên đang trong thời gian cooldown ngắn
-        for fb_model in ("gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3-flash-preview"):
+        for fb_model in ("gemini-3-flash-preview", "gemini-robotics-er-2-preview", "gemini-3.1-flash-lite-preview", "gemini-flash-lite-latest"):
             if yielded >= limit:
                 return
+            if self._model_cooldowns.get(f"*:{fb_model}", 0.0) > time.monotonic():
+                continue
             fb_key = self._select_next_healthy_key(advance_cursor=True)
             if fb_key and f"{fb_model}::{fb_key}" not in yielded_pairs:
                 yielded += 1
                 yielded_pairs.add(f"{fb_model}::{fb_key}")
                 yield fb_model, fb_key
+
+    @staticmethod
+    def build_fast_json_gen_config(model_name: str, temperature: float = 0.15) -> dict:
+        """
+        Tạo generationConfig tối ưu độ trễ cho các tác vụ JSON/phân loại nhanh (kế thừa từ Y2A-Auto ai_fallback_client.py):
+        - Tự động gắn `thinkingConfig: {"thinkingBudget": 0}` trên các model Flash hỗ trợ (giảm 35-45% thời gian chờ).
+        - Tự động bỏ qua `thinkingConfig` trên các model `-lite` hoặc `gemma-` để tránh lỗi 400 Invalid Argument.
+        """
+        m_low = str(model_name or "").lower()
+        cfg: dict = {"temperature": temperature}
+        if not m_low.startswith("gemma-"):
+            cfg["responseMimeType"] = "application/json"
+            if "lite" not in m_low and "pro" not in m_low:
+                cfg["thinkingConfig"] = {"thinkingBudget": 0}
+        return cfg
+
+    @staticmethod
+    def fast_timeout(read_timeout: float = 12.0, connect_timeout: float = 4.0) -> Tuple[float, float]:
+        """Tách biệt connect_timeout ngắn (4s) và read_timeout chuẩn Y2A-Auto để chuyển đổi endpoint tức thì khi nghẽn mạng."""
+        return (float(connect_timeout), max(float(connect_timeout), float(read_timeout)))
 
     def mark_rate_limited(self, key: Optional[str] = None, cooldown_sec: Optional[float] = None) -> None:
         """Đánh dấu một key bị giới hạn tốc độ (429/403) để các luồng song song tạm né."""

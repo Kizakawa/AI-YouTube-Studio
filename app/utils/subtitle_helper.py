@@ -150,6 +150,85 @@ class SubtitleHelper:
         return f"{hours:02d}:{minutes:02d}:{seconds:02d},{millis:03d}"
 
     @classmethod
+    def align_word_timings_with_narration(
+        cls,
+        word_timings: List[Dict[str, Any]],
+        narration: str,
+        scene_duration_ms: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """
+        Đối chiếu và căn chỉnh từ vựng (Lexical Alignment) giữa mốc thời gian `word_timings` (từ TTS/ASR)
+        và văn bản kịch bản chuẩn `narration` (kế thừa từ Y2A-Auto srt_transform_engine.py):
+        - Chống triệt để lỗi ASR/WordBoundary làm cụt âm tiết (ví dụ "EXLY" -> khôi phục nguyên vẹn "EXACTLY")
+          hoặc tách rời từ ghép / con số ("3,700", "don't", "self-control").
+        - Giữ nguyên 100% mốc thời gian thực (start_ms, end_ms) từ giọng đọc.
+        """
+        if not word_timings:
+            return []
+        clean_narration = cls.sanitize_subtitle_text(narration or "")
+        canon_words = [w.strip() for w in re.sub(r"\s+", " ", clean_narration).split() if w.strip()]
+        if not canon_words:
+            return word_timings
+
+        import difflib
+
+        def _norm_stem(token: str) -> str:
+            return re.sub(r"[^\w\d]", "", str(token or "").lower())
+
+        wt_stems = [_norm_stem(w.get("word", "")) for w in word_timings]
+        canon_stems = [_norm_stem(w) for w in canon_words]
+
+        matcher = difflib.SequenceMatcher(None, wt_stems, canon_stems, autojunk=False)
+        aligned: List[Dict[str, Any]] = []
+        total_dur_fallback = max(scene_duration_ms, int(word_timings[-1].get("end_ms", 1000) or 1000))
+
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == "equal":
+                for idx_offset in range(i2 - i1):
+                    wt_item = dict(word_timings[i1 + idx_offset])
+                    wt_item["word"] = canon_words[j1 + idx_offset]
+                    aligned.append(wt_item)
+            elif tag in ("replace", "insert", "delete"):
+                target_canon = canon_words[j1:j2]
+                src_wts = word_timings[i1:i2]
+                if not target_canon:
+                    continue
+                if len(src_wts) == len(target_canon):
+                    for wt_orig, c_word in zip(src_wts, target_canon):
+                        wt_item = dict(wt_orig)
+                        wt_item["word"] = c_word
+                        aligned.append(wt_item)
+                else:
+                    if src_wts:
+                        span_start = int(src_wts[0].get("start_ms", 0))
+                        span_end = int(src_wts[-1].get("end_ms", span_start + 120))
+                    elif aligned:
+                        span_start = int(aligned[-1].get("end_ms", 0))
+                        span_end = min(total_dur_fallback, span_start + 180 * len(target_canon))
+                    else:
+                        span_start = 0
+                        span_end = min(total_dur_fallback, 180 * len(target_canon))
+                    span_dur = max(40 * len(target_canon), span_end - span_start)
+                    char_weights = [max(1, len(_norm_stem(cw))) for cw in target_canon]
+                    total_w = sum(char_weights) or 1
+                    cursor = span_start
+                    for k_idx, (cw, weight) in enumerate(zip(target_canon, char_weights)):
+                        if k_idx == len(target_canon) - 1:
+                            w_end = max(cursor + 35, span_start + span_dur)
+                        else:
+                            w_dur = max(35, int(round(span_dur * (weight / float(total_w)))))
+                            w_end = cursor + w_dur
+                        aligned.append({
+                            "word": cw,
+                            "start_ms": cursor,
+                            "end_ms": w_end,
+                            "duration_ms": max(35, w_end - cursor),
+                        })
+                        cursor = w_end
+
+        return aligned if aligned else word_timings
+
+    @classmethod
     def split_text_to_chunks(cls, text: str, max_words: int = 3, max_chars: int = 20) -> List[str]:
         """
         Chia một đoạn văn bản thành các cụm từ siêu ngắn gọn (2-3 từ, tối đa 20 ký tự),
@@ -468,6 +547,12 @@ class SubtitleHelper:
                         scene_hl_set.add(cleaned_tok)
 
             word_timings = getattr(scene, "word_timings", None)
+            if word_timings and len(word_timings) > 0:
+                word_timings = cls.align_word_timings_with_narration(
+                    word_timings,
+                    scene.narration,
+                    scene_duration_ms=scene_duration_ms,
+                )
 
             if word_timings and len(word_timings) > 0:
                 # ── CHẾ ĐỘ 1: ĐỒNG BỘ CHÍNH XÁC THEO MỐC TỪNG TỪ CỦA GIỌNG ĐỌC AI ──
@@ -501,15 +586,20 @@ class SubtitleHelper:
                     chunk_start_ms = current_offset_ms + c_words[0]["start_ms"]
                     chunk_end_ms = current_offset_ms + c_words[-1]["end_ms"]
 
-                    # Đệm chống giật hình: nếu chunk tiếp theo sát ngay (< 250ms), giữ chữ trên màn hình
+                    # Chuẩn Y2A-Auto (srt_transform_engine.py & subtitle_qc.py):
+                    # 1. Đảm bảo mật độ hiển thị CPS <= 22 ký tự/giây và tối thiểu 450ms
+                    vis_chars = sum(len(re.sub(r"\s+", "", w["word"])) for w in c_words)
+                    min_req_ms = max(450, min(950, int(vis_chars * 1000.0 / 22.0)))
+                    if chunk_end_ms - chunk_start_ms < min_req_ms:
+                        chunk_end_ms = chunk_start_ms + min_req_ms
+
+                    # 2. Gộp khoảng nghỉ siêu nhỏ (< 250ms) và chống chồng lấn (Overlap Guard) với chunk kế tiếp
                     if chunk_idx < len(chunks_data) - 1:
                         next_start_ms = current_offset_ms + chunks_data[chunk_idx + 1][0]["start_ms"]
                         if next_start_ms > chunk_end_ms and (next_start_ms - chunk_end_ms) < 250:
                             chunk_end_ms = next_start_ms
-
-                    # Đảm bảo chunk hiển thị tối thiểu 450ms
-                    if chunk_end_ms - chunk_start_ms < 450:
-                        chunk_end_ms = chunk_start_ms + 450
+                        elif chunk_end_ms > next_start_ms and next_start_ms > chunk_start_ms + 180:
+                            chunk_end_ms = next_start_ms
 
                     words = [w["word"] for w in c_words]
                     word_durations_cs = []
