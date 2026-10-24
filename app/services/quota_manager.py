@@ -92,11 +92,17 @@ class QuotaManager:
         "astute-arcanum-509506-d7": "YT-Pool-03-History (Gmail G)",
         "ai-youtube-studio-509521": "YT-Pool-04-Brazil (Gmail T)",
         "effective-cacao-511414-q3": "YT-Pool-05-Wildlife-Rescue (Gmail T)",
+        "yt-pool-06-backup-br": "YT-Pool-06-Backup-BR (Gmail T)",
     }
 
     @classmethod
     def get_project_label(cls, project_id: str) -> str:
-        return cls.PROJECT_FRIENDLY_LABELS.get(str(project_id or "").strip(), str(project_id or "default_project"))
+        pid = str(project_id or "").strip()
+        if pid in cls.PROJECT_FRIENDLY_LABELS:
+            return cls.PROJECT_FRIENDLY_LABELS[pid]
+        if "pool-06" in pid.lower() or "pool6" in pid.lower():
+            return f"YT-Pool-06-Backup-BR ({pid})"
+        return pid or "default_project"
 
     @staticmethod
     def get_tracker(project_id: str, cycle_date: Optional[str] = None) -> Dict[str, Any]:
