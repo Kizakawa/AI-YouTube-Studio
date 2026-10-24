@@ -2767,7 +2767,7 @@ function renderChannelsHub(channels, accounts) {
                         ✏️ Sửa Kênh
                     </button>
                     ${!isAuth ? `
-                        <button class="btn btn-primary btn-sm" style="background:var(--accent-amber); border-color:var(--accent-amber);" onclick="startGoogleAuth('${esc(ch.google_account)}', 'youtube')" title="Đăng nhập Google cấp quyền YouTube">
+                        <button class="btn btn-primary btn-sm" style="background:var(--accent-amber); border-color:var(--accent-amber);" onclick="startChannelAuth('${esc(ch.id)}', '${esc(ch.name)}', '${esc(ch.google_account)}')" title="Đăng nhập Google cấp quyền YouTube cho kênh này">
                             🔑 Cấp Quyền
                         </button>
                     ` : ''}
@@ -3738,10 +3738,11 @@ async function startGoogleAuth(accountId, service) {
         }, 1000);
 
         // Polling trạng thái mỗi 1.5 giây
+        let _oauthSuccessHandled = false;
         oauthPollTimer = setInterval(async () => {
             try {
                 const statusData = await apiGet(`/api/accounts/${accountId}/auth-status?service=${service}`);
-                if (!statusData) return;
+                if (!statusData || _oauthSuccessHandled) return;
 
                 // Hiển thị link xác thực ngay khi server cung cấp auth_url
                 if (statusData.auth_url && linkBox.style.display === 'none') {
@@ -3754,6 +3755,7 @@ async function startGoogleAuth(accountId, service) {
                 }
 
                 if (statusData.status === 'success') {
+                    _oauthSuccessHandled = true;
                     clearInterval(oauthPollTimer);
                     if (oauthCountdownTimer) { clearInterval(oauthCountdownTimer); oauthCountdownTimer = null; }
                     spinner.style.display = 'none';

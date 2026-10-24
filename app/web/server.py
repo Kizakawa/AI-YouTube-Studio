@@ -623,21 +623,23 @@ async def get_team_members() -> List[Dict[str, Any]]:
 _channel_token_health_cache: Dict[str, Dict[str, Any]] = {}
 
 def _check_channel_token_health(ch_id: str, token_file: Path) -> Dict[str, Any]:
-    """Kiểm tra xem token của kênh có thực sự dùng được hay bị invalid_grant (cache 60s)."""
+    """Kiểm tra xem token của kênh có thực sự dùng được hay bị invalid_grant (cache theo mtime + TTL)."""
     now = time.time()
-    cached = _channel_token_health_cache.get(ch_id)
-    if cached and (now - cached.get("checked_at", 0) < 60):
-        return cached
-
     if not token_file.exists():
-        res = {"valid": False, "expired": False, "title": None, "error": "No token file", "checked_at": now}
+        res = {"valid": False, "expired": False, "title": None, "error": "No token file", "checked_at": now, "mtime": 0}
         _channel_token_health_cache[ch_id] = res
         return res
+
+    mtime = token_file.stat().st_mtime
+    cached = _channel_token_health_cache.get(ch_id)
+    ttl = 600 if (cached and cached.get("valid")) else 60
+    if cached and cached.get("mtime") == mtime and (now - cached.get("checked_at", 0) < ttl):
+        return cached
 
     try:
         t_data = load_encrypted_json(token_file)
         if not t_data or "refresh_token" not in t_data:
-            res = {"valid": False, "expired": False, "title": None, "error": "Malformed token", "checked_at": now}
+            res = {"valid": False, "expired": False, "title": None, "error": "Malformed token", "checked_at": now, "mtime": mtime}
             _channel_token_health_cache[ch_id] = res
             return res
 
@@ -646,21 +648,22 @@ def _check_channel_token_health(ch_id: str, token_file: Path) -> Dict[str, Any]:
         creds = Credentials.from_authorized_user_info(t_data)
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())
-            # Save refreshed token
-            save_encrypted_json(token_file, json.loads(creds.to_json()))
+            merged = {**t_data, **json.loads(creds.to_json())}
+            save_encrypted_json(token_file, merged)
+            mtime = token_file.stat().st_mtime
 
-        res = {"valid": True, "expired": False, "title": t_data.get("channel_title"), "error": None, "checked_at": now}
+        res = {"valid": True, "expired": False, "title": t_data.get("channel_title"), "error": None, "checked_at": now, "mtime": mtime}
         _channel_token_health_cache[ch_id] = res
         return res
     except Exception as e:
         err_str = str(e)
         is_exp = "invalid_grant" in err_str or "expired" in err_str or "revoked" in err_str
-        res = {"valid": False, "expired": is_exp, "title": None, "error": err_str, "checked_at": now}
+        res = {"valid": False, "expired": is_exp, "title": None, "error": err_str, "checked_at": now, "mtime": mtime}
         _channel_token_health_cache[ch_id] = res
         return res
 
 @app.get("/api/channels")
-async def get_channels_matrix() -> List[Dict[str, Any]]:
+def get_channels_matrix() -> List[Dict[str, Any]]:
     cfg = _read_channels_yaml()
     channels = cfg.get("channels", [])
     raw_accounts = cfg.get("google_accounts", [])
@@ -3885,15 +3888,31 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
                         cfg = _read_channels_yaml()
                         all_chs = cfg.get("channels", [])
                         matched_ch = None
+                        norm_yt_id = (real_yt_id or "").strip().lower()
+                        norm_custom = (custom_url or "").strip().lower()
+                        norm_title = (real_yt_title or "").strip(' "\'').lower()
                         for c in all_chs:
-                            if c.get("id", "").lower() == (real_yt_id or "").lower():
+                            c_id = (c.get("id") or "").strip().lower()
+                            c_yt_id = (c.get("youtube_channel_id") or "").strip().lower()
+                            c_handle = (c.get("handle") or "").strip().lower()
+                            c_name = (c.get("name") or "").strip(' "\'').lower()
+                            if norm_yt_id and (c_id == norm_yt_id or c_yt_id == norm_yt_id):
                                 matched_ch = c
                                 break
-                            if c.get("name", "").strip().lower() == (real_yt_title or "").strip().lower():
+                            if norm_custom and (c_id == norm_custom or c_handle == norm_custom):
+                                matched_ch = c
+                                break
+                            if norm_title and c_name == norm_title:
                                 matched_ch = c
                                 break
 
-                        # Nếu không match chính xác, nếu chỉ có 1 kênh chưa có token thì match với kênh đó
+                        # Nếu không match chính xác, ưu tiên kênh thuộc account_id này (nếu tài khoản chỉ quản lý 1 kênh)
+                        if not matched_ch:
+                            acc_chs = [c for c in all_chs if c.get("google_account") == account_id]
+                            if len(acc_chs) == 1:
+                                matched_ch = acc_chs[0]
+
+                        # Nếu vẫn chưa tìm thấy, chọn kênh chưa có token
                         if not matched_ch:
                             for c in all_chs:
                                 ch_t_path = base_dir / "credentials" / "channels" / c.get("id", "") / "youtube_token.json"
@@ -3907,6 +3926,7 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
                             ch_token_dir = base_dir / "credentials" / "channels" / ch_target_id
                             ch_token_dir.mkdir(parents=True, exist_ok=True)
                             ch_token_file = ch_token_dir / "youtube_token.json"
+                            pool_token_file = ch_token_dir / f"youtube_token_{account_id}.json"
 
                             ch_t_dict = json.loads(token_data)
                             ch_t_dict["channel_id"] = real_yt_id
@@ -3914,6 +3934,8 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
                             if custom_url:
                                 ch_t_dict["custom_url"] = custom_url
                             save_encrypted_json(ch_token_file, ch_t_dict)
+                            save_encrypted_json(pool_token_file, ch_t_dict)
+                            _channel_token_health_cache.pop(ch_target_id, None)
                             logger.info(f"Đã tự động đồng bộ token cho kênh '{ch_target_id}' ({matched_channel_name})")
 
                             # Cập nhật channels.yaml
