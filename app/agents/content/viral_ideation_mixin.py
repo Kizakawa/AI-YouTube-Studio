@@ -360,109 +360,58 @@ CRITICAL CHANNEL ALIGNMENT & BINGE-WATCHING RULES:
 
         fallback_psychology_en = [
             {
-                "topic": "3 Subtle Signs Someone is Secretly JEALOUS of You",
-                "title": "3 Signs Someone is Secretly JEALOUS of You 🐍 #psychology",
-                "hook": "If a close friend does this ONE thing when you succeed, watch out...",
-                "angle": "Micro-expressions, backhanded compliments, downplaying achievements",
-                "pinned_comment": "Which sign hit closest to home? 1, 2, or 3? Be honest 👇",
+                "topic": "The Interrogation Water Cup Test: Why FBI Agents Place a Cup 6 Inches From a Suspect",
+                "title": "Why FBI Agents Put a Water Cup 6 Inches Away 🕵️‍♂️🥤 #Shorts #psychology #fbi",
+                "hook": "Guilty suspects always fail this simple water cup test.",
+                "angle": "Autonomic dry-mouth reflex under cortisol spike, barrier placement between suspect and detective",
+                "pinned_comment": "Quick Poll: In an interrogation, would you (1) drink the water or (2) never touch it? Vote 1 or 2! 👇",
                 "viral_formula": "Debate in Comments",
-                "predicted_retention": "155% - 165%",
-                "why_viral": "Nối tiếp hoàn hảo video 'Using You' — vạch trần bạn bè giả tạo, kích thích comment cực mạnh"
+                "predicted_retention": "140% - 160%",
+                "why_viral": "Kỹ thuật thẩm vấn FBI trực quan nối tiếp bài thắng 966 views 'Serial Killers In Court'"
             },
             {
-                "topic": "4 Body Language Signs Someone is Lying to Your Face",
-                "title": "4 Body Language Signs Someone is LYING to You 🤫 #psychology",
-                "hook": "Top FBI interrogators look for this exact 2-second throat twitch...",
-                "angle": "Swallowing reflex, eye direction change, frozen posture, speech delay",
-                "pinned_comment": "Have you ever caught someone using sign #2? What happened? 👇",
-                "viral_formula": "Double Tap & Protect",
-                "predicted_retention": "150% - 160%",
-                "why_viral": "Trang bị kỹ năng tự vệ xã hội, người xem bấm lưu video (Save) cực cao"
-            },
-            {
-                "topic": "How Toxic People Test Your Boundaries Before Using You",
-                "title": "How Toxic People TEST You Before Using You ♟️ #psychology",
-                "hook": "Manipulators NEVER attack you on day one. They start with this tiny test...",
-                "angle": "The fake vulnerability test, subtle favor test, crossing time boundaries",
-                "pinned_comment": "If you recognize sign #1, walk away immediately. Have you experienced this? 👇",
-                "viral_formula": "Curiosity Part 2",
-                "predicted_retention": "160% - 170%",
-                "why_viral": "Phần tiếp theo trực tiếp của '3 Signs They're Using You' — giải mã bước đi đầu tiên của kẻ thao túng"
-            },
-            {
-                "topic": "3 Signs Someone Has a CRUSH on You but Tries to Hide It",
-                "title": "3 Signs Someone Has a CRUSH on You (Secretly) 👀 #psychology",
-                "hook": "If someone likes you secretly, their body will betray them in 3 ways...",
-                "angle": "Pupil dilation, feet alignment, nervous tactile fiddling with drinks/jewelry",
-                "pinned_comment": "Did you think of someone specific while watching this? Tag them or drop an emoji 👇",
+                "topic": "Inside the -9.4 Decibel Chamber: Why No Human Brain Can Survive 45 Minutes of Total Silence",
+                "title": "Why Nobody Survives 45 Minutes in This Silent Room 🧠🔇 #Shorts #psychology #brain",
+                "hook": "Forty-five minutes in this silent room causes terrifying hallucinations.",
+                "angle": "Orfield Anechoic Chamber -9.4 dBA, hearing your own blood flow and lungs, auditory cortex hallucination",
+                "pinned_comment": "Quick Poll: Could you last (1) 45 minutes in total silence or (2) tap out in 10 minutes? Vote 1 or 2! 👇",
                 "viral_formula": "Debate in Comments",
-                "predicted_retention": "145% - 155%",
-                "why_viral": "Chủ đề tình cảm tò mò muôn thuở, người xem share cho bạn bè rất mạnh"
+                "predicted_retention": "145% - 165%",
+                "why_viral": "Ngách Thí nghiệm Não bộ Cực đoan đạt trung bình 4 triệu views trên YouTube Shorts Mỹ"
             },
             {
-                "topic": "3 Dark Psychology Tricks to NEVER Be Ignored Again",
-                "title": "3 Dark Psychology Tricks to NEVER Be Ignored 🧠 #psychology",
-                "hook": "If someone is ignoring your messages, DO NOT double text. Use this...",
-                "angle": "Strategic silence, status reversal, open loop curiosity trigger",
-                "pinned_comment": "Double tap to claim your power, and tell me: Which trick will you use first? 👇",
+                "topic": "How Las Vegas Casinos Use Oxygen, Carpet Patterns, and Zero Clocks to Hijack Your Brain",
+                "title": "How Casinos Hijack Your Brain Without You Knowing 🎰🧠 #Shorts #psychology #money",
+                "hook": "Casinos banned clocks and windows to trap your brain.",
+                "angle": "Gruen transfer labyrinth layout, geometric carpet eye-push, near-miss slot machine dopamine spike",
+                "pinned_comment": "Quick Poll: Have you ever lost track of time inside a casino or mall? (1) Yes or (2) Never! 👇",
                 "viral_formula": "Double Tap & Protect",
-                "predicted_retention": "150% - 165%",
-                "why_viral": "Đánh vào cái tôi bị tổn thương, trao quyền lực tức thì cho người xem"
+                "predicted_retention": "135% - 155%",
+                "why_viral": "Giải mã bẫy tâm lý tiền bạc và dopamine — thu hút tệp quảng cáo RPM cao nhất tại Mỹ"
+            },
+            {
+                "topic": "The 1971 Stanford Prison Collapse: How 24 Normal Students Turned Ruthless in Just 6 Days",
+                "title": "The Brain Experiment Shut Down After Just 6 Days 🚨🧠 #Shorts #psychology #experiment",
+                "hook": "Twenty-four healthy students turned ruthless inside a basement prison.",
+                "angle": "Philip Zimbardo Stanford Prison Experiment, mirrored sunglasses deindividuation, 6-day psychological breakdown",
+                "pinned_comment": "Quick Poll: Does power (1) corrupt good people or (2) expose who they really are? Vote 1 or 2! 👇",
+                "viral_formula": "Debate in Comments",
+                "predicted_retention": "145% - 165%",
+                "why_viral": "Thí nghiệm tâm lý học bị cấm trong lịch sử luôn có APV xem lặp trên 110%"
+            },
+            {
+                "topic": "Why Trained Liars Control Their Face But Always Betray Themselves With Their Feet (FBI Profiling)",
+                "title": "Why FBI Agents Watch Your FEET When You Lie 🕵️‍♂️👟 #Shorts #psychology #interrogation",
+                "hook": "FBI interrogators watch your feet, never your eyes, when you lie.",
+                "angle": "Limbic freeze response, unconscious foot-pointing toward exit door while face smiles",
+                "pinned_comment": "Quick Poll: When someone lies, do you check (1) their eyes or (2) their hands/feet? Vote 1 or 2! 👇",
+                "viral_formula": "Double Tap & Protect",
+                "predicted_retention": "140% - 160%",
+                "why_viral": "Kỹ thuật đọc vị cơ thể tại phòng thẩm vấn FBI dễ kiểm chứng ngay lập tức"
             }
         ]
 
-        fallback_psychology_vi = [
-            {
-                "topic": "3 Dấu Hiệu Tinh Vi Cho Thấy Ai Đó Đang Ngầm GHEN TỊ Với Bạn",
-                "title": "3 Dấu Hiệu Cho Thấy Ai Đó Đang Ngầm GHEN TỊ Với Bạn 🐍 #tamlyhoc",
-                "hook": "Nếu một người bạn thân làm điều này khi bạn thành công, hãy cẩn thận...",
-                "angle": "Vi biểu cảm, lời khen đểu, dập tắt niềm vui của người khác",
-                "pinned_comment": "Bạn từng gặp dấu hiệu số mấy ngoài đời thực? Chia sẻ thật lòng bên dưới 👇",
-                "viral_formula": "Debate in Comments",
-                "predicted_retention": "155% - 165%",
-                "why_viral": "Chạm đúng tâm lý bức xúc vì bị đồng nghiệp hoặc bạn thân đố kỵ"
-            },
-            {
-                "topic": "4 Ngôn Ngữ Cơ Thể Vạch Trần Kẻ Đang NÓI DỐI Trước Mặt Bạn",
-                "title": "4 Dấu Hiệu Cơ Thể Vạch Trần Kẻ NÓI DỐI Trắng Trợn 🤫 #tamlyhoc",
-                "hook": "Các chuyên gia thẩm vấn tội phạm luôn nhìn vào phản xạ nuốt nước bọt này...",
-                "angle": "Cổ họng co thắt, mắt chớp nhanh, tay chạm mũi hoặc gáy",
-                "pinned_comment": "Bạn đã từng bắt quả tang ai nói dối bằng dấu hiệu số 2 chưa? 👇",
-                "viral_formula": "Double Tap & Protect",
-                "predicted_retention": "150% - 160%",
-                "why_viral": "Kiến thức thực chiến, người xem bấm Tim và Lưu video cực cao"
-            },
-            {
-                "topic": "Cách Kẻ Thao Túng Dò Xét Giới Hạn Trước Khi LỢI DỤNG Bạn",
-                "title": "Cách Kẻ Thao Túng Thử Thách Bạn Trước Khi LỢI DỤNG ♟️ #tamlyhoc",
-                "hook": "Kẻ thao túng không bao giờ lộ mặt ngay. Chúng bắt đầu bằng bài test nhỏ này...",
-                "angle": "Nhờ vả vặt vãnh, giả vờ yếu đuối để thử mức độ dễ dãi",
-                "pinned_comment": "Nếu thấy dấu hiệu số 1, hãy dứt khoát ngay. Bạn có từng bị dính bẫy này? 👇",
-                "viral_formula": "Curiosity Part 2",
-                "predicted_retention": "160% - 170%",
-                "why_viral": "Nội dung cảnh báo tự vệ, kích thích tranh luận dữ dội"
-            },
-            {
-                "topic": "3 Dấu Hiệu Ai Đó Thích Thầm Bạn Nhưng Cố Tình Giấu Kín",
-                "title": "3 Dấu Hiệu Ai Đó Đang THÍCH THẦM Bạn Mà Cố Giấu 👀 #tamlyhoc",
-                "hook": "Dù người ấy có che giấu giỏi đến đâu, cơ thể họ sẽ phản bội qua 3 điều này...",
-                "angle": "Đồng tử giãn to, hướng mũi chân, hành động bối rối nghịch đồ vật",
-                "pinned_comment": "Xem xong video này bạn có nhớ đến ai không? Thả nhẹ một icon nhé 👇",
-                "viral_formula": "Debate in Comments",
-                "predicted_retention": "145% - 155%",
-                "why_viral": "Tò mò cảm xúc tuổi trẻ, tỷ lệ chia sẻ cho bạn bè cực lớn"
-            },
-            {
-                "topic": "3 Mẹo Tâm Lý Tối Khiến Đối Phương KHÔNG THỂ Ngó Lơ Bạn",
-                "title": "3 Đòn Tâm Lý Khiến Đối Phương Không Thể Ngó Lơ Bạn 🧠 #tamlyhoc",
-                "hook": "Nếu họ đang bơ tin nhắn của bạn, ĐỪNG nhắn thêm. Hãy dùng đòn tâm lý này...",
-                "angle": "Im lặng có chủ đích, đảo ngược vị thế, tạo khoảng trống tò mò",
-                "pinned_comment": "Bấm thích để bảo vệ giá trị bản thân. Bạn sẽ thử chiêu số mấy đầu tiên? 👇",
-                "viral_formula": "Double Tap & Protect",
-                "predicted_retention": "150% - 165%",
-                "why_viral": "Đánh thẳng vào nỗi đau bị phớt lờ, mang lại giải pháp hành động ngay"
-            }
-        ]
+        fallback_psychology_vi = fallback_psychology_en
 
         niche_topic_bank: List[str] = []
         try:

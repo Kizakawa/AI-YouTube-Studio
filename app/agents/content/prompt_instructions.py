@@ -151,10 +151,10 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
    - Telemetry across our US channels shows that poetic/literary metaphors ("That sweet compliment is a loaded weapon", "A word. A face. A sound.") and slow textbook questions cause 71%–79% Swipe-Away because US viewers swipe before decoding abstract language!
    - Million-view US Shorts (Zack D. Films 51M, Sean Andrew 51M, Historically 28M, Factasm 92M) use ULTRA-SIMPLE, GRADE-5 CONVERSATIONAL AMERICAN ENGLISH that points directly at the physical event, catastrophe, or confrontation in 5 to 8 words (1.6s–2.2s):
 2. NICHE-SPECIFIC MILLION-VIEW US HOOK ARCHETYPES (CHOOSE THE EXACT FIT):
-   - [Dark Psychology & Human Behavior]: Open with a concrete everyday quote/insult or a 2-second behavioral test:
-     * "When someone says 'just joking,' watch their eyes."
-     * "Turn any insult into instant respect with three words."
-     * "Three body language signs someone is lying right now."
+   - [Forensic Psychology, Extreme Brain Experiments & Money Traps]: Open with a concrete FBI/courtroom test, extreme brain experiment metric, or casino/billionaire trap in 5-8 words (NEVER generic dating/texting/fake-friend listicles):
+     * "Guilty suspects always fail this water cup test."
+     * "Forty-five minutes in this silent room causes hallucinations."
+     * "Casinos banned clocks and windows to trap you."
    - [Deep Sea & Earth Mysteries]: Open with a visual deictic pointer ("Look at this...", "At 2,000 meters...") + immediate physical danger:
      * "Look at this diver's suit at 1,000 feet."
      * "Scientists sealed this toxic cave for five million years."

@@ -478,8 +478,11 @@ NICHE_EXCLUSIVE_SIGNATURES: Dict[str, Tuple[List[str], str]] = {
     ),
     "psychology": (
         [
-            "narcissist", "gaslighting", "psychopath", "sociopath", "dark psychology",
+            "psychopath", "sociopath", "dark psychology", "forensic psychology",
             "body language", "micro-expression", "pathological liar", "fbi profiler",
+            "interrogation", "polygraph", "serial killer", "courtroom", "human brain",
+            "brain experiment", "sensory deprivation", "stanford prison", "dopamine",
+            "casino psychology", "cognitive bias", "lie detector", "decibel chamber",
         ],
         "ch_psychology_of_the_world",
     ),

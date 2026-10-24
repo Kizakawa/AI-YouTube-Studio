@@ -1,48 +1,76 @@
 id: psychology
-name: Tâm Lý Học Đen Tối & Giải Mã Thao Túng (Mastering Mind Control Style)
-badge: 🧠 Tâm Lý Học
+name: Tâm Lý Học Pháp Y, Thí Nghiệm Não Bộ & Giải Mã Bẫy Tiền Bạc (Forensic, Brain
+  Science & Money Psychology)
+badge: 🧠 Tâm Lý & Não Bộ
 icon: 🧠
-description: Chuyên sâu về tâm lý học hành vi, giải mã đòn thao túng ngầm, phân tích lời khai FBI/CIA,
-  đọc vị vi biểu cảm và phản đòn tâm lý thực chiến chuẩn phong cách @MasteringMindControl.
-target_audience: Khán giả 18-35 tuổi muốn nhận diện thao túng ngầm, tự vệ tâm lý, đọc vị đối phương và
-  làm chủ quyền lực tĩnh lặng trong các mối quan hệ xã hội.
+description: Chuyên sâu 3 trụ cột có tỷ lệ giữ chân (Stayed%) và đơn giá quảng cáo
+  (RPM) cao nhất thị trường Mỹ - (1) Tâm lý học Pháp y & Thẩm vấn Tội phạm FBI/Tòa
+  án (Forensic & Courtroom Psychology), (2) Thí nghiệm Não bộ & Cơ thể Cực đoan (Extreme
+  Brain & Sensory Experiments), (3) Giải mã Bẫy Tâm lý Tài chính, Casino & Tỷ phú
+  (Financial & Power Mind Traps).
+target_audience: Khán giả Mỹ & Quốc tế (18-45 tuổi) đam mê giải mã hành vi tội phạm
+  tại tòa án/phòng thẩm vấn, khám phá giới hạn sinh học của não bộ con người trong
+  điều kiện cực đoan và vạch trần các bẫy thao túng tiền bạc.
 script_blueprint:
-  tone_of_voice: Trầm tĩnh, sắc lạnh như dao mổ, uy quyền, trực diện không một từ thừa (Calm, surgical,
-    authoritative, forensic behavioral profiler — Grade-5 US spoken clarity).
-  pacing: Thời lượng vàng 34 - 40 giây (7 - 8 phân cảnh đầy đặn, 92 - 115 từ, 4.2 - 4.8 giây/cảnh). CẤM
-    dùng câu 1 từ rời rạc kiểu văn chương và CẤM lộ đáp án ngay ở Cảnh 2. Cảnh 1 (0-2.5s) PHẢI là câu
-    5-8 từ trực diện gắn con số cụ thể & nghịch lý hành vi vật lý quan sát được ngay lập tức. Cảnh 2-3
-    dựng tình huống đời thực mà kẻ thao túng/nói dối sử dụng, Cảnh 4-5 là Mid-Video Re-Hook giải phẫu
-    cơ chế thần kinh / FBI (hệ limbic, vi biểu cảm, phản xạ cơ thể ở giây thứ 15), Cảnh 6-7 mới tung Đòn
-    Phản Công Thực Chiến (Verbal / Behavioral Counter-Move) giữ chân người xem đến cuối, Cảnh 8 là Cầu
-    nối Vòng lặp Vô tận (Infinite Loop) lặp lại chủ ngữ Cảnh 1.
+  tone_of_voice: Trầm tĩnh, sắc lạnh như hồ sơ pháp y FBI & giải phẫu thần kinh học,
+    trực diện không một từ thừa (Surgical forensic profiler & neuro-scientist — Grade-5
+    US spoken clarity, Zack D. Films / JCS Criminal Psychology vibe).
+  pacing: Thời lượng vàng 28 - 35 giây (6 - 7 phân cảnh súc tích, 75 - 92 từ, 4.0
+    - 4.8 giây/cảnh để đẩy APV > 90%). CẤM dùng câu 1 từ rời rạc và CẤM làm chủ đề
+    tình cảm/nhắn tin/bạn bè chung chung. Cảnh 1 (0-2.0s) PHẢI là câu 5-8 từ trực
+    diện nêu thẳng vụ án/thí nghiệm não bộ/bẫy tiền bạc kèm con số vật lý cụ thể.
+    Cảnh 2-3 mô tả hiện trường phòng thẩm vấn/phòng thí nghiệm/sòng bạc, Cảnh 4 (giây
+    14-18) là Mid-Video Twist giải phẫu cơ chế thần kinh học (amygdala, dopamine,
+    vagus nerve, cognitive load), Cảnh 5-6 đưa ra bằng chứng thực nghiệm hoặc phép
+    thử tự kiểm chứng, Cảnh 7 là Cầu nối Vòng lặp Vô tận (Infinite Loop Bridge) nối
+    mượt về Cảnh 1.
   hook_formulas:
-  - 'Forensic Interrogation Glitch (#1 Winner Formula - 39.1% Stayed): ''Guilty suspects always drop this
-    one word during police questioning!'''
-  - 'Biological Empathy / Psychopath Test: ''Psychopaths fail this simple three-second yawn test every
-    single time!'''
-  - 'CIA Elicitation / Corrective Reflex: ''CIA agents never ask for secrets—they state one wrong fact
-    instead!'''
-  - 'Timed Body Language Leak: ''Watch their hands within three seconds of asking a hard question!'''
-  - '3 Behavioral Red Flags (#2 Winner Formula - 156% APV): ''Three micro-expressions expose a fake friend
-    within two seconds!'''
+  - Forensic Courtroom / Interrogation Glitch (#1 Proven Channel Winner - 39.1% Stayed)
+    - 'Guilty suspects always fail this two-second water cup test!'
+  - Extreme Brain / Sensory Deprivation Experiment (#1 US Macro Niche - 4M Avg Views)
+    - 'Forty-five minutes in this silent room makes your brain hallucinate!'
+  - Polygraph & FBI Behavioral Trap - 'FBI interrogators watch your feet, never your
+    eyes, when you lie!'
+  - Casino & Billionaire Money Trap (High-RPM Finance Psychology) - 'Casinos banned
+    windows and clocks to hijack your dopamine!'
+  - Criminal Profiling Paradox - 'Why serial killers smile the exact second the judge
+    reads the verdict!'
   viral_topic_bank_2026:
-  - 'Why Psychopaths Never Yawn When You Do: The Contagious Empathy Test'
-  - The 1 Word Guilty Suspects Always Drop In Police Interrogations (FBI Statement Analysis)
-  - 'CIA Elicitation Trick: How Stating 1 Wrong Fact Forces Anyone To Reveal Their Secret'
-  - Why Liars Touch Their Neck Within 3 Seconds Of A Hard Question (Carotid Pacifying)
-  - 3 Micro-Expressions That Expose Someone Who Secretly Envies You Within 2 Seconds
-  - 'The Door-In-The-Face Trick: How Asking For Something Insane Makes People Say Yes'
-  - Why Pathological Liars Always Add 3 Unnecessary Details To Every Fake Alibi
-  - How To Break A Manipulator's Control Using The 3-Second Grey Rock Protocol
-  - Why Guilty People Always Point With Both Hands When Accused
-  - Why Arrogant People Interrupt Your First 5 Words — And How To Stop It Cold
-  - 'The Pre-Suasion Trap: How 1 Innocent Question Rigs Your Decision Before You Answer'
-  - Why Fake Friends Always Freeze For 1 Second Before Celebrating Your Good News
-  narrative_structure: 'Beat 1: Nghịch lý hành vi / Lỗi ngôn ngữ 5-8 từ cực gắt (0-3s) -> Beat 2: Tình
-    huống thực tế chưa lộ lời giải (3-12s) -> Beat 3: Mid-Video Twist giải phẫu cơ chế thần kinh FBI/CIA
-    ở giây 15 (12-23s) -> Beat 4: Đòn Phản Công Thực Chiến ở Cảnh 6-7 & Cầu nối Vòng lặp Vô tận ở Cảnh
-    8 (23-38s)'
+  - 'The Interrogation Water Cup Test: Why FBI Agents Place a Cup 6 Inches From a
+    Suspect'
+  - 'Inside the -9.4 Decibel Chamber: Why No Human Brain Can Survive 45 Minutes of
+    Total Silence'
+  - Why Guilty Suspects Repeat Your Exact Question Before Answering in Police Interrogations
+  - 'White Room Torture: What 72 Hours of Complete Color Deprivation Does to the Human
+    Brain'
+  - How Las Vegas Casinos Use Oxygen, Carpet Patterns, and Zero Clocks to Hijack Your
+    Brain
+  - 'The 1971 Stanford Prison Collapse: How 24 Normal Students Turned Ruthless in
+    Just 6 Days'
+  - Why Trained Liars Control Their Face But Always Betray Themselves With Their Feet
+    (FBI Profiling)
+  - 'The Decoy Pricing Trap: How Movie Theaters and Tech Giants Trick Your Brain Into
+    Buying the Expensive Option'
+  - Why Suspects Stare Straight Unblinking After Telling a Lie (The Cognitive Load
+    Stare)
+  - 'The Monster Study of 1939: The Forbidden Speech Experiment That Broke Orphans
+    in 4 Months'
+  - Why Billionaires and Surgeons Wear the Exact Same Outfit Every Day (Decision Fatigue
+    Science)
+  - How Hostage Negotiators Use the 8-Second Late-Night FM DJ Voice to Disarm Armed
+    Suspects
+  - 'The Milgram Shock Machine: Why 65% of Ordinary People Obeyed Orders to Deliver
+    450 Volts'
+  - Why Your Brain Slows Down Time During a Car Crash (The Amygdala High-Speed Frame
+    Illusion)
+  - How Polygraph Examiners Catch You Before They Even Ask the Real Question (The
+    Control Lie Trap)
+  - 'The Sunk Cost Trap: How Auctions Force Smart Investors to Pay Double in 60 Seconds'
+  narrative_structure: 'Beat 1: Cú sốc Pháp y / Thí nghiệm Não bộ / Bẫy Tiền bạc 5-8
+    từ có con số (0-2s) -> Beat 2: Hiện trường phòng thẩm vấn / phòng thí nghiệm /
+    sòng bạc thực tế (2-12s) -> Beat 3: Mid-Video Twist giải phẫu cơ chế thần kinh
+    học & hồ sơ FBI ở giây 14 (12-22s) -> Beat 4: Phép thử thực tế & Cầu nối Vòng
+    lặp Vô tận ở Cảnh cuối (22-33s)'
   forbidden_words:
   - Chào mừng các bạn đã quay trở lại
   - Bạn có bao giờ tự hỏi
@@ -52,48 +80,59 @@ script_blueprint:
   - Welcome back to our channel
   - In today's video
   - Did you know that
+  - 3 signs someone has a crush on you
+  - double text
+  - narcissist blocked
+  - toxic ex
   cta_templates:
-  - Have you ever tested the Contagious Yawn reflex or caught someone dropping their pronouns when lying?
-    Drop your experience below 👇
-  - Which of these FBI behavioral tells have you spotted in real life? Comment below 👇
-  - Would you notice if someone used this psychological tactic on you? Share your thoughts below 👇
+  - 'Quick Poll: Would you last (1) 45 minutes in the silent room or (2) tap out in
+    10 minutes? Vote 1 or 2 below! 👇'
+  - 'Quick Poll: Do you think polygraph tests are (1) 90% accurate or (2) easy to
+    beat? Drop 1 or 2 below! 👇'
+  - 'Quick Poll: When someone lies to you, do you watch (1) their eyes or (2) their
+    hands/feet? Vote 1 or 2 below! 👇'
   anti_hallucination_rules:
-  - Luôn gắn liền với hiệu ứng/cơ chế tâm lý học và khoa học hành vi có thật (FBI Statement Analysis,
-    Contagious Yawn Mirror-Neuron Deficit, Cunningham's Law / CIA Elicitation, Carotid Pacifying Behavior,
-    Reciprocal Concessions / Door-in-the-Face, Grey Rock Method, Robert Cialdini Pre-Suasion, Paul Ekman
-    Micro-Expressions).
-  - Mỗi kịch bản phải cung cấp ít nhất 1 mệnh đề đối lập sắc bén và 1 đòn kiểm chứng / phản đòn thực tế
-    (Drill / Counter-move).
-  banned_lexicon: &id001
+  - Bắt buộc neo vào các thí nghiệm thần kinh học, kỹ thuật thẩm vấn FBI/tòa án hoặc
+    nguyên lý kinh tế học hành vi có thật (Orfield Anechoic Chamber -9.4 dBA, FBI
+    Joe Navarro Limbic Freeze / Foot Pointing, Reid Technique Water Cup Test, Stanford
+    Prison 1971, Milgram 450V Experiment, Dan Ariely Decoy Effect, Gruen Transfer
+    Casino Design, Cognitive Load Theory).
+  - Tuyệt đối KHÔNG viết các bài listicle tình cảm chung chung (3 signs someone likes
+    you, narcissist texting, fake friends).
+  banned_lexicon:
   - astrology horoscope
   - magic crystal
   - alien invasion
   - deep sea creature
   - football
   - soccer
+  - crush on you
+  - double text
+  - texting your ex
 visual_aesthetics:
-  art_style: Dark Psychological Noir & Monochrome Seinen Thriller Aesthetic (@MasteringMindControl / Monster
-    / Chiaroscuro Noir Style)
-  camera_angles: Extreme close-up psychological gaze, half-face shadow framing, tense two-person profile
-    confrontation in silence, low-angle cold authority portrait, silhouette in doorway shadow
-  color_palette: Monochrome charcoal and silver-white chiaroscuro noir, deep obsidian shadows, stark ivory
-    highlights, floating atmospheric film dust particles
-  master_prompt_prefix: masterpiece dark psychological thriller art, monochrome noir aesthetic, high-contrast
-    chiaroscuro lighting, intense micro-expression, seinen psychological anime & cinematic noir film still,
-    floating dust particles
-  master_prompt_suffix: stark silver and charcoal contrast, razor-sharp eyes and facial expression, moody
-    atmospheric depth, vertical 9:16 composition, no text, no watermark
-  negative_prompts: bright cheerful corporate office, smiling stock photo business people, colorful cartoon,
-    chibi, blurry, low quality, distorted faces, extra fingers, watermark, text, macro eye, dark muddy
-    face
+  art_style: Forensic Interrogation Noir & High-Contrast Neuro-Science Documentary
+    Aesthetic (JCS Criminal Psychology / Zack D. Films / Fincher Noir)
+  camera_angles: Police interrogation table two-shot, extreme close-up courtroom witness
+    eyes, glowing 3D brain MRI neural pathway scan, polygraph needle trembling on
+    paper, high-angle isolated white chamber, dark casino roulette table close-up
+  color_palette: Cold forensic steel-blue and obsidian noir shadows, stark clinical
+    white highlights, crimson alert accents
+  master_prompt_prefix: 8k vertical forensic documentary film still, Fincher style
+    cold clinical lighting, high-contrast noir shadows, ultra-detailed realistic human
+    expression and anatomical precision
+  master_prompt_suffix: razor-sharp focus, dramatic courtroom or laboratory atmosphere,
+    vertical 9:16 composition, no text, no watermark
+  negative_prompts: bright cheerful corporate office, smiling stock photo couple,
+    romantic dating scene, colorful cartoon, chibi, blurry, low quality, distorted
+    faces, extra fingers, watermark, text
   stock_video_keywords:
-  - detective interrogation room dark shadow
-  - two people tense silence confrontation shadow
-  - man cold expression shadow portrait
-  - chess grandmaster hand moving piece dark
-  - silhouette walking dark corridor
-  - broken mirror reflection face dark
-  - rain window silhouette thinking night
+  - police interrogation room detective suspect
+  - courtroom judge gavel trial witness
+  - human brain mri scan neurons glowing
+  - lie detector polygraph test needle
+  - soundproof room isolation experiment lab
+  - casino roulette chips las vegas money
+  - fbi agent investigating crime board
 subtitles:
   font_family: Arial Black, Montserrat, sans-serif
   font_weight: '900'
@@ -109,13 +148,23 @@ audio:
   preferred_voice_vi: vi-VN-NamMinhNeural
   rate: +6%
   pitch: -3Hz
-  bgm_vibe: dark suspense cello, low ambient psychological drone, minimalist noir tension
+  bgm_vibe: dark forensic thriller pulse, low sub-bass interrogation tension, clinical
+    neuro-mystery drone
   sfx_cues:
   - impact_sub
   - glitch
   - riser
   - reveal
-banned_lexicon: *id001
+banned_lexicon:
+- astrology horoscope
+- magic crystal
+- alien invasion
+- deep sea creature
+- football
+- soccer
+- crush on you
+- double text
+- texting your ex
 target_wpm: 165
 monetization:
   affiliate_enabled: false

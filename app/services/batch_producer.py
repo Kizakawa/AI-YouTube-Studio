@@ -88,36 +88,40 @@ CHANNELS_CONFIG = {
         "name": "Psychology of the world",
         "niche": "psychology",
         "language": "en",
-        "google_account": "account_1",
+        "google_account": "project_pool_2",
         "preferred_voice": "en-US-AndrewNeural",
         "handle": "@vv1n-oe9gs",
         "amazon_tag": "kizakawa-20",
         "publish_hour_utc": 17,
         "director_notes": (
-            "Target channel Psychology of the world. High-retention 5-Act forensic & behavioral psychology arc (27-34s crisp runtime): "
-            "HOOK (0-3s): Blunt 5-8 word Grade-5 English confrontation hook with a concrete number/timing and observable behavioral tell (NO 1-word poetic fragments). "
-            "DEVELOPMENT: Explain the hidden FBI/CIA or neuro-behavioral mechanism using concrete real-life interrogation or social scenarios. "
-            "CLIMAX (Scene 4 - 14s Twist): Name the exact psychological principle/test and deliver the surgical counter-move or verification drill. "
+            "Target channel Psychology of the world (US English). High-retention 5-Act Forensic Crime, Extreme Brain Experiments & Money/Power Psychology arc (28-34s crisp runtime, 6-7 scenes, 75-92 words for >90% APV): "
+            "STRICT NICHE PIVOT: Focus ONLY on (1) Forensic Courtroom & FBI Interrogation Psychology, (2) Extreme Human Brain & Sensory Deprivation Experiments, and (3) Casino/Billionaire Financial Mind Traps. NEVER write generic dating/texting/fake-friend listicles! "
+            "HOOK (0-2s): Blunt 5-8 word Grade-5 English statement naming the exact courtroom/interrogation test, brain experiment, or money trap + concrete number (decibels, hours, volts, seconds, dollars). "
+            "DEVELOPMENT: Real FBI/courtroom case mechanics, neurological reaction (amygdala, dopamine, vagus nerve), or behavioral economics proof. "
+            "CLIMAX (Scene 4 - 14s Twist): The shocking scientific/forensic reveal or counter-move that flips the viewer's assumption. "
             "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
-            "Tone: authoritative, surgical, analytical, gripping. Strict English only."
+            "Tone: surgical, forensic, clinical, gripping (JCS Criminal Psychology / Zack D. Films style). Strict English only."
         ),
         "topics": [
-            "Why Psychopaths Never Yawn When You Do: The Contagious Empathy Test",
-            "The 1 Word Guilty Suspects Always Drop In Police Interrogations (FBI Statement Analysis)",
-            "CIA Elicitation Trick: How Stating 1 Wrong Fact Forces Anyone To Reveal Their Secret",
-            "Why Liars Touch Their Neck Within 3 Seconds Of A Hard Question (Carotid Pacifying)",
-            "3 Micro-Expressions That Expose Someone Who Secretly Envies You Within 2 Seconds",
-            "The Door-In-The-Face Trick: How Asking For Something Insane Makes People Say Yes",
-            "Why Pathological Liars Always Add 3 Unnecessary Details To Every Fake Alibi",
-            "How To Break A Manipulator's Control Using The 3-Second Grey Rock Protocol",
-            "Why Guilty People Always Point With Both Hands When Accused",
-            "Why Arrogant People Interrupt Your First 5 Words — And How To Stop It Cold",
-            "The Pre-Suasion Trap: How 1 Innocent Question Rigs Your Decision Before You Answer",
-            "Why Fake Friends Always Freeze For 1 Second Before Celebrating Your Good News",
+            "The Interrogation Water Cup Test: Why FBI Agents Place a Cup 6 Inches From a Suspect",
+            "Inside the -9.4 Decibel Chamber: Why No Human Brain Can Survive 45 Minutes of Total Silence",
+            "Why Guilty Suspects Repeat Your Exact Question Before Answering in Police Interrogations",
+            "White Room Torture: What 72 Hours of Complete Color Deprivation Does to the Human Brain",
+            "How Las Vegas Casinos Use Oxygen, Carpet Patterns, and Zero Clocks to Hijack Your Brain",
+            "The 1971 Stanford Prison Collapse: How 24 Normal Students Turned Ruthless in Just 6 Days",
+            "Why Trained Liars Control Their Face But Always Betray Themselves With Their Feet (FBI Profiling)",
+            "The Decoy Pricing Trap: How Movie Theaters and Tech Giants Trick Your Brain Into Buying the Expensive Option",
+            "Why Suspects Stare Straight Unblinking After Telling a Lie (The Cognitive Load Stare)",
+            "The Monster Study of 1939: The Forbidden Speech Experiment That Broke Orphans in 4 Months",
+            "Why Billionaires and Surgeons Wear the Exact Same Outfit Every Day (Decision Fatigue Science)",
+            "How Hostage Negotiators Use the 8-Second Late-Night FM DJ Voice to Disarm Armed Suspects",
+            "The Milgram Shock Machine: Why 65% of Ordinary People Obeyed Orders to Deliver 450 Volts",
+            "Why Your Brain Slows Down Time During a Car Crash (The Amygdala High-Speed Frame Illusion)",
+            "How Polygraph Examiners Catch You Before They Even Ask the Real Question (The Control Lie Trap)",
         ],
         "default_tags": [
-            "shorts", "psychology", "darkpsychology", "manipulation", "mindset",
-            "bodylanguage", "humanbehavior", "lies", "socialskills", "viral",
+            "shorts", "psychology", "forensicpsychology", "brainscience", "interrogation",
+            "fbi", "humanbehavior", "neuroscience", "mindtraps", "viral",
         ],
     },
     "ch_wild_odyssey": {

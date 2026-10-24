@@ -302,12 +302,15 @@ CRITICAL CONSTRAINT: Avoid passive or purely bleak titles; every title and hook 
 2. Extreme Biomechanical Metrics: Anchor the first 3 seconds with a real physical measurement (PSI bite force, claw pressure, speed in mph/kmh, strike milliseconds).
 3. STRICT DOMAIN LOCK (CHỐNG NHẦM LẪN VỚI KÊNH BIỂN SÂU): 100% TERRESTRIAL / LAND & JUNGLE WILDLIFE ONLY! NEVER suggest deep-sea, ocean trenches, submarines, whales, sharks, or marine monsters.{auditor_note}
 """
-    else:  # psychology / dark psychology / self-mastery
+    else:  # psychology / forensic crime, extreme brain science & money traps
         return f"""
-🌍 VIRAL SHORTS STRUCTURAL DIRECTIVES (DARK PSYCHOLOGY & HUMAN BEHAVIOR):
-1. Observable Behavioral Glitches & Micro-Expressions ("Instinct A vs Deception B"): Focus on concrete, verifiable physical or verbal behaviors (e.g., eye-freeze, foot direction, question repetition).
-2. High-Stakes Interpersonal Defense: Frame the hook around a specific real-world situation with a measurable timing or count in the first 3 seconds.
-3. Actionable Tactical Payoff: Deliver a clear, memorable psychological counter-move before the seamless loop.{auditor_note}
+🌍 VIRAL SHORTS STRUCTURAL DIRECTIVES (FORENSIC CRIME, EXTREME BRAIN EXPERIMENTS & MONEY PSYCHOLOGY — ZERO GENERIC DATING/TEXTING LISTICLES):
+1. 3 High-Retention, High-RPM Pillars ONLY:
+   - Pillar A (Forensic & Courtroom Psychology): Real FBI interrogation traps, courtroom suspect tells, polygraph secrets, hostage negotiation tactics (proven #1 channel winner formula: 'Why Serial Killers Always Smile In Court').
+   - Pillar B (Extreme Brain & Body Neuro-Experiments): What happens to the human brain in -9.4 dB silent chambers, 72-hour white room isolation, Stanford Prison 6-day collapse, Milgram 450V shock experiment, or sensory deprivation.
+   - Pillar C (Billionaire, Casino & Financial Mind Traps): How casinos, auctions, and tech giants hijack dopamine and decision-making (Decoy Effect, Sunk Cost Trap, Gruen Transfer).
+2. STRICTLY FORBIDDEN TOPICS: NEVER suggest generic relationship/texting/fake-friend listicles ('3 Signs They're Using You', 'Narcissist Texts', 'Crush on You', 'How to Not Be Ignored')—these suffer >80% swipe-away!
+3. Concrete Physical Metric in First 2 Seconds: Every title and 0.0s hook MUST anchor on a hard measurement (decibels, hours, volts, seconds, feet, dollars).{auditor_note}
 """
 
 
