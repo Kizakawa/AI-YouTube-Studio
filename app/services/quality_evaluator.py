@@ -540,34 +540,48 @@ Respond ONLY in valid JSON:
                 hard_fail = True
                 issues.append(f"Thời lượng ngoài ngưỡng Shorts ({duration_sec:.1f}s, yêu cầu 20s-60s).")
 
-            # 5. Frame Sharpness & Black-Screen Inspection tại Hook (Tối đa 10 điểm)
+            # 5. Frame Sharpness & Black-Screen Inspection tại Hook (Tối đa 10 điểm — Bắt buộc >= 12.0)
             frame_pts = 7.5
             sample_sharpness = 0.0
             try:
                 with tempfile.TemporaryDirectory() as td:
-                    f_hook = str(Path(td) / "hook_frame.jpg")
-                    t_pos = min(1.0, max(0.2, duration_sec * 0.1))
-                    subprocess.run(
-                        ["ffmpeg", "-v", "error", "-y", "-ss", f"{t_pos:.2f}", "-i", str(p), "-frames:v", "1", f_hook],
-                        capture_output=True,
-                        timeout=10,
-                    )
-                    if Path(f_hook).exists() and Path(f_hook).stat().st_size > 1000:
-                        if VisualCritic._is_solid_color_or_black(f_hook):
-                            frame_pts = 0.0
-                            hard_fail = True
-                            issues.append("Khung hình mở đầu (Hook) bị đen kịt hoặc đơn sắc lỗi!")
+                    t_probes = [
+                        min(0.35, max(0.20, duration_sec * 0.05)),
+                        min(1.0, max(0.65, duration_sec * 0.10)),
+                    ]
+                    probe_sharp_list: List[float] = []
+                    has_black_hook = False
+                    for idx_p, t_pos in enumerate(t_probes):
+                        f_hook = str(Path(td) / f"hook_frame_{idx_p}.jpg")
+                        subprocess.run(
+                            ["ffmpeg", "-v", "error", "-y", "-ss", f"{t_pos:.2f}", "-i", str(p), "-frames:v", "1", "-q:v", "2", f_hook],
+                            capture_output=True,
+                            timeout=10,
+                        )
+                        if Path(f_hook).exists() and Path(f_hook).stat().st_size > 1000:
+                            if VisualCritic._is_solid_color_or_black(f_hook):
+                                has_black_hook = True
+                                break
+                            probe_sharp_list.append(float(VisualCritic._measure_sharpness(f_hook)))
+                    if has_black_hook:
+                        frame_pts = 0.0
+                        hard_fail = True
+                        issues.append("Khung hình mở đầu (Hook) bị đen kịt hoặc đơn sắc lỗi!")
+                    elif probe_sharp_list:
+                        sample_sharpness = (
+                            max(probe_sharp_list)
+                            if min(probe_sharp_list) >= 8.5
+                            else min(probe_sharp_list)
+                        )
+                        if sample_sharpness >= 12.0:
+                            frame_pts = min(10.0, 8.2 + (sample_sharpness - 12.0) * 0.25)
+                            strengths.append(f"Khung hình mở đầu sắc nét đạt chuẩn (sharpness={sample_sharpness:.2f} >= 12.0).")
                         else:
-                            sample_sharpness = VisualCritic._measure_sharpness(f_hook)
-                            if sample_sharpness >= 6.0:
-                                frame_pts = min(10.0, 7.0 + (sample_sharpness - 6.0) * 0.35)
-                            elif sample_sharpness >= 4.2:
-                                frame_pts = 5.0 + (sample_sharpness - 4.2) * 1.1
-                                issues.append(f"Khung hình mở đầu hơi mờ (sharpness={sample_sharpness:.1f}).")
-                            else:
-                                frame_pts = 2.0
-                                hard_fail = True
-                                issues.append(f"Khung hình mở đầu quá mờ nhòe (sharpness={sample_sharpness:.1f} < 4.2)!")
+                            frame_pts = 2.0
+                            hard_fail = True
+                            issues.append(
+                                f"Khung hình mở đầu chưa đạt chuẩn độ sắc nét (sharpness={sample_sharpness:.2f} < 12.0) — chặn xuất bản!"
+                            )
             except Exception as ex_frame:
                 logger.debug(f"[QualityEvaluator] Không thể trích xuất frame kiểm tra độ nét: {ex_frame}")
 
@@ -608,6 +622,10 @@ Respond ONLY in valid JSON:
                 if duration_sec >= 6.0 and cuts_first_3s == 0 and total_cuts < 3 and freeze_max_sec >= 1.8:
                     hard_fail = True
                     issues.append("Không có nhát cắt chuyển cảnh hoặc chuyển động thực trong 5 giây đầu — chặn xuất bản!")
+                elif cuts_first_3s > 6:
+                    hard_fail = True
+                    frame_pts = min(frame_pts, 2.0)
+                    issues.append(f"Cắt cảnh mở đầu quá dày gây nhấp nháy ({cuts_first_3s} cuts > 6) — chặn xuất bản!")
                 else:
                     strengths.append(f"Nhịp cắt/chuyển động mở đầu đạt chuẩn ({cuts_first_3s} cuts đầu, tổng {total_cuts} cuts).")
 

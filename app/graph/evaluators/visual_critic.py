@@ -843,12 +843,13 @@ Return ONLY valid JSON in this exact format:
                         except Exception:
                             pass
                         sharpness = self._measure_sharpness(str(p))
-                        if sharpness < 5.8:
-                            aes_score = max(3.5, round(sharpness * 0.9, 1))
-                            issues.append(f"Ảnh bị mờ nhòe / thiếu độ sắc nét (sharpness={sharpness:.1f} < 5.8)")
+                        min_req_sharpness = 12.0 if scene_id == 1 else 5.8
+                        if sharpness < min_req_sharpness:
+                            aes_score = max(3.5, round((sharpness * 0.52) if scene_id == 1 else (sharpness * 0.9), 1))
+                            issues.append(f"Ảnh bị mờ nhòe / thiếu độ sắc nét (sharpness={sharpness:.1f} < {min_req_sharpness:.1f})")
                             failed = True
                         elif not failed:
-                            aes_score = round(min(9.8, 7.6 + (sharpness - 5.8) * 0.22), 1)
+                            aes_score = round(min(9.8, 7.6 + (sharpness - min_req_sharpness) * 0.22), 1)
                         img_hash = self._compute_image_hash(str(p))
                         if img_hash:
                             sig = [img_hash]
@@ -860,13 +861,36 @@ Return ONLY valid JSON in this exact format:
                 try:
                     sig = self._media_signature(str(p))
                     prod_m = str(item.get("production_method") or "")
-                    if media_type == "hook_ready_video" or prod_m in (
+                    is_pregraded_hook = media_type == "hook_ready_video" or prod_m in (
                         "CLIMAX_REAL_VIDEO_CONTINUOUS_PEAK",
                         "CLIMAX_PEAK_SHORT_SPLICE",
                         "MONSTER_3D_CGI_VIDEO_PEAK",
                         "CLIMAX_STOCK_VIDEO_REAL_MOTION",
-                    ):
-                        # Clip đã vượt qua kiểm duyệt gốc & Gemini Vision trước khi phủ LUT màu tối (niche grading)
+                    )
+                    if scene_id == 1:
+                        from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
+                        ok_s1_sh, s1_sh_val = _ensure_hook_clip_sharpness_and_luma(str(p), min_sharpness=12.0)
+                        if not ok_s1_sh:
+                            aes_score = max(3.8, round(s1_sh_val * 0.5, 1))
+                            issues.append(
+                                f"Khung hình mở đầu (Cảnh 1) chưa đạt chuẩn độ sắc nét (sharpness={s1_sh_val:.2f} < 12.0)"
+                            )
+                            failed = True
+                        elif is_pregraded_hook:
+                            aes_score = 9.2
+                        else:
+                            clip_gate = self.inspect_clip_before_concat(
+                                str(p),
+                                min_short_edge=720,
+                                min_sharpness=12.0,
+                                check_watermark=True,
+                            )
+                            aes_score = float(clip_gate.get("score", 8.0))
+                            if not clip_gate.get("passed", True):
+                                issues.extend(clip_gate.get("issues") or ["Clip Cảnh 1 không đạt cổng kiểm duyệt chất lượng/watermark"])
+                                failed = True
+                    elif is_pregraded_hook:
+                        # Clip thân đã vượt qua kiểm duyệt gốc & Gemini Vision trước khi phủ LUT màu tối (niche grading)
                         aes_score = 9.2
                     else:
                         clip_gate = self.inspect_clip_before_concat(

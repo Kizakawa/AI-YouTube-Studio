@@ -52,6 +52,12 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
         cam_motion = m.get("camera_motion") or ("hyper_zoom" if sc_id == 1 else _motion_cycle[idx_m % len(_motion_cycle)])
         cur_media_path = str(m.get("media_path") or "")
         cur_media_type = str(m.get("media_type") or "image")
+        if sc_id == 1 and cur_media_path and Path(cur_media_path).exists() and cur_media_path.lower().endswith((".mp4", ".mov", ".webm")):
+            try:
+                from app.graph.nodes.hook_video_node import _ensure_hook_clip_sharpness_and_luma
+                _ensure_hook_clip_sharpness_and_luma(cur_media_path, min_sharpness=12.0)
+            except Exception as e_s1_pre:
+                logger.debug(f"[RenderNode] Pre-render hook sharpness check skip: {e_s1_pre}")
 
         sc_dict = {
             "scene_id": sc_id,

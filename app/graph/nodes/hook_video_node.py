@@ -211,6 +211,104 @@ def _splice_dual_beat_hook_clip(
                 pass
 
 
+def _ensure_hook_clip_sharpness_and_luma(
+    clip_path: str,
+    min_sharpness: float = 12.0,
+) -> tuple[bool, float]:
+    """
+    Đo độ sắc nét (`hook_frame_sharpness`) & độ sáng tại 2 mốc mở đầu (`0.25s` và `0.85s`) của clip Hook.
+    Nếu độ nét < `min_sharpness` (12.0) hoặc khung hình thiếu tương phản/tối mờ:
+    - Tự động chạy bộ lọc FFmpeg nâng sáng vùng tối + tăng nét vi mô (`eq` + `unsharp`) ngay tại chỗ.
+    - Đo lại để đảm bảo `hook_frame_sharpness >= min_sharpness` và không có khung hình đen/đơn sắc.
+    """
+    import shutil
+    import tempfile
+    from app.graph.evaluators.visual_critic import VisualCritic
+
+    p_clip = Path(clip_path)
+    if not p_clip.exists() or p_clip.stat().st_size < 8_000:
+        return False, 0.0
+
+    def _probe_clip_sharpness(target_mp4: str) -> tuple[bool, float]:
+        probe_times = (0.25, 0.85)
+        scores: List[float] = []
+        with tempfile.TemporaryDirectory() as td:
+            for idx_t, t_sec in enumerate(probe_times):
+                f_jpg = str(Path(td) / f"hk_probe_{idx_t}.jpg")
+                subprocess.run(
+                    [
+                        "ffmpeg", "-v", "error", "-y",
+                        "-ss", f"{t_sec:.2f}",
+                        "-i", target_mp4,
+                        "-frames:v", "1",
+                        "-q:v", "2",
+                        f_jpg,
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=8,
+                    check=False,
+                )
+                if not Path(f_jpg).exists() or Path(f_jpg).stat().st_size < 1_000:
+                    continue
+                if VisualCritic._is_solid_color_or_black(f_jpg):
+                    return False, 0.0
+                scores.append(float(VisualCritic._measure_sharpness(f_jpg)))
+        if not scores:
+            return False, 0.0
+        # Lấy max của 2 điểm lấy mẫu đầu (đồng bộ với QualityEvaluator) nhưng đảm bảo frame đầu tiên (0.25s) không bị mờ rớt sâu
+        eff_sharp = max(scores) if min(scores) >= (min_sharpness * 0.72) else min(scores)
+        return eff_sharp >= min_sharpness, round(eff_sharp, 2)
+
+    try:
+        passed_init, sharp_init = _probe_clip_sharpness(str(p_clip))
+        if passed_init:
+            return True, sharp_init
+
+        # Tự động nâng cấp độ sắc nét đa tầng (Multi-Scale Unsharp + Shadow/Contrast Lift) để đạt >= min_sharpness trên chuẩn 256x256
+        tmp_enh = str(p_clip.with_name(f"{p_clip.stem}_sharp_enh.mp4"))
+        if sharp_init < 9.5:
+            vf_enhance = (
+                "eq=brightness=0.06:contrast=1.32:gamma=1.24:saturation=1.10,"
+                "unsharp=11:11:1.45:11:11:0.0,unsharp=5:5:1.25:5:5:0.0"
+            )
+        else:
+            vf_enhance = (
+                "eq=brightness=0.04:contrast=1.22:gamma=1.16:saturation=1.06,"
+                "unsharp=9:9:1.25:9:9:0.0,unsharp=5:5:1.10:5:5:0.0"
+            )
+        subprocess.run(
+            [
+                "ffmpeg", "-v", "error", "-y",
+                "-i", str(p_clip),
+                "-vf", vf_enhance,
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                "-pix_fmt", "yuv420p", "-color_range", "tv",
+                "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+                "-c:a", "copy",
+                tmp_enh,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=18,
+            check=False,
+        )
+        if Path(tmp_enh).exists() and Path(tmp_enh).stat().st_size > 8_000:
+            passed_enh, sharp_enh = _probe_clip_sharpness(tmp_enh)
+            if sharp_enh > sharp_init:
+                shutil.move(tmp_enh, str(p_clip))
+                logger.info(
+                    f"✨ [HookSharpnessGate] Đã nâng cấp độ sắc nét Hook '{p_clip.name}': "
+                    f"{sharp_init:.2f} -> {sharp_enh:.2f} (yêu cầu >= {min_sharpness:.1f})"
+                )
+                return passed_enh, sharp_enh
+            Path(tmp_enh).unlink(missing_ok=True)
+        return False, sharp_init
+    except Exception as e_sh_gate:
+        logger.debug(f"[HookSharpnessGate] Lỗi kiểm tra/nâng độ nét '{clip_path}': {e_sh_gate}")
+        return False, 0.0
+
+
 @trace_custom_span("HookVideoNode.produce_and_score_hook", run_type="chain")
 async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[str, Any]:
     """
@@ -968,7 +1066,7 @@ Return ONLY valid JSON:
                         )
                         insp_ms = clean_ms_path if (Path(clean_ms_path).exists() and Path(clean_ms_path).stat().st_size > 20_000) else multi_v_path
                         ms_gate = VisualCritic.inspect_clip_before_concat(
-                            insp_ms, min_short_edge=720, min_sharpness=5.2, check_watermark=True, allow_snow=True, auto_sanitize=True
+                            insp_ms, min_short_edge=720, min_sharpness=7.2, check_watermark=True, allow_snow=True, auto_sanitize=True
                         )
                         if ms_gate.get("passed", False):
                             peak_meta_ms = {
@@ -1056,7 +1154,7 @@ Return ONLY valid JSON:
             gate_res = VisualCritic.inspect_clip_before_concat(
                 inspect_target,
                 min_short_edge=720,
-                min_sharpness=5.4,
+                min_sharpness=7.2,
                 check_watermark=True,
                 allow_snow=True,
                 auto_sanitize=True,
@@ -1440,6 +1538,55 @@ Return ONLY valid JSON:
         )
         final_hook_visual_mode = "video"
         if Path(hook_output_clip).exists() and Path(hook_output_clip).stat().st_size > 10_000:
+            ok_s1_sharp, s1_sharp_val = _ensure_hook_clip_sharpness_and_luma(hook_output_clip, min_sharpness=12.0)
+            if not ok_s1_sharp and other_passing:
+                for alt_cand in other_passing:
+                    alt_v_path = alt_cand["video_path"]
+                    alt_clean_p = alt_cand.get("clean_peak_path") or alt_v_path
+                    alt_use_pre = alt_clean_p != alt_v_path and Path(alt_clean_p).exists()
+                    alt_peak_start = float(alt_cand.get("peak_offset_sec", 0.0))
+                    alt_out_tmp = str(work_dir / "hook_motion_001_alt_sharp.mp4")
+                    try:
+                        trim_video(
+                            input_path=alt_clean_p if alt_use_pre else alt_v_path,
+                            duration_seconds=target_hook_duration_sec,
+                            output_path=alt_out_tmp,
+                            width=1080,
+                            height=1920,
+                            fps=30,
+                            is_scifi=is_scifi,
+                            niche=atmosphere_fx,
+                            apply_grading=True,
+                            is_hook_scene=True,
+                            fair_use_transform=not alt_use_pre,
+                            start_offset_sec=0.0 if alt_use_pre else alt_peak_start,
+                            preserve_continuous_flow=True,
+                        )
+                        ok_alt_sh, alt_sh_val = _ensure_hook_clip_sharpness_and_luma(alt_out_tmp, min_sharpness=12.0)
+                        if ok_alt_sh or alt_sh_val > s1_sharp_val:
+                            import shutil as _sh_alt
+                            _sh_alt.move(alt_out_tmp, hook_output_clip)
+                            best_v_path = alt_v_path
+                            clean_p_path = alt_clean_p
+                            use_precleaned = alt_use_pre
+                            peak_start = alt_peak_start
+                            natural_peak_dur = float(alt_cand.get("peak_duration_sec") or target_hook_duration_sec)
+                            m_yt_alt = re.search(r"yt_hook_cand_\d+_([A-Za-z0-9_-]{11})", Path(alt_v_path).name)
+                            hook_vid_id = m_yt_alt.group(1) if m_yt_alt else ""
+                            hook_vid_title = candidate_titles.get(hook_vid_id) or candidate_titles.get(Path(alt_v_path).stem, "")
+                            used_second_paths.add(alt_v_path)
+                            ok_s1_sharp, s1_sharp_val = ok_alt_sh, alt_sh_val
+                            logger.info(
+                                f"🔄 [HookSharpnessGate] Đã chuyển Cảnh 1 sang ứng viên sắc nét hơn '{Path(alt_v_path).name}' "
+                                f"(sharpness={s1_sharp_val:.2f} >= 12.0)"
+                            )
+                            if ok_alt_sh:
+                                break
+                        else:
+                            Path(alt_out_tmp).unlink(missing_ok=True)
+                    except Exception:
+                        Path(alt_out_tmp).unlink(missing_ok=True)
+
             rag.verify_and_commit_in_job_clip(
                 job_id=job_id,
                 scene_id=1,
@@ -1521,6 +1668,7 @@ Return ONLY valid JSON:
                         preserve_continuous_flow=True,
                     )
                     if Path(hook_output_clip_s2).exists() and Path(hook_output_clip_s2).stat().st_size > 10_000:
+                        _ensure_hook_clip_sharpness_and_luma(hook_output_clip_s2, min_sharpness=10.5)
                         ok_s2, _ = rag.verify_and_commit_in_job_clip(
                             job_id=job_id,
                             scene_id=2,
@@ -1683,22 +1831,24 @@ Return ONLY valid JSON:
                 allow_3d_cgi_monster=is_3d_cgi_subject,
             )
             if st_res and st_res.get("media_path") and Path(st_res["media_path"]).exists():
-                stock_hook_ok = True
-                final_hook_visual_mode = "video"
-                hook_mode = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
-                pre_resolved_hook_media[1] = {
-                    "media_path": st_res["media_path"],
-                    "media_type": "hook_ready_video",
-                    "production_method": "CLIMAX_STOCK_VIDEO_REAL_MOTION",
-                    "visual_strategy": "STOCK_VIDEO",
-                    "strategy_rationale": f"Real motion Hook video ({st_res.get('title', 'Stock HD')})",
-                }
-                scene_1["media_path"] = st_res["media_path"]
-                scene_1["media_type"] = "hook_ready_video"
-                scene_1["production_method"] = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
-                if scenes_media:
-                    scenes_media[0] = scene_1
-                logger.info(f"🎬 [HookVideoNode] Đã nạp Video chuyển động thật cho Cảnh 1: {st_res['media_path']}")
+                ok_st_sharp, _ = _ensure_hook_clip_sharpness_and_luma(st_res["media_path"], min_sharpness=12.0)
+                if ok_st_sharp:
+                    stock_hook_ok = True
+                    final_hook_visual_mode = "video"
+                    hook_mode = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
+                    pre_resolved_hook_media[1] = {
+                        "media_path": st_res["media_path"],
+                        "media_type": "hook_ready_video",
+                        "production_method": "CLIMAX_STOCK_VIDEO_REAL_MOTION",
+                        "visual_strategy": "STOCK_VIDEO",
+                        "strategy_rationale": f"Real motion Hook video ({st_res.get('title', 'Stock HD')})",
+                    }
+                    scene_1["media_path"] = st_res["media_path"]
+                    scene_1["media_type"] = "hook_ready_video"
+                    scene_1["production_method"] = "CLIMAX_STOCK_VIDEO_REAL_MOTION"
+                    if scenes_media:
+                        scenes_media[0] = scene_1
+                    logger.info(f"🎬 [HookVideoNode] Đã nạp Video chuyển động thật cho Cảnh 1: {st_res['media_path']}")
         except Exception as e_st_hk:
             logger.debug(f"[HookVideoNode] Stock video hook rescue skip: {e_st_hk}")
 
@@ -1748,6 +1898,7 @@ Return ONLY valid JSON:
                     is_hook_scene=True,
                 )
                 if Path(hook_output_clip).exists() and Path(hook_output_clip).stat().st_size > 10_000:
+                    _ensure_hook_clip_sharpness_and_luma(hook_output_clip, min_sharpness=12.0)
                     hook_mode = f"CLIMAX_IMAGES_LIVE_FX_{atmosphere_fx.upper()}_{len(pose_list)}SHOTS"
                     pre_resolved_hook_media[1] = {
                         "media_path": hook_output_clip,
