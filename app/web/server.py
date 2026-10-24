@@ -5146,6 +5146,7 @@ async def start_channel_oauth(
         logger.info(f"Yêu cầu OAuth kênh từ thiết bị khách ({client_ip}), không mở trình duyệt trên máy chủ.")
 
     def _channel_oauth_worker():
+        nonlocal channel_id, ch_name, primary_acc_id
         try:
             # Chờ callback từ Google hoặc từ người dùng dán vào modal (timeout 3 phút)
             srv_thread = threading.Thread(target=local_server.handle_request, daemon=True)
