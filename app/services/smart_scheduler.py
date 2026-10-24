@@ -345,6 +345,11 @@ def sync_scheduled_jobs_status() -> int:
     return updated_count
 
 
+import threading as _threading
+
+_WAITING_QUOTA_LOCK = _threading.Lock()
+
+
 def process_waiting_quota_jobs() -> int:
     """
     Tự động xử lý hàng đợi VideoJob có status == 'WAITING_QUOTA_RESET'.
@@ -361,6 +366,8 @@ def process_waiting_quota_jobs() -> int:
     from app.services.channel_manager import get_channel
     from pathlib import Path
     
+    if not _WAITING_QUOTA_LOCK.acquire(blocking=False):
+        return 0
     processed_count = 0
     try:
         # Bước 1: Đọc danh sách jobs cần xử lý (session đóng ngay sau đó)
@@ -421,7 +428,7 @@ def process_waiting_quota_jobs() -> int:
                 # Nếu giờ hẹn vẫn còn ở tương lai (> 15 phút nữa) thì giữ đúng lịch hẹn giờ vàng (SCHEDULED),
                 # nếu đã qua giờ hẹn thì tìm khung giờ vàng tiếp theo cho kênh thay vì đăng bừa giờ xấu!
                 if not sched_dt or sched_dt <= now_utc + timedelta(minutes=15):
-                    sched_dt, _, _, _ = get_next_available_golden_slot(job_data["target_channel_id"])
+                    sched_dt, _, _, _ = get_next_available_golden_slot(job_data["target_channel_id"], _skip_sync=True)
                 sched_iso = sched_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
                 thumb_p = str(Path("storage/thumbnails") / f"thumb_{job_id}_9x16.jpg")
                 if not Path(thumb_p).exists():
@@ -477,6 +484,8 @@ def process_waiting_quota_jobs() -> int:
 
     except Exception as ex:
         logger.warning(f"Lỗi khi xử lý waiting_quota_jobs: {ex}")
+    finally:
+        _WAITING_QUOTA_LOCK.release()
 
     return processed_count
 
@@ -484,7 +493,8 @@ def process_waiting_quota_jobs() -> int:
 
 def get_next_available_golden_slot(
     channel_id: str = "ch_psychology_of_the_world",
-    min_lead_minutes: int = 20
+    min_lead_minutes: int = 20,
+    _skip_sync: bool = False,
 ) -> Tuple[datetime, str, str, str]:
     """
     Tính toán khe giờ vàng tiếp theo còn trống cho kênh.
@@ -493,7 +503,8 @@ def get_next_available_golden_slot(
     - Thị trường Brazil (pt-BR Channels - BRT UTC-3): BRAZIL_GOLDEN_SLOTS_UTC
     """
     # 0. Đồng bộ các video đã qua giờ hẹn trước khi tính toán
-    sync_scheduled_jobs_status()
+    if not _skip_sync:
+        sync_scheduled_jobs_status()
 
     now_utc = datetime.now(timezone.utc)
     min_allowed_time = now_utc + timedelta(minutes=min_lead_minutes)
@@ -645,9 +656,10 @@ def get_next_available_golden_slot(
 
 
 
-def get_channel_upcoming_schedule(channel_id: str = "ch_psychology_of_the_world", limit: int = 10) -> List[Dict[str, Any]]:
+def get_channel_upcoming_schedule(channel_id: str = "ch_psychology_of_the_world", limit: int = 10, _skip_sync: bool = False) -> List[Dict[str, Any]]:
     """Lấy danh sách các video đã lên lịch trong tương lai của kênh để theo dõi."""
-    sync_scheduled_jobs_status()
+    if not _skip_sync:
+        sync_scheduled_jobs_status()
     now_utc = datetime.now(timezone.utc)
     channel_family = resolve_channel_family(channel_id)
     is_br = is_brazil_channel(channel_id)
@@ -710,7 +722,8 @@ def find_channel_golden_slot_avoiding_collisions(
     preferred_utc_minute: int = 0,
     golden_weekdays: Optional[Set[int]] = None,
     min_hours_between_videos: float = 6.0,
-    target_start_date: Optional[datetime] = None
+    target_start_date: Optional[datetime] = None,
+    _skip_sync: bool = False,
 ) -> Tuple[datetime, str, str]:
     """
     Tính khung giờ vàng tiếp theo cho kênh, bắt đầu từ ngày mai (hoặc ngày chỉ định).
@@ -722,7 +735,8 @@ def find_channel_golden_slot_avoiding_collisions(
     Returns:
         (slot_utc_datetime, slot_iso_str, display_vn_str)
     """
-    sync_scheduled_jobs_status()
+    if not _skip_sync:
+        sync_scheduled_jobs_status()
     now_utc = datetime.now(timezone.utc)
     
     if target_start_date is None:
