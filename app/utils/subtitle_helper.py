@@ -87,10 +87,10 @@ YCbCr Matrix: None
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1.2,0,1,5.2,3.0,2,40,40,{margin_v},1
-Style: HookHeadlineBanner,{fontname},50,&H0000FFFF,&H00FFFFFF,&H00000000,&HD0050505,-1,0,0,0,100,100,1.8,0,3,3.4,0.0,8,30,30,235,1
-Style: PatternInterruptBadge,{fontname},48,&H00FFFFFF,&H00FFFFFF,&H0000E6FF&,&HC0101010,-1,0,0,0,100,100,1.8,0,3,3.0,0.0,8,30,30,230,1
-Style: CTABadge,{fontname},44,&H0000FFFF,&H00FFFFFF,&H00000000,&HC8080808,-1,0,0,0,100,100,1.2,0,1,4.2,2.2,8,30,30,225,1
+Style: Karaoke,{fontname},{fontsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,1.2,0,1,6.0,3.2,2,40,40,{margin_v},1
+Style: HookHeadlineBanner,{fontname},56,&H0000FFFF,&H00FFFFFF,&H00000000,&HD0050505,-1,0,0,0,100,100,1.8,0,3,3.6,0.0,8,30,30,235,1
+Style: PatternInterruptBadge,{fontname},58,&H00FFFFFF,&H00FFFFFF,&H0000E6FF&,&HC0101010,-1,0,0,0,100,100,1.8,0,3,3.4,0.0,8,30,30,230,1
+Style: CTABadge,{fontname},48,&H0000FFFF,&H00FFFFFF,&H00000000,&HC8080808,-1,0,0,0,100,100,1.2,0,1,4.4,2.4,8,30,30,225,1
 Style: WatermarkStyle,Arial,38,&H30FFFFFF,&H30FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2.2,1.4,8,30,30,90,1
 
 [Events]
@@ -507,7 +507,7 @@ class SubtitleHelper:
         cls,
         scenes: List[SceneContract],
         fontname: str = "Montserrat ExtraBold",
-        fontsize: int = 68,
+        fontsize: int = 78,
         margin_v: int = 720,
         primary_color: Optional[str] = None,
         secondary_color: Optional[str] = None,
@@ -527,7 +527,7 @@ class SubtitleHelper:
         eff_secondary = secondary_color or ASS_WHITE
         eff_outline = outline_color or ASS_BLACK
         eff_font = fontname
-        eff_size = 50 if is_long_form else (fontsize if fontsize >= 62 else 68)
+        eff_size = 50 if is_long_form else (fontsize if fontsize >= 74 else 78)
         eff_margin = 75 if is_long_form else margin_v
 
         if niche_id:
@@ -541,7 +541,7 @@ class SubtitleHelper:
                 if not fontname or fontname in ("Arial", "Arial Black", "Montserrat ExtraBold"):
                     eff_font = niche_sub.get("fontname", "Montserrat ExtraBold")
                 if not is_long_form:
-                    eff_size = fontsize if fontsize not in (42, 44, 68) and fontsize >= 62 else niche_sub.get("fontsize", 68)
+                    eff_size = fontsize if fontsize not in (42, 44, 68, 78) and fontsize >= 74 else max(int(niche_sub.get("fontsize", 78) or 78), 76)
                     eff_margin = margin_v if margin_v not in (580, 720) else niche_sub.get("margin_v", 720)
             except Exception as e:
                 pass

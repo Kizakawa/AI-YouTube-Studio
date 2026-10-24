@@ -30,7 +30,7 @@ from app.utils.ffmpeg.color_and_motion import (
 
 def _scan_video_peak_metrics(
     input_path: str,
-    max_scan_sec: float = 50.0,
+    max_scan_sec: float = 120.0,
     sample_fps: int = 4,
 ) -> Optional[Dict[str, Any]]:
     """
@@ -59,7 +59,7 @@ def _scan_video_peak_metrics(
             "-pix_fmt", "rgb24",
             "-",
         ]
-        res = subprocess.run(cmd, capture_output=True, timeout=10)
+        res = subprocess.run(cmd, capture_output=True, timeout=16)
         raw = res.stdout or b""
         n_frames = len(raw) // frame_bytes
         if n_frames < 4:
@@ -133,7 +133,7 @@ def find_hook_peak_action_offset(
     Hỗ trợ `exclude_ranges` để có thể lấy thêm đoạn Peak thứ 2 ghép vào thân video (Climax Scene) mà không trùng đoạn đầu.
     """
     try:
-        metrics = _precomputed_metrics or _scan_video_peak_metrics(input_path, max_scan_sec=50.0, sample_fps=4)
+        metrics = _precomputed_metrics or _scan_video_peak_metrics(input_path, max_scan_sec=120.0, sample_fps=4)
         if not metrics:
             return 0.0
         src_sec = float(metrics["src_sec"])
@@ -265,7 +265,7 @@ def find_hook_peak_window(
     min_dur = max(2.5, float(min_duration or 3.5))
     max_dur = max(min_dur, float(max_duration or 15.0))
     try:
-        metrics = _scan_video_peak_metrics(input_path, max_scan_sec=50.0, sample_fps=4)
+        metrics = _precomputed_metrics if "_precomputed_metrics" in locals() else _scan_video_peak_metrics(input_path, max_scan_sec=120.0, sample_fps=4)
         if not metrics:
             return 0.0, round(min_dur, 2)
         src_sec = float(metrics["src_sec"])
@@ -393,9 +393,10 @@ def trim_video(
         if grading.get("vignette"):
             grading_parts.append(grading['vignette'])
 
-    # Tự động phát hiện nếu video nguồn 9:16 có dải viền đen ngang (letterbox) ở trên và dưới -> Phóng 1.84x để cắt sạch viền đen!
+    # Tự động phát hiện nếu video nguồn 9:16 có dải viền đen ngang (letterbox) ở trên và dưới -> Phóng 1.86x để cắt sạch viền đen!
     # Đồng thời nếu là Cảnh 1 (is_hook_scene=True) mà khung hình mở đầu hơi tối (mid_band < 60), tự động kích sáng First-Frame Luma Lift (+0.04 brightness)!
     zoom_mult = 1.18 if (fair_use_transform and not is_already_rendered) else 1.06
+    has_letterbox = False
     try:
         probe_ss = f"{start_offset_sec + 0.15:.2f}" if (start_offset_sec and start_offset_sec > 0) else "0.15"
         p_cmd = [
@@ -406,12 +407,23 @@ def trim_video(
         p_res = subprocess.run(p_cmd, capture_output=True, timeout=4)
         raw_g = p_res.stdout or b""
         if len(raw_g) >= 90 * 160:
+            top_edge = sum(raw_g[: 90 * 12]) / (90 * 12)
+            bot_edge = sum(raw_g[90 * 148 : 90 * 160]) / (90 * 12)
             top_band = sum(raw_g[: 90 * 24]) / (90 * 24)
             bot_band = sum(raw_g[90 * 136 : 90 * 160]) / (90 * 24)
             mid_band = sum(raw_g[90 * 50 : 90 * 110]) / (90 * 60)
-            if top_band < 24.0 and bot_band < 24.0 and mid_band > 42.0:
-                zoom_mult = 1.84
-                logger.info(f"  🔍 [Anti-Letterbox Crop] Phát hiện viền đen trên/dưới (top={top_band:.1f}, bot={bot_band:.1f}, mid={mid_band:.1f}) -> Tự động phóng {zoom_mult}x full màn hình 9:16!")
+            if (
+                (top_edge < 20.0 and bot_edge < 28.0)
+                or (bot_edge < 20.0 and top_edge < 28.0)
+                or (top_band < 26.0 and bot_band < 26.0)
+            ) and mid_band > 38.0:
+                zoom_mult = 1.86
+                has_letterbox = True
+                logger.info(
+                    f"  🔍 [Anti-Letterbox Crop] Phát hiện viền đen trên/dưới "
+                    f"(top_edge={top_edge:.1f}, bot_edge={bot_edge:.1f}, top={top_band:.1f}, bot={bot_band:.1f}, mid={mid_band:.1f}) "
+                    f"-> Tự động phóng {zoom_mult}x full màn hình 9:16!"
+                )
             if is_hook_scene and not is_already_rendered and mid_band < 60.0:
                 grading_parts.append("eq=brightness=0.04:contrast=1.06")
                 logger.info(f"  💡 [First-Frame Visual Pop] Khung hình mở đầu Cảnh 1 hơi tối (luma={mid_band:.1f}) -> Tự động kích sáng +0.04 brightness & +6% contrast tại giây 0.0s!")
@@ -430,25 +442,29 @@ def trim_video(
 
     grading_chain = ("," + ",".join(grading_parts)) if grading_parts else ""
     zw, zh = ((int(width * zoom_mult) // 2) * 2), ((int(height * zoom_mult) // 2) * 2)
+    crop_x_ratio, crop_y_ratio = 0.50, (0.48 if has_letterbox else 0.42)
+    if not is_already_rendered and width < height:
+        try:
+            from app.utils.ffmpeg.smart_reframe_and_shot import compute_smart_reframe_crop_ratios
+            crop_x_ratio, crop_y_ratio = compute_smart_reframe_crop_ratios(
+                input_path=input_path,
+                start_sec=eff_start_sec,
+                duration_sec=duration_seconds,
+                target_width=width,
+                target_height=height,
+            )
+        except Exception:
+            crop_x_ratio, crop_y_ratio = 0.50, (0.48 if has_letterbox else 0.42)
+    if has_letterbox:
+        crop_y_ratio = max(0.42, min(0.58, crop_y_ratio))
+
     if fair_use_transform and not is_already_rendered:
+        eff_x_ratio = round(1.0 - crop_x_ratio, 3)
         scale_crop_chain = (
             f"hflip,scale={zw}:{zh}:force_original_aspect_ratio=increase,"
-            f"crop={width}:{height}:(iw-{width})/2:(ih-{height})*0.34"
+            f"crop={width}:{height}:(iw-{width})*{eff_x_ratio:.3f}:(ih-{height})*{crop_y_ratio:.3f}"
         )
     else:
-        crop_x_ratio, crop_y_ratio = 0.50, 0.38
-        if not is_already_rendered and width < height:
-            try:
-                from app.utils.ffmpeg.smart_reframe_and_shot import compute_smart_reframe_crop_ratios
-                crop_x_ratio, crop_y_ratio = compute_smart_reframe_crop_ratios(
-                    input_path=input_path,
-                    start_sec=eff_start_sec,
-                    duration_sec=duration_seconds,
-                    target_width=width,
-                    target_height=height,
-                )
-            except Exception:
-                crop_x_ratio, crop_y_ratio = 0.50, 0.38
         eff_sw, eff_sh = (zw, zh) if zoom_mult > 1.10 else (width, height)
         scale_crop_chain = (
             f"scale={eff_sw}:{eff_sh}:force_original_aspect_ratio=increase,"

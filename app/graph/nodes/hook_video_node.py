@@ -508,13 +508,29 @@ Return ONLY valid JSON:
     )
 
     cand_seq_idx = 0
-    # Mở khóa săn Peak YouTube Shorts kết hợp lọc sạch Talking-Head/Watermark cho cả 7 kênh:
-    # Với CINEMATIC_BROLL_FAST_CUT (tâm lý học), chạy song song 3 truy vấn YouTube Shorts cao trào + 4 truy vấn B-Roll HD sạch.
-    yt_queries_to_run = (
+    # Mở khóa săn Peak YouTube Shorts + Video HD gốc triệu view (4s - 210s) kết hợp lọc sạch Talking-Head/Watermark cho cả 7 kênh:
+    # Đảm bảo ít nhất 2 truy vấn đầu không bị bó hẹp bởi hậu tố "shorts" để bắt trọn các siêu phẩm HD gốc (8M - 64M views).
+    raw_yt_q = (
         queries[:3]
         if hook_production_strategy == "CINEMATIC_BROLL_FAST_CUT"
         else queries[:5]
     )
+    yt_queries_to_run: List[str] = []
+    for idx_q, q_item in enumerate(raw_yt_q):
+        q_str = str(q_item or "").strip()
+        if not q_str:
+            continue
+        if idx_q < 2:
+            q_no_short = re.sub(r"\bshorts?\b", "", q_str, flags=re.IGNORECASE).strip()
+            q_no_short = re.sub(r"\s+", " ", q_no_short).strip()
+            if len(q_no_short.split()) >= 2:
+                q_str = q_no_short
+        if q_str.lower() not in {x.lower() for x in yt_queries_to_run}:
+            yt_queries_to_run.append(q_str)
+    for q_item in raw_yt_q:
+        q_str = str(q_item or "").strip()
+        if q_str and q_str.lower() not in {x.lower() for x in yt_queries_to_run} and len(yt_queries_to_run) < 5:
+            yt_queries_to_run.append(q_str)
     subject_anchor_words = {
         w.lower()
         for src_s in (canonical_subject, beat_1_subject, beat_2_subject, beat_1_query, beat_2_query, *queries, *stock_broll_queries, primary_entity, topic)
@@ -547,7 +563,7 @@ Return ONLY valid JSON:
                 if not vid_id:
                     continue
                 dur_e = float(entry.get("duration") or 0)
-                if dur_e <= 0 or dur_e < 4 or dur_e > 90:
+                if dur_e <= 0 or dur_e < 4 or dur_e > 210:
                     continue
                 title_e = str(entry.get("title") or "")
                 uploader_e = str(entry.get("uploader") or entry.get("channel") or "")
@@ -565,12 +581,12 @@ Return ONLY valid JSON:
                 vid_url = f"https://www.youtube.com/watch?v={vid_id}"
                 views_e = int(entry.get("view_count") or 0)
                 viral_boost = (
-                    65.0 if views_e >= 10_000_000 else
-                    45.0 if views_e >= 1_000_000 else
-                    25.0 if views_e >= 250_000 else
-                    10.0 if views_e >= 50_000 else 0.0
+                    85.0 if views_e >= 10_000_000 else
+                    60.0 if views_e >= 1_000_000 else
+                    30.0 if views_e >= 250_000 else
+                    12.0 if views_e >= 50_000 else 0.0
                 )
-                short_fmt_bonus = 25.0 if (0 < dur_e <= 75) else 0.0
+                short_fmt_bonus = 25.0 if (0 < dur_e <= 75) else (15.0 if dur_e <= 150 else 0.0)
                 peak_intensity_bonus = (
                     42.0
                     if re.search(
@@ -731,8 +747,8 @@ Return ONLY valid JSON:
             "socket_timeout": 10,
             "retries": 1,
             "nopart": True,
-            "max_filesize": 28 * 1024 * 1024,
-            "format": "bestvideo[protocol=https][height>=720][height<=1920][ext=mp4]/bestvideo[protocol=https][height>=480][height<=1920][ext=mp4]/bestvideo[height>=720][height<=1920][ext=mp4]/bestvideo[height>=480][height<=1920]/bestvideo/best",
+            "max_filesize": 38 * 1024 * 1024,
+            "format": "bestvideo[protocol=https][height>=720][height<=1080][ext=mp4]/bestvideo[protocol=https][height>=720][height<=1920][ext=mp4]/bestvideo[protocol=https][height>=480][height<=1920][ext=mp4]/bestvideo[height>=720][height<=1920][ext=mp4]/bestvideo[height>=480][height<=1920]/bestvideo/best",
             "merge_output_format": "mp4",
             "outtmpl": out_tmpl,
             "ignoreerrors": True,
@@ -870,10 +886,7 @@ Return ONLY valid JSON:
     # (2) Cung cấp B-Roll điện ảnh không chữ/watermark cho ngách Tâm lý (CINEMATIC_BROLL_FAST_CUT).
     need_multi_source_broll = (
         not is_3d_cgi_subject
-        and (
-            len(candidate_videos) < 3
-            or (hook_production_strategy in ("CINEMATIC_BROLL_FAST_CUT", "HYBRID_MOTION_AND_SCENE_MONTAGE") and len(candidate_videos) < 4)
-        )
+        and len(candidate_videos) < 5
     )
     if need_multi_source_broll:
         try:
@@ -891,7 +904,7 @@ Return ONLY valid JSON:
                 if beat_1_subject and beat_2_subject and beat_1_subject.lower() != beat_2_subject.lower()
                 else (canonical_subject or primary_entity or topic)
             )
-            max_broll_q = 4 if hook_production_strategy in ("CINEMATIC_BROLL_FAST_CUT", "HYBRID_MOTION_AND_SCENE_MONTAGE") else 3
+            max_broll_q = 4
             broll_queries_to_run = list(enumerate(multi_beat_queries[:max_broll_q]))
 
             def _fetch_single_multisrc_beat(mb_pair: tuple[int, str]) -> Optional[tuple[int, str, str, Dict[str, Any], Dict[str, Any]]]:
@@ -1471,7 +1484,7 @@ Return ONLY valid JSON:
             for cand_s2 in s2_ordered_cands:
                 already_in_b1b = cand_s2["video_path"] in used_second_paths
                 b1b_offset_shift = round(max(0.85, target_hook_duration_sec - min(1.80, max(1.35, target_hook_duration_sec * 0.48))), 2) if already_in_b1b else 0.0
-                if float(cand_s2.get("peak_duration_sec") or 0.0) < max(b1b_offset_shift + dur_s2 - 0.8, 2.8):
+                if float(cand_s2.get("peak_duration_sec") or 0.0) < max(b1b_offset_shift + min(dur_s2 - 1.2, 1.5), 1.8):
                     continue
                 s2_v_path = cand_s2["video_path"]
                 s2_clean_p = cand_s2.get("clean_peak_path") or s2_v_path
@@ -1603,11 +1616,19 @@ Return ONLY valid JSON:
                 except Exception as e_cont:
                     logger.debug(f"[HookVideoNode] Continuous Peak slice to Scene 2 skip: {e_cont}")
 
-        # Ghép thêm đoạn Peak độc lập vào TRONG THÂN VIDEO (tại Cảnh Cao Trào `climax_scene_id`)
+        # Ghép toàn bộ các ứng viên Video Peak độc lập còn dư vào TRONG THÂN VIDEO (Cảnh Cao Trào `climax_scene_id` + các cảnh thân kế tiếp)
+        # để tối đa hóa tỷ lệ Video thật đa góc máy và giảm thiểu phải sinh ảnh AI tĩnh!
         eff_climax_id = climax_scene_id if climax_scene_id not in pre_resolved_hook_media else (3 if len(base_scenes) >= 3 else 0)
-        if 1 < eff_climax_id <= len(base_scenes) and eff_climax_id not in pre_resolved_hook_media:
-            remaining_passing = [c for c in other_passing if c["video_path"] not in used_second_paths]
-            for sec_cand in remaining_passing:
+        target_body_scene_ids = [
+            sid
+            for sid in dict.fromkeys([eff_climax_id, 3, 5, 6, 4, 7])
+            if isinstance(sid, int) and 1 < sid <= len(base_scenes) and sid not in pre_resolved_hook_media
+        ]
+        remaining_passing = [c for c in other_passing if c["video_path"] not in used_second_paths]
+        for target_sc_id in target_body_scene_ids:
+            if not remaining_passing:
+                break
+            for sec_cand in list(remaining_passing):
                 second_v_path = sec_cand["video_path"]
                 sec_clean_p = sec_cand.get("clean_peak_path") or second_v_path
                 sec_use_pre = sec_clean_p != second_v_path and Path(sec_clean_p).exists()
@@ -1619,13 +1640,13 @@ Return ONLY valid JSON:
                     vid_id=sec_vid_id,
                     url=second_v_path,
                     title=sec_title,
-                    scene_id=eff_climax_id,
+                    scene_id=target_sc_id,
                 ):
                     continue
 
-                climax_dur_sec = _get_scene_dur_sec(eff_climax_id, default_s=3.5)
-                climax_dur_clip = climax_dur_sec + (transition_duration if eff_climax_id < len(base_scenes) else (0.15 + VIDEO_DURATION_SAFETY_MARGIN))
-                climax_output_clip = str(work_dir / f"hook_climax_scene_{eff_climax_id:03d}.mp4")
+                climax_dur_sec = _get_scene_dur_sec(target_sc_id, default_s=3.5)
+                climax_dur_clip = climax_dur_sec + (transition_duration if target_sc_id < len(base_scenes) else (0.15 + VIDEO_DURATION_SAFETY_MARGIN))
+                climax_output_clip = str(work_dir / f"hook_climax_scene_{target_sc_id:03d}.mp4")
                 second_peak_start = float(sec_cand.get("peak_offset_sec", 0.0))
                 second_peak_dur = float(sec_cand.get("peak_duration_sec") or climax_dur_sec)
 
@@ -1648,7 +1669,7 @@ Return ONLY valid JSON:
                     if Path(climax_output_clip).exists() and Path(climax_output_clip).stat().st_size > 10_000:
                         ok_climax, _ = rag.verify_and_commit_in_job_clip(
                             job_id=job_id,
-                            scene_id=eff_climax_id,
+                            scene_id=target_sc_id,
                             media_path=climax_output_clip,
                             vid_id=sec_vid_id,
                             url=second_v_path,
@@ -1659,6 +1680,8 @@ Return ONLY valid JSON:
                             Path(climax_output_clip).unlink(missing_ok=True)
                             continue
 
+                        used_second_paths.add(second_v_path)
+                        remaining_passing = [c for c in remaining_passing if c["video_path"] != second_v_path]
                         if sec_vid_id and license_policy.cc_only_enabled():
                             license_policy.record_credit(
                                 job_id=job_id,
@@ -1666,7 +1689,7 @@ Return ONLY valid JSON:
                                 title=sec_title,
                                 uploader=candidate_uploaders.get(sec_vid_id, ""),
                             )
-                        pre_resolved_hook_media[eff_climax_id] = {
+                        pre_resolved_hook_media[target_sc_id] = {
                             "media_path": climax_output_clip,
                             "media_type": "hook_ready_video",
                             "production_method": "CLIMAX_PEAK_SHORT_SPLICE",
@@ -1675,13 +1698,17 @@ Return ONLY valid JSON:
                             "full_peak_duration_sec": second_peak_dur,
                             "strategy_rationale": f"Mid-video distinct Peak Short @{second_peak_start:.1f}s (len={second_peak_dur:.1f}s)",
                         }
+                        if len(scenes_media) >= target_sc_id and isinstance(scenes_media[target_sc_id - 1], dict):
+                            scenes_media[target_sc_id - 1]["media_path"] = climax_output_clip
+                            scenes_media[target_sc_id - 1]["media_type"] = "hook_ready_video"
+                            scenes_media[target_sc_id - 1]["production_method"] = "CLIMAX_PEAK_SHORT_SPLICE"
                         logger.info(
                             f"🔥 [HookVideoNode] Đã cắt video Peak độc lập (@{second_peak_start:.2f}s, len={climax_dur_sec:.2f}s) "
-                            f"ghép vào Cảnh Cao Trào #{eff_climax_id} -> {climax_output_clip}"
+                            f"ghép vào Cảnh #{target_sc_id} -> {climax_output_clip}"
                         )
                         break
                 except Exception as e_climax:
-                    logger.debug(f"[HookVideoNode] Không thể cắt đoạn Peak cho Cảnh #{eff_climax_id}: {e_climax}")
+                    logger.debug(f"[HookVideoNode] Không thể cắt đoạn Peak cho Cảnh #{target_sc_id}: {e_climax}")
     else:
         # CỨU HỘ CẢNH 1 (& CẢNH 2 NẾU < 3.8S) BẰNG VIDEO ĐA NGUỒN (YOUTUBE / PEXELS / PIXABAY / WIKIMEDIA)
         stock_hook_ok = False

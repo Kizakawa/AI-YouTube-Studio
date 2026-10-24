@@ -306,7 +306,7 @@ def _search_youtube_flat_cached(
                 webpage_url = f"https://www.youtube.com{webpage_url}"
 
             dur = float(entry.get("duration") or 0)
-            if dur <= 0 or dur < 4 or dur > 180:
+            if dur <= 0 or dur < 4 or dur > 210:
                 continue
 
             title = str(entry.get("title") or "")
@@ -322,12 +322,12 @@ def _search_youtube_flat_cached(
             action_hits = sum(1 for tok in all_query_tokens if tok in title_lower)
             views = int(entry.get("view_count") or 0)
             viral_boost = (
-                65.0 if views >= 10_000_000 else
-                45.0 if views >= 1_000_000 else
-                25.0 if views >= 250_000 else
-                10.0 if views >= 50_000 else 0.0
+                85.0 if views >= 10_000_000 else
+                60.0 if views >= 1_000_000 else
+                30.0 if views >= 250_000 else
+                12.0 if views >= 50_000 else 0.0
             )
-            short_fmt_bonus = 25.0 if (0 < dur <= 75) else 0.0
+            short_fmt_bonus = 25.0 if (0 < dur <= 75) else (15.0 if dur <= 150 else 0.0)
             score = (
                 (anchor_hits * 65.0)
                 + (action_hits * 35.0)

@@ -67,7 +67,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
             "pose_images": m.get("pose_images"),
             # Cinematic enhancement fields — cần cho Ken Burns, SFX & Phụ đề ngữ cảnh
             "camera_motion": cam_motion,               # ← Thiếu field này → motion mặc định
-            "sfx_cue": None,
+            "sfx_cue": m.get("sfx_cue") or a_info.get("sfx_cue"),
             "highlight_words": m.get("highlight_words") or a_info.get("highlight_words"),
             "overlay_badge": m.get("overlay_badge") or a_info.get("overlay_badge"),
             "visual_strategy": m.get("visual_strategy"),
@@ -127,8 +127,8 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
         niche=niche,
         is_scifi=is_scifi,
         scifi_subgenre=state.get("scifi_subgenre", "general_scifi"),
-        sfx_dir=None,
-        enable_sfx=False,
+        sfx_dir=sfx_dir,
+        enable_sfx=True,
         output_path=final_output,
         video_format="long" if is_long_form else "short",
     )
