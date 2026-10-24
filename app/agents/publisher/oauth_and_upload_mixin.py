@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class OAuthAndUploadMixin:
+    _CUSTOM_THUMB_FORBIDDEN_CHANNELS: set = set()
     def __init__(
         self,
         channel_config: Optional[Any] = None,
@@ -227,6 +228,8 @@ class OAuthAndUploadMixin:
         script: str = "",
         thumbnail_path: Optional[str] = None,
         notify_subscribers: Optional[bool] = None,
+        category_id: Optional[str] = None,
+        **kwargs,
     ) -> Dict:
         """
         Upload video lên YouTube qua YouTube Data API v3.
@@ -743,7 +746,11 @@ class OAuthAndUploadMixin:
                     target_thumb = str(auto_thumb)
 
             if target_thumb and os.path.exists(target_thumb):
-                uploaded_thumb = self.upload_thumbnail(video_id, target_thumb)
+                try:
+                    uploaded_thumb = self.upload_thumbnail(video_id, target_thumb)
+                except Exception as th_up_err:
+                    logger.warning(f"📸 [PublisherAgent] Bỏ qua lỗi phụ khi upload thumbnail cho {video_id}: {th_up_err}")
+                    uploaded_thumb = False
 
             # ── 2. Tự động đăng bình luận tương tác (Author Engagement Poll Comment) ──
             # Lưu ý: YouTube Data API v3 chặn đăng comment (403 Forbidden) khi video đang ở trạng thái SCHEDULED (private)

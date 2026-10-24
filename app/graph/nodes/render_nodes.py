@@ -25,6 +25,16 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
     target_channel_id = state.get("target_channel_id", "default")
     total_audio_duration_ms = state.get("total_audio_duration_ms", 0)
 
+    # Defense-in-depth: Tự động khôi phục full_voiceover.mp3 nếu bị tiến trình dọn rác xóa nhầm trước khi mux
+    if not full_audio_path or not Path(full_audio_path).exists() or Path(full_audio_path).stat().st_size < 1024:
+        logger.warning(f"[RenderNode] Job #{job_id}: full_audio_path ('{full_audio_path}') bị thiếu trên đĩa -> Tự động khôi phục qua node_generate_audio!")
+        from app.graph.nodes.audio_nodes import node_generate_audio
+        re_audio = await node_generate_audio(state)
+        scenes_audio = re_audio.get("scenes_audio") or scenes_audio
+        full_audio_path = re_audio.get("full_audio_path") or full_audio_path
+        subtitle_path = re_audio.get("subtitle_path") or subtitle_path
+        total_audio_duration_ms = re_audio.get("total_audio_duration_ms") or total_audio_duration_ms
+
     # Ghép metadata media và audio cho từng scene (VideoAgent._prepare_scene_clips sẽ render song song 3D Ken Burns cho mọi ảnh tĩnh đúng 1 lần duy nhất)
     _motion_cycle = ["zoom_in", "pan_right", "zoom_out", "pan_left"]
 

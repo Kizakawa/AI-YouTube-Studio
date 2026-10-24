@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class MetadataHealerMixin:
-    def verify_and_heal_video_metadata(self, video_id: str) -> bool:
+    def verify_and_heal_video_metadata(self, video_id: str, **kwargs) -> bool:
         """
         Tự động kiểm tra và sửa chữa (Self-Healing) metadata của video trên YouTube:
         - Nếu categoryId bị lệch khỏi resolve_locked_category_id() (đặc biệt nếu dính cat=27) -> Tự động đổi về chuẩn ('22' hoặc '15').

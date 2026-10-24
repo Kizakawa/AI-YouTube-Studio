@@ -1,3 +1,4 @@
+import json
 """
 app.graph.nodes.script_nodes — Các Node xử lý Kịch bản & Tinh chỉnh tự động trong LangGraph.
 """
@@ -166,6 +167,19 @@ def node_evaluate_script(state: VideoWorkflowState) -> Dict[str, Any]:
         logger.info(f"🛡️ [BestCandidateRestore] Khôi phục bản kịch bản tốt nhất (Overall={best_eval.get('overall_score')}/10) ở vòng thử cuối!")
         out_script_data = best_data
         out_eval_dict = best_eval
+
+    job_id = state.get("job_id")
+    if job_id and out_script_data and out_script_data.get("scenes"):
+        try:
+            from app.database.models import get_db, VideoJob
+            with get_db() as _db:
+                _j = _db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                if _j:
+                    _j.scenes_json = json.dumps(out_script_data, ensure_ascii=False)
+                    if out_script_data.get("title"):
+                        _j.title = out_script_data["title"]
+        except Exception as _e_sc:
+            logger.debug(f"[ScriptNode] Early scenes_json checkpoint skip: {_e_sc}")
 
     return {
         "script_data": out_script_data,

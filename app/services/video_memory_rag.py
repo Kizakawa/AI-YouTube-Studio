@@ -1409,6 +1409,7 @@ def slim_storage_and_archive_to_rag(cache_max_age_hours: float = 6.0) -> Dict[st
 
     # Xác định danh sách các file MP4 CẦN GIỮ LẠI (chưa đẩy lên YouTube)
     protected_files: Set[str] = set()
+    protected_job_ids: Set[int] = set()
     completed_ids: List[int] = []
     with get_db() as db:
         batch_size = 25
@@ -1427,10 +1428,11 @@ def slim_storage_and_archive_to_rag(cache_max_age_hours: float = 6.0) -> Dict[st
             offset += batch_size
             for j in chunk:
                 needs_local_file = (
-                    j.status in ("RENDERED", "AWAITING_APPROVAL", "WAITING_QUOTA_RESET", "RENDERING")
+                    j.status in ("DRAFT", "PROCESSING", "SCRIPT_READY", "AUDIO_READY", "MEDIA_READY", "RENDERED", "AWAITING_APPROVAL", "WAITING_QUOTA_RESET", "RENDERING")
                     or (j.status == "SCHEDULED" and not (j.youtube_video_id and str(j.youtube_video_id).strip()))
                 )
                 if needs_local_file:
+                    protected_job_ids.add(j.id)
                     for p_attr in ("video_path", "thumbnail_path", "thumbnail_vertical_path"):
                         p_val = getattr(j, p_attr, None)
                         if p_val:
@@ -1506,15 +1508,26 @@ def slim_storage_and_archive_to_rag(cache_max_age_hours: float = 6.0) -> Dict[st
         except Exception:
             pass
 
-    # 2. Dọn storage/temp/
+    # 2. Dọn storage/temp/ (Bảo vệ tuyệt đối các job đang chạy / mới tạo trong 2 giờ qua để tránh xóa mất full_voiceover.mp3 đang render)
     temp_dir = Path(settings.TEMP_DIR)
     if temp_dir.exists():
+        temp_cutoff_ts = datetime.now().timestamp() - (max(float(cache_max_age_hours or 0.0), 2.0) * 3600.0)
+        active_job_folders = {
+            f"job_{jid}" for jid in protected_job_ids
+        } | {
+            f"render_tmp_{jid}" for jid in protected_job_ids
+        }
         for f in temp_dir.rglob("*"):
             if not f.is_file() or f.name == ".gitkeep":
                 continue
             if f.name in protected_files:
                 continue
             try:
+                rel_parts = f.relative_to(temp_dir).parts
+                if rel_parts and rel_parts[0] in active_job_folders:
+                    continue
+                if cache_max_age_hours > 0 and f.stat().st_mtime > temp_cutoff_ts:
+                    continue
                 sz = f.stat().st_size
                 f.unlink()
                 freed_bytes += sz
