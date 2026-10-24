@@ -525,6 +525,41 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         f"YouTube Shorts Peak [{yt_res.get('search_scope', sc_scope)}] "
                         f"({yt_res.get('window')}, full_peak={full_peak_duration_sec:.1f}s): {yt_res.get('title', '')[:45]}"
                     )
+                if not media_path and (scene.scene_id in (1, 2) or scene.scene_id >= max(1, total_scenes - 1)):
+                    broad_video_q = clean_scene_search_query(overall_q or subj_ent or state.get("topic", ""), max_words=4)
+                    if broad_video_q and broad_video_q.lower() != str(yt_q or "").strip().lower():
+                        logger.info(
+                            f"Scene {scene.scene_id}: 🎬 [Ending/Hook Video Priority] "
+                            f"Thử tìm lại YouTube Shorts theo chủ đề tổng thể '{broad_video_q}' để giữ 100% video ở đầu/cuối!"
+                        )
+                        yt_broad_res = await asyncio.to_thread(
+                            execute_youtube_short_peak_clone_sync,
+                            search_query=broad_video_q,
+                            output_path=out_vid,
+                            target_duration_sec=dur,
+                            clip_role=clip_role,
+                            used_urls=used_pool_urls,
+                            fallback_query=subj_ent,
+                            subject_entity=subj_ent,
+                            narration=state.get("topic", "") or scene.narration,
+                            topic=state.get("topic", ""),
+                            search_scope="SCRIPT_OVERALL",
+                            overall_script_query=broad_video_q,
+                            max_peak_duration_sec=14.0,
+                            job_id=job_id,
+                            scene_id=scene.scene_id,
+                            channel_id=channel_id_val,
+                            skip_youtube_search=False,
+                        )
+                        if yt_broad_res and yt_broad_res.get("media_path"):
+                            media_path = yt_broad_res["media_path"]
+                            media_type = yt_broad_res.get("media_type", "video")
+                            vision_curated = True
+                            full_peak_path = yt_broad_res.get("full_peak_path")
+                            full_peak_duration_sec = float(yt_broad_res.get("full_peak_duration_sec") or dur)
+                            source_url_used = str(yt_broad_res.get("source_url") or "")
+                            prod_method = "CLIMAX_PEAK_SHORT_SPLICE"
+                            rationale = f"YouTube Shorts Broad Peak ({broad_video_q}): {yt_broad_res.get('title', '')[:45]}"
                 if not media_path:
                     # Lưu ý: execute_youtube_short_peak_clone_sync đã bao gồm cả Tầng 1 (YouTube Peak) và Tầng 2 (Pexels/Pixabay có kiểm duyệt Gemini Vision).
                     # Tuyệt đối không tải lại Stock Video mù (không qua Gemini Vision) để tránh lọt clip mèo nhà / thú trong sở thú!
@@ -1397,40 +1432,46 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
     except Exception as _step_a_err:
         logger.debug(f"[VideoFlow Assembler] Step A warning: {_step_a_err}")
 
-    # ── Bước B: CỔNG BẢO ĐẢM TỶ LỆ VIDEO CHUYỂN ĐỘNG THẬT >= 50% (VÀ 100% CẢNH 1 + CẢNH 2 LÀ VIDEO) ──
+    # ── Bước B: CỔNG BẢO ĐẢM 100% VIDEO CHUYỂN ĐỘNG THẬT Ở ĐẦU (CẢNH 1, 2) & CUỐI VIDEO (CẢNH CUỐI, ÁP CUỐI) + TỶ LỆ VIDEO >= 75% ──
     try:
         def _is_real_video_slot(sc_dict: Any) -> bool:
             if not isinstance(sc_dict, dict):
                 return False
             mt = str(sc_dict.get("media_type") or "image").lower()
             mp = str(sc_dict.get("media_path") or "").lower()
-            return mt in ("video", "hook_ready_video", "ai_video", "i2v", "t2v") or mp.endswith((".mp4", ".mov", ".webm"))
+            # Không coi các file ảnh tĩnh zoompan (_i2v, _fb_motion, _anim, _motion3d) là video chuyển động thật
+            if any(tag in mp for tag in ("_i2v", "_fb_motion", "_anim", "_motion3d", "_gsearch_3d", "_creature_3d")):
+                return False
+            return mt in ("video", "hook_ready_video") and mp.endswith((".mp4", ".mov", ".webm"))
 
         n_slots = len(scenes_media)
-        min_video_slots = max(3, (n_slots + 1) // 2) if n_slots >= 4 else n_slots
+        min_video_slots = max(4, int(round(n_slots * 0.75))) if n_slots >= 4 else n_slots
         current_video_slots = sum(1 for s_it in scenes_media if _is_real_video_slot(s_it))
 
-        # Luôn ưu tiên giải cứu Cảnh 2 (idx=1) trước nếu Cảnh 2 vẫn đang là ảnh tĩnh, sau đó đến các cảnh giữa thân bài
-        rescue_candidates_idx: List[int] = []
-        if n_slots >= 2 and not _is_real_video_slot(scenes_media[1]):
-            rescue_candidates_idx.append(1)
-        for idx_mid in range(2, n_slots):
-            if not _is_real_video_slot(scenes_media[idx_mid]):
+        # Bắt buộc 100% Cảnh 1 (0), Cảnh 2 (1), Cảnh cuối (n_slots - 1) và Cảnh áp cuối (n_slots - 2) phải là Video chuyển động thật
+        mandatory_slot_indices: List[int] = []
+        for m_idx in [n_slots - 1, n_slots - 2, 0, 1]:
+            if 0 <= m_idx < n_slots and m_idx not in mandatory_slot_indices:
+                if not _is_real_video_slot(scenes_media[m_idx]):
+                    mandatory_slot_indices.append(m_idx)
+
+        rescue_candidates_idx: List[int] = list(mandatory_slot_indices)
+        for idx_mid in range(n_slots - 1, -1, -1):
+            if idx_mid not in rescue_candidates_idx and not _is_real_video_slot(scenes_media[idx_mid]):
                 rescue_candidates_idx.append(idx_mid)
 
         needed_rescues = max(
-            1 if (n_slots >= 2 and not _is_real_video_slot(scenes_media[1])) else 0,
+            len(mandatory_slot_indices),
             min_video_slots - current_video_slots,
         )
         if needed_rescues > 0 and rescue_candidates_idx:
-            from app.graph.tools.media_tools import (
-                execute_youtube_short_peak_clone_sync,
-                execute_real_documentary_action_video_sync,
-            )
+            from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
             logger.info(
-                f"🎬 [Real-Motion Floor Rescue] Hiện có {current_video_slots}/{n_slots} cảnh video (mục tiêu tối thiểu {min_video_slots} cảnh video & Cảnh 2 bắt buộc là video). "
-                f"Đang nâng cấp {min(needed_rescues, len(rescue_candidates_idx))} cảnh ảnh tĩnh sang Video chuyển động thật..."
+                f"🎬 [Real-Motion Floor & Ending Rescue] Hiện có {current_video_slots}/{n_slots} cảnh video thật "
+                f"(bắt buộc 100% đầu & cuối video là video thật, tối thiểu {min_video_slots} cảnh). "
+                f"Đang nâng cấp {min(needed_rescues, len(rescue_candidates_idx))} cảnh sang Video chuyển động thật..."
             )
+            overall_rescue_q = clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=4)
             for r_idx in rescue_candidates_idx[:needed_rescues]:
                 r_sc = scenes_media[r_idx]
                 r_sid = int(r_sc.get("scene_id") or (r_idx + 1))
@@ -1438,7 +1479,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 r_kw = clean_scene_search_query(
                     r_sc.get("visual_keyword") or primary_entity or state.get("topic", ""),
                     max_words=4,
-                )
+                ) or overall_rescue_q
                 r_out_mp4 = str(media_dir / f"scene_{r_sid:03d}_motion_rescue.mp4")
                 r_subj = clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=2) or r_kw
                 rescued_ok = False
@@ -1446,23 +1487,26 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     yt_rescue = await asyncio.to_thread(
                         execute_youtube_short_peak_clone_sync,
                         search_query=r_kw,
+                        output_path=r_out_mp4,
+                        target_duration_sec=r_dur,
+                        clip_role="PEAK",
+                        used_urls=used_pool_urls,
+                        fallback_query=overall_rescue_q,
                         subject_entity=r_subj,
                         narration=str(r_sc.get("narration") or state.get("topic", "")),
-                        duration_sec=r_dur,
-                        output_path=r_out_mp4,
-                        is_scifi=is_scifi_val,
-                        niche=current_niche,
-                        used_urls=used_pool_urls,
+                        topic=state.get("topic", ""),
+                        search_scope="SCRIPT_OVERALL",
+                        overall_script_query=overall_rescue_q,
+                        max_peak_duration_sec=14.0,
                         job_id=job_id,
                         scene_id=r_sid,
-                        search_scope="OVERALL_SCRIPT",
-                        overall_script_query=clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=4),
+                        channel_id=channel_id_val,
                     )
-                    if yt_rescue.get("ok") and yt_rescue.get("media_path") and Path(yt_rescue["media_path"]).exists():
+                    if yt_rescue and yt_rescue.get("media_path") and Path(yt_rescue["media_path"]).exists():
                         r_sc["media_path"] = yt_rescue["media_path"]
                         r_sc["media_type"] = "video"
                         r_sc["pose_images"] = []
-                        r_sc["production_method"] = f"MOTION_FLOOR_RESCUE_{yt_rescue.get('method', 'YT_PEAK')}"
+                        r_sc["production_method"] = "MOTION_FLOOR_RESCUE_YT_PEAK"
                         r_sc["visual_strategy"] = "YOUTUBE_SHORT_PEAK_CLONE"
                         rescued_ok = True
                         logger.info(f"  ✅ [Real-Motion Floor Rescue] Scene {r_sid}: Đã nâng cấp sang Video Peak ({Path(yt_rescue['media_path']).name})")
@@ -1471,29 +1515,71 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
 
                 if not rescued_ok:
                     try:
-                        doc_rescue = await asyncio.to_thread(
-                            execute_real_documentary_action_video_sync,
-                            action_query=r_kw,
-                            subject_entity=r_subj,
-                            narration=str(r_sc.get("narration") or state.get("topic", "")),
-                            duration_sec=r_dur,
-                            output_path=r_out_mp4,
-                            used_urls=used_pool_urls,
-                            job_id=job_id,
-                            scene_id=r_sid,
-                            search_scope="OVERALL_SCRIPT",
-                            overall_script_query=clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=4),
+                        best_v_fb = await asyncio.to_thread(
+                            media_agent.search_best_video_clip,
+                            overall_rescue_q or r_kw,
+                            used_pool_urls,
+                            None,
+                            str(r_sc.get("narration") or state.get("topic", "")),
+                            state.get("topic", ""),
                         )
-                        if doc_rescue.get("ok") and doc_rescue.get("media_path") and Path(doc_rescue["media_path"]).exists():
-                            r_sc["media_path"] = doc_rescue["media_path"]
-                            r_sc["media_type"] = "video"
-                            r_sc["pose_images"] = []
-                            r_sc["production_method"] = f"MOTION_FLOOR_RESCUE_{doc_rescue.get('method', 'STOCK_VIDEO')}"
-                            r_sc["visual_strategy"] = "REAL_DOCUMENTARY_VIDEO"
-                            rescued_ok = True
-                            logger.info(f"  ✅ [Real-Motion Floor Rescue] Scene {r_sid}: Đã nâng cấp sang Stock Video ({Path(doc_rescue['media_path']).name})")
+                        if best_v_fb and best_v_fb.get("url"):
+                            cand_u_fb = str(best_v_fb["url"])
+                            await asyncio.to_thread(media_agent.download_file, cand_u_fb, r_out_mp4)
+                            if Path(r_out_mp4).exists() and Path(r_out_mp4).stat().st_size > 15_000:
+                                used_pool_urls.add(cand_u_fb)
+                                r_sc["media_path"] = r_out_mp4
+                                r_sc["media_type"] = "video"
+                                r_sc["pose_images"] = []
+                                r_sc["production_method"] = "MOTION_FLOOR_RESCUE_STOCK_VIDEO"
+                                r_sc["visual_strategy"] = "REAL_DOCUMENTARY_VIDEO"
+                                rescued_ok = True
+                                logger.info(f"  ✅ [Real-Motion Floor Rescue] Scene {r_sid}: Đã nâng cấp sang Stock Video ({Path(r_out_mp4).name})")
                     except Exception as _re_doc:
                         logger.debug(f"[Real-Motion Floor Rescue] Scene {r_sid} Stock rescue skip: {_re_doc}")
+
+                # Tầng bảo hiểm 100% cho cảnh cuối/đầu: Cắt một phân đoạn chuyển động mới chưa dùng từ kho fullpeak/hook_candidates
+                if not rescued_ok and r_idx in mandatory_slot_indices:
+                    try:
+                        from app.utils.ffmpeg_helper import get_duration_ms, trim_video
+                        cand_source_vids = (
+                            sorted(media_dir.glob("*_fullpeak.mp4"), key=lambda p: p.stat().st_size, reverse=True)
+                            + sorted((work_dir / "hook_candidates").glob("yt_hook_cand_*.mp4"), key=lambda p: p.stat().st_size, reverse=True)
+                            + sorted(media_dir.glob("*_yt_peak.mp4"), key=lambda p: p.stat().st_size, reverse=True)
+                        )
+                        for src_vp in cand_source_vids:
+                            if not src_vp.exists() or src_vp.stat().st_size < 25_000:
+                                continue
+                            src_total_s = get_duration_ms(str(src_vp)) / 1000.0
+                            offset_s = max(0.5, min(src_total_s - r_dur - 0.3, src_total_s * 0.55)) if src_total_s > r_dur + 1.5 else 0.0
+                            trim_video(
+                                input_path=str(src_vp),
+                                duration_seconds=r_dur + 0.3,
+                                output_path=r_out_mp4,
+                                width=1080,
+                                height=1920,
+                                fps=30,
+                                is_scifi=is_scifi_val,
+                                niche=current_niche,
+                                apply_grading=True,
+                                is_hook_scene=False,
+                                fair_use_transform=True,
+                                start_offset_sec=offset_s,
+                                preserve_continuous_flow=True,
+                            )
+                            if Path(r_out_mp4).exists() and Path(r_out_mp4).stat().st_size > 15_000:
+                                r_sc["media_path"] = r_out_mp4
+                                r_sc["media_type"] = "video"
+                                r_sc["pose_images"] = []
+                                r_sc["production_method"] = "ENDING_CONTINUOUS_PEAK_VIDEO"
+                                r_sc["visual_strategy"] = "ENDING_CONTINUOUS_PEAK_VIDEO"
+                                rescued_ok = True
+                                logger.info(
+                                    f"  🔥 [Ending Video Guarantee] Scene {r_sid}: Đã cắt phân đoạn video chuyển động thật từ '{src_vp.name}' (@{offset_s:.1f}s) để giữ 100% video ở cuối bài!"
+                                )
+                                break
+                    except Exception as _re_slice:
+                        logger.debug(f"[Ending Video Guarantee] Scene {r_sid} slice skip: {_re_slice}")
     except Exception as _step_b_err:
         logger.debug(f"[Real-Motion Floor Rescue] Step B warning: {_step_b_err}")
 
@@ -1819,41 +1905,126 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
         if isinstance(_m, dict) and _m.get("source_url"):
             used_refine_urls.add(_m["source_url"])
 
+    total_scenes_refine = len(scenes_media)
+    mandatory_video_refine_sids = {1, 2, max(1, total_scenes_refine - 1), total_scenes_refine}
+    job_id_refine = int(state.get("job_id") or 0)
+    channel_id_refine = str(state.get("target_channel_id") or state.get("channel_id") or "")
+
     async def _refine_single_item(item: Dict[str, Any]) -> None:
         if item.get("scene_id") not in failed_ids:
             return
-        scene_id = item["scene_id"]
+        scene_id = int(item["scene_id"])
         kw = item.get("visual_keyword", "")
         narr = item.get("narration", "")
         vp = item.get("visual_prompt", None)
         clean_kw_q = clean_search_query_from_prompt(kw or vp or "", narration=narr, topic=state.get("topic", ""), max_words=6) or kw
-        is_video = item.get("media_type") in ("video", "hook_ready_video") or item.get("production_method") in (
+        overall_refine_q = clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=4) or clean_kw_q
+        subj_refine = clean_scene_search_query(primary_entity or state.get("topic", ""), max_words=2) or overall_refine_q
+        is_mandatory_vid = scene_id in mandatory_video_refine_sids
+        is_video = is_mandatory_vid or item.get("media_type") in ("video", "hook_ready_video") or item.get("production_method") in (
             "STOCK_FOOTAGE", "TEXT_TO_VIDEO", "YOUTUBE_PEAK_SHORT", "CLIMAX_PEAK_SHORT_SPLICE", "LONG_PEAK_CONTINUOUS_FLOW"
         )
         replaced = False
+        sc_dur_sec = _scene_audio_duration(work_dir, scene_id)
 
         if is_video:
+            # 1. Ưu tiên săn YouTube Shorts dọc 9:16 mới (qua execute_youtube_short_peak_clone_sync)
             try:
-                best_v = await asyncio.to_thread(
-                    media_agent.search_best_video_clip,
-                    clean_kw_q,
-                    used_refine_urls,
-                    None,
-                    narr,
-                    state.get("topic", ""),
+                from app.graph.tools.media_tools import execute_youtube_short_peak_clone_sync
+                out_yt_ref = str(media_dir / f"scene_{scene_id:03d}_refined_yt_peak.mp4")
+                yt_ref_res = await asyncio.to_thread(
+                    execute_youtube_short_peak_clone_sync,
+                    search_query=clean_kw_q or overall_refine_q,
+                    output_path=out_yt_ref,
+                    target_duration_sec=sc_dur_sec,
+                    clip_role="PEAK",
+                    used_urls=used_refine_urls,
+                    fallback_query=overall_refine_q,
+                    subject_entity=subj_refine,
+                    narration=narr or state.get("topic", ""),
+                    topic=state.get("topic", ""),
+                    search_scope="SCRIPT_OVERALL" if is_mandatory_vid else "SCENE_SPECIFIC",
+                    overall_script_query=overall_refine_q,
+                    max_peak_duration_sec=14.0,
+                    job_id=job_id_refine,
+                    scene_id=scene_id,
+                    channel_id=channel_id_refine,
                 )
-                if best_v and best_v.get("url") and best_v["url"] not in used_refine_urls:
-                    cand_url = best_v["url"]
-                    out_v = str(media_dir / f"scene_{scene_id:03d}_refined_video.mp4")
-                    await asyncio.to_thread(media_agent.download_file, cand_url, out_v)
-                    if Path(out_v).exists() and Path(out_v).stat().st_size > 10000:
-                        used_refine_urls.add(cand_url)
-                        item["media_path"] = out_v
-                        item["media_type"] = "video"
-                        replaced = True
-                        logger.info(f"Scene {scene_id}: ✅ Sửa lỗi kỹ thuật bằng Video Clip Pexels mới: '{clean_kw_q}'")
-            except Exception as ex_v:
-                logger.debug(f"Scene {scene_id}: Video refine error: {ex_v}")
+                if yt_ref_res and yt_ref_res.get("media_path") and Path(yt_ref_res["media_path"]).exists():
+                    item["media_path"] = yt_ref_res["media_path"]
+                    item["media_type"] = "video"
+                    item["pose_images"] = []
+                    item["production_method"] = "REFINED_YOUTUBE_SHORT_PEAK"
+                    replaced = True
+                    logger.info(f"Scene {scene_id}: ✅ Sửa lỗi kỹ thuật bằng YouTube Short Peak 9:16 mới: '{Path(yt_ref_res['media_path']).name}'")
+            except Exception as ex_yt_r:
+                logger.debug(f"Scene {scene_id}: YouTube Short refine error: {ex_yt_r}")
+
+            # 2. Tầng 2: Tìm kiếm Video Clip Pexels/Pixabay HD mới
+            if not replaced:
+                try:
+                    best_v = await asyncio.to_thread(
+                        media_agent.search_best_video_clip,
+                        clean_kw_q,
+                        used_refine_urls,
+                        None,
+                        narr,
+                        state.get("topic", ""),
+                    )
+                    if best_v and best_v.get("url") and best_v["url"] not in used_refine_urls:
+                        cand_url = best_v["url"]
+                        out_v = str(media_dir / f"scene_{scene_id:03d}_refined_video.mp4")
+                        await asyncio.to_thread(media_agent.download_file, cand_url, out_v)
+                        if Path(out_v).exists() and Path(out_v).stat().st_size > 10000:
+                            used_refine_urls.add(cand_url)
+                            item["media_path"] = out_v
+                            item["media_type"] = "video"
+                            item["pose_images"] = []
+                            replaced = True
+                            logger.info(f"Scene {scene_id}: ✅ Sửa lỗi kỹ thuật bằng Video Clip Pexels mới: '{clean_kw_q}'")
+                except Exception as ex_v:
+                    logger.debug(f"Scene {scene_id}: Video refine error: {ex_v}")
+
+            # 3. Tầng 3: Cắt một phân đoạn chuyển động thật chưa dùng từ kho fullpeak/hook_candidates (Tuyệt đối không để cảnh cuối biến thành ảnh tĩnh!)
+            if not replaced:
+                try:
+                    from app.utils.ffmpeg_helper import get_duration_ms, trim_video
+                    out_slice_v = str(media_dir / f"scene_{scene_id:03d}_refined_peak_slice.mp4")
+                    cand_vids = (
+                        sorted(media_dir.glob("*_fullpeak.mp4"), key=lambda p: p.stat().st_size, reverse=True)
+                        + sorted((work_dir / "hook_candidates").glob("yt_hook_cand_*.mp4"), key=lambda p: p.stat().st_size, reverse=True)
+                        + sorted(media_dir.glob("*_yt_peak.mp4"), key=lambda p: p.stat().st_size, reverse=True)
+                    )
+                    for src_vp in cand_vids:
+                        if not src_vp.exists() or src_vp.stat().st_size < 25_000:
+                            continue
+                        src_total_s = get_duration_ms(str(src_vp)) / 1000.0
+                        offset_s = max(0.5, min(src_total_s - sc_dur_sec - 0.3, src_total_s * 0.58)) if src_total_s > sc_dur_sec + 1.5 else 0.0
+                        trim_video(
+                            input_path=str(src_vp),
+                            duration_seconds=sc_dur_sec,
+                            output_path=out_slice_v,
+                            width=1080,
+                            height=1920,
+                            fps=30,
+                            is_scifi=is_scifi_val,
+                            niche=current_niche,
+                            apply_grading=True,
+                            is_hook_scene=False,
+                            fair_use_transform=True,
+                            start_offset_sec=offset_s,
+                            preserve_continuous_flow=True,
+                        )
+                        if Path(out_slice_v).exists() and Path(out_slice_v).stat().st_size > 15_000:
+                            item["media_path"] = out_slice_v
+                            item["media_type"] = "video"
+                            item["pose_images"] = []
+                            item["production_method"] = "REFINED_PEAK_VIDEO_SLICE"
+                            replaced = True
+                            logger.info(f"Scene {scene_id}: ✅ Sửa lỗi kỹ thuật bằng phân đoạn Video chuyển động thật từ '{src_vp.name}' (@{offset_s:.1f}s)")
+                            break
+                except Exception as ex_sl:
+                    logger.debug(f"Scene {scene_id}: Peak slice refine error: {ex_sl}")
 
             if not replaced:
                 try:
@@ -1861,7 +2032,7 @@ async def node_refine_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     res_vid = await ai_video_agent.generate_image_to_video(
                         prompt=vp or clean_kw_q,
                         output_path=ai_v_path,
-                        duration_seconds=_scene_audio_duration(work_dir, scene_id),
+                        duration_seconds=sc_dur_sec,
                         scene_id=scene_id,
                         visual_prompt=vp,
                         used_urls=used_refine_urls,

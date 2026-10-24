@@ -77,17 +77,18 @@ STEP 1 — HOLISTIC SCRIPT COMPREHENSION, PRONOUN RESOLUTION & SUBTEXT DECODING:
   * Deduce the true natural habitat, historical era, or psychological mood from the full script and keep all scenes visually consistent with that world.
 
 STEP 2 — SELECT THE OPTIMAL TOOL & CONTEXT-ANCHORED SEARCH QUERY FOR EACH SCENE (scene_id=1 to {total_scenes}):
-1. CHOOSE THE RIGHT SPECIALIZED TOOL BASED ON DEEP SCRIPT INTENT (VIDEO-FIRST BODY CURATION — ENFORCE 75%–90% REAL MOTION VIDEO ACROSS THE SHORT TO MATCH 100M-VIEW COMPETITOR CHANNELS):
+1. CHOOSE THE RIGHT SPECIALIZED TOOL BASED ON DEEP SCRIPT INTENT (VIDEO-FIRST BODY & ENDING CURATION — ENFORCE 90%–100% REAL MOTION VIDEO ACROSS THE SHORT, INCLUDING 100% REAL MOTION VIDEO ON THE FINAL SCENE FOR LOOP-BACK RETENTION):
+   - CRITICAL ENDING RETENTION RULE: The FINAL SCENE (scene_id={total_scenes}) and PENULTIMATE SCENE (scene_id={max(1, total_scenes - 1)}) MUST ALWAYS use REAL MOTION VIDEO (`clone_youtube_short_peak_clip`, `media_preference="VIDEO_BROLL"`, or `monster_media_mode="3D_CGI_VIDEO"`). NEVER assign static images to the end of the video, or viewers will immediately swipe away before the loop-back!
    - IF THE SCRIPT OR SCENE IS ABOUT COLOSSAL MONSTERS, DEEP-SEA LEVIATHANS (The Bloop, Kraken, Megalodon, Cthulhu, Gargantuan Leviathan), PREHISTORIC MEGAFAUNA (Titanoboa, Mosasaurus, T-Rex), KAIJU (Godzilla), CRYPTIDS (SCP, Siren Head, Wendigo), OR MEGALOPHOBIA/THALASSOPHOBIA:
      -> ALWAYS call `summon_epic_monster_cinematic_media`!
      -> Provide `creature_name` (e.g., "The Bloop Leviathan", "Megalodon", "Kraken") and `scale_anchor_object` (a human object like "submarine", "battleship", "scuba diver", "skyscraper" to show colossal scale).
-     -> Use `monster_media_mode="3D_CGI_VIDEO"` for Scene 1 (Hook) AND at least 4–5 body scenes (`Scenes 1, 2, 3, 4, 5, 6`), using `monster_media_mode="CONCEPT_ART_8K"` only for 1–2 scale comparison still scenes.
+     -> Use `monster_media_mode="3D_CGI_VIDEO"` for Scene 1 (Hook), body scenes, AND the Final Scene (`scene_id={total_scenes}`).
    - IF THE SCRIPT OR SCENE IS ABOUT HUMAN PSYCHOLOGY, DARK PSYCHOLOGY, MANIPULATION, NARCISSISM, GASLIGHTING, STOICISM, PHILOSOPHY, OR INTERPERSONAL EMOTIONAL TENSION:
      -> ALWAYS call `fetch_clean_cinematic_portrait_or_broll`! (NEVER call `search_google_cinematic_image` for psychology because open-web Google Images return text quote cards and book covers!).
      -> Write `human_action_query` as a concrete 2-4 word physical human action or facial micro-expression reflecting the scene's emotional subtext (e.g., "close up eyes dark lighting", "couple argument tension", "man stressed alone dark room", "silhouette person walking night").
-     -> Use `media_preference="VIDEO_BROLL"` for Scene 1 AND at least 5–6 body scenes (`Scenes 1, 2, 3, 4, 5, 6, 7`), reserving `media_preference="CLEAN_PORTRAIT_PHOTO"` only for 1–2 intense micro-expression close-up scenes.
+     -> Use `media_preference="VIDEO_BROLL"` for Scene 1, body scenes, AND the Final Scene (`scene_id={total_scenes}`).
    - FOR REAL-WORLD WILDLIFE, NATURE, SCIENCE, HISTORY, OR DOCUMENTARY TOPICS:
-     -> Call `clone_youtube_short_peak_clip` (`clip_role="HOOK"` for Scene 1, and `clip_role="PEAK"` for body scenes) for at least `6 out of 8` scenes (`Scenes 1, 2, 3, 4, 5, 6, 7`), only calling `search_google_cinematic_image` when a specific historical map, document, or static artifact has no motion video equivalent.
+     -> Call `clone_youtube_short_peak_clip` (`clip_role="HOOK"` for Scene 1, and `clip_role="PEAK"` for all body scenes AND the Final Scene `scene_id={total_scenes}`), only calling `search_google_cinematic_image` on a middle scene when a specific historical map, document, or static artifact has no motion video equivalent (and NEVER on Scene 1, Scene 2, Scene {max(1, total_scenes - 1)}, or Scene {total_scenes}).
      -> PEAK VIDEO QUERY PRIMING (CRITICAL): When writing `youtube_search_query` for `clone_youtube_short_peak_clip`, NEVER write passive noun-only queries (e.g., FORBIDDEN: `"black caiman river"`, `"honey badger savanna"`). ALWAYS include the **resolved protagonist + explosive physical action, climax verb, or dramatic phenomenon** (e.g., `"black caiman hunting amazon"`, `"honey badger fearless lion encounter"`, `"boiling river amazon steam"`, `"sperm whale deep dive underwater"`) so our Peak Scanner extracts the most intense action moment!
 
 2. DECIDE `search_scope` FOR EACH INDIVIDUAL SCENE (`"SCENE_SPECIFIC"` vs `"SCRIPT_OVERALL"`):
@@ -204,14 +205,16 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
         (d for d in decisions_by_scene.values() if d.get("tool_name") == "fetch_clean_cinematic_portrait_or_broll"),
         None,
     )
-    peak_indices = {1, 2, 3, 4, 5, 6, 7}
-    max_video_peak_scenes = max(6, int(round(total_scenes * 0.8)))
+    peak_indices = set(range(1, total_scenes + 1))
+    max_video_peak_scenes = total_scenes
     video_peak_count = 0
+    mandatory_video_sids = {1, 2, max(1, total_scenes - 1), total_scenes}
 
     for idx, s in enumerate(scenes):
         sid = int(s.get("scene_id") or (idx + 1))
+        is_mandatory_video_scene = sid in mandatory_video_sids
         if sid in decisions_by_scene:
-            # TÔN TRỌNG 100% QUYẾT ĐỊNH CỦA BỘ NÃO LLM CHO TỪNG PHÂN CẢNH (`tool_name`, `search_scope`, `query`, `mode`)
+            # TÔN TRỌNG QUYẾT ĐỊNH CỦA BỘ NÃO LLM CHO TỪNG PHÂN CẢNH, ĐỒNG THỜI BẢO ĐẢM 100% VIDEO Ở ĐẦU & CUỐI VIDEO (CHỐNG LƯỚT QUA)
             d = dict(decisions_by_scene[sid])
             t_chosen = d.get("tool_name", "")
             d.setdefault("scene_id", sid)
@@ -224,15 +227,34 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 d["camera_motion"] = "hyper_zoom" if sid == 1 else motion_cycle[idx % len(motion_cycle)]
             d.setdefault("target_duration_sec", float(s.get("estimated_seconds") or 4.5))
 
+            if is_mandatory_video_scene and t_chosen in ("search_google_cinematic_image", "search_pexels_pixabay_stock_video"):
+                if llm_monster_ref is not None:
+                    t_chosen = "summon_epic_monster_cinematic_media"
+                elif llm_portrait_ref is not None:
+                    t_chosen = "fetch_clean_cinematic_portrait_or_broll"
+                else:
+                    t_chosen = "clone_youtube_short_peak_clip"
+                d["tool_name"] = t_chosen
+                d.setdefault(
+                    "youtube_search_query",
+                    d.get("primary_stock_query") or d.get("smart_image_query") or s.get("visual_keyword") or default_overall_q,
+                )
+
             if t_chosen == "summon_epic_monster_cinematic_media":
                 clean_c = _sanitize_tool_arg(d.get("creature_name"), fallback=default_subj or topic)
                 d["creature_name"] = clean_c
                 d["subject_entity"] = _sanitize_tool_arg(d.get("subject_entity"), fallback=clean_c)
                 d["scale_anchor_object"] = _sanitize_tool_arg(d.get("scale_anchor_object"), fallback="submarine")
-                d.setdefault("monster_media_mode", "3D_CGI_VIDEO" if sid in (1, 2, 3, 4, 5, 6) else "CONCEPT_ART_8K")
+                if is_mandatory_video_scene:
+                    d["monster_media_mode"] = "3D_CGI_VIDEO"
+                else:
+                    d.setdefault("monster_media_mode", "3D_CGI_VIDEO")
             elif t_chosen == "fetch_clean_cinematic_portrait_or_broll":
                 d.setdefault("human_action_query", s.get("visual_keyword") or default_overall_q)
-                d.setdefault("media_preference", "VIDEO_BROLL" if sid in (1, 2, 3, 4, 5, 6, 7) else "CLEAN_PORTRAIT_PHOTO")
+                if is_mandatory_video_scene:
+                    d["media_preference"] = "VIDEO_BROLL"
+                else:
+                    d.setdefault("media_preference", "VIDEO_BROLL")
             elif t_chosen == "clone_youtube_short_peak_clip":
                 video_peak_count += 1
                 d.setdefault("clip_role", "HOOK" if sid == 1 else "PEAK")
@@ -252,7 +274,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
         if llm_monster_ref is not None:
             c_name_inh = _sanitize_tool_arg(llm_monster_ref.get("creature_name"), fallback=default_subj or "colossal sea monster")
             s_anchor_inh = _sanitize_tool_arg(llm_monster_ref.get("scale_anchor_object"), fallback="submarine")
-            m_mode_inh = "3D_CGI_VIDEO" if sid in (1, 2, 3, 4, 5, 6) else "CONCEPT_ART_8K"
+            m_mode_inh = "3D_CGI_VIDEO"
             final_plan.append({
                 "tool_name": "summon_epic_monster_cinematic_media",
                 "scene_id": sid,
@@ -268,7 +290,7 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                 "scope_audited": True,
             })
         elif llm_portrait_ref is not None:
-            m_pref_inh = "VIDEO_BROLL" if sid in (1, 2, 3, 4, 5, 6, 7) else "CLEAN_PORTRAIT_PHOTO"
+            m_pref_inh = "VIDEO_BROLL"
             final_plan.append({
                 "tool_name": "fetch_clean_cinematic_portrait_or_broll",
                 "scene_id": sid,
@@ -298,12 +320,15 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
             })
         else:
             final_plan.append({
-                "tool_name": "search_google_cinematic_image",
+                "tool_name": "clone_youtube_short_peak_clip",
                 "scene_id": sid,
                 "subject_entity": default_subj,
                 "search_scope": scope,
-                "smart_image_query": clean_kw,
+                "youtube_search_query": clean_kw,
                 "overall_script_query": default_overall_q,
+                "fallback_broad_query": default_overall_q,
+                "clip_role": "PEAK",
+                "target_duration_sec": dur,
                 "camera_motion": motion_cycle[idx % len(motion_cycle)],
                 "scope_audited": True,
             })
