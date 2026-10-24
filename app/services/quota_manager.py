@@ -206,9 +206,17 @@ class QuotaManager:
                     if c_sec:
                         full_p = Path(settings.BASE_DIR) / c_sec
                         pid = get_project_id_from_client_secret(str(full_p))
-                        projects.add(pid)
+                        if pid and pid != "default_project":
+                            projects.add(pid)
             except Exception as e:
                 logger.warning(f"Lỗi đọc config channels.yaml: {e}")
+
+        acc_dir = Path(settings.CREDENTIALS_DIR) / "accounts"
+        if acc_dir.exists():
+            for cs_file in acc_dir.rglob("*secret*.json"):
+                pid = get_project_id_from_client_secret(str(cs_file))
+                if pid and pid != "default_project":
+                    projects.add(pid)
 
         if not projects:
             projects.add("bionic-client-509515-h2")
@@ -252,24 +260,24 @@ class QuotaManager:
         if not ch_dir.exists():
             return []
 
+        from app.utils.security import load_encrypted_json
         acc_dir = Path(settings.CREDENTIALS_DIR) / "accounts"
         cid_map = {}
         if acc_dir.exists():
             for acc in os.listdir(acc_dir):
-                cs = acc_dir / acc / "client_secret.json"
-                if cs.exists():
+                acc_path = acc_dir / acc
+                if not acc_path.is_dir():
+                    continue
+                for cs in acc_path.glob("*secret*.json"):
                     try:
-                        with open(cs, "r", encoding="utf-8") as f:
-                            d = json.load(f)
-                            info = d.get("installed") or d.get("web") or {}
-                            cid = info.get("client_id")
-                            pid = info.get("project_id")
-                            if cid and pid:
-                                cid_map[cid] = {"account_id": acc, "project_id": pid}
+                        d = load_encrypted_json(cs) or {}
+                        info = d.get("installed") or d.get("web") or {}
+                        cid = info.get("client_id")
+                        pid = info.get("project_id")
+                        if cid and pid:
+                            cid_map[cid] = {"account_id": acc, "project_id": pid}
                     except Exception:
                         pass
-
-        from app.utils.security import load_encrypted_json
         pool = []
         seen_projects = set()
 
@@ -365,17 +373,14 @@ class QuotaManager:
                 if tok_cid:
                     acc_dir = Path(settings.CREDENTIALS_DIR) / "accounts"
                     if acc_dir.exists():
-                        for acc in os.listdir(acc_dir):
-                            cs = acc_dir / acc / "client_secret.json"
-                            if cs.exists():
-                                try:
-                                    with open(cs, "r", encoding="utf-8") as f:
-                                        d = json.load(f)
-                                        info = d.get("installed") or d.get("web") or {}
-                                        if info.get("client_id") == tok_cid:
-                                            return info.get("project_id", "default_project")
-                                except Exception:
-                                    pass
+                        for cs in acc_dir.rglob("*secret*.json"):
+                            try:
+                                d = load_encrypted_json(cs) or {}
+                                info = d.get("installed") or d.get("web") or {}
+                                if info.get("client_id") == tok_cid:
+                                    return info.get("project_id", "default_project")
+                            except Exception:
+                                pass
             except Exception as e:
                 logger.debug(f"Không thể giải mã token kênh {channel_id} để lấy project_id: {e}")
 
