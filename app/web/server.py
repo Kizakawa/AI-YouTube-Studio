@@ -1393,6 +1393,7 @@ class CreateScriptRequest(BaseModel):
     topic: str
     channel_id: str = "ch_psychology_of_the_world"
     language: str = "en"
+    video_format: str = "short"  # "short" (9:16 Shorts ~40s) | "long" (16:9 Documentary ~3-5 min)
     director_notes: Optional[str] = None
 
 class RefineScriptRequest(BaseModel):
@@ -1404,18 +1405,22 @@ async def create_script_from_web(body: CreateScriptRequest) -> Dict[str, Any]:
     """
     Tạo kịch bản AI trực tiếp từ Web Studio:
     Tự động chấm điểm qua ScriptCritic và lặp lại tái tạo cho đến khi đạt chuẩn viral (>= 8.0/10) mới hiển thị.
+    Hỗ trợ ngay từ bước đầu 2 chế độ:
+    - video_format="short": YouTube Shorts 9:16 (1080x1920, ~35-45s, 7-9 phân cảnh)
+    - video_format="long": YouTube Long-Form Documentary 16:9 (1920x1080, ~3-4.5 phút, 16-22 phân cảnh / 5 Chương)
     """
     from app.bot.handlers import _try_acquire_action, _release_action, _find_recent_duplicate_job
     from app.database.models import normalize_channel_id
     body.channel_id = normalize_channel_id(body.channel_id)
+    vf_norm = "long" if str(body.video_format or "short").strip().lower() in ("long", "16:9", "documentary", "full", "landscape") else "short"
     norm_topic = " ".join((body.topic or "").lower().split())[:100]
-    lock_key = f"web_create_script:{body.channel_id}:{norm_topic}"
-    acquired = _try_acquire_action(lock_key, max_inflight_sec=90.0, debounce_sec=8.0)
+    lock_key = f"web_create_script:{body.channel_id}:{vf_norm}:{norm_topic}"
+    acquired = _try_acquire_action(lock_key, max_inflight_sec=110.0, debounce_sec=8.0)
     if not acquired:
         raise HTTPException(status_code=429, detail="Đang tạo kịch bản cho chủ đề này, vui lòng chờ 15–30 giây và không bấm lặp lại!")
 
     dup_job_id = _find_recent_duplicate_job(body.channel_id, body.topic, window_seconds=180)
-    if dup_job_id:
+    if dup_job_id and vf_norm == "short":
         _release_action(lock_key, post_cooldown_sec=2.0)
         raise HTTPException(
             status_code=409,
@@ -1437,7 +1442,8 @@ async def create_script_from_web(body: CreateScriptRequest) -> Dict[str, Any]:
             language=channel_lang,
             director_notes=body.director_notes,
             min_acceptable_score=8.0,
-            max_attempts=3
+            max_attempts=3,
+            video_format=vf_norm,
         )
 
         scores_summary = {
@@ -1452,6 +1458,7 @@ async def create_script_from_web(body: CreateScriptRequest) -> Dict[str, Any]:
             "visual_direction": (eval_report.visual_direction.score if getattr(eval_report, "visual_direction", None) else 8.5) if eval_report else 0,
             "actionable_critiques": eval_report.actionable_critiques if eval_report else [],
             "script_critic": eval_report.model_dump() if eval_report else None,
+            "video_format": getattr(script, "video_format", vf_norm),
         }
 
         with get_db() as db:
@@ -1490,6 +1497,7 @@ async def create_script_from_web(body: CreateScriptRequest) -> Dict[str, Any]:
             "job_id": job_id,
             "title": script.title,
             "hook": script.hook,
+            "video_format": getattr(script, "video_format", vf_norm),
             "scene_count": len(script.scenes),
             "total_duration": script.total_estimated_duration,
             "scenes": [
@@ -1626,6 +1634,7 @@ class CreateManualScriptRequest(BaseModel):
     topic: Optional[str] = None
     channel_id: str = "ch_psychology_of_the_world"
     language: str = "en"
+    video_format: str = "short"
     scenes: Optional[List[Dict[str, Any]]] = None
 
 @app.post("/api/scripts/create-manual")
@@ -1638,7 +1647,9 @@ async def create_manual_script(body: CreateManualScriptRequest) -> Dict[str, Any
         channels = settings.get_channels_config()
         ch = next((c for c in channels if c.get("id") == body.channel_id), {})
         channel_name = ch.get("name") or body.channel_id
-        raw_title = (body.title or body.topic or "Kịch bản Shorts mới").strip()
+        vf_norm = "long" if str(body.video_format or "short").strip().lower() in ("long", "16:9", "documentary", "full", "landscape") else "short"
+        raw_title = (body.title or body.topic or ("Phim tài liệu mới" if vf_norm == "long" else "Kịch bản Shorts mới")).strip()
+        aspect_str = "16:9" if vf_norm == "long" else "9:16"
 
         # Tạo sẵn cấu trúc phân cảnh mẫu nếu người dùng chưa truyền
         initial_scenes = body.scenes or [
@@ -1646,17 +1657,17 @@ async def create_manual_script(body: CreateManualScriptRequest) -> Dict[str, Any
                 "scene_id": 1,
                 "narration": f"Chào mừng bạn đến với {channel_name}! Đây là phân cảnh mở đầu...",
                 "visual_keyword": "cinematic dramatic opening",
-                "visual_prompt": "cinematic dramatic opening 9:16 high quality",
+                "visual_prompt": f"cinematic dramatic opening {aspect_str} high quality",
                 "media_type": "auto",
-                "estimated_seconds": 4.0
+                "estimated_seconds": 6.0 if vf_norm == "long" else 4.0
             },
             {
                 "scene_id": 2,
                 "narration": "Chi tiết hấp dẫn nhất của câu chuyện nằm ở đây...",
                 "visual_keyword": "mysterious revelation documentary",
-                "visual_prompt": "mysterious revelation documentary 9:16 high quality",
+                "visual_prompt": f"mysterious revelation documentary {aspect_str} high quality",
                 "media_type": "auto",
-                "estimated_seconds": 5.0
+                "estimated_seconds": 7.0 if vf_norm == "long" else 5.0
             },
             {
                 "scene_id": 3,
@@ -1664,20 +1675,23 @@ async def create_manual_script(body: CreateManualScriptRequest) -> Dict[str, Any
                 "visual_keyword": "subscribe follow channel cinematic",
                 "visual_prompt": "cinematic dramatic closing",
                 "media_type": "auto",
-                "estimated_seconds": 3.5
+                "estimated_seconds": 5.0 if vf_norm == "long" else 3.5
             }
         ]
 
         full_narration = " ".join(s.get("narration", "") for s in initial_scenes)
         hook_text = initial_scenes[0].get("narration", "")[:100]
+        default_tags = ["documentary", "viral", "trending"] if vf_norm == "long" else ["shorts", "viral", "trending"]
+        default_desc = f"{raw_title} #documentary #viral" if vf_norm == "long" else f"{raw_title} #Shorts #viral"
 
         script_payload = {
             "title": raw_title,
             "hook": hook_text,
             "full_narration": full_narration,
+            "video_format": vf_norm,
             "scenes": initial_scenes,
-            "tags": ["shorts", "viral", "trending"],
-            "description": f"{raw_title} #Shorts #viral"
+            "tags": default_tags,
+            "description": default_desc
         }
 
         with get_db() as db:
@@ -1687,8 +1701,8 @@ async def create_manual_script(body: CreateManualScriptRequest) -> Dict[str, Any
                 topic=body.topic or raw_title,
                 title=raw_title,
                 script=full_narration,
-                description=f"{raw_title} #Shorts #viral",
-                tags="shorts,viral,trending",
+                description=default_desc,
+                tags=",".join(default_tags),
                 scenes_json=json.dumps(script_payload, ensure_ascii=False),
                 status="SCRIPT_READY",
                 quality_scores=json.dumps({
@@ -1701,6 +1715,7 @@ async def create_manual_script(body: CreateManualScriptRequest) -> Dict[str, Any
                     "story_pacing": 9.0,
                     "visual": 9.0,
                     "visual_direction": 9.0,
+                    "video_format": vf_norm,
                     "actionable_critiques": ["Kịch bản do người dùng tự soạn thảo thủ công"],
                     "badge": "✍️ Soạn thủ công"
                 }, ensure_ascii=False)
@@ -1710,7 +1725,7 @@ async def create_manual_script(body: CreateManualScriptRequest) -> Dict[str, Any
             job_id = job.id
 
             log_activity(db, 0, "WebStudio", "CREATE_MANUAL_SCRIPT",
-                         f"Đã tạo kịch bản thủ công Job #{job_id}: '{raw_title}'")
+                         f"Đã tạo kịch bản thủ công Job #{job_id} ({vf_norm}): '{raw_title}'")
 
         total_dur = sum(s.get("estimated_seconds", 4.0) for s in initial_scenes)
 
@@ -1719,6 +1734,7 @@ async def create_manual_script(body: CreateManualScriptRequest) -> Dict[str, Any
             "job_id": job_id,
             "title": raw_title,
             "hook": hook_text,
+            "video_format": vf_norm,
             "scene_count": len(initial_scenes),
             "total_duration": total_dur,
             "scenes": initial_scenes,

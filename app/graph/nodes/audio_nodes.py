@@ -83,6 +83,14 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
     # Chạy SONG SONG: (1) Sinh Audio TTS tất cả các cảnh + (2) LLM bind_tools chọn công cụ hình ảnh cho tất cả các cảnh
     job_id = state.get("job_id")
     target_channel_id = state.get("target_channel_id")
+    video_format = str(
+        state.get("video_format")
+        or getattr(script, "video_format", "")
+        or (script_data or {}).get("video_format")
+        or "short"
+    ).strip().lower()
+    is_long_form = video_format == "long"
+
     gen_kwargs: Dict[str, Any] = {
         "scenes": script.scenes,
         "output_dir": str(audio_dir),
@@ -90,6 +98,7 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
         "niche": channel_style,
         "channel_id": target_channel_id,
         "job_id": job_id,
+        "is_long_form": is_long_form,
     }
     if explicit_rate:
         gen_kwargs["rate"] = explicit_rate
@@ -135,6 +144,7 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
             niche_id=channel_style,
             hook_title=hook_banner_text,
             show_cta_badge=True,
+            is_long_form=is_long_form,
         ),
     )
 
@@ -144,6 +154,7 @@ async def node_generate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
         "total_audio_duration_ms": total_duration_ms,
         "subtitle_path": subtitle_path,
         "voice_engine": used_voice_engine,
+        "video_format": "long" if is_long_form else "short",
         "current_step": "AUDIO_READY",
         "progress_percent": 45,
         "progress_message": f"Đã tạo giọng đọc ({used_voice_engine}, {total_duration_ms/1000:.1f}s) + phụ đề ASS + Kế hoạch Tool Hình ảnh",
@@ -160,12 +171,19 @@ def node_evaluate_audio(state: VideoWorkflowState) -> Dict[str, Any]:
     total_duration = state.get("total_audio_duration_ms", 0)
     subtitle_path = state.get("subtitle_path", "")
     retry_count = int(state.get("audio_retry_count", 0) or 0)
+    video_format = str(
+        state.get("video_format")
+        or (state.get("script_data") or {}).get("video_format")
+        or "short"
+    ).strip().lower()
+    is_long_form = (video_format == "long") or (len(scenes_audio) >= 14)
 
     eval_report = AudioQA.evaluate_audio(
         scenes_audio=scenes_audio,
         full_audio_path=full_audio_path,
         total_duration_ms=total_duration,
-        subtitle_path=subtitle_path
+        subtitle_path=subtitle_path,
+        is_long_form=is_long_form,
     )
 
     logger.info(

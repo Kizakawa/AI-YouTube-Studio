@@ -228,12 +228,37 @@ class SubtitleHelper:
 
         return aligned if aligned else word_timings
 
+    # Các từ nối / mạo từ / giới từ gắn chặt với cụm danh từ hoặc động từ phía sau (VideoLingo NLP Semantic Chunking):
+    # Không để các từ này đứng trơ trọi ở cuối một dòng phụ đề khi không có dấu ngắt câu.
+    _PROCLITIC_ATTACH_NEXT_WORDS = frozenset({
+        # English
+        "A", "AN", "THE", "OF", "IN", "ON", "AT", "TO", "FOR", "WITH", "BY", "FROM", "INTO",
+        "UNTIL", "UNDER", "OVER", "AND", "OR", "BUT", "IF", "THAN", "THAT", "THIS", "THESE",
+        "THOSE", "MY", "YOUR", "HIS", "HER", "ITS", "OUR", "THEIR", "IS", "ARE", "WAS", "WERE",
+        "HAS", "HAVE", "HAD", "WILL", "CAN", "COULD", "WOULD", "SHOULD", "NO", "NOT",
+        # Portuguese (pt-BR)
+        "O", "OS", "AS", "UM", "UMA", "UNS", "UMAS", "DE", "DO", "DA", "DOS", "DAS", "EM",
+        "NO", "NA", "NOS", "NAS", "POR", "PELO", "PELA", "PARA", "COM", "SEM", "SOB", "QUE",
+        "SE", "OU", "E", "MAS", "MEU", "MINHA", "SEU", "SUA", "FOI", "ERA", "NÃO", "MAIS",
+        # Vietnamese
+        "CỦA", "TRONG", "TRÊN", "DƯỚI", "VỚI", "CHO", "TỪ", "MỘT", "NHỮNG", "CÁC", "LÀ", "VÀ", "ĐỂ",
+    })
+
+    @classmethod
+    def _is_dangling_proclitic(cls, token: str) -> bool:
+        raw = str(token or "").strip()
+        if not raw or raw.endswith((".", "!", "?", ":", ";", ",", "—", "-")):
+            return False
+        clean = re.sub(r"[^\w\d]", "", raw.upper())
+        return clean in cls._PROCLITIC_ATTACH_NEXT_WORDS
+
     @classmethod
     def split_text_to_chunks(cls, text: str, max_words: int = 3, max_chars: int = 20) -> List[str]:
         """
         Chia một đoạn văn bản thành các cụm từ siêu ngắn gọn (2-3 từ, tối đa 20 ký tự),
-        chuẩn phong cách phụ đề @MasteringMindControl / Submagic / Hormozi:
-        nhịp nhảy chữ nhanh bám sát mắt người xem, ngăn đọc trước giọng đọc.
+        kết hợp thuật toán Semantic NLP Chunking (chuẩn VideoLingo / Submagic / Hormozi):
+        - Nhịp nhảy chữ nhanh bám sát mắt người xem, ngăn đọc trước giọng đọc.
+        - Không bao giờ để mạo từ / giới từ / liên từ ('THE', 'OF', 'IN', 'A', 'TO'...) bị treo lẻ loi ở cuối dòng.
         """
         text = cls.sanitize_subtitle_text(text)
         # Normalize whitespace: collapse \n, \t, multiple spaces thành space đơn
@@ -246,24 +271,38 @@ class SubtitleHelper:
         if len(words) <= max_words and len(text) <= max_chars:
             return [text]
 
-        chunks = []
-        current_chunk = []
+        word_lists: List[List[str]] = []
+        current_chunk: List[str] = []
 
-        for word in words:
+        for idx, word in enumerate(words):
             candidate = " ".join(current_chunk + [word])
-            if (len(current_chunk) >= max_words or len(candidate) > max_chars) and current_chunk:
-                chunks.append(" ".join(current_chunk))
+            # Nếu đã có >= 1 từ và từ hiện tại là mạo từ/giới từ mở đầu cụm mới mà thêm từ sau nữa sẽ tràn dòng -> ngắt trước mạo từ
+            next_word = words[idx + 1] if idx + 1 < len(words) else ""
+            would_leave_dangling = (
+                bool(current_chunk)
+                and bool(next_word)
+                and cls._is_dangling_proclitic(word)
+                and (len(current_chunk) + 1 >= max_words or len(candidate + " " + next_word) > max_chars)
+            )
+            if ((len(current_chunk) >= max_words or len(candidate) > max_chars) and current_chunk) or would_leave_dangling:
+                word_lists.append(current_chunk)
                 current_chunk = [word]
             else:
                 current_chunk.append(word)
-                if word.endswith((".", "!", "?", ":", ";", "—")) and len(current_chunk) >= 2:
-                    chunks.append(" ".join(current_chunk))
+                if word.endswith((".", "!", "?", ":", ";", ",", "—")) and len(current_chunk) >= 2:
+                    word_lists.append(current_chunk)
                     current_chunk = []
 
         if current_chunk:
-            chunks.append(" ".join(current_chunk))
+            word_lists.append(current_chunk)
 
-        return chunks
+        # Hậu kiểm: nếu 1 chunk >= 2 từ vẫn kết thúc bằng từ treo (proclitic), chuyển từ đó sang đầu chunk kế tiếp
+        for i in range(len(word_lists) - 1):
+            if len(word_lists[i]) >= 2 and cls._is_dangling_proclitic(word_lists[i][-1]) and len(word_lists[i + 1]) <= max_words:
+                moved = word_lists[i].pop()
+                word_lists[i + 1].insert(0, moved)
+
+        return [" ".join(w_list) for w_list in word_lists if w_list]
 
     @staticmethod
     def sanitize_subtitle_text(text: str) -> str:
@@ -477,17 +516,19 @@ class SubtitleHelper:
         credit_text: Optional[str] = None,
         show_cta_badge: bool = True,
         hook_title: Optional[str] = None,
+        is_long_form: bool = False,
     ) -> str:
         """
-        Tạo nội dung file .ass chuẩn với 2-Line Stacked Kinetic Impact & karaoke word-level highlight.
+        Tạo nội dung file .ass chuẩn với 2-Line Stacked Kinetic Impact (Shorts 9:16)
+        hoặc Widescreen Cinema Subtitle (Long-form 16:9, PlayRes 1920x1080) & karaoke word-level highlight.
         Tự động nạp font và màu sắc từ Niche Profile nếu niche_id được cung cấp.
         """
         eff_primary = primary_color or ASS_DIM_SILVER
         eff_secondary = secondary_color or ASS_WHITE
         eff_outline = outline_color or ASS_BLACK
         eff_font = fontname
-        eff_size = fontsize if fontsize >= 62 else 68
-        eff_margin = margin_v
+        eff_size = 50 if is_long_form else (fontsize if fontsize >= 62 else 68)
+        eff_margin = 75 if is_long_form else margin_v
 
         if niche_id:
             try:
@@ -499,8 +540,9 @@ class SubtitleHelper:
                 eff_outline = outline_color or niche_sub.get("outline_ass", ASS_BLACK)
                 if not fontname or fontname in ("Arial", "Arial Black", "Montserrat ExtraBold"):
                     eff_font = niche_sub.get("fontname", "Montserrat ExtraBold")
-                eff_size = fontsize if fontsize not in (42, 44, 68) and fontsize >= 62 else niche_sub.get("fontsize", 68)
-                eff_margin = margin_v if margin_v not in (580, 720) else niche_sub.get("margin_v", 720)
+                if not is_long_form:
+                    eff_size = fontsize if fontsize not in (42, 44, 68) and fontsize >= 62 else niche_sub.get("fontsize", 68)
+                    eff_margin = margin_v if margin_v not in (580, 720) else niche_sub.get("margin_v", 720)
             except Exception as e:
                 pass
 
@@ -515,6 +557,9 @@ class SubtitleHelper:
             back=ASS_SHADOW,
             margin_v=eff_margin,
         )
+        if is_long_form:
+            header = header.replace("PlayResX: 1080\nPlayResY: 1920", "PlayResX: 1920\nPlayResY: 1080")
+            header = header.replace(",235,1", ",55,1").replace(",230,1", ",55,1").replace(",225,1", ",55,1")
 
         dialogue_lines = []
         current_offset_ms = 0
@@ -581,6 +626,17 @@ class SubtitleHelper:
 
                 if cur_words:
                     chunks_data.append(cur_words)
+
+                # VideoLingo Semantic Rebalance: Không để mạo từ / giới từ ('THE', 'OF', 'IN', 'A', 'TO'...) bị treo ở cuối dòng phụ đề
+                for c_i in range(len(chunks_data) - 1):
+                    if (
+                        len(chunks_data[c_i]) >= 2
+                        and cls._is_dangling_proclitic(chunks_data[c_i][-1].get("word", ""))
+                        and len(chunks_data[c_i + 1]) <= 3
+                    ):
+                        moved_w = chunks_data[c_i].pop()
+                        chunks_data[c_i + 1].insert(0, moved_w)
+                chunks_data = [c for c in chunks_data if c]
 
                 for chunk_idx, c_words in enumerate(chunks_data):
                     chunk_start_ms = current_offset_ms + c_words[0]["start_ms"]
@@ -862,8 +918,9 @@ class SubtitleHelper:
         credit_text: Optional[str] = None,
         show_cta_badge: bool = True,
         hook_title: Optional[str] = None,
+        is_long_form: bool = False,
     ) -> str:
-        """Tạo và lưu file .ass ra ổ đĩa, hỗ trợ Niche Profile, Watermark Credit & Hook Headline Banner."""
+        """Tạo và lưu file .ass ra ổ đĩa, hỗ trợ Niche Profile, Watermark Credit, Hook Headline Banner & Long-Form 16:9."""
         content = cls.build_ass_content(
             scenes,
             fontname=fontname,
@@ -876,6 +933,7 @@ class SubtitleHelper:
             credit_text=credit_text,
             show_cta_badge=show_cta_badge,
             hook_title=hook_title,
+            is_long_form=is_long_form,
         )
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:

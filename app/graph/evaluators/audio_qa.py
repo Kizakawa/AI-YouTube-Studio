@@ -50,7 +50,8 @@ class AudioQA:
         scenes_audio: List[Dict[str, Any]],
         full_audio_path: str,
         total_duration_ms: int,
-        subtitle_path: str = ""
+        subtitle_path: str = "",
+        is_long_form: bool = False,
     ) -> AudioEvaluationReport:
         p = Path(full_audio_path)
         if not p.exists() or p.stat().st_size < 1000:
@@ -87,13 +88,22 @@ class AudioQA:
             passed = False
             feedback_items.append(f"Audio bị thiếu cho cảnh: {', '.join(missing_scenes)}")
 
-        if duration_sec < 26.0:
-            pacing_rating = "TOO_SHORT"
-            feedback_items.append(f"Thời lượng hơi ngắn cho Shorts ({duration_sec:.1f}s, chuẩn vàng 28s - 55s để giữ chân cao)")
-        elif duration_sec > 65.0:
-            pacing_rating = "TOO_LONG"
-            passed = False
-            feedback_items.append(f"Vượt quá giới hạn YouTube Shorts ({duration_sec:.1f}s > 60s)")
+        if is_long_form or len(scenes_audio) >= 14:
+            if duration_sec < 75.0:
+                pacing_rating = "TOO_SHORT"
+                feedback_items.append(f"Thời lượng hơi ngắn cho Video Dài 16:9 ({duration_sec:.1f}s, chuẩn 120s - 360s)")
+            elif duration_sec > 960.0:
+                pacing_rating = "TOO_LONG"
+                passed = False
+                feedback_items.append(f"Vượt quá giới hạn Video Dài ({duration_sec:.1f}s > 960s)")
+        else:
+            if duration_sec < 26.0:
+                pacing_rating = "TOO_SHORT"
+                feedback_items.append(f"Thời lượng hơi ngắn cho Shorts ({duration_sec:.1f}s, chuẩn vàng 28s - 55s để giữ chân cao)")
+            elif duration_sec > 65.0:
+                pacing_rating = "TOO_LONG"
+                passed = False
+                feedback_items.append(f"Vượt quá giới hạn YouTube Shorts ({duration_sec:.1f}s > 60s)")
 
         if wpm < 115:
             pacing_rating = "TOO_SLOW"

@@ -76,6 +76,10 @@ def node_generate_script(state: VideoWorkflowState) -> Dict[str, Any]:
         topic = f"{topic} (Focus on {primary_entity})"
 
     target_channel_id = state.get("target_channel_id", "")
+    video_format = str(state.get("video_format") or "short").strip().lower()
+    if video_format not in ("short", "long"):
+        video_format = "long" if "long" in video_format or "16:9" in video_format else "short"
+
     content_agent = ContentAgent()
     script: ScriptContract = content_agent.generate_script(
         topic=topic,
@@ -83,6 +87,7 @@ def node_generate_script(state: VideoWorkflowState) -> Dict[str, Any]:
         language=language,
         director_notes=director_notes,
         channel_id=target_channel_id,
+        video_format=video_format,
     )
 
     # Chống trùng lặp tiêu đề với kho video cũ của kênh
@@ -105,9 +110,10 @@ def node_generate_script(state: VideoWorkflowState) -> Dict[str, Any]:
     script_dict = script.to_dict()
     return {
         "script_data": script_dict,
+        "video_format": script.video_format,
         "current_step": "SCRIPT_GENERATED",
         "progress_percent": 20,
-        "progress_message": f"Đã sinh kịch bản: {script.title} ({len(script.scenes)} cảnh)",
+        "progress_message": f"Đã sinh kịch bản ({'Video Dài 16:9' if script.video_format == 'long' else 'Shorts 9:16'}): {script.title} ({len(script.scenes)} cảnh)",
     }
 
 
@@ -188,22 +194,40 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
     language = state.get("language", "en")
     director_notes = state.get("director_notes")
     target_channel_id = state.get("target_channel_id", "")
+    video_format = str(
+        state.get("video_format")
+        or (script_data or {}).get("video_format")
+        or "short"
+    ).strip().lower()
+    if video_format not in ("short", "long"):
+        video_format = "long" if "long" in video_format or "16:9" in video_format else "short"
 
     logger.info(
-        f"🔄 [LangGraph] Tinh chỉnh kịch bản lần {retry_count}/{max_retries} "
+        f"🔄 [LangGraph] Tinh chỉnh kịch bản ({video_format.upper()}) lần {retry_count}/{max_retries} "
         f"(Điểm nền: Overall={cur_overall}/10, Hook={cur_hook}/10) theo nhận xét: {critiques}"
     )
 
-    feedback_text = (
-        f"[VÒNG TINH CHỈNH {retry_count}/{max_retries} — Điểm hiện tại: Overall={cur_overall}/10, Hook={cur_hook}/10 -> "
-        f"MỤC TIÊU BẮT BUỘC: Overall >= 8.2/10 và Hook Cảnh 1 >= 8.5/10]. "
-        f"Sửa chữa TRIỆT ĐỂ các lỗi sau từ Critic: {'; '.join(critiques)}. "
-        f"YÊU CẦU CỐT LÕI: "
-        f"(1) CẢNH 1 (HOOK 6-8 TỪ, ~2.0 GIÂY) BẮT BUỘC ĐẶT TÊN CON VẬT / THỰC THỂ CHÍNH NGAY TỪ THỨ 1-2 + HÀNH ĐỘNG VA CHẠM + CON SỐ VẬT LÝ CỤ THỂ ngay giây 0.0s "
-        f"(Cấm xóa tên con vật ở Cảnh 1, cấm mở đầu bằng đại từ mơ hồ 'Uma mordida/It/They' hay câu hỏi Yes/No!); "
-        f"(2) TỔNG ĐỘ DÀI KỊCH BẢN: 75-92 từ chia đều cho 7-8 phân cảnh (mỗi cảnh thân 10-13 từ mạch lạc, KHÔNG lặp lại cùng một con số ở 2 cảnh khác nhau, tạo thời lượng vàng 28s-36s); "
-        f"(3) Cảnh cuối nối vòng lặp vô tận (Zero Spoken Subscribe CTA)."
-    )
+    if video_format == "long":
+        feedback_text = (
+            f"[VÒNG TINH CHỈNH VIDEO DÀI 16:9 {retry_count}/{max_retries} — Điểm hiện tại: Overall={cur_overall}/10, Hook={cur_hook}/10 -> "
+            f"MỤC TIÊU BẮT BUỘC: Overall >= 8.2/10 và Hook Cảnh 1 >= 8.5/10]. "
+            f"Sửa chữa TRIỆT ĐỂ các lỗi sau từ Critic: {'; '.join(critiques)}. "
+            f"YÊU CẦU CỐT LÕI VIDEO DÀI: "
+            f"(1) CẢNH 1 (COLD OPEN HOOK 8-14 TỪ) BẮT BUỘC ĐẶT TÊN THỰC THỂ CHÍNH + CON SỐ/BIẾN CỐ CỤ THỂ ngay câu đầu; "
+            f"(2) TỔNG ĐỘ DÀI KỊCH BẢN PHIM TÀI LIỆU 5 CHƯƠNG: 350-650 từ chia thành 16-24 phân cảnh (mỗi cảnh thân 18-28 từ sâu sắc, giàu dẫn chứng khoa học/lịch sử); "
+            f"(3) Tuyệt đối KHÔNG gắn #Shorts vào tiêu đề."
+        )
+    else:
+        feedback_text = (
+            f"[VÒNG TINH CHỈNH {retry_count}/{max_retries} — Điểm hiện tại: Overall={cur_overall}/10, Hook={cur_hook}/10 -> "
+            f"MỤC TIÊU BẮT BUỘC: Overall >= 8.2/10 và Hook Cảnh 1 >= 8.5/10]. "
+            f"Sửa chữa TRIỆT ĐỂ các lỗi sau từ Critic: {'; '.join(critiques)}. "
+            f"YÊU CẦU CỐT LÕI: "
+            f"(1) CẢNH 1 (HOOK 6-8 TỪ, ~2.0 GIÂY) BẮT BUỘC ĐẶT TÊN CON VẬT / THỰC THỂ CHÍNH NGAY TỪ THỨ 1-2 + HÀNH ĐỘNG VA CHẠM + CON SỐ VẬT LÝ CỤ THỂ ngay giây 0.0s "
+            f"(Cấm xóa tên con vật ở Cảnh 1, cấm mở đầu bằng đại từ mơ hồ 'Uma mordida/It/They' hay câu hỏi Yes/No!); "
+            f"(2) TỔNG ĐỘ DÀI KỊCH BẢN: 75-92 từ chia đều cho 7-8 phân cảnh (mỗi cảnh thân 10-13 từ mạch lạc, KHÔNG lặp lại cùng một con số ở 2 cảnh khác nhau, tạo thời lượng vàng 28s-36s); "
+            f"(3) Cảnh cuối nối vòng lặp vô tận (Zero Spoken Subscribe CTA)."
+        )
     if primary_entity:
         feedback_text += f" Giữ vững trọng tâm vào thực thể chính: {primary_entity}."
 
@@ -221,6 +245,7 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
                 channel_niche=channel_style,
                 language=language,
                 director_notes=director_notes,
+                video_format=video_format,
             )
         except Exception as e_ref:
             logger.warning(f"[LangGraph] refine_script lỗi ({e_ref}), chuyển sang generate_script có định hướng...")
@@ -234,11 +259,13 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
             language=language,
             director_notes=combined_notes,
             channel_id=target_channel_id,
+            video_format=video_format,
         )
 
     script_dict = new_script.to_dict() if hasattr(new_script, "to_dict") else new_script.model_dump()
     return {
         "script_data": script_dict,
+        "video_format": getattr(new_script, "video_format", video_format),
         "script_retry_count": retry_count,
         "current_step": "SCRIPT_REFINED",
         "progress_message": f"Đã tinh chỉnh kịch bản theo nhận xét (Lần {retry_count}/{max_retries})",

@@ -1077,18 +1077,21 @@ async function createScript() {
 
     const channel = document.getElementById('input-channel').value;
     const language = document.getElementById('input-language').value;
+    const video_format = document.getElementById('input-video-format')?.value || 'short';
     const directorNotesEl = document.getElementById('input-director-notes');
     const director_notes = directorNotesEl ? directorNotesEl.value.trim() : '';
 
     const btn = document.getElementById('btn-create-script');
     btn.disabled = true;
-    btn.innerHTML = `<span class="loading-spinner"></span> Đang phân tích & tạo kịch bản...`;
+    const modeLabel = video_format === 'long' ? 'Video Dài 16:9 (16–22 cảnh)' : 'Shorts 9:16 (7–9 cảnh)';
+    btn.innerHTML = `<span class="loading-spinner"></span> Đang phân tích & tạo kịch bản ${modeLabel}...`;
 
     try {
         const result = await apiPost('/api/scripts/create', {
             topic,
             channel_id: channel,
             language,
+            video_format,
             director_notes: director_notes || undefined
         });
 
@@ -1102,7 +1105,7 @@ async function createScript() {
         document.getElementById('script-result-content').innerHTML = buildScriptResultHTML(result);
         document.getElementById('script-result-panel').scrollIntoView({ behavior: 'smooth' });
 
-        showToast(`✅ Kịch bản #${result.job_id} đã được tạo thành công!`, 'success');
+        showToast(`✅ Kịch bản #${result.job_id} (${modeLabel}) đã được tạo thành công!`, 'success');
         fetchVideos(); // refresh pipeline
     } catch (e) {
         showToast('Lỗi khi tạo kịch bản: ' + e.message, 'error');
@@ -1124,6 +1127,7 @@ async function createManualScript() {
 
     const channel = document.getElementById('input-channel').value;
     const language = document.getElementById('input-language').value;
+    const video_format = document.getElementById('input-video-format')?.value || 'short';
 
     const btn = document.getElementById('btn-create-manual-script');
     const origHTML = btn ? btn.innerHTML : '';
@@ -1137,7 +1141,8 @@ async function createManualScript() {
             title: title,
             topic: title,
             channel_id: channel,
-            language: language
+            language: language,
+            video_format: video_format
         });
 
         if (!result) return;
@@ -1238,9 +1243,15 @@ function buildScriptResultHTML(result) {
         </div>`;
     }).join('');
 
+    const isLongForm = result.video_format === 'long' || (result.scene_count && result.scene_count > 12);
+    const formatBadgeHTML = isLongForm
+        ? `<span class="badge badge-purple">🎬 Video Dài 16:9 (1920x1080)</span>`
+        : `<span class="badge badge-cyan">📱 Video Ngắn 9:16 (Shorts)</span>`;
+
     return `
         <div class="script-meta">
             <span class="badge badge-green">✅ Job #${result.job_id} đã lưu</span>
+            ${formatBadgeHTML}
             <span class="badge badge-blue">${result.scene_count} phân cảnh</span>
             <span class="badge badge-amber">~${result.total_duration?.toFixed(0)}s tổng</span>
         </div>

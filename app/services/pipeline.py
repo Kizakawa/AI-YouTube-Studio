@@ -226,6 +226,11 @@ class VideoPipeline:
                     except Exception as ex_thumb:
                         logger.warning(f"[Job {self.job_id}] Lỗi tạo Thumbnail trong LangGraph: {ex_thumb}")
 
+                    lg_video_format = str(
+                        state.get("video_format")
+                        or (script_dict.get("video_format") if isinstance(script_dict, dict) else None)
+                        or "short"
+                    ).strip().lower()
                     render_job = RenderJobContract(
                         job_id=self.job_id,
                         title=title,
@@ -234,6 +239,7 @@ class VideoPipeline:
                         total_audio_duration_ms=dur_ms or 30000,
                         subtitle_path=sub_p,
                         output_path=video_p,
+                        video_format=lg_video_format,
                         thumbnail_path=t_16x9,
                         thumbnail_vertical_path=t_9x16,
                     )
@@ -326,12 +332,14 @@ class VideoPipeline:
             # Tạo file phụ đề ASS Karaoke (word-level kinetic highlight theo Niche, Hook Headline Banner & Visual CTA Banner cuối video)
             subtitle_path = str(self.work_dir / "subtitles.ass")
             hook_banner_text = getattr(script, "thumbnail_text", None) or getattr(script, "hook", None) or getattr(script, "title", None)
+            is_long_form_script = str(getattr(script, "video_format", "short") or "short").lower() == "long"
             SubtitleHelper.save_ass_file(
                 enriched_scenes,
                 subtitle_path,
                 niche_id=self.niche,
                 hook_title=hook_banner_text,
                 show_cta_badge=True,
+                is_long_form=is_long_form_script,
             )
 
             self._save_audio_metadata(full_audio_path, total_duration, enriched_scenes)
@@ -368,6 +376,7 @@ class VideoPipeline:
                 sfx_dir=None,
                 enable_sfx=False,
                 output_path=output_path,
+                video_format=getattr(script, "video_format", "short") or "short",
                 is_scifi=is_scifi_video,
                 scifi_subgenre=scifi_subgenre,
             )
@@ -467,6 +476,7 @@ class VideoPipeline:
             niche=getattr(self, "niche", None),
             channel_id=target_ch_id,
             job_id=self.job_id,
+            is_long_form=(str(getattr(script, "video_format", "short") or "short").lower() == "long"),
         )
 
     async def _step_concat_audio(self, scenes: List[SceneContract]) -> Tuple[str, int]:

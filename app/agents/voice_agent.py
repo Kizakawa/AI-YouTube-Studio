@@ -461,6 +461,7 @@ class VoiceAgent:
         channel_id: Optional[str] = None,
         job_id: Optional[int] = None,
         preferred_engine: Optional[str] = None,
+        is_long_form: bool = False,
     ) -> List[SceneContract]:
         """
         Sinh MP3 cho từng scene với:
@@ -770,9 +771,9 @@ class VoiceAgent:
             from collections import Counter
             self.last_used_engine = Counter(engine_tracker).most_common(1)[0][0]
 
-        # ── KHÓA TRẦN THỜI LƯỢNG VÀNG (33s - 40.5s) CHỐNG TỤT APV % MÀ KHÔNG CẮT BỚT CÂU CHỮ ──
+        # ── KHÓA TRẦN THỜI LƯỢNG VÀNG (33s - 40.5s) CHO SHORTS — BỎ QUA KHI LÀ VIDEO DÀI 16:9 ──
         total_raw_ms = sum(int(sc.audio_duration_ms or 0) for sc in enriched_scenes)
-        if total_raw_ms > 40500:
+        if total_raw_ms > 40500 and not is_long_form and len(enriched_scenes) <= 12:
             tempo_factor = min(1.24, max(1.05, total_raw_ms / 37500.0))
             logger.info(
                 f"⚡ [VoiceAgent GoldenDurationCap] Tổng audio={total_raw_ms/1000:.1f}s (> 40.5s) "

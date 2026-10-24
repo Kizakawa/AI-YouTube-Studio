@@ -75,9 +75,9 @@ class VideoQA:
                 issues.append("Audio stream bị thiếu trong file MP4")
                 passed = False
 
-            # Kiểm tra độ phân giải dọc 9:16
-            if width != 1080 or height != 1920:
-                issues.append(f"Độ phân giải chưa tối ưu ({width}x{height} thay vì 1080x1920)")
+            # Kiểm tra độ phân giải chuẩn dọc 9:16 (1080x1920) hoặc ngang 16:9 (1920x1080)
+            if (width, height) not in ((1080, 1920), (1920, 1080)):
+                issues.append(f"Độ phân giải chưa tối ưu ({width}x{height} thay vì 1080x1920 hoặc 1920x1080)")
 
             # Kiểm tra thời lượng so với expected_duration_ms
             if expected_duration_ms > 0:

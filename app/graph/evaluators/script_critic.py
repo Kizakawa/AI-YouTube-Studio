@@ -275,12 +275,19 @@ class ScriptCritic:
 
         min_hook_req = calibration.get("min_hook_score", 8.2)
         avg_swipe_pct = calibration.get("avg_swipe_away_pct", 31.0)
+        is_long_form = str(script_data.get("video_format") or "short").strip().lower() == "long"
+        pacing_criterion_desc = (
+            "2. story_pacing (Mục tiêu Video Dài 16:9 Documentary: 2.5 - 4.5 phút, 340 - 650 từ, 16 - 26 phân cảnh chia thành 5 Chương sâu sắc — TUYỆT ĐỐI KHÔNG CỤT LỦN):"
+            if is_long_form
+            else "2. story_pacing (Mục tiêu: Mạch truyện đầy đặn, mượt mà, có đầu có đuôi 30 - 40s, 85 - 120 từ, 7 - 9 phân cảnh — TUYỆT ĐỐI KHÔNG CỤT LỦN):"
+        )
 
-        prompt = f"""Bạn là Giám đốc Sáng tạo và Trưởng ban Biên tập Kịch bản YouTube Shorts hàng đầu thế giới (chuẩn phong cách Vox, Magnates Media, Kurzgesagt).
+        prompt = f"""Bạn là Giám đốc Sáng tạo và Trưởng ban Biên tập Kịch bản YouTube {'Documentary Dài 16:9 & ' if is_long_form else ''}Shorts hàng đầu thế giới (chuẩn phong cách Vox, Magnates Media, Kurzgesagt).
 Nhiệm vụ của bạn: Đóng vai trò Critic khắt khe, chấm điểm và phản biện kịch bản sau đây dựa trên DỮ LIỆU GIỮ CHÂN THẬT của kênh.
 
 Chủ đề: {topic}
 Tiêu đề dự kiến: {title}
+Chế độ định dạng: {'LONG-FORM DOCUMENTARY 16:9 (16-26 cảnh, 340-650 từ)' if is_long_form else 'SHORTS 9:16 (7-9 cảnh, 85-120 từ)'}
 Phong cách kênh: {channel_style}
 Tỷ lệ vuốt bỏ trung bình hiện tại của kênh (Real Swipe-Away Rate): {avg_swipe_pct:.1f}% -> Ngưỡng bắt buộc của hook_strength >= {min_hook_req}/10.
 {entity_instruction}{winners_block}
@@ -288,11 +295,11 @@ Tỷ lệ vuốt bỏ trung bình hiện tại của kênh (Real Swipe-Away Rate
 --- NỘI DUNG KỊCH BẢN ---
 {scenes_formatted}
 
---- BỘ QUY CHUẨN ĐÁNH GIÁ KỊCH BẢN SHORTS 5 HỒI ĐẦY ĐẶN, MƯỢT MÀ (Thang điểm 1 - 10) ---
+--- BỘ QUY CHUẨN ĐÁNH GIÁ KỊCH BẢN 5 HỒI ĐẦY ĐẶN, MƯỢT MÀ (Thang điểm 1 - 10) ---
 1. hook_strength (Ngưỡng chặn cứng >= {min_hook_req}/10 — Mục tiêu: Viewed > 75%, Swipe-Away < 25%):
-   - Cảnh 1 (5-9 từ) BẮT BUỘC mở đầu bằng thế đối đầu trực diện ("A vs B") HOẶC câu khẳng định/cảnh báo sắc bén.
+   - Cảnh 1 (5-11 từ) BẮT BUỘC mở đầu bằng thế đối đầu trực diện ("A vs B") HOẶC câu khẳng định/cảnh báo sắc bén.
    - Bị đánh trượt (< 6.0): Mở đầu bằng câu hỏi Yes/No ("Did you know...", "Have you ever..."), định nghĩa sách giáo khoa, hoặc lặp lại cấu trúc của 3 video thua cuộc (Losers).
-2. story_pacing (Mục tiêu: Mạch truyện đầy đặn, mượt mà, có đầu có đuôi 30 - 40s, 85 - 120 từ, 7 - 9 phân cảnh — TUYỆT ĐỐI KHÔNG CỤT LỦN):
+{pacing_criterion_desc}
    - Đánh giá cao (>= 8.5) kịch bản dẫn dắt tự nhiên, có câu chuyển ý mượt mà, giải thích thấu đáo đủ 5 Hồi (Hook -> Bối cảnh/Ví dụ thật -> Giải thích cơ chế -> Cao trào/Đòn hóa giải -> Kết luận trọn vẹn).
    - Trừ điểm nếu kịch bản bị viết cụt lủn, nhảy cóc ý, hoặc cắt câu máy móc.
 3. entity_coherence: Nội dung kịch bản bám sát chủ đề và nhân vật/vấn đề chính một cách tự nhiên.
@@ -430,8 +437,12 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
             channel_style=channel_style,
         )
 
-        # Kiểm tra nhịp điệu & độ đầy đặn của mạch truyện (55 - 155 từ cho 5-12 cảnh trọn câu, chống kịch bản cụt lủn)
-        pace_score = 8.8 if 55 <= total_words <= 155 and 5 <= scene_count <= 12 else 6.8
+        # Kiểm tra nhịp điệu & độ đầy đặn của mạch truyện theo định dạng Short vs Long
+        is_long_form = str(script_data.get("video_format") or "short").strip().lower() == "long"
+        if is_long_form:
+            pace_score = 8.9 if 240 <= total_words <= 950 and 14 <= scene_count <= 34 else 6.8
+        else:
+            pace_score = 8.8 if 55 <= total_words <= 155 and 5 <= scene_count <= 12 else 6.8
 
         # Kiểm tra thực thể tương đối trên tổng thể kịch bản (không khóa cứng theo visual_keyword từng cảnh)
         ent_score = 8.8

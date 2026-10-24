@@ -856,12 +856,21 @@ async def delchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 def _parse_idea_input(raw_input: str) -> tuple:
-    """Tách chủ đề chính, các ghi chú đạo diễn (Director's Notes) và ngôn ngữ chỉ định (Language)."""
+    """
+    Tách chủ đề chính, các ghi chú đạo diễn (Director's Notes), ngôn ngữ chỉ định (Language)
+    và có thể đọc thêm chế độ video (video_format: "short" | "long") thông qua cờ --long / --short.
+    Giữ nguyên chữ ký trả về 3 phần tử (topic, notes, explicit_lang) để tương thích ngược,
+    đồng thời hỗ trợ _extract_video_format_from_input(raw_input).
+    """
     if not raw_input:
         return "", None, None
 
     text = raw_input.strip()
     explicit_lang = None
+
+    # Loại bỏ cờ định dạng video khỏi chủ đề để tránh dính từ khóa --long / --short vào topic
+    text = re.sub(r'(?:\s+|^)--(?:long|16:9|documentary|short|shorts|9:16)\b', '', text, flags=re.IGNORECASE).strip()
+    text = re.sub(r'^(?:\[(?:long|short)\]|(?:long|short):)\s*', '', text, flags=re.IGNORECASE).strip()
 
     # 1. Kiểm tra tiền tố ngôn ngữ: vi, en, [vi], [en], vi:, en:
     prefix_match = re.match(r'^(?:\[(vi|en)\]|(vi|en):|(vi|en))\s+', text, re.IGNORECASE)
@@ -915,6 +924,20 @@ def _parse_idea_input(raw_input: str) -> tuple:
             notes = re.sub(r'--(style|mood|focus|angle|pace|visual)\s+', r'\1: ', notes, flags=re.IGNORECASE)
 
     return topic.strip(), notes, explicit_lang
+
+
+def _extract_video_format_from_input(raw_input: str) -> str:
+    """Nhận diện chế độ video ngắn ('short') hay dài ('long') từ câu lệnh /idea của người dùng."""
+    if not raw_input:
+        return "short"
+    raw_low = raw_input.strip().lower()
+    if re.search(r'(?:\s+|^)--(?:long|16:9|documentary)\b', raw_low):
+        return "long"
+    if re.match(r'^(?:\[long\]|long:)\s*', raw_low):
+        return "long"
+    if re.search(r'\b(?:video\s+dài|phim\s+tài\s+liệu\s+dài|long\s+video|16:9)\b', raw_low):
+        return "long"
+    return "short"
 
 
 def detect_best_channel_for_topic(topic: str, current_channel_id: Optional[str] = None) -> tuple:
@@ -1135,10 +1158,10 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_reply(
             update,
             f"💡 **HƯỚNG DẪN TẠO Ý TƯỞNG & KỊCH BẢN CHO KÊNH `{ch_name}`**\n\n"
-            "1️⃣ **Nhập chủ đề tùy ý (Chủ động chọn Ngôn ngữ):**\n"
-            "   • Tiếng Việt: `/idea vi <chủ đề>` hoặc `/idea <chủ đề> --vi`\n"
-            "   • Tiếng Anh:  `/idea en <chủ đề>` hoặc `/idea <chủ đề> --en`\n"
-            "   • Thêm ghi chú: `/idea vi 3 bí ẩn đáy biển | phong cách rùng rợn, nghẹt thở`\n"
+            "1️⃣ **Nhập chủ đề tùy ý (Chọn Ngôn ngữ & Chế độ Video Ngắn/Dài):**\n"
+            "   • Video Ngắn (Shorts 9:16 ~40s): `/idea en <chủ đề>` hoặc `/idea vi <chủ đề>`\n"
+            "   • Video Dài (Documentary 16:9 ~4 phút): `/idea en <chủ đề> --long` hoặc `/idea vi <chủ đề> --long`\n"
+            "   • Thêm ghi chú: `/idea vi 3 bí ẩn đáy biển --long | phong cách rùng rợn, nghẹt thở`\n"
             f"   _(Ngôn ngữ mặc định kênh hiện tại: **{ch_lang_name}**)_\n\n"
             "2️⃣ **AI tự động phân tích kênh & đề xuất 5 ý tưởng triệu view:**\n"
             "   Gõ `/viral` (hoặc `/ideas`) hoặc bấm nút bên dưới để AI đối chiếu video top & flop, loại bỏ bão hòa và đón đầu xu hướng 2026!",
@@ -1149,6 +1172,7 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     raw_topic = " ".join(context.args)
+    video_format = _extract_video_format_from_input(raw_topic)
     clean_topic, director_notes, explicit_lang = _parse_idea_input(raw_topic)
     if not clean_topic:
         clean_topic = raw_topic
@@ -1158,7 +1182,7 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
     idea_lock_key = f"idea_cmd:{user.id if user else 0}"
-    if not _try_acquire_action(idea_lock_key, max_inflight_sec=90.0, debounce_sec=5.0):
+    if not _try_acquire_action(idea_lock_key, max_inflight_sec=110.0, debounce_sec=5.0):
         await safe_reply(
             update,
             "⏳ **Hệ thống đang biên soạn kịch bản cho yêu cầu trước của bạn rồi!**\n"
@@ -1184,18 +1208,18 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     db_user.active_channel_id = channel_id
 
             log_activity(db, user.id, user.username, "CMD_IDEA",
-                         f"Yêu cầu lên ý tưởng video: '{clean_topic}'", channel_id=channel_id)
+                         f"Yêu cầu lên ý tưởng video ({video_format}): '{clean_topic}'", channel_id=channel_id)
 
         # Chống tạo đúp nhiều VideoJob nếu người dùng bấm/gửi trùng cùng 1 chủ đề trong 4 phút gần nhất
         dup_job_id = _find_recent_duplicate_job(channel_id, clean_topic, window_seconds=240)
-        if dup_job_id:
+        if dup_job_id and video_format == "short":
             ch_dup = channel_manager.get_channel(channel_id) or {}
             ch_lang_dup = explicit_lang or ch_dup.get("language") or "en"
             await safe_reply(
                 update,
                 f"🛡️ **Chống tạo trùng:** Chủ đề *\"{clean_topic}\"* vừa mới được tạo ở **Task #{dup_job_id}**!\n"
                 f"👉 Bạn có thể bấm nút bên dưới để duyệt & dựng ngay **Task #{dup_job_id}** mà không cần tạo lại:",
-                reply_markup=get_script_review_keyboard(dup_job_id, current_lang=ch_lang_dup),
+                reply_markup=get_script_review_keyboard(dup_job_id, current_lang=ch_lang_dup, video_format=video_format),
             )
             return
 
@@ -1205,6 +1229,7 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         channel_niche = ch.get("niche") or "history_mystery"
         channel_lang = explicit_lang or ch.get("language") or "en"
         lang_display = "🇻🇳 Tiếng Việt" if channel_lang.lower().startswith("vi") else "🇺🇸 Tiếng Anh"
+        format_display = "🎬 Video Dài 16:9 (~3.5–4.5 phút)" if video_format == "long" else "📱 Video Ngắn 9:16 (Shorts ~40s)"
 
         notes_info = f"\n🎯 **Hướng đạo diễn:** _{director_notes}_" if director_notes else ""
         switch_info = f"\n💡 *{switch_reason}*" if switch_reason else ""
@@ -1212,6 +1237,7 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             update,
             f"🤖 **{user.first_name}** vừa yêu cầu lên ý tưởng: *\"{clean_topic}\"*{notes_info}{switch_info}\n"
             f"📺 Kênh: `{channel_name}` ({channel_niche}) | 🌐 Ngôn ngữ: **{lang_display}**\n"
+            f"🎞️ Chế độ: **{format_display}**\n"
             f"⏳ Đang kích hoạt Gemini AI biên soạn kịch bản..."
         )
 
@@ -1222,7 +1248,8 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 topic=clean_topic,
                 channel_niche=channel_niche,
                 language=channel_lang,
-                director_notes=director_notes
+                director_notes=director_notes,
+                video_format=video_format,
             )
 
             # Kiểm tra và bảo vệ chống trùng lặp tiêu đề với toàn bộ kho video của kênh
@@ -1258,7 +1285,7 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 job_id = job.id
 
                 log_activity(db, user.id, user.username, "SCRIPT_CREATED",
-                             f"Kịch bản #{job_id} đã hoàn thành: '{script.title}'",
+                             f"Kịch bản #{job_id} ({video_format}) đã hoàn thành: '{script.title}'",
                              channel_id=channel_id)
                 # Lưu ý: Chỉ lưu vào bộ nhớ (VideoMemoryRAG / UsedTopic) sau khi video thực sự được đăng lên YouTube.
 
@@ -1306,7 +1333,8 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🎬 **KỊCH BẢN ĐÃ HOÀN THÀNH (Task #{job_id})**\n\n"
                 f"{score_text}"
                 f"📌 **Tiêu đề đề xuất:** {script.title}\n"
-                f"🔥 **Hook 3 giây đầu:** \"{script.hook}\"\n\n"
+                f"🎞️ **Định dạng:** {format_display}\n"
+                f"🔥 **Hook mở đầu:** \"{script.hook}\"\n\n"
                 f"{formula_display}"
                 f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
                 f"{monetization_card}"
@@ -1314,10 +1342,10 @@ async def idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{notes_display}"
                 f"⏱️ **Ước lượng:** ~{script.total_estimated_duration:.0f}s | {len(script.scenes)} cảnh\n"
                 f"🗣️ **Người tạo:** {user.first_name} | 📺 **Kênh:** `{channel_name}` ({channel_niche}) | 🌐 **Ngôn ngữ:** {lang_display}\n\n"
-                f"👉 Cả nhóm hãy xem kịch bản, bấm **DUYỆT & DỰNG VIDEO NGAY** bên dưới để máy chủ tự động sản xuất Shorts!"
+                f"👉 Cả nhóm hãy xem kịch bản, bấm **DUYỆT & DỰNG VIDEO NGAY** (hoặc chuyển đổi Ngắn/Dài 1 chạm) bên dưới!"
             )
 
-            review_markup = get_script_review_keyboard(job_id, current_lang=channel_lang)
+            review_markup = get_script_review_keyboard(job_id, current_lang=channel_lang, video_format=getattr(script, "video_format", video_format))
             if status_msg:
                 await safe_edit_text(status_msg, reply_content, reply_markup=review_markup)
             else:
@@ -3572,16 +3600,17 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"• Cảnh {s.scene_id}: {s.narration[:65]}..."
                     for s in revised_script.scenes[:3]
                 ])
-                markup = get_script_review_keyboard(job_id, current_lang=target_lang)
+                cur_vf = getattr(revised_script, "video_format", getattr(current_script, "video_format", "short"))
+                markup = get_script_review_keyboard(job_id, current_lang=target_lang, video_format=cur_vf)
 
                 reply_text = (
                     f"🎬 **KỊCH BẢN ĐÃ CHUYỂN SANG {target_lang_display.upper()} (Task #{job_id})**\n\n"
                     f"📌 **Tiêu đề:** {revised_script.title}\n"
-                    f"🔥 **Hook 3 giây đầu:** \"{revised_script.hook}\"\n\n"
+                    f"🔥 **Hook mở đầu:** \"{revised_script.hook}\"\n\n"
                     f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
                     f"⏱️ **Ước lượng:** ~{revised_script.total_estimated_duration:.0f}s | {len(revised_script.scenes)} cảnh\n"
                     f"🗣️ **Người đổi:** {user.first_name} | 📺 **Kênh:** `{channel_name}` | 🌐 **Ngôn ngữ:** {target_lang_display}\n\n"
-                    f"👉 Cả nhóm hãy xem kịch bản, bấm **DUYỆT & DỰNG VIDEO NGAY** bên dưới để máy chủ tự động sản xuất Shorts!"
+                    f"👉 Cả nhóm hãy xem kịch bản, bấm **DUYỆT & DỰNG VIDEO NGAY** bên dưới để máy chủ tự động sản xuất!"
                 )
                 await safe_edit_text(wait_m, reply_text, reply_markup=markup)
             except Exception as ex:
@@ -3590,13 +3619,16 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         finally:
             _release_action(lang_lock_key, post_cooldown_sec=3.0)
 
-    # 5. Tạo lại kịch bản từ đầu
-    elif data.startswith("regenerate:"):
-        job_id = int(data.split(":")[1])
-        regen_lock_key = f"script_op:{job_id}"
-        acquired = _try_acquire_action(regen_lock_key, max_inflight_sec=90.0, debounce_sec=5.0)
+    # 5.2 Đổi chế độ Video Ngắn (9:16 Shorts) <-> Video Dài (16:9 Documentary ~4 phút)
+    elif data.startswith("switch_format:"):
+        parts = data.split(":")
+        job_id = int(parts[1])
+        target_format = parts[2] if len(parts) > 2 else "long"
+        target_format = "long" if str(target_format).lower() in ("long", "16:9", "documentary") else "short"
+        fmt_lock_key = f"script_op:{job_id}"
+        acquired = _try_acquire_action(fmt_lock_key, max_inflight_sec=110.0, debounce_sec=5.0)
         if not acquired:
-            await safe_reply(update, f"⏳ Kịch bản #{job_id} đang được AI tái tạo, vui lòng chờ giây lát!")
+            await safe_reply(update, f"⏳ Kịch bản #{job_id} đang được AI xử lý, vui lòng chờ giây lát!")
             return
 
         try:
@@ -3607,6 +3639,92 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     return
                 channel_id = job.target_channel_id or "ch_psychology_of_the_world"
                 topic = job.topic or job.title or "Viral Concept"
+                from app.agents.voice_agent import VoiceAgent
+                is_vn = VoiceAgent._is_vietnamese(job.script or job.scenes_json or "")
+                current_lang = "vi" if is_vn else "en"
+
+            ch = channel_manager.get_channel(channel_id) or {}
+            channel_name = ch.get("name") or channel_id
+            channel_niche = ch.get("niche") or "general"
+            lang_display = "🇻🇳 Tiếng Việt" if current_lang == "vi" else "🇺🇸 Tiếng Anh"
+            fmt_label = "🎬 Video Dài 16:9 (16–22 cảnh, ~3.5–4.5 phút)" if target_format == "long" else "📱 Video Ngắn 9:16 (Shorts 7–9 cảnh, ~40s)"
+
+            wait_m = await safe_reply(
+                update,
+                f"🎞️ **{user.first_name}** yêu cầu chuyển kịch bản Task #{job_id} sang chế độ **{fmt_label}**...\n"
+                f"📌 Chủ đề: *\"{topic}\"*\n"
+                f"⏳ Gemini AI đang tái cấu trúc toàn bộ kịch bản theo chuẩn {fmt_label}..."
+            )
+
+            try:
+                new_script, eval_report = await asyncio.to_thread(
+                    content_agent.generate_best_script,
+                    topic=topic,
+                    channel_niche=channel_niche,
+                    language=current_lang,
+                    video_format=target_format,
+                )
+
+                with get_db() as db:
+                    db_job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                    if db_job:
+                        db_job.title = new_script.title
+                        db_job.script = new_script.full_narration
+                        db_job.description = new_script.description
+                        db_job.tags = ",".join(new_script.tags)
+                        db_job.scenes_json = new_script.to_json_str()
+                        db_job.status = "SCRIPT_READY"
+                        log_activity(db, user.id, user.first_name, "SWITCH_FORMAT",
+                                     f"Chuyển kịch bản #{job_id} sang {target_format}: '{new_script.title}'",
+                                     channel_id=channel_id)
+
+                scenes_preview = "\n".join([
+                    f"• Cảnh {s.scene_id}: {s.narration[:65]}..."
+                    for s in new_script.scenes[:4]
+                ])
+                markup = get_script_review_keyboard(job_id, current_lang=current_lang, video_format=target_format)
+
+                reply_text = (
+                    f"🎬 **ĐÃ CHUYỂN SANG {fmt_label.upper()} (Task #{job_id})**\n\n"
+                    f"📌 **Tiêu đề:** {new_script.title}\n"
+                    f"🔥 **Hook mở đầu:** \"{new_script.hook}\"\n\n"
+                    f"📝 **Phân cảnh tiêu biểu:**\n{scenes_preview}\n\n"
+                    f"⏱️ **Ước lượng:** ~{new_script.total_estimated_duration:.0f}s | {len(new_script.scenes)} cảnh\n"
+                    f"🗣️ **Người đổi:** {user.first_name} | 📺 **Kênh:** `{channel_name}` | 🌐 **Ngôn ngữ:** {lang_display}\n\n"
+                    f"👉 Bấm **DUYỆT & DỰNG VIDEO NGAY** bên dưới để máy chủ tự động dựng theo đúng chế độ đã chọn!"
+                )
+                await safe_edit_text(wait_m, reply_text, reply_markup=markup)
+            except Exception as ex:
+                logger.error(f"Lỗi chuyển chế độ video cho kịch bản #{job_id}: {ex}", exc_info=True)
+                await safe_edit_text(wait_m, f"❌ Lỗi khi chuyển chế độ video: `{ex}`")
+        finally:
+            _release_action(fmt_lock_key, post_cooldown_sec=3.0)
+
+    # 5. Tạo lại kịch bản từ đầu
+    elif data.startswith("regenerate:"):
+        job_id = int(data.split(":")[1])
+        regen_lock_key = f"script_op:{job_id}"
+        acquired = _try_acquire_action(regen_lock_key, max_inflight_sec=110.0, debounce_sec=5.0)
+        if not acquired:
+            await safe_reply(update, f"⏳ Kịch bản #{job_id} đang được AI tái tạo, vui lòng chờ giây lát!")
+            return
+
+        try:
+            current_vf = "short"
+            with get_db() as db:
+                job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                if not job:
+                    await safe_reply(update, f"❌ Không tìm thấy VideoJob #{job_id}")
+                    return
+                channel_id = job.target_channel_id or "ch_psychology_of_the_world"
+                topic = job.topic or job.title or "Viral Concept"
+                if job.scenes_json:
+                    try:
+                        from app.schemas.contracts import ScriptContract
+                        sc_tmp = ScriptContract.from_json_str(job.scenes_json)
+                        current_vf = getattr(sc_tmp, "video_format", "short")
+                    except Exception:
+                        pass
                 # Nhận diện ngôn ngữ hiện tại của job
                 from app.agents.voice_agent import VoiceAgent
                 is_vn = VoiceAgent._is_vietnamese(job.script or job.scenes_json or "")
@@ -3630,7 +3748,8 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     content_agent.generate_best_script,
                     topic=topic,
                     channel_niche=channel_niche,
-                    language=current_lang
+                    language=current_lang,
+                    video_format=current_vf,
                 )
 
                 with get_db() as db:
@@ -3650,7 +3769,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"• Cảnh {s.scene_id}: {s.narration[:65]}..."
                     for s in new_script.scenes[:3]
                 ])
-                markup = get_script_review_keyboard(job_id, current_lang=current_lang)
+                markup = get_script_review_keyboard(job_id, current_lang=current_lang, video_format=current_vf)
 
                 reply_text = (
                     f"🎬 **KỊCH BẢN ĐÃ TÁI TẠO XONG (Task #{job_id})**\n\n"

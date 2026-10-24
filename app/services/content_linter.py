@@ -159,9 +159,19 @@ class ScriptValidationLinter:
         words = re.findall(r'\b\w+\b', all_narrations)
         total_words = len(words)
 
-        min_words = 82
-        max_words = 128
-        target_range_str = "92 to 118 words (34-42s High-APV Golden Duration across 7-8 smooth, complete scenes)"
+        is_long_form = str(getattr(script, "video_format", "short") or "short").strip().lower() == "long"
+        if is_long_form:
+            min_words = 260
+            max_words = 900
+            target_range_str = "360 to 650 words (2.5-4.5 min Long-Form Documentary across 16-26 complete scenes)"
+            min_scenes = 14
+            max_scenes = 32
+        else:
+            min_words = 82
+            max_words = 128
+            target_range_str = "92 to 118 words (34-42s High-APV Golden Duration across 7-8 smooth, complete scenes)"
+            min_scenes = 7
+            max_scenes = 9
 
         if total_words > max_words:
             est_seconds = (total_words / max(target_wpm, 160)) * 60
@@ -177,14 +187,13 @@ class ScriptValidationLinter:
             )
 
         scene_count = len(script.scenes)
-        min_scenes = 7
         if scene_count < min_scenes:
             issues.append(
-                f"Too few scenes ({scene_count}). Need 7 to 8 scenes (minimum {min_scenes}) to tell a complete, well-paced 34-42s story."
+                f"Too few scenes ({scene_count}). Need {min_scenes} to {max_scenes} scenes to tell a complete, well-paced story."
             )
-        elif scene_count > 9:
+        elif scene_count > max_scenes:
             issues.append(
-                f"Too many scenes ({scene_count}). Keep between 7 and 8 complete-sentence scenes so the narrative stays in the 34-42s high-APV window."
+                f"Too many scenes ({scene_count}). Keep between {min_scenes} and {max_scenes} complete-sentence scenes."
             )
 
         return issues, total_words

@@ -215,6 +215,12 @@ class GraphRunner:
                 break
 
         # 2. Khởi tạo trạng thái ban đầu cho LangGraph
+        resolved_video_format = "short"
+        if isinstance(existing_script, dict) and existing_script.get("video_format"):
+            vf_raw = str(existing_script.get("video_format")).strip().lower()
+            if vf_raw in ("long", "long_form", "longform", "16:9", "landscape", "horizontal", "documentary"):
+                resolved_video_format = "long"
+
         initial_state: VideoWorkflowState = {
             "job_id": self.job_id,
             "topic": topic,
@@ -223,6 +229,7 @@ class GraphRunner:
             "language": channel_lang,
             "preferred_voice": preferred_voice,
             "visual_mode": channel_visual_mode,
+            "video_format": resolved_video_format,
             "work_dir": str(self.work_dir),
             "script_data": existing_script,
             "script_retry_count": 0,
@@ -387,6 +394,7 @@ class GraphRunner:
                 "topic": job.topic or "",
                 "title": job.title or "",
                 "target_channel_id": job.target_channel_id or "default",
+                "video_format": str((script_data if isinstance(script_data, dict) else {}).get("video_format") or "short"),
                 "work_dir": str(self.work_dir),
                 "script_data": script_data,
                 "scenes_audio": scenes_audio,

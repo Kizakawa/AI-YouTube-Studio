@@ -160,7 +160,7 @@ class ScriptJsonParserMixin:
         self,
         raw_text: str,
         channel_niche: str = "general",
-        topic: str = "",
+        topic: str = "", video_format: str = "short", **kwargs,
     ) -> ScriptContract:
         """Helper làm sạch markdown và parse JSON thành ScriptContract, tự động khử rò rỉ ngôn ngữ và metadata chéo ngách."""
         import re
@@ -181,6 +181,8 @@ class ScriptJsonParserMixin:
 
         if topic and ("topic" not in raw_data or not str(raw_data.get("topic") or "").strip()):
             raw_data["topic"] = str(topic).strip()
+        if "video_format" not in raw_data or not str(raw_data.get("video_format") or "").strip():
+            raw_data["video_format"] = str(video_format or "short").strip().lower()
 
         # Khử sạch các hậu tố kênh hoặc mã quốc gia rò rỉ ở tiêu đề (tránh thuật toán YouTube phân phối nhầm vùng)
         if "title" in raw_data and isinstance(raw_data["title"], str):

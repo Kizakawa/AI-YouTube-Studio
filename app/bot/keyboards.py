@@ -162,8 +162,9 @@ def get_script_review_keyboard(
     job_id: int,
     current_lang: Optional[str] = None,
     is_rendering: bool = False,
+    video_format: str = "short",
 ) -> InlineKeyboardMarkup:
-    """Bàn phím Bước 1: Khi kịch bản vừa tạo xong, tinh gọn, chuẩn SaaS cao cấp"""
+    """Bàn phím Bước 1: Khi kịch bản vừa tạo xong, tinh gọn, chuẩn SaaS cao cấp (hỗ trợ 1-Click chuyển Ngắn 9:16 <-> Dài 16:9)"""
     if current_lang and current_lang.lower().startswith("vi"):
         switch_btn = InlineKeyboardButton("🇺🇸 Đổi Sang Tiếng Anh", callback_data=f"switch_lang:{job_id}:en")
     elif current_lang and current_lang.lower().startswith("en"):
@@ -171,19 +172,27 @@ def get_script_review_keyboard(
     else:
         switch_btn = InlineKeyboardButton("🌐 Đổi Ngôn Ngữ (VI/EN)", callback_data=f"switch_lang:{job_id}:toggle")
 
+    vf_norm = "long" if str(video_format or "short").lower() in ("long", "16:9", "documentary") else "short"
+    if vf_norm == "long":
+        format_btn = InlineKeyboardButton("📱 Chuyển Sang Video Ngắn (9:16 Shorts)", callback_data=f"switch_format:{job_id}:short")
+    else:
+        format_btn = InlineKeyboardButton("🎬 Chuyển Sang Video Dài (16:9 ~4 Phút)", callback_data=f"switch_format:{job_id}:long")
+
     if is_rendering:
         render_btn = InlineKeyboardButton(
             f"⏳ Đang dựng Video #{job_id}... (Gõ /queue)",
             callback_data=f"render_video_locked:{job_id}",
         )
     else:
+        mode_tag = "16:9 DÀI" if vf_norm == "long" else "9:16 SHORTS"
         render_btn = InlineKeyboardButton(
-            "🎬 DUYỆT & DỰNG VIDEO NGAY",
+            f"🎬 DUYỆT & DỰNG VIDEO NGAY ({mode_tag})",
             callback_data=f"render_video:{job_id}",
         )
 
     keyboard = [
         [render_btn],
+        [format_btn],
         [
             InlineKeyboardButton("✍️ Góp Ý Sửa", callback_data=f"edit_script:{job_id}"),
             switch_btn,

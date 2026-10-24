@@ -112,6 +112,7 @@ class VideoWorkflowState(TypedDict, total=False):
     language: Optional[str]
     preferred_voice: Optional[str]
     visual_mode: Optional[str]
+    video_format: Optional[str]  # 'short' (9:16 Shorts) | 'long' (16:9 Long-form Documentary)
     director_notes: Optional[str]
     work_dir: str
     

@@ -83,6 +83,13 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
 
     if not subtitle_path:
         subtitle_path = str(work_dir / "subtitles.ass")
+    video_format = str(
+        state.get("video_format")
+        or (state.get("script_data") or {}).get("video_format")
+        or ("long" if len(enriched_scenes) >= 14 else "short")
+    ).strip().lower()
+    is_long_form = video_format == "long"
+
     try:
         sub_ok = Path(subtitle_path).exists() and ("Dialogue: 0," in Path(subtitle_path).read_text(encoding="utf-8", errors="ignore"))
         if not sub_ok and enriched_scenes:
@@ -94,6 +101,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
                 niche_id=niche,
                 hook_title=hook_banner_text,
                 show_cta_badge=True,
+                is_long_form=is_long_form,
             )
     except Exception as e_sub:
         logger.debug(f"[RenderNode] Auto-repair subtitles.ass warning: {e_sub}")
@@ -112,6 +120,7 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
         sfx_dir=None,
         enable_sfx=False,
         output_path=final_output,
+        video_format="long" if is_long_form else "short",
     )
 
     agent = VideoAgent()
@@ -133,9 +142,10 @@ async def node_render_video(state: VideoWorkflowState) -> Dict[str, Any]:
 
     return {
         "rendered_video_path": final_output,
+        "video_format": "long" if is_long_form else "short",
         "current_step": "RENDERED",
         "progress_percent": 90,
-        "progress_message": "Đã render hoàn tất video (1080x1920, Ken Burns, Subtitles)",
+        "progress_message": f"Đã render hoàn tất video ({'1920x1080 16:9' if is_long_form else '1080x1920 9:16'}, Ken Burns, Subtitles)",
     }
 
 

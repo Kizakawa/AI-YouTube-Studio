@@ -115,8 +115,18 @@ class ViralIdeationMixin:
                     f"kênh có swipe_away={avg_swipe}%): {best_eval.hook_strength.feedback}. "
                     f"BẮT BUỘC dùng công thức pt-BR / Wild Odyssey: cấu trúc đối đầu 'A vs B' + câu khẳng định gây sốc 5-8 từ có con số/thông số vật lý cụ thể ngay giây 0.0s."
                 )
+            vf_mode = "long" if str(kwargs.get("video_format") or getattr(best_script, "video_format", "short")).lower() in ("long", "16:9", "documentary") else "short"
             if best_eval.story_pacing.score < 8.0:
-                critiques_list.append(f"Nhịp điệu chưa chuẩn ({best_eval.story_pacing.score:.1f}/10): {best_eval.story_pacing.feedback}. Điều chỉnh lời thoại strictly 88-118 từ cho toàn bộ video, 3.5-4.5s/cảnh, 8-9 cảnh.")
+                if vf_mode == "long":
+                    critiques_list.append(
+                        f"Nhịp điệu Video Dài 16:9 chưa chuẩn ({best_eval.story_pacing.score:.1f}/10): {best_eval.story_pacing.feedback}. "
+                        f"Điều chỉnh lời thoại khoảng 380-750 từ chia đều vào 16-22 phân cảnh (8-14s/cảnh) theo 5 Chương."
+                    )
+                else:
+                    critiques_list.append(
+                        f"Nhịp điệu chưa chuẩn ({best_eval.story_pacing.score:.1f}/10): {best_eval.story_pacing.feedback}. "
+                        f"Điều chỉnh lời thoại strictly 88-118 từ cho toàn bộ video, 3.5-4.5s/cảnh, 8-9 cảnh."
+                    )
             if getattr(best_eval, "visual_direction", None) and best_eval.visual_direction.score < 8.0:
                 critiques_list.append(f"Thị giác yếu ({best_eval.visual_direction.score:.1f}/10): Cấm từ ngữ trừu tượng. visual_keyword và stock_query phải là danh từ/hành động vật lý cụ thể.")
 
@@ -135,6 +145,7 @@ class ViralIdeationMixin:
                         channel_niche=channel_niche,
                         language=language,
                         director_notes=director_notes,
+                        video_format=vf_mode,
                     )
                 else:
                     # Lần thử cuối cùng: Tái tạo kịch bản từ đầu với góc nhìn sốc và sắc bén hơn

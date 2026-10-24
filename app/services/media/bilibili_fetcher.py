@@ -447,13 +447,14 @@ def download_and_crop_bilibili_broll_clip(
     output_path: str,
     target_duration_sec: float = 4.5,
     max_range_bytes: int = 7 * 1024 * 1024,
+    aspect_ratio: str = "9:16",
 ) -> Optional[Dict[str, Any]]:
     """
     Tải nhanh phân đoạn đầu/cao trào (6-7MB qua HTTP Range ~1.5s) từ luồng H.264 1080p/720p của Bilibili,
     sau đó áp dụng **Bilibili Safe-Crop (`crop=iw:ih*0.78:0:ih*0.08`)** cắt bỏ hoàn toàn:
       - 8% mép trên (logo Bilibili & tên kênh góc trên)
       - 14% mép dưới (phụ đề tiếng Trung in cứng ở đáy màn hình)
-    rồi chuyển về chuẩn dọc 9:16 (`1080x1920`), tắt tiếng gốc (`-an`) và khóa màu `BT.709`.
+    rồi chuyển về chuẩn dọc 9:16 (`1080x1920`) hoặc ngang 16:9 (`1920x1080`), tắt tiếng gốc (`-an`) và khóa màu `BT.709`.
     """
     info = get_bilibili_video_info_and_streams(url_or_id)
     if not info or not info.get("video_stream_url"):
@@ -501,17 +502,25 @@ def download_and_crop_bilibili_broll_clip(
             peak_start = min(2.0, max(0.0, avail_dur_s - req_dur))
             peak_len = req_dur
 
-        clip_dur = min(max(req_dur, peak_len), 8.0, max(3.2, avail_dur_s - peak_start))
+        clip_dur = min(max(req_dur, peak_len), 10.5 if aspect_ratio == "16:9" else 8.0, max(3.2, avail_dur_s - peak_start))
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
         # Bilibili Safe-Crop:
         # Cắt bỏ 8% đỉnh (logo Bilibili) + 14% đáy (phụ đề cứng tiếng Trung), giữ 78% vùng trung tâm sạch
-        vf_chain = (
-            "crop=iw:ih*0.78:0:ih*0.08,"
-            "scale=1080:1920:force_original_aspect_ratio=increase,"
-            "crop=1080:1920,"
-            "setsar=1,fps=30"
-        )
+        if str(aspect_ratio or "9:16").strip() in ("16:9", "long", "landscape", "horizontal"):
+            vf_chain = (
+                "crop=iw*0.86:ih*0.78:iw*0.07:ih*0.08,"
+                "scale=1920:1080:force_original_aspect_ratio=increase,"
+                "crop=1920:1080,"
+                "setsar=1,fps=30"
+            )
+        else:
+            vf_chain = (
+                "crop=iw:ih*0.78:0:ih*0.08,"
+                "scale=1080:1920:force_original_aspect_ratio=increase,"
+                "crop=1080:1920,"
+                "setsar=1,fps=30"
+            )
         cmd = [
             "ffmpeg", "-y", "-v", "error",
             "-ss", f"{max(0.0, peak_start):.2f}",

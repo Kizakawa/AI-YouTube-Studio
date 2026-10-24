@@ -236,12 +236,19 @@ class ScriptContract(BaseModel):
     """
     Output chuẩn của ContentAgent — kịch bản đã validate.
     Là nguồn sự thật cho title, hook, narration, SEO metadata.
+    Hỗ trợ cả 2 chế độ:
+      - video_format='short': YouTube Shorts 9:16 (1080x1920, 7-9 cảnh, ~35-45s)
+      - video_format='long' : YouTube Long-form Documentary 16:9 (1920x1080, 16-28 cảnh, ~3-5 phút)
     """
     title: str = Field(min_length=5, max_length=100)
     hook: str = Field(min_length=5, description="Câu hook 3 giây đầu")
     full_narration: str = Field(min_length=20, description="Toàn bộ lời thoại nối liền")
-    scenes: List[SceneContract] = Field(min_length=1, max_length=15)
+    scenes: List[SceneContract] = Field(min_length=1, max_length=40)
     tags: List[str] = Field(min_length=1, max_length=30)
+    video_format: str = Field(
+        default="short",
+        description="Chế độ định dạng video ngay từ bước kịch bản: 'short' (9:16 Shorts) hoặc 'long' (16:9 Long-form Documentary)",
+    )
     description: Optional[str] = Field(default=None, description="Mô tả video chuẩn SEO với hashtag")
     primary_entity: Optional[str] = Field(default=None, description="Tên thực thể/nhân vật chính nếu có")
     pinned_comment: Optional[str] = Field(
@@ -273,11 +280,20 @@ class ScriptContract(BaseModel):
         description="2 câu truy vấn ngắn gọn bằng tiếng Anh để tìm video Short trên mạng khi hook_visual_mode='video'"
     )
 
+    @field_validator("video_format", mode="before")
+    @classmethod
+    def normalize_video_format(cls, v: Any) -> str:
+        val = str(v or "short").strip().lower()
+        if val in ("long", "long_form", "longform", "16:9", "landscape", "horizontal", "documentary", "full"):
+            return "long"
+        return "short"
+
     @model_validator(mode="after")
     def ensure_description_and_defaults(self) -> "ScriptContract":
         """Đảm bảo description luôn tồn tại, không bao giờ None hoặc rỗng."""
         if not self.description or not str(self.description).strip():
-            tag_str = " ".join(f"#{t.strip().replace(' ', '')}" for t in self.tags if t.strip()) if self.tags else "#shorts #viral"
+            default_tags = "#documentary #viral" if self.video_format == "long" else "#shorts #viral"
+            tag_str = " ".join(f"#{t.strip().replace(' ', '')}" for t in self.tags if t.strip()) if self.tags else default_tags
             self.description = f"{self.title}\n\n{tag_str}"
         else:
             self.description = self.description.strip()
@@ -372,6 +388,7 @@ class RenderJobContract(BaseModel):
     output_path: str = Field(description="Đường dẫn MP4 đầu ra")
 
     # Render settings
+    video_format: str = Field(default="short", description="Chế độ video: 'short' (1080x1920 9:16) hoặc 'long' (1920x1080 16:9)")
     resolution_w: int = Field(default=1080)
     resolution_h: int = Field(default=1920)
     fps: int = Field(default=30)
@@ -382,6 +399,18 @@ class RenderJobContract(BaseModel):
     scifi_subgenre: Optional[str] = Field(default=None, description="Phân nhánh viễn tưởng (deep_space_cosmic, cyberpunk...)")
     thumbnail_path: Optional[str] = Field(default=None, description="Đường dẫn ảnh bìa ngang 16:9")
     thumbnail_vertical_path: Optional[str] = Field(default=None, description="Đường dẫn ảnh bìa dọc 9:16")
+
+    @model_validator(mode="after")
+    def sync_resolution_with_video_format(self) -> "RenderJobContract":
+        vf = str(self.video_format or "short").strip().lower()
+        if vf in ("long", "long_form", "longform", "16:9", "landscape", "horizontal", "documentary"):
+            self.video_format = "long"
+            if self.resolution_w == 1080 and self.resolution_h == 1920:
+                self.resolution_w = 1920
+                self.resolution_h = 1080
+        else:
+            self.video_format = "short"
+        return self
 
     @field_validator("scenes")
     @classmethod

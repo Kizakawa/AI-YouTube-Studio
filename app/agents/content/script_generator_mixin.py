@@ -263,7 +263,10 @@ Target Spoken Language: {language} ({target_lang_display}){notes_ctx}
 {channel_memory_block[:2500]}
 
 YOUR MISSION (DEEP PRE-SCRIPT RESEARCH & 3-ANGLE TOURNAMENT):
-Do NOT write the full script yet. Spend your full reasoning capacity to mine the most jaw-dropping, verifiable truths about "{topic}" and pit 3 distinct viral angles against each other before selecting the #1 Winning Blueprint:
+Do NOT write the full script yet. Spend your full reasoning capacity to deeply understand the user's intent, mine the most jaw-dropping verifiable truths about "{topic}", and pit 3 distinct viral angles against each other before selecting the #1 Winning Blueprint:
+0. DEEP USER INTENT & SUBTEXT COMPREHENSION (ZERO KEYWORD DEPENDENCE):
+   - Analyze what the user truly wants to convey in "{topic}" (and Creator Direction if provided), even if the input is brief, conversational, or a raw script idea.
+   - Deduce the hidden curiosity gap, emotional core, canonical `primary_entity`, and authentic physical environment/era of the story.
 1. DEEP FACT & METRIC MINING:
    - Extract 3 concrete, verifiable numbers/mechanisms (e.g. exact PSI bite force, °C temperature, ocean depth in meters, decibels, reaction speed in seconds/milliseconds, historical year/casualty count, or exact neurological/behavioral reflex).
 2. 3-ANGLE VIRAL TOURNAMENT:
@@ -365,6 +368,8 @@ YOUR EXECUTIVE PUNCH-UP MANDATE (UPGRADE EVERY WEAK LINK WHILE PRESERVING 7-8 SC
    - Craft the final scene's closing sentence so its thought/paradox bridges directly back into Scene 1's opening hook. ZERO spoken Subscribe/Follow/Comment CTA!
 5. DISTILL 5 HOT YOUTUBE SHORTS PEAK SEARCH QUERIES (`hook_search_queries`):
    - Based on the hottest physical climax moments in this script, provide 5 distinct, concrete English search queries (3–5 words each, subject + explosive peak action/setting) optimized for finding viral YouTube Shorts peak clips.
+6. SELF-CONTAINED, PRONOUN-FREE VISUAL QUERIES (`visual_keyword`, `stock_query`, `visual_prompt`):
+   - Every scene's `visual_keyword` and `stock_query` MUST be 100% self-contained when isolated from the script: always include the resolved protagonist/entity name + concrete physical action/environment (NEVER leave pronouns like "it", "he", "they" or literal metaphor props like "hydraulic press", "silent cage", "loaded weapon" in visual fields!).
 
 Return ONLY the complete upgraded JSON matching the exact same schema as CURRENT DRAFT SCRIPT JSON."""
         try:
@@ -532,10 +537,9 @@ YouTube rewards TWO metrics simultaneously:
    - NEVER include "Subscribe", "Like", "Follow", "Leave a comment", "Inscreva-se", or "Đăng ký kênh" in ANY scene's spoken narration!
    - Every single scene's spoken narration MUST be a 100% grammatically complete sentence with proper closing punctuation. NEVER end any scene with dangling prepositions or conjunctions ('because', 'which', 'and', 'so', 'that', 'but', 'with').
 
-4. SIMPLE, NATURAL VISUAL KEYWORDS (`visual_keyword` & `stock_query` — RELATIVE MATCH IS FINE):
-   - Do NOT overcomplicate per-scene keywords! Viewers care about a captivating, well-told story; visuals only need to fit the general theme, subject, or mood of the video.
-   - Keep `visual_keyword` (2–5 English words) and `stock_query` (2–4 English words) focused on the main subject/entity and general atmosphere of the topic (e.g. `"honey badger fighting lion"`, `"man serious gaze dark noir"`, `"roman empire senate painting"`).
-   - For psychology topics, use moody human expressions (`"man cold smirk dark room"`, `"woman thoughtful shadow noir"`) rather than literal props (`knife`, `cage`).
+4. CONTEXT-ANCHORED, SELF-CONTAINED VISUAL QUERIES (`visual_keyword` & `stock_query` — ZERO PRONOUNS OR METAPHOR PROPS):
+   - Downstream visual agents search each scene independently, so every scene's `visual_keyword` (2–5 English words) and `stock_query` (2–4 English words) MUST be 100% self-contained: always resolve pronouns ("It", "He", "They") back to the main subject/entity (`primary_entity`) + concrete physical action or setting (e.g. `"honey badger fighting lion"`, `"man serious gaze dark noir"`, `"roman empire senate painting"`).
+   - NEVER put literal metaphor words or inanimate comparisons (`hydraulic press`, `knife`, `cage`, `loaded weapon`) into `visual_keyword` or `stock_query` — always depict the actual protagonist and physical reality of the story!
 
 5. CINEMATIC ATMOSPHERE & LIGHTING:
    - Choose a cohesive visual mood for `visual_prompt` (e.g. Dark Psychological Noir for psychology, Warm Golden Hour or Documentary Realism for history/wildlife, Deep Bioluminescent Blue for ocean mysteries).

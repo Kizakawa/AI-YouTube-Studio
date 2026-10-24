@@ -360,8 +360,8 @@ HARD RETENTION & FULL-BODIED STORYTELLING RULES:
    - Act 3: Thorough explanation of the hidden neurological/psychological/biomechanical mechanism + Mid-Video Twist.
    - Act 4: Complete climax or concrete word-for-word Counter-Move that viewers will Save & Share.
    - Act 5: Satisfying conclusion + Seamless Loop Bridge back to Scene 1 (ZERO spoken Subscribe CTA).
-3. SIMPLE, NATURAL `visual_keyword` & `stock_query` (RELATIVE MATCH IS FINE):
-   - Keep `visual_keyword` (2-5 English words) and `stock_query` (2-4 English words) simple and relevant to the general subject/mood of the story.
+3. CONTEXT-ANCHORED, SELF-CONTAINED `visual_keyword` & `stock_query` (ZERO PRONOUNS OR METAPHOR PROPS):
+   - Resolve all pronouns ("It", "He", "They") in every scene's `visual_keyword` (2-5 English words) and `stock_query` (2-4 English words) back to the actual protagonist/subject + concrete physical action, and translate any spoken metaphor into the real physical scene of the story.
 4. Return ONLY valid JSON:
 {{
   "video_format": "{vf}",

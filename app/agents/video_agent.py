@@ -115,7 +115,7 @@ class VideoAgent:
                 subtitle_path=job.subtitle_path if has_subtitle else None,
             )
 
-            # ── Step 3: Ghép audio narration + BGM (đã xóa hoàn toàn các hiệu ứng âm thanh phụ SFX) ──
+            # ── Step 3: Ghép audio narration + BGM + Selective 3-Point Micro-SFX (-17dB) ──
             logger.info(f"[VideoAgent] Job {job.job_id}: Ghép audio narration + BGM (Audio Ducking)...")
             await report(f"🎵 Đang hòa âm giọng đọc AI và nhạc nền (Audio Ducking tự động)...", 84)
 
@@ -131,9 +131,41 @@ class VideoAgent:
                 normalize_loudness=True,  # Luôn chuẩn hóa EBU R128 (-14 LUFS) cho giọng đọc + BGM
             )
 
+            final_video_stage = muxed_video
+            if os.getenv("DISABLE_CINEMATIC_SFX", "false").lower() not in ("1", "true", "yes"):
+                from app.utils.ffmpeg.audio_and_sfx import resolve_smart_sfx_cue
+                scene_timestamps = [0.0]
+                cum_sec = 0.0
+                for d in clip_durations[:-1]:
+                    cum_sec += max(0.5, d - transition_duration)
+                    scene_timestamps.append(round(cum_sec, 3))
+                sfx_cues = [
+                    resolve_smart_sfx_cue(
+                        narration=s.narration,
+                        scene_idx=i + 1,
+                        total_scenes=total_scenes,
+                        niche=job.niche,
+                        explicit_cue=getattr(s, "sfx_cue", None),
+                    )
+                    for i, s in enumerate(job.scenes)
+                ]
+                sfx_mixed_video = str(work_dir / "muxed_sfx.mp4")
+                sfx_res = mix_sfx_transitions(
+                    video_path=muxed_video,
+                    output_path=sfx_mixed_video,
+                    scene_timestamps_seconds=scene_timestamps,
+                    sfx_dir=sfx_dir,
+                    sfx_cues=sfx_cues,
+                    sfx_volume=0.14,
+                    hit_sfx="impact_sub",
+                    hit_volume=0.16,
+                )
+                if sfx_res and Path(sfx_res).exists():
+                    final_video_stage = sfx_res
+
             # Copy video hoàn chỉnh (đã có xfade + subtitles + audio ducking + SFX) ra output cuối
             import shutil
-            shutil.copy2(muxed_video, job.output_path)
+            shutil.copy2(final_video_stage, job.output_path)
 
             logger.info(f"[VideoAgent] Job {job.job_id}: ✅ Render hoàn tất (Single-Pass High Fidelity) → {job.output_path}")
             return job.output_path
@@ -214,7 +246,7 @@ class VideoAgent:
             if raw_type == "hook_ready_video" or (scene.media_path and Path(scene.media_path).name.lower().startswith(("hook_motion_", "hook_peak_", "hook_climax_"))):
                 from app.utils.ffmpeg_helper import get_duration_ms
                 actual_hook_sec = get_duration_ms(scene.media_path) / 1000.0
-                if actual_hook_sec > 0.5 and abs(actual_hook_sec - duration) <= 0.04:
+                if actual_hook_sec > 0.5 and abs(actual_hook_sec - duration) <= 0.04 and job.resolution_w == 1080:
                     logger.info(
                         f"  Scene {scene.scene_id}: 🎯 HOOK/PEAK READY VIDEO ({Path(scene.media_path).name}, {actual_hook_sec:.1f}s) → "
                         f"khớp thời lượng ({duration:.1f}s), copy trực tiếp"
@@ -224,7 +256,7 @@ class VideoAgent:
                 else:
                     logger.info(
                         f"  Scene {scene.scene_id}: 🎯 HOOK/PEAK READY VIDEO ({Path(scene.media_path).name}, {actual_hook_sec:.1f}s) → "
-                        f"đồng bộ thời lượng sang {duration:.1f}s để chống hụt xfade"
+                        f"đồng bộ thời lượng sang {duration:.1f}s ({job.resolution}) để chống hụt xfade"
                     )
                     trim_video(
                         input_path=scene.media_path,
