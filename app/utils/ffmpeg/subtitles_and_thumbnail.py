@@ -10,7 +10,7 @@ from typing import Optional, Dict, List, Union, Any, Tuple
 
 logger = logging.getLogger(__name__)
 from app.utils.ffmpeg.core_encoder import (
-    BT709_COLOR_ARGS,
+    BT709_COLOR_ARGS, FFMPEG_TIMEOUT,
     get_duration_ms,
     get_video_encoder_args,
     probe_file,

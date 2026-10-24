@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Optional, Dict, List, Union, Any, Tuple
 
 logger = logging.getLogger(__name__)
+from app.utils.ffmpeg.subtitles_and_thumbnail import burn_subtitles
 from app.utils.ffmpeg.core_encoder import (
-    BT709_COLOR_ARGS,
+    BT709_COLOR_ARGS, FFMPEG_TIMEOUT,
     _supports_fps_mode,
     get_duration_ms,
     get_video_encoder_args,
