@@ -520,7 +520,7 @@ def get_next_available_golden_slot(
     with get_db() as db:
         scheduled_jobs = db.query(VideoJob).filter(
             VideoJob.target_channel_id.in_(channel_family),
-            VideoJob.status.in_(["SCHEDULED", "PUBLISHED"]),
+            VideoJob.status.in_(["SCHEDULED", "PUBLISHED", "WAITING_QUOTA_RESET", "RENDERED", "RENDERING"]),
         ).all()
 
         for j in scheduled_jobs:

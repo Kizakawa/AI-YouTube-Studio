@@ -238,7 +238,8 @@ async def run_autopilot_pipeline_for_channel(
     channel_id: str,
     target_slot_iso: Optional[str] = None,
     user_id: int = 0,
-    notify_telegram: bool = True
+    notify_telegram: bool = True,
+    custom_topic: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Quy trình sản xuất A-Z tự động hoàn toàn cho 1 kênh:
@@ -287,11 +288,14 @@ async def run_autopilot_pipeline_for_channel(
 
         # ── Step 2: Chọn ý tưởng viral mới nhất chống trùng lặp ──
         from app.services.channel_intelligence import suggest_channel_topics, ensure_unique_title
-        topics = await asyncio.to_thread(suggest_channel_topics, channel_id, count=3)
-        if not topics:
-            return {"success": False, "error": f"Không thể tạo ý tưởng viral mới cho kênh {ch_name}."}
+        if custom_topic and isinstance(custom_topic, dict) and custom_topic.get("topic"):
+            best_topic = custom_topic
+        else:
+            topics = await asyncio.to_thread(suggest_channel_topics, channel_id, count=3)
+            if not topics:
+                return {"success": False, "error": f"Không thể tạo ý tưởng viral mới cho kênh {ch_name}."}
+            best_topic = topics[0]
 
-        best_topic = topics[0]
         topic_str = best_topic.get("topic", "High Retention Shorts")
         title_str = best_topic.get("title", f"Video_{datetime.utcnow().strftime('%Y%m%d_%H%M')}")
         topic_angle = best_topic.get("angle", "")
@@ -382,10 +386,11 @@ async def run_autopilot_pipeline_for_channel(
             )
 
         # Đảm bảo tiêu đề độc bản 100% và có bình luận mồi chuẩn
+        preferred_title = title_str if (custom_topic and custom_topic.get("force_title") and title_str) else (script.title or title_str)
         try:
             unique_title, _, _ = await asyncio.to_thread(
                 ensure_unique_title,
-                script.title or title_str,
+                preferred_title,
                 channel_id,
                 topic_str,
                 ch_lang,
