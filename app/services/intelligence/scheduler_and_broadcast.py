@@ -147,9 +147,9 @@ def send_telegram_video_broadcast(
             temp_compressed = str(temp_dir / f"tg_preview_{Path(video_path).stem}.mp4")
             cmd = [
                 "ffmpeg", "-y", "-i", video_path,
-                "-vf", "scale=480:854:force_original_aspect_ratio=decrease,pad=480:854:(ow-iw)/2:(oh-ih)/2,fps=24",
-                "-c:v", "libx264", "-crf", "31", "-maxrate", "480k", "-bufsize", "960k", "-preset", "veryfast",
-                "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart",
+                "-vf", "scale='if(gt(iw,ih),1280,480)':'if(gt(iw,ih),720,854)':force_original_aspect_ratio=decrease,fps=24",
+                "-c:v", "libx264", "-crf", "28", "-maxrate", "850k", "-bufsize", "1700k", "-preset", "veryfast",
+                "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart",
                 temp_compressed
             ]
             logger.info(f"[TelegramVideoAlert] File gốc {size_mb:.1f}MB -> đang tạo bản nén nhẹ gửi Telegram để tránh đứt kết nối...")
