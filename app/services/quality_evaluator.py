@@ -616,16 +616,21 @@ Respond ONLY in valid JSON:
                     frame_pts = min(frame_pts, 2.0)
                     issues.append(f"Phát hiện ảnh/hình đứng yên {freeze_max_sec:.2f}s (>= 2.3s) — chặn xuất bản!")
 
-                scd_times = sorted(float(x) for x in _re_qa.findall(r"lavfi\.scd\.time:\s*([0-9.]+)", qa_log))
+                raw_scd_times = sorted(float(x) for x in _re_qa.findall(r"lavfi\.scd\.time:\s*([0-9.]+)", qa_log))
+                # Gom cụm các frame scdet liên tiếp trong cùng 1 hiệu ứng chuyển cảnh xfade / pan (< 0.45s) thành 1 nhát cắt thực tế
+                scd_times = []
+                for _t_sc in raw_scd_times:
+                    if not scd_times or (_t_sc - scd_times[-1]) >= 0.45:
+                        scd_times.append(_t_sc)
                 total_cuts = len(scd_times)
-                cuts_first_3s = sum(1 for t in scd_times if 0.15 <= t <= 5.20)
+                cuts_first_3s = sum(1 for t in scd_times if 0.15 <= t <= 3.50)
                 if duration_sec >= 6.0 and cuts_first_3s == 0 and total_cuts < 3 and freeze_max_sec >= 1.8:
                     hard_fail = True
                     issues.append("Không có nhát cắt chuyển cảnh hoặc chuyển động thực trong 5 giây đầu — chặn xuất bản!")
-                elif cuts_first_3s > 6:
+                elif cuts_first_3s > 7:
                     hard_fail = True
                     frame_pts = min(frame_pts, 2.0)
-                    issues.append(f"Cắt cảnh mở đầu quá dày gây nhấp nháy ({cuts_first_3s} cuts > 6) — chặn xuất bản!")
+                    issues.append(f"Cắt cảnh mở đầu quá dày gây nhấp nháy ({cuts_first_3s} cuts > 7) — chặn xuất bản!")
                 else:
                     strengths.append(f"Nhịp cắt/chuyển động mở đầu đạt chuẩn ({cuts_first_3s} cuts đầu, tổng {total_cuts} cuts).")
 

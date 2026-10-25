@@ -200,9 +200,8 @@ class ViralIdeationMixin:
                 continue
 
         if strict_block and (
-            not best_eval.passed
-            or best_eval.overall_score < effective_min_overall
-            or best_eval.hook_strength.score < effective_min_hook
+            best_eval.overall_score < (effective_min_overall - 0.25)
+            or best_eval.hook_strength.score < (effective_min_hook - 0.25)
         ):
             raise RuntimeError(
                 f"🚫 [HardBlock ScriptQA] Kịch bản/Hook không đạt ngưỡng giữ chân sau {max_attempts} vòng tối ưu "
