@@ -221,21 +221,24 @@ def image_to_video(
         if zoom_effect:
             dur_f = max(float(duration_seconds), 0.8)
             motion_key = (camera_motion or "zoom_in").lower()
-            if motion_key == "pan_left":
+            if motion_key in ("pan_left", "trucking_left", "whip_pan"):
                 x_expr = f"36-36*min(t/{dur_f:.2f},1)"
                 y_expr = "18+10*sin(1.8*t)"
-            elif motion_key == "pan_right":
+            elif motion_key in ("pan_right", "trucking_right", "tracking_follow"):
                 x_expr = f"36*min(t/{dur_f:.2f},1)"
                 y_expr = "18-10*sin(1.8*t)"
-            elif motion_key == "pan_up":
+            elif motion_key in ("pan_up", "pedestal_up", "tilt_up", "worms_eye", "low_angle"):
                 x_expr = "18+10*sin(1.8*t)"
                 y_expr = f"36-36*min(t/{dur_f:.2f},1)"
-            elif motion_key == "pan_down":
+            elif motion_key in ("pan_down", "pedestal_down", "tilt_down", "overhead_90", "high_angle"):
                 x_expr = "18-10*sin(1.8*t)"
                 y_expr = f"36*min(t/{dur_f:.2f},1)"
-            elif motion_key == "zoom_out":
+            elif motion_key in ("zoom_out", "dolly_out"):
                 x_expr = "18+14*cos(1.6*t)"
                 y_expr = f"36*min(t/{dur_f:.2f},1)"
+            elif motion_key in ("arc_orbit", "dutch_angle", "dolly_zoom"):
+                x_expr = "18+16*sin(2.0*t)"
+                y_expr = "18+12*cos(2.0*t)"
             else:
                 x_expr = "18+14*sin(1.6*t)"
                 y_expr = f"36-36*min(t/{dur_f:.2f},1)"

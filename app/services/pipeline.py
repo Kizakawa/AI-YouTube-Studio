@@ -1559,7 +1559,7 @@ class VideoPipeline:
                     job.scenes_json = updated_script.to_json_str()
 
     def _save_render_manifest(self, render_job: RenderJobContract):
-        """Lưu render manifest snapshot và thumbnail vào DB."""
+        """Lưu render manifest snapshot, thumbnail vào DB và xuất bộ `edit_manifest.json` + `draft_content.json` (CapCut)."""
         with get_db() as db:
             job = db.query(VideoJob).filter(VideoJob.id == self.job_id).first()
             if job:
@@ -1569,6 +1569,15 @@ class VideoPipeline:
                     job.thumbnail_path = render_job.thumbnail_path
                 if getattr(render_job, 'thumbnail_vertical_path', None):
                     job.thumbnail_vertical_path = render_job.thumbnail_vertical_path
+
+        try:
+            from app.services.media.timeline_manifest import export_job_timeline_artifacts
+            artifacts_dir = Path(settings.STORAGE_DIR) / "jobs" / f"job_{self.job_id}"
+            export_job_timeline_artifacts(render_job, artifacts_dir)
+            if self.work_dir and self.work_dir.exists():
+                export_job_timeline_artifacts(render_job, self.work_dir)
+        except Exception as e_tm:
+            logger.debug(f"[Job {self.job_id}] Không thể xuất timeline artifacts (AVS/CapCut): {e_tm}")
 
     # ──────────────────────────────────────────
     # UTILITY HELPERS

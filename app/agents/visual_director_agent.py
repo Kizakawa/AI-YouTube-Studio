@@ -113,8 +113,8 @@ HÃY TRẢ VỀ JSON DUY NHẤT THEO SCHEMA:
       "strategy": "REAL_DOCUMENTARY | STOCK_VIDEO | AI_VIDEO | AI_IMAGE",
       "rationale": "Giải thích ngắn gọn 1 câu vì sao chọn chiến lược này (bằng tiếng Việt)",
       "search_query": "Từ khóa tiếng Anh 2-4 từ cụ thể (Chủ thể đã giải mã đại từ + hành động vật lý)",
-      "ai_prompt": "Câu lệnh tiếng Anh chi tiết 9:16 phong cách điện ảnh theo ngữ cảnh kịch bản",
-      "camera_motion": "zoom_in | zoom_out | pan_left | pan_right | pan_up | pan_down",
+      "ai_prompt": "Câu lệnh tiếng Anh 9:16 ghép theo công thức điện ảnh 7 tầng: [Shot Size] + [Camera Angle/POV] + [Lens] + [Physical Camera Movement] + [Composition] + [Lighting] + [Optical/Film Effect] + Hành động cụ thể (hỗ trợ gắn thẻ @CHARACTER_TAG)",
+      "camera_motion": "dolly_in | dolly_out | arc_orbit | rack_focus | whip_pan | trucking_left | trucking_right | pedestal_up | worms_eye | overhead_90 | first_person_pov | over_the_shoulder | voyeur_shot | fpv_drone | dolly_zoom | zoom_in | zoom_out | pan_left | pan_right | tilt_up",
       "sfx_cue": "whoosh | hit | tension_riser | cinematic_swell | heartbeat"
     }}
   ]

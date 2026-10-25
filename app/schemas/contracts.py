@@ -80,8 +80,15 @@ class SceneContract(BaseModel):
     # ── Cinematic Enhancement Fields (Optional — sinh bởi ContentAgent hoặc để mặc định) ──
     camera_motion: Optional[str] = Field(
         default=None,
-        description="Loại chuyển động camera: 'zoom_in', 'zoom_out', 'pan_left', 'pan_right', 'pan_up', 'pan_down', 'hyper_zoom', 'warp_zoom', 'cinematic_drift', 'nod_loop', 'satirical_nod', 'head_nod'. None = tự động xoay vòng.",
-        pattern=r"^(zoom_in|zoom_out|pan_left|pan_right|pan_up|pan_down|hyper_zoom|warp_zoom|cinematic_drift|nod_loop|satirical_nod|head_nod)$"
+        description="Loại chuyển động camera (hỗ trợ đầy đủ Top 20 kỹ thuật EyeCandy & Ken Burns). None = tự động xoay vòng.",
+        pattern=(
+            r"^(zoom_in|zoom_out|pan_left|pan_right|pan_up|pan_down|hyper_zoom|warp_zoom|cinematic_drift|"
+            r"nod_loop|satirical_nod|head_nod|dolly_in|dolly_out|double_dolly|dolly_zoom|arc_orbit|"
+            r"trucking_left|trucking_right|pedestal_up|pedestal_down|tracking_follow|whip_pan|"
+            r"tilt_up|tilt_down|rack_focus|first_person_pov|over_the_shoulder|worms_eye|"
+            r"ground_level|overhead_90|high_angle|low_angle|dutch_angle|voyeur_shot|"
+            r"fpv_drone|locked_on|handheld_doc)$"
+        ),
     )
     sfx_cue: Optional[str] = Field(
         default=None,
@@ -155,7 +162,13 @@ class SceneContract(BaseModel):
         allowed = {
             "zoom_in", "zoom_out", "pan_left", "pan_right",
             "pan_up", "pan_down", "hyper_zoom", "warp_zoom", "cinematic_drift",
-            "nod_loop", "satirical_nod", "head_nod"
+            "nod_loop", "satirical_nod", "head_nod",
+            "dolly_in", "dolly_out", "double_dolly", "dolly_zoom", "arc_orbit",
+            "trucking_left", "trucking_right", "pedestal_up", "pedestal_down",
+            "tracking_follow", "whip_pan", "tilt_up", "tilt_down", "rack_focus",
+            "first_person_pov", "over_the_shoulder", "worms_eye", "ground_level",
+            "overhead_90", "high_angle", "low_angle", "dutch_angle", "voyeur_shot",
+            "fpv_drone", "locked_on", "handheld_doc",
         }
         if v_clean in allowed:
             return v_clean

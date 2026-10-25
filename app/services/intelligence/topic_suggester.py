@@ -188,6 +188,15 @@ DO NOT center any candidate around these fatigued terms!
     except Exception:
         pass
 
+    comment_intel_block = ""
+    try:
+        from app.services.intelligence.comment_intelligence import build_comment_intelligence_prompt_block
+        c_block = build_comment_intelligence_prompt_block(channel_id=channel_id, niche_id=niche_id)
+        if c_block:
+            comment_intel_block = f"\n{c_block}"
+    except Exception:
+        pass
+
     prompt = f"""You are the Master Creative Director and Viral Algorithm Strategist for YouTube Shorts channel '{channel_name}'.
 Niche: '{niche_profile.get('name')}' ({niche_id})
 Target Language: {lang}
@@ -207,7 +216,7 @@ CRITICAL MANDATE:
 ═══════════════════════════════════════════════════════════
 {global_trends_prompt}
 ═══════════════════════════════════════════════════════════
-{saturation_prompt}{rag_topic_memory}
+{saturation_prompt}{rag_topic_memory}{comment_intel_block}
 ═══════════════════════════════════════════════════════════
 🔥 UPSTREAM VIRAL TOPIC & DUAL-PEAK RETENTION PRIMING (MANDATORY FOR EVERY IDEA):
 Real YouTube Analytics proves that videos achieving 100%–127% APV and 1,500–3,000+ views succeed BEFORE the script is even written—because the TOPIC itself contains an irresistible physical anomaly and a 2-stage climax:

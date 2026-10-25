@@ -38,6 +38,12 @@ from app.services.intelligence.scheduler_and_broadcast import (
     send_telegram_video_broadcast,
     trigger_auto_generation_for_overdue_channel,
 )
+from app.services.intelligence.comment_intelligence import (
+    aggregate_comments_into_intelligence,
+    build_comment_intelligence_prompt_block,
+    classify_comment_zero_token,
+    mine_channel_comment_intelligence,
+)
 
 __all__ = [
     "ChannelIntelligenceWorker",
@@ -47,14 +53,18 @@ __all__ = [
     "_get_curated_niche_fallbacks",
     "_get_global_trends_directive",
     "_normalize_text_for_similarity",
+    "aggregate_comments_into_intelligence",
+    "build_comment_intelligence_prompt_block",
     "calculate_channel_kpi",
     "check_idea_similarity",
     "check_pre_publish_safety",
+    "classify_comment_zero_token",
     "ensure_unique_title",
     "extract_saturated_channel_concepts",
     "get_channel_existing_portfolio",
     "get_winner_cloner_blueprint",
     "is_off_niche_video_title",
+    "mine_channel_comment_intelligence",
     "process_fallback_publishing",
     "run_network_kpi_audit",
     "send_telegram_broadcast",

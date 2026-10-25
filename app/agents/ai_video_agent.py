@@ -24,6 +24,12 @@ from typing import Optional, Dict, Any
 import requests
 
 from app.agents.image_agent import ImageAgent
+from app.services.media.cinematic_dictionary import (
+    TOP_20_EYECANDY_CAMERA_DIRECTIVES,
+    VEO_FLOW_MODEL_OPTIONS,
+    resolve_seven_layer_components,
+    resolve_smart_ref_tags,
+)
 from app.utils.ffmpeg_helper import image_to_video, run_ffmpeg, trim_video
 from app.utils.key_rotator import KeyRotator
 from config.settings import settings
@@ -32,6 +38,10 @@ logger = logging.getLogger(__name__)
 
 
 class AIVideoAgent:
+    # Danh sách 5 model chuẩn trên Google Flow / Veo 3.1 (mặc định ưu tiên Veo 3.1 - Lite [Lower Priority] để tiết kiệm credit)
+    AVAILABLE_FLOW_MODELS = list(VEO_FLOW_MODEL_OPTIONS)
+    DEFAULT_FLOW_MODEL = "Veo 3.1 - Lite [Lower Priority]"
+
     # ── BỘ 3 PHONG CÁCH ĐẠO DIỄN HÌNH ẢNH (3-STYLE VIDEO DIRECTOR ARCHETYPES - PROMPT #3 & #4) ──
     DIRECTOR_STYLE_ARCHETYPES: Dict[str, str] = {
         "luxury_commercial_imax": (
@@ -51,8 +61,9 @@ class AIVideoAgent:
         ),
     }
 
-    # ── HƯỚNG DẪN CHUYỂN ĐỘNG MÁY QUAY CHUYÊN NGHIỆP (CAMERA MOTION DIRECTIVES - PROMPT #2 & #4) ──
+    # ── HƯỚNG DẪN CHUYỂN ĐỘNG MÁY QUAY CHUYÊN NGHIỆP (CAMERA MOTION DIRECTIVES - PROMPT #2, #4 & EYECANDY TOP 20) ──
     CAMERA_MOTION_DIRECTIVES: Dict[str, str] = {
+        **TOP_20_EYECANDY_CAMERA_DIRECTIVES,
         "zoom_in": "smooth motorized slow dolly push-in toward the primary subject with shallow depth-of-field rack focus",
         "zoom_in_fast": "dynamic cinematic push-in locking focus on the central subject's eyes and posture",
         "hyper_zoom": "assertive optical push-in with crisp focal lock on the main subject and 3D background compression",
@@ -137,11 +148,19 @@ class AIVideoAgent:
             if scene_id == 1
             else ""
         )
-        clean_subj = str(prompt or "").strip().rstrip(".")
+        resolved_prompt, _ = resolve_smart_ref_tags(str(prompt or "").strip())
+        clean_subj = resolved_prompt.rstrip(".")
+        seven_layers = resolve_seven_layer_components(
+            raw_prompt=clean_subj,
+            niche_id=str(niche or "general"),
+            scene_id=scene_id,
+            camera_motion=cam_key,
+        )
+        framing_clause = f"{seven_layers['shot_size']}, {seven_layers['camera_angle']}, {seven_layers['composition']}"
         return (
             f"Cinematic 9:16 vertical video (5-8s). {hook_pacing}"
             f"Subject & Action: {clean_subj}. "
-            f"Camera & Optics: {style_clause}; {cam_clause}. "
+            f"Camera & Optics: {framing_clause}; {style_clause}; {cam_clause}. "
             f"{cls.ANTI_MORPH_QUALITY_LOCK}."
         )
 

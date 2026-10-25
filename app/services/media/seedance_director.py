@@ -367,16 +367,30 @@ class SeedanceDirector:
         self,
         prompt: str,
         character_anchor: Optional[str] = None,
-        setting_anchor: Optional[str] = None
+        setting_anchor: Optional[str] = None,
+        custom_ref_registry: Optional[Dict[str, Dict[str, str]]] = None,
     ) -> str:
         """
-        Khóa chặt diện mạo nhân vật và bối cảnh vào prompt của AI Image Generator.
+        Khóa chặt diện mạo nhân vật và bối cảnh vào prompt của AI Image/Video Generator.
+        Hỗ trợ cơ chế Smart Ref Binding (`@CHARACTER_TAG`, VD: `@MODERNYOU`, `@FARMER`)
+        để tự động bắt dính hồ sơ nhân vật cố định qua hàng trăm phân cảnh.
         Đảm bảo tính bất biến (idempotent): không lặp lại nếu đã chứa neo.
         """
         if not prompt:
             return ""
 
         result = prompt.strip()
+
+        # 0. Giải mã thẻ tham chiếu thông minh @CHARACTER_TAG nếu có trong prompt
+        try:
+            from app.services.media.cinematic_dictionary import resolve_smart_ref_tags
+            result, _ = resolve_smart_ref_tags(
+                result,
+                custom_registry=custom_ref_registry,
+                fallback_character_anchor=character_anchor,
+            )
+        except Exception as e:
+            logger.debug(f"[SeedanceDirector] Smart ref tag resolution skipped: {e}")
 
         # 1. Neo nhân vật (Character Cast Anchor)
         if character_anchor:
@@ -391,6 +405,24 @@ class SeedanceDirector:
                 result = f"{result}, setting: {clean_set}"
 
         return result
+
+    def build_character_sheet_prompt(
+        self,
+        tag_name: str,
+        character_description: str,
+        signature_prop: str = "a signature everyday object",
+        signature_color_hex: str = "#4A6FA5",
+        art_style: str = "hand-drawn 2D doodle cartoon",
+    ) -> str:
+        """Sinh Prompt chuẩn 6-Panel Character Reference Sheet để khóa nhân vật đồng nhất 100%."""
+        from app.services.media.cinematic_dictionary import build_character_reference_sheet_prompt
+        return build_character_reference_sheet_prompt(
+            tag_name=tag_name,
+            character_description=character_description,
+            signature_prop=signature_prop,
+            signature_color_hex=signature_color_hex,
+            art_style=art_style,
+        )
 
     def build_lock_line(
         self,

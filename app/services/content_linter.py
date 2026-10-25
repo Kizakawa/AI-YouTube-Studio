@@ -371,6 +371,57 @@ class ScriptValidationLinter:
         return issues
 
     @classmethod
+    def check_metric_and_fact_consistency(cls, script: ScriptContract) -> List[str]:
+        """
+        Cổng kiểm chứng số liệu & sự thật (Fact-Gate — học từ Content OS & GOHA YT Engage):
+        1. Nếu Tiêu đề (Title) hứa hẹn một thông số vật lý cụ thể kèm đơn vị (VD: 1,500 PSI, 2,000m, 93°C, 450V),
+           phần lời dẫn (narration) bắt buộc phải giải thích/nhắc tới số liệu thay vì bỏ quên hoàn toàn (chống clickbait rỗng).
+        2. Chặn các tỷ lệ phần trăm phi vật lý do LLM bịa số (VD: '150% of the human brain', '250% survival rate').
+        """
+        issues: List[str] = []
+        title_str = (script.title or "").strip()
+        narration_str = " ".join((s.narration or "") for s in (script.scenes or [])) or (script.full_narration or "")
+
+        # 1. Kiểm tra nếu Title có con số kèm đơn vị vật lý nhưng toàn bộ kịch bản không hề có bất kỳ con số hay chữ số nào
+        title_metric_match = re.findall(
+            r"\b(\d+(?:[.,]\d+)?)\s*(psi|m|km|ft|mph|km/h|°c|°f|db|hz|volts?|v|kg|lbs)\b",
+            title_str,
+            flags=re.IGNORECASE,
+        )
+        if title_metric_match:
+            has_any_number_in_body = bool(
+                re.search(
+                    r"(?:\b\d+\b|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|hundred|thousand|million|billion)\b)",
+                    narration_str,
+                    flags=re.IGNORECASE,
+                )
+            )
+            if not has_any_number_in_body:
+                claimed_str = ", ".join(f"{num} {unit}" for num, unit in title_metric_match)
+                issues.append(
+                    f"Fact-Gate Title-to-Script Metric Mismatch: Title promises concrete physical metric ({claimed_str}), "
+                    f"but the spoken script narration contains zero numerical facts or explanations."
+                )
+
+        # 2. Kiểm tra ảo giác tỷ lệ > 100% phi lý đối với dung lượng não bộ / xác suất / độ chính xác
+        impossible_pct_matches = re.findall(
+            r"\b([1-9]\d{2,})\s*%\s*(?:of\s+(?:(?:the|your|our|a|human|earth's)\s+)*(?:brain|population|people|water|body|cells|dna)|accuracy|probability|certainty|survival\s+rate)\b",
+            f"{title_str} {narration_str}",
+            flags=re.IGNORECASE,
+        )
+        for pct_val in impossible_pct_matches:
+            try:
+                if int(pct_val) > 100:
+                    issues.append(
+                        f"Fact-Gate Hallucinated Percentage Detected ('{pct_val}%'): Biological fraction, population share, "
+                        f"or probability cannot exceed 100%. Use verifiable scientific metrics."
+                    )
+            except Exception:
+                pass
+
+        return issues
+
+    @classmethod
     def lint(
         cls,
         script: ScriptContract,
@@ -388,6 +439,10 @@ class ScriptValidationLinter:
         # 0. YouTube Community Guidelines Safety Gate (Chặn tuyệt đối vi phạm chính sách YouTube)
         cg_issues = cls.check_community_guidelines_safety(script)
         all_issues.extend(cg_issues)
+
+        # 0b. Fact-Gate & Metric Consistency Check
+        fact_issues = cls.check_metric_and_fact_consistency(script)
+        all_issues.extend(fact_issues)
 
         # 1. Trailing connector check
         conn_issues = cls.check_trailing_connectors(script)
