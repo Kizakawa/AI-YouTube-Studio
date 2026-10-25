@@ -329,7 +329,7 @@ async def run_autopilot_pipeline_for_channel(
                 language=ch_lang,
                 director_notes=director_notes,
                 min_acceptable_score=8.2,
-                max_attempts=3,
+                max_attempts=2,
                 cooldown_entities=cooldown_ents,
                 channel_id=channel_id,
                 strict_block=True,
@@ -342,7 +342,7 @@ async def run_autopilot_pipeline_for_channel(
         # ── Step 3.5: Quality Gate — Hiệu chỉnh theo tỷ lệ vuốt bỏ thật & CHẶN CỨNG nếu không đạt ──
         from app.services.quality_evaluator import QualityEvaluator
         _qa = QualityEvaluator()
-        _max_rewrites = 2
+        _max_rewrites = 1
         _qa_passed = False
         _qa_score = 0
         _qa_result: Dict[str, Any] = {}

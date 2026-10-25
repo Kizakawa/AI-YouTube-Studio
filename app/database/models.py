@@ -276,11 +276,19 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expi
 def get_db():
     """
     Dùng: with get_db() as db:
-    Tự động commit nếu thành công, rollback + close nếu exception.
-    Nếu gặp OperationalError (Supabase đóng kết nối idle), tự động dispose pool để kết nối sau tươi mới.
+    Tự động kiểm tra kết nối sống trước khi yield (tránh lỗi Supabase đóng kết nối sau khi render 15-20 phút),
+    tự động commit nếu thành công, rollback + close nếu exception.
     """
     from sqlalchemy.exc import OperationalError
     db = SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception:
+        try:
+            db.close()
+        except Exception:
+            pass
+        db = SessionLocal()
     try:
         yield db
         db.commit()

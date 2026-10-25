@@ -48,9 +48,9 @@ def should_refine_script(state: VideoWorkflowState) -> Literal["refine_script", 
     overall_s = float(script_eval.get("overall_score", 0.0) or 0.0)
     retry_count = state.get("script_retry_count", 0)
     evaluated_by = script_eval.get("evaluated_by", "ai")
-    max_script_retries = max(0, int(os.getenv("MAX_SCRIPT_RETRIES", "5")))
-
-    is_strictly_passing = passed and overall_s >= 8.4 and hook_s >= 8.4
+    max_script_retries = max(0, int(os.getenv("MAX_SCRIPT_RETRIES", "2")))
+    # Nếu kịch bản đã được duyệt sẵn từ AutoPilot/ContentAgent, chỉ tinh chỉnh lại nếu dưới 8.0
+    is_strictly_passing = passed and overall_s >= 8.1 and hook_s >= 8.1
 
     if not is_strictly_passing and retry_count < max_script_retries:
         logger.info(
