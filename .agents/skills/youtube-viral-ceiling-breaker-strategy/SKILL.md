@@ -4,9 +4,9 @@ description: >-
   Chiến lược cốt lõi giúp video YouTube Shorts vượt trần phân phối (1.2K–1.8K views ceiling)
   và duy trì tăng trưởng bền bỉ nhiều ngày (Multi-Day Evergreen Push): Bắt buộc nêu đích danh
   thực thể có lượng tìm kiếm YT_SEARCH cao trong Tiêu đề (cấm giấu tên kiểu Curiosity Gap mù),
+  phân tách rạch ròi giữa Tiêu đề (ăn tìm kiếm) và Hook Cảnh 1 0.0s (4 Đòn Tâm Lý Thị Giác không lặp lại tiêu đề),
   giữ chuẩn kịch bản sâu 34s–40s theo cấu trúc Song Đấu 2 Chiều (5-Act Dual-Peak) và đảm bảo
-  tối thiểu 80% cảnh Video chuyển động thật rải đều toàn bài để vượt qua Bài Kiểm Tra Mở Rộng
-  Tệp Ngày Thứ 2 (Day-2 Broad Cohort Test) của thuật toán YouTube.
+  tối thiểu 80% cảnh Video chuyển động thật rải đều toàn bài.
 ---
 
 # Chiến Lược Vượt Trần Phân Phối & Tăng Trưởng Bền Bỉ YouTube (`youtube-viral-ceiling-breaker-strategy`)
@@ -14,7 +14,7 @@ description: >-
 ## Overview
 Skill này đúc kết quy luật thuật toán thực tế từ dữ liệu **YouTube Analytics API v2** (`dimensions="day"`, `insightTrafficSourceType`, `insightTrafficSourceDetail`) trên hệ thống 7 kênh của dự án: Giải thích lý do tại sao một số video có chỉ số trung bình Ngày 1 rất cao (`APV 93%–125%`) vẫn bị khóa trần ở `1.100 – 1.800 views`, trong khi các video hội tụ đúng **Cơ chế Vượt Trần Kép (`Day-2 Cohort Expansion` + `YT_SEARCH Re-ignition`)** như `imvC7zulBAM` (*Lula-Colossal vs Cachalote*, `3.525+ views`) và `kPEnbE3E3Oo` (*Onça vs Jacaré 1.500 PSI*, `2.504+ views`) lại vượt trần và tăng trưởng đều đặn qua nhiều ngày.
 
-Mọi Agent khi lên ý tưởng chủ đề (Ideation), viết kịch bản/tiêu đề (`ContentAgent`), chọn hình ảnh (`VisualCurationAgent` / `MediaNodes`), hoặc phân tích hiệu suất kênh đều **BẮT BUỘC** phải tuân thủ 2 Trụ Cột Chiến Lược dưới đây.
+Mọi Agent khi lên ý tưởng chủ đề (Ideation), viết kịch bản/tiêu đề (`ContentAgent`), chọn hình ảnh (`VisualCurationAgent` / `MediaNodes`), hoặc phân tích hiệu suất kênh đều **BẮT BUỘC** phải tuân thủ 3 Quy Tắc Chiến Lược dưới đây.
 
 ## Dependencies
 - **[youtube-real-metrics-reporting](../youtube-real-metrics-reporting/SKILL.md)**: Dùng để truy vấn dữ liệu thật từ YouTube Data API v3 & YouTube Analytics API v2 khi kiểm chứng độ lệch giữ chân giữa Ngày 1 và Ngày 2 (`dimensions="day"`) cũng như lưu lượng từ tìm kiếm (`insightTrafficSourceType==YT_SEARCH`).
@@ -46,42 +46,43 @@ Thuật toán YouTube Shorts **KHÔNG** quyết định mở phễu lên tầng 
 
 ---
 
-## 2. Hai Quy Tắc Chiến Lược Bắt Buộc Khi Sản Xuất Video (`Mandatory Production Rules`)
+## 2. Ba Quy Tắc Chiến Lược Bắt Buộc Khi Sản Xuất Video (`Mandatory Production Rules`)
 
 ### Quy Tắc 1: CẤM Giấu Tên Thực Thể Trong Tiêu Đề — Bắt Buộc Nêu Đích Danh Cặp Thực Thể Có Lượng Tìm Kiếm Cao (`YT_SEARCH` Anchor)
 1. **Tuyệt đối KHÔNG đặt tiêu đề "Curiosity Gap mù" (Giấu tên con vật / thực thể chính)**:
    - ❌ **CẤM**:
-     - *"Mordida de 1.100 PSI esmaga ossos!"* (Lỗi thực tế của `Brorr-C2VCI`: Không có tên con vật trong tiêu đề → Công cụ tìm kiếm không phân loại được chủ đề, từ khóa tìm kiếm trỏ vào toàn rác, hết 24h đầu là video chết đứng ở `1.799 views` dù `APV = 93,4%`).
+     - *"Mordida de 1.100 PSI esmaga ossos!"* (Lỗi thực tế của `Brorr-C2VCI`: Không có tên con vật trong tiêu đề → Công cụ tìm kiếm không phân loại được chủ đề, hết 24h đầu là video chết đứng ở `1.799 views` dù `APV = 93,4%`).
      - *"Why Polar Bears Flee From This 4,000lb Arctic Giant!"* (Lỗi thực tế của `noYqQOCxYpE`: Giấu tên **Walrus / Hải mã** thành cụm từ chung chung *"This 4,000lb Arctic Giant"* → Chỉ có `11 views` tìm kiếm, Ngày 2 tụt từ `1.088 views` về `10 views`).
      - *"Why King Cobra Venom Can't Kill This Beast"* (Giấu tên **Honey Badger / Lửng mật** thành *"This Beast"*).
 2. **BẮT BUỘC nêu đích danh Tên Thực Thể Chính (hoặc Cặp Đối Đầu `Thực thể A vs Thực thể B`) + Thông Số Vật Lý Cực Hạn ngay trong Tiêu đề**:
    - ✅ **CHUẨN VƯỢT TRẦN**:
-     - `"Lula-Colossal vs Cachalote: O Duelo Mortal A 2.000m No Oceano 🦑🐋"` (`imvC7zulBAM` — Khớp 100% truy vấn tìm kiếm `"cachalote"`, `"lula colossal"`, `"cachalote vs lula gigante"` → `201 views YT_SEARCH`, tổng `3.525+ views`).
-     - `"Mordida de 1.500 PSI: Onça-Pintada vs Jacaré 💀🔥"` (`kPEnbE3E3Oo` — Khớp 100% truy vấn `"onça"`, `"jacaré"`, `"onça vs jacare"` → `258 views YT_SEARCH`, tổng `2.504+ views`).
-     - `"Harpia vs Preguiça: A Garra de 530 PSI Que Esmaga Ossos! 🦅💀"` (`dojq59j-5Ns` — `1.952+ views` sau 31h).
-     - `"35lb Wolverine vs 800lb Grizzly Bear! 🦡🐻"` (`FVO_dNBqvoQ`).
-3. **Nguyên lý tạo sự tò mò đúng cách**:
-   - Không tạo tò mò bằng cách giấu tên con vật/thực thể.
-   - Hãy **công khai danh tính 2 đối thủ khổng lồ ngay trên tiêu đề** để ăn trọn lưu lượng `YT_SEARCH` và thu hút tệp đại chúng, còn sự tò mò nằm ở **"Cơ chế vũ khí sinh học / vật lý nào sẽ quyết định kẻ thắng người thua?"**.
+     - `"Lula-Colossal vs Cachalote: O Duelo Mortal A 2.000m No Oceano 🦑🐋"` (`imvC7zulBAM` — `201 views YT_SEARCH`, tổng `3.525+ views`).
+     - `"Mordida de 1.500 PSI: Onça-Pintada vs Jacaré 💀🔥"` (`kPEnbE3E3Oo` — `258 views YT_SEARCH`, tổng `2.504+ views`).
 
 ---
 
-### Quy Tắc 2: Giữ Chuẩn Kịch Bản Sâu `34s – 40s` Theo Cấu Trúc "Song Đấu 2 Chiều" (`5-Act Dual-Peak`) + Tối Thiểu `80%` Cảnh Video Chuyển Động Thật
+### Quy Tắc 2: Quy Tắc Vàng Phân Vai Giữa `Tiêu Đề` (Ăn Tìm Kiếm) vs. `Hook Cảnh 1 (0.0s)` (4 Đòn Tâm Lý Thị Giác — CẤM Lặp Lại Tiêu Đề)
+- **Sai lầm làm giảm `Stayed to watch`**: Khi Tiêu đề đã ghi `"Onça-Pintada vs Jacaré: A Mordida de 1.500 PSI"`, nếu câu mở đầu ở Cảnh 1 (0.0s) lại đọc lặp lại như cái máy: *"Com 1.500 PSI, a onça-pintada perfura o crânio do jacaré!"*, người xem biết luôn kết quả ngay ở giây thứ 1.5 và vuốt bỏ!
+- **Phân vai chuẩn**:
+  - **`Title` (Tiêu đề)**: Đảm nhiệm 100% việc chứa tên thực thể + thông số cực hạn để ăn `YT_SEARCH` và CTR.
+  - **`Scene 1 Hook (0.0s–2.2s | 6–10 từ)`**: **TUYỆT ĐỐI KHÔNG đọc lặp lại tiêu đề hay tiết lộ luôn con số kết quả ở giây 0.0s!** Hãy để dành con số vật lý (`1.500 PSI`, `230 dB`, `2.000m`) cho Cảnh 2–3 và Cảnh 4 Twist, còn Cảnh 1 bắt buộc dùng **1 trong 4 Đòn Tâm Lý Thị Giác Triệu View**:
+    1. **Archetype 1 — Chỉ Tay Vào Chi Tiết Lạ / Ngụy Trang (`Visual Micro-Observation`)**: Bắt mắt người xem phải căng ra tìm một chi tiết trên màn hình trong 3 giây đầu (*"Olhe bem para essas marcas redondas na pele desse cachalote."*, *"O que parece um tronco podre nessa água rasa acabou de abrir os olhos."*, *"Look closely at the circular scars on this whale's head."*).
+    2. **Archetype 2 — Sai Lầm Cuối Cùng (`The Fatal Mistake / Hunter Becomes Hunted`)**: Mở vào khoảnh khắc một kẻ săn mồi hoặc nhân vật vừa tính sai một nước cờ chí mạng (*"O último erro desse jacaré foi subir nesse barranco sem olhar para cima."*, *"This caiman's last mistake was climbing onto this riverbank alone."*).
+    3. **Archetype 3 — Cảnh Báo Sinh Tồn Ngôi Thứ 2 (`2nd-Person Survival Simulation`)**: Đặt người xem làm nạn nhân trực tiếp bằng *"Se você..." / "If you..."* (*"Se um submarino tocar nessa linha branca no fundo do mar, ele não volta."*, *"If someone touches their neck while apologizing, watch their eyes next."*).
+    4. **Archetype 4 — Phá Vỡ Định Kiến (`The Illusion Breaker / Role Reversal`)**: Đưa ra một cảnh tượng ngược hẳn với lẽ thường (*"Seis leões famintos cercaram esse pequeno animal, mas os leões estão fugindo."*, *"Six starving lions surrounded this tiny animal, and the lions are running away."*).
+
+---
+
+### Quy Tắc 3: Giữ Chuẩn Kịch Bản Sâu `34s – 40s` Theo Cấu Trúc "Song Đấu 2 Chiều" (`5-Act Dual-Peak`) + Tối Thiểu `80%` Cảnh Video Chuyển Động Thật
 1. **Không cắt ngắn thời lượng cơ học làm nông kịch bản**:
    - Khung thời lượng chuẩn cho Shorts là **`34s – 40s` (`7 – 8 phân cảnh`, `92 – 118 từ`)**.
-   - Nếu cắt ép xuống `20–24s`, kịch bản chỉ kịp nêu bề nổi mà mất đi phần giải phẫu cơ chế sâu bên trong, làm giảm tỷ lệ Like/Sub và khiến người xem cảm thấy nội dung bị loãng/cụt.
 2. **Kịch bản phải đi theo cấu trúc "Ăn Miếng Trả Miếng / Song Đấu 2 Chiều" (`Ping-Pong Escalation`) để không bị sập `APV` ở Ngày 2**:
-   - Khi mở rộng ra tệp khán giả đại chúng ở Ngày 2, các kịch bản thuyết minh địa chất/vật lý tĩnh 1 chiều rất dễ bị sập `-40% APV`.
-   - Ngược lại, cấu trúc **Song Đấu 2 Chiều** (như `imvC7zulBAM` `Job #506`) giữ chân tệp đại chúng cực tốt:
-     - **Hồi 1 (Cảnh 1 — `0.0s–2.2s`, 5–8 từ)**: Mở màn bằng bằng chứng vật lý hoặc đòn tấn công trực diện + thông số cực hạn (`hook_frame_sharpness >= 12.0`).
-     - **Hồi 2 (Cảnh 2–3)**: Lộ diện Đối thủ A cùng kích thước và vũ khí sát thương đặc trưng (VD: Mực khổng lồ 14m với giác hút gắn móc xoay 360 độ).
-     - **Hồi 3 (Cảnh 4–5 — Đỉnh Cao Trào Thứ 2 / Cú Twist Lật Kèo ở giây 15)**: Đối thủ B tung đòn phản công bằng một cơ chế sinh học/vật lý bất ngờ (VD: Cá nhà táng 50 tấn không chỉ dùng răng mà phóng xung âm thanh Sonar `230 dB` như bom xung kích làm tê liệt con mồi).
-     - **Hồi 4 (Cảnh 6–7)**: Kết cục sinh tử xác đáng giải quyết cú Twist.
-     - **Hồi 5 (Cảnh 7/8 — Vòng lặp hoàn chỉnh)**: Câu kết hoàn chỉnh 100% về ngữ pháp (tuyệt đối không bị cắt cụt vị ngữ) nối thẳng tư duy quay lại Cảnh 1.
-3. **Bắt buộc rải đều Cảnh Video Chuyển Động Thật (`>= 80% Video Clips`) xuyên suốt thân bài**:
-   - Pháp y dữ liệu cho thấy các video bị kẹt cứng ở `1.125 – 1.210 views` (`CX8Elp5KDzU`, `p4YpOWPmM6U`, `F1avBb_LC50`) đều mắc lỗi: **Chỉ có Cảnh 1 là Video, còn từ Cảnh 2 đến Cảnh 8 hoàn toàn là Ảnh Tĩnh (`image`)**, khiến người xem thoát hàng loạt ở giây thứ 17.
-   - Trong khi đó, các video vượt trần (`imvC7zulBAM`) luôn có các cảnh **Video chuyển động thật** rải đều ở các nhịp cao trào giữa bài (Cảnh 1, Cảnh 2, Cảnh 4, Cảnh 6).
-   - Luôn duy trì chế độ **Video-First Media Director** và tự động thay thế 100% cảnh trượt `VisualCritic` bằng video chuyển động sạch.
+   - **Hồi 1 (Cảnh 1 — `0.0s–2.2s`, 6–10 từ)**: Mở màn bằng 1 trong 4 Đòn Tâm Lý Thị Giác (`hook_frame_sharpness >= 12.0`).
+   - **Hồi 2 (Cảnh 2–3)**: Lộ diện Đối thủ A cùng thông số vật lý thứ nhất (VD: Mực khổng lồ 14m với giác hút gắn móc xoay 360 độ).
+   - **Hồi 3 (Cảnh 4–5 — Đỉnh Cao Trào Thứ 2 / Cú Twist Lật Kèo ở giây 15)**: Đối thủ B tung đòn phản công bằng cơ chế sinh học/vật lý thứ hai (VD: Cá nhà táng 50 tấn phóng xung âm thanh Sonar `230 dB`).
+   - **Hồi 4 (Cảnh 6–7)**: Kết cục sinh tử xác đáng giải quyết cú Twist.
+   - **Hồi 5 (Cảnh 7/8 — Vòng lặp hoàn chỉnh)**: Câu kết hoàn chỉnh 100% về ngữ pháp nối thẳng tư duy quay lại Cảnh 1.
+3. **Bắt buộc rải đều Cảnh Video Chuyển Động Thật (`>= 80% Video Clips`) xuyên suốt thân bài**.
 
 ---
 
@@ -89,19 +90,11 @@ Thuật toán YouTube Shorts **KHÔNG** quyết định mở phễu lên tầng 
 
 ### 1. Khi Lên Ý Tưởng Chủ Đề & Đặt Tiêu Đề (`Ideation & Title Generation`)
 - Kiểm tra xem tiêu đề đã nêu đích danh **Tên Thực Thể Có Lượng Tìm Kiếm Cao** (ưu tiên cặp đối đầu `[Thực thể A] vs [Thực thể B]`) + **Con Số Vật Lý Cụ Thể** (`PSI`, `°C`, `m`, `km/h`, `Volts`, `dB`, `Năm`) chưa.
-- Nếu tiêu đề dùng từ ẩn danh kiểu *"This Beast"*, *"This Giant"*, *"This Creature"* hoặc chỉ nêu lực cắn mà giấu tên con vật → **Bắt buộc viết lại tiêu đề có tên thực thể rõ ràng**.
 
 ### 2. Khi Soạn Thảo & Duyệt Kịch Bản (`Script Generation & Linting`)
-- Giữ thời lượng `34s – 40s` (`7–8 phân cảnh`, `92–118 từ`), đảm bảo Cảnh 4–5 (giây 14–20) luôn có **Cú Twist Phản Công / Cơ Chế Tầng Sâu Thứ 2** để chống tụt `APV` khi YouTube mở rộng tệp ở Ngày 2.
+- Kiểm tra Cảnh 1 (`scenes[0].narration`) đã dùng 1 trong 4 Đòn Tâm Lý Thị Giác mà **không đọc lặp lại nguyên văn Tiêu đề** chưa.
+- Giữ thời lượng `34s – 40s` (`7–8 phân cảnh`, `92–118 từ`), đảm bảo Cảnh 4–5 (giây 14–20) luôn có **Cú Twist Phản Công / Cơ Chế Tầng Sâu Thứ 2**.
 - Kiểm tra câu cuối cùng của kịch bản (`Scene 7/8`) phải là một câu hoàn chỉnh 100%, không bị cụt lủn hoặc treo từ nối.
 
 ### 3. Khi Kiểm Toán & Phân Tích Video Đã Đăng (`Performance Audit`)
-- Kết hợp với **[youtube-real-metrics-reporting](../youtube-real-metrics-reporting/SKILL.md)**, khi người dùng hỏi vì sao một video tăng trưởng tốt hoặc bị chững:
-  1. Truy vấn `dimensions="day"` để so sánh `Stayed %` và `APV %` của **Ngày 1 vs Ngày 2** (kiểm tra xem video vượt qua hay trượt bài test mở rộng tệp Ngày 2).
-  2. Truy vấn `insightTrafficSourceType` và `insightTrafficSourceDetail` (`YT_SEARCH`) để kiểm tra xem tiêu đề có đang hút được lưu lượng tìm kiếm tự nhiên nuôi sống video hay không.
-  3. Kiểm tra tỷ lệ `video` vs `image` trong `scenes_json` và `hook_frame_sharpness >= 12.0`.
-
-## Common Mistakes
-- **Sai lầm 1 (Giấu tên thực thể để câu kéo tò mò)**: Đặt tiêu đề kiểu *"Con vật này có lực cắn 1.100 PSI"* thay vì *"Hiena vs Leão: A Mordida de 1.100 PSI Que Esmaga Ossos"*, làm mất trắng `200+ views` từ `YT_SEARCH` và khiến video tắt thở ngay sau 24 giờ đầu.
-- **Sai lầm 2 (Cắt ngắn kịch bản xuống `< 25s` để ép `APV` ảo)**: Làm mất chiều sâu giải thích khoa học/sinh tồn, khiến kịch bản bị loãng và không chuyển đổi được người xem thành Subscriber.
-- **Sai lầm 3 (Chỉ nhìn `APV` trung bình mà bỏ qua độ dốc Ngày 2)**: Không tách dữ liệu `Ngày 1 vs Ngày 2`, dẫn đến không phát hiện được các chủ đề kén khách bị sập `-40% APV` khi bước ra tệp khán giả đại chúng.
+- Kết hợp với **[youtube-real-metrics-reporting](../youtube-real-metrics-reporting/SKILL.md)**, truy vấn `dimensions="day"` và `insightTrafficSourceType` (`YT_SEARCH`) để đánh giá khả năng vượt trần thực tế.
