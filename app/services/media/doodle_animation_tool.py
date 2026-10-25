@@ -1,39 +1,26 @@
 """
-app.services.media.doodle_animation_tool — Công cụ Hoạt Họa 2D Doodle / Sketchbook Chuyên Dụng Cho Agent (Agent-Callable Tool).
+app.services.media.doodle_animation_tool — Công cụ Hoạt Họa 2D Doodle / Sketchbook 30 FPS Siêu Mượt Cho Agent (Agent-Callable Tool).
 
-Mục đích:
-  Đóng gói toàn bộ bộ máy dựng hoạt họa 2D Doodle / Stickman (1080x1920 @ 24 FPS, nét vẽ bút dạ đen
-  Line-Boil trên nền giấy kem ấm `#F7F3E8`, khóa nhân vật `@CHARACTER_TAG`, chuyển động máy quay 7 lớp
-  EyeCandy, âm thanh SFX thủ tục, kèm xuất `edit_manifest.json` & `draft_content.json` CapCut) thành
-  một Tool chuẩn có Schema và Mô tả tường minh để các Agent (`VideoStrategistAgent`, `VisualToolRouter`,
-  `AIVideoAgent`, hoặc LLM Orchestrator) tự động nhận biết KHI NÀO CẦN GỌI và CÁCH SỬ DỤNG.
-
-Khi nào Agent NÊN gọi Tool `doodle_2d_animator`:
-  1. Kênh thuộc ngách:
-     - `satirical_psychology_animation` (Hoạt họa Tâm lý Châm biếm)
-     - `dark_psychology` / `psychology_stoicism` (Tâm lý học Đen, Thao túng tâm lý, Chủ nghĩa Khắc kỷ)
-     - `personal_finance` / `wealth_traps` (Tài chính cá nhân, Bẫy nợ, Lạm phát, Kinh tế học hành vi)
-     - `brain_hacks` / `dopamine_detox` (Cơ chế não bộ, Giải độc Dopamine, Thói quen & Năng suất)
-     - `absurd_history` / `what_if_science` (Nghịch lý cuộc sống hiện đại, Lịch sử hài hước, Giải thích khoa học)
-  2. Phân cảnh mang bản chất `ABSTRACT_CONCEPT` / `DOODLE_PSYCHOLOGY_EXPLAINER` (ẩn dụ tâm lý, dòng tiền,
-     so sánh 2 lối sống, cơ chế não bộ) mà video stock người thật không thể diễn tả trực quan.
-  3. Prompt hoặc kịch bản có chứa các thẻ nhân vật `@MODERNYOU`, `@PLEASER`, `@MANIPULATOR`, `@ANCESTOR`, `@FARMER`
-     hoặc từ khóa `2d doodle`, `sketchbook animation`, `stickman explainer`, `whiteboard animation`.
-
-Khi nào Agent KHÔNG NÊN gọi Tool này:
-  - Các chủ đề Động vật hoang dã săn mồi (`wildlife_predators`), Cứu hộ động vật (`animal_rescue`),
-    Thiên nhiên kỳ thú (`REAL_FILMABLE`), hoặc Quái vật đại dương sâu (`DEEP_SEA_MYSTERY`) — những ngách này
-    bắt buộc ưu tiên Video chuyển động thật (`>= 80%` Stock Video) hoặc CGI 3D điện ảnh.
+Cải tiến Kỹ thuật Chống Khựng Hình (Zero-Judder 30 FPS Continuous Physics Engine):
+  1. True 30 FPS Unique Frame Rendering (150-180 khung hình độc lập cho mỗi cảnh 5-6s, thay vì 14 khung hình tĩnh).
+  2. Sub-Pixel Floating-Point Camera Glide (`Image.Transform.EXTENT` + `BILINEAR` + `ease_in_out_cubic` + Whip-Pan Entry):
+     Triệt tiêu hoàn toàn hiện tượng giật cục từng pixel (integer crop snapping) khi zoom/pan.
+  3. Coherent Organic Line-Boil & Articulated 2-Joint Kinematics:
+     Chuyển động tay/chân 2 khớp mượt mà, nhịp thở lồng ngực, chớp mắt tự nhiên (chu kỳ 2.7s),
+     vật lý lò xo (spring overshoot) cho đạo cụ và sóng hình sin liên tục (không nhảy ngẫu nhiên).
+  4. Live Word-by-Word Karaoke Subtitle Highlighting:
+     Phụ đề chạy sáng từng từ theo thời gian thực 30 FPS khớp với tiến độ giọng đọc.
+  5. Direct RawVideo Memory Pipe (`ffmpeg -f rawvideo -pix_fmt rgb24`):
+     Truyền thẳng khung hình từ RAM qua ống dẫn vào FFmpeg (0 file JPEG tạm trên ổ cứng).
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import math
 import re
 import subprocess
-import time
 import wave
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -41,21 +28,14 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-from app.schemas.contracts import RenderJobContract, SceneContract
-from app.services.media.cinematic_dictionary import (
-    build_character_reference_sheet_prompt,
-    build_seven_layer_cinematic_prompt,
-)
-from app.services.media.seedance_director import SeedanceDirector
-from app.services.media.timeline_manifest import export_job_timeline_artifacts
-
 logger = logging.getLogger(__name__)
 
-# ── BẢNG MÀU & THÔNG SỐ CHUẨN 2D DOODLE STUDIO ──────────────────────────────
+# ── BẢNG MÀU & THÔNG SỐ CHUẨN 2D DOODLE STUDIO (30 FPS) ──────────────────────
+DEFAULT_FPS = 30
 PAPER_BG = (247, 243, 232)        # #F7F3E8 Warm Cream Sketchbook Paper
-PAPER_GRAIN = (234, 228, 213)     # Subtle paper texture lines
+PAPER_GRAIN = (235, 229, 214)     # Subtle notebook horizontal rule
 INK_BLACK = (24, 24, 24)          # Bold black marker outline
-SHADOW_GREY = (210, 204, 190)     # Soft drop shadow on paper
+SHADOW_GREY = (212, 206, 192)     # Soft drop shadow on paper
 
 TAG_COLOR_RGB: Dict[str, Tuple[int, int, int]] = {
     "@MODERNYOU": (74, 111, 165),    # #4A6FA5 Slate-Blue Shirt (Exhausted Modern Worker / Overthinker)
@@ -89,16 +69,16 @@ EXCLUDED_REAL_FOOTAGE_NICHES: Tuple[str, ...] = (
     "nature",
 )
 
-# ── SCHEMA MÔ TẢ CÔNG CỤ DÀNH CHO LLM AGENT / FUNCTION CALLING ──────────────
 DOODLE_ANIMATION_TOOL_SCHEMA: Dict[str, Any] = {
     "name": "doodle_2d_animator",
-    "display_name": "GOHA 2D Doodle & Stickman Explainer Studio (24 FPS)",
-    "version": "2.0",
+    "display_name": "GOHA 2D Doodle & Stickman Explainer Studio (30 FPS Sub-Pixel Smooth)",
+    "version": "2.5",
     "description": (
-        "Công cụ dựng hoạt họa 2D Doodle / Stickman Explainer chuyên nghiệp (1080x1920 @ 24 FPS) trên nền giấy kem "
-        "ấm (#F7F3E8) với nét vẽ bút dạ đen rung tự nhiên (line-boil), khóa đồng nhất nhân vật bằng thẻ @CHARACTER_TAG "
-        "(@MODERNYOU, @PLEASER, @MANIPULATOR, @ANCESTOR, @FARMER), tích hợp 20 chuyển động máy quay điện ảnh EyeCandy "
-        "(dolly_in, overhead_90, arc_orbit, worms_eye, dolly_zoom, dolly_out) và 8 đạo cụ ẩn dụ trực quan. "
+        "Công cụ dựng hoạt họa 2D Doodle / Stickman Explainer chuyên nghiệp (1080x1920 @ 30 FPS Sub-Pixel Smooth) "
+        "trên nền giấy kem ấm (#F7F3E8) với chuyển động khớp tay chân 2 bậc, vật lý lò xo mượt mà, phụ đề Karaoke "
+        "từng từ, khóa đồng nhất nhân vật bằng thẻ @CHARACTER_TAG (@MODERNYOU, @PLEASER, @MANIPULATOR, @ANCESTOR, @FARMER), "
+        "tích hợp 20 chuyển động máy quay điện ảnh EyeCandy (dolly_in, overhead_90, arc_orbit, worms_eye, dolly_zoom, dolly_out) "
+        "và 8 đạo cụ ẩn dụ trực quan. "
         "SỬ DỤNG KHI: làm video thuộc các ngách Tâm lý học Đen (Dark Psychology), Thao túng tâm lý, Nghịch lý cuộc sống "
         "hiện đại (Modern Rat-Race), Tài chính cá nhân & Bẫy tiền bạc (Personal Finance), Cơ chế não bộ & Dopamine Detox, "
         "hoặc khi phân cảnh là khái niệm trừu tượng (ABSTRACT_CONCEPT) mà video quay thật không thể diễn tả. "
@@ -141,12 +121,7 @@ DOODLE_ANIMATION_TOOL_SCHEMA: Dict[str, Any] = {
                     "brain_battery",
                     "money_scale",
                 ],
-                "description": (
-                    "Đạo cụ ẩn dụ hình ảnh: 'alarm' (đồng hồ báo thức/áp lực thời gian), 'block' (khối tạ 500-lb đè nặng/nợ nần/burnout), "
-                    "'spear_nature' (tự do/tối giản/thiên nhiên), 'split' (so sánh 2 nửa màn hình), 'climax' (bừng tỉnh/thoát bẫy), "
-                    "'puppet_strings' (bàn tay thao túng giật dây con rối), 'brain_battery' (pin não bộ cạn kiệt/dopamine), "
-                    "'money_scale' (cán cân tiền bạc/lãi suất/bẫy tài chính)."
-                ),
+                "description": "Đạo cụ ẩn dụ hình ảnh trực quan cho phân cảnh.",
             },
             "camera_motion": {
                 "type": "string",
@@ -166,21 +141,147 @@ DOODLE_ANIMATION_TOOL_SCHEMA: Dict[str, Any] = {
             },
             "headline": {
                 "type": "string",
-                "description": "Tiêu đề ngắn (2-4 từ IN HOA) vẽ ở đầu trang giấy để đóng đinh thông điệp.",
+                "description": "Tiêu đề ngắn (2-4 từ IN HOA) vẽ ở đầu trang giấy.",
             },
             "sub_badge": {
                 "type": "string",
-                "description": "Nhãn số liệu màu đỏ/vàng đóng dấu lên khung hình (VD: '15 HRS/WEEK', '-400% DOPAMINE', '24% APR TRAP').",
+                "description": "Nhãn số liệu đóng dấu lên khung hình (VD: '15 HRS/WEEK', '-400% DOPAMINE').",
             },
         },
         "required": ["narration"],
     },
 }
 
+# ── BỘ NHỚ ĐỆM FONT & TRANG GIẤY NỀN (ZERO DISK I/O KHI RENDER 30 FPS) ───────
+_FONT_CACHE: Dict[Tuple[int, bool], ImageFont.FreeTypeFont] = {}
+_PAPER_CANVAS_CACHE: Dict[Tuple[int, int], Image.Image] = {}
+
+
+def _get_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
+    key = (size, bold)
+    if key in _FONT_CACHE:
+        return _FONT_CACHE[key]
+    candidates = [
+        "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
+        "C:/Windows/Fonts/calibrib.ttf" if bold else "C:/Windows/Fonts/calibri.ttf",
+        "C:/Windows/Fonts/segoeui.ttf",
+    ]
+    for path in candidates:
+        if Path(path).exists():
+            try:
+                f = ImageFont.truetype(path, size)
+                _FONT_CACHE[key] = f
+                return f
+            except Exception:
+                pass
+    f = ImageFont.load_default()
+    _FONT_CACHE[key] = f
+    return f
+
+
+def _get_base_paper_canvas(canvas_w: int, canvas_h: int) -> Image.Image:
+    key = (canvas_w, canvas_h)
+    if key not in _PAPER_CANVAS_CACHE:
+        base = Image.new("RGB", (canvas_w, canvas_h), PAPER_BG)
+        draw = ImageDraw.Draw(base)
+        for y_line in range(140, canvas_h - 100, 76):
+            draw.line([(60, y_line), (canvas_w - 60, y_line)], fill=PAPER_GRAIN, width=2)
+        _PAPER_CANVAS_CACHE[key] = base
+    return _PAPER_CANVAS_CACHE[key].copy()
+
+
+# ── HÀM NỘI SUY VẬT LÝ MƯỢT (EASING & SPRING FUNCTIONS) ─────────────────────
+def _ease_in_out_cubic(x: float) -> float:
+    x = max(0.0, min(1.0, x))
+    return 4.0 * x * x * x if x < 0.5 else 1.0 - ((-2.0 * x + 2.0) ** 3) / 2.0
+
+
+def _ease_out_back(x: float, overshoot: float = 1.35) -> float:
+    x = max(0.0, min(1.0, x))
+    c3 = overshoot + 1.0
+    return 1.0 + c3 * ((x - 1.0) ** 3) + overshoot * ((x - 1.0) ** 2)
+
+
+def _spring_drop(t_sec: float, impact_time: float = 0.55) -> Tuple[float, float]:
+    """
+    Trả về (drop_offset_px, squash_factor) cho vật nặng rơi xuống có độ nảy đàn hồi mượt mà.
+    """
+    if t_sec < impact_time:
+        p = t_sec / max(0.01, impact_time)
+        # Gia tốc trọng trường mượt (p^2)
+        return -240.0 * (1.0 - p * p), 0.0
+    dt = t_sec - impact_time
+    # Dao động tắt dần sau va chạm
+    bounce = -28.0 * math.exp(-7.5 * dt) * abs(math.sin(dt * 14.0))
+    squash = math.exp(-5.5 * dt) * math.sin(dt * 16.0)
+    return bounce, squash
+
+
+def _coherent_wobble_pts(
+    pts: List[Tuple[float, float]],
+    t_sec: float,
+    seed: int,
+    amp: float = 1.45,
+) -> List[Tuple[float, float]]:
+    """
+    Tạo hiệu ứng Line-Boil vẽ tay MƯỢT MÀ bằng sóng sin liên tục theo thời gian `t_sec`
+    (thay vì nhảy ngẫu nhiên gây giật mắt).
+    """
+    out: List[Tuple[float, float]] = []
+    # Làm tròn t_sec theo nhịp 12Hz êm ái nhưng kết hợp pha liên tục để không bị giật cục
+    boil_phase = t_sec * 8.5
+    for idx, (x, y) in enumerate(pts):
+        ang = boil_phase + seed * 0.73 + idx * 1.91
+        dx = math.sin(ang) * amp
+        dy = math.cos(ang * 1.13 + 0.5) * amp
+        out.append((x + dx, y + dy))
+    return out
+
+
+def _draw_sketch_line(
+    draw: ImageDraw.ImageDraw,
+    p1: Tuple[float, float],
+    p2: Tuple[float, float],
+    t_sec: float,
+    seed: int,
+    color: Tuple[int, int, int] = INK_BLACK,
+    width: int = 7,
+) -> None:
+    steps = 8
+    pts = [
+        (p1[0] + (p2[0] - p1[0]) * i / steps, p1[1] + (p2[1] - p1[1]) * i / steps)
+        for i in range(steps + 1)
+    ]
+    w_pts = _coherent_wobble_pts(pts, t_sec=t_sec, seed=seed, amp=1.35)
+    draw.line(w_pts, fill=color, width=width, joint="curve")
+
+
+def _draw_sketch_circle(
+    draw: ImageDraw.ImageDraw,
+    cx: float,
+    cy: float,
+    r: float,
+    t_sec: float,
+    seed: int,
+    fill: Optional[Tuple[int, int, int]] = None,
+    outline: Tuple[int, int, int] = INK_BLACK,
+    width: int = 7,
+) -> None:
+    n = 32
+    boil_phase = t_sec * 8.0 + seed * 0.5
+    pts: List[Tuple[float, float]] = []
+    for i in range(n + 1):
+        ang = (2.0 * math.pi * i) / n
+        dr = math.sin(boil_phase + ang * 3.0) * 1.4
+        pts.append((cx + (r + dr) * math.cos(ang), cy + (r + dr) * math.sin(ang)))
+    if fill:
+        draw.polygon(pts, fill=fill)
+    draw.line(pts, fill=outline, width=width, joint="curve")
+
 
 @dataclass
 class DoodleSceneConfig:
-    """Cấu hình 1 phân cảnh hoạt họa 2D Doodle."""
+    """Cấu hình 1 phân cảnh hoạt họa 2D Doodle 30 FPS."""
     scene_id: int
     headline: str
     sub_badge: str
@@ -207,72 +308,6 @@ class DoodleSceneConfig:
             )
 
 
-def _get_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
-    candidates = [
-        "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
-        "C:/Windows/Fonts/calibrib.ttf" if bold else "C:/Windows/Fonts/calibri.ttf",
-        "C:/Windows/Fonts/segoeui.ttf",
-    ]
-    for path in candidates:
-        if Path(path).exists():
-            try:
-                return ImageFont.truetype(path, size)
-            except Exception:
-                pass
-    return ImageFont.load_default()
-
-
-def _wobble_pts(
-    pts: List[Tuple[float, float]],
-    seed: int,
-    amp: float = 2.2,
-) -> List[Tuple[float, float]]:
-    rng = np.random.default_rng(seed)
-    return [
-        (x + float(rng.uniform(-amp, amp)), y + float(rng.uniform(-amp, amp)))
-        for x, y in pts
-    ]
-
-
-def _draw_sketch_line(
-    draw: ImageDraw.ImageDraw,
-    p1: Tuple[float, float],
-    p2: Tuple[float, float],
-    seed: int,
-    color: Tuple[int, int, int] = INK_BLACK,
-    width: int = 7,
-) -> None:
-    steps = 7
-    pts = [
-        (p1[0] + (p2[0] - p1[0]) * i / steps, p1[1] + (p2[1] - p1[1]) * i / steps)
-        for i in range(steps + 1)
-    ]
-    w_pts = _wobble_pts(pts, seed=seed, amp=2.0)
-    draw.line(w_pts, fill=color, width=width, joint="curve")
-
-
-def _draw_sketch_circle(
-    draw: ImageDraw.ImageDraw,
-    cx: float,
-    cy: float,
-    r: float,
-    seed: int,
-    fill: Optional[Tuple[int, int, int]] = None,
-    outline: Tuple[int, int, int] = INK_BLACK,
-    width: int = 7,
-) -> None:
-    pts = []
-    n = 28
-    rng = np.random.default_rng(seed)
-    for i in range(n + 1):
-        ang = (2 * math.pi * i) / n
-        dr = float(rng.uniform(-2.2, 2.2))
-        pts.append((cx + (r + dr) * math.cos(ang), cy + (r + dr) * math.sin(ang)))
-    if fill:
-        draw.polygon(pts, fill=fill)
-    draw.line(pts, fill=outline, width=width, joint="curve")
-
-
 def _draw_doodle_character(
     draw: ImageDraw.ImageDraw,
     cx: float,
@@ -280,104 +315,129 @@ def _draw_doodle_character(
     scale: float,
     shirt_rgb: Tuple[int, int, int],
     expression: str,
-    phase: float,
-    frame_seed: int,
+    t_sec: float,
+    seed: int,
     hunched: bool = False,
+    squash: float = 0.0,
 ) -> None:
-    head_r = 68 * scale
-    bob_y = math.sin(phase * 2 * math.pi) * (10 * scale)
-    head_cy = cy - 170 * scale + bob_y + (28 * scale if hunched else 0)
-    head_cx = cx + (18 * scale if hunched else 0)
+    """
+    Vẽ nhân vật 2D Doodle với chuyển động khớp tay/chân 2 đoạn (2-Joint Articulated Limbs),
+    nhịp thở lồng ngực mượt, nghiêng đầu tự nhiên và chớp mắt định kỳ.
+    """
+    head_r = 68.0 * scale
+    breath = math.sin(t_sec * 3.6) * (7.5 * scale)
+    squash_y = squash * 22.0 * scale
+    squash_x = squash * 12.0 * scale
 
-    # Soft ground shadow
+    head_cy = cy - 172.0 * scale + breath + (30.0 * scale if hunched else 0.0) + squash_y
+    head_cx = cx + math.sin(t_sec * 2.2) * (5.0 * scale) + (16.0 * scale if hunched else 0.0)
+
+    # Bóng đổ dưới chân co giãn nhẹ theo nhịp thở
+    shadow_rx = (96.0 + math.sin(t_sec * 3.6) * 5.0) * scale
     draw.ellipse(
-        [cx - 95 * scale, cy + 195 * scale, cx + 95 * scale, cy + 230 * scale],
+        [cx - shadow_rx, cy + 196.0 * scale, cx + shadow_rx, cy + 230.0 * scale],
         fill=SHADOW_GREY,
     )
 
-    # Torso (colored shirt with bold ink outline)
-    torso_top = head_cy + head_r * 0.85
-    torso_bot = cy + 65 * scale
+    # Thân áo (Torso) có nhịp thở mượt
+    torso_top = head_cy + head_r * 0.84
+    torso_bot = cy + 64.0 * scale + squash_y * 0.5
     torso_pts = [
-        (cx - 58 * scale, torso_top),
-        (cx + 58 * scale, torso_top),
-        (cx + 72 * scale, torso_bot),
-        (cx - 72 * scale, torso_bot),
+        (cx - (58.0 * scale + squash_x), torso_top),
+        (cx + (58.0 * scale + squash_x), torso_top),
+        (cx + (72.0 * scale + squash_x), torso_bot),
+        (cx - (72.0 * scale + squash_x), torso_bot),
     ]
-    w_torso = _wobble_pts(torso_pts, seed=frame_seed + 11, amp=2.2)
+    w_torso = _coherent_wobble_pts(torso_pts, t_sec=t_sec, seed=seed + 11, amp=1.4)
     draw.polygon(w_torso, fill=shirt_rgb)
     draw.line(w_torso + [w_torso[0]], fill=INK_BLACK, width=max(4, int(7 * scale)), joint="curve")
 
-    # Legs
-    walk_swing = math.sin(phase * 2 * math.pi) * 22 * scale
-    _draw_sketch_line(
-        draw,
-        (cx - 32 * scale, torso_bot),
-        (cx - 42 * scale - walk_swing, cy + 210 * scale),
-        seed=frame_seed + 21,
-        width=max(4, int(8 * scale)),
-    )
-    _draw_sketch_line(
-        draw,
-        (cx + 32 * scale, torso_bot),
-        (cx + 42 * scale + walk_swing, cy + 210 * scale),
-        seed=frame_seed + 22,
-        width=max(4, int(8 * scale)),
-    )
+    # Chân 2 khớp (Đùi -> Đầu gối -> Bàn chân)
+    knee_bend = abs(math.sin(t_sec * 3.2)) * 14.0 * scale + (18.0 * scale if hunched else 0.0)
+    l_hip = (cx - 32.0 * scale, torso_bot)
+    l_knee = (cx - 42.0 * scale - knee_bend * 0.5, cy + 135.0 * scale)
+    l_foot = (cx - 40.0 * scale, cy + 210.0 * scale)
+    _draw_sketch_line(draw, l_hip, l_knee, t_sec, seed + 21, width=max(4, int(8 * scale)))
+    _draw_sketch_line(draw, l_knee, l_foot, t_sec, seed + 22, width=max(4, int(8 * scale)))
 
-    # Arms
-    arm_wave = math.cos(phase * 2 * math.pi) * 30 * scale
-    if expression in ("exhausted", "crushed"):
-        _draw_sketch_line(
-            draw,
-            (cx - 55 * scale, torso_top + 20 * scale),
-            (cx - 95 * scale, torso_top - 45 * scale + arm_wave * 0.4),
-            seed=frame_seed + 31,
-            width=max(4, int(7 * scale)),
-        )
-        _draw_sketch_line(
-            draw,
-            (cx + 55 * scale, torso_top + 20 * scale),
-            (cx + 95 * scale, torso_top - 45 * scale - arm_wave * 0.4),
-            seed=frame_seed + 32,
-            width=max(4, int(7 * scale)),
-        )
+    r_hip = (cx + 32.0 * scale, torso_bot)
+    r_knee = (cx + 42.0 * scale + knee_bend * 0.5, cy + 135.0 * scale)
+    r_foot = (cx + 40.0 * scale, cy + 210.0 * scale)
+    _draw_sketch_line(draw, r_hip, r_knee, t_sec, seed + 23, width=max(4, int(8 * scale)))
+    _draw_sketch_line(draw, r_knee, r_foot, t_sec, seed + 24, width=max(4, int(8 * scale)))
+
+    # Tay 2 khớp (Vai -> Khuỷu tay -> Bàn tay)
+    arm_osc = math.sin(t_sec * 4.5) * 20.0 * scale
+    l_sh = (cx - 56.0 * scale, torso_top + 18.0 * scale)
+    r_sh = (cx + 56.0 * scale, torso_top + 18.0 * scale)
+
+    if expression in ("exhausted", "crushed", "shocked"):
+        # Đưa 2 tay lên ôm đầu / đỡ vật nặng
+        l_elb = (cx - 102.0 * scale, torso_top - 12.0 * scale + arm_osc * 0.35)
+        l_hnd = (head_cx - 64.0 * scale, head_cy - 18.0 * scale + arm_osc * 0.5)
+        r_elb = (cx + 102.0 * scale, torso_top - 12.0 * scale - arm_osc * 0.35)
+        r_hnd = (head_cx + 64.0 * scale, head_cy - 18.0 * scale - arm_osc * 0.5)
     else:
-        _draw_sketch_line(
-            draw,
-            (cx - 55 * scale, torso_top + 20 * scale),
-            (cx - 105 * scale, torso_top + 75 * scale + arm_wave),
-            seed=frame_seed + 31,
-            width=max(4, int(7 * scale)),
-        )
-        _draw_sketch_line(
-            draw,
-            (cx + 55 * scale, torso_top + 20 * scale),
-            (cx + 105 * scale, torso_top + 45 * scale - arm_wave),
-            seed=frame_seed + 32,
-            width=max(4, int(7 * scale)),
-        )
+        l_elb = (cx - 92.0 * scale, torso_top + 52.0 * scale + arm_osc * 0.5)
+        l_hnd = (cx - 110.0 * scale, torso_top + 92.0 * scale + arm_osc)
+        r_elb = (cx + 92.0 * scale, torso_top + 42.0 * scale - arm_osc * 0.5)
+        r_hnd = (cx + 115.0 * scale, torso_top + 28.0 * scale - arm_osc)
 
-    # Head
+    _draw_sketch_line(draw, l_sh, l_elb, t_sec, seed + 31, width=max(4, int(7 * scale)))
+    _draw_sketch_line(draw, l_elb, l_hnd, t_sec, seed + 32, width=max(4, int(7 * scale)))
+    _draw_sketch_line(draw, r_sh, r_elb, t_sec, seed + 33, width=max(4, int(7 * scale)))
+    _draw_sketch_line(draw, r_elb, r_hnd, t_sec, seed + 34, width=max(4, int(7 * scale)))
+
+    # Đầu nhân vật
     _draw_sketch_circle(
         draw,
         head_cx,
         head_cy,
         head_r,
-        seed=frame_seed + 41,
+        t_sec=t_sec,
+        seed=seed + 41,
         fill=(255, 253, 248),
         outline=INK_BLACK,
         width=max(4, int(7 * scale)),
     )
 
-    # Eyes & Expression
-    eye_y = head_cy - 12 * scale
-    eye_dx = 24 * scale
-    if expression in ("exhausted", "crushed", "shocked"):
-        _draw_sketch_circle(draw, head_cx - eye_dx, eye_y, 14 * scale, seed=frame_seed + 51, fill=(255, 255, 255), width=4)
-        _draw_sketch_circle(draw, head_cx + eye_dx, eye_y, 14 * scale, seed=frame_seed + 52, fill=(255, 255, 255), width=4)
-        draw.ellipse([head_cx - eye_dx - 4, eye_y - 4, head_cx - eye_dx + 4, eye_y + 4], fill=INK_BLACK)
-        draw.ellipse([head_cx + eye_dx - 4, eye_y - 4, head_cx + eye_dx + 4, eye_y + 4], fill=INK_BLACK)
+    # Chớp mắt tự nhiên (mỗi 2.6 giây chớp 1 lần trong 0.14s)
+    blink_cycle = (t_sec + seed * 0.17) % 2.6
+    is_blinking = blink_cycle > 2.46
+
+    eye_y = head_cy - 12.0 * scale
+    eye_dx = 24.0 * scale
+    pupil_shift = math.sin(t_sec * 2.5) * 3.5 * scale
+
+    if is_blinking:
+        _draw_sketch_line(
+            draw,
+            (head_cx - eye_dx - 12.0 * scale, eye_y),
+            (head_cx - eye_dx + 12.0 * scale, eye_y),
+            t_sec,
+            seed + 50,
+            width=4,
+        )
+        _draw_sketch_line(
+            draw,
+            (head_cx + eye_dx - 12.0 * scale, eye_y),
+            (head_cx + eye_dx + 12.0 * scale, eye_y),
+            t_sec,
+            seed + 51,
+            width=4,
+        )
+    elif expression in ("exhausted", "crushed", "shocked"):
+        _draw_sketch_circle(draw, head_cx - eye_dx, eye_y, 14.0 * scale, t_sec, seed + 51, fill=(255, 255, 255), width=4)
+        _draw_sketch_circle(draw, head_cx + eye_dx, eye_y, 14.0 * scale, t_sec, seed + 52, fill=(255, 255, 255), width=4)
+        draw.ellipse(
+            [head_cx - eye_dx - 4 + pupil_shift, eye_y - 4, head_cx - eye_dx + 4 + pupil_shift, eye_y + 4],
+            fill=INK_BLACK,
+        )
+        draw.ellipse(
+            [head_cx + eye_dx - 4 + pupil_shift, eye_y - 4, head_cx + eye_dx + 4 + pupil_shift, eye_y + 4],
+            fill=INK_BLACK,
+        )
+        # Quầng thâm mắt (eye bags)
         draw.arc(
             [head_cx - eye_dx - 16 * scale, eye_y + 6 * scale, head_cx - eye_dx + 16 * scale, eye_y + 24 * scale],
             start=15,
@@ -392,6 +452,21 @@ def _draw_doodle_character(
             fill=INK_BLACK,
             width=3,
         )
+        # Giọt mồ hôi rơi mượt theo t_sec
+        sweat_p = (t_sec * 1.4) % 1.0
+        sweat_y = head_cy - 28.0 * scale + sweat_p * 42.0 * scale
+        draw.ellipse(
+            [head_cx + head_r + 8 * scale, sweat_y, head_cx + head_r + 18 * scale, sweat_y + 16 * scale],
+            fill=(74, 144, 226),
+            outline=INK_BLACK,
+            width=2,
+        )
+    else:
+        draw.ellipse([head_cx - eye_dx - 6 + pupil_shift, eye_y - 6, head_cx - eye_dx + 6 + pupil_shift, eye_y + 6], fill=INK_BLACK)
+        draw.ellipse([head_cx + eye_dx - 6 + pupil_shift, eye_y - 6, head_cx + eye_dx + 6 + pupil_shift, eye_y + 6], fill=INK_BLACK)
+
+    # Miệng & Lông mày biểu cảm
+    if expression in ("exhausted", "crushed", "shocked"):
         draw.arc(
             [head_cx - 26 * scale, head_cy + 18 * scale, head_cx + 26 * scale, head_cy + 48 * scale],
             start=195,
@@ -400,20 +475,20 @@ def _draw_doodle_character(
             width=5,
         )
     elif expression == "smirk":
-        draw.ellipse([head_cx - eye_dx - 6, eye_y - 6, head_cx - eye_dx + 6, eye_y + 6], fill=INK_BLACK)
-        draw.ellipse([head_cx + eye_dx - 6, eye_y - 6, head_cx + eye_dx + 6, eye_y + 6], fill=INK_BLACK)
         _draw_sketch_line(
             draw,
             (head_cx - eye_dx - 14 * scale, eye_y - 18 * scale),
             (head_cx - eye_dx + 8 * scale, eye_y - 8 * scale),
-            seed=frame_seed + 58,
+            t_sec,
+            seed + 58,
             width=5,
         )
         _draw_sketch_line(
             draw,
             (head_cx + eye_dx + 14 * scale, eye_y - 18 * scale),
             (head_cx + eye_dx - 8 * scale, eye_y - 8 * scale),
-            seed=frame_seed + 59,
+            t_sec,
+            seed + 59,
             width=5,
         )
         draw.arc(
@@ -424,8 +499,6 @@ def _draw_doodle_character(
             width=5,
         )
     else:
-        draw.ellipse([head_cx - eye_dx - 6, eye_y - 6, head_cx - eye_dx + 6, eye_y + 6], fill=INK_BLACK)
-        draw.ellipse([head_cx + eye_dx - 6, eye_y - 6, head_cx + eye_dx + 6, eye_y + 6], fill=INK_BLACK)
         draw.arc(
             [head_cx - 24 * scale, head_cy + 10 * scale, head_cx + 24 * scale, head_cy + 38 * scale],
             start=15,
@@ -435,168 +508,287 @@ def _draw_doodle_character(
         )
 
 
+def _draw_karaoke_caption_box(
+    draw: ImageDraw.ImageDraw,
+    narration: str,
+    phase: float,
+    canvas_w: int,
+    canvas_h: int,
+) -> None:
+    """
+    Vẽ hộp phụ đề Karaoke tô sáng từng từ theo tiến độ thời gian thực `phase` (0.0 -> 1.0) ở 30 FPS.
+    """
+    font_sub = _get_font(42, bold=True)
+    words = [w for w in (narration or "").split() if w.strip()]
+    if not words:
+        return
+
+    active_idx = min(len(words) - 1, int(phase * len(words)))
+
+    # Chia thành tối đa 3 dòng cân đối
+    lines_words: List[List[Tuple[int, str]]] = []
+    cur_line: List[Tuple[int, str]] = []
+    cur_len = 0
+    for idx, w in enumerate(words):
+        cur_line.append((idx, w))
+        cur_len += len(w) + 1
+        if cur_len > 30 and len(lines_words) < 2:
+            lines_words.append(cur_line)
+            cur_line = []
+            cur_len = 0
+    if cur_line:
+        lines_words.append(cur_line)
+
+    cap_box = [80, canvas_h - 425, canvas_w - 80, canvas_h - 165]
+    draw.rounded_rectangle(cap_box, radius=28, fill=(24, 24, 24), outline=GOLD_ACCENT, width=5)
+
+    total_lines = len(lines_words)
+    start_y = (canvas_h - 295) - ((total_lines - 1) * 56) // 2
+
+    for line_i, line_items in enumerate(lines_words):
+        line_str = " ".join(w for _, w in line_items)
+        bbox = draw.textbbox((0, 0), line_str, font=font_sub)
+        line_w = bbox[2] - bbox[0]
+        cursor_x = (canvas_w - line_w) / 2.0
+        y_pos = start_y + line_i * 56
+
+        for w_idx, word_text in line_items:
+            w_bbox = draw.textbbox((0, 0), word_text + " ", font=font_sub)
+            w_width = w_bbox[2] - w_bbox[0]
+            if w_idx == active_idx:
+                # Pill vàng nổi bật dưới từ đang đọc
+                word_only_box = draw.textbbox((0, 0), word_text, font=font_sub)
+                ww = word_only_box[2] - word_only_box[0]
+                draw.rounded_rectangle(
+                    [cursor_x - 6, y_pos - 26, cursor_x + ww + 6, y_pos + 26],
+                    radius=10,
+                    fill=GOLD_ACCENT,
+                )
+                draw.text((cursor_x, y_pos), word_text, fill=INK_BLACK, font=font_sub, anchor="lm")
+            elif w_idx < active_idx:
+                draw.text((cursor_x, y_pos), word_text, fill=(255, 255, 255), font=font_sub, anchor="lm")
+            else:
+                draw.text((cursor_x, y_pos), word_text, fill=(175, 175, 175), font=font_sub, anchor="lm")
+            cursor_x += w_width
+
+
 def render_doodle_frame(
     sc: DoodleSceneConfig,
     frame_idx: int,
     total_frames: int,
     width: int = 1080,
     height: int = 1920,
+    fps: int = DEFAULT_FPS,
 ) -> Image.Image:
-    """Render 1 khung hình 2D Doodle với hiệu ứng Line-Boil và Camera Motion vật lý."""
+    """
+    Render 1 khung hình 2D Doodle ở chuẩn 30 FPS với:
+    - Chuyển động Vật lý & Khớp xương liên tục theo `t_sec`
+    - Phụ đề Karaoke từng từ
+    - Sub-Pixel Floating-Point Camera Transform (`Image.Transform.EXTENT` + `BILINEAR`) không bao giờ bị khựng pixel.
+    """
     canvas_w, canvas_h = int(width * 1.18), int(height * 1.18)
-    img = Image.new("RGB", (canvas_w, canvas_h), PAPER_BG)
+    img = _get_base_paper_canvas(canvas_w, canvas_h)
     draw = ImageDraw.Draw(img)
 
-    phase = frame_idx / max(1, total_frames)
-    boil_seed = sc.scene_id * 1000 + (frame_idx // 2)
+    phase = frame_idx / max(1, total_frames - 1)
+    t_sec = frame_idx / float(max(1, fps))
+    scene_seed = sc.scene_id * 100
 
-    for y_line in range(140, canvas_h - 100, 76):
-        draw.line([(60, y_line), (canvas_w - 60, y_line)], fill=PAPER_GRAIN, width=2)
-
-    cx, cy = canvas_w * 0.5, canvas_h * 0.54
+    cx, cy = canvas_w * 0.5, canvas_h * 0.53
     font_h1 = _get_font(56, bold=True)
     font_badge = _get_font(40, bold=True)
-    font_sub = _get_font(42, bold=True)
+
+    # Hiệu ứng Pop-in mượt ở 0.3s đầu cảnh
+    entry_p = min(1.0, t_sec / 0.32)
+    entry_scale = _ease_out_back(entry_p, overshoot=1.15)
+    header_y_off = (1.0 - entry_scale) * -90.0
 
     # Top Tag Pill + Headline
-    tag_box = [110, 135, canvas_w - 110, 235]
+    tag_box = [110, int(135 + header_y_off), canvas_w - 110, int(235 + header_y_off)]
     draw.rounded_rectangle(tag_box, radius=24, fill=sc.accent_rgb, outline=INK_BLACK, width=6)
-    draw.text((canvas_w // 2, 185), f"{sc.character_tag}  •  {sc.camera_motion.upper()}", fill=(255, 255, 255), font=font_badge, anchor="mm")
-    draw.text((canvas_w // 2, 305), sc.headline, fill=INK_BLACK, font=font_h1, anchor="mm")
+    draw.text(
+        (canvas_w // 2, int(185 + header_y_off)),
+        f"{sc.character_tag}  •  {sc.camera_motion.upper()}",
+        fill=(255, 255, 255),
+        font=font_badge,
+        anchor="mm",
+    )
+    draw.text((canvas_w // 2, int(305 + header_y_off)), sc.headline, fill=INK_BLACK, font=font_h1, anchor="mm")
 
-    # Ground line
-    _draw_sketch_line(draw, (110, cy + 220), (canvas_w - 110, cy + 220), seed=boil_seed + 1, width=8)
+    # Mặt đất vẽ tay
+    _draw_sketch_line(draw, (110, cy + 220), (canvas_w - 110, cy + 220), t_sec=t_sec, seed=scene_seed + 1, width=8)
 
-    # 8 Visual Metaphor Prop Archetypes
+    # 8 Đạo cụ Ẩn dụ Trực quan (với chuyển động liên tục theo t_sec)
     if sc.prop_type == "alarm":
-        _draw_doodle_character(draw, cx - 130, cy, 1.15, sc.accent_rgb, "exhausted", phase, boil_seed)
-        shake_x = math.sin(frame_idx * 1.9) * 14
-        clock_cx, clock_cy = cx + 210 + shake_x, cy - 110
-        _draw_sketch_circle(draw, clock_cx, clock_cy, 95, seed=boil_seed + 7, fill=ALERT_RED, width=8)
-        _draw_sketch_circle(draw, clock_cx, clock_cy, 72, seed=boil_seed + 8, fill=(255, 255, 255), width=5)
-        _draw_sketch_line(draw, (clock_cx, clock_cy), (clock_cx, clock_cy - 48), seed=boil_seed + 9, width=6)
-        _draw_sketch_line(draw, (clock_cx, clock_cy), (clock_cx + 38, clock_cy + 12), seed=boil_seed + 10, width=6)
-        for ang_deg in (-55, -25, 25, 55):
-            rad = math.radians(ang_deg)
-            _draw_sketch_line(
-                draw,
-                (clock_cx + 110 * math.sin(rad), clock_cy - 110 * math.cos(rad)),
-                (clock_cx + 145 * math.sin(rad), clock_cy - 145 * math.cos(rad)),
-                seed=boil_seed + ang_deg,
-                color=ALERT_RED,
-                width=6,
+        _draw_doodle_character(draw, cx - 130, cy, 1.15, sc.accent_rgb, "exhausted", t_sec, scene_seed)
+        ring_shake_x = math.sin(t_sec * 38.0) * 12.0
+        ring_shake_y = abs(math.cos(t_sec * 38.0)) * -10.0
+        clock_cx, clock_cy = cx + 205 + ring_shake_x, cy - 110 + ring_shake_y
+        # Vòng sóng âm thanh lan tỏa mượt (Expanding Sound Waves)
+        for w_i in range(2):
+            wave_p = (t_sec * 1.8 + w_i * 0.5) % 1.0
+            wave_r = 98.0 + wave_p * 75.0
+            draw.arc(
+                [clock_cx - wave_r, clock_cy - wave_r, clock_cx + wave_r, clock_cy + wave_r],
+                start=210,
+                end=330,
+                fill=ALERT_RED,
+                width=max(2, int(6 * (1.0 - wave_p))),
             )
+        _draw_sketch_circle(draw, clock_cx, clock_cy, 95, t_sec, scene_seed + 7, fill=ALERT_RED, width=8)
+        _draw_sketch_circle(draw, clock_cx, clock_cy, 72, t_sec, scene_seed + 8, fill=(255, 255, 255), width=5)
+        # Kim đồng hồ quay nhanh mượt mà
+        min_ang = t_sec * 9.0
+        hr_ang = t_sec * 1.5
+        _draw_sketch_line(
+            draw,
+            (clock_cx, clock_cy),
+            (clock_cx + 48 * math.sin(min_ang), clock_cy - 48 * math.cos(min_ang)),
+            t_sec,
+            scene_seed + 9,
+            width=6,
+        )
+        _draw_sketch_line(
+            draw,
+            (clock_cx, clock_cy),
+            (clock_cx + 34 * math.sin(hr_ang), clock_cy - 34 * math.cos(hr_ang)),
+            t_sec,
+            scene_seed + 10,
+            width=6,
+        )
 
     elif sc.prop_type == "block":
-        _draw_doodle_character(draw, cx, cy + 35, 1.08, sc.accent_rgb, "crushed", phase, boil_seed, hunched=True)
-        drop_y = min(0.0, -140.0 + phase * 260.0)
-        bx1, by1, bx2, by2 = cx - 260, cy - 390 + drop_y, cx + 260, cy - 175 + drop_y
-        pts = _wobble_pts([(bx1, by1), (bx2, by1), (bx2, by2), (bx1, by2)], seed=boil_seed + 15, amp=3.0)
+        drop_y, squash = _spring_drop(t_sec, impact_time=0.52)
+        _draw_doodle_character(
+            draw,
+            cx,
+            cy + 35,
+            1.08,
+            sc.accent_rgb,
+            "crushed",
+            t_sec,
+            scene_seed,
+            hunched=True,
+            squash=squash,
+        )
+        bx1, by1, bx2, by2 = cx - 265, cy - 395 + drop_y, cx + 265, cy - 175 + drop_y
+        pts = _coherent_wobble_pts([(bx1, by1), (bx2, by1), (bx2, by2), (bx1, by2)], t_sec=t_sec, seed=scene_seed + 15, amp=1.8)
         draw.polygon(pts, fill=(85, 92, 104))
         draw.line(pts + [pts[0]], fill=INK_BLACK, width=8)
         draw.text((cx, (by1 + by2) / 2), sc.sub_badge or "HEAVY BURDEN", fill=(255, 255, 255), font=font_badge, anchor="mm")
 
     elif sc.prop_type == "spear_nature":
-        _draw_doodle_character(draw, cx - 90, cy, 1.15, sc.accent_rgb, "calm", phase, boil_seed)
-        sx = cx + 70
-        _draw_sketch_line(draw, (sx, cy - 260), (sx, cy + 215), seed=boil_seed + 30, color=(120, 72, 32), width=9)
+        _draw_doodle_character(draw, cx - 90, cy, 1.15, sc.accent_rgb, "calm", t_sec, scene_seed)
+        sx = cx + 70 + math.sin(t_sec * 3.0) * 6.0
+        _draw_sketch_line(draw, (sx, cy - 260), (sx, cy + 215), t_sec, scene_seed + 30, color=(120, 72, 32), width=9)
         draw.polygon([(sx, cy - 305), (sx - 22, cy - 255), (sx + 22, cy - 255)], fill=GOLD_ACCENT, outline=INK_BLACK)
-        _draw_sketch_circle(draw, cx + 230, cy - 290, 68, seed=boil_seed + 33, fill=GOLD_ACCENT, width=6)
+        sun_r = 66.0 + math.sin(t_sec * 4.0) * 5.0
+        _draw_sketch_circle(draw, cx + 230, cy - 290, sun_r, t_sec, scene_seed + 33, fill=GOLD_ACCENT, width=6)
 
     elif sc.prop_type == "split":
-        _draw_sketch_line(draw, (cx, cy - 340), (cx, cy + 220), seed=boil_seed + 40, color=ALERT_RED, width=8)
-        _draw_doodle_character(draw, cx - 210, cy + 15, 0.92, TAG_COLOR_RGB["@MODERNYOU"], "exhausted", phase, boil_seed)
-        _draw_doodle_character(draw, cx + 210, cy + 15, 0.92, TAG_COLOR_RGB["@ANCESTOR"], "calm", phase, boil_seed + 50)
+        _draw_sketch_line(draw, (cx, cy - 340), (cx, cy + 220), t_sec, scene_seed + 40, color=ALERT_RED, width=8)
+        _draw_doodle_character(draw, cx - 210, cy + 15, 0.92, TAG_COLOR_RGB["@MODERNYOU"], "exhausted", t_sec, scene_seed)
+        _draw_doodle_character(draw, cx + 210, cy + 15, 0.92, TAG_COLOR_RGB["@ANCESTOR"], "calm", t_sec, scene_seed + 50)
         draw.rounded_rectangle([cx - 340, cy - 320, cx - 70, cy - 235], radius=16, fill=ALERT_RED, outline=INK_BLACK, width=5)
         draw.text((cx - 205, cy - 277), "CHAOS / TRAP", fill=(255, 255, 255), font=font_badge, anchor="mm")
         draw.rounded_rectangle([cx + 70, cy - 320, cx + 340, cy - 235], radius=16, fill=GREEN_CALM, outline=INK_BLACK, width=5)
         draw.text((cx + 205, cy - 277), "CLARITY", fill=(255, 255, 255), font=font_badge, anchor="mm")
 
     elif sc.prop_type == "puppet_strings":
-        # Dark Psychology: Manipulator control strings over Pleaser
-        _draw_doodle_character(draw, cx - 150, cy + 25, 0.98, TAG_COLOR_RGB["@PLEASER"], "exhausted", phase, boil_seed, hunched=True)
-        _draw_doodle_character(draw, cx + 190, cy - 40, 1.08, TAG_COLOR_RGB["@MANIPULATOR"], "smirk", phase, boil_seed + 60)
-        # Puppet cross-bar & strings
-        bar_y = cy - 330 + math.sin(phase * 2 * math.pi) * 12
-        _draw_sketch_line(draw, (cx - 240, bar_y), (cx - 60, bar_y), seed=boil_seed + 61, color=ALERT_RED, width=9)
-        for sx_off in (-210, -150, -90):
-            _draw_sketch_line(draw, (cx + sx_off, bar_y), (cx + sx_off, cy - 90), seed=boil_seed + sx_off, color=ALERT_RED, width=4)
+        _draw_doodle_character(draw, cx - 150, cy + 25, 0.98, TAG_COLOR_RGB["@PLEASER"], "exhausted", t_sec, scene_seed, hunched=True)
+        _draw_doodle_character(draw, cx + 190, cy - 40, 1.08, TAG_COLOR_RGB["@MANIPULATOR"], "smirk", t_sec, scene_seed + 60)
+        bar_y = cy - 330 + math.sin(t_sec * 4.2) * 16.0
+        bar_tilt = math.cos(t_sec * 4.2) * 18.0
+        _draw_sketch_line(draw, (cx - 245, bar_y - bar_tilt), (cx - 55, bar_y + bar_tilt), t_sec, scene_seed + 61, color=ALERT_RED, width=9)
+        for i_s, sx_off in enumerate((-210, -150, -90)):
+            top_sy = bar_y + (i_s - 1) * bar_tilt * 0.6
+            _draw_sketch_line(draw, (cx + sx_off, top_sy), (cx + sx_off, cy - 88), t_sec, scene_seed + 70 + i_s, color=ALERT_RED, width=4)
 
     elif sc.prop_type == "brain_battery":
-        # Brain Hacks / Dopamine Detox: character + depleted battery gauge
-        _draw_doodle_character(draw, cx - 140, cy + 10, 1.08, sc.accent_rgb, "exhausted", phase, boil_seed)
+        _draw_doodle_character(draw, cx - 140, cy + 10, 1.08, sc.accent_rgb, "exhausted", t_sec, scene_seed)
         bat_x1, bat_y1, bat_x2, bat_y2 = cx + 80, cy - 250, cx + 310, cy + 120
         draw.rounded_rectangle([bat_x1, bat_y1, bat_x2, bat_y2], radius=22, fill=(255, 255, 255), outline=INK_BLACK, width=8)
         draw.rectangle([cx + 145, bat_y1 - 28, cx + 245, bat_y1], fill=INK_BLACK)
-        fill_ratio = max(0.12, 0.65 - 0.50 * phase)
+        fill_ratio = max(0.12, 0.72 - 0.58 * _ease_in_out_cubic(phase))
         fill_top = bat_y2 - (bat_y2 - bat_y1 - 24) * fill_ratio
-        bar_color = ALERT_RED if fill_ratio < 0.30 else GOLD_ACCENT
+        bar_color = ALERT_RED if fill_ratio < 0.32 else GOLD_ACCENT
         draw.rounded_rectangle([bat_x1 + 14, fill_top, bat_x2 - 14, bat_y2 - 14], radius=12, fill=bar_color)
-        draw.text(((bat_x1 + bat_x2) / 2, (bat_y1 + bat_y2) / 2), f"{int(fill_ratio * 100)}%", fill=INK_BLACK, font=font_h1, anchor="mm")
+        draw.text(((bat_x1 + bat_x2) / 2, (bat_y1 + bat_y2) / 2), f"{int(round(fill_ratio * 100))}%", fill=INK_BLACK, font=font_h1, anchor="mm")
 
     elif sc.prop_type == "money_scale":
-        # Personal Finance / Wealth Trap balance scale
-        _draw_doodle_character(draw, cx - 190, cy + 20, 1.0, sc.accent_rgb, "shocked", phase, boil_seed)
+        _draw_doodle_character(draw, cx - 190, cy + 20, 1.0, sc.accent_rgb, "shocked", t_sec, scene_seed)
         pivot_x, pivot_y = cx + 140, cy - 60
-        _draw_sketch_line(draw, (pivot_x, pivot_y), (pivot_x, cy + 215), seed=boil_seed + 71, width=9)
-        tilt = 35 * math.sin(phase * math.pi)
-        _draw_sketch_line(draw, (pivot_x - 150, pivot_y - tilt), (pivot_x + 150, pivot_y + tilt), seed=boil_seed + 72, width=8)
-        _draw_sketch_circle(draw, pivot_x - 150, pivot_y - tilt + 45, 48, seed=boil_seed + 73, fill=GOLD_ACCENT, width=6)
-        draw.text((pivot_x - 150, pivot_y - tilt + 45), "$", fill=INK_BLACK, font=font_h1, anchor="mm")
-        _draw_sketch_circle(draw, pivot_x + 150, pivot_y + tilt + 55, 62, seed=boil_seed + 74, fill=ALERT_RED, width=6)
-        draw.text((pivot_x + 150, pivot_y + tilt + 55), "DEBT", fill=(255, 255, 255), font=font_badge, anchor="mm")
+        _draw_sketch_line(draw, (pivot_x, pivot_y), (pivot_x, cy + 215), t_sec, scene_seed + 71, width=9)
+        tilt = 42.0 * math.sin(t_sec * 2.6)
+        _draw_sketch_line(draw, (pivot_x - 150, pivot_y - tilt), (pivot_x + 150, pivot_y + tilt), t_sec, scene_seed + 72, width=8)
+        _draw_sketch_circle(draw, pivot_x - 150, pivot_y - tilt + 48, 48, t_sec, scene_seed + 73, fill=GOLD_ACCENT, width=6)
+        draw.text((pivot_x - 150, pivot_y - tilt + 48), "$", fill=INK_BLACK, font=font_h1, anchor="mm")
+        _draw_sketch_circle(draw, pivot_x + 150, pivot_y + tilt + 58, 62, t_sec, scene_seed + 74, fill=ALERT_RED, width=6)
+        draw.text((pivot_x + 150, pivot_y + tilt + 58), "DEBT", fill=(255, 255, 255), font=font_badge, anchor="mm")
 
     else:
-        # Climax / Realization
-        _draw_doodle_character(draw, cx, cy + 20, 1.15, sc.accent_rgb, "calm", phase, boil_seed)
-        bulb_y = cy - 335 + math.sin(phase * 2 * math.pi) * 12
-        _draw_sketch_circle(draw, cx, bulb_y, 58, seed=boil_seed + 80, fill=GOLD_ACCENT, width=7)
+        _draw_doodle_character(draw, cx, cy + 20, 1.15, sc.accent_rgb, "calm", t_sec, scene_seed)
+        bulb_y = cy - 335 + math.sin(t_sec * 4.5) * 14.0
+        _draw_sketch_circle(draw, cx, bulb_y, 58, t_sec, scene_seed + 80, fill=GOLD_ACCENT, width=7)
         draw.text((cx, bulb_y), "!", fill=INK_BLACK, font=font_h1, anchor="mm")
 
-    # Stamp Badge
+    # Stamp Badge có nhịp thở nhẹ (Pulse)
     if sc.sub_badge:
-        stamp_box = [canvas_w // 2 - 270, cy + 265, canvas_w // 2 + 270, cy + 355]
+        pulse = math.sin(t_sec * 5.0) * 6.0
+        stamp_box = [
+            int(canvas_w // 2 - 270 - pulse),
+            int(cy + 265 - pulse * 0.4),
+            int(canvas_w // 2 + 270 + pulse),
+            int(cy + 355 + pulse * 0.4),
+        ]
         draw.rounded_rectangle(stamp_box, radius=20, fill=GOLD_ACCENT, outline=INK_BLACK, width=6)
-        draw.text((canvas_w // 2, cy + 310), sc.sub_badge, fill=INK_BLACK, font=font_badge, anchor="mm")
+        draw.text((canvas_w // 2, int(cy + 310)), sc.sub_badge, fill=INK_BLACK, font=font_badge, anchor="mm")
 
-    # Subtitle Card
-    words = (sc.narration or "").split()
-    lines: List[str] = []
-    cur: List[str] = []
-    for w in words:
-        cur.append(w)
-        if len(" ".join(cur)) > 34:
-            lines.append(" ".join(cur))
-            cur = []
-    if cur:
-        lines.append(" ".join(cur))
-    caption_text = "\n".join(lines[:3])
-    cap_box = [85, canvas_h - 420, canvas_w - 85, canvas_h - 170]
-    draw.rounded_rectangle(cap_box, radius=28, fill=(24, 24, 24), outline=GOLD_ACCENT, width=5)
-    draw.multiline_text((canvas_w // 2, canvas_h - 295), caption_text, fill=(255, 255, 255), font=font_sub, anchor="mm", align="center", spacing=10)
+    # Hộp phụ đề Karaoke chạy từng từ theo phase 30 FPS
+    _draw_karaoke_caption_box(draw, sc.narration, phase, canvas_w, canvas_h)
 
-    # Apply Physical 7-Layer Camera Motion Crop
+    # ── SUB-PIXEL FLOATING-POINT CAMERA ENGINE (ZERO PIXEL JUDDER) ────────────
+    eased_p = _ease_in_out_cubic(phase)
+    # Hiệu ứng Whip-Pan / Glide nhẹ lúc chuyển cảnh (0.25s đầu)
+    whip_x = (1.0 - _ease_in_out_cubic(min(1.0, t_sec / 0.26))) * (42.0 if sc.scene_id % 2 == 1 else -42.0)
+
     cam = sc.camera_motion
     if cam in ("dolly_in", "zoom_in", "hyper_zoom"):
-        zoom = 1.0 + 0.14 * phase
+        zoom = 1.01 + 0.13 * eased_p
     elif cam in ("dolly_out", "zoom_out"):
-        zoom = 1.14 - 0.12 * phase
+        zoom = 1.14 - 0.12 * eased_p
     elif cam == "dolly_zoom":
-        zoom = 1.04 + 0.09 * math.sin(phase * math.pi)
+        zoom = 1.03 + 0.09 * math.sin(phase * math.pi)
     elif cam == "overhead_90":
-        zoom = 1.08
+        zoom = 1.07 + 0.04 * eased_p
     else:
-        zoom = 1.05 + 0.06 * phase
+        zoom = 1.03 + 0.07 * eased_p
 
-    crop_w = int(width / zoom)
-    crop_h = int(height / zoom)
-    pan_x = int(math.sin(phase * 2 * math.pi) * 35) if cam == "arc_orbit" else (int((phase - 0.5) * 60) if cam in ("pan_left", "pan_right") else 0)
-    pan_y = int((0.5 - phase) * 55) if cam in ("worms_eye", "overhead_90") else 0
+    crop_w_f = float(width) / zoom
+    crop_h_f = float(height) / zoom
 
-    left = max(0, min(canvas_w - crop_w, (canvas_w - crop_w) // 2 + pan_x))
-    top = max(0, min(canvas_h - crop_h, (canvas_h - crop_h) // 2 + pan_y))
-    cropped = img.crop((left, top, left + crop_w, top + crop_h))
-    return cropped.resize((width, height), Image.Resampling.LANCZOS)
+    if cam == "arc_orbit":
+        pan_x_f = math.sin(phase * 2.0 * math.pi) * 38.0 + whip_x
+    elif cam in ("pan_left", "pan_right"):
+        pan_x_f = (eased_p - 0.5) * 68.0 + whip_x
+    else:
+        pan_x_f = whip_x
+
+    if cam in ("worms_eye", "overhead_90"):
+        pan_y_f = (0.5 - eased_p) * 58.0
+    else:
+        pan_y_f = math.sin(phase * math.pi) * 14.0
+
+    left_f = max(0.0, min(float(canvas_w) - crop_w_f, (float(canvas_w) - crop_w_f) * 0.5 + pan_x_f))
+    top_f = max(0.0, min(float(canvas_h) - crop_h_f, (float(canvas_h) - crop_h_f) * 0.5 + pan_y_f))
+
+    # Dùng Image.Transform.EXTENT với tọa độ thực (float) + nội suy BILINEAR để trượt mượt dưới mức 1 pixel
+    return img.transform(
+        (width, height),
+        Image.Transform.EXTENT,
+        (left_f, top_f, left_f + crop_w_f, top_f + crop_h_f),
+        Image.Resampling.BILINEAR,
+    )
 
 
 def synthesize_doodle_sfx(path: str, kind: str = "whoosh", duration_s: float = 0.45) -> None:
@@ -622,7 +814,7 @@ def synthesize_doodle_sfx(path: str, kind: str = "whoosh", duration_s: float = 0
 
 class DoodleAnimationTool:
     """
-    Agent-Callable Tool đóng gói toàn bộ quy trình nhận diện, chọn đạo cụ ẩn dụ và dựng hoạt họa 2D Doodle 24 FPS.
+    Agent-Callable Tool đóng gói toàn bộ quy trình nhận diện, chọn đạo cụ ẩn dụ và dựng hoạt họa 2D Doodle 30 FPS Siêu Mượt.
     """
 
     TOOL_NAME: str = "doodle_2d_animator"
@@ -678,7 +870,6 @@ class DoodleAnimationTool:
         """
         ctx = f"{narration} {visual_prompt}".lower()
 
-        # 1. Chọn thẻ nhân vật (@TAG)
         tag = "@MODERNYOU"
         for explicit_tag in TAG_COLOR_RGB.keys():
             if explicit_tag.lower() in ctx:
@@ -694,7 +885,6 @@ class DoodleAnimationTool:
             elif any(w in ctx for w in ("farmer", "neolithic", "debt", "loan", "labor", "spine")):
                 tag = "@FARMER"
 
-        # 2. Chọn đạo cụ ẩn dụ (prop_type)
         if any(w in ctx for w in ("manipulat", "puppet", "control", "gaslight", "narcissist", "strings")):
             prop = "puppet_strings"
         elif any(w in ctx for w in ("dopamine", "brain", "battery", "sleep", "tired", "cortisol", "exhausted")):
@@ -714,11 +904,9 @@ class DoodleAnimationTool:
         else:
             prop = "alarm" if scene_id == 1 else "block"
 
-        # 3. Chọn Camera Motion theo nhịp kịch bản
         motion_cycle = ["dolly_in", "overhead_90", "arc_orbit", "worms_eye", "dolly_zoom", "dolly_out"]
         cam = motion_cycle[(max(1, scene_id) - 1) % len(motion_cycle)]
 
-        # 4. Trích xuất số liệu làm Sub-Badge
         m_num = re.search(
             r"\b(\d+(?:[.,]\d+)?\s*(?:%|hrs/week|hours/week|hours|hrs|years|days|inches|psi|x|\$))\b",
             narration,
@@ -726,7 +914,6 @@ class DoodleAnimationTool:
         )
         badge = m_num.group(1).upper() if m_num else f"SCENE {scene_id}/{total_scenes}"
 
-        # 5. Tạo Headline ngắn gọn
         clean_words = [re.sub(r"[^\w$-]", "", w).upper() for w in narration.split() if len(w) > 2]
         headline = " ".join(clean_words[:4]) if clean_words else f"ACT {scene_id}"
 
@@ -746,11 +933,14 @@ class DoodleAnimationTool:
         headline: Optional[str] = None,
         sub_badge: Optional[str] = None,
         visual_prompt: str = "",
-        fps: int = 24,
+        audio_path: Optional[str] = None,
+        sfx_path: Optional[str] = None,
+        fps: int = DEFAULT_FPS,
     ) -> Optional[str]:
         """
-        Render trực tiếp 1 video clip MP4 (1080x1920 @ 24 FPS) hoạt họa 2D Doodle cho 1 phân cảnh đơn lẻ.
-        Hàm này được gọi trực tiếp bởi `AIVideoAgent` hoặc Pipeline khi tool = `doodle_2d_animator`.
+        Render trực tiếp 1 video clip MP4 (1080x1920 @ True 30 FPS) hoạt họa 2D Doodle siêu mượt
+        bằng cách tính toán 100% các khung hình độc lập (`int(duration_s * 30)` frames) trên đa luồng CPU
+        và truyền thẳng qua ống dẫn `rawvideo` vào FFmpeg (không qua file JPEG trung gian).
         """
         auto_tag, auto_prop, auto_cam, auto_head, auto_badge = cls.auto_select_prop_and_tag(
             narration=narration,
@@ -758,6 +948,7 @@ class DoodleAnimationTool:
             scene_id=scene_id,
             total_scenes=total_scenes,
         )
+        dur_s = max(2.5, float(duration_seconds))
         sc = DoodleSceneConfig(
             scene_id=scene_id,
             headline=headline or auto_head,
@@ -766,51 +957,77 @@ class DoodleAnimationTool:
             character_tag=character_tag or auto_tag,
             prop_type=prop_type or auto_prop,
             camera_motion=camera_motion or auto_cam,
-            duration_s=max(2.5, float(duration_seconds)),
+            duration_s=dur_s,
+            audio_path=audio_path or "",
         )
 
         out_p = Path(output_path).resolve()
         out_p.parent.mkdir(parents=True, exist_ok=True)
-        work_dir = out_p.parent / f"_doodle_s{scene_id:02d}"
-        work_dir.mkdir(parents=True, exist_ok=True)
 
-        n_unique = 14
-        frame_files: List[str] = []
-        for f_idx in range(n_unique):
-            im = render_doodle_frame(sc, f_idx, n_unique)
-            fp = str((work_dir / f"f_{f_idx:03d}.jpg").resolve())
-            im.save(fp, "JPEG", quality=92)
-            frame_files.append(fp)
+        total_frames = max(30, int(round(dur_s * fps)))
+        width, height = 1080, 1920
 
-        step_dur = sc.duration_s / n_unique
-        concat_txt = work_dir / "frames_concat.txt"
-        lines = [f"file '{Path(p).resolve().as_posix()}'\nduration {step_dur:.3f}" for p in frame_files]
-        lines.append(f"file '{Path(frame_files[-1]).resolve().as_posix()}'")
-        concat_txt.write_text("\n".join(lines), encoding="utf-8")
+        # Render song song toàn bộ total_frames khung hình độc lập ở chuẩn 30 FPS
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            rendered_frames = list(
+                pool.map(
+                    lambda idx: render_doodle_frame(sc, idx, total_frames, width=width, height=height, fps=fps).tobytes(),
+                    range(total_frames),
+                )
+            )
 
         cmd = [
             "ffmpeg", "-y",
-            "-f", "concat", "-safe", "0", "-i", str(concat_txt),
-            "-t", f"{sc.duration_s:.2f}",
+            "-f", "rawvideo",
+            "-vcodec", "rawvideo",
+            "-pix_fmt", "rgb24",
+            "-s", f"{width}x{height}",
             "-r", str(fps),
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
-            str(out_p),
+            "-i", "-",
         ]
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
 
-        # Clean up temporary frames
-        for fp in frame_files:
-            Path(fp).unlink(missing_ok=True)
-        concat_txt.unlink(missing_ok=True)
-        try:
-            work_dir.rmdir()
-        except Exception:
-            pass
+        has_audio = bool(audio_path and Path(audio_path).exists())
+        has_sfx = bool(sfx_path and Path(sfx_path).exists())
+
+        if has_audio and has_sfx:
+            cmd.extend([
+                "-i", str(audio_path),
+                "-i", str(sfx_path),
+                "-filter_complex", "[1:a]volume=1.35[vo];[2:a]volume=0.30[sfx];[vo][sfx]amix=inputs=2:duration=first[aout]",
+                "-map", "0:v:0", "-map", "[aout]",
+                "-c:a", "aac", "-b:a", "160k",
+            ])
+        elif has_audio:
+            cmd.extend([
+                "-i", str(audio_path),
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-c:a", "aac", "-b:a", "160k",
+            ])
+
+        cmd.extend([
+            "-t", f"{dur_s:.2f}",
+            "-r", str(fps),
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-crf", "19",
+            "-pix_fmt", "yuv420p",
+            str(out_p),
+        ])
+
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        assert proc.stdin is not None
+        for frame_bytes in rendered_frames:
+            try:
+                proc.stdin.write(frame_bytes)
+            except BrokenPipeError:
+                break
+        proc.stdin.close()
+        proc.wait(timeout=60)
 
         if out_p.exists() and out_p.stat().st_size > 4000:
             logger.info(
-                f"🎨 [DoodleAnimationTool] ✅ Đã dựng clip 2D Doodle Cảnh {scene_id} "
-                f"({sc.character_tag}, prop={sc.prop_type}, cam={sc.camera_motion}) -> {output_path}"
+                f"🎨 [DoodleAnimationTool] ✅ Đã dựng clip 2D Doodle {fps} FPS Siêu Mượt Cảnh {scene_id} "
+                f"({total_frames} unique frames, {sc.character_tag}, prop={sc.prop_type}, cam={sc.camera_motion}) -> {output_path}"
             )
             return str(out_p)
         return None

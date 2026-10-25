@@ -135,24 +135,24 @@ def send_telegram_video_broadcast(
     if not chat_ids:
         return False
 
-    # Kiểm tra kích thước file; nếu > 2.0MB nén nhanh bản preview cho Telegram bằng FFmpeg (giữ nguyên bản gốc 1080p cho YouTube)
+    # Kiểm tra kích thước file; giữ nguyên bản gốc 1080p 30fps cho mọi file <= 15.0MB để đảm bảo độ nét và mượt tối đa trên Telegram
     upload_path = video_path
     temp_compressed = None
     try:
         size_mb = Path(video_path).stat().st_size / (1024 * 1024)
-        if size_mb > 2.0:
+        if size_mb > 15.0:
             import subprocess
             temp_dir = Path(settings.TEMP_DIR)
             temp_dir.mkdir(parents=True, exist_ok=True)
             temp_compressed = str(temp_dir / f"tg_preview_{Path(video_path).stem}.mp4")
             cmd = [
                 "ffmpeg", "-y", "-i", video_path,
-                "-vf", "scale='if(gt(iw,ih),1280,480)':'if(gt(iw,ih),720,854)':force_original_aspect_ratio=decrease,fps=24",
-                "-c:v", "libx264", "-crf", "28", "-maxrate", "850k", "-bufsize", "1700k", "-preset", "veryfast",
-                "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart",
+                "-vf", "scale='if(gt(iw,ih),1280,720)':'if(gt(iw,ih),720,1280)':force_original_aspect_ratio=decrease,fps=30",
+                "-c:v", "libx264", "-crf", "24", "-maxrate", "2200k", "-bufsize", "4400k", "-preset", "veryfast",
+                "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
                 temp_compressed
             ]
-            logger.info(f"[TelegramVideoAlert] File gốc {size_mb:.1f}MB -> đang tạo bản nén nhẹ gửi Telegram để tránh đứt kết nối...")
+            logger.info(f"[TelegramVideoAlert] File gốc {size_mb:.1f}MB (> 15MB) -> đang tạo bản nén HD 720p 30fps gửi Telegram...")
             res_comp = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=90)
             if res_comp.returncode == 0 and Path(temp_compressed).exists():
                 upload_path = temp_compressed
