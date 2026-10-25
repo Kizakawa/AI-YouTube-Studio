@@ -143,7 +143,7 @@ class VideoStrategistAgent:
         scifi_agent: Any,
     ) -> None:
         from app.agents.visual_tool_router import (
-            VisualToolRouter, PURE_FICTION, REAL_FILMABLE, DEEP_SEA_MYSTERY, REALITY_KEYWORDS,
+            VisualToolRouter, PURE_FICTION, REAL_FILMABLE, DEEP_SEA_MYSTERY, DOODLE_PSYCHOLOGY_EXPLAINER, REALITY_KEYWORDS,
         )
         router = VisualToolRouter()
         true_t2v = router.caps.get("true_text_to_video", False)
@@ -164,15 +164,25 @@ class VideoStrategistAgent:
                 d_meta = scifi_agent.dispatch_scene_strategy(
                     scene=sc, topic=topic, channel_niche=channel_niche, idx=idx, total_scenes=len(scenes),
                 )
-            route = router.route_scene(sc, topic=topic, subgenre_queries=(d_meta or {}).get("search_queries"))
+            route = router.route_scene(
+                sc,
+                topic=topic,
+                subgenre_queries=(d_meta or {}).get("search_queries"),
+                channel_niche=channel_niche,
+            )
 
             ai_reality = str(targets[0].get("reality_class") or "").upper()
             reality = ai_reality if ai_reality in REALITY_KEYWORDS else route["reality_class"]
+            if route["reality_class"] == DOODLE_PSYCHOLOGY_EXPLAINER:
+                reality = DOODLE_PSYCHOLOGY_EXPLAINER
 
             for t in targets:
                 method = t.get("production_method")
                 note = ""
-                if plan_source == "ai" and method in valid_methods:
+                if reality == DOODLE_PSYCHOLOGY_EXPLAINER:
+                    new_method = "IMAGE_TO_VIDEO"
+                    t["tool"] = "doodle_2d_animator"
+                elif plan_source == "ai" and method in valid_methods:
                     new_method = method
                     if method == "TEXT_TO_VIDEO" and not true_t2v:
                         new_method = "IMAGE_TO_VIDEO" if reality == PURE_FICTION else "STOCK_FOOTAGE"
@@ -292,6 +302,7 @@ II. BẢN ĐỒ BẢN CHẤT CẢNH (REALITY ONTOLOGY)
 - 'SCIENTIFIC_VISUALIZATION': Hiện tượng khoa học vĩ mô/vi mô (hố đen, sao neutron, siêu tân tinh, cấu trúc nguyên tử) -> Kho stock mô phỏng CGI/NASA chất lượng cao.
 - 'PURE_FICTION': Hoàn toàn không tồn tại (thành phố năm 3000, quả cầu Dyson, cỗ máy thời gian) -> Sinh bằng AI hoặc tìm Concept Art 8K.
 - 'ABSTRACT_CONCEPT': Khái niệm trừu tượng, tâm lý học, thao túng tâm lý, triết học -> Dịch sang hành vi/biểu cảm con người cụ thể (Dark Noir / Chiaroscuro).
+- 'DOODLE_PSYCHOLOGY_EXPLAINER': Các chủ đề Tâm lý học Đen (Dark Psychology / Gaslighting), Nghịch lý cuộc sống hiện đại (Modern Rat-Race), Tài chính cá nhân & Bẫy tiền bạc (Personal Finance), Cơ chế não bộ & Dopamine Detox, hoặc khi kênh thuộc ngách `satirical_psychology_animation` / prompt có thẻ `@MODERNYOU`, `@PLEASER`, `@MANIPULATOR`, `@ANCESTOR`, `@FARMER` -> BẮT BUỘC chọn `production_method: "IMAGE_TO_VIDEO"` và `tool: "doodle_2d_animator"` (Dựng hoạt họa 2D Doodle 24fps nét vẽ tay trên nền giấy kem kèm đạo cụ ẩn dụ trực quan).
 
 ══════════════════════════════════════════════════════════════════════════════
 NĂNG LỰC THẬT CỦA MÁY CHỦ (BẮT BUỘC TÔN TRỌNG):
@@ -317,9 +328,9 @@ HÃY XUẤT RA JSON DUY NHẤT THEO SCHEMA:
       "scene_id": 1,
       "visual_reasoning": "Giải mã đại từ/ẩn dụ từ kịch bản tổng thể và lý giải cách chuyển hóa thành hình ảnh cụ thể",
       "retention_beat": "HOOK_0_3S | SETUP_3_15S | ESCALATION_15_45S | CLIMAX_LOOP_45_60S",
-      "reality_class": "REAL_FILMABLE | DEEP_SEA_MYSTERY | SCIENTIFIC_VISUALIZATION | PURE_FICTION | ABSTRACT_CONCEPT",
+      "reality_class": "REAL_FILMABLE | DEEP_SEA_MYSTERY | SCIENTIFIC_VISUALIZATION | PURE_FICTION | ABSTRACT_CONCEPT | DOODLE_PSYCHOLOGY_EXPLAINER",
       "production_method": "REAL_ARCHIVE | STOCK_FOOTAGE | IMAGE_TO_VIDEO | TEXT_TO_VIDEO",
-      "tool": "wikimedia_archive | pexels_video_api | imagen3_i2v | wan_t2v",
+      "tool": "wikimedia_archive | pexels_video_api | imagen3_i2v | wan_t2v | doodle_2d_animator",
       "rationale": "Giải thích chi tiết 1 câu vì sao chọn phương pháp & công cụ này cho cảnh này (bằng tiếng Việt)",
       "search_query": "2-5 từ tiếng Anh NGẮN GỌN, CỤ THỂ (Chủ thể đã giải mã đại từ + hành động/bối cảnh thật của cảnh này; cấm trùng lặp giữa các cảnh)",
       "ai_prompt": "Câu lệnh tiếng Anh chi tiết phong cách điện ảnh 8K 9:16 do Đạo diễn tự sáng tạo theo ngữ cảnh kịch bản",

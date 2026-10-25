@@ -217,6 +217,54 @@ class TestGohaCinematicAndIntelUpgrades(unittest.TestCase):
         self.assertEqual(len(draft["tracks"]), 3)
         self.assertEqual(len(draft["materials"]["videos"]), 2)
 
+    def test_doodle_animation_tool_and_router_integration(self):
+        from app.agents.visual_tool_router import (
+            DOODLE_PSYCHOLOGY_EXPLAINER,
+            VisualToolRouter,
+            get_registered_visual_tools,
+        )
+        from app.services.media.doodle_animation_tool import DoodleAnimationTool
+
+        tools = get_registered_visual_tools()
+        self.assertIn("doodle_2d_animator", tools)
+        spec = DoodleAnimationTool.get_tool_specification()
+        self.assertEqual(spec["name"], "doodle_2d_animator")
+        self.assertTrue(len(spec["when_to_use"]) >= 4)
+
+        # 1. Phải kích hoạt với ngách tâm lý / tài chính hoặc thẻ @TAG
+        use_psych, _ = DoodleAnimationTool.should_activate(
+            topic="Dark Empathetic vs Narcissist: 3-Second Mirror Trap",
+            niche="dark_psychology",
+        )
+        self.assertTrue(use_psych)
+
+        # 2. Phải TỪ CHỐI kích hoạt với ngách Động vật hoang dã (4-Domain Counterfactual Guard)
+        use_wildlife, _ = DoodleAnimationTool.should_activate(
+            topic="Jaguar vs Black Caiman: 1,500 PSI Bite",
+            niche="wildlife_predators",
+        )
+        self.assertFalse(use_wildlife)
+
+        # 3. Kiểm tra tự động chọn đạo cụ ẩn dụ (`puppet_strings`, `money_scale`, `brain_battery`)
+        tag, prop, cam, _, badge = DoodleAnimationTool.auto_select_prop_and_tag(
+            narration="A narcissist pulls invisible puppet strings to gaslight you for 72 hours.",
+            scene_id=1,
+            total_scenes=6,
+        )
+        self.assertEqual(tag, "@MANIPULATOR")
+        self.assertEqual(prop, "puppet_strings")
+        self.assertIn("72 HOURS", badge)
+
+        # 4. Kiểm tra VisualToolRouter định tuyến sang `doodle_2d_animator`
+        router = VisualToolRouter()
+        routed = router.route_scene(
+            {"narration": "@MODERNYOU wakes up exhausted in the rat race.", "visual_keyword": "rat race"},
+            topic="Modern Worker vs Ancient Hunter",
+            channel_niche="satirical_psychology_animation",
+        )
+        self.assertEqual(routed["reality_class"], DOODLE_PSYCHOLOGY_EXPLAINER)
+        self.assertEqual(routed["tool"], "doodle_2d_animator")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -17,8 +17,16 @@ SCIENTIFIC_VISUALIZATION = "SCIENTIFIC_VISUALIZATION"
 PURE_FICTION = "PURE_FICTION"
 ABSTRACT_CONCEPT = "ABSTRACT_CONCEPT"
 DEEP_SEA_MYSTERY = "DEEP_SEA_MYSTERY"
+DOODLE_PSYCHOLOGY_EXPLAINER = "DOODLE_PSYCHOLOGY_EXPLAINER"
 
 REALITY_KEYWORDS: Dict[str, List[str]] = {
+    DOODLE_PSYCHOLOGY_EXPLAINER: [
+        "@modernyou", "@pleaser", "@manipulator", "@ancestor", "@farmer",
+        "2d doodle", "sketchbook animation", "stickman explainer", "whiteboard animation",
+        "gaslighting", "people pleaser", "people-pleaser", "dopamine detox", "hedonic treadmill",
+        "rat race", "modern worker", "credit card trap", "compound interest", "cortisol spike",
+        "thao túng tâm lý", "nghịch lý cuộc sống", "bẫy tài chính", "giải độc dopamine",
+    ],
     DEEP_SEA_MYSTERY: [
         "sea monster", "kraken", "megalodon", "colossal squid", "giant squid", "deep sea creature",
         "abyssal trench", "mariana trench", "bermuda triangle", "loch ness", "leviathan", "underwater anomaly",
@@ -117,6 +125,33 @@ def get_generation_capabilities() -> Dict[str, bool]:
         "pollinations_video": pollinations,
         "hf_video": hf_video,
         "stock_video": bool(os.getenv("PEXELS_API_KEY") or os.getenv("PEXELS_API_KEYS") or os.getenv("PIXABAY_API_KEY")),
+        "doodle_2d_animator": True,
+    }
+
+
+def get_registered_visual_tools() -> Dict[str, Dict[str, Any]]:
+    """
+    Danh bạ toàn bộ các công cụ sản xuất hình ảnh (Visual Production Tools) kèm mô tả rõ ràng
+    để LLM Agent (`VideoStrategistAgent`, `VisualToolRouter`, `AIVideoAgent`) biết chính xác khi nào gọi.
+    """
+    from app.services.media.doodle_animation_tool import DOODLE_ANIMATION_TOOL_SCHEMA
+    return {
+        "doodle_2d_animator": DOODLE_ANIMATION_TOOL_SCHEMA,
+        "pexels_video_api": {
+            "name": "pexels_video_api",
+            "description": "Tìm kiếm và tải video quay thật 9:16 30-60fps từ kho Pexels/Pixabay.",
+            "when_to_use": ["REAL_FILMABLE: Động vật hoang dã săn mồi, thiên nhiên, thành phố, phi hành gia, con người đời thực."],
+        },
+        "creature_horror_art": {
+            "name": "creature_horror_art",
+            "description": "Săn ảnh CGI / ArtStation Dark Horror 8K kết hợp chuyển động 3D Parallax cho sinh vật kỳ bí.",
+            "when_to_use": ["DEEP_SEA_MYSTERY: Thủy quái đại dương sâu, Megalodon, Colossal Squid, Mariana Trench."],
+        },
+        "nasa_pixabay_cgi": {
+            "name": "nasa_pixabay_cgi",
+            "description": "Kho video mô phỏng khoa học 3D CGI từ NASA & Pixabay.",
+            "when_to_use": ["SCIENTIFIC_VISUALIZATION: Hố đen, sao neutron, siêu tân tinh, cấu trúc nguyên tử."],
+        },
     }
 
 
@@ -150,6 +185,7 @@ class VisualToolRouter:
             return ABSTRACT_CONCEPT, matched
 
         priority = {
+            DOODLE_PSYCHOLOGY_EXPLAINER: 5,
             DEEP_SEA_MYSTERY: 4,
             PURE_FICTION: 3,
             SCIENTIFIC_VISUALIZATION: 2,
@@ -164,6 +200,7 @@ class VisualToolRouter:
         scene: Dict[str, Any],
         topic: str = "",
         subgenre_queries: Optional[List[str]] = None,
+        channel_niche: str = "",
     ) -> Dict[str, Any]:
         narr = scene.get("narration") or ""
         kw = scene.get("visual_keyword") or ""
@@ -175,6 +212,17 @@ class VisualToolRouter:
         reality, matched = self.classify_scene(narr, kw, sq, vp)
         if explicit_reality in REALITY_KEYWORDS:
             reality = explicit_reality
+
+        from app.services.media.doodle_animation_tool import DoodleAnimationTool
+        use_doodle, doodle_reason = DoodleAnimationTool.should_activate(
+            topic=topic,
+            narration=narr,
+            niche=channel_niche,
+            visual_prompt=vp,
+            reality_class=reality,
+        )
+        if use_doodle:
+            reality = DOODLE_PSYCHOLOGY_EXPLAINER
 
         subject = (matched.get(reality) or [""])[0]
 
@@ -198,7 +246,11 @@ class VisualToolRouter:
 
         true_t2v = self.caps.get("true_text_to_video", False)
         prefer_generation = False
-        if reality == PURE_FICTION:
+        if reality == DOODLE_PSYCHOLOGY_EXPLAINER:
+            prefer_generation = True
+            method, tool = "IMAGE_TO_VIDEO", "doodle_2d_animator"
+            why = f"hoạt họa 2D Doodle Explainer ({doodle_reason}) -> gọi công cụ doodle_2d_animator 24fps"
+        elif reality == PURE_FICTION:
             prefer_generation = True
             if true_t2v:
                 method, tool = "TEXT_TO_VIDEO", "generative_video"

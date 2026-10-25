@@ -454,6 +454,33 @@ class AIVideoAgent:
         out_p = Path(output_path)
         out_p.parent.mkdir(parents=True, exist_ok=True)
 
+        # 0. Kiểm tra kích hoạt Công cụ Hoạt Họa 2D Doodle (`doodle_2d_animator`)
+        try:
+            from app.services.media.doodle_animation_tool import DoodleAnimationTool
+            va_dict = visual_analysis or {}
+            should_doodle, doodle_why = DoodleAnimationTool.should_activate(
+                topic=prompt,
+                narration=narration,
+                niche=niche or "",
+                visual_prompt=visual_prompt or prompt,
+                reality_class=str(va_dict.get("reality_class") or ""),
+            )
+            if should_doodle or str(va_dict.get("tool") or "") == "doodle_2d_animator":
+                doodle_clip = await asyncio.to_thread(
+                    DoodleAnimationTool.render_scene_clip,
+                    narration=narration or prompt,
+                    output_path=output_path,
+                    duration_seconds=duration_seconds + 0.22,
+                    scene_id=scene_id,
+                    camera_motion=camera_motion,
+                    visual_prompt=visual_prompt or prompt,
+                )
+                if doodle_clip and Path(doodle_clip).exists() and Path(doodle_clip).stat().st_size > 4000:
+                    logger.info(f"🎨 [AIVideoAgent] ✅ Tool 'doodle_2d_animator' hoàn tất Cảnh {scene_id} ({doodle_why}) -> {output_path}")
+                    return output_path
+        except Exception as e_doodle:
+            logger.debug(f"[AIVideoAgent] DoodleAnimationTool fallback: {e_doodle}")
+
         target_img_path = source_image_path
         created_temp = False
 
