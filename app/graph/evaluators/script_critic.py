@@ -126,6 +126,22 @@ class ScriptCritic:
         words = re.findall(r"\b\w+\b", s1_narr, flags=re.UNICODE)
         w_cnt = len(words)
 
+        # 0. Kiểm tra rò rỉ Tiếng Việt trong kịch bản Tiếng Anh / Tiếng Bồ Đào Nha (chặn triệt để lỗi phụ đề Tiếng Việt ở đầu video)
+        vn_exclusive_re = re.compile(r"[ơớờởỡợưứừửữựđăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]", re.IGNORECASE)
+        vn_hyphen_re = re.compile(r"\b(?:xé-to-cando|va-cham|sự\s+thật|bạn\s+có\s+biết)\b", re.IGNORECASE)
+        all_narr_text = " ".join(str(s.get("narration") or "") for s in scenes if isinstance(s, dict))
+        script_lang = str(s_data.get("language") or "").strip().lower()
+        is_non_vi_script = script_lang.startswith(("en", "pt")) or (
+            not script_lang
+            and len(vn_exclusive_re.findall(all_narr_text)) < max(8, len(all_narr_text.split()) // 4)
+        )
+        if is_non_vi_script and (vn_exclusive_re.search(f"{eff_title} {all_narr_text}") or vn_hyphen_re.search(f"{eff_title} {all_narr_text}")):
+            score = min(score, 2.0)
+            extra_critiques.append(
+                "CRITICAL LANGUAGE LEAKAGE: The script contains Vietnamese words or syllables inside an English/Portuguese script! "
+                "Rewrite ALL scenes (especially Scene 1 Hook) 100% in the target language (English or Brazilian Portuguese) with ZERO Vietnamese words."
+            )
+
         # 1. Cấm câu hỏi Yes/No yếu hoặc ẩn dụ văn chương trừu tượng ở Cảnh 1 (tương quan trực tiếp với Swipe-Away > 70%)
         weak_q = re.match(
             r"^(?:did you know|do you know|have you ever|are you|can you|would you|imagine if|what if i told you|bạn có biết|você sabia)\b",
@@ -140,15 +156,15 @@ class ScriptCritic:
         if weak_q or abstract_metaphor:
             score = min(score, 5.5)
             extra_critiques.append(
-                f"CHẶN HOOK: Cảnh 1 dùng câu hỏi Yes/No yếu hoặc ẩn dụ trừu tượng ('{s1_narr}') gây tỷ lệ vuốt bỏ >70%. "
-                f"Bắt buộc đổi sang câu chỉ điểm trực quan (Deictic Pointer: 'Look at...', 'When someone says...', 'Olha...') + thông số vật lý hoặc đối đầu 'A vs B' trong 5-8 từ!"
+                f"HOOK BLOCKED: Scene 1 uses a weak Yes/No question or abstract metaphor ('{s1_narr}') which causes >70% swipe-away. "
+                f"Replace with a direct visual pointer ('Look at...', 'Olhe bem para...') + concrete physical metric or 'A vs B' clash in 6-9 words!"
             )
 
         # 2. Kiểm tra độ dài Cảnh 1 chuẩn triệu view (4-11 từ để đọc trọn trong 1.6-2.4s đầu)
         if w_cnt > 14 or w_cnt < 3:
             score = max(1.0, score - 1.2)
             extra_critiques.append(
-                f"Cảnh 1 có độ dài chưa chuẩn ({w_cnt} từ). Cần cô đọng 5-8 từ (tối đa 12 từ) để khớp nhịp cắt cảnh 1.8 giây đầu."
+                f"Scene 1 hook length ({w_cnt} words) is suboptimal. Condense to 6-9 words (max 12 words) to match the 1.8-second opening cut."
             )
 
         # 3. Đối chiếu chống lặp lại mô-típ của Bottom 3 Losers (video có swipe_away_pct cao nhất kênh)
@@ -161,9 +177,9 @@ class ScriptCritic:
                 if overlap >= 0.65 and len(s1_tokens & l_tokens) >= 4:
                     score = max(1.0, score - 2.0)
                     l_swp = loser.get("swipe_away_pct")
-                    swp_label = f"{float(l_swp):.1f}%" if l_swp is not None else "cao"
+                    swp_label = f"{float(l_swp):.1f}%" if l_swp is not None else "high"
                     extra_critiques.append(
-                        f"Cảnh 1 lặp lại mô-típ của video thua cuộc có tỷ lệ vuốt bỏ {swp_label} ('{l_hook[:60]}'). Phải đổi góc tiếp cận hoàn toàn!"
+                        f"Scene 1 repeats the exact pattern of a high-swipe-away loser video ({swp_label} swipe-away: '{l_hook[:60]}'). Use a completely fresh hook angle!"
                     )
                     break
 
@@ -192,8 +208,8 @@ class ScriptCritic:
         if vague_title_match:
             score = min(score, 6.5)
             extra_critiques.append(
-                f"CHẶN TIÊU ĐỀ MƠ HỒ: Tiêu đề đang giấu tên chủ thể ('{eff_title}') gây kẹt dưới 100 views. "
-                f"Bắt buộc nêu đích danh Tên loài/Thực thể/Địa danh cụ thể + Con số định lượng hoặc cặp đối đầu 'A vs B' ngay trên tiêu đề!"
+                f"VAGUE TITLE BLOCKED: Title hides the primary entity ('{eff_title}'). "
+                f"Explicitly name the exact species/entity/location + concrete physical metric or 'Entity A vs Entity B' in the title!"
             )
         elif (has_number and has_confrontation_or_shock) and 3 <= w_cnt <= 18:
             score = max(score, 8.8)
@@ -204,7 +220,7 @@ class ScriptCritic:
             score = max(1.0, score - 0.8)
             if score < cal.get("min_hook_score", 8.0):
                 extra_critiques.append(
-                    "Hook Cảnh 1 và Tiêu đề thiếu thông số định lượng cụ thể (con số, giây, mét, PSI, °C, %) hoặc thế đối đầu trực diện 'A vs B'."
+                    "Scene 1 Hook and Title lack a concrete quantitative metric (seconds, meters, PSI, °C, %) or direct 'A vs B' confrontation."
                 )
 
         # 5. Kiểm tra Cao Trào Giữa Video (Mid-Video Climax / Twist ở Cảnh 3-5) để ngăn tụt APV ở giây 14-20
@@ -221,7 +237,7 @@ class ScriptCritic:
             )
             if not has_mid_twist_or_metric:
                 extra_critiques.append(
-                    "Cảnh 3-5 (Giây 14-20) thiếu Cú Lật Kèo / Cao Trào Giữa Video (Mid-Video Climax Twist + thông số sốc thứ 2), dễ làm người xem lướt đi ở giữa video."
+                    "Scenes 3-5 (Seconds 14-20) lack a Mid-Video Climax Twist + second shocking metric, risking mid-video viewer drop-off."
                 )
 
         return round(score, 1), extra_critiques
@@ -254,9 +270,8 @@ class ScriptCritic:
         entity_instruction = ""
         if primary_entity:
             entity_instruction = (
-                f"- Thực thể/Nhân vật chính là '{primary_entity}'. "
-                f"Kịch bản và từ khóa hình ảnh BẮT BUỘC phải bám sát nhân vật lịch sử này, "
-                f"tuyệt đối không được chung chung hay dùng diễn viên hiện đại."
+                f"- Primary Entity/Subject is '{primary_entity}'. "
+                f"The script and visual keywords MUST stay anchored to this exact entity."
             )
 
         winners_block = ""
@@ -265,58 +280,59 @@ class ScriptCritic:
                 f"  + WINNER: \"{w['title']}\" (Hook: \"{w['hook_text']}\") -> {w['views']} views, Stayed: {w['stayed_to_watch_pct']}%, Swipe-Away: {w['swipe_away_pct']}%"
                 for w in calibration["winners"][:3]
             ]
-            winners_block += "\n- DỮ LIỆU THẬT 3 VIDEO THẮNG CỦA KÊNH:\n" + "\n".join(w_lines)
+            winners_block += "\n- REAL TOP 3 WINNING VIDEOS OF THIS CHANNEL:\n" + "\n".join(w_lines)
         if calibration.get("losers"):
             l_lines = [
-                f"  - LOSER: \"{l['title']}\" (Hook: \"{l['hook_text']}\") -> {l['views']} views, Swipe-Away: {l['swipe_away_pct']}% (CẤM LẶP LẠI MÔ-TÍP NÀY)"
+                f"  - LOSER: \"{l['title']}\" (Hook: \"{l['hook_text']}\") -> {l['views']} views, Swipe-Away: {l['swipe_away_pct']}% (DO NOT REPEAT THIS HOOK PATTERN)"
                 for l in calibration["losers"][:3]
             ]
-            winners_block += "\n- DỮ LIỆU THẬT 3 VIDEO THUA CỦA KÊNH:\n" + "\n".join(l_lines)
+            winners_block += "\n- REAL BOTTOM 3 LOSING VIDEOS OF THIS CHANNEL:\n" + "\n".join(l_lines)
 
         min_hook_req = calibration.get("min_hook_score", 8.2)
         avg_swipe_pct = calibration.get("avg_swipe_away_pct", 31.0)
         is_long_form = str(script_data.get("video_format") or "short").strip().lower() == "long"
         pacing_criterion_desc = (
-            "2. story_pacing (Mục tiêu Video Dài 16:9 Documentary: 2.5 - 4.5 phút, 340 - 650 từ, 16 - 26 phân cảnh chia thành 5 Chương sâu sắc — TUYỆT ĐỐI KHÔNG CỤT LỦN):"
+            "2. story_pacing (Target Long-Form 16:9 Documentary: 2.5 - 4.5 min, 340 - 650 words, 16 - 26 scenes across 5 Chapters — NEVER ABRUPT):"
             if is_long_form
-            else "2. story_pacing (Mục tiêu: Mạch truyện đầy đặn, mượt mà, có đầu có đuôi 30 - 40s, 85 - 120 từ, 7 - 9 phân cảnh — TUYỆT ĐỐI KHÔNG CỤT LỦN):"
+            else "2. story_pacing (Target Shorts 9:16: Smooth, complete 5-Act story of 30 - 40s, 85 - 120 words, 7 - 9 scenes — NEVER ABRUPT):"
         )
 
-        prompt = f"""Bạn là Giám đốc Sáng tạo và Trưởng ban Biên tập Kịch bản YouTube {'Documentary Dài 16:9 & ' if is_long_form else ''}Shorts hàng đầu thế giới (chuẩn phong cách Vox, Magnates Media, Kurzgesagt).
-Nhiệm vụ của bạn: Đóng vai trò Critic khắt khe, chấm điểm và phản biện kịch bản sau đây dựa trên DỮ LIỆU GIỮ CHÂN THẬT của kênh.
+        prompt = f"""You are a World-Class YouTube {'16:9 Documentary & ' if is_long_form else ''}Shorts Creative Director and Retention Script Critic.
+Your task: Strictly evaluate and critique the following script based on REAL RETENTION DATA of the channel.
 
-Chủ đề: {topic}
-Tiêu đề dự kiến: {title}
-Chế độ định dạng: {'LONG-FORM DOCUMENTARY 16:9 (16-26 cảnh, 340-650 từ)' if is_long_form else 'SHORTS 9:16 (7-9 cảnh, 85-120 từ)'}
-Phong cách kênh: {channel_style}
-Tỷ lệ vuốt bỏ trung bình hiện tại của kênh (Real Swipe-Away Rate): {avg_swipe_pct:.1f}% -> Ngưỡng bắt buộc của hook_strength >= {min_hook_req}/10.
+Topic: {topic}
+Proposed Title: {title}
+Format Mode: {'LONG-FORM DOCUMENTARY 16:9 (16-26 scenes, 340-650 words)' if is_long_form else 'SHORTS 9:16 (7-9 scenes, 85-120 words)'}
+Channel Style: {channel_style}
+Channel Average Swipe-Away Rate: {avg_swipe_pct:.1f}% -> Mandatory threshold for hook_strength >= {min_hook_req}/10.
 {entity_instruction}{winners_block}
 
---- NỘI DUNG KỊCH BẢN ---
+--- SCRIPT CONTENT ---
 {scenes_formatted}
 
---- BỘ QUY CHUẨN ĐÁNH GIÁ KỊCH BẢN 5 HỒI ĐẦY ĐẶN, MƯỢT MÀ (Thang điểm 1 - 10) ---
-1. hook_strength (Ngưỡng chặn cứng >= {min_hook_req}/10 — Mục tiêu: Viewed > 75%, Swipe-Away < 25%):
-   - Cảnh 1 (5-11 từ) BẮT BUỘC mở đầu bằng thế đối đầu trực diện ("A vs B") HOẶC câu khẳng định/cảnh báo sắc bén.
-   - Bị đánh trượt (< 6.0): Mở đầu bằng câu hỏi Yes/No ("Did you know...", "Have you ever..."), định nghĩa sách giáo khoa, hoặc lặp lại cấu trúc của 3 video thua cuộc (Losers).
+--- 5-ACT RETENTION EVALUATION RUBRIC (Scale 1 - 10) ---
+1. hook_strength (Hard gate >= {min_hook_req}/10 — Target: Viewed > 75%, Swipe-Away < 25%):
+   - Scene 1 (6-10 words) MUST open with a direct visual pointer, fatal mistake, or sharp confrontation/warning hook.
+   - Fails (< 6.0) if it opens with a weak Yes/No question ("Did you know...", "Have you ever..."), textbook definition, repeats a Loser hook pattern, or contains any leaked foreign/Vietnamese words that do not match the script's language.
 {pacing_criterion_desc}
-   - Đánh giá cao (>= 8.5) kịch bản dẫn dắt tự nhiên, có câu chuyển ý mượt mà, giải thích thấu đáo đủ 5 Hồi (Hook -> Bối cảnh/Ví dụ thật -> Giải thích cơ chế -> Cao trào/Đòn hóa giải -> Kết luận trọn vẹn).
-   - Trừ điểm nếu kịch bản bị viết cụt lủn, nhảy cóc ý, hoặc cắt câu máy móc.
-3. entity_coherence: Nội dung kịch bản bám sát chủ đề và nhân vật/vấn đề chính một cách tự nhiên.
-4. visual_direction: Chỉ cần từ khóa hình ảnh (`visual_keyword` & `stock_query`) phù hợp tương đối với chủ đề chung của kịch bản là đạt điểm cao (>= 8.5) — KHÔNG đòi hỏi khóa cứng từ khóa theo từng câu thoại nhỏ.
-5. viral_loop (CẤM câu kêu gọi Subscribe đọc thành tiếng ở cuối video):
-   - Cảnh cuối khép lại câu chuyện một cách trọn vẹn, có chiều sâu và nối tự nhiên về ý mở đầu ở Cảnh 1.
+   - Reward (>= 8.5) smooth, well-developed 5-Act storytelling (Hook -> Concrete Context/Example -> Mechanism -> Mid-Video Twist/Counter-Move -> Seamless Loop Payoff).
+   - Penalize abrupt, choppy, or truncated sentences.
+3. entity_coherence: The script naturally stays focused on the core subject/entity.
+4. visual_direction: `visual_keyword` and `stock_query` are concrete English physical nouns/actions matching the topic (>= 8.5).
+5. viral_loop (ZERO spoken Subscribe CTA at the end):
+   - Final scene delivers a satisfying payoff and bridges seamlessly back to Scene 1.
 
---- YÊU CẦU TRẢ VỀ ---
-Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với schema sau:
+--- OUTPUT REQUIREMENT ---
+CRITICAL LANGUAGE RULE: Write all `feedback` and `actionable_critiques` in ENGLISH, and if you suggest any example hook/narration phrasing, write that example strictly in the EXACT SAME LANGUAGE as the script above (NEVER suggest Vietnamese sentences for an English or Portuguese script!).
+Return ONLY a single valid JSON object (no markdown) with this schema:
 {{
-  "hook_strength": {{"score": 8.5, "feedback": "Nhận xét chi tiết về Hook Cảnh 1..."}},
-  "story_pacing": {{"score": 8.8, "feedback": "Nhận xét về độ mượt mà, đầy đặn có đầu có đuôi của mạch truyện 5 hồi (85-120 từ)..."}},
-  "entity_coherence": {{"score": 9.0, "feedback": "Nhận xét chi tiết..."}},
-  "visual_direction": {{"score": 8.8, "feedback": "Nhận xét tương đối về bối cảnh hình ảnh chung..."}},
-  "viral_loop": {{"score": 8.8, "feedback": "Nhận xét chi tiết về câu kết trọn vẹn & cầu nối Loop..."}},
+  "hook_strength": {{"score": 8.5, "feedback": "Detailed feedback on Scene 1 Hook..."}},
+  "story_pacing": {{"score": 8.8, "feedback": "Feedback on smooth 5-Act flow (85-120 words)..."}},
+  "entity_coherence": {{"score": 9.0, "feedback": "Detailed feedback..."}},
+  "visual_direction": {{"score": 8.8, "feedback": "Feedback on visual context..."}},
+  "viral_loop": {{"score": 8.8, "feedback": "Feedback on final scene payoff & loop bridge..."}},
   "actionable_critiques": [
-    "Nêu rõ cách cải thiện nếu Hook Cảnh 1 yếu hoặc nếu kịch bản bị cụt lủn..."
+    "Specific surgical instructions in English on how to improve Scene 1 Hook or pacing..."
   ]
 }}"""
 
@@ -396,7 +412,7 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
         # CHẶN CỨNG: Bắt buộc cả tổng điểm VÀ điểm Hook Cảnh 1 đều phải vượt qua ngưỡng hiệu chỉnh từ dữ liệu thật!
         passed = (overall >= min_overall) and (hook_s >= min_hook)
         if not passed and hook_s < min_hook:
-            msg = f"Hook Cảnh 1 ({hook_s:.1f}/10) chưa đạt ngưỡng chống vuốt bỏ của kênh ({min_hook:.1f}/10 — Swipe-Away TB: {cal.get('avg_swipe_away_pct', 31.0):.1f}%)."
+            msg = f"Scene 1 Hook ({hook_s:.1f}/10) is below the channel anti-swipe threshold ({min_hook:.1f}/10 — Avg Swipe-Away: {cal.get('avg_swipe_away_pct', 31.0):.1f}%)."
             if msg not in critiques:
                 critiques.insert(0, msg)
 
@@ -465,20 +481,20 @@ Chỉ trả về DUY NHẤT một chuỗi JSON hợp lệ không markdown với 
         min_overall = float(cal.get("min_overall_score", 8.0))
         critiques = list(hook_extra)
         if hook_score < min_hook:
-            critiques.append(f"Cảnh 1 ({hook_score:.1f}/10) cần mở đầu giật gân theo công thức 'A vs B' hoặc câu khẳng định số liệu gây sốc (ngưỡng kênh >= {min_hook:.1f}/10).")
+            critiques.append(f"Scene 1 ({hook_score:.1f}/10) needs an urgent 'A vs B' or shocking metric hook (channel threshold >= {min_hook:.1f}/10).")
         if pace_score < 8.0:
-            critiques.append("Độ dày kịch bản chưa đạt chuẩn Chiều Sâu 5 Hồi (cần 88-118 từ chia đều cho 8-9 cảnh trọn câu 10-14 từ/cảnh, tổng thời lượng 32-42 giây).")
+            critiques.append("Script pacing needs a complete 5-Act flow (88-118 words across 7-9 complete scenes, 32-42 seconds total).")
         if loop_score < 8.0:
-            critiques.append("Cảnh cuối không được đọc câu kêu gọi Subscribe làm tụt APV; cần kết nối ý niệm mượt mà quay trở lại Cảnh 1 (Seamless Loop).")
+            critiques.append("Final scene must not include spoken Subscribe CTAs; bridge seamlessly back to Scene 1.")
 
         passed = (overall >= min_overall) and (hook_score >= min_hook)
 
         return ScriptEvaluationReport(
-            hook_strength=ScriptCriteriaScore(score=hook_score, feedback="Đánh giá theo tương quan tỷ lệ vuốt bỏ thật của kênh"),
-            story_pacing=ScriptCriteriaScore(score=pace_score, feedback=f"Tổng số từ: {total_words} từ cho {scene_count} cảnh"),
-            entity_coherence=ScriptCriteriaScore(score=ent_score, feedback=f"Thực thể chính: {primary_entity or 'Chủ đề chung'}"),
-            visual_direction=ScriptCriteriaScore(score=vis_score, feedback="Từ khóa hình ảnh đã được chuẩn hóa"),
-            viral_loop=ScriptCriteriaScore(score=loop_score, feedback="Cảnh kết nối"),
+            hook_strength=ScriptCriteriaScore(score=hook_score, feedback="Evaluated against real channel swipe-away rate"),
+            story_pacing=ScriptCriteriaScore(score=pace_score, feedback=f"Total words: {total_words} across {scene_count} scenes"),
+            entity_coherence=ScriptCriteriaScore(score=ent_score, feedback=f"Primary entity: {primary_entity or 'General topic'}"),
+            visual_direction=ScriptCriteriaScore(score=vis_score, feedback="Visual keywords validated"),
+            viral_loop=ScriptCriteriaScore(score=loop_score, feedback="Loop bridge validated"),
             overall_score=overall,
             passed=passed,
             actionable_critiques=critiques,

@@ -422,6 +422,58 @@ class ScriptValidationLinter:
         return issues
 
     @classmethod
+    def check_language_integrity(cls, script: ScriptContract) -> List[str]:
+        """
+        Cổng kiểm duyệt tính toàn vẹn ngôn ngữ (Cross-Language Leakage Gate):
+        Chặn tuyệt đối kịch bản Tiếng Anh (en) hoặc Tiếng Bồ Đào Nha (pt-BR) bị rò rỉ câu/từ Tiếng Việt
+        ở Cảnh 1 (Hook), lời thoại các cảnh, tiêu đề, thumbnail_text hoặc overlay_badge.
+        """
+        issues: List[str] = []
+        scenes = list(getattr(script, "scenes", None) or [])
+        if not scenes:
+            return issues
+
+        vn_exclusive_re = re.compile(
+            r"[ơớờởỡợưứừửữựđăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]",
+            re.IGNORECASE,
+        )
+        vn_hybrid_re = re.compile(
+            r"\b(?:xé-to-cando|xé-to|va-cham|va\s+chạm|sự\s+thật\s+tàn\s+khốc|từ\s+in\s+hoa|đối\s+đầu\s+sinh\s+tử)\b",
+            re.IGNORECASE,
+        )
+        vn_scene_ids = []
+        for idx, sc in enumerate(scenes, start=1):
+            narr = str(getattr(sc, "narration", "") or "")
+            if vn_exclusive_re.search(narr) or vn_hybrid_re.search(narr):
+                vn_scene_ids.append(idx)
+
+        # Nếu đa số các cảnh KHÔNG phải Tiếng Việt (tức kênh Tiếng Anh hoặc Tiếng Bồ Đào Nha),
+        # nhưng lại có cảnh bị lẫn Tiếng Việt (đặc biệt là Cảnh 1 mở đầu hoặc Cảnh cuối) -> Báo lỗi nghiêm trọng!
+        is_predominantly_non_vn = len(vn_scene_ids) < max(2, (len(scenes) + 1) // 2)
+        if is_predominantly_non_vn:
+            if vn_scene_ids:
+                issues.append(
+                    f"CRITICAL LANGUAGE LEAKAGE VIOLATION: Scene(s) {vn_scene_ids} contain leaked Vietnamese text "
+                    f"in a non-Vietnamese script. Rewrite ALL scenes 100% in the target channel language (English or Portuguese) "
+                    f"with ZERO Vietnamese words or hybrid syllables."
+                )
+            for field_name in ("title", "hook", "thumbnail_text"):
+                val = str(getattr(script, field_name, "") or "")
+                if vn_exclusive_re.search(val) or vn_hybrid_re.search(val):
+                    issues.append(
+                        f"CRITICAL LANGUAGE LEAKAGE VIOLATION: '{field_name}' ('{val[:50]}') contains leaked Vietnamese text "
+                        f"in a non-Vietnamese script. Write '{field_name}' 100% in the target channel language."
+                    )
+            for idx, sc in enumerate(scenes, start=1):
+                badge = str(getattr(sc, "overlay_badge", "") or "")
+                if badge and (vn_exclusive_re.search(badge) or vn_hybrid_re.search(badge)):
+                    issues.append(
+                        f"CRITICAL LANGUAGE LEAKAGE VIOLATION: Scene {idx} overlay_badge ('{badge}') contains leaked Vietnamese text."
+                    )
+
+        return issues
+
+    @classmethod
     def lint(
         cls,
         script: ScriptContract,
@@ -439,6 +491,10 @@ class ScriptValidationLinter:
         # 0. YouTube Community Guidelines Safety Gate (Chặn tuyệt đối vi phạm chính sách YouTube)
         cg_issues = cls.check_community_guidelines_safety(script)
         all_issues.extend(cg_issues)
+
+        # 0a. Cross-Language Integrity Gate (Chặn rò rỉ phụ đề/lời thoại Tiếng Việt sang kênh ngoại)
+        lang_issues = cls.check_language_integrity(script)
+        all_issues.extend(lang_issues)
 
         # 0b. Fact-Gate & Metric Consistency Check
         fact_issues = cls.check_metric_and_fact_consistency(script)

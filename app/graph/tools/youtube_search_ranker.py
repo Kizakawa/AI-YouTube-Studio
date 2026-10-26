@@ -327,6 +327,8 @@ def _search_youtube_flat_cached(
 
             title = str(entry.get("title") or "")
             uploader = str(entry.get("uploader") or entry.get("channel") or "")
+            if license_policy._VN_EXCLUSIVE_DIACRITIC_RE.search(f"{title} {uploader}"):
+                continue
             meta_lower = f"{title} {uploader}".lower()
             if any(bad in meta_lower for bad in _TALKING_HEAD_BLOCKLIST):
                 continue

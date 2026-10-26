@@ -154,6 +154,12 @@ def _parse_short_views_text(views_str: str) -> int:
     return int(val * mult)
 
 
+_VN_EXCLUSIVE_DIACRITIC_RE = re.compile(
+    r"[ơớờởỡợưứừửữựđăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]",
+    re.IGNORECASE,
+)
+
+
 def search_youtube_native_shorts_flat(query: str, max_results: int = 20) -> List[Dict[str, Any]]:
     """
     Trích xuất trực tiếp các video YouTube Shorts dọc 9:16 nguyên bản (`/shorts/<id>`)
@@ -163,8 +169,9 @@ def search_youtube_native_shorts_flat(query: str, max_results: int = 20) -> List
     q_clean = re.sub(r"\s+", " ", str(query or "")).strip()
     if not q_clean:
         return []
+    query_is_vi = bool(_VN_EXCLUSIVE_DIACRITIC_RE.search(q_clean))
     q_with_tag = q_clean if "#short" in q_clean.lower() else f"{q_clean} #shorts"
-    search_url = f"https://www.youtube.com/results?search_query={quote_plus(q_with_tag)}"
+    search_url = f"https://www.youtube.com/results?search_query={quote_plus(q_with_tag)}&gl=US&hl=en"
 
     data: Optional[Dict[str, Any]] = None
     for _attempt in range(2):
@@ -296,6 +303,11 @@ def search_youtube_native_shorts_flat(query: str, max_results: int = 20) -> List
                 _walk(item)
 
     _walk(data)
+    if not query_is_vi:
+        out = [
+            item for item in out
+            if not _VN_EXCLUSIVE_DIACRITIC_RE.search(f"{item.get('title', '')} {item.get('uploader', '')}")
+        ]
     return out[:max_results]
 
 

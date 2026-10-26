@@ -315,10 +315,18 @@ def build_script_prompt_instructions(niche_profile: Dict[str, Any], language: st
     ctas_text = "\n".join(f"      - {c}" for c in ctas) if ctas else "      - Câu hỏi mở kích thích tranh luận ở Pinned Comment"
     facts_text = "\n".join(f"      * {rule}" for rule in anti_hallucination) if anti_hallucination else "      * Kiểm chứng tính chính xác"
 
+    lang_low = str(language or "en").strip().lower()
+    non_vi_guard = ""
+    if not lang_low.startswith("vi"):
+        non_vi_guard = (
+            "\n⚠️ CRITICAL META-LANGUAGE WARNING: Any Vietnamese notes inside this Niche Profile are internal studio guidelines ONLY. "
+            f"You MUST translate all concepts into 100% natural '{language}' and NEVER output any Vietnamese words, syllables, or diacritics in title, hook, narration, overlay_badge, or thumbnail_text!\n"
+        )
+
     return f"""
 ═══════════════════════════════════════════════════════════════════════
 🎯 NICHE INTELLIGENCE PROFILE: {niche_name.upper()} ({badge})
-═══════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════════{non_vi_guard}
 1. KHÁN GIẢ MỤC TIÊU (TARGET AUDIENCE):
    {target_aud}
 

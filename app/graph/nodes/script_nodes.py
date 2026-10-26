@@ -223,27 +223,29 @@ def node_refine_script(state: VideoWorkflowState) -> Dict[str, Any]:
 
     if video_format == "long":
         feedback_text = (
-            f"[VÒNG TINH CHỈNH VIDEO DÀI 16:9 {retry_count}/{max_retries} — Điểm hiện tại: Overall={cur_overall}/10, Hook={cur_hook}/10 -> "
-            f"MỤC TIÊU BẮT BUỘC: Overall >= 8.2/10 và Hook Cảnh 1 >= 8.5/10]. "
-            f"Sửa chữa TRIỆT ĐỂ các lỗi sau từ Critic: {'; '.join(critiques)}. "
-            f"YÊU CẦU CỐT LÕI VIDEO DÀI: "
-            f"(1) CẢNH 1 (COLD OPEN HOOK 8-14 TỪ) BẮT BUỘC ĐẶT TÊN THỰC THỂ CHÍNH + CON SỐ/BIẾN CỐ CỤ THỂ ngay câu đầu; "
-            f"(2) TỔNG ĐỘ DÀI KỊCH BẢN PHIM TÀI LIỆU 5 CHƯƠNG: 350-650 từ chia thành 16-24 phân cảnh (mỗi cảnh thân 18-28 từ sâu sắc, giàu dẫn chứng khoa học/lịch sử); "
-            f"(3) Tuyệt đối KHÔNG gắn #Shorts vào tiêu đề."
+            f"[LONG-FORM 16:9 REFINEMENT ROUND {retry_count}/{max_retries} — Current Score: Overall={cur_overall}/10, Hook={cur_hook}/10 -> "
+            f"MANDATORY TARGET: Overall >= 8.2/10 and Scene 1 Hook >= 8.5/10]. "
+            f"Surgically fix ALL of the following Critic issues: {'; '.join(critiques)}. "
+            f"CORE LONG-FORM REQUIREMENTS: "
+            f"(1) SCENE 1 (COLD OPEN HOOK 8-14 WORDS) MUST NAME THE PRIMARY ENTITY + CONCRETE METRIC/EVENT immediately; "
+            f"(2) TOTAL 5-CHAPTER DOCUMENTARY LENGTH: 350-650 words across 16-24 scenes (18-28 words per body scene); "
+            f"(3) Do NOT include #Shorts in the title; "
+            f"(4) 100% LANGUAGE INTEGRITY: Every single word in title, hook, and narration MUST be in '{language}' (ZERO Vietnamese leakage!)."
         )
     else:
         feedback_text = (
-            f"[VÒNG TINH CHỈNH {retry_count}/{max_retries} — Điểm hiện tại: Overall={cur_overall}/10, Hook={cur_hook}/10 -> "
-            f"MỤC TIÊU BẮT BUỘC: Overall >= 8.2/10 và Hook Cảnh 1 >= 8.5/10]. "
-            f"Sửa chữa TRIỆT ĐỂ các lỗi sau từ Critic: {'; '.join(critiques)}. "
-            f"YÊU CẦU CỐT LÕI: "
-            f"(1) CẢNH 1 (HOOK 6-8 TỪ, ~2.0 GIÂY) BẮT BUỘC ĐẶT TÊN CON VẬT / THỰC THỂ CHÍNH NGAY TỪ THỨ 1-2 + HÀNH ĐỘNG VA CHẠM + CON SỐ VẬT LÝ CỤ THỂ ngay giây 0.0s "
-            f"(Cấm xóa tên con vật ở Cảnh 1, cấm mở đầu bằng đại từ mơ hồ 'Uma mordida/It/They' hay câu hỏi Yes/No!); "
-            f"(2) TỔNG ĐỘ DÀI KỊCH BẢN: 75-92 từ chia đều cho 7-8 phân cảnh (mỗi cảnh thân 10-13 từ mạch lạc, KHÔNG lặp lại cùng một con số ở 2 cảnh khác nhau, tạo thời lượng vàng 28s-36s); "
-            f"(3) Cảnh cuối nối vòng lặp vô tận (Zero Spoken Subscribe CTA)."
+            f"[REFINEMENT ROUND {retry_count}/{max_retries} — Current Score: Overall={cur_overall}/10, Hook={cur_hook}/10 -> "
+            f"MANDATORY TARGET: Overall >= 8.2/10 and Scene 1 Hook >= 8.5/10]. "
+            f"Surgically fix ALL of the following Critic issues: {'; '.join(critiques)}. "
+            f"CORE SHORTS REQUIREMENTS: "
+            f"(1) SCENE 1 (HOOK 6-9 WORDS, ~2.0 SECONDS) MUST OPEN WITH THE PRIMARY ENTITY/SUBJECT + VISCERAL PHYSICAL ACTION OR PSYCHOLOGICAL POINTER at 0.0s "
+            f"(Never hide the subject at Scene 1, never start with vague pronouns or Yes/No questions!); "
+            f"(2) TOTAL SCRIPT LENGTH: 85-115 words across 7-8 complete scenes (11-15 words per body scene, golden duration 32s-40s); "
+            f"(3) Final scene bridges seamlessly back to Scene 1 (Zero Spoken Subscribe CTA); "
+            f"(4) 100% LANGUAGE INTEGRITY: Every single word in title, hook, and narration MUST be in '{language}' (ZERO Vietnamese words or syllables!)."
         )
     if primary_entity:
-        feedback_text += f" Giữ vững trọng tâm vào thực thể chính: {primary_entity}."
+        feedback_text += f" Keep strict focus on the primary entity: {primary_entity}."
 
     content_agent = ContentAgent()
     new_script = None

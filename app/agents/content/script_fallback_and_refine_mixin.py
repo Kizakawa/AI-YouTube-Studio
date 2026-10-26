@@ -373,11 +373,11 @@ HARD RETENTION & FULL-BODIED STORYTELLING RULES:
   "climax_scene_id": {8 if is_long_form else 3},
   "hook_search_queries": ["concrete short search query 1", "concrete short search query 2"],
   "full_narration": "The full, smooth, well-developed spoken story without stage directions ({'360-560 words across 16-22 scenes' if is_long_form else '85-120 words, 30-40s full 5-Act story'} with Real-Life Example, Mechanism, Counter-Move, and zero spoken Subscribe CTA)",
-  "thumbnail_text": "2-4 TỪ IN HOA CỰC TO GỢI TÒ MÒ CHO ẢNH BÌA",
+  "thumbnail_text": "2-4 BOLD ALL-CAPS CURIOSITY WORDS IN {target_lang_display} FOR THUMBNAIL",
   "scenes": [
     {{
       "scene_id": 1,
-      "visual_reasoning": "Ý đồ dẫn dắt mạch truyện của cảnh này",
+      "visual_reasoning": "Narrative and visual intent of this scene",
       "narration": "Complete, natural sentence spoken in this scene ({'18-26 words per body scene, 16-22 scenes total' if is_long_form else 'Scene 1: 5-9 words; Body scenes: 8-16 words flowing naturally, 7-9 scenes total'})",
       "visual_keyword": "simple relevant search query for the subject/theme (2-5 English words)",
       "visual_prompt": "Cinematic visual description fitting the overall story mood",

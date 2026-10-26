@@ -697,6 +697,49 @@ class ScriptJsonParserMixin:
                     scenes[0]["highlight_words"] = _auto_extract_scene_highlights(best_hook)
 
 
+        # ── 2.86. KHỬ NHIỄM NGÔN NGỮ TỰ ĐỘNG (CROSS-LANGUAGE LEAKAGE SANITIZER) ──
+        # Chặn tuyệt đối hiện tượng LLM bị rò rỉ câu/từ Tiếng Việt vào Cảnh 1 (Hook), lời thoại hoặc phù hiệu
+        # trên các kênh Tiếng Bồ Đào Nha (pt-BR) và Tiếng Anh (en).
+        _vn_excl_re = re.compile(r"[ơớờởỡợưứừửữựđăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]", re.IGNORECASE)
+        if scenes and isinstance(scenes, list):
+            _vn_sc_count = sum(
+                1 for s in scenes
+                if isinstance(s, dict) and _vn_excl_re.search(str(s.get("narration") or ""))
+            )
+            _is_non_vn_script = _vn_sc_count < max(2, (len(scenes) + 1) // 2)
+            if _is_non_vn_script:
+                for idx_s, s in enumerate(scenes):
+                    if not isinstance(s, dict):
+                        continue
+                    narr_s = str(s.get("narration") or "")
+                    if narr_s:
+                        narr_s = re.sub(r"\bxé-to-cando\b", "rasgando", narr_s, flags=re.IGNORECASE)
+                        narr_s = re.sub(r"\bva-cham\b", "colisão", narr_s, flags=re.IGNORECASE)
+                        s["narration"] = narr_s
+                    if idx_s == 0 and _vn_excl_re.search(str(s.get("narration") or "")):
+                        # Tìm phương án Hook sạch (không chứa tiếng Việt) từ hook_variants hoặc title
+                        clean_hook_repl = ""
+                        raw_h_vars = raw_data.get("hook_variants")
+                        if isinstance(raw_h_vars, list):
+                            for hv in raw_h_vars:
+                                hv_c = _strip_variant_prefix(str(hv or "")).strip()
+                                if hv_c and not _vn_excl_re.search(hv_c):
+                                    clean_hook_repl = hv_c
+                                    break
+                        if not clean_hook_repl:
+                            t_cand = _strip_variant_prefix(str(raw_data.get("title") or "")).strip()
+                            if t_cand and not _vn_excl_re.search(t_cand):
+                                clean_hook_repl = t_cand
+                        if clean_hook_repl:
+                            logger.warning(
+                                f"[ContentAgent] 🛡️ Phát hiện Cảnh 1 bị rò rỉ Tiếng Việt trên kịch bản ngoại ngữ: "
+                                f"'{s.get('narration')}' -> Tự động khử nhiễm bằng: '{clean_hook_repl}'"
+                            )
+                            s["narration"] = clean_hook_repl
+                    badge_s = str(s.get("overlay_badge") or "")
+                    if badge_s and (_vn_excl_re.search(badge_s) or "TỪ IN HOA" in badge_s.upper()):
+                        s["overlay_badge"] = ""
+
         # Cập nhật lại full_narration & hook để đồng bộ 100% với Cảnh 1 đã tối ưu nhịp
         raw_data["full_narration"] = " ".join(s.get("narration", "") for s in scenes if isinstance(s, dict))
         if scenes and isinstance(scenes[0], dict) and scenes[0].get("narration"):
@@ -814,17 +857,27 @@ class ScriptJsonParserMixin:
             raw_data["total_duration_estimate"] = round(sum(s.get("estimated_seconds", 3.2) for s in scenes if isinstance(s, dict)) or 35.0, 1)
         if "topic" not in raw_data or not raw_data["topic"]:
             raw_data["topic"] = raw_data.get("title", "Shorts Video")
-        if "thumbnail_text" not in raw_data or not raw_data["thumbnail_text"]:
+        comb_all = f"{niche_norm} {str(raw_data.get('topic', ''))} {str(raw_data.get('title', ''))} {str(raw_data.get('full_narration', ''))[:240]}".lower()
+        is_pt_lang = (
+            "ç" in comb_all or "õ" in comb_all or "ã" in comb_all
+            or any(w in comb_all for w in ("você", "não", "por que", "oceano", "selva", "onça", "jacaré", "segredo", "ilha", "caverna", "leões", "ratel", "harpia", "metros", "cachalote"))
+        )
+        is_vn = bool(_vn_excl_re.search(comb_all)) and not is_pt_lang and not (scenes and _is_non_vn_script)
+        raw_thumb_txt = str(raw_data.get("thumbnail_text") or "").strip()
+        if (
+            not raw_thumb_txt
+            or (not is_vn and (_vn_excl_re.search(raw_thumb_txt) or "TỪ IN HOA" in raw_thumb_txt.upper() or "SỰ THẬT" in raw_thumb_txt.upper()))
+        ):
             try:
                 from app.services.thumbnail_service import ThumbnailService
-                raw_data["thumbnail_text"] = ThumbnailService().derive_curiosity_text(topic=raw_data.get("topic", ""), viral_title=raw_data.get("title", ""))
+                derived_thumb = ThumbnailService().derive_curiosity_text(topic=raw_data.get("topic", ""), viral_title=raw_data.get("title", ""))
+                if not is_vn and _vn_excl_re.search(str(derived_thumb or "")):
+                    derived_thumb = "VERDADE BRUTAL!" if is_pt_lang else "SHOCKING TRUTH!"
+                raw_data["thumbnail_text"] = derived_thumb
             except Exception:
-                raw_data["thumbnail_text"] = "SỰ THẬT TÀN KHỐC!"
+                raw_data["thumbnail_text"] = "SỰ THẬT TÀN KHỐC!" if is_vn else ("VERDADE BRUTAL!" if is_pt_lang else "SHOCKING TRUTH!")
 
         # ── 3. BÌNH LUẬN MỒI GHIM ĐẦU TRANG (PINNED COMMENT BAIT) TỐI ƯU TƯƠNG TÁC ──
-        comb_all = f"{niche_norm} {str(raw_data.get('topic', ''))} {str(raw_data.get('title', ''))}".lower()
-        is_pt_lang = any(w in comb_all for w in ("você", "não", "por que", "oceano", "selva", "onça", "jacaré", "segredo", "ilha", "caverna", "leões", "ratel", "harpia"))
-        is_vn = any("\u0100" <= c <= "\u1EF9" for c in comb_all) and not is_pt_lang
         if "pinned_comment" not in raw_data or not str(raw_data.get("pinned_comment", "")).strip():
             if niche_norm == "animal_rescue" or any(k in comb_all for k in ("rescue", "chó", "mèo", "pet", "cứu hộ", "puppy", "kitten", "stray")):
                 raw_data["pinned_comment"] = (

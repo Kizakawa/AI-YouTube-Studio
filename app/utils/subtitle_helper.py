@@ -750,8 +750,8 @@ class SubtitleHelper:
             raw_niche = (niche_id or "").lower()
             full_txt = " ".join([s.narration for s in scenes]).lower()
             # Phân biệt chuẩn xác Tiếng Việt (vi), Tiếng Bồ Đào Nha Brazil (pt-BR) và Tiếng Anh (en):
-            # Tránh lỗi nhận nhầm các dấu á, é, í, ó, ú, ã, ê, ô của tiếng Bồ Đào Nha thành tiếng Việt!
-            vn_exclusive_re = re.compile(r'[ơớờởỡợưứừửữựđăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]')
+            # Tính theo ĐA SỐ CẢNH (Majority Scene Language) để 1 ký tự rò rỉ không bao giờ lật ngược ngôn ngữ toàn bài!
+            vn_exclusive_re = re.compile(r'[ơớờởỡợưứừửữựđăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]', re.IGNORECASE)
             pt_words = {
                 "não", "você", "uma", "para", "com", "mais", "pelo", "pela", "está",
                 "são", "isso", "até", "mas", "nas", "nos", "dos", "das", "onça",
@@ -759,14 +759,22 @@ class SubtitleHelper:
                 "sucuri", "jacaré", "quando", "apenas", "fundo", "água", "águas",
             }
             txt_words = set(re.findall(r'\b\w+\b', full_txt))
-            is_pt = ("ç" in full_txt or "õ" in full_txt or "ã" in full_txt or len(txt_words & pt_words) >= 2) and not bool(vn_exclusive_re.search(full_txt))
-            is_vi = bool(vn_exclusive_re.search(full_txt)) and not is_pt
+            vi_scene_count = sum(1 for s in scenes if vn_exclusive_re.search(str(getattr(s, "narration", "") or "")))
+            is_majority_vi = vi_scene_count >= max(2, (len(scenes) + 1) // 2)
+            is_pt = ("ç" in full_txt or "õ" in full_txt or "ã" in full_txt or len(txt_words & pt_words) >= 2) and not is_majority_vi
+            is_vi = is_majority_vi and not is_pt
 
             # ── Tối ưu Anti-Swipe 0-3s: Chỉ hiển thị DUY NHẤT 1 phù hiệu HUD nhỏ gọn (1 dòng, <= 26 ký tự)
             # ở sát mép trên (MarginV=230), tuyệt đối KHÔNG chồng 2 lớp HookHeadlineBanner + PatternInterruptBadge
             # gây che khuất khuôn mặt/chủ thể chính ở trung tâm khung hình!
             custom_open_badge = cls._strip_ass_unsupported_emojis(getattr(scenes[0], "overlay_badge", "") or "").strip()
             effective_hook = cls._strip_ass_unsupported_emojis((hook_title or "").strip())
+            # Chặn tuyệt đối phụ đề/banner Tiếng Việt rò rỉ ở đầu video của kênh ngoại ngữ (en / pt-BR)
+            if not is_vi:
+                if custom_open_badge and (vn_exclusive_re.search(custom_open_badge) or "TỪ IN HOA" in custom_open_badge.upper() or "SỰ THẬT" in custom_open_badge.upper()):
+                    custom_open_badge = ""
+                if effective_hook and (vn_exclusive_re.search(effective_hook) or "TỪ IN HOA" in effective_hook.upper() or "SỰ THẬT" in effective_hook.upper()):
+                    effective_hook = ""
             if custom_open_badge and len(custom_open_badge) <= 24:
                 badge_core = custom_open_badge.upper()
             elif effective_hook:
@@ -826,6 +834,8 @@ class SubtitleHelper:
                     continue
 
                 sc_badge = cls._strip_ass_unsupported_emojis(getattr(sc, "overlay_badge", "") or "")
+                if not is_vi and sc_badge and (vn_exclusive_re.search(sc_badge) or "TỪ IN HOA" in sc_badge.upper()):
+                    sc_badge = ""
                 sc_txt = sc.narration.lower()
                 stat_match = stat_regex.search(sc.narration)
 
@@ -874,7 +884,7 @@ class SubtitleHelper:
             cta_start_ms = max(0, current_offset_ms - cta_dur)
             cta_end_ms = current_offset_ms
             full_text = " ".join([s.narration for s in scenes]).lower()
-            vn_exclusive_re = re.compile(r'[ơớờởỡợưứừửữựđăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]')
+            vn_exclusive_re = re.compile(r'[ơớờởỡợưứừửữựđăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]', re.IGNORECASE)
             pt_words = {
                 "não", "você", "uma", "para", "com", "mais", "pelo", "pela", "está",
                 "são", "isso", "até", "mas", "nas", "nos", "dos", "das", "onça",
@@ -882,8 +892,10 @@ class SubtitleHelper:
                 "sucuri", "jacaré", "quando", "apenas", "fundo", "água", "águas",
             }
             txt_words = set(re.findall(r'\b\w+\b', full_text))
-            is_pt = ("ç" in full_text or "õ" in full_text or "ã" in full_text or len(txt_words & pt_words) >= 2) and not bool(vn_exclusive_re.search(full_text))
-            is_vi = bool(vn_exclusive_re.search(full_text)) and not is_pt
+            vi_scene_count = sum(1 for s in scenes if vn_exclusive_re.search(str(getattr(s, "narration", "") or "")))
+            is_majority_vi = vi_scene_count >= max(2, (len(scenes) + 1) // 2)
+            is_pt = ("ç" in full_text or "õ" in full_text or "ã" in full_text or len(txt_words & pt_words) >= 2) and not is_majority_vi
+            is_vi = is_majority_vi and not is_pt
             raw_niche = (niche_id or "").lower()
 
             cta_text = cls._build_visual_cta_banner_text(raw_niche, is_vi, is_pt)
@@ -1183,9 +1195,11 @@ class SubtitleHelper:
             cta_start_ms = max(0, effective_total_ms - cta_dur)
             cta_end_ms = effective_total_ms
             all_text_concat = " ".join([seg.get("text", "") for seg in timed_segments]).lower()
-            vn_exclusive_re = re.compile(r'[ơớờởỡợưứừửữựđăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]')
-            is_pt = ("ç" in all_text_concat or "õ" in all_text_concat or "ã" in all_text_concat) and not bool(vn_exclusive_re.search(all_text_concat))
-            is_vi = bool(vn_exclusive_re.search(all_text_concat)) and not is_pt
+            vn_exclusive_re = re.compile(r'[ơớờởỡợưứừửữựđăắằẳẵặảẩẫậẻểễệỉịỏổỗộủửữựỷỹỵ]', re.IGNORECASE)
+            vi_seg_count = sum(1 for seg in timed_segments if vn_exclusive_re.search(str(seg.get("text", "") or "")))
+            is_majority_vi = vi_seg_count >= max(2, (len(timed_segments) + 1) // 2)
+            is_pt = ("ç" in all_text_concat or "õ" in all_text_concat or "ã" in all_text_concat) and not is_majority_vi
+            is_vi = is_majority_vi and not is_pt
             raw_niche = (niche_id or "").lower()
             cta_text = cls._build_visual_cta_banner_text(raw_niche, is_vi, is_pt)
             cta_start_str = cls._ms_to_ass_time(cta_start_ms)
