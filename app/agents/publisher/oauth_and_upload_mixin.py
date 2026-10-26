@@ -212,6 +212,51 @@ class OAuthAndUploadMixin:
             self.init_error = str(e)
             logger.error(f"Lỗi khởi tạo YouTube API cho '{self.channel_name}': {e}")
 
+    def _find_live_duplicate_on_youtube(self, candidate_title: str, max_check: int = 15) -> Optional[str]:
+        """
+        Kiểm tra trực tiếp danh sách video vừa tải lên trên kênh YouTube thật (uploads playlist)
+        để phát hiện bản trùng lặp kể cả khi DB nội bộ chưa kịp ghi youtube_video_id hoặc khi
+        lần thử upload_attempt=1 đã hoàn tất trên máy chủ YouTube ngay trước lúc đứt kết nối SSL.
+        """
+        if not self.service or not candidate_title:
+            return None
+        try:
+            from app.services.channel_intelligence import check_idea_similarity
+            norm_cand = re.sub(r'#shorts\b|\W+', '', str(candidate_title).lower())
+            if not norm_cand:
+                return None
+            ch_res = self.service.channels().list(part="contentDetails", mine=True).execute()
+            ch_items = ch_res.get("items") or []
+            if not ch_items:
+                return None
+            uploads_pl = ch_items[0].get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads")
+            if not uploads_pl:
+                return None
+            pl_res = self.service.playlistItems().list(
+                part="snippet,contentDetails,status",
+                playlistId=uploads_pl,
+                maxResults=max_check,
+            ).execute()
+            for item in (pl_res.get("items") or []):
+                snip = item.get("snippet") or {}
+                ex_title = str(snip.get("title") or "").strip()
+                if not ex_title or ex_title.startswith("[PRIVATE-DUP]"):
+                    continue
+                vid_id = (item.get("contentDetails") or {}).get("videoId")
+                if not vid_id:
+                    continue
+                ex_norm = re.sub(r'#shorts\b|\W+', '', ex_title.lower())
+                is_sim, sim_score, _ = check_idea_similarity(candidate_title, [ex_title], similarity_threshold=0.58)
+                if ex_norm == norm_cand or is_sim:
+                    logger.warning(
+                        f"🛡️ [LiveYouTubeDupGuard] Phát hiện video trùng lặp trực tiếp trên kênh YouTube "
+                        f"'{self.channel_name}': '{ex_title}' (ID: {vid_id}, sim={sim_score:.2f}). Tái sử dụng ID, không upload bản thứ 2!"
+                    )
+                    return vid_id
+        except Exception as e_live_dup:
+            logger.debug(f"[LiveYouTubeDupGuard] Check warning: {e_live_dup}")
+        return None
+
     @trace_custom_span("PublisherAgent.upload_youtube", run_type="tool")
     def upload_video(
         self,
@@ -601,6 +646,15 @@ class OAuthAndUploadMixin:
                             "status": "already_published",
                             "project_id": self.project_id
                         }
+                live_dup_id = self._find_live_duplicate_on_youtube(clean_title)
+                if live_dup_id:
+                    return {
+                        "video_id": live_dup_id,
+                        "url": f"https://youtube.com/shorts/{live_dup_id}",
+                        "title": clean_title,
+                        "status": "already_published",
+                        "project_id": self.project_id
+                    }
         except Exception as e_dup:
             logger.debug(f"[Publisher] Kiểm tra trùng lặp: {e_dup}")
 
@@ -717,6 +771,14 @@ class OAuthAndUploadMixin:
                                 f"Khởi tạo phiên mới và thử lại lần {upload_attempt + 1}/{max_upload_retries} sau {wait_sec}s..."
                             )
                             time.sleep(wait_sec)
+                            recovered_vid = self._find_live_duplicate_on_youtube(clean_title, max_check=8)
+                            if recovered_vid:
+                                logger.info(
+                                    f"✅ [UploadRetryRecovery] Video '{clean_title}' thực tế đã tạo thành công trên YouTube (ID: {recovered_vid}) "
+                                    f"trước khi đứt kết nối mạng. Không tạo bản upload trùng thứ 2!"
+                                )
+                                response = {"id": recovered_vid}
+                                break
                             continue
                         else:
                             raise up_err
