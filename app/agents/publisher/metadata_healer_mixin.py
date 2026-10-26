@@ -94,7 +94,7 @@ class MetadataHealerMixin:
                                 and not any(m in cand_q.lower() for m in stale_generic_markers)
                                 and not (not allow_affiliate and any(k in cand_q.lower() for k in ("http://", "https://", "amazon.com", "paypal.me")))
                             ):
-                                db_pinned_q = cand_q.lstrip("💬").strip()
+                                db_pinned_q = self.sanitize_engagement_comment(cand_q).lstrip("💬").strip()
             except Exception:
                 pass
             if desc_body and any(m in desc_body.lower() for m in stale_generic_markers):

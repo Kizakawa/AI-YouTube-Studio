@@ -2734,15 +2734,15 @@ async def _execute_channel_publish(update: Update, context: ContextTypes.DEFAULT
         if not pinned_comment:
             n_key = str(ch_cfg.get("niche") or "").lower()
             if "psychology" in n_key:
-                pinned_comment = "Did this hit close to home? Which sign was most accurate? Drop your thoughts below 👇\n🔔 Subscribe to master dark psychology before someone uses it on you! 🧠"
+                pinned_comment = pub_agent.build_default_engagement_comment(title=video_title, target_lang=ch_cfg.get("language", "en"))
             elif any(k in n_key for k in ("rescue", "animal")):
-                pinned_comment = "Every innocent life deserves love ❤️ Would you have stopped to help? Comment below!\n🐾 Subscribe right now to help give more terrified animals a second chance! 🐾"
+                pinned_comment = pub_agent.build_default_engagement_comment(title=video_title, target_lang=ch_cfg.get("language", "en"))
             elif any(k in n_key for k in ("deep_sea", "mystery", "history")):
-                pinned_comment = "What is your theory about this? What are they really hiding? Drop it below 👇\n🌊 Subscribe to unlock Part 2 as soon as the classified archive drops! 🔥"
+                pinned_comment = pub_agent.build_default_engagement_comment(title=video_title, target_lang=ch_cfg.get("language", "en"))
             elif any(k in n_key for k in ("predator", "wildlife")):
-                pinned_comment = "Who is the true apex ruler of this realm? Drop your vote below 👇\n🦁 Subscribe for more untamed apex predator battles! 🦁"
+                pinned_comment = pub_agent.build_default_engagement_comment(title=video_title, target_lang=ch_cfg.get("language", "en"))
             else:
-                pinned_comment = "Which moment shocked you the most? Drop your theory in the comments below 👇\n🔔 Subscribe so you don't miss Part 2 releasing next! 🔥"
+                pinned_comment = pub_agent.build_default_engagement_comment(title=video_title, target_lang=ch_cfg.get("language", "en"))
 
         # 2. Đăng tải lên YouTube Shorts
         pub_res = await asyncio.to_thread(
@@ -3425,15 +3425,15 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not pinned_comment:
                 n_key = str(ch_cfg.get("niche") or "").lower()
                 if "psychology" in n_key:
-                    pinned_comment = "Did this hit close to home? Which sign was most accurate? Drop your thoughts below 👇\n🔔 Subscribe to master dark psychology before someone uses it on you! 🧠"
+                    pinned_comment = pub_agent.build_default_engagement_comment(title=video_title, target_lang=ch_cfg.get("language", "en"))
                 elif any(k in n_key for k in ("rescue", "animal")):
-                    pinned_comment = "Every innocent life deserves love ❤️ Would you have stopped to help? Comment below!\n🐾 Subscribe right now to help give more terrified animals a second chance! 🐾"
+                    pinned_comment = pub_agent.build_default_engagement_comment(title=video_title, target_lang=ch_cfg.get("language", "en"))
                 elif any(k in n_key for k in ("deep_sea", "mystery", "history")):
-                    pinned_comment = "What is your theory about this? What are they really hiding? Drop it below 👇\n🌊 Subscribe to unlock Part 2 as soon as the classified archive drops! 🔥"
+                    pinned_comment = pub_agent.build_default_engagement_comment(title=video_title, target_lang=ch_cfg.get("language", "en"))
                 elif any(k in n_key for k in ("predator", "wildlife")):
-                    pinned_comment = "Who is the true apex ruler of this realm? Drop your vote below 👇\n🦁 Subscribe for more untamed apex predator battles! 🦁"
+                    pinned_comment = pub_agent.build_default_engagement_comment(title=video_title, target_lang=ch_cfg.get("language", "en"))
                 else:
-                    pinned_comment = "Which moment shocked you the most? Drop your theory in the comments below 👇\n🔔 Subscribe so you don't miss Part 2 releasing next! 🔥"
+                    pinned_comment = pub_agent.build_default_engagement_comment(title=video_title, target_lang=ch_cfg.get("language", "en"))
 
             # 2. Đăng tải lên YouTube kèm schedule_time_iso
             ch_lang = ch_cfg.get("language", "en")

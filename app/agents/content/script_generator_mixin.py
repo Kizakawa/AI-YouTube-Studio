@@ -296,6 +296,7 @@ Do NOT write the full script yet. Spend your full reasoning capacity to deeply u
    - `winning_title`: Search-optimized High-CTR Title in {target_lang_display} explicitly naming the primary entities + concrete metric (`[Entity A] vs [Entity B]: [Extreme Metric]`).
    - `selected_hook_archetype`: Choose the #1 best psychological-visual hook archetype for Scene 1 (`1. Visual Micro-Observation ("Look closely at...")`, `2. The Fatal Mistake ("O último erro...")`, `3. 2nd-Person Survival Simulation ("If you ever...")`, or `4. The Illusion Breaker / Role Reversal`).
    - `scene_1_hook_0s`: 6–10 words in {target_lang_display} using `selected_hook_archetype`. CRITICAL: NEVER repeat `winning_title` verbatim or spoil the final metric in `scene_1_hook_0s`! Lock the viewer's eyes onto a strange visual detail, fatal mistake, or survival warning at 0.0s, and save the hard metrics for `act_2_concrete_proof` (Scenes 2–3) and `scene_4_mid_video_15s_twist` (Scene 4)!
+   - `counterfactual_debate_comment`: 12–22 words in {target_lang_display}. Design an unresolved Counterfactual Twist / Escalated 2v1 Odds / Next-Opponent 50-50 Debate Question ending with `(1) ... or (2) ... 👇` that was NOT already answered inside the video (ZERO 'Subscribe/Inscreva-se' spam!).
 
 Return ONLY valid JSON:
 {{
@@ -312,6 +313,7 @@ Return ONLY valid JSON:
   "scene_4_mid_video_15s_twist": "Explosive 15-second Plot Twist / Second Hook for Scene 4 that flips expectations with a 2nd concrete metric",
   "act_4_ultimate_payoff": "Decisive biomechanical outcome, scientific revelation, or surgical counter-move for Scenes 6-7",
   "scene_8_infinite_echo_loop": "Exact conceptual bridge connecting the end of Scene 8 directly back into Scene 1's opening hook",
+  "counterfactual_debate_comment": "12-22 word Counterfactual 50/50 Debate Question in {target_lang_display} (e.g. 2v1 escalation, terrain flip, or next opponent) ending with (1) or (2) 👇 and ZERO Subscribe promo",
   "hot_yt_shorts_peak_queries": [
     "concrete English query 1 for 0s peak action YouTube Short (3-5 words)",
     "concrete English query 2 for close-up strike/clash YouTube Short (3-5 words)",
@@ -345,6 +347,7 @@ Return ONLY valid JSON:
                     f"- Mandatory Scene 4 Mid-Video 15s Reversal Twist + Second Metric: {bp_data.get('scene_4_mid_video_15s_twist', '')}\n"
                     f"- Mandatory Act 4 Payoff (Scenes 6-7): {bp_data.get('act_4_ultimate_payoff', '')}\n"
                     f"- Mandatory Scene 8 Infinite Echo-Loop Bridge: {bp_data.get('scene_8_infinite_echo_loop', '')}\n"
+                    f"- Mandatory Counterfactual 50/50 Debate Comment (pinned_comment): {bp_data.get('counterfactual_debate_comment', '')}\n"
                     f"- Hot YouTube Shorts Peak Search Queries: {json.dumps(bp_data.get('hot_yt_shorts_peak_queries', []), ensure_ascii=False)}\n"
                     "═══════════════════════════════════════════════════════════\n"
                 )
@@ -396,6 +399,8 @@ YOUR EXECUTIVE PUNCH-UP MANDATE (UPGRADE EVERY WEAK LINK WHILE PRESERVING 7-8 SC
    - Based on the hottest physical climax moments in this script, provide 5 distinct, concrete English search queries (3–5 words each, subject + explosive peak action/setting) optimized for finding viral YouTube Shorts peak clips.
 6. SELF-CONTAINED, PRONOUN-FREE VISUAL QUERIES (`visual_keyword`, `stock_query`, `visual_prompt`):
    - Every scene's `visual_keyword` and `stock_query` MUST be 100% self-contained when isolated from the script: always include the resolved protagonist/entity name + concrete physical action/environment (NEVER leave pronouns like "it", "he", "they" or literal metaphor props like "hydraulic press", "silent cage", "loaded weapon" in visual fields!).
+7. COUNTERFACTUAL 50/50 DEBATE COMMENT (`pinned_comment` — ZERO SUBSCRIBE SPAM & NEVER ASK WHAT THE VIDEO ALREADY ANSWERED):
+   - If `pinned_comment` asks a question the video already answered (e.g. "Who wins: A or B?") or includes robotic "SUBSCRIBE / INSCREVA-SE" spam, REWRITE it into a punchy 12–22 word Counterfactual Escalation / Next-Opponent 50/50 Debate Question ending with `(1) ... or (2) ... 👇`!
 
 Return ONLY the complete upgraded JSON matching the exact same schema as CURRENT DRAFT SCRIPT JSON."""
         try:
@@ -477,10 +482,10 @@ You MUST strictly align the angle, narrative tone, character focus, and visual a
             )
 
         if is_long_form:
-            duration_spec = "3 ĐẾN 4.5 PHÚT PHIM TÀI LIỆU NGANG 16:9 CHUẨN ĐIỆN ẢNH (16 ĐẾN 22 PHÂN CẢNH CHIA THÀNH 5 CHƯƠNG RÕ RÀNG, TỔNG 360 ĐẾN 560 TỪ — CẢNH 1 COLD-OPEN HOOK 8-14 TỪ, MỖI CẢNH THÂN 18-26 TỪ MẠCH LẠC SÂU SẮC)"
+            duration_spec = "3 TO 4.5 MINUTES CINEMATIC 16:9 WIDESCREEN DOCUMENTARY (16 TO 22 SCENES ACROSS 5 CHAPTERS, 360 TO 560 WORDS TOTAL — SCENE 1 COLD-OPEN HOOK 8-14 WORDS, BODY SCENES 18-26 WORDS EACH)"
             word_range_en = "360 to 560 words (3 to 4.5 minutes Widescreen 16:9 Documentary across 16 to 22 rich scenes; Scene 1 Cold-Open Hook MUST be 8-14 words; Body scenes MUST be 18-26 words each)"
         else:
-            duration_spec = "34 ĐẾN 42 GIÂY VÀNG TỐI ƯU APV > 90% & STAYED-TO-WATCH > 70% (7 ĐẾN 8 PHÂN CẢNH ĐẦY ĐẶN, 92 ĐẾN 118 TỪ — CẢNH 1 HOOK 6-10 TỪ BẰNG ĐÒN TÂM LÝ THỊ GIÁC DỨT ĐIỂM TRONG 1.8 GIÂY ĐẦU, DẪN DẮT MƯỢT MÀ CÓ ĐẦU CÓ ĐUÔI)"
+            duration_spec = "34 TO 42 SECONDS GOLDEN HIGH-APV DURATION (7 TO 8 COMPLETE SCENES, 92 TO 118 WORDS TOTAL — SCENE 1 HOOK 6-10 WORDS USING VISUAL-PSYCHOLOGICAL POINTER IN FIRST 1.8 SECONDS, SMOOTH NARRATIVE FLOW)"
             word_range_en = "92 to 118 words (34-42s High-APV Golden Duration across 7-8 rich, complete scenes; Scene 1 Hook MUST be 6-10 words ~1.6-2.2s)"
 
         prompt = f"""You are an elite YouTube {'Widescreen 16:9 Documentary' if is_long_form else 'Shorts'} Master Showrunner, Behavioral Storyteller, and Viral Retention Architect for the channel '{niche_profile.get('name')}' (niche: '{channel_niche}').
@@ -615,11 +620,11 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   "climax_scene_id": {8 if is_long_form else 3},
   "hook_search_queries": ["bare noun + action/format (2-4 words)", "bare noun + angle (2-4 words)"],
   "full_narration": "Complete, smooth, well-developed spoken story without stage directions ({'360-560 words across 16-22 scenes (~3.5 min 5-Chapter Documentary)' if is_long_form else '92-118 words, 34-42s High-APV 5-Act story'} with Real-Life Example, Mechanism, Counter-Move/Climax, and zero spoken Subscribe CTA)",
-  "thumbnail_text": "2-4 TỪ IN HOA CỰC TO GỢI TÒ MÒ CHO ẢNH BÌA",
+  "thumbnail_text": "2-4 BOLD ALL-CAPS CURIOSITY WORDS IN {target_lang_display} FOR THUMBNAIL",
   "scenes": [
     {{
       "scene_id": 1,
-      "visual_reasoning": "Ý đồ dẫn dắt mạch truyện của cảnh này",
+      "visual_reasoning": "Narrative and visual intent of this scene",
       "narration": "Complete, natural spoken sentence for this scene ({'Scene 1: 8-14 words; Body scenes: 18-26 words flowing naturally, 16 to 22 scenes total' if is_long_form else 'Scene 1: 6-10 words using 1 of the 4 Psychological-Visual Hook Archetypes without repeating title; Body scenes: 11-16 words flowing naturally, 7 to 8 scenes total'})",
       "visual_keyword": "simple relevant search query for the subject/theme (2-5 English words)",
       "visual_prompt": "Cinematic {'16:9 widescreen ' if is_long_form else ''}visual description fitting the overall story mood",
@@ -634,7 +639,7 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
   ],
   "tags": {json.dumps(["documentary", "viral"] if is_long_form else ["shorts", "viral"])},
   "description": "Engaging description with hashtags",
-  "pinned_comment": "Irresistible open-ended bait question in {target_lang_display} posted by channel owner to pin at top of comments",
+  "pinned_comment": "12-22 word Counterfactual 50/50 Debate Question in {target_lang_display} (e.g. 'What if it were 2v1?', 'Next matchup: X vs Y', or a sharp personal dilemma ending with '(1) ... or (2) ... 👇' — NEVER ask a question the video already answered and NEVER include 'Subscribe/Inscreva-se' spam!)",
   "viral_formula": "5-Act Full Storytelling | Smooth Transitions | Surgical Counter-Move | Seamless Loop"
 }}
 """

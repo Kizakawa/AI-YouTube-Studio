@@ -523,7 +523,7 @@ class OAuthAndUploadMixin:
         # Luôn ghim câu hỏi tương tác (💬 Poll) ngay ở Dòng 1 của Description để hiển thị tức thì
         # kể cả khi video đang ở chế độ SCHEDULED (private) hoặc YouTube API không cho ghim comment tự động.
         if effective_comment and "💬" not in (desc_without_trailing_hashes or ""):
-            poll_line = f"💬 {effective_comment.strip()}"
+            poll_line = f"💬 {self.sanitize_engagement_comment(effective_comment).strip()}"
             desc_without_trailing_hashes = (
                 f"{poll_line}\n\n{desc_without_trailing_hashes}".strip()
                 if desc_without_trailing_hashes

@@ -842,48 +842,54 @@ class ScriptJsonParserMixin:
                 is_duel = any(k in comb_all for k in (" vs ", "duelo", "cachalote", "lula-colossal", "lula gigante", "tubarão", "orca", "showdown"))
                 if is_pt_lang:
                     raw_data["pinned_comment"] = (
-                        "Quem vence esse duelo mortal nas profundezas: (1) ou (2)? Digite seu voto nos comentários e inscreva-se no canal! 👇🦑🐋"
+                        "Honestamente: se essa revanche acontecesse no escuro total a 2.000m, o resultado mudaria? (1) Sim ou (2) Sem chance? 👇🦑🐋"
                         if is_duel else
-                        "Você teria coragem de explorar esse lugar ou acha que a ciência esconde algo? Digite (1) SIM ou (2) NUNCA e inscreva-se no canal! 👇🌊"
+                        "Se oferecessem US$ 1 milhão para você descer até esse lugar por 10 minutos: (1) Aceitaria ou (2) Jamais? 👇🌊"
                     )
                 else:
                     raw_data["pinned_comment"] = (
-                        "Theo bạn đây là (1) Sinh vật chưa được khám phá hay (2) Hiện tượng tự nhiên? Gõ 1 hoặc 2 bên dưới 👇"
+                        "Nếu được trả 1 triệu USD để lặn xuống độ sâu này trong 10 phút: Bạn chọn (1) Nhận lời hay (2) Không bao giờ? 👇"
                         if is_vn else
-                        "Quick Poll: Is this (1) An Undiscovered Creature or (2) A Natural Anomaly? Drop 1 or 2 below! 👇"
+                        "Be honest: for $1,000,000, would you descend into this zone for 10 minutes? (1) Take the money or (2) Never? 👇🌊"
                     )
             elif niche_norm == "wildlife_predators" or any(k in comb_all for k in ("săn mồi", "predator", "wildlife", "dã thú", "báo", "sư tử", "hổ", "cheetah", "leopard", "eagle", "onça", "sucuri", "jacaré", "ratel", "hippo", "orca")):
                 raw_data["pinned_comment"] = (
-                    "Quem vence esse duelo mortal no 1x1: (1) ou (2)? Digite seu voto abaixo e INSCREVA-SE para duelos diários! 👇🔥"
+                    "Honestamente: e se fossem 2 contra 1 ao mesmo tempo nessa disputa, o vencedor ainda sobreviveria? (1) Sim ou (2) Sem chance? 👇🔥"
                     if is_pt_lang else (
-                        "Kèo sinh tử 1v1 này bạn chọn (1) hay (2)? Để lại bình chọn bên dưới và ĐĂNG KÝ kênh để xem tập tiếp theo! 👇🔥"
+                        "Thật lòng đi: nếu kèo này là 2 đánh 1 cùng lúc thì kẻ thắng cuộc còn trụ nổi không? (1) Vẫn thắng hay (2) Không có cửa? 👇🔥"
                         if is_vn else
-                        "Who takes the crown in this 1v1 survival showdown: (1) Predator or (2) Challenger? Drop your vote below & SUBSCRIBE for daily Apex Battles! 👇🔥🦁"
+                        "Be honest: if it were a 2-on-1 ambush at the same time, does the winner still walk away? (1) Yes or (2) No chance? 👇🔥"
                     )
                 )
             elif niche_norm == "psychology" or any(k in comb_all for k in ("tâm lý", "psychology", "manipulat", "thao túng", "mindset", "gaslight", "liar", "dark psychology")):
                 raw_data["pinned_comment"] = (
-                    "Bạn đã từng gặp kiểu người này ngoài đời thực chưa? Gõ (1) Đã từng hoặc (2) Chưa bao giờ bên dưới nhé 👇"
+                    "Khi phát hiện ai đó dùng chiêu này với bạn, bạn sẽ: (1) Vạch mặt ngay lập tức hay (2) Giả vờ không biết để quan sát? 👇"
                     if is_vn else
-                    "Have you ever dealt with someone who used Sign #2 in real life? Drop (1) YES or (2) NO below! 👇"
+                    "When you catch someone using this tactic on you, do you: (1) Call them out immediately or (2) Play along and watch? 👇🧠"
                 )
             else:
                 raw_data["pinned_comment"] = (
-                    "Chi tiết nào khiến bạn bất ngờ nhất? Hãy để lại bình luận của bạn bên dưới nhé 👇"
+                    "Nếu rơi vào tình huống này ngoài đời thực, bạn chọn (1) Đối mặt hay (2) Rút lui ngay lập tức? 👇"
                     if is_vn else
-                    "Which moment shocked you the most? Drop your thoughts in the comments below 👇"
+                    "If you faced this exact situation in real life, would you: (1) Stand your ground or (2) Walk away immediately? 👇"
                 )
 
-        # Đảm bảo mọi Pinned Comment (kể cả do LLM tự sinh) đều tích hợp lời mời Subscribe tự nhiên
-        # và Cảnh cuối cùng có HUD Badge nhắc Vote & Subscribe (giữ nguyên 0% Spoken Outro CTA để bảo toàn Loop APV)
+        # Khử sạch đuôi quảng cáo công nghiệp ("🔔 INSCREVA-SE...", "🔔 SUBSCRIBE...", "🔔 ĐĂNG KÝ...")
+        # để bình luận đầu tiên của chủ kênh trông tự nhiên 100% như một cuộc tranh luận 50/50 thật sự.
         cur_pin = str(raw_data.get("pinned_comment") or "").strip()
-        if cur_pin and not re.search(r'\b(?:subscribe|inscreva|đăng\s*ký)\b', cur_pin, flags=re.IGNORECASE):
-            if is_pt_lang:
-                cur_pin = f"{cur_pin.rstrip()} 🔔 INSCREVA-SE no canal para não perder o próximo episódio!"
-            elif is_vn:
-                cur_pin = f"{cur_pin.rstrip()} 🔔 ĐĂNG KÝ kênh để không bỏ lỡ tập tiếp theo!"
-            else:
-                cur_pin = f"{cur_pin.rstrip()} 🔔 SUBSCRIBE for daily viral episodes!"
+        if cur_pin:
+            cur_pin = re.sub(
+                r'\s*(?:🔔|🐾|🌊|🦁)?\s*(?:inscreva-se|subscribe|đăng\s*ký)\b.*$',
+                '',
+                cur_pin,
+                flags=re.IGNORECASE,
+            ).strip()
+            cur_pin = re.sub(
+                r'\s+(?:e\s+inscreva-se(?:\s+no\s+canal)?|and\s+subscribe|&\s*subscribe)\b[^?!.]*',
+                '',
+                cur_pin,
+                flags=re.IGNORECASE,
+            ).strip()
             raw_data["pinned_comment"] = cur_pin
 
         if scenes and isinstance(scenes, list) and len(scenes) >= 3 and isinstance(scenes[-1], dict):

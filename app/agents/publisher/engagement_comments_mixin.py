@@ -19,6 +19,24 @@ logger = logging.getLogger(__name__)
 
 
 class EngagementCommentsMixin:
+    def sanitize_engagement_comment(self, comment_text: Optional[str]) -> str:
+        """Khử sạch đuôi quảng cáo công nghiệp ('🔔 INSCREVA-SE...', '🔔 SUBSCRIBE...', '🔔 ĐĂNG KÝ...') khỏi bình luận."""
+        raw_c = str(comment_text or "").strip()
+        if not raw_c:
+            return ""
+        cleaned = re.sub(
+            r'\s*(?:🔔|🐾|🌊|🦁)?\s*(?:inscreva-se|subscribe|đăng\s*ký)\b.*$',
+            '',
+            raw_c,
+            flags=re.IGNORECASE | re.DOTALL,
+        ).strip()
+        cleaned = re.sub(
+            r'\s+(?:e\s+inscreva-se(?:\s+no\s+canal)?|and\s+subscribe|&\s*subscribe)\b[^?!.]*',
+            '',
+            cleaned,
+            flags=re.IGNORECASE,
+        ).strip()
+        return cleaned or raw_c
     def build_default_engagement_comment(self, title: str = "", target_lang: Optional[str] = None) -> str:
         """
         Tạo câu hỏi bình chọn tương tác (Binary Poll Comment) bám sát tiêu đề/chủ đề và khu vực của kênh:
@@ -49,10 +67,28 @@ class EngagementCommentsMixin:
             side_b = vs_match.group(2).strip(" -")
             if 2 <= len(side_a) <= 28 and 2 <= len(side_b) <= 28:
                 if is_vn:
-                    return f"Kèo sinh tử này bạn chọn phe nào: (1) {side_a} hay (2) {side_b}? Bình chọn 1 hoặc 2 bên dưới 👇🔥"
+                    vn_vs_debates = [
+                        f"Thật lòng đi: nếu là 2 {side_a} hợp sức đấu 1 {side_b} cùng lúc, kết quả có đảo chiều không? (1) Có hay (2) Không có cửa? 👇🔥",
+                        f"Nếu tái đấu trong bóng tối hoàn toàn ở địa hình trung lập, phe nào mới sống sót bước ra? (1) {side_a} hay (2) {side_b}? 👇🔥",
+                        f"Nếu {side_b} là kẻ tung đòn phục kích bất ngờ trước, {side_a} còn trụ nổi không? (1) Vẫn thắng hay (2) Gục ngay? 👇🔥",
+                        f"Ở kích thước cực đại ngoài tự nhiên, ai mới thực sự là khắc tinh của kẻ kia? (1) {side_a} hay (2) {side_b}? 👇🔥",
+                    ]
+                    return vn_vs_debates[sum(ord(c) for c in (clean_t or "shorts")) % 4]
                 if is_pt_br:
-                    return f"Quem vence esse duelo extremo: (1) {side_a} ou (2) {side_b}? Comente 1 ou 2 abaixo! 👇🔥"
-                return f"Who wins this 1v1 showdown: (1) {side_a} or (2) {side_b}? Drop 1 or 2 in the comments! 👇🔥"
+                    pt_vs_debates = [
+                        f"Honestamente: e se fossem 2 {side_a} contra 1 {side_b} ao mesmo tempo, o resultado mudaria? (1) Sim ou (2) Sem chance? 👇🔥",
+                        f"Se a revanche entre {side_a} e {side_b} acontecesse no escuro total, quem sairia vivo? (1) {side_a} ou (2) {side_b}? 👇🔥",
+                        f"Seja sincero: se {side_b} atacasse primeiro de surpresa, {side_a} ainda sobreviveria? (1) Sim ou (2) Jamais? 👇🔥",
+                        f"Em território neutro e no tamanho máximo, quem realmente domina essa revanche? (1) {side_a} ou (2) {side_b}? 👇🔥",
+                    ]
+                    return pt_vs_debates[sum(ord(c) for c in (clean_t or "shorts")) % 4]
+                en_vs_debates = [
+                    f"Be honest: if it were 2 {side_a} vs 1 {side_b} at the same time, does the outcome flip? (1) Yes or (2) No chance? 👇🔥",
+                    f"If {side_a} and {side_b} rematched in pitch-black darkness, who walks away alive? (1) {side_a} or (2) {side_b}? 👇🔥",
+                    f"If {side_b} landed the first surprise ambush, could {side_a} still survive? (1) Yes or (2) Never? 👇🔥",
+                    f"On neutral ground at peak adult size, who truly takes the rematch? (1) {side_a} or (2) {side_b}? 👇🔥",
+                ]
+                return en_vs_debates[sum(ord(c) for c in (clean_t or "shorts")) % 4]
 
         rot_idx = sum(ord(c) for c in (clean_t or "shorts")) % 4
 
@@ -126,7 +162,7 @@ class EngagementCommentsMixin:
             ]
             return en_myst_polls[rot_idx]
         return (
-            "Chi tiết nào khiến bạn bất ngờ nhất? Hãy bình luận suy nghĩ của bạn bên dưới 👇\n🔔 Đăng ký kênh (Subscribe) để không bỏ lỡ video tiếp theo! 🔥"
+            "Nếu rơi vào tình huống này ngoài đời thực, bạn chọn (1) Đối mặt hay (2) Rút lui ngay lập tức? 👇🔥"
             if is_vn else (
                 "Você já sabia disso antes de assistir? Comente (1) SIM ou (2) NÃO abaixo! 👇🔥"
                 if is_pt_br else
@@ -155,7 +191,7 @@ class EngagementCommentsMixin:
                     "videoId": video_id,
                     "topLevelComment": {
                         "snippet": {
-                            "textOriginal": comment_text.strip()
+                            "textOriginal": self.sanitize_engagement_comment(comment_text).strip()
                         }
                     }
                 }
@@ -297,7 +333,7 @@ class EngagementCommentsMixin:
                 effective_comment = self.build_default_engagement_comment(title=v_title)
 
             # 5. Đăng bình luận tác giả
-            return self.add_pinned_comment(video_id, effective_comment, retry_on_spam=True, retry_delay_sec=4)
+            return self.add_pinned_comment(video_id, self.sanitize_engagement_comment(effective_comment), retry_on_spam=True, retry_delay_sec=4)
         except Exception as e:
             logger.warning(f"💬 [PublisherAgent] Lỗi khi ensure_pinned_comment cho {video_id}: {e}")
             return None

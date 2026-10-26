@@ -144,7 +144,11 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
    - NUNCA faça perguntas passivas ("Você sabia que...?").
 4. REGRA DE ALTERNÂNCIA VISUAL 1-1 & ANTI-FADIGA DE TEMA (QUEBRA DO TETO DE ~1.000 VIEWS):
    - Dados reais da YouTube Analytics API v2 provam que repetir o mesmo animal/sujeito principal no início do Título e na paleta visual das primeiras cenas em vídeos consecutivos causa fadiga imediata no público do canal (Stayed-to-Watch cai de ~48,5% para ~32,8%, travando o vídeo no lote inicial de ~1.000 views).
-   - NUNCA inicie o Título (`title`) ou a Cena 1 com o mesmo sujeito/espécie que já liderou os últimos 2-3 vídeos recentes do canal! Se o tema envolver um fenômeno extremo (vulcão a 100°C, cratera a 1.000°C, lago tóxico, anomalia acústica) + um animal já usado recentemente, destaque SEMPRE o fenômeno extremo inédito ou o oponente novo na abertura do Título e na cor/visual da Cena 1!{bench_block}
+   - NUNCA inicie o Título (`title`) ou a Cena 1 com o mesmo sujeito/espécie que já liderou os últimos 2-3 vídeos recentes do canal! Se o tema envolver um fenômeno extremo (vulcão a 100°C, cratera a 1.000°C, lago tóxico, anomalia acústica) + um animal já usado recentemente, destaque SEMPRE o fenômeno extremo inédito ou o oponente novo na abertura do Título e na cor/visual da Cena 1!
+5. GATILHO DE DEBATE ORGÂNICO 50/50 NO COMENTÁRIO FIXADO (`pinned_comment` — ZERO SPAM DE 'INSCREVA-SE'):
+   - NUNCA pergunte no `pinned_comment` algo que o vídeo já acabou de responder (ex: se o vídeo já mostrou o Mangusto vencendo a Mamba-Negra, NÃO pergunte "Quem vence: Mangusto ou Mamba-Negra?").
+   - NUNCA adicione frases robóticas de propaganda como "🔔 INSCREVA-SE no canal para não perder o próximo episódio!".
+   - Crie uma Hipótese Contrafactual de Escalonamento (2 contra 1, Mudança de Terreno ou Próximo Desafiante) curta (12 a 22 palavras) que divida os comentários 50/50 (ex: "Honestamente: e se fossem 2 Mambas-Negras ao mesmo tempo, o Mangusto ainda sobreviveria? (1) Sim ou (2) Sem chance? 👇").{bench_block}
 ═══════════════════════════════════════════════════════════════════
 """
     elif is_vi:
@@ -187,6 +191,10 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
    - NO verbatim Title repetition in Scene 1, NO dry Wikipedia metric recitation at 0.0s, NO abstract poetry ("loaded weapon", "silent cage"), and NO passive Yes/No questions ("Did you know...?").
 4. 1-1 VISUAL CONTRAST & LEAD-SUBJECT ALTERNATION RULE (BREAKING THE ~1,000-VIEW SEED COHORT CEILING):
    - Real YouTube Analytics v2 telemetry proves that starting consecutive uploads with the exact same lead subject/species noun or identical opening visual color palette triggers Audience Cohort Fatigue (Stayed-to-Watch drops from ~48.5% to ~32.8%, capping views at ~1,000).
-   - NEVER start the new `title` or Scene 1 visual hook with the same primary subject noun/entity that led the channel's last 2-3 videos! Always alternate visual palettes and foreground the freshest, most visually contrasting phenomenon or opponent.{bench_block}
+   - NEVER start the new `title` or Scene 1 visual hook with the same primary subject noun/entity that led the channel's last 2-3 videos! Always alternate visual palettes and foreground the freshest, most visually contrasting phenomenon or opponent.
+5. ORGANIC 50/50 COUNTERFACTUAL DEBATE COMMENT (`pinned_comment` — ZERO 'SUBSCRIBE' SPAM):
+   - NEVER ask a question in `pinned_comment` that the video already answered (e.g. if the video already showed why the Mongoose beats the Black Mamba, DO NOT ask "Who wins: Mongoose or Black Mamba?").
+   - NEVER append robotic promotional footers like "🔔 SUBSCRIBE for more episodes!".
+   - Write a 1-sentence Counterfactual Twist / Escalated Odds / Next-Opponent Dilemma (12 to 22 words) ending with `(1) ... or (2) ... 👇` that splits the comments 50/50 (e.g. "Be honest: if it were 2 Black Mambas at the same time, does the Mongoose still survive? (1) Yes or (2) No chance? 👇").{bench_block}
 ═══════════════════════════════════════════════════════════════════
 """

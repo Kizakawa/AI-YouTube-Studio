@@ -86,6 +86,13 @@ Thuật toán YouTube Shorts **KHÔNG** quyết định mở phễu lên tầng 
 
 ---
 
+### Quy Tắc 4: Bình Luận Đầu Luồng Của Chủ Kênh (`pinned_comment`) — Giả Thuyết Nâng Độ Khó 50/50 & CẤM Đuôi Quảng Cáo "Subscribe / Inscreva-se"
+1. **Không bao giờ hỏi lại kết quả đã giải quyết xong trong video**: Nếu video đã cho thấy Cầy Mangut thắng Rắn Mamba Đen, tuyệt đối không hỏi *"Ai thắng: (1) Cầy Mangut hay (2) Mamba Đen?"* vì khán giả đã biết kết quả nên không cần tranh luận.
+2. **Không bao giờ gắn đuôi quảng cáo công nghiệp (`"🔔 INSCREVA-SE no canal..."`, `"🔔 SUBSCRIBE..."`)**: Làm lộ mùi bot tự động khiến người xem bỏ qua.
+3. **Đặt Câu Hỏi Giả Định Mở Nâng Độ Khó (`Counterfactual 50/50 Debate`, 12–22 từ)**: Đặt giả thuyết *2 đánh 1*, *đổi địa hình/bóng tối*, *kèo đấu tiếp theo*, hoặc *thử thách 1 triệu USD* kết thúc bằng `(1) ... hay (2) ... 👇` để chia đôi phe bình luận.
+
+---
+
 ## Workflow Áp Dụng Cho Agent Trong Mọi Phiên Làm Việc
 
 ### 1. Khi Lên Ý Tưởng Chủ Đề & Đặt Tiêu Đề (`Ideation & Title Generation`)

@@ -111,29 +111,29 @@ class ViralIdeationMixin:
             if best_eval.hook_strength.score < effective_min_hook:
                 critiques_list.insert(
                     0,
-                    f"Cảnh 1 Hook chưa đạt ngưỡng chống vuốt bỏ ({best_eval.hook_strength.score:.1f}/{effective_min_hook:.1f}, "
-                    f"kênh có swipe_away={avg_swipe}%): {best_eval.hook_strength.feedback}. "
-                    f"BẮT BUỘC dùng công thức pt-BR / Wild Odyssey: cấu trúc đối đầu 'A vs B' + câu khẳng định gây sốc 5-8 từ có con số/thông số vật lý cụ thể ngay giây 0.0s."
+                    f"Scene 1 Hook is below the anti-swipe threshold ({best_eval.hook_strength.score:.1f}/{effective_min_hook:.1f}, "
+                    f"channel swipe_away={avg_swipe}%): {best_eval.hook_strength.feedback}. "
+                    f"MUST use an urgent 6-9 word visual pointer or 'Entity A vs Entity B' confrontation with a concrete physical metric at 0.0s."
                 )
             vf_mode = "long" if str(kwargs.get("video_format") or getattr(best_script, "video_format", "short")).lower() in ("long", "16:9", "documentary") else "short"
             if best_eval.story_pacing.score < 8.0:
                 if vf_mode == "long":
                     critiques_list.append(
-                        f"Nhịp điệu Video Dài 16:9 chưa chuẩn ({best_eval.story_pacing.score:.1f}/10): {best_eval.story_pacing.feedback}. "
-                        f"Điều chỉnh lời thoại khoảng 380-750 từ chia đều vào 16-22 phân cảnh (8-14s/cảnh) theo 5 Chương."
+                        f"Long-Form 16:9 pacing needs adjustment ({best_eval.story_pacing.score:.1f}/10): {best_eval.story_pacing.feedback}. "
+                        f"Target 380-650 words across 16-22 scenes (8-14s/scene) in 5 Chapters."
                     )
                 else:
                     critiques_list.append(
-                        f"Nhịp điệu chưa chuẩn ({best_eval.story_pacing.score:.1f}/10): {best_eval.story_pacing.feedback}. "
-                        f"Điều chỉnh lời thoại strictly 88-118 từ cho toàn bộ video, 3.5-4.5s/cảnh, 8-9 cảnh."
+                        f"Pacing needs adjustment ({best_eval.story_pacing.score:.1f}/10): {best_eval.story_pacing.feedback}. "
+                        f"Target 88-118 words across 7-8 complete scenes (3.5-4.5s/scene)."
                     )
             if getattr(best_eval, "visual_direction", None) and best_eval.visual_direction.score < 8.0:
-                critiques_list.append(f"Thị giác yếu ({best_eval.visual_direction.score:.1f}/10): Cấm từ ngữ trừu tượng. visual_keyword và stock_query phải là danh từ/hành động vật lý cụ thể.")
+                critiques_list.append(f"Weak visual direction ({best_eval.visual_direction.score:.1f}/10): visual_keyword and stock_query MUST be concrete English physical nouns/actions.")
 
             directive = (
-                f"KỊCH BẢN TRƯỚC ĐÓ ĐẠT ĐIỂM KÉM (Overall={best_eval.overall_score:.1f}/{effective_min_overall:.1f}, "
+                f"PREVIOUS DRAFT SCORED BELOW THRESHOLD (Overall={best_eval.overall_score:.1f}/{effective_min_overall:.1f}, "
                 f"Hook={best_eval.hook_strength.score:.1f}/{effective_min_hook:.1f}). {target_lang_note} "
-                f"CHỈ ĐẠO BẮT BUỘC SỬA ĐỂ ĐẠT CHUẨN VIRAL: " + " | ".join(critiques_list)
+                f"MANDATORY VIRAL REVISIONS: " + " | ".join(critiques_list)
             )
 
             try:
@@ -484,7 +484,7 @@ Return ONLY a JSON array with exactly {count} objects:
                     "title": f"{tb[:58]} 🔥 #{channel_niche.split('_')[0]}",
                     "hook": tb.split(":")[-1].strip() if ":" in tb else tb,
                     "angle": "High-stakes confrontation with exact physical metrics and mid-video twist",
-                    "pinned_comment": "Quick Poll: Which side takes the win (1) or (2)? Drop your vote below & SUBSCRIBE! 👇",
+                    "pinned_comment": "Be honest: if it were a 2-on-1 ambush at the same time, does the outcome flip? (1) Yes or (2) No chance? 👇🔥",
                     "viral_formula": "Debate in Comments",
                     "predicted_retention": "130% - 155%",
                     "why_viral": f"Proven A-vs-B million-view archetype for {channel_name}",
