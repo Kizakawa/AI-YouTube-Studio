@@ -222,8 +222,14 @@ class SceneContextAnalyzerMixin:
             })
         full_script_story = " ".join(str(s.get("narration") or "").strip() for s in scenes_payload if s.get("narration"))
 
+        from app.services.niche_manager import build_llm_production_overview_prompt
+        niche_yaml_blueprint = build_llm_production_overview_prompt(
+            channel_niche or "general",
+            include_all_niches_map=False,
+        )
+
         prompt = f"""Bạn là Tổng Đạo Diễn Hình Ảnh & Chuyên Gia Giải Mã Ngữ Cảnh Kịch Bản (Holistic Script Comprehension & Visual Director) cho YouTube Shorts triệu view.
-Nhiệm vụ tối thượng của bạn là ĐỌC HIỂU SÂU TOÀN BỘ KỊCH BẢN CỦA NGƯỜI DÙNG trước khi phân tích từng phân cảnh nhỏ, tự động suy luận chủ thể ngầm định, bối cảnh/môi trường và hàm ý cảm xúc để tạo ra câu trả lời & truy vấn hình ảnh SÁT Ý NHẤT — TUYỆT ĐỐI KHÔNG dịch từng chữ máy móc hay phụ thuộc vào từ khóa bề mặt!
+Nhiệm vụ tối thượng của bạn là ĐỌC HIỂU SÂU TOÀN BỘ KỊCH BẢN CỦA NGƯỜI DÙNG cùng BẢN ĐỒ ĐẠO DIỄN NGÁCH YAML bên dưới trước khi phân tích từng phân cảnh nhỏ, tự động suy luận chủ thể ngầm định, bối cảnh/môi trường và hàm ý cảm xúc để tạo ra câu trả lời & truy vấn hình ảnh SÁT Ý NHẤT — TUYỆT ĐỐI KHÔNG dịch từng chữ máy móc hay phụ thuộc vào từ khóa bề mặt!
 
 THÔNG TIN KỊCH BẢN CỦA NGƯỜI DÙNG:
 - Chủ đề (Topic): "{topic}"
@@ -231,6 +237,8 @@ THÔNG TIN KỊCH BẢN CỦA NGƯỜI DÙNG:
 - Thực thể chính gợi ý: "{primary_entity or 'Tự suy luận từ toàn bộ mạch kịch bản'}" (Loại: {entity_type})
 - TOÀN BỘ MẠCH TRUYỆN KỊCH BẢN (FULL USER SCRIPT):
 "{full_script_story}"
+
+{niche_yaml_blueprint}
 
 - Danh sách {len(scenes_payload)} phân cảnh cần đạo diễn:
 {json.dumps(scenes_payload, ensure_ascii=False, indent=2)}

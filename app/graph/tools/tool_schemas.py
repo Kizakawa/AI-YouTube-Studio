@@ -190,24 +190,22 @@ def fetch_clean_cinematic_portrait_or_broll(
     scene_id: int,
     subject_entity: str,
     human_action_query: str,
-    media_preference: str = "VIDEO_BROLL",
+    media_preference: str = "YOUTUBE_FORENSIC_OR_CHARACTER_SHORT",
     search_scope: str = "SCENE_SPECIFIC",
     overall_script_query: str = "",
     target_duration_sec: float = 4.5,
     camera_motion: str = "zoom_in",
 ) -> Dict[str, Any]:
     """
-    CÔNG CỤ ĐẶC NHIỆM CHUYÊN BIỆT CHO TÂM LÝ HỌC (DARK PSYCHOLOGY), THAO TÚNG TÂM LÝ, ÁI KỶ (NARCISSISM), KHẮC KỶ (STOICISM), TRIẾT HỌC & CẢM XÚC CON NGƯỜI.
+    CÔNG CỤ ĐẶC NHIỆM CHUYÊN BIỆT CHO TÂM LÝ HỌC PHÁP Y (FORENSIC PSYCHOLOGY), THẨM VẤN FBI/TÒA ÁN, THÍ NGHIỆM NÃO BỘ 3D, NHÂN VẬT ĐIỆN ẢNH BIỂU TƯỢNG & B-ROLL DARK NOIR SẠCH CHỮ.
     GỌI NGAY CÔNG CỤ NÀY KHI:
-    - Kịch bản hoặc phân cảnh nói về tâm lý con người, thao túng, đọc vị hành vi, ngôn ngữ cơ thể, ánh mắt, sự im lặng, tranh cãi, cô đơn, khắc kỷ, hoặc đấu trí nội tâm.
-    - TẠI SAO PHẢI GỌI CÔNG CỤ NÀY THAY VÌ GOOGLE IMAGES:
-      Khi tìm các chủ đề tâm lý/triết học trên Google Images, 95% kết quả web là ảnh Quote Card có chữ chằng chịt, bìa sách, hoặc infographic làm hỏng hoàn toàn video.
-      Công cụ này tự động BỎ QUA Open Web và truy xuất trực tiếp kho Video B-Roll diễn viên thật & Ảnh chân dung nghệ thuật Chạng vạng (Chiaroscuro / Dark Moody Portrait) SẠCH 100% KHÔNG CHỮ từ Pexels HD & Pixabay HD!
+    - Kịch bản hoặc phân cảnh nói về thẩm vấn FBI/CIA, biểu cảm nghi phạm, tòa án, mô phỏng não bộ 3D, nhân vật ngôn ngữ cơ thể (Thomas Shelby, Patrick Jane, Homelander, Joker) hoặc tâm lý con người.
     - Tham số quan trọng:
-      * `human_action_query`: Cụm 2-4 từ tiếng Anh mô tả HÀNH ĐỘNG VẬT LÝ hoặc BIỂU CẢM KHUÔN MẶT cụ thể của con người (TUYỆT ĐỐI KHÔNG dùng từ trừu tượng như "narcissist", "cognitive dissonance", "manipulation").
-        Ví dụ chuẩn: "close up eyes dark lighting", "couple argument tension", "man stressed alone dark room", "silhouette person walking night", "two men serious conversation".
+      * `human_action_query`: Cụm 3-5 từ tiếng Anh mô tả HÀNH ĐỘNG VẬT LÝ, HIỆN TRƯỜNG PHÁP Y, MÔ PHỎNG 3D NÃO BỘ hoặc NHÂN VẬT BIỂU TƯỢNG cụ thể (TUYỆT ĐỐI KHÔNG dùng từ trừu tượng như "narcissist", "cognitive dissonance", "manipulation").
+        Ví dụ chuẩn: "fbi interrogation suspect sweating", "thomas shelby cold stare eye contact", "3d glowing brain neurons firing", "polygraph needle trembling paper", "detective dark interrogation shadow".
       * `media_preference`:
-        - `"VIDEO_BROLL"`: Ưu tiên tải đoạn video quay diễn viên thật chuyển động chuẩn dọc 9:16 (dùng cho Hook & các cảnh chính).
+        - `"YOUTUBE_FORENSIC_OR_CHARACTER_SHORT"`: Ưu tiên số 1 săn đoạn Peak từ YouTube Shorts (băng thẩm vấn thật, 3D não bộ, hoặc cảnh nhân vật điện ảnh sạch chữ), nếu không có mới chuyển sang Dark Noir B-Roll.
+        - `"VIDEO_BROLL"`: Tải đoạn video Dark Noir B-Roll diễn viên thật ánh sáng tối kịch tính sạch chữ 100%.
         - `"CLEAN_PORTRAIT_PHOTO"`: Tải bộ 3-4 bức ảnh chân dung nghệ thuật ánh sáng tối kịch tính sạch chữ 100% để cắt nhịp nhanh.
     """
     return {
@@ -220,6 +218,47 @@ def fetch_clean_cinematic_portrait_or_broll(
         "overall_script_query": overall_script_query,
         "target_duration_sec": target_duration_sec,
         "camera_motion": camera_motion,
+    }
+
+
+@tool
+def render_doodle_2d_explainer_scene(
+    scene_id: int,
+    character_tag: str = "@MANIPULATOR",
+    prop_type: str = "puppet_strings",
+    scene_concept_summary: str = "",
+    camera_motion: str = "dolly_in",
+    target_duration_sec: float = 4.5,
+) -> Dict[str, Any]:
+    """
+    CÔNG CỤ DỰNG VIDEO HOẠT HỌA 2D DOODLE / STICKMAN EXPLAINER (1080x1920 @ 24 FPS) CHO KHÁI NIỆM TÂM LÝ HỌC ĐEN TRỪU TƯỢNG, BẪY THAO TÚNG VÔ HÌNH, DOPAMINE & BẪY TIỀN BẠC.
+    GỌI NGAY CÔNG CỤ NÀY KHI:
+    - Phân cảnh giải thích một cơ chế tâm lý vô hình, bẫy thao túng tinh thần (Gaslighting, Guilt-Tripping, Mirror Trap, Silent Treatment), tụt pin Dopamine não bộ, bẫy nợ tài chính, hoặc nghịch lý cuộc sống hiện đại mà máy quay thật không thể ghi hình trực tiếp (nếu tìm stock thường sẽ bị ra cảnh nhân viên văn phòng/áo thun giả tạo).
+    - Tham số bắt buộc:
+      * `character_tag`: Chọn đúng 1 trong 5 thẻ nhân vật:
+        - `"@MANIPULATOR"` (Áo đỏ thẫm — Kẻ thao túng / Narcissist / Mastermind)
+        - `"@PLEASER"` (Áo xanh lục — Nạn nhân bị thao túng / People-Pleaser)
+        - `"@MODERNYOU"` (Áo xanh xám — Con người hiện đại / Overthinker / Nghi phạm đang căng thẳng não bộ)
+        - `"@FARMER"` (Áo nâu — Con nợ / Người chịu áp lực nặng nề)
+        - `"@ANCESTOR"` (Áo vàng đất — Nhà hiền triết Khắc kỷ / Stoic)
+      * `prop_type`: Chọn đúng 1 trong 8 đạo cụ ẩn dụ trực quan:
+        - `"puppet_strings"` (Giật dây con rối thao túng tâm lý)
+        - `"brain_battery"` (Pin năng lượng não bộ / Dopamine / Cognitive Load tụt đỏ)
+        - `"split"` (Chia đôi màn hình đối chiếu 2 trạng thái tâm lý / thật vs giả)
+        - `"money_scale"` (Cán cân tiền bạc / bẫy sòng bạc / sunk cost)
+        - `"alarm"` (Đồng hồ đếm ngược / áp lực thời gian 3 giây)
+        - `"block"` (Khối tạ áp lực tâm lý đè nặng)
+        - `"climax"` (Bừng sáng nhận ra sự thật / đòn hóa giải)
+        - `"spear_nature"` (Tự do / thoát khỏi bẫy)
+    """
+    return {
+        "tool_name": "render_doodle_2d_explainer_scene",
+        "scene_id": scene_id,
+        "character_tag": character_tag,
+        "prop_type": prop_type,
+        "scene_concept_summary": scene_concept_summary,
+        "camera_motion": camera_motion,
+        "target_duration_sec": target_duration_sec,
     }
 
 
@@ -268,6 +307,7 @@ MEDIA_DIRECTOR_TOOLS = [
     search_google_cinematic_image,
     summon_epic_monster_cinematic_media,
     fetch_clean_cinematic_portrait_or_broll,
+    render_doodle_2d_explainer_scene,
 ]
 
 

@@ -54,20 +54,49 @@ def execute_clean_cinematic_portrait_or_broll_sync(
     clean_act_q = (human_action_query or subject_entity or "dramatic portrait dark lighting").strip()
     pref_norm = (media_preference or "VIDEO_BROLL").strip().upper()
 
-    # 1. Nhánh Video B-Roll diễn viên thật Pexels / Pixabay HD
-    if pref_norm == "VIDEO_BROLL" or is_hook_scene:
+    # 1. Ưu tiên #1: Săn đoạn Peak từ YouTube Shorts (Băng thẩm vấn FBI/CIA thật, Tòa án, 3D Não bộ, hoặc Nhân vật điện ảnh biểu tượng)
+    if pref_norm in ("YOUTUBE_FORENSIC_OR_CHARACTER_SHORT", "VIDEO_BROLL") or is_hook_scene:
         vid_out = (
             output_path
             if output_path.lower().endswith(".mp4")
             else str(Path(output_path).parent / f"scene_{scene_id:03d}_clean_broll.mp4")
         )
+        try:
+            from app.graph.tools.youtube_peak_executor import execute_youtube_short_peak_clone_sync
+            yt_forensic_res = execute_youtube_short_peak_clone_sync(
+                search_query=clean_act_q,
+                output_path=vid_out,
+                target_duration_sec=max(3.0, target_duration_sec),
+                clip_role="HOOK" if is_hook_scene else "PEAK",
+                used_urls=used,
+                fallback_query=overall_script_query or "fbi interrogation suspect dark",
+                subject_entity=subject_entity or clean_act_q,
+                narration=narration,
+                topic=overall_script_query or topic,
+                search_scope=search_scope,
+                overall_script_query=overall_script_query,
+                max_peak_duration_sec=14.0,
+                job_id=job_id,
+                scene_id=scene_id,
+                skip_youtube_search=False,
+            )
+            if yt_forensic_res and yt_forensic_res.get("media_path") and Path(yt_forensic_res["media_path"]).exists():
+                logger.info(
+                    f"🎬 [CleanPortraitTool YT-Shorts Priority #1] Scene #{scene_id}: Đã cắt đoạn Peak YouTube Short "
+                    f"cho '{clean_act_q}' ({yt_forensic_res.get('title', '')[:45]})"
+                )
+                return yt_forensic_res
+        except Exception as e_yt_f:
+            logger.debug(f"[CleanPortraitTool] YouTube Shorts priority skip on scene {scene_id}: {e_yt_f}")
+
+        # Ưu tiên #2: Dự phòng Video B-Roll Dark Noir diễn viên thật Pexels / Pixabay HD sạch chữ 100%
         va_clean_vid = {
             "subject": subject_entity or clean_act_q,
             "search_queries": [
                 clean_act_q,
+                "detective interrogation dark room",
                 "close up eyes dark lighting",
                 "silhouette person walking night",
-                "dramatic portrait lighting",
             ],
             "clean_stock_only": True,
             "is_hook_scene": is_hook_scene,

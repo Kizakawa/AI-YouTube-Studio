@@ -450,8 +450,13 @@ async def node_produce_and_score_hook_video(state: VideoWorkflowState) -> Dict[s
 
     @trace_custom_span("HookVideoNode.distill_script_hot_peaks_llm", run_type="llm")
     def _distill_script_hot_peaks_with_llm() -> Optional[Dict[str, Any]]:
+        from app.services.niche_manager import build_llm_production_overview_prompt
+        niche_yaml_blueprint = build_llm_production_overview_prompt(
+            niche or "general",
+            include_all_niches_map=False,
+        )
         plan_prompt = f"""You are an elite Viral YouTube Shorts Peak Footage Scout & Script-to-Hook Visual Director.
-Read the ENTIRE finalized script below from Scene 1 to Scene 8, distill the hottest core conflict/spectacle of the story, and engineer 5 hyper-targeted YouTube Shorts search queries to harvest the most explosive PEAK action clips for the Opening Hook (0.0–3.5s) and Mid-Video Climax (Scene {climax_scene_id}).
+Read the ENTIRE finalized script below from Scene 1 to Scene 8, consult the YAML NICHE PRODUCTION BLUEPRINT & ABSTRACT-TO-PHYSICAL QUERY TRANSLATIONS, distill the hottest core conflict/spectacle of the story, and engineer 5 hyper-targeted YouTube Shorts search queries to harvest the most explosive PEAK action clips for the Opening Hook (0.0–5.0s) and Mid-Video Climax (Scene {climax_scene_id}).
 
 - Video Title: {script_title}
 - Topic: {topic}
@@ -462,22 +467,25 @@ Read the ENTIRE finalized script below from Scene 1 to Scene 8, distill the hott
 - Pre-Suggested Script Queries: {json.dumps(queries, ensure_ascii=False)}
 - Full Script (All Scenes): {full_script_text[:2400]}
 
+{niche_yaml_blueprint}
+
 CRITICAL PEAK HARVESTING & DIRECTORIAL RULES:
 1. DISTILL THE HOTTEST VISUAL PAYOFF FROM THE ENTIRE SCRIPT:
-   - Do NOT translate Scene 1 blindly if Scene 1 is rhetorical or abstract. Read all scenes to identify the #1 most shocking physical clash, high-speed strike, extreme natural phenomenon, or intense human behavioral moment in the script, and bring that Peak right into the first 3 seconds (Visual Foreshadowing).
+   - Do NOT translate Scene 1 blindly if Scene 1 is rhetorical or abstract. Read all scenes and the YAML `abstract_to_physical_query_translations` to identify the #1 most shocking physical clash, high-speed strike, extreme natural phenomenon, or intense forensic/neuroscience/behavioral moment in the script, and bring that Peak right into the first 4–5 seconds (Visual Foreshadowing).
 2. CHOOSE "hook_production_strategy" FROM EXACTLY ONE OF THESE 3 MODES:
-   - "VIRAL_SHORT_ACTION_PEAK": Best for wildlife predators, animal rescues, underwater/ocean phenomena, natural disasters, or 3D CGI monsters where real action footage or 3D VFX from a viral Short creates an instant visceral shock.
-   - "CINEMATIC_BROLL_FAST_CUT": Best for psychology, dark psychology, human behavior, FBI interrogation, body language, or interpersonal tension where YouTube Shorts searches might return talking heads.
+   - "VIRAL_SHORT_ACTION_PEAK": Default #1 priority for wildlife predators, animal rescues, underwater/ocean phenomena, natural disasters, 3D CGI monsters, AND psychology/forensic/neuroscience topics where real YouTube Shorts peak clips (FBI interrogation room, courtroom reaction, 3D glowing brain MRI, iconic character cold stare) create an instant visceral shock.
+   - "CINEMATIC_BROLL_FAST_CUT": Secondary fallback only when a quiet philosophical topic has no concrete YouTube Shorts visual spectacle.
    - "HYBRID_MOTION_AND_SCENE_MONTAGE": Best for counterfactual history ("What If"), ancient empires, or historical events.
 3. ENGINEER 5 HYPER-TARGETED YOUTUBE SHORTS PEAK QUERIES ("search_queries"):
    - Write 5 distinct English search queries (3–6 words each) in the exact phrasing used by viral YouTube Shorts titles (`[Concrete Subject] + [Explosive Action/Strike/Phenomenon] + [Setting/Detail]`).
-   - Query 1 ("beat_1_query"): The ultimate 0.0–1.8s Opening Peak Shock (e.g., `"jaguar jumping in river attack caiman"`, `"boiling river amazon steam thermal"`, `"sperm whale diving deep ocean"`).
-   - Query 2 ("beat_2_query"): Distinct close-up strike, weapon, or reaction shot for 1.8–3.5s (e.g., `"jaguar bite caiman skull pantanal"`, `"honey badger fighting lions wild"`).
-   - Query 3: Viral YouTube Short native phrasing with `shorts` keyword (e.g., `"jaguar vs caiman real fight shorts"`, `"honey badger fearless lion shorts"`).
+   - For Psychology / Dark Psychology / Human Behavior: follow the YAML `abstract_to_physical_query_translations` to translate abstract concepts into concrete physical YouTube Short queries (e.g., `"fbi interrogation body language eye contact"`, `"suspect sweating interrogation room camera"`, `"3d brain neural network glowing animation"`, `"human eye pupil dilating macro slow motion"`).
+   - Query 1 ("beat_1_query"): The ultimate 0.0–2.5s Opening Peak Shock.
+   - Query 2 ("beat_2_query"): Distinct close-up strike, weapon, or micro-expression reaction shot for 2.5–5.0s.
+   - Query 3: Viral YouTube Short native phrasing with `shorts` keyword.
    - Query 4: The 15-Second Mid-Video Climax visual for Scene {climax_scene_id}.
    - Query 5: High-impact close-up / phenomenon angle.
    - NEVER use abstract words ("manipulation", "psychology", "envy", "alternate history", "what if") in queries.
-   - Also provide "must_see_visual_cues" (3–4 concrete visual elements that must appear in the Peak frames) and "stock_broll_queries" (2 concise 2–3 word noun + habitat queries for Pexels/Pixabay).
+   - Also provide "must_see_visual_cues" (3–4 concrete visual elements that must appear in the Peak frames) and "stock_broll_queries" (2 concise 2–3 word noun + habitat/lighting queries for Pexels/Pixabay).
 
 Return ONLY valid JSON:
 {{

@@ -364,14 +364,99 @@ def build_visual_strategy_prompt_instructions(niche_profile: Dict[str, Any]) -> 
     angles = visual.get("camera_angles", "Dramatic angles")
     palette = visual.get("color_palette", "High-contrast cinematic")
     stock_kws = visual.get("stock_video_keywords", [])
-    stock_text = ", ".join(f'"{kw}"' for kw in stock_kws[:6])
+    stock_text = ", ".join(f'"{kw}"' for kw in stock_kws[:10])
+    llm_bp = build_llm_production_overview_prompt(niche_profile, include_all_niches_map=False)
 
     return f"""
 - Phong cách mỹ thuật ngách: {art_style}
 - Góc quay ưu tiên: {angles}
 - Bảng màu & Ánh sáng: {palette}
 - Từ khóa tư liệu thực tế (Stock keywords): {stock_text}
+{llm_bp}
 """
+
+
+def build_llm_production_overview_prompt(
+    niche_id_or_profile: Any,
+    include_all_niches_map: bool = True,
+) -> str:
+    """
+    Trích xuất toàn cảnh Hệ sinh thái Ngách Kênh & Bản thiết kế Công cụ Sản xuất (`llm_production_blueprint`)
+    trực tiếp từ các file YAML trong `config/niches/*.yaml` để cung cấp cho LLM Director / VisualCurationAgent / HookVideoNode
+    tự suy luận và quyết định chọn `@tool` sản xuất video cho từng phân cảnh.
+    """
+    if isinstance(niche_id_or_profile, dict):
+        profile = niche_id_or_profile
+    else:
+        profile = get_niche(str(niche_id_or_profile or "general"))
+
+    active_id = str(profile.get("id") or "general")
+    active_name = str(profile.get("name") or active_id)
+    active_desc = str(profile.get("description") or "").strip()
+    visual = profile.get("visual_aesthetics", {}) or {}
+    bp = profile.get("llm_production_blueprint", {}) or {}
+
+    lines: List[str] = []
+    if include_all_niches_map:
+        all_profiles = load_all_niches()
+        core_ids = (
+            "psychology",
+            "wildlife_predators",
+            "deep_sea_earth_mysteries",
+            "alternate_history",
+            "animal_rescue",
+            "satirical_psychology_animation",
+        )
+        lines.append("═══════════════════════════════════════════════════════════════════════")
+        lines.append("🌐 STUDIO-WIDE CHANNEL NICHE TAXONOMY (FROM `config/niches/*.yaml`):")
+        for p in all_profiles:
+            pid = str(p.get("id") or "")
+            if pid in core_ids or pid == active_id:
+                p_bp = p.get("llm_production_blueprint") or {}
+                p_ov = str(p_bp.get("niche_overview") or p.get("description") or "").strip().replace("\n", " ")
+                marker = "👉 [ACTIVE CHANNEL NICHE]" if pid == active_id else "  •"
+                lines.append(f"{marker} `{pid}` ({p.get('name', pid)}): {p_ov[:220]}")
+
+    lines.append("═══════════════════════════════════════════════════════════════════════")
+    lines.append(f"🎯 ACTIVE NICHE YAML PRODUCTION BLUEPRINT: `{active_id}` ({active_name})")
+    if active_desc:
+        lines.append(f"- Niche Mission: {active_desc}")
+    if bp.get("niche_overview"):
+        lines.append(f"- Million-View Production Philosophy: {str(bp.get('niche_overview')).strip()}")
+    if visual.get("art_style"):
+        lines.append(f"- Visual Art Style: {visual.get('art_style')}")
+    if visual.get("camera_angles"):
+        lines.append(f"- Signature Camera Angles: {visual.get('camera_angles')}")
+    if visual.get("stock_video_keywords"):
+        kws = ", ".join(f'"{k}"' for k in list(visual.get("stock_video_keywords") or [])[:10])
+        lines.append(f"- Proven Anchor Queries (YAML): {kws}")
+
+    archetypes = bp.get("visual_archetypes_and_tool_routing") or []
+    if isinstance(archetypes, list) and archetypes:
+        lines.append("\n🛠️ YAML VISUAL ARCHETYPES & `@tool` ROUTING MATRIX (LLM MUST DECIDE PER SCENE):")
+        for arch in archetypes:
+            if not isinstance(arch, dict):
+                continue
+            lines.append(
+                f"  * {arch.get('archetype', 'Archetype')}:\n"
+                f"    - When to use: {str(arch.get('when_to_use', '')).strip()}\n"
+                f"    - Recommended @tool: `{arch.get('recommended_tool', '')}`\n"
+                f"    - Query/Param Formula: {arch.get('query_formula', '')}"
+            )
+
+    translations = bp.get("abstract_to_physical_query_translations") or []
+    if isinstance(translations, list) and translations:
+        lines.append("\n🔄 YAML ABSTRACT-TO-PHYSICAL QUERY TRANSLATION RULES (NEVER SEARCH ABSTRACT NOUNS):")
+        for tr in translations:
+            lines.append(f"  * {tr}")
+
+    forbidden_vis = bp.get("strictly_forbidden_visuals") or []
+    if isinstance(forbidden_vis, list) and forbidden_vis:
+        lines.append("\n🚫 STRICTLY FORBIDDEN VISUALS FOR THIS NICHE:")
+        for fv in forbidden_vis:
+            lines.append(f"  * {fv}")
+    lines.append("═══════════════════════════════════════════════════════════════════════")
+    return "\n".join(lines)
 
 
 def build_image_prompt(raw_prompt: str, scene_id: int, niche_profile: Dict[str, Any]) -> Tuple[str, str]:

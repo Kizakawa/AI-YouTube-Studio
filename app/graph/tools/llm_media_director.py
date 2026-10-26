@@ -56,11 +56,19 @@ def plan_media_tools_with_llm_sync(
         for s in scenes
     ]
 
-    prompt = f"""You are an Elite Viral YouTube Shorts Visual Director & Holistic Script Reasoning Brain with 4 specialized media tools.
+    from app.services.niche_manager import build_llm_production_overview_prompt
+    niche_yaml_blueprint = build_llm_production_overview_prompt(
+        channel_niche or "general",
+        include_all_niches_map=True,
+    )
+
+    prompt = f"""You are an Elite Viral YouTube Shorts Visual Director & Holistic Script Reasoning Brain with 6 specialized media production tools.
 Topic: "{topic}"
 Primary Subject/Entity: "{primary_entity or topic}"
 Channel Niche: "{channel_niche}"
 Total Scenes: {total_scenes}
+
+{niche_yaml_blueprint}
 
 FULL SCRIPT STORY:
 "{full_script_text}"
@@ -70,24 +78,26 @@ Individual Scenes Breakdown:
 
 YOUR 2-STEP COGNITIVE REASONING PROTOCOL (NO BRITTLE KEYWORD MATCHING):
 STEP 1 — HOLISTIC SCRIPT COMPREHENSION, PRONOUN RESOLUTION & SUBTEXT DECODING:
-- Read the FULL SCRIPT STORY from start to finish before deciding any tool or search query.
+- Read the FULL SCRIPT STORY and the YAML NICHE PRODUCTION BLUEPRINT above from start to finish before deciding any tool or search query.
 - Resolve all pronouns ("It", "He", "She", "They", "This creature", "Nó", "Họ", "Ele", "Ela") and restore missing subjects in split sentences back to the true protagonist ("{primary_entity or topic}").
-- Decode metaphors, similes, and abstract statistics into the CONCRETE PHYSICAL REALITY of the protagonist:
+- Decode metaphors, similes, and abstract concepts into CONCRETE PHYSICAL QUERIES or 2D DOODLE VISUAL METAPHORS following the `abstract_to_physical_query_translations` in the YAML blueprint above:
   * If a split sentence says "Its bite hits like a hydraulic press" or "A 230-decibel shockwave", NEVER search for factory machinery or speakers — search for the protagonist's actual physical action in its natural environment!
-  * Deduce the true natural habitat, historical era, or psychological mood from the full script and keep all scenes visually consistent with that world.
+  * If a psychology/behavior sentence discusses abstract manipulation, gaslighting, dopamine traps, or mental cages, translate it using the YAML `abstract_to_physical_query_translations` into either: (a) a real forensic interrogation / 3D glowing brain MRI / iconic character YouTube Short (`clone_youtube_short_peak_clip` or `fetch_clean_cinematic_portrait_or_broll`), OR (b) a 2D Doodle animation (`render_doodle_2d_explainer_scene`).
 
-STEP 2 — SELECT THE OPTIMAL TOOL & CONTEXT-ANCHORED SEARCH QUERY FOR EACH SCENE (scene_id=1 to {total_scenes}):
-1. CHOOSE THE RIGHT SPECIALIZED TOOL BASED ON DEEP SCRIPT INTENT (VIDEO-FIRST BODY & ENDING CURATION — ENFORCE 90%–100% REAL MOTION VIDEO ACROSS THE SHORT, INCLUDING 100% REAL MOTION VIDEO ON THE FINAL SCENE FOR LOOP-BACK RETENTION):
-   - CRITICAL ENDING RETENTION RULE: The FINAL SCENE (scene_id={total_scenes}) and PENULTIMATE SCENE (scene_id={max(1, total_scenes - 1)}) MUST ALWAYS use REAL MOTION VIDEO (`clone_youtube_short_peak_clip`, `media_preference="VIDEO_BROLL"`, or `monster_media_mode="3D_CGI_VIDEO"`). NEVER assign static images to the end of the video, or viewers will immediately swipe away before the loop-back!
+STEP 2 — SELECT THE OPTIMAL `@tool` & CONTEXT-ANCHORED SEARCH QUERY FOR EACH SCENE (scene_id=1 to {total_scenes}):
+1. CHOOSE THE RIGHT SPECIALIZED TOOL BASED ON THE YAML NICHE PRODUCTION BLUEPRINT & DEEP SCRIPT INTENT (ENFORCE 90%–100% REAL MOTION VIDEO ACROSS THE SHORT, INCLUDING 100% MOTION VIDEO ON SCENE 1 AND THE FINAL SCENE):
+   - CRITICAL ENDING RETENTION RULE: Scene 1 (Hook), Scene 2, the PENULTIMATE SCENE (scene_id={max(1, total_scenes - 1)}), and the FINAL SCENE (scene_id={total_scenes}) MUST ALWAYS output REAL MOTION VIDEO (`clone_youtube_short_peak_clip`, `fetch_clean_cinematic_portrait_or_broll` with `media_preference="YOUTUBE_FORENSIC_OR_CHARACTER_SHORT"` / `"VIDEO_BROLL"`, `summon_epic_monster_cinematic_media` with `monster_media_mode="3D_CGI_VIDEO"`, or `render_doodle_2d_explainer_scene`). NEVER assign static images to the beginning or end of the video!
    - IF THE SCRIPT OR SCENE IS ABOUT COLOSSAL MONSTERS, DEEP-SEA LEVIATHANS (The Bloop, Kraken, Megalodon, Cthulhu, Gargantuan Leviathan), PREHISTORIC MEGAFAUNA (Titanoboa, Mosasaurus, T-Rex), KAIJU (Godzilla), CRYPTIDS (SCP, Siren Head, Wendigo), OR MEGALOPHOBIA/THALASSOPHOBIA:
      -> ALWAYS call `summon_epic_monster_cinematic_media`!
      -> Provide `creature_name` (e.g., "The Bloop Leviathan", "Megalodon", "Kraken") and `scale_anchor_object` (a human object like "submarine", "battleship", "scuba diver", "skyscraper" to show colossal scale).
      -> Use `monster_media_mode="3D_CGI_VIDEO"` for Scene 1 (Hook), body scenes, AND the Final Scene (`scene_id={total_scenes}`).
-   - IF THE SCRIPT OR SCENE IS ABOUT HUMAN PSYCHOLOGY, DARK PSYCHOLOGY, MANIPULATION, NARCISSISM, GASLIGHTING, STOICISM, PHILOSOPHY, OR INTERPERSONAL EMOTIONAL TENSION:
-     -> ALWAYS call `fetch_clean_cinematic_portrait_or_broll`! (NEVER call `search_google_cinematic_image` for psychology because open-web Google Images return text quote cards and book covers!).
-     -> Write `human_action_query` as a concrete 2-4 word physical human action or facial micro-expression reflecting the scene's emotional subtext (e.g., "close up eyes dark lighting", "couple argument tension", "man stressed alone dark room", "silhouette person walking night").
-     -> Use `media_preference="VIDEO_BROLL"` for Scene 1, body scenes, AND the Final Scene (`scene_id={total_scenes}`).
-   - FOR REAL-WORLD WILDLIFE, NATURE, SCIENCE, HISTORY, OR DOCUMENTARY TOPICS:
+   - IF THE SCRIPT OR SCENE IS ABOUT HUMAN PSYCHOLOGY, DARK PSYCHOLOGY, FBI INTERROGATION, BODY LANGUAGE, MANIPULATION, NARCISSISM, GASLIGHTING, STOICISM, NEUROSCIENCE, OR INTERPERSONAL TENSION:
+     -> Consult the YAML `visual_archetypes_and_tool_routing` and `abstract_to_physical_query_translations` above to pick the exact million-view production tool for each scene:
+        (A) `fetch_clean_cinematic_portrait_or_broll` (with `media_preference="YOUTUBE_FORENSIC_OR_CHARACTER_SHORT"` or `"VIDEO_BROLL"`): For FBI interrogation room body language, polygraph/courtroom micro-expressions, iconic movie character cold stares (Thomas Shelby, Patrick Jane, Homelander), or Dark Noir chiaroscuro eye contact tension. Write `human_action_query` as a concrete 3–6 word physical query (e.g., `"fbi interrogation body language eye contact"`, `"suspect sweating interrogation room camera"`, `"close up eyes dark lighting tension"`).
+        (B) `clone_youtube_short_peak_clip`: When the scene describes 3D brain anatomy, amygdala fear response, dopamine neural pathways, sensory deprivation experiments, or viral forensic breakdown clips (e.g., `"3d brain neural network glowing animation"`, `"human eye pupil dilating macro slow motion"`).
+        (C) `render_doodle_2d_explainer_scene`: When the scene explains an abstract psychological trap, puppet strings of manipulation, social masks, people-pleasing, or dopamine/money traps that cannot be filmed literally with a camera — or when the channel niche is `satirical_psychology_animation` / `doodle`. Choose `character_tag` (`@MANIPULATOR`, `@PLEASER`, `@MODERNYOU`, `@ANCESTOR`, `@FARMER`) and `prop_type` (`puppet_strings`, `mask`, `cage`, `broken_compass`, `empty_wallet`, `scroll_feed`, `treadmill`, `trophy`).
+        (NEVER call `search_google_cinematic_image` for psychology because open-web Google Images return text quote cards and book covers!).
+   - FOR REAL-WORLD WILDLIFE, NATURE, ANIMAL RESCUE, SCIENCE, OR ALTERNATE HISTORY TOPICS:
      -> Call `clone_youtube_short_peak_clip` (`clip_role="HOOK"` for Scene 1, and `clip_role="PEAK"` for all body scenes AND the Final Scene `scene_id={total_scenes}`), only calling `search_google_cinematic_image` on a middle scene when a specific historical map, document, or static artifact has no motion video equivalent (and NEVER on Scene 1, Scene 2, Scene {max(1, total_scenes - 1)}, or Scene {total_scenes}).
      -> PEAK VIDEO QUERY PRIMING (CRITICAL): When writing `youtube_search_query` for `clone_youtube_short_peak_clip`, NEVER write passive noun-only queries (e.g., FORBIDDEN: `"black caiman river"`, `"honey badger savanna"`). ALWAYS include the **resolved protagonist + explosive physical action, climax verb, or dramatic phenomenon** (e.g., `"black caiman hunting amazon"`, `"honey badger fearless lion encounter"`, `"boiling river amazon steam"`, `"sperm whale deep dive underwater"`) so our Peak Scanner extracts the most intense action moment!
 
@@ -161,9 +171,13 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                                     "scale_anchor_object",
                                     "subject_entity",
                                     "action_or_concept_query",
+                                    "human_action_query",
                                     "overall_script_query",
                                     "youtube_search_query",
                                     "smart_image_query",
+                                    "character_tag",
+                                    "prop_type",
+                                    "scene_concept_summary",
                                 ):
                                     if str_k in t_args:
                                         t_args[str_k] = _sanitize_tool_arg(t_args.get(str_k), fallback="")
@@ -251,10 +265,14 @@ IMPORTANT: Emit tool calls for ALL {total_scenes} scenes in a single response!""
                     d.setdefault("monster_media_mode", "3D_CGI_VIDEO")
             elif t_chosen == "fetch_clean_cinematic_portrait_or_broll":
                 d.setdefault("human_action_query", s.get("visual_keyword") or default_overall_q)
-                if is_mandatory_video_scene:
-                    d["media_preference"] = "VIDEO_BROLL"
+                if is_mandatory_video_scene and str(d.get("media_preference", "")).upper() == "CLEAN_PORTRAIT_PHOTO":
+                    d["media_preference"] = "YOUTUBE_FORENSIC_OR_CHARACTER_SHORT"
                 else:
-                    d.setdefault("media_preference", "VIDEO_BROLL")
+                    d.setdefault("media_preference", "YOUTUBE_FORENSIC_OR_CHARACTER_SHORT")
+            elif t_chosen == "render_doodle_2d_explainer_scene":
+                d.setdefault("character_tag", "@MANIPULATOR")
+                d.setdefault("prop_type", "puppet_strings")
+                d.setdefault("scene_concept_summary", s.get("visual_keyword") or default_overall_q)
             elif t_chosen == "clone_youtube_short_peak_clip":
                 video_peak_count += 1
                 d.setdefault("clip_role", "HOOK" if sid == 1 else "PEAK")

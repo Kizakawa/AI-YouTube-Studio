@@ -123,3 +123,20 @@ banned_lexicon: *id001
 target_wpm: 160
 monetization:
   affiliate_enabled: false
+llm_production_blueprint:
+  niche_overview: >
+    Apex Terrestrial Wildlife Predator Duels & Extreme Survival Mechanics (Jaguar vs Black Caiman, Honey Badger vs Lions,
+    Peregrine Falcon 389 km/h Dive, Saltwater Crocodile 3,700 PSI). Must maintain >= 85% real moving wildlife footage
+    with high-intensity physical strikes in the first 4.5-5.5 seconds.
+  visual_archetypes_and_tool_routing:
+  - archetype: "1. Real Wildlife Ambush, Strike & 1v1 Predator Confrontation"
+    when_to_use: "Use for Scene 1-2 Opening Peak Hook and all action/climax/ending scenes."
+    recommended_tool: "clone_youtube_short_peak_clip"
+    query_formula: "[Exact Animal Species] + [Explosive Physical Verb + Natural Habitat] (e.g. 'jaguar attacking caiman river', 'honey badger fighting lions savanna', 'peregrine falcon high speed dive')"
+  - archetype: "2. Close-Up Anatomical Weapon / Habitat B-Roll"
+    when_to_use: "Use when a middle scene zooms in on claws, fangs, armor scales, or stealth stalking in native biome."
+    recommended_tool: "clone_youtube_short_peak_clip (or search_pexels_pixabay_stock_video)"
+    query_formula: "[Single Species Noun] + [Close Up / Stalking + Biome]"
+  strictly_forbidden_visuals:
+  - "Animals inside zoo cages, behind wire fences, or next to concrete walls"
+  - "Domestic house cats, living-room pets, or clips with burned-in TikTok/Vietnamese subtitles"

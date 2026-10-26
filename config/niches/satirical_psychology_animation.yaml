@@ -68,3 +68,13 @@ banned_lexicon: *id001
 target_wpm: 145
 monetization:
   affiliate_enabled: false
+llm_production_blueprint:
+  niche_overview: >
+    Satirical Modern Life Paradox, People-Pleaser Traps & 2D Doodle Stickman Explainers (GOHA / Psych2Go style).
+    Uses warm cream-paper 2D Doodle animation (`render_doodle_2d_explainer_scene`) with consistent character tags
+    (@MODERNYOU, @PLEASER, @MANIPULATOR, @ANCESTOR, @FARMER) and visual metaphor props.
+  visual_archetypes_and_tool_routing:
+  - archetype: "1. 2D Doodle / Stickman Metaphor Animation"
+    when_to_use: "Use across scenes to visualize modern burnout, people-pleasing, manipulation strings, or dopamine drain."
+    recommended_tool: "render_doodle_2d_explainer_scene"
+    query_formula: "character_tag (@MODERNYOU, @PLEASER, @MANIPULATOR, @ANCESTOR, @FARMER) + prop_type (puppet_strings, brain_battery, money_scale, split, alarm, block, spear_nature, climax)"

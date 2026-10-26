@@ -109,3 +109,14 @@ target_wpm: 154
 monetization:
   affiliate_enabled: false
   affiliate_category: pet_care
+llm_production_blueprint:
+  niche_overview: >
+    Heartwarming Animal Rescue, Inter-Species Maternal Bonding & Vet Transformation Stories. Requires 100% authentic,
+    emotional real-world footage of puppies, kittens, and rescued animals from Scene 1 to the final transformation.
+  visual_archetypes_and_tool_routing:
+  - archetype: "1. Real Emotional Rescue & Transformation Video"
+    when_to_use: "Use across all scenes (Opening Hook, Vet Care, and Final Happy Transformation)."
+    recommended_tool: "clone_youtube_short_peak_clip"
+    query_formula: "[Specific Animal] + [Physical State/Action + Setting] (e.g. 'stray puppy shivering rain rescue', 'mother dog nursing abandoned kitten', 'rescued dog happy transformation')"
+  strictly_forbidden_visuals:
+  - "Wild apex predators killing prey, graphic gore, or text quote cards"

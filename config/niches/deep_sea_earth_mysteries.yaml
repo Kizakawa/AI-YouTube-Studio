@@ -62,8 +62,7 @@ script_blueprint:
     kênh — hãy chủ động xoay vòng sang bí ẩn giác quan con người, hầm ngầm bị phong tỏa, âm thanh tần
     số lạ và dị thường địa chất!
   - Phân biệt rõ ràng giữa 'ghi nhận khoa học/thực nghiệm' và 'giả thuyết'.
-  - QUY TẮC ĐAN XEN TƯƠNG PHẢN THỊ GIÁC 1-1 & CHỐNG BÃO HÒA CHỦ THỂ (ANTI-SHARK/ENTITY FATIGUE — PHÁ TRẦN ~1.000 VIEWS):
-    Số liệu thật từ YouTube Analytics API v2 chứng minh khi đăng >= 2 video liên tiếp có cùng danh từ chủ thể mở đầu (ví dụ: 4 video 'Tubarão / Shark' liên tiếp) hoặc lặp lại cùng bảng màu xanh đại dương ở 3 giây đầu, khán giả Seed Cohort sẽ tưởng là video cũ và vuốt bỏ (Stayed-to-Watch tụt từ 48,5% xuống 32,8%, bị khóa ở ~1.000 views). BẮT BUỘC đan xen 1-1 giữa [Dị thường Địa chất/Nhiệt độ/Hóa học cực hạn: 1.000°C, 93°C, 60°C, Hồ muối độc, Điểm Nemo] và [Đại chiến Sinh vật Đa dạng Họ: Mực Khổng Lồ, Cá Nhà Táng, Bạch Tuộc Đốm Xanh, Lươn Điện, Sứa Hộp — tuyệt đối không lặp cùng 1 loài ở 2 tập liền kề]!
+  - "QUY TẮC ĐAN XEN TƯƠNG PHẢN THỊ GIÁC 1-1 & CHỐNG BÃO HÒA CHỦ THỂ (ANTI-SHARK/ENTITY FATIGUE — PHÁ TRẦN ~1.000 VIEWS): Số liệu thật từ YouTube Analytics API v2 chứng minh khi đăng >= 2 video liên tiếp có cùng danh từ chủ thể mở đầu (ví dụ 4 video 'Tubarão / Shark' liên tiếp) hoặc lặp lại cùng bảng màu xanh đại dương ở 3 giây đầu, khán giả Seed Cohort sẽ tưởng là video cũ và vuốt bỏ (Stayed-to-Watch tụt từ 48,5% xuống 32,8%, bị khóa ở ~1.000 views). BẮT BUỘC đan xen 1-1 giữa [Dị thường Địa chất/Nhiệt độ/Hóa học cực hạn 1.000°C, 93°C, 60°C, Hồ muối độc, Điểm Nemo] và [Đại chiến Sinh vật Đa dạng Họ Mực Khổng Lồ, Cá Nhà Táng, Bạch Tuộc Đốm Xanh, Lươn Điện, Sứa Hộp — tuyệt đối không lặp cùng 1 loài ở 2 tập liền kề]!"
   banned_lexicon: &id001
   - 11,000m
   - 11000m
@@ -110,3 +109,20 @@ audio:
   pitch: -2Hz
   bgm_vibe: deep ambient sub-bass drone, eerie acoustic resonance, low sonar ping, tense orchestral heartbeat
 target_wpm: 160
+llm_production_blueprint:
+  niche_overview: >
+    Deep Sea, Thalassophobia & Extreme Earth Anomalies (Point Nemo, 2000m Sperm Whale vs Colossal Squid, Boiling River,
+    Danakil Acid Crater, Leviathan CGI). Viewers demand real submersible footage, real deep-sea biological clashes, or
+    colossal 3D CGI Megalophobia scale comparisons.
+  visual_archetypes_and_tool_routing:
+  - archetype: "1. Real Deep-Sea Creature Clash & Extreme Geological Phenomena"
+    when_to_use: "When the scene depicts real marine predators (sperm whale, colossal squid, goblin shark, electric eel) or extreme Earth locations (Danakil acid lakes, Catatumbo lightning, boiling river)."
+    recommended_tool: "clone_youtube_short_peak_clip"
+    query_formula: "[Specific Creature/Location] + [Action/Phenomenon + Environment] (e.g. 'sperm whale diving deep ocean', 'giant squid underwater camera', 'danakil depression acid lake boiling')"
+  - archetype: "2. Colossal Sea Monsters, Prehistoric Leviathans & Megalophobia Scale"
+    when_to_use: "When the scene depicts mythological/cryptid sea monsters (The Bloop, Kraken, Gargantuan Leviathan, Cthulhu) or prehistoric ocean giants (Megalodon, Mosasaurus) next to submarines or divers."
+    recommended_tool: "summon_epic_monster_cinematic_media (monster_media_mode='3D_CGI_VIDEO')"
+    query_formula: "creature_name + scale_anchor_object ('submarine', 'scuba diver', 'battleship')"
+  strictly_forbidden_visuals:
+  - "Land savannas, terrestrial jungle cats, or sunny beach tourist clips"
+  - "2D kids cartoons or clips with burned-in subtitles"

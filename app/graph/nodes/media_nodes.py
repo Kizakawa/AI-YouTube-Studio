@@ -323,8 +323,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                     )
 
         # ══════════════════════════════════════════════════════════════════════
-        # NHÁNH ƯU TIÊN MỚI: THỰC THI BỘ 4 @TOOL CHUYÊN BIỆT CỦA LLM ĐẠO DIỄN
-        # (`summon_epic_monster_cinematic_media` | `fetch_clean_cinematic_portrait_or_broll` | `clone_youtube_short_peak_clip` | `search_google_cinematic_image`)
+        # NHÁNH ƯU TIÊN MỚI: THỰC THI BỘ 6 @TOOL CHUYÊN BIỆT CỦA LLM ĐẠO DIỄN
+        # (`summon_epic_monster_cinematic_media` | `fetch_clean_cinematic_portrait_or_broll` | `render_doodle_2d_explainer_scene` | `clone_youtube_short_peak_clip` | `search_pexels_pixabay_stock_video` | `search_google_cinematic_image`)
         # ══════════════════════════════════════════════════════════════════════
         if not media_path and tool_name in (
             "clone_youtube_short_peak_clip",
@@ -332,6 +332,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             "search_google_cinematic_image",
             "summon_epic_monster_cinematic_media",
             "fetch_clean_cinematic_portrait_or_broll",
+            "render_doodle_2d_explainer_scene",
         ):
             from app.graph.tools.media_tools import (
                 execute_youtube_short_peak_clone_sync,
@@ -346,6 +347,8 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                 if tool_name == "summon_epic_monster_cinematic_media"
                 else "CLEAN_PORTRAIT_BROLL"
                 if tool_name == "fetch_clean_cinematic_portrait_or_broll"
+                else "DOODLE_2D_EXPLAINER"
+                if tool_name == "render_doodle_2d_explainer_scene"
                 else "YOUTUBE_PEAK_SHORT"
                 if tool_name == "clone_youtube_short_peak_clip"
                 else "GOOGLE_TOP_IMAGE"
@@ -356,6 +359,7 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
             search_query = (
                 sc_strat.get("action_or_concept_query")
                 or sc_strat.get("human_action_query")
+                or sc_strat.get("scene_concept_summary")
                 or sc_strat.get("youtube_search_query")
                 or sc_strat.get("smart_image_query")
                 or kw
@@ -444,12 +448,38 @@ async def node_fetch_media(state: VideoWorkflowState) -> Dict[str, Any]:
                         prod_method = "MONSTER_ABYSSAL_SILHOUETTE_AI"
                         rationale = f"Abyssal Silhouette AI ({c_name} vs {s_anchor})"
 
+            elif tool_name == "render_doodle_2d_explainer_scene":
+                from app.services.media.doodle_animation_tool import DoodleAnimationTool
+                c_tag = str(sc_strat.get("character_tag") or "@MANIPULATOR").strip()
+                if not c_tag.startswith("@"):
+                    c_tag = f"@{c_tag.upper()}"
+                p_type = str(sc_strat.get("prop_type") or "puppet_strings").strip()
+                out_doodle = str(media_dir / f"scene_{scene.scene_id:03d}_doodle_2d.mp4")
+                doodle_res = await asyncio.to_thread(
+                    DoodleAnimationTool.render_scene_clip,
+                    narration=scene.narration,
+                    output_path=out_doodle,
+                    duration_seconds=dur + 0.25,
+                    scene_id=scene.scene_id,
+                    character_tag=c_tag,
+                    prop_type=p_type,
+                    camera_motion=camera_motion,
+                )
+                if doodle_res and Path(doodle_res).exists():
+                    media_path = doodle_res
+                    media_type = "video"
+                    vision_curated = True
+                    prod_method = "DOODLE_2D_EXPLAINER_VIDEO"
+                    rationale = f"Doodle 2D Explainer ({c_tag} / {p_type})"
+
             elif tool_name == "fetch_clean_cinematic_portrait_or_broll":
-                h_query = sc_strat.get("human_action_query") or kw or "dramatic portrait dark lighting"
-                m_pref = sc_strat.get("media_preference") or ("VIDEO_BROLL" if scene.scene_id in (1, 2, 3, 4, 5, 6, 7) else "CLEAN_PORTRAIT_PHOTO")
+                h_query = sc_strat.get("human_action_query") or kw or "fbi interrogation body language eye contact"
+                m_pref = sc_strat.get("media_preference") or (
+                    "YOUTUBE_FORENSIC_OR_CHARACTER_SHORT" if scene.scene_id in (1, 2, 3, 4, 5, 6, 7) else "CLEAN_PORTRAIT_PHOTO"
+                )
                 out_clean = str(
                     media_dir / f"scene_{scene.scene_id:03d}_clean_broll.mp4"
-                    if m_pref.upper() == "VIDEO_BROLL"
+                    if m_pref.upper() in ("VIDEO_BROLL", "YOUTUBE_FORENSIC_OR_CHARACTER_SHORT")
                     else media_dir / f"scene_{scene.scene_id:03d}_clean_portrait.jpg"
                 )
                 c_res = await asyncio.to_thread(

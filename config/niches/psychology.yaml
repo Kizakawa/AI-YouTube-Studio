@@ -133,6 +133,52 @@ visual_aesthetics:
   - soundproof room isolation experiment lab
   - casino roulette chips las vegas money
   - fbi agent investigating crime board
+  - thomas shelby cold stare body language
+  - patrick jane mentalist interrogation eye contact
+  - suspect sweating nervous hands interrogation
+llm_production_blueprint:
+  niche_overview: >
+    Million-view Forensic, Brain Science & Dark Psychology YouTube Shorts (1.8M-39M views benchmark: Zack D. Films,
+    JCS Criminal Psychology, Charisma on Command) NEVER use generic corporate/casual Pexels stock clips of people in
+    t-shirts or bright offices. Every scene must be routed by the LLM to one of 4 high-retention visual production tools
+    based on whether the scene is concrete forensic/character action, 3D brain anatomy, or an abstract psychological trap.
+  visual_archetypes_and_tool_routing:
+  - archetype: "1. Forensic Interrogation, Courtroom & Iconic Character Breakdown (JCS / Charisma on Command style — 2M-32M views)"
+    when_to_use: >
+      Use for Scene 1-2 Opening Hook and any body/ending scene describing FBI/CIA interrogation rooms, suspect micro-expressions
+      (blinking, swallowing, foot pointing, water cup test), courtroom witness reactions, or iconic character dominance
+      (Thomas Shelby, Patrick Jane, Homelander, Joker interrogation).
+    recommended_tool: "clone_youtube_short_peak_clip (or fetch_clean_cinematic_portrait_or_broll with media_preference='YOUTUBE_FORENSIC_OR_CHARACTER_SHORT')"
+    query_formula: "[Concrete Subject/Character/Setting] + [Physical Micro-Expression/Action] (3-5 English words, e.g. 'fbi interrogation suspect sweating', 'thomas shelby cold stare eye contact', 'courtroom defendant nervous reaction', 'polygraph needle trembling paper')"
+  - archetype: "2. Extreme Brain, Sensory Deprivation & 3D Neuro-Anatomy (Zack D. Films / Veritasium style — 12M-39M views)"
+    when_to_use: >
+      Use when the scene explains internal brain mechanisms (amygdala hijack, dopamine receptors, vagus nerve, prefrontal cortex,
+      neural pathways firing) or extreme laboratory isolation (-9.4 dB anechoic chamber, 72h white room torture, Milgram 450V shock).
+    recommended_tool: "clone_youtube_short_peak_clip"
+    query_formula: "[3D Anatomical Structure or Chamber] + [Physical Process] (e.g. '3d glowing brain neurons firing', 'human brain mri scan animation', 'quietest room anechoic chamber inside')"
+  - archetype: "3. Abstract Dark Psychology, Manipulation Strings, Dopamine & Money Traps (2D Doodle Explainer — 1.1M-4.2M views)"
+    when_to_use: >
+      Use when a middle scene describes an invisible psychological trap, covert manipulation dynamic, gaslighting, cognitive dissonance,
+      dopamine drain, or financial debt trap that cannot be filmed literally by a camera without looking like cheesy stock acting.
+    recommended_tool: "render_doodle_2d_explainer_scene"
+    query_formula: "Select character_tag (@MANIPULATOR, @PLEASER, @MODERNYOU, @FARMER, @ANCESTOR) + prop_type (puppet_strings, brain_battery, money_scale, split, alarm, block, climax)"
+  - archetype: "4. Dark Noir Cinematic Tension B-Roll (Fincher / Mindhunter Noir)"
+    when_to_use: >
+      Use when a scene needs moody, shadow-lit human tension (silhouette in dark hallway, detective behind two-way mirror, casino roulette
+      wheel in dark lighting) with 100% clean frames.
+    recommended_tool: "fetch_clean_cinematic_portrait_or_broll (media_preference='VIDEO_BROLL')"
+    query_formula: "[Dark Noir Subject] + [Tense Physical Action + Dark Lighting] (e.g. 'detective dark interrogation shadow', 'nervous hands tapping table dark', 'casino roulette wheel spinning night')"
+  abstract_to_physical_query_translations:
+  - "cognitive load / lying freeze / baseline stare -> interrogation suspect staring unblinking"
+  - "limbic freeze / foot pointing / pacifying behavior -> suspect nervous hands interrogation table"
+  - "amygdala hijack / cortisol spike / neural glitch -> 3d human brain neurons firing glowing"
+  - "dopamine hijack / casino trick / sunk cost -> casino slot machine roulette dark lights"
+  - "mirroring / tactical empathy / hostage negotiation -> fbi detective interrogation table dark"
+  - "covert manipulation / guilt trip / gaslighting -> render_doodle_2d_explainer_scene (@MANIPULATOR + puppet_strings)"
+  strictly_forbidden_visuals:
+  - "Casual person in a t-shirt, hoodie, or baseball cap in daylight"
+  - "Bright corporate office workers smiling, shaking hands, or pointing at whiteboards"
+  - "Magazine infographics, quote cards, book covers, or clips with burned-in subtitles"
 subtitles:
   font_family: Arial Black, Montserrat, sans-serif
   font_weight: '900'

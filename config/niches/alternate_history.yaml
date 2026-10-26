@@ -101,3 +101,19 @@ target_wpm: 155
 monetization:
   affiliate_enabled: false
   model: adsense_high_cpm_clean_metadata
+llm_production_blueprint:
+  niche_overview: >
+    Counterfactual History, Historical Engineering Disasters & Geopolitical What-If Scenarios (Carrington Solar Superstorm,
+    Nikola Tesla Wardenclyffe Tower, Roman Empire, WWII Turning Points). Combines real archival/cinematic battle & engineering
+    footage with high-detail historical artwork.
+  visual_archetypes_and_tool_routing:
+  - archetype: "1. Explosive Historical / Scientific / Military Action Footage"
+    when_to_use: "Use for Scene 1-2 Opening Hook, Climax, and Final Scene."
+    recommended_tool: "clone_youtube_short_peak_clip"
+    query_formula: "[Historical Event/Entity/Phenomenon] + [Cinematic Action/Footage] (e.g. 'solar storm coronal mass ejection earth', 'nikola tesla wardenclyffe tower lightning', 'roman legion battle cinematic')"
+  - archetype: "2. Historical Maps, Blueprints & Archival Artifacts"
+    when_to_use: "Use ONLY on middle scenes (Scene 3-6) when showing a specific historical portrait, patent blueprint, or empire map."
+    recommended_tool: "search_google_cinematic_image"
+    query_formula: "[Historical Subject + Era/Artifact] (4-6 English words)"
+  strictly_forbidden_visuals:
+  - "Modern memes, video game HUDs, or text quote cards"
