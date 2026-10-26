@@ -64,6 +64,168 @@ def _normalize_text_for_similarity(text: str) -> str:
     return " ".join(tokens)
 
 
+def _stem_token_agnostic(token: str) -> str:
+    """
+    Chuẩn hóa gốc từ hình thái học đa ngôn ngữ (EN / PT-BR / Romance) độc lập chủ đề 100%.
+    Giúp hệ thống nhận diện chính xác danh từ số ít và số nhiều là cùng một thực thể gốc
+    (ví dụ: 'tubarões' -> 'tubarão', 'vulcões' -> 'vulcão', 'leões' -> 'leão',
+    'submarinos' -> 'submarino', 'experiments' -> 'experiment', 'empires' -> 'empire')
+    mà KHÔNG CẦN hardcode bất kỳ từ khóa chủ đề nào.
+    """
+    w = (token or "").strip().lower()
+    if len(w) < 4 or any(c.isdigit() for c in w):
+        return w
+    # Quy tắc biến đổi số nhiều tiếng Bồ Đào Nha (PT-BR) -> số ít
+    if w.endswith("ões") and len(w) >= 5:
+        return w[:-3] + "ão"
+    if w.endswith("ães") and len(w) >= 5:
+        return w[:-3] + "ão"
+    if w.endswith("ais") and len(w) >= 5:
+        return w[:-3] + "al"
+    if w.endswith("éis") and len(w) >= 5:
+        return w[:-3] + "el"
+    if w.endswith("óis") and len(w) >= 5:
+        return w[:-3] + "ol"
+    if w.endswith("ns") and len(w) >= 5:
+        return w[:-2] + "m"
+    # Quy tắc biến đổi số nhiều tiếng Anh (EN) & chung
+    if w.endswith("ies") and len(w) >= 5:
+        return w[:-3] + "y"
+    if w.endswith("ores") and len(w) >= 6:
+        return w[:-2]
+    if w.endswith("es") and len(w) >= 6 and w[-3] in ("s", "x", "z"):
+        return w[:-2]
+    if w.endswith("s") and not w.endswith(("ss", "us", "is")) and len(w) >= 5:
+        return w[:-1]
+    return w
+
+
+# Các từ khung cấu trúc tiêu đề / đơn vị đo lường chung (không phải danh từ chủ thể chính)
+_STRUCTURAL_HEADLINE_TOKENS = {
+    "vs", "versus", "duelo", "duel", "batalha", "battle", "mortal", "deadly", "lethal",
+    "fatal", "golpe", "strike", "bote", "ataque", "attack", "segredo", "secret",
+    "misterio", "misterios", "curiosidade", "curiosidades", "ciencia", "science",
+    "fato", "fatos", "fact", "facts", "mundo", "world", "terra", "earth",
+    "oceano", "ocean", "mar", "sea", "fundo", "deep", "abismo", "abyss", "abissal",
+    "agua", "water", "rio", "river", "lago", "lake", "ilha", "island",
+    "metro", "metros", "meter", "meters", "feet", "foot", "tonelada", "toneladas",
+    "ton", "tons", "segundo", "segundos", "second", "seconds", "minuto", "minutos",
+    "hora", "horas", "hour", "hours", "ano", "anos", "year", "years", "dia", "dias",
+    "maior", "biggest", "largest", "pequeno", "menor", "gigante", "giant", "colossal",
+    "negro", "black", "branco", "white", "azul", "blue", "vermelho", "red",
+    "proibido", "forbidden", "isolado", "isolated", "impossivel", "impossible",
+    "verdade", "truth", "motivo", "reason", "nunca", "never", "sempre", "always",
+    "todo", "toda", "todos", "todas", "cada", "outro", "outra", "novo", "nova",
+}
+
+
+def extract_lead_subject_stems(text: str) -> List[str]:
+    """
+    Trích xuất các gốc từ chủ thể mở đầu (Lead Subject Stems) từ tiêu đề hoặc chủ đề.
+    Ưu tiên vế chủ ngữ đứng trước dấu ':' / '—' / '?' / '#' hoặc 5 token nội dung đầu tiên.
+    """
+    if not text:
+        return []
+    clean_head = re.split(r"#\w+", text)[0].strip()
+    lead_clause = re.split(r"[:\—\–\?]", clean_head)[0].strip()
+    if len(lead_clause) < 4:
+        lead_clause = clean_head
+
+    norm_lead = _normalize_text_for_similarity(lead_clause)
+    stems: List[str] = []
+    for raw_tok in norm_lead.split()[:7]:
+        stem = _stem_token_agnostic(raw_tok)
+        if (
+            len(stem) >= 4
+            and not stem.isdigit()
+            and not any(c.isdigit() for c in stem)
+            and stem not in _STRUCTURAL_HEADLINE_TOKENS
+            and _normalize_text_for_similarity(stem) not in _STRUCTURAL_HEADLINE_TOKENS
+        ):
+            if stem not in stems:
+                stems.append(stem)
+    return stems
+
+
+def has_consecutive_subject_fatigue(
+    candidate_text: str,
+    recent_items: Optional[List[str]] = None,
+    window: int = 3,
+) -> Tuple[bool, str]:
+    """
+    [ANTI-COHORT CEILING GUARDRAIL — CHỐNG BÃO HÒA CHỦ THỂ LIÊN TIẾP (SHARK / ENTITY FATIGUE)]:
+    Phân tích thực nghiệm từ YouTube Analytics API v2 chứng minh:
+    Khi 2+ video liên tiếp trên cùng một kênh mở đầu bằng cùng một danh từ chủ thể/loài/hiện tượng
+    (ví dụ: 4 video liên tiếp đều xoay quanh 'Tubarão / Tubarões', hoặc 'FBI Interrogation', hoặc 'Roman Empire'),
+    tệp khán giả Seed Cohort vòng 1 (~1.000 views) sẽ tưởng là video cũ lặp lại và lướt qua,
+    làm Stayed-to-Watch % tụt từ ~48.5% xuống ~32.8% và bị thuật toán khóa van ở trần ~1.000 views.
+
+    Hàm này kiểm tra hoàn toàn độc lập chủ đề (100% Topic-Agnostic):
+    1. Chặn nếu Lead Subject Stem của ứng viên trùng trực tiếp với Lead Subject Stem của video liền kề trước đó (`recent_items[0]`).
+    2. Chặn nếu bất kỳ gốc từ chủ thể chính nào của ứng viên đã xuất hiện >= 2 lần trong `window` (3-4) video gần nhất.
+    Trả về: (is_fatigued: bool, collided_stem: str)
+    """
+    if not candidate_text or not recent_items:
+        return False, ""
+
+    cand_lead_stems = extract_lead_subject_stems(candidate_text)
+    cand_all_stems = [
+        _stem_token_agnostic(w)
+        for w in _normalize_text_for_similarity(re.split(r"#\w+", candidate_text)[0]).split()
+        if len(_stem_token_agnostic(w)) >= 4
+        and not any(c.isdigit() for c in w)
+        and _stem_token_agnostic(w) not in _STRUCTURAL_HEADLINE_TOKENS
+    ]
+    if not cand_lead_stems and not cand_all_stems:
+        return False, ""
+
+    valid_recent = [r for r in recent_items if r and r.strip()][: max(1, window)]
+    if not valid_recent:
+        return False, ""
+
+    # Quy tắc 1 (1-1 Visual & Subject Alternation): Cấm trùng chủ thể chính ngay với video liền kề trước đó (recent[0])
+    immediate_prev = valid_recent[0]
+    prev_lead_stems = set(extract_lead_subject_stems(immediate_prev))
+    prev_all_stems = {
+        _stem_token_agnostic(w)
+        for w in _normalize_text_for_similarity(re.split(r"#\w+", immediate_prev)[0]).split()
+        if len(_stem_token_agnostic(w)) >= 4
+        and not any(c.isdigit() for c in w)
+        and _stem_token_agnostic(w) not in _STRUCTURAL_HEADLINE_TOKENS
+    }
+    for stem in cand_lead_stems:
+        if stem in prev_lead_stems or stem in prev_all_stems:
+            return True, stem
+
+    for stem in cand_all_stems[:5]:
+        if stem in prev_lead_stems:
+            return True, stem
+
+    # Quy tắc 2 (Sliding Window Cooldown): Cấm lặp lại chủ thể đã xuất hiện trong cửa sổ 2-3 video gần nhất
+    from collections import Counter
+    window_stem_counts: Counter = Counter()
+    for r_item in valid_recent:
+        r_stems = set(extract_lead_subject_stems(r_item)) | {
+            _stem_token_agnostic(w)
+            for w in _normalize_text_for_similarity(re.split(r"#\w+", r_item)[0]).split()
+            if len(_stem_token_agnostic(w)) >= 4
+            and not any(c.isdigit() for c in w)
+            and _stem_token_agnostic(w) not in _STRUCTURAL_HEADLINE_TOKENS
+        }
+        for s in r_stems:
+            window_stem_counts[s] += 1
+
+    for stem in cand_lead_stems:
+        if window_stem_counts.get(stem, 0) >= 1 and len(valid_recent) >= 2:
+            return True, stem
+
+    for stem in cand_all_stems:
+        if window_stem_counts.get(stem, 0) >= 2:
+            return True, stem
+
+    return False, ""
+
+
 def extract_saturated_channel_concepts(existing_titles: List[str], min_frequency: int = 2) -> List[str]:
     """
     Tác nhân tự động nhận diện các cụm từ, thực thể hoặc chủ đề con bị bão hòa (Fatigued / Saturated Concepts)
@@ -89,9 +251,17 @@ def extract_saturated_channel_concepts(existing_titles: List[str], min_frequency
         # 1-gram: Các từ có độ dài >= 4 hoặc các token có chứa số/đơn vị (11000m, 4000psi, etc.)
         for w in words:
             if len(w) >= 4 and not w.isdigit():
-                seen_in_title.add(w)
+                stem = _stem_token_agnostic(w)
+                if stem not in _STRUCTURAL_HEADLINE_TOKENS:
+                    seen_in_title.add(w)
+                    if len(stem) >= 4:
+                        seen_in_title.add(stem)
             elif any(c.isdigit() for c in w):
-                seen_in_title.add(w)
+                stem = _stem_token_agnostic(w)
+                if stem not in _STRUCTURAL_HEADLINE_TOKENS:
+                    seen_in_title.add(w)
+                    if len(stem) >= 4:
+                        seen_in_title.add(stem)
                 
         # 2-grams
         for i in range(len(words) - 1):

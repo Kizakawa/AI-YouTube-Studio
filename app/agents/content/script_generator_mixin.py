@@ -169,6 +169,19 @@ class ScriptGeneratorMixin:
 
             if len(recent_titles) >= 2:
                 saturated_terms = extract_saturated_channel_concepts(recent_titles, min_frequency=2)
+                try:
+                    from app.services.channel_intelligence import extract_lead_subject_stems
+                    recent_lead_stems: List[str] = []
+                    for rt in recent_titles[:3]:
+                        for st in extract_lead_subject_stems(rt):
+                            if st not in recent_lead_stems:
+                                recent_lead_stems.append(st)
+                    for st in reversed(recent_lead_stems):
+                        if st not in saturated_terms:
+                            saturated_terms.insert(0, st)
+                except Exception:
+                    pass
+                setattr(self, "_last_saturated_terms", list(saturated_terms[:8]))
         except Exception as ex_mem:
             logger.debug(f"[ContentAgent] Không thể đọc episodic memory cho {channel_niche}: {ex_mem}")
 
@@ -205,7 +218,10 @@ class ScriptGeneratorMixin:
             )
         if saturated_terms:
             memory_sections.append(
-                f"⚠️ SATURATED CONCEPTS ON THIS CHANNEL (Avoid overusing these repeated words/stats): {', '.join(saturated_terms[:6])}"
+                f"⚠️ SATURATED & RECENTLY FEATURED LEAD SUBJECTS (COOLDOWN ACTIVE): {', '.join(saturated_terms[:8])}\n"
+                "🛡️ MANDATORY 1-1 VISUAL CONTRAST & LEAD-SUBJECT ALTERNATION RULE (BREAKING THE ~1,000-VIEW SEED COHORT CEILING):\n"
+                "   - Empirical YouTube Analytics v2 telemetry proves that starting consecutive videos with the same primary creature/entity word in the Title & Scene 1 (e.g., 4 consecutive 'Tubarão' videos or repeating the exact same opening color palette) causes Audience Cohort Fatigue (Stayed-to-Watch drops from ~48.5% to ~32.8%, locking the video at ~1,000 views).\n"
+                "   - NEVER start your `title` or `Scene 1 Hook` with any of the saturated/recent lead subjects listed above! If the input topic mentions both an extreme physical/geological phenomenon AND a recently featured creature (or Entity A vs Entity B), ALWAYS place the FRESH, non-repeated phenomenon/opponent FIRST in the Title and open Scene 1 with a contrasting visual color palette!"
             )
 
         # Mini-RAG Semantic Script & Visual Metadata Memory (tránh lặp nội dung kịch bản + từ khóa hình ảnh cũ)
@@ -623,6 +639,9 @@ OUTPUT — Return ONLY valid JSON, no markdown, no extra text:
 }}
 """
         from app.services.content_linter import ScriptValidationLinter
+        if cooldown_entities:
+            topic_low = (topic or "").lower()
+            cooldown_entities = [ce for ce in cooldown_entities if str(ce).lower() not in topic_low]
 
         max_attempts = 3
         current_prompt = prompt

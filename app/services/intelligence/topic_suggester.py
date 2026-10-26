@@ -33,6 +33,7 @@ from app.services.intelligence.deduplication import (
     _normalize_text_for_similarity,
     check_idea_similarity,
     extract_saturated_channel_concepts,
+    has_consecutive_subject_fatigue,
 )
 from app.services.intelligence.portfolio_scanner import (
     _get_global_trends_directive,
@@ -235,6 +236,7 @@ Each concept must:
 2. Include a specific Mid-Video Climax Twist (`mid_video_climax`) for Scene 4–5 so APV stays above 90%+.
 3. Actively eliminate and fix the channel's past flop weaknesses (topic fatigue, passive tone, niche dilution).
 4. Keep YouTube Shorts titles concise (28–55 characters), punchy, and include #Shorts.
+5. 1-1 VISUAL CONTRAST & LEAD-SUBJECT ALTERNATION (ANTI-COHORT CEILING): Never start two consecutive concepts with the same creature/species/subject noun, nor repeat the lead subject of the channel's last 3 uploads! Alternate between contrasting visual palettes (e.g., extreme geo-thermal/chemical/acoustic anomalies vs. diverse non-repeating biological confrontations).
 
 Return ONLY a valid JSON array of objects with the following structure:
 [
@@ -300,6 +302,17 @@ Return ONLY a valid JSON array of objects with the following structure:
 
                 # Kiểm tra trùng lặp chéo với chính các ý tưởng vừa thêm
                 current_accepted_titles = [x["title"] for x in verified_ideas]
+                recent_window_refs = list(reversed(current_accepted_titles)) + list(all_existing[:3])
+                is_consec_fatigued, collided_stem = has_consecutive_subject_fatigue(
+                    f"{cand_title} {cand_topic}",
+                    recent_window_refs,
+                    window=3,
+                )
+                if is_consec_fatigued:
+                    logger.info(
+                        f"[ConsecutiveSubjectGuard] Bỏ qua ý tưởng '{cand_title}' vì trùng chủ thể liên tiếp '{collided_stem}' với 3 video gần nhất!"
+                    )
+                    continue
                 is_self_dup, _, _ = check_idea_similarity(cand_title, current_accepted_titles, similarity_threshold=0.45)
                 if is_self_dup:
                     continue

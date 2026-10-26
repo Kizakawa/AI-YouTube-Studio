@@ -141,7 +141,10 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
 3. PROIBIDO NO MERCADO BRASILEIRO:
    - NUNCA repita o título palavra por palavra na Cena 1 nem entregue o resultado final no segundo 0.
    - NUNCA comece com frases lentas de documentário de TV, metáforas poéticas ou rótulos de dicionário sem verbo ativo ("Nome-do-Animal: um soco a 80 km/h").
-   - NUNCA faça perguntas passivas ("Você sabia que...?").{bench_block}
+   - NUNCA faça perguntas passivas ("Você sabia que...?").
+4. REGRA DE ALTERNÂNCIA VISUAL 1-1 & ANTI-FADIGA DE TEMA (QUEBRA DO TETO DE ~1.000 VIEWS):
+   - Dados reais da YouTube Analytics API v2 provam que repetir o mesmo animal/sujeito principal no início do Título e na paleta visual das primeiras cenas em vídeos consecutivos causa fadiga imediata no público do canal (Stayed-to-Watch cai de ~48,5% para ~32,8%, travando o vídeo no lote inicial de ~1.000 views).
+   - NUNCA inicie o Título (`title`) ou a Cena 1 com o mesmo sujeito/espécie que já liderou os últimos 2-3 vídeos recentes do canal! Se o tema envolver um fenômeno extremo (vulcão a 100°C, cratera a 1.000°C, lago tóxico, anomalia acústica) + um animal já usado recentemente, destaque SEMPRE o fenômeno extremo inédito ou o oponente novo na abertura do Título e na cor/visual da Cena 1!{bench_block}
 ═══════════════════════════════════════════════════════════════════
 """
     elif is_vi:
@@ -181,6 +184,9 @@ def build_regional_hook_mastery_instruction(language: str, channel_niche: str = 
      * "Everyone walked past this muddy canal drain, not realizing two eyes were staring back."
      * "Earth survived total nuclear war in 1983 because one man refused an order."
 3. STRICTLY BANNED IN US HOOKS:
-   - NO verbatim Title repetition in Scene 1, NO dry Wikipedia metric recitation at 0.0s, NO abstract poetry ("loaded weapon", "silent cage"), and NO passive Yes/No questions ("Did you know...?").{bench_block}
+   - NO verbatim Title repetition in Scene 1, NO dry Wikipedia metric recitation at 0.0s, NO abstract poetry ("loaded weapon", "silent cage"), and NO passive Yes/No questions ("Did you know...?").
+4. 1-1 VISUAL CONTRAST & LEAD-SUBJECT ALTERNATION RULE (BREAKING THE ~1,000-VIEW SEED COHORT CEILING):
+   - Real YouTube Analytics v2 telemetry proves that starting consecutive uploads with the exact same lead subject/species noun or identical opening visual color palette triggers Audience Cohort Fatigue (Stayed-to-Watch drops from ~48.5% to ~32.8%, capping views at ~1,000).
+   - NEVER start the new `title` or Scene 1 visual hook with the same primary subject noun/entity that led the channel's last 2-3 videos! Always alternate visual palettes and foreground the freshest, most visually contrasting phenomenon or opponent.{bench_block}
 ═══════════════════════════════════════════════════════════════════
 """

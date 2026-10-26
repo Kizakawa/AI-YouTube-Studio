@@ -248,10 +248,25 @@ CHANNELS_CONFIG = {
             "DEVELOPMENT: Real depth measurements (meters), biomechanical weapons, sonar data, or extreme thermal/chemical danger. "
             "CLIMAX (Scene 4 - 15s Twist): The fatal strike, survival reversal, or terrifying scientific discovery at the bottom of the sea. "
             "CTA (last 3s): Seamless Infinite Loop Bridge back into the opening hook (NO spoken Subscribe CTA). "
-            "Tone: suspenseful, dark, adrenaline-pumping, eerie documentary style. Strict Brazilian Portuguese (pt-BR) only."
+            "Tone: suspenseful, dark, adrenaline-pumping, eerie documentary style. Strict Brazilian Portuguese (pt-BR) only. "
+            "REGRA DE ALTERNÂNCIA VISUAL 1-1 & ANTI-FADIGA DE TEMA (QUEBRA DO TETO DE ~1.000 VIEWS): NUNCA inicie o Título ou a Cena 1 com o mesmo animal/sujeito principal dos últimos 2-3 vídeos do canal! Destaque sempre o fenômeno físico extremo inédito ou oponente novo na abertura."
         ),
         "topics": [
+            # [1-1 VISUAL CONTRAST INTERLEAVED QUEUE — Đan xen Dị thường Địa chất/Nhiệt độ/Hóa học <-> Đại chiến Sinh vật Đa dạng Họ]
+            "Chaminés Hidrotermais Negras a 400°C: Os Vermes Gigantes Que Vivem Sem Sol no Fundo do Oceano",
+            "Enguia-Pelicano vs Lula-Vampiro: Como Monstros a 2.500 Metros Caçam Sem Oxigênio na Zona da Meia-Noite",
+            "Fossa de Porto Rico a 8.376 Metros: A Anomalia Gravitacional no Fundo do Oceano Atlântico",
+            "Polvo-de-Anéis-Azuis vs Moreia-Gigante: O Veneno Sem Antídoto Que Paralisa em 120 Segundos",
+            "Lago Nyos: A Nuvem Invisível de 1,6 Milhão de Toneladas de CO2 Que Sufocou um Vale Inteiro",
+            "Peixe-Dragão Negro a 2.000 Metros: O Predador Invisível Que Produz Luz Infravermelha no Abismo",
+            "O Cemitério de Baleias a 4.000 Metros: Como um Único Esqueleto Alimenta Monstros Cegos Por 50 Anos",
+            "Caravela-Portuguesa vs Tartaruga-de-Couro: Como Tentáculos Venenosos de 50 Metros São Devorados no Mar",
+            "Por Que Submarinos Militares Apagam Todas as Luzes Ao Cruzar 3.000 Metros na Zona Abissal",
+            "Vespa-do-Mar: A Água-Viva Invisível Cujo Veneno Para o Coração Humano em 2 Minutos",
             "Tubarão-da-Groenlândia vs Lula-Gigante: O Predador Cego de 400 Anos nas Profundezas do Ártico",
+            "Vulcão Submarino Kavachi: A Cratera em Ebulição a 100°C no Fundo do Oceano Pacífico",
+            "Orca vs Tubarão-Branco de 2 Toneladas: O Golpe Cirúrgico Que Faz o Maior Predador Fugir do Oceano",
+            "Tubarão-Duende vs Peixe-Diabo Negro: A Mandíbula Que Dispara em 0,02 Segundo a 3.000 Metros no Mar",
             "Vulcão Submarino Kavachi: A Cratera em Ebulição no Oceano Onde Tubarões Caçam em Água Ácida",
             "Orca vs Tubarão-Branco de 2 Toneladas: O Golpe Cirúrgico Que Faz o Maior Predador Fugir do Oceano",
             "Tubarão-Duende vs Peixe-Diabo Negro: A Mandíbula Que Dispara em 0,02 Segundo a 3.000 Metros no Mar",
@@ -366,8 +381,10 @@ def get_schedule_slot(publish_hour_utc: int, channel_id: str = "") -> tuple[date
                     disp_us = s_cfg["label_us"]
                     found_new = True
                     break
+    
                 if found_new:
                     break
+    
         _SESSION_OCCUPIED_SLOTS.setdefault(channel_id, []).append(slot_dt)
         return slot_dt, disp_vn, disp_us
     except Exception:
@@ -413,6 +430,9 @@ async def produce_channel_video(
     from app.services.channel_intelligence import (
         get_winner_cloner_blueprint,
         check_idea_similarity,
+        ensure_unique_title,
+        extract_saturated_channel_concepts,
+        has_consecutive_subject_fatigue,
     )
     from app.services.niche_manager import validate_channel_niche_alignment
     from app.database.models import get_db, VideoJob, PublishedVideo, log_activity
@@ -493,10 +513,21 @@ async def produce_channel_video(
             )
             if not niche_res.get("passed", True):
                 continue
-            is_sim, _, _ = check_idea_similarity(cand_t, existing_refs, similarity_threshold=0.52)
-            if not is_sim:
-                topic = cand_t
-                break
+            is_sim, _, _ = check_idea_similarity(cand_t, existing_refs, similarity_threshold=0.52, channel_id=ch_id)
+            if is_sim:
+                continue
+            recent_ordered_refs = list(reversed(used_in_session)) + [r for r in existing_refs if r not in used_in_session][:6]
+            is_consec_fatigued, collided_stem = has_consecutive_subject_fatigue(cand_t, recent_ordered_refs, window=3)
+            if is_consec_fatigued:
+                print(f"   ⏭️ [Anti-Cohort-Fatigue] Bỏ qua '{cand_t[:55]}...' vì trùng chủ thể liên tiếp '{collided_stem}' với video vừa tạo/lên lịch!")
+                continue
+            topic = cand_t
+            break
+            topic = cand_t
+            break
+            topic = cand_t
+            break
+
         if not topic:
             remaining = [
                 t for t in cfg["topics"]
@@ -508,6 +539,11 @@ async def produce_channel_video(
     used_in_session.append(topic)
     print(f"   -> Chủ đề được chọn: {topic}")
 
+    recent_for_cooldown = list(reversed(used_in_session[:-1])) + [r for r in existing_refs if r not in used_in_session][:8]
+    saturated_cooldown = extract_saturated_channel_concepts(recent_for_cooldown, min_frequency=2)
+    if saturated_cooldown:
+        print(f"   🛡️ [Cooldown Chủ Thể Bão Hòa]: {', '.join(saturated_cooldown[:6])}")
+
     script = None
     script_evaluation = None
     for attempt in range(1, 4):
@@ -517,6 +553,7 @@ async def produce_channel_video(
             channel_niche=ch_niche,
             language=ch_lang,
             director_notes=cfg["director_notes"],
+            cooldown_entities=saturated_cooldown,
             channel_id=ch_id,
         )
 
@@ -542,6 +579,20 @@ async def produce_channel_video(
             script_evaluation = eval_res
 
     raw_title = script.title or f"{topic.split(':')[0].strip()}"
+    try:
+        unique_title, was_dup, _ = ensure_unique_title(
+            candidate_title=raw_title,
+            channel_id=ch_id,
+            topic=topic,
+            language=ch_lang,
+            similarity_threshold=0.42,
+        )
+        if was_dup and unique_title:
+            raw_title = unique_title
+            script.title = unique_title
+    except Exception:
+        pass
+    used_in_session.append(raw_title)
     base_desc = script.description or f"{script.hook or topic}\n\n#Shorts #{ch_niche}"
     raw_tags = list(dict.fromkeys([*(script.tags or []), *cfg["default_tags"]]))
     pinned_comment_base = script.pinned_comment or (

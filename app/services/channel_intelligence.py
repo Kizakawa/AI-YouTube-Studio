@@ -2,7 +2,7 @@
 app.services.channel_intelligence — Facade điều phối Hệ thống Trí tuệ Kênh (giữ tương thích ngược 100%).
 
 Đã được tách thành 6 module chuyên biệt trong `app/services/intelligence/` (~190–490 dòng/file):
-- `deduplication.py`: Chống trùng lặp ý tưởng & kiểm tra lệch ngách.
+- `deduplication.py`: Chống trùng lặp ý tưởng, chống bão hòa chủ thể liên tiếp (`has_consecutive_subject_fatigue`) & kiểm tra lệch ngách.
 - `portfolio_scanner.py`: Quét lịch sử kênh, xu hướng toàn cầu & công thức nhân bản video thắng.
 - `niche_topic_fallbacks.py`: Kho chủ đề dự phòng chuẩn triệu view theo ngách & ngôn ngữ.
 - `topic_suggester.py`: Bộ não LLM gợi ý chủ đề thông minh cho từng kênh (`suggest_channel_topics`).
@@ -14,9 +14,12 @@ from app.services.intelligence.deduplication import (
     KPI_CRITICAL_OVERDUE_HOURS,
     KPI_WARNING_HOURS,
     _normalize_text_for_similarity,
+    _stem_token_agnostic,
     check_idea_similarity,
     ensure_unique_title,
+    extract_lead_subject_stems,
     extract_saturated_channel_concepts,
+    has_consecutive_subject_fatigue,
     is_off_niche_video_title,
 )
 from app.services.intelligence.portfolio_scanner import (
@@ -53,6 +56,7 @@ __all__ = [
     "_get_curated_niche_fallbacks",
     "_get_global_trends_directive",
     "_normalize_text_for_similarity",
+    "_stem_token_agnostic",
     "aggregate_comments_into_intelligence",
     "build_comment_intelligence_prompt_block",
     "calculate_channel_kpi",
@@ -60,9 +64,11 @@ __all__ = [
     "check_pre_publish_safety",
     "classify_comment_zero_token",
     "ensure_unique_title",
+    "extract_lead_subject_stems",
     "extract_saturated_channel_concepts",
     "get_channel_existing_portfolio",
     "get_winner_cloner_blueprint",
+    "has_consecutive_subject_fatigue",
     "is_off_niche_video_title",
     "mine_channel_comment_intelligence",
     "process_fallback_publishing",
