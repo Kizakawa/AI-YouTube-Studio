@@ -54,7 +54,7 @@ CHANNELS_CONFIG = {
         "preferred_voice": "en-US-BrianNeural",
         "handle": "@themysteriesoftheworld-f3w",
         "amazon_tag": "kizakawa-20",
-        "publish_hour_utc": 14,
+        "publish_hour_utc": 21,
         "director_notes": (
             "Target channel The mysteries of the world (US English). High-retention 5-Act abyssal showdown & lethal ocean physics arc (28-34s crisp runtime, 6-7 scenes, 75-92 words for >90% APV): "
             "HOOK (0-2s): Blunt 5-8 word statement naming the specific abyssal predator duel ('A vs B') or lethal deep-sea anomaly + exact physical number (feet, PSI, °F/°C, years). NEVER open with vague philosophical questions or 'The secret to... is terrifying'. "
@@ -324,6 +324,7 @@ def get_schedule_slot(publish_hour_utc: int, channel_id: str = "") -> tuple[date
     try:
         from app.services.smart_scheduler import (
             get_next_available_golden_slot,
+            get_active_slots_pool,
             is_brazil_channel,
             BRAZIL_GOLDEN_SLOTS_UTC,
             GOLDEN_SLOTS_UTC,
@@ -339,7 +340,7 @@ def get_schedule_slot(publish_hour_utc: int, channel_id: str = "") -> tuple[date
         prev_slots = _SESSION_OCCUPIED_SLOTS.get(channel_id, [])
         if prev_slots and any(abs((slot_dt - ps).total_seconds()) < MIN_SPACING_SECONDS for ps in prev_slots):
             is_br = is_brazil_channel(channel_id)
-            pool = BRAZIL_GOLDEN_SLOTS_UTC if is_br else GOLDEN_SLOTS_UTC
+            pool = get_active_slots_pool(channel_id)
             target_tz = BR_TZ if is_br else US_EASTERN
             stagger = get_channel_stagger_minutes(channel_id)
             base_date = max(prev_slots).date()
@@ -384,6 +385,9 @@ async def produce_channel_video(
     channel_key: str,
     custom_topic: str = None,
     dry_run: bool = False,
+    render_only: bool = False,
+    send_telegram: bool = False,
+    telegram_chat_id: str = None,
     video_index: int = 1,
     total_per_channel: int = 1,
 ):
@@ -665,6 +669,78 @@ async def produce_channel_video(
     print(f"      - Độ sắc nét trung bình: {vc_check.get('sharpness', 0)} | Độ sáng: {vc_check.get('mean_luminance', 0)}")
     print(f"      - Âm thanh: {'Có luồng AAC chuẩn -14 LUFS' if video_qa.get('has_audio') else 'Thiếu'}")
 
+    if send_telegram:
+        try:
+            import requests as _req_tg
+            from config.settings import settings as _st_tg
+            tg_token = getattr(_st_tg, "TELEGRAM_BOT_TOKEN", None) or os.getenv("TELEGRAM_BOT_TOKEN")
+            target_chat = (
+                telegram_chat_id
+                or getattr(_st_tg, "TELEGRAM_ADMIN_ID", None)
+                or os.getenv("TELEGRAM_CHAT_ID")
+                or "8498162618"
+            )
+            if tg_token and target_chat and Path(output_video_path).exists():
+                print(f"\n   📲 [Telegram Preview] Đang gửi video #{job_id} vào Telegram ({target_chat}) để duyệt trước...")
+                caption_txt = (
+                    f"🎬 <b>[BẢN DUYỆT TRƯỚC - {ch_name}]</b>\n"
+                    f"🆔 <b>Job ID:</b> <code>#{job_id}</code>\n"
+                    f"📌 <b>Tiêu đề:</b> {smart_bundle['enriched_title']}\n"
+                    f"🎯 <b>Chủ đề:</b> {topic}\n"
+                    f"📊 <b>Điểm QA:</b> Script <code>{script_evaluation['score'] if script_evaluation else 85}/100</code> | Video <code>{video_qa['score']}/100</code> ({video_qa.get('duration_seconds', 0)}s, Sharpness={vc_check.get('sharpness', 0)})\n"
+                    f"⏰ <b>Khung giờ vàng dự kiến:</b> {DISPLAY_VN}\n"
+                    f"🏷️ <b>Tags ({len(tags)}):</b> <code>{', '.join(tags[:12])}</code>\n\n"
+                    f"💬 <b>Pinned Comment:</b> {final_pinned_comment}"
+                )
+                with open(output_video_path, "rb") as vf_tg:
+                    tg_resp = _req_tg.post(
+                        f"https://api.telegram.org/bot{tg_token}/sendVideo",
+                        data={
+                            "chat_id": str(target_chat),
+                            "caption": caption_txt[:1020],
+                            "parse_mode": "HTML",
+                            "supports_streaming": "true",
+                        },
+                        files={"video": (Path(output_video_path).name, vf_tg, "video/mp4")},
+                        timeout=120,
+                    )
+                if tg_resp.status_code == 200 and tg_resp.json().get("ok"):
+                    print(f"   ✅ [Telegram Preview] Đã gửi thành công video #{job_id} vào Telegram!")
+                else:
+                    print(f"   ⚠️ [Telegram Preview] Lỗi gửi Telegram: {tg_resp.text[:250]}")
+        except Exception as e_tg:
+            print(f"   ⚠️ [Telegram Preview] Không thể gửi video qua Telegram: {e_tg}")
+
+    if render_only:
+        with get_db() as db:
+            j_ro = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if j_ro:
+                j_ro.status = "RENDERED"
+                j_ro.video_path = str(output_video_path)
+                j_ro.title = smart_bundle["enriched_title"]
+                j_ro.description = final_description
+                j_ro.tags = ",".join(tags)
+                j_ro.scheduled_time = SCHEDULE_SLOT_UTC
+                j_ro.progress_percent = 100
+                j_ro.progress_message = f"Đã gửi bản duyệt qua Telegram (Chờ xác nhận đăng vào {DISPLAY_VN})"
+        print(f"\n   🛑 [Render-Only Mode] Đã dựng xong & gửi Telegram cho Job #{job_id}. Chờ anh duyệt trước khi upload YouTube!")
+        return {
+            "job_id": job_id,
+            "channel": ch_name,
+            "channel_id": ch_id,
+            "title": smart_bundle["enriched_title"],
+            "tags_count": len(tags),
+            "tags": tags,
+            "script_score": script_evaluation["score"] if script_evaluation else 85,
+            "video_score": video_qa["score"],
+            "scheduled_time": DISPLAY_VN,
+            "scheduled_iso": SCHEDULE_SLOT_ISO,
+            "youtube_url": "PENDING_APPROVAL",
+            "video_id": None,
+            "video_path": str(output_video_path),
+            "status": "RENDERED_SENT_TELEGRAM",
+        }
+
     # ── BƯỚC 5: UPLOAD YOUTUBE SHORTS, GẮN TAGS SEO & HẸN LỊCH KHUNG GIỜ VÀNG ──
     # Đồng bộ lại scenes_json & pinned_comment mới nhất sau khi LangGraph tinh chỉnh ở Bước 4
     try:
@@ -781,6 +857,9 @@ async def main():
     parser.add_argument("--count", type=int, default=1, help="Number of videos to produce per channel (e.g. 2)")
     parser.add_argument("--topic", type=str, default=None, help="Optional custom topic override")
     parser.add_argument("--dry-run", action="store_true", help="Generate script, tags, and golden slot only")
+    parser.add_argument("--render-only", action="store_true", help="Render video & evaluate QA without uploading to YouTube")
+    parser.add_argument("--send-telegram", action="store_true", help="Send rendered MP4 preview directly to Telegram")
+    parser.add_argument("--telegram-chat-id", type=str, default=None, help="Optional Telegram chat_id override")
     args = parser.parse_args()
 
     if args.channel == "all_6":
@@ -800,6 +879,9 @@ async def main():
                     t,
                     custom_topic=args.topic,
                     dry_run=args.dry_run,
+                    render_only=args.render_only,
+                    send_telegram=args.send_telegram,
+                    telegram_chat_id=args.telegram_chat_id,
                     video_index=v_idx,
                     total_per_channel=videos_per_ch,
                 )

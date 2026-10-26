@@ -88,6 +88,34 @@ BRAZIL_GOLDEN_SLOTS_UTC = [
     },
 ]
 
+# ──────────────────────────────────────────────────────────────────────────────
+# CẤU HÌNH 2 KHUNG GIỜ KIM CƯƠNG RIÊNG CHO KÊNH THE MYSTERIES OF THE WORLD (US EN)
+# Thực nghiệm 100% dữ liệu YouTube Data API v3 & Analytics API v2 chứng minh:
+# - 100% Top 6 video nhiều view nhất lịch sử kênh (892 - 1,250 views) đều nổ ở khung
+#   21:00 UTC (04:00 Sáng Giờ VN — 17:00 PM EDT Đỉnh Tối Bờ Đông Mỹ).
+# - Khung phụ thứ 2 trong ngày là 18:00 UTC (01:00 Rạng sáng Giờ VN — 14:00 PM EDT).
+# ──────────────────────────────────────────────────────────────────────────────
+MYSTERIES_DIAMOND_SLOTS_UTC = [
+    {
+        "hour": 21,
+        "minute": 0,
+        "label_vn": "04:00 Sáng",
+        "label_us": "17:00 PM EDT / 14:00 PM PDT (KHUNG GIỜ KIM CƯƠNG #1 — ĐỈNH TỐI BỜ ĐÔNG MỸ)",
+        "description": "Khung giờ Kim Cương #1 thực nghiệm của The mysteries of the world (04:00 Sáng VN / 21:00 UTC): 100% Top 6 video cao view nhất lịch sử kênh đều bùng nổ tại khung giờ này.",
+        "tag": "US_MYSTERIES_DIAMOND_PRIME",
+        "rank": 1
+    },
+    {
+        "hour": 18,
+        "minute": 0,
+        "label_vn": "01:00 Rạng sáng",
+        "label_us": "14:00 PM EDT / 11:00 AM PDT (KHUNG GIỜ KIM CƯƠNG #2 — ĐỈNH TRƯA BỜ TÂY & CHIỀU MỸ)",
+        "description": "Khung giờ Kim Cương #2 (01:00 Rạng sáng VN / 18:00 UTC): Cách khung chính 3 tiếng, 100% người dùng VN ngủ say, đón trọn tệp khán giả Mỹ buổi chiều.",
+        "tag": "US_MYSTERIES_AFTERNOON_PEAK",
+        "rank": 2
+    },
+]
+
 # Độ lệch thông minh theo từng kênh (phút) để chống trùng khớp giây xuất bản (Bot Footprint)
 # trên các kênh dùng chung Google Account:
 #   [US Channels]
@@ -149,6 +177,33 @@ def is_brazil_channel(channel_id: str) -> bool:
     except Exception:
         pass
     return False
+
+
+def is_mysteries_diamond_channel(channel_id: str) -> bool:
+    """Kiểm tra xem kênh có phải là The mysteries of the world (sử dụng Khung Giờ Kim Cương 04:00 Sáng VN / 21:00 UTC) hay không."""
+    if not channel_id:
+        return False
+    myst_ids = {
+        "ch_the_mysteries_of_the_world",
+        "@themysteriesoftheworld-f3w",
+        "ucsrjiil67qxidtxt70z-iwa",
+    }
+    cid_low = channel_id.strip().lower()
+    if cid_low in myst_ids:
+        return True
+    for fam in resolve_channel_family(channel_id):
+        if fam.lower() in myst_ids:
+            return True
+    return False
+
+
+def get_active_slots_pool(channel_id: str) -> List[Dict[str, Any]]:
+    """Trả về danh sách khung giờ vàng tối ưu tương ứng với từng kênh."""
+    if is_brazil_channel(channel_id):
+        return BRAZIL_GOLDEN_SLOTS_UTC
+    if is_mysteries_diamond_channel(channel_id):
+        return MYSTERIES_DIAMOND_SLOTS_UTC
+    return GOLDEN_SLOTS_UTC
 
 
 def get_channel_stagger_minutes(channel_id: str) -> int:
@@ -512,7 +567,7 @@ def get_next_available_golden_slot(
     # 1. Tìm tất cả alias của kênh này để quét occupied slots
     channel_family = resolve_channel_family(channel_id)
     is_br = is_brazil_channel(channel_id)
-    active_slots_pool = BRAZIL_GOLDEN_SLOTS_UTC if is_br else GOLDEN_SLOTS_UTC
+    active_slots_pool = get_active_slots_pool(channel_id)
     target_tz = BR_TZ if is_br else US_EASTERN
 
     occupied_slots_utc = []
@@ -604,8 +659,11 @@ def get_next_available_golden_slot(
             if candidate_dt > min_allowed_time:
                 candidate_slots.append((candidate_dt, slot))
 
-        # Sắp xếp các khe giờ ứng viên theo trình tự thời gian tự nhiên (từ sớm đến muộn trong ngày).
-        candidate_slots.sort(key=lambda item: item[0])
+        # Kênh The mysteries of the world ưu tiên tuyệt đối Khung Giờ Kim Cương Rank #1 (04:00 Sáng VN / 21:00 UTC) trước
+        if is_mysteries_diamond_channel(channel_id):
+            candidate_slots.sort(key=lambda item: (item[1].get("rank", 99), item[0]))
+        else:
+            candidate_slots.sort(key=lambda item: item[0])
 
         for candidate_dt, slot in candidate_slots:
             # 1. Kiểm tra va chạm thời gian: Cách mọi video đã có ít nhất 6.0 giờ (21,600s)
@@ -663,7 +721,7 @@ def get_channel_upcoming_schedule(channel_id: str = "ch_psychology_of_the_world"
     now_utc = datetime.now(timezone.utc)
     channel_family = resolve_channel_family(channel_id)
     is_br = is_brazil_channel(channel_id)
-    active_slots_pool = BRAZIL_GOLDEN_SLOTS_UTC if is_br else GOLDEN_SLOTS_UTC
+    active_slots_pool = get_active_slots_pool(channel_id)
     results = []
 
     with get_db() as db:

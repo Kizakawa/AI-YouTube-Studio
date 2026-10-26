@@ -73,6 +73,12 @@ class MetadataHealerMixin:
                 base_title=smart.get("base_title") or raw_title,
                 allow_affiliate=allow_affiliate,
             )
+            stale_generic_markers = (
+                "(1) undiscovered species or (2) natural anomaly",
+                "(1) an undiscovered creature or (2) a natural anomaly",
+                "(1) criatura desconhecida ou (2) fenômeno geológico",
+                "what is your thought on this? drop a comment below",
+            )
             # Ưu tiên lấy câu hỏi bình luận (pinned_comment) sinh riêng cho kịch bản của video từ DB VideoJob
             db_pinned_q = None
             try:
@@ -83,16 +89,14 @@ class MetadataHealerMixin:
                         s_obj = json.loads(vj.scenes_json) if isinstance(vj.scenes_json, str) else vj.scenes_json
                         if isinstance(s_obj, dict) and s_obj.get("pinned_comment"):
                             cand_q = str(s_obj.get("pinned_comment")).strip()
-                            if cand_q and not (not allow_affiliate and any(k in cand_q.lower() for k in ("http://", "https://", "amazon.com", "paypal.me"))):
+                            if (
+                                cand_q
+                                and not any(m in cand_q.lower() for m in stale_generic_markers)
+                                and not (not allow_affiliate and any(k in cand_q.lower() for k in ("http://", "https://", "amazon.com", "paypal.me")))
+                            ):
                                 db_pinned_q = cand_q.lstrip("💬").strip()
             except Exception:
                 pass
-
-            stale_generic_markers = (
-                "(1) undiscovered species or (2) natural anomaly",
-                "(1) criatura desconhecida ou (2) fenômeno geológico",
-                "what is your thought on this? drop a comment below",
-            )
             if desc_body and any(m in desc_body.lower() for m in stale_generic_markers):
                 cleaned_lines = [
                     ln for ln in desc_body.splitlines()
