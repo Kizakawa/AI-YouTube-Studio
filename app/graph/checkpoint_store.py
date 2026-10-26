@@ -35,8 +35,8 @@ logger = logging.getLogger(__name__)
 _CHECKPOINT_FILENAME = "step_checkpoint.json"
 _file_lock = threading.Lock()
 
-# Giới hạn số lượng pipeline render nặng chạy đồng thời trên toàn tiến trình (mặc định 2)
-_MAX_CONCURRENT_RENDERS = max(1, int(os.getenv("MAX_CONCURRENT_RENDERS", "2") or 2))
+# Giới hạn số lượng pipeline render nặng chạy đồng thời trên toàn tiến trình (mặc định 3)
+_MAX_CONCURRENT_RENDERS = max(1, int(os.getenv("MAX_CONCURRENT_RENDERS", "3") or 3))
 _global_render_thread_sem = threading.BoundedSemaphore(_MAX_CONCURRENT_RENDERS)
 
 
@@ -54,6 +54,7 @@ async def acquire_global_render_slot(job_id: int):
             f"(tối đa {_MAX_CONCURRENT_RENDERS} jobs đồng thời)..."
         )
         await asyncio.to_thread(_global_render_thread_sem.acquire)
+        acquired = True
         waited = time.monotonic() - t0
         logger.info(f"🚀 [GlobalRenderLimiter] Job #{job_id} đã nhận slot render sau {waited:.1f}s chờ!")
     else:

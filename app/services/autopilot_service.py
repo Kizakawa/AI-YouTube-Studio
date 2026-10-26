@@ -288,6 +288,8 @@ async def run_autopilot_pipeline_for_channel(
 
         # ── Step 2: Chọn ý tưởng viral mới nhất chống trùng lặp ──
         from app.services.channel_intelligence import suggest_channel_topics, ensure_unique_title
+        if isinstance(custom_topic, str) and custom_topic.strip():
+            custom_topic = {"topic": custom_topic.strip()}
         if custom_topic and isinstance(custom_topic, dict) and custom_topic.get("topic"):
             best_topic = custom_topic
         else:
@@ -386,19 +388,23 @@ async def run_autopilot_pipeline_for_channel(
             )
 
         # Đảm bảo tiêu đề độc bản 100% và có bình luận mồi chuẩn
-        preferred_title = title_str if (custom_topic and custom_topic.get("force_title") and title_str) else (script.title or title_str)
-        try:
-            unique_title, _, _ = await asyncio.to_thread(
-                ensure_unique_title,
-                preferred_title,
-                channel_id,
-                topic_str,
-                ch_lang,
-            )
-            if unique_title:
-                script.title = unique_title
-        except Exception as _ut_err:
-            logger.debug(f"[AutoPilot] ensure_unique_title warning: {_ut_err}")
+        is_forced_title = bool(isinstance(custom_topic, dict) and custom_topic.get("force_title") and title_str)
+        preferred_title = title_str if is_forced_title else (script.title or title_str)
+        if is_forced_title:
+            script.title = title_str
+        else:
+            try:
+                unique_title, _, _ = await asyncio.to_thread(
+                    ensure_unique_title,
+                    preferred_title,
+                    channel_id,
+                    topic_str,
+                    ch_lang,
+                )
+                if unique_title:
+                    script.title = unique_title
+            except Exception as _ut_err:
+                logger.debug(f"[AutoPilot] ensure_unique_title warning: {_ut_err}")
 
         if not getattr(script, "pinned_comment", None) and topic_pinned:
             try:
@@ -421,18 +427,18 @@ async def run_autopilot_pipeline_for_channel(
             job = VideoJob(
                 user_id=user_id,
                 target_channel_id=channel_id,
-                topic=topic_str,
-                title=script.title or title_str,
+                topic=str(topic_str or "High Retention Shorts")[:250],
+                title=str(script.title or title_str or "Shorts")[:250],
                 script=script.full_narration,
                 hook_text=scene_1_hook_text[:500] if scene_1_hook_text else None,
                 description=script.description,
-                tags=",".join(script.tags),
+                tags=",".join(script.tags)[:495] if script.tags else "",
                 scenes_json=script.to_json_str(),
                 status="RENDERING",
                 scheduled_time=slot_dt,
                 is_auto_generated=1,
                 progress_percent=10,
-                progress_message=f"Auto-Pilot A-Z: Đang bắt đầu dựng video cho khe giờ {display_vn}..."
+                progress_message=f"Auto-Pilot A-Z: Đang bắt đầu dựng video cho khe giờ {display_vn}..."[:250]
             )
             db.add(job)
             db.flush()
@@ -460,7 +466,7 @@ async def run_autopilot_pipeline_for_channel(
                     j_p = db_p.query(VideoJob).filter(VideoJob.id == job_id).first()
                     if j_p:
                         j_p.progress_percent = percent
-                        j_p.progress_message = f"AutoPilot [{stage}]: {msg}"
+                        j_p.progress_message = f"AutoPilot [{stage}]: {msg}"[:250]
             except Exception:
                 pass
 
@@ -500,7 +506,11 @@ async def run_autopilot_pipeline_for_channel(
         with get_db() as db_read:
             j_latest = db_read.query(VideoJob).filter(VideoJob.id == job_id).first()
             if j_latest:
-                latest_title = j_latest.title or latest_title
+                if is_forced_title and initial_job_title:
+                    latest_title = initial_job_title
+                    j_latest.title = initial_job_title[:250]
+                else:
+                    latest_title = j_latest.title or latest_title
                 latest_desc = j_latest.description or latest_desc
                 if j_latest.tags:
                     latest_tags = [t.strip() for t in j_latest.tags.split(",") if t.strip()]
@@ -564,7 +574,7 @@ async def run_autopilot_pipeline_for_channel(
         with get_db() as db:
             final_job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
             if final_job:
-                if pub_res.get("status") == "success":
+                if pub_res.get("status") in ("success", "already_published") and yt_id:
                     final_job.status = "SCHEDULED"
                     final_job.scheduled_time = slot_dt
                     final_job.youtube_video_id = yt_id
@@ -687,8 +697,13 @@ async def run_autopilot_pipeline_for_channel(
             "scheduled_time_iso": slot_iso,
             "youtube_video_id": yt_id,
             "shorts_url": yt_shorts_url,
+            "video_path": str(video_path) if video_path else None,
             "drive_link": drive_link,
-            "status": "SCHEDULED" if pub_res.get("status") == "success" else pub_res.get("status")
+            "status": (
+                "SCHEDULED"
+                if (pub_res.get("status") in ("success", "already_published") and yt_id)
+                else ("WAITING_QUOTA_RESET" if pub_res.get("status") == "waiting_quota_reset" else "RENDERED")
+            ),
         }
 
      except Exception as ex:

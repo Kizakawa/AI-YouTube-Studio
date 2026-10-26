@@ -274,9 +274,11 @@ def resolve_channel_family(channel_id: str) -> List[str]:
 
 
 _COMMENT_VERIFIED_VIDEOS: set = set()
+_LAST_SCHEDULE_SYNC_TS: float = 0.0
+_SCHEDULE_SYNC_LOCK = __import__("threading").Lock()
 
 
-def sync_scheduled_jobs_status() -> int:
+def sync_scheduled_jobs_status(force: bool = False) -> int:
     """
     Tự động đồng bộ trạng thái: Quét các VideoJob có status == 'SCHEDULED'.
     Nếu scheduled_time <= now_utc (thời điểm công chiếu đã qua trên máy chủ YouTube),
@@ -284,6 +286,14 @@ def sync_scheduled_jobs_status() -> int:
     Đồng thời đảm bảo các video vừa chuyển từ SCHEDULED -> PUBLISHED (kể cả khi YouTube cần 30-90s
     để chuyển từ private sang public) luôn được kiểm tra và đăng bình luận tác giả (Author Poll Comment).
     """
+    import time as _time
+    global _LAST_SCHEDULE_SYNC_TS
+    now_ts = _time.time()
+    if not force and (now_ts - _LAST_SCHEDULE_SYNC_TS) < 180.0:
+        return 0
+    if not _SCHEDULE_SYNC_LOCK.acquire(blocking=False):
+        return 0
+    _LAST_SCHEDULE_SYNC_TS = now_ts
     now_utc = datetime.now(timezone.utc)
     updated_count = 0
     just_published_jobs = []
@@ -397,7 +407,13 @@ def sync_scheduled_jobs_status() -> int:
     except Exception as qe:
         logger.debug(f"Lỗi khi xử lý hàng đợi quota: {qe}")
 
-    return updated_count
+    try:
+        return updated_count
+    finally:
+        try:
+            _SCHEDULE_SYNC_LOCK.release()
+        except Exception:
+            pass
 
 
 import threading as _threading
@@ -573,15 +589,21 @@ def get_next_available_golden_slot(
     occupied_slots_utc = []
     cutoff_48h = now_utc - timedelta(hours=48)
     with get_db() as db:
-        scheduled_jobs = db.query(VideoJob).filter(
+        scheduled_rows = db.query(
+            VideoJob.scheduled_time,
+            VideoJob.status,
+            VideoJob.youtube_video_id,
+            VideoJob.updated_at,
+            VideoJob.created_at,
+        ).filter(
             VideoJob.target_channel_id.in_(channel_family),
             VideoJob.status.in_(["SCHEDULED", "PUBLISHED", "WAITING_QUOTA_RESET", "RENDERED", "RENDERING"]),
-        ).all()
+        ).order_by(VideoJob.id.desc()).limit(60).all()
 
-        for j in scheduled_jobs:
-            st = j.scheduled_time
-            if not st and j.status == "PUBLISHED" and j.youtube_video_id:
-                st = j.updated_at or j.created_at
+        for st_val, status_val, yt_val, upd_val, cre_val in scheduled_rows:
+            st = st_val
+            if not st and status_val == "PUBLISHED" and yt_val:
+                st = upd_val or cre_val
             if st:
                 if st.tzinfo is None:
                     st = st.replace(tzinfo=timezone.utc)

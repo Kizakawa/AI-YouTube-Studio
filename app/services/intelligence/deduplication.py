@@ -423,8 +423,8 @@ TASK:
 Write ONE completely new, fresh, high-CTR YouTube Shorts title for this topic.
 Requirements:
 1. MUST NOT use the same sentence structure or key hook words as "{matched}".
-2. Approach from a different high-urgency angle (e.g. survival secret, terrifying anomaly, counter-intuitive twist, forbidden discovery).
-3. Under 50 characters, punchy, includes 1-2 impactful emojis.
+2. MANDATORY YT_SEARCH ENTITY ANCHOR (Viral Ceiling-Breaker Rule 1): MUST explicitly keep the exact high-search-volume entity name(s) in the title (preferably `[Entity A] vs [Entity B]: [Extreme Physical Metric]`). NEVER hide the primary entity behind vague curiosity gaps ("This 50g Toxin", "This 1,200lb Giant", "This Beast", "This Place").
+3. Under 65 characters, punchy, includes 1-2 impactful emojis and #Shorts.
 4. Output ONLY the new title as raw text, no quotes, no markdown, no explanation.
 """
         from app.utils.key_rotator import GEMINI_PRIORITY_MODELS
