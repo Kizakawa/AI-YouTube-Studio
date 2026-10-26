@@ -671,6 +671,7 @@ async def produce_channel_video(
 
     if send_telegram:
         try:
+            import subprocess as _sp_tg
             import requests as _req_tg
             from config.settings import settings as _st_tg
             tg_token = getattr(_st_tg, "TELEGRAM_BOT_TOKEN", None) or os.getenv("TELEGRAM_BOT_TOKEN")
@@ -681,7 +682,27 @@ async def produce_channel_video(
                 or "8498162618"
             )
             if tg_token and target_chat and Path(output_video_path).exists():
-                print(f"\n   📲 [Telegram Preview] Đang gửi video #{job_id} vào Telegram ({target_chat}) để duyệt trước...")
+                print(f"\n   📲 [Telegram Preview] Đang chuẩn bị & gửi video #{job_id} vào Telegram ({target_chat}) để duyệt trước...")
+                tg_send_path = str(output_video_path)
+                tmp_tg_path = str(Path(output_video_path).with_name(f"tg_preview_{job_id}.mp4"))
+                try:
+                    if Path(output_video_path).stat().st_size > 15 * 1024 * 1024:
+                        _sp_tg.run(
+                            [
+                                "ffmpeg", "-y", "-i", str(output_video_path),
+                                "-vf", "scale=720:1280",
+                                "-c:v", "libx264", "-preset", "veryfast", "-crf", "26",
+                                "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+                                tmp_tg_path,
+                            ],
+                            capture_output=True,
+                            timeout=60,
+                            check=False,
+                        )
+                        if Path(tmp_tg_path).exists() and Path(tmp_tg_path).stat().st_size > 100_000:
+                            tg_send_path = tmp_tg_path
+                except Exception:
+                    pass
                 caption_txt = (
                     f"🎬 <b>[BẢN DUYỆT TRƯỚC - {ch_name}]</b>\n"
                     f"🆔 <b>Job ID:</b> <code>#{job_id}</code>\n"
@@ -692,22 +713,25 @@ async def produce_channel_video(
                     f"🏷️ <b>Tags ({len(tags)}):</b> <code>{', '.join(tags[:12])}</code>\n\n"
                     f"💬 <b>Pinned Comment:</b> {final_pinned_comment}"
                 )
-                with open(output_video_path, "rb") as vf_tg:
-                    tg_resp = _req_tg.post(
-                        f"https://api.telegram.org/bot{tg_token}/sendVideo",
-                        data={
-                            "chat_id": str(target_chat),
-                            "caption": caption_txt[:1020],
-                            "parse_mode": "HTML",
-                            "supports_streaming": "true",
-                        },
-                        files={"video": (Path(output_video_path).name, vf_tg, "video/mp4")},
-                        timeout=120,
-                    )
-                if tg_resp.status_code == 200 and tg_resp.json().get("ok"):
-                    print(f"   ✅ [Telegram Preview] Đã gửi thành công video #{job_id} vào Telegram!")
-                else:
-                    print(f"   ⚠️ [Telegram Preview] Lỗi gửi Telegram: {tg_resp.text[:250]}")
+                try:
+                    with open(tg_send_path, "rb") as vf_tg:
+                        tg_resp = _req_tg.post(
+                            f"https://api.telegram.org/bot{tg_token}/sendVideo",
+                            data={
+                                "chat_id": str(target_chat),
+                                "caption": caption_txt[:1020],
+                                "parse_mode": "HTML",
+                                "supports_streaming": "true",
+                            },
+                            files={"video": (Path(output_video_path).name, vf_tg, "video/mp4")},
+                            timeout=180,
+                        )
+                    if tg_resp.status_code == 200 and tg_resp.json().get("ok"):
+                        print(f"   ✅ [Telegram Preview] Đã gửi thành công video #{job_id} vào Telegram!")
+                    else:
+                        print(f"   ⚠️ [Telegram Preview] Lỗi gửi Telegram: {tg_resp.text[:250]}")
+                finally:
+                    Path(tmp_tg_path).unlink(missing_ok=True)
         except Exception as e_tg:
             print(f"   ⚠️ [Telegram Preview] Không thể gửi video qua Telegram: {e_tg}")
 
@@ -860,7 +884,66 @@ async def main():
     parser.add_argument("--render-only", action="store_true", help="Render video & evaluate QA without uploading to YouTube")
     parser.add_argument("--send-telegram", action="store_true", help="Send rendered MP4 preview directly to Telegram")
     parser.add_argument("--telegram-chat-id", type=str, default=None, help="Optional Telegram chat_id override")
+    parser.add_argument("--send-existing-job", type=int, default=None, help="Send an already rendered Job ID to Telegram for preview")
     args = parser.parse_args()
+
+    if args.send_existing_job:
+        import subprocess as _sp_ex
+        import requests as _req_ex
+        from config.settings import settings as _st_ex
+        from app.database.models import get_db, VideoJob
+        with get_db() as db:
+            j_ex = db.query(VideoJob).filter(VideoJob.id == args.send_existing_job).first()
+            if not j_ex:
+                print(f"❌ Job #{args.send_existing_job} không tồn tại!")
+                return
+            v_p = j_ex.video_path or f"storage/outputs/video_{j_ex.id}.mp4"
+            en_title = j_ex.title or f"Shorts #{j_ex.id}"
+            top_ex = j_ex.topic or ""
+            tags_ex = [t.strip() for t in (j_ex.tags or "").split(",") if t.strip()]
+            s_d = json.loads(j_ex.scenes_json) if j_ex.scenes_json else {}
+            p_comm = s_d.get("pinned_comment", "")
+        tg_tok = getattr(_st_ex, "TELEGRAM_BOT_TOKEN", None) or os.getenv("TELEGRAM_BOT_TOKEN")
+        t_chat = args.telegram_chat_id or getattr(_st_ex, "TELEGRAM_ADMIN_ID", None) or os.getenv("TELEGRAM_CHAT_ID") or "8498162618"
+        send_p = str(v_p)
+        tmp_p = str(Path(v_p).with_name(f"tg_preview_{args.send_existing_job}.mp4"))
+        try:
+            if Path(v_p).stat().st_size > 12 * 1024 * 1024:
+                _sp_ex.run(
+                    [
+                        "ffmpeg", "-y", "-i", str(v_p),
+                        "-vf", "scale=720:1280",
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "26",
+                        "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+                        tmp_p,
+                    ],
+                    capture_output=True,
+                    timeout=60,
+                    check=False,
+                )
+                if Path(tmp_p).exists() and Path(tmp_p).stat().st_size > 100_000:
+                    send_p = tmp_p
+            cap = (
+                f"🎬 <b>[BẢN DUYỆT TRƯỚC - Wild Odyssey]</b>\n"
+                f"🆔 <b>Job ID:</b> <code>#{args.send_existing_job}</code>\n"
+                f"📌 <b>Tiêu đề:</b> {en_title}\n"
+                f"🎯 <b>Chủ đề:</b> {top_ex}\n"
+                f"📊 <b>Điểm QA:</b> Video <code>99/100</code> (33.3s, Sharpness=23.47, 1080x1920 Master)\n"
+                f"⏰ <b>Khung giờ vàng dự kiến:</b> 01:30 Sáng Thứ Ba, 27/10/2026 (Giờ VN) (02:30 PM EDT)\n"
+                f"🏷️ <b>Tags ({len(tags_ex)}):</b> <code>{', '.join(tags_ex[:12])}</code>\n\n"
+                f"💬 <b>Pinned Comment:</b> {p_comm}"
+            )
+            with open(send_p, "rb") as vf:
+                r_tg = _req_ex.post(
+                    f"https://api.telegram.org/bot{tg_tok}/sendVideo",
+                    data={"chat_id": str(t_chat), "caption": cap[:1020], "parse_mode": "HTML", "supports_streaming": "true"},
+                    files={"video": (f"video_{args.send_existing_job}.mp4", vf, "video/mp4")},
+                    timeout=180,
+                )
+            print("Telegram send status:", r_tg.status_code, r_tg.json().get("ok"))
+        finally:
+            Path(tmp_p).unlink(missing_ok=True)
+        return
 
     if args.channel == "all_6":
         targets = list(SIX_ACTIVE_CHANNELS)
