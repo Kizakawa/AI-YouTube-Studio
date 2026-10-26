@@ -701,8 +701,18 @@ Return ONLY valid JSON:
                 ):
                     continue
                 title_low = title_e.lower()
-                anchor_hits = sum(1 for aw in subject_anchor_words if aw in title_low)
-                if subject_anchor_words and anchor_hits == 0 and hook_production_strategy != "CINEMATIC_BROLL_FAST_CUT":
+                q_words = {
+                    w.lower()
+                    for w in re.findall(r"[a-zA-Z]{3,}", q.lower())
+                    if w.lower() not in {"the", "and", "for", "with", "shorts", "short", "video", "real"}
+                }
+                anchor_hits = sum(1 for aw in (subject_anchor_words | q_words) if aw in title_low)
+                if (
+                    (subject_anchor_words or q_words)
+                    and anchor_hits == 0
+                    and hook_production_strategy != "CINEMATIC_BROLL_FAST_CUT"
+                    and "psych" not in niche.lower()
+                ):
                     continue
                 vid_url = (
                     f"https://www.youtube.com/shorts/{vid_id}"
@@ -1228,10 +1238,11 @@ Evaluate this 3-frame sequence extracted directly from the PEAK CLIMAX window (s
 
 CRITICAL GRADING CALIBRATION (REAL VIDEO HOOK PRIORITY & PEAK INTENSITY):
 - Real moving video footage of ANY of the core subjects ("{beat_1_subject}", "{beat_2_subject}", or "{primary_entity}") in their authentic natural environment/habitat (stalking, swimming, prowling, hunting, close-up detail, or dramatic motion) is ALWAYS 10x better for a YouTube Shorts Hook than downgrading to static photos ("scene")!
+- For Psychology / Human Behavior topics (Niche="{niche}" or Strategy="CINEMATIC_BROLL_FAST_CUT"), valid visual subjects include cinematic human characters/actors, intense eye contact, cold micro-expressions, interrogation body language, or dramatic interpersonal tension matching "{visual_hook_blueprint}" (score entity_match_score 8.0–9.5 if it shows dramatic human behavior/expression without podcast mics or burned-in subtitles).
 - Give the HIGHEST scores (8.8–10.0) on "motion_action_score" and "scroll_stop_score" when the frames show high-intensity peak action, close-up confrontation, or dramatic movement matching "{visual_hook_blueprint}".
 - DO NOT reject a real wild video just because it shows stalking/prowling/swimming rather than a literal movie-like explosion/strike, as we combine multiple video beats in a fast-cut!
 - STRICT ANTI-SUBTITLE & WATERMARK GATE: If ANY frame contains burned-in subtitles (especially Vietnamese text, TikTok/CapCut captions, or foreign text banners), giant text overlays, or channel watermarks, you MUST set "clean_frame_score" <= 3.0 and "recommended_hook_mode": "scene"!
-- ONLY return "recommended_hook_mode": "scene" (rejecting the video) if the footage shows: (a) the WRONG species/subject not in "{topic}", (b) an animal trapped in an artificial zoo enclosure/concrete wall/cage when wild nature is required, (c) a contradicting biome/season (e.g. snow when tropical jungle is required), (d) a talking head/podcast/vlog/amateur webcam selfie in a bedroom or isolated disembodied macro eyeball closeup, or (e) burned-in subtitles, Vietnamese/foreign text captions, giant text overlays, or watermarks.
+- ONLY return "recommended_hook_mode": "scene" (rejecting the video) if the footage shows: (a) the WRONG species/subject not in "{topic}", (b) an animal trapped in an artificial zoo enclosure/concrete wall/cage when wild nature is required, (c) a contradicting biome/season (e.g. snow when tropical jungle is required), (d) a talking head/podcast/vlog/amateur webcam selfie speaking into a mic or isolated disembodied macro eyeball closeup, or (e) burned-in subtitles, Vietnamese/foreign text captions, giant text overlays, or watermarks.
 
 Score strictly from 1.0 to 10.0:
 1. "recommended_hook_mode": "video" if it shows any valid subject from "{topic}" in an authentic setting with clean frames; "scene" ONLY if it violates (a)-(e) above.
