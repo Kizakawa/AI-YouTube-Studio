@@ -2707,10 +2707,15 @@ function renderChannelsHub(channels, accounts) {
         const isAuth = Boolean(ch.is_authenticated || ch.youtube_connected);
         const authBadge = isAuth 
             ? `<span class="service-status-pill connected">🟢 Đã cấp quyền YouTube</span>`
-            : `<span class="service-status-pill disconnected">🟡 Chưa kết nối YouTube</span>`;
+            : (ch.token_expired
+                ? `<span class="service-status-pill disconnected" style="background:rgba(239,68,68,0.15); color:#f87171; border-color:rgba(239,68,68,0.35);">🔴 Token hết hạn - Cần cấp lại</span>`
+                : `<span class="service-status-pill disconnected">🟡 Chưa kết nối YouTube</span>`);
 
         const visualLabel = ch.visual_mode === 'auto' ? '🤖 AI Auto' : (ch.visual_mode === 'imagen_ai' ? '✨ Imagen 3' : '🎞️ Pexels HD');
         const pubHour = ch.schedule?.publish_hour_utc ?? 12;
+        const encChId = encodeURIComponent(ch.id || '');
+        const encChName = encodeURIComponent(ch.name || ch.id || '');
+        const encAccId = encodeURIComponent(ch.google_account || 'account_1');
 
         return `
             <div class="channel-hub-card" id="hub-ch-${esc(ch.id)}">
@@ -2778,10 +2783,14 @@ function renderChannelsHub(channels, accounts) {
                         ✏️ Sửa Kênh
                     </button>
                     ${!isAuth ? `
-                        <button class="btn btn-primary btn-sm" style="background:var(--accent-amber); border-color:var(--accent-amber);" onclick="startChannelAuth('${esc(ch.id)}', '${esc(ch.name)}', '${esc(ch.google_account)}')" title="Đăng nhập Google cấp quyền YouTube cho kênh này">
+                        <button class="btn btn-primary btn-sm" style="background:var(--accent-amber); border-color:var(--accent-amber);" onclick="startChannelAuth(decodeURIComponent('${encChId}'), decodeURIComponent('${encChName}'), decodeURIComponent('${encAccId}'))" title="Đăng nhập Google cấp quyền YouTube cho kênh này">
                             🔑 Cấp Quyền
                         </button>
-                    ` : ''}
+                    ` : `
+                        <button class="btn btn-secondary btn-sm" onclick="startChannelAuth(decodeURIComponent('${encChId}'), decodeURIComponent('${encChName}'), decodeURIComponent('${encAccId}'))" title="Cấp lại quyền YouTube cho kênh này">
+                            🔄 Cấp Lại
+                        </button>
+                    `}
                     <button class="btn btn-danger btn-sm" onclick="deleteChannel('${esc(ch.google_account)}', '${esc(ch.id)}')" title="Xóa kênh">
                         🗑️
                     </button>
@@ -3073,6 +3082,7 @@ function renderAccounts(accounts) {
                             </div>
                         ` : brandChannels.map(ch => {
                             const isAuth = Boolean(ch.has_own_token || ch.youtube_connected);
+                            const isExpired = Boolean(ch.token_expired);
                             return `
                             <div class="channel-row-item" style="display:flex; flex-direction:column; gap:8px; padding:12px 14px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:10px; margin-bottom:10px;">
                                 <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
@@ -3084,11 +3094,15 @@ function renderAccounts(accounts) {
                                                 <span class="badge badge-green" style="font-size:11px; background:rgba(16,185,129,0.15); color:var(--accent-green); border:1px solid rgba(16,185,129,0.3); display:inline-flex; align-items:center; gap:4px;">
                                                     ✓ Đã cấp quyền YouTube riêng ${ch.token_channel_title ? `[${esc(ch.token_channel_title)}]` : ''}
                                                 </span>
+                                            ` : (isExpired ? `
+                                                <span class="badge badge-rose" style="font-size:11px; background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.35); display:inline-flex; align-items:center; gap:4px;">
+                                                    🔴 Token hết hạn - Cần cấp lại quyền
+                                                </span>
                                             ` : `
                                                 <span class="badge badge-amber" style="font-size:11px; background:rgba(245,158,11,0.15); color:var(--accent-amber); border:1px solid rgba(245,158,11,0.35); display:inline-flex; align-items:center; gap:4px;">
                                                     ⚠️ Chưa cấp quyền YouTube
                                                 </span>
-                                            `}
+                                            `)}
                                         </div>
                                         <div class="channel-row-meta" style="font-size:12px; color:var(--text-secondary); display:flex; gap:12px; flex-wrap:wrap;">
                                             <span>🎯 <strong>Chủ đề:</strong> ${ch.niche ? esc(ch.niche) : '<em style="color:var(--text-muted)">✨ Tự do (Đa chủ đề)</em>'}</span>
@@ -3100,11 +3114,11 @@ function renderAccounts(accounts) {
                                     </div>
                                     <div class="channel-row-actions" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
                                         ${!isAuth ? `
-                                            <button class="btn btn-primary btn-sm" onclick="startChannelAuth(decodeURIComponent('${encodeURIComponent(ch.id)}'), decodeURIComponent('${encodeURIComponent(ch.name)}'))" title="Cấp quyền đăng video cho kênh này" style="background:linear-gradient(135deg,rgba(239,68,68,0.9),rgba(220,38,38,0.9)); border-color:#dc2626; font-size:11.5px; font-weight:600;">
+                                            <button class="btn btn-primary btn-sm" onclick="startChannelAuth(decodeURIComponent('${encodeURIComponent(ch.id)}'), decodeURIComponent('${encodeURIComponent(ch.name)}'), decodeURIComponent('${encodeURIComponent(acc.id)}'))" title="Cấp quyền đăng video cho kênh này" style="background:linear-gradient(135deg,rgba(239,68,68,0.9),rgba(220,38,38,0.9)); border-color:#dc2626; font-size:11.5px; font-weight:600;">
                                                 🔑 Cấp Quyền YouTube (Kênh Này)
                                             </button>
                                         ` : `
-                                            <button class="btn btn-secondary btn-sm" onclick="startChannelAuth(decodeURIComponent('${encodeURIComponent(ch.id)}'), decodeURIComponent('${encodeURIComponent(ch.name)}'))" title="Ủy quyền lại kênh này nếu cần" style="font-size:11px;">
+                                            <button class="btn btn-secondary btn-sm" onclick="startChannelAuth(decodeURIComponent('${encodeURIComponent(ch.id)}'), decodeURIComponent('${encodeURIComponent(ch.name)}'), decodeURIComponent('${encodeURIComponent(acc.id)}'))" title="Ủy quyền lại kênh này nếu cần" style="font-size:11px;">
                                                 🔄 Cấp Lại Quyền
                                             </button>
                                             <button class="btn btn-secondary btn-sm" onclick="disconnectChannelAuth('${esc(ch.id)}')" title="Hủy quyền YouTube" style="color:var(--accent-rose); font-size:11px;">
@@ -3519,6 +3533,10 @@ async function startChannelAuth(channelId, channelName, accountId = '') {
         }
 
         // Nếu có auth_url trả về ngay lập tức, chuyển hướng tab popup ngay
+        const expectedGmail = res.expected_gmail || '';
+        const gmailLineHtml = expectedGmail
+            ? `1. Trình duyệt đã mở trang Google ở tab mới, hãy chọn đúng Gmail: <strong style="color:#60a5fa;">${esc(expectedGmail)}</strong><br>`
+            : `1. Trình duyệt đã mở trang Google ở tab mới, hãy chọn Gmail của bạn.<br>`;
         if (res.auth_url) {
             authLink.href = res.auth_url;
             linkBox.style.display = 'block';
@@ -3542,7 +3560,7 @@ async function startChannelAuth(channelId, channelName, accountId = '') {
                 desc.innerHTML = `
                     <div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:8px; padding:12px; margin-bottom:12px; text-align:left; font-size:12.5px; color:#fde68a; line-height:1.6;">
                         <strong>⚠️ LƯU Ý RẤT QUAN TRỌNG KHI ĐĂNG NHẬP GOOGLE:</strong><br>
-                        1. Trình duyệt đã mở trang Google ở tab mới, hãy chọn Gmail của bạn.<br>
+                        ${gmailLineHtml}
                         👉 <strong>2. HÃY BẤM CHỌN ĐÚNG KÊNH "${esc(channelName || channelId)}"!</strong><br>
                         3. Bấm <strong>Cho phép / Allow</strong> để hoàn tất.
                     </div>
@@ -3565,41 +3583,48 @@ async function startChannelAuth(channelId, channelName, accountId = '') {
                 const statusData = await apiGet(`/api/channels/${encodeURIComponent(channelId)}/auth-status`);
                 if (!statusData) return;
 
-                if (statusData.auth_url && linkBox.style.display === 'none') {
+                if (statusData.auth_url) {
                     authLink.href = statusData.auth_url;
-                    linkBox.style.display = 'block';
-                    spinner.style.display = 'none';
-                    if (authWin && !authWin.closed && authWin.location.href.includes('about:blank')) {
-                        authWin.location.href = statusData.auth_url;
+                    if (linkBox.style.display === 'none') {
+                        linkBox.style.display = 'block';
+                        spinner.style.display = 'none';
+                        if (authWin && !authWin.closed && authWin.location.href.includes('about:blank')) {
+                            authWin.location.href = statusData.auth_url;
+                        }
                     }
                 }
 
                 if (statusData.status === 'success') {
                     clearInterval(oauthPollTimer);
                     if (oauthCountdownTimer) { clearInterval(oauthCountdownTimer); oauthCountdownTimer = null; }
+                    const resolvedTitle = statusData.channel_title || statusData.real_title || channelName;
                     spinner.style.display = 'none';
                     linkBox.style.display = 'none';
                     heading.textContent = '🎉 Cấp Quyền Kênh Thành Công!';
                     desc.innerHTML = `
-                        Đã kết nối thành công kênh <strong>${esc(statusData.channel_title || channelName)}</strong>.<br>
+                        Đã kết nối thành công kênh <strong>${esc(resolvedTitle)}</strong>.<br>
                         Từ bây giờ, tất cả video của kênh này sẽ đăng chính xác 100%!
                     `;
                     resultBox.style.display = 'block';
                     resultBox.style.background = 'rgba(52,211,153,0.15)';
                     resultBox.style.color = 'var(--accent-green)';
-                    resultBox.textContent = `✓ Đã lưu token riêng cho ${statusData.channel_title || channelName}.`;
-                    showToast(`Đã cấp quyền thành công cho kênh ${statusData.channel_title || channelName}!`, 'success');
+                    resultBox.textContent = `✓ Đã lưu token riêng cho ${resolvedTitle}.`;
+                    showToast(`Đã cấp quyền thành công cho kênh ${resolvedTitle}!`, 'success');
                     setTimeout(() => {
                         closeOAuthModal();
                         fetchChannels();
                         fetchAccounts();
                         fetchStats();
+                        const matrixBox = document.getElementById('live-oauth-matrix-box');
+                        if (matrixBox && matrixBox.style.display !== 'none' && typeof runLiveOAuthMatrixCheck === 'function') {
+                            runLiveOAuthMatrixCheck();
+                        }
                     }, 2200);
                 } else if (statusData.status === 'error') {
                     spinner.style.display = 'none';
                     linkBox.style.display = 'block';
-                    heading.textContent = '❌ Lỗi Cấp Quyền Kênh';
-                    desc.innerHTML = 'Hệ thống chưa nhận được mã hợp lệ. Bạn có thể mở lại trang đăng nhập hoặc dán lại đường link vào ô bên dưới:';
+                    heading.textContent = '⚠️ Chưa Chọn Đúng Kênh / Lỗi Cấp Quyền';
+                    desc.innerHTML = `Bấm nút <strong>"🚀 Mở trang đăng nhập Google"</strong> bên dưới và chọn đúng kênh <strong>${esc(channelName || channelId)}</strong>${expectedGmail ? ` (Gmail: <strong>${esc(expectedGmail)}</strong>)` : ''}:`;
                     resultBox.style.display = 'block';
                     resultBox.style.background = 'rgba(251,113,133,0.15)';
                     resultBox.style.color = 'var(--accent-rose)';

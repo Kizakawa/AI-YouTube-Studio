@@ -90,11 +90,11 @@ def _is_valid_oauth_client_config(data: Optional[Dict[str, Any]]) -> bool:
 def _resolve_and_load_client_secret(base_dir: Path, preferred_acc_ids: List[str]) -> tuple[Optional[Path], Dict[str, Any]]:
     """
     Tải và giải mã an toàn client_secret.json (hỗ trợ cả AES-256-GCM và JSON thuần).
-    Tự động fallback sang các tài khoản dự phòng nếu file của tài khoản đích bị thiếu hoặc chứa client_id cũ đã xóa,
-    đồng thời tự động đồng bộ lại file chuẩn cho tài khoản đích.
+    Tự động khôi phục từ bản backup riêng (nếu có) trước khi fallback sang các tài khoản dự phòng,
+    đảm bảo mỗi Google Cloud Project trong Quota Pool giữ nguyên client_id độc lập.
     """
     search_order: List[str] = []
-    for acc in list(preferred_acc_ids) + ["acount_2", "account_1", "accout3", "account_2", "account_3", "project_pool_2"]:
+    for acc in list(preferred_acc_ids) + ["acount_2", "account_1", "accout3", "acccount4", "account_2", "account_3", "project_pool_2"]:
         acc_clean = (acc or "").strip()
         if acc_clean and acc_clean not in search_order:
             search_order.append(acc_clean)
@@ -104,8 +104,15 @@ def _resolve_and_load_client_secret(base_dir: Path, preferred_acc_ids: List[str]
     chosen_cfg: Dict[str, Any] = {}
 
     for acc in search_order:
-        for fname in ("client_secret.json", "client_secret.json.json"):
-            cand = accounts_root / acc / fname
+        acc_folder = accounts_root / acc
+        candidate_files = [
+            acc_folder / "client_secret.json",
+            acc_folder / "client_secret_bionic_backup.json",
+            acc_folder / "client_secret.json.json",
+        ]
+        if acc == "account_1":
+            candidate_files.append(base_dir / "credentials" / "client_secret_bionic_backup.json")
+        for cand in candidate_files:
             if not cand.exists():
                 continue
             try:
@@ -113,6 +120,15 @@ def _resolve_and_load_client_secret(base_dir: Path, preferred_acc_ids: List[str]
                 if _is_valid_oauth_client_config(loaded):
                     chosen_path = cand
                     chosen_cfg = loaded
+                    primary_secret_file = acc_folder / "client_secret.json"
+                    if cand != primary_secret_file:
+                        try:
+                            primary_secret_file.parent.mkdir(parents=True, exist_ok=True)
+                            save_encrypted_json(primary_secret_file, loaded)
+                            chosen_path = primary_secret_file
+                            logger.info(f"🔄 [OAuth Self-Heal] Đã khôi phục client_secret.json gốc cho '{acc}' từ '{cand.name}'")
+                        except Exception:
+                            pass
                     break
             except Exception as ex:
                 logger.warning(f"Lỗi đọc client_secret tại {cand}: {ex}")
@@ -266,18 +282,21 @@ def on_startup():
     except Exception as e:
         logger.warning(f"Lỗi recover stuck jobs on startup: {e}")
 
-    # Tự động nạp hoặc khôi phục credentials/tokens cho Google Account 1
+    # Tự động nạp hoặc khôi phục credentials/tokens cho Google Account 1 (không ghi đè nếu đã có secret hợp lệ)
     try:
-        import base64
-        import json
         acc1_dir = BASE_DIR / "credentials" / "accounts" / "account_1"
         acc1_dir.mkdir(parents=True, exist_ok=True)
         secret_p = acc1_dir / "client_secret.json"
-        is_render = bool(os.getenv("RENDER") or os.getenv("IS_RENDER"))
-        default_secret = DEFAULT_WEB_CLIENT if is_render else DEFAULT_DESKTOP_CLIENT
-        secret_p.write_text(json.dumps(default_secret, indent=2), encoding="utf-8")
-        mode_label = "Web Application 1-Click (Render)" if is_render else "Desktop Application (Localhost)"
-        logger.info(f"✅ [Startup] Đã tự động kích hoạt client_secret.json {mode_label} cho account_1")
+        existing_acc1 = load_encrypted_json(secret_p) if secret_p.exists() else None
+        if not _is_valid_oauth_client_config(existing_acc1):
+            is_render = bool(os.getenv("RENDER") or os.getenv("IS_RENDER"))
+            default_secret = DEFAULT_WEB_CLIENT if is_render else DEFAULT_DESKTOP_CLIENT
+            if _is_valid_oauth_client_config(default_secret):
+                save_encrypted_json(secret_p, default_secret)
+                mode_label = "Web Application 1-Click (Render)" if is_render else "Desktop Application (Localhost)"
+                logger.info(f"✅ [Startup] Đã tự động kích hoạt client_secret.json {mode_label} cho account_1")
+            else:
+                _resolve_and_load_client_secret(BASE_DIR, ["account_1"])
 
         # Tự động nạp toàn bộ 11 tokens của cả 3 tài khoản mẹ và 5 kênh YouTube từ Token Vault
         try:
@@ -623,9 +642,46 @@ async def get_team_members() -> List[Dict[str, Any]]:
 _channel_token_health_cache: Dict[str, Dict[str, Any]] = {}
 
 def _check_channel_token_health(ch_id: str, token_file: Path) -> Dict[str, Any]:
-    """Kiểm tra xem token của kênh có thực sự dùng được hay bị invalid_grant (cache theo mtime + TTL)."""
+    """Kiểm tra xem token của kênh có thực sự dùng được hay bị invalid_grant (tự động hồi phục từ Pool token nếu có)."""
     now = time.time()
+    ch_dir = token_file.parent
+
+    def _try_heal_from_pool() -> Optional[Dict[str, Any]]:
+        if not ch_dir.exists():
+            return None
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
+        for cand_tf in sorted(ch_dir.glob("youtube_token_*.json")):
+            if cand_tf.name == token_file.name:
+                continue
+            try:
+                c_data = load_encrypted_json(cand_tf)
+                if not c_data or not c_data.get("refresh_token"):
+                    continue
+                c_creds = Credentials.from_authorized_user_info(c_data)
+                c_creds.refresh(Request())
+                merged = {**c_data, **json.loads(c_creds.to_json())}
+                save_encrypted_json(cand_tf, merged)
+                save_encrypted_json(token_file, merged)
+                new_mtime = token_file.stat().st_mtime
+                logger.info(f"🔄 [OAuth Pool Self-Heal] Đã tự động hồi phục youtube_token.json cho '{ch_id}' từ '{cand_tf.name}'")
+                return {
+                    "valid": True,
+                    "expired": False,
+                    "title": merged.get("channel_title"),
+                    "error": None,
+                    "checked_at": now,
+                    "mtime": new_mtime,
+                }
+            except Exception:
+                continue
+        return None
+
     if not token_file.exists():
+        healed = _try_heal_from_pool()
+        if healed:
+            _channel_token_health_cache[ch_id] = healed
+            return healed
         res = {"valid": False, "expired": False, "title": None, "error": "No token file", "checked_at": now, "mtime": 0}
         _channel_token_health_cache[ch_id] = res
         return res
@@ -639,6 +695,10 @@ def _check_channel_token_health(ch_id: str, token_file: Path) -> Dict[str, Any]:
     try:
         t_data = load_encrypted_json(token_file)
         if not t_data or "refresh_token" not in t_data:
+            healed = _try_heal_from_pool()
+            if healed:
+                _channel_token_health_cache[ch_id] = healed
+                return healed
             res = {"valid": False, "expired": False, "title": None, "error": "Malformed token", "checked_at": now, "mtime": mtime}
             _channel_token_health_cache[ch_id] = res
             return res
@@ -656,6 +716,10 @@ def _check_channel_token_health(ch_id: str, token_file: Path) -> Dict[str, Any]:
         _channel_token_health_cache[ch_id] = res
         return res
     except Exception as e:
+        healed = _try_heal_from_pool()
+        if healed:
+            _channel_token_health_cache[ch_id] = healed
+            return healed
         err_str = str(e)
         is_exp = "invalid_grant" in err_str or "expired" in err_str or "revoked" in err_str
         res = {"valid": False, "expired": is_exp, "title": None, "error": err_str, "checked_at": now, "mtime": mtime}
@@ -3052,6 +3116,20 @@ async def oauth_callback(
             token_file = ch_dir / "youtube_token.json"
             pool_token_file = ch_dir / f"youtube_token_{acc_id}.json"
 
+            expected_yt_id = (st_info.get("expected_yt_id") or "").strip()
+            if expected_yt_id and real_yt_id and expected_yt_id.lower() != real_yt_id.lower():
+                err_msg = (
+                    f"⚠️ Bạn vừa chọn nhầm kênh '{real_yt_title or real_yt_id}' trên Google, "
+                    f"trong khi đang cần cấp quyền cho kênh '{ch_name}' ({expected_yt_id})! "
+                    f"Vui lòng quay lại Dashboard và chọn đúng kênh '{ch_name}'."
+                )
+                _oauth_sessions[session_key] = {
+                    "status": "error",
+                    "error": err_msg,
+                    "message": err_msg,
+                }
+                raise ValueError(err_msg)
+
             token_dict = json.loads(creds.to_json())
             token_dict["channel_id"] = real_yt_id or channel_id
             token_dict["channel_title"] = real_yt_title or ch_name
@@ -3060,6 +3138,7 @@ async def oauth_callback(
 
             save_encrypted_json(pool_token_file, token_dict)
             save_encrypted_json(token_file, token_dict)
+            _channel_token_health_cache.pop(channel_id, None)
 
             cfg = _read_channels_yaml()
             for c in cfg.get("channels", []):
@@ -3328,19 +3407,26 @@ async def get_accounts_and_channels() -> Dict[str, Any]:
             bch_id = bch.get("id", "")
             ch_token_file = base_dir / "credentials" / "channels" / str(bch_id) / "youtube_token.json"
             has_own = False
+            token_expired = False
             ch_title = None
             if ch_token_file.exists():
                 try:
                     ch_tok = load_encrypted_json(ch_token_file)
-                    if ch_tok.get("token") or ch_tok.get("refresh_token"):
-                        has_own = True
-                        ch_title = ch_tok.get("channel_title")
+                    ch_title = ch_tok.get("channel_title")
                 except Exception:
                     pass
-            is_conn = has_own or (idx == 0 and token_status["youtube_connected"])
+            ch_health = _check_channel_token_health(str(bch_id), ch_token_file)
+            if ch_health.get("valid"):
+                has_own = True
+                ch_title = ch_health.get("title") or ch_title
+            elif ch_health.get("expired"):
+                token_expired = True
+
+            is_conn = has_own or (not token_expired and idx == 0 and token_status["youtube_connected"])
             bch_copy = dict(settings._heal_channel_dict(dict(bch)))
             bch_copy["has_own_token"] = has_own
             bch_copy["youtube_connected"] = is_conn
+            bch_copy["token_expired"] = token_expired
             bch_copy["token_channel_title"] = ch_title
             enriched_bchannels.append(bch_copy)
 
@@ -3738,7 +3824,7 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
         import secrets
         flow = Flow.from_client_config(sec_json, scopes=scopes, redirect_uri=callback_url)
         state_token = secrets.token_urlsafe(32)
-        auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline", state=state_token)
+        auth_url, _ = flow.authorization_url(prompt="select_account consent", access_type="offline", state=state_token)
         _oauth_web_states[state_token] = {
             "flow": flow,
             "session_key": session_key,
@@ -3778,7 +3864,12 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
     )
 
     def _wsgi_app(environ, start_response):
-        received_uri["value"] = wsgiref.util.request_uri(environ)
+        req_uri = wsgiref.util.request_uri(environ)
+        parsed_req = urlparse(req_uri)
+        if parsed_req.path == "/favicon.ico" or ("code=" not in req_uri and "error=" not in req_uri):
+            start_response("204 No Content", [])
+            return [b""]
+        received_uri["value"] = req_uri
         start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
         return [success_page.encode("utf-8")]
 
@@ -3794,7 +3885,7 @@ async def start_google_oauth(account_id: str, req: AuthStartRequest, request: Re
 
     # Cấu hình redirect URI trỏ về server cục bộ vừa tạo
     flow.redirect_uri = f"http://localhost:{port}/"
-    auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline")
+    auth_url, _ = flow.authorization_url(prompt="select_account consent", access_type="offline")
 
     # Lưu URL xác thực để frontend hiển thị trên modal
     _oauth_sessions[session_key] = {
@@ -4972,6 +5063,7 @@ def check_all_channels_live_oauth() -> Dict[str, Any]:
 
     results: List[Dict[str, Any]] = []
     valid_count = 0
+    now_ts = time.time()
     for ch in all_channels:
         cid = ch["id"]
         ch_dir = base_dir / "credentials" / "channels" / cid
@@ -4994,6 +5086,8 @@ def check_all_channels_live_oauth() -> Dict[str, Any]:
                 elif data and data.get("refresh_token"):
                     creds = Credentials.from_authorized_user_info(data)
                     creds.refresh(GoogleAuthRequest())
+                    merged_prim = {**data, **json.loads(creds.to_json())}
+                    save_encrypted_json(prim_token, merged_prim)
                     is_valid = True
                     valid_count += 1
                     status_code = "valid"
@@ -5008,18 +5102,56 @@ def check_all_channels_live_oauth() -> Dict[str, Any]:
 
         matrix = {a: False for a in accounts}
         if ch_dir.exists():
-            for tf in ch_dir.glob("*.json"):
+            for tf in sorted(ch_dir.glob("*.json")):
                 try:
                     t_data = load_encrypted_json(tf)
-                    if t_data and "client_id" in t_data:
-                        matched_a = cid_to_acc.get(t_data["client_id"])
-                        if matched_a:
-                            matrix[matched_a] = True
+                    if not t_data or not t_data.get("refresh_token"):
+                        continue
+                    tok_yt_pool = (t_data.get("channel_id") or "").strip()
+                    if exp_yt and tok_yt_pool and exp_yt.lower() != tok_yt_pool.lower():
+                        continue
+                    matched_acc_list: List[str] = []
+                    if "client_id" in t_data:
+                        m_acc = cid_to_acc.get(t_data["client_id"])
+                        if m_acc:
+                            matched_acc_list.append(m_acc)
+                    for a in accounts:
+                        if tf.name == f"youtube_token_{a}.json" and a not in matched_acc_list:
+                            matched_acc_list.append(a)
+                    if not matched_acc_list and not is_valid:
+                        pass
+                    # Kiểm tra refresh thật cho token pool
+                    if tf == prim_token and is_valid:
+                        for ma in matched_acc_list:
+                            matrix[ma] = True
+                        continue
+                    p_creds = Credentials.from_authorized_user_info(t_data)
+                    p_creds.refresh(GoogleAuthRequest())
+                    merged_pool = {**t_data, **json.loads(p_creds.to_json())}
+                    save_encrypted_json(tf, merged_pool)
+                    for ma in matched_acc_list:
+                        matrix[ma] = True
+                    # Tự động hồi phục youtube_token.json chính nếu token chính bị hỏng/hết hạn
+                    if not is_valid:
+                        save_encrypted_json(prim_token, merged_pool)
+                        is_valid = True
+                        valid_count += 1
+                        status_code = "valid"
+                        status_text = "🟢 Đang hoạt động tốt (VALID)"
+                        token_channel_title = (merged_pool.get("channel_title") or token_channel_title).strip()
+                        logger.info(f"🔄 [Live OAuth Matrix] Đã tự động hồi phục youtube_token.json cho '{cid}' từ '{tf.name}'")
                 except Exception:
                     pass
-                for a in accounts:
-                    if tf.name == f"youtube_token_{a}.json":
-                        matrix[a] = True
+
+        if prim_token.exists():
+            _channel_token_health_cache[cid] = {
+                "valid": is_valid,
+                "expired": status_code == "expired",
+                "title": token_channel_title or ch["name"],
+                "error": None if is_valid else status_text,
+                "checked_at": now_ts,
+                "mtime": prim_token.stat().st_mtime,
+            }
 
         results.append({
             "id": cid,
@@ -5057,16 +5189,24 @@ async def start_channel_oauth(
     channels = cfg.get("channels", [])
     ch = next((c for c in channels if c.get("id") == channel_id), None)
     primary_acc_id = "account_1"
+    expected_yt_id = ""
+    expected_gmail = ""
     if ch:
         primary_acc_id = ch.get("google_account", "account_1")
-    else:
-        for acc in cfg.get("google_accounts", []):
-            for bc in acc.get("brand_channels", []):
-                if bc.get("id") == channel_id:
+        expected_yt_id = (ch.get("youtube_channel_id") or "").strip()
+
+    for acc in cfg.get("google_accounts", []):
+        if acc.get("id") == primary_acc_id and acc.get("email_label"):
+            expected_gmail = acc.get("email_label", "")
+        for bc in acc.get("brand_channels", []):
+            if bc.get("id") == channel_id:
+                if not ch:
                     ch = bc
                     primary_acc_id = acc.get("id", "account_1")
-                    break
-            if ch:
+                if not expected_yt_id and bc.get("youtube_channel_id"):
+                    expected_yt_id = (bc.get("youtube_channel_id") or "").strip()
+                if not expected_gmail and acc.get("email_label"):
+                    expected_gmail = acc.get("email_label", "")
                 break
     if not ch:
         raise HTTPException(status_code=404, detail="Không tìm thấy kênh")
@@ -5113,13 +5253,14 @@ async def start_channel_oauth(
         import secrets
         flow = Flow.from_client_config(sec_json, scopes=scopes, redirect_uri=callback_url)
         state_token = secrets.token_urlsafe(32)
-        auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline", state=state_token)
+        auth_url, _ = flow.authorization_url(prompt="select_account consent", access_type="offline", state=state_token)
         _oauth_web_states[state_token] = {
             "flow": flow,
             "session_key": session_key,
             "type": "channel",
             "channel_id": channel_id,
             "channel_name": ch_name,
+            "expected_yt_id": expected_yt_id,
             "acc_id": acc_id,
             "service": service,
             "created_at": time.time()
@@ -5128,6 +5269,7 @@ async def start_channel_oauth(
             "status": "in_progress",
             "channel_id": channel_id,
             "channel_name": ch_name,
+            "expected_gmail": expected_gmail,
             "service": service,
             "auth_url": auth_url,
             "message": f"Phiên xác thực 1-Click tự động cho kênh '{ch_name}' đã sẵn sàng."
@@ -5135,6 +5277,8 @@ async def start_channel_oauth(
         return {
             "success": True,
             "auth_url": auth_url,
+            "expected_gmail": expected_gmail,
+            "expected_yt_id": expected_yt_id,
             "session_key": session_key,
             "status": "in_progress"
         }
@@ -5142,34 +5286,50 @@ async def start_channel_oauth(
     desktop_cfg = sec_json if "installed" in sec_json else DEFAULT_DESKTOP_CLIENT
     flow = InstalledAppFlow.from_client_config(desktop_cfg, scopes=scopes)
     received_uri = {"value": None}
+    verify_event = threading.Event()
+    server_active = {"running": True}
     ch_name = ch.get("name", channel_id)
-    success_page = (
-        f"<html><body style='font-family:system-ui,sans-serif;text-align:center;padding:60px;"
-        f"background:#1a1a2e;color:#e0e0e0'>"
-        f"<h2 style='color:#34d399'>✅ Đã kết nối kênh '{ch_name}' thành công!</h2>"
-        f"<p>Bạn có thể đóng tab này và quay lại Web Studio để đăng video.</p>"
+    safe_ch_name_html = html_lib.escape(str(ch_name))
+    default_success_page = (
+        f"<html><head><meta charset='utf-8'><title>Cấp Quyền Kênh YouTube</title></head>"
+        f"<body style='font-family:system-ui,sans-serif;text-align:center;padding:60px;"
+        f"background:#0f172a;color:#f8fafc'>"
+        f"<h2 style='color:#34d399'>✅ Đã kết nối kênh '{safe_ch_name_html}' thành công!</h2>"
+        f"<p style='color:#94a3b8'>Bạn có thể đóng tab này và quay lại Web Studio để đăng video.</p>"
+        f"<script>setTimeout(function(){{try{{window.close();}}catch(e){{}}}},2000);</script>"
         f"</body></html>"
     )
+    verify_page = {"html": default_success_page}
 
     def _wsgi_app(environ, start_response):
-        received_uri["value"] = wsgiref.util.request_uri(environ)
+        req_uri = wsgiref.util.request_uri(environ)
+        parsed_req = urlparse(req_uri)
+        if parsed_req.path == "/favicon.ico" or ("code=" not in req_uri and "error=" not in req_uri):
+            start_response("204 No Content", [])
+            return [b""]
+        verify_event.clear()
+        received_uri["value"] = req_uri
+        verify_event.wait(timeout=12.0)
         start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
-        return [success_page.encode("utf-8")]
+        return [verify_page["html"].encode("utf-8")]
 
     class _SilentHandler(wsgiref.simple_server.WSGIRequestHandler):
         def log_message(self, fmt, *args):
             pass
 
     local_server = wsgiref.simple_server.make_server("localhost", 0, _wsgi_app, handler_class=_SilentHandler)
+    local_server.timeout = 1.0
     port = local_server.server_port
     flow.redirect_uri = f"http://localhost:{port}/"
-    auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline")
+    auth_url, _ = flow.authorization_url(prompt="select_account consent", access_type="offline")
 
     session_key = f"channel:{channel_id}:{service}"
     _oauth_sessions[session_key] = {
         "status": "starting",
         "channel_id": channel_id,
-        "channel_name": ch.get("name", channel_id),
+        "channel_name": ch_name,
+        "expected_gmail": expected_gmail,
+        "expected_yt_id": expected_yt_id,
         "service": service,
         "auth_url": auth_url,
         "message": f"Link đăng nhập đã sẵn sàng. Khi Google hiển thị danh sách kênh, hãy chọn đúng kênh '{ch_name}'!"
@@ -5183,16 +5343,25 @@ async def start_channel_oauth(
     else:
         logger.info(f"Yêu cầu OAuth kênh từ thiết bị khách ({client_ip}), không mở trình duyệt trên máy chủ.")
 
+    def _serve_local_callbacks():
+        while server_active["running"]:
+            try:
+                local_server.handle_request()
+            except Exception:
+                break
+
     def _channel_oauth_worker():
         nonlocal channel_id, ch_name, primary_acc_id
         try:
-            # Chờ callback từ Google hoặc từ người dùng dán vào modal (timeout 3 phút)
-            srv_thread = threading.Thread(target=local_server.handle_request, daemon=True)
+            srv_thread = threading.Thread(target=_serve_local_callbacks, daemon=True)
             srv_thread.start()
 
-            import time
             start_t = time.time()
             creds = None
+            real_yt_title = None
+            real_yt_id = None
+            custom_url = None
+
             while time.time() - start_t < 180:
                 auth_input = None
                 if received_uri["value"]:
@@ -5201,19 +5370,159 @@ async def start_channel_oauth(
                 elif session_key in _oauth_manual_responses:
                     auth_input = _oauth_manual_responses.pop(session_key)
 
-                if auth_input:
-                    try:
-                        creds = exchange_oauth_code_for_credentials(flow, auth_input)
-                        if creds:
-                            break
-                    except Exception as ex:
-                        logger.warning(f"Thử đổi mã OAuth kênh thất bại: {ex}")
-                        _oauth_sessions[session_key]["status"] = "error"
-                        _oauth_sessions[session_key]["error"] = str(ex)
-                        break
+                if not auth_input:
+                    time.sleep(0.35)
+                    continue
 
-                time.sleep(0.5)
+                try:
+                    cand_creds = exchange_oauth_code_for_credentials(flow, auth_input)
+                    if not cand_creds:
+                        verify_event.set()
+                        continue
+                except Exception as ex:
+                    logger.warning(f"Thử đổi mã OAuth kênh thất bại: {ex}")
+                    retry_url, _ = flow.authorization_url(prompt="select_account consent", access_type="offline")
+                    _oauth_sessions[session_key]["status"] = "error"
+                    _oauth_sessions[session_key]["auth_url"] = retry_url
+                    _oauth_sessions[session_key]["error"] = str(ex)
+                    verify_page["html"] = (
+                        f"<html><head><meta charset='utf-8'><title>Lỗi Xác Thực</title></head>"
+                        f"<body style='font-family:system-ui,sans-serif;text-align:center;padding:60px;background:#0f172a;color:#f8fafc'>"
+                        f"<h2 style='color:#ef4444'>❌ Không thể đổi mã xác thực</h2>"
+                        f"<p style='color:#94a3b8'>{html_lib.escape(str(ex))}</p>"
+                        f"<a href='{html_lib.escape(retry_url)}' style='display:inline-block;margin-top:16px;padding:12px 24px;background:#3b82f6;color:#fff;text-decoration:none;border-radius:8px;font-weight:700;'>🔄 Thử Đăng Nhập Lại</a>"
+                        f"</body></html>"
+                    )
+                    verify_event.set()
+                    continue
 
+                # Đọc thông tin kênh YouTube thật từ token vừa cấp
+                cand_yt_title = None
+                cand_yt_id = None
+                cand_custom_url = None
+                try:
+                    from googleapiclient.discovery import build
+                    yt = build("youtube", "v3", credentials=cand_creds)
+                    c_res = yt.channels().list(mine=True, part="snippet,id").execute()
+                    items = c_res.get("items", [])
+                    if items:
+                        cand_yt_id = items[0].get("id")
+                        snippet = items[0].get("snippet", {})
+                        cand_yt_title = snippet.get("title")
+                        cand_custom_url = snippet.get("customUrl")
+                except Exception as e:
+                    logger.warning(f"Không thể đọc thông tin kênh YouTube từ token: {e}")
+
+                # Kiểm tra nếu người dùng chọn nhầm Brand Channel khác với kênh đang yêu cầu
+                if expected_yt_id and (not cand_yt_id or expected_yt_id.lower() != cand_yt_id.lower()):
+                    other_ch_id = None
+                    other_ch_name = None
+                    other_primary_acc = None
+                    if cand_yt_id:
+                        cfg_check = _read_channels_yaml()
+                        for acc_item in cfg_check.get("google_accounts", []):
+                            for bch_item in acc_item.get("brand_channels", []):
+                                if (bch_item.get("youtube_channel_id") or "").strip().lower() == cand_yt_id.lower():
+                                    other_ch_id = bch_item.get("id")
+                                    other_ch_name = bch_item.get("name", other_ch_id)
+                                    other_primary_acc = acc_item.get("id", "account_1")
+                                    break
+                            if other_ch_id:
+                                break
+                        if not other_ch_id:
+                            for c_item in cfg_check.get("channels", []):
+                                if (c_item.get("youtube_channel_id") or "").strip().lower() == cand_yt_id.lower():
+                                    other_ch_id = c_item.get("id")
+                                    other_ch_name = c_item.get("name", other_ch_id)
+                                    other_primary_acc = c_item.get("google_account", "account_1")
+                                    break
+
+                    # Nếu kênh chọn nhầm thuộc hệ thống, lưu hộ token cho kênh đó để không lãng phí
+                    if other_ch_id and cand_yt_id:
+                        try:
+                            other_dir = base_dir / "credentials" / "channels" / other_ch_id
+                            other_dir.mkdir(parents=True, exist_ok=True)
+                            other_tok_file = other_dir / "youtube_token.json"
+                            other_pool_file = other_dir / f"youtube_token_{acc_id}.json"
+                            other_dict = json.loads(cand_creds.to_json())
+                            other_dict["channel_id"] = cand_yt_id
+                            other_dict["channel_title"] = cand_yt_title or other_ch_name
+                            if cand_custom_url:
+                                other_dict["custom_url"] = cand_custom_url
+                            save_encrypted_json(other_pool_file, other_dict)
+                            if (
+                                not other_tok_file.exists()
+                                or acc_id == other_primary_acc
+                                or not _check_channel_token_health(other_ch_id, other_tok_file).get("valid")
+                            ):
+                                save_encrypted_json(other_tok_file, other_dict)
+                            _channel_token_health_cache.pop(other_ch_id, None)
+                            logger.info(f"🔄 [OAuth Bonus Save] Đã lưu hộ token cho kênh '{other_ch_name}' ({other_ch_id}), tiếp tục chờ người dùng chọn đúng kênh '{ch_name}'.")
+                        except Exception as save_other_err:
+                            logger.warning(f"Lỗi lưu hộ token cho kênh {other_ch_id}: {save_other_err}")
+
+                    retry_url, _ = flow.authorization_url(prompt="select_account consent", access_type="offline")
+                    picked_label = f"'{cand_yt_title or cand_yt_id}'" if cand_yt_id else "Tài khoản Gmail chưa có kênh YouTube"
+                    saved_bonus_note = f" (Hệ thống đã lưu hộ token này cho '{other_ch_name}')" if other_ch_name else ""
+                    gmail_hint = f" thuộc Gmail {expected_gmail}" if expected_gmail else ""
+                    err_msg = (
+                        f"⚠️ Bạn vừa bấm chọn nhầm kênh {picked_label} trên Google, "
+                        f"trong khi đang cần cấp quyền cho kênh '{ch_name}'{gmail_hint}!{saved_bonus_note} "
+                        f"👉 Kênh '{ch_name}' vẫn CHƯA được cấp quyền. Hãy bấm nút mở lại trang đăng nhập Google và chọn đúng kênh '{ch_name}'!"
+                    )
+                    _oauth_sessions[session_key] = {
+                        "status": "error",
+                        "channel_id": channel_id,
+                        "channel_name": ch_name,
+                        "expected_gmail": expected_gmail,
+                        "auth_url": retry_url,
+                        "error": err_msg,
+                        "message": err_msg,
+                    }
+                    verify_page["html"] = (
+                        f"<html><head><meta charset='utf-8'><title>Chọn Nhầm Kênh YouTube</title></head>"
+                        f"<body style='font-family:system-ui,sans-serif;text-align:center;padding:50px 20px;background:#0f172a;color:#f8fafc'>"
+                        f"<div style='max-width:560px;margin:0 auto;background:#1e293b;border:2px solid #f59e0b;border-radius:16px;padding:32px;'>"
+                        f"<div style='font-size:52px;margin-bottom:12px;'>⚠️</div>"
+                        f"<h2 style='color:#fbbf24;margin:0 0 12px 0;'>Bạn Vừa Chọn Nhầm Kênh Trên Google!</h2>"
+                        f"<p style='color:#e2e8f0;font-size:15px;line-height:1.6;'>"
+                        f"Bạn vừa chọn: <strong style='color:#f87171;'>{html_lib.escape(picked_label)}</strong><br>"
+                        f"Kênh đang cần cấp quyền: <strong style='color:#34d399;'>{safe_ch_name_html}</strong>"
+                        f"{f' <span style=\"color:#93c5fd;\">({html_lib.escape(expected_gmail)})</span>' if expected_gmail else ''}"
+                        f"</p>"
+                        f"<p style='color:#94a3b8;font-size:13.5px;line-height:1.5;'>"
+                        f"Khi Google hiện danh sách tài khoản, hãy chọn Gmail quản lý rồi <strong>bấm vào đúng dòng tên kênh '{safe_ch_name_html}'</strong> (Brand Account) ở bước tiếp theo."
+                        f"</p>"
+                        f"<a href='{html_lib.escape(retry_url)}' style='display:inline-block;margin-top:16px;padding:14px 28px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#0f172a;text-decoration:none;border-radius:10px;font-weight:800;font-size:15px;'>"
+                        f"🔄 BẤM VÀO ĐÂY ĐỂ CHỌN LẠI ĐÚNG KÊNH '{safe_ch_name_html}'"
+                        f"</a>"
+                        f"</div></body></html>"
+                    )
+                    verify_event.set()
+                    start_t = time.time()  # Gia hạn thêm 3 phút để người dùng chọn lại kênh đúng
+                    continue
+
+                # Đã chọn đúng kênh cần cấp quyền!
+                creds = cand_creds
+                real_yt_title = cand_yt_title
+                real_yt_id = cand_yt_id
+                custom_url = cand_custom_url
+                final_title_html = html_lib.escape(str(real_yt_title or ch_name))
+                verify_page["html"] = (
+                    f"<html><head><meta charset='utf-8'><title>Cấp Quyền Thành Công</title></head>"
+                    f"<body style='font-family:system-ui,sans-serif;text-align:center;padding:60px;background:#0f172a;color:#f8fafc'>"
+                    f"<div style='max-width:480px;margin:0 auto;background:#1e293b;border:1px solid rgba(52,211,153,0.4);border-radius:16px;padding:36px;'>"
+                    f"<div style='font-size:54px;margin-bottom:12px;'>🎉</div>"
+                    f"<h2 style='color:#34d399;margin:0 0 10px 0;'>Đã Kết Nối Đúng Kênh '{final_title_html}'!</h2>"
+                    f"<p style='color:#94a3b8;font-size:14px;'>Token OAuth mới đã được lưu và kích hoạt thành công.<br>Cửa sổ này sẽ tự động đóng sau 2 giây...</p>"
+                    f"</div>"
+                    f"<script>setTimeout(function(){{try{{window.close();}}catch(e){{}}}},2000);</script>"
+                    f"</body></html>"
+                )
+                verify_event.set()
+                break
+
+            server_active["running"] = False
             try:
                 local_server.server_close()
             except Exception:
@@ -5227,36 +5536,6 @@ async def start_channel_oauth(
                     }
                 return
 
-            # Đọc thông tin kênh YouTube thật từ token trả về
-            real_yt_title = None
-            real_yt_id = None
-            custom_url = None
-            try:
-                from googleapiclient.discovery import build
-                yt = build("youtube", "v3", credentials=creds)
-                c_res = yt.channels().list(mine=True, part="snippet,id").execute()
-                items = c_res.get("items", [])
-                if items:
-                    real_yt_id = items[0].get("id")
-                    snippet = items[0].get("snippet", {})
-                    real_yt_title = snippet.get("title")
-                    custom_url = snippet.get("customUrl")
-            except Exception as e:
-                logger.warning(f"Không thể đọc thông tin kênh YouTube từ token: {e}")
-
-            # Tự động phát hiện & định tuyến đúng kênh nếu người dùng chọn kênh khác trên trình duyệt (từ auth_channel.py)
-            expected_yt_id = (ch.get("youtube_channel_id") or "").strip()
-            if expected_yt_id and real_yt_id and expected_yt_id.lower() != real_yt_id.lower():
-                cfg_check = _read_channels_yaml()
-                for acc_item in cfg_check.get("google_accounts", []):
-                    for bch_item in acc_item.get("brand_channels", []):
-                        if (bch_item.get("youtube_channel_id") or "").strip().lower() == real_yt_id.lower():
-                            channel_id = bch_item.get("id")
-                            ch_name = bch_item.get("name", channel_id)
-                            primary_acc_id = acc_item.get("id", primary_acc_id)
-                            logger.info(f"🔄 [OAuth Auto-Route] Tự động định tuyến token sang đúng kênh '{ch_name}' ({channel_id})")
-                            break
-
             # Lưu token vào credentials/channels/{channel_id}/ (gồm cả youtube_token_{acc_id}.json cho Quota Pool)
             ch_dir = base_dir / "credentials" / "channels" / channel_id
             ch_dir.mkdir(parents=True, exist_ok=True)
@@ -5264,14 +5543,27 @@ async def start_channel_oauth(
             pool_token_file = ch_dir / f"youtube_token_{acc_id}.json"
 
             token_dict = json.loads(creds.to_json())
-            token_dict["channel_id"] = real_yt_id or channel_id
+            token_dict["channel_id"] = real_yt_id or expected_yt_id or channel_id
             token_dict["channel_title"] = real_yt_title or ch_name
             if custom_url:
                 token_dict["custom_url"] = custom_url
 
             save_encrypted_json(pool_token_file, token_dict)
-            if not token_file.exists() or acc_id == primary_acc_id or not account_id:
+            if (
+                not token_file.exists()
+                or acc_id == primary_acc_id
+                or not account_id
+                or not _check_channel_token_health(channel_id, token_file).get("valid")
+            ):
                 save_encrypted_json(token_file, token_dict)
+
+            # Xóa cache sức khỏe token ngay lập tức để UI và PublisherAgent nhận token mới
+            _channel_token_health_cache.pop(channel_id, None)
+            try:
+                from app.agents.publisher.agent import PublisherAgent
+                PublisherAgent._token_health_cache.clear()
+            except Exception:
+                pass
 
             # Cập nhật channels.yaml với thông tin thật
             cfg = _read_channels_yaml()
@@ -5287,18 +5579,16 @@ async def start_channel_oauth(
                     break
 
             for acc in cfg.get("google_accounts", []):
-                if acc.get("id") == acc_id:
-                    for bch in acc.get("brand_channels", []):
-                        if bch.get("id") == channel_id:
-                            if real_yt_title:
-                                bch["youtube_title"] = real_yt_title
-                            if real_yt_id:
-                                bch["youtube_channel_id"] = real_yt_id
-                                bch["channel_url"] = f"https://www.youtube.com/channel/{real_yt_id}"
-                            if custom_url:
-                                bch["handle"] = custom_url
-                            break
-                    break
+                for bch in acc.get("brand_channels", []):
+                    if bch.get("id") == channel_id:
+                        if real_yt_title:
+                            bch["youtube_title"] = real_yt_title
+                        if real_yt_id:
+                            bch["youtube_channel_id"] = real_yt_id
+                            bch["channel_url"] = f"https://www.youtube.com/channel/{real_yt_id}"
+                        if custom_url:
+                            bch["handle"] = custom_url
+                        break
             _write_channels_yaml(cfg)
 
             succ_msg = f"Đã kết nối thành công kênh '{ch_name}'"
@@ -5308,6 +5598,7 @@ async def start_channel_oauth(
             _oauth_sessions[session_key] = {
                 "status": "success",
                 "channel_id": channel_id,
+                "channel_title": real_yt_title or ch_name,
                 "real_title": real_yt_title or ch_name,
                 "real_id": real_yt_id,
                 "message": succ_msg
@@ -5315,6 +5606,8 @@ async def start_channel_oauth(
             logger.info(f"OAuth thành công cho kênh {channel_id}: {succ_msg}")
 
         except Exception as ex:
+            server_active["running"] = False
+            verify_event.set()
             logger.error(f"Channel OAuth Worker Error: {ex}")
             _oauth_sessions[session_key] = {
                 "status": "error",
@@ -5327,6 +5620,8 @@ async def start_channel_oauth(
     return {
         "success": True,
         "auth_url": auth_url,
+        "expected_gmail": expected_gmail,
+        "expected_yt_id": expected_yt_id,
         "session_key": session_key,
         "status": "in_progress",
         "message": f"Đang mở trình duyệt. Khi Google hiển thị danh sách kênh, hãy chọn đúng kênh '{ch.get('name')}'!"
@@ -5353,6 +5648,7 @@ async def disconnect_channel(channel_id: str) -> Dict[str, Any]:
     ch_token = ch_dir / "youtube_token.json"
     if ch_token.exists():
         ch_token.unlink()
+    _channel_token_health_cache.pop(channel_id, None)
     return {"success": True, "message": f"Đã ngắt kết nối YouTube cho kênh '{channel_id}'"}
 
 
